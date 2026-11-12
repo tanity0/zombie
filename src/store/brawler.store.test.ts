@@ -165,10 +165,13 @@ describe('格闘: 通常攻撃(§2)', () => {
 });
 
 describe('格闘: 技(§3)', () => {
-  it('ポイント不足では技が出ない(数字が震える印)', () => {
+  it('ポイント不足では技が出ない(数字が震える印)。ステップを出せる時はその向きへのステップになる(社長指示2026-11-12)', () => {
+    // 待機=左フリックで左へステップ(技は出ない)。ステップを出せない時の拒否は構えの延長の「足りなければ拒否」で見る。
     setup();
-    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(false);
-    expect(br().denyAt).toBe(now);
+    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
+    expect(br().tech).toBeNull();
+    expect(br().stepAt).toBe(now);
+    expect(useGameStore.getState().player.lastDirection).toEqual({ x: -1, y: 0 });
   });
   it('方向の無い入力は技を出さない', () => {
     setup();
@@ -739,7 +742,7 @@ describe('構えで受けた時もカウンター成立の記録を書く(社長
 
 // ★書き換え(社長指示2026-11-10・research/BRAWLER.md §12-3d): 旧「構えのカウンター成立で技ポイントを全回復(2026-11-08)」は撤去された。
 // 新しい決め=構えで受けても技ポイントは増えない(HUD の跳ね=gainAt も出ない)。成立の効果は下の「構えの成立の作り直し」で固める。
-describe('構えで受けても技ポイントは増えない(社長指示2026-11-10・全回復の撤去)', () => {
+describe('構えで受けても技ポイントは増えない(社長指示2026-11-10・全回復の撤去。ジャストの受けだけ例外=下)', () => {
   it('構え(3ポイント)で受けても、技ポイントは払った後のまま・gainAt も打たれない(相手が分からない受け/雑魚/ボス級のどれでも)', () => {
     for (const who of ['unknown', 'mob', 'boss'] as const) {
       setup();
@@ -748,13 +751,67 @@ describe('構えで受けても技ポイントは増えない(社長指示2026-1
       useGameStore.setState(st => ({ enemies: foe, player: { ...st.player, brawler: { ...st.player.brawler!, points: 3, gainAt: 0 } } }));
       expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
       expect(br().points, who).toBe(0);
-      advance(20);
+      advance(200); // ジャストの窓(120ms)の外=普通の受け(ジャストの受けは +5=下の describe)
       const c = center();
       useGameStore.getState().brawlerGuardReceive(c.x + 30, c.y, foe[0]?.id);
       expect(br().points, who).toBe(0);
       expect(br().gainAt ?? 0, who).toBe(0);
       expect(br().points, who).toBeLessThan(brawlerPointCap(1));
     }
+  });
+});
+
+describe('ジャスト構えの受けで技ポイントが +5(社長指示2026-11-12「ジャストカウンターになったら技ポイントが5溜まる」)', () => {
+  const guardNow = (level: number, pointsAfter: number) => {
+    setup(level);
+    useGameStore.getState().brawlerPress(); advance(400);
+    useGameStore.setState(st => ({ enemies: [], player: { ...st.player, brawler: { ...st.player.brawler!, points: 3, gainAt: 0 } } }));
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: pointsAfter } } }));
+  };
+  const receive = () => { const c = center(); useGameStore.getState().brawlerGuardReceive(c.x + 30, c.y); };
+  it('ジャストで受けると +5・HUD の跳ね(gainAt)が打たれる', () => {
+    guardNow(3, 0);
+    advance(20);
+    receive();
+    expect(br().justAt).toBe(now);
+    expect(br().points).toBe(5);
+    expect(br().gainAt).toBe(now);
+  });
+  it('上限で頭打ち(Lv1=5)', () => {
+    guardNow(1, 2);
+    advance(20);
+    receive();
+    expect(br().points).toBe(brawlerPointCap(1));
+  });
+  it('普通の受け(ジャストの窓の外)では増えない', () => {
+    guardNow(3, 0);
+    advance(200);
+    receive();
+    expect(br().justAt ?? 0).not.toBe(now);
+    expect(br().points).toBe(0);
+    expect(br().gainAt ?? 0).toBe(0);
+  });
+  it('構え1回の中で2度ジャストになっても +5 は1回・延長した構えでは数え直す', () => {
+    guardNow(3, 0);
+    advance(10);
+    receive();
+    expect(br().points).toBe(5);
+    // 間引きを外して、同じ構えの窓の中でもう一度ジャストの受けを起こす
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, guardHitAt: 0 } } }));
+    advance(10);
+    receive();
+    expect(br().justAt).toBe(now); // 2度目もジャスト
+    expect(br().points).toBe(5);   // でも +5 は1回
+    // 延長=新しい構え
+    advance(300);
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 10 } } }));
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    const before = br().points;
+    advance(20);
+    receive();
+    expect(br().justAt).toBe(now);
+    expect(br().points).toBe(Math.min(brawlerPointCap(3), before + 5));
   });
 });
 
@@ -770,7 +827,10 @@ describe('血の覚醒中は技ポイントを無視して使い放題(社長指
     setup();
     useGameStore.getState().brawlerPress(); advance(400);
     useGameStore.setState(st => ({ enemies: [], player: { ...st.player, bloodAwakenUntil: 0, brawler: { ...st.player.brawler!, points: 0 } } }));
-    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(false);
+    // 技は出ない。待機なのでフリックの向きへのステップになる(社長指示2026-11-12)
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);
+    expect(br().tech).toBeNull();
+    expect(br().stepAt).toBe(now);
   });
 });
 

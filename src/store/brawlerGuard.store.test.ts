@@ -71,7 +71,7 @@ const guardNow = (points = 3): number => {
   useGameStore.getState().brawlerPress(); advance(400);
   useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points, gainAt: 0 } } }));
   expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
-  advance(20);
+  advance(200); // ジャストの窓(120ms)の外=普通の受け(ジャストの受けは技ポイント +5=社長指示2026-11-12・brawler.store.test で固める)
   expect(guarding()).toBe(true);
   return br().points;
 };

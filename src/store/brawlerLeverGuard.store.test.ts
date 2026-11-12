@@ -350,6 +350,8 @@ describe('②成立しない場面: 普通に食らう', () => {
     useGameStore.setState({ enemies: [enemyAt('zombie', -60, 0, 'z')] });
     expect(useGameStore.getState().brawlerStep(1, 0)).toBe(true);
     advance(30);
+    // ステップの出始めは技の無敵(社長指示2026-11-12)=ここでは無敵を外して「ステップ中はレバーガードが張れない」だけを見る。
+    useGameStore.setState(st => ({ player: { ...st.player, invulnerable: false, abilityInvulnUntil: 0 } }));
     stick(1, 0);
     hitBy('z');
     expectPlain();

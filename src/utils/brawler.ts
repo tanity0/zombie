@@ -873,9 +873,27 @@ export const BRAWLER_JUST_STUN_MULT = 2;
 export const brawlerIsJustGuard = (s: Pick<BrawlerState, 'guardSince' | 'guardUntil'>, t: number, windowMs = BRAWLER_JUST_MS): boolean =>
   s.guardSince !== undefined && s.guardUntil > t && t >= s.guardSince && t - s.guardSince <= windowMs;
 
-/** ステップの距離(px)と時間(ms)。加速→減速(無敵なし)。 */
+/** ジャスト構えで受けた時に足す技ポイント(社長指示2026-11-12「ジャストカウンターになったら技ポイントが5溜まる」)。 */
+export const BRAWLER_JUST_GUARD_POINTS = 5;
+/**
+ * ジャスト構えの受けで技ポイントを足す(上限で止める)。構え1回(guardSince ごと・延長は新しい構え)につき1度だけ。
+ * just=間引かれない受けでジャストだったか(呼び手が判定済み)。足した構えは justPointsFor に覚える(上限で増えなくても覚える)。
+ * 増えた時だけ gainAt を打つ。足さない時は状態は同じ物を返す。
+ */
+export const brawlerAfterJustGuardPoints = (s: BrawlerState, cap: number, just: boolean, now: number): BrawlerState => {
+  if (!just || s.guardSince === undefined || s.justPointsFor === s.guardSince) return s;
+  const next = Math.max(s.points, Math.min(cap, s.points + BRAWLER_JUST_GUARD_POINTS)); // 上限で止める(上限を超えて持っていても減らさない)
+  return next === s.points ? { ...s, justPointsFor: s.guardSince } : { ...s, points: next, gainAt: now, justPointsFor: s.guardSince };
+};
+
+/** ステップの距離(px)と時間(ms)。加速→減速。出始めだけ無敵(BRAWLER_STEP_IFRAME_MS)。 */
 export const BRAWLER_STEP_PX = 100;
 export let BRAWLER_STEP_MS = 180; // ×BRAWLER_TEMPO(係数1.0の値)
+/**
+ * ステップの出始めの無敵(ms・壁時計。テンポ係数は掛けない)。社長指示2026-11-12「格闘のステップに無敵時間を入れる。出始めの0.2秒のみ」。
+ * ステップの長さ(BRAWLER_STEP_MS)より長ければステップの長さで打ち切る。乗せる先はプレイヤーの被弾無敵(invulnerable/invulnerableTime)。
+ */
+export const BRAWLER_STEP_IFRAME_MS = 200;
 /** ステップの速さの形(経過の割合 p=0..1 → 0..1)。正弦の1山=出だしと終わりが0(慣性)。 */
 export const brawlerStepFactor = (p: number): number => (p <= 0 || p >= 1 ? 0 : Math.sin(Math.PI * p));
 /** 正弦の1山で距離 dist を ms で進む最大の速さ(px/s)。平均は最大の 2/π。 */
@@ -901,6 +919,14 @@ export const brawlerStepAllowed = (s: BrawlerState, t: number): boolean => {
   if (!brawlerHitLanded(s) || brawlerInHitstop(s, t)) return false;
   return brawlerElapsed(s, t) < brawlerTotalMs(s);
 };
+/**
+ * ★技ポイントが足りないフリックを、その向きへのステップに変えるか(社長指示2026-11-12「技ポイントが無い状態でフリックすると、その方向にステップ発動」)。
+ * 変えるのは「その技を今出せる(道・受付・構えの延長などポイント以外の条件は通った)のに、値段だけ払えない」時で、しかもステップを今出せる時だけ
+ * (brawlerStepAllowed=ステップの入口と同じ)。ステップを出せない時(技の最中・構えの最中など)は今どおり拒否。
+ * 呼び手は、秘奥義の最中・方向の決まらない入力・道の外の技・技の先行入力として覚える入力をここへ渡さない(それらは今どおり)。
+ */
+export const brawlerFlickStepInstead = (s: BrawlerState, t: number, canPay: boolean): boolean =>
+  !canPay && brawlerStepAllowed(s, t);
 /** ステップを始めた状態。後隙を取り消す=その行動を終えた扱い(つながり・秘奥義の数えは終わった時と同じ)。先行入力は捨てる。 */
 export const brawlerStepStart = (s: BrawlerState, t: number, now: number): BrawlerState => {
   const base = s.phase === 'idle' ? s : brawlerFinish(s, t).state;

@@ -13,7 +13,7 @@ import {
   brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_KICK3_RECOVERY_MULT, BRAWLER_KICK_CROUCH_AT, BRAWLER_HIT_PITCH, brawlerStageHitSfx, brawlerKickHitSfx, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
   brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech, brawlerLateCarry, brawlerTechBufferDecision, BRAWLER_CANCEL_WINDOW_MS,
   BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT, brawlerKickMult,
-  brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS,
+  brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerAfterJustGuardPoints, BRAWLER_JUST_GUARD_POINTS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS,
 } from './brawler';
 import {
   pickBrawlerComboTarget, brawlerComboLockId, brawlerComboTargetAfterHit, BRAWLER_HEEL_AIR_PX, BRAWLER_STOMP_FROM_AIR_FALL, BRAWLER_KICK3_CHARGE_RISE_PX, BRAWLER_KICK3_CHARGE_SINK_PX, BRAWLER_KICK3_CHARGE_MS, BRAWLER_KICK_MAX,
@@ -845,3 +845,39 @@ describe('格闘: 踵落としは空中で浮いたまま振り下ろし、直�
   });
 });
 
+
+describe('ジャスト構えの技ポイント(社長指示2026-11-12「ジャストカウンターになったら技ポイントが5溜まる」)', () => {
+  const g = (points: number, guardSince: number | undefined, justPointsFor?: number) => ({ ...initialBrawlerState(), points, guardSince, justPointsFor });
+  it('ジャストなら +5・gainAt を打ち・足した構えを覚える', () => {
+    expect(BRAWLER_JUST_GUARD_POINTS).toBe(5);
+    const r = brawlerAfterJustGuardPoints(g(2, 1000), 20, true, 777);
+    expect(r.points).toBe(7);
+    expect(r.gainAt).toBe(777);
+    expect(r.justPointsFor).toBe(1000);
+  });
+  it('上限で止める・上限で増えない時は gainAt を打たない(構えは覚える)', () => {
+    expect(brawlerAfterJustGuardPoints(g(3, 1000), 5, true, 1).points).toBe(5);
+    const full = brawlerAfterJustGuardPoints(g(5, 1000), 5, true, 1);
+    expect(full.points).toBe(5);
+    expect(full.gainAt).toBeUndefined();
+    expect(full.justPointsFor).toBe(1000);
+    expect(brawlerAfterJustGuardPoints(g(8, 1000), 5, true, 1).points).toBe(8); // 上限を超えて持っていても減らさない
+  });
+  it('ジャストでない受けは何もしない(同じ物を返す)', () => {
+    const s = g(2, 1000);
+    expect(brawlerAfterJustGuardPoints(s, 20, false, 1)).toBe(s);
+  });
+  it('構え1回(guardSince ごと)に1度だけ・延長(guardSince が変わる)は数え直す', () => {
+    const once = brawlerAfterJustGuardPoints(g(0, 1000), 20, true, 1);
+    const twice = brawlerAfterJustGuardPoints(once, 20, true, 2);
+    expect(twice).toBe(once);
+    expect(twice.points).toBe(5);
+    const extended = brawlerAfterJustGuardPoints({ ...twice, guardSince: 1800 }, 20, true, 3);
+    expect(extended.points).toBe(10);
+    expect(extended.justPointsFor).toBe(1800);
+  });
+  it('構えの時刻が無い時は足さない', () => {
+    const s = g(0, undefined);
+    expect(brawlerAfterJustGuardPoints(s, 20, true, 1)).toBe(s);
+  });
+});

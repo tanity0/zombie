@@ -97,8 +97,9 @@ describe('構えでボス級の技を受けたら、気功で反撃する(§32)'
   it('ボス級の近接の技を受ける → 止めが明けた後に代金なしの気功が1発出て当たる・ボスの体力が減る・技ポイントは減らない', () => {
     setup();
     useGameStore.setState({ enemies: [enemyAt('hunter', 120, 0, 'h')] });
-    const left = guardNow(5);
+    guardNow(5);
     expect(hitBy('h', 'hunter', 'hunter-slash')).toBe(false);
+    const left = br().points; // 受けた直後(ジャストの受けなら +5 済み=社長指示2026-11-12)。気功はここから減らさない
     expect(br().tech).toBe('guard');
     // 受けた瞬間はまだ撃たない(予約だけ)。撃つ時刻=受けた瞬間の止めの明け(押され始めと同じ)。
     expect(counterKiko().length).toBe(0);

@@ -3728,6 +3728,18 @@ export const PLAYER_BASE_HP = 120;
 export const PLAYER_HITBOX = 28;
 export const RELOAD_MOVE_SPEED_MULT = 1;
 export const INVULN_MS = 1000; // 社長裁定v0.25.3599(700→1000。多段技の3発目再被弾・群れ削り対策)
+/**
+ * ★技の無敵(Player.abilityInvulnUntil)を付けるパッチ。now から ms の間。既に長い技の無敵が残っていれば縮めない。
+ * 付けるのは「抜ける間だけ無敵」の技=格闘のステップの出始め・5段目の突き抜け・刀の一閃・縮地。被弾の無敵(invulnerable)も今どおり一緒に書く。
+ */
+export const abilityInvulnPatch = (p: Pick<Player, 'abilityInvulnAt' | 'abilityInvulnUntil'>, now: number, ms: number): Pick<Player, 'abilityInvulnAt' | 'abilityInvulnUntil'> => {
+  const until = now + Math.max(0, ms);
+  return (p.abilityInvulnUntil ?? 0) >= until
+    ? { abilityInvulnAt: p.abilityInvulnAt, abilityInvulnUntil: p.abilityInvulnUntil }
+    : { abilityInvulnAt: now, abilityInvulnUntil: until };
+};
+/** 技の無敵の最中か(壁時計)。 */
+export const abilityInvulnActive = (p: Pick<Player, 'abilityInvulnUntil'>, now: number): boolean => now < (p.abilityInvulnUntil ?? 0);
 
 /**
  * research/GHOST_BOSS.md v6: **幻影が受ける1発**を関所(phantomGate)へ通す薄い橋。
@@ -3859,7 +3871,7 @@ export const playerPvpChipPatch = (p: Player, impact: PvpImpact, gameTime: numbe
   if (isBrawlerGuarding(p, gameTime)) return {}; // 格闘の構え中は対人体勢の崩しは掛からない(research/BRAWLER.md §3-2)
   const { next, broke } = chipPvpPosture(p.pvpPosture, impact, gameTime, postureChipMult());
   return broke
-    ? { pvpPosture: next, counterWindowStart: 0, counterWindowEnd: 0, pendingSwingAt: 0, invulnerable: false }
+    ? { pvpPosture: next, counterWindowStart: 0, counterWindowEnd: 0, pendingSwingAt: 0, invulnerable: false, abilityInvulnUntil: 0 }
     : { pvpPosture: next };
 };
 // テスト診断フラグ(依頼#7・v0.25.2546): ?ghostlog=1 で守護霊の被弾源タグをconsoleへ出す。
@@ -4489,6 +4501,7 @@ const startBrawlerPalmDash = (get: () => GameState, set: (fn: (s: GameState) => 
     invulnerableTime: p.invulnerable
       ? Math.max(p.invulnerableTime, now - Math.max(0, INVULN_MS - ms))
       : now - Math.max(0, INVULN_MS - ms),
+    ...abilityInvulnPatch(p, now, ms), // 技の無敵=sourceId 付きの攻撃(噛みつき・掴み)も受けない
   });
   brawlerSfx('whip-swing', 0.75, 0.62 * brJitter(), 200);
   brawlerSfx('homing-fire', 0.35, 1.5, 160);
@@ -4933,10 +4946,19 @@ const startBrawlerStep = (
   const v = BR.brawlerStepSpeed(BR.BRAWLER_STEP_PX, ms);
   // ★固まりは切らない(§20-8・社長承認2026-11-11)。代わりに、ステップの最中は段も技も出せない(BR.brawlerStepping)=
   //   ステップの長さぶん遅れてから出す。その遅れの後に次の当たりが固まりの内に入るかは、技ごとの数字で決まる。
-  // 加速→減速(正弦の1山)で踏み込む。壁・木は格闘の速い踏み込みと同じく6px 刻みで解く(movePlayer の 'step')。無敵は付けない。
+  // 加速→減速(正弦の1山)で踏み込む。壁・木は格闘の速い踏み込みと同じく6px 刻みで解く(movePlayer の 'step')。
+  // ★出始めだけ無敵(社長指示2026-11-12「格闘のステップに無敵時間を入れる。出始めの0.2秒のみ」)。壁時計の BRAWLER_STEP_IFRAME_MS(テンポ係数は掛けない)、
+  //   ステップより長ければステップの長さで打ち切る。5段目の突き抜け・一閃・縮地と同じく既存の被弾無敵を再利用し、切れる時刻が合うよう開始時刻を過去へずらす。
+  //   既に長い無敵(被弾の無敵など)が残っていれば縮めない。
+  const iframeMs = Math.min(BR.BRAWLER_STEP_IFRAME_MS, ms);
   setBrawler(set, BR.brawlerStepStart(s, t, now), {
     lungeVx: ux * v, lungeVy: uy * v, lungeUntil: now + ms, lungeMs: ms, lungeShape: 'step', lungeHoldUntil: 0,
     lastDirection: { x: ux, y: uy },
+    invulnerable: true,
+    invulnerableTime: p.invulnerable
+      ? Math.max(p.invulnerableTime, now - Math.max(0, INVULN_MS - iframeMs))
+      : now - Math.max(0, INVULN_MS - iframeMs),
+    ...abilityInvulnPatch(p, now, iframeMs), // 技の無敵=sourceId 付きの攻撃(噛みつき・掴み)も受けない
   });
   // 絵: 蹴り出した所に砂埃(社長指示2026-11-10「ステップのエフェクトは砂埃にして。白い線やめる」=旧 dash-wind の白い筋を撤去)。
   // 砂埃は地面に残り、蹴った向きの逆へ流れて薄れる(体には付けない)。判定の無い派手さの絵=大きめ・2つは大きさと尺をずらす。音は短い風切り。
@@ -7948,6 +7970,7 @@ const reserveShukuchiWarp = (get: () => GameState, now: number): boolean => {
       invulnerableTime: state.player.invulnerable
         ? Math.max(state.player.invulnerableTime, now - Math.max(0, INVULN_MS - SHUKUCHI_INVULN_MS))
         : now - Math.max(0, INVULN_MS - SHUKUCHI_INVULN_MS),
+      ...abilityInvulnPatch(state.player, now, SHUKUCHI_INVULN_MS), // 技の無敵=sourceId 付きの攻撃(噛みつき・掴み)も受けない
     },
   }));
   return true;
@@ -9302,7 +9325,7 @@ interface GameState {
   brawlerPress: () => boolean;
   // フリック(PC=方向+技ボタン)=技。neutral=方向の入力が無い(PCのK・パッドのニュートラル+B)=技は出さない。出たら true。
   brawlerTech: (dirX: number, dirY: number, neutral?: boolean) => boolean;
-  /** 格闘のステップ(research/BRAWLER.md §12-3・§12-3b)。向きへ短く踏み込む(加速→減速・無敵なし)。出た、または受け付けない時間で覚えた(200ms 以内に出す)ら true。 */
+  /** 格闘のステップ(research/BRAWLER.md §12-3・§12-3b)。向きへ短く踏み込む(加速→減速・出始めだけ無敵=BRAWLER_STEP_IFRAME_MS)。出た、または受け付けない時間で覚えた(200ms 以内に出す)ら true。 */
   brawlerStep: (dirX: number, dirY: number) => boolean;
   // 毎フレーム(useGameLoop)。格闘を持たない時は即 return。
   tickBrawler: () => void;
@@ -11322,6 +11345,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 血の覚醒中は技ポイントを無視して使い放題(社長指示2026-11-08・値段0=減らさない)。
     const awakened = isBloodAwakening(p, t);
     if (heel ? s.points < BR.brawlerHeelCost(awakened, brawlerTechDiscount(p, 'kick')) : !BR.brawlerCanPay(s, kind, awakened, brawlerTechDiscount(p, kind))) {
+      // ★ポイント不足のフリックは、ステップを出せる時はその向きへのステップ(社長指示2026-11-12)=ステップの入口と同じ踏み込み・出始めの無敵・砂埃・音。
+      if (BR.brawlerFlickStepInstead(s, t, false)) {
+        const m = Math.hypot(dirX, dirY) || 1;
+        startBrawlerStep(get, set, s, dirX / m, dirY / m);
+        return true;
+      }
       // ポイント不足: 何も出さない(HUD の数字が震えて一瞬沈み、鈍い音=社長決定 #8・クリエイティブ監査 #18)。
       brawlerSfx('ui-deny', 0.55, 0.72, 160);
       setBrawler(set, { ...s, denyAt: Date.now() });
@@ -11495,8 +11524,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
     // ★成立の記録(lastCounterSuccessTime)も通常のカウンターと同じく書く(社長承認2026-11-07・§9-42)。ループのエッジ検出が
     // 金の輪・ボムカウンター(とボマーの子爆弾)を出し、決めポーズの膨らみ・速度線・守護霊の記録(カウンター直後の窓)も同じ記録を読む。
-    // ★技ポイントは増やさない(2026-11-08 の「カウンター成立で全回復」は社長指示2026-11-10 で撤去。HUD の跳ね=gainAt も打たない)。
-    setBrawler(set, { ...next, guardHitAt: now, ...(just ? { justAt: now } : {}) }, { lastCounterSuccessTime: now, ...counterMasterAwakenBuffPatch(p, st.gameTime) /* §15: カウンターマスター覚醒(成立後3秒+30%)も他のカウンターと揃える */ });
+    // ★技ポイント: 普通の受けでは増やさない(2026-11-08 の「カウンター成立で全回復」は社長指示2026-11-10 で撤去。HUD の跳ね=gainAt も打たない)。
+    //   例外=ジャストの受け(社長指示2026-11-12「ジャストカウンターになったら技ポイントが5溜まる」): +5(上限で止める)・構え1回(延長ごと)に1度だけ・
+    //   増えた時は他の増え方と同じく gainAt を打つ(HUD の数字が跳ねる)。
+    const nextPts = BR.brawlerAfterJustGuardPoints(next, BR.brawlerPointCap(brawlerLevel(p)), just, now);
+    setBrawler(set, { ...nextPts, guardHitAt: now, ...(just ? { justAt: now } : {}) }, { lastCounterSuccessTime: now, ...counterMasterAwakenBuffPatch(p, st.gameTime) /* §15: カウンターマスター覚醒(成立後3秒+30%)も他のカウンターと揃える */ });
     // 受けた瞬間: 大きめの止め・閃光・揺れ(固有色の白金)。
     // 画面全体は止めない・スローも使わない(カウンターの絵の時間停止は撤回済み+サブウェポンのスロー禁則)。揺れと小さな寄りで受ける。
     get().triggerShake(COUNTER_SHAKE_MS + 80, COUNTER_SHAKE_MAG * 1.4, c.x - x, c.y - y);
@@ -15143,6 +15175,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           invulnerableTime: state.player.invulnerable
             ? Math.max(state.player.invulnerableTime, now - Math.max(0, INVULN_MS - KATANA_DASH_MS))
             : now - Math.max(0, INVULN_MS - KATANA_DASH_MS),
+          ...abilityInvulnPatch(state.player, now, KATANA_DASH_MS), // 技の無敵=sourceId 付きの攻撃(噛みつき・掴み)も受けない
           lastDirection: { x: ux, y: uy }
         }
       }));
@@ -15542,6 +15575,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ⇒ **同じ敵の連打は防ぐ(多段技の3発目対策=v0.25.3599の裁定は守られる)/ 別の敵からは食らう。**
     // 旧は1本だったので **敵が10体でも1体でも被弾8回**(1秒に1発)=敵の数が難度に効いていなかった(実測)。
     // `sourceId` を渡さない経路(ボスの技・罠・環境)は**従来どおり**=1bitも変えない。
+    // ★技の無敵(ステップの出始め・5段目の突き抜け・一閃・縮地)は sourceId の有無に関わらず受けない(被弾の無敵は下のとおり敵ごと)。
+    //   幻影の攻撃は今どおり素通り(playerIframeApplies)。
+    if (abilityInvulnActive(player, Date.now()) && playerIframeApplies(damagerType)) return false;
     if (sourceId !== undefined) {
       const lastFromThis = player.iframeBySource?.[sourceId];
       if (lastFromThis !== undefined && Date.now() - lastFromThis < INVULN_MS) return false;

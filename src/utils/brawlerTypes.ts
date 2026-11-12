@@ -141,6 +141,8 @@ export interface BrawlerState {
   huntingCombo?: boolean;
   /** ジャスト構えで受けた時刻(Date.now・research/BRAWLER.md §12-2)。 */
   justAt?: number;
+  /** ジャスト構えで技ポイントを足した構え(guardSince の値)。構え1回(延長ごと)につき1度だけ足す(社長指示2026-11-12)。 */
+  justPointsFor?: number;
   /** ステップ(§12-3)の終わり(gameTime)。この間は次のステップを出さない。 */
   stepUntil?: number;
   /** ステップを出した時刻(Date.now・絵の合図)。 */

@@ -1504,7 +1504,7 @@ const resolveKamitsukiFx = (fx: CombatEffects): void => {
   // ★裁定済み#K-1(社長裁定2026-08-28「aで」=案A・PACING_PUZZLE.md §14-4-8b): 神付きの停止ぶん、
   // 主要な実時間窓を後ろへずらす(=世界が止まる前の状態から続きが再生される)。
   // 「停止明けに一括シフト」方式(1回だけ・二重シフト禁止)。対象はこの列挙が正:
-  //   プレイヤー: invulnerableTime(i-frame)・counterWindowStart/End(カウンター受付)・
+  //   プレイヤー: invulnerableTime(i-frame)・abilityInvulnAt/Until(技の無敵)・counterWindowStart/End(カウンター受付)・
   //               counterCooldownEnd(カウンターCD)・pendingSwingAt/meleeSwingAt(前隙)。
   //   敵: knockbackUntil(使者のKB凍結判定hangedmanKnockbackActiveもこの1フィールドだけを見るため、
   //       ここをシフトすれば連動して直る)。
@@ -1558,6 +1558,10 @@ const resolveKamitsukiFx = (fx: CombatEffects): void => {
     player: {
       ...s2.player,
       invulnerableTime: shiftIfStartedBefore(s2.player.invulnerableTime) ? s2.player.invulnerableTime + shiftMs : s2.player.invulnerableTime,
+      // 技の無敵(締切型)は起点 abilityInvulnAt とペアで動かす: 停止前に付き、停止開始の時点でまだ生きていたものだけ(切れていた無敵を蘇らせない)。
+      ...(shiftIfStartedBefore(s2.player.abilityInvulnAt ?? 0) && (s2.player.abilityInvulnUntil ?? 0) > kfx.startAt
+        ? { abilityInvulnAt: (s2.player.abilityInvulnAt ?? 0) + shiftMs, abilityInvulnUntil: (s2.player.abilityInvulnUntil ?? 0) + shiftMs }
+        : {}),
       counterWindowStart: counterWindowStartShifted ? s2.player.counterWindowStart + shiftMs : s2.player.counterWindowStart,
       counterWindowEnd: counterWindowStartShifted ? s2.player.counterWindowEnd + shiftMs : s2.player.counterWindowEnd,
       counterCooldownEnd: shiftIfLiveDeadlineAtStart(s2.player.counterCooldownEnd) ? s2.player.counterCooldownEnd + shiftMs : s2.player.counterCooldownEnd,

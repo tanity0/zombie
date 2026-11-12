@@ -140,6 +140,15 @@ export interface Player extends DashLocomotionState {
   isMoving: boolean;
   invulnerable: boolean;
   invulnerableTime: number;
+  /**
+   * ★技の無敵(抜ける間だけ無敵=格闘のステップの出始め・5段目の突き抜け・刀の一閃・縮地)。壁時計(Date.now)。
+   * 被弾の無敵(invulnerable)と区別するための欄: damagePlayer は sourceId の有無に関わらず `Date.now() < abilityInvulnUntil` なら受けない
+   * (被弾の無敵は sourceId 付きの攻撃を敵ごと=iframeBySource でしか見ないため、技の無敵を噛みつき・掴みが素通りしていた)。
+   * 幻影の攻撃は今どおり素通り(playerIframeApplies)。点滅などの見た目は今どおり invulnerable/invulnerableTime が持つ(技の側でも一緒に書く)。
+   * abilityInvulnAt=その無敵を付けた時刻(神付きの停止明けの時刻ずらしの判定に使う)。未設定=無し。
+   */
+  abilityInvulnAt?: number;
+  abilityInvulnUntil?: number;
   lastDirection: { x: number; y: number } | null;
   // 照準サークルの慣性付きベクトル(向き×傾き強度, 長さ0..1)。PHILL弾/ワイヤーアンカー/
   // サークル描画はすべてこれに揃える(進行方向ではなくサークル方向へ)。movePlayer が毎フレーム更新。
