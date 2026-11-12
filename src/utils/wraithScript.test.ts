@@ -85,7 +85,7 @@ describe('亡霊: 浮き', () => {
   });
 });
 
-import { wraithGrowthStep, wraithGraveSolids, wraithGrowthRise, isWraithGrave, WRAITH_GROWTH_CAP, WRAITH_GROWTH_AVOID_PLAYER_PX, WRAITH_GROWTH_GROW_MS, WRAITH_GROWTH_SINK_MS, WRAITH_GROWTH_NEAR_PX } from './wraithScript';
+import { wraithGrowthStep, wraithGraveSolids, wraithGrowthRise, isWraithGrave, WRAITH_GROWTH_CAP, WRAITH_GROWTH_AVOID_PLAYER_PX, WRAITH_GROWTH_GROW_MS, WRAITH_GROWTH_SINK_MS, WRAITH_GROWTH_NEAR_PX, WRAITH_GROWTH_LEAVE_PX, WRAITH_GROWTH_SINK_GAP_MS } from './wraithScript';
 
 describe('亡霊: 近づくと地面から生えてくる物(§9)', () => {
   const view = { left: -200, right: 200, top: -400, bottom: 400 };
@@ -131,6 +131,38 @@ describe('亡霊: 近づくと地面から生えてくる物(§9)', () => {
     expect(n0).toBeGreaterThan(3);
     for (let t = 8016; t <= 30000; t += 16) p = wraithGrowthStep(p, null, { x: 0, y: 0 }, view, ok, t, rng, st);
     expect(p).toHaveLength(0);
+  });
+  it('亡霊の足元から範囲+200pxより遠い点には生えない', () => {
+    const big = { left: -3000, right: 3000, top: -3000, bottom: 3000 };
+    let born = 0;
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const st = { nextAt: 0, seq: 0, lastSinkAt: -1e9 }, rng = rng0(seed);
+      let p: ReturnType<typeof wraithGrowthStep> = [];
+      for (let t = 0; t <= 20000; t += 16) {
+        const q = wraithGrowthStep(p, { x: 1000, y: 0 }, { x: 0, y: 0 }, big, ok, t, rng, st);
+        for (const a of q) if (!p.some(b => b.id === a.id)) { born++; expect(Math.hypot(a.x - 1000, a.y)).toBeLessThanOrEqual(WRAITH_GROWTH_LEAVE_PX); }
+        p = q;
+      }
+    }
+    expect(born).toBeGreaterThan(10);
+  });
+  it('亡霊から範囲+200pxより遠くなった物は古い順に約300msおきに1つずつ沈む。範囲の内の物は沈まない。沈み始めた墓石は壁でない', () => {
+    const big = { left: -3000, right: 3000, top: -3000, bottom: 3000 };
+    const g = (id: string, x: number, bornAt: number) => ({ id, x, y: 0, variant: 0, scale: 1.4, flip: false, bornAt });
+    let p: ReturnType<typeof wraithGrowthStep> = [g('far1', WRAITH_GROWTH_LEAVE_PX + 50, 0), g('edge', WRAITH_GROWTH_NEAR_PX + 150, 1), g('near', 100, 2), g('far2', -(WRAITH_GROWTH_LEAVE_PX + 300), 3)];
+    const st = { nextAt: 1e12, seq: 0, lastSinkAt: -1e9 }; // 新しく生えない
+    const sinkAt: Record<string, number> = {};
+    for (let t = 1000; t <= 3000; t += 16) {
+      p = wraithGrowthStep(p, { x: 0, y: 0 }, { x: 5000, y: 0 }, big, ok, t, rng0(1), st);
+      for (const q of p) if (q.sinkAt !== undefined && sinkAt[q.id] === undefined) sinkAt[q.id] = q.sinkAt;
+    }
+    expect(sinkAt.far1).toBe(1000);
+    expect(sinkAt.far2 - sinkAt.far1).toBeGreaterThanOrEqual(WRAITH_GROWTH_SINK_GAP_MS);
+    expect(sinkAt.far2 - sinkAt.far1).toBeLessThan(WRAITH_GROWTH_SINK_GAP_MS + 16);
+    expect(sinkAt.edge).toBeUndefined(); // 範囲の外でも+200pxの内=境目で出たり消えたりしない
+    expect(sinkAt.near).toBeUndefined();
+    expect(p.map(q => q.id).sort()).toEqual(['edge', 'near']); // 沈み切った物は消える
+    expect(wraithGraveSolids([{ ...g('far1', WRAITH_GROWTH_LEAVE_PX + 50, 0), sinkAt: 1000 }], 1001)).toHaveLength(0);
   });
 });
 

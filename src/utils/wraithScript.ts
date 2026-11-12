@@ -139,6 +139,9 @@ export const WRAITH_GROWTH_AVOID_PLAYER_PX = 140;
 export const WRAITH_GROWTH_GAP_PX = 56;
 export const WRAITH_GROWTH_GROW_MS = 600;
 export const WRAITH_GROWTH_SINK_MS = 500;
+/** 亡霊から離れた物を沈める距離(範囲より少し遠く=境目で出たり消えたりしない)と、沈める間隔(古い順に1つずつ)。 */
+export const WRAITH_GROWTH_LEAVE_PX = WRAITH_GROWTH_NEAR_PX + 200;
+export const WRAITH_GROWTH_SINK_GAP_MS = 300;
 /** 墓石が壁になるのは伸び切ってから(伸びている途中は押し出さない)。 */
 export const WRAITH_GROWTH_SOLID_AT = 0.85;
 /** 描画の高さ(絵66px に掛ける倍率の幅)。 */
@@ -200,8 +203,11 @@ export const wraithGrowthStep = (
       const x = view.left + 30 + rng() * Math.max(1, view.right - view.left - 60);
       const y = view.top + 60 + rng() * Math.max(1, view.bottom - view.top - 90);
       if (Math.hypot(x - player.x, y - player.y) < WRAITH_GROWTH_AVOID_PLAYER_PX) continue;
+      const dw = Math.hypot(x - wraith.x, y - wraith.y);
+      // 離れた物を沈める距離より遠くには生やさない(伸び切った直後に沈む物を作らない)。
+      if (dw > WRAITH_GROWTH_LEAVE_PX) continue;
       // 亡霊に近い所ほど生えやすい。
-      const w = Math.max(0.08, 1 - Math.hypot(x - wraith.x, y - wraith.y) / 1400);
+      const w = Math.max(0.08, 1 - dw / 1400);
       if (rng() > w) continue;
       if (cur().some(p => p.sinkAt === undefined && Math.hypot(p.x - x, p.y - y) < WRAITH_GROWTH_GAP_PX)) continue;
       if (!canPlace(x, y)) continue;
@@ -213,9 +219,9 @@ export const wraithGrowthStep = (
       break;
     }
   }
-  if (!wraith && gt - st.lastSinkAt >= 300) {
-    // 亡霊が居なくなったら、残った物を古い順に1つずつ沈める。
-    const first = cur().find(p => p.sinkAt === undefined);
+  if (gt - st.lastSinkAt >= WRAITH_GROWTH_SINK_GAP_MS) {
+    // 亡霊が居なくなったら残った物を、居る間は亡霊から範囲(+境目の余り)より遠くなった物を、古い順に1つずつ沈める。
+    const first = cur().find(p => p.sinkAt === undefined && (!wraith || Math.hypot(p.x - wraith.x, p.y - wraith.y) > WRAITH_GROWTH_LEAVE_PX));
     if (first) { st.lastSinkAt = gt; out = cur().map(p => (p === first ? { ...p, sinkAt: gt } : p)); }
   }
   // 上限: 沈んでいない物が上限を超えたら、古い順に沈める(パッと消さない)。

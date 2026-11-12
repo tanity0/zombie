@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5548', items: [
+    '亡霊の周りに生える墓石と花、宇宙飛行群の周りに刺さる残骸は、本人が離れると沈んで消える',
+  ] },
   { version: '0.25.5547', items: [
     '格闘の構えは、技ポイントが足りなくても出せる。足りない時の構えは攻撃を防いで弾かれるだけで、反撃は出ない',
     '足りない時の構えでも、ジャストで受ければ技ポイントが五つ溜まる',

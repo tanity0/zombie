@@ -470,6 +470,9 @@ export const ASTRO_RAIN_WARN_MS = 700;
 export const ASTRO_RAIN_FALL_MIN_MS = 170;
 export const ASTRO_RAIN_FALL_MAX_MS = 280;
 export const ASTRO_RAIN_SINK_MS = 600;
+/** 宇宙飛行群から離れた物を沈める距離(範囲より少し遠く=境目で出たり消えたりしない)と、沈める間隔(古い順に1つずつ)。 */
+export const ASTRO_RAIN_LEAVE_PX = ASTRO_RAIN_NEAR_PX + 200;
+export const ASTRO_RAIN_SINK_GAP_MS = 300;
 export const ASTRO_SCATTER_SMOKE_FRAC = 0.4;
 
 export interface AstroScatterPiece {
@@ -484,13 +487,13 @@ export interface AstroScatterPiece {
   sinkAt?: number;
 }
 
-/** nextAt=次に降らせる時刻・wasNear=前の回に近かったか・firstPending=次の1枚はプレイヤーのそば・lastAt=最後に降らせた時刻。 */
-export interface AstroRainState { nextAt: number; seq: number; wasNear?: boolean; firstPending?: boolean; lastAt?: number }
+/** nextAt=次に降らせる時刻・wasNear=前の回に近かったか・firstPending=次の1枚はプレイヤーのそば・lastAt=最後に降らせた時刻・lastSinkAt=離れた物を最後に沈めた時刻。 */
+export interface AstroRainState { nextAt: number; seq: number; wasNear?: boolean; firstPending?: boolean; lastAt?: number; lastSinkAt?: number }
 
 /**
  * 周りに降り注ぐ残骸を1回分進める。astro=場にいる宇宙飛行群の足元(居なければ null)、player=プレイヤーの中心。
  * 近ければ間隔ごとに1枚降らせる(近づいた最初の1枚はすぐ・プレイヤーのそば、以後は本体の周りの輪)。当たりは呼び手が予告つきで積む。
- * 上限を超えたら一番古い物を沈める。沈み切った物は消す。
+ * 上限を超えたら一番古い物を沈める。本体から範囲より遠くなった物(居なければ全部・刺さった後の物だけ)は古い順に1つずつ沈める。沈み切った物は消す。
  * canPlace=建物・木などに埋まらない所か。変わらなければ同じ配列を返す。
  */
 export const astroRainStep = (
@@ -536,6 +539,13 @@ export const astroRainStep = (
       st.firstPending = false;
       break;
     }
+  }
+  // 宇宙飛行群が居なくなったら残った物を、居る間は本体から範囲(+境目の余り)より遠くなった物を、古い順に1つずつ沈める。
+  // 刺さる前(予告の最中・当たりが積まれている)の物は沈めない=刺さってから判定する。
+  if (gt - (st.lastSinkAt ?? -Infinity) >= ASTRO_RAIN_SINK_GAP_MS) {
+    const base: readonly AstroScatterPiece[] = out ?? pieces;
+    const first = base.find(p => p.sinkAt === undefined && gt >= p.landAt && (!astro || Math.hypot(p.x - astro.x, p.y - astro.y) > ASTRO_RAIN_LEAVE_PX));
+    if (first) { st.lastSinkAt = gt; out = base.map(p => (p === first ? { ...p, sinkAt: gt } : p)); }
   }
   // 上限: 沈んでいない物が上限を超えたら、古い順に沈める(パッと消さない)。
   const cur: readonly AstroScatterPiece[] = out ?? pieces;

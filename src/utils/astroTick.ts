@@ -472,7 +472,7 @@ let rainLastGt = 0;
  * 当たりの絵は描かない(`ambient`)=空から落ちる絵と刺さった絵はこの台帳(`astroScatter`)が描く。
  */
 export const runAstroScatter = (gt: number): void => {
-  if (gt < rainLastGt) { rainState.nextAt = 0; rainState.wasNear = false; rainState.lastAt = undefined; } // ランを跨いだ(時計が戻った)
+  if (gt < rainLastGt) { rainState.nextAt = 0; rainState.wasNear = false; rainState.lastAt = undefined; rainState.lastSinkAt = undefined; } // ランを跨いだ(時計が戻った)
   rainLastGt = gt;
   const st = useGameStore.getState();
   const a = pickActiveAstro(st.enemies);

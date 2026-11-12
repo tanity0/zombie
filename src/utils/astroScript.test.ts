@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  pickAstroThrow, astroThrowPlan, astroThrowArtFrame, astroRainStep, ASTRO_RAIN_CAP, ASTRO_RAIN_NEAR_PX, ASTRO_RAIN_RING_MIN, ASTRO_RAIN_RING_MAX, ASTRO_RAIN_FIRST_MIN_PX, ASTRO_RAIN_FIRST_MAX_PX, ASTRO_RAIN_WARN_MS, ASTRO_RAIN_GAP_MIN_MS, ASTRO_RAIN_GAP_MAX_MS, ASTRO_RAIN_SINK_MS, astroHitOffsetMs, stepAstroHover, astroLiftPx, stepAstroVelocity, astroArriveSpeed,
+  pickAstroThrow, astroThrowPlan, astroThrowArtFrame, astroRainStep, ASTRO_RAIN_CAP, ASTRO_RAIN_NEAR_PX, ASTRO_RAIN_RING_MIN, ASTRO_RAIN_RING_MAX, ASTRO_RAIN_FIRST_MIN_PX, ASTRO_RAIN_FIRST_MAX_PX, ASTRO_RAIN_WARN_MS, ASTRO_RAIN_GAP_MIN_MS, ASTRO_RAIN_GAP_MAX_MS, ASTRO_RAIN_SINK_MS, ASTRO_RAIN_LEAVE_PX, ASTRO_RAIN_SINK_GAP_MS, astroHitOffsetMs, stepAstroHover, astroLiftPx, stepAstroVelocity, astroArriveSpeed,
   astroPoiCandidates, pickAstroPoi, astroSpawnPick, astroBandPull, astroMeteorShake,
   ASTRO_RELEASE_MS, ASTRO_DEBRIS_COUNT, ASTRO_DEBRIS_SPREAD_PX, ASTRO_DEBRIS_GAP_PX, ASTRO_FLAG_BEYOND_PX, ASTRO_FLAG_MIN_LENGTH, ASTRO_ARRIVE_PX,
   ASTRO_LIFT_PX, ASTRO_HOVER_ALIGN, stepAstroPeriodicLand, ASTRO_PERIODIC_LAND_GAP_MIN_MS, ASTRO_PERIODIC_LAND_GAP_MAX_MS, ASTRO_PERIODIC_LAND_REST_MIN_MS, ASTRO_PERIODIC_LAND_REST_MAX_MS, ASTRO_TURN_RAD_PER_S, ASTRO_ACCEL_S, ASTRO_DECEL_S, type AstroThrowKind, type AstroHoverAnim,
@@ -238,6 +238,30 @@ describe('宇宙飛行群: 周りに降り注ぐ残骸(§12-1)', () => {
       for (const a of seen) { expect(a.landAt - a.bornAt).toBe(ASTRO_RAIN_WARN_MS); expect(a.fallMs).toBeLessThan(ASTRO_RAIN_WARN_MS); }
     }
   });
+  it('本体から範囲+200pxより遠くなった刺さった物は古い順に約300msおきに1つずつ沈む。範囲の内・刺さる前の物は沈まない。居なければ刺さった物は全部沈む', () => {
+    const pc = (id: string, x: number, bornAt: number) => ({ id, x, y: 0, variant: 0, rot: 0, scale: 1, keep: 0.7, smoke: false, bornAt, landAt: bornAt + ASTRO_RAIN_WARN_MS, fallMs: 200 });
+    const start = [pc('far1', ASTRO_RAIN_LEAVE_PX + 50, 0), pc('edge', ASTRO_RAIN_NEAR_PX + 150, 1), pc('near', 200, 2), pc('far2', -(ASTRO_RAIN_LEAVE_PX + 300), 3), pc('falling', ASTRO_RAIN_LEAVE_PX + 400, 900)];
+    const st = { nextAt: 0, seq: 0 };
+    let p: ReturnType<typeof astroRainStep> = start;
+    const sinkAt: Record<string, number> = {};
+    const player = { x: 0, y: 5000 }; // 遠い=新しく降らない
+    for (let t = 1000; t <= 3000; t += 16) {
+      p = astroRainStep(p, { x: 0, y: 0 }, player, ok, t, rng0(1), st);
+      for (const q of p) if (q.sinkAt !== undefined && sinkAt[q.id] === undefined) sinkAt[q.id] = q.sinkAt;
+      const f = p.find(q => q.id === 'falling');
+      if (f && t < f.landAt) expect(f.sinkAt).toBeUndefined(); // 刺さる前は沈めない(赤い予告と当たりの約束)
+    }
+    expect(sinkAt.far1).toBe(1000);
+    expect(sinkAt.far2 - sinkAt.far1).toBeGreaterThanOrEqual(ASTRO_RAIN_SINK_GAP_MS);
+    expect(sinkAt.far2 - sinkAt.far1).toBeLessThan(ASTRO_RAIN_SINK_GAP_MS + 16);
+    expect(sinkAt.falling).toBeGreaterThanOrEqual(900 + ASTRO_RAIN_WARN_MS);
+    expect(sinkAt.edge).toBeUndefined();
+    expect(sinkAt.near).toBeUndefined();
+    expect(p.map(q => q.id).sort()).toEqual(['edge', 'near']);
+    // 居なくなったら残りも古い順に沈んで消える
+    for (let t = 3016; t <= 6000; t += 16) p = astroRainStep(p, null, player, ok, t, rng0(1), st);
+    expect(p).toHaveLength(0);
+  });
   it('1000pxの境目を出入りしても、降る間隔は最低の間隔より詰まらない(品質監査 A3)', () => {
     const st = { nextAt: 0, seq: 0 }, rng = rng0(21);
     let p: ReturnType<typeof astroRainStep> = [];
@@ -271,7 +295,8 @@ describe('宇宙飛行群: 周りに降り注ぐ残骸(§12-1)', () => {
     for (let t = 0; t <= 30000; t += 50) p = astroRainStep(p, { x: 0, y: 0 }, { x: 0, y: 600 }, (x) => x < 0, t, rng0(9), st);
     for (const a of p) expect(a.x).toBeLessThan(0);
     const st2 = { nextAt: 1e9, seq: 0 };
-    expect(astroRainStep(p.filter(a => a.sinkAt === undefined), null, { x: 0, y: 0 }, ok, 31000, Math.random, st2)).toEqual(p.filter(a => a.sinkAt === undefined));
+    const kept = p.filter(a => a.sinkAt === undefined);
+    expect(astroRainStep(kept, { x: 0, y: 0 }, { x: 0, y: 5000 }, ok, 31000, Math.random, st2)).toBe(kept); // 遠い=降らない・どれも本体の範囲の内=沈まない
   });
 });
 
