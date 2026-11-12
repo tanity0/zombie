@@ -2058,15 +2058,21 @@ export const applyContactDamage = (
     }
     // ★噛みつき(§12)の対象になった敵は、**触れてもダメージを与えない**。
     // 攻撃は上の噛みつき台本(30px圏で構える→500ms→予告した点で判定)へ一本化された。
-    // ボス・技の最中(aiPhase)・接触ダメージ0の敵はここを通らない=従来どおり触れたら痛い。
+    // ボス・技の最中(aiPhase)はここを通らない=従来どおり触れたら痛い(接触ダメージ0の敵は下の「0の接触は当たりにしない」で止まる)。
     if (isBiteSubject(enemy, isBiteExemptType, gameTime)) return;
     // ★踏み込み中は接触ダメージを通さない(社長指示2026-08-25)。ここは**体当たり(接触)の唯一の
     // 合流点**なので、この1行で「接触だけ無敵」が成立する——技・弾・予告は別経路なので影響しない。
     if (lungeContactImmune) return;
-    const damageWasApplied = !collPlayer.invulnerable;
     const rnMelee = redNightActive ? 2 : 1;
     // 叫喚型の強化窓中は通常敵(ボス/screamer以外)の接触ダメージも×SCREAMER_BUFF_MULT。
     const scMelee = (screamerBuffUntil > gameTime && enemy.type !== 'screamer' && !isBossType(enemy.type)) ? SCREAMER_BUFF_MULT : 1;
+    // ★接触ダメージ0の接触は「当たり」にしない(社長報告2026-11-12「プラントがダメージ演出が延々と出てくる 画面赤くなる」)。
+    // damagePlayer(0) は被弾無敵を張らない(invulnerable=amount>0)ので、下の damageWasApplied が毎フレーム真になり、
+    // 被弾音・赤いフラッシュ・赤い粒・前のめりが重なっている間ずっと出ていた(英雄で踏んだのと同じ形)。
+    // 型ごとに足さず、この合流点で一般に止める(上のカウンター/受け流しの分岐は通過済み=影響しない)。
+    const contactDamage = enemy.damage * rnMelee * scMelee;
+    if (!(contactDamage > 0)) return;
+    const damageWasApplied = !collPlayer.invulnerable;
     // PACING_PUZZLE.md §14-4-8/8b(神付き・A-1〜A-6): 死神本体(isTerminalReaper)/使者(isHangedman)の
     // 「このtickでダメージが適用される接触」(damageWasApplied=true=i-frame中ではない)を、即時ダメージ+
     // 前かがみ変形(lastContactAttackAt)ではなく、時間停止(hitstop)+覆いかぶさりの予約に差し替える。
@@ -2090,7 +2096,7 @@ export const applyContactDamage = (
           ew: enemy.width, eh: enemy.height,
           px: collPlayer.x + collPlayer.width / 2, py: collPlayer.y + collPlayer.height / 2,
           startAt: kNow, durationMs: REAPER2_CONFIG.kamitsukiMs,
-          damage: enemy.damage * rnMelee * scMelee,
+          damage: contactDamage,
           isHangedman: isHangedman(enemy.type),
           deathLabel: enemyDeathLabel(enemy.type),
           moveKey: contactDamageMoveKey(enemy),
@@ -2110,7 +2116,7 @@ export const applyContactDamage = (
     // 死亡ズームを2回潰していた。演出は遷移の1回だけ撃つ(同フレーム複数接触の二重発火もこれで塞がる)。
     const wasAliveBeforeContact = useGameStore.getState().player.health > 0;
     // ★被弾無敵は「敵ごと」(社長裁定2026-09-17)。
-    const playerDied = useGameStore.getState().damagePlayer(enemy.damage * rnMelee * scMelee, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, undefined, undefined, contactDamageMoveKey(enemy), enemy.id, enemy.id); // 末尾=被弾反撃の相手(体当たりした個体)
+    const playerDied = useGameStore.getState().damagePlayer(contactDamage, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, undefined, undefined, contactDamageMoveKey(enemy), enemy.id, enemy.id); // 末尾=被弾反撃の相手(体当たりした個体)
     if (damageWasApplied) {
       fx.playSfx('player-damage');
       fx.spawnFlash('rgba(239,68,68,0.22)', 200);

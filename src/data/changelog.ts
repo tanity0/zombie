@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5555', items: [
+    '変異体(定着型)に重なっている間、ダメージは無いのに画面が赤くなり続けていたのを直した',
+  ] },
   { version: '0.25.5554', items: [
     '浮いている敵に弾が当たった時、止まる時間が長くなってはっきり分かるようになった',
   ] },
