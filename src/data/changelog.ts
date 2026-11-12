@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5531', items: [
+    '格闘の強い技と締めの技が当たった時、止まる時間が少し長くなった',
+  ] },
   { version: '0.25.5530', items: [
     'アイレーザーの光線が、重みを持って相手を追うようになった。近くを横切る相手には追いつけない。そのぶん一撃が重い',
   ] },

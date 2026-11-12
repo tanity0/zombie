@@ -247,10 +247,10 @@ describe('ステップの取り消し(§19-1)', () => {
 describe('固まりの長さ(§20-2・§20-4・係数1.3)', () => {
   it('時間の表(係数1.3): 段・技の出だし/後隙/止め・受付', () => {
     expect([1, 2, 3, 4, 5].map(n => [brawlerStageSpec(n).windupMs, brawlerStageSpec(n).recoveryMs, brawlerStageSpec(n).hitstopMs])).toEqual(
-      [[78, 182, 90], [78, 182, 90], [156, 299, 150], [325, 260, 150], [299, 416, 220]]);
+      [[78, 182, 90], [78, 182, 90], [156, 299, 167], [325, 260, 167], [299, 416, 253]]); // 止め 90/150/220→90/167/253(社長指示2026-11-12・フレームの倍数で 0/+1/+2 フレーム)
     expect([BRAWLER_TECHS.kick.windupMs, BRAWLER_TECHS.kick.recoveryMs, BRAWLER_TECHS.stomp.windupMs, BRAWLER_TECHS.stomp.recoveryMs, BRAWLER_TECHS.kiko.windupMs, BRAWLER_TECHS.kiko.recoveryMs])
       .toEqual([172, 215, 260, 601, 156, 429]); // 飛び蹴り 156/195→172/215(社長指示2026-11-11「飛び蹴りからの3段、ほんの少しだけゆっくりに」で ×1.1)
-    expect([BRAWLER_KICK_HITSTOP_MS[1], BRAWLER_KICK_HITSTOP_MS[2], BRAWLER_KICK_HITSTOP_MS[3], BRAWLER_STOMP_HITSTOP_MS]).toEqual([150, 150, 220, 220]);
+    expect([BRAWLER_KICK_HITSTOP_MS[1], BRAWLER_KICK_HITSTOP_MS[2], BRAWLER_KICK_HITSTOP_MS[3], BRAWLER_STOMP_HITSTOP_MS]).toEqual([167, 167, 253, 253]); // 止め 90/150/220→90/167/253(社長指示2026-11-12・フレームの倍数で 0/+1/+2 フレーム)
     expect([BRAWLER_CANCEL_WINDOW_MS, BRAWLER_KICK3_CHARGE_MS]).toEqual([195, 165]); // 3発目の溜め 150→165(×1.1)
     expect([brawlerKickFlightMs(0), brawlerKickFlightMs(160), brawlerKickFlightMs(220)]).toEqual([172, 172, 215]); // 156/195→172/215(×1.1)
   });
@@ -264,10 +264,10 @@ describe('固まりの長さ(§20-2・§20-4・係数1.3)', () => {
     expect(BRAWLER_HOLD_MS.s3).toBe(676);
   });
   it('長さ = プレイヤーの止め + 固まり×減衰。固まり0の技(5段目・飛び蹴り3発目・気功)と秘奥義は 0(固まりは書かない)', () => {
-    expect(brawlerLockHitMs('s1', HS.s1)).toBe(90 + 390);
-    expect(brawlerLockHitMs('s2', HS.s2)).toBe(480);
-    expect(brawlerLockHitMs('s3', HS.s3)).toBe(150 + 676);
-    expect(brawlerLockHitMs('s4', HS.s4)).toBe(150 + 611);
+    expect(brawlerLockHitMs('s1', HS.s1)).toBe(HS.s1 + 390);
+    expect(brawlerLockHitMs('s2', HS.s2)).toBe(HS.s2 + 390);
+    expect(brawlerLockHitMs('s3', HS.s3)).toBe(HS.s3 + 676);
+    expect(brawlerLockHitMs('s4', HS.s4)).toBe(HS.s4 + 611);
     expect(brawlerLockHitMs('kick1', 150)).toBe(150 + 345); // 2026-11-11 飛び蹴り1発目の固まり 325→345(250→265)
     expect(brawlerLockHitMs('kick2', 150)).toBe(150 + 403);
     expect(brawlerLockHitMs('stomp', 220)).toBe(220 + 299);
@@ -387,7 +387,7 @@ describe('つながりの計算(§20-6 の3・係数1.3・近い相手)', () => 
     return r;
   };
   it('止め・後隙・受付の値(計算の入力)が表どおり', () => {
-    expect((['s1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'stomp', 'kiko'] as const).map(brawlerMoveStopMs)).toEqual([90, 90, 150, 150, 220, 150, 150, 220, 220, 0]);
+    expect((['s1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'stomp', 'kiko'] as const).map(brawlerMoveStopMs)).toEqual([90, 90, 167, 167, 253, 167, 167, 253, 253, 0]); // 止め 90/150/220→90/167/253(社長指示2026-11-12・フレームの倍数で 0/+1/+2 フレーム)
     expect(Math.round(brawlerKikoTravelForDistMs(60))).toBe(33);
     expect(Math.round(brawlerKikoTravelForDistMs(300))).toBe(300);
   });
@@ -400,8 +400,8 @@ describe('つながりの計算(§20-6 の3・係数1.3・近い相手)', () => 
     }
     expect(connects('s1', 's2', 'recovery-end')).toMatchObject({ nextHitAt: 350, lockEndsAt: 480, marginMs: 130 });
     expect(connects('s2', 's3', 'recovery-end')).toMatchObject({ nextHitAt: 428, lockEndsAt: 480, marginMs: 52 });
-    expect(connects('s3', 's4', 'recovery-end')).toMatchObject({ nextHitAt: 774, lockEndsAt: 826, marginMs: 52 });
-    expect(connects('s4', 's5', 'recovery-end')).toMatchObject({ nextHitAt: 709, lockEndsAt: 761, marginMs: 52 });
+    expect(connects('s3', 's4', 'recovery-end')).toMatchObject({ nextHitAt: 791, lockEndsAt: 843, marginMs: 52 }); // 止め 90/150/220→90/167/253(社長指示2026-11-12・フレームの倍数で 0/+1/+2 フレーム): 強の止めの分だけ後ろへ・余りは同じ
+    expect(connects('s4', 's5', 'recovery-end')).toMatchObject({ nextHitAt: 726, lockEndsAt: 778, marginMs: 52 });
   });
   it('入る: 1段目→すぐ取り消して 大踏み潰し・飛び蹴り・気功(近い)', () => {
     for (const to of ['stomp', 'kick1', 'kiko'] as const) {
@@ -415,14 +415,14 @@ describe('つながりの計算(§20-6 の3・係数1.3・近い相手)', () => 
     for (const a of ['s1', 's2'] as const) expect(connects(a, 'kick1', 'recovery-end')).toMatchObject({ nextHitAt: 444, marginMs: 36, connects: true }); // 蹴りを遅くした分だけ余りが減った(52→36・基準45を下回るがつながる=発注者裁定2026-11-11で受け入れ)
   });
   it('入る: 飛び蹴り1発目→すぐ2発目(近い)/ 2発目→すぐ3発目(近い・浮かなかった時)/ 1発目→後隙の後の1段目', () => {
-    expect(connects('kick1', 'kick2', 'cancel-now')).toMatchObject({ nextHitAt: 322, lockEndsAt: 495, marginMs: 173, routeOk: true }); // 2026-11-11 ×1.1+kick1 の固まり 325→345 で 306/475/169→322/495/173
-    expect(connects('kick2', 'kick3', 'cancel-now')).toMatchObject({ nextHitAt: 487, lockEndsAt: 553, marginMs: 66, routeOk: true }); // 2026-11-11 ×1.1 で 456/97→487/66
-    expect(connects('kick1', 's1', 'recovery-end')).toMatchObject({ nextHitAt: 443, lockEndsAt: 495, marginMs: 52, connects: true }); // 後隙 195→215 の分を kick1 の固まり 325→345 で埋めた(余り52のまま)
+    expect(connects('kick1', 'kick2', 'cancel-now')).toMatchObject({ nextHitAt: 339, lockEndsAt: 512, marginMs: 173, routeOk: true }); // 強の止め 150→167 の分だけ後ろへ // 2026-11-11 ×1.1+kick1 の固まり 325→345 で 306/475/169→322/495/173
+    expect(connects('kick2', 'kick3', 'cancel-now')).toMatchObject({ nextHitAt: 504, lockEndsAt: 570, marginMs: 66, routeOk: true }); // 2026-11-11 ×1.1 で 456/97→487/66
+    expect(connects('kick1', 's1', 'recovery-end')).toMatchObject({ nextHitAt: 460, lockEndsAt: 512, marginMs: 52, connects: true }); // 後隙 195→215 の分を kick1 の固まり 325→345 で埋めた(余り52のまま)
     for (const r of [connects('kick1', 'kick2', 'cancel-now'), connects('kick2', 'kick3', 'cancel-now'), connects('kick1', 's1', 'recovery-end')]) expect(r.marginMs).toBeGreaterThanOrEqual(MARGIN);
   });
   it('入らない: 1段目→受付の終わり際(止めの後195ms)に取り消した大踏み潰し', () => {
     const r = connects('s1', 'stomp', 'cancel-late');
-    expect(r).toMatchObject({ pressAt: 90 + 195, nextHitAt: 545, lockEndsAt: 480, marginMs: -65, connects: false });
+    expect(r).toMatchObject({ pressAt: HS.s1 + 195, nextHitAt: 545, lockEndsAt: 480, marginMs: -65, connects: false });
     expect(r.marginMs).toBeLessThanOrEqual(-MARGIN);
   });
   it('入らない: 1段目・2段目→後隙の後の大踏み潰し', () => {
@@ -444,13 +444,13 @@ describe('つながりの計算(§20-6 の3・係数1.3・近い相手)', () => 
         }
       }
     }
-    expect(connects('s5', 's1', 'recovery-end')).toMatchObject({ lockEndsAt: 220, nextHitAt: 220 + 416 + 78 });
+    expect(connects('s5', 's1', 'recovery-end')).toMatchObject({ lockEndsAt: HS.s5, nextHitAt: HS.s5 + 416 + 78 });
   });
   it('減衰: 6発目に当てた1段目の後の2段目は入る(固まり390×0.8)/ 8発目の後の2段目は入らない(×0.512・不足約60ms)', () => {
     const six = connects('s1', 's2', 'recovery-end', { fromHitNo: 6 });
-    expect(six).toMatchObject({ lockEndsAt: 90 + 312, nextHitAt: 350, marginMs: 52, connects: true });
+    expect(six).toMatchObject({ lockEndsAt: HS.s1 + 312, nextHitAt: 350, marginMs: 52, connects: true });
     const eight = connects('s1', 's2', 'recovery-end', { fromHitNo: 8 });
-    expect(eight).toMatchObject({ lockEndsAt: 90 + 200, nextHitAt: 350, marginMs: -60, connects: false });
+    expect(eight).toMatchObject({ lockEndsAt: HS.s1 + 200, nextHitAt: 350, marginMs: -60, connects: false });
     expect(six.marginMs).toBeGreaterThanOrEqual(MARGIN);
     expect(eight.marginMs).toBeLessThanOrEqual(-MARGIN);
     // 7発目は境目(不足約10ms)なので固定しない(数字の確認だけ)
@@ -463,8 +463,8 @@ describe('つながりの計算(§20-6 の3・係数1.3・近い相手)', () => 
     expect(close.marginMs).toBeGreaterThanOrEqual(MARGIN);
     expect(far.connects).toBe(false);
     expect(far.marginMs).toBeLessThanOrEqual(-MARGIN);
-    expect(Math.round(close.nextHitAt)).toBe(Math.round(90 + 156 + 33));
-    expect(Math.round(far.nextHitAt)).toBe(90 + 156 + 300);
+    expect(Math.round(close.nextHitAt)).toBe(Math.round(HS.s1 + 156 + 33));
+    expect(Math.round(far.nextHitAt)).toBe(HS.s1 + 156 + 300);
   });
   it('距離で変わる: 近い飛び蹴り(172ms)はつながり、遠い飛び蹴り(215ms)は後隙の後だとつながらない(2段目→後隙の後の飛び蹴り)', () => {
     expect(connects('s2', 'kick1', 'recovery-end', { kickFlightMs: 172 }).connects).toBe(true);

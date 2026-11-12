@@ -14,7 +14,7 @@ import {
 } from '../utils/brawlerCombo';
 import {
   BRAWLER_KICK3_KB_POWER, BRAWLER_TEMPO_DEFAULT, initialBrawlerState, brawlerCancelWindowOpen, brawlerTechAllowed, brawlerPressDecision, brawlerInHitstop,
-  brawlerStepAllowed, brawlerStageSpec, BRAWLER_TECHS, BRAWLER_CANCEL_WINDOW_MS, brawlerElapsed, brawlerTotalMs, type BrawlerState,
+  brawlerStepAllowed, brawlerStageSpec, BRAWLER_TECHS, BRAWLER_CANCEL_WINDOW_MS, brawlerElapsed, brawlerTotalMs, BRAWLER_HITSTOP, type BrawlerState,
 } from '../utils/brawler';
 
 const NO = { up: false, down: false, left: false, right: false } as never;
@@ -284,13 +284,13 @@ describe('§20-6-4 境目', () => {
     useGameStore.getState().brawlerPress();
     for (let k = 0; k < 60 && !br().resolved; k++) adv();
     const hitAt = gt();
-    expect(en().brLockUntil).toBe(hitAt + brawlerLockHitMs('s1', 90));
-    expect(en().brLockUntil! - hitAt).toBe(480);
-    expect(en().brHoldUntil ?? 0).toBeLessThanOrEqual(now + 90); // 壁時計の欄は当たりの止めまで(確定の固まりは gameTime の欄)
+    expect(en().brLockUntil).toBe(hitAt + brawlerLockHitMs('s1', BRAWLER_HITSTOP.weak));
+    expect(en().brLockUntil! - hitAt).toBe(BRAWLER_HITSTOP.weak + 390);
+    expect(en().brHoldUntil ?? 0).toBeLessThanOrEqual(now + BRAWLER_HITSTOP.weak); // 壁時計の欄は当たりの止めまで(確定の固まりは gameTime の欄)
     let heldFrames = 0;
     for (let k = 0; k < 40; k++) { adv(); if (brawlerHeldNow(en(), gt(), now)) heldFrames++; }
-    expect(heldFrames * FRAME).toBeGreaterThanOrEqual(480 - FRAME);
-    expect(heldFrames * FRAME).toBeLessThanOrEqual(480 + FRAME);
+    expect(heldFrames * FRAME).toBeGreaterThanOrEqual(BRAWLER_HITSTOP.weak + 390 - FRAME);
+    expect(heldFrames * FRAME).toBeLessThanOrEqual(BRAWLER_HITSTOP.weak + 390 + FRAME);
   });
 });
 
@@ -474,7 +474,7 @@ describe('§20-6-4 入らない道・つながらない物', () => {
       }
     }
   });
-  it('ボス級への大踏み潰しの固まりは、雑魚・強個体と同じ長さ(止め220+固まり299=519ms)', () => {
+  it('ボス級への大踏み潰しの固まりは、雑魚・強個体と同じ長さ(止め253+固まり299=552ms)', () => {
     const lens: number[] = [];
     for (const foe of ['zombie-move', 'driller-windup', 'hunter-move'] as const) {
       setup();
@@ -484,7 +484,7 @@ describe('§20-6-4 入らない道・つながらない物', () => {
       expect(br().connected, `${foe} stomp connected`).toBe(true);
       lens.push(en().brLockUntil! - gt());
     }
-    expect(lens).toEqual([519, 519, 519]);
+    expect(lens).toEqual([552, 552, 552]); // 止め 220→253(社長指示2026-11-12)で 519→552
   });
   it('段と飛び蹴りを回し続けても、強個体・ボス級は8発目までに固まりが切れる(コンボの減衰: 飛び蹴り→1段目→飛び蹴り…)', () => {
     for (const foe of ['driller-windup', 'hunter-windup'] as const) {

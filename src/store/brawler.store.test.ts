@@ -7,7 +7,7 @@ import { brawlerLiftBreaksTech, brawlerLockHitMs, brawlerLockAlive } from '../ut
 import type { Projectile } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { buildPseudoPlayer } from '../utils/playerBuild';
-import { BRAWLER_GUARD_MS, brawlerPointCap, BRAWLER_SMALL_KB_MULT, BRAWLER_BOSS_SMALL_KB_MULT, brawlerStepAllowed, BRAWLER_STEP_BUFFER_MS, BRAWLER_SECRET_IGNITE_MS } from '../utils/brawler';
+import { BRAWLER_GUARD_MS, brawlerPointCap, BRAWLER_SMALL_KB_MULT, BRAWLER_BOSS_SMALL_KB_MULT, brawlerStepAllowed, BRAWLER_STEP_BUFFER_MS, BRAWLER_SECRET_IGNITE_MS, BRAWLER_HITSTOP, BRAWLER_STOMP_HITSTOP_MS, BRAWLER_CANCEL_WINDOW_MS } from '../utils/brawler';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import { playerSuperArmorActive } from '../utils/superArmor';
 import { treesInRegion, trunkRect } from '../world/trees';
@@ -136,8 +136,8 @@ describe('格闘: 通常攻撃(§2)', () => {
     useGameStore.getState().brawlerPress();
     advance(60);
     expect(br().resolved).toBe(true);
-    advance(220);
-    expect(br().phase).toBe('attack'); // 止め90msぶんまだ戻りの中
+    advance(140 + BRAWLER_HITSTOP.weak - 10);
+    expect(br().phase).toBe('attack'); // 止め(弱)のぶんまだ戻りの中
     advance(20);
     expect(br().phase).toBe('idle');
   });
@@ -275,7 +275,7 @@ describe('格闘: 指定打撃の分岐(§8-1 の止めるもの/残すもの)',
     expect(Math.hypot(z1.knockbackVx ?? 0, z1.knockbackVy ?? 0)).toBeCloseTo(KNOCKBACK_SPEED * BRAWLER_SMALL_KB_MULT, 5);
     expect(BRAWLER_SMALL_KB_MULT).toBeLessThan(1);
     expect(z1.knockbackImmuneUntil ?? 0).toBeLessThanOrEqual(now);
-    expect((z1.hitStunUntil ?? 0) - now).toBe(90); // 弱の止め(社長承認2026-11-08 で 45→90)
+    expect((z1.hitStunUntil ?? 0) - now).toBe(BRAWLER_HITSTOP.weak); // 弱の止め(社長承認2026-11-08 で 45→90)
     useGameStore.getState().brawlerPress(); // 先行入力→2段目
     for (let k = 0; k < 40 && br().stage !== 2; k++) advance(10);
     for (let k = 0; k < 20 && !br().resolved; k++) advance(10);
@@ -964,7 +964,7 @@ describe('食らいの固まり・キャンセル(research/BRAWLER.md §11・社
     expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);
     for (let k = 0; k < 40 && !br().resolved; k++) advance(10);
     expect(br().connected).toBe(true);
-    advance(230); // 止めが明けた(締めの止め 220ms・社長承認2026-11-08 で 140→220)
+    advance(BRAWLER_STOMP_HITSTOP_MS + 10); // 止めが明けた(締めの止め・社長承認2026-11-08 で 140→220、社長指示2026-11-12 で 220→253)
     expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
     expect(br().tech).toBe('kiko');
     expect(br().techChain).toEqual(['stomp', 'kiko']);
@@ -990,7 +990,7 @@ describe('食らいの固まり・キャンセル(research/BRAWLER.md §11・社
     useGameStore.setState(st => ({ enemies: [zombieAt(60, 0, 'z')], player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 20 } } }));
     useGameStore.getState().brawlerTech(0, 1);
     for (let k = 0; k < 40 && !br().resolved; k++) advance(10);
-    advance(220 + 160);
+    advance(BRAWLER_STOMP_HITSTOP_MS + 160); // 締めの止め(2026-11-12 に 220→253)+受付150の後
     expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
     expect(br().tech).toBe('stomp');                                         // その場では出ない
     expect(br().techBuffer).toBe('kiko');
@@ -1278,7 +1278,9 @@ describe('技の先行入力と秘奥義の1手目(社長指示2026-11-08「技�
     const stopUntil = br().stopUntil;
     for (let i = 0; i < 100 && br().tech !== 'kiko'; i++) advance(10);
     expect(br().tech).toBe('kiko');
-    expect(br().startAt).toBe(stopUntil);                 // 止めが明けた瞬間(同じフレーム)に出た
+    // 止めが明けた瞬間(同じフレーム)に出た。テストは 10ms 刻みで進めるので、止め(253ms・10の倍数でない)の明けの直後の刻みになる
+    expect(br().startAt - stopUntil).toBeGreaterThanOrEqual(0);
+    expect(br().startAt - stopUntil).toBeLessThan(10);
     expect(br().points).toBe(pts - 2);                    // 値段は出す瞬間に払う
     expect(br().techBuffer).toBeUndefined();
   });
@@ -1333,22 +1335,27 @@ describe('技の先行入力と秘奥義の1手目(社長指示2026-11-08「技�
     advance(50);
     expect(br().tech).not.toBe('kiko');
   });
-  it('→↓←↑ を先行入力で素早く入れると秘奥義が成立する(各フリックの間 240ms・締めの止め 220ms の後に取り消せる)', () => {
+  it('→↓←↑ を先行入力で素早く入れると秘奥義が成立する(各フリックの間 260ms・締めの止め 253ms の後に取り消せる)', () => {
     prep([zombieAt(120, 0, 'a'), zombieAt(-90, 30, 'b')]);
-    expect(flickAll(240)).toBe(true); // 2026-11-11 に 230→240(飛び蹴りを ×1.1 で遅くし、いちばん速い入力が 240ms になった)
+    expect(flickAll(260)).toBe(true); // 2026-11-11 に 230→240(飛び蹴りを ×1.1)、2026-11-12 に 240→260(止めを伸ばし、いちばん速い入力が 260ms になった=実測で 250 は不成立)
   });
   // ★§19-2: 取り消しの受付(係数1.0で150ms)を過ぎた入力は、後隙が終わるまで出ない。ただし秘奥義の順番どおりの次の技は覚えておき、
   //   後隙が終わって待機へ戻った瞬間に出す(brawlerSecretCarry)=今までどおり 250〜500ms のどの間隔でも成立する
   //   (350ms は4手目の構えが「気功の受付の後・後隙の終わりの前」に落ちる=持ち越しが無いと出ない)。
-  it('間をもっと空けても成立する(250〜500ms)', () => {
-    for (const gap of [250, 350, 500]) {
+  it('間をもっと空けても成立する(260〜500ms)', () => {
+    for (const gap of [260, 350, 500]) { // 2026-11-12 に 250→260(いちばん速い入力が 260ms)
       prep([zombieAt(120, 0, 'a'), zombieAt(-90, 30, 'b')]);
       expect(flickAll(gap), `${gap}ms`).toBe(true);
     }
   });
   it('秘奥義の順番どおりの次の技は、受付の外で入れても覚えて、後隙の終わりに待機から出る(気功の後の構え)。それまでは何も出ない', () => {
     prep([zombieAt(120, 0, 'a'), zombieAt(-90, 30, 'b')]);
-    for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0]] as const) { useGameStore.getState().brawlerTech(dx, dy); advance(350); }
+    // 2026-11-12: 止めを伸ばして気功の当たりが後ろへずれ、旧の「3手目から350ms」は気功の受付の中に落ちるようになった。
+    //   受付の外で押す、という前提を保つため、気功が判定を解いてから受付(BRAWLER_CANCEL_WINDOW_MS)を過ぎた所で押す(後隙の中)。
+    for (const [dx, dy] of [[1, 0], [0, 1]] as const) { useGameStore.getState().brawlerTech(dx, dy); advance(350); }
+    useGameStore.getState().brawlerTech(-1, 0);
+    for (let i = 0; i < 100 && !(br().tech === 'kiko' && br().resolved); i++) advance(10);
+    advance(BRAWLER_CANCEL_WINDOW_MS + 20);
     expect(br().tech).toBe('kiko');
     expect(br().secretProgress).toBe(3);
     expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);   // 受付の後=出ないが、覚える
@@ -1504,7 +1511,7 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     setup();
     useGameStore.setState({ enemies: [zombieAt(50, 0, 'z')] });
     useGameStore.getState().brawlerPress();
-    advance(60 + 100); // 弱の止め 90ms(社長承認2026-11-08)が明けた後隙
+    advance(60 + BRAWLER_HITSTOP.weak + 10); // 弱の止め(社長承認2026-11-08)が明けた後隙
     expect(br().phase).toBe('attack');
     expect(useGameStore.getState().brawlerStep(-1, 0)).toBe(true);
     expect(br().phase).toBe('idle');

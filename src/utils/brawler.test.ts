@@ -28,7 +28,7 @@ describe('格闘: 表', () => {
     expect(BRAWLER_STAGES.map(s => s.windupMs + s.recoveryMs)).toEqual([200, 200, 350, 450, 550]); // 5段目の戻り 270→320(社長指示2026-11-11)
     expect(BRAWLER_STAGES.map(s => s.mult)).toEqual([0.30, 0.40, 0.8, 1.10, 1.60]); // 社長指示2026-11-09「あと通常攻撃は後半ほど高ダメ」(旧 0.35/0.35/0.8/1.0/1.3)
     expect(BRAWLER_STAGES.map(s => s.kb)).toEqual(['small', 'small', 'normal', 'small', 'big']); // 社長指示2026-11-10「どの攻撃も押さない攻撃でも多少押そう」(旧 1・2・4段目は none)
-    expect(BRAWLER_STAGES.map(s => s.hitstopMs)).toEqual([90, 90, 150, 150, 220]); // 止めは係数を掛けない表(社長承認2026-11-08: 旧 45/45/80/90/140)
+    expect(BRAWLER_STAGES.map(s => s.hitstopMs)).toEqual([90, 90, 167, 167, 253]); // 止めは係数を掛けない表(社長指示2026-11-12 で 90/150/220→90/167/253=フレームの倍数。社長承認2026-11-08: 旧 45/45/80/90/140)
   });
   it('技の倍率(大踏み潰し2.3・気功1.8・飛び蹴り0.7/0.8/1.2=3発目は社長指示2026-11-11・秘奥義の締め3.6)', () => {
     expect([BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT]).toEqual([2.3, 1.8, 3.6]); // 大踏み潰し 3.5→2.5→2.8(社長指示2026-11-11)→2.3(社長指示2026-11-12『叩き潰しが強すぎる。0.5 落として』)
