@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5537', items: [
+    '格闘の踵落としの蹴りの影は、斜め上から少しだけ振り下ろす形になった',
+  ] },
   { version: '0.25.5536', items: [
     '格闘の踵落としは、宙に浮いたまま振り下ろす。当てた後も自分は宙に残り、相手だけが地面へ叩きつけられる',
     '飛び蹴りの体の傾きを、足が前に出る向きへ直した',

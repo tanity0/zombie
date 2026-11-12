@@ -1375,13 +1375,17 @@ export const brawlerStandAt = (s: BrawlerState | undefined, t: number): BrawlerS
  *  - 飛ぶ間: 終わり際に一気に振り下ろす(3乗)。当たった後: 振り抜いてから少し戻る(踵が跳ね返る)。
  * rot=rad(右向きの絵で負=振り上げ・正=振り下ろし)/ lift=影を持ち上げる量(px・上が正)/ ext=前への伸び(当たる瞬間に1)。
  */
+// ★社長指示2026-11-12「踵落としは、斜め上に傾いてる蹴りのシルエットを時計回りに少し回すイメージ」: 斜め上に傾いた蹴り(UP)から、
+//   振り下ろしで時計回りに少しだけ(0.4rad)回し、当たる瞬間は水平の少し手前(DOWN)。当たった後は少しだけ振り抜いて少し戻る(水平を越えて下向きにしない)。
+//   体は空中に残るので、影の下がり(LIFT+SINK)も小さく(8px)、当たった後は体の高さに居る(影の縦は描画で体の絵の位置=姿勢の jump に付く)。
+//   (旧: DOWN=+0.4 / FOLLOW=0.25 / BACK=0.12 / LIFT=20 / SINK=6 =水平を越えて下へ大きく回り、26px 落ちていた。)
 export const BRAWLER_HEEL_ROT_PEAK = -0.62;
 export const BRAWLER_HEEL_ROT_UP = -0.5;
-export const BRAWLER_HEEL_ROT_DOWN = 0.4;
-export const BRAWLER_HEEL_ROT_FOLLOW = 0.25;
-export const BRAWLER_HEEL_ROT_BACK = 0.12;
-export const BRAWLER_HEEL_LIFT_PX = 20;
-export const BRAWLER_HEEL_SINK_PX = 6;
+export const BRAWLER_HEEL_ROT_DOWN = -0.1;
+export const BRAWLER_HEEL_ROT_FOLLOW = 0.08;
+export const BRAWLER_HEEL_ROT_BACK = 0.04;
+export const BRAWLER_HEEL_LIFT_PX = 8;
+export const BRAWLER_HEEL_SINK_PX = 0;
 /**
  * ★踵落としは空中で浮いたまま振り下ろし、直後も自分は空中に残る(社長指示2026-11-12「あくまで、空中で浮いたまま踵落としして、
  * 直後は自分は空中に残るイメージ。敵だけ下に叩きつけられる」)。絵だけ(体の高さ=姿勢の jump)。判定・無敵・移動は変えない(空中の扱いにもしない)。

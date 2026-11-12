@@ -600,17 +600,30 @@ describe('踵落とし(飛び蹴りの2発目の続きで下・社長指示2026-
     expect(brawlerHeelCost()).toBe(brawlerTechCost('kick') + BRAWLER_HEEL_EXTRA_COST);
     expect(brawlerHeelCost(true)).toBe(0);
   });
-  it('影: 0 から振り上げ→少し沈んで溜め→飛ぶ間に振り下ろし、当たる瞬間に伸び切る。上から下へ降りる', () => {
+  it('影: 0 から斜め上へ振り上げ→少し沈んで溜め→飛ぶ間に時計回りに少し回し、当たる瞬間に伸び切る(水平の少し手前)', () => {
     const s = brawlerStartTech(kick(2, true), 'kick', 2000, 3, false, true);
     const c = s.kickChargeMs ?? 0;
     expect(brawlerHeelStandAt(s, 0).rot).toBeCloseTo(0);
     expect(brawlerHeelStandAt(s, c * 0.6).rot).toBeCloseTo(BRAWLER_HEEL_ROT_PEAK);
     expect(brawlerHeelStandAt(s, c).rot).toBeCloseTo(BRAWLER_HEEL_ROT_UP);
     const hit = brawlerHeelStandAt(s, s.windupMs);
-    expect(hit.rot).toBeGreaterThanOrEqual(BRAWLER_HEEL_ROT_DOWN - 1e-9);
+    expect(hit.rot).toBeCloseTo(BRAWLER_HEEL_ROT_DOWN);
     expect(hit.ext).toBeCloseTo(1);
+    // ★斜め上の蹴りを時計回りに少し回す(社長指示2026-11-12): 当たる瞬間は水平の少し手前・回しは少し
+    expect(hit.rot).toBeLessThan(0);
+    expect(hit.rot).toBeGreaterThanOrEqual(-0.2);
+    const turn = hit.rot - brawlerHeelStandAt(s, c).rot;
+    expect(turn).toBeGreaterThanOrEqual(0.3);
+    expect(turn).toBeLessThanOrEqual(0.6);
+    // 当たった後も水平を大きく越えて下向きにしない
+    for (let el = s.windupMs; el <= s.windupMs + s.recoveryMs; el += 1) expect(brawlerHeelStandAt(s, el).rot).toBeLessThanOrEqual(0.15);
+    // 1msごとに角度が跳ばない(溜め→飛ぶ→当たった後のつなぎ目も)
+    let prev = brawlerHeelStandAt(s, 0).rot;
+    for (let el = 1; el <= s.windupMs + s.recoveryMs; el += 1) { const r = brawlerHeelStandAt(s, el).rot; expect(Math.abs(r - prev)).toBeLessThan(0.05); prev = r; }
+    // 体は空中に残る: 影の下がりは小さい(体から離れて下へ落ちない)
     expect(brawlerHeelStandAt(s, c).lift).toBeGreaterThan(0);
-    expect(hit.lift).toBeLessThan(0);
+    expect(brawlerHeelStandAt(s, c).lift - hit.lift).toBeLessThanOrEqual(10);
+    expect(hit.lift).toBeGreaterThanOrEqual(0);
     // 飛ぶ間は振り下ろす一方(戻らない)・伸びる一方
     let pr = -Infinity, pe = -Infinity;
     for (let el = c; el < s.windupMs; el += 5) { const f = brawlerHeelStandAt(s, el); expect(f.rot).toBeGreaterThanOrEqual(pr - 1e-9); expect(f.ext).toBeGreaterThanOrEqual(pe - 1e-9); pr = f.rot; pe = f.ext; }
