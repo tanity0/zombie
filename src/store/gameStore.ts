@@ -23195,6 +23195,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // isPausedを立てない=会話が止まらない)。この1回の選択は失われる(★未決#19・ブロッカーではない)。
         if (get().deliveryLocked) break;
         const upgradeOptions = generateEquipmentChoices(get().player);
+        if (upgradeOptions.length === 0) break; // 選択肢が空なら開かない(選べずに止まる画面を出さない)
         set(state => ({
           upgradeOptions,
           showUpgradeMenu: true,
@@ -27072,6 +27073,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // gameTime が 0 に戻るためミラーボールの発光倍率(pulse)が巨大化して画面を埋め尽くすバグになる。
         rhythm: initialRhythm(),
         upgradeOptions: [],
+        // 前ランの LEVEL UP 演出(または納品ロックで保留中)の待ちを持ち越さない。残すと次の出撃の
+        // 最初のフレームで、空の選択肢のレベルアップ画面が開いて止まる(社長報告の事故)。
+        levelUpIntroUntil: 0,
         touchActive: false,
         swipeDirection: null,
         swipeStrength: 1,

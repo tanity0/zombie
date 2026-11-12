@@ -610,6 +610,7 @@ import {
 } from '../config/shijin';
 import type { RhythmArrow, RhythmPending, ShijinGod } from '../types/game';
 import { hasFullWarlordSet } from '../data/equipment';
+import { decideLevelUpIntro } from '../utils/levelUpMenuOpen';
 
 // ゲームプレイ中の「プレイヤーの移動」と「敵の移動」だけを倍速にする係数。
 // movePlayer / updateEnemies に渡す deltaTime にのみ掛ける(弾・召喚・軍人・進行・演出・
@@ -18414,12 +18415,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // LEVEL UP 演出(スロー)が終わったら選択肢メニューを開く(社長指示: 先に演出→その後に選択)。
         // 二人組クエストv2 §2-8(納品ロック①): 納品ロック中はメニューを開かず保留する(演出は抑えない=
-        // 既にgainExperience側で走り切っている)。levelUpIntroUntilはこの分岐でしか0にされないので、
+        // 既にgainExperience側で走り切っている)。levelUpIntroUntilはこの分岐(とresetGame)でしか0にされないので、
         // 保留してもフラグは消えず、ロック解除後に開く(取りこぼさない)。
         {
-          const introUntil = useGameStore.getState().levelUpIntroUntil;
-          if (introUntil > 0 && Date.now() >= introUntil && !useGameStore.getState().deliveryLocked) {
+          const lu = useGameStore.getState();
+          const decision = decideLevelUpIntro({
+            introUntil: lu.levelUpIntroUntil, now: Date.now(),
+            deliveryLocked: lu.deliveryLocked, optionCount: lu.upgradeOptions.length,
+          });
+          if (decision === 'open') {
             useGameStore.setState({ showUpgradeMenu: true, isPaused: true, pauseReason: 'upgrade', levelUpIntroUntil: 0 });
+          } else if (decision === 'drop') {
+            // 選択肢が空=開いても選べず止まるだけ(中身の無いレベルアップ画面の事故)。開かずに待ちを捨てる。
+            useGameStore.setState({ levelUpIntroUntil: 0 });
           }
         }
 

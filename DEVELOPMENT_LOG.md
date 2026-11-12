@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5541 — 出撃の直後に空のレベルアップ画面が出て止まるバグ【2026-11-12 17:28 JST】
+- **社長報告**: 「たまにスタートしたらこんなのでる」(レベルアップ・強化を選んでください・選択肢なし・停止[Lvup]。前回の出撃はステージ1の33秒で終わっていた)。
+- **原因**: レベルが上がると `levelUpIntroUntil`(演出の後にメニューを開く予定)を立てるが、`resetGame` がこれを 0 に戻していなかった。前の出撃が LEVEL UP の演出中(または納品ロックの保留中)に終わると予定が残り、次の出撃の最初のフレームで、resetGame が空にした `upgradeOptions` のままメニューが開いた。
+- **直し**: resetGame で `levelUpIntroUntil: 0`。守りとして、開く判定を純関数 `decideLevelUpIntro`(`src/utils/levelUpMenuOpen.ts`)にし、選択肢が空なら開かずに予定を捨てる。宝箱の道も選択肢が空なら開かない。演出と選択肢の作り方は不変。
+- **教訓**: ENGINEERING_NOTES §0 に1行(出撃をまたいで残る「後で開く」予定は resetGame で戻す)。
+- **検証**: typecheck・eslint・循環import・`levelUpMenuOpen.test`(5)・`levelUpChain.test`(2)。直す前のコードで新しいテストが落ちる事は確かめていない。
+- **自己点検**: 憲法4条・5条に抵触しない。
+- 状態変化: なし
+
 ## v0.25.5540 — 構えでボス級の技を受けたら気功で反撃(§32)/飛び蹴り3段を「ポン・ポン・ドン」に(§33)【2026-11-12 16:25 JST】
 - **社長裁定**: 「カウンターについて、案Aで 反撃は気功で」「飛び蹴り、案Aで」。
 - **構えの反撃(§32)**: 成立の効果が「ノックバック」(雑魚より上・相手が分からない)の時、構え1回につき1発、代金なしの気功を予約し、止めが明けた最初のフレームで撃つ(`brawlerGuardCounterDue`/`brawlerGuardCounterTarget`/`brawlerGuardCounterDir`・`fireBrawlerGuardCounterKiko`)。威力は通常の気功×`BRAWLER_GUARD_COUNTER_KIKO_MULT`=1.5(叩き台)、当たりの扱いは通常の気功と同じ道。自分の押し `BRAWLER_GUARD_KNOCK_PX` 150→90。撃つ瞬間に格闘でない・関所(掴み・紫)に掛かっていたら撃たない(実装者の決め=潰しと揃えた)。雑魚を受けた時の潰し・足止め・演出・孫悟空の構えは不変。
