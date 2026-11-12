@@ -30,8 +30,8 @@ describe('格闘: 表', () => {
     expect(BRAWLER_STAGES.map(s => s.kb)).toEqual(['small', 'small', 'normal', 'small', 'big']); // 社長指示2026-11-10「どの攻撃も押さない攻撃でも多少押そう」(旧 1・2・4段目は none)
     expect(BRAWLER_STAGES.map(s => s.hitstopMs)).toEqual([90, 90, 150, 150, 220]); // 止めは係数を掛けない表(社長承認2026-11-08: 旧 45/45/80/90/140)
   });
-  it('技の倍率(大踏み潰し2.8・気功1.8・飛び蹴り0.7/0.8/1.2=3発目は社長指示2026-11-11・秘奥義の締め3.6)', () => {
-    expect([BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT]).toEqual([2.8, 1.8, 3.6]); // 大踏み潰し 3.5→2.5→2.8(社長指示2026-11-11)
+  it('技の倍率(大踏み潰し2.3・気功1.8・飛び蹴り0.7/0.8/1.2=3発目は社長指示2026-11-11・秘奥義の締め3.6)', () => {
+    expect([BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT]).toEqual([2.3, 1.8, 3.6]); // 大踏み潰し 3.5→2.5→2.8(社長指示2026-11-11)→2.3(社長指示2026-11-12『叩き潰しが強すぎる。0.5 落として』)
     expect([1, 2, 3].map(brawlerKickMult)).toEqual([0.7, 0.8, 1.2]);
     // 3発目だけ後隙が長い(社長指示2026-11-11「技後の隙も少し伸ばして」)。1・2発目は今どおり。
     const k1 = brawlerStartTech(initialBrawlerState(), 'kick', 0, 1), k3 = brawlerStartTech(initialBrawlerState(), 'kick', 0, 3);

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5528', items: [
+    '格闘の大踏み潰しの威力を下げた',
+  ] },
   { version: '0.25.5527', items: [
     '熟練度が上がるのに要る量を見直した。一度の出撃で最大まで上がってしまっていたのを直し、出撃を重ねて育つようにした。これまでに貯めた分は残る',
   ] },
