@@ -52,8 +52,8 @@ describe('空中の弾の止め', () => {
     const h0 = brawlerJuggleHeightRel(a0, now);
     expect(shoot('a', catalogProjectileSpeed('handgun-t1')!)).toBe(true);
     const ms = airShotStopMs(520);
-    expect(ms).toBe(50);
-    step(40, () => {
+    expect(ms).toBe(140);
+    step(130, () => {
       expect(brawlerJuggleHeightRel(en('a'), now)).toBeCloseTo(h0, 6); // 空中で静止
       expect(en('a').x).toBe(a0.x);
       expect(en('a').brawlerShakeUntil).toBe(a0.brawlerLiftAt! + 100 + ms); // 震え(格闘の止めと同じ欄)
@@ -75,10 +75,10 @@ describe('空中の弾の止め', () => {
       return en('a').brLiftUntil! - u0;
     };
     const sniper = shift('rifle-t2'), pistol = shift('handgun-t1'), shotgun = shift('shotgun-t1');
-    expect(sniper).toBe(26);
-    expect(pistol).toBe(50);
-    expect(shotgun).toBe(59);
-    expect(shift('rifle-t3-railgun')).toBe(20);
+    expect(sniper).toBe(73);
+    expect(pistol).toBe(140);
+    expect(shotgun).toBe(165);
+    expect(shift('rifle-t3-railgun')).toBe(60);
   });
   it('地上の敵は止まらない', () => {
     useGameStore.setState({ enemies: [place(200, 0, 'g')] });
@@ -88,10 +88,11 @@ describe('空中の弾の止め', () => {
   it('散弾の粒: 同じフレームの2発目以降は止めない(重ならない・張り直さない)', () => {
     useGameStore.setState({ enemies: [lifted(200, 0, 'a')] });
     expect([shoot('a', 440), shoot('a', 440), shoot('a', 440)]).toEqual([true, false, false]);
-    expect(en('a').airShotStopUntil).toBe(now + 59);
+    expect(en('a').airShotStopUntil).toBe(now + 165);
   });
   it('連射しても浮きの延びは元の浮きの約半分まで(明けてから止めの2倍の間を空ける)', () => {
     const L = 600;
+    const S = airShotStopMs(520); // 止め1回の長さ(端数の幅)
     useGameStore.setState({ enemies: [lifted(200, 0, 'a', L)] });
     const start = now;
     let stops = 0;
@@ -99,9 +100,9 @@ describe('空中の弾の止め', () => {
     const landedAfter = en('a').brLiftUntil! - start; // 空中の全体の時間(壁時計)
     const stopped = landedAfter - L; // 止めで延びた分
     expect(stops).toBeGreaterThan(1);
-    expect(stopped).toBe(stops * 50);
-    expect(stopped).toBeLessThanOrEqual(landedAfter / 3 + 50); // 止まっていた時間は全体の約1/3まで(最後の1回ぶんの端数)
-    expect(stopped).toBeLessThanOrEqual(L * 0.5 + 50); // =延びは元の浮きの約半分まで(+50%前後・無限には延びない)
-    expect(stopped).toBeGreaterThanOrEqual(L * 0.5 - 50);
+    expect(stopped).toBe(stops * S);
+    expect(stopped).toBeLessThanOrEqual(landedAfter / 3 + S); // 止まっていた時間は全体の約1/3まで(最後の1回ぶんの端数)
+    expect(stopped).toBeLessThanOrEqual(L * 0.5 + S); // =延びは元の浮きの約半分まで(+50%前後・止め1回ぶんの端数・無限には延びない)
+    expect(stopped).toBeGreaterThanOrEqual(L * 0.5 - S);
   });
 });

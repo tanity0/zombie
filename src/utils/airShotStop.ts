@@ -6,14 +6,14 @@
 import { brawlerAirborne, type BrawlerJuggleFields } from './brawlerCombo';
 
 /** 基準の弾速(拳銃=520・CATALOG の projectileSpeed の物差し)で止める長さ(ms)。 */
-export const AIR_SHOT_STOP_BASE_MS = 50;
+export const AIR_SHOT_STOP_BASE_MS = 140;
 export const AIR_SHOT_STOP_REF_SPEED = 520;
-export const AIR_SHOT_STOP_MIN_MS = 20;
-export const AIR_SHOT_STOP_MAX_MS = 90;
+export const AIR_SHOT_STOP_MIN_MS = 60;
+export const AIR_SHOT_STOP_MAX_MS = 220;
 /** 次の止めまでの間 = 前の止めの長さ × これ(2=延びは元の浮きの約半分まで)。 */
 export const AIR_SHOT_STOP_GAP_MULT = 2;
 
-/** 止める長さ = clamp(50 × 520 / 弾速, 20, 90)。弾速が無い(0以下)なら止めない(0)。 */
+/** 止める長さ = clamp(140 × 520 / 弾速, 60, 220)。弾速が無い(0以下)なら止めない(0)。 */
 export const airShotStopMs = (speed: number): number => {
   if (!(speed > 0)) return 0;
   const ms = Math.round(AIR_SHOT_STOP_BASE_MS * AIR_SHOT_STOP_REF_SPEED / speed);
