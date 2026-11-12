@@ -305,6 +305,10 @@ const CATALOG: Record<string, WeaponDef> = {
 // (値を2箇所に書かない。塊・弾そのもののダメージは blobShot/satelliteOrbit の定数)。
 CATALOG[BLOB_WEAPON_KEY].damage = CATALOG['glauncher-t2'].damage;
 CATALOG[SATELLITE_WEAPON_KEY].damage = CATALOG['shotgun-t2'].damage;
+/** 台帳の銃(近接でない物)の key 全数。共有の正規化の許可リスト(shared/ghostSanitize.mjs の GHOST_GUN_KEYS)との一致をテストが縛る。 */
+export const CATALOG_GUN_KEYS: readonly string[] = Object.keys(CATALOG).filter(k => !CATALOG[k].isMelee);
+/** 台帳の近接の key 全数(MELEE_KEYS との一致もテストが縛る)。 */
+export const CATALOG_MELEE_KEYS: readonly string[] = Object.keys(CATALOG).filter(k => CATALOG[k].isMelee === true);
 
 // UNIQUE_WEAPONS.md §13-1: 個別の挙動配線(ハンドキャノンの連続命中減衰・パイルドライバーの
 // ノックバック/体勢削り)がweaponKeyで判定するための定数。マジックストリングを1箇所にまとめる。

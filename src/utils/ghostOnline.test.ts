@@ -11,6 +11,15 @@ import { GROWING_MASTERY_KEYS, MASTERY_MAX_LEVEL, MASTERY_MAX_MULT } from '../da
 import { masteryDamageMult, normalizeMasteryRecord } from './mastery';
 import { growthAttackMult, growthCounterAcceptMs } from './playerUpgrades';
 import { PLAYER_UPGRADE_MAX_LEVEL } from '../data/playerUpgrades';
+import {
+  GHOST_GUN_KEYS, GHOST_MELEE_KEYS, GHOST_SKILL_KEYS, GHOST_SUB_WEAPON_KEYS, GHOST_CLASS_IDS, GHOST_AVATAR_IDS, GHOST_MOVE_KEYS,
+} from '../../shared/ghostSanitize.mjs';
+import { CATALOG_GUN_KEYS, CATALOG_MELEE_KEYS, MELEE_KEYS } from './weaponUtils';
+import { SKILLS, CHARACTER_CLASSES } from '../data/campaign';
+import { SUB_WEAPON_UPGRADE_NOTES } from '../data/subWeaponUpgradeNotes';
+import { AVATAR_IDS } from '../data/avatars';
+import { MOVE_REACTION_KEYS, BULLET_MOVE_KEYS } from './moveReaction';
+import { EQUIPMENT } from '../data/equipment';
 
 describe('G6 online guardian rules', () => {
   it('uses the decided skill priority and gold multipliers', () => {
@@ -229,5 +238,87 @@ describe('他人の守護霊の育成「カウンター受付」(共有の正規
     const [once] = both({ growthCounterAcceptMs: 250 });
     const [again] = both({ growthCounterAcceptMs: once?.growthCounterAcceptMs });
     expect(again?.growthCounterAcceptMs).toBe(once?.growthCounterAcceptMs);
+  });
+});
+
+// 社長裁定「通す必要ありそうなものは通して」: 共有の正規化の許可リストを台帳と一致させた。台帳に足したのに
+// shared/ghostSanitize.mjs へ足し忘れると、他人の守護霊からその値が黙って落ちる=ここで止める。
+describe('共有の正規化の許可リスト=台帳と一致', () => {
+  const same = (list: readonly string[], ledger: readonly string[]) => {
+    expect(new Set(list)).toEqual(new Set(ledger));
+    expect(list).toHaveLength(new Set(list).size); // 重複なし
+  };
+  it('銃(CATALOG の近接でない物)', () => same(GHOST_GUN_KEYS, CATALOG_GUN_KEYS));
+  it('近接(CATALOG の近接・MELEE_KEYS)', () => {
+    same(GHOST_MELEE_KEYS, CATALOG_MELEE_KEYS);
+    same(GHOST_MELEE_KEYS, MELEE_KEYS);
+  });
+  it('スキル(SKILLS のキー=SkillKey 全数)', () => same(GHOST_SKILL_KEYS, Object.keys(SKILLS)));
+  it('サブウェポン(SubWeaponKey 全数)', () => same(GHOST_SUB_WEAPON_KEYS, Object.keys(SUB_WEAPON_UPGRADE_NOTES)));
+  it('職業', () => same(GHOST_CLASS_IDS, CHARACTER_CLASSES.map(c => c.id)));
+  it('アバター', () => same(GHOST_AVATAR_IDS, AVATAR_IDS));
+  it('技への反応表のキー', () => same(GHOST_MOVE_KEYS, [...MOVE_REACTION_KEYS, ...BULLET_MOVE_KEYS]));
+
+  const base = (snapshot: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+    v: 1, runs: 1, moveReactions: {}, subStyles: {}, ...extra,
+    bossStyles: { thor: { ...GHOST_PROFILE_DEFAULTS, subStyles: {}, at: 1, snapshot: { maxHealth: 130, speed: 3, level: 5, ...snapshot } } },
+  });
+  type S = {
+    gunKeys: string[]; activeGunKey?: string; meleeKey?: string; skills: string[]; skillLevels: Record<string, number>;
+    subWeapons: string[]; subWeaponLevels: Record<string, number>; avatarId: string | null; characterClass?: string;
+    equipment: Record<string, string | null>;
+  };
+  const snapOf = (snapshot: Record<string, unknown>) =>
+    (sanitizeSharedProfile(base(snapshot), 'thor') as unknown as { bossStyles: { thor: { snapshot: S } } }).bossStyles.thor.snapshot;
+
+  it('台帳の値は全部通る(銃は4つずつ・スキル/サブ/近接/職業/アバター/装備)', () => {
+    for (let i = 0; i < CATALOG_GUN_KEYS.length; i += 4) {
+      const keys = CATALOG_GUN_KEYS.slice(i, i + 4);
+      const s = snapOf({ gunKeys: keys, activeGunKey: keys[keys.length - 1] });
+      expect(s.gunKeys).toEqual(keys);
+      expect(s.activeGunKey).toBe(keys[keys.length - 1]);
+    }
+    const skills = Object.keys(SKILLS);
+    for (let i = 0; i < skills.length; i += 24) {
+      const keys = skills.slice(i, i + 24);
+      const s = snapOf({ skills: keys, skillLevels: Object.fromEntries(keys.map(k => [k, 2])) });
+      expect(s.skills).toEqual(keys);
+      expect(Object.keys(s.skillLevels).sort()).toEqual([...keys].sort());
+    }
+    const subs = Object.keys(SUB_WEAPON_UPGRADE_NOTES);
+    for (let i = 0; i < subs.length; i += 4) {
+      const keys = subs.slice(i, i + 4);
+      const s = snapOf({ subWeapons: keys, subWeaponLevels: Object.fromEntries(keys.map(k => [k, 3])) });
+      expect(s.subWeapons).toEqual(keys);
+      expect(Object.keys(s.subWeaponLevels).sort()).toEqual([...keys].sort());
+    }
+    for (const k of MELEE_KEYS) expect(snapOf({ meleeKey: k }).meleeKey).toBe(k);
+    for (const c of CHARACTER_CLASSES) expect(snapOf({ characterClass: c.id }).characterClass).toBe(c.id);
+    for (const a of AVATAR_IDS) expect(snapOf({ avatarId: a }).avatarId).toBe(a);
+    for (const def of Object.values(EQUIPMENT)) {
+      expect(snapOf({ equipment: { [def.slot]: def.id } }).equipment[def.slot]).toBe(def.id);
+    }
+    const moves = [...MOVE_REACTION_KEYS, ...BULLET_MOVE_KEYS];
+    const table = Object.fromEntries(moves.map(k => [k, { n: 2, counterRate: 0.5, hitRate: 0.1 }]));
+    const safe = sanitizeSharedProfile(base({}, { moveReactions: table }), 'thor') as unknown as { moveReactions: Record<string, unknown> };
+    expect(Object.keys(safe.moveReactions).sort()).toEqual([...moves].sort());
+  });
+
+  it('新しく通る銃だけの記録も gunKeys を保つ(直す前は空=銃なしになっていた)', () => {
+    const s = snapOf({ gunKeys: ['glauncher-t1', 'handgun-t2-handcannon'], activeGunKey: 'handgun-t2-handcannon' });
+    expect(s.gunKeys).toEqual(['glauncher-t1', 'handgun-t2-handcannon']);
+    expect(s.activeGunKey).toBe('handgun-t2-handcannon');
+  });
+
+  it('台帳に無い値は今までどおり落ちる・上限の数は変えない(銃4・スキル24・サブ4)', () => {
+    const s = snapOf({
+      gunKeys: ['evil-gun', ...CATALOG_GUN_KEYS.slice(0, 6)], skills: ['evil', ...Object.keys(SKILLS)],
+      subWeapons: ['evil', ...Object.keys(SUB_WEAPON_UPGRADE_NOTES)], avatarId: 'evil-set', meleeKey: 'evil',
+    });
+    expect(s.gunKeys).toEqual(CATALOG_GUN_KEYS.slice(0, 4));
+    expect(s.skills).toHaveLength(24);
+    expect(s.subWeapons).toHaveLength(4);
+    expect(s.avatarId).toBeNull();
+    expect(s.meleeKey).toBeUndefined();
   });
 });

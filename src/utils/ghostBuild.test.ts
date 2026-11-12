@@ -319,3 +319,57 @@ describe('他人の守護霊(オンラインの記録)に育成「カウンタ�
     expect(both.player.growthCounterAcceptMs).toBe(0);
   });
 });
+
+// 社長裁定「通す必要ありそうなものは通して」: 共有の正規化の許可リストを台帳と一致させた。他人の守護霊の
+// 疑似プレイヤーに、記録主の新しい銃・スキル・サブウェポンが届く(受け取りの道を最後まで通す)。
+describe('他人の守護霊(オンラインの記録)に台帳の銃・スキル・サブウェポンが届く', () => {
+  beforeEach(() => clearGhostBuildCache());
+  const received = (snap: PlayerBuildSnapshot): PlayerBuildSnapshot | undefined => {
+    const raw = {
+      v: 1, runs: 1, moveReactions: {}, subStyles: {},
+      bossStyles: { thor: { ...GHOST_PROFILE_DEFAULTS, subStyles: {}, at: 1, snapshot: JSON.parse(JSON.stringify(snap)) } },
+    };
+    const safe = sanitizeSharedProfile(raw, 'thor') as PlayerProfile | null;
+    expect(safe).not.toBeNull();
+    return effectiveGhostProfile(safe!, 'thor').snapshot;
+  };
+  const remote = (): PlayerBuildSnapshot => ({
+    ...snapshotPlayerBuild(buildRun()),
+    gunKeys: ['handgun-t2-handcannon', 'glauncher-t1'],
+    activeGunKey: 'glauncher-t1',
+    skills: ['shukuchi', 'super-armor'],
+    skillLevels: { shukuchi: 2, 'super-armor': 1 },
+    subWeapons: ['gold-ring', 'katana'],
+    subWeaponLevels: { 'gold-ring': 3, katana: 2 },
+    avatarId: 'devil-set',
+  });
+
+  it('守護霊は新しい銃で撃ち・スキル/サブウェポンを持つ', () => {
+    const snap = received(remote());
+    expect(snap?.gunKeys).toEqual(['handgun-t2-handcannon', 'glauncher-t1']);
+    const ghost = { id: 'ghost-remote-ledger', kind: 'ghost-ally', ghostBuild: snap } as unknown as Summon;
+    const b = ghostBuildFor(ghost, freshPlayer())!;
+    expect(b.fromSnapshot).toBe(true);
+    expect(b.gun?.key).toBe('glauncher-t1');
+    expect(b.player.weapons.filter(w => !w.isMelee).map(w => w.key)).toEqual(['handgun-t2-handcannon', 'glauncher-t1']);
+    expect(b.player.skills).toEqual(['shukuchi', 'super-armor']);
+    expect(b.player.skillLevels).toEqual({ shukuchi: 2, 'super-armor': 1 });
+    expect(b.player.subWeapons).toEqual(['gold-ring', 'katana']);
+    expect(b.player.subWeaponLevels).toEqual({ 'gold-ring': 3, katana: 2 });
+    expect(snap?.avatarId).toBe('devil-set');
+  });
+
+  it('新しく通る銃だけの記録でも守護霊は銃を持つ(代わりの銃=塊弾はグレネードガンT2)', () => {
+    const snap = received({ ...remote(), gunKeys: ['glauncher-t2-blob'], activeGunKey: 'glauncher-t2-blob' });
+    const ghost = { id: 'ghost-remote-blob', kind: 'ghost-ally', ghostBuild: snap } as unknown as Summon;
+    const b = ghostBuildFor(ghost, freshPlayer())!;
+    expect(b.gun?.key).toBe('glauncher-t2');
+  });
+
+  it('格闘(brawler)は届くが、守護霊では今までどおり外す(従来のナイフで戦う)', () => {
+    const snap = received({ ...remote(), subWeapons: ['brawler', 'katana'], subWeaponLevels: { brawler: 3, katana: 2 } });
+    expect(snap?.subWeapons).toEqual(['brawler', 'katana']);
+    const ghost = { id: 'ghost-remote-brawler', kind: 'ghost-ally', ghostBuild: snap } as unknown as Summon;
+    expect(ghostBuildFor(ghost, freshPlayer())!.player.subWeapons).toEqual(['katana']);
+  });
+});

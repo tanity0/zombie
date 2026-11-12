@@ -49,43 +49,73 @@ const KNOB_RANGES = Object.freeze({
 
 export const GHOST_KNOB_NAMES = Object.freeze(Object.keys(KNOB_RANGES));
 
-const CLASSES = new Set(['warrior', 'mage', 'rogue', 'necromancer']);
-// アバターシステム(試験・第1弾・v0.25.3271「守護霊へのアバター記録」)。src/data/avatars.ts の
-// AVATAR_IDS と同じ内容を手で複製している(このファイルの他のホワイトリストと同じ作法・
-// server側はビルド無しでこの.mjsを直接importするためTS側から自動生成できない)。
-// ★新しいアバターを足す時はここにも追加すること。忘れると sanitizeSnapshot が黙って null に落とす
-// (この節のコメント=CLAUDE.md「既知の地雷」参照)。
-const AVATAR_IDS = new Set(['cat-set']);
-const SKILLS = new Set([
+// ★許可リスト(信頼境界)。server 側はビルド無しでこの .mjs を直接 import するため src/ の台帳を import できない=
+// 値を手で複製している。**台帳との一致は src/utils/ghostOnline.test.ts が止める**(台帳に足したのにここへ
+// 足し忘れると、他人の守護霊からその値が黙って落ちる=社長裁定「通す必要ありそうなものは通して」の再発防止)。
+// 幻影(敵)は、ここを広げる前の集合のまま戦う(src/utils/phantomLegacyBuild.ts=持ち物を広げるかは社長の裁定待ち)。
+/** 職業(= src/types/game.ts の CharacterClass)。 */
+export const GHOST_CLASS_IDS = Object.freeze(['warrior', 'mage', 'rogue', 'necromancer']);
+/** アバター(= src/data/avatars.ts の AVATAR_IDS・見た目のみ)。 */
+export const GHOST_AVATAR_IDS = Object.freeze([
+  'cat-set', 'devil-set', 'angel-set', 'bunny-set', 'pirate-set', 'ghost-set', 'jiangshi-set', 'maid-set',
+]);
+/** スキル(= src/data/campaign.ts の SKILLS のキー)。 */
+export const GHOST_SKILL_KEYS = Object.freeze([
   'reaper', 'berserker', 'skater', 'overclock', 'guardian-spirit', 'ghost-helper', 'ghost-slayer',
   'crit-up', 'knight', 'exploder', 'sharpshooter', 'sniper', 'ricochet', 'bomber', 'fire-shooter',
   'bomb-counter', 'punisher', 'combo-master', 'knife-master', 'benkei', 'reflex', 'rescue-signal',
   'gold-rush', 'time-keeper', 'ghost-shooter', 'dog-run', 'counter-master', 'slasher', 'attack-shooter',
   'runner', 'seeker', 'scrap-builder', 'magnet', 'last-magazine', 'warm-up',
   'poi-bombing', 'poi-guard', 'poi-thrall',
-  // SKILL_BUILD_REDESIGN.md §28(B7): 眠り9種の効果配線+スターター入り。ホワイトリストへ追加を
-  // 忘れると霊のスキルが黙って落ちる(§28-2点3)。
+  // SKILL_BUILD_REDESIGN.md §28(B7): 眠り9種の効果配線+スターター入り。
   'big-bullet', 'ice-shot', 'vampire', 'incendiary-round', 'execution-shock',
   'gravity-shot', 'echo-shot', 'barrage-king', 'blood-treads',
+  'shukuchi', 'hero', 'super-armor',
 ]);
-const SUB_WEAPONS = new Set([
+/** サブウェポン(= src/data/subWeaponUpgradeNotes.ts の SUB_WEAPON_UPGRADE_NOTES のキー=SubWeaponKey 全数)。 */
+export const GHOST_SUB_WEAPON_KEYS = Object.freeze([
   'heavy-grenade', 'marksman-trap', 'striker-quick-mag', 'striker-hunting', 'dog', 'katana', 'murasame',
   'decoy', 'shield', 'whip', 'alchemy', 'turret', 'shijin', 'fire-knife', 'drone-boomerang', 'wire-anchor',
   'sage-stone', 'homing', 'shadow-clone', 'molotov', 'first-aid-kit', 'sensor-mine', 'support-sniper',
   'flare-gun', 'junk-weapon', 'arrow-rain',
+  'gold-ring', 'brawler', // brawler は守護霊では playerBuild.withoutBrawler が外す(従来のナイフで戦う)
 ]);
-const GUNS = new Set([
+/** 銃(= src/utils/weaponUtils.ts の CATALOG のうち近接でない物=CATALOG_GUN_KEYS)。 */
+export const GHOST_GUN_KEYS = Object.freeze([
   'handgun-t1', 'handgun-t2', 'handgun-t3', 'shotgun-t1', 'shotgun-t2', 'shotgun-t3',
   'rifle-t1', 'rifle-t2', 'rifle-t3', 'phill-revolver',
+  'handgun-t1-derringer', 'handgun-t2-handcannon', 'handgun-t3-piledriver', 'handgun-t1-crossbow',
+  'handgun-t2-dualrange', 'handgun-t3-gunblade', 'handgun-t2-scan',
+  'shotgun-t2-suppress', 'shotgun-t2-coil', 'shotgun-t1-focus', 'shotgun-t1-cycle', 'shotgun-t3-flamer',
+  'shotgun-t3-homing', 'shotgun-t2-satellite',
+  'rifle-t1-bolt', 'rifle-t1-deserttech', 'rifle-t2-heavysniper', 'rifle-t2-icelance', 'rifle-t3-eyelaser',
+  'rifle-t3-railgun',
+  'glauncher-t1', 'glauncher-t2', 'glauncher-t3', 'glauncher-t1-rocket', 'glauncher-t2-alchemy',
+  'glauncher-t2-blob', 'glauncher-t3-signal',
 ]);
-const MELEES = new Set(['knife-t1', 'hatchet-t2', 'machete-t3', 'tactical-knife-t4', 'anti-mutant-knife-t5']);
-const MOVE_KEYS = new Set([
+/** 近接(= src/utils/weaponUtils.ts の MELEE_KEYS)。 */
+export const GHOST_MELEE_KEYS = Object.freeze(['knife-t1', 'hatchet-t2', 'machete-t3', 'tactical-knife-t4', 'anti-mutant-knife-t5']);
+/** 技への反応表のキー(= src/utils/moveReaction.ts の MOVE_REACTION_KEYS + BULLET_MOVE_KEYS)。 */
+export const GHOST_MOVE_KEYS = Object.freeze([
   'g-stomp','g-sweep','g-jump','g-dash','g-bolt','g-trijump','g-bite','g-slam','g-glide','g-dive','g-quad','g-nova','g-wing','g-sweepbeam','g-talon','g-boon','g-reach','g-nihil',
   'thor-issen','thor-tsuki','thor-harai','thor-jump','mimir-bite','mimir-laser','mimir-dash','jormungand-coil','jormungand-dash','skadi-ice','skadi-blade','skadi-cage','skadi-dash',
   'miguel-mdash','miguel-tate','miguel-harai','jibril-consecrate','jibril-lantern','rafi-bone','rafi-jump','rafi-sweep','uri-downslash','uri-sweep','uri-thrust','suriel-ring','suriel-sweep','acrasiel-burst','acrasiel-spear','acrasiel-spike','idol-roll','idol-punch','idol-snipe',
   'mimir-burst','mimir-radial','jormungand-burst','jormungand-radial','skadi-burst','skadi-radial','thor-burst','thor-radial','miguel-volley','jibril-volley','uri-bolt','suriel-gaze','acrasiel-gaze','idol-aim','idol-fan','idol-orb','g-parts',
   'idol-s1','idol-s2','idol-s3','idol-s4','idol-s5','idol-s6','idol-s7','idol-s8',
+  'g-tailslam', 'thor-dash', 'mimir-wheel', 'jormungand-slam', 'skadi-lattice', 'acrasiel-warp', 'idol-nade',
+  'br-push', 'br-laser', 'br-triple', 'bm-charge', 'bm-combo1', 'bm-combo2', 'bm-combo3', 'bm-snipe', 'bm-whip360',
+  'bb-sweep', 'bb-leap', 'mk-naginata', 'mk-naginata1', 'mk-naginata2', 'mk-spin', 'mk-suiu', 'mk-boom',
+  'phill-wingslash', 'phill-wingthrust', 'phill-wingcombo', 'phill-lightrain', 'phill-goldring',
+  'phill-judgment', 'phill-cage', 'phill-ringtoss', 'phill-dive', 'phill-summon', 'phill-feathershot',
+  'mimir-wheel-shot', 'jormungand-wave', 'jormungand-rain', 'jormungand-freeze', 'phill-lancefan', 'phill-meteor',
 ]);
+const CLASSES = new Set(GHOST_CLASS_IDS);
+const AVATAR_IDS = new Set(GHOST_AVATAR_IDS);
+const SKILLS = new Set(GHOST_SKILL_KEYS);
+const SUB_WEAPONS = new Set(GHOST_SUB_WEAPON_KEYS);
+const GUNS = new Set(GHOST_GUN_KEYS);
+const MELEES = new Set(GHOST_MELEE_KEYS);
+const MOVE_KEYS = new Set(GHOST_MOVE_KEYS);
 
 // 熟練度(他人の守護霊にも記録主の熟練度を乗せる・research/MASTERY.md v2.5)。src/data/mastery.ts の
 // GROWING_MASTERY_KEYS(銃5+melee+サブ21)+ `max` と同じ内容を手で複製している(上の許可リストと同じ作法)。

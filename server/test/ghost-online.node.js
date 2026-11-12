@@ -130,6 +130,25 @@ test('shared profile sanitizer passes growth counter accept with clamping, old r
   }
 });
 
+// 社長裁定「通す必要ありそうなものは通して」: 許可リストを台帳と一致させた。新しく通る銃だけの記録でも
+// 保存(PUT)と配る(pick)の浄化で gunKeys が残る(直す前は空=他人の守護霊が銃を持たずに来ていた)。
+test('shared profile sanitizer keeps ledger guns, skills and sub weapons added after the first whitelist', () => {
+  const p = profile();
+  Object.assign(p.bossStyles.thor.snapshot, {
+    gunKeys: ['glauncher-t1', 'handgun-t2-handcannon'], activeGunKey: 'handgun-t2-handcannon',
+    skills: ['shukuchi', 'hero', 'super-armor'], subWeapons: ['gold-ring', 'brawler'], avatarId: 'maid-set',
+  });
+  const safe = sanitizeSharedProfile(p, 'thor');
+  const snap = safe.bossStyles.thor.snapshot;
+  assert.deepEqual(snap.gunKeys, ['glauncher-t1', 'handgun-t2-handcannon']);
+  assert.equal(snap.activeGunKey, 'handgun-t2-handcannon');
+  assert.deepEqual(snap.skills, ['shukuchi', 'hero', 'super-armor']);
+  assert.deepEqual(snap.subWeapons, ['gold-ring', 'brawler']);
+  assert.equal(snap.avatarId, 'maid-set');
+  const again = sanitizeSharedProfile(JSON.parse(JSON.stringify(safe)), 'thor');
+  assert.deepEqual(again.bossStyles.thor.snapshot, snap);
+});
+
 const pickEnv = (realCount) => ({
   GHOST_DB: {
     prepare(sql) {

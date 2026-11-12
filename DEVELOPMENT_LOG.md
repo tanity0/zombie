@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.5522 — 他人の守護霊が記録主の持ち物をそのまま持って来る(共有の許可リストの中身を台帳に合わせる・幻影は据え置き)【2026-11-12 09:00 JST】
+
+- 社長指示「通す必要ありそうなものは通して」の続き。`shared/ghostSanitize.mjs` の許可リストの**中身**が古く、他人の守護霊の持ち物が落ちていた。台帳と一致させた: 銃 10→37(グレネードガン系7・ユニーク20)/スキル 47→50(`shukuchi`・`hero`・`super-armor`)/サブウェポン 26→28(`gold-ring`・`brawler`)/アバター 1→8/技への反応表のキー 75→116。近接・職業は一致していた(テストだけ足した)。上限の数(銃4・スキル24・サブ4)と通信の版は変えていない。
+- 値は `shared/` に配列で持ち(`GHOST_*_KEYS`)、台帳との一致(両方向・重複なし)をテストで固定=台帳に足して表に足し忘れると落ちる。銃の台帳の書き出し `CATALOG_GUN_KEYS`・`CATALOG_MELEE_KEYS` を `weaponUtils.ts` に足した(中身は不変)。
+- **幻影(敵)は据え置き**: 新規 `src/utils/phantomLegacyBuild.ts`(`PHANTOM_LEGACY_GUNS` ほか=直す前の集合)。他人の記録から幻影の人格を作る1か所(`phantomIdentity.pickPhantomIdentity` の remote)で、写しを絞ってから使う(守護霊側の記録は書き換えない)。`actorBuildFor` で絞らなかった理由=固有の幻影(孫悟空)も通り、`brawler` が消えるため。固定の先人守護霊20体・固有の幻影・自分の守護霊は不変。**幻影にも新しい持ち物を持たせるかは社長の裁定待ち**(現時点の推薦=持たせる。幻影がそれらの銃を撃てるかの確認が先)。
+- 守護霊で乗らない物(自分の守護霊と同じ既存の規則): `brawler` は外す/火炎放射器・アイレーザー・PHILLガンは撃たない/シグナルランチャー・塊弾・衛星弾・スキャンセンサーは代わりの銃で撃つ。
+- **品質監査 1巡: (A)なし**。2巡目は回さない((A)がゼロ)。(B)=幻影へ入る道が1か所である事はコメント頼み(将来、幻影側が `effectiveGhostProfile` を通るとボス別の記録の持ち物が絞られずに漏れる。止めるテストは無い)。(C)=「直す前の正規化と同じ」は、上限を超える数を持つ記録・技への反応表が82個を超える記録では、古い集合の中で残るキーが少し変わる場合がある(幻影の持ち物が広がるわけではない)。
+- **サーバ**: `shared/**` の変更=この push で自動で配られる。配られるまで・配られる前に保存された記録は、新しい持ち物が落ちたまま(記録主が出撃し直して上書き保存されると乗る)。
+- 実装は Opus のサブエージェント。確認: typecheck / eslint / 循環import / vitest(ghostOnline・ghostBuild・phantomLegacyBuild・mastery・masteryGuardian・fixedGuardians・phantom*)/サーバのテスト15件。
+- ファイル: shared/ghostSanitize.mjs・src/utils/weaponUtils.ts・phantomLegacyBuild.ts(新規)・phantomLegacyBuild.test.ts(新規)・phantomIdentity.ts・ghostOnline.test.ts・ghostBuild.test.ts・server/test/ghost-online.node.js・package.json・src/data/changelog.ts
+
 ## v0.25.5521 — 他人の守護霊に強化「カウンター受付」を通す+共有の正規化で落ちている欄の全数突き合わせ(社長指示「通す必要ありそうなものは通して」)【2026-11-12 08:49 JST】
 
 - 通した欄: `growthCounterAcceptMs`(0〜`growthCounterAcceptMs(PLAYER_UPGRADE_MAX_LEVEL)`=100ms で頭打ち・非数/欠損/型違いは欄なし=0段。台帳との一致をテストで固定)。幻影の入口(`actorBuildFor`)では外す=幻影は今までと同じ0。通信の版は上げていない。
