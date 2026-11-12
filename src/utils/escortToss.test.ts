@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   escortTossDecision, escortTossLanding, escortTossProgress, escortTossableType,
   ESCORT_TOSS_CD_MS, ESCORT_TOSS_NEVER, ESCORT_TOSS_MIN_DIST, ESCORT_TOSS_MAX_DIST, ESCORT_TOSS_STOP_PX, ESCORT_TOSS_SWING_DEG,
-  escortKickTargetOk, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortTossSlideDist, escortKickerInPlayerSector,
+  escortKickTargetOk, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortTossSlideDist, escortKickerInPlayerSector, escortKickerBaseLiberated,
   ESCORT_KICK_TO_HIT_MS, ESCORT_KICK_STUN_MARGIN_MS, ESCORT_KICK_BEHIND_PX, ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_TOSS_OVERSHOOT_PX,
 } from './escortToss';
 import type { EscortTossInput } from './escortToss';
@@ -105,6 +105,13 @@ describe('v3.1 兵士の蹴り飛ばし(純関数)', () => {
     expect(escortKickerInPlayerSector({ baseId: 'base-3' }, bases, north)).toBe(true);
     expect(escortKickerInPlayerSector({ baseId: 'base-9' }, bases, east)).toBe(true); // 拠点表に無い=通路ステージ等は候補に残す
     expect(escortKickerInPlayerSector({ baseId: 'base-0' }, [], east)).toBe(true);
+  });
+  it('escortKickerBaseLiberated: 担当拠点が解放済みの兵士だけ(拠点表に無ければ従来どおり候補)', () => {
+    const bases = [{ id: 'base-0', status: 'open' as const }, { id: 'base-1', status: 'captured' as const }];
+    expect(escortKickerBaseLiberated({ baseId: 'base-0' }, bases)).toBe(false); // 未解放は蹴らない
+    expect(escortKickerBaseLiberated({ baseId: 'base-1' }, bases)).toBe(true);
+    expect(escortKickerBaseLiberated({ baseId: 'jun-follow' }, bases)).toBe(true); // 拠点を持たない同行者
+    expect(escortKickerBaseLiberated({ baseId: 'base-0' }, [])).toBe(true); // 拠点の無いステージ
   });
   it('pickEscortKickPair: 兵士から敵までが一番近い組', () => {
     const p = pickEscortKickPair(

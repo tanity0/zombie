@@ -174,6 +174,21 @@ export const escortKickerInPlayerSector = (
   return poiSectorIndex(b) === playerSector;
 };
 
+/**
+ * ★担当拠点が解放済みの兵士だけ蹴る(社長指示2026-11-12「拠点解放するまではNPCの蹴り飛ばしは発動しないようにして」)。
+ * 「解放済み」は拠点の status === 'captured'(ついてくる・escortFollow と同じ判定)。陥落して 'open' へ戻れば蹴らない。
+ * 拠点表に居ない兵士(拠点の無いステージ・訓練・ジュン等)は今までどおり候補に残す(escortKickerInPlayerSector と同じ扱い)。
+ * 割り当ての時だけ見る=進行中の蹴りは途中で見直さない。
+ */
+export const escortKickerBaseLiberated = (
+  escort: { baseId: string },
+  bases: readonly { id: string; status: 'open' | 'captured' }[],
+): boolean => {
+  const b = bases.find(x => x.id === escort.baseId);
+  if (!b) return true;
+  return b.status === 'captured';
+};
+
 /** (敵, 兵士) の組のうち、兵士から敵までが一番近い組。どちらも呼び手が条件で絞った候補。 */
 export const pickEscortKickPair = <E extends { id: string; x: number; y: number; width: number; height: number }, S extends { id: string; x: number; y: number }>(
   enemies: readonly E[], escorts: readonly S[],

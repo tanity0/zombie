@@ -14,6 +14,9 @@ import {
   BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT, brawlerKickMult,
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS,
 } from './brawler';
+import {
+  pickBrawlerComboTarget, brawlerComboLockId, brawlerComboTargetAfterHit, BRAWLER_HEEL_HOVER_PX, BRAWLER_STOMP_FROM_AIR_FALL, BRAWLER_KICK_MAX,
+} from './brawler';
 import { setBrawlerTempoAll } from './brawlerCombo';
 // ★テンポ係数(§9-68): この表の時刻は係数1.0(今までの値)で書いてある。係数1.3の挙動は brawlerTempo.store.test.ts で固める。
 setBrawlerTempoAll(1.0); // 記述時(describe の中で時刻を組む所)より先に効かせる=モジュールの頭で呼ぶ
@@ -681,3 +684,80 @@ describe('ステップ(research/BRAWLER.md §12-3)', () => {
     expect(brawlerStartTech(idle, 'kick', 10).stepBuffer).toBeUndefined();
   });
 });
+
+describe('格闘: コンボの狙い(社長指示2026-11-12「コンボ中は最初にヒットした敵を狙い続ける」)', () => {
+  const at = (x: number, id: string, extra: Record<string, unknown> = {}) =>
+    ({ id, x: x - 10, y: -20, width: 20, height: 40, health: 100, maxHealth: 100, type: 'zombie', ...extra }) as unknown as Parameters<typeof pickBrawlerComboTarget>[0][number];
+  it('狙いが生きていて届くなら、近い別の敵より優先する', () => {
+    const es = [at(40, 'near'), at(-90, 'lock')];
+    expect(pickBrawlerComboTarget(es, 0, 0, 120, [], undefined)?.id).toBe('near');
+    expect(pickBrawlerComboTarget(es, 0, 0, 120, [], 'lock')?.id).toBe('lock');
+  });
+  it('狙いが倒れた・消えた・届かない時は今までどおり(いちばん近い敵)', () => {
+    expect(pickBrawlerComboTarget([at(40, 'near'), at(-90, 'lock', { health: 0 })], 0, 0, 120, [], 'lock')?.id).toBe('near');
+    expect(pickBrawlerComboTarget([at(40, 'near')], 0, 0, 120, [], 'lock')?.id).toBe('near');
+    expect(pickBrawlerComboTarget([at(40, 'near'), at(-200, 'lock')], 0, 0, 120, [], 'lock')?.id).toBe('near');
+  });
+  it('コンボが切れたら忘れる(「N HIT」が出ている間だけ効く)', () => {
+    expect(brawlerComboLockId({ comboTargetId: 'a', flowHits: 2, flowBrokenAt: 0 })).toBe('a');
+    expect(brawlerComboLockId({ comboTargetId: 'a', flowHits: 2, flowBrokenAt: 1234 })).toBeUndefined();
+    expect(brawlerComboLockId({ comboTargetId: 'a', flowHits: 0, flowBrokenAt: 0 })).toBeUndefined();
+    expect(brawlerComboLockId(undefined)).toBeUndefined();
+  });
+  it('当たりの後: 最初の当たり=狙っていた敵(当たっていれば)/無ければ当たった中でいちばん近い敵。狙いに当たり続ける間はそのまま', () => {
+    expect(brawlerComboTargetAfterHit(undefined, ['a', 'b'], 'b', 'a')).toBe('b');
+    expect(brawlerComboTargetAfterHit(undefined, ['a', 'b'], undefined, 'a')).toBe('a');
+    expect(brawlerComboTargetAfterHit(undefined, ['a', 'b'], 'z', 'b')).toBe('b');
+    expect(brawlerComboTargetAfterHit('a', ['b', 'a'], 'b', 'b')).toBe('a');
+    expect(brawlerComboTargetAfterHit('a', ['b'], 'b', 'b')).toBe('b'); // 狙いに届かず別の敵に当てた=新しい狙い
+    expect(brawlerComboTargetAfterHit('a', [], 'b', undefined)).toBe('a'); // 当たらなかった=そのまま
+  });
+});
+
+describe('格闘: 踵落としの後は少しだけ浮いている(社長指示2026-11-12)', () => {
+  const heelState = () => {
+    const s0 = { ...initialBrawlerState(), kickN: 2 };
+    return brawlerStartTech(s0, 'kick', 0, BRAWLER_KICK_MAX, false, true);
+  };
+  it('後隙の間の高さは0より大きく、決めた高さ以下・後隙の終わりで0', () => {
+    const s = { ...heelState(), resolved: true };
+    const end = s.windupMs + s.recoveryMs;
+    for (let el = s.windupMs + 1; el < end - 1; el += 5) {
+      const j = brawlerPoseAt(s, el)!.jump;
+      expect(j, `el ${el}`).toBeGreaterThan(0);
+      expect(j).toBeLessThanOrEqual(BRAWLER_HEEL_HOVER_PX + 1e-9);
+    }
+    expect(brawlerPoseAt(s, end)!.jump).toBeCloseTo(0, 6);
+    expect(BRAWLER_HEEL_HOVER_PX).toBeGreaterThanOrEqual(30 * 0.3 - 0.5);
+    expect(BRAWLER_HEEL_HOVER_PX).toBeLessThanOrEqual(30 * 0.4);
+  });
+  it('入り(振り下ろしの終わり→浮き)と着地は途切れず滑らか(1ms で大きく変わらない)・着地は単調に沈む', () => {
+    const s = heelState();
+    const r = { ...s, resolved: true };
+    const end = s.windupMs + s.recoveryMs;
+    const jAt = (el: number) => brawlerPoseAt(el < s.windupMs ? s : r, el)!.jump;
+    expect(Math.abs(jAt(s.windupMs) - jAt(s.windupMs - 1))).toBeLessThan(1);
+    expect(jAt(s.windupMs)).toBeCloseTo(BRAWLER_HEEL_HOVER_PX, 6);
+    for (let el = s.windupMs; el < end; el += 1) expect(Math.abs(jAt(el + 1) - jAt(el)), `el ${el}`).toBeLessThan(1);
+    let prev = Infinity;
+    for (let el = s.windupMs; el <= end; el += 4) { const j = jAt(el); expect(j).toBeLessThanOrEqual(prev + 1e-9); prev = j; }
+    // 前隙: 溜めの後の飛ぶ間は、踵落としの方が浮いた高さへ寄っていく(普通の3発目は地面へ戻る)
+    const plain = brawlerStartTech({ ...initialBrawlerState(), kickN: 2 }, 'kick', 0, BRAWLER_KICK_MAX, false, false);
+    expect(brawlerPoseAt(plain, plain.windupMs - 1)!.jump).toBeLessThan(2);
+  });
+  it('大踏み潰しで取り消した時は、その浮いた高さから落ちる(高さが跳ばない)・溜めの途中で着地', () => {
+    const s = { ...heelState(), resolved: true, connected: true, landed: true };
+    const t = s.windupMs + Math.round(s.recoveryMs * 0.2);
+    const h0 = brawlerPoseAt(s, t)!.jump;
+    expect(h0).toBeGreaterThan(0);
+    const st = brawlerStartTech(s, 'stomp', t, 0, true);
+    expect(st.stompFromPx).toBeCloseTo(h0, 6);
+    expect(Math.abs(brawlerPoseAt(st, t)!.jump - h0)).toBeLessThan(0.5);
+    let prev = h0;
+    for (let k = 1; k <= st.windupMs * BRAWLER_STOMP_FROM_AIR_FALL; k += 2) { const j = brawlerPoseAt(st, t + k)!.jump; expect(j).toBeLessThanOrEqual(prev + 1e-9); prev = j; }
+    expect(brawlerPoseAt(st, t + Math.ceil(st.windupMs * BRAWLER_STOMP_FROM_AIR_FALL) + 1)!.jump).toBe(0);
+    // 待機から出した大踏み潰しは今どおり跳ばない
+    expect(brawlerStartTech(initialBrawlerState(), 'stomp', 0).stompFromPx).toBeUndefined();
+  });
+});
+

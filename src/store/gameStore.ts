@@ -130,7 +130,7 @@ import {
   type HitRetaliationWindow, makeRetaliationWindow, isRetaliationWindowOpen, retaliationAngleOk, isRetaliateTargetEligible,
   isRetaliationBlocked, retaliationReady, RETALIATE_DAMAGE_MULT, RETALIATE_LUNGE_MS,
 } from '../utils/hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
-import { isEnemyAttacking, meleeHitSfxLayers } from '../utils/combatFeel';
+import { isEnemyAttacking, meleeHitSfxLayers, hitStunMsFor } from '../utils/combatFeel';
 import * as BR from '../utils/brawler'; // サブウェポン「格闘」の純関数(research/BRAWLER.md)
 import { isBrawlerGuardingAt } from '../utils/brawler';
 import * as BRC from '../utils/brawlerCombo'; // 格闘の敵側の流れ(食らいの固まり・減衰・反撃=research/BRAWLER.md §11)
@@ -263,7 +263,7 @@ import { addHateDamage, escortHateSide, escortIdOfSide, isHateTrackedBossType, r
 import { stabilizeEscortFace } from '../utils/escortFace'; // 進軍NPCの向きのヒステリシス
 import {
   escortTossLanding, ESCORT_TOSS_MS, ESCORT_TOSS_NEVER, ESCORT_TOSS_STOP_PX, ESCORT_TOSS_CD_MS,
-  escortKickTargetOk, escortKickableState, ESCORT_KICK_MIN_DIST, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortKickerInPlayerSector, escortTossSlideDist, type EscortKick,
+  escortKickTargetOk, escortKickableState, ESCORT_KICK_MIN_DIST, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortKickerInPlayerSector, escortKickerBaseLiberated, escortTossSlideDist, type EscortKick,
   ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS,
 } from '../utils/escortToss'; // 兵士の蹴り飛ばし(research/ESCORT_TOSS.md v3.1)
 import { npcSfxDistGain } from '../utils/npcSfx';
@@ -297,7 +297,7 @@ import { settleEpisode, type CounterReachShape } from '../utils/habitEpisode';
 import { ZOOM_MIN_ABS, isPointInZoomedViewport, zoomedViewportBounds } from '../utils/cameraZoom';
 import { meleeImpactPoint, meleeNumberPoint, bandBoxOverlap } from '../utils/meleeImpact';
 import { screamerStartGate } from '../utils/screamerGate';
-import { blastLiftPatch, slasherLiftMove, blastLiftCloseness, slasherLaunchMinMs, COUNTER_LIFT_MOVE, counterLiftApplies } from '../utils/airLift';
+import { blastLiftPatch, slasherLiftMove, blastLiftCloseness, slasherLaunchMinMs, COUNTER_LIFT_MOVE, counterLiftApplies, KNIFE_HOLD_MOVE, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil } from '../utils/airLift';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
   getSelectedStageId, getWallMeta, recordChronicle, recordChronicleGlobalFirst,
@@ -1105,7 +1105,9 @@ const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s:
   // ★プレイヤーの居る区画の担当兵士だけ(社長報告2026-10-16「区画外のNPCが飛んできて吹っ飛ばしに参加」)。拠点の無いステージは全員。
   const pSector = poiSectorIndex({ x: pcx, y: pcy });
   const kickers = st.escorts.filter(e => escortHasHealth(e) && !escortBusyNow(e, now) && !isEscortLowHealth(e) && !isEscortSwinging(e, now)
-    && escortKickerInPlayerSector(e, st.baseSites, pSector));
+    && escortKickerInPlayerSector(e, st.baseSites, pSector)
+    // ★担当拠点を解放するまでは蹴らない(社長指示2026-11-12)。拠点表に居ない兵士は今までどおり。
+    && escortKickerBaseLiberated(e, st.baseSites));
   const pair = pickEscortKickPair(targets, kickers);
   if (!pair) return;
   const face = p.lastDirection ?? { x: 0, y: 0 };
@@ -2819,6 +2821,31 @@ const meleeHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil' | 'maxHeal
   return shoveToo
     ? { lastHitDmg: dmg, hitStunUntil: u, knockbackUntil: kbUntil, knockbackShoveUntil: kbUntil, ...stopMark }
     : { lastHitDmg: dmg, hitStunUntil: u, knockbackUntil: kbUntil, ...stopMark };
+};
+/**
+ * ★ナイフの当たりの固まりと浮き(社長指示2026-11-12「あと近接でも敵の攻撃が止まる&浮くようにして」・裁定「近接は止めるだけ」)。
+ * 格闘の固まり(brawlerLockOnHit)と浮き(brawlerJugglePatch)だけを使う(押し・止め・流れの数えはナイフの今のまま=brawlerHitPatch は通さない)。
+ *  - 固まり=1段目の長さ(止め=ナイフの止めの長さ=meleeHitStunPatch と同じ式)。溜めは時計ごと止めて続きから・攻撃の振りの最中は止めない。
+ *    強個体を除くボス級(ハンター等)は止め0・強個体は短い止め(hitStunMsFor)+1段目の固まり。bossState の技の最中は止めない(brawlerPhaseKind)。ハメ防止は格闘の仕組み(減衰・固まらない時間)。
+ *  - 浮き=地上は3段目の打ち上げ・空中は2段目の拾い(utils/airLift knifeLiftApplies の条件)。浮かせた後は浮いていた時間と同じ長さ地上から浮かない。
+ * swingAt=この振りを押した時刻(Date.now)。
+ */
+const knifeHoldLiftPatch = (enemy: Enemy, now: number, gameTime: number, dmg: number, swingAt: number): Partial<Enemy> => {
+  const out: Partial<Enemy> = {};
+  let down = false;
+  if (knifeLiftApplies(enemy, now, gameTime, swingAt)) {
+    const jp = brawlerJugglePatch(enemy, BRC.brawlerEnemyClass(enemy), knifeLiftMove(BRC.brawlerAirborne(enemy, now)), now);
+    if (jp) {
+      Object.assign(out, jp);
+      if (jp.brLiftUntil !== undefined && jp.brLiftUntil > now) out.brBlastNoLiftUntil = knifeNoLiftUntil(enemy, jp.brLiftUntil, now);
+      down = jp.brLiftDown === true;
+    }
+  }
+  const stopMs = Math.round(hitStunMsFor(enemy.type) * meleeHitStopMul(dmg, enemy.maxHealth));
+  const canHold = BRC.brawlerPhaseKind(enemy, gameTime) !== 'active' && !down;
+  const airborneAfter = (out.brLiftUntil ?? enemy.brLiftUntil ?? 0) > now;
+  Object.assign(out, BRC.brawlerLockOnHit(enemy, KNIFE_HOLD_MOVE, gameTime, now, { stopMs, enemyStopMs: stopMs, canHold, airborneAfter }).patch);
+  return out;
 };
 let critImpactAt = 0; // spawnCritImpact の光の畳み込み用(Date.now)
 // (MELEE_SWING_SHAKE_* / SHIELD_BASH_SHAKE_* は v0.25.4284 で撤去=近接の揺れも impactShakeFor(ダメージの√・bash ×1.5)へ)
@@ -4763,6 +4790,22 @@ const brawlerStopPlan = (get: () => GameState, hitstopMs: number): { self: numbe
  */
 const brawlerRecoilAt = (dirX: number, dirY: number, plan: { stun: number; world: number }, now: number): Partial<Player> =>
   plan.world > 0 ? brawlerRecoilPatch(dirX, dirY, 0, now + plan.world) : brawlerRecoilPatch(dirX, dirY, plan.stun, now);
+/**
+ * ★コンボの狙いの書き直し(社長指示2026-11-12「格闘、コンボ中は最初にヒットした敵を狙い続けるようにして」)。当たりの後に呼ぶ。
+ * コンボの最初の当たり(または覚えた狙いに届かず別の敵に当てた時)は、その技が狙っていた敵(当たっていれば)か、当たった中でいちばん近い敵を覚える。
+ * 当たらなかった時は何も書かない(覚えた狙いはコンボが切れるまで残る=utils/brawler の brawlerComboLockId が忘れる)。
+ */
+const brawlerComboLockPatch = (
+  s: BR.BrawlerState, r: CounterTriggerResult, aimedId: string | undefined, from: { x: number; y: number },
+): Pick<BR.BrawlerState, 'comboTargetId'> | Record<string, never> => {
+  const hitAt = r.hitAt ?? [];
+  if (!((r.hits ?? 0) > 0) || hitAt.length === 0) return {};
+  let nearest: string | undefined;
+  let bestD = Infinity;
+  for (const h of hitAt) { const d = Math.hypot(h.x - from.x, h.y - from.y); if (d < bestD) { bestD = d; nearest = h.id; } }
+  const id = BR.brawlerComboTargetAfterHit(BR.brawlerComboLockId(s), hitAt.map(h => h.id), aimedId, nearest);
+  return id !== undefined ? { comboTargetId: id } : {};
+};
 /** 当たった時だけ画面全体を止める(1回の技で何体に当たっても1回=長い方を採る triggerHitstop)。 */
 const brawlerApplyWorldStop = (get: () => GameState, plan: { world: number }, hits: number): void => {
   if (plan.world > 0 && hits > 0) get().triggerHitstop(plan.world);
@@ -4846,7 +4889,8 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
   const c = brawlerCenter(p);
   const radius = huntingMeleeRadius(p);
   const walls = meleeWallsAround(get, c.x, c.y, radius);
-  const target = BR.pickBrawlerTarget(st.enemies, c.x, c.y, radius, walls);
+  // ★コンボ中は最初に当てた敵を狙い続ける(社長指示2026-11-12・届く範囲は今のまま・utils/brawler の pickBrawlerComboTarget)。
+  const target = BR.pickBrawlerComboTarget(st.enemies, c.x, c.y, radius, walls, BR.brawlerComboLockId(s0));
   const dir = BR.brawlerAimDir(c.x, c.y, target, p.lastDirection);
   const quick = s0.quickUntil > t;
   const s = { ...BR.brawlerStartAttack(s0, stage, t, quick), targetId: target?.id, dirX: dir.x, dirY: dir.y, pressAt: now, ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
@@ -4992,7 +5036,7 @@ const startBrawlerTech = (
   if (kind === 'kick' || kind === 'kiko') {
     const range = (kind === 'kick' ? BR.BRAWLER_KICK_RANGE : BR.BRAWLER_KIKO_RANGE) + brawlerReachExtra(p); // ハンティングが溜まっていれば広がる(§16)
     const walls = kind === 'kick' ? meleeWallsAround(get, c.x, c.y, range) : [];
-    const target = BR.pickBrawlerTarget(st.enemies, c.x, c.y, range, walls);
+    const target = BR.pickBrawlerComboTarget(st.enemies, c.x, c.y, range, walls, BR.brawlerComboLockId(s0)); // ★コンボの狙いを優先(社長指示2026-11-12)
     const dir = BR.brawlerAimDir(c.x, c.y, target, p.lastDirection);
     s = { ...s, targetId: target?.id, dirX: dir.x, dirY: dir.y };
     extra = { ...extra, lastDirection: { x: dir.x, y: dir.y } };
@@ -5395,7 +5439,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   if (s.phase === 'attack') {
     const spec = BR.brawlerStageSpec(s.stage);
     // 相手が倒れていたら、いま一番近い敵へ(§7-9)。
-    if (!target && (spec.shape === 'single' || spec.shape === 'fist')) target = BR.pickBrawlerTarget(st.enemies, c.x, c.y, radius, walls);
+    if (!target && (spec.shape === 'single' || spec.shape === 'fist')) target = BR.pickBrawlerComboTarget(st.enemies, c.x, c.y, radius, walls, BR.brawlerComboLockId(s));
     let ids: string[] = [];
     if (spec.shape === 'single') {
       ids = target && BR.brawlerDistTo(c.x, c.y, target) <= radius ? [target.id] : [];
@@ -5432,7 +5476,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     brawlerKillSfx(r);
     const fdir = palm ? { x: palm.ux, y: palm.uy } : dir;
     brawlerApplyWorldStop(get, plan, hits);
-    const next = BR.brawlerAfterResolve({ ...s, dirX: fdir.x, dirY: fdir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: plan.self, landed: r.landed ?? hits });
+    const next = { ...BR.brawlerAfterResolve({ ...s, dirX: fdir.x, dirY: fdir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: plan.self, landed: r.landed ?? hits }), ...brawlerComboLockPatch(s, r, target?.id, c) };
     setBrawler(set, next, {
       lastDirection: { x: fdir.x, y: fdir.y },
       // 5段目: 抜けた先で(当てたら一拍止まってから)減速して止まる。
@@ -5463,7 +5507,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
     brawlerApplyWorldStop(get, plan, hits);
-    setBrawler(set, BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: plan.self, landed: r.landed ?? hits }),
+    setBrawler(set, { ...BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: plan.self, landed: r.landed ?? hits }), ...brawlerComboLockPatch(s, r, undefined, foot) },
       hits > 0 ? { lungeHoldUntil: now + plan.stun } : {});
     brawlerNoteFlowHits(set, hits);
     g.breakEggsInBlast(foot.x, foot.y, stompR); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
@@ -5480,7 +5524,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   }
   if (s.tech === 'kiko') {
     // 撃った時の方向へまっすぐ(曲がらない)。届く距離の中で一番近い敵へ(§7-9)。
-    const aim = BR.pickBrawlerTarget(st.enemies, c.x, c.y, BR.BRAWLER_KIKO_RANGE + brawlerReachExtra(p));
+    const aim = BR.pickBrawlerComboTarget(st.enemies, c.x, c.y, BR.BRAWLER_KIKO_RANGE + brawlerReachExtra(p), [], BR.brawlerComboLockId(s)); // ★コンボの狙いを優先
     const d = BR.brawlerAimDir(c.x, c.y, aim, { x: s.dirX, y: s.dirY });
     const sx = c.x + d.x * 18, sy = c.y - 4 + d.y * 18;
     set(state => ({
@@ -5517,7 +5561,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     // 秘奥義の1手目(→)は蹴りが当たった時だけ数える(社長指示2026-11-08「1発目は敵に当たっていること」)。
     // ★「当たった」=体力を削った当たり(§19-1): 拳鬼にレバーガードで防がれた蹴りは数えない(拳鬼の側の規則と同じ)。
     const secretProgress = BR.brawlerSecretAfterKick(s.secretProgress ?? 0, (r.landed ?? hits) > 0);
-    setBrawler(set, { ...after, secretProgress, kickChainUntil: big ? 0 : t + BR.BRAWLER_KICK_CHAIN_MS, kickCount: big ? 0 : s.kickN }, {
+    setBrawler(set, { ...after, secretProgress, kickChainUntil: big ? 0 : t + BR.BRAWLER_KICK_CHAIN_MS, kickCount: big ? 0 : s.kickN, ...brawlerComboLockPatch(s, r, target?.id, c) }, {
       lastDirection: { x: dir.x, y: dir.y },
       ...(hits > 0 ? brawlerRecoilAt(dir.x, dir.y, plan, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
     });
@@ -12655,6 +12699,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...pvpMeleePatch,
         });
       } else if (slasherForce || knockbackCdReady(enemy, now)) {
+        // ★ナイフの固まりと浮き(knifeHoldLiftPatch・社長指示2026-11-12)。スラッシャー所持中の振りは今どおり(追撃の浮かせ方を崩さない)。
+        const knifeHL = skillLevel(player, 'slasher') > 0 ? {} : knifeHoldLiftPatch(enemy, now, gameTime, dmg, swingAt);
         // ★v0.25.3959(社長報告「近接当てると飛んでっちゃう」・?kblog=1実測「KB開始 bat 予定281567px」):
         // 方向の正規化は**中心差分の長さ**で割る。dist(enemyMeleeDist)はv0.25.3170から判定矩形の
         // 最近点距離=密着(中心が帯内)で0になり、dx/0.001×speedで数百万px/sのKBが出ていた。
@@ -12674,6 +12720,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: bossSlowUntil(半減)が計算のみで未適用だった漏れ
           ...meleeHitStunPatch(enemy, now, dmg), // 戦闘の手触り①(v0.25.4269): 近接も局所ストップ(knockbackUntil を上書き=止めの残りぶん後ろ)
+          ...knifeHL, // 固まり・浮き(押しはこの枝の押しのまま=押されながら浮く)
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断(laser-broken遷移+中断CD+体幹'counter')
           ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(melee削り/2/3減速/致命後daze)
@@ -12692,6 +12739,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVy: 0,
           knockbackUntil: now + 100,
           lastHitDmg: dmg, // 2026-11-06: のけぞりの強さをこのヒットの重さで(meleeHitStunPatch と同じ)
+          ...(skillLevel(player, 'slasher') > 0 ? {} : knifeHoldLiftPatch(enemy, now, gameTime, dmg, swingAt)), // ★ナイフの固まりと浮き(上の枝と同じ)
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: 同上
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断

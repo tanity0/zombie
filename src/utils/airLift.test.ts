@@ -3,6 +3,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import {
   blastLiftPatch, blastLiftCloseness, slasherLiftMove, blastLiftMs, slasherLaunchMinMs,
   BLAST_LIFT_HEIGHT_OF_S3, BLAST_LIFT_MS_MULT, BLAST_LIFT_COST,
+  KNIFE_HOLD_MOVE, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil,
 } from './airLift';
 import {
   brawlerJuggleHeightRel, brawlerJugglePush, setBrawlerTempoAll, brawlerAirSignal,
@@ -153,5 +154,42 @@ describe('品質監査の反映(§14): ハメにしない・重さ・縁・区�
   });
   it('スラッシャーの1回目の打ち上げの下限=追撃の窓(CD+前隙+余裕)', () => {
     expect(slasherLaunchMinMs(300, 200)).toBe(650);
+  });
+});
+
+// ★ナイフの当たりの浮き(社長指示2026-11-12「あと近接でも敵の攻撃が止まる&浮くようにして」・裁定「近接は止めるだけ」)。
+describe('ナイフの浮き(knifeLiftMove / knifeLiftApplies / knifeNoLiftUntil)', () => {
+  it('割り当て: 地上=3段目の打ち上げ・空中=2段目の拾い(スラッシャーの追撃と同じ)・固まりは1段目', () => {
+    expect(knifeLiftMove(false)).toBe('s3');
+    expect(knifeLiftMove(true)).toBe('s2');
+    expect(knifeLiftMove(false)).toBe(slasherLiftMove(0, false, false));
+    expect(knifeLiftMove(true)).toBe(slasherLiftMove(1, false, true));
+    expect(KNIFE_HOLD_MOVE).toBe('s1');
+  });
+  it('技の最中(溜め・攻撃の振り)は浮かせない・技の後の硬直や移動の相は浮かせる', () => {
+    expect(knifeLiftApplies({ ...zombie }, NOW, GT, NOW)).toBe(true);
+    expect(knifeLiftApplies({ ...zombie, aiPhase: 'z-red-pause' }, NOW, GT, NOW)).toBe(false); // 溜め
+    expect(knifeLiftApplies({ ...zombie, aiPhase: 'z-bite1' }, NOW, GT, NOW)).toBe(false);     // 攻撃の振り
+    expect(knifeLiftApplies({ ...zombie, aiPhase: 'zrush', biteAt: GT + 300 }, NOW, GT, NOW)).toBe(false); // 噛みの構え
+    expect(knifeLiftApplies({ type: 'hunter', bossState: 'jump-windup' } as never, NOW, GT, NOW)).toBe(false); // ボスの技の最中
+    expect(knifeLiftApplies({ ...zombie, aiPhase: 'z-recover' }, NOW, GT, NOW)).toBe(true);
+    expect(knifeLiftApplies({ ...zombie, aiPhase: 'z-red-pause', stunUntil: GT + 1000 }, NOW, GT, NOW)).toBe(true); // 会心の気絶中は技ではない
+  });
+  it('爆発の窓(着地の後、浮いていた時間と同じ長さ)の中では地上から浮かない・空中の拾いは窓に関係なく浮く', () => {
+    expect(knifeLiftApplies({ ...zombie, brBlastNoLiftUntil: NOW + 1 }, NOW, GT, NOW)).toBe(false);
+    expect(knifeLiftApplies({ ...zombie, brBlastNoLiftUntil: NOW }, NOW, GT, NOW)).toBe(true);
+    expect(knifeLiftApplies({ ...zombie, brBlastNoLiftUntil: NOW + 500, brLiftUntil: NOW + 100 }, NOW, GT, NOW)).toBe(true);
+  });
+  it('コンボの後の固まらない時間の間は地上から浮かない(格闘と同じ)', () => {
+    expect(knifeLiftApplies({ type: 'driller', brLockNoHoldUntil: GT + 1 } as never, NOW, GT, NOW)).toBe(false);
+  });
+  it('この振りで既にカウンターの浮きが掛かった敵は浮かせ直さない(予算を2回使わない)', () => {
+    expect(knifeLiftApplies({ ...zombie, lastCounteredAt: NOW - 50, brLiftUntil: NOW + 500 }, NOW, GT, NOW - 100)).toBe(false);
+    expect(knifeLiftApplies({ ...zombie, lastCounteredAt: NOW - 150, brLiftUntil: NOW + 500 }, NOW, GT, NOW - 100)).toBe(true); // 前の振りのカウンター
+  });
+  it('窓の終わり=浮きの終わり+空中が始まってからの長さ(爆発の式)・前の窓より短くしない', () => {
+    expect(knifeNoLiftUntil({}, NOW + 570, NOW)).toBe(NOW + 1140);
+    expect(knifeNoLiftUntil({ brLiftUntil: NOW + 50, brBlastAirSince: NOW - 300 }, NOW + 400, NOW)).toBe(NOW + 400 + 700);
+    expect(knifeNoLiftUntil({ brBlastNoLiftUntil: NOW + 5000 }, NOW + 570, NOW)).toBe(NOW + 5000);
   });
 });

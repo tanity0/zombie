@@ -1649,3 +1649,45 @@ describe('格闘: 踵落とし(飛び蹴りの2発目の続きで下)', () => {
     expect(br().kickN).toBe(3);
   });
 });
+
+describe('格闘: コンボ中は最初に当てた敵を狙い続ける(社長指示2026-11-12)', () => {
+  /** 判定を解いて段が終わるまで(待機・つながりの受付の中)進める。 */
+  const finishStage = () => {
+    for (let k = 0; k < 80 && !br().resolved; k++) advance(10);
+    expect(br().connected).toBe(true);
+    for (let k = 0; k < 80 && br().phase !== 'idle'; k++) advance(10);
+  };
+  /** 敵 id を、プレイヤーの左 dx の所へ置き直す(いちばん近くへ寄せる)。 */
+  const putLeft = (id: string, dx: number) => {
+    const c = center();
+    useGameStore.setState(st => ({ enemies: st.enemies.map(e => (e.id === id ? { ...e, x: c.x - dx - e.width / 2, y: c.y - e.height / 2 } : e)) }));
+  };
+  it('2体が並んでいる時、別の敵の方が近くなっても2段目以降は最初に当てた敵へ向かう', () => {
+    setup(3);
+    useGameStore.setState({ enemies: [zombieAt(45, 0, 'a'), zombieAt(-70, 0, 'b')] });
+    useGameStore.getState().brawlerPress();
+    expect(br().targetId).toBe('a');
+    for (const want of [2, 3]) {
+      finishStage();
+      expect(br().comboTargetId).toBe('a');
+      putLeft('b', 20); // 狙いの固定が無ければ b を選ぶ近さ
+      expect(useGameStore.getState().brawlerPress()).toBe(true);
+      expect(br().stage).toBe(want);
+      expect(br().targetId, `stage ${want}`).toBe('a');
+      expect(br().dirX).toBeGreaterThan(0); // a の方(右)を向いている
+    }
+  });
+  it('狙いの敵が倒れたら、今までどおりいちばん近い敵へ・次に当てた敵を新しい狙いにする', () => {
+    setup(3);
+    useGameStore.setState({ enemies: [zombieAt(45, 0, 'a'), zombieAt(-70, 0, 'b')] });
+    useGameStore.getState().brawlerPress();
+    finishStage();
+    expect(br().comboTargetId).toBe('a');
+    useGameStore.setState(st => ({ enemies: st.enemies.filter(e => e.id !== 'a') }));
+    putLeft('b', 40);
+    expect(useGameStore.getState().brawlerPress()).toBe(true);
+    expect(br().targetId).toBe('b');
+    for (let k = 0; k < 80 && !br().resolved; k++) advance(10);
+    expect(br().comboTargetId).toBe('b');
+  });
+});

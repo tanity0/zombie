@@ -2,7 +2,7 @@
 // 浮きの中身(浮いている間は動けない・重さの区分・拾える回数の予算・空中の合図の絵)は格闘(§12〜§13・utils/brawlerCombo)と同じものを使う。
 // ここは格闘以外の入口(爆発・スラッシャー)が「どれだけ浮かせるか」を決める純関数だけを置く(store にも描画にも依存しない)。
 import {
-  brawlerAirborne, brawlerJuggleHeightRel, isBrawlerTechBusy,
+  brawlerAirborne, brawlerJuggleHeightRel, isBrawlerTechBusy, brawlerComboEndNoHoldNow,
   BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_PUSH, BRAWLER_JUGGLE_MIN_F, BRAWLER_JUGGLE_MIN_MS,
   type BrawlerJuggleFields, type BrawlerMoveKey,
 } from './brawlerCombo';
@@ -97,3 +97,39 @@ export const COUNTER_LIFT_MOVE: BrawlerMoveKey = 's4';
 export const counterLiftApplies = (
   e: Parameters<typeof isBrawlerTechBusy>[0], newHealth: number, gameTime: number,
 ): boolean => newHealth > 0 && !isBrawlerTechBusy(e, gameTime);
+
+/**
+ * ★ナイフの当たりの固まりと浮き(社長指示2026-11-12「あと近接でも敵の攻撃が止まる&浮くようにして」)。
+ * 中身は格闘と同じもの(固まり=brawlerLockOnHit・浮き=store の brawlerJugglePatch=区分の重さ・予算・ボスの止めの減衰)。
+ *  - 固まり=格闘の1段目と同じ長さ(止め=ナイフの今の止めの長さ+1段目の固まり)。溜め(予告中)は時計ごと止めて続きから(格闘と同じ道)。
+ *  - 浮き=地上は3段目の打ち上げ・空中は2段目の拾い(スラッシャーの追撃と同じ割り当て)。
+ *  - 社長裁定(同日「近接は止めるだけ」): 技の最中(溜めを含む)の敵は浮かせない・技は取り消さない。
+ */
+export const KNIFE_HOLD_MOVE: BrawlerMoveKey = 's1';
+export const knifeLiftMove = (airborne: boolean): BrawlerMoveKey => (airborne ? 's2' : 's3');
+/**
+ * ナイフの当たりで浮かせてよいか。呼び手は区分(終端の死神は brawlerJugglePatch が null)とレバーガードを別に見る。
+ *  - 技の最中(溜め・攻撃の振り)は浮かせない(isBrawlerTechBusy=格闘・カウンターの浮きと同じ述語)。
+ *  - コンボの後の固まらない時間の間は地上から浮かせない(格闘と同じ・空中の拾いは今どおり)。
+ *  - ★止めっぱなしにしない: 着地の後、浮いていた時間と同じ長さは地上から浮かない(爆発の浮きと同じ窓 brBlastNoLiftUntil を共有)。
+ *  - この振りで既にカウンターの浮きが掛かった敵(lastCounteredAt が振りの押下以降)は浮かせ直さない=予算を2回使わない。
+ * swingAt=この振りを押した時刻(Date.now)。
+ */
+export const knifeLiftApplies = (
+  e: Parameters<typeof isBrawlerTechBusy>[0] & BrawlerJuggleFields & { lastCounteredAt?: number; brLockNoHoldUntil?: number },
+  now: number, gameTime: number, swingAt: number,
+): boolean => {
+  if (isBrawlerTechBusy(e, gameTime)) return false;
+  if (e.lastCounteredAt !== undefined && e.lastCounteredAt >= swingAt) return false;
+  if (brawlerAirborne(e, now)) return true;
+  if (brawlerComboEndNoHoldNow(e, gameTime)) return false;
+  return now >= (e.brBlastNoLiftUntil ?? 0);
+};
+/**
+ * ナイフで浮かせた後の「地上から浮かない窓」の終わり(爆発と同じ式: 浮きの終わり+空中が始まってからの長さ)。
+ * prev=当たる前の敵・liftUntil=この当たりで書いた浮きの終わり。
+ */
+export const knifeNoLiftUntil = (prev: BrawlerJuggleFields, liftUntil: number, now: number): number => {
+  const airSince = brawlerAirborne(prev, now) ? (prev.brBlastAirSince ?? prev.brawlerLiftAt ?? now) : now;
+  return Math.max(prev.brBlastNoLiftUntil ?? 0, liftUntil + (liftUntil - airSince));
+};

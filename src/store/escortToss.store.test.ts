@@ -22,6 +22,8 @@ beforeEach(() => {
     enemies: [], gameTime: 100_000, activeEvent: null, escortFollowEnabled: true, // 蹴りは「連れて行く」オンの時だけ(v0.25.5065)
     camera: { x: px - 400, y: py - 300 }, viewZoom: 1,
     player: { ...s.player, lastDirection: { x: 1, y: 0 } },
+    // 蹴りは担当拠点を解放した兵士だけ(社長指示2026-11-12)。既定の段取りは全拠点を解放済みにしておく。
+    baseSites: s.baseSites.map(b => ({ ...b, status: 'captured' as const })),
   }));
 });
 const put = (dx: number, dy = 0, stunMs = 5000) => {
@@ -69,6 +71,32 @@ describe('兵士の蹴り飛ばし v3.1', () => {
     put(300, -40);
     step(16);
     expect(useGameStore.getState().escortKick).not.toBeNull();
+  });
+  it('担当拠点が未解放の兵士は蹴らない/解放すれば蹴る(社長指示2026-11-12)', () => {
+    useGameStore.setState(s => ({ baseSites: s.baseSites.map(b => ({ ...b, status: 'open' as const })) }));
+    put(300, -40);
+    run(600);
+    expect(useGameStore.getState().escortKick).toBeNull();
+    useGameStore.setState(s => ({ enemies: [], baseSites: s.baseSites.map(b => ({ ...b, status: 'captured' as const })) }));
+    put(300, -40);
+    step(16);
+    expect(useGameStore.getState().escortKick).not.toBeNull();
+  });
+  it('拠点表が空の通路ステージは今までどおり蹴る', () => {
+    useGameStore.setState({ baseSites: [], corridorMode: true });
+    put(300, -40);
+    step(16);
+    expect(useGameStore.getState().escortKick).not.toBeNull();
+  });
+  it('進行中の蹴りは、途中で担当拠点が未解放へ戻っても最後までやる', () => {
+    const id = put(300, -40);
+    step(16);
+    const k = useGameStore.getState().escortKick!;
+    expect(k).not.toBeNull();
+    useGameStore.setState(s => ({ baseSites: s.baseSites.map(b => ({ ...b, status: 'open' as const })) }));
+    run(ESCORT_KICK_TO_HIT_MS + 60);
+    expect(useGameStore.getState().escortKick?.aborted ?? false).toBe(false);
+    expect(enemy(id).escortToss).toBeDefined();
   });
   it('画面内の気絶中の敵へ兵士が0.5秒で背後へ跳び、蹴って、敵がプレイヤーの手前まで滑って止まる(気絶はそのまま)', () => {
     const id = put(300, -40);
