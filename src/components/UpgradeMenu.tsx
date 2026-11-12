@@ -1,14 +1,18 @@
 import React, { useState } from 'react';
+import { shallow } from 'zustand/shallow';
 import NoBounceScroller from './NoBounceScroller';
 import { useGameStore, activeConsumableCount } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
 import { hasEquipIcon, equipIconName, equipmentById } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
 // v0.25.3499: スキルの1枚シート(入っていればドット絵アイコン、無ければ従来の絵文字)。
-import { useSkillIconSheet } from '../utils/useSkillIconSheet';
+import { useSkillIconSheet, type SkillIconSheet } from '../utils/useSkillIconSheet';
 import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
 import { SKILLS, RARITY_LABEL, skillIcon } from '../data/campaign';
 import { runBuildCapacity, rerollPrice, MAX_BANISH_PER_RUN } from '../utils/runSkillDraft';
+import { runSkillDisplayCap, skillLevelTone } from '../utils/runSkillLevelLabel';
+import { SKILL_RARITY_RING } from './skillRarityRing';
+import type { SkillKey } from '../types/game';
 import type { UpgradeOption } from '../types/game';
 import { PixelIcon } from './PixelIcon';
 import { statBadge } from '../utils/upgradeUtils';
@@ -33,6 +37,14 @@ const EquipIcon: React.FC<{ defId: string }> = ({ defId }) => {
   );
 };
 
+// スキルアイコン1個: ①単体ファイルのアイコン(POI報酬3種) ②1枚シート ③絵文字、の順に優先。
+const SkillGlyph: React.FC<{ skillKey: SkillKey; size: number; sheet: SkillIconSheet | null }> = ({ skillKey, size, sheet }) => {
+  const single = skillSingleIconName(skillKey);
+  if (single) return <img src={spritePath(single)} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />;
+  const st = sheet && hasSkillIcon(skillKey) ? skillIconStyle(skillKey, sheet.url, size, sheet) : null;
+  return st ? <span style={st} aria-hidden /> : <>{skillIcon(skillKey)}</>;
+};
+
 const UpgradeMenu: React.FC = () => {
   const skillSheet = useSkillIconSheet(); // v0.25.3499: 素材が無ければ null=絵文字のまま
   const upgradeOptions = useGameStore(state => state.upgradeOptions);
@@ -41,6 +53,10 @@ const UpgradeMenu: React.FC = () => {
   // React再描画規律: いずれも「毎フレーム変わらない」プリミティブ/小配列だけを購読する
   // (upgradeOptions自体も既存どおりレベルアップ時にしか変わらない)。
   const runBuild = useGameStore(state => state.runBuild);
+  // 社長指示2026-11-12: 上部の「取得済み」段。runBuild(取得順)に並ぶ各スキルの今のLvと、
+  // この出撃で届く上限(所持Lvが天井=runLevelCap)。数値だけの小配列を shallow で購読する。
+  const ownedRunLevels = useGameStore(s => s.runBuild.map(k => s.player.skillLevels?.[k] ?? 1), shallow);
+  const ownedRunCaps = useGameStore(s => s.runBuild.map(k => runSkillDisplayCap(k, s.player.skillLevels?.[k] ?? 1, s.ownedSkillLevels)), shallow);
   const straps = useGameStore(state => state.player.straps);
   const rerollsUsedThisRun = useGameStore(state => state.rerollsUsedThisRun);
   const vanishedCount = useGameStore(state => state.vanishedSkills.length);
@@ -92,6 +108,32 @@ const UpgradeMenu: React.FC = () => {
             {straps}
           </span>
         </div>
+        {/* 社長指示2026-11-12: 取得済みスキル(取得順)。各アイコン+「今のLv/この出撃で届く上限」。折り返して収める。
+            左端は選択肢カードの中身(px-3 + カードの p-3 = 24px)にそろえる=px-6。サブタイトルとの間は約8px(ヘッダの pb-3 から -mt-1)。
+            上限に達したスキルは今のLvを琥珀(ui-acc-text)。 */}
+        {isSkillDraft && runBuild.length > 0 && (
+          <div className="px-6 pb-3 -mt-1 shrink-0">
+            <p className="text-[11px] text-white/55 tracking-[0.2em] mb-1.5">取得済み</p>
+            <div className="flex flex-row flex-wrap gap-x-3 gap-y-1.5">
+              {runBuild.map((k, i) => {
+                const lv = ownedRunLevels[i] ?? 1;
+                const cap = ownedRunCaps[i] ?? 1;
+                const atMax = skillLevelTone(lv, cap) === 'max';
+                return (
+                  <div key={k} className="inline-flex items-center gap-1" title={SKILLS[k].name}>
+                    <span className={`w-5 h-5 shrink-0 flex items-center justify-center text-[11px] leading-none rounded-md border ${SKILL_RARITY_RING[SKILLS[k].rarity]} bg-purple-400/10 overflow-hidden`}>
+                      <SkillGlyph skillKey={k} size={18} sheet={skillSheet} />
+                    </span>
+                    <span className="text-[11px] tabular-nums leading-none">
+                      <span className={`font-bold ${atMax ? 'ui-acc-text' : 'text-white'}`}>{lv}</span>
+                      <span className="text-white/40">/{cap}</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開・選択肢の見逃し対策) */}
         <NoBounceScroller className="px-3 pb-4 flex flex-col gap-2 overflow-y-auto overflow-x-hidden min-h-0 overscroll-contain touch-pan-y no-scrollbar">
           {upgradeOptions.map(upgrade => {
@@ -115,14 +157,7 @@ const UpgradeMenu: React.FC = () => {
                     className="flex-1 min-w-0 text-left flex items-start gap-3 active:opacity-70"
                   >
                     <div className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-purple-400/10 overflow-hidden">
-                      {(() => {
-                        // ①単体ファイルのアイコン(POI報酬3種) ②1枚シート ③絵文字、の順に優先。
-                        const single = skillSingleIconName(skillKey);
-                        if (single) return <img src={spritePath(single)} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />;
-                        const st = skillSheet && hasSkillIcon(skillKey)
-                          ? skillIconStyle(skillKey, skillSheet.url, 36, skillSheet) : null;
-                        return st ? <span style={st} aria-hidden /> : skillIcon(skillKey);
-                      })()}
+                      <SkillGlyph skillKey={skillKey} size={36} sheet={skillSheet} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 flex-wrap">

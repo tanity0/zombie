@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5559', items: [
+    'プレイ中のスキルのアイコンの右上に、今のレベルが出る。上限まで育てたものは琥珀色',
+    'レベルアップの画面の上に、取得済みのスキルと「今のレベル/解放されている上限」が並ぶ',
+  ] },
   { version: '0.25.5558', items: [
     'ドッグの熟練度は、拾ってきた数でも育つ',
     'シールドの熟練度は、攻撃を防いだ数でも育つ',
