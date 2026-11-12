@@ -114,7 +114,8 @@ import {
 import { computeWarpLandingPoint, computeWarpFlyinStart } from '../utils/rescueQuestWarp'; // 二人組クエストv2(§2-8・B4)
 import { pushShieldRect, clampShieldPlacementRect } from '../world/shieldPush'; // ★B6(盾押し・§6): 純関数
 import { PVP_DAMAGE_SCALE, pvpHitDamageForGate } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
-import { DOG_EXCLUDED_TYPES, dogEligiblePickups, dogTrackTarget, dogLostReturnPatch } from '../utils/dogFetch';
+import { isPlayerShield, noteShieldBlockMastery, enemyBulletBlockKey } from '../utils/shieldMastery';
+import { DOG_EXCLUDED_TYPES, dogEligiblePickups, dogTrackTarget, dogLostReturnPatch, noteDogFetchMastery } from '../utils/dogFetch';
 import { HERO_DOG_FETCH_ARRIVE_PX, HERO_DOG_FETCH_TIMEOUT_MS, HERO_DOG_FETCH_RETURN_MS } from '../utils/heroDog';
 import { HIT_BLINK_TYPES } from '../utils/hitBlink';
 // healthDropMult は utils/gunKillDrops.ts へ移した(品質監査#4)
@@ -11190,6 +11191,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   spawnBurst(p.x + 8, p.y + 8, '#cbd5e1', p.type === 'strap' ? 3 : 5);
                 });
                 eligiblePickups.forEach(p => collectPickup(p.id));
+                // 熟練度: ドッグは拾った数で貯める(社長指示2026-11-12)。英雄の犬の代行もドッグの仕事(CDも dog)なので 'dog' に貯める。
+                noteDogFetchMastery(eligiblePickups.length);
               }
               activeFetch.collected = true;
               if (activeFetch.heroDog) { activeFetch.finishAt = nowMs + HERO_DOG_FETCH_RETURN_MS; clearHeroDogFetch(); }
@@ -15520,7 +15523,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             for (const k of [...shieldHitRef.current.keys()]) {
               if (!liveIds.has(k.slice(0, k.indexOf(':')))) shieldHitRef.current.delete(k);
             }
-            const shieldRects = shields.map(s => ({ id: s.id, x: s.x, y: s.y, width: s.width, height: s.height }));
+            const shieldRects = shields.map(s => ({ id: s.id, x: s.x, y: s.y, width: s.width, height: s.height, mine: isPlayerShield(s) })); // mine=熟練度を貯める盾(プレイヤー本人の物)
             const wallRects = shieldRects.map(s => ({ x: s.x, y: s.y, width: s.width, height: s.height }));
             const dmgByShield = new Map<string, number>();
 
@@ -15576,6 +15579,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (rectsOverlap(bbox, s)) {
                   removeProjectile(b.id);
                   dmgByShield.set(s.id, (dmgByShield.get(s.id) ?? 0) + shieldBulletDamage(b.ownerType));
+                  // 熟練度: プレイヤー本人の盾が敵弾を止めた1回(散弾の粒は同じ1発=撃ち手+作られた時刻で1回・utils/shieldMastery)。
+                  if (s.mine) noteShieldBlockMastery(enemyBulletBlockKey(b), Date.now());
                   spawnBurst(b.x + b.width / 2, b.y + b.height / 2, '#cbd5e1', 4);
                   break;
                 }

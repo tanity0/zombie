@@ -227,6 +227,7 @@ import { rescueSpawnCandidates } from '../utils/rescueQuestSpawn';
 // research/STAGE_DIFFICULTY.md: ステージ難度の階段。係数の判断(計測路なら1.0)はこのヘルパ1本。
 import { stageMobDiffMults, stageScoreMult } from '../utils/stageDiffMults';
 import { recoverMasteryPending, masteryIgnoredRun, masteryMultTable, masteryLoadoutMult, loadMastery, masteryMultOf, masteryXpAmount, burnRefreshMastery, objectMasteryMult, guardianMasteryMult, meleeMasteryKeyOf } from '../utils/mastery';
+import { isPlayerShield, noteShieldBlockMastery, resetShieldBlockMastery } from '../utils/shieldMastery';
 import { beginMasteryRun, withMastery, currentMasterySource, currentMasteryExecute, currentMasteryAppliedMult, noteMasteryDamage } from '../utils/masteryRun';
 import { isGrowingMasteryKey, type MasteryKey } from '../data/mastery';
 import { isBotRun } from '../utils/botFlag';
@@ -8499,6 +8500,11 @@ export const noteShieldGuard = (shield: Rect, g: ShieldGuardInput = {}): void =>
     ...(attackerTypeOf(g.attacker) !== undefined ? { type: attackerTypeOf(g.attacker) } : {}),
   };
   const nowMs = Date.now();
+  // 熟練度: プレイヤー本人の盾が防いだら 'shield' へ(1つの技で1回=演出と同じ「技の1回」のキー・utils/shieldMastery)。守護霊の盾は貯めない。
+  {
+    const sp0 = useGameStore.getState().projectiles.find(p => p.weaponType === 'shield' && p.hostile !== true);
+    if (isPlayerShield(sp0)) noteShieldBlockMastery(entry.key !== undefined && g.ownerId !== undefined ? `${entry.key}:${g.ownerId}` : (entry.key ?? g.ownerId), nowMs);
+  }
   useGameStore.setState(st => {
     const idx = st.projectiles.findIndex(p => p.weaponType === 'shield' && p.hostile !== true);
     if (idx < 0) return st;
@@ -18099,7 +18105,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 設置型シールドの矩形(ジャンプ攻撃が当たると攻撃キャンセル=その場に落ちる、に使う)。
       const shieldRects = state.projectiles
         .filter(p => p.weaponType === 'shield')
-        .map(p => ({ x: p.x, y: p.y, width: p.width, height: p.height }));
+        .map(p => ({ x: p.x, y: p.y, width: p.width, height: p.height, mine: isPlayerShield(p) })); // mine=熟練度を貯める盾(プレイヤー本人の物)
       // 研究所スキンの壁オブジェクト(区画生成)。プレイヤー周辺1ビューポート分を1回だけ問い合わせて使い回す
       // (敵は湧き=ビューポート端〜、遠方はカリングされるのでこの範囲で十分)。移動/視線の両方に使用。
       const labWallRects = labTheme
@@ -19366,6 +19372,8 @@ export const useGameStore = create<GameState>((set, get) => ({
               const blocked = Math.abs(cmoved.x - rawX) > 0.5 || Math.abs(cmoved.y - rawY) > 0.5;
               if (hitShield || blocked) {
                 if (hitShield) shieldBlocks.push({ x: cmoved.x + enemy.width / 2, y: cmoved.y + enemy.height / 2, kind: 'dash' });
+                // 熟練度: 突進を止めた1回(当たった瞬間に技が止まる=1回)。プレイヤー本人の盾に当たった時だけ。
+                if (hitShield && shieldRects.some(s => s.mine && rectsOverlap({ x: cmoved.x, y: cmoved.y, width: enemy.width, height: enemy.height }, s))) noteShieldBlockMastery(`${enemy.type}:${enemy.id}:g-dash-charge`, Date.now());
                 return { ...enemy, ...phaseFields, x: cmoved.x, y: cmoved.y, vx: 0, vy: 0, aiPhase: 'g-dash-recover', aiPhaseUntil: atkUntil(dashRecoverMs) };
               }
               return { ...enemy, ...phaseFields, vx: cvx, vy: cvy, x: cmoved.x, y: cmoved.y };
@@ -19391,6 +19399,8 @@ export const useGameStore = create<GameState>((set, get) => ({
               const jvx = ((jtx - jfx) * jDs) / jDur, jvy = ((jty - jfy) * jDs) / jDur;
               if (shieldRects.length > 0 && shieldRects.some(s => rectsOverlap({ x: jnx, y: jny, width: enemy.width, height: enemy.height }, s))) {
                 shieldBlocks.push({ x: jnx + enemy.width / 2, y: jny + enemy.height / 2, kind: 'jump' });
+                // 熟練度: 跳びかかりを止めた1回(当たった瞬間に技が止まる=1回)。プレイヤー本人の盾に当たった時だけ。
+                if (shieldRects.some(s => s.mine && rectsOverlap({ x: jnx, y: jny, width: enemy.width, height: enemy.height }, s))) noteShieldBlockMastery(`${enemy.type}:${enemy.id}:g-jump-air`, Date.now());
                 return { ...enemy, ...phaseFields, x: jnx, y: jny, vx: 0, vy: 0, aiPhase: 'g-jump-recover', aiStartedAt: gameTime, aiPhaseUntil: atkUntil(jumpRecoverMs) };
               }
               if (jt >= 1) {
@@ -26277,6 +26287,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     pendingBlastLifts.length = 0; blastHitIds.clear(); // ★爆発の浮きの待ち行列を前ランへ持ち越さない(§14)
     resetAirMeleeHit(); BRC.resetAirHits(); // 空中の敵への倍率の数え(§16)も前ランへ持ち越さない
     shieldChargedKeys.clear(); // research/SHIELD_BLOCK.md §8: 継続技の「削った」記録を捨てる
+    resetShieldBlockMastery(); // 熟練度: 盾の「同じ攻撃の続き」の記録を捨てる(utils/shieldMastery)
     brawlerBeamCuts.clear(); // 構えで中断させた光線の合図(research/BRAWLER.md §12-3d)も前ランへ持ち越さない
     impactQueue = []; impactLastFiredAt.clear(); // 揺れの整理: 前ランの未解決の命中・間隔を持ち越さない
     cutinShownThisRun.clear(); // 紹介カットインの既出はランごと(v0.25.4302)

@@ -74,3 +74,51 @@ describe('狙いが消えた犬は戻り切るまで同じ仕事のまま(社長
     expect(p).toEqual({ aborted: true, collected: true, targetId: null, finishAt: 10_580 });
   });
 });
+
+// ── 熟練度: ドッグは拾った数で貯める(社長指示2026-11-12)。噛みつきの与ダメでも今どおり貯まる(両方)。 ──
+import { DOG_MASTERY_XP_PER_PICKUP, dogFetchMasteryXp, noteDogFetchMastery } from './dogFetch';
+import { beginMasteryRun, getPendingMastery, getMasteryReport } from './masteryRun';
+
+const GAME_LOOP_SRC = Object.values(import.meta.glob<string>('../hooks/useGameLoop.ts', { query: '?raw', import: 'default', eager: true }))[0];
+
+describe('ドッグの熟練度(拾った数で貯める)', () => {
+  it('1個拾うと 300 が dog に貯まる(重みは掛けない)。複数なら個数ぶん', () => {
+    expect(DOG_MASTERY_XP_PER_PICKUP).toBe(300);
+    beginMasteryRun({ ignored: false });
+    noteDogFetchMastery(1);
+    expect(getPendingMastery()).toEqual({ dog: 300 });
+    noteDogFetchMastery(3);
+    expect(getPendingMastery()).toEqual({ dog: 1200 });
+    expect(getMasteryReport()).toEqual({ dog: 1200 });
+  });
+  it('0個(何も拾えなかった)では貯まらない', () => {
+    beginMasteryRun({ ignored: false });
+    noteDogFetchMastery(0);
+    expect(dogFetchMasteryXp(-1)).toBe(0);
+    expect(dogFetchMasteryXp(Number.NaN)).toBe(0);
+    expect(getPendingMastery()).toEqual({});
+  });
+  it('無視する出撃では pending へ足さない(報告用の表には足す=与ダメと同じ道)', () => {
+    beginMasteryRun({ ignored: true });
+    noteDogFetchMastery(1);
+    expect(getPendingMastery()).toEqual({});
+    expect(getMasteryReport()).toEqual({ dog: 300 });
+  });
+  it('配線: 回収が成立した所で1回だけ呼ぶ。中止(引き返し)の枝・幻影のドッグ・次の狙い選びの枝では呼ばない', () => {
+    const calls = GAME_LOOP_SRC.split('noteDogFetchMastery(').length - 1;
+    expect(calls).toBe(1);
+    const at = GAME_LOOP_SRC.indexOf('noteDogFetchMastery(eligiblePickups.length)');
+    const aborted = GAME_LOOP_SRC.indexOf('if (activeFetch?.aborted) {');
+    const active = GAME_LOOP_SRC.indexOf('} else if (activeFetch) {', aborted);
+    const collect = GAME_LOOP_SRC.indexOf('eligiblePickups.forEach(p => collectPickup(p.id));', active);
+    const nextTarget = GAME_LOOP_SRC.indexOf('} else if (gameTime >= dogReadyAt) {', active);
+    expect(aborted).toBeGreaterThan(0);
+    expect(active).toBeGreaterThan(aborted);
+    expect(collect).toBeGreaterThan(active);
+    expect(at).toBeGreaterThan(collect);
+    expect(at).toBeLessThan(nextTarget);
+  });
+  it('噛みつきの与ダメでも今どおり dog に貯まる(withMastery(\'dog\') のまま)', () => {
+    expect(GAME_LOOP_SRC).toContain("withMastery('dog', () => damageEnemy(enemy.id, dogDmg");
+  });
+});

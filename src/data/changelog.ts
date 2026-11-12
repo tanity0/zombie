@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5558', items: [
+    'ドッグの熟練度は、拾ってきた数でも育つ',
+    'シールドの熟練度は、攻撃を防いだ数でも育つ',
+  ] },
   { version: '0.25.5557', items: [
     '攻撃の途中で気絶させたり浮かせたりした敵は、振りかけた体を引き戻してから立ち姿に戻る',
   ] },

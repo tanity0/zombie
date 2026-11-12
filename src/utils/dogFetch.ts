@@ -5,6 +5,27 @@
 // (2本あると片方だけ調整されて必ずズレる——タレット・地雷でも同じ方針を採った)。
 // 仕様の正は research/SAME_ARENA.md §3-d-4。
 import type { Pickup, PickupType } from '../types/game';
+import { noteMasteryDamage } from './masteryRun';
+
+/**
+ * ドッグの熟練度: 拾い物を1個拾う(回収が成立する)たびに 'dog' へ足す量(社長指示2026-11-12・叩き台)。
+ * 区分の重み(MASTERY_XP_WEIGHT)は掛けない。噛みつきの与ダメで貯まる分(withMastery('dog'))とは別に足す=両方で貯まる。
+ */
+export const DOG_MASTERY_XP_PER_PICKUP = 300;
+
+/** 拾った数ぶんの熟練度の量(0以下・非数は0)。 */
+export const dogFetchMasteryXp = (collectedCount: number): number =>
+  Number.isFinite(collectedCount) && collectedCount > 0 ? Math.floor(collectedCount) * DOG_MASTERY_XP_PER_PICKUP : 0;
+
+/**
+ * ドッグ(プレイヤーのサブウェポン)が拾い物を回収した時に呼ぶ。与ダメで貯めるのと同じ記録の道
+ * (masteryRun の pending=リザルトの MASTERY / 報告用の表)へ載せる。中止(狙いが消えた・引き返し)では呼ばない。
+ * 幻影・守護霊のドッグからは呼ばない。
+ */
+export const noteDogFetchMastery = (collectedCount: number): void => {
+  const xp = dogFetchMasteryXp(collectedCount);
+  if (xp > 0) noteMasteryDamage('dog', xp);
+};
 
 /**
  * ドッグが**触らない**拾い物。
