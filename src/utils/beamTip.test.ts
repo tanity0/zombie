@@ -130,4 +130,104 @@ describe('beamTip', () => {
     expect(lay.core).toEqual([]);
     expect(beamTipParticles(z, still)).toEqual([]);
   });
+
+  // ---- 敵の光線('outside')・旗・上限(社長 2026-11-12「他のレーザー系も統一で」→ 判定の外に赤/紫のベタ面を作らない) ----
+  const MIMIR: BeamTipInput = {
+    len: 600, haloW: 68, coreW: 34, haloAlpha: 0.45, coreAlpha: 0.85, dot: 3, time: 5000, seed: beamTipSeed('mimir:laser'),
+    placement: 'outside', bigParticles: false,
+  };
+  const SNIPE: BeamTipInput = { ...MIMIR, haloW: 80, coreW: 4, haloAlpha: 0.35, coreAlpha: 0.9, seed: beamTipSeed('b:snipe'), narrowBand: true };
+  const THIN: BeamTipInput = { ...MIMIR, haloW: 8, coreW: 3, haloAlpha: 0.75, coreAlpha: 1, seed: 3 };
+  const OUTS = [MIMIR, SNIPE, THIN];
+
+  it("'outside': 判定の端より内側には何も足さない・外の帯は全部点線・幅は帯の60%(狭い帯は40%)以下・濃さは本体の0.5以下", () => {
+    for (const base of OUTS) {
+      for (let t = 0; t < 3000; t += 31) {
+        const lay = beamTipLayout({ ...base, time: t });
+        expect(lay.halo.length).toBeGreaterThan(0);
+        for (const g of [...lay.halo, ...lay.core]) expect(g.s0).toBeGreaterThanOrEqual(base.len);
+        for (const g of lay.halo) {
+          expect(g.dither).toBe(true); // 抜けの無い帯の段は外に無い
+          expect(g.w).toBeLessThanOrEqual(base.haloW * (base.narrowBand ? 0.4 : 0.6) + 1e-9);
+          expect(g.alpha).toBeLessThanOrEqual(base.haloAlpha * 0.5 + 1e-9);
+          expect(Math.abs(g.off) + g.w / 2).toBeLessThanOrEqual(base.haloW * (base.narrowBand ? 0.4 : 0.6) / 2 + 1e-9);
+        }
+        // 抜けの無い物は芯だけ(2ドット以下の細い線が、端から4ドットまで)
+        for (const g of lay.core) {
+          expect(g.w).toBeLessThanOrEqual(6);
+          expect(g.s1 - base.len).toBeLessThanOrEqual(12);
+        }
+      }
+    }
+  });
+
+  it("'outside': 外へ出る長さの上限(帯=帯の幅×0.5 と 30px の小さい方・粒=その1.5倍)", () => {
+    for (const base of OUTS) {
+      const lim = Math.max(6, Math.min(base.haloW * 0.5, 30));
+      for (let t = 0; t < 4000; t += 13) {
+        for (const ang of [0, 0.7, Math.PI / 2, 2.4]) {
+          const ux = Math.cos(ang), uy = Math.sin(ang);
+          const inp = { ...base, time: t };
+          const lay = beamTipLayout(inp);
+          for (const g of lay.halo) expect(g.s1 - base.len).toBeLessThanOrEqual(lim);
+          const o: BeamTipOrigin = { ax: 50, ay: -80, ux, uy, len: base.len };
+          const reach = Math.max(lim * 1.5, lay.tipEnd - base.len + 6);
+          for (const c of beamTipCells(o.ax, o.ay, ux, uy, [...lay.halo, ...lay.core], 3, 999, 0.7)) {
+            const along = (c.x + c.w / 2 - o.ax) * ux + (c.y + c.h / 2 - o.ay) * uy;
+            expect(along).toBeGreaterThanOrEqual(base.len - 3 * 1.5);
+          }
+          for (const p of beamTipParticles(inp, () => o)) {
+            const along = (p.x + p.size / 2 - o.ax) * ux + (p.y + p.size / 2 - o.ay) * uy;
+            expect(along).toBeGreaterThan(base.len);
+            expect(along - base.len).toBeLessThanOrEqual(reach + 3);
+            expect(p.size).toBe(3); // 敵の光線は1ドットの粒だけ
+          }
+        }
+      }
+    }
+    // 太い帯ほど相対的に短い: ミーミル(幅68)も30pxで止まる
+    const m = beamTipLayout(MIMIR);
+    expect(m.halo[m.halo.length - 1].s1 - MIMIR.len).toBe(30);
+  });
+
+  it('粒の上限を下げると、その数までしか出ない', () => {
+    let maxSeen = 0;
+    for (let t = 0; t < 6000; t += 11) {
+      const n = beamTipParticles({ ...MIMIR, time: t }, () => ({ ax: 0, ay: 0, ux: 1, uy: 0, len: 600 }), 8).length;
+      expect(n).toBeLessThanOrEqual(8);
+      maxSeen = Math.max(maxSeen, n);
+    }
+    expect(maxSeen).toBe(8);
+  });
+
+  it('先端を出さない旗で何も出ない', () => {
+    const h = { ...MIMIR, hidden: true };
+    const lay = beamTipLayout(h);
+    expect(lay.halo).toEqual([]);
+    expect(lay.core).toEqual([]);
+    expect(beamTipParticles(h, still)).toEqual([]);
+    expect(beamTipParticles({ ...GOLD, hidden: true }, still)).toEqual([]);
+  });
+
+  it('金環の段は v0.25.5526 と同じ(敵の光線の追加で変わらない)', () => {
+    const lay = beamTipLayout({ ...GOLD, time: 0 });
+    expect([lay.haloBodyLen, lay.coreBodyLen, lay.tipEnd]).toEqual([375, 397.5, 426]);
+    expect(lay.halo.map(g => [g.s0, g.s1, g.w, g.off])).toEqual([[375, 390, 18, 0], [390, 399, 12, -3], [399, 417, 6, -3], [417, 420, 3, -3]]);
+    expect(lay.core.map(g => [g.s0, g.s1, g.w, g.off])).toEqual([[397.5, 412.5, 7 * 0.7, 0], [412.5, 421.5, 3, 0], [421.5, 426, 3, 0]]);
+  });
+
+  it('太い光線の刻み(0.7ドット)でも斜めに穴が空かない(1段目の帯の中のドットが全部埋まる)', () => {
+    const seg = [{ s0: 600, s1: 660, w: 30, off: 0, alpha: 1, dither: false }];
+    for (const ang of [0.3, 0.785, 1.1, 2.0]) {
+      const ux = Math.cos(ang), uy = Math.sin(ang);
+      const cells = beamTipCells(0, 0, ux, uy, seg, 3, 9999, 0.7);
+      const on = new Set<string>();
+      for (const c of cells) for (let y = c.y; y < c.y + c.h; y += 3) on.add(`${c.x / 3},${y / 3}`);
+      // 帯の中心線から十分内側(1ドット以上内)のドットは必ず埋まる
+      for (let s = 606; s < 654; s += 1) for (let l = -10; l <= 10; l += 1) {
+        const gx = Math.floor((ux * s - uy * l) / 3), gy = Math.floor((uy * s + ux * l) / 3);
+        expect(on.has(`${gx},${gy}`)).toBe(true);
+      }
+    }
+  });
 });

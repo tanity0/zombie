@@ -53,7 +53,25 @@ export interface BeamTipInput {
   /** 光線ごとの種。 */
   seed: number;
   placement: BeamTipPlacement;
+  /** 細る区間の長さ=光の帯の幅の何倍か(省略時 2.5=金環・アイレーザー。敵の光線は控えめに 2)。 */
+  lenMul?: number;
+  /** 2ドットの粒を出すか(省略時 true。敵の光線は小さな粒だけ=false)。 */
+  bigParticles?: boolean;
+  /** 先端を出さない(盾の向こうで先端が見えない時など)。true なら段も粒も空。 */
+  hidden?: boolean;
+  /** 'outside' 専用: 幅の広い赤い帯で芯が細い物(懲罰狙撃など)。外へほどける帯の点線を帯の40%以下に抑える(既定は60%以下)。 */
+  narrowBand?: boolean;
 }
+
+/** 'outside'(敵の光線)で判定の外へ出してよい形の上限。 */
+export const BEAM_TIP_OUT_LEN_MUL = 0.5;      // 細る区間=帯の幅×0.5 …
+export const BEAM_TIP_OUT_LEN_MAX_PX = 30;    // … と 30px の小さい方
+export const BEAM_TIP_OUT_BAND_FRAC = 0.6;    // 外の帯の点線の幅=帯の60%以下から(narrowBand は40%)
+export const BEAM_TIP_OUT_BAND_FRAC_NARROW = 0.4;
+export const BEAM_TIP_OUT_BAND_ALPHA = 0.5;   // 外の帯の点線の濃さ=本体の帯の0.5以下から
+export const BEAM_TIP_OUT_BAND_STEPS: readonly number[] = [1, 0.72, 0.48, 0.28];
+export const BEAM_TIP_OUT_CORE_ALPHA: readonly number[] = [0.9, 0.7, 0.5];
+export const BEAM_TIP_OUT_REACH_MUL = 1.5;    // 粒の届く先=細る区間×1.5 まで(判定の端から)
 
 /** 段の1つ(根元からの距離 s0→s1・全幅 w・射線からの中心のずれ off・濃さ・点線か)。 */
 export interface BeamTipSeg { s0: number; s1: number; w: number; off: number; alpha: number; dither: boolean }
@@ -133,16 +151,18 @@ export const beamTipLayout = (p: BeamTipInput): BeamTipLayout => {
   const seed = Math.floor(p.seed) | 0;
   const pulseMs = BEAM_TIP_PULSE_MIN_MS + (BEAM_TIP_PULSE_MAX_MS - BEAM_TIP_PULSE_MIN_MS) * hash01(seed, 0, 1);
   const phaseMs = hash01(seed, 0, 2) * pulseMs;
-  const L0 = len > 0 && dot > 0 ? Math.max(dot * 4, Math.round((haloW * BEAM_TIP_LEN_MUL) / dot) * dot) : 0;
+  if (p.placement === 'outside') return beamTipLayoutOutside(p, seed, pulseMs, phaseMs);
+  const L0 = len > 0 && dot > 0 ? Math.max(dot * 4, Math.round((haloW * (p.lenMul ?? BEAM_TIP_LEN_MUL)) / dot) * dot) : 0;
   const L = p.placement === 'inside' ? Math.min(L0, Math.max(0, len) * 0.4) : L0;
   const hS0 = p.placement === 'inside' ? Math.max(0, len) - L : Math.max(0, len);
   const hS1 = hS0 + L;
-  const cS0 = hS0 + L * 0.5; // 芯は帯より遅く細り始め、帯より少し先まで届く
+  // 芯は帯より遅く細り始め、帯より少し先まで届く。'outside' は判定の端から芯も細り始める(端の先に芯の切れ目を作らない)。
+  const cS0 = p.placement === 'inside' ? hS0 + L * 0.5 : hS0;
   const cS1 = hS1 + dot * BEAM_TIP_CORE_REACH_DOTS;
   const cyc = Math.floor((p.time - phaseMs) / pulseMs);
   const extended = p.time - phaseMs - cyc * pulseMs < pulseMs / 2;
   const base = { L, haloBodyLen: hS0, coreBodyLen: cS0, tipEnd: cS1, pulseMs, phaseMs, extended };
-  if (!(len > 0) || !(dot > 0) || (p.haloAlpha <= 0.001 && p.coreAlpha <= 0.001)) return { ...base, halo: [], core: [] };
+  if (p.hidden || !(len > 0) || !(dot > 0) || (p.haloAlpha <= 0.001 && p.coreAlpha <= 0.001)) return { ...base, halo: [], core: [] };
   const halo = p.haloAlpha > 0.001 ? beamTipSegments(hS0, hS1, haloW, dot, p.haloAlpha, BEAM_TIP_HALO_ALPHA, seed, 1) : [];
   const core = p.coreAlpha > 0.001 ? beamTipSegments(cS0, cS1, coreW, dot, p.coreAlpha, BEAM_TIP_CORE_ALPHA, seed, 2) : [];
   // 伸びている間だけ、最後の段の先に1ドット(縮む瞬間にこれが粒として離れる)。点線にしない。
@@ -152,15 +172,53 @@ export const beamTipLayout = (p: BeamTipInput): BeamTipLayout => {
 };
 
 /**
+ * 敵の光線('outside')。len=判定の端(丸い端の光線は丸の頂点)。判定の外に帯の色のベタ面を足さない:
+ * 外へ出すのは ①点線にほどけた帯(幅は帯の60%以下=narrowBandは40%以下・濃さは本体の帯の0.5以下から落ちる)
+ * ②細い芯が2〜3ドット(+伸び縮みの1ドット)先へ届く分 ③ちぎれた1ドットの粒 だけ。判定の端より内側には何も足さない。
+ */
+const beamTipLayoutOutside = (p: BeamTipInput, seed: number, pulseMs: number, phaseMs: number): BeamTipLayout => {
+  const { len, haloW, coreW, dot } = p;
+  const L = len > 0 && dot > 0
+    ? Math.max(dot * 2, Math.floor(Math.min(haloW * BEAM_TIP_OUT_LEN_MUL, BEAM_TIP_OUT_LEN_MAX_PX) / dot) * dot)
+    : 0;
+  const s0 = Math.max(0, len);
+  const nCore = 2 + Math.floor(hash01(seed, 0, 4) * 2); // 芯が届くドット数 2〜3
+  const cS1 = s0 + nCore * dot;
+  const cyc = Math.floor((p.time - phaseMs) / pulseMs);
+  const extended = p.time - phaseMs - cyc * pulseMs < pulseMs / 2;
+  const base = { L, haloBodyLen: s0, coreBodyLen: s0, tipEnd: cS1, pulseMs, phaseMs, extended };
+  if (p.hidden || !(len > 0) || !(dot > 0) || (p.haloAlpha <= 0.001 && p.coreAlpha <= 0.001)) return { ...base, halo: [], core: [] };
+  const bandW = haloW * (p.narrowBand ? BEAM_TIP_OUT_BAND_FRAC_NARROW : BEAM_TIP_OUT_BAND_FRAC);
+  const halo = p.haloAlpha > 0.001
+    ? beamTipSegments(s0, s0 + L, bandW, dot, p.haloAlpha * BEAM_TIP_OUT_BAND_ALPHA, BEAM_TIP_OUT_BAND_STEPS, seed, 1).map(g => ({ ...g, dither: true }))
+    : [];
+  const core: BeamTipSeg[] = [];
+  if (p.coreAlpha > 0.001 && coreW > 0) {
+    for (let k = 0; k < nCore; k++) {
+      core.push({ s0: s0 + k * dot, s1: s0 + (k + 1) * dot, w: Math.min(coreW, k === 0 ? dot * 2 : dot), off: 0, alpha: p.coreAlpha * BEAM_TIP_OUT_CORE_ALPHA[Math.min(k, 2)], dither: false });
+    }
+    const last = core[core.length - 1];
+    if (extended) core.push({ s0: cS1, s1: cS1 + dot, w: Math.min(coreW, dot), off: 0, alpha: last.alpha, dither: false });
+  }
+  return { ...base, halo, core };
+};
+
+/** 'outside' で粒が届いてよい判定の端からの距離(細る区間×1.5。細い光線でも芯の先+2ドットまでは届かせる)。 */
+export const beamTipOutsideReach = (lay: BeamTipLayout, len: number, dot: number): number =>
+  Math.max(lay.L * BEAM_TIP_OUT_REACH_MUL, lay.tipEnd - len + dot * 2);
+
+/**
  * 段を世界の格子のドットへ置く。射線上を半ドット刻みで歩き、各点の断面(幅 w)を半ドット刻みで格子へ落とす(重複は1つ)。
  * 点線の段は (gx+gy) が奇数のドットを抜く。最後に縦に続く同じ濃さのドットを1枚の四角にまとめる(水平の光線は1列1枚)。
  */
 export const beamTipCells = (
   ax: number, ay: number, ux: number, uy: number, segs: readonly BeamTipSeg[], dot: number, max: number,
+  /** 歩く刻み(ドットに対する割合)。0.707 以下なら斜めでも穴が空かない。太い光線は 0.7 で数を減らす。 */
+  sampleFrac = 0.5,
 ): BeamTipCell[] => {
   const nx = -uy, ny = ux;
   const grid = new Map<number, Map<number, number>>(); // gx -> (gy -> alpha)
-  const st = dot / 2;
+  const st = dot * Math.min(0.7, Math.max(0.1, sampleFrac));
   for (const g of segs) {
     if (g.alpha <= 0.001) continue;
     const half = g.w / 2;
@@ -216,7 +274,7 @@ export const beamTipParticles = (
 ): BeamTipParticle[] => {
   const out: BeamTipParticle[] = [];
   const { dot } = p;
-  if (!(dot > 0) || (p.haloAlpha <= 0.001 && p.coreAlpha <= 0.001)) return out;
+  if (p.hidden || !(dot > 0) || (p.haloAlpha <= 0.001 && p.coreAlpha <= 0.001)) return out;
   const seed = Math.floor(p.seed) | 0;
   const now = beamTipLayout(p);
   const P = now.pulseMs;
@@ -244,11 +302,13 @@ export const beamTipParticles = (
       const core = m === 0 || r(5) < 0.4; // 1粒目=伸びていた芯の1ドットそのもの
       const kexp = 1.8 + 2.2 * r(6); // 減速の強さは粒ごと
       const travel = 1 - Math.pow(1 - u, kexp);
-      const reach = now.L * (0.6 + 1.4 * r(7));
+      const reach = p.placement === 'outside'
+        ? Math.max(0, beamTipOutsideReach(at, o.len, dot) - (sBirth - o.len) - dot / 2) * (0.4 + 0.6 * r(7)) // 判定の端から上限まで
+        : now.L * (0.6 + 1.4 * r(7));
       const lat0 = lBirth + (m === 0 ? 0 : (r(8) - 0.5) * dot);
       const side = lat0 > 0.01 ? 1 : lat0 < -0.01 ? -1 : (r(9) < 0.5 ? -1 : 1);
       const lat = lat0 + side * dot * r(10) * travel; // 外へ広がる向きに 0〜1ドット流れる
-      const size = m > 0 && r(11) < 0.5 && u < 0.6 && p.haloW >= dot * 2 ? dot * 2 : dot;
+      const size = p.bigParticles !== false && m > 0 && r(11) < 0.5 && u < 0.6 && p.haloW >= dot * 2 ? dot * 2 : dot;
       const a0 = core ? coreA0 : haloA0;
       const alpha = a0 * Math.pow(1 - u, 1.4); // 生まれた瞬間=本体の段と同じ濃さ(出だしのフェードは無い)
       if (alpha <= 0.005) continue;

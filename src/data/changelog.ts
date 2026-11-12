@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5532', items: [
+    '敵の光線の先端も、ドットの粒にほどけて消える表現にそろえた。当たる範囲は変わらない',
+  ] },
   { version: '0.25.5531', items: [
     '格闘の強い技と締めの技が当たった時、止まる時間が少し長くなった',
   ] },

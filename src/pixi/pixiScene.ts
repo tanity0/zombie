@@ -235,6 +235,25 @@ interface BeamTipPool {
   hist: { t: number[]; ax: number[]; ay: number[]; ux: number[]; uy: number[]; len: number[] };
 }
 const newBeamTipPool = (): BeamTipPool => ({ halo: [], core: [], parts: [], hist: { t: [], ax: [], ay: [], ux: [], uy: [], len: [] } });
+type BeamTipHist = BeamTipPool['hist'];
+const newBeamTipHist = (): BeamTipHist => ({ t: [], ax: [], ay: [], ux: [], uy: [], len: [] });
+/** 粒(生まれた時の射線の姿を履歴に積んでから引く=回る・追う光線でも粒は置いていかれる)。照射が始まる前の回は出さない。 */
+const beamTipParticlesWithHistory = (
+  h: BeamTipHist, input: BeamTipInput, ax: number, ay: number, ux: number, uy: number, max: number,
+): ReturnType<typeof beamTipParticles> => {
+  const last = h.t.length ? h.t[h.t.length - 1] : -Infinity;
+  if (input.time < last) h.t.length = 0;
+  if (input.time !== last) {
+    if (h.t.length === 0) { h.ax.length = 0; h.ay.length = 0; h.ux.length = 0; h.uy.length = 0; h.len.length = 0; }
+    h.t.push(input.time); h.ax.push(ax); h.ay.push(ay); h.ux.push(ux); h.uy.push(uy); h.len.push(input.len);
+    while (h.t.length > 1 && input.time - h.t[1] > BEAM_TIP_LIFE_MAX_MS + 200) { h.t.shift(); h.ax.shift(); h.ay.shift(); h.ux.shift(); h.uy.shift(); h.len.shift(); }
+  }
+  const originAt = (t: number): BeamTipOrigin => {
+    for (let q = h.t.length - 1; q >= 0; q--) if (h.t[q] <= t) return { ax: h.ax[q], ay: h.ay[q], ux: h.ux[q], uy: h.uy[q], len: h.len[q] };
+    return { ax: h.ax[0], ay: h.ay[0], ux: h.ux[0], uy: h.uy[0], len: h.len[0] }; // 履歴より前=出始め=いちばん古い姿
+  };
+  return beamTipParticles(input, originAt, max, h.t[0]);
+};
 // UNIQUE_WEAPONS.md §16-2(バッチC-1): 持続線分/扇の3挺。数値/型は純関数モジュールから読むだけ
 // (状態そのものはuseGameLoopが書く。CLAUDE.md「PixiJSは描くだけ」)。
 import type { PersistentBeam } from '../utils/persistentBeam';
@@ -17912,19 +17931,7 @@ export class PixiScene {
     place(pool.halo, beamTipCells(ax, ay, ux, uy, layout.halo, k, BEAM_TIP_HALO_CELL_MAX), haloTint);
     place(pool.core, beamTipCells(ax, ay, ux, uy, layout.core, k, BEAM_TIP_CORE_CELL_MAX), coreTint);
     // 粒: 生まれた時の姿を履歴から引く。
-    const h = pool.hist;
-    const last = h.t.length ? h.t[h.t.length - 1] : -Infinity;
-    if (input.time < last) h.t.length = 0;
-    if (input.time !== last) {
-      if (h.t.length === 0) { h.ax.length = 0; h.ay.length = 0; h.ux.length = 0; h.uy.length = 0; h.len.length = 0; }
-      h.t.push(input.time); h.ax.push(ax); h.ay.push(ay); h.ux.push(ux); h.uy.push(uy); h.len.push(input.len);
-      while (h.t.length > 1 && input.time - h.t[1] > BEAM_TIP_LIFE_MAX_MS + 200) { h.t.shift(); h.ax.shift(); h.ay.shift(); h.ux.shift(); h.uy.shift(); h.len.shift(); }
-    }
-    const originAt = (t: number): BeamTipOrigin => {
-      for (let q = h.t.length - 1; q >= 0; q--) if (h.t[q] <= t) return { ax: h.ax[q], ay: h.ay[q], ux: h.ux[q], uy: h.uy[q], len: h.len[q] };
-      return { ax: h.ax[0], ay: h.ay[0], ux: h.ux[0], uy: h.uy[0], len: h.len[0] }; // 履歴より前=出始め=いちばん古い姿
-    };
-    const parts = beamTipParticles(input, originAt, BEAM_TIP_PARTICLE_MAX, h.t[0]); // 照射が始まる前の回は出さない
+    const parts = beamTipParticlesWithHistory(pool.hist, input, ax, ay, ux, uy, BEAM_TIP_PARTICLE_MAX);
     for (let i = 0; i < pool.parts.length; i++) {
       const sp = pool.parts[i];
       const p = parts[i];
@@ -17936,6 +17943,56 @@ export class PixiScene {
       sp.tint = p.core ? partCoreTint : haloTint;
       sp.alpha = p.alpha;
       sp.visible = true;
+    }
+  }
+
+  // 敵の光線(Graphics で描く光線)の先端。金環・アイレーザーと同じ部品(utils/beamTip.ts)で、置き方は 'outside'
+  // (判定の端までは今の太さ・今の絵のまま。外に足すのは点線にほどけた細い帯・2〜4ドットの芯・1ドットの粒だけ=赤い/紫のベタ面を判定の外に作らない)。
+  // 段・粒は同じ Graphics(光線と同じ層・同じ塗り)へ世界の1ドット格子の四角で描く。光線が盾の影で割れる時は先端を出さない
+  // (先端が盾の向こう=見えない)。粒の履歴は key ごと(回る・追う光線でも粒は生まれた時の向きで飛ぶ)。
+  // fx,fy→ex,ey=光線の中心線の起点と端(丸い端の光線は丸の中心)。hw/round/startOffset=盾の割り(strokeBeamLayers と同じ値)。
+  private beamTipGfxHist = new Map<string, { h: BeamTipHist; seen: number }>();
+  private static readonly BEAM_TIP_GFX_HALO_MAX = 200; // 敵の光線は太いので、帯の段の四角の上限を金環より広く取る
+  private static readonly BEAM_TIP_GFX_CORE_MAX = 120;
+  private drawBeamTipGfx(
+    o: Graphics, key: string, time: number, fx: number, fy: number, ex: number, ey: number,
+    hw: number, round: boolean, startOffset: number,
+    look: { haloW: number; coreW: number; haloAlpha: number; coreAlpha: number; halo: number; core: number; part: number; narrow?: boolean },
+    maxParts = 12,
+  ): void {
+    let ent = this.beamTipGfxHist.get(key);
+    if (!ent) {
+      if (this.beamTipGfxHist.size > 64) for (const [k2, v2] of this.beamTipGfxHist) if (Math.abs(time - v2.seen) > 2000) this.beamTipGfxHist.delete(k2);
+      ent = { h: newBeamTipHist(), seen: time };
+      this.beamTipGfxHist.set(key, ent);
+    }
+    ent.seen = time;
+    const dx = ex - fx, dy = ey - fy;
+    const len = Math.hypot(dx, dy);
+    const blocked = hw > 0 && shieldBeamPlan(fx, fy, ex, ey, hw, round, startOffset) !== null; // hw<=0=盾で割らない線(飾り)
+    if (blocked || len < 1) { ent.h.t.length = 0; return; }
+    const ux = dx / len, uy = dy / len;
+    // 判定の端: 丸い端の光線は丸の頂点(=いちばん外の層の半幅ぶん先)。丸の中・横には何も足さない。
+    const judgeLen = len + (round ? look.haloW / 2 : 0);
+    const input: BeamTipInput = {
+      len: judgeLen, haloW: look.haloW, coreW: look.coreW, haloAlpha: look.haloAlpha, coreAlpha: look.coreAlpha,
+      dot: PixiScene.BEAM_TIP_DOT_PX, time, seed: beamTipSeed(key), placement: 'outside', bigParticles: false, narrowBand: look.narrow,
+    };
+    const layout = beamTipLayout(input);
+    // 同じ濃さの四角は1つの塗りにまとめる(段は濃さ4種まで=塗りの回数は層ごとに4回まで)。
+    const fillCells = (cells: ReturnType<typeof beamTipCells>, color: number) => {
+      cells.sort((p1, p2) => p1.alpha - p2.alpha);
+      let cur = -1;
+      for (const c of cells) {
+        if (c.alpha !== cur) { if (cur >= 0) o.fill({ color, alpha: cur }); cur = c.alpha; }
+        o.rect(c.x, c.y, c.w, c.h);
+      }
+      if (cur >= 0) o.fill({ color, alpha: cur });
+    };
+    fillCells(beamTipCells(fx, fy, ux, uy, layout.halo, input.dot, PixiScene.BEAM_TIP_GFX_HALO_MAX, 0.7), look.halo);
+    fillCells(beamTipCells(fx, fy, ux, uy, layout.core, input.dot, PixiScene.BEAM_TIP_GFX_CORE_MAX, 0.7), look.core);
+    for (const p of beamTipParticlesWithHistory(ent.h, input, fx, fy, ux, uy, maxParts)) {
+      o.rect(p.x, p.y, p.size, p.size).fill({ color: p.core ? look.part : look.halo, alpha: p.alpha });
     }
   }
 
@@ -24894,6 +24951,8 @@ export class PixiScene {
           { w: BM_T.snipe.halfWidth * 2, color: 0xff2a2a, alpha: 0.35 * life, cap: 'round' },
           { w: 4, color: 0xffe0e0, alpha: 0.9 * life, cap: 'round', core: true },
         ]);
+        this.drawBeamTipGfx(o, `${e.id}:snipe`, gameTime, bfx, bfy, btx, bty, BM_T.snipe.halfWidth, true, 0,
+          { haloW: BM_T.snipe.halfWidth * 2, coreW: 4, haloAlpha: 0.35 * life, coreAlpha: 0.9 * life, halo: 0xff2a2a, core: 0xffe0e0, part: 0xffb4b4, narrow: true });
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, aimAng, 170, 0.9,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
       } else if (bs2 === 'bm-snipe-recover') {
@@ -25181,6 +25240,9 @@ export class PixiScene {
           { w: w * 0.5, color: 0xc084fc, alpha: 0.85 * fade, cap: 'round' },
           { w: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97 * fade, cap: 'round', core: true },
         ]);
+        // 先端(社長 2026-11-12「他のレーザー系も統一で」): 判定の端(丸の中心)から外へ、紫のドットの段とちぎれる粒。
+        this.drawBeamTipGfx(o, `${e.id}:laser`, gameTime, cx, cy, ex2, ey2, MIMIR_LASER_VIS_HALFWIDTH, true, 0,
+          { haloW: w, coreW: w * 0.5, haloAlpha: 0.45 * fade, coreAlpha: 0.85 * fade, halo: 0x9333ea, core: 0xc084fc, part: 0xe9d5ff });
       }
     }
     // ★スカジの氷の格子(research/SKADI_LATTICE.md): 段ごとに10本の紫の帯(カウンター不可=紫)。帯の流星は既存の帯の窓(drawSweepBand)を紫で。
@@ -25276,6 +25338,9 @@ export class PixiScene {
             { w: w * 0.5, color: 0xc084fc, alpha: 0.85, cap: 'round' },
             { w: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97, cap: 'round', core: true },
           ]);
+          // 先端(6本ぶん=1本あたりの粒は8まで)。回るので粒は生まれた時の向きで取り残される。
+          this.drawBeamTipGfx(o, `${e.id}:wheel:${k}`, gameTime, cx, cy, cx + Math.cos(ang) * R, cy + Math.sin(ang) * R, W.halfWidth, true, 0,
+            { haloW: w * (1 + 0.6 * flare), coreW: w * 0.5, haloAlpha: 0.45, coreAlpha: 0.85, halo: 0x9333ea, core: 0xc084fc, part: 0xe9d5ff }, 8);
         }
         // 根元: 回転の速さで脈打つ(速いほど明るく大きい)。縁は層を重ねて溶かす。
         const hub = 34 + 18 * omegaK + 50 * flare;
@@ -25307,6 +25372,9 @@ export class PixiScene {
               { w: Math.max(0.5, W.halfWidth * 2 * fold), color: 0x9333ea, alpha: 0.45 * fold, cap: 'round' },
               { w: Math.max(0.5, W.halfWidth * 0.6 * core), color: 0xf3e8ff, alpha: 0.9 * core, cap: 'round', core: true },
             ]);
+            // 先端も帯と一緒に畳まれて消える(発射中の先端から途切れない)。
+            this.drawBeamTipGfx(o, `${e.id}:wheel:${k}`, gameTime, cx, cy, cx + Math.cos(ang) * R, cy + Math.sin(ang) * R, W.halfWidth, true, 0,
+              { haloW: Math.max(0.5, W.halfWidth * 2 * fold), coreW: Math.max(0.5, W.halfWidth * 0.6 * core), haloAlpha: 0.45 * fold, coreAlpha: 0.9 * core, halo: 0x9333ea, core: 0xf3e8ff, part: 0xe9d5ff }, 8);
           }
           o.circle(cx, cy, 34 * fold).fill({ color: 0xc084fc, alpha: 0.3 * fold });
         }
@@ -26391,6 +26459,8 @@ export class PixiScene {
               { w: JB_T.lance.halfWidth * 2, color: 0xff3b3b, alpha: 0.6 * a },
               { w: 6, color: 0xffffff, alpha: 0.9 * a, core: true },
             ]);
+            this.drawBeamTipGfx(o, `${e.id}:lance:${li}`, gameTime, cx, cy, L.x, L.y, JB_T.lance.halfWidth, false, 0,
+              { haloW: JB_T.lance.halfWidth * 2, coreW: 6, haloAlpha: 0.6 * a, coreAlpha: 0.9 * a, halo: 0xff3b3b, core: 0xffffff, part: 0xffc4c4, narrow: true });
             return;
           }
           // ★v0.25.3588(社長報告「予告線が規定通りの流星になってない」): 旧progはminWindup基準で
@@ -26561,12 +26631,12 @@ export class PixiScene {
         const beamProg = bs === 'ring-beam-windup'
           ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / SR_T.ringshot.beamWindup))
           : 1;
-        this.drawShieldedAngelBeam(o, fx, fy, rawEx, rawEy, ringFiring, beamProg, now, telegraphStyleFor(e.type));
+        this.drawShieldedAngelBeam(o, fx, fy, rawEx, rawEy, ringFiring, beamProg, now, telegraphStyleFor(e.type), `${e.id}:ring-beam:1`);
         // v0.25.3200(社長指示): Phase2は2本目の環からも同じ対象へもう1本(判定と同幅・同尺=分類①)。
         if (e.ring2X !== undefined && e.ring2Y !== undefined) {
           let d2x = tx - e.ring2X, d2y = ty - e.ring2Y; const dl2 = Math.hypot(d2x, d2y) || 1; d2x /= dl2; d2y /= dl2;
           const raw2x = e.ring2X + d2x * MIMIR_LASER_VIS_RANGE, raw2y = e.ring2Y + d2y * MIMIR_LASER_VIS_RANGE;
-          this.drawShieldedAngelBeam(o, e.ring2X, e.ring2Y, raw2x, raw2y, ringFiring, beamProg, now, telegraphStyleFor(e.type)); // 2本目も同じ(盾が壁)
+          this.drawShieldedAngelBeam(o, e.ring2X, e.ring2Y, raw2x, raw2y, ringFiring, beamProg, now, telegraphStyleFor(e.type), `${e.id}:ring-beam:2`); // 2本目も同じ(盾が壁)
         }
       }
       // ---- スリィエル: 環の回転斬(近接拒否)=T2円(即時)。環自体はsyncSurielRingが本体周りへ描く ----
@@ -26990,9 +27060,9 @@ export class PixiScene {
             this.fxLatches.delete(`${e.id}:suriel-beam-complete`);
           } else if (elapsed < impactAt + activeMs) {
             // research/SHIELD_BLOCK.md §2/§8: 完走描画の光も味方の盾の影で割る(上の実行中と同じ・先端は丸めない線)。
-            this.drawShieldedAngelBeam(o, beamL.d[2], beamL.d[3], beamL.d[4], beamL.d[5], true, 1, now, undefined);
+            this.drawShieldedAngelBeam(o, beamL.d[2], beamL.d[3], beamL.d[4], beamL.d[5], true, 1, now, undefined, `${e.id}:ring-beam:1`);
             if (Number.isFinite(beamL.d[6])) {
-              this.drawShieldedAngelBeam(o, beamL.d[6], beamL.d[7], beamL.d[8], beamL.d[9], true, 1, now, undefined);
+              this.drawShieldedAngelBeam(o, beamL.d[6], beamL.d[7], beamL.d[8], beamL.d[9], true, 1, now, undefined, `${e.id}:ring-beam:2`);
             }
           }
         }
@@ -27073,7 +27143,7 @@ export class PixiScene {
         `${e.id}:gaze-flash`, !gazeWindupOn && this.gazeWindupWasOn.has(e.id) && !gazeCancelled, GAZE_FLASH_MS_VIS, now,
         () => [gox, goy, gtx, gty],
       );
-      if (flashL) this.drawGazeFlash(o, flashL.d[0], flashL.d[1], flashL.d[2], flashL.d[3], flashL.t);
+      if (flashL) this.drawGazeFlash(o, flashL.d[0], flashL.d[1], flashL.d[2], flashL.d[3], flashL.t, `${e.id}:gaze`, now);
       if (gazeWindupOn) this.gazeWindupWasOn.add(e.id); else this.gazeWindupWasOn.delete(e.id);
       // ★予兆一括バッチ(v0.25.3344・レシピ5/単眼素材fx/angel-eye裁定済み2026-08-14): 単眼の凝視
       // windup=目がボス頭上〜中心に現れて発光(フェードイン+微パルス)+震え(レシピ1)。
@@ -30295,6 +30365,7 @@ export class PixiScene {
    */
   private drawShieldedAngelBeam(
     o: Graphics, fx: number, fy: number, ex: number, ey: number, firing: boolean, prog: number, now: number, style?: TelegraphStyle,
+    tipKey?: string,
   ): void {
     if (!firing) { this.drawAngelBeamLine(o, fx, fy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, prog, now, style, false); return; }
     // 発射中は drawAngelBeamLine の uniform 経路(全形)と同じ層を、盾の影で切った1本として描く(盾が無ければ従来の2本の線そのまま)。
@@ -30303,6 +30374,11 @@ export class PixiScene {
       { w: L.baseW, color: 0xff3030, alpha: L.baseA },
       { w: L.coreW, color: 0xffe0e0, alpha: L.coreA, cap: 'round' },
     ]);
+    // 先端(発射中だけ・予告の線には入れない)。
+    if (tipKey) {
+      this.drawBeamTipGfx(o, tipKey, now, fx, fy, ex, ey, SR_T.beam.halfWidth, false, 0,
+        { haloW: L.baseW, coreW: L.coreW, haloAlpha: L.baseA, coreAlpha: L.coreA, halo: 0xff3030, core: 0xffe0e0, part: 0xffb4b4 });
+    }
   }
   private angelBeamLayers(halfWidth: number, prog: number, now: number): { baseW: number; baseA: number; coreW: number; coreA: number } {
     const pulse = 0.55 + 0.45 * Math.sin(now / 80);
@@ -30360,11 +30436,16 @@ export class PixiScene {
   // drawAngelBeamLine(赤=判定を伝える絵①)とは別物: これは判定を持たない②「派手さの絵」なので
   // 色を金に変え、判定より寿命の短い減衰(~200ms)だけで消える。既存の共有per-frame Graphics(o)
   // に相乗りする=新規オブジェクトを増やさない(pooled)。
-  private drawGazeFlash(o: Graphics, fx: number, fy: number, tx: number, ty: number, t: number) {
+  private drawGazeFlash(o: Graphics, fx: number, fy: number, tx: number, ty: number, t: number, tipKey?: string, now = 0) {
     const decay = Math.max(0, 1 - t);
     if (decay <= 0.01) return;
     o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 2 + 6 * decay, color: 0xffcb5c, alpha: 0.75 * decay, cap: 'round' });
     o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * decay, color: 0xfff6d8, alpha: decay, cap: 'round' });
+    // 先端(判定の無い飾り・金)。本体を盾で割らない線なので、先端も盾を見ない(hw=0)。
+    if (tipKey) {
+      this.drawBeamTipGfx(o, tipKey, now, fx, fy, tx, ty, 0, true, 0,
+        { haloW: 2 + 6 * decay, coreW: 1 + 2 * decay, haloAlpha: 0.75 * decay, coreAlpha: decay, halo: 0xffcb5c, core: 0xfff6d8, part: 0xfff2a8 }, 8);
+    }
   }
 
   // FX-V2b(発注仕様research/FX_GAP_LEDGER.md「FX-V2b」#1): アクラシエルの放射棘(spike)実行中、
