@@ -14,7 +14,7 @@ const backing: Record<string, string> = {};
 } as Storage;
 
 import {
-  GROWING_MASTERY_KEYS, MASTERY_BASE, MASTERY_KEY, MASTERY_PENDING_KEY, MASTERY_MAXED_SUBS, SUB_TO_MASTERY_KEY,
+  GROWING_MASTERY_KEYS, MASTERY_BASE, MASTERY_BASE_BY_TIER, masteryBaseTierOf, MASTERY_KEY, MASTERY_PENDING_KEY, MASTERY_MAXED_SUBS, SUB_TO_MASTERY_KEY,
   MASTERY_SUB_KEYS, MASTERY_GUN_KEYS, MASTERY_XP_WEIGHT, isGrowingMasteryKey,
 } from '../data/mastery';
 import type { AmmoType, SubWeaponKey } from '../types/game';
@@ -76,8 +76,13 @@ describe('台帳(data/mastery)', () => {
     expect(SUB_TO_MASTERY_KEY.shijin).toBeUndefined();
     for (const k of ['loadout', 'none', 'max', 'shijin', 'murasame']) expect(isGrowingMasteryKey(k), k).toBe(false);
   });
-  it('MASTERY_BASE は全キー仮の 3000', () => {
-    for (const k of GROWING_MASTERY_KEYS) expect(MASTERY_BASE[k], k).toBe(3000);
+  it('MASTERY_BASE は区分の値: 格闘 120,000 / 銃5種・近接 60,000 / サブウェポン 20,000(値そのものを固定するのはこの1本だけ)', () => {
+    expect(MASTERY_BASE_BY_TIER).toEqual({ brawler: 120_000, gunMelee: 60_000, sub: 20_000 });
+    expect(masteryBaseTierOf('brawler')).toBe('brawler');
+    for (const k of [...MASTERY_GUN_KEYS, 'melee'] as const) expect(masteryBaseTierOf(k), k).toBe('gunMelee');
+    for (const k of MASTERY_SUB_KEYS) if (k !== 'brawler') expect(masteryBaseTierOf(k), k).toBe('sub');
+    for (const k of GROWING_MASTERY_KEYS) expect(MASTERY_BASE[k], k).toBe(MASTERY_BASE_BY_TIER[masteryBaseTierOf(k)]);
+    expect(Object.keys(MASTERY_BASE).sort()).toEqual([...GROWING_MASTERY_KEYS].sort());
   });
 });
 
@@ -92,28 +97,32 @@ describe('段階と倍率', () => {
     expect(masteryDamageMult(NaN)).toBe(1);
   });
   it('必要量: Lv n→n+1 = base × 1.37^(n−1)(四捨五入)', () => {
-    expect(masteryNeedFor('handgun', 1)).toBe(3000);
-    expect(masteryNeedFor('handgun', 2)).toBe(Math.round(3000 * 1.37));
-    expect(masteryNeedFor('handgun', 9)).toBe(Math.round(3000 * Math.pow(1.37, 8)));
+    for (const k of ['handgun', 'brawler', 'katana'] as const) {
+      const b = MASTERY_BASE[k];
+      expect(masteryNeedFor(k, 1), k).toBe(b);
+      expect(masteryNeedFor(k, 2), k).toBe(Math.round(b * 1.37));
+      expect(masteryNeedFor(k, 9), k).toBe(Math.round(b * Math.pow(1.37, 8)));
+    }
   });
   it('masteryLevelFor: 境目・上限・xp に単調・壊れた値で落ちない', () => {
     expect(masteryLevelFor('rifle', 0)).toBe(1);
-    expect(masteryLevelFor('rifle', 2999)).toBe(1);
-    expect(masteryLevelFor('rifle', 3000)).toBe(2);
+    expect(masteryLevelFor('rifle', MASTERY_BASE.rifle - 1)).toBe(1);
+    expect(masteryLevelFor('rifle', MASTERY_BASE.rifle)).toBe(2);
     expect(masteryLevelFor('rifle', xpOfLevel('rifle', 10))).toBe(10);
     expect(masteryLevelFor('rifle', xpOfLevel('rifle', 10) - 1)).toBe(9);
     expect(masteryLevelFor('rifle', 1e12)).toBe(10);
     for (const bad of [NaN, -1, Infinity, '5000', null, undefined, {}]) expect(masteryLevelFor('rifle', bad), String(bad)).toBe(1);
     let prev = 1;
-    for (let xp = 0; xp <= xpOfLevel('rifle', 10) + 5000; xp += 997) {
+    for (let xp = 0; xp <= xpOfLevel('rifle', 10) + 5000; xp += 9973) {
       const l = masteryLevelFor('rifle', xp);
       expect(l).toBeGreaterThanOrEqual(prev);
       prev = l;
     }
   });
   it('masteryProgress: 今の段階と次までの割合・上限では frac=1', () => {
-    expect(masteryProgress('melee', 1500)).toEqual({ level: 1, into: 1500, need: 3000, frac: 0.5 });
-    const p2 = masteryProgress('melee', 3000 + 411);
+    const meleeBase = MASTERY_BASE.melee;
+    expect(masteryProgress('melee', meleeBase / 2)).toEqual({ level: 1, into: meleeBase / 2, need: meleeBase, frac: 0.5 });
+    const p2 = masteryProgress('melee', meleeBase + 411);
     expect(p2.level).toBe(2);
     expect(p2.frac).toBeCloseTo(411 / masteryNeedFor('melee', 2), 10);
     const top = masteryProgress('melee', xpOfLevel('melee', 10) + 7);
@@ -336,19 +345,21 @@ describe('貯める(noteMasteryDamage)', () => {
 
 describe('リザルトでの確定(commitMasteryRun)', () => {
   it('貯めた分を本体へ足し、before/after を返す。2回目は何も足さず空(直前の結果は読み直せる)', () => {
-    saveMastery({ xp: { handgun: 2900 } });
+    const hgBefore = MASTERY_BASE.handgun - 100;
+    const hgAfter = hgBefore + 200;
+    saveMastery({ xp: { handgun: hgBefore } });
     startRun(false);
     noteMasteryDamage('handgun', 200);
     noteMasteryDamage('katana', 50);
     const r = commitMasteryRun();
     expect(r).toEqual({
-      handgun: { before: 2900, after: 3100, levelBefore: 1, levelAfter: 2 },
+      handgun: { before: hgBefore, after: hgAfter, levelBefore: 1, levelAfter: 2 },
       katana: { before: 0, after: 50, levelBefore: 1, levelAfter: 1 },
     });
-    expect(loadMastery().xp).toEqual({ handgun: 3100, katana: 50 });
+    expect(loadMastery().xp).toEqual({ handgun: hgAfter, katana: 50 });
     expect(getPendingMastery()).toEqual({});
     expect(commitMasteryRun()).toEqual({});
-    expect(loadMastery().xp).toEqual({ handgun: 3100, katana: 50 });
+    expect(loadMastery().xp).toEqual({ handgun: hgAfter, katana: 50 });
     expect(getLastMasteryCommit()).toEqual(r);
   });
   it('直前の確定結果は出撃の開始(beginMasteryRun)で空になる', () => {
@@ -360,7 +371,7 @@ describe('リザルトでの確定(commitMasteryRun)', () => {
     expect(getLastMasteryCommit()).toEqual({});
   });
   it('出撃の間に段階は変わらない。確定の後、次の出撃で倍率が上がる', () => {
-    saveMastery({ xp: { rifle: 2990 } });
+    saveMastery({ xp: { rifle: MASTERY_BASE.rifle - 10 } });
     const before = startRun(false);
     noteMasteryDamage('rifle', 100);
     expect(masteryMultTable(loadMastery(), false).rifle).toBeUndefined(); // 出撃の間は保存も動かない

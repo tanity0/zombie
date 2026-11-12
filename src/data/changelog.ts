@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5527', items: [
+    '熟練度が上がるのに要る量を見直した。一度の出撃で最大まで上がってしまっていたのを直し、出撃を重ねて育つようにした。これまでに貯めた分は残る',
+  ] },
   { version: '0.25.5526', items: [
     '金環とアイレーザーの光線の先端を描き直した。ドットの段で細り、ほどけた粒がちぎれて先へ流れて消える',
   ] },

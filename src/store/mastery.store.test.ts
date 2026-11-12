@@ -21,6 +21,13 @@ const { buildPseudoPlayer } = await import('../utils/playerBuild');
 
 const sortie = () => useGameStore.getState().resetGame('warrior');
 
+/** Lv10 に届く量(必要量の値から導く=値を動かしても落ちない)。 */
+const MAX_XP = Math.max(...(['handgun', 'melee'] as const).map(k => {
+  let t = 0;
+  for (let l = 1; l < 10; l++) t += masteryNeedFor(k, l);
+  return t;
+}));
+
 /** 持っている物から loadout の集合を数え直す(テスト側の独立した数え方)。 */
 const loadoutKeys = (): Set<string> => {
   const p = useGameStore.getState().player;
@@ -63,7 +70,7 @@ describe('resetGame の焼き込み', () => {
   });
 
   it('ベンチ・チュートリアルは無視する出撃(倍率は全部1・貯めない)', () => {
-    saveMastery({ xp: { handgun: 999999 } });
+    saveMastery({ xp: { handgun: MAX_XP } });
     useGameStore.getState().setBenchmarkRun(true);
     sortie();
     expect(useGameStore.getState().player.masteryMult).toEqual({});
@@ -80,7 +87,7 @@ describe('resetGame の焼き込み', () => {
     useGameStore.getState().setPendingFarBackdrop('');
     sortie();
     expect(isMasteryRunIgnored()).toBe(false);
-    expect(loadMastery().xp).toEqual({ handgun: 999999 }); // 無視した出撃の分は流れていない
+    expect(loadMastery().xp).toEqual({ handgun: MAX_XP }); // 無視した出撃の分は流れていない
   });
 
   it('リザルトを通らずに次の出撃: 貯めた分は次の resetGame で本体へ足される(1回だけ)', () => {
@@ -96,7 +103,7 @@ describe('resetGame の焼き込み', () => {
 
 describe('守護霊・幻影の疑似プレイヤー', () => {
   it('幻影(既定=guardian 省略): 記録の有無にかかわらず masteryMult={}・masteryLoadoutMult=1(本人の値を引き継がない)', () => {
-    saveMastery({ xp: { handgun: 999999, melee: 999999 } });
+    saveMastery({ xp: { handgun: MAX_XP, melee: MAX_XP } });
     sortie();
     const live = useGameStore.getState().player;
     expect(live.masteryMult?.handgun).toBe(1.9);
@@ -108,7 +115,7 @@ describe('守護霊・幻影の疑似プレイヤー', () => {
     expect(withRecord.masteryLoadoutMult).toBe(1);
   });
   it('守護霊(guardian): 記録の値を持つ。記録が無い/欄が無い時は {}/1(本人の値を引き継がない)', () => {
-    saveMastery({ xp: { handgun: 999999, melee: 999999 } });
+    saveMastery({ xp: { handgun: MAX_XP, melee: MAX_XP } });
     sortie();
     const live = useGameStore.getState().player;
     const g = buildPseudoPlayer({ maxHealth: 100, speed: 200, level: 1, masteryMult: { handgun: 1.5 }, masteryLoadoutMult: 1.3 }, live, { guardian: true });
