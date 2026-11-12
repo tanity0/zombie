@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5546', items: [
+    '出撃直後の出迎えの間は、野を巡る変異体(宇宙飛行群・亡霊・孫悟空)が現れない。出迎えが終わってから現れる',
+  ] },
   { version: '0.25.5545', items: [
     'カウンターを決めた直後・秘奥義の出始め・リズムの最中に、噛みつきなどが当たってしまうことがあったのを直した',
   ] },

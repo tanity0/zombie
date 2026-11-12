@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5546 — 徘徊の枠(宇宙飛行群・亡霊・拳鬼)はウェルカムの最中は出さない【2026-11-12 19:50 JST】
+- **社長指示**: 「徘徊はウェルカムイベント中は出現しない」。
+- 純関数 `patrolSpawnHeldByWelcome`(`src/utils/patrolWelcomeHold.ts`): 輪が開いている(`activeEvent.kind==='welcome'`)か、台本がまだ終わっていない(既存の `welcomeActive`=護衛NPC・武器商人が使う判定)なら待つ。段と段の間(約1.2秒・輪が閉じている間)にすり抜けないよう、台本全体を見る(実装者の判断・採用)。useGameLoop の3体の本編の出現の条件に足しただけ=取りやめず、終わった後の最初のフレームで出る。抽選・前兆の一言・場所・名前の帯・アテンション・確認用の強制出現は不変。
+- **検証**: typecheck・eslint・循環import・patrolWelcomeHold(4)と宇宙飛行群・亡霊・拳鬼の関係するテスト。
+- **自己点検**: 憲法4条(初心者ゾーン)・5条(緩を荒らさない)に抵触しない(出迎えの間に出さない=むしろ静けさを守る側)。
+- 状態変化: なし
+
 ## v0.25.5545 — 残りの技の無敵の穴(秘奥義の出始め・カウンター成立・パリィ・リズム)【2026-11-12 19:31 JST】
 - **社長裁定**: 洗い出した残りの無敵も直す「はい」。
 - 秘奥義の出始め(igniteMs)・リズムの開始(INVULN_MS)と終了での解除・ジャストタップの1拍・カウンター成立(useGameLoop 2か所・angelBossTick・bountyTick・combatTick 2か所)・ボスの接触の受け流し(parryNow)に `abilityInvulnPatch`(長さは今の無敵と同じ)。`invulnerableTime`/`lastCounterSuccessTime` は不変=カウンターの点滅の例外はそのまま。守護霊・幻影・ワクチンの復活・被弾の無敵は対象外。

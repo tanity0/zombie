@@ -239,6 +239,7 @@ import { uniquePhantomSpec } from '../data/uniquePhantoms'; // research/BRAWLER_
 import {
   rollRunPatrolSlot, kenkiPatrolStep, phantomBrawlerSceneBlocked, phantomBrawlerSpawnOffset, PHANTOM_BRAWLER_ENCOUNTER_KEY, PHANTOM_BRAWLER_KIND,
 } from '../utils/phantomBrawlerSpawn'; // research/BRAWLER_PHANTOM.md §6: 拳鬼の本編の出現(徘徊の枠)
+import { patrolSpawnHeldByWelcome } from '../utils/patrolWelcomeHold'; // 徘徊の枠はウェルカム中は出ない(社長指示2026-11-12)
 import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius, HERO_MAX_HP, HERO_START_HP } from '../utils/heroScript';
 import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties, heroAsTarget } from '../utils/heroBlast';
 import { hateEscortSource } from '../utils/escortView';
@@ -9281,6 +9282,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 亡霊か宇宙飛行が出てる時は出ない。この3人の中で抽選」): 宇宙飛行群・亡霊・拳鬼から均等に1人。拳鬼はステージ1なら城のボスの後から。
           const rollPatrolSlot = (): RunMutantBoss => rollRunPatrolSlot(
             { stageId: getSelectedStageId() ?? '', stage1CastleCleared: getCastleBossCleared('stage-1') }, Math.random);
+          // 社長指示2026-11-12「徘徊はウェルカムイベント中は出現しない」: 本編の徘徊の枠(下の3体)はウェルカムが終わるまで待つ
+          // (取りやめない=時刻だけ後ろへずれる)。確認用の強制出現(force)は待たない。抽選・前兆の一言はこれと無関係(今のまま)。
+          const patrolHeldByWelcome = patrolSpawnHeldByWelcome({ activeEventKind: useGameStore.getState().activeEvent?.kind, welcomeRunning: welcomeActive });
           // 変異体が出るランは、最初の通信に隊員の一言を混ぜる(社長指示2026-10-30: 亡霊「寒気がする・・・」/宇宙飛行群「通信が少しおかしい？」)。拳鬼の一言は無い。
           // 抽選は下の2つの出現の枠と同じ所で、それより先に1回だけ引く(抽選の結果・確率は変えない)。確認用の枠(?wraithnow=1 等)も本編の出撃なら言う。
           if (!mutantOmenDoneRef.current && !isPracticeRun() && !isBossMakerRun()) {
@@ -9309,7 +9313,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
             // 本編は20%でどちらか1体だけ(社長指示2026-10-29)。確認用の枠(force)はいつでも出す。
             if (patrolAstroStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
-            const patrolAstro = patrolAstroStage && runMutantBossRef.current === 'astro';
+            const patrolAstro = patrolAstroStage && runMutantBossRef.current === 'astro' && !patrolHeldByWelcome;
             if ((forceAstro || patrolAstro) && !astroForceRef.current && newGameTime >= 3000) {
               astroForceRef.current = true;
               const st0 = useGameStore.getState();
@@ -9352,7 +9356,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const patrolWraithStage = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
               && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
             if (patrolWraithStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
-            const patrolWraith = patrolWraithStage && runMutantBossRef.current === 'wraith';
+            const patrolWraith = patrolWraithStage && runMutantBossRef.current === 'wraith' && !patrolHeldByWelcome;
             if ((forceWraith || patrolWraith) && !wraithForceRef.current && newGameTime >= 3000) {
               wraithForceRef.current = true;
               const st0 = useGameStore.getState();
@@ -9474,7 +9478,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const patrolKenkiStage = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
               && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
             if (patrolKenkiStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
-            if (patrolKenkiStage && runMutantBossRef.current === 'brawler' && !phantomBrawlerPatrolRef.current && newGameTime >= 3000) {
+            if (patrolKenkiStage && runMutantBossRef.current === 'brawler' && !patrolHeldByWelcome && !phantomBrawlerPatrolRef.current && newGameTime >= 3000) {
               phantomBrawlerPatrolRef.current = true;
               const kpcx = player.x + player.width / 2, kpcy = player.y + player.height / 2;
               const at = astroSpawnPick(astroRunPois(), { x: kpcx, y: kpcy }, worldDist(3000), Math.random);
