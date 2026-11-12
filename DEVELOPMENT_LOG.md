@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5523 — 熟練度: 貯まった量を測る試し用の表示 `?masterydbg=1`(社長「はい」=実機の1出撃を測る)【2026-11-12 09:32 JST】
+
+- URL に `?masterydbg=1` を付けた時だけ、リザルトの `MASTERY` の欄に数字を出す(ふだんの画面は不変=数字は出さない決まりのまま)。各行の名前の下に「今回 +N / 累計 M / 次まで K」(最大は `MAX`)、欄の下に「出撃 mm:ss・ステージ」。伸びた物が無い時は「貯まった量なし」、熟練度を無視する出撃では「この出撃では貯まらない(練習など)」。
+- 読み口は `devTestKnobs.ts` の `MASTERY_DEBUG_ACTIVE`(既存の `readUrlParam`)。計算は `masteryView.ts` の `masteryDebugLine` / `masteryDebugRunLine`(テスト4件)。
+- 目的: ボットの計測(160本)は序盤2分のショットガンと近接しか取れなかったので、社長の実機の1出撃(ボス込み・サブウェポン込み)の量から `MASTERY_BASE` を武器ごとに置く(狙い=主に使う武器が約40出撃で Lv10)。
+- 画の確認: 幅375の縦持ちで、数字の行と出撃の行が出るのを撮って確認。開発用の表示=監査なし。実装は Opus のサブエージェント。確認: typecheck / eslint / 循環import / vitest(masteryView 16件)。
+- 並行(未着地): 幻影に新しい銃・スキル・サブウェポンを持たせる下調べ(社長「はい」)。
+- ファイル: src/components/MasteryResult.tsx・GameOverScreen.tsx・src/utils/masteryView.ts・masteryView.test.ts・devTestKnobs.ts・package.json・src/data/changelog.ts
+
 ## v0.25.5522 — 他人の守護霊が記録主の持ち物をそのまま持って来る(共有の許可リストの中身を台帳に合わせる・幻影は据え置き)【2026-11-12 09:00 JST】
 
 - 社長指示「通す必要ありそうなものは通して」の続き。`shared/ghostSanitize.mjs` の許可リストの**中身**が古く、他人の守護霊の持ち物が落ちていた。台帳と一致させた: 銃 10→37(グレネードガン系7・ユニーク20)/スキル 47→50(`shukuchi`・`hero`・`super-armor`)/サブウェポン 26→28(`gold-ring`・`brawler`)/アバター 1→8/技への反応表のキー 75→116。近接・職業は一致していた(テストだけ足した)。上限の数(銃4・スキル24・サブ4)と通信の版は変えていない。

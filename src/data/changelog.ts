@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5523', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5522', items: [
     'ほかのプレイヤーの守護霊が、その人の銃・スキル・サブウェポン・アバターをそのまま持って来る。新しめの物が抜け落ちて、銃を持たずに来ることがあったのが直った',
   ] },

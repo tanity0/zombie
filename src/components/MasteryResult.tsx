@@ -16,7 +16,11 @@ import { subWeaponDisplayName } from '../store/gameStore';
 import type { SubWeaponKey } from '../types/game';
 import { MASTERY_MAX_LEVEL, type GrowingMasteryKey } from '../data/mastery';
 import type { MasteryCommitResult } from '../utils/mastery';
-import { MASTERY_GOLD, masteryFillSteps, masteryLevelLabel, masteryResultRows, type MasteryFillStep } from '../utils/masteryView';
+import {
+  MASTERY_GOLD, masteryDebugLine, masteryDebugRunLine, masteryFillSteps, masteryLevelLabel, masteryResultRows, type MasteryFillStep,
+} from '../utils/masteryView';
+import { isMasteryRunIgnored } from '../utils/masteryRun';
+import { MASTERY_DEBUG_ACTIVE } from '../utils/devTestKnobs';
 
 const GUN_NAME: Partial<Record<GrowingMasteryKey, string>> = {
   handgun: 'ハンドガン', shotgun: 'ショットガン', rifle: 'ライフル', glauncher: 'グレネードガン', phill: 'PHILLガン',
@@ -51,6 +55,8 @@ interface Seg extends MasteryFillStep { t0: number; t1: number; hold: number; se
 interface RowView {
   key: GrowingMasteryKey;
   name: string;
+  /** 開発用の数字(`?masterydbg=1` の時だけ出す)。 */
+  debug: string;
   startLevel: number;
   /** 出撃前の割合(出撃前の段では、ここまでが暗い金)。 */
   startFrac: number;
@@ -80,6 +86,7 @@ const buildRows = (commit: MasteryCommitResult | null): RowView[] => {
     return {
       key: r.key,
       name: masteryName(r.key),
+      debug: masteryDebugLine(r.key, r.entry),
       startLevel: steps.length > 0 ? steps[0].level : r.entry.levelBefore,
       startFrac: steps.length > 0 ? steps[0].from : 1,
       segs,
@@ -139,8 +146,12 @@ interface RowEls {
   tag: HTMLSpanElement | null;
 }
 
-const MasteryResult: React.FC<{ commit: MasteryCommitResult | null }> = ({ commit }) => {
+/** `?masterydbg=1` の時だけ区画の下に出す、出撃の時間(ゲーム内の秒)とステージ。 */
+export interface MasteryDebugRun { seconds: number; stage: string }
+
+const MasteryResult: React.FC<{ commit: MasteryCommitResult | null; debugRun?: MasteryDebugRun }> = ({ commit, debugRun }) => {
   const rows = useMemo(() => buildRows(commit), [commit]);
+  const dbg = MASTERY_DEBUG_ACTIVE;
   const boxRef = useRef<HTMLDivElement | null>(null);
   const els = useRef<RowEls[]>([]);
 
@@ -259,7 +270,10 @@ const MasteryResult: React.FC<{ commit: MasteryCommitResult | null }> = ({ commi
     return () => { pause(); io?.disconnect(); };
   }, [rows]);
 
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && !dbg) return null;
+  // 開発用: 何も出ない理由(無視する出撃=練習など / ベンチで確定していない / 伸びた物が無い)
+  const dbgEmpty = rows.length > 0 ? null
+    : (commit === null || isMasteryRunIgnored()) ? 'この出撃では貯まらない(練習など)' : '貯まった量なし';
   return (
     <div ref={boxRef} className="mb-3 rounded-none bg-black/25 px-3 py-2.5">
       <div className="mb-1.5 text-[10px] uppercase tracking-widest text-white/45">MASTERY</div>
@@ -281,6 +295,7 @@ const MasteryResult: React.FC<{ commit: MasteryCommitResult | null }> = ({ commi
                 {/* 札は rAF 側が中身を入れ替える(数字が上へ押し出される)。React はこの中を描かない。 */}
                 <span ref={bind('tag')} className="relative inline-block h-[19px] w-[3.6em] shrink-0 overflow-hidden text-right text-[15px] leading-[19px] tabular-nums text-white/70" />
               </div>
+              {dbg && <div className="break-words font-mono text-[10px] leading-tight text-white/50">{r.debug}</div>}
               <div ref={bind('track')} className="relative mt-1 h-[5px] w-full bg-white/15">
                 <div ref={bind('base')} className="absolute inset-y-0 left-0" style={{ background: MASTERY_GOLD, opacity: 0.35, width: 0 }} />
                 <div ref={bind('gain')} className="absolute inset-y-0" style={{ background: MASTERY_GOLD, left: 0, width: 0 }} />
@@ -290,6 +305,12 @@ const MasteryResult: React.FC<{ commit: MasteryCommitResult | null }> = ({ commi
           );
         })}
       </div>
+      {dbg && (
+        <div className="mt-1.5 break-words font-mono text-[10px] leading-tight text-white/50">
+          {dbgEmpty && <div>{dbgEmpty}</div>}
+          {debugRun && <div>{masteryDebugRunLine(debugRun.seconds, debugRun.stage)}</div>}
+        </div>
+      )}
     </div>
   );
 };

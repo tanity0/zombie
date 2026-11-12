@@ -105,3 +105,28 @@ export const masteryFillSteps = (key: GrowingMasteryKey, entry: MasteryCommitEnt
   }
   return steps;
 };
+
+// ── 開発用の数字(`?masterydbg=1` の時だけリザルトに出す) ───────────────────────
+
+/** 量の表示(小数は四捨五入・3桁区切り)。 */
+const fmtXp = (v: number): string => Math.round(Number.isFinite(v) ? v : 0).toLocaleString('en-US');
+
+/**
+ * 1件の確定結果 → 「今回 +N / 累計 M / 次まで K」。N=after−before、M=after、K=次の段階までの残り。
+ * 最大(Lv10)では「次まで」を出さず「MAX」と付ける。
+ */
+export const masteryDebugLine = (key: GrowingMasteryKey, entry: MasteryCommitEntry): string => {
+  const gain = Math.max(0, entry.after - entry.before);
+  const p = masteryProgress(key, entry.after);
+  const head = `今回 +${fmtXp(gain)} / 累計 ${fmtXp(entry.after)}`;
+  if (p.level >= MASTERY_MAX_LEVEL) return `${head} / MAX`;
+  return `${head} / 次まで ${Math.ceil(Math.max(0, p.need - p.into)).toLocaleString('en-US')}`;
+};
+
+/** 出撃の時間(秒)とステージ → 「出撃 mm:ss・ステージ」。 */
+export const masteryDebugRunLine = (seconds: number, stage: string): string => {
+  const s = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
+  const mm = String(Math.floor(s / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  return `出撃 ${mm}:${ss}・${stage || '(ステージ不明)'}`;
+};

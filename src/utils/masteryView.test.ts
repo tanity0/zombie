@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MASTERY_MAX_LEVEL } from '../data/mastery';
 import { masteryLevelFor, masteryNeedFor } from './mastery';
 import {
-  masteryBadgeOf, masteryFillSteps, masteryKeyOfSub, masteryLevelLabel, masteryResultRows,
+  masteryBadgeOf, masteryDebugLine, masteryDebugRunLine, masteryFillSteps, masteryKeyOfSub, masteryLevelLabel, masteryResultRows,
 } from './masteryView';
 
 const KEY = 'handgun' as const;
@@ -109,5 +109,35 @@ describe('札', () => {
     expect(half?.frac).toBeCloseTo(0.5);
     expect(half?.max).toBe(false);
     expect(masteryBadgeOf(KEY, { xp: { handgun: xpAt(MASTERY_MAX_LEVEL) } })).toEqual({ level: MASTERY_MAX_LEVEL, frac: 1, max: true, fixed: false });
+  });
+});
+
+describe('masteryDebugLine(開発用の数字)', () => {
+  it('段階をまたがない: 今回=後−前・累計=後・次まで=今の段の残り', () => {
+    const need = masteryNeedFor(KEY, 1);
+    const before = Math.floor(need * 0.2);
+    const after = Math.floor(need * 0.6);
+    expect(masteryDebugLine(KEY, entry(before, after)))
+      .toBe(`今回 +${(after - before).toLocaleString('en-US')} / 累計 ${after.toLocaleString('en-US')} / 次まで ${(need - after).toLocaleString('en-US')}`);
+  });
+
+  it('段階をまたぐ: 次まで=上がった後の段の残り', () => {
+    const before = xpAt(2) - 3;
+    const after = xpAt(3) + 5;
+    const rest = masteryNeedFor(KEY, 3) - 5;
+    expect(masteryDebugLine(KEY, entry(before, after)))
+      .toBe(`今回 +${(after - before).toLocaleString('en-US')} / 累計 ${after.toLocaleString('en-US')} / 次まで ${rest.toLocaleString('en-US')}`);
+  });
+
+  it('最大: 次までを出さず MAX', () => {
+    const top = xpAt(MASTERY_MAX_LEVEL);
+    const line = masteryDebugLine(KEY, entry(top - 10, top + 10));
+    expect(line).toBe(`今回 +20 / 累計 ${(top + 10).toLocaleString('en-US')} / MAX`);
+    expect(line).not.toContain('次まで');
+  });
+
+  it('出撃の行: mm:ss とステージ', () => {
+    expect(masteryDebugRunLine(754.9, 'stage-2 避難回廊')).toBe('出撃 12:34・stage-2 避難回廊');
+    expect(masteryDebugRunLine(5, '')).toBe('出撃 00:05・(ステージ不明)');
   });
 });

@@ -462,6 +462,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   // PACING_PUZZLE.md §6.19 M42: clearReport/資料解放は選択したミッションのデータだけを参照する。
   // 洋館［SUB］再訪(selectedMission='revisit')は REVISIT_MISSION を参照=MAINの報告/資料と混同しない。
   const stage = stageId ? getStage(stageId) : undefined;
+  // `?masterydbg=1` の時だけ MASTERY 区画の下に出す(出撃の時間・ステージ)。負けでもステージは選んだ物を出す。
+  const masteryDebugRun = { seconds: stats.timeAlive, stage: [getSelectedStageId(), getStage(getSelectedStageId())?.locationTitle].filter(Boolean).join(' ') };
   const missionKind = won ? getSelectedMission() : 'main';
   const mission = missionKind === 'revisit' ? REVISIT_MISSION : stage?.main;
   // 統合正本9.4 / 指示書7.3: suppressDebrief=任務報告欄そのものを出さない(debriefフォールバックも抑止)。
@@ -975,7 +977,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   </div>
                 </div>
               </div>
-              <MasteryResult commit={masteryCommit} />
+              <MasteryResult commit={masteryCommit} debugRun={masteryDebugRun} />
               {ghostTimelineSection}
               {duoTimelineSection}
               {ghostAllySection}
@@ -1060,7 +1062,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   )}
                 </div>
               </div>
-              <MasteryResult commit={masteryCommit} />
+              <MasteryResult commit={masteryCommit} debugRun={masteryDebugRun} />
               {ghostTimelineSection}
               {duoTimelineSection}
               {ghostAllySection}

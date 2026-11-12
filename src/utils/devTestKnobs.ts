@@ -84,3 +84,9 @@ export const DEV_SEED_PARAM: number | null = (() => {
   const n = Number(v);
   return Number.isFinite(n) && Number.isInteger(n) ? n : null;
 })();
+
+/**
+ * `?masterydbg=1`: リザルトの MASTERY 区画に、この出撃で貯まった熟練度の量を出す(必要量を決める実測用)。
+ * 無指定では何も変わらない(プレイヤーの画面に数字は出さない決まり)。
+ */
+export const MASTERY_DEBUG_ACTIVE: boolean = readUrlParam('masterydbg') === '1';
