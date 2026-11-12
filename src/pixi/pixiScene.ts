@@ -230,6 +230,7 @@ import { type GoldRing, goldRingCurrentPos } from '../utils/goldRing';
 import type { PersistentBeam } from '../utils/persistentBeam';
 import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_WEAPON_KEY, ROCKET_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
 import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS, PHANTOM_FLAMER_WINDUP_MS, phantomFlamerPhase } from '../utils/flamerCone';
+import { FLAMER_SPRAY_SLOTS, FLAMER_SPRAY_LIFE_MAX_MS, FLAMER_MUZZLE_PX, flamerSprayBirth, flamerSprayParticleAt, flamerSprayStopAt, type FlamerSprayOrigin } from '../utils/flamerSpray';
 import { NewGunsFx } from './newGunsFx';
 import { wraithScreamRisePx, wraithGrowthRise, isWraithGrave, WRAITH_GROWTH_FRAMES, WRAITH_GROWTH_SINK_MS, wraithWarpState, wraithLiftPx, wraithScreamFrame, wraithFloatFrame, wraithScreamBodyH, WRAITH_SCREAM_FRAMES, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_ALIGN_X, WRAITH_FLOAT_ALIGN_X, WRAITH_SCREAM_FRAME_W, WRAITH_FLOAT_FRAME_W, WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_RADIUS, WRAITH_POINT_FRAMES, WRAITH_POINT_FRAME_W, WRAITH_POINT_ALIGN_X, wraithPointFrame, WRAITH_CURSE_HOVER_PX, WRAITH_GRAVE_STONE_KEEP, wraithBattleActive, wraithFlingLiftPx, WRAITH_FLING_LIFT_PX } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md // research/NEW_GUNS.md: 塊弾・衛星弾・スキャンセンサーの絵
 import { SATELLITE_WEAPON_KEY } from '../utils/satelliteOrbit';
@@ -17830,8 +17831,8 @@ export class PixiScene {
     core.visible = visible; halo.visible = visible;
   }
 
-  // UNIQUE_WEAPONS.md §16-2(バッチC-1): 火炎放射器。前方の扇を固定本数のstreak sprite(pooled・
-  // 加算合成・強glowなし)で近似する。判定(pickFanHits)とは独立した見た目だけの表現
+  // UNIQUE_WEAPONS.md §16-2(バッチC-1): 火炎放射器。前方の扇を炎のドットの粒(pooled sprite・
+  // 加算合成・強glowなし・drawFlamerStreaks)で描く。判定(pickFanHits)とは独立した見た目だけの表現
   // (派手さの絵=判定より大きく見せてよい層・CLAUDE.md攻撃ヴィジュアルの2分類)。
   // 表示条件はuseGameLoopが書いたflamerNextPulseAt(直近パルス時刻)の近さで判定する
   // (100msごとのパルスの合間も途切れず見えるよう、1パルス分だけ延長して見せる)。
@@ -17899,7 +17900,7 @@ export class PixiScene {
       this.phantomFlamerStreaks,
       last !== undefined ? { flamerNextPulseAt: last + FLAMER_PULSE_MS, flamerSprayStartAt: ph.gpFlamerSprayStartAt } : undefined,
       cx, cy, { dirX: Math.cos(ang), dirY: Math.sin(ang) }, gameTime, now,
-      [0xd59cff, 0x8b2fd6], // 幻影の炎は紫寄り(打ち返せない攻撃=紫の文法。扇の縁と中身の色の意味を揃える)
+      'phantom', // 幻影の炎は紫(打ち返せない攻撃=紫の文法。扇の縁と中身の色の意味を揃える)
     );
   }
 
@@ -17989,58 +17990,172 @@ export class PixiScene {
     }
   }
 
+  // 炎の粒の絵(起動後に1度だけ小さなキャンバスへ1ドットずつ塗って焼く・最近傍)。
+  // tex[色の組][大きさ0..3][段0..4][種類0..3]。大きさ1〜3は角の欠けた塊で、上(熱が昇る側)に1〜2ドットの舌が出る
+  // 上下非対称の形。芯は中心から少し下。大きさ0(火の粉)は 1×1・2×1・1×2・L字の不揃い。muzzle=筒先の火(3コマ)。
+  private static flamerSprayTexCache: { fire: { tex: Texture[][][]; muzzle: Texture[] }; phantom: { tex: Texture[][][]; muzzle: Texture[] } } | null = null;
+  private static readonly FLAMER_SPRAY_DOT_PX = 3; // 1ドット=world 3px(血の破裂の粒と同じ粗さ)。位置もこの格子(世界の原点基準)へ丸める
+  private static flamerSprayTextures() {
+    if (PixiScene.flamerSprayTexCache) return PixiScene.flamerSprayTexCache;
+    const rgb = (c: number): [number, number, number] => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+    // 段ごとの [縁, 体, 内側, 芯](null=芯なし)。段: 0=噴流 / 1=橙 / 2=赤橙 / 3=燃えかす / 4=煤。
+    type Pal = readonly [number, number, number, number | null];
+    const FIRE: readonly Pal[] = [
+      [0xffb040, 0xffe07a, 0xfff3c0, 0xffffff],
+      [0xe8601a, 0xff8c26, 0xffc24a, 0xfff6dc],
+      [0xa8240e, 0xe04a18, 0xff7a2a, null],
+      [0x3a0c06, 0x6a1a0e, 0x8a2a10, null],
+      [0x2a221e, 0x463830, 0x54443a, null],
+    ];
+    const PHANTOM: readonly Pal[] = [
+      [0xc084fc, 0xe2c2ff, 0xf3e8ff, 0xffffff],
+      [0x7a22c4, 0xa855f7, 0xd8b4fe, 0xfaf5ff],
+      [0x4c1480, 0x7e22ce, 0x9d4ee8, null],
+      [0x22083a, 0x3b0a5c, 0x4c1478, null],
+      [0x1e1a24, 0x342c3a, 0x403646, null],
+    ];
+    const toTex = (W: number, H: number, cells: Array<[number, number, number]>): Texture => {
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d')!;
+      const img = ctx.createImageData(W, H);
+      for (const [x, y, c] of cells) if (x >= 0 && y >= 0 && x < W && y < H) img.data.set([...rgb(c), 255], (y * W + x) * 4);
+      ctx.putImageData(img, 0, 0);
+      const tex = Texture.from(canvas);
+      tex.source.scaleMode = 'nearest';
+      return tex;
+    };
+    const SPARK_SHAPES: ReadonlyArray<ReadonlyArray<[number, number]>> = [[[0, 0]], [[0, 0], [1, 0]], [[0, 0], [0, 1]], [[0, 0], [1, 0], [0, 1]]];
+    const bakeSpark = (v: number, pal: Pal): Texture =>
+      toTex(2, 2, SPARK_SHAPES[v].map(([x, y], n) => [x, y, n === 0 ? (pal[3] ?? pal[2]) : pal[1]]));
+    const bakeBlob = (N: number, v: number, pal: Pal): Texture => {
+      const W = N, H = N + 2, cx = (N - 1) / 2, cy = 2 + (N - 1) / 2;
+      const R = cx + 0.35;
+      const metric = (x: number, y: number) => { const ax = Math.abs(x - cx), ay = Math.abs(y - cy); return 0.55 * (ax + ay) + 0.45 * Math.max(ax, ay); };
+      // 種類ごとの崩し: 縁の1ドットを欠く位置/舌の位置と長さ。
+      const nick = [[0, 1], [1, 0], [0, -1], [-1, 1]][v];
+      const tongueX = Math.round(cx) + (N >= 5 ? [-1, 0, 1, 0][v] : 0);
+      const tongueLen = N >= 5 ? 1 + (v & 1) : (v & 1);
+      const body = (x: number, y: number) => {
+        if (x < 0 || y < 0 || x >= W || y >= H) return false;
+        if (N >= 5 && x === Math.round(cx + nick[0] * cx) && y === Math.round(cy + nick[1] * cx)) return false;
+        if (x === tongueX && y < 2 && y >= 2 - tongueLen) return true;
+        if (N >= 7 && v === 2 && x === tongueX + 1 && y === 1) return true; // 二股の舌
+        return metric(x, y) <= R;
+      };
+      const ccx = cx, ccy = cy + 0.6; // 芯は中心から少し下
+      const cells: Array<[number, number, number]> = [];
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        if (!body(x, y)) continue;
+        const edge = !body(x - 1, y) || !body(x + 1, y) || !body(x, y - 1) || !body(x, y + 1);
+        const m = Math.hypot(x - ccx, (y - ccy) * 1.2);
+        let col = edge && N > 3 ? pal[0] : pal[1];
+        if (N === 3) { if (x === 1 && y === 3) col = pal[3] ?? pal[2]; }
+        else {
+          if (m <= (N >= 7 ? 1.7 : 1.0)) col = pal[2];
+          // 芯: 中は1ドット、塊は1〜2ドット(種類で)。
+          if (pal[3] !== null && x === Math.round(ccx) && y === Math.round(ccy)) col = pal[3];
+          if (pal[3] !== null && N >= 7 && (v & 1) && x === Math.round(ccx) - 1 && y === Math.round(ccy)) col = pal[3];
+        }
+        cells.push([x, y, col]);
+      }
+      return toTex(W, H, cells);
+    };
+    const bakeMuzzle = (f: number, pals: readonly Pal[]): Texture => {
+      const shapes: ReadonlyArray<ReadonlyArray<[number, number]>> = [
+        [[1, 0], [0, 1], [1, 1], [2, 1], [1, 2]],
+        [[1, 0], [2, 0], [0, 1], [1, 1], [1, 2]],
+        [[0, 0], [1, 0], [1, 1], [2, 1], [1, 2], [0, 2]],
+      ];
+      return toTex(3, 3, shapes[f].map(([x, y]) => [x, y, x === 1 && y === 1 ? 0xffffff : pals[0][1]] as [number, number, number])); // 段0の色(白〜黄)
+    };
+    const build = (pals: readonly Pal[]) => ({
+      tex: [0, 3, 5, 7].map(N => pals.map(p => [0, 1, 2, 3].map(v => N === 0 ? bakeSpark(v, p) : bakeBlob(N, v, p)))),
+      muzzle: [0, 1, 2].map(f => bakeMuzzle(f, pals)),
+    });
+    PixiScene.flamerSprayTexCache = { fire: build(FIRE), phantom: build(PHANTOM) };
+    return PixiScene.flamerSprayTexCache;
+  }
+
+  // 粒が「生まれた時の持ち主の位置と向き」を引くための履歴(呼び手ごと・見た目だけの状態=描画側に持つ)。
+  private flamerHist = new WeakMap<Sprite[], { t: number[]; x: number[]; y: number[]; dx: number[]; dy: number[] }>();
+  private flamerOriginAt(pool: Sprite[], birth: number, cur: FlamerSprayOrigin): FlamerSprayOrigin {
+    const h = this.flamerHist.get(pool);
+    if (!h || h.t.length === 0) return cur;
+    for (let k = h.t.length - 1; k >= 0; k--) {
+      if (h.t[k] <= birth) return { x: h.x[k], y: h.y[k], dirX: h.dx[k], dirY: h.dy[k] };
+    }
+    return { x: h.x[0], y: h.y[0], dirX: h.dx[0], dirY: h.dy[0] }; // 履歴より前=出始め=いちばん古い姿で埋める
+  }
+  private flamerRecord(pool: Sprite[], gameTime: number, cur: FlamerSprayOrigin) {
+    let h = this.flamerHist.get(pool);
+    if (!h) { h = { t: [], x: [], y: [], dx: [], dy: [] }; this.flamerHist.set(pool, h); }
+    const last = h.t.length ? h.t[h.t.length - 1] : -Infinity;
+    if (gameTime < last) { h.t.length = 0; h.x.length = 0; h.y.length = 0; h.dx.length = 0; h.dy.length = 0; }
+    else if (gameTime === last) return;
+    h.t.push(gameTime); h.x.push(cur.x); h.y.push(cur.y); h.dx.push(cur.dirX); h.dy.push(cur.dirY);
+    // 寿命の最大(450ms)より古い姿は要らない。
+    while (h.t.length > 1 && gameTime - h.t[1] > 600) { h.t.shift(); h.x.shift(); h.y.shift(); h.dx.shift(); h.dy.shift(); }
+  }
+
+  // 炎の粒(社長 2026-11-12「血が噴き出すやつと同じ感じで、ドットでオレンジ色の中に小さい白」)。
+  // 粒の位置・大きさ・段・寿命は utils/flamerSpray.ts の純関数(粒の番号と生まれた回から決まる=同じ時刻なら同じ絵)。
+  // 噴き始め=flamerSprayStartAt から粒が生まれ始め、噴き終わり=最後のパルス+2パルス(旧減衰のしきい値と同じ)で
+  // 新しい粒が止まり、飛んでいる粒が飛び切って消える。
+  // プール(呼び手ごと): [0..S) 通常合成(塊・中・燃えかす・煤=重ねても白く飛ばない)/ [S..2S) 加算(噴流の芯・火の粉)/ [2S] 筒先の火。
   private drawFlamerStreaks(
     streaks: Sprite[], gun: { flamerNextPulseAt?: number; flamerSprayStartAt?: number } | undefined, pcx: number, pcy: number,
-    cone: { dirX: number; dirY: number } | null, gameTime: number, now: number,
-    tints: readonly [number, number] = [0xffb347, 0xff5a1f],
+    cone: { dirX: number; dirY: number } | null, gameTime: number, _now: number,
+    palette: 'fire' | 'phantom' = 'fire',
   ) {
-    const FLAMER_STREAKS = 5;
+    const S = FLAMER_SPRAY_SLOTS;
     if (streaks.length === 0) {
-      for (let i = 0; i < FLAMER_STREAKS; i++) {
+      for (let i = 0; i < S * 2 + 1; i++) {
         const sp = new Sprite(Texture.WHITE);
-        sp.anchor.set(0, 0.5);
-        sp.blendMode = 'add';
+        sp.anchor.set(0, 0);
+        sp.blendMode = i < S ? 'normal' : 'add';
+        sp.visible = false;
         this.L.effectLayer.addChild(sp);
         streaks.push(sp);
       }
     }
-    if (!gun || !cone) {
-      for (const sp of streaks) sp.visible = false;
-      return;
-    }
-    const lastPulseAt = gun.flamerNextPulseAt !== undefined ? gun.flamerNextPulseAt - FLAMER_PULSE_MS : -Infinity;
-    // 噴射が途切れてからの経過で減衰(ease-in=加速しながら沈んで消える。weaponSpawnEaseのoutEasedと同じ式)。
-    // 1パルス+わずかな余裕(旧spraying判定と同じ猶予)は減衰を始めない=パルス間で明滅しない。
-    const sinceLastPulse = gameTime - lastPulseAt;
-    // ★検収2巡目A-5是正: 減衰の開始しきい値は useGameLoop の噴射継続の猶予と**同じ値**にする
-    // (揃っていないと、フレーム落ちで猶予を超えた側だけが先に反応して脈動する)。
-    const decayT = Math.max(0, Math.min(1, (sinceLastPulse - FLAMER_PULSE_MS * 2) / WEAPON_SPAWN_EASE_MS));
-    const decayEased = decayT * decayT * decayT;
-    const decayMul = 1 - decayEased;
-    if (decayMul <= 0.001) {
-      for (const sp of streaks) sp.visible = false;
-      return;
-    }
-    // 噴射開始からの経過で立ち上げ(ease-out=減速しながら上がる。weaponSpawnEaseのinEasedと同じ式)。
-    // 継続中の噴射はflamerSprayStartAtが更新されない(useGameLoop側)ので、立ち上がりは一度だけ。
+    const hideAll = () => { for (const sp of streaks) sp.visible = false; };
+    if (!gun || !cone || gun.flamerNextPulseAt === undefined) { hideAll(); return; }
+    const lastPulseAt = gun.flamerNextPulseAt - FLAMER_PULSE_MS;
+    const stopAt = flamerSprayStopAt(lastPulseAt);
+    if (gameTime - stopAt > FLAMER_SPRAY_LIFE_MAX_MS) { hideAll(); return; }
     const sprayStartAt = gun.flamerSprayStartAt ?? lastPulseAt;
-    const growT = Math.max(0, Math.min(1, (gameTime - sprayStartAt) / WEAPON_SPAWN_EASE_MS));
-    const growEased = 1 - Math.pow(1 - growT, 3);
-    const baseAng = Math.atan2(cone.dirY, cone.dirX);
-    for (let i = 0; i < FLAMER_STREAKS; i++) {
-      const t = FLAMER_STREAKS > 1 ? i / (FLAMER_STREAKS - 1) : 0.5;
-      const ang = baseAng + (t - 0.5) * FLAMER_HALF_ANGLE_RAD * 2;
-      // 各streakにわずかな瞬き(火のちらつき)。1本ずつ位相をずらす(単調な明滅にしない)。
-      const flick = 0.75 + 0.25 * Math.sin(now * 0.02 + i * 1.7);
-      const sp = streaks[i];
-      sp.position.set(pcx, pcy);
-      sp.rotation = ang;
-      sp.width = Math.max(0.5, FLAMER_RANGE_PX * growEased);
-      sp.height = 10 * flick;
-      sp.tint = i % 2 === 0 ? tints[0] : tints[1]; // 橙〜赤の交互(炎らしい揺らぎ。幻影は紫寄り)
-      sp.alpha = 0.55 * flick * decayMul;
+    const cur: FlamerSprayOrigin = { x: pcx, y: pcy, dirX: cone.dirX, dirY: cone.dirY };
+    this.flamerRecord(streaks, gameTime, cur);
+    const art = PixiScene.flamerSprayTextures()[palette];
+    const k = PixiScene.FLAMER_SPRAY_DOT_PX;
+    const place = (sp: Sprite, tex: Texture, x: number, y: number) => {
+      sp.texture = tex;
+      sp.scale.set(k);
+      // 1ドットの格子(世界の原点基準)へ丸める=粒どうしが同じ格子に乗る。
+      sp.position.set(Math.round((x - (tex.width * k) / 2) / k) * k, Math.round((y - (tex.height * k) / 2) / k) * k);
+    };
+    for (let i = 0; i < S; i++) {
+      const nrm = streaks[i], add = streaks[S + i];
+      const b = flamerSprayBirth(i, gameTime, sprayStartAt, lastPulseAt);
+      const p = b ? flamerSprayParticleAt(i, b.n, b.u, this.flamerOriginAt(streaks, b.birth, cur)) : null;
+      if (!p) { nrm.visible = false; add.visible = false; continue; }
+      const sp = p.add ? add : nrm;
+      (p.add ? nrm : add).visible = false;
+      place(sp, art.tex[p.size][p.stage][p.variant], p.x, p.y);
+      sp.alpha = p.alpha;
       sp.visible = true;
     }
+    // 筒先の火(噴射中つねに・3コマで形を入れ替えて揺らす。強いglowは使わない)。出は短く立ち上がり、止めた後は加速しながら消える。
+    const mz = streaks[S * 2];
+    const inA = Math.min(1, Math.max(0, (gameTime - sprayStartAt) / 60));
+    const outT = Math.max(0, Math.min(1, (gameTime - stopAt) / 120));
+    const mA = inA * (1 - outT * outT);
+    if (mA <= 0.001) { mz.visible = false; return; }
+    const dl = Math.hypot(cone.dirX, cone.dirY) || 1;
+    place(mz, art.muzzle[Math.floor(gameTime / 45) % 3], pcx + (cone.dirX / dl) * FLAMER_MUZZLE_PX, pcy + (cone.dirY / dl) * FLAMER_MUZZLE_PX);
+    mz.alpha = mA;
+    mz.visible = true;
   }
 
   // PACING_PUZZLE.md §6.28-19(バッチM63): アクラシエルの結晶の槍。設置中はスプライト(向き=射出方向)+
