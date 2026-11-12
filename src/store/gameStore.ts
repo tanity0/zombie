@@ -263,7 +263,7 @@ import { addHateDamage, escortHateSide, escortIdOfSide, isHateTrackedBossType, r
 import { stabilizeEscortFace } from '../utils/escortFace'; // 進軍NPCの向きのヒステリシス
 import {
   escortTossLanding, ESCORT_TOSS_MS, ESCORT_TOSS_NEVER, ESCORT_TOSS_STOP_PX, ESCORT_TOSS_CD_MS,
-  escortKickTargetOk, escortKickableState, ESCORT_KICK_MIN_DIST, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortKickerInPlayerSector, escortKickerBaseLiberated, escortTossSlideDist, type EscortKick,
+  escortKickTargetOk, escortKickableState, ESCORT_KICK_MIN_DIST, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortKickerInPlayerSector, escortKickerBaseLiberated, escortKickAllowedOnStage, escortTossSlideDist, type EscortKick,
   ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS,
 } from '../utils/escortToss'; // 兵士の蹴り飛ばし(research/ESCORT_TOSS.md v3.1)
 import { npcSfxDistGain } from '../utils/npcSfx';
@@ -1097,6 +1097,8 @@ const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s:
   // 割り当て: 間隔・入力・ウェルカム待機を見てから、画面内の気絶中の敵 × 兵士の一番近い組。
   // ★「連れて行く」がオフの時は蹴らない(社長指示2026-10-16「連れて行くにしてない時はキック攻撃しないようにして」)。
   if (!st.escortFollowEnabled) return;
+  // ★チュートリアルステージでは蹴らない(社長指示2026-11-12「チュートリアルの蹴り飛ばし止めて」)。
+  if (!escortKickAllowedOnStage(st.farBackdrop)) return;
   if (locked || now - st.lastEscortTossAt < ESCORT_TOSS_CD_MS) return;
   if (escortShouldHoldForWelcome(st.activeEvent?.kind)) return;
   const targets = st.enemies.filter(e => e.stunUntil !== undefined && now < e.stunUntil

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5535', items: [
+    '訓練では、味方が敵を蹴り飛ばさない',
+  ] },
   { version: '0.25.5534', items: [
     '味方の兵士が敵を蹴り飛ばすのは、その拠点を解放した後から',
     '格闘でコンボを続けている間は、最初に当てた相手を狙い続ける。踵落としの直後は体が少し浮いたまま',

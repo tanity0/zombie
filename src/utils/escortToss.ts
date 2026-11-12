@@ -189,6 +189,12 @@ export const escortKickerBaseLiberated = (
   return b.status === 'captured';
 };
 
+/**
+ * ★チュートリアルステージ(訓練・farBackdrop === 'tutorial')では兵士の蹴りを割り当てない(社長指示2026-11-12「チュートリアルの蹴り飛ばし止めて」)。
+ * ステージの見分けは他の所と同じ store の farBackdrop。割り当ての時だけ見る=進行中の蹴りは途中で見直さない。
+ */
+export const escortKickAllowedOnStage = (farBackdrop: string): boolean => farBackdrop !== 'tutorial';
+
 /** (敵, 兵士) の組のうち、兵士から敵までが一番近い組。どちらも呼び手が条件で絞った候補。 */
 export const pickEscortKickPair = <E extends { id: string; x: number; y: number; width: number; height: number }, S extends { id: string; x: number; y: number }>(
   enemies: readonly E[], escorts: readonly S[],

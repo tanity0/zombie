@@ -82,6 +82,17 @@ describe('兵士の蹴り飛ばし v3.1', () => {
     step(16);
     expect(useGameStore.getState().escortKick).not.toBeNull();
   });
+  it('チュートリアルステージ(farBackdrop が tutorial)では、他の条件が揃っていても蹴らない(社長指示2026-11-12)', () => {
+    useGameStore.setState({ farBackdrop: 'tutorial' });
+    put(300, -40);
+    run(600);
+    expect(useGameStore.getState().escortKick).toBeNull();
+    // 同じ段取りで farBackdrop だけ戻せば蹴る(他の条件が揃っていることの確認)。
+    useGameStore.setState({ enemies: [], farBackdrop: '' });
+    put(300, -40);
+    step(16);
+    expect(useGameStore.getState().escortKick).not.toBeNull();
+  });
   it('拠点表が空の通路ステージは今までどおり蹴る', () => {
     useGameStore.setState({ baseSites: [], corridorMode: true });
     put(300, -40);

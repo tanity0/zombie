@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   escortTossDecision, escortTossLanding, escortTossProgress, escortTossableType,
   ESCORT_TOSS_CD_MS, ESCORT_TOSS_NEVER, ESCORT_TOSS_MIN_DIST, ESCORT_TOSS_MAX_DIST, ESCORT_TOSS_STOP_PX, ESCORT_TOSS_SWING_DEG,
-  escortKickTargetOk, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortTossSlideDist, escortKickerInPlayerSector, escortKickerBaseLiberated,
+  escortKickTargetOk, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortTossSlideDist, escortKickerInPlayerSector, escortKickerBaseLiberated, escortKickAllowedOnStage,
   ESCORT_KICK_TO_HIT_MS, ESCORT_KICK_STUN_MARGIN_MS, ESCORT_KICK_BEHIND_PX, ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_TOSS_OVERSHOOT_PX,
 } from './escortToss';
 import type { EscortTossInput } from './escortToss';
@@ -112,6 +112,13 @@ describe('v3.1 兵士の蹴り飛ばし(純関数)', () => {
     expect(escortKickerBaseLiberated({ baseId: 'base-1' }, bases)).toBe(true);
     expect(escortKickerBaseLiberated({ baseId: 'jun-follow' }, bases)).toBe(true); // 拠点を持たない同行者
     expect(escortKickerBaseLiberated({ baseId: 'base-0' }, [])).toBe(true); // 拠点の無いステージ
+  });
+  it('escortKickAllowedOnStage: チュートリアルステージだけ蹴らない(社長指示2026-11-12)', () => {
+    expect(escortKickAllowedOnStage('tutorial')).toBe(false);
+    expect(escortKickAllowedOnStage('')).toBe(true); // 既定の森
+    expect(escortKickAllowedOnStage('city')).toBe(true);
+    expect(escortKickAllowedOnStage('snow')).toBe(true);
+    expect(escortKickAllowedOnStage('stage5')).toBe(true);
   });
   it('pickEscortKickPair: 兵士から敵までが一番近い組', () => {
     const p = pickEscortKickPair(
