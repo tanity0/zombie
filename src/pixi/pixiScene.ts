@@ -127,6 +127,7 @@ import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { isBackingAway, backpedalFaceSide } from '../utils/backpedal';
 import { ENEMY_VOLLEY_SHEETS, volleySheetName, volleyFrameAt, walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH, walkStopsToIdle, ENEMY_WALK_STOP_HOLD_MS } from '../utils/enemySheets';
+import { stepBiteFxClock, zombieBiteFxInterrupted, type BiteFxClock } from '../utils/biteFxClock';
 import { enemyAttackFrameFor, attackTailFrame, zombieStanceFrame, ZOMBIE_STANCE_HOLD_FRAME, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets, prewarmEnemySheetsGpu, loadSpriteGroups, KENKI_SPRITES } from './pixiTextures';
 import { KENKI_SHUKUCHI_FADE_IN_MS, KENKI_SHUKUCHI_FADE_OUT_MS } from '../utils/kenkiShukuchi';
@@ -24443,18 +24444,26 @@ export class PixiScene {
       // スローで判定が伸びても絵が置いていかれない。
       const running = e.biteAt !== undefined && e.biteAt > 0;
       const bDirX = e.biteDirX ?? 1, bDirY = e.biteDirY ?? 0;
+      // ★経過は焼いた時刻ではなく**判定の `biteAt` から毎フレーム**出す(社長報告2026-11-12「技が中断されてるはずなのに
+      // アニメーションだけ続いてる。バットの叩いてくる攻撃」)。中断(当たる前に `biteAt` が消えた)は巻き戻して消し、
+      // 固まり(`biteAt` の据え置き)の間は絵も止まる。当たった後の余韻だけ出し切る(`utils/biteFxClock`)。
+      // ラッチの尺は壁時計なので、長い固まりで切れないよう長く取り、終わりは時計の側で決めて捨てる。
+      const lanternKey = `${e.id}:bat-lantern`;
       const L = this.latchFx(
-        `${e.id}:bat-lantern`, running,
-        bwMs + bbMs + BAT_LANTERN_SETTLE_MS + batSlamTotalMs() + 200, now,
+        lanternKey, running, 60_000, now,
         () => {
           const bl = biteTelegraphLine(e, gameTime);
           return [bDirX, bDirY, bl?.tx ?? (cx + bDirX * 30), bl?.ty ?? (cy + bDirY * 30),
             e.biteAt ?? gameTime, batSlamCounterable(e) ? 1 : 0];
         }, e.lastCounteredAt,
       );
-      if (L) {
-        const [dx, , ax, ay, at0, ctr] = L.d;   // 縦成分は使わない(上下は画面で固定=重力)
-        const since = gameTime - at0;
+      const lStep = stepBiteFxClock(L ? this.biteFxClocks.get(lanternKey) : undefined, e.biteAt, gameTime,
+        bwMs, bbMs, BAT_LANTERN_SETTLE_MS + batSlamTotalMs());
+      this.keepBiteFxClock(lanternKey, lStep.clock);
+      if (L && lStep.since === null && !running) this.fxLatches.delete(lanternKey);
+      if (L && lStep.since !== null) {
+        const [dx, , ax, ay, , ctr] = L.d;   // 縦成分は使わない(上下は画面で固定=重力)
+        const since = lStep.since;
         const sgn = dx >= 0 ? 1 : -1;
         // 握りは**手の高さ**(見た目の身長の約半分。当たり判定の箱ではなく描画の箱 `fb.boxH` を使う)。
         // 少し狙い側へ寄せる=体の中心から棒が生えているように見せない。
@@ -24467,13 +24476,13 @@ export class PixiScene {
         const down = batLanternDownAngle(sgn, reach > 4 ? Math.atan2(reachY, reachX) : null);
         const lanternLen = Math.max(BAT_LANTERN_LEN_MIN_PX,
           Math.min(BAT_LANTERN_LEN_MAX_PX, reach > 4 ? reach : BAT_LANTERN_LEN_PX));
-        const pose = batLanternPose(since, sgn, down, bwMs, bbMs);
+        const pose = batLanternPose(since, sgn, down, lStep.windupMs, lStep.biteMs);
         // ★★社長指示2026-09-23「ための時は武器は出さない。切るタイミングで表示。
         // 他の武器系も攻撃モーションあるやつは同じく」: **溜めの間はランタンを描かない**。
         // 振り下ろし(噛みの窓)に入った瞬間から、§7-15の型(下からのズレ+フェード)で出す。
         // 角度・尺・判定は1msも変えていない——**出る時刻だけ**が溜めの後ろへ動く。
-        if (pose && weaponVisibleAtCut(since, bwMs)) {
-          const cutEase = weaponSpawnEase(since - bwMs, Infinity, weaponCutEaseMs(bbMs));
+        if (pose && weaponVisibleAtCut(since, lStep.windupMs)) {
+          const cutEase = weaponSpawnEase(since - lStep.windupMs, Infinity, weaponCutEaseMs(lStep.biteMs));
           this.drawBountyWeapon(
             e.id, 'bat-lantern', gripX, gripY + cutEase.dy, pose.angle,
             lanternLen, pose.alpha * artFade * cutEase.alphaMul,
@@ -24483,7 +24492,9 @@ export class PixiScene {
         // 炸裂は**当たる瞬間を0**にした時計で送る(掟③=消え切る/最大になるのが当たる瞬間)。
         // ★§16-E: 溜めのあいだ(since < bwMs)は0コマ目で静止=「構え」。溜め明けからの送りは
         // 従来(`since - (bwMs+bbMs)` を渡すだけ)と1ミリも変えない。
-        const frame = batSlamFrameWithWindup(since, bwMs, since - (bwMs + bbMs));
+        // ★中断の巻き戻し中は炸裂(当たりの絵)を出さない=起きなかった攻撃を見た目だけ撃たせない。
+        const frame = lStep.cut ? null
+          : batSlamFrameWithWindup(since, lStep.windupMs, since - (lStep.windupMs + lStep.biteMs));
         if (frame !== null) this.drawBatSlam(e.id, ax, ay, frame, sgn, artFade, ctr === 1);
       }
     }
@@ -24496,18 +24507,25 @@ export class PixiScene {
       const { windupMs: swMs, biteMs: sbMs } = skeletonBiteTiming(e);
       const sRunning = e.biteAt !== undefined && e.biteAt > 0;
       const sDirX = e.biteDirX ?? 1, sDirY = e.biteDirY ?? 0;
+      // ★経過は判定の `biteAt` から毎フレーム出す(ランタンと同じ・`utils/biteFxClock`)。中断は巻き戻して消し、固まりの間は止まる。
+      const clawKey = `${e.id}:skel-claw`;
       const SL = this.latchFx(
-        `${e.id}:skel-claw`, sRunning, swMs + sbMs + skeletonClawTotalMs() + 200, now,
+        clawKey, sRunning, 60_000, now,
         () => {
           const bl = biteTelegraphLine(e, gameTime);
           return [sDirX, bl?.tx ?? (cx + sDirX * 36), bl?.ty ?? (cy + sDirY * 36),
             e.biteAt ?? gameTime, skeletonClawCounterable(e) ? 1 : 0];
         }, e.lastCounteredAt,
       );
-      if (SL) {
-        const [sdx, sax, say, sat0, sctr] = SL.d;
-        const sSinceWindup = gameTime - sat0;
-        const sinceImpact = sSinceWindup - (swMs + sbMs);
+      const sStep = stepBiteFxClock(SL ? this.biteFxClocks.get(clawKey) : undefined, e.biteAt, gameTime,
+        swMs, sbMs, skeletonClawTotalMs() + 200);
+      this.keepBiteFxClock(clawKey, sStep.clock);
+      if (SL && sStep.since === null && !sRunning) this.fxLatches.delete(clawKey);
+      if (SL && sStep.since !== null) {
+        const [sdx, sax, say, , sctr] = SL.d;
+        const sSinceWindup = sStep.since;
+        const swW = sStep.windupMs;
+        const sinceImpact = sSinceWindup - (swW + sStep.biteMs);
         const ctr = sctr === 1;
         // 素材は左向き。右向き(sdx>=0)の時に反転する。
         const flip = sdx >= 0;
@@ -24522,15 +24540,16 @@ export class PixiScene {
         // ★★社長指示2026-09-23(同上): **溜めの間は爪を出さない**。引っ掻きに入った瞬間から出す。
         // 爪は CLAUDE.md が「別スプライトの**武器**(爪・ランタン)」と呼んでいるもの=この指示の対象。
         // **消しているのではない**(`ENEMY_SHEET_HAS_WEAPON` は空のまま)。出る時刻だけを動かす。
-        const cf = weaponVisibleAtCut(sSinceWindup, swMs)
-          ? skelClawFrameWithWindup(sSinceWindup, swMs, sinceImpact) : null;
+        const cf = weaponVisibleAtCut(sSinceWindup, swW)
+          ? skelClawFrameWithWindup(sSinceWindup, swW, sinceImpact) : null;
         if (cf !== null) {
           this.drawSkelClawSprite(
             this.skelClawSprites, skelClawTexName(cf, ctr), e.id, sax, say,
             SKEL_CLAW_W_PX / SKEL_CLAW_REF_W, flip, skelClawAlpha(sinceImpact) * artFade,
           );
         }
-        const ff = skelClawFxFrame(sinceImpact);
+        // 中断の巻き戻し中は当たりの VFX を出さない(起きなかった攻撃を見た目だけ撃たせない)。
+        const ff = sStep.cut ? null : skelClawFxFrame(sinceImpact);
         if (ff !== null) {
           this.drawSkelClawSprite(
             this.skelClawFxSprites, skelClawFxTexName(ff, ctr), e.id, sax, say,
@@ -24574,6 +24593,13 @@ export class PixiScene {
         }
         const [zux, zuy, zax, zay, zStart, zHit, zbMs, zctr] = D;
         if (zHit <= 0) continue;
+        // ★中断(線が当たる前に消え、判定の側にも技が残っていない)なら牙の輪を捨てる(社長報告2026-11-12
+        // 「技が中断されてるはずなのに、アニメーションだけ続いてる」・`utils/biteFxClock`)。固まりの間は線の時刻が
+        // 据え置かれて毎フレーム写されるので、輪も止まる。
+        if (zombieBiteFxInterrupted(active, gameTime, zHit, e)) {
+          this.fxLatches.delete(`${e.id}:zombie-bite${slot === 2 ? '2' : ''}`);
+          continue;
+        }
         const zWin = Math.max(1, zHit - zStart - zbMs); // 溜め(線が出てから噛みに入るまで)
         const zSinceWin = gameTime - zStart;
         const zSince = gameTime - zHit; // 当たる瞬間=0
@@ -38523,6 +38549,13 @@ export class PixiScene {
   // ゾンビの構えの向き(構えに入った瞬間に焼く・2026-10-14)。
   private zombieStanceDir = new Map<string, { until: number; cos: number; sin: number }>();
   private biteTailMemo = new Map<string, AttackTailMemo>();
+  /** 噛みつきの上に乗る別スプライトの攻撃の絵(ランタン・爪)の時計(`utils/biteFxClock`)。キーはラッチと同じ。 */
+  private biteFxClocks = new Map<string, BiteFxClock>();
+  private keepBiteFxClock(key: string, c: BiteFxClock | undefined): void {
+    if (!c) { this.biteFxClocks.delete(key); return; }
+    if (this.biteFxClocks.size > 256 && !this.biteFxClocks.has(key)) this.biteFxClocks.clear();
+    this.biteFxClocks.set(key, c);
+  }
 
   /**
    * ★叫喚の叫びの絵(社長支給2026-09-23「叫喚の叫びモーション」)。

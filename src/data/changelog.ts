@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5556', items: [
+    'コウモリのランタンの振り下ろしや骸骨の爪、ゾンビの噛みつきの輪が、技を止めた後も最後まで出ていたのを直した',
+  ] },
   { version: '0.25.5555', items: [
     '変異体(定着型)に重なっている間、ダメージは無いのに画面が赤くなり続けていたのを直した',
   ] },
