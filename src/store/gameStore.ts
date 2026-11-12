@@ -5155,7 +5155,7 @@ const startBrawlerTech = (
 // ---------------------------------------------------------------------------------------------
 // 秘奥義(research/BRAWLER.md §10・社長指示2026-11-08)
 // ---------------------------------------------------------------------------------------------
-/** 画面内(ズームの可視域)で当てられる敵の id。 */
+/** 画面内(ズームの可視域)+画面の端から外へ BRAWLER_SECRET_REACH_OUT_PX で当てられる敵の id(9連撃・締めの着地点・中断の判定が共用)。 */
 // ★狙える=当たり判定の箱が画面に掛かっている(§9-75・社長「はい」=共通の作りで直す)。画面の真ん中から見た箱の最寄りの点
 // (少し内側=小さな敵は今までどおり中心)が画面の中か、で測る。旧は中心で測っていたので、研究所の塊の正面からは中心が画面外=即中断した。
 const brawlerSecretTargets = (st: GameState): string[] => {
@@ -5164,7 +5164,7 @@ const brawlerSecretTargets = (st: GameState): string[] => {
   return st.enemies.filter(e => {
     if (!BR.isBrawlerTargetable(e)) return false;
     const q = meleeImpactPoint(vcx, vcy, e);
-    return isPointInZoomedViewport(q.x, q.y, st.camera, st.gameBounds, st.viewZoom, -8);
+    return isPointInZoomedViewport(q.x, q.y, st.camera, st.gameBounds, st.viewZoom, BR.BRAWLER_SECRET_REACH_OUT_PX); // 正の余白=外へ広げる(社長指示2026-11-12 案A・旧は -8=8px内側)
   }).map(e => e.id);
 };
 /** そこに立てるか(行ける帯へ寄せたうえで、壁・木・建物に押し出されない所)。立てる左上を返す。 */

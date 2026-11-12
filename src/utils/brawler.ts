@@ -558,6 +558,8 @@ export let BRAWLER_SECRET_FALL_MS = 420; // ×BRAWLER_TEMPO(係数1.0の値)
 export let BRAWLER_SECRET_LAND_MS = 520; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 天空の高さ(見た目・world px)。 */
 export const BRAWLER_SECRET_SKY_PX = 420;
+/** 9連撃・締めの落下の着地点・中断の判定が狙える範囲=画面の端から外へこの分(画面px・ズームの可視域基準)。社長指示2026-11-12(案A)。 */
+export const BRAWLER_SECRET_REACH_OUT_PX = 200;
 /** フィニッシュの地面叩き(§10-2-3)。 */
 export const BRAWLER_SECRET_LAND_RADIUS = 260;
 export const BRAWLER_SECRET_LAND_MULT = 3.6; // 社長承認2026-11-09 で 3.0→3.6

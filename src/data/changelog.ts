@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5549', items: [
+    '格闘の秘奥義が、画面の少し外にいる敵まで狙う',
+  ] },
   { version: '0.25.5548', items: [
     '亡霊の周りに生える墓石と花、宇宙飛行群の周りに刺さる残骸は、本人が離れると沈んで消える',
   ] },

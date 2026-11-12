@@ -923,6 +923,42 @@ describe('秘奥義(research/BRAWLER.md §10・社長指示2026-11-08)', () => {
       expect(br().secret?.phase).toBe('fall');
     }
   });
+  // ★狙える範囲=画面の端から外へ BRAWLER_SECRET_REACH_OUT_PX(社長指示2026-11-12 案A)。
+  // 画面(viewZoom 1)の右端から外へ out の所に中心を置く。上下は画面の真ん中。
+  const edgeOut = (out: number) => {
+    const st = useGameStore.getState();
+    const c = center();
+    return zombieAt(st.camera.x + st.gameBounds.width + out - c.x, st.camera.y + st.gameBounds.height / 2 - c.y, 'off');
+  };
+  const runUntilStruckOrEnd = () => {
+    let hits = 0;
+    for (let k = 0; k < 600 && br().secret; k++) { advance(10); hits = Math.max(hits, br().secret?.hits ?? 0); }
+    return hits;
+  };
+  it('画面の端から外へ100pxの敵は狙われる(9連撃が当たる)', () => {
+    setup(3); // 前のテストで本人が動いた所から zombieAt を測らない(prep の引数は prep の setup より先に評価される)
+    prep([zombieAt(120, 0, 'near1')]);
+    fireSecret();
+    expect(br().secret?.phase).toBe('ignite');
+    centerCam();
+    useGameStore.setState({ enemies: [edgeOut(100)] });
+    const hp0 = hpOf('off');
+    expect(runUntilStruckOrEnd()).toBeGreaterThan(0);
+    expect(hpOf('off')).toBeLessThan(hp0);
+    expect(br().secret).toBeUndefined(); // 最後まで走らせて終える(次のテストへ持ち越さない)
+  });
+  it('画面の端から外へ300pxの敵は狙われない(当てられる敵が居ない=中断)', () => {
+    setup(3); // 前のテストで本人が動いた所から zombieAt を測らない(prep の引数は prep の setup より先に評価される)
+    prep([zombieAt(120, 0, 'near2')]);
+    fireSecret();
+    expect(br().secret?.phase).toBe('ignite');
+    centerCam();
+    useGameStore.setState({ enemies: [edgeOut(300)] });
+    const hp0 = hpOf('off');
+    expect(runUntilStruckOrEnd()).toBe(0);
+    expect(br().secret).toBeUndefined();
+    expect(hpOf('off')).toBe(hp0);
+  });
   it('間が空いたら発動しない(普通の構えになる)', () => {
     prep([zombieAt(120, 0, 'a')]);
     useGameStore.getState().brawlerTech(1, 0); untilIdle(); advance(100);
