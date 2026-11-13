@@ -390,6 +390,7 @@ import {
 // ★v0.25.3809(8巡目 重大1/3): counter-leap の**起点/到達点の分岐そのもの**も同じ葉へ出した
 // (共通層に三項で書いてある間は「両側を既定式にする」変異が走査を素通りするため)。
 import { thorDashPushbackFromEnemy, counterLeapOrigin, counterLeapTarget, counterLeapPos, thorDashLineShift, thorPlayableAreaCtx } from '../utils/thorDashPushback';
+import { rollHesitation, hesitationActive, hesitationInterrupted, hesitationVelocity, hesRand, HES_CLEAR, HES_TECHNIQUE_PATCH, type HesFields } from '../utils/enemyHesitation'; // 技に入る前のためらい(research/ENEMY_HESITATION.md・裏ボス3体)
 import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreography';
 // §4: トールの突進をカウンターした時の弾き返し距離。**ミゲル/ウリと共有の既存の合流点をそのまま使う**
 // (新しい定数を作らない=research/THOR_ISSEN_REWORK.md §4-1)。
@@ -515,7 +516,8 @@ import {
   recordSubUse, recordOverclockProc, getBotTelemetry, classifyProjectileDamageChannel, recordCritHit,
   recordExplosion, recordBeamPulse, recordStonesAttached, recordGunKnockback,
 } from '../utils/botTelemetry';
-import { DEV_LOADOUT_ACTIVE, TEST_BRIDGE_ACTIVE, DEV_SEED_PARAM } from '../utils/devTestKnobs';
+import { DEV_LOADOUT_ACTIVE, TEST_BRIDGE_ACTIVE, DEV_SEED_PARAM, PILE_DEMO_ACTIVE } from '../utils/devTestKnobs';
+import { tickPileDemo } from '../utils/pileDemo';
 import { resetSeededRngs } from '../utils/seededRng';
 import { recordTestEvent } from '../utils/testEvents'; // TEST_HANDOFF/REQUEST-devbridge.md B節(記録専用・挙動不変)
 import { cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品スイッチ(タイトル画面のパネル+URL)
@@ -578,6 +580,7 @@ import { tickNewGuns } from '../utils/newGunsTick'; // research/NEW_GUNS.md: 新
 import { dropGunKillLoot } from '../utils/gunKillDrops'; // 弾で倒した時の撃破演出とドロップ(品質監査#4)
 import { scanMarkMeleeMult, noteScanDetonation } from '../utils/scanSensor';
 import { ammoBearingGuns, catalogProjectileSpeed, projectileSpeedToCatalog } from '../utils/weaponUtils'; // 弾倉の無い銃を除いた所持銃(research/NEW_GUNS.md 品質監査#5)
+import { spawnPiledriverImpactFx } from '../utils/piledriverImpactFx';
 import { gunFireSfxKey, gunReloadSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isPhantomTargetBullet, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage, projectileMasteryKey, counterMasteryKeyOf, gunMasteryKeyOfWeaponKey } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ。
 import { ROCKET_BLAST_RADIUS_MULT, ROCKET_LAUNCH_EASE_MS, rocketLaunchSpeedMult } from '../utils/rocketLauncher';
@@ -1005,7 +1008,7 @@ const evParam = (key: string): string | null =>
 const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ランダム / 'horde' / 'boss' / 'rescue'
 // デバッグ(社長試作v0.25.1861): ?nospawn=1 で敵の湧きを全て止める(パズル盤面/旧スポナー/叫喚/
 // 囲い・関所/紅き夜/ハンター/死神/城ボス)。映像美の確認用に自由に歩き回るため。ゲーム/描画の他要素は不変。
-const NOSPAWN = evParam('nospawn') === '1';
+const NOSPAWN = evParam('nospawn') === '1' || PILE_DEMO_ACTIVE; // ?piledemo=1(パイルドライバーの撮影用)も湧きを止める
 // ★寄り演目のデモ(v0.25.4307 → **v0.25.4310 で自動発火を撤去**)。
 // 社長「**勝手に発動する機能切って。よくわからんくなる**」: 4秒ごとの自動発火は、見ている最中に
 // 割り込んで何を見ているか分からなくなる。**自分の近接の一振りで1回出る**形へ変えた(=発動するのは社長の操作の時だけ)。
@@ -7718,6 +7721,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // ボスメーカー ▸: 条件(距離帯/CD/抽選)をバイパスして技を1つ始める(部屋は訓練場)。
                 // 通常プレイでは要求箱が常に null なのでここへは来ない。
               } else if (st === 'chase') {
+                // ★技に入る前のためらい(research/ENEMY_HESITATION.md・B の裏ボス=ミーミル/ヨルムンガンド/スカジ)。
+                //   ためらいの間は抽選・台本の再開をせず、移動だけ置き換える(CD・タイマーは時刻で進む)。
+                //   打ち切り(近接の被弾・カウンター・気絶・浮き・押し道具)/時間切れは欄を消して普段どおり(印 hesOwed=次は必ず技)。
+                const hidHes = boss.type !== 'thor' && boss.hesKind !== undefined
+                  && hesitationActive(boss, newGameTime) && !hesitationInterrupted(boss);
+                // ためらいの欄の書き込み(patch へは必ず `patch.<field> =` で書く=台帳の走査に掛かる書き方)。印 hesOwed は欄が在る時だけ書く。
+                const writeHes = (f: HesFields) => {
+                  patch.hesKind = f.hesKind; patch.hesUntil = f.hesUntil; patch.hesStartAt = f.hesStartAt; patch.hesStartNow = f.hesStartNow;
+                  patch.hesDirX = f.hesDirX; patch.hesDirY = f.hesDirY; patch.hesPeak = f.hesPeak;
+                  if ('hesOwed' in f) patch.hesOwed = f.hesOwed;
+                };
+                if (boss.type !== 'thor' && boss.hesKind !== undefined && !hidHes) writeHes(HES_CLEAR);
                 if (boss.type === 'thor') {
                   // 社長指示:「たまに2秒さらに1/2の速度で歩く」。クールダウンが明けたら新しい減速ウィンドウへ
                   // 突入(既に減速中は再抽選しない=毎フレーム延長し続けない)。
@@ -7726,6 +7741,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     bs.thorSlowWalkUntil = newGameTime + HB_TH.slowWalk.ms;
                   }
                   thorMove();
+                } else if (hidHes) {
+                  // ためらいの1歩: 速さは慣性つき(enemyHesitation)、移動先は行ける帯へ(clampRectToPlayableArea・裁定4)。
+                  const hv = hesitationVelocity(boss, newGameTime, bs.vx, bs.vy, bossMoveDt);
+                  bs.vx = hv.vx; bs.vy = hv.vy;
+                  const hPlaced = clampRectToPlayableArea(
+                    boss.x + bs.vx * bossMoveDt, boss.y + bs.vy * bossMoveDt,
+                    boss.width, boss.height, thorPlayableAreaCtx(useGameStore.getState()), boss.x,
+                  );
+                  patch.x = hPlaced.x; patch.y = hPlaced.y;
                 } else {
                   moveToward(1);
                 }
@@ -7784,10 +7808,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     // windup開始のセットアップ(方向ロック等)はbeginThorMoveへ集約(値は不変・純関数化のみ)。
                     beginThorMove(pick);
                   }
+                } else if (hidHes) {
+                  // ためらいの最中: 抽選も台本の再開もしない(上で移動だけしている)。
                 } else if (boss.bossScriptResume && newGameTime >= (boss.bossNextActionAt ?? 0)) {
                   // ★カウンターで1手を終えた後の再開(社長指示2026-10-01): 台本の残りから出す
                   // (硬直明けの連携と同じ1本=レーザーの中断CDもそのまま効く)。
                   patch.bossScriptResume = undefined;
+                  writeHes(HES_TECHNIQUE_PATCH); // 技に入る=ためらいの印を消す
                   hiddenRecoverAdvance('counter-cut');
                 } else if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
                   // PACING_PUZZLE.md §6.28-5/7/9(バッチM54/M56/M58): 間合い+フェーズ+CD明けから技を選ぶ
@@ -7795,6 +7822,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // ?<boss>script=0の間は旧挙動(帯ゲート無し・レーザー/氷は専用確率、残りはdash/burst/radial固定
                   // 3択)をそのまま実行する(§6.28-12のフォールバック契約)。
                   const dist = Math.hypot(chaseTgt.x - bcx, chaseTgt.y - bcy);
+                  // ★技に入る前のためらい: 選ぶ処理が技を返した時だけ1回(台本の続きが残っている時は入れない)。
+                  //   中心と距離の物差しは技の相手(chaseTgt)。遠い時(320px超)は今どおり。
+                  const hiddenHesRoll = (d: number) => ((boss.bossScriptQueue?.length ?? 0) > 0 ? null : rollHesitation({
+                    type: boss.type, owed: boss.hesOwed, gameTime: newGameTime, nowMs: Date.now(),
+                    ecx: bcx, ecy: bcy, tx: chaseTgt.x, ty: chaseTgt.y, baseSpeed: boss.speed, rand: hesRand, bossDist: d,
+                  }));
                   if (boss.type === 'mimir' && MIMIR_SCRIPT_ENABLED) {
                     const phase = (boss.bossPhase ?? 1) as 1 | 2;
                     const ready: Record<MimirMove, boolean> = {
@@ -7805,7 +7838,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       wheel: newGameTime >= (boss.mimirWheelReadyAt ?? 0), // research/MIMIR_WHEEL.md
                     };
                     const move = pickMimirMove(dist, phase, ready);
-                    if (move) {
+                    const hes = move ? hiddenHesRoll(dist) : null;
+                    if (hes) {
+                      writeHes(hes); // ためらう=この技は捨てる(次に選ぶ時は印で必ず技)
+                    } else if (move) {
+                      writeHes(HES_TECHNIQUE_PATCH);
                       patch.bossScriptQueue = planBossChoreography('mimir', move, phase).slice(1);
                       beginMimirMove(move);
                     }
@@ -7822,7 +7859,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       freeze: false,
                     };
                     const move = pickJormungandMove(dist, phase, ready);
-                    if (move) {
+                    const hes = move ? hiddenHesRoll(dist) : null;
+                    if (hes) {
+                      writeHes(hes); // ためらう=この技は捨てる(次に選ぶ時は印で必ず技)
+                    } else if (move) {
+                      writeHes(HES_TECHNIQUE_PATCH);
                       patch.bossScriptQueue = planBossChoreography('jormungand', move, phase).slice(1);
                       beginJormungandMove(move);
                     }
@@ -7834,7 +7875,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       lattice: newGameTime >= (boss.skadiLatticeReadyAt ?? 0), // research/SKADI_LATTICE.md
                     };
                     const move = pickSkadiMove(dist, phase, ready);
-                    if (move) {
+                    const hes = move ? hiddenHesRoll(dist) : null;
+                    if (hes) {
+                      writeHes(hes); // ためらう=この技は捨てる(次に選ぶ時は印で必ず技)
+                    } else if (move) {
+                      writeHes(HES_TECHNIQUE_PATCH);
                       patch.bossScriptQueue = planBossChoreography('skadi', move, phase).slice(1);
                       beginSkadiMove(move);
                     }
@@ -15984,6 +16029,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             hitSfxGain = npcSfxDistGain(hitPt.x, hitPt.y, hpl.x + hpl.width / 2, hpl.y + hpl.height / 2, hcam, hgb);
           }
           if (!gpDeflectedShot) playSfx(hitCrit ? 'headshot' : 'shot-damage', hitSfxGain); // 幻影が弾いた弾は無音(v0.25.3640監査Q1-1)
+          // パイルドライバーの杭が刺さった手応え(火花・紫の輪・足元の砂埃・揺れ・打ち込み音=見た目と音だけ。杭の絵は pixi/pileDriverFx)。
+          if (isPiledriverHit && projectile && !projectile.hostile && !projectile.reflected && enemyForFx && !gpDeflectedShot) {
+            spawnPiledriverImpactFx(
+              projectile.id, projectile.x + projectile.width / 2, projectile.y + projectile.height / 2 - fxLiftY,
+              projectile.direction.x, projectile.direction.y,
+              enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height,
+            );
+          }
           if (enemyForFx && projectile && !gpBulletReflected && hasShotRecoil(enemyForFx.type)) {
             const cur = useGameStore.getState().enemies.find(x => x.id === enemyId);
             // 実際に被弾した時だけ(lastHit がこの処理の中で書かれた)。強さはその1発に入ったダメージ(lastHitDmg)。
@@ -18319,6 +18372,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           { ghostProfileRef },
           { gameTime, player, ghostDebugEnabled: GHOST_DEBUG_ENABLED },
         );
+        tickPileDemo(gameTime); // ?piledemo=1 のときだけ: パイルドライバーの撮影用の的を置く(無指定=即 return)
 
         // Air-dropped ammo supplies (#3). At an irregular cadence a resupply
         // crate appears at a random spot just off-screen, so the player has to

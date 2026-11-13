@@ -91,6 +91,10 @@ import {
 // re-exportは行わない(消費者が居ないまま残すと「どこで使われているか」が追いにくくなる)。
 export { BR_SHOT_UNIT_MS };
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
+import {
+  rollHesitation, hesitationActive, hesitationInterrupted, hesitationVelocity, hesRand,
+  HES_CLEAR, HES_TECHNIQUE_PATCH,
+} from './enemyHesitation'; // 技に入る前のためらい(research/ENEMY_HESITATION.md・馬乗りのコンボの入口だけ)
 import { isBountyType, createEnemyProjectile, spawnEnemyAt } from './enemyUtils';
 import { EVENT_BANNER_MS } from './directorTick';
 // §6.38 B4(クリーンアップ): 実効難易度倍率の式はbountyValue.ts(依存=enemyUtils+timeDifficultyのみの
@@ -1215,6 +1219,19 @@ const beginBmWhip360 = ({ newGameTime, patch }: BountyBeginCtx): void => {
 };
 
 /**
+ * 馬乗り: ためらい(旋回/様子見/後退)の1歩。速さは utils/enemyHesitation(慣性つき)、移動は resolveMove(壁→行ける帯)。
+ * 時計は他の移動と同じく bossSlowMult(クリの移動半減窓)を掛ける。
+ */
+const moveBmHesitation = (
+  bounty: Enemy, newGameTime: number, deltaTime: number, moveSpeedMult: number, patch: Partial<Enemy>,
+): void => {
+  const dt = deltaTime * moveSpeedMult * bossSlowMult(bounty, newGameTime);
+  const hv = hesitationVelocity(bounty, newGameTime, bounty.vx ?? 0, bounty.vy ?? 0, dt);
+  const c = resolveMove(bounty.x + hv.vx * dt, bounty.y + hv.vy * dt, bounty);
+  patch.x = c.x; patch.y = c.y; patch.vx = hv.vx; patch.vy = hv.vy;
+};
+
+/**
  * 馬乗り(bounty-melee)の1tick。§4③の懲罰(遠距離2秒)を最優先で見て、次に密着帯のコンボ、
  * それ以外は突進で距離を詰める(idolTick.tsの中立判断=懲罰→ストリングの順序を踏襲)。
  */
@@ -1230,19 +1247,42 @@ const tickMelee = (
     const stepMs = deltaTime * 1000;
     s.farMs = advanceLingerMs(s.farMs, dist > BM_T.meleeMax * 3, stepMs);
     if (s.farMs >= BM_T.farMs) {
+      Object.assign(patch, HES_TECHNIQUE_PATCH); // どの技でも溜めに入ったら、ためらいの印を消す
       beginBmSnipe(bctx);
       return;
+    }
+    // ★技に入る前のためらい(research/ENEMY_HESITATION.md): ためらいの間は移動だけを置き換える(懲罰の積み上げ・CD は今どおり進む)。
+    //   打ち切り(近接の被弾・カウンター・気絶・浮き・押し道具)/時間切れは欄を消して、このフレームから普段の判断へ(印 hesOwed=必ず技)。
+    if (bounty.hesKind !== undefined) {
+      if (!hesitationActive(bounty, newGameTime) || hesitationInterrupted(bounty)) {
+        Object.assign(patch, HES_CLEAR);
+      } else {
+        moveBmHesitation(bounty, newGameTime, deltaTime, moveSpeedMult, patch);
+        return;
+      }
     }
     if (dist <= BM_T.meleeMax) {
       // ★v0.25.3571(社長指示「三段攻撃の最後に360度、の台本に統合」): v0.25.3570の近距離抽選
       // (コンボ/360の二択)は**1日で撤回**——360は独立技ではなく**3段コンボの締め**として出す
       // (コンボ3段目→360へ直結)。よって近距離の入口はコンボ1本へ戻す。
+      // ★コンボの入口だけで、ためらいを1回抽選(突進=タイマーの技はためらわない)。
+      const hes = rollHesitation({
+        type: bounty.type, owed: bounty.hesOwed, gameTime: newGameTime, nowMs: Date.now(),
+        ecx: bcx, ecy: bcy, tx: pcx, ty: pcy, baseSpeed: bounty.speed, rand: hesRand,
+      });
+      if (hes) {
+        Object.assign(patch, hes);
+        moveBmHesitation({ ...bounty, ...hes }, newGameTime, deltaTime, moveSpeedMult, patch);
+        return;
+      }
+      Object.assign(patch, HES_TECHNIQUE_PATCH);
       beginBmCombo(bctx);
       return;
     }
     // 突進は「中距離を詰める」役(BM_CHARGE_REACH圏内だけ)。真の遠距離はここで割り込ませず
     // farMsを積ませ続ける(=懲罰狙撃が必ず発火する。突進が毎tick先取りしてfarMsの窓を潰さないため)。
     if (dist <= BM_T.charge.reach && newGameTime >= (bounty.bossNextActionAt ?? 0)) {
+      Object.assign(patch, HES_TECHNIQUE_PATCH);
       beginBmCharge(bctx);
       return;
     }

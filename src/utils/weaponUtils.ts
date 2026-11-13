@@ -339,8 +339,10 @@ export const gunReloadSfxKey = (key: string | undefined): 'crossbow-reload' | 'r
 export const gunFireSfxKey = (
   category: string | undefined,
   key: string | undefined,
-): 'shotgun-fire' | 'rifle-fire' | 'grenade-launcher-fire' | 'smg-fire' | 'crossbow-fire' | 'handgun-fire' =>
-  category === 'shotgun' ? 'shotgun-fire'
+): 'shotgun-fire' | 'rifle-fire' | 'grenade-launcher-fire' | 'smg-fire' | 'crossbow-fire' | 'handgun-fire' | 'heavy-impact' =>
+  // パイルドライバーは銃声ではなく、杭を打ち出す重い金属の打撃音(既存の heavy-impact。社長指示2026-11-13の見せ方の監査)。
+  key === PILEDRIVER_WEAPON_KEY ? 'heavy-impact'
+  : category === 'shotgun' ? 'shotgun-fire'
     : category === 'rifle' ? 'rifle-fire'
       : category === 'glauncher' ? 'grenade-launcher-fire'
         : key === SMG_WEAPON_KEY_FOR_SFX ? 'smg-fire'

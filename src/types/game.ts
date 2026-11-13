@@ -902,6 +902,19 @@ export interface Enemy {
   labBait?: { k: number; used?: boolean; active?: boolean; charging?: boolean };
   // プレイヤーが近接ダメージを与えた敵=以後プレイヤーを狙う(救助の survivor 狙いから切替。社長指示)。
   meleeAggro?: boolean;
+  /**
+   * ★技に入る前のためらい(research/ENEMY_HESITATION.md・utils/enemyHesitation.ts)。aiPhase は使わない。
+   * hesKind=旋回/様子見/後退、hesUntil・hesStartAt=gameTime 系、hesStartNow=Date.now 系(実時間の打ち切りと比べる)、
+   * hesDirX/Y=動く向き(単位)、hesPeak=速さの山(px/s)、hesOwed=次に技に入る条件を満たしたら必ず技(2回続けて迷わない)。
+   */
+  hesKind?: 'strafe' | 'watch' | 'backstep';
+  hesUntil?: number;
+  hesStartAt?: number;
+  hesStartNow?: number;
+  hesDirX?: number;
+  hesDirY?: number;
+  hesPeak?: number;
+  hesOwed?: boolean;
   // Difficulty metadata. Time and distance from the game origin both feed this
   // at spawn time. rank はトレジャー抽選に使用、multiplier は強さ(HP/ダメ)に乗る。
   distanceZone?: number;

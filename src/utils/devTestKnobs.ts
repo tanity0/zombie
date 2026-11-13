@@ -29,10 +29,18 @@ const VALID_DEV_WEAPON_KEYS: ReadonlySet<string> = new Set<string>(
   SLOT_CATEGORIES.flatMap(cat => SLOT_TIERS.flatMap(tier => SLOT_CANDIDATES[cat][tier]))
 );
 
-/** `?weapon=<key>`: 出撃時の銃をそのキーの武器そのものにする(21ユニーク+各カテゴリ既定キーのみ有効)。 */
+/**
+ * `?piledemo=1`: パイルドライバーの杭の絵の撮影用(社長指示2026-11-13)。出撃時の銃をパイルドライバーにし、湧きを止め、
+ * プレイヤーのすぐ右に動かない・倒れない敵を1体置き続ける(=自動で撃ち続ける)。置き方は utils/pileDemo.ts。
+ * 無指定では何も変わらない。
+ */
+export const PILE_DEMO_ACTIVE: boolean = readUrlParam('piledemo') === '1';
+
+/** `?weapon=<key>`: 出撃時の銃をそのキーの武器そのものにする(21ユニーク+各カテゴリ既定キーのみ有効)。`?piledemo=1` はパイルドライバー。 */
 export const DEV_WEAPON_KEY: string | null = (() => {
   const v = readUrlParam('weapon');
-  return v && VALID_DEV_WEAPON_KEYS.has(v) ? v : null;
+  if (v && VALID_DEV_WEAPON_KEYS.has(v)) return v;
+  return PILE_DEMO_ACTIVE ? 'handgun-t3-piledriver' : null;
 })();
 
 const VALID_DEV_SUB_KEYS: ReadonlySet<string> = new Set<string>([...SUB_WEAPON_KEYS, ...CHARACTER_SUBWEAPON_KEYS]);

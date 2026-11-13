@@ -266,6 +266,7 @@ import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_W
 import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS, PHANTOM_FLAMER_WINDUP_MS, phantomFlamerPhase } from '../utils/flamerCone';
 import { FLAMER_SPRAY_SLOTS, FLAMER_SPRAY_LIFE_MAX_MS, FLAMER_MUZZLE_PX, flamerSprayBirth, flamerSprayParticleAt, flamerSprayStopAt, type FlamerSprayOrigin } from '../utils/flamerSpray';
 import { NewGunsFx } from './newGunsFx';
+import { PileDriverFx } from './pileDriverFx';
 import { wraithScreamRisePx, wraithGrowthRise, isWraithGrave, WRAITH_GROWTH_FRAMES, WRAITH_GROWTH_SINK_MS, wraithWarpState, wraithLiftPx, wraithScreamFrame, wraithFloatFrame, wraithScreamBodyH, WRAITH_SCREAM_FRAMES, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_ALIGN_X, WRAITH_FLOAT_ALIGN_X, WRAITH_SCREAM_FRAME_W, WRAITH_FLOAT_FRAME_W, WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_RADIUS, WRAITH_POINT_FRAMES, WRAITH_POINT_FRAME_W, WRAITH_POINT_ALIGN_X, wraithPointFrame, WRAITH_CURSE_HOVER_PX, WRAITH_GRAVE_STONE_KEEP, wraithBattleActive, wraithFlingLiftPx, WRAITH_FLING_LIFT_PX } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md // research/NEW_GUNS.md: 塊弾・衛星弾・スキャンセンサーの絵
 import { SATELLITE_WEAPON_KEY } from '../utils/satelliteOrbit';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
@@ -5029,6 +5030,7 @@ export class PixiScene {
   private phantomFlamerGfx = new Graphics();   // 幻影の炎の紫の扇(予告/噴射中の縁)
   private playerBurnGfx = new Graphics();      // 燃えているプレイヤーの炎
   private newGunsFx: NewGunsFx | null = null; // research/NEW_GUNS.md: 新しい銃3挺の絵
+  private pileDriverFx: PileDriverFx | null = null; // パイルドライバーの弾=鋼の杭(社長指示2026-11-13)
   // §6.28-19(バッチM63): アクラシエルの結晶の槍(acrasielSpears)。設置中の槍スプライト+T5円テレグラフ
   // (ジブリル火=syncBossFiresと同型の「共有Graphics1枚+スプライトプール」方式)。
   private acrasielSpearGfx = new Graphics();
@@ -10395,6 +10397,8 @@ export class PixiScene {
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
     this.syncIceLanceBolts(s.projectiles, now); // 氷槍ライフルの弾(氷の刃スプライト。Graphics の弾は出さない)
+    // パイルドライバーの弾=撃ち手から伸びて戻る鋼の杭(描くだけ・判定は弾のまま)。
+    (this.pileDriverFx ??= new PileDriverFx(this.L.actorLayer, this.L.effectLayer)).sync(s.projectiles, s.player, s.enemies, now);
     this.syncShields(s.projectiles, now);
     this.syncArena(s.activeEvent, now);
     this.syncQuestTrigger(s.eventQuestNpc, s.gameTime, now); // レスキュー地点の待機トリガー円(§2-3)
@@ -14288,6 +14292,7 @@ export class PixiScene {
 
     for (const p of projectiles) {
       if (p.createdAt > now) continue;
+      if (PileDriverFx.owns(p)) continue; // 丸い弾を描かない弾は映り込みも出さない(杭は PileDriverFx)
       const cx = p.x + p.width / 2;
       const cy = p.y + p.height / 2;
       const horizonAlpha = this.horizonActorAlpha(cy);
@@ -30739,6 +30744,7 @@ export class PixiScene {
       if (p.createdAt > now) continue; // scheduled / inactive
       if (p.weaponType === 'shield') continue; // 盾は syncShields で別管理(actorLayer/y-sort)
       if (p.weaponKey === ICE_LANCE_WEAPON_KEY && !p.hostile) continue; // 氷槍ライフルの弾は syncIceLanceBolts(氷の刃)
+      if (PileDriverFx.owns(p)) continue; // パイルドライバーの弾は PileDriverFx(鋼の杭。丸い弾は出さない)
       if (p.weaponKey === SATELLITE_WEAPON_KEY && !p.hostile) continue; // 衛星弾の放った弾は NewGunsFx(回っていた時と同じ琥珀の玉のまま飛ぶ)
       if (p.weaponType === 'decoy') continue;  // デコイは syncDecoys で別管理(スプライト+射程円)
       if (p.weaponType === 'turret') continue; // タレットは syncTurrets で別管理(actorLayer/y-sort)

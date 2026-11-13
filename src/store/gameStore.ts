@@ -443,6 +443,10 @@ import {
   keepBlocksTechnique,
 } from '../utils/keepRange'; // §16-B 攻撃射程を保つ層(台本が動いていない時だけ効く)
 import {
+  rollHesitation, hesitationActive, hesitationInterrupted, hesitationVelocity, hesRand,
+  HES_CLEAR, HES_TECHNIQUE_PATCH,
+} from '../utils/enemyHesitation'; // 技に入る前のためらい(research/ENEMY_HESITATION.md)
+import {
   lichIsVanishing, lichWarpDue, lichWarpLanding, LICH_KEEP_RADIUS_PX, LICH_WARP_VANISH_MS,
 } from '../utils/lichWarp'; // §16-B B-5 リッチの転移(噛む→硬直→消えて現れる)
 import { lichBlinkShouldFire, lichBlinkTargetPoint } from '../utils/lichBlink'; // §16-C リッチの技「転移噛み」
@@ -18369,6 +18373,31 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           return pos;
         };
+        // ★技に入る前のためらい(research/ENEMY_HESITATION.md)の1歩。技の相に入っていない間だけ。
+        //   null=ためらっていない(または今フレームで打ち切り/時間切れ=`enemy` から欄を消して普段の処理へ落とす)。
+        //   動きは utils/enemyHesitation の速さ(慣性つき)→ resolveMove(壁)→ clampRectToPlayableArea(行ける帯・裁定4)。
+        const hesStep = (): Enemy | null => {
+          if (enemy.hesKind === undefined || enemy.aiPhase !== undefined) return null;
+          if (!hesitationActive(enemy, gameTime) || hesitationInterrupted(enemy)) {
+            enemy = { ...enemy, ...HES_CLEAR };
+            return null;
+          }
+          const hv = hesitationVelocity(enemy, gameTime, enemy.vx ?? 0, enemy.vy ?? 0, deltaTime);
+          const hm = resolveMove(enemy.x + hv.vx * deltaTime, enemy.y + hv.vy * deltaTime);
+          const hctx: PlayableAreaCtx = {
+            farBackdrop: state.farBackdrop, labTheme,
+            corridorMode: state.corridorMode,
+            m0AdvanceLimitX: state.m0AdvanceLimitX,
+            corridorRunInActive: state.corridorRunInActive,
+          };
+          const hp = clampRectToPlayableArea(hm.x, hm.y, enemy.width, enemy.height, hctx, enemy.x);
+          return { ...enemy, x: hp.x, y: hp.y, vx: hv.vx, vy: hv.vy };
+        };
+        // 抽選でためらうと決まった瞬間: 欄を書いて、そのフレームから動き出す(1フレーム止まらない)。
+        const hesBegin = (hes: Partial<Enemy>): Enemy => {
+          enemy = { ...enemy, ...hes };
+          return hesStep() ?? enemy;
+        };
         // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2-1): 死体はAI/移動/攻撃/索敵から完全に
         // 除外し、KBスライドだけを適用する(判定は他の全ブロックの手前=ここで確実に止める)。
         // KB終了後は位置を凍らせる(期限切れの除去はfinalEnemies側=このmapでは消さない)。
@@ -20459,6 +20488,21 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
 
             default: {
+              // ★技に入る前のためらい(research/ENEMY_HESITATION.md・B の城ボス): ためらいの間は抽選も通常チェイスもしない
+              //   (移動だけ置き換える。CD・遅延起爆・フェーズは上で毎フレーム進む)。打ち切り/時間切れはこのフレームから抽選へ(hesOwed=必ず技)。
+              if (enemy.hesKind !== undefined) {
+                const hesMoved = hesStep();
+                if (hesMoved) return { ...hesMoved, ...phaseFields };
+              }
+              // 抽選で技が決まった時だけ(台本の続き=bossScriptQueue が残っている時は入れない)、相手が 300px 以内なら1回抽選。
+              const giantHes = (queuedMove: unknown): Enemy | null => {
+                if (queuedMove !== undefined || (enemy.bossScriptQueue?.length ?? 0) > 0) return null;
+                const hes = rollHesitation({
+                  type: enemy.type, owed: enemy.hesOwed, gameTime, nowMs: now,
+                  ecx, ecy, tx: pcx, ty: pcy, baseSpeed: enemy.speed, rand: hesRand, bossDist: dist,
+                });
+                return hes ? { ...hesBegin(hes), ...phaseFields } : null;
+              };
               // 待機中(chase): 技を抽選する。全体クールダウン(aiReadyAt=パリィ直後の一時停止に流用)明け
               // かつ、各技の個別CD明けのものだけを候補にする(giantScript.tsのpickGiantMoveが距離ゾーン別の
               // 重み付き抽選=BOSS_RANGE_REWORK.md・社長裁定v0.25.2455)。
@@ -20495,9 +20539,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                   const queued = enemy.bossScriptQueue?.[0];
                   const move = (queued as GiantMove | GiantStageMoveId | undefined) ?? pickGiantMoveWithStage(stageId, dist, phase, ready, stageReady);
                   if (move) {
+                    const hesGb = giantHes(queued);
+                    if (hesGb) return hesGb;
                     const isStageMove = GIANT_STAGE_UNIQUE_MOVE[stageId] === move || GIANT_STAGE_ULT_MOVE[stageId] === move;
                     return {
-                      ...enemy, ...phaseFields, vx: 0, vy: 0,
+                      ...enemy, ...phaseFields, ...HES_TECHNIQUE_PATCH, vx: 0, vy: 0,
                       bossScriptQueue: queued ? (enemy.bossScriptQueue ?? []).slice(1) : planBossChoreography('giant', move, phase).slice(1),
                       ...(isStageMove ? beginGiantStageMove(move as GiantStageMoveId) : beginGiantMove(move as GiantMove)),
                     };
@@ -20523,12 +20569,14 @@ export const useGameStore = create<GameState>((set, get) => ({
                   const queued = enemy.bossScriptQueue?.[0];
                   const move = (queued as GiantMove | GlenMoveId | undefined) ?? pickGiantMoveWithGlen(dist, phase, ready, glenReady);
                   if (move) {
+                    const hesGb = giantHes(queued);
+                    if (hesGb) return hesGb;
                     // ★手書きの or 連鎖にしないこと(v0.25.3140の実バグ): tailslam を足した時に
                     // ここだけ書き忘れ、**抽選では当たっているのに beginGiantMove 側へ流れて握り潰され**、
                     // 「新技が一度も出ない」になった。判定は台帳(GLEN_MOVES)から導出する。
                     const isGlenMove = isGlenMoveId(move);
                     return {
-                      ...enemy, ...phaseFields, vx: 0, vy: 0,
+                      ...enemy, ...phaseFields, ...HES_TECHNIQUE_PATCH, vx: 0, vy: 0,
                       bossScriptQueue: queued ? (enemy.bossScriptQueue ?? []).slice(1) : planBossChoreography('glen', move, phase, { glenBigMoves }).slice(1),
                       ...(isGlenMove ? beginGlenMove(move as GlenMoveId) : beginGiantMove(move as GiantMove)),
                     };
@@ -20537,8 +20585,10 @@ export const useGameStore = create<GameState>((set, get) => ({
                   const queued = enemy.bossScriptQueue?.[0];
                   const move = (queued as GiantMove | undefined) ?? pickGiantMove(dist, phase, ready);
                   if (move) {
+                    const hesGb = giantHes(queued);
+                    if (hesGb) return hesGb;
                     return {
-                      ...enemy, ...phaseFields, vx: 0, vy: 0,
+                      ...enemy, ...phaseFields, ...HES_TECHNIQUE_PATCH, vx: 0, vy: 0,
                       bossScriptQueue: queued ? (enemy.bossScriptQueue ?? []).slice(1) : planBossChoreography('giant', move, phase).slice(1),
                       ...beginGiantMove(move),
                     };
@@ -20569,6 +20619,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.escortLostUntil !== undefined && gameTime < enemy.escortLostUntil
           && !enemy.aiPhase && !(enemy.biteAt !== undefined && enemy.biteAt > 0) && enemy.chaffMove === undefined) {
           return { ...enemy, vx: (enemy.vx ?? 0) * 0.85, vy: (enemy.vy ?? 0) * 0.85 };
+        }
+        // ★技に入る前のためらい(research/ENEMY_HESITATION.md・A の型=pumpkin/lab-zombie-3/driller/logger と hunter)。
+        //   ためらいの間は移動だけを置き換える(接近・チェイス・creep・噛みつきの開始は止まる。CD・タイマーは時刻で進む)。
+        //   削岩型・伐採人は離脱(retreat)が始まったら打ち切る(hesOwed は残す=明けたら技)。
+        if (enemy.hesKind !== undefined && enemy.type !== 'giantbat') {
+          if ((enemy.type === 'driller' || enemy.type === 'logger') && isDrillerRetreating(enemy.drillerRetreatUntil, gameTime)) {
+            enemy = { ...enemy, ...HES_CLEAR };
+          } else {
+            const hesMoved = hesStep();
+            if (hesMoved) return hesMoved;
+          }
         }
         const isDashType = enemy.type === 'werewolf' || enemy.type === 'lab-zombie-2' || enemy.type === 'giantbat' || enemy.type === 'hunter';
         if (isDashType) {
@@ -20692,7 +20753,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           if (enemy.type !== 'giantbat' && enemy.type !== 'hunter' && dist <= PUMPKIN_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)
             && !keepBlocksTechnique(enemy.type, enemy.id, enemy.spawnedAt, PUMPKIN_TRIGGER_RANGE, dist)) {
-            return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: atkUntil(PUMPKIN_CROUCH_MS), vx: 0, vy: 0 };
+            // ★技に入る前のためらい(research/ENEMY_HESITATION.md): 溜めの直前に1回だけ抽選。ためらうなら技は捨てる。
+            const hes = rollHesitation({
+              type: enemy.type, owed: enemy.hesOwed, gameTime, nowMs: now,
+              ecx, ecy, tx: apx, ty: apy, baseSpeed: enemy.speed, rand: hesRand,
+            });
+            if (hes) return hesBegin(hes);
+            return { ...enemy, ...HES_TECHNIQUE_PATCH, aiPhase: 'crouch', aiPhaseUntil: atkUntil(PUMPKIN_CROUCH_MS), vx: 0, vy: 0 };
           }
           // それ以外は通常チェイス(下へフォールスルー)。
         }
@@ -20718,13 +20785,22 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (gameTime >= (enemy.gbJumpReadyAt ?? 0) && dist > 40 && dist < jumpRange) opts.push('jump');
           if (opts.length > 0) {
             const pick = opts[Math.floor(Math.random() * opts.length)];
+            // ★技に入る前のためらい(research/ENEMY_HESITATION.md・B のハンター): 旧スケジューラが技を選んだ時だけ、
+            //   相手が 300px 以内なら1回抽選(ハンターだけ。`?giantscript=0` の城ボスはこの経路でもためらわない=新スクリプト側だけが対象)。
+            if (enemy.type === 'hunter') {
+              const hes = rollHesitation({
+                type: enemy.type, owed: enemy.hesOwed, gameTime, nowMs: now,
+                ecx, ecy, tx: apx, ty: apy, baseSpeed: enemy.speed, rand: hesRand, bossDist: dist,
+              });
+              if (hes) return hesBegin(hes);
+            }
             const jitter = (ms: number) => ms * (0.8 + Math.random() * 0.4);
             if (pick === 'dash') {
               // 突進距離を2倍に(giantbat も同様にオーバーシュート)。
               // ダッシュ頻度を抑える(社長指示): 通常CD(±20%)にランダム追加CD(3〜10秒)を上乗せ=犬と同様。
-              return { ...enemy, aiPhase: 'windup', aiPhaseUntil: atkUntil(WEREWOLF_WINDUP_MS), aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: 2 * apx - (enemy.x + enemy.width / 2), aiTargetY: 2 * apy - (enemy.y + enemy.height / 2), vx: 0, vy: 0, gbDashReadyAt: atkCdUntil(jitter(GIANTBAT_DASH_CD_MS) + (WEREWOLF_EXTRA_CD_MIN_MS + Math.random() * (WEREWOLF_EXTRA_CD_MAX_MS - WEREWOLF_EXTRA_CD_MIN_MS))) };
+              return { ...enemy, ...HES_TECHNIQUE_PATCH, aiPhase: 'windup', aiPhaseUntil: atkUntil(WEREWOLF_WINDUP_MS), aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: 2 * apx - (enemy.x + enemy.width / 2), aiTargetY: 2 * apy - (enemy.y + enemy.height / 2), vx: 0, vy: 0, gbDashReadyAt: atkCdUntil(jitter(GIANTBAT_DASH_CD_MS) + (WEREWOLF_EXTRA_CD_MIN_MS + Math.random() * (WEREWOLF_EXTRA_CD_MAX_MS - WEREWOLF_EXTRA_CD_MIN_MS))) };
             }
-            return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: atkUntil(PUMPKIN_CROUCH_MS), vx: 0, vy: 0, gbJumpReadyAt: atkCdUntil(jitter(GIANTBAT_JUMP_CD_MS)) };
+            return { ...enemy, ...HES_TECHNIQUE_PATCH, aiPhase: 'crouch', aiPhaseUntil: atkUntil(PUMPKIN_CROUCH_MS), vx: 0, vy: 0, gbJumpReadyAt: atkCdUntil(jitter(GIANTBAT_JUMP_CD_MS)) };
           }
           // CD中はフォールスルーして通常チェイス。
         }
@@ -21631,10 +21707,16 @@ export const useGameStore = create<GameState>((set, get) => ({
             return { ...enemy, vx: rvx, vy: rvy, x: rmoved.x, y: rmoved.y };
           }
           if (drillerCanThrust(pDist) && gameTime >= (enemy.aiReadyAt ?? 0)) {
+            // ★技に入る前のためらい(research/ENEMY_HESITATION.md): 溜めの直前に1回だけ抽選。ためらうなら技は捨てる。
+            const hes = rollHesitation({
+              type: enemy.type, owed: enemy.hesOwed, gameTime, nowMs: now,
+              ecx, ecy, tx: apx, ty: apy, baseSpeed: enemy.speed, rand: hesRand,
+            });
+            if (hes) return hesBegin(hes);
             const pl = Math.max(0.001, pDist);
             const pux = pDx / pl, puy = pDy / pl;
             return {
-              ...enemy, vx: 0, vy: 0,
+              ...enemy, ...HES_TECHNIQUE_PATCH, vx: 0, vy: 0,
               aiPhase: 'driller-thrust-windup', aiPhaseUntil: atkUntil(DRILLER_THRUST_WINDUP_MS),
               // ★**溜めの開始時刻を焼く**(v0.25.4621)。描画側の「溜め終盤の震え」(`windupTremorPx`)は
               //   `aiStartedAt` が無いと**1度も出ない**。3相の技はどれも震える前提で作られているのに、
@@ -21722,6 +21804,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             return { ...enemy, vx: rvx, vy: rvy, x: rmoved.x, y: rmoved.y };
           }
           if (loggerCanSweep(pDist) && gameTime >= (enemy.aiReadyAt ?? 0)) {
+            // ★技に入る前のためらい(research/ENEMY_HESITATION.md): 溜めの直前に1回だけ抽選。ためらうなら技は捨てる。
+            const hes = rollHesitation({
+              type: enemy.type, owed: enemy.hesOwed, gameTime, nowMs: now,
+              ecx, ecy, tx: apx, ty: apy, baseSpeed: enemy.speed, rand: hesRand,
+            });
+            if (hes) return hesBegin(hes);
             const pl = Math.max(0.001, pDist);
             const pux = pDx / pl, puy = pDy / pl;
             // §14-2②: 帯の長軸はプレイヤー方向と直交する(突きの型=同軸とは違う)。純関数化した
@@ -21730,7 +21818,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // pixiSceneはdriller-thrustと同じ「aiFrom→aiTargetを結ぶ帯」を描くだけで済む)。
             const band = loggerSweepBand(ecx, ecy, pux, puy, LOGGER_SWEEP_FORWARD_OFFSET, LOGGER_SWEEP_LENGTH / 2);
             return {
-              ...enemy, vx: 0, vy: 0,
+              ...enemy, ...HES_TECHNIQUE_PATCH, vx: 0, vy: 0,
               aiPhase: 'logger-sweep-windup', aiPhaseUntil: atkUntil(LOGGER_SWEEP_WINDUP_MS),
               // ★**溜めの開始時刻を焼く**(v0.25.4621・削岩型の突きと同じ穴)。これが無いと
               //   描画側の「溜め終盤の震え」が1度も出ず、**1コマ×1083msの完全な静止画**に戻る。

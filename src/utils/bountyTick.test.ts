@@ -28,6 +28,7 @@ import { spawnEnemyAt } from './enemyUtils';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 import { distToSegment } from './geometry';
+import { setHesitationRandForTest } from './enemyHesitation';
 import type { Enemy, EnemyType } from '../types/game';
 import { TIME_DIFFICULTY_PEAK_MS } from './timeDifficulty';
 
@@ -1060,6 +1061,9 @@ describe('runBountyTick — B2a 技の状態機械', () => {
   });
 
   describe('馬乗り(bounty-melee)', () => {
+    // 技に入る前のためらい(research/ENEMY_HESITATION.md)は抽選を「技」側へ固定する(ためらいの配線は src/store/enemyHesitation.store.test.ts)。
+    beforeEach(() => setHesitationRandForTest(() => 0));
+    afterEach(() => setHesitationRandForTest(null));
     // ★v0.25.3571(社長指示「三段攻撃の最後に360度、の台本に統合」): v0.25.3570の近距離抽選は撤回。
     // 密着帯の入口はコンボ1本(乱数に依らない)で、360はコンボの締めとして出る(下の統合テスト)。
     it('密着帯(BM_MELEE_MAX以内)は常に3段コンボで始まる(抽選しない・v0.25.3571)', () => {

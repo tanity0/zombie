@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5573', items: [
+    'パイルドライバーは鋼の杭を一気に打ち込み、刺さった衝撃のあと蒸気を噴いて引き戻す',
+    '強い敵や一部のボスは、間合いに入っても毎回すぐには攻めてこない。横へ回り込む、立ち止まる、半歩下がる、を挟んでから来る',
+  ] },
   { version: '0.25.5572', items: [
     '格闘の構えで強い敵やボスの弾を受けた時は、少しだけ押される',
   ] },

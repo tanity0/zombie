@@ -773,11 +773,14 @@ export const isBiteFrozen = (
   || (enemy.liftUntil !== undefined && nowMs < enemy.liftUntil);
 
 export const canStartBite = (
-  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'biteRecoverUntil' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState' | 'brHoldUntil' | 'brLockUntil'>,
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'biteRecoverUntil' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState' | 'brHoldUntil' | 'brLockUntil'> & { hesKind?: Enemy['hesKind']; hesUntil?: number },
   gameTime: number,
   /** ★`liftUntil` は Date.now 系(§isBiteFrozen の注記)。時計を混ぜないため呼び手が両方渡す。 */
   nowMs: number,
 ): boolean => {
+  // ★技に入る前のためらい(旋回/様子見/後退)の間は噛みつきも出さない(research/ENEMY_HESITATION.md 監査A-6・
+  //   裁定3「ためらい中は赤い予告を出さない」を噛みつきの点滅にも当てる)。
+  if (enemy.hesKind !== undefined && enemy.hesUntil !== undefined && gameTime < enemy.hesUntil) return false;
   // ★ゾンビの噛みつきは**立ち止まりが引き金**(社長指示2026-09-16「ゾンビ、立ち止まったら
   // かならずダッシュ噛みつき発動で」)。停止(zpause)が明けて突進(zrush)へ移る**その瞬間に、
   // 距離を見ずに必ず**構える=`canZombieRushBite` を store 側の状態機械が呼ぶ。
