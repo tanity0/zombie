@@ -4128,7 +4128,8 @@ const WEAPON_CRATE_SCATTER_RADIUS = 92;
 // スポーン時に5%で武器箱→金箱へ変化(見た目=gold-chest素材)。賞金首は金箱を確定ドロップ(従来どおり)。
 // 旧金箱の中身(トレジャー×2+スクラップ・rollBountyChestReward)は**削除**し、中身はこの当たり構成
 // (武器抽選3回+赤経験値20個+スクラップ10倍)に一本化。
-const GOLD_CRATE_RATE = 0.05;
+// 社長指示2026-11-13「金箱2%で」により 5% → 2%。
+const GOLD_CRATE_RATE = 0.02;
 const GOLD_CRATE_WEAPON_ROLLS = 3;
 const GOLD_CRATE_XP_COUNT = 20;
 const GOLD_CRATE_XP_VALUE = 5;            // value>=5 = 赤経験値(pixiSceneの色分けしきい値)

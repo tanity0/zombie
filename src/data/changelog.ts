@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5577', items: [
+    '金箱が出にくくなり、出た時の箱が少し大きく見える',
+  ] },
   { version: '0.25.5576', items: [
     '銃の熟練度は、銃1丁ごとに貯まる。同じハンドガンでも、別の銃は別に育つ',
     'POIに触れた瞬間、足が一瞬止まって体が押し返される',

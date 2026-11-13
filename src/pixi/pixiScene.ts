@@ -888,8 +888,8 @@ const SCREAM_BUFF_WAVE_MAX_DELAY_MS = 900;
 const SUMMON_FADE_IN_MS = 360, SUMMON_FADE_OUT_MS = 600, SUMMON_RISE_PX = 10;
 /** 噛んだ後、次の噛みまでの間に加えて敵の方を向き続ける猶予(ms)。噛みが続く間は向きが揺れない。 */
 const SUMMON_BITE_FACE_GRACE_MS = 200;
-/** 金箱(bounty-chest)の表示の大きさ(拾い物の基準の大きさに対する倍率)。v0.25.3520 で 1.7、社長指示2026-11-02で 2.2。 */
-const GOLD_CHEST_BOX = 2.2;
+/** 金箱(bounty-chest)の表示の大きさ(拾い物の基準の大きさに対する倍率)。v0.25.3520 で 1.7、社長指示2026-11-02で 2.2、社長指示2026-11-13「絵をもう少しだけ大きく表示」で 2.6(見た目だけ・拾える範囲は不変。光はこの値に比例して追従)。 */
+const GOLD_CHEST_BOX = 2.6;
 // research/HERO_DOG.md §7: 英雄の犬の歩きのコマを切り替える距離(px/コマ)。2コマで1周≒体長(54px)。
 const HERO_DOG_STRIDE_PX = 26;
 const HERO_DOG_FADE_IN_MS = 120; // 走り込んで来るので湧きの演出は無し。縁の外から来た体を短く濃くするだけ
@@ -36133,7 +36133,7 @@ export class PixiScene {
         // §6.38 B3: gold-chest素材(424×256)は他のpickupアイコンより大判なので実表示は縮小していた。
         // ★v0.25.3520(社長指示「金箱の絵が小さすぎるので二倍にして」): 0.85 → 1.7(=2倍)。
         // 賞金首の討伐報酬という「一目で分かるべき物」なので、他のpickupより大きくてよい。
-        // ★社長指示2026-11-02「金箱もう少し大きく表示」: 1.7 → GOLD_CHEST_BOX(2.2)。見た目だけ(拾える範囲は不変)。
+        // ★社長指示2026-11-02「金箱もう少し大きく表示」: 1.7 → GOLD_CHEST_BOX(2.2・2026-11-13に2.6)。見た目だけ(拾える範囲は不変)。
         const itemBox = p.type === 'lab-clear-item' ? size * 2.4 : p.type === 'bounty-chest' ? size * GOLD_CHEST_BOX : size; // クリアアイテムは目立つよう大きめ
         const sc = containScale(itemBox, itemBox, tex.width, tex.height) * d;
         entry.sprite.scale.set(sc);

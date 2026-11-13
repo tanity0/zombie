@@ -95,7 +95,7 @@ describe('collectPickup(bounty-chest) — 金箱の中身(★v0.25.3644=旧・�
     expect(strapTotal).toBeLessThanOrEqual(510);
   });
 
-  it('★武器箱はスポーン時に5%で金箱へ変化する(見た目=gold-chest。開封時判明の旧・秘密箱は廃止)', () => {
+  it('★武器箱はスポーン時に2%(2026-11-13〜・旧5%)で金箱へ変化する(見た目=gold-chest。開封時判明の旧・秘密箱は廃止)', () => {
     useGameStore.getState().resetGame('warrior');
     // 当たり側: Math.random()=0 → 変化する。
     vi.spyOn(Math, 'random').mockReturnValue(0);
