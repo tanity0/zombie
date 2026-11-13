@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5572', items: [
+    '格闘の構えで強い敵やボスの弾を受けた時は、少しだけ押される',
+  ] },
   { version: '0.25.5571', items: [
     '緑卵の爆発で倒れた時の死因が「緑卵」と出る',
   ] },

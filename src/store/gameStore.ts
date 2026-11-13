@@ -9436,7 +9436,7 @@ interface GameState {
   setMouseAim: (screen: { x: number; y: number } | null) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
-  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string, killerHint?: { type?: EnemyType; id?: string }, opts?: { dot?: boolean; knockback?: 'none' | { speed: number; dirX: number; dirY: number }; guardDir?: { x: number; y: number }; guardFrom?: { x: number; y: number }; leverGuard?: 'damageOnly' | 'none' }) => boolean; // opts.guardDir/guardFrom/leverGuard: ★格闘のレバーガード(research/BRAWLER.md §12-1c)の「攻撃の向き」の材料。guardDir=弾が飛んできた向き(弾の速度)/ guardFrom=爆発・範囲技の中心(爆心)/ leverGuard:'damageOnly'=掴み・演出つきの技(半減だけ掛け、押し・怯みは今どおり)・'none'=床と置かれた火(踏んでいる間ダメージを受け続ける物=「攻撃してきた相手」ではない=ガードにしない)。どれも未指定=被弾の点(fromX/Y)と攻撃してきた個体の位置から引く // opts.knockback: ★組み込みの被弾の押しの差し替え(research/BRAWLER_PHANTOM.md §4-8・格闘の幻影の段ごとの押し)。'none'=押さない(揺れの向きは残す)/ 速さと向き=その押し。未指定=今どおり / opts.dot: ★持続ダメージ(炎・延焼。UNIQUE_WEAPONS.md §17-6b)=HPと記録だけ減らし、怯み・ストップ・揺れ・全体の被弾無敵・反撃の窓・被弾で動くスキルを起こさない(敵ごとの被弾無敵は通常どおり) // killerHint: ★倒した相手の記録専用(リザルトの絵・宿敵昇格)。被弾無敵・被弾反撃には効かない(弾の発射元など、id を渡すと挙動が変わる経路用) // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
+  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string, killerHint?: { type?: EnemyType; id?: string }, opts?: { dot?: boolean; knockback?: 'none' | { speed: number; dirX: number; dirY: number }; guardDir?: { x: number; y: number }; guardFrom?: { x: number; y: number }; leverGuard?: 'damageOnly' | 'none'; projectile?: boolean }) => boolean; // opts.projectile: 敵の弾の被弾(格闘の弱い構えで受けた時の押しを短くする・社長指示2026-11-13「ボスの弾の弾かれは少しだけ」) // opts.guardDir/guardFrom/leverGuard: ★格闘のレバーガード(research/BRAWLER.md §12-1c)の「攻撃の向き」の材料。guardDir=弾が飛んできた向き(弾の速度)/ guardFrom=爆発・範囲技の中心(爆心)/ leverGuard:'damageOnly'=掴み・演出つきの技(半減だけ掛け、押し・怯みは今どおり)・'none'=床と置かれた火(踏んでいる間ダメージを受け続ける物=「攻撃してきた相手」ではない=ガードにしない)。どれも未指定=被弾の点(fromX/Y)と攻撃してきた個体の位置から引く // opts.knockback: ★組み込みの被弾の押しの差し替え(research/BRAWLER_PHANTOM.md §4-8・格闘の幻影の段ごとの押し)。'none'=押さない(揺れの向きは残す)/ 速さと向き=その押し。未指定=今どおり / opts.dot: ★持続ダメージ(炎・延焼。UNIQUE_WEAPONS.md §17-6b)=HPと記録だけ減らし、怯み・ストップ・揺れ・全体の被弾無敵・反撃の窓・被弾で動くスキルを起こさない(敵ごとの被弾無敵は通常どおり) // killerHint: ★倒した相手の記録専用(リザルトの絵・宿敵昇格)。被弾無敵・被弾反撃には効かない(弾の発射元など、id を渡すと挙動が変わる経路用) // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
   lastDamageSource: string; // 直近に被弾した原因ラベル(死因表示用)。被弾のたびに更新。
   gainExperience: (amount: number) => void;
   levelUp: () => void;
@@ -11748,7 +11748,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const src = BRG.brawlerGuardSourceEnemy(sources, stn.enemies, c); // 個体が分かればその個体・型だけなら同じ型で一番近い1体
       const dir = BRG.brawlerGuardKnockDir(c, src ? { x: src.x + src.width / 2, y: src.y + src.height / 2 } : null, { x, y }, p.lastDirection);
       const ms = BRG.BRAWLER_GUARD_KNOCK_MS;
-      const v = BR.brawlerStepSpeed(BRG.BRAWLER_GUARD_KNOCK_PX, ms);
+      const v = BR.brawlerStepSpeed(BRG.brawlerGuardKnockPx(opts?.projectile), ms); // 弾の受けは短い押し(社長指示2026-11-13「あ、少しだけ押される で」)
       const startAt = Math.max(now, stn.hitstopUntil); // 全体の停止の間は動けないので、明けてから押され始める
       set(state => ({ player: {
         ...state.player, lungeVx: dir.x * v, lungeVy: dir.y * v, lungeUntil: startAt + ms, lungeMs: ms, lungeShape: 'push', lungeHoldUntil: 0,
@@ -15712,7 +15712,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const guardSrcType = damagerType ?? killerHint?.type;
       get().brawlerGuardReceive(fromX ?? player.x + player.width / 2, fromY ?? player.y + player.height / 2, guardSrcId, {
         sources: guardSrcId !== undefined || guardSrcType !== undefined ? [{ id: guardSrcId, type: guardSrcType }] : [],
-        beam: BRG.isBrawlerBeamMove(damageSourceMove), dot,
+        beam: BRG.isBrawlerBeamMove(damageSourceMove), dot, ...(opts?.projectile ? { projectile: true } : {}), // 弾=押しは短い(弱い構えで受けた弾がここを通る・社長指示2026-11-13)
       });
       return false;
     }

@@ -7,7 +7,7 @@ import { useGameStore, isBrawlerGuarding } from './gameStore';
 import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll } from '../utils/brawlerCombo';
-import { brawlerGuardOutcome, brawlerGuardCounterDue } from '../utils/brawlerGuard';
+import { brawlerGuardOutcome, brawlerGuardCounterDue, brawlerGuardKnockPx, BRAWLER_GUARD_KNOCK_PX, BRAWLER_GUARD_PROJECTILE_KNOCK_PX } from '../utils/brawlerGuard';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
@@ -90,9 +90,12 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); setTreesDisabled(false); setTorchesDisabled(false); });
 
 describe('純関数: 弾の受けは連動技を出さない', () => {
-  it('雑魚の弾=何も出さない(潰しにしない)/ 雑魚より上の弾=押されるだけ(気功は予約しない)', () => {
+  it('雑魚の弾=何も出さない(潰しにしない)/ 雑魚より上の弾=押されるだけ(気功は予約しない・押しは近接より短い)', () => {
     expect(brawlerGuardOutcome({ throttled: false, projectile: true, classes: ['mob'] })).toBe('none');
     expect(brawlerGuardOutcome({ throttled: false, projectile: true, classes: ['boss'] })).toBe('knockback');
+    expect(brawlerGuardKnockPx(true)).toBe(BRAWLER_GUARD_PROJECTILE_KNOCK_PX);
+    expect(brawlerGuardKnockPx(undefined)).toBe(BRAWLER_GUARD_KNOCK_PX);
+    expect(BRAWLER_GUARD_PROJECTILE_KNOCK_PX).toBeLessThan(BRAWLER_GUARD_KNOCK_PX);
     expect(brawlerGuardOutcome({ throttled: false, classes: ['mob'] })).toBe('stomp');
     expect(brawlerGuardCounterDue({ outcome: 'knockback', guardSince: 1, firedFor: undefined, projectile: true })).toBe(false);
     expect(brawlerGuardCounterDue({ outcome: 'knockback', guardSince: 1, firedFor: undefined })).toBe(true);
@@ -128,6 +131,58 @@ describe('構えで弾を受けた時(社長指示2026-11-13)', () => {
     expect(br().guardKiko).toBeUndefined();
     advanceSim(1200);
     expect(seen.size).toBe(0);
+  });
+  it('ボス級の弾=少しだけ押される(近接の押しより短い)/ 雑魚の弾=押されない / 近接のボス級=今どおり(社長指示2026-11-13「あ、少しだけ押される で」)', () => {
+    const pushed = (fn: () => void): number => {
+      const x0 = pl().x, y0 = pl().y;
+      fn();
+      advanceSim(600);
+      return Math.hypot(pl().x - x0, pl().y - y0);
+    };
+    setup();
+    useGameStore.setState({ enemies: [enemyAt('hunter', 400, 0, 'h')] });
+    guardNow(5);
+    const dProj = pushed(() => shoot('h', 'hunter'));
+    expect(pl().lastCounterSuccessTime).toBeGreaterThan(0);
+    expect(br().tech).toBe('guard');
+    expect(dProj).toBeGreaterThan(BRAWLER_GUARD_PROJECTILE_KNOCK_PX * 0.7);
+    expect(dProj).toBeLessThan(BRAWLER_GUARD_PROJECTILE_KNOCK_PX * 1.3);
+
+    setup();
+    useGameStore.setState({ enemies: [enemyAt('zombie', 400, 0, 'z')] });
+    guardNow(3);
+    const dMob = pushed(() => shoot('z', 'zombie'));
+    expect(dMob).toBe(0);
+    expect(br().tech).toBe('guard');
+
+    setup();
+    useGameStore.setState({ enemies: [enemyAt('hunter', 120, 0, 'h')] });
+    guardNow(5);
+    const dMelee = pushed(() => hitBy('h', 'hunter', 'hunter-slash'));
+    expect(dMelee).toBeGreaterThan(BRAWLER_GUARD_KNOCK_PX * 0.7);
+    expect(dMelee).toBeGreaterThan(dProj * 2);
+  });
+  it('弱い構え(3点未満)+ボス級の弾=約30px押される / 弱い構えの近接は今どおり(社長指示2026-11-13「ボスの弾の弾かれは少しだけ」)', () => {
+    const pushed = (fn: () => void): number => {
+      const x0 = pl().x, y0 = pl().y;
+      fn();
+      advanceSim(600);
+      return Math.hypot(pl().x - x0, pl().y - y0);
+    };
+    setup();
+    useGameStore.setState({ enemies: [enemyAt('hunter', 400, 0, 'h')] });
+    guardNow(0);
+    expect(br().guardWeak).toBe(true);
+    const dProj = pushed(() => shoot('h', 'hunter'));
+    expect(dProj).toBeGreaterThan(BRAWLER_GUARD_PROJECTILE_KNOCK_PX * 0.7);
+    expect(dProj).toBeLessThan(BRAWLER_GUARD_PROJECTILE_KNOCK_PX * 1.3);
+
+    setup();
+    useGameStore.setState({ enemies: [enemyAt('hunter', 120, 0, 'h')] });
+    guardNow(0);
+    expect(br().guardWeak).toBe(true);
+    const dMelee = pushed(() => hitBy('h', 'hunter', 'hunter-slash'));
+    expect(dMelee).toBeGreaterThan(BRAWLER_GUARD_KNOCK_PX * 0.7);
   });
   it('ジャストの +5 は弾でも今どおり入る', () => {
     setup();

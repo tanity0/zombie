@@ -14,6 +14,14 @@ export const BRAWLER_GUARD_THROTTLE_MS = 140;
  * ステップ(100px)より少し短い。押されながら反撃の気功を撃つ(下の BRAWLER_GUARD_COUNTER_KIKO_MULT)。
  */
 export const BRAWLER_GUARD_KNOCK_PX = 90;
+/**
+ * 弾を受けた時(雑魚より上・撃ち主が分からない弾)に自分が押される距離(px)。近接の押しの約1/3(叩き台)。
+ * 社長指示2026-11-13「ボスの弾の弾かれ は無し」→「あ、少しだけ押される で」。長さ(ms)は近接と同じ BRAWLER_GUARD_KNOCK_MS。
+ */
+export const BRAWLER_GUARD_PROJECTILE_KNOCK_PX = 30;
+/** 成立で押される距離(px)。弾の受けは短い押し、それ以外は近接の押し。 */
+export const brawlerGuardKnockPx = (projectile: boolean | undefined): number =>
+  projectile === true ? BRAWLER_GUARD_PROJECTILE_KNOCK_PX : BRAWLER_GUARD_KNOCK_PX;
 /** 押される長さ(ms・ゲーム内の時間)。加速→減速の1山(格闘のステップと同じ形)。 */
 export const BRAWLER_GUARD_KNOCK_MS = 280;
 /** 相手の位置が自分と重なっている(向きが取れない)とみなす距離(px)。 */
@@ -39,13 +47,15 @@ export const brawlerGuardSourceClass = (src: BrawlerGuardSource, enemies: readon
  *  - throttled(間引きに掛かった受け)・dot(持続ダメージ)= 'none'。
  *  - 受けた相手が全員雑魚 = 'stomp'。
  *  - それ以外(強個体・ボス級・浮かない区分・不明が1件でも混じる/相手が1件も無い)= 'knockback'(ハメを残さない側)。
+ *  - projectile(弾を受けた)= 雑魚の弾は 'none'(潰しを出さない・構えが続く)/ それ以外は 'knockback'(押しは短い=BRAWLER_GUARD_PROJECTILE_KNOCK_PX)。
  */
 export const brawlerGuardOutcome = (o: { throttled: boolean; dot?: boolean; weak?: boolean; projectile?: boolean; classes: readonly BrawlerGuardClass[] }): BrawlerGuardOutcome => {
   if (o.throttled || o.dot) return 'none';
   if (o.weak) return 'knockback'; // 弱い構え: 区分を問わず押されるだけ(雑魚でも潰しは出さない・反撃の気功は brawlerGuardEffects が止める)
   const allMob = o.classes.length > 0 && o.classes.every(c => c === 'mob');
   // ★弾を受けた(社長指示2026-11-13「弾を受けてもカウンターの発動はするがカウンターモードは解除しない。その後の連動技も発動しない」):
-  //   雑魚の弾でも潰しは出さない(潰しは構えを終わらせる連動技)=何も出さず構えが続く。雑魚より上の弾は今どおり押される(反撃の気功は brawlerGuardCounterDue が止める)。
+  //   雑魚の弾でも潰しは出さない(潰しは構えを終わらせる連動技)=何も出さず構えが続く。雑魚より上の弾は押される(反撃の気功は brawlerGuardCounterDue が止める)。
+  //   ★押される距離は近接より短い BRAWLER_GUARD_PROJECTILE_KNOCK_PX(社長指示2026-11-13「あ、少しだけ押される で」)。
   if (o.projectile) return allMob ? 'none' : 'knockback';
   return allMob ? 'stomp' : 'knockback';
 };

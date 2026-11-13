@@ -1047,7 +1047,7 @@ export const applyEnemyProjectileHits = (
       // 発射元タイプ推定だったが、弾技を全ボスへ広げたので弾のタグを読むだけにする
       // (giantbat 新スクリプトの咆哮弾は同じ 'g-bolt' が載る=旧挙動と同値)。
       const pvpHpBefore = useGameStore.getState().player.health;
-      const playerDied = useGameStore.getState().damagePlayer(proj.damage * rnMult * scMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2, undefined, undefined, proj.srcMoveKey, undefined, undefined, { type: proj.ownerType, id: proj.ownerId }, { guardDir: proj.direction }); // 末尾=倒した相手の記録(発射元)/ guardDir=★格闘のレバーガードは「弾が飛んできた向き」で見る(社長2026-11-10「弾もガード可能」・research/BRAWLER.md §12-1c)
+      const playerDied = useGameStore.getState().damagePlayer(proj.damage * rnMult * scMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2, undefined, undefined, proj.srcMoveKey, undefined, undefined, { type: proj.ownerType, id: proj.ownerId }, { guardDir: proj.direction, projectile: true }); // projectile=弱い構えで受けた弾も押しは短い(社長指示2026-11-13「ボスの弾の弾かれは少しだけ」) // 末尾=倒した相手の記録(発射元)/ guardDir=★格闘のレバーガードは「弾が飛んできた向き」で見る(社長2026-11-10「弾もガード可能」・research/BRAWLER.md §12-1c)
       if (wasVulnerable) {
         fx.playSfx('player-damage');
         fx.spawnFlash('rgba(239,68,68,0.22)', 200);
@@ -1171,7 +1171,7 @@ export const applyEnemyProjectileHits = (
     for (const id of reflectedOwnerIds) notifyCounterHit(id);
     fx.addMeleeFinishCombo(1);
     // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
-    if (!brawlerGuardCounterFx(reflectedAt?.x ?? player.x + player.width / 2, reflectedAt?.y ?? player.y + player.height / 2, reflectedSources, { projectile: true })) { // 弾=成立の演出は出すが構えは続き、潰し・反撃の気功は出さない(社長指示2026-11-13)。撃ち主の区分で成立の効果が決まる(雑魚の弾=潰し/雑魚より上・撃ち主が分からない=自分がノックバック)
+    if (!brawlerGuardCounterFx(reflectedAt?.x ?? player.x + player.width / 2, reflectedAt?.y ?? player.y + player.height / 2, reflectedSources, { projectile: true })) { // 弾=成立の演出は出すが構えは続き、潰し・反撃の気功は出さない(社長指示2026-11-13)。雑魚の弾=何も出さない/雑魚より上・撃ち主が分からない弾=少しだけ押される(社長指示2026-11-13「あ、少しだけ押される で」)
       fx.playSfx('counter');
       const pcx = player.x + player.width / 2;
       const pcy = player.y + player.height / 2;
