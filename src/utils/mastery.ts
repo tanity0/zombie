@@ -12,7 +12,7 @@
 import {
   DEFAULT_MELEE_MASTERY_KEY, GROWING_MASTERY_KEYS, LEGACY_MELEE_MASTERY_KEY, MASTERY_BASE, MASTERY_GROWTH, MASTERY_KEY,
   MASTERY_MAX_LEVEL, MASTERY_MAX_MULT, MASTERY_PENDING_KEY, MASTERY_XP_WEIGHT, SUB_TO_MASTERY_KEY, isGrowingMasteryKey,
-  meleeMasteryKeyOfWeaponKey, type GrowingMasteryKey, type MasteryKey, type MasteryMeleeKey,
+  gunMasteryKeyOfWeaponKey, meleeMasteryKeyOfWeaponKey, type GrowingMasteryKey, type MasteryKey, type MasteryMeleeKey,
 } from '../data/mastery';
 import {
   clearMasteryReport, clearPendingMastery, getPendingMastery, hasPendingMastery, isMasteryRunCommitted,
@@ -194,8 +194,8 @@ export const masteryMultTable = (s: MasteryState, ignoredRun: boolean): Partial<
 
 /** 出撃開始時に持っている物(`loadout` の平均の材料)。 */
 export interface MasteryLoadoutInput {
-  /** 持っている銃の種類(重複してよい=1つに数える)。 */
-  gunCategories: readonly (string | undefined)[];
+  /** 持っている銃のキー(武器ごと・重複してよい=1つに数える)。台帳に無い銃は数えない。 */
+  gunKeys: readonly (string | undefined)[];
   /** 持っている近接武器のキー(無ければ undefined)。台帳に無い近接は数えない。 */
   meleeKey: string | undefined;
   /** 持っているサブウェポン。 */
@@ -204,12 +204,12 @@ export interface MasteryLoadoutInput {
 
 /**
  * `loadout` の倍率(v2.1 A-11)= 重複なしの集合の平均:
- * 銃の種類 + 近接(格闘を持っていれば `brawler`、無ければ持っている近接武器のキー。近接武器が無い/台帳に無ければ入れない)
+ * 持っている銃(武器ごと) + 近接(格闘を持っていれば `brawler`、無ければ持っている近接武器のキー。近接武器が無い/台帳に無ければ入れない)
  * + 持っているサブのうち育つキー(`murasame`→`katana`・`brawler` は近接の枠と二重に数えない)。空なら1。
  */
 export const masteryLoadoutMult = (mults: Partial<Record<MasteryKey, number>>, input: MasteryLoadoutInput): number => {
   const set = new Set<GrowingMasteryKey>();
-  for (const c of input.gunCategories) if (isGrowingMasteryKey(c)) set.add(c);
+  for (const g of input.gunKeys) { const k = gunMasteryKeyOfWeaponKey(g); if (k) set.add(k); }
   const hasBrawler = input.subs.includes('brawler');
   if (input.meleeKey !== undefined) {
     const meleeMk = hasBrawler ? 'brawler' : meleeMasteryKeyOfWeaponKey(input.meleeKey);

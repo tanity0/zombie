@@ -236,7 +236,7 @@ describe('他人の守護霊(オンラインの記録)に熟練度と育成の�
   const remoteSnapshot = (): PlayerBuildSnapshot => ({
     ...snapshotPlayerBuild(buildRun()),
     growthAtkMult: 1.16,
-    masteryMult: { 'tactical-knife-t4': 1.7, rifle: 1.4 },
+    masteryMult: { 'tactical-knife-t4': 1.7, 'rifle-t1': 1.4 },
     masteryLoadoutMult: 1.3,
   });
   const received = (snap: PlayerBuildSnapshot): PlayerBuildSnapshot | undefined => {
@@ -254,17 +254,17 @@ describe('他人の守護霊(オンラインの記録)に熟練度と育成の�
     const b = resolveGhostBuild(snap, freshPlayer(), { guardian: true });
     expect(b.fromSnapshot).toBe(true);
     expect(b.player.growthAtkMult).toBe(1.16);
-    expect(b.player.masteryMult).toEqual({ 'tactical-knife-t4': 1.7, rifle: 1.4 });
+    expect(b.player.masteryMult).toEqual({ 'tactical-knife-t4': 1.7, 'rifle-t1': 1.4 });
     expect(b.player.masteryLoadoutMult).toBe(1.3);
   });
 
   it('古いクライアントの記録(旧 melee の1本)は、記録の近接武器のキーとして乗る(ナイフ毎の括り)', () => {
-    const old = { ...remoteSnapshot(), masteryMult: { melee: 1.7, rifle: 1.4 } as never };
+    const old = { ...remoteSnapshot(), masteryMult: { melee: 1.7, 'rifle-t1': 1.4 } as never };
     const snap = received(old);
-    expect(snap?.masteryMult).toEqual({ melee: 1.7, rifle: 1.4 }); // 共有の正規化は旧キーを通す
+    expect(snap?.masteryMult).toEqual({ melee: 1.7, 'rifle-t1': 1.4 }); // 共有の正規化は旧キーを通す
     const b = resolveGhostBuild(snap, freshPlayer(), { guardian: true });
     expect(snap?.meleeKey).toBeTruthy();
-    expect(b.player.masteryMult).toEqual({ [snap!.meleeKey!]: 1.7, rifle: 1.4 });
+    expect(b.player.masteryMult).toEqual({ [snap!.meleeKey!]: 1.7, 'rifle-t1': 1.4 });
   });
 
   it('古い記録(欄なし)は熟練度なし・育成1.0の強さ', () => {

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { MASTERY_MAX_LEVEL } from '../data/mastery';
+import { MASTERY_MAX_LEVEL, gunMasteryKeyOfWeaponKey } from '../data/mastery';
 import { masteryLevelFor, masteryNeedFor } from './mastery';
 import {
-  isMeleeMasteryKey, masteryBadgeOf, masteryDebugLine, masteryDebugRunLine, masteryFillSteps, masteryKeyOfMelee, masteryKeyOfSub, masteryLevelLabel,
+  isGunMasteryKey, isMeleeMasteryKey, masteryBadgeOf, masteryDebugLine, masteryDebugRunLine, masteryFillSteps, masteryKeyOfMelee, masteryKeyOfSub, masteryLevelLabel,
   masteryResultRows,
 } from './masteryView';
 
-const KEY = 'handgun' as const;
+const KEY = 'handgun-t1' as const;
 /** Lv1 から Lv `level` に入るまでの累計。 */
 const xpAt = (level: number): number => {
   let sum = 0;
@@ -67,21 +67,21 @@ describe('masteryFillSteps', () => {
 describe('masteryResultRows', () => {
   it('上がらない物 → 上がる物の順・それぞれの中は伸びた量の多い順', () => {
     const rows = masteryResultRows({
-      handgun: { before: 0, after: xpAt(3), levelBefore: 1, levelAfter: 3 },
-      rifle: { before: 0, after: xpAt(2) + 1, levelBefore: 1, levelAfter: 2 },
+      'handgun-t1': { before: 0, after: xpAt(3), levelBefore: 1, levelAfter: 3 },
+      'rifle-t1': { before: 0, after: xpAt(2) + 1, levelBefore: 1, levelAfter: 2 },
       katana: { before: 0, after: 900, levelBefore: 1, levelAfter: 1 },
       dog: { before: 0, after: 300, levelBefore: 1, levelAfter: 1 },
     });
-    expect(rows.map(r => r.key)).toEqual(['katana', 'dog', 'handgun', 'rifle']);
+    expect(rows.map(r => r.key)).toEqual(['katana', 'dog', 'handgun-t1', 'rifle-t1']);
     expect(rows.map(r => r.levelUp)).toEqual([false, false, true, true]);
   });
   it('伸びた物だけを伸びた量の多い順に', () => {
     const rows = masteryResultRows({
-      handgun: { before: 0, after: 100, levelBefore: 1, levelAfter: 1 },
+      'handgun-t1': { before: 0, after: 100, levelBefore: 1, levelAfter: 1 },
       katana: { before: 50, after: 950, levelBefore: 1, levelAfter: 1 },
-      shotgun: { before: 10, after: 10, levelBefore: 1, levelAfter: 1 },
+      'shotgun-t1': { before: 10, after: 10, levelBefore: 1, levelAfter: 1 },
     });
-    expect(rows.map(r => r.key)).toEqual(['katana', 'handgun']);
+    expect(rows.map(r => r.key)).toEqual(['katana', 'handgun-t1']);
     expect(rows[0].gain).toBe(900);
   });
   it('空・null は空', () => {
@@ -105,11 +105,11 @@ describe('札', () => {
   it('保存の値 → 札', () => {
     expect(masteryBadgeOf(null, { xp: {} })).toBeNull();
     expect(masteryBadgeOf('max', { xp: {} })).toEqual({ level: MASTERY_MAX_LEVEL, frac: 1, max: true, fixed: true });
-    const half = masteryBadgeOf(KEY, { xp: { handgun: xpAt(2) + masteryNeedFor(KEY, 2) / 2 } });
+    const half = masteryBadgeOf(KEY, { xp: { 'handgun-t1': xpAt(2) + masteryNeedFor(KEY, 2) / 2 } });
     expect(half?.level).toBe(2);
     expect(half?.frac).toBeCloseTo(0.5);
     expect(half?.max).toBe(false);
-    expect(masteryBadgeOf(KEY, { xp: { handgun: xpAt(MASTERY_MAX_LEVEL) } })).toEqual({ level: MASTERY_MAX_LEVEL, frac: 1, max: true, fixed: false });
+    expect(masteryBadgeOf(KEY, { xp: { 'handgun-t1': xpAt(MASTERY_MAX_LEVEL) } })).toEqual({ level: MASTERY_MAX_LEVEL, frac: 1, max: true, fixed: false });
   });
 });
 
@@ -160,10 +160,28 @@ describe('近接の札(ナイフ毎)', () => {
   });
   it('isMeleeMasteryKey: 近接武器のキーだけ true', () => {
     expect(isMeleeMasteryKey('anti-mutant-knife-t5')).toBe(true);
-    for (const k of ['handgun', 'katana', 'brawler', 'melee', 'fire-knife']) expect(isMeleeMasteryKey(k), k).toBe(false);
+    for (const k of ['handgun-t1', 'katana', 'brawler', 'melee', 'fire-knife']) expect(isMeleeMasteryKey(k), k).toBe(false);
   });
   it('リザルトの並びにナイフ毎のキーが出る', () => {
     const rows = masteryResultRows({ 'machete-t3': { before: 0, after: 10, levelBefore: 1, levelAfter: 1 } });
     expect(rows.map(r => r.key)).toEqual(['machete-t3']);
+  });
+});
+
+// 社長指示2026-11-13「熟練度が武器毎になってない。種類ごとになってる」: 銃の札は銃のキーごと。
+describe('銃の札(武器ごと)', () => {
+  it('gunMasteryKeyOfWeaponKey: 銃のキーそのもの・種類の名/近接/無しは undefined', () => {
+    expect(gunMasteryKeyOfWeaponKey('handgun-t3-piledriver')).toBe('handgun-t3-piledriver');
+    expect(gunMasteryKeyOfWeaponKey('handgun-t3')).toBe('handgun-t3');
+    for (const k of ['handgun', 'shotgun', 'knife-t1', 'katana', undefined, null]) expect(gunMasteryKeyOfWeaponKey(k), String(k)).toBeUndefined();
+  });
+  it('札は同じ種類でも銃ごとに別(別の銃の量は見ない)', () => {
+    const state = { xp: { 'handgun-t3-piledriver': masteryNeedFor('handgun-t3-piledriver', 1) * 1.5 } };
+    expect(masteryBadgeOf(gunMasteryKeyOfWeaponKey('handgun-t3-piledriver'), state)?.level).toBe(2);
+    expect(masteryBadgeOf(gunMasteryKeyOfWeaponKey('handgun-t3'), state)?.level).toBe(1);
+  });
+  it('isGunMasteryKey: 銃のキーだけ true(リザルトの名前は武器の名前)', () => {
+    expect(isGunMasteryKey('glauncher-t3-signal')).toBe(true);
+    for (const k of ['handgun', 'knife-t1', 'katana', 'brawler']) expect(isGunMasteryKey(k), k).toBe(false);
   });
 });

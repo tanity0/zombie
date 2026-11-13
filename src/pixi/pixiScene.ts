@@ -9302,9 +9302,9 @@ export class PixiScene {
       sx += s.kickDirX * koff;
       sy += s.kickDirY * koff;
     }
-    // POIに触れた瞬間のカメラ押し込み(専用の曲線・銃の反動 kick は使わない): 建物の方=画面の上へ 0→3.5px を加速して入り、減速して戻る。横ぶれなし。
+    // POIに触れた瞬間のカメラ押し込み(専用の曲線・銃の反動 kick は使わない): 建物の方=画面の上へ 0→8px(2回目以降は半分)を加速して入り、減速して戻る。横ぶれなし。
     // 世界の描画位置を下へ寄せる=カメラが上へ寄る。ストップ(hitstop)中は描かない。
-    if (now >= s.hitstopUntil) sy += poiTouchCamPx(this.poiTouchElapsedMs());
+    if (now >= s.hitstopUntil) sy += poiTouchCamPx(this.poiTouchElapsedMs(), useGameStore.getState().poiTouchLastLight);
     // 戦闘の手触り②: 連続撃破の段が上がった瞬間、画面端(下と左右が重い)がライムに染まって引く。
     // 色は多段ヒット帯(drawMultiHitBanner 0xbef264)と同じ=この作品の「連続」の語彙。赤は危険/カウンター、
     // 紫はカウンター不可の色なので報酬には使わない(色の文法・CLAUDE.md)。段1・2は一拍、段3(10体)は二拍。
@@ -21746,8 +21746,8 @@ export class PixiScene {
     const pKbHop = (p.knockbackUntil !== undefined && now < p.knockbackUntil)
       ? Math.sin(Math.max(0, Math.min(1, 1 - (p.knockbackUntil - now) / KNOCKBACK_HOP_MS)) * Math.PI) * KNOCKBACK_HOP_PX
       : 0;
-    // POIに触れた瞬間、体が建物から数px押し戻され、慣性つきで戻る(見た目だけ・当たり判定は変えない)。画面の下=建物から離れる向き。
-    const poiPushY = poiTouchPushPx(this.poiTouchElapsedMs());
+    // POIに触れた瞬間、体が建物から9px(2回目以降は半分)押し戻され、慣性つきで戻る(見た目だけ・当たり判定は変えない)。画面の下=建物から離れる向き。
+    const poiPushY = poiTouchPushPx(this.poiTouchElapsedMs(), useGameStore.getState().poiTouchLastLight);
     view.sprite.position.set(
       this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
       this.snapToScreenPixel(fb.footY - bob - pKbHop, this.L.world.position.y) + introOffY + actOffY + slamOffY + hopOffY + poiPushY - Math.max(brawlerJumpPx, playerAirPx), // 蹴りの跳びと空中の浮きは足さずに大きい方(空中で一段落ちない)

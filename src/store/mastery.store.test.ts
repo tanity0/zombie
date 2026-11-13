@@ -14,7 +14,7 @@ const mem = new Map<string, string>();
 } as Storage;
 
 const { useGameStore } = await import('./gameStore');
-const { MASTERY_PENDING_KEY, SUB_TO_MASTERY_KEY } = await import('../data/mastery');
+const { MASTERY_PENDING_KEY, SUB_TO_MASTERY_KEY, gunMasteryKeyOfWeaponKey } = await import('../data/mastery');
 const { saveMastery, loadMastery, masteryNeedFor } = await import('../utils/mastery');
 const { noteMasteryDamage, isMasteryRunIgnored, getPendingMastery } = await import('../utils/masteryRun');
 const { buildPseudoPlayer } = await import('../utils/playerBuild');
@@ -22,7 +22,7 @@ const { buildPseudoPlayer } = await import('../utils/playerBuild');
 const sortie = () => useGameStore.getState().resetGame('warrior');
 
 /** Lv10 に届く量(必要量の値から導く=値を動かしても落ちない)。 */
-const MAX_XP = Math.max(...(['handgun', 'hatchet-t2'] as const).map(k => {
+const MAX_XP = Math.max(...(['handgun-t1', 'hatchet-t2'] as const).map(k => {
   let t = 0;
   for (let l = 1; l < 10; l++) t += masteryNeedFor(k, l);
   return t;
@@ -32,7 +32,7 @@ const MAX_XP = Math.max(...(['handgun', 'hatchet-t2'] as const).map(k => {
 const loadoutKeys = (): Set<string> => {
   const p = useGameStore.getState().player;
   const set = new Set<string>();
-  for (const w of p.weapons) if (!w.isMelee && w.category) set.add(w.category);
+  for (const w of p.weapons) if (!w.isMelee) set.add(String(w.key)); // 銃は武器ごと=持っている銃のキー
   const subs = p.subWeapons ?? [];
   const melee = p.weapons.find(w => w.isMelee);
   if (melee) set.add(subs.includes('brawler') ? 'brawler' : String(melee.key)); // 近接はナイフ毎=装備している近接武器のキー
@@ -59,7 +59,7 @@ describe('resetGame の焼き込み', () => {
 
   it('保存の段階が倍率になる。loadout は出撃開始時に持っている物の平均', () => {
     const p0 = useGameStore.getState().player;
-    const gun = p0.weapons.find(w => !w.isMelee)?.category;
+    const gun = gunMasteryKeyOfWeaponKey(p0.weapons.find(w => !w.isMelee)?.key);
     expect(gun).toBeDefined();
     saveMastery({ xp: { [gun!]: masteryNeedFor(gun!, 1) + masteryNeedFor(gun!, 2) + masteryNeedFor(gun!, 3) } }); // Lv4
     sortie();
@@ -71,13 +71,13 @@ describe('resetGame の焼き込み', () => {
   });
 
   it('ベンチ・チュートリアルは無視する出撃(倍率は全部1・貯めない)', () => {
-    saveMastery({ xp: { handgun: MAX_XP } });
+    saveMastery({ xp: { 'handgun-t1': MAX_XP } });
     useGameStore.getState().setBenchmarkRun(true);
     sortie();
     expect(useGameStore.getState().player.masteryMult).toEqual({});
     expect(useGameStore.getState().player.masteryLoadoutMult).toBe(1);
     expect(isMasteryRunIgnored()).toBe(true);
-    noteMasteryDamage('handgun', 100);
+    noteMasteryDamage('handgun-t1', 100);
     expect(getPendingMastery()).toEqual({});
     useGameStore.getState().setBenchmarkRun(false);
 
@@ -88,39 +88,39 @@ describe('resetGame の焼き込み', () => {
     useGameStore.getState().setPendingFarBackdrop('');
     sortie();
     expect(isMasteryRunIgnored()).toBe(false);
-    expect(loadMastery().xp).toEqual({ handgun: MAX_XP }); // 無視した出撃の分は流れていない
+    expect(loadMastery().xp).toEqual({ 'handgun-t1': MAX_XP }); // 無視した出撃の分は流れていない
   });
 
   it('リザルトを通らずに次の出撃: 貯めた分は次の resetGame で本体へ足される(1回だけ)', () => {
     sortie();
-    noteMasteryDamage('rifle', 120);
+    noteMasteryDamage('rifle-t1', 120);
     sortie();
-    expect(loadMastery().xp).toEqual({ rifle: 120 });
+    expect(loadMastery().xp).toEqual({ 'rifle-t1': 120 });
     expect(mem.has(MASTERY_PENDING_KEY)).toBe(false);
     sortie();
-    expect(loadMastery().xp).toEqual({ rifle: 120 });
+    expect(loadMastery().xp).toEqual({ 'rifle-t1': 120 });
   });
 });
 
 describe('守護霊・幻影の疑似プレイヤー', () => {
   it('幻影(既定=guardian 省略): 記録の有無にかかわらず masteryMult={}・masteryLoadoutMult=1(本人の値を引き継がない)', () => {
-    saveMastery({ xp: { handgun: MAX_XP, 'hatchet-t2': MAX_XP } });
+    saveMastery({ xp: { 'handgun-t1': MAX_XP, 'hatchet-t2': MAX_XP } });
     sortie();
     const live = useGameStore.getState().player;
-    expect(live.masteryMult?.handgun).toBe(1.9);
+    expect(live.masteryMult?.['handgun-t1']).toBe(1.9);
     const pseudo = buildPseudoPlayer(undefined, live);
     expect(pseudo.masteryMult).toEqual({});
     expect(pseudo.masteryLoadoutMult).toBe(1);
-    const withRecord = buildPseudoPlayer({ maxHealth: 100, speed: 200, level: 1, masteryMult: { handgun: 1.5 }, masteryLoadoutMult: 1.3 }, live);
+    const withRecord = buildPseudoPlayer({ maxHealth: 100, speed: 200, level: 1, masteryMult: { 'handgun-t1': 1.5 }, masteryLoadoutMult: 1.3 }, live);
     expect(withRecord.masteryMult).toEqual({});
     expect(withRecord.masteryLoadoutMult).toBe(1);
   });
   it('守護霊(guardian): 記録の値を持つ。記録が無い/欄が無い時は {}/1(本人の値を引き継がない)', () => {
-    saveMastery({ xp: { handgun: MAX_XP, 'hatchet-t2': MAX_XP } });
+    saveMastery({ xp: { 'handgun-t1': MAX_XP, 'hatchet-t2': MAX_XP } });
     sortie();
     const live = useGameStore.getState().player;
-    const g = buildPseudoPlayer({ maxHealth: 100, speed: 200, level: 1, masteryMult: { handgun: 1.5 }, masteryLoadoutMult: 1.3 }, live, { guardian: true });
-    expect(g.masteryMult).toEqual({ handgun: 1.5 });
+    const g = buildPseudoPlayer({ maxHealth: 100, speed: 200, level: 1, masteryMult: { 'handgun-t1': 1.5 }, masteryLoadoutMult: 1.3 }, live, { guardian: true });
+    expect(g.masteryMult).toEqual({ 'handgun-t1': 1.5 });
     expect(g.masteryLoadoutMult).toBeCloseTo(1.3, 10);
     for (const snap of [undefined, { maxHealth: 100, speed: 200, level: 1 }]) {
       const old = buildPseudoPlayer(snap, live, { guardian: true });

@@ -1,6 +1,6 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
 import { useGameStore, notifySkillProcFor, spawnSkillProcFx, bulletBlockersAround, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS, skillOutgoingDamageMult, skillBloodAwakenDamageMult, skillCritMult, CRIT_DAMAGE_MULT } from '../store/gameStore';
-import { MASTERY_GUN_KEYS, type MasteryKey, type MasteryGunKey } from '../data/mastery';
+import { gunMasteryKeyOfWeaponKey, type MasteryKey } from '../data/mastery';
 import { masteryMultOf, guardianMasteryMult, meleeMasteryKeyOf } from './mastery';
 import { withMastery } from './masteryRun';
 import { bloodAwakenMult } from './bloodAwaken'; // B10 血の覚醒: 発射間隔を ×1.5 速く(awakenFireRateMult)
@@ -445,13 +445,8 @@ export const isDirectGunWeaponKey = (weaponKey: string | undefined): boolean =>
   weaponKey !== undefined && DIRECT_GUN_WEAPON_KEYS.has(weaponKey);
 
 // ── 熟練度(research/MASTERY.md v2 §1・v2.1 A-7/A-8) ─────────────────────────
-const MASTERY_GUN_SET: ReadonlySet<string> = new Set<string>(MASTERY_GUN_KEYS);
-/** 銃の種類(category)→ 銃の熟練度のキー。種類の無い/銃でない物は undefined。 */
-export const gunMasteryKeyOfCategory = (category: string | undefined): MasteryGunKey | undefined =>
-  category !== undefined && MASTERY_GUN_SET.has(category) ? category as MasteryGunKey : undefined;
-/** 弾の weaponKey → 銃の熟練度のキー(CATALOG の category)。 */
-export const gunMasteryKeyOfWeaponKey = (weaponKey: string | undefined): MasteryGunKey | undefined =>
-  weaponKey === undefined ? undefined : gunMasteryKeyOfCategory(catalogCategoryTier(weaponKey).category);
+/** 弾の weaponKey・持っている銃の key → 銃の熟練度のキー(武器ごと=銃のキーそのもの。正本は data/mastery)。 */
+export { gunMasteryKeyOfWeaponKey };
 /**
  * カウンターの反撃の熟練度のキー=**その反撃をした者が装備している近接の手段**(社長裁定2026-11-12
  * 「装備してる近接武器に溜まるようにすればブレないのでは?」+「近接の括りではない。ナイフ毎の括り」)。
@@ -464,7 +459,7 @@ export const counterMasteryKeyOf = (actor: Pick<Player, 'subWeapons' | 'weapons'
   actor.subWeapons?.includes('brawler') ? 'brawler' : meleeMasteryKeyOf(actor);
 /**
  * 弾/置き物の当たりのキー(v2.1 A-8): 作る所で入れた `masteryKey` を使う。欄が無い時は、
- * 本人の銃の弾と分かる物(打ち返しでも敵弾でもない・直接銃の weaponKey)だけ銃の種類、それ以外は `none`。
+ * 本人の銃の弾と分かる物(打ち返しでも敵弾でもない・直接銃の weaponKey)だけその銃(武器ごと)、それ以外は `none`。
  * `ownerGhost`(視覚専用の印)は読まない。
  */
 export const projectileMasteryKey = (p: Pick<Projectile, 'masteryKey' | 'weaponKey' | 'hostile' | 'reflected'>): MasteryKey => {
@@ -1315,7 +1310,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
       const critChanceEff = projectileHitCritChance(critChanceBase, meleeTarget);
       const isCrit = Math.random() < critChanceEff;
       const critMult = isCrit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1;
-      const gbKey: MasteryKey = gunMasteryKeyOfCategory(weapon.category) ?? 'none'; // 熟練度: ガンブレードの種類(handgun)
+      const gbKey: MasteryKey = gunMasteryKeyOfWeaponKey(weapon.key) ?? 'none'; // 熟練度: ガンブレード(武器ごと)
       const dmg = gunShotBaseDamage(shotWeapon, player, meleeGt) * critMult * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player)
         * masteryMultOf(player, gbKey);
       const dmgChannel = classifyProjectileDamageChannel('handgun', weapon.key);
@@ -1438,7 +1433,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
       direction: pd,
       weaponType: weapon.category as WeaponType, // 'handgun' | 'shotgun' | 'rifle'
       weaponKey: weapon.key,
-      masteryKey: gunMasteryKeyOfCategory(weapon.category) ?? 'none', // 熟練度: 本人の銃の弾=銃の種類(倍率は当たる所で掛ける=v2.1 A-7)
+      masteryKey: gunMasteryKeyOfWeaponKey(weapon.key) ?? 'none', // 熟練度: 本人の銃の弾=その銃(武器ごと。倍率は当たる所で掛ける=v2.1 A-7)
       duration: 1400,
       createdAt: now,
       passthrough: weapon.passthrough || false,
@@ -1685,8 +1680,8 @@ export const buildGhostGunShots = (
     weaponType: effGun.category as WeaponType,
     weaponKey: 'ghost-gun',
     masteryKey: 'none', // 熟練度: 守護霊の弾=貯めない
-    // 熟練度(守護霊の熟練度の発注): 倍率は本人の弾と同じキー(銃の種類)で、撃った主語の記録の値を作る所で確定する(幻影=1)。
-    ...(build ? { masteryMult: guardianMasteryMult(build.player, gunMasteryKeyOfCategory(effGun.category) ?? 'none') } : {}),
+    // 熟練度(守護霊の熟練度の発注): 倍率は本人の弾と同じキー(その銃=武器ごと)で、撃った主語の記録の値を作る所で確定する(幻影=1)。
+    ...(build ? { masteryMult: guardianMasteryMult(build.player, gunMasteryKeyOfWeaponKey(effGun.key) ?? 'none') } : {}),
     duration: 1400,
     createdAt: now,
     passthrough: effGun.passthrough || false,

@@ -18,16 +18,13 @@ import { MASTERY_MAX_LEVEL, type GrowingMasteryKey } from '../data/mastery';
 import type { MasteryCommitResult } from '../utils/mastery';
 import { weaponDisplayName } from '../utils/weaponUtils';
 import {
-  MASTERY_GOLD, isMeleeMasteryKey, masteryDebugLine, masteryDebugRunLine, masteryFillSteps, masteryLevelLabel, masteryResultRows, type MasteryFillStep,
+  MASTERY_GOLD, isGunMasteryKey, isMeleeMasteryKey, masteryDebugLine, masteryDebugRunLine, masteryFillSteps, masteryLevelLabel, masteryResultRows, type MasteryFillStep,
 } from '../utils/masteryView';
 import { isMasteryRunIgnored } from '../utils/masteryRun';
 import { MASTERY_DEBUG_ACTIVE } from '../utils/devTestKnobs';
 
-const GUN_NAME: Partial<Record<GrowingMasteryKey, string>> = {
-  handgun: 'ハンドガン', shotgun: 'ショットガン', rifle: 'ライフル', glauncher: 'グレネードガン', phill: 'PHILLガン',
-};
 const masteryName = (key: GrowingMasteryKey): string =>
-  GUN_NAME[key] ?? (isMeleeMasteryKey(key) ? weaponDisplayName(key) : subWeaponDisplayName(key as SubWeaponKey)); // 近接はナイフ毎=武器の名前
+  (isGunMasteryKey(key) || isMeleeMasteryKey(key)) ? weaponDisplayName(key) : subWeaponDisplayName(key as SubWeaponKey); // 銃・近接は武器ごと=武器の名前
 
 // ── 尺 ──────────────────────────────────────────────────────────────
 /** 始まってから1行目が動き出すまで。 */

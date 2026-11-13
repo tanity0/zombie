@@ -581,7 +581,7 @@ import { dropGunKillLoot } from '../utils/gunKillDrops'; // 弾で倒した時�
 import { scanMarkMeleeMult, noteScanDetonation } from '../utils/scanSensor';
 import { ammoBearingGuns, catalogProjectileSpeed, projectileSpeedToCatalog } from '../utils/weaponUtils'; // 弾倉の無い銃を除いた所持銃(research/NEW_GUNS.md 品質監査#5)
 import { spawnPiledriverImpactFx, applyPiledriverHitstop } from '../utils/piledriverImpactFx';
-import { gunFireSfxKey, gunReloadSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isPhantomTargetBullet, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage, projectileMasteryKey, counterMasteryKeyOf, gunMasteryKeyOfWeaponKey } from '../utils/weaponUtils';
+import { gunFireSfxKey, gunReloadSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isPhantomTargetBullet, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, SIGNAL_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage, projectileMasteryKey, counterMasteryKeyOf, gunMasteryKeyOfWeaponKey } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ。
 import { ROCKET_BLAST_RADIUS_MULT, ROCKET_LAUNCH_EASE_MS, rocketLaunchSpeedMult } from '../utils/rocketLauncher';
 import { ALCHEMY_BURST_RADIUS_PX, nextAlchemyStoneStage } from '../utils/alchemyStone';
@@ -14837,7 +14837,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // クリは乗せない(元の金環ブロックと同じ挙動=拡張時に増やさない)。
         const applyBeamPulse = (
           hits: readonly Enemy[], pulseDamage: number, ownerGhostId: string | undefined,
-          // 熟練度のキー(research/MASTERY.md v2 §4-2: 金環=gold-ring/氷槍・アイレーザー・火炎放射器=その銃の種類)。守護霊の分(ownerGhostId)は none。
+          // 熟練度のキー(research/MASTERY.md v2 §4-2: 金環=gold-ring/氷槍・アイレーザー・火炎放射器=その銃=武器ごと)。守護霊の分(ownerGhostId)は none。
           mk: MasteryKey,
           burstColor: string, xpIdPrefix: string,
           // 撃たれた時の押し戻し(アイドル・変異塊)の向きの起点(銃の光線/扇=プレイヤーの中心・金環=レーザーの根元)。渡した時だけ打刻する。
@@ -15116,7 +15116,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     const sDmg = Math.max(1, Math.round(strike.damage * (0.55 + sFalloff * 0.45)));
                     // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-2是正): 社長仕様「高い体勢値削り」。
                     // 'heavy'(パイルドライバーと同じ打撃種別枠)+ 1.5倍(SIGNAL_POSTURE_MULT)。
-                    const sKilled = withMastery('glauncher', () => damageEnemy(sgEnemy.id, sDmg, true, false, false, 'other', 'player', 'heavy', SIGNAL_POSTURE_MULT)); // 熟練度: シグナルランチャー=glauncher(倍率は撃った時の strike.damage に掛け済み)
+                    const sKilled = withMastery(SIGNAL_WEAPON_KEY, () => damageEnemy(sgEnemy.id, sDmg, true, false, false, 'other', 'player', 'heavy', SIGNAL_POSTURE_MULT)); // 熟練度: シグナルランチャー(武器ごと。倍率は撃った時の strike.damage に掛け済み)
                     spawnDamageNumber(sex, sgEnemy.y, sDmg, false, { enemyId: sgEnemy.id });
                     spawnBurst(sex, sey, '#b91c1c', 4);
                     if (sKilled) {
@@ -15348,7 +15348,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const hits = w.length === 0
             ? candidates
             : candidates.filter(e => { const a = blastAnchorOf(e, cx, cy); return !segmentBlocked(cx, cy, a.x, a.y, w); });
-          // 熟練度: 火炎放射器=その銃の種類。守護霊の炎は貯めない(none)・倍率は守護霊の記録の値(守護霊の熟練度の発注)。
+          // 熟練度: 火炎放射器=その銃(武器ごと)。守護霊の炎は貯めない(none)・倍率は守護霊の記録の値(守護霊の熟練度の発注)。
           const flGunMk: MasteryKey = gunMasteryKeyOfWeaponKey(FLAMER_WEAPON_KEY) ?? 'none';
           const flMk: MasteryKey = ownerGhostId !== undefined ? 'none' : flGunMk;
           const flGhostMm = ownerGhostId !== undefined ? guardianMasteryMult(combatActorPlayer(ownerGhostId), flGunMk) : undefined;
@@ -15358,7 +15358,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const burnIds = new Set(hits.map(h => h.id));
             const burnAt = gameTime;
             useGameStore.setState(st2 => {
-              // 熟練度(v2.1 A-1): 銃の付ける燃焼=その銃の種類(倍率は燃焼の強さに掛ける)。守護霊の炎=none。
+              // 熟練度(v2.1 A-1): 銃の付ける燃焼=その銃=武器ごと(倍率は燃焼の強さに掛ける)。守護霊の炎=none。
               // キーは強さが勝った方の付け手(強さは flamerBurnPatch の高い方と同じ物差し)。
               const flTick = FLAMER_BURN_TICK_DAMAGE * (flGhostMm ?? masteryMultOf(st2.player, flMk));
               return {

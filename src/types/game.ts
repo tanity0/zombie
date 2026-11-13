@@ -2934,7 +2934,7 @@ export interface Projectile {
   ownerGhost?: boolean;
   /**
    * 熟練度(research/MASTERY.md v2.1 A-7・A-8): この弾/置き物の当たりのキー。作る所で持ち主を見て入れ、当たる所で掛けて包む。
-   * 跳弾・写し弾は親の値を写す。未指定=本人の銃の弾と分かる物だけ銃の種類・それ以外 `none`(utils/weaponUtils.ts の projectileMasteryKey)。
+   * 跳弾・写し弾は親の値を写す。未指定=本人の銃の弾と分かる物だけその銃(武器ごと)・それ以外 `none`(utils/weaponUtils.ts の projectileMasteryKey)。
    */
   masteryKey?: MasteryKey;
   /**

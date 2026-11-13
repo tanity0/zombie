@@ -254,7 +254,7 @@ describe('守護霊の物から出た子は、親の倍率を写し貯めるキ�
 describe('幻影(敵として出る記録)', () => {
   it('(d) 幻影の疑似プレイヤーは、記録に熟練度があっても倍率1({}/1)', () => {
     const live = st().player;
-    const rec = snap({ masteryMult: { [GK]: 1.9, handgun: 1.9 }, masteryLoadoutMult: 1.9 });
+    const rec = snap({ masteryMult: { [GK]: 1.9, 'handgun-t1': 1.9 }, masteryLoadoutMult: 1.9 });
     const b = actorBuildFor('phantom-x', rec, live)!;
     expect(b.player.masteryMult).toEqual({});
     expect(b.player.masteryLoadoutMult).toBe(1);
@@ -290,7 +290,7 @@ describe('幻影(敵として出る記録)', () => {
 // 守護霊は格闘を使わない(疑似プレイヤーから 'brawler' が外れる)=疑似プレイヤーの近接武器(記録の meleeKey)。倍率は記録のそのキー、貯めるキーは none(ghostCounter.applyGhostCounterEffect)。
 describe('守護霊の反撃(カウンター)', () => {
   it('格闘を記録した守護霊でもキーは記録の近接武器・倍率は記録のそのキー・どこにも貯まらない', () => {
-    place(snap({ subWeapons: ['brawler'], subWeaponLevels: { brawler: 1 }, masteryMult: { [GK]: 1.5, brawler: 1.8, handgun: 1.3 }, masteryLoadoutMult: 1.2 }));
+    place(snap({ subWeapons: ['brawler'], subWeaponLevels: { brawler: 1 }, masteryMult: { [GK]: 1.5, brawler: 1.8, 'handgun-t1': 1.3 }, masteryLoadoutMult: 1.2 }));
     const ghostOwner = combatActorPlayer(GID)!;
     expect(ghostOwner.subWeapons ?? []).not.toContain('brawler');
     const key = counterMasteryKeyOf(ghostOwner);
@@ -308,9 +308,9 @@ describe('守護霊の反撃(カウンター)', () => {
 // 社長裁定2026-11-12「ナイフ毎の括り」: 古い記録(旧 `melee` の1本)は、その記録の近接武器のキーとして読む。
 describe('守護霊の古い記録(旧 melee)の読み替え', () => {
   it('記録の meleeKey のキーとして読む(新しいキーが在ればそちら)・meleeKey が無ければ基本のナイフ', () => {
-    place(snap({ meleeKey: 'machete-t3', masteryMult: { melee: 1.6, handgun: 1.2 } as never }));
+    place(snap({ meleeKey: 'machete-t3', masteryMult: { melee: 1.6, 'handgun-t1': 1.2 } as never }));
     const a = combatActorPlayer(GID)!;
-    expect(a.masteryMult).toEqual({ 'machete-t3': 1.6, handgun: 1.2 });
+    expect(a.masteryMult).toEqual({ 'machete-t3': 1.6, 'handgun-t1': 1.2 });
     expect(guardianMasteryMult(a, counterMasteryKeyOf(a))).toBeCloseTo(1.6, 10);
     place(snap({ meleeKey: 'machete-t3', masteryMult: { melee: 1.6, 'machete-t3': 1.3 } as never }));
     expect(combatActorPlayer(GID)!.masteryMult).toEqual({ 'machete-t3': 1.3 });

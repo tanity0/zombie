@@ -118,13 +118,13 @@ const MELEES = new Set(GHOST_MELEE_KEYS);
 const MOVE_KEYS = new Set(GHOST_MOVE_KEYS);
 
 // 熟練度(他人の守護霊にも記録主の熟練度を乗せる・research/MASTERY.md v2.5)。src/data/mastery.ts の
-// GROWING_MASTERY_KEYS(銃5+近接武器5+サブ21)+ `max` と同じ内容を手で複製し、旧い近接の1本 `melee` を足している
+// GROWING_MASTERY_KEYS(銃37=武器ごと+近接武器5+サブ21)+ `max` と同じ内容を手で複製し、旧い近接の1本 `melee` を足している
 // (上の許可リストと同じ作法)。台帳との一致は src/utils/ghostOnline.test.ts が止める(育つキーを足したらここにも足す=
-// 忘れると黙って倍率1に落ちる)。近接武器のキーは GHOST_MELEE_KEYS(近接の許可リスト)から入る。
+// 忘れると黙って倍率1に落ちる)。銃・近接武器のキーは GHOST_GUN_KEYS・GHOST_MELEE_KEYS(銃・近接の許可リスト)から入る。
 /** 旧い近接の熟練度のキー(ナイフ毎に分ける前)。古いクライアントの記録を読めるよう受け取りは通す(読み替えは受け取り側)。 */
 export const GHOST_LEGACY_MASTERY_KEYS = Object.freeze(['melee']);
 export const GHOST_MASTERY_KEYS = Object.freeze([
-  'handgun', 'shotgun', 'rifle', 'glauncher', 'phill',
+  ...GHOST_GUN_KEYS,
   ...GHOST_MELEE_KEYS,
   ...GHOST_LEGACY_MASTERY_KEYS,
   'heavy-grenade', 'dog', 'katana', 'whip', 'alchemy', 'turret', 'fire-knife', 'drone-boomerang', 'wire-anchor',

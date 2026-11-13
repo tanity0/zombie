@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5576', items: [
+    '銃の熟練度は、銃1丁ごとに貯まる。同じハンドガンでも、別の銃は別に育つ',
+    'POIに触れた瞬間、足が一瞬止まって体が押し返される',
+  ] },
   { version: '0.25.5575', items: [
     'パイルドライバーは杭の届く所までしか当たらない',
     'パイルドライバーの杭が刺さった瞬間、画面が一瞬止まる',

@@ -1,9 +1,9 @@
 // 熟練度の見せ方(research/MASTERY.md §6・バッチB)の純関数。
 // 表示だけが読む。判定・数値・保存の形には触れない(読むのは data/mastery と utils/mastery の純関数だけ)。
 //  ・リザルト: この出撃で伸びた物の並び(masteryResultRows)と、1行ぶんの「貯まる順番」(masteryFillSteps)
-//  ・装備メニュー/一時停止: 段階の札(masteryBadgeOf・masteryLevelLabel)とサブウェポン/近接武器 → 熟練度のキー(masteryKeyOfSub・masteryKeyOfMelee)
+//  ・装備メニュー/一時停止: 段階の札(masteryBadgeOf・masteryLevelLabel)とサブウェポン/近接武器 → 熟練度のキー(masteryKeyOfSub・masteryKeyOfMelee。銃は武器のキーそのまま=gunMasteryKeyOfWeaponKey)
 import {
-  GROWING_MASTERY_KEYS, MASTERY_MAX_LEVEL, MASTERY_MAXED_SUBS, SUB_TO_MASTERY_KEY, meleeMasteryKeyOfWeaponKey,
+  GROWING_MASTERY_KEYS, MASTERY_MAX_LEVEL, MASTERY_MAXED_SUBS, SUB_TO_MASTERY_KEY, gunMasteryKeyOfWeaponKey, meleeMasteryKeyOfWeaponKey,
   type GrowingMasteryKey,
 } from '../data/mastery';
 import { masteryProgress, type MasteryCommitEntry, type MasteryCommitResult, type MasteryState } from './mastery';
@@ -33,6 +33,9 @@ export const masteryKeyOfMelee = (weaponKey: string | null | undefined): Mastery
 
 /** 熟練度のキーが近接武器(ナイフ毎)のキーか。リザルトの名前で武器の名前を引くのに使う。 */
 export const isMeleeMasteryKey = (key: string): boolean => meleeMasteryKeyOfWeaponKey(key) !== undefined;
+
+/** 熟練度のキーが銃(武器ごと)のキーか。リザルトの名前で武器の名前を引くのに使う。 */
+export const isGunMasteryKey = (key: string): boolean => gunMasteryKeyOfWeaponKey(key) !== undefined;
 
 export interface MasteryBadge {
   level: number;

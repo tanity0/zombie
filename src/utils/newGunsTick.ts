@@ -290,8 +290,8 @@ const tickBlob = (gameTime: number, dtSec: number, canFire: boolean): void => {
       for (const id of h.ids) {
         const e = useGameStore.getState().enemies.find(x => x.id === id);
         if (!e || isCorpse(e)) continue;
-        const dmg = Math.max(1, h.blob.tickDamage * outgoingGunMult(p, e, gameTime) * masteryMultOf(p, 'glauncher')); // 小数のまま(9.5)。数字はまとめで丸める。熟練度: 塊弾=glauncher
-        const { shown } = hitEnemy(e, dmg, false, 'glauncher', h.blob.dirX, h.blob.dirY, true);
+        const dmg = Math.max(1, h.blob.tickDamage * outgoingGunMult(p, e, gameTime) * masteryMultOf(p, BLOB_WEAPON_KEY)); // 小数のまま(9.5)。数字はまとめで丸める。熟練度: 塊銃(武器ごと)
+        const { shown } = hitEnemy(e, dmg, false, BLOB_WEAPON_KEY, h.blob.dirX, h.blob.dirY, true);
         // 空中の敵への倍率(§16): この数字は敵を名指ししないので、damageEnemy が掛けた倍率をここで読んでまとめに足す(案A)。
         const v = accumulateBlobNumber(blobNumbers, id, shown * takeAirNumberMult(id), gameTime);
         if (v !== null) {
@@ -392,8 +392,8 @@ const tickSatellite = (gameTime: number, dtSec: number, holding: boolean, locked
     satContactAt.set(e.id, gameTime);
     const live = useGameStore.getState().enemies.find(x => x.id === e.id);
     if (!live || isCorpse(live)) continue;
-    const dmg = Math.max(1, Math.round(contactBase * outgoingGunMult(p, live, gameTime) * masteryMultOf(p, 'shotgun'))); // 熟練度: 衛星の接触=shotgun
-    hitEnemy(live, dmg, undefined, 'shotgun', touching.tx, touching.ty);
+    const dmg = Math.max(1, Math.round(contactBase * outgoingGunMult(p, live, gameTime) * masteryMultOf(p, SATELLITE_WEAPON_KEY))); // 熟練度: 衛星の接触=呪銃(武器ごと)
+    hitEnemy(live, dmg, undefined, SATELLITE_WEAPON_KEY, touching.tx, touching.ty);
     useGameStore.getState().spawnDamageNumber(ecx, live.y, dmg, false, { enemyId: live.id });
     useGameStore.getState().spawnBurst(touching.x, touching.y, '#e8b25a', 4, touching.tx, touching.ty);
   }
@@ -427,7 +427,7 @@ const releaseSatellites = (poses: SatelliteBulletPose[], angVel: number, gameTim
       x: ps.x - size / 2, y: ps.y - size / 2, width: size, height: size,
       speed: SAT_SHOT_SPEED_PX_PER_SEC, damage, direction: dir,
       weaponType: 'shotgun', weaponKey: SATELLITE_WEAPON_KEY,
-      masteryKey: 'shotgun', // 熟練度: 呪銃の放たれた弾=shotgun(倍率は当たる所で掛ける)
+      masteryKey: SATELLITE_WEAPON_KEY, // 熟練度: 呪銃の放たれた弾=呪銃(武器ごと。倍率は当たる所で掛ける)
       duration: SAT_SHOT_DURATION_MS, createdAt: now,
       passthrough: false, hitEnemies: [], hostile: false, reflected: false,
       critChance,

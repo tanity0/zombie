@@ -85,14 +85,14 @@ describe('受け入れ条件1: 保存が空ならステージ1の与ダメは今
   });
 });
 
-describe('受け入れ条件3: 銃の段階は種類ごと', () => {
+describe('受け入れ条件3: 銃の段階は武器ごと(社長指示2026-11-13「熟練度が武器毎になってない」)', () => {
   it('ハンドガンの段階を上げると、ハンドガンの弾は倍率どおり・ショットガンの弾と近接は変わらない', () => {
     const base = knifeSwingDamage();
-    saveMastery({ xp: { handgun: xpForLevel('handgun', 4) } }); // Lv4 = ×1.3
+    saveMastery({ xp: { 'handgun-t1': xpForLevel('handgun-t1', 4) } }); // Lv4 = ×1.3
     sortie();
     prepareMelee();
     const p = st().player;
-    // 本人の銃の弾は作る所で銃の種類のキーを持つ(倍率は当たる所で masteryMultOf を掛ける)。
+    // 本人の銃の弾は作る所でその銃のキーを持つ(武器ごと。倍率は当たる所で masteryMultOf を掛ける)。
     const hg = { ...createWeapon('handgun-t1'), lastFired: 0, magazine: 99 };
     const sg = { ...createWeapon('shotgun-t1'), lastFired: 0, magazine: 99 };
     const target = spawnInFront(99999, 'z', 60);
@@ -100,19 +100,22 @@ describe('受け入れ条件3: 銃の段階は種類ごと', () => {
     const sgShots = fireWeapon(sg, p, [target]);
     expect(hgShots.length).toBeGreaterThan(0);
     expect(sgShots.length).toBeGreaterThan(0);
-    expect(hgShots.every(s => projectileMasteryKey(s) === 'handgun')).toBe(true);
-    expect(sgShots.every(s => projectileMasteryKey(s) === 'shotgun')).toBe(true);
+    expect(hgShots.every(s => projectileMasteryKey(s) === 'handgun-t1')).toBe(true);
+    expect(sgShots.every(s => projectileMasteryKey(s) === 'shotgun-t1')).toBe(true);
     expect(masteryMultOf(p, projectileMasteryKey(hgShots[0]))).toBeCloseTo(1.3, 10);
     expect(masteryMultOf(p, projectileMasteryKey(sgShots[0]))).toBe(1);
-    // 同じ種類の別の銃でも同じ倍率(種類ごと=拾い替えても変わらない)。
-    const hg2 = fireWeapon({ ...createWeapon('handgun-t2'), lastFired: 0, magazine: 99 }, p, [target]);
-    expect(hg2.length).toBeGreaterThan(0);
-    expect(masteryMultOf(p, projectileMasteryKey(hg2[0]))).toBeCloseTo(1.3, 10);
+    // 同じ種類の別の銃は別の熟練度(武器ごと=ハンドガンの t1 を上げても t2・パイルドライバーは Lv1 のまま)。
+    for (const other of ['handgun-t2', 'handgun-t3-piledriver'] as const) {
+      const shots = fireWeapon({ ...createWeapon(other), lastFired: 0, magazine: 99 }, p, [target]);
+      expect(shots.length, other).toBeGreaterThan(0);
+      expect(projectileMasteryKey(shots[0]), other).toBe(other);
+      expect(masteryMultOf(p, projectileMasteryKey(shots[0])), other).toBe(1);
+    }
     // 近接はハンドガンの段階で増えない。
     expect(knifeSwingDamage()).toBe(base);
   });
   it('ハンドガンの弾の当たり(弾のキーで包む): 与ダメは倍率どおり、貯まるのは割り戻した量', () => {
-    saveMastery({ xp: { handgun: xpForLevel('handgun', 4) } });
+    saveMastery({ xp: { 'handgun-t1': xpForLevel('handgun-t1', 4) } });
     sortie();
     const p = st().player;
     const target = spawnInFront(99999, 'z', 60);
@@ -121,7 +124,26 @@ describe('受け入れ条件3: 銃の段階は種類ごと', () => {
     const dmg = shot.damage * masteryMultOf(p, key); // useGameLoop の弾の当たりと同じ掛け方(当たる所で1回)
     withMastery(key, () => st().damageEnemy('z', dmg, false, false, false, 'gun'));
     expect(99999 - hpOf('z')).toBeCloseTo(shot.damage * 1.3, 6);
-    expect(getPendingMastery().handgun).toBe(Math.round(dmg / 1.3));
+    expect(getPendingMastery()['handgun-t1']).toBe(Math.round(dmg / 1.3));
+  });
+  it('同じ種類の別の銃(handgun-t3 とパイルドライバー)は別々に貯まり、別々に掛かる', () => {
+    const t3 = 'handgun-t3', pd = 'handgun-t3-piledriver';
+    saveMastery({ xp: { [pd]: xpForLevel(pd, 6) } }); // パイルドライバーだけ Lv6 = ×1.5
+    sortie();
+    const p = st().player;
+    expect(masteryMultOf(p, pd)).toBeCloseTo(1.5, 10);
+    expect(masteryMultOf(p, t3)).toBe(1);
+    const target = spawnInFront(99999, 'z', 60);
+    const t3Shot = fireWeapon({ ...createWeapon(t3), lastFired: 0, magazine: 99 }, p, [target])[0];
+    const pdShot = fireWeapon({ ...createWeapon(pd), lastFired: 0, magazine: 99 }, p, [target])[0];
+    expect(projectileMasteryKey(t3Shot)).toBe(t3);
+    expect(projectileMasteryKey(pdShot)).toBe(pd);
+    withMastery(t3, () => st().damageEnemy('z', 20, false, false, false, 'gun'));
+    withMastery(pd, () => st().damageEnemy('z', 30, false, false, false, 'gun'));
+    const pending = getPendingMastery();
+    expect(pending[t3]).toBe(20);
+    expect(pending[pd]).toBe(Math.round(30 / 1.5));
+    expect(pending['handgun-t1']).toBeUndefined();
   });
 });
 
@@ -206,12 +228,12 @@ describe('受け入れ条件7: 無効になった当たりは貯まらない', (
   it('空中の無敵(跳び中)・死体への当たりは貯まらない。通った当たりは貯まる', () => {
     const e = spawnInFront(99999);
     useGameStore.setState({ enemies: [{ ...e, aiPhase: 'jump' }] });
-    withMastery('handgun', () => st().damageEnemy('z', 30, false, false, false, 'gun'));
+    withMastery('handgun-t1', () => st().damageEnemy('z', 30, false, false, false, 'gun'));
     expect(hpOf('z')).toBe(99999);
     expect(getPendingMastery()).toEqual({});
     useGameStore.setState(s => ({ enemies: s.enemies.map(x => ({ ...x, aiPhase: undefined })) }));
-    withMastery('handgun', () => st().damageEnemy('z', 30, false, false, false, 'gun'));
-    expect(getPendingMastery().handgun).toBe(30);
+    withMastery('handgun-t1', () => st().damageEnemy('z', 30, false, false, false, 'gun'));
+    expect(getPendingMastery()['handgun-t1']).toBe(30);
   });
   it('出どころが無い当たり(包まれていない)は貯まらない', () => {
     spawnInFront(99999);
@@ -226,9 +248,9 @@ describe('無視する出撃(受け入れ条件8の一部)', () => {
     sortie();
     expect(isMasteryRunIgnored()).toBe(true);
     spawnInFront(99999);
-    withMastery('rifle', () => st().damageEnemy('z', 25, false, false, false, 'gun'));
+    withMastery('rifle-t1', () => st().damageEnemy('z', 25, false, false, false, 'gun'));
     expect(getPendingMastery()).toEqual({});
-    expect(getMasteryReport().rifle).toBe(25);
+    expect(getMasteryReport()['rifle-t1']).toBe(25);
     st().setBenchmarkRun(false);
   });
 });
@@ -263,8 +285,8 @@ describe('幻影には熟練度を乗せない(発注者指示「幻影にはこ
   /** 弾の当たり(ハンドガンのキーで包む・倍率は呼び手が掛ける=useGameLoop と同じ掛け方)。 */
   const gunHit = (type: 'guardian-phantom' | 'zombie') => {
     spawnTarget(type, 60);
-    const dmg = 100 * masteryMultOf(st().player, 'handgun');
-    withMastery('handgun', () => st().damageEnemy('z', dmg, false, false, false, 'gun'));
+    const dmg = 100 * masteryMultOf(st().player, 'handgun-t1');
+    withMastery('handgun-t1', () => st().damageEnemy('z', dmg, false, false, false, 'gun'));
     return 99999 - hpOf('z');
   };
   /** 近接の振り1回(ナイフ・クリなし)。 */
@@ -281,9 +303,9 @@ describe('幻影には熟練度を乗せない(発注者指示「幻影にはこ
     const swingBase = swingAt('guardian-phantom');
     expect(gunBase).toBeGreaterThan(0);
     expect(swingBase).toBeGreaterThan(0);
-    saveMastery({ xp: { handgun: xpForLevel('handgun', 4), [MK]: xpForLevel(MK, 6) } }); // ×1.3 / ×1.5
+    saveMastery({ xp: { 'handgun-t1': xpForLevel('handgun-t1', 4), [MK]: xpForLevel(MK, 6) } }); // ×1.3 / ×1.5
     sortie(); prepareMelee();
-    expect(masteryMultOf(st().player, 'handgun')).toBeCloseTo(1.3, 10);
+    expect(masteryMultOf(st().player, 'handgun-t1')).toBeCloseTo(1.3, 10);
     expect(gunHit('guardian-phantom')).toBeCloseTo(gunBase, 6);
     sortie(); prepareMelee();
     expect(swingAt('guardian-phantom')).toBeCloseTo(swingBase, 6);
@@ -293,7 +315,7 @@ describe('幻影には熟練度を乗せない(発注者指示「幻影にはこ
     const gunBase = gunHit('zombie');
     sortie(); prepareMelee();
     const swingBase = swingAt('zombie');
-    saveMastery({ xp: { handgun: xpForLevel('handgun', 4), [MK]: xpForLevel(MK, 6) } });
+    saveMastery({ xp: { 'handgun-t1': xpForLevel('handgun-t1', 4), [MK]: xpForLevel(MK, 6) } });
     sortie(); prepareMelee();
     expect(gunHit('zombie')).toBeCloseTo(gunBase * 1.3, 6);
     sortie(); prepareMelee();
@@ -301,10 +323,10 @@ describe('幻影には熟練度を乗せない(発注者指示「幻影にはこ
   });
 
   it('(c) 幻影に与えた分は、実際に通った量のまま貯まる(割りすぎない)', () => {
-    saveMastery({ xp: { handgun: xpForLevel('handgun', 4), [MK]: xpForLevel(MK, 6) } });
+    saveMastery({ xp: { 'handgun-t1': xpForLevel('handgun-t1', 4), [MK]: xpForLevel(MK, 6) } });
     sortie(); prepareMelee();
     const gunDealt = gunHit('guardian-phantom');
-    expect(getPendingMastery().handgun).toBe(Math.round(gunDealt) * 2); // 幻影=ボス級の重み(×2)
+    expect(getPendingMastery()['handgun-t1']).toBe(Math.round(gunDealt) * 2); // 幻影=ボス級の重み(×2)
     sortie(); prepareMelee();
     const swingDealt = swingAt('guardian-phantom');
     expect(getPendingMastery()[MK]).toBe(Math.round(swingDealt) * 2);
@@ -334,23 +356,23 @@ describe('カウンターの反撃: 装備している近接の手段に貯ま�
   });
 
   it('格闘を装備してカウンター → brawler に貯まり、構えている銃のキー・近接武器のキーには貯まらない。倍率は brawler の倍率', () => {
-    saveMastery({ xp: { brawler: xpForLevel('brawler', 10), handgun: xpForLevel('handgun', 5), [MK]: xpForLevel(MK, 3) } });
+    saveMastery({ xp: { brawler: xpForLevel('brawler', 10), 'handgun-t1': xpForLevel('handgun-t1', 5), [MK]: xpForLevel(MK, 3) } });
     sortie();
     useGameStore.setState(s => ({ player: { ...s.player, subWeapons: ['brawler'], subWeaponLevels: { brawler: 1 } } }));
     spawnInFront(99999);
     const { key, mult } = counterReply(40);
     expect(key).toBe('brawler');
     expect(mult).toBeCloseTo(masteryMultOf(st().player, 'brawler'), 10);
-    expect(mult).not.toBeCloseTo(masteryMultOf(st().player, 'handgun'), 3);
+    expect(mult).not.toBeCloseTo(masteryMultOf(st().player, 'handgun-t1'), 3);
     expect(hpOf('z')).toBeLessThan(99999);
     const pending = getPendingMastery();
     expect(pending.brawler ?? 0).toBeGreaterThan(0);
-    expect(pending.handgun).toBeUndefined();
+    expect(pending['handgun-t1']).toBeUndefined();
     expect(pending[MK]).toBeUndefined();
   });
 
   it('格闘なしでカウンター → 装備している近接武器に貯まり、銃・別のナイフには貯まらない。倍率はそのナイフの倍率', () => {
-    saveMastery({ xp: { [MK]: xpForLevel(MK, 6), 'knife-t1': xpForLevel('knife-t1', 9), handgun: xpForLevel('handgun', 2) } });
+    saveMastery({ xp: { [MK]: xpForLevel(MK, 6), 'knife-t1': xpForLevel('knife-t1', 9), 'handgun-t1': xpForLevel('handgun-t1', 2) } });
     sortie();
     expect(st().player.subWeapons ?? []).not.toContain('brawler');
     spawnInFront(99999);
@@ -361,7 +383,7 @@ describe('カウンターの反撃: 装備している近接の手段に貯ま�
     const pending = getPendingMastery();
     expect(pending[MK] ?? 0).toBeGreaterThan(0);
     expect(pending['knife-t1']).toBeUndefined();
-    expect(pending.handgun).toBeUndefined();
+    expect(pending['handgun-t1']).toBeUndefined();
     expect(pending.brawler).toBeUndefined();
   });
 });
@@ -375,7 +397,7 @@ describe('近接はナイフ毎', () => {
     knifeSwingDamage();
     const pending = getPendingMastery();
     expect(pending[MK] ?? 0).toBeGreaterThan(0);
-    for (const k of ['knife-t1', 'machete-t3', 'tactical-knife-t4', 'anti-mutant-knife-t5', 'handgun', 'shotgun'] as const) {
+    for (const k of ['knife-t1', 'machete-t3', 'tactical-knife-t4', 'anti-mutant-knife-t5', 'handgun-t1', 'shotgun-t1'] as const) {
       expect(pending[k], k).toBeUndefined();
     }
   });
@@ -401,7 +423,7 @@ describe('近接はナイフ毎', () => {
     }
     expect(weaponDisplayName('knife-t1')).toBe('ナイフ');
     expect(weaponDisplayName('hatchet-t2')).toBe('ダガー');
-    expect(isMeleeMasteryKey('handgun')).toBe(false);
+    expect(isMeleeMasteryKey('handgun-t1')).toBe(false);
     expect(isMeleeMasteryKey('melee')).toBe(false);
   });
 });

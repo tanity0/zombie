@@ -5,9 +5,28 @@
 //   ・段階/倍率の純関数・保存の読み書き・リザルトでの確定 = src/utils/mastery.ts
 //   ・出撃の間の「いまの出どころ」と貯めた分 = src/utils/masteryRun.ts
 //   ・出撃時の焼き込み = src/store/gameStore.ts(resetGame)
-/** 銃の熟練度のキー(種類ごと・5)。値は AmmoType と同じ文字列。 */
-export const MASTERY_GUN_KEYS = ['handgun', 'shotgun', 'rifle', 'glauncher', 'phill'] as const;
+/**
+ * 銃の熟練度のキー(武器ごと・37)。値は銃のキー(CATALOG の key)そのもの
+ * (社長指示2026-11-13「熟練度が武器毎になってない。種類ごとになってる」=`handgun-t3` と `handgun-t3-piledriver` は別)。
+ * ★このファイルは何も import しない(葉)ので、台帳(src/utils/weaponUtils.ts の CATALOG_GUN_KEYS)から作れない=
+ *   同じ並びを手で持ち、一致は mastery.test.ts が止める(台帳に銃を足したらここにも足す=忘れるとテストで落ちる)。
+ */
+export const MASTERY_GUN_KEYS = [
+  'handgun-t1', 'handgun-t2', 'handgun-t3', 'handgun-t1-derringer', 'handgun-t2-handcannon', 'handgun-t3-piledriver',
+  'handgun-t1-crossbow', 'handgun-t2-scan', 'handgun-t2-dualrange', 'handgun-t3-gunblade',
+  'shotgun-t1', 'shotgun-t2', 'shotgun-t3', 'shotgun-t2-suppress', 'shotgun-t2-satellite', 'shotgun-t2-coil',
+  'shotgun-t1-focus', 'shotgun-t1-cycle', 'shotgun-t3-flamer', 'shotgun-t3-homing',
+  'rifle-t1', 'rifle-t2', 'rifle-t3', 'rifle-t1-bolt', 'rifle-t1-deserttech', 'rifle-t2-heavysniper', 'rifle-t2-icelance',
+  'rifle-t3-eyelaser', 'rifle-t3-railgun',
+  'phill-revolver',
+  'glauncher-t1', 'glauncher-t2', 'glauncher-t3', 'glauncher-t1-rocket', 'glauncher-t2-blob', 'glauncher-t2-alchemy',
+  'glauncher-t3-signal',
+] as const;
 export type MasteryGunKey = typeof MASTERY_GUN_KEYS[number];
+const GUN_SET: ReadonlySet<string> = new Set<string>(MASTERY_GUN_KEYS);
+/** 銃のキー(弾の weaponKey・持っている銃の key)→ 熟練度のキー。台帳に無い/銃でないは undefined。 */
+export const gunMasteryKeyOfWeaponKey = (weaponKey: string | null | undefined): MasteryGunKey | undefined =>
+  typeof weaponKey === 'string' && GUN_SET.has(weaponKey) ? weaponKey as MasteryGunKey : undefined;
 
 /**
  * 近接武器の熟練度のキー(ナイフごと・5)。値は近接武器のキー(CATALOG の key)そのもの
@@ -37,12 +56,12 @@ export const MASTERY_SUB_KEYS = [
 ] as const;
 export type MasterySubKey = typeof MASTERY_SUB_KEYS[number];
 
-/** 段階を持つ(=育つ・保存する)キー。銃5+近接武器5+サブ21。 */
+/** 段階を持つ(=育つ・保存する)キー。銃37(武器ごと)+近接武器5+サブ21。 */
 export const GROWING_MASTERY_KEYS = [...MASTERY_GUN_KEYS, ...MASTERY_MELEE_KEYS, ...MASTERY_SUB_KEYS] as const;
 export type GrowingMasteryKey = typeof GROWING_MASTERY_KEYS[number];
 
 /**
- * 熟練度のキー。育つ31に、段階を持たない特別な3つを足したもの。
+ * 熟練度のキー。育つ63に、段階を持たない特別な3つを足したもの。
  *  - `loadout` = どの武器にも入らない本人の与ダメ。倍率は出撃開始時に持っている物の平均。貯めない。
  *  - `none`    = 本人ではない与ダメ(守護霊・幻影・護衛・英雄の犬・敵どうし・環境)。貯めない。倍率はキーからは1
  *                (守護霊の当たりだけは、守護霊の記録の倍率を別に掛ける=弾・置き物の masteryMult / withMastery の mult)。
@@ -80,10 +99,10 @@ export const MASTERY_BASE_BY_TIER: Readonly<Record<MasteryBaseTier, number>> = {
 
 /**
  * 育つキー → 区分。キーが足りない/余ると型で落ちる(Record の網羅)。
- * 近接武器のキーは MASTERY_MELEE_KEYS から全部 `gunMelee` で入る(近接を足しても書き足さなくてよい)。
+ * 銃・近接武器のキーは MASTERY_GUN_KEYS・MASTERY_MELEE_KEYS から全部 `gunMelee` で入る(足しても書き足さなくてよい)。
  */
 const MASTERY_TIER_OF: Readonly<Record<GrowingMasteryKey, MasteryBaseTier>> = {
-  handgun: 'gunMelee', shotgun: 'gunMelee', rifle: 'gunMelee', glauncher: 'gunMelee', phill: 'gunMelee',
+  ...Object.fromEntries(MASTERY_GUN_KEYS.map(k => [k, 'gunMelee'])) as Record<MasteryGunKey, 'gunMelee'>,
   ...Object.fromEntries(MASTERY_MELEE_KEYS.map(k => [k, 'gunMelee'])) as Record<MasteryMeleeKey, 'gunMelee'>,
   brawler: 'brawler',
   'heavy-grenade': 'sub', dog: 'sub', katana: 'sub', whip: 'sub', alchemy: 'sub', turret: 'sub', 'fire-knife': 'sub',

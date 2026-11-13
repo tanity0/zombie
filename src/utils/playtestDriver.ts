@@ -214,7 +214,7 @@ const applyBotProjectileHits = (gameTime: number): void => {
     const player = st.player;
     const critMult = hitCrit ? skillCritMult(player, isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT) : 1;
     const comboMasterMult = skillComboMasterMult(player, gameTime, st.meleeFinishComboCount, st.meleeFinishComboUntil);
-    // 熟練度(research/MASTERY.md v2.1 A-16): 弾の masteryKey(無ければ銃の種類)。ボットの出撃は倍率1(焼き込みで空)=報告用の表にだけ貯まる。
+    // 熟練度(research/MASTERY.md v2.1 A-16): 弾の masteryKey(無ければその銃=武器ごと)。ボットの出撃は倍率1(焼き込みで空)=報告用の表にだけ貯まる。
     const botMk = projectileMasteryKey(projectile);
     const dmg = damage * critMult * skillOutgoingDamageMult(player) * sniperGunMult(player, enemy) * comboMasterMult * masteryMultOf(player, botMk);
     // §6.21 M46: gun/otherチャネル分類(useGameLoop.tsの実装と同じ純関数=classifyProjectileDamageChannel)。

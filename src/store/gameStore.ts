@@ -233,7 +233,7 @@ import { stageMobDiffMults, stageScoreMult } from '../utils/stageDiffMults';
 import { recoverMasteryPending, masteryIgnoredRun, masteryMultTable, masteryLoadoutMult, loadMastery, masteryMultOf, masteryXpAmount, burnRefreshMastery, objectMasteryMult, guardianMasteryMult, meleeMasteryKeyOf } from '../utils/mastery';
 import { isPlayerShield, noteShieldBlockMastery, resetShieldBlockMastery } from '../utils/shieldMastery';
 import { beginMasteryRun, withMastery, currentMasterySource, currentMasteryExecute, currentMasteryAppliedMult, noteMasteryDamage } from '../utils/masteryRun';
-import { isGrowingMasteryKey, type MasteryKey } from '../data/mastery';
+import { gunMasteryKeyOfWeaponKey, isGrowingMasteryKey, type MasteryKey } from '../data/mastery';
 import { isBotRun } from '../utils/botFlag';
 // §6.38 B4(クリーンアップ): 実効難易度倍率の式はbountyValue.ts(依存ゼロに近い葉。詳細はファイル冒頭の
 // コメント参照)へ一本化した。bountyTick.tsもここから同じ関数をimportする(=もう複製ではなく本物の
@@ -380,7 +380,7 @@ import {
 } from '../world/warlordShrine';
 import { policePos as policeSpot, resolvePoliceCollision, policeRect } from '../world/police';
 import { boomerangBatPick, boomerangBatSpeedMult, boomerangBatSparks, DRONE_BOOM_BAT_HITSTOP_MS, DRONE_BOOM_BAT_PAD_PX } from '../utils/boomerangBat';
-import { poiTouchStarts, poiTouchMayFire, poiTouchStallMult, POI_TOUCH_STALL_MS, type PoiTouchId } from '../world/poiTouch';
+import { poiTouchStarts, poiTouchMayFire, poiTouchStallMult, poiTouchHolding, POI_TOUCH_STALL_MS, POI_TOUCH_HOLD_DECAY_S, type PoiTouchId } from '../world/poiTouch';
 import { assignDetourSectors } from '../world/detourPoi';
 import { bossSectorIndex, poiSectorIndex } from '../world/pois';
 // PACING_PUZZLE.md §6.24-UX(POI-UX): 寄り道POIの通信/入手トースト/解放帯の文言とゲート(純関数)。
@@ -9912,6 +9912,7 @@ interface GameState {
   poiTouchFx: Record<string, { at: number; noFlash: boolean }>; // 描画が読む: 触れた実時刻(Date.now)と光なし(スクラップ不足=拒否の反応)か
   poiTouchLast: Record<string, { endAt: number; x: number; count: number }>; // 触れ直しの間隔(離れた時刻・その時のx・これまでの発火数)
   poiTouchLastAt: number; // 直近の発火の実時刻(歩きのつっかえ用)
+  poiTouchLastLight: boolean; // 直近の発火が2回目以降の軽い版か(止め・反動とも半分)
   // PACING_PUZZLE.md §6.24 M48: 寄り道POI(病院の一般化)。武器庫=デンジャーゾーンの中間。
   // 拠点を解放するとその方角の矢印が出る(病院と同じ POI 仕組み)。3秒とどまり100スクラップを
   // 払うとTier3装備を確定入手。位置は毎ラン、裏ボス/病院/警察署と被らないセクターへランダムに割り当て。
@@ -10627,6 +10628,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   poiTouchFx: {},
   poiTouchLast: {},
   poiTouchLastAt: 0,
+  poiTouchLastLight: false,
   armoryTaken: false,
   armoryTakenAt: 0,
   police: null,
@@ -10850,8 +10852,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         // B10 血の覚醒(THEONE_ROUND2 §3-1): 移動速度 ×1.5。ランプの外・dash/スライド/スケーターには掛けない(関数側)。
         awakenSpeedMult: bloodAwakenMult(player, state.gameTime).boost,
       };
-      // POIに触れた瞬間の歩きのつっかえ(クリエイティブ監査): 約100ms、歩きの目標速度だけを滑らかに落として戻す(慣性の追従はそのまま)。世界・敵・時間は止めない。
-      const poiStall = (dashOv || sliding || state.poiTouchLastAt <= 0 || nowMs - state.poiTouchLastAt >= POI_TOUCH_STALL_MS) ? 1 : poiTouchStallMult(nowMs - state.poiTouchLastAt);
+      // POIに触れた瞬間のつっかえ(社長の実機報告「つっかかりがゼロ」2026-11-13): 触れ始めに移動を全方向とも短く止め(poiHold)、
+      // そのあと慣性つきで元の速さへ戻す(poiStall)。世界・敵・時間は止めない。位置は押し戻さない(触れ続けて発動する判定を壊さない)。ダッシュ・スライド中は除外。
+      const poiElapsed = nowMs - state.poiTouchLastAt;
+      const poiOff = dashOv || sliding || state.poiTouchLastAt <= 0 || poiElapsed >= POI_TOUCH_STALL_MS;
+      const poiHold = !poiOff && poiTouchHolding(poiElapsed, state.poiTouchLastLight);
+      const poiStall = poiOff ? 1 : poiTouchStallMult(poiElapsed, state.poiTouchLastLight);
       const moveSpeed = poiStall * computeEffectiveMoveSpeed({
         ...moveSpeedInput,
         dashOverrideSpeed: dashOv ? dashOv.speed : null,
@@ -10961,6 +10967,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         vy = (player.lungeVy ?? 0) * shapeF * lungeCap;
       } else if (skaterStopping || pvpFrozen || grabbedFrozen || hurtFrozen || swingFrozen) {
         const d = Math.exp(-deltaTime / 0.05); // 約50msの時定数で素早く0へ
+        vx = player.vx * d;
+        vy = player.vy * d;
+      } else if (poiHold) {
+        // POIに触れた瞬間の止め: 入力(横滑り・斜めも)を無視し、残りの速さを短い時定数で抜く(瞬間停止にしない=慣性MUST)。
+        const d = Math.exp(-deltaTime / POI_TOUCH_HOLD_DECAY_S);
         vx = player.vx * d;
         vy = player.vy * d;
       } else {
@@ -16339,7 +16350,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         direction: { x: 0, y: -1 },
         weaponType: 'phill-bullet',
         weaponKey: weapon.key,
-        masteryKey: 'phill', // 熟練度: PHILL銃(倍率は当たる所で掛ける)
+        masteryKey: gunMasteryKeyOfWeaponKey(weapon.key) ?? 'none', // 熟練度: PHILL銃(武器ごと。倍率は当たる所で掛ける)
         duration: 60, createdAt: now,
         passthrough: false, hitEnemies: [], hostile: false, reflected: false, critChance: 0,
       });
@@ -16361,7 +16372,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         direction: { x: dirx / dl, y: diry / dl },
         weaponType: 'phill-bullet',
         weaponKey: weapon.key,
-        masteryKey: 'phill', // 熟練度: PHILL銃(倍率は当たる所で掛ける)
+        masteryKey: gunMasteryKeyOfWeaponKey(weapon.key) ?? 'none', // 熟練度: PHILL銃(武器ごと。倍率は当たる所で掛ける)
         duration: 1400, createdAt: now,
         passthrough: false, hitEnemies: [], hostile: false, reflected: false, critChance: 0,
       });
@@ -16431,7 +16442,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         direction: { x: 0, y: -1 },
         weaponType: 'rifle',
         weaponKey: weapon.key,
-        masteryKey: 'rifle', // 熟練度: レールガン=rifle(倍率は当たる所で掛ける)
+        masteryKey: gunMasteryKeyOfWeaponKey(weapon.key) ?? 'none', // 熟練度: レールガン(武器ごと。倍率は当たる所で掛ける)
         duration: 60, createdAt: now,
         passthrough: false, hitEnemies: [], hostile: false, reflected: false, critChance: 0,
         headshotEligible: true,
@@ -16454,7 +16465,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         direction: { x: dirx / dl, y: diry / dl },
         weaponType: 'rifle',
         weaponKey: weapon.key,
-        masteryKey: 'rifle', // 熟練度: レールガン=rifle(倍率は当たる所で掛ける)
+        masteryKey: gunMasteryKeyOfWeaponKey(weapon.key) ?? 'none', // 熟練度: レールガン(武器ごと。倍率は当たる所で掛ける)
         duration: 1400, createdAt: now,
         passthrough: false, hitEnemies: [], hostile: false, reflected: false, critChance: 0,
         headshotEligible: true,
@@ -16499,7 +16510,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const strikeDamage = weapon.damage * scavengerGunMult(player, gameTime) * skillAttackShooterGunMult(player)
       * consumableAttackMult(player, gameTime) * (player.equipBonus?.damageMult ?? 1)
       * skillLastMagazineMult(player, weapon.magazine ?? 0)
-      * masteryMultOf(player, 'glauncher'); // 熟練度: シグナルランチャー=glauncher(空爆の当たり=useGameLoop で glauncher に包む)
+      * masteryMultOf(player, SIGNAL_WEAPON_KEY); // 熟練度: シグナルランチャー(武器ごと。空爆の当たり=useGameLoop で同じキーに包む)
     get().spawnRing(strikeX, strikeY, 10, SIGNAL_STRIKE_RADIUS_PX, 'rgba(251,191,36,0.55)', 3, SIGNAL_STRIKE_DELAY_MS);
     get().spawnGlow(strikeX, strikeY, 30, 'rgba(251,191,36,', SIGNAL_STRIKE_DELAY_MS);
     // 戦闘の手触り③(v0.25.4269): 砲身式=反動キックだけ(薬莢なし)。向き=レティクルの逆。
@@ -16545,7 +16556,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const baseDamage = alchemyStoneDetonateDamage(stage);
       const radius = alchemyStoneDetonateRadius(stage);
       const dmg = Math.max(1, Math.round(gunShotBaseDamage({ damage: baseDamage, magazine: weapon.magazine }, player, gameTime)
-        * masteryMultOf(player, 'glauncher'))); // 熟練度: 錬金砲の石の起爆=グレネード系の銃(glauncher)
+        * masteryMultOf(player, ALCHEMY_WEAPON_KEY))); // 熟練度: 錬金砲の石の起爆=錬金砲(武器ごと)
       const ex = center.x + center.width / 2;
       const ey = center.y + center.height / 2;
       get().spawnRing(ex, ey, 8, radius, 'rgba(250,204,21,0.85)', 4, 420);
@@ -16568,7 +16579,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 中心(石持ち本体)は満額、外は既定グレネードと同じfalloff(0.55+falloff*0.45)。
         const falloff = 1 - dist / radius;
         const eDmg = e.id === center.id ? dmg : Math.max(1, Math.round(dmg * (0.55 + falloff * 0.45)));
-        const killed = withMastery('glauncher', () => get().damageEnemy(e.id, eDmg, true));
+        const killed = withMastery(ALCHEMY_WEAPON_KEY, () => get().damageEnemy(e.id, eDmg, true));
         get().spawnDamageNumber(ecx, e.y, eDmg, false, { enemyId: e.id });
         if (e.id !== center.id) get().spawnBurst(ecx, ecy, '#b91c1c', 4);
         if (killed) {
@@ -25108,7 +25119,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!rect) return;
     const nowMs = Date.now();
     // ① 建物の光・プレイヤーの押し戻し・カメラの押し込みは、描画が poiTouchFx の時刻から包絡線(world/poiTouch)で出す。建物は動かさない。
-    set(state => ({ poiTouchFx: { ...state.poiTouchFx, [id]: { at: nowMs, noFlash } }, poiTouchLastAt: nowMs }));
+    set(state => ({ poiTouchFx: { ...state.poiTouchFx, [id]: { at: nowMs, noFlash } }, poiTouchLastAt: nowMs, poiTouchLastLight: light }));
     // ② 触れた所(建物の下端・プレイヤーの中心x)から小さな波紋2本と、基礎に沿って這う砂埃。判定の無い絵。
     //    スクラップ不足(拒否の反応)と2回目以降(軽い版)は輪なし。
     const px = st.player.x + st.player.width / 2;
@@ -26711,7 +26722,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 熟練度 loadout の倍率(research/MASTERY.md v2.1 A-11): 初期の銃と所持サブが決まった後に1回だけ作る
       // (出撃の途中で拾った銃・買ったサブでは作り直さない)。無視する出撃では bakedMasteryMult が空=1。
       const masteryLoadoutInput = {
-        gunCategories: startingWeapons.filter(w => !w.isMelee).map(w => w.category),
+        gunKeys: startingWeapons.filter(w => !w.isMelee).map(w => w.key), // 熟練度は銃ごと(武器ごと)
         meleeKey: startingWeapons.find(w => w.isMelee)?.key,
         subs: runSubs,
       };
@@ -27020,6 +27031,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         poiTouchFx: {},
         poiTouchLast: {},
         poiTouchLastAt: 0,
+        poiTouchLastLight: false,
         armoryTaken: false,
         armoryTakenAt: 0,
         police: detourSectors ? policeSpot(detourSectors.police, detourAngleOffset(Math.random())) : null,

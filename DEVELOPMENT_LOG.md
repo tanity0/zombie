@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5576 — 銃の熟練度を武器ごとに+POIに触れた時のつっかえを効かせる【2026-11-13 15:50 JST】
+- 社長報告「熟練度が武器毎になってない。種類ごとになってる」: 銃のキーを種類(handgun 等5)→銃のキーそのもの(37挺)へ。`MASTERY_GUN_KEYS`(data/mastery.ts・台帳との一致は ghostOnline.test)・`gunMasteryKeyOfWeaponKey` を data へ移設・loadout の平均は持っている銃1挺ずつ。必要量は gunMelee 6万のまま。一時停止の装備欄・リザルトの MASTERY 欄・出撃前の銃の札が銃ごとに。`shared/ghostSanitize.mjs` の許可リストも銃ごとに(古い種類名は読み捨て)。移行は作らない(社長指示)。
+- 社長報告「POIの触った感触が実装されてない」→「つっかかりがゼロ」: 診断=下から触れている時は建物へ押し込んでいて上方向は元々0=速度を下げても体感ゼロ、谷も100ms・数pxで横滑りでも分からない、反動3px・カメラ3.5pxも小さい。直し: 触れ始めに全方向の移動を120ms止め(残りの速さは時定数25msで抜く)→120msで ease して戻る/体の押し戻し9px(220ms)・カメラ8px/2回目以降は半分(poiTouchLastLight)。判定・報酬・位置は不変。
+- 確認: typecheck/eslint/循環import OK、関係vitest 230件緑(熟練度・POI)。見た目(押し戻し・カメラ)は動き=実機で確認。自己点検: 抵触なし。
+
 ## v0.25.5575 — パイルドライバー: 弾を杭の射程で消す+刺さった瞬間のヒットストップ【2026-11-13 14:44 JST】
 - 社長裁定「1;はい」(外れた弾を杭の射程で消す)「2;はい」(画面全体の止め)。
 - 1: updateProjectiles で発射点から piledriverRangePx() を超えたら、その tick は射程の端へ戻して判定を受け、次の tick で消す(weaponUtils の projectileTravelCapPx/isPastTravelCap/clampToTravelCap)。撃ち手を問わない(幻影も)・打ち返された弾は対象外。消えた弾は pileHitLog に miss を書き、描画は空振りの絵(伸び切って止まる)。

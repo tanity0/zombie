@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   poiTouchStarts, poiTouchMayFire, poiTouchFlashAlpha, poiTouchStallMult, poiTouchPushPx, poiTouchCamPx, poiTouchPitchJitter,
   POI_TOUCH_FLASH_PEAK, POI_TOUCH_FLASH_MS, POI_TOUCH_STALL_MS, POI_TOUCH_PUSH_PX, POI_TOUCH_CAM_PX, POI_TOUCH_CAM_IN_MS, POI_TOUCH_CAM_OUT_MS,
-  POI_TOUCH_PUSH_IN_MS, POI_TOUCH_PUSH_OUT_MS, POI_TOUCH_SOUND,
+  POI_TOUCH_PUSH_IN_MS, POI_TOUCH_PUSH_OUT_MS, POI_TOUCH_SOUND, POI_TOUCH_HOLD_MS, POI_TOUCH_RELEASE_MS, poiTouchHolding,
 } from './poiTouch';
 
 describe('poiTouchStarts(触れ始めの検出)', () => {
@@ -47,26 +47,52 @@ describe('手応えの時間包絡(建物は動かさない)', () => {
     for (let t = 0; t <= POI_TOUCH_FLASH_MS; t += 5) { const f = poiTouchFlashAlpha(t); expect(f).toBeLessThanOrEqual(prev); prev = f; }
     expect(poiTouchFlashAlpha(POI_TOUCH_FLASH_MS)).toBe(0);
   });
-  it('つっかえ: 80〜120msの間に速度倍率が滑らかに落ちて戻る(最小は0近く・両端は1)', () => {
-    expect(POI_TOUCH_STALL_MS).toBeGreaterThanOrEqual(80);
-    expect(POI_TOUCH_STALL_MS).toBeLessThanOrEqual(120);
-    expect(poiTouchStallMult(0)).toBeCloseTo(1, 5);
-    expect(poiTouchStallMult(POI_TOUCH_STALL_MS / 2)).toBeLessThan(0.15);
+  // 社長の実機報告「つっかかりがゼロ」(2026-11-13): 止め(全方向0)→ease で戻る。2回目以降は半分。
+  it('つっかえ: 触れた瞬間から止め(倍率0)、その後 ease で1へ戻る。全体は止め+戻り', () => {
+    expect(POI_TOUCH_HOLD_MS).toBe(120);
+    expect(POI_TOUCH_RELEASE_MS).toBe(120);
+    expect(POI_TOUCH_STALL_MS).toBe(POI_TOUCH_HOLD_MS + POI_TOUCH_RELEASE_MS);
+    for (let t = 0; t < POI_TOUCH_HOLD_MS; t += 10) {
+      expect(poiTouchStallMult(t)).toBe(0);
+      expect(poiTouchHolding(t)).toBe(true);
+    }
+    expect(poiTouchHolding(POI_TOUCH_HOLD_MS)).toBe(false);
+    // 戻りは加速→減速(真ん中で半分・前半は半分未満)
+    expect(poiTouchStallMult(POI_TOUCH_HOLD_MS + POI_TOUCH_RELEASE_MS / 2)).toBeCloseTo(0.5, 5);
+    expect(poiTouchStallMult(POI_TOUCH_HOLD_MS + POI_TOUCH_RELEASE_MS / 4)).toBeLessThan(0.25);
+    let prev = 0;
+    for (let t = POI_TOUCH_HOLD_MS; t <= POI_TOUCH_STALL_MS; t++) {
+      const m = poiTouchStallMult(t);
+      expect(m).toBeGreaterThanOrEqual(prev);
+      expect(m - prev).toBeLessThan(0.02);
+      prev = m;
+    }
     expect(poiTouchStallMult(POI_TOUCH_STALL_MS)).toBe(1);
-    for (let t = 0; t < POI_TOUCH_STALL_MS; t++) expect(Math.abs(poiTouchStallMult(t + 1) - poiTouchStallMult(t))).toBeLessThan(0.1);
+    expect(poiTouchStallMult(-1)).toBe(1);
   });
-  it('押し戻し: 2〜4px、0から入り戻り切って0。急に跳ばない', () => {
-    expect(POI_TOUCH_PUSH_PX).toBeGreaterThanOrEqual(2);
-    expect(POI_TOUCH_PUSH_PX).toBeLessThanOrEqual(4);
-    expect(poiTouchPushPx(0)).toBe(0);
-    expect(poiTouchPushPx(POI_TOUCH_PUSH_IN_MS)).toBeCloseTo(POI_TOUCH_PUSH_PX, 5);
+  it('つっかえ(2回目以降): 止めも戻りも半分', () => {
+    expect(poiTouchHolding(POI_TOUCH_HOLD_MS / 2 - 1, true)).toBe(true);
+    expect(poiTouchHolding(POI_TOUCH_HOLD_MS / 2, true)).toBe(false);
+    expect(poiTouchStallMult(POI_TOUCH_HOLD_MS / 2 - 1, true)).toBe(0);
+    expect(poiTouchStallMult(POI_TOUCH_STALL_MS / 2, true)).toBe(1);
+  });
+  it('押し戻し: 9px、ease-out で出て ease-in で戻る(合計220ms程度)。急に跳ばない。2回目以降は半分', () => {
+    expect(POI_TOUCH_PUSH_PX).toBe(9);
     const total = POI_TOUCH_PUSH_IN_MS + POI_TOUCH_PUSH_OUT_MS;
+    expect(total).toBeGreaterThanOrEqual(200);
+    expect(total).toBeLessThanOrEqual(240);
+    expect(poiTouchPushPx(0)).toBe(0);
+    // 出は減速(前半で半分以上出る)
+    expect(poiTouchPushPx(POI_TOUCH_PUSH_IN_MS / 2)).toBeGreaterThan(POI_TOUCH_PUSH_PX / 2);
+    expect(poiTouchPushPx(POI_TOUCH_PUSH_IN_MS)).toBeCloseTo(POI_TOUCH_PUSH_PX, 5);
+    // 戻りは加速(戻りの前半では半分も戻らない)
+    expect(poiTouchPushPx(POI_TOUCH_PUSH_IN_MS + POI_TOUCH_PUSH_OUT_MS / 2)).toBeGreaterThan(POI_TOUCH_PUSH_PX / 2);
     expect(poiTouchPushPx(total)).toBe(0);
-    for (let t = 0; t < total; t++) expect(Math.abs(poiTouchPushPx(t + 1) - poiTouchPushPx(t))).toBeLessThan(0.2);
+    for (let t = 0; t < total; t++) expect(Math.abs(poiTouchPushPx(t + 1) - poiTouchPushPx(t))).toBeLessThan(0.45);
+    expect(poiTouchPushPx(POI_TOUCH_PUSH_IN_MS, true)).toBeCloseTo(POI_TOUCH_PUSH_PX / 2, 5);
   });
-  it('カメラ: 0→3〜4px を70〜90msで加速して入り、200〜250msで減速して戻る', () => {
-    expect(POI_TOUCH_CAM_PX).toBeGreaterThanOrEqual(3);
-    expect(POI_TOUCH_CAM_PX).toBeLessThanOrEqual(4);
+  it('カメラ: 0→8px を70〜90msで加速して入り、200〜250msで減速して戻る。2回目以降は半分', () => {
+    expect(POI_TOUCH_CAM_PX).toBe(8);
     expect(POI_TOUCH_CAM_IN_MS).toBeGreaterThanOrEqual(70);
     expect(POI_TOUCH_CAM_IN_MS).toBeLessThanOrEqual(90);
     expect(POI_TOUCH_CAM_OUT_MS).toBeGreaterThanOrEqual(200);
@@ -78,6 +104,7 @@ describe('手応えの時間包絡(建物は動かさない)', () => {
     // 戻りは減速(戻りの前半で半分以上戻る)
     expect(poiTouchCamPx(POI_TOUCH_CAM_IN_MS + POI_TOUCH_CAM_OUT_MS / 2)).toBeLessThan(POI_TOUCH_CAM_PX / 2);
     expect(poiTouchCamPx(POI_TOUCH_CAM_IN_MS + POI_TOUCH_CAM_OUT_MS)).toBe(0);
+    expect(poiTouchCamPx(POI_TOUCH_CAM_IN_MS, true)).toBeCloseTo(POI_TOUCH_CAM_PX / 2, 5);
   });
   it('負・終了後は0', () => {
     expect(poiTouchFlashAlpha(-5)).toBe(0);
