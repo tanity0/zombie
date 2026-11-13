@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   bloodCapacity, bloodFill, BLOOD_CAP_MIN, bloodGainFor, bloodSizeMul, BLOOD_SIZE_MUL_MAX, bloodDryStep, bloodMeterNow, isBloodAwakening, bloodAwakenMult, bloodAwakenRedAlpha, bloodAwakenGlowAlpha, bloodPulseMult,
-  applyBloodGain, bloodAwakenStep, bloodOrbTarget, withoutBlood,
+  applyBloodGain, bloodAwakenStep, bloodOrbTarget, withoutBlood, bloodGainLocked, BLOOD_AWAKEN_REFILL_LOCK_MS,
   BLOOD_AWAKEN_MS, BLOOD_AWAKEN_FADE_MS, BLOOD_DRY_DELAY_MS, BLOOD_RED_IN_MS, BLOOD_RED_SETTLE_MS, BLOOD_RED_OVERSHOOT, BLOOD_BODY_LAG_MS, BLOOD_BEAT_PERIOD_MS,
 } from './bloodAwaken';
 
@@ -145,6 +145,32 @@ describe('bloodAwakenStep(満ちたら自動発動・終わりで0へ)', () => {
   });
 });
 
+describe('明けてから10秒は溜まらない(社長裁定2026-11-13「覚醒と覚醒の間隔を空ける」)', () => {
+  it('bloodGainLocked: 一度も明けていなければ溜まる・[明け, 明け+10秒) だけ止まる', () => {
+    expect(BLOOD_AWAKEN_REFILL_LOCK_MS).toBe(10000);
+    expect(bloodGainLocked(5000, 0)).toBe(false);
+    expect(bloodGainLocked(11_000, 11_000)).toBe(true);
+    expect(bloodGainLocked(11_000 + BLOOD_AWAKEN_REFILL_LOCK_MS - 1, 11_000)).toBe(true);
+    expect(bloodGainLocked(11_000 + BLOOD_AWAKEN_REFILL_LOCK_MS, 11_000)).toBe(false);
+  });
+  it('明けの瞬間に明けた時刻(=until)を残す。発動では前の値を保つ', () => {
+    const end = bloodAwakenStep({ bloodMeter: 1, bloodAwakenUntil: 11_000, bloodAwakenStartedAt: 1000 }, 11_016)!;
+    expect(end.patch.bloodAwakenEndedAt).toBe(11_000);
+    const s = bloodAwakenStep({ bloodMeter: 1, bloodLastGainAt: 50_000, bloodAwakenEndedAt: 3000 }, 50_000)!;
+    expect(s.started).toBe(true);
+    expect(s.patch.bloodAwakenEndedAt).toBe(3000);
+  });
+  it('通し: 明けた直後の加算は null・10秒後は溜まる・覚醒の前は今どおり溜まる', () => {
+    expect(applyBloodGain({ bloodMeter: 0 }, 0.06, 100)).toEqual({ bloodMeter: 0.06, bloodLastGainAt: 100 });
+    let p = { bloodMeter: 1, bloodLastGainAt: 1000, bloodAwakenUntil: 11_000, bloodAwakenStartedAt: 1000, bloodAwakenEndedAt: 0 };
+    p = { ...p, ...bloodAwakenStep(p, 11_000)!.patch };
+    expect(applyBloodGain(p, 0.06, 11_000)).toBeNull();
+    expect(applyBloodGain(p, 0.06, 11_000 + BLOOD_AWAKEN_REFILL_LOCK_MS - 1)).toBeNull();
+    expect(bloodAwakenStep(p, 15_000)).toBeNull(); // 血0のまま=再発動もしない
+    expect(applyBloodGain(p, 0.06, 11_000 + BLOOD_AWAKEN_REFILL_LOCK_MS)).toEqual({ bloodMeter: 0.06, bloodLastGainAt: 11_000 + BLOOD_AWAKEN_REFILL_LOCK_MS });
+  });
+});
+
 describe('bloodAwakenMult(入り即・終わりの1秒で線形に戻る)', () => {
   const p = { bloodAwakenUntil: 11_000, bloodAwakenStartedAt: 1000 };
   it('覚醒していなければ全部1', () => {
@@ -266,7 +292,7 @@ describe('withoutBlood(守護霊・幻影の疑似Playerへ持ち越さない)',
   it('血と覚醒を全部0にして、他の欄はそのまま', () => {
     const live = { bloodMeter: 1, bloodLastGainAt: 5, bloodAwakenUntil: 99_999, bloodAwakenStartedAt: 5, hp: 77 };
     const g = withoutBlood(live);
-    expect(g).toEqual({ bloodMeter: 0, bloodLastGainAt: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: 0, hp: 77 });
+    expect(g).toEqual({ bloodMeter: 0, bloodLastGainAt: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: 0, bloodAwakenEndedAt: 0, hp: 77 });
     expect(isBloodAwakening(g, 1)).toBe(false);
     expect(bloodAwakenMult(g, 1)).toEqual({ boost: 1 });
     expect(live.bloodAwakenUntil).toBe(99_999); // 元は書き換えない

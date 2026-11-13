@@ -417,6 +417,7 @@ export interface Player extends DashLocomotionState {
   bloodLastGainAt: number;
   bloodAwakenUntil: number;
   bloodAwakenStartedAt: number;
+  bloodAwakenEndedAt: number; // 最後に覚醒が明けた時刻(gameTime・0=未)。明けてから BLOOD_AWAKEN_REFILL_LOCK_MS は血が溜まらない
   // 枠光(SKILL_BUILD_REDESIGN.md §21 B5・視覚専用): オーバークロックのCDリセットprocが立った
   // 時刻+800ms(gameTime基準)。判定はsrc/utils/frameLight.tsのoverclockFrameLitへ渡すだけで、
   // この値自体はゲームプレイ(判定・数値)に一切影響しない。既定0。
@@ -877,6 +878,8 @@ export interface Enemy {
   brLiftDropMs?: number;
   /** ★浮きの弧の形(research/BRAWLER.md §14・社長「浮き入れよう。落ちてくるのを爆発のは少しゆっくりに」)。'blast'=爆発で浮いた弧(上り20%・漂い15%・落ち65%)。無し=格闘の弧。 */
   brLiftShape?: 'blast';
+  /** ★落ちる部分の時間の倍率(utils/brawlerCombo の brawlerFallK・社長裁定2026-11-13)。地上から打ち上げた1回目は遅く、空中で拾うたびに速く。無し=1。 */
+  brLiftFallK?: number;
   /** ★爆発の浮き(§14): 今の空中が始まった時刻・爆発では浮かない窓の終わり(着地から、浮いていた時間と同じ長さ)。Date.now。 */
   brBlastAirSince?: number;
   brBlastNoLiftUntil?: number;
@@ -3251,6 +3254,12 @@ export type VisualEffect =
       followPlayer?: boolean; // x,y をプレイヤーの中心からのずれとして読む(体と一緒に動く絵=飛び蹴りの筋)
       // 題字の出方(格闘の秘奥義の題字・research/BRAWLER.md §10-4)。少し大きく出て締まって止まり(ease-out)、一拍置いて少し膨らみながら抜けて消える。
       titlePop?: boolean;
+      /** 寿命の間に大きさを growFrom 倍 → 1倍へ広げる(減速して止まる=1-(1-t)^growPow)。未指定=広げない(既存の全用途は不変)。 */
+      growFrom?: number;
+      /** 広がりの減速の強さ(既定3)。大きいほど出始めが速い。 */
+      growPow?: number;
+      /** 地面の層(足の下)に描く。未指定=従来どおり effectLayer。 */
+      ground?: boolean;
     }
   | {
       // 倒した時の血の破裂(社長指示2026-10-27・描画専用=判定ゼロ・pixi/bloodBurst.ts)。粒の数は固定、敵の大きさで絵の大きさと距離が伸びる。

@@ -13,14 +13,14 @@ const backing: Record<string, string> = {};
   get length() { return Object.keys(backing).length; },
 } as Storage;
 
-import { useGameStore, skillBloodAwakenDamageMult, grantMeleeKillRewards } from './gameStore';
+import { useGameStore, skillBloodAwakenDamageMult, grantMeleeKillRewards, triggerBloodAwakenBurst } from './gameStore';
 import { setSelectedStageId } from '../data/progress';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { computeEffectiveMoveSpeed, type EffectiveMoveSpeedInput } from '../utils/playerMoveSpeed';
 import { resolveGhostBuild } from '../utils/ghostBuild';
 import { buildPseudoPlayer } from '../utils/playerBuild';
 import { fireWeapon, createWeapon, AMMO_FIELD, effectiveFireCooldown } from '../utils/weaponUtils';
-import { bloodAwakenMult, BLOOD_AWAKEN_MS } from '../utils/bloodAwaken';
+import { bloodAwakenMult, BLOOD_AWAKEN_MS, BLOOD_AWAKEN_REFILL_LOCK_MS, bloodAwakenStep } from '../utils/bloodAwaken';
 import type { Player } from '../types/game';
 
 const st = () => useGameStore.getState();
@@ -54,10 +54,41 @@ afterEach(() => { vi.restoreAllMocks(); });
 describe('初期化(リトライ・ステージ跨ぎで残らない)', () => {
   it('resetGame で血も覚醒も0へ戻る', () => {
     awaken();
-    useGameStore.setState(s => ({ player: { ...s.player, bloodLastGainAt: 77 } }));
+    useGameStore.setState(s => ({ player: { ...s.player, bloodLastGainAt: 77, bloodAwakenEndedAt: 99 } }));
     useGameStore.getState().resetGame('warrior');
     const p = st().player;
-    expect([p.bloodMeter, p.bloodAwakenUntil, p.bloodAwakenStartedAt, p.bloodLastGainAt]).toEqual([0, 0, 0, 0]);
+    expect([p.bloodMeter, p.bloodAwakenUntil, p.bloodAwakenStartedAt, p.bloodLastGainAt, p.bloodAwakenEndedAt]).toEqual([0, 0, 0, 0, 0]);
+  });
+});
+
+describe('明けてから10秒は溜まらない(社長裁定2026-11-13)', () => {
+  /** 覚醒を入れて、明けの遷移(useGameLoop と同じ bloodAwakenStep)まで進める。 */
+  const awakenAndEnd = () => {
+    const t0 = st().gameTime + 1000;
+    useGameStore.setState(s => ({ gameTime: t0, player: { ...s.player, bloodMeter: 1, bloodAwakenUntil: t0 + BLOOD_AWAKEN_MS, bloodAwakenStartedAt: t0 } }));
+    const endAt = t0 + BLOOD_AWAKEN_MS;
+    const step = bloodAwakenStep(st().player, endAt)!;
+    useGameStore.setState(s => ({ gameTime: endAt, player: { ...s.player, ...step.patch } }));
+    return endAt;
+  };
+  it('一度も覚醒していなければ今どおり溜まる', () => {
+    spawnInFront(1);
+    st().triggerCounter();
+    expect(meter()).toBeCloseTo(0.06);
+  });
+  it('明けた直後に密着で倒しても溜まらない', () => {
+    const endAt = awakenAndEnd();
+    expect(st().player.bloodAwakenEndedAt).toBe(endAt);
+    spawnInFront(1);
+    st().triggerCounter();
+    expect(meter()).toBe(0);
+  });
+  it('明けて10秒後は溜まる', () => {
+    const endAt = awakenAndEnd();
+    useGameStore.setState(s => ({ gameTime: endAt + BLOOD_AWAKEN_REFILL_LOCK_MS, player: { ...s.player, counterCooldownEnd: 0, pendingSwingAt: 0 } }));
+    spawnInFront(1);
+    st().triggerCounter();
+    expect(meter()).toBeCloseTo(0.06);
   });
 });
 
@@ -319,5 +350,23 @@ describe('覚醒中はリロード無し(弾倉が空になった瞬間に予備
     emptyActive(0);
     st().tickReload();
     expect(activeGun().magazine).toBe(0);
+  });
+});
+
+describe('覚醒に入った瞬間の押し返し(triggerBloodAwakenBurst)', () => {
+  it('近くの雑魚を外へ押す・ダメージも気絶も無し・足元の衝撃波と砂埃が出る', () => {
+    const e = spawnInFront(50, 40);
+    const fx0 = st().effects.length;
+    triggerBloodAwakenBurst(useGameStore.getState);
+    const after = st().enemies.find(x => x.id === e.id)!;
+    expect(after.health).toBe(50);
+    expect(after.knockbackVx ?? 0).toBeGreaterThan(0);
+    expect(after.knockbackUntil ?? 0).toBeGreaterThan(Date.now() - 1000);
+    expect(after.stunUntil ?? 0).toBe(e.stunUntil ?? 0);
+    expect(st().effects.some(f => f.kind === 'image' && f.ground === true && f.growFrom !== undefined)).toBe(true); // 足元の衝撃波
+    expect(st().effects.some(f => f.kind === 'ring')).toBe(false); // 線の赤い輪は使わない(赤=予告に読めるため)
+    // 押した敵の足元にだけ砂埃
+    expect(st().effects.filter(f => f.kind === 'image' && f.texture === 'fx/dust-puff').length).toBe(1);
+    expect(st().effects.length).toBeGreaterThan(fx0);
   });
 });

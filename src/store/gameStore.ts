@@ -119,6 +119,7 @@ import { resetMapSightings } from '../utils/mapSightings';
 import { resetBossAppearances } from '../utils/bossAppearances';
 import { resetRunRoute } from '../utils/runRoutes';
 import { bloodAwakenMult, bloodGainFor, applyBloodGain, bloodSizeMul, isBloodAwakening } from '../utils/bloodAwaken'; // B10 血の覚醒(THEONE_ROUND2 §3)
+import { bloodBurstShoves, BLOOD_AWAKEN_BURST_RADIUS } from '../utils/bloodAwakenBurst'; // B10 血の覚醒に入った瞬間の押し返し
 import { playerSuperArmorActive } from '../utils/superArmor'; // B12 スーパーアーマー(THEONE_ROUND2 §4)
 import { meleeRecoverSpeedMult, MELEE_RECOVER_MS } from '../utils/meleeRecover'; // 近接を振ったあとの硬直(v0.25.4380)
 import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-3(使者のKB特例=免疫CD無視)
@@ -4757,12 +4758,12 @@ const brawlerHitPatch = (
  * 浮かせ追撃の1回ぶん(§12-1)。ボス級を地上から浮かせる時だけ、ボスの「止める効果」の減衰(evaluateBossStopDr)を通す
  * (他の止める効果=ノックバック・会心の足止め・罠と同じ1カテゴリ=永久に止められない)。空中の追撃は減衰の数に入れない(重さと n 回目の減りで落ちる)。
  */
-const brawlerJugglePatch = (enemy: Enemy, cls: 'mob' | 'strong' | 'boss', move: BRC.BrawlerMoveKey, now: number): Partial<Enemy> | null => {
+const brawlerJugglePatch = (enemy: Enemy, cls: 'mob' | 'strong' | 'boss', move: BRC.BrawlerMoveKey, now: number, fallScale = true): Partial<Enemy> | null => {
   if (BRC.brawlerLiftClass(enemy) === null) return null; // ★終端の死神は浮かない(格闘・爆発・スラッシャー共通・§14)
   // ボス級: 気絶・紫の間に浮かせたコンボは軽い(§25)。
   const gtJ = useGameStore.getState().gameTime;
   const stunnedJ = (enemy.stunUntil !== undefined && gtJ < enemy.stunUntil) || (enemy.bossFullStunUntil !== undefined && gtJ < enemy.bossFullStunUntil);
-  const jp = BRC.brawlerJugglePush(enemy, cls, move, now, stunnedJ);
+  const jp = BRC.brawlerJugglePush(enemy, cls, move, now, stunnedJ, fallScale);
   if (!jp) return null;
   if (cls !== 'boss' || BRC.brawlerAirborne(enemy, now) || (jp.brLiftUntil ?? 0) <= now) return jp;
   const dr = evaluateBossStopDr(enemy, now);
@@ -6939,6 +6940,82 @@ export const grantGunBlood = (get: () => GameState, at: { x: number; y: number; 
   if (patch) useGameStore.setState(s => ({ player: { ...s.player, ...patch } }));
 };
 
+/**
+ * B10 血の覚醒に入った瞬間の「赤いオーラが弾ける」(社長指示2026-11-13「パーン!と爆発する演出・軽い範囲で」+「押し返すだけ」)。
+ * 呼び手は useGameLoop の覚醒の遷移(bloodAwakenStep の started)だけ。押す相手は utils/bloodAwakenBurst の純関数。
+ * 押しは近接の通常のノックバックと同じ書き方(速度+期限・壁時計)。ダメージ・気絶・浮き・免疫CDは書かない。
+ * 絵は既存の道だけ(クリエイティブ監査の是正: 線の赤い正円は「赤=予告」に読めるので使わない):
+ *  - 主役=足元の地面に寝かせた「にじむ衝撃波」(vfx/light_03 を深い赤に染めて楕円で広げる・前縁は約40msで押し半径を越え、減速して止まり消える)
+ *    +前縁のぎざぎざの縁(fx/dust-ring を赤く・同じ広がり)。
+ *  - 芯=体の周りの一瞬の飽和(加算: 白寄り→赤へ抜ける・約250ms・減速して消える)+枝分かれの筋(spark_04)。
+ *  - 血=床に落ちて残る血の破裂(bloodBurst)を放射状に・血飛沫の粒(spawnBlood)を外向きに。衝撃波の外まで飛ぶ。
+ *  - 押した敵の足元にだけ砂埃(fx/dust-puff・押す向きへ流れる)。押し半径の外の敵には何も出さない。小さい揺れ。
+ */
+export const BLOOD_AWAKEN_BURST_SHAKE_MS = 220;
+export const BLOOD_AWAKEN_BURST_SHAKE_MAG = 6;
+/** 衝撃波の寿命(ms)と広がりの減速の強さ。growPow=8 で前縁は 40ms で最終の約半分(押し半径140を越える)へ届く。 */
+export const BLOOD_AWAKEN_WAVE_MS = 520;
+export const BLOOD_AWAKEN_WAVE_POW = 8;
+/** 芯の閃きの寿命(ms)。 */
+export const BLOOD_AWAKEN_CORE_MS = 250;
+/** 床に残る血の破裂を何方向に撒くか。 */
+const BLOOD_AWAKEN_SPLAT_DIRS = 6;
+/** 衝撃波の最終の半径(押し半径の約2.15倍=派手さの絵)。light_03 の見える縁は絵の高さの約0.43、dust-ring の輪は約0.47(spawnImageMark の scale=1 が高さ130px)。 */
+const BLOOD_AWAKEN_WAVE_R = BLOOD_AWAKEN_BURST_RADIUS * 2.15;
+export const triggerBloodAwakenBurst = (get: () => GameState): void => {
+  const st = get();
+  const p = st.player;
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  const footY = p.y + p.height;
+  const wall = Date.now();
+  const shoves = bloodBurstShoves(st.enemies, pcx, pcy, st.gameTime, KNOCKBACK_SPEED);
+  if (shoves.size > 0) {
+    useGameStore.setState(s => ({ enemies: s.enemies.map(e => {
+      const v = shoves.get(e.id);
+      return v ? { ...e, knockbackVx: v.vx, knockbackVy: v.vy, knockbackUntil: wall + KNOCKBACK_DURATION } : e;
+    }) }));
+  }
+  const g = get();
+  // 主役: 足元の地面ににじむ深い赤の衝撃波(楕円=縦をつぶす・通常合成で沈めない深紅)。
+  g.spawnImageMark(pcx, footY, 'vfx/light_03', { scale: BLOOD_AWAKEN_WAVE_R / (0.43 * 130), scaleY: 0.48, duration: BLOOD_AWAKEN_WAVE_MS, growFrom: 0.04, growPow: BLOOD_AWAKEN_WAVE_POW, fadeFrom: 0.25, tint: 0x9c0a16, alpha: 0.78, ground: true });
+  // 前縁のぎざぎざの縁(砂埃の輪を赤く・縁はぼけて欠けている=予告の正円に見えない)。少し遅れて外へ抜ける。
+  g.spawnImageMark(pcx, footY, 'fx/dust-ring', { scale: (BLOOD_AWAKEN_WAVE_R * 0.86) / (0.47 * 130), scaleY: 0.48, duration: BLOOD_AWAKEN_WAVE_MS + 120, growFrom: 0.05, growPow: BLOOD_AWAKEN_WAVE_POW - 1, fadeFrom: 0.15, tint: 0xff2a2a, alpha: 0.7, ground: true }); // 回さない(回すと縦につぶした楕円が斜めに立つ)
+  // 芯: 体の周りに一瞬の飽和(加算=白寄り→赤へ抜ける)。白い核は短く、赤い塊は長く残って減速して消える。
+  const coreY = pcy - 14;
+  g.spawnImageMark(pcx, coreY, 'vfx/light_03', { scale: 1.2, duration: Math.round(BLOOD_AWAKEN_CORE_MS * 0.5), growFrom: 0.55, growPow: 3, fadeFrom: 0.1, additive: true, tint: 0xffe0d8, alpha: 0.95 });
+  g.spawnImageMark(pcx, coreY, 'vfx/light_03', { scale: 1.8, duration: BLOOD_AWAKEN_CORE_MS, growFrom: 0.45, growPow: 3, fadeFrom: 0.2, additive: true, tint: 0xff1a2a, alpha: 1 });
+  g.spawnImageMark(pcx, coreY, 'vfx/spark_04', { scale: 1.6, duration: BLOOD_AWAKEN_CORE_MS, growFrom: 0.6, growPow: 3, fadeFrom: 0.2, additive: true, tint: 0xff3a3a, alpha: 0.9, rot: Math.random() * Math.PI * 2 });
+  // 血: 床に落ちて残る破裂を放射状に(衝撃波の外まで)+飛沫の粒を外向きに。
+  if (BLOOD_BURST_ENABLED) {
+    const splats: VisualEffect[] = [];
+    const a0 = Math.random() * Math.PI * 2;
+    for (let i = 0; i < BLOOD_AWAKEN_SPLAT_DIRS; i++) {
+      const angle = a0 + (i / BLOOD_AWAKEN_SPLAT_DIRS) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+      splats.push({
+        kind: 'bloodBurst', id: `fx-bburst-awk-${wall}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+        x: pcx, y: coreY, floorY: footY, angle, reach: 190 + Math.random() * 110, scale: 1, melee: false,
+        tx: pcx, ty: footY, bodyH: p.height * 2.3,
+        createdAt: wall, duration: BLOOD_BURST_MS,
+      });
+    }
+    useGameStore.setState(s => {
+      const next = [...s.effects, ...splats];
+      if (next.length > 400) next.splice(0, next.length - 400);
+      return { effects: next };
+    });
+  }
+  for (let i = 0; i < 4; i++) g.spawnBlood(pcx, coreY, (i / 4) * Math.PI * 2 + Math.PI / 4, 220);
+  // 押した敵の足元にだけ砂埃(押す向きへ流れる)。
+  for (const e of st.enemies) {
+    const v = shoves.get(e.id);
+    if (!v) continue;
+    const n = Math.hypot(v.vx, v.vy) || 1;
+    const ux = v.vx / n, uy = v.vy / n;
+    g.spawnImageMark(e.x + e.width / 2 - ux * 6, e.y + e.height, 'fx/dust-puff', { scale: 0.26, scaleY: 0.6, duration: 650, tint: 0x9a8b7a, alpha: 0.6, moveX: ux * 46, moveY: uy * 18 - 6, fadeFrom: 0.3 });
+  }
+  g.triggerShake(BLOOD_AWAKEN_BURST_SHAKE_MS, BLOOD_AWAKEN_BURST_SHAKE_MAG);
+};
+
 export const grantMeleeKillRewards = (
   get: () => GameState,
   killed: { enemy: Enemy; finisher: boolean }[],
@@ -8133,7 +8210,8 @@ const applySlasherChainStrike = (
         const mv = live ? slasherLiftMove(step, isFinalBigKbStep, BRC.brawlerAirborne(live, nowL)) : null;
         // 拳鬼がこの追撃をレバーガードで受けた(§16-10)なら浮かせない。
         if (live && mv && !BRC.isBrawlerTechBusy(live, gameTime) && !(live.gpLeverGuardAt !== undefined && live.gpLeverGuardAt === get().gameTime)) {
-          let jp = brawlerJugglePatch(live, BRC.brawlerEnemyClass(live), mv, nowL);
+          // ★スラッシャーの追撃(自動で決まった間隔)の弧には、落ちる速さの重さの増え方を当てない(k=1・社長裁定2026-11-13)。
+          let jp = brawlerJugglePatch(live, BRC.brawlerEnemyClass(live), mv, nowL, false);
           // ★1回目の打ち上げは追撃の窓(CD+前隙+余裕)より短くしない=強個体・ボス級(重さ・止めの減衰)でも2回目が空中に間に合う(§14)。
           if (jp && step <= 0 && jp.brLiftUntil !== undefined && jp.brawlerLiftAt !== undefined) {
             const minMs = slasherLaunchMinMs(SLASHER_CHAIN_CD_MS, MELEE_WINDUP_MS);
@@ -9947,7 +10025,7 @@ interface GameState {
   spawnCounterShatter: (x: number, y: number) => void;
   // rot(v0.25.4202): 絵の向き(rad)。VisualEffect側は元から rot を持っていたが、この入口が渡していなかった。
   // cols/additive(社長指示2026-09-16・fx/kill-slash): 横並びシートのコマ送り/加算合成。未指定=従来どおり。
-  spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number; cols?: number; additive?: boolean; noPop?: boolean; fadeFrom?: number; frameEaseOut?: boolean; tint?: number; scaleX?: number; scaleY?: number; moveX?: number; moveY?: number; alpha?: number; frames?: string[]; followPlayer?: boolean; titlePop?: boolean }) => void;
+  spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number; cols?: number; additive?: boolean; noPop?: boolean; fadeFrom?: number; frameEaseOut?: boolean; tint?: number; scaleX?: number; scaleY?: number; moveX?: number; moveY?: number; alpha?: number; frames?: string[]; followPlayer?: boolean; titlePop?: boolean; growFrom?: number; growPow?: number; ground?: boolean }) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number, easeOut?: boolean) => void;
   // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。
   spawnExplosionFx: (x: number, y: number, radius: number, tint?: number) => void;
@@ -10281,7 +10359,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     seekerUntil: 0, seekerCdUntil: 0,
     consumableScrapUntil: 0, consumableAttackUntil: 0, consumableSpeedUntil: 0,
     consumableXpUntil: 0, consumableProtectionUntil: 0,
-    bloodMeter: 0, bloodLastGainAt: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: 0, // B10 血の覚醒
+    bloodMeter: 0, bloodLastGainAt: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: 0, bloodAwakenEndedAt: 0, // B10 血の覚醒
     overclockLightUntil: 0,
     huntingChargeStartedAt: 0,
     huntingCharged: false,
@@ -26936,7 +27014,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           seekerUntil: 0, seekerCdUntil: 0,
           consumableScrapUntil: 0, consumableAttackUntil: 0, consumableSpeedUntil: 0,
           consumableXpUntil: 0, consumableProtectionUntil: 0,
-          bloodMeter: 0, bloodLastGainAt: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: 0, // B10 血の覚醒(リトライ・ステージ跨ぎで残さない)
+          bloodMeter: 0, bloodLastGainAt: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: 0, bloodAwakenEndedAt: 0, // B10 血の覚醒(リトライ・ステージ跨ぎで残さない)
           overclockLightUntil: 0,
           subWeaponLevels: runLevels,
           subWeaponCooldowns: {},
@@ -27901,6 +27979,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       ...(opts?.frames ? { frames: opts.frames } : {}),
       ...(opts?.followPlayer ? { followPlayer: true } : {}),
       ...(opts?.titlePop ? { titlePop: true } : {}),
+      ...(opts?.growFrom !== undefined ? { growFrom: opts.growFrom } : {}),
+      ...(opts?.growPow !== undefined ? { growPow: opts.growPow } : {}),
+      ...(opts?.ground ? { ground: true } : {}),
       createdAt: now,
       duration: opts?.duration ?? 900,
     };

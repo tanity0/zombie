@@ -8,7 +8,7 @@ import {
 import {
   brawlerJuggleHeightRel, brawlerJugglePush, setBrawlerTempoAll, brawlerAirSignal,
   BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_PUSH, BRAWLER_JUGGLE_MIN_F, BRAWLER_JUGGLE_MIN_MS, BRAWLER_JUGGLE_WEIGHT,
-  brawlerEnemyClass, brawlerLiftClass,
+  brawlerEnemyClass, brawlerLiftClass, brawlerFallShape,
 } from './brawlerCombo';
 import { BRAWLER_LIFT_MS, BRAWLER_TEMPO_DEFAULT } from './brawler';
 
@@ -91,7 +91,8 @@ describe('空中の合図は頂点に対する割合(brawlerAirSignal・社長�
     const boss = brawlerJugglePush({}, 'strong', 's4', NOW)!; // 重い区分=強個体(社長指示2026-11-10「一旦ボスの重みやめよう。雑魚と同じ軽さに。」でボス級は雑魚と同じになった)
     const mob = brawlerJugglePush({}, 'mob', 's4', NOW)!;
     const blast = blastLiftPatch(zombie, 'mob', 0.4, NOW, GT)!;
-    for (const a of [boss, mob]) expect(brawlerAirSignal(a, NOW + a.brLiftMs! * 0.25)).toBeCloseTo(1, 3);
+    // 頂点=上がりの終わり(★落ちる部分だけ伸び縮みするので、弧の長さに対する割合は brawlerFallShape の rise)。
+    for (const a of [boss, mob]) expect(brawlerAirSignal(a, NOW + a.brLiftMs! * brawlerFallShape(a.brLiftFallK ?? 1)!.rise)).toBeCloseTo(1, 3);
     expect(brawlerAirSignal(blast, NOW + blast.brLiftMs! * 0.2)).toBeCloseTo(1, 3);
     expect(brawlerJuggleHeightRel(boss, NOW + boss.brLiftMs! * 0.25)).toBeLessThan(brawlerJuggleHeightRel(mob, NOW + mob.brLiftMs! * 0.25));
   });

@@ -281,7 +281,7 @@ import {
 } from '../utils/supportSniper';
 import { activeFlareTargets, pruneFlares } from '../utils/flareGun';
 import { buildBomberMinis, bomberMiniCount } from '../utils/bomberScatter';
-import { rollBomberScatterAndNotify, notifySkillProc, spawnSkillProcFx, warlordAutoSlashMult } from '../store/gameStore'; // スキル発動の表示(通信欄の下)
+import { rollBomberScatterAndNotify, notifySkillProc, spawnSkillProcFx, warlordAutoSlashMult, triggerBloodAwakenBurst } from '../store/gameStore'; // スキル発動の表示(通信欄の下)
 import { computeFirstAidKitTick, isFirstAidKitEmpty, createFirstAidKitState, type FirstAidKitAmmoType, type FirstAidKitState } from '../utils/firstAidKit';
 
 // GHOST-SUBS-FINAL(v0.25.2563): 守護霊の救急鞄の初期在庫。**型はプレイヤーと同じ**FirstAidKitStateで、
@@ -13662,7 +13662,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (bloodStep) {
             useGameStore.setState(st => ({ player: { ...st.player, ...bloodStep.patch } }));
             // 発動音: 敵のレーザー等('heavy-impact' をそのまま)と同じ鳴らし方にしない。同じ素材を rate 0.7(低く)・音量低めで別物にする(新素材は足さない)。
-            if (bloodStep.started) playSfx('heavy-impact', BLOOD_AWAKEN_SFX_GAIN, undefined, BLOOD_AWAKEN_SFX_RATE);
+            if (bloodStep.started) {
+              playSfx('heavy-impact', BLOOD_AWAKEN_SFX_GAIN, undefined, BLOOD_AWAKEN_SFX_RATE);
+              triggerBloodAwakenBurst(useGameStore.getState); // 入った瞬間に赤いオーラが弾けて周りの雑魚・強個体を押し返す(ダメージ無し)
+            }
           }
         }
         // 覚醒中の体から血の粒(移動速度に比例して後ろへ・立ち止まると足元へ滴る)。間引いて1〜2個ずつ(負荷1/10)。

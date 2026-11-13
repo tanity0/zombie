@@ -25,6 +25,8 @@ export interface BloodFields {
   bloodAwakenStartedAt?: number;
   /** 最後に浴びた時刻(gameTime)。乾きの起点。 */
   bloodLastGainAt?: number;
+  /** 最後に覚醒が明けた時刻(gameTime=その覚醒の bloodAwakenUntil)。0=まだ一度も明けていない。明けてから BLOOD_AWAKEN_REFILL_LOCK_MS は溜まらない。 */
+  bloodAwakenEndedAt?: number;
   /** 今の体力・最大体力(満タン値=器の大きさを決める。無ければ満タン扱い)。 */
   health?: number;
   maxHealth?: number;
@@ -45,6 +47,11 @@ export const bloodCapacity = (p: BloodFields): number => {
 
 /** 覚醒の長さ(gameTime ms)。 */
 export const BLOOD_AWAKEN_MS = 10000;
+/**
+ * 覚醒が明けてから血が溜まらない時間(gameTime ms・社長裁定2026-11-13「覚醒と覚醒の間隔を空ける」)。
+ * 明け=覚醒の時間の終わり(bloodAwakenUntil。終わりの1秒のフェードはこの時間の内側にあり、同じ時刻に終わる)。
+ */
+export const BLOOD_AWAKEN_REFILL_LOCK_MS = 10000;
 /** 覚醒中の強化倍率(移動速度・弾速・与ダメージ)。 */
 export const BLOOD_AWAKEN_BOOST = 1.5;
 /** 終わりの何ms前から倍率が 1.0 へ線形に戻るか。 */
@@ -115,6 +122,13 @@ export const isBloodAwakening = (p: BloodFields, gameTime: number): boolean =>
   (p.bloodAwakenUntil ?? 0) > gameTime;
 
 /**
+ * 明けた後の「溜まらない」間か。awakenEndedAt=最後に明けた時刻(0=まだ一度も明けていない=溜まる)。
+ * [明け, 明け+BLOOD_AWAKEN_REFILL_LOCK_MS) の間だけ true。時計は覚醒と同じ gameTime(一時停止中は進まない)。
+ */
+export const bloodGainLocked = (now: number, awakenEndedAt: number): boolean =>
+  awakenEndedAt > 0 && now >= awakenEndedAt && now < awakenEndedAt + BLOOD_AWAKEN_REFILL_LOCK_MS;
+
+/**
  * 乾きを織り込んだ血の量。最後に浴びてから 4秒後から −0.01/秒。覚醒中は乾かない(meter をそのまま返す)。
  * meter は 0..1 に丸める。
  */
@@ -135,31 +149,33 @@ export const bloodFill = (p: BloodFields, gameTime: number): number =>
   isBloodAwakening(p, gameTime) ? 1 : clamp01(bloodMeterNow(p, gameTime) / bloodCapacity(p));
 
 /**
- * 加算を適用した後の欄を返す。加算が 0 以下 / 覚醒中は null(何も書かない)。溢れた分は捨てる(上限=今の器)。
+ * 加算を適用した後の欄を返す。加算が 0 以下 / 覚醒中 / 明けてから BLOOD_AWAKEN_REFILL_LOCK_MS の間(bloodGainLocked)は
+ * null(何も書かない)。溢れた分は捨てる(上限=今の器)。血を足す道(近接・銃・大きさの倍率)は全部ここを通る。
  * 満ちたら自動発動するのは useGameLoop のティック(bloodAwakenStep)。
  */
 export const applyBloodGain = (p: BloodFields, gain: number, gameTime: number): { bloodMeter: number; bloodLastGainAt: number } | null => {
   if (!(gain > 0)) return null;
   if (isBloodAwakening(p, gameTime)) return null;
+  if (bloodGainLocked(gameTime, p.bloodAwakenEndedAt ?? 0)) return null;
   return { bloodMeter: Math.min(bloodCapacity(p), bloodMeterNow(p, gameTime) + gain), bloodLastGainAt: gameTime };
 };
 
 /**
  * 毎ティックの遷移(useGameLoop 1箇所)。書くべき欄があれば patch を返す。
- *  - 覚醒が終わった(gameTime ≥ until): 血を 0・覚醒を 0 へ
+ *  - 覚醒が終わった(gameTime ≥ until): 血を 0・覚醒を 0 へ。明けた時刻(=until)を bloodAwakenEndedAt に残す
  *  - 覚醒していない & 器が満ちた(bloodFill ≥ 1。被弾で体力が減って器が縮んだ瞬間にも満ちうる): 自動発動(started=true。音は呼び手が鳴らす)
  *  - それ以外は null(書かない)
  */
 export const bloodAwakenStep = (
   p: BloodFields, gameTime: number,
-): { patch: Required<Pick<BloodFields, 'bloodMeter' | 'bloodAwakenUntil' | 'bloodAwakenStartedAt' | 'bloodLastGainAt'>>; started: boolean } | null => {
+): { patch: Required<Pick<BloodFields, 'bloodMeter' | 'bloodAwakenUntil' | 'bloodAwakenStartedAt' | 'bloodLastGainAt' | 'bloodAwakenEndedAt'>>; started: boolean } | null => {
   const until = p.bloodAwakenUntil ?? 0;
   if (until > 0 && gameTime >= until) {
-    return { patch: { bloodMeter: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: p.bloodAwakenStartedAt ?? 0, bloodLastGainAt: 0 }, started: false };
+    return { patch: { bloodMeter: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: p.bloodAwakenStartedAt ?? 0, bloodLastGainAt: 0, bloodAwakenEndedAt: until }, started: false };
   }
   if (until <= gameTime && (p.bloodMeter ?? 0) > 0 && bloodFill(p, gameTime) >= 1 - 1e-9) {
     return {
-      patch: { bloodMeter: 1, bloodAwakenUntil: gameTime + BLOOD_AWAKEN_MS, bloodAwakenStartedAt: gameTime, bloodLastGainAt: gameTime },
+      patch: { bloodMeter: 1, bloodAwakenUntil: gameTime + BLOOD_AWAKEN_MS, bloodAwakenStartedAt: gameTime, bloodLastGainAt: gameTime, bloodAwakenEndedAt: p.bloodAwakenEndedAt ?? 0 },
       started: true,
     };
   }
@@ -238,5 +254,5 @@ export const bloodOrbTarget = (p: BloodFields, gameTime: number): number => {
 
 /** 守護霊・幻影の疑似Playerから血の状態を落とす(本人の覚醒を他人に乗せない)。 */
 export const withoutBlood = <T extends BloodFields>(p: T): T => ({
-  ...p, bloodMeter: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: 0, bloodLastGainAt: 0,
+  ...p, bloodMeter: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: 0, bloodLastGainAt: 0, bloodAwakenEndedAt: 0,
 });

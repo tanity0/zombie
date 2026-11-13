@@ -2,11 +2,11 @@
 // 浮きの中身(浮いている間は動けない・重さの区分・拾える回数の予算・空中の合図の絵)は格闘(§12〜§13・utils/brawlerCombo)と同じものを使う。
 // ここは格闘以外の入口(爆発・スラッシャー)が「どれだけ浮かせるか」を決める純関数だけを置く(store にも描画にも依存しない)。
 import {
-  brawlerAirborne, brawlerJuggleHeightRel, isBrawlerTechBusy, brawlerComboEndNoHoldNow,
+  brawlerAirborne, brawlerJuggleHeightRel, isBrawlerTechBusy, brawlerComboEndNoHoldNow, brawlerFallK, brawlerFallStretchMs,
   BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_PUSH, BRAWLER_JUGGLE_MIN_F, BRAWLER_JUGGLE_MIN_MS,
   type BrawlerJuggleFields, type BrawlerMoveKey,
 } from './brawlerCombo';
-import { BRAWLER_LIFT_MS } from './brawler';
+import { BRAWLER_LIFT_MS, BLAST_LIFT_SHAPE } from './brawler';
 
 export type AirLiftClass = 'mob' | 'strong' | 'boss';
 
@@ -56,12 +56,16 @@ export const blastLiftPatch = (
   if (!airborne && now < (e.brBlastNoLiftUntil ?? 0)) return null;
   const budget = (airborne ? (e.brLiftBudget ?? BRAWLER_JUGGLE_BUDGET[cls]) : BRAWLER_JUGGLE_BUDGET[cls]) - BLAST_LIFT_COST;
   if (budget < 0) return null;
-  const ms = blastLiftMs(cls, closeness);
+  // ★落ちる速さ(社長裁定2026-11-13): 空中で拾い直した爆発の浮きは、格闘と同じく拾った回数ごとに落ちる部分が速くなる。
+  // 地上からの爆発の浮きは、弧の形(落ち65%)がもう「少しゆっくり」なので1回目の遅さ(×1.25)は重ねない。
+  const n = airborne ? (e.brLiftN ?? 0) + 1 : 0;
+  const fk = airborne ? brawlerFallK(n) : 1;
+  const ms = brawlerFallStretchMs(blastLiftMs(cls, closeness), fk, BLAST_LIFT_SHAPE);
   const from = airborne ? brawlerJuggleHeightRel(e, now) : 0;
   const airSince = airborne ? (e.brBlastAirSince ?? e.brawlerLiftAt ?? now) : now;
   const end = now + ms;
   return {
-    brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: from, brLiftN: airborne ? (e.brLiftN ?? 0) + 1 : 0,
+    brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: from, brLiftN: n, brLiftFallK: fk,
     brLiftUntil: end, liftUntil: end, brLiftLand: true,
     brLiftBudget: budget, brLiftDown: false, brLiftDropMs: 0, brLiftShape: 'blast',
     brBlastAirSince: airSince, brBlastNoLiftUntil: end + (end - airSince),

@@ -17,6 +17,7 @@ import { POSTURE_ELITE_TYPES } from './bossPosture';
 import { isRecoverHoldPhase } from './recoverPhase';
 import {
   BRAWLER_LIFT_MS, BRAWLER_TEMPO, BRAWLER_CANCEL_WINDOW_MS, brawlerLiftArcRel, brawlerTempoMs, setBrawlerTempo, brawlerStageSpec, BLAST_LIFT_SHAPE,
+  BRAWLER_LIFT_RISE_FRAC, BRAWLER_LIFT_HOVER_FRAC, type LiftArcShape,
   BRAWLER_HOLD_MS, BRAWLER_TECHS, BRAWLER_KICK3_CHARGE_MS, BRAWLER_KICK_HITSTOP_MS, BRAWLER_STOMP_HITSTOP_MS, BRAWLER_KIKO_SPEED, BRAWLER_KIKO_HIT_PAD,
   brawlerRouteAllows,
 } from './brawler';
@@ -549,6 +550,8 @@ export interface BrawlerJuggleFields {
   brLiftDropMs?: number;
   /** 弧の形('blast'=爆発の浮き・§14)。無し=格闘の弧。 */
   brLiftShape?: 'blast';
+  /** ★落ちる部分の時間の倍率(1=元の形)。地上から打ち上げた1回目は遅く、空中で拾うたびに速く(brawlerFallK)。上がり・漂いの時間は変えない。無し=1。 */
+  brLiftFallK?: number;
   /** ★爆発の浮き(§14): 今の空中が始まった時刻(爆発で浮き直しても続く)・爆発では浮かない窓の終わり(着地から、浮いていた時間と同じ長さ)。Date.now。 */
   brBlastAirSince?: number;
   brBlastNoLiftUntil?: number;
@@ -601,6 +604,29 @@ export const BRAWLER_JUGGLE_MIN_RISE = 0.3;
 export const brawlerJuggleTop = (from: number, peak: number): number =>
   Math.max(BRAWLER_JUGGLE_CARRY * from + peak, from + BRAWLER_JUGGLE_MIN_RISE * peak);
 
+// ---- 落ちる速さの重さの増え方(社長裁定2026-11-13「格闘ゲームの空中コンボの重さの増え方」) ----
+/** 地上から打ち上げた1回目(brLiftN=0)の落ちる部分の時間の倍率(=速さ約0.8倍)。 */
+export const BRAWLER_FALL_FIRST_SLOW = 1.25;
+/** 空中で拾った n 回目(1,2,…)は落ちる部分の時間を ÷ これ^n(速さ1.1倍ずつ)。 */
+export const BRAWLER_FALL_SPEEDUP_PER_PICK = 1.1;
+/** 速さの上限(元の落ちる時間の 1/これ が下限)。 */
+export const BRAWLER_FALL_MAX_SPEEDUP = 1.4;
+/** 拾った回数 n(0=地上から打ち上げた1回目)の落ちる部分の時間の倍率。 */
+export const brawlerFallK = (n: number): number =>
+  n <= 0 ? BRAWLER_FALL_FIRST_SLOW : Math.max(1 / BRAWLER_FALL_MAX_SPEEDUP, 1 / Math.pow(BRAWLER_FALL_SPEEDUP_PER_PICK, Math.floor(n)));
+/** 元の弧の長さ ms(上がり・漂い・落ち)の落ちる部分だけを k 倍した弧の長さ。shape=弧の配分(省略=格闘の弧)。 */
+export const brawlerFallStretchMs = (ms: number, k: number, shape?: LiftArcShape): number => {
+  const F = 1 - (shape?.rise ?? BRAWLER_LIFT_RISE_FRAC) - (shape?.hover ?? BRAWLER_LIFT_HOVER_FRAC);
+  return Math.round(ms * (1 - F + F * k));
+};
+/** 落ちる部分を k 倍した弧の配分(上がり・漂いの割合を縮め直す=上がり・漂いの時間は元のまま)。k=1 なら元の配分。 */
+export const brawlerFallShape = (k: number, shape?: LiftArcShape): LiftArcShape | undefined => {
+  if (k === 1) return shape;
+  const R = shape?.rise ?? BRAWLER_LIFT_RISE_FRAC, H = shape?.hover ?? BRAWLER_LIFT_HOVER_FRAC, F = 1 - R - H;
+  const tot = R + H + F * k;
+  return { rise: R / tot, hover: H / tot };
+};
+
 /** いまの浮いた高さ(基準の高さに対する倍率・絵だけ)。弧の頭は始まりの高さから続き、頂点を越えて地面(0)で終わる。 */
 export const brawlerJuggleHeightRel = (e: BrawlerJuggleFields, now: number): number => {
   if (e.brawlerLiftAt === undefined) return 0;
@@ -614,12 +640,12 @@ export const brawlerJuggleHeightRel = (e: BrawlerJuggleFields, now: number): num
   if (drop > 0) {
     const t = now - e.brawlerLiftAt;
     if (t < drop) { const q = t / drop; return from * (1 - q) * (1 - q) * (1 + 2 * q); }
-    return brawlerLiftArcRel((t - drop) / Math.max(1, ms - drop), 0, peak);
+    return brawlerLiftArcRel((t - drop) / Math.max(1, ms - drop), 0, peak, brawlerFallShape(e.brLiftFallK ?? 1));
   }
   // 空中で吹き飛ばされた(押し上げ0)=今の高さから速く叩き落とす(DROP_MS・端で速さ0の滑らかな落ち)。
   if (peak <= 0) return from * (1 - u) * (1 - u) * (1 + 2 * u);
   // 浮き(最初も追撃の浮き直しも同じ形): 打ち上がり25% → 頂点の漂い20% → 落下55%(§12-1)。爆発の浮きは 20%・15%・65%(§14)。
-  return brawlerLiftArcRel(u, from, brawlerJuggleTop(from, peak), e.brLiftShape === 'blast' ? BLAST_LIFT_SHAPE : undefined);
+  return brawlerLiftArcRel(u, from, brawlerJuggleTop(from, peak), brawlerFallShape(e.brLiftFallK ?? 1, e.brLiftShape === 'blast' ? BLAST_LIFT_SHAPE : undefined));
 };
 
 /**
@@ -650,7 +676,10 @@ export const brawlerJugglePush = (
   e: BrawlerJuggleFields, cls: 'mob' | 'strong' | 'boss', move: BrawlerMoveKey, now: number,
   /** stunned=当たる時にその敵が気絶・紫か(ボス級を地上から浮かせる時だけ見る=気絶中からのコンボは軽い)。 */
   stunned = false,
+  /** ★false=落ちる速さの重さの増え方を当てない(k=1・今の速さ)。スラッシャーの追撃(自動で決まった間隔で出る当たり)が使う(社長裁定2026-11-13)。 */
+  fallScale = true,
 ): Partial<BrawlerJuggleFields> & { liftUntil?: number; brNoHoldUntil?: number } | null => {
+  const fallK = (n: number) => (fallScale ? brawlerFallK(n) : 1);
   const airborne = brawlerAirborne(e, now);
   const push = BRAWLER_JUGGLE_PUSH[move];
   // ボス級: 気絶中に浮かせたコンボ(brLiftLight)は軽い重さのまま着地まで。地上から浮かせる時は、いま気絶中かで決める。
@@ -662,16 +691,17 @@ export const brawlerJugglePush = (
     if (launch === undefined) return null;
     const f = launch * w;
     if (f < BRAWLER_JUGGLE_MIN_F) return null;
-    const ms = arc(f);
+    const fk = fallK(0);
+    const ms = brawlerFallStretchMs(arc(f), fk);
     // brBlastAirSince: 空中の始まり(この後に爆発で浮き直した時、爆発で浮かない窓の長さを空中の時間で測る・§14)。
-    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: 0, brLiftN: 0, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined,
+    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: 0, brLiftN: 0, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined, brLiftFallK: fk,
       brLiftBudget: BRAWLER_JUGGLE_BUDGET[cls], brLiftDown: false, brLiftDropMs: 0, brBlastAirSince: now, brLiftLight: light };
   }
   if (e.brLiftDown) return null; // ダウン中は拾えない
   const h = brawlerJuggleHeightRel(e, now);
   const down = (): Partial<BrawlerJuggleFields> & { liftUntil: number; brNoHoldUntil: number } => {
     const ms = BRAWLER_JUGGLE_DROP_MS;
-    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: 0, brLiftFrom: h, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined,
+    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: 0, brLiftFrom: h, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined, brLiftFallK: 1,
       // ★固まらない時間は遅い方を残す(ダウンの着地で、もっと長い固まらない時間が短くならない・§19-3 ⑤)。
       brLiftDown: true, brLiftDropMs: 0, brLiftBudget: 0, brNoHoldUntil: Math.max(e.brNoHoldUntil ?? 0, now + ms + BRAWLER_DOWN_NO_HOLD_MS) };
   };
@@ -683,15 +713,17 @@ export const brawlerJugglePush = (
     if (budget < 0 || e.brBounceCombo === combo) return down();
     const f = BRAWLER_BOUNCE_F * w;
     const dropMs = BRAWLER_JUGGLE_DROP_MS;
-    const ms = dropMs + arc(f);
-    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: h, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined,
+    const fk = fallK(n);
+    const ms = dropMs + brawlerFallStretchMs(arc(f), fk);
+    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: h, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined, brLiftFallK: fk,
       brLiftBudget: budget, brLiftDown: false, brLiftDropMs: dropMs, brBounceCombo: combo };
   }
   if (push <= 0 || budget < 0) return down();
   const f = push * w;
   if (f < BRAWLER_JUGGLE_MIN_F) return down();
-  const ms = arc(f);
-  return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: h, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined,
+  const fk = fallK(n);
+  const ms = brawlerFallStretchMs(arc(f), fk);
+  return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: h, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined, brLiftFallK: fk,
     brLiftBudget: budget, brLiftDown: false, brLiftDropMs: 0 };
 };
 

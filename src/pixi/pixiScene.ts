@@ -41210,7 +41210,7 @@ export class PixiScene {
       if (sp) sp.destroy();
       sp = new Sprite();
       (sp as Sprite).anchor.set(0.5, 0.5);
-      this.L.effectLayer.addChild(sp);
+      (e.ground ? this.L.groundLayer : this.L.effectLayer).addChild(sp); // ground=足の下(地面に寝かせる絵)
       this.effects.set(e.id, sp);
     }
     const spr = sp as Sprite;
@@ -41219,6 +41219,7 @@ export class PixiScene {
     // titlePop(格闘の秘奥義の題字): 1.3倍から締まって止まり(最初の18%・ease-out)、最後の25%で少し膨らみながら抜ける(ease-in)。
     const pop = e.titlePop
       ? (t < 0.18 ? 1 + 0.3 * (1 - t / 0.18) * (1 - t / 0.18) : t > 0.75 ? 1 + 0.08 * ((t - 0.75) / 0.25) ** 2 : 1)
+      : e.growFrom !== undefined ? e.growFrom + (1 - e.growFrom) * (1 - (1 - t) ** (e.growPow ?? 3)) // 広がる絵(減速して止まる=慣性)
       : e.noPop ? 1 : 1 + Math.max(0, 1 - t * 4) * 0.18;   // 出だしを少し大きく(noPop=掛けない)
     spr.visible = true;
     // cols指定=横並びシート(例: fx/kill-slash・17コマ)。経過進捗からコマを選び、

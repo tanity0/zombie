@@ -11,7 +11,9 @@ import { BRAWLER_GUARD_MS, brawlerPointCap, BRAWLER_SMALL_KB_MULT, BRAWLER_BOSS_
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import { playerSuperArmorActive } from '../utils/superArmor';
 import { treesInRegion, trunkRect } from '../world/trees';
-import { setBrawlerTempoAll } from '../utils/brawlerCombo';
+import { setBrawlerTempoAll, brawlerFallK, brawlerFallStretchMs } from '../utils/brawlerCombo';
+/** ★落ちる部分の重さの増え方(社長裁定2026-11-13): 元の弧の長さ ms を、拾った回数 n の落ちる時間の倍率で伸び縮みさせた長さ。 */
+const fallMs = (ms: number, n: number) => brawlerFallStretchMs(ms, brawlerFallK(n));
 // ★テンポ係数(§9-68): この表の時刻は係数1.0(今までの値)で書いてある。係数1.3の挙動は brawlerTempo.store.test.ts で固める。
 setBrawlerTempoAll(1.0); // 記述時(describe の中で時刻を組む所)より先に効かせる=モジュールの頭で呼ぶ
 
@@ -1530,7 +1532,7 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     const until0 = en('z').aiPhaseUntil ?? 0;
     hitMove('z', 's4', { lift: true });
     const e = en('z');
-    expect(e.liftUntil).toBe(now + 585); // §12-1: 1回の浮きの基本 585ms(社長承認2026-11-08・旧450)
+    expect(e.liftUntil).toBe(now + fallMs(585, 0)); // §12-1: 1回の浮きの基本 585ms(社長承認2026-11-08・旧450)
     const x0 = e.x, y0 = e.y;
     live(430);
     expect(en('z').x).toBeCloseTo(x0, 5);
@@ -1547,12 +1549,12 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     hitMove('z', 's1');
     const e1 = en('z');
     expect(e1.brLiftN).toBe(1);
-    expect(e1.brLiftUntil).toBe(now + Math.max(140, Math.round(585 * 0.5)));
+    expect(e1.brLiftUntil).toBe(now + fallMs(Math.max(140, Math.round(585 * 0.5)), 1));
     expect(e1.brLiftBudget).toBe(5); // 雑魚6 − 1段目1
     advance(100);
     hitMove('z', 's3');
     expect(en('z').brLiftN).toBe(2);
-    expect(en('z').brLiftMs!).toBe(Math.round(585 * 0.75));
+    expect(en('z').brLiftMs!).toBe(fallMs(Math.round(585 * 0.75), 2));
     expect(en('z').brLiftBudget).toBe(3); // − 3段目2
   });
   // §25(社長裁定2026-11-11): ボス級の重さは強個体と同じ 0.7。気絶・紫の間に地上から浮かせた時だけ軽い(1.0・brLiftLight)。
