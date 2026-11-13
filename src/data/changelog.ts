@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5561', items: [
+    'ナイフで浮かせた敵が長く浮いたままになり、スラッシャーの次の一撃が届かなくなっていたのを直した',
+  ] },
   { version: '0.25.5560', items: [
     '血の覚醒に入った瞬間、体から血のオーラが弾け、足元に血しぶきが広がる。近くの敵は押し返される',
     '覚醒が終わってしばらくは、血のゲージが溜まらない',

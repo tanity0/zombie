@@ -2844,7 +2844,8 @@ const knifeHoldLiftPatch = (enemy: Enemy, now: number, gameTime: number, dmg: nu
   const out: Partial<Enemy> = {};
   let down = false;
   if (knifeLiftApplies(enemy, now, gameTime, swingAt, slasher)) {
-    const jp = brawlerJugglePatch(enemy, BRC.brawlerEnemyClass(enemy), knifeLiftMove(BRC.brawlerAirborne(enemy, now)), now);
+    // ★ナイフ(近接)の浮きには落ちる速さの緩急を当てない(k=1=浮きの長さ=移動を止める時間を変えない・社長指示2026-11-13「移動距離は変えないで」)。
+    const jp = brawlerJugglePatch(enemy, BRC.brawlerEnemyClass(enemy), knifeLiftMove(BRC.brawlerAirborne(enemy, now)), now, false);
     if (jp) {
       Object.assign(out, jp);
       if (jp.brLiftUntil !== undefined && jp.brLiftUntil > now) out.brBlastNoLiftUntil = knifeNoLiftUntil(enemy, jp.brLiftUntil, now);
