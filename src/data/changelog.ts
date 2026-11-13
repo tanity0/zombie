@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5571', items: [
+    '緑卵の爆発で倒れた時の死因が「緑卵」と出る',
+  ] },
   { version: '0.25.5570', items: [
     '作戦室の地図に、出会ってまだ倒していないボスの顔が出る。徘徊する変異体は、次の出撃でどこに現れるかが赤い縁で分かる',
     '徘徊する変異体が現れるかどうかは、作戦室を開いた時に決まる',

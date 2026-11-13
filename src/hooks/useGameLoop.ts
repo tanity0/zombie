@@ -16678,7 +16678,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const egShielded = egShield !== null && shieldBlocksArea(ex0, ey0, { x: egP.x, y: egP.y, width: egP.width, height: egP.height }, egShield);
               if (egShielded && egShield) noteShieldGuardFrom(egShield, ex0, ey0);
               if (egInRange && !egShielded) {
-                const egDied = useGameStore.getState().damagePlayer(MINE_DAMAGE, '地雷', ex0, ey0);
+                const egDied = useGameStore.getState().damagePlayer(MINE_DAMAGE, '緑卵', ex0, ey0);
                 playSfx('player-damage');
                 spawnFlash('rgba(239,68,68,0.18)', 180);
                 if (egDied) triggerPlayerDeath(egPcx, egPcy);
