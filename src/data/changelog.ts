@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5575', items: [
+    'パイルドライバーは杭の届く所までしか当たらない',
+    'パイルドライバーの杭が刺さった瞬間、画面が一瞬止まる',
+  ] },
   { version: '0.25.5574', items: [
     'ゲーム内容の変更はありません',
   ] },

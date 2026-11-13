@@ -22,6 +22,19 @@ const PILE_BURST_SX = 1.25;
 const PILE_SHAKE_MS = 130;
 const PILE_SHAKE_MAG = 7;
 const PILE_SFX_GAIN = 1.6;
+/** 刺さった瞬間の画面全体の止め(社長裁定2026-11-13「はい」=画面全体の止め・叩き台)。呼ぶのは useGameLoop の着弾処理。 */
+export const PILEDRIVER_HITSTOP_MS = 60;
+/**
+ * 自分の杭が刺さった瞬間の画面全体の止め(社長裁定2026-11-13「はい」=画面全体の止め)。重なりは triggerHitstop が長い方を採る。
+ * 守護霊・幻影・打ち返された弾では止めない。四神舞(リズム)中も止めない(他の呼び手と同じ)。
+ * 杭と火花だけの止め(pixi/pileDriverFx の PILE_FREEZE_MS)はこの後に続く。
+ */
+export const applyPiledriverHitstop = (p: { hostile: boolean; reflected?: boolean; ownerGhost?: boolean }): void => {
+  if (p.hostile || p.reflected || p.ownerGhost) return;
+  const st = useGameStore.getState();
+  if (st.rhythm.active) return;
+  st.triggerHitstop(PILEDRIVER_HITSTOP_MS);
+};
 
 /**
  * @param projectileId 刺さった弾の id(描画が杭を合わせる鍵)

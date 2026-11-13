@@ -320,6 +320,27 @@ export const CATALOG_MELEE_KEYS: readonly string[] = Object.keys(CATALOG).filter
 // ノックバック/体勢削り)がweaponKeyで判定するための定数。マジックストリングを1箇所にまとめる。
 export const HANDCANNON_WEAPON_KEY = 'handgun-t2-handcannon';
 export const PILEDRIVER_WEAPON_KEY = 'handgun-t3-piledriver';
+// 社長裁定2026-11-13「はい」=外れた弾を杭の射程で消す: パイルドライバーの弾(撃ち手を問わない・打ち返された弾は除く)は
+// 発射点から piledriverRangePx() を超えて飛ばない。超えた tick は射程の端へ戻して置き(その位置で当たり判定を受ける)、
+// 次の tick で消す(gameStore.updateProjectiles)。杭の絵(pixi/pileDriverFx)の空振りの伸び切りと同じ関数=同じ位置。
+export const projectileTravelCapPx = (p: Pick<Projectile, 'weaponKey' | 'reflected'>): number | null =>
+  p.weaponKey === PILEDRIVER_WEAPON_KEY && !p.reflected ? piledriverRangePx() : null;
+const traveledFromOriginPx = (p: Pick<Projectile, 'x' | 'y' | 'originX' | 'originY'>): number =>
+  Math.hypot(p.x - (p.originX ?? p.x), p.y - (p.originY ?? p.y));
+/** 射程の端に届いた(=次の tick で消す)か。 */
+export const isPastTravelCap = (p: Pick<Projectile, 'weaponKey' | 'reflected' | 'x' | 'y' | 'originX' | 'originY'>): boolean => {
+  const cap = projectileTravelCapPx(p);
+  return cap !== null && traveledFromOriginPx(p) >= cap - 1e-3;
+};
+/** 射程を超えて進んだ弾を射程の端(発射点からの変位の向きに cap)へ戻す。超えていなければそのまま返す。 */
+export const clampToTravelCap = <T extends Projectile>(p: T): T => {
+  const cap = projectileTravelCapPx(p);
+  if (cap === null) return p;
+  const d = traveledFromOriginPx(p);
+  if (d <= cap) return p;
+  const ox = p.originX ?? p.x, oy = p.originY ?? p.y, k = cap / d;
+  return { ...p, x: ox + (p.x - ox) * k, y: oy + (p.y - oy) * k };
+};
 // UNIQUE_WEAPONS.md §16(バッチA): デュアルレンジピストルの距離ヒステリシス(dualRangeGun.ts)を
 // fireWeaponから配線するためのキー定数。
 export const DUALRANGE_WEAPON_KEY = 'handgun-t2-dualrange';

@@ -170,7 +170,8 @@ import {
 import type { SkillProcEntry } from '../utils/skillProcFeed';
 import { pushSkillProc, shiftSkillProc, isSkillProcShown, type TechProcKey } from '../utils/skillProcFeed';
 import { noteBrawlerSecret } from '../utils/crashWatch';
-import { getStartingWeapons, createWeapon, ammoBearingGuns, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponRoundsPerAmmo, awakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, mouseSetsAim, gunShotBaseDamage } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, ammoBearingGuns, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponRoundsPerAmmo, awakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, mouseSetsAim, gunShotBaseDamage, isPastTravelCap, clampToTravelCap } from '../utils/weaponUtils';
+import { notePileHit } from '../utils/pileHitLog';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の純関数/定数。
 import { alchemyStoneDetonateDamage, alchemyStoneDetonateRadius } from '../utils/alchemyStone';
 import { type SignalStrike, SIGNAL_STRIKE_DELAY_MS, SIGNAL_STRIKE_RADIUS_PX } from '../utils/signalLauncher';
@@ -23068,6 +23069,15 @@ export const useGameStore = create<GameState>((set, get) => ({
           // (useGameLoop側が道のり到達 or duration経過で爆発させてから除去する)。
           if (currentTime - p.createdAt > p.duration && p.weaponType !== 'grenade' && p.rollDetonatePx === undefined) return false;
           if (currentTime - p.createdAt > p.duration + 500) return false;
+          // 社長裁定2026-11-13「はい」: パイルドライバーの弾は射程の端に着いた次の tick で消す(外れた弾が遠くの敵に当たらない)。
+          // 自分の弾は杭の絵が空振りと分かるよう記録を残す(pixi/pileDriverFx が読む)。
+          if (isPastTravelCap(p)) {
+            if (!p.hostile) {
+              const dl = Math.hypot(p.direction.x, p.direction.y) || 1;
+              notePileHit({ id: p.id, x: p.x + p.width / 2, y: p.y + p.height / 2, dirX: p.direction.x / dl, dirY: p.direction.y / dl, at: currentTime, miss: true });
+            }
+            return false;
+          }
           if (p.weaponType === 'enemy_bolt' && p.ownerType === 'plant' && p.hostile && !p.reflected
               && !livePlantIds.has(p.ownerId ?? '')) return false; // 発射元プラントが消滅=在弾も消す
           if (liveOwnerIds && p.srcMoveKey === 'jormungand-freeze' && p.hostile && !p.reflected && p.speed < (p.reflectBaseSpeed ?? 0)
@@ -23292,6 +23302,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             y: p.y + dir.y * p.speed * deltaTime
           };
         })
+        // パイルドライバーの弾は射程の端より先へ進まない(端で当たり判定を受け、次の tick で上の filter が消す)。
+        .map(clampToTravelCap)
         // 銃弾/敵弾は壁に当たったら消滅(貫通不可)。grenade はバウンド、特殊弾は対象外。
         .filter(p => !hitsWall(p));
 

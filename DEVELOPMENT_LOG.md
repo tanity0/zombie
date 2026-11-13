@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5575 — パイルドライバー: 弾を杭の射程で消す+刺さった瞬間のヒットストップ【2026-11-13 14:44 JST】
+- 社長裁定「1;はい」(外れた弾を杭の射程で消す)「2;はい」(画面全体の止め)。
+- 1: updateProjectiles で発射点から piledriverRangePx() を超えたら、その tick は射程の端へ戻して判定を受け、次の tick で消す(weaponUtils の projectileTravelCapPx/isPastTravelCap/clampToTravelCap)。撃ち手を問わない(幻影も)・打ち返された弾は対象外。消えた弾は pileHitLog に miss を書き、描画は空振りの絵(伸び切って止まる)。
+- 2: `PILEDRIVER_HITSTOP_MS=60`(叩き台)を刺さった瞬間に triggerHitstop。敵の弾・打ち返し・守護霊の弾・リズム中は止めない。杭と火花だけの45ms止めは残す。
+- テスト `src/store/piledriverRange.store.test.ts`(8件)。確認: typecheck/eslint OK。実機での見た目は未撮影(動きの変化=実機で確認)。自己点検: 抵触なし。
+
 ## v0.25.5574 — CIの赤: 近接の打刻の書き込み台帳に1件追加【2026-11-13 14:37 JST】
 - `meleeSwingCommit.test.ts` の WRITE_SITES が実際の書き込み(23)より1件少なかった。増えたのは v0.25.5547(弱い構え)の「構えの延長・ポイント不足の上フリック」で counterWindowEnd を閉じる側の書き込み=振りではない(stamped:false)。台帳に理由つきで追記。挙動不変。テスト 7/7 緑。
 

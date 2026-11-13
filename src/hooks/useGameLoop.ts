@@ -580,7 +580,7 @@ import { tickNewGuns } from '../utils/newGunsTick'; // research/NEW_GUNS.md: 新
 import { dropGunKillLoot } from '../utils/gunKillDrops'; // 弾で倒した時の撃破演出とドロップ(品質監査#4)
 import { scanMarkMeleeMult, noteScanDetonation } from '../utils/scanSensor';
 import { ammoBearingGuns, catalogProjectileSpeed, projectileSpeedToCatalog } from '../utils/weaponUtils'; // 弾倉の無い銃を除いた所持銃(research/NEW_GUNS.md 品質監査#5)
-import { spawnPiledriverImpactFx } from '../utils/piledriverImpactFx';
+import { spawnPiledriverImpactFx, applyPiledriverHitstop } from '../utils/piledriverImpactFx';
 import { gunFireSfxKey, gunReloadSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isPhantomTargetBullet, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage, projectileMasteryKey, counterMasteryKeyOf, gunMasteryKeyOfWeaponKey } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ。
 import { ROCKET_BLAST_RADIUS_MULT, ROCKET_LAUNCH_EASE_MS, rocketLaunchSpeedMult } from '../utils/rocketLauncher';
@@ -16036,6 +16036,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               projectile.direction.x, projectile.direction.y,
               enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height,
             );
+            applyPiledriverHitstop(projectile); // 社長裁定2026-11-13「はい」=刺さった瞬間に画面全体を短く止める
           }
           if (enemyForFx && projectile && !gpBulletReflected && hasShotRecoil(enemyForFx.type)) {
             const cur = useGameStore.getState().enemies.find(x => x.id === enemyId);

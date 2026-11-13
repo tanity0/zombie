@@ -6,10 +6,11 @@
 //   1. 撃った瞬間: 最初の2フレーム(PILE_SNAP_MS)で、射線上の敵の手前(居なければ射程の手前)まで一気に伸びてガンと止まる。
 //      残りは弾の到達を待つ(弾の位置+弾の半径までしか伸びない=判定は弾のまま)。手元の筒は撃った向きの逆へ蹴られて慣性で戻る。
 //   2. 当たった瞬間: 先は当たった所で切る(食い込んだ分は敵の体の中=描かない)。杭と火花・衝撃だけを PILE_FREEZE_MS 止める
-//      (画面全体のヒットストップはしない)。衝撃は撃った向きへずらした扁平な楕円2重+敵の背中側へ抜ける破片。
+//      (画面全体の止め PILEDRIVER_HITSTOP_MS は useGameLoop の着弾処理が別に掛ける=社長裁定2026-11-13)。衝撃は撃った向きへずらした扁平な楕円2重+敵の背中側へ抜ける破片。
 //   3. 当たった後: 戻りは非対称。最初にカシュッと一段引き(PILE_KICKBACK_MS で戻りの PILE_KICKBACK_FRAC)、残りを引きずる。
 //      引いた瞬間に筒の両脇の排気口から蒸気が短く鋭く噴いてから広がる。
 //   4. 外れた時: 射程の端まで伸び切ってガクッと止まり(小さく跳ね返る)、先で小さな火花。
+//      弾は射程の端で消える(store が消す=社長裁定2026-11-13)。消えた弾は刺さった記録の miss で空振りと分かる。
 //   前後関係: 上へ撃った杭は自分の体の後ろ(アクターの層で自分の足元Yのすぐ奥)、それ以外は手前。
 //   杭の根元は毎フレームのプレイヤーの体の中心に付く(動いても離れない)。
 // 2分類(CLAUDE.md): 杭は自分の弾(敵の危険を伝える絵ではない)。火花・衝撃・破片・蒸気は派手さの絵。
@@ -202,7 +203,7 @@ export class PileDriverFx {
         const dl = Math.hypot(p.direction.x, p.direction.y) || 1;
         v = newView(p.id, p.direction.x / dl, p.direction.y / dl, ox, oy);
       }
-      if (v.phase !== 'extend') continue; // 外れて伸び切った後も弾は飛び続ける(判定はそのまま)が、杭はもう戻っている
+      if (v.phase !== 'extend') continue; // 伸び切った後(弾は射程の端で次の tick に消える=社長裁定2026-11-13)
       const traveled = Math.hypot(p.x + p.width / 2 - ox, p.y + p.height / 2 - oy);
       const snap = v.snapLen * easeOutQuart((now - v.firedAt) / PILE_SNAP_MS);
       v.len = Math.min(cap, Math.max(snap, traveled + PILE_BULLET_HALF_PX));
@@ -216,6 +217,7 @@ export class PileDriverFx {
     for (const n of notes) {
       if (this.notesDone.has(n.id)) continue;
       this.notesDone.add(n.id);
+      if (n.miss) continue; // 射程の端で消えた弾は伸びている途中で必ず見えている(下の「消えた」の所で空振りにする)
       if (this.views.has(n.id) || this.finished.has(n.id) || seen.has(n.id) || now - n.at > 200 || this.views.size >= PILE_MAX) continue;
       const b = baseOf(n);
       const v = newView(n.id, n.dirX, n.dirY, b.x, b.y);
@@ -227,8 +229,14 @@ export class PileDriverFx {
     for (const [id, v] of this.views) {
       if (v.phase !== 'extend') continue;
       if (!v.pinned && !seen.has(id)) {
-        v.pinned = true;
         const n = noteOf(id);
+        if (n?.miss) { // 射程の端で消えた(store が射程で消した)=空振り。伸び切って止まる(上の traveled >= cap と同じ)
+          v.len = cap; v.phase = 'hold'; v.hit = false; v.phaseAt = now;
+          const b = baseOf(v);
+          this.pushImpact(b.x + v.dirX * cap, b.y + v.dirY * cap, v.dirX, v.dirY, now, true);
+          continue;
+        }
+        v.pinned = true;
         const b = baseOf(v);
         if (n) { v.pinX = n.x + n.dirX * PILE_BULLET_HALF_PX; v.pinY = n.y + n.dirY * PILE_BULLET_HALF_PX; }
         else { v.pinX = b.x + v.dirX * v.len; v.pinY = b.y + v.dirY * v.len; }
