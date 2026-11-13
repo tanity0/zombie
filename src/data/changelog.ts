@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5567', items: [
+    '攻撃を受けた時の自動の斬り返しでも、敵が毎回押される',
+  ] },
   { version: '0.25.5566', items: [
     '浮いているボスや強敵も、弾が当たると少しだけ押される',
   ] },

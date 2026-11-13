@@ -12900,10 +12900,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...(laserBreak?.patch ?? {}),
           ...pvpMeleePatch,
         });
-      } else if (slasherForce || (!retaliateOne && !isBossType(enemy.type)) || knockbackCdReady(enemy, now)) {
+      } else if (slasherForce || !isBossType(enemy.type) || knockbackCdReady(enemy, now)) {
         // ★社長指示2026-11-13「近接は毎回押す」(「近接だけなら押され続ける事がないため」「ボスは変えなくていい」):
         //   ナイフの通常の振りは、ボス級でない敵(雑魚・強個体)へは押しの免疫を見ずに毎回押す。免疫は今どおり書く(他の押し手段の免疫は不変)。
-        //   ボス級と被弾反撃(retaliateOne)は従来どおり免疫を見る。
+        //   被弾反撃(retaliateOne)も同じく毎回押す(社長「はい」2026-11-13)。ボス級は従来どおり免疫を見る。
         // ★ナイフの固まりと浮き(knifeHoldLiftPatch・社長指示2026-11-12)。スラッシャー所持中も振りの1撃目から浮かせる
         // (社長指示同日「スラッシャーは1撃目から浮かせてほしい。空中コンボできるように」=追撃は空中の敵を拾う・slasherLiftMove)。
         const knifeHL = knifeHoldLiftPatch(enemy, now, gameTime, dmg, swingAt, skillLevel(player, 'slasher') > 0);

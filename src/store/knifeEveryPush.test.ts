@@ -88,3 +88,26 @@ describe('ボス級は今どおり(免疫中は押さない)', () => {
     expect(s2.kvy).toBe(0);
   });
 });
+
+describe('被弾反撃のナイフも雑魚・強個体を毎回押す(社長「はい」2026-11-13)', () => {
+  for (const type of ['skeleton', 'zombie'] as EnemyType[]) {
+    it(`${type}: 通常の振りの免疫中でも、被弾反撃の1撃が押す`, () => {
+      setup(type);
+      const s1 = swing();
+      expect(Math.hypot(s1.kvx, s1.kvy)).toBeGreaterThan(0);
+      step(500);
+      const immune = en().knockbackImmuneUntil ?? 0;
+      expect(now).toBeLessThan(immune); // まだ免疫中
+      // 敵を横へ戻して、被弾反撃の経路(triggerCounter の第2引数 { targetId, mult })で1撃
+      const p = useGameStore.getState().player;
+      const cx = p.x + p.width / 2, cy = p.y + p.height / 2;
+      useGameStore.setState(s => ({
+        enemies: s.enemies.map(e => e.id === 'z' ? { ...e, x: cx + 30, y: cy - e.height / 2, knockbackVx: 0, knockbackVy: 0, knockbackUntil: 0, hitStunUntil: undefined } : e),
+      }));
+      const r = useGameStore.getState().triggerCounter(undefined, { targetId: 'z', mult: 1 });
+      expect(r.hit).toBe(true);
+      const after = en();
+      expect(Math.hypot(after.knockbackVx ?? 0, after.knockbackVy ?? 0)).toBeGreaterThan(0);
+    });
+  }
+});
