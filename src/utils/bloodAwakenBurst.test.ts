@@ -1,6 +1,6 @@
 // B10 血の覚醒に入った瞬間の押し返し(bloodBurstShoves)の純関数テスト。
 import { describe, it, expect } from 'vitest';
-import { bloodBurstShoves, BLOOD_AWAKEN_BURST_RADIUS, type BloodBurstTarget } from './bloodAwakenBurst';
+import { bloodBurstShoves, BLOOD_AWAKEN_BURST_RADIUS, BLOOD_AWAKEN_BURST_PUSH_MULT, type BloodBurstTarget } from './bloodAwakenBurst';
 
 const SP = 100;
 const at = (id: string, type: string, cx: number, cy: number, extra: Partial<BloodBurstTarget> = {}): BloodBurstTarget =>
@@ -8,13 +8,14 @@ const at = (id: string, type: string, cx: number, cy: number, extra: Partial<Blo
 
 describe('bloodBurstShoves(誰をどちらへ押すか)', () => {
   it('半径140が叩き台', () => { expect(BLOOD_AWAKEN_BURST_RADIUS).toBe(140); });
+  it('押しの速さの倍率は0.5(社長 2026-11-13「もっと浅くていい」)', () => { expect(BLOOD_AWAKEN_BURST_PUSH_MULT).toBe(0.5); });
   it('範囲内の雑魚を外向きへ押す・近いほど強い・範囲外は押さない', () => {
     const r = bloodBurstShoves([at('a', 'zombie', 40, 0), at('b', 'zombie', 0, -120), at('c', 'zombie', 200, 0)], 0, 0, 0, SP);
     expect(r.get('a')!.vx).toBeGreaterThan(0);
     expect(r.get('a')!.vy).toBeCloseTo(0);
     expect(r.get('b')!.vy).toBeLessThan(0);
     expect(Math.hypot(r.get('a')!.vx, r.get('a')!.vy)).toBeGreaterThan(Math.hypot(r.get('b')!.vx, r.get('b')!.vy));
-    expect(Math.hypot(r.get('b')!.vx, r.get('b')!.vy)).toBeGreaterThanOrEqual(SP * 0.5);
+    expect(Math.hypot(r.get('b')!.vx, r.get('b')!.vy)).toBeGreaterThanOrEqual(SP * 0.5 * BLOOD_AWAKEN_BURST_PUSH_MULT);
     expect(r.has('c')).toBe(false);
   });
   it('強個体(パンプキン・赤い個体)は押す・ボス級と終端の死神は押さない', () => {
@@ -36,7 +37,7 @@ describe('bloodBurstShoves(誰をどちらへ押すか)', () => {
   });
   it('中心が重なっていても数値が壊れない(右へ押す)', () => {
     const v = bloodBurstShoves([at('z', 'zombie', 0, 0)], 0, 0, 0, SP).get('z')!;
-    expect(v.vx).toBeCloseTo(SP);
+    expect(v.vx).toBeCloseTo(SP * BLOOD_AWAKEN_BURST_PUSH_MULT);
     expect(v.vy).toBe(0);
   });
 });

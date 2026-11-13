@@ -11,6 +11,9 @@ import { isCorpse, isUntouchable } from './enemyUtils';
 /** 押し返しの半径(プレイヤー中心と敵中心・px)。叩き台(軽い範囲)。演出の輪はこれより大きくてよい(派手さの絵)。 */
 export const BLOOD_AWAKEN_BURST_RADIUS = 140;
 
+/** 押しの速さの倍率(=押す距離の倍率)。社長 2026-11-13「覚醒の吹き飛ばし、もっと浅くていい」。 */
+export const BLOOD_AWAKEN_BURST_PUSH_MULT = 0.5;
+
 export type BloodBurstTarget = Pick<Enemy,
   'id' | 'type' | 'reaperChaser' | 'x' | 'y' | 'width' | 'height' | 'colorTier' | 'corpseUntil' | 'bossState' | 'labBait' | 'wraithPhased'
   | 'aiPhase' | 'chaffMove' | 'biteAt' | 'stunUntil' | 'bossFullStunUntil'>;
@@ -18,7 +21,7 @@ export type BloodBurstTarget = Pick<Enemy,
 
 /**
  * 押す相手と速度。baseSpeed=近接の通常のノックバックの速さ(store の KNOCKBACK_SPEED)。
- * 強さは近接の通常のノックバックと同じ形=近いほど強い(baseSpeed × (0.5 + 0.5 × 近さ))。
+ * 強さは近接の通常のノックバックと同じ形=近いほど強い(baseSpeed × (0.5 + 0.5 × 近さ) × BLOOD_AWAKEN_BURST_PUSH_MULT)。
  * 中心が重なっている時は右へ押す(向きが決まらないため)。gameTime は今は使わない(技の最中も押す=社長裁定2026-11-13)。
  */
 export const bloodBurstShoves = (
@@ -33,7 +36,7 @@ export const bloodBurstShoves = (
     const d = Math.hypot(dx, dy);
     if (d > BLOOD_AWAKEN_BURST_RADIUS) continue;
     const ux = d > 0.001 ? dx / d : 1, uy = d > 0.001 ? dy / d : 0;
-    const sp = baseSpeed * (0.5 + 0.5 * (1 - d / BLOOD_AWAKEN_BURST_RADIUS));
+    const sp = baseSpeed * (0.5 + 0.5 * (1 - d / BLOOD_AWAKEN_BURST_RADIUS)) * BLOOD_AWAKEN_BURST_PUSH_MULT;
     out.set(e.id, { vx: ux * sp, vy: uy * sp });
   }
   return out;
