@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5566', items: [
+    '浮いているボスや強敵も、弾が当たると少しだけ押される',
+  ] },
   { version: '0.25.5565', items: [
     'ナイフで斬るたびに敵が押されるようになった。立ったまま続けて斬っても押し返せる',
     '浮いている敵に弾が当たると、少しだけ押される',

@@ -130,19 +130,54 @@ describe('空中の敵を弾の向きへ微妙に押す(社長指示2026-11-13)'
     step(400);
     expect(en('a').x - x0).toBeGreaterThan(AIR_SHOT_NUDGE_PX * 0.8);
   });
-  it('ボス級は押さない・地上の敵は今どおり(押さない)', () => {
+  it('浮いているボス級も約10px押す(社長指示2026-11-13「空中はボスも押されるよ」)・止めが明けてから動く', () => {
     const c = center();
     const bossBase = spawnEnemyAt('giantbat', 0, 0, useGameStore.getState().gameTime);
     const boss = { ...bossBase, x: c.x + 200, y: c.y, id: 'boss', dormant: false, health: 999999, maxHealth: 999999,
-      brawlerLiftAt: now, brLiftMs: 600, brLiftPeak: 1, brLiftFrom: 0, brLiftUntil: now + 600, liftUntil: now + 600 } as Enemy;
+      brawlerLiftAt: now, brLiftMs: 1500, brLiftPeak: 1, brLiftFrom: 0, brLiftUntil: now + 1500, liftUntil: now + 1500 } as Enemy;
+    useGameStore.setState({ enemies: [boss] });
+    step(50);
+    const x0 = en('boss').x, y0 = en('boss').y;
+    shoot('boss', 520);
+    expect(en('boss').knockbackShoveUntil).toBeGreaterThan(now);
+    step(130, () => expect(en('boss').x).toBe(x0)); // 止めの間は動かない
+    step(600);
+    const dx = en('boss').x - x0;
+    expect(dx).toBeGreaterThan(AIR_SHOT_NUDGE_PX * 0.8);
+    expect(dx).toBeLessThan(AIR_SHOT_NUDGE_PX * 1.6);
+    expect(Math.abs(en('boss').y - y0)).toBeLessThan(1);
+  });
+  it('浮いている強個体(パンプキン=isBossType で canShoveEnemy が通さない型)も約10px押す(区分の仕様への整合)', () => {
+    const c = center();
+    const pkBase = spawnEnemyAt('pumpkin', 0, 0, useGameStore.getState().gameTime);
+    const pk = { ...pkBase, x: c.x + 200, y: c.y, id: 'pk', dormant: false, health: 999999, maxHealth: 999999,
+      brawlerLiftAt: now, brLiftMs: 1500, brLiftPeak: 1, brLiftFrom: 0, brLiftUntil: now + 1500, liftUntil: now + 1500 } as Enemy;
+    useGameStore.setState({ enemies: [pk] });
+    step(50);
+    const x0 = en('pk').x, y0 = en('pk').y;
+    shoot('pk', 520);
+    expect(en('pk').knockbackShoveUntil).toBeGreaterThan(now);
+    step(130, () => expect(en('pk').x).toBe(x0));
+    step(600);
+    const dx = en('pk').x - x0;
+    expect(dx).toBeGreaterThan(AIR_SHOT_NUDGE_PX * 0.8);
+    expect(dx).toBeLessThan(AIR_SHOT_NUDGE_PX * 1.6);
+    expect(Math.abs(en('pk').y - y0)).toBeLessThan(1);
+  });
+  it('地上のボス級・地上の敵は今どおり(押さない)', () => {
+    const c = center();
+    const bossBase = spawnEnemyAt('giantbat', 0, 0, useGameStore.getState().gameTime);
+    const boss = { ...bossBase, x: c.x + 200, y: c.y, id: 'boss', dormant: false, health: 999999, maxHealth: 999999 } as Enemy;
     useGameStore.setState({ enemies: [boss, place(200, 120, 'g')] });
     shoot('boss', 520);
     shoot('g', 520);
     expect(en('boss').knockbackUntil).toBeUndefined();
+    expect(en('boss').knockbackShoveUntil).toBeUndefined();
     expect(en('g').knockbackUntil).toBeUndefined();
     const gx = en('g').x;
     step(50);
     expect(en('g').knockbackVx ?? 0).toBe(0);
     expect(Math.abs(en('g').x - gx)).toBeLessThan(5); // 寄ってくる分だけ(押されていない)
+    expect(en('boss').knockbackVx ?? 0).toBe(0);
   });
 });

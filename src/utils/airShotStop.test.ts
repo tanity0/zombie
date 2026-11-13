@@ -53,9 +53,10 @@ describe('止めの掛け方', () => {
 describe('空中の敵を弾の向きへ微妙に押す(社長指示2026-11-13)', () => {
   const KB = 280, SP = (AIR_SHOT_NUDGE_PX * 2) / (KB / 1000);
   it('叩き台は10px', () => { expect(AIR_SHOT_NUDGE_PX).toBe(10); });
-  it('浮いている雑魚・強個体だけ。地上・ボス級・浮かない区分は押さない', () => {
+  it('浮いている雑魚・強個体・ボス級を押す(ボス級も同じ距離)。地上・浮かない区分は押さない', () => {
     expect(airShotNudgePatch({}, 'mob', NOW, 1, 0, SP, KB)).toBeNull();
-    expect(airShotNudgePatch({ ...air }, 'boss', NOW, 1, 0, SP, KB)).toBeNull();
+    expect(airShotNudgePatch({}, 'boss', NOW, 1, 0, SP, KB)).toBeNull();
+    expect(airShotNudgePatch({ ...air }, 'boss', NOW, 1, 0, SP, KB)).toEqual(airShotNudgePatch({ ...air }, 'mob', NOW, 1, 0, SP, KB));
     expect(airShotNudgePatch({ ...air }, null, NOW, 1, 0, SP, KB)).toBeNull();
     expect(airShotNudgePatch({ ...air }, 'strong', NOW, 1, 0, SP, KB)).not.toBeNull();
     const p = airShotNudgePatch({ ...air }, 'mob', NOW, 3, 4, SP, KB)!;

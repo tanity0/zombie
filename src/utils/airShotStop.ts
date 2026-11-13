@@ -48,7 +48,9 @@ export interface AirShotNudgeFields extends AirShotStopFields {
 
 /**
  * 弾が当たった瞬間の押し。null=押さない。毎発(免疫 knockbackImmuneUntil は見ない・書かない)。
- *  - 浮いている敵だけ(地上は今どおり=押さない)。区分がボス級・浮かない(null)なら押さない(ボスは弾で押されない仕様)。死体・HP0 は呼ぶ側で外す。
+ *  - 浮いている敵だけ(地上は今どおり=押さない)。区分が浮かない(null=終端の死神)なら押さない。死体・HP0 は呼ぶ側で外す。
+ *  - ★浮いているボス級も押す(社長指示2026-11-13「空中はボスも押されるよ」)。距離は同じ(重さで変えない)。ボス級を動かす印
+ *    (knockbackShoveUntil=押し道具と同じ)は呼ぶ側(store)が書く。止めの減衰は通さない(止める効果ではない小さな押し)。
  *  - speed = knockbackSpeedFor(AIR_SHOT_NUDGE_PX, kbMs) 相当(呼ぶ側が渡す)。kbMs = 押しの長さ(KNOCKBACK_DURATION)。
  *  - 止めが明けてから動く: 動き出し M = max(now, 空中の弾の止めの終わり, 被弾の止め hitStunUntil の終わり)。
  *    空中の弾の止めの残り(まだ後ろへずらしていない分 Ra)は airShotStopTick が knockbackUntil を後ろへずらすので、
@@ -60,7 +62,7 @@ export const airShotNudgePatch = (
   now: number, dirX: number, dirY: number, speed: number, kbMs: number,
 ): Partial<AirShotNudgeFields> | null => {
   if (!brawlerAirborne(e, now)) return null;
-  if (liftClass === null || liftClass === 'boss') return null;
+  if (liftClass === null) return null;
   if (!(speed > 0) || !(kbMs > 0)) return null;
   const dl = Math.hypot(dirX, dirY);
   if (!(dl > 0)) return null;

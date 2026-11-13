@@ -18102,9 +18102,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     const patch = airShotStopPatch(e, speed, now, dirX, dirY);
     // ★空中の敵は弾の向きへ微妙に押す(utils/airShotStop・社長指示2026-11-13)。止めの有無に関係なく毎発。止めが明けてから動く。
     const e1 = patch ? { ...e, ...patch } : e;
-    // 押しを受けない型(ボス型=canShoveEnemy が通さない。区分が強個体のパンプキン・死神等も含む)には書かない(書いても動かない欄を残さない)。
-    const nudge = !canShoveEnemy(e1, now) ? null : airShotNudgePatch(e1, BRC.brawlerLiftClass(e1), now, dirX, dirY,
+    // ★浮いている敵は区分(雑魚・強個体・ボス級)を問わず押す(社長指示2026-11-13「空中はボスも押されるよ」+区分の仕様への整合=強個体も)。
+    //   canShoveEnemy が通さない型(ボス型・パンプキン等の isBossType の強個体)には押し道具と同じ印(knockbackShoveUntil)を立てて動かす。
+    //   浮かない区分(null=終端の死神)は airShotNudgePatch が押さない。
+    //   距離はどの区分も同じ・止めの減衰(evaluateBossStopDr)は通さない(止める効果ではない小さな押し=格闘の「ボスも少しだけずれる」と同じ扱い)。
+    //   印の期限は止めのずらしを終えた後の押しの終わり(knockbackUntil は airShotStopTick が止めの残りぶん後ろへずらすため)。
+    const liftCls = BRC.brawlerLiftClass(e1);
+    const needShove = liftCls !== null && (isBossType(e1.type) || !canShoveEnemy(e1, now));
+    const nudge0 = airShotNudgePatch(e1, liftCls, now, dirX, dirY,
       knockbackSpeedFor(AIR_SHOT_NUDGE_PX, KNOCKBACK_DURATION), KNOCKBACK_DURATION);
+    const nudge = nudge0 && needShove && nudge0.knockbackUntil !== undefined
+      ? { ...nudge0, knockbackShoveUntil: Math.max(e1.knockbackShoveUntil ?? 0, nudge0.knockbackUntil
+        + (e1.airShotStopAt !== undefined && e1.airShotStopUntil !== undefined
+          ? Math.max(0, (e1.airShotStopUntil - e1.airShotStopAt) - (e1.airShotStopShifted ?? 0)) : 0)) }
+      : nudge0;
     if (!patch && !nudge) return false;
     set(state => ({ enemies: state.enemies.map(x => (x.id === id ? { ...x, ...(patch ?? {}), ...(nudge ?? {}) } : x)) }));
     return !!patch;
