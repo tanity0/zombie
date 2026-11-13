@@ -1171,7 +1171,7 @@ export const applyEnemyProjectileHits = (
     for (const id of reflectedOwnerIds) notifyCounterHit(id);
     fx.addMeleeFinishCombo(1);
     // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
-    if (!brawlerGuardCounterFx(reflectedAt?.x ?? player.x + player.width / 2, reflectedAt?.y ?? player.y + player.height / 2, reflectedSources)) { // 撃ち主の区分で成立の効果が決まる(雑魚の弾=潰し/雑魚より上・撃ち主が分からない=自分がノックバック)
+    if (!brawlerGuardCounterFx(reflectedAt?.x ?? player.x + player.width / 2, reflectedAt?.y ?? player.y + player.height / 2, reflectedSources, { projectile: true })) { // 弾=成立の演出は出すが構えは続き、潰し・反撃の気功は出さない(社長指示2026-11-13)。撃ち主の区分で成立の効果が決まる(雑魚の弾=潰し/雑魚より上・撃ち主が分からない=自分がノックバック)
       fx.playSfx('counter');
       const pcx = player.x + player.width / 2;
       const pcy = player.y + player.height / 2;

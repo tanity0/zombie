@@ -34,7 +34,7 @@ import { FLAMER_PULSE_DAMAGE, FLAMER_MAG_SIZE, FLAMER_RELOAD_MS_RAW, FLAMER_RANG
 // UNIQUE_WEAPONS.md §16-2(バッチC-2): 近接切替/弾の軌道の3挺。状態そのものはfireWeapon内で完結
 // (ガンブレードのモードだけWeapon.gunbladeMeleeModeへ持ち越す)。
 import { GUNBLADE_RANGED_DAMAGE, GUNBLADE_RANGED_COOLDOWN_MS, GUNBLADE_MODE_STATS, GUNBLADE_MELEE_RANGE_PX, GUNBLADE_MELEE_KNOCKBACK_MULT, resolveGunbladeMode } from './gunbladeMelee';
-import { assignHomingShotgunTargetsByAzimuth } from './homingShotgun';
+import { assignHomingShotgunTargetsByAzimuth, HOMING_PELLET_LAUNCH_SPREAD_RAD, homingPelletLaunchJitterRad } from './homingShotgun';
 import { coilPelletAmplitudePx } from './coilShotgun';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ(値の二重管理を避ける)。
 import { ROCKET_CHARGE_MS } from './rocketLauncher';
@@ -201,7 +201,7 @@ const CATALOG: Record<string, WeaponDef> = {
   // UNIQUE_WEAPONS.md §16-2(バッチC-2)。誘導散弾ショットガン(T3): 各ペレットが近くの敵へ誘導する
   // (旋回はgameStore.tsのhoming-missileと同じ式=homingPelletフラグで開く。対象割り振りは新規=
   // homingShotgun.ts。敵が複数なら分散・1体なら全弾集中)。実効DPS=28.78(既定比+7.1%・§16-1)。
-  'shotgun-t3-homing': { key: 'shotgun-t3-homing', name: '誘導散弾ショットガン', type: 'shotgun', category: 'shotgun', tier: 3, damage: 5, cooldown: 430, projectileSpeed: 470, projectileSize: 7, count: 9, magSize: 3, reloadMs: 1700 },
+  'shotgun-t3-homing': { key: 'shotgun-t3-homing', name: '誘導散弾ショットガン', type: 'shotgun', category: 'shotgun', tier: 3, damage: 5, cooldown: 430, projectileSpeed: 470, projectileSize: 7, count: 9, magSize: 3, reloadMs: 1700, spreadRadOverride: HOMING_PELLET_LAUNCH_SPREAD_RAD },
 
   // C — Rifle/Magnum family (.44). Heavy single rounds. The revolver pierces
   // one enemy; higher tiers pierce freely.
@@ -1393,7 +1393,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
 
   const projectiles: Projectile[] = [];
   for (let i = 0; i < count; i++) {
-    const pd = shotDirections[i];
+    // 誘導散弾SG(社長指示2026-11-13「撃ち出しは狭めに拡散」): 等間隔の扇に粒ごとの小さなばらつきを足す
+    // (homingShotgun.homingPelletLaunchJitterRad)。他の銃は従来どおり。
+    const pd = isHomingGun ? rotate(shotDirections[i], homingPelletLaunchJitterRad()) : shotDirections[i];
     const gt = useGameStore.getState().gameTime;
     // 発射時のクリ率(GHOST-BUILD-1で共通ヘルパへ抽出=式・値は不変):
     //   武器基礎 + 本体(レベルアップ)+ 装備(アクセ・クリ系。player.critChanceとは別枠で加算)
@@ -1440,7 +1442,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
       // UNIQUE_WEAPONS.md §16-2(バッチC-2・誘導散弾SG): 対象が割り当たったペレットだけ旋回を開く
       // (対象無し=直進のみ。homing-missileと同じ「対象が消えたら直進」規則をgameStore.tsが担う)。
       ...(isHomingGun && homingTargetIds?.[i] !== undefined
-        ? { targetEnemyId: homingTargetIds[i], homingPellet: true as const }
+        ? { targetEnemyId: homingTargetIds[i], homingPellet: true as const, homingLaunchGameTime: gt }
         : {}),
       // スキル: ファイアシューターの爆発弾。直撃ダメージ ×0.3、命中で半径66の小爆発。
       ...(fireShooterShot

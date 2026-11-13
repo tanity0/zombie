@@ -8,6 +8,8 @@ import { STAGES, getStage, type Stage } from './campaign';
 import { getEventQuestConfig } from '../utils/eventQuest';
 import { clearWelcomeStreaks } from '../utils/welcomeStreak';
 import { clearBossEncounters, unlockAllBossEncounters } from '../utils/bossEncounter';
+import { clearBossDefeated } from '../utils/bossDefeated';
+import { clearSortiePatrolPlan } from '../utils/sortiePatrolPlan';
 // ★練習ランの出撃先(下の「実行時上書き」)。import方向は progress→bossPractice の一方通行
 // (bossPractice側はprogressを読まない)。逆向き(bossPractice→progress)にすると
 // bossPractice→progress→bossEncounter→bossPractice の循環になるので注意。
@@ -710,6 +712,8 @@ export const resetProgress = (): void => {
   try { localStorage.removeItem(MASTERY_PENDING_KEY); } catch { /* ignore */ } // 熟練度の退避も同じく消す
   setStoryFlags(emptyStoryFlags()); // the ONE ストーリー分岐フラグも進行リセットで消す(開発用)
   clearBossEncounters(); // ボスラッシュの遭遇記録も進行リセットで消す(開発用・BOSS_MAKER.md §20-5)
+  clearBossDefeated(); // 倒した記録(作戦室の地図の顔・research/SORTIE_MAP_BOSS_ICONS.md §4)
+  clearSortiePatrolPlan(); // 作戦室で引いた徘徊の枠(同 §3)
   setSelectedMission('main');
 };
 

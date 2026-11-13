@@ -463,6 +463,22 @@ describe('バッチC-2: 近接切替・弾の軌道の3挺の配線(fireWeapon)'
       expect(ids.size).toBeGreaterThan(1);
       expect(shots.every(s => s.homingPellet === true)).toBe(true);
     });
+
+    it('撃ち出しは狭めの扇に広がる(敵1体でも全粒が同じ向きにならない)+発射時刻を持つ', () => {
+      const player = useGameStore.getState().player;
+      const gun = { ...createWeapon('shotgun-t3-homing'), lastFired: 0 };
+      const target = spawnEnemyAt('zombie', player.x, player.y - 100, useGameStore.getState().gameTime);
+      useGameStore.setState(s => ({
+        enemies: [target],
+        player: { ...s.player, weapons: [gun, ...s.player.weapons.filter(w => w.isMelee)], activeWeaponId: gun.id },
+      }));
+      const shots = fireWeapon(gun, useGameStore.getState().player, [target]);
+      const angles = shots.map(s => Math.atan2(s.direction.y, s.direction.x));
+      const widthDeg = (Math.max(...angles) - Math.min(...angles)) * 180 / Math.PI;
+      expect(widthDeg).toBeGreaterThan(18);
+      expect(widthDeg).toBeLessThan(27);
+      expect(shots.every(s => s.homingLaunchGameTime === useGameStore.getState().gameTime)).toBe(true);
+    });
   });
 });
 

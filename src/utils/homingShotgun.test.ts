@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   assignHomingShotgunTargetsByAzimuth, homingPelletTurnRateRadPerSec, HOMING_PELLET_TURN_RADIUS_PX,
+  HOMING_PELLET_LAUNCH_SPREAD_RAD, HOMING_PELLET_LAUNCH_JITTER_RAD, HOMING_PELLET_STRAIGHT_MS, HOMING_PELLET_TURN_RAMP_MS,
+  homingPelletLaunchJitterRad, homingPelletTurnRampFactor, stepHomingPelletAngle,
 } from './homingShotgun';
 
 describe('homingPelletTurnRateRadPerSec(旋回半径40px相当を弾速から導く)', () => {
@@ -62,5 +64,72 @@ describe('assignHomingShotgunTargetsByAzimuth(方位で組む対象割り振り)
 
   it('count=0(空のペレット配列)なら空配列', () => {
     expect(assignHomingShotgunTargetsByAzimuth([], [{ id: 'a', azimuthRad: 0 }])).toEqual([]);
+  });
+});
+
+describe('撃ち出しの扇+慣性つきの誘導(社長指示2026-11-13)', () => {
+  it('撃ち出しの扇が広がっている(全幅が約20〜25度・粒が同じ向きにならない)', async () => {
+    const { computeShotAngleOffsets, createWeapon } = await import('./weaponUtils');
+    const offsets = computeShotAngleOffsets(createWeapon('shotgun-t3-homing'));
+    expect(offsets.length).toBe(9);
+    const width = offsets[offsets.length - 1] - offsets[0];
+    expect(width).toBeCloseTo(HOMING_PELLET_LAUNCH_SPREAD_RAD, 6);
+    expect(width * 180 / Math.PI).toBeGreaterThanOrEqual(20);
+    expect(width * 180 / Math.PI).toBeLessThanOrEqual(25);
+    expect(new Set(offsets.map(o => o.toFixed(4))).size).toBe(9);
+  });
+
+  it('粒ごとのばらつきは上限内で、扇の並び順(割り振り)を入れ替えない', () => {
+    expect(homingPelletLaunchJitterRad(() => 0)).toBeCloseTo(-HOMING_PELLET_LAUNCH_JITTER_RAD, 9);
+    expect(homingPelletLaunchJitterRad(() => 0.5)).toBeCloseTo(0, 9);
+    expect(homingPelletLaunchJitterRad(() => 0.999999)).toBeLessThanOrEqual(HOMING_PELLET_LAUNCH_JITTER_RAD);
+    const step = HOMING_PELLET_LAUNCH_SPREAD_RAD / 8;
+    expect(HOMING_PELLET_LAUNCH_JITTER_RAD * 2).toBeLessThan(step);
+  });
+
+  it('撃ち出し直後は曲がらない(真っすぐの間は倍率0)', () => {
+    expect(homingPelletTurnRampFactor(0)).toBe(0);
+    expect(homingPelletTurnRampFactor(HOMING_PELLET_STRAIGHT_MS)).toBe(0);
+    const a = stepHomingPelletAngle(0, Math.PI / 2, 17.6 * homingPelletTurnRampFactor(30), 1 / 60);
+    expect(a).toBe(0);
+  });
+
+  it('曲がる速さは時間でなめらかに強まり、上がり切ったら全速(単調・0→1)', () => {
+    let prev = 0;
+    for (let ms = HOMING_PELLET_STRAIGHT_MS; ms <= HOMING_PELLET_STRAIGHT_MS + HOMING_PELLET_TURN_RAMP_MS + 50; ms += 10) {
+      const f = homingPelletTurnRampFactor(ms);
+      expect(f).toBeGreaterThanOrEqual(prev);
+      expect(f).toBeLessThanOrEqual(1);
+      prev = f;
+    }
+    expect(homingPelletTurnRampFactor(HOMING_PELLET_STRAIGHT_MS + HOMING_PELLET_TURN_RAMP_MS)).toBe(1);
+    // 上がり始めは小さい(急に折れない)
+    expect(homingPelletTurnRampFactor(HOMING_PELLET_STRAIGHT_MS + 20)).toBeLessThan(0.1);
+    // 発射時刻を持たない弾は従来どおり全速
+    expect(homingPelletTurnRampFactor(undefined)).toBe(1);
+  });
+
+  it('1フレームで曲がる角度に上限がある(行き過ぎない)', () => {
+    const rate = homingPelletTurnRateRadPerSec(705);
+    const dt = 1 / 60;
+    const a = stepHomingPelletAngle(0, Math.PI / 2, rate, dt);
+    expect(a).toBeCloseTo(rate * dt, 9);
+    expect(a).toBeLessThan(Math.PI / 2);
+    // 目標が上限より近ければぴったり目標で止まる
+    expect(stepHomingPelletAngle(0, 0.01, rate, dt)).toBeCloseTo(0.01, 9);
+    // 近い回り方を取る(+170度→-170度は+20度ぶん回る向き)
+    const b = stepHomingPelletAngle(170 * Math.PI / 180, -170 * Math.PI / 180, rate, dt);
+    expect(b).toBeGreaterThan(170 * Math.PI / 180);
+  });
+
+  it('最終的に目標の方へ向く(直角の目標へ、時間を追って追いつく)', () => {
+    const rate = homingPelletTurnRateRadPerSec(705);
+    const dt = 1 / 60;
+    let angle = 0;
+    const target = Math.PI / 2;
+    for (let ms = 0; ms < 1000; ms += dt * 1000) {
+      angle = stepHomingPelletAngle(angle, target, rate * homingPelletTurnRampFactor(ms), dt);
+    }
+    expect(angle).toBeCloseTo(target, 6);
   });
 });

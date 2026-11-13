@@ -1,7 +1,7 @@
 // ★構えでボス級の技を受けたら、気功で反撃する(research/BRAWLER.md §32・社長裁定2026-11-12)をストアで実際に動かして固める。
 //  ・ボス級の近接の技を構えで受ける → 受けた瞬間の止めが明けた時に、代金なしの気功が1発出て当たる(体力が減る・技ポイントは減らない)
 //  ・威力は通常の気功の 1.5 倍
-//  ・構え1回で弾を何度打ち返しても1発
+//  ・弾を打ち返しても反撃の気功は出ない(社長指示2026-11-13)
 //  ・雑魚を受けた時は今どおり潰しで、気功は出ない
 //  ・押しの距離は 90 前後
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -145,7 +145,7 @@ describe('構えでボス級の技を受けたら、気功で反撃する(§32)'
     expect(counter / normal).toBeGreaterThan(BRAWLER_GUARD_COUNTER_KIKO_MULT * 0.9);
     expect(counter / normal).toBeLessThan(BRAWLER_GUARD_COUNTER_KIKO_MULT * 1.1);
   });
-  it('構え1回で弾を何度打ち返しても1発', () => {
+  it('弾を打ち返しても反撃の気功は出ない(社長指示2026-11-13「その後の連動技も発動しない」)', () => {
     setup();
     useGameStore.setState({ enemies: [enemyAt('hunter', 400, 0, 'h')] });
     guardNow(5);
@@ -155,7 +155,7 @@ describe('構えでボス級の技を受けたら、気功で反撃する(§32)'
       advance(200);
     }
     advanceSim(1200);
-    expect(seen.size).toBe(1);
+    expect(seen.size).toBe(0);
   });
   it('雑魚を受けた時は今どおり潰しで、気功は出ない', () => {
     setup();

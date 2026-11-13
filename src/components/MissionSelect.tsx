@@ -1,5 +1,5 @@
 import { syncFeatChronicle } from '../utils/chronicleFeatsSync';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal as createReactPortal } from 'react-dom';
 import './commandHome.css';
 import { COMMAND_UI_ENABLED, REGION_ART, regionArtWideClass } from '../config/uiDesign';
@@ -165,7 +165,14 @@ import {
   clearWeaponUnlocks, clearWeaponBlueprints, markWeaponUnlocked, getStageHighScore,
   getStoryFlags, updateStoryFlags, setSelectedMission, getEventQuestMeta, getWallMeta, type SelectedMission,
   hasSubBlueprint, // UNIQUE_WEAPONS.md §19-6: ボス撃破解放のサブウェポン(現状=金環)の陳列ゲート
+  getCastleBossCleared,
 } from '../data/progress';
+// research/SORTIE_MAP_BOSS_ICONS.md: 作戦室の地図にボスの顔(出会った・倒していない)+徘徊の枠の抽選を作戦室で引く。
+import { loadEncounteredBosses } from '../utils/bossEncounter';
+import { loadDefeatedBosses } from '../utils/bossDefeated';
+import { ensureSortiePatrolPlan, type SortiePatrolPlan } from '../utils/sortiePatrolPlan';
+import { mapBossFaces, PATROL_MAP_BOSS, stageFixedMapBossCandidates } from '../utils/sortieMapBosses';
+import { OPS_MAP_PLACES } from '../data/opsMapPlaces';
 // ユニーク武器システム(UNIQUE_WEAPONS.md §11-6): 装備設定画面の「銃スロット」欄+開発施設の棚。
 import { SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES, bossUnlockSubKeys, subShelfVisible, type SlotCategory, type SlotTier } from '../data/weaponSlots';
 import { getSlotLoadout, setSlotCandidate, unlockedWeaponKeys, shelfWeaponKeys, isTestWeaponUnlockAll, setTestWeaponUnlockAll } from '../utils/weaponSlot';
@@ -544,6 +551,23 @@ const testScreenIdFor = (name: Screen['name']): TestScreenId => {
   }
 };
 
+// 今の進行で出撃できるステージ(作戦地域の一覧と同じ条件=本編は解放済み、EXは条件成立(か ?exshow=1)で解放済み)。
+const sortieableStages = (cleared: Set<string>): { mains: typeof STAGES; exs: typeof STAGES } => {
+  const mains = STAGES.filter(s => s.kind === 'main' && isStageUnlocked(s, cleared));
+  // EXノード(統合正本10.1 / 指示書8.1): 条件成立(再訪で薬を使用)まで一切出さない(伏せ表示もしない)。
+  // hidden=旧ex2の残置データ(導線なし)。
+  const storyFlags = getStoryFlags();
+  // v0.25.3717(実機テスト用・社長「EXステージどこ」): `?exshow=1` でストーリー条件(薬使用)と
+  // 解放条件を無視してEXを一覧に出す。製品挙動は不変(パラメータ無しなら従来どおり)。
+  const exForced = (() => { try { return new URLSearchParams(window.location.search).get('exshow') === '1'; } catch { return false; } })();
+  const exs = STAGES.filter(s => s.kind === 'ex' && !s.hidden && (exForced || (canShowEx(storyFlags) && isStageUnlocked(s, cleared))));
+  return { mains, exs };
+};
+
+// 確認用(research/SORTIE_MAP_BOSS_ICONS.md・撮影用): `?mapbossdemo=1` で、地図に出し得る全ボスを「出会った・倒していない」扱いにし、
+// 全ステージを出撃できる扱いにし、徘徊の枠の抽選を毎回「枠が開く」で引き直す。製品挙動は不変(パラメータ無しなら何もしない)。
+const MAP_BOSS_DEMO = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mapbossdemo') === '1';
+
 const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark, initialScreen, onStartPractice }) => {
   // 小窓のポータル先: PC の拡大の包みの中(包みの外=body)。fixed の基準も包み=ゲームの枠になる(段3-2 品質監査 A-2)。
   const portalRoot = useHudPortalRoot();
@@ -587,6 +611,37 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // (number)のみ・メニュー時の購入操作でしか変わらない=React再レンダ規律に沿う。
   const goldBalance = useGameStore(state => state.goldBalance);
   const [cleared, setCleared] = useState<Set<string>>(() => getClearedStages());
+  // research/SORTIE_MAP_BOSS_ICONS.md §3: 作戦室(home)が表示された時に、次の出撃の徘徊の枠を引いて保存する
+  // (保存があれば引き直さない=開き直し・再起動で変わらない。出撃した時にゲームループが取り出して消す)。
+  // 地図の部品には置かない(?dsmap=0・旧ホームでも引く)。
+  const [patrolPlan, setPatrolPlan] = useState<SortiePatrolPlan | null>(null);
+  const homeShown = screen.name === 'home';
+  const sortieableIds = useMemo(() => {
+    if (MAP_BOSS_DEMO) return new Set(Object.keys(OPS_MAP_PLACES));
+    const { mains, exs } = sortieableStages(cleared);
+    return new Set([...mains, ...exs].map(s => s.id));
+  }, [cleared]);
+  useEffect(() => {
+    if (!homeShown) return;
+    setPatrolPlan(ensureSortiePatrolPlan({
+      sortieableStageIds: [...sortieableIds],
+      stage1CastleCleared: MAP_BOSS_DEMO || getCastleBossCleared('stage-1'),
+      forceOpen: MAP_BOSS_DEMO,
+    }, Math.random, MAP_BOSS_DEMO));
+  }, [homeShown, sortieableIds]);
+  // 地図に出す顔(§2)。作戦室を開いた時だけ計算する(毎フレームの購読はしない)。
+  const mapFaces = useMemo(() => {
+    if (!homeShown) return [];
+    const demoKeys = MAP_BOSS_DEMO
+      ? new Set([...stageFixedMapBossCandidates().map(f => f.key), ...Object.values(PATROL_MAP_BOSS).map(p => p.key)])
+      : null;
+    return mapBossFaces({
+      encountered: demoKeys ?? loadEncounteredBosses(),
+      defeated: demoKeys ? new Set<string>() : loadDefeatedBosses(),
+      sortieableStageIds: sortieableIds,
+      patrol: patrolPlan,
+    });
+  }, [homeShown, sortieableIds, patrolPlan]);
 
   // PACING_PUZZLE.md §6.18 バッチM41: 資料室(未読バッジ+閲覧)+「資料が追加されました」ポップアップ。
   // storyArchive は heartbeat/chronicle と同じ「必要時に1回読む」方針(store購読なし・React再描画規律)。
@@ -854,7 +909,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 <span>DAY {nextStage.day}</span>
               </div>}
               <div className="menu-item-in" style={{ animationDelay: '50ms' }}>
-                <DsStoryMap stages={STAGES} cleared={cleared} next={nextStage} sectorLabel={nextStage?.locationTitle ?? '—'} />
+                <DsStoryMap stages={STAGES} cleared={cleared} next={nextStage} sectorLabel={nextStage?.locationTitle ?? '—'} bossFaces={mapFaces} />
               </div>
               {/* 出撃=アンバーの主役行。遷移先は作戦地域の一覧(現行の「作戦準備」と同一)。
                   サブ行「作戦地域: 〇〇」は廃止(社長指示2026-08-29「いらないかも。その上の図にあるから」
@@ -908,14 +963,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // ====================================================================
   const renderStageSelect = () => {
     // ロック中ノードは一覧に出さない(社長決定v0.25.1779・No.5)。進行に応じてリストが伸びていく。
-    const mains = STAGES.filter(s => s.kind === 'main' && isStageUnlocked(s, cleared));
-    // EXノード(統合正本10.1 / 指示書8.1): 条件成立(再訪で薬を使用)まで一切出さない(伏せ表示もしない)。
-    // hidden=旧ex2の残置データ(導線なし)。
-    const storyFlags = getStoryFlags();
-    // v0.25.3717(実機テスト用・社長「EXステージどこ」): `?exshow=1` でストーリー条件(薬使用)と
-    // 解放条件を無視してEXを一覧に出す。製品挙動は不変(パラメータ無しなら従来どおり)。
-    const exForced = (() => { try { return new URLSearchParams(window.location.search).get('exshow') === '1'; } catch { return false; } })();
-    const exs = STAGES.filter(s => s.kind === 'ex' && !s.hidden && (exForced || (canShowEx(storyFlags) && isStageUnlocked(s, cleared))));
+    const { mains, exs } = sortieableStages(cleared);
     return (
       <>
         <Header title="作戦地域" onBack={() => setScreen({ name: 'home' })} />

@@ -44,19 +44,27 @@ const GIANTBAT_ICON_BY_BACKDROP: Record<string, string> = {
 };
 
 /**
- * ボス型(+giantbatならステージID)からアイコンURLを返す。対応表に無い型は null
- * (呼び出し側は絵無しで文字だけ出す)。
+ * ボス型(+giantbatならステージID)から絵の名前(sprites/ 以下・拡張子なし)を返す。対応表に無い型は null。
+ * 作戦室の地図の顔(頭の切り抜きの表 data/bossHeadCrops.ts)がこの名前で引く。
  */
-export const bossIconSrc = (bossType: string, stageId?: string | null, variant?: 'phase2'): string | null => {
+export const bossIconName = (bossType: string, stageId?: string | null, variant?: 'phase2'): string | null => {
   if (bossType === 'giantbat') {
     // v0.25.3041(社長指示「?のボスの絵も?にしておいて」): 名前台帳に無い城ボス(=一覧で「?」表示。
     // stage-2の城ボス不在枠 / stage-ex1の未確認変異体)は絵も出さない(null)。呼び出し側は
     // 「?」プレースホルダ(ボスモード)か絵なしで出す。名前と絵の出どころが同じ台帳に揃う。
     if (bossCutinName('giantbat', stageId) == null) return null;
-    if (stageId === 'stage-7' && variant === 'phase2') return spritePath('glen-boss2');
+    if (stageId === 'stage-7' && variant === 'phase2') return 'glen-boss2';
     const backdrop = getStage(stageId ?? '')?.farBackdrop ?? '';
-    return spritePath(GIANTBAT_ICON_BY_BACKDROP[backdrop] ?? BOSS_ICON.giantbat);
+    return GIANTBAT_ICON_BY_BACKDROP[backdrop] ?? BOSS_ICON.giantbat;
   }
-  const base = BOSS_ICON[bossType];
-  return base ? spritePath(base) : null;
+  return BOSS_ICON[bossType] ?? null;
+};
+
+/**
+ * ボス型(+giantbatならステージID)からアイコンURLを返す。対応表に無い型は null
+ * (呼び出し側は絵無しで文字だけ出す)。
+ */
+export const bossIconSrc = (bossType: string, stageId?: string | null, variant?: 'phase2'): string | null => {
+  const name = bossIconName(bossType, stageId, variant);
+  return name ? spritePath(name) : null;
 };

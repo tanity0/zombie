@@ -6,9 +6,14 @@
 // - まだ行っていない場所は出さない(進むほど地図が埋まる)。
 // - SVG で重ねる(線は端末の画素で描かれる=PC の拡大でも滲まない)。描画は開いた時だけ=負荷 0/10。
 // - `?dsmap=0` で地図を出さない(切り分け用・旧地図と同じスイッチ)。
-import React, { useMemo } from 'react';
+// - 出会った・まだ倒していないボスの顔(頭だけ丸く切り抜いた小さな絵)を場所の点の下に出す(research/SORTIE_MAP_BOSS_ICONS.md §5)。
+//   何を出すかは MissionSelect が決めて props で渡す(ここは描くだけ)。開いた時に慣性つきでふわっと出る(常時の動きは無い)。
+import React, { useId, useMemo } from 'react';
 import { assetUrl } from '../config/assetUrl';
-import { OPS_MAP_H, OPS_MAP_IMAGE, OPS_MAP_W, storyTrail } from '../data/opsMapPlaces';
+import { OPS_MAP_H, OPS_MAP_IMAGE, OPS_MAP_PLACES, OPS_MAP_W, storyTrail } from '../data/opsMapPlaces';
+import { BOSS_HEAD_CROPS } from '../data/bossHeadCrops';
+import { spritePath } from '../utils/spriteLoader';
+import { layoutMapFaces, type MapBossFace } from '../utils/sortieMapBosses';
 import type { Stage } from '../data/campaign';
 
 const DS_MAP_DISABLED = typeof window !== 'undefined'
@@ -17,6 +22,21 @@ const DS_MAP_DISABLED = typeof window !== 'undefined'
 const AMBER = '#ffb340', AMBER_HI = '#ffd28a';
 // 原画の座標(1816×866)で書く。スマホの箱(幅 327〜382px)では 1px ≈ 5 単位。
 const U = 5;
+// ボスの顔: 直径 約16px(スマホ)。縁は細い暗い縁+外に一部欠けた細い弧と上の刻み(地図記号の細い線の文法)。
+// ステージ固定のボス=冷たい灰(琥珀=行った場所/NEXT と取り違えない)。徘徊の枠=暗い血の赤で、ゆっくり明滅する。
+const FACE_D = 16 * U, FACE_GAP = 2 * U, FACE_R = FACE_D / 2;
+const FACE_RIM = '#b9c2cc', FACE_RIM_PATROL = '#a3262b';
+const RIM_R = FACE_R + 1.1 * U;
+const NO_FACES: readonly MapBossFace[] = [];
+// 外の弧: 右下を約70°欠く(角度は SVG の向き=右が0°・下回り)。
+const rimArc = (x: number, y: number): string => {
+  const a0 = (100 * Math.PI) / 180, a1 = (390 * Math.PI) / 180;
+  return `M${x + RIM_R * Math.cos(a0)},${y + RIM_R * Math.sin(a0)} A${RIM_R},${RIM_R} 0 1 1 ${x + RIM_R * Math.cos(a1)},${y + RIM_R * Math.sin(a1)}`;
+};
+// 出方の間(等間隔にしない): 地点ごとの間・地点の中の顔ごとの間。徘徊は全員の後に少し遅らせる。
+const SPOT_BASE_MS = 220, SPOT_STEP_MS = [0, 170, 300, 470, 580, 740, 860, 1010];
+const FACE_STEP_MS = [0, 60, 150, 260];
+const PATROL_EXTRA_MS = 340, MORE_EXTRA_MS = 420;
 
 // 区間を少し弧にする(往復した線が三角形の星座図に見えない・検収クリエイティブ監査 #3)。i で曲げる向きを交互に。
 const arc = (a: readonly [number, number], b: readonly [number, number], i: number): string => {
@@ -26,11 +46,24 @@ const arc = (a: readonly [number, number], b: readonly [number, number], i: numb
   return `M${a[0]},${a[1]} Q${mx - dy * k},${my + dx * k} ${b[0]},${b[1]}`;
 };
 
-const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<string>; next: Stage | null; sectorLabel: string }> = ({ stages, cleared, next, sectorLabel }) => {
+const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<string>; next: Stage | null; sectorLabel: string; bossFaces?: readonly MapBossFace[] }> = ({ stages, cleared, next, sectorLabel, bossFaces = NO_FACES }) => {
+  const clipBase = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   // 次の出撃先がクリア済み(全部クリアした後に最終ステージへ戻る等)なら次の目標は描かない(検収品質監査 A1)。
   const nextId = next && !cleared.has(next.id) ? next.id : null;
   const trail = useMemo(() => storyTrail(stages, cleared, nextId), [stages, cleared, nextId]);
   const names = useMemo(() => Object.fromEntries(stages.map(s => [s.id, s.locationTitle])), [stages]);
+  // ボスの顔の列: 点の下に最大4つ横一列(徘徊が先頭)+「+N」。近い地点の列・行った場所の四角・今いる所・NEXT の菱形とは重ねない(上下へ逃がす)。
+  const faceSpots = useMemo(() => {
+    const PX = (at: readonly [number, number]) => [at[0] * OPS_MAP_W, at[1] * OPS_MAP_H] as const;
+    const avoid = [
+      ...trail.visited.map(v => ({ x: PX(v.at)[0], y: PX(v.at)[1], half: 2.6 * U })),
+      ...(trail.current ? [{ x: PX(trail.current.at)[0], y: PX(trail.current.at)[1], half: 3.6 * U }] : []),
+      ...(trail.next ? [{ x: PX(trail.next.at)[0], y: PX(trail.next.at)[1], half: 4.2 * U }] : []),
+      ...bossFaces.flatMap(f => { const at = OPS_MAP_PLACES[f.stageId]; return at ? [{ x: PX(at)[0], y: PX(at)[1], half: 2.6 * U }] : []; }),
+    ];
+    return layoutMapFaces(bossFaces, id => { const at = OPS_MAP_PLACES[id]; return at ? PX(at) : undefined; },
+      { diameter: FACE_D, gap: FACE_GAP, offset: 6 * U, mapW: OPS_MAP_W, mapH: OPS_MAP_H, moreW: 11 * U, markHalf: 3.4 * U, avoid });
+  }, [bossFaces, trail]);
   if (DS_MAP_DISABLED) return null;
   const P = (at: readonly [number, number]) => [at[0] * OPS_MAP_W, at[1] * OPS_MAP_H] as const;
   const visited = trail.visited.map(v => P(v.at));
@@ -85,6 +118,77 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
               fill="rgba(255,255,255,0.82)" textAnchor={right(cur[0]) ? 'end' : 'start'} {...textProps}>{names[trail.current.id] ?? ''}</text>
           </g>
         )}
+        {/* ボスの顔(出会った・倒していない)。頭だけ丸く切り抜く=表(data/bossHeadCrops.ts)の頭の中心・半径で絵を置いて丸で切る。
+            明るさは軽く持ち上げて揃える(暗い絵が地図に沈まない)。縁の内側にわずかな光。 */}
+        {faceSpots.length > 0 && (
+          <defs>
+            <filter id={`${clipBase}-lift`} colorInterpolationFilters="sRGB">
+              <feComponentTransfer>
+                <feFuncR type="gamma" amplitude={1} exponent={0.8} offset={0} />
+                <feFuncG type="gamma" amplitude={1} exponent={0.8} offset={0} />
+                <feFuncB type="gamma" amplitude={1} exponent={0.8} offset={0} />
+              </feComponentTransfer>
+              <feComponentTransfer>
+                <feFuncR type="linear" slope={1.14} intercept={-0.04} />
+                <feFuncG type="linear" slope={1.14} intercept={-0.04} />
+                <feFuncB type="linear" slope={1.14} intercept={-0.04} />
+              </feComponentTransfer>
+            </filter>
+            <radialGradient id={`${clipBase}-glow`}>
+              <stop offset="0.68" stopColor="#ffecd2" stopOpacity={0} />
+              <stop offset="1" stopColor="#ffecd2" stopOpacity={0.26} />
+            </radialGradient>
+          </defs>
+        )}
+        {(() => {
+          // 出る時刻: 地点ごとに間を空け(等間隔にしない)、徘徊はステージ固定の全員が出た後に少し遅らせる。
+          let lastFixed = 0;
+          const delays = faceSpots.map((spot, si) => spot.faces.map(({ face }, fi) => {
+            const d = SPOT_BASE_MS + (SPOT_STEP_MS[si] ?? si * 150) + (FACE_STEP_MS[fi] ?? fi * 90);
+            if (!face.patrol) lastFixed = Math.max(lastFixed, d);
+            return d;
+          }));
+          return faceSpots.map((spot, si) => {
+            const patrolFirst = spot.faces[0]?.face.patrol === true;
+            const delayOf = (fi: number) => (spot.faces[fi].face.patrol ? lastFixed + PATROL_EXTRA_MS : delays[si][fi]);
+            const spotDelay = Math.min(...spot.faces.map((_, fi) => delayOf(fi)));
+            const lastDelay = Math.max(...spot.faces.map((_, fi) => delayOf(fi)));
+            return (
+              <g key={`${spot.at[0]},${spot.at[1]}`}>
+                {/* 点から列への細い引き線(徘徊が居る列は血の赤)。 */}
+                <line className="ds-map-face-fade" style={{ animationDelay: `${spotDelay}ms` }} x1={spot.line.x1} y1={spot.line.y1} x2={spot.line.x2} y2={spot.line.y2}
+                  stroke={patrolFirst ? FACE_RIM_PATROL : FACE_RIM} strokeOpacity={patrolFirst ? 0.9 : 0.5} strokeWidth={patrolFirst ? 1.2 : 0.9} vectorEffect="non-scaling-stroke" />
+                {spot.faces.map(({ face, x, y }, fi) => {
+                  const crop = BOSS_HEAD_CROPS[face.sprite];
+                  if (!crop) return null;
+                  const k = FACE_R / (crop.r * crop.h);
+                  const id = `${clipBase}-f${si}-${fi}`;
+                  const rim = face.patrol ? FACE_RIM_PATROL : FACE_RIM;
+                  return (
+                    <g key={face.key} className="ds-map-face" style={{ animationDelay: `${delayOf(fi)}ms` }}>
+                      <clipPath id={id}><circle cx={x} cy={y} r={FACE_R} /></clipPath>
+                      <circle cx={x} cy={y} r={FACE_R} fill="#14131a" />
+                      <image href={spritePath(face.sprite)} x={x - crop.u * crop.w * k} y={y - crop.v * crop.h * k}
+                        width={crop.w * k} height={crop.h * k} clipPath={`url(#${id})`} preserveAspectRatio="none" filter={`url(#${clipBase}-lift)`} />
+                      <circle cx={x} cy={y} r={FACE_R} fill={`url(#${clipBase}-glow)`} />
+                      <circle cx={x} cy={y} r={FACE_R} fill="none" stroke="rgba(7,6,13,0.9)" strokeWidth={2.2} vectorEffect="non-scaling-stroke" />
+                      {/* 外の印: 一部欠けた細い弧+上の小さな刻み。徘徊は暗い血の赤でゆっくり明滅(NEXT の菱形と同じ加減速)。 */}
+                      <g stroke={rim} strokeOpacity={face.patrol ? 1 : 0.72} fill="none">
+                        <path d={rimArc(x, y)} strokeWidth={face.patrol ? 1.3 : 1} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
+                        <line x1={x} y1={y - RIM_R} x2={x} y2={y - RIM_R - 1.6 * U} strokeWidth={face.patrol ? 1.3 : 1} vectorEffect="non-scaling-stroke" />
+                        {face.patrol && <animate attributeName="stroke-opacity" values="1;0.3;1" dur="2.6s" repeatCount="indefinite" {...ease} />}
+                      </g>
+                    </g>
+                  );
+                })}
+                {spot.more > 0 && (
+                  <text className="ds-map-face-fade" style={{ animationDelay: `${lastDelay + MORE_EXTRA_MS}ms` }} x={spot.moreX} y={spot.moreY + 3 * U}
+                    fontSize={8.5 * U} fill={FACE_RIM} textAnchor="start" {...textProps}>+{spot.more}</text>
+                )}
+              </g>
+            );
+          });
+        })()}
       </svg>
       <span className="ds-map-tag">SECTOR — {sectorLabel}</span>
     </div>

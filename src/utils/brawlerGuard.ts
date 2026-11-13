@@ -40,10 +40,14 @@ export const brawlerGuardSourceClass = (src: BrawlerGuardSource, enemies: readon
  *  - 受けた相手が全員雑魚 = 'stomp'。
  *  - それ以外(強個体・ボス級・浮かない区分・不明が1件でも混じる/相手が1件も無い)= 'knockback'(ハメを残さない側)。
  */
-export const brawlerGuardOutcome = (o: { throttled: boolean; dot?: boolean; weak?: boolean; classes: readonly BrawlerGuardClass[] }): BrawlerGuardOutcome => {
+export const brawlerGuardOutcome = (o: { throttled: boolean; dot?: boolean; weak?: boolean; projectile?: boolean; classes: readonly BrawlerGuardClass[] }): BrawlerGuardOutcome => {
   if (o.throttled || o.dot) return 'none';
   if (o.weak) return 'knockback'; // 弱い構え: 区分を問わず押されるだけ(雑魚でも潰しは出さない・反撃の気功は brawlerGuardEffects が止める)
-  return o.classes.length > 0 && o.classes.every(c => c === 'mob') ? 'stomp' : 'knockback';
+  const allMob = o.classes.length > 0 && o.classes.every(c => c === 'mob');
+  // ★弾を受けた(社長指示2026-11-13「弾を受けてもカウンターの発動はするがカウンターモードは解除しない。その後の連動技も発動しない」):
+  //   雑魚の弾でも潰しは出さない(潰しは構えを終わらせる連動技)=何も出さず構えが続く。雑魚より上の弾は今どおり押される(反撃の気功は brawlerGuardCounterDue が止める)。
+  if (o.projectile) return allMob ? 'none' : 'knockback';
+  return allMob ? 'stomp' : 'knockback';
 };
 
 /**
@@ -160,10 +164,11 @@ export const BRAWLER_GUARD_COUNTER_KIKO_MULT = 1.5;
 /**
  * 反撃の気功を予約するか。成立の効果が「ノックバック」(間引き・持続ダメージは brawlerGuardOutcome が 'none' にする)で、
  * この構え(guardSince ごと・延長は新しい構えとして数え直す)でまだ撃っていない時だけ。firedFor=撃った(予約した)構えの guardSince。
+ * projectile=弾を受けた(打ち返した)受け → 出さない(社長指示2026-11-13「その後の連動技も発動しない」)。
  */
 export const brawlerGuardCounterDue = (o: {
-  outcome: BrawlerGuardOutcome; guardSince: number | undefined; firedFor: number | undefined;
-}): boolean => o.outcome === 'knockback' && o.guardSince !== undefined && o.firedFor !== o.guardSince;
+  outcome: BrawlerGuardOutcome; guardSince: number | undefined; firedFor: number | undefined; projectile?: boolean;
+}): boolean => o.projectile !== true && o.outcome === 'knockback' && o.guardSince !== undefined && o.firedFor !== o.guardSince; // 弾を受けた時は出さない(社長指示2026-11-13)
 
 /**
  * 反撃の気功の狙い。受けた相手のうち、雑魚より上(強個体・ボス級・浮かない区分)で狙える(aimable)相手の、自分(pc)から一番近い1体。

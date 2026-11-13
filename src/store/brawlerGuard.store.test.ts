@@ -276,18 +276,20 @@ describe('弾の打ち返しは、撃った相手の区分で同じ扱い(§12-3
     useGameStore.setState({ projectiles: [proj] });
     applyEnemyProjectileHits(now, pl(), false, 0, useGameStore.getState().gameTime, NOOP_COMBAT_EFFECTS, { grenadeBlastRadius: 0, grenadeBlastDamageMult: 0, counterReflectSlowMs: 0 });
   };
-  it('雑魚の弾=潰しが出る(撃ち主が遠くても・撃ち主が倒れた後は型で引く)', () => {
+  it('雑魚の弾=潰しは出ず構えが続く(社長指示2026-11-13「弾を受けても…カウンターモードは解除しない。その後の連動技も発動しない」)', () => {
     setup();
     useGameStore.setState({ enemies: [enemyAt('zombie', 400, 0, 'z')] });
     guardNow(3);
+    const until = br().guardUntil;
     shoot('z', 'zombie');
-    expect(br().tech).toBe('stomp');
-    expect(br().points).toBe(0);
+    expect(br().tech).toBe('guard');
+    expect(br().guardUntil).toBe(until);
+    expect(pl().lungeShape).not.toBe('push');
 
     setup();
     guardNow(3);
     shoot('gone', 'zombie');
-    expect(br().tech).toBe('stomp');
+    expect(br().tech).toBe('guard');
   });
   it('ボス級の弾=撃ち主と反対へ押される / 撃ち主が分からない弾=「雑魚より上」として押される', () => {
     setup();

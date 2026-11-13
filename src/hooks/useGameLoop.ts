@@ -241,6 +241,7 @@ import {
   rollRunPatrolSlot, kenkiPatrolStep, phantomBrawlerSceneBlocked, phantomBrawlerSpawnOffset, PHANTOM_BRAWLER_ENCOUNTER_KEY, PHANTOM_BRAWLER_KIND,
 } from '../utils/phantomBrawlerSpawn'; // research/BRAWLER_PHANTOM.md §6: 拳鬼の本編の出現(徘徊の枠)
 import { patrolSpawnHeldByWelcome } from '../utils/patrolWelcomeHold'; // 徘徊の枠はウェルカム中は出ない(社長指示2026-11-12)
+import { resolveRunPatrol, takeSortiePatrolPlan } from '../utils/sortiePatrolPlan'; // 徘徊の枠は作戦室で引いた結果を使う(research/SORTIE_MAP_BOSS_ICONS.md §3)
 import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius, HERO_MAX_HP, HERO_START_HP } from '../utils/heroScript';
 import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties, heroAsTarget } from '../utils/heroBlast';
 import { hateEscortSource } from '../utils/escortView';
@@ -9281,8 +9282,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           // 徘徊の枠の抽選(1ランに1回・20%・ステージ1・3・4・5)。research/BRAWLER_PHANTOM.md §6(社長指示2026-11-10「出現は徘徊の枠で、
           // 亡霊か宇宙飛行が出てる時は出ない。この3人の中で抽選」): 宇宙飛行群・亡霊・拳鬼から均等に1人。拳鬼はステージ1なら城のボスの後から。
-          const rollPatrolSlot = (): RunMutantBoss => rollRunPatrolSlot(
-            { stageId: getSelectedStageId() ?? '', stage1CastleCleared: getCastleBossCleared('stage-1') }, Math.random);
+          // research/SORTIE_MAP_BOSS_ICONS.md §3: 作戦室で引いて保存した結果があればそれを使って消す(出撃先が保存のステージと同じ時だけ出る)。
+          // 保存が無い出撃(=作戦室を通らない「もう一度プレイ」)だけ、今どおりステージに入った時に引く。
+          // 呼ばれるのは本編の出撃だけ(練習ラン・ボスメーカー・強制出現のラン=HERO_PATROL_BLOCKED は保存を使わず消さない)。
+          const rollPatrolSlot = (): RunMutantBoss => {
+            const stageId = getSelectedStageId() ?? '';
+            return resolveRunPatrol(takeSortiePatrolPlan(), stageId,
+              () => rollRunPatrolSlot({ stageId, stage1CastleCleared: getCastleBossCleared('stage-1') }, Math.random));
+          };
           // 社長指示2026-11-12「徘徊はウェルカムイベント中は出現しない」: 本編の徘徊の枠(下の3体)はウェルカムが終わるまで待つ
           // (取りやめない=時刻だけ後ろへずれる)。確認用の強制出現(force)は待たない。抽選・前兆の一言はこれと無関係(今のまま)。
           const patrolHeldByWelcome = patrolSpawnHeldByWelcome({ activeEventKind: useGameStore.getState().activeEvent?.kind, welcomeRunning: welcomeActive });
@@ -9291,7 +9298,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (!mutantOmenDoneRef.current && !isPracticeRun() && !isBossMakerRun()) {
             mutantOmenDoneRef.current = true;
             const mutantStage = !HERO_PATROL_BLOCKED && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
-            if (mutantStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
+            // 作戦室で引いた結果は、どのステージへ出撃しても出撃した時に消す(徘徊の枠が無いステージでも)=ここは全ステージで引く
+            // (枠の無いステージは保存の有無に関わらず 'none' になる)。
+            if (!HERO_PATROL_BLOCKED && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
             const omenBoss: RunMutantBoss = (FORCE_WRAITH || practiceForces('wraithnow')) ? 'wraith'
               : (FORCE_ASTRO || practiceForces('astronow')) ? 'astro'
               : (FORCE_PHANTOM_BRAWLER || practiceForces('brawlerphantomnow')) ? 'brawler' // 拳鬼「殺気を感じる…」(社長指示2026-11-10)

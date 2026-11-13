@@ -68,7 +68,7 @@ import {
 import type { IceLanceFloor } from '../utils/iceLanceFloor';
 // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルショットガン shotgun-t2-coil): 弾の軌道位相(純関数)。
 import { coilConvergeMs, coilLateralOffsetPx } from '../utils/coilShotgun';
-import { homingPelletTurnRateRadPerSec } from '../utils/homingShotgun';
+import { homingPelletTurnRateRadPerSec, homingPelletTurnRampFactor, stepHomingPelletAngle } from '../utils/homingShotgun';
 // research/NEW_GUNS.md §4(スキャンセンサー): 印の倍率・除外・1体だけの選び方(純関数)。
 import { SCAN_WEAPON_KEY, isScanMarked, scanMarkMeleeMult, pickScanMarkTarget, scanMarkMeleeCritBonus, scanMarkMeleePostureMult, noteScanDetonation, isEliteHeavyStun } from '../utils/scanSensor';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
@@ -97,6 +97,8 @@ import {
 // §2.17(GHOST-DUO-RECORDS・記録専用): 同行撃破台帳の打刻。挙動は一切変えない(計測パスとは独立の
 // 別モジュール。ソロラン=交戦時計が開いていない時はno-op)。
 import { recordDuoBossClear, resetDuoRunRecords } from '../utils/duoRecords';
+// research/SORTIE_MAP_BOSS_ICONS.md §4: ボスを倒した記録(作戦室の地図の顔を消す)。キルの経路2つ(近接の補助・damageEnemyの合流点)の両方で書く。
+import { noteBossDefeated } from '../utils/bossDefeated';
 // v0.25.2577: 撃破タイムのボスごと交戦時計(ソロ/同行共有)のラン境界リセット。
 import { resetBossClocks } from '../utils/bossClock';
 // §2.18(GHOST-CMD-1): 技への反応の袋(境界ガード付き袋式)。寿命=ラン単位なのでresetGameでリセット。
@@ -7060,6 +7062,8 @@ export const grantMeleeKillRewards = (
     // 吸血(キル時の回復)=銃の経路(damageEnemy)と同じ。2026-10-15 まで近接ではここが抜けていた(社長報告「倒しても吸収されない時がある」)。
     applyVampireKillHeal(get, { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 });
     exSurielDefeatedBgm(enemy.type);
+    // research/SORTIE_MAP_BOSS_ICONS.md §4: 倒した記録(型・守護霊の同行を問わず。イベント産の城ボス・グレン第1形態・練習系のランは書かない=関数の中で判定)。
+    noteBossDefeated(enemy, getSelectedStageId());
     // BOT_AND_GHOST.md §2.10 G5: ボス撃破の通知(記録専用・挙動不変)。近接全経路(通常近接カウンター/
     // 刀/鞭/シールドバッシュ/投擲スケボー/分身)はこのヘルパーを通るのでここ1箇所で拾える
     // (gun/接触/爆発/DoT/カウンター等の非近接経路は damageEnemy 側で同様に通知)。
@@ -8469,11 +8473,12 @@ export const currentFriendlyShield = (projectiles?: readonly { weaponType?: stri
  * ★格闘の構えの窓の中でカウンターが成立した時の演出の差し替え(research/BRAWLER.md §8-5)。構え中なら白金の受けを出して true
  * =呼び手は通常カウンターの演出(青い輪・光・「Counter!」・音・停止・スロー・寄り)を出さない。効果(打ち返し・気絶・コンボ)は呼び手が残す。
  */
-export const brawlerGuardCounterFx = (x: number, y: number, sources?: readonly BRG.BrawlerGuardSource[]): boolean => {
+export const brawlerGuardCounterFx = (x: number, y: number, sources?: readonly BRG.BrawlerGuardSource[], opts?: { projectile?: boolean }): boolean => {
   const st = useGameStore.getState();
   if (!isBrawlerGuarding(st.player, st.gameTime)) return false;
   // sources=返した相手(打ち返した弾の撃ち主・弾いた技の持ち主)。区分で成立の効果が決まる(雑魚=潰し/雑魚より上・分からない=自分がノックバック・§12-3d)。
-  st.brawlerGuardReceive(x, y, undefined, sources ? { sources } : undefined);
+  // projectile=弾を打ち返した受け(社長指示2026-11-13: 成立の演出は出すが、構えは解除しない・連動技=潰し/反撃の気功は出さない)。
+  st.brawlerGuardReceive(x, y, undefined, sources || opts?.projectile ? { ...(sources ? { sources } : {}), ...(opts?.projectile ? { projectile: true } : {}) } : undefined);
   return true;
 };
 // ★構えで受けて中断させた光線(research/BRAWLER.md §12-3d・社長指示2026-11-10)。敵の id → 受けた時刻(gameTime)。resetGame で空にする。
@@ -9461,7 +9466,7 @@ interface GameState {
    * 構えで受けた。sourceId=受けた相手(近ければ気絶させる)。opts.sources=区分の判定に使う相手(省略=sourceId だけ・無ければ「分からない」)。
    * opts.beam=撃ち続ける光線の受け(持ち主が撃っている最中なら中断させる)。opts.dot=持続ダメージ(潰しもノックバックも出さない)。research/BRAWLER.md §12-3d。
    */
-  brawlerGuardReceive: (x: number, y: number, sourceId?: string, opts?: { sources?: readonly BRG.BrawlerGuardSource[]; beam?: boolean; dot?: boolean }) => void;
+  brawlerGuardReceive: (x: number, y: number, sourceId?: string, opts?: { sources?: readonly BRG.BrawlerGuardSource[]; beam?: boolean; dot?: boolean; projectile?: boolean }) => void;
   // 格闘の気功の弾(描画用・store が進める)。
   brawlerKiko: BrawlerKiko[];
   // ★兵士の蹴り飛ばし v3.1(research/ESCORT_TOSS.md)。蹴りの命中で呼ぶ=気絶中の敵をプレイヤーの斜め前へ滑らせる。滑らせたら true。
@@ -11659,7 +11664,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (throttled) { setBrawler(set, next); return; } // 光線などで毎フレーム来る受けは絵と音を間引く(潰しもノックバックも出さない=§12-3d)
     // ★成立の効果(§12-3d・社長指示2026-11-10): 雑魚=代金なしの大踏み潰し / 雑魚より上・相手が分からない=自分が大きくノックバック / 持続ダメージ=なし。
     const outcome = BRG.brawlerGuardOutcome({
-      throttled, dot: opts?.dot, weak: s.guardWeak === true, classes: sources.map(src => BRG.brawlerGuardSourceClass(src, st.enemies)),
+      throttled, dot: opts?.dot, weak: s.guardWeak === true, projectile: opts?.projectile, classes: sources.map(src => BRG.brawlerGuardSourceClass(src, st.enemies)),
     });
     // ★成立の記録(lastCounterSuccessTime)も通常のカウンターと同じく書く(社長承認2026-11-07・§9-42)。ループのエッジ検出が
     // 金の輪・ボムカウンター(とボマーの子爆弾)を出し、決めポーズの膨らみ・速度線・守護霊の記録(カウンター直後の窓)も同じ記録を読む。
@@ -11752,7 +11757,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       //   撃つのは受けた瞬間の止めが明けた時刻(=押され始めと同時・tickBrawler が撃つ)。狙い=受けた相手のうち雑魚より上で狙える一番近い相手。
       {
         const b = get().player.brawler;
-        if (b && fxOn.kiko && BRG.brawlerGuardCounterDue({ outcome, guardSince: b.guardSince, firedFor: b.guardKikoFor })) {
+        if (b && fxOn.kiko && BRG.brawlerGuardCounterDue({ outcome, guardSince: b.guardSince, firedFor: b.guardKikoFor, projectile: opts?.projectile })) {
           const tgt = BRG.brawlerGuardCounterTarget(sources, stn.enemies, c, BR.isBrawlerTargetable);
           setBrawler(set, { ...b, guardKikoFor: b.guardSince, guardKiko: { at: startAt, targetId: tgt?.id, hitX: x, hitY: y } });
         }
@@ -17485,6 +17490,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let appliedDamage = 0; // §6.21 M46計測用: 実際に加算された生ダメージ(HP床クランプ前・紅き夜補正後=既存damageDealtと同値)
     let thrallCandidate: Enemy | null = null; // §6.24 M48「使役」: 倒した通常敵(20%抽選はset後に行う)
     let bossClearedType: EnemyType | null = null; // BOT_AND_GHOST.md §2.10 G5: 撃破ボスの型(set後にnotifyBossClear)
+    let defeatedEnemy: Enemy | null = null; // research/SORTIE_MAP_BOSS_ICONS.md §4: 倒した敵(set後に倒した記録へ)
     // SKILL_BUILD_REDESIGN.md §28(B7): キルの瞬間に判定するスキル2種(poi-thrallと同じ「set()内で
     // 候補だけ拾い、実際の抽選/適用はset()の外側で行う」流儀)。
     let killedAt: { x: number; y: number; w?: number; h?: number } | null = null; // 吸血の発生位置(set後に判定)
@@ -17720,6 +17726,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (newHealth === 0) {
         killed = true;
         // v0.25.3029: グレン形態1は撃破記録に通知しない(melee経路と同じゲート・監査指摘)。
+        defeatedEnemy = enemy;
         bossClearedType = (enemy.type === 'giantbat' && enemy.glenForm === 1) ? null : enemy.type; // BOT_AND_GHOST.md §2.10 G5: 撃破通知用(set後にnotifyBossClear。非対象typeはnotifyBossClear内で無視)
         if (isReaperFamily(enemy.type)) reaperDefeated = { x: enemy.x + enemy.width / 2, y: enemy.y }; // 死神撃破→習得
         if (isAngelRewardType(enemy.type)) angelDefeated = enemy; // 天使撃破→落とし物(set後に出す)
@@ -17819,6 +17826,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // v0.25.2553(§2.16 A): 撃破の瞬間に召喚中の同行守護霊(居なければnull)を添えて記録する。
     // §2.17(GHOST-DUO-RECORDS): 同行枠の台帳へも同じ写しで打刻(排他の理屈はgrantMeleeKillRewards側の
     // コメント参照)。
+    // research/SORTIE_MAP_BOSS_ICONS.md §4: 倒した記録(近接の補助と同じ判定=関数の中で対象外を落とす)。
+    if (defeatedEnemy) noteBossDefeated(defeatedEnemy, getSelectedStageId());
     if (bossClearedType) {
       const allySnap = ghostAllySnapshot(findGhostAlly(get().summons));
       notifyBossClear(bossClearedType, getSelectedStageId(), allySnap);
@@ -23114,9 +23123,11 @@ export const useGameStore = create<GameState>((set, get) => ({
               const dy = ty - pcy2;
               const tAngle = Math.atan2(dy, dx);
               const cAngle = Math.atan2(p.direction.y, p.direction.x);
-              const diff = ((tAngle - cAngle) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
-              const maxTurn = (p.homingTurnRadiusPx ? p.speed / p.homingTurnRadiusPx : homingPelletTurnRateRadPerSec(p.speed)) * deltaTime; // research/NEW_GUNS.md §3: 衛星弾の放った弾は半径を個別に持つ(ゆるい誘導)
-              const newAngle = cAngle + Math.sign(diff) * Math.min(Math.abs(diff), maxTurn);
+              const fullTurnRate = p.homingTurnRadiusPx ? p.speed / p.homingTurnRadiusPx : homingPelletTurnRateRadPerSec(p.speed); // research/NEW_GUNS.md §3: 衛星弾の放った弾は半径を個別に持つ(ゆるい誘導)
+              // 社長指示2026-11-13「慣性を持って誘導」: 撃ち出し直後は真っすぐ、その後曲がる速さを0→全速へなめらかに上げる。
+              // homingLaunchGameTimeを持たない弾(衛星弾など)は従来どおり最初から全速。
+              const rampElapsed = p.homingLaunchGameTime !== undefined ? state.gameTime - p.homingLaunchGameTime : undefined;
+              const newAngle = stepHomingPelletAngle(cAngle, tAngle, fullTurnRate * homingPelletTurnRampFactor(rampElapsed), deltaTime);
               dir = { x: Math.cos(newAngle), y: Math.sin(newAngle) };
             }
             return {

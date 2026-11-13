@@ -114,6 +114,22 @@ describe('誘導散弾ショットガンの旋回(gameStore.updateProjectiles配
     expect(after.direction.y).toBeGreaterThan(0);
   });
 
+  it('発射時刻(homingLaunchGameTime)を持つ弾は、撃ち出し直後は曲がらず、時間が経つと曲がり始める(慣性)', () => {
+    const target = spawnEnemyAt('zombie', 500, 300, useGameStore.getState().gameTime);
+    useGameStore.setState({ enemies: [target], gameTime: 5000 });
+    const p = buildProjectile({
+      x: 0, y: 0, direction: { x: 1, y: 0 }, speed: 705,
+      weaponKey: 'shotgun-t3-homing', targetEnemyId: target.id, homingPellet: true, homingLaunchGameTime: 5000,
+      createdAt: Date.now(),
+    });
+    useGameStore.setState({ projectiles: [p] });
+    useGameStore.getState().updateProjectiles(1 / 60);
+    expect(useGameStore.getState().projectiles[0].direction.y).toBeCloseTo(0, 9);
+    useGameStore.setState({ gameTime: 5000 + 250 });
+    useGameStore.getState().updateProjectiles(1 / 60);
+    expect(useGameStore.getState().projectiles[0].direction.y).toBeGreaterThan(0);
+  });
+
   it('対象が死体(isCorpse=corpseUntil付き)になっていれば、生存している別の敵へ自動的に乗り換える', () => {
     const corpseTarget = spawnEnemyAt('zombie', 500, 0, useGameStore.getState().gameTime);
     const aliveTarget = spawnEnemyAt('zombie', 500, 300, useGameStore.getState().gameTime);

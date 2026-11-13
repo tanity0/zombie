@@ -945,6 +945,29 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   letter-spacing: 0.3em;
   color: var(--ds-dim);
 }
+/* 地図のボスの顔(DsStoryMap・research/SORTIE_MAP_BOSS_ICONS.md §5): 開いた時に1回だけ、下から少し浮き上がって
+   止まる(加速→減速)。常時の動きは無い。 */
+.ds-map-face {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: ds-map-face-in 560ms cubic-bezier(0.3, 0, 0.15, 1) both;
+}
+@keyframes ds-map-face-in {
+  0% { opacity: 0; transform: translateY(35%) scale(0.72); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* 引き線・「+N」は動かさず、遅れてフェードだけ。 */
+.ds-map-face-fade {
+  animation: ds-map-face-fade 420ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+@keyframes ds-map-face-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-map-face, .ds-map-face-fade { animation: none; }
+}
 .ds-map-label {
   position: absolute;
   font-size: 8.5px;

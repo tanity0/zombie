@@ -2851,6 +2851,10 @@ export interface Projectile {
   // research/NEW_GUNS.md §3(衛星弾): 誘導の旋回半径(px)の個別指定。未指定は誘導散弾と同じ40px相当
   // (homingShotgun.HOMING_PELLET_TURN_RADIUS_PX)。衛星弾の放った弾は「ゆるい誘導」なのでこれより大きい半径を持つ。
   homingTurnRadiusPx?: number;
+  // 誘導散弾SG(社長指示2026-11-13「慣性を持って誘導」): 発射時のgameTime。撃ち出し直後は真っすぐ飛び、
+  // その後この時刻からの経過で曲がる速さを0→全速へ上げる(homingShotgun.homingPelletTurnRampFactor)。
+  // 未指定(衛星弾の放つ弾など)は従来どおり最初から全速。
+  homingLaunchGameTime?: number;
   // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルSG shotgun-t2-coil・2026-09-07 C-2検収A-1で確定)。
   // 「中心線からの横ズレ」方式(coilShotgun.ts): coilAimDirX/Yは狙点方向(発射時に固定・以後は
   // 再追尾しない)、coilAmplitudePxはこのペレット固有の最大横ズレ(px・±COIL_AMPLITUDE_PX)、
