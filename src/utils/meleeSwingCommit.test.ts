@@ -67,6 +67,10 @@ const WRITE_SITES: readonly WriteSite[] = [
     why: '斬る絵だけ出す空振り=判定なし。命中した時は triggerCounter 側で1回打刻する',
   },
   {
+    field: 'counterWindowEnd', where: '格闘の弱い構えの延長(brawlerTech・ポイント不足の上フリック)', stamped: false,
+    why: '弱い構えはカウンター窓を張らない=開いていたら閉じる側(振っていない)・社長指示2026-11-12',
+  },
+  {
     field: 'counterWindowEnd', where: '格闘の構えの延長(brawlerTech・構えの最中の上フリック)', stamped: false,
     why: '構えの窓を「今+1秒」に引き直すだけ(振っていない)・社長指示2026-11-07 §9-41',
   },
