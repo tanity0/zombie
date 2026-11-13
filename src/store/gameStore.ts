@@ -1995,8 +1995,9 @@ export const meleeLungePx = (player: Player, running: boolean = true): number =>
  * もう少し伸ばす」)。「走り」の判定は踏み込みと同じ `isRunningForMeleeLunge`(=踏み込んだ振りだけ)。
  * 飛距離は速さ×時間なので、速さに掛けた倍率がそのまま距離の倍率。ナイフ(素手の近接)の通常のノックバックとスラッシャーの
  * 強制ノックバックに掛ける。鞭は元から大きく弾く(通常の約3倍)ので対象外。
+ * ★社長 2026-11-13「歩きながら当てた時の1.2倍にして」: 1.5→1.2(骸骨など体力の低い敵が歩き斬りで大きく飛び、スラッシャーの追撃が届かなかった)。
  */
-export const MOVING_MELEE_KB_MULT = 1.5;
+export const MOVING_MELEE_KB_MULT = 1.2;
 export const meleeKnockbackSpeed = (falloff: number, slasherForce: boolean, moving: boolean): number =>
   (slasherForce ? knockbackSpeedFor(SLASHER_FORCE_KB_PX, KNOCKBACK_DURATION) : KNOCKBACK_SPEED * (0.5 + falloff * 0.5))
   * (moving ? MOVING_MELEE_KB_MULT : 1);

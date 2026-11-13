@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5563', items: [
+    '歩きながら斬った時に敵が飛びすぎていたのを抑えた。スラッシャーの次の一撃が届きやすい',
+  ] },
   { version: '0.25.5562', items: [
     '血のゲージの溜まり方が半分になり、血の覚醒までが長くなった',
   ] },
