@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5562', items: [
+    '血のゲージの溜まり方が半分になり、血の覚醒までが長くなった',
+  ] },
   { version: '0.25.5561', items: [
     'ナイフで浮かせた敵が長く浮いたままになり、スラッシャーの次の一撃が届かなくなっていたのを直した',
   ] },

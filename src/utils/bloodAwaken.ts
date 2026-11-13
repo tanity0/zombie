@@ -79,10 +79,11 @@ export const BLOOD_MELEE_NEAR_PX = 120;
 export const BLOOD_GUN_NEAR_PX = 90;
 
 // ★v0.25.5106 社長「覚醒までが早すぎる」: 全部半分に(満タンHPの密着キル 9回 → 17回)。
-export const BLOOD_GAIN_MELEE_KILL_NEAR = 0.06;
-export const BLOOD_GAIN_MELEE_KILL_FAR = 0.03;
-export const BLOOD_GAIN_MELEE_HIT = 0.01;
-export const BLOOD_GAIN_GUN_KILL_NEAR = 0.03;
+// ★社長 2026-11-13「覚醒がやはり早い。今の半分でいい」: 全部さらに半分に(満タンHPの密着キル 17回 → 34回)。
+export const BLOOD_GAIN_MELEE_KILL_NEAR = 0.03;
+export const BLOOD_GAIN_MELEE_KILL_FAR = 0.015;
+export const BLOOD_GAIN_MELEE_HIT = 0.005;
+export const BLOOD_GAIN_GUN_KILL_NEAR = 0.015;
 
 export type BloodGainKind = 'melee-kill' | 'melee-hit' | 'gun-kill';
 
@@ -105,8 +106,8 @@ const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /**
  * 1回の加算量(満タン体力を1とした絶対量)。表は §3-1。体力による補正は掛けない(器の大きさ=bloodCapacity が担う)。
- *  - 近接キル: 距離≤120px で +0.06 / それ以上 +0.03 / 近接ヒットのみ +0.01
- *  - 銃キル: 距離≤90px で +0.03 / それ以上 0
+ *  - 近接キル: 距離≤120px で +0.03 / それ以上 +0.015 / 近接ヒットのみ +0.005
+ *  - 銃キル: 距離≤90px で +0.015 / それ以上 0
  * distPx は呼び手がプレイヤー中心と敵中心で測る(melee-hit では使わない)。
  */
 export const bloodGainFor = (a: { kind: BloodGainKind; distPx: number; sizeMul?: number }): number => {

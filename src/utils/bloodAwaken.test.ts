@@ -29,16 +29,16 @@ describe('器(社長「体力が低いと…相対的に満タン値が下がっ
 });
 
 describe('bloodGainFor(表 §3-1)', () => {
-  it('近接キル: 距離≤120px で +0.06 / それ以上 +0.03(境界は120を含む)', () => {
-    expect(bloodGainFor({ kind: 'melee-kill', distPx: 0 })).toBeCloseTo(0.06);
-    expect(bloodGainFor({ kind: 'melee-kill', distPx: 120 })).toBeCloseTo(0.06);
-    expect(bloodGainFor({ kind: 'melee-kill', distPx: 120.01 })).toBeCloseTo(0.03);
+  it('近接キル: 距離≤120px で +0.03 / それ以上 +0.015(境界は120を含む)', () => {
+    expect(bloodGainFor({ kind: 'melee-kill', distPx: 0 })).toBeCloseTo(0.03);
+    expect(bloodGainFor({ kind: 'melee-kill', distPx: 120 })).toBeCloseTo(0.03);
+    expect(bloodGainFor({ kind: 'melee-kill', distPx: 120.01 })).toBeCloseTo(0.015);
   });
-  it('近接ヒットのみ +0.01', () => {
-    expect(bloodGainFor({ kind: 'melee-hit', distPx: 0 })).toBeCloseTo(0.01);
+  it('近接ヒットのみ +0.005', () => {
+    expect(bloodGainFor({ kind: 'melee-hit', distPx: 0 })).toBeCloseTo(0.005);
   });
-  it('銃キル: 距離≤90px だけ +0.03 / それ以上は 0(境界は90を含む)', () => {
-    expect(bloodGainFor({ kind: 'gun-kill', distPx: 90 })).toBeCloseTo(0.03);
+  it('銃キル: 距離≤90px だけ +0.015 / それ以上は 0(境界は90を含む)', () => {
+    expect(bloodGainFor({ kind: 'gun-kill', distPx: 90 })).toBeCloseTo(0.015);
     expect(bloodGainFor({ kind: 'gun-kill', distPx: 90.01 })).toBe(0);
     expect(bloodGainFor({ kind: 'gun-kill', distPx: 500 })).toBe(0);
   });
@@ -48,22 +48,22 @@ describe('bloodGainFor(表 §3-1)', () => {
     expect(bloodSizeMul(60, 60)).toBeCloseTo(Math.sqrt(60 / 36)); // 城ボス(giantbat)≒1.29
     expect(bloodSizeMul(519, 90)).toBe(BLOOD_SIZE_MUL_MAX);   // 巨体は頭打ち
     expect(bloodSizeMul(0, 0)).toBe(1);
-    expect(bloodGainFor({ kind: 'melee-kill', distPx: 0, sizeMul: 2 })).toBeCloseTo(0.12);
-    expect(bloodGainFor({ kind: 'gun-kill', distPx: 0, sizeMul: 2 })).toBeCloseTo(0.06);
+    expect(bloodGainFor({ kind: 'melee-kill', distPx: 0, sizeMul: 2 })).toBeCloseTo(0.06);
+    expect(bloodGainFor({ kind: 'gun-kill', distPx: 0, sizeMul: 2 })).toBeCloseTo(0.03);
     expect(bloodGainFor({ kind: 'gun-kill', distPx: 500, sizeMul: 2 })).toBe(0); // 遠い銃キルは大きくても0
-    expect(bloodGainFor({ kind: 'melee-hit', distPx: 0, sizeMul: 2 })).toBeCloseTo(0.01);
+    expect(bloodGainFor({ kind: 'melee-hit', distPx: 0, sizeMul: 2 })).toBeCloseTo(0.005);
   });
   it('加算は体力で変わらない(器の方が縮む)', () => {
-    expect(bloodGainFor({ kind: 'melee-kill', distPx: 10 })).toBeCloseTo(0.06);
+    expect(bloodGainFor({ kind: 'melee-kill', distPx: 10 })).toBeCloseTo(0.03);
   });
-  it('受け入れ(v0.25.5106「早すぎる」で半分に): 満タンHPの密着キル 17回で満ちる / HP2割(器0.2)なら 4回', () => {
+  it('受け入れ(2026-11-13「やはり早い」でさらに半分に): 満タンHPの密着キル 34回で満ちる / HP2割(器0.2)なら 7回', () => {
     const per = bloodGainFor({ kind: 'melee-kill', distPx: 10 });
-    expect(Math.ceil(1 / per - 1e-9)).toBe(17);
-    expect(per * 16).toBeLessThan(1);
-    expect(Math.ceil(bloodCapacity({ health: 20, maxHealth: 100 }) / per - 1e-9)).toBe(4);
+    expect(Math.ceil(1 / per - 1e-9)).toBe(34);
+    expect(per * 33).toBeLessThan(1);
+    expect(Math.ceil(bloodCapacity({ health: 20, maxHealth: 100 }) / per - 1e-9)).toBe(7);
   });
-  it('銃だけでは満ちにくい(満タンHPの近距離銃キルでも 34回)', () => {
-    expect(Math.ceil(1 / bloodGainFor({ kind: 'gun-kill', distPx: 10 }) - 1e-9)).toBe(34);
+  it('銃だけでは満ちにくい(満タンHPの近距離銃キルでも 67回)', () => {
+    expect(Math.ceil(1 / bloodGainFor({ kind: 'gun-kill', distPx: 10 }) - 1e-9)).toBe(67);
   });
 });
 

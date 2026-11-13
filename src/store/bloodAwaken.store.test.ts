@@ -74,7 +74,7 @@ describe('明けてから10秒は溜まらない(社長裁定2026-11-13)', () =>
   it('一度も覚醒していなければ今どおり溜まる', () => {
     spawnInFront(1);
     st().triggerCounter();
-    expect(meter()).toBeCloseTo(0.06);
+    expect(meter()).toBeCloseTo(0.03);
   });
   it('明けた直後に密着で倒しても溜まらない', () => {
     const endAt = awakenAndEnd();
@@ -88,45 +88,45 @@ describe('明けてから10秒は溜まらない(社長裁定2026-11-13)', () =>
     useGameStore.setState(s => ({ gameTime: endAt + BLOOD_AWAKEN_REFILL_LOCK_MS, player: { ...s.player, counterCooldownEnd: 0, pendingSwingAt: 0 } }));
     spawnInFront(1);
     st().triggerCounter();
-    expect(meter()).toBeCloseTo(0.06);
+    expect(meter()).toBeCloseTo(0.03);
   });
 });
 
 describe('近接で浴びる(本人の近接だけ)', () => {
-  it('カウンター(ナイフ)で密着キル: +0.06(満タンHP)', () => {
+  it('カウンター(ナイフ)で密着キル: +0.03(満タンHP)', () => {
     spawnInFront(1);
     st().triggerCounter();
-    expect(meter()).toBeCloseTo(0.06);
+    expect(meter()).toBeCloseTo(0.03);
     expect(st().player.bloodLastGainAt).toBe(st().gameTime);
   });
-  it('体力が低いと器が小さい=自ずと早く満ちる: HP2割なら同じ +0.06 で液体の3割が赤い', () => {
+  it('体力が低いと器が小さい=自ずと早く満ちる: HP2割なら同じ +0.03 で液体の1.5割が赤い', () => {
     setHp(0.2);
     spawnInFront(1);
     st().triggerCounter();
-    expect(meter()).toBeCloseTo(0.06);
-    expect(bloodFill(st().player, st().gameTime)).toBeCloseTo(0.3);
+    expect(meter()).toBeCloseTo(0.03);
+    expect(bloodFill(st().player, st().gameTime)).toBeCloseTo(0.15);
   });
-  it('倒せなかった命中は +0.01', () => {
+  it('倒せなかった命中は +0.005', () => {
     spawnInFront(99999);
     st().triggerCounter();
     expect(st().enemies[0].health).toBeLessThan(99999); // 当たってはいる
-    expect(meter()).toBeCloseTo(0.01);
+    expect(meter()).toBeCloseTo(0.005);
   });
-  it('刀の一閃(本人)のキル: +0.06。オート斬撃(allowFinisher=false)は浴びない', () => {
+  it('刀の一閃(本人)のキル: +0.03。オート斬撃(allowFinisher=false)は浴びない', () => {
     useGameStore.setState(s => ({ player: { ...s.player, subWeapons: [...s.player.subWeapons, 'katana'] } }));
     const e = spawnInFront(1);
     st().performKatanaStrike([e.id], 1, true);
-    expect(meter()).toBeCloseTo(0.06);
+    expect(meter()).toBeCloseTo(0.03);
     const e2 = spawnInFront(1);
     useGameStore.setState(s => ({ player: { ...s.player, bloodMeter: 0 } }));
     st().performKatanaStrike([e2.id], 1, false);
     expect(meter()).toBe(0);
   });
-  it('鞭(本人)のキル: +0.06', () => {
+  it('鞭(本人)のキル: +0.03', () => {
     const e = spawnInFront(1);
     useGameStore.setState(s => ({ player: { ...s.player, subWeapons: ['whip'] } }));
     st().performWhipStrike([e.id]);
-    expect(meter()).toBeCloseTo(0.06);
+    expect(meter()).toBeCloseTo(0.03);
   });
   it('分身・投擲スケボー・grantMeleeKillRewards 単体(旗なし)では浴びない', () => {
     const e = spawnInFront(1);
@@ -142,7 +142,7 @@ describe('近接で浴びる(本人の近接だけ)', () => {
     grantMeleeKillRewards(useGameStore.getState, [{ enemy: dead, finisher: false }], st().player, undefined);
     expect(meter()).toBe(0);
   });
-  it('離れたキルは +0.03(距離>120px)', () => {
+  it('離れたキルは +0.015(距離>120px)', () => {
     useGameStore.setState(s => ({ player: { ...s.player, subWeapons: [...s.player.subWeapons, 'katana'] } }));
     const e = spawnInFront(1);
     const p = st().player;
@@ -150,7 +150,7 @@ describe('近接で浴びる(本人の近接だけ)', () => {
     e.x = p.x + p.width / 2 + 200 - e.width / 2; e.y = p.y + p.height / 2 - e.height / 2;
     useGameStore.setState({ enemies: [e] });
     st().performKatanaStrike([e.id], 1, true);
-    expect(meter()).toBeCloseTo(0.03);
+    expect(meter()).toBeCloseTo(0.015);
   });
   it('覚醒中は加算しない(10秒の間に溜め直さない)', () => {
     awaken();
@@ -162,10 +162,10 @@ describe('近接で浴びる(本人の近接だけ)', () => {
 });
 
 describe('銃で浴びる(キルだけ・距離≤90px)', () => {
-  it('近距離の銃キル: +0.03', () => {
+  it('近距離の銃キル: +0.015', () => {
     const e = spawnInFront(1, 30);
     st().damageEnemy(e.id, 999, false, false, false, 'gun', 'player');
-    expect(meter()).toBeCloseTo(0.03);
+    expect(meter()).toBeCloseTo(0.015);
   });
   it('遠距離の銃キル・倒せなかった命中は 0', () => {
     const far = spawnInFront(1, 400);
