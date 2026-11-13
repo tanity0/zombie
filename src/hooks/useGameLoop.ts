@@ -16423,14 +16423,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               dmg,
               !!projectile?.reflected || hitCrit, { enemyId: enemyForFx.id });
           }
-          // ★空中の敵に弾が当たったら、その敵だけ一瞬止める(utils/airShotStop・社長指示2026-11-12)。プレイヤー本人の直撃の銃の弾だけ
-          // (守護霊・護衛・味方の弾・反射弾は directPlayerGun で外れる)。爆発する弾(グレネードガン系・ロケット・錬金砲・シグナル=glauncher)は対象外。
-          // 長さは弾速(CATALOG の物差し)で決まる。地上の敵・止めの最中・間の中は airShotStopPatch が止めない。
-          if (projectile && enemyForFx && directPlayerGun && dmg > 0 && !gpDeflectedShot && !enemyKilled && !isGrenadeGunKey(projectile.weaponKey)) {
-            const sp = catalogProjectileSpeed(projectile.weaponKey) ?? projectileSpeedToCatalog(projectile.speed);
-            useGameStore.getState().airShotStopHit(enemyId, sp, projectile.direction.x, projectile.direction.y);
-          }
-
           // Light knockback on every connecting bullet — staggers normal
           // enemies along the shot line. Heavies/bosses are immovable so they
           // don't get shoved around by chip damage.
@@ -16478,6 +16470,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ? { ...en, hitStunUntil: stopNow + stopMs }
                   : en),
             }));
+          }
+
+          // ★空中の敵に弾が当たったら、その敵だけ一瞬止める(utils/airShotStop・社長指示2026-11-12)。プレイヤー本人の直撃の銃の弾だけ
+          // (守護霊・護衛・味方の弾・反射弾は directPlayerGun で外れる)。爆発する弾(グレネードガン系・ロケット・錬金砲・シグナル=glauncher)は対象外。
+          // 長さは弾速(CATALOG の物差し)で決まる。地上の敵・止めの最中・間の中は airShotStopPatch が止めない。
+          // ★同じ呼び出しで空中の敵を弾の向きへ微妙に押す(2026-11-13)。押しは被弾の止め(hitStunUntil)が明けてから動くので、
+          //   銃の止め(すぐ上)を書いた後に呼ぶ(順番を入れ替えた=止めの判定は hitStunUntil を読まないので変わらない)。
+          if (projectile && enemyForFx && directPlayerGun && dmg > 0 && !gpDeflectedShot && !enemyKilled && !isGrenadeGunKey(projectile.weaponKey)) {
+            const sp = catalogProjectileSpeed(projectile.weaponKey) ?? projectileSpeedToCatalog(projectile.speed);
+            useGameStore.getState().airShotStopHit(enemyId, sp, projectile.direction.x, projectile.direction.y);
           }
 
           // Crit that didn't outright kill → stun the target so it can be

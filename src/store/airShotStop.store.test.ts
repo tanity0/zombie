@@ -6,7 +6,7 @@ import type { Enemy } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll, brawlerAirborne, brawlerJuggleHeightRel } from '../utils/brawlerCombo';
 import { BRAWLER_TEMPO_DEFAULT } from '../utils/brawler';
-import { airShotStopMs } from '../utils/airShotStop';
+import { airShotStopMs, AIR_SHOT_NUDGE_PX } from '../utils/airShotStop';
 import { catalogProjectileSpeed } from '../utils/weaponUtils';
 
 let now = 7_000_000;
@@ -104,5 +104,45 @@ describe('空中の弾の止め', () => {
     expect(stopped).toBeLessThanOrEqual(landedAfter / 3 + S); // 止まっていた時間は全体の約1/3まで(最後の1回ぶんの端数)
     expect(stopped).toBeLessThanOrEqual(L * 0.5 + S); // =延びは元の浮きの約半分まで(+50%前後・止め1回ぶんの端数・無限には延びない)
     expect(stopped).toBeGreaterThanOrEqual(L * 0.5 - S);
+  });
+});
+
+describe('空中の敵を弾の向きへ微妙に押す(社長指示2026-11-13)', () => {
+  it('現状確認: 弾の止め(airShotStopHit)以外に、空中の敵を押す経路は無かった=ここで初めて押す(止めの間は動かず、明けてから約10px)', () => {
+    useGameStore.setState({ enemies: [lifted(200, 0, 'a', 1500)] });
+    step(50);
+    const x0 = en('a').x, y0 = en('a').y;
+    shoot('a', 520);
+    step(130, () => expect(en('a').x).toBe(x0)); // 止めの間は動かない
+    step(600);
+    const dx = en('a').x - x0;
+    expect(dx).toBeGreaterThan(AIR_SHOT_NUDGE_PX * 0.8);
+    expect(dx).toBeLessThan(AIR_SHOT_NUDGE_PX * 1.6);
+    expect(Math.abs(en('a').y - y0)).toBeLessThan(1);
+  });
+  it('止めの間の中の弾(止めは掛からない)でも押す=毎発', () => {
+    useGameStore.setState({ enemies: [lifted(200, 0, 'a', 2000)] });
+    shoot('a', 520);
+    step(200);
+    const x0 = en('a').x;
+    expect(shoot('a', 520)).toBe(false); // 間の中=止めない
+    expect(en('a').knockbackUntil).toBeGreaterThan(now);
+    step(400);
+    expect(en('a').x - x0).toBeGreaterThan(AIR_SHOT_NUDGE_PX * 0.8);
+  });
+  it('ボス級は押さない・地上の敵は今どおり(押さない)', () => {
+    const c = center();
+    const bossBase = spawnEnemyAt('giantbat', 0, 0, useGameStore.getState().gameTime);
+    const boss = { ...bossBase, x: c.x + 200, y: c.y, id: 'boss', dormant: false, health: 999999, maxHealth: 999999,
+      brawlerLiftAt: now, brLiftMs: 600, brLiftPeak: 1, brLiftFrom: 0, brLiftUntil: now + 600, liftUntil: now + 600 } as Enemy;
+    useGameStore.setState({ enemies: [boss, place(200, 120, 'g')] });
+    shoot('boss', 520);
+    shoot('g', 520);
+    expect(en('boss').knockbackUntil).toBeUndefined();
+    expect(en('g').knockbackUntil).toBeUndefined();
+    const gx = en('g').x;
+    step(50);
+    expect(en('g').knockbackVx ?? 0).toBe(0);
+    expect(Math.abs(en('g').x - gx)).toBeLessThan(5); // 寄ってくる分だけ(押されていない)
   });
 });

@@ -418,7 +418,7 @@ import { counterInterruptPatch, COUNTER_UNINTERRUPTIBLE_PHASES, isBiteSubject, i
 // ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。旧 `deferFrozenClocksBy`(凍結dtの毎フレーム
 // 繰り下げ)は**破棄**して、この「残りを預かって明けた瞬間に書き直す」1本へ置き換えた(H-3)。
 import { tickEnemyClockFreeze } from '../utils/enemyClocks';
-import { airShotStopPatch, airShotStopTick, airShotStopped } from '../utils/airShotStop';
+import { airShotStopPatch, airShotStopTick, airShotStopped, airShotNudgePatch, AIR_SHOT_NUDGE_PX } from '../utils/airShotStop';
 // ★ゾンビ赤(PACING_PUZZLE.md §16-3・§16-8b手順5)。枠の導出/技の終わり/待ちの尺/帯の定数の正本。
 import {
   deriveChaffMoveGrants, endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot,
@@ -9554,7 +9554,7 @@ interface GameState {
   removeEnemy: (id: string) => void;
   damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide | 'neutral' | 'dog', postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean, gpAttack?: KenkiAttackFrom) => boolean; // gpAttack: ★拳鬼のレバーガード(research/BRAWLER_PHANTOM.md §16-10)の向きの材料(弾=飛んできた向き)。未指定=プレイヤー起因の当たりはプレイヤーの体から・爆発/持続/仲間の当たりは「分からない」 // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾='bullet'=振りの窓で裁く(GHOST_BOSS.md v10)。null=従来の導出・v0.25.3640監査A)
   updateEnemies: (deltaTime: number) => void;
-  /** ★空中の敵に弾が当たった時の、その敵だけの止め(utils/airShotStop・社長指示2026-11-12)。speed=CATALOG の物差しの弾速。止めたら true。 */
+  /** ★空中の敵に弾が当たった時の、その敵だけの止め(utils/airShotStop・社長指示2026-11-12)+弾の向きへの微妙な押し(2026-11-13・AIR_SHOT_NUDGE_PX)。speed=CATALOG の物差しの弾速。止めたら true(押しだけの時は false)。 */
   airShotStopHit: (id: string, speed: number, dirX: number, dirY: number) => boolean;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -12900,7 +12900,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...(laserBreak?.patch ?? {}),
           ...pvpMeleePatch,
         });
-      } else if (slasherForce || knockbackCdReady(enemy, now)) {
+      } else if (slasherForce || (!retaliateOne && !isBossType(enemy.type)) || knockbackCdReady(enemy, now)) {
+        // ★社長指示2026-11-13「近接は毎回押す」(「近接だけなら押され続ける事がないため」「ボスは変えなくていい」):
+        //   ナイフの通常の振りは、ボス級でない敵(雑魚・強個体)へは押しの免疫を見ずに毎回押す。免疫は今どおり書く(他の押し手段の免疫は不変)。
+        //   ボス級と被弾反撃(retaliateOne)は従来どおり免疫を見る。
         // ★ナイフの固まりと浮き(knifeHoldLiftPatch・社長指示2026-11-12)。スラッシャー所持中も振りの1撃目から浮かせる
         // (社長指示同日「スラッシャーは1撃目から浮かせてほしい。空中コンボできるように」=追撃は空中の敵を拾う・slasherLiftMove)。
         const knifeHL = knifeHoldLiftPatch(enemy, now, gameTime, dmg, swingAt, skillLevel(player, 'slasher') > 0);
@@ -18097,9 +18100,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     const e = get().enemies.find(x => x.id === id);
     if (!e || isCorpse(e) || e.health <= 0) return false;
     const patch = airShotStopPatch(e, speed, now, dirX, dirY);
-    if (!patch) return false;
-    set(state => ({ enemies: state.enemies.map(x => (x.id === id ? { ...x, ...patch } : x)) }));
-    return true;
+    // ★空中の敵は弾の向きへ微妙に押す(utils/airShotStop・社長指示2026-11-13)。止めの有無に関係なく毎発。止めが明けてから動く。
+    const e1 = patch ? { ...e, ...patch } : e;
+    // 押しを受けない型(ボス型=canShoveEnemy が通さない。区分が強個体のパンプキン・死神等も含む)には書かない(書いても動かない欄を残さない)。
+    const nudge = !canShoveEnemy(e1, now) ? null : airShotNudgePatch(e1, BRC.brawlerLiftClass(e1), now, dirX, dirY,
+      knockbackSpeedFor(AIR_SHOT_NUDGE_PX, KNOCKBACK_DURATION), KNOCKBACK_DURATION);
+    if (!patch && !nudge) return false;
+    set(state => ({ enemies: state.enemies.map(x => (x.id === id ? { ...x, ...(patch ?? {}), ...(nudge ?? {}) } : x)) }));
+    return !!patch;
   },
   updateEnemies: (deltaTime) => {
     let pumpkinLanded = false; // パンプキン着地を検出して set 後に画面揺れを出す(set内でのネスト発火回避)

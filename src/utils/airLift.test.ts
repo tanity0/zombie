@@ -61,11 +61,11 @@ describe('爆発の浮き(blastLiftPatch)', () => {
     expect(blastLiftPatch({ ...zombie, ...g, brLiftDown: true }, 'mob', 1.0, NOW + 50, GT)).toBeNull();
     expect(blastLiftPatch({ type: 'zombie', aiPhase: 'z-bite1' }, 'mob', 1.0, NOW, GT)).toBeNull();
   });
-  it('落ち方は格闘よりゆっくり: 上り20%で頂点・同じ頂点なら落ちの途中で格闘より高い', () => {
+  it('落ち方は格闘よりゆっくり: 上り15%で頂点(2026-11-13に20%→15%)・同じ頂点なら落ちの途中で格闘より高い', () => {
     const g = blastLiftPatch(zombie, 'mob', 1.0, NOW, GT)!;
     const ms = g.brLiftMs!, peak = g.brLiftPeak!;
     const blast = { ...g };
-    expect(brawlerJuggleHeightRel(blast, NOW + ms * 0.2)).toBeCloseTo(peak, 3);
+    expect(brawlerJuggleHeightRel(blast, NOW + ms * 0.15)).toBeCloseTo(peak, 3);
     // 落ちる時間: 爆発=長さの65%(漂いの後)・格闘の3段目=長さの55%。爆心の爆発の方が落ちが長い(=ゆっくり)。
     const s3 = brawlerJugglePush({}, 'mob', 's3', NOW)!;
     expect(ms * 0.65).toBeGreaterThan(s3.brLiftMs! * 0.55 * 1.5);
@@ -93,7 +93,7 @@ describe('空中の合図は頂点に対する割合(brawlerAirSignal・社長�
     const blast = blastLiftPatch(zombie, 'mob', 0.4, NOW, GT)!;
     // 頂点=上がりの終わり(★落ちる部分だけ伸び縮みするので、弧の長さに対する割合は brawlerFallShape の rise)。
     for (const a of [boss, mob]) expect(brawlerAirSignal(a, NOW + a.brLiftMs! * brawlerFallShape(a.brLiftFallK ?? 1)!.rise)).toBeCloseTo(1, 3);
-    expect(brawlerAirSignal(blast, NOW + blast.brLiftMs! * 0.2)).toBeCloseTo(1, 3);
+    expect(brawlerAirSignal(blast, NOW + blast.brLiftMs! * 0.15)).toBeCloseTo(1, 3);
     expect(brawlerJuggleHeightRel(boss, NOW + boss.brLiftMs! * 0.25)).toBeLessThan(brawlerJuggleHeightRel(mob, NOW + mob.brLiftMs! * 0.25));
   });
   it('上り途中は1未満・着地で0・叩き落としは落ち始めの高さに対する割合(1から減る)', () => {

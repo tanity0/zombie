@@ -1267,28 +1267,35 @@ export const brawlerStompShake = (el: number, windupMs: number): { x: number; y:
 };
 /**
  * 浮かせの弧の配分(research/BRAWLER.md §12-1・社長承認2026-11-08「格闘ゲームの空中コンボの手触り」)。
- * 打ち上がり 25%(速く上がって頂点で速さ0)→ 頂点の漂い 20%(わずかに沈み始める)→ 落下 55%(ゆっくり加速して落ちる)。
+ * 打ち上がり 18%(速く上がって頂点で速さ0)→ 頂点の漂い 27%(わずかに沈み始める)→ 落下 55%(ゆっくり加速して落ちる)。
+ * ★社長指示2026-11-13「浮の上がるまでのスピードをもう少し早めたい。その分、慣性も少し強めたい」: 上り 25%→18%・漂い 20%→27%
+ *   (落下の割合と全体の時間は据え置き=コンボのつながりは変えない)。上りの減速は二次→三次(liftRiseEase)=頂点への寄り付きが強い。
  */
-export const BRAWLER_LIFT_RISE_FRAC = 0.25;
-export const BRAWLER_LIFT_HOVER_FRAC = 0.2;
+export const BRAWLER_LIFT_RISE_FRAC = 0.18;
+export const BRAWLER_LIFT_HOVER_FRAC = 0.27;
 /** 漂いの間に沈む量(頂点の高さに対する割合)。0=止まって見える(機械的)。 */
 export const BRAWLER_LIFT_HOVER_SAG = 0.06;
 /**
  * 浮かせの弧(高さの倍率)。u=0..1。start=始まりの高さ・top=頂点の高さ(同じ単位)。
- *  - 上り: start→top を ease-out(頂点で速さ0)。
+ *  - 上り: start→top を三次の ease-out(頂点で速さ0・社長指示2026-11-13で二次→三次=頂点への減速が強い)。
  *  - 漂い: top から SAG だけ二次で沈む(速さ0から)。
  *  - 落下: 漂いの終わりの速さを引き継いで、二次で加速して 0 へ(つなぎ目で速さが跳ばない)。
  * 追撃の浮き直しも同じ形(start=押し上げた瞬間の高さ=つなぎ目で高さが跳ばない)。
  */
-/** 浮きの弧の配分(上り・漂いの割合)。省略=格闘の弧(25%・20%)。 */
+/** 浮きの弧の配分(上り・漂いの割合)。省略=格闘の弧(18%・27%)。 */
 export interface LiftArcShape { rise: number; hover: number }
-/** ★爆発で浮いた弧(research/BRAWLER.md §14・社長「落ちてくるのを爆発のは少しゆっくりに」): 上り20%・漂い15%・落ち65%。 */
-export const BLAST_LIFT_SHAPE: LiftArcShape = { rise: 0.2, hover: 0.15 };
+/**
+ * ★爆発で浮いた弧(research/BRAWLER.md §14・社長「落ちてくるのを爆発のは少しゆっくりに」): 上り15%・漂い20%・落ち65%。
+ * ★社長指示2026-11-13(上りを速く・その分の慣性を強く): 上り 20%→15%・漂い 15%→20%(落ちの65%は据え置き)。
+ */
+export const BLAST_LIFT_SHAPE: LiftArcShape = { rise: 0.15, hover: 0.2 };
+/** 浮きの上り専用の ease-out(三次=頂点への減速が二次より強い・社長指示2026-11-13)。他の easeOut は二次のまま。 */
+const liftRiseEase = (x: number): number => 1 - (1 - x) * (1 - x) * (1 - x);
 export const brawlerLiftArcRel = (u: number, start: number, top: number, shape?: LiftArcShape): number => {
   if (u <= 0) return start;
   if (u >= 1) return 0;
   const R = shape?.rise ?? BRAWLER_LIFT_RISE_FRAC, H = shape?.hover ?? BRAWLER_LIFT_HOVER_FRAC, F = 1 - R - H, S = BRAWLER_LIFT_HOVER_SAG;
-  if (u < R) return start + (top - start) * easeOut(u / R);
+  if (u < R) return start + (top - start) * liftRiseEase(u / R);
   if (u < R + H) { const t = (u - R) / H; return top * (1 - S * t * t); }
   const t = (u - R - H) / F;
   const v0 = 2 * S * F / H;           // 漂いの終わりの沈む速さ(落下の区間の単位へ換算)

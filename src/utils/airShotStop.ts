@@ -34,6 +34,52 @@ export interface AirShotStopFields extends BrawlerJuggleFields {
   brawlerShakeDy?: number;
 }
 
+/**
+ * ★空中の敵に弾が当たったら、弾の向きへ微妙に押す(社長指示2026-11-13「空中の敵に弾が当たると微妙に押す様にしたい」)。
+ * 押す距離(px)。**叩き台**(実機で社長が決める)。押しは既存のノックバック(knockbackVx/Vy・knockbackUntil・直線減衰=慣性あり)で出す。
+ */
+export const AIR_SHOT_NUDGE_PX = 10;
+
+export interface AirShotNudgeFields extends AirShotStopFields {
+  knockbackVx?: number;
+  knockbackVy?: number;
+  hitStunUntil?: number;
+}
+
+/**
+ * 弾が当たった瞬間の押し。null=押さない。毎発(免疫 knockbackImmuneUntil は見ない・書かない)。
+ *  - 浮いている敵だけ(地上は今どおり=押さない)。区分がボス級・浮かない(null)なら押さない(ボスは弾で押されない仕様)。死体・HP0 は呼ぶ側で外す。
+ *  - speed = knockbackSpeedFor(AIR_SHOT_NUDGE_PX, kbMs) 相当(呼ぶ側が渡す)。kbMs = 押しの長さ(KNOCKBACK_DURATION)。
+ *  - 止めが明けてから動く: 動き出し M = max(now, 空中の弾の止めの終わり, 被弾の止め hitStunUntil の終わり)。
+ *    空中の弾の止めの残り(まだ後ろへずらしていない分 Ra)は airShotStopTick が knockbackUntil を後ろへずらすので、
+ *    knockbackUntil = M + kbMs − Ra と置く(ずらし終わると M + kbMs=明けてから満額で kbMs だけ滑る=約 AIR_SHOT_NUDGE_PX)。
+ *  - 走っているもっと強い押し(今の速さ > この押しの速さ)は上書きしない(格闘の吹き飛ばし等を弱めない)。
+ */
+export const airShotNudgePatch = (
+  e: AirShotNudgeFields, liftClass: 'mob' | 'strong' | 'boss' | null,
+  now: number, dirX: number, dirY: number, speed: number, kbMs: number,
+): Partial<AirShotNudgeFields> | null => {
+  if (!brawlerAirborne(e, now)) return null;
+  if (liftClass === null || liftClass === 'boss') return null;
+  if (!(speed > 0) || !(kbMs > 0)) return null;
+  const dl = Math.hypot(dirX, dirY);
+  if (!(dl > 0)) return null;
+  if (e.knockbackUntil !== undefined && now < e.knockbackUntil) {
+    const cur = Math.hypot(e.knockbackVx ?? 0, e.knockbackVy ?? 0) * Math.min(1, (e.knockbackUntil - now) / kbMs);
+    if (cur > speed) return null;
+  }
+  const hasStop = e.airShotStopAt !== undefined && e.airShotStopUntil !== undefined;
+  // まだ後ろへずらしていない止めの分(明けた直後でも、前のフレームでずらし切っていない端数は次の tick がずらす)。
+  const ra = hasStop ? Math.max(0, (e.airShotStopUntil! - e.airShotStopAt!) - (e.airShotStopShifted ?? 0)) : 0;
+  const start = Math.max(now, hasStop ? e.airShotStopUntil! : now, e.hitStunUntil ?? now);
+  const until = start + kbMs - ra;
+  return {
+    knockbackVx: (dirX / dl) * speed, knockbackVy: (dirY / dl) * speed, knockbackUntil: until,
+    // 前の押しの「止めの後の補正」(knockbackStopFor===knockbackUntil)は新しい期限とずれるので効かない。念のため外す。
+    knockbackStopFor: undefined,
+  };
+};
+
 /** いま止まっているか。 */
 export const airShotStopped = (e: Pick<AirShotStopFields, 'airShotStopUntil'>, now: number): boolean =>
   e.airShotStopUntil !== undefined && now < e.airShotStopUntil;

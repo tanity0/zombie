@@ -230,10 +230,10 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
     expect(p1.liftUntil).toBe(100 + p1.brLiftMs!); // 動けない間=絵の弧と同じ長さ
     expect(brawlerJugglePush(e0, 'mob', 's5', 100)!.brLiftMs).toBe(200);
   });
-  it('高さの曲線: 頂点は25〜45%の区間・落下(頂点→地面)は打ち上がりより長い・上りは速く落ちはゆっくり始まる', () => {
+  it('高さの曲線: 頂点は18〜45%の区間(2026-11-13に上り25%→18%)・落下(頂点→地面)は打ち上がりより長い・上りは速く落ちはゆっくり始まる', () => {
     const pts = sample(brawlerLiftHeight);
     const a = apexU(pts);
-    expect(a).toBeGreaterThanOrEqual(0.25 - 1e-9);
+    expect(a).toBeGreaterThanOrEqual(0.18 - 1e-9);
     expect(a).toBeLessThanOrEqual(0.45);
     expect(1 - a).toBeGreaterThan(a);                                    // 落ちる時間 > 上がる時間
     const top = brawlerLiftHeight(a);
@@ -250,7 +250,7 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
       expect(Math.abs(v2 - v1)).toBeLessThan(top * 0.01);
     }
   });
-  it('追撃で浮き直した弧も同じ形: 頂点は区間の25〜45%・つなぎ目で高さが跳ばない(§13-2: 回数の減りは予算が受け持つ)', () => {
+  it('追撃で浮き直した弧も同じ形: 頂点は区間の18〜45%・つなぎ目で高さが跳ばない(§13-2: 回数の減りは予算が受け持つ)', () => {
     let e: BrawlerJuggleFields = apply({}, brawlerJugglePush({}, 'mob', 's4', 0));
     let t = 0;
     const rises: number[] = []; const mss: number[] = [];
@@ -265,7 +265,7 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
       const ms = e.brLiftMs!, t0 = t;
       const pts = sample(u => brawlerJuggleHeightRel(e, t0 + u * ms));
       const a = apexU(pts);
-      expect(a).toBeGreaterThanOrEqual(0.25 - 1e-9);
+      expect(a).toBeGreaterThanOrEqual(0.18 - 1e-9);
       expect(a).toBeLessThanOrEqual(0.45);
       rises.push(brawlerJuggleHeightRel(e, t0 + ms * 0.25) - before);
       mss.push(ms);

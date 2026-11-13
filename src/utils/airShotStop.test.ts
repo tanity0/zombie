@@ -1,7 +1,7 @@
 // ★空中の弾の止め(utils/airShotStop・社長指示2026-11-12)の純関数。
 import { describe, it, expect } from 'vitest';
 import {
-  airShotStopMs, airShotStopPatch, airShotStopTick, airShotStopped,
+  airShotStopMs, airShotStopPatch, airShotStopTick, airShotStopped, airShotNudgePatch, AIR_SHOT_NUDGE_PX,
   AIR_SHOT_STOP_BASE_MS, AIR_SHOT_STOP_REF_SPEED, AIR_SHOT_STOP_MIN_MS, AIR_SHOT_STOP_MAX_MS, type AirShotStopFields,
 } from './airShotStop';
 
@@ -47,5 +47,36 @@ describe('止めの掛け方', () => {
     expect(e.brBlastNoLiftUntil).toBe(NOW + 1340);
     expect(e.brLiftMs).toBe(600);
     expect(airShotStopTick(e, NOW + 300)).toBeNull();
+  });
+});
+
+describe('空中の敵を弾の向きへ微妙に押す(社長指示2026-11-13)', () => {
+  const KB = 280, SP = (AIR_SHOT_NUDGE_PX * 2) / (KB / 1000);
+  it('叩き台は10px', () => { expect(AIR_SHOT_NUDGE_PX).toBe(10); });
+  it('浮いている雑魚・強個体だけ。地上・ボス級・浮かない区分は押さない', () => {
+    expect(airShotNudgePatch({}, 'mob', NOW, 1, 0, SP, KB)).toBeNull();
+    expect(airShotNudgePatch({ ...air }, 'boss', NOW, 1, 0, SP, KB)).toBeNull();
+    expect(airShotNudgePatch({ ...air }, null, NOW, 1, 0, SP, KB)).toBeNull();
+    expect(airShotNudgePatch({ ...air }, 'strong', NOW, 1, 0, SP, KB)).not.toBeNull();
+    const p = airShotNudgePatch({ ...air }, 'mob', NOW, 3, 4, SP, KB)!;
+    expect(p.knockbackVx).toBeCloseTo(0.6 * SP, 9);
+    expect(p.knockbackVy).toBeCloseTo(0.8 * SP, 9);
+    expect(p.knockbackUntil).toBe(NOW + KB);
+  });
+  it('止めが明けてから満額で動く: 空中の弾の止め(tick が後ろへずらす分を引く)・被弾の止め(hitStunUntil)', () => {
+    let e: AirShotStopFields = { ...air, ...airShotStopPatch({ ...air }, 520, NOW, 1, 0)! };
+    e = { ...e, ...airShotNudgePatch(e, 'mob', NOW, 1, 0, SP, KB)! };
+    for (const t of [NOW + 16, NOW + 80, NOW + 140, NOW + 200]) { const d = airShotStopTick(e, t); if (d) e = { ...e, ...d }; }
+    expect(e.knockbackUntil).toBe(NOW + 140 + KB);
+    // 被弾の止めの方が長い時はそちらの明けから
+    let g: AirShotStopFields & { hitStunUntil?: number } = { ...air, hitStunUntil: NOW + 300, ...airShotStopPatch({ ...air }, 520, NOW, 1, 0)! };
+    g = { ...g, ...airShotNudgePatch(g, 'mob', NOW, 1, 0, SP, KB)! };
+    for (const t of [NOW + 50, NOW + 140, NOW + 200]) { const d = airShotStopTick(g, t); if (d) g = { ...g, ...d }; }
+    expect(g.knockbackUntil).toBe(NOW + 300 + KB);
+  });
+  it('走っているもっと強い押しは上書きしない(弱い押し・切れた押しは上書きする)', () => {
+    expect(airShotNudgePatch({ ...air, knockbackVx: 600, knockbackVy: 0, knockbackUntil: NOW + 200 }, 'mob', NOW, 1, 0, SP, KB)).toBeNull();
+    expect(airShotNudgePatch({ ...air, knockbackVx: 10, knockbackVy: 0, knockbackUntil: NOW + 200 }, 'mob', NOW, 1, 0, SP, KB)).not.toBeNull();
+    expect(airShotNudgePatch({ ...air, knockbackVx: 600, knockbackVy: 0, knockbackUntil: NOW - 1 }, 'mob', NOW, 1, 0, SP, KB)).not.toBeNull();
   });
 });

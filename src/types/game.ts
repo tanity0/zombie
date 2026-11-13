@@ -876,7 +876,7 @@ export interface Enemy {
   brLiftLight?: boolean;
   brBounceCombo?: number;
   brLiftDropMs?: number;
-  /** ★浮きの弧の形(research/BRAWLER.md §14・社長「浮き入れよう。落ちてくるのを爆発のは少しゆっくりに」)。'blast'=爆発で浮いた弧(上り20%・漂い15%・落ち65%)。無し=格闘の弧。 */
+  /** ★浮きの弧の形(research/BRAWLER.md §14・社長「浮き入れよう。落ちてくるのを爆発のは少しゆっくりに」)。'blast'=爆発で浮いた弧(上り15%・漂い20%・落ち65%)。無し=格闘の弧。 */
   brLiftShape?: 'blast';
   /** ★落ちる部分の時間の倍率(utils/brawlerCombo の brawlerFallK・社長裁定2026-11-13)。地上から打ち上げた1回目は遅く、空中で拾うたびに速く。無し=1。 */
   brLiftFallK?: number;

@@ -644,7 +644,7 @@ export const brawlerJuggleHeightRel = (e: BrawlerJuggleFields, now: number): num
   }
   // 空中で吹き飛ばされた(押し上げ0)=今の高さから速く叩き落とす(DROP_MS・端で速さ0の滑らかな落ち)。
   if (peak <= 0) return from * (1 - u) * (1 - u) * (1 + 2 * u);
-  // 浮き(最初も追撃の浮き直しも同じ形): 打ち上がり25% → 頂点の漂い20% → 落下55%(§12-1)。爆発の浮きは 20%・15%・65%(§14)。
+  // 浮き(最初も追撃の浮き直しも同じ形): 打ち上がり18% → 頂点の漂い27% → 落下55%(§12-1・2026-11-13に上りを速く)。爆発の浮きは 15%・20%・65%(§14)。
   return brawlerLiftArcRel(u, from, brawlerJuggleTop(from, peak), brawlerFallShape(e.brLiftFallK ?? 1, e.brLiftShape === 'blast' ? BLAST_LIFT_SHAPE : undefined));
 };
 

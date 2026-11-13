@@ -7,6 +7,11 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5565', items: [
+    'ナイフで斬るたびに敵が押されるようになった。立ったまま続けて斬っても押し返せる',
+    '浮いている敵に弾が当たると、少しだけ押される',
+    '浮かせた敵が勢いよく上がり、頂点の手前でぐっと減速する',
+  ] },
   { version: '0.25.5564', items: [
     '血の覚醒に入った瞬間の押し返しが浅くなった',
   ] },
