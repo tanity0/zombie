@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5582', items: [
+    '格闘の秘奥義や踏み潰しで地面が割れる絵が、自分の体の上に被らなくなった',
+  ] },
   { version: '0.25.5581', items: [
     '作戦室の地図のボスの顔が少し大きくなった',
     '顔を押すと、そのボスが居る場所の名前が地図に出る',

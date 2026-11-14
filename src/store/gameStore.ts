@@ -5478,7 +5478,7 @@ const brawlerSecretLand = (get: () => GameState, set: (fn: (s: GameState) => Par
   g.spawnRing(foot.x, foot.y, 14, BR.BRAWLER_SECRET_LAND_RADIUS * 0.9, 'rgba(56,189,248,0.85)', 5, 520, true);
   g.spawnRing(foot.x, foot.y, 8, BR.BRAWLER_SECRET_LAND_RADIUS * 0.55, 'rgba(255,255,255,0.8)', 3, 380, true);
   g.spawnGlow(foot.x, foot.y, GLOW_R_XL, 'rgba(241,230,200,', 520, true);
-  g.spawnImageMark(foot.x, foot.y, 'fx/ground-crack', { scale: 2.4, scaleY: 0.5, duration: 2200, fadeFrom: 0.6, noPop: true, alpha: 0.95 });
+  g.spawnImageMark(foot.x, foot.y, 'fx/ground-crack', { scale: 2.4, scaleY: 0.5, duration: 2200, fadeFrom: 0.6, noPop: true, alpha: 0.95, ground: true });
   g.spawnImageMark(foot.x, foot.y - 50, BR_COFFIN_SLAM_FRAMES[0], { frames: BR_COFFIN_SLAM_FRAMES, scale: 1.7, duration: 640, frameEaseOut: true, noPop: true, fadeFrom: 0.5 });
   brawlerFx(get, foot.x, foot.y - 20, BR_SKILL_BURST_FRAMES[0], { frames: BR_SKILL_BURST_FRAMES, scale: 2.0, duration: 560, frameEaseOut: true, fadeFrom: 0.5 });
   g.spawnBurst(foot.x, foot.y, BR.BRAWLER_COLOR, 40);
@@ -5687,7 +5687,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       // 地面の絵(判定なし=派手さの絵)。4段目の着地より一段大きく・短く鋭く。地上の敵に当たった時だけ、その足元に出す
       // (浮いていた敵は叩き落とされて着地した時に、浮きの着地の砂埃が出る=地面が先に割れない)。空振りは自分の足元に小さく。
       const groundAt = (fx: number, footY: number, k: number): void => {
-        g.spawnImageMark(fx, footY, 'fx/ground-crack', { scale: 0.9 * k, scaleY: 0.42, duration: 1300, fadeFrom: 0.55, noPop: true, alpha: 0.9 });
+        g.spawnImageMark(fx, footY, 'fx/ground-crack', { scale: 0.9 * k, scaleY: 0.42, duration: 1300, fadeFrom: 0.55, noPop: true, alpha: 0.9, ground: true });
         g.spawnImageMark(fx, footY - 26 * k, BR_COFFIN_SLAM_FRAMES[0], { frames: BR_COFFIN_SLAM_FRAMES, scale: 0.75 * k, duration: 440, frameEaseOut: true, noPop: true, fadeFrom: 0.5 });
         g.spawnImageMark(fx + side * 16, footY, 'fx/dust-puff', { scale: 0.4 * k, scaleY: 0.55, duration: 900, tint: 0x9a8b7a, alpha: 0.75, moveX: side * 52, moveY: -8, fadeFrom: 0.35 });
         g.spawnImageMark(fx - side * 10, footY + 2, 'fx/dust-puff', { scale: 0.2 * k, scaleY: 0.6, duration: 480, tint: 0x7d7062, alpha: 0.7, moveX: -side * 22, moveY: -3, fadeFrom: 0.3 });
@@ -5827,7 +5827,7 @@ const BR_SKILL_BURST_FRAMES = Array.from({ length: 13 }, (_, i) => `fx/skill-bur
 const BR_COFFIN_SLAM_FRAMES = Array.from({ length: 5 }, (_, i) => `fx/coffin-slam-${i}`);
 /** 地面の割れ+砕けて跳ねる礫(4段目の着地・下の大踏み潰し)。big=大踏み潰し。 */
 const brawlerGroundBreakFx = (get: () => GameState, fx: number, fy: number, big: boolean): void => {
-  get().spawnImageMark(fx, fy, 'fx/ground-crack', { scale: big ? 1.25 : 0.62, scaleY: 0.5, duration: big ? 1500 : 1000, fadeFrom: 0.55, noPop: true, alpha: 0.9 });
+  get().spawnImageMark(fx, fy, 'fx/ground-crack', { scale: big ? 1.25 : 0.62, scaleY: 0.5, duration: big ? 1500 : 1000, fadeFrom: 0.55, noPop: true, alpha: 0.9, ground: true });
   get().spawnImageMark(fx, fy - (big ? 34 : 18), BR_COFFIN_SLAM_FRAMES[0], { frames: BR_COFFIN_SLAM_FRAMES, scale: big ? 1.0 : 0.5, duration: big ? 520 : 400, frameEaseOut: true, noPop: true, fadeFrom: 0.5 });
 };
 

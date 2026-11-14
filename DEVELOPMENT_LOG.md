@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5582 — 格闘の地割れを地面の層へ(プレイヤーの上に被っていた)【2026-11-14 19:18 JST】
+- 社長報告「秘奥義の最後、地面が割れるエフェクト、プレイヤーの上に被っちゃってる」。原因: spawnImageMark の地割れ(fx/ground-crack)が effectLayer(人物より上)に描かれていた。既存の `ground: true`(groundLayer=足の下)を付けた。
+- 対象: 格闘の地割れ3か所(秘奥義の着地・踵落とし/下の当たりの groundAt・brawlerGroundBreakFx=4段目の着地と大踏み潰し)。同じ動作の全員へ(v0.25.2426の教訓)。城ボスの地割れ(1424)は別の動作なので触らない。
+- 画で確認: 同じ地割れを effectLayer/groundLayer に置いて撮り比べ、地面の層ではプレイヤーの体が上に来る。typecheck・eslint は変更1行×3のため worktree で確認。
+- 自己点検: 憲法4条・5条に抵触なし。
+
 ## v0.25.5581 — 作戦室の地図のボスの顔: 直径16→20px・タップで場所名の札【2026-11-14 19:16 JST】
 - 社長指示「出撃マップのボスアイコンをタップしたら、それはどこのステージなのか？が分かる様にしたい。あとそのボスアイコンを少し大きく」「タップしたやつだけね？」(=札は押した1つだけ)。
 - DsStoryMap.tsx: FACE_D=20U・間隔2.5U。SVG の onClick→getScreenCTM で地図座標、`mapFaceTag.ts`(pickMapFace=当たり約32px四方の近い方/nextOpenMapFace=同じ顔・空き地・札で閉じ、別の顔で切替/placeMapSpotTag・mapTagLeadLine=札は場所ごとに1つ、点の真上か列の中心の上、地図内に収める)。文言は Stage.locationTitle(ステージ一覧・出撃準備・今いる所と同じ)。地図の外の pointerdown でも閉じる(横取りしない)。
