@@ -1,0 +1,29 @@
+{
+  "stage": "stage-1",
+  "renderer": "pixi",
+  "wallMs": 150000,
+  "shots": [
+    {
+      "n": 1,
+      "wallSec": 82,
+      "gt": 1000,
+      "x": 0,
+      "en": 0,
+      "hp": 110
+    },
+    {
+      "n": 2,
+      "wallSec": 162,
+      "gt": 2250,
+      "x": 15,
+      "en": 1,
+      "hp": 110
+    }
+  ],
+  "canvasStat": {
+    "canvas": true,
+    "w": 780,
+    "h": 1688
+  },
+  "errors": []
+}

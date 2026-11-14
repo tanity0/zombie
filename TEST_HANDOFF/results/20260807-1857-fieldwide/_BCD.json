@@ -1,0 +1,1253 @@
+{
+ "B": {
+  "zTall": 0.433,
+  "zBack": 0.432,
+  "errors": [
+   "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK",
+   "TypeError: Cannot read properties of null (reading '0')",
+   "TypeError: Cannot read properties of null (reading '0')"
+  ]
+ },
+ "C": {
+  "rows": [
+   {
+    "t": 0,
+    "zoom": 0.894,
+    "dx": 0,
+    "dy": -488,
+    "state": "chase",
+    "onAt1": true,
+    "alive": true,
+    "phase": "flee",
+    "real": 0
+   },
+   {
+    "t": 0,
+    "zoom": 0.894,
+    "dx": 0,
+    "dy": -488,
+    "state": "chase",
+    "onAt1": true,
+    "alive": true,
+    "phase": "flee",
+    "real": 1
+   },
+   {
+    "t": 0,
+    "zoom": 0.894,
+    "dx": 0,
+    "dy": -488,
+    "state": "chase",
+    "onAt1": true,
+    "alive": true,
+    "phase": "flee",
+    "real": 2
+   },
+   {
+    "t": 1,
+    "zoom": 0.499,
+    "dx": -79,
+    "dy": -447,
+    "state": "chase",
+    "onAt1": true,
+    "alive": true,
+    "phase": "flee",
+    "real": 3
+   },
+   {
+    "t": 2,
+    "zoom": 0.587,
+    "dx": -169,
+    "dy": -375,
+    "state": "chase",
+    "onAt1": true,
+    "alive": true,
+    "phase": "flee",
+    "real": 4
+   },
+   {
+    "t": 3,
+    "zoom": 0.704,
+    "dx": -274,
+    "dy": -363,
+    "state": "aim-radial",
+    "onAt1": true,
+    "alive": true,
+    "phase": "flee",
+    "real": 5
+   },
+   {
+    "t": 4,
+    "zoom": 0.69,
+    "dx": -384,
+    "dy": -363,
+    "state": "aim-radial",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 6
+   },
+   {
+    "t": 5,
+    "zoom": 0.579,
+    "dx": -528,
+    "dy": -350,
+    "state": "radial",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 7
+   },
+   {
+    "t": 6,
+    "zoom": 0.478,
+    "dx": -641,
+    "dy": -350,
+    "state": "radial",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 8
+   },
+   {
+    "t": 7,
+    "zoom": 0.447,
+    "dx": -765,
+    "dy": -358,
+    "state": "dash-windup",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 9
+   },
+   {
+    "t": 8,
+    "zoom": 0.599,
+    "dx": -834,
+    "dy": -352,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 10
+   },
+   {
+    "t": 9,
+    "zoom": 0.861,
+    "dx": -990,
+    "dy": -425,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 11
+   },
+   {
+    "t": 10,
+    "zoom": 0.951,
+    "dx": -1136,
+    "dy": -489,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 12
+   },
+   {
+    "t": 11,
+    "zoom": 0.983,
+    "dx": -1249,
+    "dy": -497,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 13
+   },
+   {
+    "t": 12,
+    "zoom": 0.994,
+    "dx": -1355,
+    "dy": -497,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 14
+   },
+   {
+    "t": 13,
+    "zoom": 0.998,
+    "dx": -1463,
+    "dy": -497,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 15
+   },
+   {
+    "t": 15,
+    "zoom": 1,
+    "dx": -1613,
+    "dy": -497,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 16
+   },
+   {
+    "t": 16,
+    "zoom": 1,
+    "dx": -1719,
+    "dy": -497,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 17
+   },
+   {
+    "t": 17,
+    "zoom": 1,
+    "dx": -1829,
+    "dy": -497,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 18
+   },
+   {
+    "t": 18,
+    "zoom": 1,
+    "dx": -1935,
+    "dy": -497,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 19
+   },
+   {
+    "t": 19,
+    "zoom": 1,
+    "dx": -2038,
+    "dy": -497,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 20
+   },
+   {
+    "t": 20,
+    "zoom": 1,
+    "dx": -2147,
+    "dy": -497,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 21
+   },
+   {
+    "t": 21,
+    "zoom": 1,
+    "dx": -2252,
+    "dy": -497,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 22
+   },
+   {
+    "t": 22,
+    "zoom": 1,
+    "dx": -2360,
+    "dy": -497,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 23
+   },
+   {
+    "t": 23,
+    "zoom": 1,
+    "dx": -2506,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 24
+   },
+   {
+    "t": 24,
+    "zoom": 1,
+    "dx": -2617,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 25
+   },
+   {
+    "t": 25,
+    "zoom": 1,
+    "dx": -2723,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 26
+   },
+   {
+    "t": 26,
+    "zoom": 1,
+    "dx": -2828,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 27
+   },
+   {
+    "t": 27,
+    "zoom": 1,
+    "dx": -2938,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 28
+   },
+   {
+    "t": 28,
+    "zoom": 1,
+    "dx": -3044,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 29
+   },
+   {
+    "t": 29,
+    "zoom": 1,
+    "dx": -3150,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 30
+   },
+   {
+    "t": 31,
+    "zoom": 1,
+    "dx": -3295,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 31
+   },
+   {
+    "t": 32,
+    "zoom": 1,
+    "dx": -3404,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 32
+   },
+   {
+    "t": 33,
+    "zoom": 1,
+    "dx": -3514,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 33
+   },
+   {
+    "t": 34,
+    "zoom": 1,
+    "dx": -3624,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 34
+   },
+   {
+    "t": 34,
+    "zoom": 0.994,
+    "dx": -3653,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 35
+   },
+   {
+    "t": 34,
+    "zoom": 0.994,
+    "dx": -3653,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 36
+   },
+   {
+    "t": 34,
+    "zoom": 0.947,
+    "dx": -3673,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 37
+   },
+   {
+    "t": 35,
+    "zoom": 0.823,
+    "dx": -3781,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 38
+   },
+   {
+    "t": 36,
+    "zoom": 0.991,
+    "dx": -3889,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 39
+   },
+   {
+    "t": 37,
+    "zoom": 0.851,
+    "dx": -3998,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 40
+   },
+   {
+    "t": 38,
+    "zoom": 0.775,
+    "dx": -4105,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 41
+   },
+   {
+    "t": 39,
+    "zoom": 0.737,
+    "dx": -4214,
+    "dy": -481,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 42
+   },
+   {
+    "t": 40,
+    "zoom": 0.718,
+    "dx": -4358,
+    "dy": -493,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 43
+   },
+   {
+    "t": 41,
+    "zoom": 0.712,
+    "dx": -4483,
+    "dy": -493,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 44
+   },
+   {
+    "t": 42,
+    "zoom": 0.706,
+    "dx": -4592,
+    "dy": -493,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 45
+   },
+   {
+    "t": 44,
+    "zoom": 0.702,
+    "dx": -4744,
+    "dy": -493,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 46
+   },
+   {
+    "t": 45,
+    "zoom": 0.701,
+    "dx": -4854,
+    "dy": -493,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 47
+   },
+   {
+    "t": 46,
+    "zoom": 0.701,
+    "dx": -4990,
+    "dy": -493,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 48
+   },
+   {
+    "t": 47,
+    "zoom": 0.99,
+    "dx": -5104,
+    "dy": -493,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 49
+   },
+   {
+    "t": 48,
+    "zoom": 1,
+    "dx": -5211,
+    "dy": -493,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 50
+   },
+   {
+    "t": 49,
+    "zoom": 1,
+    "dx": -5282,
+    "dy": -493,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 51
+   },
+   {
+    "t": 50,
+    "zoom": 1.003,
+    "dx": -5277,
+    "dy": -547,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 52
+   },
+   {
+    "t": 51,
+    "zoom": 1.002,
+    "dx": -5271,
+    "dy": -573,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 53
+   },
+   {
+    "t": 52,
+    "zoom": 1.001,
+    "dx": -5241,
+    "dy": -640,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 54
+   },
+   {
+    "t": 53,
+    "zoom": 1.002,
+    "dx": -5227,
+    "dy": -661,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 55
+   },
+   {
+    "t": 54,
+    "zoom": 1.001,
+    "dx": -5270,
+    "dy": -576,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 56
+   },
+   {
+    "t": 55,
+    "zoom": 1.001,
+    "dx": -5271,
+    "dy": -574,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 57
+   },
+   {
+    "t": 56,
+    "zoom": 1,
+    "dx": -5249,
+    "dy": -626,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 58
+   },
+   {
+    "t": 58,
+    "zoom": 1.003,
+    "dx": -5211,
+    "dy": -678,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "flee",
+    "real": 59
+   },
+   {
+    "t": 59,
+    "zoom": 1.001,
+    "dx": -5177,
+    "dy": -714,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 0
+   },
+   {
+    "t": 60,
+    "zoom": 1.046,
+    "dx": -5093,
+    "dy": -756,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 1
+   },
+   {
+    "t": 61,
+    "zoom": 1.048,
+    "dx": -5038,
+    "dy": -776,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 2
+   },
+   {
+    "t": 62,
+    "zoom": 1.049,
+    "dx": -4991,
+    "dy": -779,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 3
+   },
+   {
+    "t": 63,
+    "zoom": 1.05,
+    "dx": -4991,
+    "dy": -779,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 4
+   },
+   {
+    "t": 64,
+    "zoom": 1.05,
+    "dx": -4991,
+    "dy": -779,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 5
+   },
+   {
+    "t": 65,
+    "zoom": 1.05,
+    "dx": -4991,
+    "dy": -779,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 6
+   },
+   {
+    "t": 66,
+    "zoom": 1.046,
+    "dx": -4892,
+    "dy": -759,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 7
+   },
+   {
+    "t": 67,
+    "zoom": 1.045,
+    "dx": -4819,
+    "dy": -718,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 8
+   },
+   {
+    "t": 68,
+    "zoom": 1.045,
+    "dx": -4773,
+    "dy": -672,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 9
+   },
+   {
+    "t": 69,
+    "zoom": 1.046,
+    "dx": -4740,
+    "dy": -620,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 10
+   },
+   {
+    "t": 71,
+    "zoom": 1.045,
+    "dx": -4718,
+    "dy": -558,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 11
+   },
+   {
+    "t": 72,
+    "zoom": 1.047,
+    "dx": -4711,
+    "dy": -466,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 12
+   },
+   {
+    "t": 73,
+    "zoom": 1.044,
+    "dx": -4735,
+    "dy": -377,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 13
+   },
+   {
+    "t": 74,
+    "zoom": 1.05,
+    "dx": -4735,
+    "dy": -375,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 14
+   },
+   {
+    "t": 75,
+    "zoom": 1.05,
+    "dx": -4735,
+    "dy": -375,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 15
+   },
+   {
+    "t": 76,
+    "zoom": 2.085,
+    "dx": -4795,
+    "dy": -290,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 16
+   },
+   {
+    "t": 76,
+    "zoom": 1.716,
+    "dx": -4806,
+    "dy": -279,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 17
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 18
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 19
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 20
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 21
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 22
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 23
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 24
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 25
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 26
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 27
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 28
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 29
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 30
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 31
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 32
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 33
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 34
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 35
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 36
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 37
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 38
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 39
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 40
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 41
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 42
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 43
+   },
+   {
+    "t": 77,
+    "zoom": 1.048,
+    "dx": -4861,
+    "dy": -241,
+    "state": "return",
+    "onAt1": false,
+    "alive": true,
+    "phase": "wait",
+    "real": 44
+   }
+  ],
+  "errors": [
+   "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK"
+  ]
+ },
+ "D": {
+  "suriel": {
+   "bossType": "suriel",
+   "wanted": [
+    "sweep",
+    "gaze"
+   ],
+   "found": [
+    "sweep",
+    "gaze"
+   ],
+   "missing": [],
+   "allStates": [
+    "chase",
+    "ring-spin-windup",
+    "ring-spin",
+    "ring-spin-recover",
+    "ring-move-windup",
+    "ring-beam-windup",
+    "ring-active",
+    "ring-recover",
+    "gaze-windup",
+    "gaze-recover",
+    "sweep-windup",
+    "sweep-recover",
+    "sweep"
+   ],
+   "errors": [
+    "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK"
+   ]
+  },
+  "acrasiel": {
+   "bossType": "acrasiel",
+   "wanted": [
+    "spike",
+    "burst",
+    "warp"
+   ],
+   "found": [
+    "spike",
+    "burst",
+    "warp"
+   ],
+   "missing": [],
+   "allStates": [
+    "chase",
+    "warp-out",
+    "warp-in",
+    "warp-recover",
+    "burst-windup",
+    "burst-recover",
+    "burst",
+    "spear-windup",
+    "spear-recover",
+    "spike-windup",
+    "spike-recover",
+    "spike",
+    "gaze-windup",
+    "gaze-recover"
+   ],
+   "errors": [
+    "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK",
+    "[console] [pixiScene] drawEnemy error (suppressed): TypeError: Cannot read properties of undefined (reading 'visible')\n    at PixiScene.drawEnemy (http://localhost:5173/zombie/src/pixi/pixiScene.ts:12440:43)\n  "
+   ]
+  },
+  "glen": {
+   "bossType": null,
+   "wanted": [
+    "nihil"
+   ],
+   "found": [],
+   "missing": [
+    "nihil"
+   ],
+   "allStates": [],
+   "errors": [
+    "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK"
+   ]
+  }
+ }
+}

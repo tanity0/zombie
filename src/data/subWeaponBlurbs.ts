@@ -1,0 +1,54 @@
+// 開発施設の棚(未解放のサブウェポン)に出す一言。「解放して装備可能に」が並ぶ均質さを崩すため
+// (クリエイティブ監査2026-09-11 #17)。★各行は subWeaponUpgradeNotes.ts の根拠コメント(実コードを
+// 読んで書かれたもの)と、当該サブの実装コメント(useGameLoop/gameStore/goldRing/summonUtils)から
+// 起こした=推測で書かない。数値は書かない。棚に並ぶ全種(SUB_WEAPON_KEYS−クラス固有−退役+金環)を埋める。
+import type { SubWeaponKey } from '../types/game';
+import type { PlayDevice, PadKind } from '../utils/inputDevice';
+import { fillPadGlyphs } from '../utils/hudHints';
+
+const BLURB: Partial<Record<SubWeaponKey, string>> = {
+  dog: '近くの落とし物を走って拾ってくる。道中の敵も噛む',
+  katana: '刀で自動で斬る。銃と他のサブウェポンは使えない。フリックで無敵の突進斬り',
+  decoy: '円盤を前方に置き、近くの敵の弾を消す',
+  shield: '背後に盾を立てて、敵と敵の弾を止める。攻撃を受けると壊れる',
+  whip: 'ナイフの代わりに長い鞭で振り払う。当て続けると竜巻が出て、敵を吸い寄せる',
+  alchemy: '立ち止まっていると魔法陣ができ、味方の変異体を呼ぶ。最大三体',
+  turret: '前方に砲台を置き、しばらく敵を自動で撃つ。消える時に爆発する',
+  'fire-knife': '敵にナイフを自動で投げる。刺さったナイフはあとで爆発する',
+  'drone-boomerang': '近接と同時に飛ぶ回転刃。敵を貫いて先で止まり、周りを斬って戻る。戻ってきた刃は、近接で打ち返せる',
+  'wire-anchor': 'フリックした方向へワイヤーを撃ち、刺さった所へ無敵で飛ぶ',
+  homing: '押している間、近くの敵を順にロックし、離すと追尾弾を一斉に撃つ',
+  'shadow-clone': '近接を振ると分身が現れ、しばらく同じ近接を繰り返す',
+  molotov: '動いている間、足元に火を置いていく。火に触れた敵は燃え続ける',
+  'first-aid-kit': '予備弾が切れると弾薬を出す鞄。空になると敵に投げて爆発する',
+  'sensor-mine': '近接で足元に地雷を置く。敵が近づくと感知し、少しあとに爆発する',
+  'support-sniper': '動き続けると、画面の端に味方の狙撃手が現れて敵を撃つ',
+  'arrow-rain': '敵が最も固まっている場所に、自動で矢の雨を降らせる',
+  'flare-gun': '近接と同時に火の玉を撃つ。ダメージは無く、落ちた所へ敵が集まる',
+  'junk-weapon': 'スクラップを弾にして散弾を撃つ。近接と同時に出る',
+  'gold-ring': '敵の両脇に輪を二つ置き、そこから数秒間レーザーを撃つ',
+  brawler: '素手で殴り込む。銃は使えない。当てても食らっても技ポイントが溜まり、上下左右を入れて技を出す',
+};
+
+// 機器ごとの一言(research/PC_SUPPORT.md §11-6・チュートリアルの pcLines/padLines と同じ考え方)。上の文が「フリック」等の
+// スマホの操作を書いている物だけ、マウス・キー(PC)とパッドの文を持つ。無い物は上の文(スマホの文は変えない)。
+// はじく操作: PC=右クリック(カーソルの方へ)/ パッド=はじくボタンの刻印を {flick} に差し込む(スティックを倒した方へ)。
+// 字は HUD の札と同じ(hudHints.fillPadGlyphs=Xbox 系 B・PS 系 ○・任天堂系 A)。文の側で系統を分岐しない。
+const BLURB_PC: Partial<Record<SubWeaponKey, string>> = {
+  katana: '刀で自動で斬る。銃と他のサブウェポンは使えない。右クリックでカーソルの方へ無敵の突進斬り',
+  'wire-anchor': '右クリックでカーソルの方へワイヤーを撃ち、刺さった所へ無敵で飛ぶ',
+};
+const BLURB_PAD: Partial<Record<SubWeaponKey, string>> = {
+  katana: '刀で自動で斬る。銃と他のサブウェポンは使えない。{flick} でスティックを倒した方へ無敵の突進斬り',
+  'wire-anchor': '{flick} でスティックを倒した方へワイヤーを撃ち、刺さった所へ無敵で飛ぶ',
+};
+/** 機器ごとの文の台帳(テスト用。PC とパッドの両方を必ず持つ)。 */
+export const SUB_BLURB_BY_DEVICE = { pc: BLURB_PC, pad: BLURB_PAD } as const;
+
+/** 未解放の棚に出す一言。台帳に無い物は「未解放」だけを返す(嘘を書かない)。device=今遊んでいる機器(省略=スマホの文)。padKind=パッドの系統(刻印の字)。 */
+export const subWeaponBlurb = (key: SubWeaponKey, device: PlayDevice = 'touch', padKind: PadKind = 'xbox'): string => {
+  const pad = device === 'pad' ? BLURB_PAD[key] : undefined;
+  if (pad) return fillPadGlyphs(pad, padKind);
+  const byDevice = device === 'touch' ? undefined : BLURB_PC[key];
+  return byDevice ?? BLURB[key] ?? '未解放';
+};

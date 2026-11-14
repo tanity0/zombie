@@ -1,0 +1,57 @@
+// 年表の「達成数 / 全体数」(chronicleCatalog)のユニット。
+import { describe, it, expect } from 'vitest';
+import { CHRONICLE_SLOTS, CHRONICLE_FULL_STAGES, chronicleProgress } from './chronicleCatalog';
+import type { ChronicleEntry, ChronicleKind } from './progress';
+import { STAGES } from './campaign';
+import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
+
+const entry = (stageId: string, kind: ChronicleKind, detail: string): ChronicleEntry =>
+  ({ key: `${stageId}::${kind}::${detail}`, stageId, kind, label: '', at: 1 });
+
+describe('年表の達成数 / 全体数', () => {
+  // 社長指示2026-11-02: 区域は研究対象区域を外しデンジャー以降の3つ=屋外本編は1ステージ15枠(旧16)。
+  // 社長指示2026-11-04: 隠しPOI30(ステージ1・3=7、4・5=8・kind 'cave')を足して 109。
+  it('全体数は109(屋外本編4ステージ×15+隠しPOI30+研究所1+洋館1+ステージ7の1+EX2+全体初回4+実績10)', () => {
+    expect(CHRONICLE_SLOTS.length).toBe(109);
+    expect(CHRONICLE_SLOTS.filter(s => s.kind === 'cave')).toHaveLength(30);
+    expect(CHRONICLE_SLOTS.some(s => s.kind === 'zone' && s.detail === '1')).toBe(false);
+  });
+
+  it('枠に重複が無い', () => {
+    const keys = CHRONICLE_SLOTS.map(s => `${s.stageId}::${s.kind}::${s.detail}`);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('屋外本編ステージは全て裏ボスとゲート2の天使を持つ(表が欠けたら分母が黙って減る)', () => {
+    for (const id of CHRONICLE_FULL_STAGES) {
+      expect(STAGES.find(s => s.id === id)?.hiddenBoss).toBeTruthy();
+      expect(GATE2_BOSS_TYPE_BY_STAGE[id]).toBeTruthy();
+    }
+  });
+
+  it('記録なし=0 / 全部埋めれば分母と一致', () => {
+    expect(chronicleProgress([])).toEqual({ got: 0, total: 109 });
+    const all = CHRONICLE_SLOTS.map(s => entry(s.stageId ?? 'stage-1', s.kind, s.detail ?? 'x'));
+    expect(chronicleProgress(all).got).toBe(109);
+  });
+
+  it('拠点は旧形式の記録(方位付き)が何件あっても1枠', () => {
+    const got = chronicleProgress([
+      entry('stage-1', 'base', 'north'), entry('stage-3', 'base', 'south'), entry('stage-4', 'base', 'b-2'),
+    ]).got;
+    expect(got).toBe(1);
+  });
+
+  it('POIはどのステージで開けても種別ごとに1枠', () => {
+    expect(chronicleProgress([entry('stage-4', 'poi', 'police'), entry('stage-5', 'poi', 'police')]).got).toBe(1);
+    expect(chronicleProgress([entry('stage-4', 'poi', 'police'), entry('stage-1', 'poi', 'armory')]).got).toBe(2);
+  });
+
+  it('表に無い記録(訓練のハンター・ステージ1の区域0)は数えない', () => {
+    expect(chronicleProgress([entry('stage-tutorial', 'hunter', 'hunter'), entry('stage-1', 'zone', '0')]).got).toBe(0);
+  });
+
+  it('ステージ7のグレンとステージ1の城ボスは別の枠', () => {
+    expect(chronicleProgress([entry('stage-7', 'boss', 'giantbat'), entry('stage-1', 'boss', 'giantbat')]).got).toBe(2);
+  });
+});

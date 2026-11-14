@@ -1,0 +1,31 @@
+name: Nightly sim fuzz
+
+# 「重いやつは大型改修 or 定期」ポリシーの定期側(CLAUDE.md Testing policy)。
+# ヘッドレスでシミュレーションを長尺(全クラス×3600tick)回し、レアな NaN / クラッシュを炙り出す。
+# +M9デバッグボット(PACING_PUZZLE.md §5.10)のフル版(10ラン×15分相当・毎tick不変条件検査)。
+# デフォルトブランチ = claude/chat-context-continuity-saxlH(本番)なので cron は有効。
+# 毎晩 schedule がこのブランチの最新を checkout してファズを回す。手動実行も可(workflow_dispatch)。
+# コストは GitHub Actions 無料枠(public)のみ・AIクレジット不使用。緑なら無通知、失敗時は赤❌+メール。
+on:
+  schedule:
+    - cron: '0 18 * * *'   # 03:00 JST 毎日
+  workflow_dispatch:        # 手動実行も可
+
+concurrency:
+  group: nightly-fuzz
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Headless simulation fuzz
+        run: npm run test:fuzz
+      - name: Headless debug bot playtest (M9・PACING_PUZZLE.md §5.10)
+        run: npm run playtest
