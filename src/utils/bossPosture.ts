@@ -1,6 +1,6 @@
 import type { Enemy, EnemyType } from '../types/game';
 import { isEngageableBoss } from './bossEngagement';
-import { isBountyType, isGuardianPhantom } from './enemyUtils';
+import { hasStrongIndividualMark, isBountyType, isGuardianPhantom } from './enemyUtils';
 import { REAPER2_CONFIG } from '../config/reaper'; // PACING_PUZZLE.md §14-4-5(?rp2post=)
 
 // 社長指示v0.25.3295「パンプキンなどの強敵にも紫システムだけ追加」: 交戦ボスに加え、この強敵2体
@@ -19,8 +19,15 @@ import { REAPER2_CONFIG } from '../config/reaper'; // PACING_PUZZLE.md §14-4-5(
 // 相乗り=専用の値を発明しない)。
 export const POSTURE_ELITE_TYPES = new Set<EnemyType>(['pumpkin', 'lab-zombie-3', 'reaper', 'driller', 'logger']);
 
-/** 体勢システムの判定に必要な最小形(タイプ+色ティア)。★v0.25.3547で色が入ったため型で受けない。 */
-export type PostureSubject = Pick<Enemy, 'type' | 'colorTier'>;
+/**
+ * ★この個体は強個体の区分か(型が強個体 || 個体の印=赤い個体・宿敵)。ボス級の型は false(=強個体より上・別の判定)。
+ * 個体の印の定義は enemyUtils の `hasStrongIndividualMark` 1本。
+ */
+export const isStrongIndividual = (e: { type: EnemyType; colorTier?: Enemy['colorTier']; isNamed?: boolean }): boolean =>
+  POSTURE_ELITE_TYPES.has(e.type) || hasStrongIndividualMark(e);
+
+/** 体勢システムの判定に必要な最小形(タイプ+色ティア+宿敵)。★v0.25.3547で色が入ったため型で受けない。 */
+export type PostureSubject = Pick<Enemy, 'type' | 'colorTier' | 'isNamed'>;
 
 /**
  * 体勢値(→紫の完全気絶)を持つか。
@@ -47,7 +54,8 @@ export const usesPostureSystem = (e: PostureSubject): boolean =>
   // 裁定「殴り続けても止まらない」を裏口から壊す)。ここ1箇所で外すと、紫ゲージUI・ブレイク・
   // 紫の報酬予算・5倍処刑は全て postureBoss ガード経由で自動的に出なくなる。
   !isGuardianPhantom(e.type)
-  && (isEngageableBoss(e.type) || POSTURE_ELITE_TYPES.has(e.type) || e.colorTier === 'red'
+  // ★強個体の区分(型・赤い個体・宿敵=社長指示2026-11-14「宿敵化した敵は強個体化」)は isStrongIndividual 1本。
+  && (isEngageableBoss(e.type) || isStrongIndividual(e)
     // research/MUTANT_HERO.md §10a: 英雄はボス戦の判定(ENGAGEABLE)の外だが、ボス級の体勢値(紫・処刑)は付ける=名指しで足す。
     || e.type === 'mutant-hero'
     // research/LIBERTY_HORDE.md §7: 解放軍群の旗手も同じ(ボス級・ENGAGEABLE の外)。
@@ -99,7 +107,8 @@ export const bossPostureMax = (e: PostureSubject): number => {
   const type = e.type;
   // ★v0.25.3547: 赤い個体も強個体なので**同じ60**。格ごとに1つの数字にしておく(赤専用のティアを
   // 作らない)。ただし型の強個体区分より先に見る=赤いパンプキンでも60で変わらない。
-  if (e.colorTier === 'red') return 60; // 叩き台(強個体の既存値と同値)
+  // 宿敵(isNamed)も同じ印で60(社長指示2026-11-14「宿敵化した敵は強個体化」・印の定義は hasStrongIndividualMark)。
+  if (hasStrongIndividualMark(e)) return 60; // 叩き台(強個体の既存値と同値)
   // PACING_PUZZLE.md §14-4-5(?rp2post=): 死神本体の体勢値は専用ツマミで調整(POSTURE_ELITE_TYPESの
   // 60分岐より先に見る=強敵区分と同値に埋没させない)。
   if (type === 'reaper') return REAPER2_CONFIG.bodyPosture;

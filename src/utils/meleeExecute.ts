@@ -12,7 +12,7 @@
 // それだと pumpkin / lab-zombie-3 に強個体規定が永久に届かなかった。
 // レンダラ非依存の純関数=ヘッドレスでユニットテスト可能(実装精度の規律4)。
 import type { EnemyColorTier, EnemyType } from '../types/game';
-import { isBossType, isPumpkinTier } from './enemyUtils';
+import { hasStrongIndividualMark, isBossType, isPumpkinTier } from './enemyUtils';
 
 export const ELITE_MELEE_STUN_MULT = 3;
 
@@ -61,7 +61,7 @@ export interface StunnedMeleeEnemy {
  * 強個体にすることで「削り切る以外で死なない」=山の頂点として立つ。
  */
 export const isEliteEnemy = (enemy: Pick<StunnedMeleeEnemy, 'type' | 'isNamed' | 'questTarget' | 'colorTier'>): boolean =>
-  isEliteType(enemy.type) || !!enemy.isNamed || !!enemy.questTarget || enemy.colorTier === 'red';
+  isEliteType(enemy.type) || hasStrongIndividualMark(enemy) || !!enemy.questTarget;
 
 export type StunnedMeleeOutcome = 'execute' | 'heavy';
 

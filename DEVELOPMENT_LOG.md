@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.5585 — 宿敵を強個体の区分へ【2026-11-14 22:46 JST】
+- 社長指示「宿敵化した敵は強個体化」。CLAUDE.md「区分に属する敵には区分の仕様が全部付く」に従い、赤い個体が受けている強個体の扱いを宿敵(isNamed)へ揃えた(区分の仕様の新設はしない)。
+- 述語を1本化: `enemyUtils.hasStrongIndividualMark`(colorTier==='red' || isNamed)・`bossPosture.isStrongIndividual`(強個体の型 || 印。循環回避で bossPosture に置く)。
+- 付いたもの: 体勢値(usesPostureSystem→紫ゲージ・HPバー・崩し)・最大60/格闘の区分 strong(brawlerEnemyClass/brawlerLiftClass→受け・血の覚醒の押し返し・熟練度の重み)。元から isNamed で同じだった所: 致命の一撃(式の1本化のみ)・這う塊の取り込み除外・クリ補正・画面外の回収(directorTick で除外済み)。色そのものの扱い(tint・XP玉・湧きの色・クエストの色)は区分と無関係で不変。宿敵だけの扱い(報酬・劇的な死・名前・NAMED_FX)不変。
+- 区分は下げない: 宿敵になれる型は雑魚と強個体の型のみ(isPromotionExcluded)、ボス級の型は boss のまま(テスト)。
+- テスト: bossPosture・brawlerCombo に追加、関連655緑(worktree で単独)。typecheck・eslint・循環import OK。区分の整合=監査なし。
+- 自己点検: 宿敵は1ランに1体・急コマのみ=憲法4条・5条に抵触なし。実装: Opusサブエージェント。
+
 ## v0.25.5584 — ドローンブーメランの打ち返しの勢いと手応え【2026-11-14 22:43 JST】
 - 社長「打ち返してる感覚ほしい」→ 提案4案のうち「2 4入れて」。2=`DRONE_BOOM_BAT_BOOST` 1.45→2.2(ease-out で1へ・飛距離は boomMaxDist で決まり不変)。4=`DRONE_BOOM_BAT_HITSTOP_MS` 55→80・打ち返しの揺れ 3→6(gameStore fireDroneBoomerangOnSwing)。1(飛距離2倍)・3(残像の筋)は不採用。
 - 調査: 「打ち返すとLv1の飛距離になってない?」→ 投げ・打ち返しとも同じ lvl で DRONE_BOOM_DIST_BY_LEVEL を読む=Lv1化は無し(Lv間の差が100/118/135と小さいのが実態)。

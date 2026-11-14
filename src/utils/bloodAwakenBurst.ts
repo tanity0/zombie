@@ -15,7 +15,7 @@ export const BLOOD_AWAKEN_BURST_RADIUS = 140;
 export const BLOOD_AWAKEN_BURST_PUSH_MULT = 0.5;
 
 export type BloodBurstTarget = Pick<Enemy,
-  'id' | 'type' | 'reaperChaser' | 'x' | 'y' | 'width' | 'height' | 'colorTier' | 'corpseUntil' | 'bossState' | 'labBait' | 'wraithPhased'
+  'id' | 'type' | 'reaperChaser' | 'x' | 'y' | 'width' | 'height' | 'colorTier' | 'isNamed' | 'corpseUntil' | 'bossState' | 'labBait' | 'wraithPhased'
   | 'aiPhase' | 'chaffMove' | 'biteAt' | 'stunUntil' | 'bossFullStunUntil'>;
 // (aiPhase 等は今は読まない=技の最中も押す。呼び手の型の互換のため残す)
 

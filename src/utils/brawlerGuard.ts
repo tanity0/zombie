@@ -33,7 +33,7 @@ export interface BrawlerGuardSource { id?: string; type?: EnemyType }
 export type BrawlerGuardClass = 'mob' | 'strong' | 'boss' | null | undefined;
 export type BrawlerGuardOutcome = 'stomp' | 'knockback' | 'none';
 
-type ClassEnemy = Pick<Enemy, 'id' | 'type' | 'colorTier' | 'reaperChaser'>;
+type ClassEnemy = Pick<Enemy, 'id' | 'type' | 'colorTier' | 'isNamed' | 'reaperChaser'>;
 
 /** 受けた相手1件の区分。個体が居ればその個体(赤い個体=強個体・終端の死神=null)、居なければ型、どちらも無ければ不明。 */
 export const brawlerGuardSourceClass = (src: BrawlerGuardSource, enemies: readonly ClassEnemy[]): BrawlerGuardClass => {

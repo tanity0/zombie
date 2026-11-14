@@ -12,7 +12,7 @@
 import type { EnemyType } from '../types/game';
 import type { BrawlerMoveKey, BrawlerRouteNode } from './brawlerTypes';
 export type { BrawlerMoveKey } from './brawlerTypes';
-import { isBossType, isTerminalReaper } from './enemyUtils';
+import { hasStrongIndividualMark, isBossType, isTerminalReaper } from './enemyUtils';
 import { POSTURE_ELITE_TYPES } from './bossPosture';
 import { isRecoverHoldPhase } from './recoverPhase';
 import {
@@ -51,14 +51,14 @@ export const brawlerComboClass = (type: EnemyType): 'mob' | 'strong' | 'boss' =>
   POSTURE_ELITE_TYPES.has(type) ? 'strong' : isBossType(type) ? 'boss' : 'mob';
 /**
  * ★敵1体の区分(格闘・爆発・スラッシャーの浮き・固まりが使う1本・research/BRAWLER.md §14)。
- * 型の区分に加えて、赤い個体(colorTier 'red'=強個体扱いの色階層)は雑魚の型でも強個体(区分仕様への整合)。
+ * 型の区分に加えて、個体の印(赤い個体・宿敵=hasStrongIndividualMark)があれば雑魚の型でも強個体(区分仕様への整合)。
  */
-export const brawlerEnemyClass = (e: { type: EnemyType; colorTier?: string }): 'mob' | 'strong' | 'boss' => {
+export const brawlerEnemyClass = (e: { type: EnemyType; colorTier?: string; isNamed?: boolean }): 'mob' | 'strong' | 'boss' => {
   const c = brawlerComboClass(e.type);
-  return c === 'mob' && e.colorTier === 'red' ? 'strong' : c;
+  return c === 'mob' && hasStrongIndividualMark(e) ? 'strong' : c;
 };
 /** ★浮きの区分。null=浮かない(終端の死神=深奥チェイサーは、格闘・爆発・スラッシャーのどれでも浮かない)。 */
-export const brawlerLiftClass = (e: { type: EnemyType; colorTier?: string; reaperChaser?: boolean }): 'mob' | 'strong' | 'boss' | null =>
+export const brawlerLiftClass = (e: { type: EnemyType; colorTier?: string; isNamed?: boolean; reaperChaser?: boolean }): 'mob' | 'strong' | 'boss' | null =>
   isTerminalReaper(e) ? null : brawlerEnemyClass(e);
 
 /**

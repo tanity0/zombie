@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5585', items: [
+    '宿敵になった敵は強個体と同じく体勢ゲージを持ち、崩さないと仕留めにくい',
+  ] },
   { version: '0.25.5584', items: [
     'ドローンブーメランを打ち返した瞬間の手応えが強くなり、弾かれた直後に勢いよく飛び出す',
   ] },

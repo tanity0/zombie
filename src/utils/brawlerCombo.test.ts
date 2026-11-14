@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   brawlerComboOnHit, brawlerLockOnHit, brawlerLockHitMs, brawlerComboEndPatch, brawlerLinkOnHit, brawlerLinkMax, brawlerLinkDisplay,
-  brawlerStageMoveKey, brawlerKickMoveKey,
+  brawlerStageMoveKey, brawlerKickMoveKey, brawlerEnemyClass,
   BRAWLER_SECRET_HOLD_MS, BRAWLER_COMBO_GAP_MS, type BrawlerLockFields,
   type BrawlerComboFields, type BrawlerMoveKey, isBrawlerTechBusy, BRAWLER_HOLDABLE_PHASES,
   brawlerJugglePush, brawlerAirborne, brawlerJuggleHeightRel, brawlerJuggleLanded, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_WEIGHT_STUN_BOSS, BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_COST, BRAWLER_JUGGLE_DROP_MS, BRAWLER_DOWN_NO_HOLD_MS, type BrawlerJuggleFields,
@@ -380,5 +380,15 @@ describe('つながっているコンボの数(「N HIT」の表示)', () => {
     expect(brawlerLinkDisplay({ flowHits: 4, flowBrokenAt: 500 }, 0, 900)).toBeNull();
     expect(brawlerLinkDisplay({ flowHits: 4, flowBrokenAt: 500 }, 4, 900)).toEqual({ flowHits: 4, flowBrokenAt: 0 }); // 切れた後の同じ数は出し直す
     expect(brawlerLinkDisplay({}, 0, 500)).toBeNull();
+  });
+});
+
+describe('★格闘の区分: 宿敵=強個体(社長指示2026-11-14「宿敵化した敵は強個体化」)', () => {
+  it('雑魚の宿敵は strong・ただの雑魚は mob・強個体の型の宿敵は strong のまま・ボス級は boss のまま', () => {
+    expect(brawlerEnemyClass({ type: 'zombie', isNamed: true })).toBe('strong');
+    expect(brawlerEnemyClass({ type: 'zombie' })).toBe('mob');
+    expect(brawlerEnemyClass({ type: 'bat', colorTier: 'red' })).toBe('strong');
+    expect(brawlerEnemyClass({ type: 'pumpkin', isNamed: true })).toBe('strong');
+    expect(brawlerEnemyClass({ type: 'mimir', isNamed: true })).toBe('boss');
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Enemy, EnemyType } from '../types/game';
 import {
   applyBossPostureDamage, applyBrokenGunReward, applyBrokenMeleeFatal,
-  bossPostureMax, tickBossPosture, usesPostureSystem, POSTURE_ELITE_TYPES, BOSS_POSTURE_BREAK_MS, BOSS_POSTURE_REBREAK_LOCK_MS,
+  bossPostureMax, tickBossPosture, usesPostureSystem, isStrongIndividual, POSTURE_ELITE_TYPES, BOSS_POSTURE_BREAK_MS, BOSS_POSTURE_REBREAK_LOCK_MS,
   BOSS_FATAL_DAZE_MS, parsePostureChipMult, DEFAULT_POSTURE_CHIP_MULT, keepBurstDelayedHits,
   POSTURE_CHIP_CD_MS,
 } from './bossPosture';
@@ -159,6 +159,25 @@ describe('★赤い個体=強個体(社長裁定v0.25.3547「強個体です」)
     // 城ボス等は色が付かない(CONSTANT_STRENGTH_TYPES)が、万一付いても格が下がってはいけない。
     expect(bossPostureMax({ type: 'giantbat' })).toBe(80);
     expect(bossPostureMax({ type: 'mimir' })).toBe(120);
+  });
+});
+
+describe('★宿敵=強個体(社長指示2026-11-14「宿敵化した敵は強個体化」)', () => {
+  it('isStrongIndividual: 雑魚の宿敵・赤い個体・強個体の型(宿敵でも)は強個体、ただの雑魚は雑魚', () => {
+    expect(isStrongIndividual({ type: 'zombie', isNamed: true })).toBe(true);
+    expect(isStrongIndividual({ type: 'bat', colorTier: 'red' })).toBe(true);
+    expect(isStrongIndividual({ type: 'zombie' })).toBe(false);
+    expect(isStrongIndividual({ type: 'skeleton', colorTier: 'purple' })).toBe(false);
+    expect(isStrongIndividual({ type: 'driller', isNamed: true })).toBe(true);
+    expect(isStrongIndividual({ type: 'pumpkin' })).toBe(true);
+  });
+
+  it('雑魚の宿敵は体勢値を持ち、最大値は強個体と同じ60', () => {
+    expect(usesPostureSystem({ type: 'zombie' })).toBe(false);
+    expect(usesPostureSystem({ type: 'zombie', isNamed: true })).toBe(true);
+    expect(bossPostureMax({ type: 'zombie', isNamed: true })).toBe(60);
+    // 強個体の型の宿敵は区分が変わらない(60のまま)。
+    expect(bossPostureMax({ type: 'logger', isNamed: true })).toBe(60);
   });
 });
 

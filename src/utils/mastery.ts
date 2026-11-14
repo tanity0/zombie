@@ -311,7 +311,7 @@ export const normalizeMasteryRecord = (rawMult: unknown, rawLoadout: unknown, re
  * 敵の区分(雑魚/強個体/ボス級)ごとの貯まり方の重み(v2 §4-1 の貯める量に掛ける)。
  * 区分は既にある brawlerEnemyClass(赤い個体=強個体を含む)。表は data/mastery.ts の MASTERY_XP_WEIGHT。
  */
-export const masteryXpWeight = (enemy: { type: EnemyType; colorTier?: string } | null | undefined): number => {
+export const masteryXpWeight = (enemy: { type: EnemyType; colorTier?: string; isNamed?: boolean } | null | undefined): number => {
   if (!enemy) return 1;
   const w = MASTERY_XP_WEIGHT[brawlerEnemyClass(enemy)];
   return typeof w === 'number' && Number.isFinite(w) ? Math.max(0, w) : 1;
@@ -326,7 +326,7 @@ export const masteryXpAmount = (
   player: Pick<Player, 'masteryMult' | 'masteryLoadoutMult'> | null | undefined,
   key: MasteryKey | null | undefined,
   appliedDamage: number,
-  enemy: { type: EnemyType; colorTier?: string } | null | undefined,
+  enemy: { type: EnemyType; colorTier?: string; isNamed?: boolean } | null | undefined,
   opts?: { noDivide?: boolean },
 ): number => {
   if (!isGrowingMasteryKey(key)) return 0;

@@ -320,6 +320,15 @@ export const isGate2AngelBoss = (t: EnemyType): boolean => t === 'miguel' || t =
 export const isPumpkinTier = (t: EnemyType): boolean => t === 'pumpkin' || t === 'driller' || t === 'logger';
 
 /**
+ * ★個体の印で強個体の区分へ上がるか(唯一の出どころ・CLAUDE.md「敵の仕様は種類(区分)で固める」)。
+ * 型ではなく**個体**の印: ①赤い個体(colorTier 'red'・v0.25.3547「強個体です」) ②宿敵(isNamed・社長指示2026-11-14
+ * 「宿敵化した敵は強個体化」)。雑魚の型でもこの印があれば強個体の扱い(体勢値・格闘の区分・致命の一撃 等)が全部付く。
+ * 型で既に強個体以上の敵には何も足さない(区分を下げない)。型の区分と合わせた判定は bossPosture の `isStrongIndividual`。
+ */
+export const hasStrongIndividualMark = (e: { colorTier?: EnemyColorTier | string; isNamed?: boolean }): boolean =>
+  e.colorTier === 'red' || !!e.isNamed;
+
+/**
  * ★噛みつき(PACING_PUZZLE §12)の対象外にする「**本物のボス**」。
  *
  * ★なぜ `isBossType` を流用しないか(社長報告2026-08-25「通常時の当たり判定が消えて、噛みつき仕様に
