@@ -369,6 +369,7 @@ import { isTrapDebuffed, trapGatedOverclockChance, trapGatedCooldownMult, TRAP_R
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { BOSS_CUTIN_MS, shouldIgnoreAttention, isCutinRepeat, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
+import { attentionZoomFor, findAttentionSubject, type AttentionSubject } from '../utils/attentionZoom'; // 小さめの相手は少し寄る(社長指示2026-11-14)
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision, setCityPropsDisabled, cityPropsInRegion, cityPropRect, cityPropDef } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, touchesHospital, isApproachingHospital, hospitalRect } from '../world/hospital';
@@ -6578,7 +6579,7 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   if (getsDeathAttention(enemy.type)) {
     // v0.25.3026: ホールドを崩壊時間ぶん延長して渡す=hitstopもtriggerAttention側で同尺になる
     // (旧v2955の「別途hitstopだけ延長」は廃止。カメラと時間停止の尺が1本化される)。
-    get().triggerAttention(x, y, undefined, BOSS_CORPSE_CRUMBLE_MS);
+    get().triggerAttention(x, y, undefined, BOSS_CORPSE_CRUMBLE_MS, enemy); // enemy=小さめなら寄る(utils/attentionZoom)
   }
   // v0.25.3029(社長裁定「二体」): 形態1の討伐では、討伐アテンション(パン→ホールド→崩壊→戻り)が
   // 終わった時刻に**形態2を同位置へ湧かせる予約**を張る(消費はuseGameLoop)。
@@ -9275,6 +9276,9 @@ interface GameState {
     /** このアテンションのホールド尺。未指定=ATTENTION_HOLD_MS。cutin付き(ボス紹介)は半分
      * (社長指示v0.25.2998「紹介の前の止まり、半分にして」)。 */
     holdMs?: number;
+    /** 小さめの相手の時だけの寄り倍率(utils/attentionZoom・社長指示2026-11-14)。未指定=寄らない(パンのみ)。
+     * pixiScene がパンと同じ包絡線(in で 1→倍率、out で 倍率→1)で掛ける。 */
+    zoomIn?: number;
   } | null;
   // 練習ラン: 対象ボス撃破の実時刻(Date.now)。死亡アテンションを見せ終えてから useGameLoop が
   // gameWon を立てる(v0.25.2953)。null=保留なし。
@@ -10008,7 +10012,7 @@ interface GameState {
   updateGameStats: (stats: Partial<GameStats>) => void;
   resetGame: (characterClass: string) => void;
   setCameraPosition: (x: number, y: number) => void;
-  triggerAttention: (x: number, y: number, cutin?: AttentionCutin, extraHoldMs?: number) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)。cutin指定=§6.36ボス出現カットイン付き。extraHoldMs=ホールド延長(討伐の崩壊見届け用)
+  triggerAttention: (x: number, y: number, cutin?: AttentionCutin, extraHoldMs?: number, subject?: AttentionSubject | null) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)。cutin指定=§6.36ボス出現カットイン付き。extraHoldMs=ホールド延長(討伐の崩壊見届け用)
   clearAttention: () => void;
   /**
    * ステージ4のジュンの変身(research/JUN_ESCORT.md §1): 出ている素のアテンション(ジュンへの寄り)を、その場でボスの紹介(カットイン)
@@ -27559,7 +27563,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // §6.36: cutin付きは hold の後に cutinMs(1100)だけカメラ静止のまま延長し、DOM(BossCutin.tsx)が
   // 名前+絵を出す。first-wins: attention生存中に新旧どちらかがcutin持ちなら後着を無視(純関数で判定)。
   // 素のattention同士は従来どおり上書き=挙動不変。
-  triggerAttention: (x, y, cutinIn, extraHoldMs = 0) => {
+  triggerAttention: (x, y, cutinIn, extraHoldMs = 0, subjectIn) => {
     const prev = get().attention;
     // 紹介は1ゲーム中1回まで(社長裁定2026-09-14・v0.25.4302): 同じ名前の2回目以降はカットインを外し、
     // 素のattention(カメラが寄って戻るだけ)にする。first-wins の判定もカットインを外した後の値で行う。
@@ -27577,8 +27581,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     // cutin付き(=ボス紹介)だけホールドを半分(1900→950ms)。素のattention(救援/討伐シネマ)は従来尺。
     // extraHoldMs(v0.25.3026): 討伐シネマが崩壊を見届けるための延長ぶん(下のdramaticDeath参照)。
     const holdMs = (cutin ? Math.round(ATTENTION_HOLD_MS / 2) : ATTENTION_HOLD_MS) + extraHoldMs;
+    // 小さめの相手は少し寄る(utils/attentionZoom・社長指示2026-11-14)。対象=呼び手が渡した敵(討伐の見届け・孫悟空の紹介)、
+    // 無ければ出現の紹介(カットイン付きで呼ばれた=2回目でカットインが外れても同じ)の注目点にいるボス級。それ以外は寄らない。
+    const subject = subjectIn ?? (cutinIn ? findAttentionSubject(get().enemies, x, y) : null);
+    const zoomIn = attentionZoomFor(subject);
     set({
-      attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y, holdMs, ...(cutin ? { cutin, cutinMs } : {}) },
+      attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y, holdMs, ...(cutin ? { cutin, cutinMs } : {}), ...(zoomIn ? { zoomIn } : {}) },
       hitstopUntil: Date.now() + ATTENTION_IN_MS + holdMs + ATTENTION_OUT_MS + cutinMs,
     });
   },

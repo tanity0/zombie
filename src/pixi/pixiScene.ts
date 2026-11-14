@@ -281,6 +281,7 @@ import {
 } from '../utils/swordSwingMotion';
 import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
+import { attentionZoomEnvelope } from '../utils/attentionZoom';
 import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom, runZoomTarget, RUN_ZOOM_MIN, RUN_ZOOM_OUT_S, RUN_ZOOM_IN_S, RUN_ZOOM_HOLD_S,
   BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, ZOOM_MIN_ABS,
@@ -9562,7 +9563,17 @@ export class PixiScene {
         this.junFocus = 1;
       }
     }
-    const zoom = this.idleZoom * this.contextZoom * this.runZoom * this.junPull * this.junFocus * punch;
+    // 小さめの相手のアテンション(出現の紹介・討伐の見届け)だけ少し寄る(社長指示2026-11-14・utils/attentionZoom)。
+    // 包絡線はカメラのパン(useGameLoop)と同じ smoothstep(in で 1→倍率、hold/cutin で保持、out で 倍率→1)=慣性つき。
+    // 倍率>1 は可視域が狭まる方なので、カリング・背景の外は見えない。zoomIn 無し(=大型・対象なし・アテンション外)は係数1=今と同じ。
+    let attZoom = 1;
+    const attZoomIn = s.attention?.zoomIn ?? 1;
+    if (s.attention && attZoomIn > 1) {
+      const a = s.attention;
+      const outStart = ATTENTION_IN_MS + (a.holdMs ?? ATTENTION_HOLD_MS) + (a.cutinMs ?? 0);
+      attZoom = 1 + (attZoomIn - 1) * attentionZoomEnvelope(realNow - a.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS);
+    }
+    const zoom = this.idleZoom * this.contextZoom * this.runZoom * this.junPull * this.junFocus * punch * attZoom;
     this.zwarpZoomNow = this.idleZoom * this.contextZoom; // KILL/カウンターの寄りパンチ(punch・瞬間ジャンプ)は歪みの入力から除く(監査B#7)
     // 寄り先(社長指示・v0.25.1498): KILLはキルされた対象(zoomTargetX/Y・世界座標)を画面中央の
     // 代わりに寄りの軸にする(zoomDecay>0=パンチ演出中のみ・カウンター等は指定なしで従来どおり中央)。

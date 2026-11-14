@@ -9564,7 +9564,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (kStep === 'intro') {
                   kenkiCutinIdRef.current = kenkiE.id;
                   useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => (e.id === kenkiE.id ? { ...e, phantomUnmet: false } : e)) })); // 出会った=ここからボス戦のカメラ
-                  useGameStore.getState().triggerAttention(kx, ky);
+                  useGameStore.getState().triggerAttention(kx, ky, undefined, 0, kenkiE); // 孫悟空の紹介(カットイン無し)も小さめなので少し寄る(utils/attentionZoom)
                   useGameStore.setState({ eventBannerText: phantomDisplayLabel(), eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
                   markKenkiSeen();
                 } else if (kStep === 'retreat') {

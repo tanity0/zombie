@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5579', items: [
+    '幻影や孫悟空の登場と最期の場面で、カメラが少し寄る',
+  ] },
   { version: '0.25.5578', items: [
     '近接・銃・格闘の当たりで、画面全体ではなく当たった敵だけが止まる。ほかの敵の動きや赤い予告は止まらない',
     '銃で撃った敵の止まる時間が少し長くなった',
