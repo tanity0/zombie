@@ -3,6 +3,9 @@
 // 社長の言葉: 「あと格闘はカウンター取ったら自分がノックバックする様にして。…雑魚以上の攻撃をカウンターした場合は通常のカウンター効果と、
 // 同時に自分が大きくノックバック。…現状だとボスをカウンターハメできちゃう。」
 // 拳鬼が受ける相手はプレイヤー(雑魚ではない)=いつもノックバック。弾の打ち返しでは下がらない(§16-9・実装で決めた所)。
+// ★下がりながら反撃の気功を1発撃つ(社長指示2026-11-14「孫悟空の近接カウンター、受けを大技扱いではなく、カウンターで技発動する方にして」)=
+//   プレイヤーの構えの規則(brawlerGuard.brawlerGuardCounterDue・代金なし・威力×BRAWLER_GUARD_COUNTER_KIKO_MULT・構え1回に1度)と同じ。
+import { brawlerGuardCounterDue } from './brawlerGuard';
 
 /** 下がる距離(px・叩き台=格闘の「大」の押しと同じくらい)。 */
 export const KENKI_GUARD_KB_PX = 150;
@@ -31,3 +34,15 @@ export const kenkiAccDecAlong = (p: number): number => {
 
 /** 下がっている最中か(下がり切るまで次の行動を始めない=下がる動きを途中で止めない・検収監査2026-11-10)。until=下がり終わる時刻(gameTime)。 */
 export const kenkiGuardKbActive = (until: number, t: number): boolean => t < until;
+
+/**
+ * 構えでプレイヤーの近接を受けた時、反撃の気功を撃つか(プレイヤーの構えと同じ規則 brawlerGuardCounterDue を共有)。
+ *  - 受けた相手はプレイヤー=雑魚より上=成立の効果は 'knockback'。弾の打ち返しは呼び手が渡さない(meleeCounterAt は近接だけ)=projectile は false。
+ *  - 受けた時刻(receivedAt)が今の構え(guardSince〜guardUntil)の内であること。構え1回(guardSince ごと)に1発(firedFor=撃った構えの guardSince)。
+ *  - shukuchi=その受けで縮地が出た(遠い所からの近接)→ 撃たない(下がらない受け=押しが無い。プレイヤーの規則でも気功は押される受けにだけ付く)。
+ */
+export const kenkiGuardCounterKikoDue = (o: {
+  guardSince: number | undefined; guardUntil: number; firedFor: number | undefined; receivedAt: number; shukuchi: boolean;
+}): boolean =>
+  !o.shukuchi && o.guardSince !== undefined && o.receivedAt >= o.guardSince && o.receivedAt <= o.guardUntil
+  && brawlerGuardCounterDue({ outcome: 'knockback', guardSince: o.guardSince, firedFor: o.firedFor, projectile: false });

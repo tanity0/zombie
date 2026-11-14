@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5580', items: [
+    '孫悟空は構えで近接を受けると、下がりながら気功で反撃してくる',
+  ] },
   { version: '0.25.5579', items: [
     '幻影や孫悟空の登場と最期の場面で、カメラが少し寄る',
   ] },

@@ -1176,7 +1176,9 @@ export interface Enemy {
   gpLeverGuardDirY?: number;
   /** 格闘の幻影が撃った気功(1発まで・描画も読む)。x/y=今の位置、traveled=飛んだ距離。 */
   /** melee=台本(2・3)の締めの気功(近接の打撃と同じ扱いで当てる=プレイヤーの被弾無敵に吸われない・§16-8)。 */
-  gpKiko?: { id: string; x: number; y: number; dirX: number; dirY: number; traveled: number; createdAt: number; melee?: boolean };
+  gpKiko?: { id: string; x: number; y: number; dirX: number; dirY: number; traveled: number; createdAt: number; melee?: boolean;
+    /** 構えの反撃の気功(代金なし・威力×BRAWLER_GUARD_COUNTER_KIKO_MULT・utils/kenkiGuardKb.kenkiGuardCounterKikoDue)。 */
+    counter?: boolean };
   /**
    * research/SAME_ARENA.md O-1: 幻影**自前**のサブウェポンCD帳簿(gameTime基準)。
    * 守護霊の `Summon.ghostSubWeaponCooldowns` と同型=**3者が別財布**(社長裁定2026-08-23)。

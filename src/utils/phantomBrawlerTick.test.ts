@@ -2,7 +2,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { runPhantomTick, createPhantomTickState, NOOP_PHANTOM_SFX } from './phantomTick';
 import { phantomBrawlerBossState, phantomBrawlerHoldClock, phantomBrawlerStrikerMult } from './phantomBrawlerTick';
-import { initialBrawlerState, brawlerStartAttack, brawlerAfterResolve, brawlerElapsed, brawlerTotalMs } from './brawler';
+import { initialBrawlerState, brawlerStartAttack, brawlerAfterResolve, brawlerElapsed, brawlerTotalMs, brawlerStartTech } from './brawler';
+import { BRAWLER_GUARD_COUNTER_KIKO_MULT } from './brawlerGuard';
 import { setPhantomIdentity } from './phantomIdentity';
 import { uniquePhantomSpec } from '../data/uniquePhantoms';
 import { useGameStore, PUMPKIN_CROUCH_MS, ENEMY_ATTACK_SPEED_MULT, groundJumpAirMsRaw } from '../store/gameStore';
@@ -602,5 +603,112 @@ describe('拳鬼が格闘で戦う(結合)', () => {
     h.step(16);
     expect(h.cur().gpShukuchi).toBeUndefined();
     expect(Math.abs(h.cur().x - x0)).toBeLessThan(10);
+  });
+
+  // ★構えの反撃の気功(社長指示2026-11-14「孫悟空の近接カウンター、受けを大技扱いではなく、カウンターで技発動する方にして」)=
+  //   プレイヤーの構えと同じ規則(代金なし・威力×BRAWLER_GUARD_COUNTER_KIKO_MULT・構え1回に1度・弾の受けでは出ない)。
+  describe('構えでプレイヤーの近接を受けたら、下がりながら反撃の気功を1発', () => {
+    const guarding = (points: number) => brawlerStartTech({ ...initialBrawlerState(), points }, 'guard', START_GT);
+    const watch = (h: ReturnType<typeof setup>, ticks: number) => {
+      const ids = new Set<string>(); const counterIds = new Set<string>(); let prepSeen = false, kikoTech = false; const xs: number[] = [];
+      for (let i = 0; i < ticks; i++) {
+        h.step(16);
+        const e = h.cur();
+        if (e.gpBrawlerPrep) prepSeen = true;
+        if (e.phantomBrawler?.tech === 'kiko') kikoTech = true;
+        if (e.gpKiko) { ids.add(e.gpKiko.id); if (e.gpKiko.counter) counterIds.add(e.gpKiko.id); }
+        xs.push(e.x);
+      }
+      return { ids, counterIds, prepSeen, kikoTech, xs };
+    };
+
+    it('近接を構えで受ける→腕上げの予備動作の後に気功が1発(代金なし・反撃の印つき)・下がる動きは止まらない', () => {
+      const h = setup(40, { phantomBrawler: guarding(3), gpGuardUntil: START_GT + 1000 }); // ポイント3(気功の値段は2)
+      const x0 = h.cur().x;
+      patchKenki(h.id, { gpParriedAt: START_GT });
+      let pointsAtKiko: number | undefined;
+      let guardOpenAtKiko = false;
+      const ids = new Set<string>();
+      const xs: number[] = [];
+      let prepSeen = false;
+      for (let i = 0; i < 24; i++) {
+        h.step(16);
+        const e = h.cur();
+        if (e.gpBrawlerPrep) prepSeen = true;
+        const b = e.phantomBrawler;
+        if (b?.phase === 'tech' && b.tech === 'kiko' && pointsAtKiko === undefined) {
+          pointsAtKiko = b.points;
+          guardOpenAtKiko = (e.gpGuardUntil ?? 0) > useGameStore.getState().gameTime; // 構えは時間いっぱい続く
+        }
+        if (e.gpKiko) { ids.add(e.gpKiko.id); expect(e.gpKiko.counter).toBe(true); }
+        xs.push(e.x);
+      }
+      expect(prepSeen).toBe(true);           // 通常の気功と同じ腕上げ(予備動作)を通る
+      expect(pointsAtKiko).toBe(3);          // 払わない
+      expect(guardOpenAtKiko).toBe(true);
+      // 気功が出た(近いので出た tick に爆発して消えることがある=状態で確かめる)
+      expect(h.cur().phantomBrawler?.guardKikoFor).toBe(START_GT);
+      expect(x0 - Math.min(...xs)).toBeGreaterThan(110); // 下がり切る(予備動作・気功で下がりが止まらない)
+      for (let i = 1; i < 17; i++) expect(xs[i]).toBeLessThanOrEqual(xs[i - 1] + 0.01); // 途中で前へ出ない
+    });
+
+    it('同じ構えで2回受けても気功は1発だけ(予備動作の途中で受けても、撃つと決めた1発は出る)', () => {
+      const h = setup(40, { phantomBrawler: guarding(0), gpGuardUntil: START_GT + 1000 }); // ポイント0=頭脳は気功を選べない
+      patchKenki(h.id, { gpParriedAt: START_GT });
+      const kikoStarts = new Set<number>();
+      for (let i = 0; i < 60; i++) {
+        if (i === 2) patchKenki(h.id, { gpParriedAt: useGameStore.getState().gameTime }); // 腕上げの最中にもう一度受ける
+        if (i === 20) patchKenki(h.id, { gpParriedAt: useGameStore.getState().gameTime }); // 気功の後にもう一度受ける
+        h.step(16);
+        const b = h.cur().phantomBrawler;
+        if (b?.phase === 'tech' && b.tech === 'kiko') kikoStarts.add(b.startAt);
+      }
+      expect(kikoStarts.size).toBe(1);
+    });
+
+    it('縮地が出た受け(遠い所からの近接)では気功は出ない', () => {
+      const h = setup(240, { phantomBrawler: guarding(0), gpGuardUntil: START_GT + 1000 });
+      patchKenki(h.id, { gpParriedAt: START_GT });
+      h.step(16);
+      expect(h.cur().gpShukuchi).toBeDefined();
+      const a = watch(h, 30);
+      expect(a.prepSeen).toBe(false);
+      expect(a.kikoTech).toBe(false);
+      expect(h.cur().phantomBrawler?.guardKikoFor).toBeUndefined();
+    });
+
+    it('弾の受け(構えで弾を打ち返した)では気功は出ない', () => {
+      const h = setup(40, { phantomBrawler: guarding(0), gpGuardUntil: START_GT + 1000 }); // 近い=縮地も出ない
+      patchKenki(h.id, { gpBulletParriedAt: START_GT });
+      const a = watch(h, 30);
+      expect(a.prepSeen).toBe(false);
+      expect(a.kikoTech).toBe(false); // ポイント0=頭脳は気功を選べない=出たら反撃の気功
+      expect(a.ids.size).toBe(0);
+      expect(h.cur().phantomBrawler?.guardKikoFor).toBeUndefined();
+    });
+
+    it('構えていない時の受け(打刻だけ)では気功は出ない', () => {
+      const h = setup(40, { phantomBrawler: { ...initialBrawlerState(), points: 0 } });
+      patchKenki(h.id, { gpParriedAt: START_GT });
+      const a = watch(h, 30);
+      expect(a.kikoTech).toBe(false);
+      expect(a.ids.size).toBe(0);
+    });
+
+    it('反撃の気功の威力は通常の気功の1.5倍(同じ当たりの経路)', () => {
+      const dmgOf = (counter: boolean): number => {
+        const h = setup(300, { phantomBrawler: { ...initialBrawlerState(), points: 0 } });
+        const pl = useGameStore.getState().player;
+        // プレイヤーの縁のすぐ手前に気功を置き、次の tick で触れさせる。
+        patchKenki(h.id, { gpKiko: { id: `k-${counter}`, x: pl.x - 4, y: pl.y + pl.height / 2, dirX: 1, dirY: 0, traveled: 0, createdAt: Date.now(), ...(counter ? { counter: true } : {}) } });
+        const hp0 = useGameStore.getState().player.health;
+        h.step(16);
+        return hp0 - useGameStore.getState().player.health;
+      };
+      const d0 = dmgOf(false);
+      const d1 = dmgOf(true);
+      expect(d0).toBeGreaterThan(0);
+      expect(d1 / d0).toBeCloseTo(BRAWLER_GUARD_COUNTER_KIKO_MULT, 1);
+    });
   });
 });

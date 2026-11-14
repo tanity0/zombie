@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5580 — 孫悟空の構えでプレイヤーの近接を受けたら反撃の気功(プレイヤーの構えと同じ規則)【2026-11-14 14:10 JST】
+- 社長指示「孫悟空の近接カウンター、受けを大技扱いではなく、カウンターで技発動する方にして」(確認: 孫悟空の構えがプレイヤーの近接を受けた場面)。
+- `kenkiGuardKb.kenkiGuardCounterKikoDue`(本体は brawlerGuard.brawlerGuardCounterDue を共有)。受けたら今の下がり(150px・280ms)はそのまま、既存の気功の経路(腕上げ80ms→前隙→gpKiko)で代金なし・技ポイント不動・威力×1.5(BRAWLER_GUARD_COUNTER_KIKO_MULT)を1回の構えにつき1発。下がりながら撃つ(慣性)。弾の受け・縮地の受けでは出ない。
+- 実装で決めた所: 縮地の受けは押されない受け=プレイヤーの規則でも気功なし/撃つのは受けた約200ms後(下がりの最中)/技として撃つので後隙330ms(確定反撃の隙)が付く=プレイヤーの反撃の気功との差/前の気功が飛んでいる最中は弾が出ない(gpKikoは1体1発・既存どおり)。
+- 予告: 孫悟空の気功は赤い予告なし(社長裁定2026-11-10「幻影と同じ配線なので、赤い予告がないならないで、そのままでいい」)。反撃の気功も同じ経路=予告なしのまま。
+- テスト: kenkiGuardKb.test.ts 4件・phantomBrawlerTick.test.ts 結合6件。関連177緑・typecheck・eslint・循環import OK。見た目は既存の腕上げ・気功のみ(新しい絵なし)。
+- 監査: 既存の技の発火条件を足すだけのため付けない。research/BRAWLER_PHANTOM.md §16-9 は次の文書更新で追記。
+- 自己点検: 憲法4条・5条に抵触なし。実装: Opusサブエージェント。
+
 ## v0.25.5579 — 小さめのボス(幻影・孫悟空)のアテンションでカメラが1.25倍寄る【2026-11-14 13:58 JST】
 - 社長指示「守護霊や幻影など、小さめの敵は、イベント時、カメラ少し寄って」。裁定=出現の紹介と討伐の見届けの両方。
 - 新規 `src/utils/attentionZoom.ts`(`ATTENTION_SMALL_ZOOM_IN`=1.25・`ATTENTION_SMALL_TYPES`=['guardian-phantom']・大型 isLargeForZoom は常に除外・パンと同じ smoothstep の包絡線)。`attention.zoomIn`、`triggerAttention` に任意の `subject`(無ければカットイン付きの紹介で注目点160px以内のボス級を拾う)。討伐の見届けは倒した敵を渡す。孫悟空の紹介(素のアテンション)に kenkiE を渡す。pixiScene のズーム式に `* attZoom`。

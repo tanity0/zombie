@@ -20,7 +20,8 @@ import {
   pbScriptFinisherKiko, type PhantomBrawlerMind, type PbUndo,
 } from './phantomBrawlerAi';
 import { kenkiPrepDue, kenkiPrepStart, type KenkiPrep } from './kenkiPrep';
-import { kenkiAccDecAlong, kenkiGuardKbActive, kenkiGuardKbVector, kenkiNewGuardReceive, KENKI_GUARD_KB_MS } from './kenkiGuardKb';
+import { kenkiAccDecAlong, kenkiGuardKbActive, kenkiGuardKbVector, kenkiNewGuardReceive, kenkiGuardCounterKikoDue, KENKI_GUARD_KB_MS } from './kenkiGuardKb';
+import { BRAWLER_GUARD_COUNTER_KIKO_MULT } from './brawlerGuard';
 import {
   kenkiBulletRetreatRoll, kenkiBulletRetreatDue, kenkiRetreatReady, kenkiRetreatStop, kenkiRetreating, kenkiRetreatDirNow, kenkiRetreatCanCover, kenkiBulletRepick,
 } from './kenkiRetreat';
@@ -87,6 +88,10 @@ export interface PhantomBrawlerRuntime {
   prepFinisherKiko: boolean;
   /** 締めの気功として出した気功の、行動の始まりの時刻(BrawlerState.startAt)。判定を解く時に弾へ近接扱いの印を持たせる。 */
   finisherKikoStartAt: number;
+  /** 予備動作を始めた気功が、構えの反撃の気功か(代金なし・払えるかを見ない・下がる動きを止めない)。 */
+  prepCounterKiko: boolean;
+  /** 反撃の気功として出した気功の、行動の始まりの時刻(BrawlerState.startAt)。判定を解く時に弾へ反撃の印(威力×1.5)を持たせる。 */
+  counterKikoStartAt: number;
   /** 跳びかかりの溜めを始めた時刻(gameTime)。クールダウンは実際に跳んだ時に、この時刻から数えて使う。 */
   leapCrouchAt: number | null;
 }
@@ -94,11 +99,12 @@ export const createPhantomBrawlerRuntime = (): PhantomBrawlerRuntime => ({
   mind: createPhantomBrawlerMind(), move: null, bulletPlans: new Map(), reachSince: null, lastHitSeen: 0,
   lastCounterSeen: 0, shukuchiReadyAt: 0, leapReadyAt: 0, hitTimes: [], prep: null, lastMeleeHurtSeen: 0, lastGuardKbSeen: 0,
   guardKbUntil: 0, lastLeverGuardSeen: 0, prepUndo: null, prepFinisherKiko: false, finisherKikoStartAt: -1, leapCrouchAt: null,
+  prepCounterKiko: false, counterKikoStartAt: -1,
 });
 
 /** 予備動作を片付ける(終わった・取り消した の共通)。 */
 const clearPrep = (rt: PhantomBrawlerRuntime, patch: Partial<Enemy>): void => {
-  rt.prep = null; rt.prepUndo = null; rt.prepFinisherKiko = false;
+  rt.prep = null; rt.prepUndo = null; rt.prepFinisherKiko = false; rt.prepCounterKiko = false;
   patch.gpBrawlerPrep = undefined;
 };
 /**
@@ -354,20 +360,29 @@ const startAttack = (c: PhantomBrawlerCtx, s0: BrawlerState): BrawlerState => {
 const startTech = (
   c: PhantomBrawlerCtx, s0: BrawlerState, kind: BrawlerTechKind,
   /** 予備動作の後に出す時: 決めた時刻(秘奥義の間隔を予備動作の分で切らさない)・決めた時点の取り消しの扱い・蹴りの何発目。 */
-  o?: { decidedAt: number; cancel: boolean; kickN: number; finisherKiko?: boolean },
+  /** counter=構えの反撃の気功(代金なし・技ポイントを動かさない・秘奥義の順番を数えない・下がる動きを止めない)。 */
+  o?: { decidedAt: number; cancel: boolean; kickN: number; finisherKiko?: boolean; counter?: boolean },
 ): BrawlerState => {
   const { t, phantom, player } = c;
   const cancel = o ? o.cancel : s0.phase === 'tech' && !(kind === 'kick' && s0.tech === 'kick');
   const kickN = o ? o.kickN : kind === 'kick' ? BR.brawlerNextKickN(s0, t) : 0;
   const at = o ? o.decidedAt : t;
-  const cost = BR.brawlerTechCost(kind, false, discountOf(c.actor)(kind));
-  const refund = brawlerOverclockRefunds(cost, skillLevel(c.actor, 'overclock'), c.rand);
-  let s: BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel), pressAt: c.nowMs, points: s0.points - (refund ? 0 : cost) };
-  const step = BR.brawlerSecretStep(s0.secretProgress ?? 0, cancel ? at : (s0.secretLastEndAt ?? 0), kind, kickN, at);
-  s = { ...s, secretProgress: step.progress };
-  c.rt.move = null;
-  // ★秘奥義が起動するのは台本6で狙っている時だけ(§16-7「秘奥義の暴発を止める」=台本2の 蹴り→潰し→気功 で順番が満ちても起動しない)。
-  if (step.fire && c.rt.mind.secretPlan) return startSecret(c, s);
+  const counter = o?.counter === true;
+  let s: BrawlerState;
+  if (counter) {
+    // ★反撃の気功(プレイヤーの構えと同じ規則): 払わない・返金の抽選もしない・秘奥義の順番(蹴り→潰し→気功→構え)も数えない(入力ではない)。
+    //   構えで受けて下がる動き(rt.move)は止めない=下がりながら撃つ(慣性)。
+    s = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel), pressAt: c.nowMs };
+  } else {
+    const cost = BR.brawlerTechCost(kind, false, discountOf(c.actor)(kind));
+    const refund = brawlerOverclockRefunds(cost, skillLevel(c.actor, 'overclock'), c.rand);
+    s = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel), pressAt: c.nowMs, points: s0.points - (refund ? 0 : cost) };
+    const step = BR.brawlerSecretStep(s0.secretProgress ?? 0, cancel ? at : (s0.secretLastEndAt ?? 0), kind, kickN, at);
+    s = { ...s, secretProgress: step.progress };
+    c.rt.move = null;
+    // ★秘奥義が起動するのは台本6で狙っている時だけ(§16-7「秘奥義の暴発を止める」=台本2の 蹴り→潰し→気功 で順番が満ちても起動しない)。
+    if (step.fire && c.rt.mind.secretPlan) return startSecret(c, s);
+  }
   const cx = phantom.x + phantom.width / 2, cy = phantom.y + phantom.height / 2;
   const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   const dir = unit(pcx - cx, pcy - cy);
@@ -383,6 +398,7 @@ const startTech = (
   if (kind === 'guard') c.patch.gpGuardUntil = s.guardUntil;
   // 締めの気功の印は、気功を決めた時点の値を行動へ持たせる(判定を解く時に台本の状態を見ない=途中で台本が打ち切られても近接扱いのまま)。
   if (kind === 'kiko' && o?.finisherKiko) c.rt.finisherKikoStartAt = s.startAt;
+  if (kind === 'kiko' && counter) c.rt.counterKikoStartAt = s.startAt;
   kenkiSwingSfx(kind === 'kick' ? { kick: kickN } : 'tech');
   return s;
 };
@@ -408,18 +424,39 @@ const beginTech = (c: PhantomBrawlerCtx, s: BrawlerState, kind: BrawlerTechKind)
   return s;
 };
 
+/**
+ * ★構えの反撃の気功を始める(構えでプレイヤーの近接を受けた時・プレイヤーの構えと同じ規則・kenkiGuardCounterKikoDue)。
+ * 撃ち方は通常の気功と同じ(腕上げの予備動作 → startTech → 判定で gpKiko → stepKiko)。差は「払わない・威力×1.5・技ポイントを動かさない」だけ。
+ * 下がる動き(rt.move)は止めない=下がりながら腕を上げて撃つ。構えの窓(guardUntil)は技の間も残る(brawlerStartTech が引き継ぐ)=構えは時間いっぱい続く。
+ * 撃った構えの印(guardKikoFor=guardSince)はここで付ける=予備動作が取り消されても、同じ構えでもう1発は出ない(プレイヤーの予約と同じ)。
+ */
+const beginCounterKiko = (c: PhantomBrawlerCtx, s0: BrawlerState): BrawlerState => {
+  const { t, phantom, player } = c;
+  const s: BrawlerState = { ...s0, guardKikoFor: s0.guardSince };
+  const cancel = s.phase === 'tech';
+  const prep = kenkiPrepStart('kiko', 0, t, cancel, player.x + player.width / 2 >= phantom.x + phantom.width / 2 ? 1 : -1);
+  if (!prep) return startTech(c, s, 'kiko', { decidedAt: t, cancel, kickN: 0, counter: true });
+  c.rt.prep = prep;
+  c.rt.prepUndo = null; // 頭脳が決めた技ではない=巻き戻す打刻は無い
+  c.rt.prepFinisherKiko = false;
+  c.rt.prepCounterKiko = true;
+  c.patch.gpBrawlerPrep = { tex: prep.tex, dirX: prep.dirX };
+  return s;
+};
+
 /** 予備動作の一歩。終わった瞬間に技を出す(値段もその時に払う)。払えなければ出さない。 */
 const stepPrep = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
   const p = c.rt.prep;
   if (!p) return s;
-  c.rt.move = null;
+  const counter = c.rt.prepCounterKiko;
+  if (!counter) c.rt.move = null; // 反撃の気功の予備動作は、構えで受けて下がる動きを止めない(下がりながら撃つ)
   if (c.player.health <= 0 || s.secret) { phantomBrawlerCancelPrep(c.rt, c.patch); return s; }
   if (!kenkiPrepDue(p, c.t)) return s;
-  // 払えない=技は出ない(取り消しと同じ=打刻も巻き戻す)。
-  if (!BR.brawlerCanPay(s, p.kind, false, discountOf(c.actor)(p.kind))) { phantomBrawlerCancelPrep(c.rt, c.patch); return s; }
+  // 払えない=技は出ない(取り消しと同じ=打刻も巻き戻す)。反撃の気功は代金なし=払えるかを見ない。
+  if (!counter && !BR.brawlerCanPay(s, p.kind, false, discountOf(c.actor)(p.kind))) { phantomBrawlerCancelPrep(c.rt, c.patch); return s; }
   const finisherKiko = c.rt.prepFinisherKiko;
   clearPrep(c.rt, c.patch);
-  return startTech(c, s, p.kind, { decidedAt: p.at, cancel: p.cancel, kickN: p.kickN, finisherKiko });
+  return startTech(c, s, p.kind, { decidedAt: p.at, cancel: p.cancel, kickN: p.kickN, finisherKiko, counter });
 };
 
 /** ステップ(100px・加速→減速・無敵なし)。 */
@@ -502,7 +539,9 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
       c.patch.gpKiko = { id: `gpkiko-${c.nowMs}`, x: cx + dir.x * 18, y: cy - 4 + dir.y * 18, dirX: dir.x, dirY: dir.y, traveled: 0, createdAt: c.nowMs,
         // 台本(2・3)の締めの気功は当てる=近接の打撃と同じ扱い(社長裁定2026-11-10 §16-8)。単発の気功は今どおり(遠隔=被弾無敵を守る)。
         // 印は気功を決めた時点で決めてある(finisherKikoStartAt)。判定を解く今の台本の状態は見ない(検収監査2026-11-10)。
-        ...(c.rt.finisherKikoStartAt === s.startAt ? { melee: true } : {}) };
+        ...(c.rt.finisherKikoStartAt === s.startAt ? { melee: true } : {}),
+        // 構えの反撃の気功(代金なし・威力×1.5)。印は気功を始めた時点で決めてある(counterKikoStartAt)。
+        ...(c.rt.counterKikoStartAt === s.startAt ? { counter: true } : {}) };
     }
     return { ...s, resolved: true, dirX: dir.x, dirY: dir.y };
   }
@@ -550,14 +589,16 @@ const stepKiko = (c: PhantomBrawlerCtx): void => {
     return;
   }
   g.spawnExplosionFx(nx, ny, BR.BRAWLER_KIKO_RADIUS);
-  const dmg = c.baseDamage * BR.BRAWLER_KIKO_MULT * phantomBrawlerStrikerMult(c.actor.characterClass)
+  // 構えの反撃の気功は威力×BRAWLER_GUARD_COUNTER_KIKO_MULT(プレイヤーの反撃の気功と同じ・見た目・速さ・届く距離・爆発の半径は通常の気功のまま)。
+  const counterMult = k.counter === true ? BRAWLER_GUARD_COUNTER_KIKO_MULT : 1;
+  const dmg = c.baseDamage * BR.BRAWLER_KIKO_MULT * counterMult * phantomBrawlerStrikerMult(c.actor.characterClass)
     * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t)) * PVP_DAMAGE_SCALE;
   hitThirdParties({ kind: 'circle', cx: nx, cy: ny, r: BR.BRAWLER_KIKO_RADIUS }, dmg, c.phantom.id, 'guardian-phantom');
   if (inBlast) {
     if (k.melee) {
       // 台本の締めの気功(§16-8): 近接の打撃と同じ1本(landPhantomMeleeOnPlayer)で当てる=プレイヤーの被弾無敵に吸われない。
       // 量は単発の気功と同じ式(×0.2 は land の側)。押しは組み込み(単発の気功の damagePlayer と同じ)。
-      c.land(nx, ny, BR.BRAWLER_KIKO_MULT * phantomBrawlerStrikerMult(c.actor.characterClass) * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t)),
+      c.land(nx, ny, BR.BRAWLER_KIKO_MULT * counterMult * phantomBrawlerStrikerMult(c.actor.characterClass) * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t)),
         { moveKey: 'brawler-kiko', sourceLabel: `${c.label}の気功`, onCountered: () => {} });
     } else {
       // 遠隔の行(research/BRAWLER_PHANTOM.md §4-8 の3行目): 型名を渡さない=通常の被弾無敵を守る。死因は末尾の記録で残す。
@@ -882,13 +923,22 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
   }
   // 構えでプレイヤーの近接を受けた=今のカウンター効果に加えて、拳鬼が大きく下がる(プレイヤーから離れる向き・加速→減速・壁で止まる・
   // 社長指示2026-11-10 §16-9)。構えは時間いっぱい続く(受けは切れない)。弾の打ち返しでは下がらない。縮地が出た受け(遠い所からの近接)は下がらない。
+  // ★下がりながら反撃の気功を1発(社長指示2026-11-14・プレイヤーの構えと同じ規則=代金なし・威力×1.5・構え1回に1度)。
+  //   弾の打ち返しでは出ない(meleeCounterAt は近接だけ)。縮地が出た受けでは出ない(下がらない受け=kenkiGuardCounterKikoDue)。
   if (kenkiNewGuardReceive(c.meleeCounterAt, c.rt.lastGuardKbSeen)) {
-    c.rt.lastGuardKbSeen = c.meleeCounterAt!;
-    if (c.patch.gpShukuchi === undefined) {
+    const receivedAt = c.meleeCounterAt!;
+    c.rt.lastGuardKbSeen = receivedAt;
+    const shukuchi = c.patch.gpShukuchi !== undefined;
+    if (!shukuchi) {
       const v = kenkiGuardKbVector(cx, cy, player.x + player.width / 2, player.y + player.height / 2);
-      phantomBrawlerCancelPrep(c.rt, c.patch);
+      // 頭脳が決めた技の予備動作は取り消す。反撃の気功の予備動作は残す(同じ構えでもう一度受けても、撃つと決めた1発は出す)。
+      if (!c.rt.prepCounterKiko) phantomBrawlerCancelPrep(c.rt, c.patch);
       setMove(c.rt, v.dx, v.dy, KENKI_GUARD_KB_MS, t, 'accdec');
       c.rt.guardKbUntil = t + KENKI_GUARD_KB_MS;
+    }
+    if (!s.secret && player.health > 0
+      && kenkiGuardCounterKikoDue({ guardSince: s.guardSince, guardUntil: s.guardUntil, firedFor: s.guardKikoFor, receivedAt, shukuchi })) {
+      s = beginCounterKiko(c, s);
     }
   }
   // 下がり切るまで(280ms)は次の行動(段・技・予備動作・跳びかかり・ステップ)を始めない=下がる動きを途中で止めない(慣性)。
