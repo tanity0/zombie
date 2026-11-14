@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5581', items: [
+    '作戦室の地図のボスの顔が少し大きくなった',
+    '顔を押すと、そのボスが居る場所の名前が地図に出る',
+  ] },
   { version: '0.25.5580', items: [
     '孫悟空は構えで近接を受けると、下がりながら気功で反撃してくる',
   ] },

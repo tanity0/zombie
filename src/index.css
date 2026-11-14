@@ -965,6 +965,37 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   from { opacity: 0; }
   to { opacity: 1; }
 }
+/* 開いた顔: 中心から少し大きく(行き過ぎて戻る 180ms)。開いている間ほかの顔は沈める(減速して沈み、閉じたら減速して戻る)。 */
+.ds-map-face-pop {
+  transform-box: view-box;
+  transition: transform 180ms cubic-bezier(0.34, 1.7, 0.64, 1), opacity 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.ds-map-face-pop.is-open { transform: scale(1.15); }
+.ds-map-face-pop.is-dim { opacity: 0.55; }
+/* 顔をタップした時の札(どのステージか): 入り 240ms=引き線が先に伸び(0〜120ms)、字が後から追う(120〜240ms)。場所の点は一度だけ明るく
+   (200ms 0.6→1→0.8)。消える時は 140ms で薄れるだけ(滑りはわずか)。 */
+.ds-map-ftag-lead {
+  transform-box: view-box;
+  animation: ds-map-ftag-lead 120ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+@keyframes ds-map-ftag-lead { from { transform: scale(0); } to { transform: scale(1); } }
+.ds-map-ftag-body { transform-box: fill-box; }
+.ds-map-ftag.is-above .ds-map-ftag-body { animation: ds-map-ftag-body-up 120ms cubic-bezier(0.2, 0.7, 0.3, 1) 120ms both; }
+.ds-map-ftag.is-below .ds-map-ftag-body { animation: ds-map-ftag-body-down 120ms cubic-bezier(0.2, 0.7, 0.3, 1) 120ms both; }
+@keyframes ds-map-ftag-body-up { from { opacity: 0; transform: translateY(25%); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ds-map-ftag-body-down { from { opacity: 0; transform: translateY(-25%); } to { opacity: 1; transform: translateY(0); } }
+.ds-map-ftag-mark { animation: ds-map-ftag-mark 200ms cubic-bezier(0.3, 0, 0.3, 1) both; }
+@keyframes ds-map-ftag-mark { 0% { opacity: 0.6; } 45% { opacity: 1; } 100% { opacity: 0.8; } }
+.ds-map-ftag { transform-box: fill-box; }
+.ds-map-ftag.is-out { animation: ds-map-ftag-out 140ms cubic-bezier(0.4, 0, 1, 1) both; }
+.ds-map-ftag.is-above.is-out { --ftag-out-dy: 6%; }
+.ds-map-ftag.is-below.is-out { --ftag-out-dy: -6%; }
+@keyframes ds-map-ftag-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(var(--ftag-out-dy, 0)); } }
+@media (prefers-reduced-motion: reduce) {
+  .ds-map-face-pop { transition: none; }
+  .ds-map-ftag-lead, .ds-map-ftag-mark, .ds-map-ftag.is-above .ds-map-ftag-body, .ds-map-ftag.is-below .ds-map-ftag-body { animation: none; }
+  .ds-map-ftag.is-out { animation: none; opacity: 0; }
+}
 @media (prefers-reduced-motion: reduce) {
   .ds-map-face, .ds-map-face-fade { animation: none; }
 }

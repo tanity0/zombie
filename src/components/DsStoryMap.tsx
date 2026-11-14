@@ -8,12 +8,13 @@
 // - `?dsmap=0` で地図を出さない(切り分け用・旧地図と同じスイッチ)。
 // - 出会った・まだ倒していないボスの顔(頭だけ丸く切り抜いた小さな絵)を場所の点の下に出す(research/SORTIE_MAP_BOSS_ICONS.md §5)。
 //   何を出すかは MissionSelect が決めて props で渡す(ここは描くだけ)。開いた時に慣性つきでふわっと出る(常時の動きは無い)。
-import React, { useId, useMemo } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { assetUrl } from '../config/assetUrl';
 import { OPS_MAP_H, OPS_MAP_IMAGE, OPS_MAP_PLACES, OPS_MAP_W, storyTrail } from '../data/opsMapPlaces';
 import { BOSS_HEAD_CROPS } from '../data/bossHeadCrops';
 import { spritePath } from '../utils/spriteLoader';
 import { layoutMapFaces, type MapBossFace } from '../utils/sortieMapBosses';
+import { estimateTagTextWidth, mapTagLeadLine, nextOpenMapFace, pickMapFace, placeMapSpotTag, type MapTagPlace } from '../utils/mapFaceTag';
 import type { Stage } from '../data/campaign';
 
 const DS_MAP_DISABLED = typeof window !== 'undefined'
@@ -22,11 +23,20 @@ const DS_MAP_DISABLED = typeof window !== 'undefined'
 const AMBER = '#ffb340', AMBER_HI = '#ffd28a';
 // 原画の座標(1816×866)で書く。スマホの箱(幅 327〜382px)では 1px ≈ 5 単位。
 const U = 5;
-// ボスの顔: 直径 約16px(スマホ)。縁は細い暗い縁+外に一部欠けた細い弧と上の刻み(地図記号の細い線の文法)。
+// ボスの顔: 直径 約20px(スマホ・社長 2026-11-14「ボスアイコンを少し大きく」16→20)。縁は細い暗い縁+外に一部欠けた細い弧と上の刻み(地図記号の細い線の文法)。
 // ステージ固定のボス=冷たい灰(琥珀=行った場所/NEXT と取り違えない)。徘徊の枠=暗い血の赤で、ゆっくり明滅する。
-const FACE_D = 16 * U, FACE_GAP = 2 * U, FACE_R = FACE_D / 2;
+const FACE_D = 20 * U, FACE_GAP = 2.5 * U, FACE_R = FACE_D / 2;
 const FACE_RIM = '#b9c2cc', FACE_RIM_PATROL = '#a3262b';
-const RIM_R = FACE_R + 1.1 * U;
+const RIM_R = FACE_R + 1.1 * U, TICK_L = 1.6 * U;
+// 顔をタップ(PC はクリック)した時の札=そのボスが居るステージの場所の名(ステージ一覧の見出し・今いる所の名と同じ locationTitle)。
+// 当たりは見た目より大きく(縦横 約32px 四方)。札はその場所(列)で1つに固定し、押した顔の上の刻みの先から細い引き線でつなぐ。
+// 札の字は今いる所の名と同じ白・細い縁取りで、枠は付けず、字の下に暗いにじみと細い下線1本(顔に被っても読める)。
+const HIT_HALF = Math.max(16 * U, RIM_R + TICK_L);
+const TAG_FS = 10 * U, TAG_LS = 1.2 * U, TAG_PX = 3 * U, TAG_H = 15 * U, TAG_GAP = 4 * U, TAG_MARGIN = 2 * U;
+const MARK_HALF = 3.4 * U; // 場所の点の印の半分(引き線・札の間を測る元)
+const FACE_RIM_OPEN = '#e6ecf2';
+const FACE_OPEN_SCALE = 1.15; // 開いた顔の拡大(index.css .ds-map-face-pop.is-open と揃える=引き線の根元を拡大後の刻みの先に置く)
+const TAG_OUT_MS = 140;
 const NO_FACES: readonly MapBossFace[] = [];
 // 外の弧: 右下を約70°欠く(角度は SVG の向き=右が0°・下回り)。
 const rimArc = (x: number, y: number): string => {
@@ -64,6 +74,66 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
     return layoutMapFaces(bossFaces, id => { const at = OPS_MAP_PLACES[id]; return at ? PX(at) : undefined; },
       { diameter: FACE_D, gap: FACE_GAP, offset: 6 * U, mapW: OPS_MAP_W, mapH: OPS_MAP_H, moreW: 11 * U, markHalf: 3.4 * U, avoid });
   }, [bossFaces, trail]);
+  // ---- 顔をタップした時の札(どのステージか)。開くのは1つだけ。消える札は減速しながら消えてから外す。 ----
+  const svgRef = useRef<SVGSVGElement>(null);
+  const faceHits = useMemo(() => faceSpots.flatMap(s => s.faces.filter(f => BOSS_HEAD_CROPS[f.face.sprite]).map(f => ({ key: f.face.key, x: f.x, y: f.y }))), [faceSpots]);
+  const tagPlaces = useMemo(() => {
+    const out: Record<string, { box: MapTagPlace; text: string; cx: number; patrol: boolean; at: readonly [number, number]; lead: { x1: number; y1: number; x2: number; y2: number } }> = {};
+    for (const s of faceSpots) {
+      const shown = s.faces.filter(f => BOSS_HEAD_CROPS[f.face.sprite]);
+      if (shown.length === 0) continue;
+      const rowL = shown[0].x - RIM_R, rowR = shown[shown.length - 1].x + RIM_R;
+      for (const { face, x, y } of shown) {
+        const text = names[face.stageId] ?? '';
+        if (!text) continue;
+        const w = estimateTagTextWidth(text, TAG_FS, TAG_LS) + 2 * TAG_PX;
+        const box = placeMapSpotTag({ at: s.at, markHalf: MARK_HALF, rowL, rowR, rowY: y, below: s.below, reachUp: RIM_R + TICK_L, reachDown: RIM_R,
+          w, h: TAG_H, gap: TAG_GAP, mapW: OPS_MAP_W, mapH: OPS_MAP_H, margin: TAG_MARGIN });
+        out[face.key] = { box, text, cx: box.l + box.w / 2, patrol: face.patrol === true, at: s.at, lead: mapTagLeadLine(x, y, (RIM_R + TICK_L) * FACE_OPEN_SCALE, RIM_R * FACE_OPEN_SCALE, box, TAG_PX) };
+      }
+    }
+    return out;
+  }, [faceSpots, names]);
+  // PC(横長・マウス)だけ: カーソルを乗せた顔の弧を少し濃く。スマホ(タッチ)は変えない。
+  const [hoverKey, setHoverKey] = useState<string | null>(null);
+  const [tags, setTags] = useState<readonly { key: string; n: number; leaving: boolean }[]>([]);
+  const tagSeq = useRef(0);
+  const openKey = tags.find(t => !t.leaving)?.key ?? null;
+  const setOpen = useCallback((next: string | null) => {
+    setTags(prev => {
+      const cur = prev.find(t => !t.leaving)?.key ?? null;
+      if (cur === next) return prev;
+      const out = prev.map(t => (t.leaving ? t : { ...t, leaving: true }));
+      return next ? [...out, { key: next, n: ++tagSeq.current, leaving: false }] : out;
+    });
+  }, []);
+  useEffect(() => {
+    if (!tags.some(t => t.leaving)) return;
+    const id = window.setTimeout(() => setTags(prev => prev.filter(t => !t.leaving)), TAG_OUT_MS);
+    return () => window.clearTimeout(id);
+  }, [tags]);
+  // 顔が消えた(地図の中身が変わった)ら閉じる。地図の外を押しても閉じる(押した物の操作は妨げない=止めも横取りもしない)。
+  useEffect(() => { if (openKey && !tagPlaces[openKey]) setOpen(null); }, [openKey, tagPlaces, setOpen]);
+  useEffect(() => {
+    if (!openKey) return;
+    const onDown = (ev: PointerEvent) => { if (svgRef.current && ev.target instanceof Node && !svgRef.current.contains(ev.target)) setOpen(null); };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [openKey, setOpen]);
+  const onMapClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    const m = svgRef.current?.getScreenCTM();
+    if (!m || (faceHits.length === 0 && !openKey)) return;
+    const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+    setOpen(nextOpenMapFace(openKey, faceHits, pt.x, pt.y, HIT_HALF, openKey ? tagPlaces[openKey]?.box ?? null : null));
+  }, [faceHits, openKey, tagPlaces, setOpen]);
+  const onMapHover = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType !== 'mouse' || window.innerWidth <= window.innerHeight) return;
+    const m = svgRef.current?.getScreenCTM();
+    if (!m) return;
+    const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+    const k = pickMapFace(faceHits, pt.x, pt.y, HIT_HALF);
+    setHoverKey(prev => (prev === k ? prev : k));
+  }, [faceHits]);
   if (DS_MAP_DISABLED) return null;
   const P = (at: readonly [number, number]) => [at[0] * OPS_MAP_W, at[1] * OPS_MAP_H] as const;
   const visited = trail.visited.map(v => P(v.at));
@@ -81,7 +151,9 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
     // (MissionSelect の .ds-glabel-sector)。縦持ちは今どおり(中の札・箱 210px)。
     <div className="ds-map landscape:!h-[clamp(120px,calc(100svh/var(--hud-s,1)_-_250px),275px)]" style={{ height: 210, background: '#0d0e13' }}>{/* 原画の縁の色=幅に合わせた時の余白が帯に見えない */}
       {/* 地図は下端に揃える=余白は上の SECTOR の札の帯に寄る(検収クリエイティブ監査 #7)。 */}
-      <svg viewBox={`0 0 ${OPS_MAP_W} ${OPS_MAP_H}`} preserveAspectRatio="xMidYMax meet" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} aria-label="作戦地図">
+      <svg viewBox={`0 0 ${OPS_MAP_W} ${OPS_MAP_H}`} preserveAspectRatio="xMidYMax meet" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} aria-label="作戦地図"
+        ref={svgRef} onClick={faceHits.length > 0 || openKey ? onMapClick : undefined}
+        onPointerMove={faceHits.length > 0 ? onMapHover : undefined} onPointerLeave={hoverKey ? () => setHoverKey(null) : undefined}>
         <image href={assetUrl(OPS_MAP_IMAGE)} x={0} y={0} width={OPS_MAP_W} height={OPS_MAP_H} />
         {/* 軌跡=クリアした場所を話の順に結ぶ琥珀の線。古い区間ほど薄い(時間の流れ・検収クリエイティブ監査 #2)。 */}
         {visited.slice(1).map((p, i) => (
@@ -134,6 +206,9 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
                 <feFuncB type="linear" slope={1.14} intercept={-0.04} />
               </feComponentTransfer>
             </filter>
+            <filter id={`${clipBase}-tagbg`} x="-30%" y="-80%" width="160%" height="260%">
+              <feGaussianBlur stdDeviation={2.4 * U} />
+            </filter>
             <radialGradient id={`${clipBase}-glow`}>
               <stop offset="0.68" stopColor="#ffecd2" stopOpacity={0} />
               <stop offset="1" stopColor="#ffecd2" stopOpacity={0.26} />
@@ -164,8 +239,11 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
                   const k = FACE_R / (crop.r * crop.h);
                   const id = `${clipBase}-f${si}-${fi}`;
                   const rim = face.patrol ? FACE_RIM_PATROL : FACE_RIM;
+                  const isOpen = openKey === face.key;
                   return (
                     <g key={face.key} className="ds-map-face" style={{ animationDelay: `${delayOf(fi)}ms` }}>
+                     {/* 開いた顔は慣性つきで少し大きく(行き過ぎて戻る)、開いている間ほかの顔は沈める(index.css .ds-map-face-pop)。 */}
+                     <g className={`ds-map-face-pop${isOpen ? ' is-open' : openKey ? ' is-dim' : ''}`} style={{ transformOrigin: `${x}px ${y}px` }}>
                       <clipPath id={id}><circle cx={x} cy={y} r={FACE_R} /></clipPath>
                       <circle cx={x} cy={y} r={FACE_R} fill="#14131a" />
                       <image href={spritePath(face.sprite)} x={x - crop.u * crop.w * k} y={y - crop.v * crop.h * k}
@@ -173,11 +251,14 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
                       <circle cx={x} cy={y} r={FACE_R} fill={`url(#${clipBase}-glow)`} />
                       <circle cx={x} cy={y} r={FACE_R} fill="none" stroke="rgba(7,6,13,0.9)" strokeWidth={2.2} vectorEffect="non-scaling-stroke" />
                       {/* 外の印: 一部欠けた細い弧+上の小さな刻み。徘徊は暗い血の赤でゆっくり明滅(NEXT の菱形と同じ加減速)。 */}
-                      <g stroke={rim} strokeOpacity={face.patrol ? 1 : 0.72} fill="none">
-                        <path d={rimArc(x, y)} strokeWidth={face.patrol ? 1.3 : 1} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
-                        <line x1={x} y1={y - RIM_R} x2={x} y2={y - RIM_R - 1.6 * U} strokeWidth={face.patrol ? 1.3 : 1} vectorEffect="non-scaling-stroke" />
+                      {/* 開いた顔は弧を太く・白寄りに。PC でカーソルを乗せた顔は弧を少し濃く(徘徊は明滅が勝つので変えない)。 */}
+                      <g stroke={isOpen ? FACE_RIM_OPEN : rim} fill="none"
+                        style={face.patrol ? { strokeOpacity: 1 } : { strokeOpacity: isOpen ? 1 : hoverKey === face.key ? 0.9 : 0.72, transition: 'stroke-opacity 120ms cubic-bezier(0.2, 0.7, 0.3, 1)' }}>
+                        <path d={rimArc(x, y)} strokeWidth={isOpen ? 1.6 : face.patrol ? 1.3 : 1} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
+                        <line x1={x} y1={y - RIM_R} x2={x} y2={y - RIM_R - TICK_L} strokeWidth={isOpen ? 1.6 : face.patrol ? 1.3 : 1} vectorEffect="non-scaling-stroke" />
                         {face.patrol && <animate attributeName="stroke-opacity" values="1;0.3;1" dur="2.6s" repeatCount="indefinite" {...ease} />}
                       </g>
+                     </g>
                     </g>
                   );
                 })}
@@ -189,6 +270,32 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
             );
           });
         })()}
+        {/* 当たり(見た目の丸より大きい・PC はマウスの指の形)。判定は onMapClick が近い方で決める=この四角は形だけ。 */}
+        {faceHits.map(h => (
+          <rect key={`hit-${h.key}`} x={h.x - HIT_HALF} y={h.y - HIT_HALF} width={2 * HIT_HALF} height={2 * HIT_HALF} fill="transparent" style={{ cursor: 'pointer' }} />
+        ))}
+        {/* 札=そのボスが居るステージの場所の名(その場所の列で1つの位置)。開くと場所の点が一度だけ明るくなり、押した顔の刻みの先から
+            引き線が先に伸び、字が後から追う。消える時は薄れるだけ(index.css .ds-map-ftag)。 */}
+        {tags.map(t => {
+          const g = tagPlaces[t.key];
+          if (!g) return null;
+          const { box, lead } = g;
+          const line = g.patrol ? FACE_RIM_PATROL : FACE_RIM;
+          return (
+            <g key={t.n} className={`ds-map-ftag ${box.below ? 'is-below' : 'is-above'}${t.leaving ? ' is-out' : ''}`} pointerEvents="none">
+              <rect className="ds-map-ftag-mark" x={g.at[0] - MARK_HALF} y={g.at[1] - MARK_HALF} width={2 * MARK_HALF} height={2 * MARK_HALF}
+                fill="none" stroke="#fff" strokeWidth={1.2} vectorEffect="non-scaling-stroke" />
+              <line className="ds-map-ftag-lead" style={{ transformOrigin: `${lead.x1}px ${lead.y1}px` }} x1={lead.x1} y1={lead.y1} x2={lead.x2} y2={lead.y2}
+                stroke={line} strokeOpacity={g.patrol ? 0.95 : 0.8} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+              <g className="ds-map-ftag-body">
+                <rect x={box.l} y={box.t} width={box.w} height={box.h} fill="rgba(7,6,13,0.75)" filter={`url(#${clipBase}-tagbg)`} />
+                <line x1={box.l + TAG_PX / 2} y1={box.below ? box.t : box.t + box.h} x2={box.l + box.w - TAG_PX / 2} y2={box.below ? box.t : box.t + box.h}
+                  stroke={line} strokeOpacity={g.patrol ? 0.95 : 0.7} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                <text x={g.cx} y={box.t + box.h / 2} dominantBaseline="central" fontSize={TAG_FS} letterSpacing={TAG_LS} fill="rgba(255,255,255,0.82)" textAnchor="middle" {...textProps}>{g.text}</text>
+              </g>
+            </g>
+          );
+        })}
       </svg>
       <span className="ds-map-tag">SECTOR — {sectorLabel}</span>
     </div>
