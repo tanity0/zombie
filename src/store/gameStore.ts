@@ -395,7 +395,8 @@ import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled }
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled, isEggExpired, eggsToArmForCap, eggInCapsule, eggInBeam } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, gachaRefundFor, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS, retiredSkillsRefundTotal } from '../data/campaign';
+import { resolveGachaPull, nextGachaMissStreak, nextGachaPity } from '../utils/gachaGuarantee';
+import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, SKILLS, gachaPullCost, gachaRefundFor, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS, retiredSkillsRefundTotal } from '../data/campaign';
 import { MELEE_HIT_MS } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
 import { SKILL_BURST_MS, skillBurstSize, skillBurstTint } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
 import { urlNum } from '../utils/urlNum'; // URLの数値ツマミ(既定値へ確実に落とす・v0.25.4341)
@@ -1541,6 +1542,8 @@ const GACHA_DUPES_KEY = 'zombie:gachaDupeCounts';
 const GACHA_PITY_KEY = 'zombie:gachaPitySinceSuper';
 // 階段式価格(v0.25.2344)の段を決める**累計pull数**。セーブを跨いで階段が巻き戻らないよう永続。
 const GACHA_PULLS_KEY = 'zombie:gachaPullsTotal';
+// 「10回に1回はレベルアップか新規」保証(utils/gachaGuarantee)の、昇格しなかった回の連続数。
+const GACHA_MISS_STREAK_KEY = 'zombie:gachaMissStreak';
 const loadDupeCounts = (): Partial<Record<SkillKey, number>> => {
   try { const r = localStorage.getItem(GACHA_DUPES_KEY); const o = r ? JSON.parse(r) : {}; return (o && typeof o === 'object') ? o : {}; }
   catch { return {}; }
@@ -8377,6 +8380,7 @@ export interface GachaPullResult {
   promoted: boolean;     // Lvが上がった/初取得した
   refund: number;        // 返金ゴールド(昇格しなかった時のみ>0)。払った額 price を超えない(gachaRefundFor)
   price: number;         // この回に払った額
+  guaranteed: boolean;   // 10回に1回の保証の回だったか(utils/gachaGuarantee)
 }
 
 // PACING_PUZZLE.md §5.17 M14: 大格=銘打ちキューの1件。gold指定時は遅れて+◯G表示を出す
@@ -9802,6 +9806,7 @@ interface GameState {
   gachaDupeCounts: Partial<Record<SkillKey, number>>;   // ガチャのスキル別「被り回数」(Lv抽選表の参照・永続)
   gachaPitySinceSuper: number;                          // 直近superからのpull数(レア度ソフト天井・永続)
   gachaPullsTotal: number;                              // これまでに引いた累計回数(階段式価格の段・永続)
+  gachaMissStreak: number;                              // 昇格しなかった回の連続数(10回に1回の保証・永続)
   grantSkill: (key: SkillKey) => void;                  // ガチャ当選で所持解禁(重複は無視)
   // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)の9: ownedSkills/ownedSkillLevelsのヘッドレス上書き口。
   // 計測スクリプト(greedyボット30ラン等)がガチャを経由せず所持スキル/Lvを直接指定するための
@@ -10606,6 +10611,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   gachaDupeCounts: loadDupeCounts(),
   gachaPitySinceSuper: loadNumber(GACHA_PITY_KEY, 0),
   gachaPullsTotal: Math.max(0, Math.floor(loadNumber(GACHA_PULLS_KEY, 0))),
+  gachaMissStreak: Math.max(0, Math.floor(loadNumber(GACHA_MISS_STREAK_KEY, 0))),
   goldBalance: loadGoldBalanceWithRetiredRefund(), // §23-2条件4: 退役スキル所持者への一括返却込み(冪等・1回きり)
   namedFoe: loadNamedFoe(),
   namedFoeRunEligible: false, // 実際の抽選はresetGame開始時(初回マウント時点ではまだラン開始前)
@@ -24616,14 +24622,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     // research/GROWTH.md v4: 永続育成「強化」も同じゴールドで買うので、ガチャリセットの消去対象に含める
     // (残すと「Gは0なのに育成だけ残っている」状態になり、初回体験の確認にならない)。
     for (const k of [OWNED_SKILLS_KEY, OWNED_SKILL_LEVELS_KEY, GACHA_DUPES_KEY, GACHA_PITY_KEY,
-      GACHA_PULLS_KEY, GOLD_BALANCE_KEY, LOADOUT_SKILLS_KEY, COMPANION_SKILL_KEY, LOADOUT_SUBS_KEY, SUB_SHELF_KEY,
+      GACHA_PULLS_KEY, GACHA_MISS_STREAK_KEY, GOLD_BALANCE_KEY, LOADOUT_SKILLS_KEY, COMPANION_SKILL_KEY, LOADOUT_SUBS_KEY, SUB_SHELF_KEY,
       PLAYER_UPGRADES_KEY]) {
       try { localStorage.removeItem(k); } catch { /* ignore */ }
     }
     set({
       // 「初手」にも守護霊は入っている(G3: 最初から所持)ので、リセット後も欠けさせない。
       ownedSkills: ensureDefaultOwnedSkills([]), ownedSkillLevels: {}, gachaDupeCounts: {}, gachaPitySinceSuper: 0,
-      gachaPullsTotal: 0, goldBalance: 0, companionSkill: null, pendingLoadout: [], purchasedSubLevels: {},
+      gachaPullsTotal: 0, gachaMissStreak: 0, goldBalance: 0, companionSkill: null, pendingLoadout: [], purchasedSubLevels: {},
       playerUpgrades: emptyPlayerUpgrades(),
     });
   },
@@ -24640,53 +24646,36 @@ export const useGameStore = create<GameState>((set, get) => ({
     const nextPullsTotal = pullsTotal + 1;
     saveNumber(GACHA_PULLS_KEY, nextPullsTotal);
     const pity = get().gachaPitySinceSuper;
-    const key = rollGachaSkill(pity);
-    const rarity: SkillRarity = SKILLS[key].rarity;
-    const nextPity = rarity === 'super' ? 0 : pity + 1; // superでリセット・それ以外は+1(次回反映)
-    const maxLv = skillMaxLevel(key);
+    const rolledKey = rollGachaSkill(pity);
     const owned = get().ownedSkills;
     const levels = get().ownedSkillLevels;
     const dupes = get().gachaDupeCounts;
-    const prevLevel = owned.includes(key) ? (levels[key] ?? 1) : 0;
-    const dupeCount = dupes[key] ?? 0;        // Lv抽選表の参照(今回より前の被り回数)
-    const firstAcquire = prevLevel === 0;
-
-    // Lv上限固定(reaper等=Lv1。bomberはv0.25.3305で覚醒対応=Lv3上限へ昇格済み)で既に所持 → 常に返金。
-    if (maxLv === 1 && !firstAcquire) {
-      const refund = gachaRefundFor(rarity, price);
-      saveNumber(GACHA_PITY_KEY, nextPity);
-      set({ gachaPitySinceSuper: nextPity, gachaPullsTotal: nextPullsTotal });
-      get().addGold(refund);
-      return { key, rarity, rolledLevel: 1, newLevel: prevLevel, prevLevel, dupeCount, firstAcquire: false, promoted: false, refund, price };
-    }
-
-    // v0.25.3307: v3305の「初取得=Lv1固定」は指示の誤解釈だったため撤回(社長「ガチャって意味では無い。
-    // ゲーム中の話」)。ガチャは従来どおり開始Lvを抽選する。※所持Lvはラン中の取得Lvには影響しなくなった
-    // (runSkillDraft側=新規カードは常にLv1)。所持Lvの今後の用途は★裁定待ち。
-    const rolledLevel = rollSkillLevel(rarity, dupeCount, maxLv);
-    let newLevel = prevLevel;
-    let promoted = false;
-    let refund = 0;
-    if (firstAcquire) {
-      newLevel = Math.max(1, Math.min(maxLv, rolledLevel)); // 初取得=比較なしで付与
-      promoted = true;
-    } else if (rolledLevel > prevLevel && prevLevel < maxLv) {
-      newLevel = Math.min(maxLv, rolledLevel);              // 現Lv超え=昇格
-      promoted = true;
-    } else {
-      refund = gachaRefundFor(rarity, price);               // 現Lv以下/上限到達=返金(払った額×レア度の割合)
-    }
+    const missStreak = get().gachaMissStreak;
+    // v0.25.3307: ガチャは開始Lvを抽選する(初取得=比較なしで付与・既存超えで昇格・それ以外は返金)。
+    // Lv上限固定(Lv1)で所持済みは常に返金側。10回に1回の保証の回だけ、昇格しなかった結果を
+    // 新規/Lv+1 へ強制する(順序は utils/gachaGuarantee.resolveGachaPull)。
+    const res = resolveGachaPull({ rolledKey, owned, levels, dupes, missStreak, pity });
+    const { key, rarity, rolledLevel, newLevel, prevLevel, dupeCount, firstAcquire, promoted, guaranteed } = res;
+    // superでリセット・それ以外は+1(次回反映)。保証の選び直しで super になった回も0へ(nextGachaPity)。
+    const nextPity = nextGachaPity(pity, SKILLS[rolledKey].rarity, rarity);
+    const refund = promoted ? 0 : gachaRefundFor(rarity, price); // 現Lv以下/上限到達=返金(払った額×レア度の割合)
+    const nextMissStreak = nextGachaMissStreak(missStreak, promoted);
     const nextDupe = dupeCount + 1; // 被り回数は昇格有無に関わらず毎回+1(永続)
     const nextOwned = owned.includes(key) ? owned : [...owned, key];
     const nextLevels = promoted ? { ...levels, [key]: newLevel } : levels;
-    const nextDupes = { ...dupes, [key]: nextDupe };
-    saveStringArray(OWNED_SKILLS_KEY, nextOwned);
-    if (promoted) saveSkillLevels(nextLevels);
-    saveDupeCounts(nextDupes);
+    // Lv1固定で所持済み(返金)は従来どおり被り回数・所持を書き換えない。
+    const lv1Dupe = skillMaxLevel(key) === 1 && !firstAcquire && !promoted;
+    const nextDupes = lv1Dupe ? dupes : { ...dupes, [key]: nextDupe };
+    if (!lv1Dupe) {
+      saveStringArray(OWNED_SKILLS_KEY, nextOwned);
+      if (promoted) saveSkillLevels(nextLevels);
+      saveDupeCounts(nextDupes);
+    }
     saveNumber(GACHA_PITY_KEY, nextPity);
-    set({ ownedSkills: nextOwned, ownedSkillLevels: nextLevels, gachaDupeCounts: nextDupes, gachaPitySinceSuper: nextPity, gachaPullsTotal: nextPullsTotal });
+    saveNumber(GACHA_MISS_STREAK_KEY, nextMissStreak);
+    set({ ownedSkills: nextOwned, ownedSkillLevels: nextLevels, gachaDupeCounts: nextDupes, gachaPitySinceSuper: nextPity, gachaPullsTotal: nextPullsTotal, gachaMissStreak: nextMissStreak });
     if (refund > 0) get().addGold(refund);
-    return { key, rarity, rolledLevel, newLevel, prevLevel, dupeCount, firstAcquire, promoted, refund, price };
+    return { key, rarity, rolledLevel, newLevel, prevLevel, dupeCount, firstAcquire, promoted, refund, price, guaranteed };
   },
   addGold: (amount) => {
     if (!Number.isFinite(amount) || amount <= 0) return;

@@ -1122,10 +1122,47 @@ export const rollGachaSkill = (pity = 0, rng: () => number = Math.random): Skill
     if (r < weights[tier]) { rarity = tier; break; }
     r -= weights[tier];
   }
-  // 死神等はガチャ対象外。除外でその枠が空になったらレアへフォールバック。
-  const pool = skillsByRarity(rarity).filter(k => !GACHA_EXCLUDED_SKILLS.includes(k));
-  const safe = pool.length ? pool : skillsByRarity('rare').filter(k => !GACHA_EXCLUDED_SKILLS.includes(k));
+  // 死神等はガチャ対象外。除外でその枠が空になったらレアへフォールバック(gachaPoolFor)。
+  const safe = gachaPoolFor(rarity);
   return safe[Math.floor(rng() * safe.length)] ?? safe[0];
+};
+/** そのレア度でガチャが実際に引くスキルの並び(GACHA_EXCLUDED_SKILLS を除いた枠)。空なら空配列。 */
+export const gachaPoolOf = (rarity: SkillRarity): SkillKey[] =>
+  skillsByRarity(rarity).filter(k => !GACHA_EXCLUDED_SKILLS.includes(k));
+/** rollGachaSkill が引く枠(除外で空になったレア度はレアの枠へフォールバック)。 */
+export const gachaPoolFor = (rarity: SkillRarity): SkillKey[] => {
+  const pool = gachaPoolOf(rarity);
+  return pool.length ? pool : gachaPoolOf('rare');
+};
+/** 排出一覧の1レア度ぶん。percent=現在の率、basePercent=天井0回目(pity=0)の率。skills の各率は枠内均等。 */
+export interface GachaRateRow {
+  rarity: SkillRarity;
+  percent: number;
+  basePercent: number;
+  skills: { key: SkillKey; percent: number }[];
+}
+/**
+ * 排出一覧(ガチャ画面の表)。rollGachaSkill と同じ式から出す(手書きの数字を置かない)。
+ * 枠が空のレア度は rollGachaSkill と同じくレアの枠へ合算する(その行は出さない)。
+ */
+export const gachaRateTable = (pity: number): GachaRateRow[] => {
+  const cur = rarityWeightsForPity(pity);
+  const base = rarityWeightsForPity(0);
+  const sum = (w: Record<SkillRarity, number>) => (w.normal + w.rare + w.super) || 1;
+  const tiers: SkillRarity[] = ['super', 'rare', 'normal'];
+  const share = (w: Record<SkillRarity, number>, r: SkillRarity): number => {
+    if (gachaPoolOf(r).length === 0) return 0;
+    let v = w[r];
+    if (r === 'rare') for (const t of tiers) if (t !== 'rare' && gachaPoolOf(t).length === 0) v += w[t];
+    return (v / sum(w)) * 100;
+  };
+  return tiers
+    .filter(r => gachaPoolOf(r).length > 0)
+    .map(r => {
+      const pool = gachaPoolOf(r);
+      const percent = share(cur, r);
+      return { rarity: r, percent, basePercent: share(base, r), skills: pool.map(key => ({ key, percent: percent / pool.length })) };
+    });
 };
 // 現在の super 確率(%)と天井までの残り pull(可視化用)。
 export const gachaSuperPercent = (pity: number): number => rarityWeightsForPity(pity).super;

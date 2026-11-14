@@ -156,8 +156,9 @@ import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, RETIRED_SUB_WEAPONS, SKILLS, OBTAINABLE_SKILL_KEYS, COMPANION_SKILL_KEYS, BESTIARY,
   gachaPullCostFor, RARITY_LABEL, skillMaxLevel, skillDescForLevel, stageDateLabel, REVISIT_MISSION,
-  gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, skillIcon, type SkillRarity, type Stage
+  gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, gachaRateTable, skillIcon, type SkillRarity, type Stage
 } from '../data/campaign';
+import { gachaGuaranteeRemaining } from '../utils/gachaGuarantee';
 import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
 import { useSkillIconSheet } from '../utils/useSkillIconSheet';
 import {
@@ -2462,6 +2463,169 @@ const BURST_FX: Record<SkillRarity, BurstCfg> = {
 // レベル表記: 上限(maxLv)に達していたら「Lv3」等ではなく「MAX」と表示する(死神など maxLv1 は常にMAX)。
 const lvText = (key: SkillKey, level: number): string => (level >= skillMaxLevel(key) ? 'MAX' : `Lv${level}`);
 
+// 排出一覧の率の表記(小数2桁まで・末尾の0は落とす)。
+const fmtRate = (n: number): string => `${Math.round(n * 100) / 100}%`;
+// 排出一覧のレア度の色(RARITY_TEXT と同じ色の rgb。枠・未所持の「?」の淡色に使う)。
+const RARITY_RGB: Record<SkillRarity, string> = { normal: '255,255,255', rare: '125,211,252', super: '255,179,64' };
+// 枠の線=見出しの文字色と同じ1色。
+const RATE_FRAME: Record<SkillRarity, React.CSSProperties> = {
+  normal: { borderColor: 'rgba(255,255,255,0.16)' },
+  rare: { borderColor: 'rgba(125,211,252,0.5)', boxShadow: '0 0 16px rgba(125,211,252,0.18)' },
+  super: { borderColor: 'rgba(255,179,64,0.7)', boxShadow: '0 0 24px rgba(255,179,64,0.32)' },
+};
+// 未所持の並びから名前を推せないよう、内部キーのハッシュで並べる(固定の順)。
+const keyHash = (k: string): number => {
+  let h = 2166136261;
+  for (let i = 0; i < k.length; i++) { h ^= k.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+};
+const EASE_OUT = 'cubic-bezier(.2,.8,.2,1)';
+const EASE_IN = 'cubic-bezier(.4,0,1,1)';
+const RATE_CLOSE_MS = 160;
+
+// 排出一覧(社長指示2026-11-14「ソシャゲでよくある排出一覧みたいな簡易的なやつ。出てないやつは？？？表記で」)。
+// 率は gachaRateTable(rollGachaSkill と同じ式)から出す。未所持のスキルは名前もアイコンも出さない。
+// 開く=暗幕180ms/本体 下16px→0 240ms(ease-out)、閉じる=逆向き160ms(ease-in)で消え切ってから外す。
+const GachaRateList: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const portalRoot = useHudPortalRoot();
+  const skillSheet = useSkillIconSheet();
+  // 引いた時だけ変わる値(毎フレームは変わらない)。
+  const pity = useGameStore(s => s.gachaPitySinceSuper);
+  const owned = useGameStore(s => s.ownedSkills);
+  const levels = useGameStore(s => s.ownedSkillLevels);
+  const rows = gachaRateTable(pity);
+  const [phase, setPhase] = useState<'enter' | 'open' | 'closing'>('enter');
+  const [hasMore, setHasMore] = useState(false);
+  const scrollWrap = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => setPhase('open')));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const checkMore = (el: Element | null | undefined) => {
+    if (!(el instanceof HTMLElement)) return;
+    setHasMore(el.scrollHeight - el.clientHeight - el.scrollTop > 4);
+  };
+  useEffect(() => {
+    const el = scrollWrap.current?.firstElementChild;
+    checkMore(el);
+    const t = window.setTimeout(() => checkMore(scrollWrap.current?.firstElementChild), 300);
+    return () => window.clearTimeout(t);
+  }, []);
+  const close = () => {
+    if (phase === 'closing') return;
+    playSfx('ui-back');
+    setPhase('closing');
+    window.setTimeout(onClose, RATE_CLOSE_MS);
+  };
+  const shown = phase === 'open';
+  const closing = phase === 'closing';
+  const dimT = closing ? `opacity ${RATE_CLOSE_MS}ms ${EASE_IN}` : `opacity 180ms ${EASE_OUT}`;
+  const bodyT = closing
+    ? `opacity ${RATE_CLOSE_MS}ms ${EASE_IN}, transform ${RATE_CLOSE_MS}ms ${EASE_IN}`
+    : `opacity 240ms ${EASE_OUT}, transform 240ms ${EASE_OUT}`;
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex justify-center bg-black/90 backdrop-blur-sm"
+      style={{ opacity: shown ? 1 : 0, transition: dimT }}
+      onClick={close}
+    >
+      <div
+        className="flex h-full w-full max-w-md flex-col"
+        style={{ opacity: shown ? 1 : 0, transform: shown ? 'translateY(0)' : 'translateY(16px)', transition: bodyT }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="flex items-center gap-4 border-b px-3 pb-3 pt-4" style={{ borderColor: '#26212f' }}>
+          <button
+            type="button"
+            onClick={close}
+            aria-label="戻る"
+            data-nav-back
+            className="flex min-h-[44px] shrink-0 items-center gap-1 border-r pr-3 text-[13px] active:opacity-70"
+            style={{ color: '#ffb340', borderColor: '#26212f' }}
+          >
+            <PixelIcon name="chevron-left" size={16} /><span>戻る</span>
+          </button>
+          <h2 className="text-[17px] font-semibold tracking-[0.08em] text-white">排出一覧</h2>
+        </header>
+        <div ref={scrollWrap} className="relative min-h-0 flex-1" onScrollCapture={(e) => checkMore(e.target as Element)}>
+          <NoBounceScroller className="h-full overflow-y-auto overflow-x-hidden touch-pan-y overscroll-contain no-scrollbar px-3 pb-6 pt-3">
+            <div className="flex w-full flex-col gap-3">
+              {rows.map(row => {
+                const raised = Math.abs(row.percent - row.basePercent) > 1e-9;
+                const rgb = RARITY_RGB[row.rarity];
+                const ownedKeys = row.skills.filter(s => owned.includes(s.key))
+                  .sort((x, y) => SKILLS[x.key].name.localeCompare(SKILLS[y.key].name, 'ja'));
+                const unknown = row.skills.filter(s => !owned.includes(s.key))
+                  .sort((x, y) => keyHash(x.key) - keyHash(y.key));
+                const perOne = row.skills[0]?.percent ?? 0;
+                return (
+                  <div key={row.rarity} className="rounded-none border bg-black/40" style={RATE_FRAME[row.rarity]}>
+                    <div className="border-b border-white/10 px-3 py-2">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className={`text-[12px] font-bold uppercase tracking-wider ${RARITY_TEXT[row.rarity]}`}>
+                          {RARITY_LABEL[row.rarity]}
+                          <span className="ml-2 text-[10px] font-normal tracking-normal text-white/40 tabular-nums">{ownedKeys.length}/{row.skills.length}</span>
+                        </span>
+                        <span className="text-[12px] font-semibold tabular-nums text-white/85">
+                          {fmtRate(row.percent)}
+                          {raised && <span className="ml-1.5 text-[10px] font-normal text-white/45">通常 {fmtRate(row.basePercent)}</span>}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-right text-[10px] tabular-nums text-white/40">1種あたり {fmtRate(perOne)}</p>
+                    </div>
+                    <div className="flex flex-col py-1">
+                      {[...ownedKeys, ...unknown].map(({ key, percent }) => {
+                        const has = owned.includes(key);
+                        const lv = levels[key] ?? 1;
+                        const isMax = lv >= skillMaxLevel(key);
+                        return (
+                          <div key={key} className="flex items-center gap-2 px-3 py-1.5">
+                            {has ? (
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-none text-sm">
+                                {(() => {
+                                  const single = skillSingleIconName(key);
+                                  if (single) return <img src={spritePath(single)} alt="" className="h-full w-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />;
+                                  const st = skillSheet && hasSkillIcon(key) ? skillIconStyle(key, skillSheet.url, 28, skillSheet) : null;
+                                  return st ? <span style={st} aria-hidden /> : skillIcon(key);
+                                })()}
+                              </span>
+                            ) : (
+                              <span
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border text-[13px] font-bold"
+                                style={{ borderColor: `rgba(${rgb},0.15)`, color: `rgba(${rgb},0.2)` }}
+                                aria-hidden
+                              >?</span>
+                            )}
+                            {has ? (
+                              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-white/85">{SKILLS[key].name}</span>
+                            ) : (
+                              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-white/45" style={{ letterSpacing: '-0.1em' }}>？？？</span>
+                            )}
+                            {has && (
+                              <span className={`shrink-0 text-[11px] tabular-nums ${isMax ? `font-bold ${RARITY_TEXT[row.rarity]}` : 'text-white/45'}`}>{lvText(key, lv)}</span>
+                            )}
+                            <span className="w-12 shrink-0 text-right text-[10px] tabular-nums text-white/35">{fmtRate(percent)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </NoBounceScroller>
+          {/* 下端の帯(続きの記号はこの帯の中に乗る)。末尾まで送ったら消す。 */}
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-10"
+            style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,0.92))', opacity: hasMore ? 1 : 0, transition: `opacity 200ms ${EASE_OUT}` }}
+          />
+        </div>
+      </div>
+    </div>,
+    portalRoot
+  );
+};
+
 const SkillGacha: React.FC = () => {
   const portalRoot = useHudPortalRoot(); // 演出のポータル先(PC の拡大の包みの中・段3-2 品質監査 A-2)
   // 毎フレーム購読しない: プリミティブ/派生のみ購読(CLAUDE.md React再レンダー規律)。
@@ -2469,6 +2633,8 @@ const SkillGacha: React.FC = () => {
   const ownedCount = useGameStore(s => s.ownedSkills.length);
   const pity = useGameStore(s => s.gachaPitySinceSuper);
   const pullsTotal = useGameStore(s => s.gachaPullsTotal); // 階段式価格の段(プリミティブ購読)
+  const missStreak = useGameStore(s => s.gachaMissStreak); // 10回に1回の保証(プリミティブ購読)
+  const [showRates, setShowRates] = useState(false);        // 排出一覧を開いているか
   const pullGacha = useGameStore(s => s.pullGacha);
   const [pendingCount, setPendingCount] = useState<1 | 10 | null>(null); // 選択した訓練回数(=射撃練習場へ遷移中)
   const [results, setResults] = useState<GachaPullResult[] | null>(null); // null=暗転演出オフ(射撃場表示)
@@ -2870,10 +3036,28 @@ const SkillGacha: React.FC = () => {
         <span className={cant1 ? 'text-rose-300' : 'text-amber-200'}>{costLabel(cost1)}</span>
         <span className={cant10 ? 'text-rose-300' : 'text-amber-200'}>{costLabel(cost10)}</span>
       </div>
-      <div className="mt-2 flex items-center justify-between rounded-none bg-black/20 px-2 py-1 text-[10px]">
-        <span className="text-fuchsia-100/80">{RARITY_LABEL.super}の確率 <span className="font-semibold text-fuchsia-200">{superPct}%</span></span>
-        <span className="text-white/55">{pityLeft > 0 ? `確率上昇はあと${pityLeft}回` : '確率は最大'}</span>
+      {/* 超レアの確率と、10回に1回の保証を1つの枠に。右に排出一覧。 */}
+      <div className="mt-2 flex items-stretch gap-2 rounded-none bg-black/20 py-1 pl-2 pr-1 text-[10px]">
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-fuchsia-100/80">{RARITY_LABEL.super}の確率 <span className="font-semibold text-fuchsia-200">{superPct}%</span></span>
+            <span className="text-white/55">{pityLeft > 0 ? `確率上昇はあと${pityLeft}回` : '確率は最大'}</span>
+          </div>
+          <span className="text-fuchsia-100/80">
+            {gachaGuaranteeRemaining(missStreak) <= 1
+              ? <span className="font-semibold text-fuchsia-200">次で新規かLv上昇</span>
+              : <>新規かLv上昇まで <span className="font-semibold text-fuchsia-200">あと{gachaGuaranteeRemaining(missStreak)}回</span></>}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => { playSfx('ui-select'); setShowRates(true); }}
+          className="flex min-h-[32px] shrink-0 items-center border-l border-white/10 px-3 text-[11px] font-semibold text-fuchsia-200 underline decoration-fuchsia-200/40 underline-offset-4 active:text-white"
+        >
+          排出一覧
+        </button>
       </div>
+      {showRates && <GachaRateList onClose={() => setShowRates(false)} />}
       <p className="mt-2 text-[10px] leading-snug text-white/50">
         外すほど{RARITY_LABEL.super}が出やすくなり、被るほど高いLvに寄る。被ってLvが上がらなければ返金。習得 {ownedCount}/{OBTAINABLE_SKILL_KEYS.length}
       </p>
