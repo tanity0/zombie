@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5584', items: [
+    'ドローンブーメランを打ち返した瞬間の手応えが強くなり、弾かれた直後に勢いよく飛び出す',
+  ] },
   { version: '0.25.5583', items: [
     '打ち上げた敵が、斜めにすっと浮いて自然に落ちる',
     '変異体対策室では、弾が切れると画面のどこかに弾が落ちてくる',

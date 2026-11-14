@@ -6,7 +6,7 @@
 export const DRONE_BOOM_BAT_PAD_PX = 14;
 
 /** 打ち返された直後の勢い: 出だしは通常の何倍の速さか/通常の速さへ戻るまで(ms)。飛ぶ距離は変わらない(着くのが少し早いだけ)。 */
-export const DRONE_BOOM_BAT_BOOST = 1.45;
+export const DRONE_BOOM_BAT_BOOST = 2.2;
 export const DRONE_BOOM_BAT_BOOST_MS = 220;
 /** 打ち返されてから sinceMs 後の速さの倍率(弾かれた勢いが抜けていく=ease-out で1へ)。 */
 export const boomerangBatSpeedMult = (sinceMs: number): number => {
@@ -34,7 +34,7 @@ export const boomerangBatCue = (sinceMs: number): number => {
   return k * k;
 };
 /** 打った瞬間の止め(ms・プレイヤーが打った時だけ)と揺れ。 */
-export const DRONE_BOOM_BAT_HITSTOP_MS = 55;
+export const DRONE_BOOM_BAT_HITSTOP_MS = 80;
 
 /** 判定に要る欄だけ(Projectile の部分型)。 */
 export interface BatBoomLike {

@@ -7725,7 +7725,7 @@ const fireDroneBoomerangOnSwing = (
       get().spawnRing(bx, by, 8, 60, 'rgba(165,243,252,0.85)', 5, 150, true);
       if (!ghostOwned) {
         if (!get().rhythm.active) get().triggerHitstop(DRONE_BOOM_BAT_HITSTOP_MS);
-        get().triggerShake(120, 3, ux, uy);
+        get().triggerShake(120, 6, ux, uy);
         useGameStore.setState({ boomerangBatFxAt: nowMs, boomerangBatFxN: batN });
       }
       return true;
