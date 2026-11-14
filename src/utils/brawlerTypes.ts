@@ -61,6 +61,11 @@ export interface BrawlerState {
   stopFrom: number;
   stopUntil: number;
   stopPrevMs: number;
+  /**
+   * ★旧「画面全体の止め」を自分と相手だけで写した止め(社長指示2026-11-14)の印。stopUntil と同じ値の時だけ効く(新しい行動・新しい止めで自然に外れる)。
+   * この止めの間は、飛び蹴りの連続も含めて次の行動を出さずに覚え、止めが明けてから出す(旧の画面全体の止めの間と同じ)。
+   */
+  stopFreezeUntil?: number;
   /** 判定を解いたか / 当たったか。 */
   resolved: boolean;
   connected: boolean;

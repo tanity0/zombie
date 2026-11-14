@@ -281,18 +281,20 @@ describe('§20-6-4 境目', () => {
       expectLinked(w, r.steps.length, `${foe} ${r.name} slow ${a}→${b}`);
     }
   });
-  it('固まりは §20-4 の長さどおり: 1段目を当てて何も続けなければ、画面全体の止めの後、当たりから(固まりの式の止め+1段目の固まり390)で明ける', () => {
+  it('固まりは §20-4 の長さどおり: 1段目を当てて何も続けなければ、旧の画面全体の止めの後、当たりから(固まりの式の止め+1段目の固まり390)で明ける', () => {
     setup();
     spawnFoe('hunter-windup');
     useGameStore.getState().brawlerPress();
     for (let k = 0; k < 60 && !br().resolved; k++) adv();
     const hitAt = gt();
-    // ★社長指示2026-11-12: 当たりの止めは画面全体の止め(BRAWLER_WORLD_STOP・壁時計・gameTime は進まない)。固まりの式の止めは BRAWLER_WORLD_STOP_LOCK_MS。
-    expect(en().brLockUntil).toBe(hitAt + brawlerLockHitMs('s1', BRAWLER_WORLD_STOP_LOCK_MS));
-    expect(en().brLockUntil! - hitAt).toBe(BRAWLER_WORLD_STOP_LOCK_MS + 390);
-    expect(useGameStore.getState().hitstopUntil).toBe(now + BRAWLER_WORLD_STOP.weak); // 画面全体の止め(弱)
+    // ★社長指示2026-11-14: 画面全体は止めず、旧の画面全体の止め(BRAWLER_WORLD_STOP)を自分と相手だけに掛ける。gameTime は止めの間も進むので、
+    //   固まりの式の止めは「旧で gameTime が進まなかった分(止まっていたフレーム×フレームの幅)+BRAWLER_WORLD_STOP_LOCK_MS」=明けの壁時計が旧と同じ。
+    const lostGt = (Math.ceil(BRAWLER_WORLD_STOP.weak / FRAME) - 1) * FRAME;
+    expect(en().brLockUntil).toBe(hitAt + brawlerLockHitMs('s1', lostGt + BRAWLER_WORLD_STOP_LOCK_MS));
+    expect(en().brLockUntil! - hitAt).toBe(lostGt + BRAWLER_WORLD_STOP_LOCK_MS + 390);
+    expect(useGameStore.getState().hitstopUntil).toBeLessThanOrEqual(now); // 画面全体は止めない
     expect(en().brHoldUntil ?? 0).toBeLessThanOrEqual(now + BRAWLER_WORLD_STOP.weak); // 壁時計の欄は当たりの止めまで(確定の固まりは gameTime の欄)
-    // 止まっている長さ(壁時計)=画面全体の止め+固まり(gameTime)
+    // 止まっている長さ(壁時計)=旧の画面全体の止め+固まり
     let heldFrames = 0;
     for (let k = 0; k < 50; k++) { adv(); if (brawlerHeldNow(en(), gt(), now)) heldFrames++; }
     const heldWall = BRAWLER_WORLD_STOP.weak + BRAWLER_WORLD_STOP_LOCK_MS + 390;
@@ -462,7 +464,7 @@ describe('§20-6-4 入らない道・つながらない物', () => {
       }
     }
   });
-  it('ボス級への大踏み潰しの固まりは、雑魚・強個体と同じ長さ(画面全体の止めの後、固まりの式の止め+固まり299)', () => {
+  it('ボス級への大踏み潰しの固まりは、雑魚・強個体と同じ長さ(旧の画面全体の止めの後、固まりの式の止め+固まり299)', () => {
     const lens: number[] = [];
     for (const foe of ['zombie-move', 'driller-windup', 'hunter-move'] as const) {
       setup();
@@ -472,7 +474,9 @@ describe('§20-6-4 入らない道・つながらない物', () => {
       expect(br().connected, `${foe} stomp connected`).toBe(true);
       lens.push(en().brLockUntil! - gt());
     }
-    expect(lens).toEqual([0, 1, 2].map(() => BRAWLER_WORLD_STOP_LOCK_MS + 299)); // gameTime(画面全体の止めの間は進まない)
+    // gameTime(★2026-11-14: 止めの間も進む=旧で進まなかった分を足す・上の §20-4 の検査と同じ式)
+    const lostGt = (Math.ceil(BRAWLER_WORLD_STOP.closer / FRAME) - 1) * FRAME;
+    expect(lens).toEqual([0, 1, 2].map(() => lostGt + BRAWLER_WORLD_STOP_LOCK_MS + 299));
   });
   it('段と飛び蹴りを回し続けても、強個体・ボス級は8発目までに固まりが切れる(コンボの減衰: 飛び蹴り→1段目→飛び蹴り…)', () => {
     for (const foe of ['driller-windup', 'hunter-windup'] as const) {

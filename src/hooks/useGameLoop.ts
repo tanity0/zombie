@@ -16036,7 +16036,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               projectile.direction.x, projectile.direction.y,
               enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height,
             );
-            applyPiledriverHitstop(projectile); // 社長裁定2026-11-13「はい」=刺さった瞬間に画面全体を短く止める
+            applyPiledriverHitstop(projectile, enemyId); // 刺さった敵だけを短く止める(社長指示2026-11-14・旧は画面全体の止め)
           }
           if (enemyForFx && projectile && !gpBulletReflected && hasShotRecoil(enemyForFx.type)) {
             const cur = useGameStore.getState().enemies.find(x => x.id === enemyId);

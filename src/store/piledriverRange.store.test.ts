@@ -1,6 +1,6 @@
 // パイルドライバー(handgun-t3-piledriver)の社長裁定2026-11-13の2件:
 //  1. 「はい」=外れた弾を杭の射程で消す(gameStore.updateProjectiles: 射程の端で止めて当たり判定を受け、次の tick で消す)
-//  2. 「はい」=刺さった瞬間に画面全体を一瞬止める(applyPiledriverHitstop → triggerHitstop)
+//  2. 「はい」=刺さった瞬間に一瞬止める(applyPiledriverHitstop)。★社長指示2026-11-14: 画面全体ではなく刺さった敵の hitStunUntil だけ
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useGameStore } from './gameStore';
 import { piledriverRangePx, PILEDRIVER_WEAPON_KEY } from '../utils/weaponUtils';
@@ -8,7 +8,8 @@ import { applyPiledriverHitstop, PILEDRIVER_HITSTOP_MS } from '../utils/piledriv
 import { getPileHitLog } from '../utils/pileHitLog';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
-import type { Projectile } from '../types/game';
+import type { Projectile, Enemy, EnemyType } from '../types/game';
+import { spawnEnemyAt } from '../utils/enemyUtils';
 setTreesDisabled(true); setTorchesDisabled(true);
 
 const pile = (over: Partial<Projectile> = {}): Projectile => {
@@ -89,29 +90,53 @@ describe('パイルドライバーの弾は杭の射程で消える(社長裁定
   });
 });
 
-describe('杭が刺さった瞬間に画面全体を止める(社長裁定2026-11-13「はい」)', () => {
-  beforeEach(() => { useGameStore.getState().resetGame('warrior'); useGameStore.setState({ hitstopUntil: 0 }); });
+describe('杭が刺さった瞬間に刺さった敵だけを止める(社長指示2026-11-14「全体で止めるのではなく、個体の方に変更」)', () => {
+  const put = (type: EnemyType, id: string, over: Partial<Enemy> = {}) => {
+    const e = { ...spawnEnemyAt(type, 0, 0, useGameStore.getState().gameTime), id, dormant: false, ...over } as Enemy;
+    useGameStore.setState(st => ({ enemies: [...st.enemies, e] }));
+  };
+  const en = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
+  beforeEach(() => { useGameStore.getState().resetGame('warrior'); useGameStore.setState({ hitstopUntil: 0, enemies: [] }); });
 
-  it('自分の弾が刺さると hitstopUntil が立つ', () => {
+  it('自分の弾が刺さると、その敵の hitStunUntil だけが立つ(画面全体の止めは立たない・ほかの敵は止まらない)', () => {
+    put('zombie', 'z1'); put('zombie', 'z2');
     const t0 = Date.now();
-    applyPiledriverHitstop({ hostile: false, reflected: false });
-    const until = useGameStore.getState().hitstopUntil;
+    applyPiledriverHitstop({ hostile: false, reflected: false }, 'z1');
+    const until = en('z1').hitStunUntil!;
     expect(until).toBeGreaterThanOrEqual(t0 + PILEDRIVER_HITSTOP_MS);
     expect(until).toBeLessThanOrEqual(Date.now() + PILEDRIVER_HITSTOP_MS);
+    expect(en('z2').hitStunUntil).toBeUndefined();
+    expect(useGameStore.getState().hitstopUntil).toBe(0);
+  });
+
+  it('今の止めの方が長ければ縮めない(max)', () => {
+    const far = Date.now() + 5000;
+    put('zombie', 'z1', { hitStunUntil: far });
+    applyPiledriverHitstop({ hostile: false }, 'z1');
+    expect(en('z1').hitStunUntil).toBe(far);
+  });
+
+  it('ボス級(hitStunMsFor が 0 の型)には書かない', () => {
+    put('reaper', 'b1');
+    applyPiledriverHitstop({ hostile: false }, 'b1');
+    expect(en('b1').hitStunUntil).toBeUndefined();
   });
 
   it('守護霊・敵側・打ち返された弾・リズム中は止めない', () => {
-    applyPiledriverHitstop({ hostile: false, ownerGhost: true });
-    applyPiledriverHitstop({ hostile: true });
-    applyPiledriverHitstop({ hostile: false, reflected: true });
+    put('zombie', 'z1');
+    applyPiledriverHitstop({ hostile: false, ownerGhost: true }, 'z1');
+    applyPiledriverHitstop({ hostile: true }, 'z1');
+    applyPiledriverHitstop({ hostile: false, reflected: true }, 'z1');
     useGameStore.setState(st => ({ rhythm: { ...st.rhythm, active: true } }));
-    applyPiledriverHitstop({ hostile: false });
+    applyPiledriverHitstop({ hostile: false }, 'z1');
+    expect(en('z1').hitStunUntil).toBeUndefined();
     expect(useGameStore.getState().hitstopUntil).toBe(0);
   });
 
   it('連射でも積み上がらない(長い方を採る)', () => {
-    applyPiledriverHitstop({ hostile: false });
-    applyPiledriverHitstop({ hostile: false });
-    expect(useGameStore.getState().hitstopUntil).toBeLessThanOrEqual(Date.now() + PILEDRIVER_HITSTOP_MS);
+    put('zombie', 'z1');
+    applyPiledriverHitstop({ hostile: false }, 'z1');
+    applyPiledriverHitstop({ hostile: false }, 'z1');
+    expect(en('z1').hitStunUntil!).toBeLessThanOrEqual(Date.now() + PILEDRIVER_HITSTOP_MS);
   });
 });

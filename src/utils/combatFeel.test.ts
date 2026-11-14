@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  hitStunMsFor, HIT_STUN_MS_MOB, HIT_STUN_MS_STRONG, HIT_STUN_REARM_MS, nextHitStunUntil,
+  hitStunMsFor, HIT_STUN_MS_MOB, HIT_STUN_MS_STRONG, HIT_STUN_REARM_MS, nextHitStunUntil, GUN_HIT_STOP_MULT, impactHitStunUntil,
   stepKillChain, killChainTier, killChainSfxRate, killChainEdgePulseMs, killChainEdgeEnvelope, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SFX_JITTER,
   recoilSpecForWeapon, recoilKickOffset, recoilKickDir, RECOIL_KICK_MAX_PX, RECOIL_HEAVY_PX,
   casingSpecFor, casingVelocity, stepFloorParticle, isEnemyAttacking,
@@ -28,6 +28,45 @@ describe('戦闘の手触り(utils/combatFeel・社長指示2026-09-13)', () => 
       expect(nextHitStunUntil('zombie', u1, t0 + HIT_STUN_REARM_MS)).toBe(t0 + HIT_STUN_REARM_MS + HIT_STUN_MS_MOB);
       // ボス級は常に undefined
       expect(nextHitStunUntil('thor', undefined, t0)).toBeUndefined();
+    });
+    it('★銃の当たり(stopMult=GUN_HIT_STOP_MULT)は止めが1.3倍・ガードも1.3倍(社長指示2026-11-14「銃のストップをもう少しだけ長く」)', () => {
+      expect(GUN_HIT_STOP_MULT).toBe(1.3);
+      const t0 = 10000;
+      for (const [type, base] of [['zombie', HIT_STUN_MS_MOB], ['pumpkin', HIT_STUN_MS_STRONG]] as const) {
+        const u1 = nextHitStunUntil(type, undefined, t0, 1, GUN_HIT_STOP_MULT)!;
+        expect(u1).toBe(t0 + Math.round(base * GUN_HIT_STOP_MULT));
+        // 被弾の強さの倍率も今どおり乗る
+        expect(nextHitStunUntil(type, undefined, t0, 1.5, GUN_HIT_STOP_MULT)).toBe(t0 + Math.round(base * GUN_HIT_STOP_MULT * 1.5));
+        // ガード: 前の止めの開始から REARM×1.3 未満は書かない/過ぎたら書く
+        const rearm = HIT_STUN_REARM_MS * GUN_HIT_STOP_MULT;
+        expect(nextHitStunUntil(type, u1, t0 + rearm - 1, 1, GUN_HIT_STOP_MULT)).toBeUndefined();
+        expect(nextHitStunUntil(type, u1, t0 + rearm, 1, GUN_HIT_STOP_MULT)).toBe(t0 + rearm + Math.round(base * GUN_HIT_STOP_MULT));
+        // 占有率(止め÷ガード)は1倍の時と同じ
+        expect((base * GUN_HIT_STOP_MULT) / rearm).toBeCloseTo(base / HIT_STUN_REARM_MS, 12);
+      }
+      expect(nextHitStunUntil('thor', undefined, t0, 1, GUN_HIT_STOP_MULT)).toBeUndefined();
+    });
+    it('近接・その他(stopMult 省略)は1bitも変わらない', () => {
+      const t0 = 12345;
+      for (const type of ['zombie', 'pumpkin', 'logger', 'thor'] as const) {
+        for (const mul of [1, 0.7, 1.4, 2.25]) {
+          for (const prev of [undefined, t0 - 500, t0 - 100, t0 + 50]) {
+            const base = hitStunMsFor(type);
+            const want = base <= 0 ? undefined
+              : prev !== undefined && t0 < prev - base + HIT_STUN_REARM_MS ? undefined : t0 + Math.round(base * mul);
+            expect(nextHitStunUntil(type, prev, t0, mul)).toBe(want);
+            expect(nextHitStunUntil(type, prev, t0, mul, 1)).toBe(want);
+          }
+        }
+      }
+    });
+    it('当たった敵だけの止め(impactHitStunUntil): max(今の値, now+ms)・ボス級は書かない', () => {
+      expect(impactHitStunUntil('zombie', undefined, 1000, 100)).toBe(1100);
+      expect(impactHitStunUntil('zombie', 1050, 1000, 100)).toBe(1100);
+      expect(impactHitStunUntil('zombie', 5000, 1000, 100)).toBe(5000);
+      expect(impactHitStunUntil('pumpkin', undefined, 1000, 60)).toBe(1060);
+      expect(impactHitStunUntil('thor', undefined, 1000, 100)).toBeUndefined();
+      expect(impactHitStunUntil('zombie', undefined, 1000, 0)).toBeUndefined();
     });
   });
 

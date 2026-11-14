@@ -371,6 +371,9 @@ export const brawlerElapsed = (s: Pick<BrawlerState, 'startAt' | 'stopFrom' | 's
 };
 export const brawlerInHitstop = (s: Pick<BrawlerState, 'stopFrom' | 'stopUntil'>, t: number): boolean =>
   t >= s.stopFrom && t < s.stopUntil;
+/** ★旧「画面全体の止め」を写した止め(stopFreezeUntil・社長指示2026-11-14)の最中か。四神舞の最中の止め(印なし)では false。 */
+export const brawlerInFreezeStop = (s: Pick<BrawlerState, 'stopFrom' | 'stopUntil' | 'stopFreezeUntil'>, t: number): boolean =>
+  s.stopFreezeUntil !== undefined && s.stopFreezeUntil === s.stopUntil && brawlerInHitstop(s, t);
 export const brawlerTotalMs = (s: Pick<BrawlerState, 'windupMs' | 'recoveryMs'>): number => s.windupMs + s.recoveryMs;
 export const isBrawlerBusy = (s: BrawlerState | undefined): boolean => !!s && (s.phase !== 'idle' || !!s.secret);
 export const isBrawlerGuardingAt = (s: BrawlerState | undefined, gameTime: number): boolean =>
@@ -770,7 +773,8 @@ const brawlerShouldBufferTechEarly = (s: BrawlerState, kind: BrawlerTechKind, t:
   if (!brawlerActing(s) || isBrawlerGuardingAt(s, t) || (s.phase === 'tech' && s.tech === 'guard')) return false;
   if (brawlerTechAllowed(s, kind, t)) return false;
   const from = brawlerRouteNodeOf(s);
-  if (s.phase === 'tech' && s.tech === 'kick' && kind === 'kick') return !s.resolved && s.kickN < BRAWLER_KICK_MAX;
+  // ★旧「画面全体の止め」を写した止めの最中に押した次の蹴りは覚えて、止めが明けてから出す(旧の止めの間と同じ・社長指示2026-11-14)。
+  if (s.phase === 'tech' && s.tech === 'kick' && kind === 'kick') return (!s.resolved || brawlerInFreezeStop(s, t)) && s.kickN < BRAWLER_KICK_MAX;
   const to = brawlerTechNode(kind, 1);
   if (brawlerRouteAllows(from, to, { secretClose: brawlerSecretClosing(s) })) {
     if (!s.resolved) return true; // 出だし: 当たるかはまだ分からない
@@ -834,7 +838,8 @@ export const brawlerTechAllowed = (s: BrawlerState, kind: BrawlerTechKind, t: nu
   if (brawlerStepping(s, t)) return false;
   if (!brawlerActing(s)) return true;
   if (s.phase === 'tech' && s.tech === 'kick' && kind === 'kick') {
-    return s.resolved && brawlerRouteAllows(brawlerTechNode('kick', s.kickN), brawlerTechNode('kick', s.kickN + 1)) && s.kickN < BRAWLER_KICK_MAX;
+    // ★旧「画面全体の止め」を写した止めの最中は出さない(覚えて明けてから出す=brawlerShouldBufferTechEarly・社長指示2026-11-14)。
+    return s.resolved && !brawlerInFreezeStop(s, t) && brawlerRouteAllows(brawlerTechNode('kick', s.kickN), brawlerTechNode('kick', s.kickN + 1)) && s.kickN < BRAWLER_KICK_MAX;
   }
   return brawlerTechCancelOk(s, kind, t);
 };

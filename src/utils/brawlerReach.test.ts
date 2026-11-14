@@ -36,8 +36,9 @@ describe('§31-2 踏み込みは上限以下・前の技の押しを詰め切る
   // つながりだけなら段の踏み込みは0でも届く(段の狙いは届く範囲の内の相手だけ)。下限=前の技の押しを詰め切る値(A が相手の手前で当たる前提を、続けて出しても崩さない)。
   const need = (b: BrawlerRouteNode): number =>
     Math.ceil(Math.max(...NODES.filter(a => brawlerRouteAllows(a, b)).map(a => BRAWLER_PUSH_ZOMBIE_PX[a] ?? 0)));
-  it('2〜4段目の踏み込みは前の段の押しを詰め切る値以上(弱≥5・強≥5・4段目≥38)', () => {
-    expect([need('s2'), need('s3'), need('s4')]).toEqual([5, 5, 38]);
+  // 押しの表は実機の順で測った値(2026-11-14・utils/brawlerReach の BRAWLER_PUSH_ZOMBIE_PX)。
+  it('2〜4段目の踏み込みは前の段の押しを詰め切る値以上(弱≥4・強≥4・4段目≥41)', () => {
+    expect([need('s2'), need('s3'), need('s4')]).toEqual([4, 4, 41]);
     for (const b of ['s2', 's3', 's4'] as const) expect(BRAWLER_LUNGE_PX[b], b).toBeGreaterThanOrEqual(need(b));
   });
   it('1段目は2段目と同じ(弱は1つの値)', () => {

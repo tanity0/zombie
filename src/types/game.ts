@@ -219,6 +219,11 @@ export interface Player extends DashLocomotionState {
   lungeShape?: 'decel' | 'accel' | 'step' | 'push'; // step=格闘のステップ(加速→減速・research/BRAWLER.md §12-3)/ push=構えで受けて押される(§12-3d・step と同じ形・向きは変えない・接触の無敵は付かない・スロー中はゲーム内の時間で進む)
   /** ★格闘のヒットストップの間は踏み込みの器の時計を止める(Date.now・この時刻まで速度0で期限を後ろへずらす)。 */
   lungeHoldUntil?: number;
+  /**
+   * ★格闘の当たりの止め(画面全体を止めない形・社長指示2026-11-14)の反動用。lungeHoldUntil と同じ値の時だけ、止めの間は器の時計を延ばさない
+   * (=旧の画面全体の止めと同じく、止めが明けた時刻から反動を始める)。値が違えば今どおり延ばす(ほかの書き手が lungeHoldUntil を書き替えると自然に外れる)。
+   */
+  lungeHoldFixedUntil?: number;
   /** ★サブウェポン「格闘」の状態(research/BRAWLER.md §5)。格闘を持たない時は未設定のまま。 */
   brawler?: BrawlerState;
   /**

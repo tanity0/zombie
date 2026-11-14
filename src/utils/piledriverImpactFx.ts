@@ -10,6 +10,8 @@ import { useGameStore } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
 import { notePileHit } from './pileHitLog';
 import { MELEE_HIT_MS } from './meleeHitFrames';
+import { impactHitStunUntil } from './combatFeel';
+import { isCorpse } from './enemyUtils';
 
 const PILE_DUST_TINT = 0x8a7f9c; // 地面の土の灰に紫を少し混ぜる(塊弾の土埃と同じ色)
 /** 打撃の塊の色(素材の水色を鋼の灰紫へ寄せる)。 */
@@ -22,18 +24,25 @@ const PILE_BURST_SX = 1.25;
 const PILE_SHAKE_MS = 130;
 const PILE_SHAKE_MAG = 7;
 const PILE_SFX_GAIN = 1.6;
-/** 刺さった瞬間の画面全体の止め(社長裁定2026-11-13「はい」=画面全体の止め・叩き台)。呼ぶのは useGameLoop の着弾処理。 */
+/** 刺さった瞬間の止めの長さ(社長裁定2026-11-13「はい」・叩き台)。呼ぶのは useGameLoop の着弾処理。 */
 export const PILEDRIVER_HITSTOP_MS = 60;
 /**
- * 自分の杭が刺さった瞬間の画面全体の止め(社長裁定2026-11-13「はい」=画面全体の止め)。重なりは triggerHitstop が長い方を採る。
- * 守護霊・幻影・打ち返された弾では止めない。四神舞(リズム)中も止めない(他の呼び手と同じ)。
+ * 自分の杭が刺さった瞬間の止め。★社長指示2026-11-14「近接、銃、格闘のヒットストップについて、全体で止めるのではなく、個体の方に変更」:
+ * 旧は画面全体の止め(triggerHitstop)。今は**刺さった敵だけ**を止める=その敵の hitStunUntil(壁時計)を max(今の値, now + PILEDRIVER_HITSTOP_MS) にする。
+ * ボス級(hitStunMsFor が 0 の型)には書かない(区分の仕様)。死体・居ない敵には何もしない。
+ * 守護霊・幻影・打ち返された弾では止めない。四神舞(リズム)中も止めない(旧と同じ条件のまま)。
  * 杭と火花だけの止め(pixi/pileDriverFx の PILE_FREEZE_MS)はこの後に続く。
  */
-export const applyPiledriverHitstop = (p: { hostile: boolean; reflected?: boolean; ownerGhost?: boolean }): void => {
+export const applyPiledriverHitstop = (p: { hostile: boolean; reflected?: boolean; ownerGhost?: boolean }, enemyId: string): void => {
   if (p.hostile || p.reflected || p.ownerGhost) return;
   const st = useGameStore.getState();
   if (st.rhythm.active) return;
-  st.triggerHitstop(PILEDRIVER_HITSTOP_MS);
+  const now = Date.now();
+  const target = st.enemies.find(e => e.id === enemyId);
+  if (!target || isCorpse(target)) return;
+  const u = impactHitStunUntil(target.type, target.hitStunUntil, now, PILEDRIVER_HITSTOP_MS);
+  if (u === undefined || u === target.hitStunUntil) return;
+  useGameStore.setState(s => ({ enemies: s.enemies.map(e => (e.id === enemyId ? { ...e, hitStunUntil: u } : e)) }));
 };
 
 /**

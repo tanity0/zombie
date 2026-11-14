@@ -9,7 +9,7 @@ import type { Enemy } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll } from '../utils/brawlerCombo';
 import {
-  BRAWLER_TEMPO_DEFAULT, BRAWLER_STANDOFF_PX, BRAWLER_WORLD_STOP, BRAWLER_WORLD_STOP_KICK3, initialBrawlerState, brawlerDistTo, brawlerPoseAt, brawlerStandAt,
+  BRAWLER_TEMPO_DEFAULT, BRAWLER_STANDOFF_PX, BRAWLER_WORLD_STOP, BRAWLER_WORLD_STOP_KICK3, initialBrawlerState, brawlerDistTo, brawlerPoseAt, brawlerStandAt, brawlerInFreezeStop,
   type BrawlerState,
 } from '../utils/brawler';
 
@@ -85,11 +85,12 @@ const run = (mode: 'mash' | 'afterHit') => {
       lastHit = en().lastHit;
       const row = rows[rows.length - 1];
       row.hitWall = now;
-      row.stopMs = useGameStore.getState().hitstopUntil - now;
+      expect(useGameStore.getState().hitstopUntil, `${mode}: 画面全体は止めない`).toBeLessThanOrEqual(now);
+      row.stopMs = (en().hitStunUntil ?? 0) - now; // 相手の止め(壁時計)=旧の画面全体の止めと同じ長さ
       if (mode === 'afterHit') pressNext = true;
     }
-    if (frozen() && rows.some(r => r.hitWall > 0)) {
-      // 画面全体の止めの間(押した次の蹴りが始まっていても)、体は当たった蹴りの絵(swing)・影は伸び切ったまま
+    if (brawlerInFreezeStop(br(), gt()) && rows.some(r => r.hitWall > 0)) {
+      // 当たりの止め(旧の画面全体の止めを自分と相手だけで写した止め)の間、体は当たった蹴りの絵(swing)・影は伸び切ったまま
       stopFrames++;
       if (brawlerPoseAt(br(), gt())?.tex !== 'swing') poseBreaks++;
       const sf = brawlerStandAt(br(), gt());

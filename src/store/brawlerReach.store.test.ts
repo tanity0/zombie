@@ -35,9 +35,9 @@ const en = () => useGameStore.getState().enemies.find(x => x.id === 'z')!;
 const br = (): BrawlerState => useGameStore.getState().player.brawler!;
 const gt = () => useGameStore.getState().gameTime;
 const adv = () => {
-  const frozen = now < useGameStore.getState().hitstopUntil;
   now += FRAME;
-  if (frozen) return; // 画面全体の止めの間は壁時計だけ進む(実機のループと同じ)
+  // 画面全体の止めの間は壁時計だけ進む。★実機のループと同じ順(時刻を進めてから止めを見る=止めが明けた最初のフレームは動く・2026-11-14)。
+  if (now < useGameStore.getState().hitstopUntil) return;
   useGameStore.getState().setGameTime(gt() + FRAME);
   useGameStore.getState().movePlayer(NO, FRAME / 1000);
   useGameStore.getState().tickBrawler();

@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { enemyHitReaction, knockbackDurationMul } from '../utils/hitFlinch';
-import { useGameStore, KNOCKBACK_DURATION } from './gameStore';
+import { useGameStore, KNOCKBACK_DURATION, HITSTOP_MS } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
-import { HIT_STUN_MS_MOB, HIT_STUN_MS_STRONG, KILL_CHAIN_WINDOW_MS } from '../utils/combatFeel';
+import { HIT_STUN_MS_MOB, HIT_STUN_MS_STRONG, KILL_CHAIN_WINDOW_MS, GUN_HIT_STOP_MULT } from '../utils/combatFeel';
+// ★銃の当たり('gun')の止めは区分の値の GUN_HIT_STOP_MULT 倍(社長指示2026-11-14「銃のストップをもう少しだけ長く」)。
+const GUN_MOB = Math.round(HIT_STUN_MS_MOB * GUN_HIT_STOP_MULT);
+const GUN_STRONG = Math.round(HIT_STUN_MS_STRONG * GUN_HIT_STOP_MULT);
 
 // 戦闘の手触り(社長指示2026-09-13「では入れてみて」)の配線テスト: 純関数(utils/combatFeel.test.ts)ではなく
 // damageEnemy / 近接経路 / updateEnemies / knockbackEnemy / registerPlayerKills に**実際に効いているか**を見る
@@ -21,17 +24,27 @@ const put = (e: ReturnType<typeof spawnEnemyAt>) => {
 const enemy = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
 
 describe('戦闘の手触り① 局所ストップ(damageEnemy→updateEnemies)', () => {
-  it('雑魚はプレイヤーの銃ダメージで hitStunUntil(約60ms)が立ち、DoTでは立たない', () => {
+  it('雑魚はプレイヤーの銃ダメージで hitStunUntil(区分の値×1.3)が立ち、DoTでは立たない', () => {
     const { px, py, gt } = setup();
     const id = put({ ...spawnEnemyAt('zombie', px + 200, py, gt), health: 1000, maxHealth: 1000 });
     const t0 = Date.now();
     useGameStore.getState().damageEnemy(id, 5, false, false, false, 'gun', 'player');
     const u = enemy(id).hitStunUntil ?? 0;
-    expect(u).toBeGreaterThanOrEqual(t0 + HIT_STUN_MS_MOB - 5);
-    expect(u).toBeLessThanOrEqual(Date.now() + HIT_STUN_MS_MOB + 5);
+    expect(u).toBeGreaterThanOrEqual(t0 + GUN_MOB - 5);
+    expect(u).toBeLessThanOrEqual(Date.now() + GUN_MOB + 5);
     const id2 = put({ ...spawnEnemyAt('zombie', px + 260, py, gt), health: 1000, maxHealth: 1000 });
     useGameStore.getState().damageEnemy(id2, 5, false, false, false, 'dot', 'player');
     expect(enemy(id2).hitStunUntil).toBeUndefined();
+  });
+
+  it('銃以外の当たり(other)は区分の値のまま(1.3倍は銃だけ)', () => {
+    const { px, py, gt } = setup();
+    const id = put({ ...spawnEnemyAt('zombie', px + 200, py, gt), health: 1000, maxHealth: 1000 });
+    const t0 = Date.now();
+    useGameStore.getState().damageEnemy(id, 5, false, false, false, 'other', 'player');
+    const u = enemy(id).hitStunUntil ?? 0;
+    expect(u).toBeGreaterThanOrEqual(t0 + HIT_STUN_MS_MOB - 5);
+    expect(u).toBeLessThanOrEqual(Date.now() + HIT_STUN_MS_MOB + 5);
   });
 
   it('連打の2発目(再発火ガード内)は止めを書き直さない', () => {
@@ -43,14 +56,14 @@ describe('戦闘の手触り① 局所ストップ(damageEnemy→updateEnemies)'
     expect(enemy(id).hitStunUntil).toBe(u1);
   });
 
-  it('強個体(pumpkin)は約40ms、ボス級(thor)は立たない', () => {
+  it('強個体(pumpkin)は区分の値×1.3(銃)、ボス級(thor)は立たない', () => {
     const { px, py, gt } = setup();
     const t0 = Date.now();
     const idP = put({ ...spawnEnemyAt('pumpkin', px + 300, py, gt), health: 100000, maxHealth: 100000 });
     useGameStore.getState().damageEnemy(idP, 5, false, false, false, 'gun', 'player');
     const uP = enemy(idP).hitStunUntil ?? 0;
-    expect(uP).toBeGreaterThanOrEqual(t0 + HIT_STUN_MS_STRONG - 5);
-    expect(uP).toBeLessThanOrEqual(Date.now() + HIT_STUN_MS_STRONG + 5);
+    expect(uP).toBeGreaterThanOrEqual(t0 + GUN_STRONG - 5);
+    expect(uP).toBeLessThanOrEqual(Date.now() + GUN_STRONG + 5);
     const idT = put({ ...spawnEnemyAt('thor', px + 400, py, gt), health: 100000, maxHealth: 100000 });
     useGameStore.getState().damageEnemy(idT, 5, false, false, false, 'gun', 'player');
     expect(enemy(idT).hitStunUntil).toBeUndefined();
@@ -85,7 +98,7 @@ describe('戦闘の手触り① 局所ストップ(damageEnemy→updateEnemies)'
     // 縛るのは「**止めの残りぶん後ろへずれる**」という手触りの方=ずらし幅そのものを見る。
     const kbDur = KNOCKBACK_DURATION * knockbackDurationMul(enemyHitReaction(enemy(id)));
     expect(kb).toBeGreaterThanOrEqual(stunUntil + kbDur - 2);
-    expect(kb).toBeLessThanOrEqual(t0 + HIT_STUN_MS_MOB + kbDur + 5);
+    expect(kb).toBeLessThanOrEqual(t0 + GUN_MOB + kbDur + 5);
     // 止めていない敵は「今から」= ずらしが乗らない(同じのけぞりでも期限が止め残りぶん手前)
     const id2 = put({ ...spawnEnemyAt('zombie', px + 260, py, gt), health: 1000, maxHealth: 1000 });
     const t1 = Date.now();
@@ -226,5 +239,44 @@ describe('戦闘の手触り③ 反動(triggerKick / spawnCasing / updateEffects
     const c2 = fx.find(e => e.id === c.id);
     expect(c2 && c2.kind === 'particle' ? c2.restedAt : undefined).toBeDefined();
     expect(c2 && c2.kind === 'particle' ? c2.vy : 1).toBe(0);
+  });
+});
+
+describe('★スケボーの当たり: 画面全体ではなく当たった敵だけを止める(社長指示2026-11-14「全体で止めるのではなく、個体の方に変更」)', () => {
+  it('当たった雑魚に HITSTOP_MS の止め(hitStunUntil)・画面全体は止まらない', () => {
+    const { px, py, gt } = setup();
+    useGameStore.setState({ hitstopUntil: 0 });
+    const idZ = put({ ...spawnEnemyAt('zombie', px + 30, py, gt), dormant: false, health: 100000, maxHealth: 100000 });
+    const h0 = enemy(idZ).health;
+    const t0 = Date.now();
+    useGameStore.getState().skaterBoardHit(px, py, 1, 0);
+    const z = enemy(idZ);
+    expect(z.health).toBeLessThan(h0); // 当たった
+    expect(z.hitStunUntil ?? 0).toBeGreaterThanOrEqual(t0 + HITSTOP_MS);
+    expect(z.hitStunUntil ?? 0).toBeLessThanOrEqual(Date.now() + HITSTOP_MS);
+    // 押しの期限は今どおり(止めの分を足さない=旧の全体の止めと同じ動き)
+    expect(z.knockbackUntil ?? 0).toBeLessThanOrEqual(Date.now() + KNOCKBACK_DURATION);
+    expect(useGameStore.getState().hitstopUntil).toBeLessThanOrEqual(Date.now()); // 止め0の呼び出しは「今」まで=止まらない(カウンターの0と同じ)
+  });
+  it('ボス級(hitStunMsFor が 0)には書かない', () => {
+    const { px, py, gt } = setup();
+    const idT = put({ ...spawnEnemyAt('thor', px + 30, py, gt), dormant: false, health: 100000, maxHealth: 100000 });
+    const h0 = enemy(idT).health;
+    useGameStore.getState().skaterBoardHit(px, py, 1, 0);
+    expect(enemy(idT).health).toBeLessThan(h0);
+    expect(enemy(idT).hitStunUntil).toBeUndefined();
+  });
+});
+
+describe('★KILL の画面全体のフリーズ: プレイヤーの近接だけ止めない(社長指示2026-11-14)', () => {
+  it('playerMelee=true は hitstopUntil を立てない・ほかの呼び手(既定)は今どおり HITSTOP_MS 止める', () => {
+    setup();
+    useGameStore.setState({ hitstopUntil: 0, lastKillZoomAt: 0 });
+    useGameStore.getState().triggerFinishImpact(100, 100, true, false, true);
+    expect(useGameStore.getState().hitstopUntil).toBe(0);
+    useGameStore.setState({ hitstopUntil: 0, lastKillZoomAt: 0 });
+    const t0 = Date.now();
+    useGameStore.getState().triggerFinishImpact(100, 100, true);
+    expect(useGameStore.getState().hitstopUntil).toBeGreaterThanOrEqual(t0 + HITSTOP_MS);
   });
 });

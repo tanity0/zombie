@@ -81,6 +81,12 @@ export const HIT_STUN_MS_STRONG = 70;
 // (止まっている割合 = 止めの長さ ÷ ガード = 120/400 = 30% で 60/200 と同じ)。
 // ここを据え置くと連射で6割止まる=実質のハメになるため、**必ずセットで動かす**。
 export const HIT_STUN_REARM_MS = 400;
+/**
+ * ★銃の当たりの止めの倍率(社長指示2026-11-14「近接、銃、格闘のヒットストップについて、全体で止めるのではなく、個体の方に変更。
+ * そして銃のストップをもう少しだけ長く」)。damageEnemy の damageChannel==='gun' の当たりだけが nextHitStunUntil の stopMult に渡す。
+ * 再発火ガードも同じ倍率で測る(連射のごり押し防止=止めの占有率30%を保つ)。
+ */
+export const GUN_HIT_STOP_MULT = 1.3;
 export const hitStunMsFor = (type: EnemyType): number => {
   if (isPumpkinTier(type)) return HIT_STUN_MS_STRONG;
   if (isBossType(type)) return 0;
@@ -97,11 +103,28 @@ export const nextHitStunUntil = (
   // 省略時は1(=従来どおり区分の固定値)。★再発火ガードは**区分の基準値**で測る(伸ばした側の
   // 長さで測ると、重い一発の後だけガードが利かなくなる)。
   reactionMul = 1,
+  // ★当たりの種類ごとの止めの倍率(銃=GUN_HIT_STOP_MULT・社長指示2026-11-14「銃のストップをもう少しだけ長く」)。省略時は1(=近接・その他は従来どおり)。
+  // 区分の基準値とガード(HIT_STUN_REARM_MS)の**両方**に掛ける=止めの占有率(基準値÷ガード=30%)は変わらない。
+  stopMult = 1,
 ): number | undefined => {
   const ms = hitStunMsFor(type);
   if (ms <= 0) return undefined;
-  if (prevUntil !== undefined && nowMs < prevUntil - ms + HIT_STUN_REARM_MS) return undefined;
-  return nowMs + Math.round(ms * reactionMul);
+  const baseMs = ms * stopMult;
+  if (prevUntil !== undefined && nowMs < prevUntil - baseMs + HIT_STUN_REARM_MS * stopMult) return undefined;
+  return nowMs + Math.round(baseMs * reactionMul);
+};
+
+/**
+ * ★画面全体の止めを置き換えた「当たった敵だけの止め」(社長指示2026-11-14「近接、銃、格闘のヒットストップについて、全体で止めるのではなく、
+ * 個体の方に変更」)。シールドバッシュ・スケボー・パイルドライバーの当たりが使う。
+ * 長さは呼び手が渡す固定値(旧の全体の止めと同じ長さ)。再発火ガードは掛けない(旧の全体の止めにも無かった)。
+ * 今の値より短くはしない(max)。ボス級/終端(hitStunMsFor が 0)には書かない=undefined。
+ */
+export const impactHitStunUntil = (
+  type: EnemyType, prevUntil: number | undefined, nowMs: number, ms: number,
+): number | undefined => {
+  if (ms <= 0 || hitStunMsFor(type) <= 0) return undefined;
+  return Math.max(prevUntil ?? 0, nowMs + ms);
 };
 
 // ---- ② 連続撃破の段 ----

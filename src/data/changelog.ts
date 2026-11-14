@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5578', items: [
+    '近接・銃・格闘の当たりで、画面全体ではなく当たった敵だけが止まる。ほかの敵の動きや赤い予告は止まらない',
+    '銃で撃った敵の止まる時間が少し長くなった',
+  ] },
   { version: '0.25.5577', items: [
     '金箱が出にくくなり、出た時の箱が少し大きく見える',
   ] },

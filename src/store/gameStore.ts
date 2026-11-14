@@ -133,7 +133,7 @@ import {
   type HitRetaliationWindow, makeRetaliationWindow, isRetaliationWindowOpen, retaliationAngleOk, isRetaliateTargetEligible,
   isRetaliationBlocked, retaliationReady, RETALIATE_DAMAGE_MULT, RETALIATE_LUNGE_MS,
 } from '../utils/hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
-import { isEnemyAttacking, meleeHitSfxLayers, hitStunMsFor } from '../utils/combatFeel';
+import { isEnemyAttacking, meleeHitSfxLayers, hitStunMsFor, impactHitStunUntil } from '../utils/combatFeel';
 import * as BR from '../utils/brawler'; // サブウェポン「格闘」の純関数(research/BRAWLER.md)
 import { isBrawlerGuardingAt } from '../utils/brawler';
 import * as BRC from '../utils/brawlerCombo'; // 格闘の敵側の流れ(食らいの固まり・減衰・反撃=research/BRAWLER.md §11)
@@ -143,7 +143,7 @@ import { noteLeverGuardFull, clearLeverGuardFull, leverGuardHurtMuted, isPlayerH
 import * as BRG from '../utils/brawlerGuard'; // 格闘の構えの成立の効果(雑魚=潰し/雑魚より上=自分がノックバック/光線の中断・research/BRAWLER.md §12-3d)
 import { noteAirMeleeHit, resetAirMeleeHit } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18)
 import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodDrip';
-import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
+import { nextHitStunUntil, GUN_HIT_STOP_MULT, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 // ★被弾リアクションの強さ(ノックバック・停止時間が読む・2026-09-17)
 import {
   enemyHitReaction, hitReactionStrength, knockbackSpeedMul, knockbackDurationMul, hitStopMul, meleeHitStopMul,
@@ -2830,6 +2830,17 @@ export const CRIT_LIGHT_GAP_MS = 120;
 // ★社長指示2026-11-06「近接で切ってる時の心地よさを増やしたい」: ①止めの長さを**このヒットの重さ**で決める
 // (`meleeHitStopMul`=最大HPに対する割合。旧: 倍率なし=一律で、ハンドガン1発より短かった)
 // ②`lastHitDmg` を書く(旧: 近接は書いておらず、のけぞり・跳ね・光の強さが**前回の被弾の値の使い回し**だった)。
+/**
+ * ★画面全体の止めを、当たった敵だけの止めへ置き換える時の書き口(社長指示2026-11-14「近接、銃、格闘のヒットストップについて、
+ * 全体で止めるのではなく、個体の方に変更」)。シールドバッシュ・スケボー・パイルドライバーが使う。
+ * hitStunUntil(壁時計)を max(今の値, now + ms) にするだけ(utils/combatFeel の impactHitStunUntil)。ボス級(hitStunMsFor が 0 の型)には書かない(区分の仕様)。
+ * ★押しの期限(knockbackUntil)はずらさない: 旧の全体の止めも壁時計は進んでいた=止めの間に押しの残りが減っていた。
+ * ずらさなければ、当たった敵の動き(止まってから残りを滑る)は旧の全体の止めと同じになる(=押しの距離を変えない)。
+ */
+const impactHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil'>, now: number, ms: number): Partial<Enemy> => {
+  const u = impactHitStunUntil(enemy.type, enemy.hitStunUntil, now, ms);
+  return u === undefined ? {} : { hitStunUntil: u };
+};
 const meleeHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil' | 'maxHealth'>, now: number, dmg: number, shoveToo = false): Partial<Enemy> => {
   const u = nextHitStunUntil(enemy.type, enemy.hitStunUntil, now, meleeHitStopMul(dmg, enemy.maxHealth));
   if (u === undefined) return { lastHitDmg: dmg };
@@ -4802,28 +4813,39 @@ const brawlerFinishLockPatch = (enemy: Enemy, bs: BrawlerStrikeOpts, gameTime: n
   }).patch };
 };
 /**
- * ★格闘の当たりで画面全体を止めるか(社長指示2026-11-12・utils/brawler の BRAWLER_WORLD_STOP)。四神舞の最中は止めない(拍がずれる=ほかの
- * triggerHitstop の呼び手と同じ)。止める時は、自分の止め・固まりの式の止めを 0、敵に書く止め(壁時計)を全体の止めと同じ長さにする
- * (敵の止めと押しの始まりが、全体の止めの明けと揃う)。幻影(孫悟空)の当たりはこの道を通らない。
+ * ★格闘の当たりの止め(社長指示2026-11-14「近接、銃、格闘のヒットストップについて、全体で止めるのではなく、個体の方に変更」)。
+ * 旧(社長指示2026-11-12)は当たった瞬間に画面全体を BR.BRAWLER_WORLD_STOP の長さだけ止めていた。今は画面全体は止めず、
+ * **旧の全体の止めを自分と相手だけで写す**(freeze=旧の全体の止めの長さ・壁時計):
+ *  - 自分の止め = freeze + BR.BRAWLER_WORLD_STOP_SELF_MS(旧: 全体が止まっている間 gameTime は進まず、明けてから 1ms の自分の止め)。
+ *    この止めの間は飛び蹴りの連続も含めて次の行動を覚え、明けてから出す(stopFreezeUntil・utils/brawler の brawlerInFreezeStop)。
+ *  - 敵に書く止め(壁時計)= freeze(旧と同じ)/固まりの式の止め(gameTime)= freeze + BR.BRAWLER_WORLD_STOP_LOCK_MS(旧は全体の止めの間 gameTime が
+ *    進まなかったので、今は進む分を足す=固まりの明けの壁時計が旧と同じ)。
+ *  - 反動は旧と同じく止めが明けた時刻から始める(止めの間は器の時計を延ばさない=lungeHoldFixedUntil)。
+ *  ⇒ 押しの距離・反動の距離・技の時計は旧の全体の止めと同じ。止まるのは自分と当たった相手だけ。
+ * 四神舞の最中は今どおり(旧から自分と相手だけの止め=hitstopMs そのまま・freeze 0)。幻影(孫悟空)の当たりはこの道を通らない。
+ * world(画面全体の止め)は常に 0(旧の切り替え brawlerWorldStopOn は撤去。BR.BRAWLER_WORLD_STOP 等の定数は freeze の長さとして使う)。
  */
-const brawlerWorldStopOn = (get: () => GameState): boolean => !get().rhythm.active;
-/** 当たりの止めの組(自分の止め・敵に書く止め・固まりの式の止め・全体の止め)。 */
-/** worldMs=画面全体の止めの長さを技ごとに指定する時(未指定=hitstopMs の強さから BR.brawlerWorldStopMs)。蹴り飛ばしだけが使う(§33-2)。 */
-const brawlerStopPlan = (get: () => GameState, hitstopMs: number, worldMs?: number): { self: number; stun: number; lock: { lockStopMs?: number }; world: number } => {
-  if (!brawlerWorldStopOn(get) || hitstopMs <= 0) return { self: hitstopMs, stun: hitstopMs, lock: {}, world: 0 };
-  const world = worldMs ?? BR.brawlerWorldStopMs(hitstopMs);
-  // 自分の止めは 1ms だけ残す: 全体が止まっている間は gameTime が進まないので、この 1ms の止めが「全体の止めの最中に押した入力は今どおり
-  // 覚えて、止めが明けた最初のフレームで出す」を保つ(0 にすると、止めの最中の入力がその場で出て、次の技の出だしが全体の止めの中で始まる)。
-  // 固まりの式の止めは BR.BRAWLER_WORLD_STOP_LOCK_MS(半フレーム): 覚えた技は止めが明けた最初のフレームで出る(gameTime が1フレーム進んだ所)。
-  // 今の自分の止めでも、止めの明けはフレームの境目まで平均で半フレーム遅れていたので、固まりも半フレームぶん後ろへずらして今の手触りに揃える。
-  return { self: BR.BRAWLER_WORLD_STOP_SELF_MS, stun: world, lock: { lockStopMs: BR.BRAWLER_WORLD_STOP_LOCK_MS }, world };
+/** 当たりの止めの組(自分の止め・敵に書く止め・固まりの式の止め・全体の止め・旧の全体の止めを写した長さ)。 */
+/** worldMs=旧の全体の止めの長さを技ごとに指定する時(未指定=hitstopMs の強さから BR.brawlerWorldStopMs)。蹴り飛ばしだけが使う(§33-2)。 */
+const brawlerStopPlan = (get: () => GameState, hitstopMs: number, worldMs?: number): { self: number; stun: number; lock: { lockStopMs?: number }; world: number; freeze: number } => {
+  if (get().rhythm.active || hitstopMs <= 0) return { self: hitstopMs, stun: hitstopMs, lock: {}, world: 0, freeze: 0 };
+  const freeze = worldMs ?? BR.brawlerWorldStopMs(hitstopMs);
+  // 固まりの式の止め: 旧は全体の止めの間 gameTime が「止まっていたフレームの数×フレームの幅」だけ進まなかった(明けたフレームで1フレーム分進む)。
+  // その分を足す=固まりが明ける壁時計が旧と同じ(フレームの幅が分からない最初のフレームは止めの長さそのまま)。
+  const fr = BRC.getBrawlerLockFrameMs();
+  const lostGt = fr > 0 ? Math.max(0, Math.ceil(freeze / fr) - 1) * fr : freeze;
+  return { self: freeze + BR.BRAWLER_WORLD_STOP_SELF_MS, stun: freeze, lock: { lockStopMs: lostGt + BR.BRAWLER_WORLD_STOP_LOCK_MS }, world: 0, freeze };
 };
+/** 旧の全体の止めを写した止めの印(自分の止めの明け=stopUntil と同じ値)。当たった時だけ。 */
+const brawlerFreezeMark = (next: BR.BrawlerState, plan: { freeze: number }, hits: number): Partial<BR.BrawlerState> =>
+  plan.freeze > 0 && hits > 0 ? { stopFreezeUntil: next.stopUntil } : {};
 /**
- * 当たった後の反動。自分と相手だけの止めの時は今どおり(止めの間は器を止める=movePlayer が器の時計を延ばす)。画面全体の止めの時は、止めの間
- * movePlayer が走らず器の時計が延びないので、反動を止めが明けた時刻から始める(=今と同じ「止めが明けたら短く減速して止まる」)。
+ * 当たった後の反動。四神舞の最中(自分と相手だけの止め)は今どおり(止めの間は器を止める=movePlayer が器の時計を延ばす)。
+ * 旧の全体の止めを写した止めの時は、旧と同じく反動を止めが明けた時刻から始める(止めの間は動かず・器の時計も延ばさない=lungeHoldFixedUntil)。
  */
-const brawlerRecoilAt = (dirX: number, dirY: number, plan: { stun: number; world: number }, now: number): Partial<Player> =>
-  plan.world > 0 ? brawlerRecoilPatch(dirX, dirY, 0, now + plan.world) : brawlerRecoilPatch(dirX, dirY, plan.stun, now);
+const brawlerRecoilAt = (dirX: number, dirY: number, plan: { stun: number; world: number; freeze: number }, now: number): Partial<Player> =>
+  plan.freeze > 0 ? { ...brawlerRecoilPatch(dirX, dirY, 0, now + plan.freeze), lungeHoldFixedUntil: now + plan.freeze }
+    : plan.world > 0 ? brawlerRecoilPatch(dirX, dirY, 0, now + plan.world) : brawlerRecoilPatch(dirX, dirY, plan.stun, now);
 /**
  * ★コンボの狙いの書き直し(社長指示2026-11-12「格闘、コンボ中は最初にヒットした敵を狙い続けるようにして」)。当たりの後に呼ぶ。
  * コンボの最初の当たり(または覚えた狙いに届かず別の敵に当てた時)は、その技が狙っていた敵(当たっていれば)か、当たった中でいちばん近い敵を覚える。
@@ -5433,7 +5455,7 @@ const brawlerSecretLand = (get: () => GameState, set: (fn: (s: GameState) => Par
   setBrawler(set, { ...s, secret: { ...s.secret!, phase: 'land', phaseAt: st.gameTime, nextAt: st.gameTime + BR.BRAWLER_SECRET_LAND_MS }, flashAt: now });
   const walls = meleeWallsAround(get, foot.x, foot.y, BR.BRAWLER_SECRET_LAND_RADIUS);
   const ids = BR.brawlerCircleTargets(get().enemies, foot.x, foot.y, BR.BRAWLER_SECRET_LAND_RADIUS, walls);
-  const plan = brawlerStopPlan(get, BR.BRAWLER_SECRET_LAND_HITSTOP_MS); // ★秘奥義の締めの当たり=画面全体の止め
+  const plan = brawlerStopPlan(get, BR.BRAWLER_SECRET_LAND_HITSTOP_MS); // ★秘奥義の締めの当たりの止め(自分と相手だけ・社長指示2026-11-14)
   const res = get().triggerCounter(undefined, {
     targetIds: ids, brawler: true, pressedAt: now,
     mult: BR.BRAWLER_SECRET_LAND_MULT, stunMs: plan.stun, ...plan.lock, postureMult: BR.BRAWLER_SECRET_LAND_MULT,
@@ -5441,6 +5463,11 @@ const brawlerSecretLand = (get: () => GameState, set: (fn: (s: GameState) => Par
     combo: { move: 'secret-land' },
   });
   brawlerApplyWorldStop(get, plan, res.hits ?? 0);
+  // ★旧の全体の止め(gameTime が止まる)を写す: 締めの着地の拍(gameTime)を止めの分だけ延ばす=明けまでの壁時計が旧と同じ(社長指示2026-11-14)。
+  if (plan.freeze > 0 && (res.hits ?? 0) > 0) {
+    const cur = get().player.brawler;
+    if (cur?.secret?.phase === 'land') setBrawler(set, { ...cur, secret: { ...cur.secret, nextAt: cur.secret.nextAt + plan.freeze } });
+  }
   brawlerNoteFlowHits(set, res.hits ?? 0);
   brawlerKillSfx(res);
   const g = get();
@@ -5526,7 +5553,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       const pw = meleeWallsAround(get, palm.x0, palm.y0, palm.travel + 60);
       ids = BR.brawlerBandTargets(st.enemies, palm.x0, palm.y0, palm.ux, palm.uy, pw, palm.travel);
     }
-    const plan = brawlerStopPlan(get, spec.hitstopMs); // ★当たりの止め=画面全体(四神舞の最中は自分と相手だけ)
+    const plan = brawlerStopPlan(get, spec.hitstopMs); // ★当たりの止め=自分と相手だけ(社長指示2026-11-14・画面全体は止めない)
     const r = strike(ids, {
       mult: spec.mult, stunMs: plan.stun, ...plan.lock, postureMult: spec.mult,
       kb: spec.kb === 'big'
@@ -5541,13 +5568,16 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     brawlerKillSfx(r);
     const fdir = palm ? { x: palm.ux, y: palm.uy } : dir;
     brawlerApplyWorldStop(get, plan, hits);
-    const next = { ...BR.brawlerAfterResolve({ ...s, dirX: fdir.x, dirY: fdir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: plan.self, landed: r.landed ?? hits }), ...brawlerComboLockPatch(s, r, target?.id, c) };
+    const next0 = BR.brawlerAfterResolve({ ...s, dirX: fdir.x, dirY: fdir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: plan.self, landed: r.landed ?? hits });
+    const next = { ...next0, ...brawlerFreezeMark(next0, plan, hits), ...brawlerComboLockPatch(s, r, target?.id, c) };
     setBrawler(set, next, {
       lastDirection: { x: fdir.x, y: fdir.y },
       // 5段目: 抜けた先で(当てたら一拍止まってから)減速して止まる。
       // ほか: 当てた=反動の減速 / 空振り=詰めの 'accel' を 'decel' に戻す(古い形を残さない・検収 A-6)。
       // 画面全体の止めの間は器の延長(movePlayer)が走らないので、反動・抜けた先の減速は止めが明けた時刻から始める(brawlerRecoilAt)。
-      ...(palm ? (hits > 0 ? brawlerPalmSettlePatch(fdir.x, fdir.y, plan.world > 0 ? 0 : plan.stun, now + plan.world) : brawlerPalmSettlePatch(fdir.x, fdir.y, 0, now))
+      ...(palm ? (hits > 0
+        ? (plan.freeze > 0 ? { ...brawlerPalmSettlePatch(fdir.x, fdir.y, 0, now + plan.freeze), lungeHoldFixedUntil: now + plan.freeze } : brawlerPalmSettlePatch(fdir.x, fdir.y, plan.world > 0 ? 0 : plan.stun, now + plan.world))
+        : brawlerPalmSettlePatch(fdir.x, fdir.y, 0, now))
         : hits > 0 ? brawlerRecoilAt(dir.x, dir.y, plan, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
     });
     brawlerNoteFlowHits(set, hits);
@@ -5563,7 +5593,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   if (s.tech === 'stomp') {
     const foot = { x: c.x, y: c.y + p.height / 2 - 6 };
     const ids = BR.brawlerCircleTargets(st.enemies, foot.x, foot.y, stompR, walls);
-    const plan = brawlerStopPlan(get, BR.BRAWLER_STOMP_HITSTOP_MS); // ★当たりの止め=画面全体
+    const plan = brawlerStopPlan(get, BR.BRAWLER_STOMP_HITSTOP_MS); // ★当たりの止め=自分と相手だけ(社長指示2026-11-14)
     const r = strike(ids, {
       mult: BR.BRAWLER_STOMP_MULT, stunMs: plan.stun, ...plan.lock, postureMult: BR.BRAWLER_STOMP_MULT,
       kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
@@ -5572,7 +5602,8 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
     brawlerApplyWorldStop(get, plan, hits);
-    setBrawler(set, { ...BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: plan.self, landed: r.landed ?? hits }), ...brawlerComboLockPatch(s, r, undefined, foot) },
+    const stompNext = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: plan.self, landed: r.landed ?? hits });
+    setBrawler(set, { ...stompNext, ...brawlerFreezeMark(stompNext, plan, hits), ...brawlerComboLockPatch(s, r, undefined, foot) },
       hits > 0 ? { lungeHoldUntil: now + plan.stun } : {});
     brawlerNoteFlowHits(set, hits);
     g.breakEggsInBlast(foot.x, foot.y, stompR); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
@@ -5606,7 +5637,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const ids = target && BR.brawlerDistTo(c.x, c.y, target) <= radius ? [target.id] : [];
     // 踵落とし: 当たる前に浮いていた敵(叩き落とす)と地上の敵(その場で沈む)で、絵を出し分ける。
     const heelAir = heel ? new Set(st.enemies.filter(e => ids.includes(e.id) && BRC.brawlerAirborne(e, now)).map(e => e.id)) : null;
-    // ★当たりの止め=画面全体(踵落としも)。蹴り飛ばし(踵落としでない3発目)は専用の長さ(BR.BRAWLER_WORLD_STOP_KICK3・§33-2「締めの重さは止めで出す」)。
+    // ★当たりの止め=自分と相手だけ(社長指示2026-11-14・画面全体は止めない)。蹴り飛ばし(踵落としでない3発目)は専用の長さ(BR.BRAWLER_WORLD_STOP_KICK3・§33-2「締めの重さは止めで出す」)を相手と自分の止めに使う。
     const plan = brawlerStopPlan(get, hs, big && !heel ? BR.BRAWLER_WORLD_STOP_KICK3 : undefined);
     const r = strike(ids, {
       mult: heel ? BR.BRAWLER_HEEL_MULT : BR.brawlerKickMult(s.kickN), stunMs: plan.stun, ...plan.lock, postureMult: heel ? BR.BRAWLER_HEEL_MULT : BR.brawlerKickMult(s.kickN), // 何発目かで 0.7/0.8/1.2
@@ -5625,7 +5656,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     // 秘奥義の1手目(→)は蹴りが当たった時だけ数える(社長指示2026-11-08「1発目は敵に当たっていること」)。
     // ★「当たった」=体力を削った当たり(§19-1): 拳鬼にレバーガードで防がれた蹴りは数えない(拳鬼の側の規則と同じ)。
     const secretProgress = BR.brawlerSecretAfterKick(s.secretProgress ?? 0, (r.landed ?? hits) > 0);
-    setBrawler(set, { ...after, secretProgress, kickChainUntil: big ? 0 : t + BR.BRAWLER_KICK_CHAIN_MS, kickCount: big ? 0 : s.kickN, ...brawlerComboLockPatch(s, r, target?.id, c) }, {
+    setBrawler(set, { ...after, ...brawlerFreezeMark(after, plan, hits), secretProgress, kickChainUntil: big ? 0 : t + BR.BRAWLER_KICK_CHAIN_MS, kickCount: big ? 0 : s.kickN, ...brawlerComboLockPatch(s, r, target?.id, c) }, {
       lastDirection: { x: dir.x, y: dir.y },
       ...(hits > 0 ? brawlerRecoilAt(dir.x, dir.y, plan, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
     });
@@ -9996,7 +10027,8 @@ interface GameState {
   // 近接フィニッシュ: ストップ+ズーム+スローを1拍エンベロープで発火(CD明けのみ・CD内は最低保証フラッシュのみ)。
   // forceMaximumZoom=true は致命の一撃専用。CDと進行中ズームを無視し、対象へ最大ズームを掛け直す。
   // 戻り値=そのキルでフル演出(CD明け)が出たか(呼び出し元が武器固有フラッシュを出すかの判断に使う)。
-  triggerFinishImpact: (targetX?: number, targetY?: number, forceMaximumZoom?: boolean, onPlayer?: boolean) => boolean;
+  // playerMelee: プレイヤーの近接(triggerCounter=ナイフ等の振り・格闘)の KILL。true の時だけ画面全体のフリーズ(HITSTOP_MS)を掛けない(社長指示2026-11-14)。
+  triggerFinishImpact: (targetX?: number, targetY?: number, forceMaximumZoom?: boolean, onPlayer?: boolean, playerMelee?: boolean) => boolean;
   triggerZoom: (mag: number, durationMs: number, holdMs?: number, targetX?: number, targetY?: number, kind?: CineKind, onPlayer?: boolean) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)。kind=カメラ台本の演目(v0.25.4294)。onPlayer=幻影→自分の致命(VFXは死亡扱い・v0.25.4306)
   // dirX/dirY(§5.23 M22 C1・任意・未正規化でよい): 指定時はシェイクをその方向へ寄せる。
   // 未指定/{0,0}/`?dirfx=0`は従来どおり等方のランダム揺れ。
@@ -10921,7 +10953,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 上書きされる)。無敵は付いていないので、踏み込み中に当たれば普通に食らう=避けるのは腕。
       const lungeActive = !kbActive && kbNow < (player.lungeUntil ?? 0);
       // ★格闘のヒットストップの間は踏み込みの器の時計を止める(research/BRAWLER.md §8-2)。止めた分だけ期限を後ろへずらす。
-      const lungeHeld = lungeActive && kbNow < (player.lungeHoldUntil ?? 0);
+      // ★旧の全体の止めを写した格闘の反動(lungeHoldFixedUntil)は、止めの最中に覚えた次の蹴りが控えている間も止めたまま
+      //   (旧は止めの最中に次の蹴りがその場で出て反動を打ち消していた=反動は1フレームも動かなかった・社長指示2026-11-14)。
+      const kickQueuedBehindFreeze = player.lungeHoldFixedUntil !== undefined && player.lungeHoldFixedUntil === player.lungeHoldUntil
+        && player.brawler?.techBuffer === 'kick' && player.brawler.phase === 'tech' && player.brawler.tech === 'kick';
+      const lungeHeld = lungeActive && (kbNow < (player.lungeHoldUntil ?? 0) || kickQueuedBehindFreeze);
       // ★構えで受けて押されている最中(research/BRAWLER.md §12-3d・器の形 'push')。向きは相手を向いたまま・スロー中はゲーム内の時間で進む。
       const lungePushed = lungeActive && !lungeHeld && player.lungeShape === 'push';
       // スケーター急停止中: 入力を無視して残速度を素早く減衰(tau=50ms)=ほんの少し慣性のある急停止。
@@ -11253,7 +11289,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           aimX,
           aimY,
           shukuchiWarpTo: undefined,
-          ...(lungeHeld ? { lungeUntil: player.lungeUntil + deltaTime * 1000 } : {}),
+          // ★旧の全体の止めを写した格闘の反動(lungeHoldFixedUntil が lungeHoldUntil と同じ)は延ばさない=止めが明けた時刻から始まる(社長指示2026-11-14)。
+          ...(lungeHeld && player.lungeHoldFixedUntil !== player.lungeHoldUntil ? { lungeUntil: player.lungeUntil + deltaTime * 1000 } : {}),
           // ★構えで押される('push'): 器の時計は実時間なので、成立のスロー(構え1回の最初の受けで必ず掛かる)の間に進んだ実時間のうち
           // ゲーム内で進んでいない分だけ期限を後ろへずらす=スロー中も決めた距離を押され切る(ずらさないと 1/5 しか動かない)。
           // deltaTime はループが「実時間×スローの倍率×ゲームスピード」で渡す(useGameLoop の movePlayer)=ゲームスピードで割ってゲーム内の秒へ戻す。
@@ -11888,6 +11925,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: dirX * SHIELD_BASH_KNOCKBACK_SPEED, knockbackVy: dirY * SHIELD_BASH_KNOCKBACK_SPEED,
           knockbackUntil: now + KNOCKBACK_DURATION, knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
+          ...impactHitStunPatch(enemy, now, HITSTOP_MS), // ★当たった敵だけの止め(旧: 画面全体の止め・社長指示2026-11-14)
           ...(gpPatch ?? {}), // research/GHOST_BOSS.md v6: 幻影の i-frame 起点
         });
       }
@@ -11920,7 +11958,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // SE(v0.25.3304): bashHitFxAt(heavy-impact)は立てない——スケボーのSEは呼び出し側(useGameLoop)が
     // 覚醒=bomb/非覚醒=heavy-impactを着弾の瞬間に直接鳴らす(命中0でも板が当たった音は出す・二重再生防止)。
     if (hitAt.length > 0) {
-      get().triggerHitImpact(HITSTOP_MS, 0, 0, 0); // ストップのみ。揺れは下(bash ×1.5・覚醒の大爆発なら explosion も)
+      // ★社長指示2026-11-14「近接、銃、格闘のヒットストップについて、全体で止めるのではなく、個体の方に変更」: 画面全体の止めは書かない
+      // (止めは当たった敵それぞれの hitStunUntil=上の impactHitStunPatch)。止め以外(スロー・ズーム)は今どおり triggerHitImpact が出す。
+      get().triggerHitImpact(0, 0, 0, 0); // 揺れは下(bash ×1.5・覚醒の大爆発なら explosion も)
       get().registerImpact({ source: 'skate', damage: dealtSum, minMag: IMPACT_MELEE_MIN, flags: { bash: true, explosion: skAwaken, kill: killedList.length > 0 }, x, y });
     }
   },
@@ -12747,6 +12787,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackUntil: now + KNOCKBACK_DURATION,
           knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
+          ...impactHitStunPatch(enemy, now, HITSTOP_MS), // ★当たった敵だけの止め(旧: 画面全体の止め・社長指示2026-11-14)
           ...bashPvpPatch, // ★SAME_ARENA §9: 対人体勢
         });
         continue;
@@ -13032,9 +13073,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ① 1発目サークルが動かない ② Hitstop 中タップで elapsed=0→JUST 窓外→コンボ消滅 の2バグを招く。
       hitstopUntil: !bs && hasSkill(state.player, 'slasher') && slashAt.length > 0
         ? 0  // スラッシャーリング始動: 既存ヒットストップも即解除してリングをすぐ動かす
-        : finisherHit
-          ? now + HITSTOP_MS
-          : state.hitstopUntil,
+        // ★社長指示2026-11-14「近接、銃、格闘のヒットストップについて、全体で止めるのではなく、個体の方に変更」:
+        // フィニッシュでも画面全体は止めない(当たった敵の止め=meleeHitStunPatch の hitStunUntil だけ)。
+        : state.hitstopUntil,
       player: {
         ...state.player,
         meleeSwingAt: bs ? state.player.meleeSwingAt : swingAt, // 格闘はナイフの絵を出さない(§7-6)。近接スイング演出の起点(描画のみ)。★前隙の起点=指を離した時刻に揃える(200ms後に絵を出し直さない)。
@@ -13114,7 +13155,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // シールドバッシュのエフェクト(ストップ→揺れ+寄り)は「敵に当たった時のみ」(社長指示)。
     // 壁押し出しだけ(敵に当たっていない)では何も出さない。
     if (bashHitEnemy) {
-      get().triggerHitImpact(HITSTOP_MS, 0, 0, 0); // 寄りズーム無し(社長指示)。ストップのみ(揺れは下の registerImpact・bash ×1.5)
+      // ★社長指示2026-11-14「近接、銃、格闘のヒットストップについて、全体で止めるのではなく、個体の方に変更」: 画面全体の止めは書かない
+      // (止めは当たった敵それぞれの hitStunUntil=押しの所の impactHitStunPatch)。止め以外(スロー)は今どおり triggerHitImpact が出す。
+      get().triggerHitImpact(0, 0, 0, 0); // 寄りズーム無し(社長指示)。揺れは下の registerImpact・bash ×1.5
       set({ bashHitFxAt: Date.now() }); // 命中SE(heavy-impact)のトリガ。useGameLoop が検出して再生。
     }
     // シールドバッシュの押し出し演出(押し出し先で衝撃スラッシュ+リング)。
@@ -13181,7 +13224,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         : finishZoomTargetOf(killed);
       // M21(§5.22): フル演出(CD明け)の時だけ武器固有の黄フラッシュを重ねる。CD内は
       // triggerFinishImpact自身が出す最低保証フラッシュ(軽い白)だけになる=二重フラッシュを避ける。
-      const fullCinematic = get().triggerFinishImpact(ztx, zty, bossFatalHits.length > 0 || eliteFatalKill); // 致命(ボス/紫中の強個体)はCDを無視して必ず最大ズーム
+      const fullCinematic = get().triggerFinishImpact(ztx, zty, bossFatalHits.length > 0 || eliteFatalKill, false, true); // 致命(ボス/紫中の強個体)はCDを無視して必ず最大ズーム。プレイヤーの近接=画面全体は止めない(社長指示2026-11-14)
       finishFull = true; // CD内(fullCinematic=false)でも処刑の揺れは出す。停止/スロー/ズーム/カメラはCD明けだけ(従来)
       if (fullCinematic && killed.some(k => k.finisher)) {
         get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
@@ -17719,7 +17762,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const hitStunNext = (hateSource === 'player' && eff > 0 && damageChannel !== 'dot' && damageChannel !== null && newHealth > 0)
         ? nextHitStunUntil(enemy.type, enemy.hitStunUntil, Date.now(),
             hitStopMul(hitReactionStrength(eff, enemy.maxHealth,
-              isBossType(enemy.type) ? FLINCH_FULL_DAMAGE_FRAC_BOSS : FLINCH_FULL_DAMAGE_FRAC)))
+              isBossType(enemy.type) ? FLINCH_FULL_DAMAGE_FRAC_BOSS : FLINCH_FULL_DAMAGE_FRAC)),
+            // ★銃の当たりは止めを1.3倍(ガードも同じ倍率=占有率は据え置き・社長指示2026-11-14「銃のストップをもう少しだけ長く」)。
+            damageChannel === 'gun' ? GUN_HIT_STOP_MULT : 1)
         : undefined;
       const hitStunPatch = hitStunNext !== undefined ? { hitStunUntil: hitStunNext } : {};
       // ★被弾量の打刻(社長裁定2026-09-16「0.15から」)。描画側が**のけぞりの強さ**をこれで決める
@@ -27707,7 +27752,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (shakeMag > 0) setTimeout(() => get().triggerShake(shakeMs, shakeMag), Math.max(0, stopMs));
   },
 
-  triggerFinishImpact: (targetX, targetY, forceMaximumZoom = false, onPlayer = false) => {
+  triggerFinishImpact: (targetX, targetY, forceMaximumZoom = false, onPlayer = false, playerMelee = false) => {
     const now = Date.now();
     // 致命の一撃は通常KILLの10秒CDや、直前のズームの残り具合に左右されない。
     // 一度ズーム包絡を切ってから最大倍率を対象中心へ掛け直し、必ず「最大まで寄る1イベント」にする。
@@ -27740,7 +27785,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const fullCinematic = forceMaximumZoom || shouldFireFullJuiceCinematic(now, get().lastKillZoomAt, JUICE_CD_MS);
     if (fullCinematic) {
       set({ lastKillZoomAt: now });
-      get().triggerHitstop(HITSTOP_MS); // KILLにもカウンターと同じフリーズを追加(旧仕様は素通りだった)
+      // KILLにもカウンターと同じフリーズを追加(旧仕様は素通りだった)。
+      // ★社長指示2026-11-14「近接、銃、格闘のヒットストップについて、全体で止めるのではなく、個体の方に変更」: プレイヤーの近接(playerMelee)の KILL だけは
+      //   画面全体を止めない(ズーム・スローは今どおり)。守護霊・ワイヤー・死神側・刀・鞭・分身などほかの呼び手は今どおり止める。
+      if (!playerMelee) get().triggerHitstop(HITSTOP_MS);
       // ズームをスローと同じ長さ/holdへ統一(旧仕様の専用MELEE_FINISH_ZOOM_MS/HOLD_MSは使わない)。
       triggerMaximumZoom(MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
       get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
