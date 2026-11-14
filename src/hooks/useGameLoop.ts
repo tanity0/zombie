@@ -10555,6 +10555,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const reloadBeforeAutoSwitch = useGameStore.getState().player.reloadingWeaponId;
         tickReload();
         autoSwitchIfDry();
+        // 変異体対策室(練習ラン)だけ: 弾切れの種類の弾を画面内のランダムな位置へ落とす(判定は store/utils・§21-4 弾ゼロでは止める)。
+        if (isPracticeRun() && !NO_AMMO_RUN) useGameStore.getState().practiceAmmoResupplyTick();
         const postReloadPlayer = useGameStore.getState().player;
         if (!reloadBeforeAutoSwitch && postReloadPlayer.reloadingWeaponId) {
           // リロードSEは武器のリロード時間ぶんだけ鳴らし、完了と同時に止める(社長指示。音源は長尺約7.6s)。

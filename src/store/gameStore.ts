@@ -360,6 +360,8 @@ import {
   type RunTelemetryEquipSnapshot, type RunTelemetryEquipSlotSnapshot,
 } from '../utils/runTelemetry';
 import { isPracticeRun, isNoProgressRun, practiceBossType, GUARDIAN_PHANTOM_LABEL } from '../utils/bossPractice';
+import { practiceDryAmmoTypes, practiceAmmoTypesToDrop, pickPracticeAmmoSpot } from '../utils/practiceAmmoResupply';
+import { renderedViewRect } from '../utils/spawnRefill';
 import { phantomDisplayLabel } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の表示名はその回の人格 // BOSS_MAKER.md §20-7-c / research/GHOST_BOSS.md
 // research/GHOST_BOSS.md v6: 幻影が受ける打撃の関所(被弾無敵+パリィ)。**7系統の全てがここを通る**。
 import { phantomHitGate, playerIframeApplies, type PhantomDamageSource, type PhantomHitGateResult } from '../utils/phantomGate';
@@ -423,6 +425,7 @@ import { counterInterruptPatch, COUNTER_UNINTERRUPTIBLE_PHASES, isBiteSubject, i
 // 繰り下げ)は**破棄**して、この「残りを預かって明けた瞬間に書き直す」1本へ置き換えた(H-3)。
 import { tickEnemyClockFreeze } from '../utils/enemyClocks';
 import { airShotStopPatch, airShotStopTick, airShotStopped, airShotNudgePatch, AIR_SHOT_NUDGE_PX } from '../utils/airShotStop';
+import { kbStopCreepFrameFactor } from '../utils/knockbackStopCreep';
 // ★ゾンビ赤(PACING_PUZZLE.md §16-3・§16-8b手順5)。枠の導出/技の終わり/待ちの尺/帯の定数の正本。
 import {
   deriveChaffMoveGrants, endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot,
@@ -4313,6 +4316,11 @@ const xpOrbCountForEnemy = (enemy: Enemy): number =>
 // Pickup には width/height が無い(点+当たり判定は描画側で決め打ち)。pixiScene.ts の
 // drawPickup が使う hitSize=16 と同じ既定値を採用する(=見た目の当たり判定と一致させる)。
 const PICKUP_HIT_SIZE = 16;
+// 変異体対策室の弾の補給(社長指示2026-11-14): 「落とした/場にある」と確かめ済みの弾の種類。弾切れが解けたら外す。
+// 場の確かめ直しは PRACTICE_AMMO_RECHECK_MS ごと(拾わずに消えた時の取りこぼし防止)。resetGame で空にする。
+const practiceAmmoLatch = new Set<AmmoType>();
+let practiceAmmoRecheckAt = 0;
+const PRACTICE_AMMO_RECHECK_MS = 1000;
 const pickupWithDropScatter = (pickup: Pickup): Pickup => {
   if (
     pickup.worldDrop ||
@@ -9669,6 +9677,8 @@ interface GameState {
   grantWeapon: (key: string) => void;
   setActiveWeapon: (id: string) => void;
   autoSwitchIfDry: () => void;
+  /** 変異体対策室(練習ラン)だけ: 弾切れの種類の弾を画面内のランダムな位置へ1つ落とす(utils/practiceAmmoResupply)。練習ラン以外では何もしない。 */
+  practiceAmmoResupplyTick: () => void;
   startReload: (weaponId: string) => void;
   tickReload: () => void;
 
@@ -18552,7 +18562,57 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★攻撃中スーパーアーマー(社長裁定2026-09-17)。述語は `combatFeel.isEnemyAttacking` の1本だけ
         // (`knockbackEnemy` も同じものを読む=2箇所で式がズレない)。
         const attacking = isEnemyAttacking(enemy, gameTime);
+        // 押しの1フレームぶんの移動(画面外リサイクル境界と「行ける帯」の内側へ)。decay=速さの掛け。
+        // ★止めの間の押しの出だし(utils/knockbackStopCreep)と、下の押しの所の両方がこれを通る(クランプの式を2つに分けない)。
+        const slideKnockback = (decay: number): Enemy => {
+          const kb = resolveMove(
+            enemy.x + (enemy.knockbackVx ?? 0) * decay * deltaTime,
+            enemy.y + (enemy.knockbackVy ?? 0) * decay * deltaTime,
+          );
+          // ノックバック(カウンター等)の吹き飛び先を画面外リサイクル境界の内側にクランプする(案A)。
+          // runOffscreenRecycleAndCull (directorTick.ts) と同じ境界計算をここで複製し、境界を
+          // 越えた瞬間に次フレームでリサイクルされて「カウンターした敵が消える」不具合を防ぐ。
+          // 通常の追跡AI(このifブロックの外)には影響しない。
+          const recycleZoomOverscan = (labTheme || indoor) ? 1 : 1 / ZOOM_MIN_ABS; // ★一番引いた時を基準に(v0.25.2412)
+          const recycleHalfW = (state.gameBounds.width / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
+          const recycleHalfH = (state.gameBounds.height / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
+          const bufferX = enemy.width;  // 境界ぎりぎりではなく内側へ余裕を持って着地させる
+          const bufferY = enemy.height;
+          const kbCenterX = kb.x + enemy.width / 2;
+          const kbCenterY = kb.y + enemy.height / 2;
+          const clampedCenterX = Math.max(pcx - (recycleHalfW - bufferX), Math.min(pcx + (recycleHalfW - bufferX), kbCenterX));
+          const clampedCenterY = Math.max(pcy - (recycleHalfH - bufferY), Math.min(pcy + (recycleHalfH - bufferY), kbCenterY));
+          // ★v0.25.3875(社長報告2026-08-24「鞭で移動不可のほうにとんでって、そこから攻撃された」):
+          // ここは**画面外リサイクル境界**しか見ておらず、**「行ける帯」(clampRectToPlayableArea)を
+          // 通していなかった**。追跡AI側(このifブロックの外)は通しているので、**押し道具で飛ばした時
+          // だけ**プレイヤーが入れない場所へ敵を置ける穴になっていた。鞭は WHIP_KNOCKBACK_SPEED=600
+          // =通常の4.5倍なので、いちばん簡単にこの穴を踏む。
+          // CLAUDE.md「アクターを新しく動かす時は、必ず clampRectToPlayableArea を通す」。
+          const kbCtx: PlayableAreaCtx = {
+            farBackdrop: state.farBackdrop, labTheme,
+            corridorMode: state.corridorMode,
+            m0AdvanceLimitX: state.m0AdvanceLimitX,
+            corridorRunInActive: state.corridorRunInActive,
+          };
+          const kbPlaced = clampRectToPlayableArea(
+            clampedCenterX - enemy.width / 2, clampedCenterY - enemy.height / 2,
+            enemy.width, enemy.height, kbCtx, enemy.x,
+          );
+          // ★PACING_PUZZLE.md §16-H H-4(f)(社長裁定2026-09-19): **ノックバックは凍結に含めない**
+          // (銃撃で毎回止まる=「銃撃では攻撃は何も止まらない」に反する)。旧 `deferFrozenClocksBy`
+          // の呼び出しはここで撤去した=ノックバック中も時計は普通に進む。
+          return { ...enemy, x: kbPlaced.x, y: kbPlaced.y };
+        };
+        // ★止めの長さを覚えている押し(knockbackStopFor===knockbackUntil)は、止めの間もゆっくり押し始める(下の押しの所の④)。四神舞の最中は今どおり(止めの間は動かない)。
+        const kbStopMarked = enemy.knockbackStopFor !== undefined && enemy.knockbackStopFor === enemy.knockbackUntil && (enemy.knockbackStopMs ?? 0) > 0;
+        const kbCreepStopMs = kbStopMarked && !state.rhythm.active ? enemy.knockbackStopMs! : 0;
         if (!committed && !attacking && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) {
+          // 止めの間の押しの出だし: 押しの頭(残りが280msより長い=まだ止めの区間)だけ。押せない敵(ボス級の守り)・押しの無い止めは今どおり止まる。
+          const kbRemain = enemy.knockbackUntil !== undefined ? enemy.knockbackUntil - now : 0;
+          if (kbCreepStopMs > 0 && kbRemain > KNOCKBACK_DURATION && canShoveEnemy(enemy, now)
+            && (Math.abs(enemy.knockbackVx ?? 0) > 0 || Math.abs(enemy.knockbackVy ?? 0) > 0)) {
+            return slideKnockback(kbStopCreepFrameFactor(kbRemain, kbCreepStopMs, deltaTime * 1000));
+          }
           return enemy;
         }
         // ★空中の弾の止め(utils/airShotStop): 止めの間は位置も止める(押しの時計は前処理で後ろへずれている=明けたら続きから)。
@@ -18668,47 +18728,16 @@ export const useGameStore = create<GameState>((set, get) => ({
           //  ① 止めの間は攻撃中の敵もその場に留める(止まる敵と同じ)。押しの間は技の動きを上書きしているので、技の時計は普通に進む。
           //  ② 減衰は1で頭打ち。
           //  ③ 止めの長さを覚えている押しは、止めの後の速さを ((止め+280)/280)² 倍=旧「攻撃中の敵」の距離に全員を揃える。
-          if (attacking && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) return enemy;
-          const stopBoost = enemy.knockbackStopFor === enemy.knockbackUntil && (enemy.knockbackStopMs ?? 0) > 0
-            ? kbStopBoost(enemy.knockbackStopMs!) : 1;
-          const decay = Math.min(1, Math.max(0, remaining / KNOCKBACK_DURATION)) * stopBoost; // 1 → 0(止めの補正つき)
-          const kb = resolveMove(
-            enemy.x + (enemy.knockbackVx ?? 0) * decay * deltaTime,
-            enemy.y + (enemy.knockbackVy ?? 0) * decay * deltaTime,
-          );
-          // ノックバック(カウンター等)の吹き飛び先を画面外リサイクル境界の内側にクランプする(案A)。
-          // runOffscreenRecycleAndCull (directorTick.ts) と同じ境界計算をここで複製し、境界を
-          // 越えた瞬間に次フレームでリサイクルされて「カウンターした敵が消える」不具合を防ぐ。
-          // 通常の追跡AI(このifブロックの外)には影響しない。
-          const recycleZoomOverscan = (labTheme || indoor) ? 1 : 1 / ZOOM_MIN_ABS; // ★一番引いた時を基準に(v0.25.2412)
-          const recycleHalfW = (state.gameBounds.width / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
-          const recycleHalfH = (state.gameBounds.height / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
-          const bufferX = enemy.width;  // 境界ぎりぎりではなく内側へ余裕を持って着地させる
-          const bufferY = enemy.height;
-          const kbCenterX = kb.x + enemy.width / 2;
-          const kbCenterY = kb.y + enemy.height / 2;
-          const clampedCenterX = Math.max(pcx - (recycleHalfW - bufferX), Math.min(pcx + (recycleHalfW - bufferX), kbCenterX));
-          const clampedCenterY = Math.max(pcy - (recycleHalfH - bufferY), Math.min(pcy + (recycleHalfH - bufferY), kbCenterY));
-          // ★v0.25.3875(社長報告2026-08-24「鞭で移動不可のほうにとんでって、そこから攻撃された」):
-          // ここは**画面外リサイクル境界**しか見ておらず、**「行ける帯」(clampRectToPlayableArea)を
-          // 通していなかった**。追跡AI側(このifブロックの外)は通しているので、**押し道具で飛ばした時
-          // だけ**プレイヤーが入れない場所へ敵を置ける穴になっていた。鞭は WHIP_KNOCKBACK_SPEED=600
-          // =通常の4.5倍なので、いちばん簡単にこの穴を踏む。
-          // CLAUDE.md「アクターを新しく動かす時は、必ず clampRectToPlayableArea を通す」。
-          const kbCtx: PlayableAreaCtx = {
-            farBackdrop: state.farBackdrop, labTheme,
-            corridorMode: state.corridorMode,
-            m0AdvanceLimitX: state.m0AdvanceLimitX,
-            corridorRunInActive: state.corridorRunInActive,
-          };
-          const kbPlaced = clampRectToPlayableArea(
-            clampedCenterX - enemy.width / 2, clampedCenterY - enemy.height / 2,
-            enemy.width, enemy.height, kbCtx, enemy.x,
-          );
-          // ★PACING_PUZZLE.md §16-H H-4(f)(社長裁定2026-09-19): **ノックバックは凍結に含めない**
-          // (銃撃で毎回止まる=「銃撃では攻撃は何も止まらない」に反する)。旧 `deferFrozenClocksBy`
-          // の呼び出しはここで撤去した=ノックバック中も時計は普通に進む。
-          return { ...enemy, x: kbPlaced.x, y: kbPlaced.y };
+          //  ④(社長承認2026-11-14「浮く動作がぎごちない」): ③の押しは止めの間もゆっくり押し始め、明けで加速して、今と同じ直線で減衰する
+          //     (utils/knockbackStopCreep・合計の距離は③と同じ)。止めの明けに横の速さが 0 から段差で跳ばない。四神舞の最中は今どおり③。
+          if (attacking && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) {
+            return kbCreepStopMs > 0 && remaining > KNOCKBACK_DURATION ? slideKnockback(kbStopCreepFrameFactor(remaining, kbCreepStopMs, deltaTime * 1000)) : enemy;
+          }
+          const stopBoost = kbStopMarked ? kbStopBoost(enemy.knockbackStopMs!) : 1;
+          const decay = kbCreepStopMs > 0
+            ? kbStopCreepFrameFactor(remaining, kbCreepStopMs, deltaTime * 1000)
+            : Math.min(1, Math.max(0, remaining / KNOCKBACK_DURATION)) * stopBoost; // 1 → 0(止めの補正つき)
+          return slideKnockback(decay);
         }
 
         // v0.25.2895: 裏ボス4体/天使6体/アイドル(=isHiddenBoss)はここで抜ける。上のノックバック
@@ -24350,6 +24379,54 @@ export const useGameStore = create<GameState>((set, get) => ({
   //   2. active gun empty but has reserve -> reload it (don't switch).
   //   3. active gun fully dry -> switch to a gun that can fire now (loaded) or
   //      reload (has reserve); if none, the player falls back to melee.
+  practiceAmmoResupplyTick: () => {
+    if (!isPracticeRun()) return;
+    const st = get();
+    // 毎フレームここで見るのは所持銃だけ(数挺)。場の拾い物を見るのは、新しく弾切れになった瞬間と1秒ごとの確かめ直しだけ。
+    const dry = practiceDryAmmoTypes(st.player);
+    if (dry.length === 0) { practiceAmmoLatch.clear(); return; }
+    for (const t of [...practiceAmmoLatch]) if (!dry.includes(t)) practiceAmmoLatch.delete(t);
+    if (st.gameTime >= practiceAmmoRecheckAt) { practiceAmmoLatch.clear(); practiceAmmoRecheckAt = st.gameTime + PRACTICE_AMMO_RECHECK_MS; }
+    const fresh = dry.filter(t => !practiceAmmoLatch.has(t));
+    if (fresh.length === 0) return;
+    const toDrop = practiceAmmoTypesToDrop(fresh, st.pickups);
+    for (const t of fresh) if (!toDrop.includes(t)) practiceAmmoLatch.add(t); // 場に同じ種類がある
+    if (toDrop.length === 0) return;
+    const p = st.player;
+    const labTheme = st.stageTheme === 'lab';
+    // 実際に映る範囲(ズーム引き・地平線込み)。地平線より上は拾い物が透けて見えないので、その下だけに置く。
+    const view = renderedViewRect(st.camera.x, st.camera.y, st.gameBounds.width, st.gameBounds.height, st.viewZoom);
+    const solidProps = st.breakableProps.filter(bp => bp.type !== 'mine' && bp.type !== 'uv-bar');
+    // 置けるか=addPickup の着地の寄せ(行ける帯+壁・木・建物の外)と同じ物差し。寄せで動いたら「中だった」とみなして採らない。
+    const standable = (x: number, y: number): { x: number; y: number } | null => {
+      const c = clampRectToPlayableArea(x, y, PICKUP_HIT_SIZE, PICKUP_HIT_SIZE, {
+        farBackdrop: st.farBackdrop, labTheme, corridorMode: st.corridorMode, m0AdvanceLimitX: st.m0AdvanceLimitX,
+        corridorRunInActive: st.corridorRunInActive, exStage: st.corridorMode && isExStageRun(),
+      });
+      const rect = { x: c.x, y: c.y, width: PICKUP_HIT_SIZE, height: PICKUP_HIT_SIZE };
+      const r = st.indoorMode
+        ? resolveAabb(rect, [...labBlockingWalls(st.labDoors.filter(d => d.open).map(d => d.id)), ...st.labProps.map(lp => lp.rect)])
+        : resolveOutOfSolids(rect, {
+            labTheme, farBackdrop: st.farBackdrop, solidProps,
+            castleEvent: st.castleEvent, hospital: st.hospital, hospitalTaken: st.hospitalTaken, armory: st.armory, armoryTaken: st.armoryTaken,
+            police: st.police, policeTaken: st.policeTaken, shrines: st.shrines, secretPois: st.secretPois,
+          });
+      if (Math.abs(r.x - rect.x) > 0.5 || Math.abs(r.y - rect.y) > 0.5) return null;
+      return { x: rect.x, y: rect.y };
+    };
+    for (const t of toDrop) {
+      const spot = pickPracticeAmmoSpot({ view, playerCx: p.x + p.width / 2, playerCy: p.y + p.height / 2, rng: Math.random, standable });
+      if (!spot) continue; // 置ける所が無い=次のフレームでまた探す
+      // 見せ方は空からの弾薬補給(useGameLoop の airdrop)と同じ: worldDrop(小さく湧いて弾んで着地)+金色のリング。
+      get().addPickup({
+        id: `pickup-practice-ammo-${t}-${Math.floor(st.gameTime)}-${Math.floor(Math.random() * 1e6)}`,
+        x: spot.x, y: spot.y, type: `ammo-${t}` as `ammo-${AmmoType}`, value: 0, worldDrop: true,
+      });
+      get().spawnRing(spot.x + PICKUP_HIT_SIZE / 2, spot.y + PICKUP_HIT_SIZE / 2, 10, 70, 'rgba(252, 211, 77, 0.7)', 3, 520);
+      practiceAmmoLatch.add(t);
+    }
+  },
+
   autoSwitchIfDry: () => {
     const player = get().player;
     const active = getActiveGun(player);
@@ -26562,6 +26639,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     brawlerBeamCuts.clear(); // 構えで中断させた光線の合図(research/BRAWLER.md §12-3d)も前ランへ持ち越さない
     impactQueue = []; impactLastFiredAt.clear(); // 揺れの整理: 前ランの未解決の命中・間隔を持ち越さない
     cutinShownThisRun.clear(); // 紹介カットインの既出はランごと(v0.25.4302)
+    practiceAmmoLatch.clear(); practiceAmmoRecheckAt = 0; // 変異体対策室の弾の補給の確かめ済みも前ランへ持ち越さない
     resetMapSightings(); // 一時停止の地図の「出会った敵」は出撃ごと(THEONE_ROUND2 §2-3)
     resetBossAppearances(); // 一時停止のボス一覧の「出現したボス」も出撃ごと
     resetRunRoute(); // 一時停止の地図の「今回歩いた道」も出撃ごと(THEONE_ROUND2 §2-6)

@@ -48,6 +48,7 @@ import { phantomStunGrayK } from '../utils/phantomStunGray';
 import { isPvpIncapacitated } from '../utils/pvpPosture';
 // ★被弾リアクションの強さ(しなり/跳ね/フラッシュ/光/ノックバック/停止時間が読む唯一の窓口・2026-09-17)
 import { enemyHitReaction, hopMul, flashMul } from '../utils/hitFlinch';
+import { brawlerShakeWave, flinchContinueFromMs, airSwellPivotShiftPx, walkMotionGateStep } from '../utils/enemyAirPose';
 import { hasShotRecoil, newRecoilBody, kickRecoil, pushRecoilForce, advanceRecoil, recoilOffset, recoilParts, SHOT_RECOIL_IDOL, SHOT_RECOIL_CRAWLER, SHOT_TREMBLE_IDOL_GUN, type RecoilBody } from '../utils/shotRecoil'; // 撃たれた時の押し戻し(アイドル・変異塊)
 import { fallenSoldiersInRange } from '../utils/endingScene';
 import {
@@ -4409,6 +4410,10 @@ interface ActorView {
   airScale?: number;
   /** 体の拡大の今の量(0..1・頂点の近くを時間で遅れて追う)と、その更新時刻。 */
   airSwell?: number;
+  /** のけぞりの続き(utils/enemyAirPose・浮いている間の拾い直し): 見た当たりの時刻・のけぞりの起点(壁時計)・前のフレームの経過。 */
+  flinchLastHit?: number; flinchBaseAt?: number; flinchPrevSince?: number;
+  /** 歩きの揺れの掛け(0..1・押し/浮きで 0 へ時間で追う)。 */
+  motWalkGate?: number;
   /** ★プレイヤーが空中の敵を殴って浮く高さの状態(px・落下の速さ・前フレームの時刻・着地の時刻・直近の敵の浮く基準px)。プレイヤーの view だけが持つ。描画だけ(§18)。 */
   playerAir?: PlayerAirState & {
     at: number; scalePx?: number; dir?: number; takeoffAt?: number; landAt?: number; landStrength?: number;
@@ -23242,7 +23247,9 @@ export class PixiScene {
     const airScale = 1 + (BRAWLER_AIR_BODY_SCALE - 1) * (view.airSwell ?? 0);
     // ★格闘の止めの間の震え: 当てた方向に沿って、止めの残りとともに減衰(#12)。絵だけ。
     const brShakeLeft = e.brawlerShakeUntil !== undefined ? e.brawlerShakeUntil - Date.now() : 0;
-    const brShakeAmp = brShakeLeft > 0 ? Math.min(4.5, 1 + brShakeLeft / 28) * (((Math.floor(Date.now() / 16) & 1) === 0) ? 1 : -0.6) : 0;
+    // ★社長承認2026-11-14(浮く動作のぎこちなさ⑤): 旧の矩形波(16ms ごとに +1/−0.6・フレームとずれて不規則に最大8px跳ぶ)を、
+    //   当たりからの実時間の sin へ(振れ幅は旧の山から山と同じ・始まりは0から・終わりも0へ寄せる=utils/enemyAirPose)。
+    const brShakeAmp = brawlerShakeWave(brShakeLeft, Date.now() - e.lastHit);
     const brShakeX = brShakeAmp * (e.brawlerShakeDx ?? 1), brShakeY = brShakeAmp * (e.brawlerShakeDy ?? 0);
     // 踵落としを受けた地上の敵は、叩きつけられて沈んでから戻る(位置だけ・判定は動かない・§29)。
     const heelSink = e.brHeelAt !== undefined ? BRW.brawlerHeelHitSink(Date.now() - e.brHeelAt) : 0;
@@ -23274,7 +23281,9 @@ export class PixiScene {
     // knockbackUntilだけ再利用してその場に凍結させる経路があり(gameStore.ts)、速度チェック無しだと
     // 実際には押されていないのに跳ねてしまっていた。実速度が乗っている時だけ跳ねるようガード。
     const kbMoving = Math.abs(e.knockbackVx ?? 0) > 0.01 || Math.abs(e.knockbackVy ?? 0) > 0.01;
-    const kbHop = ((e.knockbackUntil !== undefined && now < e.knockbackUntil && kbMoving)
+    // ★社長承認2026-11-14(浮く動作のぎこちなさ②): 浮いている間は跳ねない(浮きの弧に足されて漂いの所で一段沈んでいた)。
+    const kbAirborne = brLiftPx > 0 || liftT > 0 || brawlerAirborne(e, Date.now());
+    const kbHop = ((e.knockbackUntil !== undefined && now < e.knockbackUntil && kbMoving && !kbAirborne)
       ? Math.sin(Math.max(0, Math.min(1, (now - e.lastHit) / KNOCKBACK_HOP_MS)) * Math.PI)
         * KNOCKBACK_HOP_PX * hopMul(enemyHitReaction(e))   // ★量と連動(2026-09-17)
       : 0);
@@ -23667,7 +23676,13 @@ export class PixiScene {
       view.motClock = (view.motClock ?? now) + Math.max(0, Math.min(400, dtMs)) * iceTempoMul * zombieTempoMul;
       if (spec.kind !== 'none') {
         // hover(浮遊)は移動に関係なく常にゆらぐ。それ以外は全速=1として実速度に比例。
-        const walk = spec.kind === 'hover' ? 1 : Math.min(1.25, (view.motSpeed ?? 0) / Math.max(20, e.speed));
+        // ★社長承認2026-11-14(浮く動作のぎこちなさ⑥): 押されている/浮かされている間は歩きの揺れ・傾きを出さない
+        //   (歩きのコマ側の pushedOrLifted と同じ条件)。切り替えは時間で追う(1フレームで揺れが切れない=慣性)。hover は今どおり。
+        view.motWalkGate = walkMotionGateStep(view.motWalkGate,
+          (e.knockbackUntil !== undefined && now < e.knockbackUntil)
+          || (e.liftUntil !== undefined && now < e.liftUntil)
+          || e.escortToss !== undefined, dtMs);
+        const walk = spec.kind === 'hover' ? 1 : Math.min(1.25, (view.motSpeed ?? 0) / Math.max(20, e.speed)) * view.motWalkGate;
         // 技のモーション中(aiPhase=しゃがみ/ジャンプ/突進/g-*)は既存のaiSq系に譲って歩行は消す。
         // 式は enemyMotion.ts の共有関数。個体位相はIDハッシュ(stablePhase)=群れが同期行進しない。
         // ★①読める(§16-3z「歩行ゲートを新フェーズへ開ける」): z-wait(帯で待ちながら歩き続ける)・
@@ -23899,11 +23914,20 @@ export class PixiScene {
       const flinchPeakMs = ENEMY_HIT_FLINCH_MS * ENEMY_HIT_FLINCH_RISE;
       // 固まりの終わり(壁時計に直した値): 壁時計の欄と、確定の固まり(§19-3・gameTime の欄=いまの壁時計+残り)の遅い方。絵だけ。
       const brHoldEnd = Math.max(e.brHoldUntil ?? 0, e.brLockUntil !== undefined ? now + (e.brLockUntil - gameTime) : 0);
-      const holdExtra = brHoldEnd > e.lastHit
-        ? Math.max(0, brHoldEnd - e.lastHit - flinchPeakMs) : 0;
-      const sinceHitRaw = now - e.lastHit;
+      // ★社長承認2026-11-14(浮く動作のぎこちなさ③): 浮いている間に拾い直されたら、のけぞりを 0 から出直さず今の姿勢から続ける
+      //   (頂点ならそのまま延ばす・戻りの途中なら同じ深さから上がり直す=utils/enemyAirPose)。地上の当たりは今どおり 0 から。
+      if (view.flinchLastHit !== e.lastHit) {
+        const s0 = (brLiftPx > 0 || brAirK > 0) && view.flinchPrevSince !== undefined
+          ? flinchContinueFromMs(view.flinchPrevSince, ENEMY_HIT_FLINCH_MS, ENEMY_HIT_FLINCH_RISE) : 0;
+        view.flinchLastHit = e.lastHit; view.flinchBaseAt = e.lastHit - s0;
+      }
+      const flinchAt = view.flinchBaseAt ?? e.lastHit;
+      const holdExtra = brHoldEnd > flinchAt
+        ? Math.max(0, brHoldEnd - flinchAt - flinchPeakMs) : 0;
+      const sinceHitRaw = now - flinchAt;
       const sinceHit = holdExtra > 0 && sinceHitRaw > flinchPeakMs
         ? (sinceHitRaw < flinchPeakMs + holdExtra ? flinchPeakMs : sinceHitRaw - holdExtra) : sinceHitRaw;
+      view.flinchPrevSince = sinceHit;
       let flinchSqY = 1, flinchSqX = 1;
       if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
         const fp = hitFlinchPose(sinceHit / ENEMY_HIT_FLINCH_MS, enemyHitReaction(e)); // 出は速く戻りは緩い(慣性)
@@ -24033,6 +24057,9 @@ export class PixiScene {
         view.sprite.position.x += lungeOffX + biteShake + aiOffX;
         view.sprite.position.y += lungeOffY + aiOffY;
       }
+      // ★社長承認2026-11-14(浮く動作のぎこちなさ④): 空中の膨らみは体の中ほどを支点にする(足元支点だと足の頂点の後も頭だけ上がり続けた)。
+      //   増えた高さの半分だけ絵を下げる。足が地面より下へ出ない(下げは今の浮きの高さまで)。判定・影は動かさない。
+      if (airScale > 1) view.sprite.position.y += Math.round(airSwellPivotShiftPx(airScale, Math.abs(view.sprite.height) / airScale, liftHop));
       view.sprite.visible = true;
       // ラスボス第二形態の連結パーツ(HPで真ん中から欠ける)。第二形態でない時は隠すだけ。
       this.syncGlenParts(view, glenP2 ? glenPartCountFull(e.maxHealth > 0 ? e.health / e.maxHealth : 1) : 0,

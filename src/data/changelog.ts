@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5583', items: [
+    '打ち上げた敵が、斜めにすっと浮いて自然に落ちる',
+    '変異体対策室では、弾が切れると画面のどこかに弾が落ちてくる',
+  ] },
   { version: '0.25.5582', items: [
     '格闘の秘奥義や踏み潰しで地面が割れる絵が、自分の体の上に被らなくなった',
   ] },
