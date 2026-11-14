@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { boomerangBatPitch, boomerangBatSparks, boomerangBatCue, DRONE_BOOM_BAT_CUE_MS, DRONE_BOOM_BAT_SPARKS_MAX, DRONE_BOOM_BAT_PITCH_MAX_STEPS, boomerangBatPick, boomerangBatSpeedMult, DRONE_BOOM_BAT_PAD_PX, DRONE_BOOM_BAT_BOOST, DRONE_BOOM_BAT_BOOST_MS, type BatBoomLike } from './boomerangBat';
+import { boomerangBatDamageMult, DRONE_BOOM_BAT_DMG_MAX, boomerangBatPitch, boomerangBatSparks, boomerangBatCue, DRONE_BOOM_BAT_CUE_MS, DRONE_BOOM_BAT_SPARKS_MAX, DRONE_BOOM_BAT_PITCH_MAX_STEPS, boomerangBatPick, boomerangBatSpeedMult, DRONE_BOOM_BAT_PAD_PX, DRONE_BOOM_BAT_BOOST, DRONE_BOOM_BAT_BOOST_MS, type BatBoomLike } from './boomerangBat';
 
 const boom = (id: string, cx: number, cy: number, o: Partial<BatBoomLike> = {}): BatBoomLike => ({
   id, x: cx - 9, y: cy - 9, width: 18, height: 18,
@@ -50,6 +50,17 @@ describe('ドローンブーメランの打ち返し(戻ってきた瞬間に近
     expect(boomerangBatCue(DRONE_BOOM_BAT_CUE_MS / 2)).toBeLessThan(1);
     expect(boomerangBatCue(DRONE_BOOM_BAT_CUE_MS)).toBe(0);
     expect(boomerangBatCue(-1)).toBe(0);
+  });
+  it('打ち返すたびにダメージが上がる(1回目1.25・4回目2.0・8回目以降は上限3.0・不正な値は1)', () => {
+    expect(boomerangBatDamageMult(1)).toBeCloseTo(1.25, 6);
+    expect(boomerangBatDamageMult(2)).toBeGreaterThan(boomerangBatDamageMult(1));
+    expect(boomerangBatDamageMult(4)).toBeCloseTo(2.0, 6);
+    expect(boomerangBatDamageMult(8)).toBe(DRONE_BOOM_BAT_DMG_MAX);
+    expect(boomerangBatDamageMult(99)).toBe(3);
+    expect(boomerangBatDamageMult(0)).toBe(1);
+    expect(boomerangBatDamageMult(-3)).toBe(1);
+    expect(boomerangBatDamageMult(NaN)).toBe(1);
+    expect(boomerangBatDamageMult(Infinity)).toBe(1);
   });
   it('複数あれば一番近いもの', () => {
     expect(boomerangBatPick([boom('far', 70, 0), boom('near', 20, 0)], false, 0, 0, 74)).toBe('near');

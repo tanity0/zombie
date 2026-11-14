@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5587', items: [
+    'ドローンブーメランは打ち返すたびに威力が上がる',
+  ] },
   { version: '0.25.5586', items: [
     'スキル強化訓練は、10回に1回は必ず新しいスキルかレベル上昇になる',
     'スキル強化訓練に排出一覧を追加。まだ手に入れていないスキルは名前が伏せてある',

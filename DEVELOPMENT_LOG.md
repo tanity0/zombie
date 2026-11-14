@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5587 — ドローンブーメランは打ち返すたびにダメージ上昇【2026-11-15 01:24 JST】
+- 社長指示「ドローンブーメラン、打ち返すたびにダメージが上がる様にして」。`boomerangBat.boomerangBatDamageMult(n)`=min(3, 1+0.25×n)(叩き台 `DRONE_BOOM_BAT_DMG_STEP`=0.25・`DRONE_BOOM_BAT_DMG_MAX`=3)。打ち返しの damage=meleeDamage×倍率(n=boomBatN=この1枚が消えるまでの打ち返し回数)。普通の投げは不変。守護霊も同じ関数を通る。
+- テスト boomerangBat 42緑(純関数)。typecheck・eslint・循環import OK。値の追加のみ=監査なし。自己点検: 憲法4条・5条に抵触なし。実装: Opusサブエージェント。
+
 ## v0.25.5586 — ガチャ: 10回に1回は新規かLv上昇の保証・排出一覧【2026-11-14 22:47 JST】
 - 社長指示「ガチャ、10回に一回はレベルアップか新規になるように。排出一覧表もほしい(ソシャゲでよくある排出一覧みたいな簡易的なやつ)。出てないやつは？？？表記で」。
 - 保証: 新規 `utils/gachaGuarantee.ts`(GACHA_GUARANTEE_EVERY=10・昇格しない回が9回続いた次は強制=①通常で昇格ならそのまま ②引いたスキルが上限未満なら+1 ③同じレア度の未所持/上限未満から均等に選び直し ④無ければ今の率の重みでほかのレア度 ⑤全部上限なら返金のまま)。永続キー `zombie:gachaMissStreak`(resetGachaProgress で0)。天井は `nextGachaPity`=抽選か結果のどちらかが超レアなら0(設計で決めた所: 保証で超レアが出ても0へ)。

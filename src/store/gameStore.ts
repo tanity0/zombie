@@ -382,7 +382,7 @@ import {
   type ShrineState, type ShrineSlot,
 } from '../world/warlordShrine';
 import { policePos as policeSpot, resolvePoliceCollision, policeRect } from '../world/police';
-import { boomerangBatPick, boomerangBatSpeedMult, boomerangBatSparks, DRONE_BOOM_BAT_HITSTOP_MS, DRONE_BOOM_BAT_PAD_PX } from '../utils/boomerangBat';
+import { boomerangBatDamageMult, boomerangBatPick, boomerangBatSpeedMult, boomerangBatSparks, DRONE_BOOM_BAT_HITSTOP_MS, DRONE_BOOM_BAT_PAD_PX } from '../utils/boomerangBat';
 import { poiTouchStarts, poiTouchMayFire, poiTouchStallMult, poiTouchHolding, POI_TOUCH_STALL_MS, POI_TOUCH_HOLD_DECAY_S, type PoiTouchId } from '../world/poiTouch';
 import { assignDetourSectors } from '../world/detourPoi';
 import { bossSectorIndex, poiSectorIndex } from '../world/pois';
@@ -7714,7 +7714,8 @@ const fireDroneBoomerangOnSwing = (
           batN = (q.boomBatN ?? 0) + 1; // 続けて打ち返した回数(この1枚が消えるまで)
           return {
             ...q, boomPhase: 'out' as const, direction: { x: dir.x / dmag, y: dir.y / dmag }, speed: DRONE_BOOM_SPEED,
-            damage: meleeDamage, hitEnemies: [], createdAt: nowMs, boomBatAt: nowMs, boomBatN: batN, boomBatCueAt: undefined, // 安全消滅の時計も数え直す・弾かれた勢い(出だしだけ速い)
+            damage: meleeDamage * boomerangBatDamageMult(batN), hitEnemies: [], createdAt: nowMs, boomBatAt: nowMs, // 打ち返すたびにダメージが上がる(上限つき)・安全消滅の時計も数え直す・弾かれた勢い(出だしだけ速い)
+            boomBatN: batN, boomBatCueAt: undefined,
             boomOriginX: bx, boomOriginY: by, boomMaxDist: DRONE_BOOM_DIST_BY_LEVEL[lvl], boomStopMs: DRONE_BOOM_STOP_MS_BY_LEVEL[lvl], boomStopUntil: undefined,
           };
         }),
