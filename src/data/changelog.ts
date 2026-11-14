@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5588', items: [
+    '資料室の変異体図鑑を書き直した。今いる変異体が載り、礼賛や監視者の記録も加わった',
+    'チュートリアルの文が短くなった',
+  ] },
   { version: '0.25.5587', items: [
     'ドローンブーメランは打ち返すたびに威力が上がる',
   ] },
