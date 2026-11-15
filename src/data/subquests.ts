@@ -70,7 +70,7 @@ const L = {
   wanted: '宿敵を{n}体討伐する',
   horde: '大量発生が起きている間に{n}体倒す',
   rednight: '紅き夜が起きている間に{n}体倒す',
-  hunter: 'ハンターに追われ続けて{n}秒生き延びる',
+  hunter: '監視者に追われ続けて{n}秒生き延びる',
 } as const;
 
 /**
@@ -164,6 +164,6 @@ export const subquestShortLabel = (def: SubquestDef): string => {
     case 'wanted': return '宿敵討伐';
     case 'horde-kills': return '大量発生中に倒す';
     case 'rednight-kills': return '紅き夜に倒す';
-    case 'hunter-survive': return 'ハンター生存(秒)';
+    case 'hunter-survive': return '監視者生存(秒)';
   }
 };

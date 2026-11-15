@@ -2238,17 +2238,17 @@ export const WIRE_HOP_ENABLED = typeof window === 'undefined' || new URLSearchPa
 const ENEMY_DEATH_LABELS: Record<string, string> = {
   // ステージ2の這う塊(world/labCrawler.ts)。敵の型ではないが、叩きつけの爆風の持ち主の名札(utils/labCrawlerTick.LAB_CRAWLER_BLAST_OWNER)で引く。
   'lab-crawler': '変異塊',
-  zombie: '変異体(徘徊型)',
-  skeleton: '変異体(痩躯型)',
-  ghost: '変異体(抱卵型)',
-  bat: '吸血コウモリ',
-  werewolf: '変異体(獣化型)',
-  plant: '変異体(定着型)',
-  pumpkin: '変異体(肥大型)',
-  driller: '削岩型', // PACING_PUZZLE.md §9-2(社長指示 2026-08-20)
+  zombie: 'ビルダー',
+  skeleton: '患者',
+  ghost: '妊婦',
+  bat: 'ハロウィン',
+  werewolf: '自転車',
+  plant: '車椅子',
+  pumpkin: '蜘蛛',
+  driller: '削岩機', // PACING_PUZZLE.md §9-2(社長指示 2026-08-20)
   logger: '伐採人', // PACING_PUZZLE.md §14-3裁定済み#1(社長指示2026-08-28)
   giantbat: '変異体(飛行型)',
-  reaper: '死神',
+  reaper: '礼賛',
   hangedman: '使者', // PACING_PUZZLE.md §14-4-3(死神の技「使者」が召喚する耐久武器)
   'lab-zombie-1': '研究施設の変異体(Lv1)',
   'lab-zombie-2': '研究施設の変異体(Lv2)',
@@ -2271,8 +2271,8 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   idol: '偶像',
   // PACING_PUZZLE.md §10-12#5(EXボス「フィル(変異体)」): 台帳(bossCutin.ts)と同名。
   phillboss: 'フィル(変異体)',
-  hunter: '変異体(狩猟型)',
-  screamer: '変異体(叫喚型)',
+  hunter: '監視者',
+  screamer: '花婿',
   // research/GHOST_BOSS.md(守護霊ボス「幻影」): 名前の出どころは1箇所(bossPractice の
   // GUARDIAN_PHANTOM_LABEL → 守護霊台帳 strongestGuardian().name)。人物名をここへ写経しない。
   'guardian-phantom': GUARDIAN_PHANTOM_LABEL,
@@ -6958,7 +6958,7 @@ export const grantReaperDefeatRewards = (get: () => GameState, at: { x: number; 
   const already = get().ownedSkills.includes('reaper');
   get().grantSkill('reaper');
   // 歴史年表: 死神討伐を即載せ(社長決定v0.25.1628。スキル付与と同じA方式=撃破の瞬間に永続)。
-  recordChronicle(getSelectedStageId(), 'reaper', 'reaper', '死神を討伐');
+  recordChronicle(getSelectedStageId(), 'reaper', 'reaper', `${enemyDeathLabel('reaper')}を討伐`);
   if (!already) get().spawnCallout(at.x, at.y - 20, 'スキル「死神」習得！', '#c084fc', { scale: 1.2 });
 };
 

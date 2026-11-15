@@ -169,7 +169,7 @@ describe('歴史年表(chronicle)', () => {
   });
 
   it('stageId が空なら記録しない', () => {
-    expect(recordChronicle('', 'reaper', 'reaper', '死神を討伐')).toBe(false);
+    expect(recordChronicle('', 'reaper', 'reaper', '礼賛を討伐')).toBe(false);
     expect(loadChronicle()).toHaveLength(0);
   });
 
@@ -214,7 +214,7 @@ describe('年表のステージ6フィルタ(社長指示v0.25.2150「クリア�
   it('recordChronicle: stage-6の道中記録(zone/rank/boss等)は記録されない', () => {
     expect(recordChronicle('stage-6', 'zone', '3', '未確認汚染エリアに到達')).toBe(false);
     expect(recordChronicle('stage-6', 'rank', '2', 'ランク到達')).toBe(false);
-    expect(recordChronicle('stage-6', 'boss', 'hunter', '変異体(狩猟型)を討伐')).toBe(false);
+    expect(recordChronicle('stage-6', 'boss', 'hunter', '監視者を討伐')).toBe(false);
     expect(loadChronicle()).toEqual([]);
   });
 

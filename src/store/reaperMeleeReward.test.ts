@@ -32,7 +32,7 @@ describe('死神を近接で倒した時の報い', () => {
     useGameStore.setState({ ownedSkills: useGameStore.getState().ownedSkills.filter(s => s !== 'reaper') });
   });
 
-  it('★近接で倒すと、スキル「死神」を習得し、年表に「死神を討伐」が刻まれる', () => {
+  it('★近接で倒すと、スキル「死神」を習得し、年表に「礼賛を討伐」が刻まれる', () => {
     const s = useGameStore.getState();
     expect(s.ownedSkills.includes('reaper')).toBe(false);
     grantMeleeKillRewards(useGameStore.getState, [{ enemy: reaperChaser(), finisher: true }], s.player, undefined);

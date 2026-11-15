@@ -203,7 +203,7 @@ export const TUTORIALS: TutorialEntry[] = [
   },
   {
     id: 'm0-hunter',
-    title: 'ハンター',
+    title: '監視者',
     lines: [
       '追跡型の変異体。見つかれば、しつこく追ってくる。',
       '今の装備では勝てない。振り切って進め。'

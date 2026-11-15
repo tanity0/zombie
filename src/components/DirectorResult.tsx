@@ -16,7 +16,7 @@ const GATE_BAND_COLOR: Partial<Record<DirectorPhaseKind, string>> = { gate: '#fb
 // (この復帰フラグで旧・全項目+全ラインに戻る)。記録側(aiDirectorDebug)は従来どおり全ビット記録している
 // ので、フラグを付ければ過去と同じ情報が読める=計測は一切減らしていない。
 const EVENT_META_CORE: { bit: number; label: string; color: string }[] = [
-  { bit: DIRECTOR_EVENT_BIT.hunter, label: 'ハンター', color: '#f472b6' },
+  { bit: DIRECTOR_EVENT_BIT.hunter, label: '監視者', color: '#f472b6' },
   { bit: DIRECTOR_EVENT_BIT.redNight, label: '紅き月', color: '#ef4444' },
   { bit: DIRECTOR_EVENT_BIT.castleBoss, label: '城ボス', color: '#22d3ee' },
   { bit: DIRECTOR_EVENT_BIT.named, label: '宿敵', color: '#ffd700' }, // PACING_PUZZLE.md §5.14 M13
@@ -24,7 +24,7 @@ const EVENT_META_CORE: { bit: number; label: string; color: string }[] = [
 const EVENT_META_EXTRA: { bit: number; label: string; color: string }[] = [
   { bit: DIRECTOR_EVENT_BIT.arena, label: '囲い', color: '#fbbf24' },
   { bit: DIRECTOR_EVENT_BIT.screamer, label: '叫喚', color: '#facc15' },
-  { bit: DIRECTOR_EVENT_BIT.reaper, label: 'リーパー', color: '#c084fc' },
+  { bit: DIRECTOR_EVENT_BIT.reaper, label: '礼賛', color: '#c084fc' },
 ];
 // 診断用フル表示(旧レイアウト相当)。?directorfull=1 で全イベント帯+補助ライン4本が戻る。
 const directorFull = typeof window !== 'undefined'

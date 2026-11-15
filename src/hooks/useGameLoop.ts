@@ -5380,7 +5380,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter'
                 ? { ...e, dormant: false, aggroRange: undefined, hunterPatrolR: undefined, hunterWarpOutAt: undefined, hunterWarpInAt: undefined } : e) }));
               H.phase = 'chase'; H.chaseStartAt = newGameTime; H.reinforced = 0;
-              useGameStore.setState({ eventBannerText: 'ハンターに発見された！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              useGameStore.setState({ eventBannerText: '監視者に発見された！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
               playSfx('enemy-spotted'); // 見つかった音(社長支給2026-10-24「索敵系の敵に見つかった時の音」)
               useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
               spawnFlash('rgba(180,40,40,0.18)', 220);
@@ -5473,7 +5473,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (newGameTime - prim.hunterLeavingAt >= HUNTER_LEAVE_FADE_MS) { clearAllHunters(); H.phase = 'idle'; H.primaryId = ''; }
             } else if (open.size === 0) {
               patchHunter(prim.id, { hunterLeavingAt: newGameTime, vx: 0, vy: 0, hunterAlerted: false });
-              if (H.noticed) useGameStore.setState({ eventBannerText: 'ハンターが去っていった', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              if (H.noticed) useGameStore.setState({ eventBannerText: '監視者が去っていった', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             } else if (P.warpOutAt !== null) {
               // ワープ中(薄れて消える)。消え切ったら行き先に置き、薄れて現れる。
               if (newGameTime - P.warpOutAt >= HUNTER_WARP_FADE_MS) {
@@ -5537,7 +5537,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             } else if (newGameTime - H.spawnAt >= HUNTER_SEARCH_MAX_MS) {
               // 索敵タイムアウト: 輪へ戻る(薄れて消える)。社長指示v0.25.2317: 立ち去りもアナウンスする
               // (ただし一度も気づかせていない索敵個体は報せない=存在自体のネタバレになるため)。
-              if (H.noticed) useGameStore.setState({ eventBannerText: 'ハンターが去っていった', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              if (H.noticed) useGameStore.setState({ eventBannerText: '監視者が去っていった', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
               sendBackToRing(prim);
             } else {
               const appearing = prim.hunterWarpInAt !== undefined && newGameTime - prim.hunterWarpInAt < HUNTER_WARP_FADE_MS;
@@ -5561,7 +5561,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const leadInTrigger = nearAnyBase || viciousRetreated;
               if (leadInTrigger && H.retreatLeadInAt === 0) {
                 H.retreatLeadInAt = newGameTime;
-                useGameStore.setState({ eventBannerText: 'ハンターが退いていく', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+                useGameStore.setState({ eventBannerText: '監視者が退いていく', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
               }
               const leadInDone = H.retreatLeadInAt > 0 && newGameTime - H.retreatLeadInAt >= HUNTER_RETREAT_LEADIN_MS;
               // 演出・追跡上限は従来どおり即時(社長が挙げていない=触らない)。
@@ -5570,7 +5570,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 H.phase = 'retreat';
                 H.retreatLeadInAt = 0;
                 // 誘導を通っていない経路(演出/諦め)ではここでバナーを出す(通った経路では二重に出さない)。
-                if (!leadInDone) useGameStore.setState({ eventBannerText: 'ハンターが退いていく', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+                if (!leadInDone) useGameStore.setState({ eventBannerText: '監視者が退いていく', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
               }
             }
           } else if (H.phase === 'retreat') {
@@ -5644,7 +5644,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const sc = spawnEnemyAt('screamer', spx + Math.cos(ang) * r - 18, spy + Math.sin(ang) * r - 18, newGameTime);
             sc.fixed = true; // 単体管理=画面外カリング対象外(キープ距離で動く)
             addEnemy(sc);
-            useGameStore.setState({ eventBannerText: '叫喚型 出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+            useGameStore.setState({ eventBannerText: '花婿 出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             screamerRef.current.nextEligibleAt = directorTime + SCREAMER_RESPAWN_CD_MS;
           }
         }

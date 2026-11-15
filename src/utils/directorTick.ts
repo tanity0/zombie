@@ -754,7 +754,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     // 画面外に留まるため、外すと回収→即補充のチャーンが起きる)+「叫喚型 出現」バナー。
     if (decision.type === 'screamer') {
       puzzleEnemy.fixed = true;
-      useGameStore.setState({ eventBannerText: '叫喚型 出現', eventBannerUntil: gameTime + EVENT_BANNER_MS });
+      useGameStore.setState({ eventBannerText: '花婿 出現', eventBannerUntil: gameTime + EVENT_BANNER_MS });
     }
     useGameStore.getState().addEnemy(puzzleEnemy);
     puzzleCdRef.current.lastBaseSpawnAt = gameTime;
