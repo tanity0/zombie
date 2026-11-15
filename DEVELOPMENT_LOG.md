@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5598 — 出撃を重ねると古い描画器と場面が残って落ちる件を直す【2026-11-15 22:17 JST】
+- 社長報告「幻影と5-6戦したら落ちた」「さらに7戦くらいしたらまた落ちた(もう一度で)」。前回最後は2回とも `描画器7代目`・ロスト0・tex143MB で一定。
+- 計測(Chromium・幻影8回): 結果画面で生きている WebGLRenderer 1→8・Sprite 766→4191・Graphics 117→572・描画プロセス+14MB/回。導線(もう一度/対策室から選び直し)で差なし。コンテキストは毎回 loseContext 済み=JS 側の参照が残っていた。出撃直後の山(fx62・effectLayer653)は幻影の出現演出で正常、前の回の残骸ではない。
+- 原因①: pixiScene の textureContentBottomFrac が共有テクスチャへ renderer.extract.pixels → Pixi 8.19 RenderTargetSystem が source.once('destroy') を付けて外さない=常駐テクスチャが古い描画器を掴む。直し: 新規 `src/pixi/extractGuard.ts` の withoutLeakedDestroyListeners(読み戻しの前後で増えた destroy の聞き手を1度呼んでから外す)で包む。extract を使うのはこの1か所のみ。見張りテスト(src/pixi の `.extract.` は必ず包む)。
+- 原因②: PixiStage の `a.destroy(true)` は stage の子を壊さない=Text が CanvasTextMetrics の共有キャッシュの TextStyle 経由で場面ごと残る。直し: `destroy(true, { children: true })`(テクスチャは壊さない既定のまま)。
+- 検証: 通常5回+幻影6回=11回の連戦で WebGLRenderer 0→0・Sprite 1→1・描画プロセス+3.7MB/回・console.error/例外/bakeSilhouette failed 0件・影焼き毎回成功・11代目の画も正常(目視)。残り(小さい・場面をつながない): Pixi の GCManagedHash 3→33・Text 3→9=別案件。
+- ENGINEERING_NOTES §0 に症状の行を追加。typecheck・eslint・循環import・extractGuard テスト緑。実機での確認は社長(同じ連戦で落ちないか)。
+- 自己点検: 描画の片付けのみ=憲法4条・5条に抵触なし。実装: Opusサブエージェント(計測→実装まで同じ担当)。
+
 ## v0.25.5597 — 対策室の英雄の昇天で練習が終わらない・プレイ中のスキル入手の説明を外す【2026-11-15 21:48 JST】
 - 社長報告「対策室の英雄で、体力回復して昇天した場合、ゲームが終わらない。あとスキルゲットの表示が出てる。」原因: 練習の終わりは撃破経路(gameStore 6441 付近)で practiceWinPendingSince を入れる作り、昇天は heroTick の heroGone で消えるだけ=時刻が入らない。昇天の入口に練習の判定が無く grantSkill('hero')・吹き出し・トーストが出ていた。
 - heroTick.ts: 練習中は昇天し切って消えた時に practiceWinPendingSince と returnCircle:null(=倒した時と同じ=1.2秒後に勝ち)。報酬(スキル・吹き出し・トースト・saveHeroAscended)を練習では出さない。光・音・帯は出す。本編は不変(昇天でスキル「英雄」=社長指示2026-10-05)。

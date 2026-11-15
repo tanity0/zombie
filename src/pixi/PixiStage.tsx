@@ -376,7 +376,11 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       // destroy が途中で投げても縮める(別の try)。描画は既に止めてある(ticker を外した後)ので見た目は変わらない。
       let oldCanvas: HTMLCanvasElement | null = null;
       try { oldCanvas = (a?.canvas as HTMLCanvasElement | undefined) ?? null; } catch { /* init 前 */ }
-      try { a?.destroy(true); } catch { /* ignore */ }
+      // ★stage の子も壊す(2026-11-15・社長実機「幻影と5-6戦したら落ちた」描画器7代目)。子を壊さないと、
+      // Text が自分の TextStyle の通知を聞いたまま残り、その TextStyle を Pixi 全体の文字の寸法キャッシュ
+      // (CanvasTextMetrics._measurementCache)が抱えるので、古い場面(層の Sprite 数百枚)が丸ごと生き残っていた。
+      // テクスチャは壊さない(既定=texture:false。共有の素材は次の描画器でも使う)。
+      try { a?.destroy(true, { children: true }); } catch { /* ignore */ }
       try { if (oldCanvas) { oldCanvas.width = 0; oldCanvas.height = 0; } } catch { /* ignore */ }
       appRef.current = null;
       try { host?.replaceChildren(); } catch { /* ignore */ }

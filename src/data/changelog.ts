@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5598', items: [
+    '出撃を何度も繰り返すと落ちることがあったのを直した',
+  ] },
   { version: '0.25.5597', items: [
     '変異体対策室で英雄を昇天させた時も、練習が終わって結果に進む',
     'プレイ中にスキルを手に入れた時の表示は、名前だけになった',

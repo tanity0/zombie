@@ -216,6 +216,7 @@ import { meleeHitFrame, meleeHitTexture } from '../utils/meleeHitFrames'; // 近
 import { skillBurstFrame, skillBurstTexture, skillBurstScale, skillBurstAlpha, skillBurstTint } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { labZombieSexOf } from '../utils/labZombieSex';
+import { withoutLeakedDestroyListeners, type DestroyEmitter } from './extractGuard'; // 読み戻しが古い描画器を残さない(2026-11-15)
 import { setRenderStats, setFxDiag, setSceneDiag, noteBakeCall } from '../utils/renderStats'; // 実機で「増え続けていないか」を見る窓口(v0.25.4347 / 表示物と表の件数 v0.25.5054)
 import { trackBakedTexture, untrackBakedTexture, liveBakedTextures, type BakeKind } from '../utils/renderStats'; // 焼いたテクスチャの実測(v0.25.4375)
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
@@ -16190,7 +16191,9 @@ export class PixiScene {
     if (cached) return cached.bottom;
     if (!this.renderer || !tex || tex.width <= 1 || tex.height <= 1) return 1;
     try {
-      const { pixels, width, height } = this.renderer.extract.pixels(tex);
+      // ★共有テクスチャへの読み戻しで、Pixi が古い描画器をつなぎ留める聞き手を残さない(extractGuard.ts・2026-11-15)。
+      const renderer = this.renderer;
+      const { pixels, width, height } = withoutLeakedDestroyListeners(tex.source as unknown as DestroyEmitter, () => renderer.extract.pixels(tex));
       // 行ごと/列ごとの不透明画素数(縦=下端/上端の判定+「取り残された断片」判定、
       // ★D-2b=横=左右端の判定に使う)。**同じ1回の`extract.pixels`から両方作る**
       // (GPU読み戻しを2回にしない=毎フレーム経路ではないが、それでも1回で済むものを2回にしない)。
