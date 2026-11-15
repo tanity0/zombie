@@ -236,7 +236,13 @@ const GameHUD: React.FC = () => {
               </div>
               {/* 効果説明1行(寄り道POIの入手のみ)。「何を貰ったか」だけでは何が起きたか分からない
                   =§6.24-UXの穴5への対応。但し書き(note)は警察署スキルの「この出撃のみ」。 */}
-              {lastWeaponGet!.desc && (
+              {/* 社長指示2026-11-15「説明が長いのでプレイ中のここには出さない」: スキルの入手は名前だけ
+                  (効果の説明は出撃前・結果のスキル一覧で読める)。但し書き(note)は短いので残す。 */}
+              {poiGetKind === 'poi-skill'
+                ? lastWeaponGet!.note && (
+                  <div className="mt-0.5 text-[11px] font-medium text-amber-200/85">({lastWeaponGet!.note})</div>
+                )
+                : lastWeaponGet!.desc && (
                 <div className="mt-0.5 text-[11px] font-medium text-white/75" style={{ whiteSpace: 'normal' }}>
                   {lastWeaponGet!.desc}
                   {lastWeaponGet!.note && <span className="ml-1 text-amber-200/85">({lastWeaponGet!.note})</span>}

@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5597', items: [
+    '変異体対策室で英雄を昇天させた時も、練習が終わって結果に進む',
+    'プレイ中にスキルを手に入れた時の表示は、名前だけになった',
+  ] },
   { version: '0.25.5596', items: [
     '孫悟空が武将の鎧・小手・兜をそろえて現れる。前よりしぶとい',
   ] },

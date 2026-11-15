@@ -286,6 +286,9 @@ export const runHeroTick = (
     if (since >= HERO_ASCEND_MS) {
       ENEMY_REMOVE_CAUSE.set(hero.id, 'heroGone');
       useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.id !== hero.id) }));
+      // 対策室(練習ラン)では昇天も決着=倒した時と同じ打刻(gameStore の撃破経路と同じ形)。
+      // 姿が消え切った後に打つ=「ボスが消えるまでは終わらない」(useGameLoop が1.2秒後に gameWon を立てる)。
+      if (practice) useGameStore.setState({ practiceWinPendingSince: Date.now(), returnCircle: null });
       sfx.gallop(0, 1);
       return;
     }
@@ -347,13 +350,19 @@ export const runHeroTick = (
     });
     s.ascendNeighed = false; s.ascendClimaxed = false; s.ascendMoteAt = gt;
     const g = useGameStore.getState();
+    // 対策室(練習ラン)はボスの報酬を渡さない=スキルの獲得・告知・入手トースト・「昇天済み」の記録とも出さない。
+    if (practice) {
+      sfx.ascend?.(Math.max(0.5, sfxGain * 0.8));
+      sfx.gallop(0, 1);
+      return;
+    }
     // スキル「英雄」(社長指示2026-10-05「昇天させた場合のみゲットできる」)。死神と同じ形=未所持の時だけ告知。
     const hadHeroSkill = g.ownedSkills.includes('hero');
     g.grantSkill('hero');
     saveHeroAscended(); // 社長指示「解放された後は2度と出ない(昇天のみ)」=本編の周回の英雄はもう置かない
     if (!hadHeroSkill) g.spawnCallout(hx, hero.y - 40, 'スキル「英雄」習得！', '#fde68a', { scale: 1.2 });
     // 社長指摘2026-10-18「英雄が昇天した時、既存のゲット表示がない」: 警察署のスキルと同じ入手トースト(名前+効果1行)も出す。
-    // 既に持っている時(対策室など)は「習得済み」と添える=入手したと嘘をつかない。
+    // 既に持っている時は「習得済み」と添える=入手したと嘘をつかない(対策室はこの手前で抜ける)。
     useGameStore.setState({
       lastWeaponGet: {
         name: SKILLS.hero.name, at: Date.now(), color: '#fde68a', kind: 'poi-skill', desc: SKILLS.hero.desc,
