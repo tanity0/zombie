@@ -6,7 +6,8 @@ import {
 } from './weaponSlots';
 import { UNIQUE_PHANTOMS } from './uniquePhantoms';
 import { FIXED_GUARDIANS } from './fixedGuardians';
-import { equipmentById } from './equipment';
+import { equipmentById, hasFullWarlordSet } from './equipment';
+import { PLAYER_PROFILES } from './playerProfiles';
 
 describe('拳鬼の報酬', () => {
   it('印のある幻影(拳鬼)を倒すと格闘', () => {
@@ -56,11 +57,13 @@ describe('拳鬼の台帳', () => {
     expect(FIXED_GUARDIANS.some(g => g.name === k.name)).toBe(false);
     expect(k.profile.srcName).toBe(k.name);
   });
-  it('ストライカー・ファイティングナイフ・3段目の装備・タイムキーパーLv3+オーバークロックLv3・サブは格闘のみ', () => {
+  it('ストライカー・ファイティングナイフ・武将セット3点・タイムキーパーLv3+オーバークロックLv3・サブは格闘のみ', () => {
     const snap = k.profile.snapshot!;
     expect(snap.characterClass).toBe('rogue');
     expect(snap.meleeKey).toBe('machete-t3');
-    expect(snap.equipment).toEqual({ body: 'body-mobility-3', arms: 'arms-firepower-3', accessory: 'accessory-crit-3' });
+    expect(snap.equipment).toEqual({ body: 'special-body', arms: 'special-arms', accessory: 'special-accessory' });
+    expect(hasFullWarlordSet(snap.equipment!)).toBe(true);
+    expect(snap.maxHealth).toBe(PLAYER_PROFILES.rogue.maxHp + 120); // 武将の鎧の体力+120
     for (const [slot, id] of Object.entries(snap.equipment!)) expect(equipmentById(id)?.slot).toBe(slot);
     expect(snap.skills).toEqual(['time-keeper', 'overclock']);
     expect(snap.skillLevels).toEqual({ 'time-keeper': 3, overclock: 3 });

@@ -26,7 +26,10 @@ const REACTIONS: MoveReactionTable = Object.fromEntries(
   [...MOVE_REACTION_KEYS, ...BULLET_MOVE_KEYS].map(key => [key, { n: 20, counterRate: 0.5, hitRate: 0 }]),
 ) as MoveReactionTable;
 
-const KENKI_EQUIP: EquipLoadout = { body: 'body-mobility-3', arms: 'arms-firepower-3', accessory: 'accessory-crit-3' };
+// ★装備は武将セット3点(鎧・小手・兜)(社長指示2026-11-15「孫悟空は武将装備3つセットで。」)。
+// 3つ揃えた時のセット効果(侍の甲冑=刀の自動斬撃×1.5/小烏丸ありで一閃×2・立ち絵の差し替え)はプレイヤー本人だけの物
+// (gameStore.warlordArmor が疑似の主語 pseudoActor を外す・絵は kenkiTexture が装備を見ない)=孫悟空には乗らない。乗るのは3点の数値だけ。
+const KENKI_EQUIP: EquipLoadout = { body: 'special-body', arms: 'special-arms', accessory: 'special-accessory' };
 const KENKI_SKILLS: readonly { key: SkillKey; level: number }[] = [
   { key: 'time-keeper', level: 3 },
   { key: 'overclock', level: 3 },
@@ -37,7 +40,7 @@ const KENKI_SKILLS: readonly { key: SkillKey; level: number }[] = [
 // 疑似プレイヤーの近接の連鎖の倍率・無敵など、プレイヤー用の効果の読み筋に乗ってしまうため。届く距離だけ Lv1 と同じ400px。
 const KENKI_SUBS: SubWeaponKey[] = ['brawler'];
 
-/** 拳鬼(仮名): 格闘の幻影。絵は専用(kenki-*)。ストライカー・ファイティングナイフ・3段目の装備・タイムキーパーLv3+オーバークロックLv3・格闘Lv3。 */
+/** 拳鬼(仮名): 格闘の幻影。絵は専用(kenki-*)。ストライカー・ファイティングナイフ・武将セット3点・タイムキーパーLv3+オーバークロックLv3・格闘Lv3。 */
 const KENKI: UniquePhantomSpec = {
   kind: 'brawler',
   name: '孫悟空', // 社長指示2026-11-11「拳鬼は 孫悟空 に改名」。コード・設計書の中の呼び名(拳鬼・kenki)はそのまま

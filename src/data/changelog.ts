@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5596', items: [
+    '孫悟空が武将の鎧・小手・兜をそろえて現れる。前よりしぶとい',
+  ] },
   { version: '0.25.5595', items: [
     'ゲーム内容の変更はありません',
   ] },

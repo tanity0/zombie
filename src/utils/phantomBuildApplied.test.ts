@@ -54,14 +54,14 @@ describe('幻影の装備・スキルが効く(実行時の値)', () => {
 
   it('体力: 記録の体力(クラス+装備)を使う=プレイヤーの体力に引きずられない', () => {
     useGameStore.setState(s => ({ player: { ...s.player, ddaBaseHp: 999 } }));
-    expect(place(uniquePhantomSpec('brawler').profile, 'brawler').maxHealth).toBe(130); // ストライカー130+装備の上乗せ0
+    expect(place(uniquePhantomSpec('brawler').profile, 'brawler').maxHealth).toBe(250); // ストライカー130+武将の鎧120
     const hay = FIXED_GUARDIANS.find(g => g.id === 'hayase')!.profile;
     expect(place(hay).maxHealth).toBe(hay.snapshot!.maxHealth);
   });
 
-  it('移動速度: 素の足 × 記録の装備・スキルの足の速さ(拳鬼=ジェットブーツ×1.3)・記録の無い幻影は素の足のまま', () => {
+  it('移動速度: 素の足 × 記録の装備・スキルの足の速さ(拳鬼=武将の鎧×1.25)・記録の無い幻影は素の足のまま', () => {
     const k = place(uniquePhantomSpec('brawler').profile, 'brawler');
-    expect(phantomMoveSpeed(k, GT)).toBeCloseTo(BASE_SPEED * 1.3, 3);
+    expect(phantomMoveSpeed(k, GT)).toBeCloseTo(BASE_SPEED * 1.25, 3);
     const hay = place(FIXED_GUARDIANS.find(g => g.id === 'hayase')!.profile);
     const a = combatActorPlayer(hay.id)!;
     expect(phantomMoveSpeed(hay, GT)).toBeCloseTo(BASE_SPEED * playerMoveStatMult(a, GT), 3);
@@ -76,19 +76,19 @@ describe('幻影の装備・スキルが効く(実行時の値)', () => {
       const c = useGameStore.getState().enemies[0]; maxV = Math.max(maxV, Math.hypot(c.vx ?? 0, c.vy ?? 0));
     }
     expect(kk.id).toBe(useGameStore.getState().enemies[0].id);
-    expect(maxV).toBeGreaterThan(BASE_SPEED * 1.3 * 0.97);
+    expect(maxV).toBeGreaterThan(BASE_SPEED * 1.25 * 0.97);
     // 記録の無い(旧来の)幻影は素の足のまま
     const bare = spawnEnemyAt('guardian-phantom', ORIGIN, ORIGIN, GT);
     useGameStore.setState({ enemies: [bare] });
     expect(phantomMoveSpeed(bare, GT)).toBeCloseTo(BASE_SPEED, 5);
   });
 
-  it('拳鬼の与ダメージ: ナイフ22×アサルトバレル1.6 × ストライカーの素手1.5 × 足の速さ1.3 × 段の倍率 × 対人0.2(1回だけ)', () => {
+  it('拳鬼の与ダメージ: ナイフ22×武将の小手1.5 × ストライカーの素手1.5 × 足の速さ1.25 × 段の倍率 × 対人0.2(1回だけ)', () => {
     const e = place(uniquePhantomSpec('brawler').profile, 'brawler', 40);
     const a = combatActorPlayer(e.id)!;
-    expect(phantomMeleeDamage(1, e.id)).toBeCloseTo(22 * 1.6, 5);
+    expect(phantomMeleeDamage(1, e.id)).toBeCloseTo(22 * 1.5, 5);
     expect(phantomBrawlerStrikerMult(a.characterClass)).toBe(1.5);
-    expect(brawlerSpeedDamageMult(playerMoveStatMult(a, GT))).toBeCloseTo(1.3, 5);
+    expect(brawlerSpeedDamageMult(playerMoveStatMult(a, GT))).toBeCloseTo(1.25, 5);
     // 実際に当たった1発目(会心なし)の削り=1段目の式どおり
     vi.spyOn(Math, 'random').mockReturnValue(0.999);
     const st = createPhantomTickState();
@@ -101,7 +101,7 @@ describe('幻影の装備・スキルが効く(実行時の値)', () => {
       if (now < hp) drops.push(hp - now);
       hp = now;
     }
-    const stage1 = 22 * 1.6 * 1.5 * 1.3 * brawlerStageSpec(1).mult * PVP_DAMAGE_SCALE;
+    const stage1 = 22 * 1.5 * 1.5 * 1.25 * brawlerStageSpec(1).mult * PVP_DAMAGE_SCALE;
     expect(drops[0]).toBeCloseTo(stage1, 1);
   });
 
@@ -110,7 +110,7 @@ describe('幻影の装備・スキルが効く(実行時の値)', () => {
     const a = combatActorPlayer(e.id)!;
     expect((actorMeleeFor(e.id)?.critChance ?? 0) + a.critChance).toBeCloseTo(0.12, 5); // ファイティングナイフ
     const gun = actorGunFor(e.id)!;
-    expect(phantomAtkMults(e.id, gun, GT).critChance).toBeCloseTo((gun.critChance ?? 0) + 0.09, 5); // ミリタリースコープ
+    expect(phantomAtkMults(e.id, gun, GT).critChance).toBeCloseTo((gun.critChance ?? 0) + 0.08, 5); // 武将の兜
   });
 
   it('拳鬼のスキル: タイムキーパーLv3(技の値段)・オーバークロックLv3・格闘Lv3(技ポイントの上限)', () => {
