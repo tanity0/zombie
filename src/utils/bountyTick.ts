@@ -212,6 +212,29 @@ export const bountySpawnCenter = (
 });
 
 /**
+ * 変異体対策室(練習ラン)だけの湧き位置: プレイヤーの**上へこの距離**(中心どうし)。
+ * 社長指摘2026-11-15「対策室で一部、スタート地点から遠すぎる敵が気になる。賞金首とか」。
+ * 本編の湧き(研究領域の帯の真ん中=開始地点から約3375px・休眠のまま待つ)を練習でもそのまま使っていたため、
+ * 練習を始めてから姿を見るまで長く歩かされていた。値は対策室のほかの枠の出現距離
+ * (天使150・アイドル320・ストーリーボス/フィル380・幻影380〜500・裏ボス=画面端のすぐ外)に揃えた。
+ * 起床の索敵範囲(BOUNTY_AGGRO_RANGE_DEFAULT=380)より外=出た瞬間は休眠のまま、少し寄ると起きる(本編と同じ流れ)。
+ */
+export const PRACTICE_BOUNTY_SPAWN_DIST_PX = 480;
+
+/**
+ * 賞金首の湧きの計画。`center`=実際に出す位置(中心)、`hpCenter`=HP の区域を引く位置(中心)。
+ * **本編(practice=false)は `bountySpawnCenter` そのもの**(1bitも変えない)。
+ * 練習は出す位置だけをプレイヤーの近くへ寄せ、**HP の区域は本編の湧き位置のまま**(=寄せたせいで体力が変わらない)。
+ */
+export const bountyEncounterSpawn = (
+  playerCenterX: number, playerCenterY: number, practice: boolean,
+): { center: { x: number; y: number }; hpCenter: { x: number; y: number } } => {
+  const home = bountySpawnCenter(playerCenterX, playerCenterY);
+  if (!practice) return { center: home, hpCenter: home };
+  return { center: { x: playerCenterX, y: playerCenterY - PRACTICE_BOUNTY_SPAWN_DIST_PX }, hpCenter: home };
+};
+
+/**
  * PACING_PUZZLE.md「★賞金首の活動限界と帰巣ヒステリシス」→「確定仕様(★v2)」(社長裁定2026-08-22
  * 「半径は敵を起点としたい」)。
  *

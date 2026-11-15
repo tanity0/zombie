@@ -104,6 +104,7 @@ import {
   brawlerGuardCounterFx, // 格闘の構えの受け(research/BRAWLER.md §8-5)
   takeBrawlerBeamCut, // 格闘の構えで受けられた光線の中断(research/BRAWLER.md §12-3d)
   abilityInvulnPatch, // 技の無敵(sourceId 付きの攻撃も弾く)
+  resolveBountyMove, // 対策室の賞金首を近くへ出す時に、木・建物の中へ置かない
 } from '../store/gameStore';
 import { shieldBlocksArea, shieldBlocksLine, splitBeamAtShield, beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md
 import { METAL_PALETTE, shieldBeamPalette, reflectAlongTravel, takeTechniqueStart, BEAM_HOLD_TICK_MS, beamHoldGain, type GuardPalette, type TechniqueGateState } from '../utils/shieldGuardFx'; // 防いだ演出の色・間引き・曲線(第2回クリエイティブ監査)
@@ -216,7 +217,7 @@ import { WRAITH_BASE_HP } from '../utils/bountyDims'; // 亡霊の基礎HP(社�
 import {
   runBountyTick, createBountyTickState, pickActiveBounty, bountyMaxHealth, mutantFieldMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
   bountyPlaybackActive, clearBountyPlayback,
-  bountySpawnBlocked, bountyNaturalSpawnReady, anyBountyEngaged, bountySpawnCenter,
+  bountySpawnBlocked, bountyNaturalSpawnReady, anyBountyEngaged, bountyEncounterSpawn,
   type BountySfx,
 } from '../utils/bountyTick';
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): 頭脳(decideGhostの対プレイヤーアダプタ)+技の状態機械。
@@ -5663,9 +5664,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 社長裁定2026-08-22)。y=±2250(研究領域の真ん中・符号はプレイヤーの居る側)、
           // x はプレイヤーに合わせて |x|≤1983 へクランプ。式は純関数 bountySpawnCenter が正本。
           // 旧「プレイヤーから700〜1000px・方角ランダム」は廃止。
-          const bSpawn = bountySpawnCenter(pcx1, pcy1);
-          const bx0 = bSpawn.x, by0 = bSpawn.y;
+          // ★変異体対策室(練習ラン)だけはプレイヤーの近く(上へ PRACTICE_BOUNTY_SPAWN_DIST_PX)へ出す
+          // (社長指摘2026-11-15「スタート地点から遠すぎる」)。本編は bountySpawnCenter のまま=不変。式は bountyEncounterSpawn。
+          const bPractice = isPracticeRun();
+          const bPlan = bountyEncounterSpawn(pcx1, pcy1, bPractice);
+          const bx0 = bPlan.center.x, by0 = bPlan.center.y;
           const bountyE = spawnEnemyAt(bType, bx0 - 22, by0 - 22, atGameTime);
+          if (bPractice) {
+            // 練習の位置は帯の真ん中ではなく任意の野なので、木・建物の幹の中に置かない(移動と同じ遮蔽物の連鎖)。
+            const bFree = resolveBountyMove(bountyE.x, bountyE.y, { width: bountyE.width, height: bountyE.height });
+            bountyE.x = bFree.x; bountyE.y = bFree.y;
+          }
           const bClamped = clampRectToPlayableArea(bountyE.x, bountyE.y, bountyE.width, bountyE.height, {
             farBackdrop: useGameStore.getState().farBackdrop,
             labTheme,
@@ -5677,7 +5686,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           bountyE.dormant = true;
           bountyE.aggroRange = BOUNTY_AGGRO_RANGE_DEFAULT;
           bountyE.homeX = bountyE.x; bountyE.homeY = bountyE.y;
-          const bArea = areaIndexForPos(bountyE.x + bountyE.width / 2, bountyE.y + bountyE.height / 2);
+          // 練習は近くへ寄せても体力の区域は本編の湧き位置のまま(寄せたせいで強さが変わらない)。
+          const bArea = bPractice
+            ? areaIndexForPos(bPlan.hpCenter.x, bPlan.hpCenter.y)
+            : areaIndexForPos(bountyE.x + bountyE.width / 2, bountyE.y + bountyE.height / 2);
           // research/STAGE_DIFFICULTY.md: ステージ係数(計測路は1.0)。既存の bountyEffectiveValueMult とは
           // 乗算で重なる(どちらも「基準値2000への倍率」)。★攻撃係数で動くのは**接触ダメージだけ**——
           // 賞金首の技は bountyScript の専用定数で enemy.damage を通らない=据え置き。

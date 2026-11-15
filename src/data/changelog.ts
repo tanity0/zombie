@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5600', items: [
+    '変異体対策室で賞金首を選ぶと、すぐ近くに現れる',
+  ] },
   { version: '0.25.5599', items: [
     'ゲーム内容の変更はありません',
   ] },
