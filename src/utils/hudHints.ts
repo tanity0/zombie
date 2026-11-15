@@ -47,11 +47,11 @@ export const hudGlyph = (style: HudHintStyle, action: HudAction, hasMouse: boole
   return g[action];
 };
 /**
- * 説明文の中の {press}(主ボタン=指)・{flick}(はじく)を、そのパッドの系統の札の字に置き換える(武器・サブウェポンの説明)。
+ * 説明文の中の {press}(主ボタン=指)・{flick}(はじく)・{gunNext}/{gunPrev}(次/前の銃)を、そのパッドの系統の札の字に置き換える(武器・サブウェポンの説明)。
  * 字の出どころは HUD の札と同じ hudGlyph=文の側で系統を分岐しない(Xbox 系 A/B・PS 系 ×/○・任天堂系 B/A)。
  */
 export const fillPadGlyphs = (text: string, padKind: PadKind): string =>
-  text.replace(/\{(press|flick)\}/g, (_m, a: 'press' | 'flick') => String(hudGlyph(padStyleOf(padKind), a, false)));
+  text.replace(/\{(press|flick|gunNext|gunPrev)\}/g, (_m, a: 'press' | 'flick' | 'gunNext' | 'gunPrev') => String(hudGlyph(padStyleOf(padKind), a, false)));
 
 /**
  * 一時停止の「〜でも再開」の一行(PauseMenu)。キーボードのある端末だけ ESC / P。

@@ -1940,7 +1940,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       </div>
                     )}
                     <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
-                      {tutorialLinesFor(openTutorial, playDevice).map((line, i) => <p key={i}>{line}</p>)}
+                      {tutorialLinesFor(openTutorial, playDevice, padKind).map((line, i) => <p key={i}>{line}</p>)}
                     </div>
                   </>
                 )}

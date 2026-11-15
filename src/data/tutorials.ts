@@ -3,6 +3,9 @@
 // 資料室(MissionSelect の「操作記録」)はこの台帳を引いて、既読のものだけを読み返せるようにする。
 // 同じ文章を2箇所で管理しない(STORY_UI_SPEC.md 11章「同一内容の別文章を管理しない」と同じ原則)。
 
+import { fillPadGlyphs } from '../utils/hudHints';
+import type { PadKind } from '../utils/inputDevice';
+
 export type TutorialId =
   | 'move'
   // 訓練(M0)の教習ビート(TUTORIAL_STAGE.md「M0 チュートリアル進行案」・社長裁定v0.25.2286〜2291)。
@@ -41,12 +44,16 @@ export interface TutorialEntry {
   archiveAlways?: boolean;
 }
 
-/** いまの操作で読む本文(スマホ=lines / マウス=pcLines / パッド=padLines)。 */
+/**
+ * いまの操作で読む本文(スマホ=lines / マウス=pcLines / パッド=padLines)。
+ * padLines の {press}/{flick}/{gunNext}/{gunPrev} は、そのパッドの系統の刻印の字に置き換える(HUD の札と同じ字=hudHints.fillPadGlyphs)。
+ */
 export const tutorialLinesFor = (
   e: { lines: string[]; pcLines?: string[]; padLines?: string[] },
   device: 'touch' | 'mouse' | 'pad',
+  padKind: PadKind = 'xbox',
 ): string[] =>
-  device === 'pad' ? (e.padLines ?? e.pcLines ?? e.lines) : device === 'mouse' ? (e.pcLines ?? e.lines) : e.lines;
+  device === 'pad' ? (e.padLines ?? e.pcLines ?? e.lines).map(l => fillPadGlyphs(l, padKind)) : device === 'mouse' ? (e.pcLines ?? e.lines) : e.lines;
 
 export const STAGE1_GUIDE_SLIDES: TutorialSlide[] = [
   {
@@ -108,7 +115,7 @@ export const TUTORIALS: TutorialEntry[] = [
     ],
     padLines: [
       '敵が射程に入ると、銃が自動で撃つ。自分で狙いを付ける必要はない。',
-      '銃の持ち替えは、右手側のボタンのうち一番上のボタン。左手側の肩ボタンを押すと、一つ前の銃に戻る。'
+      '銃の持ち替えは{gunNext}ボタン。{gunPrev}ボタンで一つ前の銃に戻る。'
     ],
     // 手本=**実機収録**(社長撮影v0.25.2306)。近づいてくる相手を自動射撃で倒し、**弾数が減って0になる**
     // ところまで映っている(=「弾はちょうど倒せる分だけ」という台本がそのまま画になっている)。
@@ -125,7 +132,7 @@ export const TUTORIALS: TutorialEntry[] = [
       '当て続けていると、そのうちクリティカルが出る。'
     ],
     padLines: [
-      '決定ボタンを押して離すと、近接攻撃が出る。',
+      '{press}ボタンを押して離すと、近接攻撃が出る。',
       '近接攻撃は弾を使わない。敵に張り付かれた時は、これで引き離そう。',
       '当て続けていると、そのうちクリティカルが出る。'
     ],
@@ -236,7 +243,7 @@ export const TUTORIALS: TutorialEntry[] = [
       '弾数は少ないので、大事に使おう。',
     ],
     padLines: [
-      '狙いのサークルは、スティックを倒した方向に出る。決定ボタンを離すと撃つ。',
+      '狙いのサークルは、スティックを倒した方向に出る。{press}ボタンを離すと撃つ。',
       '通常は、立ち止まって撃つと、弾はサークルの方向へ飛ぶ。頭に当たればヘッドショットになる。',
       'サークルを敵の頭に近づけると、狙いが頭に吸い付く。吸い付きが外れるまでは、歩きながら撃っても頭に当たる。',
       '弾数は少ないので、大事に使おう。',

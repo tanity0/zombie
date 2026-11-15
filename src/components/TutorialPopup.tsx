@@ -3,6 +3,7 @@
 // 挿絵(art)は現状インラインSVG('move'=ドラッグ移動の図解)。実スクショ画像に差し替える場合は
 // art部を <img> に置き換えるだけの構造にしてある。表示中はゲーム停止(showTutorialPopupがisPaused=true)。
 import { usePlayDevice } from '../utils/inputDevice';
+import { usePadKindActive } from '../utils/hudHints';
 import { tutorialLinesFor } from '../data/tutorials';
 import React, { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
@@ -69,6 +70,7 @@ const SlideMedia: React.FC<{ slide: TutorialSlide }> = ({ slide }) => {
 const TutorialPopup: React.FC = () => {
   const popup = useGameStore(s => s.tutorialPopup); // ポップアップ本体のみ購読(開閉時だけ再描画)
   const playDevice = usePlayDevice(); // PC は今手にある物の言葉で(research/PC_SUPPORT.md §11-6)
+  const padKind = usePadKindActive() || 'xbox'; // パッドの本文に差し込む刻印の系統
   const close = useGameStore(s => s.closeTutorialPopup);
   const [page, setPage] = useState(0);
   const touchStartX = useRef<number | null>(null);
@@ -78,7 +80,7 @@ const TutorialPopup: React.FC = () => {
 
   const slides: TutorialSlide[] = popup.slides?.length
     ? popup.slides
-    : [{ title: popup.title, lines: tutorialLinesFor(popup, playDevice), art: popup.art, img: popup.img }];
+    : [{ title: popup.title, lines: tutorialLinesFor(popup, playDevice, padKind), art: popup.art, img: popup.img }];
   const multiple = slides.length > 1;
   const last = page === slides.length - 1;
   const go = (next: number) => setPage(Math.max(0, Math.min(slides.length - 1, next)));

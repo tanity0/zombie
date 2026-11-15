@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5593', items: [
+    '資料室とチュートリアルの文を手直し。パッドの説明は、使っているパッドのボタン名で出る',
+  ] },
   { version: '0.25.5592', items: [
     '資料室の図鑑や資料、チュートリアルの文章を読みやすく書き直した',
   ] },
