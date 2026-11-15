@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5592', items: [
+    '資料室の図鑑や資料、チュートリアルの文章を読みやすく書き直した',
+  ] },
   { version: '0.25.5591', items: [
     '亡霊の名から注記を外した。ステージ四とステージ七のボスは、衛生兵(変異体)とグレン(変異体)の名で呼ばれる',
   ] },
