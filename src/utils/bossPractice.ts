@@ -340,7 +340,7 @@ const MUTANT_WRAITH_SLOT: PracticeSlot = {
   bossType: 'mutant-wraith',
   stageId: 'stage-1',
   param: 'wraithnow',
-  label: '亡霊(変異体)',
+  label: '亡霊',
   reachable: false,
   alwaysUnlocked: true,
 };

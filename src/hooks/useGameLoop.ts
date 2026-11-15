@@ -9938,7 +9938,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const wAc = bossArtCenter(activeWraith);
               useGameStore.getState().triggerAttention(wAc.x, wAc.y, bossCutinPayload('mutant-wraith'));
               markBossesEncountered(new Set(['mutant-wraith'])); markBossAppeared('mutant-wraith'); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
-              useGameStore.setState({ eventBannerText: '亡霊(変異体)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+              useGameStore.setState({ eventBannerText: '亡霊が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
             }
             // 見失わせる場面(§8 A5): ステージボス戦・ボスに追われている・紅き夜・大きなイベント・屋内・帰還サークル。
             const g2 = useGameStore.getState();

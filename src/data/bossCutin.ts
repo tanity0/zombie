@@ -13,9 +13,9 @@ import type { EnemyType } from '../types/game';
 export const CASTLE_BOSS_NAME_BY_STAGE: Record<string, string> = {
   'stage-1': '搬送体',
   'stage-3': '樹木管理員',
-  'stage-4': '衛生兵',
+  'stage-4': '衛生兵(変異体)',
   'stage-5': '軍隊',
-  'stage-7': 'グレン',
+  'stage-7': 'グレン(変異体)',
 };
 
 /** 固有名ボスのカットイン表示名(プレイヤー既出の和名のみ)。 */
@@ -52,7 +52,7 @@ const NAMED_BOSS_CUTIN_NAME: Partial<Record<EnemyType, string>> = {
   // research/ASTRONAUT_HORDE.md: 社長命名2026-10-29。
   'mutant-astro': '宇宙飛行群',
   // research/WRAITH_MUTANT.md: 社長命名2026-10-29。
-  'mutant-wraith': '亡霊(変異体)',
+  'mutant-wraith': '亡霊',
 };
 
 /**

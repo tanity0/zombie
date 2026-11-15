@@ -2285,7 +2285,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   'mutant-hero': '英雄', // research/MUTANT_HERO.md(社長命名2026-10-03)
   'mutant-liberty': '解放群', // research/LIBERTY_HORDE.md(社長命名2026-10-04「解放軍群」→2026-10-29「解放群」)
   'mutant-astro': '宇宙飛行群', // research/ASTRONAUT_HORDE.md(社長命名2026-10-29)
-  'mutant-wraith': '亡霊(変異体)', // research/WRAITH_MUTANT.md(社長命名2026-10-29)
+  'mutant-wraith': '亡霊', // research/WRAITH_MUTANT.md(社長命名2026-10-29)
 };
 // 社長指示v0.25.3451「なぜUIによって名前の出し方を変えるの?全部の箇所で統一に決まってる」:
 // 城ボス(giantbat)もステージ別の台帳名(bossCutin=名前の正本)で表示する。死因・討伐バナー・歴史年表の
