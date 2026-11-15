@@ -240,10 +240,10 @@ const GHOST_DERIVED_SLOTS: readonly PracticeSlot[] = GHOST_DOSSIER_SLOTS.filter(
 // 掛けない(1.0=台帳の値)。HP一覧も係数なし(下の practiceBossHealth)。
 // デバッグ強制出現は`?bountynow=1`相乗り(useGameLoop.tsのFORCE_BOUNTY判定がpracticeForces('bountynow')を見る)。
 const BOUNTY_PRACTICE_LABEL: Record<'bounty-ranged' | 'bounty-melee' | 'bounty-balance' | 'bounty-maiko', string> = {
-  'bounty-ranged': 'バス停(変異)',
-  'bounty-melee': '馬乗り(変異)',
-  'bounty-balance': '鋏(変異)',
-  'bounty-maiko': '舞妓(変異)',
+  'bounty-ranged': 'バス停',
+  'bounty-melee': '馬乗り',
+  'bounty-balance': '鋏',
+  'bounty-maiko': '舞妓',
 };
 const BOUNTY_PRACTICE_TYPES = ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as const;
 const BOUNTY_PRACTICE_SLOTS: readonly PracticeSlot[] = BOUNTY_PRACTICE_TYPES.map(t => ({
@@ -300,7 +300,7 @@ const MUTANT_HERO_SLOT: PracticeSlot = {
   bossType: 'mutant-hero',
   stageId: 'stage-1',
   param: 'heronow',
-  label: '英雄(変異)',
+  label: '英雄',
   reachable: false,
   alwaysUnlocked: true,
 };
@@ -316,7 +316,7 @@ const MUTANT_LIBERTY_SLOT: PracticeSlot = {
   bossType: 'mutant-liberty',
   stageId: 'stage-1',
   param: 'libertynow',
-  label: '解放群(変異)',
+  label: '解放群',
   reachable: false,
   alwaysUnlocked: true,
 };
@@ -328,7 +328,7 @@ const MUTANT_ASTRO_SLOT: PracticeSlot = {
   bossType: 'mutant-astro',
   stageId: 'stage-1',
   param: 'astronow',
-  label: '宇宙飛行群(変異)',
+  label: '宇宙飛行群',
   reachable: false,
   alwaysUnlocked: true,
 };

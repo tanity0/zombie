@@ -338,7 +338,7 @@ export const BOUNTY_MAIKO_FIELDS: readonly TuningField[] = maikoFields();
 export const registerBountyTuning = (): void => {
   // 表示名はカットイン台帳(bossCutin.ts)に揃える(名称統一バッチ・社長指示v0.25.3443)。
   registerBossTuning({
-    bossType: 'bounty-ranged', label: 'バス停(変異)',
+    bossType: 'bounty-ranged', label: 'バス停',
     table: BOUNTY_RANGED_TUNING as unknown as Record<string, unknown>,
     defaults: BOUNTY_RANGED_TUNING_DEFAULTS as unknown as Record<string, unknown>,
     fields: BOUNTY_RANGED_FIELDS, sectionHelp: BR_HELP,
@@ -347,21 +347,21 @@ export const registerBountyTuning = (): void => {
     playables: BR_PLAYABLES, onPlay: onBountyPlay, playState: getBountyPlayback,
   });
   registerBossTuning({
-    bossType: 'bounty-melee', label: '馬乗り(変異)',
+    bossType: 'bounty-melee', label: '馬乗り',
     table: BOUNTY_MELEE_TUNING as unknown as Record<string, unknown>,
     defaults: BOUNTY_MELEE_TUNING_DEFAULTS as unknown as Record<string, unknown>,
     fields: BOUNTY_MELEE_FIELDS, sectionHelp: BM_HELP,
     playables: BM_PLAYABLES, onPlay: onBountyPlay, playState: getBountyPlayback,
   });
   registerBossTuning({
-    bossType: 'bounty-balance', label: '鋏(変異)',
+    bossType: 'bounty-balance', label: '鋏',
     table: BOUNTY_BALANCE_TUNING as unknown as Record<string, unknown>,
     defaults: BOUNTY_BALANCE_TUNING_DEFAULTS as unknown as Record<string, unknown>,
     fields: BOUNTY_BALANCE_FIELDS, sectionHelp: BB_HELP,
     playables: BB_PLAYABLES, onPlay: onBountyPlay, playState: getBountyPlayback,
   });
   registerBossTuning({
-    bossType: 'bounty-maiko', label: '舞妓(変異)',
+    bossType: 'bounty-maiko', label: '舞妓',
     table: BOUNTY_MAIKO_TUNING as unknown as Record<string, unknown>,
     defaults: BOUNTY_MAIKO_TUNING_DEFAULTS as unknown as Record<string, unknown>,
     fields: BOUNTY_MAIKO_FIELDS, sectionHelp: MK_HELP,

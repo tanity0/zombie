@@ -71,7 +71,7 @@ const RescueQuestGoalPill: React.FC = () => {
       className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums gt-solid"
       style={{ color: '#facc15' }}
     >
-      {bossKilled ? '[サンプルを届ける]' : '[搬送体(変異)の討伐 0/1]'}
+      {bossKilled ? '[サンプルを届ける]' : '[搬送体の討伐 0/1]'}
     </div>
   );
 };

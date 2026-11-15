@@ -17,10 +17,10 @@ import type { TuningField } from './bossTuning';
 
 type Rec = Record<string, unknown>;
 const CASES: readonly { boss: string; label: string; fields: readonly TuningField[]; table: Rec; defaults: Rec }[] = [
-  { boss: 'bounty-ranged', label: 'バス停(変異)', fields: BOUNTY_RANGED_FIELDS, table: BOUNTY_RANGED_TUNING as unknown as Rec, defaults: BOUNTY_RANGED_TUNING_DEFAULTS as unknown as Rec },
-  { boss: 'bounty-melee', label: '馬乗り(変異)', fields: BOUNTY_MELEE_FIELDS, table: BOUNTY_MELEE_TUNING as unknown as Rec, defaults: BOUNTY_MELEE_TUNING_DEFAULTS as unknown as Rec },
-  { boss: 'bounty-balance', label: '鋏(変異)', fields: BOUNTY_BALANCE_FIELDS, table: BOUNTY_BALANCE_TUNING as unknown as Rec, defaults: BOUNTY_BALANCE_TUNING_DEFAULTS as unknown as Rec },
-  { boss: 'bounty-maiko', label: '舞妓(変異)', fields: BOUNTY_MAIKO_FIELDS, table: BOUNTY_MAIKO_TUNING as unknown as Rec, defaults: BOUNTY_MAIKO_TUNING_DEFAULTS as unknown as Rec },
+  { boss: 'bounty-ranged', label: 'バス停', fields: BOUNTY_RANGED_FIELDS, table: BOUNTY_RANGED_TUNING as unknown as Rec, defaults: BOUNTY_RANGED_TUNING_DEFAULTS as unknown as Rec },
+  { boss: 'bounty-melee', label: '馬乗り', fields: BOUNTY_MELEE_FIELDS, table: BOUNTY_MELEE_TUNING as unknown as Rec, defaults: BOUNTY_MELEE_TUNING_DEFAULTS as unknown as Rec },
+  { boss: 'bounty-balance', label: '鋏', fields: BOUNTY_BALANCE_FIELDS, table: BOUNTY_BALANCE_TUNING as unknown as Rec, defaults: BOUNTY_BALANCE_TUNING_DEFAULTS as unknown as Rec },
+  { boss: 'bounty-maiko', label: '舞妓', fields: BOUNTY_MAIKO_FIELDS, table: BOUNTY_MAIKO_TUNING as unknown as Rec, defaults: BOUNTY_MAIKO_TUNING_DEFAULTS as unknown as Rec },
 ];
 
 describe('賞金首4種がボスメーカーに登録されている', () => {

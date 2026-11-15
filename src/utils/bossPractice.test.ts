@@ -157,7 +157,7 @@ describe('賞金首の掲載枠', () => {
 
   it('個体名(バス停/馬乗り/鋏/舞妓)が付いている', () => {
     const labels = bountySlots().map(s => s.label).sort();
-    expect(labels).toEqual(['バス停(変異)', '舞妓(変異)', '鋏(変異)', '馬乗り(変異)'].sort());
+    expect(labels).toEqual(['バス停', '舞妓', '鋏', '馬乗り'].sort());
   });
 
   // research/MASTERY.md v2 §6: 練習ランではステージ係数を無視する=一覧も係数なし。

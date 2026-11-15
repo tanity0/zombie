@@ -11,10 +11,10 @@ import type { EnemyType } from '../types/game';
 
 /** 城ボス(giantbat)のステージ別表示名(社長裁定2026-08-07)。無いステージは「?」扱い。 */
 export const CASTLE_BOSS_NAME_BY_STAGE: Record<string, string> = {
-  'stage-1': '搬送体(変異)',
-  'stage-3': '樹木管理員(変異)',
-  'stage-4': '衛生兵(変異)',
-  'stage-5': '軍隊(変異)',
+  'stage-1': '搬送体',
+  'stage-3': '樹木管理員',
+  'stage-4': '衛生兵',
+  'stage-5': '軍隊',
   'stage-7': 'グレン',
 };
 
@@ -36,21 +36,21 @@ const NAMED_BOSS_CUTIN_NAME: Partial<Record<EnemyType, string>> = {
   // 過去の裁定は事実として併記/CLAUDE.md「★過去の裁定は制約ではなく事実」)。
   phillboss: 'フィル(変異体)',
   // PACING_PUZZLE.md §6.38 v9(完全コピー原則): 賞金首4種も城ボスと同じ出現カットインを出す。
-  'bounty-ranged': 'バス停(変異)',
-  'bounty-melee': '馬乗り(変異)',
-  'bounty-balance': '鋏(変異)',
-  'bounty-maiko': '舞妓(変異)',
+  'bounty-ranged': 'バス停',
+  'bounty-melee': '馬乗り',
+  'bounty-balance': '鋏',
+  'bounty-maiko': '舞妓',
   // 社長裁定2026-08-28「死神も紹介入れて。『礼賛』」「ハンターも入ってないっけ?入れて『監視者』」。
   // 台帳の掟(名前を発明しない)に対し、これは社長支給の二つ名=そのまま登録。
   // 死神=完全出現アテンション/ハンター=発見アテンション(1波1回)にカットインが乗る(useGameLoop)。
   reaper: '礼賛',
   hunter: '監視者',
   // research/MUTANT_HERO.md: 社長命名2026-10-03。
-  'mutant-hero': '英雄(変異)',
+  'mutant-hero': '英雄',
   // research/LIBERTY_HORDE.md: 社長命名2026-10-04。
-  'mutant-liberty': '解放群(変異)',
+  'mutant-liberty': '解放群',
   // research/ASTRONAUT_HORDE.md: 社長命名2026-10-29。
-  'mutant-astro': '宇宙飛行群(変異)',
+  'mutant-astro': '宇宙飛行群',
   // research/WRAITH_MUTANT.md: 社長命名2026-10-29。
   'mutant-wraith': '亡霊(変異体)',
 };

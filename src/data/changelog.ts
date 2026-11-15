@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5590', items: [
+    'ボスの名前から変異の注記を外した。搬送体、バス停、英雄などの名で呼ばれる',
+  ] },
   { version: '0.25.5589', items: [
     '変異体の呼び名を改めた。ハロウィン・患者・ビルダー・車椅子・自転車・妊婦・花婿・蜘蛛・削岩機',
     '死神は礼賛、ハンターは監視者の名で呼ばれるようになった',

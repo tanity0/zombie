@@ -50,10 +50,10 @@ describe('isCutinWindow (in→hold→cutin→outの順序・v0.25.2958で復帰)
 
 describe('bossCutinName (名前の台帳・新名の発明なし)', () => {
   it('城ボスは裁定済みステージだけ名前を持つ(社長裁定2026-08-07)', () => {
-    expect(bossCutinName('giantbat', 'stage-1')).toBe('搬送体(変異)');
-    expect(bossCutinName('giantbat', 'stage-3')).toBe('樹木管理員(変異)');
-    expect(bossCutinName('giantbat', 'stage-4')).toBe('衛生兵(変異)');
-    expect(bossCutinName('giantbat', 'stage-5')).toBe('軍隊(変異)');
+    expect(bossCutinName('giantbat', 'stage-1')).toBe('搬送体');
+    expect(bossCutinName('giantbat', 'stage-3')).toBe('樹木管理員');
+    expect(bossCutinName('giantbat', 'stage-4')).toBe('衛生兵');
+    expect(bossCutinName('giantbat', 'stage-5')).toBe('軍隊');
     expect(bossCutinName('giantbat', 'stage-7')).toBe('グレン');
   });
   it('実装してない城ボス(stage-2/ex1)は台帳に無い=null(「?」表示・カットイン無し)', () => {

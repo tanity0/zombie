@@ -9882,7 +9882,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 遠くで叫んでいる群れの声(英雄の嘶きと同じ場所・距離で減衰)。
               playSfx('screamer-cry', npcSfxDistGain(lAc.x, lAc.y, useGameStore.getState().player.x + useGameStore.getState().player.width / 2,
                 useGameStore.getState().player.y + useGameStore.getState().player.height / 2, useGameStore.getState().camera, useGameStore.getState().gameBounds));
-              useGameStore.setState({ eventBannerText: '解放群(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+              useGameStore.setState({ eventBannerText: '解放群が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
             }
             // カットイン(時間停止)を出したフレームは進めない=溜めの予兆(実時間)と溜め(ゲーム時間)をずらさない。
             if (!useGameStore.getState().attention) runLibertyTick(activeLib, libertyStateRef.current, newGameTime, deltaTime, Date.now());
@@ -9913,7 +9913,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const aAc = bossArtCenter(activeAstro);
               useGameStore.getState().triggerAttention(aAc.x, aAc.y, bossCutinPayload('mutant-astro'));
               markBossesEncountered(new Set(['mutant-astro'])); markBossAppeared('mutant-astro'); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
-              useGameStore.setState({ eventBannerText: '宇宙飛行群(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+              useGameStore.setState({ eventBannerText: '宇宙飛行群が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
             }
             if (!useGameStore.getState().attention) runAstroTick(activeAstro, astroStateRef.current, newGameTime, deltaTime, Date.now());
           }
@@ -9975,7 +9975,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const hAc = bossArtCenter(activeHero);
               useGameStore.getState().triggerAttention(hAc.x, hAc.y, bossCutinPayload('mutant-hero'));
               markBossesEncountered(new Set(['mutant-hero'])); markBossAppeared('mutant-hero'); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
-              useGameStore.setState({ eventBannerText: '英雄(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+              useGameStore.setState({ eventBannerText: '英雄が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
               HERO_SFX.neigh(npcSfxDistGain(hAc.x, hAc.y, player.x + player.width / 2, player.y + player.height / 2, useGameStore.getState().camera, useGameStore.getState().gameBounds));
             }
             runHeroTick(activeHero, heroStateRef.current, newGameTime, deltaTime, Date.now(), HERO_SFX, isPracticeRun());

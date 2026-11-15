@@ -2278,13 +2278,13 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   'guardian-phantom': GUARDIAN_PHANTOM_LABEL,
   // 賞金首4種(名称統一バッチ・社長指示v0.25.3443): 台帳(bossCutin.ts)と同名。従来はフォールバック「変異体」に落ちていて
   // 死因・討伐バナー・被弾文言(「◯◯のレーザー」等)が個体名を出せていなかった。
-  'bounty-ranged': 'バス停(変異)',
-  'bounty-melee': '馬乗り(変異)',
-  'bounty-balance': '鋏(変異)',
-  'bounty-maiko': '舞妓(変異)',
-  'mutant-hero': '英雄(変異)', // research/MUTANT_HERO.md(社長命名2026-10-03)
-  'mutant-liberty': '解放群(変異)', // research/LIBERTY_HORDE.md(社長命名2026-10-04「解放軍群」→2026-10-29「解放群」)
-  'mutant-astro': '宇宙飛行群(変異)', // research/ASTRONAUT_HORDE.md(社長命名2026-10-29)
+  'bounty-ranged': 'バス停',
+  'bounty-melee': '馬乗り',
+  'bounty-balance': '鋏',
+  'bounty-maiko': '舞妓',
+  'mutant-hero': '英雄', // research/MUTANT_HERO.md(社長命名2026-10-03)
+  'mutant-liberty': '解放群', // research/LIBERTY_HORDE.md(社長命名2026-10-04「解放軍群」→2026-10-29「解放群」)
+  'mutant-astro': '宇宙飛行群', // research/ASTRONAUT_HORDE.md(社長命名2026-10-29)
   'mutant-wraith': '亡霊(変異体)', // research/WRAITH_MUTANT.md(社長命名2026-10-29)
 };
 // 社長指示v0.25.3451「なぜUIによって名前の出し方を変えるの?全部の箇所で統一に決まってる」:
