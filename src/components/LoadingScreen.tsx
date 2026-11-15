@@ -4,18 +4,17 @@ interface LoadingScreenProps {
   benchmarkMode?: boolean;
   startup?: boolean; // 起動時の全素材ダウンロード用
   // 出撃時のレンダラ初期化など「タイトル直後の本ロード以外」の短い待ちで使う控えめ表示。
-  // 大きな「ゾンビサバイバル」タイトルは出さず、スピナー＋小さな文言のみ(社長指示)。
+  // スピナー＋小さな文言のみ(社長指示)。
   compact?: boolean;
 }
 
 const LoadingScreen: React.FC<LoadingScreenProps> = ({ benchmarkMode = false, startup = false, compact = false }) => {
-  const title = 'ゾンビサバイバル';
   const subtitle = startup
     ? '素材をダウンロード中…'
     : benchmarkMode ? '描画負荷テストを準備中' : '作戦地域へ移動中…';
 
   // 控えめ表示: 「同意して始める」後(TitleScreen の START後)ローディングと同じ見た目(社長指示)。
-  // 小さな回転スピナー＋「LOADING…」だけ。ゲームタイトル(ゾンビサバイバル)は出さない。
+  // 小さな回転スピナー＋「LOADING…」だけ。
   if (compact) {
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-end bg-black/45 pb-[18%] text-white">
@@ -25,6 +24,8 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ benchmarkMode = false, st
     );
   }
 
+  // 通常表示: 背景はタイトル画像(title-the-one.png)なのでゲーム名の文字は重ねない(社長裁定)。
+  // 紋章スピナー → LOADING → 状況の一言 → 進行バー の縦並びだけ。
   return (
     <div
       className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#06070d] px-6 text-white"
@@ -43,8 +44,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ benchmarkMode = false, st
         <div className="text-[10px] uppercase tracking-[0.34em] text-purple-100/50">
           {benchmarkMode ? 'Benchmark Loading' : 'Loading'}
         </div>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{title}</h1>
-        <p className="mt-2 text-[12px] leading-relaxed text-white/50">
+        <p className="mt-2.5 text-[12px] leading-relaxed text-white/50">
           {subtitle}
         </p>
         <div className="mx-auto mt-6 h-1.5 w-48 overflow-hidden rounded-full bg-purple-400/10">

@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5594', items: [
+    'スキル「使役」の説明を手直し',
+    '読み込み画面からゲーム名の文字を外した',
+  ] },
   { version: '0.25.5593', items: [
     '資料室とチュートリアルの文を手直し。パッドの説明は、使っているパッドのボタン名で出る',
   ] },

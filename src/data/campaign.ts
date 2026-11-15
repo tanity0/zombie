@@ -825,7 +825,7 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ討伐報酬(3種から毎回ランダムで1つ)。
   'poi-bombing':  { name: '爆撃',   desc: '3秒に1度、近くの敵にグレネードランチャーを自動で撃つ', rarity: 'super' },
   'poi-guard':    { name: '防衛',   desc: 'プレイヤーの周りをブーメランが回り続け、触れた敵にダメージを与え、敵の弾も消す', rarity: 'super' },
-  'poi-thrall':   { name: '使役',   desc: '倒した通常の敵の20%を、仲間のゾンビとして復活させる(ボスは対象外)。最大1体で、倒されるまでついてくる', rarity: 'super' },
+  'poi-thrall':   { name: '使役',   desc: '倒した通常の敵の20%を仲間にする(ボスは対象外)。最大1体で、倒されるまでついてくる', rarity: 'super' },
   // SKILL_BUILD_REDESIGN.md §14(社長承認2026-08-13「全て採用」)・新スキル9種。B3=台帳掲載のみ
   // (先行掲載)。RUN_DRAFT_EXCLUDED_SKILLS/GACHA_EXCLUDED_SKILLSで完全に眠らせている(効果配線はB7)。
   'big-bullet':      { name: 'ビッグバレット',       desc: '弾のサイズを拡大(見た目と当たり判定を同時に拡大。貫通数・跳弾回数・壁衝突は変化しない)', rarity: 'normal' },
@@ -890,7 +890,7 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ報酬(いずれもLv変化なし=Lv1固定)。
   'poi-bombing':  { base: '3秒に1度、近くの敵にグレネードランチャーを自動で撃つ' },
   'poi-guard':    { base: 'プレイヤーの周りをブーメランが回り続け、触れた敵にダメージを与え、敵の弾も消す' },
-  'poi-thrall':   { base: '倒した通常の敵の20%を、仲間のゾンビとして復活させる(ボスは対象外)。最大1体で、倒されるまでついてくる' },
+  'poi-thrall':   { base: '倒した通常の敵の20%を仲間にする(ボスは対象外)。最大1体で、倒されるまでついてくる' },
   // SKILL_BUILD_REDESIGN.md §14/§16-5(叩き台の数値)。§28(B7)で効果配線+スターター入り済み。
   'big-bullet':      { base: '弾のサイズを拡大(見た目と当たり判定を同時に拡大。貫通数・跳弾回数・壁衝突は変化しない)', lv: ['×1.3', '×1.5', '×1.7'] },
   // ice-shot: v0.25.3280裁定(40/50/60%×2/2.5/3秒・ボスは効果半分)。v0.25.3301: キル時氷片=覚醒効果へ。
