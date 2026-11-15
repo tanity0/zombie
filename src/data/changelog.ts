@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5595', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5594', items: [
     'スキル「使役」の説明を手直し',
     '読み込み画面からゲーム名の文字を外した',

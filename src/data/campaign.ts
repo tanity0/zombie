@@ -1009,7 +1009,7 @@ export const SKILL_ICON: Partial<Record<SkillKey, string>> = {
   'attack-shooter': '🔫', runner: '👟', seeker: '🧭', 'scrap-builder': '🔩',
   magnet: '🧲', 'last-magazine': '🔚', 'warm-up': '🤸',
   'super-armor': '🗿',
-  'poi-bombing': '🛩️', 'poi-guard': '🏰', 'poi-thrall': '🧟',
+  'poi-bombing': '🛩️', 'poi-guard': '🏰', 'poi-thrall': '⛓️',
   'big-bullet': '⚫', 'ice-shot': '❄️', vampire: '🩸', 'incendiary-round': '♨️',
   'execution-shock': '💢', 'gravity-shot': '🕳️', 'echo-shot': '🔁',
   'barrage-king': '👑', 'blood-treads': '🐾',
