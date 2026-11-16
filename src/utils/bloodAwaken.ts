@@ -30,6 +30,8 @@ export interface BloodFields {
   /** 今の体力・最大体力(満タン値=器の大きさを決める。無ければ満タン扱い)。 */
   health?: number;
   maxHealth?: number;
+  /** 装備の効果(血の溜まりやすさ=弾薬系アクセ・武将の兜)。無ければ1倍。 */
+  equipBonus?: { bloodGainMult?: number };
 }
 
 /**
@@ -152,13 +154,15 @@ export const bloodFill = (p: BloodFields, gameTime: number): number =>
 /**
  * 加算を適用した後の欄を返す。加算が 0 以下 / 覚醒中 / 明けてから BLOOD_AWAKEN_REFILL_LOCK_MS の間(bloodGainLocked)は
  * null(何も書かない)。溢れた分は捨てる(上限=今の器)。血を足す道(近接・銃・大きさの倍率)は全部ここを通る。
+ * 装備の血の溜まりやすさ(equipBonus.bloodGainMult)もここで掛ける(全経路に1か所で効かせる)。
  * 満ちたら自動発動するのは useGameLoop のティック(bloodAwakenStep)。
  */
 export const applyBloodGain = (p: BloodFields, gain: number, gameTime: number): { bloodMeter: number; bloodLastGainAt: number } | null => {
   if (!(gain > 0)) return null;
   if (isBloodAwakening(p, gameTime)) return null;
   if (bloodGainLocked(gameTime, p.bloodAwakenEndedAt ?? 0)) return null;
-  return { bloodMeter: Math.min(bloodCapacity(p), bloodMeterNow(p, gameTime) + gain), bloodLastGainAt: gameTime };
+  const mult = Math.max(0, p.equipBonus?.bloodGainMult ?? 1);
+  return { bloodMeter: Math.min(bloodCapacity(p), bloodMeterNow(p, gameTime) + gain * mult), bloodLastGainAt: gameTime };
 };
 
 /**

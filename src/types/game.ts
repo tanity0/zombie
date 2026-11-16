@@ -563,6 +563,7 @@ export type EquipStatKey =
   | 'reload'      // リロード時間短縮(正の割合=短縮量)
   | 'critChance'  // クリ率(割合・3%刻み)
   | 'ammoDrop'    // 弾薬ドロップ(割合)
+  | 'bloodGain'   // 血のゲージの溜まりやすさ(割合・血の覚醒の加算に掛かる)
   | 'scrap';      // スクラップ(割合)
 // 1ステータス分の効果。value の単位: maxHealth=HPポイント、それ以外=割合(0.20=+20%、reloadは短縮量)。
 export interface EquipStat { key: EquipStatKey; value: number }
@@ -588,6 +589,7 @@ export interface EquipBonus {
   critBonus: number;      // Σクリ率(加算)
   ammoDropBonus: number;  // Σ弾薬ドロップ(加算)
   scrapBonus: number;     // Σスクラップ(加算)
+  bloodGainMult: number;  // 1 + Σ血の溜まりやすさ(血の覚醒の加算量に掛ける)
 }
 
 

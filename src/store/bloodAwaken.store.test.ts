@@ -13,7 +13,8 @@ const backing: Record<string, string> = {};
   get length() { return Object.keys(backing).length; },
 } as Storage;
 
-import { useGameStore, skillBloodAwakenDamageMult, grantMeleeKillRewards, triggerBloodAwakenBurst } from './gameStore';
+import { useGameStore, skillBloodAwakenDamageMult, grantMeleeKillRewards, triggerBloodAwakenBurst, grantGunBlood } from './gameStore';
+import { aggregateEquipBonus } from '../data/equipment';
 import { setSelectedStageId } from '../data/progress';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { computeEffectiveMoveSpeed, type EffectiveMoveSpeedInput } from '../utils/playerMoveSpeed';
@@ -368,5 +369,31 @@ describe('覚醒に入った瞬間の押し返し(triggerBloodAwakenBurst)', () 
     // 押した敵の足元にだけ砂埃
     expect(st().effects.filter(f => f.kind === 'image' && f.texture === 'fx/dust-puff').length).toBe(1);
     expect(st().effects.length).toBeGreaterThan(fx0);
+  });
+});
+
+describe('弾薬系アクセの「血の溜まり」(社長指示2026-11-16)', () => {
+  const equipAcc = (id: string | null) =>
+    useGameStore.setState(s => {
+      const equipment = { ...s.player.equipment, accessory: id };
+      return { player: { ...s.player, equipment, equipBonus: aggregateEquipBonus(equipment) } };
+    });
+  it('装備なしの密着キルは +0.03(基準)', () => {
+    equipAcc(null);
+    spawnInFront(1);
+    st().triggerCounter();
+    expect(meter()).toBeCloseTo(0.03);
+  });
+  it('ミリタリー収納ベスト(+30%)なら同じキルで 1.3倍溜まる', () => {
+    equipAcc('accessory-ammo-5');
+    spawnInFront(1);
+    st().triggerCounter();
+    expect(meter()).toBeCloseTo(0.03 * 1.3);
+  });
+  it('銃の近距離キルにも掛かる(武将の兜 +22%)', () => {
+    equipAcc('special-accessory');
+    const p = st().player;
+    grantGunBlood(st, { x: p.x + p.width / 2 + 10, y: p.y + p.height / 2 });
+    expect(meter()).toBeCloseTo(0.015 * 1.22);
   });
 });

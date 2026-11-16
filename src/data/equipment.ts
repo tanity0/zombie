@@ -2,7 +2,7 @@
 //
 // 設計メモ:
 // - 部位 体/腕/アクセ。各部位は2系統、各系統5段階(=通常装備)。
-// - 通常装備は最大2ステ。特殊装備(5%出現・レア度非依存)は例外的に3ステ。
+// - 通常装備は最大2ステ(弾薬系だけ血の溜まりやすさが付いて3ステ)。特殊装備(5%出現・レア度非依存)は例外的に3ステ(兜は4ステ)。
 // - デメリットなし。装填数アップは廃止。クリ率は3%刻み。
 // - ここは「裏側」のデータ+集計ヘルパーのみ。レベルアップ時の段階(tier)の出し方や
 //   選択UIは別途(プレゼン仕様)で受領して接続する。
@@ -71,15 +71,16 @@ const NORMAL_TABLES: Record<EquipLine, LineTable> = {
     { name: 'AI搭載スコープ', stats: [s('critChance', 0.12), s('scrap', 0.30)] },
     { name: '神経伝達スコープ', stats: [s('critChance', 0.15), s('scrap', 0.40)] }
   ],
-  // アクセ: 弾薬系(弾薬ドロップ / スクラップ)
+  // アクセ: 弾薬系(弾薬ドロップ / 血の溜まりやすさ / スクラップ)
+  // ★血の溜まりやすさ(社長指示2026-11-16「弾薬ドロップアップの装備に、血も溜まりやすくなる効果を」)=その段の弾薬ドロップと同じ割合(叩き台)。
   // ※2026-10-28 にカウンター受付の延長を一度足したが、社長指示「装備に付けるのはやめる。強化にいれる」で強化(data/playerUpgrades.ts)へ移した。
   ammo: [
     // ★スクラップは1段目から(社長指示2026-10-28・クリ系と同じ値)。
-    { name: '弾薬ポーチ', stats: [s('ammoDrop', 0.10), s('scrap', 0.10)] },
-    { name: '予備弾薬袋', stats: [s('ammoDrop', 0.15), s('scrap', 0.15)] },
-    { name: '軍用弾薬ベルト', stats: [s('ammoDrop', 0.20), s('scrap', 0.20)] },
-    { name: '弾薬収納ベスト', stats: [s('ammoDrop', 0.25), s('scrap', 0.30)] },
-    { name: 'ミリタリー収納ベスト', stats: [s('ammoDrop', 0.30), s('scrap', 0.40)] }
+    { name: '弾薬ポーチ', stats: [s('ammoDrop', 0.10), s('bloodGain', 0.10), s('scrap', 0.10)] },
+    { name: '予備弾薬袋', stats: [s('ammoDrop', 0.15), s('bloodGain', 0.15), s('scrap', 0.15)] },
+    { name: '軍用弾薬ベルト', stats: [s('ammoDrop', 0.20), s('bloodGain', 0.20), s('scrap', 0.20)] },
+    { name: '弾薬収納ベスト', stats: [s('ammoDrop', 0.25), s('bloodGain', 0.25), s('scrap', 0.30)] },
+    { name: 'ミリタリー収納ベスト', stats: [s('ammoDrop', 0.30), s('bloodGain', 0.30), s('scrap', 0.40)] }
   ],
   // special は通常テーブルを持たない(SPECIAL_DEFS で別管理)。
   special: []
@@ -89,7 +90,7 @@ const NORMAL_TABLES: Record<EquipLine, LineTable> = {
 const SPECIAL_DEFS: Record<EquipSlot, { name: string; stats: EquipStat[] }> = {
   body: { name: '武将の鎧', stats: [s('maxHealth', 120), s('killGrace', 0.10), s('moveSpeed', 0.25)] },
   arms: { name: '武将の小手', stats: [s('damage', 0.50), s('fireRate', 0.06), s('reload', 0.25)] },
-  accessory: { name: '武将の兜', stats: [s('critChance', 0.08), s('scrap', 0.25), s('ammoDrop', 0.22)] }
+  accessory: { name: '武将の兜', stats: [s('critChance', 0.08), s('scrap', 0.25), s('ammoDrop', 0.22), s('bloodGain', 0.22)] }
 };
 
 export const EQUIP_TIER_MAX = 5;
@@ -144,7 +145,8 @@ const NEUTRAL_BONUS: EquipBonus = {
   reloadMult: 1,
   critBonus: 0,
   ammoDropBonus: 0,
-  scrapBonus: 0
+  scrapBonus: 0,
+  bloodGainMult: 1
 };
 
 export const neutralEquipBonus = (): EquipBonus => ({ ...NEUTRAL_BONUS });
@@ -166,6 +168,7 @@ export const aggregateEquipBonus = (loadout: EquipLoadout): EquipBonus => {
         case 'critChance': b.critBonus += st.value; break;
         case 'ammoDrop': b.ammoDropBonus += st.value; break;
         case 'scrap': b.scrapBonus += st.value; break;
+        case 'bloodGain': b.bloodGainMult += st.value; break;
         case 'maxHealth': break; // maxHealth は別経路(加算ベイク)
       }
     }
@@ -201,6 +204,7 @@ export const equipStatLabel = (st: EquipStat): string => {
     case 'reload': return `リロード時間 -${Math.round(st.value * 100)}%`;
     case 'critChance': return `クリティカル率 ${pct(st.value)}`;
     case 'ammoDrop': return `弾薬ドロップ率 ${pct(st.value)}`;
+    case 'bloodGain': return `血の溜まり ${pct(st.value)}`;
     case 'scrap': return `スクラップ取得量 ${pct(st.value)}`;
   }
 };

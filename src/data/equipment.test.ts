@@ -2,7 +2,7 @@
 // いちばんTierが低い部位を置換」。純関数 armoryTargetSlot の不変条件を機械化する。
 // SKILL_BUILD_REDESIGN.md §16-3/§18-1の4(特殊装備は置換候補から除外)の反映も含む。
 import { describe, it, expect } from 'vitest';
-import { armoryTargetSlot, emptyEquipLoadout, merchantEquipShelf, merchantEquipStepForSlot } from './equipment';
+import { aggregateEquipBonus, armoryTargetSlot, emptyEquipLoadout, equipmentById, equipmentDescription, merchantEquipShelf, merchantEquipStepForSlot } from './equipment';
 import type { EquipLoadout } from '../types/game';
 
 const rngSeq = (...values: number[]) => {
@@ -112,5 +112,26 @@ describe('merchantEquipStepForSlot / merchantEquipShelf(§13-1+§16-7: 商人の
     const loadout: EquipLoadout = { body: 'body-protection-2', arms: null, accessory: 'special-accessory' };
     const first = merchantEquipShelf(loadout);
     for (let i = 0; i < 20; i++) expect(merchantEquipShelf(loadout)).toEqual(first);
+  });
+});
+
+describe('弾薬系アクセの血の溜まり(社長指示2026-11-16)', () => {
+  it('弾薬系の各段は、弾薬ドロップと同じ割合の血の溜まりを持つ', () => {
+    for (let tier = 1; tier <= 5; tier++) {
+      const def = equipmentById(`accessory-ammo-${tier}`)!;
+      const ammo = def.stats.find(st => st.key === 'ammoDrop')!.value;
+      const blood = def.stats.find(st => st.key === 'bloodGain')!.value;
+      expect(blood).toBe(ammo);
+    }
+    const helm = equipmentById('special-accessory')!;
+    expect(helm.stats.find(st => st.key === 'bloodGain')?.value).toBe(0.22);
+  });
+  it('集計: 装備なしは1倍、弾薬系5段で1.3倍', () => {
+    expect(aggregateEquipBonus(emptyEquipLoadout()).bloodGainMult).toBe(1);
+    expect(aggregateEquipBonus({ body: 'body-protection-5', arms: 'arms-firepower-5', accessory: 'accessory-ammo-5' }).bloodGainMult).toBeCloseTo(1.3);
+    expect(aggregateEquipBonus({ body: null, arms: null, accessory: 'accessory-crit-5' }).bloodGainMult).toBe(1);
+  });
+  it('説明に「血の溜まり」が出る', () => {
+    expect(equipmentDescription(equipmentById('accessory-ammo-1')!)).toContain('血の溜まり +10%');
   });
 });

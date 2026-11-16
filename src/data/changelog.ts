@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5603', items: [
+    '弾薬が落ちやすくなる装備と武将の兜で、血も溜まりやすくなる',
+  ] },
   { version: '0.25.5602', items: [
     '救難信号で駆けつけた味方の一撃で、敵が浮く',
   ] },

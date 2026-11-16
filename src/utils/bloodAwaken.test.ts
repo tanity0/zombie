@@ -298,3 +298,11 @@ describe('withoutBlood(守護霊・幻影の疑似Playerへ持ち越さない)',
     expect(live.bloodAwakenUntil).toBe(99_999); // 元は書き換えない
   });
 });
+
+describe('装備の血の溜まり(applyBloodGain が1か所で掛ける)', () => {
+  it('bloodGainMult 1.25 なら加算が1.25倍、無ければ1倍', () => {
+    const base = { bloodMeter: 0, health: 100, maxHealth: 100 };
+    expect(applyBloodGain(base, 0.04, 1000)!.bloodMeter).toBeCloseTo(0.04);
+    expect(applyBloodGain({ ...base, equipBonus: { bloodGainMult: 1.25 } }, 0.04, 1000)!.bloodMeter).toBeCloseTo(0.05);
+  });
+});

@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5603 — 弾薬ドロップの装備に「血の溜まり」【2026-11-16 15:50 JST】
+- 社長指示「弾薬ドロップアップの装備に、血も溜まりやすくなる効果を。」弾薬ドロップを持つ装備=accessory-ammo-1〜5(+10/15/20/25/30%)と武将の兜(+22%)に、同じ割合の新 stat `bloodGain`(叩き台)。aggregateEquipBonus→bloodGainMult、bloodAwaken.applyBloodGain の1か所で掛ける(近接・銃の両経路が通る)。表示は equipStatLabel の1行「血の溜まり +N%」(レベルアップ・商人・ゲームオーバー・拾った通知すべて)。守護霊/幻影は血を持たないので効きゼロ(弾薬ドロップと同じ扱い)。
+- テスト equipment・bloodAwaken(純関数/ストア)緑(worktree で単独)。typecheck・eslint OK。画で表示確認。自己点検: 憲法4条・5条に抵触なし。実装: Opusサブエージェント。
+
 ## v0.25.5602 — 救難信号の味方の一撃で敵を浮かせる【2026-11-16 15:43 JST】
 - 社長指示「救難信号も敵を浮かせる様にして」。gameStore tickRescueAllies の着弾直後に、赤カウンターの浮きと同じ入れ方(counterLiftApplies→brawlerJugglePatch(…, COUNTER_LIFT_MOVE))。区分ごとの浮き方・終端は浮かない・倒した一撃/技の最中は浮かせない・空中の拾い直しは既存の判断に任せる。Lv3 の連鎖の味方も同じ経路。
 - テスト rescueSignalLift.store.test.ts 3本+rescueSignal 緑(worktree で単独)。typecheck・eslint OK。見た目は既存の浮き=撮影なし。自己点検: 憲法4条・5条に抵触なし。実装: Opusサブエージェント。
