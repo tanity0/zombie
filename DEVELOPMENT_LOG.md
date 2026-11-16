@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5615 — 馬乗りの物語を差し替え【2026-11-17 07:42 JST】
+- 社長支給の新しい本文(6段落)に bossStories.ts の bounty-melee の body を丸ごと差し替え。文言は原稿のまま。
+- 確認: typecheck・bossStoryArchive テスト。データのみ。
+
 ## v0.25.5614 — ジュンの倒れるアニメを10コマのシートへ差し替え【2026-11-17 07:08 JST】
 - 社長支給の倒れシート(540×66・10コマ×54)を public/sprites/npc/medic-fall.png として追加。旧3コマ(medic-fall-0..2・80×64)は原盤として残し、読み込みだけ止めた。assets:ledger 更新・assets:check OK(1040枚)。
 - 使う場面: 隊の中で倒れる/起き上がる(downK→コマ0..9・起き上がりは逆再生)とステージ4の変身前の倒れ(fallK→コマ0..9・着地で9)。変身で消える間は9。被弾のしゃがみ/蹴りの溜めは旧0コマ目の代わりに新3コマ目(MEDIC_FALL_CROUCH_FRAME)。
