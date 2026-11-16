@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5613 — 鋏の物語を差し替え【2026-11-17 07:04 JST】
+- 社長支給の新しい本文(妻の顔に執着した会社員・6段落)に bossStories.ts の bounty-balance の body を丸ごと差し替え。文言は原稿のまま。
+- 確認: typecheck・bossStoryArchive テスト。データのみ。(ジュンの倒れアニメ差し替えは実装担当が作業中=このコミットに含めない)
+
 ## v0.25.5612 — スリィエルの物語を差し替え【2026-11-17 02:18 JST】
 - 社長支給の新しい本文(洋館で孤児たちを守る女・7段落)に bossStories.ts の suriel の body を丸ごと差し替え。文言は原稿のまま。
 - 確認: typecheck・bossStoryArchive テスト。データのみ。
