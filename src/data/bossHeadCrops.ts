@@ -11,7 +11,7 @@ export interface BossHeadCrop { w: number; h: number; u: number; v: number; r: n
 
 export const BOSS_HEAD_CROPS: Readonly<Record<string, BossHeadCrop>> = {
   'bounty-ranged': { w: 148, h: 200, u: 0.68, v: 0.239, r: 0.0975 },
-  'bounty-melee': { w: 130, h: 128, u: 0.58, v: 0.181, r: 0.135 },
+  'bounty-melee': { w: 130, h: 128, u: 0.58, v: 0.22, r: 0.135 }, // 社長指示2026-11-17「馬乗り、少しカメラ下げて」(0.181→0.22=白い腕が入る)
   'bounty-balance': { w: 103, h: 128, u: 0.3, v: 0.171, r: 0.135 },
   'bounty-maiko': { w: 165, h: 200, u: 0.455, v: 0.129, r: 0.0975 },
   'atlas-px2/giantbat': { w: 335, h: 356, u: 0.37, v: 0.139, r: 0.0975 },

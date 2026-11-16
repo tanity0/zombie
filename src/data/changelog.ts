@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5611', items: [
+    '馬乗りの顔の写り方を少し下へずらし、白い腕まで見えるようにした',
+  ] },
   { version: '0.25.5610', items: [
     '地図と資料室のボスの顔が少し引きになり、髪や肩まで見えるようになった',
   ] },
