@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5602 — 救難信号の味方の一撃で敵を浮かせる【2026-11-16 15:43 JST】
+- 社長指示「救難信号も敵を浮かせる様にして」。gameStore tickRescueAllies の着弾直後に、赤カウンターの浮きと同じ入れ方(counterLiftApplies→brawlerJugglePatch(…, COUNTER_LIFT_MOVE))。区分ごとの浮き方・終端は浮かない・倒した一撃/技の最中は浮かせない・空中の拾い直しは既存の判断に任せる。Lv3 の連鎖の味方も同じ経路。
+- テスト rescueSignalLift.store.test.ts 3本+rescueSignal 緑(worktree で単独)。typecheck・eslint OK。見た目は既存の浮き=撮影なし。自己点検: 憲法4条・5条に抵触なし。実装: Opusサブエージェント。
+
 ## v0.25.5601 — 敵の浮く高さを約1.33倍に【2026-11-16 02:35 JST】
 - 社長「敵もう少し浮いて欲しい」。brawler.ts BRAWLER_LIFT_VIS_BODY_K 0.45→0.6・BRAWLER_LIFT_VIS_MAX_VIEW_FRAC 0.2→0.25(上限を上げないと大きい敵=ミーミル・変異塊がほぼ高くならないと測って確認)。絵の高さのみ=判定・浮きの時間・押しの距離は不変。同じ値を読むプレイヤーの空中追従・空中ヒットのエフェクト位置も揃って上がる。
 - 社長へ: 踵落としのプレイヤーの高さは固定30px(BRAWLER_HEEL_AIR_PX)のまま=雑魚が2発目の蹴りの浮きに居る時、敵より約18px低い所で振り下ろす見た目になった。合わせるなら40前後。

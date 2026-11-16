@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5602', items: [
+    '救難信号で駆けつけた味方の一撃で、敵が浮く',
+  ] },
   { version: '0.25.5601', items: [
     '打ち上げた敵が前より高く浮く',
   ] },

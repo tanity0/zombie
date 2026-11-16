@@ -13985,6 +13985,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       const aMk: MasteryKey = a.masteryMult !== undefined ? 'none' : 'loadout';
       const aDmg = a.damage * aMm;
       const killed = withMastery(aMk, () => get().damageEnemy(a.targetEnemyId, aDmg, false, false, false, 'dot'), { mult: aMm }); // 味方の援護=本人の攻撃ではない(揺らさない・v0.25.4284)
+      // ★救難信号の1撃で浮かせる(社長指示2026-11-16「救難信号も敵を浮かせる様にして」): 赤カウンターの浮き
+      //   (damageEnemy の counterLiftPatch)と同じ入れ方・同じ条件(区分ごとの浮き方・終端は浮かない・倒した一撃/技の最中は浮かせない・
+      //   空中の敵は今の拾い直しの規則どおり=brawlerJugglePatch が判断)。
+      if (!killed) {
+        const hit = get().enemies.find(e => e.id === a.targetEnemyId);
+        if (hit && counterLiftApplies(hit, hit.health, get().gameTime)) {
+          const liftPatch = brawlerJugglePatch(hit, BRC.brawlerEnemyClass(hit), COUNTER_LIFT_MOVE, Date.now());
+          if (liftPatch) set(s => ({ enemies: s.enemies.map(e => e.id === hit.id ? { ...e, ...liftPatch } : e) }));
+        }
+      }
       get().spawnDamageNumber(tcx, target.y, aDmg, false, { enemyId: target.id });
       get().spawnSlash(tcx, tcy, 'rgba(226,232,240,0.95)');
       get().spawnRing(tcx, tcy, 6, 34, 'rgba(56,189,248,0.75)', 2, 260);
