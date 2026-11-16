@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5606', items: [
+    '赤い予告にカウンターを決めた敵は、必ず浮く。技の最中のボスも技が止まって浮き上がり、空中で叩き落とされそうな時やダウン中でも浮き直す',
+  ] },
   { version: '0.25.5605', items: [
     '飛び蹴りと踵落としは、浮いた敵の高さへ向かって跳ぶ',
     '踵落としから空中で出した大踏み潰しは、高い所から出すほど威力が上がる',

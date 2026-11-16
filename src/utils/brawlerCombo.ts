@@ -678,6 +678,12 @@ export const brawlerJugglePush = (
   stunned = false,
   /** ★false=落ちる速さの重さの増え方を当てない(k=1・今の速さ)。スラッシャーの追撃(自動で決まった間隔で出る当たり)が使う(社長裁定2026-11-13)。 */
   fallScale = true,
+  /**
+   * ★true=空中の「浮かない状況」でも浮かせ直す(社長指示2026-11-16「赤は強制的に浮かない状況でも浮かせる」=赤カウンターの浮きだけが使う)。
+   * ダウン中(落ちている間)でも、予算が切れていても、今の高さから押し上げ直す(予算は0未満にしない)。
+   * 区分の重さ・押し上げ量・地上の打ち上げ・地面バウンド(大踏み潰し)・押し上げ0の技の叩き落としは今どおり。
+   */
+  force = false,
 ): Partial<BrawlerJuggleFields> & { liftUntil?: number; brNoHoldUntil?: number } | null => {
   const fallK = (n: number) => (fallScale ? brawlerFallK(n) : 1);
   const airborne = brawlerAirborne(e, now);
@@ -697,7 +703,7 @@ export const brawlerJugglePush = (
     return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: 0, brLiftN: 0, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined, brLiftFallK: fk,
       brLiftBudget: BRAWLER_JUGGLE_BUDGET[cls], brLiftDown: false, brLiftDropMs: 0, brBlastAirSince: now, brLiftLight: light };
   }
-  if (e.brLiftDown) return null; // ダウン中は拾えない
+  if (e.brLiftDown && !(force && move !== 'stomp')) return null; // ダウン中は拾えない(赤カウンターの強制だけは拾い直す)
   const h = brawlerJuggleHeightRel(e, now);
   const down = (): Partial<BrawlerJuggleFields> & { liftUntil: number; brNoHoldUntil: number } => {
     const ms = BRAWLER_JUGGLE_DROP_MS;
@@ -718,13 +724,13 @@ export const brawlerJugglePush = (
     return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: h, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined, brLiftFallK: fk,
       brLiftBudget: budget, brLiftDown: false, brLiftDropMs: dropMs, brBounceCombo: combo };
   }
-  if (push <= 0 || budget < 0) return down();
+  if (push <= 0 || (budget < 0 && !force)) return down();
   const f = push * w;
   if (f < BRAWLER_JUGGLE_MIN_F) return down();
   const fk = fallK(n);
   const ms = brawlerFallStretchMs(arc(f), fk);
   return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: h, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined, brLiftFallK: fk,
-    brLiftBudget: budget, brLiftDown: false, brLiftDropMs: 0 };
+    brLiftBudget: Math.max(0, budget), brLiftDown: false, brLiftDropMs: 0 };
 };
 
 // ---------------------------------------------------------------------------------------------

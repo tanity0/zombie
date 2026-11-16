@@ -4,11 +4,12 @@ import {
   blastLiftPatch, blastLiftCloseness, slasherLiftMove, blastLiftMs, slasherLaunchMinMs,
   BLAST_LIFT_HEIGHT_OF_S3, BLAST_LIFT_MS_MULT, BLAST_LIFT_COST,
   KNIFE_HOLD_MOVE, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil,
+  COUNTER_LIFT_MOVE, counterLiftApplies, counterLiftForcedPlan,
 } from './airLift';
 import {
   brawlerJuggleHeightRel, brawlerJugglePush, setBrawlerTempoAll, brawlerAirSignal,
   BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_PUSH, BRAWLER_JUGGLE_MIN_F, BRAWLER_JUGGLE_MIN_MS, BRAWLER_JUGGLE_WEIGHT,
-  brawlerEnemyClass, brawlerLiftClass, brawlerFallShape,
+  brawlerEnemyClass, brawlerLiftClass, brawlerFallShape, type BrawlerJuggleFields,
 } from './brawlerCombo';
 import { BRAWLER_LIFT_MS, BRAWLER_TEMPO_DEFAULT } from './brawler';
 
@@ -194,5 +195,55 @@ describe('ナイフの浮き(knifeLiftMove / knifeLiftApplies / knifeNoLiftUntil
     expect(knifeNoLiftUntil({}, NOW + 570, NOW)).toBe(NOW + 1140);
     expect(knifeNoLiftUntil({ brLiftUntil: NOW + 50, brBlastAirSince: NOW - 300 }, NOW + 400, NOW)).toBe(NOW + 400 + 700);
     expect(knifeNoLiftUntil({ brBlastNoLiftUntil: NOW + 5000 }, NOW + 570, NOW)).toBe(NOW + 5000);
+  });
+});
+
+describe('★赤カウンターの浮きの強制(社長指示2026-11-16「赤は強制的に浮かない状況でも浮かせる」)', () => {
+  const apply = (e: BrawlerJuggleFields, p: Partial<BrawlerJuggleFields> | null): BrawlerJuggleFields => ({ ...e, ...(p ?? {}) });
+  it('計画: 技の最中は取り消して浮かせる・bossState の技は呼び手に任せて浮かせる・尻尾/倒した一撃は浮かせない', () => {
+    expect(counterLiftForcedPlan(zombie, 10, GT)).toBe('lift');
+    expect(counterLiftForcedPlan({ type: 'zombie', aiPhase: 'charge' }, 10, GT)).toBe('cancel-lift');
+    expect(counterLiftForcedPlan({ type: 'zombie', biteAt: GT + 100 }, 10, GT)).toBe('cancel-lift');
+    expect(counterLiftForcedPlan({ type: 'giantbat', aiPhase: 'g-slam-windup' }, 10, GT)).toBe('cancel-lift'); // ボス級も取り消す
+    expect(counterLiftForcedPlan({ type: 'giantbat', aiPhase: 'g-tailslam-active' }, 10, GT)).toBe('none');  // 尻尾は撃ち切る
+    expect(counterLiftForcedPlan({ type: 'thor', bossState: 'thor-dash-windup' }, 10, GT)).toBe('lift');      // 状態は呼び手が進める
+    expect(counterLiftForcedPlan({ type: 'zombie', aiPhase: 'charge' }, 0, GT)).toBe('none');                  // 倒した一撃
+    expect(counterLiftForcedPlan(zombie, 0, GT)).toBe('none');
+    // 今までの判定(救助の合図の浮きが使う)は変わらない
+    expect(counterLiftApplies({ type: 'zombie', aiPhase: 'charge' }, 10, GT)).toBe(false);
+    expect(counterLiftApplies(zombie, 10, GT)).toBe(true);
+  });
+  it('空中の予算切れ: 強制なしは叩き落とし(ダウン)・強制は今の高さから押し上げ直す(予算は0未満にしない)', () => {
+    let e = apply({}, brawlerJugglePush({}, 'mob', COUNTER_LIFT_MOVE, NOW));
+    e = { ...e, brLiftBudget: 0 };
+    const t = NOW + 60;
+    const h = brawlerJuggleHeightRel(e, t);
+    expect(brawlerJugglePush(e, 'mob', COUNTER_LIFT_MOVE, t)!.brLiftDown).toBe(true);
+    const f = brawlerJugglePush(e, 'mob', COUNTER_LIFT_MOVE, t, false, true, true)!;
+    expect(f.brLiftDown).toBe(false);
+    expect(f.brLiftPeak).toBeCloseTo(BRAWLER_JUGGLE_PUSH.s4 * BRAWLER_JUGGLE_WEIGHT.mob);
+    expect(f.brLiftFrom).toBeCloseTo(h);
+    expect(f.brLiftBudget).toBe(0);
+    expect(f.brLiftUntil!).toBeGreaterThan(t);
+  });
+  it('空中のダウン中: 強制なしは拾えない・強制は浮かせ直す(区分の重さは今どおり)', () => {
+    let b = apply({}, brawlerJugglePush({}, 'boss', COUNTER_LIFT_MOVE, NOW));
+    b = apply(b, brawlerJugglePush({ ...b, brLiftBudget: 0 }, 'boss', 's1', NOW + 40)); // 足りない当たり=ダウン
+    expect(b.brLiftDown).toBe(true);
+    const t = NOW + 60;
+    expect(brawlerJugglePush(b, 'boss', COUNTER_LIFT_MOVE, t)).toBeNull();
+    const f = brawlerJugglePush(b, 'boss', COUNTER_LIFT_MOVE, t, false, true, true)!;
+    expect(f.brLiftDown).toBe(false);
+    expect(f.brLiftPeak).toBeCloseTo(BRAWLER_JUGGLE_PUSH.s4 * BRAWLER_JUGGLE_WEIGHT.boss);
+    expect(f.liftUntil).toBe(f.brLiftUntil);
+  });
+  it('強制でも変わらない所: 地上の打ち上げは同じ・押し上げ0の技は叩き落とし・予算が残っていれば同じ結果', () => {
+    expect(brawlerJugglePush({}, 'strong', COUNTER_LIFT_MOVE, NOW, false, true, true)).toEqual(brawlerJugglePush({}, 'strong', COUNTER_LIFT_MOVE, NOW));
+    const e = apply({}, brawlerJugglePush({}, 'mob', COUNTER_LIFT_MOVE, NOW));
+    expect(brawlerJugglePush(e, 'mob', 's5', NOW + 60, false, true, true)!.brLiftDown).toBe(true);
+    expect(brawlerJugglePush(e, 'mob', COUNTER_LIFT_MOVE, NOW + 60, false, true, true)).toEqual(brawlerJugglePush(e, 'mob', COUNTER_LIFT_MOVE, NOW + 60));
+  });
+  it('終端の死神は強制でも浮かない(区分が null=store の brawlerJugglePatch が先に返す)', () => {
+    expect(brawlerLiftClass({ type: 'reaper', reaperChaser: true })).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import {
   type BrawlerJuggleFields, type BrawlerMoveKey,
 } from './brawlerCombo';
 import { BRAWLER_LIFT_MS, BLAST_LIFT_SHAPE } from './brawler';
+import { COUNTER_UNINTERRUPTIBLE_PHASES } from './enemyBite';
 
 export type AirLiftClass = 'mob' | 'strong' | 'boss';
 
@@ -95,12 +96,37 @@ export const slasherLaunchMinMs = (chainCdMs: number, windupMs: number): number 
  * ★赤カウンターの浮き(社長指示2026-11-11「赤カウンター、敵を浮かせる」)。カウンターが成立した敵を、格闘の4段目(小ジャンプの叩き潰し)と
  * 同じ打ち上げで浮かせる(高さ・重さの区分・拾える回数の予算・ボス級の止めの減衰は格闘の浮きと同じ1本=store の brawlerJugglePatch)。
  * 武器は問わない(ナイフ・刀・格闘の構え・突進や跳びのパリィ・守護霊のカウンター)。弾の打ち返しは敵に触れていないので対象外。
- * 浮かない相手: 倒した敵・終端の死神(区分で浮かない)・技の最中のまま残っているボス級(技を取り消さない決まり=格闘と同じ)。
+ * 浮かない相手: 倒した敵・終端の死神(区分で浮かない)。※技の最中・予算切れ・ダウン中・ボスの止めの減衰でも浮かせる=下の counterLiftForcedPlan
+ *   (社長指示2026-11-16「赤は強制的に浮かない状況でも浮かせる」)。counterLiftApplies は救助の合図の浮き(store)が今どおり使う。
  */
 export const COUNTER_LIFT_MOVE: BrawlerMoveKey = 's4';
 export const counterLiftApplies = (
   e: Parameters<typeof isBrawlerTechBusy>[0], newHealth: number, gameTime: number,
 ): boolean => newHealth > 0 && !isBrawlerTechBusy(e, gameTime);
+/**
+ * ★赤カウンターの浮きの強制(社長指示2026-11-16「赤は強制的に浮かない状況でも浮かせる」)。damageEnemy のカウンターの道(全カウンター共通の中央)だけが使う。
+ * 上の counterLiftApplies が浮かせなかった場面でも浮かせる:
+ *  ① 技の最中のまま(ボス級も)= 技を取り消してから浮かせる('cancel-lift'。取り消しは格闘の「技の最中も浮く」と同じ counterInterruptPatch)。
+ *  ② 空中で予算切れ ③ 空中のダウン中 = brawlerJugglePush の force で今の高さから押し上げ直す(store 側)。
+ *  ④ ボス級の止めの減衰で無効 = 減衰の記録は残して浮かせる(store の brawlerJugglePatch の force)。
+ * 浮かせないまま: 倒した一撃(newHealth<=0)・終端の死神(区分で浮かない=brawlerJugglePatch が null)・
+ *   取り消さない技(COUNTER_UNINTERRUPTIBLE_PHASES=尻尾の叩きつけ→連射は撃ち切る・社長指示v0.25.3145)。
+ *   尻尾は技を残したまま浮かせると、予告を出したまま宙で止まる(浮きの間は時計が止まる)ので浮かせない。
+ * 'lift'=そのまま浮かせる・'cancel-lift'=技を取り消してから浮かせる・'none'=浮かせない。
+ */
+export type CounterLiftPlan = 'none' | 'lift' | 'cancel-lift';
+export const counterLiftForcedPlan = (
+  e: Parameters<typeof isBrawlerTechBusy>[0], newHealth: number, gameTime: number,
+): CounterLiftPlan => {
+  if (newHealth <= 0) return 'none';
+  if (!isBrawlerTechBusy(e, gameTime)) return 'lift';
+  // 技を bossState で持つボス(天使・裏ボス・賞金首・偶像など)は、カウンターの呼び手(各ボスの tick)が自分で状態を進める
+  // (天使=chase・トール=跳び退き 等。浮きの後に { ...e, ...patch } で重ねる)。ここで aiPhase 系の欄を消すと、その技の
+  // 狙い・始まりの時刻(aiTargetX・aiStartedAt)まで消える=取り消しは呼び手に任せ、浮きだけ乗せる。
+  if (!isBrawlerTechBusy({ ...e, bossState: undefined }, gameTime)) return 'lift';
+  if (e.aiPhase !== undefined && COUNTER_UNINTERRUPTIBLE_PHASES.includes(e.aiPhase)) return 'none';
+  return 'cancel-lift';
+};
 
 /**
  * ★ナイフの当たりの固まりと浮き(社長指示2026-11-12「あと近接でも敵の攻撃が止まる&浮くようにして」)。

@@ -303,7 +303,7 @@ import { settleEpisode, type CounterReachShape } from '../utils/habitEpisode';
 import { ZOOM_MIN_ABS, isPointInZoomedViewport, zoomedViewportBounds } from '../utils/cameraZoom';
 import { meleeImpactPoint, meleeNumberPoint, bandBoxOverlap } from '../utils/meleeImpact';
 import { screamerStartGate } from '../utils/screamerGate';
-import { blastLiftPatch, slasherLiftMove, blastLiftCloseness, slasherLaunchMinMs, COUNTER_LIFT_MOVE, counterLiftApplies, KNIFE_HOLD_MOVE, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil } from '../utils/airLift';
+import { blastLiftPatch, slasherLiftMove, blastLiftCloseness, slasherLaunchMinMs, COUNTER_LIFT_MOVE, counterLiftApplies, counterLiftForcedPlan, KNIFE_HOLD_MOVE, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil } from '../utils/airLift';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
   getSelectedStageId, getWallMeta, recordChronicle, recordChronicleGlobalFirst,
@@ -4792,16 +4792,18 @@ const brawlerHitPatch = (
  * 浮かせ追撃の1回ぶん(§12-1)。ボス級を地上から浮かせる時だけ、ボスの「止める効果」の減衰(evaluateBossStopDr)を通す
  * (他の止める効果=ノックバック・会心の足止め・罠と同じ1カテゴリ=永久に止められない)。空中の追撃は減衰の数に入れない(重さと n 回目の減りで落ちる)。
  */
-const brawlerJugglePatch = (enemy: Enemy, cls: 'mob' | 'strong' | 'boss', move: BRC.BrawlerMoveKey, now: number, fallScale = true): Partial<Enemy> | null => {
+// force=赤カウンターの浮きの強制(社長指示2026-11-16「赤は強制的に浮かない状況でも浮かせる」・utils/airLift counterLiftForcedPlan)。
+//   空中の予算切れ・ダウン中も浮かせ直し(brawlerJugglePush の force)、ボス級の止めの減衰で無効でも浮かせる(減衰の記録だけ残す・長さは減らさない)。
+const brawlerJugglePatch = (enemy: Enemy, cls: 'mob' | 'strong' | 'boss', move: BRC.BrawlerMoveKey, now: number, fallScale = true, force = false): Partial<Enemy> | null => {
   if (BRC.brawlerLiftClass(enemy) === null) return null; // ★終端の死神は浮かない(格闘・爆発・スラッシャー共通・§14)
   // ボス級: 気絶・紫の間に浮かせたコンボは軽い(§25)。
   const gtJ = useGameStore.getState().gameTime;
   const stunnedJ = (enemy.stunUntil !== undefined && gtJ < enemy.stunUntil) || (enemy.bossFullStunUntil !== undefined && gtJ < enemy.bossFullStunUntil);
-  const jp = BRC.brawlerJugglePush(enemy, cls, move, now, stunnedJ, fallScale);
+  const jp = BRC.brawlerJugglePush(enemy, cls, move, now, stunnedJ, fallScale, force);
   if (!jp) return null;
   if (cls !== 'boss' || BRC.brawlerAirborne(enemy, now) || (jp.brLiftUntil ?? 0) <= now) return jp;
   const dr = evaluateBossStopDr(enemy, now);
-  if (!dr.allowed) return { ...dr.patch };
+  if (!dr.allowed) return force ? { ...jp, ...dr.patch } : { ...dr.patch };
   const ms = Math.max(BRC.BRAWLER_JUGGLE_MIN_MS, Math.round((jp.brLiftMs ?? 0) * dr.durationMult));
   return { ...jp, brLiftMs: ms, brLiftUntil: now + ms, liftUntil: now + ms, ...dr.patch };
 };
@@ -13999,6 +14001,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★救難信号の1撃で浮かせる(社長指示2026-11-16「救難信号も敵を浮かせる様にして」): 赤カウンターの浮き
       //   (damageEnemy の counterLiftPatch)と同じ入れ方・同じ条件(区分ごとの浮き方・終端は浮かない・倒した一撃/技の最中は浮かせない・
       //   空中の敵は今の拾い直しの規則どおり=brawlerJugglePatch が判断)。
+      //   ※赤カウンターの側は 2026-11-16 に強制(技の取り消し・予算切れ/ダウン/ボスの減衰でも浮く)へ変わった。救助の合図はその強制を使わない(今の規則のまま)。
       if (!killed) {
         const hit = get().enemies.find(e => e.id === a.targetEnemyId);
         if (hit && counterLiftApplies(hit, hit.health, get().gameTime)) {
@@ -17793,8 +17796,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       // postureImpact='counter' で通る。pixiSceneのlatch系が「着弾前に中断された技の絵」の破棄に使う。
       // ★赤カウンターの浮き(社長指示2026-11-11「赤カウンター、敵を浮かせる」・utils/airLift): 成立した敵を格闘の4段目と同じ打ち上げで浮かせる。
       //   呼び手(突進・跳びのパリィ等)は技の中断と弾き飛ばしを先に書いてからここへ来る=浮きはその上に乗る(押されながら浮く)。
-      const counterLiftPatch = postureImpact === 'counter' && counterLiftApplies(enemy, newHealth, state.gameTime)
-        ? (brawlerJugglePatch(enemy, BRC.brawlerEnemyClass(enemy), COUNTER_LIFT_MOVE, Date.now()) ?? {}) : {};
+      // ★社長指示2026-11-16「赤は強制的に浮かない状況でも浮かせる」(utils/airLift counterLiftForcedPlan): 技の最中のまま(ボス級も)は技を取り消してから浮かせる
+      //   (格闘の「技の最中も浮く」と同じ取り消し=予告も消える)。空中の予算切れ・ダウン中・ボスの止めの減衰でも浮かせる(brawlerJugglePatch の force)。
+      //   浮かないまま: 倒した一撃・終端の死神(区分)・取り消さない技(尻尾の叩きつけ)。救助の合図の浮きは今どおり(counterLiftApplies)。
+      let counterLiftPatch: Partial<Enemy> = {};
+      if (postureImpact === 'counter') {
+        const liftPlan = counterLiftForcedPlan(enemy, newHealth, state.gameTime);
+        const liftNow = Date.now();
+        const jp = liftPlan === 'none' ? null : brawlerJugglePatch(enemy, BRC.brawlerEnemyClass(enemy), COUNTER_LIFT_MOVE, liftNow, true, true);
+        if (jp && (jp.brLiftUntil ?? 0) > liftNow) {
+          counterLiftPatch = liftPlan === 'cancel-lift'
+            ? { ...counterInterruptPatch(enemy, state.gameTime), biteRecoverUntil: undefined, rootUntil: undefined, lastCounteredAt: liftNow, ...jp }
+            : jp;
+        } else if (jp) {
+          counterLiftPatch = jp; // 浮かなかった時の記録(減衰の欄など)は今どおり乗せる
+        }
+      }
       const counteredPatch = postureImpact === 'counter' ? { lastCounteredAt: Date.now(), ...counterLiftPatch } : {};
       // 戦闘の手触り①(社長指示2026-09-13): プレイヤーの攻撃が実ダメージで入った敵だけ数フレーム止める
       // (雑魚60/強個体40/ボス級0=combatFeel.hitStunMsFor)。DoT(燃焼・血棘・味方弾)は対象外。
