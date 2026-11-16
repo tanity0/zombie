@@ -43,6 +43,14 @@ export interface BrawlerState {
    * 状態は飛び蹴りの3発目のまま(溜め・飛ぶ・高さは同じ)。当たり方・値段・取り消し先・絵だけが違う。
    */
   kickHeel?: boolean;
+  /**
+   * 踵落としの空中の高さ(px・絵だけ=姿勢の jump)。出した瞬間に store が「当たる時刻の相手の浮いた絵の高さ」へ、
+   * 動ける距離(BRAWLER_KICK_RANGE)の中で向かう高さとして決める(utils/airChaseHeight・下限 BRAWLER_HEEL_AIR_PX)。無し=今どおり BRAWLER_HEEL_AIR_PX。
+   * 大踏み潰しへ取り消した時の出だしの高さ(stompFromPx)と、その威力の倍率も同じ値から出る(社長指示2026-11-16)。
+   */
+  heelAirPx?: number;
+  /** 飛び蹴りの横に飛ぶ距離(px・store が出した瞬間に書く=詰めの距離)。空中の相手へ跳ぶ高さの「進行方向」の横の量(描画だけ)。 */
+  kickGroundPx?: number;
   /** 覚えている次の蹴り(techBuffer='kick')が踵落としか(下で入れた)。 */
   heelBuffer?: boolean;
   /** 踵落としの溜め(ms・gameTime)。前隙(windupMs)の頭のこの長さは空中で光って沈み、その後に飛ぶ。0/無し=溜め無し(蹴り飛ばしは溜め無し=§33)。 */

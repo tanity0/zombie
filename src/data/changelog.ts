@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5605', items: [
+    '飛び蹴りと踵落としは、浮いた敵の高さへ向かって跳ぶ',
+    '踵落としから空中で出した大踏み潰しは、高い所から出すほど威力が上がる',
+  ] },
   { version: '0.25.5604', items: [
     '一時停止の地図に出るボスの位置が、ボスの顔で出る',
   ] },

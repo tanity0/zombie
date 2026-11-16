@@ -7,7 +7,7 @@ import { brawlerLiftBreaksTech, brawlerLockHitMs, brawlerLockAlive } from '../ut
 import type { Projectile } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { buildPseudoPlayer } from '../utils/playerBuild';
-import { BRAWLER_GUARD_MS, brawlerPointCap, BRAWLER_SMALL_KB_MULT, BRAWLER_BOSS_SMALL_KB_MULT, brawlerStepAllowed, BRAWLER_STEP_BUFFER_MS, BRAWLER_SECRET_IGNITE_MS, BRAWLER_WORLD_STOP, BRAWLER_TECHS, BRAWLER_CANCEL_WINDOW_MS } from '../utils/brawler';
+import { BRAWLER_GUARD_MS, brawlerPointCap, BRAWLER_SMALL_KB_MULT, BRAWLER_BOSS_SMALL_KB_MULT, brawlerStepAllowed, BRAWLER_STEP_BUFFER_MS, BRAWLER_SECRET_IGNITE_MS, BRAWLER_WORLD_STOP, BRAWLER_TECHS, BRAWLER_CANCEL_WINDOW_MS, BRAWLER_HEEL_AIR_PX, brawlerStompAirMult } from '../utils/brawler';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import { playerSuperArmorActive } from '../utils/superArmor';
 import { treesInRegion, trunkRect } from '../world/trees';
@@ -1742,6 +1742,28 @@ describe('格闘: 踵落とし(飛び蹴りの2発目の続きで下)', () => {
     expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);
     expect(br().tech).toBe('stomp');
     expect(br().kickHeel).toBe(false);
+  });
+  it('踵落としから空中で出した大踏み潰しは、出した高さの倍率ぶん地上で出すより与ダメージが大きい(社長指示2026-11-16)', () => {
+    const run = (ground: boolean): { dmg: number; from: number } => {
+      start(9);
+      useGameStore.getState().brawlerTech(0, 1); waitHit();
+      expect(br().kickHeel).toBe(true);
+      expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);
+      expect(br().tech).toBe('stomp');
+      const from = br().stompFromPx ?? 0;
+      // 比べる側は同じ流れのまま高さだけ地上(0)にする=倍率以外の条件(空中の当たりの倍率・押し・固まり)を揃える
+      if (ground) useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, stompFromPx: undefined } } }));
+      const hp0 = hpOf('z');
+      for (let k = 0; k < 120 && !br().resolved; k++) advance(10);
+      expect(br().connected).toBe(true);
+      return { dmg: hp0 - hpOf('z'), from };
+    };
+    const air = run(false);
+    const ground = run(true);
+    expect(air.from).toBeGreaterThanOrEqual(BRAWLER_HEEL_AIR_PX - 1e-6); // 踵落としの浮いた高さ(下限30px)から出る
+    expect(ground.dmg).toBeGreaterThan(0);
+    expect(air.dmg).toBeGreaterThan(ground.dmg);
+    expect(air.dmg / ground.dmg).toBeCloseTo(brawlerStompAirMult(air.from), 1);
   });
   it('2発目が当たる前に入れた下は覚えて、当たった後に踵落としで出る', () => {
     setup(2);

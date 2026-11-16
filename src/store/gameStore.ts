@@ -141,7 +141,8 @@ import * as BRS from '../utils/brawlerSkills'; // 格闘×スキルの純関数(
 import * as BLG from '../utils/brawlerLeverGuard'; // 格闘のレバーガード(成立・半減・小さい押し・research/BRAWLER.md §12-1c)
 import { noteLeverGuardFull, clearLeverGuardFull, leverGuardHurtMuted, isPlayerHurtFlashColor, isPlayerHurtBurstColor, LEVER_GUARD_BURST_NEAR_PX } from '../utils/leverGuardStamp'; // 受け切った直後は被弾の演出を出さない
 import * as BRG from '../utils/brawlerGuard'; // 格闘の構えの成立の効果(雑魚=潰し/雑魚より上=自分がノックバック/光線の中断・research/BRAWLER.md §12-3d)
-import { noteAirMeleeHit, resetAirMeleeHit } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18)
+import { noteAirMeleeHit, resetAirMeleeHit, playerAirTargetPx } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18)
+import { airChaseHeightPx } from '../utils/airChaseHeight'; // 高さに追いつく技の高さ(社長指示2026-11-16)
 import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodDrip';
 import { nextHitStunUntil, GUN_HIT_STOP_MULT, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 // ★被弾リアクションの強さ(ノックバック・停止時間が読む・2026-09-17)
@@ -484,7 +485,7 @@ import {
   stepLaserAim, glenReachTrackCaps, GLEN_REACH_OVERSHOOT, glenReachAimStart,
 } from '../utils/mimirLaserTrack';
 import { TELEGRAPH_TRACK_MS, stepTrackAim } from '../utils/telegraphTrack'; // §15追尾相パイロット(sweep限定)
-import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
+import { enemyFootBox, enemyHeadY, enemyHitStrip, playerFootBox } from '../pixi/renderSpec';
 // 雑魚の個体差+役割(社長指示v0.25.3176・案4+案3)。向きと速さだけを曲げる純関数。
 import { isChaffType, chaffTraits, chaffHeading, chaffSpeedMult } from '../utils/chaffMotion';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, nudgeToClearLabSpot, LAB_START_SAFE_RADIUS, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD, setLabBrokenObstacleIds, type LabBrokenObstacle } from '../world/labWalls';
@@ -5144,10 +5145,18 @@ const startBrawlerTech = (
       // ★当たった蹴りの画面全体の止めの最中に出した次の蹴りは、止めが明けるまで体と影を当たった蹴りの絵のまま描く(§33-2・絵だけ)。
       //   判定の時刻・固まりは今どおり(gameTime は止めの間進まない=始めた時刻 t のまま)。印=始めた gameTime。
       const heldInStop = s0.phase === 'tech' && s0.tech === 'kick' && s0.resolved && s0.connected && get().hitstopUntil > now;
-      s = { ...s, windupMs: chargeMs + flightMs, kickChargeMs: chargeMs, kickHoldAt: heldInStop ? t : undefined };
+      s = { ...s, windupMs: chargeMs + flightMs, kickChargeMs: chargeMs, kickHoldAt: heldInStop ? t : undefined, kickGroundPx: ap.dist };
       // ★画面全体の止め(格闘の当たり・BR.BRAWLER_WORLD_STOP)の最中に出した蹴り(蹴りの連続は止めの最中でもその場で出る)は、踏み込み(壁時計)を
       //   止めが明けた時刻から始める=飛ぶ距離と判定の時刻(gameTime=止めの間は進まない)が今どおり揃う。止めの外では now のまま。
       const lungeAt = Math.max(now, get().hitstopUntil);
+      // ★踵落としの空中の高さ(社長指示2026-11-16「高さに追いつく技も相手の高さに合わせに行って。(ただし強制ではなく決まった距離の中で進行方向としての高さ。)」):
+      //   当たる時刻の相手の浮いた絵の高さ(空中追従と同じ目標=playerAirTargetPx)へ、蹴りの動ける距離(BRAWLER_KICK_RANGE)の中で向かう高さ。下限は今の 30px。
+      //   相手が居ない・地上なら 30px のまま(今どおり)。絵だけ(姿勢の jump)。大踏み潰しへ取り消した時の高さと威力の倍率もここから出る。
+      if (heel && target) {
+        const liftAt = brawlerVisLiftPxAt(target, lungeAt + chargeMs + flightMs);
+        const goal = liftAt > 0 ? playerAirTargetPx(1, liftAt, playerFootBox(p).boxH) : 0;
+        s = { ...s, heelAirPx: airChaseHeightPx(ap.dist, goal, BR.BRAWLER_KICK_RANGE, BR.BRAWLER_HEEL_AIR_PX) };
+      }
       extra = { ...extra, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, flightMs, lungeAt), ...(chargeMs > 0 ? { lungeHoldUntil: lungeAt + chargeMs } : {}) };
       brawlerSfx('whip-swing', 0.55, (kickN >= 3 ? 0.78 : 0.92) * brJitter(), 160);
       // ★蹴りの筋(社長指示2026-11-07「キャラクターの移動に横長の斬撃の絵を被せれば蹴ってるように見える」)。
@@ -5607,7 +5616,8 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const ids = BR.brawlerCircleTargets(st.enemies, foot.x, foot.y, stompR, walls);
     const plan = brawlerStopPlan(get, BR.BRAWLER_STOMP_HITSTOP_MS); // ★当たりの止め=自分と相手だけ(社長指示2026-11-14)
     const r = strike(ids, {
-      mult: BR.BRAWLER_STOMP_MULT, stunMs: plan.stun, ...plan.lock, postureMult: BR.BRAWLER_STOMP_MULT,
+      // ★出した高さで威力が上がる(社長指示2026-11-16・stompFromPx=踵落としから取り消した出だしの高さ=絵と同じ純関数の値)。地上は ×1。
+      mult: BR.BRAWLER_STOMP_MULT * BR.brawlerStompAirMult(s.stompFromPx), stunMs: plan.stun, ...plan.lock, postureMult: BR.BRAWLER_STOMP_MULT,
       kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
       combo: { move: 'stomp' },
     });
@@ -10339,9 +10349,10 @@ const idolAirLift = (e: Enemy | undefined): number => idolAirLiftOf(e, useGameSt
  * 近接の当たりの絵(斬撃の筋・当たりの光・ダメージ数字・会心の印)を、地面ではなく敵の絵の高さで出すために使う(絵の位置だけ・判定は動かさない)。
  * 旧: 空中の敵に当てても、絵は全部その敵の足元(地面)に出ていた(クリエイティブ監査2026-11-11)。
  */
-const brawlerVisLiftPx = (e: Enemy | undefined): number => {
+const brawlerVisLiftPx = (e: Enemy | undefined): number => brawlerVisLiftPxAt(e, Date.now());
+/** 同じ高さを、壁時計 t(Date.now 系)の時点で(踵落としが当たる時刻の相手の高さの見積もり)。 */
+const brawlerVisLiftPxAt = (e: Enemy | undefined, t: number): number => {
   if (!e) return 0;
-  const t = Date.now();
   if (!BRC.brawlerAirborne(e, t)) return 0;
   const g = useGameStore.getState();
   const viewH = g.gameBounds.height / Math.max(0.05, g.viewZoom || 1);

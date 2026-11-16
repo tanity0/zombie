@@ -16,6 +16,7 @@ import {
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerAfterJustGuardPoints, BRAWLER_JUST_GUARD_POINTS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS,
 } from './brawler';
 import {
+  brawlerHeelAirOf, brawlerStompAirMult, BRAWLER_STOMP_AIR_MULT_MAX,
   pickBrawlerComboTarget, brawlerComboLockId, brawlerComboTargetAfterHit, BRAWLER_HEEL_AIR_PX, BRAWLER_STOMP_FROM_AIR_FALL, BRAWLER_KICK3_CHARGE_RISE_PX, BRAWLER_KICK3_CHARGE_SINK_PX, BRAWLER_KICK3_CHARGE_MS, BRAWLER_KICK_MAX,
 } from './brawler';
 import { setBrawlerTempoAll } from './brawlerCombo';
@@ -842,6 +843,37 @@ describe('格闘: 踵落としは空中で浮いたまま振り下ろし、直�
     expect(brawlerPoseAt(st, t + Math.ceil(st.windupMs * BRAWLER_STOMP_FROM_AIR_FALL) + 1)!.jump).toBe(0);
     // 待機から出した大踏み潰しは今どおり跳ばない
     expect(brawlerStartTech(initialBrawlerState(), 'stomp', 0).stompFromPx).toBeUndefined();
+  });
+  it('相手の高さへ向かう高さ(heelAirPx)があれば、振り下ろしの瞬間と後隙の浮きはその高さ・無ければ/低ければ今の30px(社長指示2026-11-16)', () => {
+    const hi = { ...heelState(), heelAirPx: 48 };
+    expect(brawlerHeelAirOf(hi)).toBe(48);
+    expect(brawlerPoseAt(hi, hi.windupMs - 1)!.jump).toBeCloseTo(48, 0); // 振り下ろしの直前(飛ぶ間の6割で着く)
+    const hr = { ...hi, resolved: true, connected: true };
+    expect(brawlerPoseAt(hr, hr.windupMs + Math.floor(hr.recoveryMs * 0.45))!.jump).toBeCloseTo(48, 6);
+    expect(brawlerPoseAt(hr, hr.windupMs + hr.recoveryMs)!.jump).toBeCloseTo(0, 6);
+    // 高さが変わっても途切れない(1ms で大きく変わらない)
+    for (let el = 0; el < hr.windupMs + hr.recoveryMs; el += 1) {
+      const a = brawlerPoseAt(el < hi.windupMs ? hi : hr, el)!.jump, b = brawlerPoseAt(el + 1 < hi.windupMs ? hi : hr, el + 1)!.jump;
+      expect(Math.abs(b - a), `el ${el}`).toBeLessThan(1.5);
+    }
+    expect(brawlerHeelAirOf({ heelAirPx: 10 })).toBe(BRAWLER_HEEL_AIR_PX); // 下限
+    expect(brawlerHeelAirOf({})).toBe(BRAWLER_HEEL_AIR_PX);                // 相手なし=今どおり
+    expect(brawlerPoseAt(heelState(), heelState().windupMs - 1)!.jump).toBeCloseTo(BRAWLER_HEEL_AIR_PX, 0);
+    // 出し直した技は前の高さを持ち越さない
+    expect(brawlerStartTech(hr, 'stomp', hr.windupMs + 10, 0, true).heelAirPx).toBeUndefined();
+    // 大踏み潰しへ取り消した高さ=その浮いた高さ(絵と同じ純関数)
+    const t = hr.windupMs + Math.round(hr.recoveryMs * 0.2);
+    expect(brawlerStartTech(hr, 'stomp', t, 0, true).stompFromPx).toBeCloseTo(48, 6);
+  });
+  it('大踏み潰しの高さの倍率: 地上=1・60px=1.5・上限2.0(120px で頭打ち・社長指示2026-11-16)', () => {
+    expect(brawlerStompAirMult(undefined)).toBe(1);
+    expect(brawlerStompAirMult(0)).toBe(1);
+    expect(brawlerStompAirMult(-5)).toBe(1);
+    expect(brawlerStompAirMult(30)).toBeCloseTo(1.25, 9);
+    expect(brawlerStompAirMult(60)).toBeCloseTo(1.5, 9);
+    expect(brawlerStompAirMult(120)).toBeCloseTo(2.0, 9);
+    expect(brawlerStompAirMult(500)).toBe(BRAWLER_STOMP_AIR_MULT_MAX);
+    expect(BRAWLER_STOMP_AIR_MULT_MAX).toBe(2.0);
   });
 });
 

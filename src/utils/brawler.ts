@@ -191,6 +191,20 @@ export const BRAWLER_LIFT_VIS_BODY_K = 0.6; // 社長指示2026-11-15「敵も�
 export const BRAWLER_LIFT_VIS_MAX_VIEW_FRAC = 0.25; // 2026-11-15 BODY_K 0.45→0.6 に合わせて 0.2→0.25(上限に当たる大きい敵=ミーミル等も同じくらい高くなるように)
 export const BRAWLER_STOMP_RADIUS = 150;     // 下の大踏み潰し(§3-3)
 export const BRAWLER_STOMP_MULT = 2.3; // 社長指示2026-11-12『叩き潰しが強すぎる。0.5 落として』(旧 2.8。その前は 2.5)。それ以前: 社長指示2026-11-11「ごめん、大叩き潰しは2.8倍で。」(同日 3.5→2.5→2.8)。それ以前: // 社長裁定2026-11-11「3;上げる」で 2.4→3.5(技ポイントが一番高い技の見返り)。旧: 2026-11-09 に 2.0→2.4
+/**
+ * ★大踏み潰しは出した高さで威力が上がる(社長指示2026-11-16「大叩き潰しは、発動した高さでダメージ倍率が上がる。」)。
+ * 倍率 = 1 + K × (高さ ÷ REF)、上限 MAX。BRAWLER_STOMP_MULT の上に掛ける(ダメージだけ・体勢値の倍率は今どおり)。
+ * 高さ=出だしの空中の高さ(stompFromPx=踵落としから取り消した時の姿勢の jump。絵と同じ純関数 brawlerPoseAt から出る)。地上(0)は ×1=今と同じ。
+ * 叩き台(2026-11-16): K=0.5・REF=60px・MAX=2.0(=高さ120pxで頭打ち)。
+ */
+export const BRAWLER_STOMP_AIR_K = 0.5;
+export const BRAWLER_STOMP_AIR_REF_PX = 60;
+export const BRAWLER_STOMP_AIR_MULT_MAX = 2.0;
+export const brawlerStompAirMult = (heightPx: number | undefined): number => {
+  const h = heightPx !== undefined && Number.isFinite(heightPx) ? Math.max(0, heightPx) : 0;
+  if (h <= 0) return 1;
+  return Math.min(BRAWLER_STOMP_AIR_MULT_MAX, 1 + BRAWLER_STOMP_AIR_K * (h / BRAWLER_STOMP_AIR_REF_PX));
+};
 export const BRAWLER_STOMP_HITSTOP_MS = BRAWLER_HITSTOP.closer; // 締めの止め(§9-2・社長承認2026-11-08 で 140→220)
 export const BRAWLER_KIKO_SPEED = 900;       // 左の気功(§3-4)
 export const BRAWLER_KIKO_RANGE = 420;
@@ -421,6 +435,7 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
   return {
     ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t, techChain: chain, techBuffer: undefined, stepBuffer: undefined,
     kickHeel: kind === 'kick' && kickN >= BRAWLER_KICK_MAX && heel, heelBuffer: false,
+    heelAirPx: undefined, kickGroundPx: undefined, // 蹴りの高さの決めは store が出した瞬間に書く(前の技の値を持ち越さない)
     stompFromPx: stompFromPx > 0.5 ? stompFromPx : undefined,
     // 踵落としは溜め(BRAWLER_KICK3_CHARGE_MS)を前隙の頭に足す(store は飛ぶ時間を距離で引き直して同じく足す)。蹴り飛ばしは溜め無し(§33-2)。
     kickChargeMs: kind === 'kick' && kickN >= BRAWLER_KICK_MAX && heel ? BRAWLER_KICK3_CHARGE_MS : 0,
@@ -1464,6 +1479,7 @@ export const BRAWLER_HEEL_SINK_PX = 0;
  * (2026-11-15 に BODY_K を 0.45→0.6 にした後の値。0.45 の時は ≈ 36px で、この 30px は蹴る瞬間に敵とほぼ同じ高さだった。いまは雑魚より約18px低い。
  *  重い区分は浮きが低いので、今も敵に近い〜少し上で踏みつける形)。
  * (旧 BRAWLER_HEEL_HOVER_PX=10: 弧で地面近くへ下がってから10pxで浮いていた=自分も一緒に落ちて見えた。)
+ * ★2026-11-16 から、この 30px は「下限」。相手が浮いていれば、当たる時刻の相手の高さへ動ける距離の中で向かう高さ(heelAirPx・brawlerHeelAirOf)。
  */
 export const BRAWLER_HEEL_AIR_PX = 30;
 /** 踵落としの飛ぶ間のうち、溜めの終わりの高さから踵落としの高さへ移る割合(残りはその高さのまま振り下ろす)。 */
@@ -1471,12 +1487,18 @@ export const BRAWLER_HEEL_AIR_RISE_F = 0.6;
 /** 後隙のうち浮いたまま留まる割合(残りで沈んで着地)。 */
 export const BRAWLER_HEEL_HOVER_HOLD = 0.5;
 /** 踵落としの後隙の進み(0..1)→ 浮いた高さ(px)。 */
-export const brawlerHeelHoverPx = (post: number): number => {
+export const brawlerHeelHoverPx = (post: number, airPx: number = BRAWLER_HEEL_AIR_PX): number => {
   const q = Math.max(0, Math.min(1, post));
-  if (q <= BRAWLER_HEEL_HOVER_HOLD) return BRAWLER_HEEL_AIR_PX;
+  if (q <= BRAWLER_HEEL_HOVER_HOLD) return airPx;
   const k = (q - BRAWLER_HEEL_HOVER_HOLD) / (1 - BRAWLER_HEEL_HOVER_HOLD);
-  return BRAWLER_HEEL_AIR_PX * (1 - k * k * (3 - 2 * k));
+  return airPx * (1 - k * k * (3 - 2 * k));
 };
+/**
+ * 踵落としの空中の高さ(px)。store が出した瞬間に書いた heelAirPx(相手の高さへ向かう高さ・下限 BRAWLER_HEEL_AIR_PX)・無ければ BRAWLER_HEEL_AIR_PX。
+ * ★社長指示2026-11-16「高さに追いつく技も相手の高さに合わせに行って」。
+ */
+export const brawlerHeelAirOf = (s: Pick<BrawlerState, 'heelAirPx'>): number =>
+  s.heelAirPx !== undefined && Number.isFinite(s.heelAirPx) ? Math.max(BRAWLER_HEEL_AIR_PX, s.heelAirPx) : BRAWLER_HEEL_AIR_PX;
 /** 踵落としから取り消した大踏み潰しの、浮いた高さからの落下(溜めのこの割合で着地・加速して落ちる)。 */
 export const BRAWLER_STOMP_FROM_AIR_FALL = 0.45;
 export const brawlerHeelStandAt = (
@@ -1658,7 +1680,7 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
         const h0 = BRAWLER_KICK3_CHARGE_RISE_PX - BRAWLER_KICK3_CHARGE_SINK_PX;
         // 踵落とし: 弧を描いて下がらず、溜めの終わりの高さから踵落としの高さへ加速→減速で移り、振り下ろしの瞬間もその高さ
         //   =後隙の浮き(同じ高さ)へ途切れずにつなぐ(社長指示2026-11-12「空中で浮いたまま踵落とし」)。
-        const heelJump = h0 + (BRAWLER_HEEL_AIR_PX - h0) * smooth(f / BRAWLER_HEEL_AIR_RISE_F);
+        const heelJump = h0 + (brawlerHeelAirOf(s) - h0) * smooth(f / BRAWLER_HEEL_AIR_RISE_F); // 高さ=相手の高さへ向かう高さ(下限30・社長指示2026-11-16)
         // 前傾→後傾のつなぎは溜めの後半から飛びの頭まで続く(つなぎ目で傾きが跳ばない)。溜め明けの前傾は溜めの最後の値(0.35)。
         const tail = Math.min(KICK3_LEAN_TAIL_MS, KICK_LEAN_TAIL_FRAC * flightMs);
         const b = smooth((el - charge * KICK3_LEAN_TURN_AT) / (charge * (1 - KICK3_LEAN_TURN_AT) + tail));
@@ -1675,7 +1697,7 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
       const land = Math.sin(Math.PI * Math.min(1, post / 0.6)) * (post < 0.6 ? 1 : 0);
       return {
         ...base, tex: post < BRAWLER_KICK_CROUCH_AT ? 'swing' : 'ready', lean: (heel ? heelLean() : -0.25) * th, push: 6 * th, sqY: 1 - 0.12 * th - 0.14 * land, sqX: 1 + 0.08 * th + 0.1 * land,
-        ...(s.kickHeel ? { jump: brawlerHeelHoverPx(post) } : {}), // 踵落としの後は空中に残る→後隙の後半で降りて着地
+        ...(s.kickHeel ? { jump: brawlerHeelHoverPx(post, brawlerHeelAirOf(s)) } : {}), // 踵落としの後は空中に残る(振り下ろした高さのまま)→後隙の後半で降りて着地
       };
     }
     default: return { ...base, tex: 'ready' };

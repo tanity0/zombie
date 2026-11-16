@@ -117,6 +117,7 @@ import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだ�
 import { BRAWLER_WEAK_GUARD_ALPHA } from '../utils/brawlerGuard'; // 弱い構え(払えずに出た構え)の光の薄さ
 import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
 import { screamerMarkVisible } from '../utils/screamerGate';
+import { airChaseHeightPx } from '../utils/airChaseHeight'; // 高さに追いつく技の高さ(動ける距離の中で相手の高さへ向かう・社長指示2026-11-16)
 import { getLastAirMeleeHit, playerLaunchHeightPx, stepPlayerAir, playerKickJump, playerKickJumpShape, playerKickLandPx, playerKickLandSpeed, playerAirLaunchSpeed, PLAYER_KICK_LAND_FRAC, PLAYER_KICK_JUMP_MIN_PX, PLAYER_KICK_HOLD_MS, PLAYER_KICK_RECOIL_PX, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
 import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
@@ -21407,7 +21408,18 @@ export class PixiScene {
       let kickCrouch = false;        // 踏み切りの沈みの間
       // 画面全体の止めの最中に始めた次の蹴り(§33-2)は、止めが明けるまで前の蹴りの当たった絵のまま=跳びもまだ始めない。
       const kickHeldK = !!bsK && BRW.brawlerKickHeldInStop(bsK, gameTime);
-      if (bsK && kicking && !bsK.resolved && bsK.targetId && !kickHeldK) {
+      // ★踵落としの高さは姿勢(brawlerPoseAt の jump=store が出した瞬間に決めた heelAirPx へ向かう)が持つ(社長指示2026-11-16)。
+      //   絵の高さと、大踏み潰しへ取り消した時の高さ(威力の倍率)が同じ純関数から出るように、ここでは跳びの曲線(playerKickJump)で上書きしない。
+      //   空中の状態(st0)は姿勢の高さをそのままなぞる=上昇の筋・空中の姿勢・当てた後の止め/落ちは今までと同じ仕組みで出る。
+      const heelK = !!bsK && kicking && !!bsK.kickHeel;
+      if (bsK && heelK && !bsK.resolved && !kickHeldK && BRW.brawlerElapsed(bsK, gameTime) >= Math.max(0, Math.min(bsK.windupMs, bsK.kickChargeMs ?? 0))) {
+        kickAir = brawlerJumpPx;
+        kickDir = brawlerJumpPx > st0.h + 0.05 ? 1 : brawlerJumpPx < st0.h - 0.05 ? -1 : 0;
+        st0.kickKey = `${bsK.startAt}:${bsK.kickN}`; st0.kickOn = true;
+        const enH = bsK.targetId ? stAir.enemies.find(en => en.id === bsK.targetId) : undefined;
+        if (enH) { dirAir = enH.x + enH.width / 2 >= fb.footX ? 1 : -1; st0.dir = dirAir; }
+      }
+      if (bsK && kicking && !heelK && !bsK.resolved && bsK.targetId && !kickHeldK) {
         const elK = BRW.brawlerElapsed(bsK, gameTime);
         const chargeK = Math.max(0, Math.min(bsK.windupMs, bsK.kickChargeMs ?? 0));
         const enK = elK >= chargeK ? stAir.enemies.find(en => en.id === bsK.targetId) : undefined;
@@ -21415,7 +21427,9 @@ export class PixiScene {
           const tHit = tAir + Math.max(0, bsK.windupMs - elK);
           const relHit = brawlerAirborne(enK, tHit) ? brawlerJuggleHeightRel(enK, tHit) : 0;
           const viewHK = stAir.gameBounds.height / Math.max(0.05, stAir.viewZoom || 1);
-          const tgtK = playerAirTargetPx(relHit, Math.min(enemyFootBox(enK).boxH * BRW.BRAWLER_LIFT_VIS_BODY_K, viewHK * BRW.BRAWLER_LIFT_VIS_MAX_VIEW_FRAC), bodyH);
+          // ★相手の高さへは、蹴りの動ける距離(BRAWLER_KICK_RANGE)の中で向かう(社長指示2026-11-16「強制ではなく決まった距離の中で進行方向としての高さ」)。
+          //   横に飛ぶ距離(kickGroundPx=詰めの距離)と相手の高さの向きへ動ける距離だけ進んだ所の高さ(utils/airChaseHeight)。届く時は今どおり相手の高さ。
+          const tgtK = airChaseHeightPx(bsK.kickGroundPx ?? 0, playerAirTargetPx(relHit, Math.min(enemyFootBox(enK).boxH * BRW.BRAWLER_LIFT_VIS_BODY_K, viewHK * BRW.BRAWLER_LIFT_VIS_MAX_VIEW_FRAC), bodyH), BRW.BRAWLER_KICK_RANGE);
           const keyK = `${bsK.startAt}:${bsK.kickN}`;
           if (st0.kickKey !== keyK) {
             // 溜めの間の高さを蹴りが持っていた(空中から入って着地した)なら、出発点はその高さ(=地面)。姿勢の跳ねは足していないので含めない
@@ -21451,9 +21465,12 @@ export class PixiScene {
           if (st0.kickKey !== keyC) { st0.kickKey = keyC; st0.kickH0 = st0.h; st0.kickOn = st0.h >= 0.5; }
           if (st0.kickOn) {
             const landMs = chargeC * PLAYER_KICK_LAND_FRAC;
-            const hC = playerKickLandPx(st0.kickH0 ?? 0, elC / landMs);
+            const hC0 = playerKickLandPx(st0.kickH0 ?? 0, elC / landMs);
+            // 踵落とし: 空中から入った溜めは、落ちていく高さと溜めの跳び上がり(姿勢)の高い方=着地し切らずに溜めの高さへつなぐ
+            //   (飛ぶ間は姿勢の高さをなぞる=溜め明けで高さが跳ばない)。蹴り飛ばし・1・2発目は今どおり。
+            const hC = heelK ? Math.max(hC0, brawlerJumpPx) : hC0;
             if (hC <= 0 && st0.h > 0) kickLandSpeed = playerKickLandSpeed(st0.kickH0 ?? 0, landMs);
-            kickAir = hC; kickDir = hC > 0 ? -1 : 0;
+            kickAir = hC; kickDir = hC > 0 ? (heelK && hC0 < brawlerJumpPx ? (brawlerJumpPx > st0.h + 0.05 ? 1 : 0) : -1) : 0;
           }
         }
       }
