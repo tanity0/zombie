@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5616 — 衛生兵の物語を差し替え【2026-11-17 07:47 JST】
+- 社長支給の新しい本文(3段落・名前を出さない版)に bossStories.ts の giantbat@stage-4 の body を丸ごと差し替え。文言は原稿のまま。
+- 確認: typecheck・bossStoryArchive テスト。データのみ。
+
 ## v0.25.5615 — 馬乗りの物語を差し替え【2026-11-17 07:42 JST】
 - 社長支給の新しい本文(6段落)に bossStories.ts の bounty-melee の body を丸ごと差し替え。文言は原稿のまま。
 - 確認: typecheck・bossStoryArchive テスト。データのみ。
