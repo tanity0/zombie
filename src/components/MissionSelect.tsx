@@ -171,6 +171,8 @@ import {
 // research/SORTIE_MAP_BOSS_ICONS.md: 作戦室の地図にボスの顔(出会った・倒していない)+徘徊の枠の抽選を作戦室で引く。
 import { loadEncounteredBosses } from '../utils/bossEncounter';
 import { loadDefeatedBosses } from '../utils/bossDefeated';
+import { buildBossStoryGroups, BOSS_STORY_ARCHIVE_ALL, loadReadBossStories, markBossStoryRead } from '../utils/bossStoryArchive'; // 資料室「特殊変異体」(社長指示2026-11-16「ボス全種にバックストーリー」)
+import { BossStoryShelf, BossStoryBody } from './BossStoryShelf';
 import { ensureSortiePatrolPlan, type SortiePatrolPlan } from '../utils/sortiePatrolPlan';
 import { mapBossFaces, PATROL_MAP_BOSS, stageFixedMapBossCandidates } from '../utils/sortieMapBosses';
 import { OPS_MAP_PLACES } from '../data/opsMapPlaces';
@@ -677,6 +679,20 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const openTutorial = TUTORIALS.find(t => t.id === openTutorialId) ?? null;
   const handleOpenTutorial = (id: TutorialId) => { playSfx('ui-select'); setOpenTutorialId(id); };
   const closeTutorial = () => { playSfx('ui-back'); setOpenTutorialId(null); };
+  // 特殊変異体(社長指示2026-11-16「ボス全種にバックストーリー」): 倒した記録は資料室を開いた時に1回だけ読む
+  // (store購読なし=毎フレーム再描画しない)。開発用の ?archiveall=1 は全部開く(表示だけ)。
+  const archiveShown = screen.name === 'archive';
+  // 既読(本文を開いたか)は開いた時に書き、この状態だけ差し替える(倒した記録は読み直さない)。
+  const [bossStoryRead, setBossStoryRead] = useState<Set<string>>(() => loadReadBossStories());
+  const bossStoryDefeated = useMemo(() => (archiveShown ? loadDefeatedBosses() : new Set<string>()), [archiveShown]);
+  const bossStoryGroups = useMemo(
+    () => (archiveShown ? buildBossStoryGroups(bossStoryDefeated, BOSS_STORY_ARCHIVE_ALL, bossStoryRead) : []),
+    [archiveShown, bossStoryDefeated, bossStoryRead],
+  );
+  const [openBossStoryKey, setOpenBossStoryKey] = useState<string | null>(null);
+  const openBossStory = bossStoryGroups.flatMap(g => g.cells).find(c => c.entry.key === openBossStoryKey && c.unlocked) ?? null;
+  const handleOpenBossStory = (key: string) => { playSfx('ui-select'); setBossStoryRead(markBossStoryRead(key)); setOpenBossStoryKey(key); };
+  const closeBossStory = () => { playSfx('ui-back'); setOpenBossStoryKey(null); };
   // 「資料が追加されました」ポップアップ: ホーム表示(=このコンポーネントのマウント)時に1回だけ
   // latestUnlockedRecordIds を読む。閉じたら consumeLatestUnlocked() で永続側もクリアし、再表示しない。
   const [newRecordsNotice, setNewRecordsNotice] = useState<string[]>(() => loadStoryArchive().latestUnlockedRecordIds);
@@ -1851,6 +1867,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           {termRecords.length > 0 && (
             <Section label="用語">{renderArchiveRecordList(termRecords)}</Section>
           )}
+          {/* 特殊変異体(社長指示2026-11-16「ボス全種にバックストーリー」): 文章量が多いので顔アイコンだけで並べ、倒した個体をタップで本文。 */}
+          <Section label="特殊変異体">
+            <BossStoryShelf groups={bossStoryGroups} onOpen={handleOpenBossStory} />
+          </Section>
           <Section label="変異体図鑑">
             {BESTIARY.map(b => (
               <div key={b.id} className="flex gap-2 text-[12px] leading-snug">
@@ -1895,6 +1915,18 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   閉じる
                 </button>
               </div>
+            </NoBounceScroller>
+          </div>,
+          portalRoot
+        )}
+        {/* 特殊変異体の本文(社長指示2026-11-16)。資料本文と同じ包み(glass-panel・ポータル)。 */}
+        {openBossStory && createPortal(
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center px-3"
+            style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
+          >
+            <NoBounceScroller className="glass-panel command-panel max-h-[calc(100svh/var(--hud-s,1)-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
+              <BossStoryBody cell={openBossStory} onClose={closeBossStory} />
             </NoBounceScroller>
           </div>,
           portalRoot

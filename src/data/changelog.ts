@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5608', items: [
+    '資料室に「特殊変異体」の棚ができた。倒したボスの顔が並び、触れるとその記録が開く',
+  ] },
   { version: '0.25.5607', items: [
     '被弾した直後の斬り返し(赤い「Counter!」)が当たると、相手は必ず浮く。技の最中のボスも技が止まって浮き上がり、空中で叩き落とされそうな時やダウン中でも浮き直す',
     '赤い予告へのカウンターの浮き方は、ひとつ前の更新の前に戻った',
