@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5609', items: [
+    '資料室の「特殊変異体」に、倒したボスたちの記録が読めるようになった',
+  ] },
   { version: '0.25.5608', items: [
     '資料室に「特殊変異体」の棚ができた。倒したボスの顔が並び、触れるとその記録が開く',
   ] },
