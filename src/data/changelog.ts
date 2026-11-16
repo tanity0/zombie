@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5610', items: [
+    '地図と資料室のボスの顔が少し引きになり、髪や肩まで見えるようになった',
+  ] },
   { version: '0.25.5609', items: [
     '資料室の「特殊変異体」に、倒したボスたちの記録が読めるようになった',
   ] },
