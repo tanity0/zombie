@@ -807,13 +807,11 @@ describe('赤カウンターが成立した敵は浮く(武器を問わない)',
     useGameStore.getState().damageEnemy('w', 10, false, true, false, 'other', 'player', 'counter');
     expect(useGameStore.getState().enemies.find(e => e.id === 'w')?.brawlerLiftAt).toBeUndefined();
   });
-  // ★社長指示2026-11-16「赤は強制的に浮かない状況でも浮かせる」: 旧「技の最中のまま残っている敵は浮かない」を置き換え(強制の詳細は counterLiftForce.store.test.ts)。
-  it('技の最中のまま残っている敵(呼び手が中断していない)も、技を取り消して浮かせる', () => {
+  it('技の最中のまま残っている敵(呼び手が中断していない)は浮かない', () => {
     useGameStore.getState().resetGame('warrior');
     const busy = { ...mk('zombie', 'b'), aiPhase: 'windup' as const, aiPhaseUntil: useGameStore.getState().gameTime + 9999 };
     useGameStore.setState({ enemies: [busy] });
     useGameStore.getState().damageEnemy('b', 10, false, true, false, 'other', 'player', 'counter');
-    expect(get('b').brawlerLiftAt).toBeDefined();
-    expect(get('b').aiPhase).toBeUndefined();
+    expect(get('b').brawlerLiftAt).toBeUndefined();
   });
 });

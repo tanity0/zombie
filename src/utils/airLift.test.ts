@@ -4,7 +4,7 @@ import {
   blastLiftPatch, blastLiftCloseness, slasherLiftMove, blastLiftMs, slasherLaunchMinMs,
   BLAST_LIFT_HEIGHT_OF_S3, BLAST_LIFT_MS_MULT, BLAST_LIFT_COST,
   KNIFE_HOLD_MOVE, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil,
-  COUNTER_LIFT_MOVE, counterLiftApplies, counterLiftForcedPlan,
+  COUNTER_LIFT_MOVE, counterLiftApplies, retaliateLiftPlan,
 } from './airLift';
 import {
   brawlerJuggleHeightRel, brawlerJugglePush, setBrawlerTempoAll, brawlerAirSignal,
@@ -198,17 +198,17 @@ describe('ナイフの浮き(knifeLiftMove / knifeLiftApplies / knifeNoLiftUntil
   });
 });
 
-describe('★赤カウンターの浮きの強制(社長指示2026-11-16「赤は強制的に浮かない状況でも浮かせる」)', () => {
+describe('★被弾反撃の浮きの強制(社長指示2026-11-16「赤文字のカウンター」=被弾反撃)', () => {
   const apply = (e: BrawlerJuggleFields, p: Partial<BrawlerJuggleFields> | null): BrawlerJuggleFields => ({ ...e, ...(p ?? {}) });
-  it('計画: 技の最中は取り消して浮かせる・bossState の技は呼び手に任せて浮かせる・尻尾/倒した一撃は浮かせない', () => {
-    expect(counterLiftForcedPlan(zombie, 10, GT)).toBe('lift');
-    expect(counterLiftForcedPlan({ type: 'zombie', aiPhase: 'charge' }, 10, GT)).toBe('cancel-lift');
-    expect(counterLiftForcedPlan({ type: 'zombie', biteAt: GT + 100 }, 10, GT)).toBe('cancel-lift');
-    expect(counterLiftForcedPlan({ type: 'giantbat', aiPhase: 'g-slam-windup' }, 10, GT)).toBe('cancel-lift'); // ボス級も取り消す
-    expect(counterLiftForcedPlan({ type: 'giantbat', aiPhase: 'g-tailslam-active' }, 10, GT)).toBe('none');  // 尻尾は撃ち切る
-    expect(counterLiftForcedPlan({ type: 'thor', bossState: 'thor-dash-windup' }, 10, GT)).toBe('lift');      // 状態は呼び手が進める
-    expect(counterLiftForcedPlan({ type: 'zombie', aiPhase: 'charge' }, 0, GT)).toBe('none');                  // 倒した一撃
-    expect(counterLiftForcedPlan(zombie, 0, GT)).toBe('none');
+  it('計画: 技の最中は取り消して浮かせる・bossState の技は取り消さず浮かせる・尻尾/倒した一撃は浮かせない', () => {
+    expect(retaliateLiftPlan(zombie, 10, GT)).toBe('lift');
+    expect(retaliateLiftPlan({ type: 'zombie', aiPhase: 'charge' }, 10, GT)).toBe('cancel-lift');
+    expect(retaliateLiftPlan({ type: 'zombie', biteAt: GT + 100 }, 10, GT)).toBe('cancel-lift');
+    expect(retaliateLiftPlan({ type: 'giantbat', aiPhase: 'g-slam-windup' }, 10, GT)).toBe('cancel-lift'); // ボス級も取り消す
+    expect(retaliateLiftPlan({ type: 'giantbat', aiPhase: 'g-tailslam-active' }, 10, GT)).toBe('none');  // 尻尾は撃ち切る
+    expect(retaliateLiftPlan({ type: 'thor', bossState: 'thor-dash-windup' }, 10, GT)).toBe('lift');      // bossState の技は取り消さず浮きだけ
+    expect(retaliateLiftPlan({ type: 'zombie', aiPhase: 'charge' }, 0, GT)).toBe('none');                  // 倒した一撃
+    expect(retaliateLiftPlan(zombie, 0, GT)).toBe('none');
     // 今までの判定(救助の合図の浮きが使う)は変わらない
     expect(counterLiftApplies({ type: 'zombie', aiPhase: 'charge' }, 10, GT)).toBe(false);
     expect(counterLiftApplies(zombie, 10, GT)).toBe(true);

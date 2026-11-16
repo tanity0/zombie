@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5607 — 強制浮きの対象を「赤文字のカウンター」=被弾反撃へ付け替え(5606の取り違えを戻す)【2026-11-16 18:50 JST】
+- 社長指摘「赤い予告じゃないよ 赤文字のカウンター だよ」→「はい」。v0.25.5606 は赤い予告へのカウンター(damageEnemy の counter の道)を強制にしていた=取り違え。
+- 戻した: damageEnemy の counterLiftPatch を 5606 前の2行へ(git diff 8e1ebec^ でこの部分ゼロ)。brawlerLink.store.test.ts も 5606 前の版へ。
+- 付け直し: resolveRetaliateStrike が当たった相手(生存)へ retaliateLiftPatch を重ねる(格闘・ナイフ/刀とも)。①技の最中(aiPhase の技は取り消し・bossState のボスは取り消さず浮きだけ)②空中の予算切れ③ダウン中④ボスの止めの減衰 でも s4 で浮く。普通の命中が掛けた浮きはこれで置き換え(予算・減衰を二重に使わない)。ナイフは brBlastNoLiftUntil をこの浮きの長さで書き直す。
+- 浮かないまま: 倒した一撃・終端の死神・尻尾の叩きつけ・空振り。
+- airLift: counterLiftForcedPlan → retaliateLiftPlan に改名。テスト counterLiftForce.store.test.ts を削除し retaliateLift.store.test.ts(16件)を新設。実装は Opus 5.5 サブエージェント。
+- 確認: typecheck・eslint・循環import・関連 vitest。画面確認は無し(既存の浮きの絵の条件だけ)。
+- 自己点検: 憲法第4条・第5条に抵触しない(被弾反撃の命中時のみ)。
+
 ## v0.25.5606 — 赤カウンターは浮かない状況でも強制的に浮かせる【2026-11-16 16:29 JST】
 - 社長指示「赤カウンターも浮いてる？赤は強制的に浮かない状況でも浮かせる」→ 選択「①〜④を強制(推薦)」。
 - damageEnemy のカウンターの中央の道だけ強制へ: ①技の最中(ボス級も)=技を取り消して浮かせる(aiPhase 技は counterInterruptPatch。bossState の技は呼び手が状態を進めるので浮きだけ乗せる) ②空中の予算切れ ③ダウン中 ④ボスの止めの減衰が無効 でも浮く(brawlerJugglePush/brawlerJugglePatch に force)。
