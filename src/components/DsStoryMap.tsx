@@ -12,7 +12,7 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import { assetUrl } from '../config/assetUrl';
 import { OPS_MAP_H, OPS_MAP_IMAGE, OPS_MAP_PLACES, OPS_MAP_W, storyTrail } from '../data/opsMapPlaces';
 import { BOSS_HEAD_CROPS } from '../data/bossHeadCrops';
-import { spritePath } from '../utils/spriteLoader';
+import { BOSS_FACE_RIM, BOSS_FACE_RIM_PATROL, BossFaceDefs, BossHeadFace, bossFaceRimArc } from './BossHeadFace';
 import { layoutMapFaces, type MapBossFace } from '../utils/sortieMapBosses';
 import { estimateTagTextWidth, mapTagLeadLine, nextOpenMapFace, pickMapFace, placeMapSpotTag, type MapTagPlace } from '../utils/mapFaceTag';
 import type { Stage } from '../data/campaign';
@@ -26,7 +26,7 @@ const U = 5;
 // ボスの顔: 直径 約20px(スマホ・社長 2026-11-14「ボスアイコンを少し大きく」16→20)。縁は細い暗い縁+外に一部欠けた細い弧と上の刻み(地図記号の細い線の文法)。
 // ステージ固定のボス=冷たい灰(琥珀=行った場所/NEXT と取り違えない)。徘徊の枠=暗い血の赤で、ゆっくり明滅する。
 const FACE_D = 20 * U, FACE_GAP = 2.5 * U, FACE_R = FACE_D / 2;
-const FACE_RIM = '#b9c2cc', FACE_RIM_PATROL = '#a3262b';
+const FACE_RIM = BOSS_FACE_RIM, FACE_RIM_PATROL = BOSS_FACE_RIM_PATROL;
 const RIM_R = FACE_R + 1.1 * U, TICK_L = 1.6 * U;
 // 顔をタップ(PC はクリック)した時の札=そのボスが居るステージの場所の名(ステージ一覧の見出し・今いる所の名と同じ locationTitle)。
 // 当たりは見た目より大きく(縦横 約32px 四方)。札はその場所(列)で1つに固定し、押した顔の上の刻みの先から細い引き線でつなぐ。
@@ -38,11 +38,8 @@ const FACE_RIM_OPEN = '#e6ecf2';
 const FACE_OPEN_SCALE = 1.15; // 開いた顔の拡大(index.css .ds-map-face-pop.is-open と揃える=引き線の根元を拡大後の刻みの先に置く)
 const TAG_OUT_MS = 140;
 const NO_FACES: readonly MapBossFace[] = [];
-// 外の弧: 右下を約70°欠く(角度は SVG の向き=右が0°・下回り)。
-const rimArc = (x: number, y: number): string => {
-  const a0 = (100 * Math.PI) / 180, a1 = (390 * Math.PI) / 180;
-  return `M${x + RIM_R * Math.cos(a0)},${y + RIM_R * Math.sin(a0)} A${RIM_R},${RIM_R} 0 1 1 ${x + RIM_R * Math.cos(a1)},${y + RIM_R * Math.sin(a1)}`;
-};
+// 外の弧: 右下を約70°欠く(共通部品 BossHeadFace の弧)。
+const rimArc = (x: number, y: number): string => bossFaceRimArc(x, y, RIM_R);
 // 出方の間(等間隔にしない): 地点ごとの間・地点の中の顔ごとの間。徘徊は全員の後に少し遅らせる。
 const SPOT_BASE_MS = 220, SPOT_STEP_MS = [0, 170, 300, 470, 580, 740, 860, 1010];
 const FACE_STEP_MS = [0, 60, 150, 260];
@@ -193,27 +190,11 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
         {/* ボスの顔(出会った・倒していない)。頭だけ丸く切り抜く=表(data/bossHeadCrops.ts)の頭の中心・半径で絵を置いて丸で切る。
             明るさは軽く持ち上げて揃える(暗い絵が地図に沈まない)。縁の内側にわずかな光。 */}
         {faceSpots.length > 0 && (
-          <defs>
-            <filter id={`${clipBase}-lift`} colorInterpolationFilters="sRGB">
-              <feComponentTransfer>
-                <feFuncR type="gamma" amplitude={1} exponent={0.8} offset={0} />
-                <feFuncG type="gamma" amplitude={1} exponent={0.8} offset={0} />
-                <feFuncB type="gamma" amplitude={1} exponent={0.8} offset={0} />
-              </feComponentTransfer>
-              <feComponentTransfer>
-                <feFuncR type="linear" slope={1.14} intercept={-0.04} />
-                <feFuncG type="linear" slope={1.14} intercept={-0.04} />
-                <feFuncB type="linear" slope={1.14} intercept={-0.04} />
-              </feComponentTransfer>
-            </filter>
+          <BossFaceDefs idBase={clipBase}>
             <filter id={`${clipBase}-tagbg`} x="-30%" y="-80%" width="160%" height="260%">
               <feGaussianBlur stdDeviation={2.4 * U} />
             </filter>
-            <radialGradient id={`${clipBase}-glow`}>
-              <stop offset="0.68" stopColor="#ffecd2" stopOpacity={0} />
-              <stop offset="1" stopColor="#ffecd2" stopOpacity={0.26} />
-            </radialGradient>
-          </defs>
+          </BossFaceDefs>
         )}
         {(() => {
           // 出る時刻: 地点ごとに間を空け(等間隔にしない)、徘徊はステージ固定の全員が出た後に少し遅らせる。
@@ -236,7 +217,6 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
                 {spot.faces.map(({ face, x, y }, fi) => {
                   const crop = BOSS_HEAD_CROPS[face.sprite];
                   if (!crop) return null;
-                  const k = FACE_R / (crop.r * crop.h);
                   const id = `${clipBase}-f${si}-${fi}`;
                   const rim = face.patrol ? FACE_RIM_PATROL : FACE_RIM;
                   const isOpen = openKey === face.key;
@@ -244,12 +224,7 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
                     <g key={face.key} className="ds-map-face" style={{ animationDelay: `${delayOf(fi)}ms` }}>
                      {/* 開いた顔は慣性つきで少し大きく(行き過ぎて戻る)、開いている間ほかの顔は沈める(index.css .ds-map-face-pop)。 */}
                      <g className={`ds-map-face-pop${isOpen ? ' is-open' : openKey ? ' is-dim' : ''}`} style={{ transformOrigin: `${x}px ${y}px` }}>
-                      <clipPath id={id}><circle cx={x} cy={y} r={FACE_R} /></clipPath>
-                      <circle cx={x} cy={y} r={FACE_R} fill="#14131a" />
-                      <image href={spritePath(face.sprite)} x={x - crop.u * crop.w * k} y={y - crop.v * crop.h * k}
-                        width={crop.w * k} height={crop.h * k} clipPath={`url(#${id})`} preserveAspectRatio="none" filter={`url(#${clipBase}-lift)`} />
-                      <circle cx={x} cy={y} r={FACE_R} fill={`url(#${clipBase}-glow)`} />
-                      <circle cx={x} cy={y} r={FACE_R} fill="none" stroke="rgba(7,6,13,0.9)" strokeWidth={2.2} vectorEffect="non-scaling-stroke" />
+                      <BossHeadFace idBase={clipBase} clipId={id} x={x} y={y} r={FACE_R} sprite={face.sprite} crop={crop} />
                       {/* 外の印: 一部欠けた細い弧+上の小さな刻み。徘徊は暗い血の赤でゆっくり明滅(NEXT の菱形と同じ加減速)。 */}
                       {/* 開いた顔は弧を太く・白寄りに。PC でカーソルを乗せた顔は弧を少し濃く(徘徊は明滅が勝つので変えない)。 */}
                       <g stroke={isOpen ? FACE_RIM_OPEN : rim} fill="none"

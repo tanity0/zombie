@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5604 — 一時停止の地図のボスの位置を顔のアイコンに【2026-11-16 15:54 JST】
+- 社長指示「プレイ中の一時停止メニューのマップに載ってるボス位置もボスアイコンにして」。作戦室の地図の顔の描画を共通部品 `components/BossHeadFace.tsx` に切り出し(DsStoryMap は置き換えのみ=撮って見た目不変を確認)、PauseMap で使う。mapSightings が出会った型(拳鬼の phantomUnique 含む)を覚え、`utils/pauseMapFaces.pauseMapFaceOf` で顔を引く(台帳に無い型=宿敵・一般の幻影・アクラシエル等は今の琥珀の菱形のまま)。直径約13.5px・徘徊(宇宙飛行群・亡霊・拳鬼)は血の赤で明滅・開いた時に1回浮き上がる。顔が自分の印に被る時だけ自分の白い角を上に描き直す。一時停止を開いた時に1回読む写し=毎フレームの購読なし。
+- 画: スマホ430×932・PC1280×720 の一時停止の地図、作戦室の地図(共通化後)を確認。テスト pauseMapFaces 5件+関連緑(worktree で単独)。typecheck・eslint(警告1=Fast Refresh)・循環import OK。既存の顔の文法の流用=クリエイティブ監査は付けない。自己点検: 憲法4条・5条に抵触なし。実装: Opusサブエージェント。
+
 ## v0.25.5603 — 弾薬ドロップの装備に「血の溜まり」【2026-11-16 15:50 JST】
 - 社長指示「弾薬ドロップアップの装備に、血も溜まりやすくなる効果を。」弾薬ドロップを持つ装備=accessory-ammo-1〜5(+10/15/20/25/30%)と武将の兜(+22%)に、同じ割合の新 stat `bloodGain`(叩き台)。aggregateEquipBonus→bloodGainMult、bloodAwaken.applyBloodGain の1か所で掛ける(近接・銃の両経路が通る)。表示は equipStatLabel の1行「血の溜まり +N%」(レベルアップ・商人・ゲームオーバー・拾った通知すべて)。守護霊/幻影は血を持たないので効きゼロ(弾薬ドロップと同じ扱い)。
 - テスト equipment・bloodAwaken(純関数/ストア)緑(worktree で単独)。typecheck・eslint OK。画で表示確認。自己点検: 憲法4条・5条に抵触なし。実装: Opusサブエージェント。

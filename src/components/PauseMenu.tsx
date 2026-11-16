@@ -9,7 +9,8 @@ import { subWeaponBlurb } from '../data/subWeaponBlurbs';
 import { formatTime } from '../utils/renderUtils';
 import { PauseBossRoster } from './PauseBossRoster'; // 出現したボスの一覧(社長指示2026-11-09)
 import { PauseMap, type PauseMapData } from './PauseMap'; // ★B2 一時停止の地図(research/THEONE_ROUND2.md §2)
-import { mapThreatPositions } from '../utils/mapSightings'; // §2-3 出会ったボス級・宿敵
+import { mapThreatSightings } from '../utils/mapSightings'; // §2-3 出会ったボス級・宿敵
+import { pauseMapFaceOf } from '../utils/pauseMapFaces'; // 脅威の印をボスの顔に(作戦室の地図と同じ頭の切り抜き)
 import { currentRoute } from '../utils/runRoutes'; // §2-6 今回歩いた道
 import { getRunPois, isPoiRevealed } from '../world/pois';
 import { getSelectedStageId } from '../data/progress';
@@ -53,7 +54,8 @@ const readPauseMap = (): PauseMapData | null => {
     // §2-3: ボス級(強個体を除く)と宿敵のうち、この出撃で一度画面に映った物。一覧に居れば今の位置、居なければ最後に見えていた位置
     // (社長指示2026-11-09「一度1プレイ内で出会ったボスはマップ上に表示し続けて」)。倒した物は出さない。
     // 城ボスの急降下の溜め(g-dive-windup)は場外へ座標を退避しているので、その間は最後の位置(縮尺も跳ぶ・品質監査 A-2)。
-    threats: mapThreatPositions(s.enemies),
+    // 顔の表(BOSS_HEAD_CROPS)に絵があるボスは顔で出す(社長指示2026-11-16「一時停止メニューのマップに載ってるボス位置もボスアイコンにして」)。無い物は今の菱形。
+    threats: mapThreatSightings(s.enemies).map(t => { const face = pauseMapFaceOf(t, getSelectedStageId()); return face ? { x: t.x, y: t.y, face } : { x: t.x, y: t.y }; }),
   };
 };
 

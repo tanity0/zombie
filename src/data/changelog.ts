@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5604', items: [
+    '一時停止の地図に出るボスの位置が、ボスの顔で出る',
+  ] },
   { version: '0.25.5603', items: [
     '弾薬が落ちやすくなる装備と武将の兜で、血も溜まりやすくなる',
   ] },

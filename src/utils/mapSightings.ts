@@ -26,16 +26,18 @@ const seen = new Set<string>();
  */
 const lastPos = new Map<string, { x: number; y: number }>();
 const defeated = new Set<string>();
+/** 出会った物の型(地図の顔=どのボスの絵を出すか・utils/pauseMapFaces.ts)。拳鬼は幻影の型の中の1人なので phantomUnique も覚える。 */
+const kindOf = new Map<string, { type: Enemy['type']; phantomUnique?: Enemy['phantomUnique'] }>();
 
 // 裏ボスは巣へ帰ると一覧から消え、次は新しいIDで出直す(検収前の品質監査 C-2)。出直しても「出会った」ままにするため型で覚える。
 const sightKey = (e: Pick<Enemy, 'id' | 'type'>): string => (isHiddenBoss(e.type) ? `type:${e.type}` : e.id);
 
-export const resetMapSightings = (): void => { seen.clear(); lastPos.clear(); defeated.clear(); };
+export const resetMapSightings = (): void => { seen.clear(); lastPos.clear(); defeated.clear(); kindOf.clear(); };
 
 export const wasSeenThisRun = (e: Pick<Enemy, 'id' | 'type'>): boolean => seen.has(sightKey(e));
 
 /** 画面に入っている対象の敵を「出会った」として記録する。新しく出会った数を返す(テスト用)。 */
-type Sighted = Tracked & Pick<Enemy, 'id' | 'type' | 'x' | 'y' | 'width' | 'height'> & Partial<Pick<Enemy, 'health' | 'aiPhase'>>;
+type Sighted = Tracked & Pick<Enemy, 'id' | 'type' | 'x' | 'y' | 'width' | 'height'> & Partial<Pick<Enemy, 'health' | 'aiPhase' | 'phantomUnique'>>;
 
 /** 出会った物の最後の位置・倒されたかを書き留める(城ボスの急降下の溜め=場外へ退避している間は位置を書かない)。 */
 const noteSighted = (e: Sighted, k: string): void => {
@@ -56,6 +58,7 @@ export const recordMapSightings = (
     if (!isMapTrackedEnemy(e)) continue;
     if (!isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, camera, viewport, zoom)) continue;
     seen.add(k);
+    kindOf.set(k, { type: e.type, ...(e.phantomUnique ? { phantomUnique: e.phantomUnique } : {}) });
     noteSighted(e, k);
     added++;
   }
@@ -66,18 +69,24 @@ export const recordMapSightings = (
  * 一時停止の地図に出す脅威の位置。この出撃で出会った物は、今も一覧に居れば今の位置、居なければ最後に見えていた位置
  * (社長指示2026-11-09「表示し続けて」)。倒した物は出さない。
  */
-export const mapThreatPositions = (enemies: readonly Sighted[]): { x: number; y: number }[] => {
+export const mapThreatPositions = (enemies: readonly Sighted[]): { x: number; y: number }[] =>
+  mapThreatSightings(enemies).map(t => ({ x: t.x, y: t.y }));
+
+/** mapThreatPositions と同じ物に、その物の型(+幻影の誰か)を添えたもの(地図にボスの顔を出すため)。 */
+export interface MapThreatSighting { x: number; y: number; type: Enemy['type']; phantomUnique?: Enemy['phantomUnique'] }
+export const mapThreatSightings = (enemies: readonly Sighted[]): MapThreatSighting[] => {
   const live = new Map<string, { x: number; y: number }>();
   for (const e of enemies) {
     const k = sightKey(e);
     if (!seen.has(k) || defeated.has(k) || !isMapTrackedEnemy(e) || e.aiPhase === 'g-dive-windup') continue;
     live.set(k, { x: e.x + e.width / 2, y: e.y + e.height / 2 });
   }
-  const out: { x: number; y: number }[] = [];
+  const out: MapThreatSighting[] = [];
   for (const k of seen) {
     if (defeated.has(k)) continue;
     const p = live.get(k) ?? lastPos.get(k);
-    if (p) out.push(p);
+    const kind = kindOf.get(k);
+    if (p && kind) out.push({ x: p.x, y: p.y, ...kind });
   }
   return out;
 };

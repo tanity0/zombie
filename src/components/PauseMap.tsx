@@ -1,5 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useHudScale, useHudLandscape } from './HudScale';
+import { BOSS_HEAD_CROPS } from '../data/bossHeadCrops';
+import type { PauseMapFace } from '../utils/pauseMapFaces';
+import { BOSS_FACE_RIM, BOSS_FACE_RIM_PATROL, BossFaceDefs, BossHeadFace, bossFaceRimArc } from './BossHeadFace';
 import { AREA_ZONE_NAMES, activeAreaThresholds, areaIndexForDist } from '../utils/enemyUtils';
 import { POI_SECTORS } from '../world/pois';
 
@@ -15,7 +18,7 @@ export interface PauseMapData {
   bases: { x: number; y: number; captured: boolean }[];
   pois: { x: number; y: number; kind: 'boss' | 'cave' | 'armory' | 'police' | 'hospital' | 'shrine' }[]; // 発見済みで、まだ取り終えていない所だけ(取り終えたら消す)
   route: readonly (readonly (readonly [number, number])[])[]; // §2-6 今回歩いた道(1.5秒ごとの自分の位置・素早い移動の所で線が切れる)
-  threats: { x: number; y: number }[]; // §2-3: この出撃で出会ったボス級(強個体を除く)・宿敵の今の位置
+  threats: { x: number; y: number; face?: PauseMapFace }[]; // §2-3: この出撃で出会ったボス級(強個体を除く)・宿敵の今の位置。face=顔の絵がある物(無ければ琥珀の菱形)
 }
 
 const SIZE = 300; // バッキングの高さ(縦持ちは正方形)。CSSで箱いっぱいに伸ばす。
@@ -26,16 +29,33 @@ const LANDSCAPE_ASPECT = 1.6;
 const AMBER = '#ffb340', AMBER_HI = '#ffd28a';
 const DETOUR = '#9fdcea'; // 寄り道の点(青白=琥珀の脅威・白の自分/拠点と色で分かれる)
 const GROUND = '#07060d'; // 地の色(--ds-bg と同じ)。記号の縁取りに使う
+// ボスの顔(作戦室の地図 DsStoryMap と同じ部品・文法): 直径 約13.5px(画面)=自分の白枠(約10px)より一回り大きく、地図の箱(110〜240px)の1割前後。
+// 単位はキャンバスの座標(300)に記号の太らせ m を掛けた物(箱が 225px 以上なら等倍=画面の 0.75倍)。縁の外に一部欠けた細い弧と上の刻み。
+const FACE_R = 9, FACE_RIM_GAP = 1.5, FACE_TICK = 2.1;
+const hasFace = (n: PauseMapData['threats'][number]): n is PauseMapData['threats'][number] & { face: PauseMapFace } => !!n.face && !!BOSS_HEAD_CROPS[n.face.sprite];
 
 export const PauseMap: React.FC<{ data: PauseMapData }> = ({ data }) => {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const [narrow, setNarrow] = useState(false);
+  const [mScale, setMScale] = useState<number | null>(null); // 記号の太らせ(箱の実寸を測ってから決まる=顔は測った後に出す)
+  const idBase = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const hudS = useHudScale();
   const landscape = useHudLandscape();
   const W = landscape ? Math.round(SIZE * LANDSCAPE_ASPECT) : SIZE; // バッキングの幅(縦持ちは SIZE=今どおり)
   const res = Math.min(3, Math.max(1, Math.ceil(hudS * (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1))));
   const dist = Math.hypot(data.player.x, data.player.y);
   const zone = areaIndexForDist(dist);
+  // 縮尺: 描く物(自分・拠点・寄り道・宿敵)の一番遠い物を含む次の輪が収まるまで。最低でも2本目の輪、最大で一番外の輪。
+  // (キャンバスと顔の重ね(SVG)が同じ縮尺を使う)
+  const k = useMemo(() => {
+    const AREA_THRESHOLDS = activeAreaThresholds();
+    const far = Math.max(dist, ...data.bases.map(b => Math.hypot(b.x, b.y)), ...data.pois.map(q => Math.hypot(q.x, q.y)), ...data.threats.map(n => Math.hypot(n.x, n.y)),
+      ...data.route.flat().map(p => Math.hypot(p[0], p[1]))); // 歩いた道の一番深い所も箱に入れる
+    const fit = AREA_THRESHOLDS.find(r => r > far * 1.04) ?? AREA_THRESHOLDS[AREA_THRESHOLDS.length - 1];
+    const outer = Math.max(AREA_THRESHOLDS[1], fit) * 1.06;
+    return (SIZE / 2 - 6) / outer;
+  }, [data, dist]);
+  const faces = useMemo(() => data.threats.filter(hasFace), [data]);
   useEffect(() => {
     const cv = ref.current; if (!cv) return;
     const ctx = cv.getContext('2d'); if (!ctx) return;
@@ -45,17 +65,12 @@ export const PauseMap: React.FC<{ data: PauseMapData }> = ({ data }) => {
     const CX = W / 2;   // 横の中心(縦持ちは C と同じ)
     const REACH = Math.max(CX, C); // 箱の外まで届く線の長さの基準(縦持ちは C と同じ)
     const AREA_THRESHOLDS = activeAreaThresholds(); // 境界の数字は写さず、今効いている輪を読む(enemyUtils の注記・検収品質監査 B-1)
-    // 縮尺: 描く物(自分・拠点・寄り道・宿敵)の一番遠い物を含む次の輪が収まるまで。最低でも2本目の輪、最大で一番外の輪。
-    const far = Math.max(dist, ...data.bases.map(b => Math.hypot(b.x, b.y)), ...data.pois.map(q => Math.hypot(q.x, q.y)), ...data.threats.map(n => Math.hypot(n.x, n.y)),
-      ...data.route.flat().map(p => Math.hypot(p[0], p[1]))); // 歩いた道の一番深い所も箱に入れる
-    const fit = AREA_THRESHOLDS.find(r => r > far * 1.04) ?? AREA_THRESHOLDS[AREA_THRESHOLDS.length - 1];
-    const outer = Math.max(AREA_THRESHOLDS[1], fit) * 1.06;
-    const k = (C - 6) / outer;
     // ★記号の大きさは「画面のpx」で下限を持つ(§2-3・品質監査 A-3 / クリエイティブ監査 #1)。キャンバスは 300 で描いて箱へ縮めるので、
     // 小さい箱(110px=0.37倍)では記号が2〜3pxまで潰れて見分けられなかった。縮む分だけ記号を太らせる(箱が 225px 以上なら等倍)。
     const shown = cv.clientHeight || SIZE * 0.5; // 縦持ちは正方形=幅と同じ
     setNarrow((cv.clientWidth || shown) < 150);
     const m = Math.max(1, (0.75 * SIZE) / shown);
+    setMScale(prev => (prev === m ? prev : m));
     const mx = (x: number) => CX + x * k, my = (y: number) => C + y * k;
     // 今居る帯の中をごく薄く塗る(どの帯に居るかが一目で読める)。
     const inner = zone > 0 ? AREA_THRESHOLDS[zone - 1] * k : 0;
@@ -143,6 +158,7 @@ export const PauseMap: React.FC<{ data: PauseMapData }> = ({ data }) => {
     ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(-2, -3.5); ctx.lineTo(-2, 3.5); ctx.closePath(); ctx.fill(); ctx.restore();
     // 出会ったボス級・宿敵=脅威。★自分より後に描く=ボス戦で近くに居る時に自分の記号の下へ潜らない(検収品質監査 A-2)。(琥珀の菱形・作戦室の脅威と同じ形=今の地図の記号をそのまま使う)。
     for (const n of data.threats) {
+      if (hasFace(n)) continue; // 顔の絵があるボスは上の重ね(SVG)で顔を描く
       const h = 3.5 * m;
       ctx.save(); ctx.translate(mx(n.x), my(n.y)); ctx.rotate(Math.PI / 4);
       const o = 1.2 * m; ctx.fillStyle = GROUND; ctx.fillRect(-h - o, -h - o, (h + o) * 2, (h + o) * 2);
@@ -151,7 +167,8 @@ export const PauseMap: React.FC<{ data: PauseMapData }> = ({ data }) => {
       const c = 1.3 * m; ctx.fillStyle = AMBER_HI; ctx.fillRect(-c, -c, c * 2, c * 2);
       ctx.restore();
     }
-  }, [data, res, zone, dist, W]);
+  }, [data, res, zone, dist, W, k]);
+  const fx = (x: number) => W / 2 + x * k, fy = (y: number) => SIZE / 2 + y * k;
   return (
     <div
       className="ds-map"
@@ -172,6 +189,47 @@ export const PauseMap: React.FC<{ data: PauseMapData }> = ({ data }) => {
       } as React.CSSProperties}
     >
       <canvas ref={ref} width={W * res} height={SIZE * res} aria-label="地図" />
+      {/* 出会ったボスの顔(作戦室の地図と同じ部品)。キャンバスと同じ座標・同じ伸ばし方で重ねる=自分の印より上(菱形と同じ重なり順)。
+          重なりは菱形と同じく描く順のまま(並べ替えない)。開いた時に1回だけ慣性つきで浮き上がる(.ds-map-face)。徘徊は血の赤の弧がゆっくり明滅。 */}
+      {mScale !== null && faces.length > 0 && (
+        <svg viewBox={`0 0 ${W} ${SIZE}`} preserveAspectRatio="none" aria-hidden="true"
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+          <BossFaceDefs idBase={idBase} />
+          {faces.map((n, i) => {
+            const crop = BOSS_HEAD_CROPS[n.face.sprite];
+            const x = fx(n.x), y = fy(n.y), r = FACE_R * mScale, rimR = r + FACE_RIM_GAP * mScale;
+            const sw = n.face.patrol ? 1.3 : 1;
+            return (
+              <g key={i} className="ds-map-face" style={{ animationDelay: `${120 + i * 70}ms` }}>
+                <BossHeadFace idBase={idBase} clipId={`${idBase}-f${i}`} x={x} y={y} r={r} sprite={n.face.sprite} crop={crop} />
+                <g stroke={n.face.patrol ? BOSS_FACE_RIM_PATROL : BOSS_FACE_RIM} fill="none" strokeOpacity={n.face.patrol ? 1 : 0.72}>
+                  <path d={bossFaceRimArc(x, y, rimR)} strokeWidth={sw} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
+                  <line x1={x} y1={y - rimR} x2={x} y2={y - rimR - FACE_TICK * mScale} strokeWidth={sw} vectorEffect="non-scaling-stroke" />
+                  {n.face.patrol && <animate attributeName="stroke-opacity" values="1;0.3;1" dur="2.6s" repeatCount="indefinite"
+                    calcMode="spline" keyTimes="0;0.5;1" keySplines="0.42 0 0.58 1;0.42 0 0.58 1" />}
+                </g>
+              </g>
+            );
+          })}
+          {/* 顔が自分の印に被った時だけ、自分の白い角を顔の上にもう一度描く(枠の中は抜かない=顔も透けて見える)。
+              キャンバスの自分の印と同じ形・同じ寸法。被っていなければ描かない(印の見え方は今どおり)。 */}
+          {(() => {
+            const px = fx(data.player.x), py = fy(data.player.y), m = mScale;
+            if (!faces.some(n => Math.hypot(fx(n.x) - px, fy(n.y) - py) < (FACE_R + FACE_RIM_GAP + 10) * m)) return null;
+            const dl = Math.hypot(data.player.dirX, data.player.dirY) || 1;
+            const ux = data.player.dirX / dl, uy = data.player.dirY / dl;
+            return (
+              <g>
+                <rect x={px - 6.5 * m} y={py - 6.5 * m} width={13 * m} height={13 * m} fill="none" stroke="rgba(7,6,13,0.85)" strokeWidth={2.6 * m} />
+                <rect x={px - 6.5 * m} y={py - 6.5 * m} width={13 * m} height={13 * m} fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth={m} />
+                <rect x={px - 2.5 * m} y={py - 2.5 * m} width={5 * m} height={5 * m} fill="#fff" />
+                <path d="M4,0 L-2,-3.5 L-2,3.5 Z" fill="#fff"
+                  transform={`translate(${px + ux * 9.5 * m} ${py + uy * 9.5 * m}) rotate(${(Math.atan2(uy, ux) * 180) / Math.PI}) scale(${m})`} />
+              </g>
+            );
+          })()}
+        </svg>
+      )}
       {/* 小さい箱(150px 未満)では「DEPTH —」を外して区域名だけ=2行に折れて上の3割を塞がない(検収クリエイティブ監査 #7) */}
       <span className="ds-map-tag" style={{ whiteSpace: 'nowrap' }}>{narrow ? '' : 'DEPTH — '}{AREA_ZONE_NAMES[zone] ?? ''}</span>
       {/* ★社長(2026-10-16 実機)「現在地をリザルトのところで表示してるみたいに『◯◯m』って表示。地図の4隅のどこかに」: 右下に原点からの距離(px=m・リザルトと同じ数え方)。 */}
