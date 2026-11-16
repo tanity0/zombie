@@ -275,7 +275,7 @@ import { SATELLITE_WEAPON_KEY } from '../utils/satelliteOrbit';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { escortPose, escortBarWant, escortDownDotAlpha, escortReviveLitTarget, ESCORT_SINK_FRAC, type EscortPose } from './escortVisual'; // 軍人の倒れる/起きる/体力の線の曲線(research/ESCORT_TARGETED.md §6・§7)
 import { JUN_ESCORT_INDEX } from '../data/junEscortLines'; // ステージ4のジュン(名簿外の印・research/JUN_ESCORT.md)
-import { JUN_ESCORT_ID, junCollapseView, junVanishAlpha, junCollapseMotion, medicFallShiftPx, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT, junTremble, junSinceLandMs, JUN_LIE_MS, junCameraZoomAt, JUN_PULL_MS } from '../utils/junEscort';
+import { JUN_ESCORT_ID, junCollapseView, junVanishAlpha, junCollapseMotion, medicFallFrameAt, MEDIC_FALL_FRAMES, junTremble, junSinceLandMs, JUN_LIE_MS, junCameraZoomAt, JUN_PULL_MS } from '../utils/junEscort';
 import { escortReviveProgress, isEscortDowned, isEscortSliding, ESCORT_REVIVE_HEAL_RATIO } from '../utils/escortHealth';
 import {
   SWORD_VISIBILITY_FADE_MS, swordAttackAngle, swordCompletionFrame, swordFadeInAlpha, swordFadeOutAlpha,
@@ -1662,14 +1662,14 @@ const SHOOTER_SHEET_BODY_MULT = 66 / 64;
 // ジュンの表示倍率の分母。旧4コマ(78×64)は体が64行ぴったり、新シートは66行のうち体が64行(上に2行の余白)
 // =体の行数で割って、差し替え前と同じ背丈に保つ。
 const MEDIC_BODY_TEX_H = 64;
-// ジュン(衛生兵)の倒れの3コマ(社長支給 v0.25.1799・80×64・右向き・下端=接地)。歩きシート(1コマ53×66)より一回り大きく描かれている
-// (頭の幅 歩き22px/倒れ24px・救急鞄 12.5px/14px の実測)ので、歩きと同じ縮尺に揃えるため 0.9 倍で描く。
+// ジュン(衛生兵)の倒れのシート10コマ(社長支給2026-11-17「ジュンの倒れるアニメーション差し替え」・540×66・1コマ54×66・右向き・下端=接地)。
+// 歩きシート(1コマ53×66・体64行)と同じ高さ・同じ描き込みの大きさ(頭の幅・救急鞄が同寸)=歩きと同じ表示倍率で描く(旧3コマの 0.9 倍は廃止)。
+// 1枚の同じ枠で描かれているので足元合わせ(横ずらし)も無い(0コマ目の足の中心は歩きの立ちコマと約1.5px差=実測)。
+// コマの選び方は utils/junEscort medicFallFrameAt(倒れの度合い 0..1 を10等分)。
 const MEDIC_FALL = 'npc/medic-fall';
-const MEDIC_FALL_TEX_SCALE = 0.9;
-// 倒れのコマの足元合わせ(テクスチャpx・向いている側へ+)は utils/junEscort の medicFallShiftPx(後ろ足の位置=下端6行の左端
-// 0=21/1=7/2=2 を揃える量の約3/4)。倒れの度合いに沿って連続で補間する=コマの段差で横に跳ばない。0コマ目の足元は歩きの立ちコマと一致(実測)。
-// 隊の中で倒れる時(escortPose の downK)のコマの切り替え。
-const MEDIC_DOWN_FRAME1_AT = 0.34;
+// 攻撃を受けた直後の「しゃがみ」(旧=倒れの0コマ目の片膝)と蹴りの溜めに使うコマ。新しいシートの0コマ目は立って構えた姿なので、
+// 背を丸めて膝を曲げた3コマ目を使う。
+const MEDIC_FALL_CROUCH_FRAME = 3;
 // ステージ4のジュンの変身(research/JUN_ESCORT.md): カメラの引き(倍率と ease-out の時定数)・聖堂を暗く落とす量・
 // 時間停止の中の雪の速さ(止めずにゆっくり)・紹介が明けるまでの上限。
 const JUN_TRANSFORM_PULL_ZOOM = 0.8;
@@ -1680,7 +1680,6 @@ const JUN_COLLAPSE_FOCUS_TAU_S = 0.5; // (場面の曲線が無い時の)ボス�
 const JUN_CASTLE_DARK_TINT_MIN = 0.42;
 const JUN_SNOW_TIME_SCALE = 0.4;
 const JUN_POST_TRANSFORM_MAX_MS = 8000;
-const MEDIC_DOWN_FRAME2_AT = 0.67;
 const ESCORT_KNIFE_READY = { scale: 1.05, ox: 0.26, oy: 0.06, r: 0 };
 // 進軍NPC8人の近接の振り2コマ(社長支給2026-10-11・768×66=48×16)。0..7=低く構えた姿(振りかぶり)・8..15=腕を振り上げた姿(振り抜き)。並びは soldierIndex 順。
 // ★ナイフの動きはプレイヤーと同じ(社長指摘2026-10-11「プレイヤーと同じ動きになってない。ナイフが逆に動いたり」):
@@ -32119,7 +32118,7 @@ export class PixiScene {
       if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.escortSprites.set(esc.id, sp); }
       // soldierIndex ごとのユニーク立ち絵(社長提供)。未提供のNPCは従来の shooter 素材へフォールバック。
       // チュートリアルの衛生兵(TUTORIAL_MEDIC_INDEX)=ジュン。2026-10-11 社長支給の歩きシート(6コマ)へ差し替え=軍人と同じ `${base}-walk` の経路。
-      // ステージ4のジュン(JUN_ESCORT_INDEX)も同じ衛生兵の絵(歩きシート+倒れの3コマ)。
+      // ステージ4のジュン(JUN_ESCORT_INDEX)も同じ衛生兵の絵(歩きシート+倒れの10コマのシート)。
       const isMedic = esc.soldierIndex === TUTORIAL_MEDIC_INDEX || esc.soldierIndex === JUN_ESCORT_INDEX;
       const base = isMedic
         ? 'npc/medic'
@@ -32147,9 +32146,10 @@ export class PixiScene {
       this.escortPoseById.set(esc.id, pose);
       // 社長支給の倒れる2コマ(2026-10-07): 0=崩れかけ/1=倒れた姿。倒れ込み(downK 0→1)・倒れ中・起き上がり(1→0)の
       // 途中を2コマで見せる(半分までは0コマ目)。この絵がある人は「腰まで沈める」代用を使わない。
-      // 衛生兵は倒れが3コマ(npc/medic-fall-0..2)=倒れ込み(downK 0→1)を3段で見せる(他の軍人は2コマ)。
-      const medicFall = base === 'npc/medic' && !!getTexture(`${MEDIC_FALL}-2`);
-      const downTex0 = medicFall ? getTexture(`${MEDIC_FALL}-0`) : getTexture(`${base}-down-0`);
+      // 衛生兵は倒れが10コマのシート(npc/medic-fall-0..9・社長支給2026-11-17)=倒れ込み(downK 0→1)を10段で見せる
+      // (起き上がりは downK 1→0 で逆再生)。他の軍人は2コマ。
+      const medicFall = base === 'npc/medic' && !!getTexture(`${MEDIC_FALL}-${MEDIC_FALL_FRAMES - 1}`);
+      const downTex0 = medicFall ? getTexture(`${MEDIC_FALL}-${MEDIC_FALL_CROUCH_FRAME}`) : getTexture(`${base}-down-0`);
       const downSheet = (medicFall || !!getTexture(`${base}-down-1`)) && pose.downK > 0.02;
       // 攻撃を受けた直後(倒れていない時)は倒れる絵の0コマ目=片膝のしゃがみ(社長指示2026-10-08)。
       const hitCrouch = !downSheet && pose.hitCrouch && !!downTex0;
@@ -32157,7 +32157,7 @@ export class PixiScene {
       const junMine = junDep && esc.id === JUN_ESCORT_ID ? junDep : null;
       const junView = junMine?.phase === 'collapsing' && junMine.collapseStartReal !== undefined
         ? junCollapseView(wallNow - junMine.collapseStartReal, ATTENTION_IN_MS) : null;
-      const junFallFrame = junMine?.phase === 'vanishing' ? 2 : (junView?.frame ?? -1);
+      const junFallFrame = junMine?.phase === 'vanishing' ? MEDIC_FALL_FRAMES - 1 : (junView?.frame ?? -1);
       const junAlpha = junMine?.phase === 'vanishing' ? junVanishAlpha(wallNow - (junMine.vanishStartReal ?? wallNow)) : 1;
       // 使う倒れのコマ(衛生兵のみ・-1=倒れの絵ではない)。足元合わせと縮尺に使う。
       let medicFallFrame = -1;
@@ -32174,8 +32174,8 @@ export class PixiScene {
           : (getTexture(`${base}-walk-${kickPhase === 'air' ? 2 : 6}`) ?? getTexture(`${base}-walk-0`)))
         : null;
       if (junFallFrame >= 0 && medicFall) medicFallFrame = junFallFrame;
-      else if (medicFall && !kickTex && (hitCrouch || downSheet)) medicFallFrame = hitCrouch ? 0 : pose.downK < MEDIC_DOWN_FRAME1_AT ? 0 : pose.downK < MEDIC_DOWN_FRAME2_AT ? 1 : 2;
-      else if (medicFall && kickTex && kickTex === downTex0) medicFallFrame = 0;
+      else if (medicFall && !kickTex && (hitCrouch || downSheet)) medicFallFrame = hitCrouch ? MEDIC_FALL_CROUCH_FRAME : medicFallFrameAt(pose.downK);
+      else if (medicFall && kickTex && kickTex === downTex0) medicFallFrame = MEDIC_FALL_CROUCH_FRAME;
       const tex = medicFallFrame >= 0 ? getTexture(`${MEDIC_FALL}-${medicFallFrame}`)
         : kickTex ? kickTex
         : hitCrouch ? downTex0
@@ -32290,7 +32290,7 @@ export class PixiScene {
         // 衛生兵はドット規格(78x64=横長キャンバス)のため contain-fit だと幅律速で小さくなる。
         // 高さ基準で他NPCと同じ表示高に揃える(社長指示v0.25.1825「大きさ揃えて」)。
         const sc = isMedic
-          ? (PixiScene.RESCUE_NPC_DISPLAY_H / MEDIC_BODY_TEX_H) * this.depthScale(esc.y) * (medicFallFrame >= 0 ? MEDIC_FALL_TEX_SCALE : 1)
+          ? (PixiScene.RESCUE_NPC_DISPLAY_H / MEDIC_BODY_TEX_H) * this.depthScale(esc.y)
           // NPC8人(index0..7)のみ0.8倍(社長指示v0.25.1858)。チュートリアル随行(100/101)は等倍。
           : this.humanNpcScale(tex.width, tex.height, esc.y) * (esc.soldierIndex < 8 ? NPC8_SCALE : 1) * sheetMult;
         sp.scale.set(sc * walkSqX * faceSign, sc * walkSqY);
@@ -32303,18 +32303,14 @@ export class PixiScene {
         sp.visible = sp.alpha > 0;
         escScale = sc;
       } else sp.visible = false;
-      // 倒れのコマの足元合わせ(衛生兵のみ・向いている側へ。位置だけ=歪みではない)。
-      // 足元合わせの量は倒れの度合いに沿って連続(コマの段差で跳ばない)。ジュンの変身の前の倒れは、膝が抜ける沈み・ふらつき・
-      // 倒れ込み・着地の跳ねも位置で足す(絵はそのまま=歪みではない・utils/junEscort junCollapseMotion)。
+      // 倒れのコマの位置(衛生兵のみ・位置だけ=歪みではない)。10コマのシートは同じ枠で描かれている=横ずらしの足元合わせは無い。
+      // ジュンの変身の前の倒れは、膝が抜ける沈み・ふらつき・倒れ込み・着地の跳ねを位置で足す(絵はそのまま=歪みではない・
+      // utils/junEscort junCollapseMotion)。
       let fallShiftX = 0, fallShiftY = 0;
       if (medicFallFrame >= 0 && escScale > 0) {
-        const shiftTex = junMine && junView ? medicFallShiftPx(junView.fallK, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT)
-          : junMine ? medicFallShiftPx(1, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT)
-          : hitCrouch || kickTex ? 0
-          : medicFallShiftPx(Math.max(0, Math.min(1, pose.downK)), MEDIC_DOWN_FRAME1_AT, MEDIC_DOWN_FRAME2_AT);
         const mot = junMine?.phase === 'collapsing' && junMine.collapseStartReal !== undefined
           ? junCollapseMotion(wallNow - junMine.collapseStartReal, ATTENTION_IN_MS) : { forward: 0, down: 0 };
-        fallShiftX = Math.round(faceSign * (shiftTex + mot.forward) * escScale);
+        fallShiftX = Math.round(faceSign * mot.forward * escScale);
         fallShiftY = Math.round(mot.down * escScale);
         // ③地面で痙攣する(research/JUN_ESCORT.md §5・位置だけ=歪みではない・整数px=ドットの列が揺らがない)。
         if (junMine && junMine.collapseStartReal !== undefined && (junMine.phase === 'collapsing' || junMine.phase === 'vanishing')) {

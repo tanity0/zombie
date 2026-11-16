@@ -289,7 +289,7 @@ export const JUN_TRANSFORM_CUT_AFTER_MS = 130;
  * (1行目の送り 1480ms+200 − ATTENTION_IN_MS 360)。ATTENTION_IN_MS は store にあるので定数で持ち、文言を変えたらテストが落ちる(junEscort.test)。
  */
 export const JUN_COLLAPSE_BEAT_MS = 1_320;
-/** ゆっくり倒れる尺(倒れの3コマを長く)。 */
+/** ゆっくり倒れる尺(倒れの10コマを長く)。 */
 export const JUN_FALL_MS = 1_800;
 /** 3行目「…見ないで…ください…」を着地からこれだけ後に出す(着地の跳ね JUN_FALL_BOUNCE_MS の直後)。 */
 export const JUN_TREMBLE_LINE_AFTER_LAND_MS = 200;
@@ -299,9 +299,27 @@ export const JUN_LIE_MS = JUN_TREMBLE_LINE_AFTER_LAND_MS + slowLineTypedMs(Array
 export const JUN_VANISH_MS = 320;
 /** アテンションのホールドが変身より先に明けないための余白。 */
 const JUN_HOLD_MARGIN_MS = 400;
-/** 倒れのコマの切り替え(fallK)。 */
+/**
+ * 倒れの位置の動き(junCollapseMotion)の区切り(fallK)。旧3コマの「0コマ目(かがみ)」「2コマ目の直前」の時刻で、
+ * 沈み・ふらつき・前への倒れ込みの位置の動きはこの区切りのまま(コマの選び方は medicFallFrameAt=10コマへ等分)。
+ */
 export const JUN_FALL_FRAME1_AT = 0.3;
 export const JUN_FALL_FRAME2_AT = 0.75;
+
+/**
+ * ジュン(衛生兵)の倒れのシート(社長支給2026-11-17「ジュンの倒れるアニメーション差し替え」・540×66・10コマ=1コマ54×66・
+ * 右向き・下端=接地)。0=ライフルを構えて立つ → 少しずつ崩れる → 8・9=地面に伏せた姿。
+ * 歩きシート(318×66・1コマ53)と同じ高さ・同じ縮尺・同じ足元で描かれている(下端の足の中心が歩きの立ちコマと約1.5pxの差)。
+ */
+export const MEDIC_FALL_FRAMES = 10;
+/**
+ * 倒れの度合い k(0..1)→ 倒れのシートのコマ(0..9)。10等分して順に送る(k=1 で最後の伏せたコマ)。
+ * 隊の中で倒れる/起き上がる(escortPose の downK・起き上がりは 1→0 で逆再生)と、ステージ4の変身の前の倒れ(fallK)が同じ答えを使う。
+ */
+export const medicFallFrameAt = (k: number): number => {
+  const c = Number.isFinite(k) ? Math.max(0, Math.min(1, k)) : 0;
+  return Math.min(MEDIC_FALL_FRAMES - 1, Math.floor(c * MEDIC_FALL_FRAMES));
+};
 
 /** 変身の時刻(アテンション開始からの実時間ms)。 */
 export const junTransformAtMs = (attnInMs: number): number => attnInMs + JUN_COLLAPSE_BEAT_MS + JUN_FALL_MS + JUN_LIE_MS;
@@ -312,8 +330,8 @@ export const junAttentionExtraHoldMs = (attnInMs: number, attnHoldMs: number): n
 export interface JunCollapseView {
   /** 倒れている度合い 0..1(重力=ease-in: ゆっくり崩れ始めて、地面へ向けて速くなる)。 */
   fallK: number;
-  /** 倒れのコマ(-1=まだ立っている=歩きシートの立ちコマ / 0..2=倒れの3コマ)。 */
-  frame: -1 | 0 | 1 | 2;
+  /** 倒れのコマ(-1=まだ立っている=歩きシートの立ちコマ / 0..9=倒れのシートの10コマ・medicFallFrameAt)。 */
+  frame: number;
   /** 地面に着いた(倒れ切った)。 */
   landed: boolean;
   /** 変身の時刻を過ぎた。 */
@@ -326,7 +344,7 @@ export const junCollapseView = (elapsedMs: number, attnInMs: number): JunCollaps
   if (t < 0) return { fallK: 0, frame: -1, landed: false, transformDue };
   const p = Math.min(1, t);
   const fallK = p * p;
-  const frame: 0 | 1 | 2 = fallK < JUN_FALL_FRAME1_AT ? 0 : fallK < JUN_FALL_FRAME2_AT ? 1 : 2;
+  const frame = medicFallFrameAt(fallK);
   return { fallK, frame, landed: t >= 1, transformDue };
 };
 /** 変身で消えていく体の透明度(1→0・ease-out=最初に大きく抜けて閃光に溶ける)。 */
@@ -437,18 +455,8 @@ export const junTremble = (sinceLandMs: number, durMs: number): { x: number; y: 
 export const junSinceLandMs = (elapsedMs: number, attnInMs: number): number =>
   elapsedMs - attnInMs - JUN_COLLAPSE_BEAT_MS - JUN_FALL_MS;
 
-/**
- * 倒れの絵の足元合わせ(テクスチャpx・向いている側へ+)を、倒れの度合い k に沿って**連続で**補間する(コマの段差で跳ばない)。
- * コマの頭(k1=1コマ目・k2=2コマ目に替わる所)で、そのコマの足元合わせ(後ろ足を揃える量)に届く。
- */
-export const MEDIC_FALL_SHIFT_PX: readonly [number, number, number] = [0, 10, 14];
-export const medicFallShiftPx = (k: number, k1: number, k2: number): number => {
-  const [s0, s1, s2] = MEDIC_FALL_SHIFT_PX;
-  const c = Math.max(0, Math.min(1, k));
-  if (c <= k1) return s0 + (s1 - s0) * (c / Math.max(1e-6, k1));
-  if (c <= k2) return s1 + (s2 - s1) * ((c - k1) / Math.max(1e-6, k2 - k1));
-  return s2;
-};
+// 旧3コマ(80×64・1枚ずつ切り抜き)はコマごとに足元の位置が違ったので medicFallShiftPx で横にずらして揃えていた。
+// 10コマのシート(社長支給2026-11-17)は1枚の同じ枠で描かれている=絵の中の位置そのものが動き。ずらさない(足元合わせは廃止)。
 
 // ---- 道筋(城・木・散布物の当たり箱を回り込む) ------------------------------------------------------------------
 /**

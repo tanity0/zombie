@@ -282,6 +282,9 @@ export const ESCORT_WALK_SHEETS: Readonly<Record<string, number>> = {
   'npc/edgar-walk': 8, 'npc/joseph-walk': 16, 'npc/elizabeth-walk': 8, 'npc/musashi-walk': 8, 'npc/muhammad-walk': 16,
   'npc/chen-walk': 8, 'npc/lauren-walk': 16, 'npc/phaser-walk': 8,
   'npc/medic-walk': 6, // 衛生兵ジュン(社長支給2026-10-11・318×66・1コマ53)
+  // 衛生兵ジュンの倒れ10コマ(社長支給2026-11-17「ジュンの倒れるアニメーション差し替え」・540×66・1コマ54・右向き・下端=接地)。
+  // 0=ライフルを構えて立つ → 8・9=地面に伏せた姿。コマの選び方は utils/junEscort medicFallFrameAt。
+  'npc/medic-fall': 10,
   'rescue/shooter-walk': 6, // ヘルメット兵(社長支給2026-10-11・342×66・1コマ57)
   // 歩きではないが同じ「等幅コマを切る」登録を使う: 進軍NPC8人の近接の振り2コマずつ(社長支給2026-10-11・768×66・1コマ48)。
   'npc/escort-swing': 16,
@@ -980,11 +983,10 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'npc/lauren-down', scaleMode: 'nearest' },
       { name: 'npc/phaser-down', scaleMode: 'nearest' },
       { name: 'npc/medic-walk', scaleMode: 'nearest' }, // 衛生兵ジュン(チュートリアル随行)の歩きシート6コマ(社長支給2026-10-11・旧4コマ medic-walk-0..3 から差し替え)
-      // 衛生兵ジュンの倒れ3コマ(社長支給v0.25.1799・80×64・右向き・下端=接地。2026-10-19 履歴から復元)。
+      // 衛生兵ジュンの倒れシート10コマ(社長支給2026-11-17「ジュンの倒れるアニメーション差し替え」・540×66・ESCORT_WALK_SHEETS で枠を切る)。
       // ステージ4の進軍NPCとして倒れる/起こされる時と、城ボスへの変身の前に倒れる時に使う(research/JUN_ESCORT.md)。
-      { name: 'npc/medic-fall-0', scaleMode: 'nearest' },
-      { name: 'npc/medic-fall-1', scaleMode: 'nearest' },
-      { name: 'npc/medic-fall-2', scaleMode: 'nearest' },
+      // 旧3コマ(medic-fall-0..2・80×64)は読まない(原盤として public/ に残す)。切ったコマは同じ名前 npc/medic-fall-0..9 で引ける。
+      { name: 'npc/medic-fall', scaleMode: 'nearest' },
       // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2)。フィル歩行3コマ+救護6コマ+倒れ兵士1枚
       // (受領2026-08-28。ドット等倍・下端=接地でトリム済み)。
       { name: 'npc/phill-walk-0', scaleMode: 'nearest' },

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5614', items: [
+    '衛生兵ジュンが倒れる動きが新しくなり、銃を構えた姿から崩れ落ちて地面に伏せるまで細かく動く',
+  ] },
   { version: '0.25.5613', items: [
     '資料室の鋏の記録が新しくなった',
   ] },

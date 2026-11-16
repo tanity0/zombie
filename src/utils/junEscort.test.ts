@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   junJoinsRun, junDepartDue, junDepartReady, stepJunWalk, junCastleRoute, junCollapseView, junTransformAtMs,
   junAttentionExtraHoldMs, junVanishAlpha, castleBossFootPoint, isJunEscort, junDepartLeadMs, junCompanionQuiet,
-  junFocusOk, worldToScreenYFrac, junRelocatePoint, junCollapseMotion, medicFallShiftPx,
+  junFocusOk, worldToScreenYFrac, junRelocatePoint, junCollapseMotion, medicFallFrameAt,
   junNextWaypoint, junReachableGoal, junTouchesRect, JUN_ARRIVE_TOUCH_DIST, type PathRect,
   JUN_DEPART_LEAD_MIN_MS, JUN_DEPART_LEAD_MAX_MS, JUN_DEPART_AFTER_RISE_MS, JUN_COLLAPSE_BEAT_MS, JUN_FALL_MS, JUN_VANISH_MS,
-  JUN_HOLD_LONG_CAP_MS, JUN_FOCUS_WAIT_MAX_MS, JUN_COMPANION_QUIET_BEFORE_MS, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT, MEDIC_FALL_SHIFT_PX,
+  JUN_HOLD_LONG_CAP_MS, JUN_FOCUS_WAIT_MAX_MS, JUN_COMPANION_QUIET_BEFORE_MS, JUN_FALL_FRAME1_AT, MEDIC_FALL_FRAMES,
   junFollowsPlayer, junFollowMachine, countsForBaseCapture, junNearOpenBase, junLeftBehindStep, junPseudoBase, JUN_BASE_ID,
   JUN_LEFT_BEHIND_PX, JUN_LEFT_BEHIND_REARM_PX,
   JUN_LIE_MS, JUN_FALL_BOUNCE_MS, junTremble, junSinceLandMs, junSceneLineAt, junCollapseDialogue, JUN_TREMBLE_LINE_AFTER_LAND_MS,
@@ -209,7 +209,7 @@ describe('junEscort: 倒れる→変身の時間割(時間停止の中)', () => 
     const extra = junAttentionExtraHoldMs(ATTENTION_IN_MS, ATTENTION_HOLD_MS);
     expect(ATTENTION_IN_MS + ATTENTION_HOLD_MS + extra).toBeGreaterThan(junTransformAtMs(ATTENTION_IN_MS));
   });
-  it('寄り切って一拍おいてから倒れ始め、3コマを順に・ゆっくり(1.5〜2秒)倒れる', () => {
+  it('寄り切って一拍おいてから倒れ始め、10コマを順に・ゆっくり(1.5〜2秒)倒れる', () => {
     expect(JUN_FALL_MS).toBeGreaterThanOrEqual(1500);
     expect(JUN_FALL_MS).toBeLessThanOrEqual(2000);
     expect(junCollapseView(ATTENTION_IN_MS + JUN_COLLAPSE_BEAT_MS - 1, ATTENTION_IN_MS).frame).toBe(-1);
@@ -221,7 +221,9 @@ describe('junEscort: 倒れる→変身の時間割(時間停止の中)', () => 
       prev = v.frame;
       seen.add(v.frame);
     }
-    expect([...seen].sort()).toEqual([0, 1, 2]);
+    expect([...seen].sort((a, b) => a - b)).toEqual(Array.from({ length: MEDIC_FALL_FRAMES }, (_, i) => i));
+    // 倒れ切った(着地)時は最後の伏せたコマ
+    expect(junCollapseView(ATTENTION_IN_MS + JUN_COLLAPSE_BEAT_MS + JUN_FALL_MS, ATTENTION_IN_MS).frame).toBe(MEDIC_FALL_FRAMES - 1);
   });
   it('倒れ始めは遅く、地面へ向けて速くなる(重力=慣性)', () => {
     const k = (ms: number) => junCollapseView(ATTENTION_IN_MS + JUN_COLLAPSE_BEAT_MS + ms, ATTENTION_IN_MS).fallK;
@@ -259,16 +261,25 @@ describe('junEscort: 倒れる→変身の時間割(時間停止の中)', () => 
     expect(at(JUN_FALL_MS + 400).forward).toBeCloseTo(0); // 止まる
     expect(at(JUN_FALL_MS + 400).down).toBe(0);
   });
-  it('倒れの絵の足元合わせは連続(コマの切り替えで段差が無い)', () => {
-    expect(medicFallShiftPx(0, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT)).toBe(MEDIC_FALL_SHIFT_PX[0]);
-    expect(medicFallShiftPx(JUN_FALL_FRAME1_AT, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT)).toBeCloseTo(MEDIC_FALL_SHIFT_PX[1]);
-    expect(medicFallShiftPx(1, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT)).toBe(MEDIC_FALL_SHIFT_PX[2]);
-    let prev = medicFallShiftPx(0, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT);
-    for (let k = 0.01; k <= 1; k += 0.01) {
-      const v = medicFallShiftPx(k, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT);
-      expect(v - prev).toBeLessThan(1); // 1%進むごとに1px未満=跳ばない
-      expect(v).toBeGreaterThanOrEqual(prev);
-      prev = v;
+  it('倒れのシート(社長支給2026-11-17・10コマ): 倒れの度合い 0..1 を10等分して 0..9 を順に送る', () => {
+    expect(MEDIC_FALL_FRAMES).toBe(10);
+    expect(medicFallFrameAt(0)).toBe(0);
+    expect(medicFallFrameAt(0.0999)).toBe(0);
+    expect(medicFallFrameAt(0.1)).toBe(1);
+    expect(medicFallFrameAt(0.55)).toBe(5);
+    expect(medicFallFrameAt(0.95)).toBe(9);
+    expect(medicFallFrameAt(1)).toBe(9);
+    // 範囲外・壊れた値はシートの外へ出ない
+    expect(medicFallFrameAt(-1)).toBe(0);
+    expect(medicFallFrameAt(2)).toBe(9);
+    expect(medicFallFrameAt(Number.NaN)).toBe(0);
+    // 単調(起き上がり=downK 1→0 はそのまま逆再生になる)・1段ずつ(コマを飛ばさない)
+    let prev = medicFallFrameAt(0);
+    for (let k = 0.001; k <= 1; k += 0.001) {
+      const f = medicFallFrameAt(k);
+      expect(f - prev).toBeGreaterThanOrEqual(0);
+      expect(f - prev).toBeLessThanOrEqual(1);
+      prev = f;
     }
   });
 });
