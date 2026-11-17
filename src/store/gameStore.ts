@@ -255,6 +255,7 @@ import {
 } from '../utils/escortHealth';
 import { escortAggroCandidates, escortBossHaters, escortInMotionView, hateEscortSource } from '../utils/escortView';
 import { JUN_ESCORT_INDEX, JUN_NAME } from '../data/junEscortLines';
+import { npcChatterAllowed, getNpcChatterEnabled } from '../utils/npcChatter'; // オプション「仲間の雑談」
 import { isJunEscort, JUN_ESCORT_ID, junJoinsRun, stepJunWalk, JUN_DEPART_WALK_DELAY_MS, junNextWaypoint, junReachableGoal, junTouchesRect, JUN_ARRIVE_TOUCH_DIST, junFollowsPlayer, junFollowMachine, countsForBaseCapture, junNearOpenBase, junLeftBehindStep, JUN_LEFT_BEHIND_CD_MS, JUN_BASE_ID, junPseudoBase } from '../utils/junEscort';
 // research/ESCORT_FOLLOW.md: 拠点を開けた軍人が、その担当区域の中だけついてくる(判定は utils の純関数)。
 import {
@@ -15433,6 +15434,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const text = escortSceneLine(esc.soldierIndex, scene);
     if (!text) return;
     const name = escortSceneName(esc.soldierIndex);
+    // オプション「仲間の雑談」OFF: 起こしてもらった時の一言は雑談として止める(倒れた/ボスの予告は情報なので出す)。
+    if (!npcChatterAllowed(scene, getNpcChatterEnabled(), name === JUN_NAME)) return;
     // 倒れた/起こしてもらった=一番大事な一言なので CD を通さず、キューの**先頭へ割り込ませる**(末尾だと囲まれ/称賛/並走の3本の後=最大10秒後
     // に出て、2秒で起こした後に「いってえ……」が流れる)。表示中の行は今の尺で畳ませ(通常の行間を挟んで)次に出す。
     if (scene === 'targeted') get().tryNpcLine(name, 'escortTargeted', text, ESCORT_TARGETED_CAT_CD_MS, id);
@@ -18255,6 +18258,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   tryNpcLine: (name, category, text, categoryCdMs, escortId) => {
     if (!text) return false; // 文言の無い場面=無言(ステージ4のジュンは表に無い場面の文言を持たない)
+    if (!npcChatterAllowed(category, getNpcChatterEnabled(), name === JUN_NAME)) return false; // オプション「仲間の雑談」OFF=雑談だけ止める(情報・物語は通す)
     const s = get();
     // ステージ4: 離脱の前の数十秒は、道中の「一緒にいる」の一言を出さない。
     if (category === 'companion' && name === JUN_NAME && s.junCompanionQuiet) return false;
@@ -27592,7 +27596,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         npcDialogueNextAt: 0,
         npcSpokeAt: {},
         npcCatAt: {},
-        npcDialogueQueue: sortieEsc && sortieSol
+        // オプション「仲間の雑談」OFF なら出撃時の一言は積まない(雑談)。
+        npcDialogueQueue: sortieEsc && sortieSol && npcChatterAllowed('sortie', getNpcChatterEnabled(), sortieSol.name === JUN_NAME)
           ? [{ name: sortieSol.name, text: pickNpcLine(rosterKey(sortieEsc.soldierIndex), 'sortie', sortieSol.sortie) }]
           : [],
         suppressionActive: state.pendingSuppression && !indoor && stageTheme !== 'lab',

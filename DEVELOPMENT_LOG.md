@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5627 — オプション「仲間の雑談」ON/OFF【2026-11-18 01:12 JST】
+
+- 社長指示「オプションで、進軍NPCの会話量(ストーリーに関係ない部分)を減らせる選択肢追加」→「進行に関係ない会話のon offでもいいかも？おすすめで」。ON/OFF の2択で実装(既定ON=従来どおり)。
+- 雑談(OFFで止める)= sortie / companion / baseNear / npcKill / praise / kickAssist / rescued / rescueReturned / revived。残す= surrounded / pushback / neglectFar / escortTargeted / downed / baseCaptured / retreat / 同行の返事 / ファストトラベル到着 / ジュン全般 / チュートリアル / 寄り道・祠の通信 / 物語の会話。
+- 判定は純関数 npcChatterAllowed(utils/npcChatter.ts・localStorage zombie:ui:npcChatter)。効く場所= tryNpcLine の先頭 / noteEscortScene の revived / 出撃時の sortie の積み込み。
+- UI: オプション画面「グラフィック」の下に「会話」枠+「仲間の雑談 ON/OFF」(BLOOM と同じ部品)。430×932 で撮影し目視確認。クリエイティブ監査は既存部品の行追加のみのため省略。
+- 変更: src/utils/npcChatter.ts(新規)/ npcChatter.test.ts(新規)/ src/store/gameStore.ts / src/components/MissionSelect.tsx。実装は opus サブエージェント。検証: typecheck・eslint・vitest。
+- 自己点検: 既定ONで挙動不変。憲法第4条・第5条に抵触しない。
+
 ## v0.25.5626 — EXエンディング第3節の文言修正【2026-11-17 22:03 JST】
 
 - 社長指示: 「その甲斐あって、フィル・ケスラーの状態には一時的な改善がみられた。」→「処置の結果、…」。
