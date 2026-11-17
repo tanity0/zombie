@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5622', items: [
+    'ムハンマド・チェン・ローレン・フェイザーが、同行を頼んだ時や置いていく時、拠点に着いた時にかける言葉が人柄に合ったものになった',
+  ] },
   { version: '0.25.5621', items: [
     '拠点を奪われた時の仲間の一言が、それぞれの人柄に合ったものになった',
   ] },
