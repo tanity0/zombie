@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5619', items: [
+    'スキャンセンサーの印を重ねて叩いた時の威力が控えめになった',
+  ] },
   { version: '0.25.5618', items: [
     '吸血の回復が控えめになった。倒した時の回復は半分ほどになり、覚醒の近接の回復も小さくなった',
     '格闘で当てた時の血の溜まり方がゆるやかになった',

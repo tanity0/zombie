@@ -58,13 +58,13 @@ describe('印の期限', () => {
 });
 
 describe('§4-2 近接の印の倍率は重ねの数で決まる(ナイフの段・Lvの区別は無い)', () => {
-  it('雑魚: 1重ね×1.6〜5重ね×7.2 / ボス級は雑魚の1.7倍 / 刀は近接の3.1/2.75倍 / 鞭は近接と同じ', () => {
+  it('雑魚: 1重ね×1.35〜5重ね×4.5 / ボス級は雑魚の1.4倍 / 刀は近接の3.1/2.75倍 / 鞭は近接と同じ', () => {
     const st = (n: number, b = false) => ({ ...(b ? boss(10) : mob(10)), scanStacks: n });
-    expect(scanMarkMeleeMult(st(1), 0, 'melee')).toBeCloseTo(1.6);
-    expect(scanMarkMeleeMult(st(5), 0, 'melee')).toBeCloseTo(7.2);
-    expect(scanMarkMeleeMult(st(5, true), 0, 'melee')).toBeCloseTo(7.2 * 1.7);
-    expect(scanMarkMeleeMult(st(3), 0, 'katana')).toBeCloseTo(4.0 * 3.1 / 2.75);
-    expect(scanMarkMeleeMult(st(2), 0, 'whip')).toBeCloseTo(2.8);
+    expect(scanMarkMeleeMult(st(1), 0, 'melee')).toBeCloseTo(1.35);
+    expect(scanMarkMeleeMult(st(5), 0, 'melee')).toBeCloseTo(4.5);
+    expect(scanMarkMeleeMult(st(5, true), 0, 'melee')).toBeCloseTo(4.5 * 1.4);
+    expect(scanMarkMeleeMult(st(3), 0, 'katana')).toBeCloseTo(2.7 * 3.1 / 2.75);
+    expect(scanMarkMeleeMult(st(2), 0, 'whip')).toBeCloseTo(2.0);
   });
   it('溜めるほど得(叩くと使い切るので、重ね1つあたりの上乗せが重ねるほど大きい)', () => {
     const st = (n: number, b = false) => ({ ...(b ? boss(10) : mob(10)), scanStacks: n });

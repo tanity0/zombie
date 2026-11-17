@@ -65,7 +65,7 @@ describe('§7-6 近接の倍率は段で変わらない(印付きの1振りは�
       prevMarked = marked;
     }
   });
-  it('ボス級(ボス式の会心を受ける型)は雑魚の1.7倍', () => {
+  it('ボス級(ボス式の会心を受ける型)は雑魚の1.4倍', () => {
     setup();
     now += 5000;
     const plain = swingDamage([enemyAt('hunter', 30, 0, 'h', false)], 'h');
@@ -73,7 +73,7 @@ describe('§7-6 近接の倍率は段で変わらない(印付きの1振りは�
     const marked = swingDamage([enemyAt('hunter', 30, 0, 'h', true)], 'h');
     expect(marked / plain).toBeCloseTo(M1 * SCAN_STACK_BOSS_RATIO, 5);
   });
-  it('5重ねで叩くと雑魚×7.2', () => {
+  it('5重ねで叩くと雑魚×4.5', () => {
     setup();
     now += 5000;
     const plain = swingDamage([enemyAt('zombie', 30, 0, 'z', false)], 'z');

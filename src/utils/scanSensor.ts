@@ -49,9 +49,11 @@ export const SCAN_STACK_MAX = 5;
 /**
  * 手動の近接の印の倍率(雑魚・重ねごと・叩くと使い切る)。ボス級はこれに SCAN_STACK_BOSS_RATIO、刀の一閃は SCAN_STACK_KATANA_RATIO を掛ける。
  * 溜めるほど得になるよう、重ね1つあたりの上乗せが重ねるほど大きくなる曲線(1重ねで叩き続けるより5重ねで叩く方が強い)。
+ * 社長指示2026-11-17「MAX溜めで通常30くらいのダメが300以上に跳ね上がる」→ 推薦案(曲線の形はそのまま・最大×4.5、ボス級の上乗せ1.4倍)を承認。
+ * 旧値(事実): 雑魚 [1, 1.6, 2.8, 4.0, 5.4, 7.2] / ボス級の比 1.7。
  */
-export const SCAN_STACK_MELEE_MOB_MULT = [1, 1.6, 2.8, 4.0, 5.4, 7.2] as const;
-export const SCAN_STACK_BOSS_RATIO = 1.7;
+export const SCAN_STACK_MELEE_MOB_MULT = [1, 1.35, 2.0, 2.7, 3.5, 4.5] as const;
+export const SCAN_STACK_BOSS_RATIO = 1.4;
 export const SCAN_STACK_KATANA_RATIO = 3.1 / 2.75;
 
 /**
