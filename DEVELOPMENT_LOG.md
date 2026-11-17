@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5623 — 蹴りの連携の一言(kickAssist)を追加+フェイザーの「起こしてもらった時」差し替え【2026-11-17 21:48 JST】
+
+- 社長指示「NPCが蹴った敵を3秒以内にKILLした場合のセリフ行を追加」。シート「セリフDB_量産用」dlg_000425〜432(scene kick_assist_kill)に社長の台詞を記入し、npcLines.ts へ cat kickAssist で写した。
+- 仕組み: 兵士の蹴り命中で敵に escortKickBy{escortId,soldierIndex,at} を記録(着地後も残る・蹴り直しで上書き)。プレイヤー起因の撃破で、蹴りから ESCORT_KICK_ASSIST_WINDOW_MS(3000)以内なら蹴った兵士が tryNpcLine で一言(1回の蹴りで1回)。判定は純関数 kickAssistShouldSpeak(utils/escortToss.ts)。
+- 対象の撃破経路: damageEnemy(hateSource=player かつ channel≠null)/triggerCounter/投擲スケボー/本人の分身/本人の刀・オート斬撃/鞭/ボム拾得。守護霊・犬・軍人の撃破は除外。場面ごとのCDは足さず、同一NPCのCD(既存)で間引く。
+- フェイザー revived「触るな。もう立てる」→「チッ……助かったぜ。借りは返す。」(シート dlg_000372 も更新)。
+- 変更: src/data/npcLines.ts / src/types/game.ts / src/utils/escortToss.ts / src/utils/escortKickAssist.test.ts(新規) / src/store/gameStore.ts / src/data/escortSceneLines.ts / src/utils/junEscort.test.ts。実装は opus サブエージェント。
+- 検証: typecheck・eslint(0 error)・vitest 関連4本 92件 pass。実機未確認(吹き出しは既存の経路のみ=新しい絵は無し)。
+- 自己点検: 撃破時のみ動く台詞の追加。憲法第4条・第5条に抵触しない。
+
 ## v0.25.5622 — シートで直された台詞を反映(13行)【2026-11-17 21:36 JST】
 - 社長がシート「セリフDB_量産用」で直した14行を、作業前の写しと dialogue_id で突き合わせて検出。ゲームで使う13行を npcLines.ts へ反映(dlg_000046 ムハンマド拠点接近/同行の返事8行 dlg_000387〜394/ファストトラベル到着4行 dlg_000399〜402)。dlg_000276(武蔵・未使用行)はゲームで使っていないのでコード変更なし。文言は社長の原稿のまま。
 - 確認: typecheck・eslint・vitest(followToggleLines ほか)。データのみ。

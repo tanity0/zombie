@@ -606,6 +606,14 @@ export type Direction = 'up' | 'down' | 'left' | 'right' | 'idle';
 // 'hero' = research/MUTANT_HERO.md §3-2: 英雄(変異・中立)。社長指示2026-10-17「(ボスにも英雄を)狙わせる」。
 export type HateSideKey = 'player' | 'ghost' | 'dog' | 'hero' | `escort:${string}`;
 
+/** 敵を蹴り飛ばした兵士の記録(兵士の蹴り飛ばし・research/ESCORT_TOSS.md)。時刻はゲーム時間。 */
+export interface EscortKickRecord {
+  escortId: string;
+  soldierIndex: number;
+  at: number;        // 蹴りの命中(滑り出し)の時刻
+  spoken?: boolean;  // この蹴りの一言をもう言った
+}
+
 export interface Enemy {
   id: string;
   x: number;
@@ -689,6 +697,9 @@ export interface Enemy {
   // free=気絶していなくても滑り切る(亡霊の指差し=research/WRAITH_MUTANT.md §11・着地しても気絶しない普通の雑魚)。
   escortToss?: { fromX: number; fromY: number; toX: number; toY: number; startAt: number; endAt: number; free?: boolean };
   escortTossLandedAt?: number; // 着地した時刻(ゲーム時間・描画の砂埃/バウンド/気絶の輪のポップの起点)
+  // 最後に蹴り飛ばした兵士と時刻(ゲーム時間)。着地で escortToss が消えても残す。蹴り直しで上書き。
+  // プレイヤーが窓(ESCORT_KICK_ASSIST_WINDOW_MS)の内に倒したら、その兵士が一言(utils/escortToss.kickAssistShouldSpeak)。
+  escortKickBy?: EscortKickRecord;
   /**
    * v0.25.2607(社長裁定): **押し道具(鞭・シールドバッシュ)による押し**の有効期限。
    * ボスは通常の殴り/弾では押されず、このフラグが立っている間だけ押される(updateEnemiesの

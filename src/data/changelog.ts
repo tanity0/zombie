@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5623', items: [
+    '仲間が蹴り飛ばしてきた敵をすぐに倒すと、蹴った仲間がひと声かけてくれる',
+    'フェイザーが起こしてもらった時の一言が変わった',
+  ] },
   { version: '0.25.5622', items: [
     'ムハンマド・チェン・ローレン・フェイザーが、同行を頼んだ時や置いていく時、拠点に着いた時にかける言葉が人柄に合ったものになった',
   ] },

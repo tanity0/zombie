@@ -2,7 +2,7 @@
 // 吹き飛んだ敵を近接するとクリティカル中と同じ扱いにする」)。
 // 兵士の会心で倒れずに気絶した敵を、プレイヤーの手前(近接が届く所)へ飛ばす。気絶は既存のまま=近接は既存のとどめ。
 // ここは判定と幾何の純関数だけ(store が呼ぶ・テストで固定する)。gameStore を import しない。
-import type { Enemy, EnemyType } from '../types/game';
+import type { Enemy, EnemyType, EscortKickRecord } from '../types/game';
 import { isBossType, isCorpse, isHangedman, isHordeFollower, resistsChipKnockback } from './enemyUtils';
 import { poiSectorIndex } from '../world/pois';
 
@@ -223,4 +223,21 @@ export const escortTossSlideDist = (gameTime: number, startAt: number, endAt: nu
   if (t < t1) { const u = t / t1; return (dist + os) * (1 - (1 - u) * (1 - u)); }
   const u = (t - t1) / (1 - t1);
   return dist + os - os * u * u * (3 - 2 * u);
+};
+
+// ---- 蹴りの連携の一言(兵士が蹴り飛ばした敵を、プレイヤーが窓の内に倒した時に、蹴った兵士が言う) ------------------------
+/** 蹴りの命中から、プレイヤーが倒せば「連携」と数える時間(ms・ゲーム時間)。 */
+export const ESCORT_KICK_ASSIST_WINDOW_MS = 3000;
+
+/**
+ * プレイヤーの撃破で、蹴った兵士が一言言うか。呼び手はプレイヤー起因の撃破だけを渡す(軍人・仲間の撃破は呼ばない)。
+ * record=倒された敵の escortKickBy / kickerAvailable=その兵士がまだ居て喋れる(倒れていない)か。
+ */
+export const kickAssistShouldSpeak = (
+  record: EscortKickRecord | undefined, gameTime: number, kickerAvailable: boolean,
+): boolean => {
+  if (!record || record.spoken) return false;
+  const dt = gameTime - record.at;
+  if (dt < 0 || dt > ESCORT_KICK_ASSIST_WINDOW_MS) return false;
+  return kickerAvailable;
 };

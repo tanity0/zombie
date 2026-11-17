@@ -5,7 +5,7 @@
 // 1要素=1バリアント。同一(idx, cat)に複数足してランダムに出す。バリアントがある(idx,cat)は
 // こちらを優先採用(=キャラ設定リライト反映)。無ければ呼び出し側の既存1文(BASE_SOLDIERS)へフォールバック。
 // idx=soldierIndex: edgar0 / joseph1 / elizabeth2 / musashi3 / oklahoma4 / chen5 / lauren6 / phaser7
-// cat: sortie / surrounded / rescued / pushback / baseNear / baseCaptured / neglectFar / companion / praise / rescueReturned / npcKill / retreat
+// cat: sortie / surrounded / rescued / pushback / baseNear / baseCaptured / neglectFar / companion / praise / rescueReturned / npcKill / retreat / kickAssist
 import { JUN_ESCORT_INDEX, pickJunLine } from './junEscortLines';
 
 export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = [
@@ -181,6 +181,15 @@ export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = 
   { idx: 5, cat: 'retreat', text: '……読み違えた。ここは捨てる。次の盤面で取り返すよ。' },           // dlg_000422
   { idx: 6, cat: 'retreat', text: 'ごめん、ここ持たない！いったん下がるね！' },                     // dlg_000423
   { idx: 7, cat: 'retreat', text: 'チッ、うじゃうじゃと……。退くぞ、遅れんな。' },                   // dlg_000424
+  // kick_assist (蹴り飛ばした敵をプレイヤーが3秒以内に倒した時=蹴った兵士が一言)
+  { idx: 0, cat: 'kickAssist', text: 'よく仕留めた！いい連携だ！' },                                 // dlg_000425
+  { idx: 1, cat: 'kickAssist', text: 'ナイスシュート！って、蹴ったの俺だけどな！' },                 // dlg_000426
+  { idx: 2, cat: 'kickAssist', text: 'お見事です。息が合ってきましたわね。' },                       // dlg_000427
+  { idx: 3, cat: 'kickAssist', text: '見事な追い討ち。息が合うな。' },                               // dlg_000428
+  { idx: 4, cat: 'kickAssist', text: '阿吽の呼吸です！お見事！' },                                   // dlg_000429
+  { idx: 5, cat: 'kickAssist', text: 'ふふ、狙い通りだ。君なら決めると思ったよ。' },                 // dlg_000430
+  { idx: 6, cat: 'kickAssist', text: 'やった！今の連携、すっごくよかった！' },                       // dlg_000431
+  { idx: 7, cat: 'kickAssist', text: 'へっ、いい反応じゃねえか。次も合わせろよ。' },                 // dlg_000432
 ];
 
 // (idx, cat) のバリアントからランダムに1つ返す。無ければ fallback(既存1文)。

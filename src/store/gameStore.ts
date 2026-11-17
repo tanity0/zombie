@@ -269,7 +269,7 @@ import { addHateDamage, escortHateSide, escortIdOfSide, isHateTrackedBossType, r
 import { stabilizeEscortFace } from '../utils/escortFace'; // 進軍NPCの向きのヒステリシス
 import {
   escortTossLanding, ESCORT_TOSS_MS, ESCORT_TOSS_NEVER, ESCORT_TOSS_STOP_PX, ESCORT_TOSS_CD_MS,
-  escortKickTargetOk, escortKickableState, ESCORT_KICK_MIN_DIST, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortKickerInPlayerSector, escortKickerBaseLiberated, escortKickAllowedOnStage, escortTossSlideDist, type EscortKick,
+  escortKickTargetOk, escortKickableState, ESCORT_KICK_MIN_DIST, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortKickerInPlayerSector, escortKickerBaseLiberated, escortKickAllowedOnStage, escortTossSlideDist, type EscortKick, kickAssistShouldSpeak,
   ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS,
 } from '../utils/escortToss'; // 兵士の蹴り飛ばし(research/ESCORT_TOSS.md v3.1)
 import { npcSfxDistGain } from '../utils/npcSfx';
@@ -1094,7 +1094,7 @@ const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s:
     if (next && next.aborted && (now >= next.landAt || !esc || escortBusyNow(esc, now))) next = null;
     if (next && !next.aborted && !next.hitDone && now >= next.hitAt && enemy) {
       next = { ...next, hitDone: true };
-      const slid = get().tossEnemyToPlayer(enemy.id);
+      const slid = get().tossEnemyToPlayer(enemy.id, esc ? { escortId: esc.id, soldierIndex: esc.soldierIndex } : undefined);
       const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
       if (slid) {
       // 命中(派手さの絵・判定なし): 会心と同じ音を兵士の会心と同じ距離減衰で+鞭の破裂音を低く。会心の金の輪と粒を蹴った向きへ。
@@ -1156,6 +1156,26 @@ const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s:
     // 割り当ての瞬間にナイフの構えを畳む(着いた瞬間に自動のナイフが出て、気絶中の敵を蹴る前に押さない・品質監査 A-2)。
     escorts: state.escorts.map(e => e.id !== pair.escort.id ? e : { ...e, knifeMode: false, knifeSwingAt: undefined, knifeHitDone: true }),
   }));
+};
+/**
+ * 蹴りの連携の一言: プレイヤー起因の撃破(呼び手が絞る=軍人・仲間・守護霊の撃破では呼ばない)のうち、兵士が蹴り飛ばしてから
+ * ESCORT_KICK_ASSIST_WINDOW_MS 以内の敵なら、蹴った兵士が一言(他の軍人の一言と同じ tryNpcLine=同一NPCのCD・詰まり止め・倒れている軍人は無言)。
+ * 場面ごとのCDは足さない(新しい調整値を作らない。蹴り自体の間隔 ESCORT_TOSS_CD_MS と同一NPCのCDで間引かれる)。1回の蹴りで1回だけ(spoken)。
+ */
+const noteKickAssistKills = (get: () => GameState, killed: readonly Enemy[]): void => {
+  for (const en of killed) {
+    const r = en.escortKickBy;
+    if (!r || r.spoken) continue;
+    const st = get();
+    const esc = st.escorts.find(e => e.id === r.escortId);
+    if (!kickAssistShouldSpeak(r, st.gameTime, !!esc && !isEscortDowned(esc))) continue;
+    if (!esc) continue;
+    // 死体として残った敵の記録に「言った」を付ける(この蹴りでは二度と言わない)。
+    if (st.enemies.some(e => e.id === en.id)) {
+      useGameStore.setState(s2 => ({ enemies: s2.enemies.map(e => e.id !== en.id || !e.escortKickBy ? e : { ...e, escortKickBy: { ...e.escortKickBy, spoken: true } }) }));
+    }
+    get().tryNpcLine(rosterEntry(esc.soldierIndex).name, 'kickAssist', pickNpcLine(esc.soldierIndex, 'kickAssist', ''), 0, esc.id);
+  }
 };
 /** 蹴りを割り当てられた兵士の位置・向き(各ルートの軍人の map が呼ぶ。撃たない・ナイフを振らない=呼び手はここで return する)。 */
 const escortKickOverride = (esc: EscortSoldier, k: EscortKick, now: number): EscortSoldier => {
@@ -9566,7 +9586,7 @@ interface GameState {
   // 格闘の気功の弾(描画用・store が進める)。
   brawlerKiko: BrawlerKiko[];
   // ★兵士の蹴り飛ばし v3.1(research/ESCORT_TOSS.md)。蹴りの命中で呼ぶ=気絶中の敵をプレイヤーの斜め前へ滑らせる。滑らせたら true。
-  tossEnemyToPlayer: (enemyId: string) => boolean;
+  tossEnemyToPlayer: (enemyId: string, kickedBy?: { escortId: string; soldierIndex: number }) => boolean; // kickedBy=蹴った兵士(連携の一言用に敵へ記録)
   // 被弾反撃の着地(命中)を解決する(ループが movePlayer の直後に呼ぶ)。待ちが無い/まだ着地前なら null。
   resolveRetaliateStrike: () => CounterTriggerResult | null;
   // Katana actions. performKatanaStrike cuts the given enemies with katana
@@ -11468,7 +11488,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 起こす条件(画面内・気絶・間隔・兵士)は呼び手の蹴りの制御(stepEscortKick)が持つ。ここは「滑らせてよいか」だけを見る:
   // 生きていて気絶中・死体でない・プレイヤーまで (着地の距離+24px) 以上(近すぎる時に後退させない)。着地点は escortTossLanding(写さない)。
   // 位置は敵の更新が escortToss を読んで動かす(ノックバックの欄は使わない=他の押しの飛距離を変えない)。
-  tossEnemyToPlayer: (enemyId) => {
+  tossEnemyToPlayer: (enemyId, kickedBy) => {
     const st = get();
     const e = st.enemies.find(en => en.id === enemyId);
     if (!e || !(e.health > 0) || isCorpse(e) || !(e.stunUntil !== undefined && st.gameTime < e.stunUntil)) return false;
@@ -11487,6 +11507,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           startAt: state.gameTime, endAt: state.gameTime + ESCORT_TOSS_MS,
         },
         escortTossLandedAt: undefined,
+        // 蹴った兵士と時刻(着地で escortToss が消えても残す・蹴り直しで上書き)。プレイヤーが窓の内に倒すと、その兵士が一言。
+        ...(kickedBy ? { escortKickBy: { escortId: kickedBy.escortId, soldierIndex: kickedBy.soldierIndex, at: state.gameTime } } : {}),
         // 既存のノックバックは今で打ち切る(飛行中に別の押しが混ざらない)。飛行中の押しは敵の更新が素通りさせる。
         knockbackUntil: (en.knockbackUntil ?? 0) > now ? now : en.knockbackUntil,
         knockbackVx: 0, knockbackVy: 0,
@@ -12025,6 +12047,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (hitAt.length > 0) recordDamageDealt('other', dealtSum);
     noteMasteryDirectHits(player, 'loadout', skMasteryHits); // 熟練度: loadout=貯まらない(台帳の形を揃えるため呼ぶ)
     if (killedList.length > 0) grantMeleeKillRewards(get, killedList, player, getActiveGun(player));
+    noteKickAssistKills(get, killedList.map(k => k.enemy)); // 蹴りの連携の一言(本人の投擲スケボー)
     get().spawnRing(x, y, 8, bashRange, 'rgba(190,242,100,0.62)', 4, 260);
     get().breakEggsInBlast(x, y, bashRange); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
     get().spawnBurst(x, y, '#bef264', 14);
@@ -13290,6 +13313,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // also DROPS an ammo box for the active gun's family — melee is the run's
     // main way to scavenge rounds, but you have to walk over the drop.
     grantMeleeKillRewards(get, killed, player, gun, false, undefined, true /* 縮地: 本人の近接 */);
+    noteKickAssistKills(get, killed.map(k => k.enemy)); // 蹴りの連携の一言(本人の近接・カウンター)
     {
       // B10 血の覚醒: 本人の近接(カウンター・縮地・処刑・被弾反撃もこの経路)。バッシュで当てた敵は浴びない。
       const bloodKills = killed.filter(k => !bashBloodExcludeIds.has(k.enemy.id)).map(k => k.enemy);
@@ -13612,6 +13636,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const c of critStunAt) get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
     // CRIT-UNIFY §9.4: 分身のクリで完全気絶が発動したら他の近接経路と同じ紫FX+STUN!コールアウト。
     grantMeleeKillRewards(get, killed, player, gun); // 分身=本人の近接ではない(縮地の窓は開かない)
+    if (!isGhost) noteKickAssistKills(get, killed.map(k => k.enemy)); // 蹴りの連携の一言(本人の分身のみ・守護霊の分身は除く)
     get().spawnSlash(ccx, ccy, 'rgba(226,232,240,0.95)');
     get().spawnRing(ccx, ccy, 6, 40, 'rgba(203,213,225,0.7)', 3, 240);
     // 除外1(演出)→v0.25.2582試験改定: 守護霊起因でも停止/スロー/寄りズームを出す(?ghostzoom=0で従来へ)。
@@ -14510,6 +14535,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 刀の一閃フィニッシュは「斬」コールアウトが主役なので、Kill! と既存の
     // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
     grantMeleeKillRewards(get, killed, player, gun, true, undefined, !ghostId && allowFinisher /* 縮地: 本人の一閃だけ(オート斬撃・守護霊の刀では開かない=社長裁定2026-10-01) */);
+    if (!ghostId) noteKickAssistKills(get, killed.map(k => k.enemy)); // 蹴りの連携の一言(本人の刀・オート斬撃。守護霊の刀は除く)
     // B10 血の覚醒: 浴びるのは**本人の一閃だけ**(縮地のワープ斬撃・被弾反撃の刀もここ)。オート斬撃・守護霊の刀は浴びない(縮地の窓と同じ線引き)。
     if (!ghostId && allowFinisher) grantMeleeBlood(get, killed.map(k => k.enemy), Math.max(0, katanaHitEnemyIds.length - killed.length));
     let katanaFinishFull = false; // 処刑が起きたか。揺れの finish 倍率はCD内でも掛ける(v0.25.4301)
@@ -14813,6 +14839,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
     grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE, true /* 縮地: 本人の近接 */);
+    noteKickAssistKills(get, killed.map(k => k.enemy)); // 蹴りの連携の一言(本人の鞭)
     grantMeleeBlood(get, killed.map(k => k.enemy), Math.max(0, whipHitEnemyIds.length - killed.length)); // B10 血の覚醒: 本人の鞭
     // スキル: 救難信号(§6.10 M33⑦: 鞭のヒットでも発動判定。基本近接/刀と同条件。アライの一撃は
     // 鞭の通常打撃基準=meleeBase×WHIP_DAMAGE_MULT を素通し)。
@@ -17979,6 +18006,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // コメント参照)。
     // research/SORTIE_MAP_BOSS_ICONS.md §4: 倒した記録(近接の補助と同じ判定=関数の中で対象外を落とす)。
     if (defeatedEnemy) noteBossDefeated(defeatedEnemy, getSelectedStageId());
+    // 蹴りの連携の一言: プレイヤー起因の撃破だけ(軍人の弾=channel null / 軍人の格闘=escort:<id> / 守護霊='ghost' / 犬='dog' は除く)。
+    if (defeatedEnemy && hateSourceIn === 'player' && damageChannel !== null) noteKickAssistKills(get, [defeatedEnemy as Enemy]);
     if (bossClearedType) {
       const allySnap = ghostAllySnapshot(findGhostAlly(get().summons));
       notifyBossClear(bossClearedType, getSelectedStageId(), allySnap);
@@ -23726,6 +23755,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           get().dropEnemyCurrency(enemy, ex, ey);
           get().dropEnemyXp(enemy, ex, ey, 'pickup-bomb');
         });
+        noteKickAssistKills(get, reachable); // 蹴りの連携の一言(プレイヤーが拾ったボムでの撃破)
         break;
       }
       case 'ammo-handgun':

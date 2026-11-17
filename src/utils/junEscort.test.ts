@@ -63,7 +63,7 @@ describe('junEscort: 台詞(設計書§2の表そのまま・表に無い場面�
   });
   it('他の軍人の台詞の引き方は変わらない', () => {
     expect(pickNpcLine(3, 'nonexistent-cat', 'fallback')).toBe('fallback');
-    expect(escortSceneLine(7, 'revived')).toBe('触るな。もう立てる');
+    expect(escortSceneLine(7, 'revived')).toBe('チッ……助かったぜ。借りは返す。');
   });
 });
 
