@@ -6,6 +6,7 @@ import { setBrawlerTempoAll } from '../utils/brawlerCombo';
 import { initialBrawlerState } from '../utils/brawler';
 import type { BrawlerStrikeOpts } from './gameStore';
 import type { SkillKey } from '../types/game';
+import { BLOOD_GAIN_BRAWLER_HIT, BLOOD_GAIN_MELEE_HIT } from '../utils/bloodAwaken';
 
 setBrawlerTempoAll(1.0);
 let now = 9_000_000;
@@ -103,20 +104,27 @@ describe('2. カウンターマスターの吹き飛ばしは格闘では締め�
 });
 
 describe('3. 吸血Lv3・英雄の回復: 秘奥義の中は1回', () => {
-  const healAfter = (move: 'secret' | 's1', hits: number): number => {
+  // stepMs=1発ごとに進める実時間(格闘の拳の吸血覚醒回復は 500ms に1回まで=社長指示2026-11-17)。
+  const healAfter = (move: 'secret' | 's1', hits: number, stepMs = 500): number => {
     setup(['vampire'], { vampire: 3 });
+    const ignite = now;
     useGameStore.setState(st => ({
       enemies: [bodyAt('zombie', 40, 0, 'z')],
-      player: { ...st.player, health: 30, brawler: { ...initialBrawlerState(), secret: { phase: 'strike', phaseAt: 0, hits: 0, nextAt: 0, igniteAt: now } } },
+      player: { ...st.player, health: 30, brawler: { ...initialBrawlerState(), secret: { phase: 'strike', phaseAt: 0, hits: 0, nextAt: 0, igniteAt: ignite } } },
     }));
-    for (let i = 0; i < hits; i++) useGameStore.getState().triggerCounter(undefined, strikeOpts('z', 0.3, move, { pressedAt: now + i }));
+    for (let i = 0; i < hits; i++) { useGameStore.getState().triggerCounter(undefined, strikeOpts('z', 0.3, move, { pressedAt: now })); now += stepMs; }
     return useGameStore.getState().player.health - 30;
   };
-  it('通常の段は当たるたび回復・秘奥義の9連撃は最初の1回だけ', () => {
+  it('通常の段は当たるたび回復(500ms 空ければ毎回)・秘奥義の9連撃は最初の1回だけ', () => {
     const one = healAfter('s1', 1);
     expect(one).toBeGreaterThan(0);
     expect(healAfter('s1', 3)).toBe(one * 3);
     expect(healAfter('secret', 3)).toBe(one);
+  });
+  it('格闘の拳: 500ms 以内の連打では吸血覚醒の回復は1回だけ', () => {
+    const one = healAfter('s1', 1);
+    expect(healAfter('s1', 3, 200)).toBe(one); // 0 / 200 / 400ms
+    expect(healAfter('s1', 4, 200)).toBe(one * 2); // 600ms の4発目で2回目
   });
 });
 
@@ -162,5 +170,20 @@ describe('5. タイムキーパー/オーバークロック: 技の値段', () =
     expect(pointsAfterStomp(['time-keeper'], { 'time-keeper': 1 })).toBe(4);
     expect(pointsAfterStomp(['overclock'], { overclock: 1 }, 0.05)).toBe(8);
     expect(pointsAfterStomp(['overclock'], { overclock: 1 }, 0.5)).toBe(3);
+  });
+});
+
+describe('血の覚醒: 格闘(拳)の命中だけは 0.2%・ナイフは 0.5%(社長指示2026-11-17)', () => {
+  const gainAfter = (brawler: boolean): number => {
+    setup([], {}, brawler);
+    useGameStore.setState(st => ({ enemies: [bodyAt('zombie', 40, 0, 'z')], player: { ...st.player, bloodMeter: 0, bloodLastGainAt: 0 } }));
+    if (brawler) useGameStore.getState().triggerCounter(undefined, strikeOpts('z', 0.3, 's1'));
+    else useGameStore.getState().triggerCounter(undefined, { targetId: 'z', mult: 1 });
+    expect(hpOf('z')).toBeGreaterThan(0); // 倒していない=命中だけ
+    return useGameStore.getState().player.bloodMeter ?? 0;
+  };
+  it('格闘の命中1発 = BLOOD_GAIN_BRAWLER_HIT / ナイフの命中1発 = BLOOD_GAIN_MELEE_HIT', () => {
+    expect(gainAfter(true)).toBeCloseTo(BLOOD_GAIN_BRAWLER_HIT, 6);
+    expect(gainAfter(false)).toBeCloseTo(BLOOD_GAIN_MELEE_HIT, 6);
   });
 });

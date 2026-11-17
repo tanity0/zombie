@@ -27,6 +27,14 @@ export const isBrawlerSecretMove = (move: BrawlerMoveKey | undefined): boolean =
 /** 当たった時の回復を出すか。秘奥義(9連撃と締め)の中は1回にまとめる=もう回復した秘奥義では出さない。通常の段・技・格闘以外は今どおり毎回。 */
 export const brawlerHitHealAllowed = (move: BrawlerMoveKey | undefined, secretHealed: boolean): boolean =>
   !(isBrawlerSecretMove(move) && secretHealed);
+/**
+ * 吸血の覚醒(Lv3)の「近接が当たるたび」の回復を、格闘の拳では実時間 500ms に1回までに絞る(社長指示2026-11-17「近接が当たるたび も下げて。推薦で」)。
+ * 格闘は手数が多く、1振り1回のままだと回復が速すぎるため。ナイフ・刀・鞭・分身は今どおり1振り1回(ここを通らない)。
+ */
+export const BRAWLER_VAMPIRE_HEAL_MIN_INTERVAL_MS = 500;
+/** 格闘の拳で吸血の覚醒の回復を出してよいか。lastAt=前に出した時刻(Date.now・null=このランでまだ出していない)。時計が戻った時は出す。 */
+export const brawlerVampireHealReady = (now: number, lastAt: number | null): boolean =>
+  lastAt === null || now < lastAt || now - lastAt >= BRAWLER_VAMPIRE_HEAL_MIN_INTERVAL_MS;
 
 // ---- 5. タイムキーパー / オーバークロック(格闘では技ポイントへ読み替え) ----
 /**

@@ -2073,8 +2073,9 @@ export const GOLD_RUSH_AWAKEN_SCRAP_MULT = 1.5;
 const INCENDIARY_SPREAD_PAD_PX = 4;
 // 延焼弾覚醒: 感染判定のスロットル打刻(gameTime基準。ランをまたいでも|差|で判定するので実害なし)。
 let burnSpreadLastAt = 0;
-// 吸血覚醒: 近接ヒット1スイングごとの回復(最大HP比)。★社長指示2026-10-14「覚醒時、近接で5%」(v0.25.5048・旧1%)。
-export const VAMPIRE_AWAKEN_MELEE_HEAL_FRAC = 0.05;
+// 吸血覚醒: 近接ヒット1スイングごとの回復(最大HP比)。★社長指示2026-11-17「近接が当たるたび も下げて。推薦で」: 5% → 2%
+// (事実として: v0.25.5048〜は 0.05・それ以前は 0.01)。格闘の拳はさらに実時間 500ms に1回まで(brawlerVampireHealReady)。
+export const VAMPIRE_AWAKEN_MELEE_HEAL_FRAC = 0.02;
 // ランナー覚醒: 加速中の被ダメージ20%軽減。「加速中」=速度ボーナスのランプが半分以上
 // 立ち上がっている間(叩き台。RAMP_FULL_MS=1.5秒の半分=同方向へ0.75秒走り続けた状態)。
 export const RUNNER_AWAKEN_DR_MULT = 0.8;
@@ -6996,10 +6997,10 @@ export const grantReaperDefeatRewards = (get: () => GameState, at: { x: number; 
  * B10 血の覚醒の加算(THEONE_ROUND2 §3-1)。**浴びるのは自分の手で近くで倒した時だけ**——分身・投擲スケボー・
  * シールドバッシュ・守護霊の刀は同じ `player` を渡してくる(関数の中では見分けられない)ので、
  * **本人の近接を振り終えた呼び手(カウンター/刀の一閃/鞭。縮地・処刑・被弾反撃もこの3関数を通る)だけ**が呼ぶ。
- * kills=浴びる対象のキル(距離=プレイヤー中心と敵中心)/ hitOnly=倒せなかった命中の数(+0.02ずつ)。
+ * kills=浴びる対象のキル(距離=プレイヤー中心と敵中心)/ hitOnly=倒せなかった命中の数(+0.005ずつ。brawler=格闘の拳なら +0.002ずつ・社長指示2026-11-17)。
  * 体力が低いほど器(満タン値)が小さい=自ずと早く満ちる(bloodCapacity)。覚醒中は加算しない(applyBloodGain が null)。満ちたら自動発動は useGameLoop。
  */
-export const grantMeleeBlood = (get: () => GameState, kills: Enemy[], hitOnly: number): void => {
+export const grantMeleeBlood = (get: () => GameState, kills: Enemy[], hitOnly: number, brawler = false): void => {
   if (kills.length === 0 && hitOnly <= 0) return;
   const st = get();
   const p = st.player;
@@ -7008,7 +7009,7 @@ export const grantMeleeBlood = (get: () => GameState, kills: Enemy[], hitOnly: n
   for (const e of kills) {
     gain += bloodGainFor({ kind: 'melee-kill', distPx: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy), sizeMul: bloodSizeMul(e.width, e.height) });
   }
-  if (hitOnly > 0) gain += hitOnly * bloodGainFor({ kind: 'melee-hit', distPx: 0 });
+  if (hitOnly > 0) gain += hitOnly * bloodGainFor({ kind: brawler ? 'brawler-hit' : 'melee-hit', distPx: 0 });
   const patch = applyBloodGain(p, gain, st.gameTime);
   if (patch) useGameStore.setState(s => ({ player: { ...s.player, ...patch } }));
 };
@@ -7463,9 +7464,15 @@ const applyVampireMeleeHeal = (
   hitEnemyIds: string[],
   fallbackX: number,
   fallbackY: number,
+  brawler = false,
 ) => {
   if (hitEnemyIds.length === 0) return;
   if (skillLevel(player, 'vampire') < 3) return;
+  if (brawler) { // 格闘の拳だけ: 実時間 500ms に1回まで(社長指示2026-11-17)
+    const nowMs = Date.now();
+    if (!BRS.brawlerVampireHealReady(nowMs, brawlerVampireHealLastAt)) return;
+    brawlerVampireHealLastAt = nowMs;
+  }
   const heal = Math.max(1, Math.round(get().player.maxHealth * VAMPIRE_AWAKEN_MELEE_HEAL_FRAC));
   if (get().player.health < get().player.maxHealth) notifySkillProcFor(player, 'vampire'); // 覚醒の近接回復(満タンでは出さない)
   useGameStore.setState(state => ({
@@ -7498,9 +7505,11 @@ const applyHeroMeleeHeal = (get: () => GameState, player: Player, hitEnemyIds: s
 /** 近接が当たった時の回復の合流点(英雄 → 吸血の覚醒の順)。近接4経路(素手/分身/刀/ムチ)がここを呼ぶ。 */
 /** 秘奥義(igniteAt で見分ける)の中で、当たった時の回復を出し終えたか(research/BRAWLER.md §15)。 */
 let brawlerSecretHealedKey: number | null = null;
-const applyMeleeHitHeals = (get: () => GameState, player: Player, hitEnemyIds: string[], fallbackX: number, fallbackY: number) => {
+/** 格闘の拳で吸血の覚醒の回復を最後に出した時刻(Date.now・null=このランでまだ)。resetGame で捨てる。 */
+let brawlerVampireHealLastAt: number | null = null;
+const applyMeleeHitHeals = (get: () => GameState, player: Player, hitEnemyIds: string[], fallbackX: number, fallbackY: number, brawler = false) => {
   applyHeroMeleeHeal(get, player, hitEnemyIds);
-  applyVampireMeleeHeal(get, player, hitEnemyIds, fallbackX, fallbackY);
+  applyVampireMeleeHeal(get, player, hitEnemyIds, fallbackX, fallbackY, brawler);
 };
 
 // スキル: リーパー(super) = 近接フィニッシュを決めた瞬間、その近接攻撃範囲(プレイヤー中心の
@@ -13282,7 +13291,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // B10 血の覚醒: 本人の近接(カウンター・縮地・処刑・被弾反撃もこの経路)。バッシュで当てた敵は浴びない。
       const bloodKills = killed.filter(k => !bashBloodExcludeIds.has(k.enemy.id)).map(k => k.enemy);
       const bloodHitIds = meleeHitEnemyIds.filter(id => !bashBloodExcludeIds.has(id));
-      grantMeleeBlood(get, bloodKills, Math.max(0, bloodHitIds.length - bloodKills.length));
+      grantMeleeBlood(get, bloodKills, Math.max(0, bloodHitIds.length - bloodKills.length), !!bs); // 格闘(bs=指定打撃)の命中だけは 0.2%(社長指示2026-11-17)
     }
     let finishFull = false; // 処刑が起きたか。揺れの finish 倍率はCD内でも掛ける(v0.25.4301 社長「CD中は画面揺れだけ入れて」。〜4300 はフル演出の回だけ)
     if (finisherHit || bossFinishHit) {
@@ -13345,7 +13354,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const hmove = bs?.combo?.move;
       const secKey = BRS.isBrawlerSecretMove(hmove) ? get().player.brawler?.secret?.igniteAt ?? null : null;
       if (secKey === null || BRS.brawlerHitHealAllowed(hmove, brawlerSecretHealedKey === secKey)) {
-        applyMeleeHitHeals(get, player, meleeHitEnemyIds, pcx, pcy);
+        applyMeleeHitHeals(get, player, meleeHitEnemyIds, pcx, pcy, !!bs);
         if (secKey !== null && meleeHitEnemyIds.length > 0) brawlerSecretHealedKey = secKey;
       }
     }
@@ -26683,6 +26692,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     shieldChargedKeys.clear(); // research/SHIELD_BLOCK.md §8: 継続技の「削った」記録を捨てる
     resetShieldBlockMastery(); // 熟練度: 盾の「同じ攻撃の続き」の記録を捨てる(utils/shieldMastery)
     brawlerBeamCuts.clear(); // 構えで中断させた光線の合図(research/BRAWLER.md §12-3d)も前ランへ持ち越さない
+    brawlerVampireHealLastAt = null; // 格闘の拳の吸血覚醒回復の間隔(500ms)も前ランへ持ち越さない
     impactQueue = []; impactLastFiredAt.clear(); // 揺れの整理: 前ランの未解決の命中・間隔を持ち越さない
     cutinShownThisRun.clear(); // 紹介カットインの既出はランごと(v0.25.4302)
     practiceAmmoLatch.clear(); practiceAmmoRecheckAt = 0; // 変異体対策室の弾の補給の確かめ済みも前ランへ持ち越さない

@@ -85,9 +85,11 @@ export const BLOOD_GUN_NEAR_PX = 90;
 export const BLOOD_GAIN_MELEE_KILL_NEAR = 0.03;
 export const BLOOD_GAIN_MELEE_KILL_FAR = 0.015;
 export const BLOOD_GAIN_MELEE_HIT = 0.005;
+/** 格闘(拳)の命中だけ(倒せなかった1発)の加算(社長指示2026-11-17: 格闘は手数が多いので 0.5% → 0.2%)。キルは近接と同じ。 */
+export const BLOOD_GAIN_BRAWLER_HIT = 0.002;
 export const BLOOD_GAIN_GUN_KILL_NEAR = 0.015;
 
-export type BloodGainKind = 'melee-kill' | 'melee-hit' | 'gun-kill';
+export type BloodGainKind = 'melee-kill' | 'melee-hit' | 'brawler-hit' | 'gun-kill';
 
 /** 大きさの倍率の基準(ゾンビの当たり判定の一辺・px)。 */
 export const BLOOD_SIZE_BASE_PX = 36;
@@ -108,7 +110,7 @@ const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /**
  * 1回の加算量(満タン体力を1とした絶対量)。表は §3-1。体力による補正は掛けない(器の大きさ=bloodCapacity が担う)。
- *  - 近接キル: 距離≤120px で +0.03 / それ以上 +0.015 / 近接ヒットのみ +0.005
+ *  - 近接キル: 距離≤120px で +0.03 / それ以上 +0.015 / 近接ヒットのみ +0.005(格闘=拳のヒットのみは +0.002)
  *  - 銃キル: 距離≤90px で +0.015 / それ以上 0
  * distPx は呼び手がプレイヤー中心と敵中心で測る(melee-hit では使わない)。
  */
@@ -116,8 +118,9 @@ export const bloodGainFor = (a: { kind: BloodGainKind; distPx: number; sizeMul?:
   let base = 0;
   if (a.kind === 'melee-kill') base = a.distPx <= BLOOD_MELEE_NEAR_PX ? BLOOD_GAIN_MELEE_KILL_NEAR : BLOOD_GAIN_MELEE_KILL_FAR;
   else if (a.kind === 'melee-hit') base = BLOOD_GAIN_MELEE_HIT;
+  else if (a.kind === 'brawler-hit') base = BLOOD_GAIN_BRAWLER_HIT;
   else if (a.kind === 'gun-kill') base = a.distPx <= BLOOD_GUN_NEAR_PX ? BLOOD_GAIN_GUN_KILL_NEAR : 0;
-  return a.kind === 'melee-hit' ? base : base * (a.sizeMul ?? 1);
+  return a.kind === 'melee-hit' || a.kind === 'brawler-hit' ? base : base * (a.sizeMul ?? 1);
 };
 
 /** 覚醒中か。 */

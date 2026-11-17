@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   stunnedFinishDamage, counterMasterBlowFires, BRAWLER_FINISHER_MOVES, brawlerHitHealAllowed, isBrawlerSecretMove,
+  brawlerVampireHealReady, BRAWLER_VAMPIRE_HEAL_MIN_INTERVAL_MS,
   brawlerTimeKeeperDiscount, brawlerOverclockRefunds, BRAWLER_OVERCLOCK_REFUND_CHANCE, brawlerJustWindowMs,
   brawlerSpeedDamageMult, brawlerHuntingComboStart, brawlerComboEnded,
 } from './brawlerSkills';
@@ -50,6 +51,13 @@ describe('3. 当たるたびの回復: 秘奥義の中だけ1回', () => {
     expect(brawlerHitHealAllowed('secret-land', true)).toBe(false);
     expect(brawlerHitHealAllowed('s1', true)).toBe(true);
     expect(brawlerHitHealAllowed(undefined, true)).toBe(true);
+  });
+  it('吸血の覚醒の回復(格闘の拳だけ): 500ms に1回まで・初回は出す・時計が戻ったら出す', () => {
+    expect(BRAWLER_VAMPIRE_HEAL_MIN_INTERVAL_MS).toBe(500);
+    expect(brawlerVampireHealReady(1000, null)).toBe(true);
+    expect(brawlerVampireHealReady(1499, 1000)).toBe(false);
+    expect(brawlerVampireHealReady(1500, 1000)).toBe(true);
+    expect(brawlerVampireHealReady(900, 1000)).toBe(true);
   });
 });
 

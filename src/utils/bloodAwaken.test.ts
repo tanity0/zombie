@@ -36,6 +36,7 @@ describe('bloodGainFor(表 §3-1)', () => {
   });
   it('近接ヒットのみ +0.005', () => {
     expect(bloodGainFor({ kind: 'melee-hit', distPx: 0 })).toBeCloseTo(0.005);
+    expect(bloodGainFor({ kind: 'brawler-hit', distPx: 0 })).toBeCloseTo(0.002); // 格闘(拳)の命中だけ(社長指示2026-11-17)
   });
   it('銃キル: 距離≤90px だけ +0.015 / それ以上は 0(境界は90を含む)', () => {
     expect(bloodGainFor({ kind: 'gun-kill', distPx: 90 })).toBeCloseTo(0.015);
@@ -52,6 +53,7 @@ describe('bloodGainFor(表 §3-1)', () => {
     expect(bloodGainFor({ kind: 'gun-kill', distPx: 0, sizeMul: 2 })).toBeCloseTo(0.03);
     expect(bloodGainFor({ kind: 'gun-kill', distPx: 500, sizeMul: 2 })).toBe(0); // 遠い銃キルは大きくても0
     expect(bloodGainFor({ kind: 'melee-hit', distPx: 0, sizeMul: 2 })).toBeCloseTo(0.005);
+    expect(bloodGainFor({ kind: 'brawler-hit', distPx: 0, sizeMul: 2 })).toBeCloseTo(0.002); // 格闘の命中だけも大きさを掛けない
   });
   it('加算は体力で変わらない(器の方が縮む)', () => {
     expect(bloodGainFor({ kind: 'melee-kill', distPx: 10 })).toBeCloseTo(0.03);
