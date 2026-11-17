@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5624', items: [
+    'サブクエストの文言を読みやすく直した(生存者の救助・紅き夜・研究施設)',
+  ] },
   { version: '0.25.5623', items: [
     '仲間が蹴り飛ばしてきた敵をすぐに倒すと、蹴った仲間がひと声かけてくれる',
     'フェイザーが起こしてもらった時の一言が変わった',
