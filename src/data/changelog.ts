@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5617', items: [
+    '各ステージの出撃前の説明と任務の報告、グレンとミラの依頼の会話が新しい文章になった',
+    '資料室の記録21件が読みやすい文章に書き直された',
+  ] },
   { version: '0.25.5616', items: [
     '資料室の衛生兵の記録が新しくなった',
   ] },
