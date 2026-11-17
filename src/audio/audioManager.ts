@@ -72,6 +72,8 @@ export type SfxKey =
   | 'ui-back'        // UI: 戻る/閉じる(ui-select を低く短く加工・v0.25.4234)
   | 'ui-move'        // UI: カーソル移動/タブ切替/トグル(高く短く小さく)
   | 'ui-deny'        // UI: 不可(資金不足/ロック/未解放。低い2連)
+  | 'comms-open'     // 会話(通信)の板が入る瞬間の「ピッ」(ui-move.mp3 を高く回して流用・社長指示2026-11-17)
+  | 'comms-open-static' // 同じ瞬間に重ねる「ザ」(event-start.mp3 の頭だけを速く・小さく)
   | 'mission-start'
   | 'title-start'
   | 'event-clear'
@@ -185,6 +187,11 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'ui-back': { src: `${import.meta.env.BASE_URL}audio/sfx/ui-back.mp3`, volume: 0.7, minIntervalMs: 50 },
   'ui-move': { src: `${import.meta.env.BASE_URL}audio/sfx/ui-move.mp3`, volume: 0.6, minIntervalMs: 40 },
   'ui-deny': { src: `${import.meta.env.BASE_URL}audio/sfx/ui-deny.mp3`, volume: 0.7, minIntervalMs: 120 },
+  // 会話(通信)の板が入る瞬間の「ピッ・ザ」(社長指示2026-11-17「中段くらいから箱ごと、フェードインさせる。一旦全部」)。
+  // 新しい素材は使わない。「ピッ」=プレイ中には鳴らないメニューの移動音 ui-move.mp3 を高く回す。
+  // 「ザ」=event-start.mp3 の頭70msだけを速く・小さく重ねる(頭だけなので元のジングルには聞こえない)。呼び手が2つを同時に鳴らす。
+  'comms-open': { src: `${import.meta.env.BASE_URL}audio/sfx/ui-move.mp3`, volume: 0.55, playbackRate: 1.25, minIntervalMs: 400 },
+  'comms-open-static': { src: `${import.meta.env.BASE_URL}audio/sfx/event-start.mp3`, volume: 0.25, playbackRate: 1.4, maxDurationMs: 70, fadeOutMs: 30, minIntervalMs: 400 },
   // キャラ選択を終えてミッション開始するときの音(社長提供SE)。
   'mission-start': {
     src: `${import.meta.env.BASE_URL}audio/sfx/mission-start.mp3`,

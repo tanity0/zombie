@@ -6,6 +6,7 @@ import {
   CHARACTER_CLASS_NAMES,
 } from '../store/gameStore';
 import { playRadioStatic } from '../audio/audioManager';
+import { CommsLine } from './commsMotion';
 
 // 登場時のセリフ(時間停止中に自動で文字が流れる)。VN風の下部ボックス。
 // 入力不要(オートタイプ→流れ終わると useGameLoop 側がゲームを再開)。
@@ -19,6 +20,13 @@ const IntroDialogue: React.FC = () => {
   const [, setTick] = useState(0);
   const rafRef = useRef<number | undefined>(undefined);
   const radioFiredAtRef = useRef<number>(-1); // この登場(startedAt)で無線SEを鳴らしたか
+  // 会話が終わった後も、箱が消えの動きを見せ切るまでは描く(社長指示2026-11-17「そもそも全部」)。押下は受けない。
+  const [prevActive, setPrevActive] = useState(active);
+  const [exiting, setExiting] = useState(false);
+  if (prevActive !== active) {
+    setPrevActive(active);
+    setExiting(!active);
+  }
 
   useEffect(() => {
     if (!active) return;
@@ -35,7 +43,7 @@ const IntroDialogue: React.FC = () => {
     };
   }, [active]);
 
-  if (!active || lines.length === 0) return null;
+  if ((!active && !exiting) || lines.length === 0) return null;
 
   // 1行ずつ切り替えて表示: 現在の行だけを出す(打ち終えたら次の行へ差し替わる)。
   const elapsed = Date.now() - startedAt;
@@ -97,23 +105,31 @@ const IntroDialogue: React.FC = () => {
   );
 
   // 無線SEの「間」: テキストは出さず、実際の無線ノイズ音を1回だけ鳴らす(ボックスは隠すがスキップは出す)。
-  if (line.speaker === '__radio__') {
-    if (radioFiredAtRef.current !== startedAt) {
-      radioFiredAtRef.current = startedAt;
-      playRadioStatic();
-    }
-    return (
-      <div className="pointer-events-auto absolute inset-0 z-40" onClick={onAdvance}>
-        {skipButton}
-      </div>
-    );
+  const isRadio = line.speaker === '__radio__';
+  if (active && isRadio && radioFiredAtRef.current !== startedAt) {
+    radioFiredAtRef.current = startedAt;
+    playRadioStatic();
   }
 
   const rendered = [{ speaker: line.speaker, text: line.text.slice(0, shown), typing: shown < line.text.length }];
 
   return (
-    <div className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center px-4" onClick={onAdvance}>
-      {skipButton}
+    // 会話が終わった直後(!active)は押下を素通しにして、箱が消え切るまでだけ残す(中身は CommsLine が最後の行を持っている)。
+    <div
+      className={`${active ? 'pointer-events-auto' : 'pointer-events-none'} absolute inset-0 z-40 flex items-center justify-center px-4`}
+      onClick={active ? onAdvance : undefined}
+    >
+      {active && skipButton}
+      {/* 入りと消え(社長指示2026-11-17「中段くらいから箱ごと、フェードインさせる」→「そもそも全部」): HUD の会話と同じ部品。
+          箱の定位置が画面の中段=中段から飛ばせないので、少し下からせり上がる。話者が替われば大きく、同じ話者が続けば静かなフェード。
+          音は既存の無線SEのまま(入りの音は重ねない)。無線の「間」は箱を消す(消えの動きのあと、次の行で入り直す)。 */}
+      <CommsLine
+        lineKey={!active || isRadio ? null : curIdx}
+        speaker={line.speaker ?? '通信'}
+        mode="rise"
+        className="w-full max-w-xl"
+        onGone={() => { if (!active) setExiting(false); }}
+      >
       <div
         className="flex min-h-[5rem] w-full max-w-xl items-center rounded-2xl border-2 border-cyan-300/40 bg-slate-950/90 px-6 py-6 shadow-2xl ring-1 ring-black/40 backdrop-blur-md"
         style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}
@@ -153,6 +169,7 @@ const IntroDialogue: React.FC = () => {
           );
         })}
       </div>
+      </CommsLine>
     </div>
   );
 };

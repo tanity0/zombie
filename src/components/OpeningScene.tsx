@@ -5,6 +5,7 @@ import { trackLoad } from '../utils/loadProgress';
 import { planRevivalGlitches, type ArenaTimes, type GlitchSegment, type HoldTool } from '../utils/openingGlitch';
 import { urlNum } from '../utils/urlNum';
 import OpeningGlitch from './OpeningGlitch';
+import { CommsLine } from './commsMotion';
 // パン!SEはWebAudio(playSfx)ではなくHTMLAudioで鳴らす(v0.25.2050):
 // 実機でアリーナ音源(HTMLAudio)は鳴るのにplaySfx経路のパン!だけ無音だったため、
 // 確実に鳴る同じ仕組みに統一(コンテキスト解錠・バッファ非同期の罠を回避)。
@@ -1062,15 +1063,20 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           <DreamMotes />
           {/* 歩き会話(v0.25.2129): 射撃シーンと同じ左上会話UI。立ち絵=通常行は【顔なし】(名前+台詞のみ)、
               stop行(さ、いこっか)のみシルエット(白反転で暗いピルに浮かせる)・社長指示v0.25.2135。 */}
+          {/* 入りと消え(社長指示2026-11-17「中段くらいから箱ごと、フェードインさせる」→「そもそも全部」): HUD の会話と同じ部品。
+              定位置が左上=中段から飛び込む。話者は全行「？？？」=同じ話者が1.5秒以内に続けば静かなフェード。音は鳴らさない(演出の音と重なる)。 */}
+          <CommsLine
+            lineKey={walkLine >= 0 && WALK_LINES[walkLine] ? walkLine : null}
+            speaker="？？？"
+            mode="fly"
+            className="absolute text-left"
+            style={{
+              top: 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
+              left: 'max(env(safe-area-inset-left), 18px)',
+              maxWidth: 'min(calc(66vw / var(--hud-s, 1)), 300px)', zIndex: 40,
+            }}
+          >
           {walkLine >= 0 && WALK_LINES[walkLine] && (
-            <div
-              className="absolute text-left"
-              style={{
-                top: 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
-                left: 'max(env(safe-area-inset-left), 18px)',
-                maxWidth: 'min(calc(66vw / var(--hud-s, 1)), 300px)', zIndex: 40,
-              }}
-            >
               <div
                 className="glass-pill flex items-stretch gap-1.5 py-1.5 pl-1.5 text-[13px] leading-snug"
                 style={{ paddingRight: 44, overflow: 'visible', textShadow: '0 1px 0 rgba(0,0,0,0.9)' }}
@@ -1092,8 +1098,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                   <span className="text-white/90">{WALK_LINES[walkLine].text}</span>
                 </div>
               </div>
-            </div>
           )}
+          </CommsLine>
         </div>
       )) : !mainReady ? null : phase < 3 ? (
         // ── アリーナ3アングル(即表示ハードカット・社長指示v0.25.2072)。key=アングル番号で
@@ -1391,26 +1397,35 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               willChange: 'opacity',
             }}
           />
+          {/* 入りと消え(社長指示2026-11-17「そもそも全部」): 字幕の定位置が画面の中段=中段から飛ばせないので、少し下からせり上がる。
+              話者が替われば大きく、同じ話者が続けば静かなフェード。音は鳴らさない(心拍と重なる)。旧: opsub 260ms のフェード。 */}
+          <CommsLine
+            lineKey={subIdx >= 0 ? subIdx : null}
+            speaker={subIdx >= 0 ? OPENING_REVIVAL_LINES[subIdx].speaker : ''}
+            mode="rise"
+            style={{ maxWidth: '90%' }}
+          >
           {subIdx >= 0 && (
             <div
               key={subIdx}
               style={{
-                maxWidth: '90%', textAlign: 'center',
+                textAlign: 'center',
                 color: 'rgba(255,255,255,0.92)',
                 fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif',
                 fontSize: 14, letterSpacing: '0.06em', lineHeight: 1.75,
                 textShadow: '0 1px 6px rgba(0,0,0,0.9)',
                 // 中盤〜終盤の1〜2行だけ、文字が一瞬ずれて滲む(?opglitch=1 は全行で繰り返す=撮影用)。
                 animation: glitchKnob
-                  ? 'opsub 260ms ease both, opg-sub 420ms linear 300ms infinite'
+                  ? 'opg-sub 420ms linear 300ms infinite'
                   : subGlitch
-                    ? `opsub 260ms ease both, opg-sub ${subGlitch.durMs}ms linear ${subGlitch.offsetMs}ms 1 none`
-                    : 'opsub 260ms ease both',
+                    ? `opg-sub ${subGlitch.durMs}ms linear ${subGlitch.offsetMs}ms 1 none`
+                    : undefined,
               }}
             >
               {OPENING_REVIVAL_LINES[subIdx].text}
             </div>
           )}
+          </CommsLine>
           {/* 終端の3秒フェードアウト(社長指示v0.25.2055): 黒を3秒かけて被せ、赤ビネットごと沈める。 */}
           {revFading && (
             <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, animation: 'opfade 3000ms linear both', pointerEvents: 'none' }} />

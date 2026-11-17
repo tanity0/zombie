@@ -4,6 +4,7 @@ import { CUTIN_SERIF_STACK } from '../config/font';
 import { ENDING_HEADER, ENDING_SCRIPT, ENDING_FINAL_WORD } from '../data/ending';
 import { setEndingBgm } from '../audio/audioManager';
 import { useGameStore } from '../store/gameStore';
+import { useCommsLineEntrance } from './commsMotionAnim';
 
 // 通常エンディング(社長編集稿v0.25.2191): 軍の聴取記録→「成し得なかった」+the/ONEが残って
 // 順番に消える(word相)→メニューへ。
@@ -145,6 +146,16 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
     el.style.transition = 'transform 460ms cubic-bezier(.2,.7,.2,1)';
     el.style.transform = 'translateY(0)';
   }, [lineIdx]);
+  // 新しい行の入り(社長指示2026-11-17「中段くらいから箱ごと、フェードインさせる」→「そもそも全部」): 台詞の箱と同じ部品。
+  // 新しい行の定位置は帯の下端=中段から落とすと上の古い行を跨ぐので、少し下からせり上がる。話者が替われば大きく、
+  // 同じ話者が続けば静かなフェード(旧: screen-in 220ms のフェード)。音は鳴らさない(BGM と重なる)。送り(タップ)は今どおり。
+  // 上の行の押し上げ(stackRef)はそのまま=全体の押し上げに新しい行のせり上がりが重なる。
+  useCommsLineEntrance(
+    () => stackRef.current?.lastElementChild as HTMLElement | null,
+    phase === 'script' ? lineIdx : null,
+    ENDING_SCRIPT[lineIdx]?.speaker ?? '',
+    { mode: 'rise' },
+  );
 
   return (
     <div
@@ -187,7 +198,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
                 {visibleLines.map((l, i) => (
                   <p
                     key={i}
-                    className="text-[15px] leading-relaxed text-white/90 screen-in"
+                    className="text-[15px] leading-relaxed text-white/90"
                     style={{ fontFamily: CUTIN_SERIF_STACK }}
                   >
                     <span className="mr-2 text-white/55">{l.speaker}</span>

@@ -10,6 +10,13 @@ import { nextSkillProcWake, skillProcAlive, skillProcLeaving, isTechProcKey, new
 import { BRAWLER_TECH_NAMES, type BrawlerTechDir } from '../data/brawlerTechNames';
 import type { SkillKey } from '../types/game';
 import { isFollowToggleLineText } from '../data/npcLines';
+import { playSfx } from '../audio/audioManager';
+import {
+  COMMS_ACCENT_MS, COMMS_COMPANION_FADE_MS,
+  commsEntranceKind, commsEntranceSound, commsEntranceTiming, commsRowsShift,
+  commsSpeakerKey, shouldHideCompanionOnEntrance, shouldPlayCommsEntrance,
+} from '../utils/commsEntrance';
+import { playCommsEntrance, playCommsExit } from './commsMotionAnim';
 
 // 話者名 → 立ち絵のベースパス(spritePathの`${base}-0`)+枠幅。セリフ表示時に上半身(バスト)を出す。
 // 用語(社長決定v0.25.1851): この左上のモデル付き吹き出し=**「会話」**。会話は必ずモデル入り
@@ -172,26 +179,41 @@ const PROC_RARITY_COLOR: Record<'normal' | 'rare' | 'super', string> = {
  * - 一時停止の間は動きも時計も止める(再開時に止めていた分だけ先送り)。
  * 購読は発動の時だけ変わる配列と一時停止の真偽だけ=毎フレーム描き直さない。描き直しは時刻の境目で1回ずつ。
  */
-const SkillProcRows = ({ align }: { align: number }) => {
+/** 行の段の位置が、行そのものの増減で変わった時の動き(会話の板の出入りの時は呼び手が渡す shift を使う)。 */
+const PROC_ROWS_SHIFT_DEFAULT = { ms: 300, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' };
+const SkillProcRows = ({ align, boxSig, boxShift }: { align: number; boxSig: string; boxShift: { ms: number; easing: string } }) => {
   const feed = useGameStore(s => s.skillProcFeed);
   const paused = useGameStore(s => s.isPaused || s.showUpgradeMenu);
   const [, wake] = useState(0);
   const pausedAtRef = useRef<number | null>(null);
-  // 会話の板が出る/消えると行の塊の位置が変わる=跳ばずに慣性つきで移る(前の位置から今の位置へ)。
+  // 会話の板が出る/消えると行の塊の位置が変わる=跳ばずに慣性つきで移る(前の位置から今の位置へ・FLIP)。
+  // 板の出入りで変わった時は板と同じ尺・曲線(入り=板の移動 / 消え=ease-in・社長指示2026-11-17の監査是正)、
+  // 行の増減で変わった時は今どおり 300ms。位置は「配置の位置」(動きの途中の transform を除いた位置)で覚え、
+  // 動きの途中で次の変化が来ても、今見えている位置から続けて動く(跳ばない)。
   const boxRef = useRef<HTMLDivElement | null>(null);
   const prevTopRef = useRef<number | null>(null);
+  const prevSigRef = useRef(boxSig);
+  const shiftAnimRef = useRef<Animation | null>(null);
   useLayoutEffect(() => {
     const el = boxRef.current;
+    const sigChanged = prevSigRef.current !== boxSig;
+    prevSigRef.current = boxSig;
     if (!el) { prevTopRef.current = null; return; }
-    const top = el.getBoundingClientRect().top;
+    const r = el.getBoundingClientRect();
+    const scale = el.offsetHeight > 0 && r.height > 0 ? r.height / el.offsetHeight : 1;
+    const tf = getComputedStyle(el).transform;
+    const cur = tf && tf !== 'none' ? new DOMMatrixReadOnly(tf).m42 : 0; // 動きの途中の縦のずれ(要素の座標)
+    const layoutTop = r.top - cur * scale;
     const prev = prevTopRef.current;
-    prevTopRef.current = top;
-    if (prev === null || Math.abs(prev - top) < 1) return;
-    el.style.transition = 'none';
-    el.style.transform = `translateY(${prev - top}px)`;
-    void el.offsetHeight; // 前の位置を一度描かせてから戻す
-    el.style.transition = 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)';
-    el.style.transform = 'translateY(0)';
+    prevTopRef.current = layoutTop;
+    if (prev === null || Math.abs(prev - layoutTop) < 1 || typeof el.animate !== 'function') return;
+    const from = (prev - layoutTop) / scale + cur; // 今見えている位置
+    const t = sigChanged ? boxShift : PROC_ROWS_SHIFT_DEFAULT;
+    shiftAnimRef.current?.cancel();
+    shiftAnimRef.current = el.animate(
+      [{ transform: `translateY(${from.toFixed(1)}px)` }, { transform: 'translateY(0px)' }],
+      { duration: t.ms, easing: t.easing },
+    );
   });
   useEffect(() => {
     if (paused) { if (pausedAtRef.current === null) pausedAtRef.current = Date.now(); return; }
@@ -311,6 +333,108 @@ export const NpcLinePill = ({ npc, phraseWrap }: { npc: NpcLine; phraseWrap?: bo
   );
 };
 
+/** PC のせり上がりで箱の左端に灯す縦線の色(会話の名前と同じ琥珀=amber-300)。 */
+const COMMS_ACCENT_AMBER = 'rgb(252, 211, 77)';
+
+/**
+ * 会話の板の「入り」と「消え」(社長指示2026-11-17「中段くらいから箱ごと、フェードインさせる。一旦全部」)。
+ * 入り方は utils/commsEntrance.commsEntranceKind で決める(会話の最初の1行だけ大きく動かし、続き・ゆっくり話す行は小さく)。
+ * - fly(スマホの最初の1行): 枠の中段・画面の中心寄りから斜めに定位置へ。速く出て減速し、着地で少し行き過ぎて戻る。
+ *   不透明度は移動とは別の時計で先に上がる。
+ * - rise(PC の横長の最初の1行): 定位置の少し下からせり上がる(中段から落とさない)。箱の左端に全高の縦線を白→琥珀で一度灯す。
+ * - fly / rise の間、スキル発動の行が入りの時点で無かった時だけ、行の包みを伏せて最後に現す(板より先に見せない)。
+ * - ゆっくり話す行(slow)も最初の1行なら fly / rise(尺だけ長い)。
+ * - continue(同じ話者が消えてすぐの行): 定位置の少し下から短く。fade(ゆっくり話す行の続き): 移動なしのフェードだけ。
+ * - 音は最初の1行だけ(立ち絵を差し替えた行は鳴らさない)。
+ * - 消え: leaving になったら上へ少し流れながら薄れ、消え切ったら onGone(呼び手が板を外す)。消え始める時刻は今どおり。
+ * 動きは Web Animations の transform/opacity だけ=React は毎フレーム描き直さない・レイアウトも動かさない。
+ * 出発点は描く前(useLayoutEffect)に定位置を測って決める=一瞬定位置に見えてから跳ぶことは無い。押下は今どおり素通し。
+ */
+/** 前の行が消えた時刻と、その行の話者(続きの行かどうかの判定に使う)。 */
+type CommsPrev = { hiddenAt: number; speaker: string | null };
+
+const CommsBox = ({ line, leaving, landscape, prevRef, companionRef, onGone, children }: {
+  line: NpcLine;
+  leaving: boolean;
+  landscape: boolean;
+  prevRef: React.RefObject<CommsPrev>;
+  companionRef: React.RefObject<HTMLDivElement | null>;
+  onGone: () => void;
+  children: React.ReactNode;
+}) => {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const accentRef = useRef<HTMLSpanElement | null>(null);
+  // 入りは作られた時の1度だけ(呼び手が入りごとに key を替えて作り直す)。行の中身は作られた時の物で決める。
+  const firstLineRef = useRef(line);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || typeof el.animate !== 'function') return;
+    const first = firstLineRef.current;
+    const anims0: Animation[] = [];
+    const prev = prevRef.current ?? { hiddenAt: -Infinity, speaker: null };
+    const kind = commsEntranceKind(performance.now() - prev.hiddenAt, prev.speaker, commsSpeakerKey(first), !!first.slow, landscape);
+    // ゆっくり話す行の最初の1行は同じ動きを長い尺で。
+    const { moveMs } = commsEntranceTiming(!!first.slow);
+    // スキル発動の行: 入りの時点で既に見えていれば伏せない。無い所から増える分だけ、板が寄り切るまで伏せて最後に現す。
+    const comp = companionRef.current;
+    if (comp && typeof comp.animate === 'function' && shouldHideCompanionOnEntrance(kind, comp.offsetHeight > 0)) {
+      anims0.push(comp.animate([
+        { opacity: 0, offset: 0 },
+        { opacity: 0, offset: (moveMs - COMMS_COMPANION_FADE_MS) / moveMs, easing: 'ease-out' },
+        { opacity: 1, offset: 1 },
+      ], { duration: moveMs }));
+    }
+    // 箱の動きは共通部品(commsMotion)。枠=HUD の入れ物(会話の置き場の基準)。
+    const anims: Animation[] = [
+      ...anims0,
+      ...playCommsEntrance(el, kind, { slow: !!first.slow, frameEl: el.parentElement?.offsetParent as HTMLElement | null }),
+    ];
+    if (kind === 'rise') {
+      const ac = accentRef.current;
+      if (ac && typeof ac.animate === 'function') {
+        // 板が定位置へ寄り切る頃に、立ち絵側の縁を一度灯す(白く点いて琥珀へ冷めながら消える)。
+        anims.push(ac.animate([
+          { opacity: 0, backgroundColor: '#ffffff', boxShadow: '0 0 6px rgba(255,255,255,0.9)' },
+          { opacity: 1, backgroundColor: '#ffffff', boxShadow: '0 0 6px rgba(255,255,255,0.9)', offset: 0.2 },
+          { opacity: 1, backgroundColor: COMMS_ACCENT_AMBER, boxShadow: `0 0 6px ${COMMS_ACCENT_AMBER}`, offset: 0.65 },
+          { opacity: 0, backgroundColor: COMMS_ACCENT_AMBER, boxShadow: `0 0 6px ${COMMS_ACCENT_AMBER}` },
+        ], { duration: COMMS_ACCENT_MS, delay: 160, easing: 'ease-out' }));
+      }
+    }
+    if (commsEntranceSound(kind, !!first.portrait)) {
+      // 「ピッ」に「ザ」を重ねる(2つとも既存素材の流用・audioManager の comms-open / comms-open-static)。
+      playSfx('comms-open');
+      playSfx('comms-open-static');
+    }
+    return () => { for (const a of anims) a.cancel(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 入りは作られた時の1度だけ
+  }, []);
+  const onGoneRef = useRef(onGone);
+  useLayoutEffect(() => { onGoneRef.current = onGone; });
+  useLayoutEffect(() => {
+    if (!leaving) return;
+    const el = ref.current;
+    if (!el || typeof el.animate !== 'function') { onGoneRef.current(); return; }
+    const a = playCommsExit(el);
+    if (!a) { onGoneRef.current(); return; }
+    a.onfinish = () => onGoneRef.current();
+    return () => { a.onfinish = null; a.cancel(); };
+  }, [leaving]);
+  return (
+    <div ref={ref} data-comms-entrance style={{ position: 'relative' }}>
+      {children}
+      {landscape && (
+        <span
+          ref={accentRef}
+          aria-hidden
+          // 板の上端から下端までの全高(スキル発動の行の左の短い印と見分ける)。
+          style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 2, borderRadius: 1, opacity: 0, pointerEvents: 'none' }}
+        />
+      )}
+    </div>
+  );
+};
+
 // NPCリアルタイムセリフのHUD表示(時間停止なし・軽量)。表示位置はアテンションバナーと同じ左上ゾーンで、
 // 優先度は「コンボ > アテンション > NPCセリフ」。コンボ/バナーの有無に応じて下へずらして重ならないようにする。
 // 毎フレーム再描画しないよう、狭いセレクタ(派生プリミティブ)で購読する。
@@ -322,11 +446,39 @@ export const NpcDialogue = () => {
   const bannerActive = useGameStore(s => !!s.eventBannerText && s.eventBannerUntil >= s.gameTime);
   const landscape = useHudLandscape();
   const hasProc = useGameStore(s => s.skillProcFeed.length > 0); // 会話が無くてもスキル発動は同じ位置に出す
-  if (!npc && !hasProc) return null;
+  // 入りの回数(社長指示2026-11-17)。板が消えている所から現れた時だけ増える=出たまま次の行へ替わる時は飛ばし直さず文字だけ替える。
+  // 前回の描画の値から決める(React の「前の描画の情報を保つ」型=effect を挟まず、同じ描画で入りが始まる)。
+  const shown = !!npc;
+  const [prevShown, setPrevShown] = useState(false);
+  const [entryKey, setEntryKey] = useState(0);
+  // 消え切るまで最後の行を残す(消えの動きの間だけ。消え始める時刻=store が行を外した時刻は今どおり)。
+  const [held, setHeld] = useState<NpcLine | null>(null);
+  if (shown !== prevShown) {
+    setPrevShown(shown);
+    if (shouldPlayCommsEntrance(prevShown, shown)) setEntryKey(k => k + 1);
+  }
+  if (npc && npc !== held) setHeld(npc);
+  // 前の行が消えた時刻と話者(続きの行かどうかの判定に使う)。一度も出ていない間は -Infinity / null=最初の行は必ず大きく入る。
+  const prevRef = useRef<CommsPrev>({ hiddenAt: -Infinity, speaker: null });
+  const lastLineRef = useRef<NpcLine | null>(null);
+  const wasShownRef = useRef(false);
+  useEffect(() => { if (npc) lastLineRef.current = npc; }, [npc]);
+  useEffect(() => {
+    if (wasShownRef.current && !shown) {
+      prevRef.current = { hiddenAt: performance.now(), speaker: lastLineRef.current ? commsSpeakerKey(lastLineRef.current) : null };
+    }
+    wasShownRef.current = shown;
+  }, [shown]);
+  const procWrapRef = useRef<HTMLDivElement | null>(null);
+  const line = npc ?? held;
+  if (!line && !hasProc) return null;
   const topPx = 132 + (comboActive ? 58 : 0) + (bannerActive ? 58 : 0);
-  const portraitBoxW = portraitOf(npc)?.boxW ?? 40;
+  const portraitBoxW = portraitOf(line)?.boxW ?? 40;
   // スキル発動の行の名前を会話の本文の列に揃える(板の左余白6+立ち絵の幅+隙間6+印2)。
   const procAlign = 6 + portraitBoxW + 6 + 2;
+  // 板の出入りの合図(スキル発動の行の段が、板の出入りで動いた時に板と同じ尺で動くため)。
+  const boxSig = line ? `box${entryKey}` : 'none';
+  const boxShift = commsRowsShift(!!line, !!line?.slow);
   return (
     <div
       data-phone-guard-skip // 会話は乱数で文言と長さが変わる=スマホの回帰チェック(scripts/phone-guard.mjs)の対象外
@@ -340,14 +492,27 @@ export const NpcDialogue = () => {
       } : {
         top: `calc(max(env(safe-area-inset-top), 8px) + ${topPx}px)`,
         left: 'max(env(safe-area-inset-left), 18px)',
-        transition: 'top 0.25s ease',
+        transition: 'top 300ms cubic-bezier(0.22, 1, 0.36, 1)', // 会話の入りと同じ曲線(社長指示2026-11-17の監査是正)
         maxWidth: 'min(calc(66vw / var(--hud-s, 1)), 300px)',
       }}
     >
       {/* PC の横長は会話が画面の一番下=下に置く場所が無いので、行は会話の上に積む(下揃えの入れ物の中で上へ伸びる=会話は動かない)。 */}
-      {landscape && <SkillProcRows align={procAlign} />}
-      {npc && <NpcLinePill npc={npc} />}
-      {!landscape && <SkillProcRows align={procAlign} />}
+      {/* 包みは配置を変えない(余白は中の行が持つ)。会話の入りで行が無い所から増える時だけ、この包みごと伏せて最後に現す。 */}
+      {landscape && <div ref={procWrapRef}><SkillProcRows align={procAlign} boxSig={boxSig} boxShift={boxShift} /></div>}
+      {line && (
+        <CommsBox
+          key={entryKey}
+          line={line}
+          leaving={!npc}
+          landscape={landscape}
+          prevRef={prevRef}
+          companionRef={procWrapRef}
+          onGone={() => setHeld(null)}
+        >
+          <NpcLinePill npc={line} />
+        </CommsBox>
+      )}
+      {!landscape && <div ref={procWrapRef}><SkillProcRows align={procAlign} boxSig={boxSig} boxShift={boxShift} /></div>}
     </div>
   );
 };
