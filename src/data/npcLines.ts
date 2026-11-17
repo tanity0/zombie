@@ -1,8 +1,11 @@
 // NPCセリフ 量産用DB(スプレッドシート「セリフDB_量産用」由来。dlg_id を memo に残す)。
+// ★NPCの台詞の正は Google スプレッドシート「NPCセリフ管理表」の「セリフDB_量産用」タブ1枚
+// (社長指示2026-11-17「セリフは一つのシートを見るのに統一したい」)。台詞を足す/直す時はシートを先に直し、ここへ写す。
+// gameStore の BASE_SOLDIERS は表に無い場面のフォールバックにすぎない(正ではない)。
 // 1要素=1バリアント。同一(idx, cat)に複数足してランダムに出す。バリアントがある(idx,cat)は
 // こちらを優先採用(=キャラ設定リライト反映)。無ければ呼び出し側の既存1文(BASE_SOLDIERS)へフォールバック。
 // idx=soldierIndex: edgar0 / joseph1 / elizabeth2 / musashi3 / oklahoma4 / chen5 / lauren6 / phaser7
-// cat: sortie / surrounded / rescued / pushback / baseNear / baseCaptured / neglectFar / companion / praise / rescueReturned / npcKill
+// cat: sortie / surrounded / rescued / pushback / baseNear / baseCaptured / neglectFar / companion / praise / rescueReturned / npcKill / retreat
 import { JUN_ESCORT_INDEX, pickJunLine } from './junEscortLines';
 
 export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = [
@@ -169,6 +172,15 @@ export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = 
   { idx: 7, cat: 'npcKill', text: 'チッ……邪魔だ。消えろ。' },                                      // dlg_000119
   { idx: 7, cat: 'npcKill', text: '一体潰した。こっちはまだ動ける。' },                             // dlg_000120
   { idx: 7, cat: 'npcKill', text: '俺の前に出たのが悪い。次だ。' },                                 // dlg_000121
+  // base_lost (拠点陥落=撤退。死亡ではない)
+  { idx: 0, cat: 'retreat', text: '拠点を放棄する。全員下がれ、立て直すぞ。' },                     // dlg_000417
+  { idx: 1, cat: 'retreat', text: 'やべえ、ここはもう無理だ！ずらかるぞ！' },                       // dlg_000418
+  { idx: 2, cat: 'retreat', text: '拠点を放棄します。負傷者を連れて、下がりますわ。' },             // dlg_000419
+  { idx: 3, cat: 'retreat', text: '無念。退く。' },                                                  // dlg_000420
+  { idx: 4, cat: 'retreat', text: '拠点、守り切れません！捲土重来、必ず取り返します！' },           // dlg_000421
+  { idx: 5, cat: 'retreat', text: '……読み違えた。ここは捨てる。次の盤面で取り返すよ。' },           // dlg_000422
+  { idx: 6, cat: 'retreat', text: 'ごめん、ここ持たない！いったん下がるね！' },                     // dlg_000423
+  { idx: 7, cat: 'retreat', text: 'チッ、うじゃうじゃと……。退くぞ、遅れんな。' },                   // dlg_000424
 ];
 
 // (idx, cat) のバリアントからランダムに1つ返す。無ければ fallback(既存1文)。

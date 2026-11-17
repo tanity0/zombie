@@ -1,7 +1,7 @@
 {
   "name": "zombie",
   "private": true,
-  "version": "0.25.5620",
+  "version": "0.25.5621",
   "type": "module",
   "scripts": {
     "dev": "vite",

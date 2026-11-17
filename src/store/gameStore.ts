@@ -1209,6 +1209,9 @@ const escortSceneName = (soldierIndex: number): string => rosterEntry(soldierInd
 // sortie=出撃時 / surrounded=敵に囲まれた時 / rescued=囲まれから助けてもらった時 / pushback=後退する時 /
 // baseNear=拠点が見えてきた時 / companion=並走時 / baseCaptured=拠点解放時 / neglectFar=遠方で放置(隣NPCのみ) /
 // npcKill=自分で倒した時 / opPrep=作戦準備が進んだ時 / praise=プレイヤー無双時(管理表準拠)。capture/retreat は既存。
+// ★台詞の正は Google スプレッドシート「NPCセリフ管理表」の「セリフDB_量産用」タブ(社長指示2026-11-17
+// 「セリフは一つのシートを見るのに統一したい」)。実際に出る台詞は src/data/npcLines.ts(シートの写し)から pickNpcLine で引き、
+// この BASE_SOLDIERS は表に無い場面のフォールバックにすぎない。
 /** ファストトラベルの明け(実時間ms)。この間は世界を止める。暗転(出)は ShopMenu 側の FAST_TRAVEL_DIM_MS。 */
 export const FAST_TRAVEL_REVEAL_MS = 600;
 // 「連れて歩く」の返事の連打止め(実時間ms・toggleEscortFollow だけが読み書き)。
@@ -26224,7 +26227,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().triggerAttention(f.x, f.y); // カメラがそこへ→撤退の吹き出しはこのアテンションと同時に出す
       const sol = soldierByIndex(f.soldierIndex); // 撤退時(拠点喪失)の軍人セリフ。死亡ではなく撤退。
       // 時間停止VNボックス廃止(社長指示v0.25.1876): 撤退セリフも通常会話(左上の通信=非停止)のキューへ。
-      if (sol) set(s2 => ({ npcDialogueQueue: [...s2.npcDialogueQueue, { name: sol.name, text: sol.retreat }] }));
+      if (sol) set(s2 => ({ npcDialogueQueue: [...s2.npcDialogueQueue, { name: sol.name, text: pickNpcLine(f.soldierIndex, 'retreat', sol.retreat) }] }));
       set({ eventBannerText: '拠点陥落', eventBannerUntil: now + 2200 });
     }
     // 全拠点制圧 → 達成。未制圧→全制圧に変わった瞬間だけ発火(毎フレ再発火しない/陥落で再武装)。
