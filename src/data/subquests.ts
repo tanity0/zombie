@@ -164,6 +164,6 @@ export const subquestShortLabel = (def: SubquestDef): string => {
     case 'wanted': return '宿敵討伐';
     case 'horde-kills': return '大量発生中に倒す';
     case 'rednight-kills': return '紅き夜に倒す';
-    case 'hunter-survive': return '監視者生存(秒)';
+    case 'hunter-survive': return '監視者追跡中';
   }
 };

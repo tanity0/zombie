@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5625', items: [
+    '監視者のサブクエストのプレイ中表示を「監視者追跡中」に変更',
+  ] },
   { version: '0.25.5624', items: [
     'サブクエストの文言を読みやすく直した(生存者の救助・紅き夜・研究施設)',
   ] },
