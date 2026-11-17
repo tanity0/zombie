@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5626', items: [
+    'EXエンディングの文章を一部修正',
+  ] },
   { version: '0.25.5625', items: [
     '監視者のサブクエストのプレイ中表示を「監視者追跡中」に変更',
   ] },
