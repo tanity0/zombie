@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5634', items: [
+    'EXステージをクリアした後の記録を新しい内容に差し替えた',
+    'これまでの最終調査記録は、EXクリアで資料室に追加される',
+  ] },
   { version: '0.25.5633', items: [
     '資料室「PHILL適合成功例」の本文を書き直した',
   ] },

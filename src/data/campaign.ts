@@ -521,6 +521,8 @@ export const STAGES: Stage[] = [
         '未確認変異体を排除した。',
         '発生原因は特定できていない。',
       ],
+      // 旧EXエンディング本文を資料室へ移設(社長指示2026-11-18)=EXクリアで解放。
+      unlockedRecordIds: ['investigation_18_final_report'],
     },
   },
   {
