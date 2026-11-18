@@ -60,6 +60,9 @@ interface CctvReplayProps {
   onDone: () => void;
 }
 
+/** 出てからこれだけは飛ばしを受け付けない(前の画面を閉じた入力の持ち越し対策)。 */
+const CCTV_SKIP_ARM_MS = 1000;
+
 const CctvReplay: React.FC<CctvReplayProps> = ({ onDone }) => {
   const noise = useMemo(makeNoiseSheet, []);
   const [cam, setCam] = useState<number | null>(null); // null=まだ何も映っていない(読み込み中)
@@ -108,8 +111,18 @@ const CctvReplay: React.FC<CctvReplayProps> = ({ onDone }) => {
 
   const onSceneEnd = useCallback(() => powerOff(false), [powerOff]);
 
+  // 飛ばしの受付は出てから少し後(社長報告2026-11-18「一瞬で終わっちゃって写らない」): 前の記録画面を閉じたタップ
+  // (pointerup)の直後に、同じ指の click がこの画面へ届いて即プツンになっていた。押し始めがこの画面の上で、かつ受付後のものだけ数える。
+  const armedRef = useRef(false);
+  const downInsideRef = useRef(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => { armedRef.current = true; }, CCTV_SKIP_ARM_MS);
+    return () => window.clearTimeout(t);
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || !armedRef.current) return;
       if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); powerOff(true); }
     };
     window.addEventListener('keydown', onKey);
@@ -124,7 +137,8 @@ const CctvReplay: React.FC<CctvReplayProps> = ({ onDone }) => {
   return (
     <div
       data-testid="cctv-replay"
-      onClick={() => powerOff(true)}
+      onPointerDown={() => { downInsideRef.current = armedRef.current; }}
+      onClick={() => { if (downInsideRef.current) powerOff(true); downInsideRef.current = false; }}
       style={{ position: 'fixed', inset: 0, background: '#000', overflow: 'hidden', zIndex: 50, cursor: 'default', userSelect: 'none' }}
     >
       <style>{CSS}</style>

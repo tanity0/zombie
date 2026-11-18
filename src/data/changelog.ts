@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5637', items: [
+    'EXクリア後の監視カメラ映像が、記録を閉じた瞬間に終わってしまうのを直した',
+  ] },
   { version: '0.25.5636', items: [
     'EXステージのクリア後の記録を一部修正',
   ] },
