@@ -352,7 +352,7 @@ describe('資料「グレンの薬」(指示書6.1)と洋館再訪/EX(指示書7
     }
   });
 
-  it('通常勝利の任務報告は維持(M2/M6/M7はclearReport、他はdebriefフォールバック=非suppress)', () => {
+  it('通常勝利の任務報告は維持(clearReportがあればそれ、無ければdebrief=非suppress。M6/M7は2026-11-18にdebriefへ一本化)', () => {
     for (const s of STAGES.filter(x => !x.hidden && x.kind === 'main')) {
       expect(s.main.suppressDebrief, s.id).not.toBe(true);
       const lines = s.main.clearReport?.length ? s.main.clearReport : s.main.debrief;

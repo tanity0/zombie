@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5643', items: [
+    'ステージ6と7の任務報告の文章を整えた',
+    '資料「グレン／ミラ接触記録」とグレンの物語の一文を直した',
+  ] },
   { version: '0.25.5642', items: [
     '資料「規定値超過実験」の一文を直した',
   ] },
