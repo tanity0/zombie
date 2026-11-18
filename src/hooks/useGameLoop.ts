@@ -44,6 +44,7 @@ import {
   playerIntroCamFollow,
   CAMERA_INTRO_LIFT_FRAC,
   INTRO_DIALOGUE_TRIGGER_T,
+  introLineMs,
   INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, SHIJIN_TECH_SHAKE_MS, SHIJIN_TECH_SHAKE_MAG,
   counterAcceptMsOf, // v0.25.2525→v0.25.3943: 守護霊の弾反射の窓(プレイヤーの受付と同じ式・記録の装備で延びる)
@@ -311,7 +312,7 @@ import {
   selectLabEnemyType,
   resolveEnemyTarget,
   AREA_ZONE_NAMES,
-  areaIndexForPos, areaIndexForDist,
+  areaIndexForPos, areaIndexForDist, activeAreaThresholds,
   AREA_THRESHOLDS,
   OFFSCREEN_SPAWN_MARGIN,
   isCorpse,
@@ -555,6 +556,14 @@ import {
   eventQuestSubCompleteLines,
   getEventQuestConfig,
 } from '../utils/eventQuest';
+// ステージ1の1周目(STAGE1_FIRST_LOOP.md)。判定は純関数、ここは配線だけ。
+import {
+  ratchetLoop1Mode, loop1BountyDue, loop1BountyRadius, loop1BountySpawnPos, loop1KomaForLevel, loop1HoldsNormalSpawns,
+  loop1EnclosureType, loop1EnclosureSpawnPos, loop1EnclosureAlive, tickLoop1GoalDwell, isInLoop1Circle, stepLoop1Phase,
+  LOOP1_BASE_ID, LOOP1_DUO_CIRCLE_RADIUS, LOOP1_GOAL_RADIUS, LOOP1_GOAL_HOLD_MS, LOOP1_ENCLOSURE_COUNT, LOOP1_ENCLOSURE_INTERVAL_MS,
+  LOOP1_TALK_END_HOLD_MS, STAGE1_FIRST_LOOP_STAGE_ID, type Stage1LoopState, type Loop1Talk,
+} from '../utils/stage1FirstLoop';
+import { pickNpcLine } from '../data/npcLines';
 import { rescueQuestSpawnReady, duoCommActive, duoCommEnded, duoQuietWindow } from '../utils/rescueQuestGate'; // 二人組クエストv2(§2-11・B4)/v4(§2-18)
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { airHopEase01 } from '../utils/airHop';
@@ -1007,6 +1016,10 @@ const RESCUE_RESPAWN_MS = 3000;        // 救助イベント: 攻撃者を倒し
 // (2分待ち＋発火確率を無視)。?castlenow=1 → 城フィナーレボス(giantbat)を開始直後に出現。森ステージ専用。
 const evParam = (key: string): string | null =>
   typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get(key);
+// ステージ1の1周目の段へ飛ぶ撮影用ツマミ(開発サーバだけ・本番ビルドでは常に null)。`?loop1=1` と併用。
+// bounty=賞金首の発火半径の外へ / hospital=西の拠点を確保済みに / duo=ワクチン取得済み(二人の近くへ) /
+// talk=二人のサークルの中へ / enclosure=囲いの開始 / goal=ゴールサークルの手前へ / thanks=ゴールサークルの中へ。
+const LOOP1_PHASE_JUMP = import.meta.env.DEV ? evParam('loop1phase') : null;
 const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ランダム / 'horde' / 'boss' / 'rescue'
 // デバッグ(社長試作v0.25.1861): ?nospawn=1 で敵の湧きを全て止める(パズル盤面/旧スポナー/叫喚/
 // 囲い・関所/紅き夜/ハンター/死神/城ボス)。映像美の確認用に自由に歩き回るため。ゲーム/描画の他要素は不変。
@@ -1886,6 +1899,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const tutorialSeenRef = useRef<Set<TutorialId> | null>(null);
   const seenTutorials = useCallback((): Set<TutorialId> => (tutorialSeenRef.current ??= loadSeenForGate()), []);
   // 表示と同時に「見た」を確定させる共通処理(資料室の一覧はこの記録を引く)。
+  const loop1JumpRunRef = useRef<object | null>(null); // `?loop1phase=`(撮影用)を1出撃1回に絞る印
+  const loop1JumpDeferRef = useRef<{ at: number } | null>(null); // `?loop1phase=talk` の段入れを少し遅らせる(撮影用)
   const showTutorialOnce = useCallback((id: TutorialId) => {
     // 社長報告v0.25.2852「(ボス戦モードで)チュートリアルとかも出てきちゃう」。
     // ボス戦テスト/ボスメーカーは**ボスと戦う所だけ**を見る場なので、チュートリアルは一切出さない。
@@ -3249,6 +3264,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 紅き夜/ハンター/死神/賞金首/叫喚型/アイテム空投/武器箱補給」の全抑止に相乗りする
         // (専用ゲートを作らず既存の網羅的な消去法へ従う=CLAUDE.md実装精度の規律7)。
         const endingStage = loopState.farBackdrop === 'ending';
+        // ステージ1の1周目(STAGE1_FIRST_LOOP.md)。立っている間、§3/§7.6 D/§7.7 A4 の「出さない物」を各ゲートで止める
+        // (城ボス・裏ボス・守護霊・死神・寄り道・他の賞金首・二人組v4・囲い/大量発生/紅き夜・ウェルカム・ゲート・徘徊の枠・英雄・演目/演出波)。
+        // フラグOFF/2周目以降は stage1Loop=null=false=どのゲートも従来どおり。
+        const firstLoop = loopState.stage1Loop !== null;
         // 洋館(ステージ6)の走り込み入場中は敵を一切湧かせない(社長裁定v0.25.2789・案A)。
         // 走り込み中は isInputLocked(corridorRunInActive) で操作を奪っている一方、
         // isGameTimeStopped() には入らない=シミュレーションは走り続ける。さらに通路は
@@ -3419,6 +3438,42 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (introWasActiveRef.current) {
           // 登場演出の終了。飛び降り着地は廃止したので終了時の衝撃演出は出さない(着地SE/砂煙は着陸の瞬間に出済み)。
           introWasActiveRef.current = false;
+        }
+
+        // ステージ1の1周目の会話(STAGE1_FIRST_LOOP.md §7.7 A3): intro と同型で早期 return=ゲーム時刻・湧き・敵・ハンター・賞金首・
+        // モードの時計がすべて止まる。表示は IntroDialogue(タップで1行ずつ早送り・スキップ)。最終行を出し切ったら自動で閉じる。
+        {
+          const talk = useGameStore.getState().stage1LoopTalk;
+          if (talk) {
+            const ds = useGameStore.getState();
+            const totalMs = ds.introDialogueLines.reduce((a, l) => a + introLineMs(l), 0);
+            const ended = !ds.introDialogueActive || Date.now() - ds.introDialogueStartedAt >= totalMs + LOOP1_TALK_END_HOLD_MS;
+            if (!ended) {
+              frameRef.current = requestAnimationFrame(gameLoop);
+              return;
+            }
+            // 会話の終わり→次の段(到着=囲いの開始/お礼=納品+クリア)。段の遷移も純関数 stepLoop1Phase の答えに従う。
+            const L = ds.stage1Loop;
+            const step = L ? stepLoop1Phase(L.phase, {
+              baseCaptured: true, vaccineTaken: true, inDuoCircle: false, uiBlocked: false, talkEnded: talk,
+              enclosureSpawnedAll: false, enclosureAlive: 0, goalDone: false,
+            }) : null;
+            useGameStore.setState(st => ({
+              stage1LoopTalk: null,
+              introDialogueActive: false,
+              ...(st.stage1Loop && step ? {
+                stage1Loop: {
+                  ...st.stage1Loop, phase: step.phase,
+                  ...(step.action === 'startEnclosure' ? { enclosureIds: [], enclosureSpawned: 0, enclosureNextAt: st.gameTime } : {}),
+                },
+              } : {}),
+            }));
+            if (step?.action === 'win') {
+              // ゴール(§7.6 F / §7.7 A2・B8): 現行のサブ納品と同じ報酬+meta.delivered だけ(v4の状態は書かない)→クリア。
+              useGameStore.getState().completeStage1FirstLoopDelivery();
+              useGameStore.setState({ gameWon: true });
+            }
+          }
         }
 
         // (時間停止VNボックス廃止・社長指示v0.25.1876: 会話は全て通常会話=非停止に統一したため、
@@ -3667,7 +3722,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           welcomeEnabled: WELCOME_ENABLED,
           labTheme, indoor, danceTest, storyBoss, tutorialStage, endingStage,
           practiceRun: isPracticeRun(),
-          retired: useGameStore.getState().welcomeRetired,
+          retired: useGameStore.getState().welcomeRetired || firstLoop, // 1周目はウェルカム無し(§7.5)=resetGame と同じ答え
         });
         const welcomeActive = welcomeApplicable && welcomeEndedAtRef.current === null;
         // ★ディレクターの時計(§17-3): ウェルカム中はずっと0。終了後は gameTime − min(終了時刻,60秒)
@@ -3688,7 +3743,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // その時間帯に境界を跨ぐと発火が丸ごと止まり素通りできた(実測再現)。城ボスは城の固定位置・
         // ゲートは境界=地理的に重ならないため、実戦闘との排他は不要。フェーズ条件だけ外した版を使う。
         // PACING_PUZZLE.md §10-14#4(解放): 同上=storyBoss=falseで自然に解放(中盤スリィエルのゲート発火に必須)。
-        const gateFireOk = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage && !endingStage;
+        const gateFireOk = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && !storyBoss && !tutorialStage && !endingStage && !firstLoop;
 
         const castle = useGameStore.getState().castleEvent;
         // 城のフィナーレボス: 城に近づくと魔法陣の演出(錬金と同じ=magic-circle)で giantbat が出現(社長指示)。
@@ -3725,7 +3780,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 城ボスの経路が生きているか=下の城ボスの if の条件のうち「時刻・二人組の通信の静けさ(noSpawn)・別ボスとの交戦(castleSpawnLocked)」を
         // 除いた集合(湧き止めは noSpawnDebug)。★交戦中でも離脱は進む(城ボスの出現だけが交戦明けまで先送りされる=ジュンは城で待つ)。
         const castleRouteOk = !danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage
-          && (!noSpawnDebug || practiceWantsCastleBoss()) && !revisitRun && !useGameStore.getState().corridorMode;
+          && (!noSpawnDebug || practiceWantsCastleBoss()) && !revisitRun && !useGameStore.getState().corridorMode
+          && !firstLoop; // 1周目は城ボスを出さない(STAGE1_FIRST_LOOP.md §7.7 A2)
         const castleBossFoot = castleBossFootPoint(castle, ENEMY_STATS.giantbat.width, ENEMY_STATS.giantbat.height);
         // 画面(+余白)に見えているか。置き直しは見えない所でだけ行う。
         const junVisible = (x: number, y: number): boolean => {
@@ -4299,7 +4355,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // PACING_PUZZLE.md §10-14#4(維持): EXは連戦の圧を絞る(社長指摘「スリィエルの後の連戦なので
         // そこだけ注意」・§10-6)。囲い系イベント(強制アリーナ/ミニボス/救助/卵)は側イベントとして
         // 出さない=既定を維持。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && !noSpawn) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && !noSpawn && !firstLoop) {
           // PACING_PUZZLE.md §5.21-追補5(社長決定v0.25.1555): ゲート発火待ちが立っていて、かつ城ボス
           // 以外のイベント(レスキュー/退屈囲い=kind 'rescue'|'horde')が進行中なら、それを強制解除して
           // ゲートを発火可能にする(「ゲート>他イベント」の優先を発火時に効かせる)。城ボスは PHASE
@@ -4981,7 +5037,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 拠点近接 or 商人に話しかけると「やり過ごした」で即脱出(商人側は performAttack 内で処理)。
         // PACING_PUZZLE.md §10-14#4(維持): 紅き夜(時間経過の全体強化イベント)はEXでも出さない
         // (連戦バランスを守る側イベント抑止・既定は維持側)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && !noSpawn) {
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && !noSpawn && !firstLoop) {
           const rnGs = useGameStore.getState();
           const rn = rnGs.redNight;
 
@@ -5658,7 +5714,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // バナー→スポーン+魔法陣ほかの演出(城ボスと同じ機構)→エフェクトが落ち着いてからアテンション
         // +カットイン(下のディスパッチャが発火)。「パッと出さない」=城ボスが既に持つease/フェードを
         // そのまま流用する(慣性の絶対ルール)。
-        const spawnBountyEncounter = (bType: EnemyType, atGameTime: number): void => {
+        // at=出す位置の上書き(ステージ1の1周目の強制出現=プレイヤーの少し北・STAGE1_FIRST_LOOP.md §7.6 E)。省略=従来どおり。
+        const spawnBountyEncounter = (bType: EnemyType, atGameTime: number, at?: { x: number; y: number }): void => {
           useGameStore.setState({ eventBannerText: '賞金首出現', eventBannerUntil: atGameTime + BOUNTY_APPEAR_BANNER_MS });
           const pcx1 = player.x + player.width / 2, pcy1 = player.y + player.height / 2;
           // ★湧き位置は研究領域(area 1)へ固定(PACING_PUZZLE.md §6.38「確定仕様(★v2)」・
@@ -5667,9 +5724,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 旧「プレイヤーから700〜1000px・方角ランダム」は廃止。
           // ★変異体対策室(練習ラン)だけはプレイヤーの近く(上へ PRACTICE_BOUNTY_SPAWN_DIST_PX)へ出す
           // (社長指摘2026-11-15「スタート地点から遠すぎる」)。本編は bountySpawnCenter のまま=不変。式は bountyEncounterSpawn。
-          const bPractice = isPracticeRun();
+          const bPractice = isPracticeRun() && !at;
           const bPlan = bountyEncounterSpawn(pcx1, pcy1, bPractice);
-          const bx0 = bPlan.center.x, by0 = bPlan.center.y;
+          const bx0 = at ? at.x : bPlan.center.x, by0 = at ? at.y : bPlan.center.y;
           const bountyE = spawnEnemyAt(bType, bx0 - 22, by0 - 22, atGameTime);
           if (bPractice) {
             // 練習の位置は帯の真ん中ではなく任意の野なので、木・建物の幹の中に置かない(移動と同じ遮蔽物の連鎖)。
@@ -5730,7 +5787,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 6は小ボス無し」)。本編S6は既存の corridorMode ゲートで既に塞がっているので、この台帳ゲートが
         // 実際に効くのは**S6の再訪/フリー周回**。出現位置・演出はspawnBountyEncounter共用。
         // PACING_PUZZLE.md §10-14#4(維持): 賞金首の自然湧きもEXでは止める(側イベント抑止)。
-        if (!danceTest && !indoor && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && !noSpawn) {
+        if (!danceTest && !indoor && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && !noSpawn && !firstLoop) { // 1周目は強制の1体だけ(下の1周目の段)
           const bgs = useGameStore.getState();
           const bountyAliveNow = bgs.enemies.some(e => isBountyType(e.type));
           const bAreaForGate = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
@@ -5771,6 +5828,151 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // --- ステージ1の1周目(STAGE1_FIRST_LOOP.md §4・§7.5〜§7.7) ---------------------------------
+        // 判定(段階・モードの一方通行・賞金首の発火半径・位置)は utils/stage1FirstLoop.ts の純関数。ここは配線だけ。
+        // 会話中(stage1LoopTalk)は上の早期 return で丸ごと止まっているので、ここへは来ない。
+        if (firstLoop && LOOP1_PHASE_JUMP && loopState.stage1Loop && loop1JumpRunRef.current !== loopState.stage1Loop.hospitalPos) {
+          // 撮影用(開発サーバだけ): 1出撃に1回、指定の段の手前まで状態を進める。hospitalPos の参照=その出撃の印(出撃ごとに作り直される)。
+          const J = loopState.stage1Loop;
+          loop1JumpRunRef.current = J.hospitalPos;
+          const putPlayer = (x: number, y: number) => useGameStore.setState(st => ({ player: { ...st.player, x: x - st.player.width / 2, y: y - st.player.height / 2 } }));
+          const capBase = () => useGameStore.setState(st => ({ baseSites: st.baseSites.map(b => (b.id === LOOP1_BASE_ID ? { ...b, status: 'captured' as const } : b)) }));
+          const dx = J.duoPos.x, dy = J.duoPos.y;
+          switch (LOOP1_PHASE_JUMP) {
+            case 'bounty': putPlayer(-loop1BountyRadius(activeAreaThresholds()) - 4, 0); break;
+            case 'hospital': capBase(); putPlayer(J.hospitalPos.x + 40, J.hospitalPos.y + 160); break;
+            case 'duo':
+              capBase();
+              useGameStore.setState(st => ({ hospital: { ...J.hospitalPos }, hospitalTaken: true, stage1Loop: st.stage1Loop ? { ...st.stage1Loop, phase: 'hospital', bountySpawned: true } : null }));
+              putPlayer(dx + 120, dy - 360); break;
+            case 'talk':
+            case 'enclosure':
+            case 'goal':
+            case 'thanks': {
+              capBase();
+              // talk: 置いた直後はカメラがまだ追い付いていないので、段(duo)は少し後に入れる(下の loop1JumpDeferRef)。
+              const ph = LOOP1_PHASE_JUMP === 'talk' ? 'hospital' : LOOP1_PHASE_JUMP === 'enclosure' ? 'enclosure' : 'goal';
+              if (LOOP1_PHASE_JUMP === 'talk') loop1JumpDeferRef.current = { at: newGameTime + 800 };
+              useGameStore.setState(st => ({
+                hospital: { ...J.hospitalPos }, hospitalTaken: LOOP1_PHASE_JUMP !== 'talk',
+                stage1Loop: st.stage1Loop ? { ...st.stage1Loop, phase: ph, bountySpawned: true, enclosureNextAt: st.gameTime, modeLevel: 2 } : null,
+              }));
+              if (LOOP1_PHASE_JUMP === 'goal') putPlayer(dx, dy - 260);
+              else putPlayer(dx, dy);
+              break;
+            }
+            default: break;
+          }
+        }
+        if (loop1JumpDeferRef.current && newGameTime >= loop1JumpDeferRef.current.at) {
+          loop1JumpDeferRef.current = null;
+          useGameStore.setState(st => (st.stage1Loop ? { stage1Loop: { ...st.stage1Loop, phase: 'duo' } } : {}));
+        }
+        if (firstLoop) {
+          const l1s = useGameStore.getState();
+          const L = l1s.stage1Loop;
+          if (L && !l1s.gameWon && l1s.player.health > 0) {
+            const lpcx = l1s.player.x + l1s.player.width / 2, lpcy = l1s.player.y + l1s.player.height / 2;
+            const patch: Partial<Stage1LoopState> = {};
+            // 区域のモード(§4-3): 一度上がったら下がらない。湧きの段は runKomaBoardMaintenance が loop1Koma で読む。
+            const lvl = ratchetLoop1Mode(L.modeLevel, areaIndexForPos(lpcx, lpcy));
+            if (lvl !== L.modeLevel) patch.modeLevel = lvl;
+            // 賞金首の強制出現(§7.6 E): 研究対象区域の中ほどの半径を初めて越えた瞬間に1回だけ、プレイヤーの少し北へ。
+            if (loop1BountyDue({ spawned: L.bountySpawned, distFromOrigin: Math.hypot(lpcx, lpcy), radius: loop1BountyRadius(activeAreaThresholds()) })) {
+              patch.bountySpawned = true;
+              const l1Bounty = BOUNTY_TYPE_BY_STAGE[STAGE1_FIRST_LOOP_STAGE_ID];
+              if (l1Bounty) spawnBountyEncounter(l1Bounty, newGameTime, loop1BountySpawnPos(lpcx, lpcy));
+              // 警告=出撃中の軍人の一言(倒れていても・画面外でも通信として出す=CDを通さずキューへ直接)。
+              if (L.soldierIndex >= 0) {
+                const warnText = pickNpcLine(L.soldierIndex, 'bountyWarning', '');
+                if (warnText) useGameStore.getState().enqueueNpcDialogue([{ name: baseSoldierName(L.soldierIndex), text: warnText }]);
+              }
+            }
+            // 囲い(§7.5): サークルの周りへ順に出す(慣性=1体ずつ間をあけて現れる)。出した敵は fromEvent=上限・距離の整理の対象外(B1)。
+            let encIds = L.enclosureIds;
+            let encSpawned = L.enclosureSpawned;
+            if (L.phase === 'enclosure' && encSpawned < LOOP1_ENCLOSURE_COUNT && newGameTime >= L.enclosureNextAt) {
+              const n = encSpawned + 1;
+              const eType = loop1EnclosureType(n, LOOP1_ENCLOSURE_COUNT, Math.random);
+              const at = loop1EnclosureSpawnPos(L.duoPos, n, LOOP1_ENCLOSURE_COUNT, Math.random);
+              const e = spawnEnemyAt(eType, at.x, at.y, newGameTime);
+              e.x -= e.width / 2; e.y -= e.height / 2;
+              const ec = clampRectToPlayableArea(e.x, e.y, e.width, e.height, {
+                farBackdrop: l1s.farBackdrop, labTheme, corridorMode: l1s.corridorMode,
+                m0AdvanceLimitX: l1s.m0AdvanceLimitX, corridorRunInActive: l1s.corridorRunInActive,
+              });
+              e.x = ec.x; e.y = ec.y;
+              e.fromEvent = true;
+              addEnemy(e);
+              spawnRing(e.x + e.width / 2, e.y + e.height / 2, 6, 64, 'rgba(56,189,248,0.7)', 3, 420);
+              encIds = [...encIds, e.id];
+              encSpawned = n;
+              patch.enclosureIds = encIds;
+              patch.enclosureSpawned = encSpawned;
+              patch.enclosureNextAt = newGameTime + LOOP1_ENCLOSURE_INTERVAL_MS;
+            }
+            // ゴール(B5): 帰還サークルと同じく3秒滞在。
+            let goalDone = false;
+            if (L.phase === 'goal') {
+              const gd = tickLoop1GoalDwell(L.goalDwellMs, isInLoop1Circle(lpcx, lpcy, L.duoPos, LOOP1_GOAL_RADIUS), deltaTime * 1000);
+              if (gd.dwellMs !== L.goalDwellMs) patch.goalDwellMs = gd.dwellMs;
+              goalDone = gd.dwellMs >= LOOP1_GOAL_HOLD_MS;
+            }
+            const uiBlocked = l1s.tutorialPopup !== null || l1s.showShopMenu || l1s.showUpgradeMenu;
+            const step = stepLoop1Phase(L.phase, {
+              baseCaptured: l1s.baseSites.some(b => b.id === LOOP1_BASE_ID && b.status === 'captured'),
+              vaccineTaken: l1s.hospitalTaken,
+              inDuoCircle: isInLoop1Circle(lpcx, lpcy, L.duoPos, LOOP1_DUO_CIRCLE_RADIUS),
+              uiBlocked,
+              talkEnded: null,
+              enclosureSpawnedAll: encSpawned >= LOOP1_ENCLOSURE_COUNT,
+              enclosureAlive: loop1EnclosureAlive(encIds, l1s.enemies),
+              goalDone,
+            });
+            if (step.phase !== L.phase) patch.phase = step.phase;
+            let startTalk: Loop1Talk | null = null;
+            switch (step.action) {
+              case 'baseCaptured':
+                // 拠点ページのチュートリアル+西のデンジャーゾーンの北寄りに廃病院(それまでは設置もしない=§4-5)。
+                patch.pendingTutorial = 'loop1-base';
+                useGameStore.setState({ hospital: { ...L.hospitalPos }, hospitalTaken: false, hospitalDwellMs: 0, hospitalTakenAt: 0 });
+                break;
+              case 'vaccineTaken':
+                // 寄り道のチュートリアル+同じデンジャーゾーンの南寄りに二人(§4-6)。現れる瞬間は旧レスキューと同じ水色の輪。
+                patch.pendingTutorial = 'detour-poi';
+                spawnRing(L.duoPos.x, L.duoPos.y, 12, LOOP1_DUO_CIRCLE_RADIUS, 'rgba(56,189,248,0.85)', 4, 620);
+                break;
+              case 'startArrivalTalk': startTalk = 'arrival'; break;
+              case 'enclosureCleared':
+                // 全滅→二人のサークルがゴールサークルに変わる(§4-8)。
+                patch.goalDwellMs = 0;
+                spawnRing(L.duoPos.x, L.duoPos.y, 12, LOOP1_GOAL_RADIUS, 'rgba(134,239,172,0.85)', 4, 620);
+                break;
+              case 'startThanksTalk': startTalk = 'thanks'; break;
+              default: break;
+            }
+            // チュートリアルは1周目では端末の既読に関係なく出す(§7.6 B)。ポップアップ・メニューが開いていれば閉じるまで待つ。
+            const pendTut = patch.pendingTutorial !== undefined ? patch.pendingTutorial : L.pendingTutorial;
+            if (pendTut && !uiBlocked && !startTalk) {
+              showTutorialOnce(pendTut);
+              patch.pendingTutorial = null;
+            }
+            if (Object.keys(patch).length) {
+              useGameStore.setState(st => (st.stage1Loop ? { stage1Loop: { ...st.stage1Loop, ...patch } } : {}));
+            }
+            if (startTalk) {
+              // 到着/お礼の会話(§7.7 A3): IntroDialogue のタップ送り・スキップを使い、その間は上の早期 return で全部止める。
+              const lines = startTalk === 'arrival' ? eventQuestSubAcceptLines(STAGE1_FIRST_LOOP_STAGE_ID) : eventQuestSubCompleteLines(STAGE1_FIRST_LOOP_STAGE_ID);
+              useGameStore.setState({
+                stage1LoopTalk: startTalk,
+                introDialogueLines: lines.map(l => ({ speaker: l.name, text: l.text })),
+                introDialogueActive: true,
+                introDialogueStartedAt: Date.now(),
+              });
+            }
+          }
+        }
+
         // M2(研究所)のチュートリアル2件(社長指示v0.25.2251)。判定は src/utils/labTutorial.ts の
         // 純関数、表示は既存の showTutorialPopup(ゲーム停止)を流用。**端末に1度だけ**記憶する。
         //  1) PHILL銃を入手した時 = 狙いの合わせ方 + ヘッドショット2種(通常/吸い付き)
@@ -5806,7 +6008,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // ステージ1の横スライド式フィールドガイド。新IDで旧「寄り道」既読とは分離し、全員へ新版を1度だけ出す。
         // 出撃会話が終わった後の最初の安全な瞬間に表示し、ボスメーカーのstage-1土台では発火させない。
-        if (!seenTutorials().has('stage1-guide') && !useGameStore.getState().bossMaker.active) {
+        if (!firstLoop && !seenTutorials().has('stage1-guide') && !useGameStore.getState().bossMaker.active) { // 1周目は開始時の3枚ガイドを出さない(§7.6 B)
           const st = useGameStore.getState();
           if (shouldShowStage1Guide({
             stageId: (runStageIdRef.current ??= getSelectedStageId()),
@@ -5821,7 +6023,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         // 寄り道ガイド(社長指示2026-11-18): 拠点を初めて確保した時に1度だけ(端末既読)。判定は純関数。
-        if (!seenTutorials().has('detour-poi') && !useGameStore.getState().bossMaker.active) {
+        if (!firstLoop && !seenTutorials().has('detour-poi') && !useGameStore.getState().bossMaker.active) { // 1周目はワクチン取得で出す(§7.6 B)
           const st = useGameStore.getState();
           if (shouldShowDetourTutorial({
             anyBaseCaptured: st.baseSites.some(b => b.status === 'captured'),
@@ -6258,7 +6460,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // PACING_PUZZLE.md §5.21 M20 stage③/④: 未確認/深層境界を未クリアのゲートのまま踏破した=
                 // 「未達ペナルティ」発動(ゲート1のみハンター復活を伴う。ゲート2はハードなので即戦闘=
                 // ペナルティ状態を継続保持する必要がない)。ゲート発火待ちを立てる。
-                if (GATE_ENABLED) {
+                if (GATE_ENABLED && !firstLoop) { // 1周目はゲート戦を出さない(予約もしない=§7.7 A4)
                   const wallIdxNow = detectWallBreach(prevZone, zoneIdx);
                   if (entersGate1Penalty(wallIdxNow, gateMetaRef.current.gate1Cleared)) {
                     gate1PenaltyActiveRef.current = true;
@@ -6341,7 +6543,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // =リスクが最速で溜まる深さ+ハード拘束(逃げられない)なので、ゲート1以上に死神が理不尽。
           if (!anyBodyAlive && (activeGateRef.current !== null || gate1PendingRef.current || gate2PendingRef.current)) {
             // 抑止中: 何もしない(risk加減・気配演出・完全出現のいずれも止める)。
-          } else if (!anyBodyAlive) {
+          } else if (!anyBodyAlive && !firstLoop) { // 1周目は死神を出さない(気配の横切りも=STAGE1_FIRST_LOOP.md §7.6 D)
             // リスク更新(深奥滞在で増加・深奥外で減少)。
             // PACING_PUZZLE.md §5.21 M20 stage③: 囲いゲート1の未達ペナルティ中は、リスク蓄積の起点を
             // 未確認到達ライン(AREA_THRESHOLDS[2]=5000)へ前倒しする(既存の起点より緩くはならない)。
@@ -9284,7 +9486,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // (原点からの距離=内縁と外縁の中間)に1体置き、輪を反時計回りにゆっくり回り続ける(heroTick の周回)。置く角度はランごとに無作為。
           // プレイヤーへは寄らない・去らない。体力は固定(上限20000・出てくる時10000=社長指示2026-10-05)。
           if (!HERO_PATROL_BLOCKED && !heroForceRef.current && newGameTime >= 3000 && !isPracticeRun() && !isBossMakerRun()
-            && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '')
+            && (HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '') && !firstLoop)
             && !loadHeroAscended()) { // 社長指示2026-10-05: 一度昇天させたら本編には二度と出ない(対策室・ボステストには出る)
             heroForceRef.current = true;
             const R = heroPatrolRadius(AREA_THRESHOLDS);
@@ -9306,7 +9508,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           {
             const forceLib = FORCE_LIBERTY || practiceForces('libertynow');
             const patrolLib = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
-              && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
+              && (HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '') && !firstLoop);
             if ((forceLib || patrolLib) && !libertyForceRef.current && newGameTime >= 3000) {
               libertyForceRef.current = true;
               const st0 = useGameStore.getState();
@@ -9372,7 +9574,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 抽選は下の2つの出現の枠と同じ所で、それより先に1回だけ引く(抽選の結果・確率は変えない)。確認用の枠(?wraithnow=1 等)も本編の出撃なら言う。
           if (!mutantOmenDoneRef.current && !isPracticeRun() && !isBossMakerRun()) {
             mutantOmenDoneRef.current = true;
-            const mutantStage = !HERO_PATROL_BLOCKED && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
+            const mutantStage = !HERO_PATROL_BLOCKED && (HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '') && !firstLoop);
             // 作戦室で引いた結果は、どのステージへ出撃しても出撃した時に消す(徘徊の枠が無いステージでも)=ここは全ステージで引く
             // (枠の無いステージは保存の有無に関わらず 'none' になる)。
             if (!HERO_PATROL_BLOCKED && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
@@ -9395,7 +9597,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           {
             const forceAstro = FORCE_ASTRO || practiceForces('astronow');
             const patrolAstroStage = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
-              && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
+              && (HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '') && !firstLoop);
             // 本編は20%でどちらか1体だけ(社長指示2026-10-29)。確認用の枠(force)はいつでも出す。
             if (patrolAstroStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
             const patrolAstro = patrolAstroStage && runMutantBossRef.current === 'astro' && !patrolHeldByWelcome;
@@ -9439,7 +9641,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           {
             const forceWraith = FORCE_WRAITH || practiceForces('wraithnow');
             const patrolWraithStage = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
-              && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
+              && (HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '') && !firstLoop);
             if (patrolWraithStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
             const patrolWraith = patrolWraithStage && runMutantBossRef.current === 'wraith' && !patrolHeldByWelcome;
             if ((forceWraith || patrolWraith) && !wraithForceRef.current && newGameTime >= 3000) {
@@ -9561,7 +9763,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               markKenkiSeen();
             }
             const patrolKenkiStage = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
-              && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
+              && (HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '') && !firstLoop);
             if (patrolKenkiStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
             if (patrolKenkiStage && runMutantBossRef.current === 'brawler' && !patrolHeldByWelcome && !phantomBrawlerPatrolRef.current && newGameTime >= 3000) {
               phantomBrawlerPatrolRef.current = true;
@@ -17850,7 +18052,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const effectiveGateProgram = (GATE_PROGRAM_ENABLED && curPhase.kind === 'gate') ? gateProgramRef.current.program : null;
         // 沸きシーン(緩急の部品): 現在フェーズのシーンから「敵構成(featured)」と「沸きスピード(intervalMult)」を読む。
         // 屋内/ラボ/?scenes=0 は素の分布・等速(=従来挙動)。
-        const scene = (SCENES_ENABLED && !labTheme && !indoor)
+        const scene = (SCENES_ENABLED && !labTheme && !indoor && !firstLoop) // 1周目は演目の特殊な湧きを出さない(§7.7 A4)
           ? (PROGRAM_ENABLED && curPhase.kind === 'buildup' && effectiveProgram ? effectiveProgram
             : effectiveGateProgram ?? sceneAt(directorTime))
           : null;
@@ -18046,6 +18248,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           !bossChasingNow && // 裏ボスが画面内で追跡中だけ通常湧きを止める(非追跡=画面外/帰巣中は湧く・社長指摘)
           !puzzleActiveNow &&
           !welcomeActive && // §17-11 B3(監査A-1・MUST): ウェルカム台本中は旧スポナーのこの枝も止める(片方だけでは通常湧きが止まらない)
+          !loop1HoldsNormalSpawns(loopState.stage1Loop?.phase) && // 1周目の囲いの間は通常湧きを止める(STAGE1_FIRST_LOOP.md §7.5・両方の経路)
           fieldCount < normalSpawnCap &&
           timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime) * (
             labTheme
@@ -18385,7 +18588,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ★★§17-11 B3(監査A-1・MUST): ウェルカム台本中(welcomeActive)はここも止める
         // (puzzleActiveNowはfalseにしない=旧スポナーの復活を防ぐための別ゲート。下の旧スポナーの
         // 枝にも同じ !welcomeActive が要る=片方だけでは通常湧きが止まらない)。
-        if ((!noSpawn || heroPracticeMobs()) && !isExStageRun() && !welcomeActive) runKomaBoardMaintenance( // ?nospawn=1 デバッグ: パズル盤面の湧きも止める(社長試作v0.25.1861)
+        if ((!noSpawn || heroPracticeMobs()) && !isExStageRun() && !welcomeActive && !loop1HoldsNormalSpawns(loopState.stage1Loop?.phase)) runKomaBoardMaintenance( // ?nospawn=1 デバッグ: パズル盤面の湧きも止める(社長試作v0.25.1861)
           {
             puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef,
             rankPaceRef,
@@ -18395,6 +18598,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // v0.25.3495(社長指示「リラックスさせて」): RELAXの湧きレバー2本(間隔/上限)を
             // 本方式のスポーナーへも渡す。?directorApply が無ければ relaxAdj は全て1=挙動不変。
             relaxIntervalMult: relaxAdj.intervalMult, relaxCapMult: relaxAdj.capMult,
+            // ステージ1の1周目(STAGE1_FIRST_LOOP.md §4-3): 区域のモード(一方通行)。1周目でなければ null=従来どおり。
+            loop1Koma: loopState.stage1Loop ? loop1KomaForLevel(loopState.stage1Loop.modeLevel) : null,
           }
         );
 
@@ -18512,7 +18717,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 研究所スキンは森系の演出波(plant/pumpkin/zombie/skeleton/werewolf)を出さない=
         // 湧きはラボ用ゾンビのみ。クリアボス(giantbat)は別経路(城ボス)で維持。
         // PACING_PUZZLE.md §10-14#4(維持): 演出波(scripted wave)もEXでは出さない(側イベント抑止)。
-        if (SETPIECE_ENABLED && !danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !confining) {
+        if (SETPIECE_ENABLED && !danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !confining && !firstLoop) { // 1周目は演出波も出さない(§7.7 A4)
           const waveEnemies = consumeDueWaves(
             directorTime,
             consumedWavesRef.current,

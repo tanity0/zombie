@@ -4,6 +4,7 @@ import { GameStats } from '../types/game';
 import { formatTime } from '../utils/renderUtils';
 import { calculateResultScore, topScoreItem } from '../utils/resultScoring';
 import { useGameStore, skillGoldRushMult, enemyDeathLabel } from '../store/gameStore';
+import { LOOP1_REPORT_LINES } from '../utils/stage1FirstLoop';
 import { enemyArtName } from '../utils/enemyArt';
 import { normalizeNamedName } from '../utils/namedEnemy';
 import { shallow } from 'zustand/shallow';
@@ -467,7 +468,12 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const missionKind = won ? getSelectedMission() : 'main';
   const mission = missionKind === 'revisit' ? REVISIT_MISSION : stage?.main;
   // 統合正本9.4 / 指示書7.3: suppressDebrief=任務報告欄そのものを出さない(debriefフォールバックも抑止)。
-  const clearReportLines = mission?.suppressDebrief
+  // ステージ1の1周目(STAGE1_FIRST_LOOP.md §7.6 G / §7.7 B7): 任務報告欄に1周目専用の文言(campaign の clearReport/debrief は書き換えない)。
+  // 購読はこの出撃が1周目か(boolean)だけ=リザルト表示中に変わらない。
+  const firstLoopWon = useGameStore(s => s.stage1Loop !== null) && won;
+  const clearReportLines = firstLoopWon
+    ? LOOP1_REPORT_LINES
+    : mission?.suppressDebrief
     ? []
     : ((mission?.clearReport?.length ? mission.clearReport : mission?.debrief) ?? []);
   const [unlockedRecordIds, setUnlockedRecordIds] = useState<string[]>([]);
@@ -479,9 +485,10 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     if (archiveUnlockedRef.current || !won || !stageId) return;
     archiveUnlockedRef.current = true;
     // 秘密再訪は資料解放なし(統合正本9.4「軍の任務記録・資料室へ投薬結果を追加しない」)。
-    const recordIds = (missionKind === 'revisit' ? [] : mission?.unlockedRecordIds) ?? [];
+    // ステージ1の1周目の勝利は M1 のクリア(城ボス撃破)ではない=M1の資料は2周目のクリアで解放する。
+    const recordIds = (missionKind === 'revisit' || firstLoopWon ? [] : mission?.unlockedRecordIds) ?? [];
     if (recordIds.length) setUnlockedRecordIds(unlockRecordsForStage(stageId, recordIds));
-  }, [won, stageId, mission, missionKind]);
+  }, [won, stageId, mission, missionKind, firstLoopWon]);
   const unlockedRecords = unlockedRecordIds
     .map(id => getArchiveRecord(id))
     .filter((r): r is ArchiveRecord => !!r);

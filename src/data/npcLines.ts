@@ -5,7 +5,7 @@
 // 1要素=1バリアント。同一(idx, cat)に複数足してランダムに出す。バリアントがある(idx,cat)は
 // こちらを優先採用(=キャラ設定リライト反映)。無ければ呼び出し側の既存1文(BASE_SOLDIERS)へフォールバック。
 // idx=soldierIndex: edgar0 / joseph1 / elizabeth2 / musashi3 / oklahoma4 / chen5 / lauren6 / phaser7
-// cat: sortie / surrounded / rescued / pushback / baseNear / baseCaptured / neglectFar / companion / praise / rescueReturned / npcKill / retreat / kickAssist
+// cat: sortie / surrounded / rescued / pushback / baseNear / baseCaptured / neglectFar / companion / praise / rescueReturned / npcKill / retreat / kickAssist / bountyWarning
 import { JUN_ESCORT_INDEX, pickJunLine } from './junEscortLines';
 
 export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = [
@@ -190,6 +190,16 @@ export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = 
   { idx: 5, cat: 'kickAssist', text: 'ふふ、狙い通りだ。君なら決めると思ったよ。' },                 // dlg_000430
   { idx: 6, cat: 'kickAssist', text: 'やった！今の連携、すっごくよかった！' },                       // dlg_000431
   { idx: 7, cat: 'kickAssist', text: 'へっ、いい反応じゃねえか。次も合わせろよ。' },                 // dlg_000432
+  // bounty_warning (ステージ1の1周目で賞金首が強制出現した時=出撃中の軍人の警告。STAGE1_FIRST_LOOP.md §7.6 E)
+  // 雑談ではない(情報の一言)=オプション「仲間の雑談」OFFでも出す(npcChatter の雑談表に入れない)。
+  { idx: 0, cat: 'bountyWarning', text: 'あいつは危険だ。相手にするな、拠点が先だ！' },               // dlg_000433
+  { idx: 1, cat: 'bountyWarning', text: 'うわ、ヤバいのがいるぞ！見なかったことにして進もうぜ！' },   // dlg_000434
+  { idx: 2, cat: 'bountyWarning', text: 'あれは危険ですわ。関わらずに先へ参りましょう。' },           // dlg_000435
+  { idx: 3, cat: 'bountyWarning', text: '強敵だ。構うな、進め。' },                                   // dlg_000436
+  { idx: 4, cat: 'bountyWarning', text: '危険な個体です！ここは三十六計、先を急ぎましょう！' },       // dlg_000437
+  { idx: 5, cat: 'bountyWarning', text: 'ふふ、あれは今の盤面に要らない駒だ。相手にしないのが最善手だよ。' }, // dlg_000438
+  { idx: 6, cat: 'bountyWarning', text: 'あれ絶対ヤバいやつ！今は無視して進もう！' },                 // dlg_000439
+  { idx: 7, cat: 'bountyWarning', text: 'チッ、厄介なのがいやがる。相手にすんな、行くぞ。' },         // dlg_000440
 ];
 
 // (idx, cat) のバリアントからランダムに1つ返す。無ければ fallback(既存1文)。

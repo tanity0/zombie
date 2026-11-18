@@ -386,6 +386,7 @@ import { GUARDIAN_PHANTOM_CLASS } from '../utils/bossPractice';
 import { phantomDisplayLabel } from '../utils/phantomIdentity'; // SAME_ARENA O-5
 import { GUARDIAN_PHANTOM_TUNING as GP_T } from '../utils/phantomScript';
 import { isMarkedBossVisible, bossMarkFor, type MarkBox } from '../utils/bossMarker';
+import { loop1DuoNpcView, loop1GoalCircleView, loop1DuoMarkVisible, LOOP1_BASE_ID } from '../utils/stage1FirstLoop'; // ステージ1の1周目(描くだけ)
 import {
   CASTLE_FIGHT_MAX_DIST, // v0.25.3055: 城ボス戦の移動制限ライン(描画は読むだけ)
   // v0.25.3513: 訓練ステージの移動制限ライン。**world層の実定数をそのまま読む**(写し定数を作らない
@@ -10317,7 +10318,7 @@ export class PixiScene {
       this.eventNpcView.visible = false; this.npcShadow = null;
     } else {
       this.syncCastle(s.castleEvent, now);
-      this.syncEventQuestNpc(s.eventQuestNpc, now);
+      this.syncEventQuestNpc(loop1DuoNpcView(s.stage1Loop) ?? s.eventQuestNpc, now);
     }
     // ★ウェルカムが終わるまで商人は画面に出さない(社長指示2026-09-19。護衛NPCと同じ扱い)。
     // 店の実体は store に残っている(§17-13 が商人のyを読む)ので、**絵だけ**を止める。
@@ -10409,7 +10410,9 @@ export class PixiScene {
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
     // ステージ4: 隊を離れたジュン(junDeparture)も進軍NPCと同じ絵の経路で描く(影・立ち絵)。判定には混ぜない=描く列だけ。
     const escortsDrawn = this.escortsWithJun(s.escorts, s.junDeparture);
-    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, escortsDrawn, s.rescueSurvivors, s.baseSites, now, s.effects, s.breakableProps, s.endingSoldiers);
+    // ステージ1の1周目(STAGE1_FIRST_LOOP.md §7.6 C): 西以外の拠点(loop1Hidden)は印・サークルを描かない。1周目でなければ素通し(同じ配列)。
+    const basesDrawn = s.stage1Loop ? s.baseSites.filter(b => !b.loop1Hidden) : s.baseSites;
+    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, escortsDrawn, s.rescueSurvivors, basesDrawn, now, s.effects, s.breakableProps, s.endingSoldiers);
     this.syncShadowProbe(s.camera, now, s.effects); // 計測専用(ベンチ以外では count=0 で即 return)
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
@@ -10418,14 +10421,16 @@ export class PixiScene {
     (this.pileDriverFx ??= new PileDriverFx(this.L.actorLayer, this.L.effectLayer)).sync(s.projectiles, s.player, s.enemies, now);
     this.syncShields(s.projectiles, now);
     this.syncArena(s.activeEvent, now);
-    this.syncQuestTrigger(s.eventQuestNpc, s.gameTime, now); // レスキュー地点の待機トリガー円(§2-3)
-    this.syncReturnCircle(s.returnCircle, now);
+    // 1周目の二人組(STAGE1_FIRST_LOOP.md §4-6〜8): 既存の二人の絵・待機円・帰還サークルの経路へ、1周目専用の写しを渡す(描くだけ)。
+    const loop1Duo = loop1DuoNpcView(s.stage1Loop);
+    this.syncQuestTrigger(loop1Duo ?? s.eventQuestNpc, s.gameTime, now); // レスキュー地点の待機トリガー円(§2-3)
+    this.syncReturnCircle(s.returnCircle ?? loop1GoalCircleView(s.stage1Loop), now);
     this.syncHospital(now); // 廃病院(通常ステージのみ。無いステージでは即 return=no-op)
     this.syncArmory(now); // §6.24 M48: 武器庫(同上)
     this.syncPolice(now); // §6.24 M48: 警察署(同上)
     this.syncShrines(now); // 武将の祠(寄り道が立つ出撃のみ。無ければ即 return)
     this.syncSecretPois(realNow); // 隠しPOI(ステージ1・3・4・5の深層域のみ。無ければ即 return)
-    this.syncBaseSites(s.baseSites, now, s.safeBaseId, s.labArmory,
+    this.syncBaseSites(basesDrawn, now, s.safeBaseId, s.labArmory,
       // ステージ2の武器商人=拠点の武器庫と同じ絵(同じ層・同じ加算)で描く(社長指示2026-10-18)。
       s.stageTheme === 'lab' && !s.merchantHidden ? s.weaponMerchant : null);
     // v0.25.3055(社長指示「城ボス戦の時は移動できる距離を制限。制限ラインを薄く表示するのはいいが、
@@ -10592,7 +10597,7 @@ export class PixiScene {
       // 遠方座標に差し替えて強glowの投影影スキャンから外す(距離カリングで自然に落ちる)。
       facFade < 0.5 ? { ...s.castleEvent, x: 1e9, y: 1e9 } : s.castleEvent,
       facFade < 0.5 ? { ...s.weaponMerchant, x: 1e9, y: 1e9 } : s.weaponMerchant,
-      s.eventQuestNpc,
+      loop1DuoNpcView(s.stage1Loop) ?? s.eventQuestNpc,
       s.camera,
       now,
       escortsDrawn
@@ -10640,7 +10645,8 @@ export class PixiScene {
       .filter(p => !(p.kind === 'boss' && liveHiddenBoss !== undefined && markedBosses.includes(liveHiddenBoss)))
       // 祠は「近くまで来たら」が唯一の条件(拠点の解放・区域の絞り込みは掛けない=近いのに出ないを作らない)。
       .filter(p => p.kind === 'shrine' || isPoiRevealed(p, s.baseSites))
-      .filter(p => p.kind === 'shrine' || isPoiInPlayerArea(p, this.poiArea)) // エリアは巣(固定の位置)で決める
+      // 1周目(STAGE1_FIRST_LOOP.md §4-5)は廃病院が唯一の目的地=今いるエリアに関係なく印を出す。
+      .filter(p => p.kind === 'shrine' || !!s.stage1Loop || isPoiInPlayerArea(p, this.poiArea)) // エリアは巣(固定の位置)で決める
       .map(p => (p.kind === 'boss' && liveHiddenBoss)
         ? { ...p, live: true, x: liveHiddenBoss.x + liveHiddenBoss.width / 2, y: liveHiddenBoss.y + liveHiddenBoss.height / 2 }
         : p);
@@ -10652,12 +10658,17 @@ export class PixiScene {
       .filter(q => screamerMarkVisible(markPcx, markPcy, q.x, q.y));
     // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-9・B4): レスキュー未完了(status==='rescue')の間だけ渡す。
     // 完了(accepted以降)/hidden/gone/warping等は空(=矢印を消す。§2-9「完了になったら空を渡す」)。
-    const rescuePoints = s.eventQuestNpc.status === 'rescue' ? [{ x: s.eventQuestNpc.x, y: s.eventQuestNpc.y }] : [];
+    const rescuePoints = s.eventQuestNpc.status === 'rescue' ? [{ x: s.eventQuestNpc.x, y: s.eventQuestNpc.y }]
+      // 1周目の二人組(STAGE1_FIRST_LOOP.md §4-6/§4-8): 二人のサークル・ゴールサークルの方角(距離の足切りなし)。
+      : (s.stage1Loop && loop1DuoMarkVisible(s.stage1Loop.phase)) ? [{ x: s.stage1Loop.duoPos.x, y: s.stage1Loop.duoPos.y }]
+      : [];
     // v0.25.3054: 施設フェード中は施設系の矢印/マーカーも出さない(城=castleVisible、商人=radius0で
     // 縁矢印を殺す、POI/拠点=空配列)。ボスマーク・アイテム・ハンター等の非施設マーカーは従来どおり。
     const facHidden = facFade < 0.5;
     this.arrowSafeBaseId = s.safeBaseId ?? null; // 拠点の目印の色(安全な拠点=最後に解放した拠点=青・地面の円と同じ)
-    this.syncArrows(s.pickups, s.castleEvent, (facHidden || s.merchantHidden || s.stageTheme === 'lab') ? { ...s.weaponMerchant, radius: 0 } : s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab') && !facHidden, s.activeEvent, facHidden ? [] : revealedPois, facHidden ? [] : s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, rescuePoints, {
+    // 1周目(STAGE1_FIRST_LOOP.md §4-1): 西の拠点は確保するまで、遠くからでも画面端の印を出す(近くの足切りを外す)。
+    this.arrowFarBaseId = s.stage1Loop?.phase === 'base' ? LOOP1_BASE_ID : null;
+    this.syncArrows(s.pickups, s.castleEvent, (facHidden || s.merchantHidden || s.stageTheme === 'lab') ? { ...s.weaponMerchant, radius: 0 } : s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab') && !facHidden, s.activeEvent, facHidden ? [] : revealedPois, facHidden ? [] : basesDrawn, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, rescuePoints, {
       targets: markedBosses,
       // 距離は**ボスメーカーの部屋の中だけ常時**表示(社長指示v0.25.2657)。本編は数字を出さない=
       // マーク(方角)だけ。道具としての計測値をゲーム画面へ持ち込まない。
@@ -41897,6 +41908,7 @@ export class PixiScene {
 
   // 拠点の目印(research/FAST_TRAVEL.md §2-5): 安全な拠点の id(syncArrows の直前に置く)と、目印が出た時刻(出の慣性用・実時間)。
   private arrowSafeBaseId: string | null = null;
+  private arrowFarBaseId: string | null = null; // 距離の足切りを掛けない拠点(ステージ1の1周目の西の拠点)
   private baseArrowRecs = new Map<string, BaseArrowRec>();
   /** 遠くの目的地(POI)の目印の出入り(慣性)と、初めて出た時刻(拠点を解放した知らせの強調用・出撃ごと)。 */
   private poiArrowRecs = new Map<string, PoiArrowRec>();
@@ -42536,7 +42548,7 @@ export class PixiScene {
       const bKey = b.id ?? `${b.x},${b.y}`;
       const tx = toScreenX(b.x), ty = toScreenY(b.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内は地面サークルで見える
-      if (Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue;
+      if (b.id !== this.arrowFarBaseId && Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue;
       const angle = Math.atan2(ty - cyC, tx - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
       let tdist = Infinity;

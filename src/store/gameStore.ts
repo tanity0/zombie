@@ -256,6 +256,7 @@ import {
 import { escortAggroCandidates, escortBossHaters, escortInMotionView, hateEscortSource } from '../utils/escortView';
 import { JUN_ESCORT_INDEX, JUN_NAME } from '../data/junEscortLines';
 import { npcChatterAllowed, getNpcChatterEnabled } from '../utils/npcChatter'; // オプション「仲間の雑談」
+import { createStage1LoopState, isLoop1HiddenBase, LOOP1_BASE_ID, type Stage1LoopState, type Loop1Talk } from '../utils/stage1FirstLoop'; // ステージ1の1周目(STAGE1_FIRST_LOOP.md)
 import { isJunEscort, JUN_ESCORT_ID, junJoinsRun, stepJunWalk, JUN_DEPART_WALK_DELAY_MS, junNextWaypoint, junReachableGoal, junTouchesRect, JUN_ARRIVE_TOUCH_DIST, junFollowsPlayer, junFollowMachine, countsForBaseCapture, junNearOpenBase, junLeftBehindStep, JUN_LEFT_BEHIND_CD_MS, JUN_BASE_ID, junPseudoBase } from '../utils/junEscort';
 // research/ESCORT_FOLLOW.md: 拠点を開けた軍人が、その担当区域の中だけついてくる(判定は utils の純関数)。
 import {
@@ -9076,6 +9077,10 @@ interface GameState {
    */
   dropWelcomeStepAmmo: (cx: number, cy: number, distPx: number, step: number) => void;
   eventQuestNpc: EventQuestNpc;
+  // ステージ1「1周目」(STAGE1_FIRST_LOOP.md)。null=1周目ではない(フラグOFF・2周目以降・他ステージ)=どの分岐にも入らない。
+  stage1Loop: Stage1LoopState | null;
+  // 「1周目会話中」(§7.7 A3): 到着/お礼の会話の間だけ立つ。立っている間 useGameLoop は早期 return(時間停止)。
+  stage1LoopTalk: Loop1Talk | null;
   // 二人組クエストのrun内状態(EVENT_QUEST_DESIGN.md)。受領中のクエスト種別と討伐進捗。
   // HUD(右上スクラップ下の n/N 表示)はこのプリミティブ群だけを購読する(React再描画規律)。
   eventQuestActive: 'forced' | 'sub' | null;
@@ -9198,6 +9203,7 @@ interface GameState {
   storyBossMode: boolean;        // このラン=ストーリーボス専用(useGameLoopの停止ゲート+ボス進行が参照)
   // the ONE(統合正本9章): 洋館［SUB］再訪(秘密任務)。保存槽ゴール+［グレンの薬を使う］。
   pendingRevisit: boolean;       // 出撃前にAppがセット(selectedMission='revisit')。resetGame で revisitMode へ
+  pendingStage1FirstLoop: boolean; // 出撃前にAppがセット(STAGE1_FIRST_LOOP.md §2・isStage1FirstLoopRun)。resetGame で stage1Loop へ
   revisitMode: boolean;          // このラン=洋館再訪(城ボス停止・洋館=保存槽マーカー・薬ボタン)
   medicineUsedAt: number;        // 薬を使った時刻(Date.now)。0=未使用。使用後 useGameLoop が短い間を置いて勝利化
   medicinePromptVisible: boolean; // ［グレンの薬を使う］ボタンの表示(保存槽接近中のみ。HUDが購読)
@@ -9968,6 +9974,10 @@ interface GameState {
   setPendingSuppression: (on: boolean) => void;   // 出撃が制圧イベント(ステージ1メイン)か
   setPendingStoryBoss: (on: boolean) => void;     // 出撃がストーリーボス専用(M7/EX)か
   setPendingRevisit: (on: boolean) => void;       // 出撃が洋館［SUB］再訪か
+  setPendingStage1FirstLoop: (on: boolean) => void; // 出撃がステージ1の1周目か(STAGE1_FIRST_LOOP.md)
+  // ステージ1の1周目のゴール(STAGE1_FIRST_LOOP.md §7.6 F / §7.7 A2): 現行のサブ納品と同じ報酬+meta.delivered だけを付ける
+  // (eventQuestNpc.status は書き換えない=v4の completed 以後の経路へ入れない。syncQuestStageClear も呼ばない=ステージ2は開かない)。
+  completeStage1FirstLoopDelivery: () => void;
   completeEventEncounter: () => void;             // M5遭遇のみ(統合正本4.5): 会話→完了(受注/報酬なし)
   useGlenMedicine: () => void;                    // 再訪: ［グレンの薬を使う］(統合正本9.3)
   farBackdrop: string;                                  // この出撃の遠景差し替えキー(''=既定の森遠景 / 'city'=夜の廃都。描画が参照)
@@ -10365,7 +10375,7 @@ export const travelDestinationsOf = (s: Pick<GameState, 'player' | 'weaponMercha
   return listTravelDestinations({
     player: { x: p.x + p.width / 2, y: p.y + p.height / 2 },
     merchant: merchantShown ? s.weaponMerchant : null,
-    bases: s.corridorMode ? [] : s.baseSites,
+    bases: s.corridorMode ? [] : s.baseSites.filter(b => !b.loop1Hidden), // 1周目の西以外の拠点は行き先に出さない
     armoryRadius: ARMORY_RADIUS,
     baseRadius: BASE_CAPTURE_RADIUS,
   });
@@ -10585,6 +10595,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   welcomeRetired: false,
   escortFollowEnabled: loadEscortFollowEnabled(),
   eventQuestNpc: createEventQuestNpc(),
+  stage1Loop: null,
+  stage1LoopTalk: null,
   eventQuestActive: null,
   eventQuestKills: 0,
   eventQuestGoalCount: 0,
@@ -10648,6 +10660,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   pendingStoryBoss: false,
   storyBossMode: false,
   pendingRevisit: false,
+  pendingStage1FirstLoop: false,
   revisitMode: false,
   medicineUsedAt: 0,
   medicinePromptVisible: false,
@@ -24822,6 +24835,18 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPendingStoryBoss: (on) => {
     set({ pendingStoryBoss: on });
   },
+  setPendingStage1FirstLoop: (on) => {
+    set({ pendingStage1FirstLoop: on });
+  },
+
+  completeStage1FirstLoopDelivery: () => {
+    const stageId = getSelectedStageId();
+    // 報酬は completeEventQuest と同じ式(EVENT_QUEST_REWARD_GOLD × ゴールドラッシュ × 育成倍率)。
+    get().addGold(Math.round(EVENT_QUEST_REWARD_GOLD * skillGoldRushMult(get().player) * get().player.growthGoldMult));
+    const meta = getEventQuestMeta(stageId);
+    setEventQuestMeta(stageId, { ...meta, delivered: true });
+  },
+
   setPendingRevisit: (on) => {
     set({ pendingRevisit: on });
   },
@@ -25120,7 +25145,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     let unlocked = false;
     set(state => {
       // v0.25.3054(社長指示): ボス戦中(+復帰猶予)は施設ロック=滞在も通信ポップも進めない。
-      if (facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)) return {};
+      // ステージ1の1周目(STAGE1_FIRST_LOOP.md §7.7 B3): 賞金首と交戦中でもワクチンを取れる(「無視して進もう」が成り立つように)。
+      if (!state.stage1Loop && facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)) return {};
       const pos = state.hospital;
       if (!pos || state.hospitalTaken || state.gameWon) return {};
       // ★社長指示2026-11-02(research/POI_TOUCH_SHRINE.md §1): 建物に正面(下)から触れた瞬間に入手(旧: 手前の円に3秒)。
@@ -26995,6 +27021,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ステージ6(洋館・奥行き通路)。stage-6メイン出撃(App側で pendingCorridor をゲート済み)かつ
       // ダンステスト/屋内/再訪でないときだけ有効(とりあえず統合v0.25.2105・社長指示)。
       const corridorMode = state.pendingCorridor && !state.danceTestMode && !indoor && !state.pendingRevisit;
+      // ステージ1の1周目(STAGE1_FIRST_LOOP.md)。判定(どの出撃を1周目にするか)は App が isStage1FirstLoopRun で済ませて
+      // pendingStage1FirstLoop に入れる。ここは「森の屋外のステージ1」以外で立たないことだけを念押しする。
+      const firstLoop = state.pendingStage1FirstLoop && !state.danceTestMode && !indoor && !corridorMode && getSelectedStageId() === 'stage-1';
       // ステージ5(戦場)=残骸プロップに置換・チュートリアル(洞窟)=木なし(社長指示2026-07-17)。
       // world層のゲートを毎ラン設定(描画/幹当たり/配置回避が treesInRegion 経由で一括に空になる)。
       // 洋館通路も木/トーチ/緑卵を出さない(社長指示)。
@@ -27033,7 +27062,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 裏ボス(深層域)。屋外(非ラボ/非屋内)・非ダンステストのときだけ有効。
       // 洋館通路(corridorMode)では裏ボス深層域を無効化(v0.25.2119): 通路は奥へ歩き続ける構造のため
       // 距離条件を必ず踏み、森用のデンジャーゾーン暗幕が通路背景を覆って画面が黒地化していた(社長報告)。
-      const hiddenBoss = (!state.danceTestMode && !indoor && stageTheme === 'forest' && !corridorMode && !bossMakerRoom) ? state.pendingHiddenBoss : null;
+      // 1周目(STAGE1_FIRST_LOOP.md §7.6 D): 裏ボスは出さない。
+      const hiddenBoss = (!state.danceTestMode && !indoor && stageTheme === 'forest' && !corridorMode && !bossMakerRoom && !firstLoop) ? state.pendingHiddenBoss : null;
       // PACING_PUZZLE.md §6.24 M48: 寄り道POI(病院/武器庫/警察署)は病院と同じ条件系(通常ステージ=
       // 屋外・森スキン・通路/ダンステストでない)にだけ立つ。3種の位置は、裏ボスのセクターを除いた
       // 残り3セクターへ毎ランランダムに割り当てる(assignDetourSectors。乱数はここで1度だけ引く=
@@ -27198,7 +27228,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         normalRoster: !escortsSuppressed && farBackdrop !== 'tutorial' && escortSquad.length > 0,
         revisit: state.pendingRevisit,
       }) ? [...escortSquad, makeJunEscort(spawnTL.x, spawnTL.y, maxHealth)] : escortSquad;
-      const sortieEsc = (escortRoster.length && farBackdrop !== 'tutorial') ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;
+      // 1周目(STAGE1_FIRST_LOOP.md §4-2 / §7.5): 現行の抽選から1人だけ=西の拠点の担当だけを残す。出撃時の一言もその人。
+      const loop1Roster = firstLoop ? escortRoster.filter(e => e.baseId === LOOP1_BASE_ID) : escortRoster;
+      const sortieEsc = (loop1Roster.length && farBackdrop !== 'tutorial') ? loop1Roster[Math.floor(Math.random() * loop1Roster.length)] : null;
       const sortieSol = sortieEsc ? rosterEntry(sortieEsc.soldierIndex) : null;
       // PACING_PUZZLE.md §17-14(社長指示「ウェルカム終わるまでは画面に存在させない」):
       // このランにウェルカムが関係あるか(useGameLoop.ts の welcomeApplicable と同じ1関数=
@@ -27217,10 +27249,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         tutorialStage: farBackdrop === 'tutorial',
         endingStage: farBackdrop === 'ending',
         practiceRun: isPracticeRun(),
-        retired: welcomeRetiredNow,
+        // 1周目はウェルカムイベントが無い(§7.5)=済んだ扱いと同じ(護衛・商人は出撃の瞬間から居る)。
+        retired: welcomeRetiredNow || firstLoop,
       });
-      const escortsNow = welcomeForThisRun ? [] : escortRoster;
-      const pendingEscortsNow = welcomeForThisRun ? escortRoster : [];
+      const escortsNow = welcomeForThisRun ? [] : loop1Roster;
+      const pendingEscortsNow = welcomeForThisRun ? loop1Roster : [];
       return {
         unlockedShopSkillCards: runShopUnlocks,
         indoorMode: indoor,
@@ -27242,11 +27275,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §6.24 M48: 位置はこのランで確定した detourSectors(裏ボスのセクターを避けた3割り当て)を使う。
         // v0.25.3187: 角度を±30°散らす(セクター中心=拠点の延長線上に並ぶのをやめる)。乱数はここで
         // 1度だけ引いて位置を確定(pois/矢印は store の実位置を読むので自動で一致する)。
-        hospital: detourSectors ? hospitalSpot(detourSectors.hospital, detourAngleOffset(Math.random())) : null,
+        // 1周目(STAGE1_FIRST_LOOP.md §4-5): 廃病院は拠点を確保するまで設置もしない(確保の瞬間に useGameLoop が西の北寄りへ置く)。
+        // 武器庫・警察署・武将の祠は出さない(§7.6 D)。
+        hospital: (detourSectors && !firstLoop) ? hospitalSpot(detourSectors.hospital, detourAngleOffset(Math.random())) : null,
         hospitalDwellMs: 0,
         hospitalTaken: false,
         hospitalTakenAt: 0,
-        armory: detourSectors ? armorySpot(detourSectors.armory, detourAngleOffset(Math.random())) : null,
+        armory: (detourSectors && !firstLoop) ? armorySpot(detourSectors.armory, detourAngleOffset(Math.random())) : null,
         armoryDwellMs: 0,
         poiTouching: [],
         poiTouchFx: {},
@@ -27255,19 +27290,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         poiTouchLastLight: false,
         armoryTaken: false,
         armoryTakenAt: 0,
-        police: detourSectors ? policeSpot(detourSectors.police, detourAngleOffset(Math.random())) : null,
+        police: (detourSectors && !firstLoop) ? policeSpot(detourSectors.police, detourAngleOffset(Math.random())) : null,
         policeTaken: false,
         policeTakenAt: 0,
         // 武将の祠: 寄り道が使った3セクターへ独立に1つずつ(§3 B1)。練習ラン・ボスメーカーでは出さない(§3 B6=★3「初期装備で開始」)。
         // 隠しPOI(research/HIDDEN_POI.md): ステージ1・3・4・5の深層域に固定。練習ラン・ボスメーカー・屋内・通路・エンディングでは出さない。
-        secretPois: (!state.danceTestMode && !indoor && !corridorMode && !bossMakerRoom && farBackdrop !== 'ending' && !isPracticeRun())
+        secretPois: (!state.danceTestMode && !indoor && !corridorMode && !bossMakerRoom && farBackdrop !== 'ending' && !isPracticeRun() && !firstLoop)
           ? secretPoisForStage(getSelectedStageId()) : [],
         secretFoundThisRun: 0,
         secretCheckedIds: [],
         facilityLockedPrev: false,
         facilityEjectUntil: 0,
         shrines: (() => {
-          if (!detourSectors || isPracticeRun() || isBossMakerRun()) return [];
+          if (!detourSectors || isPracticeRun() || isBossMakerRun() || firstLoop) return [];
           const sec = assignShrineSectors(bossSectorIndex(hiddenBoss), Math.random, [detourSectors.police, detourSectors.armory, detourSectors.hospital]);
           return SHRINE_SLOTS.map(slot => ({ slot, ...shrinePosForSector(slot, sec[slot], detourAngleOffset(Math.random())) }));
         })(),
@@ -27472,7 +27507,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 洋館通路: 城なし(v0.25.2144・社長指示「城も出現しないで」)。遥か遠方に置く=描画カリング/
         // 衝突/接近系が全て自然に無効。5分の城ボスはuseGameLoop側でcorridorModeゲート
         // (bossSpawnedはfalseのまま=画面端マーカーも出ない)。
-        castleEvent: corridorMode ? { x: 100000, y: 100000, bossSpawned: false } : createCastleEvent(),
+        // 1周目(STAGE1_FIRST_LOOP.md §7.7 A2): 城も洋館通路と同じく遥か遠方へ置く(建物・印も出ない)。城ボスは useGameLoop の castleRouteOk が止める。
+        castleEvent: (corridorMode || firstLoop) ? { x: 100000, y: 100000, bossSpawned: false } : createCastleEvent(),
         weaponMerchant: indoor
           ? { x: LAB_MERCHANT.x, y: LAB_MERCHANT.y, radius: MERCHANT_INTERACT_RADIUS }
           // チュートリアル: 商人も出さない(社長指示v0.25.1818)。不在状態が型に無いため到達不能座標へ
@@ -27513,7 +27549,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             || getSelectedFreeMode() || state.benchmarkRun || corridorMode || indoor
             || stageTheme === 'lab' || farBackdrop === 'tutorial' || state.pendingRevisit
             // §2-10: 完了フラグは delivered 基準(旧 .sub は撤去)。
-            || !qCfg || getEventQuestMeta(getSelectedStageId()).delivered;
+            || !qCfg || getEventQuestMeta(getSelectedStageId()).delivered
+            // 1周目(STAGE1_FIRST_LOOP.md §7.7 A2): v4 の通信・レスキュー経路を完全に止める(二人組は1周目専用の物を stage1Loop が出す)。
+            || firstLoop;
           return qGone ? { ...createEventQuestNpc(), status: 'gone' as const } : createEventQuestNpc();
         })(),
         eventQuestActive: null,
@@ -27554,7 +27592,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 「チュートリアルステージに拠点サークルぽいのがある、削除」)。制圧イベント自体は
         // v0.25.1818で止めていたが、**サークルの実体(baseSites)は作られたままで描画されていた**。
         // ステージ2(研究所)も拠点なし(社長報告2026-10-20「ステージ2にまだ拠点マークが出てる」=画面端の拠点の矢印と地図の四角)。
-        baseSites: (corridorMode || farBackdrop === 'tutorial' || farBackdrop === 'ending' || stageTheme === 'lab') ? [] : createBaseSites(),
+        // 1周目(STAGE1_FIRST_LOOP.md §7.6 C): 拠点データは4つとも残す(ハンターの巡回・突進の判定は現行どおり)。
+        // 表示・軍人の割当・確保の対象は西だけ=他の3つに loop1Hidden を付ける(印・サークルを描かない)。
+        baseSites: (corridorMode || farBackdrop === 'tutorial' || farBackdrop === 'ending' || stageTheme === 'lab') ? []
+          : firstLoop ? createBaseSites().map(b => (isLoop1HiddenBase(b.id) ? { ...b, loop1Hidden: true } : b))
+          : createBaseSites(),
+        stage1Loop: firstLoop ? createStage1LoopState(sortieSol ? (sortieEsc?.soldierIndex ?? -1) : -1) : null,
+        stage1LoopTalk: null,
         // 研究所: アイドルの手前に遠隔ショップ(武器庫)。アイドルを置かない出撃(1対1)では置かない(社長指示2026-10-11「やはり研究所の遠隔ショップ復活で」)。
         labArmory: labIdol && !vsEntryOfRun() ? labIdolShopSpot(labIdol) : null,
         // ステージ2の這う塊: アイドル側の入り口(スタートからアイドルの方へ600px)で待ち、順路(原点→資料)を20%進むと起きる。

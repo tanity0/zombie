@@ -47,7 +47,7 @@ const readPauseMap = (): PauseMapData | null => {
   };
   return {
     player: { x: p.x + p.width / 2, y: p.y + p.height / 2, dirX: p.lastDirection?.x ?? 1, dirY: p.lastDirection?.y ?? 0 },
-    bases: s.baseSites.map(b => ({ x: b.x, y: b.y, captured: b.status === 'captured' })),
+    bases: s.baseSites.filter(b => !b.loop1Hidden).map(b => ({ x: b.x, y: b.y, captured: b.status === 'captured' })), // 1周目は西の拠点だけ(STAGE1_FIRST_LOOP.md §7.6 C)
     // 取り終えた寄り道(裏ボスは討伐済み)は地図から消す(社長 2026-10-17「取り終えたら消していいよ」)。
     route: currentRoute(), // §2-6 今回歩いた道(線ごと・開いた時の写し)
     pois: pois.filter(q => !(taken[q.kind] ?? false)).map(q => ({ x: q.x, y: q.y, kind: q.kind })),

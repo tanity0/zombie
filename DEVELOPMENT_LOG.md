@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5658 — ステージ1「1周目」(二人組救出)を実装・フラグで可逆【2026-11-19 02:16 JST】
+
+- 設計書 STAGE1_FIRST_LOOP.md(§7.5〜7.7優先)どおり。STAGE1_FIRST_LOOP_ENABLED 1本で丸ごとOFF=現行どおり。純関数 utils/stage1FirstLoop.ts(+test 24件)・store test 7件。進行 progress.ts に「1周目クリア済み」。
+- 1周目: ウェルカム無し・目的「身元不明の民間人2名を救出せよ」・城/裏ボス/隠し地点/武器庫/警察署/祠/v4二人組/ゲート/大量発生/紅き夜/死神/徘徊・英雄/演目を出さない・守護霊はそのランだけ無し(§7.8で次に実装)・拠点データは4つ残し西以外は loop1Hidden・軍人は西担当1名・区域モード一方通行(directorTick loop1Koma)・研究対象の中ほどで賞金首を北520pxに1回+bountyWarning(シート dlg_000433〜440)・拠点確保→loop1-base チュートリアル+廃病院を北寄りに設置→ワクチン→detour-poi+二人を南寄りに→到着で会話(IntroDialogue・シミュ停止・タップ送り)→囲い12体(fromEvent)→全滅でゴール(3秒)→お礼→100G+meta.delivered→勝利(syncQuestStageClear/markStageCleared を通さない)。リザルトは1周目専用の任務報告2行。2周目以降は現行(v4二人組は delivered で消える・城ボス・ステージ2解放は城ボス撃破時)。
+- デバッグ: ?loop1=1/0(本番でも有効)・?loop1phase=bounty|hospital|duo|talk|enclosure|goal|thanks(dev のみ)。
+- 変更: App.tsx / GameHUD.tsx / GameOverScreen.tsx / PauseMenu.tsx / npcLines.ts / progress.ts / tutorials.ts / useGameLoop.ts / pixiScene.ts / gameStore.ts / types/game.ts / directorTick.ts / m0Tutorial.test.ts / 新規 stage1FirstLoop.ts(+test)・stage1FirstLoop.store.test.ts。実装は opus サブエージェント(約1時間)。
+- 検証: typecheck・lint(0 error)・vitest 全体 10436 pass(escortToss.store.test の1件は既存の不安定テスト=変更前の HEAD でも3回中1回落ちることを確認)・430×932 で各段階を撮影し目視(scratchpad/loop1_*.png)。PC横・実機は未確認。負荷1/10。
+- 社長へ報告する点: 1周目でも右上にステージ1のサブ目標(通常変異体0/25・青変異体0/5)が出ている / 軍人の出撃の一言が担当方角と合わないことがある(既存) / 賞金首は縦持ちだと地平線の上で本体が見えにくい。
+- 自己点検: 第4条(初心者ゾーン)=1周目は軍事区域リラックスから始まり段階で上がる=むしろ初心者向け。第5条(緩を荒らさない)=一方通行で戻らない点は社長指示。
+
 ## v0.25.5657 — 設計書 STAGE1_FIRST_LOOP.md(ステージ1を2周・1周目=二人組救出)新規【2026-11-18 22:12 JST】
 
 - 社長指示「ステージ１を2週させる・戻す可能性も視野に」と追加回答8件を設計書化(フラグで丸ごと無効化可能・1周目の流れ・2周目以降・受け入れ条件・★未決2件)。賞金首の警告セリフ8人分をシート dlg_000433〜440 に下書き(draft)。着手前の品質監査を実施中。

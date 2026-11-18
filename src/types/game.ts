@@ -2432,6 +2432,8 @@ export interface BaseSite {
   soldierFireAt: number;       // 次に軍人が攻撃者へ射撃する gameTime
   soldierIndex: number;        // 制圧順で割り当てる軍人名簿index(-1=未割当)。どの拠点でも1人目=エドガー。
   soldiers: { x: number; y: number; hx: number; hy: number }[]; // 軍人の現在位置 + 待機(home=サークル端寄り)位置
+  /** ステージ1の1周目(STAGE1_FIRST_LOOP.md §7.6 C): 西以外の拠点。データ(ハンターの判定)は残し、印・サークル・行き先には出さない。 */
+  loop1Hidden?: boolean;
 }
 
 // 護衛軍人NPC(社長指示): スタート時にプレイヤーと同時に4人配置。HPなし。担当拠点(東西南北)へ前進し、

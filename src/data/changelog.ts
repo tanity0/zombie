@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5658', items: [
+    'ステージ1の最初の出撃は、身元不明の民間人2名を救出する任務になった',
+    '救出を終えると、次からは今までどおりのステージ1(大型変異体の排除)になる',
+  ] },
   { version: '0.25.5657', items: [
     'ゲーム内容の変更はありません',
   ] },

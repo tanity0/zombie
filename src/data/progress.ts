@@ -408,6 +408,21 @@ export const setEventQuestMeta = (stageId: string, meta: EventQuestMeta): void =
 };
 
 // ───────────────────────────────────────────────────────────────────────────
+// ステージ1「1周目クリア済み」(STAGE1_FIRST_LOOP.md §2・端末の進行データ)。未クリア=1周目/クリア済み=2周目以降。
+// 立てるのは1周目のゴール到達(勝利)の時だけ。死亡・撤退では立てない(次も1周目)。
+const STAGE1_FIRST_LOOP_KEY = 'zombie.progress.stage1FirstLoopCleared';
+
+export const getStage1FirstLoopCleared = (): boolean => {
+  if (typeof localStorage === 'undefined') return false;
+  try { return localStorage.getItem(STAGE1_FIRST_LOOP_KEY) === '1'; } catch { return false; }
+};
+
+export const markStage1FirstLoopCleared = (): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(STAGE1_FIRST_LOOP_KEY, '1'); } catch { /* ignore */ }
+};
+
+// ───────────────────────────────────────────────────────────────────────────
 // 城ボス(giantbat)クリアフラグ(ステージ毎・永続)。討伐の瞬間に立てる(年表と同じA方式=
 // その後死亡しても取り消さない)。次ステージ解放の条件の片翼(下の syncQuestStageClear)。
 const CASTLE_BOSS_KEY = 'zombie.progress.castleBoss';

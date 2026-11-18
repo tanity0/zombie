@@ -51,7 +51,8 @@ describe('台帳の体裁(全チュートリアル共通)', () => {
   // 当面はテキストのみで成立する構成。手本が入ったらこの配列から外すこと。
   // 'hit-retaliation' / 'escort-kick' / 'fast-travel' / 'escort-follow'(社長指示2026-10-13「シンプルな内容で」):
   // 資料室だけに並ぶ文字の項目。手本の収録は社長が用意する時に足す。
-  const AWAITING_SAMPLE: string[] = ['detour-poi', 'stage1-guide', 'hit-retaliation', 'escort-kick', 'fast-travel', 'escort-follow'];
+  // 'loop1-base'(ステージ1の1周目の拠点ページ): フィールドガイドの「拠点」ページと同じ本文=手本も同じく待ち。
+  const AWAITING_SAMPLE: string[] = ['detour-poi', 'stage1-guide', 'loop1-base', 'hit-retaliation', 'escort-kick', 'fast-travel', 'escort-follow'];
   it('全件に手本(img)が付いている(手本待ちの明示列挙を除く)', () => {
     for (const t of TUTORIALS) {
       if (AWAITING_SAMPLE.includes(t.id)) continue;

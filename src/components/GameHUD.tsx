@@ -27,6 +27,7 @@ import { comboMilestoneCrossed, comboMilestoneAmp } from '../utils/comboMileston
 import DirectorLine from './DirectorLine';
 import { getSelectedStageId } from '../data/progress';
 import { getEventQuestConfig } from '../utils/eventQuest';
+import { LOOP1_OBJECTIVE_TEXT } from '../utils/stage1FirstLoop';
 import { HudKey } from './HudKey'; // ゲーム中のボタン札(research/PC_SUPPORT.md §14)
 import { useHudHintStyle, useHudHasMouse, hudGlyph, hudGunSlotKey } from '../utils/hudHints';
 
@@ -72,6 +73,21 @@ const RescueQuestGoalPill: React.FC = () => {
       style={{ color: '#facc15' }}
     >
       {bossKilled ? '[サンプルを届ける]' : '[搬送体の討伐 0/1]'}
+    </div>
+  );
+};
+
+// ステージ1の1周目(STAGE1_FIRST_LOOP.md §7.6 G / §7.7 B7): 目的を1行。購読は「1周目か」の boolean だけ(毎フレーム再描画しない)。
+// クリアまで出し続ける(段階で文言を変えない=社長確認の文言1本)。
+const Loop1ObjectivePill: React.FC = () => {
+  const firstLoop = useGameStore(s => s.stage1Loop !== null);
+  if (!firstLoop) return null;
+  return (
+    <div
+      className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums gt-solid"
+      style={{ color: '#facc15' }}
+    >
+      {LOOP1_OBJECTIVE_TEXT}
     </div>
   );
 };
@@ -364,6 +380,7 @@ const GameHUD: React.FC = () => {
           right: 'max(env(safe-area-inset-right), 12px)',
         }}
       >
+        <Loop1ObjectivePill />
         <RescueBasesGatePill />
         <RescueQuestGoalPill />
         <SubquestHud />

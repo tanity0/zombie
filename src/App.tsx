@@ -32,8 +32,10 @@ import { loadProgressBegin, loadProgressDone } from './utils/loadProgress';
 import {
   getSelectedStageId, setSelectedStageId, getSelectedFreeMode, markStageCleared, syncQuestStageClear,
   getSelectedMission, setSelectedMission, setSelectedFreeMode, getStoryFlags, updateStoryFlags, getClearedStages,
+  getStage1FirstLoopCleared, markStage1FirstLoopCleared,
   type SelectedMission,
 } from './data/progress';
+import { isStage1FirstLoopRun, parseLoop1Force, STAGE1_FIRST_LOOP_ENABLED } from './utils/stage1FirstLoop';
 import { unlockRecordsForStage, unlockRecords, backfillStoryArchive, ENDING_RECORD_IDS } from './data/storyArchive';
 import { subsAllCompletedFromMeta, endingFollowup } from './utils/storyProgress';
 import { getEventQuestConfig } from './utils/eventQuest';
@@ -385,6 +387,19 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     useGameStore.getState().setPendingSuppression(stageForRun?.mainEvent === 'suppression');
     useGameStore.getState().setPendingStoryBoss(!benchmark && !!stageForRun?.storyBossOnly);
     useGameStore.getState().setPendingRevisit(revisitRun);
+    // ステージ1の1周目(STAGE1_FIRST_LOOP.md §2・§7.5「1周目にしない出撃」)。判定は純関数1本。
+    useGameStore.getState().setPendingStage1FirstLoop(isStage1FirstLoopRun({
+      enabled: STAGE1_FIRST_LOOP_ENABLED,
+      force: parseLoop1Force(window.location.search),
+      stageId: stageForRun?.id ?? '',
+      firstLoopCleared: getStage1FirstLoopCleared(),
+      benchmark,
+      free: getSelectedFreeMode(),
+      practice: isPracticeRun() || isGauntletRun(),
+      bossTestRun: BOSS_TEST_RUN,
+      smoke: new URLSearchParams(window.location.search).get('smoke') !== null,
+      revisit: revisitRun,
+    }));
     useGameStore.getState().setPendingCorridor(corridorRun);
     useGameStore.getState().setPendingHiddenBoss(stageForRun?.hiddenBoss ?? null);
     // EVENT_QUEST_DESIGN.md §2-1「★★『このランでクエストが有効か』の唯一の出どころ」(★v3 5巡目 監査A-3):
@@ -592,6 +607,10 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
       if (revisitRun) {
         // 洋館再訪(秘密任務)はステージクリア扱いにしない(進行は useGlenMedicine が
         // storyFlags/ミッション単位クリアへ保存済み。軍向けの記録は残さない=統合正本9.4)。
+      } else if (useGameStore.getState().stage1Loop) {
+        // ステージ1の1周目(STAGE1_FIRST_LOOP.md §7.7 B8): syncQuestStageClear・markStageCleared を通さない=ステージ2は開かない。
+        // 代わりに「1周目クリア済み」を立てる(次の出撃から2周目以降の構成)。
+        markStage1FirstLoopCleared();
       } else if (getEventQuestConfig(stageId)) syncQuestStageClear(stageId);
       else markStageCleared(stageId);
       // 年表の実績(社長指示2026-10-14): 無強化(メーター全0)のランで**クリア扱いになった**ステージを台帳へ、
