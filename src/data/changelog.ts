@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5642', items: [
+    '資料「規定値超過実験」の一文を直した',
+  ] },
   { version: '0.25.5641', items: [
     '資料「研究所感染の起点」の一文を直した',
   ] },
