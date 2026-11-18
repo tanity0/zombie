@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5644', items: [
+    '資料「対変異体災害・最終調査記録」に、軍本部が襲われた理由を書き足した',
+  ] },
   { version: '0.25.5643', items: [
     'ステージ6と7の任務報告の文章を整えた',
     '資料「グレン／ミラ接触記録」とグレンの物語の一文を直した',
