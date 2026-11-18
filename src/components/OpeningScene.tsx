@@ -1009,6 +1009,20 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           <div data-opg-scene="" style={{ position: 'absolute', inset: 0, transformOrigin: '50% 60%', animation: 'opbreathe 7s ease-in-out infinite alternate', willChange: 'transform' }}>
           <div ref={walkWorldRef} style={{ position: 'absolute', top: 0, left: 0, height: '100%', willChange: 'transform' }}>
             <img data-opg-content="0.13,0.755" src={WALK_BG} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill' }} />
+            {/* スタッフの顔のモザイク: 鮮明な背景の直上・2枚のブラー層の下(社長指示2026-11-18「フィルターの下にして。目立たせたいわけではない」)。 */}
+            {WALK_FACE_MOSAICS.map((m, mi) => (
+              <div
+                key={`wm${mi}`}
+                style={{
+                  position: 'absolute', left: `${m.left}%`, top: `${m.top}%`,
+                  height: `${(FACE_MOSAIC_PX / WALK_BG_H) * 100}%`, aspectRatio: '1',
+                  transform: 'translate(-50%, -50%)', pointerEvents: 'none',
+                  backgroundImage: m.bg, backgroundSize: `${FACE_MOSAIC_FRAMES * 100}% 100%`, backgroundRepeat: 'no-repeat',
+                  imageRendering: 'pixelated',
+                  animation: `opmosaic ${m.dur}ms steps(${FACE_MOSAIC_FRAMES}, jump-none) ${m.delay}ms infinite`,
+                }}
+              />
+            ))}
             {/* 被写界深度: 事前ブラー版を縦グラデマスクで重ねる(壁=ボケ/黄色ラインで抜けて床はシャープ)。 */}
             <img src={WALK_BG_BLUR} alt="" draggable={false} style={{
               position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill',
@@ -1021,21 +1035,6 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill',
               opacity: WALK_BLOOM_ALPHA, mixBlendMode: 'screen', pointerEvents: 'none',
             }} />
-            {/* スタッフの顔のモザイク: 2枚のブラー層の上(0.95のぼかし層の下に置くと5%しか透けず見えないため)、光帯・グローの下。 */}
-            {WALK_FACE_MOSAICS.map((m, mi) => (
-              <div
-                key={`wm${mi}`}
-                style={{
-                  position: 'absolute', left: `${m.left}%`, top: `${m.top}%`,
-                  height: `${(FACE_MOSAIC_PX / WALK_BG_H) * 100}%`, aspectRatio: '1',
-                  transform: 'translate(-50%, -50%)', pointerEvents: 'none',
-                  backgroundImage: m.bg, backgroundSize: `${FACE_MOSAIC_FRAMES * 100}% 100%`, backgroundRepeat: 'no-repeat',
-                  // 上のぼかしに馴染ませる薄いにじみ(マスの形は読める強さに留める)。
-                  imageRendering: 'pixelated', opacity: 0.9, filter: 'blur(0.6px)',
-                  animation: `opmosaic ${m.dur}ms steps(${FACE_MOSAIC_FRAMES}, jump-none) ${m.delay}ms infinite`,
-                }}
-              />
-            ))}
             {/* 光のカーテン(v0.25.2158・社長選定E案): ランプ下に落ちる淡い光帯。bg%座標=スクロール連動。
                 マスクで両縁を溶かし、skewXでわずかに斜めへ。キャラより先に描く=キャラは光帯の手前。 */}
             {WALK_RAYS.map((r, ri) => (

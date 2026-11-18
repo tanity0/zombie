@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5632', items: [
+    'オープニングのスタッフの顔のモザイクを、ぼかしの奥に沈めて控えめにした',
+  ] },
   { version: '0.25.5631', items: [
     'オープニングの舞台裏の廊下で、スタッフの顔にモザイクが掛かるようにした',
   ] },
