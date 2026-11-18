@@ -265,7 +265,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
                       </p>
                     );
                   }
-                  const [jpPre] = l.text.split(ENDING_FINAL_WORD);
+                  const [jpPre, jpPost = ''] = l.text.split(ENDING_FINAL_WORD); // 結びの後ろ(「……！」)も他と一緒に消す
                   const enSegs = (l.en ?? '').split(/(\bthe\b|\bONE\b)/);
                   return (
                     <p
@@ -276,7 +276,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
                       <span className="mr-2 text-white/55" style={fadeNow}>{l.speaker}</span>
                       <span style={fadeNow}>「{jpPre}</span>
                       <span style={{ animation: 'endSegOut .9s ease 1.8s forwards' }}>{ENDING_FINAL_WORD}</span>
-                      <span style={fadeNow}>」</span>
+                      <span style={fadeNow}>{jpPost}」</span>
                       {l.en && (
                         <span className="block pl-8 pt-0.5 text-[10px] italic tracking-[0.06em] text-white/45">
                           {enSegs.map((seg, si) =>
