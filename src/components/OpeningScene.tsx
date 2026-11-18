@@ -136,6 +136,49 @@ const WALK_GLOWS = [
   { x: 95.93, y: 29.5, s: 1.0, green: false },  // 関係者出口 上
   { x: 96.88, y: 33.5, s: 0.8, green: true },   // 関係者出口の緑サイン
 ];
+// スタッフの顔のモザイク(社長指示2026-11-18「スタッフの顔にわかりやすくモザイク」): 背景に描き込まれた
+// スタッフ12人の顔へ、テレビの顔隠しのような粗いマス目を被せ、マスの色が入れ替わり続ける。
+// 座標は walk-stage-bg.png の画素(顔の中心)を拡大して実測。walkWorld内=bgのスクロール/拡縮に連動。
+// CSSアニメ(background-positionのsteps送り)のみ=毎フレームJSなし。
+const WALK_BG_W = 1891, WALK_BG_H = 831;
+const FACE_MOSAIC_PX = 30;   // 1辺(bg px)
+const FACE_MOSAIC_CELLS = 5; // 5×5マス(1マス=6 bg px)
+const FACE_MOSAIC_FRAMES = 6;
+const SKIN_TONES = ['#f0bc8c', '#e8a878', '#d89464', '#c27a4c', '#a8643c'];
+const WALK_FACES: { x: number; y: number; hair: string; period: number }[] = [
+  { x: 169, y: 388, hair: '#3a2e28', period: 140 },  // 楽屋A前・衣装ラック
+  { x: 322, y: 402, hair: '#2e2a28', period: 165 },  // トイレ前・ケース
+  { x: 585, y: 420, hair: '#24304a', period: 128 },  // 青髪・カート
+  { x: 744, y: 390, hair: '#8a6a44', period: 177 },  // 楽屋B前・タブレット
+  { x: 788, y: 447, hair: '#5a4636', period: 151 },  // ケースを押す
+  { x: 1014, y: 398, hair: '#2a2a2e', period: 134 }, // 帽子・ひげ(音響)
+  { x: 1149, y: 400, hair: '#3e3230', period: 172 },
+  { x: 1264, y: 401, hair: '#b89a6a', period: 146 }, // 金髪ポニーテール
+  { x: 1450, y: 395, hair: '#7a5a3a', period: 159 },
+  { x: 1561, y: 391, hair: '#8a3426', period: 123 }, // 赤茶髪
+  { x: 1690, y: 394, hair: '#22262e', period: 168 }, // 黒髪(脚立)
+  { x: 1810, y: 392, hair: '#9a2a2a', period: 137 }, // 赤髪ポニーテール(出口前)
+];
+// 1人ぶんの色コマを横に並べたSVG(F×5マス)。上段ほど髪色・中段は肌・ところどころ目の暗色。seed固定で毎回同じ並び。
+const faceMosaicSheet = (hair: string, seed: number): string => {
+  let r = seed * 9301 + 49297;
+  const rnd = () => { r = (r * 9301 + 49297) % 233280; return r / 233280; };
+  const N = FACE_MOSAIC_CELLS, F = FACE_MOSAIC_FRAMES;
+  let rects = '';
+  for (let f = 0; f < F; f++) for (let row = 0; row < N; row++) for (let col = 0; col < N; col++) {
+    const hairP = row === 0 ? 0.75 : row === 1 ? 0.4 : 0.08;
+    const v = rnd();
+    const c = v < hairP ? hair : v < hairP + 0.1 ? '#2a1e1a' : SKIN_TONES[Math.floor(rnd() * SKIN_TONES.length)];
+    rects += `<rect x="${f * N + col}" y="${row}" width="1.02" height="1.02" fill="${c}"/>`;
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${F * N}" height="${N}" viewBox="0 0 ${F * N} ${N}" preserveAspectRatio="none" shape-rendering="crispEdges">${rects}</svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+};
+const WALK_FACE_MOSAICS = WALK_FACES.map((fc, i) => ({
+  left: (fc.x / WALK_BG_W) * 100, top: (fc.y / WALK_BG_H) * 100,
+  bg: faceMosaicSheet(fc.hair, i + 7),
+  dur: fc.period * FACE_MOSAIC_FRAMES, delay: -((i * 397) % 1000),
+}));
 // 光のカーテン(v0.25.2158・社長選定E案): ランプから下へ落ちる淡い光帯(bg%座標・screen合成・
 // CSSゆらぎのみ)。全6灯だと騒がしいので4本に間引き。skewX=わずかに斜めへ流れる夢の光。
 const WALK_RAYS = [
@@ -888,6 +931,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     `\n@keyframes opconfW{0%{opacity:0.25;transform:rotateZ(0) rotateX(0)}50%{opacity:1;transform:rotateZ(var(--r1)) rotateX(170deg)}100%{opacity:0.25;transform:rotateZ(0) rotateX(340deg)}}` +
     // ペンライトの振り(足元起点で左右へ)と会場グローの明滅。
     `\n@keyframes oppl{from{transform:rotate(calc(var(--pa)*-1))}to{transform:rotate(var(--pa))}}` +
+    // スタッフの顔モザイク: 色コマの帯をsteps送り(コマ数はFACE_MOSAIC_FRAMES)。
+    `\n@keyframes opmosaic{from{background-position:0% 0}to{background-position:100% 0}}` +
     `\n@keyframes opvglow{0%{opacity:0.45}50%{opacity:1}100%{opacity:0.45}}` +
     // スポットライトのゆっくり明滅(強すぎない0.8↔1.0)。
     `\n@keyframes opspot{0%{opacity:0.8}50%{opacity:1}100%{opacity:0.8}}` +
@@ -976,6 +1021,21 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill',
               opacity: WALK_BLOOM_ALPHA, mixBlendMode: 'screen', pointerEvents: 'none',
             }} />
+            {/* スタッフの顔のモザイク: 2枚のブラー層の上(0.95のぼかし層の下に置くと5%しか透けず見えないため)、光帯・グローの下。 */}
+            {WALK_FACE_MOSAICS.map((m, mi) => (
+              <div
+                key={`wm${mi}`}
+                style={{
+                  position: 'absolute', left: `${m.left}%`, top: `${m.top}%`,
+                  height: `${(FACE_MOSAIC_PX / WALK_BG_H) * 100}%`, aspectRatio: '1',
+                  transform: 'translate(-50%, -50%)', pointerEvents: 'none',
+                  backgroundImage: m.bg, backgroundSize: `${FACE_MOSAIC_FRAMES * 100}% 100%`, backgroundRepeat: 'no-repeat',
+                  // 上のぼかしに馴染ませる薄いにじみ(マスの形は読める強さに留める)。
+                  imageRendering: 'pixelated', opacity: 0.9, filter: 'blur(0.6px)',
+                  animation: `opmosaic ${m.dur}ms steps(${FACE_MOSAIC_FRAMES}, jump-none) ${m.delay}ms infinite`,
+                }}
+              />
+            ))}
             {/* 光のカーテン(v0.25.2158・社長選定E案): ランプ下に落ちる淡い光帯。bg%座標=スクロール連動。
                 マスクで両縁を溶かし、skewXでわずかに斜めへ。キャラより先に描く=キャラは光帯の手前。 */}
             {WALK_RAYS.map((r, ri) => (
