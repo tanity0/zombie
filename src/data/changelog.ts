@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5652', items: [
+    '資料室の特殊変異体「偶像」の物語を書き直した',
+  ] },
   { version: '0.25.5651', items: [
     'ゲーム内容の変更はありません(開発用: 撮影時に開発用の表示を隠す切り替えを追加)',
   ] },
