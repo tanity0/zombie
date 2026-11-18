@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5659', items: [
+    '救出任務の拠点の説明を「確保」と「利用」の2つに分けた。軍人が拠点に入った時と、確保した時に出る',
+  ] },
   { version: '0.25.5658', items: [
     'ステージ1の最初の出撃は、身元不明の民間人2名を救出する任務になった',
     '救出を終えると、次からは今までどおりのステージ1(大型変異体の排除)になる',

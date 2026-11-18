@@ -8,14 +8,14 @@ import {
   LOOP1_ENCLOSURE_RING_MIN, LOOP1_ENCLOSURE_RING_MAX,
   stepLoop1Phase, type Loop1StepInput, type Loop1Phase, loop1HoldsNormalSpawns, loop1DuoVisible,
   loop1DuoNpcView, loop1GoalCircleView, loop1DuoMarkVisible, LOOP1_SUPPRESSED,
-  LOOP1_OBJECTIVE_TEXT, LOOP1_REPORT_LINES,
+  LOOP1_OBJECTIVE_TEXT, LOOP1_REPORT_LINES, loop1BaseCaptureTutorialDue, enqueueLoop1Tutorial, nextLoop1Tutorial,
 } from './stage1FirstLoop';
 import { AREA_THRESHOLDS } from './enemyUtils';
 import { BOUNTY_AGGRO_RANGE_DEFAULT } from './bountyDims';
 import { poiSectorIndex } from '../world/pois';
 import { pickNpcLine, NPC_SCENE_VARIANTS } from '../data/npcLines';
 import { npcChatterAllowed } from './npcChatter';
-import { getTutorial, STAGE1_GUIDE_SLIDES } from '../data/tutorials';
+import { getTutorial } from '../data/tutorials';
 
 const run = (over: Partial<Loop1RunInput> = {}): Loop1RunInput => ({
   enabled: true, force: null, stageId: 'stage-1', firstLoopCleared: false, benchmark: false, free: false,
@@ -209,10 +209,33 @@ describe('出さない物・文言・台詞・チュートリアル', () => {
     }
     expect(npcChatterAllowed('bountyWarning', false)).toBe(true);
   });
-  it('拠点ページは3枚ガイドの「拠点」ページそのもの(別id=3枚ガイドを既読にしない)', () => {
-    const t = getTutorial('loop1-base');
-    const slide = STAGE1_GUIDE_SLIDES.find(s => s.title === '拠点')!;
-    expect(t?.slides).toEqual([slide]);
-    expect(t?.lines).toEqual(slide.lines);
+  it('拠点のチュートリアルは「確保」と「利用」の2件(3枚ガイドとは別id)', () => {
+    expect(getTutorial('base-capture')?.title).toBe('拠点の確保');
+    expect(getTutorial('base-capture')?.lines).toHaveLength(3);
+    expect(getTutorial('base-use')?.title).toBe('拠点の利用');
+    expect(getTutorial('base-use')?.lines).toEqual(['確保した拠点でも、商人と取引ができる。']);
+    expect(getTutorial('base-capture')?.archiveAlways).toBeFalsy();
+    expect(getTutorial('base-use')?.archiveAlways).toBeFalsy();
+  });
+  it('「拠点の確保」は軍人がサークルに入った(滞在が始まった)最初の瞬間に1回だけ', () => {
+    expect(loop1BaseCaptureTutorialDue({ queued: false, baseDwellMs: 0, baseCaptured: false })).toBe(false);
+    expect(loop1BaseCaptureTutorialDue({ queued: false, baseDwellMs: 16, baseCaptured: false })).toBe(true);
+    expect(loop1BaseCaptureTutorialDue({ queued: true, baseDwellMs: 16, baseCaptured: false })).toBe(false);
+    // 進みを見ずに確保が済んでも、確保より前に1回積む
+    expect(loop1BaseCaptureTutorialDue({ queued: false, baseDwellMs: 0, baseCaptured: true })).toBe(true);
+    expect(createStage1LoopState(0).baseCaptureTutQueued).toBe(false);
+    expect(createStage1LoopState(0).pendingTutorials).toEqual([]);
+  });
+  it('確保が待っているうちに確保が済んだら「確保」→「利用」の順で1件ずつ出す', () => {
+    let q = enqueueLoop1Tutorial([], 'base-capture');
+    q = enqueueLoop1Tutorial(q, 'base-use');
+    expect(enqueueLoop1Tutorial(q, 'base-use')).toEqual(['base-capture', 'base-use']);
+    // ポップアップが開いている間は出さない
+    expect(nextLoop1Tutorial(q, true)).toEqual({ show: null, rest: ['base-capture', 'base-use'] });
+    const a = nextLoop1Tutorial(q, false);
+    expect(a).toEqual({ show: 'base-capture', rest: ['base-use'] });
+    const b = nextLoop1Tutorial(a.rest, false);
+    expect(b).toEqual({ show: 'base-use', rest: [] });
+    expect(nextLoop1Tutorial([], false)).toEqual({ show: null, rest: [] });
   });
 });

@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5659 — 1周目の拠点チュートリアルを「確保」「利用」に分割【2026-11-19 08:56 JST】
+
+- 社長指示「拠点の確保と拠点の利用をチュートリアル分けよう。確保は拠点にNPCが入ったら、利用は確保したら表示」。loop1-base を base-capture(3行)/base-use(1行)へ。確保=西の拠点の dwellMs が初めて>0になった瞬間、利用=確保の瞬間。待ち行列(pendingTutorials)で「確保→利用」の順を保証(確保が一気に済んだ場合も)。detour-poi も同じ待ち行列。dev ツマミ ?loop1phase=basecapture 追加。
+- 変更: src/data/tutorials.ts / src/utils/stage1FirstLoop.ts(+test)/ src/hooks/useGameLoop.ts / src/utils/m0Tutorial.test.ts。実装は opus サブエージェント。検証: typecheck・eslint・vitest 293件・430×932 で2つのポップアップを撮影し目視。自己点検: 説明の表示のみ。憲法第4条・第5条に抵触しない。
+
 ## v0.25.5658 — ステージ1「1周目」(二人組救出)を実装・フラグで可逆【2026-11-19 02:16 JST】
 
 - 設計書 STAGE1_FIRST_LOOP.md(§7.5〜7.7優先)どおり。STAGE1_FIRST_LOOP_ENABLED 1本で丸ごとOFF=現行どおり。純関数 utils/stage1FirstLoop.ts(+test 24件)・store test 7件。進行 progress.ts に「1周目クリア済み」。

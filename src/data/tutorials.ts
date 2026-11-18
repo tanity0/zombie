@@ -15,9 +15,10 @@ export type TutorialId =
   | 'stage1-guide'
   // 寄り道ガイド。拠点を初めて確保した時に出す(社長指示2026-11-18・発火は src/utils/detourTutorial.ts)。
   | 'detour-poi'
-  // ステージ1の1周目(STAGE1_FIRST_LOOP.md §7.6 B / §7.7 B6): 西の拠点を確保した時に、フィールドガイドの「拠点」ページだけを単独で出す。
+  // ステージ1の1周目(STAGE1_FIRST_LOOP.md §7.6 B / 社長指示2026-11-18「拠点の確保 と 拠点の利用 をチュートリアル分けよう」):
+  // base-capture=軍人が西の拠点のサークルに入った時 / base-use=西の拠点を確保した時(発火は src/utils/stage1FirstLoop.ts)。
   // stage1-guide とは別の id=これを見ても3枚ガイドは既読にならない(2周目の出撃では3枚ガイドが今どおり出る)。
-  | 'loop1-base'
+  | 'base-capture' | 'base-use'
   // 後から足した操作(社長指示2026-10-13「資料室に、新たに追加された操作方法をシンプルな内容で追加」)。
   // ゲーム中のポップアップは無い=資料室に最初から並ぶ(archiveAlways)。
   | 'hit-retaliation' | 'escort-kick' | 'fast-travel' | 'escort-follow';
@@ -302,11 +303,23 @@ export const TUTORIALS: TutorialEntry[] = [
     where: '拠点',
   },
   {
-    id: 'loop1-base',
-    title: '拠点',
-    // 本文はフィールドガイドの「拠点」ページそのもの(同じ文章を2箇所で管理しない=STAGE1_GUIDE_SLIDES を引く)。
-    lines: STAGE1_GUIDE_SLIDES.filter(slide => slide.title === '拠点').flatMap(slide => slide.lines),
-    slides: STAGE1_GUIDE_SLIDES.filter(slide => slide.title === '拠点'),
+    id: 'base-capture',
+    title: '拠点の確保',
+    // ステージ1の1周目: 軍人が西の拠点のサークルに入った(確保が進み始めた)時に出す。手本メディアは無し(後日)。
+    lines: [
+      'ステージによっては、軍人がそれぞれ別の拠点を目指して進む。拠点はデンジャーゾーンの中にある。',
+      '軍人が拠点のサークルにしばらく留まると、その拠点を確保できる。',
+      '近くに敵がいると軍人の進軍は遅くなる。そばについて一緒に進めば、早く確保できる。',
+    ],
+    where: '拠点',
+  },
+  {
+    id: 'base-use',
+    title: '拠点の利用',
+    // ステージ1の1周目: 西の拠点を確保した時に出す。手本メディアは無し(後日)。
+    lines: [
+      '確保した拠点でも、商人と取引ができる。',
+    ],
     where: '拠点',
   },
 ];

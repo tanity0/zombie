@@ -73,9 +73,14 @@ export interface Stage1LoopState {
   enclosureNextAt: number;
   /** ゴールサークルの連続滞在(ms)。 */
   goalDwellMs: number;
-  /** 出す順番を待っているチュートリアル(ポップアップ・メニューが閉じたら出す)。 */
-  pendingTutorial: 'loop1-base' | 'detour-poi' | null;
+  /** 出す順番を待っているチュートリアル(ポップアップ・メニューが閉じたら先頭から1つずつ出す)。 */
+  pendingTutorials: Loop1TutorialId[];
+  /** 「拠点の確保」を積んだか(軍人が西の拠点のサークルに入った最初の瞬間に1回だけ)。 */
+  baseCaptureTutQueued: boolean;
 }
+
+/** 1周目で出すチュートリアル(tutorials.ts の id)。 */
+export type Loop1TutorialId = 'base-capture' | 'base-use' | 'detour-poi';
 
 /** 1周目で確保の対象になる拠点=西(セクター2・角度π)。他の3つは印・サークル・軍人を出さない(§7.6 C)。 */
 export const LOOP1_BASE_ID = 'base-2';
@@ -105,7 +110,8 @@ export const createStage1LoopState = (soldierIndex: number): Stage1LoopState => 
   enclosureSpawned: 0,
   enclosureNextAt: 0,
   goalDwellMs: 0,
-  pendingTutorial: null,
+  pendingTutorials: [],
+  baseCaptureTutQueued: false,
 });
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -188,7 +194,7 @@ export const loop1EnclosureAlive = (ids: readonly string[], enemies: readonly { 
 // ───────────────────────────────────────────────────────────────────────────
 // 段階の遷移(§4)。actions は配線側(useGameLoop)がその瞬間に1回だけ行う仕事。
 export type Loop1Action =
-  | 'baseCaptured'     // 拠点ページのチュートリアル+廃病院を北寄りに出す
+  | 'baseCaptured'     // 「拠点の利用」のチュートリアル+廃病院を北寄りに出す
   | 'vaccineTaken'     // 寄り道のチュートリアル+二人を南寄りに出す
   | 'startArrivalTalk' // 到着の会話(時間停止)
   | 'startEnclosure'   // 囲いの開始(通常湧きを止める)
@@ -220,6 +226,25 @@ export const stepLoop1Phase = (phase: Loop1Phase, i: Loop1StepInput): { phase: L
     default: return { phase, action: null };
   }
 };
+
+// ───────────────────────────────────────────────────────────────────────────
+// チュートリアルの出し方(社長指示2026-11-18「拠点の確保 と 拠点の利用 をチュートリアル分けよう。
+// 確保は、拠点にNPCが入ったら表示。利用は、確保したら表示」)
+/**
+ * 「拠点の確保」を積む瞬間: 西の拠点の担当の軍人がサークルに入り、確保の進み(滞在)が始まった最初のフレーム。
+ * baseDwellMs は拠点の滞在の写し(gameStore が軍人のサークル内滞在を BaseSite.dwellMs へ写す=外へ出ると0)。
+ * 進みを見ずに確保が済んだ場合(撮影用の段飛ばし等)も、確保より前に必ず1回積む=「確保」→「利用」の順を崩さない。
+ */
+export const loop1BaseCaptureTutorialDue = (i: { queued: boolean; baseDwellMs: number; baseCaptured: boolean }): boolean =>
+  !i.queued && (i.baseDwellMs > 0 || i.baseCaptured);
+/** 待ち行列の末尾へ足す(同じ物は二重に積まない)。 */
+export const enqueueLoop1Tutorial = (queue: readonly Loop1TutorialId[], id: Loop1TutorialId): Loop1TutorialId[] =>
+  queue.includes(id) ? [...queue] : [...queue, id];
+/** 今出す1件(ポップアップ・メニュー・会話の間は出さない=閉じるまで待つ)。rest=残りの行列。 */
+export const nextLoop1Tutorial = (
+  queue: readonly Loop1TutorialId[], blocked: boolean,
+): { show: Loop1TutorialId | null; rest: Loop1TutorialId[] } =>
+  blocked || queue.length === 0 ? { show: null, rest: [...queue] } : { show: queue[0], rest: queue.slice(1) };
 
 /** 通常湧きを止める段(囲いの間=§7.5)。 */
 export const loop1HoldsNormalSpawns = (phase: Loop1Phase | null | undefined): boolean => phase === 'enclosure';

@@ -558,7 +558,7 @@ import {
 } from '../utils/eventQuest';
 // ステージ1の1周目(STAGE1_FIRST_LOOP.md)。判定は純関数、ここは配線だけ。
 import {
-  ratchetLoop1Mode, loop1BountyDue, loop1BountyRadius, loop1BountySpawnPos, loop1KomaForLevel, loop1HoldsNormalSpawns,
+  ratchetLoop1Mode, loop1BaseCaptureTutorialDue, enqueueLoop1Tutorial, nextLoop1Tutorial, loop1BountyDue, loop1BountyRadius, loop1BountySpawnPos, loop1KomaForLevel, loop1HoldsNormalSpawns,
   loop1EnclosureType, loop1EnclosureSpawnPos, loop1EnclosureAlive, tickLoop1GoalDwell, isInLoop1Circle, stepLoop1Phase,
   LOOP1_BASE_ID, LOOP1_DUO_CIRCLE_RADIUS, LOOP1_GOAL_RADIUS, LOOP1_GOAL_HOLD_MS, LOOP1_ENCLOSURE_COUNT, LOOP1_ENCLOSURE_INTERVAL_MS,
   LOOP1_TALK_END_HOLD_MS, STAGE1_FIRST_LOOP_STAGE_ID, type Stage1LoopState, type Loop1Talk,
@@ -5840,6 +5840,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const dx = J.duoPos.x, dy = J.duoPos.y;
           switch (LOOP1_PHASE_JUMP) {
             case 'bounty': putPlayer(-loop1BountyRadius(activeAreaThresholds()) - 4, 0); break;
+            case 'basecapture': {
+              // 西の拠点の軍人をサークルの中へ置く(「拠点の確保」が出る瞬間を撮る)。
+              const wb = useGameStore.getState().baseSites.find(b => b.id === LOOP1_BASE_ID);
+              if (wb) {
+                useGameStore.setState(st => ({ escorts: st.escorts.map(e => (e.baseId === LOOP1_BASE_ID ? { ...e, x: wb.x, y: wb.y } : e)) }));
+                putPlayer(wb.x + 60, wb.y + 120);
+              }
+              break;
+            }
             case 'hospital': capBase(); putPlayer(J.hospitalPos.x + 40, J.hospitalPos.y + 160); break;
             case 'duo':
               capBase();
@@ -5931,15 +5940,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             });
             if (step.phase !== L.phase) patch.phase = step.phase;
             let startTalk: Loop1Talk | null = null;
+            // 「拠点の確保」: 西の拠点の軍人がサークルに入った(確保の進みが始まった)最初の瞬間に積む。
+            // 確保の完了と同じフレームでも、こちらを先に積む=「確保」→「利用」の順で出る。
+            let tutQueue = L.pendingTutorials;
+            const l1Base = l1s.baseSites.find(b => b.id === LOOP1_BASE_ID);
+            if (l1Base && loop1BaseCaptureTutorialDue({ queued: L.baseCaptureTutQueued, baseDwellMs: l1Base.dwellMs, baseCaptured: l1Base.status === 'captured' })) {
+              patch.baseCaptureTutQueued = true;
+              tutQueue = enqueueLoop1Tutorial(tutQueue, 'base-capture');
+            }
             switch (step.action) {
               case 'baseCaptured':
-                // 拠点ページのチュートリアル+西のデンジャーゾーンの北寄りに廃病院(それまでは設置もしない=§4-5)。
-                patch.pendingTutorial = 'loop1-base';
+                // 「拠点の利用」のチュートリアル+西のデンジャーゾーンの北寄りに廃病院(それまでは設置もしない=§4-5)。
+                tutQueue = enqueueLoop1Tutorial(tutQueue, 'base-use');
                 useGameStore.setState({ hospital: { ...L.hospitalPos }, hospitalTaken: false, hospitalDwellMs: 0, hospitalTakenAt: 0 });
                 break;
               case 'vaccineTaken':
                 // 寄り道のチュートリアル+同じデンジャーゾーンの南寄りに二人(§4-6)。現れる瞬間は旧レスキューと同じ水色の輪。
-                patch.pendingTutorial = 'detour-poi';
+                tutQueue = enqueueLoop1Tutorial(tutQueue, 'detour-poi');
                 spawnRing(L.duoPos.x, L.duoPos.y, 12, LOOP1_DUO_CIRCLE_RADIUS, 'rgba(56,189,248,0.85)', 4, 620);
                 break;
               case 'startArrivalTalk': startTalk = 'arrival'; break;
@@ -5952,10 +5969,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               default: break;
             }
             // チュートリアルは1周目では端末の既読に関係なく出す(§7.6 B)。ポップアップ・メニューが開いていれば閉じるまで待つ。
-            const pendTut = patch.pendingTutorial !== undefined ? patch.pendingTutorial : L.pendingTutorial;
-            if (pendTut && !uiBlocked && !startTalk) {
-              showTutorialOnce(pendTut);
-              patch.pendingTutorial = null;
+            // 待ちが複数(確保→利用)なら1件ずつ: 出した次のフレームからはポップアップが開いている=閉じるまで次を待つ。
+            const nextTut = nextLoop1Tutorial(tutQueue, uiBlocked || startTalk !== null);
+            if (nextTut.show) showTutorialOnce(nextTut.show);
+            if (nextTut.rest.length !== L.pendingTutorials.length || nextTut.rest.some((t, k) => t !== L.pendingTutorials[k])) {
+              patch.pendingTutorials = nextTut.rest;
             }
             if (Object.keys(patch).length) {
               useGameStore.setState(st => (st.stage1Loop ? { stage1Loop: { ...st.stage1Loop, ...patch } } : {}));
