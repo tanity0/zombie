@@ -276,8 +276,7 @@ export const ARCHIVE_RECORDS: ArchiveRecord[] = [
       '異常細胞を消し去る薬ではない。正常な組織が優勢になる状態を目指したものだ。',
       '効果と安全性は確認できておらず、検証が続いている。',
     ],
-    unlockStageId: 'stage-7',
-    sortOrder: 160,
+    sortOrder: 160, // 解放=通常ED後(ENDING_RECORD_IDS)。旧: M7クリア(ED前にミラ=ノラが分かるため移設・社長指示2026-11-18)
     emphasis: [],
   },
   {
@@ -363,6 +362,7 @@ export const ENDING_RECORD_IDS = [
   'investigation_13_outbreak_origin',
   'investigation_14_protagonist_trial',
   'investigation_15_phil_maintenance',
+  'investigation_16_trial_formulation',
   'investigation_17_contact_reason',
 ] as const;
 

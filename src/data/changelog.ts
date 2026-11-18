@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5640', items: [
+    '資料「未登録試作製剤」は、エンディングの後に資料室へ追加されるようになった',
+  ] },
   { version: '0.25.5639', items: [
     'EXステージのボスの攻略メモから、正体が分かる名前を外した',
   ] },

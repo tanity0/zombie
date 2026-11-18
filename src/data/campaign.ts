@@ -439,9 +439,8 @@ export const STAGES: Stage[] = [
     subs: [],
     main: {
       code: 'M7',
-      // 共有パッケージ2026-07-23: M7クリアでアイテム資料(未登録試作製剤)を解放。
+      // 未登録試作製剤は「ノラから回収」=ED前に読むとミラ=ノラが分かるため、通常ED後(ENDING_RECORD_IDS)へ移した(社長指示2026-11-18)。
       // ※「グレンの薬」はここに載せない(条件付き解放=App の endingFollowup 'medicine' 経路)。
-      unlockedRecordIds: ['investigation_16_trial_formulation'],
       title: '逆探知地点',
       summary: 'ミラの通信を逆探知する。発信地点へ向かい、待つ二人と対峙する。',
       synopsis: [
