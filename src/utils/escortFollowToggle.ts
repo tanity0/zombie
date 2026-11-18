@@ -1,13 +1,13 @@
 // 「連れて歩く」のオン/オフ(research/ESCORT_FOLLOW.md §9・社長指示2026-10-13)。
-// 全拠点共通のスイッチ1つ。**既定はオフ**(社長指示2026-10-13「最初は連れていくをオフにして。縛りプレイの人もいるから」)。
-// 端末に覚える(次の出撃でもそのまま)。オンにした人だけ '1' が残る=それ以外(未保存・壊れた値)はオフ。
+// 全拠点共通のスイッチ1つ。**既定はオン**(社長指示2026-11-18「初期設定自体を連れていくに変更」。旧: 2026-10-13 既定オフ=縛りプレイ配慮)。
+// 端末に覚える(次の出撃でもそのまま)。オフにした人だけ '0' が残る=それ以外(未保存・壊れた値)はオン。
 // 切り替えはショップの画面の「軍人の同行」の1行だけ(§9-8・スマホも PC も同じ)。ここには、押した時に返事をする軍人を決める純関数も置く。
 const KEY = 'zombie.settings.escortFollow';
 
-/** 保存値を読む。無い/壊れている時はオフ(既定オフ)。 */
+/** 保存値を読む。無い/壊れている時はオン(既定オン)。 */
 export const loadEscortFollowEnabled = (): boolean => {
-  if (typeof localStorage === 'undefined') return false;
-  try { return localStorage.getItem(KEY) === '1'; } catch { return false; }
+  if (typeof localStorage === 'undefined') return true;
+  try { return localStorage.getItem(KEY) !== '0'; } catch { return true; }
 };
 
 export const saveEscortFollowEnabled = (on: boolean): void => {
