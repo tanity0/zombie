@@ -100,7 +100,7 @@ describe('旧案文面の削除・置換監査(指示書10章)', () => {
   it('M6ではフィル本人・保存槽・中身を見せない(修正差分メモD-05: 施錠された冷却区画の違和感のみ)', () => {
     const m6 = [...st('stage-6').main.debrief, ...(st('stage-6').main.clearReport ?? []),
       ...st('stage-6').main.synopsis, ...st('stage-6').main.briefing].join('');
-    expect(m6).toContain('施錠された冷却設備付き');
+    expect(m6).toContain('冷却設備を備えた施錠区画'); // 採用稿の任務報告(2026-11-18にdebriefへ一本化)
     expect(m6).not.toMatch(/冷凍保存|保存槽|成人男性|フィル/);
   });
 });

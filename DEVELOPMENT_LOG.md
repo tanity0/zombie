@@ -5,7 +5,7 @@
 - ③ investigation_17 に「それは、蘇生した四名の経過観察も兼ねていた。」を追加(第八稿の接触目的に一致)。
 - ④ ボスの物語「グレン(変異体)」の「誰にも明かさない実験」→「軍にも明かさない実験」(ノラは知っていた)。
 - ⑤ M6・M7 の clearReport(旧近似原稿)を削除し、任務報告を採用稿(debrief)に一本化。正体の開示順を確認: M6=「ミラから軍用暗号通信」、M7=「グレンとミラに接触/グレンは交戦の末に排除/ミラを保護し、聴取」=潜伏名のみで本名・正体・変異の因果はEDの聴取まで出ない。
-- 変更: src/data/storyArchive.ts / src/data/bossStories.ts / src/data/campaign.ts / src/data/storyCanon.test.ts(説明文のみ)。検証: typecheck・data テスト。自己点検: 文言のみ。憲法第4条・第5条に抵触しない。
+- 変更: src/data/storyArchive.ts / src/data/bossStories.ts / src/data/campaign.ts / src/data/storyCanon.test.ts(説明文+M6の区画の文言を採用稿に合わせる)。※初回pushはこのテストが落ちたまま出したため直後に修正。検証: typecheck・data テスト。自己点検: 文言のみ。憲法第4条・第5条に抵触しない。
 
 ## v0.25.5642 — 資料「規定値超過実験」の実験のきっかけを修正【2026-11-18 19:41 JST】
 
