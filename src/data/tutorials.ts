@@ -97,7 +97,7 @@ export const TUTORIALS: TutorialEntry[] = [
     // 旧 `move.gif` は 1.4秒・10fps・14コマの古いヘッドレス収録でカクついていた(社長指摘v0.25.2266
     // 「滑らかな動画にして」)。実機収録のmp4に差し替え=**8.2秒・30fps・132KB**(旧GIFは681KB)。
     img: 'tutorial/move.mp4',
-    where: '洞窟',
+    where: '洞窟地帯',
   },
   // --- 訓練(M0)の教習ビート ---------------------------------------------
   // 発火は `src/utils/m0Tutorial.ts` の純関数(位置/レベルで決まる)。本文に数値は書かない
@@ -121,7 +121,7 @@ export const TUTORIALS: TutorialEntry[] = [
     // ところまで映っている(=「弾はちょうど倒せる分だけ」という台本がそのまま画になっている)。
     // 尺は切らずそのまま。旧 `action-shoot.mp4`(ヘッドレス収録・森)は素材として残置。
     img: 'tutorial/m0-shoot.mp4',
-    where: '洞窟',
+    where: '洞窟地帯',
   },
   {
     id: 'm0-melee',
@@ -145,7 +145,7 @@ export const TUTORIALS: TutorialEntry[] = [
     // 旧 `action-melee.mp4`(ヘッドレス収録・森)は素材として残置(v0.25.2330で `m0-crit` も実機収録へ
     // 差し替えたため、現在どのチュートリアルからも参照されていない)。
     img: 'tutorial/m0-melee.mp4',
-    where: '洞窟',
+    where: '洞窟地帯',
   },
   {
     id: 'm0-crit',
@@ -158,7 +158,7 @@ export const TUTORIALS: TutorialEntry[] = [
     // 近接の手本の流用で、クリティカル固有の見せ場(金の数字・体勢崩しの黄輪)が入っていなかった。
     // 決まる瞬間は setpts で2.6倍スローにしてある(社長指示v0.25.2266の流儀)。
     img: 'tutorial/m0-crit.mp4',
-    where: '洞窟',
+    where: '洞窟地帯',
   },
   {
     id: 'm0-finish',
@@ -169,7 +169,7 @@ export const TUTORIALS: TutorialEntry[] = [
       'ただし、一撃では倒れない強い敵もいる。'
     ],
     img: 'tutorial/action-counter.mp4',
-    where: '洞窟',
+    where: '洞窟地帯',
   },
   {
     id: 'm0-counter',
@@ -184,7 +184,7 @@ export const TUTORIALS: TutorialEntry[] = [
     // 手本=**実機収録**(社長撮影v0.25.2304)。「敵の弾が飛来 → Counter! → 弾き返す」が一続きで映る。
     // 尺は切らずそのまま。旧 `action-counter.mp4` は近接フィニッシュ側の手本。
     img: 'tutorial/m0-counter.mp4',
-    where: '洞窟',
+    where: '洞窟地帯',
   },
   {
     id: 'm0-levelup',
@@ -194,7 +194,7 @@ export const TUTORIALS: TutorialEntry[] = [
       'レベルが上がると強化の候補が並ぶので、その中から一つ選ぶ。'
     ],
     img: 'tutorial/demo-levelup.mp4',
-    where: '洞窟',
+    where: '洞窟地帯',
   },
   {
     id: 'm0-area',
@@ -207,7 +207,7 @@ export const TUTORIALS: TutorialEntry[] = [
     // 銘打ち(大きな「研究対象区域 —— 踏破」)がどうしても写らず、白い境界線だけの絵になっていた
     // (社長報告v0.25.2302・スクショ付き)。実機なら儀式がそのまま映る。**尺は切らずそのまま**。
     img: 'tutorial/m0-area.mp4',
-    where: '洞窟',
+    where: '洞窟地帯',
   },
   {
     id: 'm0-hunter',
@@ -217,7 +217,7 @@ export const TUTORIALS: TutorialEntry[] = [
       '今の装備では太刀打ちできない。戦わずに振り切って先へ進もう。'
     ],
     img: 'tutorial/demo-hunter-detect.mp4',
-    where: '洞窟',
+    where: '洞窟地帯',
   },
   {
     id: 'm0-ammo',
@@ -226,7 +226,7 @@ export const TUTORIALS: TutorialEntry[] = [
       '弾は地面に落ちている。上を歩くだけで拾える。'
     ],
     img: 'tutorial/demo-pickup.mp4',
-    where: '洞窟',
+    where: '洞窟地帯',
   },
   {
     id: 'phill',
@@ -256,7 +256,7 @@ export const TUTORIALS: TutorialEntry[] = [
     // 20.6秒あるためGIFだと4〜5MBになる(索敵GIFの実測レート約230KB/秒から算出)。
     // **mp4にすると464KB**=2.5秒しか入っていなかった旧GIF(897KB)の半分で、30fpsのまま出せる。
     img: 'tutorial/m2-phill.mp4',
-    where: '研究所跡',
+    where: 'PHILL再生医療研究所',
   },
   {
     id: 'scout',
@@ -271,7 +271,7 @@ export const TUTORIALS: TutorialEntry[] = [
     // v0.25.2266(社長指示「滑らかな動画にして」): GIF(7fps・1147KB)→**mp4(30fps・140KB)**。
     // GIFは尺を伸ばすとコマ数を削るしかなく実測7fpsまで落ちていた。mp4なら30fpsのまま1/8の容量。
     img: 'tutorial/m2-scout.mp4',
-    where: '研究所跡',
+    where: 'PHILL再生医療研究所',
   },
   {
     id: 'stage1-guide',
@@ -279,7 +279,7 @@ export const TUTORIALS: TutorialEntry[] = [
     // 資料室の非スライド表示も同じ正本から組み立てる。本文を二重管理しない。
     lines: STAGE1_GUIDE_SLIDES.flatMap(slide => [slide.title, ...slide.lines]),
     slides: STAGE1_GUIDE_SLIDES,
-    where: '狂い咲きの森',
+    where: '避難回廊',
   },
   {
     id: 'detour-poi',
@@ -301,7 +301,7 @@ export const TUTORIALS: TutorialEntry[] = [
       '赤いドクロは、奥に隠れているボスの方角を示している。寄り道先ではないので注意。',
     ],
     // 手本メディアは無し(後日社長が実機収録を用意する)。テキストだけで成立する構成にしてある。
-    where: '狂い咲きの森',
+    where: '避難回廊',
   },
 ];
 

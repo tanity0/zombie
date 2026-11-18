@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5654', items: [
+    '資料室の操作記録の出どころを、ステージ選択に出る場所の名前に揃えた',
+  ] },
   { version: '0.25.5653', items: [
     '軍人の同行は、最初から「連れていく」になった。商人の画面で待たせる設定にもできる',
     'チュートリアルの文章を今の遊び方に合わせて直した(成長・反撃・近接フィニッシュ・軍人の蹴り・軍人の同行)',
