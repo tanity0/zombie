@@ -375,6 +375,16 @@ const frameAt = (track: { t: number; f: number }[], t: number) => track.reduce((
 const SHOOT_STEPS = [...new Set([...SHOOTER_TRACK, ...VICTIM_TRACK, ...BLOOD_TRACK].map(e => e.t))]
   .sort((a, b) => a - b)
   .map(t => ({ t, s: frameAt(SHOOTER_TRACK, t), v: frameAt(VICTIM_TRACK, t), b: frameAt(BLOOD_TRACK, t), red: t >= RED_FROM }));
+// 監視カメラ映像(cctv)用: 撃った瞬間の2秒静止を抜いた同じコマ送り(社長指示2026-11-18「撃った瞬間の停止も無し。スムーズに倒れて」)。
+// 静止の始まり(RED_FROM)より後の変化点を CCTV_FREEZE_CUT_MS だけ前へ詰める=静止明けのコマ間隔(200/100ms)はそのまま。
+const CCTV_FREEZE_CUT_MS = 2000;
+const cctvShift = (track: { t: number; f: number }[]) => track.map(e => (e.t > RED_FROM ? { t: e.t - CCTV_FREEZE_CUT_MS, f: e.f } : e));
+const CCTV_SHOOTER_TRACK = cctvShift(SHOOTER_TRACK);
+const CCTV_VICTIM_TRACK = cctvShift(VICTIM_TRACK);
+const CCTV_BLOOD_TRACK = cctvShift(BLOOD_TRACK);
+const CCTV_SHOOT_STEPS = [...new Set([...CCTV_SHOOTER_TRACK, ...CCTV_VICTIM_TRACK, ...CCTV_BLOOD_TRACK].map(e => e.t))]
+  .sort((a, b) => a - b)
+  .map(t => ({ t, s: frameAt(CCTV_SHOOTER_TRACK, t), v: frameAt(CCTV_VICTIM_TRACK, t), b: frameAt(CCTV_BLOOD_TRACK, t), red: t >= RED_FROM }));
 // 血飛沫の位置: 右端センター=傷口(後頭部)。被弾ポーズ(v2)の頭の左脇に置き、血は左へ飛ぶ。h=枠高%。
 const BLOOD_POS = { x: 36.5, y: 57, h: 18 };
 // 射撃シーンの会話(社長指示v0.25.2065): 立ち姿=1行目→構え(1.0s)=2行目→撃つ(2.0s)で消す。
@@ -436,7 +446,7 @@ const SPOTLIGHTS = SHOTS.map(s => s.chars.map((c, ci) => {
 // 被写界深度・グロー・スポット・呼吸・ズーム・乱れ・白黒シルエット化・暗転)は出さない/撃っても背景は赤くしない。
 // アングルは固定カメラ扱い(各アングルの開始の画角で静止・切替はハードカット)。通常のOPの挙動は一切変えない。
 const CCTV_SHOOT_AT = BLACK_START;      // アリーナ→舞台裏へ切り替える時刻(暗転は使わずハードカット)
-const CCTV_CUT_AFTER_SHOOT_MS = 11500;  // 舞台裏に入ってからカメラが切れるまで(被弾者が倒れ伏して(10.0s)から1.5秒の間)
+const CCTV_CUT_AFTER_SHOOT_MS = 9500;   // 舞台裏に入ってからカメラが切れるまで(静止を抜いたので被弾者が倒れ伏すのは8.0s。そこから1.5秒の間)
 
 const OpeningScene: React.FC<{
   onDone: () => void; startAtShoot?: boolean; startAtRevival?: boolean;
@@ -712,7 +722,7 @@ const OpeningScene: React.FC<{
       // 監視カメラ映像: 絵の進行だけ(音・会話・蘇生なし)。アングル=別カメラへハードカット→舞台裏→倒れてから少しでカメラが切れる。
       [1, 2].forEach(i => { ids.push(window.setTimeout(() => setPhase(i), CUTS[i])); });
       ids.push(window.setTimeout(() => setPhase(3), CCTV_SHOOT_AT));
-      SHOOT_STEPS.forEach((st, i) => { if (i > 0) ids.push(window.setTimeout(() => setStep(i), CCTV_SHOOT_AT + st.t)); });
+      CCTV_SHOOT_STEPS.forEach((st, i) => { if (i > 0) ids.push(window.setTimeout(() => setStep(i), CCTV_SHOOT_AT + st.t)); });
       ids.push(window.setTimeout(() => { if (!doneRef.current) { doneRef.current = true; onDone(); } }, CCTV_SHOOT_AT + CCTV_CUT_AFTER_SHOOT_MS));
       return () => { ids.forEach(id => window.clearTimeout(id)); };
     }
@@ -986,7 +996,7 @@ const OpeningScene: React.FC<{
       `32%{transform:translateX(-2px);text-shadow:-1.5px 0 rgba(255,40,40,0.6),1.5px 0 rgba(0,230,255,0.5),0 1px 6px rgba(0,0,0,0.9);filter:blur(0.5px);animation-timing-function:ease-out}` +
       `100%{transform:translateX(0);text-shadow:0 1px 6px rgba(0,0,0,0.9);filter:blur(0)}}`;
 
-  const cur = SHOOT_STEPS[step];
+  const cur = (cctv ? CCTV_SHOOT_STEPS : SHOOT_STEPS)[step];
   // 乱れの場面(射撃=shoot は乱さない・蘇生は字幕側だけ)。
   const glitchSegment: GlitchSegment =
     !ready ? 'off' : !walkDone ? 'walk' : !mainReady ? 'off'

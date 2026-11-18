@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5645', items: [
+    '監視カメラの映像で、撃たれた瞬間に止まらず、そのまま倒れるようになった',
+  ] },
   { version: '0.25.5644', items: [
     '資料「対変異体災害・最終調査記録」に、軍本部が襲われた理由を書き足した',
   ] },
