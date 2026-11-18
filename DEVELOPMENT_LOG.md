@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5647 — 監視カメラ映像の日時をモザイクに【2026-11-18 20:02 JST】
+
+- 社長指示「日付は読めないレベルに粗く、数字っぽいと分かる程度の細かいモザイク」。CctvClock を canvas に置き換え: 2倍で文字を描き→3px格子(文字高12pxに約4マス)へ縮め→pixelatedで引き伸ばし。1秒ごとに進むのは従来どおり。仮の日付値(2025-07-19)は読めなくなったが値自体は残る。
+- 変更: src/components/CctvReplay.tsx。検証: typecheck・eslint・430×932 で撮影(数字の並びとは分かるが読めない)。負荷は canvas 小1枚を1秒に4回描くだけ(1/10)。自己点検: 演出のみ。憲法第4条・第5条に抵触しない。
+
 ## v0.25.5646 — 資料室を入手時期の小見出しで時系列に【2026-11-18 19:59 JST】
 
 - 社長指示「資料を入手時期(場所かDAYか)で小カテゴリー分けして時系列に並べて」。純関数 archiveRecordGroups(utils/archiveRecordGroups.ts+test 6件)が既存の解放データ(INITIAL_RECORD_IDS/各ステージの unlockedRecordIds/ENDING_RECORD_IDS/グレンの薬)から小見出し「初期資料」「DAY n　場所」(timeLabel があればそれ=某日／未明・数日後／未明)「聴取記録の後」を作り、物語順に並べる。小見出しの中は sortOrder 順。「その他」に落ちる記録なし。

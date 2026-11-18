@@ -45,15 +45,46 @@ const CSS =
   // 残光の点: ふくらみを残してしぼみながら消える(ease-out)。
   `\n@keyframes cctvdot{0%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(0.25)}}`;
 
-/** 時刻表示(1秒ごとに自分だけ描き直す小部品)。 */
+/** 日時のモザイクの1マス(px)。文字高12pxに対して約4マス=数字の並びとは分かるが読めない粗さ(社長指示2026-11-18)。 */
+const CLOCK_MOSAIC_PX = 3;
+const CLOCK_FONT_PX = 12;
+const CLOCK_W = 176, CLOCK_H = 16; // 「YYYY-MM-DD HH:MM:SS」が収まる枠(CSS px)
+
+/** 時刻表示(モザイク)。1秒ごとに自分だけ描き直す小部品。等倍で文字を描いてから粗い格子へ縮め、引き伸ばして出す(canvas 1枚・1秒に4回だけ)。 */
 const CctvClock: React.FC = () => {
   const t0 = useRef(performance.now());
   const [ms, setMs] = useState(0);
+  const ref = useRef<HTMLCanvasElement>(null);
+  const src = useMemo(() => document.createElement('canvas'), []);
   useEffect(() => {
     const id = window.setInterval(() => setMs(performance.now() - t0.current), 250);
     return () => window.clearInterval(id);
   }, []);
-  return <>{formatCctvClock(CCTV_CLOCK_START_SEC, ms)}</>;
+  const text = formatCctvClock(CCTV_CLOCK_START_SEC, ms);
+  useEffect(() => {
+    const out = ref.current; if (!out) return;
+    const sw = CLOCK_W * 2, sh = CLOCK_H * 2; // 原寸は2倍で描いて縮める=マスの色が平均されて滑らかな粗さになる
+    src.width = sw; src.height = sh;
+    const g = src.getContext('2d'); const o = out.getContext('2d');
+    if (!g || !o) return;
+    g.clearRect(0, 0, sw, sh);
+    g.font = `${CLOCK_FONT_PX * 2}px ${MONO}`;
+    g.textBaseline = 'middle';
+    g.fillStyle = 'rgba(232,236,236,0.86)';
+    g.fillText(text, 0, sh / 2);
+    o.imageSmoothingEnabled = true;
+    o.clearRect(0, 0, out.width, out.height);
+    o.drawImage(src, 0, 0, out.width, out.height);
+  }, [text, src]);
+  return (
+    <canvas
+      ref={ref}
+      width={Math.ceil(CLOCK_W / CLOCK_MOSAIC_PX)}
+      height={Math.ceil(CLOCK_H / CLOCK_MOSAIC_PX)}
+      aria-hidden
+      style={{ width: CLOCK_W, height: CLOCK_H, imageRendering: 'pixelated', display: 'block', filter: 'drop-shadow(1px 1px 0 rgba(0,0,0,0.75))' }}
+    />
+  );
 };
 
 interface CctvReplayProps {
