@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5639', items: [
+    'EXステージのボスの攻略メモから、正体が分かる名前を外した',
+  ] },
   { version: '0.25.5638', items: [
     'EXステージのボスは、戦闘中「未確認変異体」と表示されるようになった',
   ] },
