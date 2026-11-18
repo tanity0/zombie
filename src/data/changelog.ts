@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5648', items: [
+    '監視カメラ映像のカメラ名と日付を、映像のすぐ上と下に寄せた',
+  ] },
   { version: '0.25.5647', items: [
     '監視カメラ映像の日付は、粗くて読めないようにした',
   ] },

@@ -13,6 +13,9 @@ import {
 // 最後はブラウン管の電源断(横一本の光る線→点→黒)でザーも同時に切れ、黒を置いてからリザルトへ。タップで飛ばすと即プツン。
 // 負荷: 全画面1枚の CSS filter(白黒+軽いぼかし)+静的な重ね物、粒は起動時に1回だけ作る4コマのタイル(steps送り)=3/10。
 
+// 映像の枠(3:2・画面中央)の半分の高さ。縦長では上下が黒帯になるので、カメラ名は枠のすぐ上・日時は枠のすぐ下に置く
+// (社長指示2026-11-18「数字は黒帯の少し下、STAFF EXITも黒帯の少し上」)。横長で枠が画面に収まらない時は画面の隅で止める。
+const FRAME_HALF_H = 'min(50vh, 33.333vw)';
 const MONO = '"Courier New", "Menlo", "Consolas", monospace';
 const NOISE_TILE = 128; // 粒タイル1コマの一辺(px)
 const NOISE_FRAMES = 4;
@@ -218,7 +221,7 @@ const CctvReplay: React.FC<CctvReplayProps> = ({ onDone }) => {
             {/* カメラ切替の空白(黒) */}
             {blank && <div style={{ position: 'absolute', inset: 0, background: '#000', zIndex: 14 }} />}
             {/* 焼き込みの表示(カメラの機械が出す文字。映像と一緒に潰れる) */}
-            <div style={{ ...osd, zIndex: 15, top: 'calc(max(env(safe-area-inset-top), 0px) + 14px)', left: 'calc(max(env(safe-area-inset-left), 0px) + 14px)' }}>
+            <div style={{ ...osd, zIndex: 15, top: `max(calc(max(env(safe-area-inset-top), 0px) + 14px), calc(50vh - ${FRAME_HALF_H} - 22px))`, left: 'calc(max(env(safe-area-inset-left), 0px) + 14px)' }}>
               {cctvCameraLabel(cam)}
             </div>
             {/* 右上はミュートのボタンが居るので REC は右下 */}
@@ -226,7 +229,7 @@ const CctvReplay: React.FC<CctvReplayProps> = ({ onDone }) => {
               <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: 'rgba(225,60,50,0.9)', marginRight: 6, verticalAlign: '1px', animation: 'cctvrec 1.2s steps(1) infinite' }} />
               REC
             </div>
-            <div style={{ ...osd, zIndex: 15, bottom: 'calc(max(env(safe-area-inset-bottom), 0px) + 14px)', left: 'calc(max(env(safe-area-inset-left), 0px) + 14px)' }}>
+            <div style={{ ...osd, zIndex: 15, top: `min(calc(100vh - max(env(safe-area-inset-bottom), 0px) - 30px), calc(50vh + ${FRAME_HALF_H} + 8px))`, left: 'calc(max(env(safe-area-inset-left), 0px) + 14px)' }}>
               <CctvClock />
             </div>
           </>
