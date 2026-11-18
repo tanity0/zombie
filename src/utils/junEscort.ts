@@ -11,8 +11,7 @@
 //   ③ 変身: 城ボスが出る瞬間、カメラがジュンへ向き(素のアテンション=時間停止)、ゆっくり倒れ、城ボスが城の位置に現れる。
 //      そのまま通常のボスのアテンション(カットイン)へ。置き直しは画面に見えている所では起こさない。
 //   ジュンが居ない(隊に居ない・名簿に無い)時は、城ボスは従来どおり出る。
-import { JUN_ESCORT_INDEX, JUN_NAME, JUN_COLLAPSE_LINE, JUN_TREMBLE_LINE_CUT_AFTER, JUN_NO_PORTRAIT } from '../data/junEscortLines';
-import { slowLineTypedMs } from './slowLine';
+import { JUN_ESCORT_INDEX, JUN_NAME, JUN_COLLAPSE_LINE, JUN_NO_PORTRAIT } from '../data/junEscortLines';
 import type { JunDeparture } from '../types/game';
 import type { EscortFollowState } from './escortFollow';
 
@@ -281,8 +280,6 @@ export const junRelocatePoint = (
 // 行の時刻は「文字送りが終わる時刻」から決める(utils/slowLine slowLineTypedMs)。段の後の間は段ごとに変える(拍を揃えない)。
 /** 1行目を送り終わってから倒れ始めるまで。 */
 export const JUN_FALL_AFTER_LINE1_MS = 200;
-/** 3行目の頭(JUN_TREMBLE_LINE_CUT_AFTER)を送り終わってから変身するまで(「ください…」の途中で断ち切る)。 */
-export const JUN_TRANSFORM_CUT_AFTER_MS = 130;
 /**
  * 寄りのパン(ATTENTION_IN_MS)が終わってから倒れ始めるまでの間(立ったまま、こちらに見られている一拍)。
  * 倒れ始め=1行目「あれ…あつい、です」(アテンション開始と同時に出る)を送り終わって JUN_FALL_AFTER_LINE1_MS 後
@@ -291,10 +288,12 @@ export const JUN_TRANSFORM_CUT_AFTER_MS = 130;
 export const JUN_COLLAPSE_BEAT_MS = 1_320;
 /** ゆっくり倒れる尺(倒れの10コマを長く)。 */
 export const JUN_FALL_MS = 1_800;
-/** 3行目「…見ないで…ください…」を着地からこれだけ後に出す(着地の跳ね JUN_FALL_BOUNCE_MS の直後)。 */
-export const JUN_TREMBLE_LINE_AFTER_LAND_MS = 200;
-/** 倒れ切ってから変身するまで(3行目の「…見ないで…」を送り終わった少し後に変身で断ち切る・その間に地面で痙攣する=junTremble)。 */
-export const JUN_LIE_MS = JUN_TREMBLE_LINE_AFTER_LAND_MS + slowLineTypedMs(Array.from(JUN_TREMBLE_LINE_CUT_AFTER)) + JUN_TRANSFORM_CUT_AFTER_MS;
+/**
+ * 倒れ切ってから変身するまで(その間に地面で痙攣する=junTremble・無言)。
+ * かつては3行目「…見ないで…ください…」の頭を送り終わった少し後に変身で断ち切る尺から出していた
+ * (着地200ms+「…見ないで…」の文字送り1120ms+130ms)。3行目を消した(社長指示2026-11-18)後も尺は同じ値のまま固定する。
+ */
+export const JUN_LIE_MS = 1_450;
 /** 変身の瞬間に体が消える尺(城ボスの出現の閃光の中でフェードアウト)。 */
 export const JUN_VANISH_MS = 320;
 /** アテンションのホールドが変身より先に明けないための余白。 */
@@ -561,7 +560,7 @@ export const JUN_ARRIVE_TOUCH_DIST = 32;
 
 // ---- 倒れる時の通信 -------------------------------------------------------------------------------------
 /**
- * 変異の場面で通信の箱へ出す行(既定=倒れ始めの「い、意識が…」・社長指示2026-10-20/§5 の3行はどれもこの仕組み)。
+ * 変異の場面で通信の箱へ出す行(既定=倒れ始めの「ダメだ…意識が」・§5 の2行はどれもこの仕組み)。
  * 待ち行列に積まず、その場で差し替える(アテンション中は通信の時計が凍る=次の行に差し替わるまで出ていて、明けてから尺が張り直される)。
  * 待ち行列に残っていたジュンの行は捨てる(倒れた後に普段の台詞が出ないように)。
  */
@@ -574,11 +573,10 @@ export const junCollapseDialogue = <Q extends { name: string }>(
 });
 /**
  * 変異の場面のどの行の段に居るか(research/JUN_ESCORT.md §5-1・アテンション開始からの実時間)。
- * 0=寄り始め(あれ…あつい、です)/1=倒れ始め(い、意識が…)/2=着地の跳ねの直後(…見ないで…ください… 変身で途中で断ち切る)。
+ * 0=寄り始め(あれ…あつい、です)/1=倒れ始め(ダメだ…意識が)。地面で震えている間〜変身は無言(3行目は廃止・社長指示2026-11-18)。
  * 呼び出し側は「前に出した段より大きくなった時だけ」行を出す(段ごとに1回)。
  */
-export const junSceneLineAt = (elapsedMs: number, attnInMs: number): 0 | 1 | 2 => {
-  if (junSinceLandMs(elapsedMs, attnInMs) >= JUN_TREMBLE_LINE_AFTER_LAND_MS) return 2;
+export const junSceneLineAt = (elapsedMs: number, attnInMs: number): 0 | 1 => {
   if (elapsedMs >= attnInMs + JUN_COLLAPSE_BEAT_MS) return 1;
   return 0;
 };

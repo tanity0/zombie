@@ -8,11 +8,11 @@ import {
   JUN_HOLD_LONG_CAP_MS, JUN_FOCUS_WAIT_MAX_MS, JUN_COMPANION_QUIET_BEFORE_MS, JUN_FALL_FRAME1_AT, MEDIC_FALL_FRAMES,
   junFollowsPlayer, junFollowMachine, countsForBaseCapture, junNearOpenBase, junLeftBehindStep, junPseudoBase, JUN_BASE_ID,
   JUN_LEFT_BEHIND_PX, JUN_LEFT_BEHIND_REARM_PX,
-  JUN_LIE_MS, JUN_FALL_BOUNCE_MS, junTremble, junSinceLandMs, junSceneLineAt, junCollapseDialogue, JUN_TREMBLE_LINE_AFTER_LAND_MS,
-  JUN_FALL_AFTER_LINE1_MS, JUN_TRANSFORM_CUT_AFTER_MS, junCloseDialogue, junCameraZoomAt, JUN_CLOSEUP_ZOOM, JUN_CLOSEUP_IN_MS, JUN_PUSH_IN_MUL, JUN_WINDUP_MUL,
+  JUN_LIE_MS, JUN_FALL_BOUNCE_MS, junTremble, junSinceLandMs, junSceneLineAt, junCollapseDialogue,
+  JUN_FALL_AFTER_LINE1_MS, junCloseDialogue, junCameraZoomAt, JUN_CLOSEUP_ZOOM, JUN_CLOSEUP_IN_MS, JUN_PUSH_IN_MUL, JUN_WINDUP_MUL,
   JUN_WINDUP_MS, JUN_PULL_MS, JUN_PULL_ZOOM, JUN_STAGGER_FORWARD_PX,
 } from './junEscort';
-import { JUN_ESCORT_INDEX, JUN_NPC_LINES, JUN_SCENE_LINES, pickJunLine, JUN_TRANSFORM_SCENE_LINES, JUN_TREMBLE_LINE_CUT_AFTER, JUN_NO_PORTRAIT } from '../data/junEscortLines';
+import { JUN_ESCORT_INDEX, JUN_NPC_LINES, JUN_SCENE_LINES, pickJunLine, JUN_TRANSFORM_SCENE_LINES, JUN_NO_PORTRAIT } from '../data/junEscortLines';
 import { pickNpcLine } from '../data/npcLines';
 import { slowLineTypedMs } from './slowLine';
 import { escortSceneLine } from '../data/escortSceneLines';
@@ -49,7 +49,7 @@ describe('junEscort: 台詞(設計書§2の表そのまま・表に無い場面�
     expect(JUN_NPC_LINES.neglectFar).toEqual(['待って…置いていかないで…']);
     expect(JUN_SCENE_LINES.revived).toBe('…もう、塞がってます');
     expect(JUN_SCENE_LINES.targeted).toBe('私を…見てる…？');
-    expect(JUN_TRANSFORM_SCENE_LINES).toEqual(['あれ…あつい、です', 'い、意識が…', '…見ないで…ください…']);
+    expect(JUN_TRANSFORM_SCENE_LINES).toEqual(['あれ…あつい、です', 'ダメだ…意識が']); // 3行目は廃止(社長指示2026-11-18)
   });
   it('表に無い場面は空文字(無言)・既存の台帳の引き口からも同じ答え', () => {
     for (const cat of ['pushback', 'npcKill', 'praise', 'opPrep', 'rescueReturned', 'capture', 'retreat']) {
@@ -383,11 +383,11 @@ describe('junEscort: 最初からプレイヤーについて歩く(拠点解放�
   });
 });
 
-describe('倒れる時の通信(社長指示2026-10-20)', () => {
-  it('「い、意識が…」をその場で出し、待ち行列のジュンの行だけ捨てる', async () => {
+describe('倒れる時の通信(社長指示2026-10-20・文言は2026-11-18)', () => {
+  it('「ダメだ…意識が」をその場で出し、待ち行列のジュンの行だけ捨てる', async () => {
     const { junCollapseDialogue } = await import('./junEscort');
     const r = junCollapseDialogue(1000, [{ name: 'ジュン', text: 'x' }, { name: '武蔵', text: 'y' }], 2800, 1200);
-    expect(r.npcDialogue).toEqual({ name: 'ジュン', text: 'い、意識が…', until: 1000 + 2800 + 1200, slow: true, portrait: JUN_NO_PORTRAIT });
+    expect(r.npcDialogue).toEqual({ name: 'ジュン', text: 'ダメだ…意識が', until: 1000 + 2800 + 1200, slow: true, portrait: JUN_NO_PORTRAIT });
     expect(r.npcDialogueQueue).toEqual([{ name: '武蔵', text: 'y' }]);
   });
 });
@@ -397,34 +397,33 @@ describe('変異の場面のカメラと通信(research/JUN_ESCORT.md §5)', () 
   const typed = (t: string) => slowLineTypedMs(Array.from(t));
   const fallAt = IN + JUN_COLLAPSE_BEAT_MS;
   const landAt = fallAt + JUN_FALL_MS;
-  it('行の時刻: 1行目を送り終わって200ms後に倒れ始め・3行目は着地の跳ねの直後・「…見ないで…」を送り終わって130ms後に変身で断ち切る', () => {
+  it('行の時刻: 1行目を送り終わって200ms後に倒れ始め・2行目は倒れている間に送り切る・着地から変身までの尺は3行目廃止の前と同じ', () => {
     // 1行目はアテンション開始と同時に出る。文言を変えたら JUN_COLLAPSE_BEAT_MS を直す(このテストが落ちる)。
     expect(JUN_FALL_AFTER_LINE1_MS).toBe(200);
     expect(typed(JUN_TRANSFORM_SCENE_LINES[0]) + JUN_FALL_AFTER_LINE1_MS).toBe(fallAt);
     expect(fallAt).toBeGreaterThanOrEqual(JUN_CLOSEUP_IN_MS); // 寄り切ってから倒れる
     expect(typed(JUN_TRANSFORM_SCENE_LINES[1])).toBeLessThan(JUN_FALL_MS); // 2行目は倒れている間に送り切る
-    expect(JUN_TREMBLE_LINE_AFTER_LAND_MS).toBe(JUN_FALL_BOUNCE_MS);
-    // 3行目は最後まで言わせない: 頭の「…見ないで…」を送り終わった少し後=「ください…」の途中で変身
-    expect(JUN_TRANSFORM_SCENE_LINES[2].startsWith(JUN_TREMBLE_LINE_CUT_AFTER)).toBe(true);
-    expect(JUN_LIE_MS).toBe(JUN_TREMBLE_LINE_AFTER_LAND_MS + typed(JUN_TREMBLE_LINE_CUT_AFTER) + JUN_TRANSFORM_CUT_AFTER_MS);
-    const cutAt = JUN_LIE_MS - JUN_TREMBLE_LINE_AFTER_LAND_MS; // 3行目が出てから変身まで
-    expect(cutAt).toBeLessThan(typed(JUN_TRANSFORM_SCENE_LINES[2]));
-    expect(cutAt).toBeGreaterThan(typed(JUN_TREMBLE_LINE_CUT_AFTER));
-    // 拍を揃えない(段の後の間が同じ値の連打にならない)
-    expect(JUN_TRANSFORM_CUT_AFTER_MS).not.toBe(JUN_FALL_AFTER_LINE1_MS);
+    expect(JUN_TRANSFORM_SCENE_LINES).toHaveLength(2);
+    // 着地から変身までの尺(地面で震えている間)は、3行目「…見ないで…」の文字送りから出していた旧値のまま(200+1120+130)
+    expect(JUN_LIE_MS).toBe(1450);
     expect(junTransformAtMs(IN)).toBe(IN + JUN_COLLAPSE_BEAT_MS + JUN_FALL_MS + JUN_LIE_MS);
     expect(junSinceLandMs(junTransformAtMs(IN), IN)).toBe(JUN_LIE_MS);
     expect(JUN_FALL_MS).toBe(1800);
   });
-  it('通信の段: 寄り始め→倒れ始め→着地の跳ねの直後(段は戻らない)', () => {
+  it('通信の段: 寄り始め→倒れ始めの2段だけ(段は戻らない・3段目は出ない)', () => {
     expect(junSceneLineAt(0, IN)).toBe(0);
     expect(junSceneLineAt(fallAt - 1, IN)).toBe(0);
     expect(junSceneLineAt(fallAt, IN)).toBe(1);
     expect(junCollapseView(fallAt, IN).frame).toBe(0); // 倒れ始め=倒れの0コマ目へ入る瞬間
-    expect(junSceneLineAt(landAt + JUN_TREMBLE_LINE_AFTER_LAND_MS - 1, IN)).toBe(1);
-    expect(junSceneLineAt(landAt + JUN_TREMBLE_LINE_AFTER_LAND_MS, IN)).toBe(2);
+    expect(junSceneLineAt(landAt, IN)).toBe(1);
+    expect(junSceneLineAt(junTransformAtMs(IN), IN)).toBe(1); // 地面で震えている間〜変身は無言(2行目のまま)
     let prev = 0;
-    for (let t = 0; t <= junTransformAtMs(IN) + 500; t += 10) { const l = junSceneLineAt(t, IN); expect(l).toBeGreaterThanOrEqual(prev); prev = l; }
+    for (let t = 0; t <= junTransformAtMs(IN) + 500; t += 10) {
+      const l = junSceneLineAt(t, IN);
+      expect(l).toBeGreaterThanOrEqual(prev);
+      expect(l).toBeLessThan(JUN_TRANSFORM_SCENE_LINES.length);
+      prev = l;
+    }
   });
   it('各段の行は、その場で差し替え・ジュンの待ち行列は捨てる', () => {
     for (const text of JUN_TRANSFORM_SCENE_LINES) {

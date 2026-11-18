@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5629', items: [
+    'ジュンが倒れる場面のセリフを短くした',
+  ] },
   { version: '0.25.5628', items: [
     'オプションのBLOOMに、OFFで何が消えるかの短い説明を添えた',
   ] },

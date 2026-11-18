@@ -2760,7 +2760,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const jd = useGameStore.getState().junDeparture;
         if (jd?.phase === 'collapsing' && jd.collapseStartReal !== undefined) {
           const v = junCollapseView(nowMs - jd.collapseStartReal, ATTENTION_IN_MS);
-          // 通信(research/JUN_ESCORT.md §5): 段(寄り始め/倒れ始め/着地の跳ねの直後)が進んだフレームだけ、その段の行へその場で差し替える
+          // 通信(research/JUN_ESCORT.md §5): 段(寄り始め/倒れ始め)が進んだフレームだけ、その段の行へその場で差し替える
           // (段ごとに1回=sceneLine。寄り始めの行は collapse へ入る所で出し済み=0)。変身の後(vanishing)は出さない。
           if (!v.transformDue) {
             const line = junSceneLineAt(nowMs - jd.collapseStartReal, ATTENTION_IN_MS);
