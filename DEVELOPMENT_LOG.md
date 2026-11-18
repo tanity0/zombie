@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5651 — 開発用「撮影モード」(開発表示を隠す)【2026-11-18 20:20 JST】
+
+- 社長指示「プレイに関係ない表示系を、オプションでON OFFできるように。開発用にチュートリアルとか撮りたい」。オプション「テスト開発用」に「撮影モード/開発用の表示を隠す」(既定OFF・localStorage zombie:dev:captureMode・その場で反映)。
+- ONで隠す: ゲーム中左下の版数・診断行(pixi·v…/fps…/obj…/maps…・display:none=クラッシュ記録は継続)/撃破数・FPS表示(トグルより優先)/BENCH MODE札/タイトルの版数・前回最後・モード札・heartbeat/ホームの SYSTEM v…(visibility:hidden=並び不変)。残す: URLツマミでだけ出る診断(?debug=1 等)・ベンチの計測画面・更新情報の中の版数・ゲームHUD全般。
+- 変更: src/utils/captureMode.ts(+test・新規)/ src/components/Game.tsx / TitleScreen.tsx / MissionSelect.tsx。実装は opus サブエージェント。検証: typecheck・eslint・vitest・430×932 で OFF/ON とホーム・オプション行を撮影し目視。
+- 自己点検: 開発用表示のみ・既定OFFで挙動不変。憲法第4条・第5条に抵触しない。
+
 ## v0.25.5650 — 監視カメラ映像の表示を四隅へ戻す【2026-11-18 20:15 JST】
 
 - 社長指示「四隅に戻そう」(カメラごとに映像の縦幅が違い、枠に寄せると位置がぶれるため)。カメラ名=左上・日時(モザイク)=左下・REC=右下に戻し、FRAME_HALF_H/OSD_GAP を削除。v0.25.5648/5649 の位置調整は取り消し。

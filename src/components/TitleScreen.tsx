@@ -17,6 +17,7 @@ import { parseBossTestMode, BOSS_TEST_ENTRIES } from '../utils/bossTest';
 import { enemyDeathLabel } from '../store/gameStore';
 import { bossCutinName } from '../data/bossCutin';
 import { titleIntroWanted, markTitleIntroPlayed } from '../utils/titleIntro'; // 描き上げは起動して最初の1回だけ
+import { useCaptureMode } from '../utils/captureMode';
 
 // 現在モード(社長指示2026-07-31「いまどのモード(通常含めて)になってるか出しといて」)。
 // 強制出現フラグはモジュールロード時定数なので、**読込時のURL**をモジュールロード時に1回だけ写して
@@ -560,6 +561,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
   const titleInteractive = phase === 'title' && !showNotice && intro === 'done';
   // タイトルの文字・ボタン類は描いている間は出さず、色が乗り始めてから遅れてにじみ出る。
   const uiOn = phase === 'title' && !showNotice && (intro === 'reveal' || intro === 'done');
+  // オプション「撮影モード」: 版数・前回最後・モード札・クラッシュ診断の行(開発用)を隠す。
+  const captureMode = useCaptureMode();
   // START が主役(先に・浮き上がって)、ほかは後から小さく(濃さだけ)。
   const startFade: React.CSSProperties | undefined = introRan ? { animation: 'info-rise 900ms cubic-bezier(0.16, 1, 0.3, 1) 600ms both' } : undefined;
   const uiFade: React.CSSProperties | undefined = introRan ? { animation: 'gacha-dim-in 600ms ease-out 1100ms both' } : undefined;
@@ -631,7 +634,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/60" />
 
       {/* バージョン表示: スタート画面(タイトル)の右上 */}
-      {uiOn && (
+      {uiOn && !captureMode && (
         <span className="absolute top-3 right-3 px-2 py-0.5 text-[10px] tabular-nums text-purple-200/75" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))', borderLeft: '2px solid rgba(168,85,247,0.7)', ...uiFade }}>
           v{__APP_VERSION__}
         </span>
@@ -641,7 +644,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
           **出ていなかった**——この記録はゲーム中の左下にしか無く、落ちるとタイトルへ戻るので
           読む機会が無かった。落ちた直後に**最初に見る画面**がここなので、ここへ出す。
           記録が無い初回は何も出ない。 */}
-      {uiOn && prevBeatText() && (
+      {uiOn && !captureMode && prevBeatText() && (
         <div className="absolute bottom-12 left-3 max-w-[calc(92vw/var(--hud-s,1))] pointer-events-none" style={uiFade}>
           <span className="px-2 py-1 text-[9px] leading-tight tabular-nums text-purple-200/55" style={{ fontFamily: 'var(--game-font), sans-serif' }}>
             前回最後 {prevBeatText()}
@@ -651,7 +654,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
 
       {/* 現在モード表示(社長指示: パラメータ残留事故をその場で見抜く)。**掛かっている時だけ**出す
           ——通常プレイでは何も出ない。開発用の出撃メニューは bossmaker.html へ移した(v0.25.2862)。 */}
-      {uiOn && LOADED_MODE.active && (
+      {uiOn && !captureMode && LOADED_MODE.active && (
         <div className="absolute bottom-3 left-3" style={uiFade}>
           <span
             className="px-2 py-1 text-[10px] tracking-wider text-amber-300/90"
@@ -667,7 +670,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       {phase === 'loading' && <ChronicleTimeline />}
 
       {/* クラッシュ診断: 前回セッション末尾の状態(社長報告のスマホ真っ白現象の手がかり用・読むだけ)。 */}
-      {heartbeatLine && (
+      {heartbeatLine && !captureMode && (
         <span className="absolute top-16 right-3 max-w-[calc(92vw/var(--hud-s,1))] px-2 py-0.5 text-[9px] tabular-nums text-purple-200/45" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.6), rgba(9,8,14,0.1))', borderLeft: '2px solid rgba(168,85,247,0.4)' }}>
           {heartbeatLine}
         </span>

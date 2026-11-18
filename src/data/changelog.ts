@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5651', items: [
+    'ゲーム内容の変更はありません(開発用: 撮影時に開発用の表示を隠す切り替えを追加)',
+  ] },
   { version: '0.25.5650', items: [
     '監視カメラ映像のカメラ名と日付を、画面の四隅に戻した',
   ] },

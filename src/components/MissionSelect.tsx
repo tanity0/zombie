@@ -126,6 +126,7 @@ import { PLAYER_ART_BASE_W } from '../pixi/pixiTextures';
 import { subWeaponIconName, avatarIconName } from '../data/subWeaponIcons';
 import { spritePath } from '../utils/spriteLoader';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
+import { setCaptureMode, useCaptureMode } from '../utils/captureMode';
 import { Ff7rButton } from './ff7r';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import { portraitSrcFor, menuWalkFrameSrc } from '../data/portraits';
@@ -578,6 +579,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const portalRoot = useHudPortalRoot();
   const playDevice = usePlayDevice(); // 資料室の操作記録も PC は今手にある物の言葉で(§11-6)
   const padKind = usePadKindActive() || 'xbox'; // パッドの説明文に差し込む刻印の系統(系統が変わった時も描き直す)
+  const captureMode = useCaptureMode(); // オプション「撮影モード」: 版数を隠す
   const [screen, setScreen] = useState<Screen>(initialScreen === 'bossrush' ? { name: 'bossRush' } : { name: 'home' });
   // 年表の実績(社長指示2026-10-14): 拠点で画面が変わるたびに達成を見る(強化・購入・ガチャの直後を拾う。初回だけ書く=軽い)。
   useEffect(() => { syncFeatChronicle(); }, [screen.name]);
@@ -813,7 +815,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         <HubButton icon={<PixelIcon name="flame" size={18} />} label="守護霊" desc="名前・討伐記録" onClick={goGhost} delay={175} />
         {/* オプションは最下段(社長指示v0.25.1781)。 */}
         <HubButton icon={<PixelIcon name="gear" size={18} />} label="オプション" desc="音量・各種設定" onClick={() => setScreen({ name: 'options' })} delay={200} />
-        <p className="pt-1 text-center text-[11px] text-white/35">v{__APP_VERSION__}</p>
+        <p className="pt-1 text-center text-[11px] text-white/35" style={captureMode ? { visibility: 'hidden' } : undefined}>v{__APP_VERSION__}</p>
       </div>
       {renderHomeNotices()}
     </>
@@ -964,7 +966,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               </button>
               <MuteButton variant="ds" />
             </span>
-            <span>SYSTEM v{__APP_VERSION__}</span>
+            {/* 撮影モード: 版数だけ隠す(場所は残す=並びを動かさない)。 */}
+            <span style={captureMode ? { visibility: 'hidden' } : undefined}>SYSTEM v{__APP_VERSION__}</span>
             {/* メニュー操作の案内の置き場(キー/パッドを使っている間だけ場所を取る・components/NavPrompt) */}
             <div data-nav-prompt-slot className="nav-prompt-slot" />
           </div>
@@ -2409,6 +2412,7 @@ const DevTools: React.FC<{
 }> = ({ selectedClass, onStartBenchmark, onRefreshCleared }) => {
   const showStatsOverlay = useGameStore(s => s.showStatsOverlay);
   const setShowStatsOverlay = useGameStore(s => s.setShowStatsOverlay);
+  const captureMode = useCaptureMode();
   // ダンスモード(練習)パネルは撤去(社長裁定2026-08-20: ダンスフロア=shijin退役。曲も削除)。
   const ammoPickupAmounts = useGameStore(s => s.ammoPickupAmounts);
   const setAmmoPickupAmount = useGameStore(s => s.setAmmoPickupAmount);
@@ -2438,6 +2442,17 @@ const DevTools: React.FC<{
       >
         <span><span className="block text-[13px] font-semibold">撃破数/FPS表示</span><span className="block text-[11px] text-white/50">{showStatsOverlay ? '表示ありで開始' : '通常は無し'}</span></span>
         <span className="text-[11px] font-semibold shrink-0">{showStatsOverlay ? 'ON' : 'OFF'}</span>
+      </button>
+
+      {/* 撮影モード(チュートリアルの手本などを撮る用): 版数・診断の行・撃破数/FPS など開発用の表示を隠す。ゲームの HUD はそのまま。 */}
+      <button
+        type="button"
+        onClick={() => setCaptureMode(!captureMode)}
+        className={`w-full flex items-center justify-between gap-3 rounded-none border px-3 py-2.5 text-left ${captureMode ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-purple-400/10 bg-purple-400/5 text-white/80 active:bg-purple-400/10'}`}
+        aria-pressed={captureMode}
+      >
+        <span><span className="block text-[13px] font-semibold">撮影モード</span><span className="block text-[11px] text-white/50">{captureMode ? '開発用の表示を隠す' : '開発用の表示もそのまま'}</span></span>
+        <span className="text-[11px] font-semibold shrink-0">{captureMode ? 'ON' : 'OFF'}</span>
       </button>
 
       {/* 武器解放(テスト用・UNIQUE_WEAPONS.md §13-3-7)。装備設定→銃スロットで全候補を選べるようになる。 */}

@@ -25,6 +25,7 @@ import GhostDamageLog from './GhostDamageLog';
 import KbLogOverlay from './KbLogOverlay';
 import DirectorOverlay from './DirectorOverlay';
 import StatsHud from './StatsHud';
+import { useCaptureMode } from '../utils/captureMode';
 import RunHud from './RunHud';
 import DanceTapMeter from './DanceTapMeter';
 import WallBand from './WallBand';
@@ -101,6 +102,8 @@ const Game: React.FC<GameProps> = ({
   const isPaused = useGameStore(state => state.isPaused);
   const tutorialPopupOpen = useGameStore(state => state.tutorialPopup !== null); // boolean派生=開閉時のみ再描画
   const showStatsOverlay = useGameStore(state => state.showStatsOverlay);
+  // オプション「撮影モード」: 開発用の表示(版数・診断行・撃破数/FPS・BENCH札)を隠す。ゲームの HUD は隠さない。
+  const captureMode = useCaptureMode();
   // ボスメーカーの部屋ではゲームHUDを消す(社長指示v0.25.2628「重なって邪魔」)。
   // レベル円/サブ武器欄/武器スロット/スコアは調整に不要。**派生boolean購読**なので
   // 毎フレーム再描画しない(CLAUDE.md React再描画の規律)。ライブ表示はメーカー側に残る。
@@ -273,14 +276,14 @@ const Game: React.FC<GameProps> = ({
       {/* SKILL_BUILD_REDESIGN.md §24: スキル覚醒(Lv3到達)のカットイン帯。ゲームは止めない。 */}
       <HudScale z={92}><AwakenCutin /></HudScale>
       {/* 撃破/DMG/SCRAP + FPS/負荷表示は TOP画面のトグルで有り/無し(既定=無し)。 */}
-      {showStatsOverlay && <StatsHud />}
-      {showStatsOverlay && <PerfOverlay fps={fps} />}
+      {showStatsOverlay && !captureMode && <StatsHud />}
+      {showStatsOverlay && !captureMode && <PerfOverlay fps={fps} />}
       {debugOverlay && <DebugOverlay />}
       <GhostDamageLog />{/* v0.25.2591: ?ghostlog=1 の被弾ログを画面に出す(スマホでコンソールが見られないため) */}
       <KbLogOverlay />{/* v0.25.3958: ?kblog=1 の敵大移動/消失ログを画面に出す(同上) */}
       {directorOverlay && <DirectorOverlay />}
       <DanceTapMeter />{/* テスト用タップms計測(?dev=0で非表示・ダンス中のみ) */}
-      {benchmarkMode && (
+      {benchmarkMode && !captureMode && (
         <div
           className="pointer-events-none absolute left-2 top-[calc(max(env(safe-area-inset-top),8px)+94px)] z-50 rounded-md border border-cyan-200/35 bg-cyan-950/55 px-2 py-1 text-[10px] font-bold tracking-widest text-cyan-100 shadow-lg backdrop-blur-sm"
           style={{ fontFamily: 'monospace' }}
@@ -344,7 +347,9 @@ const Game: React.FC<GameProps> = ({
           color: 'rgba(255,255,255,0.45)',
           fontFamily: 'monospace',
           pointerEvents: 'none',
-          zIndex: 50
+          zIndex: 50,
+          // 撮影モード: 隠すだけ(外さない)。ErrBeacon の落ちた時の記録(startCrashWatch)は撮影中も回し続ける。
+          ...(captureMode ? { display: 'none' } : null)
         }}
       >
         {isPixiRenderer() ? 'pixi' : 'canvas'} · v{__APP_VERSION__}
