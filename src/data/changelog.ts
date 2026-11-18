@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5657', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5656', items: [
     '拠点を初めて確保すると、寄り道できる建物の案内が出るようになった',
   ] },
