@@ -8,6 +8,7 @@ import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLO
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
 import { shouldShowStage1Guide } from '../utils/stage1GuideTutorial';
+import { shouldShowDetourTutorial } from '../utils/detourTutorial';
 // §6.24-UX(POI-UX): 寄り道POIの入手トースト/解放帯の文言(通信の文言は store 側が引く)。
 import { poiUnlockBandText, POI_BAND_MS, POI_SKILL_NOTE, POI_LABEL } from '../utils/detourPoiUx';
 import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_PRACTICE_COUNT, type M0Beat, type M0BeatDef } from '../utils/m0Tutorial';
@@ -5816,6 +5817,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             gameTimeMs: newGameTime,
           })) {
             showTutorialOnce('stage1-guide');
+          }
+        }
+
+        // 寄り道ガイド(社長指示2026-11-18): 拠点を初めて確保した時に1度だけ(端末既読)。判定は純関数。
+        if (!seenTutorials().has('detour-poi') && !useGameStore.getState().bossMaker.active) {
+          const st = useGameStore.getState();
+          if (shouldShowDetourTutorial({
+            anyBaseCaptured: st.baseSites.some(b => b.status === 'captured'),
+            seen: false,
+            trainingStage: tutorialStage,
+            popupOpen: st.tutorialPopup !== null,
+            menuOpen: st.showShopMenu || st.showUpgradeMenu,
+            dialogueActive: st.npcDialogue !== null || st.npcDialogueQueue.length > 0,
+            bossFight: st.bossFightNow,
+            attention: !!st.attention,
+          })) {
+            showTutorialOnce('detour-poi');
           }
         }
 

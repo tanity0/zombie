@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5656', items: [
+    '拠点を初めて確保すると、寄り道できる建物の案内が出るようになった',
+  ] },
   { version: '0.25.5655', items: [
     'フィールドガイドの拠点の説明を、今の軍人の動きに合わせて直した',
   ] },
