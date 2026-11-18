@@ -4207,7 +4207,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // PACING_PUZZLE.md §10-20#5末尾: 「フィル出現と同時に広間南端をゲートで閉鎖」=戦闘中は
             // 広間から出られない(撃破→フェード→エンディングなので開放は不要・§10-20#7)。
             useGameStore.setState({ exBarrier: { northLockY: null, southLockY: EX_PHILL_SOUTH_LOCK_Y } });
-            useGameStore.setState({ eventBannerText: 'フィル(変異体) 出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+            useGameStore.setState({ eventBannerText: '未確認変異体 出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             // 出現エフェクト(城ボス/幻影と同じ機構を流用=新規アート不要)。
             spawnFlash('rgba(127,29,29,0.28)', 420);
             spawnRing(pscx, pscy, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);

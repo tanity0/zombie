@@ -2296,7 +2296,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   acrasiel: 'アクラシエル',
   idol: '偶像',
   // PACING_PUZZLE.md §10-12#5(EXボス「フィル(変異体)」): 台帳(bossCutin.ts)と同名。
-  phillboss: 'フィル(変異体)',
+  phillboss: '未確認変異体', // 社長裁定2026-11-18(bossCutin.ts と同名)
   hunter: '監視者',
   screamer: '花婿',
   // research/GHOST_BOSS.md(守護霊ボス「幻影」): 名前の出どころは1箇所(bossPractice の

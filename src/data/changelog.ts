@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5638', items: [
+    'EXステージのボスは、戦闘中「未確認変異体」と表示されるようになった',
+  ] },
   { version: '0.25.5637', items: [
     'EXクリア後の監視カメラ映像が、記録を閉じた瞬間に終わってしまうのを直した',
   ] },
