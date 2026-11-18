@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5628', items: [
+    'オプションのBLOOMに、OFFで何が消えるかの短い説明を添えた',
+  ] },
   { version: '0.25.5627', items: [
     'オプションに「仲間の雑談」を追加。OFFにすると、進行に関わらない仲間の一言が出なくなる',
     '助けを求める声や拠点の知らせ、物語の会話はOFFでもそのまま',

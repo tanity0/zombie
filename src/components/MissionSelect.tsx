@@ -2240,6 +2240,8 @@ const GraphicsSettings: React.FC = () => {
           <button type="button" onClick={() => setVal(false)} className={`rounded-none px-3 py-1 text-[11px] font-semibold ${!bloom ? 'ui-acc-tag' : 'ui-dim-bg text-white/50'}`}>OFF</button>
         </span>
       </div>
+      {/* 社長指示2026-11-18「ブルーム切ると具体的にどんな描写が無くなるか、目立つところだけ小さく注釈」(B-7で消した説明文の、短い版の復活) */}
+      <p className="mt-1.5 pl-[23px] text-[10px] leading-snug text-white/40">OFFで銃口の火・爆発・松明や宝石の光のにじみが消える。動作は軽くなる。</p>
     </Section>
   );
 };
