@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5646 — 資料室を入手時期の小見出しで時系列に【2026-11-18 19:59 JST】
+
+- 社長指示「資料を入手時期(場所かDAYか)で小カテゴリー分けして時系列に並べて」。純関数 archiveRecordGroups(utils/archiveRecordGroups.ts+test 6件)が既存の解放データ(INITIAL_RECORD_IDS/各ステージの unlockedRecordIds/ENDING_RECORD_IDS/グレンの薬)から小見出し「初期資料」「DAY n　場所」(timeLabel があればそれ=某日／未明・数日後／未明)「聴取記録の後」を作り、物語順に並べる。小見出しの中は sortOrder 順。「その他」に落ちる記録なし。
+- UI: 各記録セクション内に小見出し(操作記録の場所表示と同じ見た目)。記録1件の表示・伏せ表示・未読は不変。操作記録・特殊変異体・図鑑は不変。
+- 変更: src/utils/archiveRecordGroups.ts(新規)/ .test.ts(新規)/ src/components/MissionSelect.tsx。実装は opus サブエージェント。検証: typecheck・eslint・vitest・430×932/1280×720 撮影で目視。仮の小見出し名「初期資料」「聴取記録の後」は社長確認。
+- 自己点検: 表示の並びのみ。憲法第4条・第5条に抵触しない。
+
 ## v0.25.5645 — 監視カメラ映像の発砲時の静止を除去【2026-11-18 19:59 JST】
 
 - 社長指示「撃った瞬間の停止も無し。スムーズに倒れて」。cctv 時だけ、射撃シーンの3トラック(撃つ子/被弾者/血)の RED_FROM(7.6s)より後の変化点を2秒前へ詰めた CCTV_SHOOT_STEPS を使う(静止明けのコマ間隔はそのまま)。カメラが切れる時刻も2秒前へ(11.5s→9.5s=倒れ伏して1.5秒後のまま)。通常のオープニングは不変。

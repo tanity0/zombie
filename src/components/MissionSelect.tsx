@@ -172,6 +172,7 @@ import {
 // research/SORTIE_MAP_BOSS_ICONS.md: 作戦室の地図にボスの顔(出会った・倒していない)+徘徊の枠の抽選を作戦室で引く。
 import { loadEncounteredBosses } from '../utils/bossEncounter';
 import { loadDefeatedBosses } from '../utils/bossDefeated';
+import { archiveRecordGroups } from '../utils/archiveRecordGroups'; // 資料室: 入手時期ごとの小見出し(社長指示2026-11-18)
 import { buildBossStoryGroups, BOSS_STORY_ARCHIVE_ALL, loadReadBossStories, markBossStoryRead } from '../utils/bossStoryArchive'; // 資料室「特殊変異体」(社長指示2026-11-16「ボス全種にバックストーリー」)
 import { BossStoryShelf, BossStoryBody } from './BossStoryShelf';
 import { ensureSortiePatrolPlan, type SortiePatrolPlan } from '../utils/sortiePatrolPlan';
@@ -1807,6 +1808,18 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     </div>
   );
 
+  // 入手時期(初期/各ステージの日時・場所/聴取記録の後)ごとに小見出しを付けて時系列に並べる(社長指示2026-11-18)。
+  const renderArchiveRecordGroups = (records: ArchiveRecord[]) => (
+    <div className="flex flex-col gap-2.5">
+      {archiveRecordGroups(records).map(g => (
+        <div key={g.key}>
+          <div className="mb-1 px-1 text-[10px] tracking-widest text-purple-200/50">{g.label}</div>
+          {renderArchiveRecordList(g.records)}
+        </div>
+      ))}
+    </div>
+  );
+
   const renderArchive = () => {
     // 共有パッケージ2026-07-23: sortOrderで整列(未指定=末尾・既存順維持)。調査記録(world)/変異体の
     // 資料セクションを追加(既存の変異体図鑑=BESTIARYはそのまま・非干渉)。
@@ -1852,22 +1865,22 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </Section>
           )}
           {worldRecords.length > 0 && (
-            <Section label="調査記録">{renderArchiveRecordList(worldRecords)}</Section>
+            <Section label="調査記録">{renderArchiveRecordGroups(worldRecords)}</Section>
           )}
           {missionRecords.length > 0 && (
-            <Section label="任務記録">{renderArchiveRecordList(missionRecords)}</Section>
+            <Section label="任務記録">{renderArchiveRecordGroups(missionRecords)}</Section>
           )}
           {mutantRecords.length > 0 && (
-            <Section label="変異体">{renderArchiveRecordList(mutantRecords)}</Section>
+            <Section label="変異体">{renderArchiveRecordGroups(mutantRecords)}</Section>
           )}
           {weaponRecords.length > 0 && (
-            <Section label="武器・特殊装備">{renderArchiveRecordList(weaponRecords)}</Section>
+            <Section label="武器・特殊装備">{renderArchiveRecordGroups(weaponRecords)}</Section>
           )}
           {itemRecords.length > 0 && (
-            <Section label="アイテム">{renderArchiveRecordList(itemRecords)}</Section>
+            <Section label="アイテム">{renderArchiveRecordGroups(itemRecords)}</Section>
           )}
           {termRecords.length > 0 && (
-            <Section label="用語">{renderArchiveRecordList(termRecords)}</Section>
+            <Section label="用語">{renderArchiveRecordGroups(termRecords)}</Section>
           )}
           {/* 特殊変異体(社長指示2026-11-16「ボス全種にバックストーリー」): 文章量が多いので顔アイコンだけで並べ、倒した個体をタップで本文。 */}
           <Section label="特殊変異体">

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5646', items: [
+    '資料室の記録を、手に入れた日と場所ごとに分けて、物語の順に並べた',
+  ] },
   { version: '0.25.5645', items: [
     '監視カメラの映像で、撃たれた瞬間に止まらず、そのまま倒れるようになった',
   ] },
