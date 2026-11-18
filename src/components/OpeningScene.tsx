@@ -430,7 +430,21 @@ const SPOTLIGHTS = SHOTS.map(s => s.chars.map((c, ci) => {
   };
 }));
 
-const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; startAtRevival?: boolean }> = ({ onDone, startAtShoot, startAtRevival }) => {
+// ── 監視カメラ映像モード(cctv・社長指示2026-11-18「EXクリア後の記録のあとに、コンサートと銃撃事件現場を監視カメラ映像風に」) ──
+// 包み(CctvReplay)が白黒・走査線・時刻表示・ザーの音を被せる。ここでは「OPの絵と芝居の尺だけを素で流す」:
+// 廊下・会話・蘇生は通らない/音は1つも作らない(BGM・パン!・ホラーSE・心拍)/夢と怪奇の演出(浮遊粒・ブルーム・
+// 被写界深度・グロー・スポット・呼吸・ズーム・乱れ・白黒シルエット化・暗転)は出さない/撃っても背景は赤くしない。
+// アングルは固定カメラ扱い(各アングルの開始の画角で静止・切替はハードカット)。通常のOPの挙動は一切変えない。
+const CCTV_SHOOT_AT = BLACK_START;      // アリーナ→舞台裏へ切り替える時刻(暗転は使わずハードカット)
+const CCTV_CUT_AFTER_SHOOT_MS = 11500;  // 舞台裏に入ってからカメラが切れるまで(被弾者が倒れ伏して(10.0s)から1.5秒の間)
+
+const OpeningScene: React.FC<{
+  onDone: () => void; startAtShoot?: boolean; startAtRevival?: boolean;
+  /** 監視カメラ映像モード。onDone はカメラが切れる瞬間に呼ばれる(切れる演出は包み側)。 */
+  cctv?: boolean;
+  /** cctv: 映っているカメラ(0-2=会場の3台 / 3=舞台裏)が変わった時に呼ぶ(カメラ名の表示用)。 */
+  onCctvCamera?: (cam: number) => void;
+}> = ({ onDone, startAtShoot, startAtRevival, cctv, onCctvCamera }) => {
   const [ready, setReady] = useState(false); // 歩きシーンの素材が揃うまで開始しない(v0.25.2118で歩き用/本編用に分割)
   const [mainReady, setMainReady] = useState(false); // 本編(アリーナ/射撃)素材のdecode完了。アリーナ開始の条件
   const [walkLoaded, setWalkLoaded] = useState(0);   // 歩きシーン素材の読み終えた枚数(ローディング%表示用)
@@ -460,7 +474,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     try { const v = new URLSearchParams(window.location.search).get('opgonly'); return v ? v.split(',').filter(Boolean) : undefined; } catch { return undefined; }
   });
   // 歩きシーン(アリーナ前・v0.25.2114)。?opening=2/3のプレビューはスキップ(=完了扱い)。
-  const [walkDone, setWalkDone] = useState<boolean>(!!(startAtShoot || startAtRevival));
+  const [walkDone, setWalkDone] = useState<boolean>(!!(startAtShoot || startAtRevival || cctv));
   // 廊下の出口に着いた=暗転(フェードアウト)開始。WALK_FADEOUT_MS 後に walkDone へ移る。
   const [walkOutro, setWalkOutro] = useState(false);
   const walkDirRef = useRef<0 | -1 | 1>(0);                   // 歩行方向(0=停止/-1=左/1=右)
@@ -583,6 +597,16 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     let cancelled = false;
     const ids: number[] = [];
     if (import.meta.env.DEV) { (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug = [{ t: performance.now(), type: 'mount' }]; }
+    // 監視カメラ映像: 音声要素は1つも作らない。会場と舞台裏の素材だけ読み終えてから流す(廊下の素材は読まない)。
+    if (cctv) {
+      setReady(true);
+      const srcs = [...SHOTS.map(s => s.bg), HERO, TWIN, BOB, A('shoot-stage.png'), ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM), ...[1, 2, 3].map(BLOOD)];
+      Promise.race([
+        Promise.all(srcs.map(src => { const im = new Image(); im.src = src; return trackLoad(im.decode().catch(() => {})); })).then(() => {}),
+        new Promise<void>(res => { ids.push(window.setTimeout(res, 60000)); }),
+      ]).then(() => { if (!cancelled) setMainReady(true); });
+      return () => { cancelled = true; ids.forEach(id => window.clearTimeout(id)); };
+    }
 
     // 消音スイッチ(マナーモード)に従わせる=音声要素を作る前に音の扱いを「周りの音」へ(社長報告2026-11-08・audioManager 参照)。
     setAmbientAudioSession();
@@ -684,6 +708,14 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     if (!mainReady || !walkDone || startAtRevival) return;
     if (import.meta.env.DEV) (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug?.push({ t: performance.now(), type: 'timelineEffectStart' });
     const ids: number[] = [];
+    if (cctv) {
+      // 監視カメラ映像: 絵の進行だけ(音・会話・蘇生なし)。アングル=別カメラへハードカット→舞台裏→倒れてから少しでカメラが切れる。
+      [1, 2].forEach(i => { ids.push(window.setTimeout(() => setPhase(i), CUTS[i])); });
+      ids.push(window.setTimeout(() => setPhase(3), CCTV_SHOOT_AT));
+      SHOOT_STEPS.forEach((st, i) => { if (i > 0) ids.push(window.setTimeout(() => setStep(i), CCTV_SHOOT_AT + st.t)); });
+      ids.push(window.setTimeout(() => { if (!doneRef.current) { doneRef.current = true; onDone(); } }, CCTV_SHOOT_AT + CCTV_CUT_AFTER_SHOOT_MS));
+      return () => { ids.forEach(id => window.clearTimeout(id)); };
+    }
     const firePan = (n: number) => { const a = panRef.current[n]; if (!a) return; try { a.currentTime = 0; } catch { /* ignore */ } unlockAndPlay(a, PAN_SE_VOLUME); };
     {
       const base = startAtShoot ? 0 : SCENE_START;
@@ -737,6 +769,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     return () => { ids.forEach(id => window.clearTimeout(id)); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainReady, walkDone]);
+
+  // 監視カメラ映像: 映っているカメラの名札を包みへ知らせる(会場が見え始めてから)。
+  useEffect(() => { if (cctv && mainReady) onCctvCamera?.(phase); }, [cctv, mainReady, phase, onCctvCamera]);
 
   // ── 廊下BGM(社長支給v0.25.2386「オープニングの廊下で流して」) ──
   // 歩きシーンが見えている間だけ鳴らし、アリーナへ移る瞬間に短フェードで譲る。
@@ -1171,8 +1206,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               style={{
                 position: 'absolute', inset: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                // 夢の呼吸(v0.25.2163・廊下と同じセット): 各アングルのズームとは別レイヤーでゆっくり伸縮。
-                transformOrigin: '50% 50%', animation: 'opbreathe 7s ease-in-out infinite alternate',
+                // 夢の呼吸(v0.25.2163・廊下と同じセット): 各アングルのズームとは別レイヤーでゆっくり伸縮。監視カメラ映像では揺らさない。
+                transformOrigin: '50% 50%', animation: cctv ? undefined : 'opbreathe 7s ease-in-out infinite alternate',
               }}
             >
               <div
@@ -1182,7 +1217,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                   // 正面のみ: 紙吹雪の噴き上げを見せてからズーム開始(FRONT_ZOOM_DELAY)。
                   // 斜め(si=1)はズームせず静止(社長指示v0.25.2141「フェードインで1秒ストップ」):
                   // 開始フレーミング(zf=正面の寄り切りと繋がるサイズ)で固定し、フェードインで現れて1秒ホールド。
-                  ...(si === 1
+                  ...(cctv
+                    ? { transform: `scale(${SHOTS[si].zf})` } // 監視カメラ=固定の画角(各アングルの開始の画角で静止)
+                    : si === 1
                     ? { transform: `scale(${SHOTS[1].zf})`, animation: `opfade 300ms ease-out both` }
                     : { animation: `opzoom${si} ${SHOT_DUR[si]}ms linear ${si === 0 ? FRONT_ZOOM_DELAY : 0}ms both` }),
                 }}
@@ -1192,20 +1229,20 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                   <img data-opg-content="" src={SHOTS[si].bg} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: SHOTS[si].flipScene ? 'scaleX(-1)' : undefined }} />
                   {/* 被写界深度(v0.25.2060方式): 事前ブラー版bgを焦点マスク(中心=透明穴)で重ねる。
                       焦点(ステージ)は下の鮮明bgが素通しで見え、周辺ほどブラー版が出る。ランタイムぼかし無し。 */}
-                  <img src={SHOTS[si].bgBlur} alt="" draggable={false} style={{
+                  {!cctv && <img src={SHOTS[si].bgBlur} alt="" draggable={false} style={{
                     position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
                     transform: SHOTS[si].flipScene ? 'scaleX(-1)' : undefined,
                     maskImage: dofMask(si), WebkitMaskImage: dofMask(si),
-                  } as React.CSSProperties} />
+                  } as React.CSSProperties} />}
                   {/* 夢のソフトブルーム(v0.25.2163・廊下A案と同じ): ブラー版をマスク無し・screen合成で
                       薄く全面に重ね、会場の明部(照明・ペンライト)をふわっと滲ませる。 */}
-                  <img src={SHOTS[si].bgBlur} alt="" draggable={false} style={{
+                  {!cctv && <img src={SHOTS[si].bgBlur} alt="" draggable={false} style={{
                     position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
                     transform: SHOTS[si].flipScene ? 'scaleX(-1)' : undefined,
                     opacity: WALK_BLOOM_ALPHA, mixBlendMode: 'screen', pointerEvents: 'none',
-                  }} />
+                  }} />}
                   {/* 会場グローパルス(案B): 客席一帯をゆっくり明滅する柔らかい光で持ち上げる */}
-                  {VENUE_GLOWS.map((g, gi) => (
+                  {!cctv && VENUE_GLOWS.map((g, gi) => (
                     <div
                       key={`vg${gi}`}
                       style={{
@@ -1237,7 +1274,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                   </div>
                   {/* スポットライト(社長指示v0.25.2057): 3人へ頭上から光錐+足元の光溜まり。
                       キャラ描画の下に敷く=3人が光の中に立って見える。 */}
-                  {SPOTLIGHTS[si].map((sp, spi) => (
+                  {!cctv && SPOTLIGHTS[si].map((sp, spi) => (
                     <React.Fragment key={`sp${spi}`}>
                       <div style={{
                         position: 'absolute', left: `${sp.left}%`, top: `${sp.top}%`, width: `${sp.w}%`, height: `${sp.h}%`,
@@ -1263,7 +1300,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                           position: 'absolute', left: `${c.x}%`, top: `${c.y}%`, height: `${c.h}%`,
                           transform: 'translate(-50%, -100%)', imageRendering: 'pixelated',
                           // アリーナではシルエット2人を白に(社長指示v0.25.2044)。舞台裏(赤背景)は素の黒のまま。
-                          filter: c.src !== HERO ? 'brightness(0) invert(1)' : undefined,
+                          filter: c.src !== HERO && !cctv ? 'brightness(0) invert(1)' : undefined,
                         }}
                       />
                     ))}
@@ -1274,7 +1311,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
             </div>
           ))}
           {/* 夢の浮遊粒(v0.25.2163・廊下と同じセット): アングル切替を跨いで画面全体に漂う。紙吹雪(z5)の下。 */}
-          <DreamMotes zIndex={4} />
+          {!cctv && <DreamMotes zIndex={4} />}
           {/* 紙吹雪レイヤー(カメラ非追従・アングル切替を跨いで存続。zIndex=アングルより上・暗転(50)より下。
               【画面全体】に描く(レターボックス帯の外も含む上端→下端・社長指示v0.25.2042)。横=vw/縦=vh。
               translateZ(0)=iOS Safari合成バグ対策(社長報告v0.25.2063): マスク付きのブラーbg(被写界深度)が
@@ -1330,7 +1367,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               (社長指示v0.25.2072)は不変: この黒幕は [phase].map の**外**に置いてあるので、
               アングルが変わっても再マウントされずアニメも再生し直さない(1回きり)。
               ?opening=2(射撃直行)には出さない=廊下から来た時だけの演出。 */}
-          {!startAtShoot && (
+          {!startAtShoot && !cctv && (
             <div style={{ position: 'absolute', inset: 0, background: '#000', pointerEvents: 'none', zIndex: 60, animation: `opfadeout ${ARENA_FADEIN_MS}ms linear both` }} />
           )}
         </>
@@ -1339,27 +1376,27 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
           // 夢の呼吸(v0.25.2163・廊下と同じセット)。ズーム(opshzoom)は内側の別レイヤー=合成される。
-          transformOrigin: '50% 50%', animation: 'opbreathe 7s ease-in-out infinite alternate',
+          transformOrigin: '50% 50%', animation: cctv ? undefined : 'opbreathe 7s ease-in-out infinite alternate',
         }}>
           <div
             style={{
               position: 'relative', width: '100%',
               transformOrigin: '52% 78%',
-              animation: `opshzoom ${SHOOT_TOTAL}ms linear both`,
+              animation: cctv ? undefined : `opshzoom ${SHOOT_TOTAL}ms linear both`,
             }}
           >
             <div style={{ position: 'relative', width: '100%', aspectRatio: `${ARENA_AR}` }}>
               {/* 撃った瞬間から背景=赤一色(舞台絵と差し替え)。キャラはその上に残る。 */}
-              {cur.red
+              {cur.red && !cctv
                 ? <div style={{ position: 'absolute', inset: 0, background: '#d40000' }} />
                 : <>
                     <img src={A('shoot-stage.png')} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
                     {/* 夢のソフトブルーム(v0.25.2163): 舞台裏はブラー焼き込み素材が無いため、同じ絵を
                         screen合成で薄く重ねて明部を持ち上げる(ハレーション風)。赤転換中は出さない。 */}
-                    <img src={A('shoot-stage.png')} alt="" draggable={false} style={{
+                    {!cctv && <img src={A('shoot-stage.png')} alt="" draggable={false} style={{
                       position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
                       opacity: WALK_BLOOM_ALPHA, mixBlendMode: 'screen', pointerEvents: 'none',
-                    }} />
+                    }} />}
                   </>}
               <img
                 src={VICTIM(cur.v)} alt="" draggable={false}
@@ -1367,7 +1404,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                   position: 'absolute', left: `${VICTIM_POS.x + (VICTIM_DX[cur.v] ?? 0)}%`, top: `${VICTIM_POS.y}%`, height: `${VICTIM_POS.h}%`,
                   transform: 'translate(-50%, -100%)', imageRendering: 'pixelated',
                   // 撃たれた瞬間のコマ(v2)だけ黒シルエット化(社長指示v0.25.2023)=赤バックに黒抜きのショックカット。
-                  filter: cur.v === 2 ? 'brightness(0)' : undefined,
+                  filter: cur.v === 2 && !cctv ? 'brightness(0)' : undefined,
                 }}
               />
               <img
@@ -1378,7 +1415,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                   // 舞台裏も最初は白シルエット→【背景が赤になるのと同じ瞬間】から黒(社長指示v0.25.2070)。
                   // 旧: 発砲コマのハードコード時刻(2.0s)基準で、v0.25.2067の+3秒シフトを取りこぼし
                   // 会話中に黒くなっていた。赤反転フラグ(cur.red)基準なら今後シフトしてもズレない。
-                  filter: cur.red ? undefined : 'brightness(0) invert(1)',
+                  filter: cur.red || cctv ? undefined : 'brightness(0) invert(1)',
                 }}
               />
               {/* 血飛沫(被弾の瞬間・3コマ40msずつ)。右端センター=傷口を後頭部に合わせ、左へ飛ぶ。 */}
@@ -1391,14 +1428,14 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                     // 反転して尖端=右端(後頭部)に合わせ、左へ行くほど広がる=飛散方向へ正しく拡散。
                     transform: 'translate(-100%, -50%) scaleX(-1)', imageRendering: 'pixelated',
                     // OPの血飛沫は黒シルエット(社長指示v0.25.2023・ゲーム内は赤のまま)。
-                    filter: 'brightness(0)',
+                    filter: cctv ? undefined : 'brightness(0)',
                   }}
                 />
               )}
             </div>
           </div>
           {/* 夢の浮遊粒(v0.25.2163・廊下と同じセット)。会話UI(z40)より下。 */}
-          <DreamMotes zIndex={4} />
+          {!cctv && <DreamMotes zIndex={4} />}
           {/* 会話(社長指示v0.25.2065): 本編の左上・会話UI(NpcDialogue)と同一の見た目をOP内で再現。
               位置/枠(glass-pill)/話者名の色/文字サイズはNpcDialogue.tsxに合わせる(UI統一)。 */}
           {shootLine >= 0 && (
@@ -1435,7 +1472,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
             </div>
           )}
           {/* シーン終わりの暗転 */}
-          <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, pointerEvents: 'none', animation: `opblack ${SHOOT_FADE_MS}ms linear ${SHOOT_FADE_START}ms both` }} />
+          {!cctv && <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, pointerEvents: 'none', animation: `opblack ${SHOOT_FADE_MS}ms linear ${SHOOT_FADE_START}ms both` }} />}
         </div>
       ) : titleReveal ? (
         // ── タイトルフェードイン(社長指示v0.25.2061): 蘇生が黒に沈み切った後、黒幕をフェードアウトして
@@ -1495,11 +1532,11 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       {/* アリーナ→射撃シーン間の暗転(phase<3の間だけ重ねる。phase3は上の分岐ごと消えるのでカットで明ける)
           walkDone必須(v0.25.2114): 歩きシーン中にマウントするとCSSの遅延が歩き中に消化されて
           アリーナ開幕が真っ黒になる(実測でハマった罠。CSS起点はアリーナツリーと同時マウントが原則)。 */}
-      {mainReady && walkDone && phase < 3 && !startAtShoot && (
+      {mainReady && walkDone && phase < 3 && !startAtShoot && !cctv && (
         <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, zIndex: 50, pointerEvents: 'none', animation: `opblack ${BLACK_MS}ms linear ${BLACK_START}ms both` }} />
       )}
       </div>{/* 乱れの入れ物 閉じ */}
-      <OpeningGlitch
+      {!cctv && <OpeningGlitch
         targetRef={glitchTargetRef}
         segment={glitchSegment}
         walkLineRef={walkLineRef}
@@ -1510,11 +1547,11 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         holdTools={glitchHoldTools}
         slow={glitchSlow}
         only={glitchOnly}
-      />
+      />}
 
       {/* スキップ(タイトルフェードイン中=実質OP終了後は出さない)。
           data-testid=自動レビューの掴み手(TEST_HANDOFF/REQUEST-devbridge.md §D・属性のみ追加)。 */}
-      {!titleReveal && <button
+      {!titleReveal && !cctv && <button
         type="button"
         data-testid="opening-skip"
         data-skip // Esc・パッドのスタートでも押せる(utils/menuNav.pressVisibleSkip)

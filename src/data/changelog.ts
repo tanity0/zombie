@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5635', items: [
+    'EXステージのクリア後、記録のあとに監視カメラの映像が流れるようになった',
+  ] },
   { version: '0.25.5634', items: [
     'EXステージをクリアした後の記録を新しい内容に差し替えた',
     'これまでの最終調査記録は、EXクリアで資料室に追加される',

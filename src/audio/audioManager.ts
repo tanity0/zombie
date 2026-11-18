@@ -1450,6 +1450,61 @@ export const setAudioMuted = (nextMuted: boolean) => {
   if (changed) mutedListeners.forEach(fn => { try { fn(); } catch { /* ignore */ } });
 };
 
+// 監視カメラ映像の「ザー」(EXクリア後の記録映像・社長指示2026-11-18「ずっとザーというSEのみ。最後プツンとカメラが切れて終わり」)。
+// 素材は無いので合成: 白ノイズ(2秒をループ)を帯域で少し籠もらせ、ごく薄い電源のうなりを混ぜる。音量はSE設定に従い、
+// 「音なし」は途中で切り替えても即追従する。gate(false)=カメラの切替で音がブツっと途切れる(数msで落とす=ほぼ即断・クリック防止)、
+// gate(true)=次のカメラが映った瞬間に戻る(数十msの立ち上がり)。stop()=最後のプツン(即断して破棄)。
+export const startCctvStatic = (): { gate: (on: boolean) => void; stop: () => void } => {
+  const noop = { gate: () => {}, stop: () => {} };
+  const ctx = ensureSfxContext();
+  if (!ctx) return noop;
+  resumeSfxContext();
+  const LEVEL = 0.22;
+  const out = ctx.createGain();
+  out.gain.value = muted ? 0 : LEVEL * sfxVolume;
+  out.connect(ctx.destination);
+  const gateNode = ctx.createGain();
+  gateNode.gain.value = 1;
+  gateNode.connect(out);
+  const len = Math.floor(ctx.sampleRate * 2);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const noise = ctx.createBufferSource(); noise.buffer = buf; noise.loop = true;
+  const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 180;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 6500;
+  noise.connect(hp); hp.connect(lp); lp.connect(gateNode);
+  const hum = ctx.createOscillator(); hum.frequency.value = 60;
+  const humG = ctx.createGain(); humG.gain.value = 0.05;
+  hum.connect(humG); humG.connect(gateNode);
+  const t0 = ctx.currentTime;
+  try { noise.start(t0); hum.start(t0); } catch { /* ignore */ }
+  const unsub = subscribeAudioMuted(() => {
+    try { out.gain.setTargetAtTime(muted ? 0 : LEVEL * sfxVolume, ctx.currentTime, 0.01); } catch { /* ignore */ }
+  });
+  let stopped = false;
+  return {
+    gate: (on: boolean) => {
+      if (stopped) return;
+      const now = ctx.currentTime;
+      try {
+        gateNode.gain.cancelScheduledValues(now);
+        gateNode.gain.setValueAtTime(gateNode.gain.value, now);
+        gateNode.gain.linearRampToValueAtTime(on ? 1 : 0, now + (on ? 0.03 : 0.004));
+      } catch { /* ignore */ }
+    },
+    stop: () => {
+      if (stopped) return;
+      stopped = true;
+      unsub();
+      const now = ctx.currentTime;
+      try { out.gain.cancelScheduledValues(now); out.gain.setValueAtTime(out.gain.value, now); out.gain.linearRampToValueAtTime(0, now + 0.004); } catch { /* ignore */ }
+      [noise, hum].forEach(x => { try { x.stop(now + 0.02); } catch { /* ignore */ } });
+      window.setTimeout(() => { try { out.disconnect(); } catch { /* ignore */ } }, 200);
+    },
+  };
+};
+
 // ---- エンディングBGM(社長支給 2026-08-20・public/audio/ending.mp3) --------------------------
 // EndingScreen のマウント中だけ専用要素で再生する。gameState==='ending' 中は App が
 // setBgmScene('off') にする=通常BGM機構は停止済みで重ならない。1画面限りの一本道なので

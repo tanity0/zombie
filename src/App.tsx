@@ -12,6 +12,7 @@ import { titleIntroWanted } from './utils/titleIntro';
 import GameOverScreen from './components/GameOverScreen';
 import EndingScreen from './components/EndingScreen';
 import ExEndingScreen from './components/ExEndingScreen';
+import CctvReplay from './components/CctvReplay';
 import LoadingScreen from './components/LoadingScreen';
 import OrientationGuard from './components/OrientationGuard';
 import OpeningScene from './components/OpeningScene';
@@ -132,6 +133,8 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   // true の間: gameState==='playing'(stage-ending)+EndingScreen(scenic)が上に重なる+
   // ステージBGMはoff(BGMはEndingScreenのエンディング曲=ending.mp3だけ)。
   const [endingOverlay, setEndingOverlay] = useState(false);
+  // EXの記録(ExEndingScreen)のあとの監視カメラ映像を流している間(gameState は exEnding のまま)。
+  const [exCctv, setExCctv] = useState(false);
   const resetGame = useGameStore(state => state.resetGame);
   // ★結果画面に居る時だけ gameStats を読む(コード監査2026-10-23 UI B-3/SIM S-2・社長承認「画面全体の不要な再描画をやめる」)。
   // 出撃中は撃破・被弾・XPのたびに gameStats が差し替わり、ここ(ルート)が丸ごと購読していると
@@ -450,6 +453,8 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     const ep = params.get('ending');
     // ?ending=ex … EXクリア後の最終調査記録だけを直接出す(確認用・終わるとリザルトへ)。
     if (ep === 'ex') { endingStageParamHandledRef.current = true; setGameState('exEnding'); return; }
+    // ?ending=cctv … EXの記録のあとの監視カメラ映像だけを直接出す(確認用・終わるとリザルトへ)。
+    if (ep === 'cctv') { endingStageParamHandledRef.current = true; setExCctv(true); setGameState('exEnding'); return; }
     if (ep !== '1' && ep !== '2') return;
     endingStageParamHandledRef.current = true;
     if (ep === '1') setEndingOverlay(true); // 聴取記録を上に重ねる=本番導線と同じ描画・BGM経路
@@ -710,7 +715,9 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
       )}
 
       {/* ★v0.25.3743: EXエンディング(フィル撃破後・最終調査記録のタイプライター)。終了でリザルトへ。 */}
-      {!bare && gameState === 'exEnding' && <HudScale z={50} interactive><ExEndingScreen onDone={() => setGameState('victory')} /></HudScale>}
+      {/* ★2026-11-18: 記録のあとに監視カメラ映像(OPのコンサート+銃撃現場・ザーの音だけ・最後にプツン)→リザルトへ。 */}
+      {!bare && gameState === 'exEnding' && !exCctv && <HudScale z={50} interactive><ExEndingScreen onDone={() => setExCctv(true)} /></HudScale>}
+      {!bare && gameState === 'exEnding' && exCctv && <HudScale z={50} interactive><CctvReplay onDone={() => { setExCctv(false); setGameState('victory'); }} /></HudScale>}
       
       {/* プレイ中の差し込み口(BOSS_MAKER.md §19-5)。道具ページだけがボスメーカーUIを渡す。
           本編は undefined なので何も描かない=本編の負荷は変わらない。 */}
