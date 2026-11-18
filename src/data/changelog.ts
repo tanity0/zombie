@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5633', items: [
+    '資料室「PHILL適合成功例」の本文を書き直した',
+  ] },
   { version: '0.25.5632', items: [
     'オープニングのスタッフの顔のモザイクを、ぼかしの奥に沈めて控えめにした',
   ] },
