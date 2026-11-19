@@ -82,14 +82,15 @@ describe('bossEngagement', () => {
     }
   });
 
-  // PACING_PUZZLE.md §6.38 v6 B-2(賞金首): ゴースト週間5系統(守護霊召喚/bossClock/notifyBossClear/
-  // duoRecords/ghostOnline)には乗せない(倒す義務のない相手のため)。
-  it('isGhostEligibleBoss = ENGAGEABLE − 賞金首', () => {
+  // 社長 2026-11-19「賞金首でも出るようにしよう」: 守護霊の5系統(召喚/記録/notifyBossClear/duoRecords/ghostOnline)に
+  // 賞金首も乗せる(事実として: §6.38 v6 B-2 では除外していた)。守護霊ボス「幻影」は除外のまま。
+  it('isGhostEligibleBoss = ENGAGEABLE − 幻影(賞金首は含む)', () => {
     expect(isGhostEligibleBoss('giantbat')).toBe(true);
     expect(isGhostEligibleBoss('idol')).toBe(true);
     for (const t of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as EnemyType[]) {
-      expect(isGhostEligibleBoss(t), t).toBe(false);
+      expect(isGhostEligibleBoss(t), t).toBe(true);
     }
+    expect(isGhostEligibleBoss('guardian-phantom')).toBe(false);
     expect(isGhostEligibleBoss('zombie')).toBe(false);
   });
 });

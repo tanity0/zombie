@@ -12,7 +12,7 @@ import { displayNameFrom } from '../../shared/playerName.mjs';
 import { isFixedGuardianId } from '../../shared/fixedGuardianIds.mjs';
 
 const ANON_RE = /^[0-9a-f-]{36}$/i;
-const MAX_SLOTS = 16;
+const MAX_SLOTS = 24; // 13ボス+賞金首4型=17(社長 2026-11-19「賞金首でも出るようにしよう」)。余裕を持たせる。
 const TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const TOP_PERCENT = 0.2;
 
@@ -93,16 +93,33 @@ async function topCandidate(env, slot, anonId) {
   return row ? { ...row, pool_size: limit } : null;
 }
 
+// ステージ1の最初の守護霊(STAGE1_FIRST_LOOP.md §7.8・社長 2026-11-19「猛者の中からそのボスの1位」):
+// 抽選ではなく、そのスロットで perf が最も高い1件(本人の記録は除く・条件は topCandidate と同じ)。
+// perf も返す=クライアントが固定の先人守護霊(ボス別上位)の score と比べて、猛者全体の1位を決める。
+async function bestCandidate(env, slot, anonId) {
+  const row = await env.GHOST_DB.prepare(`
+    SELECT record_id, slot, profile_json, perf FROM ghost_records
+    WHERE slot=? AND epoch=? AND anon_id<>? AND perf IS NOT NULL
+    ORDER BY perf DESC, updated_at ASC LIMIT 1
+  `).bind(slot, GHOST_SHARE_EPOCH, anonId ?? '').first();
+  return row ? { ...row, pool_size: 1 } : null;
+}
+
+const PICK_MODES = new Set(['random', 'top', 'best']);
+
 async function pickGhosts(request, env) {
   const url = new URL(request.url);
   const slots = [...new Set((url.searchParams.get('slots') ?? '').split(',').filter(Boolean))];
-  const mode = url.searchParams.get('mode') === 'top' ? 'top' : 'random';
+  const rawMode = url.searchParams.get('mode');
+  const mode = PICK_MODES.has(rawMode) ? rawMode : 'random';
   const anonId = validAnon(url.searchParams.get('anon')) ? url.searchParams.get('anon') : '';
   if (slots.length < 1 || slots.length > MAX_SLOTS || slots.some((slot) => !validSlot(slot))) return bad();
   const items = [];
   let responseBytes = 64;
   for (const slot of slots) {
-    const row = mode === 'top' ? await topCandidate(env, slot, anonId) : await randomCandidate(env, slot, anonId);
+    const row = mode === 'best' ? await bestCandidate(env, slot, anonId)
+      : mode === 'top' ? await topCandidate(env, slot, anonId)
+        : await randomCandidate(env, slot, anonId);
     if (!row) continue;
     let profile;
     try { profile = JSON.parse(row.profile_json); } catch { continue; }
@@ -113,6 +130,7 @@ async function pickGhosts(request, env) {
       recordId: row.record_id,
       poolSize: Math.max(1, Math.floor(Number(row.pool_size) || 1)),
       profile: safe,
+      ...(mode === 'best' ? { perf: sanitizePerfScore(Number(row.perf)) } : {}),
     };
     const bytes = utf8Size(item);
     if (responseBytes + bytes > GHOST_MAX_RESPONSE_BYTES) break;

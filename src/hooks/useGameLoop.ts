@@ -9,6 +9,10 @@ import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
 import { shouldShowStage1Guide } from '../utils/stage1GuideTutorial';
 import { shouldShowDetourTutorial } from '../utils/detourTutorial';
+import { shouldShowBountyTutorial, dropBountyTutorialPending } from '../utils/bountyTutorial'; // 賞金首のチュートリアル
+import { shouldShowMerchantTutorial, isInsideMerchantCircle } from '../utils/merchantTutorial'; // 武器商人のチュートリアル
+import { shouldShowRetaliationTutorial, reopenRetaliationWindowAfterTutorial } from '../utils/hitRetaliationTutorial'; // レッドカウンターのチュートリアル
+import type { HitRetaliationWindow } from '../utils/hitRetaliation';
 // §6.24-UX(POI-UX): 寄り道POIの入手トースト/解放帯の文言(通信の文言は store 側が引く)。
 import { poiUnlockBandText, POI_BAND_MS, POI_SKILL_NOTE, POI_LABEL } from '../utils/detourPoiUx';
 import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_PRACTICE_COUNT, type M0Beat, type M0BeatDef } from '../utils/m0Tutorial';
@@ -106,6 +110,7 @@ import {
   takeBrawlerBeamCut, // 格闘の構えで受けられた光線の中断(research/BRAWLER.md §12-3d)
   abilityInvulnPatch, // 技の無敵(sourceId 付きの攻撃も弾く)
   resolveBountyMove, // 対策室の賞金首を近くへ出す時に、木・建物の中へ置かない
+  retaliationReadyTarget, // レッドカウンターのチュートリアル: 矢印が出ている時だけ出す(矢印の描画と同じ1本)
 } from '../store/gameStore';
 import { shieldBlocksArea, shieldBlocksLine, splitBeamAtShield, beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md
 import { METAL_PALETTE, shieldBeamPalette, reflectAlongTravel, takeTechniqueStart, BEAM_HOLD_TICK_MS, beamHoldGain, type GuardPalette, type TechniqueGateState } from '../utils/shieldGuardFx'; // 防いだ演出の色・間引き・曲線(第2回クリエイティブ監査)
@@ -1910,6 +1915,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const tutorialSeenRef = useRef<Set<TutorialId> | null>(null);
   const seenTutorials = useCallback((): Set<TutorialId> => (tutorialSeenRef.current ??= loadSeenForGate()), []);
   // 表示と同時に「見た」を確定させる共通処理(資料室の一覧はこの記録を引く)。
+  // レッドカウンター('hit-retaliation')のチュートリアルを出した時の窓。閉じた瞬間に同じ相手の窓を開き直す(読んでいる間に実時間の窓が切れるため)。
+  const retaliationTutWinRef = useRef<HitRetaliationWindow | null>(null);
   const loop1JumpRunRef = useRef<object | null>(null); // `?loop1phase=`(撮影用)を1出撃1回に絞る印
   const loop1JumpDeferRef = useRef<{ at: number } | null>(null); // `?loop1phase=talk` の段入れを少し遅らせる(撮影用)
   const showTutorialOnce = useCallback((id: TutorialId) => {
@@ -2189,6 +2196,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // §6.38 v9(完全コピー原則): 賞金首も城ボスと同じ「出現エフェクトが消えてからカメラアテンション
   // +カットイン」の並びにする(castleAttnRefと同型。null=予約なし)。
   const bountyAttnRef = useRef<{ at: number; x: number; y: number; cutin: ReturnType<typeof bossCutinPayload> } | null>(null);
+  // 賞金首のチュートリアル('bounty')の待ち: 賞金首が出た(spawnBountyEncounter)ら立て、出現のアテンションが終わり切ったら出す。
+  const bountyTutPendingRef = useRef(false);
   // §6.36(監査指摘1): カットイン付きattentionの保留箱。素のattention(ハンター/救援/死神等)が
   // 生きている間にボスが出ると、first-winsで後着のカットインが丸ごと消える(=「毎回出す」違反+
   // 出現アテンション自体の退行)。attention生存中は発火せずここへ置き、空いた最初のフレームで撃つ。
@@ -3461,6 +3470,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const newRealGameTime = loopState.realGameTime + baseDeltaTime * 1000;
         setGameTime(newGameTime, newRealGameTime);
         useGameStore.getState().updateNpcDialogue(newGameTime); // NPCセリフの表示進行(時間停止なし)
+        // 武器商人のチュートリアル: スタート地点の商人のサークルに初めて入った時に1度だけ(端末既読・拠点の商人では出さない)。
+        // 取引の開き方には触らない=出している間は止まって滞在が積まれず、閉じた後も立っていれば下の滞在でいつもどおり開く。
+        if (!seenTutorials().has('merchant') && !useGameStore.getState().bossMaker.active) {
+          const st = useGameStore.getState();
+          if (shouldShowMerchantTutorial({
+            inMerchantCircle: isInsideMerchantCircle(st.player.x + st.player.width / 2, st.player.y + st.player.height / 2, st.weaponMerchant),
+            merchantHidden: st.merchantHidden,
+            facilitiesLocked: facilitiesLocked(st.bossFightNow, st.bossFightLastTrueAt, newGameTime),
+            seen: false,
+            trainingStage: tutorialStage,
+            popupOpen: st.tutorialPopup !== null,
+            menuOpen: st.showShopMenu || st.showUpgradeMenu,
+            dialogueActive: st.npcDialogue !== null || st.npcDialogueQueue.length > 0,
+            attention: !!st.attention,
+          })) {
+            showTutorialOnce('merchant');
+          }
+        }
         useGameStore.getState().updateMerchantDwell(deltaTime * 1000); // 商人サークル3秒滞在→話しかけ(社長指示v0.25.1842)
         // ★生存時間は「秒が変わった時だけ」store へ書く(gameStats の毎フレーム差し替えをやめる・コード監査2026-10-23 S-2)。
         // 最後のtickの値は記録しておき、リザルトへ移る瞬間に flushTimeAlive が書く=リザルトの値は従来と同じ。
@@ -5745,6 +5772,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const bAc = bossArtCenter(bountyE); // v0.25.3727: 寄り先=絵の中心(表に無い賞金首型は帯中心のまま)
             bountyAttnRef.current = { at: atGameTime + 950, x: bAc.x, y: bAc.y, cutin: bossCutinPayload(bType) };
           }
+          bountyTutPendingRef.current = true; // 賞金首のチュートリアル: 出現のアテンションが終わってから出す(下の判定)
         };
         // 賞金首の遅延アテンション発火(出現演出が落ち着いてからカメラを寄せる。城ボスと同じ並び)。
         if (bountyAttnRef.current && newGameTime >= bountyAttnRef.current.at && !useGameStore.getState().attention) {
@@ -5752,6 +5780,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           bountyAttnRef.current = null;
           useGameStore.getState().triggerAttention(x, y, cutin);
           playSfx('boss-appear');
+        }
+        // 賞金首のチュートリアル: 初めて現れた賞金首の出現アテンションが終わり切った後、会話も流れ切ったら1度だけ(端末既読・1周目も同じ)。
+        // 1周目の「守護霊」(交戦時・下の1周目の段)より前に判定する=同じフレームならこちらが先に出て、あちらはポップアップが閉じるまで待つ。
+        if (bountyTutPendingRef.current) {
+          const st = useGameStore.getState();
+          const bGate = {
+            pending: true,
+            attentionQueued: bountyAttnRef.current !== null,
+            attentionActive: st.attention !== null,
+            bountyPresent: st.enemies.some(e => isBountyType(e.type) && e.health > 0),
+            seen: seenTutorials().has('bounty'),
+            popupOpen: st.tutorialPopup !== null,
+            menuOpen: st.showShopMenu || st.showUpgradeMenu,
+            dialogueActive: st.npcDialogue !== null || st.npcDialogueQueue.length > 0,
+          };
+          if (shouldShowBountyTutorial(bGate)) {
+            bountyTutPendingRef.current = false;
+            showTutorialOnce('bounty');
+          } else if (dropBountyTutorialPending(bGate)) {
+            bountyTutPendingRef.current = false;
+          }
         }
 
         // --- 賞金首(BOUNTY)自然湧き(§6.38 §2「頻度」・v2 F・B4) ---------------------------------
@@ -5973,7 +6022,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               case 'placeHospital':
                 // 通信が流れ切った→西のデンジャーゾーンの北寄りに廃病院(それまでは設置もしない=§4-5)+カメラが寄って戻る(既存のアテンション)。
                 useGameStore.setState({ hospital: { ...L.hospitalPos }, hospitalTaken: false, hospitalDwellMs: 0, hospitalTakenAt: 0 });
-                useGameStore.getState().triggerAttention(L.hospitalPos.x, L.hospitalPos.y);
+                useGameStore.getState().triggerAttention(L.hospitalPos.x, L.hospitalPos.y, undefined, 0, null, { zoomToUnity: true }); // 引いていても等倍に見せる(社長指示2026-11-19)
                 break;
               case 'vaccineTaken':
                 // 寄り道のチュートリアル。二人は閉じてから3秒後(duoWait)。
@@ -5983,7 +6032,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               case 'revealDuo':
                 // 同じデンジャーゾーンの南寄りに二人(§4-6)。現れる瞬間は旧レスキューと同じ水色の輪+カメラが寄って戻る(既存のアテンション)。
                 spawnRing(L.duoPos.x, L.duoPos.y, 12, LOOP1_DUO_CIRCLE_RADIUS, 'rgba(56,189,248,0.85)', 4, 620);
-                useGameStore.getState().triggerAttention(L.duoPos.x, L.duoPos.y);
+                useGameStore.getState().triggerAttention(L.duoPos.x, L.duoPos.y, undefined, 0, null, { zoomToUnity: true }); // 引いていても等倍に見せる(社長指示2026-11-19)
                 break;
               case 'helpComm':
                 // アテンションが明けて操作が戻った→通信 ミラ「助けて〜」(v4 の通信と同じ=通信欄+「通信」の帯)。
@@ -6006,7 +6055,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               default: break;
             }
             // 守護霊(§7.8): 賞金首に守護霊が来た(=交戦が始まった)最初の瞬間に積む。召喚は directorTick の既存の経路(1周目も守護霊固定)。
-            if (stage1GuardianTutorialDue({ firstLoop: true, locked: true, seen: false, queued: L.guardianTutQueued, boundKind: guardianBoundKindNow(l1s) })) {
+            // 会話の最中と、賞金首のチュートリアルが出る前は積まない(賞金首→守護霊の順・重ねない)。
+            if (stage1GuardianTutorialDue({ firstLoop: true, locked: true, seen: false, queued: L.guardianTutQueued, boundKind: guardianBoundKindNow(l1s),
+              dialogueActive: l1s.npcDialogue !== null || l1s.npcDialogueQueue.length > 0,
+              bountyTutorialPending: bountyTutPendingRef.current && !seenTutorials().has('bounty') })) {
               patch.guardianTutQueued = true;
               tutQueue = enqueueLoop1Tutorial(tutQueue, 'guardian');
             }
@@ -6122,7 +6174,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (!firstLoop && useGameStore.getState().stage1GuardianLock && !seenTutorials().has('guardian') && !useGameStore.getState().bossMaker.active) {
           const st = useGameStore.getState();
           if (st.tutorialPopup === null && !st.showShopMenu && !st.showUpgradeMenu && !st.attention
-            && stage1GuardianTutorialDue({ firstLoop: false, locked: true, seen: false, queued: false, boundKind: guardianBoundKindNow(st) })) {
+            && stage1GuardianTutorialDue({ firstLoop: false, locked: true, seen: false, queued: false, boundKind: guardianBoundKindNow(st),
+              dialogueActive: st.npcDialogue !== null || st.npcDialogueQueue.length > 0,
+              bountyTutorialPending: bountyTutPendingRef.current && !seenTutorials().has('bounty') })) { // 会話の最中・賞金首のチュートリアルの前は待つ
             showTutorialOnce('guardian');
           }
         }
@@ -6141,6 +6195,43 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             attention: !!st.attention,
           })) {
             showTutorialOnce('detour-poi');
+          }
+        }
+
+        // レッドカウンター(被弾反撃)のチュートリアル: 受付の窓が開いて矢印が出た最初の瞬間に1度だけ(端末既読)。判定は純関数。
+        // ポップアップ・メニュー・会話・アテンションの間は出さない(その間に窓が閉じたら次の窓で出す)。ボスメーカーでは出さない。
+        if (retaliationTutWinRef.current !== null) {
+          // 閉じた瞬間: 出した時の窓がそのまま残っていれば(=新しい被弾・反撃で書き換わっていない)、同じ相手で開き直す。
+          const st = useGameStore.getState();
+          if (st.tutorialPopup === null) {
+            const fired = retaliationTutWinRef.current;
+            retaliationTutWinRef.current = null;
+            if (st.hitRetaliation === fired && st.player.health > 0) {
+              const src = st.enemies.find(e => e.id === fired.fromId);
+              const p = st.player;
+              const win = reopenRetaliationWindowAfterTutorial(
+                fired.fromId, Date.now(), src,
+                src ? src.x + src.width / 2 - (p.x + p.width / 2) : 0,
+                src ? src.y + src.height / 2 - (p.y + p.height / 2) : 0,
+              );
+              if (win) useGameStore.setState({ hitRetaliation: win });
+            }
+          }
+        } else if (!seenTutorials().has('hit-retaliation') && useGameStore.getState().hitRetaliation !== null && !useGameStore.getState().bossMaker.active) {
+          const st = useGameStore.getState();
+          if (shouldShowRetaliationTutorial({
+            arrowShown: retaliationReadyTarget(useGameStore.getState, Date.now()) !== null,
+            seen: false,
+            trainingStage: tutorialStage,
+            popupOpen: st.tutorialPopup !== null,
+            menuOpen: st.showShopMenu || st.showUpgradeMenu,
+            dialogueActive: st.npcDialogue !== null || st.npcDialogueQueue.length > 0,
+            attention: !!st.attention,
+          })) {
+            const fired = st.hitRetaliation;
+            showTutorialOnce('hit-retaliation');
+            // 実際に開いた時だけ覚える(練習出撃・納品ロック・?autotut=1 では開かない)。
+            if (useGameStore.getState().tutorialPopup !== null) retaliationTutWinRef.current = fired;
           }
         }
 

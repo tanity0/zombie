@@ -110,6 +110,7 @@ import { resetModeBags } from '../utils/modeBag';
 import { buildPseudoPlayer, findGhostAlly, ghostAllySnapshot, type GhostAllySnapshot } from '../utils/playerBuild';
 import { clearGhostBuildCache, ghostBuildFor, ghostActorPlayer, actorBuildFor } from '../utils/ghostBuild'; // ラン境界でビルドのメモ化を捨てる / 守護霊の疑似Player(裁定1)
 import { beginGhostOnlineRun, type GhostFeedbackTarget, type GhostSource } from '../utils/ghostOnline';
+import { stage1BestGuardianSlots } from '../utils/stage1BestGuardian'; // ステージ1の最初の守護霊=猛者のボス別1位
 // 刀の一閃 / ワイヤーのロコモーション上書き(プレイヤーと守護霊で共有する状態機械・裁定2)。
 import { dashModeAt, dashOverride, dashStateOf, emptyDashState } from '../utils/dashLocomotion';
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化(BOT_AND_GHOST.md §2.8)
@@ -9365,6 +9366,9 @@ interface GameState {
     /** 小さめの相手の時だけの寄り倍率(utils/attentionZoom・社長指示2026-11-14)。未指定=寄らない(パンのみ)。
      * pixiScene がパンと同じ包絡線(in で 1→倍率、out で 倍率→1)で掛ける。 */
     zoomIn?: number;
+    /** 等倍に見せる(utils/attentionZoom.attentionUnityZoom・社長指示2026-11-19 ステージ1ループ1の廃病院/二人組)。
+     * pixiScene が今の引き(idle×文脈×走り)を打ち消して画面上の倍率を1.0にする寄りを、zoomIn と同じ包絡線で掛ける。 */
+    zoomToUnity?: boolean;
   } | null;
   // 練習ラン: 対象ボス撃破の実時刻(Date.now)。死亡アテンションを見せ終えてから useGameLoop が
   // gameWon を立てる(v0.25.2953)。null=保留なし。
@@ -10106,7 +10110,7 @@ interface GameState {
   updateGameStats: (stats: Partial<GameStats>) => void;
   resetGame: (characterClass: string) => void;
   setCameraPosition: (x: number, y: number) => void;
-  triggerAttention: (x: number, y: number, cutin?: AttentionCutin, extraHoldMs?: number, subject?: AttentionSubject | null) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)。cutin指定=§6.36ボス出現カットイン付き。extraHoldMs=ホールド延長(討伐の崩壊見届け用)
+  triggerAttention: (x: number, y: number, cutin?: AttentionCutin, extraHoldMs?: number, subject?: AttentionSubject | null, opts?: { zoomToUnity?: boolean }) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)。cutin指定=§6.36ボス出現カットイン付き。extraHoldMs=ホールド延長(討伐の崩壊見届け用)
   clearAttention: () => void;
   /**
    * ステージ4のジュンの変身(research/JUN_ESCORT.md §1): 出ている素のアテンション(ジュンへの寄り)を、その場でボスの紹介(カットイン)
@@ -26817,7 +26821,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const selectedCompanionSkill: SkillKey | null = testGhostSkill ?? state.companionSkill;
     // ステージ1の守護霊のマスト化(STAGE1_FIRST_LOOP.md §7.8): ロック中は守護霊を連れていく(下の companionSkill=選択の保存値は変えない)。
     const runCompanionSkill = stage1RunCompanion(selectedCompanionSkill, state.stage1GuardianLock);
-    beginGhostOnlineRun(runCompanionSkill ? [runCompanionSkill] : [], getSelectedStageId());
+    // ステージ1の最初の守護霊は猛者の中からそのボスの1位(stage1BestGuardian.ts): ロック中だけ1位を先に取っておく。
+    beginGhostOnlineRun(runCompanionSkill ? [runCompanionSkill] : [], getSelectedStageId(), {
+      bestSlots: state.stage1GuardianLock ? stage1BestGuardianSlots(getSelectedStageId()) : [],
+    });
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
     // 新規上書き)がついていなければ持ち越し(型・名前は維持・因縁+1)。クリア/死亡いずれの
     // ラン終了でも次ランのresetGame呼び出しがこの唯一の締めタイミングになる。
@@ -27793,7 +27800,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // §6.36: cutin付きは hold の後に cutinMs(1100)だけカメラ静止のまま延長し、DOM(BossCutin.tsx)が
   // 名前+絵を出す。first-wins: attention生存中に新旧どちらかがcutin持ちなら後着を無視(純関数で判定)。
   // 素のattention同士は従来どおり上書き=挙動不変。
-  triggerAttention: (x, y, cutinIn, extraHoldMs = 0, subjectIn) => {
+  triggerAttention: (x, y, cutinIn, extraHoldMs = 0, subjectIn, opts) => {
     const prev = get().attention;
     // 紹介は1ゲーム中1回まで(社長裁定2026-09-14・v0.25.4302): 同じ名前の2回目以降はカットインを外し、
     // 素のattention(カメラが寄って戻るだけ)にする。first-wins の判定もカットインを外した後の値で行う。
@@ -27816,7 +27823,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const subject = subjectIn ?? (cutinIn ? findAttentionSubject(get().enemies, x, y) : null);
     const zoomIn = attentionZoomFor(subject);
     set({
-      attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y, holdMs, ...(cutin ? { cutin, cutinMs } : {}), ...(zoomIn ? { zoomIn } : {}) },
+      attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y, holdMs, ...(cutin ? { cutin, cutinMs } : {}), ...(zoomIn ? { zoomIn } : {}), ...(opts?.zoomToUnity ? { zoomToUnity: true } : {}) },
       hitstopUntil: Date.now() + ATTENTION_IN_MS + holdMs + ATTENTION_OUT_MS + cutinMs,
     });
   },

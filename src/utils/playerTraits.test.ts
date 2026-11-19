@@ -1165,11 +1165,20 @@ describe('playerTraits G5: notifyBossClear→endSession→commitの結線', () =
     expect(loadPlayerProfile()).toBeNull(); // 撃破印なし=何も保存されない
   });
 
-  // PACING_PUZZLE.md §6.38 v6 B-2(賞金首): isEngageableBossではあるがisGhostEligibleBossではないので
-  // 同じく撃破と数えない(倒す義務のない相手をゴースト週間の対象に混ぜない)。
-  it('賞金首(isEngageableBossだがisGhostEligibleBoss=false)の撃破通知も撃破と数えない', () => {
+  // 社長 2026-11-19「賞金首でも出るようにしよう」: 賞金首も撃破と数え、自分の守護霊(bossStyles)を育てる
+  // (事実として: §6.38 v6 B-2 では数えていなかった)。守護霊ボス「幻影」は従来どおり数えない。
+  it('賞金首の撃破通知は撃破と数える(そのスロットに守護霊が記録される)', () => {
     tickPlayerTraits(baseInput({ gameTime: 0 }));
     notifyBossClear('bounty-ranged', 'stage-1');
+    tickPlayerTraits(baseInput({ gameTime: 30_000 }));
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()?.bossStyles?.['bounty-ranged']).toBeDefined();
+  });
+
+  it('守護霊ボス「幻影」の撃破通知は撃破と数えない', () => {
+    tickPlayerTraits(baseInput({ gameTime: 0 }));
+    notifyBossClear('guardian-phantom', 'stage-1');
     tickPlayerTraits(baseInput({ gameTime: 30_000 }));
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();

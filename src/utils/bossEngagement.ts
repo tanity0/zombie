@@ -11,7 +11,7 @@
 // 掟: **ここは判定するだけの純関数**。どう使うか(湧きを落とす/コマ時計を止める)は directorTick 側。
 import type { Enemy, EnemyType } from '../types/game';
 import { BOSS_ZOOM_PROFILES, bossZoomClassFor, zoomCompensatedWorldDistance, ZOOM_MIN_ABS } from './cameraZoom';
-import { isBountyType, isGuardianPhantom } from './enemyUtils';
+import { isGuardianPhantom } from './enemyUtils';
 
 /**
  * 「交戦中」として扱うボスの型。
@@ -35,7 +35,7 @@ export const ENGAGEABLE_BOSS_TYPES = new Set<EnemyType>([
   'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
   // research/GHOST_BOSS.md(守護霊ボス「幻影」・ボスモードの実験枠): HPバー/体勢値(紫)/ボス引きズーム/
   // 致命の一撃は**この集合由来**なので、ボスとして戦わせるには編入が必要。
-  // ただし下の isGhostEligibleBoss(守護霊召喚等の5系統)からは賞金首と同様に除外する。
+  // ただし下の isGhostEligibleBoss(守護霊召喚等の5系統)からは除外する。
   'guardian-phantom',
 ]);
 
@@ -50,10 +50,10 @@ export const isBossCameraSubject = (e: { type: EnemyType; phantomUnmet?: boolean
   isEngageableBoss(e.type) && e.phantomUnmet !== true;
 
 /**
- * PACING_PUZZLE.md §6.38 v6 B-2(賞金首): 守護霊召喚/bossClock撃破タイム/notifyBossClearソロ台帳/
- * duoRecords/ghostOnlineのpickスロット列——この5系統は賞金首を**乗せない**(倒す義務のない相手を
- * ゴースト週間の対象に混ぜない)。ENGAGEABLE から賞金首だけを絞った専用集合を1箇所に作り、
- * 5系統全てがここを見る(個別に「賞金首を除く」条件を書き散らさない)。
+ * 守護霊の系統(守護霊召喚/自分のプレイの記録(bossStyles)/notifyBossClearソロ台帳/duoRecords/
+ * ghostOnlineのpickスロット列・送信)に乗せるボスの集合。5系統全てがここを見る(個別に条件を書き散らさない)。
+ * - 賞金首: 社長 2026-11-19「賞金首でも出るようにしよう」で**乗せる**(全ステージ)。
+ *   事実として: PACING_PUZZLE.md §6.38 v6 B-2 では「倒す義務のない相手をゴースト週間の対象に混ぜない」理由で除外していた。
  *
  * research/GHOST_BOSS.md(幻影): **守護霊ボス「幻影」も同じ理由で除外する。** 幻影は「守護霊の
  * データを相手として立てた実験枠」なので、ここへ入れると守護霊召喚(=守護霊 vs 守護霊)・撃破タイム・
@@ -63,7 +63,7 @@ export const isBossCameraSubject = (e: { type: EnemyType; phantomUnmet?: boolean
 export const BOSS_OPENING_HOLD_MS = 3000;
 
 export const isGhostEligibleBoss = (type: EnemyType): boolean =>
-  ENGAGEABLE_BOSS_TYPES.has(type) && !isBountyType(type) && !isGuardianPhantom(type);
+  ENGAGEABLE_BOSS_TYPES.has(type) && !isGuardianPhantom(type);
 
 // 交戦とみなす距離(社長質問v0.25.2416「ボスの画面外判定はハンターくらい広めならOK?」→ ハンター基準)。
 // 基準値は旧ハンター相当。実ワールド距離はボス戦の引きズームに合わせて拡張する。

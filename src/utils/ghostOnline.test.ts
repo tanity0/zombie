@@ -20,6 +20,7 @@ import { SUB_WEAPON_UPGRADE_NOTES } from '../data/subWeaponUpgradeNotes';
 import { AVATAR_IDS } from '../data/avatars';
 import { MOVE_REACTION_KEYS, BULLET_MOVE_KEYS } from './moveReaction';
 import { EQUIPMENT } from '../data/equipment';
+import { ENGAGEABLE_BOSS_TYPES, isGhostEligibleBoss } from './bossEngagement';
 
 describe('G6 online guardian rules', () => {
   it('uses the decided skill priority and gold multipliers', () => {
@@ -34,6 +35,15 @@ describe('G6 online guardian rules', () => {
 
   it('keeps network slots inside the server allow-list', () => {
     expect(ghostNetworkSlotKey('giantbat@stage-7')).toBe('giantbat-stage-7');
+  });
+
+  // 社長 2026-11-19「賞金首でも出るようにしよう」: pick のスロット列に賞金首4型が乗る。サーバの上限(MAX_SLOTS=24)に収まること。
+  it('pick slots include the bounty types and fit the server slot cap', () => {
+    const slots = [...ENGAGEABLE_BOSS_TYPES].filter(isGhostEligibleBoss);
+    for (const t of ['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'] as const) expect(slots).toContain(t);
+    expect(slots).not.toContain('guardian-phantom');
+    expect(slots.length).toBeLessThanOrEqual(24);
+    for (const t of slots) expect(ghostNetworkSlotKey(t)).toMatch(/^[a-z0-9-]{1,48}$/);
   });
 
   it('builds fixed and online feedback targets without mixing them', () => {

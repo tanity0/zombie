@@ -76,9 +76,11 @@ import { ghostAllySnapshot } from './playerBuild'; // v0.25.2553(§2.16 B): 同�
 import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, withSynthesizedMicroRhythm, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
 import { stage1RunCompanion } from './stage1FirstLoop'; // STAGE1_FIRST_LOOP.md §7.8(守護霊のマスト化)
 import {
-  fixedGhostFeedbackTarget, isGhostOnlinePickPending, remoteGhostFeedbackTarget,
-  resolveRemoteGhost, selectedGhostMode,
+  fixedGhostFeedbackTarget, isGhostOnlinePickPending, isStage1BestPickPending, remoteGhostFeedbackTarget,
+  resolveRemoteGhost, resolveStage1BestGhost, selectedGhostMode,
 } from './ghostOnline';
+import { hasFixedBossRanking, isStage1FirstGuardianSummon, pickStage1BestGuardian } from './stage1BestGuardian'; // ステージ1の最初の守護霊=猛者のボス別1位
+import { loadSeenForGate } from './tutorialArchive';
 import { pickFixedGuardianForGhostMode, shouldPickFixedGuardian } from '../data/fixedGuardians';
 import { getSelectedStageId, recordChronicle } from '../data/progress';
 import { recordKoma, isKomaLogEnabled, komaLogRunRef, tickKomaLive } from './komaLog';
@@ -1000,15 +1002,15 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
     return; // 同時1体(既に居るなら新規召喚はしない)
   }
 
-  // ★社長指示2026-08-26「賞金首も出して守護霊」: **召喚だけ**賞金首を対象に加える(B-2裁定の更新)。
-  // 台帳(ソロ/週間)・計測の除外(isGhostEligibleBoss)は据え置き=倒す義務のない相手を記録に混ぜない、は不変。
+  // ★社長指示2026-08-26「賞金首も出して守護霊」で召喚に賞金首を加え、社長 2026-11-19「賞金首でも出るようにしよう」で
+  // 台帳・計測・オンラインのスロットにも乗せた(isGhostEligibleBoss が賞金首を含む=ここは1本の述語でよい)。
   // ★v0.25.3972(社長報告「アイドルに守護霊出てこない」): `ghostSummonedOnce` 未打刻の個体だけが対象。
   // 従来は交戦の**立ち上がりエッジ1tickだけ**が召喚機会で、その瞬間に前のボスの守護霊が退場アニメ中
   // (summonsにまだ居る)だと機会が食い潰され、その交戦では二度と召喚されなかった(ボス連戦・
   // ボスモードの連続出題で踏む)。個体ごとの1回旗に変えて「交戦中で未召喚なら毎tick試みる」へ堅牢化。
   // 「守護霊が倒れても同じボスへ再召喚しない」(既存意図)は同じ旗がそのまま保証する。
   const boss = state.enemies.find(e =>
-    (isGhostEligibleBoss(e.type) || isBountyType(e.type)) && e.dormant !== true
+    isGhostEligibleBoss(e.type) && e.dormant !== true
     && e.ghostSummonedOnce !== true
     && Math.hypot((e.x + e.width / 2) - pcx, (e.y + e.height / 2) - pcy)
       <= bossEngagementDistancePx(e.type, false, e.isStoryBoss === true));
@@ -1034,14 +1036,38 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   if (delayedSummon && pickPending) return;
   if (!delayedSummon && onlineMode && pickPending) { pendingRemoteGhostSlot = localSlot; return; }
   pendingRemoteGhostSlot = null;
-  const remoteCandidate = requestedMode === 'random' || requestedMode === 'top'
-    ? resolveRemoteGhost(localSlot)
+  // ステージ1の最初の守護霊(社長 2026-11-19「ステージ１で初めて出てくる守護霊は猛者の中からその…ボスの1位で」):
+  // 守護霊のチュートリアルと組になる1回(1周目=賞金首 / 2周目以降の未読=最初の賞金首か城ボス)だけ、
+  // 同行者の抽選の代わりに猛者(オンライン実プレイヤー+そのボスの固定上位)の1位を呼ぶ。対価(HP×1.6・ゴールド/スコア×0.5)は従来どおり。
+  const firstLoopNow = state.stage1Loop !== null;
+  const stage1Best = (state.stage1GuardianLock || firstLoopNow) && isStage1FirstGuardianSummon({
+    firstLoop: firstLoopNow,
+    locked: state.stage1GuardianLock || firstLoopNow,
+    seen: !firstLoopNow && loadSeenForGate().has('guardian'),
+    queued: state.stage1Loop?.guardianTutQueued ?? false,
+    bossMaker: state.bossMaker.active,
+    bossType: boss.type,
+  });
+  if (stage1Best && isStage1BestPickPending()) return; // 1位の取得待ち(最大5秒・交戦中は毎tick再試行)
+  const bestChoice = stage1Best
+    ? pickStage1BestGuardian({
+      slotKey: localSlot,
+      hasBossRanking: hasFixedBossRanking(localSlot),
+      online: resolveStage1BestGhost(localSlot),
+    })
     : null;
+  const remoteCandidate = bestChoice
+    ? (bestChoice.kind === 'remote' ? bestChoice.candidate : null)
+    : requestedMode === 'random' || requestedMode === 'top'
+      ? resolveRemoteGhost(localSlot)
+      : null;
   // 固定20人とオンライン実プレイヤーを候補人数比で同じ抽選母集団へ混ぜる。
   // 助っ人=固定20人+実候補全員 / 討伐者=ボス別4人+実候補の上位20%。
-  const fixed = onlineMode && shouldPickFixedGuardian(requestedMode, remoteCandidate?.poolSize ?? 0)
-    ? pickFixedGuardianForGhostMode(localSlot, requestedMode)
-    : null;
+  const fixed = bestChoice
+    ? (bestChoice.kind === 'fixed' ? bestChoice.guardian : null)
+    : onlineMode && shouldPickFixedGuardian(requestedMode, remoteCandidate?.poolSize ?? 0)
+      ? pickFixedGuardianForGhostMode(localSlot, requestedMode)
+      : null;
   const remote = fixed ? null : remoteCandidate;
   const loadedProfile = loadPlayerProfile();
   const resolvedProfile = remote
@@ -1055,7 +1081,8 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   // 実プレイヤー/オンライン遠隔)には、既存スカラーから決定的に合成した既定分布を埋める
   // (実測が入り次第、実測が勝つ=withSynthesizedMicroRhythmは既にmicroRhythmがあれば何もしない)。
   const profile = withSynthesizedMicroRhythm(resolvedProfile);
-  const ghostSource = remote?.source ?? (fixed ? requestedMode : 'own');
+  // 猛者の1位は討伐者(top)と同じ扱い(頭上は名前だけ・ゴールド×0.5)。
+  const ghostSource = remote?.source ?? (fixed ? (bestChoice ? 'top' : requestedMode) : 'own');
   const localComments = ghostSource === 'own' ? loadGhostComments() : null;
   const arrivalComment = displayGhostComment(
     localComments?.arrivalComment ?? (profile as { arrivalComment?: unknown }).arrivalComment,

@@ -112,10 +112,16 @@ describe('duoRecords: 交戦時計と打刻', () => {
     expect(loadDuoAlbum()).toBeNull();
   });
 
-  // PACING_PUZZLE.md §6.38 v6 B-2(賞金首): isEngageableBossだがisGhostEligibleBossではないので無視。
-  it('賞金首は同行台帳にも記録されない(isGhostEligibleBoss=false)', () => {
-    engageFor('thor', 50_000, 10_000);
+  // 社長 2026-11-19「賞金首でも出るようにしよう」: 賞金首も同行台帳に乗る(事実として: §6.38 v6 B-2 では無視していた)。
+  it('賞金首は同行台帳に記録される(そのスロットの交戦時計で)', () => {
+    engageFor('bounty-ranged', 50_000, 10_000);
     recordDuoBossClear('bounty-ranged', 'stage-1', ally());
+    expect(loadDuoAlbum()?.slots['bounty-ranged']?.clearTimeMs).toBe(10_000);
+  });
+
+  it('守護霊ボス「幻影」は同行台帳に記録されない', () => {
+    engageFor('guardian-phantom', 50_000, 10_000);
+    recordDuoBossClear('guardian-phantom', 'stage-1', ally());
     expect(loadDuoAlbum()).toBeNull();
   });
 

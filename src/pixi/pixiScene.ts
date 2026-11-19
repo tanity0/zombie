@@ -284,7 +284,7 @@ import {
 } from '../utils/swordSwingMotion';
 import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
-import { attentionZoomEnvelope } from '../utils/attentionZoom';
+import { attentionUnityZoom, attentionZoomEnvelope } from '../utils/attentionZoom';
 import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom, runZoomTarget, RUN_ZOOM_MIN, RUN_ZOOM_OUT_S, RUN_ZOOM_IN_S, RUN_ZOOM_HOLD_S,
   BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, ZOOM_MIN_ABS,
@@ -9272,6 +9272,14 @@ export class PixiScene {
     // Focal plane for the pseudo-perspective scale = the player's feet.
     const pfb = playerFootBox(s.player);
     this.depthRefY = pfb.footY;
+    // 等倍に見せるアテンション(社長指示2026-11-19 ステージ1ループ1の廃病院/二人組)は、遠近の焦点面もカメラと一緒に注目点へ運ぶ。
+    // 焦点面がプレイヤー(画面外の遠く)のままだと、北の廃病院は「画面のはるか上=最奥」として最小まで縮み、南の二人は最大まで膨らむ
+    // (実測: プレイヤーから約3400px北の廃病院が 188px→38px)。寄りと同じ包絡線(smoothstep・慣性つき)で運び、戻りで元へ。
+    if (s.attention?.zoomToUnity) {
+      const a = s.attention;
+      const outStart = ATTENTION_IN_MS + (a.holdMs ?? ATTENTION_HOLD_MS) + (a.cutinMs ?? 0);
+      this.depthRefY += (a.y - this.depthRefY) * attentionZoomEnvelope(realNow - a.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS);
+    }
     // 「裏に回ったら透ける」判定用のプレイヤー足元矩形(world)。障害物の可視矩形とAABBで重なり判定する。
     this.seeThroughPlayer = { cx: pfb.footX, footY: pfb.footY, halfW: pfb.boxW / 2, top: pfb.footY - pfb.boxH };
 
@@ -9574,7 +9582,11 @@ export class PixiScene {
     // 包絡線はカメラのパン(useGameLoop)と同じ smoothstep(in で 1→倍率、hold/cutin で保持、out で 倍率→1)=慣性つき。
     // 倍率>1 は可視域が狭まる方なので、カリング・背景の外は見えない。zoomIn 無し(=大型・対象なし・アテンション外)は係数1=今と同じ。
     let attZoom = 1;
-    const attZoomIn = s.attention?.zoomIn ?? 1;
+    // 等倍に見せるアテンション(社長指示2026-11-19 ステージ1ループ1の廃病院/二人組): 今の引きを打ち消す倍率を毎フレーム出す
+    // (文脈ズームがアテンション中に動いても hold 中は画面上の倍率=1.0 のまま)。引いていなければ 1=寄らない。
+    const attZoomIn = s.attention?.zoomToUnity
+      ? Math.max(s.attention.zoomIn ?? 1, attentionUnityZoom(this.idleZoom * this.contextZoom * this.runZoom * this.junPull * this.junFocus))
+      : (s.attention?.zoomIn ?? 1);
     if (s.attention && attZoomIn > 1) {
       const a = s.attention;
       const outStart = ATTENTION_IN_MS + (a.holdMs ?? ATTENTION_HOLD_MS) + (a.cutinMs ?? 0);

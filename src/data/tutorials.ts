@@ -25,8 +25,12 @@ export type TutorialId =
   | 'mutant-tier'
   // ステージ1(STAGE1_FIRST_LOOP.md §7.8): 守護霊が初めて来た時(1周目=賞金首 / 2周目以降で未読=賞金首か城ボスの先に来た方)。
   | 'guardian'
+  // 武器商人(スタート地点の商人のサークルに初めて入った時・発火は src/utils/merchantTutorial.ts)。旧 stage1-guide の1枚目を独立させた。
+  | 'merchant'
+  // 賞金首(初めて現れた時・出現のアテンションが終わってから・発火は src/utils/bountyTutorial.ts)。
+  | 'bounty'
   // 後から足した操作(社長指示2026-10-13「資料室に、新たに追加された操作方法をシンプルな内容で追加」)。
-  // ゲーム中のポップアップは無い=資料室に最初から並ぶ(archiveAlways)。
+  // 資料室に最初から並ぶ(archiveAlways)。'hit-retaliation' だけは受付の窓が初めて開いた時にゲーム中でも出す(発火は src/utils/hitRetaliationTutorial.ts)。
   | 'hit-retaliation' | 'escort-kick' | 'fast-travel' | 'escort-follow';
 
 export interface TutorialSlide {
@@ -65,7 +69,8 @@ export const tutorialLinesFor = (
 ): string[] =>
   device === 'pad' ? (e.padLines ?? e.pcLines ?? e.lines).map(l => fillPadGlyphs(l, padKind)) : device === 'mouse' ? (e.pcLines ?? e.lines) : e.lines;
 
-export const STAGE1_GUIDE_SLIDES: TutorialSlide[] = [
+// 武器商人の1枚(スタート地点の商人のサークルに初めて入った時に出す 'merchant')。旧 stage1-guide の1枚目=同じ文を2回見せないためガイドからは外した。
+export const MERCHANT_SLIDES: TutorialSlide[] = [
   {
     title: '武器商人',
     lines: [
@@ -75,6 +80,23 @@ export const STAGE1_GUIDE_SLIDES: TutorialSlide[] = [
     ],
     mediaPending: true,
   },
+];
+
+// 賞金首の1枚(初めて現れた時に出す 'bounty')。映像は後日。
+export const BOUNTY_SLIDES: TutorialSlide[] = [
+  {
+    title: '賞金首',
+    lines: [
+      '賞金首は、一筋縄ではいかない特殊な変異体。',
+      '腕に覚えがないうちは危険だ。近づかなければ、いずれ去っていく。',
+      'マップには他にも、徘徊する変異体や、噂にしか聞かない超大型の変異体がいるらしい。',
+      '倒せば、必ず大型武器庫を落とす。',
+    ],
+    mediaPending: true,
+  },
+];
+
+export const STAGE1_GUIDE_SLIDES: TutorialSlide[] = [
   {
     title: '拠点',
     lines: [
@@ -293,6 +315,22 @@ export const TUTORIALS: TutorialEntry[] = [
     where: '避難回廊',
   },
   {
+    id: 'merchant',
+    title: '武器商人',
+    // スタート地点の武器商人のサークルに初めて入った時に出す(端末で1度だけ・拠点の商人では出さない)。閉じた後も立っていれば、いつもどおり取引が開く。
+    lines: MERCHANT_SLIDES[0].lines,
+    slides: MERCHANT_SLIDES,
+    where: '全域',
+  },
+  {
+    id: 'bounty',
+    title: '賞金首',
+    // 賞金首が初めて現れた時、出現のアテンションが終わって操作が戻った瞬間に出す(端末で1度だけ・ステージ1の1周目も同じ)。
+    lines: BOUNTY_SLIDES[0].lines,
+    slides: BOUNTY_SLIDES,
+    where: '全域',
+  },
+  {
     id: 'detour-poi',
     title: '寄り道',
     // 社長指示2026-11-18: 拠点を初めて確保した時に出す(発火は src/utils/detourTutorial.ts)。
@@ -368,7 +406,7 @@ export const TUTORIALS: TutorialEntry[] = [
 TUTORIALS.push(
   {
     id: 'hit-retaliation',
-    title: '反撃',
+    title: 'レッドカウンター',
     lines: [
       '敵に殴られたり噛みつかれたりした直後、その相手の方向に白い矢印が出る。',
       '矢印の方向へ指をはじくと、近接攻撃より重い一撃でやり返せる。',

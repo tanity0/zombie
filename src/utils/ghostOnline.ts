@@ -28,6 +28,8 @@ export type RemoteGhostCandidate = {
   /** サーバ側でこの抽選に参加した実プレイヤー候補数。固定候補との人数比抽選に使う。 */
   poolSize: number;
   profile: PlayerProfile;
+  /** mode=best の応答だけが持つ評点(固定の先人守護霊の score と同じ式)。比べて猛者全体の1位を決める。 */
+  perf?: number | null;
 };
 
 export type GhostInboxItem = {
@@ -61,6 +63,9 @@ let runGeneration = 0;
 let runCandidates = new Map<string, RemoteGhostCandidate>();
 let runMode: 'random' | 'top' | null = null;
 let runPickPending = false;
+// ステージ1の最初の守護霊(stage1BestGuardian.ts): そのボスの猛者1位(mode=best)。通常の random/top とは別の箱。
+let bestCandidates = new Map<string, RemoteGhostCandidate>();
+let bestPickPending = false;
 
 const apiBase = (): string => {
   try {
@@ -137,6 +142,8 @@ const clearRunCache = (): void => {
   runCandidates = new Map();
   runMode = null;
   runPickPending = false;
+  bestCandidates = new Map();
+  bestPickPending = false;
 };
 
 export const endGhostOnlineRun = (): void => {
@@ -144,9 +151,70 @@ export const endGhostOnlineRun = (): void => {
   clearRunCache();
 };
 
-export const beginGhostOnlineRun = (skills: readonly SkillKey[], stageId: string): void => {
+const parsePickItems = (
+  raw: { epoch?: unknown; items?: unknown } | null,
+  slots: readonly string[],
+  source: 'random' | 'top',
+  withPerf: boolean,
+): Map<string, RemoteGhostCandidate> | null => {
+  if (!raw || raw.epoch !== GHOST_SHARE_EPOCH || !Array.isArray(raw.items)) return null;
+  const next = new Map<string, RemoteGhostCandidate>();
+  for (const item of raw.items) {
+    if (!item || typeof item !== 'object') continue;
+    const value = item as { slot?: unknown; recordId?: unknown; poolSize?: unknown; profile?: unknown; perf?: unknown };
+    if (typeof value.slot !== 'string' || !slots.includes(value.slot) || typeof value.recordId !== 'string') continue;
+    const profile = sanitizeSharedProfile(value.profile, value.slot) as PlayerProfile | null;
+    if (!profile) continue;
+    const poolSize = Number.isSafeInteger(value.poolSize) && Number(value.poolSize) >= 1
+      ? Number(value.poolSize)
+      : 1; // 旧Worker応答は「取得できた実候補1人」として互換維持。
+    const perf = withPerf && typeof value.perf === 'number' && Number.isFinite(value.perf) ? value.perf : null;
+    next.set(value.slot, { source, recordId: value.recordId, slot: value.slot, poolSize, profile, ...(withPerf ? { perf } : {}) });
+  }
+  return next;
+};
+
+/**
+ * ステージ1の最初の守護霊用に、指定スロット(ローカルのスロットキー)の猛者1位を取りに行く(mode=best)。
+ * 受信は通常の他人の守護霊と同じく同意後だけ。取れなければ召喚側が固定の1位へ落とす。
+ */
+const beginBestPick = (generation: number, localSlots: readonly string[]): void => {
+  if (localSlots.length === 0) return;
+  if (!hasGhostOnlineConsent() || !apiBase() || !getAnonymousId()) return;
+  const slots = [...new Set(localSlots.map(ghostNetworkSlotKey))];
+  bestPickPending = true;
+  void (async () => {
+    try {
+      const anonId = getAnonymousId();
+      if (!anonId) return;
+      const url = new URL(`${apiBase()}/ghost/pick`);
+      url.searchParams.set('slots', slots.join(','));
+      url.searchParams.set('mode', 'best');
+      url.searchParams.set('anon', anonId);
+      const response = await fetch(url, {
+        headers: { 'X-Ghost-Anon': anonId },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok || generation !== runGeneration) return;
+      // 'top' として持つ=討伐者(猛者)と同じ扱い(頭上は名前だけ・ゴールド×0.5)。
+      const next = parsePickItems(await safeJson(response) as { epoch?: unknown; items?: unknown } | null, slots, 'top', true);
+      if (!next || generation !== runGeneration) return;
+      bestCandidates = next;
+    } catch { /* オフライン時は召喚側が固定の1位へ落とす */ }
+    finally {
+      if (generation === runGeneration) bestPickPending = false;
+    }
+  })();
+};
+
+export const beginGhostOnlineRun = (
+  skills: readonly SkillKey[],
+  stageId: string,
+  opts?: { bestSlots?: readonly string[] },
+): void => {
   const generation = ++runGeneration;
   clearRunCache();
+  beginBestPick(generation, opts?.bestSlots ?? []);
   const mode = selectedGhostMode(skills);
   if (mode !== 'random' && mode !== 'top') return;
   if (!hasGhostOnlineConsent() || !apiBase() || !getAnonymousId()) return;
@@ -168,21 +236,8 @@ export const beginGhostOnlineRun = (skills: readonly SkillKey[], stageId: string
         signal: AbortSignal.timeout(5000),
       });
       if (!response.ok || generation !== runGeneration) return;
-      const raw = await safeJson(response) as { epoch?: unknown; items?: unknown } | null;
-      if (!raw || raw.epoch !== GHOST_SHARE_EPOCH || !Array.isArray(raw.items)) return;
-      const next = new Map<string, RemoteGhostCandidate>();
-      for (const item of raw.items) {
-        if (!item || typeof item !== 'object') continue;
-        const value = item as { slot?: unknown; recordId?: unknown; poolSize?: unknown; profile?: unknown };
-        if (typeof value.slot !== 'string' || !slots.includes(value.slot) || typeof value.recordId !== 'string') continue;
-        const profile = sanitizeSharedProfile(value.profile, value.slot) as PlayerProfile | null;
-        if (!profile) continue;
-        const poolSize = Number.isSafeInteger(value.poolSize) && Number(value.poolSize) >= 1
-          ? Number(value.poolSize)
-          : 1; // 旧Worker応答は「取得できた実候補1人」として互換維持。
-        next.set(value.slot, { source: mode, recordId: value.recordId, slot: value.slot, poolSize, profile });
-      }
-      if (generation !== runGeneration) return;
+      const next = parsePickItems(await safeJson(response) as { epoch?: unknown; items?: unknown } | null, slots, mode, false);
+      if (!next || generation !== runGeneration) return;
       runCandidates = next;
     } catch { /* オフライン時の固定20人フォールバックは召喚側で行う */ }
     finally {
@@ -196,6 +251,13 @@ export const resolveRemoteGhost = (localSlot: string): RemoteGhostCandidate | nu
   if (!runMode) return null;
   return runCandidates.get(ghostNetworkSlotKey(localSlot)) ?? null;
 };
+
+/** ステージ1の最初の守護霊: そのボスの猛者1位(mode=best で取れた時だけ)。 */
+export const resolveStage1BestGhost = (localSlot: string): RemoteGhostCandidate | null =>
+  bestCandidates.get(ghostNetworkSlotKey(localSlot)) ?? null;
+
+/** 猛者1位を取得中か(城ボスの交戦がそれより早い時だけ召喚を待つ)。 */
+export const isStage1BestPickPending = (): boolean => bestPickPending;
 
 /** オンライン候補を取得中か。即ボス戦では完了まで召喚を待ち、選択した霊種を正しく試す。 */
 export const isGhostOnlinePickPending = (): boolean => runPickPending;

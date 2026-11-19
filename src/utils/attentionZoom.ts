@@ -65,3 +65,13 @@ export const attentionZoomEnvelope = (el: number, inMs: number, outStart: number
   const outK = el > outStart ? sm((el - outStart) / Math.max(1, outMs)) : 0;
   return inK * (1 - outK);
 };
+
+/**
+ * 「等倍に見せる」アテンション(attention.zoomToUnity)の寄り倍率(社長指示2026-11-19「ステージ１の廃病院と二人組へのアテンション
+ * カメラワーク、ちゃんと等倍にみえるようにカメラをズームして」)。base=今のカメラ倍率(寄りパンチ・アテンションの寄りを除いた積)。
+ * 引いている(base<1)時だけ 1/base を返す=掛けると画面上の倍率がちょうど1.0。既に等倍以上なら 1(引きはしない)。
+ */
+export const attentionUnityZoom = (base: number): number => {
+  if (!(base > 0) || base >= 1) return 1;
+  return 1 / Math.max(0.05, base);
+};

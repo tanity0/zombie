@@ -33,13 +33,13 @@ describe('shouldShowStage1Guide', () => {
 });
 
 describe('stage1-guide tutorial data', () => {
-  it('武器商人・拠点・目的の3ページを順番どおり持つ', () => {
-    expect(STAGE1_GUIDE_SLIDES.map(slide => slide.title)).toEqual(['武器商人', '拠点', '目的']);
+  it('拠点・目的の2ページを順番どおり持つ(武器商人は独立したチュートリアル merchant へ移した)', () => {
+    expect(STAGE1_GUIDE_SLIDES.map(slide => slide.title)).toEqual(['拠点', '目的']);
     expect(getTutorial('stage1-guide')?.slides).toBe(STAGE1_GUIDE_SLIDES);
   });
 
   it('全ページが後日動画を差し込める待機枠になっている', () => {
-    expect(STAGE1_GUIDE_SLIDES).toHaveLength(3);
+    expect(STAGE1_GUIDE_SLIDES).toHaveLength(2);
     for (const slide of STAGE1_GUIDE_SLIDES) {
       expect(slide.lines.join('').length).toBeGreaterThan(20);
       expect(slide.img).toBeUndefined();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ATTENTION_SMALL_ZOOM_IN, ATTENTION_SMALL_TYPES,
-  attentionZoomFor, attentionZoomEnvelope, findAttentionSubject,
+  attentionZoomFor, attentionZoomEnvelope, attentionUnityZoom, findAttentionSubject,
 } from './attentionZoom';
 import { ENEMY_STATS, isBossType } from './enemyUtils';
 import { isLargeForZoom } from './cameraZoom';
@@ -67,5 +67,22 @@ describe('attentionZoomEnvelope(パンと同じ smoothstep の包絡線)', () =>
   it('出だしと終わりは速度0(慣性つき)', () => {
     expect(attentionZoomEnvelope(3, 300, 1000, 300)).toBeLessThan(0.001);
     expect(1 - attentionZoomEnvelope(1003, 300, 1000, 300)).toBeLessThan(0.001);
+  });
+});
+
+describe('attentionUnityZoom(等倍に見せるアテンションの寄り倍率)', () => {
+  it('引いている時は掛けると等倍(1.0)になる', () => {
+    for (const base of [0.4, 0.55, 0.7, 0.85, 0.99]) {
+      expect(base * attentionUnityZoom(base)).toBeCloseTo(1, 9);
+    }
+  });
+  it('等倍以上なら寄らない(引きもしない)', () => {
+    expect(attentionUnityZoom(1)).toBe(1);
+    expect(attentionUnityZoom(1.3)).toBe(1);
+  });
+  it('壊れた値は1', () => {
+    expect(attentionUnityZoom(0)).toBe(1);
+    expect(attentionUnityZoom(NaN)).toBe(1);
+    expect(attentionUnityZoom(-1)).toBe(1);
   });
 });

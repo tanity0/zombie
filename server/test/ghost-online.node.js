@@ -190,6 +190,71 @@ test('pick response reports the real-player pool size for fixed/real weighted mi
   assert.equal(topBody.items[0].poolSize, 2); // ceil(10 × 上位20%)
 });
 
+test('best mode returns the single highest-perf record (excluding the requester) with its perf', async () => {
+  const anon = '11111111-1111-4111-8111-111111111111';
+  const seen = [];
+  const env = {
+    GHOST_DB: {
+      prepare(sql) {
+        return {
+          bind(...params) {
+            seen.push({ sql, params });
+            return {
+              async first() {
+                return { record_id: 'record-best', slot: 'thor', profile_json: JSON.stringify(profile('thor')), perf: 95.5 };
+              },
+            };
+          },
+        };
+      },
+    },
+  };
+  const response = await handleGhostRequest(
+    new Request(`https://example.test/ghost/pick?slots=thor&mode=best&anon=${anon}`), env,
+  );
+  const body = await response.json();
+  assert.equal(body.epoch, GHOST_SHARE_EPOCH);
+  assert.equal(body.items.length, 1);
+  assert.equal(body.items[0].recordId, 'record-best');
+  assert.equal(body.items[0].perf, 95.5);
+  assert.equal(body.items[0].poolSize, 1);
+  assert.equal(seen.length, 1); // 件数の数え直しをしない=1問い合わせ
+  assert.match(seen[0].sql, /ORDER BY perf DESC/);
+  assert.match(seen[0].sql, /LIMIT 1/);
+  assert.doesNotMatch(seen[0].sql, /RANDOM\(\)/);
+  assert.match(seen[0].sql, /anon_id<>\?/);
+  assert.deepEqual(seen[0].params, ['thor', GHOST_SHARE_EPOCH, anon]);
+
+  // top/random の応答には perf を足さない(従来どおり)。
+  const topBody = await (await handleGhostRequest(
+    new Request(`https://example.test/ghost/pick?slots=thor&mode=top&anon=${anon}`), pickEnv(10),
+  )).json();
+  assert.equal('perf' in topBody.items[0], false);
+  // 未知のモードは従来どおり random 扱い。
+  const unknownBody = await (await handleGhostRequest(
+    new Request(`https://example.test/ghost/pick?slots=thor&mode=evil&anon=${anon}`), pickEnv(7),
+  )).json();
+  assert.equal(unknownBody.items[0].poolSize, 7);
+});
+
+test('pick accepts the full slot list including the four bounty types (17) and still rejects oversized lists', async () => {
+  const anon = '11111111-1111-4111-8111-111111111111';
+  const bosses = ['giantbat-stage-1', 'mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril', 'rafi', 'uri', 'suriel',
+    'acrasiel', 'idol', 'phillboss-stage-ex1', 'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko'];
+  assert.equal(bosses.length, 17);
+  const ok = await handleGhostRequest(
+    new Request(`https://example.test/ghost/pick?slots=${bosses.join(',')}&mode=top&anon=${anon}`), pickEnv(10),
+  );
+  assert.equal(ok.status, 200);
+  const body = await ok.json();
+  assert.deepEqual(body.items.map(item => item.slot), ['thor']); // 偽DBは thor の記録しか返さない=他は浄化で落ちる
+  const tooMany = Array.from({ length: 25 }, (_, i) => `slot-${i}`);
+  const rejected = await handleGhostRequest(
+    new Request(`https://example.test/ghost/pick?slots=${tooMany.join(',')}&mode=top&anon=${anon}`), pickEnv(10),
+  );
+  assert.equal(rejected.status, 400);
+});
+
 const feedbackRequest = (eventId = 'event-fixed-00000001') => new Request('https://example.test/ghost/feedback', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', 'X-Ghost-Anon': '11111111-1111-4111-8111-111111111111' },

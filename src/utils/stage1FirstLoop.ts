@@ -398,11 +398,17 @@ export type GuardianBoundKind = 'bounty' | 'castle' | 'other';
  * - 1周目: 端末の既読に関係なく出す(§7.6 B と同じ)。1出撃1回(queued)。
  * - 2周目以降: ロック中(ステージ1未クリア)で、まだ見ていない時だけ。どちらか先に来た方で1回=見たら以後は出さない。
  * - ロックが外れた(ステージ1クリア後)出撃では出さない=通常どおり。
+ * - 会話の最中と、「賞金首」のチュートリアルがまだ出ていない間は待つ(賞金首→守護霊の順を守る・重ねない)。
  */
 export const stage1GuardianTutorialDue = (i: {
   firstLoop: boolean; locked: boolean; seen: boolean; queued: boolean; boundKind: GuardianBoundKind | null;
+  /** NPCの会話(表示中・待ち行列)がある間は待つ(流れ切ってから)。 */
+  dialogueActive?: boolean;
+  /** 「賞金首」のチュートリアルがまだ出ていない(待ち・未読)間は待つ=賞金首が必ず先(社長指示2026-11-19)。 */
+  bountyTutorialPending?: boolean;
 }): boolean => {
   if (i.queued || i.boundKind === null) return false;
+  if (i.dialogueActive || i.bountyTutorialPending) return false; // 待つだけ(次のフレームで判定し直す)
   if (i.firstLoop) return i.boundKind === 'bounty';
   return i.locked && !i.seen && (i.boundKind === 'bounty' || i.boundKind === 'castle');
 };

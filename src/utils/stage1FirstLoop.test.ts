@@ -438,6 +438,14 @@ describe('守護霊のマスト化(§7.8)', () => {
     expect(stage1GuardianTutorialDue({ ...base, seen: true, boundKind: 'castle' })).toBe(false); // 見たら以後は出さない
     expect(stage1GuardianTutorialDue({ ...base, locked: false, boundKind: 'bounty' })).toBe(false); // クリア後は通常どおり
   });
+  it('チュートリアル: 会話の最中と、賞金首のチュートリアルが出る前は待つ(賞金首が先)', () => {
+    for (const firstLoop of [true, false]) {
+      const base = { firstLoop, locked: true, seen: false, queued: false, boundKind: 'bounty' as const };
+      expect(stage1GuardianTutorialDue({ ...base, dialogueActive: true })).toBe(false);
+      expect(stage1GuardianTutorialDue({ ...base, bountyTutorialPending: true })).toBe(false);
+      expect(stage1GuardianTutorialDue({ ...base, dialogueActive: false, bountyTutorialPending: false })).toBe(true);
+    }
+  });
   it('文面(社長確定 2026-11-18)', () => {
     expect(createStage1LoopState(0).guardianTutQueued).toBe(false);
     expect(getTutorial('guardian')?.title).toBe('守護霊');
