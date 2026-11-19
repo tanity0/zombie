@@ -71,16 +71,14 @@ describe('ステージ1の最初の守護霊=猛者のボス別1位(誰を呼ぶ
       .toEqual({ kind: 'fixed', guardian: strongestGuardian() });
   });
 
-  it('オンラインの1位と固定の1位を同じ評点で比べ、高い方(同点・評点なしはオンライン)', () => {
+  it('オンラインの1位が取れていれば、評点が固定の1位より低くても必ずオンライン(比べない)', () => {
     const s = fixedTop.performance.score;
-    const higher = { id: 'r', perf: s + 1 };
-    const lower = { id: 'r', perf: s - 1 };
-    expect(pickStage1BestGuardian({ slotKey: castleSlot, hasBossRanking: true, online: higher })).toEqual({ kind: 'remote', candidate: higher });
-    expect(pickStage1BestGuardian({ slotKey: castleSlot, hasBossRanking: true, online: lower })).toEqual({ kind: 'fixed', guardian: fixedTop });
-    const tie = { id: 'r', perf: s };
-    expect(pickStage1BestGuardian({ slotKey: castleSlot, hasBossRanking: true, online: tie }).kind).toBe('remote');
-    const noPerf = { id: 'r', perf: null };
-    expect(pickStage1BestGuardian({ slotKey: castleSlot, hasBossRanking: true, online: noPerf }).kind).toBe('remote');
+    for (const online of [{ id: 'r', perf: s + 1 }, { id: 'r', perf: s }, { id: 'r', perf: s - 1000 }, { id: 'r', perf: null }]) {
+      expect(pickStage1BestGuardian({ slotKey: castleSlot, hasBossRanking: true, online })).toEqual({ kind: 'remote', candidate: online });
+    }
+    // 賞金首(ボス別の順位なし)でも同じ。
+    const weak = { id: 'r', perf: strongestGuardian().performance.score - 1000 };
+    expect(pickStage1BestGuardian({ slotKey: 'bounty-melee', hasBossRanking: false, online: weak })).toEqual({ kind: 'remote', candidate: weak });
   });
 
   it('毎回同じ相手(抽選しない)', () => {

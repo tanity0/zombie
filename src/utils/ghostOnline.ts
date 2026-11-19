@@ -28,7 +28,7 @@ export type RemoteGhostCandidate = {
   /** サーバ側でこの抽選に参加した実プレイヤー候補数。固定候補との人数比抽選に使う。 */
   poolSize: number;
   profile: PlayerProfile;
-  /** mode=best の応答だけが持つ評点(固定の先人守護霊の score と同じ式)。比べて猛者全体の1位を決める。 */
+  /** mode=best の応答だけが持つ評点(固定の先人守護霊の score と同じ式)。猛者1位の選択には使わない(オンラインがあれば常に優先)。 */
   perf?: number | null;
 };
 

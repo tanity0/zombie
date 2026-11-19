@@ -1,7 +1,16 @@
 // ステージ1の最初の守護霊=猛者のボス別1位(社長 2026-11-19)の配線テスト。
 // runGhostAndTraitsStep が「チュートリアルと組になる1回」だけ1位を呼び、以後は従来どおり(ロック中=自分の守護霊)に戻ることを固定する。
-// オンラインはテスト環境では取れない(API 未設定)=固定の1位へ落ちる経路を通る。
-import { describe, it, expect, beforeEach } from 'vitest';
+// オンラインはテスト環境では取れない(API 未設定)=既定は固定の1位へ落ちる経路を通る。
+// オンラインの1位が取れた場合は resolveStage1BestGhost を差し替えて通す(固定の1位より弱くても必ずオンライン)。
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { RemoteGhostCandidate } from './ghostOnline';
+
+const bestRef: { candidate: RemoteGhostCandidate | null } = { candidate: null };
+vi.mock('./ghostOnline', async (orig) => ({
+  ...(await orig<typeof import('./ghostOnline')>()),
+  resolveStage1BestGhost: () => bestRef.candidate,
+}));
+
 import { useGameStore } from '../store/gameStore';
 import { runGhostAndTraitsStep } from './directorTick';
 import { spawnEnemyAt } from './enemyUtils';
@@ -36,7 +45,25 @@ describe('ステージ1の最初の守護霊=猛者のボス別1位(召喚の配
     useGameStore.getState().setStage1GuardianLock(true);
     useGameStore.getState().resetGame('assault');
     useGameStore.setState({ enemies: [], summons: [], stage1GuardianLock: true, stage1Loop: null });
+    bestRef.candidate = null;
     step();
+  });
+
+  it('オンラインの1位が取れていれば、固定の1位より評点が低くても必ずオンラインを呼ぶ', () => {
+    const slot = bossStyleSlotKey('giantbat', getSelectedStageId());
+    const top = fixedGuardianLeadersForBoss(slot)[0];
+    // 固定の1位とは別人の記録(頭上名で見分ける)を、評点を大きく下げて差し出す。
+    const other = fixedGuardianLeadersForBoss(slot).find(g => g.name !== top.name) ?? strongestGuardian();
+    bestRef.candidate = {
+      source: 'top', recordId: 'weak-1', slot, poolSize: 1,
+      profile: { ...other.profile, srcName: 'オンライン一位' } as RemoteGhostCandidate['profile'],
+      perf: top.performance.score - 1000,
+    };
+    const { ghost } = engage('giantbat');
+    expect(ghost).toBeDefined();
+    expect(ghost?.ghostName).toBe('オンライン一位');
+    expect(ghost?.ghostIsOwn).toBe(false);
+    expect(useGameStore.getState().ghostSourceThisRun).toBe('top');
   });
 
   it('2周目以降(未読): 最初の城ボスへの召喚は、そのボスの固定1位(他人の霊として・討伐者と同じ扱い)', () => {

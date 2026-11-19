@@ -49,21 +49,14 @@ export type Stage1BestGuardianChoice<R> = { kind: 'remote'; candidate: R } | { k
 
 /**
  * 猛者(討伐者の母集団=オンライン実プレイヤー+そのボスの固定上位)の中の1位を決める。
- * - オンラインの1位が取れていれば、固定の1位の score(同じ式: 60×(3×カウンター率−2×被弾率)−クリア秒)と比べ、高い方。
- *   同点はオンライン(実プレイヤー)。オンライン側の perf が無い(旧サーバ)時はオンラインを採る。
- * - オンラインが無い(オフライン・同意なし・そのボスの候補0)時は固定の1位。
+ * - オンラインの1位が取れていれば、必ずそれ(固定の1位とは比べない=実プレイヤーが常に優先)。
+ * - オンラインが無い(オフライン・同意なし・そのボスの候補0・取得失敗/時間切れ)時だけ固定の1位。
  */
-export const pickStage1BestGuardian = <R extends { perf?: number | null }>(i: {
+export const pickStage1BestGuardian = <R>(i: {
   slotKey: string;
   hasBossRanking: boolean;
   online: R | null;
 }): Stage1BestGuardianChoice<R> => {
-  const fixed = stage1BestFixedGuardian(i.slotKey, i.hasBossRanking);
-  if (i.online) {
-    const perf = i.online.perf;
-    if (typeof perf !== 'number' || !Number.isFinite(perf) || perf >= fixed.performance.score) {
-      return { kind: 'remote', candidate: i.online };
-    }
-  }
-  return { kind: 'fixed', guardian: fixed };
+  if (i.online) return { kind: 'remote', candidate: i.online };
+  return { kind: 'fixed', guardian: stage1BestFixedGuardian(i.slotKey, i.hasBossRanking) };
 };

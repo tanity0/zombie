@@ -23873,7 +23873,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const droppedDef = createWeapon(droppedKey);
           if (droppedDef.isMelee) recordKnifeTierFromBox(droppedDef.tier ?? 1); // §15-1(B0)の3(計測のみ)
         }
-        get().triggerWallBand('金箱!!', 'gold', 2600);
+        get().triggerWallBand('大型武器庫!!', 'gold', 2600); // 呼び名は賞金首のチュートリアルにそろえた(社長指示2026-11-19)
         for (let i = 0; i < GOLD_CRATE_XP_COUNT; i++) {
           get().addPickup({
             id: `pickup-xp-gold-${pickup.id}-${i}`,
