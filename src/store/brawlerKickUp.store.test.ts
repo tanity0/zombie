@@ -41,14 +41,14 @@ const br = () => useGameStore.getState().player.brawler!;
 const en = (id: string) => useGameStore.getState().enemies.find(e => e.id === id);
 const feed = () => useGameStore.getState().skillProcFeed.map(e => e.key);
 const waitHit = () => { for (let k = 0; k < 120 && !(br().resolved && !(useGameStore.getState().gameTime < br().stopUntil)); k++) advance(10); };
-/** 飛び蹴り1発目を当てた所まで(技ポイント points)。 */
-const kick1 = (mk: () => ReturnType<typeof enemyAt>[], points = 10, skills: string[] = []) => {
+/** 飛び蹴りを n 発(既定=2発目=空中蹴りまで・§34-8)当てた所まで(技ポイント points)。 */
+const kick1 = (mk: () => ReturnType<typeof enemyAt>[], points = 10, skills: string[] = [], n = 2) => {
   setup(skills);
   const enemies = mk(); // 位置は setup の後のプレイヤーから
   useGameStore.setState(st => ({ enemies, player: { ...st.player, brawler: undefined } }));
   useGameStore.getState().brawlerPress(); advance(400);
   useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points } }, skillProcFeed: [] }));
-  expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true); waitHit();
+  for (let i = 0; i < n; i++) { expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true); waitHit(); }
 };
 
 beforeEach(() => {
@@ -59,18 +59,28 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('§34-1 蹴り上げ(ストア)', () => {
-  it('当たった1発目の後の上=蹴り上げ(2発目の位置・飛び蹴り+1の値段)。構えにならない。相手は上へ浮く', () => {
+  it('当たった2発目(空中蹴り)の後の上=蹴り上げ(3発目の位置・飛び蹴り+1の値段)。構えにならない。相手は上へ浮く', () => {
     kick1(() => [enemyAt(120, 0, 'z')]);
     const pts = br().points;
     expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
     expect(br().tech).toBe('kick');
     expect(br().kickUp).toBe(true);
-    expect(br().kickN).toBe(2);
+    expect(br().kickN).toBe(3);
     expect(br().points).toBe(pts - brawlerKickUpCost());
     expect(isBrawlerGuarding(useGameStore.getState().player, useGameStore.getState().gameTime)).toBe(false);
     waitHit();
     expect(brawlerAirborne(en('z')!, now)).toBe(true);
-    expect(feed()).toEqual(['tech:kick', 'tech:kickup']);
+    expect(feed()).toEqual(['tech:kick', 'tech:kick2', 'tech:kickup']);
+  });
+  it('★§34-8: 当たった1発目の後の上は構え(蹴り上げにならない)', () => {
+    kick1(() => [enemyAt(120, 0, 'z')], 10, [], 1);
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    expect(br().kickUpBuffer).toBe(false);
+    expect(br().techBuffer).toBe('guard'); // 判定の後に押した構え=蹴りが終わったら構え(§25)
+    // 蹴りの後は相手に密着しているので、構えは密着の構え(§34-7)になる。どちらにしても蹴り上げではない。
+    for (let k = 0; k < 80 && br().tech === 'kick' && !br().contactGrab; k++) advance(10);
+    expect(br().kickUp).toBeFalsy();
+    expect(br().tech === 'guard' || br().contactGrab !== undefined).toBe(true);
   });
   it('外れた蹴りの後の上は構え(今までどおり)', () => {
     kick1(() => []);
@@ -79,7 +89,7 @@ describe('§34-1 蹴り上げ(ストア)', () => {
     expect(br().tech).toBe('guard');
   });
   it('払えない時の上は構え(弱い構え)', () => {
-    kick1(() => [enemyAt(120, 0, 'z')], 2);
+    kick1(() => [enemyAt(120, 0, 'z')], 3); // 2発で2使う=残り1<蹴り上げの2
     expect(br().points).toBeLessThan(brawlerKickUpCost());
     expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
     for (let k = 0; k < 80 && br().tech !== 'guard'; k++) advance(10);
@@ -137,16 +147,35 @@ describe('§34-3 空中投げ(格闘+パニッシャー)', () => {
 });
 
 describe('§34-7 密着の構え', () => {
-  const guardNear = (type: Parameters<typeof spawnEnemyAt>[0], skills: string[] = []) => {
+  const guardNear = (type: Parameters<typeof spawnEnemyAt>[0], skills: string[] = [], points = 9) => {
     setup(skills);
     useGameStore.setState(st => ({ enemies: [], player: { ...st.player, brawler: undefined } }));
     useGameStore.getState().brawlerPress(); advance(400);
     const p = useGameStore.getState().player;
     const e = enemyAt(0, 0, 'c', type);
     e.x = p.x + p.width + 4; // 体の縁どうし 4px
-    useGameStore.setState(st => ({ enemies: [e], player: { ...st.player, brawler: { ...st.player.brawler!, points: 9 } }, skillProcFeed: [] }));
+    useGameStore.setState(st => ({ enemies: [e], player: { ...st.player, brawler: { ...st.player.brawler!, points } }, skillProcFeed: [] }));
     expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
   };
+  // ★社長実機報告2026-11-19「スープレックス、雑魚をスープレックスできてない(案山子)」: 案山子(雑魚・体力が減らない練習の的)も、技ポイントが
+  //   構えの値段に足りない時(弱い構え)も、密着していればスープレックス。投げ越しの先(背中側)を覚え、相手の位置(判定)は動かない。
+  for (const [type, pts] of [['scarecrow', 9], ['scarecrow', 0], ['zombie', 0]] as const) {
+    it(`${type}(技ポイント${pts})に密着して構え=スープレックスで投げ越して叩きつけ、もう一度浮く`, () => {
+      guardNear(type, [], pts);
+      expect(br().contactGrab?.mode).toBe('suplex');
+      expect(br().points).toBe(pts >= BRAWLER_TECHS.guard.cost ? pts - BRAWLER_TECHS.guard.cost : pts); // 払えない時は弱い構えと同じ=0
+      const sw = br().suplexSwing!;
+      expect(sw.enemyId).toBe('c');
+      const p = useGameStore.getState().player, e = en('c')!;
+      expect(Math.sign(sw.mx)).toBe(-Math.sign(e.x + e.width / 2 - (p.x + p.width / 2))); // 背中側へ運ぶ
+      const x0 = e.x, hp0 = e.health;
+      advance(BRAWLER_CONTACT_GRAB_MS + 30);
+      expect(feed()).toEqual(['tech:suplex']);
+      expect(brawlerAirborne(en('c')!, now)).toBe(true);
+      expect(en('c')!.x).toBeCloseTo(x0, 5);
+      if (type === 'scarecrow') expect(en('c')!.health).toBe(hp0); // 案山子は体力が減らない(倒れない的)
+    });
+  }
   it('雑魚に密着して構え=掴み(構えの効果なし・スーパーアーマー)→ スープレックス・相手は動かず浮く・値段は構えと同じ', () => {
     guardNear('zombie');
     const s = br();

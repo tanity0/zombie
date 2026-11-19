@@ -31,8 +31,8 @@ const NODES: readonly BrawlerRouteNode[] = ['idle', 's1', 's2', 's3', 's4', 's5'
 const TABLE: Readonly<Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>> = {
   idle: NODES.filter(n => n !== 'idle' && n !== 'heel' && n !== 'kickup'),
   s1: ['s2', 'kick1', 'stomp', 'kiko'], s2: ['s3', 'kick1', 'stomp', 'kiko'], s3: ['s4', 'kick1', 'stomp', 'kiko'], s4: ['s5', 'kick1', 'stomp', 'kiko'], s5: [],
-  kick1: ['kick2', 'kickup', 'stomp', 'kiko'], kick2: ['kick3', 'heel', 'kickup', 'stomp', 'kiko'], kick3: [], heel: ['stomp'],
-  kickup: ['kick3', 'heel', 'kickup', 'kiko'], // 蹴り上げ(§34-1): 次の蹴り(連続の位置が残っている時)・気功。大踏み潰しへは取り消せない
+  kick1: ['kick2', 'stomp', 'kiko'], kick2: ['kick3', 'heel', 'kickup', 'stomp', 'kiko'], kick3: [], heel: ['stomp'],
+  kickup: ['kiko'], // 蹴り上げ(§34-1・§34-8): 常に3発目の位置=気功だけ。大踏み潰しへは取り消せない
   stomp: ['kick1', 'kiko'], kiko: [], guard: ['guard'],
 };
 const HS = { s1: BRAWLER_HITSTOP.weak, s2: BRAWLER_HITSTOP.weak, s3: BRAWLER_HITSTOP.strong, s4: BRAWLER_HITSTOP.strong, s5: BRAWLER_HITSTOP.closer } as const;

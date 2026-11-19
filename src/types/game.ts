@@ -883,6 +883,8 @@ export interface Enemy {
   brThrow?: { fromX: number; fromY: number; toX: number; toY: number; at: number; ms: number };
   /** 投げられて飛んでいる印(当たり判定から外す=isUntouchable)。着いて爆撃した時に消す。 */
   brThrown?: boolean;
+  /** ★投げられて飛ぶ間の回り(絵だけ・監査 B15・utils/brawler の brawlerThrowSpin)。at=投げた時刻・ms=飛ぶ長さ・dir=回る向き(±1)・hitAt=ぶつかった時刻・endAt=爆撃の時刻(どれも Date.now)。 */
+  brThrowSpin?: { at: number; ms: number; dir: 1 | -1; hitAt?: number; endAt?: number };
   /** 秘奥義の間の「画面内の敵を止める」が brHoldUntil に書いた値(research/BRAWLER.md §17)。終わりに、その値のまま残っている時だけ解く。 */
   brSecretHoldUntil?: number;
   brComboStart?: number;

@@ -73,6 +73,11 @@ export interface BrawlerState {
   grab?: { enemyId: string; at: number; releaseAt: number; reachPx?: number };
   /** 空中投げで投げた時刻(gameTime・投げの体の振りの起点・絵だけ)。投げた向きは dirX/dirY に書く。 */
   throwAt?: number;
+  /**
+   * ★スープレックスの投げ越し(絵だけ・社長実機報告2026-11-19「雑魚をスープレックスできてない」)。enemyId=掴んだ相手・mx,my=相手の絵を運ぶ先
+   * (相手の位置から、プレイヤーの背中側の着地点までのずれ・world px)。時刻は suplexAt(反りの始まり)から。判定・相手の位置は動かさない。
+   */
+  suplexSwing?: { enemyId: string; mx: number; my: number };
   /** スープレックスの叩きつけの当たりを待っている相手(空中投げで投げ先が無かった時・反りの頂点 suplexAt+BRAWLER_SUPLEX_RISE_MS で当てる)。 */
   suplexPendingId?: string;
   /** 構えを技で取り消した時刻(Date.now)と、その時の構えの光の残り(0..1)。光を一度外へ押してから短く消す(絵だけ・§34-2)。 */

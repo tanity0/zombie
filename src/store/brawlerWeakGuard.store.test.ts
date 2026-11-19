@@ -104,8 +104,8 @@ describe('払えない構え=弱い構えとして出る', () => {
 describe('弱い構えで受けた: ダメージを防いで押されるだけ', () => {
   it('雑魚の攻撃: ダメージ0・相手と反対へ押される・潰しは出ない・気絶なし・Counter! なし・成立の記録は書かない', () => {
     setup();
+    guardNow(0); // 構えを出した後に相手を置く(先に密着していると弱い構えでも密着の構え=掴みになる・§34-7)
     useGameStore.setState({ enemies: [enemyAt('zombie', 60, 0, 'z')] });
-    guardNow(0);
     const hp0 = pl().health;
     const lcs0 = pl().lastCounterSuccessTime;
     const q0 = br().quickUntil;

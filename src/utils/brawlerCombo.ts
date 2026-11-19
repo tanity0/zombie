@@ -239,7 +239,7 @@ export const brawlerKikoTravelMs = (dist: number, speed: number): number =>
 /** 当たりの時のプレイヤーの止め(ms・テンポ係数は掛けない別の表=utils/brawler の BRAWLER_HITSTOP)。気功は弾なので 0。 */
 export const brawlerMoveStopMs = (move: BrawlerMoveKey): number =>
   move === 's1' || move === 's2' || move === 's3' || move === 's4' || move === 's5' ? brawlerStageSpec(Number(move[1])).hitstopMs
-    : move === 'kick1' ? BRAWLER_KICK_HITSTOP_MS[1] : move === 'kick2' || move === 'kickup' ? BRAWLER_KICK_HITSTOP_MS[2] : move === 'kick3' || move === 'heel' || move === 'suplex' ? BRAWLER_KICK_HITSTOP_MS[3]
+    : move === 'kick1' ? BRAWLER_KICK_HITSTOP_MS[1] : move === 'kick2' ? BRAWLER_KICK_HITSTOP_MS[2] : move === 'kick3' || move === 'heel' || move === 'kickup' || move === 'suplex' ? BRAWLER_KICK_HITSTOP_MS[3]
       : move === 'stomp' ? BRAWLER_STOMP_HITSTOP_MS : 0;
 /** 気功が撃った所から相手に届くまでの時間(ms)。distPx=プレイヤーの中心から相手までの距離(気功の弾の出る位置と当たりの余白を引く: −18 −当たりの余白)。 */
 export const brawlerKikoTravelForDistMs = (distPx: number): number => brawlerKikoTravelMs(distPx - 18 - BRAWLER_KIKO_HIT_PAD, BRAWLER_KIKO_SPEED);

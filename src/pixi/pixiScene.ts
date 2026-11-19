@@ -23906,6 +23906,38 @@ export class PixiScene {
     view.sprite.position.set(Math.round(fb.footX + liftShake + sweepWindupTremor + wraithTremor + wraithPush),
       Math.round(fb.footY - liftHop - aiHop - kbHop - motBob + eggSinkPx - heroLift - flingLift));
     view.sprite.rotation = motRot; // 足元アンカー(0.5,1)なので回転=足元支点の傾ぎ。毎フレーム代入=OFF時は0へ戻る
+    // ★スープレックスの投げ越し(research/BRAWLER.md §34-3・§34-7・社長実機報告2026-11-19): 掴まれた相手の絵だけを、頭の上を越えて背中側へ運び、
+    //   反りの頂点で逆さまに叩きつけ、起き上がりながら元の位置へ戻す。体の中心で回す(足元の anchor から中心へ補う)。判定・位置・影は動かさない。
+    {
+      const pb = useGameStore.getState().player.brawler;
+      const sw = pb?.suplexSwing;
+      if (sw && sw.enemyId === e.id && pb?.suplexAt !== undefined) {
+        const r = BRW.brawlerSuplexSwing(gameTime - pb.suplexAt, sw.mx, sw.my);
+        if (r) {
+          const hh = Math.abs(view.sprite.height) * 0.5;
+          view.sprite.position.x += Math.round(r.dx - hh * Math.sin(r.rot));
+          view.sprite.position.y += Math.round(r.dy - r.lift + hh * (Math.cos(r.rot) - 1));
+          view.sprite.rotation += r.rot;
+          view.container.zIndex = fb.footY + 2000; // 頭の上を越える間はプレイヤーより手前に描く
+        }
+      }
+    }
+    // ★空中投げで飛ぶ敵の回り(research/BRAWLER.md §34-3・監査 B15): 飛ぶ向きへ縦に転がり、加速して回る。ぶつかった後の止めの間はその角度・爆撃から減速して正立で止まる。
+    //   「浮いた敵は回さない」の例外=投げられた敵だけ。体の中心で回す。判定・位置・影は動かさない。
+    // 飛んでいないのにぶつかった記録が無い(飛ぶ途中で投げが外れた等)時は回さない。爆撃が来ないまま長く経った時は正立へ戻す(逆さまで残さない)。
+    if (e.brThrowSpin && (e.brThrow || e.brThrowSpin.hitAt !== undefined)) {
+      const sp = e.brThrowSpin;
+      const tw = Date.now(); // 浮き(brLift)と同じ壁時計。ぶつかってから爆撃までの止めの間は、式の側でぶつかった時の角度に留める
+      const hitEl = sp.hitAt !== undefined ? sp.hitAt - sp.at : undefined;
+      const sinceEnd = sp.endAt !== undefined ? tw - sp.endAt : hitEl !== undefined && tw - sp.at - hitEl > 800 ? tw - sp.at - hitEl - 800 : undefined;
+      const rot = BRW.brawlerThrowSpin(tw - sp.at, sp.ms, sp.dir, hitEl, sinceEnd);
+      if (rot !== 0) {
+        const hh = Math.abs(view.sprite.height) * 0.5;
+        view.sprite.position.x += Math.round(-hh * Math.sin(rot));
+        view.sprite.position.y += Math.round(hh * (Math.cos(rot) - 1));
+        view.sprite.rotation += rot;
+      }
+    }
     view.sprite.alpha = artFade; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)
     // 宇宙飛行群: 倒れた瞬間の浮き・コマ・向きを死体へ引き継ぐ(宙から1フレームで地面へ落ちない・品質監査2巡目 A1)。
     if (e.type === 'mutant-astro' && tex) this.astroLastLook = { lift: heroLift, tex, face: faceMul < 0 ? -1 : 1, at: Date.now() };

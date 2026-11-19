@@ -18,7 +18,8 @@ import {
   brawlerContactTarget, brawlerContactMode, brawlerStartContactGrab, brawlerFlipSpin, BRAWLER_CONTACT_PX, BRAWLER_CONTACT_GRAB_MS, BRAWLER_FLIPKICK_MS,
   isBrawlerGuardingAt, brawlerDistTo, BRAWLER_SUPLEX_RISE_MS, BRAWLER_SUPLEX_HOLD_MS, BRAWLER_SUPLEX_RETURN_MS, BRAWLER_SUPLEX_ARCH, BRAWLER_GRAB_LEAN,
   brawlerThrowSwing, BRAWLER_THROW_SWING_MS, BRAWLER_THROW_SETTLE_MS, brawlerGrabGlow, brawlerGrabZoom, BRAWLER_GRAB_ZOOM, BRAWLER_GRAB_MS,
-  brawlerGuardCancelGlow, brawlerFlipArc, BRAWLER_FLIPKICK_APEX,
+  brawlerGuardCancelGlow, brawlerFlipArc, BRAWLER_FLIPKICK_APEX, brawlerSuplexSwing, brawlerSuplexLanding, BRAWLER_SUPLEX_SWING_LIFT_PX,
+  brawlerHeelStandAt, brawlerKickUpSnap, brawlerThrowSpin, brawlerThrowSpinAtHit, BRAWLER_THROW_SPIN_TURNS, BRAWLER_KICKUP_ROT_PEAK, BRAWLER_KICKUP_ROT_UP, BRAWLER_KICKUP_ROT_DOWN, BRAWLER_HEEL_ROT_UP, BRAWLER_HEEL_ROT_DOWN,
 } from './brawler';
 import { spawnEnemyAt } from './enemyUtils';
 import { playerSuperArmorActive } from './superArmor';
@@ -35,33 +36,39 @@ const kickHit = (kickN: number, landed: boolean, base: BrawlerState = { ...initi
   return { s: { ...r, kickCount: kickN >= 3 ? 0 : kickN, kickChainUntil: kickN >= 3 ? 0 : at + BRAWLER_KICK_CHAIN_MS }, at };
 };
 
-describe('§34-1 蹴り上げの入力(1・2発目の続きの上)', () => {
-  it('当たった1発目・2発目の後の上は、払えれば蹴り上げ(構えにならない)', () => {
-    for (const n of [1, 2]) {
-      const { s, at } = kickHit(n, true);
-      const t = at + 400; // 止めの後
-      expect(brawlerKickUpInput(s, 'guard', t, true), `kick${n}`).toBe(true);
-    }
+describe('§34-1・§34-8 蹴り上げの入力(2発目=空中蹴りの続きの上だけ)', () => {
+  it('当たった2発目の後の上は、払えれば蹴り上げ(構えにならない)', () => {
+    const { s, at } = kickHit(2, true);
+    expect(brawlerKickUpInput(s, 'guard', at + 400, true)).toBe(true);
+  });
+  it('★§34-8: 1発目の後の上は構え(蹴り上げにならない)=最中も待機の連続の受付の内も', () => {
+    const { s, at } = kickHit(1, true);
+    expect(brawlerKickUpSlot(s, at + 400)).toBe(false);
+    expect(brawlerKickUpInput(s, 'guard', at + 400, true)).toBe(false);
+    expect(brawlerKickUpInput({ ...s, phase: 'idle', tech: null }, 'guard', at + 300, true)).toBe(false);
+    const pre = brawlerStartTech({ ...initialBrawlerState(), points: 10 }, 'kick', 1000, 1);
+    expect(brawlerKickUpInput(pre, 'guard', 1010, true)).toBe(false);
+    expect(brawlerRouteAllows('kick1', 'kickup')).toBe(false);
   });
   it('外れた蹴りの後・払えない時の上は今までどおり構え(§34-6 #4)', () => {
-    const miss = kickHit(1, false);
+    const miss = kickHit(2, false);
     expect(brawlerKickUpInput(miss.s, 'guard', miss.at + 400, true)).toBe(false);
-    const hit = kickHit(1, true);
+    const hit = kickHit(2, true);
     expect(brawlerKickUpInput(hit.s, 'guard', hit.at + 400, false)).toBe(false);
   });
   it('判定の前(当たるかまだ分からない)は蹴り上げとして覚える=出す瞬間に見直す', () => {
-    const a = brawlerStartTech({ ...initialBrawlerState(), points: 10 }, 'kick', 1000, 1);
+    const a = brawlerStartTech({ ...initialBrawlerState(), points: 10 }, 'kick', 1000, 2);
     expect(brawlerKickUpInput(a, 'guard', 1010, false)).toBe(true);
     expect(brawlerKickUpReady(a, 1010, true)).toBe(false); // まだ当たっていない
   });
-  it('待機で連続の受付の内(当たった蹴りの後)も蹴り上げ。受付が切れたら構え', () => {
-    const { s, at } = kickHit(1, true);
+  it('待機で連続の受付の内(当たった2発目の後)も蹴り上げ。受付が切れたら構え', () => {
+    const { s, at } = kickHit(2, true);
     const idle: BrawlerState = { ...s, phase: 'idle', tech: null };
     expect(brawlerKickUpInput(idle, 'guard', at + 300, true)).toBe(true);
     expect(brawlerKickUpInput(idle, 'guard', at + BRAWLER_KICK_CHAIN_MS + 1, true)).toBe(false);
   });
   it('上以外の入力・3発目・踵落とし・構えの最中は蹴り上げにならない', () => {
-    const { s, at } = kickHit(1, true);
+    const { s, at } = kickHit(2, true);
     expect(brawlerKickUpInput(s, 'kick', at + 400, true)).toBe(false);
     expect(brawlerKickUpSlot(kickHit(3, true).s, at + 400)).toBe(false);
     const heel = brawlerStartTech({ ...initialBrawlerState(), points: 10 }, 'kick', 1000, 3, false, true);
@@ -76,53 +83,43 @@ describe('§34-1 蹴り上げの入力(1・2発目の続きの上)', () => {
     expect(BRAWLER_KICKUP_MULT).toBe(BRAWLER_HEEL_MULT);
     expect(BRAWLER_SUPLEX_MULT).toBeCloseTo(BRAWLER_HEEL_MULT * 1.5, 10);
   });
-  it('出した蹴り上げ: 連続の位置を占める(1発目の後=2発目・2発目の後=3発目)・踵落としと同じ溜め', () => {
-    const u2 = brawlerStartTech(kickHit(1, true).s, 'kick', 2000, 2, false, false, true);
-    expect(u2.kickUp).toBe(true);
-    expect(u2.kickN).toBe(2);
-    expect(u2.kickChargeMs).toBe(BRAWLER_KICK3_CHARGE_MS);
-    expect(u2.windupMs).toBe(BRAWLER_TECHS.kick.windupMs + BRAWLER_KICK3_CHARGE_MS);
-    expect(brawlerRouteNodeOf(u2)).toBe('kickup');
-    // 1発目の位置では蹴り上げにならない(続きでしか出ない)
+  it('出した蹴り上げ: 常に3発目の位置(踵落としと同じ)・踵落としと同じ溜め', () => {
+    const u3 = brawlerStartTech(kickHit(2, true).s, 'kick', 2000, 3, false, false, true);
+    expect(u3.kickUp).toBe(true);
+    expect(u3.kickN).toBe(3);
+    expect(u3.kickChargeMs).toBe(BRAWLER_KICK3_CHARGE_MS);
+    expect(u3.windupMs).toBe(BRAWLER_TECHS.kick.windupMs + BRAWLER_KICK3_CHARGE_MS);
+    expect(brawlerRouteNodeOf(u3)).toBe('kickup');
+    // 1・2発目の位置では蹴り上げにならない
     expect(brawlerStartTech(initialBrawlerState(), 'kick', 2000, 1, false, false, true).kickUp).toBe(false);
-    expect(brawlerKickMoveKey(2, false, true)).toBe('kickup');
+    expect(brawlerStartTech(initialBrawlerState(), 'kick', 2000, 2, false, false, true).kickUp).toBe(false);
     expect(brawlerKickMoveKey(3, false, true)).toBe('kickup');
     expect(brawlerKickMoveKey(3, true, true)).toBe('heel');
   });
 });
 
-describe('§34-1・§34-6 #2 蹴り上げの後の続き', () => {
-  it('道: 1・2発目→蹴り上げ / 蹴り上げ→次の蹴り・気功(大踏み潰しへは取り消せない)', () => {
-    expect(brawlerRouteAllows('kick1', 'kickup')).toBe(true);
+describe('§34-1・§34-8 蹴り上げの後の続き', () => {
+  it('道: 2発目→蹴り上げ(1発目からは無い) / 蹴り上げ→気功だけ(次の蹴り・大踏み潰しは無い)', () => {
+    expect(brawlerRouteAllows('kick1', 'kickup')).toBe(false);
     expect(brawlerRouteAllows('kick2', 'kickup')).toBe(true);
     expect(brawlerRouteAllows('idle', 'kickup')).toBe(false);
     expect(brawlerRouteAllows('kickup', 'kiko')).toBe(true);
     expect(brawlerRouteAllows('kickup', 'stomp')).toBe(false);
-    expect(brawlerRouteAllows('kickup', 'kick3')).toBe(true);
+    expect(brawlerRouteAllows('kickup', 'kick3')).toBe(false);
   });
-  it('2発目の位置の蹴り上げ(当たった)の後: 次の蹴り(3発目の位置)・下=踵落とし・上=もう一度蹴り上げ・気功へ取り消せる・大踏み潰しは出ない', () => {
-    const a = brawlerStartTech(kickHit(1, true).s, 'kick', 2000, 2, false, false, true);
-    const at = 2000 + a.windupMs;
-    const r = { ...brawlerAfterResolve(a, at, 1, { pointCap: 20, countPoint: false, hitstopMs: BRAWLER_KICK_HITSTOP_MS[2], landed: 1 }), kickCount: 2, kickChainUntil: at + BRAWLER_KICK_CHAIN_MS };
-    const t = at + BRAWLER_KICK_HITSTOP_MS[2] + 10; // 止めが明けた所
-    expect(brawlerTechAllowed(r, 'kick', t)).toBe(true);
-    expect(brawlerHeelInput(r, 'stomp', t)).toBe(true);
-    expect(brawlerKickUpInput(r, 'guard', t, true)).toBe(true);
-    expect(brawlerTechCancelOk(r, 'kiko', t)).toBe(true);
-    expect(brawlerTechCancelOk(r, 'stomp', t)).toBe(false);
-  });
-  it('3発目の位置の蹴り上げで連続は終わる=次の蹴りは出ない・取り消せるのは気功だけ', () => {
+  it('蹴り上げで連続は終わる=次の蹴り・踵落とし・もう一度の蹴り上げは出ない・取り消せるのは気功だけ', () => {
     const a = brawlerStartTech(kickHit(2, true).s, 'kick', 2000, 3, false, false, true);
     const at = 2000 + a.windupMs;
     const r = { ...brawlerAfterResolve(a, at, 1, { pointCap: 20, countPoint: false, hitstopMs: BRAWLER_KICK_HITSTOP_MS[3], landed: 1 }), kickCount: 0, kickChainUntil: 0 };
     const t = at + BRAWLER_KICK_HITSTOP_MS[3] + 10;
     expect(brawlerTechAllowed(r, 'kick', t)).toBe(false);
     expect(brawlerKickUpSlot(r, t)).toBe(false);
+    expect(brawlerHeelInput(r, 'stomp', t)).toBe(false);
     expect(brawlerTechCancelOk(r, 'kiko', t)).toBe(true);
     expect(brawlerTechCancelOk(r, 'stomp', t)).toBe(false);
   });
   it('掴んだ蹴り上げ(空中投げ・スープレックスへ移った)は締め=続きを持たない', () => {
-    const a = brawlerStartTech(kickHit(1, true).s, 'kick', 2000, 2, false, false, true);
+    const a = brawlerStartTech(kickHit(2, true).s, 'kick', 2000, 3, false, false, true);
     const at = 2000 + a.windupMs;
     const r = { ...brawlerAfterResolve(a, at, 1, { pointCap: 20, countPoint: false, hitstopMs: BRAWLER_KICK_HITSTOP_MS[3], landed: 1 }), kickThrow: true, kickCount: 0, kickChainUntil: 0 };
     const t = at + BRAWLER_KICK_HITSTOP_MS[3] + 10;
@@ -241,7 +238,7 @@ describe('§34-3 空中投げの決め', () => {
 });
 
 describe('§34-1 蹴り上げの絵(踵落としの上下逆・慣性)', () => {
-  const u = brawlerStartTech(kickHit(1, true).s, 'kick', 2000, 2, false, false, true);
+  const u = brawlerStartTech(kickHit(2, true).s, 'kick', 2000, 3, false, false, true);
   it('溜めで脚を下げ(回し正・影が沈む)→ 当たる瞬間に上へ振り上げ切る(回し負・影が上がる)', () => {
     const charge = u.kickChargeMs ?? 0;
     const c = brawlerKickUpStandAt(u, charge * 0.6);
@@ -257,6 +254,23 @@ describe('§34-1 蹴り上げの絵(踵落としの上下逆・慣性)', () => {
       expect(Math.abs(a.rot - b.rot)).toBeLessThan(0.02);
       expect(Math.abs(a.lift - b.lift)).toBeLessThan(0.2);
     }
+  });
+  it('B16: 踵落としの上下逆のまま、振りは鋭く短い(構えが早く・振り上げは終わり際に4乗)・当たる時刻は同じ', () => {
+    const h = brawlerStartTech(kickHit(2, true).s, 'kick', 2000, 3, false, true, false);
+    expect(h.windupMs).toBe(u.windupMs); // 当たる時刻は踵落としと同じ(判定は変えない)
+    const charge = u.kickChargeMs ?? 0;
+    // 構え: 溜めの4割で脚を下げ切る(踵落としはまだ途中)
+    expect(brawlerKickUpStandAt(u, charge * 0.4).rot).toBeCloseTo(BRAWLER_KICKUP_ROT_PEAK, 6);
+    // 振り: 飛ぶ間の半分の時点で、踵落としより振りの進みが小さい(溜めて待ち、終わり際に一気に)
+    const mid = charge + (u.windupMs - charge) * 0.5;
+    const upFrac = (brawlerKickUpStandAt(u, mid).rot - BRAWLER_KICKUP_ROT_DOWN) / (BRAWLER_KICKUP_ROT_UP - BRAWLER_KICKUP_ROT_DOWN);
+    const heelFrac = (brawlerHeelStandAt(h, mid).rot - BRAWLER_HEEL_ROT_UP) / (BRAWLER_HEEL_ROT_DOWN - BRAWLER_HEEL_ROT_UP);
+    expect(upFrac).toBeLessThan(heelFrac);
+    expect(brawlerKickUpStandAt(u, u.windupMs).rot).toBeCloseTo(BRAWLER_KICKUP_ROT_UP, 6);
+    // 振り上げの進みは単調・0→1・終わり際が一番速い
+    expect(brawlerKickUpSnap(0)).toBe(0); expect(brawlerKickUpSnap(1)).toBeCloseTo(1, 9);
+    let prev = 0, prevD = 0;
+    for (let q = 0.05; q <= 1.0001; q += 0.05) { const v = brawlerKickUpSnap(q); expect(v).toBeGreaterThanOrEqual(prev); expect(v - prev).toBeGreaterThanOrEqual(prevD - 1e-12); prevD = v - prev; prev = v; }
   });
   it('影と体は蹴り上げの回しを使う・体の跳びは当たる瞬間が高く、後隙で途切れずに降りる', () => {
     const f = brawlerStandAt(u, 2000 + u.windupMs - 1)!;
@@ -327,6 +341,34 @@ describe('§34-1 蹴り上げの絵(踵落としの上下逆・慣性)', () => {
   it('覚えた蹴り上げのフリックの向き=上', () => {
     expect(brawlerFlickDirOf('kick', false, true)).toEqual({ x: 0, y: -1 });
     expect(brawlerFlickDirOf('kick')).toEqual({ x: 1, y: 0 });
+  });
+});
+
+describe('B15 空中投げで飛ぶ敵の回り(絵だけ)', () => {
+  const T = 220;
+  it('飛ぶ間: 止まった所から加速して飛ぶ向きへ回る・ぶつかる瞬間に1.5回(逆さま)', () => {
+    expect(brawlerThrowSpin(0, T, 1)).toBeCloseTo(0, 9);
+    let prev = 0, prevD = 0;
+    for (let el = 10; el <= T; el += 10) { const r = brawlerThrowSpin(el, T, 1); expect(r).toBeGreaterThan(prev); expect(r - prev).toBeGreaterThan(prevD - 1e-9); prevD = r - prev; prev = r; }
+    expect(brawlerThrowSpin(T, T, 1)).toBeCloseTo(2 * Math.PI * BRAWLER_THROW_SPIN_TURNS, 6);
+    expect(brawlerThrowSpin(T, T, -1)).toBeCloseTo(-2 * Math.PI * BRAWLER_THROW_SPIN_TURNS, 6); // 左へ飛ぶ=反時計回り
+  });
+  it('ぶつかってから爆撃まではその角度のまま・壁で早く止まった時はその時の角度', () => {
+    expect(brawlerThrowSpin(T + 300, T, 1, T)).toBeCloseTo(3 * Math.PI, 6);
+    const early = brawlerThrowSpin(T * 0.5, T, 1);
+    expect(brawlerThrowSpin(T * 0.5 + 200, T, 1, T * 0.5)).toBeCloseTo(early, 9);
+  });
+  it('爆撃から: ぶつかった時の速さを引き継いで減速し、次の正立で止まる(跳ばない)', () => {
+    for (const hit of [T, T * 0.5, T * 0.2]) {
+      const h = brawlerThrowSpinAtHit(T, hit);
+      const at0 = brawlerThrowSpin(hit + 260, T, 1, hit, 0);
+      expect(at0).toBeCloseTo(h.th, 6);
+      let prev = at0;
+      for (let t = 5; t < h.settleMs; t += 5) { const r = brawlerThrowSpin(hit + 260 + t, T, 1, hit, t); expect(r).toBeGreaterThanOrEqual(prev - 1e-9); prev = r; }
+      const last = brawlerThrowSpin(hit + 260 + h.settleMs - 0.01, T, 1, hit, h.settleMs - 0.01);
+      expect(Math.abs(Math.sin(last / 2))).toBeLessThan(0.01); // 正立(2πの倍数)の直前
+      expect(brawlerThrowSpin(hit + 260 + h.settleMs, T, 1, hit, h.settleMs)).toBe(0);
+    }
   });
 });
 
@@ -403,7 +445,31 @@ describe('§34-7 密着の構え(掴み→スープレックス/蹴りバク宙)
     expect(r.brLiftPeak).toBeGreaterThan(0);
     expect(r.brLiftBudget).toBe(BRAWLER_JUGGLE_BUDGET.mob - 2);
   });
-  it('技の行: 蹴りバク宙(向き=上)', () => {
-    expect(BRAWLER_TECH_NAMES['tech:flipkick']).toEqual({ name: '蹴りバク宙', dir: 'up' });
+  it('スープレックスの投げ越し(絵だけ): 頭の上を越えて背中側へ・頂点で逆さまに叩きつけ・起き上がりながら元の位置へ', () => {
+    const mx = -80, my = 0;
+    expect(brawlerSuplexSwing(-1, mx, my)).toBeNull();
+    const a = brawlerSuplexSwing(0, mx, my)!;
+    expect(a.dx).toBeCloseTo(0, 6); expect(a.rot).toBeCloseTo(0, 6);
+    const mid = brawlerSuplexSwing(BRAWLER_SUPLEX_RISE_MS * Math.SQRT1_2, mx, my)!; // 運ぶ量の半分=頭の真上
+    expect(mid.lift).toBeCloseTo(BRAWLER_SUPLEX_SWING_LIFT_PX, 6);
+    expect(mid.dx).toBeCloseTo(mx / 2, 6);
+    const slam = brawlerSuplexSwing(BRAWLER_SUPLEX_RISE_MS, mx, my)!;
+    expect(slam.dx).toBeCloseTo(mx, 6); expect(slam.lift).toBeCloseTo(0, 6); expect(Math.abs(slam.rot)).toBeCloseTo(Math.PI, 6);
+    expect(slam.rot).toBeLessThan(0); // 左へ運ぶ=反時計回り
+    const end = BRAWLER_SUPLEX_RISE_MS + BRAWLER_SUPLEX_HOLD_MS + BRAWLER_SUPLEX_RETURN_MS;
+    const last = brawlerSuplexSwing(end - 0.01, mx, my)!;
+    expect(last.dx).toBeCloseTo(0, 2); expect(Math.abs(last.rot)).toBeCloseTo(2 * Math.PI, 2);
+    expect(brawlerSuplexSwing(end, mx, my)).toBeNull();
+  });
+  it('投げ越しの着地点=プレイヤーの背中側(相手の反対・30〜90px)', () => {
+    const r = brawlerSuplexLanding(0, 0, 40, 0, 1);
+    expect(r.mx).toBeCloseTo(-80, 6); expect(r.my).toBeCloseTo(0, 6);
+    const far = brawlerSuplexLanding(0, 0, 200, 0, 1);
+    expect(far.mx).toBeCloseTo(-290, 6);
+    const same = brawlerSuplexLanding(0, 0, 0, 0, 1);
+    expect(same.mx).toBeCloseTo(-30, 6);
+  });
+  it('技の行: サマーソルト(向き=上・社長命名2026-11-19)', () => {
+    expect(BRAWLER_TECH_NAMES['tech:flipkick']).toEqual({ name: 'サマーソルト', dir: 'up' });
   });
 });

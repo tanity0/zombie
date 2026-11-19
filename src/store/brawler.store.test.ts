@@ -1463,10 +1463,9 @@ describe('技の先行入力と秘奥義の1手目(社長指示2026-11-08「技�
     expect(br().buffered).toBe(false);
     expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true);            // 次の蹴り(連続)で上書き
     expect(br().techBuffer).toBe('kick');
-    // ★§34-1: 飛び蹴りの最中(判定の前)の上は蹴り上げとして覚える(出す瞬間に「当たった・払える」を見直す=§34-6 #4)。
-    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    // ★§34-8: 1発目の最中の上は蹴り上げにならない(蹴り上げは2発目の続きだけ)=構え=道に無い(覚えない・上書きもしない)。
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(false);
     expect(br().techBuffer).toBe('kick');
-    expect(br().kickUpBuffer).toBe(true);
   });
   it('出す瞬間に技ポイントが足りなければ出さない(拒否の音と数字が沈む表示)', () => {
     prep([zombieAt(60, 0, 'z')]);

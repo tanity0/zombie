@@ -5012,7 +5012,7 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
   const dir = BR.brawlerAimDir(c.x, c.y, target, p.lastDirection);
   const quick = s0.quickUntil > t;
   const s = { ...BR.brawlerStartAttack(s0, stage, t, quick), targetId: target?.id, dirX: dir.x, dirY: dir.y, pressAt: now, ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
-  const ap = quick ? { dx: 0, dy: 0, dist: 0 } : BR.brawlerApproach(c.x, c.y, target, spec.lungePx); // ★§31: 出した瞬間の相手へ、決まった距離まで(途中で取り直さない)
+  const ap = quick ? { dx: 0, dy: 0, dist: 0 } : BR.brawlerStageApproach(stage, c.x, c.y, target, spec.lungePx, dir); // ★§31: 出した瞬間の相手へ、決まった距離まで(途中で取り直さない)・4段目は相手が居なくても向きへ跳ぶ
   // 画面全体の止めの最中に出した段の詰め(壁時計)は、止めが明けた時刻から始める(上の蹴りと同じ・出だしの gameTime と揃える)。
   setBrawler(set, s, { lastDirection: { x: dir.x, y: dir.y }, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, spec.windupMs, Math.max(now, get().hitstopUntil)) });
   // 振りの音(空振りの連打も無音にしない・段ごとに個別の音程=等間隔に下げない)。
@@ -5184,7 +5184,8 @@ const startBrawlerTech = (
   }
   // ★密着の構え(research/BRAWLER.md §34-7): 構えを出した瞬間に体に密着している敵が居れば、構えの代わりに掴む(値段は構えと同じ=払い済み)。
   //   雑魚=スープレックス / 強個体・ボス級=蹴りバク宙。払えずに出る弱い構え・代金なしの構え(秘奥義の取り消し)・延長(別の経路)は今までどおり構え。
-  if (kind === 'guard' && !free && !weakGuard) {
+  // ★払えずに出る弱い構えでも掴む(値段は弱い構えと同じ=0・社長実機報告2026-11-19「雑魚をスープレックスできてない(案山子)」: 技ポイントが3未満だと掴まなかった)。
+  if (kind === 'guard' && !free) {
     const contact = BR.brawlerContactTarget(st.enemies, c.x, c.y, p.width / 2, e => BRC.brawlerAirborne(e, now));
     if (contact) {
       startBrawlerContactGrab(get, set, s, contact);
@@ -5826,8 +5827,11 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
         if (wasAir && BRC.brawlerAirborne(wasAir, now)) continue; // 浮いていた相手は地面から離れている=足元の砂埃は出さない
         upDust(e.x + e.width / 2, e.y + e.height - 4, 1);
       }
-      if (hits > 0) brawlerSfx('heavy-impact', 0.6, 1.25, undefined, hs);
-      else if (!r.hit) {
+      // ★蹴り上げの音は「上がる」(監査 B16): 当たりの音の上に、高く上げた風切りを重ねる。踵落としの重い地鳴りより軽く(重い当たりの音は使わない)。
+      if (hits > 0) {
+        brawlerSfx('whip-swing', 0.75, 1.55 * brJitter(), 220);
+        brawlerSfx('brawler-hit', 0.45, 1.35, undefined, hs);
+      } else if (!r.hit) {
         // 空振り: 自分の頭上へ小さい弧。
         brawlerFx(get, dir.x * 10, -p.height * 0.55, 'fx/slash-arc', { followPlayer: true, scale: 0.42, scaleX: 0.5 * side, rot: Math.PI / 2 - side * 0.3, duration: 180, fadeFrom: 0.2, moveY: -20 });
         brawlerSfx('brawler-hit', 0.3, 1.2 * brJitter(), 200);
@@ -5960,7 +5964,8 @@ const releaseBrawlerGrab = (get: () => GameState, set: (fn: (s: GameState) => Pa
   if (BRS.brawlerAirThrowMove(tgt?.id ?? null) === 'airthrow' && tgt) { startBrawlerThrow(get, set, e, tgt); return; }
   // スープレックス: 放した瞬間から持ち上げて反り、反りの頂点(BRAWLER_SUPLEX_RISE_MS 後)で叩きつける(当たりは tickBrawler・クリエイティブ監査 #3)。
   const b1 = get().player.brawler;
-  if (b1) setBrawler(set, { ...b1, suplexAt: get().gameTime, suplexPendingId: e.id });
+  const pc = brawlerCenter(get().player);
+  if (b1) setBrawler(set, { ...b1, suplexAt: get().gameTime, suplexPendingId: e.id, suplexSwing: { enemyId: e.id, ...BR.brawlerSuplexLanding(pc.x, pc.y, gx, gy, get().player.lastDirection?.x ?? 1) } });
 };
 /** 反りの頂点が来たスープレックス(空中投げで投げ先が無かった時)を当てる。 */
 const settlePendingSuplex = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
@@ -5985,7 +5990,7 @@ const startBrawlerThrow = (get: () => GameState, set: (fn: (s: GameState) => Par
   const toX = gx + ux * stop - e.width / 2, toY = gy + uy * stop - e.height / 2;
   const h = BRC.brawlerJuggleHeightRel(e, now);
   set(state => ({ enemies: state.enemies.map(en => (en.id !== e.id ? en : {
-    ...en, brThrow: { fromX: en.x, fromY: en.y, toX, toY, at: now, ms }, brThrown: true,
+    ...en, brThrow: { fromX: en.x, fromY: en.y, toX, toY, at: now, ms }, brThrown: true, brThrowSpin: { at: now, ms, dir: ux >= 0 ? 1 : -1 }, // 回り=飛ぶ向きへ縦に転がる(絵だけ・監査 B15)
     knockbackVx: 0, knockbackVy: 0, knockbackUntil: undefined,
     // 高さ: 今の高さから、着く時刻に地面へ重力で落ちる(2乗=ぶつかる瞬間が一番速い・クリエイティブ監査 #6)。飛んでいる間は拾えない(brLiftDown)。
     brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: 0, brLiftFrom: h, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true,
@@ -6021,7 +6026,7 @@ const stepBrawlerThrows = (get: () => GameState, set: (fn: (s: GameState) => Par
     const cls = BRC.brawlerEnemyClass(e);
     set(state => ({ enemies: state.enemies.map(en => (en.id !== e.id ? en : done ? {
       // 着いた: 飛行の印を外す(当たるようになる)。浮きは地面へ(途中で止まった時は今の高さのまま=爆撃の浮きがそこから続く)。拾える回数は数え直し(爆撃の浮きが乗る)。
-      ...en, x: ex, y: ey, brThrow: undefined, brThrown: false, brLiftDown: false, brLiftBudget: BRC.BRAWLER_JUGGLE_BUDGET[cls], brHoldUntil: undefined,
+      ...en, x: ex, y: ey, brThrow: undefined, brThrown: false, brLiftDown: false, ...(en.brThrowSpin ? { brThrowSpin: { ...en.brThrowSpin, hitAt: now } } : {}), brLiftBudget: BRC.BRAWLER_JUGGLE_BUDGET[cls], brHoldUntil: undefined,
     } : { ...en, x: nx, y: ny, knockbackVx: 0, knockbackVy: 0 })) }));
     if (done) {
       // ★ぶつかった瞬間は締めの止め(画面全体・監査 #5)。爆撃は止めが明けた最初の時計で広がる(シミュレーションの時間では同じ瞬間)。
@@ -6030,15 +6035,19 @@ const stepBrawlerThrows = (get: () => GameState, set: (fn: (s: GameState) => Par
       g.spawnEffect({ kind: 'meleeHit', id: `mhit-throwhit-${now}-${e.id}`, x: bx, y: by, size: BR.BRAWLER_SPARK.closer.size, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: BR.BRAWLER_SPARK.closer.ms, rot: Math.random() * Math.PI * 2 });
       brawlerSfx('heavy-impact', 1.0, 0.75);
       g.triggerHitstop(BR.BRAWLER_WORLD_STOP.closer);
-      pendingThrowBlasts.push({ x: bx, y: by });
+      pendingThrowBlasts.push({ x: bx, y: by, id: e.id });
     }
   }
 };
 /** ぶつかった所の爆撃の待ち(止めが明けたら tickBrawler が爆発させる)。描画にも保存にも出さない一時の箱。 */
-const pendingThrowBlasts: { x: number; y: number }[] = [];
-const settleThrowBlasts = (get: () => GameState): void => {
+const pendingThrowBlasts: { x: number; y: number; id: string }[] = [];
+const settleThrowBlasts = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
   if (pendingThrowBlasts.length === 0 || Date.now() < get().hitstopUntil) return;
   const list = pendingThrowBlasts.splice(0);
+  // 爆撃の瞬間から回りが減速して正立で止まる(絵だけ・監査 B15)。
+  const at = Date.now();
+  const ids = new Set(list.map(b => b.id));
+  set(state => ({ enemies: state.enemies.map(en => (ids.has(en.id) && en.brThrowSpin && en.brThrowSpin.endAt === undefined ? { ...en, brThrowSpin: { ...en.brThrowSpin, endAt: at } } : en)) }));
   for (const b of list) explodeBrawlerAirThrow(get, b.x, b.y);
 };
 /**
@@ -6109,7 +6118,8 @@ const startBrawlerContactGrab = (get: () => GameState, set: (fn: (s: GameState) 
   const c = brawlerCenter(p);
   const mode = BR.brawlerContactMode(BRC.brawlerEnemyClass(e));
   const dir = BR.brawlerAimDir(c.x, c.y, e, p.lastDirection);
-  const s1: BR.BrawlerState = { ...BR.brawlerStartContactGrab(s, t, e.id, mode), targetId: e.id, dirX: dir.x, dirY: dir.y, pressAt: Date.now() };
+  const sw = mode === 'suplex' ? { suplexSwing: { enemyId: e.id, ...BR.brawlerSuplexLanding(c.x, c.y, e.x + e.width / 2, e.y + e.height / 2, p.lastDirection?.x ?? 1) } } : {};
+  const s1: BR.BrawlerState = { ...BR.brawlerStartContactGrab(s, t, e.id, mode), ...sw, targetId: e.id, dirX: dir.x, dirY: dir.y, pressAt: Date.now() };
   // 掴んでいる間、相手はその場で止まる(固まりと同じ器・掴みの長さ+少し)。位置は動かさない(§34-6 #6)。
   const holdUntil = Date.now() + BR.BRAWLER_CONTACT_GRAB_MS + 60;
   set(state => ({ enemies: state.enemies.map(en => (en.id === e.id ? { ...en, brHoldUntil: Math.max(en.brHoldUntil ?? 0, holdUntil) } : en)) }));
@@ -6192,7 +6202,10 @@ const brawlerSuplex = (get: () => GameState, set: (fn: (s: GameState) => Partial
   // 絵(派手さの絵・判定なし): 相手の足元の地面が割れて砂埃・輪・縦の揺れ。当てた音→地面の2拍。
   const g = get();
   const e1 = get().enemies.find(en => en.id === e.id) ?? e;
-  const fx = e1.x + e1.width / 2, footY = e1.y + e1.height - 4;
+  // 地割れ・砂埃は投げ越した先(背中側の着地点=絵の叩きつけ先)に出す。投げ越しが無ければ相手の足元。
+  const swg = get().player.brawler?.suplexSwing;
+  const off = swg && swg.enemyId === e.id ? swg : { mx: 0, my: 0 };
+  const fx = e1.x + e1.width / 2 + off.mx, footY = e1.y + e1.height - 4 + off.my;
   g.spawnImageMark(fx, footY, 'fx/ground-crack', { scale: 1.0, scaleY: 0.45, duration: 1400, fadeFrom: 0.55, noPop: true, alpha: 0.9, ground: true });
   g.spawnImageMark(fx, footY - 26, BR_COFFIN_SLAM_FRAMES[0], { frames: BR_COFFIN_SLAM_FRAMES, scale: 0.85, duration: 460, frameEaseOut: true, noPop: true, fadeFrom: 0.5 });
   g.spawnImageMark(fx + 18, footY, 'fx/dust-puff', { scale: 0.42, scaleY: 0.55, duration: 900, tint: 0x9a8b7a, alpha: 0.75, moveX: 56, moveY: -8, fadeFrom: 0.35 });
@@ -12134,7 +12147,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     {
       const bg = get().player.brawler;
       if (bg?.grab && Date.now() >= bg.grab.releaseAt) releaseBrawlerGrab(get, set, bg);
-      settleThrowBlasts(get);
+      settleThrowBlasts(get, set);
       stepBrawlerThrows(get, set);
       settlePendingSuplex(get, set);
     }

@@ -150,7 +150,7 @@ export const BRAWLER_HOLD_BASE_MS: Readonly<Record<BrawlerHoldKey, number>> = {
   s1: 300, s2: 300, s3: 520, s4: 470, s5: 0,
   kick1: 265, kick2: 310, // kick1: 社長指示2026-11-11『飛び蹴りからの3段、ほんの少しだけゆっくりに』で蹴りを遅くした分、1発目→後隙の後の1段目のつながりを保つため 250→265
   kick3: 0, heel: 300, // 踵落とし(§29): 叩きつけた相手は少し固まる=大踏み潰しへの取り消しが届く(叩き台)
-  kickup: 310, // 蹴り上げ(§34-1): 飛び蹴りの2発目と同じ(空中追撃=次の蹴り・気功へ取り消せる・叩き台)
+  kickup: 310, // 蹴り上げ(§34-1・§34-8): 飛び蹴りの2発目と同じ(空中追撃=気功へ取り消せる・叩き台)
   suplex: 0, // スープレックス(§34-3): 締め=固めない
   stomp: 230, kiko: 0,
 };
@@ -409,7 +409,7 @@ export const brawlerStageForPress = (s: BrawlerState, t: number): number =>
 export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, quick: boolean): BrawlerState => {
   const spec = brawlerStageSpec(stage);
   return {
-    ...s, phase: 'attack', stage: spec.stage, tech: null, kickN: 0, kickHeel: false, heelBuffer: false, kickUp: false, kickUpBuffer: false, kickThrow: false, suplexAt: undefined, guardCancelHeld: false, contactGrab: undefined, throwAt: undefined, suplexPendingId: undefined, grab: undefined, startAt: t,
+    ...s, phase: 'attack', stage: spec.stage, tech: null, kickN: 0, kickHeel: false, heelBuffer: false, kickUp: false, kickUpBuffer: false, kickThrow: false, suplexAt: undefined, guardCancelHeld: false, contactGrab: undefined, throwAt: undefined, suplexPendingId: undefined, suplexSwing: undefined, grab: undefined, startAt: t,
     // 前隙なし(受けた直後)でも5段目は突き抜ける時間だけは要る(溜めだけ消える)。
     windupMs: quick ? (spec.stage === 5 ? BRAWLER_PALM_DASH_MS : 0) : spec.windupMs, recoveryMs: spec.recoveryMs,
     stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false,
@@ -429,8 +429,8 @@ export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, qu
  * 飛び蹴りの2・3発目は同じ技の続き(流れはそのまま)。それ以外は流れをこの技から始め直す。
  */
 export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: number, kickN = 0, cancel = false, heel = false, up = false): BrawlerState => {
-  // ★蹴り上げ(§34-1): 蹴りの連続の2・3発目の位置にだけ出る(踵落としとは同時に立たない)。溜めは踵落としと同じ(上下逆の振り上げ)。
-  const kickUp = kind === 'kick' && kickN >= 2 && up && !heel;
+  // ★蹴り上げ(§34-1・§34-8): 蹴りの連続の3発目の位置(空中蹴りの続き)にだけ出る(踵落としとは同時に立たない)。溜めは踵落としと同じ(上下逆の振り上げ)。
+  const kickUp = kind === 'kick' && kickN >= BRAWLER_KICK_MAX && up && !heel;
   const kickHeel = kind === 'kick' && kickN >= BRAWLER_KICK_MAX && heel;
   const charged = kickHeel || kickUp;
   // 踵落としから取り消した大踏み潰しは、いまの浮いた高さから落ちる(絵だけ・§29)。
@@ -441,7 +441,7 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
   return {
     ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t, techChain: chain, techBuffer: undefined, stepBuffer: undefined,
     kickHeel, heelBuffer: false, kickUp, kickUpBuffer: false, kickThrow: false, grab: undefined, suplexAt: undefined, guardCancelHeld: false, contactGrab: undefined,
-    throwAt: undefined, suplexPendingId: undefined,
+    throwAt: undefined, suplexPendingId: undefined, suplexSwing: undefined,
     heelAirPx: undefined, kickGroundPx: undefined, // 蹴りの高さの決めは store が出した瞬間に書く(前の技の値を持ち越さない)
     stompFromPx: stompFromPx > 0.5 ? stompFromPx : undefined,
     // 踵落としは溜め(BRAWLER_KICK3_CHARGE_MS)を前隙の頭に足す(store は飛ぶ時間を距離で引き直して同じく足す)。蹴り飛ばしは溜め無し(§33-2)。
@@ -687,7 +687,7 @@ export const BRAWLER_CANCELABLE: Readonly<Record<BrawlerRouteNode, boolean>> = {
   idle: false, guard: false,
   s1: true, s2: true, s3: true, s4: true, s5: false,
   kick1: true, kick2: true, kick3: false, heel: true, // 踵落としは大踏み潰しでだけ取り消せる(下の buildBrawlerRoutes)
-  kickup: true, // 蹴り上げ(§34-1)は次の蹴り(連続の位置が残っている時)と気功だけ(下の buildBrawlerRoutes)
+  kickup: true, // 蹴り上げ(§34-1・§34-8)は気功だけ(下の buildBrawlerRoutes)
   stomp: true, kiko: false,
 };
 /** 取り消しで出せる技(通常の段は含めない=段へは段のつなぎだけ)。 */
@@ -697,17 +697,18 @@ const routeKindOf = (n: BrawlerRouteNode): string => (n === 'kick1' || n === 'ki
 /** 段のつなぎ(通常の次の段)と飛び蹴りの連続。 */
 const BRAWLER_NEXT_LINK: Readonly<Partial<Record<BrawlerRouteNode, BrawlerRouteNode>>> = { s1: 's2', s2: 's3', s3: 's4', s4: 's5', kick1: 'kick2', kick2: 'kick3' };
 /** 飛び蹴りの1発目の続き(↑蹴り上げ)と、2発目の続き(→蹴り飛ばし / ↓踵落とし / ↑蹴り上げ)。 */
-const BRAWLER_EXTRA_LINK: Readonly<Partial<Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>>> = { kick1: ['kickup'], kick2: ['heel', 'kickup'] };
+const BRAWLER_EXTRA_LINK: Readonly<Partial<Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>>> = { kick2: ['heel', 'kickup'] }; // 蹴り上げは2発目の続きだけ(§34-8)
 const BRAWLER_ALL_NODES: readonly BrawlerRouteNode[] = ['idle', 's1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'heel', 'kickup', 'stomp', 'kiko', 'guard'];
 /** 印から作った表(手書きの組は持たない)。 */
 const buildBrawlerRoutes = (): Readonly<Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>> => {
   const out = {} as Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>;
   for (const from of BRAWLER_ALL_NODES) {
-    if (from === 'idle') { out[from] = BRAWLER_ALL_NODES.filter(n => n !== 'idle' && n !== 'heel' && n !== 'kickup'); continue; } // 待機からは何でも(今どおり・踵落としは2発目の続きだけ・蹴り上げは1・2発目の続きだけ)
+    if (from === 'idle') { out[from] = BRAWLER_ALL_NODES.filter(n => n !== 'idle' && n !== 'heel' && n !== 'kickup'); continue; } // 待機からは何でも(今どおり・踵落としは2発目の続きだけ・蹴り上げも2発目の続きだけ=§34-8)
     if (from === 'heel') { out[from] = ['stomp']; continue; } // 踵落とし→大踏み潰し(着地の隙を取り消す・社長指示2026-11-11)
-    // ★蹴り上げ(§34-1)→次の蹴り(3発目の位置=蹴り飛ばし/踵落とし/もう一度蹴り上げ)・気功。大踏み潰しへは取り消せない(打ち上げた直後に叩き落とすのは役割が逆)。
+    // ★蹴り上げ(§34-1)→気功。大踏み潰しへは取り消せない(打ち上げた直後に叩き落とすのは役割が逆)。
     //   次の蹴りは連続の位置が残っている時だけ(brawlerTechAllowed の kickN < BRAWLER_KICK_MAX・§34-6 #2)。3発目の位置の蹴り上げからは気功だけ。
-    if (from === 'kickup') { out[from] = ['kick3', 'heel', 'kickup', 'kiko']; continue; }
+    // ★§34-8: 蹴り上げは常に3発目の位置=蹴りの連続はここで終わり、取り消せるのは気功だけ。
+    if (from === 'kickup') { out[from] = ['kiko']; continue; }
     if (from === 'guard') { out[from] = ['guard']; continue; }                                 // 構えの延長だけ
     const to: BrawlerRouteNode[] = [];
     if (BRAWLER_CANCELABLE[from]) to.push(...BRAWLER_CANCEL_TARGETS.filter(n => routeKindOf(n) !== routeKindOf(from)));
@@ -1018,16 +1019,17 @@ export const brawlerNextKickN = (s: BrawlerState, t: number): number =>
   (s.kickCount > 0 && s.kickCount < BRAWLER_KICK_MAX && t <= s.kickChainUntil) ? s.kickCount + 1 : 1;
 
 /**
- * ★蹴り上げ(社長指示2026-11-19・research/BRAWLER.md §34-1・§34-6)。飛び蹴りの1発目・2発目の続きで上(構えの入力)を入れると、
- * 次の蹴りが蹴り上げになる(1発目の後=2発目の位置・2発目の後=3発目の位置。2発目の位置の蹴り上げの後は3発目の位置がまだ残る)。
+ * ★蹴り上げ(社長指示2026-11-19・research/BRAWLER.md §34-1・§34-6・§34-8)。飛び蹴りの2発目(空中蹴り)の続きで上(構えの入力)を入れると、
+ * 次の蹴り(3発目)が蹴り上げになる(踵落としと同じ位置)。1発目の後の上は今までどおり構え。蹴りの連続はここで終わる(取り消しは気功だけ)。
  * 「続き」=蹴りの最中(判定の前は覚える・後は出る)か、蹴りが終わって連続の受付の内。踵落としと同じ読み替えの層。
  * ★§34-6 #4: 上が蹴り上げになるのは「直前の蹴りが当たっていて、かつ蹴り上げを払える時」だけ。外れた蹴りの後・払えない時の上は今までどおり構え。
  *   判定の前(当たるかまだ分からない)は蹴り上げとして覚え、出す瞬間に brawlerKickUpReady で見直す(だめなら構えへ戻す=呼び手)。
  */
 export const brawlerKickUpSlot = (s: BrawlerState, t: number): boolean =>
   !isBrawlerGuardingAt(s, t) && !s.secret
-  && ((s.phase === 'tech' && s.tech === 'kick' && s.kickN >= 1 && s.kickN < BRAWLER_KICK_MAX && !s.kickHeel && !s.kickThrow)
-    || (!brawlerActing(s) && brawlerNextKickN(s, t) >= 2));
+  // ★§34-8(社長指示2026-11-19「蹴り上げと踵落としは、空中蹴り の後ね」): 2発目(空中蹴り)の続きだけ=踵落としと同じ3発目の位置。1発目の後の上は構え。
+  && ((s.phase === 'tech' && s.tech === 'kick' && s.kickN === BRAWLER_KICK_MAX - 1 && !s.kickHeel && !s.kickThrow)
+    || (!brawlerActing(s) && brawlerNextKickN(s, t) === BRAWLER_KICK_MAX));
 /** 上の入力を蹴り上げとして扱うか(canPay=蹴り上げの値段を払えるか・呼び手が見る)。判定の前の蹴りの最中は true(覚えて出す瞬間に見直す)。 */
 export const brawlerKickUpInput = (s: BrawlerState, kind: BrawlerTechKind, t: number, canPay: boolean): boolean =>
   kind === 'guard' && brawlerKickUpSlot(s, t)
@@ -1091,6 +1093,39 @@ export const brawlerThrowProgress = (u: number): number => {
   const q = Math.max(0, Math.min(1, u));
   const v = 1 / (1 - a / 2); // 一定の区間の速さ(全体の距離=1)
   return q < a ? v * q * q / (2 * a) : Math.min(1, v * (a / 2 + (q - a)));
+};
+/**
+ * ★投げられて飛ぶ敵の回り(絵だけ・社長承認2026-11-19・監査 B15)。飛ぶ向きへ頭から縦に転がる(dir=+1 で時計回り)。浮いた敵は回さない、の例外=投げられた敵だけ。
+ *  - 飛ぶ間: 止まった所から加速して回る(2乗)。ぶつかる瞬間に THROW_SPIN_TURNS 回(1.5回=逆さまでぶつかる)。
+ *  - ぶつかってから爆撃まで(画面全体の止め): その角度のまま(描画の時計が止まる)。
+ *  - 爆撃(endAt)の後: ぶつかった時の回る速さを引き継いで減速し、次の正立で止まる(慣性・SETTLE 90〜360ms)。
+ * el=投げてからの ms・flyMs=飛ぶ長さ・hitEl=ぶつかった時の el(まだなら undefined)・sinceEnd=爆撃からの ms(まだなら undefined)。返り値=回転(rad)。正立で止まり切ったら0。
+ */
+export const BRAWLER_THROW_SPIN_TURNS = 1.5;
+export const BRAWLER_THROW_SPIN_SETTLE_MIN_MS = 90;
+export const BRAWLER_THROW_SPIN_SETTLE_MAX_MS = 360;
+/** ぶつかった時(投げてから hitEl ms・壁で早く止まった時は flyMs より短い)の角度の大きさ・回る速さ(rad/ms)・次の正立までの残り・止まるまでの ms。 */
+export const brawlerThrowSpinAtHit = (flyMs: number, hitEl: number): { th: number; w: number; rest: number; settleMs: number } => {
+  const T = Math.max(1, flyMs);
+  const u = Math.max(0, Math.min(1, hitEl / T));
+  const full = 2 * Math.PI * BRAWLER_THROW_SPIN_TURNS;
+  const th = full * u * u;
+  const w = 2 * full * u / T;
+  const rest = Math.ceil(th / (2 * Math.PI) - 1e-9) * 2 * Math.PI - th;
+  const settleMs = w > 1e-9 ? Math.max(BRAWLER_THROW_SPIN_SETTLE_MIN_MS, Math.min(BRAWLER_THROW_SPIN_SETTLE_MAX_MS, 3 * rest / w)) : BRAWLER_THROW_SPIN_SETTLE_MIN_MS; // 3乗の減速の出だしの速さ=ぶつかる時の速さ
+  return { th, w, rest, settleMs };
+};
+export const brawlerThrowSpin = (el: number, flyMs: number, dir: number, hitEl?: number, sinceEnd?: number): number => {
+  if (!(el >= 0)) return 0;
+  const side = dir < 0 ? -1 : 1;
+  const T = Math.max(1, flyMs);
+  const full = 2 * Math.PI * BRAWLER_THROW_SPIN_TURNS;
+  if (hitEl === undefined) { const u = Math.min(1, el / T); return side * full * u * u; }
+  const h = brawlerThrowSpinAtHit(flyMs, hitEl);
+  if (sinceEnd === undefined || !(sinceEnd >= 0)) { const u = Math.min(el, hitEl) / T; return side * full * Math.min(1, u) * Math.min(1, u); }
+  if (sinceEnd >= h.settleMs) return 0;
+  const k = sinceEnd / h.settleMs;
+  return side * (h.th + h.rest * (1 - (1 - k) * (1 - k) * (1 - k)));
 };
 /** 投げの長さ(ms)。最高速 BRAWLER_THROW_SPEED で一定の区間を飛び、出だしの加速の分だけ平均が遅い。 */
 export const brawlerThrowMs = (distPx: number): number =>
@@ -1393,6 +1428,21 @@ export const brawlerApproach = (
   if (!(d > standOff + 0.5)) return { dx: 0, dy: 0, dist: 0 };
   const go = Math.min(maxPx, d - standOff);
   return { dx: (-vx / d) * go, dy: (-vy / d) * go, dist: go };
+};
+
+/**
+ * ★通常攻撃の段の踏み込み(§31「決まった距離を、出した瞬間の向きへ」)。相手が居れば brawlerApproach(相手の手前で止まる・通り抜けない)。
+ * ★4段目(小ジャンプの叩き潰し)は、狙える相手が居ない時も向いている向き(dir)へ決まった距離だけ跳んで進む
+ *   (社長実機報告2026-11-19「通常格闘の4段目が真上に飛ぶだけの時が結構ある」: 3段目までで相手が倒れる/届く範囲の外へ出ると相手が無く、
+ *    踏み込みが0=その場で真上に跳んでいた)。1〜3段目は今どおり(相手が居なければ進まない)。
+ */
+export const brawlerStageApproach = (
+  stage: number, px: number, py: number, target: Enemy | null, maxPx: number, dir: { x: number; y: number },
+): { dx: number; dy: number; dist: number } => {
+  if (target || stage !== 4 || !(maxPx > 0)) return brawlerApproach(px, py, target, maxPx);
+  const d = Math.hypot(dir.x, dir.y);
+  if (!(d > 1e-6)) return { dx: 0, dy: 0, dist: 0 };
+  return { dx: (dir.x / d) * maxPx, dy: (dir.y / d) * maxPx, dist: maxPx };
 };
 
 /** 向き(相手が居ればその方向・居なければ向いている方)。 */
@@ -1731,19 +1781,34 @@ export const BRAWLER_KICKUP_SINK_PX = 8;
 export const BRAWLER_KICKUP_RISE_PX = 14;
 /** 蹴り上げの体の跳び(px・絵だけ)。沈んだ所から伸び上がり、当たる瞬間が一番高い。空中の相手の高さへは描画の跳びが追う。 */
 export const BRAWLER_KICKUP_JUMP_PX = 34;
+/**
+ * ★蹴り上げは踵落としの上下逆のまま、振りだけ鋭く短く(社長承認2026-11-19・監査 B16)。当たる時刻(windupMs)は変えない=判定・ダメージは同じ。
+ *  - 構え(溜めの前半)で脚を下げ切るのを早く(踵落とし 0.6 → 0.4)。
+ *  - 飛ぶ間は下げた所で溜めたまま待ち、終わりの SNAP_F だけで振り上げる(4乗=踵落としの3乗より立ち上がりが急)。
+ *  - 振り抜き(当たった後)も早く(踵落とし 0.45 → 0.3)。
+ */
+export const BRAWLER_KICKUP_COIL_F = 0.4;
+export const BRAWLER_KICKUP_SNAP_F = 0.55;
+export const BRAWLER_KICKUP_FOLLOW_F = 0.3;
+/** 蹴り上げの振り上げの進み(0..1)。q=飛ぶ間の進み。SNAP_F より前は0(溜めたまま)、そこから4乗で当たる瞬間に1。 */
+export const brawlerKickUpSnap = (q: number): number => {
+  const a = Math.max(0, Math.min(1, (q - (1 - BRAWLER_KICKUP_SNAP_F)) / BRAWLER_KICKUP_SNAP_F));
+  return a * a * a * a;
+};
 export const brawlerKickUpStandAt = (
   s: Pick<BrawlerState, 'windupMs' | 'recoveryMs' | 'kickChargeMs'>, el: number,
 ): { rot: number; lift: number; ext: number } => {
   const charge = Math.min(s.windupMs, s.kickChargeMs ?? 0);
   if (el < charge) {
     const c = charge > 0 ? Math.max(0, el / charge) : 1;
-    if (c < 0.6) { const k = easeOut(c / 0.6); return { rot: BRAWLER_KICKUP_ROT_PEAK * k, lift: -BRAWLER_KICKUP_SINK_PX * k, ext: 0.25 }; }
-    const k = (c - 0.6) / 0.4;
+    const cf = BRAWLER_KICKUP_COIL_F;
+    if (c < cf) { const k = easeOut(c / cf); return { rot: BRAWLER_KICKUP_ROT_PEAK * k, lift: -BRAWLER_KICKUP_SINK_PX * k, ext: 0.25 }; }
+    const k = (c - cf) / (1 - cf);
     return { rot: BRAWLER_KICKUP_ROT_PEAK + (BRAWLER_KICKUP_ROT_DOWN - BRAWLER_KICKUP_ROT_PEAK) * k * k * (3 - 2 * k), lift: -BRAWLER_KICKUP_SINK_PX, ext: 0.25 };
   }
   if (el < s.windupMs) {
-    const q = s.windupMs > charge ? Math.max(0, Math.min(1, (el - charge) / (s.windupMs - charge))) : 1;
-    const q3 = q * q * q;
+    const q0 = s.windupMs > charge ? Math.max(0, Math.min(1, (el - charge) / (s.windupMs - charge))) : 1;
+    const q3 = brawlerKickUpSnap(q0);
     return {
       rot: BRAWLER_KICKUP_ROT_DOWN + (BRAWLER_KICKUP_ROT_UP - BRAWLER_KICKUP_ROT_DOWN) * q3,
       lift: -BRAWLER_KICKUP_SINK_PX + (BRAWLER_KICKUP_SINK_PX + BRAWLER_KICKUP_RISE_PX) * q3,
@@ -1751,9 +1816,10 @@ export const brawlerKickUpStandAt = (
     };
   }
   const k = Math.max(0, Math.min(1, (el - s.windupMs) / Math.max(1, s.recoveryMs * BRAWLER_KICK_CROUCH_AT)));
-  const rot = k < 0.45
-    ? BRAWLER_KICKUP_ROT_UP + BRAWLER_KICKUP_ROT_FOLLOW * easeOut(k / 0.45)
-    : BRAWLER_KICKUP_ROT_UP + BRAWLER_KICKUP_ROT_FOLLOW + BRAWLER_KICKUP_ROT_BACK * easeOut((k - 0.45) / 0.55);
+  const ff = BRAWLER_KICKUP_FOLLOW_F;
+  const rot = k < ff
+    ? BRAWLER_KICKUP_ROT_UP + BRAWLER_KICKUP_ROT_FOLLOW * easeOut(k / ff)
+    : BRAWLER_KICKUP_ROT_UP + BRAWLER_KICKUP_ROT_FOLLOW + BRAWLER_KICKUP_ROT_BACK * easeOut((k - ff) / (1 - ff));
   return { rot, lift: BRAWLER_KICKUP_RISE_PX + 4 * easeOut(k), ext: 1 + 0.15 * easeOut(k) };
 };
 /**
@@ -1776,6 +1842,37 @@ export const brawlerSuplexArch = (el: number): number => {
   const k = (el - BRAWLER_SUPLEX_RISE_MS - BRAWLER_SUPLEX_HOLD_MS) / BRAWLER_SUPLEX_RETURN_MS;
   if (k >= 1) return 0;
   return 1 - k * k * (3 - 2 * k);
+};
+/**
+ * ★スープレックスの投げ越し(絵だけ・社長実機報告2026-11-19)。相手の絵を、反りに合わせて頭の上を越えて背中側へ運び、反りの頂点で背中側の地面へ叩きつける
+ * (逆さま=180°)。頂点で留まった後、叩きつけた所から元の位置へ戻しながら起き上がる(回りは同じ向きへ続けて1回転で戻る)。
+ * el=反りの始まり(suplexAt)からの ms・(mx,my)=背中側の着地点までのずれ。返り値=絵のずれ(dx,dy)・持ち上げ(lift・上が正)・回転(rad)。null=投げ越しの外。
+ * ★敵の絵を回すのはスープレックスの投げ越しだけの例外(クリエイティブ監査の指示)。判定・位置は動かさない。
+ */
+export const BRAWLER_SUPLEX_SWING_LIFT_PX = 64;
+export const brawlerSuplexSwing = (el: number, mx: number, my: number): { dx: number; dy: number; lift: number; rot: number } | null => {
+  const total = BRAWLER_SUPLEX_RISE_MS + BRAWLER_SUPLEX_HOLD_MS + BRAWLER_SUPLEX_RETURN_MS;
+  if (!(el >= 0) || el >= total) return null;
+  const side = mx < 0 ? -1 : 1; // 背中側へ回る向き(左へ運ぶ=反時計回り)
+  if (el < BRAWLER_SUPLEX_RISE_MS) {
+    const q = el / BRAWLER_SUPLEX_RISE_MS;
+    const p = q * q; // 持ち上げてから加速して叩きつける(叩きつける瞬間が一番速い)
+    const h = (1 - Math.cos(Math.PI * p)) / 2;
+    return { dx: mx * h, dy: my * h, lift: BRAWLER_SUPLEX_SWING_LIFT_PX * Math.sin(Math.PI * p), rot: side * Math.PI * p };
+  }
+  if (el < BRAWLER_SUPLEX_RISE_MS + BRAWLER_SUPLEX_HOLD_MS) return { dx: mx, dy: my, lift: 0, rot: side * Math.PI };
+  const r = (el - BRAWLER_SUPLEX_RISE_MS - BRAWLER_SUPLEX_HOLD_MS) / BRAWLER_SUPLEX_RETURN_MS;
+  const k = r * r * (3 - 2 * r);
+  return { dx: mx * (1 - k), dy: my * (1 - k), lift: 0, rot: side * Math.PI * (1 + k) };
+};
+/** 背中側の着地点までのずれ(プレイヤーの中心 (px,py)→相手の中心 (ex,ey) の向きの反対へ、体1つ分ほど・最小30/最大90px)。真上下で向きが無い時は face(±1)の反対。 */
+export const brawlerSuplexLanding = (px: number, py: number, ex: number, ey: number, face: number): { mx: number; my: number } => {
+  let ux = ex - px, uy = ey - py;
+  const d = Math.hypot(ux, uy);
+  if (d < 1e-3) { ux = face >= 0 ? 1 : -1; uy = 0; } else { ux /= d; uy /= d; }
+  const back = Math.max(30, Math.min(90, d));
+  const lx = px - ux * back, ly = py - uy * back;
+  return { mx: lx - ex, my: ly - ey };
 };
 /** スープレックスの体(反りの頂点の前は掴んで寄せた前傾から反りへつなぐ=頂点で前傾が抜け切る)。 */
 const suplexPose = (base: BrawlerPose, el: number, grabPushPx: number): BrawlerPose => {

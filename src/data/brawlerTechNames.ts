@@ -17,6 +17,6 @@ export const BRAWLER_TECH_NAMES: Record<TechProcKey, { name: string; dir: Brawle
   'tech:airthrow': { name: '空中投げ', dir: 'chain' }, // 蹴り上げから自動で続く(入力ではない)
   'tech:suplex': { name: 'スープレックス', dir: 'up' }, // 密着の構え(上)から
   'tech:suplexchain': { name: 'スープレックス', dir: 'chain' }, // 蹴り上げからの空中投げで投げ先が無かった時(自動の続き)
-  'tech:flipkick': { name: '蹴りバク宙', dir: 'up' },
+  'tech:flipkick': { name: 'サマーソルト', dir: 'up' },
   'tech:secret': { name: '秘奥義', dir: 'all' },
 };
