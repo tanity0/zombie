@@ -2,8 +2,8 @@
 // 通信の下の行(components/NpcDialogue の SkillProcRows)が引く。向きは utils/brawler の classifyBrawlerFlick と同じ割り当て。
 import type { TechProcKey } from '../utils/skillProcFeed';
 
-/** 入力の向き。all=秘奥義(4つの技を続けた先)。 */
-export type BrawlerTechDir = 'up' | 'down' | 'left' | 'right' | 'all';
+/** 入力の向き。all=秘奥義(4つの技を続けた先)。chain=入力ではなく前の技から自動で続いた技(向きの印は出さず、続きの印=字下げ)。 */
+export type BrawlerTechDir = 'up' | 'down' | 'left' | 'right' | 'all' | 'chain';
 
 export const BRAWLER_TECH_NAMES: Record<TechProcKey, { name: string; dir: BrawlerTechDir }> = {
   'tech:guard': { name: '構え', dir: 'up' },
@@ -14,8 +14,9 @@ export const BRAWLER_TECH_NAMES: Record<TechProcKey, { name: string; dir: Brawle
   'tech:kick3': { name: '蹴り飛ばし', dir: 'right' },
   'tech:heel': { name: '踵落とし', dir: 'down' },
   'tech:kickup': { name: '蹴り上げ', dir: 'up' },
-  'tech:airthrow': { name: '空中投げ', dir: 'up' },
-  'tech:suplex': { name: 'スープレックス', dir: 'up' },
+  'tech:airthrow': { name: '空中投げ', dir: 'chain' }, // 蹴り上げから自動で続く(入力ではない)
+  'tech:suplex': { name: 'スープレックス', dir: 'up' }, // 密着の構え(上)から
+  'tech:suplexchain': { name: 'スープレックス', dir: 'chain' }, // 蹴り上げからの空中投げで投げ先が無かった時(自動の続き)
   'tech:flipkick': { name: '蹴りバク宙', dir: 'up' },
   'tech:secret': { name: '秘奥義', dir: 'all' },
 };

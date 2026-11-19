@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, isBrawlerGuarding } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
-import { BRAWLER_GRAB_MS, BRAWLER_CONTACT_GRAB_MS, brawlerKickUpCost, BRAWLER_TECHS } from '../utils/brawler';
+import { BRAWLER_GRAB_MS, BRAWLER_CONTACT_GRAB_MS, brawlerKickUpCost, BRAWLER_TECHS, BRAWLER_WORLD_STOP, BRAWLER_SUPLEX_RISE_MS } from '../utils/brawler';
 import { setBrawlerTempoAll, brawlerAirborne } from '../utils/brawlerCombo';
 import { playerSuperArmorActive } from '../utils/superArmor';
 
@@ -108,6 +108,8 @@ describe('§34-3 空中投げ(格闘+パニッシャー)', () => {
     const yhp = en('y')!.health;
     for (let k = 0; k < 60 && en('z')?.brThrow; k++) advance(10);
     expect(en('z')!.brThrow).toBeUndefined();
+    expect(useGameStore.getState().hitstopUntil).toBeGreaterThan(now); // ぶつかった瞬間は締めの止め(画面全体)
+    advance(BRAWLER_WORLD_STOP.closer + 20); // 爆撃は止めが明けてから広がる
     expect(en('y')!.health).toBeLessThan(yhp);
     expect((en('y')!.knockbackUntil ?? 0)).toBeGreaterThan(now);
   });
@@ -118,10 +120,12 @@ describe('§34-3 空中投げ(格闘+パニッシャー)', () => {
     expect(br().grab).toBeDefined();
     const hp = en('z')!.health;
     advance(BRAWLER_GRAB_MS + 30);
-    expect(br().suplexAt).toBeDefined();
+    expect(br().suplexAt).toBeDefined(); // 放した瞬間から反り始める
+    expect(en('z')!.health).toBe(hp);    // 叩きつけは反りの頂点
+    advance(BRAWLER_SUPLEX_RISE_MS + 20);
     expect(en('z')!.health).toBeLessThan(hp);
     expect(en('z')!.brLiftDropMs).toBeGreaterThan(0);
-    expect(feed()).toContain('tech:suplex');
+    expect(feed()).toContain('tech:suplexchain'); // 蹴り上げからの自動の続き=向きの印なしの行
   });
   it('パニッシャーが無ければ普通の蹴り上げ(掴まない)', () => {
     kick1(() => [enemyAt(120, 0, 'z'), enemyAt(300, 40, 'y')]);

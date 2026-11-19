@@ -131,7 +131,7 @@ const SkillProcIcon = ({ k }: { k: SkillKey }) => {
  * 秘奥義は4本の楔が中心から四方へ開く(4つを出し切った先)。技ごとの絵の素材は無いので SVG で描く。
  * 色は格闘の白金(BrawlerHitCount と同じ)、秘奥義だけ炸裂の青白。
  */
-const TECH_DIR_DEG: Record<Exclude<BrawlerTechDir, 'all'>, number> = { up: 0, right: 90, down: 180, left: 270 };
+const TECH_DIR_DEG: Record<Exclude<BrawlerTechDir, 'all' | 'chain'>, number> = { up: 0, right: 90, down: 180, left: 270 };
 // 上向きの楔(先 y=2.5・尾 y=17)。**先の側が太く、後ろへ細く引く**=動いた跡の形(太い側へ進んで見える)。向きは回して作る。
 const TECH_WEDGE = 'M10 2.5 L12.9 6.8 L10 17 L7.1 6.8 Z';
 const TECH_INK = 'rgba(8,10,14,0.9)';
@@ -146,6 +146,14 @@ const TechProcIcon = ({ dir }: { dir: BrawlerTechDir }) => {
     );
   }
   const stroke = { stroke: TECH_INK, strokeWidth: 1.1, strokeLinejoin: 'round' as const, style: { paintOrder: 'stroke' as const } };
+  if (dir === 'chain') {
+    // ★自動の続き(research/BRAWLER.md §34・空中投げ/蹴り上げからのスープレックス): 入れた向きは無い=楔は出さず、上の行から下りて右へ折れる続きの線だけ(字下げ)。
+    return (
+      <svg viewBox="0 0 20 20" className="w-full h-full" aria-hidden style={{ overflow: 'visible' }}>
+        <path d="M7.2 1.5 H8.8 V11.2 H16.5 V12.8 H7.2 Z" fill="#fbf6ea" {...stroke} />
+      </svg>
+    );
+  }
   return (
     <svg viewBox="0 0 20 20" className="w-full h-full" aria-hidden style={{ overflow: 'visible' }}>
       <g transform={`rotate(${TECH_DIR_DEG[dir]} 10 10)`} fill="#fbf6ea">

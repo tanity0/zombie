@@ -409,7 +409,7 @@ export const brawlerStageForPress = (s: BrawlerState, t: number): number =>
 export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, quick: boolean): BrawlerState => {
   const spec = brawlerStageSpec(stage);
   return {
-    ...s, phase: 'attack', stage: spec.stage, tech: null, kickN: 0, kickHeel: false, heelBuffer: false, kickUp: false, kickUpBuffer: false, kickThrow: false, suplexAt: undefined, guardCancelHeld: false, contactGrab: undefined, startAt: t,
+    ...s, phase: 'attack', stage: spec.stage, tech: null, kickN: 0, kickHeel: false, heelBuffer: false, kickUp: false, kickUpBuffer: false, kickThrow: false, suplexAt: undefined, guardCancelHeld: false, contactGrab: undefined, throwAt: undefined, suplexPendingId: undefined, grab: undefined, startAt: t,
     // 前隙なし(受けた直後)でも5段目は突き抜ける時間だけは要る(溜めだけ消える)。
     windupMs: quick ? (spec.stage === 5 ? BRAWLER_PALM_DASH_MS : 0) : spec.windupMs, recoveryMs: spec.recoveryMs,
     stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false,
@@ -441,6 +441,7 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
   return {
     ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t, techChain: chain, techBuffer: undefined, stepBuffer: undefined,
     kickHeel, heelBuffer: false, kickUp, kickUpBuffer: false, kickThrow: false, grab: undefined, suplexAt: undefined, guardCancelHeld: false, contactGrab: undefined,
+    throwAt: undefined, suplexPendingId: undefined,
     heelAirPx: undefined, kickGroundPx: undefined, // 蹴りの高さの決めは store が出した瞬間に書く(前の技の値を持ち越さない)
     stompFromPx: stompFromPx > 0.5 ? stompFromPx : undefined,
     // 踵落としは溜め(BRAWLER_KICK3_CHARGE_MS)を前隙の頭に足す(store は飛ぶ時間を距離で引き直して同じく足す)。蹴り飛ばしは溜め無し(§33-2)。
@@ -1051,8 +1052,18 @@ export const brawlerGuardCancelOk = (s: BrawlerState, kind: BrawlerTechKind, t: 
  * 構えを取り消した状態(§34-2): 構えの効果(被害の無効・弾の打ち返し・レーザーの盾・受けの窓=どれも guardUntil を読む)を全部切る。
  * まだ撃っていない反撃の気功(§32)は出さない(§34-6 #8)。受けた直後の前隙なし(quickUntil)は触らない。
  */
-export const brawlerEndGuardForCancel = (s: BrawlerState): BrawlerState =>
-  ({ ...s, guardUntil: 0, guardKiko: undefined, guardCancelHeld: false });
+export const brawlerEndGuardForCancel = (s: BrawlerState, t?: number, nowMs?: number): BrawlerState => ({
+  ...s, guardUntil: 0, guardKiko: undefined, guardCancelHeld: false,
+  // 光を一度外へ押して短く消す絵の起点(描画だけ・監査 #9)。t/nowMs が無ければ付けない。
+  ...(t !== undefined && nowMs !== undefined ? { guardCancelAt: nowMs, guardCancelRemain: Math.max(0, Math.min(1, (s.guardUntil - t) / BRAWLER_GUARD_MS)) } : {}),
+});
+/** 構えを取り消した時の光の消え方(監査 #9): 0..1 の残り(取り消した瞬間の光の強さから 150ms で減速しながら消える)と、外へ一度押す膨らみ。 */
+export const BRAWLER_GUARD_CANCEL_FADE_MS = 150;
+export const brawlerGuardCancelGlow = (since: number, remain0: number): { remain: number; pop: number } => {
+  if (!(since >= 0) || since >= BRAWLER_GUARD_CANCEL_FADE_MS) return { remain: 0, pop: 0 };
+  const k = since / BRAWLER_GUARD_CANCEL_FADE_MS;
+  return { remain: Math.max(0.35, remain0) * (1 - k * k), pop: 1 - k };
+};
 
 // ---------------------------------------------------------------------------------------------
 // ★空中投げ(格闘+パニッシャー・社長指示2026-11-19・research/BRAWLER.md §34-3)。数値は叩き台。
@@ -1126,13 +1137,53 @@ export const brawlerStartContactGrab = (s: BrawlerState, t: number, enemyId: str
     ...k, kickThrow: true, kickChargeMs: 0, windupMs: BRAWLER_CONTACT_GRAB_MS,
     recoveryMs: mode === 'flipkick' ? BRAWLER_FLIPKICK_MS : k.recoveryMs,
     kickCount: 0, kickChainUntil: 0, techChain: ['guard'], contactGrab: { enemyId, mode },
+    // スープレックス: 掴みの後半で持ち上げて反り始め、反りの頂点=掴みの終わり(判定)で叩きつける(クリエイティブ監査 #3)。
+    ...(mode === 'suplex' ? { suplexAt: t + BRAWLER_CONTACT_GRAB_MS - BRAWLER_SUPLEX_RISE_MS } : {}),
     guardUntil: 0, guardKiko: undefined, // 構えではない=被害の無効・打ち返し・受けの窓は無い(§34-7)
   };
 };
 /** 蹴りバク宙の回転(0..1 の進み → rad・負=後ろへ回る)。1回転・蹴った瞬間が速く、着地で止まる(2乗の減速)。 */
 export const brawlerFlipSpin = (q: number): number => {
   const k = Math.max(0, Math.min(1, q));
-  return -2 * Math.PI * (1 - (1 - k) * (1 - k));
+  // 蹴った直後から速く回り(頂点の前に大半を回し切る)、着地へ減速して止まる(3乗の減速・クリエイティブ監査 #11)。
+  return -2 * Math.PI * (1 - (1 - k) ** 3);
+};
+/** 蹴りバク宙の跳びの頂点の位置(進みの割合)。速く上がって、重く落ちる(左右非対称)。 */
+export const BRAWLER_FLIPKICK_APEX = 0.35;
+/** 蹴りバク宙の跳びの高さ(0..1 の進み → 0..1)。上がりは減速(速く上がる)・落ちは重力(加速して落ちる=着地の瞬間が一番速い)。 */
+export const brawlerFlipArc = (q: number): number => {
+  const k = Math.max(0, Math.min(1, q));
+  if (k <= BRAWLER_FLIPKICK_APEX) { const u = k / BRAWLER_FLIPKICK_APEX; return 1 - (1 - u) * (1 - u); }
+  const u = (k - BRAWLER_FLIPKICK_APEX) / (1 - BRAWLER_FLIPKICK_APEX);
+  return 1 - u * u;
+};
+/** 掴みの体の光(クリエイティブ監査 #4・#8): 掴んだ瞬間に一度膨らみ(80ms)、その後は落ち着いた強さで保つ(脈打たない=構えの光と見分ける)。since=掴んでからの ms。 */
+export const brawlerGrabGlow = (since: number): number => {
+  if (!(since >= 0)) return 0;
+  if (since < 80) { const k = since / 80; return 0.4 + 0.6 * (1 - (1 - k) * (1 - k)); }
+  const k = Math.min(1, (since - 80) / 160);
+  return 1 - 0.35 * k * k * (3 - 2 * k);
+};
+/** 掴みの寄り(クリエイティブ監査 #7): 掴みの間に BRAWLER_GRAB_MS かけてゆっくり寄り、放したら BRAWLER_GRAB_ZOOM_OUT_MS で戻る。倍率の上乗せ(0=寄り無し)。 */
+export const BRAWLER_GRAB_ZOOM = 0.12;
+export const BRAWLER_GRAB_ZOOM_OUT_MS = 260;
+export const brawlerGrabZoom = (sinceGrab: number, sinceRelease: number | null): number => {
+  const sm = (u: number) => { const k = Math.max(0, Math.min(1, u)); return k * k * (3 - 2 * k); };
+  if (sinceRelease === null) return sinceGrab >= 0 ? BRAWLER_GRAB_ZOOM * sm(sinceGrab / BRAWLER_GRAB_MS) : 0;
+  if (!(sinceRelease >= 0) || sinceRelease >= BRAWLER_GRAB_ZOOM_OUT_MS) return 0;
+  return BRAWLER_GRAB_ZOOM * (1 - sm(sinceRelease / BRAWLER_GRAB_ZOOM_OUT_MS));
+};
+/** 投げの体の振り(クリエイティブ監査 #2): 放した瞬間から、後ろへ引いて(前半)前へ大きく振り抜き、戻す。since=投げてからの ms(gameTime)。 */
+export const BRAWLER_THROW_SWING_MS = 120;
+export const BRAWLER_THROW_SETTLE_MS = 110;
+export const brawlerThrowSwing = (since: number): { lean: number; push: number; on: boolean } => {
+  if (!(since >= 0) || since >= BRAWLER_THROW_SWING_MS + BRAWLER_THROW_SETTLE_MS) return { lean: 0, push: 0, on: false };
+  const eo = (u: number) => 1 - (1 - u) * (1 - u);
+  if (since < BRAWLER_THROW_SWING_MS * 0.3) { const k = eo(since / (BRAWLER_THROW_SWING_MS * 0.3)); return { lean: -0.4 * k, push: -4 * k, on: true }; }
+  if (since < BRAWLER_THROW_SWING_MS) { const k = eo((since - BRAWLER_THROW_SWING_MS * 0.3) / (BRAWLER_THROW_SWING_MS * 0.7)); return { lean: -0.4 + 1.0 * k, push: -4 + 20 * k, on: true }; }
+  const k = (since - BRAWLER_THROW_SWING_MS) / BRAWLER_THROW_SETTLE_MS;
+  const s = 1 - k * k * (3 - 2 * k);
+  return { lean: 0.6 * s, push: 16 * s, on: true };
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -1674,7 +1725,7 @@ export const brawlerHeelStandAt = (
 export const BRAWLER_KICKUP_ROT_PEAK = 0.55;
 export const BRAWLER_KICKUP_ROT_DOWN = 0.42;
 export const BRAWLER_KICKUP_ROT_UP = -0.62;
-export const BRAWLER_KICKUP_ROT_FOLLOW = -0.1;
+export const BRAWLER_KICKUP_ROT_FOLLOW = -0.3; // 振り抜きを大きく(クリエイティブ監査 #11)
 export const BRAWLER_KICKUP_ROT_BACK = 0.05;
 export const BRAWLER_KICKUP_SINK_PX = 8;
 export const BRAWLER_KICKUP_RISE_PX = 14;
@@ -1705,20 +1756,36 @@ export const brawlerKickUpStandAt = (
     : BRAWLER_KICKUP_ROT_UP + BRAWLER_KICKUP_ROT_FOLLOW + BRAWLER_KICKUP_ROT_BACK * easeOut((k - 0.45) / 0.55);
   return { rot, lift: BRAWLER_KICKUP_RISE_PX + 4 * easeOut(k), ext: 1 + 0.15 * easeOut(k) };
 };
-/** スープレックス(§34-3)の体の反り(rad・lean 負=後ろへ反る)の最大と、後隙のうち反り切るまでの割合・戻り終わる割合。 */
-export const BRAWLER_SUPLEX_ARCH = 0.95;
-export const BRAWLER_SUPLEX_ARCH_IN = 0.22;
-export const BRAWLER_SUPLEX_ARCH_OUT = 0.85;
-/** スープレックスの反り(0..1)。始め(el=0)から加速して反り切り、少し留まってから加減速で戻る。el=スープレックスからの経過・ms=戻りまでの長さ。 */
-export const brawlerSuplexArch = (el: number, ms: number): number => {
-  if (!(el >= 0) || !(ms > 0)) return 0;
-  const q = el / ms;
-  if (q >= BRAWLER_SUPLEX_ARCH_OUT) return 0;
-  if (q < BRAWLER_SUPLEX_ARCH_IN) { const k = q / BRAWLER_SUPLEX_ARCH_IN; return k * k * (3 - 2 * k); }
-  const hold = BRAWLER_SUPLEX_ARCH_IN + 0.15;
-  if (q < hold) return 1;
-  const k = (q - hold) / (BRAWLER_SUPLEX_ARCH_OUT - hold);
+/**
+ * スープレックス(§34-3・§34-7)の体の反り(クリエイティブ監査 #3): 持ち上げて反り(RISE)→ 頂点で叩きつける(当たり・地割れ・揺れはこの瞬間)→
+ * 頂点で HOLD 留まる → ゆっくり戻る(RETURN)。反りの最大(rad・lean 負=後ろ)と、後ろへの体の滑り(px)。時間は gameTime の ms。
+ */
+export const BRAWLER_SUPLEX_ARCH = 1.4;
+export const BRAWLER_SUPLEX_PUSH_PX = 24;
+export const BRAWLER_SUPLEX_RISE_MS = 100;
+export const BRAWLER_SUPLEX_HOLD_MS = 80;
+export const BRAWLER_SUPLEX_RETURN_MS = 340;
+/** 掴んで寄せる体の前傾と、寄せる量(反りに入る前・クリエイティブ監査 #1・#11)。 */
+export const BRAWLER_GRAB_LEAN = 0.3;
+export const BRAWLER_GRAB_PUSH_PX = 12;
+/** スープレックスの反り(0..1)。el=反りを始めてから(suplexAt からの ms)。頂点=RISE。 */
+export const brawlerSuplexArch = (el: number): number => {
+  if (!(el >= 0)) return 0;
+  if (el < BRAWLER_SUPLEX_RISE_MS) { const k = el / BRAWLER_SUPLEX_RISE_MS; return k * k * (3 - 2 * k); }
+  if (el < BRAWLER_SUPLEX_RISE_MS + BRAWLER_SUPLEX_HOLD_MS) return 1;
+  const k = (el - BRAWLER_SUPLEX_RISE_MS - BRAWLER_SUPLEX_HOLD_MS) / BRAWLER_SUPLEX_RETURN_MS;
+  if (k >= 1) return 0;
   return 1 - k * k * (3 - 2 * k);
+};
+/** スープレックスの体(反りの頂点の前は掴んで寄せた前傾から反りへつなぐ=頂点で前傾が抜け切る)。 */
+const suplexPose = (base: BrawlerPose, el: number, grabPushPx: number): BrawlerPose => {
+  const a = brawlerSuplexArch(el);
+  const g = el < BRAWLER_SUPLEX_RISE_MS ? 1 - a : 0;
+  return {
+    ...base, tex: a > 0.35 ? 'swing' : 'ready',
+    lean: BRAWLER_GRAB_LEAN * g - BRAWLER_SUPLEX_ARCH * a, push: grabPushPx * g - BRAWLER_SUPLEX_PUSH_PX * a,
+    sqY: 1 - 0.1 * g + 0.1 * a, sqX: 1 + 0.06 * g - 0.06 * a,
+  };
 };
 /**
  * 踵落としを受けた地上の敵の絵の沈み(px・下が正。描画だけ・判定は動かない)。叩きつけられて沈み、減速して戻る。
@@ -1743,7 +1810,8 @@ const KICK3_LEAN_TURN_AT = 0.25;
 const KICK3_LEAN_TAIL_MS = 100;
 const KICK_LEAN_TAIL_FRAC = 0.6;
 /** いまの体の形。連続中は立ち絵へ戻さない(コンボが切れた時だけ立ちへ・§4)。 */
-export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPose | null => {
+/** nowMs=壁時計(描画が渡す)。空中投げの掴みの間(ループごと止まる=gameTime は進まない)の体の寄せを慣性つきで入れるのに使う。無し=寄せ切った形。 */
+export const brawlerPoseAt = (s: BrawlerState | undefined, t: number, nowMs?: number): BrawlerPose | null => {
   if (!s) return null;
   if (brawlerKickHeldInStop(s, t)) return brawlerPoseAt(brawlerKickHoldView(s, t), t); // 止めの間は当たった蹴りの絵のまま(§33-2)
   const base: BrawlerPose = { tex: null, lean: 0, push: 0, jump: 0, sqX: 1, sqY: 1, hand: 1, flip: false };
@@ -1768,6 +1836,8 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
     }
   }
   if (s.phase === 'idle') {
+    // ★スープレックスの反りが後隙より長く残った時は、待機に戻っても反りを戻し切るまで描く(絵だけ・後隙=操作の時間は変えない)。
+    if (s.suplexAt !== undefined && t >= s.suplexAt && brawlerSuplexArch(t - s.suplexAt) > 0) return suplexPose(base, t - s.suplexAt, 0);
     // つながりの受付が残っている間はしゃがみ(構え)で待つ。
     if (s.nextStage > 1 && t <= s.chainUntil) return { ...base, tex: 'ready', lean: 0.05 };
     if (s.tech === null && s.kickChainUntil > t) return { ...base, tex: 'ready', lean: 0.06 };
@@ -1847,20 +1917,35 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
     }
     case 'kick': {
       // ★密着の構え(§34-7): 掴み=踏ん張って体を寄せる → スープレックス=後ろへ反る(下の suplexAt)/ 蹴りバク宙=蹴ってクルっと1回転しながら下がって着地。
+      // ★空中投げの掴み(§34-3・クリエイティブ監査 #1): 掴んでいる間(ループごと止まる)は、相手へ前傾して体を寄せて踏ん張る。壁時計で慣性つきに入れる。
+      if (s.grab) {
+        const k = nowMs === undefined ? 1 : easeOut(Math.max(0, Math.min(1, (nowMs - s.grab.at) / 120)));
+        return { ...base, tex: 'ready', lean: BRAWLER_GRAB_LEAN * k, push: (s.grab.reachPx ?? 0) * k, sqY: 1 - 0.1 * k, sqX: 1 + 0.05 * k };
+      }
+      // スープレックス(空中投げ・密着の構え): 反りを始めてからは反りの形(頂点で叩きつけ)。
+      if (s.suplexAt !== undefined && t >= s.suplexAt) return suplexPose(base, t - s.suplexAt, s.grab ? 0 : BRAWLER_GRAB_PUSH_PX);
+      // ★投げ(クリエイティブ監査 #2): 放した瞬間から、後ろへ引いて投げる向きへ大きく振り抜く(向き=dirX/dirY=投げた向き)。
+      if (s.throwAt !== undefined) {
+        const sw = brawlerThrowSwing(t - s.throwAt);
+        if (sw.on) return { ...base, tex: 'swing', lean: sw.lean, push: sw.push, sqX: 1 + 0.08 * Math.max(0, sw.lean), sqY: 1 - 0.06 * Math.max(0, sw.lean) };
+      }
       if (s.contactGrab) {
-        if (!hit) { const k = easeOut(pre); return { ...base, tex: 'ready', lean: 0.14 * k, push: 6 * k, sqY: 1 - 0.1 * k, sqX: 1 + 0.06 * k }; }
+        // 掴み: 前傾して体を寄せて掴む(監査 #11=前傾・寄せを倍に)。
+        if (!hit) {
+          // スープレックスは反り始め(掴みの後半)までに寄せ切る=反りへ途切れずにつなぐ。蹴りバク宙は掴みの全体で寄せる。
+          const span = s.contactGrab.mode === 'suplex' ? Math.max(1, s.windupMs - BRAWLER_SUPLEX_RISE_MS) : w;
+          const k = easeOut(Math.min(1, el / span));
+          return { ...base, tex: 'ready', lean: BRAWLER_GRAB_LEAN * k, push: BRAWLER_GRAB_PUSH_PX * k, sqY: 1 - 0.1 * k, sqX: 1 + 0.06 * k };
+        }
         if (s.contactGrab.mode === 'flipkick') {
+          // 速く上がって重く落ちる跳び・頂点の前に大半を回し切って着地へ減速する1回転(監査 #11)。
           const land = post > 0.85 ? Math.sin(Math.PI * Math.min(1, (post - 0.85) / 0.15)) : 0;
           return {
             ...base, tex: post < 0.8 ? 'swing' : 'ready', lean: 0, spin: brawlerFlipSpin(post), push: 0,
-            jump: BRAWLER_FLIPKICK_JUMP_PX * Math.sin(Math.PI * Math.min(1, post / 0.9)), sqY: 1 - 0.16 * land, sqX: 1 + 0.1 * land,
+            jump: BRAWLER_FLIPKICK_JUMP_PX * brawlerFlipArc(post / 0.95), sqY: 1 - 0.16 * land, sqX: 1 + 0.1 * land,
           };
         }
-        if (s.suplexAt !== undefined && t >= s.suplexAt) {
-          const arch = brawlerSuplexArch(t - s.suplexAt, Math.max(1, total - s.windupMs));
-          return { ...base, tex: arch > 0.35 ? 'swing' : 'ready', lean: -BRAWLER_SUPLEX_ARCH * arch, push: -10 * arch, sqY: 1 + 0.08 * arch, sqX: 1 - 0.05 * arch };
-        }
-        return { ...base, tex: 'ready', lean: 0.14, push: 6 };
+        return { ...base, tex: 'ready', lean: BRAWLER_GRAB_LEAN, push: BRAWLER_GRAB_PUSH_PX };
       }
       // 飛び蹴り: 滞空中はしゃがみ+強い前傾 → 当たった瞬間に振り上げの絵へ変える(#4)。
       const big = s.kickN >= BRAWLER_KICK_MAX;
@@ -1912,11 +1997,6 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
       // ★蹴った後は、すぐしゃがみの絵へ(社長指示2026-11-11「全段、蹴った後、一瞬しゃがみの絵を入れて。隙は変えず。蹴ったまま落ちていくのが変」)。
       //   当たった瞬間(止めの間)は振り上げの絵のまま → 後隙に入ったらすぐしゃがんで着地する(深く沈んで戻る=慣性)。旧は後隙の前半45%が振り上げの絵だった。
       const land = Math.sin(Math.PI * Math.min(1, post / 0.6)) * (post < 0.6 ? 1 : 0);
-      // ★スープレックス(§34-3): 掴んだまま後ろへ大きく反って叩きつける(体の絵だけ・相手の位置は動かさない=§34-6 #6)。
-      if (s.suplexAt !== undefined && t >= s.suplexAt) {
-        const arch = brawlerSuplexArch(t - s.suplexAt, Math.max(1, total - s.windupMs));
-        return { ...base, tex: arch > 0.35 ? 'swing' : 'ready', lean: -BRAWLER_SUPLEX_ARCH * arch, push: -10 * arch, sqY: 1 + 0.08 * arch - 0.14 * land * (1 - arch), sqX: 1 - 0.05 * arch + 0.1 * land * (1 - arch) };
-      }
       return {
         ...base, tex: post < BRAWLER_KICK_CROUCH_AT ? 'swing' : 'ready', lean: (rot ? heelLean() : -0.25) * th, push: 6 * th, sqY: 1 - 0.12 * th - 0.14 * land, sqX: 1 + 0.08 * th + 0.1 * land,
         ...(s.kickHeel ? { jump: brawlerHeelHoverPx(post, brawlerHeelAirOf(s)) } : {}), // 踵落としの後は空中に残る(振り下ろした高さのまま)→後隙の後半で降りて着地

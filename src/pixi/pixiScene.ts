@@ -9463,7 +9463,9 @@ export class PixiScene {
     // 戻りの形(v0.25.4295 クリエイティブ監査): 共有包絡線に演目の冪を掛ける(カウンター=保ってから速く落ちる/死亡=来た時より遅く帰る)。
     // zwarp(斜め)は素の zoomDecay を読む(下)。
     const zoomDecayCine = cam ? Math.pow(zoomDecay, cam.outPow) : zoomDecay;
-    const punch = 1 + s.zoomMag * zoomDecayCine * (cam ? cam.zoomFrac : 1);
+    // ★空中投げの掴み(§34-3・クリエイティブ監査 #7): 掴みの間はゆっくり寄り、放したら戻す(壁時計=時間停止の間も動く)。
+    const grabZoom = this.brawlerGrabZoomNow(s.player.brawler?.grab);
+    const punch = (1 + s.zoomMag * zoomDecayCine * (cam ? cam.zoomFrac : 1)) * (1 + grabZoom);
     // ズーム時の遠近(既定ON・?zwarp=0 で切る)へ: イベントの包絡線・寄り量と、イベント開始時に決める奥の側(左右)。
     this.zwarpEventDecay = zoomDecay;
     this.zwarpEventMag = s.zoomMag;
@@ -21334,7 +21336,7 @@ export class PixiScene {
     // ★格闘(research/BRAWLER.md §4・§7-6): しゃがみ(-ready)=弱・掌底の突き / 振り上げ(-swing)=強(アッパー)・跳び・大踏み潰しの振りかぶり。
     // 連続中は立ち絵へ戻さない(コンボが切れた時だけ立ちへ)。武将フル装備はポーズ無し(歩き絵のまま)。描画のみ(store には書かない)。
     const brPose = isBrawlerMode(p) && p.health > 0 && !killFxActiveForPose
-      ? BRW.brawlerPoseAt(p.brawler, useGameStore.getState().gameTime) : null;
+      ? BRW.brawlerPoseAt(p.brawler, useGameStore.getState().gameTime, Date.now()) : null;
     if (brPose && brPose.tex && meleePosePrefix && !warlordFull) {
       const brTexName = `${meleePosePrefix}-${brPose.tex}`;
       const brTex = getTexture(brTexName);
@@ -40968,7 +40970,7 @@ export class PixiScene {
 
   // ---- ★サブウェポン「格闘」の絵(research/BRAWLER.md §4)。store の状態を読んで描くだけ(書かない)。----
   // 砂埃は既存の drawDust(研究所では灰色の帯=dustTintForStage)、残像はプレイヤーの絵の複製、気功の弾は加算の光。
-  private brawlerTrail: { x: number; y: number; t: number }[] = [];
+  private brawlerTrail: { x: number; y: number; t: number; r?: number }[] = [];
   private brawlerGhosts: Sprite[] = [];
   private brawlerKikoViews = new Map<string, { halo: Sprite; core: Sprite; flame: Sprite; tail: Sprite; blob: Sprite }>();
   private brawlerAura: Sprite | null = null;
@@ -41119,6 +41121,18 @@ export class PixiScene {
     aura.alpha = Math.min(1, 0.15 + 0.7 * remain + 0.4 * hitPop);
     aura.visible = true;
   }
+  private grabZoomAt: number | null = null;
+  private grabZoomReleasedAt: number | null = null;
+  /** 掴みの寄りの上乗せ(0=無し)。掴みの始まりと放した時刻を覚える(描画だけの状態)。 */
+  private brawlerGrabZoomNow(grab: { at: number; releaseAt: number } | undefined): number {
+    const t = Date.now();
+    if (grab && t < grab.releaseAt) { this.grabZoomAt = grab.at; this.grabZoomReleasedAt = null; return BRW.brawlerGrabZoom(t - grab.at, null); }
+    if (this.grabZoomAt === null) return 0;
+    if (this.grabZoomReleasedAt === null) this.grabZoomReleasedAt = t;
+    const z = BRW.brawlerGrabZoom(t - this.grabZoomAt, t - this.grabZoomReleasedAt);
+    if (z <= 0) { this.grabZoomAt = null; this.grabZoomReleasedAt = null; }
+    return z;
+  }
   private drawBrawlerFx(p: Player, footX: number, footY: number, dsc: number, body: Sprite, now: number): void {
     const s = p.brawler;
     const st = useGameStore.getState();
@@ -41140,11 +41154,14 @@ export class PixiScene {
     {
       // 秘奥義の最中(§10)は体がずっと強く光る(脈打つ)。
       // ★飛び蹴りの3発目の溜め(社長承認2026-11-08)も同じ光で体が光る(溜めの間に強まり、飛び出しで速く引く)。
-      // ★空中投げの掴み(§34-3)の間は溜めの絵=体が強く光って脈打つ(時間停止の間も光は実時間で脈打つ)。
-      const grabbing = (!!s.grab && Date.now() < s.grab.releaseAt) || (!!s.contactGrab && s.phase === 'tech' && !s.resolved); // 密着の掴み(§34-7)も体が光る
-      const remain = s.secret ? 0.85 + 0.15 * Math.sin(now / 60) : grabbing ? 0.8 + 0.2 * Math.abs(Math.sin(Date.now() / 55))
+      // ★掴み(空中投げ §34-3・密着の構え §34-7)の間は体が光る。構えの光と見分けるため脈打たない=掴んだ瞬間に一度膨らんで落ち着く(クリエイティブ監査 #4・#8)。
+      const grabSince = s.grab && Date.now() < s.grab.releaseAt ? Date.now() - s.grab.at
+        : s.contactGrab && s.phase === 'tech' && !s.resolved ? gt - s.startAt : -1;
+      // ★構えを技で取り消した瞬間は、光を消さずに一度外へ押し出して短く消す(監査 #9)。
+      const gc = s.guardCancelAt !== undefined ? BRW.brawlerGuardCancelGlow(Date.now() - s.guardCancelAt, s.guardCancelRemain ?? 0) : { remain: 0, pop: 0 };
+      const remain = s.secret ? 0.85 + 0.15 * Math.sin(now / 60) : grabSince >= 0 ? BRW.brawlerGrabGlow(grabSince)
         : BRW.isBrawlerGuardingAt(s, gt) ? Math.max(0, s.guardUntil - gt) / BRW.BRAWLER_GUARD_MS
-        : BRW.brawlerKickChargeGlow(s, gt);
+        : Math.max(gc.remain, BRW.brawlerKickChargeGlow(s, gt));
       if (remain > 0) {
         if (!this.brawlerAura) {
           this.brawlerAura = new Sprite(getSoftGlowTexture());
@@ -41155,7 +41172,7 @@ export class PixiScene {
         if (aura.parent !== body.parent && body.parent) body.parent.addChild(aura);
         // 残り時間に比例して等速で絞る(輪は出さない=クリエイティブ監査 #9)。受けた瞬間だけ短く膨らむ。
         // 受けた瞬間・構えを延長した瞬間(§9-41)に一度膨らむ。
-        const hitPop = Math.max(0, 1 - (Date.now() - Math.max(s.guardHitAt, s.guardRenewAt ?? 0)) / 160);
+        const hitPop = Math.max(Math.max(0, 1 - (Date.now() - Math.max(s.guardHitAt, s.guardRenewAt ?? 0)) / 160), gc.pop);
         const size = (34 + 76 * remain + 30 * hitPop) * dsc;
         aura.scale.set(size / Math.max(1, aura.texture.height));
         aura.position.set(body.position.x, body.position.y - Math.abs(body.height) * 0.45);
@@ -41213,13 +41230,16 @@ export class PixiScene {
       }
     }
     // 飛び蹴りの残像(プレイヤーの絵の複製を低αで2〜3枚)。3発目は1枚多い。刀の trail は使わない(斬撃に見える)。
-    this.brawlerTrail.push({ x: body.position.x, y: body.position.y, t: now });
+    this.brawlerTrail.push({ x: body.position.x, y: body.position.y, t: now, r: body.rotation });
     while (this.brawlerTrail.length > 0 && now - this.brawlerTrail[0].t > 160) this.brawlerTrail.shift();
     const kicking = s.phase === 'tech' && s.tech === 'kick' && !s.contactGrab && el < s.windupMs + 90; // 密着の掴み(§34-7)はその場=残像なし
     // 5段目の突き抜け(と抜けた直後)も残像を3枚(一閃の速さ)。
     const palmGhost = s.phase === 'attack' && s.stage === 5 && s.palmFromX !== undefined && el < s.windupMs + 90;
-    const nG = palmGhost ? 3 : kicking ? (s.kickN >= BRW.BRAWLER_KICK_MAX ? 3 : 2) : 0;
-    const fade = (kicking || palmGhost) && s.resolved ? Math.max(0, 1 - (el - s.windupMs) / 90) : 1;
+    // ★蹴りバク宙(§34-7・監査 #11): 回って下がる間は残像2枚(体の回りも遅れて写す)。着地へ向けて薄れる。
+    const flipGhost = s.phase === 'tech' && s.tech === 'kick' && s.contactGrab?.mode === 'flipkick' && s.resolved && el < s.windupMs + s.recoveryMs * 0.85;
+    const nG = palmGhost ? 3 : kicking ? (s.kickN >= BRW.BRAWLER_KICK_MAX ? 3 : 2) : flipGhost ? 2 : 0;
+    const fade = flipGhost ? Math.max(0, 1 - (el - s.windupMs) / Math.max(1, s.recoveryMs * 0.85))
+      : (kicking || palmGhost) && s.resolved ? Math.max(0, 1 - (el - s.windupMs) / 90) : 1;
     for (let i = 0; i < 3; i++) {
       let g = this.brawlerGhosts[i];
       if (i >= nG) { if (g) g.visible = false; continue; }
@@ -41235,7 +41255,7 @@ export class PixiScene {
       g.texture = body.texture;
       g.anchor.copyFrom(body.anchor);
       g.scale.copyFrom(body.scale);
-      g.rotation = body.rotation;
+      g.rotation = pt?.r ?? body.rotation; // その時の体の回り(蹴りバク宙の回転も遅れて写る)
       g.position.set(pt?.x ?? body.position.x, pt?.y ?? body.position.y);
       g.tint = BRW.BRAWLER_COLOR_HEX;
       g.alpha = [0.34, 0.22, 0.13][i] * fade;

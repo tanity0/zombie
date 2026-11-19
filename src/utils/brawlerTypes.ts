@@ -70,8 +70,15 @@ export interface BrawlerState {
    * ★掴んでいる間(§34-3)。enemyId=掴んだ相手・at=掴んだ時刻・releaseAt=放す時刻(どちらも Date.now)。この間は画面全体の止め(triggerHitstop)で
    * ループごと止まる。止めが明けた最初の時計で、投げ先へ投げる(居なければスープレックス)。
    */
-  grab?: { enemyId: string; at: number; releaseAt: number };
-  /** スープレックスを決めた時刻(gameTime・体が後ろへ反る絵の起点)。 */
+  grab?: { enemyId: string; at: number; releaseAt: number; reachPx?: number };
+  /** 空中投げで投げた時刻(gameTime・投げの体の振りの起点・絵だけ)。投げた向きは dirX/dirY に書く。 */
+  throwAt?: number;
+  /** スープレックスの叩きつけの当たりを待っている相手(空中投げで投げ先が無かった時・反りの頂点 suplexAt+BRAWLER_SUPLEX_RISE_MS で当てる)。 */
+  suplexPendingId?: string;
+  /** 構えを技で取り消した時刻(Date.now)と、その時の構えの光の残り(0..1)。光を一度外へ押してから短く消す(絵だけ・§34-2)。 */
+  guardCancelAt?: number;
+  guardCancelRemain?: number;
+  /** スープレックスの反りを始めた時刻(gameTime)。反りの頂点(+BRAWLER_SUPLEX_RISE_MS)で叩きつける。 */
   suplexAt?: number;
   /**
    * ★密着の構え(research/BRAWLER.md §34-7): 構えを出した瞬間に体に密着していた敵を掴んだ。enemyId=掴んだ相手・mode=雑魚はスープレックス/強個体・ボス級は蹴りバク宙。

@@ -16,7 +16,9 @@ import { brawlerAirThrowGrabs, brawlerAirThrowMove } from './brawlerSkills';
 import { BRAWLER_TECH_NAMES } from '../data/brawlerTechNames';
 import {
   brawlerContactTarget, brawlerContactMode, brawlerStartContactGrab, brawlerFlipSpin, BRAWLER_CONTACT_PX, BRAWLER_CONTACT_GRAB_MS, BRAWLER_FLIPKICK_MS,
-  isBrawlerGuardingAt, brawlerDistTo,
+  isBrawlerGuardingAt, brawlerDistTo, BRAWLER_SUPLEX_RISE_MS, BRAWLER_SUPLEX_HOLD_MS, BRAWLER_SUPLEX_RETURN_MS, BRAWLER_SUPLEX_ARCH, BRAWLER_GRAB_LEAN,
+  brawlerThrowSwing, BRAWLER_THROW_SWING_MS, BRAWLER_THROW_SETTLE_MS, brawlerGrabGlow, brawlerGrabZoom, BRAWLER_GRAB_ZOOM, BRAWLER_GRAB_MS,
+  brawlerGuardCancelGlow, brawlerFlipArc, BRAWLER_FLIPKICK_APEX,
 } from './brawler';
 import { spawnEnemyAt } from './enemyUtils';
 import { playerSuperArmorActive } from './superArmor';
@@ -266,11 +268,61 @@ describe('§34-1 蹴り上げの絵(踵落としの上下逆・慣性)', () => {
     expect(Math.abs(pHit.jump - pPost.jump)).toBeLessThan(1);
     expect(pHit.lean).toBeLessThan(0); // 振り上げで後ろへ反る
   });
-  it('スープレックスの反り: 0から反り切って戻る(端で速さ0)', () => {
-    expect(brawlerSuplexArch(0, 400)).toBe(0);
-    expect(brawlerSuplexArch(400 * 0.3, 400)).toBe(1);
-    expect(brawlerSuplexArch(400, 400)).toBe(0);
-    expect(brawlerSuplexArch(1, 400)).toBeLessThan(0.01);
+  it('スープレックスの反り: 持ち上げて反り切る(頂点=叩きつけ)→ 頂点で留まる → ゆっくり戻る(端で速さ0)', () => {
+    expect(brawlerSuplexArch(0)).toBe(0);
+    expect(brawlerSuplexArch(1)).toBeLessThan(0.01);
+    expect(brawlerSuplexArch(BRAWLER_SUPLEX_RISE_MS)).toBe(1);
+    expect(brawlerSuplexArch(BRAWLER_SUPLEX_RISE_MS + BRAWLER_SUPLEX_HOLD_MS - 1)).toBe(1);
+    expect(brawlerSuplexArch(BRAWLER_SUPLEX_RISE_MS + BRAWLER_SUPLEX_HOLD_MS + BRAWLER_SUPLEX_RETURN_MS)).toBe(0);
+    expect(BRAWLER_SUPLEX_RETURN_MS).toBeGreaterThan(BRAWLER_SUPLEX_RISE_MS * 2); // 戻りは上がりよりゆっくり
+  });
+  it('密着のスープレックスは掴みの後半で反り始め、掴みの終わり(判定=叩きつけ)が反りの頂点', () => {
+    const s = brawlerStartContactGrab(initialBrawlerState(), 1000, 'e', 'suplex');
+    expect(s.suplexAt! + BRAWLER_SUPLEX_RISE_MS).toBe(1000 + s.windupMs);
+    expect(s.suplexAt).toBe(1000 + BRAWLER_CONTACT_GRAB_MS / 2);
+    const peak = brawlerPoseAt(s, 1000 + s.windupMs)!;
+    expect(peak.lean).toBeCloseTo(-BRAWLER_SUPLEX_ARCH, 6);
+    // 反りに入る瞬間は掴みの前傾と同じ(体が跳ばない)
+    const a = brawlerPoseAt(s, s.suplexAt! - 0.01)!, b = brawlerPoseAt(s, s.suplexAt! + 0.01)!;
+    expect(Math.abs(a.lean - b.lean)).toBeLessThan(0.01);
+  });
+  it('空中投げの掴み: 壁時計で寄せて前傾・止まっている間も慣性で入る', () => {
+    const k = { ...brawlerStartTech(initialBrawlerState(), 'kick', 1000, 2, false, false, true), resolved: true, grab: { enemyId: 'e', at: 5000, releaseAt: 5400, reachPx: 20 } };
+    expect(brawlerPoseAt(k, 2000, 5000)!.lean).toBeCloseTo(0, 6);
+    const full = brawlerPoseAt(k, 2000, 5200)!;
+    expect(full.lean).toBeCloseTo(BRAWLER_GRAB_LEAN, 6);
+    expect(full.push).toBeCloseTo(20, 6);
+    expect(full.sqY).toBeCloseTo(0.9, 6);
+  });
+  it('投げの体の振り: 後ろへ引いて前へ大きく振り抜き、戻る(端で0)', () => {
+    expect(brawlerThrowSwing(0).lean).toBeCloseTo(0, 6);
+    expect(brawlerThrowSwing(BRAWLER_THROW_SWING_MS * 0.3).lean).toBeLessThan(-0.3);
+    const peak = brawlerThrowSwing(BRAWLER_THROW_SWING_MS - 0.01);
+    expect(peak.lean).toBeGreaterThan(0.5);
+    expect(peak.push).toBeGreaterThan(15);
+    expect(brawlerThrowSwing(BRAWLER_THROW_SWING_MS + 0.01).lean).toBeCloseTo(peak.lean, 2);
+    expect(brawlerThrowSwing(BRAWLER_THROW_SWING_MS + BRAWLER_THROW_SETTLE_MS).on).toBe(false);
+  });
+  it('掴みの体の光: 一度膨らんで落ち着く(脈打たない=単調に落ち着く)', () => {
+    expect(brawlerGrabGlow(80)).toBeCloseTo(1, 6);
+    let prev = brawlerGrabGlow(80);
+    for (let t = 90; t <= 400; t += 10) { const v = brawlerGrabGlow(t); expect(v).toBeLessThanOrEqual(prev + 1e-9); prev = v; }
+    expect(brawlerGrabGlow(400)).toBeGreaterThan(0.5);
+  });
+  it('掴みの寄り: 掴みの間にゆっくり寄り、放したら戻る(つなぎ目で跳ばない)', () => {
+    expect(brawlerGrabZoom(0, null)).toBe(0);
+    expect(brawlerGrabZoom(BRAWLER_GRAB_MS, null)).toBeCloseTo(BRAWLER_GRAB_ZOOM, 6);
+    expect(brawlerGrabZoom(BRAWLER_GRAB_MS, 0)).toBeCloseTo(BRAWLER_GRAB_ZOOM, 6);
+    expect(brawlerGrabZoom(BRAWLER_GRAB_MS + 400, 400)).toBe(0);
+  });
+  it('構えの取り消しの光: 一度外へ押して150msで消える', () => {
+    expect(brawlerGuardCancelGlow(0, 0.8)).toEqual({ remain: 0.8, pop: 1 });
+    expect(brawlerGuardCancelGlow(75, 0.8).remain).toBeGreaterThan(0.4);
+    expect(brawlerGuardCancelGlow(150, 0.8)).toEqual({ remain: 0, pop: 0 });
+    const g = brawlerStartTech({ ...initialBrawlerState(), points: 10 }, 'guard', 1000);
+    const e = brawlerEndGuardForCancel(g, 1500, 7000);
+    expect(e.guardCancelAt).toBe(7000);
+    expect(e.guardCancelRemain).toBeGreaterThan(0);
   });
   it('覚えた蹴り上げのフリックの向き=上', () => {
     expect(brawlerFlickDirOf('kick', false, true)).toEqual({ x: 0, y: -1 });
@@ -281,8 +333,10 @@ describe('§34-1 蹴り上げの絵(踵落としの上下逆・慣性)', () => {
 describe('技の行の名前(§34-1・§34-3)', () => {
   it('蹴り上げ・空中投げ・スープレックス(向き=上)', () => {
     expect(BRAWLER_TECH_NAMES['tech:kickup']).toEqual({ name: '蹴り上げ', dir: 'up' });
-    expect(BRAWLER_TECH_NAMES['tech:airthrow']).toEqual({ name: '空中投げ', dir: 'up' });
     expect(BRAWLER_TECH_NAMES['tech:suplex']).toEqual({ name: 'スープレックス', dir: 'up' });
+    // 蹴り上げから自動で続く技は向きの印を出さない(続きの印・クリエイティブ監査 #12)
+    expect(BRAWLER_TECH_NAMES['tech:airthrow'].dir).toBe('chain');
+    expect(BRAWLER_TECH_NAMES['tech:suplexchain']).toEqual({ name: 'スープレックス', dir: 'chain' });
   });
 });
 
@@ -333,6 +387,16 @@ describe('§34-7 密着の構え(掴み→スープレックス/蹴りバク宙)
     expect(brawlerFlipSpin(0)).toBeCloseTo(0, 10);
     expect(brawlerFlipSpin(1)).toBeCloseTo(-2 * Math.PI, 10);
     expect(Math.abs(brawlerFlipSpin(1) - brawlerFlipSpin(0.99))).toBeLessThan(0.002);
+    expect(brawlerFlipSpin(BRAWLER_FLIPKICK_APEX)).toBeLessThan(-Math.PI); // 頂点の前に半分以上回る
+  });
+  it('蹴りバク宙の跳び: 速く上がって重く落ちる(頂点が前寄り・着地の瞬間が一番速い)', () => {
+    expect(brawlerFlipArc(0)).toBe(0);
+    expect(brawlerFlipArc(BRAWLER_FLIPKICK_APEX)).toBeCloseTo(1, 6);
+    expect(brawlerFlipArc(1)).toBeCloseTo(0, 6);
+    const vEnd = brawlerFlipArc(0.99) - brawlerFlipArc(1);
+    const vStart = brawlerFlipArc(0.01) - brawlerFlipArc(0);
+    expect(vEnd).toBeGreaterThan(0); expect(vStart).toBeGreaterThan(0);
+    expect(Math.abs(brawlerFlipArc(BRAWLER_FLIPKICK_APEX + 0.01) - brawlerFlipArc(BRAWLER_FLIPKICK_APEX))).toBeLessThan(0.001);
   });
   it('地上の雑魚へのスープレックスも跳ね上がる(予算2を使う)', () => {
     const r = brawlerJugglePush({}, 'mob', 'suplex', 1000)!;
