@@ -21,6 +21,9 @@ import {
   hasWeaponBlueprint, markWeaponBlueprint, getWeaponBlueprints, clearWeaponBlueprints,
   hasSubBlueprint, markSubBlueprint, getSubBlueprints, clearSubBlueprints,
 } from './progress';
+import {
+  putStageSubquestState, flushSubquestSaveForTest, resetSubquestSaveCacheForTest, loadSubquestSave,
+} from '../utils/subquests';
 
 beforeEach(() => { for (const k of Object.keys(backing)) delete backing[k]; });
 
@@ -255,3 +258,34 @@ describe('年表のステージ6フィルタ(社長指示v0.25.2150「クリア�
 
 // ランク持ち越し(旧startRank/stageMinStartRank系)はPACING_PUZZLE.md §7-11c(2)で廃止された。
 // 置き換え先(rankFloorForElapsed等)のテストは src/utils/rankFloor.test.ts 側にある。
+
+// 開発用「進行リセット」が端末の進行記録を取りこぼさないこと(ステージ1の1周目・チュートリアル既読・
+// 資料室・サブクエスト・英雄の昇天・宿敵・ボスの物語の既読)。所持金など進行外の記録は残すこと。
+describe('resetProgress: 進行記録を全部消し、進行外の記録は残す', () => {
+  it('7種類のキーが消え、goldBalance は残る', () => {
+    const progressKeys = [
+      'zombie.progress.stage1FirstLoopCleared',
+      'zombie:tutorialsSeen',
+      'zombie:tut:lab-phill',
+      'zombie:tut:lab-scout',
+      'zombie:storyArchive',
+      'zombie.progress.subquests',
+      'zombie.progress.heroAscended',
+      'zombie:namedFoe',
+      'boss.storyRead.v1',
+    ];
+    for (const k of progressKeys) localStorage.setItem(k, '1');
+    localStorage.setItem('zombie:goldBalance', '1234');
+    resetProgress();
+    for (const k of progressKeys) expect(localStorage.getItem(k), k).toBeNull();
+    expect(localStorage.getItem('zombie:goldBalance')).toBe('1234');
+  });
+
+  it('サブクエストはメモリ上のキャッシュも消える(次の書き込みで古い進捗が戻らない)', () => {
+    resetSubquestSaveCacheForTest();
+    putStageSubquestState('stage-1', { cleared: ['q1'], active: [] });
+    flushSubquestSaveForTest();
+    resetProgress();
+    expect(loadSubquestSave()).toEqual({});
+  });
+});

@@ -426,6 +426,12 @@ export const saveStoryArchive = (state: StoryArchiveState): void => {
   }
 };
 
+/** 開発用(進行リセット): 資料室の解放・既読の記録を消す。 */
+export const clearStoryArchive = (): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+};
+
 // ステージクリア確定時に呼ぶ: そのステージの recordIds(= StageMission.unlockedRecordIds)を解放する。
 // 冪等(既に解放済みのIDは増えない=STORY_UI_SPEC.md 9章「同じ資料を重複解放しない」)。
 // 戻り値は「今回新規に解放されたレコードID」(再クリア時は空配列)。呼び出し側(GameOverScreen)が

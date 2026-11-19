@@ -252,6 +252,13 @@ export const writeSubquestSave = (save: SubquestSave): void => {
 export const flushSubquestSaveForTest = (): void => { flushQueued = false; flushSaveNow(); };
 /** テスト用: キャッシュ破棄(テストがlocalStorageを直接書き換えた後に呼ぶ)。 */
 export const resetSubquestSaveCacheForTest = (): void => { saveCache = null; flushQueued = false; };
+/** 開発用(進行リセット): 保存とキャッシュを消す(キャッシュを残すと次の書き込みで古い進捗が戻る)。 */
+export const clearSubquestSave = (): void => {
+  saveCache = null;
+  flushQueued = false;
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.removeItem(SUBQUEST_SAVE_KEY); } catch { /* ignore */ }
+};
 
 export const getStageSubquestState = (stageId: string): SubquestStageState =>
   loadSubquestSave()[stageId] ?? emptyStageState();

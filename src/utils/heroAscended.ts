@@ -9,3 +9,7 @@ export const loadHeroAscended = (): boolean => {
 export const saveHeroAscended = (): void => {
   try { if (typeof localStorage !== 'undefined') localStorage.setItem(KEY, '1'); } catch { /* ignore */ }
 };
+/** 開発用(進行リセット): 昇天の印を消す。 */
+export const clearHeroAscended = (): void => {
+  try { if (typeof localStorage !== 'undefined') localStorage.removeItem(KEY); } catch { /* ignore */ }
+};

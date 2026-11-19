@@ -148,6 +148,9 @@ export const isPromotionExcluded = (
   // この型だけを湧かせると描かれない・動かない壁になる。叩きつけの持ち主=代理なので、ここで止めないと塊に倒された死が昇格する。
   || isLabCrawlerProxyType(killerType);
 
+/** 宿敵(ネームド)メタの保存キー(読み書きは gameStore・進行リセットは progress が消す)。 */
+export const NAMED_FOE_KEY = 'zombie:namedFoe';
+
 /**
  * 保存済みの宿敵メタの浄化(v0.25.3694)。除外型(幻影等)が過去の穴で保存されてしまった端末を
  * 読込時に救済する(nullなら宿敵不在に戻る)。redNightは保存時の状態と無関係なのでfalseで判定。

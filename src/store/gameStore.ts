@@ -197,7 +197,7 @@ import { BOSS_NEUTRAL_CASTLE_MS } from '../utils/bossRebuild'; // ★社長裁�
 import { softCapCritChance } from '../utils/critSoftCap';
 import { resetCritDecay } from '../utils/critDecay'; // ★§13-3e クリ減衰(社長裁定2026-08-26)
 import {
-  type NamedFoeMeta, NAMED_TREASURE_GOLD, NAMED_LOOT_MULT, rollNamedSpawnThisRun, decidePromotionOnDeath, resolveDamager, sanitizeNamedFoe,
+  type NamedFoeMeta, NAMED_TREASURE_GOLD, NAMED_LOOT_MULT, rollNamedSpawnThisRun, decidePromotionOnDeath, resolveDamager, sanitizeNamedFoe, NAMED_FOE_KEY,
   NAMED_HP_MULT, NAMED_DMG_MULT, NAMED_SIZE_MULT, pickNamedEnemyName, normalizeNamedName,
 } from '../utils/namedEnemy';
 import {
@@ -1710,7 +1710,7 @@ retireSubWeaponsOnce();
 
 // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)のメタ保存({型,名前,因縁回数}の1体分のみ・
 // 新たに別の敵に殺されたら上書き)。goldBalance等と同じtry/catch guarded JSON永続化パターン。
-const NAMED_FOE_KEY = 'zombie:namedFoe';
+// 保存キー NAMED_FOE_KEY は utils/namedEnemy.ts(進行リセットからも引けるよう store の外に置く)。
 const loadNamedFoe = (): NamedFoeMeta | null => {
   try {
     const r = localStorage.getItem(NAMED_FOE_KEY);

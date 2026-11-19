@@ -87,6 +87,11 @@ export const markBossStoryRead = (key: string): Set<string> => {
   return set;
 };
 
+/** 開発用(進行リセット): 本文を開いた記録を消す。 */
+export const clearReadBossStories = (): void => {
+  try { localStorage.removeItem(READ_KEY); } catch { /* ignore */ }
+};
+
 /** 開発用: `?archiveall=1` で特殊変異体の棚を全部開く(表示だけ=倒した記録は書かない)。 */
 export const BOSS_STORY_ARCHIVE_ALL: boolean =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('archiveall') === '1';

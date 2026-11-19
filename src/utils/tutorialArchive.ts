@@ -56,3 +56,10 @@ export const markTutorialSeen = (id: TutorialId): void => {
     /* 保存できなくても表示自体は成立する(次のランでまた出るだけ) */
   }
 };
+
+/** 開発用(進行リセット): 既読の記録を新キー・旧キーとも消す。 */
+export const clearSeenTutorials = (): void => {
+  for (const k of [KEY, ...Object.values(LEGACY_KEYS)]) {
+    try { localStorage.removeItem(k as string); } catch { /* ignore */ }
+  }
+};

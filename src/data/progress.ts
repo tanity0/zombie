@@ -10,6 +10,12 @@ import { clearWelcomeStreaks } from '../utils/welcomeStreak';
 import { clearBossEncounters, unlockAllBossEncounters } from '../utils/bossEncounter';
 import { clearBossDefeated } from '../utils/bossDefeated';
 import { clearSortiePatrolPlan } from '../utils/sortiePatrolPlan';
+import { clearSeenTutorials } from '../utils/tutorialArchive';
+import { clearStoryArchive } from './storyArchive';
+import { clearSubquestSave } from '../utils/subquests';
+import { clearHeroAscended } from '../utils/heroAscended';
+import { NAMED_FOE_KEY } from '../utils/namedEnemy';
+import { clearReadBossStories } from '../utils/bossStoryArchive';
 // ★練習ランの出撃先(下の「実行時上書き」)。import方向は progress→bossPractice の一方通行
 // (bossPractice側はprogressを読まない)。逆向き(bossPractice→progress)にすると
 // bossPractice→progress→bossEncounter→bossPractice の循環になるので注意。
@@ -729,6 +735,13 @@ export const resetProgress = (): void => {
   clearBossEncounters(); // ボスラッシュの遭遇記録も進行リセットで消す(開発用・BOSS_MAKER.md §20-5)
   clearBossDefeated(); // 倒した記録(作戦室の地図の顔・research/SORTIE_MAP_BOSS_ICONS.md §4)
   clearSortiePatrolPlan(); // 作戦室で引いた徘徊の枠(同 §3)
+  try { localStorage.removeItem(STAGE1_FIRST_LOOP_KEY); } catch { /* ignore */ } // ステージ1の1周目クリア済みも進行リセットで消す(開発用)
+  clearSeenTutorials(); // チュートリアルの既読(新旧キー)も進行リセットで消す(開発用)
+  clearStoryArchive(); // 資料室の解放・既読も進行リセットで消す(開発用)
+  clearSubquestSave(); // サブクエストの達成・受注も進行リセットで消す(開発用)
+  clearHeroAscended(); // 英雄の昇天の印も進行リセットで消す(開発用)
+  try { localStorage.removeItem(NAMED_FOE_KEY); } catch { /* ignore */ } // 宿敵(ネームド)も進行リセットで消す(開発用)
+  clearReadBossStories(); // ボスの物語の既読も進行リセットで消す(開発用)
   setSelectedMission('main');
 };
 

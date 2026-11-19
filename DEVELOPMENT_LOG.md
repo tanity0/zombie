@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5661 — 1周目リザルト文面の確定・進行リセットの消し漏れ修正【2026-11-19 16:46】
+- 1周目リザルト(`LOOP1_REPORT_LINES`)を社長承認の3行へ: 「グレンとミラを保護した。」「二人から、PHILL再生医療研究所へ通じる経路を聞き出した。」「経路上に大型変異体を確認。排除を優先する。」(M0で研究所の位置は判明済みのため「経路」)。画面を撮って目視。
+- 社長報告「進行リセットで今回のチュートリアル等が消えない」: `resetProgress()` に追加=stage1FirstLoopCleared/既読チュートリアル(tutorialsSeen+旧lab2キー)/資料室 storyArchive/サブクエスト(メモリの写しと遅延書き込みも破棄)/heroAscended/宿敵 namedFoe(キーを utils/namedEnemy.ts へ移して循環回避)/ボス物語既読 boss.storyRead.v1。ガチャ・所持金・設定・ゴースト系は対象外のまま。実装はOpusサブエージェント。
+- 検証: typecheck・eslint 0・progress.test 32件(新規2件含む)+関連23ファイル緑。
+- 自己点検: ゲーム中の挙動には触れていない(開発用リセットのみ)。第4条・第5条に抵触なし。
+
 ## v0.25.5660 — ステージ1の1周目: 二人組の会話を従来の通信へ・流れの組み直し【2026-11-19 10:39】
 - **実装はOpusサブエージェント・検収は設計チャット**。全部 `STAGE1_FIRST_LOOP_ENABLED` の内側。
 - 二人組の到着会話は IntroDialogue(停止+タップ送り)をやめ、**従来の通信(NpcDialogue+「通信」バナー・世界は止めない)**へ=方式(c)。到着の4行は1周目専用の定数(`EVENT_QUEST_SUB_ACCEPT_LINES` は不変・テストで固定)。お礼は v4 の受け渡しと同じ(deliveryLocked→COMPLETE_LINES)。
