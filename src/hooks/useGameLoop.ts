@@ -563,6 +563,7 @@ import {
   STAGE1_FIRST_LOOP_STAGE_ID, type Stage1LoopState, type Loop1Talk,
   LOOP1_DUO_REVEAL_DELAY_MS, tickLoop1DuoWait, LOOP1_ARRIVAL_LINES, LOOP1_HELP_COMM_LINES,
   loop1KomaNow, LOOP1_CAPTURE_PEAK_MS, loop1ModeBarTutorialDue, loop1ModeHandBackDue,
+  stage1GuardianTutorialDue, type GuardianBoundKind,
   loop1WrongWayRegion, loop1WrongWayPeak, stepLoop1WrongWay,
 } from '../utils/stage1FirstLoop';
 import { pickNpcLine, npcLinesInOrder } from '../data/npcLines';
@@ -1022,6 +1023,14 @@ const evParam = (key: string): string | null =>
 // bounty=賞金首の発火半径の外へ / hospital=西の拠点を確保済みに / duo=ワクチン取得済み(二人の近くへ) /
 // talk=二人のサークルの中へ / enclosure=囲いの開始 / goal=ゴールサークルの手前へ / thanks=ゴールサークルの中へ。
 const LOOP1_PHASE_JUMP = import.meta.env.DEV ? evParam('loop1phase') : null;
+// 守護霊のマスト化(STAGE1_FIRST_LOOP.md §7.8): いま来ている守護霊(退場中は除く)が誰に紐付いているか(賞金首/城ボス/その他)。居なければ null。
+const guardianBoundKindNow = (st: { summons: readonly Summon[]; enemies: readonly Enemy[] }): GuardianBoundKind | null => {
+  const g = st.summons.find(su => su.kind === 'ghost-ally' && su.ghostDepartureStartedAt === undefined);
+  if (!g) return null;
+  const b = st.enemies.find(e => e.id === g.ghostBossId);
+  if (!b) return null;
+  return isBountyType(b.type) ? 'bounty' : b.type === 'giantbat' ? 'castle' : 'other';
+};
 const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ランダム / 'horde' / 'boss' / 'rescue'
 // デバッグ(社長試作v0.25.1861): ?nospawn=1 で敵の湧きを全て止める(パズル盤面/旧スポナー/叫喚/
 // 囲い・関所/紅き夜/ハンター/死神/城ボス)。映像美の確認用に自由に歩き回るため。ゲーム/描画の他要素は不変。
@@ -5996,6 +6005,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               case 'startThanksTalk': startTalk = 'thanks'; break;
               default: break;
             }
+            // 守護霊(§7.8): 賞金首に守護霊が来た(=交戦が始まった)最初の瞬間に積む。召喚は directorTick の既存の経路(1周目も守護霊固定)。
+            if (stage1GuardianTutorialDue({ firstLoop: true, locked: true, seen: false, queued: L.guardianTutQueued, boundKind: guardianBoundKindNow(l1s) })) {
+              patch.guardianTutQueued = true;
+              tutQueue = enqueueLoop1Tutorial(tutQueue, 'guardian');
+            }
             // 「敵の動き」(社長指示2026-11-19): 確保のピークが明け、ポップアップ・通信・アテンション・段の仕事が何も無い時に積む(重ねない)。
             if (loop1ModeBarTutorialDue({
               queued: L.modeBarQueued, capturePeakUntil: patch.capturePeakUntil ?? L.capturePeakUntil, gameTime: newGameTime,
@@ -6100,6 +6114,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             gameTimeMs: newGameTime,
           })) {
             showTutorialOnce('stage1-guide');
+          }
+        }
+
+        // 守護霊(STAGE1_FIRST_LOOP.md §7.8): 1周目で見ていなければ、2周目以降のステージ1で賞金首か城ボスに守護霊が来た最初の瞬間に(端末既読)。
+        // ロック(ステージ1未クリア=同行者は守護霊固定)の出撃だけ。ポップアップ・メニュー・アテンションの間は閉じるまで待つ。
+        if (!firstLoop && useGameStore.getState().stage1GuardianLock && !seenTutorials().has('guardian') && !useGameStore.getState().bossMaker.active) {
+          const st = useGameStore.getState();
+          if (st.tutorialPopup === null && !st.showShopMenu && !st.showUpgradeMenu && !st.attention
+            && stage1GuardianTutorialDue({ firstLoop: false, locked: true, seen: false, queued: false, boundKind: guardianBoundKindNow(st) })) {
+            showTutorialOnce('guardian');
           }
         }
 

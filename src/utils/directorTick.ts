@@ -74,6 +74,7 @@ import {
 } from './ghostComment';
 import { ghostAllySnapshot } from './playerBuild'; // v0.25.2553(§2.16 B): 同行守護霊カードの写し(共通の1枚)
 import { defaultGhostProfile, ghostRunEnabled, GHOST_BOSS_HP_MULT, withSynthesizedMicroRhythm, type GhostProfile } from './ghostDriver'; // BOT_AND_GHOST.md G2/G3(GHOST_HP_FRACはv0.25.2468で廃止=計測時スナップショット100%再現へ)
+import { stage1RunCompanion } from './stage1FirstLoop'; // STAGE1_FIRST_LOOP.md §7.8(守護霊のマスト化)
 import {
   fixedGhostFeedbackTarget, isGhostOnlinePickPending, remoteGhostFeedbackTarget,
   resolveRemoteGhost, selectedGhostMode,
@@ -873,8 +874,10 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
   // SKILL_BUILD_REDESIGN.md §20(B4・配線全列挙): 同行者はplayer.skillsに入らない(§8点1)ため、
   // 判定はstate.companionSkill(gameStore.resetGameがこのランの実効値を確定させる)を読む
   // (player.skills経由の暗黙参照は廃止=旧実装はMAX_CARRY_SKILLS=0で常に空になり死んでいた経路)。
-  // ステージ1の1周目(STAGE1_FIRST_LOOP.md §7.6 D): 守護霊は出さない(同行者の選択は保存のまま触らない=このランだけ空として読む)。
-  const companionSkills: SkillKey[] = state.companionSkill && !state.stage1Loop ? [state.companionSkill] : [];
+  // ステージ1の守護霊のマスト化(STAGE1_FIRST_LOOP.md §7.8・旧 §7.6 D「1周目は守護霊を出さない」を置き換え): ステージ1をクリアするまでの
+  // ステージ1の出撃(1周目も)は守護霊に固定。召喚はこの先の既存の経路のまま(賞金首/ボスとの交戦で来る)。選択の保存値は触らない。
+  const runCompanion = stage1RunCompanion(state.companionSkill, state.stage1GuardianLock || state.stage1Loop !== null);
+  const companionSkills: SkillKey[] = runCompanion ? [runCompanion] : [];
   const ghostRunActive = ghostRunEnabled(ghostDebugEnabled, companionSkills);
 
   // G1: 計測(純関数へ委譲。この関数自体はplayerTraitsが必要とする値をstoreから集めて渡すだけ)。

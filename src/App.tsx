@@ -35,7 +35,7 @@ import {
   getStage1FirstLoopCleared, markStage1FirstLoopCleared,
   type SelectedMission,
 } from './data/progress';
-import { isStage1FirstLoopRun, parseLoop1Force, STAGE1_FIRST_LOOP_ENABLED } from './utils/stage1FirstLoop';
+import { isStage1FirstLoopRun, isStage1GuardianLockRun, parseLoop1Force, STAGE1_FIRST_LOOP_ENABLED } from './utils/stage1FirstLoop';
 import { unlockRecordsForStage, unlockRecords, backfillStoryArchive, ENDING_RECORD_IDS } from './data/storyArchive';
 import { subsAllCompletedFromMeta, endingFollowup } from './utils/storyProgress';
 import { getEventQuestConfig } from './utils/eventQuest';
@@ -388,17 +388,26 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     useGameStore.getState().setPendingStoryBoss(!benchmark && !!stageForRun?.storyBossOnly);
     useGameStore.getState().setPendingRevisit(revisitRun);
     // ステージ1の1周目(STAGE1_FIRST_LOOP.md §2・§7.5「1周目にしない出撃」)。判定は純関数1本。
-    useGameStore.getState().setPendingStage1FirstLoop(isStage1FirstLoopRun({
+    const loop1Common = {
       enabled: STAGE1_FIRST_LOOP_ENABLED,
-      force: parseLoop1Force(window.location.search),
       stageId: stageForRun?.id ?? '',
-      firstLoopCleared: getStage1FirstLoopCleared(),
       benchmark,
       free: getSelectedFreeMode(),
       practice: isPracticeRun() || isGauntletRun(),
       bossTestRun: BOSS_TEST_RUN,
       smoke: new URLSearchParams(window.location.search).get('smoke') !== null,
       revisit: revisitRun,
+    };
+    const firstLoopRun = isStage1FirstLoopRun({
+      ...loop1Common,
+      force: parseLoop1Force(window.location.search),
+      firstLoopCleared: getStage1FirstLoopCleared(),
+    });
+    useGameStore.getState().setPendingStage1FirstLoop(firstLoopRun);
+    // 守護霊のマスト化(STAGE1_FIRST_LOOP.md §7.8): ステージ1をクリアするまで、ステージ1の出撃は同行者を守護霊に固定(1周目も)。
+    useGameStore.getState().setStage1GuardianLock(firstLoopRun || isStage1GuardianLockRun({
+      ...loop1Common,
+      stageCleared: getClearedStages().has(stageForRun?.id ?? ''),
     }));
     useGameStore.getState().setPendingCorridor(corridorRun);
     useGameStore.getState().setPendingHiddenBoss(stageForRun?.hiddenBoss ?? null);

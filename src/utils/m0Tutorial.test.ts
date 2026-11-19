@@ -53,7 +53,8 @@ describe('台帳の体裁(全チュートリアル共通)', () => {
   // 資料室だけに並ぶ文字の項目。手本の収録は社長が用意する時に足す。
   // 'base-capture' / 'base-use'(ステージ1の1周目の拠点の確保/利用): 手本の収録は後日=テキストのみ。
   // 'mode-bar' / 'mutant-tier'(ステージ1の1周目の敵の動き/変異体の危険度・社長指示2026-11-19): 同じく手本は後日。
-  const AWAITING_SAMPLE: string[] = ['detour-poi', 'stage1-guide', 'base-capture', 'base-use', 'mode-bar', 'mutant-tier', 'hit-retaliation', 'escort-kick', 'fast-travel', 'escort-follow'];
+  // 'guardian'(ステージ1の守護霊・STAGE1_FIRST_LOOP.md §7.8): 同じく手本は後日。
+  const AWAITING_SAMPLE: string[] = ['detour-poi', 'stage1-guide', 'base-capture', 'base-use', 'mode-bar', 'mutant-tier', 'guardian', 'hit-retaliation', 'escort-kick', 'fast-travel', 'escort-follow'];
   it('全件に手本(img)が付いている(手本待ちの明示列挙を除く)', () => {
     for (const t of TUTORIALS) {
       if (AWAITING_SAMPLE.includes(t.id)) continue;

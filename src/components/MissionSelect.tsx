@@ -113,6 +113,7 @@ import DsStoryMap from './DsStoryMap'; // 作戦室の地図=架空列島+スト
 import NoBounceScroller from './NoBounceScroller';
 import { nextOperationStage } from '../utils/dsHome';
 import { reportTestScreen, type TestScreenId } from '../utils/testBridge';
+import { STAGE1_FIRST_LOOP_ENABLED, stage1GuardianLockShown, stage1RunCompanion, STAGE1_GUARDIAN_LOCK_NOTE } from '../utils/stage1FirstLoop'; // STAGE1_FIRST_LOOP.md §7.8(守護霊のマスト化)
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
 import { useNpcChatterEnabled, setNpcChatterEnabled } from '../utils/npcChatter'; // オプション「仲間の雑談」
 import { useHudHintsEnabled, setHudHintsEnabled, useWindowLandscape, usePadKindActive } from '../utils/hudHints'; // ゲーム中のボタン札の表示/非表示(research/PC_SUPPORT.md §14-7)
@@ -1283,6 +1284,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // M0(訓練・stage-tutorial)はヘビーガンナー固定・守護霊枠なし(社長指示2026-08-20)。
     // チュートリアルは1キャラに絞って説明を単純に保つ(選択肢と同行者は本編から)。
     const isTutorial = stageId === 'stage-tutorial';
+    // 守護霊のマスト化(STAGE1_FIRST_LOOP.md §7.8): ステージ1をクリアするまで、ステージ1の守護霊枠は守護霊で固定(選択の保存値は変えない=表示だけ)。
+    const guardianLocked = !isTutorial && stage1GuardianLockShown({
+      enabled: STAGE1_FIRST_LOOP_ENABLED, stageId, stageCleared: cleared.has(stageId), free: freeMode,
+    });
+    const shownCompanion = stage1RunCompanion(companionSkill, guardianLocked);
     const selectableClasses = isTutorial ? CHARACTER_CLASSES.filter(x => x.id === 'warrior') : CHARACTER_CLASSES;
     const effectiveClass = isTutorial ? 'warrior' : selectedClass;
     const c = CHARACTER_CLASSES.find(x => x.id === effectiveClass) ?? CHARACTER_CLASSES[0];
@@ -1409,25 +1415,27 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               className="relative shrink-0 flex flex-col items-center justify-end rounded-none pt-2 pb-1 px-2 transition-[filter] active:brightness-110"
               style={{
                 width: 74, height: 80,
-                background: companionSkill
+                background: shownCompanion
                   ? 'linear-gradient(95deg, rgba(232,121,249,0.22) 0%, rgba(232,121,249,0.08) 55%, transparent 100%)'
                   : 'linear-gradient(95deg, rgba(24,15,38,0.42) 0%, rgba(24,15,38,0.18) 55%, transparent 100%)',
                 borderTop: '1px solid transparent',
                 borderBottom: '1px solid transparent',
-                borderImage: `linear-gradient(90deg, rgba(232,121,249,${companionSkill ? 0.9 : 0.45}) 0%, rgba(232,121,249,${companionSkill ? 0.5 : 0.25}) 45%, transparent 100%) 1`,
+                borderImage: `linear-gradient(90deg, rgba(232,121,249,${shownCompanion ? 0.9 : 0.45}) 0%, rgba(232,121,249,${shownCompanion ? 0.5 : 0.25}) 45%, transparent 100%) 1`,
               }}
               aria-label="守護霊を選ぶ"
             >
-              <div className="absolute bottom-1 h-3 w-10 rounded-full blur-md" style={{ backgroundColor: 'rgba(232,121,249,0.6)', opacity: companionSkill ? 0.7 : 0.25 }} />
+              <div className="absolute bottom-1 h-3 w-10 rounded-full blur-md" style={{ backgroundColor: 'rgba(232,121,249,0.6)', opacity: shownCompanion ? 0.7 : 0.25 }} />
+              {/* ステージ1をクリアするまでは守護霊で固定(STAGE1_FIRST_LOOP.md §7.8)。枠の右上に錠。 */}
+              {guardianLocked && <PixelIcon name="lock" size={11} className="absolute right-1 top-1 text-fuchsia-200/80" />}
               {/* 未選択=ヘビーガンナーのシルエット(黒塗り)。選択後=そのスキルのアイコン
                   (社長指示2026-08-20「選択した後の画像もスキルアイコンに合わせた方がいい」)。 */}
-              {companionSkill ? (
+              {shownCompanion ? (
                 <span className="relative w-[44px] h-[44px] flex items-center justify-center text-2xl overflow-hidden">
                   {(() => {
-                    const single = skillSingleIconName(companionSkill);
+                    const single = skillSingleIconName(shownCompanion);
                     if (single) return <img src={spritePath(single)} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />;
-                    const st = skillSheet && hasSkillIcon(companionSkill) ? skillIconStyle(companionSkill, skillSheet.url, 44, skillSheet) : null;
-                    return st ? <span style={st} aria-hidden /> : skillIcon(companionSkill);
+                    const st = skillSheet && hasSkillIcon(shownCompanion) ? skillIconStyle(shownCompanion, skillSheet.url, 44, skillSheet) : null;
+                    return st ? <span style={st} aria-hidden /> : skillIcon(shownCompanion);
                   })()}
                 </span>
               ) : (
@@ -1439,8 +1447,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   style={{ imageRendering: 'pixelated', filter: 'brightness(0) opacity(0.8)' }}
                 />
               )}
-              <span className={`relative mt-0.5 text-[8px] leading-none ${companionSkill ? 'text-fuchsia-200' : 'text-white/55'}`}>
-                {companionSkill ? SKILLS[companionSkill].name : '守護霊：なし'}
+              <span className={`relative mt-0.5 text-[8px] leading-none ${shownCompanion ? 'text-fuchsia-200' : 'text-white/55'}`}>
+                {shownCompanion ? SKILLS[shownCompanion].name : '守護霊：なし'}
               </span>
             </button>}
           </div>
@@ -1459,29 +1467,38 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               onClick={e => e.stopPropagation()}
             >
               <div className="mb-2 text-[11px] uppercase tracking-widest text-fuchsia-200/70">守護霊を連れて行く</div>
+              {guardianLocked && (
+                <div className="mb-2 flex items-center gap-1.5 text-[11px] text-fuchsia-100/85">
+                  <PixelIcon name="lock" size={12} className="shrink-0" />
+                  <span>{STAGE1_GUARDIAN_LOCK_NOTE}</span>
+                </div>
+              )}
               <div data-nav-group="ghost-picks" data-nav-kind="list" className="menu-stagger space-y-2">
                 {/* なし(初期値) */}
                 <button
-                  {...(companionSkill === null ? { 'data-nav-default': '' } : {})}
-                  onClick={() => { playSfx('ui-move'); setCompanionSkill(null); setGhostPickerOpen(false); }}
+                  {...(shownCompanion === null ? { 'data-nav-default': '' } : {})}
+                  disabled={guardianLocked}
+                  onClick={() => { if (guardianLocked) return; playSfx('ui-move'); setCompanionSkill(null); setGhostPickerOpen(false); }}
                   className={`ff7r-fade-right flex w-full items-center justify-between gap-2 rounded-none px-3 py-2.5 text-left transition-[filter] ${
-                    companionSkill === null ? 'is-on text-white' : 'text-white/85 active:brightness-110'
+                    shownCompanion === null ? 'is-on text-white' : guardianLocked ? 'text-white/85 opacity-40' : 'text-white/85 active:brightness-110'
                   }`}
                 >
                   <span className="text-[13px] font-semibold">なし</span>
-                  {companionSkill === null && <PixelIcon name="check" size={15} className="shrink-0" />}
+                  {shownCompanion === null && <PixelIcon name="check" size={15} className="shrink-0" />}
                 </button>
                 {/* レア度表記は出さない(社長指示2026-08-20「超レアとか消して。もはやスキル枠とは別枠なので」)。
                     スキルアイコン(①単体ファイル ②1枚シート ③絵文字の優先順=UpgradeMenuと同じ文法)を付ける。 */}
                 {COMPANION_SKILL_KEYS.map(k => {
-                  const on = companionSkill === k;
+                  const on = shownCompanion === k;
+                  const lockedOut = guardianLocked && !on; // ロック中は守護霊以外を選べない
                   return (
                     <button
                       key={k}
                       {...(on ? { 'data-nav-default': '' } : {})}
-                      onClick={() => { playSfx('ui-move'); setCompanionSkill(k); setGhostPickerOpen(false); }}
+                      disabled={lockedOut}
+                      onClick={() => { if (guardianLocked) { setGhostPickerOpen(false); return; } playSfx('ui-move'); setCompanionSkill(k); setGhostPickerOpen(false); }}
                       className={`ff7r-fade-right flex w-full items-start gap-3 rounded-none px-3 py-2.5 text-left transition-[filter] ${
-                        on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
+                        on ? 'is-on text-white' : lockedOut ? 'text-white/85 opacity-40' : 'text-white/85 active:brightness-110'
                       }`}
                     >
                       <span className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-purple-400/10 overflow-hidden">

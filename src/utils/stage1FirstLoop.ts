@@ -6,7 +6,7 @@
 // 1周目に出さない物の一覧を置く。配線(gameStore/useGameLoop/pixiScene)はここを読むだけ。
 import { DETOUR_DIST, DETOUR_ANGLE_SCATTER_RAD } from '../world/detourPoi';
 import { sectorIndexForAngle } from '../world/pois';
-import type { EventQuestNpc } from '../types/game';
+import type { EventQuestNpc, SkillKey } from '../types/game';
 import { welcomeAdvance, type WelcomeAdvanceResult } from './welcomeScript';
 
 /** ★1周目構成の総スイッチ(§1)。false=現行のステージ1と同じ(二人組v4・城ボス・解放条件を含む)。 */
@@ -93,10 +93,12 @@ export interface Stage1LoopState {
   /** 逆方向の通信: 次に踏み出した時に出せるか(西へ戻る/軍備配置区域の半ばより内へ戻ると立つ)・最後に出したゲーム時刻。 */
   wrongWayArmed: boolean;
   wrongWayLastAt: number;
+  /** 「守護霊」のチュートリアルを積んだか(賞金首に守護霊が来た最初の瞬間に1回だけ=§7.8)。 */
+  guardianTutQueued: boolean;
 }
 
 /** 1周目で出すチュートリアル(tutorials.ts の id)。 */
-export type Loop1TutorialId = 'base-capture' | 'base-use' | 'detour-poi' | 'mode-bar' | 'mutant-tier';
+export type Loop1TutorialId = 'base-capture' | 'base-use' | 'detour-poi' | 'mode-bar' | 'mutant-tier' | 'guardian';
 
 /** 1周目で確保の対象になる拠点=西(セクター2・角度π)。他の3つは印・サークル・軍人を出さない(§7.6 C)。 */
 export const LOOP1_BASE_ID = 'base-2';
@@ -136,6 +138,7 @@ export const createStage1LoopState = (soldierIndex: number): Stage1LoopState => 
   modeHandedBack: false,
   wrongWayArmed: true,
   wrongWayLastAt: Number.NEGATIVE_INFINITY,
+  guardianTutQueued: false,
 });
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -354,9 +357,60 @@ export const loop1HospitalPlaced = (phase: Loop1Phase | null | undefined): boole
   phase !== 'base' && phase !== 'afterBase' && phase !== 'baseComm';
 
 // ───────────────────────────────────────────────────────────────────────────
+// 守護霊のマスト化(§7.8・社長 2026-11-18「ステージ1はどちらも守護霊がマストでオフにできない。(クリア後は通常通り)」)
+// ステージ1を(2周目で)クリアするまでの間、ステージ1の出撃では同行者を守護霊に固定する。召喚そのものは既存の経路
+// (directorTick.runGhostAndTraitsStep=ボス/賞金首との交戦で召喚)をそのまま使う=ここは「誰を連れていくか」だけを決める。
+// ★1周目(§7.6 D の「守護霊は出さない」)は §7.8 で置き換わった=1周目も守護霊を連れていく(賞金首との交戦で来る)。
+/** 固定する同行者(campaign.SKILLS の守護霊)。 */
+export const STAGE1_LOCKED_COMPANION: SkillKey = 'guardian-spirit';
+
+export interface Stage1GuardianLockInput {
+  enabled: boolean;      // STAGE1_FIRST_LOOP_ENABLED
+  stageId: string;
+  stageCleared: boolean; // 端末の「ステージ1クリア済み」(progress.getClearedStages の stage-1)
+  benchmark: boolean;
+  free: boolean;
+  practice: boolean;     // 練習(ボスモード)・ガントレット=ボスモードの同行者欄が正
+  bossTestRun: boolean;
+  smoke: boolean;
+  revisit: boolean;
+}
+/**
+ * この出撃で同行者を守護霊に固定するか。1周目にしない出撃(§7.5)は固定しない=現行どおり。
+ * 1周目(isStage1FirstLoopRun が true)は呼び出し側で別に OR する(`?loop1=1` でクリア済みの端末を1周目にした時も守護霊が来る)。
+ */
+export const isStage1GuardianLockRun = (i: Stage1GuardianLockInput): boolean =>
+  i.enabled && i.stageId === STAGE1_FIRST_LOOP_STAGE_ID && !i.stageCleared
+  && !(i.benchmark || i.free || i.practice || i.bossTestRun || i.smoke || i.revisit);
+/** キャラ選択の守護霊枠をロック表示にするか(出撃のロックと同じ条件のうち、選択画面で分かるものだけ)。 */
+export const stage1GuardianLockShown = (i: { enabled: boolean; stageId: string; stageCleared: boolean; free: boolean }): boolean =>
+  i.enabled && i.stageId === STAGE1_FIRST_LOOP_STAGE_ID && !i.stageCleared && !i.free;
+/** ロック中の短い注記(キャラ選択の守護霊枠)。 */
+export const STAGE1_GUARDIAN_LOCK_NOTE = 'ステージ1をクリアするまで外せない';
+/** このランで実際に連れていく同行者。ロック中は守護霊、それ以外は選択どおり(選択の保存値は書き換えない)。 */
+export const stage1RunCompanion = (selected: SkillKey | null, locked: boolean): SkillKey | null =>
+  locked ? STAGE1_LOCKED_COMPANION : selected;
+
+/** 守護霊が紐付いた相手の区分(配線側が型から決める: 賞金首/城ボス(giantbat)/その他)。 */
+export type GuardianBoundKind = 'bounty' | 'castle' | 'other';
+/**
+ * 「守護霊」のチュートリアルを出す瞬間(§7.8)。守護霊が賞金首(1周目)/賞金首か城ボス(2周目以降)に来た最初の瞬間。
+ * - 1周目: 端末の既読に関係なく出す(§7.6 B と同じ)。1出撃1回(queued)。
+ * - 2周目以降: ロック中(ステージ1未クリア)で、まだ見ていない時だけ。どちらか先に来た方で1回=見たら以後は出さない。
+ * - ロックが外れた(ステージ1クリア後)出撃では出さない=通常どおり。
+ */
+export const stage1GuardianTutorialDue = (i: {
+  firstLoop: boolean; locked: boolean; seen: boolean; queued: boolean; boundKind: GuardianBoundKind | null;
+}): boolean => {
+  if (i.queued || i.boundKind === null) return false;
+  if (i.firstLoop) return i.boundKind === 'bounty';
+  return i.locked && !i.seen && (i.boundKind === 'bounty' || i.boundKind === 'castle');
+};
+
+// ───────────────────────────────────────────────────────────────────────────
 // 1周目に出さない物(§3・§7.6 D・§7.7 A4)。配線の網羅を一覧で残す(テストが一覧の存在を固定する)。
 export const LOOP1_SUPPRESSED = [
-  'castle', 'castleBoss', 'hiddenBoss', 'secretPoi', 'guardianGhost', 'reaper',
+  'castle', 'castleBoss', 'hiddenBoss', 'secretPoi', 'reaper',
   'armory', 'police', 'shrine', 'naturalBounty', 'duoV4', 'arenaEvents', 'redNight', 'welcome',
   'gate1', 'gate2', 'patrolSlots', 'mutantHero', 'liberty', 'sceneSpawns', 'scriptedWaves', 'stage1Guide',
 ] as const;

@@ -256,7 +256,7 @@ import {
 import { escortAggroCandidates, escortBossHaters, escortInMotionView, hateEscortSource } from '../utils/escortView';
 import { JUN_ESCORT_INDEX, JUN_NAME } from '../data/junEscortLines';
 import { npcChatterAllowed, getNpcChatterEnabled } from '../utils/npcChatter'; // オプション「仲間の雑談」
-import { createStage1LoopState, isLoop1HiddenBase, LOOP1_BASE_ID, stage1LaterLoopSkipsWelcome, STAGE1_FIRST_LOOP_ENABLED, type Stage1LoopState, type Loop1Talk } from '../utils/stage1FirstLoop'; // ステージ1の1周目(STAGE1_FIRST_LOOP.md)
+import { createStage1LoopState, stage1RunCompanion, isLoop1HiddenBase, LOOP1_BASE_ID, stage1LaterLoopSkipsWelcome, STAGE1_FIRST_LOOP_ENABLED, type Stage1LoopState, type Loop1Talk } from '../utils/stage1FirstLoop'; // ステージ1の1周目(STAGE1_FIRST_LOOP.md)
 import { isJunEscort, JUN_ESCORT_ID, junJoinsRun, stepJunWalk, JUN_DEPART_WALK_DELAY_MS, junNextWaypoint, junReachableGoal, junTouchesRect, JUN_ARRIVE_TOUCH_DIST, junFollowsPlayer, junFollowMachine, countsForBaseCapture, junNearOpenBase, junLeftBehindStep, JUN_LEFT_BEHIND_CD_MS, JUN_BASE_ID, junPseudoBase } from '../utils/junEscort';
 // research/ESCORT_FOLLOW.md: 拠点を開けた軍人が、その担当区域の中だけついてくる(判定は utils の純関数)。
 import {
@@ -9203,6 +9203,10 @@ interface GameState {
   storyBossMode: boolean;        // このラン=ストーリーボス専用(useGameLoopの停止ゲート+ボス進行が参照)
   // the ONE(統合正本9章): 洋館［SUB］再訪(秘密任務)。保存槽ゴール+［グレンの薬を使う］。
   pendingRevisit: boolean;       // 出撃前にAppがセット(selectedMission='revisit')。resetGame で revisitMode へ
+  // ステージ1の守護霊のマスト化(STAGE1_FIRST_LOOP.md §7.8): この出撃で同行者を守護霊に固定するか。出撃のたびに App が
+  // resetGame の前にセットする(isStage1GuardianLockRun / 1周目)。companionSkill(選択の保存値)は書き換えない=
+  // 読む側(resetGame の beginGhostOnlineRun・directorTick の召喚)が stage1RunCompanion で実効値を作る。
+  stage1GuardianLock: boolean;
   pendingStage1FirstLoop: boolean; // 出撃前にAppがセット(STAGE1_FIRST_LOOP.md §2・isStage1FirstLoopRun)。resetGame で stage1Loop へ
   revisitMode: boolean;          // このラン=洋館再訪(城ボス停止・洋館=保存槽マーカー・薬ボタン)
   medicineUsedAt: number;        // 薬を使った時刻(Date.now)。0=未使用。使用後 useGameLoop が短い間を置いて勝利化
@@ -9974,6 +9978,7 @@ interface GameState {
   setPendingSuppression: (on: boolean) => void;   // 出撃が制圧イベント(ステージ1メイン)か
   setPendingStoryBoss: (on: boolean) => void;     // 出撃がストーリーボス専用(M7/EX)か
   setPendingRevisit: (on: boolean) => void;       // 出撃が洋館［SUB］再訪か
+  setStage1GuardianLock: (on: boolean) => void; // この出撃で同行者を守護霊に固定するか(STAGE1_FIRST_LOOP.md §7.8)
   setPendingStage1FirstLoop: (on: boolean) => void; // 出撃がステージ1の1周目か(STAGE1_FIRST_LOOP.md)
   // ステージ1の1周目のゴール(STAGE1_FIRST_LOOP.md §7.6 F / §7.7 A2): 現行のサブ納品と同じ報酬+meta.delivered だけを付ける
   // (eventQuestNpc.status は書き換えない=v4の completed 以後の経路へ入れない。syncQuestStageClear も呼ばない=ステージ2は開かない)。
@@ -10660,6 +10665,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   pendingStoryBoss: false,
   storyBossMode: false,
   pendingRevisit: false,
+  stage1GuardianLock: false,
   pendingStage1FirstLoop: false,
   revisitMode: false,
   medicineUsedAt: 0,
@@ -24838,6 +24844,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPendingStage1FirstLoop: (on) => {
     set({ pendingStage1FirstLoop: on });
   },
+  setStage1GuardianLock: (on) => {
+    set({ stage1GuardianLock: on });
+  },
 
   completeStage1FirstLoopDelivery: () => {
     const stageId = getSelectedStageId();
@@ -26806,7 +26815,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 効く。旧実装はskillInjection側でtestGhostSkillを無視していた=修正対象の黙って壊れる箇所)。
     // 永続保存はしない(下のset()でこのラン限りの実効値として上書きするだけ=装備メニューの選択を汚さない)。
     const selectedCompanionSkill: SkillKey | null = testGhostSkill ?? state.companionSkill;
-    beginGhostOnlineRun(selectedCompanionSkill ? [selectedCompanionSkill] : [], getSelectedStageId());
+    // ステージ1の守護霊のマスト化(STAGE1_FIRST_LOOP.md §7.8): ロック中は守護霊を連れていく(下の companionSkill=選択の保存値は変えない)。
+    const runCompanionSkill = stage1RunCompanion(selectedCompanionSkill, state.stage1GuardianLock);
+    beginGhostOnlineRun(runCompanionSkill ? [runCompanionSkill] : [], getSelectedStageId());
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
     // 新規上書き)がついていなければ持ち越し(型・名前は維持・因縁+1)。クリア/死亡いずれの
     // ラン終了でも次ランのresetGame呼び出しがこの唯一の締めタイミングになる。

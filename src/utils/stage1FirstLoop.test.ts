@@ -11,7 +11,10 @@ import {
   LOOP1_ARRIVAL_LINES, LOOP1_HELP_COMM_LINES, LOOP1_DUO_REVEAL_DELAY_MS, tickLoop1DuoWait, loop1HospitalPlaced, loop1ObjectiveText,
   loop1KomaNow, LOOP1_CAPTURE_PEAK_MS, loop1ModeBarTutorialDue, loop1ModeHandBackDue,
   LOOP1_WEST_SECTOR, loop1InWestSector, loop1WrongWayRegion, loop1WrongWayPeak, stepLoop1WrongWay, LOOP1_WRONG_WAY_COOLDOWN_MS,
+  isStage1GuardianLockRun, type Stage1GuardianLockInput, stage1GuardianLockShown, stage1RunCompanion, STAGE1_LOCKED_COMPANION,
+  stage1GuardianTutorialDue, STAGE1_GUARDIAN_LOCK_NOTE,
 } from './stage1FirstLoop';
+import { COMPANION_SKILL_KEYS } from '../data/campaign';
 import { EVENT_QUEST_SUB_ACCEPT_LINES } from './eventQuest';
 import { WELCOME_SCRIPT, WELCOME_STEP_GAP_MS } from './welcomeScript';
 import { AREA_THRESHOLDS } from './enemyUtils';
@@ -312,9 +315,11 @@ describe('西の方角のモードと逆方向(社長指示2026-11-19)', () => {
 
 describe('出さない物・文言・台詞・チュートリアル', () => {
   it('出さない物の一覧(§3・§7.6 D・§7.7 A4)', () => {
-    for (const k of ['castle', 'castleBoss', 'hiddenBoss', 'guardianGhost', 'reaper', 'armory', 'police', 'shrine', 'naturalBounty', 'duoV4', 'redNight', 'welcome', 'gate1', 'gate2', 'patrolSlots', 'mutantHero', 'sceneSpawns']) {
+    for (const k of ['castle', 'castleBoss', 'hiddenBoss', 'reaper', 'armory', 'police', 'shrine', 'naturalBounty', 'duoV4', 'redNight', 'welcome', 'gate1', 'gate2', 'patrolSlots', 'mutantHero', 'sceneSpawns']) {
       expect(LOOP1_SUPPRESSED as readonly string[]).toContain(k);
     }
+    // §7.8: 守護霊は1周目も連れていく(賞金首との交戦で来る)=出さない物の一覧から外れた。
+    expect(LOOP1_SUPPRESSED as readonly string[]).not.toContain('guardianGhost');
   });
   it('目的と任務報告の文言(§7.6 G)', () => {
     expect(LOOP1_OBJECTIVE_TEXT).toBe('身元不明の民間人2名を救出せよ');
@@ -383,5 +388,63 @@ describe('出さない物・文言・台詞・チュートリアル', () => {
     const b = nextLoop1Tutorial(a.rest, false);
     expect(b).toEqual({ show: 'base-use', rest: [] });
     expect(nextLoop1Tutorial([], false)).toEqual({ show: null, rest: [] });
+  });
+});
+
+describe('守護霊のマスト化(§7.8)', () => {
+  const lock = (over: Partial<Stage1GuardianLockInput> = {}): Stage1GuardianLockInput => ({
+    enabled: true, stageId: 'stage-1', stageCleared: false, benchmark: false, free: false,
+    practice: false, bossTestRun: false, smoke: false, revisit: false, ...over,
+  });
+  it('固定する同行者は守護霊(同行者の候補の1つ)', () => {
+    expect(STAGE1_LOCKED_COMPANION).toBe('guardian-spirit');
+    expect(COMPANION_SKILL_KEYS).toContain(STAGE1_LOCKED_COMPANION);
+  });
+  it('ステージ1を未クリアの通常の出撃だけ固定する(クリア後・他ステージ・1周目にしない出撃は現行どおり)', () => {
+    expect(isStage1GuardianLockRun(lock())).toBe(true);
+    expect(isStage1GuardianLockRun(lock({ stageCleared: true }))).toBe(false);
+    expect(isStage1GuardianLockRun(lock({ stageId: 'stage-2' }))).toBe(false);
+    expect(isStage1GuardianLockRun(lock({ enabled: false }))).toBe(false); // 総スイッチOFF=現行と同じ
+    for (const k of ['benchmark', 'free', 'practice', 'bossTestRun', 'smoke', 'revisit'] as const) {
+      expect(isStage1GuardianLockRun(lock({ [k]: true })), k).toBe(false);
+    }
+  });
+  it('選択画面のロック表示も同じ条件(ステージ1・未クリア・フリーでない)', () => {
+    expect(stage1GuardianLockShown({ enabled: true, stageId: 'stage-1', stageCleared: false, free: false })).toBe(true);
+    expect(stage1GuardianLockShown({ enabled: true, stageId: 'stage-1', stageCleared: true, free: false })).toBe(false);
+    expect(stage1GuardianLockShown({ enabled: true, stageId: 'stage-1', stageCleared: false, free: true })).toBe(false);
+    expect(stage1GuardianLockShown({ enabled: true, stageId: 'stage-2', stageCleared: false, free: false })).toBe(false);
+    expect(stage1GuardianLockShown({ enabled: false, stageId: 'stage-1', stageCleared: false, free: false })).toBe(false);
+    expect(STAGE1_GUARDIAN_LOCK_NOTE).toBe('ステージ1をクリアするまで外せない');
+  });
+  it('ロック中は選択に関係なく守護霊、外れたら選択どおり', () => {
+    expect(stage1RunCompanion(null, true)).toBe('guardian-spirit');
+    expect(stage1RunCompanion('ghost-helper', true)).toBe('guardian-spirit');
+    expect(stage1RunCompanion('ghost-helper', false)).toBe('ghost-helper');
+    expect(stage1RunCompanion(null, false)).toBe(null);
+  });
+  it('チュートリアル: 1周目は賞金首に来た時に毎回(既読に関係なく)・1出撃1回', () => {
+    const base = { firstLoop: true, locked: true, seen: true, queued: false };
+    expect(stage1GuardianTutorialDue({ ...base, boundKind: 'bounty' })).toBe(true);
+    expect(stage1GuardianTutorialDue({ ...base, boundKind: null })).toBe(false);
+    expect(stage1GuardianTutorialDue({ ...base, boundKind: 'other' })).toBe(false);
+    expect(stage1GuardianTutorialDue({ ...base, queued: true, boundKind: 'bounty' })).toBe(false);
+  });
+  it('チュートリアル: 2周目以降は未読の時だけ、賞金首か城ボスの先に来た方で', () => {
+    const base = { firstLoop: false, locked: true, seen: false, queued: false };
+    expect(stage1GuardianTutorialDue({ ...base, boundKind: 'bounty' })).toBe(true);
+    expect(stage1GuardianTutorialDue({ ...base, boundKind: 'castle' })).toBe(true);
+    expect(stage1GuardianTutorialDue({ ...base, boundKind: 'other' })).toBe(false);
+    expect(stage1GuardianTutorialDue({ ...base, seen: true, boundKind: 'castle' })).toBe(false); // 見たら以後は出さない
+    expect(stage1GuardianTutorialDue({ ...base, locked: false, boundKind: 'bounty' })).toBe(false); // クリア後は通常どおり
+  });
+  it('文面(社長確定 2026-11-18)', () => {
+    expect(createStage1LoopState(0).guardianTutQueued).toBe(false);
+    expect(getTutorial('guardian')?.title).toBe('守護霊');
+    expect(getTutorial('guardian')?.where).toBe('全域');
+    expect(getTutorial('guardian')?.lines).toEqual([
+      '強敵と出会うと、誰かの守護霊が現れて一緒に戦ってくれる事がある。',
+      '守護霊は、誰かの過去の戦いを写した影。守護霊を連れていくか否かは、キャラ選択の守護霊枠で選べる。(自らの守護霊を育てるにはソロプレイで討伐する必要がある)',
+    ]);
   });
 });
