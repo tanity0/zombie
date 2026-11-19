@@ -66,11 +66,19 @@ const br = () => useGameStore.getState().player.brawler!;
 const pl = () => useGameStore.getState().player;
 const guarding = () => isBrawlerGuarding(pl(), useGameStore.getState().gameTime);
 const en = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
+/** ★密着の構え(research/BRAWLER.md §34-7)を避けて、普通の構えを出す(この試験は構えの受けを見る=密着していた敵は掴まない)。 */
+const guardTechNoContact = (): boolean => {
+  const es = useGameStore.getState().enemies;
+  useGameStore.setState({ enemies: [] });
+  const r = useGameStore.getState().brawlerTech(0, -1);
+  useGameStore.setState(st => ({ enemies: [...es.filter(e => !st.enemies.some(x => x.id === e.id)), ...st.enemies] }));
+  return r;
+};
 /** 構えを出す(技ポイントは points を持たせてから。構えの代金3を払った後の残りが返る)。 */
 const guardNow = (points = 3): number => {
   useGameStore.getState().brawlerPress(); advance(400);
   useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points, gainAt: 0 } } }));
-  expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+  expect(guardTechNoContact()).toBe(true);
   advance(200); // ジャストの窓(120ms)の外=普通の受け(ジャストの受けは技ポイント +5=社長指示2026-11-12・brawler.store.test で固める)
   expect(guarding()).toBe(true);
   return br().points;

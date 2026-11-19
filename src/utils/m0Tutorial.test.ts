@@ -56,7 +56,7 @@ describe('台帳の体裁(全チュートリアル共通)', () => {
   // 'guardian'(ステージ1の守護霊・STAGE1_FIRST_LOOP.md §7.8): 同じく手本は後日。
   // 'merchant'(スタート地点の武器商人のサークルに初めて入った時): 同じく手本は後日(映像枠=mediaPending)。
   // 'bounty'(賞金首が初めて現れた時): 同じく手本は後日(映像枠=mediaPending)。
-  const AWAITING_SAMPLE: string[] = ['detour-poi', 'stage1-guide', 'base-capture', 'base-use', 'mode-bar', 'mutant-tier', 'guardian', 'merchant', 'bounty', 'hit-retaliation', 'escort-kick', 'fast-travel', 'escort-follow'];
+  const AWAITING_SAMPLE: string[] = ['detour-poi', 'stage1-guide', 'base-capture', 'base-use', 'mode-bar', 'mutant-tier', 'guardian', 'merchant', 'bounty', 'hit-retaliation', 'escort-kick', 'fast-travel', 'escort-follow', 'brawler-moves'];
   it('全件に手本(img)が付いている(手本待ちの明示列挙を除く)', () => {
     for (const t of TUTORIALS) {
       if (AWAITING_SAMPLE.includes(t.id)) continue;

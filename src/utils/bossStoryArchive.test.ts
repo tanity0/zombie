@@ -45,7 +45,7 @@ describe('bossStoryArchive', () => {
   });
 
   it('小見出しの順は対策室の棚の順に沿い、台帳の並びと一致する', () => {
-    expect(BOSS_STORY_GROUP_ORDER.length).toBe(PRACTICE_CATEGORY_ORDER.length - 1); // 決闘(汎用の幻影)を外した分
+    expect(BOSS_STORY_GROUP_ORDER.length).toBe(PRACTICE_CATEGORY_ORDER.length - 2); // 決闘(汎用の幻影)と練習(案山子)を外した分
     const groups = buildBossStoryGroups(new Set());
     expect(groups.map(g => g.group)).toEqual([...BOSS_STORY_GROUP_ORDER]);
     const flat = groups.flatMap(g => g.cells.map(c => c.entry.key));

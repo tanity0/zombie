@@ -183,6 +183,9 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // research/LAB_CRAWLER.md §4: ステージ2の変異塊の代理(攻撃を受ける窓口だけ)。寸法・体力は utils/labCrawlerProxy.ts が
   // 毎フレーム塊に合わせて書く(ここの値は使わない)。動かない・接触ダメージ0・経験値0。
   'lab-crawler': { width: 742, height: 300, speed: 0, health: 37564, damage: 0, experienceValue: 0 },
+  // 案山子(変異体対策室の「練習」枠だけ・utils/scarecrow.ts)。体格・体力はゾンビと同じ(のけぞり等の手応えを雑魚と揃える)。
+  // 体力は減らない(enemyHealthAfterHit)=値は手応えの物差しにだけ効く。動かない・接触ダメージ0・経験値0。
+  scarecrow: { width: 36, height: 36, speed: 0, health: 40, damage: 0, experienceValue: 0 },
 };
 
 /** PACING_PUZZLE.md §6.38(賞金首・B1): 4型の集合。texture名=type規約(getTexture(e.type))。 */
@@ -513,7 +516,8 @@ export const isCorpse = (e: Pick<Enemy, 'corpseUntil'>): boolean => e.corpseUnti
 /** 何も当たらない個体(英雄の昇天中=社長指示2026-10-05)。死体と同じく攻撃・照準の対象から外す。 */
 // ステージ2の塊の叩き潰しの登場の生け贄(場面の最中=labBait.active)も同じ扱い: 自動の狙い・攻撃が当たらない(潰される役を最後まで務める・LAB_CRAWLER §11)。
 // 亡霊のワープ中(消えて現れるまでの500ms・research/WRAITH_MUTANT.md §8 A3)も同じ。
-export const isUntouchable = (e: Pick<Enemy, 'bossState' | 'labBait' | 'wraithPhased'>): boolean => e.bossState === 'hero-ascend' || !!e.labBait?.active || !!e.wraithPhased;
+// ★空中投げで投げられて飛んでいる敵(research/BRAWLER.md §34-6 #5)も、着いて爆撃するまでは何も当たらない(brThrown)。
+export const isUntouchable = (e: Pick<Enemy, 'bossState' | 'labBait' | 'wraithPhased'> & Pick<Partial<Enemy>, 'brThrown'>): boolean => e.bossState === 'hero-ascend' || !!e.labBait?.active || !!e.wraithPhased || !!e.brThrown;
 
 // UNIQUE_WEAPONS.md §19-3(監査A2・A9の是正): 銃の自動照準(weaponUtils.ts の module-local
 // `pickTarget`)と**同じ選び方**を、Player型に縛られない座標引数の形へ切り出したもの。

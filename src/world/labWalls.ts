@@ -4,7 +4,7 @@
 //  - 縦は約2画面分(LAB_DEEP_Y)が通常帯。そこを超える「奥」は極端に連なった壁が増える。
 //  - 奥には 敵以外を置かない(UVバーも無し)。
 // RENDERER-AGNOSTIC: PixiJS を import しない(描画は pixi 側が読むだけ)。
-import { footRect, type Rect } from './obstacles';
+import { footRect, rectsOverlap, unstickFromRects, type Rect } from './obstacles';
 
 export type WallOrient = 'h' | 'v';
 
@@ -251,6 +251,27 @@ export const nudgeToClearLabSpot = (x: number, y: number, w: number, h: number):
     }
   }
   return { x, y: cy };
+};
+
+// ---- 敵を壁・プロップの中に置かない(社長報告2026-11-19「ステージ2、オブジェに食い込んで沸いてる敵がいる(倒せない 動かない)」) ----
+// 湧いた敵は休眠(dormant)で、起きるのは「プレイヤーから体の中心が見えた時」だけ。中心が壁・プロップの矩形の中にあると
+// 視線(segmentBlocked)が必ず遮られる=永遠に起きない=動かない。近接・弾も同じ視線/壁で止まる=倒せない。
+// 判定は今立っている物(壊れた物を除く=labWallsInRegion/labPropsInRegion)で行う(移動の当たり判定と同じ集合)。
+/** 矩形(左上基準)の周り pad の範囲にある、今立っている壁・プロップの矩形。 */
+export const labObstacleRectsNear = (r: Rect, pad = 0): Rect[] => {
+  const minX = r.x - pad, minY = r.y - pad, maxX = r.x + r.width + pad, maxY = r.y + r.height + pad;
+  return [...labWallsInRegion(minX, minY, maxX, maxY).map(wallRect), ...labPropsInRegion(minX, minY, maxX, maxY).map(propRect)];
+};
+/** 矩形(左上基準)が今立っている壁・プロップのどれかに重なるか。 */
+export const overlapsLabObstacle = (r: Rect): boolean => labObstacleRectsNear(r, 4).some(o => rectsOverlap(r, o));
+/**
+ * 敵(左上 x,y・w×h)を置く位置。壁・プロップに重なっていなければそのまま返す。重なっていれば、
+ * 歩ける帯の中(体の中心が ±LAB_CORRIDOR_Y_LIMIT_PX)で重ならない一番近い位置へ出す(unstickFromRects)。
+ */
+export const clearLabEnemySpot = (x: number, y: number, w: number, h: number): { x: number; y: number } => {
+  const r: Rect = { x, y, width: w, height: h };
+  const out = unstickFromRects(r, labObstacleRectsNear(r, 400), -LAB_CORRIDOR_Y_LIMIT_PX - h / 2, LAB_CORRIDOR_Y_LIMIT_PX - h / 2);
+  return out ?? { x, y };
 };
 
 // 区画ごとに UV バー(壊すとアイテムが出る光源/装飾。当たり判定なし)。**歩ける帯の中にだけ**置く

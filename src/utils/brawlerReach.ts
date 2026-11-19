@@ -17,7 +17,7 @@ export const BRAWLER_CHAIN_MARGIN_PX = 8;
  */
 // 実機の順で測った値(2026-11-14)。
 export const BRAWLER_PUSH_ZOMBIE_PX: Readonly<Partial<Record<BrawlerRouteNode, number>>> = {
-  s1: 4, s2: 4, s3: 41, s4: 9, kick1: 41, kick2: 9, heel: 0, stomp: 72,
+  s1: 4, s2: 4, s3: 41, s4: 9, kick1: 41, kick2: 9, heel: 0, kickup: 0, stomp: 72, // 蹴り上げ(§34-1)=押さない(上へ打ち上げる)
 };
 
 /** 続きの技 B の届き方。lungePx=体が進む最大(相手の手前で止まる)・targetPx=狙える距離(この外なら進まない)・hitPx=当たる距離。どれも相手の帯の縁までの距離。 */
@@ -35,7 +35,7 @@ export const brawlerReachOf = (b: BrawlerRouteNode, meleeRadius: number): Brawle
     case 's1': case 's2': case 's3': return { lungePx: BRAWLER_LUNGE_PX[b], targetPx: meleeRadius, hitPx: meleeRadius };
     case 's4': return { lungePx: BRAWLER_LUNGE_PX.s4, targetPx: meleeRadius, hitPx: BRAWLER_LANDING_RADIUS };
     case 's5': return { lungePx: 0, targetPx: Infinity, hitPx: BRAWLER_PALM_PASS_PX };
-    case 'kick1': case 'kick2': case 'kick3': case 'heel': return { lungePx: BRAWLER_KICK_RANGE, targetPx: BRAWLER_KICK_RANGE, hitPx: meleeRadius };
+    case 'kick1': case 'kick2': case 'kick3': case 'heel': case 'kickup': return { lungePx: BRAWLER_KICK_RANGE, targetPx: BRAWLER_KICK_RANGE, hitPx: meleeRadius };
     case 'stomp': return { lungePx: 0, targetPx: Infinity, hitPx: BRAWLER_STOMP_RADIUS };
     case 'kiko': return { lungePx: 0, targetPx: BRAWLER_KIKO_RANGE, hitPx: BRAWLER_KIKO_RANGE };
     default: return { lungePx: 0, targetPx: 0, hitPx: 0 };

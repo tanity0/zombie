@@ -7,7 +7,7 @@ import { useGameStore, AMMO_MAX } from '../store/gameStore';
 import { getActiveGun, ammoBearingGuns, ammoPoolFor } from './weaponUtils';
 import { isPumpkinTier, areaIndexForDist } from './enemyUtils';
 import { ammoDirectorRate } from './ammoDirector';
-import { pickAmmoDropType } from './ammoDrop';
+import { pickAmmoDropType, dropAmmoTypeWithoutPhill } from './ammoDrop';
 import { rollWeaponKey } from './weaponDrop';
 import { healthDropMult } from './healthDropBias';
 
@@ -95,7 +95,8 @@ export const dropGunKillLoot = (enemy: Enemy, ctx: GunKillDropCtx): void => {
     const smartType = ctx.ammoSmart
       ? pickAmmoDropType(owned.map(t => ({ type: t, reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })), equippedAmmo)
       : null;
-    const dropType = smartType ?? equippedAmmo ?? owned[0];
+    // ステージ2はPHILL弾を敵から落とさない(社長指示2026-11-19・dropAmmoTypeWithoutPhill)。
+    const dropType = dropAmmoTypeWithoutPhill(smartType ?? equippedAmmo ?? owned[0], owned, st.stageTheme === 'lab' || ctx.indoor);
     if (dropType) {
       addPickup({
         id: `pickup-ammo-${enemy.id}`,

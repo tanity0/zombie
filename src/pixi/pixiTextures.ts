@@ -20,6 +20,7 @@ import { spritePath } from '../utils/spriteLoader';
 import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
 import { STAGE_PROPS } from '../world/cityProps';
 import { setEnemyArtAspect } from './renderSpec';
+import { SCARECROW_FRAMES, SCARECROW_SHEET } from '../utils/scarecrow';
 
 /** グレン第二形態のパーツのアニメのコマ数(砲身・中間の箱。社長支給2026-09-26)。 */
 export const GLEN_PART_ANIM_FRAMES = 16;
@@ -184,6 +185,12 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
    */
   kenki: KENKI_SPRITES.map(name => ({ name, scaleMode: 'nearest' as const })),
   /**
+   * 案山子(変異体対策室の「練習」枠だけ・utils/scarecrow.ts)の絵(社長支給2026-11-19・150×66=0.04MB・50×66×3コマ)。
+   * 対策室の外では湧かない=起動時に常駐させる理由が無い。**所属は付けない=網だけで拾う**(初めて描く時に取りに行く)。
+   * 読み終えたら `DEFERRED_FRAME_SHEETS` で枠を切って `scarecrow-0..2` として登録する(同じ source を共有=追加メモリなし)。
+   */
+  practice: [{ name: SCARECROW_SHEET, scaleMode: 'nearest' }],
+  /**
    * ★ボス級の**アニメーションシート**(社長指示2026-09-24「乗せて」)。**所属は付けない=網だけで拾う**
    * (立ち絵の `castle`/`bosses` と同じ理由)。**さらにシートは外れても立ち絵へ落ちる**ので、
    * 立ち絵より失敗が軽い。中身は `SHEET_RESIDENCY` が決める(ここに手で名前を書かない)。
@@ -196,6 +203,8 @@ const DEFERRED_SPRITE_INDEX = new Map<string, 'linear' | 'nearest' | undefined>(
   Object.values(DEFERRED_SPRITE_GROUPS).flat().map(e => [e.name, e.scaleMode] as const),
 );
 const DEFERRED_SPRITE_SET = new Set<string>(DEFERRED_SPRITE_INDEX.keys());
+/** 遅延組のうち、横並びの等幅コマを持つ絵(名前 → コマ数)。読み終えた時に `${name}-${i}` を切って登録する(松明・護衛の歩きと同じ作法)。 */
+const DEFERRED_FRAME_SHEETS: Readonly<Record<string, number>> = { [SCARECROW_SHEET]: SCARECROW_FRAMES };
 /** 同じ素材を二重に取りに行かないための門(網は毎フレーム叩かれる)。 */
 const deferredInFlight = new Map<string, Promise<void>>();
 
@@ -246,6 +255,13 @@ const requestDeferredSprite = (name: string): Promise<void> => {
       if (tex) {
         if (scaleMode) tex.source.scaleMode = scaleMode;
         textures.set(name, tex);
+        const frames = DEFERRED_FRAME_SHEETS[name];
+        if (frames) {
+          const fw = Math.floor(tex.width / frames);
+          for (let i = 0; i < frames; i++) {
+            textures.set(`${name}-${i}`, new Texture({ source: tex.source, frame: new Rectangle(i * fw, 0, fw, tex.height) }));
+          }
+        }
       }
     } catch (e) {
       console.warn(`[pixiTextures] deferred sprite "${name}" failed:`, e);

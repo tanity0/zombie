@@ -23,8 +23,15 @@ export const MASTERY_GUN_KEYS = [
   'glauncher-t3-signal',
 ] as const;
 export type MasteryGunKey = typeof MASTERY_GUN_KEYS[number];
-const GUN_SET: ReadonlySet<string> = new Set<string>(MASTERY_GUN_KEYS);
-/** 銃のキー(弾の weaponKey・持っている銃の key)→ 熟練度のキー。台帳に無い/銃でないは undefined。 */
+/**
+ * 「最初から最大」の銃(社長指示2026-11-19「PHILLガンは最初からMAX(強くしない)」)。札は最初から `MAX`(固定・棒なし)。
+ * 熟練度では**強くしない**=与ダメの倍率は ×1 のまま(`max` の ×1.9 も掛けない)・貯めない。
+ * 台帳の並び(MASTERY_GUN_KEYS=CATALOG と一致させる)には残すが、下の gunMasteryKeyOfWeaponKey が引かない
+ * =弾の熟練度のキーは `none`・出撃開始時の平均(loadout)にも数えない・リザルトにも出ない。
+ */
+export const MASTERY_MAXED_GUNS: readonly string[] = ['phill-revolver'];
+const GUN_SET: ReadonlySet<string> = new Set<string>(MASTERY_GUN_KEYS.filter(k => !MASTERY_MAXED_GUNS.includes(k)));
+/** 銃のキー(弾の weaponKey・持っている銃の key)→ 熟練度のキー。台帳に無い/銃でない/「最初から最大」の銃は undefined。 */
 export const gunMasteryKeyOfWeaponKey = (weaponKey: string | null | undefined): MasteryGunKey | undefined =>
   typeof weaponKey === 'string' && GUN_SET.has(weaponKey) ? weaponKey as MasteryGunKey : undefined;
 

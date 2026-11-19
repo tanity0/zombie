@@ -364,7 +364,7 @@ describe('出さない物・文言・台詞・チュートリアル', () => {
     expect(getTutorial('base-capture')?.title).toBe('拠点の確保');
     expect(getTutorial('base-capture')?.lines).toHaveLength(3);
     expect(getTutorial('base-use')?.title).toBe('拠点の利用');
-    expect(getTutorial('base-use')?.lines).toEqual(['確保した拠点でも、商人と取引ができる。']);
+    expect(getTutorial('base-use')?.lines).toEqual(['確保した拠点では、黄色いサークルの中で指を離した瞬間に、武器商人の通販を利用できる。']);
     expect(getTutorial('base-capture')?.archiveAlways).toBeFalsy();
     expect(getTutorial('base-use')?.archiveAlways).toBeFalsy();
   });

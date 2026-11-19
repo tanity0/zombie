@@ -21,6 +21,7 @@ const ENEMY_VISUAL_SCALE: Partial<Record<Enemy['type'], number>> = {
   bat: 2.35,
   skeleton: 2.15,
   zombie: 2.1,
+  scarecrow: 2.1, // 案山子(変異体対策室の練習の的): ゾンビと同じ体格・同じ倍率=画面の背丈も雑魚と揃う
   plant: 2.15,
   ghost: 2.0,
   werewolf: 2.05,

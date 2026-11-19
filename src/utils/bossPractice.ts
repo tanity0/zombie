@@ -126,7 +126,7 @@ export const isBossTestOrPracticeRun = (): boolean =>
 // 台帳: 守護霊メニューと同じ基礎台帳(GHOST_DOSSIER_SLOTS)+形態別の派生枠
 // ---------------------------------------------------------------------------------------------
 /** 出撃のさせ方。`param=null` = 強制出現パラメータ不要(ステージへ出撃すれば勝手に出る)。 */
-export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | 'phantomnow' | 'brawlerphantomnow' | 'phillnow' | 'heronow' | 'libertynow' | 'astronow' | 'wraithnow' | null;
+export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | 'phantomnow' | 'brawlerphantomnow' | 'phillnow' | 'heronow' | 'libertynow' | 'astronow' | 'wraithnow' | 'scarecrownow' | null;
 
 export interface PracticeSlot {
   slotKey: string;              // 基本はGHOST_DOSSIER_SLOTS.slotKeyと同一。形態別掲載だけ固有キー。
@@ -359,7 +359,22 @@ const PHANTOM_BRAWLER_SLOT: PracticeSlot = {
   reachable: false,
   alwaysUnlocked: true,
 };
-export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS, MUTANT_HERO_SLOT, MUTANT_LIBERTY_SLOT, MUTANT_ASTRO_SLOT, MUTANT_WRAITH_SLOT, ...GHOST_DERIVED_SLOTS, GUARDIAN_PHANTOM_SLOT, PHANTOM_BRAWLER_SLOT];
+// 案山子(社長指示2026-11-19「変異体対策室の最後に、案山子 を追加。こいつは雑魚扱いで、HPは無限で何もしないサンドバック。練習用」)。
+// 一覧の**最後**(専用の棚「練習」=PRACTICE_CATEGORY_ORDER の末尾)。常時解放(本編に居ない=遭遇記録は一生付かない)。
+// 出撃先=stage-1(野外)。湧かせ方は他の練習枠と同じ相乗り(useGameLoop の `practiceForces('scarecrownow')`)。
+// 倒れないので**勝ちは無い**=プレイヤーが一時停止の「メニューに戻る」で抜けるまで続く(utils/scarecrow.ts)。
+export const SCARECROW_SLOT_KEY = 'scarecrow@practice';
+const SCARECROW_SLOT: PracticeSlot = {
+  slotKey: SCARECROW_SLOT_KEY,
+  encounterSlotKey: 'scarecrow',
+  bossType: 'scarecrow',
+  stageId: 'stage-1',
+  param: 'scarecrownow',
+  label: '案山子',
+  reachable: false, // 本編のどこにも置かれていない(sortieBossRoster・出撃の地図にも出ない)
+  alwaysUnlocked: true,
+};
+export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS, MUTANT_HERO_SLOT, MUTANT_LIBERTY_SLOT, MUTANT_ASTRO_SLOT, MUTANT_WRAITH_SLOT, ...GHOST_DERIVED_SLOTS, GUARDIAN_PHANTOM_SLOT, PHANTOM_BRAWLER_SLOT, SCARECROW_SLOT];
 
 // ★変異体対策室のカテゴリ表示順の正(社長指示v0.25.3444「小ボスは一番上だろ」)。
 // v3444では上の PRACTICE_SLOTS の並びだけを直したが、画面(BossRush.tsx)は**カテゴリごとに区切って
@@ -367,7 +382,8 @@ export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS
 // 画面はこれをそのまま回す=同じ取りこぼしを繰り返さない(bossPractice.testで先頭を機械化)。
 // research/GHOST_BOSS.md: 'duel'(決闘=幻影)は**末尾**(実験枠)。
 // research/MUTANT_HERO.md: 'neutral'(中立=英雄)は賞金首のすぐ下。
-export const PRACTICE_CATEGORY_ORDER = ['bounty', 'neutral', 'story', 'gate', 'hidden', 'duel'] as const;
+// 'practice'(練習=案山子)は**最後**(社長指示2026-11-19「変異体対策室の最後に」)。
+export const PRACTICE_CATEGORY_ORDER = ['bounty', 'neutral', 'story', 'gate', 'hidden', 'duel', 'practice'] as const;
 
 export const practiceSlotByKey = (slotKey: string): PracticeSlot | undefined =>
   PRACTICE_SLOTS.find(s => s.slotKey === slotKey);
@@ -436,6 +452,8 @@ const practiceBossBaseHealth = (slot: PracticeSlot): number | null => {
  *   (旧: 通常出撃と同じく台帳HP×ステージ係数を出していた)。
  */
 export const practiceBossHealth = (slot: PracticeSlot): number | null =>
+  // 案山子: 体力は減らない(utils/scarecrow.ts)=無限。画面は toLocaleString で「∞」と出る。
+  slot.bossType === 'scarecrow' ? Number.POSITIVE_INFINITY
   // research/MASTERY.md v2 §6: 練習ランではステージの係数を無視する(実戦側の stageBossDiffMults も1.0)ので、
   // 練習の一覧も係数なしの台帳の値を出す(=練習で戦う値と一致)。
-  practiceBossBaseHealth(slot);
+  : practiceBossBaseHealth(slot);

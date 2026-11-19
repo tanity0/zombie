@@ -8,6 +8,7 @@
 // 出すのは「勝ったか」「誰と」「どれだけ掛かったか」の3つだけ。
 import React, { useState } from 'react';
 import { useGameStore, enemyDeathLabel } from '../store/gameStore';
+import { ScarecrowIcon } from './ScarecrowIcon';
 import { practiceActiveSlot, practiceBossType } from '../utils/bossPractice';
 import { bossIconSrc } from '../utils/bossIcon';
 import { bossCutinName } from '../data/bossCutin';
@@ -43,6 +44,7 @@ export const PracticeResult: React.FC<Props> = ({ won, onRetry, onBackToList }) 
         <div className="text-[9px] font-semibold tracking-[0.28em] text-purple-200/55">PRACTICE</div>
 
         <div className="mx-auto mt-3 flex h-20 w-20 items-end justify-center overflow-hidden bg-black/30">
+          {boss === 'scarecrow' && <ScarecrowIcon height={76} />}
           {icon && (
             <img
               src={icon}
@@ -55,7 +57,7 @@ export const PracticeResult: React.FC<Props> = ({ won, onRetry, onBackToList }) 
         </div>
 
         <div className="mt-3 text-[20px] font-semibold tracking-wide text-white gt-emboss ui-head-serif ui-head-serif-sm">
-          {won ? '討伐' : '敗北'}
+          {won ? '討伐' : boss === 'scarecrow' ? '終了' /* 案山子は倒れない=負けでも勝ちでもない */ : '敗北'}
         </div>
         <div className="mt-0.5 text-[12px] text-white/55">{bossName}</div>
 

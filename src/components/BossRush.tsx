@@ -10,6 +10,7 @@
 //   (社長指摘v0.25.2862・BOSS_MAKER.md §20-8-e)。
 import React, { useMemo, useState } from 'react';
 import { PixelIcon } from './PixelIcon';
+import { ScarecrowIcon } from './ScarecrowIcon';
 import { CHARACTER_CLASSES, getStage, COMPANION_SKILL_KEYS, SKILLS } from '../data/campaign';
 import { enemyDeathLabel, useGameStore } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
@@ -27,9 +28,11 @@ import type { CharacterClass } from '../types/game';
 // §6.38 掲載裁定: 賞金首4種はGHOST_DOSSIER_SLOTS由来ではないので、この画面だけの区分「bounty」を
 // 追加する(ghostDossier.tsのGhostDossierCategory自体は変えない=守護霊メニュー側は無関係のまま)。
 // research/GHOST_BOSS.md: 守護霊ボス「幻影」の区分「duel」(決闘)も同様にこの画面だけの追加。
-type PracticeCategory = GhostDossierCategory | 'bounty' | 'duel' | 'neutral';
+// 'practice'(練習=案山子・社長指示2026-11-19)も同様にこの画面だけの棚。並びは PRACTICE_CATEGORY_ORDER の末尾。
+type PracticeCategory = GhostDossierCategory | 'bounty' | 'duel' | 'neutral' | 'practice';
 const PRACTICE_CATEGORY_LABEL: Record<PracticeCategory, string> = {
   ...GHOST_DOSSIER_CATEGORY_LABEL, bounty: '賞金首', duel: '決闘', neutral: '徘徊', // 野を巡る変異体(社長指示2026-10-29「中立を違うタイトルに」)
+  practice: '練習',
 };
 const CATEGORY_OF = new Map(GHOST_DOSSIER_SLOTS.map(s => [s.slotKey, s.category]));
 // ★未知キーは 'story' に落ちる。新しい独立枠を足したら**必ずここに分岐を書く**
@@ -41,6 +44,7 @@ const categoryOf = (slot: PracticeSlot): PracticeCategory =>
     : slot.bossType === 'mutant-hero' ? 'neutral'
     // 解放群・宇宙飛行群・亡霊は英雄と同じ棚(野を巡る変異体・社長指示2026-10-29)。
     : slot.bossType === 'mutant-liberty' || slot.bossType === 'mutant-astro' || slot.bossType === 'mutant-wraith' ? 'neutral'
+    : slot.bossType === 'scarecrow' ? 'practice'
     : 'story');
 
 const bossName = (slot: PracticeSlot): string => slot.label ?? enemyDeathLabel(slot.bossType);
@@ -101,7 +105,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
         <section className="overflow-hidden border border-purple-200/10 bg-[#090b13]/80">
           <div className="flex items-center gap-3 border-b border-white/[0.06] bg-white/[0.025] px-3 py-3">
             <div className="flex h-20 w-20 shrink-0 items-end justify-center overflow-hidden bg-black/30">
-              {icon
+              {open.bossType === 'scarecrow' ? <ScarecrowIcon height={76} /> : icon
                 ? <img src={icon} alt="" draggable={false} className="max-h-[76px] object-contain" style={{ imageRendering: 'pixelated' }} />
                 : <span className="flex h-full w-full items-center justify-center text-3xl font-bold text-white/40">?</span>}
             </div>
@@ -111,7 +115,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
               </div>
               <div className="truncate text-[17px] font-semibold text-white">{bossName(open)}</div>
               <div className="mt-0.5 text-[10px] text-white/40">
-                {clearedSlotKeys.has(open.encounterSlotKey) ? '討伐記録あり' : '未討伐'}
+                {open.bossType === 'scarecrow' ? '練習用の的' /* 倒れない=討伐の記録が無い */ : clearedSlotKeys.has(open.encounterSlotKey) ? '討伐記録あり' : '未討伐'}
               </div>
             </div>
           </div>
@@ -124,6 +128,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
               open.bossType === 'giantbat' ? 'ステージボス'
                 : isBountyType(open.bossType) ? '賞金首'
                 : open.bossType === 'guardian-phantom' ? '守護霊' // research/GHOST_BOSS.md(決闘の実験枠)
+                : open.bossType === 'scarecrow' ? '雑魚' // 案山子(練習の的・区分は雑魚)
                 : '固有ボス'
             } />
           </div>
@@ -241,7 +246,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
                       : 'border-white/[0.06] bg-white/[0.02]'}`}
                   >
                     <div className="mx-auto flex h-12 w-12 items-end justify-center overflow-hidden bg-black/25">
-                      {icon
+                      {unlocked && slot.bossType === 'scarecrow' ? <ScarecrowIcon height={44} /> : icon
                         ? <img src={icon} alt="" draggable={false} className="max-h-11 object-contain" style={{ imageRendering: 'pixelated' }} />
                         : unlocked
                           // v0.25.3041(社長指示): 「?」表示のボス(名前台帳に無い=絵もnull)はアイコンも「?」。

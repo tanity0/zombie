@@ -13,5 +13,9 @@ export const BRAWLER_TECH_NAMES: Record<TechProcKey, { name: string; dir: Brawle
   'tech:kick2': { name: '空中蹴り', dir: 'right' },
   'tech:kick3': { name: '蹴り飛ばし', dir: 'right' },
   'tech:heel': { name: '踵落とし', dir: 'down' },
+  'tech:kickup': { name: '蹴り上げ', dir: 'up' },
+  'tech:airthrow': { name: '空中投げ', dir: 'up' },
+  'tech:suplex': { name: 'スープレックス', dir: 'up' },
+  'tech:flipkick': { name: '蹴りバク宙', dir: 'up' },
   'tech:secret': { name: '秘奥義', dir: 'all' },
 };

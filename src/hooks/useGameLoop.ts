@@ -6,6 +6,7 @@ import { latticeBands, latticeStageCount, latticeAxisForStage, latticeHitSource,
 import { mimirWheelTheta0, mimirWheelSpokeAngle, mimirWheelShotOffsetMs, MIMIR_WHEEL_EYE_UP } from '../utils/mimirWheel';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
+import { dropAmmoTypeWithoutPhill } from '../utils/ammoDrop'; // ステージ2: PHILL弾はランダムドロップで落とさない
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
 import { shouldShowStage1Guide } from '../utils/stage1GuideTutorial';
 import { shouldShowDetourTutorial } from '../utils/detourTutorial';
@@ -261,7 +262,7 @@ import { applyContactToEscorts } from '../utils/escortHit'; // research/ESCORT_T
 // 第三者の的(守護霊+英雄)が弾いた時の音(research/MUTANT_HERO.md §4-1)。
 setThirdPartySfx((key, gain) => playSfx(key, gain));
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
-import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
+import { labWallsInRegion, labPropsInRegion, wallRect, propRect, overlapsLabObstacle } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
 import { POI_TOUCH_SOUND, poiTouchPitchJitter, type PoiTouchId } from '../world/poiTouch';
 import { treesInRegion, trunkRect } from '../world/trees'; // resolveTreeCollisionはv0.25.2469で不使用に(霊体すり抜け)
@@ -290,6 +291,9 @@ import {
 import { activeFlareTargets, pruneFlares } from '../utils/flareGun';
 import { buildBomberMinis, bomberMiniCount } from '../utils/bomberScatter';
 import { rollBomberScatterAndNotify, notifySkillProc, spawnSkillProcFx, warlordAutoSlashMult, triggerBloodAwakenBurst } from '../store/gameStore'; // スキル発動の表示(通信欄の下)
+import { installScarecrowSway } from '../store/scarecrowSway';
+// 案山子(変異体対策室の練習の的)の揺れの向き・始まりを被弾の瞬間に store へ書く購読(1回だけ・練習ラン以外は1行目で抜ける)。
+installScarecrowSway();
 import { computeFirstAidKitTick, isFirstAidKitEmpty, createFirstAidKitState, type FirstAidKitAmmoType, type FirstAidKitState } from '../utils/firstAidKit';
 
 // GHOST-SUBS-FINAL(v0.25.2563): 守護霊の救急鞄の初期在庫。**型はプレイヤーと同じ**FirstAidKitStateで、
@@ -2109,6 +2113,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const bountyForceRef = useRef(false);
   // research/GHOST_BOSS.md: ?phantomnow=1 / 「決闘」枠のforce-spawnを1回だけにするフラグ。
   const phantomForceRef = useRef(false);
+  const scarecrowForceRef = useRef(false); // 案山子(変異体対策室の練習枠・utils/scarecrow.ts)の1回だけの設置
   // research/BRAWLER_PHANTOM.md: 拳鬼の強制出現(1回だけ)/本編の徘徊の枠で出した(1回だけ)/姿が画面に入った時のアテンション(1体につき1回)。
   const phantomBrawlerForceRef = useRef(false);
   const phantomBrawlerPatrolRef = useRef(false);
@@ -3619,6 +3624,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
           phantomForceRef.current = false; // ?phantomnow=1 の force-spawn も新ランで再アーム(research/GHOST_BOSS.md)
+          scarecrowForceRef.current = false; // 案山子も新ランで再アーム(「もう一度」で立て直す)
           phantomBrawlerForceRef.current = false; phantomBrawlerPatrolRef.current = false; kenkiCutinIdRef.current = null; // 拳鬼(research/BRAWLER_PHANTOM.md)も新ランで再アーム(抽選は徘徊の枠=runMutantBossRef と一緒に引き直す)
           heroForceRef.current = false; heroStateRef.current = createHeroTickState(); heroCutinIdRef.current = null; setHeroGallop(0); // 英雄(research/MUTANT_HERO.md)
           libertyForceRef.current = false; libertyStateRef.current = createLibertyTickState(); resetOrphanLibertyArrows(); libertyCutinIdRef.current = null; // 解放軍群(research/LIBERTY_HORDE.md)
@@ -9939,6 +9945,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               bountyAttnRef.current = { at: newGameTime + 950, x: gpX0, y: gpY0, cutin: undefined };
             }
           };
+          // 案山子(社長指示2026-11-19「HPは無限で何もしないサンドバック。練習用」・utils/scarecrow.ts)。
+          // 変異体対策室の「練習」枠だけ(practiceForces は練習ラン中しか真にならない=本編・フリー出撃では湧かない)。
+          // 置き場所=プレイヤーの向いている先の少し前(画面内)。行ける帯へクランプ(CLAUDE.md 必須)。
+          // 演出(カットイン・アテンション)は付けない=ただの的。倒れないので勝ちも無い(抜けるのは一時停止から)。
+          if (practiceForces('scarecrownow') && !scarecrowForceRef.current && isPracticeRun()) {
+            scarecrowForceRef.current = true;
+            const ld = player.lastDirection ?? { x: 0, y: -1 };
+            const ldl = Math.hypot(ld.x, ld.y) || 1;
+            const scW = 36, scH = 36; // ENEMY_STATS.scarecrow と同じ(置き場所の計算だけに使う)
+            const scx = player.x + player.width / 2 + (ld.x / ldl) * 170;
+            const scy = player.y + player.height / 2 + (ld.y / ldl) * 170;
+            const scSt = useGameStore.getState();
+            const scPlaced = clampRectToPlayableArea(scx - scW / 2, scy - scH / 2, scW, scH, {
+              farBackdrop: scSt.farBackdrop,
+              labTheme,
+              corridorMode: scSt.corridorMode,
+              m0AdvanceLimitX: scSt.m0AdvanceLimitX,
+              corridorRunInActive: scSt.corridorRunInActive,
+            });
+            // 色(強個体の印)の抽選を通さない=いつも素の雑魚('none')。
+            const scE = spawnEnemyAtWithTier('scarecrow', scPlaced.x, scPlaced.y, newGameTime, 'none');
+            scE.vx = 0; scE.vy = 0;
+            addEnemy(scE);
+          }
           if ((FORCE_PHANTOM || practiceForces('phantomnow')) && !phantomForceRef.current) {
             phantomForceRef.current = true;
             spawnGuardianPhantom(pickPhantomIdentity(getSelectedStageId()));
@@ -18504,6 +18534,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 player.x, spawnBounds.width / 2, OFFSCREEN_SPAWN_MARGIN,
                 labEnemy.width, labEnemy.height, LAB_CORRIDOR_Y_LIMIT_PX,
                 labVisitedRef.current, labVisionCircles, Math.random, useGameStore.getState().labIdolSide, // アイドル側には湧かせない
+                (bx, by, bw, bh) => overlapsLabObstacle({ x: bx, y: by, width: bw, height: bh }), // 壁・プロップの中に湧かせない
               );
               if (!placed) continue; // 両側とも通った道=湧かせない(社長指示v0.25.2244)
               labEnemy.x = placed.x;
@@ -18839,8 +18870,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         nextAmmoDropDelayRef.current = airdropTick.nextAmmoDropDelayMs;
         if (airdropTick.spawn && !NO_AMMO_RUN) {   // §21-4(弾ゼロ): 空からの補給も止める
 
-          const { x: px, y: py, ammoType: dropType } = airdropTick.spawn;
-          addPickup({
+          const { x: px, y: py, ammoType: dropType0 } = airdropTick.spawn;
+          // ステージ2はPHILL弾を空からの補給(ランダムドロップ)で落とさない(社長指示2026-11-19)。他の弾種が無ければ今回は落とさない。
+          const dropType = dropAmmoTypeWithoutPhill(dropType0,
+            ammoBearingGuns(player).map(w => w.ammoType).filter((t): t is AmmoType => !!t),
+            useGameStore.getState().stageTheme === 'lab' || useGameStore.getState().indoorMode);
+          if (dropType) addPickup({
             id: `pickup-airdrop-${Math.floor(gameTime)}-${Math.floor(Math.random() * 1e6)}`,
             x: px - 8,
             y: py - 8,
@@ -18848,7 +18883,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             value: 0,
             worldDrop: true
           });
-          spawnRing(px, py, 10, 70, 'rgba(252, 211, 77, 0.7)', 3, 520);
+          if (dropType) spawnRing(px, py, 10, 70, 'rgba(252, 211, 77, 0.7)', 3, 520);
           lastAmmoDropRef.current = gameTime;
         }
 

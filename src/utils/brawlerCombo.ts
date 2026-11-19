@@ -40,8 +40,8 @@ export let BRAWLER_SECRET_HOLD_MS = 300; // ×BRAWLER_TEMPO(係数1.0の値)
 export const brawlerStageMoveKey = (stage: number): BrawlerMoveKey =>
   (['s1', 's2', 's3', 's4', 's5'] as const)[Math.max(1, Math.min(5, Math.round(stage))) - 1];
 /** 飛び蹴りの何発目か(1..3)から名札。 */
-export const brawlerKickMoveKey = (kickN: number, heel = false): BrawlerMoveKey =>
-  (heel && kickN >= 3 ? 'heel' : (['kick1', 'kick2', 'kick3'] as const)[Math.max(1, Math.min(3, Math.round(kickN))) - 1]);
+export const brawlerKickMoveKey = (kickN: number, heel = false, up = false): BrawlerMoveKey =>
+  (heel && kickN >= 3 ? 'heel' : up && kickN >= 2 ? 'kickup' : (['kick1', 'kick2', 'kick3'] as const)[Math.max(1, Math.min(3, Math.round(kickN))) - 1]);
 
 /**
  * 区分(CLAUDE.md「敵の仕様は種類で固める」)。強個体=体勢値を持つエリート雑魚(POSTURE_ELITE_TYPES)。
@@ -239,7 +239,7 @@ export const brawlerKikoTravelMs = (dist: number, speed: number): number =>
 /** 当たりの時のプレイヤーの止め(ms・テンポ係数は掛けない別の表=utils/brawler の BRAWLER_HITSTOP)。気功は弾なので 0。 */
 export const brawlerMoveStopMs = (move: BrawlerMoveKey): number =>
   move === 's1' || move === 's2' || move === 's3' || move === 's4' || move === 's5' ? brawlerStageSpec(Number(move[1])).hitstopMs
-    : move === 'kick1' ? BRAWLER_KICK_HITSTOP_MS[1] : move === 'kick2' ? BRAWLER_KICK_HITSTOP_MS[2] : move === 'kick3' || move === 'heel' ? BRAWLER_KICK_HITSTOP_MS[3]
+    : move === 'kick1' ? BRAWLER_KICK_HITSTOP_MS[1] : move === 'kick2' || move === 'kickup' ? BRAWLER_KICK_HITSTOP_MS[2] : move === 'kick3' || move === 'heel' || move === 'suplex' ? BRAWLER_KICK_HITSTOP_MS[3]
       : move === 'stomp' ? BRAWLER_STOMP_HITSTOP_MS : 0;
 /** 気功が撃った所から相手に届くまでの時間(ms)。distPx=プレイヤーの中心から相手までの距離(気功の弾の出る位置と当たりの余白を引く: −18 −当たりの余白)。 */
 export const brawlerKikoTravelForDistMs = (distPx: number): number => brawlerKikoTravelMs(distPx - 18 - BRAWLER_KIKO_HIT_PAD, BRAWLER_KIKO_SPEED);
@@ -248,7 +248,7 @@ const brawlerMoveWindupMs = (move: BrawlerMoveKey, o: { kickFlightMs?: number; k
   switch (move) {
     case 's1': case 's2': case 's3': case 's4': case 's5': return brawlerStageSpec(Number(move[1])).windupMs;
     case 'kick1': case 'kick2': case 'kick3': return o.kickFlightMs ?? BRAWLER_TECHS.kick.windupMs; // 蹴り飛ばしは溜め無し(research/BRAWLER.md §33-2)
-    case 'heel': return BRAWLER_KICK3_CHARGE_MS + (o.kickFlightMs ?? BRAWLER_TECHS.kick.windupMs);
+    case 'heel': case 'kickup': return BRAWLER_KICK3_CHARGE_MS + (o.kickFlightMs ?? BRAWLER_TECHS.kick.windupMs); // 蹴り上げも踵落としと同じ溜め(§34-1)
     case 'stomp': return BRAWLER_TECHS.stomp.windupMs;
     case 'kiko': return BRAWLER_TECHS.kiko.windupMs + brawlerKikoTravelForDistMs(o.kikoDistPx ?? 0);
     default: return 0;
@@ -490,7 +490,7 @@ export const brawlerComboOnHit = (
  */
 export const BRAWLER_JUGGLE_BUDGET: Readonly<Record<'mob' | 'strong' | 'boss', number>> = { mob: 6, strong: 5, boss: 4 };
 export const BRAWLER_JUGGLE_COST: Readonly<Record<BrawlerMoveKey, number>> = {
-  s1: 1, s2: 1, s3: 2, s4: 1, s5: 2, kick1: 2, kick2: 2, kick3: 2, heel: 2, stomp: 0, kiko: 1, secret: 2, 'secret-land': 2,
+  s1: 1, s2: 1, s3: 2, s4: 1, s5: 2, kick1: 2, kick2: 2, kick3: 2, heel: 2, kickup: 2, suplex: 2, stomp: 0, kiko: 1, secret: 2, 'secret-land': 2, // 蹴り上げ・スープレックス=強い当たり(§34-1・§34-6 #10)
 };
 /** 地面バウンド(§13-2・1コンボに1回)の跳ね返りの高さ(重さの前の倍率)。 */
 export const BRAWLER_BOUNCE_F = 0.45;
@@ -502,6 +502,8 @@ export let BRAWLER_DOWN_NO_HOLD_MS = 300; // ×BRAWLER_TEMPO(係数1.0の値)
 //   軽い(BRAWLER_JUGGLE_WEIGHT_STUN_BOSS=1.0=雑魚と同じ)まま、着地まで続く(brLiftLight)。
 export const BRAWLER_JUGGLE_WEIGHT: Readonly<Record<'mob' | 'strong' | 'boss', number>> = { mob: 1.0, strong: 0.7, boss: 0.7 };
 export const BRAWLER_JUGGLE_WEIGHT_STUN_BOSS = 1.0;
+/** ★蹴り上げの浮き(§34-1・叩き台): 飛び蹴り2発目の打ち上げ(地上 0.7・空中 0.75)のこの倍。高さも滞空も同じ倍率で大きくなる(弧の長さ=高さに比例)。 */
+export const BRAWLER_KICKUP_LIFT_K = 1.6;
 /**
  * 当たった段・技ごとの押し上げ量(4段目=1)。1・2段目・気功=小、3段目・飛び蹴り1・2発目=中。
  * 0 = 押し上げない(5段目・飛び蹴り3発目・大踏み潰し・秘奥義の締め=空中からも吹き飛ばす)。
@@ -509,6 +511,8 @@ export const BRAWLER_JUGGLE_WEIGHT_STUN_BOSS = 1.0;
 export const BRAWLER_JUGGLE_PUSH: Readonly<Record<BrawlerMoveKey, number>> = {
   s1: 0.5, s2: 0.5, s3: 0.75, s4: 1, s5: 0,
   kick1: 0.75, kick2: 0.75, kick3: 0, heel: 0, // 踵落とし=押し上げない(空中の敵は叩き落とす)
+  kickup: 0.75 * BRAWLER_KICKUP_LIFT_K, // ★蹴り上げ(§34-1): 空中の敵は通常の浮かせ直し(飛び蹴り2発目)より高く浮き直す
+  suplex: 0, // スープレックス(§34-3)=押し上げではなく地面バウンド(brawlerJugglePush の専用の枝)
   stomp: 0, kiko: 0.5, secret: 0.75, 'secret-land': 0,
 };
 /**
@@ -519,7 +523,7 @@ export const BRAWLER_JUGGLE_PUSH: Readonly<Record<BrawlerMoveKey, number>> = {
  * ★大踏み潰しも地上から浮かせる(社長裁定2026-11-11「浮かせながら吹き飛ばす(つまり浮きだけ追加)」)。吹き飛ばし(大きい押し)は今どおり=浮きだけを足した。
  *   高さは3段目と同じ 0.75(叩き台)。空中の敵への大踏み潰し(地面バウンド・1コンボ1回)は今どおり。
  */
-export const BRAWLER_GROUND_LAUNCH: Readonly<Partial<Record<BrawlerMoveKey, number>>> = { s3: 0.75, s4: 1, kick2: 0.7, stomp: 0.75 };
+export const BRAWLER_GROUND_LAUNCH: Readonly<Partial<Record<BrawlerMoveKey, number>>> = { s3: 0.75, s4: 1, kick2: 0.7, stomp: 0.75, kickup: 0.7 * BRAWLER_KICKUP_LIFT_K };
 /** これより軽い押し上げはもう浮かない(=落ちる)。いずれ必ず落ちる=永久には浮かせられない。 */
 export const BRAWLER_JUGGLE_MIN_F = 0.12;
 /** 1回の押し上げの浮く時間の下限(ms・短すぎる跳ねは絵がちらつく)。 */
@@ -692,6 +696,15 @@ export const brawlerJugglePush = (
   const light = cls === 'boss' && (airborne ? e.brLiftLight === true : stunned);
   const w = light ? BRAWLER_JUGGLE_WEIGHT_STUN_BOSS : BRAWLER_JUGGLE_WEIGHT[cls];
   const arc = (f: number) => Math.max(BRAWLER_JUGGLE_MIN_MS, Math.round(BRAWLER_LIFT_MS * f));
+  if (!airborne && move === 'suplex') {
+    // ★密着の構えのスープレックス(§34-7): 地上の雑魚を叩きつけて跳ね上げる(地面バウンドと同じ高さ・予算2を使う=区分の予算−2から)。
+    const f = BRAWLER_BOUNCE_F * w;
+    if (f < BRAWLER_JUGGLE_MIN_F) return null;
+    const fk = fallK(0);
+    const ms = brawlerFallStretchMs(arc(f), fk);
+    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: 0, brLiftN: 0, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined, brLiftFallK: fk,
+      brLiftBudget: BRAWLER_JUGGLE_BUDGET[cls] - BRAWLER_JUGGLE_COST.suplex, brLiftDown: false, brLiftDropMs: 0, brBlastAirSince: now, brLiftLight: light };
+  }
   if (!airborne) {
     const launch = BRAWLER_GROUND_LAUNCH[move];
     if (launch === undefined) return null;
@@ -713,6 +726,17 @@ export const brawlerJugglePush = (
   };
   const budget = (e.brLiftBudget ?? BRAWLER_JUGGLE_BUDGET[cls]) - BRAWLER_JUGGLE_COST[move];
   const n = (e.brLiftN ?? 0) + 1;
+  if (move === 'suplex') {
+    // ★スープレックス(§34-3・§34-6 #10): 地面バウンドと同じ器(今の高さから落ちて小さく跳ね返る=拾い直せる)。強い当たりとして予算2を使い、
+    //   尽きていれば浮かずダウン。「地面バウンドは1コンボに1回」の数には入れない(brBounceCombo を見ない・書かない)。
+    if (budget < 0) return down();
+    const f = BRAWLER_BOUNCE_F * w;
+    const dropMs = BRAWLER_JUGGLE_DROP_MS;
+    const fk = fallK(n);
+    const ms = dropMs + brawlerFallStretchMs(arc(f), fk);
+    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: h, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined, brLiftFallK: fk,
+      brLiftBudget: budget, brLiftDown: false, brLiftDropMs: dropMs };
+  }
   if (move === 'stomp') {
     // 地面バウンド: 1コンボに1回・予算が残っている時だけ。
     const combo = e.brComboStart ?? -1;
@@ -760,3 +784,18 @@ export const setBrawlerTempoAll = (tempo: number): void => {
   applyBrawlerComboTempo(BRAWLER_TEMPO);
 };
 applyBrawlerComboTempo(BRAWLER_TEMPO);
+
+/**
+ * ★空中投げの掴み(research/BRAWLER.md §34-3)の時間停止の後、浮いている敵の浮きの時計を ms だけ後ろへずらす(止まっていた間を無かったことにする)。
+ * 浮きの時計は壁時計(Date.now)で、ループが止まっている間も進むため。at=止まり始めた時刻(その時に浮いていた敵だけ)。null=ずらさない。
+ * 掴んでいる間の絵は、描画が止まり始めた時刻の高さで止めて描く(pixi)。
+ */
+export const brawlerShiftLift = (
+  e: Pick<BrawlerJuggleFields, 'brawlerLiftAt' | 'brLiftUntil'> & { liftUntil?: number }, at: number, ms: number,
+): { brawlerLiftAt: number; brLiftUntil: number; liftUntil?: number } | null => {
+  if (!(ms > 0) || e.brawlerLiftAt === undefined || e.brLiftUntil === undefined || !(e.brLiftUntil > at)) return null;
+  return {
+    brawlerLiftAt: e.brawlerLiftAt + ms, brLiftUntil: e.brLiftUntil + ms,
+    ...(e.liftUntil !== undefined && e.liftUntil === e.brLiftUntil ? { liftUntil: e.liftUntil + ms } : {}),
+  };
+};

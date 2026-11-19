@@ -424,10 +424,18 @@ describe('②成立しない場面: 普通に食らう', () => {
   });
 });
 
+/** ★密着の構え(research/BRAWLER.md §34-7)を避けて、普通の構えを出す(この試験は構えの受けを見る=密着していた敵は掴まない)。 */
+const guardTechNoContact = (): boolean => {
+  const es = useGameStore.getState().enemies;
+  useGameStore.setState({ enemies: [] });
+  const r = useGameStore.getState().brawlerTech(0, -1);
+  useGameStore.setState(st => ({ enemies: [...es.filter(e => !st.enemies.some(x => x.id === e.id)), ...st.enemies] }));
+  return r;
+};
 describe('④今あるカウンターが先・レバーガードは後(社長「ガード中も赤カウンターは狙えるように」)', () => {
   const guardNow = (points = 3) => {
     useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...(st.player.brawler ?? ({} as never)), points } } }));
-    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    expect(guardTechNoContact()).toBe(true);
     advance(20);
     expect(isBrawlerGuarding(pl(), useGameStore.getState().gameTime)).toBe(true);
   };

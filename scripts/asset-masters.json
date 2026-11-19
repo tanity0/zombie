@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "1040 files / 復号後 約719MB",
+ "generatedFor": "1044 files / 復号後 約721MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3212,17 +3212,35 @@
    "bytes": 34882,
    "sha": "ed3ef9ccd48541cf"
   },
+  "sprites/mimir-attack-v2.png": {
+   "w": 1980,
+   "h": 130,
+   "bytes": 201742,
+   "sha": "5710e185c34ed443"
+  },
   "sprites/mimir-attack.png": {
    "w": 2752,
    "h": 200,
    "bytes": 458513,
    "sha": "279f6bbedbf34530"
   },
+  "sprites/mimir-idle-v2.png": {
+   "w": 1339,
+   "h": 130,
+   "bytes": 172080,
+   "sha": "1d754033914a0ceb"
+  },
   "sprites/mimir-idle.png": {
    "w": 2041,
    "h": 198,
    "bytes": 361082,
    "sha": "e9f9602ff61faa87"
+  },
+  "sprites/mimir-laser-v2.png": {
+   "w": 1980,
+   "h": 130,
+   "bytes": 199260,
+   "sha": "35060cf92e0ddf6c"
   },
   "sprites/mimir-laser.png": {
    "w": 2970,
@@ -4639,6 +4657,12 @@
    "h": 66,
    "bytes": 20242,
    "sha": "0c15c92afacd5585"
+  },
+  "sprites/scarecrow.png": {
+   "w": 150,
+   "h": 66,
+   "bytes": 7041,
+   "sha": "4f5c200e15d42d40"
   },
   "sprites/scrap-icon.png": {
    "w": 76,

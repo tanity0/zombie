@@ -25,8 +25,7 @@ import { pauseResumeHint, pauseResumePadStyle, hudGlyph, usePadKindActive, useWi
 import { HudKey } from './HudKey'; // ボタン札の部品(research/PC_SUPPORT.md §14)
 // 熟練度の段階の札(research/MASTERY.md §6-3)。保存の値を開いた時に1回だけ読む。
 import { loadMastery } from '../utils/mastery';
-import { masteryBadgeOf, masteryKeyOfMelee } from '../utils/masteryView';
-import { gunMasteryKeyOfWeaponKey } from '../utils/weaponUtils';
+import { masteryBadgeOf, masteryKeyOfGun, masteryKeyOfMelee } from '../utils/masteryView';
 import { MasteryTag } from './MasteryBadge';
 
 // ★B2: 地図を出すステージ=区域の輪と拠点があるステージだけ(研究所・洋館の通路・訓練・EX・ステージ7は出さない)。ボスメーカー/1対1も出さない。
@@ -100,7 +99,7 @@ const readPauseSnapshot = () => {
     // 装備(社長指示v0.25.4236「護衛はいらない。代わりに装備とスキル一覧とサブウェポン情報」): 値は開いた時の1回読み。
     guns: s.player.weapons.filter(w => !w.isMelee).map(w => ({
       id: w.id, name: w.name, active: w.id === s.player.activeWeaponId,
-      mastery: masteryBadgeOf(gunMasteryKeyOfWeaponKey(w.key), mastery), // 熟練度: 銃ごと(武器ごと)
+      mastery: masteryBadgeOf(masteryKeyOfGun(w.key), mastery), // 熟練度: 銃ごと(武器ごと)。PHILLガンは最初から MAX
     })),
     melee: meleeWeapon?.name ?? null,
     meleeMastery: masteryBadgeOf(masteryKeyOfMelee(meleeWeapon?.key), mastery), // 熟練度: 装備している近接武器(ナイフ毎)

@@ -8,9 +8,11 @@ export type BrawlerPhase = 'idle' | 'attack' | 'tech';
 export type BrawlerMoveKey =
   | 's1' | 's2' | 's3' | 's4' | 's5'
   | 'kick1' | 'kick2' | 'kick3' | 'heel'
+  /** 蹴り上げ(research/BRAWLER.md §34-1)・スープレックス(§34-3=空中投げで投げ先が無い時の叩きつけ)。 */
+  | 'kickup' | 'suplex'
   | 'stomp' | 'kiko' | 'secret' | 'secret-land';
 /** 道の表(research/BRAWLER.md §19-1)の節。待機・通常の段・飛び蹴りの何発目か・技。 */
-export type BrawlerRouteNode = 'idle' | 's1' | 's2' | 's3' | 's4' | 's5' | 'kick1' | 'kick2' | 'kick3' | 'heel' | 'stomp' | 'kiko' | 'guard';
+export type BrawlerRouteNode = 'idle' | 's1' | 's2' | 's3' | 's4' | 's5' | 'kick1' | 'kick2' | 'kick3' | 'heel' | 'kickup' | 'stomp' | 'kiko' | 'guard';
 /** 拳鬼の技の予備動作のコマ(research/BRAWLER_PHANTOM.md §16-5): ready=しゃがみ / swing=腕上げ。 */
 export type KenkiPrepTex = 'ready' | 'swing';
 /** 秘奥義の9連撃で出す技(通常攻撃の段 1..5 か技)。research/BRAWLER.md §10。 */
@@ -53,6 +55,35 @@ export interface BrawlerState {
   kickGroundPx?: number;
   /** 覚えている次の蹴り(techBuffer='kick')が踵落としか(下で入れた)。 */
   heelBuffer?: boolean;
+  /**
+   * ★蹴り上げ(research/BRAWLER.md §34-1)。飛び蹴りの1・2発目の続きで上を入れると、次の蹴りがこれになる(kickN=蹴りの連続の位置 2 か 3)。
+   * 踵落としの上下逆(溜め→下から上へ振り上げる)。当たった相手を上へ打ち上げる。
+   */
+  kickUp?: boolean;
+  /** 覚えている次の蹴り(techBuffer='kick')が蹴り上げか(上で入れた・出す瞬間に「直前の蹴りが当たった・払える」を見直す)。 */
+  kickUpBuffer?: boolean;
+  /**
+   * ★空中投げ(research/BRAWLER.md §34-3): この蹴り上げで相手を掴んだ(投げ・スープレックスへ移った)。蹴りの連続はここで終わる=締め(道の表は kick3 と同じ扱い)。
+   */
+  kickThrow?: boolean;
+  /**
+   * ★掴んでいる間(§34-3)。enemyId=掴んだ相手・at=掴んだ時刻・releaseAt=放す時刻(どちらも Date.now)。この間は画面全体の止め(triggerHitstop)で
+   * ループごと止まる。止めが明けた最初の時計で、投げ先へ投げる(居なければスープレックス)。
+   */
+  grab?: { enemyId: string; at: number; releaseAt: number };
+  /** スープレックスを決めた時刻(gameTime・体が後ろへ反る絵の起点)。 */
+  suplexAt?: number;
+  /**
+   * ★密着の構え(research/BRAWLER.md §34-7): 構えを出した瞬間に体に密着していた敵を掴んだ。enemyId=掴んだ相手・mode=雑魚はスープレックス/強個体・ボス級は蹴りバク宙。
+   * 状態は締めの蹴り(tech='kick'・kickThrow)の形で持つ: 前隙=掴み(BRAWLER_CONTACT_GRAB_MS)・判定でスープレックス/蹴り・後隙=叩きつけの後隙/バク宙して下がる間。
+   * 掴みから行動の終わりまでスーパーアーマー(utils/superArmor)。構えの効果(カウンター窓・被害の無効・打ち返し)は無い。
+   */
+  contactGrab?: { enemyId: string; mode: 'suplex' | 'flipkick' };
+  /**
+   * ★構えの取り消し(§34-2・§34-6 #8)で、受けの成立の止め(画面全体の止め)の最中に入れた技を覚えたか。止めが明けた瞬間に出す。
+   * 覚えるのは techBuffer(1つだけ)。構えの間だけ意味を持つ。
+   */
+  guardCancelHeld?: boolean;
   /** 踵落としの溜め(ms・gameTime)。前隙(windupMs)の頭のこの長さは空中で光って沈み、その後に飛ぶ。0/無し=溜め無し(蹴り飛ばしは溜め無し=§33)。 */
   kickChargeMs?: number;
   /**

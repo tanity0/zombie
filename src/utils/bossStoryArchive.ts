@@ -10,8 +10,8 @@ import { PATROL_MAP_BOSS } from './sortieMapBosses';
 /** 小見出しの並び(対策室の棚の順 PRACTICE_CATEGORY_ORDER に沿う: 賞金首→徘徊→城ボス→関所→裏ボス)。 */
 export const BOSS_STORY_GROUP_ORDER: readonly BossStoryGroup[] = ['賞金首', '徘徊', '城ボス', '関所', '裏ボス'];
 
-/** 対策室には居るが棚に載せない枠: 汎用の幻影(本編に居ない=倒した記録が付かない)。 */
-export const BOSS_STORY_EXCLUDED_KEYS: readonly string[] = ['guardian-phantom'];
+/** 対策室には居るが棚に載せない枠: 汎用の幻影(本編に居ない=倒した記録が付かない)・案山子(練習の的=倒れない・物語を持たない)。 */
+export const BOSS_STORY_EXCLUDED_KEYS: readonly string[] = ['guardian-phantom', 'scarecrow'];
 
 export interface BossStoryFace { sprite: string; crop: BossHeadCrop }
 

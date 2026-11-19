@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   PRACTICE_CATEGORY_ORDER, PRACTICE_SLOTS, practiceSlotByKey, practiceBossHealth, PRACTICE_HIDDEN_SLOT_KEYS,
   practiceSlotUnlocked, GUARDIAN_PHANTOM_SLOT_KEY, PHANTOM_BRAWLER_SLOT_KEY, MUTANT_HERO_SLOT_KEY, MUTANT_LIBERTY_SLOT_KEY, MUTANT_ASTRO_SLOT_KEY, MUTANT_WRAITH_SLOT_KEY, GUARDIAN_PHANTOM_LABEL, GUARDIAN_PHANTOM_PRACTICE_LABEL,
+  SCARECROW_SLOT_KEY,
 } from './bossPractice';
 import { GHOST_DOSSIER_SLOTS } from './ghostDossier';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
@@ -25,7 +26,7 @@ const bountySlots = () => PRACTICE_SLOTS.filter(s => isBountyType(s.bossType));
 const duelSlots = () => PRACTICE_SLOTS.filter(s => s.bossType === 'guardian-phantom');
 const ghostDerivedSlots = () =>
   // 英雄(research/MUTANT_HERO.md)も独立追記枠=比較から除く。
-  PRACTICE_SLOTS.filter(s => !isBountyType(s.bossType) && s.bossType !== 'guardian-phantom' && s.bossType !== 'mutant-hero' && s.bossType !== 'mutant-liberty' && s.bossType !== 'mutant-astro' && s.bossType !== 'mutant-wraith');
+  PRACTICE_SLOTS.filter(s => !isBountyType(s.bossType) && s.bossType !== 'guardian-phantom' && s.bossType !== 'mutant-hero' && s.bossType !== 'mutant-liberty' && s.bossType !== 'mutant-astro' && s.bossType !== 'mutant-wraith' && s.bossType !== 'scarecrow');
 
 describe('ボスラッシュの台帳', () => {
   it('守護霊メニューと同じ台帳をそのまま使う(形態別の独立枠は置かない)', () => {
@@ -34,7 +35,8 @@ describe('ボスラッシュの台帳', () => {
     // 台帳の総数 = 守護霊メニュー由来 + 賞金首4 + 決闘1(幻影)+ 中立1(英雄・research/MUTANT_HERO.md)+ 解放軍群1(research/LIBERTY_HORDE.md)+ 宇宙飛行群1(research/ASTRONAUT_HORDE.md)+ 亡霊1(research/WRAITH_MUTANT.md)。
     // research/BRAWLER_PHANTOM.md: 決闘に拳鬼(固有の幻影)の枠が1つ増えた=決闘2。
     expect(duelSlots()).toHaveLength(2);
-    expect(PRACTICE_SLOTS).toHaveLength(GHOST_DOSSIER_SLOTS.length - PRACTICE_HIDDEN_SLOT_KEYS.length + BOUNTY_ENEMY_TYPES.size + 2 + 1 + 1 + 1 + 1);
+    // 案山子(練習の的・社長指示2026-11-19)で +1。
+    expect(PRACTICE_SLOTS).toHaveLength(GHOST_DOSSIER_SLOTS.length - PRACTICE_HIDDEN_SLOT_KEYS.length + BOUNTY_ENEMY_TYPES.size + 2 + 1 + 1 + 1 + 1 + 1);
   });
 
   // ★社長裁定v0.25.3600「第二形態は第一形態と合体させて。第一倒したら第二に移行」。
@@ -113,7 +115,8 @@ describe('ボスラッシュの台帳', () => {
     //   acrasiel を台帳(GHOST_DOSSIER_SLOTS)から外した=ここにも出ない。
     // 英雄(research/MUTANT_HERO.md §2-0)も本編のステージは社長検討中=対策室だけに置く(常時解放)。
     // 拳鬼(research/BRAWLER_PHANTOM.md)の枠も確認用=reachable:false(本編の並びは sortieBossRoster の③が出す)。
-    expect(unreachable).toEqual([GUARDIAN_PHANTOM_SLOT_KEY, PHANTOM_BRAWLER_SLOT_KEY, MUTANT_HERO_SLOT_KEY, MUTANT_LIBERTY_SLOT_KEY, MUTANT_ASTRO_SLOT_KEY, MUTANT_WRAITH_SLOT_KEY].sort());
+    // 案山子(練習の的)も本編に居ない=reachable:false。
+    expect(unreachable).toEqual([GUARDIAN_PHANTOM_SLOT_KEY, PHANTOM_BRAWLER_SLOT_KEY, MUTANT_HERO_SLOT_KEY, MUTANT_LIBERTY_SLOT_KEY, MUTANT_ASTRO_SLOT_KEY, MUTANT_WRAITH_SLOT_KEY, SCARECROW_SLOT_KEY].sort());
     expect(ghostDerivedSlots()).toHaveLength(GHOST_DOSSIER_SLOTS.length - PRACTICE_HIDDEN_SLOT_KEYS.length); // 外したのは研究所跡だけ
   });
 });
@@ -131,9 +134,10 @@ describe('賞金首の掲載枠', () => {
   // **表示順の正=PRACTICE_CATEGORY_ORDER** なので、こちらの先頭も固定する。
   it('画面のカテゴリ順も小ボス(賞金首)が先頭', () => {
     expect(PRACTICE_CATEGORY_ORDER[0]).toBe('bounty');
-    // research/GHOST_BOSS.md: 'duel'(決闘=幻影)は末尾の実験枠。
-    expect(PRACTICE_CATEGORY_ORDER[PRACTICE_CATEGORY_ORDER.length - 1]).toBe('duel');
-    expect([...PRACTICE_CATEGORY_ORDER].sort()).toEqual(['bounty', 'duel', 'gate', 'hidden', 'neutral', 'story']);
+    // research/GHOST_BOSS.md: 'duel'(決闘=幻影)は実験枠。その後ろ=最後が 'practice'(案山子・社長指示2026-11-19「最後に」)。
+    expect(PRACTICE_CATEGORY_ORDER[PRACTICE_CATEGORY_ORDER.length - 2]).toBe('duel');
+    expect(PRACTICE_CATEGORY_ORDER[PRACTICE_CATEGORY_ORDER.length - 1]).toBe('practice');
+    expect([...PRACTICE_CATEGORY_ORDER].sort()).toEqual(['bounty', 'duel', 'gate', 'hidden', 'neutral', 'practice', 'story']);
   });
 
   // 社長報告2026-08-20「難易度補正、ボスモードに入ってない」の修正: 出撃先=**生息ステージ**
@@ -235,9 +239,9 @@ describe('練習画面のHP表示', () => {
 
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): ボスモードの実験枠「決闘」。
 describe('決闘(幻影)の掲載枠', () => {
-  it('決闘の枠は汎用の幻影と拳鬼の2つ・一覧の最下段に置かれている', () => {
+  it('決闘の枠は汎用の幻影と拳鬼の2つ・案山子(練習)のすぐ上に置かれている', () => {
     expect(duelSlots().map(s => s.slotKey)).toEqual([GUARDIAN_PHANTOM_SLOT_KEY, PHANTOM_BRAWLER_SLOT_KEY]);
-    expect(PRACTICE_SLOTS.slice(-2).map(s => s.slotKey)).toEqual([GUARDIAN_PHANTOM_SLOT_KEY, PHANTOM_BRAWLER_SLOT_KEY]);
+    expect(PRACTICE_SLOTS.slice(-3).map(s => s.slotKey)).toEqual([GUARDIAN_PHANTOM_SLOT_KEY, PHANTOM_BRAWLER_SLOT_KEY, SCARECROW_SLOT_KEY]);
   });
   it('拳鬼の枠: stage-1・強制出現は?brawlerphantomnow・遭遇キーは phantom-brawler・常時解放', () => {
     const slot = practiceSlotByKey(PHANTOM_BRAWLER_SLOT_KEY)!;
@@ -261,7 +265,7 @@ describe('決闘(幻影)の掲載枠', () => {
     expect(slot.alwaysUnlocked).toBe(true);
     expect(practiceSlotUnlocked(slot, new Set())).toBe(true);
     // 英雄の枠(research/MUTANT_HERO.md §2-0)も同じ入口で常時解放=除いて数える。
-    for (const other of PRACTICE_SLOTS.filter(s => s.slotKey !== GUARDIAN_PHANTOM_SLOT_KEY && s.slotKey !== PHANTOM_BRAWLER_SLOT_KEY && s.slotKey !== MUTANT_HERO_SLOT_KEY && s.slotKey !== MUTANT_LIBERTY_SLOT_KEY && s.slotKey !== MUTANT_ASTRO_SLOT_KEY && s.slotKey !== MUTANT_WRAITH_SLOT_KEY)) {
+    for (const other of PRACTICE_SLOTS.filter(s => s.slotKey !== GUARDIAN_PHANTOM_SLOT_KEY && s.slotKey !== PHANTOM_BRAWLER_SLOT_KEY && s.slotKey !== MUTANT_HERO_SLOT_KEY && s.slotKey !== MUTANT_LIBERTY_SLOT_KEY && s.slotKey !== MUTANT_ASTRO_SLOT_KEY && s.slotKey !== MUTANT_WRAITH_SLOT_KEY && s.slotKey !== SCARECROW_SLOT_KEY)) {
       expect(practiceSlotUnlocked(other, new Set()), other.slotKey).toBe(false);
     }
   });

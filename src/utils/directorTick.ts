@@ -10,9 +10,10 @@
 // 呼び出しは、他の src/utils/*.ts (例: inputActions.ts, weaponUtils.ts)と同じ既存パターンに倣う。
 
 import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED, SPAWN_CLAMP_ENABLED, RESCUE_ALLY_SPAWN_DIST, huntingMeleeRadius } from '../store/gameStore';
+import { isScarecrow } from './scarecrow';
 import { placeLabSpawn } from './labSpawn';
 import { OFFSCREEN_SPAWN_MARGIN } from './enemyUtils';
-import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
+import { LAB_CORRIDOR_Y_LIMIT_PX, overlapsLabObstacle } from '../world/labWalls';
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { isNearSecretPoi } from '../world/secretPois';
 import {
@@ -156,6 +157,8 @@ export const isEnemyCapProtected = (
   // research/GHOST_BOSS.md(守護霊ボス「幻影」): 上限カリングで消されない(戦っている相手が
   // 雑魚の数の都合で消えると戦闘そのものが成立しない=他のボス系と同じ保護)。
   isGuardianPhantom(e.type) ||
+  // 案山子(変異体対策室の練習枠・utils/scarecrow.ts): その出撃のただ1体の的。上限の間引きで消さない。
+  isScarecrow(e.type) ||
   !!(e.isWave && gameTime - (e.spawnedAt ?? 0) < WAVE_GRACE_MS);
 
 // ============================================================================
@@ -1342,6 +1345,8 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     // 余白を超えたら画面外と判定。
     // ステージ2の逃走経路の雑魚は画面外の置き直し・回収をしない(置いた場所で待つ=1画面1体の間隔を崩さない)。
     if (enemy.escapeRoute) return enemy;
+    // 案山子(練習枠の的)は画面外へ置き去りにしても湧き直さない=押した先・置いた場所で待つ。
+    if (isScarecrow(enemy.type)) return enemy;
     if (enemy.fixed) {
       // ★叫喚型の置き去り(社長指示2026-11-11「進行方向にワープさせる」): プレイヤーから遠く離れた叫喚型を、
       // 同じ個体のまま(体力・id・次に叫ぶ予定はそのまま)**進む先の辺の外**へ動かす。置き先の決め方は雑魚の
@@ -1509,6 +1514,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
         player.x, spawnBounds.width / 2, OFFSCREEN_SPAWN_MARGIN,
         replacement.width, replacement.height, LAB_CORRIDOR_Y_LIMIT_PX,
         labVisited ?? null, visionCircles, Math.random, useGameStore.getState().labIdolSide, // アイドル側には置き直さない
+        (bx, by, bw, bh) => overlapsLabObstacle({ x: bx, y: by, width: bw, height: bh }), // 壁・プロップの中に置き直さない
       );
       // 通った道しか置き場が無い場合は再配置せず、その個体をそのまま消す(=画面外で静かに退場)。
       if (!placed) { ENEMY_REMOVE_CAUSE.set(enemy.id, 'labNoPlace'); return null; } // 消失ログ用(v0.25.3958)

@@ -1,6 +1,8 @@
 import type { JumpSplit } from './enemyJumpSheet';
 import type { SweepSplit } from './enemySweepSheet';
 import type { IdlePlayback } from './enemyIdleSheet';
+// ミーミルの新旧の絵の切り替え(`?mimirart=old`)。mimirArt も何も import しない葉なので環にならない。
+import { MIMIR_ART_OLD } from './mimirArt';
 // ★敵のアニメーションシートの台帳(**依存ゼロの葉モジュール**)。
 //
 // ★なぜ葉にするか(ENGINEERING_NOTES「循環importは…」): この表は
@@ -665,6 +667,11 @@ export const ENEMY_IDLE_SHEETS: Readonly<Record<string, number>> = {
   //   天使たちと同じく、技のシートが無い間は移動・待機・技の最中もこの絵を流す。素の向きは立ち絵と同じ(既定の左向き扱い)。
   //   大きさ: 0コマ目を立ち絵(201×256)へ重ねて本体の高さ **193**(IoU 0.83・横のずれ1px)=`ENEMY_IDLE_BODY_H`。
   //   浮き沈み(眼の高さがコマで最大12px上下)は**絵に描かれた動き**なので打ち消さない。
+  // ★★差し替え(社長支給2026-11-19「**ミーミルの歩きと攻撃モーション差し替え**」)。**既定はこちら**=`mimir-idle-v2`
+  //   (支給 1339×130 そのまま・**103×130**×13コマ・0.66MB・半透明0%・足元は全コマ最下行)。旧の絵は `?mimirart=old`(`utils/mimirArt.ts`)。
+  //   同じ動き(うごめき+7〜9コマ目のまばたき)を高さ130で出し直した絵(隣どうしの重なりが旧と ±0.02 で一致)。コマ数は旧と同じ13。
+  //   大きさ: 0コマ目を立ち絵(201×256)へ重ねて本体の高さ **125**(IoU 0.83・ずれ0)。眼の大きさで測っても 256/2.07=124 で一致。
+  //   眼の位置: 横は全コマ ±2px 以内=ずらし不要。縦の浮き沈み(最大9px)は絵の動きなので打ち消さない。
   'mimir': 13,
   // ★ヨルムンガルド(`jormungand`・ステージ3の裏ボス)。社長支給2026-09-29「**ヨルムンガルドの移動**」。16コマ(支給 5392×152 → 上の空き2行を落として
   //   **337×150**・3.09MB=遅延組)。牙を剥いたまま地を這い、うねりが胴を伝って尾が跳ねる。素の向きは立ち絵と同じ左向き(既定)。
@@ -723,7 +730,9 @@ export const ENEMY_IDLE_PERIOD_MS: Readonly<Record<string, number>> = {
   'jormungand': 2000,
 };
 
-export const idleSheetName = (idleTexName: string): string => `${idleTexName}-idle`;
+/** 待機シートの名前が `<立ち絵>-idle` でない個体(ミーミルの新しい絵=`mimir-idle-v2`。旧の絵は `?mimirart=old`)。 */
+const IDLE_SHEET_RENAME: Readonly<Record<string, string>> = MIMIR_ART_OLD ? {} : { 'mimir': 'mimir-idle-v2' };
+export const idleSheetName = (idleTexName: string): string => IDLE_SHEET_RENAME[idleTexName] ?? `${idleTexName}-idle`;
 /**
  * ★**待機のシートの `bodyH`**(立ち絵の枠いっぱいに当たる、シートの中の高さ)。書いていない個体は**枠の高さ**(=そのまま)。
  * ラフィは立ち絵が屈んだ姿で、シートの枠は伸び上がるコマに合わせて高い=枠の高さで合わせると本体が約2割縮む。
@@ -732,7 +741,7 @@ export const ENEMY_IDLE_BODY_H: Readonly<Record<string, number>> = {
   'rafi': 114,
   'uri': 152,
   'suriel': 152,
-  'mimir': 193,
+  'mimir': MIMIR_ART_OLD ? 193 : 125, // 新しい絵(高さ130)は 125・旧の絵(高さ198)は 193(`?mimirart=old`)
   'jormungand': 142,
 };
 
@@ -1346,6 +1355,7 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   // スリィエル。待機0.79+詠唱1 0.95+詠唱2 0.88=2.62MB。天使の門でしか出ず、出現にカットインを挟むので遅延。
   'suriel': 'deferred',
   // ミーミル。移動1.54+攻撃2.10+レーザー2.27=5.91MB。ステージ1の裏ボス=カットインを挟んで出る=遅延。
+  //   ★2026-11-19 差し替え後の既定(新しい絵): 移動0.66+攻撃0.98+レーザー0.98=2.62MB(旧の絵は `?mimirart=old`)。
   'mimir': 'deferred',
   // トール。一閃1.91+薙ぎ払い2.13+歩き2.72+跳び2.49+突き1.79=11.04MB。ステージ5の裏ボス=カットインを挟んで出る=遅延。
   'thor': 'deferred',
@@ -1986,8 +1996,13 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
   //   撃ち終わり(`laser-recover`)と中断(`laser-broken`・カウンターで弾かれた)は 11→0 と瞳を戻す。
   //   大きさ: 0コマ目を立ち絵(201×256)へ重ねて本体の高さ **193**(IoU 0.80・移動の絵と同じ値)。立ち絵より触手の下端が短いぶん全コマ6px上げる。
   //   瞳の位置は全コマ±5px(亡者と触手の揺れ)=コマごとのずらしは不要。レーザー本体・紫の予告・溜めの演出はそのまま。
+  // ★★差し替え(社長支給2026-11-19・歩き/攻撃と同時)。**既定は `mimir-laser-v2`**(支給 1980×130 そのまま・**132×130**×15コマ・0.98MB)。旧の絵は `?mimirart=old`。
+  //   読みは旧と同じ(瞳が 11〜14 で絞られる: 虹彩の面積 527→483→475→409)=割り付けは旧のまま。
+  //   ★絵は攻撃の新しい絵(`mimir-attack-v2`)と**同じ下絵**(15コマとも輪郭が1画素も違わない・瞳の大きさも同じ)。違いは色の量子化だけ
+  //   (各コマ約3,300画素で RGB が平均9ずれる・明るさの偏りなし・色数はどちらも33)。
+  //   大きさ・ずらしも攻撃の新しい絵と同じ(本体の高さ 125・全コマ4px左+6/8/9/10コマ目の瞳揃え)。
   {
-    idle: 'mimir', name: 'mimir-laser', frames: 15, bodyH: 193,
+    idle: 'mimir', name: MIMIR_ART_OLD ? 'mimir-laser' : 'mimir-laser-v2', frames: 15, bodyH: MIMIR_ART_OLD ? 193 : 125,
     phases: [
       { state: 'laser-windup', seq: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], mode: 'stretch' },
       { state: 'laser-fire', seq: [12, 13, 14], mode: 'pingpong' },
@@ -2005,7 +2020,8 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
   //   大きさ: 0コマ目を立ち絵(201×256)へ重ねて本体の高さ **185**(IoU 0.96)。触手の先が立ち絵より長いぶん全コマ7px下げる。
   //   **体の位置**: 瞳の中心がコマによって最大6px横へずれる(14,15コマ目は体ごと右へ寄る)⇒ 3px以上ずれるコマだけ瞳を揃える(`ENEMY_FRAME_OFFSETS`)。
   //   眼が上へせり上がる動き(瞳の高さが最大15px上がる)は絵に描かれた動きなので打ち消さない。牙・弾・風圧などのエフェクトはそのまま。
-  {
+  //   ★この16コマの絵は `?mimirart=old` の時だけ使う(既定は下の `mimir-attack-v2`)。
+  ...(MIMIR_ART_OLD ? [{
     idle: 'mimir', name: 'mimir-attack', frames: 16, bodyH: 185,
     phases: [
       ...(['bite-windup', 'aim-burst', 'aim-radial', 'dash-windup'] as const).map(state =>
@@ -2015,7 +2031,27 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
       ...(['bite-recover', 'burst-recover', 'radial-recover', 'dash-recover'] as const).map(state =>
         ({ state, seq: [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0], mode: 'stretch' as const })),
     ],
-  },
+  }] : [{
+  // ★★ミーミルの攻撃・差し替え(社長支給2026-11-19「**ミーミルの歩きと攻撃モーション差し替え**」)。**既定はこちら**(旧の絵は `?mimirart=old`)。
+  //   15コマ(支給 1980×130 そのまま・**132×130**・0.98MB・半透明0%・足元は全コマ最下行)。
+  //   読み: 0=亡者が眼に身を寄せて縮こまる → 1〜10=亡者が身を起こし、腕を広げてうごめく → **11〜14=瞳がすぼまり白目が広がる=見開いて睨む**。
+  //   割り付け(レーザー以外の全技=噛みつき・3連射・全方位・突進。州は旧と同じ): **溜めで 0→14 と見開き切り、放つ/噛む/走る間は
+  //   いちばん見開いた 12〜14 を往復(社長指示「往復は眼がいちばん見開いた所に」)、戻りで 14→0**。レーザーと `return` は従来どおり。
+  //   大きさ: 歩きの新しい絵と**同じ 125**(眼の大きさを歩きの0コマ目と突き合わせると倍率 1.00=同じ縮尺で描かれている)。
+  //   立ち絵へ重ねた IoU 最大は 129(0.80)だが、歩き⇄攻撃で眼の大きさが跳ねないことを優先した。
+  //   **体の位置**: 0コマ目の瞳は歩きの0コマ目より 4px 右 ⇒ 全コマ4px左へ(切り替えで眼が跳ねない)。
+  //   さらに瞳の中心が3px以上横へずれるコマ(6・8・9・10)だけ揃える(`ENEMY_FRAME_OFFSETS`)。縦(1・4コマ目で最大6px上がる)は絵の動きなので打ち消さない。
+  //   牙・弾・風圧などのエフェクトはそのまま。
+    idle: 'mimir', name: 'mimir-attack-v2', frames: 15, bodyH: 125,
+    phases: [
+      ...(['bite-windup', 'aim-burst', 'aim-radial', 'dash-windup'] as const).map(state =>
+        ({ state, seq: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], mode: 'stretch' as const })),
+      ...(['burst', 'radial', 'dash'] as const).map(state =>
+        ({ state, seq: [12, 13, 14], mode: 'pingpong' as const })),
+      ...(['bite-recover', 'burst-recover', 'radial-recover', 'dash-recover'] as const).map(state =>
+        ({ state, seq: [14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0], mode: 'stretch' as const })),
+    ],
+  }]),
   // ★舞妓(変異)の技(社長支給2026-09-29「**舞妓の技モーション。1コマ目から始まり、技が終わるまで4-15を繰り返す**」)。
   //   16コマ(支給 1984×142 → 上の空き2行を落として **124×140**・1.11MB)。読み: 0〜2=袖を広げた両腕を胸元へ抱き寄せる /
   //   3〜15=抱いたまま身を揺らす(着物の赤が濃くなっていく)。**16コマ目(15)は指示の範囲外なので使わない。**
@@ -2213,6 +2249,10 @@ export const ENEMY_FRAME_OFFSETS: Readonly<Record<string, readonly (readonly [nu
   'mimir-laser': Array.from({ length: 15 }, () => [0, -6] as const),
   // ミーミルの攻撃: 触手の先が立ち絵より長い ⇒ 全コマ7px下げる+瞳の中心が3px以上ずれるコマ(2・13・14・15)だけ横を揃える。
   'mimir-attack': Array.from({ length: 16 }, (_, i) => [({ 2: 3, 13: 4, 14: -6, 15: -4 } as Record<number, number>)[i] ?? 0, 7] as const),
+  // ミーミルの攻撃・差し替え(`mimir-attack-v2`): 全コマ4px左(瞳を歩きの0コマ目へ揃える)+瞳が3px以上横へずれるコマ(6:-3 / 8:+4 / 9:-4 / 10:+3)を戻す。縦はずらさない。
+  'mimir-attack-v2': Array.from({ length: 15 }, (_, i) => [-4 + (({ 6: 3, 8: -4, 9: 4, 10: -3 } as Record<number, number>)[i] ?? 0), 0] as const),
+  // ミーミルのレーザー・差し替え(`mimir-laser-v2`): 攻撃の新しい絵と同じ下絵(輪郭・瞳の位置が全コマ一致)=同じずらし。
+  'mimir-laser-v2': Array.from({ length: 15 }, (_, i) => [-4 + (({ 6: 3, 8: -4, 9: 4, 10: -3 } as Record<number, number>)[i] ?? 0), 0] as const),
   // 舞妓の技: 裾から垂れる滴が立ち絵より長い ⇒ 全コマ7px下げて裾を立ち絵へ揃える(0コマ目を重ねた IoU 0.82→0.94)。
   'bounty-maiko-cast': Array.from({ length: 16 }, () => [0, 7] as const),
   'bounty-balance-slash': [[0, 0], [3, 0], [6, 0], [15, 0], [23, 0], [31, 0], [15, 0], [-2, 0], [1, 0]],

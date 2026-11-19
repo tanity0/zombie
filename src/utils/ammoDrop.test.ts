@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickAmmoDropType } from './ammoDrop';
+import { pickAmmoDropType, dropAmmoTypeWithoutPhill } from './ammoDrop';
 
 describe('pickAmmoDropType (PACING_PUZZLE.md §5.5 M5・RE4式)', () => {
   it('残弾割合(reserve/max)が最小の弾種を選ぶ', () => {
@@ -60,5 +60,26 @@ describe('pickAmmoDropType (PACING_PUZZLE.md §5.5 M5・RE4式)', () => {
       { type: 'rifle' as const, reserve: 9, max: 36 },
     ];
     expect(pickAmmoDropType(owned, undefined)).toBe('rifle');
+  });
+});
+
+// 社長指示2026-11-19「ステージ２、PHILLガンの弾は敵やランダムドロップでは落ちない。」
+describe('dropAmmoTypeWithoutPhill(ステージ2はPHILL弾を落とさない)', () => {
+  it('ステージ2: phill は他の所持弾種へ置き換える', () => {
+    expect(dropAmmoTypeWithoutPhill('phill', ['phill', 'handgun'], true)).toBe('handgun');
+  });
+  it('ステージ2: PHILLガンしか持っていなければ落とさない(null)', () => {
+    expect(dropAmmoTypeWithoutPhill('phill', ['phill'], true)).toBeNull();
+  });
+  it('ステージ2: phill 以外はそのまま', () => {
+    expect(dropAmmoTypeWithoutPhill('rifle', ['phill', 'rifle'], true)).toBe('rifle');
+  });
+  it('ステージ2以外は1bitも変えない(phill もそのまま)', () => {
+    expect(dropAmmoTypeWithoutPhill('phill', ['phill'], false)).toBe('phill');
+    expect(dropAmmoTypeWithoutPhill('shotgun', ['shotgun'], false)).toBe('shotgun');
+  });
+  it('弾種が無ければ null', () => {
+    expect(dropAmmoTypeWithoutPhill(undefined, [], true)).toBeNull();
+    expect(dropAmmoTypeWithoutPhill(null, ['handgun'], false)).toBeNull();
   });
 });

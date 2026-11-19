@@ -3,7 +3,7 @@
 //  ・リザルト: この出撃で伸びた物の並び(masteryResultRows)と、1行ぶんの「貯まる順番」(masteryFillSteps)
 //  ・装備メニュー/一時停止: 段階の札(masteryBadgeOf・masteryLevelLabel)とサブウェポン/近接武器 → 熟練度のキー(masteryKeyOfSub・masteryKeyOfMelee。銃は武器のキーそのまま=gunMasteryKeyOfWeaponKey)
 import {
-  GROWING_MASTERY_KEYS, MASTERY_MAX_LEVEL, MASTERY_MAXED_SUBS, SUB_TO_MASTERY_KEY, gunMasteryKeyOfWeaponKey, meleeMasteryKeyOfWeaponKey,
+  GROWING_MASTERY_KEYS, MASTERY_MAX_LEVEL, MASTERY_MAXED_GUNS, MASTERY_MAXED_SUBS, SUB_TO_MASTERY_KEY, gunMasteryKeyOfWeaponKey, meleeMasteryKeyOfWeaponKey,
   type GrowingMasteryKey,
 } from '../data/mastery';
 import { masteryProgress, type MasteryCommitEntry, type MasteryCommitResult, type MasteryState } from './mastery';
@@ -25,6 +25,12 @@ export type MasteryBadgeKey = GrowingMasteryKey | 'max';
 export const masteryKeyOfSub = (sub: string): MasteryBadgeKey | null => {
   if (MASTERY_MAXED_SUBS.includes(sub)) return 'max';
   return SUB_TO_MASTERY_KEY[sub] ?? null;
+};
+
+/** 銃(持っている銃の key)→ 札のキー。「最初から最大」の銃(PHILLガン)は `max`・育つ銃はそのキー・それ以外は null。 */
+export const masteryKeyOfGun = (weaponKey: string | null | undefined): MasteryBadgeKey | null => {
+  if (typeof weaponKey === 'string' && MASTERY_MAXED_GUNS.includes(weaponKey)) return 'max';
+  return gunMasteryKeyOfWeaponKey(weaponKey) ?? null;
 };
 
 /** 近接武器(装備している近接武器の key)→ 札のキー(ナイフ毎の括り)。台帳に無い/近接武器が無いは null。 */

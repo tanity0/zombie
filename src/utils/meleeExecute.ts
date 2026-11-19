@@ -13,6 +13,7 @@
 // レンダラ非依存の純関数=ヘッドレスでユニットテスト可能(実装精度の規律4)。
 import type { EnemyColorTier, EnemyType } from '../types/game';
 import { hasStrongIndividualMark, isBossType, isPumpkinTier } from './enemyUtils';
+import { isScarecrow } from './scarecrow';
 
 export const ELITE_MELEE_STUN_MULT = 3;
 
@@ -84,6 +85,8 @@ export const stunnedMeleeOutcome = (
 ): StunnedMeleeOutcome => {
   // ★社長裁定2026-09-05: 強個体でも**紫中の一撃は即死**(致命の一撃)。
   if (gameTime !== undefined && isEliteFatalStun(enemy, gameTime)) return 'execute';
+  // 案山子(utils/scarecrow.ts): 倒れない的に即死(処刑)は成り立たない=強個体と同じ「重い一撃」(3×+気絶解除)。
+  if (isScarecrow(enemy.type)) return 'heavy';
   // §6.38 v7: 旧v6 B1.5-1の「賞金首は全HP帯でexecuteを返さない」早期returnは撤去。
   // v7で賞金首はisBossType(=usesBossStunnedMelee)側へ入るため、この関数(強個体/雑魚の裁定)
   // には到達しなくなった(呼び出し側は必ずusesBossStunnedMeleeを先に見る=下のコメントどおり)。

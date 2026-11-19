@@ -4,7 +4,7 @@
 //   帯の外は歩けない=隠れられないため遮蔽として機能していなかった。代わりに「中央に必ず通れる
 //   空きレーンが残る」ことを構造で保証し、それをここで機械化する(詰み防止の要)。
 import { describe, it, expect } from 'vitest';
-import { labWallsInRegion, wallRect, LAB_WALL_Y_LIMIT, LAB_WALL_CLEAR_TOP, LAB_WALL_CLEAR_BOTTOM, LAB_START_SAFE_RADIUS, WALL_HIT_W, WALL_DISPLAY_H, labPropsInRegion, propRect, LAB_COVER_SPACING, labUvBarsInRegion, nudgeToClearLabSpot, LAB_ITEM_Y_LIMIT, LAB_CORRIDOR_Y_LIMIT_PX } from './labWalls';
+import { labWallsInRegion, wallRect, LAB_WALL_Y_LIMIT, LAB_WALL_CLEAR_TOP, LAB_WALL_CLEAR_BOTTOM, LAB_START_SAFE_RADIUS, WALL_HIT_W, WALL_DISPLAY_H, labPropsInRegion, propRect, LAB_COVER_SPACING, labUvBarsInRegion, nudgeToClearLabSpot, LAB_ITEM_Y_LIMIT, LAB_CORRIDOR_Y_LIMIT_PX, clearLabEnemySpot, overlapsLabObstacle } from './labWalls';
 
 const PLAYER_HITBOX = 28; // src/store/gameStore.ts と同値(依存を持ち込まないため定数で持つ)
 
@@ -154,5 +154,29 @@ describe('歩ける所に置く(UVバー・ゴール)', () => {
   it('何も無い所ではその場のまま(動かさない)', () => {
     const p = nudgeToClearLabSpot(0, 0, 28, 28); // 原点はスタートの安全半径=壁もプロップも無い
     expect(p).toEqual({ x: 0, y: 0 });
+  });
+});
+
+// 社長報告2026-11-19「ステージ2、オブジェに食い込んで沸いてる敵がいる(倒せない 動かない)」。
+// 書類の見張り・アイドルなど固定位置に置く敵の置き場所(clearLabEnemySpot)。
+describe('clearLabEnemySpot(固定で置く敵を壁・プロップの中に置かない)', () => {
+  const W = 40, H = 64;
+  it('壁・プロップの上に置こうとした点は、重ならず帯の中の位置へ出る', () => {
+    let fixedCount = 0;
+    for (const w of labWallsInRegion(-20000, -LAB_CORRIDOR_Y_LIMIT_PX, 20000, LAB_CORRIDOR_Y_LIMIT_PX).slice(0, 300)) {
+      const r = wallRect(w);
+      const x0 = r.x + r.width / 2 - W / 2, y0 = r.y + r.height / 2 - H / 2; // 体の中心を壁の中心に置く=埋まっている
+      expect(overlapsLabObstacle({ x: x0, y: y0, width: W, height: H })).toBe(true);
+      const p = clearLabEnemySpot(x0, y0, W, H);
+      expect(overlapsLabObstacle({ x: p.x, y: p.y, width: W, height: H }), w.id).toBe(false);
+      const cy = p.y + H / 2;
+      expect(Math.abs(cy)).toBeLessThanOrEqual(LAB_CORRIDOR_Y_LIMIT_PX);
+      fixedCount++;
+    }
+    expect(fixedCount).toBeGreaterThan(50);
+  });
+  it('重なっていない点はそのまま(位置を勝手に動かさない)', () => {
+    const p = clearLabEnemySpot(-20, -32, W, H); // 原点付近(壁・プロップを置かない範囲)
+    expect(p).toEqual({ x: -20, y: -32 });
   });
 });

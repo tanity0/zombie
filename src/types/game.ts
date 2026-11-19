@@ -632,6 +632,14 @@ export interface Enemy {
   // 旧v0.25.4374はチャネル(`'dot'`)で丸ごと除外していたが、量で決める形へ置き換えた。
   // 判定には一切使わない。点滅・跳ね・光は従来どおり `lastHit` を見る。
   lastHitDmg?: number;
+  // ★案山子(変異体対策室の練習の的・utils/scarecrow.ts)の揺れ。**描画専用**(判定・移動には使わない)。
+  // `scarecrowSwayAt`=今の揺れが始まった時刻(lastHit と同じ時計)/`scarecrowLeanLeft`=傾く向き(未設定=絵の素の向き=左)/
+  // `scarecrowSwayFor`=どの被弾(lastHit)まで処理したか/`lastHitDotAt`=持続ダメージ(damageChannel 'dot')で書かれた lastHit。
+  // 書くのは store 側(store/scarecrowSway.ts の購読)だけ。描画は読むだけ。
+  scarecrowSwayAt?: number;
+  scarecrowLeanLeft?: boolean;
+  scarecrowSwayFor?: number;
+  lastHitDotAt?: number;
   // ★弾が当たった打刻と衝撃(**描画専用**・社長指示2026-10-20「ステージ2のアイドルや塊は撃たれても反応するようにして」)。
   // `shotHitAt` は**打刻された被弾の `lastHit`**(1発の弾)。`shotImpX/Y` はその処理で当たった弾の衝撃(弾の向き×押し戻しの強さ・
   // `utils/shotRecoil.ts`)。`shotHitPx/Py` は弾が当たった点(変異塊の被弾の光の位置)。
@@ -868,6 +876,13 @@ export interface Enemy {
   brComboHits?: number;
   /** 踵落としを地上で受けた時刻(Date.now)。絵が沈んで戻る合図(描画だけ・research/BRAWLER.md §29)。 */
   brHeelAt?: number;
+  /**
+   * ★空中投げで投げられて飛んでいる最中(research/BRAWLER.md §34-3・§34-6 #5)。fromX/fromY=投げた時の左上・toX/toY=着く所の左上(投げた瞬間の投げ先の位置へまっすぐ)・
+   * at=投げた時刻・ms=飛ぶ長さ(Date.now)。飛んでいる間は行動しない・他の当たりを受けない(brThrown)。着いた所・壁や帯の縁に当たった所で爆撃。
+   */
+  brThrow?: { fromX: number; fromY: number; toX: number; toY: number; at: number; ms: number };
+  /** 投げられて飛んでいる印(当たり判定から外す=isUntouchable)。着いて爆撃した時に消す。 */
+  brThrown?: boolean;
   /** 秘奥義の間の「画面内の敵を止める」が brHoldUntil に書いた値(research/BRAWLER.md §17)。終わりに、その値のまま残っている時だけ解く。 */
   brSecretHoldUntil?: number;
   brComboStart?: number;
@@ -2166,7 +2181,10 @@ export type EnemyType =
   | 'mutant-wraith'
   // research/LAB_CRAWLER.md §4(第2版): ステージ2の変異塊の**代理**。攻撃を受ける窓口だけ(描かない・動かない・落とさない)。
   // 本体は store の labCrawler(world/labCrawler.ts)。代理の作り方と同期は utils/labCrawlerProxy.ts / labCrawlerTick.ts。
-  | 'lab-crawler';
+  | 'lab-crawler'
+  // 変異体対策室の「練習」枠だけに立つ案山子(社長指示2026-11-19「雑魚扱いで、HPは無限で何もしないサンドバック」)。
+  // 区分=雑魚。体力は減らない・動かない・攻撃しない(utils/scarecrow.ts)。対策室の外では湧かない。
+  | 'scarecrow';
 
 // Weapon types
 export interface Weapon {

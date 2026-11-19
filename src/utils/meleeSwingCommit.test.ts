@@ -53,6 +53,10 @@ const WRITE_SITES: readonly WriteSite[] = [
   // ★格闘(research/BRAWLER.md §8-5): 構え(上)はカウンター窓をこの1秒に張る。窓を張るだけで振りではない
   // (通常攻撃の段・技の打刻は triggerCounter の指定打撃の側で1回だけ=§7-1)。
   {
+    field: 'counterWindowEnd', where: '格闘の構えを技で取り消す(startBrawlerTech・research/BRAWLER.md §34-2)', stamped: false,
+    why: '構えの窓を今で閉じる側(振っていない)。取り消して出す技の打刻は triggerCounter の指定打撃側',
+  },
+  {
     field: 'counterWindowEnd', where: '格闘の構えの始まり(startBrawlerTech・guard)', stamped: false,
     why: '弾・赤の攻撃の受け止め窓を張るだけ(振っていない)。段・技の打刻は triggerCounter の指定打撃側',
   },

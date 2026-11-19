@@ -1,6 +1,8 @@
 // M2の湧き位置(placeLabSpawn)の不変条件。社長指示v0.25.2242「敵は自由移動範囲内でのみスポーン」。
 import { describe, it, expect } from 'vitest';
 import { placeLabSpawn, isAwayFromLabGoal, isLabIdolSide, labEscapeRouteSlots } from './labSpawn';
+import { overlapsLabObstacle, labObstacleRectsNear, LAB_START_SAFE_RADIUS } from '../world/labWalls';
+import { rectsOverlap } from '../world/obstacles';
 
 const LIMIT = 200;   // LAB_CORRIDOR_Y_LIMIT_PX と同値
 const HALF_W = 400;
@@ -187,5 +189,54 @@ describe('labEscapeRouteSlots(資料の後の逃走経路・社長指示2026-10-
   it('原点ちょうど・間隔0では置かない', () => {
     expect(labEscapeRouteSlots(0, 430, 200, 60, 700)).toEqual([]);
     expect(labEscapeRouteSlots(-5000, 0, 200, 60, 700)).toEqual([]);
+  });
+});
+
+// 社長報告2026-11-19「ステージ2、オブジェに食い込んで沸いてる敵がいる(倒せない 動かない)」。
+// 湧いた敵は休眠で、体の中心が見えた時だけ起きる=壁・プロップの中に湧くと永遠に起きない・弾も近接も届かない。
+describe('placeLabSpawn(壁・プロップの中に湧かせない)', () => {
+  const W = 40, H = 64;
+  const blocked = (x: number, y: number, w: number, h: number) => overlapsLabObstacle({ x, y, width: w, height: h });
+  const overlapsReal = (p: { x: number; y: number }) =>
+    labObstacleRectsNear({ x: p.x, y: p.y, width: W, height: H }, 4).some(o => rectsOverlap({ x: p.x, y: p.y, width: W, height: H }, o));
+
+  it('実際の配置(壁・遮蔽プロップ)で、どこから湧いても重ならない(数千回の走査)', () => {
+    let seed = 12345;
+    const rand = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+    let placedCount = 0;
+    for (let px = -20000; px <= 20000; px += 37) {
+      if (Math.abs(px) < LAB_START_SAFE_RADIUS) continue;
+      const p = placeLabSpawn(px, HALF_W, MARGIN, W, H, LIMIT, null, [], rand, 0, blocked);
+      if (!p) continue;
+      placedCount++;
+      expect(overlapsReal(p), `px=${px} -> (${p.x.toFixed(1)},${p.y.toFixed(1)})`).toBe(false);
+      expect(p.y).toBeGreaterThanOrEqual(-LIMIT);
+      expect(p.y + H).toBeLessThanOrEqual(LIMIT);
+    }
+    expect(placedCount).toBeGreaterThan(900);
+  });
+
+  it('修正前(blocked を渡さない)は同じ走査で食い込みが出る=このテストは修正が無いと落ちる', () => {
+    let seed = 12345;
+    const rand = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+    let bad = 0;
+    for (let px = -20000; px <= 20000; px += 37) {
+      if (Math.abs(px) < LAB_START_SAFE_RADIUS) continue;
+      const p = placeLabSpawn(px, HALF_W, MARGIN, W, H, LIMIT, null, [], rand, 0);
+      if (p && overlapsReal(p)) bad++;
+    }
+    expect(bad).toBeGreaterThan(0);
+  });
+
+  it('引いた y が塞がっていれば、帯の中の一番近い空いた y へ寄せる(湧く回数は減らさない)', () => {
+    // y∈[-20,40) を塞ぐ壁(左右どちらの x でも)。
+    const wallBlocked = (_x: number, y: number, _w: number, h: number) => y < 40 && y + h > -20;
+    const p = placeLabSpawn(1000, HALF_W, MARGIN, W, H, LIMIT, null, [], () => 0.5, 0, wallBlocked)!;
+    expect(p).not.toBeNull();
+    expect(wallBlocked(p.x, p.y, W, H)).toBe(false);
+  });
+
+  it('縦一列が全部塞がっている x しか無ければ null(壁の中には置かない)', () => {
+    expect(placeLabSpawn(1000, HALF_W, MARGIN, W, H, LIMIT, null, [], () => 0.5, 0, () => true)).toBeNull();
   });
 });

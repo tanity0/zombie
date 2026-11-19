@@ -26,12 +26,13 @@ import {
 beforeAll(() => { setBrawlerTempoAll(1.3); });
 afterAll(() => { setBrawlerTempoAll(BRAWLER_TEMPO_DEFAULT); });
 
-const NODES: readonly BrawlerRouteNode[] = ['idle', 's1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'heel', 'stomp', 'kiko', 'guard'];
+const NODES: readonly BrawlerRouteNode[] = ['idle', 's1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'heel', 'kickup', 'stomp', 'kiko', 'guard'];
 /** §20-3 の名札の一覧(テストの側にも書く=規則を書き換えたら必ずここも見ることになる)。 */
 const TABLE: Readonly<Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>> = {
-  idle: NODES.filter(n => n !== 'idle' && n !== 'heel'),
+  idle: NODES.filter(n => n !== 'idle' && n !== 'heel' && n !== 'kickup'),
   s1: ['s2', 'kick1', 'stomp', 'kiko'], s2: ['s3', 'kick1', 'stomp', 'kiko'], s3: ['s4', 'kick1', 'stomp', 'kiko'], s4: ['s5', 'kick1', 'stomp', 'kiko'], s5: [],
-  kick1: ['kick2', 'stomp', 'kiko'], kick2: ['kick3', 'heel', 'stomp', 'kiko'], kick3: [], heel: ['stomp'],
+  kick1: ['kick2', 'kickup', 'stomp', 'kiko'], kick2: ['kick3', 'heel', 'kickup', 'stomp', 'kiko'], kick3: [], heel: ['stomp'],
+  kickup: ['kick3', 'heel', 'kickup', 'kiko'], // 蹴り上げ(§34-1): 次の蹴り(連続の位置が残っている時)・気功。大踏み潰しへは取り消せない
   stomp: ['kick1', 'kiko'], kiko: [], guard: ['guard'],
 };
 const HS = { s1: BRAWLER_HITSTOP.weak, s2: BRAWLER_HITSTOP.weak, s3: BRAWLER_HITSTOP.strong, s4: BRAWLER_HITSTOP.strong, s5: BRAWLER_HITSTOP.closer } as const;
@@ -52,8 +53,8 @@ const techHit = (kind: BrawlerTechKind, kickN = 1, hits = 1, landed = hits, base
 };
 
 describe('取り消しの規則(§20-3)', () => {
-  it('印(BRAWLER_CANCELABLE)は s1〜s4・kick1・kick2・踵落とし・stomp だけ', () => {
-    expect(NODES.filter(n => BRAWLER_CANCELABLE[n])).toEqual(['s1', 's2', 's3', 's4', 'kick1', 'kick2', 'heel', 'stomp']);
+  it('印(BRAWLER_CANCELABLE)は s1〜s4・kick1・kick2・踵落とし・蹴り上げ・stomp だけ', () => {
+    expect(NODES.filter(n => BRAWLER_CANCELABLE[n])).toEqual(['s1', 's2', 's3', 's4', 'kick1', 'kick2', 'heel', 'kickup', 'stomp']);
   });
   it('一覧のとおりに許す・それ以外は許さない(全ての組)。通常の段へは段のつなぎだけ', () => {
     for (const from of NODES) for (const to of NODES) {
@@ -255,9 +256,9 @@ describe('固まりの長さ(§20-2・§20-4・係数1.3)', () => {
     expect([brawlerKickFlightMs(0), brawlerKickFlightMs(160), brawlerKickFlightMs(220)]).toEqual([172, 172, 215]); // 156/195→172/215(×1.1)
   });
   it('固まりの表: 係数1.0の値(§20-2)と、テンポ係数を掛けた実ms(live binding)', () => {
-    expect(BRAWLER_HOLD_BASE_MS).toEqual({ s1: 300, s2: 300, s3: 520, s4: 470, s5: 0, kick1: 265, kick2: 310, kick3: 0, heel: 300, stomp: 230, kiko: 0 });
+    expect(BRAWLER_HOLD_BASE_MS).toEqual({ s1: 300, s2: 300, s3: 520, s4: 470, s5: 0, kick1: 265, kick2: 310, kick3: 0, heel: 300, kickup: 310, suplex: 0, stomp: 230, kiko: 0 });
     expect(BRAWLER_HOLD_MS).toEqual({ s1: 390, s2: 390, s3: 676, s4: 611, s5: 0, kick1: 345, // 2026-11-11 飛び蹴り1発目の固まり 325→345(250→265)
-      kick2: 403, kick3: 0, heel: 390, stomp: 299, kiko: 0 });
+      kick2: 403, kick3: 0, heel: 390, kickup: 403, suplex: 0, stomp: 299, kiko: 0 });
     setBrawlerTempoAll(1.0);
     expect(BRAWLER_HOLD_MS).toEqual(BRAWLER_HOLD_BASE_MS);
     setBrawlerTempoAll(1.3);

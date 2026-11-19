@@ -94,3 +94,14 @@ export const secretFreezeIds = (
   }
   return out;
 };
+
+// ---- E. 格闘+パニッシャー=空中投げ(research/BRAWLER.md §34-3・社長指示2026-11-19) ----
+/**
+ * 蹴り上げが当たった相手を掴むか(空中投げ)。パニッシャーを持っている時だけ(Lv の違いは無し=Lv1から同じ)。
+ * 雑魚・強個体だけ(ボス級は掴めない=普通の蹴り上げ)。その当たりで倒れた・拾える回数の予算が尽きてダウンした相手は掴まない(§34-6 #5)。
+ * 格闘以外の武器はここを通らない(蹴り上げは格闘の技)。
+ */
+export const brawlerAirThrowGrabs = (o: { hasPunisher: boolean; cls: 'mob' | 'strong' | 'boss'; killed: boolean; down: boolean }): boolean =>
+  o.hasPunisher && o.cls !== 'boss' && !o.killed && !o.down;
+/** 掴んだ相手を投げる先が無い時はスープレックス(§34-3)。投げ先の id(無ければ null)から、出す技を決める。 */
+export const brawlerAirThrowMove = (targetId: string | null): 'airthrow' | 'suplex' => (targetId !== null ? 'airthrow' : 'suplex');

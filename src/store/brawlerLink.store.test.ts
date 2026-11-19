@@ -771,7 +771,8 @@ describe('§20-6-4 秘奥義 →↓←↑(飛び蹴り→大踏み潰し→気�
     expect(br().techBuffer).toBe('guard');
     expect(br().secret).toBeUndefined();
     for (let k = 0; k < 400 && br().phase !== 'idle' && br().tech === 'kiko'; k++) adv();
-    expect(br().tech).toBe('guard');                                          // 待機へ戻った瞬間に通常の構えとして出る(秘奥義ではない)
+    // 待機へ戻った瞬間に通常の構えとして出る(秘奥義ではない)。★§34-7: 相手が体に密着していれば、構えの代わりに密着の構え(掴み)になる(これも秘奥義ではない)。
+    expect(br().tech === 'guard' || br().contactGrab !== undefined).toBe(true);
     expect(br().secret).toBeUndefined();
     // 取り消しの受付の値(定数)も合わせて見る
     expect([BRAWLER_CANCEL_WINDOW_MS, BRAWLER_TECHS.kiko.recoveryMs, brawlerStageSpec(1).recoveryMs]).toEqual([195, 429, 182]);

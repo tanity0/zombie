@@ -1871,8 +1871,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                     onClick={() => handleOpenTutorial(t.id)}
                     className="flex items-center gap-2 rounded-none bg-purple-400/5 px-3 py-2 text-left active:bg-purple-400/10"
                   >
+                    {/* 入手地点の表示は資料(下の記録)の方だけ。操作記録には出さない(社長指示2026-11-19)。 */}
                     <span className="text-[13px] font-semibold text-white/90">{t.title}</span>
-                    <span className="ml-auto shrink-0 text-[10px] tracking-widest text-purple-200/50">{t.where}</span>
                   </button>
                 ) : (
                   // 未取得は他セクションと同じ伏せ表示(まだ習っていない操作があることは伝える)。
@@ -1975,7 +1975,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           >
             <NoBounceScroller className="glass-panel command-panel max-h-[calc(100svh/var(--hud-s,1)-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
               <div className="px-4 py-5">
-                <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">操作記録・{openTutorial.where}</div>
+                <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">操作記録</div>
                 <h3
                   className="mb-3 text-lg font-semibold text-amber-100"
                   style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}

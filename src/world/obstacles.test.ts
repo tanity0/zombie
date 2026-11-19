@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { footRect, rectsOverlap, segmentBlocked, segmentIntersectsRect, resolveAabb, touchesFromBelow, TOUCH_GAP, TOUCH_SIDE_PAD, type Rect } from './obstacles';
+import { footRect, rectsOverlap, segmentBlocked, segmentIntersectsRect, resolveAabb, touchesFromBelow, unstickFromRects, TOUCH_GAP, TOUCH_SIDE_PAD, type Rect } from './obstacles';
 
 describe('footRect', () => {
   it('anchors the box bottom-centre at the foot (bottom edge on footY)', () => {
@@ -72,5 +72,43 @@ describe('touchesFromBelow(POIの絵に下から触れたら発動・社長指�
   it('押し出しで resolveAabb した直後の位置でも true(実際の流れ)', () => {
     const moved = resolveAabb({ x: 36, y: 30, width: 28, height: 28 }, [obj]);
     expect(touchesFromBelow({ x: moved.x, y: moved.y, width: 28, height: 28 }, obj)).toBe(true);
+  });
+});
+
+// 社長報告2026-11-19「ステージ2、オブジェに食い込んで沸いてる敵がいる(倒せない 動かない)」の安全網。
+describe('unstickFromRects(障害物に埋まったアクターを外へ出す)', () => {
+  const wall: Rect = { x: 0, y: 0, width: 120, height: 22 };
+  it('重なっていなければ null(何もしない)', () => {
+    expect(unstickFromRects({ x: 200, y: 0, width: 40, height: 60 }, [wall])).toBeNull();
+  });
+  it('中心が矩形の中に埋まっていても、どの壁にも重ならない位置へ出す', () => {
+    const a: Rect = { x: 40, y: -20, width: 40, height: 60 }; // 中心(60,10)=壁の中
+    const out = unstickFromRects(a, [wall])!;
+    expect(out).not.toBeNull();
+    expect(rectsOverlap({ ...a, ...out }, wall)).toBe(false);
+  });
+  it('隣の壁に入る押し出しは採らない(2枚並びの隙間に埋まっていても外へ出る)', () => {
+    const w2: Rect = { x: 120, y: 0, width: 120, height: 22 };
+    const a: Rect = { x: 100, y: -10, width: 40, height: 40 };
+    const out = unstickFromRects(a, [wall, w2])!;
+    const moved = { ...a, ...out };
+    expect(rectsOverlap(moved, wall) || rectsOverlap(moved, w2)).toBe(false);
+  });
+  it('縦の許容範囲(yMin..yMax)の外へは出さない', () => {
+    const a: Rect = { x: 40, y: -20, width: 40, height: 60 };
+    // 上へ出る(y=-60)のを禁止 → 下(y=22)か横へ。
+    const out = unstickFromRects(a, [wall], -30, 100)!;
+    expect(out.y).toBeGreaterThanOrEqual(-30);
+    expect(rectsOverlap({ ...a, ...out }, wall)).toBe(false);
+  });
+  it('resolveAabb 1回では埋まったままになる形でも外へ出る(素の resolveAabb との差)', () => {
+    // 3枚に囲まれた中に居る: 1回の resolveAabb は隣へ押し込んで重なりを残す。
+    const ws: Rect[] = [{ x: 0, y: 0, width: 60, height: 60 }, { x: 60, y: 0, width: 60, height: 60 }, { x: 0, y: 60, width: 120, height: 60 }];
+    const a: Rect = { x: 30, y: 30, width: 40, height: 40 };
+    const once = resolveAabb(a, ws);
+    const stillIn = ws.some(w => rectsOverlap({ ...a, ...once }, w));
+    const out = unstickFromRects(a, ws)!;
+    expect(ws.some(w => rectsOverlap({ ...a, ...out }, w))).toBe(false);
+    expect(stillIn).toBe(true); // 素の resolveAabb 1回では埋まったまま
   });
 });

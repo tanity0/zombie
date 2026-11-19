@@ -1,13 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import loopSrc from '../hooks/useGameLoop.ts?raw';
-import { BOSS_PHASE_SHEETS, ENEMY_FRAME_OFFSETS, bossPhaseFor, bossPhaseFrame } from './enemySheets';
+import { BOSS_PHASE_SHEETS, ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, bossPhaseFor, bossPhaseFrame, idleSheetName } from './enemySheets';
 
 describe('ミーミルの攻撃', () => {
-  const spec = BOSS_PHASE_SHEETS.find(s => s.name === 'mimir-attack')!;
+  // 既定=差し替え後の絵(`mimir-attack-v2`・15コマ)。旧の絵(`mimir-attack`・16コマ)は `?mimirart=old` の時だけ表に入る。
+  const spec = BOSS_PHASE_SHEETS.find(s => s.name === 'mimir-attack-v2')!;
+  it('既定は新しい絵(旧の絵は表に入らない)', () => {
+    expect(spec?.frames).toBe(15);
+    expect(BOSS_PHASE_SHEETS.some(s => s.name === 'mimir-attack')).toBe(false);
+    expect(idleSheetName('mimir')).toBe('mimir-idle-v2');
+    expect(ENEMY_IDLE_BODY_H['mimir']).toBe(spec.bodyH);
+  });
   it('レーザー以外の全技(噛みつき・3連射・全方位・突進)の州がこのシートを引き、州名は台本に実在する', () => {
     for (const ph of spec.phases) {
       expect(loopSrc.includes(`'${ph.state}'`), ph.state).toBe(true);
-      expect(bossPhaseFor('mimir', ph.state)?.spec.name, ph.state).toBe('mimir-attack');
+      expect(bossPhaseFor('mimir', ph.state)?.spec.name, ph.state).toBe('mimir-attack-v2');
     }
   });
   it('巣へ戻る間は引かない(移動の絵のまま)', () => {
@@ -15,14 +22,16 @@ describe('ミーミルの攻撃', () => {
       expect(bossPhaseFor('mimir', st), st).toBeNull();
     }
   });
-  it('溜めで 0→15 と見開き切り、戻りで 15→0 と閉じる', () => {
+  it('溜めで 0→14 と見開き切り、放つ間はいちばん見開いた 12〜14 を往復、戻りで 14→0', () => {
     const w = bossPhaseFor('mimir', 'bite-windup')!.phase;
     expect(bossPhaseFrame(w, 0, 0, 90)).toBe(0);
-    expect(bossPhaseFrame(w, 0.999, 0, 90)).toBe(15);
+    expect(bossPhaseFrame(w, 0.999, 0, 90)).toBe(14);
+    const act = bossPhaseFor('mimir', 'burst')!.phase;
+    for (let t = 0; t < 3000; t += 37) expect([12, 13, 14]).toContain(bossPhaseFrame(act, 0, t, 90));
     const r = bossPhaseFor('mimir', 'bite-recover')!.phase;
-    expect(bossPhaseFrame(r, 0, 0, 90)).toBe(15);
+    expect(bossPhaseFrame(r, 0, 0, 90)).toBe(14);
     expect(bossPhaseFrame(r, 0.999, 0, 90)).toBe(0);
-    expect(ENEMY_FRAME_OFFSETS['mimir-attack']?.length).toBe(spec.frames);
+    expect(ENEMY_FRAME_OFFSETS['mimir-attack-v2']?.length).toBe(spec.frames);
   });
 });
 
@@ -122,8 +131,10 @@ describe('ミーミルのレーザー', () => {
   it('溜めで瞳を絞り(0→11)、撃つ間は最後の3コマ(12〜14)を往復、撃ち終わりと中断で戻す', () => {
     for (const st of ['laser-windup', 'laser-fire', 'laser-recover', 'laser-broken']) {
       expect(loopSrc.includes(`'${st}'`), st).toBe(true);
-      expect(bossPhaseFor('mimir', st)?.spec.name, st).toBe('mimir-laser');
+      expect(bossPhaseFor('mimir', st)?.spec.name, st).toBe('mimir-laser-v2');
     }
+    expect(ENEMY_FRAME_OFFSETS['mimir-laser-v2']?.length).toBe(15);
+    expect(bossPhaseFor('mimir', 'laser-windup')!.spec.bodyH).toBe(125);
     expect(bossPhaseFrame(bossPhaseFor('mimir', 'laser-windup')!.phase, 0.999, 0, 90)).toBe(11);
     const fire = bossPhaseFor('mimir', 'laser-fire')!.phase;
     for (let t = 0; t < 3000; t += 37) expect([12, 13, 14]).toContain(bossPhaseFrame(fire, 0, t, 90));

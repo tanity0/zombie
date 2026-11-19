@@ -24,3 +24,16 @@ export const pickAmmoDropType = (owned: OwnedAmmoInfo[], activeType: AmmoType | 
   const active = lowest.find(c => c.type === activeType);
   return (active ?? lowest[0]).type;
 };
+
+// ★ステージ2(研究所): PHILLガンの弾は敵やランダムドロップでは落ちない(社長指示2026-11-19
+// 「ステージ２、PHILLガンの弾は敵やランダムドロップでは落ちない。」)。PHILL弾が手に入るのは道中の固定配置と商人だけ。
+// 敵の撃破(弾・近接)・壊せる小物・空からの補給の弾種を決めた**最後**にこれを通す。
+// noPhill=false(研究所以外)なら type をそのまま返す(1bitも変えない)。
+// type が phill なら、所持弾種のうち phill 以外(並び順の先頭)へ置き換える。無ければ null(=落とさない)。
+export const dropAmmoTypeWithoutPhill = (
+  type: AmmoType | null | undefined, owned: readonly AmmoType[], noPhill: boolean,
+): AmmoType | null => {
+  if (!type) return null;
+  if (!noPhill || type !== 'phill') return type;
+  return owned.find(t => t !== 'phill') ?? null;
+};

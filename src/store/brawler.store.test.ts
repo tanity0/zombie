@@ -53,6 +53,14 @@ const advance = (ms: number) => {
 const hpOf = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)?.health ?? 0;
 const br = () => useGameStore.getState().player.brawler!;
 
+/** ★密着の構え(research/BRAWLER.md §34-7)を避けて、普通の構えを出す(この試験は構えの受けを見る=密着していた敵は掴まない)。 */
+const guardTechNoContact = (): boolean => {
+  const es = useGameStore.getState().enemies;
+  useGameStore.setState({ enemies: [] });
+  const r = useGameStore.getState().brawlerTech(0, -1);
+  useGameStore.setState(st => ({ enemies: [...es.filter(e => !st.enemies.some(x => x.id === e.id)), ...st.enemies] }));
+  return r;
+};
 beforeEach(() => {
   now = 7_000_000;
   vi.spyOn(Date, 'now').mockImplementation(() => now);
@@ -203,7 +211,7 @@ describe('格闘: 技(§3)', () => {
     useGameStore.setState(st => ({ enemies: [zombieAt(45, 0, 'z')], player: { ...st.player, brawler: { ...useGameStore.getState().player.brawler ?? ({} as never), points: 5 } } }));
     useGameStore.getState().brawlerPress(); advance(400);
     useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 5 } } }));
-    useGameStore.getState().brawlerTech(0, -1);
+    guardTechNoContact();
     useGameStore.getState().damagePlayer(10, 'test');
     advance(BRAWLER_GUARD_MS + 20);
     useGameStore.getState().brawlerPress();
@@ -707,17 +715,49 @@ describe('格闘: 構えの延長(社長指示2026-11-07「カウンター中も
     expect(br().points).toBe(0);
     expect(useGameStore.getState().player.counterWindowEnd).toBe(now + BRAWLER_GUARD_MS);
   });
-  // ★§19-1・§19-2 で書き換え: 構えからの道は構えの延長だけ=他の技は出ない・**覚えもしない**(旧: 先行入力として覚え、構えの後に出していた)。
-  it('構えの間は他の技(下・左・右)は出ない・先行入力としても覚えない(道の表に無い=§19-2)', () => {
+  // ★§34-2(社長指示2026-11-19「レベル１から構えは技でキャンセル可能にして」)で書き換え: 構えの間に技(下・左・右)を入れると、構えはその場で終わり、その技が出る。
+  //   (旧 §19-1・§19-2: 構えからの道は構えの延長だけ=他の技は出ない・覚えもしない。)
+  for (const [dx, dy, kind] of [[0, 1, 'stomp'], [-1, 0, 'kiko'], [1, 0, 'kick']] as const) {
+    it(`構えの間の技(${kind})は構えを取り消して出る(Lv1から)・構えの効果は全部切れる・値段は払う`, () => {
+      guard();
+      advance(200);
+      const pts = br().points;
+      expect(useGameStore.getState().brawlerTech(dx, dy)).toBe(true);
+      expect(br().tech).toBe(kind);
+      expect(br().guardUntil).toBe(0);
+      expect(br().points).toBe(pts - BRAWLER_TECHS[kind].cost);
+      const st = useGameStore.getState();
+      expect(isBrawlerGuarding(st.player, st.gameTime)).toBe(false);
+      expect(st.player.counterWindowEnd).toBeLessThanOrEqual(now);
+    });
+  }
+  it('構えの間の技は、払えなければ出ない(数字が震える)・構えは続く', () => {
     guard();
     advance(200);
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 1, denyAt: 0 } } }));
     expect(useGameStore.getState().brawlerTech(0, 1)).toBe(false);
-    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(false);
-    expect(useGameStore.getState().brawlerTech(1, 0)).toBe(false);
     expect(br().tech).toBe('guard');
-    expect(br().techBuffer).toBeUndefined();
-    advance(BRAWLER_GUARD_MS); // 構えが終わっても、勝手に技は出ない
-    expect(br().phase).toBe('idle');
+    expect(br().denyAt).toBeGreaterThan(0);
+    expect(isBrawlerGuarding(useGameStore.getState().player, useGameStore.getState().gameTime)).toBe(true);
+  });
+  it('受けの成立の止め(画面全体の止め)の最中に入れた技は1つだけ覚え、止めが明けた瞬間に出す', () => {
+    guard();
+    advance(200);
+    useGameStore.setState({ hitstopUntil: now + 100 });
+    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
+    expect(br().tech).toBe('guard');
+    expect(br().techBuffer).toBe('kiko');
+    expect(br().guardCancelHeld).toBe(true);
+    advance(150);
+    expect(br().tech).toBe('kiko');
+    expect(br().guardUntil).toBe(0);
+  });
+  it('取り消した時、まだ撃っていない反撃の気功(§32)は出さない', () => {
+    guard();
+    advance(200);
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, guardKiko: { at: now + 5000, hitX: 0, hitY: 0 } } } }));
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);
+    expect(br().guardKiko).toBeUndefined();
   });
   it('延長すると、カウンター窓と被害の無効が切れ目なく延長後の終わりまで続く', () => {
     guard();
@@ -1423,8 +1463,10 @@ describe('技の先行入力と秘奥義の1手目(社長指示2026-11-08「技�
     expect(br().buffered).toBe(false);
     expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true);            // 次の蹴り(連続)で上書き
     expect(br().techBuffer).toBe('kick');
-    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(false);         // 構え=道に無い(覚えない・上書きもしない)
+    // ★§34-1: 飛び蹴りの最中(判定の前)の上は蹴り上げとして覚える(出す瞬間に「当たった・払える」を見直す=§34-6 #4)。
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
     expect(br().techBuffer).toBe('kick');
+    expect(br().kickUpBuffer).toBe(true);
   });
   it('出す瞬間に技ポイントが足りなければ出さない(拒否の音と数字が沈む表示)', () => {
     prep([zombieAt(60, 0, 'z')]);
@@ -1607,7 +1649,7 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     for (const [dt, just] of [[120, true], [130, false]] as const) {
       setup(2);
       useGameStore.setState(st => ({ enemies: [zombieAt(40, 0, 'z')], player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 5 } } }));
-      expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+      expect(guardTechNoContact()).toBe(true);
       advance(dt);
       const pl = useGameStore.getState().player;
       useGameStore.getState().brawlerGuardReceive(pl.x + pl.width / 2 + 30, pl.y + pl.height / 2, 'z');

@@ -42,6 +42,8 @@ const insideAnyVision = (cx: number, cy: number, circles: readonly LabVisionCirc
 
 // 1つの辺(左右)につきこの回数までYを引き直して、視界の外に収まる場所を探す。
 const VISION_AVOID_TRIES = 8;
+// 壁・プロップを避けて y をずらす刻み(px)。
+const CLEAR_Y_STEP = 6;
 
 // 戻り値 null = 「湧かせる場所が無い」。理由は2つ:
 //  (a) 両側とも通った道(社長指示v0.25.2244「一度通った道にスポーンしない」)
@@ -58,6 +60,9 @@ export const placeLabSpawn = (
   others: readonly LabVisionCircle[] = [], // 既に居る敵の視界。この中は避ける
   rand: () => number = Math.random,
   idolSide = 0, // アイドルが居る側の符号(0=制限なし)。その側(敵の体の中心のx)には湧かせない
+  // ★壁・プロップに重なるか(左上x,y・w×h)。null=見ない(従来どおり)。重なる y は避ける
+  //   (社長報告2026-11-19「オブジェに食い込んで沸いてる敵がいる(倒せない 動かない)」。world/labWalls.overlapsLabObstacle を渡す)。
+  blocked: ((x: number, y: number, w: number, h: number) => boolean) | null = null,
 ): LabSpawnPlacement | null => {
   const rightX = playerX + halfViewW + margin;
   const leftX = playerX - halfViewW - margin - enemyW;
@@ -72,6 +77,19 @@ export const placeLabSpawn = (
   const yMin = -bandLimit;
   const yMax = bandLimit - enemyH;
   const pickY = (): number => (yMax <= yMin ? -enemyH / 2 : yMin + rand() * (yMax - yMin));
+  // 引いた y が壁・プロップに重なっていたら、帯の中で重ならない一番近い y へ寄せる(引く回数=湧く確率は変えない)。
+  // その x の縦一列がどこも塞がっていれば null(=その試行は外れ)。
+  const clearY = (x: number, y0: number): number | null => {
+    if (!blocked || !blocked(x, y0, enemyW, enemyH)) return y0;
+    if (yMax <= yMin) return null;
+    for (let d = CLEAR_Y_STEP; d <= yMax - yMin; d += CLEAR_Y_STEP) {
+      for (const y of [y0 - d, y0 + d]) {
+        if (y < yMin || y > yMax) continue;
+        if (!blocked(x, y, enemyW, enemyH)) return y;
+      }
+    }
+    return null;
+  };
   // 試す辺の順番(両方使えるならランダムに先攻を決める)。
   const preferRight = rightOk && leftOk ? rand() < 0.5 : rightOk;
   const xs: number[] = [];
@@ -79,7 +97,8 @@ export const placeLabSpawn = (
   else { if (leftOk) xs.push(leftX); if (rightOk) xs.push(rightX); }
   for (const x of xs) {
     for (let i = 0; i < VISION_AVOID_TRIES; i++) {
-      const y = pickY();
+      const y = clearY(x, pickY());
+      if (y === null) continue;
       if (!insideAnyVision(x + enemyW / 2, y + enemyH / 2, others)) return { x, y };
     }
   }

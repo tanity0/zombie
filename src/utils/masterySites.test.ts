@@ -19,7 +19,7 @@ const SOURCES = import.meta.glob<string>(
 );
 
 /** `damageEnemy(` の呼び出しの総数(包んだ数+印で済ませた数)。呼び口を足したら、包んでからこの数を直す。 */
-const EXPECTED_CALLS = 62;
+const EXPECTED_CALLS = 63; // +1: 格闘の空中投げの爆撃(research/BRAWLER.md §34-3・withMastery('brawler'))
 
 const VALID_KEYS = new Set<string>([...GROWING_MASTERY_KEYS, 'loadout', 'none', 'max']);
 

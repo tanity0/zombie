@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { MASTERY_MAX_LEVEL, gunMasteryKeyOfWeaponKey } from '../data/mastery';
+import { MASTERY_MAX_LEVEL, MASTERY_MAXED_GUNS, gunMasteryKeyOfWeaponKey } from '../data/mastery';
+import { masteryMultOf, masteryMultTable, masteryLoadoutMult } from './mastery';
+import { projectileMasteryKey } from './weaponUtils';
 import { masteryLevelFor, masteryNeedFor } from './mastery';
 import {
-  isGunMasteryKey, isMeleeMasteryKey, masteryBadgeOf, masteryDebugLine, masteryDebugRunLine, masteryFillSteps, masteryKeyOfMelee, masteryKeyOfSub, masteryLevelLabel,
+  isGunMasteryKey, isMeleeMasteryKey, masteryBadgeOf, masteryDebugLine, masteryDebugRunLine, masteryFillSteps, masteryKeyOfGun, masteryKeyOfMelee, masteryKeyOfSub, masteryLevelLabel,
   masteryResultRows,
 } from './masteryView';
 
@@ -183,5 +185,33 @@ describe('銃の札(武器ごと)', () => {
   it('isGunMasteryKey: 銃のキーだけ true(リザルトの名前は武器の名前)', () => {
     expect(isGunMasteryKey('glauncher-t3-signal')).toBe(true);
     for (const k of ['handgun', 'knife-t1', 'katana', 'brawler']) expect(isGunMasteryKey(k), k).toBe(false);
+  });
+});
+
+// 社長指示2026-11-19「PHILLガンは最初からMAX(強くしない)」。
+describe('PHILLガンは最初からMAX(強くしない)', () => {
+  const PHILL = 'phill-revolver';
+  it('札は最初から MAX(固定・棒なし)。熟練度の保存が空でも', () => {
+    expect(MASTERY_MAXED_GUNS).toContain(PHILL);
+    expect(masteryKeyOfGun(PHILL)).toBe('max');
+    const b = masteryBadgeOf(masteryKeyOfGun(PHILL), { xp: {} })!;
+    expect(b.max).toBe(true);
+    expect(b.fixed).toBe(true);
+    expect(masteryLevelLabel(b.level)).toBe('MAX');
+  });
+  it('熟練度で強くならない: 弾のキーは none(倍率×1・貯めない)。保存に量が有っても', () => {
+    expect(gunMasteryKeyOfWeaponKey(PHILL)).toBeUndefined();
+    const k = projectileMasteryKey({ weaponKey: PHILL, hostile: false, reflected: false, masteryKey: undefined });
+    expect(k).toBe('none');
+    const table = masteryMultTable({ xp: { [PHILL]: 1e12 } }, false);
+    expect(masteryMultOf({ masteryMult: table, masteryLoadoutMult: 1 }, k)).toBe(1);
+  });
+  it('出撃開始時の平均(loadout)にも数えない', () => {
+    const table = masteryMultTable({ xp: { [PHILL]: 1e12 } }, false);
+    expect(masteryLoadoutMult(table, { gunKeys: [PHILL], meleeKey: undefined, subs: [] })).toBe(1);
+  });
+  it('他の銃は今までどおり育つ(札もキーもそのまま)', () => {
+    expect(masteryKeyOfGun('handgun-t1')).toBe('handgun-t1');
+    expect(isGunMasteryKey(PHILL)).toBe(false);
   });
 });

@@ -419,6 +419,7 @@ import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS, ALCHEMY_RARE_SUCTION_PULL_RANG
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { ESCORT_MELEE_WINDUP_MS, ESCORT_MELEE_BLADE_MS } from '../utils/escortMelee'; // 進軍NPCのナイフ(research/ESCORT_MELEE.md)
 import { pickupDisplayPosition } from '../utils/collisionUtils';
+import { SCARECROW_SHEET, scarecrowSwayFrame, scarecrowFaceMul } from '../utils/scarecrow'; // 案山子(変異体対策室の練習の的)の揺れのコマ
 import type { SceneLayers } from './layers';
 import {
   getTexture, PLAYER_ART_BASE_W, ESCORT_WALK_SHEETS, ESCORT_STAND_FRAME,
@@ -21381,6 +21382,14 @@ export class PixiScene {
       actOffX += bdx * brPose.push * dsc;
       actOffY += bdy * brPose.push * 0.55 * dsc;
       actLean += face * brPose.lean;
+      // ★蹴りバク宙(research/BRAWLER.md §34-7): 体の中心で1回転する。絵の anchor は足元なので、回した分だけ中心がずれないように位置で補う(描画だけ)。
+      if (brPose.spin) {
+        const th = face * brPose.spin;
+        const hh = Math.abs(view.sprite.height) * 0.5;
+        actLean += th;
+        actOffX += -hh * Math.sin(th);
+        actOffY += hh * (Math.cos(th) - 1);
+      }
       actSqX *= brPose.sqX;
       actSqY *= brPose.sqY;
       brawlerJumpPx = brPose.jump * dsc;
@@ -21507,7 +21516,9 @@ export class PixiScene {
         if (st0.kickHitKey !== keyH) { st0.kickHitKey = keyH; st0.kickHitAt = tAir; st0.kickHopDone = false; }
       }
       const sinceKickHit = bsK && kicking && bsK.resolved && st0.kickHitAt !== undefined ? tAir - st0.kickHitAt : Infinity;
-      const kickStop = sinceKickHit < PLAYER_KICK_HOLD_MS && st0.h > 0.5;
+      // ★空中投げの掴み(§34-3)の時間停止の間は、掴んだ高さのまま空中で静止する(放した後は今どおり反動で少し浮いてから落ちて着地)。
+      const grabHold = !!bsK?.grab && tAir < bsK.grab.releaseAt;
+      const kickStop = (sinceKickHit < PLAYER_KICK_HOLD_MS && st0.h > 0.5) || grabHold;
       if (!kickStop && sinceKickHit !== Infinity && !st0.kickHopDone) {
         st0.kickHopDone = true;
         if (st0.h > 0.5) st0.vy = playerAirLaunchSpeed(PLAYER_KICK_RECOIL_PX);
@@ -23019,8 +23030,14 @@ export class PixiScene {
     // ★グレン第二形態の本体のアニメ(社長支給2026-09-27「第二形態の本体」)。形態2はこのコマを
     // 「手で描いたコマ」として扱う=疑似呼吸・技の伸び縮み・傾ぎを掛けない(形態1のシートは拾わない)。
     const glenP2Tex = glenP2 && !bossStopped ? this.glenForm2BodyTexture(e.id, now) : null;
-    const walkTex = glenP2 ? glenP2Tex : bossStopped && !astroTex ? null : (atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
-      ?? this.enemyIdleTexture(idleTexKey, e, now));
+    // 案山子(変異体対策室の練習の的・utils/scarecrow.ts): 横3コマのシート。普段は直立(0)、打たれるたびに 1→2→1→0 で揺れる。
+    // 揺れの始まり(scarecrowSwayAt)と向きは store が被弾の瞬間に決める(store/scarecrowSway.ts)=ここは読むだけ。
+    // シート全体(getTexture(SCARECROW_SHEET))を引くのは網を起こすため。読み終わるまでは何も描かない(一拍で届く 0.04MB)。
+    const scarecrowTex = e.type === 'scarecrow'
+      ? (getTexture(SCARECROW_SHEET) ? getTexture(`${SCARECROW_SHEET}-${scarecrowSwayFrame(now - (e.scarecrowSwayAt ?? -Infinity))}`) : null)
+      : null;
+    const walkTex = scarecrowTex ?? (glenP2 ? glenP2Tex : bossStopped && !astroTex ? null : (atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
+      ?? this.enemyIdleTexture(idleTexKey, e, now)));
     const tex = e.type === 'guardian-phantom'
       ? this.guardianPhantomTexture(view, e, now)
       : glenP2
@@ -23270,12 +23287,16 @@ export class PixiScene {
     if (e.brawlerLiftAt !== undefined) {
       const stZ = useGameStore.getState();
       const viewH = stZ.gameBounds.height / Math.max(0.05, stZ.viewZoom || 1);
-      brLiftPx = brawlerJuggleHeightRel(e, Date.now()) * Math.min(fb.boxH * BRW.BRAWLER_LIFT_VIS_BODY_K, viewH * BRW.BRAWLER_LIFT_VIS_MAX_VIEW_FRAC);
+      // ★空中投げの掴み(research/BRAWLER.md §34-3)の時間停止の間は、止まり始めた時刻の高さで止めて描く(浮きの時計は放した時に store がずらす)。
+      const grabB = stZ.player.brawler?.grab;
+      const liftNow = grabB && Date.now() < grabB.releaseAt ? grabB.at : Date.now();
+      brLiftPx = brawlerJuggleHeightRel(e, liftNow) * Math.min(fb.boxH * BRW.BRAWLER_LIFT_VIS_BODY_K, viewH * BRW.BRAWLER_LIFT_VIS_MAX_VIEW_FRAC);
     }
     // ★浮いているのを分かりやすく(§12-1・§9-76・社長「敵が空中にいるのを分かりやすくしたい」→「1.2.4.5 がいいな」):
     // ①影を小さく薄く ⑤体をわずかに大きく(縦横同じ・倒さない・回さない・歪ませない)。②足元の輪と④上昇の筋は drawBrawlerAir。
     // ★合図は「その弧の頂点に対する割合」で効かせる(社長承認2026-11-09)=重い区分・爆発の低い浮きでも頂点で満額。
-    const brAirK = e.brawlerLiftAt !== undefined ? brawlerAirSignal(e, Date.now()) : 0;
+    const grabA = e.brawlerLiftAt !== undefined ? useGameStore.getState().player.brawler?.grab : undefined;
+    const brAirK = e.brawlerLiftAt !== undefined ? brawlerAirSignal(e, grabA && Date.now() < grabA.releaseAt ? grabA.at : Date.now()) : 0; // 掴みの時間停止の間は止まり始めの高さ(§34-3)
     // ⑤ 体の拡大(頂点で ×1.10)は「上がり切ってから膨らみ、落ち始めで戻る」: 頂点の近く(割合0.8→1)だけを目標にし、時間で遅れて追う(慣性)。
     {
       // 近接フィニッシュ・会心の跳ね(格闘の弧ではない方の浮き)でも同じ決まりで膨らむ(社長指示2026-11-11「これクリティカルもそうかも」)。
@@ -23839,6 +23860,9 @@ export class PixiScene {
         if (faceMul === 0) faceMul = 0.02; // scale.x=0の完全消失フレームを作らない
       }
     }
+    // 案山子: 左右は打たれた向きだけで決める(絵の1・2コマ目は左へ傾く=打たれた側の反対へ傾くよう、右へ傾く時だけ反転)。
+    // 向きは store が被弾の瞬間に決めた値(scarecrowLeanLeft)を読むだけ。揺れの後も保つ=直立へ戻る瞬間に裏返らない。
+    if (e.type === 'scarecrow') faceMul = scarecrowFaceMul(e.scarecrowLeanLeft);
     // ★溜めの震え(社長裁定2026-09-23「溜めは推薦で」)。伐採人の薙ぎの溜めは**1コマ×1083ms**=
     // 絵も呼吸も止まった完全な静止画になっていた(慣性MUST違反)。
     // ★**新しい型は作らない**——このプロジェクトには既に「溜め終盤の震え」の共通型
@@ -23905,7 +23929,9 @@ export class PixiScene {
       // ★**そのシートのコマが出ている時だけ**掛ける(`source` が同じかで見るので、カウンターの
       //   巻き戻しで技のコマが再生されている間も正しく掛かる)。
       // ★形態2の本体のコマは**形態2の立ち絵**(`glen-boss2`)の背丈へ揃える(立ち絵キーは形態1と同じなので明示する)。
-      const fitIdleTex = tex === walkTex ? getTexture(glenP2 ? 'glen-boss2' : idleTexKey) : null;
+      // ★案山子は立ち絵を持たない(`scarecrow` はコマを横に並べたシートそのもの)=揃える相手が無いので、コマを枠に収めるだけ。
+      //   シート全体(150×66)へ揃えると幅で決まって背が半分以下に縮む(実測: ヘッドレスで雑魚の約半分の背丈だった)。
+      const fitIdleTex = tex === walkTex && e.type !== 'scarecrow' ? getTexture(glenP2 ? 'glen-boss2' : idleTexKey) : null;
       let fitBodyH = tex.height;
       if (fitIdleTex) {
         // 枠より中身が小さいシートは2種類ある(どちらも `bodyH` を持つ):
@@ -41114,7 +41140,10 @@ export class PixiScene {
     {
       // 秘奥義の最中(§10)は体がずっと強く光る(脈打つ)。
       // ★飛び蹴りの3発目の溜め(社長承認2026-11-08)も同じ光で体が光る(溜めの間に強まり、飛び出しで速く引く)。
-      const remain = s.secret ? 0.85 + 0.15 * Math.sin(now / 60) : BRW.isBrawlerGuardingAt(s, gt) ? Math.max(0, s.guardUntil - gt) / BRW.BRAWLER_GUARD_MS
+      // ★空中投げの掴み(§34-3)の間は溜めの絵=体が強く光って脈打つ(時間停止の間も光は実時間で脈打つ)。
+      const grabbing = (!!s.grab && Date.now() < s.grab.releaseAt) || (!!s.contactGrab && s.phase === 'tech' && !s.resolved); // 密着の掴み(§34-7)も体が光る
+      const remain = s.secret ? 0.85 + 0.15 * Math.sin(now / 60) : grabbing ? 0.8 + 0.2 * Math.abs(Math.sin(Date.now() / 55))
+        : BRW.isBrawlerGuardingAt(s, gt) ? Math.max(0, s.guardUntil - gt) / BRW.BRAWLER_GUARD_MS
         : BRW.brawlerKickChargeGlow(s, gt);
       if (remain > 0) {
         if (!this.brawlerAura) {
@@ -41139,7 +41168,7 @@ export class PixiScene {
     const r0 = Math.max(p.width, p.height);
     // 詰めの出発点に砂埃1つ(1〜3段・蹴り)。
     const dashing = (s.phase === 'attack' && s.stage <= 3 && !s.resolved && s.windupMs > 0 && (p.lungeUntil ?? 0) > Date.now())
-      || (s.phase === 'tech' && s.tech === 'kick' && !s.resolved && !BRW.brawlerKickHeldInStop(s, gt)) // 止めの最中に始めた蹴りは明けてから(§33-2)
+      || (s.phase === 'tech' && s.tech === 'kick' && !s.resolved && !s.contactGrab && !BRW.brawlerKickHeldInStop(s, gt)) // 止めの最中に始めた蹴りは明けてから(§33-2)・密着の掴みは踏み出さない(§34-7)
       || BRW.isBrawlerPalmDashing(s); // 5段目の突き抜けの踏み出し
     const dashL = this.latchFx('brawler:dash', dashing, DUST_MS * 0.7, now, () => [footX - s.dirX * 8, footY - s.dirY * 4]);
     if (dashL) this.drawDust(dashL.d[0], dashL.d[1], r0 * 0.5 * dsc, dashL.t, tint, this.dustAlpha(dashL.t) * 0.75, dashL.t0);
@@ -41186,7 +41215,7 @@ export class PixiScene {
     // 飛び蹴りの残像(プレイヤーの絵の複製を低αで2〜3枚)。3発目は1枚多い。刀の trail は使わない(斬撃に見える)。
     this.brawlerTrail.push({ x: body.position.x, y: body.position.y, t: now });
     while (this.brawlerTrail.length > 0 && now - this.brawlerTrail[0].t > 160) this.brawlerTrail.shift();
-    const kicking = s.phase === 'tech' && s.tech === 'kick' && el < s.windupMs + 90;
+    const kicking = s.phase === 'tech' && s.tech === 'kick' && !s.contactGrab && el < s.windupMs + 90; // 密着の掴み(§34-7)はその場=残像なし
     // 5段目の突き抜け(と抜けた直後)も残像を3枚(一閃の速さ)。
     const palmGhost = s.phase === 'attack' && s.stage === 5 && s.palmFromX !== undefined && el < s.windupMs + 90;
     const nG = palmGhost ? 3 : kicking ? (s.kickN >= BRW.BRAWLER_KICK_MAX ? 3 : 2) : 0;
