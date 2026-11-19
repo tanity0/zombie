@@ -27,7 +27,7 @@ import { comboMilestoneCrossed, comboMilestoneAmp } from '../utils/comboMileston
 import DirectorLine from './DirectorLine';
 import { getSelectedStageId } from '../data/progress';
 import { getEventQuestConfig } from '../utils/eventQuest';
-import { LOOP1_OBJECTIVE_TEXT } from '../utils/stage1FirstLoop';
+import { loop1ObjectiveText } from '../utils/stage1FirstLoop';
 import { HudKey } from './HudKey'; // ゲーム中のボタン札(research/PC_SUPPORT.md §14)
 import { useHudHintStyle, useHudHasMouse, hudGlyph, hudGunSlotKey } from '../utils/hudHints';
 
@@ -77,17 +77,17 @@ const RescueQuestGoalPill: React.FC = () => {
   );
 };
 
-// ステージ1の1周目(STAGE1_FIRST_LOOP.md §7.6 G / §7.7 B7): 目的を1行。購読は「1周目か」の boolean だけ(毎フレーム再描画しない)。
-// クリアまで出し続ける(段階で文言を変えない=社長確認の文言1本)。
+// ステージ1の1周目(STAGE1_FIRST_LOOP.md §7.6 G / §7.7 B7): 目的を1行。段で文言を切り替える(社長指示2026-11-19・対応表は loop1ObjectiveText)。
+// 購読は導いた文字列(プリミティブ)だけ=段が変わった時だけ再描画する。
 const Loop1ObjectivePill: React.FC = () => {
-  const firstLoop = useGameStore(s => s.stage1Loop !== null);
-  if (!firstLoop) return null;
+  const text = useGameStore(s => (s.stage1Loop ? loop1ObjectiveText(s.stage1Loop.phase) : null));
+  if (text === null) return null;
   return (
     <div
       className="glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums gt-solid"
       style={{ color: '#facc15' }}
     >
-      {LOOP1_OBJECTIVE_TEXT}
+      {text}
     </div>
   );
 };

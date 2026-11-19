@@ -2693,6 +2693,8 @@ export interface WeaponMerchant {
 export type EventQuestStatus = 'hidden' | 'briefed' | 'rescue' | 'accepted' | 'warping' | 'delivering' | 'completed' | 'gone';
 
 export interface EventQuestNpc {
+  /** 描くだけの透明度(ステージ1の1周目の写しだけが付ける=救助の間に二人が抜けて戻る)。未設定=1。 */
+  viewAlpha?: number;
   x: number;
   y: number;
   radius: number;

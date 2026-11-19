@@ -19,6 +19,10 @@ export type TutorialId =
   // base-capture=軍人が西の拠点のサークルに入った時 / base-use=西の拠点を確保した時(発火は src/utils/stage1FirstLoop.ts)。
   // stage1-guide とは別の id=これを見ても3枚ガイドは既読にならない(2周目の出撃では3枚ガイドが今どおり出る)。
   | 'base-capture' | 'base-use'
+  // ステージ1の1周目(STAGE1_FIRST_LOOP.md・社長指示2026-11-19): 確保の20秒のピークが明けた時に、画面のいちばん上の線(DirectorLine)の読み方。
+  | 'mode-bar'
+  // ステージ1の1周目: 二人組の救助(ウェルカム台本)が始まった時に、体の色と危険度の対応。
+  | 'mutant-tier'
   // 後から足した操作(社長指示2026-10-13「資料室に、新たに追加された操作方法をシンプルな内容で追加」)。
   // ゲーム中のポップアップは無い=資料室に最初から並ぶ(archiveAlways)。
   | 'hit-retaliation' | 'escort-kick' | 'fast-travel' | 'escort-follow';
@@ -321,6 +325,30 @@ export const TUTORIALS: TutorialEntry[] = [
       '確保した拠点でも、商人と取引ができる。',
     ],
     where: '拠点',
+  },
+  {
+    id: 'mode-bar',
+    title: '敵の動き',
+    // ステージ1の1周目: 西の拠点の確保で始まるピークが明けた時に出す(発火は src/utils/stage1FirstLoop.ts)。
+    // 色の対応は components/DirectorLine.tsx の KOMA_STYLE(リラックス青緑・静止/ハーベスト金/通常 白/ピーク赤・速い脈動)、長さ=ランク。
+    lines: [
+      '画面のいちばん上の細い線は、変異体の動きを表している。',
+      '青緑は落ち着いている時、金色は敵が集まり始めた時、白は普段どおり、赤く脈打つ時は群れが押し寄せている時。',
+      '線が長いほど、出てくる変異体は強くなる。',
+    ],
+    where: '全域',
+  },
+  {
+    id: 'mutant-tier',
+    title: '変異体の危険度',
+    // ステージ1の1周目: 二人組の救助(ウェルカム台本)が始まった時に出す。色の倍率は enemyUtils の COLOR_TIER_HP_MULT/DMG_MULT(青<紫<赤)、
+    // 赤=強個体(enemyUtils.hasStrongIndividualMark)=気絶からの近接で即死しない(meleeExecute.stunnedMeleeOutcome)。
+    lines: [
+      '変異体は、体の色で危険度が分かる。',
+      '青、紫、赤の順に、体力も攻撃も強くなる。',
+      '赤い変異体は強個体と化しており、体勢を崩しても一撃では倒せない。',
+    ],
+    where: '全域',
   },
 ];
 

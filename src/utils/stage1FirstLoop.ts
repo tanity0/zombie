@@ -5,7 +5,9 @@
 // この層は純関数だけ(store/React/PixiJS 非依存)。判定・位置・段階・モードの一方通行・賞金首の発火半径・
 // 1周目に出さない物の一覧を置く。配線(gameStore/useGameLoop/pixiScene)はここを読むだけ。
 import { DETOUR_DIST, DETOUR_ANGLE_SCATTER_RAD } from '../world/detourPoi';
-import type { EnemyType, EventQuestNpc } from '../types/game';
+import { sectorIndexForAngle } from '../world/pois';
+import type { EventQuestNpc } from '../types/game';
+import { welcomeAdvance, type WelcomeAdvanceResult } from './welcomeScript';
 
 /** ★1周目構成の総スイッチ(§1)。false=現行のステージ1と同じ(二人組v4・城ボス・解放条件を含む)。 */
 export const STAGE1_FIRST_LOOP_ENABLED = true;
@@ -51,10 +53,12 @@ export const isStage1FirstLoopRun = (i: Loop1RunInput): boolean => {
 
 // ───────────────────────────────────────────────────────────────────────────
 // 段階(§4)
-// base=開始〜西の拠点の確保 / hospital=拠点確保〜ワクチン取得(廃病院が北寄りに立つ) /
-// duo=ワクチン取得〜二人のサークル到着(二人が南寄りに立つ) / talk=到着の会話(時間停止) /
-// enclosure=囲い(全滅まで) / goal=ゴールサークル(3秒滞在) / thanks=お礼の会話(時間停止) / won=クリア。
-export type Loop1Phase = 'base' | 'hospital' | 'duo' | 'talk' | 'enclosure' | 'goal' | 'thanks' | 'won';
+// base=開始〜西の拠点の確保 / afterBase=「拠点の利用」のポップアップが閉じるまで / baseComm=軍人の通信(二人組はどこだ…)が流れ切るまで /
+// hospital=通信の後〜ワクチン取得(廃病院が北寄りに立つ・立つ瞬間にアテンション) / duoWait=取得後、ポップアップが閉じてから3秒 /
+// duoAttention=二人が南寄りに立ち、カメラが二人へ寄って戻るまで / duo=操作が戻った〜二人のサークル到着(ミラ「助けて〜」の通信) /
+// talk=到着の通信(世界は止めない) /  ※§7.9
+// enclosure=囲い(全滅まで) / goal=ゴールサークル(3秒滞在) / thanks=お礼の通信(納品ロック) / won=クリア。
+export type Loop1Phase = 'base' | 'afterBase' | 'baseComm' | 'hospital' | 'duoWait' | 'duoAttention' | 'duo' | 'talk' | 'enclosure' | 'goal' | 'thanks' | 'won';
 export type Loop1Talk = 'arrival' | 'thanks';
 
 export interface Stage1LoopState {
@@ -67,20 +71,32 @@ export interface Stage1LoopState {
   soldierIndex: number;
   hospitalPos: { x: number; y: number };
   duoPos: { x: number; y: number };
-  /** 囲いで出した敵の id(B1: 消えた個体も「倒した」に数える=生存数はこの id のうち盤上に居る物)。 */
-  enclosureIds: string[];
-  enclosureSpawned: number;
-  enclosureNextAt: number;
+  /** 救助(ウェルカム台本)の段(-1=まだ)・段を倒し切ったゲーム時刻・始まり/終わりのゲーム時刻(0=まだ)。 */
+  rescueStep: number;
+  rescueStepClearedAt: number | null;
+  rescueStartedAt: number;
+  rescueEndedAt: number;
   /** ゴールサークルの連続滞在(ms)。 */
   goalDwellMs: number;
   /** 出す順番を待っているチュートリアル(ポップアップ・メニューが閉じたら先頭から1つずつ出す)。 */
   pendingTutorials: Loop1TutorialId[];
   /** 「拠点の確保」を積んだか(軍人が西の拠点のサークルに入った最初の瞬間に1回だけ)。 */
   baseCaptureTutQueued: boolean;
+  /** ワクチン取得後、ポップアップ等が閉じてから数えた時間(ms)。LOOP1_DUO_REVEAL_DELAY_MS で二人が立つ(§7.9)。 */
+  duoWaitMs: number;
+  /** 西の拠点を確保した時のピークが明けるゲーム時刻。0=まだ確保していない。 */
+  capturePeakUntil: number;
+  /** 「敵の動き」(mode-bar)を積んだ/出した/閉じてモードを通常のサイクルへ返したか。 */
+  modeBarQueued: boolean;
+  modeBarShown: boolean;
+  modeHandedBack: boolean;
+  /** 逆方向の通信: 次に踏み出した時に出せるか(西へ戻る/軍備配置区域の半ばより内へ戻ると立つ)・最後に出したゲーム時刻。 */
+  wrongWayArmed: boolean;
+  wrongWayLastAt: number;
 }
 
 /** 1周目で出すチュートリアル(tutorials.ts の id)。 */
-export type Loop1TutorialId = 'base-capture' | 'base-use' | 'detour-poi';
+export type Loop1TutorialId = 'base-capture' | 'base-use' | 'detour-poi' | 'mode-bar' | 'mutant-tier';
 
 /** 1周目で確保の対象になる拠点=西(セクター2・角度π)。他の3つは印・サークル・軍人を出さない(§7.6 C)。 */
 export const LOOP1_BASE_ID = 'base-2';
@@ -106,12 +122,20 @@ export const createStage1LoopState = (soldierIndex: number): Stage1LoopState => 
   soldierIndex,
   hospitalPos: loop1HospitalPos(),
   duoPos: loop1DuoPos(),
-  enclosureIds: [],
-  enclosureSpawned: 0,
-  enclosureNextAt: 0,
+  rescueStep: -1,
+  rescueStepClearedAt: null,
+  rescueStartedAt: 0,
+  rescueEndedAt: 0,
   goalDwellMs: 0,
   pendingTutorials: [],
   baseCaptureTutQueued: false,
+  duoWaitMs: 0,
+  capturePeakUntil: 0,
+  modeBarQueued: false,
+  modeBarShown: false,
+  modeHandedBack: false,
+  wrongWayArmed: true,
+  wrongWayLastAt: Number.NEGATIVE_INFINITY,
 });
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -126,6 +150,50 @@ export const ratchetLoop1Mode = (prev: 0 | 1 | 2, areaIdx: number): 0 | 1 | 2 =>
 };
 export const loop1KomaForLevel = (level: 0 | 1 | 2): 'relax' | 'harvest' | 'peak' =>
   level === 0 ? 'relax' : level === 1 ? 'harvest' : 'peak';
+
+// ───────────────────────────────────────────────────────────────────────────
+// 西の方角のモードの組み立て(社長指示2026-11-19・旧「デンジャーゾーン以遠はずっとピーク」を置き換え)
+// 軍備配置区域=リラックス / 研究対象区域=ハーベスト(一方通行は従来どおり) / デンジャーゾーン=確保までリラックス /
+// 確保した瞬間から LOOP1_CAPTURE_PEAK_MS だけピーク → 「敵の動き」を出し、閉じたら通常のサイクル(既定)へ返す。
+// 返すまで、ピーク明け〜チュートリアルを閉じるまでの間は確保前と同じ区域の組み立てに戻る。
+// ★例外: 西以外の方角で軍備配置区域の外=1周目のあいだずっとピーク(返した後も)。
+export const LOOP1_CAPTURE_PEAK_MS = 20000;
+export type Loop1Koma = 'relax' | 'harvest' | 'peak';
+export const loop1KomaNow = (i: {
+  modeLevel: 0 | 1 | 2; capturePeakUntil: number; gameTime: number; handedBack: boolean; wrongWayPeak: boolean;
+}): Loop1Koma | null => {
+  if (i.wrongWayPeak) return 'peak';
+  if (i.handedBack) return null; // 通常のサイクル(既定)
+  if (i.capturePeakUntil > 0 && i.gameTime < i.capturePeakUntil) return 'peak';
+  return i.modeLevel === 1 ? 'harvest' : 'relax';
+};
+/** 「敵の動き」を積む瞬間: ピークが明け、ポップアップ・通信・アテンション・ほかの段の仕事が何も無い時(重ねない)。 */
+export const loop1ModeBarTutorialDue = (i: { queued: boolean; capturePeakUntil: number; gameTime: number; idle: boolean }): boolean =>
+  !i.queued && i.capturePeakUntil > 0 && i.gameTime >= i.capturePeakUntil && i.idle;
+/** 出した後、ポップアップが閉じたら通常のサイクルへ返す。 */
+export const loop1ModeHandBackDue = (i: { shown: boolean; handedBack: boolean; popupOpen: boolean }): boolean =>
+  i.shown && !i.handedBack && !i.popupOpen;
+
+// ───────────────────────────────────────────────────────────────────────────
+// 逆方向(社長指示2026-11-19): 西の拠点の方角(セクター)以外へ踏み出したら、軍人が「そっちじゃない」の通信。
+/** 西の拠点の方角のセクター(LOOP1_BASE_ID=西=角度π)。 */
+export const LOOP1_WEST_SECTOR = sectorIndexForAngle(Math.PI);
+export const loop1InWestSector = (px: number, py: number): boolean => sectorIndexForAngle(Math.atan2(py, px)) === LOOP1_WEST_SECTOR;
+/** 通信を出す境目=軍備配置区域の半径の半分(militaryR=AREA_THRESHOLDS[0])。 */
+export const LOOP1_WRONG_WAY_RADIUS_FRAC = 0.5;
+export const loop1WrongWayRegion = (px: number, py: number, militaryR: number): boolean =>
+  !loop1InWestSector(px, py) && Math.hypot(px, py) > militaryR * LOOP1_WRONG_WAY_RADIUS_FRAC;
+/** 常にピークになる所=西以外の方角で軍備配置区域の外。 */
+export const loop1WrongWayPeak = (px: number, py: number, militaryR: number): boolean =>
+  !loop1InWestSector(px, py) && Math.hypot(px, py) > militaryR;
+/** 通信どうしの最短の間(ゲーム時刻)。出入りを繰り返しても連呼しない。 */
+export const LOOP1_WRONG_WAY_COOLDOWN_MS = 15000;
+/** 1フレーム進める。外へ出た(inRegion=false)ら立て直す。立っていて間が空いていれば出す。 */
+export const stepLoop1WrongWay = (i: { armed: boolean; lastAt: number; inRegion: boolean; now: number }): { fire: boolean; armed: boolean } => {
+  if (!i.inRegion) return { fire: false, armed: true };
+  if (i.armed && i.now - i.lastAt >= LOOP1_WRONG_WAY_COOLDOWN_MS) return { fire: true, armed: false };
+  return { fire: false, armed: i.armed };
+};
 
 // ───────────────────────────────────────────────────────────────────────────
 // 賞金首の強制出現(§7.6 E)
@@ -146,8 +214,6 @@ export const LOOP1_DUO_CIRCLE_RADIUS = 140;
 /** ゴールサークル=帰還サークルと同じ大きさ・同じ3秒(B5)。 */
 export const LOOP1_GOAL_RADIUS = 95;
 export const LOOP1_GOAL_HOLD_MS = 3000;
-/** 会話の最終行を出し切ってから閉じるまでの余白(自動で閉じる時のみ。タップ/スキップは即)。 */
-export const LOOP1_TALK_END_HOLD_MS = 600;
 
 export const isInLoop1Circle = (px: number, py: number, c: { x: number; y: number }, radius: number): boolean =>
   Math.hypot(px - c.x, py - c.y) <= radius;
@@ -159,47 +225,50 @@ export const tickLoop1GoalDwell = (dwellMs: number, inside: boolean, dtMs: numbe
   return { dwellMs: next, done: dwellMs < LOOP1_GOAL_HOLD_MS && next >= LOOP1_GOAL_HOLD_MS };
 };
 
-/** 囲いの敵の数と出し方(新規の簡易版=§7.5)。大量発生(horde)の顔ぶれの比率(1/3=パンプキン・2/3と最後=ウルフ)を流用。 */
-export const LOOP1_ENCLOSURE_COUNT = 12;
-export const LOOP1_ENCLOSURE_INTERVAL_MS = 350;
-// 輪の半径: 縦持ちの画面で見える内側(横は画面の半幅ほど・北側は地平線のフェードより手前)に収める。
-// プレイヤーとの最低距離は大量発生の湧き(HORDE_SPAWN_PLAYER_CLEARANCE=140)より外。
-export const LOOP1_ENCLOSURE_RING_MIN = 170;
-export const LOOP1_ENCLOSURE_RING_MAX = 240;
-export const loop1EnclosureType = (n: number, total: number, rand: () => number): EnemyType => {
-  const pumpkinAt = Math.round(total / 3);
-  const wolfAt = Math.round(total * 2 / 3);
-  if (n === pumpkinAt) return 'pumpkin';
-  if (n === wolfAt || n === total) return 'werewolf';
-  const basics: EnemyType[] = ['zombie', 'skeleton', 'bat'];
-  return basics[Math.min(basics.length - 1, Math.floor(rand() * basics.length))];
+/**
+ * 二人組の救助(社長指示2026-11-19): 旧・1周目専用の囲い(12体)を、既存のウェルカム台本(utils/welcomeScript.ts の
+ * ステージ1の表をそのまま)に置き換えた。輪の中心だけ二人のサークルへ。段の進め方は welcomeAdvance そのもの。
+ * ★区域を跨いだ打ち切り(③)は使わない=二人はデンジャーゾーンに居るので、区域0として渡す(倒し切りだけで終わる)。
+ * ゲートを持たないステージ(stage-1)なので始動ゲートの入力は使われない。
+ */
+export const loop1RescueAdvance = (i: { step: number; alive: number; gameTime: number; stepClearedAt: number | null }): WelcomeAdvanceResult =>
+  welcomeAdvance({
+    step: i.step, aliveOfWelcome: i.alive, gameTime: i.gameTime, stepClearedAt: i.stepClearedAt,
+    stageId: STAGE1_FIRST_LOOP_STAGE_ID, areaIndex: 0, startedAt: 0, playerCenterY: 0, merchantY: 0,
+  });
+
+/** 救助の間、二人の絵は消える(始まりで抜け、終わってゴールサークルと一緒に戻る・慣性つき)。描くだけ(pixiScene が読む)。 */
+export const LOOP1_DUO_FADE_MS = 700;
+const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
+export const loop1DuoAlpha = (loop: Pick<Stage1LoopState, 'phase' | 'rescueStartedAt' | 'rescueEndedAt'>, gameTime: number): number => {
+  if (loop.phase === 'enclosure') {
+    const t = Math.min(1, Math.max(0, (gameTime - loop.rescueStartedAt) / LOOP1_DUO_FADE_MS));
+    return 1 - easeOutCubic(t);
+  }
+  if (loop.rescueEndedAt > 0 && (loop.phase === 'goal' || loop.phase === 'thanks' || loop.phase === 'won')) {
+    const t = Math.min(1, Math.max(0, (gameTime - loop.rescueEndedAt) / LOOP1_DUO_FADE_MS));
+    return easeOutCubic(t);
+  }
+  return 1;
 };
-/** サークルの周り(輪の上)へ等間隔+揺らぎで置く(1体目から順に一周する)。 */
-export const loop1EnclosureSpawnPos = (
-  center: { x: number; y: number }, n: number, total: number, rand: () => number,
-): { x: number; y: number } => {
-  const ang = (Math.PI * 2 * (n - 1)) / Math.max(1, total) + (rand() - 0.5) * 0.4;
-  const r = LOOP1_ENCLOSURE_RING_MIN + rand() * (LOOP1_ENCLOSURE_RING_MAX - LOOP1_ENCLOSURE_RING_MIN);
-  return { x: center.x + Math.cos(ang) * r, y: center.y + Math.sin(ang) * r };
-};
-/** 囲いの生存数(B1: 盤上から消えた個体=倒した扱い)。 */
-export const loop1EnclosureAlive = (ids: readonly string[], enemies: readonly { id: string; health: number }[]): number => {
-  if (ids.length === 0) return 0;
-  const set = new Set(ids);
-  let n = 0;
-  for (const e of enemies) if (set.has(e.id) && e.health > 0) n++;
-  return n;
-};
+
+/** 2周目以降のステージ1はウェルカムイベントを出さない(社長指示2026-11-19=済んだ扱い)。1周目は救助として別に出す。 */
+export const stage1LaterLoopSkipsWelcome = (i: { enabled: boolean; stageId: string; firstLoopCleared: boolean }): boolean =>
+  i.enabled && i.stageId === STAGE1_FIRST_LOOP_STAGE_ID && i.firstLoopCleared;
 
 // ───────────────────────────────────────────────────────────────────────────
 // 段階の遷移(§4)。actions は配線側(useGameLoop)がその瞬間に1回だけ行う仕事。
 export type Loop1Action =
-  | 'baseCaptured'     // 「拠点の利用」のチュートリアル+廃病院を北寄りに出す
-  | 'vaccineTaken'     // 寄り道のチュートリアル+二人を南寄りに出す
-  | 'startArrivalTalk' // 到着の会話(時間停止)
-  | 'startEnclosure'   // 囲いの開始(通常湧きを止める)
-  | 'enclosureCleared' // ゴールサークルへ
-  | 'startThanksTalk'  // お礼の会話(時間停止)
+  | 'baseCaptured'     // 「拠点の利用」のチュートリアル(廃病院はまだ出さない=§7.9)
+  | 'startBaseComm'    // ポップアップが閉じた→出撃中の軍人の通信(loop1AfterBase の2行)
+  | 'placeHospital'    // 通信が流れ切った→廃病院を北寄りに出す+アテンション
+  | 'vaccineTaken'     // 寄り道のチュートリアル(二人はまだ出さない)
+  | 'revealDuo'        // 3秒→二人を南寄りに出す+アテンション
+  | 'helpComm'         // アテンションが明けた→通信 ミラ「助けて〜」
+  | 'startArrivalTalk' // 到着の通信(LOOP1_ARRIVAL_LINES)
+  | 'startEnclosure'   // 救助(ウェルカム台本)の開始(通常湧きを止める)+「変異体の危険度」
+  | 'enclosureCleared' // 台本を倒し切った→ゴールサークルへ
+  | 'startThanksTalk'  // お礼の通信(納品ロック)
   | 'win';             // 納品処理+クリア
 
 export interface Loop1StepInput {
@@ -209,18 +278,30 @@ export interface Loop1StepInput {
   /** チュートリアルのポップアップ・メニューが開いている(B4: 閉じるまで会話を始めない)。 */
   uiBlocked: boolean;
   talkEnded: Loop1Talk | null;
-  enclosureSpawnedAll: boolean;
-  enclosureAlive: number;
+  /** チュートリアルのポップアップ・メニューが閉じていて、出す順番を待つチュートリアルも無い。 */
+  tutorialIdle: boolean;
+  /** 通信欄が空(表示中もキューも無い)。 */
+  commEnded: boolean;
+  /** ワクチン取得後の待ち(LOOP1_DUO_REVEAL_DELAY_MS)が満ちた。 */
+  duoRevealDue: boolean;
+  /** アテンション(カメラが寄って戻る演出)の最中。 */
+  attentionActive: boolean;
+  /** 救助のウェルカム台本を倒し切った。 */
+  rescueCleared: boolean;
   goalDone: boolean;
 }
 
 export const stepLoop1Phase = (phase: Loop1Phase, i: Loop1StepInput): { phase: Loop1Phase; action: Loop1Action | null } => {
   switch (phase) {
-    case 'base': return i.baseCaptured ? { phase: 'hospital', action: 'baseCaptured' } : { phase, action: null };
-    case 'hospital': return i.vaccineTaken ? { phase: 'duo', action: 'vaccineTaken' } : { phase, action: null };
+    case 'base': return i.baseCaptured ? { phase: 'afterBase', action: 'baseCaptured' } : { phase, action: null };
+    case 'afterBase': return i.tutorialIdle ? { phase: 'baseComm', action: 'startBaseComm' } : { phase, action: null };
+    case 'baseComm': return i.commEnded ? { phase: 'hospital', action: 'placeHospital' } : { phase, action: null };
+    case 'hospital': return i.vaccineTaken ? { phase: 'duoWait', action: 'vaccineTaken' } : { phase, action: null };
+    case 'duoWait': return i.duoRevealDue ? { phase: 'duoAttention', action: 'revealDuo' } : { phase, action: null };
+    case 'duoAttention': return i.attentionActive ? { phase, action: null } : { phase: 'duo', action: 'helpComm' };
     case 'duo': return i.inDuoCircle && !i.uiBlocked ? { phase: 'talk', action: 'startArrivalTalk' } : { phase, action: null };
     case 'talk': return i.talkEnded === 'arrival' ? { phase: 'enclosure', action: 'startEnclosure' } : { phase, action: null };
-    case 'enclosure': return i.enclosureSpawnedAll && i.enclosureAlive === 0 ? { phase: 'goal', action: 'enclosureCleared' } : { phase, action: null };
+    case 'enclosure': return i.rescueCleared ? { phase: 'goal', action: 'enclosureCleared' } : { phase, action: null };
     case 'goal': return i.goalDone && !i.uiBlocked ? { phase: 'thanks', action: 'startThanksTalk' } : { phase, action: null };
     case 'thanks': return i.talkEnded === 'thanks' ? { phase: 'won', action: 'win' } : { phase, action: null };
     default: return { phase, action: null };
@@ -246,13 +327,31 @@ export const nextLoop1Tutorial = (
 ): { show: Loop1TutorialId | null; rest: Loop1TutorialId[] } =>
   blocked || queue.length === 0 ? { show: null, rest: [...queue] } : { show: queue[0], rest: queue.slice(1) };
 
+/** ワクチン取得から二人が立つまでの待ち(§7.9「3秒後」・ゲーム時刻)。 */
+export const LOOP1_DUO_REVEAL_DELAY_MS = 3000;
+/** その待ちを進める。ポップアップ・メニューが開いている間(=寄り道のチュートリアル)は進めない=閉じてから3秒。 */
+export const tickLoop1DuoWait = (ms: number, idle: boolean, dtMs: number): number => (idle ? ms + dtMs : ms);
+
+/** 二人のサークルに着いた時の会話(1周目専用・§7.9)。2周目以降/v4 の EVENT_QUEST_SUB_ACCEPT_LINES は変えない。 */
+export const LOOP1_ARRIVAL_LINES: readonly { name: string; text: string }[] = [
+  { name: 'グレン', text: 'また会ったな' },
+  { name: 'ミラ', text: '変異体に囲まれて困ってたの！' },
+  { name: 'グレン', text: '気がついたら囲まれていてな。困った' },
+  { name: 'ミラ', text: '助けて〜' },
+];
+/** 二人が立ってアテンションが明けた時の通信(§7.9)。 */
+export const LOOP1_HELP_COMM_LINES: readonly { name: string; text: string }[] = [
+  { name: 'ミラ', text: '助けて〜' },
+];
+
 /** 通常湧きを止める段(囲いの間=§7.5)。 */
 export const loop1HoldsNormalSpawns = (phase: Loop1Phase | null | undefined): boolean => phase === 'enclosure';
 /** 地面に二人が立っている段。 */
 export const loop1DuoVisible = (phase: Loop1Phase | null | undefined): boolean =>
-  phase === 'duo' || phase === 'talk' || phase === 'enclosure' || phase === 'goal' || phase === 'thanks';
+  phase === 'duoAttention' || phase === 'duo' || phase === 'talk' || phase === 'enclosure' || phase === 'goal' || phase === 'thanks';
 /** 廃病院が立っている段(取得前)。 */
-export const loop1HospitalPlaced = (phase: Loop1Phase | null | undefined): boolean => phase !== 'base';
+export const loop1HospitalPlaced = (phase: Loop1Phase | null | undefined): boolean =>
+  phase !== 'base' && phase !== 'afterBase' && phase !== 'baseComm';
 
 // ───────────────────────────────────────────────────────────────────────────
 // 1周目に出さない物(§3・§7.6 D・§7.7 A4)。配線の網羅を一覧で残す(テストが一覧の存在を固定する)。
@@ -265,6 +364,16 @@ export const LOOP1_SUPPRESSED = [
 // ───────────────────────────────────────────────────────────────────────────
 // 文言(§7.6 G)
 export const LOOP1_OBJECTIVE_TEXT = '身元不明の民間人2名を救出せよ';
+/** 右上の目的の1行(社長指示2026-11-19): 段で切り替える。クリア後(won)は最後の行のまま。 */
+export const loop1ObjectiveText = (phase: Loop1Phase): string => {
+  switch (phase) {
+    case 'base': return '西の拠点へ向かう';
+    case 'afterBase': case 'baseComm': case 'hospital': return '廃病院へ向かう';
+    case 'duoWait': case 'duoAttention': case 'duo': case 'talk': return '二人組の元へ向かう';
+    case 'enclosure': return '二人組の救助';
+    default: return '二人組の安否確認'; // goal / thanks / won
+  }
+};
 export const LOOP1_REPORT_LINES: readonly string[] = [
   '民間人2名を保護した。二人から、PHILL再生医療研究所の位置を聞き出した。',
   '研究所へ向かうには、周辺の大型変異体を排除する必要がある。',
@@ -273,12 +382,13 @@ export const LOOP1_REPORT_LINES: readonly string[] = [
 // ───────────────────────────────────────────────────────────────────────────
 // 描画の写し(pixiScene は読むだけ)。二人組は既存の二人の絵(旧 eventQuestNpc の描画経路)をそのまま使うので、
 // 同じ形の値を作って渡す(既存の eventQuestNpc は 1周目は status='gone' のまま=v4の経路には一切入らない)。
-export const loop1DuoNpcView = (loop: Stage1LoopState | null | undefined): EventQuestNpc | null => {
+export const loop1DuoNpcView = (loop: Stage1LoopState | null | undefined, gameTime = 0): EventQuestNpc | null => {
   if (!loop || !loop1DuoVisible(loop.phase)) return null;
   return {
+    viewAlpha: loop1DuoAlpha(loop, gameTime),
     x: loop.duoPos.x, y: loop.duoPos.y, radius: LOOP1_DUO_CIRCLE_RADIUS,
     // duo の間だけ 'rescue'=水色の待機トリガー円を描く(旧レスキューと同じ見た目)。到着後は円を消して二人だけ立たせる。
-    status: loop.phase === 'duo' ? 'rescue' : 'accepted',
+    status: loop.phase === 'duo' || loop.phase === 'duoAttention' ? 'rescue' : 'accepted',
     questIndex: 0, fadeStartedAt: 0, dwellMs: 0, leftSinceAccept: true,
     moveStartedAt: 0, moveFromX: 0, moveFromY: 0, moveToX: 0, moveToY: 0, movePhase: null, hopPx: 0,
     triggerRadius: LOOP1_DUO_CIRCLE_RADIUS,

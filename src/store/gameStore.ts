@@ -256,7 +256,7 @@ import {
 import { escortAggroCandidates, escortBossHaters, escortInMotionView, hateEscortSource } from '../utils/escortView';
 import { JUN_ESCORT_INDEX, JUN_NAME } from '../data/junEscortLines';
 import { npcChatterAllowed, getNpcChatterEnabled } from '../utils/npcChatter'; // オプション「仲間の雑談」
-import { createStage1LoopState, isLoop1HiddenBase, LOOP1_BASE_ID, type Stage1LoopState, type Loop1Talk } from '../utils/stage1FirstLoop'; // ステージ1の1周目(STAGE1_FIRST_LOOP.md)
+import { createStage1LoopState, isLoop1HiddenBase, LOOP1_BASE_ID, stage1LaterLoopSkipsWelcome, STAGE1_FIRST_LOOP_ENABLED, type Stage1LoopState, type Loop1Talk } from '../utils/stage1FirstLoop'; // ステージ1の1周目(STAGE1_FIRST_LOOP.md)
 import { isJunEscort, JUN_ESCORT_ID, junJoinsRun, stepJunWalk, JUN_DEPART_WALK_DELAY_MS, junNextWaypoint, junReachableGoal, junTouchesRect, JUN_ARRIVE_TOUCH_DIST, junFollowsPlayer, junFollowMachine, countsForBaseCapture, junNearOpenBase, junLeftBehindStep, JUN_LEFT_BEHIND_CD_MS, JUN_BASE_ID, junPseudoBase } from '../utils/junEscort';
 // research/ESCORT_FOLLOW.md: 拠点を開けた軍人が、その担当区域の中だけついてくる(判定は utils の純関数)。
 import {
@@ -312,7 +312,7 @@ import {
   getEventQuestMeta, setEventQuestMeta, markCastleBossCleared, syncQuestStageClear,
   updateStoryFlags, markMissionCleared,
   isKogarasuUnlocked, markKogarasuUnlocked, markWeaponBlueprint, markSubBlueprint, isWeaponUnlocked,
-  getSelectedFreeMode,
+  getSelectedFreeMode, getStage1FirstLoopCleared,
   type WallMeta,
 } from '../data/progress';
 // 城ボスの個体名の正本(カットイン台帳)。死因・討伐バナー・年表など全UIが同じ名前を引く。
@@ -9079,7 +9079,7 @@ interface GameState {
   eventQuestNpc: EventQuestNpc;
   // ステージ1「1周目」(STAGE1_FIRST_LOOP.md)。null=1周目ではない(フラグOFF・2周目以降・他ステージ)=どの分岐にも入らない。
   stage1Loop: Stage1LoopState | null;
-  // 「1周目会話中」(§7.7 A3): 到着/お礼の会話の間だけ立つ。立っている間 useGameLoop は早期 return(時間停止)。
+  // 「1周目会話中」(§7.7 A3): 到着/お礼の通信の間だけ立つ。到着=世界は止めない(v4の通信と同じ)/お礼=納品ロック(v4の納品と同じ)。
   stage1LoopTalk: Loop1Talk | null;
   // 二人組クエストのrun内状態(EVENT_QUEST_DESIGN.md)。受領中のクエスト種別と討伐進捗。
   // HUD(右上スクラップ下の n/N 表示)はこのプリミティブ群だけを購読する(React再描画規律)。
@@ -24867,6 +24867,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // ステージは getSelectedStageId()(練習中は枠が正だが、練習では下のガードで補充自体しない)。
   refillSubquests: () => {
     if (get().benchmarkRun || isPracticeRun()) { set({ subquests: [] }); return; }
+    if (get().stage1Loop !== null) { set({ subquests: [] }); return; } // ステージ1の1周目はサブクエスト無し(STAGE1_FIRST_LOOP.md・社長指示2026-11-19)。補充もしない=プールを減らさない
     const stageId = getSelectedStageId();
     const defs = subquestsForStage(stageId);
     if (defs.length === 0) { set({ subquests: [] }); return; } // 台帳が無いステージ=サブクエスト無し
@@ -27238,7 +27239,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // pendingEscortsへ預け、escortsは空で始める(=描画もtickも走らない=存在しない)。
       // ウェルカムを持たないラン(S2/S7/EX/練習・ラボ・洋館・?welcome=0等)は、このifがfalseになり
       // 従来どおりescortsへ直接入る=出撃の瞬間から1フレームも遅れず4人が居る。
-      const welcomeRetiredNow = isWelcomeRetired(getSelectedStageId() ?? '');
+      // 2周目以降のステージ1はウェルカムイベントを出さない=済んだ扱い(社長指示2026-11-19・判定は stage1FirstLoop の純関数)。
+      const welcomeRetiredNow = isWelcomeRetired(getSelectedStageId() ?? '')
+        || stage1LaterLoopSkipsWelcome({ enabled: STAGE1_FIRST_LOOP_ENABLED, stageId: getSelectedStageId() ?? '', firstLoopCleared: getStage1FirstLoopCleared() });
       const welcomeForThisRun = welcomeAppliesToRun({
         stageId: getSelectedStageId() ?? '',
         welcomeEnabled: WELCOME_ENABLED,

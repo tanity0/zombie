@@ -5,7 +5,7 @@
 // 1要素=1バリアント。同一(idx, cat)に複数足してランダムに出す。バリアントがある(idx,cat)は
 // こちらを優先採用(=キャラ設定リライト反映)。無ければ呼び出し側の既存1文(BASE_SOLDIERS)へフォールバック。
 // idx=soldierIndex: edgar0 / joseph1 / elizabeth2 / musashi3 / oklahoma4 / chen5 / lauren6 / phaser7
-// cat: sortie / surrounded / rescued / pushback / baseNear / baseCaptured / neglectFar / companion / praise / rescueReturned / npcKill / retreat / kickAssist / bountyWarning
+// cat: sortie / surrounded / rescued / pushback / baseNear / baseCaptured / neglectFar / companion / praise / rescueReturned / npcKill / retreat / kickAssist / bountyWarning / loop1AfterBase / loop1WrongWay
 import { JUN_ESCORT_INDEX, pickJunLine } from './junEscortLines';
 
 export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = [
@@ -200,7 +200,39 @@ export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = 
   { idx: 5, cat: 'bountyWarning', text: 'ふふ、あれは今の盤面に要らない駒だ。相手にしないのが最善手だよ。' }, // dlg_000438
   { idx: 6, cat: 'bountyWarning', text: 'あれ絶対ヤバいやつ！今は無視して進もう！' },                 // dlg_000439
   { idx: 7, cat: 'bountyWarning', text: 'チッ、厄介なのがいやがる。相手にすんな、行くぞ。' },         // dlg_000440
+  // loop1_after_base (ステージ1の1周目で西の拠点を確保し「拠点の利用」を閉じた後=出撃中の軍人の通信。2行を順に出す。STAGE1_FIRST_LOOP.md §7.9)
+  // 雑談ではない(次の行き先の一言)=オプション「仲間の雑談」OFFでも出す(npcChatter の雑談表に入れない)。ランダムではなく npcLinesInOrder で2行とも引く。
+  { idx: 0, cat: 'loop1AfterBase', text: '二人組はどこだ？' }, // dlg_000441
+  { idx: 0, cat: 'loop1AfterBase', text: '北の廃病院を当たってみるぞ。' }, // dlg_000442
+  { idx: 1, cat: 'loop1AfterBase', text: 'で、肝心の二人組はどこだ？' }, // dlg_000443
+  { idx: 1, cat: 'loop1AfterBase', text: '北の廃病院あたり、覗いてみようぜ！' }, // dlg_000444
+  { idx: 2, cat: 'loop1AfterBase', text: 'お二人はどちらにいらっしゃるのかしら。' }, // dlg_000445
+  { idx: 2, cat: 'loop1AfterBase', text: '北の廃病院へ行ってみましょう。' }, // dlg_000446
+  { idx: 3, cat: 'loop1AfterBase', text: '二人組は何処だ。' }, // dlg_000447
+  { idx: 3, cat: 'loop1AfterBase', text: '北の廃病院へ向かう。' }, // dlg_000448
+  { idx: 4, cat: 'loop1AfterBase', text: '二人組はどこでしょう？' }, // dlg_000449
+  { idx: 4, cat: 'loop1AfterBase', text: '北の廃病院へ参りましょう！' }, // dlg_000450
+  { idx: 5, cat: 'loop1AfterBase', text: 'さて、二人組はどこにいるのかな。' }, // dlg_000451
+  { idx: 5, cat: 'loop1AfterBase', text: '北の廃病院……ふふ、次の一手はそこだね。' }, // dlg_000452
+  { idx: 6, cat: 'loop1AfterBase', text: '二人組、どこにいるんだろう？' }, // dlg_000453
+  { idx: 6, cat: 'loop1AfterBase', text: '北の廃病院に行ってみようよ！' }, // dlg_000454
+  { idx: 7, cat: 'loop1AfterBase', text: '二人組はどこだ。' }, // dlg_000455
+  { idx: 7, cat: 'loop1AfterBase', text: '北の廃病院だ。行くぞ。' }, // dlg_000456
+  // loop1_wrong_way (ステージ1の1周目で西以外の方角へ踏み出した時=出撃中の軍人の通信。STAGE1_FIRST_LOOP.md・社長指示2026-11-19)
+  // 雑談ではない(道案内の一言)=オプション「仲間の雑談」OFFでも出す(npcChatter の雑談表に入れない)。
+  { idx: 0, cat: 'loop1WrongWay', text: 'そっちじゃない。拠点は西だ！' }, // dlg_000457
+  { idx: 1, cat: 'loop1WrongWay', text: 'おーい、そっちじゃねえって！西だ西！' }, // dlg_000458
+  { idx: 2, cat: 'loop1WrongWay', text: 'そちらではありませんわ。拠点は西です。' }, // dlg_000459
+  { idx: 3, cat: 'loop1WrongWay', text: 'そちらではない。西だ。' }, // dlg_000460
+  { idx: 4, cat: 'loop1WrongWay', text: 'そちらではありません！拠点は西です！' }, // dlg_000461
+  { idx: 5, cat: 'loop1WrongWay', text: 'ふふ、そっちは盤面の外だよ。拠点は西だ。' }, // dlg_000462
+  { idx: 6, cat: 'loop1WrongWay', text: 'そっちじゃないよ！拠点は西だよ！' }, // dlg_000463
+  { idx: 7, cat: 'loop1WrongWay', text: 'どこ行く気だ。拠点は西だぞ。' }, // dlg_000464
 ];
+
+// (idx, cat) の行を表の並びのまま全部返す(順に出す会話用=loop1AfterBase)。無ければ空。
+export const npcLinesInOrder = (idx: number, cat: string): string[] =>
+  NPC_SCENE_VARIANTS.filter(x => x.idx === idx && x.cat === cat).map(x => x.text);
 
 // (idx, cat) のバリアントからランダムに1つ返す。無ければ fallback(既存1文)。
 export const pickNpcLine = (idx: number, cat: string, fallback: string): string => {

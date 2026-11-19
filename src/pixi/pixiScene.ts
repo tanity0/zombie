@@ -10318,7 +10318,7 @@ export class PixiScene {
       this.eventNpcView.visible = false; this.npcShadow = null;
     } else {
       this.syncCastle(s.castleEvent, now);
-      this.syncEventQuestNpc(loop1DuoNpcView(s.stage1Loop) ?? s.eventQuestNpc, now);
+      this.syncEventQuestNpc(loop1DuoNpcView(s.stage1Loop, s.gameTime) ?? s.eventQuestNpc, now);
     }
     // ★ウェルカムが終わるまで商人は画面に出さない(社長指示2026-09-19。護衛NPCと同じ扱い)。
     // 店の実体は store に残っている(§17-13 が商人のyを読む)ので、**絵だけ**を止める。
@@ -11917,9 +11917,10 @@ export class PixiScene {
     // 残さない)。v2で残る状態のうちこの`near`条件を満たせるものは無い(常にfalse。プレイヤー距離の
     // 判定自体が不要になったのでdx/dy/pcx/pcyの算出も削った)。
     const near = false;
-    const statusAlpha = npc.status === 'completed'
+    const statusAlpha = (npc.status === 'completed'
       ? Math.max(0, 1 - fadeElapsed / EVENT_NPC_FADE_MS)
-      : 1;
+      : 1) * (npc.viewAlpha ?? 1); // viewAlpha=1周目の救助の間に二人が抜けて戻る(慣性つき・utils/stage1FirstLoop.loop1DuoAlpha)
+    if (statusAlpha <= 0) { this.eventNpcView.visible = false; this.npcShadow = null; return; }
 
     // §2-14「EventQuestNpcに足すフィールド」: npc.yは常に地面の足元Y。飛来/退場中の高さは
     // hopPxとして別に持ち、本体だけ-hopPxだけ上へずらして描く(depthScale/zIndex/horizonActorAlphaは

@@ -43,6 +43,24 @@ describe('1周目でない出撃は現行どおり', () => {
   });
 });
 
+describe('2周目以降のステージ1はウェルカムが無い(社長指示2026-11-19)', () => {
+  it('1周目クリア済み: ウェルカムは済んだ扱い=護衛は出撃の瞬間から居る', () => {
+    setStage('stage-1');
+    markStage1FirstLoopCleared();
+    useGameStore.getState().resetGame('warrior');
+    const s = useGameStore.getState();
+    expect(s.stage1Loop).toBeNull();
+    expect(s.welcomeRetired).toBe(true);
+    expect(s.pendingEscorts.length).toBe(0);
+    expect(s.escorts.length).toBe(4);
+  });
+  it('1周目未クリアの通常出撃(1周目フラグなし)はウェルカムが従来どおり', () => {
+    setStage('stage-1');
+    useGameStore.getState().resetGame('warrior');
+    expect(useGameStore.getState().welcomeRetired).toBe(false);
+  });
+});
+
 describe('1周目の初期状態', () => {
   const start = () => {
     setStage('stage-1');
@@ -57,6 +75,11 @@ describe('1周目の初期状態', () => {
     expect(s.escorts.length).toBe(1);
     expect(s.escorts[0].baseId).toBe(LOOP1_BASE_ID);
     expect(s.stage1Loop?.soldierIndex).toBe(s.escorts[0].soldierIndex);
+  });
+  it('サブクエストは無し(右上の討伐の行を出さない)', () => {
+    start();
+    useGameStore.getState().refillSubquests();
+    expect(useGameStore.getState().subquests).toEqual([]);
   });
   it('拠点データは4つ残し、西以外は隠す(ハンターの判定は現行どおり)', () => {
     const s = start();

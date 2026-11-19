@@ -44,7 +44,6 @@ import {
   playerIntroCamFollow,
   CAMERA_INTRO_LIFT_FRAC,
   INTRO_DIALOGUE_TRIGGER_T,
-  introLineMs,
   INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, SHIJIN_TECH_SHAKE_MS, SHIJIN_TECH_SHAKE_MAG,
   counterAcceptMsOf, // v0.25.2525→v0.25.3943: 守護霊の弾反射の窓(プレイヤーの受付と同じ式・記録の装備で延びる)
@@ -558,12 +557,15 @@ import {
 } from '../utils/eventQuest';
 // ステージ1の1周目(STAGE1_FIRST_LOOP.md)。判定は純関数、ここは配線だけ。
 import {
-  ratchetLoop1Mode, loop1BaseCaptureTutorialDue, enqueueLoop1Tutorial, nextLoop1Tutorial, loop1BountyDue, loop1BountyRadius, loop1BountySpawnPos, loop1KomaForLevel, loop1HoldsNormalSpawns,
-  loop1EnclosureType, loop1EnclosureSpawnPos, loop1EnclosureAlive, tickLoop1GoalDwell, isInLoop1Circle, stepLoop1Phase,
-  LOOP1_BASE_ID, LOOP1_DUO_CIRCLE_RADIUS, LOOP1_GOAL_RADIUS, LOOP1_GOAL_HOLD_MS, LOOP1_ENCLOSURE_COUNT, LOOP1_ENCLOSURE_INTERVAL_MS,
-  LOOP1_TALK_END_HOLD_MS, STAGE1_FIRST_LOOP_STAGE_ID, type Stage1LoopState, type Loop1Talk,
+  ratchetLoop1Mode, loop1BaseCaptureTutorialDue, enqueueLoop1Tutorial, nextLoop1Tutorial, loop1BountyDue, loop1BountyRadius, loop1BountySpawnPos, loop1HoldsNormalSpawns,
+  loop1RescueAdvance, tickLoop1GoalDwell, isInLoop1Circle, stepLoop1Phase,
+  LOOP1_BASE_ID, LOOP1_DUO_CIRCLE_RADIUS, LOOP1_GOAL_RADIUS, LOOP1_GOAL_HOLD_MS,
+  STAGE1_FIRST_LOOP_STAGE_ID, type Stage1LoopState, type Loop1Talk,
+  LOOP1_DUO_REVEAL_DELAY_MS, tickLoop1DuoWait, LOOP1_ARRIVAL_LINES, LOOP1_HELP_COMM_LINES,
+  loop1KomaNow, LOOP1_CAPTURE_PEAK_MS, loop1ModeBarTutorialDue, loop1ModeHandBackDue,
+  loop1WrongWayRegion, loop1WrongWayPeak, stepLoop1WrongWay,
 } from '../utils/stage1FirstLoop';
-import { pickNpcLine } from '../data/npcLines';
+import { pickNpcLine, npcLinesInOrder } from '../data/npcLines';
 import { rescueQuestSpawnReady, duoCommActive, duoCommEnded, duoQuietWindow } from '../utils/rescueQuestGate'; // 二人組クエストv2(§2-11・B4)/v4(§2-18)
 import { subsAllCompletedFromMeta } from '../utils/storyProgress';
 import { airHopEase01 } from '../utils/airHop';
@@ -3440,42 +3442,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           introWasActiveRef.current = false;
         }
 
-        // ステージ1の1周目の会話(STAGE1_FIRST_LOOP.md §7.7 A3): intro と同型で早期 return=ゲーム時刻・湧き・敵・ハンター・賞金首・
-        // モードの時計がすべて止まる。表示は IntroDialogue(タップで1行ずつ早送り・スキップ)。最終行を出し切ったら自動で閉じる。
-        {
-          const talk = useGameStore.getState().stage1LoopTalk;
-          if (talk) {
-            const ds = useGameStore.getState();
-            const totalMs = ds.introDialogueLines.reduce((a, l) => a + introLineMs(l), 0);
-            const ended = !ds.introDialogueActive || Date.now() - ds.introDialogueStartedAt >= totalMs + LOOP1_TALK_END_HOLD_MS;
-            if (!ended) {
-              frameRef.current = requestAnimationFrame(gameLoop);
-              return;
-            }
-            // 会話の終わり→次の段(到着=囲いの開始/お礼=納品+クリア)。段の遷移も純関数 stepLoop1Phase の答えに従う。
-            const L = ds.stage1Loop;
-            const step = L ? stepLoop1Phase(L.phase, {
-              baseCaptured: true, vaccineTaken: true, inDuoCircle: false, uiBlocked: false, talkEnded: talk,
-              enclosureSpawnedAll: false, enclosureAlive: 0, goalDone: false,
-            }) : null;
-            useGameStore.setState(st => ({
-              stage1LoopTalk: null,
-              introDialogueActive: false,
-              ...(st.stage1Loop && step ? {
-                stage1Loop: {
-                  ...st.stage1Loop, phase: step.phase,
-                  ...(step.action === 'startEnclosure' ? { enclosureIds: [], enclosureSpawned: 0, enclosureNextAt: st.gameTime } : {}),
-                },
-              } : {}),
-            }));
-            if (step?.action === 'win') {
-              // ゴール(§7.6 F / §7.7 A2・B8): 現行のサブ納品と同じ報酬+meta.delivered だけ(v4の状態は書かない)→クリア。
-              useGameStore.getState().completeStage1FirstLoopDelivery();
-              useGameStore.setState({ gameWon: true });
-            }
-          }
-        }
-
         // (時間停止VNボックス廃止・社長指示v0.25.1876: 会話は全て通常会話=非停止に統一したため、
         //  ここで sim を止めていた introDialogueActive の分岐は撤去。撤退セリフ等も通常会話キューへ。)
 
@@ -5830,7 +5796,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // --- ステージ1の1周目(STAGE1_FIRST_LOOP.md §4・§7.5〜§7.7) ---------------------------------
         // 判定(段階・モードの一方通行・賞金首の発火半径・位置)は utils/stage1FirstLoop.ts の純関数。ここは配線だけ。
-        // 会話中(stage1LoopTalk)は上の早期 return で丸ごと止まっているので、ここへは来ない。
+        // 到着の通信中も世界は進む(v4 の通信と同じ)。お礼の通信中は納品ロックの早期 return で止まるので、ここへは来ない。
         if (firstLoop && LOOP1_PHASE_JUMP && loopState.stage1Loop && loop1JumpRunRef.current !== loopState.stage1Loop.hospitalPos) {
           // 撮影用(開発サーバだけ): 1出撃に1回、指定の段の手前まで状態を進める。hospitalPos の参照=その出撃の印(出撃ごとに作り直される)。
           const J = loopState.stage1Loop;
@@ -5849,7 +5815,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               break;
             }
-            case 'hospital': capBase(); putPlayer(J.hospitalPos.x + 40, J.hospitalPos.y + 160); break;
+            case 'hospital': capBase(); putPlayer(J.hospitalPos.x + 40, J.hospitalPos.y + 160); break; // 確保→利用→軍人の通信→廃病院+アテンションの順に流れる
             case 'duo':
               capBase();
               useGameStore.setState(st => ({ hospital: { ...J.hospitalPos }, hospitalTaken: true, stage1Loop: st.stage1Loop ? { ...st.stage1Loop, phase: 'hospital', bountySpawned: true } : null }));
@@ -5864,7 +5830,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (LOOP1_PHASE_JUMP === 'talk') loop1JumpDeferRef.current = { at: newGameTime + 800 };
               useGameStore.setState(st => ({
                 hospital: { ...J.hospitalPos }, hospitalTaken: LOOP1_PHASE_JUMP !== 'talk',
-                stage1Loop: st.stage1Loop ? { ...st.stage1Loop, phase: ph, bountySpawned: true, enclosureNextAt: st.gameTime, modeLevel: 2 } : null,
+                stage1Loop: st.stage1Loop ? { ...st.stage1Loop, phase: ph, bountySpawned: true, rescueStartedAt: st.gameTime, modeLevel: 2 } : null,
               }));
               if (LOOP1_PHASE_JUMP === 'goal') putPlayer(dx, dy - 260);
               else putPlayer(dx, dy);
@@ -5897,28 +5863,51 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (warnText) useGameStore.getState().enqueueNpcDialogue([{ name: baseSoldierName(L.soldierIndex), text: warnText }]);
               }
             }
-            // 囲い(§7.5): サークルの周りへ順に出す(慣性=1体ずつ間をあけて現れる)。出した敵は fromEvent=上限・距離の整理の対象外(B1)。
-            let encIds = L.enclosureIds;
-            let encSpawned = L.enclosureSpawned;
-            if (L.phase === 'enclosure' && encSpawned < LOOP1_ENCLOSURE_COUNT && newGameTime >= L.enclosureNextAt) {
-              const n = encSpawned + 1;
-              const eType = loop1EnclosureType(n, LOOP1_ENCLOSURE_COUNT, Math.random);
-              const at = loop1EnclosureSpawnPos(L.duoPos, n, LOOP1_ENCLOSURE_COUNT, Math.random);
-              const e = spawnEnemyAt(eType, at.x, at.y, newGameTime);
-              e.x -= e.width / 2; e.y -= e.height / 2;
-              const ec = clampRectToPlayableArea(e.x, e.y, e.width, e.height, {
-                farBackdrop: l1s.farBackdrop, labTheme, corridorMode: l1s.corridorMode,
-                m0AdvanceLimitX: l1s.m0AdvanceLimitX, corridorRunInActive: l1s.corridorRunInActive,
-              });
-              e.x = ec.x; e.y = ec.y;
-              e.fromEvent = true;
-              addEnemy(e);
-              spawnRing(e.x + e.width / 2, e.y + e.height / 2, 6, 64, 'rgba(56,189,248,0.7)', 3, 420);
-              encIds = [...encIds, e.id];
-              encSpawned = n;
-              patch.enclosureIds = encIds;
-              patch.enclosureSpawned = encSpawned;
-              patch.enclosureNextAt = newGameTime + LOOP1_ENCLOSURE_INTERVAL_MS;
+            // 二人組の救助(社長指示2026-11-19): 既存のウェルカム台本(ステージ1の表)を二人のサークルを中心に回す。
+            // 進行は welcomeAdvance そのもの(loop1RescueAdvance)。ここは本流のウェルカムの配線と同じ作法で
+            // ①在席数を数える ②段ごとに輪を開いて湧かせる ③倒し切ったら輪を閉じる、だけ(本流の welcomeActive は1周目では立たない)。
+            // 盤上から消えた個体(上限カリング等)は在席に数えない=倒した扱い。湧かせた個体は fromEvent=カリング/回収の対象外。
+            let rescueCleared = false;
+            if (L.phase === 'enclosure') {
+              const aliveW = l1s.enemies.filter(e => e.isWelcome).length;
+              let clearedAt = L.rescueStepClearedAt;
+              if (aliveW === 0 && clearedAt === null && L.rescueStep >= 0) {
+                clearedAt = newGameTime;
+                patch.rescueStepClearedAt = clearedAt;
+                useGameStore.getState().dropWelcomeStepAmmo(L.duoPos.x, L.duoPos.y, ARENA_EVENT_RADIUS * 0.85, L.rescueStep); // 本流と同じ=段ごとに弾を1つ
+              }
+              if (aliveW === 0 && l1s.activeEvent?.kind === 'welcome') useGameStore.setState({ activeEvent: null });
+              // 1段目は「変異体の危険度」を閉じてから(ポップアップと輪を重ねない)。
+              const holdFirst = L.rescueStep < 0 && (l1s.tutorialPopup !== null || l1s.showShopMenu || l1s.showUpgradeMenu || L.pendingTutorials.length > 0);
+              const r = holdFirst ? null : loop1RescueAdvance({ step: L.rescueStep, alive: aliveW, gameTime: newGameTime, stepClearedAt: clearedAt });
+              if (r?.spawnNow) {
+                const wcx = L.duoPos.x, wcy = L.duoPos.y;
+                useGameStore.getState().beginArenaEvent({
+                  kind: 'welcome', x: wcx, y: wcy, radius: ARENA_EVENT_RADIUS,
+                  startedAt: newGameTime, endsAt: newGameTime + WELCOME_RING_ENDS_IN_MS, permeable: false,
+                });
+                for (const unit of r.spawnNow) {
+                  for (let i = 0; i < unit.count; i++) {
+                    const ang = Math.random() * Math.PI * 2;
+                    const dist = ARENA_EVENT_RADIUS * (0.5 + Math.random() * (0.92 - 0.5));
+                    const we = spawnEnemyAtWithTier(unit.type, wcx + Math.cos(ang) * dist, wcy + Math.sin(ang) * dist, newGameTime, unit.tier ?? 'none');
+                    we.x -= we.width / 2; we.y -= we.height / 2;
+                    we.fromEvent = true;
+                    we.isWelcome = true;
+                    we.dormant = false;
+                    if (we.type === 'screamer') we.fixed = true;
+                    addEnemy(we);
+                  }
+                }
+                spawnRing(wcx, wcy, ARENA_EVENT_RADIUS * 0.2, ARENA_EVENT_RADIUS, 'rgba(56,189,248,0.9)', 6, 700);
+                spawnRing(wcx, wcy, ARENA_EVENT_RADIUS, ARENA_EVENT_RADIUS + 30, 'rgba(56,189,248,0.9)', 3, 760);
+                patch.rescueStepClearedAt = null;
+              }
+              if (r && r.step !== L.rescueStep) patch.rescueStep = r.step;
+              if (r && r.endedAt !== null) {
+                rescueCleared = true;
+                useGameStore.setState(st => (st.activeEvent?.kind === 'welcome' ? { activeEvent: null } : {}));
+              }
             }
             // ゴール(B5): 帰還サークルと同じく3秒滞在。
             let goalDone = false;
@@ -5928,14 +5917,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               goalDone = gd.dwellMs >= LOOP1_GOAL_HOLD_MS;
             }
             const uiBlocked = l1s.tutorialPopup !== null || l1s.showShopMenu || l1s.showUpgradeMenu;
+            // ワクチン取得後の3秒(§7.9): 寄り道のポップアップ等が閉じてから数える。
+            let duoWaitMs = L.duoWaitMs;
+            if (L.phase === 'duoWait') {
+              duoWaitMs = tickLoop1DuoWait(L.duoWaitMs, !uiBlocked && L.pendingTutorials.length === 0, deltaTime * 1000);
+              if (duoWaitMs !== L.duoWaitMs) patch.duoWaitMs = duoWaitMs;
+            }
             const step = stepLoop1Phase(L.phase, {
               baseCaptured: l1s.baseSites.some(b => b.id === LOOP1_BASE_ID && b.status === 'captured'),
               vaccineTaken: l1s.hospitalTaken,
               inDuoCircle: isInLoop1Circle(lpcx, lpcy, L.duoPos, LOOP1_DUO_CIRCLE_RADIUS),
               uiBlocked,
-              talkEnded: null,
-              enclosureSpawnedAll: encSpawned >= LOOP1_ENCLOSURE_COUNT,
-              enclosureAlive: loop1EnclosureAlive(encIds, l1s.enemies),
+              tutorialIdle: !uiBlocked && L.pendingTutorials.length === 0,
+              commEnded: duoCommEnded(l1s.npcDialogue !== null, l1s.npcDialogueQueue.length),
+              duoRevealDue: duoWaitMs >= LOOP1_DUO_REVEAL_DELAY_MS,
+              attentionActive: l1s.attention !== null,
+              // 到着の通信が流れ切った(本流の二人組の通信と同じ判定式=表示中もキューも空)。お礼は納品ロックの側で終わる。
+              talkEnded: l1s.stage1LoopTalk === 'arrival' && duoCommEnded(l1s.npcDialogue !== null, l1s.npcDialogueQueue.length) ? 'arrival' : null,
+              rescueCleared,
               goalDone,
             });
             if (step.phase !== L.phase) patch.phase = step.phase;
@@ -5950,43 +5949,107 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             switch (step.action) {
               case 'baseCaptured':
-                // 「拠点の利用」のチュートリアル+西のデンジャーゾーンの北寄りに廃病院(それまでは設置もしない=§4-5)。
+                // 「拠点の利用」のチュートリアル(廃病院はまだ出さない=§7.9: ポップアップ→軍人の通信→廃病院)。
                 tutQueue = enqueueLoop1Tutorial(tutQueue, 'base-use');
+                // 確保した瞬間からピーク(LOOP1_CAPTURE_PEAK_MS)。明けたら「敵の動き」(下)。
+                patch.capturePeakUntil = newGameTime + LOOP1_CAPTURE_PEAK_MS;
+                break;
+              case 'startBaseComm':
+                // ポップアップが閉じた→出撃中の軍人の通信(2行を順に)。ほかの軍人の通信と同じ経路(通信欄・帯なし)。
+                if (L.soldierIndex >= 0) {
+                  const afterBase = npcLinesInOrder(L.soldierIndex, 'loop1AfterBase');
+                  if (afterBase.length) useGameStore.getState().enqueueNpcDialogue(afterBase.map(text => ({ name: baseSoldierName(L.soldierIndex), text })));
+                }
+                break;
+              case 'placeHospital':
+                // 通信が流れ切った→西のデンジャーゾーンの北寄りに廃病院(それまでは設置もしない=§4-5)+カメラが寄って戻る(既存のアテンション)。
                 useGameStore.setState({ hospital: { ...L.hospitalPos }, hospitalTaken: false, hospitalDwellMs: 0, hospitalTakenAt: 0 });
+                useGameStore.getState().triggerAttention(L.hospitalPos.x, L.hospitalPos.y);
                 break;
               case 'vaccineTaken':
-                // 寄り道のチュートリアル+同じデンジャーゾーンの南寄りに二人(§4-6)。現れる瞬間は旧レスキューと同じ水色の輪。
+                // 寄り道のチュートリアル。二人は閉じてから3秒後(duoWait)。
                 tutQueue = enqueueLoop1Tutorial(tutQueue, 'detour-poi');
+                patch.duoWaitMs = 0;
+                break;
+              case 'revealDuo':
+                // 同じデンジャーゾーンの南寄りに二人(§4-6)。現れる瞬間は旧レスキューと同じ水色の輪+カメラが寄って戻る(既存のアテンション)。
                 spawnRing(L.duoPos.x, L.duoPos.y, 12, LOOP1_DUO_CIRCLE_RADIUS, 'rgba(56,189,248,0.85)', 4, 620);
+                useGameStore.getState().triggerAttention(L.duoPos.x, L.duoPos.y);
+                break;
+              case 'helpComm':
+                // アテンションが明けて操作が戻った→通信 ミラ「助けて〜」(v4 の通信と同じ=通信欄+「通信」の帯)。
+                useGameStore.getState().enqueueNpcDialogue(LOOP1_HELP_COMM_LINES.map(l => ({ ...l })));
+                useGameStore.getState().enqueueWallEvent('comm', '通信', 'INCOMING TRANSMISSION', '#bfe3ff');
                 break;
               case 'startArrivalTalk': startTalk = 'arrival'; break;
+              case 'startEnclosure':
+                // 到着の通信の終わり→救助(ウェルカム台本)の開始。先に「変異体の危険度」(閉じたら1段目)。二人の絵はここから抜ける。
+                patch.rescueStep = -1; patch.rescueStepClearedAt = null; patch.rescueStartedAt = newGameTime;
+                tutQueue = enqueueLoop1Tutorial(tutQueue, 'mutant-tier');
+                break;
               case 'enclosureCleared':
-                // 全滅→二人のサークルがゴールサークルに変わる(§4-8)。
+                // 倒し切った→二人のサークルがゴールサークルに変わる(§4-8)。二人の絵もここから戻る。
                 patch.goalDwellMs = 0;
+                patch.rescueEndedAt = newGameTime;
                 spawnRing(L.duoPos.x, L.duoPos.y, 12, LOOP1_GOAL_RADIUS, 'rgba(134,239,172,0.85)', 4, 620);
                 break;
               case 'startThanksTalk': startTalk = 'thanks'; break;
               default: break;
             }
+            // 「敵の動き」(社長指示2026-11-19): 確保のピークが明け、ポップアップ・通信・アテンション・段の仕事が何も無い時に積む(重ねない)。
+            if (loop1ModeBarTutorialDue({
+              queued: L.modeBarQueued, capturePeakUntil: patch.capturePeakUntil ?? L.capturePeakUntil, gameTime: newGameTime,
+              idle: !uiBlocked && tutQueue.length === 0 && step.action === null && l1s.attention === null && l1s.stage1LoopTalk === null
+                && !l1s.deliveryLocked && duoCommEnded(l1s.npcDialogue !== null, l1s.npcDialogueQueue.length),
+            })) {
+              patch.modeBarQueued = true;
+              tutQueue = enqueueLoop1Tutorial(tutQueue, 'mode-bar');
+            }
+            // 閉じたらモードを通常のサイクル(既定)へ返す。
+            if (loop1ModeHandBackDue({ shown: L.modeBarShown, handedBack: L.modeHandedBack, popupOpen: l1s.tutorialPopup !== null })) patch.modeHandedBack = true;
+            // 逆方向(社長指示2026-11-19): 西以外の方角で軍備配置区域の半ばより外へ出たら、軍人が「そっちじゃない」の通信(ほかの軍人の通信と同じ経路)。
+            // 軍人は付いて行かない=既存の付き添いの判定(拠点へ向かう/確保後は西の区域の中だけ付いてくる)のまま。
+            if (L.soldierIndex >= 0 && l1s.stage1LoopTalk === null && startTalk === null) {
+              const ww = stepLoop1WrongWay({
+                armed: L.wrongWayArmed, lastAt: L.wrongWayLastAt, now: newGameTime,
+                inRegion: loop1WrongWayRegion(lpcx, lpcy, activeAreaThresholds()[0]),
+              });
+              if (ww.armed !== L.wrongWayArmed) patch.wrongWayArmed = ww.armed;
+              if (ww.fire) {
+                patch.wrongWayLastAt = newGameTime;
+                const wwText = pickNpcLine(L.soldierIndex, 'loop1WrongWay', '');
+                if (wwText) useGameStore.getState().enqueueNpcDialogue([{ name: baseSoldierName(L.soldierIndex), text: wwText }]);
+              }
+            }
             // チュートリアルは1周目では端末の既読に関係なく出す(§7.6 B)。ポップアップ・メニューが開いていれば閉じるまで待つ。
             // 待ちが複数(確保→利用)なら1件ずつ: 出した次のフレームからはポップアップが開いている=閉じるまで次を待つ。
-            const nextTut = nextLoop1Tutorial(tutQueue, uiBlocked || startTalk !== null);
+            // 「変異体の危険度」は通信とも重ねない(流れ切ってから)。
+            const commBusy = !duoCommEnded(l1s.npcDialogue !== null, l1s.npcDialogueQueue.length);
+            const nextTut = nextLoop1Tutorial(tutQueue, uiBlocked || startTalk !== null || l1s.stage1LoopTalk !== null
+              || (tutQueue[0] === 'mutant-tier' && commBusy));
             if (nextTut.show) showTutorialOnce(nextTut.show);
+            if (nextTut.show === 'mode-bar') patch.modeBarShown = true;
             if (nextTut.rest.length !== L.pendingTutorials.length || nextTut.rest.some((t, k) => t !== L.pendingTutorials[k])) {
               patch.pendingTutorials = nextTut.rest;
             }
             if (Object.keys(patch).length) {
               useGameStore.setState(st => (st.stage1Loop ? { stage1Loop: { ...st.stage1Loop, ...patch } } : {}));
             }
+            if (step.action === 'startEnclosure') useGameStore.setState({ stage1LoopTalk: null });
             if (startTalk) {
-              // 到着/お礼の会話(§7.7 A3): IntroDialogue のタップ送り・スキップを使い、その間は上の早期 return で全部止める。
-              const lines = startTalk === 'arrival' ? eventQuestSubAcceptLines(STAGE1_FIRST_LOOP_STAGE_ID) : eventQuestSubCompleteLines(STAGE1_FIRST_LOOP_STAGE_ID);
-              useGameStore.setState({
-                stage1LoopTalk: startTalk,
-                introDialogueLines: lines.map(l => ({ speaker: l.name, text: l.text })),
-                introDialogueActive: true,
-                introDialogueStartedAt: Date.now(),
-              });
+              // 到着/お礼の会話(§7.7 A3・社長指示「従来の通信方式にして」): v4 の二人組と同じ通信(左上の通信欄)で出す。
+              if (startTalk === 'arrival') {
+                // v4 の5:00の通信と同じ=通信欄+「通信」の銘打ち。世界は止めない(通信欄はゲーム時刻で進む)。終わりは上の talkEnded。
+                useGameStore.setState({ stage1LoopTalk: 'arrival' });
+                // 1周目専用の到着の会話(§7.9)。v4/2周目以降の EVENT_QUEST_SUB_ACCEPT_LINES は使わない。
+                useGameStore.getState().enqueueNpcDialogue(LOOP1_ARRIVAL_LINES.map(l => ({ ...l })));
+                useGameStore.getState().enqueueWallEvent('comm', '通信', 'INCOMING TRANSMISSION', '#bfe3ff');
+              } else {
+                // v4 の納品と同じ=報酬→納品ロック(世界を止め、通信の時計だけ進める)→完了の通信。流れ切ったら納品ロックの側で gameWon。
+                useGameStore.getState().completeStage1FirstLoopDelivery(); // 現行のサブ納品と同じ報酬+meta.delivered だけ(v4の状態は書かない)
+                useGameStore.setState({ stage1LoopTalk: 'thanks', deliveryLocked: true });
+                useGameStore.getState().enqueueNpcDialogue(eventQuestSubCompleteLines(STAGE1_FIRST_LOOP_STAGE_ID));
+              }
             }
           }
         }
@@ -18616,8 +18679,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // v0.25.3495(社長指示「リラックスさせて」): RELAXの湧きレバー2本(間隔/上限)を
             // 本方式のスポーナーへも渡す。?directorApply が無ければ relaxAdj は全て1=挙動不変。
             relaxIntervalMult: relaxAdj.intervalMult, relaxCapMult: relaxAdj.capMult,
-            // ステージ1の1周目(STAGE1_FIRST_LOOP.md §4-3): 区域のモード(一方通行)。1周目でなければ null=従来どおり。
-            loop1Koma: loopState.stage1Loop ? loop1KomaForLevel(loopState.stage1Loop.modeLevel) : null,
+            // ステージ1の1周目(STAGE1_FIRST_LOOP.md §4-3・社長指示2026-11-19): 西の方角のモードの組み立て+逆方向は常にピーク。
+            // 「敵の動き」を閉じた後は null=通常のサイクル(逆方向のピークだけ残る)。1周目でなければ null=従来どおり。
+            loop1Koma: loopState.stage1Loop ? loop1KomaNow({
+              modeLevel: loopState.stage1Loop.modeLevel, capturePeakUntil: loopState.stage1Loop.capturePeakUntil, gameTime,
+              handedBack: loopState.stage1Loop.modeHandedBack,
+              wrongWayPeak: loop1WrongWayPeak(player.x + player.width / 2, player.y + player.height / 2, activeAreaThresholds()[0]),
+            }) : null,
           }
         );
 
