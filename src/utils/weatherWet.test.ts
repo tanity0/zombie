@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildWetGradeMatrix, applyColorMatrix, WET_GRADE_GAIN, torchStreakDash, TORCH_STREAK_DASHES,
+  leafDripSpec, leafDripPose, LEAF_DRIP_H_MIN, LEAF_DRIP_H_MAX,
   parseWeather, weatherWetActive, ripplePose, RIPPLE_MS, RIPPLE_FRAMES, RIPPLE_SCALE_FROM, RIPPLE_SCALE_TO,
   dripHeight, DRIP_FALL_MS, DRIP_FALL_H, glintPose, GLINT_MS,
   rainDropSpec, rainPose, rainNextGapMs, RAIN_FALL_MS_MIN, RAIN_FALL_MS_MAX, RAIN_DROPS_PER_MPX_S, RAIN_MAX,
@@ -208,5 +210,66 @@ describe('lerpRgb', () => {
     expect(lerpRgb(0xc9d6ff, 0xa6bbff, 0)).toBe(0xc9d6ff);
     expect(lerpRgb(0xc9d6ff, 0xa6bbff, 1)).toBe(0xa6bbff);
     expect(lerpRgb(0x000000, 0xfefefe, 0.5)).toBe(0x7f7f7f);
+  });
+});
+
+describe('参考画に寄せる(色行列・松明の筋・葉先の雫)', () => {
+  it('色行列: 灰色は青へ寄り、赤は落ちる・α列は素通し', () => {
+    const m = buildWetGradeMatrix();
+    const [r, g, b] = applyColorMatrix(m, 0.5, 0.5, 0.5);
+    expect(b).toBeGreaterThan(r);
+    expect(b).toBeGreaterThan(g);
+    expect(m.slice(15)).toEqual([0, 0, 0, 1, 0]);
+    // 黒は灰色に浮かない(持ち上げは青だけ少し)
+    const k = applyColorMatrix(m, 0, 0, 0);
+    expect(Math.max(k[0], k[1])).toBeLessThan(0.03);
+    // 彩度は上がる(赤い物の赤と緑の差が広がる=キャラの色が沈まない)
+    const sat = applyColorMatrix(m, 0.8, 0.3, 0.3);
+    expect(sat[0] - sat[1]).toBeGreaterThan((0.8 - 0.3) * WET_GRADE_GAIN[0] * 0.95);
+  });
+  it('松明の筋の欠片: 範囲内・遠いほど薄い傾向・決定的', () => {
+    const n = TORCH_STREAK_DASHES;
+    let nearSum = 0, farSum = 0;
+    for (let f = 0; f < 200; f++) {
+      const now = f * 37;
+      for (let i = 0; i < n; i++) {
+        const d = torchStreakDash(i, n, now, 1.3);
+        expect(d.t).toBeGreaterThanOrEqual(0); expect(d.t).toBeLessThanOrEqual(1);
+        expect(d.w).toBeGreaterThan(0); expect(d.w).toBeLessThanOrEqual(1);
+        expect(d.a).toBeGreaterThanOrEqual(0); expect(d.a).toBeLessThanOrEqual(1);
+        if (i === 0) nearSum += d.a; if (i === n - 1) farSum += d.a;
+      }
+    }
+    expect(nearSum).toBeGreaterThan(farSum * 2);
+    expect(torchStreakDash(2, n, 1234, 0.5)).toEqual(torchStreakDash(2, n, 1234, 0.5));
+    // 揺らぎは滑らか(1フレームで大きく跳ばない=慣性)
+    const a = torchStreakDash(1, n, 1000, 0.5), b = torchStreakDash(1, n, 1016, 0.5);
+    expect(Math.abs(a.w - b.w)).toBeLessThan(0.1);
+  });
+  it('葉先の雫: 枝葉の高さで生まれ、木の幅の内側・高いほど長く落ちる', () => {
+    const tree = { footX: 100, footY: 200, w: 150, h: 180 };
+    for (const r of [0, 0.5, 0.999]) {
+      const s = leafDripSpec(tree, () => r);
+      expect(s.height).toBeGreaterThanOrEqual(tree.h * LEAF_DRIP_H_MIN - 1e-9);
+      expect(s.height).toBeLessThanOrEqual(tree.h * LEAF_DRIP_H_MAX + 1e-9);
+      expect(Math.abs(s.x - tree.footX)).toBeLessThanOrEqual(tree.w * 0.5);
+    }
+    const lo = leafDripSpec(tree, () => 0), hi = leafDripSpec(tree, () => 0.999);
+    expect(hi.fallMs).toBeGreaterThan(lo.fallMs);
+  });
+  it('葉先の雫の姿: ぶら下がり(育つ)→ 加速して落ちる → 着いたら null', () => {
+    const s = { x: 0, y: 0, height: 120, hangMs: 600, fallMs: 700 };
+    const h0 = leafDripPose(0, s)!, h1 = leafDripPose(300, s)!, h2 = leafDripPose(599, s)!;
+    expect(h0.falling).toBe(false);
+    expect(h0.swell).toBeLessThan(h1.swell);
+    expect(h1.swell).toBeLessThan(h2.swell + 1e-9);
+    expect(h0.alpha).toBe(0); // パッと出ない
+    const f0 = leafDripPose(600, s)!, f1 = leafDripPose(600 + 350, s)!, f2 = leafDripPose(600 + 690, s)!;
+    expect(f0.falling).toBe(true);
+    // 後半ほど速い(重力)
+    expect(f0.h - f1.h).toBeLessThan(f1.h - f2.h);
+    expect(Math.abs(f0.h - h2.h)).toBeLessThan(1); // 千切れる瞬間に位置が跳ばない
+    expect(leafDripPose(1300, s)).toBeNull();
+    expect(leafDripPose(-1, s)).toBeNull();
   });
 });

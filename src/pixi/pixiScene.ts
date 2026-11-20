@@ -470,7 +470,7 @@ import {
 import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
-import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight } from './weatherWet';
+import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight, type WetTree } from './weatherWet';
 import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, WET_CLOUD_SHADOW_MULT, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR } from '../utils/weatherWet';
 import { getSelectedStageId } from '../data/progress';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H, wallRect, propRect, isLabObstacleBroken, labDebrisInRegion, type LabBrokenObstacle } from '../world/labWalls';
@@ -12574,12 +12574,18 @@ export class PixiScene {
     for (const [id, v] of this.enemies) actors.push({ id, sprite: v.sprite });
     for (const [id, v] of this.summonViews) actors.push({ id: `sm-${id}`, sprite: v.sprite });
     const lights: WetLight[] = [];
-    for (const v of this.breakableProps.values()) {
+    for (const [id, v] of this.breakableProps) {
       const r = v.reflection;
-      if (r.visible && r.alpha > 0.01) lights.push({ x: r.x, y: r.y, color: Number(r.tint), strength: Math.min(1, r.alpha / 0.24) });
+      if (r.visible && r.alpha > 0.01) lights.push({ id, x: r.x, y: r.y, color: Number(r.tint), strength: Math.min(1, r.alpha / 0.24) });
     }
     const m = 120;
-    const trees = treesInRegion(view.left - m, view.top - m, view.right + m, view.bottom + m);
+    // 木は描いている絵の寸法(遠近込み)も渡す=葉先の雫を枝葉の高さから落とす。絵がまだ無い木は渡さない。
+    const trees: WetTree[] = [];
+    for (const t of treesInRegion(view.left - m, view.top - m, view.right + m, view.bottom + m)) {
+      const e = this.trees.get(t.key);
+      if (!e || e.sprite.destroyed || !e.sprite.visible || e.sprite.alpha < 0.35) continue; // 地平線/手前で消えている木からは垂らさない
+      trees.push({ footX: t.footX, footY: t.footY, scale: t.scale, w: Math.abs(e.sprite.width), h: Math.abs(e.sprite.height) });
+    }
     const bases = s.baseSites.map(b => ({ x: b.x, y: b.y, r: 130 })); // 130 = BASE_CAPTURE_RADIUS
     const ppx = s.player.x + s.player.width / 2, ppy = s.player.y + s.player.height;
     // 雨粒の着地点を選ぶ矩形=実際に映っている世界(visibleWorldRect は等倍の画面との和+遠近の余白を含むので広すぎる)。
@@ -12589,19 +12595,20 @@ export class PixiScene {
       left: -wg.position.x / wsc - wx, right: (this.screenW - wg.position.x) / wsc - wx,
       top: -wg.position.y / wsc - wy, bottom: (this.screenH - wg.position.y) / wsc - wy,
     };
+    // 霧・月の色/大きさを先に掛ける=水たまりに映す遠景の写しにも、大きく明るくした月の暈が映る。
+    this.weatherWet.applyAtmosphere({
+      fog: this.nearHorizonMist ? [...this.fogLayers.map(f => f.sp), this.nearHorizonMist] : this.fogLayers.map(f => f.sp), // 森と地面の境の霧も
+      front: [this.L.frontForest, this.frontRidgeCopy, ...this.zoomClouds], // 引きの雲も同じ藍の夜へ(濃さはそのまま)
+      moonGlow: [this.stage1MoonGlow],
+      moonHalo: [this.stage1MoonHalo],
+      farGroup: this.farGroup,
+    });
     this.weatherWet.sync({
       now, envTint: this.envTintNow(), view, rainView, world: this.L.world,
       depthScale: y => this.depthScale(y),
       horizonAlpha: y => this.horizonActorAlpha(y),
       actors, lights, trees, bases, focusX: ppx, focusY: ppy,
       landscape: this.wetLandscape(),
-    });
-    this.weatherWet.applyAtmosphere({
-      fog: this.fogLayers.map(f => f.sp),
-      front: [this.L.frontForest, this.frontRidgeCopy],
-      moonGlow: [this.stage1MoonGlow],
-      moonHalo: [this.stage1MoonHalo],
-      farGroup: this.farGroup,
     });
   }
 

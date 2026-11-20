@@ -155,7 +155,7 @@ export const rainPose = (t: number, s: RainDropSpec): RainPose | null => {
 
 // ---- 水たまりに映る風景(設計書「追加: 水たまりに風景を映す」) ----
 /** 映りの縦の倍率(遠景の帯の高さ→映りの帯の高さ)。1未満=見下ろした水面の映りは縦に縮む(小さな水たまりにも稜線と空が一緒に入る)。叩き台。 */
-export const LANDSCAPE_REFLECT_STRETCH = 0.5;
+export const LANDSCAPE_REFLECT_STRETCH = 0.38;
 
 export interface LandscapeBand {
   /** 遠景の帯(画面の上端〜地平線)の高さ。 */
@@ -226,3 +226,163 @@ export const stepWetLightMix = (mix: number, active: boolean, dtMs: number): num
 
 /** 効き具合 mix(0..1)の時の倍率。mix=0(雨上がりでない)なら必ず 1(=何も変えない)。 */
 export const wetLightMult = (mix: number, mult: number): number => 1 + (mult - 1) * easeInOutSine(mix);
+
+// ---- 参考画に寄せる(設計書「追加: 参考画に寄せる」・雨上がりの間だけ) ----
+// 1. 霧: 薄く・藍へ寄せる(灰色の平たい幕に見えない)。霧の元の濃さ・色に掛ける倍率。
+export const WET_FOG_ALPHA_MUL = 0.36;
+export const WET_FOG_TINT_MUL = { r: 0.56, g: 0.6, b: 1 } as const;
+/** 近景の森(世界の色行列が掛からない層)の色の倍率=色行列と同じ藍の夜へ揃える。 */
+export const WET_FRONT_TINT_MUL = { r: 0.72, g: 0.78, b: 1 } as const;
+
+// 2. 世界の色行列: 彩度を上げ、青/藍へ寄せて深い夜にする。暗部は青だけわずかに持ち上げる(黒が灰にならない・キャラの輪郭は残す)。
+/** 彩度(1=そのまま・>1=鮮やか)。 */
+export const WET_GRADE_SAT = 1.12;
+/** チャンネルごとの明るさ(R, G, B)。赤と緑を沈めて青を上げる=藍の夜。 */
+export const WET_GRADE_GAIN: readonly [number, number, number] = [0.8, 0.88, 1.16];
+/** 暗部の持ち上げ(R, G, B・0..1)。青だけ少し=影が藍に沈む(灰色に浮かない)。 */
+export const WET_GRADE_LIFT: readonly [number, number, number] = [0.01, 0.012, 0.045];
+
+/** 雨上がりの世界の色行列(5×4 を1列に並べた 20 要素・値は 0..1 の単位)。 */
+export const buildWetGradeMatrix = (
+  sat = WET_GRADE_SAT, gain: readonly number[] = WET_GRADE_GAIN, lift: readonly number[] = WET_GRADE_LIFT,
+): number[] => {
+  const lr = 0.299 * (1 - sat), lg = 0.587 * (1 - sat), lb = 0.114 * (1 - sat);
+  const satM = [
+    [lr + sat, lg, lb],
+    [lr, lg + sat, lb],
+    [lr, lg, lb + sat],
+  ];
+  const m: number[] = [];
+  for (let c = 0; c < 3; c++) {
+    const k = gain[c] * (1 - lift[c]);
+    m.push(satM[c][0] * k, satM[c][1] * k, satM[c][2] * k, 0, lift[c]);
+  }
+  m.push(0, 0, 0, 1, 0);
+  return m;
+};
+
+/** 色行列を1色(0..1 の rgb)に掛ける(テストと見積もり用)。 */
+export const applyColorMatrix = (m: readonly number[], r: number, g: number, b: number): [number, number, number] => [
+  m[0] * r + m[1] * g + m[2] * b + m[4],
+  m[5] * r + m[6] * g + m[7] * b + m[9],
+  m[10] * r + m[11] * g + m[12] * b + m[14],
+];
+
+// 7. 月: 暈とグローを大きく明るく(雲が切れて澄んだ空)。元の大きさ・濃さに掛ける倍率。
+export const WET_MOON_GLOW_ALPHA_MUL = 1.6;
+export const WET_MOON_GLOW_SCALE_MUL = 1.3;
+export const WET_MOON_HALO_ALPHA_MUL = 2.2;
+export const WET_MOON_HALO_SCALE_MUL = 1.45;
+
+// 4. 松明の光の映り: 濡れた地面に、松明の足元から手前(画面の下)へ縦に伸びる暖色の筋。
+//    既存の光のにじみ(柔らかい丸の絵)を縦に伸ばして1枚+途切れた横の光の欠片を数本(水面のさざなみ)。
+/** 筋の長さ・幅(world px・遠近と松明の大きさを掛ける前)。 */
+export const TORCH_STREAK_LEN = 180;
+export const TORCH_STREAK_W = 22;
+/** 筋の濃さ(松明の光だまりの強さ 0..1 に掛ける)。 */
+export const TORCH_STREAK_ALPHA = 0.8;
+/** 筋の上端を足元からどれだけ下げるか(world px・遠近前)=台座の真下から始まる。 */
+export const TORCH_STREAK_TOP = 4;
+/** 横の光の欠片の本数・幅(world px・遠近前)・濃さ。 */
+export const TORCH_STREAK_DASHES = 5;
+export const TORCH_STREAK_DASH_W = 30;
+export const TORCH_STREAK_DASH_ALPHA = 1;
+/** 筋の濃さを目標へ寄せる割合(1フレームあたり)=点く/消える時にパッと変わらない(慣性)。 */
+export const TORCH_STREAK_EASE = 0.14;
+
+export interface StreakDash {
+  /** 筋の上端からの位置(0..1)。 */
+  t: number;
+  /** 幅の倍率(TORCH_STREAK_DASH_W に掛ける)。 */
+  w: number;
+  /** 濃さ(0..1)。 */
+  a: number;
+  /** 横のずれ(幅の倍率に対する -0.5..0.5)。 */
+  dx: number;
+}
+
+/**
+ * 筋の i 本目の光の欠片(さざなみの照り返し)。位置は等間隔にせず少し揺らし、幅と濃さは
+ * それぞれ違う周期の正弦でゆっくり伸び縮みする(正弦=始まりと終わりで減速する=慣性)。
+ * 遠い(下の)欠片ほど薄い。seed は松明ごとの値(全部の松明が同じ拍で揺れない)。
+ */
+export const torchStreakDash = (i: number, n: number, now: number, seed: number): StreakDash => {
+  const base = (i + 0.5) / Math.max(1, n);
+  const t = clamp01(base + 0.06 * Math.sin(now / (900 + 130 * i) + seed * 3.1 + i * 2.3));
+  const sw = Math.sin(now / (520 + 70 * i) + seed + i * 1.7);
+  const w = 0.35 + 0.65 * sw * sw;
+  const tw = Math.sin(now / (380 + 55 * i) + seed * 1.9 + i * 0.9);
+  const a = (1 - t) ** 1.3 * (0.45 + 0.55 * tw * tw);
+  const dx = 0.5 * Math.sin(now / (1300 + 170 * i) + seed * 0.7 + i * 2.9);
+  return { t, w, a, dx };
+};
+
+// 5. 葉先から垂れる雫: 木の枝葉の高さで雫が膨らんで(ぶら下がって)から、重力で加速して地面へ落ちる。
+/** 雫がぶら下がっている尺(ms)の幅。 */
+export const LEAF_DRIP_HANG_MS_MIN = 420;
+export const LEAF_DRIP_HANG_MS_MAX = 1100;
+/** 雫が生まれる高さ(木の絵の高さに対する割合)。枝葉の帯。 */
+export const LEAF_DRIP_H_MIN = 0.5;
+export const LEAF_DRIP_H_MAX = 0.86;
+/** 雫が生まれる横の幅(木の絵の幅に対する割合・中心から片側)。 */
+export const LEAF_DRIP_X_SPREAD = 0.38;
+
+export interface LeafTree {
+  footX: number;
+  footY: number;
+  /** 画面に出ている木の絵の幅・高さ(world px・遠近込み)。 */
+  w: number;
+  h: number;
+}
+export interface LeafDripSpec {
+  /** 着地点(world)。 */
+  x: number;
+  y: number;
+  /** 着地点からの生まれる高さ(world px・遠近込み)。 */
+  height: number;
+  hangMs: number;
+  fallMs: number;
+}
+
+/** 雫1粒の生まれ方。rnd は 0..1 の乱数(テストで固定できるように渡す)。 */
+export const leafDripSpec = (t: LeafTree, rnd: () => number): LeafDripSpec => {
+  const height = Math.max(8, t.h * (LEAF_DRIP_H_MIN + (LEAF_DRIP_H_MAX - LEAF_DRIP_H_MIN) * rnd()));
+  const x = t.footX + (rnd() * 2 - 1) * LEAF_DRIP_X_SPREAD * t.w;
+  // 着地は幹の足元の少し手前〜奥(枝の真下の地面)。
+  const y = t.footY + (rnd() * 1.4 - 0.4) * t.h * 0.08;
+  const hangMs = LEAF_DRIP_HANG_MS_MIN + (LEAF_DRIP_HANG_MS_MAX - LEAF_DRIP_HANG_MS_MIN) * rnd();
+  // 落ちる尺は高さの平方根に比例(重力=高いほど長く落ちる)。基準は DRIP_FALL_H を DRIP_FALL_MS で落ちる速さ。
+  const fallMs = DRIP_FALL_MS * Math.sqrt(height / DRIP_FALL_H);
+  return { x, y, height, hangMs, fallMs };
+};
+
+export interface LeafDripPose {
+  /** 着地点からの高さ(world px)。 */
+  h: number;
+  /** 雫の膨らみ(0..1)。ぶら下がっている間に育つ。落ち始めたら1。 */
+  swell: number;
+  /** 落ちている時の尾の長さの割合(0..1・速くなるほど伸びる)。ぶら下がっている間は0。 */
+  tail: number;
+  /** 濃さ(0..1)。 */
+  alpha: number;
+  falling: boolean;
+}
+
+/**
+ * 経過 t(ms)の雫の姿。ぶら下がり(膨らみは減速して育つ・重みで少し下がる)→ 落下(止まった所から重力で加速)。
+ * 落ち切ったら null(=そこで波紋)。
+ */
+export const leafDripPose = (t: number, s: LeafDripSpec): LeafDripPose | null => {
+  if (t < 0) return null;
+  if (t < s.hangMs) {
+    const k = t / s.hangMs;
+    const swell = easeOutCubic(k);
+    // 重みで少しだけ垂れる(最後に加速して千切れる手前)。
+    return { h: s.height - 3 * easeInQuad(k), swell, tail: 0, alpha: easeOutCubic(k / 0.35), falling: false };
+  }
+  const tf = t - s.hangMs;
+  if (tf >= s.fallMs) return null;
+  const k = tf / s.fallMs;
+  const top = s.height - 3;
+  return { h: top * (1 - easeInQuad(k)), swell: 1, tail: k, alpha: 1, falling: true };
+};

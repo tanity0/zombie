@@ -27,9 +27,14 @@ import {
   puddlesInRegion, puddleAt, isInPuddle, PUDDLE_ART_SCALE, DEBRIS_ART_SCALE, PUDDLE_CELL, type Puddle,
 } from '../world/weatherPuddles';
 import {
-  ripplePose, dripHeight, glintPose, DRIP_FALL_MS, GLINT_MS,
+  ripplePose, glintPose, GLINT_MS,
   rainDropSpec, rainPose, rainNextGapMs, RAIN_MAX, RAIN_SPAWN_PER_FRAME, type RainDropSpec,
   landscapeBand, landscapeBandStart,
+  buildWetGradeMatrix, WET_FOG_ALPHA_MUL, WET_FOG_TINT_MUL, WET_FRONT_TINT_MUL,
+  WET_MOON_GLOW_ALPHA_MUL, WET_MOON_GLOW_SCALE_MUL, WET_MOON_HALO_ALPHA_MUL, WET_MOON_HALO_SCALE_MUL,
+  TORCH_STREAK_LEN, TORCH_STREAK_W, TORCH_STREAK_ALPHA, TORCH_STREAK_TOP, TORCH_STREAK_DASHES,
+  TORCH_STREAK_DASH_W, TORCH_STREAK_DASH_ALPHA, TORCH_STREAK_EASE, torchStreakDash,
+  leafDripSpec, leafDripPose, type LeafDripSpec,
 } from '../utils/weatherWet';
 
 // ---- 叩き台の値(設計書 §0-1「数値は叩き台」) ----
@@ -37,25 +42,25 @@ import {
 const WATER_FIT_X = 0.8;
 const WATER_FIT_Y = 0.72;
 /** 水面の色(乗算)と濃さ。空を映した冷たい色。 */
-const WATER_TINT = 0x9fb6d4;
+const WATER_TINT = 0x7d88c4; // 参考画に寄せて藍へ(旧 0x9fb6d4)
 const WATER_ALPHA = 0.9;
 /** 水面と、その上に重ねる映り(空・松明のにじみ・キャラの逆さの映り・光の筋・光の線)の濃さの一律の掛け率。
  *  社長指示2026-11-20「少し薄く」=70%(地面に沈める。縁つきの水たまりの絵と小物はそのまま)。 */
 const WATER_FADE = 0.7;
 /** 風景の映り(遠景の上下反転)の濃さと色(冷たく少し沈める)。濃さは WATER_FADE も掛かる。 */
-const LAND_ALPHA = 0.75;
-const LAND_TINT = 0xb4c4dc;
+const LAND_ALPHA = 1.3; // 参考画に寄せて鏡らしく濃く(旧 0.75・WATER_FADE 込みで 0.91)
+const LAND_TINT = 0xdcd2f2; // 藍の夜空(旧 0xb4c4dc)
 /** 遠景の帯を焼く大きさ(論理px・解像度1)。小さく焼いて引き伸ばす=水面の映りらしく柔らかい(遠景のボケとも揃う)。 */
 const LAND_RT_W = 320;
 const LAND_RT_H = 192;
 /** 夜の暗さ(envTint)をどこまで映りに掛けるか(1=地面と同じ暗さ・大きいほど明るく残す)。 */
-const LAND_ENV_LIFT = 1.6;
+const LAND_ENV_LIFT = 2.1; // 空と月を明るく映す(旧 1.6)
 /** 型の焼きの大きさ(論理px・解像度1)。水たまりを囲む矩形をこの1枚へ縮めて焼く(縁がわずかに柔らかくなるだけ)。 */
 const LAND_MASK_RT_W = 256;
 const LAND_MASK_RT_H = 384;
 /** 空の映り(水面の形の加算)。光が無い所でもうっすら空が映る。 */
-const SKY_TINT = 0x34507a;
-const SKY_ALPHA = 0.16;
+const SKY_TINT = 0x3a4aa6; // 藍(旧 0x34507a)
+const SKY_ALPHA = 0.22; // 旧 0.16
 /** 松明の光だまりが水たまりへにじむ距離(world px)と強さ。 */
 const LIGHT_REACH = 300;
 const LIGHT_GAIN = 0.75;
@@ -75,40 +80,17 @@ const RIPPLE_MAX = 40;
 /** 雨粒の色(冷たい白)・太さ(world px・遠近前)。 */
 const RAIN_TINT = 0xd8e4f6;
 const RAIN_WIDTH = 1.1;
-/** 雫: 何msおきに1粒(画面内の木から)。同時に最大8粒。 */
-const DRIP_EVERY_MS = 420;
-const DRIP_MAX = 8;
 /** 踏んだ時の波紋: 同じキャラは最短この間隔・この距離を歩くごと。 */
 const STEP_RIPPLE_MS = 260;
 const STEP_RIPPLE_DIST = 14;
-/** 霧の薄さ(α倍率)と冷たさ(色の乗算)。 */
-const FOG_ALPHA_MUL = 0.68;
-const FOG_COOL = { r: 0.84, g: 0.94, b: 1 };
-/** 近景の森の冷たさ(世界の色行列が掛からない層なので、色だけ合わせる)。 */
-const FRONT_COOL = { r: 0.86, g: 0.93, b: 1 };
-/** 月の光・暈を少し強く(雲が切れて空が澄んだ)。 */
-const MOON_GLOW_MUL = 1.3;
-const MOON_HALO_MUL = 1.45;
-
-/** 世界の色行列(彩度を少し落とす→青く冷たく→暗部を持ち上げる)。値は 0..1 の単位。 */
-const buildGradeMatrix = (): number[] => {
-  const keep = 0.82; // 彩度の残り
-  const lr = 0.299 * (1 - keep), lg = 0.587 * (1 - keep), lb = 0.114 * (1 - keep);
-  const desat = [
-    [lr + keep, lg, lb],
-    [lr, lg + keep, lb],
-    [lr, lg, lb + keep],
-  ];
-  const gain = [0.93, 0.985, 1.07];   // 青く冷たく
-  const lift = [0.028, 0.034, 0.05]; // 暗部を少し持ち上げる(青寄り)
-  const m: number[] = [];
-  for (let c = 0; c < 3; c++) {
-    const k = gain[c] * (1 - lift[c]);
-    m.push(desat[c][0] * k, desat[c][1] * k, desat[c][2] * k, 0, lift[c]);
-  }
-  m.push(0, 0, 0, 1, 0);
-  return m;
-};
+/** 霧の薄さ・藍寄せ、近景の森の色、月の暈とグローの倍率は utils/weatherWet.ts(参考画に寄せる)。 */
+/** 雫(葉先から垂れる)の同時上限・何msおきに1粒・芯の色・照りの色。 */
+const DRIP_EVERY_MS = 170;
+const DRIP_MAX = 18;
+const DRIP_TINT = 0xeef5ff;
+const DRIP_GLOW_TINT = 0xa9c4ff;
+/** 松明の光の映り(縦の筋)を同時に描く松明の上限(使い回し)。 */
+const TORCH_STREAK_MAX = 6;
 
 const mulTint = (tint: number, k: { r: number; g: number; b: number }): number => {
   const r = Math.round(((tint >> 16) & 255) * k.r);
@@ -149,6 +131,8 @@ export interface WetActor {
   sprite: Sprite;
 }
 export interface WetLight {
+  /** 松明ごとの名札(縦の筋の濃さを慣性で寄せるため)。 */
+  id: string;
   x: number;
   y: number;
   color: number;
@@ -159,6 +143,9 @@ export interface WetTree {
   footX: number;
   footY: number;
   scale: number;
+  /** 画面に出ている木の絵の幅・高さ(world px・遠近込み)。葉先の雫の生まれる高さに使う。 */
+  w: number;
+  h: number;
 }
 /** 型を焼くための窓口(pixiScene の焼きの入口=メモリの台帳を通す)。 */
 export interface WetGpu {
@@ -233,9 +220,10 @@ interface Slot {
 }
 interface ActorBox { id: string; sp: Sprite; x: number; foot: number; w: number; h: number; flip: boolean }
 interface Ripple { sp: Sprite; at: number; x: number; y: number; water: boolean; s: number; on: boolean }
-interface Drip { sp: Sprite; at: number; x: number; y: number; s: number; on: boolean }
+interface Drip { sp: Sprite; glow: Sprite; at: number; spec: LeafDripSpec; s: number; on: boolean }
 interface Glint { pid: string; at: number; dir: 1 | -1 }
 interface RainDrop { sp: Sprite; at: number; x: number; y: number; spec: RainDropSpec; on: boolean }
+interface TorchStreak { id: string; main: Sprite; dashes: Sprite[]; a: number; seed: number; seen: boolean }
 interface LandCopy { src: Sprite | TilingSprite; wrap: Container; sp: Sprite | TilingSprite }
 
 export class WeatherWetLayer {
@@ -267,6 +255,9 @@ export class WeatherWetLayer {
   private debrisLayer = new Container();
   private rippleLayer = new Container();
   private dripLayer = new Container();
+  /** 松明の光の映り(濡れた地面に縦に伸びる筋)。水たまりの上・キャラの下。 */
+  private streakLayer = new Container();
+  private streaks: TorchStreak[] = [];
   /** 雨粒の線(アクターの上・被写界深度の外の層へ置く=キャラの手前も降る)。 */
   private rainLayer = new Container();
   private rain: RainDrop[] = [];
@@ -281,7 +272,7 @@ export class WeatherWetLayer {
   private steps = new Map<string, { pid: string | null; x: number; y: number; at: number }>();
   private cacheKey = '';
   private cached: Puddle[] = [];
-  private originals = new Map<Sprite | TilingSprite, { tint: number; alpha: number }>();
+  private originals = new Map<Sprite | TilingSprite, { tint: number; alpha: number; sx: number; sy: number }>();
   private farGroupWithFilter: Container | null = null;
   private pA = new Point();
   private pB = new Point();
@@ -293,8 +284,11 @@ export class WeatherWetLayer {
     this.rainLayer.eventMode = 'none';
     this.rainLayer.label = 'weatherWetRain';
     (overLayer ?? this.root).addChild(this.rainLayer);
+    // 葉先の雫は枝葉の高さから落ちるので、木より上の層(雨粒と同じ層)に置く。
+    this.dripLayer.eventMode = 'none';
+    this.rainLayer.addChild(this.dripLayer);
     this.root.label = 'weatherWet';
-    this.root.addChild(this.puddleLayer, this.slotLayer, this.debrisLayer, this.rippleLayer, this.dripLayer);
+    this.root.addChild(this.puddleLayer, this.slotLayer, this.debrisLayer, this.rippleLayer);
     this.landLayer.eventMode = 'none';
     this.landLayer.label = 'weatherWetLand';
     // 型: 画面内の水たまりの水面の絵を毎フレーム1枚の小さな焼き(LAND_MASK_RT_W×H)へ描き、それを
@@ -302,14 +296,15 @@ export class WeatherWetLayer {
     // 型は切り抜く側の子(兄弟に置くと描かれない・slot と同じ)。
     this.landLayer.addChild(this.landSprite, this.landMaskSprite);
     this.landLayer.setMask({ mask: this.landMaskSprite, channel: 'alpha' });
-    this.landLayer.alpha = LAND_ALPHA * WATER_FADE;
+    this.landLayer.alpha = Math.min(1, LAND_ALPHA * WATER_FADE);
     this.landScene.label = 'weatherWetLandSrc';
     this.landLayer.visible = false;
-    this.puddleLayer.addChild(this.rimLayer, this.waterLayer, this.landLayer, this.skyLayer);
+    this.streakLayer.eventMode = 'none';
+    this.puddleLayer.addChild(this.rimLayer, this.waterLayer, this.landLayer, this.skyLayer, this.streakLayer);
     // 地面の層の一番下(足元の影・光だまりより下)。
     groundLayer.addChildAt(this.root, 0);
     this.gradeFilter = new ColorMatrixFilter();
-    this.gradeFilter.matrix = buildGradeMatrix() as unknown as typeof this.gradeFilter.matrix;
+    this.gradeFilter.matrix = buildWetGradeMatrix() as unknown as typeof this.gradeFilter.matrix;
     // 空(遠景)は少し明るく・わずかに冷たく(雲が切れて澄んだ空)。
     this.skyFilter = new ColorMatrixFilter();
     this.skyFilter.matrix = [
@@ -400,6 +395,7 @@ export class WeatherWetLayer {
     }
     this.syncLandscape(h);
     this.syncSlots(h, boxes);
+    this.syncTorchStreaks(h);
     this.syncSteps(h, boxes);
     this.syncDrips(h);
     this.syncRain(h);
@@ -711,6 +707,81 @@ export class WeatherWetLayer {
     } else sl.glint.visible = false;
   }
 
+  // ---- 松明の光の映り(濡れた地面に、足元から手前へ縦に伸びる暖色の筋) ----
+  // 既存の光のにじみ(柔らかい丸の絵)を縦に伸ばした1枚+途切れた横の光の欠片(さざなみ)。
+  // 濃さは松明の光だまりの強さ(=炎の揺らぎ込み)をそのまま読み、慣性で寄せる。影を落とす光ではない(加算の絵だけ)。
+  private syncTorchStreaks(h: WetHost): void {
+    for (const st of this.streaks) st.seen = false;
+    const v = h.view;
+    for (const l of h.lights) {
+      if (l.x < v.left - 60 || l.x > v.right + 60 || l.y < v.top - 40 || l.y > v.bottom + 20) continue;
+      let st = this.streaks.find(q => q.id === l.id);
+      if (!st) {
+        st = this.streaks.find(q => !q.seen && q.a <= 0.004 && !this.isStreakLive(q, h));
+        if (!st) {
+          if (this.streaks.length >= TORCH_STREAK_MAX) continue;
+          const main = new Sprite(getSoftGlowTexture());
+          main.anchor.set(0.5, 0.5);
+          main.blendMode = 'add';
+          const dashes: Sprite[] = [];
+          for (let i = 0; i < TORCH_STREAK_DASHES; i++) {
+            const d = new Sprite(getSoftGlowTexture());
+            d.anchor.set(0.5);
+            d.blendMode = 'add';
+            dashes.push(d);
+          }
+          this.streakLayer.addChild(main, ...dashes);
+          st = { id: l.id, main, dashes, a: 0, seed: 0, seen: false };
+          this.streaks.push(st);
+        }
+        st.id = l.id; st.a = 0; st.seed = (Math.abs(Math.sin(l.x * 0.013 + l.y * 0.007)) * 10) % 6.283;
+      }
+      st.seen = true;
+      const ha = h.horizonAlpha(l.y);
+      const target = Math.min(1, l.strength) * ha;
+      st.a += (target - st.a) * TORCH_STREAK_EASE;
+      this.drawStreak(st, l, h);
+    }
+    for (const st of this.streaks) {
+      if (st.seen) continue;
+      st.a += (0 - st.a) * TORCH_STREAK_EASE; // 画面から外れた/消えた松明は慣性で消える(最後の位置のまま)
+      if (st.a <= 0.004) { st.a = 0; st.main.visible = false; for (const d of st.dashes) d.visible = false; continue; }
+      st.main.alpha *= 1 - TORCH_STREAK_EASE;
+      for (const d of st.dashes) d.alpha *= 1 - TORCH_STREAK_EASE;
+    }
+  }
+
+  private isStreakLive(st: TorchStreak, h: WetHost): boolean {
+    return h.lights.some(l => l.id === st.id);
+  }
+
+  private drawStreak(st: TorchStreak, l: WetLight, h: WetHost): void {
+    const d = h.depthScale(l.y);
+    const len = TORCH_STREAK_LEN * d;
+    const top = l.y + TORCH_STREAK_TOP * d;
+    const a = st.a;
+    const m = st.main;
+    m.visible = a > 0.004;
+    m.tint = l.color;
+    // 柔らかい丸の絵を縦に伸ばす: 中心を筋の上から 32% に置く=上(足元)側が明るく、手前へ細く抜ける。
+    m.position.set(l.x, top + len * 0.32);
+    m.width = TORCH_STREAK_W * d;
+    m.height = len * 1.1;
+    m.alpha = TORCH_STREAK_ALPHA * a;
+    for (let i = 0; i < st.dashes.length; i++) {
+      const sp = st.dashes[i];
+      const ds = torchStreakDash(i, st.dashes.length, h.now, st.seed);
+      sp.visible = a > 0.004 && ds.a > 0.01;
+      if (!sp.visible) continue;
+      sp.tint = lerpTint(l.color, 0xffe2a8, 0.35); // 欠片は芯より少し白っぽい照り返し
+      const w = TORCH_STREAK_DASH_W * d * ds.w;
+      sp.position.set(l.x + ds.dx * w * 0.6, top + len * ds.t);
+      sp.width = w;
+      sp.height = Math.max(2, 5 * d);
+      sp.alpha = TORCH_STREAK_DASH_ALPHA * ds.a * a;
+    }
+  }
+
   // ---- 波紋 ----
   private spawnRipple(x: number, y: number, water: boolean, s: number, now: number): void {
     let r = this.ripples.find(q => !q.on);
@@ -772,44 +843,59 @@ export class WeatherWetLayer {
     for (const id of this.steps.keys()) if (!alive.has(id)) this.steps.delete(id);
   }
 
-  // ---- 木の下の雫 ----
+  // ---- 葉先から垂れる雫(枝葉の高さで膨らむ→重力で加速して落ちる→着いた所で波紋) ----
   private syncDrips(h: WetHost): void {
     const now = h.now;
+    if (now - this.nextDripAt > 1000) this.nextDripAt = now; // タブ復帰で一度に生まない
     if (now >= this.nextDripAt) {
       this.nextDripAt = now + DRIP_EVERY_MS * rand(0.4, 1.8);
-      const inView = h.trees.filter(t => t.footX > h.view.left && t.footX < h.view.right && t.footY > h.view.top && t.footY < h.view.bottom + 40);
+      const v = h.view;
+      // 枝葉が画面に入っている木(足元が画面の下の外でも、絵の高さぶんは対象)。
+      const inView = h.trees.filter(t => t.footX + t.w * 0.5 > v.left && t.footX - t.w * 0.5 < v.right
+        && t.footY > v.top && t.footY - t.h < v.bottom + 40 && t.h > 4);
       if (inView.length && this.drips.filter(d => d.on).length < DRIP_MAX) {
         const t = inView[Math.floor(Math.random() * inView.length)];
-        const ds = h.depthScale(t.footY);
-        const x = t.footX + rand(-85, 85) * t.scale * ds;
-        const y = t.footY + rand(-14, 34) * t.scale * ds;
+        const spec = leafDripSpec(t, Math.random);
         let d = this.drips.find(q => !q.on);
         if (!d) {
+          const glow = new Sprite(getSoftGlowTexture());
+          glow.anchor.set(0.5);
+          glow.blendMode = 'add';
+          glow.tint = DRIP_GLOW_TINT;
           const sp = new Sprite(Texture.WHITE);
           sp.anchor.set(0.5, 1);
-          sp.tint = 0xd6e6ff;
-          this.dripLayer.addChild(sp);
-          d = { sp, at: 0, x: 0, y: 0, s: 1, on: false };
+          sp.tint = DRIP_TINT;
+          this.dripLayer.addChild(glow, sp);
+          d = { sp, glow, at: 0, spec, s: 1, on: false };
           this.drips.push(d);
         }
-        d.at = now; d.x = x; d.y = y; d.s = ds; d.on = true;
+        d.at = now; d.spec = spec; d.s = h.depthScale(spec.y); d.on = true;
       }
     }
     for (const d of this.drips) {
-      if (!d.on) { d.sp.visible = false; continue; }
-      const hgt = dripHeight(now - d.at);
-      if (hgt == null) {
-        d.on = false; d.sp.visible = false;
-        const pv = puddleAt([...this.views.values()].map(v => ({ x: v.p.x, y: v.p.y, rx: v.p.rx * v.d, ry: v.p.ry * v.d })), d.x, d.y);
-        this.spawnRipple(d.x, d.y, !!pv, pv ? 0.6 : 0.5, now);
+      if (!d.on) { d.sp.visible = false; d.glow.visible = false; continue; }
+      const pose = leafDripPose(now - d.at, d.spec);
+      if (!pose) {
+        d.on = false; d.sp.visible = false; d.glow.visible = false;
+        const pv = puddleAt([...this.views.values()].map(v => ({ x: v.p.x, y: v.p.y, rx: v.p.rx * v.d, ry: v.p.ry * v.d })), d.spec.x, d.spec.y);
+        this.spawnRipple(d.spec.x, d.spec.y, !!pv, pv ? 0.6 : 0.5, now);
         continue;
       }
-      const k = (now - d.at) / DRIP_FALL_MS;
+      const s = d.s;
+      const ha = h.horizonAlpha(d.spec.y);
+      const y = d.spec.y - pose.h;
       d.sp.visible = true;
-      d.sp.position.set(d.x, d.y - hgt * d.s);
-      d.sp.width = 1.6 * d.s;
-      d.sp.height = (3 + 7 * k) * d.s; // 速くなるほど尾が伸びる
-      d.sp.alpha = 0.75 * Math.min(1, k * 4) * h.horizonAlpha(d.y);
+      d.sp.position.set(d.spec.x, y);
+      // ぶら下がり=丸い粒が育つ / 落下=細くなり、速くなるほど尾が伸びる。
+      d.sp.width = (pose.falling ? 1.5 : 1.2 + 1.3 * pose.swell) * s;
+      d.sp.height = (pose.falling ? 3 + 11 * pose.tail : 1.2 + 2 * pose.swell) * s;
+      d.sp.alpha = 0.95 * pose.alpha * ha;
+      // 照り(月明りを拾った小さな光)。ぶら下がっている間は膨らみに合わせて育ち、落ちる間は少し小さく。
+      d.glow.visible = true;
+      d.glow.position.set(d.spec.x, y - (pose.falling ? 2 : 1) * s);
+      const gs = (pose.falling ? 7 : 4 + 6 * pose.swell) * s;
+      d.glow.width = gs; d.glow.height = gs * (pose.falling ? 1.5 : 1);
+      d.glow.alpha = 0.7 * pose.alpha * ha;
     }
   }
 
@@ -862,19 +948,21 @@ export class WeatherWetLayer {
   }
 
   // ---- 霧・近景・月・空(毎フレームの最後に掛け、次のフレームの頭で戻す) ----
-  private paint(sp: Sprite | TilingSprite | null, tint: number, alpha: number): void {
+  private paint(sp: Sprite | TilingSprite | null, tint: number, alpha: number, scaleMul = 1): void {
     if (!sp || sp.destroyed) return;
-    if (!this.originals.has(sp)) this.originals.set(sp, { tint: Number(sp.tint), alpha: sp.alpha });
+    if (!this.originals.has(sp)) this.originals.set(sp, { tint: Number(sp.tint), alpha: sp.alpha, sx: sp.scale.x, sy: sp.scale.y });
     sp.tint = tint;
     sp.alpha = alpha;
+    if (scaleMul !== 1) sp.scale.set(sp.scale.x * scaleMul, sp.scale.y * scaleMul);
   }
 
   applyAtmosphere(a: WetAtmosphere): void {
     if (!this.visible) return;
-    for (const f of a.fog) this.paint(f, mulTint(Number(f.tint), FOG_COOL), f.alpha * FOG_ALPHA_MUL);
-    for (const f of a.front) if (f) this.paint(f, mulTint(Number(f.tint), FRONT_COOL), f.alpha);
-    for (const m of a.moonGlow) this.paint(m, Number(m.tint), m.alpha * MOON_GLOW_MUL);
-    for (const m of a.moonHalo) this.paint(m, Number(m.tint), m.alpha * MOON_HALO_MUL);
+    // 霧は薄く・藍へ(灰色の平たい幕に見えない)。近景の森も同じ藍の夜へ。月の暈とグローは大きく明るく。
+    for (const f of a.fog) this.paint(f, mulTint(Number(f.tint), WET_FOG_TINT_MUL), f.alpha * WET_FOG_ALPHA_MUL);
+    for (const f of a.front) if (f) this.paint(f, mulTint(Number(f.tint), WET_FRONT_TINT_MUL), f.alpha);
+    for (const m of a.moonGlow) this.paint(m, Number(m.tint), m.alpha * WET_MOON_GLOW_ALPHA_MUL, WET_MOON_GLOW_SCALE_MUL);
+    for (const m of a.moonHalo) this.paint(m, Number(m.tint), m.alpha * WET_MOON_HALO_ALPHA_MUL, WET_MOON_HALO_SCALE_MUL);
     // 空は遠景の箱に色行列を1枚足す(1回だけ・外す時は detachSky)。
     if (a.farGroup && this.farGroupWithFilter !== a.farGroup) {
       this.detachSky();
@@ -889,7 +977,7 @@ export class WeatherWetLayer {
 
   restoreAtmosphere(): void {
     for (const [sp, o] of this.originals) {
-      if (!sp.destroyed) { sp.tint = o.tint; sp.alpha = o.alpha; }
+      if (!sp.destroyed) { sp.tint = o.tint; sp.alpha = o.alpha; sp.scale.set(o.sx, o.sy); }
     }
     this.originals.clear();
   }
