@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5675', items: ['錬金術の溜めの最中も近接攻撃がちゃんと出る。リズムの輪は押した瞬間に判定し、離せばいつもどおり攻撃', '装備画面の錬金術の絵を、呼び出す金色のゾンビに差し替え'] },
   { version: '0.25.5674', items: [
     'ゲーム内容の変更はありません',
   ] },

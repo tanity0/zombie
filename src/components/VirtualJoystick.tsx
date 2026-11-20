@@ -75,8 +75,6 @@ const VirtualJoystick: React.FC = () => {
   // スケボー(新仕様): ダブルタップで乗車。直前タップの離し時刻/それがタップ(短く小移動)だったか、最大ドラッグ量。
   const lastUpAtRef = useRef(0);
   const lastWasTapRef = useRef(false);
-  // 錬金術の溜めのリズムに使った接触(research/ALCHEMY_RHYTHM.md)。指を離しても攻撃・乗車に流さない。
-  const alchemyPressRef = useRef(false);
   const maxDragRef = useRef(0);
 
   // 指離し直前の短い窓だけを見るフリック判定。通常のジョイスティック
@@ -159,9 +157,7 @@ const VirtualJoystick: React.FC = () => {
     const returnPromptOpened = pointerId !== null && fireCounter
       ? useGameStore.getState().requestStoryReturnPrompt()
       : false;
-    const alchemyPress = alchemyPressRef.current;
-    alchemyPressRef.current = false;
-    if (pointerId !== null && fireCounter && !returnPromptOpened && !alchemyPress && !isAttackLocked()) {
+    if (pointerId !== null && fireCounter && !returnPromptOpened && !isAttackLocked()) {
       // 四神舞リズムモード中は、タップ/フリックをリズム入力へ振り分ける(カウンター/一閃は出さない)。
       // 攻撃の実行と効果音は useGameLoop 側(pending 消化)が担当する。
       if (useGameStore.getState().rhythm.active) {
@@ -230,7 +226,6 @@ const VirtualJoystick: React.FC = () => {
         // 被弾反撃の窓の間の短いタッチは「触れ直してはじく」ための操作なので、スケボーのダブルタップ乗車に数えない(乗車の誤爆を防ぐ)。
         const inRetaliationWindow = isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now());
         lastWasTapRef.current =
-          !alchemyPress &&
           !inRetaliationWindow &&
           now - pointerDownTimeRef.current < SKATER_TAP_MAX_MS &&
           maxDragRef.current < SKATER_TAP_MAX_DRAG;
@@ -255,15 +250,16 @@ const VirtualJoystick: React.FC = () => {
     if (isInputLocked()) return;
     if (pointerIdRef.current !== null) release(false);
     pointerIdRef.current = e.pointerId;
-    // 錬金術の溜めの間は、触れた瞬間をリズムの判定に使う(タイミングは触れた時刻で見る)。
-    alchemyPressRef.current = !useGameStore.getState().rhythm.active && useGameStore.getState().alchemyRhythmTap();
+    // 錬金術の溜めの間は、触れた瞬間をリズムの判定にも使う(タイミングは触れた時刻で見る・research/ALCHEMY_RHYTHM.md)。
+    // 判定するだけで接触は食べない=指離しの近接・スケボーの2度押しは今までどおり(社長指示2026-11-20「ちゃんと近接も発動できるように」)。
+    if (!useGameStore.getState().rhythm.active) useGameStore.getState().alchemyRhythmTap();
     setTouchActive(true);
     const nowT = performance.now();
     // スケボー: 直前が短い小移動タップで、離しから SKATER_DOUBLETAP_MS 以内の再タップ=ダブルタップ=乗車。
     // (2発目はそのままホールド=移動。skater 未装備なら store 側で無害。) release で降車(+条件で投擲)。
     // ★被弾反撃の窓の中の触れ直しは乗車に数えない(カウンターを外す短いタップ→被弾→はじくために触れ直す、で乗車して
     // 反撃が不発になる穴・検収監査 A-1)。
-    if (!alchemyPressRef.current && lastWasTapRef.current && nowT - lastUpAtRef.current <= SKATER_DOUBLETAP_MS
+    if (lastWasTapRef.current && nowT - lastUpAtRef.current <= SKATER_DOUBLETAP_MS
       && !isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now())
       && !isBrawlerMode(useGameStore.getState().player)) mountSkater(); // 格闘中は連打が乗車に食われるので乗らない(research/BRAWLER.md §7-2)
     pointerDownTimeRef.current = nowT;

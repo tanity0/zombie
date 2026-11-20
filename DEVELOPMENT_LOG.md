@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5675 — 錬金術の溜め中の近接の復活・装備画面の錬金術の絵・CIの揺れるテスト(POIタッチ)を固定【2026-11-20 20:32 JST】
+- 社長指示「錬金術、ちゃんと近接も発動できるようにして」: リズムの輪の判定は押した瞬間に行うだけにし、押下を食べない(離しの近接・スケボー2度押しは従来どおり)。`src/utils/pcPress.ts` / `src/components/VirtualJoystick.tsx` / `src/utils/pcPress.test.ts`(2件追加)。溜めの中断条件は不変(近接は立ち止まりでは足が出ない=溜めを切らない)。
+- 社長指示「錬金術の絵は、錬金ゾンビの絵を縮小して使って(装備のね)」: `public/sprites/sub-icons/alchemy-zombie.png`(zombie-common を切り詰め→高さ66に縮小→召喚と同じ金の乗算)を新設し `src/data/subWeaponIcons.ts` の alchemy を差し替え。支給の帯の絵 `sub-icons/alchemy.png` は原盤として残す。絵は拡大比較で目視(装備画面の実画面撮影は起動の演出に阻まれヘッドレスでは未撮影)。
+- `src/store/poiTouch.store.test.ts`: 発火時刻の検査を実時間依存(<50ms)から Date.now 固定の一致へ。CIの揺れの原因。
+- 検証: 別ツリー(HEAD+この6ファイル)で typecheck・eslint・関連テスト 246/246。鞭/雨上がりの作業中の変更は含めない。
+- 自己点検: 憲法第4条・第5条に抵触なし(入力の扱いを錬金術導入前へ戻しただけ)。
+
 ## v0.25.5674 — CIの揺れるテストを固定(兵士の蹴り飛ばし)【2026-11-20 20:15】
 - escortToss.store.test「着地後の押しの飛距離…」: 原因=①兵士の配置が乱数(着地の瞬間に撃たれた個体だけ押しが弱まる) ②押しの時計が実時間。Date.now をフレームに合わせて進む偽の時計にし Math.random を固定(テストのみ・製品コード不変・判定は不変)。単独12回+全体で緑。
 - 残る揺れ: poiTouch.store.test「firePoiTouch は発火時刻…」(実時間<50ms の判定)=同じ直し方で次に固定する。

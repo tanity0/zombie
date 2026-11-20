@@ -1,5 +1,5 @@
 // 社長指示2026-11-02「poi全部、オブジェクトの絵に下から触れると発動」(research/POI_TOUCH_SHRINE.md §1)。
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore } from './gameStore';
 import { hospitalRect, hospitalCircleCenter } from '../world/hospital';
 import { armoryRect, ARMORY_SCRAP_COST } from '../world/armory';
@@ -9,6 +9,7 @@ const putPlayerAt = (x: number, y: number) =>
   useGameStore.setState(s => ({ player: { ...s.player, x, y } }));
 const belowOf = (r: { x: number; y: number; width: number; height: number }) => ({ x: r.x + r.width / 2 - 14, y: r.y + r.height });
 
+afterEach(() => { vi.restoreAllMocks(); });
 beforeEach(() => {
   useGameStore.getState().resetGame('warrior');
   useGameStore.setState({ bossFightNow: false, bossFightLastTrueAt: -1e9, gameTime: 100000 });
@@ -100,10 +101,15 @@ describe('POIに触れた瞬間のつっかえ(移動)', () => {
   it('firePoiTouch は発火時刻と軽い版かを記録する(位置は動かさない)', () => {
     useGameStore.setState({ hospital: pos, hospitalTaken: false });
     putPlayerAt(1000, 400);
+    // 発火時刻は壁時計(Date.now)。実時間のままだと負荷で「呼んでから読むまで」が50msを超えて落ちる(実測142ms)。
+    // 壁時計を止めて、**発火した瞬間の時刻がそのまま記録される**ことを厳密に見る。
+    const T = 1_700_000_123_456;
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(T);
     useGameStore.getState().firePoiTouch('hospital', { light: true });
+    spy.mockRestore();
     const s = useGameStore.getState();
     expect(s.poiTouchLastLight).toBe(true);
-    expect(Date.now() - s.poiTouchLastAt).toBeLessThan(50);
+    expect(s.poiTouchLastAt).toBe(T);
     expect(s.player.x).toBe(1000);
     expect(s.player.y).toBe(400);
   });

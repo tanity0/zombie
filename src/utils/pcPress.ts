@@ -18,7 +18,6 @@ let owner: PressSource | null = null;
 let downAt = 0;
 let lastWasTap = false;
 let lastUpAt = 0;
-let alchemyThisPress = false; // 錬金術の溜めのリズムに使った押下(離しでは攻撃を出さない・research/ALCHEMY_RHYTHM.md)
 let flickedThisPress = false; // 四神舞: 押している間にフリックを出したら、離した時のタップは出さない(タッチの flickFired と同じ・検収 B-1)
 
 /** 四神舞でフリックを出した(右クリック/移動キー/パッド B)。押している間なら、その押下の離しはタップにしない。 */
@@ -34,13 +33,14 @@ export const pcPressDown = (src: PressSource): void => {
   owner = src;
   flickedThisPress = false;
   const gs = useGameStore.getState();
-  // 錬金術の溜めの間は、押した瞬間をリズムの判定に使う(タイミングは押した時刻で見る)。この押下は攻撃・乗車に流さない。
-  alchemyThisPress = !gs.rhythm.active && gs.alchemyRhythmTap();
+  // 錬金術の溜めの間は、押した瞬間をリズムの判定にも使う(タイミングは押した時刻で見る・research/ALCHEMY_RHYTHM.md)。
+  // 社長指示2026-11-20「錬金術、ちゃんと近接も発動できるようにして」: 判定するだけで押下は食べない=離しの攻撃・乗車は今までどおり。
+  if (!gs.rhythm.active) gs.alchemyRhythmTap();
   gs.setTouchActive(true);
   const now = performance.now();
   // スケボー: 直前が短いタップで、離しから規定時間内の再押下=2度押し=乗車(2回目はそのまま押している=乗っている)。
   // ★被弾反撃の窓の中の押し直しは乗車に数えない(タッチの VirtualJoystick と同じ・検収監査 A-1 の PC 版)。
-  if (!alchemyThisPress && lastWasTap && now - lastUpAt <= PC_SKATER_DOUBLETAP_MS
+  if (lastWasTap && now - lastUpAt <= PC_SKATER_DOUBLETAP_MS
     && !isRetaliationWindowOpen(gs.hitRetaliation, Date.now())
     && !isBrawlerMode(gs.player)) gs.mountSkater(); // 格闘中は2度押しで乗らない(research/BRAWLER.md §7-2)
   downAt = now;
@@ -65,9 +65,7 @@ export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
     playSfx('ui-select');
     gs.useGlenMedicine();
   }
-  const alchemyPress = alchemyThisPress;
-  alchemyThisPress = false;
-  if (fire && !returnPromptOpened && !medicineTaken && !alchemyPress && !isAttackLocked()) {
+  if (fire && !returnPromptOpened && !medicineTaken && !isAttackLocked()) {
     // マウスがある時は離した瞬間の向き=カーソルの方向(鞭・ナイフの振りと踏み込みがカーソルへ・§11-2)。キーで振っても同じ
     // (照準サークルはカーソルを向いているので、振りだけ歩いた向き、を作らない=監査 B-5)。世界が止まっている間は書き換えない。
     // ★v0.25.4868(社長指示「マウスのある方向に近接振るのは難しいのでやめたい。マウス方向はフィルガンなどのターゲットある武器のみ」):
@@ -106,7 +104,7 @@ export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
       const now = performance.now();
       // 被弾反撃の窓の間の短い押しは「押し直してはじく」ための操作=スケボーの2度押しに数えない(タッチと同じ)。
       // ［投与する］を押した離しも数えない(ボタンを押しただけ)。
-      lastWasTap = !medicineTaken && !alchemyPress
+      lastWasTap = !medicineTaken
         && !isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now())
         && now - downAt < PC_SKATER_TAP_MAX_MS;
       lastUpAt = now;
@@ -117,7 +115,7 @@ export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
 };
 
 /** テスト用: 状態を初期化する。 */
-export const resetPcPressForTest = (): void => { pressing = false; owner = null; downAt = 0; lastWasTap = false; lastUpAt = 0; flickedThisPress = false; alchemyThisPress = false; };
+export const resetPcPressForTest = (): void => { pressing = false; owner = null; downAt = 0; lastWasTap = false; lastUpAt = 0; flickedThisPress = false; };
 
 // 窓が裏へ行った・タブが隠れた=押しっぱなしの離しは来ない → 撃たずに離す(監査 A-4)。1回だけ付ける。
 if (typeof window !== 'undefined') {

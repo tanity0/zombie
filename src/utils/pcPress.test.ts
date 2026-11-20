@@ -145,3 +145,36 @@ describe('PC の指(pcPress)', () => {
     useGameStore.setState({ medicinePromptVisible: false } as never);
   });
 });
+
+// research/ALCHEMY_RHYTHM.md + 社長指示2026-11-20「錬金術、ちゃんと近接も発動できるようにして」:
+// 溜めの間の押下はリズムを判定し(押した瞬間)、離しの近接・スケボーの2度押しは今までどおり出る。
+describe('PC の指: 錬金術の溜め中', () => {
+  let swing: ReturnType<typeof vi.fn>, mount: ReturnType<typeof vi.fn>;
+  beforeEach(async () => {
+    resetPcPressForTest();
+    swing = vi.fn(() => true); mount = vi.fn();
+    const { newAlchemyRhythm, ALCHEMY_RHYTHM_TRAVEL_MS } = await import('./alchemyRhythm');
+    const gt = 30_000;
+    const started = gt - ALCHEMY_RHYTHM_TRAVEL_MS; // 1つ目の輪がちょうど着く瞬間
+    useGameStore.setState(s => ({
+      isPaused: false, touchActive: false, mouseAim: null, gameTime: gt,
+      beginMeleeSwing: swing, fireHoming: vi.fn(), mountSkater: mount, dismountSkater: vi.fn(),
+      requestStoryReturnPrompt: () => false,
+      fireSignalLauncher: vi.fn(), fireRailgunShot: vi.fn(), detonateAlchemyStones: vi.fn(), firePhillShot: vi.fn(),
+      player: { ...s.player, alchemyChannelStartedAt: started, alchemyRhythm: newAlchemyRhythm(started) },
+    }) as never);
+  });
+  it('到着に合わせた押下はリズムの成功になり、離せば近接も出る', () => {
+    pcPressDown('mouse');
+    expect(useGameStore.getState().player.alchemyRhythm?.hits).toBe(1);
+    expect(swing).not.toHaveBeenCalled();
+    pcPressUp('mouse', true);
+    expect(swing).toHaveBeenCalledTimes(1);
+  });
+  it('溜め中でもスケボーの2度押しは今までどおり数える', () => {
+    pcPressDown('mouse');
+    pcPressUp('mouse', true);
+    pcPressDown('mouse');
+    expect(mount).toHaveBeenCalledTimes(1);
+  });
+});

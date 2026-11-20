@@ -24,7 +24,7 @@ const SUB_ICON: Partial<Record<SubWeaponKey, string>> = {
   'marksman-trap': 'sub-icons/marksman-trap',
   'striker-hunting': 'sub-icons/striker-hunting',
   'striker-quick-mag': 'sub-icons/striker-quick-mag',
-  alchemy: 'sub-icons/alchemy',
+  alchemy: 'sub-icons/alchemy-zombie', // 社長指示2026-11-20「錬金術の絵は、錬金ゾンビの絵を縮小して使って」=召喚の Lv1(金色のゾンビ)を縮小。支給の帯の絵は sub-icons/alchemy.png に原盤として残す
   homing: 'sub-icons/homing',
   'shadow-clone': 'sub-icons/shadow-clone',
   molotov: 'sub-icons/molotov',
