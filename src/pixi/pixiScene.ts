@@ -470,7 +470,7 @@ import {
 import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
-import { WeatherWetLayer, type WetActor, type WetLight } from './weatherWet';
+import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight } from './weatherWet';
 import { parseWeather, weatherWetActive } from '../utils/weatherWet';
 import { getSelectedStageId } from '../data/progress';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H, wallRect, propRect, isLabObstacleBroken, labDebrisInRegion, type LabBrokenObstacle } from '../world/labWalls';
@@ -12537,7 +12537,11 @@ export class PixiScene {
       && this.currentFarKey === 'forest';
     if (!this.weatherWet) {
       if (!active) return;
-      this.weatherWet = new WeatherWetLayer(this.L.groundLayer, this.L.danceUiLayer); // 雨粒は被写界深度の外(細い線がボケて四角い靄にならない)
+      this.weatherWet = new WeatherWetLayer(this.L.groundLayer, this.L.danceUiLayer, { // 雨粒は被写界深度の外(細い線がボケて四角い靄にならない)
+        bake: (w, h) => bakeRenderTexture('other', { width: w, height: h, resolution: 1 }), // 水たまりに映す風景の型
+        release: rt => releaseBakedTexture('other', rt),
+        render: (c, target, transform) => { this.renderer?.render({ container: c, target, clear: true, transform }); },
+      });
     }
     if (active !== this.weatherWetOn) {
       this.weatherWetOn = active;
@@ -12571,6 +12575,7 @@ export class PixiScene {
       depthScale: y => this.depthScale(y),
       horizonAlpha: y => this.horizonActorAlpha(y),
       actors, lights, trees, bases, focusX: ppx, focusY: ppy,
+      landscape: this.wetLandscape(),
     });
     this.weatherWet.applyAtmosphere({
       fog: this.fogLayers.map(f => f.sp),
@@ -12579,6 +12584,33 @@ export class PixiScene {
       moonHalo: [this.stage1MoonHalo],
       farGroup: this.farGroup,
     });
+  }
+
+  /** 水たまりに映す遠景(空・月・城・森1/2)。描かれている順のまま渡す。地平線=森1の下端(画面座標)。 */
+  private wetLandSet: Set<Container> | null = null;
+  private wetLandSrc: (Sprite | TilingSprite)[] = [];
+  private wetLandscape(): WetLandscape | undefined {
+    const hf = this.L.horizonForest;
+    if (!hf.parent) return undefined;
+    if (!this.wetLandSet || !this.wetLandSet.has(hf) || this.horizonRidgeCopies.some(c => !this.wetLandSet!.has(c))) {
+      this.wetLandSet = new Set<Container>([
+        this.L.farBackdrop, ...this.stage1Sky, this.stage1MoonHalo, this.stage1Moon, this.stage1MoonGlow, this.stage1Castle,
+        ...this.horizonRidgeCopies, hf, this.L.nearHorizon,
+      ]);
+    }
+    const set = this.wetLandSet;
+    const src = this.wetLandSrc;
+    src.length = 0;
+    for (const c of this.farGroup.children) if (set.has(c)) src.push(c as Sprite | TilingSprite);
+    for (const c of this.hzFixed.children) if (set.has(c)) src.push(c as Sprite | TilingSprite);
+    const st = this.L.stage;
+    const tl = st.toGlobal({ x: 0, y: 0 });
+    const br = st.toGlobal({ x: this.screenW, y: this.screenH });
+    // 地平線=遠景の森1の下端(木の根元=映りの軸。森2の下端は霧の地面まで含むので軸にすると稜線が遠ざかる)。
+    const horizonY = hf.parent.toGlobal({ x: 0, y: hf.position.y + hf.height }).y;
+    const ps = useGameStore.getState().player;
+    const anchorY = this.L.world.toGlobal({ x: ps.x + ps.width / 2, y: ps.y + ps.height }).y;
+    return { sources: src, horizonY, screenTop: tl.y, screenBottom: br.y, screenLeft: tl.x, screenRight: br.x, anchorY };
   }
 
   // ---- ステージ6(洋館・corridorMode)の見た目: 疑似3D通路の背景(v0.25.2113) ----------

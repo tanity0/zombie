@@ -152,3 +152,52 @@ export const rainPose = (t: number, s: RainDropSpec): RainPose | null => {
   const speed = RAIN_V0 + 2 * (1 - RAIN_V0) * k;       // 平均を1とした今の速さ
   return { h: s.height * (1 - fallen), len: s.len * (0.75 + 0.25 * speed), alpha: easeOutCubic(k / 0.2) };
 };
+
+// ---- 水たまりに映る風景(設計書「追加: 水たまりに風景を映す」) ----
+/** 映りの縦の倍率(遠景の帯の高さ→映りの帯の高さ)。1未満=見下ろした水面の映りは縦に縮む(小さな水たまりにも稜線と空が一緒に入る)。叩き台。 */
+export const LANDSCAPE_REFLECT_STRETCH = 0.5;
+
+export interface LandscapeBand {
+  /** 遠景の帯(画面の上端〜地平線)の高さ。 */
+  srcH: number;
+  /** 地面側の映りの帯1本の高さ(= srcH × 伸び)。地平線から下へこの高さごとに繰り返す。 */
+  bandH: number;
+  /** 地平線から画面の下端まで埋めるのに要る本数(1以上)。 */
+  repeats: number;
+}
+
+/**
+ * 遠景(画面の上端〜地平線)を地平線を軸に上下反転して地面側へ敷く時の帯の寸法(画面座標)。
+ * 横(x)は触らない=遠景の視差(横の流れ)がそのまま映る。
+ * 地平線から下へ「反転した遠景」の帯を縦に繰り返す(地平線の近くには森の稜線、少し手前には空と月、さらに手前で
+ * また稜線)=どの高さの水たまりにも何かのシルエットが映る。繰り返しの継ぎ目は「空の上端」と「稜線の根元」で、
+ * どちらも暗いので小さな水たまりの中では目に付かない。
+ */
+export const landscapeBand = (horizonY: number, topY: number, bottomY: number, stretch = LANDSCAPE_REFLECT_STRETCH): LandscapeBand => {
+  const srcH = Math.max(1, horizonY - topY);
+  const bandH = srcH * Math.max(0.1, stretch);
+  const below = Math.max(0, bottomY - horizonY);
+  return { srcH, bandH, repeats: Math.max(1, Math.ceil(below / bandH)) };
+};
+
+/** 帯の頭(=稜線の根元)を、注目点(プレイヤーの足元)からこの割合ぶん上に置く。叩き台。 */
+export const LANDSCAPE_BAND_LEAD = 0.3;
+
+/**
+ * 帯の頭が来る画面の y(繰り返しの位相)。注目点(プレイヤーの足元の画面の y)の少し上に稜線の根元が来るよう、
+ * 地平線から帯の高さの整数倍だけずらした所を選ぶ=プレイヤーの周りの水たまりには、逆さの森の稜線と、その下に空(月)が映る。
+ * 戻り値は地平線と同じか下(地平線より上には帯を始めない)。
+ */
+export const landscapeBandStart = (b: LandscapeBand, horizonY: number, anchorY: number, lead = LANDSCAPE_BAND_LEAD): number => {
+  const want = anchorY - b.bandH * lead;
+  const d = want - horizonY;
+  const phase = ((d % b.bandH) + b.bandH) % b.bandH;
+  return horizonY + phase;
+};
+
+/** 画面の y に映るのは、遠景のどの y か(帯の頭=地平線・下へ行くほど高い空・帯ごとに繰り返す)。bandStart 省略時は地平線から。 */
+export const reflectedSourceY = (b: LandscapeBand, horizonY: number, y: number, bandStart = horizonY): number => {
+  const d = y - bandStart;
+  const inBand = ((d % b.bandH) + b.bandH) % b.bandH;
+  return horizonY - inBand * (b.srcH / b.bandH);
+};

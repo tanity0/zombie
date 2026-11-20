@@ -3,6 +3,7 @@ import {
   parseWeather, weatherWetActive, ripplePose, RIPPLE_MS, RIPPLE_FRAMES, RIPPLE_SCALE_FROM, RIPPLE_SCALE_TO,
   dripHeight, DRIP_FALL_MS, DRIP_FALL_H, glintPose, GLINT_MS,
   rainDropSpec, rainPose, rainNextGapMs, RAIN_FALL_MS_MIN, RAIN_FALL_MS_MAX, RAIN_DROPS_PER_MPX_S, RAIN_MAX,
+  landscapeBand, reflectedSourceY, landscapeBandStart, LANDSCAPE_REFLECT_STRETCH, LANDSCAPE_BAND_LEAD,
 } from './weatherWet';
 
 describe('weatherWet(雨上がりの決めごと)', () => {
@@ -120,5 +121,61 @@ describe('ポツポツ雨(小雨の決めごと)', () => {
     expect(onScreen(1.1e6)).toBeGreaterThan(3);
     expect(onScreen(1.1e6)).toBeLessThan(12);
     expect(RAIN_MAX).toBeLessThanOrEqual(40);
+  });
+});
+
+describe('水たまりに映る風景(上下反転の写し)', () => {
+  it('地平線ちょうどは地平線、下へ行くほど高い空が映る(上下が入れ替わる)', () => {
+    const b = landscapeBand(400, 0, 1600);
+    expect(reflectedSourceY(b, 400, 400)).toBeCloseTo(400);
+    const y1 = 400 + b.bandH * 0.25, y2 = 400 + b.bandH * 0.75;
+    expect(reflectedSourceY(b, 400, y1)).toBeLessThan(400);
+    expect(reflectedSourceY(b, 400, y2)).toBeLessThan(reflectedSourceY(b, 400, y1));
+  });
+
+  it('帯1本で遠景の帯ちょうど1本ぶん(伸びの分だけ縦に伸びる)', () => {
+    const b = landscapeBand(400, 0, 1600);
+    expect(b.srcH).toBe(400);
+    expect(b.bandH).toBeCloseTo(400 * LANDSCAPE_REFLECT_STRETCH);
+    expect(reflectedSourceY(b, 400, 400 + b.bandH - 0.001)).toBeCloseTo(0, 1); // 帯の終わり=空の上端
+  });
+
+  it('下端まで繰り返して埋める(手前の水たまりにも何か映る)', () => {
+    const b = landscapeBand(400, 0, 1600);
+    expect(400 + b.bandH * b.repeats).toBeGreaterThanOrEqual(1600);
+    expect(reflectedSourceY(b, 400, 400 + b.bandH)).toBeCloseTo(400); // 2本目の頭はまた地平線
+    for (let y = 400; y <= 1600; y += 37) {
+      const src = reflectedSourceY(b, 400, y);
+      expect(src).toBeGreaterThanOrEqual(0 - 1e-6);
+      expect(src).toBeLessThanOrEqual(400 + 1e-6);
+    }
+  });
+
+  it('引き(地平線が下がる・上がる)でも寸法は地平線と上端だけで決まる', () => {
+    const a = landscapeBand(400, 0, 1600);
+    const b = landscapeBand(500, 100, 1700);
+    expect(b.bandH).toBeCloseTo(a.bandH);
+    expect(reflectedSourceY(b, 500, 650)).toBeCloseTo(reflectedSourceY(a, 400, 550) + 100);
+  });
+
+  it('帯の頭は注目点(足元)の少し上=足元の周りに逆さの稜線と空が映る', () => {
+    const b = landscapeBand(400, 0, 1600);
+    for (const anchor of [700, 950, 1234, 1500]) {
+      const start = landscapeBandStart(b, 400, anchor);
+      expect(start).toBeGreaterThanOrEqual(400);
+      expect(start).toBeLessThan(400 + b.bandH);
+      // 足元から帯の LEAD 割だけ上(帯の高さの整数倍の違いは同じ絵)
+      const k = (anchor - b.bandH * LANDSCAPE_BAND_LEAD - start) / b.bandH;
+      expect(Math.abs(k - Math.round(k))).toBeLessThan(1e-9);
+      // 足元の高さに映るのは稜線寄り(帯の上の方=地平線に近い遠景)
+      expect(reflectedSourceY(b, 400, anchor, start)).toBeCloseTo(400 - b.srcH * LANDSCAPE_BAND_LEAD, 6);
+    }
+  });
+
+  it('壊れた入力でも有限の値を返す', () => {
+    const b = landscapeBand(0, 0, 0);
+    expect(Number.isFinite(b.bandH) && b.bandH > 0).toBe(true);
+    expect(b.repeats).toBeGreaterThanOrEqual(1);
+    expect(Number.isFinite(reflectedSourceY(b, 0, 123))).toBe(true);
   });
 });

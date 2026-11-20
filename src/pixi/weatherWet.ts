@@ -10,6 +10,9 @@
 //   3. 映り込み … 空の色(水面の加算)・近くの松明の光だまりのにじみ(既存の映り込み=光だまりの色と強さをそのまま読む)。
 //      プレイヤーの近くの水たまりにだけ、キャラの逆さの薄い映り・光の筋・水面を渡る細い光の線を、
 //      水面(帯1)の形で切って描く(切り抜きは同時に最大 MAX_SLOTS 枚)。
+//   3b. 風景の映り … 既に読み込んである遠景(空・月・城・森)の絵を、地平線を軸に上下反転して地面の層に1組だけ敷き、
+//      画面内の水たまりの水面の形を集めた1枚の型(マスク)の内側にだけ出す(新しい素材・光・投影影なし)。
+//      元の絵の視差(横の流れ)をそのまま写す=歩くと水の中で空と森が流れる。
 //   4. 雫と波紋 … 木の下でときどき雫→波紋。水たまりを踏んだら波紋。どちらも使い回しの粒(上限つき)。
 //   4b. ポツポツ雨 … 細く短い線をまばらに斜めに落とす(少し加速)。着いた所が水たまりなら水の波紋・地面なら小さな跳ね
 //      (4 の波紋の粒をそのまま使う)。線はアクターの上・被写界深度の外の層(danceUiLayer)・粒は上限 RAIN_MAX。
@@ -17,7 +20,7 @@
 //      (pixiScene の applyForestPreview / applyWraithDarkness と同じ型=他の色の書き込みとぶつからない)。
 // 影を落とす光は1つも足さない(このプロジェクトで高いのは投影影を落とす光だけ=CLAUDE.md の実測)。
 
-import { ColorMatrixFilter, Container, Point, Sprite, Texture, type Filter, type TilingSprite } from 'pixi.js';
+import { ColorMatrixFilter, Container, Matrix, Point, Sprite, Texture, TilingSprite, type Filter, type RenderTexture } from 'pixi.js';
 import { getTexture } from './pixiTextures';
 import { getSoftGlowTexture } from './lighting';
 import {
@@ -26,6 +29,7 @@ import {
 import {
   ripplePose, dripHeight, glintPose, DRIP_FALL_MS, GLINT_MS,
   rainDropSpec, rainPose, rainNextGapMs, RAIN_MAX, RAIN_SPAWN_PER_FRAME, type RainDropSpec,
+  landscapeBand, landscapeBandStart,
 } from '../utils/weatherWet';
 
 // ---- 叩き台の値(設計書 §0-1「数値は叩き台」) ----
@@ -38,6 +42,17 @@ const WATER_ALPHA = 0.9;
 /** 水面と、その上に重ねる映り(空・松明のにじみ・キャラの逆さの映り・光の筋・光の線)の濃さの一律の掛け率。
  *  社長指示2026-11-20「少し薄く」=70%(地面に沈める。縁つきの水たまりの絵と小物はそのまま)。 */
 const WATER_FADE = 0.7;
+/** 風景の映り(遠景の上下反転)の濃さと色(冷たく少し沈める)。濃さは WATER_FADE も掛かる。 */
+const LAND_ALPHA = 0.75;
+const LAND_TINT = 0xb4c4dc;
+/** 遠景の帯を焼く大きさ(論理px・解像度1)。小さく焼いて引き伸ばす=水面の映りらしく柔らかい(遠景のボケとも揃う)。 */
+const LAND_RT_W = 320;
+const LAND_RT_H = 192;
+/** 夜の暗さ(envTint)をどこまで映りに掛けるか(1=地面と同じ暗さ・大きいほど明るく残す)。 */
+const LAND_ENV_LIFT = 1.6;
+/** 型の焼きの大きさ(論理px・解像度1)。水たまりを囲む矩形をこの1枚へ縮めて焼く(縁がわずかに柔らかくなるだけ)。 */
+const LAND_MASK_RT_W = 256;
+const LAND_MASK_RT_H = 384;
 /** 空の映り(水面の形の加算)。光が無い所でもうっすら空が映る。 */
 const SKY_TINT = 0x34507a;
 const SKY_ALPHA = 0.16;
@@ -145,6 +160,24 @@ export interface WetTree {
   footY: number;
   scale: number;
 }
+/** 型を焼くための窓口(pixiScene の焼きの入口=メモリの台帳を通す)。 */
+export interface WetGpu {
+  bake: (w: number, h: number) => RenderTexture;
+  release: (rt: RenderTexture) => void;
+  render: (c: Container, target: RenderTexture, transform: Matrix) => void;
+}
+/** 水たまりに映す遠景(pixiScene の遠景の絵そのもの・描かれている順)。 */
+export interface WetLandscape {
+  sources: readonly (Sprite | TilingSprite)[];
+  /** 地平線(地面と遠景の境目)の y。画面の上端・下端の y。どれも global(stage の描画座標)。 */
+  horizonY: number;
+  screenTop: number;
+  screenBottom: number;
+  screenLeft: number;
+  screenRight: number;
+  /** 注目点(プレイヤーの足元)の画面の y。帯の繰り返しの位相をここに合わせる。 */
+  anchorY: number;
+}
 export interface WetHost {
   /** 演出の時計(ms・Date.now 系)。 */
   now: number;
@@ -162,6 +195,8 @@ export interface WetHost {
   bases: readonly { x: number; y: number; r: number }[];
   focusX: number;
   focusY: number;
+  /** 水たまりに映す遠景(無ければ風景は映さない)。 */
+  landscape?: WetLandscape;
 }
 export interface WetAtmosphere {
   fog: readonly (Sprite | TilingSprite)[];
@@ -176,6 +211,8 @@ interface PuddleView {
   ground: Sprite;
   water: Sprite;
   sky: Sprite;
+  /** 風景の映りの型(水面と同じ形・同じ位置)。 */
+  landMask: Sprite;
   debris: Sprite[];
   /** このフレームの見た目の倍率(遠近込み)。 */
   d: number;
@@ -199,12 +236,33 @@ interface Ripple { sp: Sprite; at: number; x: number; y: number; water: boolean;
 interface Drip { sp: Sprite; at: number; x: number; y: number; s: number; on: boolean }
 interface Glint { pid: string; at: number; dir: 1 | -1 }
 interface RainDrop { sp: Sprite; at: number; x: number; y: number; spec: RainDropSpec; on: boolean }
+interface LandCopy { src: Sprite | TilingSprite; wrap: Container; sp: Sprite | TilingSprite }
 
 export class WeatherWetLayer {
   readonly gradeFilter: ColorMatrixFilter;
   private skyFilter: ColorMatrixFilter;
   private root = new Container();
   private puddleLayer = new Container();
+  // 水たまりの重なり順: 縁 → 水面 → 風景の映り → 空の色(加算)。
+  private rimLayer = new Container();
+  private waterLayer = new Container();
+  private landLayer = new Container();
+  /** 型の材料(水面の形の絵を集めた箱・表示ツリーには入れない=毎フレーム小さな焼きへ描くだけ)。 */
+  private landMaskBox = new Container();
+  /** 型(焼いた水面の形を、画面内の水たまりを囲む矩形へ貼った1枚)。 */
+  private landMaskSprite = new Sprite(Texture.EMPTY);
+  private landMaskRT: RenderTexture | null = null;
+  /** 遠景の写し(表示ツリーの外)と、それを上下反転して焼いた1枚・それを敷く1枚。 */
+  private landScene = new Container();
+  private landRT: RenderTexture | null = null;
+  private landSprite = new TilingSprite({ texture: Texture.EMPTY, width: 1, height: 1 });
+  private gpu: WetGpu | null;
+  private landCopies: LandCopy[] = [];
+  private skyLayer = new Container();
+  private mA = new Matrix();
+  private mB = new Matrix();
+  private mFlip = new Matrix();
+  private mMask = new Matrix();
   private slotLayer = new Container();
   private debrisLayer = new Container();
   private rippleLayer = new Container();
@@ -229,13 +287,25 @@ export class WeatherWetLayer {
   private pB = new Point();
   private visible = true;
 
-  constructor(groundLayer: Container, overLayer?: Container) {
+  constructor(groundLayer: Container, overLayer?: Container, gpu?: WetGpu) {
+    this.gpu = gpu ?? null;
     this.root.eventMode = 'none';
     this.rainLayer.eventMode = 'none';
     this.rainLayer.label = 'weatherWetRain';
     (overLayer ?? this.root).addChild(this.rainLayer);
     this.root.label = 'weatherWet';
     this.root.addChild(this.puddleLayer, this.slotLayer, this.debrisLayer, this.rippleLayer, this.dripLayer);
+    this.landLayer.eventMode = 'none';
+    this.landLayer.label = 'weatherWetLand';
+    // 型: 画面内の水たまりの水面の絵を毎フレーム1枚の小さな焼き(LAND_MASK_RT_W×H)へ描き、それを
+    // 水たまりを囲む矩形へ貼った Sprite を映りの箱の型にする(合成は1回・範囲は水たまりを囲む矩形だけ)。
+    // 型は切り抜く側の子(兄弟に置くと描かれない・slot と同じ)。
+    this.landLayer.addChild(this.landSprite, this.landMaskSprite);
+    this.landLayer.setMask({ mask: this.landMaskSprite, channel: 'alpha' });
+    this.landLayer.alpha = LAND_ALPHA * WATER_FADE;
+    this.landScene.label = 'weatherWetLandSrc';
+    this.landLayer.visible = false;
+    this.puddleLayer.addChild(this.rimLayer, this.waterLayer, this.landLayer, this.skyLayer);
     // 地面の層の一番下(足元の影・光だまりより下)。
     groundLayer.addChildAt(this.root, 0);
     this.gradeFilter = new ColorMatrixFilter();
@@ -317,7 +387,7 @@ export class WeatherWetLayer {
     }
     for (const [id, pv] of this.views) {
       if (seen.has(id)) continue;
-      pv.ground.destroy(); pv.water.destroy(); pv.sky.destroy();
+      pv.ground.destroy(); pv.water.destroy(); pv.sky.destroy(); pv.landMask.destroy();
       for (const d of pv.debris) d.destroy();
       this.views.delete(id);
     }
@@ -328,6 +398,7 @@ export class WeatherWetLayer {
       if (bx.x < v.left - 100 || bx.x > v.right + 100 || bx.foot < v.top - 100 || bx.foot > v.bottom + 200) continue;
       boxes.push(bx);
     }
+    this.syncLandscape(h);
     this.syncSlots(h, boxes);
     this.syncSteps(h, boxes);
     this.syncDrips(h);
@@ -350,7 +421,12 @@ export class WeatherWetLayer {
     sky.anchor.set(0.5);
     sky.blendMode = 'add';
     sky.tint = SKY_TINT;
-    this.puddleLayer.addChild(ground, water, sky);
+    const landMask = new Sprite(wTex);
+    landMask.anchor.set(0.5);
+    this.rimLayer.addChild(ground);
+    this.waterLayer.addChild(water);
+    this.skyLayer.addChild(sky);
+    this.landMaskBox.addChild(landMask);
     const debris: Sprite[] = [];
     for (const t of debrisTex) {
       const sp = new Sprite(t!);
@@ -358,7 +434,7 @@ export class WeatherWetLayer {
       this.debrisLayer.addChild(sp);
       debris.push(sp);
     }
-    const pv: PuddleView = { p, ground, water, sky, debris, d: 1, alpha: 1, lightA: 0, lightColor: SKY_TINT, lightX: p.x };
+    const pv: PuddleView = { p, ground, water, sky, landMask, debris, d: 1, alpha: 1, lightA: 0, lightColor: SKY_TINT, lightX: p.x };
     this.views.set(p.id, pv);
     return pv;
   }
@@ -381,11 +457,12 @@ export class WeatherWetLayer {
     const ww = pv.water.texture.width || 1, wh = pv.water.texture.height || 1;
     const fitX = p.waterOnly ? 1 : WATER_FIT_X, fitY = p.waterOnly ? 1 : WATER_FIT_Y;
     const wsx = (gw * fitX * s) / ww, wsy = (gh * fitY * s) / wh;
-    for (const sp of [pv.water, pv.sky]) {
+    for (const sp of [pv.water, pv.sky, pv.landMask]) {
       sp.position.set(p.x, p.y - (p.waterOnly ? 0 : gh * s * 0.02));
       sp.scale.set(wsx * fx, wsy);
     }
     pv.water.alpha = WATER_ALPHA * WATER_FADE * ha;
+    pv.landMask.alpha = ha; // 地平線の向こうへ消える水たまりは映りも一緒に消える(型の濃さ=映りの濃さ)
     pv.water.tint = mulTint(WATER_TINT, { r: ((h.envTint >> 16) & 255) / 255, g: ((h.envTint >> 8) & 255) / 255, b: (h.envTint & 255) / 255 });
     // 近くの光だまり(松明)のにじみ。強さと色を慣性で寄せる(灯の揺らぎで水面がチラつかない)。
     let best = 0, bestColor = SKY_TINT, bestX = p.x, sum = 0;
@@ -412,6 +489,107 @@ export class WeatherWetLayer {
       sp.alpha = h.horizonAlpha(dd.y);
       sp.tint = mulTint(h.envTint, DEBRIS_DIM); // 小物は地面に沈める(白い小石が光って浮かない)
     }
+  }
+
+  // ---- 風景の映り(遠景の上下反転を、水面の形の型の内側にだけ) ----
+  // 1. 遠景の絵の写し(表示ツリーの外の箱 landScene)を、画面の上端〜地平線の帯ごと小さな焼き(LAND_RT_*)へ
+  //    上下反転して描く(元の絵の位置・視差・空のコマ送り・月の呼吸をそのまま写す=新しい素材なし)。
+  // 2. その焼きを1枚の TilingSprite(landSprite)として地平線から画面の下端まで縦に繰り返して敷く(world の層・
+  //    画面に対して固定=水たまりが流れても映りは視点についてくる=本物の映り方)。
+  // 3. 水たまりの水面の形の型(bakeLandMask)の内側にだけ出す。
+  private syncLandscape(h: WetHost): void {
+    const L = h.landscape;
+    const gpu = this.gpu;
+    if (!L || !gpu || this.views.size === 0) { this.landLayer.visible = false; return; }
+    // 元の絵の数・顔ぶれが変わった時だけ作り直す(ステージの遠景の差し替え等)。
+    const same = this.landCopies.length === L.sources.length && this.landCopies.every((c, i) => c.src === L.sources[i]);
+    if (!same) {
+      for (const c of this.landCopies) c.wrap.destroy({ children: true });
+      this.landCopies = L.sources.map(src => {
+        const wrap = new Container();
+        const sp = src instanceof TilingSprite ? new TilingSprite({ texture: src.texture, width: 1, height: 1 }) : new Sprite(src.texture);
+        wrap.addChild(sp);
+        this.landScene.addChild(wrap);
+        return { src, wrap, sp };
+      });
+    }
+    let any = false;
+    for (const c of this.landCopies) {
+      const src = c.src;
+      const par = src.parent;
+      const on = !src.destroyed && !!par && src.visible && src.alpha > 0.004 && src.renderable;
+      c.wrap.visible = on;
+      if (!on) continue;
+      any = true;
+      // 包み=元の絵の親の global(=画面の座標で元の絵と同じ所に置く)。反転は焼く時の変換で1回だけ。
+      c.wrap.setFromMatrix(par.getGlobalTransform(this.mA, false));
+      const sp = c.sp;
+      if (sp.texture !== src.texture) sp.texture = src.texture;
+      sp.anchor.copyFrom(src.anchor);
+      sp.position.copyFrom(src.position);
+      sp.scale.copyFrom(src.scale);
+      sp.rotation = src.rotation;
+      sp.tint = src.tint;
+      sp.alpha = src.alpha;
+      sp.blendMode = src.blendMode;
+      if (sp instanceof TilingSprite && src instanceof TilingSprite) {
+        sp.width = src.width; // TilingSprite の幅・高さは scale を含まない窓の大きさ
+        sp.height = src.height;
+        sp.tileScale.copyFrom(src.tileScale);
+        sp.tilePosition.copyFrom(src.tilePosition); // 視差(横の流れ)もそのまま
+      }
+    }
+    if (!any || !this.bakeLandMask()) { this.landLayer.visible = false; return; }
+    this.landLayer.visible = true;
+    const band = landscapeBand(L.horizonY, L.screenTop, L.screenBottom);
+    const gx0 = L.screenLeft, gw = Math.max(1, L.screenRight - L.screenLeft);
+    // 1. 帯(画面の上端〜地平線)を上下反転して焼く: 焼きの上端=地平線・下端=画面の上端。
+    if (!this.landRT) this.landRT = gpu.bake(LAND_RT_W, LAND_RT_H);
+    const rt = this.landRT;
+    const sx = rt.width / gw, sy = rt.height / band.srcH;
+    gpu.render(this.landScene, rt, this.mB.set(sx, 0, 0, -sy, -gx0 * sx, L.horizonY * sy));
+    // 2. 地平線から下端までの窓に、焼きを縦に繰り返して敷く(窓の座標=画面の座標・左上=地平線の左端)。
+    //    繰り返しの位相は足元に合わせる(帯の頭=逆さの稜線が足元の少し上に来る)。
+    const ls = this.landSprite;
+    if (ls.texture !== rt) ls.texture = rt;
+    const inv = this.landLayer.getGlobalTransform(this.mA, false).invert();
+    ls.setFromMatrix(inv.append(this.mFlip.set(1, 0, 0, 1, gx0, L.horizonY)));
+    ls.width = gw;
+    ls.height = Math.max(1, L.screenBottom - L.horizonY);
+    ls.tileScale.set(gw / rt.width, band.bandH / rt.height);
+    ls.tilePosition.set(0, landscapeBandStart(band, L.horizonY, L.anchorY) - L.horizonY);
+    // 夜は地面と同じ暗さへ寄せ、冷たく少し沈める(空の明るさがそのまま地面に浮かない)。
+    const e = h.envTint;
+    const lift = (c: number) => Math.min(1, (c / 255) * LAND_ENV_LIFT);
+    ls.tint = mulTint(LAND_TINT, { r: lift((e >> 16) & 255), g: lift((e >> 8) & 255), b: lift(e & 255) });
+  }
+
+  /** 水面の形を焼いて型にする。焼く範囲=画面内の水たまりの水面を囲む矩形(world)。何も無ければ false。 */
+  private bakeLandMask(): boolean {
+    const gpu = this.gpu;
+    if (!gpu) return false;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const pv of this.views.values()) {
+      const w = pv.landMask;
+      if (w.alpha <= 0.004) continue;
+      const hw = Math.abs(w.scale.x) * w.texture.width * 0.5, hh = Math.abs(w.scale.y) * w.texture.height * 0.5;
+      x0 = Math.min(x0, w.x - hw); x1 = Math.max(x1, w.x + hw);
+      y0 = Math.min(y0, w.y - hh); y1 = Math.max(y1, w.y + hh);
+    }
+    if (!(x1 > x0 && y1 > y0)) return false;
+    x0 = Math.floor(x0) - 2; y0 = Math.floor(y0) - 2; x1 = Math.ceil(x1) + 2; y1 = Math.ceil(y1) + 2;
+    if (!this.landMaskRT) this.landMaskRT = gpu.bake(LAND_MASK_RT_W, LAND_MASK_RT_H);
+    const rt = this.landMaskRT;
+    // world の矩形 → 焼きの全面(縦横で倍率は別でよい=形がわずかに粗くなるだけ)。
+    const sx = rt.width / (x1 - x0), sy = rt.height / (y1 - y0);
+    this.mMask.set(sx, 0, 0, sy, -x0 * sx, -y0 * sy);
+    gpu.render(this.landMaskBox, rt, this.mMask);
+    const ms = this.landMaskSprite;
+    if (ms.texture !== rt) ms.texture = rt;
+    ms.position.set(x0, y0);
+    ms.width = x1 - x0;
+    ms.height = y1 - y0;
+    return true;
   }
 
   // ---- 切り抜き(映り・光の筋・光の線) ----
@@ -728,7 +906,13 @@ export class WeatherWetLayer {
   destroy(): void {
     this.restoreAtmosphere();
     this.detachSky();
+    this.landLayer.mask = null;
+    this.landCopies = [];
     this.root.destroy({ children: true });
+    this.landMaskBox.destroy({ children: true });
+    if (this.landMaskRT) { this.gpu?.release(this.landMaskRT); this.landMaskRT = null; }
+    this.landScene.destroy({ children: true });
+    if (this.landRT) { this.gpu?.release(this.landRT); this.landRT = null; }
     if (!this.rainLayer.destroyed) this.rainLayer.destroy({ children: true });
     this.rain = [];
     this.views.clear();
