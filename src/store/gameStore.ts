@@ -308,7 +308,8 @@ import { settleEpisode, type CounterReachShape } from '../utils/habitEpisode';
 import { ZOOM_MIN_ABS, isPointInZoomedViewport, zoomedViewportBounds } from '../utils/cameraZoom';
 import { meleeImpactPoint, meleeNumberPoint, bandBoxOverlap } from '../utils/meleeImpact';
 import {
-  isWhipFollowupOpen, classifyWhipFlick, whipPullTarget, whipPullPosAt, whipSlamTargets, whipFollowupAction, isWhipFollowupLocked,
+  classifyWhipFlick, whipPullTarget, whipPullPosAt, whipSlamTargets, whipFollowupAction, isWhipFollowupLocked,
+  whipFollowupPhase, whipLiftApexAt, whipZakoApexDelayMs, whipSlamOpenAt,
   WHIP_PULL_MS, WHIP_SLAM_DAMAGE_MULT, WHIP_SLAM_HITSTOP_MS, WHIP_FOLLOWUP_WINDOW_MS, WHIP_PULL_BLOCK_EPS_PX, WHIP_PULL_DUST_INTERVAL_MS, type WhipFollowupWindow,
 } from '../utils/whipFollowup';
 import { isFlickFollowupOpen } from '../utils/flickFollowup';
@@ -2948,22 +2949,25 @@ const whipPullable = (e: Enemy): boolean =>
 /**
  * 1段目: 反対フリック=浮かせつつ引き寄せる(社長「ヒットした瞬間反対にフリックで浮かせつつ引き寄せる」)。
  * 当たった敵(押されて飛んでいる最中も)の押しを打ち消し、一閃と同じ打ち上げ(格闘の4段目)で浮かせて、プレイヤーの手前へ寄せる(追加ダメージなし)。
- * ボス級は浮かせず・動かさない(区分)。引き寄せた瞬間から2段目(叩き落とし)の受付を開き、その間はプレイヤーの位置と向きを止める。
+ * ボス級は浮かせず・動かさない(区分)。2段目(叩き落とし)の受付は、引き寄せた敵が浮き上がり切った(打ち上げの頂点)瞬間に開く
+ * (社長「鞭の３段目は、敵が浮いたのを見てから入力窓。(早すぎてもだめ)」・長さは300msのまま)。ボス級だけなら雑魚の頂点と同じ間合いで開く。
+ * 引き寄せた瞬間から受付の終わりまで、プレイヤーの位置と向きを止める。
  */
 const whipFollowupPull = (get: () => GameState, set: WhipFollowupSet, w: WhipFollowupWindow, now: number): void => {
   const ids = new Set(w.hitIds);
   const pulledIds: string[] = [];
   const slamIds: string[] = []; // 2段目の対象=浮かせた敵+当たっていたボス級(浮かないが叩き落としの2倍は当たる)
+  const apexAts: (number | null)[] = []; // 2段目の対象ごとの頂点の時刻(ボス級=null=雑魚の頂点までの時間で開く)
   const gt = get().gameTime;
-  set(state => ({
-    enemies: state.enemies.map(e => {
+  set(state => {
+    const enemies = state.enemies.map(e => {
       if (!ids.has(e.id) || isCorpse(e) || isUntouchable(e) || e.health <= 0) return e;
-      if (BRC.brawlerEnemyClass(e) === 'boss') { slamIds.push(e.id); return e; }
+      if (BRC.brawlerEnemyClass(e) === 'boss') { slamIds.push(e.id); apexAts.push(null); return e; }
       if (!whipPullable(e)) return e;
       const lp = issenLiftPatch(e, e, now, gt);
       const lifted = !!lp && (lp.brLiftUntil ?? 0) > now;
       const to = whipPullTarget(state.player, e);
-      if (lifted) slamIds.push(e.id);
+      if (lifted) { slamIds.push(e.id); apexAts.push(whipLiftApexAt({ ...e, ...lp })); }
       if (to) pulledIds.push(e.id);
       if (!to && !lp) return e;
       return {
@@ -2974,12 +2978,15 @@ const whipFollowupPull = (get: () => GameState, set: WhipFollowupSet, w: WhipFol
         knockbackVx: 0, knockbackVy: 0, knockbackUntil: now, knockbackShoveUntil: undefined,
         knockbackStopFor: undefined, knockbackStopMs: undefined, vx: 0, vy: 0,
       };
-    }),
-    // 2段目の受付(引き寄せた瞬間から同じ長さ)。対象が居なければ閉じる。受付の間はプレイヤーの位置と向きを止める。
-    whipFollowup: slamIds.length > 0
-      ? { hitAt: now, dirX: w.dirX, dirY: w.dirY, hitIds: slamIds, used: false, stage: 'pulled', lockUntil: now + WHIP_FOLLOWUP_WINDOW_MS }
-      : { ...w, used: true, lockUntil: now + WHIP_PULL_MS },
-  }));
+    });
+    // 2段目の受付=浮き上がり切った瞬間(hitAt)から同じ長さ。引き寄せた瞬間(armAt)〜頂点の手前は「早すぎ」(何も起きない・受付は残す)。
+    // 対象が居なければ閉じる。引き寄せた瞬間から受付の終わりまで、プレイヤーの位置と向きを止める。
+    const openAt = whipSlamOpenAt(now, apexAts, whipZakoApexDelayMs(ISSEN_LIFT_MOVE));
+    const whipFollowup: WhipFollowupWindow = slamIds.length > 0
+      ? { hitAt: openAt, armAt: now, dirX: w.dirX, dirY: w.dirY, hitIds: slamIds, used: false, stage: 'pulled', lockUntil: openAt + WHIP_FOLLOWUP_WINDOW_MS }
+      : { ...w, used: true, lockUntil: now + WHIP_PULL_MS };
+    return { enemies, whipFollowup };
+  });
   const g = get();
   const p = g.player;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
@@ -15886,13 +15893,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     const st = get();
     const w = st.whipFollowup;
-    if (!w || !isWhipFollowupOpen(w, now)) return false;
+    const phase = whipFollowupPhase(w, now);
+    if (!w || !phase) return false;
     const p = st.player;
     // 鞭を持っていない/格闘中・紫/daze・掴まれ・浮いている間は出さない(振りの入口 beginMeleeSwing と同じ門)。
     if (!isWhipMode(p) || isPvpIncapacitated(p.pvpPosture, st.gameTime) || isPlayerGrabbed(p, st.gameTime) || playerAirLocked(p, now)) return false;
     // 1段目(当たった直後)=反対で浮かせつつ引き寄せ / 2段目(引き寄せた直後)=進行方向で叩き落とし。それ以外の向き・段の組は何も起きない(受付は残す)。
     const act = whipFollowupAction(w.stage, classifyWhipFlick({ x: w.dirX, y: w.dirY }, { x: dirX, y: dirY }));
     if (!act) return false;
+    // 早すぎ(引き寄せた敵が浮き上がり切る前)の進行方向=何も起きない。受付は消費しない(覚えもしない)・ほかのフリック(ワイヤー・一閃)へも流さない。
+    if (phase === 'early') return true;
     if (act === 'pull') {
       set({ whipFollowup: { ...w, used: true } }); // 1振りに1回だけ(続きの受付は引き寄せが開く)
       whipFollowupPull(get, set, w, now);
@@ -16723,7 +16733,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   flickFollowupOpen: () => {
     const st = get();
     const now = Date.now();
-    return isFlickFollowupOpen(st.whipFollowup, now) || isFlickFollowupOpen(st.tsubameWindow, now);
+    return whipFollowupPhase(st.whipFollowup, now) !== null || isFlickFollowupOpen(st.tsubameWindow, now);
   },
 
   // ワイヤーアンカー: フリックでフリック方向(dir)に固定距離ワイヤーを刺す。1秒後(wirePlantUntil)に

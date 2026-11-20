@@ -3,8 +3,11 @@ import { describe, it, expect } from 'vitest';
 import {
   classifyWhipFlick, isWhipFollowupOpen, whipPullTarget, whipPullProgress, whipPullPosAt, whipSlamTargets, whipFollowupAction, isWhipFollowupLocked,
   WHIP_FOLLOWUP_WINDOW_MS, WHIP_PULL_GAP_PX,
+  whipFollowupPhase, whipLiftApexAt, whipZakoApexDelayMs, whipSlamOpenAt,
 } from './whipFollowup';
 import { flickBand, isFlickFollowupOpen, FLICK_FOLLOWUP_WINDOW_MS } from './flickFollowup';
+import { brawlerJugglePush, brawlerJuggleHeightRel } from './brawlerCombo';
+import { COUNTER_LIFT_MOVE } from './airLift';
 
 const deg = (d: number) => ({ x: Math.cos((d * Math.PI) / 180), y: Math.sin((d * Math.PI) / 180) });
 
@@ -113,5 +116,55 @@ describe('位置と向きの固定', () => {
     expect(isWhipFollowupLocked(w, 1300)).toBe(false);
     expect(isWhipFollowupLocked({ ...w, lockUntil: undefined }, 1100)).toBe(false);
     expect(isWhipFollowupLocked(null, 1100)).toBe(false);
+  });
+});
+
+describe('叩き落とし(3段目)の受付=浮き上がり切ってから(社長「敵が浮いたのを見てから入力窓。(早すぎてもだめ)」「入力窓の長さは広げない。覚えもしない」)', () => {
+  // 引き寄せた瞬間=1000・頂点=1137 として開いた2段目の窓。
+  const w = { hitAt: 1137, armAt: 1000, dirX: 1, dirY: 0, hitIds: ['a'], used: false, stage: 'pulled' as const, lockUntil: 1137 + WHIP_FOLLOWUP_WINDOW_MS };
+  it('頂点より前=早すぎ(受付は開いていない・使ってもいない)/頂点〜+300ms=受付/過ぎたら閉じる', () => {
+    expect(whipFollowupPhase(w, 999)).toBeNull();
+    expect(whipFollowupPhase(w, 1000)).toBe('early');
+    expect(whipFollowupPhase(w, 1136)).toBe('early');
+    expect(isWhipFollowupOpen(w, 1136)).toBe(false); // 早すぎでは叩き落とせない
+    expect(whipFollowupPhase(w, 1137)).toBe('open');
+    expect(whipFollowupPhase(w, 1137 + WHIP_FOLLOWUP_WINDOW_MS)).toBe('open');
+    expect(whipFollowupPhase(w, 1138 + WHIP_FOLLOWUP_WINDOW_MS)).toBeNull();
+    expect(whipFollowupPhase({ ...w, used: true }, 1200)).toBeNull();
+    expect(whipFollowupPhase({ ...w, hitIds: [] }, 1100)).toBeNull();
+    expect(whipFollowupPhase(null, 1100)).toBeNull();
+  });
+  it('1段目(armAt なし)は当たった瞬間から(早すぎの間は無い)', () => {
+    const w1 = { hitAt: 1000, dirX: 1, dirY: 0, hitIds: ['a'], used: false, stage: 'hit' as const };
+    expect(whipFollowupPhase(w1, 999)).toBeNull();
+    expect(whipFollowupPhase(w1, 1000)).toBe('open');
+  });
+  it('頂点の時刻は描いている弧の頂点(上りの終わり)と同じ: その手前は上り途中・そこが一番高い', () => {
+    for (const cls of ['mob', 'strong'] as const) {
+      const jp = brawlerJugglePush({}, cls, COUNTER_LIFT_MOVE, 5000, false, false, false)!;
+      const apex = whipLiftApexAt(jp)!;
+      expect(apex).toBeGreaterThan(5000);
+      const top = brawlerJuggleHeightRel(jp, apex);
+      expect(brawlerJuggleHeightRel(jp, apex - 20)).toBeLessThan(top);
+      let max = 0;
+      for (let t = 5000; t < (jp.brLiftUntil ?? 0); t++) max = Math.max(max, brawlerJuggleHeightRel(jp, t));
+      expect(top).toBeGreaterThan(max - 1e-3);
+      // 頂点+300ms はまだ浮いている(雑魚・強個体=浮きの短い方)。
+      expect(apex + WHIP_FOLLOWUP_WINDOW_MS).toBeLessThan(jp.brLiftUntil ?? 0);
+    }
+  });
+  it('押し上げ0(叩き落とし中)は始まりが頂点・浮いていなければ null', () => {
+    expect(whipLiftApexAt({ brawlerLiftAt: 100, brLiftMs: 260, brLiftPeak: 0, brLiftFrom: 0.8 })).toBe(100);
+    expect(whipLiftApexAt({})).toBeNull();
+  });
+  it('ボス級(浮かない)は雑魚の頂点と同じ間合い・全員が浮き上がり切ってから開く(遅い方)', () => {
+    const zako = whipZakoApexDelayMs(COUNTER_LIFT_MOVE);
+    const jp = brawlerJugglePush({}, 'mob', COUNTER_LIFT_MOVE, 0, false, false, false)!;
+    expect(zako).toBe(whipLiftApexAt(jp));
+    expect(whipSlamOpenAt(1000, [null], zako)).toBe(1000 + zako);
+    expect(whipSlamOpenAt(1000, [], zako)).toBe(1000 + zako);
+    expect(whipSlamOpenAt(1000, [1080, 1137], zako)).toBe(1137);
+    expect(whipSlamOpenAt(1000, [1080, null], 50)).toBe(1080);
+    expect(whipSlamOpenAt(1000, [900], zako)).toBe(1000); // 引き寄せより前には開かない
   });
 });

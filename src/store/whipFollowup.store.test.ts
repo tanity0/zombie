@@ -7,7 +7,8 @@ import { useGameStore, WHIP_KNOCKBACK_SPEED } from './gameStore';
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { brawlerAirborne } from '../utils/brawlerCombo';
-import { WHIP_FOLLOWUP_WINDOW_MS } from '../utils/whipFollowup';
+import { WHIP_FOLLOWUP_WINDOW_MS, whipZakoApexDelayMs } from '../utils/whipFollowup';
+import { COUNTER_LIFT_MOVE } from '../utils/airLift';
 import { WHIP_PULL_GAP_PX, WHIP_PULL_MS } from '../utils/whipFollowup';
 
 let now = 13_000_000;
@@ -95,8 +96,8 @@ describe('反対フリック=引き寄せ', () => {
     const dH1 = Math.hypot(h.x + h.width / 2 - pc.x, h.y + h.height / 2 - pc.y);
     expect(dH1).toBeGreaterThanOrEqual(dH0 - 1);
     expect(h.x === hBefore.x && h.y === hBefore.y || dH1 >= dH0 - 1).toBe(true);
-    // 1振りに1回だけ。
-    expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(false);
+    // 1振りに1回だけ(引き寄せ直しは無い。この時刻は叩き落としの受付の中=進行方向なら叩き落としになる)。
+    expect(useGameStore.getState().tryWhipFollowup(-1, 0)).toBe(false);
   });
   it('強個体は雑魚と同じに寄る', () => {
     useGameStore.setState({ enemies: [place('driller', 130, 0, 'd')] });
@@ -139,7 +140,7 @@ describe('2段目: 進行方向フリック=叩き落とし', () => {
     swing();
     run(50);
     useGameStore.getState().tryWhipFollowup(-1, 0);
-    run(50);
+    run(whipZakoApexDelayMs(COUNTER_LIFT_MOVE) + 10); // 受付が開いた後
     useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({ ...e, brLiftUntil: now - 1, liftUntil: now - 1 })) }));
     const hp0 = en('z').health;
     expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(false);
@@ -153,7 +154,9 @@ describe('2段目: 進行方向フリック=叩き落とし', () => {
     const x0 = en('h').x;
     expect(useGameStore.getState().tryWhipFollowup(-1, 0)).toBe(true);
     expect(brawlerAirborne(en('h'), now)).toBe(false);
-    run(100);
+    // ボス級だけ=雑魚の頂点と同じ間合いで開く。
+    expect(useGameStore.getState().whipFollowup!.hitAt).toBe(now + whipZakoApexDelayMs(COUNTER_LIFT_MOVE));
+    run(whipZakoApexDelayMs(COUNTER_LIFT_MOVE) + 10);
     expect(en('h').whipPull).toBeUndefined();
     const hp0 = en('h').health;
     expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(true);
@@ -171,6 +174,57 @@ describe('2段目: 進行方向フリック=叩き落とし', () => {
   });
 });
 
+describe('叩き落としの受付=浮き上がり切ってから(社長「敵が浮いたのを見てから入力窓。(早すぎてもだめ)」)', () => {
+  it('引き寄せた直後(頂点の手前)の進行方向は何も起きず受付も残る/頂点〜+300msで叩き落とせる', () => {
+    useGameStore.setState({ enemies: [place('zombie', 120, 0, 'z')] });
+    swing();
+    run(100);
+    expect(useGameStore.getState().tryWhipFollowup(-1, 0)).toBe(true);
+    const pullAt = now;
+    const w = useGameStore.getState().whipFollowup!;
+    expect(w.armAt).toBe(pullAt);
+    expect(w.hitAt).toBeGreaterThan(pullAt); // 引き寄せた瞬間には開かない
+    expect(w.hitAt).toBeLessThanOrEqual((en('z').brawlerLiftAt ?? 0) + (en('z').brLiftMs ?? 0));
+    // 早すぎ: 何も起きない(ダメージなし・叩き落としなし)・受付は消費しない。
+    const hp0 = en('z').health;
+    expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(true); // 入力は飲む(ワイヤー・一閃へ流さない)
+    expect(useGameStore.getState().flickFollowupOpen()).toBe(true);
+    expect(en('z').health).toBe(hp0);
+    expect(en('z').brLiftDown).not.toBe(true);
+    expect(useGameStore.getState().whipFollowup!.used).toBe(false);
+    // 頂点の1ms手前もまだ早すぎ。
+    now = w.hitAt - 1;
+    expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(true);
+    expect(en('z').health).toBe(hp0);
+    // 頂点で叩き落とせる(まだ浮いている)。
+    now = w.hitAt;
+    expect(brawlerAirborne(en('z'), now)).toBe(true);
+    expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(true);
+    expect(en('z').health).toBeLessThan(hp0);
+    expect(en('z').brLiftDown).toBe(true);
+  });
+  it('頂点+300msを過ぎたら閉じる(何も起きない)', () => {
+    useGameStore.setState({ enemies: [place('zombie', 120, 0, 'z')] });
+    swing();
+    run(100);
+    useGameStore.getState().tryWhipFollowup(-1, 0);
+    const w = useGameStore.getState().whipFollowup!;
+    now = w.hitAt + WHIP_FOLLOWUP_WINDOW_MS + 1;
+    const hp0 = en('z').health;
+    expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(false);
+    expect(en('z').health).toBe(hp0);
+  });
+  it('強個体(浮きの短い区分)でも頂点+300msはまだ浮いている', () => {
+    useGameStore.setState({ enemies: [place('pumpkin' as EnemyType, 140, 0, 'k')] });
+    swing();
+    run(100);
+    expect(useGameStore.getState().tryWhipFollowup(-1, 0)).toBe(true);
+    expect(brawlerAirborne(en('k'), now)).toBe(true);
+    const w = useGameStore.getState().whipFollowup!;
+    expect(w.hitAt + WHIP_FOLLOWUP_WINDOW_MS).toBeLessThan(en('k').brLiftUntil ?? 0);
+  });
+});
+
 describe('位置と向きの固定', () => {
   it('引き寄せ〜2段目の受付の間は、スティックで動かず向きも変わらない。受付が閉じれば戻る', () => {
     useGameStore.setState({ enemies: [place('zombie', 120, 0, 'z')] });
@@ -185,7 +239,13 @@ describe('位置と向きの固定', () => {
     useGameStore.getState().setLastDirection({ x: 0, y: -1 });
     expect(Math.abs(useGameStore.getState().player.x - x0)).toBeLessThan(0.5);
     expect(useGameStore.getState().player.lastDirection).toEqual({ x: 1, y: 0 });
-    now += WHIP_FOLLOWUP_WINDOW_MS + 10;
+    // 固定は叩き落としの受付(浮き上がり切ってから300ms)の終わりまで続く。
+    const w = useGameStore.getState().whipFollowup!;
+    expect(w.lockUntil).toBe(w.hitAt + WHIP_FOLLOWUP_WINDOW_MS);
+    now = w.lockUntil! - 1;
+    useGameStore.getState().setLastDirection({ x: 0, y: -1 });
+    expect(useGameStore.getState().player.lastDirection).toEqual({ x: 1, y: 0 });
+    now = w.lockUntil! + 1;
     useGameStore.getState().setLastDirection({ x: 0, y: -1 });
     expect(useGameStore.getState().player.lastDirection).toEqual({ x: 0, y: -1 });
   });
