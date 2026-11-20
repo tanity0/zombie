@@ -1,6 +1,6 @@
 // research/ESCORT_TOSS.md v3.1(兵士の蹴り飛ばし)の配線テスト: updateSuppression(蹴りの制御+軍人の map)→ updateEnemies を
 // 実際に回して、画面内の気絶中の敵へ一番近い兵士が0.5秒で背後へ跳び、蹴り、敵がプレイヤーの手前へ地面を滑って止まることを見る。
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import {
@@ -12,7 +12,7 @@ import { setTorchesDisabled } from '../world/torches';
 
 const enemy = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
 let px = 0, py = 0;
-beforeEach(() => {
+const setup = () => {
   setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.getState().resetGame('warrior');
   const st = useGameStore.getState();
@@ -25,7 +25,20 @@ beforeEach(() => {
     // 蹴りは担当拠点を解放した兵士だけ(社長指示2026-11-12)。既定の段取りは全拠点を解放済みにしておく。
     baseSites: s.baseSites.map(b => ({ ...b, status: 'captured' as const })),
   }));
-});
+};
+beforeEach(setup);
+/** 壁時計をフレームと同じ歩みで進めるための偽の時計(`freezeWallClock` で Date.now に差す)。 */
+let fakeWall = 0;
+const freezeWallClock = () => {
+  fakeWall = 1_700_000_000_000;
+  vi.spyOn(Date, 'now').mockImplementation(() => fakeWall);
+  let seed = 0x5eed1;
+  vi.spyOn(Math, 'random').mockImplementation(() => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  });
+};
+afterEach(() => { vi.restoreAllMocks(); });
 const put = (dx: number, dy = 0, stunMs = 5000) => {
   const st = useGameStore.getState();
   const e = { ...spawnEnemyAt('zombie', px + dx - 15, py + dy - 15, st.gameTime), width: 30, height: 30, health: 50, maxHealth: 50, speed: 0 };
@@ -35,6 +48,7 @@ const put = (dx: number, dy = 0, stunMs = 5000) => {
 };
 const step = (ms: number) => {
   const st = useGameStore.getState();
+  fakeWall += ms; // 壁時計を止めているテストだけが読む(止めていなければ無害)
   useGameStore.setState({ gameTime: st.gameTime + ms });
   useGameStore.getState().updateSuppression(ms / 1000);
   useGameStore.getState().updateEnemies(ms / 1000);
@@ -183,17 +197,28 @@ describe('兵士の蹴り飛ばし v3.1', () => {
     expect(useGameStore.getState().escortKick).toBeNull();
   });
   it('着地後の押しの飛距離は、蹴られていない個体と同じ(ノックバックの欄を使わない)', () => {
+    // 段取り(resetGame=兵士の並び・乱数)からやり直す: 兵士の並びが乱数で変わると、着地の瞬間に兵士の弾が a に当たる回があり
+    // (被弾の直後は押しが弱く短い)、a だけ押しが縮んで落ちていた(CI の da=12.18 対 db≈1.9)。蹴りの中身とは無関係。
+    freezeWallClock();
+    setup();
     const a = put(300, -40);
     step(16);
     run(ESCORT_KICK_TO_HIT_MS + ESCORT_TOSS_MS + 60);
     const b = put(-300, 60);
     // 蹴りの命中が書いた被弾ストップ/ノックバック(実時間の時計)が残っていると、テストの速さ次第で a だけ止まる(flaky)。
     // ここで見たいのは「着地後の押しの飛距離」なので、両者の被弾系の時計を揃えて(消して)から押す。
-    useGameStore.setState(st => ({ enemies: st.enemies.map(e => (e.id === a || e.id === b) ? { ...e, hitStunUntil: undefined, knockbackUntil: undefined } : e) }));
+    // 押しの免疫(knockbackImmuneUntil)も同じ理由で揃える(兵士の弾が当たった回にだけ立つ。蹴りそのものは免疫を書かない)。
+    useGameStore.setState(st => ({ enemies: st.enemies.map(e => (e.id === a || e.id === b) ? { ...e, hitStunUntil: undefined, knockbackUntil: undefined, knockbackImmuneUntil: undefined } : e) }));
     const ay0 = enemy(a).y, by0 = enemy(b).y;
+    // ★押しの時計(knockbackUntil・押しの免疫・updateEnemies の now)は**壁時計(Date.now)**で進む。実時間のまま回すと、
+    //   負荷で20フレームの間の実時間がばらつき、片方だけ押しが早く切れる/伸びる(CI で da=12.18 対 db≈1.8 の flaky)。
+    //   ⇒ テストの頭(段取りの前)から壁時計をフレームと同じ歩み(16ms)で進め、乱数も固定シードにしてある。比べる中身(2体の飛距離)は不変。
     useGameStore.getState().knockbackEnemy(a, 0, 1, 1);
     useGameStore.getState().knockbackEnemy(b, 0, 1, 1);
-    for (let k = 0; k < 20; k++) { useGameStore.setState(s => ({ gameTime: s.gameTime + 16 })); useGameStore.getState().updateEnemies(0.016); }
+    for (let k = 0; k < 20; k++) {
+      fakeWall += 16;
+      useGameStore.setState(s => ({ gameTime: s.gameTime + 16 })); useGameStore.getState().updateEnemies(0.016);
+    }
     const da = enemy(a).y - ay0, db = enemy(b).y - by0;
     expect(db).toBeGreaterThan(1);
     expect(Math.abs(da - db)).toBeLessThan(db * 0.03);

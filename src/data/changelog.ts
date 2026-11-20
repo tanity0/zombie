@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5674', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5673', items: [
     '孫悟空は格闘で倒すたびに強くなり、名と色が変わる。倒すと格闘の技を体得していく',
     '踵落とし・蹴り上げ・土竜は、孫悟空を倒して体得するまで使えない',
