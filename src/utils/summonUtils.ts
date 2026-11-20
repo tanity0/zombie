@@ -31,6 +31,8 @@ export const ALCHEMY_RARE_SUCTION_SPEED = 320;          // 吸引速度(px/s)
 // 旧シアン(0x38bdf8)は敵アセット流用の絵に乗せると青系の敵と紛れた。**金色**は敵側に存在しない色
 // なので一目で味方と分かる。半透明(守護霊と同じ GHOST_ALLY_ALPHA)は描画側(drawSummon)が掛ける。
 export const ALCHEMY_SUMMON_TINT = 0xffd700;
+/** 召喚の歩く速さ(全レベル共通)。Lv1 のバットの足(75)に揃えた。 */
+export const ALCHEMY_SUMMON_SPEED = 75;
 export const SHOP_ALCHEMY_COST = 100;                   // 商人での錬金術カード価格
 
 const clampLevel = (lvl: number): number => Math.max(1, Math.min(3, Math.round(lvl)));
@@ -72,7 +74,7 @@ export const buildSummon = (level: number, kind: SummonKind, x: number, y: numbe
     y: y - size.height / 2,
     width: size.width,
     height: size.height,
-    speed: getEnemyBaseSpeed(type),
+    speed: ALCHEMY_SUMMON_SPEED, // 種類によらず全レベル同じ速さ(社長指示2026-11-20「錬金術は全部同じ速さで」)
     health: hp,
     maxHealth: hp,
     damage: ALCHEMY_SUMMON_DAMAGE,

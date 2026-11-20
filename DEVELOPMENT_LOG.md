@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5685 — 錬金術の召喚の速さを全レベル共通に【2026-11-21 00:21 JST】
+- 社長指示「錬金術は全部同じ速さで」: 召喚の speed を型の足から `ALCHEMY_SUMMON_SPEED`=75(Lv1 バットの足)へ(`src/utils/summonUtils.ts`)。レア召喚は従来どおり。テスト1件追加。
+- 検証: typecheck・eslint・summon 17件。
+
 ## v0.25.5684 — 揺れるテスト(幻影の移動速度)を固定【2026-11-20 23:25 JST】
 - `src/utils/phantomBuildApplied.test.ts`「移動速度」: 原因=幻影の id(Date.now+Math.random)から頭脳の乱数シードを作るため、約8%の id で1.4秒ずっと様子見/緩い歩きになり速さが閾値に届かない(負荷とは無関係・300回で23回落ちを実測)。Date.now をシミュ時刻へ・Math.random を0.5に固定(検査は弱めていない)。単体5回・全体1回で通過。製品のバグではない。
 - 報告にあった poiTouch の <50ms の落ちは v0.25.5675 で固定済み(現行ファイルにその検査は無い)。

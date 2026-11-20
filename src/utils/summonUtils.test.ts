@@ -1,6 +1,6 @@
 // 錬金術の召喚(通常個体)のレベル別の型と、装備画面の絵(社長指示2026-11-20「錬金術 レベル1の絵はバットで、2はゾンビで、3は伐採人で」)。
 import { describe, it, expect } from 'vitest';
-import { ALCHEMY_SUMMON_TYPE_BY_LEVEL, ALCHEMY_SUMMON_HP_BY_LEVEL, ALCHEMY_SUMMON_DAMAGE, buildSummon } from './summonUtils';
+import { ALCHEMY_SUMMON_TYPE_BY_LEVEL, ALCHEMY_SUMMON_HP_BY_LEVEL, ALCHEMY_SUMMON_DAMAGE, ALCHEMY_SUMMON_SPEED, buildSummon } from './summonUtils';
 import { getEnemyBaseSize } from './enemyUtils';
 import { variantTextureName } from './enemyVariant';
 import { attackSheetFrames, sweepSheetSplit, walkSheetFrames } from './enemySheets';
@@ -48,5 +48,11 @@ describe('錬金術の装備画面の絵', () => {
   });
   it('錬金術以外はレベルを渡しても変わらない', () => {
     expect(subWeaponIconName('whip', 3)).toBe(subWeaponIconName('whip'));
+  });
+});
+
+describe('錬金術の召喚の速さ', () => {
+  it('種類によらず全レベル同じ速さ', () => {
+    expect([1, 2, 3].map(l => buildSummon(l, 'normal', 0, 0).speed)).toEqual([ALCHEMY_SUMMON_SPEED, ALCHEMY_SUMMON_SPEED, ALCHEMY_SUMMON_SPEED]);
   });
 });
