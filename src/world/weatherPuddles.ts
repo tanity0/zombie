@@ -4,7 +4,11 @@
 // (エンティティとして持たない=出撃ごと・カメラ移動で位置がぶれない)。**判定は持たない**(見た目だけ・
 // 「ではない」条件=遊びの中身は変えない)。足を踏み入れた時の波紋のために「点が水たまりの中か」だけを返す。
 //
-// 避ける物: 出撃地点の周り・POI の前の空き地とその建物の絵の下・木の足元・松明の足元・拠点の円(呼び出し側が渡す)。
+// 避ける物: 出撃地点の周り・POI の前の空き地とその建物の絵の下・木の足元と木の絵の下・花の絵の下・松明の足元・
+// 拠点の円(呼び出し側が渡す)。
+// ★「絵の下」も避ける理由(社長指示2026-11-20「枯れ木などの足元に水たまりが重なる」): 木や花の絵は足元から
+//   上(奥)へ立ち上がるので、足元より奥にある水たまりは絵の根元・幹・枝の間から透けて「重なって」見える。
+//   足元の周りの楕円だけでは防げないため、絵が立つ範囲(足元から上の矩形)に水たまりの楕円が掛かったら置かない。
 // ステージ1には「道」のデータが無い(森の床は1枚の地面)ので、道は避ける対象に無い。
 //
 // RENDERER-AGNOSTIC: PixiJS を import しない。描画は pixi/weatherWet.ts が読んで並べるだけ。
@@ -12,6 +16,7 @@
 import { isInPoiClearing } from './poiClearings';
 import { treesInRegion } from './trees';
 import { torchesInRegion } from './torches';
+import { forestFlowersInRegion, FLOWER_DISPLAY_H } from './forestDecor';
 
 /** 水たまりの種類(public/sprites/weather/<name>.png と <name>-water.png の対)。 */
 export const PUDDLE_VARIANTS = [
@@ -45,6 +50,20 @@ export const PUDDLE_SAFE_RADIUS = 110;
 export const PUDDLE_TREE_CLEAR = 70;
 /** 松明の足元からこれ以内には置かない。 */
 export const PUDDLE_TORCH_CLEAR = 80;
+/** 木の絵が地面の上に立つ範囲(scale 1・world px)。描画(pixiScene.syncTrees)の箱 48×64×TREE_VISUAL_SCALE(2.475)に
+ *  絵(206×230)を収めた寸法=幅 119・高さ 133。足元から上へ高さぶん・左右へ半幅ぶん。 */
+export const PUDDLE_TREE_ART_HALF_W = 60;
+export const PUDDLE_TREE_ART_H = 133;
+/** 花の絵の幅÷高さ(花の絵はほぼ正方形よりやや縦長)。高さは FLOWER_DISPLAY_H×個体scale。 */
+export const PUDDLE_FLOWER_ART_ASPECT = 0.9;
+/** 絵の範囲を避ける時の遠近の見込み: 画面の手前の物は遠近で大きく描かれる(最大 1.7 倍)ので、範囲と楕円をこの倍率で広げる。 */
+export const PUDDLE_PROP_DEPTH_ALLOW = 1.25;
+/** 絵の範囲と水たまりの縁の間に空ける隙間(world px)。 */
+export const PUDDLE_PROP_GAP = 12;
+/** 水面だけ(縁の絵なし・小物なし)の薄い水の膜になる割合(社長指示2026-11-20「水だけの絵も配置して欲しいかも」)。 */
+export const PUDDLE_WATER_ONLY_RATE = 0.35;
+/** 1つの水たまりの置き場所を区画の中で何か所まで試すか(避ける物に当たったら次の候補へ)。 */
+export const PUDDLE_PLACE_TRIES = 8;
 /** 拠点の円の外側へ足す余白(円の縁に水たまりが掛からない)。 */
 export const PUDDLE_BASE_PAD = 60;
 /** POI の建物の絵(足元より奥)の下にも置かない深さ。空き地(poiClearings)は足元の 60 奥までしか無いため。 */
@@ -69,13 +88,31 @@ export interface Puddle {
   /** 地面上の半径(楕円・world px)。 */
   rx: number;
   ry: number;
+  /** true=水面(帯1)だけの薄い水の膜。縁の絵(帯2)も小物も無い。 */
+  waterOnly: boolean;
   debris: PuddleDebris[];
 }
 
 export interface PuddleAvoid {
   /** 拠点の円(中心と半径)。 */
   bases?: readonly { x: number; y: number; r: number }[];
+  /** 花(forestDecor)を引くステージ。省略時は 'stage-1'(雨上がりはステージ1だけ)。 */
+  stageId?: string;
 }
+
+/** 足元から上へ立つ絵の範囲(幅 halfW×2・高さ h)に、中心 (x, y)・半径 (rx, ry) の楕円が掛かるか。 */
+export const ellipseHitsPropArt = (
+  x: number, y: number, rx: number, ry: number,
+  footX: number, footY: number, halfW: number, h: number,
+): boolean => {
+  const A = PUDDLE_PROP_DEPTH_ALLOW;
+  const hw = halfW * A, top = footY - h * A;
+  const qx = Math.max(footX - hw, Math.min(footX + hw, x));
+  const qy = Math.max(top, Math.min(footY, y));
+  const ex = (rx + PUDDLE_PROP_GAP) * A, ey = (ry + PUDDLE_PROP_GAP) * A;
+  const dx = (x - qx) / ex, dy = (y - qy) / ey;
+  return dx * dx + dy * dy < 1;
+};
 
 const hash = (x: number, y: number): number => {
   const v = Math.sin(x * 47.613 + y * 19.271) * 61253.917;
@@ -93,12 +130,21 @@ const pickVariant = (u: number): PuddleVariant => {
   return PUDDLE_VARIANTS[PUDDLE_VARIANTS.length - 1];
 };
 
-const blocked = (x: number, y: number, rx: number, avoid: PuddleAvoid): boolean => {
+const blocked = (x: number, y: number, rx: number, ry: number, avoid: PuddleAvoid): boolean => {
   if (Math.hypot(x, y) < PUDDLE_SAFE_RADIUS + rx) return true;
   if (isInPoiClearing(x, y) || isInPoiClearing(x, y + PUDDLE_POI_BACK)) return true;
-  const pad = rx + PUDDLE_TREE_CLEAR * 1.3;
-  for (const t of treesInRegion(x - pad, y - pad, x + pad, y + pad)) {
+  // 木: treesInRegion は「区画の原点」で引く(足元は原点から最大 1区画+32×scale 先)ので、1区画ぶん広く引く。
+  const tPadX = (rx + PUDDLE_PROP_GAP + PUDDLE_TREE_ART_HALF_W * 1.25) * PUDDLE_PROP_DEPTH_ALLOW + 220;
+  const tPadY = (ry + PUDDLE_PROP_GAP + PUDDLE_TREE_ART_H * 1.25) * PUDDLE_PROP_DEPTH_ALLOW + 260;
+  for (const t of treesInRegion(x - tPadX, y - tPadY, x + tPadX, y + tPadY)) {
     if (Math.hypot(t.footX - x, (t.footY - y) * 1.6) < rx + PUDDLE_TREE_CLEAR * t.scale) return true;
+    if (ellipseHitsPropArt(x, y, rx, ry, t.footX, t.footY, PUDDLE_TREE_ART_HALF_W * t.scale, PUDDLE_TREE_ART_H * t.scale)) return true;
+  }
+  // 花(ステージ1の光る花): 足元から上へ立つ絵の範囲を避ける。
+  const fPad = (Math.max(rx, ry) + PUDDLE_PROP_GAP + FLOWER_DISPLAY_H) * PUDDLE_PROP_DEPTH_ALLOW;
+  for (const f of forestFlowersInRegion(avoid.stageId ?? 'stage-1', x - fPad, y - fPad, x + fPad, y + fPad)) {
+    const fh = FLOWER_DISPLAY_H * f.scale;
+    if (ellipseHitsPropArt(x, y, rx, ry, f.footX, f.footY, fh * PUDDLE_FLOWER_ART_ASPECT * 0.5, fh)) return true;
   }
   const tp = rx + PUDDLE_TORCH_CLEAR;
   for (const t of torchesInRegion(x - tp, y - tp, x + tp, y + tp)) {
@@ -116,20 +162,28 @@ const puddleInCell = (cx: number, cy: number, k: number, avoid: PuddleAvoid): Pu
   const art = PUDDLE_ART_SIZE[variant];
   const rx = (art.w / 2) * PUDDLE_ART_SCALE * scale;
   const ry = (art.h / 2) * PUDDLE_ART_SCALE * scale;
-  const x = cx * PUDDLE_CELL + PUDDLE_CELL * (0.1 + 0.8 * hash(cx * 1.3 + k * 5.7 + 2.1, cy * 2.7 - k * 3.3 + 0.4));
-  const y = cy * PUDDLE_CELL + PUDDLE_CELL * (0.1 + 0.8 * hash(cx * 3.1 - k * 4.1 + 6.6, cy * 1.1 + k * 2.6 - 3.8));
-  if (blocked(x, y, rx, avoid)) return null;
+  // 置き場所は区画の中で最大 PUDDLE_PLACE_TRIES か所を順に試す(1つ目は元の式のまま=避ける物が無ければ位置は変わらない)。
+  // 木や花の絵を避けると1か所だけでは半数近くが弾かれて水たまりがまばらになるため、空いた所へずらして数を保つ。
+  let x = 0, y = 0, found = false;
+  for (let a = 0; a < PUDDLE_PLACE_TRIES && !found; a++) {
+    const o = a * 13.37;
+    x = cx * PUDDLE_CELL + PUDDLE_CELL * (0.1 + 0.8 * hash(cx * 1.3 + k * 5.7 + 2.1 + o, cy * 2.7 - k * 3.3 + 0.4 - o * 0.7));
+    y = cy * PUDDLE_CELL + PUDDLE_CELL * (0.1 + 0.8 * hash(cx * 3.1 - k * 4.1 + 6.6 - o * 1.3, cy * 1.1 + k * 2.6 - 3.8 + o));
+    found = !blocked(x, y, rx, ry, avoid);
+  }
+  if (!found) return null;
   const flip = hash(cx * 9.1 + k, cy * 0.3 - k) < 0.5;
-  // 小物: 0〜2個を水たまりの縁の外側へ(下側=手前寄りに多め)。
+  const waterOnly = hash(cx * 7.7 - k * 3.9 + 1.7, cy * 4.1 + k * 6.3 - 2.9) < PUDDLE_WATER_ONLY_RATE;
+  // 小物: 0〜2個を水たまりの縁の外側へ(下側=手前寄りに多め)。水面だけの膜には添えない。
   const debris: PuddleDebris[] = [];
-  const nd = Math.floor(hash(cx * 4.4 + k * 0.9, cy * 6.2 - k * 1.3) * 3);
+  const nd = waterOnly ? 0 : Math.floor(hash(cx * 4.4 + k * 0.9, cy * 6.2 - k * 1.3) * 3);
   for (let j = 0; j < nd; j++) {
     const a = hash(cx * 1.9 + j * 3.7 + k, cy * 2.8 - j * 1.1 - k) * Math.PI * 2;
     const r = 1.05 + hash(cx * 3.3 - j * 2.2, cy * 0.9 + j * 5.1 + k) * 0.35;
     const dv = DEBRIS_VARIANTS[Math.floor(hash(cx * 6.6 + j * 2.9, cy * 5.5 - j * 4.4 + k) * DEBRIS_VARIANTS.length) % DEBRIS_VARIANTS.length];
     debris.push({ variant: dv, x: x + Math.cos(a) * rx * r, y: y + Math.sin(a) * ry * r + 3, flip: hash(j + cx, k - cy) < 0.5 });
   }
-  return { id: `pd-${cx}-${cy}-${k}`, variant, x, y, scale, flip, rx, ry, debris };
+  return { id: `pd-${cx}-${cy}-${k}`, variant, x, y, scale, flip, rx, ry, waterOnly, debris };
 };
 
 /**
@@ -159,15 +213,16 @@ export const puddlesInRegion = (
   return out;
 };
 
-/** 点 (x, y) が水たまりの水面(楕円の内側 80%)に入っているか。踏んだ時の波紋に使う。 */
-export const isInPuddle = (p: Pick<Puddle, 'x' | 'y' | 'rx' | 'ry'>, x: number, y: number): boolean => {
-  const dx = (x - p.x) / (p.rx * 0.8);
-  const dy = (y - p.y) / (p.ry * 0.8);
+/** 点 (x, y) が水たまりの水面(縁つきは楕円の内側 80%・水面だけの膜は縁が無いので 90%)に入っているか。踏んだ時の波紋に使う。 */
+export const isInPuddle = (p: Pick<Puddle, 'x' | 'y' | 'rx' | 'ry'> & { waterOnly?: boolean }, x: number, y: number): boolean => {
+  const k = p.waterOnly ? 0.9 : 0.8;
+  const dx = (x - p.x) / (p.rx * k);
+  const dy = (y - p.y) / (p.ry * k);
   return dx * dx + dy * dy <= 1;
 };
 
 /** 水たまりの一覧から、点 (x, y) が入っている最初の1つ(無ければ null)。 */
-export const puddleAt = <T extends Pick<Puddle, 'x' | 'y' | 'rx' | 'ry'>>(puddles: readonly T[], x: number, y: number): T | null => {
+export const puddleAt = <T extends Pick<Puddle, 'x' | 'y' | 'rx' | 'ry'> & { waterOnly?: boolean }>(puddles: readonly T[], x: number, y: number): T | null => {
   for (const p of puddles) if (isInPuddle(p, x, y)) return p;
   return null;
 };

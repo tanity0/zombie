@@ -6,7 +6,7 @@
 // 何をしているか:
 //   1. 色調整 … 世界の層(worldGroup)に色行列1枚(`gradeFilter`)。彩度を少し落とし、青く冷たく、暗部を少し持ち上げる。
 //   2. 水たまり … 帯2の水たまり(縁つき)を地面の層の一番下へ。帯1の「水面だけ」の対を内側へ重ねて水の層にする。
-//      帯2の小物を周りへ少し。
+//      帯2の小物を周りへ少し。一部(waterOnly)は縁も小物も無い帯1だけの薄い水の膜(水たまりの大きさいっぱい)。
 //   3. 映り込み … 空の色(水面の加算)・近くの松明の光だまりのにじみ(既存の映り込み=光だまりの色と強さをそのまま読む)。
 //      プレイヤーの近くの水たまりにだけ、キャラの逆さの薄い映り・光の筋・水面を渡る細い光の線を、
 //      水面(帯1)の形で切って描く(切り抜きは同時に最大 MAX_SLOTS 枚)。
@@ -374,12 +374,15 @@ export class WeatherWetLayer {
     pv.ground.scale.set(s * fx, s);
     pv.ground.alpha = ha;
     pv.ground.tint = h.envTint;
+    pv.ground.visible = !p.waterOnly; // 水面だけの膜は縁の絵を出さない(寸法の基準には使う)
     // 水面(帯1)は縁の内側へ。帯1は縁まで含む大きさで描かれているので、縮めて中心を揃える。
+    // 水面だけの膜は縁が無いので、縮めずに水たまりの大きさいっぱいに出す。
     const gw = pv.ground.texture.width, gh = pv.ground.texture.height;
     const ww = pv.water.texture.width || 1, wh = pv.water.texture.height || 1;
-    const wsx = (gw * WATER_FIT_X * s) / ww, wsy = (gh * WATER_FIT_Y * s) / wh;
+    const fitX = p.waterOnly ? 1 : WATER_FIT_X, fitY = p.waterOnly ? 1 : WATER_FIT_Y;
+    const wsx = (gw * fitX * s) / ww, wsy = (gh * fitY * s) / wh;
     for (const sp of [pv.water, pv.sky]) {
-      sp.position.set(p.x, p.y - gh * s * 0.02);
+      sp.position.set(p.x, p.y - (p.waterOnly ? 0 : gh * s * 0.02));
       sp.scale.set(wsx * fx, wsy);
     }
     pv.water.alpha = WATER_ALPHA * WATER_FADE * ha;
