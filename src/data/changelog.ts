@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5672', items: [
+    '作戦室の地図で、選んだボスの顔が少し大きく出る',
+  ] },
   { version: '0.25.5671', items: [
     'スープレックスで叩きつけた敵は、背中側に残るようになった',
     '空中のスープレックスは、掴んだ後に少し上がってから叩きつける',
