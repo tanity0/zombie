@@ -7,6 +7,7 @@ import type { AcrasielPlan } from '../utils/acrasielScript';
 import type { FirstAidKitState } from '../utils/firstAidKit';
 import type { MasteryKey } from '../data/mastery'; // 熟練度のキー(依存ゼロの純データモジュール・型だけ)
 import type { AvatarId } from '../data/avatars'; // アバターシステム(試験・第1弾)。依存ゼロの純データモジュール(循環しない)。
+import type { BrawlerJuggleFields } from '../utils/brawlerCombo'; // ★プレイヤーの浮き(research/BRAWLER.md §36-0・型だけ)
 import type { BrawlerState, KenkiPrepTex } from '../utils/brawlerTypes'; // サブウェポン「格闘」の状態機械(research/BRAWLER.md・型だけ)
 import type { SwordLungePlan } from '../utils/swordLunge'; // 剣ボスの踏み込み計画(依存ゼロの純関数モジュール=循環しない)。
 
@@ -95,6 +96,8 @@ export interface PvpPostureState {
 }
 
 export interface Player extends DashLocomotionState {
+  /** ★浮かせる攻撃で浮いている(research/BRAWLER.md §36-0・雑魚と同じ規則・高さ/時間/予算は雑魚の値)。浮いている間は動けず攻撃もできない。Date.now。 */
+  brAir?: BrawlerJuggleFields;
   /** 守護霊・幻影・分身の主語として作った疑似Player(utils/ghostBuild.resolveGhostBuild が付ける)。本人は undefined。スキル発動の表示を本人だけに出すのに使う。 */
   pseudoActor?: boolean;
   x: number;
@@ -455,6 +458,8 @@ export interface Player extends DashLocomotionState {
   whipCharged?: boolean;
   // 錬金術: 立ち止まりチャネルの開始 gameTime(ms)。0 = 非チャネル。5秒で召喚。
   alchemyChannelStartedAt?: number;
+  // 錬金術の溜めのリズム(research/ALCHEMY_RHYTHM.md)。溜めの間だけ在る(溜めの開始で作り、終わり/中断で消す)。
+  alchemyRhythm?: import('../utils/alchemyRhythm').AlchemyRhythmState;
   // ※刀(一閃)の katanaDash*/katanaRecoveryUntil は DashLocomotionState へ移設(守護霊と共有)。
   // 四神舞フリック=盾バッシュ風スライド。shijinSlideUntil が未来の間、入力を無視して
   // shijinSlideDir 方向へ一定速で滑る(movePlayer がダッシュと同様に上書き)。
@@ -705,6 +710,14 @@ export interface Enemy {
   // free=気絶していなくても滑り切る(亡霊の指差し=research/WRAITH_MUTANT.md §11・着地しても気絶しない普通の雑魚)。
   escortToss?: { fromX: number; fromY: number; toX: number; toY: number; startAt: number; endAt: number; free?: boolean };
   escortTossLandedAt?: number; // 着地した時刻(ゲーム時間・描画の砂埃/バウンド/気絶の輪のポップの起点)
+  // ★鞭の追加攻撃の引き寄せ(research/WHIP_FOLLOWUP.md §2)。引き寄せている間だけ在る(Date.now)。敵の更新はトスの直後にこの欄を見て
+  // from→to(敵の左上)を ease-out で動かす(壁・木・建物の押し出し+行ける帯を通す・押し戻されたらそこで止める)。dustAt=砂埃の尾の種。
+  whipPull?: { fromX: number; fromY: number; toX: number; toY: number; startAt: number; endAt: number; dustAt?: number };
+  // ★刀の切り傷(research/KATANA_TSUBAME.md §4)。一閃・燕返しが当たるたびに+1(最大4)。死ぬか殺陣が出るまで残る。描画は体の上の細い斜めの赤線。
+  katanaCuts?: number;
+  // ★燕返しの吹き飛び中の血の尾(§1・社長「ノックバックは斬のストップの後、血を吹きながら」)。この時刻(Date.now)まで、押されて動いている間だけ血を吹く。bleedAt=最後に吹いた時刻。
+  tsubameBleedUntil?: number;
+  tsubameBleedAt?: number;
   // 最後に蹴り飛ばした兵士と時刻(ゲーム時間)。着地で escortToss が消えても残す。蹴り直しで上書き。
   // プレイヤーが窓(ESCORT_KICK_ASSIST_WINDOW_MS)の内に倒したら、その兵士が一言(utils/escortToss.kickAssistShouldSpeak)。
   escortKickBy?: EscortKickRecord;
@@ -827,11 +840,16 @@ export interface Enemy {
   chaffMoveCdUntil?: number;
   // ゾンビの構えの赤2回点滅の錨(gameTime ms・2026-10-14)。構えに入る時に「固まる瞬間」を先に焼く(未来の時刻でよい=その時まで点かない)。
   chaffBlinkAt?: number;
-  // bat専用: 円の中心(プレイヤー座標を一次遅れで追った点。生の座標だと「ロックオン軌道」になる)。
+  // bat: 円の中心(プレイヤー座標を一次遅れで追った点。生の座標だと「ロックオン軌道」になる)。
+  // skeleton(s-arc): 弧を組む軸(弧の頭で発火距離以内に収め、以後は骸骨の歩く速さまでしか生のプレイヤーへ寄らない
+  // =`chaffMoves.skeletonArcAnchorStart/Step`)。
   chaffOrbitCx?: number;
   chaffOrbitCy?: number;
   // skeleton専用: どちら側(添字由来)へ回り込むか。具体の意味づけは実装側(§16-2)で定める。
   chaffArcSide?: boolean;
+  // bat/skeleton: 間合いに入り技後CDも明けているのに枠(同時に構える2体)が取れずに待ち始めた gameTime。
+  // 待ちすぎた個体は次の空き枠を近い個体より先に取る(`chaffMoves.CHAFF_SLOT_WAIT_MAX_MS`)。
+  chaffSlotWaitSince?: number;
   // ★ゾンビ専用(§16-3zクリエイティブ監査#3): z-recover(硬直)が明けた瞬間のgameTime。
   // 硬直明けの一歩目に「0→満速の1フレーム段差」が出ないよう、歩行速度をこの時刻からの経過msで
   // 滑らかに立ち上げる(`chaffMoves.ts` の `zombieRecoverWalkRampMul`)。
@@ -1176,6 +1194,8 @@ export interface Enemy {
    * 報酬・遭遇の記録・格闘の頭脳はこの印で分ける(型は同じ guardian-phantom)。
    */
   phantomUnique?: PhantomUniqueKind;
+  /** ★孫悟空のレベル(research/BRAWLER.md §36-1・1〜4と済=5)。出した時に決める(練習=対策室は1)。無し=1。 */
+  kenkiLv?: 1 | 2 | 3 | 4 | 5;
   /**
    * 徘徊の枠で遠くに出した固有の幻影(拳鬼)が、まだ画面に入っていない(名前の帯・アテンションを出す前)。
    * この間はボス戦のカメラ(引き・ボスの方への寄せ)を掛けない(社長実機2026-11-11「拳鬼が出たタイミングかな?変なカメラワークになった」)。
@@ -3223,6 +3243,19 @@ export interface GameBounds {
 
 // Visual-only effects. The game loop spawns these and never reads them back;
 // only the renderer consumes them. They have no gameplay impact.
+/**
+ * ★殺陣(research/KATANA_TSUBAME.md §4)。発動中だけ store に在る(時刻は Date.now)。描画は読むだけ:
+ * 画面全体を赤で覆い(世界の上)、プレイヤーと targetId の敵だけを黒い影で、strikes の白い筋をその上に描く。
+ * lastStrikeEndAt=最後の1発の止めが明ける時刻(ここから通常の画面へ戻り始める)・endAt=戻り切る時刻。
+ */
+export interface SatsujinState {
+  targetId: string;
+  startAt: number;
+  lastStrikeEndAt: number;
+  endAt: number;
+  strikes: { fromX: number; fromY: number; toX: number; toY: number; at: number }[];
+}
+
 export type VisualEffect =
   | {
       kind: 'particle';
@@ -3454,6 +3487,8 @@ export type VisualEffect =
       fromX: number; fromY: number;
       toX: number; toY: number;
       halfWidth: number; // 当たり帯の半幅(px)
+      /** ★鞭の引き寄せ(research/WHIP_FOLLOWUP.md §2): 先端をこの敵の今の中心へ追わせ、柄をプレイヤーの今の中心へ追わせる(敵が寄るほど鞭が縮む=巻き取り)。 */
+      followEnemyId?: string;
       color: string;
       createdAt: number;
       duration: number;

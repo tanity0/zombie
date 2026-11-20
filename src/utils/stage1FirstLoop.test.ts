@@ -10,6 +10,7 @@ import {
   LOOP1_OBJECTIVE_TEXT, LOOP1_REPORT_LINES, loop1BaseCaptureTutorialDue, enqueueLoop1Tutorial, nextLoop1Tutorial,
   LOOP1_ARRIVAL_LINES, LOOP1_HELP_COMM_LINES, LOOP1_DUO_REVEAL_DELAY_MS, tickLoop1DuoWait, loop1HospitalPlaced, loop1ObjectiveText,
   loop1KomaNow, LOOP1_CAPTURE_PEAK_MS, loop1ModeBarTutorialDue, loop1ModeHandBackDue,
+  loop1LockStep, loop1LockFreezesGameTime, LOOP1_BASE_NEAR_DIST,
   LOOP1_WEST_SECTOR, loop1InWestSector, loop1WrongWayRegion, loop1WrongWayPeak, stepLoop1WrongWay, LOOP1_WRONG_WAY_COOLDOWN_MS,
   isStage1GuardianLockRun, type Stage1GuardianLockInput, stage1GuardianLockShown, stage1RunCompanion, STAGE1_LOCKED_COMPANION,
   stage1GuardianTutorialDue, STAGE1_GUARDIAN_LOCK_NOTE,
@@ -191,7 +192,11 @@ describe('段階の遷移(§4)', () => {
     expect(ph).toBe('baseComm');
     expect(loop1HospitalPlaced(ph)).toBe(false);
     expect(go({ tutorialIdle: true })).toBeNull();
-    expect(go({ commEnded: true })).toBe('placeHospital');
+    expect(go({ commEnded: true })).toBe('queueDetour'); // 軍人の通信の後に「寄り道」(社長指示2026-11-20)
+    expect(ph).toBe('detourTut');
+    expect(loop1HospitalPlaced(ph)).toBe(false);
+    expect(go({ commEnded: true })).toBeNull(); // 「寄り道」を閉じるまで廃病院は出ない
+    expect(go({ tutorialIdle: true })).toBe('placeHospital');
     expect(ph).toBe('hospital');
     expect(loop1HospitalPlaced(ph)).toBe(true);
     expect(go({ vaccineTaken: true })).toBe('vaccineTaken');
@@ -223,7 +228,7 @@ describe('段階の遷移(§4)', () => {
   });
   it('右上の目的の1行は段で切り替わる', () => {
     const want: Record<Loop1Phase, string> = {
-      base: '西の拠点へ向かう', afterBase: '廃病院へ向かう', baseComm: '廃病院へ向かう', hospital: '廃病院へ向かう',
+      base: '西の拠点へ向かう', afterBase: '廃病院へ向かう', baseComm: '廃病院へ向かう', detourTut: '廃病院へ向かう', hospital: '廃病院へ向かう',
       duoWait: '二人組の元へ向かう', duoAttention: '二人組の元へ向かう', duo: '二人組の元へ向かう', talk: '二人組の元へ向かう',
       enclosure: '二人組の救助', goal: '二人組の安否確認', thanks: '二人組の安否確認', won: '二人組の安否確認',
     };
@@ -231,7 +236,7 @@ describe('段階の遷移(§4)', () => {
   });
   it('通常湧きを止めるのは囲いの間だけ', () => {
     expect(loop1HoldsNormalSpawns('enclosure')).toBe(true);
-    for (const p of ['base', 'afterBase', 'baseComm', 'hospital', 'duoWait', 'duoAttention', 'duo', 'talk', 'goal', 'thanks', 'won'] as Loop1Phase[]) expect(loop1HoldsNormalSpawns(p)).toBe(false);
+    for (const p of ['base', 'afterBase', 'baseComm', 'detourTut', 'hospital', 'duoWait', 'duoAttention', 'duo', 'talk', 'goal', 'thanks', 'won'] as Loop1Phase[]) expect(loop1HoldsNormalSpawns(p)).toBe(false);
     expect(loop1HoldsNormalSpawns(null)).toBe(false);
   });
   it('二人はワクチン取得後から立ち、待機円は到着まで', () => {
@@ -246,6 +251,21 @@ describe('段階の遷移(§4)', () => {
     expect(loop1DuoMarkVisible('duo')).toBe(true);
     expect(loop1DuoMarkVisible('talk')).toBe(false);
     expect(loop1DuoNpcView(null)).toBeNull();
+  });
+});
+
+describe('到着の会話は世界を止める(社長報告2026-11-20)', () => {
+  it('流れ切るまで止めたまま、到着は解く・お礼(v4 の納品)はクリア', () => {
+    expect(loop1LockStep({ talk: 'arrival', commEnded: false })).toBe('hold');
+    expect(loop1LockStep({ talk: 'arrival', commEnded: true })).toBe('release');
+    expect(loop1LockStep({ talk: 'thanks', commEnded: false })).toBe('hold');
+    expect(loop1LockStep({ talk: 'thanks', commEnded: true })).toBe('win');
+    expect(loop1LockStep({ talk: null, commEnded: true })).toBe('win'); // v4 の納品は従来どおり
+  });
+  it('ゲーム時刻を止めたまま通信だけ進めるのは到着だけ', () => {
+    expect(loop1LockFreezesGameTime('arrival')).toBe(true);
+    expect(loop1LockFreezesGameTime('thanks')).toBe(false);
+    expect(loop1LockFreezesGameTime(null)).toBe(false);
   });
 });
 
@@ -368,12 +388,13 @@ describe('出さない物・文言・台詞・チュートリアル', () => {
     expect(getTutorial('base-capture')?.archiveAlways).toBeFalsy();
     expect(getTutorial('base-use')?.archiveAlways).toBeFalsy();
   });
-  it('「拠点の確保」は軍人がサークルに入った(滞在が始まった)最初の瞬間に1回だけ', () => {
-    expect(loop1BaseCaptureTutorialDue({ queued: false, baseDwellMs: 0, baseCaptured: false })).toBe(false);
-    expect(loop1BaseCaptureTutorialDue({ queued: false, baseDwellMs: 16, baseCaptured: false })).toBe(true);
-    expect(loop1BaseCaptureTutorialDue({ queued: true, baseDwellMs: 16, baseCaptured: false })).toBe(false);
-    // 進みを見ずに確保が済んでも、確保より前に1回積む
-    expect(loop1BaseCaptureTutorialDue({ queued: false, baseDwellMs: 0, baseCaptured: true })).toBe(true);
+  it('「拠点の確保」はプレイヤーが西の拠点に近づいた最初の瞬間に1回だけ(社長指示2026-11-20)', () => {
+    expect(LOOP1_BASE_NEAR_DIST).toBe(600);
+    expect(loop1BaseCaptureTutorialDue({ queued: false, playerDistToBase: LOOP1_BASE_NEAR_DIST + 1, baseCaptured: false })).toBe(false);
+    expect(loop1BaseCaptureTutorialDue({ queued: false, playerDistToBase: LOOP1_BASE_NEAR_DIST, baseCaptured: false })).toBe(true);
+    expect(loop1BaseCaptureTutorialDue({ queued: true, playerDistToBase: 10, baseCaptured: false })).toBe(false);
+    // 近づかずに確保が済んでも、確保より前に1回積む
+    expect(loop1BaseCaptureTutorialDue({ queued: false, playerDistToBase: 99999, baseCaptured: true })).toBe(true);
     expect(createStage1LoopState(0).baseCaptureTutQueued).toBe(false);
     expect(createStage1LoopState(0).pendingTutorials).toEqual([]);
   });

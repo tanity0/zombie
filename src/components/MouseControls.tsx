@@ -76,6 +76,8 @@ const MouseControls: React.FC = () => {
       const gs = useGameStore.getState();
       if (gs.rhythm.active) { gs.rhythmInput('flick', d); markPcFlick(); }
       // ★被弾反撃(research/HIT_RETALIATION.md §3): 窓の間の右クリック(カーソル方向)を最初に反撃として判定。不成立なら従来のフリック。
+      // ★当たった直後の追加攻撃(鞭/燕返し・受付300msの間だけ優先)。
+      else if (gs.tryFlickFollowup(d.x, d.y)) { /* 出た */ }
       else if (!gs.tryHitRetaliation(d.x, d.y)) performFlickAction(d.x, d.y);
     }
   }, [updateAim, cursorDir]);

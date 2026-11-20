@@ -70,6 +70,10 @@ export const deriveChaffMoveGrants = (
   enemies: readonly Pick<Enemy, 'id' | 'type' | 'aiPhase' | 'x' | 'y' | 'width' | 'height'>[],
   pcx: number, pcy: number,
   wantsSlot: (enemy: Pick<Enemy, 'id' | 'type' | 'aiPhase' | 'x' | 'y' | 'width' | 'height'>) => boolean,
+  // ★待ちすぎの個体を先に通す(2026-11-20 社長「旋回が無限に追いかけてきてる」)。省略時は従来どおり近い順のみ。
+  //   `overdueSince` が数値を返す個体(=間合いで `CHAFF_SLOT_WAIT_MAX_MS` 以上待った)は、待ち始めの早い順に
+  //   近い個体より前へ並ぶ。**枠の数(2体)は変えない**=同時に構える数は今までどおり。
+  overdueSince?: (enemy: Pick<Enemy, 'id' | 'type' | 'aiPhase' | 'x' | 'y' | 'width' | 'height'>) => number | undefined,
 ): ReadonlySet<string> => {
   const held = enemies.filter(isChaffSlotHolding);
   const grants = new Set<string>(held.map(e => e.id));
@@ -79,12 +83,34 @@ export const deriveChaffMoveGrants = (
     .filter(e => CHAFF_MOVE_TYPES.has(e.type) && !isChaffSlotHolding(e) && wantsSlot(e))
     .map(e => {
       const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-      return { id: e.id, d2: (ecx - pcx) ** 2 + (ecy - pcy) ** 2 };
+      return { id: e.id, d2: (ecx - pcx) ** 2 + (ecy - pcy) ** 2, over: overdueSince?.(e) ?? Infinity };
     })
-    .sort((a, b) => a.d2 - b.d2);
+    .sort((a, b) => (a.over - b.over) || (a.d2 - b.d2));
   for (let i = 0; i < Math.min(openSlots, candidates.length); i++) grants.add(candidates[i].id);
   return grants;
 };
+
+/**
+ * ★間合いで枠を待つ上限(2026-11-20 社長「スケルトン…旋回してから攻撃にはいるけど、その旋回が無限に
+ * 追いかけてきてる」)。間合い(発火距離)に入り技後CDも明けているのに枠が空かない個体は、保つ層の円
+ * (`keepRange`)でプレイヤーの周りを回り続ける。枠は**近い順**なので、帯の外寄りの個体は近い個体に
+ * 毎回負け、実測(シミュ層・雑魚11体)で骸骨が**最長15秒**技に入らずに回り続けた。
+ * ⇒ この時間を超えて待った個体は、次に空いた枠を**近い個体より先に**取る(`deriveChaffMoveGrants`)。
+ */
+export const CHAFF_SLOT_WAIT_MAX_MS = 2500;
+
+/**
+ * 待ちの時計(`Enemy.chaffSlotWaitSince`)の次の値。**枠を欲しがっていて取れていない間だけ**進む
+ * (間合いの外・技後CD中・技の最中は消す=次に間合いへ入った時から数え直す)。
+ */
+export const nextChaffSlotWaitSince = (
+  since: number | undefined, wantsSlot: boolean, granted: boolean, gameTime: number,
+): number | undefined => (wantsSlot && !granted ? (since ?? gameTime) : undefined);
+
+/** 待ちの上限を超えたか(超えた個体の「待ち始め」を返す=古い順に並べる鍵)。 */
+export const chaffSlotOverdueSince = (
+  since: number | undefined, gameTime: number,
+): number | undefined => (since !== undefined && gameTime - since >= CHAFF_SLOT_WAIT_MAX_MS ? since : undefined);
 
 /**
  * ★旧 `deferFrozenClocksBy`(凍結dtの繰り下げ)は **PACING_PUZZLE.md §16-H で破棄した**
@@ -595,6 +621,38 @@ export const skeletonWantsChaffSlot = (
  * クリエイティブ監査#16。添字は使わない)。`u`は0..1の進捗(呼び手がease済みの値を渡す=
  * ここは幾何だけを担う純関数)。
  */
+/**
+ * ★回り込みの「軸」(弧を組む中心=プレイヤー側の点)の追い方(2026-11-20 社長「プレイヤーを追尾する攻撃前の
+ * 移動が…射程距離を無視してプレイヤーにくっついてくるのを、射程に収めて」「スケルトン…旋回が無限に
+ * 追いかけてきてる」)。
+ * 旧: 弧は毎フレーム**生のプレイヤー中心**で組み直していた。弧の位置は式が直接決める(速度で積まない)ので、
+ * しゃがみの間に逃げても弧が**どこまでも**付いてきた(実測: 素の速さ60px/sの骸骨が、走るプレイヤーを追って
+ * 弧の間 **最大574px/s** で動き、必ず横100pxに付いた)。
+ * 新: 軸は ①弧の頭で「骸骨から発火距離(`SKELETON_TRIGGER_PX`)以内」に収める ②以後は生のプレイヤーへ
+ * **骸骨の素の歩く速さまで**しか寄らない。**止まっている/ゆっくり動くプレイヤーには今までと1pxも変わらない**
+ * (軸=プレイヤー)。走って間合いの外へ出たプレイヤーにだけ、弧が届かなくなる(=噛みは空を切る)。
+ */
+export const skeletonArcAnchorStart = (
+  ecx: number, ecy: number, pcx: number, pcy: number,
+): { x: number; y: number } => {
+  const dx = pcx - ecx, dy = pcy - ecy;
+  const d = Math.hypot(dx, dy);
+  if (d <= SKELETON_TRIGGER_PX) return { x: pcx, y: pcy };
+  const k = SKELETON_TRIGGER_PX / d;
+  return { x: ecx + dx * k, y: ecy + dy * k };
+};
+
+/** 軸を生のプレイヤーへ `maxStepPx` まで寄せる(1フレームぶん)。 */
+export const skeletonArcAnchorStep = (
+  ax: number, ay: number, pcx: number, pcy: number, maxStepPx: number,
+): { x: number; y: number } => {
+  const dx = pcx - ax, dy = pcy - ay;
+  const d = Math.hypot(dx, dy);
+  if (d <= maxStepPx || d < 1e-6) return { x: pcx, y: pcy };
+  const k = Math.max(0, maxStepPx) / d;
+  return { x: ax + dx * k, y: ay + dy * k };
+};
+
 export const skeletonArcPoint = (
   startX: number, startY: number, pcx: number, pcy: number, side: boolean, u: number,
 ): { x: number; y: number } => {

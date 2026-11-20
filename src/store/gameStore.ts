@@ -7,7 +7,8 @@ import { SHUKUCHI_INVULN_MS, pickShukuchiTarget, shukuchiChainMult, shukuchiLand
 import { counterClashPoint } from '../utils/counterClash';
 import { create } from 'zustand';
 import type { TutorialSlide } from '../data/tutorials';
-import { isAvatarId, type AvatarId } from '../data/avatars';
+import { AVATARS, isAvatarId, type AvatarId } from '../data/avatars';
+import { isAvatarUnlocked, unlockAvatar, avatarRewardOnKenkiKill } from '../utils/avatarUnlock';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import type { SfxKey } from '../audio/audioManager';
 import { AWAKEN_CUTIN_MS } from '../utils/awakenCutin'; // SKILL_BUILD_REDESIGN.md §24
@@ -29,7 +30,7 @@ import {
 import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
-  VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
+  VisualEffect, SatsujinState, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, JunDeparture, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
@@ -124,6 +125,7 @@ import { resetRunRoute } from '../utils/runRoutes';
 import { bloodAwakenMult, bloodGainFor, applyBloodGain, bloodSizeMul, isBloodAwakening } from '../utils/bloodAwaken'; // B10 血の覚醒(THEONE_ROUND2 §3)
 import { bloodBurstShoves, BLOOD_AWAKEN_BURST_RADIUS } from '../utils/bloodAwakenBurst'; // B10 血の覚醒に入った瞬間の押し返し
 import { playerSuperArmorActive } from '../utils/superArmor'; // B12 スーパーアーマー(THEONE_ROUND2 §4)
+import { playerLaunchPatch, playerAirLocked } from '../utils/playerLaunch'; // ★プレイヤーも浮く(research/BRAWLER.md §36-0)
 import { meleeRecoverSpeedMult, MELEE_RECOVER_MS } from '../utils/meleeRecover'; // 近接を振ったあとの硬直(v0.25.4380)
 import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-3(使者のKB特例=免疫CD無視)
 import { clampRectInsideCircle } from '../world/arena';
@@ -305,6 +307,15 @@ import { stampMeleeSwingCommit } from '../utils/thorNihil';
 import { settleEpisode, type CounterReachShape } from '../utils/habitEpisode';
 import { ZOOM_MIN_ABS, isPointInZoomedViewport, zoomedViewportBounds } from '../utils/cameraZoom';
 import { meleeImpactPoint, meleeNumberPoint, bandBoxOverlap } from '../utils/meleeImpact';
+import {
+  isWhipFollowupOpen, classifyWhipFlick, whipPullTarget, whipPullPosAt, whipSlamMembers,
+  WHIP_PULL_MS, WHIP_SLAM_WIDTH_PX, WHIP_PULL_BLOCK_EPS_PX, WHIP_PULL_DUST_INTERVAL_MS, type WhipFollowupWindow,
+} from '../utils/whipFollowup';
+import { isFlickFollowupOpen } from '../utils/flickFollowup';
+import {
+  tsubameAccepts, tsubamePath, tsubameDashMs, nextKatanaCuts, triggersSatsujin, satsujinAngles, type TsubameWindow,
+  SATSUJIN_HITS, SATSUJIN_STRIKE_MS, SATSUJIN_FADE_OUT_MS, SATSUJIN_HALF_LEN_PX, SATSUJIN_FINAL_HITSTOP_MS,
+} from '../utils/katanaTsubame';
 import { screamerStartGate } from '../utils/screamerGate';
 import { blastLiftPatch, slasherLiftMove, blastLiftCloseness, slasherLaunchMinMs, COUNTER_LIFT_MOVE, counterLiftApplies, retaliateLiftPlan, KNIFE_HOLD_MOVE, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil } from '../utils/airLift';
 import { hunterWanderStep } from '../utils/hunterWander';
@@ -334,7 +345,7 @@ import { loggerZoneFor, loggerCanSweep, loggerSweepBand, LOGGER_SWEEP_FORWARD_OF
 import { getPityDropTuning } from '../utils/pityState';
 import { pickNpcLine, FOLLOW_TOGGLE_LINES, FAST_TRAVEL_ARRIVE_LINES } from '../data/npcLines';
 import {
-  buildSummon, ALCHEMY_RARE_CHANCE, ALCHEMY_MAX_NORMAL, ALCHEMY_AGGRO_RANGE,
+  buildSummon, ALCHEMY_MAX_NORMAL, ALCHEMY_AGGRO_RANGE,
   ALCHEMY_DESPAWN_DIST, ALCHEMY_FOLLOW_GAP_PX,
   ALCHEMY_ATTACK_RANGE, ALCHEMY_ATTACK_INTERVAL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE,
   ALCHEMY_RARE_SUCTION_MAX_TARGETS, ALCHEMY_RARE_SUCTION_SPEED, SHOP_ALCHEMY_COST,
@@ -443,7 +454,8 @@ import {
   batWantsChaffSlot, batOrbitDurationMs, batStrafeMs, batHoldMs, batOrbitSpin, batStrafeAngularMul,
   BAT_ORBIT_RADIUS_PX, BAT_ORBIT_SPEED_MULT, BAT_ORBIT_TAU_S, BAT_ORBIT_INTRUDE_MARGIN_PX, BAT_GRAB_HOLD_MS,
   // ★skeleton(PACING_PUZZLE.md §16-2・§16-8b手順7)。
-  skeletonWantsChaffSlot, skeletonArcPoint,
+  skeletonWantsChaffSlot, skeletonArcPoint, skeletonArcAnchorStart, skeletonArcAnchorStep,
+  nextChaffSlotWaitSince, chaffSlotOverdueSince, // 2026-11-20 間合いで枠を待ちすぎない/弧が射程の外まで付いてこない
   SKELETON_TRIGGER_PX, SKELETON_CROUCH_MS, SKELETON_ARC_MS, SKELETON_RECOVER_MS, SKELETON_RETREAT_SPEED_MULT,
   // ★プレイヤーの拘束(bat の掴み)。
   isPlayerGrabbed, ZOMBIE_LUNGE_MAX_MS,} from '../utils/chaffMoves';
@@ -489,6 +501,7 @@ import {
 } from '../utils/mimirLaserTrack';
 import { TELEGRAPH_TRACK_MS, stepTrackAim } from '../utils/telegraphTrack'; // §15追尾相パイロット(sweep限定)
 import { enemyFootBox, enemyHeadY, enemyHitStrip, playerFootBox } from '../pixi/renderSpec';
+import { newAlchemyRhythm, advanceAlchemyRhythm, tapAlchemyRhythm, alchemyRareChance } from '../utils/alchemyRhythm';
 // 雑魚の個体差+役割(社長指示v0.25.3176・案4+案3)。向きと速さだけを曲げる純関数。
 import { isChaffType, chaffTraits, chaffHeading, chaffSpeedMult } from '../utils/chaffMotion';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, nudgeToClearLabSpot, clearLabEnemySpot, LAB_START_SAFE_RADIUS, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD, setLabBrokenObstacleIds, type LabBrokenObstacle } from '../world/labWalls';
@@ -515,8 +528,10 @@ import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resol
 // 案山子(変異体対策室の練習枠): 体力を減らす合流点はこの1本を通す=案山子だけ倒れない(utils/scarecrow.ts)。
 import { enemyHealthAfterHit, isScarecrow, survivesEnemySweeps } from '../utils/scarecrow';
 import { planPracticeFacilities } from '../utils/practiceFacilities'; // 練習ランの開幕の大型武器庫+武器商人の置き場所
+import { punisherLiftPatch, punisherFlyerStopPatch } from '../utils/punisherImpact'; // パニッシャーの衝突の止め+小さな浮き
 import { killSlashNeckPosition } from '../utils/killSlashFx'; // KILL時の首元斬撃(fx/kill-slash・社長指示2026-09-16)
 import { heroBodyWallRect } from '../utils/heroScript'; // research/MUTANT_HERO.md: 英雄の体の壁(葉モジュール=循環しない)
+import { isBrawlerArtLearned, loadKenkiLevel, saveKenkiLevel, kenkiLevelAfterKill, kenkiKillCounts, brawlerArtLearnedOnKill, BRAWLER_ART_NAME, kenkiChronicleKillDetail, kenkiChronicleKillPhrase, brawlerArtChronicleDetail, brawlerArtChroniclePhrase, type KenkiLevel, type BrawlerArt } from '../utils/kenkiLevel'; // ★孫悟空のレベルと格闘技の体得(research/BRAWLER.md §36)
 import type { ThirdPartyShape } from '../utils/thirdPartyShape'; // 依存ゼロの葉(heroBlast は gameStore を読むので、そこから型を引くと循環する)
 
 // research/MUTANT_HERO.md §4-2: 「今プレイヤーにしか当たっていない技」を守護霊と英雄にも当てる入口。
@@ -1295,7 +1310,7 @@ const NEGLECT_DIST = 900;             // プレイヤーからこの距離以上
 const RETREAT_CHANCE_PER_SEC = 0.012; // 放置中に後退セリフを漏らす毎秒確率(たまーに)。CDで更に間引く
 const RETREAT_CAT_CD_MS = 45000;      // 後退カテゴリの再発話CD
 // 「拠点が見えてきた時」: 担当NPCが拠点中心へこの距離まで近づいたら=あと少し(進軍率≒80%/拠点が近距離)。
-const NEAR_BASE_DIST = 600;           // 拠点中心からこの距離内で「見えてきた」
+export const NEAR_BASE_DIST = 600;    // 拠点中心からこの距離内で「見えてきた」(ステージ1の1周目の「拠点の確保」も同じ値=LOOP1_BASE_NEAR_DIST)
 const BASE_NEAR_CAT_CD_MS = 25000;    // 拠点視認カテゴリの再発話CD
 // 「並走時」(頻度かなり低め): プレイヤーと近距離で一定時間並走したら、たまに漏らす。
 const COMPANION_DIST = 240;           // プレイヤーがこの距離内=並走中
@@ -1619,7 +1634,8 @@ export const getCarriedEquipId = (): string | null => loadCarriedEquip();
 // resetGame では消さない=carriedEquipと違い「ラン単位の持ち越し」ではなく恒久設定)。
 const AVATAR_KEY = 'zombie:avatar';
 const loadAvatarId = (): AvatarId | null => {
-  try { const r = localStorage.getItem(AVATAR_KEY); return isAvatarId(r) ? r : null; } catch { return null; }
+  // 手に入れていないアバター(進行リセットで消えた斗戦勝仏セット等)は付けていないことにする。
+  try { const r = localStorage.getItem(AVATAR_KEY); return isAvatarId(r) && isAvatarUnlocked(r) ? r : null; } catch { return null; }
 };
 const saveAvatarId = (id: AvatarId | null): void => {
   try {
@@ -2914,6 +2930,268 @@ const knifeHoldLiftPatch = (enemy: Enemy, now: number, gameTime: number, dmg: nu
   const airborneAfter = (out.brLiftUntil ?? enemy.brLiftUntil ?? 0) > now;
   Object.assign(out, BRC.brawlerLockOnHit(enemy, KNIFE_HOLD_MOVE, gameTime, now, { stopMs, enemyStopMs: stopMs, canHold, airborneAfter }).patch);
   return out;
+};
+// ---- ★鞭の追加攻撃(research/WHIP_FOLLOWUP.md)。受付・向きの判定は utils/whipFollowup の純関数。ここは敵への書き込みと演出だけ。 ----
+type WhipFollowupSet = (fn: (s: GameState) => Partial<GameState>) => void;
+/** 引き寄せの絵(鞭の巻き取り)を引き寄せより少し長く残す(ms)。 */
+const WHIP_PULL_FX_TAIL_MS = 160;
+/**
+ * 引き寄せてよい敵か(§2)。ボス級は動かさない(重い)・強個体は雑魚と同じ(区分=格闘の brawlerEnemyClass)。
+ * 専用の動かし手を持つ型(幻影・裏ボス・賞金首・英雄・旗手と列・塊の生け贄)と、軌道を持つ技の最中(跳び・突進)・兵士のトス中は動かさない。
+ */
+const whipPullable = (e: Enemy): boolean =>
+  BRC.brawlerEnemyClass(e) !== 'boss'
+  && !isGuardianPhantom(e.type) && !isHiddenBoss(e.type) && !isBountyType(e.type) && !isMutantHero(e.type)
+  && !isLibertyBearer(e.type) && !isHordeFollower(e) && !isLabCrawlerProxyType(e.type) && !e.labBait?.active
+  && e.aiPhase !== 'jump' && e.aiPhase !== 'charge' && !e.escortToss;
+/** 反対フリック=引き寄せ(§2)。当たった敵(押されて飛んでいる最中も)の押しを打ち消し、プレイヤーの手前へ寄せる(追加ダメージなし)。 */
+const whipFollowupPull = (get: () => GameState, set: WhipFollowupSet, w: WhipFollowupWindow, now: number): void => {
+  const ids = new Set(w.hitIds);
+  const pulledIds: string[] = [];
+  set(state => ({
+    enemies: state.enemies.map(e => {
+      if (!ids.has(e.id) || isCorpse(e) || isUntouchable(e) || e.health <= 0 || !whipPullable(e)) return e;
+      const to = whipPullTarget(state.player, e);
+      if (!to) return e; // もう手前にいる=動かさない
+      pulledIds.push(e.id);
+      return {
+        ...e,
+        whipPull: { fromX: e.x, fromY: e.y, toX: to.x, toY: to.y, startAt: now, endAt: now + WHIP_PULL_MS },
+        // 押しの速さは打ち消して引き寄せに置き換える(§2)。
+        knockbackVx: 0, knockbackVy: 0, knockbackUntil: now, knockbackShoveUntil: undefined,
+        knockbackStopFor: undefined, knockbackStopMs: undefined, vx: 0, vy: 0,
+      };
+    }),
+  }));
+  const g = get();
+  const p = g.player;
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  // 絵: 当たった敵ぜんぶへ鞭を伸ばして絡め、寄るほど縮む(先端が敵を、柄がプレイヤーを追う=描画の followEnemyId)。ボス級にも絡む(動かないだけ)。
+  for (const id of w.hitIds) {
+    const e = g.enemies.find(en => en.id === id);
+    if (!e || isCorpse(e)) continue;
+    const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+    g.spawnEffect({
+      kind: 'whip', id: `fx-whippull-${id}-${now}`, fromX: pcx, fromY: pcy, toX: ecx, toY: ecy,
+      halfWidth: WHIP_HIT_HALF_WIDTH, color: 'rgba(186,230,253,0.95)', createdAt: now, duration: WHIP_PULL_MS + WHIP_PULL_FX_TAIL_MS,
+      followEnemyId: id,
+    });
+    g.spawnBurst(ecx, ecy, '#bae6fd', 8, pcx - ecx, pcy - ecy); // 絡んだ瞬間の弾ける光(手前へ向けて)
+    if (pulledIds.includes(id)) {
+      // 引き始めの足元の砂埃(後ろへ蹴り出す)。尾は敵の更新(updateEnemies)が引き寄せの間に出す。
+      const d = Math.hypot(pcx - ecx, pcy - ecy) || 1;
+      g.spawnImageMark(ecx, e.y + e.height - 2, 'fx/dust-puff', {
+        scale: 0.42, scaleY: 0.55, duration: 620, tint: 0x9a8b7a, alpha: 0.75, moveX: -((pcx - ecx) / d) * 34, moveY: -6, fadeFrom: 0.3,
+      });
+    }
+  }
+  // 音: 鞭の「パシッ」を高く・巻き取りの振り音を速く。
+  void import('../audio/audioManager').then(m => { m.playSfx('whip-hit', 0.85, undefined, 1.3); m.playSfx('whip-swing', 0.6, 160, 1.55); });
+};
+/** 進行方向フリック=叩きつけ(§3)。帯+1撃目の当たりの敵に鞭の1撃目と同じ威力を当て、押さずに浮かせる(格闘の浮きの規則)。 */
+const whipFollowupSlam = (get: () => GameState, set: WhipFollowupSet, w: WhipFollowupWindow, now: number): void => {
+  const st = get();
+  const p = st.player;
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  const ux = w.dirX, uy = w.dirY;
+  const reach = WHIP_LENGTH_BY_LEVEL[whipLevel(p)];
+  const cand = st.enemies.filter(e => !isCorpse(e) && !isUntouchable(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e)));
+  const ids = whipSlamMembers(cand, pcx, pcy, ux, uy, reach, w.hitIds);
+  // 絵(当たりの有無に関わらず): 鞭を頭上から振り下ろして(縦の鞭)、帯の上を打つ(地面の鞭)。帯に沿って地割れと砂埃。
+  const footY = p.y + p.height - 2;
+  st.spawnEffect({
+    kind: 'whip', id: `fx-whipslam-up-${now}`, fromX: pcx - ux * 10, fromY: pcy - 150,
+    toX: pcx + ux * reach * 0.6, toY: footY + uy * reach * 0.6, halfWidth: WHIP_SLAM_WIDTH_PX / 2,
+    color: 'rgba(186,230,253,0.95)', createdAt: now, duration: Math.round(WHIP_DRAW_MS * 0.55),
+  });
+  st.spawnEffect({
+    kind: 'whip', id: `fx-whipslam-${now}`, fromX: pcx, fromY: footY, toX: pcx + ux * reach, toY: footY + uy * reach,
+    halfWidth: WHIP_SLAM_WIDTH_PX / 2, color: 'rgba(186,230,253,0.95)', createdAt: now, duration: WHIP_DRAW_MS,
+  });
+  st.spawnEffect({
+    kind: 'trail', id: `fx-whipslam-glow-${now}`, fromX: pcx, fromY: footY, toX: pcx + ux * reach, toY: footY + uy * reach,
+    color: 'rgba(125,211,252,1)', createdAt: now, duration: WHIP_DRAW_MS,
+  });
+  const ang = Math.atan2(uy, ux);
+  const px = -uy, py = ux; // 帯に直交
+  for (const [k, sc] of [[0.3, 0.7], [0.62, 0.95], [0.95, 1.15]] as const) {
+    const gx = pcx + ux * reach * k, gy = footY + uy * reach * k;
+    st.spawnImageMark(gx, gy, 'fx/ground-crack', { scale: sc, scaleY: 0.45, rot: ang * 0.25, duration: 1400, fadeFrom: 0.55, noPop: true, alpha: 0.9, ground: true });
+    st.spawnImageMark(gx + px * 14, gy + py * 6, 'fx/dust-puff', { scale: 0.34 * sc, scaleY: 0.6, duration: 820, tint: 0x9a8b7a, alpha: 0.7, moveX: px * 40, moveY: py * 14 - 10, fadeFrom: 0.3 });
+    st.spawnImageMark(gx - px * 14, gy - py * 6, 'fx/dust-puff', { scale: 0.3 * sc, scaleY: 0.6, duration: 760, tint: 0x8a7b6a, alpha: 0.65, moveX: -px * 40, moveY: -py * 14 - 10, fadeFrom: 0.3 });
+  }
+  st.spawnRing(pcx + ux * reach * 0.6, footY + uy * reach * 0.6, 14, reach * 0.75, 'rgba(214,196,160,0.75)', 4, 420, true);
+  // 音: 鞭を重く(低く)+地面の音。
+  void import('../audio/audioManager').then(m => {
+    m.playSfx('whip-swing', 0.9, undefined, 0.6);
+    m.playSfx('heavy-impact', 0.5);
+    m.playSfx('jump-land', 0.8, 220, 0.85);
+  });
+  if (ids.length === 0) return;
+  const before = new Map(get().enemies.filter(e => ids.includes(e.id)).map(e => [e.id, e] as const));
+  const res = get().performWhipStrike(ids); // 威力=鞭の1撃目と同じ(クリ・処刑・コンボ・報酬・数字も同じ経路)
+  if (res.hits > 0) set(() => ({ whipHitFxAt: Date.now() }));
+  const hit = new Set(res.hitIds ?? []);
+  const gt = get().gameTime;
+  set(state => ({
+    enemies: state.enemies.map(e => {
+      if (!hit.has(e.id) || isCorpse(e)) return e;
+      // 押しはしない(真上): この打撃の押しと、1撃目の押し(飛んでいる最中)の速さを打ち消す。引き寄せ中なら止める。
+      const base: Enemy = { ...e, knockbackVx: 0, knockbackVy: 0, whipPull: undefined };
+      const pre = before.get(e.id) ?? e;
+      if (!counterLiftApplies(pre, e.health, gt)) return base; // 技の最中は浮かせない・技は取り消さない(ナイフ・カウンターの浮きと同じ)
+      const jp = brawlerJugglePatch(base, BRC.brawlerEnemyClass(base), knifeLiftMove(BRC.brawlerAirborne(base, now)), now, false);
+      if (!jp) return base;
+      const out: Enemy = { ...base, ...jp };
+      if (jp.brLiftUntil !== undefined && jp.brLiftUntil > now) out.brBlastNoLiftUntil = knifeNoLiftUntil(pre, jp.brLiftUntil, now);
+      return out;
+    }),
+  }));
+  // 当たった敵の足元から砂埃が上がる。
+  const g2 = get();
+  for (const id of hit) {
+    const e = g2.enemies.find(en => en.id === id);
+    if (!e) continue;
+    const fx = e.x + e.width / 2, fy = e.y + e.height - 2;
+    g2.spawnImageMark(fx, fy, 'fx/dust-puff', { scale: 0.36, scaleY: 0.9, duration: 760, tint: 0x9a8b7a, alpha: 0.7, moveY: -34, fadeFrom: 0.3 });
+    g2.spawnImageMark(fx, fy + 2, 'fx/dust-ring', { scale: 0.45, scaleY: 0.4, duration: 520, tint: 0x9a8b7a, alpha: 0.6, noPop: true, fadeFrom: 0.2, ground: true });
+  }
+};
+// ---- ★刀の一閃の浮き・燕返しの吹き飛び・切り傷・殺陣(research/KATANA_TSUBAME.md)。判定は utils/katanaTsubame の純関数。 ----
+/** 一閃の浮きの段=格闘の4段目の打ち上げ(赤カウンターの浮きと同じ・叩き台)。 */
+const ISSEN_LIFT_MOVE: BRC.BrawlerMoveKey = COUNTER_LIFT_MOVE;
+/** 燕返しの吹き飛びの速さ=一閃の押しの満額(KNOCKBACK_SPEED・一閃は近さで0.5〜1倍)。 */
+const TSUBAME_KNOCKBACK_SPEED = KNOCKBACK_SPEED;
+/** 燕返しの血の尾の間隔(ms)。 */
+const TSUBAME_BLEED_INTERVAL_MS = 40;
+/**
+ * 一閃の浮き(社長「一閃は敵を浮かせる」): 格闘の浮き(brawlerJugglePatch=区分の重さ・拾える予算・ボスの止めの減衰)で4段目の高さ。
+ * 浮かせた敵は押しを打ち消して真上へ(一閃の押しは着地の位置から外向き=浮きの間に横へ滑ると浮きと喧嘩する)。浮かない敵(技の最中・終端の死神)は一閃の押しのまま。
+ */
+const issenLiftPatch = (e: Enemy, pre: Enemy, now: number, gt: number): Partial<Enemy> | null => {
+  if (!counterLiftApplies(pre, e.health, gt)) return null; // 技の最中は浮かせない・技は取り消さない(ナイフ・カウンターの浮きと同じ)
+  const jp = brawlerJugglePatch(e, BRC.brawlerLiftWeightClass(e, BRC.brawlerEnemyClass(e)), ISSEN_LIFT_MOVE, now, false);
+  if (!jp || (jp.brLiftUntil ?? 0) <= now) return jp;
+  return { ...jp, knockbackVx: 0, knockbackVy: 0, brBlastNoLiftUntil: knifeNoLiftUntil(pre, jp.brLiftUntil ?? now, now) };
+};
+/**
+ * 本人の一閃・燕返しが当たった敵へ重ねる: 切り傷+1(最大4)。一閃=浮き / 燕返し=止めの後に走った向きへ吹き飛ばす(浮かせない・血を吹きながら)。
+ * pre=当たる前の敵(浮きの予算・技の最中の判定は当たる前から数える)。
+ */
+const applyIssenHitPatch = (
+  get: () => GameState, set: WhipFollowupSet, hitIds: readonly string[], pre: ReadonlyMap<string, Enemy>, tsubameDir: { ux: number; uy: number } | null,
+): void => {
+  const now = Date.now();
+  const gt = get().gameTime;
+  const ids = new Set(hitIds);
+  set(state => ({
+    enemies: state.enemies.map(e => {
+      if (!ids.has(e.id) || isCorpse(e) || e.health <= 0) return e;
+      const cut: Partial<Enemy> = { katanaCuts: nextKatanaCuts(e.katanaCuts) };
+      if (!tsubameDir) {
+        const lp = issenLiftPatch(e, pre.get(e.id) ?? e, now, gt);
+        return { ...e, ...(lp ?? {}), ...cut };
+      }
+      // 燕返し(社長「ノックバックは斬のストップの後、血を吹きながら」): 押しの始まり=当たりの止めの明け。止めの間の押しの出だし(knockbackStopFor)は付けない=止めの間は動かない。
+      const startAt = Math.max(now, e.hitStunUntil ?? now);
+      const until = startAt + KNOCKBACK_DURATION;
+      return {
+        ...e, ...cut,
+        knockbackVx: tsubameDir.ux * TSUBAME_KNOCKBACK_SPEED, knockbackVy: tsubameDir.uy * TSUBAME_KNOCKBACK_SPEED,
+        knockbackUntil: until, knockbackStopFor: undefined, knockbackStopMs: undefined, knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
+        tsubameBleedUntil: until, tsubameBleedAt: undefined,
+      };
+    }),
+  }));
+};
+/** 殺陣を始める(§4): 傷を0へ・相手を止める・プレイヤーを無敵に・5発を90msおきに。燕返しの受付は閉じる。スローは使わない。 */
+const startSatsujin = (get: () => GameState, set: WhipFollowupSet, targetId: string, ux: number, uy: number): void => {
+  const now = Date.now();
+  const lastStrikeEndAt = now + (SATSUJIN_HITS - 1) * SATSUJIN_STRIKE_MS + SATSUJIN_FINAL_HITSTOP_MS;
+  const span = lastStrikeEndAt - now;
+  set(state => ({
+    satsujin: { targetId, startAt: now, lastStrikeEndAt, endAt: lastStrikeEndAt + SATSUJIN_FADE_OUT_MS, strikes: [] },
+    tsubameWindow: null,
+    player: {
+      ...state.player,
+      invulnerable: true,
+      invulnerableTime: state.player.invulnerable
+        ? Math.max(state.player.invulnerableTime, now - Math.max(0, INVULN_MS - span))
+        : now - Math.max(0, INVULN_MS - span),
+      ...abilityInvulnPatch(state.player, now, span),
+      katanaRecoveryUntil: Math.max(state.player.katanaRecoveryUntil, lastStrikeEndAt), // 殺陣の間は動かない(体は各方向へ瞬間移動する)
+    },
+    // 相手は殺陣の間ずっと止める(格闘の固まりと同じ欄=行動の時計も止まる)。押しは打ち消す。
+    enemies: state.enemies.map(e => (e.id === targetId
+      ? { ...e, katanaCuts: 0, brHoldUntil: Math.max(e.brHoldUntil ?? 0, lastStrikeEndAt), knockbackVx: 0, knockbackVy: 0 } : e)),
+  }));
+  notifyTechProc('satsujin');
+  const angles = satsujinAngles(Math.atan2(uy, ux), Math.random);
+  angles.forEach((a, k) => {
+    const strike = () => satsujinStrike(get, set, now, targetId, a, k === SATSUJIN_HITS - 1);
+    if (k === 0) strike(); else setTimeout(strike, k * SATSUJIN_STRIKE_MS);
+  });
+  // 戻り切ったら消す(同じ殺陣の時だけ)。
+  setTimeout(() => {
+    const s = useGameStore.getState().satsujin;
+    if (s && s.startAt === now && Date.now() >= s.endAt) useGameStore.setState({ satsujin: null });
+  }, lastStrikeEndAt + SATSUJIN_FADE_OUT_MS - now + 20);
+};
+/** 殺陣の1発: 相手の周りの一方向から中心を通り抜けて斬る(プレイヤーの体は抜けた先へ瞬間移動=格闘の秘奥義のワープ先の探し方 brawlerSecretSpot を使う)。 */
+const satsujinStrike = (get: () => GameState, set: WhipFollowupSet, startAt: number, targetId: string, ang: number, last: boolean): void => {
+  const st = get();
+  const sat = st.satsujin;
+  if (!sat || sat.startAt !== startAt) return; // 終わった・作り直された
+  const now = Date.now();
+  const tgt = st.enemies.find(e => e.id === targetId);
+  if (!tgt || isCorpse(tgt) || tgt.health <= 0 || !isKatanaMode(st.player)) {
+    // 相手が倒れた=残りは打たず、今から戻る(止めの後と同じ戻り)。
+    if (now < sat.lastStrikeEndAt) set(s => (s.satsujin ? { satsujin: { ...s.satsujin, lastStrikeEndAt: now, endAt: now + SATSUJIN_FADE_OUT_MS } } : {}));
+    return;
+  }
+  const p = st.player;
+  const ecx = tgt.x + tgt.width / 2, ecy = tgt.y + tgt.height / 2;
+  const cx = Math.cos(ang), cy = Math.sin(ang);
+  const fromX = ecx - cx * SATSUJIN_HALF_LEN_PX, fromY = ecy - cy * SATSUJIN_HALF_LEN_PX;
+  const spot = brawlerSecretSpot(get, ecx + cx * SATSUJIN_HALF_LEN_PX, ecy + cy * SATSUJIN_HALF_LEN_PX)
+    ?? brawlerSecretSpot(get, ecx, ecy) ?? { x: p.x, y: p.y };
+  const toX = spot.x + p.width / 2, toY = spot.y + p.height / 2;
+  set(s => ({
+    player: { ...s.player, x: spot.x, y: spot.y, vx: 0, vy: 0, lastDirection: { x: cx, y: cy } },
+    satsujin: s.satsujin ? { ...s.satsujin, strikes: [...s.satsujin.strikes, { fromX, fromY, toX, toY, at: now }] } : s.satsujin,
+  }));
+  // 通り道の敵にも一閃と同じ当たり(相手は必ず)。殺陣の各発は切り傷を数えない。
+  const len = Math.hypot(toX - fromX, toY - fromY) || 1;
+  const ux = (toX - fromX) / len, uy = (toY - fromY) / len;
+  const ids = [targetId, ...get().enemies.filter(e => e.id !== targetId && !isCorpse(e) && !isUntouchable(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e))
+    && bandBoxOverlap(fromX, fromY, ux, uy, len, KATANA_DASH_HIT_HALF_WIDTH, e)).map(e => e.id)];
+  const pre = get().enemies.find(e => e.id === targetId);
+  get().performKatanaStrike(ids, KATANA_DASH_DAMAGE_MULT, true, undefined, warlordIssenMult(get().player));
+  // 相手は動かさない(止めたまま・押しを打ち消す)。最後の1発だけ一閃の浮きで打ち上げる(止めを解いてから)。
+  const gt = get().gameTime;
+  set(s => ({
+    enemies: s.enemies.map(e => {
+      if (e.id !== targetId || isCorpse(e)) return e;
+      const held: Enemy = { ...e, knockbackVx: 0, knockbackVy: 0, katanaCuts: 0 };
+      if (!last || e.health <= 0) return held;
+      const released: Enemy = { ...held, brHoldUntil: undefined };
+      const lp = issenLiftPatch(released, pre ?? e, now, gt);
+      return lp ? { ...released, ...lp } : released;
+    }),
+  }));
+  // 絵: 抜けた筋(白)・相手の上の斬撃・ワープの残光。音: 一閃の系統を少しずつ高く。
+  const g = get();
+  g.spawnEffect({ kind: 'trail', id: `fx-satsujin-${startAt}-${now}`, fromX, fromY, toX, toY, color: 'rgba(255,255,255,1)', createdAt: now, duration: 320 });
+  g.spawnSlash(ecx, ecy, 'rgba(255,255,255,0.98)', 1.2, cx >= 0 ? 1 : -1);
+  g.spawnGlow(toX, toY - 6, GLOW_R_S, 'rgba(255,248,230,', 200, true);
+  const k = sat.strikes.length;
+  void import('../audio/audioManager').then(m => m.playSfx('katana-dash', 0.9, undefined, 1.1 + k * 0.08));
+  if (last) {
+    // 止めは一閃の止めを最後の1発に大きく(ヒットストップ=時間を止めるだけ・スローではない)。
+    g.triggerHitImpact(SATSUJIN_FINAL_HITSTOP_MS, 260, 9, 0, ecx, ecy);
+    g.spawnRing(ecx, ecy, 10, 120, 'rgba(255,255,255,0.9)', 4, 360, true);
+    void import('../audio/audioManager').then(m => m.playSfx('heavy-impact', 0.6));
+  }
 };
 let critImpactAt = 0; // spawnCritImpact の光の畳み込み用(Date.now)
 // (MELEE_SWING_SHAKE_* / SHIELD_BASH_SHAKE_* は v0.25.4284 で撤去=近接の揺れも impactShakeFor(ダメージの√・bash ×1.5)へ)
@@ -4760,18 +5038,20 @@ const brawlerHitPatch = (
   // 浮いている間は動けない(liftUntil=全ての敵の制御が「持ち上げ」として止まる・時計も止まる)。ボス級も浮く(重い)。技の最中の敵は浮かない。
   // 空中で吹き飛ばす技(5段目・飛び蹴り3発目・大踏み潰し)は浮きを終えて今の高さから落ちる(押しはそのまま効く)。
   let downNow = false;
-  let pk = phaseKind; // 下で技を取り消して浮かせた時は 'free' として固まりを数える
+  let pk = phaseKind;
+  // ★§36-0: 幻影(孫悟空を含む)は雑魚と同じ規則で浮く(高さ・時間・予算=雑魚の値・技の最中も取り消して浮かせる)。区分そのもの(固まり・押し)は今どおり。
+  const liftCls = BRC.brawlerLiftWeightClass(enemy, cls); // 下で技を取り消して浮かせた時は 'free' として固まりを数える
   // ★コンボの後の固まらない時間の間は地上から浮かせない(§19-3 ⑤=浮かせて止め続ける抜け道を塞ぐ)。空中の拾い直しは元から地上に居ないので今どおり。
   const liftOk = !endNoHold || BRC.brawlerAirborne(enemy, now);
   if (bs.combo && !busy) {
     // 浮かせの当たり(3段目・4段目・飛び蹴りの2発目・秘奥義の4段目)は地上からも浮かせる(§13-2・BRAWLER_GROUND_LAUNCH)。バウンドの区切りに流れの始まりを渡す(この当たりの combo を反映)。
-    const jp = liftOk ? brawlerJugglePatch({ ...enemy, ...(combo?.patch ?? {}) }, cls, bs.lift ? 's4' : bs.combo.move, now) : null;
+    const jp = liftOk ? brawlerJugglePatch({ ...enemy, ...(combo?.patch ?? {}) }, liftCls, bs.lift ? 's4' : bs.combo.move, now) : null;
     if (jp) { Object.assign(out, jp); downNow = (jp as { brLiftDown?: boolean }).brLiftDown === true; }
-  } else if (bs.combo && liftOk && BRC.brawlerLiftBreaksTech(enemy, cls) && !(enemy.aiPhase !== undefined && COUNTER_UNINTERRUPTIBLE_PHASES.includes(enemy.aiPhase))) {
+  } else if (bs.combo && liftOk && BRC.brawlerLiftBreaksTech(enemy, liftCls) && !(enemy.aiPhase !== undefined && COUNTER_UNINTERRUPTIBLE_PHASES.includes(enemy.aiPhase))) {
     // ★技の最中の雑魚・強個体も浮かせる(社長承認2026-11-10「技の最中浮く は はい」・research/BRAWLER.md §12-1b)。
     // 浮く当たり(地上=3・4段目・飛び蹴りの2発目/空中=押し上げのある当たり)の時だけ、その技を取り消してから浮かせる(カウンター成立・大踏み潰しの強制と同じ
     // 取り消し=予告も消える。予告を出したまま浮かせない)。ボス級・取り消せない相(空中の跳びなど)は今どおり浮かない。
-    const jp = brawlerJugglePatch({ ...enemy, ...(combo?.patch ?? {}) }, cls, bs.lift ? 's4' : bs.combo.move, now);
+    const jp = brawlerJugglePatch({ ...enemy, ...(combo?.patch ?? {}) }, liftCls, bs.lift ? 's4' : bs.combo.move, now);
     if (jp && (jp.brLiftUntil ?? 0) > now) {
       Object.assign(out, counterInterruptPatch(enemy, gameTime), { biteRecoverUntil: undefined, rootUntil: undefined, lastCounteredAt: now });
       Object.assign(out, jp);
@@ -5795,6 +6075,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     if (grab && grabbed) {
       // 掴んでいる間は時間停止=ループごと止める(§27 と同じ器・敵・弾・技の時計・予告の位相が全部止まる・社長の名指しの指示=スローではない)。
       g.triggerHitstop(BR.BRAWLER_GRAB_MS);
+      brawlerGrabCancelTech(get, grabbed.id); // ★掴んだ相手は技の最中でも取り消す(予告も消える・社長指示2026-11-20「投げた敵は技中でもリセット」)
       brawlerAirGrabFx(get, grabbed, c);
     }
     for (const h of r.hitAt ?? []) {
@@ -6144,15 +6425,27 @@ const startBrawlerContactGrab = (get: () => GameState, set: (fn: (s: GameState) 
   const dir = mode === 'suplex' && Math.abs(dir0.x) < 0.35 ? { x: side * 0.35, y: Math.sign(dir0.y || 1) * Math.sqrt(1 - 0.35 * 0.35) } : dir0;
   const sw = mode === 'suplex' ? { suplexSwing: { enemyId: e.id, ...land } } : {};
   const now = Date.now();
+  const freezeMs0 = BR.BRAWLER_CONTACT_FREEZE_MS;
   const k0 = BR.brawlerStartContactGrab(s, t, e.id, mode);
   // 食い込んで見せる寄せ(絵だけ): 体の縁から相手の帯の縁までの隙間+体の幅の1/4(§34-10)。
   const gripPx = BR.brawlerContactGripPx(BR.brawlerDistTo(c.x, c.y, e) - p.width / 2, p.width);
-  const s1: BR.BrawlerState = { ...k0, contactGrab: { ...k0.contactGrab!, at: now, gripPx }, ...sw, targetId: e.id, dirX: dir.x, dirY: dir.y, pressAt: now };
+  // ★カウンター投げ(社長指示2026-11-20「カウンター投げのスープレックスはカウンター機能も残しといて」・サマーソルトも同じ): 掴み〜技の間も構えの守りは
+  //   そのまま(受けの窓=払った構えの guardUntil・被害の無効・弾の打ち返し・光線の盾・受けの成立と止め/演出/スキル)。スーパーアーマーも。
+  //   ただし構えの自動の続き(雑魚を受けた時の代金なしの地割り §12-3d・ボス級の技を受けた時の反撃の気功 §32)は出さない=掴み・投げは続く(下の受けの経路)。
+  //   窓は投げの間だけ(投げが終わったら構えも終わる=次の上は新しい構え/掴み・延長にしない)。
+  const throwEnd = t + k0.windupMs + k0.recoveryMs;
+  const keepGuard = { guardUntil: Math.min(s.guardUntil, throwEnd), guardSince: s.guardSince, guardWeak: s.guardWeak, guardKiko: s.guardKiko };
+  const s1: BR.BrawlerState = { ...k0, ...keepGuard, contactGrab: { ...k0.contactGrab!, at: now, gripPx }, ...sw, targetId: e.id, dirX: dir.x, dirY: dir.y, pressAt: now };
   // 掴んでいる間、相手はその場で止まる(固まりと同じ器・掴みの一瞬の時間停止+掴みの長さ+少し)。位置は動かさない(§34-6 #6)。
   const freezeMs = BR.BRAWLER_CONTACT_FREEZE_MS; // スープレックスもサマーソルトも、掴んだ一瞬は時間停止(§34-10・社長承認2026-11-20)
   const holdUntil = now + freezeMs + BR.BRAWLER_CONTACT_GRAB_MS + 60;
   set(state => ({ enemies: state.enemies.map(en => (en.id === e.id ? { ...en, brHoldUntil: Math.max(en.brHoldUntil ?? 0, holdUntil), ...(mode === 'suplex' && s1.suplexAt !== undefined ? { brSuplexSwing: { at: s1.suplexAt, ...land } } : {}) } : en)) }));
-  setBrawler(set, s1, { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0, lastDirection: { x: dir.x, y: dir.y } });
+  setBrawler(set, s1, {
+    lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0, lastDirection: { x: dir.x, y: dir.y },
+    // 構えと同じカウンター窓(投げの間だけ・掴みの一瞬の時間停止の分を足す)。
+    ...(!s.guardWeak ? { counterWindowStart: now, counterWindowEnd: now + Math.min(BR.BRAWLER_GUARD_MS, freezeMs0 + (throwEnd - t)) } : {}),
+  });
+  if (mode === 'suplex') brawlerGrabCancelTech(get, e.id); // ★投げる相手は技の最中でも取り消す(予告も消える・社長指示2026-11-20)
   brawlerAirGrabFx(get, e, c, freezeMs + BR.BRAWLER_CONTACT_GRAB_MS);
   // ★§34-10: 掴んだ一瞬は時間停止(ループごと止まる=空中投げの掴みと同じ器)。明けてからスープレックス=持ち上げ→反り→叩きつけ(小爆発)/サマーソルト=蹴って宙返り。
   get().triggerHitstop(freezeMs);
@@ -6245,6 +6538,49 @@ const brawlerSuplex = (get: () => GameState, set: (fn: (s: GameState) => Partial
   brawlerSfx('heavy-impact', 0.9, 0.7, undefined, 60);
 };
 
+/** 密着の構え(カウンター投げ=スープレックス/サマーソルト)の最中か(掴み〜技〜後隙)。構えの守りを持ったまま、受けても技を続ける。 */
+const brawlerContactGrabbing = (b: BR.BrawlerState | undefined): boolean =>
+  !!b && b.phase === 'tech' && !!b.contactGrab;
+/**
+ * ★掴んだ(投げる)相手の技を取り消す(社長指示2026-11-20「投げた敵は技中でもリセット」)。攻撃の最中(溜め・出している最中)なら、
+ * 地割りの強制ノックバック・カウンター成立と同じ取り消し(counterInterruptPatch=技の相と予告ごと消える)を掛ける。投げた後は最初から(溜めの続きをしない)。
+ * カウンターの「その場で2秒の硬直」(biteRecoverUntil)は書かない(地割りの強制と同じ)。攻撃中でなければ何もしない。
+ */
+const brawlerGrabCancelTech = (get: () => GameState, enemyId: string): void => {
+  const st = get();
+  const e = st.enemies.find(en => en.id === enemyId);
+  if (!e || !isEnemyAttacking(e, st.gameTime)) return;
+  const patch = { ...counterInterruptPatch(e, st.gameTime), biteRecoverUntil: undefined, rootUntil: undefined, lastCounteredAt: Date.now() };
+  useGameStore.setState(s => ({ enemies: s.enemies.map(en => (en.id === enemyId ? { ...en, ...patch } : en)) }));
+};
+/** ★孫悟空を倒した(§36-1・§36-2)。レベルを1段上げ(条件は純関数)、その段で体得する技を知らせる。 */
+const noteKenkiDefeated = (get: () => GameState, enemy: Enemy): void => {
+  const st = get();
+  const killed = (enemy.kenkiLv ?? 1) as KenkiLevel;
+  const ctx = {
+    brawlerEquipped: st.player.subWeapons.includes('brawler'), practice: isPracticeRun(), bossTest: BOSS_TEST_RUN, bench: st.benchmarkRun,
+    smoke: typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('smoke') !== null,
+  };
+  if (!kenkiKillCounts(ctx)) return;
+  // 年表(社長指示2026-11-20「年表には出して」): そのレベルの名前で討伐(レベルごとにゲーム全体で1行)。
+  recordChronicleGlobalFirst(getSelectedStageId(), 'boss', kenkiChronicleKillDetail(killed), kenkiChronicleKillPhrase(killed), true);
+  // 斗戦勝仏(済)を初めて倒した報酬=アバター(社長指示2026-11-20)。初めての時だけ帯・リザルト。
+  const reward = avatarRewardOnKenkiKill(killed);
+  if (reward && unlockAvatar(reward)) {
+    const avName = AVATARS[reward].name;
+    get().triggerWallBand(`アバター 入手 ― ${avName}`, 'gold', 3200);
+    useGameStore.setState(s => ({ avatarsEarnedThisRun: [...s.avatarsEarnedThisRun, avName] }));
+  }
+  const next = kenkiLevelAfterKill(killed, ctx);
+  if (next === null || next <= loadKenkiLevel()) return;
+  saveKenkiLevel(next);
+  const art: BrawlerArt | null = brawlerArtLearnedOnKill(killed);
+  if (!art) return;
+  const name = BRAWLER_ART_NAME[art];
+  get().triggerWallBand(`格闘技 体得 ― ${name}`, 'gold', 3200);
+  useGameStore.setState(s => ({ brawlerArtsLearnedThisRun: [...s.brawlerArtsLearnedThisRun, name] }));
+  recordChronicleGlobalFirst(getSelectedStageId(), 'feat', brawlerArtChronicleDetail(art), brawlerArtChroniclePhrase(art), true);
+};
 /**
  * ★スープレックスの叩きつけで相手を着地点へ移す(research/BRAWLER.md §34-12・社長指示2026-11-20)。(mx,my)=今の位置から着地点までのずれ。
  * 行ける帯(clampRectToPlayableArea)を通し、壁・木・建物に重なる時は元の位置へ向かって戻しながら一番近い置ける所を探す(無ければ動かさない)。
@@ -7127,6 +7463,9 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
       });
     }
   }
+  // ★孫悟空のレベルと格闘技の体得(research/BRAWLER.md §36): 本編で格闘を装備して倒した時だけ1段上がる。上がった段で体得する技があれば
+  //   金の帯「格闘技 体得 ― 〇〇」とリザルトの報酬欄の1行。練習・ボス戦テスト・ベンチ・smoke では上がらない(kenkiLevelAfterKill)。
+  if (enemy.type === 'guardian-phantom' && enemy.phantomUnique === 'brawler') noteKenkiDefeated(get, enemy);
   // 小烏丸解禁(社長指示): 裏ボス「トール」討伐の永続報酬。初回討伐なら永続フラグを立て、
   // このランのリザルトで解禁ポップアップを1回出す。討伐時点で刀がLv3(MAX)なら、その場で
   // このランの商人在庫にも並べる(以後のランは刀Lv3到達時に maybeUnlockMurasame が自動陳列)。
@@ -7931,7 +8270,7 @@ export const notifySkillProc = (key: SkillKey): void => {
  * 呼ぶのはプレイヤー本人の技が**実際に出た**所だけ(入力しただけ・技ポイント不足・道の外は呼ばない)。拳鬼・幻影の技は別の経路=出ない。
  * 音は足さない(技そのものの音がある)。
  */
-export const notifyTechProc = (kind: BR.BrawlerTechKind | 'secret' | 'heel' | 'kickup' | 'airthrow' | 'suplex' | 'suplexchain' | 'flipkick' | 'mogura', kickN = 0): void => {
+export const notifyTechProc = (kind: BR.BrawlerTechKind | 'secret' | 'heel' | 'kickup' | 'airthrow' | 'suplex' | 'suplexchain' | 'flipkick' | 'mogura' | 'issen' | 'tsubame' | 'satsujin', kickN = 0): void => { // issen/tsubame/satsujin=刀の技の行(research/KATANA_TSUBAME.md §2・§4)
   // 飛び蹴りは何発目かで名前が違う(飛び蹴り→空中蹴り→蹴り飛ばし・社長指示2026-11-11)。
   const key = (kind === 'kick' && kickN >= 2 ? `tech:kick${Math.min(3, kickN)}` : `tech:${kind}`) as TechProcKey;
   useGameStore.setState(s => ({ skillProcFeed: pushSkillProc(s.skillProcFeed, key, Date.now(), ++skillProcSeq) }));
@@ -9544,6 +9883,12 @@ interface GameState {
   bashHitFxAt: number;        // 盾バッシュが敵に当たった時刻(Date.now)。SE再生のトリガ
   whipHitFxAt: number;        // 鞭が敵に当たった時刻(Date.now)。SE再生のトリガ
   whipSwingFxAt: number;      // 鞭を振った時刻(Date.now)。振る音SEのトリガ
+  // ★鞭の追加攻撃の受付(research/WHIP_FOLLOWUP.md §1)。鞭の振りが1体以上に当たった瞬間に開く(実時間300ms・1振り1回)。null=無し。
+  whipFollowup: WhipFollowupWindow | null;
+  // ★燕返しの受付(research/KATANA_TSUBAME.md §1)。プレイヤーの一閃が1体以上に当たった瞬間に開く(実時間300ms・1回の一閃に1回だけ)。
+  tsubameWindow: TsubameWindow | null;
+  // ★殺陣(research/KATANA_TSUBAME.md §4)。発動中だけ在る(Date.now)。描画は赤い画面・黒い影・白い筋をこれから読む(store が時刻の持ち主)。
+  satsujin: SatsujinState | null;
   anchorPlantFxAt: number;    // ワイヤーアンカーを(地面に)打ち込んだ時刻(Date.now)。打ち込み音SEのトリガ
   anchorEnemyHitFxAt: number; // ワイヤーアンカーが敵に当たった時刻(Date.now)。近接命中音SEのトリガ
   boomerangThrowFxAt: number; // ドローンブーメランを投げた時刻(Date.now)。投擲音SEのトリガ
@@ -10114,6 +10459,8 @@ interface GameState {
   brawlerTech: (dirX: number, dirY: number, neutral?: boolean) => boolean;
   /** 格闘のステップ(research/BRAWLER.md §12-3・§12-3b)。向きへ短く踏み込む(加速→減速・出始めだけ無敵=BRAWLER_STEP_IFRAME_MS)。出た、または受け付けない時間で覚えた(200ms 以内に出す)ら true。 */
   brawlerStep: (dirX: number, dirY: number) => boolean;
+  /** ★浮かせる攻撃でプレイヤーが浮く(research/BRAWLER.md §36-0)。move=当たった技・dmg=その当たりの量(スーパーアーマーの判定)。浮いたら true。 */
+  launchPlayer: (move: BR.BrawlerMoveKey, dmg: number) => boolean;
   // 毎フレーム(useGameLoop)。格闘を持たない時は即 return。
   tickBrawler: () => void;
   // 構えで受けた(damagePlayer の入口・弾の弾き返し・カウンター成立)。x/y=受けた所。
@@ -10135,8 +10482,15 @@ interface GameState {
   // v0.25.2518(裁定2): 末尾の ghostId は**主語(オーナー)**。未指定=プレイヤー(従来と完全同一)。
   // 指定すると守護霊(kind='ghost-ally')が同じ状態機械・同じ定数・同じ式で刀/ワイヤーを使う。
   // strikeMult=敵への打撃だけに掛ける上乗せ(縮地の連鎖・§32)。damageMult と違い、死神の波及・救難信号の基準には入れない。
-  performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean, ghostId?: string, strikeMult?: number) => { hit: boolean; finish: boolean; killed: number };
-  triggerKatanaDash: (dirX: number, dirY: number, ghostId?: string) => boolean;
+  performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean, ghostId?: string, strikeMult?: number) => { hit: boolean; finish: boolean; killed: number; hitIds?: string[] };
+  // tsubame=燕返し(research/KATANA_TSUBAME.md §1): 硬直・CDの門を通さず、指定の距離だけ一閃を出し直す(消費・CDは足さない)。
+  triggerKatanaDash: (dirX: number, dirY: number, ghostId?: string, tsubame?: { distance: number }) => boolean;
+  // ★燕返し(research/KATANA_TSUBAME.md §1): 受付の間の反対フリックで出す。出たら true。
+  tryTsubame: (dirX: number, dirY: number) => boolean;
+  // ★当てた直後のフリックの追加攻撃の入口(鞭の引き寄せ/叩きつけ・刀の燕返し)。入力側はこれだけを呼ぶ。出たら true。
+  tryFlickFollowup: (dirX: number, dirY: number) => boolean;
+  // 当てた直後のフリックの受付が開いているか(入力側がフリックの判定を先に回すかを決める)。
+  flickFollowupOpen: () => boolean;
   // ワイヤーアンカー: フリックでフリック方向に刺す(true=発動)。1秒後に startWireDash で高速移動。
   triggerWireAnchor: (dirX: number, dirY: number, ghostId?: string) => boolean;
   startWireDash: (ghostId?: string) => void;
@@ -10159,13 +10513,19 @@ interface GameState {
   // (low damage, big knockback, crit, finisher, 20% ammo) and returns the hit
   // count for charge. performHurricane spawns the suction vortex at the tip;
   // tickHurricane pulls nearby enemies toward the root each frame.
-  performWhipStrike: (targetIds: string[]) => { hit: boolean; finish: boolean; killed: number; hits: number };
+  performWhipStrike: (targetIds: string[]) => { hit: boolean; finish: boolean; killed: number; hits: number; hitIds?: string[] };
+  // ★鞭の追加攻撃(research/WHIP_FOLLOWUP.md): 受付の間のフリック(向き)で引き寄せ/叩きつけ。出たら true(受付の外・横向き・空の向きは false=何もしない)。
+  tryWhipFollowup: (dirX: number, dirY: number) => boolean;
   performHurricane: (rootX: number, rootY: number) => void;
   tickHurricane: () => void;
   // 錬金術 actions. updateAlchemyChannel は立ち止まりチャネルの開始/維持/中断、summonAlchemy は
   // 魔法陣完成時の召喚(レア判定・FIFO)、updateSummons は毎フレームの追従/攻撃/吸引/消滅、
   // damageSummon は敵接触ダメージ。
   updateAlchemyChannel: (startedAt: number) => void;
+  /** 錬金術の溜めのリズム(research/ALCHEMY_RHYTHM.md): 時刻を進める(サークルを出す/過ぎたものを外れに)。溜めの間だけ毎フレーム。 */
+  tickAlchemyRhythm: () => void;
+  /** 錬金術の溜めのリズムのタップ。溜めの間なら判定して true(=そのタップはリズムだけに使う・他の操作へ流さない)。 */
+  alchemyRhythmTap: () => boolean;
   summonAlchemy: () => void;
   updateSummons: (deltaTime: number) => void;
   // research/HERO_DOG.md §3: 英雄の犬の出入り(現れる/去る/呼び戻す)。毎フレーム updateSummons の直前に呼ぶ。
@@ -10589,6 +10949,10 @@ interface GameState {
   poiIntelShown: Record<PoiKind, boolean>;
   showPoiIntel: (kind: PoiKind) => void;                // 進入/発動時の通信を1回だけ出す(既存の左上会話/バナーを流用)
   kogarasuUnlockedThisRun: boolean;                     // このランでトール初回討伐=小烏丸を永続解禁したか(リザルトの解禁ポップアップ用)
+  /** ★このランで体得した格闘技の名前(research/BRAWLER.md §36-2・リザルトの報酬欄の行)。 */
+  brawlerArtsLearnedThisRun: string[];
+  /** この出撃で手に入れたアバターの名前(リザルト「アバター『…』を手に入れた」)。 */
+  avatarsEarnedThisRun: string[];
   debugLoopError: string;                               // 診断: ゲームループ本体で投げられた例外の要約(?debug=1 表示)
   triggerEventVictory: () => void;                      // 終了アイテム/ゴール: 帰還サークルを出す(即勝利しない)
   beginReturnPhase: (originX: number, originY: number, avoidPlayer?: boolean) => void; // 帰還サークル出現
@@ -11086,6 +11450,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   bashHitFxAt: 0,
   whipHitFxAt: 0,
   whipSwingFxAt: 0,
+  whipFollowup: null,
+  tsubameWindow: null,
+  satsujin: null,
   anchorPlantFxAt: 0,
   anchorEnemyHitFxAt: 0,
   boomerangThrowFxAt: 0,
@@ -11301,6 +11668,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   policeTakenAt: 0,
   poiIntelShown: emptyPoiIntelShown(),
   kogarasuUnlockedThisRun: false,
+  brawlerArtsLearnedThisRun: [],
+  avatarsEarnedThisRun: [],
   debugLoopError: '',
   startWithTestStraps: false,
   showStatsOverlay: false,
@@ -11466,7 +11835,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         || isPvpIncapacitated(player.pvpPosture, state.gameTime) || isPlayerGrabbed(player, state.gameTime)
         || isHurtMoveLocked(player, holdNow)
         || ((player.meleeSwingAt || 0) > 0 && holdSwingSince >= 0 && holdSwingSince < PLAYER_MELEE_SWING_MS)
-        || BR.isBrawlerBusy(player.brawler); // 格闘の段・技(動けない)
+        || BR.isBrawlerBusy(player.brawler) // 格闘の段・技(動けない)
+        || playerAirLocked(player, holdNow); // 浮いている(§36-0)
       const nextSpeedRamp = cruiseHold
         ? { sustainMs: player.speedRampSustainMs, lastDirX: rampMoving ? rampInX : player.speedRampDirX, lastDirY: rampMoving ? rampInY : player.speedRampDirY }
         : stepSpeedRamp(
@@ -11536,7 +11906,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Target direction from swipe (touch) or keys.
       let tx = 0;
       let ty = 0;
-      if (state.deliveryLocked) {
+      // ★浮いている間は動けない(research/BRAWLER.md §36-0・雑魚の浮きと同じ止め)。納品ロックと同じく目標だけ0=慣性で止まる。
+      if (state.deliveryLocked || playerAirLocked(player, nowMs)) {
         // 二人組クエストv2 §2-8(納品ロック): 早期returnはしない(この関数はvx/vy/direction/
         // isMoving/aim/速度ランプまで毎フレーム書いており、returnすると走行アニメ・カメラズームが
         // 固定されたまま7〜10秒フリーズし、速度も1フレームで0=CLAUDE.md「慣性MUST」違反になる)。
@@ -11985,6 +12356,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 揃わなければ何もせず false=呼び出し側は従来の入力経路(一閃・ワイヤー・近接)へ落とす。
   // ★普通の近接の入口(beginMeleeSwing)は通らない=掴まれ中でも成立する(社長裁定2026-10-09「はい」)。CD・被弾の硬直・前隙も無視する。
   tryHitRetaliation: (dirX, dirY) => {
+    if (playerAirLocked(get().player, Date.now())) return false; // ★浮いている間は攻撃できない(research/BRAWLER.md §36-0)
     const now = Date.now();
     const st = get();
     const win = st.hitRetaliation;
@@ -12109,6 +12481,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // ★サブウェポン「格闘」(research/BRAWLER.md)。押した=通常攻撃の5段コンボ。クールダウンは無く、各段の戻りの間の押下は先行入力として1つだけ覚える。
   brawlerPress: () => {
+    if (playerAirLocked(get().player, Date.now())) return false; // ★浮いている間は攻撃できない(research/BRAWLER.md §36-0)
     const st = get();
     const p = st.player;
     if (!isBrawlerMode(p)) return false;
@@ -12125,7 +12498,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     return true;
   },
   // フリック(PC=方向+技ボタン)=技。フリックの上下左右は技を選ぶだけ(狙いは常に近くの敵=§7-9)。
+  launchPlayer: (move, dmg) => {
+    const st = get();
+    const p = st.player;
+    const now = Date.now();
+    const armored = playerSuperArmorActive(p, dmg, now, st.gameTime, PLAYER_MELEE_SWING_MS);
+    const air = playerLaunchPatch(p.brAir, move, now, armored);
+    if (!air) return false;
+    set(s => ({ player: { ...s.player, brAir: air } }));
+    return true;
+  },
   brawlerStep: (dirX, dirY) => {
+    if (playerAirLocked(get().player, Date.now())) return false; // ★浮いている間は攻撃できない(research/BRAWLER.md §36-0)
     const st = get();
     const p = st.player;
     if (!isBrawlerMode(p) || !brawlerGateOk(get)) return false;
@@ -12142,6 +12526,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     return true;
   },
   brawlerTech: (dirX, dirY, neutral = false) => {
+    if (playerAirLocked(get().player, Date.now())) return false; // ★浮いている間は攻撃できない(research/BRAWLER.md §36-0)
     const st = get();
     const p = st.player;
     if (!isBrawlerMode(p)) return false;
@@ -12161,15 +12546,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     const t = st.gameTime;
     const kind0 = neutral ? null : BR.classifyBrawlerFlick(dirX, dirY);
     // ★踵落とし(§29): 飛び蹴りの2発目の続きで入れた下は、3発目の蹴り(踵落とし)として扱う=出せるか・覚えるかは次の蹴りと同じ規則。
-    const heel = !!kind0 && BR.brawlerHeelInput(s, kind0, t);
+    // ★§36-2: 踵落とし・蹴り上げ・土竜は孫悟空を倒して体得するまで出ない(出ない間: 空中蹴りの後の下=地割り・上=構え・地割りの溜めの上=何も起きない)。
+    const heel = !!kind0 && isBrawlerArtLearned('heel') && BR.brawlerHeelInput(s, kind0, t);
     // ★蹴り上げ(§34-1・§34-6 #4): 飛び蹴りの1・2発目の続きで入れた上は、直前の蹴りが当たっていて払える時だけ次の蹴り(蹴り上げ)。
     //   判定の前は蹴り上げとして覚え、出す瞬間に見直す(fireBufferedBrawlerTech)。それ以外の上は今までどおり構え。
     const kickUpCost = BR.brawlerKickUpCost(isBloodAwakening(p, t), brawlerTechDiscount(p, 'kick'));
-    const kickUp = !heel && !!kind0 && BR.brawlerKickUpInput(s, kind0, t, s.points >= kickUpCost);
+    const kickUp = !heel && !!kind0 && isBrawlerArtLearned('kickup') && BR.brawlerKickUpInput(s, kind0, t, s.points >= kickUpCost);
     const kind = heel || kickUp ? 'kick' as const : kind0;
     // ★土竜(research/BRAWLER.md §35): 地割りの溜め(出だし)の最中の上=派生(最初の60msは受け付けない・当たるまで)。差額(地割り+1)を払えた時だけ。
     //   払えなければ地割りのまま(上は今までどおりの扱いへ流す)。秘奥義の順番は地割り(↓)のまま=ここでは数えない。
-    if (kind0 === 'guard' && BR.brawlerMoguraWindow(s, Date.now())) {
+    if (kind0 === 'guard' && BR.brawlerMoguraWindow(s, Date.now()) && isBrawlerArtLearned('mogura')) {
       const extra = BR.brawlerMoguraExtraCost(isBloodAwakening(p, t), brawlerTechDiscount(p, 'stomp'));
       if (s.points >= extra) {
         setBrawler(set, { ...s, mogura: true, points: s.points - extra });
@@ -12378,7 +12764,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 受けた直後0.5秒は次の通常攻撃が前隙なしで出る(社長決定 #7)。構えは1秒固定で途中に動けないので、
     // 0.5秒は「受けた時刻と構えの終わりの遅い方」から数える(★未決 §9-4: 構えの最中に切れて使えない窓にしない)。
     // ★ジャスト構え(research/BRAWLER.md §12-2): 当たる直前120ms以内に構え(または延長)が出ていた受け。気絶は2倍・演出を一段強く・「JUST」。
-    const just = !throttled ? BR.brawlerIsJustGuard(s, st.gameTime, BRS.brawlerJustWindowMs(counterAcceptMsOf(p) - COUNTER_ACCEPT_MS)) : false; // §15: 強化「カウンター受付」の延びぶんだけジャストの窓も延ばす // 間引かれる受け(光線など毎フレーム)はジャストにしない
+    // ★構えの掴み(スープレックス/サマーソルト)の間の受けは守りだけ=ジャストにしない(地割り・反撃の気功と同じく構えの自動の上乗せは出さない・社長指示2026-11-20)。
+    const just = !throttled && !brawlerContactGrabbing(s) ? BR.brawlerIsJustGuard(s, st.gameTime, BRS.brawlerJustWindowMs(counterAcceptMsOf(p) - COUNTER_ACCEPT_MS)) : false; // §15: 強化「カウンター受付」の延びぶんだけジャストの窓も延ばす // 間引かれる受け(光線など毎フレーム)はジャストにしない
     if (just && fxOn.stun) brawlerJustAt = now; // 気絶2倍の合図(弱い構えは気絶させない)
     const stunMul = just ? BR.BRAWLER_JUST_STUN_MULT : 1;
     const next: BR.BrawlerState = fxOn.quick ? { ...s, quickUntil: Math.max(st.gameTime, s.guardUntil) + BR.BRAWLER_GUARD_QUICK_MS } : s;
@@ -12462,7 +12849,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 雑魚を受けた: その瞬間に大踏み潰しを代金なしで出す。構えはここで終わる(受けの窓もカウンター窓も閉じる)。
       // 潰しの当たり・絵・音・強制ノックバックは普通の技と同じ経路(startBrawlerTech → 判定)。関所(掴み・紫など)に掛かっていれば出さない。
       const cur = get().player.brawler;
-      if (cur && brawlerGateOk(get)) {
+      // ★カウンター投げ(スープレックス/サマーソルト)の最中に受けた: 代金なしの地割りは出さない(掴み・投げは続く)。受けの成立・被害の無効は上で済んでいる。
+      if (cur && brawlerGateOk(get) && !brawlerContactGrabbing(cur)) {
         const gt = get().gameTime;
         // ★検収監査 #1: ボス級を受けて押されている途中(同じ構えの中)に雑魚を受けた時、潰しの開始が踏み込みの器を0にして
         //   押しが1フレームで止まっていた(慣性MUST 違反)。押しの器は残したまま潰しを出す=押され切りながら叩く。
@@ -12472,7 +12860,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         startBrawlerTech(get, set, BR.brawlerEndGuardForStomp(cur, gt), 'stomp', isBloodAwakening(get().player, gt), false, true);
         set(state => ({ player: { ...state.player, ...(keep ?? {}), counterWindowEnd: Math.min(state.player.counterWindowEnd, now) } }));
       }
-    } else if (outcome === 'knockback') {
+    } else if (outcome === 'knockback' && !brawlerContactGrabbing(get().player.brawler)) {
+      // ★カウンター投げの最中は押されない・反撃の気功(§32)も予約しない(掴み・投げを続ける)。
       // 雑魚より上を受けた: 相手から離れる向きへ大きく押される(間合いが切れる=受け続けてのハメを作らない)。構えは時間いっぱい続く。
       // 踏み込みの器へ載せる('push'=加速→減速の1山・壁と木は6px 刻みで解いて止まる・向きは相手を向いたまま)。
       const stn = get();
@@ -12760,6 +13149,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 刀・鞭・スラッシャーの分岐は triggerCounter の中にあるので、窓/CDの正確な値はそちらが
   // `swingAt` を基準に**張り直す**(ここで張るのは前隙中に守りが効くための暫定=同値かより短い)。
   beginMeleeSwing: () => {
+    if (playerAirLocked(get().player, Date.now())) return false; // ★浮いている間は攻撃できない(research/BRAWLER.md §36-0)
     const now = Date.now();
     const p = get().player;
     if (isPvpIncapacitated(p.pvpPosture, get().gameTime)) return false; // ★SAME_ARENA §9: 紫/daze中は振れない(窓も開かない)
@@ -13189,6 +13579,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       const res = get().performWhipStrike(targetIds);
       if (res.hits > 0) set({ whipHitFxAt: Date.now() }); // 鞭命中音SEのトリガ
+      // ★鞭の追加攻撃の受付(research/WHIP_FOLLOWUP.md §1): 1体以上に当たった瞬間から(実時間)。向き=この振りの向き。空振りは開かない(前の受付も閉じる)。
+      set({ whipFollowup: res.hits > 0 ? { hitAt: Date.now(), dirX: ux, dirY: uy, hitIds: res.hitIds ?? [], used: false } : null });
       // チャージ加算(空振りは0)。閾値到達でハリケーン待機。
       if (res.hits > 0) {
         const threshold = whipChargeThreshold(player);
@@ -15156,7 +15548,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
     }
 
-    return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length };
+    return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hitIds: katanaHitEnemyIds };
   },
 
   performWhipStrike: (targetIds) => {
@@ -15452,7 +15844,23 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
     }
 
-    return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hits };
+    return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hits, hitIds: whipHitEnemyIds };
+  },
+
+  tryWhipFollowup: (dirX, dirY) => {
+    const now = Date.now();
+    const st = get();
+    const w = st.whipFollowup;
+    if (!w || !isWhipFollowupOpen(w, now)) return false;
+    const p = st.player;
+    // 鞭を持っていない/格闘中・紫/daze・掴まれ・浮いている間は出さない(振りの入口 beginMeleeSwing と同じ門)。
+    if (!isWhipMode(p) || isPvpIncapacitated(p.pvpPosture, st.gameTime) || isPlayerGrabbed(p, st.gameTime) || playerAirLocked(p, now)) return false;
+    const kind = classifyWhipFlick({ x: w.dirX, y: w.dirY }, { x: dirX, y: dirY });
+    if (!kind) return false; // 横向き=何も起きない(受付は残す=続けて正しい向きに入れ直せる)
+    set({ whipFollowup: { ...w, used: true } }); // 1振りに1回だけ
+    if (kind === 'pull') whipFollowupPull(get, set, w, now);
+    else whipFollowupSlam(get, set, w, now);
+    return true;
   },
 
   performHurricane: (rootX, rootY) => {
@@ -15527,7 +15935,36 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   updateAlchemyChannel: (startedAt) => {
-    set(state => ({ player: { ...state.player, alchemyChannelStartedAt: startedAt } }));
+    set(state => ({ player: {
+      ...state.player, alchemyChannelStartedAt: startedAt,
+      alchemyRhythm: startedAt > 0 ? newAlchemyRhythm(startedAt) : undefined,
+    } }));
+  },
+
+  tickAlchemyRhythm: () => {
+    const { player, gameTime } = get();
+    const r = player.alchemyRhythm;
+    if (!r || !((player.alchemyChannelStartedAt ?? 0) > 0)) return;
+    const next = advanceAlchemyRhythm(r, gameTime);
+    if (next !== r) set(state => ({ player: { ...state.player, alchemyRhythm: next } }));
+  },
+
+  alchemyRhythmTap: () => {
+    const { player, gameTime } = get();
+    const r = player.alchemyRhythm;
+    if (!r || !((player.alchemyChannelStartedAt ?? 0) > 0)) return false;
+    const { state: next, result } = tapAlchemyRhythm(advanceAlchemyRhythm(r, gameTime), gameTime);
+    if (next !== r) set(state => ({ player: { ...state.player, alchemyRhythm: next } }));
+    if (result === 'hit') {
+      // 成功の手応え: 的の輪で金の輪が弾ける(描画は pixi が lastHitAt を読む)+澄んだ短い音+金の粒(成功ごとの小さなきらめき)。
+      // 赤は使わない(赤=敵の攻撃の予告)。強glow(半径44以上)は使わない=投影影の負荷を足さない。
+      const fb = playerFootBox(player);
+      get().spawnRing(fb.footX, fb.footY, 60, 118, 'rgba(255,226,140,0.95)', 3, 320, true);
+      get().spawnBurst(fb.footX, fb.footY, '#ffe08a', 10);
+      const rate = 1.25 + 0.06 * Math.min(4, next.hits - 1); // 続けて成功すると少しずつ高く鳴る
+      void import('../audio/audioManager').then(m => m.playSfx('skill-proc-chime', 0.8, undefined, rate));
+    }
+    return true;
   },
 
   summonAlchemy: () => {
@@ -15544,7 +15981,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // §6.24 M48「使役」: 警察署アリーナ報酬のペット(persistent:true)は錬金術の入れ替え枠に数えない
     // =錬金術を唱えても消えない(「死ぬまでついてくる」)。alchemy自身の3体上限/レア切替の挙動は不変。
     const persistentPets = summons.filter(s => s.persistent || s.kind === 'hero-dog'); // 使役ペット+英雄の犬(research/HERO_DOG.md)は錬金術のFIFO/レア入替で消さない
-    if (Math.random() < ALCHEMY_RARE_CHANCE) {
+    // 錬金術の溜めのリズム: 成功1回ごとにこの完成のレア確率 +3ポイント(research/ALCHEMY_RHYTHM.md)。
+    if (Math.random() < alchemyRareChance(player.alchemyRhythm?.hits ?? 0)) {
       // レア: 既存の通常個体を全消去し、レア1体を召喚(枠を専有)。
       const rare = buildSummon(lvl, 'rare', sx, sy);
       set({ summons: [...persistentPets, rare] });
@@ -16022,7 +16460,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  triggerKatanaDash: (dirX, dirY, ghostId) => {
+  triggerKatanaDash: (dirX, dirY, ghostId, tsubame) => {
     const now = Date.now();
     // 敵・破壊オブジェクトはここでは読まない(★着地時に実経路で取り直す=SAME_ARENA.md §7-2)。
     const { isPaused } = get();
@@ -16033,10 +16471,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (ghostId === undefined && isPvpIncapacitated(get().player.pvpPosture, get().gameTime)) return false; // ★SAME_ARENA §9: 紫/daze中
     // 発動中(移動中)〜着地後の硬直中は新しい一閃を出せない = モーション
     // キャンセル不可 + 後隙。村雨でも共通(連発は硬直0.2sぶん間隔が空く)。
-    if (now < player.katanaRecoveryUntil) return false;
+    // ★燕返し(research/KATANA_TSUBAME.md §1)は一閃の着地の硬直の中から出る=硬直・CDの門を通さない(追加の消費なし=CDも足さない)。本人だけ。
+    const tb = ghostId === undefined ? tsubame : undefined;
+    if (!tb && now < player.katanaRecoveryUntil) return false;
     // 村雨はクールダウン無し(硬直のみ)。刀はさらにクールダウン中は発動しない。
     const mura = hasMurasame(player);
-    if (!mura && now < player.katanaDashCooldownEnd) return false;
+    if (!tb && !mura && now < player.katanaDashCooldownEnd) return false;
+    // 燕返しは距離が「今の位置→元の位置」(一閃の最大距離まで)=同じ速さで、その距離のぶんだけ走る。一閃は今どおり。
+    const dashMs = tb ? tsubameDashMs(tb.distance, KATANA_DASH_DISTANCE, KATANA_DASH_MS) : KATANA_DASH_MS;
     const len = Math.hypot(dirX, dirY);
     if (len < 0.001) return false;
     const ux = dirX / len;
@@ -16052,12 +16494,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     //  ⇒ 新しい数字を足さずに **KATANA_DASH_MS(180ms)がそのまま前隙**になる。
     // ※ダメージ適用が着地後なのは従来どおり(下の setTimeout。ヒットストップが移動窓を食う対策)。
     // 村雨はクールダウン無し: ダッシュ終了時刻をそのままCD終了にして実質0に。
-    const cooldownEnd = mura ? now + KATANA_DASH_MS : now + KATANA_DASH_MS + KATANA_DASH_COOLDOWN_MS;
+    const cooldownEnd = tb ? player.katanaDashCooldownEnd : mura ? now + KATANA_DASH_MS : now + KATANA_DASH_MS + KATANA_DASH_COOLDOWN_MS;
     // 状態機械そのもの(距離/所要時間/硬直/CD)は主語によらず同じ1組を書く。
     const dashPatch: Partial<DashLocomotionState> = {
-      katanaDashUntil: now + KATANA_DASH_MS,
+      katanaDashUntil: now + dashMs,
       // 着地(KATANA_DASH_MS後)からさらに KATANA_DASH_RECOVERY_MS は硬直。
-      katanaRecoveryUntil: now + KATANA_DASH_MS + KATANA_DASH_RECOVERY_MS,
+      katanaRecoveryUntil: now + dashMs + KATANA_DASH_RECOVERY_MS,
       katanaDashDirX: ux,
       katanaDashDirY: uy,
       katanaDashCooldownEnd: cooldownEnd,
@@ -16077,9 +16519,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 既に長い無敵(被弾の無敵など)が残っていれば縮めない(縮地・格闘の5段目と同じ・社長指示2026-11-07)。
           invulnerable: true,
           invulnerableTime: state.player.invulnerable
-            ? Math.max(state.player.invulnerableTime, now - Math.max(0, INVULN_MS - KATANA_DASH_MS))
-            : now - Math.max(0, INVULN_MS - KATANA_DASH_MS),
-          ...abilityInvulnPatch(state.player, now, KATANA_DASH_MS), // 技の無敵=sourceId 付きの攻撃(噛みつき・掴み)も受けない
+            ? Math.max(state.player.invulnerableTime, now - Math.max(0, INVULN_MS - dashMs))
+            : now - Math.max(0, INVULN_MS - dashMs),
+          ...abilityInvulnPatch(state.player, now, dashMs), // 技の無敵=sourceId 付きの攻撃(噛みつき・掴み)も受けない
           lastDirection: { x: ux, y: uy }
         }
       }));
@@ -16090,6 +16532,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().commitMeleeSwing();
       // §8裁定済み#16: 一閃は前隙が無い経路=打刻の呼び出し時刻(now)がそのまま「押した瞬間」。
       get().noteMeleeSwingPressedAt(now);
+      // ★技の行(research/KATANA_TSUBAME.md §2): 本人の一閃・燕返しが実際に出た瞬間(格闘の技の行と同じ出し方)。
+      notifyTechProc(tb ? 'tsubame' : 'issen');
+      if (!tb) set({ tsubameWindow: null }); // 新しい一閃は前の受付を閉じる
     } else {
       // 守護霊: 防御規格を同一にする。プレイヤーの「invulnerableTime を過去へずらす」逆算打刻は
       // 実効的に「now + KATANA_DASH_MS まで無敵」と同値なので、ゴースト専用の無敵窓
@@ -16108,12 +16553,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       id: `fx-katana-dash-${now}`,
       fromX: pcx,
       fromY: pcy,
-      toX: pcx + ux * KATANA_DASH_DISTANCE,
-      toY: pcy + uy * KATANA_DASH_DISTANCE,
-      color: 'rgba(196,225,255,0.85)',
+      toX: pcx + ux * (tb ? tb.distance : KATANA_DASH_DISTANCE),
+      toY: pcy + uy * (tb ? tb.distance : KATANA_DASH_DISTANCE),
+      color: tb ? 'rgba(255,255,255,0.98)' : 'rgba(196,225,255,0.85)',
       createdAt: now,
       duration: 260
     });
+    if (tb) {
+      // 燕返しの出だしは一閃より鋭く(切り返しの手触り): 切り返した足元の白い閃光と、引き絞った細い輪。判定なし=派手さの絵。
+      get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(255,255,255,', 160, true);
+      get().spawnRing(pcx, pcy, 4, 46, 'rgba(226,240,255,0.95)', 2, 180, true);
+    }
 
     // 斬撃・フィニッシュ・ヒットストップは「移動が終わってから」適用する。
     // フィニッシュのヒットストップ(全シム停止)を移動中に発火させると、
@@ -16153,13 +16603,28 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (perp <= KATANA_DASH_HIT_HALF_WIDTH + prop.width / 2) propTargetIds.push(prop.id);
           }
         }
-        if (targetIds.length === 0 && propTargetIds.length === 0) return; // 空振り(=かわされた)
+        if (targetIds.length === 0 && propTargetIds.length === 0) { if (tb) set({ tsubameWindow: null }); return; } // 空振り(=かわされた)
+        // ★殺陣(research/KATANA_TSUBAME.md §4): 本人の一閃・燕返しが、切り傷4本の敵に当たった瞬間=その敵だけ通常の当たりの代わりに殺陣へ(1体だけ・通り道の順で最初)。
+        const satsujinTarget = ghostId === undefined
+          ? targetIds.map(id => get().enemies.find(e => e.id === id)).find(e => !!e && !isCorpse(e) && !isUntouchable(e) && e.health > 0 && triggersSatsujin(e.katanaCuts) && e.aiPhase !== 'jump') ?? null
+          : null;
+        const strikeIds = satsujinTarget ? targetIds.filter(id => id !== satsujinTarget.id) : targetIds;
+        const preStrike = new Map(get().enemies.filter(e => strikeIds.includes(e.id)).map(e => [e.id, e] as const));
         // 「斬」を出す位置 = **実際に通った軌道**の真ん中。
         const zanX = pcx + ux * travel / 2;
         const zanY = pcy + uy * travel / 2;
-        const result = targetIds.length > 0
-          ? get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT, true, ghostId, ghostId ? 1 : warlordIssenMult(striker))
+        const result: { finish: boolean; hitIds?: string[] } = strikeIds.length > 0
+          ? get().performKatanaStrike(strikeIds, KATANA_DASH_DAMAGE_MULT, true, ghostId, ghostId ? 1 : warlordIssenMult(striker))
           : { finish: false };
+        if (ghostId === undefined) {
+          const hitIds = result.hitIds ?? [];
+          // 一閃=浮かせる / 燕返し=止めの後に走った向きへ吹き飛ばす(血を吹きながら)。どちらも切り傷を1本刻む。
+          if (hitIds.length > 0) applyIssenHitPatch(get, set, hitIds, preStrike, tb ? { ux, uy } : null);
+          // 燕返しの受付(§1): 一閃が1体以上に当たった瞬間から。燕返しの後・殺陣の後は開かない(1回まで・連鎖しない)。
+          set({ tsubameWindow: !tb && !satsujinTarget && hitIds.length > 0
+            ? { hitAt: Date.now(), dirX: ux, dirY: uy, hitIds, used: false, originX: pcx, originY: pcy } : null });
+          if (satsujinTarget) startSatsujin(get, set, satsujinTarget.id, ux, uy);
+        }
         // 経路上の松明などを破壊(近接フィニッシュと同等の高ダメージ)。
         const propDamage = KATANA_DAMAGE_BY_LEVEL[katanaLevel(striker)] * KATANA_DASH_DAMAGE_MULT * 2.5;
         for (const id of propTargetIds) {
@@ -16189,8 +16654,33 @@ export const useGameStore = create<GameState>((set, get) => ({
           get().spawnBlood(zanX, zanY, -Math.PI / 2 - 0.16, 260);
           get().spawnBlood(zanX, zanY, -Math.PI / 2 + 0.16, 260);
         }
-    }, KATANA_DASH_MS);
+    }, dashMs);
     return true;
+  },
+
+  tryTsubame: (dirX, dirY) => {
+    const now = Date.now();
+    const st = get();
+    const w = st.tsubameWindow;
+    if (!w || !tsubameAccepts(w, { x: dirX, y: dirY }, now)) return false;
+    if (st.satsujin) return false;
+    const p = st.player;
+    if (!isKatanaMode(p) || isPvpIncapacitated(p.pvpPosture, st.gameTime)) return false;
+    const path = tsubamePath({ x: p.x + p.width / 2, y: p.y + p.height / 2 }, { x: w.originX, y: w.originY }, KATANA_DASH_DISTANCE);
+    if (!path) return false;
+    set({ tsubameWindow: { ...w, used: true } }); // 1回の一閃に1回だけ
+    if (!get().triggerKatanaDash(path.ux, path.uy, undefined, { distance: path.dist })) return false;
+    // 音: 一閃と同じ系統で高め。
+    void import('../audio/audioManager').then(m => m.playSfx('katana-dash', 1, undefined, 1.35));
+    return true;
+  },
+
+  tryFlickFollowup: (dirX, dirY) => get().tryWhipFollowup(dirX, dirY) || get().tryTsubame(dirX, dirY),
+
+  flickFollowupOpen: () => {
+    const st = get();
+    const now = Date.now();
+    return isFlickFollowupOpen(st.whipFollowup, now) || isFlickFollowupOpen(st.tsubameWindow, now);
   },
 
   // ワイヤーアンカー: フリックでフリック方向(dir)に固定距離ワイヤーを刺す。1秒後(wirePlantUntil)に
@@ -18932,6 +19422,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     let punisherDmg = 0;               // 近接ダメージの半分(set 内で算出)
     const layingEggs: BreakableProp[] = []; // 抱卵型(旧ghost)がこのフレームに設置する緑卵(mine)。set 内で breakableProps へマージ。
     const tossLandings: { x: number; y: number; dirX: number; dirY: number }[] = []; // 兵士のトスがこのフレームに着地した足元(set 後に音/キック)。
+    const whipPullDust: { x: number; y: number; dx: number; dy: number }[] = []; // 鞭の引き寄せの砂埃の尾(set 後に出す・描画のみ)。
+    const tsubameBleeds: { x: number; y: number; vx: number; vy: number }[] = []; // 燕返しの吹き飛びの血の尾(set 後に出す・描画のみ)。
     const screamerActivatedAt: { x: number; y: number }[] = []; // 叫喚型がこのフレームに溜め完了=発動した位置(set 後に FX/SE/揺れ)。
     const screamerWindupAt: { x: number; y: number }[] = [];     // 叫喚型がこのフレームに溜め開始した位置(set 後に予兆FX)。
     const quadBreathSparkles: { x: number; y: number; scale?: number; life?: number; driftX?: number; driftY?: number; rot?: number }[] = [];
@@ -19033,17 +19525,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       const chaffLookup = new Map(postureUpdatedEnemies.map(e => [e.id, e] as const));
       // ★型をまたいで数える(§16-8「bat/skeleton/ゾンビが1つの枠を共有する」)。型ごとの
       // 「取ってよいか」の申告(wantsSlot)を1本の関数に束ねてderiveChaffMoveGrantsへ渡す。
-      const chaffGrants = new Set(deriveChaffMoveGrants(postureUpdatedEnemies, pcx, pcy, cand => {
+      const chaffWants = (cand: { id: string }): boolean => {
         const full = chaffLookup.get(cand.id);
         if (full === undefined) return false;
         if (full.type === 'zombie') return zombieWantsChaffRedSlot(full, gameTime, pcx, pcy);
         if (full.type === 'bat') return batWantsChaffSlot(full, gameTime, pcx, pcy);
         if (full.type === 'skeleton') return skeletonWantsChaffSlot(full, gameTime, pcx, pcy);
         return false;
-      }));
+      };
+      // ★間合いで待ちすぎた個体(bat/skeleton)は次の空き枠を先に取る(2026-11-20・`CHAFF_SLOT_WAIT_MAX_MS`)。枠の数は不変。
+      const chaffGrants = new Set(deriveChaffMoveGrants(postureUpdatedEnemies, pcx, pcy, chaffWants,
+        cand => chaffSlotOverdueSince(chaffLookup.get(cand.id)?.chaffSlotWaitSince, gameTime)));
       // §17: 亡霊の指差しで置かれた個体は、2体までの上限を超えて構えてよい(一斉に)。印の無い個体の枠は今までどおり。
       for (const e of postureUpdatedEnemies) if (e.aiPhase === undefined && isWraithForced(e, gameTime)) chaffGrants.add(e.id);
       const updatedEnemies = postureUpdatedEnemies.map((enemy): Enemy => {
+        // ★間合いで枠を待っている時間(bat/skeleton・2026-11-20)。取れていない間だけ進み、取れた/外れたら消す。
+        if (enemy.type === 'bat' || enemy.type === 'skeleton') {
+          const ws = nextChaffSlotWaitSince(enemy.chaffSlotWaitSince, chaffWants(enemy), chaffGrants.has(enemy.id), gameTime);
+          if (ws !== enemy.chaffSlotWaitSince) enemy = { ...enemy, chaffSlotWaitSince: ws };
+        }
         // research/LAB_CRAWLER.md §4: ステージ2の変異塊の代理は動かない(位置・箱は labCrawlerTick が毎フレーム塊に合わせる)。
         if (isLabCrawlerProxyType(enemy.type)) return enemy;
         // 塊の叩き潰しの登場の生け贄が場面の最中: 位置・速さは labBaitTick が書く(AI・押し・ノックバックを通さない・LAB_CRAWLER §11)。
@@ -19222,6 +19722,31 @@ export const useGameStore = create<GameState>((set, get) => ({
           const dd = escortTossSlideDist(gameTime, tz.startAt, tz.endAt, ddl);
           const fly = resolveMove(tz.fromX + (ddx / ddl) * dd, tz.fromY + (ddy / ddl) * dd);
           return { ...enemy, x: fly.x, y: fly.y, vx: 0, vy: 0 };
+        }
+        // ★鞭の引き寄せ(research/WHIP_FOLLOWUP.md §2)。from→to を実時間の ease-out で(速く始まり着く手前で減速)。
+        // 壁・木・建物の押し出し(resolveMove)と行ける帯(clampRectToPlayableArea)を通し、押し戻されたらそこで止める。AI・押しより先に位置を決める。
+        if (enemy.whipPull) {
+          const wp = enemy.whipPull;
+          const want = whipPullPosAt(wp, now);
+          const mv = resolveMove(want.x, want.y);
+          const wpCtx: PlayableAreaCtx = {
+            farBackdrop: state.farBackdrop, labTheme, corridorMode: state.corridorMode,
+            m0AdvanceLimitX: state.m0AdvanceLimitX, corridorRunInActive: state.corridorRunInActive,
+          };
+          const placed = clampRectToPlayableArea(mv.x, mv.y, enemy.width, enemy.height, wpCtx, enemy.x);
+          const blocked = Math.hypot(placed.x - want.x, placed.y - want.y) > WHIP_PULL_BLOCK_EPS_PX;
+          const dustDue = now - (wp.dustAt ?? wp.startAt) >= WHIP_PULL_DUST_INTERVAL_MS;
+          if (dustDue) whipPullDust.push({ x: placed.x + enemy.width / 2, y: placed.y + enemy.height - 2, dx: wp.toX - wp.fromX, dy: wp.toY - wp.fromY });
+          if (now >= wp.endAt || blocked) return { ...enemy, x: placed.x, y: placed.y, vx: 0, vy: 0, whipPull: undefined };
+          return { ...enemy, x: placed.x, y: placed.y, vx: 0, vy: 0, ...(dustDue ? { whipPull: { ...wp, dustAt: now } } : {}) };
+        }
+        // ★燕返しの吹き飛びの血の尾(research/KATANA_TSUBAME.md §1・描画のみ)。止めの間は吹かない(押しは止めの明けから)。位置は下の押しの所が動かす。
+        if (enemy.tsubameBleedUntil !== undefined) {
+          if (now >= enemy.tsubameBleedUntil) enemy = { ...enemy, tsubameBleedUntil: undefined, tsubameBleedAt: undefined };
+          else if ((enemy.hitStunUntil === undefined || now >= enemy.hitStunUntil) && now - (enemy.tsubameBleedAt ?? 0) >= TSUBAME_BLEED_INTERVAL_MS) {
+            tsubameBleeds.push({ x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height * 0.35, vx: enemy.knockbackVx ?? 0, vy: enemy.knockbackVy ?? 0 });
+            enemy = { ...enemy, tsubameBleedAt: now };
+          }
         }
         // 攻撃モーションを「全う」するフェーズの扱い(社長指示・v0.25.3271裁定で更新):
         // ・どの敵も「攻撃モーションに入ったら(aiPhase あり=溜め/zpause/zrush/突進/ジャンプ等)技自体は
@@ -22232,6 +22757,14 @@ export const useGameStore = create<GameState>((set, get) => ({
               // ★中心座標で焼く(skeletonArcPointはプレイヤーの中心座標と同じ基準=中心で幾何を
               // 組むため。top-left(enemy.x/y)のまま渡すと半幅/半高ぶんズレる)。
               aiFromX: ecx, aiFromY: ecy, aiStartedAt: gameTime,
+              // ★弧の軸(2026-11-20 社長「射程に収めて」): 骸骨から発火距離以内に収めた点から始める
+              // (しゃがみの間に間合いの外へ逃げたプレイヤーを、弧で射程の外まで追わない)。
+              // ★§17(亡霊の指差しで置かれた個体=間合いを飛ばす)は今までどおり生のプレイヤーで組む(軸を持たない)。
+              ...((): Pick<Enemy, 'chaffOrbitCx' | 'chaffOrbitCy'> => {
+                if (isWraithForced(enemy, gameTime)) return { chaffOrbitCx: undefined, chaffOrbitCy: undefined };
+                const a0 = skeletonArcAnchorStart(ecx, ecy, apx, apy);
+                return { chaffOrbitCx: a0.x, chaffOrbitCy: a0.y };
+              })(),
             };
           }
 
@@ -22244,7 +22777,15 @@ export const useGameStore = create<GameState>((set, get) => ({
             // ままになり「弧の終点」に居ない状態でs-biteへ入ってしまう。)
             // aiFromX/Yは中心座標(§16-7b「立つ位置」の注記どおり、上のs-crouch→s-arc遷移で焼く)。
             const fromX = enemy.aiFromX ?? ecx, fromY = enemy.aiFromY ?? ecy;
-            const target = skeletonArcPoint(fromX, fromY, apx, apy, enemy.chaffArcSide ?? true, uEased); // 中心座標
+            // ★弧の軸は生のプレイヤーへ**骸骨の素の歩く速さまで**しか寄らない(2026-11-20 社長「旋回が無限に
+            // 追いかけてきてる」)。旧は生のプレイヤー中心で毎フレーム組み直していたので、走って逃げても弧が
+            // 最大574px/sで付いてきた。止まっている/ゆっくり動くプレイヤーには軸=プレイヤー(1pxも変わらない)。
+            // 軸が無い個体(§17の指差し・軸を焼く前の状態)は旧どおり生のプレイヤーで組む。
+            const anchor = (enemy.chaffOrbitCx !== undefined && enemy.chaffOrbitCy !== undefined)
+              ? skeletonArcAnchorStep(enemy.chaffOrbitCx, enemy.chaffOrbitCy, apx, apy, enemy.speed * deltaTime)
+              : { x: apx, y: apy };
+            const anchorPatch = enemy.chaffOrbitCx !== undefined ? { chaffOrbitCx: anchor.x, chaffOrbitCy: anchor.y } : {};
+            const target = skeletonArcPoint(fromX, fromY, anchor.x, anchor.y, enemy.chaffArcSide ?? true, uEased); // 中心座標
             const smoved = skelClampMove(target.x - enemy.width / 2, target.y - enemy.height / 2); // top-leftへ変換
             if (uRaw >= 1) {
               // 弧の終点(プレイヤー中心から100pxの横)に到達=噛みへ。向きは踏み込みの瞬間(ここ)に
@@ -22252,7 +22793,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const necx = smoved.x + enemy.width / 2, necy = smoved.y + enemy.height / 2;
               const bl = Math.max(0.001, Math.hypot(apx - necx, apy - necy));
               return {
-                ...enemy, vx: 0, vy: 0, x: smoved.x, y: smoved.y, aiPhase: 's-bite', biteAt: gameTime, biteAimEscortId: escortAim?.id,
+                ...enemy, vx: 0, vy: 0, x: smoved.x, y: smoved.y, aiPhase: 's-bite', chaffOrbitCx: undefined, chaffOrbitCy: undefined, biteAt: gameTime, biteAimEscortId: escortAim?.id,
                 biteDirX: (apx - necx) / bl, biteDirY: (apy - necy) / bl,
                 // ★踏み込み距離を発火の瞬間に焼く(§16-A「★踏み込みの終点」)。
                 biteLungePx: biteLungeDistanceAtFire('skeleton', bl),
@@ -22262,7 +22803,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // (位置は弧の式が直接決めるので、ここは慣性の積分には使わない=座標書き込みのみが正)。
             const dtSafe = Math.max(deltaTime, 1 / 240);
             const svx = (smoved.x - enemy.x) / dtSafe, svy = (smoved.y - enemy.y) / dtSafe;
-            return { ...enemy, vx: svx, vy: svy, x: smoved.x, y: smoved.y };
+            return { ...enemy, ...anchorPatch, vx: svx, vy: svy, x: smoved.x, y: smoved.y };
           }
 
           // ── 構え前(aiPhase未設定): 枠が空いて間合い(100px)に達していればしゃがみへ ─────────
@@ -22729,6 +23270,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           (e.punisherHopDepth ?? 0) < punisherChainMax && // 覚醒=深度1(巻き込まれた敵)も1回だけ元になれる
           e.punisherPendingAt === undefined && // 一拍目のフリーズ中は元にならない(発火後の飛行中のみ)
           Math.hypot(e.knockbackVx ?? 0, e.knockbackVy ?? 0) > 30);
+        // ★衝突の瞬間の止め+小さな浮き(社長指示2026-11-20・utils/punisherImpact.ts)。ぶつけられた側は下の接触で、ぶつかった側(飛んで来た敵)は map の後で。
+        const punisherFlyerIds = new Set<string>();
         finalEnemies = punisherBase.map(b => {
           const bKbActive = b.knockbackUntil !== undefined && now < b.knockbackUntil;
           // ボムカウンター覚醒の1段パニッシュ印は期限切れで掃除(比較は常にnow基準なので残っても無害だが明示)。
@@ -22752,8 +23295,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 接触の瞬間は**一拍だけその場で固まる**(KB上書き速度0=一拍目の衝撃)。150ms後に下の
             // pending発火パスがダメージ+継承ノックバック(v0.25.3297「同じだけ飛ぶ」)を適用する(二拍目)。
             punisherContacts.push({ x: cleared.x + cleared.width / 2, y: cleared.y + cleared.height / 2 });
+            punisherFlyerIds.add(a.id);
+            // ぶつけられた側の止め=既存の一拍目(その場で固まる PUNISHER_TWO_BEAT_MS)をそのまま使う(重ねない)。浮きはその一拍が明けた時から。
+            const victimLift = punisherLiftPatch(cleared, BRC.brawlerLiftClass(cleared), now + PUNISHER_TWO_BEAT_MS, now, gameTime);
             return {
               ...cleared,
+              ...(victimLift ?? {}),
               punisherHopped: true, // 巻き込まれ中の印(KB終了で解除)
               punisherHopDepth: (a.punisherHopDepth ?? 0) + 1, // 連鎖深度(覚醒時は2まで元になれる)
               punisherPendingAt: now + PUNISHER_TWO_BEAT_MS,
@@ -22766,6 +23313,17 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           return cleared;
         });
+        // ぶつかった側(飛んで来た敵): 一瞬止まる(押しの残りは止めの後へ=飛ぶ距離は同じ)+止めが明けたら小さく浮く。
+        // 死体(KILLの吹き飛び)・空中投げで飛んでいる敵には掛けない(その飛び方の演出を崩さない)。
+        if (punisherFlyerIds.size > 0) {
+          finalEnemies = finalEnemies.map(e => {
+            if (!punisherFlyerIds.has(e.id) || isCorpse(e) || e.brThrown) return e;
+            const stop = punisherFlyerStopPatch(e, now);
+            if (!stop) return e;
+            const lift = punisherLiftPatch(e, BRC.brawlerLiftClass(e), stop.hitStunUntil, now, gameTime);
+            return { ...e, ...stop, ...(lift ?? {}) };
+          });
+        }
       }
 
       // 救助サークル内には通常(アンビエント)敵は入れない=円の外周へ押し出す。専用攻撃者(fromEvent)は
@@ -23137,6 +23695,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 兵士のトスの着地: 鈍い体の落ちる音+地面側の衝撃の揺れ(揺れの物差し registerImpact に乗せる=銃の反動の語彙を使わない・検収クリエイティブ A-5)。
     // 砂埃(滑った向きの後ろへ尾を引く)・小さなバウンド・気絶の輪のポップは描画が escortTossLandedAt から出す(判定なし)。
     // v3.1: 到着(プレイヤーの目の前)が2つ目の山=会心の揺れの型(crit)+短く軽い「ザッ」(jump-land を速く短く=兵士の倒れる音と聞き分ける)。
+    // 鞭の引き寄せの砂埃の尾(足元を擦る・引かれる向きの後ろへ流れる)。
+    for (const d of whipPullDust) {
+      const l = Math.hypot(d.dx, d.dy) || 1;
+      get().spawnImageMark(d.x, d.y, 'fx/dust-puff', { scale: 0.26, scaleY: 0.5, duration: 520, tint: 0x9a8b7a, alpha: 0.6, moveX: -(d.dx / l) * 22, moveY: -5, fadeFrom: 0.25 });
+    }
+    // 燕返しの吹き飛びの血(飛ぶ向きの後ろへ尾を引く+上へ吹き上がる・派手さの絵=判定なし)。
+    for (const b of tsubameBleeds) {
+      const back = Math.atan2(-b.vy, -b.vx);
+      get().spawnBlood(b.x, b.y, back + (Math.random() * 2 - 1) * 0.35, 110);
+      get().spawnBlood(b.x, b.y, -Math.PI / 2 + (Math.random() * 2 - 1) * 0.5, 80);
+    }
     for (const l of tossLandings) {
       void import('../audio/audioManager').then(m => m.playSfx('jump-land', 0.85, 180, 1.4));
       get().registerImpact({ source: 'escort-toss', damage: 1, minMag: IMPACT_MELEE_MIN, flags: { crit: true }, x: l.x, y: l.y }); // damage>0 でないと入口で捨てられる(検収2巡目 A-1)
@@ -25254,6 +25823,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   setAvatarId: (id) => {
+    if (id && !isAvatarUnlocked(id)) return; // 手に入れていないアバターは付けられない
     saveAvatarId(id);
     set({ avatarId: id });
   },
@@ -27944,6 +28514,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         poiIntelShown: emptyPoiIntelShown(), // §6.24-UX: 進入時の通信は「1ラン1回/種」=新ランで戻す
 
         kogarasuUnlockedThisRun: false,
+        brawlerArtsLearnedThisRun: [],
+        avatarsEarnedThisRun: [],
         labDoors: runDoors,
         labButtons: runButtons,
         labProps: runProps,
@@ -27956,6 +28528,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         bashHitFxAt: 0,
         whipHitFxAt: 0,
         whipSwingFxAt: 0,
+        whipFollowup: null,
+        tsubameWindow: null,
+        satsujin: null,
         anchorPlantFxAt: 0,
         anchorEnemyHitFxAt: 0,
         boomerangThrowFxAt: 0,

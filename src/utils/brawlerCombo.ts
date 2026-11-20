@@ -59,7 +59,14 @@ export const brawlerEnemyClass = (e: { type: EnemyType; colorTier?: string; isNa
 };
 /** ★浮きの区分。null=浮かない(終端の死神=深奥チェイサーは、格闘・爆発・スラッシャーのどれでも浮かない)。 */
 export const brawlerLiftClass = (e: { type: EnemyType; colorTier?: string; isNamed?: boolean; reaperChaser?: boolean }): 'mob' | 'strong' | 'boss' | null =>
-  isTerminalReaper(e) ? null : brawlerEnemyClass(e);
+  isTerminalReaper(e) ? null : e.type === 'guardian-phantom' ? 'mob' : brawlerEnemyClass(e);
+/**
+ * ★浮きの重さの区分(research/BRAWLER.md §36-0・社長指示2026-11-20「浮かせる攻撃は幻影・プレイヤー・守護霊・孫悟空も雑魚同様に浮く」)。
+ * 幻影(guardian-phantom・孫悟空を含む)は雑魚の値で浮く(高さ・時間・拾える予算・技の最中も取り消して浮く)。それ以外は渡された区分のまま。
+ * 区分そのもの(固まり・押し・止め)は変えない=浮きの計算にだけ使う。
+ */
+export const brawlerLiftWeightClass = (e: { type: EnemyType }, cls: 'mob' | 'strong' | 'boss'): 'mob' | 'strong' | 'boss' =>
+  e.type === 'guardian-phantom' ? 'mob' : cls;
 
 /**
  * ★格闘の固まり・止めが「技を出している最中」として除外する相(社長実機報告2026-11-08「まだ攻撃で敵が止まるのは一切入ってないね?」)。

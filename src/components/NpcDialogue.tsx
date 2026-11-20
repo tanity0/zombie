@@ -6,7 +6,7 @@ import { slowLineVisibleChars } from '../utils/slowLine';
 import { SKILLS, skillIcon } from '../data/campaign';
 import { useSkillIconSheet } from '../utils/useSkillIconSheet';
 import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
-import { nextSkillProcWake, skillProcAlive, skillProcLeaving, isTechProcKey, newestSkillProcId } from '../utils/skillProcFeed';
+import { nextSkillProcWake, skillProcAlive, skillProcLeaving, isTechProcKey, isTechSecretKey, newestSkillProcId } from '../utils/skillProcFeed';
 import { BRAWLER_TECH_NAMES, type BrawlerTechDir } from '../data/brawlerTechNames';
 import type { SkillKey } from '../types/game';
 import { isFollowToggleLineText } from '../data/npcLines';
@@ -242,7 +242,7 @@ const SkillProcRows = ({ align, boxSig, boxShift }: { align: number; boxSig: str
         const leaving = skillProcLeaving(e, now);
         const sinceIn = now - e.at - e.delay;
         const tech = isTechProcKey(e.key) ? BRAWLER_TECH_NAMES[e.key] : null;
-        const secret = e.key === 'tech:secret';
+        const secret = isTechSecretKey(e.key); // 秘奥義・殺陣(刀)
         const markColor = tech ? (secret ? TECH_SECRET_MARK_COLOR : TECH_MARK_COLOR) : PROC_RARITY_COLOR[SKILLS[e.key as SkillKey].rarity];
         // 名前の色はスキルと同じ(技かどうかは絵=向きの楔で分かる)。秘奥義だけ炸裂の青。古い行は沈める(今どおり)。
         const newest = e.id === newestId;

@@ -61,6 +61,10 @@ const WRITE_SITES: readonly WriteSite[] = [
     why: '弾・赤の攻撃の受け止め窓を張るだけ(振っていない)。段・技の打刻は triggerCounter の指定打撃側',
   },
   {
+    field: 'counterWindowEnd', where: '構えの掴み(スープレックス/サマーソルト)の間も構えの守りを残す(startBrawlerContactGrab)', stamped: false,
+    why: '掴みの間も受け止め窓を張り続けるだけ(社長指示2026-11-20「カウンター機能も残しといて」)=振っていない',
+  },
+  {
     field: 'meleeSwingAt', where: '縮地のワープ斬撃の予約(reserveShukuchiWarp・タッチ/PC共通)', stamped: false,
     why: '同じ振りを resolveShukuchiStrike→triggerCounter 側で1回打刻する。ここでも打つと1振り2打刻になる',
   },
@@ -191,7 +195,7 @@ describe('近接スイング確定の打刻(commitMeleeSwing)を「振り方を�
 
   it('★刀のスワイプ一閃(triggerKatanaDash)が打刻している(v0.25.3784の穴そのもの)', () => {
     // 型宣言(interface)ではなく**実装**を切り出す。
-    const impl = text.indexOf('triggerKatanaDash: (dirX, dirY, ghostId) => {');
+    const impl = text.indexOf('triggerKatanaDash: (dirX, dirY, ghostId, tsubame) => {'); // tsubame=燕返し(research/KATANA_TSUBAME.md)
     expect(impl, 'triggerKatanaDash の実装が見つからない(走査が壊れている)').toBeGreaterThan(0);
     const dash = text.slice(impl);
     const body = dash.slice(0, dash.indexOf('\n  },'));

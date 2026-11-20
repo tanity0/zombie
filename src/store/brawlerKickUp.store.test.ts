@@ -1,11 +1,14 @@
 // ★蹴り上げ・空中投げ・密着の構え(社長指示2026-11-19・research/BRAWLER.md §34)をストアで実際に動かして固める。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { setKenkiLevelForTest } from '../utils/kenkiLevel';
 import { useGameStore, isBrawlerGuarding } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { BRAWLER_GRAB_MS, BRAWLER_CONTACT_GRAB_MS, brawlerKickUpCost, BRAWLER_TECHS, BRAWLER_WORLD_STOP, BRAWLER_SUPLEX_RISE_MS, BRAWLER_CONTACT_FREEZE_MS, BRAWLER_SUPLEX_BLAST_RADIUS, brawlerTechCost, brawlerDistTo, brawlerPoseAt, BRAWLER_AIR_SUPLEX_RISE_MS } from '../utils/brawler';
 import { brawlerTimeKeeperDiscount } from '../utils/brawlerSkills';
 import { setBrawlerTempoAll, brawlerAirborne } from '../utils/brawlerCombo';
 import { playerSuperArmorActive } from '../utils/superArmor';
+import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
+import type { Projectile } from '../types/game';
 
 setBrawlerTempoAll(1.0);
 
@@ -53,6 +56,7 @@ const kick1 = (mk: () => ReturnType<typeof enemyAt>[], points = 10, skills: stri
 };
 
 beforeEach(() => {
+  setKenkiLevelForTest(5); // ★§36-2: 踵落とし・蹴り上げ・土竜を体得した状態で試す(体得の門そのものは brawlerArts.store.test.ts)
   now = 9_000_000;
   vi.spyOn(Date, 'now').mockImplementation(() => now);
   vi.spyOn(Math, 'random').mockReturnValue(0.99);
@@ -200,7 +204,9 @@ describe('§34-7 密着の構え', () => {
     expect(s.contactGrab?.mode).toBe('suplex');
     expect(s.points).toBe(9 - BRAWLER_TECHS.guard.cost);
     const st = useGameStore.getState();
-    expect(isBrawlerGuarding(st.player, st.gameTime)).toBe(false);
+    // ★カウンター投げ(社長指示2026-11-20): 掴み〜技の間も構えの守り(受けの窓・カウンター窓)はそのまま。スーパーアーマーも。
+    expect(isBrawlerGuarding(st.player, st.gameTime)).toBe(true);
+    expect(st.player.counterWindowEnd).toBeGreaterThan(now);
     expect(playerSuperArmorActive(st.player, 999, now, st.gameTime, 300)).toBe(true);
     const x0 = en('c')!.x;
     expect(useGameStore.getState().hitstopUntil).toBe(now + BRAWLER_CONTACT_FREEZE_MS); // ★§34-10: 掴んだ一瞬は時間停止(ガッ)
@@ -334,6 +340,67 @@ describe('§34-7 密着の構え', () => {
     expect((en('n')!.knockbackVx ?? 0)).toBeLessThan(0); // 着地点から外向き(左)
     expect(en('f')!.health).toBe(hpF);
   });
+  // ★社長指示2026-11-20「投げた敵は技中でもリセット」: 予告(赤)を出して溜めている雑魚を掴む=技も予告も消え、あとで当たらない。
+  it('予告を出して溜めている雑魚を掴むと、技と予告が消え、その攻撃は後で当たらない', () => {
+    setup();
+    useGameStore.setState(st => ({ enemies: [], player: { ...st.player, brawler: undefined } }));
+    useGameStore.getState().brawlerPress(); advance(400);
+    const p = useGameStore.getState().player;
+    const e = enemyAt(0, 0, 'c', 'zombie');
+    e.x = p.x + p.width + 4;
+    Object.assign(e, { aiPhase: 'z-red-pause', aiPhaseUntil: useGameStore.getState().gameTime + 300, aiStartedAt: useGameStore.getState().gameTime });
+    useGameStore.setState(st => ({ enemies: [e], player: { ...st.player, brawler: { ...st.player.brawler!, points: 9 } } }));
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    expect(br().contactGrab?.mode).toBe('suplex');
+    expect(en('c')!.aiPhase).toBeUndefined(); // 技(予告の相)は取り消し
+    const hp0 = useGameStore.getState().player.health;
+    for (let k = 0; k < 120; k++) { advance(10); useGameStore.getState().updateEnemies(0.01); }
+    expect(useGameStore.getState().player.health).toBe(hp0); // 取り消した攻撃は当たらない
+  });
+  // ★社長指示2026-11-20「カウンター投げのスープレックスはカウンター機能も残しといて」(サマーソルトも同じ): 掴んでいる間に受けた攻撃はカウンター(被害なし)・
+  //   弾は打ち返す。ただし構えの自動の続き(代金なしの地割り・反撃の気功)は出ず、押されもしない。投げ・サマーソルトは最後まで出る。
+  const shootAtPlayer = (ownerId: string, ownerType: 'zombie' | 'hunter') => {
+    const p = useGameStore.getState().player;
+    const proj = {
+      id: `b-${now}`, x: p.x + p.width / 2 - 5, y: p.y + p.height / 2 - 5, width: 10, height: 10, speed: 0, damage: 10,
+      direction: { x: -1, y: 0 }, weaponType: 'handgun', hostile: true, reflected: false, passthrough: false, hitEnemies: [], duration: 5000, createdAt: now, critChance: 0,
+      ownerId, ownerType,
+    } as unknown as Projectile;
+    useGameStore.setState({ projectiles: [proj] });
+    applyEnemyProjectileHits(now, useGameStore.getState().player, false, 0, useGameStore.getState().gameTime, NOOP_COMBAT_EFFECTS, { grenadeBlastRadius: 0, grenadeBlastDamageMult: 0, counterReflectSlowMs: 0 });
+  };
+  for (const [type, mode] of [['zombie', 'suplex'], ['hunter', 'flipkick']] as const) {
+    it(`カウンター投げ(${mode}): 掴んでいる間の近接(雑魚・ボス級)はカウンター(被害なし)・弾は打ち返す・地割りも気功も出ず押されない・技は最後まで出る`, () => {
+      guardNear(type, [], 9);
+      expect(br().contactGrab?.mode).toBe(mode);
+      // 下がる向き(-x)の通り道に置かない(体に当たって下がり切れない=配置の都合)。
+      const mob = enemyAt(10, 50, 'o', 'zombie');
+      const boss = enemyAt(10, -60, 'b', 'hunter');
+      useGameStore.setState(st => ({ enemies: [...st.enemies, mob, boss] }));
+      const hp0 = useGameStore.getState().player.health;
+      const hpC = en('c')!.health;
+      advance(30);
+      for (const id of ['o', 'b']) {
+        const o = en(id)!;
+        useGameStore.getState().damagePlayer(30, 'test', o.x + o.width / 2, o.y + o.height / 2, o.type, false, undefined, id);
+        expect(useGameStore.getState().player.health).toBe(hp0);       // 被害なし
+        expect(br().contactGrab?.mode).toBe(mode);                     // 地割りに置き換わらない
+        expect(useGameStore.getState().player.lungeShape).not.toBe('push'); // 押されない
+      }
+      expect(useGameStore.getState().player.lastCounterSuccessTime).toBeGreaterThan(0);
+      shootAtPlayer('o', 'zombie');
+      expect(useGameStore.getState().projectiles.some(x => x.hostile)).toBe(false); // 打ち返した
+      expect(useGameStore.getState().player.health).toBe(hp0);
+      const x0 = useGameStore.getState().player.x;
+      for (let k = 0; k < 300 && br().phase !== 'idle'; k++) advance(10);
+      advance(400);
+      expect(useGameStore.getState().brawlerKiko.length).toBe(0); // 反撃の気功は出ない
+      expect(feed()).toContain(mode === 'suplex' ? 'tech:suplex' : 'tech:flipkick');
+      expect(feed()).not.toContain('tech:stomp');
+      if (mode === 'suplex') expect(en('c')!.health).toBeLessThan(hpC); // 叩きつけた
+      else expect(x0 - useGameStore.getState().player.x).toBeGreaterThan(60); // 下がり切った
+    });
+  }
   it('密着していなければ今までどおりの構え', () => {
     setup();
     useGameStore.setState(st => ({ enemies: [enemyAt(140, 0, 'far')], player: { ...st.player, brawler: undefined } }));

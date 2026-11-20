@@ -5,6 +5,7 @@
 
 import { fillPadGlyphs } from '../utils/hudHints';
 import type { PadKind } from '../utils/inputDevice';
+import { isBrawlerArtLearned, BRAWLER_ART_NAME, type BrawlerArt } from '../utils/kenkiLevel';
 
 export type TutorialId =
   | 'move'
@@ -64,11 +65,26 @@ export interface TutorialEntry {
  * padLines の {press}/{flick}/{gunNext}/{gunPrev} は、そのパッドの系統の刻印の字に置き換える(HUD の札と同じ字=hudHints.fillPadGlyphs)。
  */
 export const tutorialLinesFor = (
-  e: { lines: string[]; pcLines?: string[]; padLines?: string[] },
+  e: { id?: string; lines: string[]; pcLines?: string[]; padLines?: string[] },
   device: 'touch' | 'mouse' | 'pad',
   padKind: PadKind = 'xbox',
-): string[] =>
-  device === 'pad' ? (e.padLines ?? e.pcLines ?? e.lines).map(l => fillPadGlyphs(l, padKind)) : device === 'mouse' ? (e.pcLines ?? e.lines) : e.lines;
+): string[] => {
+  const base = device === 'pad' ? (e.padLines ?? e.pcLines ?? e.lines).map(l => fillPadGlyphs(l, padKind)) : device === 'mouse' ? (e.pcLines ?? e.lines) : e.lines;
+  return e.id === 'brawler-moves' ? maskBrawlerMovesLines(base, art => isBrawlerArtLearned(art)) : base;
+};
+/** 伏せた行の字(他の操作記録の未取得と同じ書き方)。 */
+export const BRAWLER_ART_HIDDEN_LINE = '？？？';
+/**
+ * ★資料室の格闘の技一覧(research/BRAWLER.md §36-2): 体得していない技(踵落とし・蹴り上げ・土竜)の行を「？？？」に伏せる。
+ * 行は技の名前で見分ける(3種の操作の本文のどれにも同じ名前が入っている)。data を2つ持たない=伏せるのはこの関数だけ。
+ */
+export const maskBrawlerMovesLines = (lines: readonly string[], learned: (art: BrawlerArt) => boolean): string[] =>
+  lines.map(l => {
+    for (const art of Object.keys(BRAWLER_ART_NAME) as BrawlerArt[]) {
+      if (!learned(art) && l.includes(`: ${BRAWLER_ART_NAME[art]}。`)) return BRAWLER_ART_HIDDEN_LINE;
+    }
+    return l;
+  });
 
 // 武器商人の1枚(スタート地点の商人のサークルに初めて入った時に出す 'merchant')。旧 stage1-guide の1枚目=同じ文を2回見せないためガイドからは外した。
 export const MERCHANT_SLIDES: TutorialSlide[] = [

@@ -136,6 +136,7 @@ import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
 import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceWantsGlenForm2, practiceBossType } from '../utils/bossPractice';
+import { loadKenkiLevel, kenkiSpawnLevel, kenkiLevelHealth, kenkiLevelLook } from '../utils/kenkiLevel'; // 孫悟空のレベル(research/BRAWLER.md §36)
 import { vsEntryOfRun, isNoAmmoRun, idForVariant, vsBodyInit, VS_RESPAWN_MS, VS_SPAWN_DIST_MIN, VS_SPAWN_DIST_MAX } from '../utils/vsTest';
 import { idForLabSex } from '../utils/labZombieSex';
 import { pickPhantomIdentity, setPhantomIdentity, getPhantomIdentity, phantomDisplayLabel, clearPhantomIdentity } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の人格(癖・ビルド・HP・名前を1人から)
@@ -412,7 +413,7 @@ import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
 import { bossLairPos, poiSectorIndex } from '../world/pois';
 import { POLICE_ARENA_RADIUS, isPoliceRearmed, policeArenaCenter, touchesPolice, isApproachingPolice } from '../world/police';
 import { POLICE_REWARD_SKILLS, SKILLS } from '../data/campaign';
-import { ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
+import { alchemyChannelDurationMs } from '../utils/alchemyRhythm';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { phaseAt, sceneAt } from '../utils/difficultyDirector';
@@ -573,7 +574,7 @@ import {
   LOOP1_DUO_REVEAL_DELAY_MS, tickLoop1DuoWait, LOOP1_ARRIVAL_LINES, LOOP1_HELP_COMM_LINES,
   loop1KomaNow, LOOP1_CAPTURE_PEAK_MS, loop1ModeBarTutorialDue, loop1ModeHandBackDue,
   stage1GuardianTutorialDue, type GuardianBoundKind,
-  loop1WrongWayRegion, loop1WrongWayPeak, stepLoop1WrongWay,
+  loop1WrongWayRegion, loop1WrongWayPeak, stepLoop1WrongWay, loop1LockStep, loop1LockFreezesGameTime,
 } from '../utils/stage1FirstLoop';
 import { pickNpcLine, npcLinesInOrder } from '../data/npcLines';
 import { rescueQuestSpawnReady, duoCommActive, duoCommEnded, duoQuietWindow } from '../utils/rescueQuestGate'; // 二人組クエストv2(§2-11・B4)/v4(§2-18)
@@ -1875,6 +1876,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // (未終了はnull=directorTimeはgameTimeそのまま動かない=0スタート)。純関数側(welcomeScript.ts)
   // の`welcomeAdvance`がこの3つを入力に取り、配線側(ここ)はrefの更新と実際のspawn/addEnemyだけを行う。
   const welcomeStepRef = useRef(-1);
+  const arrivalCommClockRef = useRef(0); // ステージ1の1周目の到着の会話: 世界を止めている間に進めた通信の時計(ms)
   const welcomeStepClearedAtRef = useRef<number | null>(null);
   const welcomeEndedAtRef = useRef<number | null>(null);
   // PACING_PUZZLE.md §17-13-c(始動ゲート・社長指示2026-09-19): 1段目を湧かせたgameTime。
@@ -2952,13 +2954,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // 納品ロックは gameWon で必ず終わるので、ロック中に gameTime が進んでも以降の進行に影響しない。
       if (useGameStore.getState().deliveryLocked) {
         const dlSt = useGameStore.getState();
-        const dlgGt = dlSt.gameTime + baseDeltaTime * 1000;
-        setGameTime(dlgGt, dlSt.realGameTime + baseDeltaTime * 1000);
-        useGameStore.getState().updateNpcDialogue(dlgGt);
+        // ステージ1の1周目の到着の会話(社長報告2026-11-20): 同じロックで世界を止めるが、ゲーム時刻は進めない
+        // (会話の後もゲームが続く=タイマーを飛ばさない)。通信の時計だけを別に進める(行の尺はいつもどおり)。
+        let commClock: number;
+        if (loop1LockFreezesGameTime(dlSt.stage1LoopTalk)) {
+          arrivalCommClockRef.current += baseDeltaTime * 1000;
+          commClock = dlSt.gameTime + arrivalCommClockRef.current;
+        } else {
+          commClock = dlSt.gameTime + baseDeltaTime * 1000;
+          setGameTime(commClock, dlSt.realGameTime + baseDeltaTime * 1000);
+        }
+        useGameStore.getState().updateNpcDialogue(commClock);
         updateEffects(baseDeltaTime);
         const gw = useGameStore.getState();
-        if (gw.deliveryLocked && gw.npcDialogue === null && gw.npcDialogueQueue.length === 0) {
+        const lockNext = loop1LockStep({ talk: gw.stage1LoopTalk, commEnded: gw.npcDialogue === null && gw.npcDialogueQueue.length === 0 });
+        if (gw.deliveryLocked && lockNext === 'win') {
           useGameStore.setState({ gameWon: true, deliveryLocked: false });
+        } else if (gw.deliveryLocked && lockNext === 'release') {
+          // 到着の会話が流れ切った→ロックを解く。続き(「変異体の危険度」→救助)は1周目のブロックが talkEnded で拾う。
+          // 次の通信の間合いは止めていた時刻に合わせ直す(通信の時計のぶん先送りにしない)。
+          arrivalCommClockRef.current = 0;
+          useGameStore.setState({ deliveryLocked: false, npcDialogueNextAt: gw.gameTime });
         }
         frameRef.current = requestAnimationFrame(gameLoop);
         return;
@@ -3593,6 +3609,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // PACING_PUZZLE.md §17-11 B3(監査A-12): ウェルカム台本も新ランで最初の段からやり直す
           // (resetGameではなくpuzzleKomaRef等と同じ「新ラン検知ブロック」で初期化する)。
           welcomeStepRef.current = -1;
+          arrivalCommClockRef.current = 0;
           welcomeStepClearedAtRef.current = null;
           welcomeEndedAtRef.current = null;
           welcomeStartedAtRef.current = null; // §17-13-c: 新ランでゲート待ち状態からやり直す
@@ -5861,7 +5878,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // --- ステージ1の1周目(STAGE1_FIRST_LOOP.md §4・§7.5〜§7.7) ---------------------------------
         // 判定(段階・モードの一方通行・賞金首の発火半径・位置)は utils/stage1FirstLoop.ts の純関数。ここは配線だけ。
-        // 到着の通信中も世界は進む(v4 の通信と同じ)。お礼の通信中は納品ロックの早期 return で止まるので、ここへは来ない。
+        // 到着/お礼の通信中は納品ロックの早期 return で世界ごと止まるので、ここへは来ない(社長報告2026-11-20)。
         if (firstLoop && LOOP1_PHASE_JUMP && loopState.stage1Loop && loop1JumpRunRef.current !== loopState.stage1Loop.hospitalPos) {
           // 撮影用(開発サーバだけ): 1出撃に1回、指定の段の手前まで状態を進める。hospitalPos の参照=その出撃の印(出撃ごとに作り直される)。
           const J = loopState.stage1Loop;
@@ -6004,11 +6021,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             });
             if (step.phase !== L.phase) patch.phase = step.phase;
             let startTalk: Loop1Talk | null = null;
-            // 「拠点の確保」: 西の拠点の軍人がサークルに入った(確保の進みが始まった)最初の瞬間に積む。
+            // 「拠点の確保」: プレイヤーが西の拠点に近づいた最初の瞬間に積む(社長指示2026-11-20・距離は LOOP1_BASE_NEAR_DIST)。
             // 確保の完了と同じフレームでも、こちらを先に積む=「確保」→「利用」の順で出る。
             let tutQueue = L.pendingTutorials;
             const l1Base = l1s.baseSites.find(b => b.id === LOOP1_BASE_ID);
-            if (l1Base && loop1BaseCaptureTutorialDue({ queued: L.baseCaptureTutQueued, baseDwellMs: l1Base.dwellMs, baseCaptured: l1Base.status === 'captured' })) {
+            if (l1Base && loop1BaseCaptureTutorialDue({ queued: L.baseCaptureTutQueued, playerDistToBase: Math.hypot(lpcx - l1Base.x, lpcy - l1Base.y), baseCaptured: l1Base.status === 'captured' })) {
               patch.baseCaptureTutQueued = true;
               tutQueue = enqueueLoop1Tutorial(tutQueue, 'base-capture');
             }
@@ -6026,14 +6043,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (afterBase.length) useGameStore.getState().enqueueNpcDialogue(afterBase.map(text => ({ name: baseSoldierName(L.soldierIndex), text })));
                 }
                 break;
+              case 'queueDetour':
+                // 軍人の通信が流れ切った→「寄り道」(社長指示2026-11-20)。閉じたら廃病院+アテンション(placeHospital)。
+                tutQueue = enqueueLoop1Tutorial(tutQueue, 'detour-poi');
+                break;
               case 'placeHospital':
-                // 通信が流れ切った→西のデンジャーゾーンの北寄りに廃病院(それまでは設置もしない=§4-5)+カメラが寄って戻る(既存のアテンション)。
+                // 「寄り道」を閉じた→西のデンジャーゾーンの北寄りに廃病院(それまでは設置もしない=§4-5)+カメラが寄って戻る(既存のアテンション)。
                 useGameStore.setState({ hospital: { ...L.hospitalPos }, hospitalTaken: false, hospitalDwellMs: 0, hospitalTakenAt: 0 });
                 useGameStore.getState().triggerAttention(L.hospitalPos.x, L.hospitalPos.y, undefined, 0, null, { zoomToUnity: true }); // 引いていても等倍に見せる(社長指示2026-11-19)
                 break;
               case 'vaccineTaken':
-                // 寄り道のチュートリアル。二人は閉じてから3秒後(duoWait)。
-                tutQueue = enqueueLoop1Tutorial(tutQueue, 'detour-poi');
+                // 取得から3秒後に二人(duoWait)。「寄り道」は軍人の通信の後へ移した(社長指示2026-11-20)。
                 patch.duoWaitMs = 0;
                 break;
               case 'revealDuo':
@@ -6096,10 +6116,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             // チュートリアルは1周目では端末の既読に関係なく出す(§7.6 B)。ポップアップ・メニューが開いていれば閉じるまで待つ。
             // 待ちが複数(確保→利用)なら1件ずつ: 出した次のフレームからはポップアップが開いている=閉じるまで次を待つ。
-            // 「変異体の危険度」は通信とも重ねない(流れ切ってから)。
+            // 「変異体の危険度」「拠点の確保」は通信・アテンションとも重ねない(流れ切ってから)。
             const commBusy = !duoCommEnded(l1s.npcDialogue !== null, l1s.npcDialogueQueue.length);
             const nextTut = nextLoop1Tutorial(tutQueue, uiBlocked || startTalk !== null || l1s.stage1LoopTalk !== null
-              || (tutQueue[0] === 'mutant-tier' && commBusy));
+              || ((tutQueue[0] === 'mutant-tier' || tutQueue[0] === 'base-capture') && (commBusy || l1s.attention !== null)));
             if (nextTut.show) showTutorialOnce(nextTut.show);
             if (nextTut.show === 'mode-bar') patch.modeBarShown = true;
             if (nextTut.rest.length !== L.pendingTutorials.length || nextTut.rest.some((t, k) => t !== L.pendingTutorials[k])) {
@@ -6112,8 +6132,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (startTalk) {
               // 到着/お礼の会話(§7.7 A3・社長指示「従来の通信方式にして」): v4 の二人組と同じ通信(左上の通信欄)で出す。
               if (startTalk === 'arrival') {
-                // v4 の5:00の通信と同じ=通信欄+「通信」の銘打ち。世界は止めない(通信欄はゲーム時刻で進む)。終わりは上の talkEnded。
-                useGameStore.setState({ stage1LoopTalk: 'arrival' });
+                // v4 の5:00の通信と同じ=通信欄+「通信」の銘打ち。会話の間は世界を止める(社長報告2026-11-20・納品ロックと同じ止め方。
+                // ゲーム時刻は止めたまま通信だけ進む=上のロックの分岐)。流れ切ったらロックが解け、終わりは talkEnded で拾う。
+                arrivalCommClockRef.current = 0;
+                useGameStore.setState({ stage1LoopTalk: 'arrival', deliveryLocked: true });
                 // 1周目専用の到着の会話(§7.9)。v4/2周目以降の EVENT_QUEST_SUB_ACCEPT_LINES は使わない。
                 useGameStore.getState().enqueueNpcDialogue(LOOP1_ARRIVAL_LINES.map(l => ({ ...l })));
                 useGameStore.getState().enqueueWallEvent('comm', '通信', 'INCOMING TRANSMISSION', '#bfe3ff');
@@ -6189,7 +6211,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         // 寄り道ガイド(社長指示2026-11-18): 拠点を初めて確保した時に1度だけ(端末既読)。判定は純関数。
-        if (!firstLoop && !seenTutorials().has('detour-poi') && !useGameStore.getState().bossMaker.active) { // 1周目はワクチン取得で出す(§7.6 B)
+        if (!firstLoop && !seenTutorials().has('detour-poi') && !useGameStore.getState().bossMaker.active) { // 1周目は拠点確保後の軍人の通信の後に出す(社長指示2026-11-20)
           const st = useGameStore.getState();
           if (shouldShowDetourTutorial({
             anyBaseCaptured: st.baseSites.some(b => b.status === 'captured'),
@@ -9919,6 +9941,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // ビルドを積んだ**後**に決めること(順序を入れ替えると記録が読めない)。
             // 記録が無いときだけ従来どおり player.ddaBaseHp(GROWTH.md v4)へ落ちる。
             gpE.health = gpE.maxHealth = guardianPhantomHealth(player.ddaBaseHp, gpE.phantomBuild?.maxHealth);
+            // ★孫悟空のレベル(research/BRAWLER.md §36-1): 体力は今の式に積み上げ(+50/+120/+220)。対策室(練習)は Lv1 のまま。
+            if (unique === PHANTOM_BRAWLER_KIND) {
+              const kLv = kenkiSpawnLevel(loadKenkiLevel(), isPracticeRun());
+              gpE.kenkiLv = kLv;
+              gpE.health = gpE.maxHealth = kenkiLevelHealth(gpE.maxHealth, kLv);
+            }
             // CLAUDE.md MUST: 湧き位置も「行ける帯」へクランプ(プレイヤーが追えない場所に置かない)。
             const gpClamped = clampRectToPlayableArea(gpE.x, gpE.y, gpE.width, gpE.height, {
               farBackdrop: useGameStore.getState().farBackdrop,
@@ -9979,7 +10007,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 枠の時刻・場所のまま(出撃3秒・プレイヤーから遠い POI=宇宙飛行群と同じ選び方)。名前の帯とアテンションは姿が画面に入った時。
           {
             const kenki = uniquePhantomSpec(PHANTOM_BRAWLER_KIND);
-            const kenkiIdentity = { name: kenki.name, profile: kenki.profile, source: 'unique' as const };
+            // ★名前はレベルごと(research/BRAWLER.md §36・data/kenkiNames の1か所)。対策室(練習)は Lv1=「孫悟空」。
+            const kenkiIdentity = { name: kenkiLevelLook(kenkiSpawnLevel(loadKenkiLevel(), isPracticeRun())).name, profile: kenki.profile, source: 'unique' as const };
             const markKenkiSeen = (): void => {
               markBossesEncountered(new Set([PHANTOM_BRAWLER_ENCOUNTER_KEY])); // 練習ラン・ボス戦テストでは記録しない(関数側)
               markBossAppeared(PHANTOM_BRAWLER_ENCOUNTER_KEY);
@@ -10632,7 +10661,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if ((alcPlayer.alchemyChannelStartedAt ?? 0) === 0) {
             useGameStore.getState().updateAlchemyChannel(started);
           }
-          if (newGameTime - started >= ALCHEMY_CHANNEL_MS) {
+          // 溜めのリズム(research/ALCHEMY_RHYTHM.md): サークルを出す/過ぎたものを外れに。成功で溜めが縮む。
+          useGameStore.getState().tickAlchemyRhythm();
+          if (newGameTime - started >= alchemyChannelDurationMs(useGameStore.getState().player.alchemyRhythm)) {
             useGameStore.getState().summonAlchemy();
             useGameStore.getState().updateAlchemyChannel(0);
           }

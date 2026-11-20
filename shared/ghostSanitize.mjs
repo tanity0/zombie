@@ -57,7 +57,7 @@ export const GHOST_KNOB_NAMES = Object.freeze(Object.keys(KNOB_RANGES));
 export const GHOST_CLASS_IDS = Object.freeze(['warrior', 'mage', 'rogue', 'necromancer']);
 /** アバター(= src/data/avatars.ts の AVATAR_IDS・見た目のみ)。 */
 export const GHOST_AVATAR_IDS = Object.freeze([
-  'cat-set', 'devil-set', 'angel-set', 'bunny-set', 'pirate-set', 'ghost-set', 'jiangshi-set', 'maid-set',
+  'cat-set', 'devil-set', 'angel-set', 'bunny-set', 'pirate-set', 'ghost-set', 'jiangshi-set', 'maid-set', 'tosen-set',
 ]);
 /** スキル(= src/data/campaign.ts の SKILLS のキー)。 */
 export const GHOST_SKILL_KEYS = Object.freeze([

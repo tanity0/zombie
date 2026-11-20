@@ -13,7 +13,7 @@
 // 視覚専用(判定/移動/攻撃に一切影響しない)。CLAUDE.md「レンダリングとゲームロジックの分離」に
 // 従い、ここは renderer-agnostic なデータのみ(PixiJS import なし)。
 
-export type AvatarId = 'cat-set' | 'devil-set' | 'angel-set' | 'bunny-set' | 'pirate-set' | 'ghost-set' | 'jiangshi-set' | 'maid-set';
+export type AvatarId = 'cat-set' | 'devil-set' | 'angel-set' | 'bunny-set' | 'pirate-set' | 'ghost-set' | 'jiangshi-set' | 'maid-set' | 'tosen-set';
 
 export interface AvatarPart {
   /** src/pixi/pixiTextures.ts の standalone リストに登録したテクスチャ名。 */
@@ -57,6 +57,11 @@ export interface AvatarPart {
    * 割り方は utils/avatarPlacement.avatarPartPieces の1本。
    */
   leadingHalfBehind?: boolean;
+  /**
+   * 1枚の絵に複数のパーツが並んでいる時に、その中から切り出す四角(素材のpx)。省略=絵の全体。
+   * 素材は加工せず読み込み時に切る(原盤の public は支給のまま・CLAUDE.md「public は原盤」)。寸法・置き方は切った四角を絵の全体として扱う。
+   */
+  crop?: { x: number; y: number; w: number; h: number };
 }
 
 export interface AvatarDef {
@@ -325,6 +330,39 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         offsetXFrac: 0.02,
         offsetYFrac: -0.95, // 社長指示2026-11-01「カチューシャもう少し上に」-0.9→-0.95
         sizeFrac: 0.40, // 社長指示2026-11-01「カチューシャは少しちいさく」0.5→0.44→2026-11-02「カチューシャの方だけ少し小さく」0.40
+        sizeBasis: 'width',
+        flipWithFacing: true,
+        followsHead: true,
+      },
+    ],
+  },
+  // 第9弾「斗戦勝仏セット」(社長支給2026-11-20・斗戦勝仏=孫悟空の済を初めて倒した報酬。手に入れるまで選べない=utils/avatarUnlock)。
+  // 緊箍児(頭・above)+如意棒(背中に斜め・below)。支給の1枚(68×34・左=緊箍児/右=如意棒)を読み込み時に切る(x=32 の透明の隙間で分かれる)。
+  // 乗車中はスケボーの板が筋斗雲(avatar-tosen-kintoun)に替わる(pixiScene の乗車の板)。
+  'tosen-set': {
+    id: 'tosen-set',
+    name: '斗戦勝仏セット',
+    parts: [
+      {
+        tex: 'avatar-tosen-parts', // 如意棒(右上が先・左下が石突きの斜め)
+        crop: { x: 34, y: 1, w: 34, h: 33 },
+        layer: 'below',
+        anchorX: 0.5, anchorY: 0.5,
+        offsetXFrac: -0.06,
+        offsetYFrac: -0.5,
+        sizeFrac: 1.0, // 両端が肩の上と腰の後ろから出る長さ
+        sizeBasis: 'height',
+        flipWithFacing: true,
+        followsHead: true,
+      },
+      {
+        tex: 'avatar-tosen-parts', // 緊箍児(金の輪・額に巻く)
+        crop: { x: 2, y: 26, w: 28, h: 8 },
+        layer: 'above',
+        anchorX: 0.5, anchorY: 1,
+        offsetXFrac: 0.03,
+        offsetYFrac: -0.83, // 額(目に掛からない高さ)
+        sizeFrac: 0.4,
         sizeBasis: 'width',
         flipWithFacing: true,
         followsHead: true,

@@ -32,7 +32,7 @@ import { shadowProbeCount, shadowProbeMode, shadowProbeStretch, noteShadowProbeF
 // 同じ台帳から引く(写し定数を作らない)。データ層のみのimport=描画/判定の層は越えない。
 import { SKILL_ICON_INDEX, skillSheetGeometry } from '../data/skillIcons';
 import type {
-  BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
+  BreakableProp, CastleEvent, Enemy, SatsujinState, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, JunDeparture, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
   BloodSpike, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
   GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショットの渦(v0.25.3276)
@@ -113,9 +113,11 @@ import {
   isBrawlerGuarding, brawlerGuardBodyRect, isBrawlerMode, // ★サブウェポン「格闘」(research/BRAWLER.md)
   type SkadiBlade, type SkadiBladeVisual, // 氷刃の列を共用する飛ぶ物(亡霊の呪いの墓石=visual:'grave'・WRAITH_MUTANT.md §11)
 } from '../store/gameStore';
+import { kenkiLevelLook } from '../utils/kenkiLevel'; // 孫悟空のレベルの色(research/BRAWLER.md §36-1)
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
 import { BRAWLER_WEAK_GUARD_ALPHA } from '../utils/brawlerGuard'; // 弱い構え(払えずに出た構え)の光の薄さ
 import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
+import { satsujinCoverAlpha, SATSUJIN_HITS } from '../utils/katanaTsubame'; // ★刀の殺陣の赤い画面の濃さ
 import { screamerMarkVisible } from '../utils/screamerGate';
 import { airChaseHeightPx } from '../utils/airChaseHeight'; // 高さに追いつく技の高さ(動ける距離の中で相手の高さへ向かう・社長指示2026-11-16)
 import { getLastAirMeleeHit, playerLaunchHeightPx, stepPlayerAir, playerKickJump, playerKickJumpShape, playerKickLandPx, playerKickLandSpeed, playerAirLaunchSpeed, PLAYER_KICK_LAND_FRAC, PLAYER_KICK_JUMP_MIN_PX, PLAYER_KICK_HOLD_MS, PLAYER_KICK_RECOIL_PX, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
@@ -415,7 +417,9 @@ import {
 import { SECRET_DISPLAY_H, SECRET_MIN_DIST, secretSepiaMult } from '../world/secretPois';
 import { HERO_DOG_BITE_INTERVAL_MS, HERO_DOG_DEATH_HOLD_MS, HERO_DOG_DEATH_FADE_MS, heroDogDeathPose } from '../utils/heroDog';
 import { HIT_BLINK_TYPES, hitBlinkStrength, bloodFlashStrength } from '../utils/hitBlink';
-import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE, ALCHEMY_ATTACK_INTERVAL_MS } from '../utils/summonUtils';
+import { ALCHEMY_SUMMON_TINT, ALCHEMY_RARE_SUCTION_PULL_RANGE, ALCHEMY_ATTACK_INTERVAL_MS } from '../utils/summonUtils';
+import { summonAttackPose, summonLungeT, type SummonAttackSheet } from '../utils/summonAttackMotion';
+import { alchemyChannelDurationMs, alchemyRingProgress } from '../utils/alchemyRhythm';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { ESCORT_MELEE_WINDUP_MS, ESCORT_MELEE_BLADE_MS } from '../utils/escortMelee'; // 進軍NPCのナイフ(research/ESCORT_MELEE.md)
 import { pickupDisplayPosition } from '../utils/collisionUtils';
@@ -437,7 +441,7 @@ import {
   SHADOW_GLOW_LEN_CAP, SHADOW_EXPL_FADE_MS, SHADOW_TOTAL_MESH_MAX, SHADOW_EXPL_SLOTS, SHADOW_STATIC_SLOTS,
   canBakeSilhouette, planSilhouetteEviction,
 } from '../utils/shadowSlots';
-import { placeAvatarPart, avatarPartPieces, type AvatarPartPiece } from '../utils/avatarPlacement';
+import { placeAvatarPart, avatarPartPieces, avatarPartSrcRect, type AvatarPartPiece } from '../utils/avatarPlacement';
 import { BLOOD_BURST_SHEET_FRAMES, BLOOD_BURST_SHEET_FRAME_MS, BLOOD_BURST_BLAST_PX, getBloodBurstArt, pickDrop, bloodBurstLayout, bloodBurstSeed, BLOOD_GOB_PX, BLOOD_BURST_GRAVITY, BLOOD_BURST_POP_MS, BLOOD_BURST_POOL_MS, BLOOD_BURST_DARKEN_MS, BLOOD_BURST_FADE_MS, BLOOD_BURST_BODY_MS, type BloodBurstPiece } from './bloodBurst';
 import { getAlchemyRockArt, getAlchemyDustTexture, alchemyRockLayout, alchemyRockSeed, alchemyPulse, alchemyTremble, ALCHEMY_ROCK_SIZES, ALCHEMY_ROCK_TARGET, ALCHEMY_FLY_MS, ALCHEMY_SETTLE_MS, ALCHEMY_FRAG_MS, ALCHEMY_PUSH_MS, ALCHEMY_SHATTER_MS, type AlchemyRockSpec } from './alchemyRocks';
 import { getSpotConeTexture, getSpotBeamTexture, SPOT_BEAM_FRAC, getGlowTexture, getSoftGlowTexture, getHitCoreGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getAirPadTexture, getAirStreakTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
@@ -894,6 +898,20 @@ const SCREAM_BUFF_WAVE_MAX_DELAY_MS = 900;
 const SUMMON_FADE_IN_MS = 360, SUMMON_FADE_OUT_MS = 600, SUMMON_RISE_PX = 10;
 /** 噛んだ後、次の噛みまでの間に加えて敵の方を向き続ける猶予(ms)。噛みが続く間は向きが揺れない。 */
 const SUMMON_BITE_FACE_GRACE_MS = 200;
+// 召喚の攻撃: 踏み込みの山の位置(contactLungePose の食いつきの頂点=しゃがみ35%の後、残りの 0.5/1.15)。命中の瞬間に山を合わせる。
+const SUMMON_LUNGE_PEAK_FRAC = 0.35 + 0.65 * (0.5 / 1.15);
+// 跳ぶ型(蜘蛛)の召喚が飛び掛かる高さ(遠近倍率を掛ける)。小さいと読めないので大きめ。
+const SUMMON_POUNCE_LIFT_PX = 28;
+// 錬金術の溜めのリズム(research/ALCHEMY_RHYTHM.md)の見た目。的の輪=魔法陣の縁(直径に対する半径の比)。
+const ALCHEMY_RHYTHM_TARGET_FRAC = 0.49;     // 絵の外周(横の半径 252/512)
+const ALCHEMY_RHYTHM_SQUASH = 296 / 504;     // 絵の縦横比(地面に寝かせた楕円)
+const ALCHEMY_RHYTHM_CENTER_DY_FRAC = 12 / 512; // 絵の中身の中心は少し下
+const ALCHEMY_RHYTHM_START_MUL = 2.4;      // 輪が出る半径(的の何倍の外から寄ってくるか)
+const ALCHEMY_RHYTHM_BURST_MS = 380;       // 成功の弾け
+const ALCHEMY_RHYTHM_MISS_FADE_MS = 220;   // 外れの沈み
+const ALCHEMY_RHYTHM_BEAT_MS = 320;        // 成功で魔法陣が脈打つ長さ
+/** 脈の形: 速く膨らんで(最初の25%)、ゆっくり戻る。 */
+const alchemyBeat01 = (u: number): number => (u < 0.25 ? 1 - (1 - u / 0.25) ** 2 : (1 - (u - 0.25) / 0.75) ** 2);
 /** 金箱(bounty-chest)の表示の大きさ(拾い物の基準の大きさに対する倍率)。v0.25.3520 で 1.7、社長指示2026-11-02で 2.2、社長指示2026-11-13「絵をもう少しだけ大きく表示」で 2.6(見た目だけ・拾える範囲は不変。光はこの値に比例して追従)。 */
 const GOLD_CHEST_BOX = 2.6;
 // research/HERO_DOG.md §7: 英雄の犬の歩きのコマを切り替える距離(px/コマ)。2コマで1周≒体長(54px)。
@@ -1972,6 +1990,11 @@ const TRAP_BIND_BODY_ALPHA = 0.16;  // 「わずかに水色がかる」
 // 乗車中の板の足を乗せる高さ(絵の上端からの割合)。社長支給の横から見た板(47×12)はデッキ上面が2〜3行目=2.5/12。
 // 旧絵(上から見た板)はデッキ中央の黒線=0.43だった。
 const SKATEBOARD_DECK_TOP_FRAC = 2.5 / 12;
+// 斗戦勝仏セットで乗車中の板の代わりの筋斗雲(社長支給 73×32・太い方=左)。アンカーYを雲の上面より少し下に置く=
+// 雲の上面が足の下を少し隠す(社長指示2026-11-20「足に少しかぶる」・本体より前面に描く)。
+const KINTOUN_FEET_FRAC = 9 / 32;
+// 筋斗雲の幅(体の表示枠の幅の倍率)。板(1.7×SKATEBOARD_ART_FILL)より少し小さく=雲は背が高いので同じ幅だと重く見える。
+const KINTOUN_W_K = 1.4;
 // 旧絵は板が画像の幅の87%(左右に余白)だったので、新しい絵(余白なし)は同じ倍率だと一回り大きくなる。見た目の大きさを旧絵に揃える。
 const SKATEBOARD_ART_FILL = 0.87;
 const PLAYER_WALK_LEAN_RAD = 0.035;   // 足元支点の左右リーン(±約2°)。1歩ごとに体重移動
@@ -2882,6 +2905,11 @@ const GAZE_FLASH_MS_VIS = 200;
 const RARE_BODY_TINT_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('raretint') !== '0';
 const ENEMY_COLOR_TIER_BODY_TINT: Record<string, number> = {
   blue: 0x66aaff, purple: 0xbb66ff, red: 0xff5544,
+};
+/** ★孫悟空のレベルの体の色(research/BRAWLER.md §36-1・色は kenkiLevelLook の1か所)。Lv1・レベル無し=null(幻影の色のまま)。 */
+const kenkiBodyTint = (lv: Enemy['kenkiLv']): number | null => {
+  const t = lv ? kenkiLevelLook(lv).tint : null;
+  return t === null ? null : t === 'gold' ? NAMED_TINT : ENEMY_COLOR_TIER_BODY_TINT[t];
 };
 
 // PACING_PUZZLE.md §5.23 M22 Group A(A2弾トレーサー・既定ON): 既存の弾描画(pooled Graphics・
@@ -5184,6 +5212,8 @@ export class PixiScene {
   // 連続フェード(透明→完成で不透明)。手続き的リングは廃止しこれに置き換え。
   private alchemyCircle = new Sprite();
   private alchemyCircleTextured = false;
+  /** 錬金術の溜めのリズム(research/ALCHEMY_RHYTHM.md): 流れてくる金の輪・的の輪・成功の弾け。溜めの間だけ描く。 */
+  private alchemyRhythmGfx = new Graphics();
   // 城フィナーレボスの出現魔法陣(錬金と同じ magic-circle テクスチャを流用)。bossSummonAt 起点に短時間表示。
   private castleSummonCircle = new Sprite();
   private castleSummonTextured = false;
@@ -5541,6 +5571,8 @@ export class PixiScene {
   private glowGroundPool: Sprite[] = [];
   private playerKatanaBack = new Sprite();                 // 背負い刀(刀/小烏丸 装備中・プレイヤー背面)
   private playerKatanaBackAttached = false;                // playerView.container へ親子付け済みか
+  private playerKintoun = new Sprite();                   // 斗戦勝仏セットで乗車中: 板の代わりの筋斗雲(本体より前面=足に少しかぶる)
+  private playerKintounAttached = false;
   private playerSkateboard = new Sprite();                 // スケボー乗車中に足元へ敷く板(プレイヤー背面=足の下)
   private playerSkateboardAttached = false;                // playerView.container へ親子付け済みか
   // アバターシステム(試験・第1弾): 台帳(src/data/avatars.ts)のパーツをレイヤー別にプール。
@@ -6471,9 +6503,11 @@ export class PixiScene {
       this.playerAuraBlue,
       this.playerAuraRed,
       this.alchemyCircle,
+      this.alchemyRhythmGfx,
       this.castleSummonCircle,
       this.shadowContainer,
     );
+    this.alchemyRhythmGfx.blendMode = 'add';
     // ★検収差し戻し(高9): ground(Sprite)を先、mesh(PerspectiveMesh)を後の2層に分けてバッチを保つ。
     this.shadowContainer.addChild(this.shadowGroundLayer, this.shadowMeshLayer);
     this.bossCorpseSprite.visible = false;
@@ -10606,7 +10640,9 @@ export class PixiScene {
     this.syncDroneBoomerangs(s.projectiles, s.player, now); // ★慣性バッチ: 帰還減速に手元(プレイヤー)距離を使う
     this.syncSummons(s.summons, now);
     this.syncEventBloom(s.effects, fxNow);
+    this.fxEnemies = s.enemies; this.fxPlayer = s.player; // 鞭の引き寄せの絵(followEnemyId)が端点を追う(読むだけ)
     this.syncEffects(s.effects, s.camera, fxNow); // v0.25.3038: 光系は停止中も進む
+    this.syncSatsujin(s.satsujin, Date.now()); // ★刀の殺陣の赤い画面(殺陣の間だけ)
     this.syncGravityWells(s.gravityWells, s.gameTime); // §28(B7) グラビティショットの渦(v0.25.3276)
     this.syncGroundReflections(s.pickups, s.projectiles, s.effects, s.camera, now);
     this.syncLocalEventLighting(
@@ -11102,24 +11138,83 @@ export class PixiScene {
         this.alchemyCircle.visible = false;
         this.alchemyCircle.alpha = 0;
       }
+      if (this.alchemyRhythmGfx.visible) { this.alchemyRhythmGfx.clear(); this.alchemyRhythmGfx.visible = false; }
       return;
     }
     // テクスチャは非同期ロード。準備できた最初のフレームで一度だけ割り当て。
     if (!this.alchemyCircleTextured) {
       const tex = getTexture('magic-circle');
-      if (!tex) return;
+      if (!tex) { const f = playerFootBox(player); this.drawAlchemyRhythm(player, f.footX, f.footY, gameTime); return; } // 魔法陣の絵が未着でもリズムの輪は出す
       this.alchemyCircle.texture = tex;
       this.alchemyCircle.width = this.alchemyCircle.height = PixiScene.ALCHEMY_CIRCLE_SIZE;
       this.alchemyCircleTextured = true;
     }
-    const progress = Math.max(0, Math.min(1, (gameTime - startedAt) / ALCHEMY_CHANNEL_MS));
+    // 溜めの長さはリズムの成功で縮む(research/ALCHEMY_RHYTHM.md)。
+    const progress = Math.max(0, Math.min(1, (gameTime - startedAt) / alchemyChannelDurationMs(player.alchemyRhythm)));
     const foot = playerFootBox(player);
     this.alchemyCircle.visible = true;
     this.alchemyCircle.position.set(foot.footX, foot.footY);
     // 透明→不透明。完成間際にわずかな鼓動を足して「溜まり切る」高揚を出す。
     const base = 0.08 + 0.92 * progress;
     const pulse = progress > 0.85 ? 1 + 0.08 * Math.sin(now / 70) : 1;
-    this.alchemyCircle.alpha = Math.min(1, base * pulse);
+    // リズムの成功で魔法陣が一度脈打つ(速く膨らみ、ゆっくり戻る)。
+    const sinceHit = player.alchemyRhythm?.lastHitAt !== undefined ? gameTime - player.alchemyRhythm.lastHitAt : -1;
+    const beat = sinceHit >= 0 && sinceHit < ALCHEMY_RHYTHM_BEAT_MS ? alchemyBeat01(sinceHit / ALCHEMY_RHYTHM_BEAT_MS) : 0;
+    const size = PixiScene.ALCHEMY_CIRCLE_SIZE * (1 + 0.16 * beat);
+    this.alchemyCircle.width = this.alchemyCircle.height = size;
+    this.alchemyCircle.alpha = Math.min(1, base * pulse + 0.6 * beat);
+    this.drawAlchemyRhythm(player, foot.footX, foot.footY, gameTime);
+  }
+
+  /**
+   * 錬金術の溜めのリズム(research/ALCHEMY_RHYTHM.md)。金の輪が外から魔法陣の縁(的の輪)へ加速して寄り、
+   * 着く瞬間に的の輪が一番明るくなる。成功=的で輪が弾けて光る / 外れ=的を通り過ぎて沈むように消える。
+   * 金だけ(赤は使わない=赤は敵の攻撃の予告)。Graphics 1枚・輪は同時に2〜3本まで=負荷は無視できる。強glowは無し。
+   */
+  private drawAlchemyRhythm(player: Player, cx: number, cy: number, gameTime: number) {
+    const g = this.alchemyRhythmGfx;
+    g.clear();
+    const r = player.alchemyRhythm;
+    if (!r) { g.visible = false; return; }
+    g.visible = true;
+    // 魔法陣の絵は地面に寝かせた楕円(512四方の中に 504×296)。輪も同じ潰れの楕円で描き、縁にぴったり重ねる。
+    const rt = PixiScene.ALCHEMY_CIRCLE_SIZE * ALCHEMY_RHYTHM_TARGET_FRAC;
+    const r0 = rt * ALCHEMY_RHYTHM_START_MUL;
+    const ey = cy + PixiScene.ALCHEMY_CIRCLE_SIZE * ALCHEMY_RHYTHM_CENTER_DY_FRAC;
+    const ring = (rad: number) => g.ellipse(cx, ey, rad, rad * ALCHEMY_RHYTHM_SQUASH);
+    // 的の輪: いつも薄く在り、輪が近づくほど明るく太くなる(打つ場所と瞬間を読ませる)。
+    let near = 0;
+    for (const rg of r.rings) {
+      const p = alchemyRingProgress(rg, gameTime);
+      if (p !== null) near = Math.max(near, p);
+    }
+    ring(rt).stroke({ color: 0xf5c542, alpha: 0.22 + 0.5 * near * near, width: 1.5 + 2 * near });
+    for (const rg of r.rings) {
+      const p = alchemyRingProgress(rg, gameTime);
+      if (p !== null) {
+        const linT = Math.min(1, (gameTime - rg.spawnAt) / Math.max(1, rg.arriveAt - rg.spawnAt));
+        const fadeIn = Math.min(1, linT / 0.18);
+        const rad = r0 + (rt - r0) * p;
+        ring(rad).stroke({ color: 0xffd76a, alpha: 0.85 * fadeIn, width: 3.5 });
+        ring(rad - 3).stroke({ color: 0xfff1c2, alpha: 0.35 * fadeIn, width: 1.5 });
+        continue;
+      }
+      if (rg.judgedAt === undefined) continue;
+      const since = gameTime - rg.judgedAt;
+      if (rg.result === 'hit' && since >= 0 && since < ALCHEMY_RHYTHM_BURST_MS) {
+        // 成功: 的の位置から外へ弾ける光の輪(減速して広がる)+中の閃き。
+        const u = since / ALCHEMY_RHYTHM_BURST_MS;
+        const e = 1 - (1 - u) ** 3;
+        const fade = (1 - u) ** 1.5;
+        ring(rt * (1 + 0.55 * e)).stroke({ color: 0xfff1c2, alpha: 0.95 * fade, width: 6 * (1 - u) + 1.5 });
+        ring(rt * (1 + 0.25 * e)).stroke({ color: 0xffd76a, alpha: 0.7 * fade, width: 3 });
+        ring(rt * (0.9 + 0.2 * e)).fill({ color: 0xffe9a3, alpha: 0.22 * fade });
+      } else if (rg.result === 'miss' && since >= 0 && since < ALCHEMY_RHYTHM_MISS_FADE_MS) {
+        // 外れ: 的を通り過ぎ、内へ沈みながら薄れる(勢いを持ったまま消える)。
+        const u = since / ALCHEMY_RHYTHM_MISS_FADE_MS;
+        ring(rt * (1 - 0.22 * u * (2 - u))).stroke({ color: 0xd9b45a, alpha: 0.45 * (1 - u), width: 2.5 });
+      }
+    }
   }
 
   private syncEventBloom(effects: VisualEffect[], now: number) {
@@ -16981,6 +17076,12 @@ export class PixiScene {
       this.playerView.container.addChildAt(this.playerSkateboard, 1);
       this.playerSkateboardAttached = true;
     }
+    if (!this.playerKintounAttached) {
+      this.playerKintoun.anchor.set(0.5, KINTOUN_FEET_FRAC);
+      this.playerKintoun.visible = false;
+      this.playerView.container.addChild(this.playerKintoun); // 本体より前面
+      this.playerKintounAttached = true;
+    }
     // B10 血の覚醒の体の赤・2層目(朱を加算)を hitFlash のすぐ後ろ(本体の前面)へ一度だけ親子付け。
     // 1層目(暗いワイン・通常合成)は hitFlash を借りる。2枚の子順は [.., sprite, hitFlash, bloodRim, tele, ..]。
     if (!this.playerBloodRimAttached) {
@@ -17037,7 +17138,9 @@ export class PixiScene {
     // ★ゴールの会話(二人組の納品=deliveryLocked)が始まったら、敵の姿を静かに消す(社長 2026-10-17「絵的に会話してるのに敵がいるのが変だなと思っただけ」)。
     // 判定・状態には触れない(会話の間は世界が止まり、終わればそのままクリア)=描画の「存在の法則」のフェードに掛けるだけ。慣性=ゆっくり始まりゆっくり消える。
     {
-      const locked = useGameStore.getState().deliveryLocked;
+      // ステージ1の1周目の到着の会話も同じロックで世界を止めるが、敵を消すのはゴールの会話だけ(到着は止めるだけ・社長報告2026-11-20)。
+      const lockSt = useGameStore.getState();
+      const locked = lockSt.deliveryLocked && lockSt.stage1LoopTalk !== 'arrival';
       if (locked && this.goalTalkFadeFrom === 0) this.goalTalkFadeFrom = now;
       if (!locked) this.goalTalkFadeFrom = 0;
       const t = this.goalTalkFadeFrom ? Math.min(1, (now - this.goalTalkFadeFrom) / GOAL_TALK_ENEMY_FADE_MS) : 0;
@@ -17061,7 +17164,7 @@ export class PixiScene {
       // v0.25.3206: 既定OFFは try/catch の**外**(=drawEnemy本体が例外を投げても必ず今フレーム分が
       // 反映される場所)で先に済ませる。詳細は resetActorFxDefaults のコメント。
       this.resetActorFxDefaults(view, e);
-      try { this.drawEnemy(view, e, gameTime, now); } catch (err) {
+      try { this.drawEnemy(view, e, gameTime, now); this.drawKatanaCuts(view, e); } catch (err) {
         if (!PixiScene.enemyDrawErrLogged) { PixiScene.enemyDrawErrLogged = true; console.error('[pixiScene] drawEnemy error (suppressed):', err); }
         // v0.25.3324: 実機ではconsoleが見えず例外源を特定できない(アクラシエル3度目の報告)。
         // 左下バージョン表示に赤字で要約を出すビーコンへも渡す(storeは書かない=描画専門の掟は維持)。
@@ -19889,7 +19992,12 @@ export class PixiScene {
     const idleTex = getTexture(key) ?? getTexture(s.reusedType);
     // 歩きのコマはフィールドの敵と同じ式(進んだ距離で刻む・止まったら立ち絵/コマを保持)。時計で刻むと足が滑る。
     const idleH = idleTex ? idleTex.height * containScale(fb.boxW, fb.boxH, idleTex.width, idleTex.height) * this.depthScaleEnemy(fb.footY) : fb.boxH;
-    const tex = this.summonWalkTexture(key, s, view, now, idleH) ?? idleTex;
+    const walkTex = this.summonWalkTexture(key, s, view, now, idleH) ?? idleTex;
+    // 社長指示2026-11-20「錬金術の変異体も、攻撃時は攻撃モーション流して」: 攻撃(store の lastContactAt)に合わせて
+    // 流用元の敵と同じ攻撃の絵を出す(ゾンビ=噛みつきシート / 蜘蛛=跳びシート / 手描きの攻撃コマが無い型=踏み込みの位置の動きだけ)。
+    // 当たるコマ=命中の瞬間(utils/summonAttackMotion)。判定・間隔・ダメージは不変。味方なので赤い予告は出さない。
+    const atk = s.kind === 'normal' ? this.summonAttackTexture(key, s) : null;
+    const tex = atk?.tex ?? walkTex;
     view.light.visible = false;
     // 被弾シェイク(攻撃されている表現): 直近ヒットから短時間、減衰する横揺れ。lastHit は Date.now 基準。
     const sinceHit = Date.now() - s.lastHit;
@@ -19901,7 +20009,18 @@ export class PixiScene {
     const outT = s.expiresAt === undefined ? 1 : Math.max(0, Math.min(1, (s.expiresAt - now) / SUMMON_FADE_OUT_MS));
     const inE = 1 - (1 - inT) ** 3, outE = 1 - (1 - outT) ** 2;
     const sinkY = (1 - inE) * SUMMON_RISE_PX + (1 - outE) * SUMMON_RISE_PX * 0.6;
-    view.sprite.position.set(Math.round(fb.footX + shakeX), Math.round(fb.footY + sinkY));
+    // 攻撃の踏み込み(敵の接触攻撃と同じ「しゃがみ→食いつき」の位置の動き・山=命中)と、跳ぶ型の浮き。位置だけ=絵は歪めない。
+    let atkOffX = 0, atkOffY = 0;
+    if (s.kind === 'normal' && s.lastContactAt !== undefined) {
+      const lt = summonLungeT(Date.now() - s.lastContactAt, ALCHEMY_ATTACK_INTERVAL_MS, CONTACT_LUNGE_MS, SUMMON_LUNGE_PEAK_FRAC);
+      if (lt !== null) {
+        const pose = contactLungePose(lt);
+        atkOffX = (faceRight ? 1 : -1) * pose.off;
+        atkOffY = pose.sink;
+      }
+      if (atk) atkOffY -= atk.lift01 * SUMMON_POUNCE_LIFT_PX * this.depthScaleEnemy(fb.footY);
+    }
+    view.sprite.position.set(Math.round(fb.footX + shakeX + atkOffX), Math.round(fb.footY + sinkY + atkOffY));
     view.container.zIndex = fb.footY;
     // v0.25.3179(社長指示): 召喚は**金色半透明**=「半透明の金色=味方」の文法(敵は常に不透明)。
     // 2026-08-28の裁定で守護霊は等倍になったため、透明度は召喚専用定数(SUMMON_ALLY_ALPHA)を使う。
@@ -19910,7 +20029,7 @@ export class PixiScene {
     if (tex) {
       view.sprite.texture = tex;
       const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
-      const mirror = faceRight === sheetFacesRight(key) ? 1 : -1;
+      const mirror = faceRight === (atk ? sheetArtFacesRight(key, atk.sheet) : sheetFacesRight(key)) ? 1 : -1;
       view.sprite.scale.set(sc * mirror, sc);
       drawnH = tex.height * sc;
       // 被弾直後は赤白フラッシュ、それ以外は味方識別の金色(v0.25.3179)。
@@ -20069,6 +20188,35 @@ export class PixiScene {
     spr.alpha = fade;
     spr.tint = 0xffffff; // 色は素のまま(「死=灰色」にしない)
     spr.visible = true;
+  }
+
+  /**
+   * 召喚(通常個体)の攻撃のコマ。流用元の敵の攻撃シート(無ければ跳びシート=蜘蛛の飛び掛かり)を、
+   * store の命中時刻(`lastContactAt`)へ当たるコマが重なるように引く。どちらも無い型・シート未着は null(歩き/立ち絵のまま)。
+   * 遅延組のシートでも1発目が欠けないよう、姿が見えた時点で取りに行く(warmEnemySheets は同じ立ち絵で1回だけ)。
+   */
+  private summonAttackTexture(key: string, s: Summon): { tex: Texture; sheet: string; lift01: number } | null {
+    warmEnemySheets(key);
+    if (s.lastContactAt === undefined) return null;
+    let spec: SummonAttackSheet | null = null;
+    let sheet = '';
+    const af = attackSheetFrames(key);
+    if (af > 1) {
+      spec = { frames: af, impact: attackImpactFrame(key) };
+      sheet = attackSheetName(key);
+    } else {
+      const split = jumpSheetSplit(key);
+      if (split) {
+        const n = jumpSplitFrames(split);
+        spec = { frames: n, impact: split.crouch + split.air, airFrom: split.crouch, airTo: split.crouch + split.air };
+        sheet = jumpSheetName(key);
+      }
+    }
+    if (!spec) return null;
+    const pose = summonAttackPose(Date.now() - s.lastContactAt, ALCHEMY_ATTACK_INTERVAL_MS, spec);
+    if (!pose) return null;
+    const tex = this.sheetSlices(sheet, spec.frames)?.[pose.frame];
+    return tex ? { tex, sheet, lift01: pose.lift01 } : null;
   }
 
   /** 召喚の動き(前のフレームの位置・向き)。向きを決める。 */
@@ -20703,7 +20851,7 @@ export class PixiScene {
     const placed: { tex: Texture; sc: number; x: number; y: number; part: AvatarPart }[] = [];
     let minX = -W / 2, maxX = W / 2, minY = -H, maxY = 0;
     for (const part of parts) {
-      const ptex = getTexture(part.tex);
+      const ptex = this.avatarPartTexture(part);
       if (!ptex || ptex.width <= 0) return null; // 素材待ち=今回は重ね描き(焼き損じを残さない)
       const r = placeAvatarPart(part, ptex.width, ptex.height, boxW, boxH, artPerBoxPx, headDx, headDy);
       const sc = r.width / ptex.width;
@@ -20742,6 +20890,24 @@ export class PixiScene {
     this.avatarBakeCache.set(key, { rt, tex, usedAt: nowMs });
     this.avatarBakedSrc.set(tex, bodyTex);
     return tex;
+  }
+
+  // パーツの絵(crop があれば1枚の絵から切った四角=読み込み時に切る・素材は加工しない)。切った物は元の絵ごとに覚えて使い回す。
+  private avatarCropTexCache = new WeakMap<Texture, Map<string, Texture>>();
+  private avatarPartTexture(part: AvatarPart): Texture | null {
+    const tex = getTexture(part.tex);
+    if (!tex || tex.width <= 0 || !part.crop) return tex ?? null;
+    let m = this.avatarCropTexCache.get(tex);
+    if (!m) { m = new Map(); this.avatarCropTexCache.set(tex, m); }
+    const r = avatarPartSrcRect(part, tex.width, tex.height);
+    const k = `${r.x}|${r.y}|${r.w}|${r.h}`;
+    let t = m.get(k);
+    if (!t) {
+      const f = tex.frame;
+      t = new Texture({ source: tex.source, frame: new Rectangle(f.x + r.x, f.y + r.y, r.w, r.h) });
+      m.set(k, t);
+    }
+    return t;
   }
 
   // パーツの絵の横の一部(u0..u1)だけのテクスチャ(割らない物は元の絵そのもの)。作った物は元の絵ごとに覚えて使い回す。
@@ -20786,7 +20952,7 @@ export class PixiScene {
       }
       const pc = pieces[i];
       const part = pc.part;
-      const tex = getTexture(part.tex);
+      const tex = this.avatarPartTexture(part);
       if (!tex || tex.width === 0) { sp.visible = false; continue; }
       sp.texture = this.avatarPieceTex(tex, pc);
       sp.anchor.set(pc.anchorX, part.anchorY);
@@ -21556,6 +21722,8 @@ export class PixiScene {
       playerAirPx = st0.h + bump;
       // research/BRAWLER_PHANTOM.md §4-9: 格闘の幻影に打ち上げられた時の見た目の浮き(操作は奪わない)。追いかけの浮きと max で合わせる。
       playerAirPx = Math.max(playerAirPx, playerLaunchHeightPx(tAir, bodyH));
+      // ★§36-0: 浮かせる攻撃で本当に浮いている(動けない)間は、雑魚の浮きと同じ弧の高さ(体の高さに比例・敵と同じ係数)。
+      if (p.brAir && brawlerAirborne(p.brAir, tAir)) playerAirPx = Math.max(playerAirPx, brawlerJuggleHeightRel(p.brAir, tAir) * bodyH * BRW.BRAWLER_LIFT_VIS_BODY_K);
       // 姿勢: 上り=縦に伸びる / 頂点=少し縮む / 落下=やや伸びる / 飛び立ち前=沈む。コマ替えで跳ねないよう時間で寄せる。前傾は敵の方へ。
       const pose = playerAirPoseTarget(phase);
       const kP = 1 - Math.exp(-Math.min(100, Math.max(0, dtAir)) / 50);
@@ -21927,7 +22095,26 @@ export class PixiScene {
     // アンカー(0.5, デッキ上面)を足元(footY)へ合わせる=足がデッキの上に乗り、車輪がその下に見える。
     const sb = this.playerSkateboard;
     const sbTex = getTexture('skateboard-dot');
-    if (p.skaterRiding && sbTex && sbTex.width > 0) {
+    // 斗戦勝仏セット: 板の代わりに筋斗雲(動き=足元への置き方・bob は板と同じ。板だけ差し替え・他の演出はそのまま)。
+    const kt = this.playerKintoun;
+    const ktTex = useGameStore.getState().avatarId === 'tosen-set' ? getTexture('avatar-tosen-kintoun') : null;
+    if (p.skaterRiding && ktTex && ktTex.width > 0) {
+      sb.visible = false;
+      const d = this.depthScale(fb.footY);
+      const sc = (fb.boxW * KINTOUN_W_K * d) / ktTex.width;
+      // 太い方を進行方向へ: 素材は太い方が左=右へ進む時に反転。
+      const left = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
+      kt.texture = ktTex;
+      kt.visible = true;
+      kt.scale.set((left ? 1 : -1) * sc, sc);
+      kt.rotation = 0;
+      kt.position.set(
+        this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
+        this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY,
+      );
+      kt.alpha = view.sprite.alpha;
+    } else if (p.skaterRiding && sbTex && sbTex.width > 0) {
+      kt.visible = false;
       const d = this.depthScale(fb.footY);
       const targetW = fb.boxW * 1.7 * d * SKATEBOARD_ART_FILL;
       const sc = targetW / sbTex.width;
@@ -21944,6 +22131,7 @@ export class PixiScene {
       sb.alpha = view.sprite.alpha;
     } else {
       sb.visible = false;
+      kt.visible = false;
     }
     // アバターシステム(試験・第1弾): 選択中セット(なければ非表示)の全パーツを台帳から汎用ループで描く。
     // 判定/座標には一切影響しない(視覚のみ)。表示可否は本体と同じ alpha(死亡フェード/ヘリ登場/被弾点滅/
@@ -24188,7 +24376,8 @@ export class PixiScene {
       view.sprite.tint = e.type === 'guardian-phantom'
         // 幻影のtint(宿敵金/レア色より優先)。社長裁定2026-08-28で等倍=「自分がもう1人立っている」が意図
         // (旧: ダークtintで影のような人型に見せていた)。
-        ? GUARDIAN_PHANTOM_TINT
+        // ★孫悟空のレベルの色(research/BRAWLER.md §36-1): Lv2 青・Lv3 紫・Lv4 赤=色付き個体と同じ色/済=宿敵の金。
+        ? kenkiBodyTint(e.kenkiLv) ?? GUARDIAN_PHANTOM_TINT
         : (e.isNamed || e.questTarget)
           ? NAMED_TINT
           : (RARE_BODY_TINT_ENABLED && e.colorTier) ? ENEMY_COLOR_TIER_BODY_TINT[e.colorTier] : 0xffffff;
@@ -36979,6 +37168,100 @@ export class PixiScene {
     sp.visible = true;
   }
 
+  /**
+   * ★刀の切り傷(research/KATANA_TSUBAME.md §4)。体に付いた「状態の印」であって予告ではない=予告の流星/帯と見分ける形:
+   * 体の絵の上だけに、短く細い斜めの線(黒い縁+深い赤の芯)を本数ぶん角度と高さをずらして重ねる。動かない(脈打たない・流れない)。
+   * overlay(体力バーと同じ層・ワールド座標)へ毎フレーム数本の線=負荷1/10。
+   */
+  private drawKatanaCuts(view: ActorView, e: Enemy): void {
+    const n = Math.min(4, e.katanaCuts ?? 0);
+    if (n <= 0 || e.health <= 0 || !view.sprite.visible) return;
+    const sp = view.sprite;
+    const h = Math.abs(sp.height), w = Math.abs(sp.width);
+    if (h < 2 || w < 2) return;
+    const top = sp.y - h * sp.anchor.y;
+    const cx = sp.x + w * (0.5 - sp.anchor.x);
+    const len = Math.max(10, Math.min(w * 0.62, 34));
+    // 個体ごとに少しだけずらす(全員同じ位置に刻まれない)。
+    let seed = 0;
+    for (let i = 0; i < e.id.length; i++) seed = (seed * 31 + e.id.charCodeAt(i)) | 0;
+    const g = view.overlay;
+    for (let i = 0; i < n; i++) {
+      const ang = (i % 2 === 0 ? -0.62 : -0.98) + (((seed >> (i * 3)) & 7) - 3.5) * 0.05; // 「/」寄りの斜め・1本ごとに角度を変える
+      const yy = top + h * (0.3 + 0.12 * i);
+      const xx = cx + (((seed >> (i * 5 + 2)) & 7) - 3.5) * (w * 0.03) + (i % 2 === 0 ? -1 : 1) * w * 0.05;
+      const dx = Math.cos(ang) * len / 2, dy = Math.sin(ang) * len / 2;
+      g.moveTo(xx - dx, yy - dy).lineTo(xx + dx, yy + dy).stroke({ width: 3.4, color: 0x140303, alpha: 0.85, cap: 'round' });
+      g.moveTo(xx - dx * 0.92, yy - dy * 0.92).lineTo(xx + dx * 0.92, yy + dy * 0.92).stroke({ width: 1.5, color: 0xc81e1e, alpha: 1, cap: 'round' });
+    }
+  }
+  /**
+   * ★刀の殺陣の画面(research/KATANA_TSUBAME.md §4・社長承認)。殺陣の約0.5秒だけ、画面全体を赤で覆い(世界・敵・弾・エフェクトの上)、
+   * プレイヤーと殺陣の相手だけを黒い影(今の絵を真っ黒に染めた写し)で、その上に5発の白い筋を描く。HUD(DOM)はそのまま。
+   * 赤は画面の座標で全面=どのズームでも画面を埋める。入りは速く・最後の止めの後に慣性つきで戻る(utils/katanaTsubame satsujinCoverAlpha)。
+   * 時刻の持ち主は store(satsujin)。殺陣の間だけ板1枚+写し2枚+線5本=負荷1/10(殺陣の外は visible=false だけ)。
+   */
+  private satsujinLayer: Container | null = null;
+  private satsujinRed: Graphics | null = null;
+  private satsujinSil: Sprite[] = [];
+  private satsujinStreaks: Sprite[] = [];
+  private syncSatsujin(sat: SatsujinState | null, now: number): void {
+    const a = sat ? satsujinCoverAlpha(sat.startAt, sat.lastStrikeEndAt, now) : 0;
+    if (!sat || a <= 0.001) { if (this.satsujinLayer) this.satsujinLayer.visible = false; return; }
+    if (!this.satsujinLayer) {
+      this.satsujinLayer = new Container();
+      this.satsujinRed = new Graphics();
+      this.satsujinSil = [new Sprite(), new Sprite()];
+      // 白い筋の板は最初に全部作っておく(5発×2枚)。
+      this.satsujinStreaks = Array.from({ length: SATSUJIN_HITS * 2 }, () => { const sp = new Sprite(Texture.WHITE); sp.anchor.set(0.5); sp.visible = false; return sp; });
+      this.satsujinLayer.addChild(this.satsujinRed, ...this.satsujinSil, ...this.satsujinStreaks);
+      this.L.stage.addChild(this.satsujinLayer); // 一番上(作った時に1回だけ足す)
+    }
+    const layer = this.satsujinLayer;
+    layer.visible = true;
+    layer.alpha = a;
+    const red = this.satsujinRed!;
+    red.clear().rect(-8, -8, this.screenW + 16, this.screenH + 16).fill({ color: 0xb0000c, alpha: 1 });
+    const srcs = [this.playerView?.sprite ?? null, this.enemies.get(sat.targetId)?.sprite ?? null];
+    srcs.forEach((src, i) => {
+      const sil = this.satsujinSil[i];
+      if (!src || src.destroyed || !src.visible || !src.texture) { sil.visible = false; return; }
+      if (sil.texture !== src.texture) sil.texture = src.texture;
+      sil.anchor.set(src.anchor.x, src.anchor.y);
+      sil.setFromMatrix(src.worldTransform);
+      sil.tint = 0x000000;
+      sil.alpha = 1;
+      sil.visible = true;
+    });
+    // 白い筋: 5発ぶんの白い板(Texture.WHITE の写し)を筋の向きに回して置く(影の上)。出た瞬間が一番太く、減速しながら細く消える(慣性)。
+    let used = 0;
+    for (const st of sat.strikes) {
+      const age = now - st.at;
+      const k = Math.max(0, Math.min(1, 1 - age / 420));
+      if (k <= 0) continue;
+      // 画面の座標へは影と同じ変換(世界の層の worldTransform)で写す。
+      const wm = this.L.world.worldTransform;
+      const p0 = wm.apply({ x: st.fromX, y: st.fromY });
+      const p1 = wm.apply({ x: st.toX, y: st.toY });
+      const e = k * k;
+      const len = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+      const rot = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+      for (const [w, al] of [[2 + 12 * e, 0.35 * k], [1.5 + 3.5 * e, Math.min(1, 0.4 + k)]] as const) {
+        const sp = this.satsujinStreaks[used];
+        if (!sp) break;
+        sp.position.set((p0.x + p1.x) / 2, (p0.y + p1.y) / 2);
+        sp.rotation = rot;
+        sp.width = len; sp.height = w;
+        sp.alpha = al;
+        sp.visible = true;
+        used++;
+      }
+    }
+    for (let i = used; i < this.satsujinStreaks.length; i++) this.satsujinStreaks[i].visible = false;
+  }
+  /** 鞭の引き寄せの絵が読む敵・プレイヤー(syncEffects の直前に毎フレーム入れる・読むだけ)。 */
+  private fxEnemies: readonly Enemy[] = [];
+  private fxPlayer: Player | null = null;
   private drawWhipSprite(e: Extract<VisualEffect, { kind: 'whip' }>, now: number) {
     const t = Math.min(1, (now - e.createdAt) / e.duration);
     let sprite = this.effects.get(e.id);
@@ -36993,13 +37276,21 @@ export class PixiScene {
     const tex = getTexture('whip');
     if (!tex) { sp.visible = false; return; }
     if (sp.texture !== tex) sp.texture = tex;
-    const dx = e.toX - e.fromX;
-    const dy = e.toY - e.fromY;
+    // ★鞭の引き寄せ(research/WHIP_FOLLOWUP.md §2): 先端=絡んだ敵の今の中心・柄=プレイヤーの今の中心(寄るほど縮む=巻き取り)。
+    let fx0 = e.fromX, fy0 = e.fromY, tx0 = e.toX, ty0 = e.toY;
+    if (e.followEnemyId) {
+      const fe = this.fxEnemies.find(en => en.id === e.followEnemyId);
+      if (fe) { tx0 = fe.x + fe.width / 2; ty0 = fe.y + fe.height / 2; }
+      const pl = this.fxPlayer;
+      if (pl) { fx0 = pl.x + pl.width / 2; fy0 = pl.y + pl.height / 2; }
+    }
+    const dx = tx0 - fx0;
+    const dy = ty0 - fy0;
     const reach = Math.hypot(dx, dy) || 1;
     // 手元(ANCHOR_X)→先端(TIP_X)のテクスチャ幅が reach に一致するよう等倍スケール。
     const span = Math.max(1, tex.width * (WHIP_SPRITE_TIP_X - WHIP_SPRITE_ANCHOR_X));
     sprite.scale.set(reach / span);
-    sprite.position.set(e.fromX, e.fromY);
+    sprite.position.set(fx0, fy0);
     sprite.rotation = Math.atan2(dy, dx); // 素材は右向き=+x基準
     // 視認性: 前半は不透明を保ち、後半でフェード(速く消えて見えづらいのを緩和)。
     sprite.alpha = t < 0.45 ? 1 : Math.max(0, 1 - (t - 0.45) / 0.55);

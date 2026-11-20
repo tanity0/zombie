@@ -121,7 +121,9 @@ import { subWeaponDisplayName, useGameStore, getCarriedEquipId, PLAYER_HITBOX, t
 import { equipmentById, equipIconName, hasEquipIcon } from '../data/equipment';
 import { AVATARS, AVATAR_IDS, type AvatarId } from '../data/avatars';
 import { AvatarSprite } from './AvatarSprite';
-import { placeAvatarPart, headAnchorDelta, spriteNameFromUrl, avatarPartPieces } from '../utils/avatarPlacement';
+import { placeAvatarPart, headAnchorDelta, spriteNameFromUrl, avatarPartPieces, avatarPartSrcRect } from '../utils/avatarPlacement';
+import { isAvatarUnlocked } from '../utils/avatarUnlock';
+import { loadKenkiLevel } from '../utils/kenkiLevel';
 import { PLAYER_VISUAL_SCALE } from '../pixi/renderSpec';
 import { PLAYER_ART_BASE_W } from '../pixi/pixiTextures';
 import { subWeaponIconName, avatarIconName } from '../data/subWeaponIcons';
@@ -273,12 +275,13 @@ const WalkingClassSprite: React.FC<{ idleSrc: string; alt: string; nudgeY: numbe
       // 描く単位(avatarPartPieces)ごと=`leadingHalfBehind` の耳は進行方向側(右向きの絵の右半分)だけ体の後ろ。
       const drawParts = (which: 'above' | 'below') => avParts.forEach((pt, i) => {
         const pi = partImgs[i];
-        const r = placeAvatarPart(pt, pi.naturalWidth, pi.naturalHeight, avBox, avBox, PLAYER_ART_BASE_W / im.naturalWidth, d.dx, d.dy);
+        const sr = avatarPartSrcRect(pt, pi.naturalWidth, pi.naturalHeight); // crop=1枚の絵から切った四角(無ければ全体)
+        const r = placeAvatarPart(pt, sr.w, sr.h, avBox, avBox, PLAYER_ART_BASE_W / im.naturalWidth, d.dx, d.dy);
         for (const pc of avatarPartPieces([pt])) {
           if (pc.layer !== which) continue;
           const du = pc.u1 - pc.u0;
           ctx.imageSmoothingEnabled = true;
-          ctx.drawImage(pi, pi.naturalWidth * pc.u0, 0, pi.naturalWidth * du, pi.naturalHeight,
+          ctx.drawImage(pi, sr.x + sr.w * pc.u0, sr.y, sr.w * du, sr.h,
             canvas.width / 2 + (r.left + r.width * pc.u0) * kx, canvas.height + r.top * ky, r.width * du * kx, r.height * ky);
         }
       });
@@ -648,6 +651,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       defeated: demoKeys ? new Set<string>() : loadDefeatedBosses(),
       sortieableStageIds: sortieableIds,
       patrol: patrolPlan,
+      kenkiLevel: loadKenkiLevel(),
     });
   }, [homeShown, sortieableIds, patrolPlan]);
 
@@ -1687,7 +1691,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           <div hidden={COMMAND_UI_ENABLED && loadoutSection !== 'avatar'}>
             <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-sky-200/70 loadout-glabel">APPEARANCE<span>── 姿</span></div>
             <div className="menu-stagger weapon-candidates grid grid-cols-2 gap-2">
-              {([null, ...AVATAR_IDS] as (AvatarId | null)[]).map(id => {
+              {/* 手に入れるまで選べないアバター(斗戦勝仏セット)は、未購入のサブウェポンと同じく手に入れるまで載せない。 */}
+              {([null, ...AVATAR_IDS.filter(isAvatarUnlocked)] as (AvatarId | null)[]).map(id => {
                 const on = avatarId === id;
                 const label = id === null ? 'なし' : AVATARS[id].name;
                 const icon = id === null ? null : avatarIconName(id);
@@ -2520,7 +2525,7 @@ const DevTools: React.FC<{
       {/* ステージ進行(導線テスト用) */}
       <div className="flex gap-2">
         <button type="button" onClick={() => { unlockAllStages(); onRefreshCleared(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-purple-400/5 text-white/80 active:bg-purple-400/10">全ステージ+ボス解放</button>
-        <button type="button" onClick={() => { resetProgress(); onRefreshCleared(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-purple-400/5 text-white/80 active:bg-purple-400/10">進行リセット</button>
+        <button type="button" onClick={() => { resetProgress(); onRefreshCleared(); { const g = useGameStore.getState(); if (g.avatarId && !isAvatarUnlocked(g.avatarId)) g.setAvatarId(null); } }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-purple-400/5 text-white/80 active:bg-purple-400/10">進行リセット</button>
       </div>
       {/* ガチャだけ初手へ戻す(進行リセットはガチャ状態を消さないので別ボタン)。
           「初戦の稼ぎで2回引ける」等の初回体験を実機で試すため(社長指示v0.25.2347)。 */}

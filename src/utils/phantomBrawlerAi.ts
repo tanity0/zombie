@@ -8,7 +8,7 @@ import type { BrawlerState, BrawlerTechKind } from './brawlerTypes';
 import {
   BRAWLER_KICK_RANGE, BRAWLER_KIKO_RANGE, BRAWLER_SECRET_GAP_MS, BRAWLER_SECRET_ORDER, BRAWLER_GUARD_MS,
   brawlerCanPay, brawlerInHitstop, brawlerNextKickN, brawlerPressDecision, brawlerStageForPress, brawlerTechAllowed, brawlerTechCost,
-  isBrawlerGuardingAt,
+  isBrawlerGuardingAt, brawlerHeelCost, brawlerKickUpCost, brawlerMoguraCost,
 } from './brawler';
 import { HUMAN_REACTION_MS } from './bossSkeleton';
 import { kenkiLeapChance } from './kenkiLeap';
@@ -34,11 +34,13 @@ export const PB_SECRET_COOLDOWN_MS = 20_000;
 
 // ---- 攻めの台本(research/BRAWLER_PHANTOM.md §16・社長「攻撃は今後、技の単発以外は、台本化する」) ----
 /** 台本の1手(通常の何段目か/技)。 */
-export type PbScriptStep = { kind: 'stage'; stage: 1 | 2 | 3 | 4 | 5 } | { kind: 'tech'; tech: 'kick' | 'stomp' | 'kiko' };
-/** 届く距離の内の連続の台本の番号(§16-1 の表の #)。 */
-export type PbScriptId = 1 | 2 | 3 | 4 | 5;
+/** ★技の派生(research/BRAWLER.md §36-1・孫悟空のレベルで増える): 踵落とし/蹴り上げ=3発目の蹴りの形・土竜=地割りの派生。 */
+export type PbTechVariant = 'heel' | 'kickup' | 'mogura';
+export type PbScriptStep = { kind: 'stage'; stage: 1 | 2 | 3 | 4 | 5 } | { kind: 'tech'; tech: 'kick' | 'stomp' | 'kiko'; variant?: PbTechVariant };
+/** 届く距離の内の連続の台本の番号(§16-1 の表の #・21〜23=孫悟空のレベルで増える台本 §36-1)。 */
+export type PbScriptId = 1 | 2 | 3 | 4 | 5 | 21 | 22 | 23;
 const st = (stage: 1 | 2 | 3 | 4 | 5): PbScriptStep => ({ kind: 'stage', stage });
-const te = (tech: 'kick' | 'stomp' | 'kiko'): PbScriptStep => ({ kind: 'tech', tech });
+const te = (tech: 'kick' | 'stomp' | 'kiko', variant?: PbTechVariant): PbScriptStep => (variant ? { kind: 'tech', tech, variant } : { kind: 'tech', tech });
 /**
  * 台本1〜5(§16-1)。つなぎの規則はプレイヤーと同じ純関数(段→段=当たった後の先行入力・段→技/技→技=当たった後の取り消し)。
  *  1: 通常5連 / 2: 1-2-3 → 飛び蹴り → 大叩き潰し → 気功 / 3: 1-2 → 気功 / 4: 1-2-3-4 → 大叩き潰し / 5: 1 → 飛び蹴り×3
@@ -49,8 +51,22 @@ export const PB_SCRIPTS: Readonly<Record<PbScriptId, readonly PbScriptStep[]>> =
   3: [st(1), st(2), te('kiko')],
   4: [st(1), st(2), st(3), st(4), te('stomp')],
   5: [st(1), te('kick'), te('kick'), te('kick')],
+  // ★孫悟空のレベルで増える台本(research/BRAWLER.md §36-1): Lv2 飛び蹴り→空中蹴り→踵落とし / Lv3 飛び蹴り→空中蹴り→蹴り上げ→気功 / Lv4 地割り→土竜。
+  21: [te('kick'), te('kick'), te('kick', 'heel')],
+  22: [te('kick'), te('kick'), te('kick', 'kickup'), te('kiko')],
+  23: [te('stomp', 'mogura')],
 };
 export const PB_SCRIPT_IDS: readonly PbScriptId[] = [1, 2, 3, 4, 5];
+/** 孫悟空のレベルで使える台本(Lv1=今の5本・Lv2〜で増える・済は Lv4 と同じ)。 */
+export const pbScriptIdsForLevel = (lv: number): PbScriptId[] =>
+  [...PB_SCRIPT_IDS, ...(lv >= 2 ? [21 as const] : []), ...(lv >= 3 ? [22 as const] : []), ...(lv >= 4 ? [23 as const] : [])];
+/** 台本の1手の値段(派生は踵落とし・蹴り上げ・土竜の値段)。 */
+export const pbStepCost = (x: PbScriptStep, discount: (kind: BrawlerTechKind) => number): number =>
+  x.kind !== 'tech' ? 0
+    : x.variant === 'heel' ? brawlerHeelCost(false, discount('kick'))
+      : x.variant === 'kickup' ? brawlerKickUpCost(false, discount('kick'))
+        : x.variant === 'mogura' ? brawlerMoguraCost(false, discount('stomp'))
+          : brawlerTechCost(x.tech, false, discount(x.tech));
 /** 台本6(§16-3)・溜め(§16-8): 拳鬼のHPがこの割合以下。 */
 export const PB_SECRET_HP_FRAC = 0.5;
 /**
@@ -61,7 +77,7 @@ export const PB_SECRET_HP_FRAC = 0.5;
  *  - secretLeap=台本6を狙う(条件の残り=満タン・間隔は pbSecretLeapReady)。
  */
 export const pbHpPolicy = (i: {
-  hpFrac?: number; pointCap?: number; discount: (kind: BrawlerTechKind) => number;
+  hpFrac?: number; pointCap?: number; discount: (kind: BrawlerTechKind) => number; kenkiLv?: number;
 }): {
   hold: boolean; scripts: readonly PbScriptId[]; approachKick: boolean; kikoSingle: boolean; secretLeap: boolean;
 } => {
@@ -71,11 +87,11 @@ export const pbHpPolicy = (i: {
     && i.pointCap !== undefined && i.pointCap >= BRAWLER_SECRET_ORDER.reduce((a, k) => a + brawlerTechCost(k, false, i.discount(k)), 0);
   return low
     ? { hold: true, scripts: [1], approachKick: false, kikoSingle: false, secretLeap: true }
-    : { hold: false, scripts: PB_SCRIPT_IDS, approachKick: true, kikoSingle: true, secretLeap: false };
+    : { hold: false, scripts: pbScriptIdsForLevel(i.kenkiLv ?? 1), approachKick: true, kikoSingle: true, secretLeap: false };
 };
 /** 台本の値段(技の合計・タイムキーパーの割引込み)。 */
 export const pbScriptCost = (id: PbScriptId, discount: (kind: BrawlerTechKind) => number): number =>
-  PB_SCRIPTS[id].reduce((a, x) => a + (x.kind === 'tech' ? brawlerTechCost(x.tech, false, discount(x.tech)) : 0), 0);
+  PB_SCRIPTS[id].reduce((a, x) => a + pbStepCost(x, discount), 0);
 /** いまのポイントで始めから終わりまで払える台本(台本1は常に払える)。allowed=いま使ってよい台本(HP半分以下の溜め=pbHpPolicy)。 */
 export const pbAffordableScripts = (
   points: number, discount: (kind: BrawlerTechKind) => number, allowed: readonly PbScriptId[] = PB_SCRIPT_IDS,
@@ -102,6 +118,9 @@ export const pbScriptStepRunning = (s: BrawlerState, steps: readonly PbScriptSte
   const x = steps[k];
   if (!x) return false;
   if (x.kind === 'stage') return s.phase === 'attack' && s.stage === x.stage;
+  // 派生: 踵落とし/蹴り上げ=その印の付いた蹴り・土竜=地割り(派生は溜めの途中で付く=付く前も同じ手として数える)。
+  if (x.variant === 'heel' && !s.kickHeel) return false;
+  if (x.variant === 'kickup' && !s.kickUp) return false;
   return s.phase === 'tech' && s.tech === x.tech && (x.tech !== 'kick' || s.kickN === pbScriptKickN(steps, k));
 };
 
@@ -245,7 +264,7 @@ export type PhantomBrawlerAction =
   | { kind: 'buffer' }
   /** 覚えている先行入力を捨てる(台本7: 蹴りの押しで届く距離の外へ出た・§16-7)。 */
   | { kind: 'drop' }
-  | { kind: 'tech'; tech: BrawlerTechKind }
+  | { kind: 'tech'; tech: BrawlerTechKind; variant?: PbTechVariant }
   | { kind: 'step'; dirX: number; dirY: number }
   /** 跳びかかり(ボス技・research/BRAWLER_PHANTOM.md §15)。 */
   | { kind: 'leap' }
@@ -282,6 +301,8 @@ export interface PhantomBrawlerInput {
   /** 拳鬼のHPの割合(health/maxHealth)と技ポイントの上限(台本6の条件・§16-3)。未指定=台本6を使わない。 */
   hpFrac?: number;
   pointCap?: number;
+  /** ★孫悟空のレベル(research/BRAWLER.md §36-1・使える台本が増える)。未指定=1。 */
+  kenkiLv?: number;
 }
 
 /** 秘奥義の合計の値段(タイムキーパー込み)。 */
@@ -398,7 +419,8 @@ const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBraw
       m.approachKick = false;
       if (!pbLanded(s, m)) return null;
       if (i.edgeDist > i.reach) return null; // 蹴りで詰め切れなかった=続けない
-      const id = pbPickScript(s.points, i.discount, m.lastScriptId, i.rand, pbHpPolicy(i).scripts);
+      // 続きは1段目から始まる台本だけ(技から始まる台本=孫悟空のレベルで増えた 21〜23 は、ここでは選ばない)。
+      const id = pbPickScript(s.points, i.discount, m.lastScriptId, i.rand, pbHpPolicy(i).scripts.filter(x => PB_SCRIPTS[x][0]?.kind === 'stage'));
       m.lastScriptId = id;
       m.script = { id, idx: 1, fromKick: true };
       return s.buffered ? null : { kind: 'buffer' }; // 蹴りの戻りの終わりで1段目が出る
@@ -414,6 +436,9 @@ const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBraw
     const id = pbPickScript(s.points, i.discount, m.lastScriptId, i.rand, pbHpPolicy(i).scripts);
     m.lastScriptId = id;
     m.script = { id, idx: 1 };
+    // 技から始まる台本(§36-1 の 21〜23): 1手目の技をそのまま出す(待機から=道の表の「待機から何でも」)。
+    const first = PB_SCRIPTS[id][0];
+    if (first?.kind === 'tech') return first.variant ? { kind: 'tech', tech: first.tech, variant: first.variant } : { kind: 'tech', tech: first.tech };
     return { kind: 'attack' };
   }
   if (!idle) return null;
@@ -512,9 +537,9 @@ export const pbRunScript = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): Phan
       return null;
     }
     // 次の技が払えない=打ち切り(§16-7)。払えて、まだ取り消しの受付の前(止めの間など)なら待つ。
-    if (!brawlerCanPay(s, next.tech, false, i.discount(next.tech))) return end();
+    if (s.points < pbStepCost(next, i.discount)) return end();
     if (next.tech === 'kick' && last.kind === 'tech' && last.tech === 'kick' && brawlerInHitstop(s, t)) return null;
-    if (brawlerTechAllowed(s, next.tech, t)) { sc.idx++; return { kind: 'tech', tech: next.tech }; }
+    if (brawlerTechAllowed(s, next.tech, t)) { sc.idx++; return next.variant ? { kind: 'tech', tech: next.tech, variant: next.variant } : { kind: 'tech', tech: next.tech }; }
     return null;
   }
   // 次の段を先行入力して、前の行動の終わりを待っている間(台本7の頭=詰めの蹴りの戻りの間も)。
@@ -533,8 +558,8 @@ export const pbRunScript = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): Phan
       sc.idx++; return { kind: 'attack' };
     }
     if (next.kind === 'tech' && next.tech === 'kick' && last.kind === 'tech' && last.tech === 'kick'
-      && brawlerNextKickN(s, t) === pbScriptKickN(steps, sc.idx) && brawlerCanPay(s, 'kick', false, i.discount('kick'))) {
-      sc.idx++; return { kind: 'tech', tech: 'kick' };
+      && brawlerNextKickN(s, t) === pbScriptKickN(steps, sc.idx) && s.points >= pbStepCost(next, i.discount)) {
+      sc.idx++; return next.variant ? { kind: 'tech', tech: 'kick', variant: next.variant } : { kind: 'tech', tech: 'kick' };
     }
   }
   return end();

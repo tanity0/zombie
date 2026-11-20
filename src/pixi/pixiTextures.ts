@@ -66,6 +66,14 @@ const DEFERRED_SHEETS_BY_IDLE_INIT: [string, string[]][] = [...new Set(DEFERRED_
   .map(idle => [idle, DEFERRED_ENEMY_SHEETS.filter(s => s.idle === idle).map(s => s.sheet)]);
 
 /** 拳鬼の絵の名前(15枚・`public/sprites/kenki-*.png`)。並び: 待機・構え・振り・歩き0〜5・走り0〜5。 */
+/** 雨上がりの絵(`public/sprites/weather/*.png`・32枚)。水たまり10種(+水面だけの対)・小物6・波紋3コマ×2。 */
+export const WEATHER_WET_SPRITES: readonly string[] = [
+  ...['r1', 'r2', 'r3', 'r4', 'r5', 'long1', 'long2', 'long3', 'cluster1', 'cluster2']
+    .flatMap(k => [`weather/puddle-${k}`, `weather/puddle-${k}-water`]),
+  ...['stone', 'log', 'grass', 'leaf', 'twig', 'branch'].map(k => `weather/debris-${k}`),
+  ...[0, 1, 2].flatMap(i => [`weather/ripple-water-${i}`, `weather/ripple-ground-${i}`]),
+];
+
 export const KENKI_SPRITES: readonly string[] = [
   'kenki-idle', 'kenki-melee-ready', 'kenki-melee-swing',
   ...Array.from({ length: 6 }, (_, i) => `kenki-walk-${i}`),
@@ -190,6 +198,12 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
    * 読み終えたら `DEFERRED_FRAME_SHEETS` で枠を切って `scarecrow-0..2` として登録する(同じ source を共有=追加メモリなし)。
    */
   practice: [{ name: SCARECROW_SHEET, scaleMode: 'nearest' }],
+  /**
+   * ステージの天候「雨上がり」(research/WEATHER_WET.md・社長支給2026-11-20の帯2本から切り出し・計 約0.03MB)。
+   * ステージ1を `?weather=wet` で出撃した時だけ `sortieSpriteGroups` が先読みする。描画(pixi/weatherWet.ts)は
+   * `getTexture` で引くので、届く前は水たまりを出さないだけ(網で拾う)。ドット絵=nearest。
+   */
+  weatherWet: WEATHER_WET_SPRITES.map(name => ({ name, scaleMode: 'nearest' as const })),
   /**
    * ★ボス級の**アニメーションシート**(社長指示2026-09-24「乗せて」)。**所属は付けない=網だけで拾う**
    * (立ち絵の `castle`/`bosses` と同じ理由)。**さらにシートは外れても立ち絵へ落ちる**ので、
@@ -764,6 +778,8 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'avatar-jiangshi-coffin', scaleMode: 'nearest' }, // 22×32
       { name: 'avatar-maid-headdress', scaleMode: 'nearest' }, // 36×32(第8弾「メイドセット」)
       { name: 'avatar-maid-bow', scaleMode: 'nearest' }, // 30×32
+      { name: 'avatar-tosen-parts', scaleMode: 'nearest' }, // 68×34(第9弾「斗戦勝仏セット」・左=緊箍児/右=如意棒。avatars.ts の crop で切る)
+      { name: 'avatar-tosen-kintoun', scaleMode: 'nearest' }, // 73×32(筋斗雲・同セットで乗車中の板の代わり。太い方=左)
       // 裏ボス スカジの氷ハザード(氷塊テレグラフ / 飛ぶ氷の刃)。ピクセルアート=nearest。
       { name: 'zan' }, // 刀フィニッシュの習字「斬」(拡大表示なので既定linearで滑らかに)
       { name: 'torch', scaleMode: 'nearest' },

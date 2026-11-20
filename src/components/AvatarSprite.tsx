@@ -7,7 +7,7 @@ import { AVATARS, type AvatarId } from '../data/avatars';
 import { PLAYER_HITBOX } from '../store/gameStore';
 import { PLAYER_VISUAL_SCALE } from '../pixi/renderSpec';
 import { PLAYER_ART_BASE_W } from '../pixi/pixiTextures'; // クラス絵の表示基準幅(体の絵1pxが枠の何pxに当たるかの元)
-import { placeAvatarPart, headAnchorDelta, spriteNameFromUrl, avatarPartPieces } from '../utils/avatarPlacement';
+import { placeAvatarPart, headAnchorDelta, spriteNameFromUrl, avatarPartPieces, avatarPartSrcRect } from '../utils/avatarPlacement';
 
 const BOX = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
 const partUrl = (tex: string): string => `${import.meta.env.BASE_URL}sprites/${tex}.png`;
@@ -70,9 +70,42 @@ export const AvatarSprite: React.FC<{
   // 割った半分は同じ絵を全体の大きさで置き、clip-path で片側だけ見せる。
   const layer = (which: 'above' | 'below') => ready ? parts.flatMap((part, i) => avatarPartPieces([part]).map(pc => {
     if (pc.layer !== which) return null;
-    const ps = sizes[i]!;
-    const r = placeAvatarPart(part, ps.w, ps.h, BOX, BOX, PLAYER_ART_BASE_W / body.w, d.dx, d.dy);
+    const img0 = sizes[i]!;
+    const src = avatarPartSrcRect(part, img0.w, img0.h); // crop=1枚の絵から切った四角(無ければ全体)
+    const r = placeAvatarPart(part, src.w, src.h, BOX, BOX, PLAYER_ART_BASE_W / body.w, d.dx, d.dy);
     const clip = pc.u0 > 0 || pc.u1 < 1 ? `inset(0 ${(1 - pc.u1) * 100}% 0 ${pc.u0 * 100}%)` : undefined;
+    if (part.crop) {
+      // 切った四角だけ見せる: 枠(四角の大きさ・はみ出しを隠す)の中に絵の全体をずらして置く。
+      const k = r.width / Math.max(1, src.w);
+      return (
+        <span
+          key={`${part.tex}|${part.crop.x}|${pc.u0}`}
+          aria-hidden
+          className="pointer-events-none absolute overflow-hidden"
+          style={{
+            left: `${((body.w / 2 + r.left) / body.w) * 100}%`,
+            top: `${((body.h + r.top) / body.h) * 100}%`,
+            width: `${(r.width / body.w) * 100}%`,
+            height: `${(r.height / body.h) * 100}%`,
+            zIndex: which === 'above' ? 2 : 0,
+            clipPath: clip,
+          }}
+        >
+          <img
+            src={partUrl(part.tex)}
+            alt=""
+            draggable={false}
+            className="absolute max-w-none"
+            style={{
+              left: `${(-src.x / src.w) * 100}%`,
+              top: `${(-src.y / src.h) * 100}%`,
+              width: `${((img0.w * k) / r.width) * 100}%`,
+              imageRendering: 'pixelated',
+            }}
+          />
+        </span>
+      );
+    }
     return (
       <img
         key={`${part.tex}|${pc.u0}`}

@@ -14,6 +14,8 @@ import { clearSeenTutorials } from '../utils/tutorialArchive';
 import { clearStoryArchive } from './storyArchive';
 import { clearSubquestSave } from '../utils/subquests';
 import { clearHeroAscended } from '../utils/heroAscended';
+import { clearKenkiLevel } from '../utils/kenkiLevel';
+import { clearAvatarUnlocks } from '../utils/avatarUnlock';
 import { NAMED_FOE_KEY } from '../utils/namedEnemy';
 import { clearReadBossStories } from '../utils/bossStoryArchive';
 // ★練習ランの出撃先(下の「実行時上書き」)。import方向は progress→bossPractice の一方通行
@@ -740,6 +742,8 @@ export const resetProgress = (): void => {
   clearStoryArchive(); // 資料室の解放・既読も進行リセットで消す(開発用)
   clearSubquestSave(); // サブクエストの達成・受注も進行リセットで消す(開発用)
   clearHeroAscended(); // 英雄の昇天の印も進行リセットで消す(開発用)
+  clearKenkiLevel(); // 孫悟空のレベルを Lv1 へ(格闘技の体得も消える・research/BRAWLER.md §36-1)
+  clearAvatarUnlocks(); // 手に入れたアバター(斗戦勝仏セット)も消える
   try { localStorage.removeItem(NAMED_FOE_KEY); } catch { /* ignore */ } // 宿敵(ネームド)も進行リセットで消す(開発用)
   clearReadBossStories(); // ボスの物語の既読も進行リセットで消す(開発用)
   setSelectedMission('main');

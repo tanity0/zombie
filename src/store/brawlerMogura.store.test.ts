@@ -1,5 +1,6 @@
 // ★地割り(旧 大踏み潰し)の派生「土竜」(research/BRAWLER.md §35・社長指示2026-11-20)。入力の窓・値段・浮かせ(押さない)・取り消しの道を固める。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { setKenkiLevelForTest } from '../utils/kenkiLevel';
 import { useGameStore } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import {
@@ -56,6 +57,7 @@ const stomp = (points: number, upAt: number | null, enemies = [enemyAt(40, 0, 'z
 };
 
 beforeEach(() => {
+  setKenkiLevelForTest(5); // ★§36-2: 踵落とし・蹴り上げ・土竜を体得した状態で試す(体得の門そのものは brawlerArts.store.test.ts)
   now = 9_000_000;
   vi.spyOn(Date, 'now').mockImplementation(() => now);
   vi.spyOn(Math, 'random').mockReturnValue(0.99);

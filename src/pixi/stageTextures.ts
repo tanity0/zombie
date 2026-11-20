@@ -3,6 +3,8 @@
 // 先読み(prefetchStageTextures)を呼べる。
 import { Assets } from 'pixi.js';
 import { useGameStore } from '../store/gameStore';
+import { getSelectedStageId } from '../data/progress';
+import { parseWeather, weatherWetActive } from '../utils/weatherWet';
 import { skinLayersExpectedFor, type StageSkinLayer } from './stageTextureSkin';
 export { skinLayersExpectedFor, type StageSkinLayer } from './stageTextureSkin';
 
@@ -138,5 +140,9 @@ export const sortieSpriteGroups = (): string[] => {
   // 研究所: 背景(lab)+研究所にしか出ない敵と障害物(labActors・コード監査2026-10-23 M-5)。
   if (s.stageTheme === 'lab') return ['lab', 'labActors'];
   if (s.farBackdrop === 'tutorial') return ['tutorial'];
+  // 天候「雨上がり」(research/WEATHER_WET.md): `?weather=wet` でステージ1を出撃した時だけ水たまりの絵を読む。
+  if (typeof window !== 'undefined' && weatherWetActive({
+    weather: parseWeather(window.location.search), stageId: getSelectedStageId(), indoor: s.indoorMode, corridor: s.corridorMode,
+  })) return ['weatherWet'];
   return [];
 };

@@ -20,4 +20,8 @@ export const BRAWLER_TECH_NAMES: Record<TechProcKey, { name: string; dir: Brawle
   'tech:flipkick': { name: 'サマーソルト', dir: 'up' },
   'tech:mogura': { name: '土竜', dir: 'up' }, // 地割りの溜めの間に上で派生(§35)
   'tech:secret': { name: '秘奥義', dir: 'all' },
+  // 刀(research/KATANA_TSUBAME.md §2・§4)。一閃=はじいた向きの楔(右向きの1本で代表)・燕返し=一閃からの続き(└)・殺陣=秘奥義と同じ扱い。
+  'tech:issen': { name: '一閃', dir: 'right' },
+  'tech:tsubame': { name: '燕返し', dir: 'chain' },
+  'tech:satsujin': { name: '殺陣', dir: 'all' },
 };

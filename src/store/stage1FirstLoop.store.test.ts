@@ -16,8 +16,8 @@ const backing: Record<string, string> = {};
 const SELECTED_KEY = 'zombie.progress.selectedStage';
 const setStage = (id: string) => { backing[SELECTED_KEY] = id; };
 
-import { useGameStore } from './gameStore';
-import { LOOP1_BASE_ID } from '../utils/stage1FirstLoop';
+import { useGameStore, isWorldFrozen, isInputLocked, NEAR_BASE_DIST } from './gameStore';
+import { LOOP1_BASE_ID, LOOP1_BASE_NEAR_DIST } from '../utils/stage1FirstLoop';
 import { getEventQuestMeta, getStage1FirstLoopCleared, markStage1FirstLoopCleared, getClearedStages } from '../data/progress';
 
 beforeEach(() => {
@@ -58,6 +58,28 @@ describe('2周目以降のステージ1はウェルカムが無い(社長指示2
     setStage('stage-1');
     useGameStore.getState().resetGame('warrior');
     expect(useGameStore.getState().welcomeRetired).toBe(false);
+  });
+});
+
+describe('「拠点の確保」の距離(社長指示2026-11-20)', () => {
+  it('軍人が「拠点が見えてきた」と言う距離と同じ', () => {
+    expect(LOOP1_BASE_NEAR_DIST).toBe(NEAR_BASE_DIST);
+  });
+});
+
+describe('到着の会話のロック(社長報告2026-11-20)', () => {
+  it('ロック中は世界が止まり、入力も被弾も受け付けない', () => {
+    setStage('stage-1');
+    useGameStore.getState().setPendingStage1FirstLoop(true);
+    useGameStore.getState().resetGame('warrior');
+    useGameStore.setState({ stage1LoopTalk: 'arrival', deliveryLocked: true });
+    expect(isWorldFrozen()).toBe(true);
+    expect(isInputLocked()).toBe(true);
+    const hp = useGameStore.getState().player.health;
+    expect(useGameStore.getState().damagePlayer(50, 'test')).toBe(false);
+    expect(useGameStore.getState().player.health).toBe(hp);
+    useGameStore.setState({ deliveryLocked: false });
+    expect(isInputLocked()).toBe(false);
   });
 });
 

@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "1044 files / 復号後 約721MB",
+ "generatedFor": "1057 files / 復号後 約722MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -769,6 +769,18 @@
    "h": 81,
    "bytes": 5905,
    "sha": "7450fc6a22841bb4"
+  },
+  "sprites/avatar-tosen-kintoun.png": {
+   "w": 73,
+   "h": 32,
+   "bytes": 2793,
+   "sha": "17ec805ff8cf9dcd"
+  },
+  "sprites/avatar-tosen-parts.png": {
+   "w": 68,
+   "h": 34,
+   "bytes": 1404,
+   "sha": "fec1a6a0c69b28f0"
   },
   "sprites/bat-female-attack.png": {
    "w": 702,
@@ -5587,6 +5599,72 @@
    "h": 45,
    "bytes": 7300,
    "sha": "50509354a905b190"
+  },
+  "sprites/sub-icons/alchemy.png": {
+   "w": 62,
+   "h": 66,
+   "bytes": 1750,
+   "sha": "f5b546cf291ccf6f"
+  },
+  "sprites/sub-icons/flare-gun.png": {
+   "w": 66,
+   "h": 66,
+   "bytes": 1420,
+   "sha": "3fd22d713651bda4"
+  },
+  "sprites/sub-icons/homing.png": {
+   "w": 57,
+   "h": 66,
+   "bytes": 1404,
+   "sha": "56c867c2deb65cd3"
+  },
+  "sprites/sub-icons/junk-weapon.png": {
+   "w": 96,
+   "h": 66,
+   "bytes": 2591,
+   "sha": "60f4ceb9fcda807f"
+  },
+  "sprites/sub-icons/marksman-trap.png": {
+   "w": 67,
+   "h": 66,
+   "bytes": 1833,
+   "sha": "834305b91513ee9d"
+  },
+  "sprites/sub-icons/molotov.png": {
+   "w": 57,
+   "h": 66,
+   "bytes": 1644,
+   "sha": "3a053cbb926729a9"
+  },
+  "sprites/sub-icons/sensor-mine.png": {
+   "w": 50,
+   "h": 66,
+   "bytes": 1755,
+   "sha": "cb044c9787e62011"
+  },
+  "sprites/sub-icons/shadow-clone.png": {
+   "w": 72,
+   "h": 66,
+   "bytes": 1600,
+   "sha": "fe747349c23b78fd"
+  },
+  "sprites/sub-icons/striker-hunting.png": {
+   "w": 59,
+   "h": 66,
+   "bytes": 1634,
+   "sha": "68fde8b08ee0a805"
+  },
+  "sprites/sub-icons/striker-quick-mag.png": {
+   "w": 66,
+   "h": 66,
+   "bytes": 1737,
+   "sha": "a850c3b0ed7bf431"
+  },
+  "sprites/sub-icons/support-sniper.png": {
+   "w": 80,
+   "h": 66,
+   "bytes": 2359,
+   "sha": "df4080e8613fb804"
   },
   "sprites/suriel-cast1.png": {
    "w": 1584,

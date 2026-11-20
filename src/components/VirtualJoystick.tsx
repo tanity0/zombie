@@ -75,6 +75,8 @@ const VirtualJoystick: React.FC = () => {
   // スケボー(新仕様): ダブルタップで乗車。直前タップの離し時刻/それがタップ(短く小移動)だったか、最大ドラッグ量。
   const lastUpAtRef = useRef(0);
   const lastWasTapRef = useRef(false);
+  // 錬金術の溜めのリズムに使った接触(research/ALCHEMY_RHYTHM.md)。指を離しても攻撃・乗車に流さない。
+  const alchemyPressRef = useRef(false);
   const maxDragRef = useRef(0);
 
   // 指離し直前の短い窓だけを見るフリック判定。通常のジョイスティック
@@ -131,6 +133,18 @@ const VirtualJoystick: React.FC = () => {
     return true;
   }, [detectFlick, tryHitRetaliation]);
 
+  // ★当たった直後のフリックの追加攻撃(鞭の引き寄せ/叩きつけ=research/WHIP_FOLLOWUP.md・刀の燕返し=research/KATANA_TSUBAME.md)。
+  // 受付(当たってから300ms)の間だけ、ほかのフリック(被弾反撃・一閃・ワイヤー)より先に試す。受付の外・向きが外れたら何もせず従来の経路へ。
+  const tryFireFlickFollowup = useCallback((): boolean => {
+    if (flickFiredRef.current) return false;
+    if (!useGameStore.getState().flickFollowupOpen()) return false;
+    const flick = detectFlick();
+    if (!flick) return false;
+    if (!useGameStore.getState().tryFlickFollowup(flick.x, flick.y)) return false;
+    flickFiredRef.current = true;
+    return true;
+  }, [detectFlick]);
+
   const release = useCallback((fireCounter = true) => {
     // The core gameplay hook: lifting the finger fires the counter window.
     // The store enforces the cooldown so spam-tapping doesn't help.
@@ -145,12 +159,16 @@ const VirtualJoystick: React.FC = () => {
     const returnPromptOpened = pointerId !== null && fireCounter
       ? useGameStore.getState().requestStoryReturnPrompt()
       : false;
-    if (pointerId !== null && fireCounter && !returnPromptOpened && !isAttackLocked()) {
+    const alchemyPress = alchemyPressRef.current;
+    alchemyPressRef.current = false;
+    if (pointerId !== null && fireCounter && !returnPromptOpened && !alchemyPress && !isAttackLocked()) {
       // 四神舞リズムモード中は、タップ/フリックをリズム入力へ振り分ける(カウンター/一閃は出さない)。
       // 攻撃の実行と効果音は useGameLoop 側(pending 消化)が担当する。
       if (useGameStore.getState().rhythm.active) {
         // フリックは move 中に即発火済み(スマホ音ゲー方式)。発火していなければ=タップ。
         if (!flickFiredRef.current) rhythmInput('tap');
+      } else if (tryFireFlickFollowup()) {
+        // ★当たった直後の追加攻撃(鞭/燕返し)が出た指離しでは、ほかの攻撃・発射を出さない(受付の間だけの優先)。
       } else if (tryFireRetaliation()) {
         // ★被弾反撃(research/HIT_RETALIATION.md §3): 窓の間の「フリックして指を離す」を**最初に**反撃として判定する。
         // 成立したら、この指離しでは一閃・ワイヤー・近接(カウンター)・各種の発射を出さない(反撃が出た=攻めに転じた)。
@@ -212,6 +230,7 @@ const VirtualJoystick: React.FC = () => {
         // 被弾反撃の窓の間の短いタッチは「触れ直してはじく」ための操作なので、スケボーのダブルタップ乗車に数えない(乗車の誤爆を防ぐ)。
         const inRetaliationWindow = isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now());
         lastWasTapRef.current =
+          !alchemyPress &&
           !inRetaliationWindow &&
           now - pointerDownTimeRef.current < SKATER_TAP_MAX_MS &&
           maxDragRef.current < SKATER_TAP_MAX_DRAG;
@@ -229,20 +248,22 @@ const VirtualJoystick: React.FC = () => {
     deltaRef.current = { x: 0, y: 0 };
     setTouchActive(false);
     setSwipeDirection(null);
-  }, [setSwipeDirection, setTouchActive, beginMeleeSwing, rhythmInput, tryFireKatanaDash, tryFireWireAnchor, tryFireRetaliation, dismountSkater, detectFlick]);
+  }, [setSwipeDirection, setTouchActive, beginMeleeSwing, rhythmInput, tryFireKatanaDash, tryFireWireAnchor, tryFireRetaliation, tryFireFlickFollowup, dismountSkater, detectFlick]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // 操作不可(ヘリ登場/セリフ/一時停止/死亡)中は移動・向き・攻撃を一切受け付けない(社長指示)。
     if (isInputLocked()) return;
     if (pointerIdRef.current !== null) release(false);
     pointerIdRef.current = e.pointerId;
+    // 錬金術の溜めの間は、触れた瞬間をリズムの判定に使う(タイミングは触れた時刻で見る)。
+    alchemyPressRef.current = !useGameStore.getState().rhythm.active && useGameStore.getState().alchemyRhythmTap();
     setTouchActive(true);
     const nowT = performance.now();
     // スケボー: 直前が短い小移動タップで、離しから SKATER_DOUBLETAP_MS 以内の再タップ=ダブルタップ=乗車。
     // (2発目はそのままホールド=移動。skater 未装備なら store 側で無害。) release で降車(+条件で投擲)。
     // ★被弾反撃の窓の中の触れ直しは乗車に数えない(カウンターを外す短いタップ→被弾→はじくために触れ直す、で乗車して
     // 反撃が不発になる穴・検収監査 A-1)。
-    if (lastWasTapRef.current && nowT - lastUpAtRef.current <= SKATER_DOUBLETAP_MS
+    if (!alchemyPressRef.current && lastWasTapRef.current && nowT - lastUpAtRef.current <= SKATER_DOUBLETAP_MS
       && !isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now())
       && !isBrawlerMode(useGameStore.getState().player)) mountSkater(); // 格闘中は連打が乗車に食われるので乗らない(research/BRAWLER.md §7-2)
     pointerDownTimeRef.current = nowT;

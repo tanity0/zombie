@@ -81,7 +81,7 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
       if (shown.length === 0) continue;
       const rowL = shown[0].x - RIM_R, rowR = shown[shown.length - 1].x + RIM_R;
       for (const { face, x, y } of shown) {
-        const text = names[face.stageId] ?? '';
+        const text = face.label ?? names[face.stageId] ?? ''; // 孫悟空=レベルの名前(sortieMapBosses)
         if (!text) continue;
         const w = estimateTagTextWidth(text, TAG_FS, TAG_LS) + 2 * TAG_PX;
         const box = placeMapSpotTag({ at: s.at, markHalf: MARK_HALF, rowL, rowR, rowY: y, below: s.below, reachUp: RIM_R + TICK_L, reachDown: RIM_R,
@@ -218,7 +218,7 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
                   const crop = BOSS_HEAD_CROPS[face.sprite];
                   if (!crop) return null;
                   const id = `${clipBase}-f${si}-${fi}`;
-                  const rim = face.patrol ? FACE_RIM_PATROL : FACE_RIM;
+                  const rim = face.rim ?? (face.patrol ? FACE_RIM_PATROL : FACE_RIM); // 孫悟空=レベルの色
                   const isOpen = openKey === face.key;
                   return (
                     <g key={face.key} className="ds-map-face" style={{ animationDelay: `${delayOf(fi)}ms` }}>

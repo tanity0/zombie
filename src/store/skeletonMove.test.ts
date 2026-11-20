@@ -4,7 +4,7 @@
 // ここは「実装精度の規律4」どおり、配線(gameStore.ts の状態機械)を updateEnemies を実際に
 // 回して確かめる統合テスト+★受け入れ条件(殴り返せる時間350ms以上=取り分は「後退」)の機械化。
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { useGameStore, INVULN_MS } from './gameStore';
+import { useGameStore, INVULN_MS, PLAYER_BASE_SPEED } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import { biteSpecFor, BITE_CONTACT_DIST_PX, biteLungeDistanceAtFire } from '../utils/enemyBite';
@@ -287,5 +287,92 @@ describe('★密着で焼いた向きがゼロでも後退相から必ず抜け�
     const e0 = place(0, { aiPhase: 's-retreat', chaffMove: 'skel-bite', biteDirX: 1, biteDirY: 0 });
     tick(START_GT + 1000 / 60);
     expect(first().x).toBeLessThan(e0.x); // biteDirX=+1 の逆=左へ下がる
+  });
+});
+
+/**
+ * ★2026-11-20 社長「プレイヤーを追尾する攻撃前の移動がすべて、射程距離を無視してプレイヤーにくっついてくるのを、
+ * 射程に収めて。たとえば、スケルトン…旋回してから攻撃にはいるけど、その旋回が無限に追いかけてきてる」。
+ * 真因は2つ: ①回り込み(s-arc)が毎フレーム生のプレイヤーで弧を組み直していた(走って逃げても最大574px/sで付いてきた)
+ * ②間合いで枠(同時に構える2体)を待つ間の周回に上限が無く、近い個体に負け続けると十数秒回り続けた
+ * (②の並べ替えは chaffMoves.test.ts の deriveChaffMoveGrants で固定。群れの実測は乱数で揺れるのでここでは数値で縛らない)。
+ */
+describe('★攻撃前の移動は射程に収める(回り込みが無限に追いかけてこない)', () => {
+  const dist = (e: Enemy) => {
+    const p = useGameStore.getState().player;
+    return Math.hypot(e.x + e.width / 2 - (p.x + p.width / 2), e.y + e.height / 2 - (p.y + p.height / 2));
+  };
+  // ★決定的にする(負荷の高い全体実行で1度だけ落ちた=実時計と乱数に依存していた)。
+  //   壁時計(Date.now)はゲーム時刻と同じ歩みで進め、乱数は固定シードにする。個体id(spawnEnemyAt)もこの2つから
+  //   作られるので、役割・帯の好み半径・回る向きも毎回同じになる。
+  let wallNow = 0;
+  beforeEach(() => {
+    wallNow = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => wallNow);
+    let seed = 0x2f6b1d3;
+    vi.spyOn(Math, 'random').mockImplementation(() => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 4294967296;
+    });
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
+  /** プレイヤーを毎フレーム vx px/s で左へ動かしながら回す。噛みの解決(combatTick)も回す。 */
+  const runFrames = (frames: number, vx: number, onFrame: (gt: number, f: number) => boolean | void) => {
+    for (let f = 1; f <= frames; f++) {
+      const gt = START_GT + f * 1000 / 60;
+      wallNow += 1000 / 60;
+      useGameStore.setState(s => ({ player: { ...s.player, x: s.player.x - vx / 60, health: 9999, invulnerable: false, invulnerableTime: 0 } }));
+      tick(gt);
+      applyContactDamage(gt, false, 0, NOOP_COMBAT_EFFECTS);
+      if (onFrame(gt, f)) return;
+    }
+  };
+
+  it('止まっているプレイヤー: 300pxから歩いて詰め、発火距離で止まって技に入る(詰めすぎない・時間内に入る)', () => {
+    place(300);
+    let crouchAt: number | undefined, minApproach = Infinity;
+    runFrames(60 * 12, 0, (gt) => {
+      const e = first();
+      if (e.aiPhase === 's-crouch') { crouchAt = gt; return true; }
+      if (e.aiPhase === undefined && !(e.biteAt !== undefined && e.biteAt > 0)) minApproach = Math.min(minApproach, dist(e));
+    });
+    expect(crouchAt).toBeDefined();
+    expect((crouchAt as number) - START_GT).toBeLessThan(8000);
+    expect(minApproach).toBeGreaterThanOrEqual(SKELETON_TRIGGER_PX - 10);
+    expect(dist(first())).toBeGreaterThanOrEqual(SKELETON_TRIGGER_PX - 10);
+  });
+
+  it('止まっているプレイヤー: 弧の終点は今までどおりプレイヤーの横・発火距離(1pxも変えていない)', () => {
+    place(90, { aiPhase: 's-crouch', aiPhaseUntil: START_GT });
+    let biteD: number | undefined;
+    runFrames(120, 0, () => { const e = first(); if (e.aiPhase === 's-bite') { biteD = dist(e); return true; } });
+    expect(biteD).toBeCloseTo(SKELETON_TRIGGER_PX, 0);
+  });
+
+  it('ゆっくり逃げるプレイヤー(骸骨より遅い): 時間内に技へ入り、弧は横の発火距離に付く(精度は落とさない)', () => {
+    place(300);
+    let biteD: number | undefined, biteAt: number | undefined;
+    runFrames(60 * 20, 30, (gt) => { const e = first(); if (e.aiPhase === 's-bite') { biteD = dist(e); biteAt = gt; return true; } });
+    expect(biteAt).toBeDefined();
+    expect((biteAt as number) - START_GT).toBeLessThan(15000);
+    expect(biteD as number).toBeLessThanOrEqual(SKELETON_TRIGGER_PX + 5);
+  });
+
+  it('走って逃げるプレイヤー: 弧は骸骨の足の速さまでしか付いてこない(射程の外まで張り付かない)', () => {
+    place(95, { aiPhase: 's-crouch', aiPhaseUntil: START_GT + SKELETON_CROUCH_MS });
+    let biteD: number | undefined, maxAnchorStep = 0;
+    let prevA: { x: number; y: number } | undefined;
+    runFrames(120, PLAYER_BASE_SPEED, () => {
+      const e = first();
+      if (e.aiPhase === 's-arc' && e.chaffOrbitCx !== undefined && e.chaffOrbitCy !== undefined) {
+        if (prevA) maxAnchorStep = Math.max(maxAnchorStep, Math.hypot(e.chaffOrbitCx - prevA.x, e.chaffOrbitCy - prevA.y));
+        prevA = { x: e.chaffOrbitCx, y: e.chaffOrbitCy };
+      }
+      if (e.aiPhase === 's-bite') { biteD = dist(e); return true; }
+    });
+    expect(biteD).toBeDefined();
+    // 旧: 必ず横100pxに付いた(=どれだけ走っても逃げられない)。新: 走った分だけ間合いの外に残る。
+    expect(biteD as number).toBeGreaterThan(SKELETON_TRIGGER_PX + 20);
+    expect(maxAnchorStep).toBeLessThanOrEqual(first().speed / 60 + 1e-6);
   });
 });

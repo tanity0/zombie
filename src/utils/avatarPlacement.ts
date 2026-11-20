@@ -64,3 +64,11 @@ export const spriteNameFromUrl = (url: string): string => {
   const file = url.split('?')[0].split('/').pop() ?? '';
   return file.replace(/\.png$/i, '');
 };
+
+/** パーツが素材のどの四角を使うか(crop が無ければ絵の全体)。寸法・置き方(placeAvatarPart)はこの四角の w/h を絵の大きさとして使う。 */
+export const avatarPartSrcRect = (part: AvatarPart, imgW: number, imgH: number): { x: number; y: number; w: number; h: number } => {
+  const c = part.crop;
+  if (!c) return { x: 0, y: 0, w: imgW, h: imgH };
+  const x = Math.max(0, Math.min(imgW, c.x)), y = Math.max(0, Math.min(imgH, c.y));
+  return { x, y, w: Math.max(0, Math.min(imgW - x, c.w)), h: Math.max(0, Math.min(imgH - y, c.h)) };
+};

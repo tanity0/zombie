@@ -12,7 +12,7 @@ import { applyEnemyProjectileHits, applyPumpkinBlastDamage, NOOP_COMBAT_EFFECTS 
 import { runPhantomTick, createPhantomTickState, NOOP_PHANTOM_SFX } from '../utils/phantomTick';
 import { setPhantomIdentity } from '../utils/phantomIdentity';
 import { uniquePhantomSpec } from '../data/uniquePhantoms';
-import { playerLaunchHeightPx, resetPlayerLaunch } from '../utils/playerAirFollow';
+import { resetPlayerLaunch } from '../utils/playerAirFollow';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll } from '../utils/brawlerCombo';
 import { isHurtMoveLocked } from '../utils/playerHurt';
@@ -657,6 +657,7 @@ describe('③打ち上げの技をガードすると浮かない(拳鬼の3・4�
     return { id: e.id, step, gt: () => gt, cur: () => useGameStore.getState().enemies.find(x => x.id === e.id)! };
   };
   /** 拳鬼の3段目か4段目が当たるまで回し、その間にプレイヤーの絵が浮いたかを返す。 */
+  const playerFloating = (): boolean => { const a = pl().brAir; return !!a && (a.brLiftUntil ?? 0) > now; };
   const runCombo = (lever: boolean) => {
     // ★ガードで防がれた攻撃は「当たっていない」扱い=台本がそこで打ち切られる(検収監査2026-11-10)ので、1・2段目は普通に食らい、
     //   3段目(か4段目)の溜めに入ってからレバーを入れる(怯みが明けて動ける体になった所でガードする、の再現)。
@@ -673,7 +674,7 @@ describe('③打ち上げの技をガードすると浮かない(拳鬼の3・4�
       h.step(16);
       const b = h.cur().phantomBrawler;
       if (b0 && b && (b.stage === 3 || b.stage === 4) && !b0.resolved && b.resolved && b.connected) upperLanded = true;
-      if (playerLaunchHeightPx(h.gt() + 150, 60) > 0) launched = true;
+      if (playerFloating()) launched = true; // ★§36-0: 本当に浮く(雑魚と同じ規則・player.brAir)
     }
     return { launched, upperLanded, guards: leverGuardCount(pl()), hp: pl().health };
   };
@@ -683,7 +684,7 @@ describe('③打ち上げの技をガードすると浮かない(拳鬼の3・4�
     expect(plain.launched).toBe(true);
     expect(plain.guards).toBe(0);
 
-    resetPlayerLaunch();
+    resetPlayerLaunch(); useGameStore.setState(st => ({ player: { ...st.player, brAir: undefined } }));
     const guarded = runCombo(true);
     expect(guarded.upperLanded).toBe(true);
     expect(guarded.guards).toBeGreaterThan(0);
@@ -704,8 +705,8 @@ describe('③打ち上げの技をガードすると浮かない(拳鬼の3・4�
     const hp0 = pl().health;
     let launched = false;
     guard = 0;
-    while (h.cur().aiPhase === 'jump' && guard++ < 4000) { h.step(4); if (playerLaunchHeightPx(h.gt() + 150, 60) > 0) launched = true; }
-    if (playerLaunchHeightPx(h.gt() + 150, 60) > 0) launched = true;
+    while (h.cur().aiPhase === 'jump' && guard++ < 4000) { h.step(4); if (playerFloating()) launched = true; } // ★§36-0: 本当に浮く(player.brAir)
+    if (playerFloating()) launched = true; // ★§36-0: 本当に浮く(雑魚と同じ規則・player.brAir)
     return { launched, lost: hp0 - pl().health, guards: leverGuardCount(pl()), kb: (pl().knockbackUntil ?? 0) > now };
   };
   it('跳びかかりの着地: レバーなしなら絵が浮く / 着地点から離れる向きに入れていれば浮かない・ダメージ半分・小さい押し', () => {
@@ -713,7 +714,7 @@ describe('③打ち上げの技をガードすると浮かない(拳鬼の3・4�
     expect(plain.lost).toBeGreaterThan(0);
     expect(plain.launched).toBe(true);
 
-    resetPlayerLaunch();
+    resetPlayerLaunch(); useGameStore.setState(st => ({ player: { ...st.player, brAir: undefined } }));
     const guarded = runLeap(true);
     expect(guarded.guards).toBe(1);
     expect(guarded.lost).toBe(brawlerLeverGuardDamage(plain.lost));

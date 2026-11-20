@@ -5,6 +5,7 @@
 //  ・外れた時・四神舞の最中(今どおり自分と相手だけの止め=段の表の長さ)・孫悟空(格闘の幻影)の当たりでは、画面全体は止まらない
 //  ・止めの最中の入力は覚えて、止めが明けた最初のフレームで出す(旧と同じ)
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { setKenkiLevelForTest } from '../utils/kenkiLevel';
 import { useGameStore } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll } from '../utils/brawlerCombo';
@@ -60,6 +61,7 @@ const untilResolved = (id = 'z'): { at: number; until: number; selfStop: number 
 };
 
 beforeEach(() => {
+  setKenkiLevelForTest(5); // ★§36-2: 踵落とし・蹴り上げ・土竜を体得した状態で試す(体得の門そのものは brawlerArts.store.test.ts)
   now = 7_000_000;
   vi.spyOn(Date, 'now').mockImplementation(() => now);
   vi.spyOn(Math, 'random').mockReturnValue(0.99);

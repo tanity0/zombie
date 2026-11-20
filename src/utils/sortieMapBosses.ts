@@ -3,6 +3,8 @@
 // 載せる条件: 「出会った記録あり・倒した記録なし」で、
 //   A. ステージ固定のボス(PRACTICE_SLOTS の reachable:true の枠)→ その枠のステージの場所
 //   B. 徘徊の枠(宇宙飛行群・亡霊・拳鬼)→ 作戦室の抽選で確定した時だけ、確定したステージの場所
+//      ★孫悟空(拳鬼)だけは出会った/倒したを見ない(社長指示2026-11-20: 倒すとレベルが上がって強くなって戻ってくる=抽選で選ばれたら必ず出す)。
+//        その時のレベルの色(弧の色)と名前(札)で出す(顔の絵は kenki-idle のまま・色と名前は utils/kenkiLevel の1か所)。
 // 照らすキーは encounterSlotKey(城ボス=giantbat@stage-N 等)。PRACTICE_SLOTS の slotKey(…@practice)では照らさない。
 // ハンター・死神(使者を含む)・変異塊・英雄・解放軍群は、どんな状態でも載せない(型の除外一覧で明示)。
 import type { EnemyType } from '../types/game';
@@ -11,6 +13,7 @@ import { bossIconName } from './bossIcon';
 import { OPS_MAP_PLACES } from '../data/opsMapPlaces';
 import type { RunMutantBoss } from './wraithScript';
 import type { SortiePatrolPlan } from './sortiePatrolPlan';
+import { kenkiLevelLook, type KenkiLevel } from './kenkiLevel';
 
 /** 地図に載せない型(reachable を将来変えても漏れないように明示)。 */
 export const MAP_BOSS_EXCLUDED_TYPES: readonly EnemyType[] = ['hunter', 'reaper', 'hangedman', 'lab-crawler', 'mutant-hero', 'mutant-liberty'];
@@ -30,7 +33,16 @@ export interface MapBossFace {
   sprite: string;
   /** 徘徊の枠(作戦室の抽選で確定した1人)。地点の列の先頭に並び、「+N」には入らない。 */
   patrol?: boolean;
+  /** 札の文字(省略=その場所の名)。孫悟空はレベルの名前。 */
+  label?: string;
+  /** 外の弧の色(省略=徘徊の血の赤)。孫悟空はレベルの色(Lv1 は省略)。 */
+  rim?: string;
 }
+
+/** 孫悟空のレベルの色 → 地図の弧の色(体の色と同じ並び: 青/紫/赤/金)。 */
+export const KENKI_MAP_RIM: Readonly<Record<'blue' | 'purple' | 'red' | 'gold', string>> = {
+  blue: '#66aaff', purple: '#bb66ff', red: '#ff5544', gold: '#ffd700',
+};
 
 export interface MapBossInput {
   encountered: ReadonlySet<string>;
@@ -39,6 +51,8 @@ export interface MapBossInput {
   sortieableStageIds: ReadonlySet<string>;
   /** 作戦室で引いた徘徊の枠(無ければ null)。 */
   patrol: SortiePatrolPlan | null;
+  /** 今の孫悟空のレベル(=次に出るレベル)。省略=Lv1。 */
+  kenkiLevel?: KenkiLevel;
 }
 
 /** ステージ固定のボス(A)の母集団: reachable の枠から除外の型を抜き、絵が引けるものだけ。 */
@@ -64,7 +78,14 @@ export const mapBossFaces = (input: MapBossInput): MapBossFace[] => {
   const p = input.patrol;
   if (p && p.boss !== 'none' && p.stageId) {
     const pb = PATROL_MAP_BOSS[p.boss];
-    if (!MAP_BOSS_EXCLUDED_TYPES.includes(pb.type) && shown(pb.key, p.stageId)) out.push({ key: pb.key, stageId: p.stageId, sprite: pb.sprite, patrol: true });
+    const isKenki = p.boss === 'brawler';
+    const place = input.sortieableStageIds.has(p.stageId) && OPS_MAP_PLACES[p.stageId] !== undefined;
+    if (!MAP_BOSS_EXCLUDED_TYPES.includes(pb.type) && (isKenki ? place : shown(pb.key, p.stageId))) {
+      if (isKenki) {
+        const look = kenkiLevelLook(input.kenkiLevel ?? 1);
+        out.push({ key: pb.key, stageId: p.stageId, sprite: pb.sprite, patrol: true, label: look.name, ...(look.tint ? { rim: KENKI_MAP_RIM[look.tint] } : {}) });
+      } else out.push({ key: pb.key, stageId: p.stageId, sprite: pb.sprite, patrol: true });
+    }
   }
   return out;
 };

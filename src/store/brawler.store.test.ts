@@ -1,6 +1,7 @@
 // ★サブウェポン「格闘」(research/BRAWLER.md)をストアで実際に動かして固める。
 // 5段のつながり・ヒットストップ・技ポイント・技(構え/大踏み潰し/気功/飛び蹴り)・近接専用モード・守護霊の疑似プレイヤー。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { setKenkiLevelForTest } from '../utils/kenkiLevel';
 import { useGameStore, isMeleeOnlyMode, isBrawlerGuarding, subWeaponBlockedByKatana, isWhipMode, drainBrawlerSfx, BRAWLER_SFX_DEATH, INVULN_MS, kbStopBoost, KNOCKBACK_DURATION, KNOCKBACK_SPEED } from './gameStore';
 import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import { brawlerLiftBreaksTech, brawlerLockHitMs, brawlerLockAlive } from '../utils/brawlerCombo';
@@ -62,6 +63,7 @@ const guardTechNoContact = (): boolean => {
   return r;
 };
 beforeEach(() => {
+  setKenkiLevelForTest(5); // ★§36-2: 踵落とし・蹴り上げ・土竜を体得した状態で試す(体得の門そのものは brawlerArts.store.test.ts)
   now = 7_000_000;
   vi.spyOn(Date, 'now').mockImplementation(() => now);
   vi.spyOn(Math, 'random').mockReturnValue(0.99); // クリを出さない

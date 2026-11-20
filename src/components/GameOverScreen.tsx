@@ -265,6 +265,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   // 小烏丸解禁(社長指示): このランでトール初回討伐=小烏丸を永続解禁したか(静的画面なので毎フレ再描画なし)。
   // 解禁したランのリザルトで1回だけ解禁ポップアップを出す(OK/×で閉じる=setKogarasuPopupOpen(false))。
   const kogarasuUnlockedThisRun = useGameStore(s => s.kogarasuUnlockedThisRun);
+  const brawlerArtsLearnedThisRun = useGameStore(s => s.brawlerArtsLearnedThisRun); // 格闘技の体得(research/BRAWLER.md §36-2)
+  const avatarsEarnedThisRun = useGameStore(s => s.avatarsEarnedThisRun); // 手に入れたアバター(斗戦勝仏の報酬)
   const [kogarasuPopupOpen, setKogarasuPopupOpen] = useState(true);
   // PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁(深さ×ランク)。ステージ毎の自己最深/自己最高ランク。
   const wallMeta = useGameStore(s => s.wallMeta);
@@ -1139,6 +1141,17 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               )}
               {/* サブクエスト(research/SUBQUESTS.md 中10): ラン中に達成した件数と報酬額。
                   ゴールドは**達成の瞬間に付与済み**なので、上の「獲得」とは別行にして二重加算しない。 */}
+              {/* 格闘技の体得(research/BRAWLER.md §36-2): 孫悟空を倒して体得した技ごとに1行。 */}
+              {!isBenchmark && brawlerArtsLearnedThisRun.map(name => (
+                <div key={name} className="mb-3 rounded-none bg-black/20 px-3 py-2 text-[11px] font-semibold text-amber-200">
+                  格闘技『{name}』を体得した
+                </div>
+              ))}
+              {!isBenchmark && avatarsEarnedThisRun.map(name => (
+                <div key={name} className="mb-3 rounded-none bg-black/20 px-3 py-2 text-[11px] font-semibold text-amber-200">
+                  アバター『{name}』を手に入れた
+                </div>
+              ))}
               {!isBenchmark && subquestCleared > 0 && (
                 <div className="mb-3 rounded-none bg-black/20 px-3 py-2 flex items-center justify-between gap-2 text-[11px] text-white/60">
                   <span>サブクエスト達成 <span className="font-semibold text-white tabular-nums">{subquestCleared}件</span></span>

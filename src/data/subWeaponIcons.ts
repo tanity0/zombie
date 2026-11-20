@@ -20,6 +20,18 @@ const SUB_ICON: Partial<Record<SubWeaponKey, string>> = {
   'arrow-rain': 'fx/arrow', // 仮(社長の素材待ち)。旗手の矢と同じ矢の絵
   brawler: 'brawler-item', // 社長支給 2026-11-07(research/BRAWLER.md §0-1)
   'gold-ring': 'suriel-ring', // 社長指示2026-11-09「サブウェポンの絵もこれで」=在世界の金環と同じドット絵
+  // 社長支給 2026-11-20(装備画面の絵が無かった分・1枚の帯から切り出し=原本は art-masters/sub-weapon-icons-strip-2026-11-20.png)。
+  'marksman-trap': 'sub-icons/marksman-trap',
+  'striker-hunting': 'sub-icons/striker-hunting',
+  'striker-quick-mag': 'sub-icons/striker-quick-mag',
+  alchemy: 'sub-icons/alchemy',
+  homing: 'sub-icons/homing',
+  'shadow-clone': 'sub-icons/shadow-clone',
+  molotov: 'sub-icons/molotov',
+  'sensor-mine': 'sub-icons/sensor-mine',
+  'support-sniper': 'sub-icons/support-sniper',
+  'flare-gun': 'sub-icons/flare-gun',
+  'junk-weapon': 'sub-icons/junk-weapon',
 };
 export const subWeaponIconName = (key: SubWeaponKey): string | null => SUB_ICON[key] ?? null;
 
@@ -32,5 +44,6 @@ const AVATAR_ICON: Partial<Record<AvatarId, string>> = {
   'ghost-set': 'avatar-ghost-fire-big-v2',
   'jiangshi-set': 'avatar-jiangshi-hat',
   'maid-set': 'avatar-maid-headdress',
+  'tosen-set': 'avatar-tosen-kintoun',
 };
 export const avatarIconName = (id: AvatarId): string | null => AVATAR_ICON[id] ?? null;

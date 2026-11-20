@@ -54,11 +54,12 @@ export const isStage1FirstLoopRun = (i: Loop1RunInput): boolean => {
 // ───────────────────────────────────────────────────────────────────────────
 // 段階(§4)
 // base=開始〜西の拠点の確保 / afterBase=「拠点の利用」のポップアップが閉じるまで / baseComm=軍人の通信(二人組はどこだ…)が流れ切るまで /
-// hospital=通信の後〜ワクチン取得(廃病院が北寄りに立つ・立つ瞬間にアテンション) / duoWait=取得後、ポップアップが閉じてから3秒 /
+// detourTut=「寄り道」のポップアップを閉じるまで(社長指示2026-11-20) /
+// hospital=閉じた後〜ワクチン取得(廃病院が北寄りに立つ・立つ瞬間にアテンション) / duoWait=取得から3秒 /
 // duoAttention=二人が南寄りに立ち、カメラが二人へ寄って戻るまで / duo=操作が戻った〜二人のサークル到着(ミラ「助けて〜」の通信) /
 // talk=到着の通信(世界は止めない) /  ※§7.9
 // enclosure=囲い(全滅まで) / goal=ゴールサークル(3秒滞在) / thanks=お礼の通信(納品ロック) / won=クリア。
-export type Loop1Phase = 'base' | 'afterBase' | 'baseComm' | 'hospital' | 'duoWait' | 'duoAttention' | 'duo' | 'talk' | 'enclosure' | 'goal' | 'thanks' | 'won';
+export type Loop1Phase = 'base' | 'afterBase' | 'baseComm' | 'detourTut' | 'hospital' | 'duoWait' | 'duoAttention' | 'duo' | 'talk' | 'enclosure' | 'goal' | 'thanks' | 'won';
 export type Loop1Talk = 'arrival' | 'thanks';
 
 export interface Stage1LoopState {
@@ -264,8 +265,9 @@ export const stage1LaterLoopSkipsWelcome = (i: { enabled: boolean; stageId: stri
 export type Loop1Action =
   | 'baseCaptured'     // 「拠点の利用」のチュートリアル(廃病院はまだ出さない=§7.9)
   | 'startBaseComm'    // ポップアップが閉じた→出撃中の軍人の通信(loop1AfterBase の2行)
-  | 'placeHospital'    // 通信が流れ切った→廃病院を北寄りに出す+アテンション
-  | 'vaccineTaken'     // 寄り道のチュートリアル(二人はまだ出さない)
+  | 'queueDetour'      // 軍人の通信が流れ切った→「寄り道」のチュートリアル(社長指示2026-11-20)
+  | 'placeHospital'    // 「寄り道」を閉じた→廃病院を北寄りに出す+アテンション
+  | 'vaccineTaken'     // ワクチン取得(二人はまだ出さない=3秒後)
   | 'revealDuo'        // 3秒→二人を南寄りに出す+アテンション
   | 'helpComm'         // アテンションが明けた→通信 ミラ「助けて〜」
   | 'startArrivalTalk' // 到着の通信(LOOP1_ARRIVAL_LINES)
@@ -298,7 +300,8 @@ export const stepLoop1Phase = (phase: Loop1Phase, i: Loop1StepInput): { phase: L
   switch (phase) {
     case 'base': return i.baseCaptured ? { phase: 'afterBase', action: 'baseCaptured' } : { phase, action: null };
     case 'afterBase': return i.tutorialIdle ? { phase: 'baseComm', action: 'startBaseComm' } : { phase, action: null };
-    case 'baseComm': return i.commEnded ? { phase: 'hospital', action: 'placeHospital' } : { phase, action: null };
+    case 'baseComm': return i.commEnded ? { phase: 'detourTut', action: 'queueDetour' } : { phase, action: null };
+    case 'detourTut': return i.tutorialIdle ? { phase: 'hospital', action: 'placeHospital' } : { phase, action: null };
     case 'hospital': return i.vaccineTaken ? { phase: 'duoWait', action: 'vaccineTaken' } : { phase, action: null };
     case 'duoWait': return i.duoRevealDue ? { phase: 'duoAttention', action: 'revealDuo' } : { phase, action: null };
     case 'duoAttention': return i.attentionActive ? { phase, action: null } : { phase: 'duo', action: 'helpComm' };
@@ -315,12 +318,14 @@ export const stepLoop1Phase = (phase: Loop1Phase, i: Loop1StepInput): { phase: L
 // チュートリアルの出し方(社長指示2026-11-18「拠点の確保 と 拠点の利用 をチュートリアル分けよう。
 // 確保は、拠点にNPCが入ったら表示。利用は、確保したら表示」)
 /**
- * 「拠点の確保」を積む瞬間: 西の拠点の担当の軍人がサークルに入り、確保の進み(滞在)が始まった最初のフレーム。
- * baseDwellMs は拠点の滞在の写し(gameStore が軍人のサークル内滞在を BaseSite.dwellMs へ写す=外へ出ると0)。
- * 進みを見ずに確保が済んだ場合(撮影用の段飛ばし等)も、確保より前に必ず1回積む=「確保」→「利用」の順を崩さない。
+ * 「拠点の確保」を積む瞬間(社長指示2026-11-20): **プレイヤー**が西の拠点に近づいた最初のフレーム。
+ * 近さ=LOOP1_BASE_NEAR_DIST(gameStore の NEAR_BASE_DIST と同じ値=軍人が「拠点が見えてきた」と言う距離。
+ * 拠点のサークルの半径130+スマホの画面ひとつ分ほど=拠点がはっきり画面に入る距離)。
+ * 近づかずに確保が済んだ場合(軍人が先に着いた・撮影用の段飛ばし等)も、確保より前に必ず1回積む=「確保」→「利用」の順を崩さない。
  */
-export const loop1BaseCaptureTutorialDue = (i: { queued: boolean; baseDwellMs: number; baseCaptured: boolean }): boolean =>
-  !i.queued && (i.baseDwellMs > 0 || i.baseCaptured);
+export const LOOP1_BASE_NEAR_DIST = 600;
+export const loop1BaseCaptureTutorialDue = (i: { queued: boolean; playerDistToBase: number; baseCaptured: boolean }): boolean =>
+  !i.queued && (i.playerDistToBase <= LOOP1_BASE_NEAR_DIST || i.baseCaptured);
 /** 待ち行列の末尾へ足す(同じ物は二重に積まない)。 */
 export const enqueueLoop1Tutorial = (queue: readonly Loop1TutorialId[], id: Loop1TutorialId): Loop1TutorialId[] =>
   queue.includes(id) ? [...queue] : [...queue, id];
@@ -354,7 +359,7 @@ export const loop1DuoVisible = (phase: Loop1Phase | null | undefined): boolean =
   phase === 'duoAttention' || phase === 'duo' || phase === 'talk' || phase === 'enclosure' || phase === 'goal' || phase === 'thanks';
 /** 廃病院が立っている段(取得前)。 */
 export const loop1HospitalPlaced = (phase: Loop1Phase | null | undefined): boolean =>
-  phase !== 'base' && phase !== 'afterBase' && phase !== 'baseComm';
+  phase !== 'base' && phase !== 'afterBase' && phase !== 'baseComm' && phase !== 'detourTut';
 
 // ───────────────────────────────────────────────────────────────────────────
 // 守護霊のマスト化(§7.8・社長 2026-11-18「ステージ1はどちらも守護霊がマストでオフにできない。(クリア後は通常通り)」)
@@ -424,11 +429,22 @@ export const LOOP1_SUPPRESSED = [
 // ───────────────────────────────────────────────────────────────────────────
 // 文言(§7.6 G)
 export const LOOP1_OBJECTIVE_TEXT = '身元不明の民間人2名を救出せよ';
+/**
+ * 到着の会話の間は世界を止める(社長報告2026-11-20「二人組との最初の会話で、世界が止まってない」)。
+ * 表示は従来の通信のまま、止め方はお礼(納品ロック)と同じ deliveryLocked を使う(入力・被弾・店・帰還の関所が全部効く)。
+ * ロック中の1フレームの答え: hold=通信の時計だけ進める / release=到着の会話が流れ切った→ロックを解いて続きへ /
+ * win=お礼(または v4 の納品)が流れ切った→クリア。到着の間はゲーム時刻を進めない(再開後にタイマーが飛ばない)。
+ */
+export const loop1LockStep = (i: { talk: Loop1Talk | null; commEnded: boolean }): 'hold' | 'release' | 'win' =>
+  !i.commEnded ? 'hold' : i.talk === 'arrival' ? 'release' : 'win';
+/** ロック中にゲーム時刻を止めたまま通信だけ進めるか(到着の会話だけ)。 */
+export const loop1LockFreezesGameTime = (talk: Loop1Talk | null): boolean => talk === 'arrival';
+
 /** 右上の目的の1行(社長指示2026-11-19): 段で切り替える。クリア後(won)は最後の行のまま。 */
 export const loop1ObjectiveText = (phase: Loop1Phase): string => {
   switch (phase) {
     case 'base': return '西の拠点へ向かう';
-    case 'afterBase': case 'baseComm': case 'hospital': return '廃病院へ向かう';
+    case 'afterBase': case 'baseComm': case 'detourTut': case 'hospital': return '廃病院へ向かう';
     case 'duoWait': case 'duoAttention': case 'duo': case 'talk': return '二人組の元へ向かう';
     case 'enclosure': return '二人組の救助';
     default: return '二人組の安否確認'; // goal / thanks / won

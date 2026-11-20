@@ -17,7 +17,8 @@ import {
   BAT_ORBIT_MIN_MS, BAT_ORBIT_MAX_MS, BAT_STRAFE_MIN_MS, BAT_STRAFE_MAX_MS,
   BAT_HOLD_MIN_MS, BAT_HOLD_MAX_MS, BAT_GRAB_HOLD_MS,
   // skeleton(§16-2)
-  skeletonWantsChaffSlot, skeletonArcPoint,
+  skeletonWantsChaffSlot, skeletonArcPoint, skeletonArcAnchorStart, skeletonArcAnchorStep,
+  CHAFF_SLOT_WAIT_MAX_MS, nextChaffSlotWaitSince, chaffSlotOverdueSince,
   SKELETON_TRIGGER_PX, SKELETON_CROUCH_MS, SKELETON_ARC_MS, SKELETON_RECOVER_MS, SKELETON_RETREAT_SPEED_MULT,
   SKELETON_ARC_DEPTH,
   // プレイヤーの拘束
@@ -613,5 +614,61 @@ describe('isPlayerGrabbed(§16-1・isPvpIncapacitatedと同じ形)', () => {
   });
   it('拘束の尺は500ms(台帳・変えない)', () => {
     expect(BAT_GRAB_HOLD_MS).toBe(500);
+  });
+});
+
+// ★2026-11-20 社長「攻撃前の移動が射程距離を無視してプレイヤーにくっついてくるのを、射程に収めて」
+// 「スケルトン…旋回してから攻撃にはいるけど、その旋回が無限に追いかけてきてる」。
+describe('回り込みの軸(skeletonArcAnchorStart/Step)= 弧は射程の外まで付いてこない', () => {
+  it('発火距離以内のプレイヤーは軸=プレイヤー(今までと同じ)', () => {
+    expect(skeletonArcAnchorStart(0, 0, 80, 0)).toEqual({ x: 80, y: 0 });
+    expect(skeletonArcAnchorStart(0, 0, 0, SKELETON_TRIGGER_PX)).toEqual({ x: 0, y: SKELETON_TRIGGER_PX });
+  });
+  it('発火距離の外へ逃げたプレイヤーは、骸骨から発火距離の点で止める(向きはプレイヤーへ)', () => {
+    const a = skeletonArcAnchorStart(0, 0, 300, 0);
+    expect(a.x).toBeCloseTo(SKELETON_TRIGGER_PX, 6);
+    expect(a.y).toBeCloseTo(0, 6);
+  });
+  it('軸は1フレームに maxStep までしか生のプレイヤーへ寄らない', () => {
+    const a = skeletonArcAnchorStep(0, 0, 100, 0, 1);
+    expect(a.x).toBeCloseTo(1, 6);
+    expect(a.y).toBeCloseTo(0, 6);
+  });
+  it('ゆっくり動くプレイヤー(1フレームの差 ≦ maxStep)には軸がそのまま重なる', () => {
+    expect(skeletonArcAnchorStep(0, 0, 0.5, 0.5, 1)).toEqual({ x: 0.5, y: 0.5 });
+  });
+  it('止まっているプレイヤーでは軸が動かない', () => {
+    expect(skeletonArcAnchorStep(40, -20, 40, -20, 1)).toEqual({ x: 40, y: -20 });
+  });
+});
+
+describe('間合いで枠を待つ上限(nextChaffSlotWaitSince / chaffSlotOverdueSince)', () => {
+  it('欲しがって取れていない間だけ時計が進み、取れた/欲しがらなくなったら消える', () => {
+    expect(nextChaffSlotWaitSince(undefined, true, false, 1000)).toBe(1000);
+    expect(nextChaffSlotWaitSince(1000, true, false, 5000)).toBe(1000);
+    expect(nextChaffSlotWaitSince(1000, true, true, 5000)).toBeUndefined();
+    expect(nextChaffSlotWaitSince(1000, false, false, 5000)).toBeUndefined();
+  });
+  it('上限に届いた個体だけが「待ちすぎ」になる', () => {
+    expect(chaffSlotOverdueSince(undefined, 1e6)).toBeUndefined();
+    expect(chaffSlotOverdueSince(1000, 1000 + CHAFF_SLOT_WAIT_MAX_MS - 1)).toBeUndefined();
+    expect(chaffSlotOverdueSince(1000, 1000 + CHAFF_SLOT_WAIT_MAX_MS)).toBe(1000);
+  });
+  it('待ちすぎた個体は近い個体より先に枠を取る(枠の数は2のまま)', () => {
+    const enemies = [
+      mkE('near1', 10, { type: 'skeleton' }), mkE('near2', 20, { type: 'skeleton' }),
+      mkE('far-old', 90, { type: 'skeleton' }), mkE('far-older', 95, { type: 'bat' }),
+    ];
+    const since: Record<string, number> = { 'far-old': 200, 'far-older': 100 };
+    const g = deriveChaffMoveGrants(enemies, 0, 0, () => true, e => since[e.id]);
+    expect(g.size).toBe(CHAFF_MOVE_SLOT_CAP);
+    expect([...g].sort()).toEqual(['far-old', 'far-older']);
+    // 待ちすぎが1体なら、残り1枠は従来どおり近い順
+    const g1 = deriveChaffMoveGrants(enemies, 0, 0, () => true, e => (e.id === 'far-old' ? 200 : undefined));
+    expect([...g1].sort()).toEqual(['far-old', 'near1']);
+  });
+  it('待ちの引数を渡さなければ従来どおり近い順', () => {
+    const enemies = [mkE('a', 50, { type: 'skeleton' }), mkE('b', 10, { type: 'skeleton' }), mkE('c', 30, { type: 'bat' })];
+    expect([...deriveChaffMoveGrants(enemies, 0, 0, () => true)].sort()).toEqual(['b', 'c']);
   });
 });
