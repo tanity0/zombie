@@ -121,7 +121,7 @@ export const isBoxInGroundFire = (
 // 「火元の周りにも一回り小さい火が広がっていき、中範囲くらいに継続ダメージ」「レベルに伴い範囲が広がる。1は小範囲」。
 // 火元を置くと 0.6秒で MOLOTOV_FIRE_RADIUS → レベルの半径へ ease-out で広がり、寿命の終わりに外側から
 // 火元の大きさまで縮む。**当たりの円=その時点で灯っている半径**(見えている火=燃やす所)。
-export const MOLOTOV_SPREAD_RADIUS_BY_LEVEL: readonly number[] = [0, 55, 90, 125]; // index=level(1..3)
+export const MOLOTOV_SPREAD_RADIUS_BY_LEVEL: readonly number[] = [0, 35, 60, 90]; // 社長指示2026-11-20「もう一回り小さく(レベル3が2くらい)」で 55/90/125 から // index=level(1..3)
 export const MOLOTOV_SPREAD_GROW_MS = 600;   // 置いてから広がり切るまで
 export const MOLOTOV_SPREAD_SHRINK_MS = 600; // 寿命の最後にこの時間で外側から火元の大きさへ縮む
 

@@ -138,11 +138,11 @@ import {
 } from './molotov';
 
 describe('火炎瓶の延焼の広がり(MOLOTOV_SPREAD.md)', () => {
-  it('レベルの半径は 小55 / 中90 / 大125', () => {
-    expect([1, 2, 3].map(molotovSpreadRadiusForLevel)).toEqual([55, 90, 125]);
-    expect(MOLOTOV_SPREAD_RADIUS_BY_LEVEL.slice(1)).toEqual([55, 90, 125]);
-    expect(molotovSpreadRadiusForLevel(0)).toBe(55);
-    expect(molotovSpreadRadiusForLevel(9)).toBe(125);
+  it('レベルの半径は 小35 / 中60 / 大90', () => {
+    expect([1, 2, 3].map(molotovSpreadRadiusForLevel)).toEqual([35, 60, 90]);
+    expect(MOLOTOV_SPREAD_RADIUS_BY_LEVEL.slice(1)).toEqual([35, 60, 90]);
+    expect(molotovSpreadRadiusForLevel(0)).toBe(35);
+    expect(molotovSpreadRadiusForLevel(9)).toBe(90);
   });
 
   it('置いた瞬間は火元の半径、0.6秒で広がり切る(ease-out=前半で大きく進む)', () => {
@@ -193,11 +193,11 @@ describe('火炎瓶の延焼の広がり(MOLOTOV_SPREAD.md)', () => {
   });
 
   it('子の火: Lv1は内側の輪だけ・半径が大きいほど数が増え、全部が当たりの円の内側にあり、灯っている間だけ見える', () => {
-    const counts = [55, 90, 125].map(R => molotovChildFlameLayout(R, 3.3).length);
+    const counts = [35, 60, 90].map(R => molotovChildFlameLayout(R, 3.3).length);
     expect(counts[0]).toBeGreaterThan(0);
     expect(counts[1]).toBeGreaterThan(counts[0]);
     expect(counts[2]).toBeGreaterThan(counts[1]);
-    for (const R of [55, 90, 125]) {
+    for (const R of [35, 60, 90]) {
       const kids = molotovChildFlameLayout(R, 7.7);
       for (const k of kids) {
         expect(Math.hypot(k.dx, k.dy)).toBeLessThanOrEqual(R);

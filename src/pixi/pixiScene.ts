@@ -3296,6 +3296,7 @@ const GROUND_FIRE_FLAME_R = 4.2;
 const MOLOTOV_VISUAL_SCALE = 1.8;
 /** 延焼の子の火の大きさ(火元の何倍か・research/MOLOTOV_SPREAD.md「一回り小さい火」)。見た目のみ。 */
 const MOLOTOV_CHILD_FLAME_SCALE = 0.6;
+const MOLOTOV_CHILD_FLAME_ALPHA = 0.7; // 子の火の濃さ(社長指示2026-11-20「少し火を薄く」)
 const GROUND_FIRE_LIGHT_RADIUS = 46;
 const GROUND_FIRE_VIEWPORT_MARGIN = 120;
 const SMALL_GLOW_SPRITE_RADIUS_MAX = STRONG_GLOW_RADIUS - 1;
@@ -19568,13 +19569,13 @@ export class PixiScene {
       const sink = (1 - Math.min(1, k)) * r * 1.6;
       this.placeFlame(sp, frames!, Math.round(kx), Math.round(ky + r + sink), FLAME_ART_H_PER_R * r * MOLOTOV_VISUAL_SCALE * k, now, kid.seed);
       sp.zIndex = ky;
-      sp.alpha = horizonAlpha * Math.min(1, k * 1.6);
+      sp.alpha = MOLOTOV_CHILD_FLAME_ALPHA * horizonAlpha * Math.min(1, k * 1.6);
       glow.visible = true;
       glow.position.set(kx, ky);
       glow.zIndex = ky - 0.5; // 子の炎のすぐ奥(地面の暗がりより上=照り返しが見える)
       glow.width = 64 * d * k * kid.size;
       glow.height = glow.width * 0.55;
-      glow.alpha = 0.42 * horizonAlpha * Math.min(1, k) * pulse;
+      glow.alpha = 0.28 * horizonAlpha * Math.min(1, k) * pulse; // 社長指示「少し火を薄く」で 0.42 から
     }
   }
 
