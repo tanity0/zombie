@@ -24,7 +24,7 @@ const SUB_ICON: Partial<Record<SubWeaponKey, string>> = {
   'marksman-trap': 'sub-icons/marksman-trap',
   'striker-hunting': 'sub-icons/striker-hunting',
   'striker-quick-mag': 'sub-icons/striker-quick-mag',
-  alchemy: 'sub-icons/alchemy-zombie', // 社長指示2026-11-20「錬金術の絵は、錬金ゾンビの絵を縮小して使って」=召喚の Lv1(金色のゾンビ)を縮小。支給の帯の絵は sub-icons/alchemy.png に原盤として残す
+  alchemy: 'sub-icons/alchemy-bat', // 社長指示2026-11-20「錬金術の絵は、錬金ゾンビの絵を縮小して使って」→同日「レベル1はバット・2はゾンビ・3は伐採人」=召喚の絵(金色)を縮小。Lv別は下の ALCHEMY_ICON_BY_LEVEL。支給の帯の絵は sub-icons/alchemy.png に原盤として残す
   homing: 'sub-icons/homing',
   'shadow-clone': 'sub-icons/shadow-clone',
   molotov: 'sub-icons/molotov',
@@ -33,7 +33,14 @@ const SUB_ICON: Partial<Record<SubWeaponKey, string>> = {
   'flare-gun': 'sub-icons/flare-gun',
   'junk-weapon': 'sub-icons/junk-weapon',
 };
-export const subWeaponIconName = (key: SubWeaponKey): string | null => SUB_ICON[key] ?? null;
+// 錬金術はレベルで召喚が変わる(utils/summonUtils.ALCHEMY_SUMMON_TYPE_BY_LEVEL と同じ並び)ので、絵もレベルで替える。
+// 絵は各召喚の立ち絵を金色にして縮小したもの(バット=bat-male / ゾンビ=zombie-common / 伐採人=reaper-common)。
+export const ALCHEMY_ICON_BY_LEVEL: readonly string[] = ['', 'sub-icons/alchemy-bat', 'sub-icons/alchemy-zombie', 'sub-icons/alchemy-lumberjack'];
+/** サブウェポンの絵。level を知っている画面は渡す(錬金術だけがレベルで絵が変わる)。省略=Lv1。 */
+export const subWeaponIconName = (key: SubWeaponKey, level?: number): string | null => {
+  if (key === 'alchemy') return ALCHEMY_ICON_BY_LEVEL[Math.max(1, Math.min(3, Math.round(level ?? 1)))];
+  return SUB_ICON[key] ?? null;
+};
 
 const AVATAR_ICON: Partial<Record<AvatarId, string>> = {
   'cat-set': 'avatar-cat-ears-v2',

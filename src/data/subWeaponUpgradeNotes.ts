@@ -95,8 +95,8 @@ export const SUB_WEAPON_UPGRADE_NOTES: Record<SubWeaponKey, SubWeaponUpgradeNote
     lv3: '竜巻が出やすくなり、範囲と時間も伸びる',
   },
   // 錬金術: レベルで召喚する仲間の種類がより強力なものに変わり、耐久HPも上がる。
-  // 根拠: src/utils/summonUtils.ts:11-12
-  // ALCHEMY_SUMMON_HP_BY_LEVEL / ALCHEMY_SUMMON_TYPE_BY_LEVEL(zombie→werewolf→pumpkin)
+  // 根拠: src/utils/summonUtils.ts(ALCHEMY_SUMMON_HP_BY_LEVEL / ALCHEMY_SUMMON_TYPE_BY_LEVEL)
+  // (bat→zombie→logger=バット→ゾンビ→伐採人・2026-11-20)
   alchemy: {
     lv2: '召喚する仲間が強くなる',
     lv3: '召喚する仲間が強くなる',

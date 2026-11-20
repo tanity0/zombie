@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "1090 files / 復号後 約722MB",
+ "generatedFor": "1092 files / 復号後 約722MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -5599,6 +5599,18 @@
    "h": 45,
    "bytes": 7300,
    "sha": "50509354a905b190"
+  },
+  "sprites/sub-icons/alchemy-bat.png": {
+   "w": 47,
+   "h": 66,
+   "bytes": 5237,
+   "sha": "d11763098e9bf97d"
+  },
+  "sprites/sub-icons/alchemy-lumberjack.png": {
+   "w": 67,
+   "h": 66,
+   "bytes": 5517,
+   "sha": "bb0b6c77b583788c"
   },
   "sprites/sub-icons/alchemy-zombie.png": {
    "w": 47,

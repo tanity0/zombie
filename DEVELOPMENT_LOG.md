@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5683 — 錬金術の召喚を Lv1バット/Lv2ゾンビ/Lv3伐採人へ【2026-11-20 23:20 JST】
+- 社長指示「錬金術 レベル1の絵はバットで、2はゾンビで、3は伐採人で」(確認の結果=呼び出す仲間そのもの): `ALCHEMY_SUMMON_TYPE_BY_LEVEL` を [null,'bat','zombie','logger'](`src/utils/summonUtils.ts`・HP/ダメージ不変)。攻撃の絵: 攻撃/跳びシートの無い型は薙ぎのシートを流す(伐採人=チェーンソーの振り下ろし・振り抜く向きで左右反転)`pixiScene.ts`。召喚は敵と別配列・共通の動き=コウモリの飛行・伐採人の予告/体勢値は乗らない。型に付く歩く速さが変わった(Lv1 42→75 / Lv2 105→42 / Lv3 55→75)・当たりの大きさ Lv1 26px/Lv3 40px。
+- 装備画面の絵: `subWeaponIconName(key, level?)`(錬金術だけレベルで替える)。装備画面ではレベルが無いので Lv1=金色のバット(`sub-icons/alchemy-bat.png`・bat-male から)。`alchemy-lumberjack.png`(reaper-common から)・`alchemy-zombie` はレベルを渡す画面ができた時用。台帳更新。
+- テスト `src/utils/summonUtils.test.ts`(5件)。Opus サブエージェント。撮影(scratchpad/alchemy/summons-sheet.png・icons-x4.png)を目視。
+- 検証: typecheck・eslint・`vitest run src/utils src/store src/data` 9920件通過/1件落ち(`phantomBuildApplied.test.ts` の移動速度=前回と同じ負荷時の揺れ・無関係。固定を別に発注)。assets:check OK。
+
 ## v0.25.5682 — 雨上がり(?weather=wet)に小雨・水たまり1.5倍・水面を淡く【2026-11-20 22:57 JST】
 - 社長指示「ちょっとポツポツ雨も降らせられる?」→「降らせて」(research/WEATHER_WET.md 追加節): 細い斜めの雨粒(落下380〜560ms・加速・長さ/濃さ/斜めは粒ごと・指数分布の間隔・面積比例・上限40本/1フレーム3粒)。着地=水たまり上は水の波紋、地面は地面の波紋(既存の波紋を流用・RIPPLE_MAX 24→40)。雨の線は 4×48 のグラデーションをコードで1回焼く。被写界深度でボケて四角い靄になるため雨の層は danceUiLayer。着地点は実際に映る世界の矩形(rainView)。`src/utils/weatherWet.ts`(+テスト4件)・`src/pixi/weatherWet.ts`・`pixiScene.ts` の syncWeatherWet の2ハンク(同ファイルの錬金術の作業中ハンクは含めない)。負荷1/10。
 - 社長「水たまり全体的にもっと大きく」: `PUDDLE_ART_SCALE` 2.4→3.6、小物と波紋は `DEBRIS_ART_SCALE`=2.4 のまま。隣の区画どうしの重なりが約1%→8%(15組重なり・41組接触)=密度・区画は不変で社長へ報告。枯れ木(木の台帳外の置物)の根元に水たまりが入る所がある(前から・大きくして目立つ)。

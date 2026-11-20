@@ -20156,7 +20156,7 @@ export class PixiScene {
     if (tex) {
       view.sprite.texture = tex;
       const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
-      const mirror = faceRight === (atk ? sheetArtFacesRight(key, atk.sheet) : sheetFacesRight(key)) ? 1 : -1;
+      const mirror = faceRight === (atk ? (atk.artRight ?? sheetArtFacesRight(key, atk.sheet)) : sheetFacesRight(key)) ? 1 : -1;
       view.sprite.scale.set(sc * mirror, sc);
       drawnH = tex.height * sc;
       // 被弾直後は赤白フラッシュ、それ以外は味方識別の金色(v0.25.3179)。
@@ -20322,11 +20322,12 @@ export class PixiScene {
    * store の命中時刻(`lastContactAt`)へ当たるコマが重なるように引く。どちらも無い型・シート未着は null(歩き/立ち絵のまま)。
    * 遅延組のシートでも1発目が欠けないよう、姿が見えた時点で取りに行く(warmEnemySheets は同じ立ち絵で1回だけ)。
    */
-  private summonAttackTexture(key: string, s: Summon): { tex: Texture; sheet: string; lift01: number } | null {
+  private summonAttackTexture(key: string, s: Summon): { tex: Texture; sheet: string; lift01: number; artRight?: boolean } | null {
     warmEnemySheets(key);
     if (s.lastContactAt === undefined) return null;
     let spec: SummonAttackSheet | null = null;
     let sheet = '';
+    let artRight: boolean | undefined;
     const af = attackSheetFrames(key);
     if (af > 1) {
       spec = { frames: af, impact: attackImpactFrame(key) };
@@ -20337,13 +20338,23 @@ export class PixiScene {
         const n = jumpSplitFrames(split);
         spec = { frames: n, impact: split.crouch + split.air, airFrom: split.crouch, airTo: split.crouch + split.air };
         sheet = jumpSheetName(key);
+      } else {
+        // 攻撃・跳びのシートが無く、薙ぎのシートだけ持つ型(伐採人=錬金術Lv3・社長指示2026-11-20)は、
+        // 薙ぎのシート(溜め→薙ぎ→戻り)を流す。当たるコマ=薙ぎ区間の先頭(敵の薙ぎと同じ読み)。
+        const sw = sweepSheetSplit(key);
+        if (sw) {
+          spec = { frames: sw.windup + sw.active + sw.recover, impact: sw.windup };
+          sheet = sweepSheetName(key);
+          // 薙ぎの絵は素の状態で振り抜く向きが決まっている(伐採人=左から右)。振り抜く側を噛む相手へ向ける。
+          artRight = sweepSwingDir(key) > 0;
+        }
       }
     }
     if (!spec) return null;
     const pose = summonAttackPose(Date.now() - s.lastContactAt, ALCHEMY_ATTACK_INTERVAL_MS, spec);
     if (!pose) return null;
     const tex = this.sheetSlices(sheet, spec.frames)?.[pose.frame];
-    return tex ? { tex, sheet, lift01: pose.lift01 } : null;
+    return tex ? { tex, sheet, lift01: pose.lift01, artRight } : null;
   }
 
   /** 召喚の動き(前のフレームの位置・向き)。向きを決める。 */

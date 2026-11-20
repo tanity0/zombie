@@ -9,7 +9,10 @@ export const ALCHEMY_CHANNEL_MS = 5000;                 // 立ち止まりチャ
 export const ALCHEMY_MAX_NORMAL = 3;                    // 通常個体の最大数(FIFO)
 export const ALCHEMY_RARE_CHANCE = 0.10;                // 完成時のレア確率
 export const ALCHEMY_SUMMON_HP_BY_LEVEL = [0, 200, 300, 400] as const; // 固定HP(敵スケーリングは使わない・耐久2倍)
-export const ALCHEMY_SUMMON_TYPE_BY_LEVEL: (EnemyType | null)[] = [null, 'zombie', 'werewolf', 'pumpkin'];
+// 社長指示2026-11-20「錬金術 レベル1の絵はバットで、2はゾンビで、3は伐採人で」(旧 zombie→werewolf→pumpkin)。
+// 見た目・歩き/攻撃のコマ・速さ・判定の大きさは流用元の型に従う(HP/ダメージは下の表のまま)。
+// 召喚は敵とは別配列(Summon)なので、流用元の敵のAI(コウモリの飛び方・伐採人の薙ぎ払い/体勢値等)は乗らない。
+export const ALCHEMY_SUMMON_TYPE_BY_LEVEL: (EnemyType | null)[] = [null, 'bat', 'zombie', 'logger'];
 export const ALCHEMY_RARE_TYPE: EnemyType = 'hunter';   // レアはハンター(社長指示2026-10-04「死神をやめてハンターに。棺桶をグルグル回してハリケーン(既存)」)
 export const ALCHEMY_SUMMON_DAMAGE = 4;                 // 付随的な低火力
 export const ALCHEMY_FOLLOW_GAP_PX = 160;               // 主人公から保つ間合い(~5歩)。密着しない
@@ -60,7 +63,7 @@ export const buildSummon = (level: number, kind: SummonKind, x: number, y: numbe
     };
   }
 
-  const type = ALCHEMY_SUMMON_TYPE_BY_LEVEL[lvl] ?? 'zombie';
+  const type = ALCHEMY_SUMMON_TYPE_BY_LEVEL[lvl] ?? 'bat';
   const size = getEnemyBaseSize(type);
   const hp = Math.round(ALCHEMY_SUMMON_HP_BY_LEVEL[lvl] * hpMult);
   return {
