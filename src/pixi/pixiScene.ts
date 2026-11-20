@@ -11210,7 +11210,8 @@ export class PixiScene {
       const p = alchemyRingProgress(rg, gameTime);
       if (p !== null) {
         const linT = Math.min(1, (gameTime - rg.spawnAt) / Math.max(1, rg.arriveAt - rg.spawnAt));
-        const fadeIn = Math.min(1, linT / 0.18);
+        // 外側では見えず、的へ寄るほど今の濃さへ(社長指示2026-11-20「外側から内側に来るほど今の濃さになるようにフェードイン」)。
+        const fadeIn = linT * linT * (3 - 2 * linT);
         const rad = r0 + (rt - r0) * p;
         ring(rad).stroke({ color: 0xffd76a, alpha: 0.85 * fadeIn, width: 3.5 });
         ring(rad - 3).stroke({ color: 0xfff1c2, alpha: 0.35 * fadeIn, width: 1.5 });
