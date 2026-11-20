@@ -67,9 +67,17 @@ describe('幻影の装備・スキルが効く(実行時の値)', () => {
     expect(phantomMoveSpeed(hay, GT)).toBeCloseTo(BASE_SPEED * playerMoveStatMult(a, GT), 3);
     expect(playerMoveStatMult(a, GT)).toBeGreaterThan(1.2);
     // 実際に動く速さ(遠いプレイヤーへ1.4秒歩かせた最大の速さ)
+    // ★時計と乱数を固定する: 敵の id は `enemy-<type>-${Date.now()}-${Math.random()}` で、頭脳のマイクロリズム
+    //   (decideGhost の専用乱数流)は hashSeed(id) をシードにする。素のままだと実行ごとにシードが変わり、
+    //   約8%の id で 1.4秒の間ずっと様子見/緩い歩きになって最大速度が届かない(負荷時に落ちるように見えていた正体)。
+    //   壁時計はシミュ時刻に合わせる(本番の nowMs=Date.now() と同じ時計にそろえる)。乱数は 0.5 固定
+    //   (0.999 固定だとこの1.4秒で歩き出さない=速さを測れない)。
+    let gt = GT;
+    vi.spyOn(Date, 'now').mockImplementation(() => gt);
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const kk = place(uniquePhantomSpec('brawler').profile, 'brawler');
     const st = createPhantomTickState();
-    let gt = GT; let maxV = 0;
+    let maxV = 0;
     for (let i = 0; i < 90; i++) {
       gt += 16; useGameStore.setState({ gameTime: gt });
       runPhantomTick(useGameStore.getState().enemies[0], st, gt, 0.016, 1, gt, NOOP_PHANTOM_SFX, () => 0.999);

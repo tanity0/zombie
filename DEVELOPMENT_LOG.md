@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5684 — 揺れるテスト(幻影の移動速度)を固定【2026-11-20 23:25 JST】
+- `src/utils/phantomBuildApplied.test.ts`「移動速度」: 原因=幻影の id(Date.now+Math.random)から頭脳の乱数シードを作るため、約8%の id で1.4秒ずっと様子見/緩い歩きになり速さが閾値に届かない(負荷とは無関係・300回で23回落ちを実測)。Date.now をシミュ時刻へ・Math.random を0.5に固定(検査は弱めていない)。単体5回・全体1回で通過。製品のバグではない。
+- 報告にあった poiTouch の <50ms の落ちは v0.25.5675 で固定済み(現行ファイルにその検査は無い)。
+
 ## v0.25.5683 — 錬金術の召喚を Lv1バット/Lv2ゾンビ/Lv3伐採人へ【2026-11-20 23:20 JST】
 - 社長指示「錬金術 レベル1の絵はバットで、2はゾンビで、3は伐採人で」(確認の結果=呼び出す仲間そのもの): `ALCHEMY_SUMMON_TYPE_BY_LEVEL` を [null,'bat','zombie','logger'](`src/utils/summonUtils.ts`・HP/ダメージ不変)。攻撃の絵: 攻撃/跳びシートの無い型は薙ぎのシートを流す(伐採人=チェーンソーの振り下ろし・振り抜く向きで左右反転)`pixiScene.ts`。召喚は敵と別配列・共通の動き=コウモリの飛行・伐採人の予告/体勢値は乗らない。型に付く歩く速さが変わった(Lv1 42→75 / Lv2 105→42 / Lv3 55→75)・当たりの大きさ Lv1 26px/Lv3 40px。
 - 装備画面の絵: `subWeaponIconName(key, level?)`(錬金術だけレベルで替える)。装備画面ではレベルが無いので Lv1=金色のバット(`sub-icons/alchemy-bat.png`・bat-male から)。`alchemy-lumberjack.png`(reaper-common から)・`alchemy-zombie` はレベルを渡す画面ができた時用。台帳更新。
