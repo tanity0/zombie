@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, isBrawlerGuarding } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
-import { BRAWLER_GRAB_MS, BRAWLER_CONTACT_GRAB_MS, brawlerKickUpCost, BRAWLER_TECHS, BRAWLER_WORLD_STOP, BRAWLER_SUPLEX_RISE_MS, BRAWLER_CONTACT_FREEZE_MS, BRAWLER_SUPLEX_BLAST_RADIUS, brawlerTechCost } from '../utils/brawler';
+import { BRAWLER_GRAB_MS, BRAWLER_CONTACT_GRAB_MS, brawlerKickUpCost, BRAWLER_TECHS, BRAWLER_WORLD_STOP, BRAWLER_SUPLEX_RISE_MS, BRAWLER_CONTACT_FREEZE_MS, BRAWLER_SUPLEX_BLAST_RADIUS, brawlerTechCost, brawlerDistTo, brawlerPoseAt } from '../utils/brawler';
 import { brawlerTimeKeeperDiscount } from '../utils/brawlerSkills';
 import { setBrawlerTempoAll, brawlerAirborne } from '../utils/brawlerCombo';
 import { playerSuperArmorActive } from '../utils/superArmor';
@@ -200,6 +200,7 @@ describe('§34-7 密着の構え', () => {
   it('ボス級に密着して構え=蹴りバク宙(相手から離れて下がる・着地で何でも出せる)', () => {
     guardNear('hunter');
     expect(br().contactGrab?.mode).toBe('flipkick');
+    expect(useGameStore.getState().hitstopUntil).toBe(now + BRAWLER_CONTACT_FREEZE_MS); // ★§34-10: サマーソルトも掴んだ一瞬は時間停止
     const px0 = useGameStore.getState().player.x;
     for (let k = 0; k < 150 && br().phase !== 'idle'; k++) advance(10);
     expect(feed()).toEqual(['tech:flipkick']);
@@ -211,6 +212,25 @@ describe('§34-7 密着の構え', () => {
     expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
     expect(br().tech).toBe('kiko');
   });
+  // ★社長指示2026-11-20「掴むとき、両方、少し敵に食い込むように(掴んでる風)みせたい」: 掴む間の体の寄せ(絵だけ)は相手の縁を越える。位置は動かない。
+  for (const type of ['zombie', 'hunter'] as const) {
+    it(`${type}: 掴む間の体の寄せは相手の縁を体の幅の1/4ほど越える(絵だけ・位置は動かない)・サマーソルトは蹴る瞬間に寄せが0`, () => {
+      guardNear(type, [], 9);
+      const st = useGameStore.getState(), p = st.player, b = br();
+      const gap = brawlerDistTo(p.x + p.width / 2, p.y + p.height / 2, en('c')!) - p.width / 2;
+      expect(b.contactGrab!.gripPx!).toBeGreaterThan(gap + p.width * 0.2);
+      const x0 = p.x;
+      const pose = brawlerPoseAt(b, st.gameTime, now + 200)!; // 時間停止の中(壁時計で組み付き切った所)
+      expect(pose.push).toBeCloseTo(b.contactGrab!.gripPx!, 6);
+      advance(BRAWLER_CONTACT_FREEZE_MS);
+      expect(useGameStore.getState().player.x).toBe(x0);
+      if (type === 'hunter') {
+        const s2 = br();
+        const atKick = brawlerPoseAt(s2, s2.startAt + s2.windupMs - 0.5, now)!;
+        expect(Math.abs(atKick.push)).toBeLessThan(0.5);
+      }
+    });
+  }
   // ★§34-10: 密着の掴み(スープレックス・サマーソルト)の値段=構え(カウンター)の値段そのもの(同じ関数)。払えない時は弱い構え(掴まない)。
   for (const type of ['zombie', 'scarecrow', 'hunter'] as const) {
     it(`${type}: 構えの値段を払えない(技ポイント${BRAWLER_TECHS.guard.cost - 1})と、密着していても弱い構え(掴まない)`, () => {

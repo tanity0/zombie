@@ -6122,15 +6122,17 @@ const startBrawlerContactGrab = (get: () => GameState, set: (fn: (s: GameState) 
   const sw = mode === 'suplex' ? { suplexSwing: { enemyId: e.id, ...BR.brawlerSuplexLanding(c.x, c.y, e.x + e.width / 2, e.y + e.height / 2, p.lastDirection?.x ?? 1) } } : {};
   const now = Date.now();
   const k0 = BR.brawlerStartContactGrab(s, t, e.id, mode);
-  const s1: BR.BrawlerState = { ...k0, contactGrab: { ...k0.contactGrab!, ...(mode === 'suplex' ? { at: now } : {}) }, ...sw, targetId: e.id, dirX: dir.x, dirY: dir.y, pressAt: now };
+  // 食い込んで見せる寄せ(絵だけ): 体の縁から相手の帯の縁までの隙間+体の幅の1/4(§34-10)。
+  const gripPx = BR.brawlerContactGripPx(BR.brawlerDistTo(c.x, c.y, e) - p.width / 2, p.width);
+  const s1: BR.BrawlerState = { ...k0, contactGrab: { ...k0.contactGrab!, at: now, gripPx }, ...sw, targetId: e.id, dirX: dir.x, dirY: dir.y, pressAt: now };
   // 掴んでいる間、相手はその場で止まる(固まりと同じ器・掴みの一瞬の時間停止+掴みの長さ+少し)。位置は動かさない(§34-6 #6)。
-  const freezeMs = mode === 'suplex' ? BR.BRAWLER_CONTACT_FREEZE_MS : 0;
+  const freezeMs = BR.BRAWLER_CONTACT_FREEZE_MS; // スープレックスもサマーソルトも、掴んだ一瞬は時間停止(§34-10・社長承認2026-11-20)
   const holdUntil = now + freezeMs + BR.BRAWLER_CONTACT_GRAB_MS + 60;
   set(state => ({ enemies: state.enemies.map(en => (en.id === e.id ? { ...en, brHoldUntil: Math.max(en.brHoldUntil ?? 0, holdUntil) } : en)) }));
   setBrawler(set, s1, { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0, lastDirection: { x: dir.x, y: dir.y } });
   brawlerAirGrabFx(get, e, c, freezeMs + BR.BRAWLER_CONTACT_GRAB_MS);
-  // ★§34-10: スープレックスは掴んだ一瞬に時間停止(ループごと止まる=空中投げの掴みと同じ器)。明けてから持ち上げ→反り→叩きつけ(小爆発)。
-  if (freezeMs > 0) get().triggerHitstop(freezeMs);
+  // ★§34-10: 掴んだ一瞬は時間停止(ループごと止まる=空中投げの掴みと同じ器)。明けてからスープレックス=持ち上げ→反り→叩きつけ(小爆発)/サマーソルト=蹴って宙返り。
+  get().triggerHitstop(freezeMs);
 };
 /** 密着の構えの判定(掴みの終わり): 雑魚=スープレックス(§34-3 と同じ)/ 強個体・ボス級=蹴りバク宙。相手が居なくなっていたら空振り(後隙だけ)。 */
 const resolveBrawlerContactGrab = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState): void => {

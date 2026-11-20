@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5669', items: [
+    'サマーソルトも、掴んだ一瞬に時が止まる',
+    '密着の掴み技で、相手に組み付いて見えるようにした',
+  ] },
   { version: '0.25.5668', items: [
     'スープレックスは、掴んだ一瞬に時が止まり、叩きつけた所で小さな爆発が起きる。周りの敵も吹き飛ぶ',
     '密着の掴み技は、構えと同じ技ポイントが必要に',

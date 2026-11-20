@@ -1166,6 +1166,15 @@ export const brawlerContactTarget = (
 export const BRAWLER_CONTACT_FREEZE_MS = 250;
 /** 掴みの一瞬に組み付く姿へ入る長さ(ms・壁時計=時間停止の間も動く・慣性つき)。 */
 export const BRAWLER_CONTACT_GRIP_IN_MS = 70;
+/**
+ * ★掴む時に相手へ食い込んで見せる量(社長指示2026-11-20「掴むとき、両方、少し敵に食い込むように(掴んでる風)みせたい」)。絵だけ・判定と位置は動かさない。
+ * 体の縁から相手の縁までの隙間を詰めたうえで、体の幅のこの割合だけ相手の縁を越える(通り抜けて見えない程度)。上限 BRAWLER_CONTACT_GRIP_MAX_PX。
+ */
+export const BRAWLER_CONTACT_GRIP_OVERLAP_K = 0.25;
+export const BRAWLER_CONTACT_GRIP_MAX_PX = 40;
+/** 掴む間の寄せ量(px)。gapPx=体の縁から相手の帯の縁までの隙間・bodyW=プレイヤーの体の幅。 */
+export const brawlerContactGripPx = (gapPx: number, bodyW: number): number =>
+  Math.min(BRAWLER_CONTACT_GRIP_MAX_PX, Math.max(0, gapPx) + Math.max(0, bodyW) * BRAWLER_CONTACT_GRIP_OVERLAP_K);
 /** 密着した相手の区分 → 出す技(雑魚=スープレックス / 強個体・ボス級=蹴りバク宙)。 */
 export const brawlerContactMode = (cls: 'mob' | 'strong' | 'boss'): 'suplex' | 'flipkick' => (cls === 'mob' ? 'suplex' : 'flipkick');
 /**
@@ -2026,7 +2035,7 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number, nowMs?: nu
         return { ...base, tex: 'ready', lean: BRAWLER_GRAB_LEAN * k, push: (s.grab.reachPx ?? 0) * k, sqY: 1 - 0.1 * k, sqX: 1 + 0.05 * k };
       }
       // スープレックス(空中投げ・密着の構え): 反りを始めてからは反りの形(頂点で叩きつけ)。
-      if (s.suplexAt !== undefined && t >= s.suplexAt) return suplexPose(base, t - s.suplexAt, s.grab ? 0 : BRAWLER_GRAB_PUSH_PX);
+      if (s.suplexAt !== undefined && t >= s.suplexAt) return suplexPose(base, t - s.suplexAt, s.grab ? 0 : (s.contactGrab?.gripPx ?? BRAWLER_GRAB_PUSH_PX));
       // ★投げ(クリエイティブ監査 #2): 放した瞬間から、後ろへ引いて投げる向きへ大きく振り抜く(向き=dirX/dirY=投げた向き)。
       if (s.throwAt !== undefined) {
         const sw = brawlerThrowSwing(t - s.throwAt);
@@ -2040,7 +2049,10 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number, nowMs?: nu
           // ★§34-10: 掴んだ瞬間は時間停止(技の時計が進まない)=壁時計で一気に組み付く姿へ入れる(ガッ)。止めが明けたらその姿のまま反りへ。
           const grip = s.contactGrab.at === undefined ? 0 : nowMs === undefined ? 1 : easeOut(Math.max(0, Math.min(1, (nowMs - s.contactGrab.at) / BRAWLER_CONTACT_GRIP_IN_MS)));
           const k = Math.max(grip, easeOut(Math.min(1, el / span)));
-          return { ...base, tex: 'ready', lean: BRAWLER_GRAB_LEAN * k, push: BRAWLER_GRAB_PUSH_PX * k, sqY: 1 - 0.1 * k, sqX: 1 + 0.06 * k };
+          // 食い込む寄せ(gripPx)。スープレックスは反りの式が寄せから反りへつなぐ(suplexPose)。サマーソルトは掴みの間に寄せを戻して蹴り出す(蹴る瞬間に0=跳ばない)。
+          const gp = s.contactGrab.gripPx ?? BRAWLER_GRAB_PUSH_PX;
+          const back = s.contactGrab.mode === 'flipkick' ? (() => { const q = Math.max(0, Math.min(1, el / w)); return q * q * (3 - 2 * q); })() : 0;
+          return { ...base, tex: 'ready', lean: BRAWLER_GRAB_LEAN * k * (1 - back), push: gp * k * (1 - back), sqY: 1 - 0.1 * k, sqX: 1 + 0.06 * k };
         }
         if (s.contactGrab.mode === 'flipkick') {
           // 速く上がって重く落ちる跳び・頂点の前に大半を回し切って着地へ減速する1回転(監査 #11)。

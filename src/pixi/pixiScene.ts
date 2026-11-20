@@ -21845,7 +21845,10 @@ export class PixiScene {
     view.sprite.alpha = (seekerActive ? 0.4 : (p.invulnerable && !counterInvuln ? 0.5 + 0.5 * Math.sin(now / 50) : 1)) * deathFade * introFade * this.corridorRunInFade();
     // ★FB5(v0.25.3611「演出中はかならず敵の上のレイヤーに置き」): KILL処刑演出中はYソートを
     // 無視して必ず全アクターの前面(首元に乗った時に敵の後ろへ回らない)。描画のみ・判定不変。
-    view.container.zIndex = killPose ? fb.footY + 100000 : fb.footY;
+    // ★密着の掴み(§34-10「少し敵に食い込むように」): 掴んでいる間(スープレックスは反りの前・サマーソルトは蹴る前)は、体を相手の手前に描く=組み付いて見える。
+    const brG = p.brawler;
+    const gripFront = !!brG?.contactGrab && brG.phase === 'tech' && !brG.resolved && (brG.suplexAt === undefined || gameTime < brG.suplexAt);
+    view.container.zIndex = killPose ? fb.footY + 100000 : gripFront ? fb.footY + 1500 : fb.footY;
     view.light.visible = false;
     view.reticle.clear();
     // ★対人トラップに掛かっている3秒(足元の輪+体の水色)。プレイヤーの hitFlash は他で使っていない=毎フレーム既定OFFから。
