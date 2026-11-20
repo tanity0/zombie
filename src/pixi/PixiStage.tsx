@@ -13,6 +13,7 @@ import { SORTIE_STAGE_TEXTURE_PATHS, sortieTexturesNeeded, sortieSpriteGroups } 
 import { setAppliedResolution } from '../config/renderer';
 import { memoryTier, resolutionCapFor } from '../utils/memoryTier';
 import { renderErrorFlags } from './renderErrorFlags';
+import { reportSuppressedError } from '../utils/errorBeacon';
 import { noteRendererMount, noteContextLost } from '../utils/crashWatch';
 
 // 描画解像度の上限(電池対策)。スマホ(タッチ端末)は塗り面積=GPU負荷を抑えるため低め、PCは高画質のまま。
@@ -228,6 +229,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
           scene.sync();
         } catch (e) {
           if (!renderErrorFlags.pixiStageSyncLogged) { renderErrorFlags.pixiStageSyncLogged = true; console.error('[PixiStage] sync error (suppressed after first):', e); }
+          reportSuppressedError('pixi-sync', e); // 実機の左下の赤字へ(console は実機で見えない=描画の例外が誰にも観測できなかった)
         }
       };
       tickerCallbackRef.current = tick;

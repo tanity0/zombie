@@ -140,7 +140,7 @@ import { loadKenkiLevel, kenkiSpawnLevel, kenkiLevelHealth, kenkiLevelLook } fro
 import { vsEntryOfRun, isNoAmmoRun, idForVariant, vsBodyInit, VS_RESPAWN_MS, VS_SPAWN_DIST_MIN, VS_SPAWN_DIST_MAX } from '../utils/vsTest';
 import { idForLabSex } from '../utils/labZombieSex';
 import { pickPhantomIdentity, setPhantomIdentity, getPhantomIdentity, phantomDisplayLabel, clearPhantomIdentity } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の人格(癖・ビルド・HP・名前を1人から)
-import { reportSuppressedError } from '../utils/errorBeacon';
+import { reportSuppressedError, reportSoftNotice } from '../utils/errorBeacon';
 import { bossCutinPayload, glenForm2CutinPayload } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン(オプトイン呼び出しのみ)
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの拘束を守護霊にも掛ける(プレイヤーと同じ純関数)
@@ -19263,7 +19263,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       cancelAnimationFrame(frameRef.current);
       frameRef.current = requestAnimationFrame(gameLoop);
       // 常時表示のエラービーコンへ残す=**次に起きた時に「復帰した」と分かる**(握り潰さない)。
-      reportSuppressedError('loop-stall', new Error(`rAF chain stalled ${Math.round(since)}ms — revived`));
+      reportSoftNotice('loop-stall', new Error(`rAF chain stalled ${Math.round(since)}ms — revived`)); // 知らせ=後から来た本物の例外に席を譲る
     }, 500);
 
     // Cleanup

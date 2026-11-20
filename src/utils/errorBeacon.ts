@@ -7,10 +7,24 @@
 // ⇒ 握り潰した例外の要約を保持し、ゲーム内左下のバージョン表示(Game.tsx)に赤字で出す。
 // 表示は最初の1件を保持(後続で上書きしない=初発が原因である可能性が最も高いため)。
 let last: string | null = null;
+/**
+ * 今の1件が「知らせ」(例外ではなく、自分で立ち直った事の記録=ループの張り直し)か。
+ * ★知らせは後から来た本物の例外に席を譲る(社長実機 v0.25.5677「鞭でバグった」: 裏から戻った時の
+ * `loop-stall`(243秒)が最初の1件の席を取り、その後に描画で起きた例外が画面に出ず、原因が名指しできなかった)。
+ */
+let lastSoft = false;
 
-/** 握り潰しcatchから呼ぶ。最初の1件だけ保持する。 */
-export const reportSuppressedError = (tag: string, err: unknown): void => {
+/** 自分で立ち直った事の知らせとして残す(席が空いている時だけ)。後から本物の例外が来たら上書きされる。 */
+export const reportSoftNotice = (tag: string, err: unknown): void => {
   if (last !== null) return;
+  reportSuppressedError(tag, err);
+  lastSoft = true;
+};
+
+/** 握り潰しcatchから呼ぶ。最初の1件だけ保持する(知らせ=reportSoftNotice の後なら上書きする)。 */
+export const reportSuppressedError = (tag: string, err: unknown): void => {
+  if (last !== null && !lastSoft) return;
+  lastSoft = false;
   const e = err as Error | undefined;
   // メッセージ+スタック先頭1行(発生関数と行番号)だけの短い要約にする。
   const stackLine = (e?.stack ?? '').split('\n').find(l => l.includes('at ')) ?? '';
@@ -28,7 +42,7 @@ export const lastSuppressedError = (): string | null => last;
  * (ボス・ガントレット)と**2戦目以降が丸ごと無音**になる。戦いの切れ目で明示的に再アームする。
  * 通常プレイでは誰も呼ばない=挙動は従来どおり。
  */
-export const rearmSuppressedError = (): void => { last = null; };
+export const rearmSuppressedError = (): void => { last = null; lastSoft = false; };
 
 /**
  * ★捕まえていない例外も画面に出す(v0.25.4347・社長報告「めっちゃゲーム中に落ちる」)。

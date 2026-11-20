@@ -128,6 +128,11 @@ describe('2段目: 進行方向フリック=叩き落とし', () => {
     expect(en('z').knockbackVx ?? 0).toBe(0);
     expect(en('z').whipPull).toBeUndefined();
     expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(false); // 1回だけ
+    // 通信の下の技の行(刀の一閃/燕返しと同じ線): 引き寄せ→叩きつけ の順に1行ずつ。
+    const keys = useGameStore.getState().skillProcFeed.map(r => r.key);
+    expect(keys.filter(k => k === 'tech:whippull')).toHaveLength(1);
+    expect(keys.filter(k => k === 'tech:whipslam')).toHaveLength(1);
+    expect(keys.indexOf('tech:whippull')).toBeLessThan(keys.indexOf('tech:whipslam'));
   });
   it('浮きが終わった(着地した)敵には何も起きない', () => {
     useGameStore.setState({ enemies: [place('zombie', 120, 0, 'z')] });

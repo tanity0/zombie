@@ -24,4 +24,7 @@ export const BRAWLER_TECH_NAMES: Record<TechProcKey, { name: string; dir: Brawle
   'tech:issen': { name: '一閃', dir: 'right' },
   'tech:tsubame': { name: '燕返し', dir: 'chain' },
   'tech:satsujin': { name: '殺陣', dir: 'all' },
+  // 鞭の追加攻撃(research/WHIP_FOLLOWUP.md)。引き寄せ=振りと反対へはじく(左向きの1本で代表)・叩きつけ=引き寄せからの続き(└)。刀の一閃/燕返しと同じ並べ方。
+  'tech:whippull': { name: '引き寄せ', dir: 'left' },
+  'tech:whipslam': { name: '叩きつけ', dir: 'chain' },
 };

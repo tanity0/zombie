@@ -8284,7 +8284,7 @@ export const notifySkillProc = (key: SkillKey): void => {
  * 呼ぶのはプレイヤー本人の技が**実際に出た**所だけ(入力しただけ・技ポイント不足・道の外は呼ばない)。拳鬼・幻影の技は別の経路=出ない。
  * 音は足さない(技そのものの音がある)。
  */
-export const notifyTechProc = (kind: BR.BrawlerTechKind | 'secret' | 'heel' | 'kickup' | 'airthrow' | 'suplex' | 'suplexchain' | 'flipkick' | 'mogura' | 'issen' | 'tsubame' | 'satsujin', kickN = 0): void => { // issen/tsubame/satsujin=刀の技の行(research/KATANA_TSUBAME.md §2・§4)
+export const notifyTechProc = (kind: BR.BrawlerTechKind | 'secret' | 'heel' | 'kickup' | 'airthrow' | 'suplex' | 'suplexchain' | 'flipkick' | 'mogura' | 'issen' | 'tsubame' | 'satsujin' | 'whippull' | 'whipslam', kickN = 0): void => { // issen/tsubame/satsujin=刀の技の行(research/KATANA_TSUBAME.md §2・§4)
   // 飛び蹴りは何発目かで名前が違う(飛び蹴り→空中蹴り→蹴り飛ばし・社長指示2026-11-11)。
   const key = (kind === 'kick' && kickN >= 2 ? `tech:kick${Math.min(3, kickN)}` : `tech:${kind}`) as TechProcKey;
   useGameStore.setState(s => ({ skillProcFeed: pushSkillProc(s.skillProcFeed, key, Date.now(), ++skillProcSeq) }));
@@ -15896,11 +15896,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (act === 'pull') {
       set({ whipFollowup: { ...w, used: true } }); // 1振りに1回だけ(続きの受付は引き寄せが開く)
       whipFollowupPull(get, set, w, now);
+      notifyTechProc('whippull'); // 通信の下に技の行(刀の一閃と同じ線)
       return true;
     }
     const ids = whipSlamTargetIds(st, w, now);
     if (ids.length === 0) return false; // 浮いている敵が居ない(着地した・倒れた)=何も起きない
     whipFollowupSlam(get, set, w, ids, now);
+    notifyTechProc('whipslam'); // └叩きつけ(刀の燕返しと同じ続きの行)
     return true;
   },
 
