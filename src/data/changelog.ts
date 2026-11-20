@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5671', items: [
+    'スープレックスで叩きつけた敵は、背中側に残るようになった',
+    '空中のスープレックスは、掴んだ後に少し上がってから叩きつける',
+  ] },
   { version: '0.25.5670', items: [
     '格闘の「大踏み潰し」は「地割り」に名前が変わった',
     '地割りの溜めの間に上で、新しい技「土竜」。周りの敵を地面から打ち上げる',

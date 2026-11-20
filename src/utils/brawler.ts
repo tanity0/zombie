@@ -410,7 +410,7 @@ export const brawlerStageForPress = (s: BrawlerState, t: number): number =>
 export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, quick: boolean): BrawlerState => {
   const spec = brawlerStageSpec(stage);
   return {
-    ...s, phase: 'attack', stage: spec.stage, tech: null, kickN: 0, kickHeel: false, heelBuffer: false, kickUp: false, kickUpBuffer: false, mogura: false, kickThrow: false, suplexAt: undefined, guardCancelHeld: false, contactGrab: undefined, throwAt: undefined, suplexPendingId: undefined, suplexSwing: undefined, grab: undefined, startAt: t,
+    ...s, phase: 'attack', stage: spec.stage, tech: null, kickN: 0, kickHeel: false, heelBuffer: false, kickUp: false, kickUpBuffer: false, mogura: false, kickThrow: false, suplexAt: undefined, airSuplexRiseAt: undefined, airSuplexHoldAt: undefined, guardCancelHeld: false, contactGrab: undefined, throwAt: undefined, suplexPendingId: undefined, suplexSwing: undefined, grab: undefined, startAt: t,
     // 前隙なし(受けた直後)でも5段目は突き抜ける時間だけは要る(溜めだけ消える)。
     windupMs: quick ? (spec.stage === 5 ? BRAWLER_PALM_DASH_MS : 0) : spec.windupMs, recoveryMs: spec.recoveryMs,
     stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false,
@@ -441,7 +441,7 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
     : (kind === 'kick' && kickN > 1 && s.techChain) ? s.techChain : [kind];
   return {
     ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t, techChain: chain, techBuffer: undefined, stepBuffer: undefined,
-    kickHeel, heelBuffer: false, kickUp, kickUpBuffer: false, mogura: false, kickThrow: false, grab: undefined, suplexAt: undefined, guardCancelHeld: false, contactGrab: undefined,
+    kickHeel, heelBuffer: false, kickUp, kickUpBuffer: false, mogura: false, kickThrow: false, airSuplexRiseAt: undefined, airSuplexHoldAt: undefined, grab: undefined, suplexAt: undefined, guardCancelHeld: false, contactGrab: undefined,
     throwAt: undefined, suplexPendingId: undefined, suplexSwing: undefined,
     heelAirPx: undefined, kickGroundPx: undefined, // 蹴りの高さの決めは store が出した瞬間に書く(前の技の値を持ち越さない)
     stompFromPx: stompFromPx > 0.5 ? stompFromPx : undefined,
@@ -1892,20 +1892,34 @@ export const brawlerSuplexSwing = (el: number, mx: number, my: number): { dx: nu
     const h = (1 - Math.cos(Math.PI * p)) / 2;
     return { dx: mx * h, dy: my * h, lift: BRAWLER_SUPLEX_SWING_LIFT_PX * Math.sin(Math.PI * p), rot: side * Math.PI * p };
   }
-  if (el < BRAWLER_SUPLEX_RISE_MS + BRAWLER_SUPLEX_HOLD_MS) return { dx: mx, dy: my, lift: 0, rot: side * Math.PI };
+  // ★§34-12(社長「投げるときは行くけど、戻っていく」): 叩きつけた瞬間に相手の位置そのものを着地点へ移す(store)=ここから先はずれ0(元の位置へ戻さない)。
+  //   逆さまのまま一瞬留まり、その場で同じ向きへ回って起き上がる。
+  if (el < BRAWLER_SUPLEX_RISE_MS + BRAWLER_SUPLEX_HOLD_MS) return { dx: 0, dy: 0, lift: 0, rot: side * Math.PI };
   const r = (el - BRAWLER_SUPLEX_RISE_MS - BRAWLER_SUPLEX_HOLD_MS) / BRAWLER_SUPLEX_RETURN_MS;
   const k = r * r * (3 - 2 * r);
-  return { dx: mx * (1 - k), dy: my * (1 - k), lift: 0, rot: side * Math.PI * (1 + k) };
+  return { dx: 0, dy: 0, lift: 0, rot: side * Math.PI * (1 + k) };
 };
-/** 背中側の着地点までのずれ(プレイヤーの中心 (px,py)→相手の中心 (ex,ey) の向きの反対へ、体1つ分ほど・最小30/最大90px)。真上下で向きが無い時は face(±1)の反対。 */
-export const brawlerSuplexLanding = (px: number, py: number, ex: number, ey: number, face: number): { mx: number; my: number } => {
-  let ux = ex - px, uy = ey - py;
-  const d = Math.hypot(ux, uy);
-  if (d < 1e-3) { ux = face >= 0 ? 1 : -1; uy = 0; } else { ux /= d; uy /= d; }
-  const back = Math.max(30, Math.min(90, d));
-  const lx = px - ux * back, ly = py - uy * back;
+/**
+ * 背中側の着地点までのずれ(相手の中心から)。★社長実機報告2026-11-20「スープレックス、まだ敵が反対側に行かないときがある」で作り直した:
+ *  - 側は**左右で決める**(プレイヤーの絵は左右にしか向かない=反りも左右)。相手がプレイヤーの右に居れば左へ、左に居れば右へ。
+ *    ほぼ真上・真下(左右のずれ SIDE_DEADZONE_PX 以内)の時だけ face(±1=今向いている向き)の反対。旧は「中心どうしの向きの反対」=真上下の相手は上下へ運んで、反対側へ行って見えなかった。
+ *  - 距離は相手の体の幅から決める(BACK_BASE_PX+相手の幅×BACK_W_K・最小30/最大130)。旧は中心どうしの距離(密着だと約40px)=大きな絵の相手はプレイヤーと重なって、同じ側に残って見えた。
+ *  - 上下は相手の反対側へ少しだけ(差の半分)。
+ * (px,py)=プレイヤーの中心・(ex,ey)=相手の中心・enemyW=相手の当たりの幅。
+ */
+export const BRAWLER_SUPLEX_SIDE_DEADZONE_PX = 6;
+export const BRAWLER_SUPLEX_BACK_BASE_PX = 40;
+export const BRAWLER_SUPLEX_BACK_W_K = 0.9;
+export const brawlerSuplexLanding = (px: number, py: number, ex: number, ey: number, face: number, enemyW = 0): { mx: number; my: number } => {
+  const hx = ex - px;
+  const side = Math.abs(hx) > BRAWLER_SUPLEX_SIDE_DEADZONE_PX ? Math.sign(hx) : face >= 0 ? 1 : -1;
+  const back = Math.max(30, Math.min(130, Math.max(Math.abs(hx), BRAWLER_SUPLEX_BACK_BASE_PX + Math.max(0, enemyW) * BRAWLER_SUPLEX_BACK_W_K)));
+  const lx = px - side * back, ly = py - (ey - py) * 0.5;
   return { mx: lx - ex, my: ly - ey };
 };
+/** 相手が真上・真下の時の左右(着地点の側と、プレイヤーが向く向きを揃える)。+1=相手は右(=左へ投げ越す)。 */
+export const brawlerSuplexSide = (px: number, ex: number, face: number): 1 | -1 =>
+  Math.abs(ex - px) > BRAWLER_SUPLEX_SIDE_DEADZONE_PX ? (ex >= px ? 1 : -1) : face >= 0 ? 1 : -1;
 /** スープレックスの体(反りの頂点の前は掴んで寄せた前傾から反りへつなぐ=頂点で前傾が抜け切る)。 */
 const suplexPose = (base: BrawlerPose, el: number, grabPushPx: number): BrawlerPose => {
   const a = brawlerSuplexArch(el);
@@ -1940,9 +1954,9 @@ const KICK3_LEAN_TAIL_MS = 100;
 const KICK_LEAN_TAIL_FRAC = 0.6;
 /** いまの体の形。連続中は立ち絵へ戻さない(コンボが切れた時だけ立ちへ・§4)。 */
 /** nowMs=壁時計(描画が渡す)。空中投げの掴みの間(ループごと止まる=gameTime は進まない)の体の寄せを慣性つきで入れるのに使う。無し=寄せ切った形。 */
-export const brawlerPoseAt = (s: BrawlerState | undefined, t: number, nowMs?: number): BrawlerPose | null => {
+const brawlerPoseAtRaw = (s: BrawlerState | undefined, t: number, nowMs?: number): BrawlerPose | null => {
   if (!s) return null;
-  if (brawlerKickHeldInStop(s, t)) return brawlerPoseAt(brawlerKickHoldView(s, t), t); // 止めの間は当たった蹴りの絵のまま(§33-2)
+  if (brawlerKickHeldInStop(s, t)) return brawlerPoseAtRaw(brawlerKickHoldView(s, t), t); // 止めの間は当たった蹴りの絵のまま(§33-2)
   const base: BrawlerPose = { tex: null, lean: 0, push: 0, jump: 0, sqX: 1, sqY: 1, hand: 1, flip: false };
   // 秘奥義(§10): 起動=沈んで溜め→振り上げて爆ぜる / 落下=天空から加速して落ちる / 着地=深く潰れて戻る。9連撃は各技の形(下の通常の分岐)。
   if (s.secret) {
@@ -2139,6 +2153,32 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number, nowMs?: nu
     }
     default: return { ...base, tex: 'ready' };
   }
+};
+/**
+ * ★空中のスープレックスの上昇(research/BRAWLER.md §34-11・社長指示2026-11-20「空中でのスープレックスは、掴んだ後、少し上昇してからスープレックスで」)。絵だけ(判定の位置は動かさない)。
+ * el=上がり始め(掴みが明けた瞬間)からの ms。AIR_SUPLEX_RISE_MS のうち、最初の(RISE−HANG)で減速しながら +RISE_PX まで上がり、頂点で HANG だけ止まる(慣性)。
+ * 反り(BRAWLER_SUPLEX_RISE_MS)の間はその高さのまま、叩きつけた後は fall=true ならプレイヤーが加速して元の高さへ落ちる(AIR_SUPLEX_FALL_MS)/ false(掴まれた相手)なら0
+ * (叩きつけた後の相手は背中側の地面=投げ越しの式が置く)。返り値=持ち上げ(px・上が正)。
+ */
+export const BRAWLER_AIR_SUPLEX_RISE_PX = 40;
+export const BRAWLER_AIR_SUPLEX_RISE_MS = 180;
+export const BRAWLER_AIR_SUPLEX_HANG_MS = 40;
+export const BRAWLER_AIR_SUPLEX_FALL_MS = 220;
+export const brawlerAirSuplexRise = (el: number, fall = true): number => {
+  if (!(el >= 0)) return 0;
+  const up = BRAWLER_AIR_SUPLEX_RISE_MS - BRAWLER_AIR_SUPLEX_HANG_MS;
+  if (el < up) { const q = el / up; return BRAWLER_AIR_SUPLEX_RISE_PX * (1 - (1 - q) * (1 - q) * (1 - q)); }
+  const slam = BRAWLER_AIR_SUPLEX_RISE_MS + BRAWLER_SUPLEX_RISE_MS;
+  if (el < slam) return BRAWLER_AIR_SUPLEX_RISE_PX;
+  if (!fall) return 0;
+  const k = (el - slam) / BRAWLER_AIR_SUPLEX_FALL_MS;
+  return k >= 1 ? 0 : BRAWLER_AIR_SUPLEX_RISE_PX * (1 - k * k);
+};
+export const brawlerPoseAt = (s: BrawlerState | undefined, t: number, nowMs?: number): BrawlerPose | null => {
+  const pose = brawlerPoseAtRaw(s, t, nowMs);
+  if (!pose || !s || s.airSuplexRiseAt === undefined) return pose;
+  const lift = brawlerAirSuplexRise(t - s.airSuplexRiseAt);
+  return lift > 0 ? { ...pose, jump: (pose.jump ?? 0) + lift } : pose;
 };
 
 // ★起動時のテンポ係数(`?brtempo=`・既定 1.3)。全部の時間の欄が宣言された後(ファイルの末尾)で1回だけ書き直す。

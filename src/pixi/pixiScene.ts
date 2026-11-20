@@ -4639,6 +4639,12 @@ interface ShadowPoolEntry {
   lastSeenAt: number;           // 裁定I: この時刻からSHADOW_MESH_GC_ms非表示が続いたら実解放
 }
 
+/**
+ * ★空中のスープレックス(§34-11): 一緒に上がって反り、叩きつけるまでの間は、掴まれた相手の浮きの高さを放した瞬間(壁時計)で止めて描く
+ * (相手が自分の弧で落ちていかない=一緒に上がって見える)。それ以外は null(呼び手は今の時刻で描く)。
+ */
+const brawlerAirSuplexHoldNow = (b: { suplexPendingId?: string; airSuplexHoldAt?: number; suplexAt?: number } | undefined, enemyId: string, gameTime: number): number | null =>
+  b && b.suplexPendingId === enemyId && b.airSuplexHoldAt !== undefined && b.suplexAt !== undefined && gameTime < b.suplexAt + BRW.BRAWLER_SUPLEX_RISE_MS ? b.airSuplexHoldAt : null;
 export class PixiScene {
   private L: SceneLayers;
 
@@ -23294,14 +23300,14 @@ export class PixiScene {
       const viewH = stZ.gameBounds.height / Math.max(0.05, stZ.viewZoom || 1);
       // ★空中投げの掴み(research/BRAWLER.md §34-3)の時間停止の間は、止まり始めた時刻の高さで止めて描く(浮きの時計は放した時に store がずらす)。
       const grabB = stZ.player.brawler?.grab;
-      const liftNow = grabB && Date.now() < grabB.releaseAt ? grabB.at : Date.now();
+      const liftNow = grabB && Date.now() < grabB.releaseAt ? grabB.at : brawlerAirSuplexHoldNow(stZ.player.brawler, e.id, gameTime) ?? Date.now();
       brLiftPx = brawlerJuggleHeightRel(e, liftNow) * Math.min(fb.boxH * BRW.BRAWLER_LIFT_VIS_BODY_K, viewH * BRW.BRAWLER_LIFT_VIS_MAX_VIEW_FRAC);
     }
     // ★浮いているのを分かりやすく(§12-1・§9-76・社長「敵が空中にいるのを分かりやすくしたい」→「1.2.4.5 がいいな」):
     // ①影を小さく薄く ⑤体をわずかに大きく(縦横同じ・倒さない・回さない・歪ませない)。②足元の輪と④上昇の筋は drawBrawlerAir。
     // ★合図は「その弧の頂点に対する割合」で効かせる(社長承認2026-11-09)=重い区分・爆発の低い浮きでも頂点で満額。
     const grabA = e.brawlerLiftAt !== undefined ? useGameStore.getState().player.brawler?.grab : undefined;
-    const brAirK = e.brawlerLiftAt !== undefined ? brawlerAirSignal(e, grabA && Date.now() < grabA.releaseAt ? grabA.at : Date.now()) : 0; // 掴みの時間停止の間は止まり始めの高さ(§34-3)
+    const brAirK = e.brawlerLiftAt !== undefined ? brawlerAirSignal(e, grabA && Date.now() < grabA.releaseAt ? grabA.at : brawlerAirSuplexHoldNow(useGameStore.getState().player.brawler, e.id, gameTime) ?? Date.now()) : 0; // 掴みの時間停止の間は止まり始めの高さ(§34-3)
     // ⑤ 体の拡大(頂点で ×1.10)は「上がり切ってから膨らみ、落ち始めで戻る」: 頂点の近く(割合0.8→1)だけを目標にし、時間で遅れて追う(慣性)。
     {
       // 近接フィニッシュ・会心の跳ね(格闘の弧ではない方の浮き)でも同じ決まりで膨らむ(社長指示2026-11-11「これクリティカルもそうかも」)。
@@ -23913,9 +23919,12 @@ export class PixiScene {
     //   反りの頂点で逆さまに叩きつけ、起き上がりながら元の位置へ戻す。体の中心で回す(足元の anchor から中心へ補う)。判定・位置・影は動かさない。
     {
       const pb = useGameStore.getState().player.brawler;
-      const sw = pb?.suplexSwing;
-      if (sw && sw.enemyId === e.id && pb?.suplexAt !== undefined) {
-        const r = BRW.brawlerSuplexSwing(gameTime - pb.suplexAt, sw.mx, sw.my);
+      // ★投げ越しは相手ごとに持つ(e.brSuplexSwing・続けて別の相手を投げても上書きされない)。叩きつけた瞬間に store が相手を着地点へ移す(§34-12)。
+      const sw = e.brSuplexSwing;
+      // ★空中のスープレックス(§34-11): 掴みが明けたら、プレイヤーと一緒に少し上がる(叩きつけた後は0)。
+      if (sw && pb?.suplexSwing?.enemyId === e.id && pb.airSuplexRiseAt !== undefined) view.sprite.position.y -= Math.round(BRW.brawlerAirSuplexRise(gameTime - pb.airSuplexRiseAt, false));
+      if (sw) {
+        const r = BRW.brawlerSuplexSwing(gameTime - sw.at, sw.mx, sw.my);
         if (r) {
           const hh = Math.abs(view.sprite.height) * 0.5;
           view.sprite.position.x += Math.round(r.dx - hh * Math.sin(r.rot));

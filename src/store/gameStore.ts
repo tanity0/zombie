@@ -5977,10 +5977,15 @@ const releaseBrawlerGrab = (get: () => GameState, set: (fn: (s: GameState) => Pa
   const gx = e.x + e.width / 2, gy = e.y + e.height / 2;
   const tgt = BR.pickBrawlerTarget(st.enemies.filter(en => en.id !== e.id && !en.brThrown), gx, gy, BR.BRAWLER_THROW_RANGE);
   if (BRS.brawlerAirThrowMove(tgt?.id ?? null) === 'airthrow' && tgt) { startBrawlerThrow(get, set, e, tgt); return; }
-  // スープレックス: 放した瞬間から持ち上げて反り、反りの頂点(BRAWLER_SUPLEX_RISE_MS 後)で叩きつける(当たりは tickBrawler・クリエイティブ監査 #3)。
+  // スープレックス: 放した瞬間から一緒に少し上がり(§34-11・BRAWLER_AIR_SUPLEX_RISE_MS・絵だけ)、頂点から持ち上げて反り、
+  //   反りの頂点(さらに BRAWLER_SUPLEX_RISE_MS 後)で叩きつける(当たりは tickBrawler・クリエイティブ監査 #3)。
   const b1 = get().player.brawler;
   const pc = brawlerCenter(get().player);
-  if (b1) setBrawler(set, { ...b1, suplexAt: get().gameTime, suplexPendingId: e.id, suplexSwing: { enemyId: e.id, ...BR.brawlerSuplexLanding(pc.x, pc.y, gx, gy, get().player.lastDirection?.x ?? 1) } });
+  const gt0 = get().gameTime;
+  const land = BR.brawlerSuplexLanding(pc.x, pc.y, gx, gy, get().player.lastDirection?.x ?? 1, e.width);
+  const swAt = gt0 + BR.BRAWLER_AIR_SUPLEX_RISE_MS;
+  if (b1) setBrawler(set, { ...b1, airSuplexRiseAt: gt0, airSuplexHoldAt: Date.now(), suplexAt: swAt, suplexPendingId: e.id, suplexSwing: { enemyId: e.id, ...land } });
+  set(state => ({ enemies: state.enemies.map(en => (en.id === e.id ? { ...en, brSuplexSwing: { at: swAt, ...land } } : en)) }));
 };
 /** 反りの頂点が来たスープレックス(空中投げで投げ先が無かった時)を当てる。 */
 const settlePendingSuplex = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
@@ -6132,8 +6137,12 @@ const startBrawlerContactGrab = (get: () => GameState, set: (fn: (s: GameState) 
   const t = st.gameTime;
   const c = brawlerCenter(p);
   const mode = BR.brawlerContactMode(BRC.brawlerEnemyClass(e));
-  const dir = BR.brawlerAimDir(c.x, c.y, e, p.lastDirection);
-  const sw = mode === 'suplex' ? { suplexSwing: { enemyId: e.id, ...BR.brawlerSuplexLanding(c.x, c.y, e.x + e.width / 2, e.y + e.height / 2, p.lastDirection?.x ?? 1) } } : {};
+  const dir0 = BR.brawlerAimDir(c.x, c.y, e, p.lastDirection);
+  const land = BR.brawlerSuplexLanding(c.x, c.y, e.x + e.width / 2, e.y + e.height / 2, p.lastDirection?.x ?? 1, e.width);
+  // スープレックスはプレイヤーの絵を相手の側(左右)へ向ける=反りが投げ越す先(反対側)へ反る。相手が真上・真下の時も左右を決める(着地点と同じ側)。
+  const side = BR.brawlerSuplexSide(c.x, e.x + e.width / 2, p.lastDirection?.x ?? 1);
+  const dir = mode === 'suplex' && Math.abs(dir0.x) < 0.35 ? { x: side * 0.35, y: Math.sign(dir0.y || 1) * Math.sqrt(1 - 0.35 * 0.35) } : dir0;
+  const sw = mode === 'suplex' ? { suplexSwing: { enemyId: e.id, ...land } } : {};
   const now = Date.now();
   const k0 = BR.brawlerStartContactGrab(s, t, e.id, mode);
   // 食い込んで見せる寄せ(絵だけ): 体の縁から相手の帯の縁までの隙間+体の幅の1/4(§34-10)。
@@ -6142,7 +6151,7 @@ const startBrawlerContactGrab = (get: () => GameState, set: (fn: (s: GameState) 
   // 掴んでいる間、相手はその場で止まる(固まりと同じ器・掴みの一瞬の時間停止+掴みの長さ+少し)。位置は動かさない(§34-6 #6)。
   const freezeMs = BR.BRAWLER_CONTACT_FREEZE_MS; // スープレックスもサマーソルトも、掴んだ一瞬は時間停止(§34-10・社長承認2026-11-20)
   const holdUntil = now + freezeMs + BR.BRAWLER_CONTACT_GRAB_MS + 60;
-  set(state => ({ enemies: state.enemies.map(en => (en.id === e.id ? { ...en, brHoldUntil: Math.max(en.brHoldUntil ?? 0, holdUntil) } : en)) }));
+  set(state => ({ enemies: state.enemies.map(en => (en.id === e.id ? { ...en, brHoldUntil: Math.max(en.brHoldUntil ?? 0, holdUntil), ...(mode === 'suplex' && s1.suplexAt !== undefined ? { brSuplexSwing: { at: s1.suplexAt, ...land } } : {}) } : en)) }));
   setBrawler(set, s1, { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0, lastDirection: { x: dir.x, y: dir.y } });
   brawlerAirGrabFx(get, e, c, freezeMs + BR.BRAWLER_CONTACT_GRAB_MS);
   // ★§34-10: 掴んだ一瞬は時間停止(ループごと止まる=空中投げの掴みと同じ器)。明けてからスープレックス=持ち上げ→反り→叩きつけ(小爆発)/サマーソルト=蹴って宙返り。
@@ -6208,8 +6217,10 @@ const brawlerSuplex = (get: () => GameState, set: (fn: (s: GameState) => Partial
   const plan = brawlerStopPlan(get, BR.BRAWLER_HITSTOP.closer);
   // ★§34-9: 叩きつけ=背中側の着地点(地割れの所)を中心に小爆発。スープレックスのダメージはこの爆発のダメージに置き換える(叩きつけた相手は必ず当たる・もう一度浮く)。
   const swg0 = get().player.brawler?.suplexSwing;
-  const off0 = swg0 && swg0.enemyId === e.id ? swg0 : { mx: 0, my: 0 };
-  const hits = explodeBrawlerSuplex(get, set, e, e.x + e.width / 2 + off0.mx, e.y + e.height / 2 + off0.my);
+  const off0 = e.brSuplexSwing ?? (swg0 && swg0.enemyId === e.id ? swg0 : { mx: 0, my: 0 });
+  // ★§34-12: 叩きつけた瞬間に、相手の位置そのものを背中側の着地点へ移す(行ける帯・壁/木/建物の外の一番近い所)。もう元の位置へは戻らない。
+  const moved = brawlerSuplexMoveTo(get, set, e, off0.mx, off0.my);
+  const hits = explodeBrawlerSuplex(get, set, moved, moved.x + moved.width / 2, moved.y + moved.height / 2);
   const b = get().player.brawler;
   if (b) {
     const b1 = hits > 0 ? BR.brawlerApplyHitstop(b, t, plan.self) : b;
@@ -6221,10 +6232,8 @@ const brawlerSuplex = (get: () => GameState, set: (fn: (s: GameState) => Partial
   // 絵(派手さの絵・判定なし): 相手の足元の地面が割れて砂埃・輪・縦の揺れ。当てた音→地面の2拍。
   const g = get();
   const e1 = get().enemies.find(en => en.id === e.id) ?? e;
-  // 地割れ・砂埃は投げ越した先(背中側の着地点=絵の叩きつけ先)に出す。投げ越しが無ければ相手の足元。
-  const swg = get().player.brawler?.suplexSwing;
-  const off = swg && swg.enemyId === e.id ? swg : { mx: 0, my: 0 };
-  const fx = e1.x + e1.width / 2 + off.mx, footY = e1.y + e1.height - 4 + off.my;
+  // 地割れ・砂埃は叩きつけた所(相手は着地点へ移してある=相手の足元)。
+  const fx = e1.x + e1.width / 2, footY = e1.y + e1.height - 4;
   g.spawnImageMark(fx, footY, 'fx/ground-crack', { scale: 1.0, scaleY: 0.45, duration: 1400, fadeFrom: 0.55, noPop: true, alpha: 0.9, ground: true });
   g.spawnImageMark(fx, footY - 26, BR_COFFIN_SLAM_FRAMES[0], { frames: BR_COFFIN_SLAM_FRAMES, scale: 0.85, duration: 460, frameEaseOut: true, noPop: true, fadeFrom: 0.5 });
   g.spawnImageMark(fx + 18, footY, 'fx/dust-puff', { scale: 0.42, scaleY: 0.55, duration: 900, tint: 0x9a8b7a, alpha: 0.75, moveX: 56, moveY: -8, fadeFrom: 0.35 });
@@ -6236,6 +6245,28 @@ const brawlerSuplex = (get: () => GameState, set: (fn: (s: GameState) => Partial
   brawlerSfx('heavy-impact', 0.9, 0.7, undefined, 60);
 };
 
+/**
+ * ★スープレックスの叩きつけで相手を着地点へ移す(research/BRAWLER.md §34-12・社長指示2026-11-20)。(mx,my)=今の位置から着地点までのずれ。
+ * 行ける帯(clampRectToPlayableArea)を通し、壁・木・建物に重なる時は元の位置へ向かって戻しながら一番近い置ける所を探す(無ければ動かさない)。
+ * 押しの速さは消す。返り値=移した後の相手。
+ */
+const brawlerSuplexMoveTo = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, e: Enemy, mx: number, my: number): Enemy => {
+  const st = get();
+  const ctx: PlayableAreaCtx = {
+    farBackdrop: st.farBackdrop, labTheme: st.stageTheme === 'lab',
+    corridorMode: st.corridorMode, m0AdvanceLimitX: st.m0AdvanceLimitX, corridorRunInActive: st.corridorRunInActive,
+  };
+  let to: { x: number; y: number } | null = null;
+  for (let k = 0; k <= 10 && !to; k++) {
+    const f = 1 - k / 10; // 着地点(f=1)から元の位置(f=0)へ向かって探す
+    const c = clampRectToPlayableArea(e.x + mx * f, e.y + my * f, e.width, e.height, ctx, e.x);
+    if (brawlerRectFree(get, c.x, c.y, e.width, e.height)) to = c;
+  }
+  if (!to) return e;
+  const dest = to;
+  set(state => ({ enemies: state.enemies.map(en => (en.id === e.id ? { ...en, x: dest.x, y: dest.y, knockbackVx: 0, knockbackVy: 0, knockbackUntil: undefined } : en)) }));
+  return get().enemies.find(en => en.id === e.id) ?? e;
+};
 /**
  * ★スープレックスの叩きつけの小爆発(research/BRAWLER.md §34-9・社長指示2026-11-20「叩きつけたら、そこを起爆地として小爆発ダメージに変更(近くの敵も吹き飛ぶ)」)。
  * 中心=叩きつけた着地点(背中側・地割れの所)。爆発の規約(skillExplosionMult・処刑なし・playerBlast で浮かせる=§14-2・卵も割る)。半径=BRAWLER_SUPLEX_BLAST_RADIUS。

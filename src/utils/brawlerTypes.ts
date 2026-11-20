@@ -82,6 +82,9 @@ export interface BrawlerState {
    * (相手の位置から、プレイヤーの背中側の着地点までのずれ・world px)。時刻は suplexAt(反りの始まり)から。判定・相手の位置は動かさない。
    */
   suplexSwing?: { enemyId: string; mx: number; my: number };
+  /** ★空中のスープレックス(§34-11): 掴みが明けて一緒に上がり始めた時刻(gameTime)と、その瞬間の壁時計(相手の浮きの高さをこの時刻で止めて描く)。 */
+  airSuplexRiseAt?: number;
+  airSuplexHoldAt?: number;
   /** スープレックスの叩きつけの当たりを待っている相手(空中投げで投げ先が無かった時・反りの頂点 suplexAt+BRAWLER_SUPLEX_RISE_MS で当てる)。 */
   suplexPendingId?: string;
   /** 構えを技で取り消した時刻(Date.now)と、その時の構えの光の残り(0..1)。光を一度外へ押してから短く消す(絵だけ・§34-2)。 */

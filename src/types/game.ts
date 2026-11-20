@@ -885,6 +885,8 @@ export interface Enemy {
   brThrown?: boolean;
   /** ★投げられて飛ぶ間の回り(絵だけ・監査 B15・utils/brawler の brawlerThrowSpin)。at=投げた時刻・ms=飛ぶ長さ・dir=回る向き(±1)・hitAt=ぶつかった時刻・endAt=爆撃の時刻(どれも Date.now)。 */
   brThrowSpin?: { at: number; ms: number; dir: 1 | -1; hitAt?: number; endAt?: number };
+  /** ★スープレックスの投げ越し(絵だけ・相手ごとに持つ=続けて別の相手を投げても上書きされない・倒れても叩きつけた所に残る)。at=反りの始まり(gameTime)・(mx,my)=着地点までのずれ。 */
+  brSuplexSwing?: { at: number; mx: number; my: number };
   /** 秘奥義の間の「画面内の敵を止める」が brHoldUntil に書いた値(research/BRAWLER.md §17)。終わりに、その値のまま残っている時だけ解く。 */
   brSecretHoldUntil?: number;
   brComboStart?: number;

@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, isBrawlerGuarding } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
-import { BRAWLER_GRAB_MS, BRAWLER_CONTACT_GRAB_MS, brawlerKickUpCost, BRAWLER_TECHS, BRAWLER_WORLD_STOP, BRAWLER_SUPLEX_RISE_MS, BRAWLER_CONTACT_FREEZE_MS, BRAWLER_SUPLEX_BLAST_RADIUS, brawlerTechCost, brawlerDistTo, brawlerPoseAt } from '../utils/brawler';
+import { BRAWLER_GRAB_MS, BRAWLER_CONTACT_GRAB_MS, brawlerKickUpCost, BRAWLER_TECHS, BRAWLER_WORLD_STOP, BRAWLER_SUPLEX_RISE_MS, BRAWLER_CONTACT_FREEZE_MS, BRAWLER_SUPLEX_BLAST_RADIUS, brawlerTechCost, brawlerDistTo, brawlerPoseAt, BRAWLER_AIR_SUPLEX_RISE_MS } from '../utils/brawler';
 import { brawlerTimeKeeperDiscount } from '../utils/brawlerSkills';
 import { setBrawlerTempoAll, brawlerAirborne } from '../utils/brawlerCombo';
 import { playerSuperArmorActive } from '../utils/superArmor';
@@ -131,10 +131,20 @@ describe('§34-3 空中投げ(格闘+パニッシャー)', () => {
     expect(br().grab).toBeDefined();
     const hp = en('z')!.health;
     advance(BRAWLER_GRAB_MS + 30);
-    expect(br().suplexAt).toBeDefined(); // 放した瞬間から反り始める
-    expect(en('z')!.health).toBe(hp);    // 叩きつけは反りの頂点
-    advance(BRAWLER_SUPLEX_RISE_MS + 20);
-    expect(en('z')!.health).toBeLessThan(hp);
+    // ★§34-11: 放した瞬間から一緒に少し上がり(BRAWLER_AIR_SUPLEX_RISE_MS)、頂点から反って、反りの頂点で叩きつける=叩きつけはその分遅れる。
+    const rise0 = br().airSuplexRiseAt!;
+    expect(rise0).toBeDefined();
+    expect(br().suplexAt).toBe(rise0 + BRAWLER_AIR_SUPLEX_RISE_MS);
+    const slamAt = rise0 + BRAWLER_AIR_SUPLEX_RISE_MS + BRAWLER_SUPLEX_RISE_MS;
+    const pc0 = useGameStore.getState().player.x + useGameStore.getState().player.width / 2;
+    const side0 = Math.sign(en('z')!.x + en('z')!.width / 2 - pc0);
+    for (let k = 0; k < 100 && useGameStore.getState().gameTime < slamAt - 10; k++) advance(10);
+    expect(en('z')!.health).toBe(hp);    // 上がって反っている間は当たらない
+    expect(Math.sign(en('z')!.x + en('z')!.width / 2 - pc0)).toBe(side0); // 叩きつけるまでは元の位置
+    advance(30);
+    expect(en('z')!.health).toBeLessThan(hp); // 反りの頂点で叩きつけ
+    const pc1 = useGameStore.getState().player.x + useGameStore.getState().player.width / 2;
+    expect(Math.sign(en('z')!.x + en('z')!.width / 2 - pc1)).toBe(-side0); // §34-12: 叩きつけた所=背中側へ移る
     expect(en('z')!.brLiftDropMs).toBeGreaterThan(0);
     expect(feed()).toContain('tech:suplexchain'); // 蹴り上げからの自動の続き=向きの印なしの行
   });
@@ -173,7 +183,14 @@ describe('§34-7 密着の構え', () => {
       advance(BRAWLER_CONTACT_FREEZE_MS + BRAWLER_CONTACT_GRAB_MS + 30);
       expect(feed()).toEqual(['tech:suplex']);
       expect(brawlerAirborne(en('c')!, now)).toBe(true);
-      expect(en('c')!.x).toBeCloseTo(x0, 5);
+      // ★§34-12: 叩きつけで相手の位置そのものが背中側(プレイヤーの反対側)へ移り、浮いて降りた後もそこに居る。
+      const pc = useGameStore.getState().player.x + useGameStore.getState().player.width / 2;
+      const side0 = Math.sign(x0 + en('c')!.width / 2 - pc);
+      expect(Math.sign(en('c')!.x + en('c')!.width / 2 - pc)).toBe(-side0);
+      const xAfter = en('c')!.x;
+      advance(1200);
+      expect(brawlerAirborne(en('c')!, now)).toBe(false);
+      expect(en('c')!.x).toBeCloseTo(xAfter, 5);
       if (type === 'scarecrow') expect(en('c')!.health).toBe(hp0); // 案山子は体力が減らない(倒れない的)
     });
   }
@@ -194,7 +211,7 @@ describe('§34-7 密着の構え', () => {
     advance(BRAWLER_CONTACT_GRAB_MS + 50);
     expect(br().suplexAt).toBeDefined();
     expect(brawlerAirborne(en('c')!, now)).toBe(true);
-    expect(en('c')!.x).toBeCloseTo(x0, 5);
+    expect(Math.sign(en('c')!.x - x0)).toBeLessThan(0); // §34-12: 相手は背中側(右に居た相手は左)へ移る
     expect(feed()).toEqual(['tech:suplex']);
   });
   it('ボス級に密着して構え=蹴りバク宙(相手から離れて下がる・着地で何でも出せる)', () => {
@@ -272,6 +289,10 @@ describe('§34-7 密着の構え', () => {
         advance(BRAWLER_CONTACT_FREEZE_MS + BRAWLER_CONTACT_GRAB_MS + 30);
         for (let k = 0; k < 300 && br().phase !== 'idle'; k++) advance(10);
         advance(gap);
+        // §34-12: 前の叩きつけで相手は反対側へ移った=もう一度密着させる(移った側のまま、体の縁どうし 4px)。
+        { const p0 = useGameStore.getState().player, c0 = en('c')!;
+          const nx = c0.x + c0.width / 2 < p0.x + p0.width / 2 ? p0.x - c0.width - 4 : p0.x + p0.width + 4;
+          useGameStore.setState(st => ({ enemies: st.enemies.map(x => (x.id === 'c' ? { ...x, x: nx, y: p0.y + p0.height / 2 - x.height / 2 } : x)) })); }
         useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 9 } }, skillProcFeed: [] }));
         expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
         const b = br();

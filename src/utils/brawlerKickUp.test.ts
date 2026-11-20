@@ -19,7 +19,7 @@ import {
   isBrawlerGuardingAt, brawlerDistTo, BRAWLER_SUPLEX_RISE_MS, BRAWLER_SUPLEX_HOLD_MS, BRAWLER_SUPLEX_RETURN_MS, BRAWLER_SUPLEX_ARCH, BRAWLER_GRAB_LEAN,
   brawlerThrowSwing, BRAWLER_THROW_SWING_MS, BRAWLER_THROW_SETTLE_MS, brawlerGrabGlow, brawlerGrabZoom, BRAWLER_GRAB_ZOOM, BRAWLER_GRAB_MS,
   brawlerGuardCancelGlow, brawlerFlipArc, BRAWLER_FLIPKICK_APEX, brawlerSuplexSwing, brawlerSuplexLanding, BRAWLER_SUPLEX_SWING_LIFT_PX,
-  brawlerHeelStandAt, brawlerKickUpSnap, brawlerThrowSpin, brawlerThrowSpinAtHit, BRAWLER_THROW_SPIN_TURNS, BRAWLER_KICKUP_ROT_PEAK, BRAWLER_KICKUP_ROT_UP, BRAWLER_KICKUP_ROT_DOWN, BRAWLER_HEEL_ROT_UP, BRAWLER_HEEL_ROT_DOWN,
+  brawlerHeelStandAt, brawlerKickUpSnap, brawlerAirSuplexRise, BRAWLER_AIR_SUPLEX_RISE_PX, BRAWLER_AIR_SUPLEX_RISE_MS, BRAWLER_AIR_SUPLEX_HANG_MS, BRAWLER_AIR_SUPLEX_FALL_MS, brawlerThrowSpin, brawlerThrowSpinAtHit, BRAWLER_THROW_SPIN_TURNS, BRAWLER_KICKUP_ROT_PEAK, BRAWLER_KICKUP_ROT_UP, BRAWLER_KICKUP_ROT_DOWN, BRAWLER_HEEL_ROT_UP, BRAWLER_HEEL_ROT_DOWN,
 } from './brawler';
 import { spawnEnemyAt } from './enemyUtils';
 import { playerSuperArmorActive } from './superArmor';
@@ -344,6 +344,31 @@ describe('§34-1 蹴り上げの絵(踵落としの上下逆・慣性)', () => {
   });
 });
 
+describe('§34-11 空中のスープレックスの上昇(絵だけ)', () => {
+  it('減速しながら上がり、頂点で一瞬止まり、反りの間はその高さ・叩きつけた後はプレイヤーは加速して落ち、相手は0', () => {
+    expect(brawlerAirSuplexRise(-1)).toBe(0);
+    expect(brawlerAirSuplexRise(0)).toBeCloseTo(0, 9);
+    const up = BRAWLER_AIR_SUPLEX_RISE_MS - BRAWLER_AIR_SUPLEX_HANG_MS;
+    let prev = 0, prevD = Infinity;
+    for (let el = 10; el <= up; el += 10) { const v = brawlerAirSuplexRise(el); expect(v).toBeGreaterThan(prev); expect(v - prev).toBeLessThanOrEqual(prevD + 1e-9); prevD = v - prev; prev = v; } // 減速
+    expect(brawlerAirSuplexRise(up)).toBeCloseTo(BRAWLER_AIR_SUPLEX_RISE_PX, 6);
+    expect(brawlerAirSuplexRise(BRAWLER_AIR_SUPLEX_RISE_MS - 1)).toBe(BRAWLER_AIR_SUPLEX_RISE_PX); // 頂点で止まる
+    const slam = BRAWLER_AIR_SUPLEX_RISE_MS + BRAWLER_SUPLEX_RISE_MS;
+    expect(brawlerAirSuplexRise(slam - 1)).toBe(BRAWLER_AIR_SUPLEX_RISE_PX); // 反りの間はその高さ
+    expect(brawlerAirSuplexRise(slam + 1, false)).toBe(0);
+    let p2 = BRAWLER_AIR_SUPLEX_RISE_PX, d2 = 0;
+    for (let el = slam + 20; el < slam + BRAWLER_AIR_SUPLEX_FALL_MS; el += 20) { const v = brawlerAirSuplexRise(el); expect(v).toBeLessThan(p2); expect(p2 - v).toBeGreaterThanOrEqual(d2 - 1e-9); d2 = p2 - v; p2 = v; } // 加速して落ちる
+    expect(brawlerAirSuplexRise(slam + BRAWLER_AIR_SUPLEX_FALL_MS)).toBe(0);
+  });
+  it('姿: 上がり始めた状態ではプレイヤーの体の跳びに上昇が足される(持っていない状態は今のまま)', () => {
+    const s0 = brawlerStartTech(kickHit(2, true).s, 'kick', 2000, 3, false, false, true);
+    const t = 2000 + s0.windupMs + 60;
+    const a = brawlerPoseAt(s0, t)!;
+    const b = brawlerPoseAt({ ...s0, airSuplexRiseAt: t - BRAWLER_AIR_SUPLEX_RISE_MS }, t)!;
+    expect((b.jump ?? 0) - (a.jump ?? 0)).toBeCloseTo(BRAWLER_AIR_SUPLEX_RISE_PX, 6);
+  });
+});
+
 describe('B15 空中投げで飛ぶ敵の回り(絵だけ)', () => {
   const T = 220;
   it('飛ぶ間: 止まった所から加速して飛ぶ向きへ回る・ぶつかる瞬間に1.5回(逆さま)', () => {
@@ -445,7 +470,7 @@ describe('§34-7 密着の構え(掴み→スープレックス/蹴りバク宙)
     expect(r.brLiftPeak).toBeGreaterThan(0);
     expect(r.brLiftBudget).toBe(BRAWLER_JUGGLE_BUDGET.mob - 2);
   });
-  it('スープレックスの投げ越し(絵だけ): 頭の上を越えて背中側へ・頂点で逆さまに叩きつけ・起き上がりながら元の位置へ', () => {
+  it('スープレックスの投げ越し(絵だけ): 頭の上を越えて背中側へ・頂点で逆さまに叩きつけ・その場で起き上がる(§34-12: 位置は store が着地点へ移す)', () => {
     const mx = -80, my = 0;
     expect(brawlerSuplexSwing(-1, mx, my)).toBeNull();
     const a = brawlerSuplexSwing(0, mx, my)!;
@@ -453,21 +478,30 @@ describe('§34-7 密着の構え(掴み→スープレックス/蹴りバク宙)
     const mid = brawlerSuplexSwing(BRAWLER_SUPLEX_RISE_MS * Math.SQRT1_2, mx, my)!; // 運ぶ量の半分=頭の真上
     expect(mid.lift).toBeCloseTo(BRAWLER_SUPLEX_SWING_LIFT_PX, 6);
     expect(mid.dx).toBeCloseTo(mx / 2, 6);
+    const pre = brawlerSuplexSwing(BRAWLER_SUPLEX_RISE_MS - 0.001, mx, my)!;
+    expect(pre.dx).toBeCloseTo(mx, 1); expect(Math.abs(pre.rot)).toBeCloseTo(Math.PI, 3);
+    expect(pre.rot).toBeLessThan(0); // 左へ運ぶ=反時計回り
     const slam = brawlerSuplexSwing(BRAWLER_SUPLEX_RISE_MS, mx, my)!;
-    expect(slam.dx).toBeCloseTo(mx, 6); expect(slam.lift).toBeCloseTo(0, 6); expect(Math.abs(slam.rot)).toBeCloseTo(Math.PI, 6);
-    expect(slam.rot).toBeLessThan(0); // 左へ運ぶ=反時計回り
+    expect(slam.dx).toBe(0); expect(slam.dy).toBe(0); expect(Math.abs(slam.rot)).toBeCloseTo(Math.PI, 6); // 叩きつけた後=相手はもう着地点に居る
     const end = BRAWLER_SUPLEX_RISE_MS + BRAWLER_SUPLEX_HOLD_MS + BRAWLER_SUPLEX_RETURN_MS;
     const last = brawlerSuplexSwing(end - 0.01, mx, my)!;
-    expect(last.dx).toBeCloseTo(0, 2); expect(Math.abs(last.rot)).toBeCloseTo(2 * Math.PI, 2);
+    expect(last.dx).toBe(0); expect(Math.abs(last.rot)).toBeCloseTo(2 * Math.PI, 2);
     expect(brawlerSuplexSwing(end, mx, my)).toBeNull();
   });
-  it('投げ越しの着地点=プレイヤーの背中側(相手の反対・30〜90px)', () => {
-    const r = brawlerSuplexLanding(0, 0, 40, 0, 1);
-    expect(r.mx).toBeCloseTo(-80, 6); expect(r.my).toBeCloseTo(0, 6);
-    const far = brawlerSuplexLanding(0, 0, 200, 0, 1);
-    expect(far.mx).toBeCloseTo(-290, 6);
-    const same = brawlerSuplexLanding(0, 0, 0, 0, 1);
-    expect(same.mx).toBeCloseTo(-30, 6);
+  it('投げ越しの着地点=プレイヤーの左右の反対側・相手の体の幅より遠く(真上・真下の相手も左右へ)', () => {
+    const r = brawlerSuplexLanding(0, 0, 40, 0, 1, 36);
+    const back = 40 + 36 * 0.9;
+    expect(r.mx).toBeCloseTo(-back - 40, 6); expect(r.my).toBeCloseTo(0, 6);
+    const l = brawlerSuplexLanding(0, 0, -40, 0, 1, 36);
+    expect(l.mx).toBeCloseTo(back + 40, 6);
+    // ほぼ真上: 左右は今向いている向きの反対・上下は反対側へ少し
+    const up = brawlerSuplexLanding(0, 0, 3, -40, 1, 36);
+    expect(3 + up.mx).toBeCloseTo(-back, 6);
+    expect(-40 + up.my).toBeCloseTo(20, 6);
+    const upL = brawlerSuplexLanding(0, 0, 3, -40, -1, 36);
+    expect(3 + upL.mx).toBeCloseTo(back, 6);
+    // 上限 130
+    expect(brawlerSuplexLanding(0, 0, 200, 0, 1, 36).mx).toBeCloseTo(-130 - 200, 6);
   });
   it('技の行: サマーソルト(向き=上・社長命名2026-11-19)', () => {
     expect(BRAWLER_TECH_NAMES['tech:flipkick']).toEqual({ name: 'サマーソルト', dir: 'up' });
