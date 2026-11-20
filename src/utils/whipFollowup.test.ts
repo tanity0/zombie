@@ -1,8 +1,8 @@
 // 鞭の追加攻撃(research/WHIP_FOLLOWUP.md)の純関数: 向きの帯・受付の窓・引き寄せの止まる位置・叩きつけの対象。
 import { describe, it, expect } from 'vitest';
 import {
-  classifyWhipFlick, isWhipFollowupOpen, whipPullTarget, whipPullProgress, whipPullPosAt, whipSlamMembers,
-  WHIP_FOLLOWUP_WINDOW_MS, WHIP_PULL_GAP_PX, WHIP_SLAM_WIDTH_PX,
+  classifyWhipFlick, isWhipFollowupOpen, whipPullTarget, whipPullProgress, whipPullPosAt, whipSlamTargets, whipFollowupAction, isWhipFollowupLocked,
+  WHIP_FOLLOWUP_WINDOW_MS, WHIP_PULL_GAP_PX,
 } from './whipFollowup';
 import { flickBand, isFlickFollowupOpen, FLICK_FOLLOWUP_WINDOW_MS } from './flickFollowup';
 
@@ -37,7 +37,7 @@ describe('向きの帯(振りの向きとのなす角)', () => {
 });
 
 describe('受付の窓', () => {
-  const w = { hitAt: 1000, dirX: 1, dirY: 0, hitIds: ['a'], used: false };
+  const w = { hitAt: 1000, dirX: 1, dirY: 0, hitIds: ['a'], used: false, stage: 'hit' as const };
   it('当たった瞬間から300msの間だけ開く', () => {
     expect(WHIP_FOLLOWUP_WINDOW_MS).toBe(FLICK_FOLLOWUP_WINDOW_MS);
     expect(isWhipFollowupOpen(w, 999)).toBe(false);
@@ -83,14 +83,35 @@ describe('引き寄せの動き(慣性)', () => {
   });
 });
 
-describe('叩きつけの対象', () => {
-  const box = (id: string, cx: number, cy: number) => ({ id, x: cx - 10, y: cy - 10, width: 20, height: 20 });
-  it('帯(長さ=届く距離・幅90)に掛かる敵と、帯の外でも1撃目の当たりの敵', () => {
-    const es = [box('in', 100, 0), box('edge', 100, WHIP_SLAM_WIDTH_PX / 2 + 5), box('wide', 100, 80), box('far', 200, 0), box('behind', -60, 0), box('first', 100, 160)];
-    const ids = whipSlamMembers(es, 0, 0, 1, 0, 150, ['first']);
-    expect(ids).toEqual(['in', 'edge', 'first']);
+describe('段と向き(1段目=反対で浮かせつつ引き寄せ / 2段目=進行方向で叩き落とし)', () => {
+  it('1段目は反対だけ・2段目は進行方向だけ。1段目の進行方向(引き寄せを飛ばした叩きつけ)と横は何も起きない', () => {
+    expect(whipFollowupAction('hit', 'pull')).toBe('pull');
+    expect(whipFollowupAction('hit', 'slam')).toBeNull();
+    expect(whipFollowupAction('hit', null)).toBeNull();
+    expect(whipFollowupAction('pulled', 'slam')).toBe('slam');
+    expect(whipFollowupAction('pulled', 'pull')).toBeNull();
+    expect(whipFollowupAction('pulled', null)).toBeNull();
   });
-  it('重複しない', () => {
-    expect(whipSlamMembers([box('a', 50, 0)], 0, 0, 1, 0, 150, ['a', 'a'])).toEqual(['a']);
+});
+
+describe('叩き落としの対象', () => {
+  const e = (id: string, o: Partial<{ alive: boolean; airborne: boolean; boss: boolean }> = {}) => ({ id, alive: true, airborne: true, boss: false, ...o });
+  it('引き寄せた敵のうち、生きていてまだ浮いている敵。ボス級は浮きを問わない。受付に無い敵は外す', () => {
+    const es = [e('a'), e('landed', { airborne: false }), e('dead', { alive: false }), e('boss', { airborne: false, boss: true }), e('other')];
+    expect(whipSlamTargets(es, ['a', 'landed', 'dead', 'boss'])).toEqual(['a', 'boss']);
+  });
+  it('全員着地・倒れたら空(何も起きない)', () => {
+    expect(whipSlamTargets([e('a', { airborne: false })], ['a'])).toEqual([]);
+  });
+});
+
+describe('位置と向きの固定', () => {
+  const w = { hitAt: 1000, dirX: 1, dirY: 0, hitIds: ['a'], used: false, stage: 'pulled' as const, lockUntil: 1300 };
+  it('止める終わりの手前まで固定・過ぎたら外れる・止める終わりが無ければ固定しない', () => {
+    expect(isWhipFollowupLocked(w, 1000)).toBe(true);
+    expect(isWhipFollowupLocked(w, 1299)).toBe(true);
+    expect(isWhipFollowupLocked(w, 1300)).toBe(false);
+    expect(isWhipFollowupLocked({ ...w, lockUntil: undefined }, 1100)).toBe(false);
+    expect(isWhipFollowupLocked(null, 1100)).toBe(false);
   });
 });

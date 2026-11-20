@@ -42,7 +42,7 @@ import {
 import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE, MOLOTOV_FIRE_RADIUS,
   MOLOTOV_IGNITE_BURN_MS,
-  isEnemyInGroundFire, isBoxInGroundFire,
+  isEnemyInGroundFire, isBoxInGroundFire, groundFiresWithLiveRadius,
 } from '../utils/molotov';
 // SKILL_BUILD_REDESIGN.md §28(B7): 眠り9種の判定叩き台(純関数群)。
 import {
@@ -308,10 +308,11 @@ import { settleEpisode, type CounterReachShape } from '../utils/habitEpisode';
 import { ZOOM_MIN_ABS, isPointInZoomedViewport, zoomedViewportBounds } from '../utils/cameraZoom';
 import { meleeImpactPoint, meleeNumberPoint, bandBoxOverlap } from '../utils/meleeImpact';
 import {
-  isWhipFollowupOpen, classifyWhipFlick, whipPullTarget, whipPullPosAt, whipSlamMembers,
-  WHIP_PULL_MS, WHIP_SLAM_WIDTH_PX, WHIP_PULL_BLOCK_EPS_PX, WHIP_PULL_DUST_INTERVAL_MS, type WhipFollowupWindow,
+  isWhipFollowupOpen, classifyWhipFlick, whipPullTarget, whipPullPosAt, whipSlamTargets, whipFollowupAction, isWhipFollowupLocked,
+  WHIP_PULL_MS, WHIP_SLAM_DAMAGE_MULT, WHIP_SLAM_HITSTOP_MS, WHIP_FOLLOWUP_WINDOW_MS, WHIP_PULL_BLOCK_EPS_PX, WHIP_PULL_DUST_INTERVAL_MS, type WhipFollowupWindow,
 } from '../utils/whipFollowup';
 import { isFlickFollowupOpen } from '../utils/flickFollowup';
+import { whipRopeTotalMs } from '../utils/whipSwingMotion';
 import {
   tsubameAccepts, tsubamePath, tsubameDashMs, nextKatanaCuts, triggersSatsujin, satsujinAngles, type TsubameWindow,
   SATSUJIN_HITS, SATSUJIN_STRIKE_MS, SATSUJIN_FADE_OUT_MS, SATSUJIN_HALF_LEN_PX, SATSUJIN_FINAL_HITSTOP_MS,
@@ -2944,24 +2945,40 @@ const whipPullable = (e: Enemy): boolean =>
   && !isGuardianPhantom(e.type) && !isHiddenBoss(e.type) && !isBountyType(e.type) && !isMutantHero(e.type)
   && !isLibertyBearer(e.type) && !isHordeFollower(e) && !isLabCrawlerProxyType(e.type) && !e.labBait?.active
   && e.aiPhase !== 'jump' && e.aiPhase !== 'charge' && !e.escortToss;
-/** 反対フリック=引き寄せ(§2)。当たった敵(押されて飛んでいる最中も)の押しを打ち消し、プレイヤーの手前へ寄せる(追加ダメージなし)。 */
+/**
+ * 1段目: 反対フリック=浮かせつつ引き寄せる(社長「ヒットした瞬間反対にフリックで浮かせつつ引き寄せる」)。
+ * 当たった敵(押されて飛んでいる最中も)の押しを打ち消し、一閃と同じ打ち上げ(格闘の4段目)で浮かせて、プレイヤーの手前へ寄せる(追加ダメージなし)。
+ * ボス級は浮かせず・動かさない(区分)。引き寄せた瞬間から2段目(叩き落とし)の受付を開き、その間はプレイヤーの位置と向きを止める。
+ */
 const whipFollowupPull = (get: () => GameState, set: WhipFollowupSet, w: WhipFollowupWindow, now: number): void => {
   const ids = new Set(w.hitIds);
   const pulledIds: string[] = [];
+  const slamIds: string[] = []; // 2段目の対象=浮かせた敵+当たっていたボス級(浮かないが叩き落としの2倍は当たる)
+  const gt = get().gameTime;
   set(state => ({
     enemies: state.enemies.map(e => {
-      if (!ids.has(e.id) || isCorpse(e) || isUntouchable(e) || e.health <= 0 || !whipPullable(e)) return e;
+      if (!ids.has(e.id) || isCorpse(e) || isUntouchable(e) || e.health <= 0) return e;
+      if (BRC.brawlerEnemyClass(e) === 'boss') { slamIds.push(e.id); return e; }
+      if (!whipPullable(e)) return e;
+      const lp = issenLiftPatch(e, e, now, gt);
+      const lifted = !!lp && (lp.brLiftUntil ?? 0) > now;
       const to = whipPullTarget(state.player, e);
-      if (!to) return e; // もう手前にいる=動かさない
-      pulledIds.push(e.id);
+      if (lifted) slamIds.push(e.id);
+      if (to) pulledIds.push(e.id);
+      if (!to && !lp) return e;
       return {
         ...e,
-        whipPull: { fromX: e.x, fromY: e.y, toX: to.x, toY: to.y, startAt: now, endAt: now + WHIP_PULL_MS },
-        // 押しの速さは打ち消して引き寄せに置き換える(§2)。
+        ...(lp ?? {}),
+        ...(to ? { whipPull: { fromX: e.x, fromY: e.y, toX: to.x, toY: to.y, startAt: now, endAt: now + WHIP_PULL_MS } } : {}),
+        // 押しの速さは打ち消して引き寄せに置き換える。
         knockbackVx: 0, knockbackVy: 0, knockbackUntil: now, knockbackShoveUntil: undefined,
         knockbackStopFor: undefined, knockbackStopMs: undefined, vx: 0, vy: 0,
       };
     }),
+    // 2段目の受付(引き寄せた瞬間から同じ長さ)。対象が居なければ閉じる。受付の間はプレイヤーの位置と向きを止める。
+    whipFollowup: slamIds.length > 0
+      ? { hitAt: now, dirX: w.dirX, dirY: w.dirY, hitIds: slamIds, used: false, stage: 'pulled', lockUntil: now + WHIP_FOLLOWUP_WINDOW_MS }
+      : { ...w, used: true, lockUntil: now + WHIP_PULL_MS },
   }));
   const g = get();
   const p = g.player;
@@ -2983,79 +3000,76 @@ const whipFollowupPull = (get: () => GameState, set: WhipFollowupSet, w: WhipFol
       g.spawnImageMark(ecx, e.y + e.height - 2, 'fx/dust-puff', {
         scale: 0.42, scaleY: 0.55, duration: 620, tint: 0x9a8b7a, alpha: 0.75, moveX: -((pcx - ecx) / d) * 34, moveY: -6, fadeFrom: 0.3,
       });
+      // 打ち上げた足元から砂埃が上がる。
+      g.spawnImageMark(ecx, e.y + e.height - 2, 'fx/dust-puff', { scale: 0.32, scaleY: 0.9, duration: 640, tint: 0x9a8b7a, alpha: 0.65, moveY: -30, fadeFrom: 0.3 });
     }
   }
   // 音: 鞭の「パシッ」を高く・巻き取りの振り音を速く。
   void import('../audio/audioManager').then(m => { m.playSfx('whip-hit', 0.85, undefined, 1.3); m.playSfx('whip-swing', 0.6, 160, 1.55); });
 };
-/** 進行方向フリック=叩きつけ(§3)。帯+1撃目の当たりの敵に鞭の1撃目と同じ威力を当て、押さずに浮かせる(格闘の浮きの規則)。 */
-const whipFollowupSlam = (get: () => GameState, set: WhipFollowupSet, w: WhipFollowupWindow, now: number): void => {
+/** 2段目の対象(まだ浮いている引き寄せた敵・ボス級)。居なければ空=叩き落としは出ない。 */
+const whipSlamTargetIds = (st: GameState, w: WhipFollowupWindow, now: number): string[] =>
+  whipSlamTargets(st.enemies.map(e => ({
+    id: e.id, alive: !isCorpse(e) && !isUntouchable(e) && e.health > 0,
+    airborne: BRC.brawlerAirborne(e, now), boss: BRC.brawlerEnemyClass(e) === 'boss',
+  })), w.hitIds);
+/**
+ * 2段目: 進行方向フリック=浮いている敵を叩き落とし、鞭の1撃目の2倍のダメージ(社長「浮いてる敵を再度叩き落とし、2倍ダメージを与える」)。
+ * 叩き落としは格闘の5段目(空中から叩き落とす)の浮き。重い衝撃(ヒットストップ・揺れ・地割れ・砂埃)。ボス級は浮かないので、当たりの2倍だけ。
+ */
+const whipFollowupSlam = (get: () => GameState, set: WhipFollowupSet, w: WhipFollowupWindow, ids: string[], now: number): void => {
   const st = get();
   const p = st.player;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
-  const ux = w.dirX, uy = w.dirY;
-  const reach = WHIP_LENGTH_BY_LEVEL[whipLevel(p)];
-  const cand = st.enemies.filter(e => !isCorpse(e) && !isUntouchable(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e)));
-  const ids = whipSlamMembers(cand, pcx, pcy, ux, uy, reach, w.hitIds);
-  // 絵(当たりの有無に関わらず): 鞭を頭上から振り下ろして(縦の鞭)、帯の上を打つ(地面の鞭)。帯に沿って地割れと砂埃。
-  const footY = p.y + p.height - 2;
-  st.spawnEffect({
-    kind: 'whip', id: `fx-whipslam-up-${now}`, fromX: pcx - ux * 10, fromY: pcy - 150,
-    toX: pcx + ux * reach * 0.6, toY: footY + uy * reach * 0.6, halfWidth: WHIP_SLAM_WIDTH_PX / 2,
-    color: 'rgba(186,230,253,0.95)', createdAt: now, duration: Math.round(WHIP_DRAW_MS * 0.55),
-  });
-  st.spawnEffect({
-    kind: 'whip', id: `fx-whipslam-${now}`, fromX: pcx, fromY: footY, toX: pcx + ux * reach, toY: footY + uy * reach,
-    halfWidth: WHIP_SLAM_WIDTH_PX / 2, color: 'rgba(186,230,253,0.95)', createdAt: now, duration: WHIP_DRAW_MS,
-  });
-  st.spawnEffect({
-    kind: 'trail', id: `fx-whipslam-glow-${now}`, fromX: pcx, fromY: footY, toX: pcx + ux * reach, toY: footY + uy * reach,
-    color: 'rgba(125,211,252,1)', createdAt: now, duration: WHIP_DRAW_MS,
-  });
-  const ang = Math.atan2(uy, ux);
-  const px = -uy, py = ux; // 帯に直交
-  for (const [k, sc] of [[0.3, 0.7], [0.62, 0.95], [0.95, 1.15]] as const) {
-    const gx = pcx + ux * reach * k, gy = footY + uy * reach * k;
-    st.spawnImageMark(gx, gy, 'fx/ground-crack', { scale: sc, scaleY: 0.45, rot: ang * 0.25, duration: 1400, fadeFrom: 0.55, noPop: true, alpha: 0.9, ground: true });
-    st.spawnImageMark(gx + px * 14, gy + py * 6, 'fx/dust-puff', { scale: 0.34 * sc, scaleY: 0.6, duration: 820, tint: 0x9a8b7a, alpha: 0.7, moveX: px * 40, moveY: py * 14 - 10, fadeFrom: 0.3 });
-    st.spawnImageMark(gx - px * 14, gy - py * 6, 'fx/dust-puff', { scale: 0.3 * sc, scaleY: 0.6, duration: 760, tint: 0x8a7b6a, alpha: 0.65, moveX: -px * 40, moveY: -py * 14 - 10, fadeFrom: 0.3 });
-  }
-  st.spawnRing(pcx + ux * reach * 0.6, footY + uy * reach * 0.6, 14, reach * 0.75, 'rgba(214,196,160,0.75)', 4, 420, true);
-  // 音: 鞭を重く(低く)+地面の音。
-  void import('../audio/audioManager').then(m => {
-    m.playSfx('whip-swing', 0.9, undefined, 0.6);
-    m.playSfx('heavy-impact', 0.5);
-    m.playSfx('jump-land', 0.8, 220, 0.85);
-  });
-  if (ids.length === 0) return;
-  const before = new Map(get().enemies.filter(e => ids.includes(e.id)).map(e => [e.id, e] as const));
-  const res = get().performWhipStrike(ids); // 威力=鞭の1撃目と同じ(クリ・処刑・コンボ・報酬・数字も同じ経路)
+  const before = new Map(st.enemies.filter(e => ids.includes(e.id)).map(e => [e.id, e] as const));
+  // 威力=鞭の1撃目の2倍(クリ・処刑・コンボ・報酬・数字も同じ経路)。敵への打撃だけに掛かる上乗せ欄へ一時的に2倍を載せる(被弾反撃と同じ作法)。
+  const prevMult = p.shukuchiStrikeMult;
+  set(state => ({ player: { ...state.player, shukuchiStrikeMult: (prevMult ?? 1) * WHIP_SLAM_DAMAGE_MULT } }));
+  const res = get().performWhipStrike(ids);
+  set(state => ({ player: { ...state.player, shukuchiStrikeMult: prevMult } }));
   if (res.hits > 0) set(() => ({ whipHitFxAt: Date.now() }));
   const hit = new Set(res.hitIds ?? []);
-  const gt = get().gameTime;
   set(state => ({
     enemies: state.enemies.map(e => {
       if (!hit.has(e.id) || isCorpse(e)) return e;
-      // 押しはしない(真上): この打撃の押しと、1撃目の押し(飛んでいる最中)の速さを打ち消す。引き寄せ中なら止める。
+      // 押しはしない(真下へ): この打撃の押しを打ち消す。引き寄せ中なら止める。
       const base: Enemy = { ...e, knockbackVx: 0, knockbackVy: 0, whipPull: undefined };
       const pre = before.get(e.id) ?? e;
-      if (!counterLiftApplies(pre, e.health, gt)) return base; // 技の最中は浮かせない・技は取り消さない(ナイフ・カウンターの浮きと同じ)
-      const jp = brawlerJugglePatch(base, BRC.brawlerEnemyClass(base), knifeLiftMove(BRC.brawlerAirborne(base, now)), now, false);
-      if (!jp) return base;
-      const out: Enemy = { ...base, ...jp };
-      if (jp.brLiftUntil !== undefined && jp.brLiftUntil > now) out.brBlastNoLiftUntil = knifeNoLiftUntil(pre, jp.brLiftUntil, now);
-      return out;
+      if (!BRC.brawlerAirborne(pre, now)) return base; // ボス級(浮かない)=当たりだけ
+      const jp = brawlerJugglePatch(base, BRC.brawlerLiftWeightClass(base, BRC.brawlerEnemyClass(base)), 's5', now, false, true);
+      return jp ? { ...base, ...jp } : base;
     }),
+    whipFollowup: { ...w, used: true, lockUntil: now + WHIP_SLAM_HITSTOP_MS },
   }));
-  // 当たった敵の足元から砂埃が上がる。
-  const g2 = get();
-  for (const id of hit) {
-    const e = g2.enemies.find(en => en.id === id);
+  // 重い衝撃: 止め+揺れ(ヒットストップ=時間を止めるだけ・スローではない)。
+  const g = get();
+  let cx = 0, cy = 0, n = 0;
+  for (const id of ids) {
+    const e = g.enemies.find(en => en.id === id);
     if (!e) continue;
     const fx = e.x + e.width / 2, fy = e.y + e.height - 2;
-    g2.spawnImageMark(fx, fy, 'fx/dust-puff', { scale: 0.36, scaleY: 0.9, duration: 760, tint: 0x9a8b7a, alpha: 0.7, moveY: -34, fadeFrom: 0.3 });
-    g2.spawnImageMark(fx, fy + 2, 'fx/dust-ring', { scale: 0.45, scaleY: 0.4, duration: 520, tint: 0x9a8b7a, alpha: 0.6, noPop: true, fadeFrom: 0.2, ground: true });
+    cx += fx; cy += fy; n++;
+    // 鞭を頭上から振り下ろして叩き付ける(縦の鞭)+足元の地割れ・砂埃(派手さの絵=判定より大きく)。
+    g.spawnEffect({
+      kind: 'whip', id: `fx-whipslam-${id}-${now}`, fromX: pcx, fromY: pcy - 140, toX: fx, toY: fy,
+      halfWidth: WHIP_HIT_HALF_WIDTH, color: 'rgba(186,230,253,0.95)', createdAt: now, duration: WHIP_DRAW_MS,
+    });
+    g.spawnImageMark(fx, fy, 'fx/ground-crack', { scale: 1.2, scaleY: 0.5, duration: 1600, fadeFrom: 0.55, noPop: true, alpha: 0.95, ground: true });
+    g.spawnImageMark(fx, fy + 2, 'fx/dust-ring', { scale: 0.75, scaleY: 0.42, duration: 620, tint: 0x9a8b7a, alpha: 0.7, noPop: true, fadeFrom: 0.2, ground: true });
+    for (const side of [-1, 1]) {
+      g.spawnImageMark(fx + side * 16, fy, 'fx/dust-puff', { scale: 0.5, scaleY: 0.55, duration: 900, tint: 0x9a8b7a, alpha: 0.75, moveX: side * 60, moveY: -10, fadeFrom: 0.3 });
+    }
+    g.spawnImageMark(fx, fy - 6, 'fx/dust-puff', { scale: 0.42, scaleY: 0.95, duration: 760, tint: 0x9a8b7a, alpha: 0.6, moveY: -40, fadeFrom: 0.3 });
+    g.spawnRing(fx, fy, 10, 110, 'rgba(214,196,160,0.85)', 5, 460, true);
   }
+  if (n > 0) g.triggerHitImpact(WHIP_SLAM_HITSTOP_MS, 320, 11, 0, cx / n, cy / n);
+  // 音: 鞭を重く(低く)+地面の音。
+  void import('../audio/audioManager').then(m => {
+    m.playSfx('whip-swing', 0.9, undefined, 0.6);
+    m.playSfx('whip-hit', 1, undefined, 0.7);
+    m.playSfx('heavy-impact', 0.7);
+    m.playSfx('jump-land', 0.9, 220, 0.8);
+  });
 };
 // ---- ★刀の一閃の浮き・燕返しの吹き飛び・切り傷・殺陣(research/KATANA_TSUBAME.md)。判定は utils/katanaTsubame の純関数。 ----
 /** 一閃の浮きの段=格闘の4段目の打ち上げ(赤カウンターの浮きと同じ・叩き台)。 */
@@ -10394,7 +10408,7 @@ interface GameState {
   /** research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石と花(見た目+墓石は伸び切ったら壁=world/wraithGraves)。 */
   wraithGrowths: WraithGrowth[];
   setSignalStrikes: (strikes: readonly SignalStrike[]) => void;
-  spawnGroundFire: (x: number, y: number, ghostId?: string, radius?: number, masteryKey?: MasteryKey, masteryMult?: number) => void; // masteryMult: 守護霊が置いた火の熟練度の倍率(守護霊の熟練度の発注・本人は省く) // masteryKey: 熟練度の出どころ(火炎瓶=molotov・延焼弾=loadout。守護霊=none は ghostId から) // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー。radius=B7延焼弾Lv3の炎床(大)専用の半径上書き・未指定=molotov既定)
+  spawnGroundFire: (x: number, y: number, ghostId?: string, radius?: number, masteryKey?: MasteryKey, masteryMult?: number, spreadRadius?: number) => void; // spreadRadius: 火炎瓶の延焼が広がり切る半径(置いた時点のレベル・research/MOLOTOV_SPREAD.md。未指定=広がらない) // masteryMult: 守護霊が置いた火の熟練度の倍率(守護霊の熟練度の発注・本人は省く) // masteryKey: 熟練度の出どころ(火炎瓶=molotov・延焼弾=loadout。守護霊=none は ghostId から) // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー。radius=B7延焼弾Lv3の炎床(大)専用の半径上書き・未指定=molotov既定)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
   // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾(incendiary-round)の燃焼DoT。命中した敵個体が持つ
   // burnUntil/burnDpsTickを毎フレーム消化する(groundFiresとは別チャンネル=床ではなく敵に付く状態異常)。
@@ -10524,7 +10538,7 @@ interface GameState {
   updateAlchemyChannel: (startedAt: number) => void;
   /** 錬金術の溜めのリズム(research/ALCHEMY_RHYTHM.md): 時刻を進める(サークルを出す/過ぎたものを外れに)。溜めの間だけ毎フレーム。 */
   tickAlchemyRhythm: () => void;
-  /** 錬金術の溜めのリズムのタップ。溜めの間なら判定して true(=そのタップはリズムだけに使う・他の操作へ流さない)。 */
+  /** 錬金術の溜めのリズムのタップ(押した瞬間に呼ぶ)。溜めの間なら判定して true。判定するだけで、近接など指離しの操作は今までどおり出る。 */
   alchemyRhythmTap: () => boolean;
   summonAlchemy: () => void;
   updateSummons: (deltaTime: number) => void;
@@ -11982,7 +11996,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const swingFrozen = !kbActive && !lungeActive && !dashOv && !sliding
         && (((player.meleeSwingAt || 0) > 0 && swingSince >= 0 && swingSince < PLAYER_MELEE_SWING_MS)
           // ★格闘の段・技の間は動けない(戻りの間も・格闘ゲームの硬直=research/BRAWLER.md §2-4・§8-2)。詰め・跳び・蹴りは上の器。
-          || BR.isBrawlerBusy(player.brawler));
+          || BR.isBrawlerBusy(player.brawler)
+          // ★鞭の追加攻撃の最中(引き寄せ→叩き落とし)は位置も向きも止める(社長「この動作中はプレイヤーの位置と向きは固定」)。
+          || isWhipFollowupLocked(state.whipFollowup, kbNow));
       let vx: number, vy: number;
       if (kbActive) {
         // 持続時間は**その吹き飛び自身の値**で割る(技ごとに変わるため。未指定=従来の共通値)。
@@ -13134,6 +13150,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if ((sp.meleeSwingAt || 0) > 0 && swingSince >= 0 && swingSince < PLAYER_MELEE_SWING_MS) return;
     // 格闘の段・技の間も向きを変えない(向きは相手へ向けてある=§7-4)。
     if (BR.isBrawlerBusy(sp.brawler)) return;
+    if (isWhipFollowupLocked(get().whipFollowup, Date.now())) return; // 鞭の追加攻撃の最中は向きを変えない
     set(state => ({
       player: {
         ...state.player,
@@ -13236,6 +13253,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         createdAt: now,
         windupMs: meleeWindupMs(p),
         duration: meleeWindupMs(p) + WHIP_DRAW_MS,
+      });
+      // ★鞭の本体の動き(引く→溜め→打ち出し→パチン→たるみ・utils/whipSwingMotion)。パチン=前隙の終わり=判定の時刻。
+      get().spawnEffect({
+        kind: 'whiprope',
+        id: `fx-whiprope-${now}`,
+        angle: Math.atan2(ld.y / lmag, ld.x / lmag),
+        len: WHIP_LENGTH_BY_LEVEL[whipLevel(p)],
+        createdAt: now,
+        windupMs: meleeWindupMs(p),
+        duration: whipRopeTotalMs(meleeWindupMs(p)),
       });
     }
     return true;
@@ -13530,6 +13557,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         fromX: pcx, fromY: pcy, toX: tipX, toY: tipY,
         color: 'rgba(125,211,252,1)', createdAt: now, duration: WHIP_DRAW_MS,
       });
+      // ★パチン(社長「先端がパチンと鳴る」): 判定の瞬間に先端で短い閃光・小さな弾け・細い輪・わずかな揺れ(派手さの絵=判定なし)。音は既存の振る音(whipSwingFxAt)。
+      get().spawnGlow(tipX, tipY, GLOW_R_XS, 'rgba(255,255,255,', 120, true);
+      get().spawnBurst(tipX, tipY, '#f8fafc', 7, ux, uy);
+      get().spawnRing(tipX, tipY, 3, 26, 'rgba(255,255,255,0.95)', 2, 160, true);
+      get().triggerShake(70, 2.5, ux, uy);
       // 鞭でも松明・卵を破壊できる(線=カプセル範囲。ハリケーン有無に関わらず毎振り)。
       get().breakPropsAlong(pcx, pcy, ux, uy, reach, WHIP_HIT_HALF_WIDTH, swingBaseDamage * 2.5);
       // 鞭でもスキルの手榴弾を起爆できる(鞭の当たり範囲=線カプセル内の手榴弾を即起爆)。通常近接と同じ挙動。
@@ -13580,7 +13612,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const res = get().performWhipStrike(targetIds);
       if (res.hits > 0) set({ whipHitFxAt: Date.now() }); // 鞭命中音SEのトリガ
       // ★鞭の追加攻撃の受付(research/WHIP_FOLLOWUP.md §1): 1体以上に当たった瞬間から(実時間)。向き=この振りの向き。空振りは開かない(前の受付も閉じる)。
-      set({ whipFollowup: res.hits > 0 ? { hitAt: Date.now(), dirX: ux, dirY: uy, hitIds: res.hitIds ?? [], used: false } : null });
+      set({ whipFollowup: res.hits > 0 ? { hitAt: Date.now(), dirX: ux, dirY: uy, hitIds: res.hitIds ?? [], used: false, stage: 'hit' } : null });
       // チャージ加算(空振りは0)。閾値到達でハリケーン待機。
       if (res.hits > 0) {
         const threshold = whipChargeThreshold(player);
@@ -14739,7 +14771,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // computeFirstAidKitTick / isFirstAidKitEmpty(純関数)で決め、ここは結果を state へ書き込むだけ。
   setFirstAidKitState: (state) => set({ firstAidKitState: state }),
 
-  spawnGroundFire: (x, y, ghostId, radius, masteryKey, masteryMult) => {
+  spawnGroundFire: (x, y, ghostId, radius, masteryKey, masteryMult, spreadRadius) => {
     set(state => ({
       groundFires: [...state.groundFires, {
         id: `gfire-${groundFireSeq++}`, x, y, createdAt: state.gameTime,
@@ -14750,6 +14782,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾(incendiary-round)Lv3の炎床(大)専用の半径上書き。
         // 未指定=molotovの半径のまま(従来と1bit同じ)。
         ...(radius !== undefined ? { radius } : {}),
+        // research/MOLOTOV_SPREAD.md: 火炎瓶の延焼の広がり(置いた時点のレベルで確定)。未指定=広がらない。
+        ...(spreadRadius !== undefined ? { spreadRadius } : {}),
       }],
     }));
   },
@@ -14785,7 +14819,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const alreadyHit = new Set<string>(); // 主語をまたいでも二重取りしない(既存の「重なっても1回」と同じ)
     for (const ownerId of ownerIds) {
       const subject = (ownerId === undefined ? get().player : combatActorPlayer(ownerId)) ?? get().player;
-      const ownerFires = ownerIds.length === 1 ? aliveFires : aliveFires.filter(f => f.ownerGhostId === ownerId);
+      // research/MOLOTOV_SPREAD.md: 当たりの半径=その時点で灯っている半径(火炎瓶の火は広がる/縮む・他は固定)。
+      const ownerFires = groundFiresWithLiveRadius(ownerIds.length === 1 ? aliveFires : aliveFires.filter(f => f.ownerGhostId === ownerId), gameTime);
       if (ownerFires.length === 0) continue;
       // スキル: エクスプローダー(§6.10 M33④) = molotovの火も「全ての爆発」扱いで半径・ダメージ ×倍率。
       // スキル: バーサーカー等(§6.10 M33②) = skillOutgoingDamageMult をDoTダメージに乗算(四捨五入)。
@@ -15855,11 +15890,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     const p = st.player;
     // 鞭を持っていない/格闘中・紫/daze・掴まれ・浮いている間は出さない(振りの入口 beginMeleeSwing と同じ門)。
     if (!isWhipMode(p) || isPvpIncapacitated(p.pvpPosture, st.gameTime) || isPlayerGrabbed(p, st.gameTime) || playerAirLocked(p, now)) return false;
-    const kind = classifyWhipFlick({ x: w.dirX, y: w.dirY }, { x: dirX, y: dirY });
-    if (!kind) return false; // 横向き=何も起きない(受付は残す=続けて正しい向きに入れ直せる)
-    set({ whipFollowup: { ...w, used: true } }); // 1振りに1回だけ
-    if (kind === 'pull') whipFollowupPull(get, set, w, now);
-    else whipFollowupSlam(get, set, w, now);
+    // 1段目(当たった直後)=反対で浮かせつつ引き寄せ / 2段目(引き寄せた直後)=進行方向で叩き落とし。それ以外の向き・段の組は何も起きない(受付は残す)。
+    const act = whipFollowupAction(w.stage, classifyWhipFlick({ x: w.dirX, y: w.dirY }, { x: dirX, y: dirY }));
+    if (!act) return false;
+    if (act === 'pull') {
+      set({ whipFollowup: { ...w, used: true } }); // 1振りに1回だけ(続きの受付は引き寄せが開く)
+      whipFollowupPull(get, set, w, now);
+      return true;
+    }
+    const ids = whipSlamTargetIds(st, w, now);
+    if (ids.length === 0) return false; // 浮いている敵が居ない(着地した・倒れた)=何も起きない
+    whipFollowupSlam(get, set, w, ids, now);
     return true;
   },
 

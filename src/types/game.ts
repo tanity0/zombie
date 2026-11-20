@@ -2404,6 +2404,11 @@ export interface GroundFire {
   // 未指定=モロトフの半径(MOLOTOV_FIRE_RADIUS)のまま。指定時(Lv3の「炎床(大)」)だけ個体ごとに
   // 半径を上書きする(判定=絵は分類①なので、pixiScene側もradiusに比例して見た目を追従させる)。
   radius?: number;
+  /**
+   * 火炎瓶の延焼の広がり切った半径(research/MOLOTOV_SPREAD.md・置いた時点のレベルで確定)。
+   * 指定時は当たり半径が `molotovSpreadRadiusAt` に従って広がる/縮む(radiusより優先)。未指定=広がらない(延焼弾の炎床など)。
+   */
+  spreadRadius?: number;
 }
 
 // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)が移動軌跡に残す棘。groundFire(molotov)と
@@ -3477,6 +3482,23 @@ export type VisualEffect =
       len: number;
       createdAt: number;
       /** この時間までが前隙(=しなっている間)。経過後は伸び切った③コマになる。 */
+      windupMs: number;
+      duration: number;
+    }
+  | {
+      /**
+       * ★鞭の普通の振りの本体の動き(社長「鞭はちゃんと鞭っぽくしならせてから叩きつける感じに」・utils/whipSwingMotion)。
+       * まっすぐの鞭の絵をロープで曲げて、引く→溜め→打ち出し→前隙の終わり(=判定の時刻)でまっすぐ伸び切る→たるんで消える。
+       * 手元はプレイヤーの今の中心に付いて行く。判定は持たない(形は描画が純関数から毎フレーム作る)。
+       */
+      kind: 'whiprope';
+      id: string;
+      /** 振りの向き(rad)。 */
+      angle: number;
+      /** 伸び切った時の長さ(=鞭の射程)。 */
+      len: number;
+      createdAt: number;
+      /** 前隙(=パチンの時刻)。 */
       windupMs: number;
       duration: number;
     }

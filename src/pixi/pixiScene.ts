@@ -110,14 +110,15 @@ import {
   SCREAMER_BUFF_MS,
   PLAYER_KNOCKBACK_MS,
   retaliationReadyTarget, // ★被弾反撃の「いま出せるか」(入力と同じ1本・HIT_RETALIATION.md §7)
-  isBrawlerGuarding, brawlerGuardBodyRect, isBrawlerMode, // ★サブウェポン「格闘」(research/BRAWLER.md)
+  isBrawlerGuarding, brawlerGuardBodyRect, isBrawlerMode, isWhipMode, // ★サブウェポン「格闘」(research/BRAWLER.md)
   type SkadiBlade, type SkadiBladeVisual, // 氷刃の列を共用する飛ぶ物(亡霊の呪いの墓石=visual:'grave'・WRAITH_MUTANT.md §11)
 } from '../store/gameStore';
 import { kenkiLevelLook } from '../utils/kenkiLevel'; // 孫悟空のレベルの色(research/BRAWLER.md §36-1)
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
 import { BRAWLER_WEAK_GUARD_ALPHA } from '../utils/brawlerGuard'; // 弱い構え(払えずに出た構え)の光の薄さ
 import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
-import { satsujinCoverAlpha, SATSUJIN_HITS } from '../utils/katanaTsubame'; // ★刀の殺陣の赤い画面の濃さ
+import { satsujinCoverAlpha, SATSUJIN_HITS } from '../utils/katanaTsubame';
+import { whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS } from '../utils/whipSwingMotion'; // ★鞭の振りの本体と体の動き // ★刀の殺陣の赤い画面の濃さ
 import { screamerMarkVisible } from '../utils/screamerGate';
 import { airChaseHeightPx } from '../utils/airChaseHeight'; // 高さに追いつく技の高さ(動ける距離の中で相手の高さへ向かう・社長指示2026-11-16)
 import { getLastAirMeleeHit, playerLaunchHeightPx, stepPlayerAir, playerKickJump, playerKickJumpShape, playerKickLandPx, playerKickLandSpeed, playerAirLaunchSpeed, PLAYER_KICK_LAND_FRAC, PLAYER_KICK_JUMP_MIN_PX, PLAYER_KICK_HOLD_MS, PLAYER_KICK_RECOIL_PX, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
@@ -224,7 +225,7 @@ import { setRenderStats, setFxDiag, setSceneDiag, noteBakeCall } from '../utils/
 import { trackBakedTexture, untrackBakedTexture, liveBakedTextures, type BakeKind } from '../utils/renderStats'; // 焼いたテクスチャの実測(v0.25.4375)
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
-import { MOLOTOV_FIRE_RADIUS } from '../utils/molotov';
+import { MOLOTOV_FIRE_RADIUS, groundFireRadiusAt, molotovChildFlameLayout, molotovChildFlameScale, type MolotovChildFlame } from '../utils/molotov';
 // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘。判定=絵は分類①(判定に厳密一致)。
 import { BLOOD_TREADS_RADIUS_PX, GRAVITY_SHOT_PULL_MS } from '../utils/skillEffectsB7';
 import {
@@ -469,6 +470,8 @@ import {
 import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
+import { WeatherWetLayer, type WetActor, type WetLight } from './weatherWet';
+import { parseWeather, weatherWetActive } from '../utils/weatherWet';
 import { getSelectedStageId } from '../data/progress';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H, wallRect, propRect, isLabObstacleBroken, labDebrisInRegion, type LabBrokenObstacle } from '../world/labWalls';
 import { LAB_WALL_CRUMBLE_MS, LAB_PROP_CRUMBLE_MS, LAB_DEBRIS_PALETTE, labDebrisKind } from '../utils/labCrawlerTick'; // 崩れの尺・破片の色(着地の土煙・音と同じ値)
@@ -784,6 +787,9 @@ const HIDE_LAYERS = new Set(
     .split(',').map(v => v.trim()).filter(Boolean)
 );
 
+/** 天候のツマミ(`?weather=wet`・research/WEATHER_WET.md)。未指定なら null=雨上がりのコードは1行も走らない。 */
+const WEATHER_KNOB = typeof window === 'undefined' ? null : parseWeather(window.location.search);
+
 const tsBool = (key: string, def: boolean): boolean => {
   if (typeof window === 'undefined') return def;
   const v = new URLSearchParams(window.location.search).get(key);
@@ -910,6 +916,7 @@ const ALCHEMY_RHYTHM_START_MUL = 2.4;      // 輪が出る半径(的の何倍の
 const ALCHEMY_RHYTHM_BURST_MS = 380;       // 成功の弾け
 const ALCHEMY_RHYTHM_MISS_FADE_MS = 220;   // 外れの沈み
 const ALCHEMY_RHYTHM_BEAT_MS = 320;        // 成功で魔法陣が脈打つ長さ
+const ALCHEMY_RHYTHM_ALPHA = 0.45;         // 輪全体の濃さ(社長指示2026-11-20「もっと薄くして 邪魔にならないように」)
 /** 脈の形: 速く膨らんで(最初の25%)、ゆっくり戻る。 */
 const alchemyBeat01 = (u: number): number => (u < 0.25 ? 1 - (1 - u / 0.25) ** 2 : (1 - (u - 0.25) / 0.75) ** 2);
 /** 金箱(bounty-chest)の表示の大きさ(拾い物の基準の大きさに対する倍率)。v0.25.3520 で 1.7、社長指示2026-11-02で 2.2、社長指示2026-11-13「絵をもう少しだけ大きく表示」で 2.6(見た目だけ・拾える範囲は不変。光はこの値に比例して追従)。 */
@@ -3287,6 +3294,8 @@ const GROUND_FIRE_FLAME_R = 4.2;
  * ⇒ **この件を「判定と絵がズレている」として再提起しないこと**(把握した上での決定)。
  */
 const MOLOTOV_VISUAL_SCALE = 1.8;
+/** 延焼の子の火の大きさ(火元の何倍か・research/MOLOTOV_SPREAD.md「一回り小さい火」)。見た目のみ。 */
+const MOLOTOV_CHILD_FLAME_SCALE = 0.6;
 const GROUND_FIRE_LIGHT_RADIUS = 46;
 const GROUND_FIRE_VIEWPORT_MARGIN = 120;
 const SMALL_GLOW_SPRITE_RADIUS_MAX = STRONG_GLOW_RADIUS - 1;
@@ -4681,6 +4690,7 @@ export class PixiScene {
   private propObjs = new Map<string, LabObstacleView>(); // 遮蔽物プロップ(区画生成・研究所スキン)
   private cityPropObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ3(廃都)の散布オブジェクト
   private flowerObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ1(森)の装飾花(壁判定なし)
+  private weatherWet: WeatherWetLayer | null = null; // 天候「雨上がり」(?weather=wet・ステージ1だけ・research/WEATHER_WET.md)
   private enemies = new Map<string, ActorView>();
   // ★ヨルムンガルドの星弓(research/JORM_DANMAKU.md §4)の絵: 地面の層(影/光溜まり)と効果の層(光弾/着弾の閃光)。
   private jormRainGround: Graphics | null = null;
@@ -4852,6 +4862,8 @@ export class PixiScene {
   // 火炎瓶(molotov)の地面の火: 松明と同じ炎Graphics(drawFlameShape流用)+ 小さめの暖色ライト。
   // 状態(寿命/DoT)は gameStore.groundFires が持つ。ここは描画のみ(CLAUDE.md「Pixiは描画専門」)。
   private groundFireViews = new Map<string, { container: Container; flameArt: Sprite; flame: Graphics; light: Sprite }>();
+  // research/MOLOTOV_SPREAD.md: 火炎瓶の延焼の子の火(火元ごとの使い回しスプライト+置いた時に決まる配置)。光源・影は足さない。
+  private groundFireKids = new Map<string, { sprites: Sprite[]; glows: Sprite[]; layout: MolotovChildFlame[] }>();
   // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘。判定を持つ床=分類①なので、
   // 半径をBLOOD_TREADS_RADIUS_PX(判定そのもの)に厳密一致させる。bossFireGfxと同じ「共有Graphics
   // 1枚へ一括描画」方式(数個〜十数個・一過性=軽い。新規per-frame Graphicsの生成はしない)。
@@ -5765,6 +5777,7 @@ export class PixiScene {
       }
       filters.push(this.dayContrast);
     }
+    if (this.weatherWetOn && this.weatherWet) filters.push(this.weatherWet.gradeFilter); // 雨上がりの色調整(世界の層だけ・HUDはDOM)
     if (this.punchInList && this.punchGrade) filters.push(this.punchGrade);
     if (this.zwarpInList && this.zwarpFilter) filters.push(this.zwarpFilter); // ズーム時だけの遠近(最後=階調の後に形を歪める)
     this.L.worldGroup.filters = filters;
@@ -9252,6 +9265,7 @@ export class PixiScene {
   }
 
   sync() {
+    this.weatherWet?.restoreAtmosphere(); // 雨上がりの霧/空の色(前フレームに最後に掛けた分)を最初に戻す
     this.restoreForestPreview();
     this.restoreWraithDarkness(); // 前フレームに掛けた亡霊戦の暗さを戻してから描く(§12)
     this.restoreZwarpActors(); // 前フレームの逆変形(ズーム時の遠近)を戻してから描く
@@ -10445,7 +10459,7 @@ export class PixiScene {
     this.syncAstroThrows(s.astroThrows, s.astroScatter, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top, now); // research/ASTRONAUT_HORDE.md §4: 投げた物(投げ手が画面外・倒れた後でも描く)・§11 周りの残骸
     this.syncWraithTelegraph(s.enemies, s.gameTime); // research/WRAITH_MUTANT.md §4: 亡霊の叫びの紫の円
     this.syncPlayerArrowRain(s.arrowRainShots, s.arrowRainStuck, s.gameTime); // research/ARROW_RAIN.md
-    this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
+    this.syncGroundFires(s.groundFires, now, s.gameTime); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncBloodSpikes(s.bloodSpikes, s.gameTime, now); // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
     this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
     this.syncSensorMines(s.sensorMines, s.gameTime, now); // センサー地雷(待機ディスク/感知後2秒の赤点滅テレグラフ)
@@ -10858,6 +10872,7 @@ export class PixiScene {
     }
     this.applyForestPreview();
     this.applyWraithDarkness(); // 亡霊と戦っている間の地面と遠景の暗さ(フレームの最後・§12)
+    if (WEATHER_KNOB === 'wet') this.syncWeatherWet(s, now); // 天候「雨上がり」(?weather=wet の時だけ・付けなければ1命令も走らない)
     this.syncZoomWarp(s.player.vx ?? 0, s.player.vy ?? 0, realNow); // ★必ず最後(このフレームの世界が全部揃ってから1枚に描く)
   }
 
@@ -11177,6 +11192,7 @@ export class PixiScene {
     const r = player.alchemyRhythm;
     if (!r) { g.visible = false; return; }
     g.visible = true;
+    g.alpha = ALCHEMY_RHYTHM_ALPHA;
     // 魔法陣の絵は地面に寝かせた楕円(512四方の中に 504×296)。輪も同じ潰れの楕円で描き、縁にぴったり重ねる。
     const rt = PixiScene.ALCHEMY_CIRCLE_SIZE * ALCHEMY_RHYTHM_TARGET_FRAC;
     const r0 = rt * ALCHEMY_RHYTHM_START_MUL;
@@ -12507,6 +12523,53 @@ export class PixiScene {
     for (const [id, entry] of this.flowerObjs) {
       if (!seen.has(id)) { entry.sprite.destroy(); this.flowerObjs.delete(id); }
     }
+  }
+
+  /**
+   * 天候「雨上がり」(research/WEATHER_WET.md)。描画は weatherWet.ts、ここは場面の材料(可視域・キャラの絵・
+   * 松明の光だまり・木・拠点)を渡すだけ。光だまりは既存の映り込み(松明の reflection)の色と強さをそのまま読む。
+   */
+  private weatherWetOn = false;
+  private syncWeatherWet(s: ReturnType<typeof useGameStore.getState>, now: number) {
+    const active = weatherWetActive({ weather: WEATHER_KNOB, stageId: getSelectedStageId(), indoor: s.indoorMode, corridor: s.corridorMode })
+      && this.currentFarKey === 'forest';
+    if (!this.weatherWet) {
+      if (!active) return;
+      this.weatherWet = new WeatherWetLayer(this.L.groundLayer);
+    }
+    if (active !== this.weatherWetOn) {
+      this.weatherWetOn = active;
+      this.weatherWet.setVisible(active);
+      this.syncWorldGroupFilters();
+    }
+    if (!active) return;
+    const view = this.visibleWorldRect();
+    const actors: WetActor[] = [];
+    if (this.playerView) actors.push({ id: 'player', sprite: this.playerView.sprite });
+    for (const [id, v] of this.enemies) actors.push({ id, sprite: v.sprite });
+    for (const [id, v] of this.summonViews) actors.push({ id: `sm-${id}`, sprite: v.sprite });
+    const lights: WetLight[] = [];
+    for (const v of this.breakableProps.values()) {
+      const r = v.reflection;
+      if (r.visible && r.alpha > 0.01) lights.push({ x: r.x, y: r.y, color: Number(r.tint), strength: Math.min(1, r.alpha / 0.24) });
+    }
+    const m = 120;
+    const trees = treesInRegion(view.left - m, view.top - m, view.right + m, view.bottom + m);
+    const bases = s.baseSites.map(b => ({ x: b.x, y: b.y, r: 130 })); // 130 = BASE_CAPTURE_RADIUS
+    const ppx = s.player.x + s.player.width / 2, ppy = s.player.y + s.player.height;
+    this.weatherWet.sync({
+      now, envTint: this.envTintNow(), view, world: this.L.world,
+      depthScale: y => this.depthScale(y),
+      horizonAlpha: y => this.horizonActorAlpha(y),
+      actors, lights, trees, bases, focusX: ppx, focusY: ppy,
+    });
+    this.weatherWet.applyAtmosphere({
+      fog: this.fogLayers.map(f => f.sp),
+      front: [this.L.frontForest, this.frontRidgeCopy],
+      moonGlow: [this.stage1MoonGlow],
+      moonHalo: [this.stage1MoonHalo],
+      farGroup: this.farGroup,
+    });
   }
 
   // ---- ステージ6(洋館・corridorMode)の見た目: 疑似3D通路の背景(v0.25.2113) ----------
@@ -19404,12 +19467,14 @@ export class PixiScene {
   // 火炎瓶(molotov)の地面の火。lifetime/DoTは gameStore(groundFires/tickGroundFires)側の仕事、
   // ここは配列を読んで松明と同じ炎(drawFlameShape)+小さめの暖色ライトを描くだけ(Pixiは描画専門)。
   // 同時に生きるのは最大3〜4個程度(仕様上の上限)なので、松明と同じ per-id プール(Graphics/Sprite)で十分軽い。
-  private syncGroundFires(fires: GroundFire[], now: number) {
+  private syncGroundFires(fires: GroundFire[], now: number, gameTime: number) {
     const seen = new Set<string>();
     for (const fire of fires) {
       seen.add(fire.id);
       let view = this.groundFireViews.get(fire.id);
       if (!view) { view = this.makeGroundFireView(); this.groundFireViews.set(fire.id, view); }
+      // research/MOLOTOV_SPREAD.md: 延焼の子の火(火元より先に。火元が画面外でも輪の一部は映りうる)。
+      if (fire.spreadRadius !== undefined) this.syncGroundFireKids(fire, now, gameTime);
 
       const d = this.depthScale(fire.y);
       const horizonAlpha = this.horizonActorAlpha(fire.y);
@@ -19436,8 +19501,10 @@ export class PixiScene {
 
       view.light.position.set(fire.x, fire.y);
       view.light.tint = 0xffb45f;
-      view.light.width = view.light.height = GROUND_FIRE_LIGHT_RADIUS * d * pulse * fireRadiusRatio;
-      view.light.alpha = 0.16 * horizonAlpha * pulse;
+      // 延焼の広がる火は、地面の照り返しも灯っている半径まで広げる(同じソフトグロー1枚の寸法だけ=光源・影は増えない)。
+      const spreadLightW = fire.spreadRadius !== undefined ? groundFireRadiusAt(fire, gameTime) * 2.6 * d * pulse : 0;
+      view.light.width = view.light.height = Math.max(GROUND_FIRE_LIGHT_RADIUS * d * pulse * fireRadiusRatio, spreadLightW);
+      view.light.alpha = (spreadLightW > 0 ? 0.34 : 0.16) * horizonAlpha * pulse;
 
       view.flame.clear();
       // v0.25.2641(社長指示「火炎瓶とキャンプでもこの炎つかって」): 松明と同じ支給素材の炎へ。
@@ -19457,6 +19524,57 @@ export class PixiScene {
         view.container.destroy({ children: true });
         this.groundFireViews.delete(id);
       }
+    }
+    for (const [id, kids] of this.groundFireKids) {
+      if (!seen.has(id)) {
+        for (const sp of kids.sprites) sp?.destroy(); // 灯らなかった子は穴(未生成)のまま
+        for (const gl of kids.glows) gl?.destroy();
+        this.groundFireKids.delete(id);
+      }
+    }
+  }
+
+  // research/MOLOTOV_SPREAD.md: 火元の周りへ広がる一回り小さい火。配置と灯る/消える時刻は純関数
+  // (molotovChildFlameLayout / molotovChildFlameScale)が持ち、灯るのは当たりの円がその子に届いた時=
+  // 見えている火=燃やす所。絵は火元と同じ支給の炎を約0.6倍で(新しい素材・光源・影は無し)。
+  // 子ごとに actorLayer の奥行き(zIndex=子の足元y)へ置くので、敵の前後関係も子の位置で決まる。
+  private syncGroundFireKids(fire: GroundFire, now: number, gameTime: number) {
+    let kids = this.groundFireKids.get(fire.id);
+    if (!kids) {
+      kids = { sprites: [], glows: [], layout: molotovChildFlameLayout(fire.spreadRadius ?? 0, fire.x * 0.071 + fire.y * 0.113) };
+      this.groundFireKids.set(fire.id, kids);
+    }
+    const frames = this.flameFrames();
+    const age = gameTime - fire.createdAt;
+    const offscreen = this.distanceOutsideViewport(fire.x, fire.y, GROUND_FIRE_VIEWPORT_MARGIN + (fire.spreadRadius ?? 0)) > 0;
+    for (let i = 0; i < kids.layout.length; i++) {
+      const kid = kids.layout[i];
+      let sp = kids.sprites[i];
+      const k = frames && !offscreen ? molotovChildFlameScale(kid, age) : 0;
+      let glow = kids.glows[i];
+      if (k <= 0.001) { if (sp) sp.visible = false; if (glow) glow.visible = false; continue; }
+      const kx = fire.x + kid.dx;
+      const ky = fire.y + kid.dy;
+      const horizonAlpha = this.horizonActorAlpha(ky);
+      if (horizonAlpha <= 0) { if (sp) sp.visible = false; if (glow) glow.visible = false; continue; }
+      if (!sp) { sp = new Sprite(); this.L.actorLayer.addChild(sp); kids.sprites[i] = sp; }
+      // 足元の照り返し(焼いたソフトグロー1枚・加算。光源の投影影には乗らない)=点ではなく「燃えている地面」に見せる。
+      // groundLayer だと夜の暗がりの下に沈んで見えない(実測)ので actorLayer の子の炎のすぐ奥へ置く。
+      if (!glow) { glow = new Sprite(getSoftGlowTexture()); glow.anchor.set(0.5); glow.blendMode = 'add'; glow.tint = 0xff9a3c; this.L.actorLayer.addChild(glow); kids.glows[i] = glow; }
+      const d = this.depthScale(ky);
+      const pulse = 0.80 + 0.13 * Math.sin(now / 125 + kid.seed * 3.1) + 0.07 * Math.sin(now / 53 + kid.seed * 1.7);
+      const r = GROUND_FIRE_FLAME_R * d * pulse * MOLOTOV_CHILD_FLAME_SCALE * kid.size;
+      // 灯る時は根元の少し下から伸び上がり、消える時は沈みながら縮む(慣性つきのズレ+フェード)。
+      const sink = (1 - Math.min(1, k)) * r * 1.6;
+      this.placeFlame(sp, frames!, Math.round(kx), Math.round(ky + r + sink), FLAME_ART_H_PER_R * r * MOLOTOV_VISUAL_SCALE * k, now, kid.seed);
+      sp.zIndex = ky;
+      sp.alpha = horizonAlpha * Math.min(1, k * 1.6);
+      glow.visible = true;
+      glow.position.set(kx, ky);
+      glow.zIndex = ky - 0.5; // 子の炎のすぐ奥(地面の暗がりより上=照り返しが見える)
+      glow.width = 64 * d * k * kid.size;
+      glow.height = glow.width * 0.55;
+      glow.alpha = 0.42 * horizonAlpha * Math.min(1, k) * pulse;
     }
   }
 
@@ -21479,7 +21597,12 @@ export class PixiScene {
     // 救急鞄スキル発動の一拍(振り抜きポーズ+鞄掲げ)。近接スイングとは別トリガー(firstAidPoseAt)。
     const sinceFirstAid = now - (p.firstAidPoseAt || 0);
     const firstAidActive = p.firstAidPoseAt > 0 && sinceFirstAid >= 0 && sinceFirstAid < PLAYER_FIRSTAID_POSE_MS;
-    if (meleePosePrefix && !warlordFull && !killFxSwallowsSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
+    // ★鞭の振りはナイフの逆=振り上げ(-swing)→パチンの瞬間にしゃがみ(-ready)(社長「鞭振るときのプレイヤーの動きはナイフの逆で、振り上げから しゃがみ へ」)。
+    const whipSwingPose = isWhipMode(p) ? whipBodyPose(sinceSwing, MELEE_WINDUP_MS) : null;
+    if (meleePosePrefix && !warlordFull && !killFxSwallowsSwing && whipSwingPose?.pose) {
+      const poseTex = getTexture(`${meleePosePrefix}-${whipSwingPose.pose}`);
+      if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}-${whipSwingPose.pose}`; }
+    } else if (meleePosePrefix && !warlordFull && !killFxSwallowsSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
       const poseSuffix = (sinceSwing / swingWindowMs) < MELEE_POSE_READY_FRAC ? '-ready' : '-swing';
       const poseTex = getTexture(`${meleePosePrefix}${poseSuffix}`);
       if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}${poseSuffix}`; }
@@ -21539,7 +21662,12 @@ export class PixiScene {
       const downTex = getTexture(`${meleePosePrefix}-ready`);
       if (downTex) { view.sprite.texture = downTex; bodyTexName = `${meleePosePrefix}-ready`; }
     }
-    if (PLAYER_MOTION_FX && !pvpStunned && !killFxSwallowsSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
+    if (PLAYER_MOTION_FX && !pvpStunned && !killFxSwallowsSwing && whipSwingPose?.pose) {
+      // 鞭: 振り上げで縦に伸びて後ろへ反る→加速して沈み、パチンの瞬間にしゃがみの底(前へ傾く)→慣性つきで立ち姿へ。
+      actLean += face * whipSwingPose.lean;
+      actSqX *= whipSwingPose.sqX;
+      actSqY *= whipSwingPose.sqY;
+    } else if (PLAYER_MOTION_FX && !pvpStunned && !killFxSwallowsSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
       const t = sinceSwing / swingWindowMs;
       const arc = Math.sin(t * Math.PI); // 0→1→0(踏み込みのピークは中盤)
       const whip = 1 - t;                // 開始が一番強い→復帰
@@ -36612,6 +36740,8 @@ export class PixiScene {
         this.drawWhipSnareSprite(e, now);
       } else if (e.kind === 'whip') {
         this.drawWhipSprite(e, now);
+      } else if (e.kind === 'whiprope') {
+        this.drawWhipRope(e, now);
       } else if (e.kind === 'firejet') {
         this.drawFireJetSprite(e, now);
       } else if (e.kind === 'blood') {
@@ -37160,8 +37290,13 @@ export class PixiScene {
     const grow = f === 2 ? 1 : 0.55 + 0.35 * (el / w) * (el / w); // 0.55→0.90(加速)
     const bend = f === 2 ? 1 : PixiScene.WHIP_SNARE_BEND;         // 折れを大きく見せる
     const drawLen = Math.max(40, e.len * grow * bend);
-    sp.rotation = e.angle - PixiScene.WHIP_SMEAR_INTRINSIC;
-    sp.scale.set(drawLen / Math.max(1, Math.max(tex.width, tex.height)));
+    // ★コマごとの実測の柄・先端で合わせる(社長「赤い鞭の斬撃が鞭と合ってない」)。旧は3コマ共通の柄(0.08,0.95)・向き-45°・
+    //   「絵の長い辺」で割っていたが、実際の絵は柄→先端が約-29°で、伸び切りのコマが鞭本体(=判定の帯)より約15°下を向いていた。
+    //   伸び切り(パチンの瞬間)は柄=プレイヤーの中心・向き=振りの向き・長さ=射程ちょうど=鞭本体と判定の帯に重なる。
+    const fr = PixiScene.PLAYER_SMEAR_FRAMES[f];
+    sp.anchor.set(fr.gx, fr.gy);
+    sp.rotation = e.angle - fr.ang;
+    sp.scale.set(drawLen / Math.max(1, fr.len * Math.max(1, tex.width) / PixiScene.PLAYER_SMEAR_TEX_W));
     sp.position.set(e.fromX, e.fromY); // ★焼いた位置=本体が動いても置き去りになる
     // 前隙中は濃く見せる(しなりを見せるのが目的)。伸び切ってからフェード。
     sp.alpha = t < 0.5 ? 1 : Math.max(0, 1 - (t - 0.5) / 0.5);
@@ -37259,6 +37394,48 @@ export class PixiScene {
     }
     for (let i = used; i < this.satsujinStreaks.length; i++) this.satsujinStreaks[i].visible = false;
   }
+  /**
+   * ★鞭の普通の振りの本体(社長「鞭っぽくしならせてから叩きつける」「まっすぐの絵にしてあるので」)。まっすぐの鞭の絵(whip)を
+   * MeshRope で曲げる。形は utils/whipSwingMotion の純関数(引く→溜め→打ち出し→前隙の終わりでまっすぐ伸び切る→たるんで消える)。
+   * 手元=プレイヤーの今の中心。点は振りの向きの座標で作って回す(上へ引く側は向きの左右で揃える=左を向いても頭の上を通る)。
+   * 負荷: 振り1回につき MeshRope 1本(点16)・per-frame Graphics なし=1/10。
+   */
+  private whipRopePts = new WeakMap<MeshRope, Point[]>();
+  private drawWhipRope(e: Extract<VisualEffect, { kind: 'whiprope' }>, now: number) {
+    const tex = getTexture('whip');
+    let view = this.effects.get(e.id);
+    if (!(view instanceof MeshRope)) {
+      if (view) view.destroy();
+      if (!tex) return;
+      const pts: Point[] = [];
+      for (let i = 0; i < WHIP_ROPE_POINTS + 2; i++) pts.push(new Point(i, 0));
+      const rope = new MeshRope({ texture: tex, points: pts });
+      this.whipRopePts.set(rope, pts);
+      this.L.effectLayer.addChild(rope);
+      this.effects.set(e.id, rope);
+      view = rope;
+    }
+    const rope = view as MeshRope;
+    const pts = this.whipRopePts.get(rope);
+    if (!tex || !pts) { rope.visible = false; return; }
+    const shape = whipRopeShape(now - e.createdAt, e.windupMs, WHIP_ROPE_POINTS - 1);
+    if (shape.alpha <= 0) { rope.visible = false; return; }
+    const local = whipRopePoints(shape, e.len, WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_TIP_X);
+    // 表示のスケール: 絵の握り→先端(素材の画素)が射程ちょうど(drawWhipSprite と同じ規約)。点は素材の画素の単位で置き、rope を k 倍する。
+    const span = Math.max(1, tex.width * (WHIP_SPRITE_TIP_X - WHIP_SPRITE_ANCHOR_X));
+    const k = e.len / span;
+    const ca = Math.cos(e.angle), sa = Math.sin(e.angle);
+    const side = ca >= 0 ? 1 : -1; // 「上へ引く」側を画面の上に揃える
+    for (let i = 0; i < pts.length && i < local.length; i++) {
+      const lx = local[i].x, ly = local[i].y * side;
+      pts[i].set((lx * ca - ly * sa) / k, (lx * sa + ly * ca) / k);
+    }
+    const pl = this.fxPlayer;
+    if (pl) rope.position.set(pl.x + pl.width / 2, pl.y + pl.height / 2);
+    rope.scale.set(k);
+    rope.alpha = shape.alpha;
+    rope.visible = true;
+  }
   /** 鞭の引き寄せの絵が読む敵・プレイヤー(syncEffects の直前に毎フレーム入れる・読むだけ)。 */
   private fxEnemies: readonly Enemy[] = [];
   private fxPlayer: Player | null = null;
@@ -37281,6 +37458,12 @@ export class PixiScene {
     if (e.followEnemyId) {
       const fe = this.fxEnemies.find(en => en.id === e.followEnemyId);
       if (fe) { tx0 = fe.x + fe.width / 2; ty0 = fe.y + fe.height / 2; }
+      // 浮いている敵は絵の高さへ(足元の判定の位置ではなく、見えている体へ絡める)。絵の体の中心=足元から絵の高さの半分。
+      const fv = this.enemies.get(e.followEnemyId);
+      if (fe && fv && fv.sprite.visible) {
+        const h = Math.abs(fv.sprite.height);
+        ty0 = fv.sprite.y - h * fv.sprite.anchor.y + h * 0.5;
+      }
       const pl = this.fxPlayer;
       if (pl) { fx0 = pl.x + pl.width / 2; fy0 = pl.y + pl.height / 2; }
     }
@@ -39797,7 +39980,17 @@ export class PixiScene {
   // 本体素材が水平直線に変わったので、スミアの規約を本体定数から独立させた(v0.25.3573)。
   private static readonly WHIP_SMEAR_GRIP_X = 0.08;
   private static readonly WHIP_SMEAR_GRIP_Y = 0.95;
-  private static readonly WHIP_SMEAR_INTRINSIC = -Math.PI / 4;
+  // (旧 WHIP_SMEAR_INTRINSIC=−45° は撤去: 実際の絵は約−29°。向き・柄・長さはコマごとの実測 PLAYER_SMEAR_FRAMES を使う。生成時の柄は下の2つ・描く時に毎回コマの柄へ合わせ直す)
+  /**
+   * プレイヤーのしなり(fx/whip-smear-0..2・114×66)のコマごとの実測(不透明な画素の両端): 柄(gx,gy=割合)・柄→先端の向き(ang)・長さ(len=素材の画素)。
+   * 0=小さな巻き(柄0.377,0.909→先端0.658,0.561) / 1=S字(0.140,0.924→0.825,0.258) / 2=伸び切り(0.026,0.939→0.965,0.030)。
+   */
+  private static readonly PLAYER_SMEAR_TEX_W = 114;
+  private static readonly PLAYER_SMEAR_FRAMES = [
+    { gx: 0.377, gy: 0.909, ang: Math.atan2(-(0.909 - 0.561) * 66, (0.658 - 0.377) * 114), len: Math.hypot((0.909 - 0.561) * 66, (0.658 - 0.377) * 114) },
+    { gx: 0.140, gy: 0.924, ang: Math.atan2(-(0.924 - 0.258) * 66, (0.825 - 0.140) * 114), len: Math.hypot((0.924 - 0.258) * 66, (0.825 - 0.140) * 114) },
+    { gx: 0.026, gy: 0.939, ang: Math.atan2(-(0.939 - 0.030) * 66, (0.965 - 0.026) * 114), len: Math.hypot((0.939 - 0.030) * 66, (0.965 - 0.026) * 114) },
+  ] as const;
   /** プレイヤーのしなり(スネア)の折れの強さ。正本は gameStore.WHIP_SNARE_BEND_SCALE。 */
   private static readonly WHIP_SNARE_BEND = WHIP_SNARE_BEND_SCALE;
   /** ★v0.25.3573: 鞭スミア3コマの固定再生時間(ms)。終わりが命中に一致するよう残り時間から逆算する。 */
@@ -40179,14 +40372,17 @@ export class PixiScene {
       this.L.effectLayer.addChild(sp); this.bountyWhipSmearSprites.set(id, sp);
     }
     if (sp.texture !== tex) sp.texture = tex;
-    if (sp.anchor.y !== PixiScene.WHIP_SMEAR_GRIP_Y) sp.anchor.set(PixiScene.WHIP_SMEAR_GRIP_X, PixiScene.WHIP_SMEAR_GRIP_Y);
+    // ★コマごとの実測の柄・向き・長さ(プレイヤーのしなりと同じ表 PLAYER_SMEAR_FRAMES・社長「馬乗りも直して」)。
+    //   旧の共通の柄(0.08,0.95)・向き−45°・「絵の長い辺」で割る、だと伸び切りのコマが帯より約15°ずれていた。
+    const fr = PixiScene.PLAYER_SMEAR_FRAMES[f];
+    sp.anchor.set(fr.gx, fr.gy);
     // ★v0.25.3562(社長指摘「鞭シナリエフェクト、向きが合ってない。鞭に対してまっすぐ」):
     // 旧コードは「素材は下端中央から真上に伸びる」前提(anchor 0.5,1 + 回転+90°)だったが、
     // **実素材は柄が左下(≈0.08,0.95)にあり、右上(−45°)へ伸びる絵**(whip-smear-2 で確認)。
     // よって柄アンカー+intrinsic角で狙い方向へ回す=スミアが判定の帯とまっすぐ平行に重なる。
     // (v0.25.3573: 本体素材が水平直線に差し替わったため、スミアは専用定数 WHIP_SMEAR_* を使う)
-    sp.rotation = anchor.ang - PixiScene.WHIP_SMEAR_INTRINSIC;
-    sp.scale.set(Math.max(60, anchor.len) / Math.max(1, Math.max(tex.width, tex.height)));
+    sp.rotation = anchor.ang - fr.ang;
+    sp.scale.set(Math.max(60, anchor.len) / Math.max(1, fr.len * Math.max(1, tex.width) / PixiScene.PLAYER_SMEAR_TEX_W));
     sp.position.set(anchor.x, anchor.y); // ★焼いた位置。本体が動いても残像は置き去りになる。
     sp.alpha = alpha;
     sp.visible = true;
@@ -43290,6 +43486,7 @@ export class PixiScene {
     this.playerLight.destroy();
     this.vignette.destroy();
     for (const f of this.fireflies) f.sprite.destroy();
+    this.weatherWet?.destroy(); this.weatherWet = null;
     this.fireflies = [];
     if (this.tiltShift || this.bloom) {
       this.L.filteredWorld.filters = [];

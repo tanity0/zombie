@@ -278,7 +278,7 @@ import {
   checkPlayerPickupCollisions,
   checkEnemySummonCollisions
 } from '../utils/collisionUtils';
-import { computeMolotovTick, MOLOTOV_FIRES_BY_LEVEL } from '../utils/molotov';
+import { computeMolotovTick, MOLOTOV_FIRES_BY_LEVEL, molotovSpreadRadiusForLevel } from '../utils/molotov';
 // ホーミング弾: ロック蓄積の1ステップ(プレイヤー/守護霊で共有)+守護霊の「押す時間」の解決。
 import {
   stepHomingLocks, ghostHomingHoldMs, HOMING_MAX_LOCKS_BY_LEVEL, HOMING_LOCK_INTERVAL_MS,
@@ -12089,7 +12089,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 発動条件と設置位置が本人の移動に結合している)。ゴースト対応は★未決の未対応リスト。
             const footX = ownerCenterX(playerOwner);
             const footY = ownerFootY(playerOwner);
-            useGameStore.getState().spawnGroundFire(footX, footY, undefined, undefined, 'molotov'); // 熟練度: 火炎瓶
+            useGameStore.getState().spawnGroundFire(footX, footY, undefined, undefined, 'molotov', undefined, molotovSpreadRadiusForLevel(level)); // 熟練度: 火炎瓶 / 延焼の広がり=レベルの半径(MOLOTOV_SPREAD.md)
           }
         }
 
@@ -12580,7 +12580,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             });
             if (r.cycle !== cycleNow) patchGhost({ ghostMolotovCycle: r.cycle });
             if (r.cooldownAt !== null) setActorSubWeaponCooldown(gSub.id, 'molotov', r.cooldownAt);
-            if (r.drop) useGameStore.getState().spawnGroundFire(gcx, ownerFootY(gOwner), gSub.id, undefined, undefined, guardianMasteryMult(gActor, 'molotov')); // 熟練度: 守護霊の火=記録の molotov の倍率
+            if (r.drop) useGameStore.getState().spawnGroundFire(gcx, ownerFootY(gOwner), gSub.id, undefined, undefined, guardianMasteryMult(gActor, 'molotov'), molotovSpreadRadiusForLevel(ghostSubLevel('molotov'))); // 熟練度: 守護霊の火=記録の molotov の倍率
           }
 
           // ---- 援護射撃(support-sniper): 「移動中のみ進むタイマー」を主語ごとに ----

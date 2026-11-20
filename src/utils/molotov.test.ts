@@ -130,3 +130,89 @@ describe('isEnemyInGroundFire', () => {
     expect(isEnemyInGroundFire(100, 100, [], 22)).toBe(false);
   });
 });
+
+import {
+  MOLOTOV_FIRE_RADIUS, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_SPREAD_GROW_MS, MOLOTOV_SPREAD_SHRINK_MS,
+  MOLOTOV_SPREAD_RADIUS_BY_LEVEL, molotovSpreadRadiusForLevel, molotovSpreadRadiusAt, groundFireRadiusAt,
+  groundFiresWithLiveRadius, molotovChildFlameLayout, molotovChildFlameScale,
+} from './molotov';
+
+describe('火炎瓶の延焼の広がり(MOLOTOV_SPREAD.md)', () => {
+  it('レベルの半径は 小55 / 中90 / 大125', () => {
+    expect([1, 2, 3].map(molotovSpreadRadiusForLevel)).toEqual([55, 90, 125]);
+    expect(MOLOTOV_SPREAD_RADIUS_BY_LEVEL.slice(1)).toEqual([55, 90, 125]);
+    expect(molotovSpreadRadiusForLevel(0)).toBe(55);
+    expect(molotovSpreadRadiusForLevel(9)).toBe(125);
+  });
+
+  it('置いた瞬間は火元の半径、0.6秒で広がり切る(ease-out=前半で大きく進む)', () => {
+    const R = 125;
+    expect(molotovSpreadRadiusAt(R, 0)).toBe(MOLOTOV_FIRE_RADIUS);
+    expect(molotovSpreadRadiusAt(R, MOLOTOV_SPREAD_GROW_MS)).toBeCloseTo(R, 6);
+    expect(molotovSpreadRadiusAt(R, 1500)).toBeCloseTo(R, 6);
+    const half = molotovSpreadRadiusAt(R, MOLOTOV_SPREAD_GROW_MS / 2);
+    expect(half).toBeGreaterThan((MOLOTOV_FIRE_RADIUS + R) / 2); // ease-out
+    let prev = 0;
+    for (let t = 0; t <= MOLOTOV_SPREAD_GROW_MS; t += 50) {
+      const r = molotovSpreadRadiusAt(R, t);
+      expect(r).toBeGreaterThanOrEqual(prev);
+      prev = r;
+    }
+  });
+
+  it('寿命の終わりに外側から火元の半径へ縮み、寿命が来たら0(寿命は3秒のまま)', () => {
+    const R = 90;
+    const shrinkStart = MOLOTOV_FIRE_LIFETIME_MS - MOLOTOV_SPREAD_SHRINK_MS;
+    expect(molotovSpreadRadiusAt(R, shrinkStart)).toBeCloseTo(R, 6);
+    let prev = Infinity;
+    for (let t = shrinkStart; t < MOLOTOV_FIRE_LIFETIME_MS; t += 50) {
+      const r = molotovSpreadRadiusAt(R, t);
+      expect(r).toBeLessThanOrEqual(prev);
+      expect(r).toBeGreaterThanOrEqual(MOLOTOV_FIRE_RADIUS);
+      prev = r;
+    }
+    expect(molotovSpreadRadiusAt(R, MOLOTOV_FIRE_LIFETIME_MS - 1)).toBeLessThan(MOLOTOV_FIRE_RADIUS + 1);
+    expect(molotovSpreadRadiusAt(R, MOLOTOV_FIRE_LIFETIME_MS)).toBe(0);
+    expect(molotovSpreadRadiusAt(R, -1)).toBe(0);
+  });
+
+  it('当たり=灯っている半径: 広がる前の外側の敵は燃えず、広がった後は燃える。広がらない火(延焼弾)は従来の半径のまま', () => {
+    const fire = { x: 0, y: 0, createdAt: 1000, spreadRadius: 125 };
+    const at = (t: number) => groundFiresWithLiveRadius([fire], t);
+    expect(isEnemyInGroundFire(100, 0, at(1000))).toBe(false);  // 置いた瞬間(22px)
+    expect(isEnemyInGroundFire(20, 0, at(1000))).toBe(true);
+    expect(isEnemyInGroundFire(100, 0, at(1000 + MOLOTOV_SPREAD_GROW_MS))).toBe(true);
+    expect(isEnemyInGroundFire(124, 0, at(2000))).toBe(true);
+    expect(isEnemyInGroundFire(127, 0, at(2000))).toBe(false);
+    expect(isEnemyInGroundFire(100, 0, at(1000 + MOLOTOV_FIRE_LIFETIME_MS - 20))).toBe(false); // 縮んだ後
+    // 倍率(エクスプローダー)は灯っている半径に掛かる
+    expect(isEnemyInGroundFire(150, 0, at(2000), MOLOTOV_FIRE_RADIUS, 1.25)).toBe(true);
+    // 広がらない火: 半径固定(radius 指定はそのまま・未指定は22)
+    expect(groundFireRadiusAt({ createdAt: 0 }, 2000)).toBe(MOLOTOV_FIRE_RADIUS);
+    expect(groundFireRadiusAt({ createdAt: 0, radius: 40 }, 100)).toBe(40);
+  });
+
+  it('子の火: Lv1は内側の輪だけ・半径が大きいほど数が増え、全部が当たりの円の内側にあり、灯っている間だけ見える', () => {
+    const counts = [55, 90, 125].map(R => molotovChildFlameLayout(R, 3.3).length);
+    expect(counts[0]).toBeGreaterThan(0);
+    expect(counts[1]).toBeGreaterThan(counts[0]);
+    expect(counts[2]).toBeGreaterThan(counts[1]);
+    for (const R of [55, 90, 125]) {
+      const kids = molotovChildFlameLayout(R, 7.7);
+      for (const k of kids) {
+        expect(Math.hypot(k.dx, k.dy)).toBeLessThanOrEqual(R);
+        // 見えている間(scale>0)は、その子の位置が当たりの円の内側
+        for (let t = 0; t < MOLOTOV_FIRE_LIFETIME_MS; t += 25) {
+          if (molotovChildFlameScale(k, t) > 0) expect(k.dist).toBeLessThanOrEqual(molotovSpreadRadiusAt(R, t) + 1e-6);
+        }
+        expect(molotovChildFlameScale(k, MOLOTOV_FIRE_LIFETIME_MS)).toBe(0);
+      }
+      // 内側→外側の順に灯る
+      const sorted = [...kids].sort((a, b) => a.dist - b.dist);
+      for (let i = 1; i < sorted.length; i++) expect(sorted[i].lightAt).toBeGreaterThanOrEqual(sorted[i - 1].lightAt);
+      // 機械的な等間隔にしない(距離にばらつき)
+      const ds = kids.map(k => k.dist);
+      expect(new Set(ds.map(d => d.toFixed(2))).size).toBeGreaterThan(1);
+    }
+  });
+});

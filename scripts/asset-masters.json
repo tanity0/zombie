@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "1057 files / 復号後 約722MB",
+ "generatedFor": "1090 files / 復号後 約722MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -5600,6 +5600,12 @@
    "bytes": 7300,
    "sha": "50509354a905b190"
   },
+  "sprites/sub-icons/alchemy-zombie.png": {
+   "w": 47,
+   "h": 66,
+   "bytes": 5655,
+   "sha": "570154f5e55f8cdb"
+  },
   "sprites/sub-icons/alchemy.png": {
    "w": 62,
    "h": 66,
@@ -6169,6 +6175,198 @@
    "h": 55,
    "bytes": 2558,
    "sha": "08631ecea9ed1be6"
+  },
+  "sprites/weather/debris-branch.png": {
+   "w": 17,
+   "h": 7,
+   "bytes": 287,
+   "sha": "3a5823b6342b9f32"
+  },
+  "sprites/weather/debris-grass.png": {
+   "w": 21,
+   "h": 14,
+   "bytes": 475,
+   "sha": "588fff215bc9e8e4"
+  },
+  "sprites/weather/debris-leaf.png": {
+   "w": 21,
+   "h": 12,
+   "bytes": 437,
+   "sha": "3a25dab22dc25898"
+  },
+  "sprites/weather/debris-log.png": {
+   "w": 21,
+   "h": 14,
+   "bytes": 722,
+   "sha": "5decaedd17af94bc"
+  },
+  "sprites/weather/debris-stone.png": {
+   "w": 12,
+   "h": 9,
+   "bytes": 318,
+   "sha": "8297a75adf5350bd"
+  },
+  "sprites/weather/debris-twig.png": {
+   "w": 23,
+   "h": 12,
+   "bytes": 392,
+   "sha": "e81a93dd17e66c3d"
+  },
+  "sprites/weather/puddle-cluster1-water.png": {
+   "w": 33,
+   "h": 14,
+   "bytes": 663,
+   "sha": "acb358b419efe3db"
+  },
+  "sprites/weather/puddle-cluster1.png": {
+   "w": 28,
+   "h": 14,
+   "bytes": 553,
+   "sha": "e96e2cb8c1f4e094"
+  },
+  "sprites/weather/puddle-cluster2-water.png": {
+   "w": 44,
+   "h": 13,
+   "bytes": 845,
+   "sha": "2e0e60869bb5f4e6"
+  },
+  "sprites/weather/puddle-cluster2.png": {
+   "w": 45,
+   "h": 13,
+   "bytes": 854,
+   "sha": "4cf618f21cc1c766"
+  },
+  "sprites/weather/puddle-long1-water.png": {
+   "w": 35,
+   "h": 9,
+   "bytes": 597,
+   "sha": "1f8d9a8da463f70f"
+  },
+  "sprites/weather/puddle-long1.png": {
+   "w": 33,
+   "h": 12,
+   "bytes": 716,
+   "sha": "b4b7d77e43836541"
+  },
+  "sprites/weather/puddle-long2-water.png": {
+   "w": 37,
+   "h": 8,
+   "bytes": 635,
+   "sha": "4bcae20fa94bf0e3"
+  },
+  "sprites/weather/puddle-long2.png": {
+   "w": 35,
+   "h": 12,
+   "bytes": 759,
+   "sha": "1651f48939cb5858"
+  },
+  "sprites/weather/puddle-long3-water.png": {
+   "w": 43,
+   "h": 10,
+   "bytes": 790,
+   "sha": "b8e286c078f9fe73"
+  },
+  "sprites/weather/puddle-long3.png": {
+   "w": 37,
+   "h": 13,
+   "bytes": 825,
+   "sha": "547d6f25a33fb90a"
+  },
+  "sprites/weather/puddle-r1-water.png": {
+   "w": 20,
+   "h": 8,
+   "bytes": 397,
+   "sha": "15de5aca9909efff"
+  },
+  "sprites/weather/puddle-r1.png": {
+   "w": 19,
+   "h": 10,
+   "bytes": 397,
+   "sha": "1e503d6f2e67b534"
+  },
+  "sprites/weather/puddle-r2-water.png": {
+   "w": 36,
+   "h": 15,
+   "bytes": 961,
+   "sha": "e0bb0ac0d62dfaf3"
+  },
+  "sprites/weather/puddle-r2.png": {
+   "w": 32,
+   "h": 17,
+   "bytes": 961,
+   "sha": "42b4e70a8fce9809"
+  },
+  "sprites/weather/puddle-r3-water.png": {
+   "w": 39,
+   "h": 20,
+   "bytes": 1244,
+   "sha": "9e058a817353427d"
+  },
+  "sprites/weather/puddle-r3.png": {
+   "w": 37,
+   "h": 23,
+   "bytes": 1420,
+   "sha": "76d055d2b82335f4"
+  },
+  "sprites/weather/puddle-r4-water.png": {
+   "w": 49,
+   "h": 23,
+   "bytes": 1610,
+   "sha": "94b124d911cd2754"
+  },
+  "sprites/weather/puddle-r4.png": {
+   "w": 44,
+   "h": 28,
+   "bytes": 1959,
+   "sha": "7c9298c2ed51c618"
+  },
+  "sprites/weather/puddle-r5-water.png": {
+   "w": 65,
+   "h": 32,
+   "bytes": 2486,
+   "sha": "441e5bf9210c7c65"
+  },
+  "sprites/weather/puddle-r5.png": {
+   "w": 60,
+   "h": 32,
+   "bytes": 2711,
+   "sha": "9ed5429daf12ed12"
+  },
+  "sprites/weather/ripple-ground-0.png": {
+   "w": 18,
+   "h": 8,
+   "bytes": 327,
+   "sha": "ea37c5f93d36c43d"
+  },
+  "sprites/weather/ripple-ground-1.png": {
+   "w": 20,
+   "h": 10,
+   "bytes": 404,
+   "sha": "1b2e81bf640a8710"
+  },
+  "sprites/weather/ripple-ground-2.png": {
+   "w": 23,
+   "h": 11,
+   "bytes": 527,
+   "sha": "aebd0ce338d0ea96"
+  },
+  "sprites/weather/ripple-water-0.png": {
+   "w": 20,
+   "h": 8,
+   "bytes": 427,
+   "sha": "2b0b198ac98ac25c"
+  },
+  "sprites/weather/ripple-water-1.png": {
+   "w": 23,
+   "h": 11,
+   "bytes": 523,
+   "sha": "bd6e9bb78b4d3fa2"
+  },
+  "sprites/weather/ripple-water-2.png": {
+   "w": 25,
+   "h": 12,
+   "bytes": 611,
+   "sha": "c25d669a4aecf6d4"
   },
   "sprites/werewolf-common-walk.png": {
    "w": 1716,

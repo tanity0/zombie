@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5677 — 鞭の振りの作り直し・追加攻撃の仕様変更・火炎瓶の延焼の広がり・雨上がり(ツマミ)・錬金術の輪を薄く【2026-11-20 21:19 JST】
+- **鞭**(research/WHIP_FOLLOWUP.md §5・Opus サブエージェント): 普通の振りを MeshRope で曲げる形へ(`src/utils/whipSwingMotion.ts`+テスト・引く→溜め→打ち出し→判定の時刻にパチン(伸び切り90ms)→戻り。判定の時刻・帯・ダメージは不変)。体はナイフの逆(振り上げ→しゃがみ・しゃがみの底=判定)。赤いしなり(whipsnare)が約15°下へずれていたのをコマごとの実測表 `PLAYER_SMEAR_FRAMES` で直し、馬乗りの賞金首の `drawBountyWhipSmear` も同じ表へ(攻撃・予告・時刻は不変)。追加攻撃: 1段目=反対フリックで浮かせつつ引き寄せ(ボス級は浮かせず動かさない)/2段目=引き寄せから300ms以内の進行方向フリックで浮いた敵を叩き落とし2倍(ボス級は2倍の当たりのみ)。旧・単独の叩きつけは廃止。引き寄せ〜2段目の受付終わり(叩き落としはヒットストップ終わり)までプレイヤーの位置と向きを固定。
+- **火炎瓶**(research/MOLOTOV_SPREAD.md・Opus サブエージェント): 火元の周りに0.6倍の子の火が0.6秒で広がる。半径 Lv1 55/Lv2 90/Lv3 125px。当たり=今灯っている半径(`molotovSpreadRadiusAt`・`groundFiresWithLiveRadius`)、延焼の数値は不変。寿命の最後0.6秒で外から縮む。守護霊の火も同じ。子の数は Lv3 を多め(10+14)にした(設計書の6+10ではまばら=実装者判断)。説明文・強化メモを更新。負荷2/10。
+- **雨上がり**(research/WEATHER_WET.md・`?weather=wet` 時だけ・ステージ1屋外): 色調整・霧・空・水たまり(帯2の縁+帯1の水面)・映り込み・雫と波紋。`src/pixi/weatherWet.ts`・`src/utils/weatherWet.ts`・`src/world/weatherPuddles.ts`、素材 `public/sprites/weather/` 32枚(切り抜きのみ)。ツマミ無しでは新しいコードは走らない。負荷3/10。phone-guard はタイトル/キャラ選択で NG だが、基準画像が11-17のもので今回の変更は DOM/タイトルを触っていない(ツマミ無しの撮影)=未切り分け。
+- **錬金術のリズムの輪**: 社長指示「もっと薄くして 邪魔にならないように」で全体の α を0.45倍(`ALCHEMY_RHYTHM_ALPHA`)。この変更の画面撮影はしていない(溜めの最中をヘッドレスで出していない)。
+- 台帳: `npm run assets:ledger`(sub-icons/alchemy-zombie を含む)。
+- 検証: typecheck・変更ファイルの eslint・`vitest run src/utils src/store src/data src/world src/pixi` 10404件すべて通過。鞭・火炎瓶・雨上がりは各担当が撮影して目視、設計チャットも撮影画を確認。
+- 監査: 鞭の振り・火炎瓶・雨上がりのクリエイティブ監査はまだ(社長の実機確認の後に回す)。
+- 自己点検: 憲法第4条・第5条に抵触なし(プレイヤー側の技と見た目。雨上がりはツマミの時だけ)。
+
 ## v0.25.5676 — 覚醒中の刀のオート斬撃を速く【2026-11-20 20:37 JST】
 - 社長指示「刀はやく」(覚醒時の刀のオート斬撃): 間隔を銃と同じ `awakenFireRateMult` で割る(基準600ms・血の覚醒×1.5で400ms・終わりの1秒で戻る)。純関数 `katanaSlashIntervalMs`(`src/utils/katanaAuto.ts`)+テスト、配線は `src/hooks/useGameLoop.ts` のプレイヤーのオート斬撃のみ(守護霊の刀は不変)。実装は Opus サブエージェント。
 - 検証: 別ツリー(HEAD+3ファイル)で typecheck・eslint・関連テスト 58/58。

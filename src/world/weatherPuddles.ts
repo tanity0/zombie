@@ -131,7 +131,7 @@ const puddleInCell = (cx: number, cy: number, k: number, avoid: PuddleAvoid): Pu
 };
 
 /**
- * 可視域(+余白)の水たまり。区画ごとに 0〜2 個(約2割の区画は空・木や松明に弾かれる分はさらに減る)。決まった乱数=同じ場所には毎回同じ水たまり。
+ * 可視域(+余白)の水たまり。区画ごとに 0〜2 個(約1割の区画は空・木や松明に弾かれる分はさらに減る)。決まった乱数=同じ場所には毎回同じ水たまり。
  * 同じ区画の2つ目が1つ目と重なる時は2つ目を捨てる。
  */
 export const puddlesInRegion = (
@@ -143,7 +143,7 @@ export const puddlesInRegion = (
   for (let cy = cy0; cy <= cy1; cy++) {
     for (let cx = cx0; cx <= cx1; cx++) {
       const u = hash(cx * 5.3 + 0.7, cy * 8.9 - 1.3);
-      const n = u < 0.22 ? 0 : u < 0.72 ? 1 : 2;
+      const n = u < 0.12 ? 0 : u < 0.55 ? 1 : 2;
       let first: Puddle | null = null;
       for (let k = 0; k < n; k++) {
         const p = puddleInCell(cx, cy, k, avoid);

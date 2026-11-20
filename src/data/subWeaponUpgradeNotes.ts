@@ -158,11 +158,11 @@ export const SUB_WEAPON_UPGRADE_NOTES: Record<SubWeaponKey, SubWeaponUpgradeNote
     lv2: '次の分身が出るまでの間隔が短くなる',
     lv3: '次の分身が出るまでの間隔が短くなる',
   },
-  // 火炎瓶: レベルで1サイクルに設置する本数が増える。
-  // 根拠: src/utils/molotov.ts:10 MOLOTOV_FIRES_BY_LEVEL=[0,3,5,7]
+  // 火炎瓶: レベルで1サイクルに設置する本数が増え、火の広がる範囲も大きくなる。
+  // 根拠: src/utils/molotov.ts:10 MOLOTOV_FIRES_BY_LEVEL=[0,3,5,7] / MOLOTOV_SPREAD_RADIUS_BY_LEVEL=[0,55,90,125]
   molotov: {
-    lv2: '置ける火の数が増える',
-    lv3: '置ける火の数が増える',
+    lv2: '置ける火の数が増え、火の広がる範囲も大きくなる',
+    lv3: '置ける火の数が増え、火の広がる範囲も大きくなる',
   },
   // 救急鞄: レベルで払い出せる中身の種類が増える。Lv2で回復、Lv3でさらに爆弾が対象になる
   // (Lv1は弾薬のみ)。
