@@ -2,7 +2,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, isBrawlerGuarding } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
-import { BRAWLER_GRAB_MS, BRAWLER_CONTACT_GRAB_MS, brawlerKickUpCost, BRAWLER_TECHS, BRAWLER_WORLD_STOP, BRAWLER_SUPLEX_RISE_MS } from '../utils/brawler';
+import { BRAWLER_GRAB_MS, BRAWLER_CONTACT_GRAB_MS, brawlerKickUpCost, BRAWLER_TECHS, BRAWLER_WORLD_STOP, BRAWLER_SUPLEX_RISE_MS, BRAWLER_CONTACT_FREEZE_MS, BRAWLER_SUPLEX_BLAST_RADIUS, brawlerTechCost } from '../utils/brawler';
+import { brawlerTimeKeeperDiscount } from '../utils/brawlerSkills';
 import { setBrawlerTempoAll, brawlerAirborne } from '../utils/brawlerCombo';
 import { playerSuperArmorActive } from '../utils/superArmor';
 
@@ -157,19 +158,19 @@ describe('§34-7 密着の構え', () => {
     useGameStore.setState(st => ({ enemies: [e], player: { ...st.player, brawler: { ...st.player.brawler!, points } }, skillProcFeed: [] }));
     expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
   };
-  // ★社長実機報告2026-11-19「スープレックス、雑魚をスープレックスできてない(案山子)」: 案山子(雑魚・体力が減らない練習の的)も、技ポイントが
-  //   構えの値段に足りない時(弱い構え)も、密着していればスープレックス。投げ越しの先(背中側)を覚え、相手の位置(判定)は動かない。
-  for (const [type, pts] of [['scarecrow', 9], ['scarecrow', 0], ['zombie', 0]] as const) {
+  // ★社長実機報告2026-11-19「スープレックス、雑魚をスープレックスできてない(案山子)」: 案山子(雑魚・体力が減らない練習の的)も、密着していればスープレックス。
+  //   投げ越しの先(背中側)を覚え、相手の位置(判定)は動かない。★§34-10: 構えの値段を払えた時だけ(払えない時は弱い構え=掴まない)。
+  for (const [type, pts] of [['scarecrow', 9], ['zombie', 3]] as const) {
     it(`${type}(技ポイント${pts})に密着して構え=スープレックスで投げ越して叩きつけ、もう一度浮く`, () => {
       guardNear(type, [], pts);
       expect(br().contactGrab?.mode).toBe('suplex');
-      expect(br().points).toBe(pts >= BRAWLER_TECHS.guard.cost ? pts - BRAWLER_TECHS.guard.cost : pts); // 払えない時は弱い構えと同じ=0
+      expect(br().points).toBe(pts - BRAWLER_TECHS.guard.cost);
       const sw = br().suplexSwing!;
       expect(sw.enemyId).toBe('c');
       const p = useGameStore.getState().player, e = en('c')!;
       expect(Math.sign(sw.mx)).toBe(-Math.sign(e.x + e.width / 2 - (p.x + p.width / 2))); // 背中側へ運ぶ
       const x0 = e.x, hp0 = e.health;
-      advance(BRAWLER_CONTACT_GRAB_MS + 30);
+      advance(BRAWLER_CONTACT_FREEZE_MS + BRAWLER_CONTACT_GRAB_MS + 30);
       expect(feed()).toEqual(['tech:suplex']);
       expect(brawlerAirborne(en('c')!, now)).toBe(true);
       expect(en('c')!.x).toBeCloseTo(x0, 5);
@@ -185,8 +186,12 @@ describe('§34-7 密着の構え', () => {
     expect(isBrawlerGuarding(st.player, st.gameTime)).toBe(false);
     expect(playerSuperArmorActive(st.player, 999, now, st.gameTime, 300)).toBe(true);
     const x0 = en('c')!.x;
-    advance(BRAWLER_CONTACT_GRAB_MS + 30);
-    expect(useGameStore.getState().hitstopUntil).toBeLessThanOrEqual(now); // 時間は止めない
+    expect(useGameStore.getState().hitstopUntil).toBe(now + BRAWLER_CONTACT_FREEZE_MS); // ★§34-10: 掴んだ一瞬は時間停止(ガッ)
+    const gt0 = useGameStore.getState().gameTime;
+    advance(BRAWLER_CONTACT_FREEZE_MS - 20);
+    expect(useGameStore.getState().gameTime).toBe(gt0); // 止まっている間は技の時計も進まない
+    expect(br().suplexAt).toBeGreaterThan(gt0);           // まだ反り始めていない
+    advance(BRAWLER_CONTACT_GRAB_MS + 50);
     expect(br().suplexAt).toBeDefined();
     expect(brawlerAirborne(en('c')!, now)).toBe(true);
     expect(en('c')!.x).toBeCloseTo(x0, 5);
@@ -198,10 +203,95 @@ describe('§34-7 密着の構え', () => {
     const px0 = useGameStore.getState().player.x;
     for (let k = 0; k < 150 && br().phase !== 'idle'; k++) advance(10);
     expect(feed()).toEqual(['tech:flipkick']);
-    expect(useGameStore.getState().player.x).toBeLessThan(px0 - 60);
+    // ★社長指示2026-11-20「サマーソルト離れすぎ、1/3くらいでいいかも」: 実測の下がる距離 約300px → 約80px。
+    const back = px0 - useGameStore.getState().player.x;
+    expect(back).toBeGreaterThan(70);
+    expect(back).toBeLessThan(90);
     expect(br().phase).toBe('idle');
     expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
     expect(br().tech).toBe('kiko');
+  });
+  // ★§34-10: 密着の掴み(スープレックス・サマーソルト)の値段=構え(カウンター)の値段そのもの(同じ関数)。払えない時は弱い構え(掴まない)。
+  for (const type of ['zombie', 'scarecrow', 'hunter'] as const) {
+    it(`${type}: 構えの値段を払えない(技ポイント${BRAWLER_TECHS.guard.cost - 1})と、密着していても弱い構え(掴まない)`, () => {
+      guardNear(type, [], BRAWLER_TECHS.guard.cost - 1);
+      expect(br().tech).toBe('guard');
+      expect(br().guardWeak).toBe(true);
+      expect(br().contactGrab).toBeUndefined();
+      expect(br().points).toBe(BRAWLER_TECHS.guard.cost - 1);
+    });
+  }
+  it('タイムキーパーLv2: 掴みの値段も構えと同じだけ下がる(構えの値段ちょうどで掴む・1足りなければ弱い構え)', () => {
+    const disc = brawlerTimeKeeperDiscount('guard', 2);
+    const cost = brawlerTechCost('guard', false, disc);
+    expect(cost).toBe(BRAWLER_TECHS.guard.cost - disc);
+    const tk = (pts: number) => {
+      setup(['time-keeper']);
+      useGameStore.setState(st => ({ enemies: [], player: { ...st.player, skillLevels: { 'time-keeper': 2 } as never, brawler: undefined } }));
+      useGameStore.getState().brawlerPress(); advance(400);
+      const p = useGameStore.getState().player;
+      const e = enemyAt(0, 0, 'c', 'zombie');
+      e.x = p.x + p.width + 4;
+      useGameStore.setState(st => ({ enemies: [e], player: { ...st.player, brawler: { ...st.player.brawler!, points: pts } }, skillProcFeed: [] }));
+      expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    };
+    tk(cost);
+    expect(br().contactGrab?.mode).toBe('suplex');
+    expect(br().points).toBe(0);
+    tk(cost - 1);
+    expect(br().contactGrab).toBeUndefined();
+    expect(br().guardWeak).toBe(true);
+  });
+  // ★社長実機報告2026-11-20「スープレックス、最初はうまくいった気がするけど、2回目から後ろに行ってくれない」: 同じ相手へ続けて出しても、毎回新しく投げ越す
+  //   (反りの始まりが新しい・着地点はその時のプレイヤーの背中側)。
+  for (const type of ['scarecrow', 'zombie'] as const) {
+    it(`${type}: 2回目・3回目のスープレックスも毎回新しく背中側へ投げ越す(着地を待って/続けて)`, () => {
+      guardNear(type, [], 9);
+      let prevAt = br().suplexAt!;
+      for (const gap of [0, 400]) {
+        advance(BRAWLER_CONTACT_FREEZE_MS + BRAWLER_CONTACT_GRAB_MS + 30);
+        for (let k = 0; k < 300 && br().phase !== 'idle'; k++) advance(10);
+        advance(gap);
+        useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 9 } }, skillProcFeed: [] }));
+        expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+        const b = br();
+        expect(b.contactGrab?.mode).toBe('suplex');
+        expect(b.suplexAt!).toBeGreaterThan(prevAt);
+        prevAt = b.suplexAt!;
+        const p = useGameStore.getState().player, e = en('c')!;
+        expect(b.suplexSwing?.enemyId).toBe('c');
+        expect(Math.sign(b.suplexSwing!.mx)).toBe(-Math.sign(e.x + e.width / 2 - (p.x + p.width / 2)));
+        advance(BRAWLER_CONTACT_FREEZE_MS + BRAWLER_CONTACT_GRAB_MS + 30);
+        expect(feed()).toEqual(['tech:suplex']);
+      }
+    });
+  }
+  // ★§34-9: 叩きつけ=背中側の着地点を中心に小爆発。近くの敵(着地点から半径の内)にダメージと外向きの押し。叩きつけた相手は1回だけ当たる。
+  it('§34-9 叩きつけの小爆発: 着地点の近くの敵はダメージ+押し・叩きつけた相手は1回だけ当たってもう一度浮く', () => {
+    guardNear('zombie', [], 9);
+    const sw = br().suplexSwing!;
+    const c0 = en('c')!;
+    const lx = c0.x + c0.width / 2 + sw.mx, ly = c0.y + c0.height / 2 + sw.my;
+    const near = enemyAt(0, 0, 'n', 'zombie');
+    near.x = lx - near.width / 2 - 30; near.y = ly - near.height / 2; // 着地点から 30px(背中側のさらに外)
+    const far = enemyAt(0, 0, 'f', 'zombie');
+    far.x = lx - far.width / 2 - BRAWLER_SUPLEX_BLAST_RADIUS - 120; far.y = ly - far.height / 2;
+    useGameStore.setState(st => ({ enemies: [...st.enemies, near, far] }));
+    const hpC = en('c')!.health, hpN = en('n')!.health, hpF = en('f')!.health;
+    let hitsOnC = 0, last = en('c')!.health;
+    for (let t = 0; t < BRAWLER_CONTACT_FREEZE_MS + BRAWLER_CONTACT_GRAB_MS + 200; t += 10) {
+      advance(10);
+      const h = en('c')!.health;
+      if (h < last) hitsOnC++;
+      last = h;
+    }
+    expect(hitsOnC).toBe(1);
+    expect(en('c')!.health).toBeLessThan(hpC);
+    expect(brawlerAirborne(en('c')!, now)).toBe(true);
+    expect(en('n')!.health).toBeLessThan(hpN);
+    expect((en('n')!.knockbackUntil ?? 0)).toBeGreaterThan(now);
+    expect((en('n')!.knockbackVx ?? 0)).toBeLessThan(0); // 着地点から外向き(左)
+    expect(en('f')!.health).toBe(hpF);
   });
   it('密着していなければ今までどおりの構え', () => {
     setup();

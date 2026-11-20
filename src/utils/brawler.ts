@@ -1084,6 +1084,8 @@ export const BRAWLER_THROW_BLAST_MULT = 2;
 export const BRAWLER_THROW_KB_MULT = 2;
 /** スープレックスの威力(踵落とし×これ・近接扱い)。 */
 export const BRAWLER_SUPLEX_MULT = BRAWLER_HEEL_MULT * 1.5;
+/** ★スープレックスの叩きつけの小爆発(§34-9・社長指示2026-11-20)の半径(px・叩き台。空中投げの爆撃 160 より小さい)。爆発の規約で skillExplosionMult が掛かる。 */
+export const BRAWLER_SUPLEX_BLAST_RADIUS = 90;
 /**
  * 投げの進み(経過の割合 u=0..1 → 距離の割合 0..1)。出だしの ACCEL_FRAC の間は2乗で加速(速さ0から)、その後は最高速で一定。
  * 慣性: 止まった所から速さを上げて飛ぶ(当たった所で爆撃=そこで止まる)。
@@ -1139,7 +1141,7 @@ export const BRAWLER_CONTACT_PX = 24;
 /** 掴む長さ(ms・gameTime=時間は止めない)。 */
 export const BRAWLER_CONTACT_GRAB_MS = 200;
 /** 蹴りバク宙で下がる距離(px)と、跳んで下がる長さ(ms)。蹴った瞬間に最速→着地へ減速(踏み込みの器の 'decel')。 */
-export const BRAWLER_FLIPKICK_PX = 150;
+export const BRAWLER_FLIPKICK_PX = 40; // ★社長指示2026-11-20「サマーソルト離れすぎ、1/3くらいでいいかも」: 実測の下がる距離 約300px → 約80px(踏み込みの器は GAME_SPEED が掛かる=定数の約2倍進む)
 export const BRAWLER_FLIPKICK_MS = 420;
 /** バク宙の跳ぶ高さ(px・絵だけ)。 */
 export const BRAWLER_FLIPKICK_JUMP_PX = 46;
@@ -1160,6 +1162,10 @@ export const brawlerContactTarget = (
   }
   return best;
 };
+/** ★密着の掴みの一瞬の時間停止(ms・壁時計・§34-10「ガッと掴むフレーム(ここが時間止まってる時)」・叩き台。空中投げの掴み 400 より短い)。 */
+export const BRAWLER_CONTACT_FREEZE_MS = 250;
+/** 掴みの一瞬に組み付く姿へ入る長さ(ms・壁時計=時間停止の間も動く・慣性つき)。 */
+export const BRAWLER_CONTACT_GRIP_IN_MS = 70;
 /** 密着した相手の区分 → 出す技(雑魚=スープレックス / 強個体・ボス級=蹴りバク宙)。 */
 export const brawlerContactMode = (cls: 'mob' | 'strong' | 'boss'): 'suplex' | 'flipkick' => (cls === 'mob' ? 'suplex' : 'flipkick');
 /**
@@ -2031,7 +2037,9 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number, nowMs?: nu
         if (!hit) {
           // スープレックスは反り始め(掴みの後半)までに寄せ切る=反りへ途切れずにつなぐ。蹴りバク宙は掴みの全体で寄せる。
           const span = s.contactGrab.mode === 'suplex' ? Math.max(1, s.windupMs - BRAWLER_SUPLEX_RISE_MS) : w;
-          const k = easeOut(Math.min(1, el / span));
+          // ★§34-10: 掴んだ瞬間は時間停止(技の時計が進まない)=壁時計で一気に組み付く姿へ入れる(ガッ)。止めが明けたらその姿のまま反りへ。
+          const grip = s.contactGrab.at === undefined ? 0 : nowMs === undefined ? 1 : easeOut(Math.max(0, Math.min(1, (nowMs - s.contactGrab.at) / BRAWLER_CONTACT_GRIP_IN_MS)));
+          const k = Math.max(grip, easeOut(Math.min(1, el / span)));
           return { ...base, tex: 'ready', lean: BRAWLER_GRAB_LEAN * k, push: BRAWLER_GRAB_PUSH_PX * k, sqY: 1 - 0.1 * k, sqX: 1 + 0.06 * k };
         }
         if (s.contactGrab.mode === 'flipkick') {

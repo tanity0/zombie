@@ -27,6 +27,13 @@ export const isScarecrow = (t: EnemyType | string): boolean => t === 'scarecrow'
 export const SCARECROW_SHEET = 'scarecrow';
 export const SCARECROW_FRAMES = 3;
 
+/**
+ * ★体力を通らずに敵を消す経路(爆弾の全消し・イベントの周辺一掃 等)で**消してはいけない**敵か(社長報告2026-11-20「案山子、爆弾拾うと消えちゃう」)。
+ * 消す側はこれで外す。外した上で「当たり」として扱いたい経路(爆弾)は damageEnemy を通す(数字・揺れが普段どおり出る)。
+ * 取りこぼした経路は store/scarecrowSway.ts の安全網が戻す(練習ラン中に案山子が配列から消えたら、消える前の個体を戻す)。
+ */
+export const survivesEnemySweeps = (e: { type: EnemyType }): boolean => isScarecrow(e.type);
+
 /** 被弾後の体力。案山子だけは減らない(=倒れない)。それ以外の敵は従来の式そのまま。 */
 export const enemyHealthAfterHit = (enemy: { type: EnemyType; health: number }, dmg: number): number =>
   isScarecrow(enemy.type) ? enemy.health : Math.max(0, enemy.health - dmg);

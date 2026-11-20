@@ -1,5 +1,6 @@
 import { mobPrefersHero } from './heroScript';
 import { isHateTrackedBossType, escortIdOfSide } from './bossHate'; // research/ESCORT_TARGETED.md §4/§5: 軍人を狙う対象の述語と、ボスの狙い(escort:<id>)の読み出し
+import { survivesEnemySweeps } from './scarecrow';
 import { chooseEscortAggro, type EscortAggroCandidate } from './escortAggro';
 import { currentSpawnWalk, walkBiasStrength, pickWalkBiasedSide } from './spawnWalkBias';
 import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
@@ -437,7 +438,8 @@ export const isBossType = (t: EnemyType): boolean =>
  */
 export const isArenaSweepProtected = (e: Pick<Enemy, 'type' | 'fixed' | 'questTarget'>): boolean =>
   isReaperFamily(e.type) || e.type === 'giantbat' || isPumpkinTier(e.type) ||
-  isHiddenBoss(e.type) || isBountyType(e.type) || !!e.fixed || !!e.questTarget;
+  isHiddenBoss(e.type) || isBountyType(e.type) || !!e.fixed || !!e.questTarget
+  || survivesEnemySweeps(e); // 案山子(変異体対策室の練習の的)は一掃で消さない
 
 /**
  * ★クリティカルを「ボス式」(=固まらず**移動半減+CD2倍**・v0.25.2422/CRIT-UNIFY §9.2)で受ける型か。

@@ -83,3 +83,36 @@ describe('案山子の揺れ(被弾の瞬間に store が決める)', () => {
     expect(scarecrow()!.health).toBe(scarecrow()!.maxHealth);
   });
 });
+
+// 社長報告2026-11-20「案山子、爆弾拾うと消えちゃう」: 体力を通らずに敵を消す経路でも消えない。
+describe('案山子は一括で消す経路でも残る', () => {
+  it('爆弾を拾う: 雑魚は消えるが案山子は残る(体力は満タン・被弾=数字と揺れ)', () => {
+    const z = { ...spawnEnemyAtWithTier('zombie', 360, 120, 1000, 'none'), id: 'z-1' };
+    useGameStore.setState(s => ({ enemies: [...s.enemies, z], pickups: [] }));
+    const kills0 = st().gameStats.enemiesKilled;
+    now += 50;
+    st().addPickup({ id: 'pk-bomb', x: 300, y: 400, type: 'bomb', value: 0 });
+    st().collectPickup('pk-bomb');
+    expect(st().enemies.some(e => e.id === 'z-1')).toBe(false);
+    const sc = scarecrow();
+    expect(sc).toBeDefined();
+    expect(sc!.health).toBe(sc!.maxHealth);
+    expect(sc!.lastHit).toBe(now);
+    expect(sc!.scarecrowSwayAt).toBe(now);
+    expect(st().gameStats.enemiesKilled).toBe(kills0 + 1); // 数えるのは雑魚の1体だけ
+    expect(st().effects.some(f => f.kind === 'damageNumber')).toBe(true);
+  });
+
+  it('安全網: どの経路で配列から外されても、練習ラン中は戻る', () => {
+    useGameStore.setState(s => ({ gameTime: s.gameTime + 16 }));
+    useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.type !== 'scarecrow') }));
+    expect(scarecrow()).toBeDefined();
+    st().removeEnemy('sc-1');
+    expect(scarecrow()).toBeDefined();
+  });
+
+  it('出撃のやり直し(resetGame)では戻さない', () => {
+    st().resetGame('soldier');
+    expect(scarecrow()).toBeUndefined();
+  });
+});

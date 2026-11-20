@@ -513,7 +513,7 @@ import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS, isEliteFatalStun } from '../utils/meleeExecute';
 // 案山子(変異体対策室の練習枠): 体力を減らす合流点はこの1本を通す=案山子だけ倒れない(utils/scarecrow.ts)。
-import { enemyHealthAfterHit, isScarecrow } from '../utils/scarecrow';
+import { enemyHealthAfterHit, isScarecrow, survivesEnemySweeps } from '../utils/scarecrow';
 import { killSlashNeckPosition } from '../utils/killSlashFx'; // KILL時の首元斬撃(fx/kill-slash・社長指示2026-09-16)
 import { heroBodyWallRect } from '../utils/heroScript'; // research/MUTANT_HERO.md: 英雄の体の壁(葉モジュール=循環しない)
 import type { ThirdPartyShape } from '../utils/thirdPartyShape'; // 依存ゼロの葉(heroBlast は gameStore を読むので、そこから型を引くと循環する)
@@ -5184,8 +5184,9 @@ const startBrawlerTech = (
   }
   // ★密着の構え(research/BRAWLER.md §34-7): 構えを出した瞬間に体に密着している敵が居れば、構えの代わりに掴む(値段は構えと同じ=払い済み)。
   //   雑魚=スープレックス / 強個体・ボス級=蹴りバク宙。払えずに出る弱い構え・代金なしの構え(秘奥義の取り消し)・延長(別の経路)は今までどおり構え。
-  // ★払えずに出る弱い構えでも掴む(値段は弱い構えと同じ=0・社長実機報告2026-11-19「雑魚をスープレックスできてない(案山子)」: 技ポイントが3未満だと掴まなかった)。
-  if (kind === 'guard' && !free) {
+  // ★密着の掴みは技ポイント3(構えの値段)を払えた時だけ(§34-10・社長指示2026-11-20「技ポイントは3必須で」)。払えない時は今までどおりの弱い構え(掴まない)。
+  //   (v0.25.5667 の「払えない弱い構えでも掴む」は撤回。)
+  if (kind === 'guard' && !free && !weakGuard) {
     const contact = BR.brawlerContactTarget(st.enemies, c.x, c.y, p.width / 2, e => BRC.brawlerAirborne(e, now));
     if (contact) {
       startBrawlerContactGrab(get, set, s, contact);
@@ -6119,12 +6120,17 @@ const startBrawlerContactGrab = (get: () => GameState, set: (fn: (s: GameState) 
   const mode = BR.brawlerContactMode(BRC.brawlerEnemyClass(e));
   const dir = BR.brawlerAimDir(c.x, c.y, e, p.lastDirection);
   const sw = mode === 'suplex' ? { suplexSwing: { enemyId: e.id, ...BR.brawlerSuplexLanding(c.x, c.y, e.x + e.width / 2, e.y + e.height / 2, p.lastDirection?.x ?? 1) } } : {};
-  const s1: BR.BrawlerState = { ...BR.brawlerStartContactGrab(s, t, e.id, mode), ...sw, targetId: e.id, dirX: dir.x, dirY: dir.y, pressAt: Date.now() };
-  // 掴んでいる間、相手はその場で止まる(固まりと同じ器・掴みの長さ+少し)。位置は動かさない(§34-6 #6)。
-  const holdUntil = Date.now() + BR.BRAWLER_CONTACT_GRAB_MS + 60;
+  const now = Date.now();
+  const k0 = BR.brawlerStartContactGrab(s, t, e.id, mode);
+  const s1: BR.BrawlerState = { ...k0, contactGrab: { ...k0.contactGrab!, ...(mode === 'suplex' ? { at: now } : {}) }, ...sw, targetId: e.id, dirX: dir.x, dirY: dir.y, pressAt: now };
+  // 掴んでいる間、相手はその場で止まる(固まりと同じ器・掴みの一瞬の時間停止+掴みの長さ+少し)。位置は動かさない(§34-6 #6)。
+  const freezeMs = mode === 'suplex' ? BR.BRAWLER_CONTACT_FREEZE_MS : 0;
+  const holdUntil = now + freezeMs + BR.BRAWLER_CONTACT_GRAB_MS + 60;
   set(state => ({ enemies: state.enemies.map(en => (en.id === e.id ? { ...en, brHoldUntil: Math.max(en.brHoldUntil ?? 0, holdUntil) } : en)) }));
   setBrawler(set, s1, { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0, lastDirection: { x: dir.x, y: dir.y } });
-  brawlerAirGrabFx(get, e, c, BR.BRAWLER_CONTACT_GRAB_MS);
+  brawlerAirGrabFx(get, e, c, freezeMs + BR.BRAWLER_CONTACT_GRAB_MS);
+  // ★§34-10: スープレックスは掴んだ一瞬に時間停止(ループごと止まる=空中投げの掴みと同じ器)。明けてから持ち上げ→反り→叩きつけ(小爆発)。
+  if (freezeMs > 0) get().triggerHitstop(freezeMs);
 };
 /** 密着の構えの判定(掴みの終わり): 雑魚=スープレックス(§34-3 と同じ)/ 強個体・ボス級=蹴りバク宙。相手が居なくなっていたら空振り(後隙だけ)。 */
 const resolveBrawlerContactGrab = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState): void => {
@@ -6183,14 +6189,11 @@ const resolveBrawlerContactGrab = (get: () => GameState, set: (fn: (s: GameState
 /** chain=蹴り上げからの自動の続き(空中投げで投げ先が無かった)=技の行は向きの印を出さない(監査 #12)。密着の構えからは false=上の印。 */
 const brawlerSuplex = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, e: Enemy, chain: boolean): void => {
   const t = get().gameTime;
-  const now = Date.now();
   const plan = brawlerStopPlan(get, BR.BRAWLER_HITSTOP.closer);
-  const r = get().triggerCounter(undefined, {
-    mult: BR.BRAWLER_SUPLEX_MULT, stunMs: plan.stun, ...plan.lock, postureMult: BR.BRAWLER_SUPLEX_MULT,
-    kb: { kind: 'none' }, combo: { move: 'suplex' }, targetIds: [e.id], brawler: true, pressedAt: now,
-  });
-  const hits = r.hits ?? 0;
-  brawlerKillSfx(r);
+  // ★§34-9: 叩きつけ=背中側の着地点(地割れの所)を中心に小爆発。スープレックスのダメージはこの爆発のダメージに置き換える(叩きつけた相手は必ず当たる・もう一度浮く)。
+  const swg0 = get().player.brawler?.suplexSwing;
+  const off0 = swg0 && swg0.enemyId === e.id ? swg0 : { mx: 0, my: 0 };
+  const hits = explodeBrawlerSuplex(get, set, e, e.x + e.width / 2 + off0.mx, e.y + e.height / 2 + off0.my);
   const b = get().player.brawler;
   if (b) {
     const b1 = hits > 0 ? BR.brawlerApplyHitstop(b, t, plan.self) : b;
@@ -6217,6 +6220,73 @@ const brawlerSuplex = (get: () => GameState, set: (fn: (s: GameState) => Partial
   brawlerSfx('heavy-impact', 0.9, 0.7, undefined, 60);
 };
 
+/**
+ * ★スープレックスの叩きつけの小爆発(research/BRAWLER.md §34-9・社長指示2026-11-20「叩きつけたら、そこを起爆地として小爆発ダメージに変更(近くの敵も吹き飛ぶ)」)。
+ * 中心=叩きつけた着地点(背中側・地割れの所)。爆発の規約(skillExplosionMult・処刑なし・playerBlast で浮かせる=§14-2・卵も割る)。半径=BRAWLER_SUPLEX_BLAST_RADIUS。
+ * 威力の基準=今までのスープレックス(踵落とし×1.5)。叩きつけた相手は位置(判定)を動かしていないので、円の外でも必ず当てる(満額・押さない・
+ * 浮きは今どおりスープレックスの地面バウンド=予算2。爆発の浮きは重ねない)。ほかの敵は距離で減る威力・外向きの押し(気功の爆発と同じ強さ)・爆発の浮き。
+ * 返り値=叩きつけた相手に当たったか(1/0)。
+ */
+const explodeBrawlerSuplex = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, slammed: Enemy, x: number, y: number): number => {
+  const st = get();
+  const p = st.player;
+  const now = Date.now();
+  const exMult = skillExplosionMult(p);
+  const radius = BR.BRAWLER_SUPLEX_BLAST_RADIUS * exMult * heavyGunnerExplosionMult(p, st.gameTime);
+  const melee = p.weapons.find(w => w.isMelee);
+  const base = meleeSwingBaseDamage(melee, p) * BR.BRAWLER_SUPLEX_MULT * exMult * skillOutgoingDamageMult(p)
+    * BRS.brawlerSpeedDamageMult(playerMoveStatMult(p, st.gameTime)) * skillBloodAwakenDamageMult(p) * masteryMultOf(p, 'brawler');
+  const inCircle = BR.brawlerCircleTargets(st.enemies, x, y, radius).filter(id => id !== slammed.id);
+  const ids = [slammed.id, ...inCircle];
+  const blastIds: string[] = [];
+  let dealt = 0, slamHit = 0, killedAny = false;
+  for (const id of ids) {
+    const e = get().enemies.find(en => en.id === id);
+    if (!e || !(e.health > 0) || isCorpse(e)) continue;
+    const isSlam = id === slammed.id;
+    const d = isSlam ? 0 : BR.brawlerDistTo(x, y, e);
+    const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * BRC.brawlerProrationFor(e, now) * sniperGunMult(p, e)));
+    noteAirMeleeHit(e, now);
+    const stunBefore = e.hitStunUntil;
+    const killed = withMastery('brawler', () => get().damageEnemy(id, dmg, true, false, false, 'other'));
+    { const na = meleeNumberPoint(isSlam ? e.x + e.width / 2 : x, isSlam ? e.y + e.height / 2 : y, e); get().spawnDamageNumber(na.x, na.y, dmg, false, { enemyId: id }); }
+    dealt += dmg;
+    if (isSlam) slamHit = 1;
+    if (killed) {
+      killedAny = true;
+      get().dropEnemyXp(e, e.x + e.width / 2, e.y + e.height / 2, `pickup-xp-suplex-${now}-${id}`);
+      continue;
+    }
+    if (isSlam) {
+      // 叩きつけた相手: 今どおりもう一度浮く(地面バウンドの器・予算2・押さない)。
+      // 爆発のダメージは爆発の浮きの待ち行列に載る(damageEnemy の blast)=叩きつけた相手だけ外して、スープレックスの跳ね返りを残す。
+      blastHitIds.delete(id);
+      const jp = brawlerJugglePatch(e, BRC.brawlerEnemyClass(e), 'suplex', now); // 当たる前の相手から数える(近接の当たりと同じ)
+      if (jp) set(state => ({ enemies: state.enemies.map(en => (en.id === id ? { ...en, ...jp } : en)) }));
+      continue;
+    }
+    blastIds.push(id);
+    const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+    const ddx = ecx - x, ddy = ecy - y, dl0 = Math.hypot(ddx, ddy);
+    const ang0 = dl0 > 1 ? Math.atan2(ddy, ddx) : (id.charCodeAt(id.length - 1) % 8) * (Math.PI / 4);
+    const fall = blastKbFalloff(Math.max(0.001, dl0), radius);
+    const str = (knockbackSpeedFor(BR.BRAWLER_KIKO_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED) * skillExplosionKbMult(p);
+    if (BRC.brawlerEnemyClass(e) === 'strong') brawlerKikoStrongAsMob(get, id, stunBefore, dmg, Math.cos(ang0), Math.sin(ang0), str * fall);
+    else get().knockbackEnemy(id, Math.cos(ang0), Math.sin(ang0), str * fall, Math.max(3, str) * fall);
+  }
+  if (killedAny) brawlerSfx(BRAWLER_SFX_DEATH);
+  const g = get();
+  // 絵(派手さの絵・判定なし): 既存の爆発の絵を小さめに(空中投げの爆撃より控えめ)。地割れ・砂埃・輪は brawlerSuplex が今どおり重ねる。
+  g.spawnExplosionFx(x, y, radius);
+  g.playerBlast(x, y, radius, blastIds); // 卵も割る・叩きつけた相手以外を爆発の浮きで浮かせる(§14-2)
+  g.spawnRing(x, y, 10, radius * 1.3, BR.BRAWLER_RGBA(0.9), 5, 380, true);
+  g.spawnGlow(x, y, GLOW_R_L, 'rgba(255,240,210,', 300, true);
+  g.spawnImageMark(x, y - 8, 'vfx/smoke_04', { scale: 0.8, duration: 900, noPop: true, fadeFrom: 0.25, tint: 0x6b625a, alpha: 0.5, moveY: -30, rot: Math.random() * Math.PI * 2 });
+  if (ids.length > 1) g.registerMultiHit(ids.length);
+  g.registerImpact({ source: 'explosion', damage: dealt, minMag: IMPACT_MELEE_MIN, flags: { explosion: true, kill: false }, x, y });
+  brawlerSfx('bomb', 0.7, 1.05, undefined, 20);
+  return slamHit;
+};
 /**
  * 当たりの白い炸裂(クリエイティブ監査 #1・#2)。中心は敵の中心ではなく**当たった側の縁**(プレイヤーに近い帯の縁)。
  * 毎発ランダムに回す。白金は乗算 tint に頼らず、加算の白金の芯(小さな光=影を落とさない)を重ねて出す。
@@ -24213,10 +24283,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         // VS rosary: kill every enemy currently on screen by zeroing their
         // HP. We don't grant experience for this — it's a panic button.
         // ボス系(reaper/giantbat/pumpkin/lab-zombie-3/裏ボス)は爆弾では死なない(社長指示)=対象外で生存。
-        const reachable = get().enemies.filter(e => !isBossType(e.type));
+        // ★案山子(変異体対策室の練習の的)は消さない(社長報告2026-11-20「案山子、爆弾拾うと消えちゃう」)。
+        // 一括除去からは外し、下で「体力ぶんの当たり」として damageEnemy を通す=数字と揺れが出て、倒れずに残る。
+        const sweepImmune = get().enemies.filter(e => !isBossType(e.type) && survivesEnemySweeps(e));
+        const reachable = get().enemies.filter(e => !isBossType(e.type) && !survivesEnemySweeps(e));
         reachable.forEach(e => tagRemove(e.id, 'bomb')); // 消失ログ用: ボムで一括除去
         set(state => ({
-          enemies: state.enemies.filter(e => isBossType(e.type)),
+          enemies: state.enemies.filter(e => isBossType(e.type) || survivesEnemySweeps(e)),
           finaleDefeated: state.finaleDefeated, // 爆弾ではフィナーレボスを倒せない=終了条件にしない
           gameStats: {
             ...state.gameStats,
@@ -24234,6 +24307,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           get().dropEnemyXp(enemy, ex, ey, 'pickup-bomb');
         });
         noteKickAssistKills(get, reachable); // 蹴りの連携の一言(プレイヤーが拾ったボムでの撃破)
+        for (const e of sweepImmune) {
+          const dmg = Math.max(1, e.health);
+          withMastery('none', () => get().damageEnemy(e.id, dmg)); // 熟練度: 爆弾の拾い物=武器ではない=none
+          get().spawnDamageNumber(e.x + e.width / 2, e.y, dmg, false, { enemyId: e.id });
+        }
         break;
       }
       case 'ammo-handgun':

@@ -90,7 +90,7 @@ export interface BrawlerState {
    * 状態は締めの蹴り(tech='kick'・kickThrow)の形で持つ: 前隙=掴み(BRAWLER_CONTACT_GRAB_MS)・判定でスープレックス/蹴り・後隙=叩きつけの後隙/バク宙して下がる間。
    * 掴みから行動の終わりまでスーパーアーマー(utils/superArmor)。構えの効果(カウンター窓・被害の無効・打ち返し)は無い。
    */
-  contactGrab?: { enemyId: string; mode: 'suplex' | 'flipkick' };
+  contactGrab?: { enemyId: string; mode: 'suplex' | 'flipkick'; at?: number }; // at=掴んだ壁時計(Date.now)=掴みの一瞬の時間停止の間の組み付く姿(§34-10)
   /**
    * ★構えの取り消し(§34-2・§34-6 #8)で、受けの成立の止め(画面全体の止め)の最中に入れた技を覚えたか。止めが明けた瞬間に出す。
    * 覚えるのは techBuffer(1つだけ)。構えの間だけ意味を持つ。

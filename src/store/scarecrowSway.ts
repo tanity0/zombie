@@ -16,10 +16,25 @@ export const installScarecrowSway = (): void => {
   if (installed) return;
   installed = true;
   let prevEnemies = useGameStore.getState().enemies;
+  let prevGameTime = useGameStore.getState().gameTime;
   useGameStore.subscribe(s => {
     if (s.enemies === prevEnemies) return;
+    const before = prevEnemies;
+    const beforeTime = prevGameTime;
     prevEnemies = s.enemies;
+    prevGameTime = s.gameTime;
     if (!isPracticeRun()) return;
+    // ★安全網(社長報告2026-11-20「案山子、爆弾拾うと消えちゃう」): 体力を通らずに敵を消す経路(爆弾・一掃・
+    // 取り除き・吸収・間引き…)は散らばっていて、新しく足されるたびに漏れる。練習ラン中に案山子が配列から消えたら、
+    // 消える前の個体をそのまま戻す。ただし出撃のやり直し(resetGame=時計が巻き戻る)は本物の片付けなので戻さない。
+    if (s.gameTime >= beforeTime && beforeTime > 0) {
+      const lost = before.filter(e => e.type === 'scarecrow' && !s.enemies.some(n => n.id === e.id));
+      if (lost.length > 0) {
+        const at = Date.now();
+        useGameStore.setState(st => ({ enemies: [...st.enemies, ...lost.map(e => ({ ...e, lastHit: at }))] }));
+        return; // 戻した set でもう一度この購読が走り、揺れの向き・始まりはそこで決まる
+      }
+    }
     let patches: Map<string, ScarecrowSwayPatch> | null = null;
     const ax = s.player.x + s.player.width / 2;
     const now = Date.now();
