@@ -189,7 +189,7 @@ import { bloodAwakenStep, isBloodAwakening, BLOOD_AWAKEN_SFX_GAIN, BLOOD_AWAKEN_
 import { ghostArrivalPoint, ghostDeparturePoint } from '../utils/ghostLifecycle';
 // v0.25.2518(GHOST-KATANA-WIRE・裁定2「共有方式」): 刀のオート斬撃の標的選択と、
 // 刀の一閃/ワイヤーのロコモーション上書き。どちらもプレイヤーと守護霊が同じ純関数を通る。
-import { pickKatanaSlashTarget } from '../utils/katanaAuto';
+import { pickKatanaSlashTarget, katanaSlashIntervalMs } from '../utils/katanaAuto';
 import { pickSafeKatanaDashDirection } from '../utils/katanaLanding';
 import { dashModeAt, dashOverride, dashStateOf, dashStep } from '../utils/dashLocomotion';
 import { npcSfxDistGain } from '../utils/npcSfx'; // v0.25.2480: ローカル定義から移設(式は無変更)
@@ -605,7 +605,7 @@ import { dropGunKillLoot } from '../utils/gunKillDrops'; // 弾で倒した時�
 import { scanMarkMeleeMult, noteScanDetonation } from '../utils/scanSensor';
 import { ammoBearingGuns, catalogProjectileSpeed, projectileSpeedToCatalog } from '../utils/weaponUtils'; // 弾倉の無い銃を除いた所持銃(research/NEW_GUNS.md 品質監査#5)
 import { spawnPiledriverImpactFx, applyPiledriverHitstop } from '../utils/piledriverImpactFx';
-import { gunFireSfxKey, gunReloadSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isPhantomTargetBullet, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, SIGNAL_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage, projectileMasteryKey, counterMasteryKeyOf, gunMasteryKeyOfWeaponKey } from '../utils/weaponUtils';
+import { gunFireSfxKey, gunReloadSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isPhantomTargetBullet, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, SIGNAL_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage, projectileMasteryKey, counterMasteryKeyOf, gunMasteryKeyOfWeaponKey, awakenFireRateMult } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ。
 import { ROCKET_BLAST_RADIUS_MULT, ROCKET_LAUNCH_EASE_MS, rocketLaunchSpeedMult } from '../utils/rocketLauncher';
 import { ALCHEMY_BURST_RADIUS_PX, nextAlchemyStoneStage } from '../utils/alchemyStone';
@@ -11180,7 +11180,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // release knife sweep are disabled while the katana is owned.
         if (katanaActive && !attackLocked && !pvpLocked) { // v0.25.2589: オート斬撃も死亡/アテンション中は止める。★§9(検収監査 重大①): 紫/daze中も止める
           if (gameTime < lastKatanaSlashRef.current) lastKatanaSlashRef.current = 0; // new run
-          if (gameTime - lastKatanaSlashRef.current >= KATANA_SLASH_INTERVAL_MS) {
+          // 覚醒中は銃の連射と同じ倍率で間隔が縮む(社長指示「覚醒時、刀のオート斬撃早くして」)。
+          if (gameTime - lastKatanaSlashRef.current >= katanaSlashIntervalMs(KATANA_SLASH_INTERVAL_MS, awakenFireRateMult(useGameStore.getState().player))) {
             const kp = useGameStore.getState().player;
             // 標的選択は src/utils/katanaAuto.ts の純関数へ抽出した(v0.25.2518・優先順位/射程の扱いは不変)。
             // 距離は enemyMeleeDist(裏ボスは帯AABBの最近点)。巨体ボスを中心基準にすると帯の端で

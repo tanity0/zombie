@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5676 — 覚醒中の刀のオート斬撃を速く【2026-11-20 20:37 JST】
+- 社長指示「刀はやく」(覚醒時の刀のオート斬撃): 間隔を銃と同じ `awakenFireRateMult` で割る(基準600ms・血の覚醒×1.5で400ms・終わりの1秒で戻る)。純関数 `katanaSlashIntervalMs`(`src/utils/katanaAuto.ts`)+テスト、配線は `src/hooks/useGameLoop.ts` のプレイヤーのオート斬撃のみ(守護霊の刀は不変)。実装は Opus サブエージェント。
+- 検証: 別ツリー(HEAD+3ファイル)で typecheck・eslint・関連テスト 58/58。
+- 自己点検: 憲法第4条・第5条に抵触なし(覚醒中だけの加速)。
+
 ## v0.25.5675 — 錬金術の溜め中の近接の復活・装備画面の錬金術の絵・CIの揺れるテスト(POIタッチ)を固定【2026-11-20 20:32 JST】
 - 社長指示「錬金術、ちゃんと近接も発動できるようにして」: リズムの輪の判定は押した瞬間に行うだけにし、押下を食べない(離しの近接・スケボー2度押しは従来どおり)。`src/utils/pcPress.ts` / `src/components/VirtualJoystick.tsx` / `src/utils/pcPress.test.ts`(2件追加)。溜めの中断条件は不変(近接は立ち止まりでは足が出ない=溜めを切らない)。
 - 社長指示「錬金術の絵は、錬金ゾンビの絵を縮小して使って(装備のね)」: `public/sprites/sub-icons/alchemy-zombie.png`(zombie-common を切り詰め→高さ66に縮小→召喚と同じ金の乗算)を新設し `src/data/subWeaponIcons.ts` の alchemy を差し替え。支給の帯の絵 `sub-icons/alchemy.png` は原盤として残す。絵は拡大比較で目視(装備画面の実画面撮影は起動の演出に阻まれヘッドレスでは未撮影)。

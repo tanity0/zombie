@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Enemy } from '../types/game';
-import { pickKatanaSlashTarget } from './katanaAuto';
+import { pickKatanaSlashTarget, katanaSlashIntervalMs } from './katanaAuto';
 
 // 刀のオート斬撃の標的選択(プレイヤー/守護霊で共有)。
 // 距離関数は注入(本番は gameStore.enemyMeleeDist=裏ボスは帯AABBの最近点)なので、
@@ -43,5 +43,19 @@ describe('pickKatanaSlashTarget', () => {
     const enemies = [mob('e', 95)];
     expect(pickKatanaSlashTarget(0, 5, 76, enemies, 0, centerDist)).toBeNull();  // Lv1=76
     expect(pickKatanaSlashTarget(0, 5, 110, enemies, 0, centerDist)).toBe('e');  // Lv3=110
+  });
+});
+
+describe('katanaSlashIntervalMs(覚醒時に刀のオート斬撃が速くなる)', () => {
+  it('倍率1なら基準のまま', () => {
+    expect(katanaSlashIntervalMs(600, 1)).toBe(600);
+  });
+  it('覚醒の倍率1.5なら間隔は2/3', () => {
+    expect(katanaSlashIntervalMs(600, 1.5)).toBeCloseTo(400, 6);
+  });
+  it('倍率1未満・不正値でも基準より遅くならない', () => {
+    expect(katanaSlashIntervalMs(600, 0.5)).toBe(600);
+    expect(katanaSlashIntervalMs(600, 0)).toBe(600);
+    expect(katanaSlashIntervalMs(600, Number.NaN)).toBe(600);
   });
 });

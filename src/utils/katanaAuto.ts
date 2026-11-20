@@ -35,3 +35,9 @@ export const pickKatanaSlashTarget = (
   }
   return (best ?? bestStunned)?.id ?? null;
 };
+
+// 刀のオート斬撃の間隔。覚醒中は銃の連射と同じ倍率(weaponUtils.awakenFireRateMult)で速くなる
+// (社長指示「覚醒時、刀のオート斬撃早くして」)。倍率1未満は無視=基準より遅くはならない。
+// 基準値(gameStore.KATANA_SLASH_INTERVAL_MS)は循環importを避けるため引数で受ける。
+export const katanaSlashIntervalMs = (baseMs: number, awakenMult: number): number =>
+  baseMs / Math.max(1, Number.isFinite(awakenMult) ? awakenMult : 1);
