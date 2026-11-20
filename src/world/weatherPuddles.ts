@@ -35,10 +35,10 @@ export type DebrisVariant = typeof DEBRIS_VARIANTS[number];
 
 /** 絵の1ドットを世界の何pxで出すか(プレイヤーの立ち絵の倍率 2.3 に近い密度)。叩き台。 */
 export const PUDDLE_ART_SCALE = 2.4;
-/** 散布の区画(world px)。1区画に 0〜2 個。叩き台。 */
-export const PUDDLE_CELL = 300;
-/** 出撃地点の周りは空ける(木・松明と同じ考え方)。 */
-export const PUDDLE_SAFE_RADIUS = 200;
+/** 散布の区画(world px・木の区画 220 とほぼ同じ)。1区画に 0〜2 個。叩き台。 */
+export const PUDDLE_CELL = 210;
+/** 出撃地点の真上だけは空ける(立ち位置に水たまりが重ならない)。開幕から足元近くに見えるよう、木(150)より小さめ。 */
+export const PUDDLE_SAFE_RADIUS = 110;
 /** 木の足元からこれ以内には置かない(幹と根元の絵に水が食い込まない)。scale 1 の値。 */
 export const PUDDLE_TREE_CLEAR = 70;
 /** 松明の足元からこれ以内には置かない。 */
@@ -80,8 +80,8 @@ const hash = (x: number, y: number): number => {
   return v - Math.floor(v);
 };
 
-// 丸い小〜大・細長・群れの出やすさ(大きいものほど少なめ)。合計1。
-const VARIANT_WEIGHTS: readonly number[] = [0.12, 0.14, 0.13, 0.1, 0.07, 0.1, 0.1, 0.08, 0.08, 0.08];
+// 丸い小〜大・細長・群れの出やすさ(水たまりとして読める中〜大を多めに)。合計1。
+const VARIANT_WEIGHTS: readonly number[] = [0.06, 0.1, 0.14, 0.14, 0.12, 0.1, 0.1, 0.08, 0.08, 0.08];
 const pickVariant = (u: number): PuddleVariant => {
   let acc = 0;
   for (let i = 0; i < PUDDLE_VARIANTS.length; i++) {
@@ -131,7 +131,7 @@ const puddleInCell = (cx: number, cy: number, k: number, avoid: PuddleAvoid): Pu
 };
 
 /**
- * 可視域(+余白)の水たまり。区画ごとに 0〜2 個(約4割の区画は空)。決まった乱数=同じ場所には毎回同じ水たまり。
+ * 可視域(+余白)の水たまり。区画ごとに 0〜2 個(約2割の区画は空・木や松明に弾かれる分はさらに減る)。決まった乱数=同じ場所には毎回同じ水たまり。
  * 同じ区画の2つ目が1つ目と重なる時は2つ目を捨てる。
  */
 export const puddlesInRegion = (
@@ -143,7 +143,7 @@ export const puddlesInRegion = (
   for (let cy = cy0; cy <= cy1; cy++) {
     for (let cx = cx0; cx <= cx1; cx++) {
       const u = hash(cx * 5.3 + 0.7, cy * 8.9 - 1.3);
-      const n = u < 0.4 ? 0 : u < 0.85 ? 1 : 2;
+      const n = u < 0.22 ? 0 : u < 0.72 ? 1 : 2;
       let first: Puddle | null = null;
       for (let k = 0; k < n; k++) {
         const p = puddleInCell(cx, cy, k, avoid);
@@ -165,7 +165,7 @@ export const isInPuddle = (p: Pick<Puddle, 'x' | 'y' | 'rx' | 'ry'>, x: number, 
 };
 
 /** 水たまりの一覧から、点 (x, y) が入っている最初の1つ(無ければ null)。 */
-export const puddleAt = (puddles: readonly Puddle[], x: number, y: number): Puddle | null => {
+export const puddleAt = <T extends Pick<Puddle, 'x' | 'y' | 'rx' | 'ry'>>(puddles: readonly T[], x: number, y: number): T | null => {
   for (const p of puddles) if (isInPuddle(p, x, y)) return p;
   return null;
 };
