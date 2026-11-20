@@ -3477,7 +3477,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         useGameStore.getState().updateNpcDialogue(newGameTime); // NPCセリフの表示進行(時間停止なし)
         // 武器商人のチュートリアル: スタート地点の商人のサークルに初めて入った時に1度だけ(端末既読・拠点の商人では出さない)。
         // 取引の開き方には触らない=出している間は止まって滞在が積まれず、閉じた後も立っていれば下の滞在でいつもどおり開く。
-        if (!seenTutorials().has('merchant') && !useGameStore.getState().bossMaker.active) {
+        // 変異体対策室(練習ラン)の商人では出さない(社長指示2026-11-20で練習にも商人が立つ。練習は既読を保存できない=毎回出てしまうため)。
+        if (!seenTutorials().has('merchant') && !useGameStore.getState().bossMaker.active && !isPracticeRun()) {
           const st = useGameStore.getState();
           if (shouldShowMerchantTutorial({
             inMerchantCircle: isInsideMerchantCircle(st.player.x + st.player.width / 2, st.player.y + st.player.height / 2, st.weaponMerchant),

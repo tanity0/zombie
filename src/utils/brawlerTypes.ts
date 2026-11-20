@@ -10,9 +10,11 @@ export type BrawlerMoveKey =
   | 'kick1' | 'kick2' | 'kick3' | 'heel'
   /** 蹴り上げ(research/BRAWLER.md §34-1)・スープレックス(§34-3=空中投げで投げ先が無い時の叩きつけ)。 */
   | 'kickup' | 'suplex'
+  /** 土竜(research/BRAWLER.md §35=地割りの派生・当たった敵を押さずに宙へ浮かせる)。 */
+  | 'mogura'
   | 'stomp' | 'kiko' | 'secret' | 'secret-land';
 /** 道の表(research/BRAWLER.md §19-1)の節。待機・通常の段・飛び蹴りの何発目か・技。 */
-export type BrawlerRouteNode = 'idle' | 's1' | 's2' | 's3' | 's4' | 's5' | 'kick1' | 'kick2' | 'kick3' | 'heel' | 'kickup' | 'stomp' | 'kiko' | 'guard';
+export type BrawlerRouteNode = 'idle' | 's1' | 's2' | 's3' | 's4' | 's5' | 'kick1' | 'kick2' | 'kick3' | 'heel' | 'kickup' | 'stomp' | 'mogura' | 'kiko' | 'guard';
 /** 拳鬼の技の予備動作のコマ(research/BRAWLER_PHANTOM.md §16-5): ready=しゃがみ / swing=腕上げ。 */
 export type KenkiPrepTex = 'ready' | 'swing';
 /** 秘奥義の9連撃で出す技(通常攻撃の段 1..5 か技)。research/BRAWLER.md §10。 */
@@ -60,6 +62,8 @@ export interface BrawlerState {
    * 踵落としの上下逆(溜め→下から上へ振り上げる)。当たった相手を上へ打ち上げる。
    */
   kickUp?: boolean;
+  /** ★土竜(§35): 地割りの溜めの間に上で派生した(動き・溜め・当たる時刻・半径・威力・後隙は地割りのまま・当たった敵を押さずに浮かせる)。 */
+  mogura?: boolean;
   /** 覚えている次の蹴り(techBuffer='kick')が蹴り上げか(上で入れた・出す瞬間に「直前の蹴りが当たった・払える」を見直す)。 */
   kickUpBuffer?: boolean;
   /**

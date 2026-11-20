@@ -153,6 +153,7 @@ export const BRAWLER_HOLD_BASE_MS: Readonly<Record<BrawlerHoldKey, number>> = {
   kickup: 310, // 蹴り上げ(§34-1・§34-8): 飛び蹴りの2発目と同じ(空中追撃=気功へ取り消せる・叩き台)
   suplex: 0, // スープレックス(§34-3): 締め=固めない
   stomp: 230, kiko: 0,
+  mogura: 310, // 土竜(§35): 浮かせた相手=蹴り上げと同じ(空中追撃=飛び蹴り・気功へ取り消せる・叩き台)
 };
 /** 固まりの表(係数を掛けた実ms)。setBrawlerTempo が書き直す。 */
 export let BRAWLER_HOLD_MS: Readonly<Record<BrawlerHoldKey, number>> = BRAWLER_HOLD_BASE_MS;
@@ -409,7 +410,7 @@ export const brawlerStageForPress = (s: BrawlerState, t: number): number =>
 export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, quick: boolean): BrawlerState => {
   const spec = brawlerStageSpec(stage);
   return {
-    ...s, phase: 'attack', stage: spec.stage, tech: null, kickN: 0, kickHeel: false, heelBuffer: false, kickUp: false, kickUpBuffer: false, kickThrow: false, suplexAt: undefined, guardCancelHeld: false, contactGrab: undefined, throwAt: undefined, suplexPendingId: undefined, suplexSwing: undefined, grab: undefined, startAt: t,
+    ...s, phase: 'attack', stage: spec.stage, tech: null, kickN: 0, kickHeel: false, heelBuffer: false, kickUp: false, kickUpBuffer: false, mogura: false, kickThrow: false, suplexAt: undefined, guardCancelHeld: false, contactGrab: undefined, throwAt: undefined, suplexPendingId: undefined, suplexSwing: undefined, grab: undefined, startAt: t,
     // 前隙なし(受けた直後)でも5段目は突き抜ける時間だけは要る(溜めだけ消える)。
     windupMs: quick ? (spec.stage === 5 ? BRAWLER_PALM_DASH_MS : 0) : spec.windupMs, recoveryMs: spec.recoveryMs,
     stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false,
@@ -440,7 +441,7 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
     : (kind === 'kick' && kickN > 1 && s.techChain) ? s.techChain : [kind];
   return {
     ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t, techChain: chain, techBuffer: undefined, stepBuffer: undefined,
-    kickHeel, heelBuffer: false, kickUp, kickUpBuffer: false, kickThrow: false, grab: undefined, suplexAt: undefined, guardCancelHeld: false, contactGrab: undefined,
+    kickHeel, heelBuffer: false, kickUp, kickUpBuffer: false, mogura: false, kickThrow: false, grab: undefined, suplexAt: undefined, guardCancelHeld: false, contactGrab: undefined,
     throwAt: undefined, suplexPendingId: undefined, suplexSwing: undefined,
     heelAirPx: undefined, kickGroundPx: undefined, // 蹴りの高さの決めは store が出した瞬間に書く(前の技の値を持ち越さない)
     stompFromPx: stompFromPx > 0.5 ? stompFromPx : undefined,
@@ -689,21 +690,22 @@ export const BRAWLER_CANCELABLE: Readonly<Record<BrawlerRouteNode, boolean>> = {
   kick1: true, kick2: true, kick3: false, heel: true, // 踵落としは大踏み潰しでだけ取り消せる(下の buildBrawlerRoutes)
   kickup: true, // 蹴り上げ(§34-1・§34-8)は気功だけ(下の buildBrawlerRoutes)
   stomp: true, kiko: false,
+  mogura: true, // 土竜(§35): 地割りと同じ=飛び蹴り・気功へ取り消せる
 };
 /** 取り消しで出せる技(通常の段は含めない=段へは段のつなぎだけ)。 */
 const BRAWLER_CANCEL_TARGETS: readonly BrawlerRouteNode[] = ['kick1', 'stomp', 'kiko'];
 /** 同じ技の種類か(kick1/kick2/kick3 は同じ種類)。 */
-const routeKindOf = (n: BrawlerRouteNode): string => (n === 'kick1' || n === 'kick2' || n === 'kick3' || n === 'heel' || n === 'kickup' ? 'kick' : n);
+const routeKindOf = (n: BrawlerRouteNode): string => (n === 'kick1' || n === 'kick2' || n === 'kick3' || n === 'heel' || n === 'kickup' ? 'kick' : n === 'mogura' ? 'stomp' : n);
 /** 段のつなぎ(通常の次の段)と飛び蹴りの連続。 */
 const BRAWLER_NEXT_LINK: Readonly<Partial<Record<BrawlerRouteNode, BrawlerRouteNode>>> = { s1: 's2', s2: 's3', s3: 's4', s4: 's5', kick1: 'kick2', kick2: 'kick3' };
 /** 飛び蹴りの1発目の続き(↑蹴り上げ)と、2発目の続き(→蹴り飛ばし / ↓踵落とし / ↑蹴り上げ)。 */
 const BRAWLER_EXTRA_LINK: Readonly<Partial<Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>>> = { kick2: ['heel', 'kickup'] }; // 蹴り上げは2発目の続きだけ(§34-8)
-const BRAWLER_ALL_NODES: readonly BrawlerRouteNode[] = ['idle', 's1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'heel', 'kickup', 'stomp', 'kiko', 'guard'];
+const BRAWLER_ALL_NODES: readonly BrawlerRouteNode[] = ['idle', 's1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'heel', 'kickup', 'stomp', 'mogura', 'kiko', 'guard'];
 /** 印から作った表(手書きの組は持たない)。 */
 const buildBrawlerRoutes = (): Readonly<Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>> => {
   const out = {} as Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>;
   for (const from of BRAWLER_ALL_NODES) {
-    if (from === 'idle') { out[from] = BRAWLER_ALL_NODES.filter(n => n !== 'idle' && n !== 'heel' && n !== 'kickup'); continue; } // 待機からは何でも(今どおり・踵落としは2発目の続きだけ・蹴り上げも2発目の続きだけ=§34-8)
+    if (from === 'idle') { out[from] = BRAWLER_ALL_NODES.filter(n => n !== 'idle' && n !== 'heel' && n !== 'kickup' && n !== 'mogura'); continue; } // 待機からは何でも(今どおり・踵落としは2発目の続きだけ・蹴り上げも2発目の続きだけ=§34-8)
     if (from === 'heel') { out[from] = ['stomp']; continue; } // 踵落とし→大踏み潰し(着地の隙を取り消す・社長指示2026-11-11)
     // ★蹴り上げ(§34-1)→気功。大踏み潰しへは取り消せない(打ち上げた直後に叩き落とすのは役割が逆)。
     //   次の蹴りは連続の位置が残っている時だけ(brawlerTechAllowed の kickN < BRAWLER_KICK_MAX・§34-6 #2)。3発目の位置の蹴り上げからは気功だけ。
@@ -736,12 +738,13 @@ export const brawlerStageNode = (stage: number): BrawlerRouteNode =>
 export const brawlerTechNode = (kind: BrawlerTechKind, kickN = 1): BrawlerRouteNode =>
   kind === 'kick' ? (['kick1', 'kick2', 'kick3'] as const)[Math.max(1, Math.min(3, Math.round(kickN))) - 1] : kind;
 /** いまの行動の節(待機なら 'idle')。 */
-export const brawlerRouteNodeOf = (s: Pick<BrawlerState, 'phase' | 'stage' | 'tech' | 'kickN' | 'kickHeel'> & Pick<Partial<BrawlerState>, 'kickUp' | 'kickThrow'>): BrawlerRouteNode =>
+export const brawlerRouteNodeOf = (s: Pick<BrawlerState, 'phase' | 'stage' | 'tech' | 'kickN' | 'kickHeel'> & Pick<Partial<BrawlerState>, 'kickUp' | 'kickThrow' | 'mogura'>): BrawlerRouteNode =>
   s.phase === 'attack' ? brawlerStageNode(s.stage)
     : s.phase === 'tech' && s.tech === 'kick' && s.kickHeel ? 'heel'
     // ★空中投げ・スープレックス(§34-3)へ移った蹴り上げは締め=蹴り飛ばし(3発目)と同じく続きを持たない(§34-6 #5)。
     : s.phase === 'tech' && s.tech === 'kick' && s.kickThrow ? 'kick3'
     : s.phase === 'tech' && s.tech === 'kick' && s.kickUp ? 'kickup'
+    : s.phase === 'tech' && s.tech === 'stomp' && s.mogura ? 'mogura'
     : s.phase === 'tech' && s.tech ? brawlerTechNode(s.tech, s.kickN)
       : 'idle';
 /** 秘奥義の入力の締め(↑構え)を待っている所か(順番が3つ進んでいる=§10-1・§19-1)。 */
@@ -1039,6 +1042,20 @@ export const brawlerKickUpReady = (s: BrawlerState, t: number, canPay: boolean):
   brawlerKickUpSlot(s, t) && brawlerHitLanded(s) && canPay;
 /** 蹴り上げの値段=踵落としと同じ(飛び蹴り+1・血の覚醒中は0・タイムキーパーは飛び蹴りの割引)。 */
 export const brawlerKickUpCost = (awakened = false, discount = 0): number => brawlerHeelCost(awakened, discount);
+/**
+ * ★土竜(research/BRAWLER.md §35・社長指示2026-11-20): 地割りの溜め(出だし)の最中の上で派生。出だしの最初 BRAWLER_MOGURA_IGNORE_MS(実時間)は受け付けない
+ * (下フリックの指の残りを拾わない)。そこから当たる瞬間まで。値段=地割り+1(踵落としと同じ考え方・タイムキーパー/血の覚醒も同じ規則)。
+ */
+export const BRAWLER_MOGURA_IGNORE_MS = 60;
+export const BRAWLER_MOGURA_EXTRA_COST = 1;
+export const brawlerMoguraCost = (awakened = false, discount = 0): number =>
+  brawlerTechCost('stomp', awakened, discount) + (awakened ? 0 : BRAWLER_MOGURA_EXTRA_COST);
+/** 地割りから派生する時に足して払う分(=土竜の値段−地割りの値段)。 */
+export const brawlerMoguraExtraCost = (awakened = false, discount = 0): number =>
+  brawlerMoguraCost(awakened, discount) - brawlerTechCost('stomp', awakened, discount);
+/** 上の入力で土竜へ派生できる所か(地割りの出だしの最中・最初の60msの後・当たる前・まだ派生していない)。nowMs=壁時計。 */
+export const brawlerMoguraWindow = (s: Pick<BrawlerState, 'phase' | 'tech' | 'resolved' | 'pressAt'> & Pick<Partial<BrawlerState>, 'mogura'>, nowMs: number): boolean =>
+  s.phase === 'tech' && s.tech === 'stomp' && !s.resolved && !s.mogura && s.pressAt !== undefined && nowMs - s.pressAt >= BRAWLER_MOGURA_IGNORE_MS;
 /** 蹴り上げの威力=踵落としと同じ(§34-1)。 */
 export const BRAWLER_KICKUP_MULT = BRAWLER_HEEL_MULT;
 

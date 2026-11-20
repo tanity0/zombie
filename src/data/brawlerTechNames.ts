@@ -7,7 +7,7 @@ export type BrawlerTechDir = 'up' | 'down' | 'left' | 'right' | 'all' | 'chain';
 
 export const BRAWLER_TECH_NAMES: Record<TechProcKey, { name: string; dir: BrawlerTechDir }> = {
   'tech:guard': { name: '構え', dir: 'up' },
-  'tech:stomp': { name: '大踏み潰し', dir: 'down' },
+  'tech:stomp': { name: '地割り', dir: 'down' }, // 社長指示2026-11-20「大踏みつぶし→地割り」(research/BRAWLER.md §35)
   'tech:kiko': { name: '気功', dir: 'left' },
   'tech:kick': { name: '飛び蹴り', dir: 'right' },
   'tech:kick2': { name: '空中蹴り', dir: 'right' },
@@ -18,5 +18,6 @@ export const BRAWLER_TECH_NAMES: Record<TechProcKey, { name: string; dir: Brawle
   'tech:suplex': { name: 'スープレックス', dir: 'up' }, // 密着の構え(上)から
   'tech:suplexchain': { name: 'スープレックス', dir: 'chain' }, // 蹴り上げからの空中投げで投げ先が無かった時(自動の続き)
   'tech:flipkick': { name: 'サマーソルト', dir: 'up' },
+  'tech:mogura': { name: '土竜', dir: 'up' }, // 地割りの溜めの間に上で派生(§35)
   'tech:secret': { name: '秘奥義', dir: 'all' },
 };

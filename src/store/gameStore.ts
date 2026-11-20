@@ -514,6 +514,7 @@ import { GAME_SPEED } from '../config/gameSpeed';
 import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS, isEliteFatalStun } from '../utils/meleeExecute';
 // 案山子(変異体対策室の練習枠): 体力を減らす合流点はこの1本を通す=案山子だけ倒れない(utils/scarecrow.ts)。
 import { enemyHealthAfterHit, isScarecrow, survivesEnemySweeps } from '../utils/scarecrow';
+import { planPracticeFacilities } from '../utils/practiceFacilities'; // 練習ランの開幕の大型武器庫+武器商人の置き場所
 import { killSlashNeckPosition } from '../utils/killSlashFx'; // KILL時の首元斬撃(fx/kill-slash・社長指示2026-09-16)
 import { heroBodyWallRect } from '../utils/heroScript'; // research/MUTANT_HERO.md: 英雄の体の壁(葉モジュール=循環しない)
 import type { ThirdPartyShape } from '../utils/thirdPartyShape'; // 依存ゼロの葉(heroBlast は gameStore を読むので、そこから型を引くと循環する)
@@ -5698,8 +5699,9 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const r = strike(ids, {
       // ★出した高さで威力が上がる(社長指示2026-11-16・stompFromPx=踵落としから取り消した出だしの高さ=絵と同じ純関数の値)。地上は ×1。
       mult: BR.BRAWLER_STOMP_MULT * BR.brawlerStompAirMult(s.stompFromPx), stunMs: plan.stun, ...plan.lock, postureMult: BR.BRAWLER_STOMP_MULT,
-      kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
-      combo: { move: 'stomp' },
+      // ★土竜(§35): 押さずに宙へ浮かせる(地上=蹴り上げと同じ打ち上げ・空中=浮き直し・予算2)。攻撃中の雑魚・強個体は浮きの側で技を取り消す。
+      kb: s.mogura ? { kind: 'none' } : { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
+      combo: { move: s.mogura ? 'mogura' : 'stomp' },
     });
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
@@ -5715,6 +5717,18 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     brawlerGroundBreakFx(get, foot.x, foot.y, true);
     g.triggerShake(260, 16, 0, 1);
     for (const h of r.hitAt ?? []) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.stomp);
+    if (s.mogura) {
+      // ★土竜(§35): 浮いていく敵の足元に砂埃(1体ずつ・大きさと尺をずらす=均質にしない・判定なし=派手さの絵)。地割りの絵はそのまま。
+      let i = 0;
+      for (const h of r.hitAt ?? []) {
+        const e = get().enemies.find(en => en.id === h.id);
+        if (!e || !BRC.brawlerAirborne(e, now)) continue;
+        const fx = e.x + e.width / 2, fy = e.y + e.height - 4, k = 1 - 0.12 * (i++ % 3);
+        g.spawnImageMark(fx, fy - 4, 'fx/dust-puff', { scale: 0.36 * k, scaleY: 1.05, duration: 760, tint: 0x9a8b7a, alpha: 0.8, moveX: (i % 2 ? 6 : -6), moveY: -54, fadeFrom: 0.3 });
+        g.spawnImageMark(fx - 12 * k, fy, 'fx/dust-puff', { scale: 0.22 * k, scaleY: 1.25, duration: 540, tint: 0x7d7062, alpha: 0.7, moveX: -12, moveY: -36, fadeFrom: 0.28 });
+        g.spawnImageMark(fx + 13 * k, fy + 2, 'fx/dust-puff', { scale: 0.18 * k, scaleY: 0.9, duration: 460, tint: 0x9a8b7a, alpha: 0.6, moveX: 14, moveY: -28, fadeFrom: 0.25 });
+      }
+    }
     brawlerSfx('brawler-stomp', 1.0, 0.92);
     brawlerSfx('heavy-impact', 0.9, 0.7, undefined, 20);
     if (hits > 0) brawlerSfx('brawler-hit', 1.0, 0.62 * brJitter(), 260);
@@ -7886,7 +7900,7 @@ export const notifySkillProc = (key: SkillKey): void => {
  * 呼ぶのはプレイヤー本人の技が**実際に出た**所だけ(入力しただけ・技ポイント不足・道の外は呼ばない)。拳鬼・幻影の技は別の経路=出ない。
  * 音は足さない(技そのものの音がある)。
  */
-export const notifyTechProc = (kind: BR.BrawlerTechKind | 'secret' | 'heel' | 'kickup' | 'airthrow' | 'suplex' | 'suplexchain' | 'flipkick', kickN = 0): void => {
+export const notifyTechProc = (kind: BR.BrawlerTechKind | 'secret' | 'heel' | 'kickup' | 'airthrow' | 'suplex' | 'suplexchain' | 'flipkick' | 'mogura', kickN = 0): void => {
   // 飛び蹴りは何発目かで名前が違う(飛び蹴り→空中蹴り→蹴り飛ばし・社長指示2026-11-11)。
   const key = (kind === 'kick' && kickN >= 2 ? `tech:kick${Math.min(3, kickN)}` : `tech:${kind}`) as TechProcKey;
   useGameStore.setState(s => ({ skillProcFeed: pushSkillProc(s.skillProcFeed, key, Date.now(), ++skillProcSeq) }));
@@ -12122,6 +12136,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     const kickUpCost = BR.brawlerKickUpCost(isBloodAwakening(p, t), brawlerTechDiscount(p, 'kick'));
     const kickUp = !heel && !!kind0 && BR.brawlerKickUpInput(s, kind0, t, s.points >= kickUpCost);
     const kind = heel || kickUp ? 'kick' as const : kind0;
+    // ★土竜(research/BRAWLER.md §35): 地割りの溜め(出だし)の最中の上=派生(最初の60msは受け付けない・当たるまで)。差額(地割り+1)を払えた時だけ。
+    //   払えなければ地割りのまま(上は今までどおりの扱いへ流す)。秘奥義の順番は地割り(↓)のまま=ここでは数えない。
+    if (kind0 === 'guard' && BR.brawlerMoguraWindow(s, Date.now())) {
+      const extra = BR.brawlerMoguraExtraCost(isBloodAwakening(p, t), brawlerTechDiscount(p, 'stomp'));
+      if (s.points >= extra) {
+        setBrawler(set, { ...s, mogura: true, points: s.points - extra });
+        notifyTechProc('mogura');
+        brawlerSfx('whip-swing', 0.42, 1.35 * brJitter(), 160);
+        return true;
+      }
+    }
     // ★構えを技で取り消す(§34-2・§34-6 #8・Lv1から): 受けの成立の止め(画面全体の止め)の最中に入れた技は1つだけ覚え、止めが明けた瞬間に出す。
     if (kind && BR.brawlerGuardCancelOk(s, kind, t) && get().hitstopUntil > Date.now()) {
       setBrawler(set, { ...s, techBuffer: kind, heelBuffer: false, kickUpBuffer: false, guardCancelHeld: true, buffered: false, stepBuffer: undefined, stepHeld: false, lateHeld: false });
@@ -27735,7 +27760,23 @@ export const useGameStore = create<GameState>((set, get) => ({
       // **ボスモード(練習ラン)も自動で入る**——練習の出撃も「stage-7へ出撃する」形で走るので、
       // ステージIDで判定すれば1つの条件で両方を満たす(練習かどうかを別途見に行かない=分岐を増やさない)。
       // 中身は宝箱の受け取り側(case 'chest')が持つ: tier2-3の銃1丁 + 3レベルアップ。
-      if (getSelectedStageId() === 'stage-7') {
+      // ★変異体対策室(練習ラン)は**全ての枠**で、ステージ7と同じ金箱(大型武器庫)を同じ置き方で置き、その下に武器商人を立てる
+      // (社長指示2026-11-20「変異体対策室にはすべて、ステージ７みたいに特大武器庫を設置して、さらに下に武器商人設置して」)。
+      // 置き場所は utils/practiceFacilities.ts(行ける帯の内側・木や残骸に重ならない所)。ステージ7の練習もこちらで1個だけ置く。
+      const practiceFacilities = isPracticeRun()
+        ? planPracticeFacilities(spawnTL, state.gameBounds.height, BOSS_START_CHEST_BELOW_MARGIN_PX, {
+            farBackdrop, labTheme: stageTheme === 'lab', corridorMode, m0AdvanceLimitX: null, corridorRunInActive: false,
+          }, (x, y, w, h) => {
+            const r = { x, y, width: w, height: h };
+            const t = resolveTreeCollision(r);
+            if (t.x !== x || t.y !== y) return true;
+            const c = resolveCityPropCollision(farBackdrop, r);
+            return c.x !== x || c.y !== y;
+          })
+        : null;
+      if (practiceFacilities) {
+        runPickups.push({ id: 'practice-start-chest', x: practiceFacilities.chest.x, y: practiceFacilities.chest.y, type: 'bounty-chest', value: 1 });
+      } else if (getSelectedStageId() === 'stage-7') {
         // 社長指示v0.25.3298「ステージ7の宝箱廃止。代わりに秘密箱設置(グレネードも出ることになる)」:
         // ★v0.25.3644(金箱統一): 旧・秘密兵器箱(secret:true)は金箱(bounty-chest)へ改名・統一。
         // 中身は金箱の共通仕様(武器抽選3回=glauncher含む4カテゴリ+赤経験値20個+スクラップ10倍)。
@@ -28087,6 +28128,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 武器商人がいる。いないはず」。M7は会話→ボス→勝利だけの一騎打ちステージ=通常湧き/
           // イベント全停止なのに、商人だけこの除外に入っていなかった。護衛NPC除外(escortRoster)と
           // 同じ pendingStoryBoss を見る)。
+          // ★社長指示2026-11-20: 練習ランは逆に**必ず**置く(大型武器庫の下)。旧v0.25.3138「ボスモードでは武器商人は設置しない」を置き換える。
+          : practiceFacilities
+            ? { x: practiceFacilities.merchant.x, y: practiceFacilities.merchant.y, radius: MERCHANT_INTERACT_RADIUS }
           : (farBackdrop === 'tutorial' || farBackdrop === 'ending' || state.pendingStoryBoss || bossMakerRoom || isPracticeRun() || (corridorMode && isExStageRun()))
             ? { x: 1e9, y: 1e9, radius: 0 }
             // 研究所(屋外・横長廊下)は上下固定クランプ(±100)の外(y:-130)に商人がいると一生話しかけ
