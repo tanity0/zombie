@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseWeather, weatherWetActive, ripplePose, RIPPLE_MS, RIPPLE_FRAMES, RIPPLE_SCALE_FROM, RIPPLE_SCALE_TO,
   dripHeight, DRIP_FALL_MS, DRIP_FALL_H, glintPose, GLINT_MS,
+  rainDropSpec, rainPose, rainNextGapMs, RAIN_FALL_MS_MIN, RAIN_FALL_MS_MAX, RAIN_DROPS_PER_MPX_S, RAIN_MAX,
 } from './weatherWet';
 
 describe('weatherWet(雨上がりの決めごと)', () => {
@@ -66,5 +67,58 @@ describe('weatherWet(雨上がりの決めごと)', () => {
     const mid = glintPose(GLINT_MS * 0.55)!.pos - glintPose(GLINT_MS * 0.5)!.pos;
     expect(mid).toBeGreaterThan(early);
     expect(glintPose(GLINT_MS)).toBeNull();
+  });
+});
+
+describe('ポツポツ雨(小雨の決めごと)', () => {
+  const seq = (...v: number[]) => { let i = 0; return () => v[i++ % v.length]; };
+
+  it('粒の個性: 尺・長さ・濃さ・斜めが範囲に収まり、乱数でばらつく', () => {
+    const lo = rainDropSpec(() => 0), hi = rainDropSpec(() => 0.999);
+    expect(lo.fallMs).toBeCloseTo(RAIN_FALL_MS_MIN);
+    expect(hi.fallMs).toBeLessThanOrEqual(RAIN_FALL_MS_MAX);
+    expect(hi.len).toBeGreaterThan(lo.len * 2);
+    expect(hi.alpha).toBeGreaterThan(lo.alpha);
+    expect(hi.alpha).toBeLessThanOrEqual(0.8);
+    expect(lo.slant).toBeGreaterThan(0);
+    // 長い粒は少ない(中央値は短い側)
+    const mid = rainDropSpec(() => 0.5);
+    expect(mid.len - lo.len).toBeLessThan((hi.len - lo.len) / 2);
+  });
+
+  it('落下: 少し加速して落ち(初速は0でない)、着いたら null', () => {
+    const s = rainDropSpec(seq(0.5));
+    const p0 = rainPose(0, s)!;
+    expect(p0.h).toBeCloseTo(s.height);
+    expect(p0.alpha).toBe(0); // パッと出ない
+    const q = s.fallMs / 4;
+    const d1 = s.height - rainPose(q, s)!.h;
+    const d4 = rainPose(q * 3, s)!.h - rainPose(s.fallMs - 1e-6, s)!.h;
+    expect(d1).toBeGreaterThan(0);          // 出だしから動いている(画面外から落ちて来ている)
+    expect(d4).toBeGreaterThan(d1 * 1.3);   // 後半ほど速い(加速)
+    expect(rainPose(s.fallMs * 0.5, s)!.alpha).toBeCloseTo(1);
+    expect(rainPose(s.fallMs - 1, s)!.len).toBeGreaterThan(p0.len); // 速くなるほど尾が伸びる
+    expect(rainPose(s.fallMs, s)).toBeNull();
+    expect(rainPose(-1, s)).toBeNull();
+  });
+
+  it('間隔: 可視域が広いほど詰まり、ばらつく。可視域0なら降らない', () => {
+    const area = 1e6;
+    const meanGap = 1000 / RAIN_DROPS_PER_MPX_S;
+    let sum = 0; const n = 2000;
+    for (let i = 0; i < n; i++) sum += rainNextGapMs(area, () => (i + 0.5) / n);
+    expect(sum / n).toBeGreaterThan(meanGap * 0.85);
+    expect(sum / n).toBeLessThan(meanGap * 1.15);
+    expect(rainNextGapMs(area * 6.25, () => 0.5)).toBeCloseTo(rainNextGapMs(area, () => 0.5) / 6.25);
+    expect(rainNextGapMs(area, () => 0.1)).toBeLessThan(rainNextGapMs(area, () => 0.9));
+    expect(rainNextGapMs(0, () => 0.5)).toBe(Infinity);
+  });
+
+  it('小雨の量: 標準の可視域で同時に見える粒は数本・最大引きでも上限で止まる', () => {
+    const avgFall = (RAIN_FALL_MS_MIN + RAIN_FALL_MS_MAX) / 2;
+    const onScreen = (area: number) => (RAIN_DROPS_PER_MPX_S * area / 1e6) * (avgFall / 1000);
+    expect(onScreen(1.1e6)).toBeGreaterThan(3);
+    expect(onScreen(1.1e6)).toBeLessThan(12);
+    expect(RAIN_MAX).toBeLessThanOrEqual(40);
   });
 });

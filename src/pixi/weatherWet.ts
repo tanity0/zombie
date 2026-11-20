@@ -11,6 +11,8 @@
 //      プレイヤーの近くの水たまりにだけ、キャラの逆さの薄い映り・光の筋・水面を渡る細い光の線を、
 //      水面(帯1)の形で切って描く(切り抜きは同時に最大 MAX_SLOTS 枚)。
 //   4. 雫と波紋 … 木の下でときどき雫→波紋。水たまりを踏んだら波紋。どちらも使い回しの粒(上限つき)。
+//   4b. ポツポツ雨 … 細く短い線をまばらに斜めに落とす(少し加速)。着いた所が水たまりなら水の波紋・地面なら小さな跳ね
+//      (4 の波紋の粒をそのまま使う)。線はアクターの上・被写界深度の外の層(danceUiLayer)・粒は上限 RAIN_MAX。
 //   5./6. 霧を少し薄く冷たく・空(遠景)を少し明るく … 毎フレームの最後に色を掛け、次のフレームの頭で戻す
 //      (pixiScene の applyForestPreview / applyWraithDarkness と同じ型=他の色の書き込みとぶつからない)。
 // 影を落とす光は1つも足さない(このプロジェクトで高いのは投影影を落とす光だけ=CLAUDE.md の実測)。
@@ -19,9 +21,12 @@ import { ColorMatrixFilter, Container, Point, Sprite, Texture, type Filter, type
 import { getTexture } from './pixiTextures';
 import { getSoftGlowTexture } from './lighting';
 import {
-  puddlesInRegion, puddleAt, isInPuddle, PUDDLE_ART_SCALE, PUDDLE_CELL, type Puddle,
+  puddlesInRegion, puddleAt, isInPuddle, PUDDLE_ART_SCALE, DEBRIS_ART_SCALE, PUDDLE_CELL, type Puddle,
 } from '../world/weatherPuddles';
-import { ripplePose, dripHeight, glintPose, DRIP_FALL_MS, GLINT_MS } from '../utils/weatherWet';
+import {
+  ripplePose, dripHeight, glintPose, DRIP_FALL_MS, GLINT_MS,
+  rainDropSpec, rainPose, rainNextGapMs, RAIN_MAX, RAIN_SPAWN_PER_FRAME, type RainDropSpec,
+} from '../utils/weatherWet';
 
 // ---- 叩き台の値(設計書 §0-1「数値は叩き台」) ----
 /** 水面(帯1)を縁つきの水たまり(帯2)の内側へ合わせる縮み(帯1は縁まで含む大きさで描かれているため)。 */
@@ -30,6 +35,9 @@ const WATER_FIT_Y = 0.72;
 /** 水面の色(乗算)と濃さ。空を映した冷たい色。 */
 const WATER_TINT = 0x9fb6d4;
 const WATER_ALPHA = 0.9;
+/** 水面と、その上に重ねる映り(空・松明のにじみ・キャラの逆さの映り・光の筋・光の線)の濃さの一律の掛け率。
+ *  社長指示2026-11-20「少し薄く」=70%(地面に沈める。縁つきの水たまりの絵と小物はそのまま)。 */
+const WATER_FADE = 0.7;
 /** 空の映り(水面の形の加算)。光が無い所でもうっすら空が映る。 */
 const SKY_TINT = 0x34507a;
 const SKY_ALPHA = 0.16;
@@ -47,8 +55,11 @@ const MAX_SLOTS = 5;
 /** 光の線: 何msおきに1本(乱数で幅を持たせる)。同時に2本まで。 */
 const GLINT_EVERY_MS = 2200;
 const GLINT_MAX = 2;
-/** 波紋の上限(使い回し)。 */
-const RIPPLE_MAX = 24;
+/** 波紋の上限(使い回し)。ポツポツ雨の着地ぶんを足して 24→40。 */
+const RIPPLE_MAX = 40;
+/** 雨粒の色(冷たい白)・太さ(world px・遠近前)。 */
+const RAIN_TINT = 0xd8e4f6;
+const RAIN_WIDTH = 1.1;
 /** 雫: 何msおきに1粒(画面内の木から)。同時に最大8粒。 */
 const DRIP_EVERY_MS = 420;
 const DRIP_MAX = 8;
@@ -96,6 +107,28 @@ const lerpTint = (a: number, b: number, t: number): number => {
 };
 const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 
+/** 雨粒の線の絵(1回だけ焼く・素材ファイルではない): 尾(上)は透明→先(下)ほど濃い。左右の縁は薄く(細い線がギザつかない)。 */
+let rainTex: Texture | null = null;
+const getRainStreakTexture = (): Texture => {
+  if (rainTex) return rainTex;
+  const w = 4, hgt = 48;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = hgt;
+  const ctx = c.getContext('2d')!;
+  for (let x = 0; x < w; x++) {
+    const edge = x === 0 || x === w - 1 ? 0.35 : 1;
+    const g = ctx.createLinearGradient(0, 0, 0, hgt);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.35, `rgba(255,255,255,${0.45 * edge})`);
+    g.addColorStop(0.8, `rgba(255,255,255,${0.9 * edge})`);
+    g.addColorStop(1, `rgba(255,255,255,${edge})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(x, 0, 1, hgt);
+  }
+  rainTex = Texture.from(c);
+  return rainTex;
+};
+
 export interface WetActor {
   id: string;
   sprite: Sprite;
@@ -118,6 +151,8 @@ export interface WetHost {
   /** 地面に置く物の色(夜=暗く・花や木と同じ envTint)。 */
   envTint: number;
   view: { left: number; top: number; right: number; bottom: number };
+  /** 実際に画面に映っている世界の矩形(ズーム込み・余白なし)。雨粒の着地点はこの中から選ぶ(無ければ view)。 */
+  rainView?: { left: number; top: number; right: number; bottom: number };
   world: Container;
   depthScale: (y: number) => number;
   horizonAlpha: (y: number) => number;
@@ -163,6 +198,7 @@ interface ActorBox { id: string; sp: Sprite; x: number; foot: number; w: number;
 interface Ripple { sp: Sprite; at: number; x: number; y: number; water: boolean; s: number; on: boolean }
 interface Drip { sp: Sprite; at: number; x: number; y: number; s: number; on: boolean }
 interface Glint { pid: string; at: number; dir: 1 | -1 }
+interface RainDrop { sp: Sprite; at: number; x: number; y: number; spec: RainDropSpec; on: boolean }
 
 export class WeatherWetLayer {
   readonly gradeFilter: ColorMatrixFilter;
@@ -173,6 +209,10 @@ export class WeatherWetLayer {
   private debrisLayer = new Container();
   private rippleLayer = new Container();
   private dripLayer = new Container();
+  /** 雨粒の線(アクターの上・被写界深度の外の層へ置く=キャラの手前も降る)。 */
+  private rainLayer = new Container();
+  private rain: RainDrop[] = [];
+  private nextRainAt = 0;
   private views = new Map<string, PuddleView>();
   private slots: Slot[] = [];
   private ripples: Ripple[] = [];
@@ -189,8 +229,11 @@ export class WeatherWetLayer {
   private pB = new Point();
   private visible = true;
 
-  constructor(groundLayer: Container) {
+  constructor(groundLayer: Container, overLayer?: Container) {
     this.root.eventMode = 'none';
+    this.rainLayer.eventMode = 'none';
+    this.rainLayer.label = 'weatherWetRain';
+    (overLayer ?? this.root).addChild(this.rainLayer);
     this.root.label = 'weatherWet';
     this.root.addChild(this.puddleLayer, this.slotLayer, this.debrisLayer, this.rippleLayer, this.dripLayer);
     // 地面の層の一番下(足元の影・光だまりより下)。
@@ -241,6 +284,7 @@ export class WeatherWetLayer {
     if (this.visible === on) return;
     this.visible = on;
     this.root.visible = on;
+    this.rainLayer.visible = on;
     if (!on) this.detachSky();
   }
 
@@ -287,6 +331,7 @@ export class WeatherWetLayer {
     this.syncSlots(h, boxes);
     this.syncSteps(h, boxes);
     this.syncDrips(h);
+    this.syncRain(h);
     this.syncRipples(h);
   }
 
@@ -337,7 +382,7 @@ export class WeatherWetLayer {
       sp.position.set(p.x, p.y - gh * s * 0.02);
       sp.scale.set(wsx * fx, wsy);
     }
-    pv.water.alpha = WATER_ALPHA * ha;
+    pv.water.alpha = WATER_ALPHA * WATER_FADE * ha;
     pv.water.tint = mulTint(WATER_TINT, { r: ((h.envTint >> 16) & 255) / 255, g: ((h.envTint >> 8) & 255) / 255, b: (h.envTint & 255) / 255 });
     // 近くの光だまり(松明)のにじみ。強さと色を慣性で寄せる(灯の揺らぎで水面がチラつかない)。
     let best = 0, bestColor = SKY_TINT, bestX = p.x, sum = 0;
@@ -353,14 +398,14 @@ export class WeatherWetLayer {
     pv.lightColor = best > 0 ? bestColor : pv.lightColor;
     pv.lightX = bestX;
     pv.sky.tint = lerpTint(SKY_TINT, pv.lightColor, Math.min(1, pv.lightA * 1.4));
-    pv.sky.alpha = (SKY_ALPHA + pv.lightA * 0.55) * ha;
+    pv.sky.alpha = (SKY_ALPHA + pv.lightA * 0.55) * WATER_FADE * ha;
     for (let i = 0; i < pv.debris.length; i++) {
       const dd = p.debris[i];
       const sp = pv.debris[i];
       if (!dd || !sp) continue;
       const ds = h.depthScale(dd.y);
       sp.position.set(dd.x, dd.y);
-      sp.scale.set(PUDDLE_ART_SCALE * ds * (dd.flip ? -1 : 1), PUDDLE_ART_SCALE * ds);
+      sp.scale.set(DEBRIS_ART_SCALE * ds * (dd.flip ? -1 : 1), DEBRIS_ART_SCALE * ds);
       sp.alpha = h.horizonAlpha(dd.y);
       sp.tint = mulTint(h.envTint, DEBRIS_DIM); // 小物は地面に沈める(白い小石が光って浮かない)
     }
@@ -452,7 +497,7 @@ export class WeatherWetLayer {
     for (let i = 0; i < sl.refl.length; i++) {
       const r = sl.refl[i];
       const a = acts[i];
-      const target = a ? REFL_ALPHA * pv.alpha : 0;
+      const target = a ? REFL_ALPHA * WATER_FADE * pv.alpha : 0;
       sl.reflA[i] += (target - sl.reflA[i]) * 0.18;
       if (!a) { r.visible = sl.reflA[i] > 0.01; r.alpha = sl.reflA[i]; continue; }
       const tex = a.sp.texture;
@@ -471,7 +516,7 @@ export class WeatherWetLayer {
       sl.streak.position.set(Math.max(p.x - rx * 0.6, Math.min(p.x + rx * 0.6, pv.lightX)), p.y);
       sl.streak.width = Math.max(8, rx * 0.32);
       sl.streak.height = ry * 2.4;
-      sl.streak.alpha = 0.55 * k * pv.alpha * (0.9 + 0.1 * Math.sin(now / 340 + p.x));
+      sl.streak.alpha = 0.55 * WATER_FADE * k * pv.alpha * (0.9 + 0.1 * Math.sin(now / 340 + p.x));
     } else sl.streak.visible = false;
     // 光の線(水面の端から端へ、加速して減速しながらゆっくり渡る)。
     const gp = glint ? glintPose(now - glint.at) : null;
@@ -481,7 +526,7 @@ export class WeatherWetLayer {
       sl.glint.rotation = -0.5 * glint.dir;
       sl.glint.width = Math.max(2, 2.2 * pv.d);
       sl.glint.height = ry * 3.2;
-      sl.glint.alpha = 0.6 * gp.alpha * pv.alpha;
+      sl.glint.alpha = 0.6 * WATER_FADE * gp.alpha * pv.alpha;
     } else sl.glint.visible = false;
   }
 
@@ -512,7 +557,7 @@ export class WeatherWetLayer {
       r.sp.texture = tex;
       r.sp.visible = true;
       r.sp.position.set(r.x, r.y);
-      const sc = PUDDLE_ART_SCALE * h.depthScale(r.y) * r.s * pose.scale;
+      const sc = DEBRIS_ART_SCALE * h.depthScale(r.y) * r.s * pose.scale; // 波紋は雫の大きさ=水たまりを大きくしても据え置き
       r.sp.scale.set(sc, sc);
       r.sp.alpha = pose.alpha * (r.water ? 0.6 : 0.45) * h.horizonAlpha(r.y);
     }
@@ -587,6 +632,54 @@ export class WeatherWetLayer {
     }
   }
 
+  // ---- ポツポツ雨 ----
+  private syncRain(h: WetHost): void {
+    const now = h.now;
+    const v = h.rainView ?? h.view;
+    const w = Math.max(0, v.right - v.left), hh = Math.max(0, v.bottom - v.top);
+    // 遅れが1秒を超えたら追いかけない(タブ復帰・重いフレームで一度に降らせない)。
+    if (now - this.nextRainAt > 1000) this.nextRainAt = now;
+    let budget = RAIN_SPAWN_PER_FRAME;
+    while (now >= this.nextRainAt && budget-- > 0) {
+      this.nextRainAt += rainNextGapMs(w * hh, Math.random);
+      let d = this.rain.find(q => !q.on);
+      if (!d) {
+        if (this.rain.length >= RAIN_MAX) break;
+        const sp = new Sprite(getRainStreakTexture());
+        sp.anchor.set(0.5, 1); // 線の下端=雨粒の先
+        sp.tint = RAIN_TINT;
+        sp.visible = false;
+        this.rainLayer.addChild(sp);
+        d = { sp, at: 0, x: 0, y: 0, spec: rainDropSpec(Math.random), on: false };
+        this.rain.push(d);
+      }
+      // 着地点は可視域の中(下は少し外まで=画面の下端へ落ちる粒も描く)。地平線の向こうには降らせない。
+      const x = v.left + Math.random() * w;
+      const y = v.top + Math.random() * (hh + 60);
+      if (h.horizonAlpha(y) <= 0.02) continue;
+      d.at = now; d.x = x; d.y = y; d.spec = rainDropSpec(Math.random); d.on = true;
+    }
+    for (const d of this.rain) {
+      if (!d.on) { d.sp.visible = false; continue; }
+      const pose = rainPose(now - d.at, d.spec);
+      const ds = h.depthScale(d.y);
+      if (!pose) {
+        d.on = false; d.sp.visible = false;
+        const pv = puddleAt([...this.views.values()].map(q => ({ x: q.p.x, y: q.p.y, rx: q.p.rx * q.d, ry: q.p.ry * q.d })), d.x, d.y);
+        this.spawnRipple(d.x, d.y, !!pv, pv ? 0.42 + Math.random() * 0.16 : 0.3 + Math.random() * 0.1, now);
+        continue;
+      }
+      const sl = d.spec.slant;
+      d.sp.visible = true;
+      // 斜めに落ちる: 高さ h の所では着地点より上流(左)へ h*slant ずれている。
+      d.sp.position.set(d.x - pose.h * sl * ds, d.y - pose.h * ds);
+      d.sp.rotation = -Math.atan(sl); // 尾が左上へ伸びる=右下へ流れる向き
+      d.sp.width = RAIN_WIDTH * ds;
+      d.sp.height = pose.len * ds;
+      d.sp.alpha = d.spec.alpha * pose.alpha * h.horizonAlpha(d.y);
+    }
+  }
+
   // ---- 霧・近景・月・空(毎フレームの最後に掛け、次のフレームの頭で戻す) ----
   private paint(sp: Sprite | TilingSprite | null, tint: number, alpha: number): void {
     if (!sp || sp.destroyed) return;
@@ -633,6 +726,8 @@ export class WeatherWetLayer {
     this.restoreAtmosphere();
     this.detachSky();
     this.root.destroy({ children: true });
+    if (!this.rainLayer.destroyed) this.rainLayer.destroy({ children: true });
+    this.rain = [];
     this.views.clear();
     this.gradeFilter.destroy();
     this.skyFilter.destroy();

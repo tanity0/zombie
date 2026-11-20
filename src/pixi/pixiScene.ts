@@ -12537,7 +12537,7 @@ export class PixiScene {
       && this.currentFarKey === 'forest';
     if (!this.weatherWet) {
       if (!active) return;
-      this.weatherWet = new WeatherWetLayer(this.L.groundLayer);
+      this.weatherWet = new WeatherWetLayer(this.L.groundLayer, this.L.danceUiLayer); // 雨粒は被写界深度の外(細い線がボケて四角い靄にならない)
     }
     if (active !== this.weatherWetOn) {
       this.weatherWetOn = active;
@@ -12559,8 +12559,15 @@ export class PixiScene {
     const trees = treesInRegion(view.left - m, view.top - m, view.right + m, view.bottom + m);
     const bases = s.baseSites.map(b => ({ x: b.x, y: b.y, r: 130 })); // 130 = BASE_CAPTURE_RADIUS
     const ppx = s.player.x + s.player.width / 2, ppy = s.player.y + s.player.height;
+    // 雨粒の着地点を選ぶ矩形=実際に映っている世界(visibleWorldRect は等倍の画面との和+遠近の余白を含むので広すぎる)。
+    const wg = this.L.worldGroup, wsc = wg.scale.x > 0 ? wg.scale.x : 1;
+    const wx = this.L.world.position.x, wy = this.L.world.position.y;
+    const rainView = {
+      left: -wg.position.x / wsc - wx, right: (this.screenW - wg.position.x) / wsc - wx,
+      top: -wg.position.y / wsc - wy, bottom: (this.screenH - wg.position.y) / wsc - wy,
+    };
     this.weatherWet.sync({
-      now, envTint: this.envTintNow(), view, world: this.L.world,
+      now, envTint: this.envTintNow(), view, rainView, world: this.L.world,
       depthScale: y => this.depthScale(y),
       horizonAlpha: y => this.horizonActorAlpha(y),
       actors, lights, trees, bases, focusX: ppx, focusY: ppy,

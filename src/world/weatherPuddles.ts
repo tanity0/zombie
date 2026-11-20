@@ -33,8 +33,10 @@ export const PUDDLE_ART_SIZE: Readonly<Record<PuddleVariant, { w: number; h: num
 export const DEBRIS_VARIANTS = ['debris-stone', 'debris-log', 'debris-grass', 'debris-leaf', 'debris-twig', 'debris-branch'] as const;
 export type DebrisVariant = typeof DEBRIS_VARIANTS[number];
 
-/** 絵の1ドットを世界の何pxで出すか(プレイヤーの立ち絵の倍率 2.3 に近い密度)。叩き台。 */
-export const PUDDLE_ART_SCALE = 2.4;
+/** 水たまりの絵の1ドットを世界の何pxで出すか。叩き台。2.4→3.6(社長指示2026-11-20「水たまり全体的にもっと大きく」)。 */
+export const PUDDLE_ART_SCALE = 3.6;
+/** 小物(石・葉・枝)と波紋の絵の倍率=水たまりを大きくする前の値のまま(プレイヤーの立ち絵の倍率 2.3 に近い密度)。 */
+export const DEBRIS_ART_SCALE = 2.4;
 /** 散布の区画(world px・木の区画 220 とほぼ同じ)。1区画に 0〜2 個。叩き台。 */
 export const PUDDLE_CELL = 210;
 /** 出撃地点の真上だけは空ける(立ち位置に水たまりが重ならない)。開幕から足元近くに見えるよう、木(150)より小さめ。 */
