@@ -419,7 +419,7 @@ import { SECRET_DISPLAY_H, SECRET_MIN_DIST, secretSepiaMult } from '../world/sec
 import { HERO_DOG_BITE_INTERVAL_MS, HERO_DOG_DEATH_HOLD_MS, HERO_DOG_DEATH_FADE_MS, heroDogDeathPose } from '../utils/heroDog';
 import { HIT_BLINK_TYPES, hitBlinkStrength, bloodFlashStrength } from '../utils/hitBlink';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_RARE_SUCTION_PULL_RANGE, ALCHEMY_ATTACK_INTERVAL_MS } from '../utils/summonUtils';
-import { summonAttackPose, summonLungeT, type SummonAttackSheet } from '../utils/summonAttackMotion';
+import { summonAttackPose, summonLungeT, rareSummonRaise01, type SummonAttackSheet } from '../utils/summonAttackMotion';
 import { alchemyChannelDurationMs, alchemyRingProgress } from '../utils/alchemyRhythm';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { ESCORT_MELEE_WINDUP_MS, ESCORT_MELEE_BLADE_MS } from '../utils/escortMelee'; // 進軍NPCのナイフ(research/ESCORT_MELEE.md)
@@ -20124,7 +20124,10 @@ export class PixiScene {
     // 流用元の敵と同じ攻撃の絵を出す(ゾンビ=噛みつきシート / 蜘蛛=跳びシート / 手描きの攻撃コマが無い型=踏み込みの位置の動きだけ)。
     // 当たるコマ=命中の瞬間(utils/summonAttackMotion)。判定・間隔・ダメージは不変。味方なので赤い予告は出さない。
     const atk = s.kind === 'normal' ? this.summonAttackTexture(key, s) : null;
-    const tex = atk?.tex ?? walkTex;
+    // 社長指摘2026-11-20「錬金術のハリケーンの時のハンター、攻撃時の絵になってない。立ち絵になってる」:
+    // レア(ハンター)は棺桶を回している間ずっと、フィールドのハンターの攻撃の絵(跳びのシートの溜め=棺桶を頭上に構えた姿)で描く。
+    const rare = s.kind === 'rare' ? this.rareSummonAttackTexture(key, s, now) : null;
+    const tex = atk?.tex ?? rare?.tex ?? walkTex;
     view.light.visible = false;
     // 被弾シェイク(攻撃されている表現): 直近ヒットから短時間、減衰する横揺れ。lastHit は Date.now 基準。
     const sinceHit = Date.now() - s.lastHit;
@@ -20155,8 +20158,11 @@ export class PixiScene {
     let drawnH = fb.boxH;
     if (tex) {
       view.sprite.texture = tex;
-      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
-      const mirror = faceRight === (atk ? (atk.artRight ?? sheetArtFacesRight(key, atk.sheet)) : sheetFacesRight(key)) ? 1 : -1;
+      // レアの構えのコマはフィールドの敵と同じく立ち絵の背丈へ揃える(sheetHeightFix=跳びのシートの枠で縮まない)。
+      const rareFit = rare && idleTex ? sheetHeightFix(fb.boxW, fb.boxH, idleTex.width, idleTex.height, tex.width, tex.height) : 1;
+      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * rareFit;
+      const artSheet = atk?.sheet ?? rare?.sheet;
+      const mirror = faceRight === (atk?.artRight ?? (artSheet ? sheetArtFacesRight(key, artSheet) : sheetFacesRight(key))) ? 1 : -1;
       view.sprite.scale.set(sc * mirror, sc);
       drawnH = tex.height * sc;
       // 被弾直後は赤白フラッシュ、それ以外は味方識別の金色(v0.25.3179)。
@@ -20355,6 +20361,24 @@ export class PixiScene {
     if (!pose) return null;
     const tex = this.sheetSlices(sheet, spec.frames)?.[pose.frame];
     return tex ? { tex, sheet, lift01: pose.lift01, artRight } : null;
+  }
+
+  /**
+   * レア召喚(ハンター)の体のコマ。フィールドのハンターの攻撃の絵=跳びのシートの**溜めの区間**(棺桶を担ぎ上げる→頭上に構える)。
+   * 出る時はフィールドの溜めと同じ長さで担ぎ上げ、構え切った姿で保ち、寿命の終わりは同じ速さで下ろす。
+   * null=シートがまだ読めていない(立ち絵で待つ)。
+   */
+  private rareSummonAttackTexture(key: string, s: Summon, now: number): { tex: Texture; sheet: string } | null {
+    warmEnemySheets(key);
+    const split = jumpSheetSplit(key);
+    if (!split) return null;
+    const raiseMs = PUMPKIN_CROUCH_MS / ENEMY_ATTACK_SPEED_MULT;
+    const p = rareSummonRaise01(now - s.createdAt, (s.expiresAt ?? now + 1e9) - now, raiseMs);
+    const i = enemyJumpFrame(split, 'crouch', Math.min(0.999999, p));
+    if (i === null) return null;
+    const sheet = jumpSheetName(key);
+    const tex = this.sheetSlices(sheet, jumpSplitFrames(split))?.[i];
+    return tex ? { tex, sheet } : null;
   }
 
   /** 召喚の動き(前のフレームの位置・向き)。向きを決める。 */

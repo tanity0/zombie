@@ -90,3 +90,18 @@ describe('召喚が間合いの敵を攻撃したら打刻する(store)', () => 
     });
   }
 });
+
+describe('レア召喚(ハンター)の構えの進み', () => {
+  it('出た瞬間は0・担ぎ上げ後は1で保つ・寿命の終わりへ向けて0へ下ろす', async () => {
+    const { rareSummonRaise01 } = await import('./summonAttackMotion');
+    expect(rareSummonRaise01(0, 10000, 500)).toBe(0);
+    expect(rareSummonRaise01(250, 10000, 500)).toBeCloseTo(0.5);
+    expect(rareSummonRaise01(3000, 7000, 500)).toBe(1);
+    expect(rareSummonRaise01(9750, 250, 500)).toBeCloseTo(0.5);
+    expect(rareSummonRaise01(10000, 0, 500)).toBe(0);
+  });
+  it('ハンターは跳びのシート(溜め区間)を持つ=攻撃の絵を引ける', async () => {
+    const { jumpSheetSplit } = await import('./enemySheets');
+    expect(jumpSheetSplit('hunter')?.crouch ?? 0).toBeGreaterThan(1);
+  });
+});

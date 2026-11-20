@@ -93,3 +93,16 @@ export const summonLungeT = (
   const t = (rel + lead) / lungeMs;
   return t >= 0 && t < 1 ? t : null;
 };
+
+/**
+ * レア召喚(ハンター)が棺桶を回してハリケーンを立てている間の体の絵(社長指摘2026-11-20
+ * 「ハンターの攻撃時の絵になってない。立ち絵になってる」)。フィールドのハンターの攻撃の絵=跳びのシートの
+ * **溜めの区間(棺桶を担ぎ上げる→頭上に構える)**を使う。
+ * 返り値=溜めの区間の進み 0..1(1=頭上に構え切った姿で保つ)。出る時は担ぎ上げ、寿命の終わりは同じ速さで下ろす
+ * (瞬間に構え/下ろしへ飛ばない=慣性)。
+ * @param bornMs 出てからの経過 / @param leftMs 寿命の残り / @param raiseMs 担ぎ上げに使う長さ(フィールドの溜めと同じ)
+ */
+export const rareSummonRaise01 = (bornMs: number, leftMs: number, raiseMs: number): number => {
+  if (!(raiseMs > 0)) return 1;
+  return Math.max(0, Math.min(1, bornMs / raiseMs, leftMs / raiseMs));
+};
