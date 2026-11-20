@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5689 — 雨上がり: 雲の影を濃く・月明りの筋を明るく青く【2026-11-21 02:27 JST】
+- 社長「雲の影を強めて月光も強めるとそれっぽいのかな?」→はい+参考画(深い藍・はっきりした月光): 雨上がりの間だけ `WET_CLOUD_SHADOW_MULT`=1.8(雨上がり用の雲影の焼き=斑×1.25・藍寄り)・`WET_MOON_SHAFT_MULT`=1.7・筋の色 0xa6bbff。入り/抜けは1.8秒の easeInOutSine(慣性)。雨上がりでない時は倍率が厳密に1=1ビットも変わらない。目安1.6/1.5では差が読めず実測で引き上げ(地面の平均グレー 49.4→43.9・最暗部約6=潰れていない)。`src/utils/weatherWet.ts`(+テスト)・`src/pixi/lighting.ts`・`pixiScene.ts`(updateCloudShadow/updateStageLightShafts/syncWeatherWet)。負荷1/10。投影影を落とす光源なし。Opus サブエージェント。
+- 参考画との残りの差(担当の洗い出し): ①灰色の霧で平たい(霧のα/色) ②全体が灰色寄り(雨上がりの色調整の彩度/青) ③映りが弱い ④松明の縦長の映りが無い ⑤葉先の雫 ⑥地面の濡れた艶(新表現) ⑦月をもっと大きく明るく。社長へ。
+- 検証: typecheck・eslint・weatherWet/weatherPuddles/stageTextures 36件。撮影(scratchpad/moonlight/ref_vs_result.png)を目視。
+
 ## v0.25.5688 — 雨上がり: 水たまりに風景(遠景の逆さ)を映す【2026-11-21 01:36 JST】
 - 社長承認「風景を一枚反転した絵を地面に敷いて、水たまりの形のマスクレイヤーにしか表示されない様に」(research/WEATHER_WET.md 末尾): 読み込み済みの遠景(farBackdrop・星空・月暈/月/グロー・城・森1・リッジ・森2)を表示ツリー外の写しで上下反転して 320×192 へ毎フレーム焼き、地平線から下へ縦0.5倍の帯で繰り返して TilingSprite で敷く(帯の頭=逆さの稜線を足元の少し上に合わせる・横の視差/空のコマ送り/月の呼吸も映る)。型=画面内の水面の絵を 256×384 へ焼いた Sprite のアルファマスク(Container の AlphaMask は連続する地面層で効かなかった)。濃さ LAND_ALPHA 0.75×WATER_FADE。重なり順=縁→水面→風景→空の色、その上にキャラの映り・光・波紋。焼きはメモリ台帳に載る。`src/utils/weatherWet.ts`(landscapeBand 等+テスト6件)・`src/pixi/weatherWet.ts`・`pixiScene.ts`(wetLandscape・焼きの窓口)。負荷2/10(焼き2回+矩形範囲の合成1回・約0.65MB)。本物の鏡像ではなく帯の繰り返し(手前の水たまりにも映すため)。Opus サブエージェント。
 - 検証: typecheck・eslint・weatherWet/weatherPuddles/stageTextures 32件。撮影(scratchpad/reflect/)を目視: 水たまりの中に雲と星空が映る。

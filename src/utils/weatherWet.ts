@@ -201,3 +201,28 @@ export const reflectedSourceY = (b: LandscapeBand, horizonY: number, y: number, 
   const inBand = ((d % b.bandH) + b.bandH) % b.bandH;
   return horizonY - inBand * (b.srcH / b.bandH);
 };
+
+// ---- 雲の影と月明りの強まり(雨上がり=雲が切れて、影と月明りの差がはっきりする) ----
+/** 雨上がりの間、地面を流れる雲の影の濃さに掛ける倍率(>1=濃く)。叩き台。 */
+export const WET_CLOUD_SHADOW_MULT = 1.8;
+/** 雨上がりの間、月明りの筋の明るさに掛ける倍率(>1=明るく)。叩き台。 */
+export const WET_MOON_SHAFT_MULT = 1.7;
+/** 雨上がりの間の月明りの筋の色(夜の既定 0xc9d6ff より青い=藍の夜の月光。灰色の靄に見えないように)。叩き台。 */
+export const WET_MOON_SHAFT_COLOR = 0xa6bbff;
+/** 2色を t(0..1)で混ぜる(0xRRGGBB)。 */
+export const lerpRgb = (a: number, b: number, t: number): number => {
+  const k = clamp01(t);
+  const ch = (sh: number) => Math.round(((a >> sh) & 255) + (((b >> sh) & 255) - ((a >> sh) & 255)) * k);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+};
+/** 雨上がりへ入る/抜ける時、上の倍率が効き切るまでの尺(ms)。パッと切り替えない(慣性)。 */
+export const WET_LIGHT_FADE_MS = 1800;
+
+/** 効き具合(0..1)を1フレーム進める。active へ向けて一定の速さで寄せる(見た目の加減速は wetLightMult 側の easeInOutSine)。 */
+export const stepWetLightMix = (mix: number, active: boolean, dtMs: number): number => {
+  const step = Math.max(0, dtMs) / WET_LIGHT_FADE_MS;
+  return active ? Math.min(1, mix + step) : Math.max(0, mix - step);
+};
+
+/** 効き具合 mix(0..1)の時の倍率。mix=0(雨上がりでない)なら必ず 1(=何も変えない)。 */
+export const wetLightMult = (mix: number, mult: number): number => 1 + (mult - 1) * easeInOutSine(mix);

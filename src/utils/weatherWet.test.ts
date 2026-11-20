@@ -4,6 +4,7 @@ import {
   dripHeight, DRIP_FALL_MS, DRIP_FALL_H, glintPose, GLINT_MS,
   rainDropSpec, rainPose, rainNextGapMs, RAIN_FALL_MS_MIN, RAIN_FALL_MS_MAX, RAIN_DROPS_PER_MPX_S, RAIN_MAX,
   landscapeBand, reflectedSourceY, landscapeBandStart, LANDSCAPE_REFLECT_STRETCH, LANDSCAPE_BAND_LEAD,
+  WET_CLOUD_SHADOW_MULT, WET_MOON_SHAFT_MULT, WET_LIGHT_FADE_MS, stepWetLightMix, wetLightMult, lerpRgb,
 } from './weatherWet';
 
 describe('weatherWet(雨上がりの決めごと)', () => {
@@ -177,5 +178,35 @@ describe('水たまりに映る風景(上下反転の写し)', () => {
     expect(Number.isFinite(b.bandH) && b.bandH > 0).toBe(true);
     expect(b.repeats).toBeGreaterThanOrEqual(1);
     expect(Number.isFinite(reflectedSourceY(b, 0, 123))).toBe(true);
+  });
+});
+
+describe('雨上がりの雲の影と月明り', () => {
+  it('倍率は1より大きい(雲の影は濃く・月明りは明るく)', () => {
+    expect(WET_CLOUD_SHADOW_MULT).toBeGreaterThan(1);
+    expect(WET_MOON_SHAFT_MULT).toBeGreaterThan(1);
+  });
+  it('雨上がりでない(mix=0)なら倍率は1=何も変えない', () => {
+    expect(wetLightMult(0, WET_CLOUD_SHADOW_MULT)).toBe(1);
+    expect(wetLightMult(0, WET_MOON_SHAFT_MULT)).toBe(1);
+    expect(stepWetLightMix(0, false, 16)).toBe(0);
+  });
+  it('効き切ると倍率そのもの・途中は加減速して寄る(慣性)', () => {
+    expect(wetLightMult(1, WET_MOON_SHAFT_MULT)).toBeCloseTo(WET_MOON_SHAFT_MULT);
+    let m = 0;
+    const seen: number[] = [];
+    for (let t = 0; t < WET_LIGHT_FADE_MS + 100; t += 100) { m = stepWetLightMix(m, true, 100); seen.push(wetLightMult(m, 2)); }
+    expect(m).toBe(1);
+    for (let i = 1; i < seen.length; i++) expect(seen[i]).toBeGreaterThanOrEqual(seen[i - 1]);
+    expect(seen[1] - seen[0]).toBeLessThan(seen[8] - seen[7]); // 出だしは緩やか
+    expect(stepWetLightMix(1, false, WET_LIGHT_FADE_MS)).toBe(0);
+  });
+});
+
+describe('lerpRgb', () => {
+  it('端は元の色・中間は各成分の中間', () => {
+    expect(lerpRgb(0xc9d6ff, 0xa6bbff, 0)).toBe(0xc9d6ff);
+    expect(lerpRgb(0xc9d6ff, 0xa6bbff, 1)).toBe(0xa6bbff);
+    expect(lerpRgb(0x000000, 0xfefefe, 0.5)).toBe(0x7f7f7f);
   });
 });

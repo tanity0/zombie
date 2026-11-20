@@ -445,7 +445,7 @@ import {
 import { placeAvatarPart, avatarPartPieces, avatarPartSrcRect, type AvatarPartPiece } from '../utils/avatarPlacement';
 import { BLOOD_BURST_SHEET_FRAMES, BLOOD_BURST_SHEET_FRAME_MS, BLOOD_BURST_BLAST_PX, getBloodBurstArt, pickDrop, bloodBurstLayout, bloodBurstSeed, BLOOD_GOB_PX, BLOOD_BURST_GRAVITY, BLOOD_BURST_POP_MS, BLOOD_BURST_POOL_MS, BLOOD_BURST_DARKEN_MS, BLOOD_BURST_FADE_MS, BLOOD_BURST_BODY_MS, type BloodBurstPiece } from './bloodBurst';
 import { getAlchemyRockArt, getAlchemyDustTexture, alchemyRockLayout, alchemyRockSeed, alchemyPulse, alchemyTremble, ALCHEMY_ROCK_SIZES, ALCHEMY_ROCK_TARGET, ALCHEMY_FLY_MS, ALCHEMY_SETTLE_MS, ALCHEMY_FRAG_MS, ALCHEMY_PUSH_MS, ALCHEMY_SHATTER_MS, type AlchemyRockSpec } from './alchemyRocks';
-import { getSpotConeTexture, getSpotBeamTexture, SPOT_BEAM_FRAC, getGlowTexture, getSoftGlowTexture, getHitCoreGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getAirPadTexture, getAirStreakTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
+import { getSpotConeTexture, getSpotBeamTexture, SPOT_BEAM_FRAC, getGlowTexture, getSoftGlowTexture, getHitCoreGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getAirPadTexture, getAirStreakTexture, getCloudShadowTexture, getCloudShadowShapeTexture, CLOUD_SHADOW_WET_GAIN, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 // SKILL_BUILD_REDESIGN.md §21(B5)/§24(社長指示2026-08-13): 枠光の判定は純関数のまま(pixiは読むだけ・
 // 判定を書かない)。バーサーカー=HP依存の常時オーラ、オーバークロック=proc起点の800msフラッシュ。
@@ -471,7 +471,7 @@ import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
 import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight } from './weatherWet';
-import { parseWeather, weatherWetActive } from '../utils/weatherWet';
+import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, WET_CLOUD_SHADOW_MULT, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR } from '../utils/weatherWet';
 import { getSelectedStageId } from '../data/progress';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H, wallRect, propRect, isLabObstacleBroken, labDebrisInRegion, type LabBrokenObstacle } from '../world/labWalls';
 import { LAB_WALL_CRUMBLE_MS, LAB_PROP_CRUMBLE_MS, LAB_DEBRIS_PALETTE, labDebrisKind } from '../utils/labCrawlerTick'; // 崩れの尺・破片の色(着地の土煙・音と同じ値)
@@ -5891,7 +5891,8 @@ export class PixiScene {
     // RGBにしか無いため、tint=黒にすると全面ベタの黒矩形になり形が消える(社長報告v0.25.2279
     // 「m7の雲地面の影見当たらない」)。通常合成の時は形をαに持つ専用テクスチャを張る。
     const shapeAlpha = this.currentFarKey === 'stage7';
-    const tex = shapeAlpha ? getCloudShadowShapeTexture() : getCloudShadowTexture(night);
+    const wetShadow = !shapeAlpha && this.wetLightMix > 0; // 雨上がり(?weather=wet)の間だけ濃い藍の雲影(それ以外は従来のテクスチャ)
+    const tex = shapeAlpha ? getCloudShadowShapeTexture() : getCloudShadowTexture(night, wetShadow);
     if (sp.texture !== tex) sp.texture = tex;
     const farH = this.farBackdropHeight();
     const overW = this.screenW * ZOOM_OVERSCAN;
@@ -5913,7 +5914,11 @@ export class PixiScene {
     } else {
       if (sp.blendMode !== 'multiply') sp.blendMode = 'multiply';
       if (sp.tint !== 0xffffff) sp.tint = 0xffffff;
-      sp.alpha = tsNum('cloudshadowalpha', 0.7);          // 濃さ=0.7(社長指示v0.25.2278。旧1.0=v0.25.1977)
+      const base = tsNum('cloudshadowalpha', 0.7);          // 濃さ=0.7(社長指示v0.25.2278。旧1.0=v0.25.1977)
+      // 雨上がり(?weather=wet)の間だけ濃く=雲が切れて影と月明りの差が立つ。雨上がりでなければ倍率は厳密に1=従来どおり。
+      // 濃さ=α×(斑の暗さ)。雨上がり用テクスチャは暗さが CLOUD_SHADOW_WET_GAIN 倍なので α を割って、濃さが倍率どおり連続に寄るようにする。
+      const wm = wetLightMult(this.wetLightMix, WET_CLOUD_SHADOW_MULT);
+      sp.alpha = wetShadow ? Math.min(1, base * wm / CLOUD_SHADOW_WET_GAIN) : base;
     }
     const spd = tsNum('cloudshadowspeed', night ? 0.008 : 0.011); // もう少し速く(社長指示v0.25.1977)。夜=ゆっくりめ / 昼=標準
     // ステージ4(雪)は雲影のドリフト向きを雪と同じ(=現状の逆)にし、少し速く(社長指示v0.25.1984)。
@@ -7226,10 +7231,14 @@ export class PixiScene {
     const night = !this.daylight;
     // 明るさは preset の shaftAlpha 連動(夜=月明りで弱く)。?shaft= は昼基準のマスター倍率として効かせる。
     const alpha = SHAFT_ALPHA * (lp.shaftAlpha / SUNLIGHT_PRESET.shaftAlpha) * (this.daylight ? SHAFT_DAY_BOOST : 1);
+    // 雨上がり(?weather=wet)の間だけ月明りの筋を明るく(雲が切れた)。塗りのαに掛ける=器の alpha は脈動で既に1付近のため
+    // そこに掛けても1で頭打ちになる。雨上がりでなければ倍率は厳密に1=従来どおり。研究所の闇を削る絵には掛けない。
+    this.shaftWetMulDrawn = wetLightMult(this.wetLightMix, WET_MOON_SHAFT_MULT);
     if (alpha <= 0) { this.shaftPeriod = 0; return; }
+    const shaftAlpha = alpha * this.shaftWetMulDrawn;
     g.blendMode = 'add';
     // 月明りは淡く青白い拡散光。夜はシャフト色を少しパステル寄りの蒼白へ(プレイヤー光の色には影響しない)。
-    const color = night ? 0xc9d6ff : lp.color;
+    const color = night ? (this.wetLightMix > 0 ? lerpRgb(0xc9d6ff, WET_MOON_SHAFT_COLOR, easeInOutSine(this.wetLightMix)) : 0xc9d6ff) : lp.color; // 雨上がりの間だけ青い月光へ寄せる
     // 一定間隔の斜めビームを period 単位でタイル反復して描く。横パララックスで position.x を
     // [-period, 0] に折り返すと継ぎ目なくスクロールできる(森の tilePosition と同じ発想)。
     const period = Math.max(180, w * SHAFT_PERIOD_FACTOR);
@@ -7262,7 +7271,7 @@ export class PixiScene {
           y2,
           x2 - b.width * 0.68,
           y2,
-        ]).fill({ color, alpha: alpha * b.alpha });
+        ]).fill({ color, alpha: shaftAlpha * b.alpha });
         // 闇を削る絵: 同じ形を、幅を変えて5枚重ねる(縁を柔らかく=ぼかしのフィルタは使わない)。芯ほど濃く(外は薄く広く)。
         // 濃さは筋どうしの比だけ持つ(強い筋=1)。
         for (const [k, a] of [[1.55, 0.08], [1.28, 0.13], [1.0, 0.2], [0.72, 0.26], [0.42, 0.33]] as const) {
@@ -12532,9 +12541,19 @@ export class PixiScene {
    * 松明の光だまり・木・拠点)を渡すだけ。光だまりは既存の映り込み(松明の reflection)の色と強さをそのまま読む。
    */
   private weatherWetOn = false;
+  /** 雨上がりで雲の影/月明りの筋を強める効き具合(0..1)。?weather=wet を付けない限り 0 のまま=倍率1。 */
+  private wetLightMix = 0;
+  private wetLightLastNow = 0;
+  /** 月明りの筋を最後に描いた時の雨上がりの倍率(変わった時だけ描き直す)。 */
+  private shaftWetMulDrawn = 1;
   private syncWeatherWet(s: ReturnType<typeof useGameStore.getState>, now: number) {
     const active = weatherWetActive({ weather: WEATHER_KNOB, stageId: getSelectedStageId(), indoor: s.indoorMode, corridor: s.corridorMode })
       && this.currentFarKey === 'forest';
+    const dtLight = this.wetLightLastNow > 0 ? Math.min(100, Math.max(0, now - this.wetLightLastNow)) : 0;
+    this.wetLightLastNow = now;
+    this.wetLightMix = stepWetLightMix(this.wetLightMix, active, dtLight); // 入る/抜ける時は加減速して効く(慣性)
+    // 月明りの筋は画面寸法が変わった時にしか描き直さないので、倍率が動いている間だけ描き直す(入る/抜ける約2秒だけ)。
+    if (wetLightMult(this.wetLightMix, WET_MOON_SHAFT_MULT) !== this.shaftWetMulDrawn) this.updateStageLightShafts(this.screenW, this.screenH);
     if (!this.weatherWet) {
       if (!active) return;
       this.weatherWet = new WeatherWetLayer(this.L.groundLayer, this.L.danceUiLayer, { // 雨粒は被写界深度の外(細い線がボケて四角い靄にならない)
