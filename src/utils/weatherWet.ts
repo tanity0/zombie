@@ -145,14 +145,14 @@ export const RAIN_INTENSITY_HOLD_MS_MAX = 60000;
  *  どちらか=二つの山。間(MID)はたまにだけ。 */
 export const RAIN_INTENSITY_MIN = 0.03;
 export const RAIN_INTENSITY_LOW_MAX = 0.2;
-export const RAIN_INTENSITY_HIGH_MIN = 1.6;
-export const RAIN_INTENSITY_MAX = 2.2;
+export const RAIN_INTENSITY_HIGH_MIN = 3.0; // 社長指示2026-11-21「もっと土砂降りに」→はい(1.6〜2.2 の約1.5〜2倍)
+export const RAIN_INTENSITY_MAX = 4.0;
 /** 目標が本降り(HIGH)になる確率・間(MID=LOW_MAX..HIGH_MIN の中ほど)になる確率。残りは止みかけ(LOW)。 */
 export const RAIN_INTENSITY_HIGH_P = 0.45;
 export const RAIN_INTENSITY_MID_P = 0.1;
 /** 次の強さへ寄せる尺(ms)。加速して減速する(慣性)。HOLD_MS_MIN より短い=区間の終わりには必ず目標に着いている。
  *  上下の差が大きくなったぶん、移り変わりも少し速く(9秒→6秒)=「変わった」と分かる。 */
-export const RAIN_INTENSITY_RAMP_MS = 6000;
+export const RAIN_INTENSITY_RAMP_MS = 11000; // 幅が4まで広がったので、1フレームで跳ばない(テストで固定)長さへ
 /** 葉先の雫が雨の強さに遅れて付いてくる時定数(ms)=雨が弱まっても、しばらく雫は落ち続ける。 */
 export const DRIP_LAG_TAU_MS = 9000;
 /** 雫の平均間隔(ms・強さ1の時)と同時上限。雨粒より少ない「ときどきの粒」。 */

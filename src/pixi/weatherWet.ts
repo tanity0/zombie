@@ -81,7 +81,7 @@ const MAX_SLOTS = 5;
 const GLINT_EVERY_MS = 2200;
 const GLINT_MAX = 2;
 /** 波紋の上限(使い回し)。ポツポツ雨の着地ぶんを足して 24→40、本降りで水たまりが波立つぶんを足して 40→64。 */
-const RIPPLE_MAX = 64;
+const RIPPLE_MAX = 96; // 本降りの時に波紋の使い回しが埋まらない余裕(64→96)
 /** 水たまりの雨の波紋を1フレームで生む上限(重いフレーム・タブ復帰で一度に立たない)。 */
 const PUDDLE_RIPPLE_PER_FRAME = 4;
 /** 水たまりの雨の波紋の濃さ(雫・着地の波紋に掛ける 1 に対して)。 */
@@ -1151,8 +1151,10 @@ export class WeatherWetLayer {
         this.rain.push(d);
       }
       // 着地点は可視域の中(下は少し外まで=画面の下端へ落ちる粒も描く)。地平線の向こうには降らせない。
+      // 地平線の向こうに落ちる点は捨てずに引き直す(最大4回)=本降りが見える地面に全数降る(社長指示2026-11-21「もっと土砂降りに」)。
       const x = v.left + Math.random() * w;
-      const y = v.top + Math.random() * (hh + 60);
+      let y = v.top + Math.random() * (hh + 60);
+      for (let k = 0; k < 4 && h.horizonAlpha(y) <= 0.02; k++) y = v.top + Math.random() * (hh + 60);
       if (h.horizonAlpha(y) <= 0.02) continue;
       d.at = now; d.x = x; d.y = y; d.spec = rainDropSpec(Math.random); d.on = true;
     }
