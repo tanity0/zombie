@@ -51,6 +51,15 @@ export const stageFramesTunnelWanted = (o: { stageId: string; indoor?: boolean; 
  */
 export const STAGE_FRAMES_IN_CORRIDOR: ReadonlySet<string> = new Set(['stage-6']);
 
-/** 横長の時だけ出す(スマホ縦=w <= h では出さない・読まない)。 */
+/**
+ * 常時の枠を出すか。横長も縦(スマホ)も出す(社長指示2026-11-21「全ステージの枠、左右、3分の1くらいはスマホの縦持ちでも
+ * 映り込んでみていいかも。上下が少し映り込んでる感じになると思う」)。縦での出し方は stageFrameVisibleFrac。
+ * w・h は呼び手の互換のために残す(判定には使わない)。
+ */
 export const stageFramesWanted = (o: { stageId: string; w: number; h: number; indoor?: boolean; corridor?: boolean }): boolean =>
-  o.w > o.h && !o.indoor && (!o.corridor || STAGE_FRAMES_IN_CORRIDOR.has(o.stageId)) && stageFrameSprites(o.stageId).length > 0;
+  !o.indoor && (!o.corridor || STAGE_FRAMES_IN_CORRIDOR.has(o.stageId)) && stageFrameSprites(o.stageId).length > 0;
+
+/** 縦画面で画面の中へ映り込ませる枠の幅の割合(残りは画面の外へ押し出す)。 */
+export const STAGE_FRAME_PORTRAIT_VISIBLE_FRAC = 1 / 3;
+/** 枠の幅のうち画面の中に見せる割合。横長=1(全部)、縦(w <= h)=STAGE_FRAME_PORTRAIT_VISIBLE_FRAC。 */
+export const stageFrameVisibleFrac = (w: number, h: number): number => (w > h ? 1 : STAGE_FRAME_PORTRAIT_VISIBLE_FRAC);

@@ -5,7 +5,7 @@
  *   (ワールド・霧・画面の色味の上/周辺減光・被弾の閃光・画面外の矢印の下)。HUD(DOM)はその上。
  * - 高さ=画面の高さいっぱい・縦横比そのまま。ドット絵を nearest で拡大してから**ぼかしを焼く**(手前でピントの外れた前景)。
  *   ぼかしは画面寸法かテクスチャが変わった時だけ1回焼く=毎フレームのフィルタは掛けない。
- * - 横長(w > h)の時だけ。スマホ縦では何も読まず何も描かない(container.visible=false のまま)。
+ * - 横長は枠の全幅、縦(スマホ)は幅の 1/3 だけ画面の端に映り込ませる(社長指示2026-11-21)。
  * - 出る時は慣性つきのフェード(パッと出さない)。
  *
  * 負荷: スプライト最大2枚(焼いた絵)。焼きは寸法が変わった時だけ(BlurFilter 1回)=1/10。
@@ -15,10 +15,10 @@
  * **縦持ち・横持ち関係なく**、同じ焼いた絵の複製を外側の端を基準に遠近の速さで拡大し(奥からゆっくり→抜ける直前に速く)、
  * 常に2〜3枚を重ねて途切れず流す。
  * 複製は焼いた絵を使い回す(新しい焼き・毎フレームのフィルタは足さない)。片側 INTRO_TUNNEL_MAX_COPIES 枚のプール。
- * 縦画面では演出の間だけ焼き、終わったら焼いた絵を手放す(演出の後の縦画面は何も描かない=今と同じ)。
+ * 演出の後は、横長・縦とも常時の枠(縦は幅の 1/3)へつながる。
  */
 import { BlurFilter, Container, Sprite, Texture, type RenderTexture } from 'pixi.js';
-import { STAGE_FRAMES, stageFramesTunnelWanted, stageFramesWanted, type StageFrameSide } from '../data/stageFrames';
+import { STAGE_FRAMES, stageFrameVisibleFrac, stageFramesTunnelWanted, stageFramesWanted, type StageFrameSide } from '../data/stageFrames';
 import { INTRO_TUNNEL_END_MS, INTRO_TUNNEL_MAX_COPIES, INTRO_TUNNEL_PORTRAIT_ALPHA_MUL, introTunnelCopies } from '../utils/introFrameTunnel';
 import { getTexture } from './pixiTextures';
 
@@ -111,7 +111,9 @@ export class StageFrameLayer {
       const view = v ?? this.makeSide(side);
       if (view.srcTex !== tex || view.bakedH !== o.h) this.bakeSide(side, view, tex, o.h);
       if (!view.rt) { view.sprite.visible = false; for (const c of view.copies) c.visible = false; continue; }
-      const x0 = side === 'left' ? 0 : o.w - view.rt.width;
+      // 縦画面は枠の幅の 1/3 だけ画面に映り込ませる(残りは外へ押し出す=上下の枝や岩が端から覗く)。横長は全部。
+      const visW = view.rt.width * stageFrameVisibleFrac(o.w, o.h);
+      const x0 = side === 'left' ? visW - view.rt.width : o.w - visW;
       if (baseWanted) {
         view.alpha = Math.min(1, view.alpha + dt / FRAME_FADE_MS);
         view.sprite.alpha = easeInOut(view.alpha);

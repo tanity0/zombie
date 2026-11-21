@@ -5,7 +5,7 @@ import { Assets } from 'pixi.js';
 import { useGameStore } from '../store/gameStore';
 import { getSelectedStageId } from '../data/progress';
 import { parseWeather, weatherWetActive } from '../utils/weatherWet';
-import { stageFrameGroupKey, stageFramesTunnelWanted } from '../data/stageFrames';
+import { stageFrameGroupKey, stageFramesWanted } from '../data/stageFrames';
 import { skinLayersExpectedFor, type StageSkinLayer } from './stageTextureSkin';
 export { skinLayersExpectedFor, type StageSkinLayer } from './stageTextureSkin';
 
@@ -139,11 +139,11 @@ export const sortieSpriteGroups = (): string[] => {
   const base = sortieSpriteGroupsBase();
   // 左右の枠(data/stageFrames.ts): 枠のあるステージへ出撃した時に読む。旧は横長の時だけだったが、
   // ★2026-11-21: 登場のヘリ飛来の間は縦持ちでも枠のトンネルを出す(社長指示)ので、縦でも読む(原盤2枚 ≈1MB)。
-  // (横長の常時表示 stageFramesWanted は、このトンネルの条件に含まれる=横長で読む条件は今と同じ。)
   const s = useGameStore.getState();
   const stageId = getSelectedStageId();
-  if (typeof window !== 'undefined' && stageFramesTunnelWanted({
-    stageId, indoor: s.indoorMode, corridor: s.corridorMode,
+  // ★2026-11-21: 常時の枠も縦で出す(幅の1/3)ようになったので、枠のあるステージなら向きに関係なく読む(回廊のステージ6も)。
+  if (typeof window !== 'undefined' && stageFramesWanted({
+    stageId, w: 0, h: 0, indoor: s.indoorMode, corridor: s.corridorMode,
   })) return [...base, stageFrameGroupKey(stageId)];
   return base;
 };
