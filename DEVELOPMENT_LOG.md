@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5718 — ステージ6(洋館)の左右のカーテンの枠【2026-11-21 23:31 JST】
+- 社長支給(ChatGPT生成)の 55×128 ×2(IMG_9446=不透明が左に多い=左 / IMG_9445=右)を `public/sprites/frames/stage6-{left,right}.png` に置き `stageFrames.ts` に1行。ステージ6は全編が回廊(corridorMode)で従来の判定では一度も出ないため、`STAGE_FRAMES_IN_CORRIDOR`(stage-6のみ)を足し、回廊でも横長なら常時の枠を出す。出撃のトンネルは回廊では出さない(ヘリの登場が無い)。他ステージの回廊は今どおり出さない。テスト2件追加。台帳・CREDITS 更新。
+- EX1(古い洋館の別ステージ)には付けていない(社長の指示はステージ6)。
+- 確認: 1280×720 で左右のカーテンが出てぼけていることを撮って目視。typecheck・eslint・assets:check・vitest 全件(失敗0)。状態変化: なし。
+
 ## v0.25.5717 — ステージ5の左右の枠【2026-11-21 23:24 JST】
 - 社長支給(ChatGPT生成)の 79×128(IMG_9441・不透明の画素が左に多い=左)・78×128(IMG_9442・右に多い=右)を `public/sprites/frames/stage5-{left,right}.png` に置き、`stageFrames.ts` に1行。左右は画素の偏りを数えて決めた。台帳・CREDITS 更新。
 - 確認: 1280×720 で左右とも出てぼけていることを撮って目視。typecheck・eslint・assets:check・vitest 全件(失敗0)。状態変化: なし。

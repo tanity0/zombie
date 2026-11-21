@@ -24,6 +24,8 @@ export const STAGE_FRAMES: Readonly<Record<string, Readonly<Partial<Record<Stage
   'stage-4': { left: 'frames/stage4-left', right: 'frames/stage4-right' },
   // ステージ5 軍本部: 左=枯れ木と木の杭の柵と赤い布、右=崩れた鉄骨と破れた布と瓦礫(社長支給2026-11-21)。
   'stage-5': { left: 'frames/stage5-left', right: 'frames/stage5-right' },
+  // ステージ6 古い洋館: 左右とも、上から垂れる重いカーテン(左右で別の形)と燭台(社長支給2026-11-21)。
+  'stage-6': { left: 'frames/stage6-left', right: 'frames/stage6-right' },
 };
 
 /** そのステージの枠の絵の名前(左→右の順)。登録が無ければ空。 */
@@ -43,6 +45,12 @@ export const stageFrameGroupKey = (stageId: string): string => `frames:${stageId
 export const stageFramesTunnelWanted = (o: { stageId: string; indoor?: boolean; corridor?: boolean }): boolean =>
   !o.indoor && !o.corridor && stageFrameSprites(o.stageId).length > 0;
 
+/**
+ * 回廊(洋館の疑似3Dの通路)でも横長の常時の枠を出すステージ。ステージ6は全編が回廊なので、ここに入れないと一度も出ない
+ * (社長支給のカーテン2026-11-21)。出撃のトンネルは回廊では出さない(ヘリの登場が無い)。
+ */
+export const STAGE_FRAMES_IN_CORRIDOR: ReadonlySet<string> = new Set(['stage-6']);
+
 /** 横長の時だけ出す(スマホ縦=w <= h では出さない・読まない)。 */
 export const stageFramesWanted = (o: { stageId: string; w: number; h: number; indoor?: boolean; corridor?: boolean }): boolean =>
-  o.w > o.h && !o.indoor && !o.corridor && stageFrameSprites(o.stageId).length > 0;
+  o.w > o.h && !o.indoor && (!o.corridor || STAGE_FRAMES_IN_CORRIDOR.has(o.stageId)) && stageFrameSprites(o.stageId).length > 0;

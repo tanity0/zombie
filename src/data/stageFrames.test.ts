@@ -25,3 +25,14 @@ describe('stageFrames(横長の左右の枠)', () => {
     }
   });
 });
+
+describe('stageFrames: 回廊のステージ(洋館)', () => {
+  it('ステージ6は回廊でも横長なら枠を出す・縦は出さない・トンネルは回廊では出さない', () => {
+    expect(stageFramesWanted({ stageId: 'stage-6', w: 1280, h: 720, corridor: true })).toBe(true);
+    expect(stageFramesWanted({ stageId: 'stage-6', w: 430, h: 932, corridor: true })).toBe(false);
+    expect(stageFramesTunnelWanted({ stageId: 'stage-6', corridor: true })).toBe(false);
+  });
+  it('他のステージは回廊では今どおり出さない', () => {
+    expect(stageFramesWanted({ stageId: 'stage-1', w: 1280, h: 720, corridor: true })).toBe(false);
+  });
+});
