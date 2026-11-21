@@ -1552,7 +1552,9 @@ const ESCORT_CROSSFADE_SOLDIERS = new Set<number>([]);
 const ESCORT_APPEAR_FADE_MS = 400;
 
 const HELI_DISPLAY_H = 120;  // 画面上のヘリ高さ(px。横はテクスチャ比で従属)
-const HELI_ABOVE = 210;      // 序盤、飛来高度(キャラ上方への随伴オフセット px)
+// 序盤の飛来高度(キャラ上方への随伴オフセット px)。2026-11-21: 飛来が左下の手前(縮尺2.6)からになり、
+// 縮尺が掛かる分だけ持ち上がって画面の上へ逃げるので 210→96(出発点が画面の左下に来る高さ)。
+const HELI_ABOVE = 96;
 const HELI_LAND_ABOVE = 56;  // 着陸時のヘリ中心高度(px)。=機体下端がほぼ地面=着地。社長指示の「着陸」。
 const HELI_DESCEND_FROM = 0.45; // フェーズAのこの割合から着陸降下を開始
 const HELI_RISE = 820;       // 離陸で上へ抜ける距離(px)
@@ -13009,9 +13011,13 @@ export class PixiScene {
       this.L.uiLayer.addChildAt(this.stageFrames.container, this.L.uiLayer.getChildIndex(this.vignette));
     }
     const s = useGameStore.getState();
+    // 枠のトンネル(登場のヘリ飛来の間・utils/introFrameTunnel.ts): 登場演出の頭からの経過 ms。登場中でなければ null。
+    const introMs = this.introActive
+      ? (this.introUntil === -1 ? 0 : Math.max(0, Math.min(1, 1 - (this.introUntil - Date.now()) / PLAYER_INTRO_MS)) * PLAYER_INTRO_MS)
+      : null;
     this.stageFrames.sync({
       stageId: getSelectedStageId(), w: this.screenW, h: this.screenH,
-      indoor: s.indoorMode, corridor: s.corridorMode, now: performance.now(),
+      indoor: s.indoorMode, corridor: s.corridorMode, now: performance.now(), introMs,
     });
   }
 
@@ -16139,7 +16145,7 @@ export class PixiScene {
   }
 
   // 登場演出のヘリ。
-  //  フェーズA(飛来): プレイヤーを乗せて遠く高くから随伴(同じ縮尺で拡大しながら降下)。
+  //  フェーズA(飛来): プレイヤーを乗せて左下の手前から曲線で随伴(手前の大きさ→等倍へ縮みながら着地点へ・2026-11-21)。
   //  フェーズB(ジャンプ着地): プレイヤーが飛び降りる→ヘリは上へ逃げて横ドリフト+フェードアウト。
   // 画像 'helicopter' が未登録なら何もしない(画像受領後に表示)。
   private syncIntroHelicopter(player: Player, now: number) {

@@ -10,9 +10,15 @@
  *
  * 負荷: スプライト最大2枚(焼いた絵)。焼きは寸法が変わった時だけ(BlurFilter 1回)=1/10。
  * メモリ: 焼いた絵は 1080p で 約490×1080×4 ≈ 2.1MB/枚(+原盤 228×512 ≈ 0.47MB)。
+ *
+ * ★枠のトンネル(社長指示2026-11-21・時間割は utils/introFrameTunnel.ts): ステージ開始のヘリ飛来の間だけ、
+ * **縦持ち・横持ち関係なく**、同じ焼いた絵の複製を外側の端を基準に拡大しながらフェードアウトさせ、高速で繰り返す。
+ * 複製は焼いた絵を使い回す(新しい焼き・毎フレームのフィルタは足さない)。片側 INTRO_TUNNEL_MAX_COPIES 枚のプール。
+ * 縦画面では演出の間だけ焼き、終わったら焼いた絵を手放す(演出の後の縦画面は何も描かない=今と同じ)。
  */
-import { BlurFilter, Container, Sprite, type RenderTexture, type Texture } from 'pixi.js';
-import { STAGE_FRAMES, stageFramesWanted, type StageFrameSide } from '../data/stageFrames';
+import { BlurFilter, Container, Sprite, Texture, type RenderTexture } from 'pixi.js';
+import { STAGE_FRAMES, stageFramesTunnelWanted, stageFramesWanted, type StageFrameSide } from '../data/stageFrames';
+import { INTRO_TUNNEL_END_MS, INTRO_TUNNEL_MAX_COPIES, introTunnelCopies } from '../utils/introFrameTunnel';
 import { getTexture } from './pixiTextures';
 
 /** ぼかしの強さ(画面の論理px)。`?framesblur=` で試せる。 */
@@ -22,6 +28,16 @@ const FRAME_BLUR = (() => {
   const q = new URLSearchParams(window.location.search).get('framesblur');
   const v = q === null ? NaN : Number(q);
   return Number.isFinite(v) && v >= 0 ? v : FRAME_BLUR_DEFAULT;
+})();
+/**
+ * 枠のトンネルの複製の重ね方。既定は加算: 枠の絵は暗い岩のシルエットで、ステージ1の夜の画面に普通に重ねると
+ * 暗いぼかしが増えるだけで「迫って抜ける」が読めなかった(画で確認)。加算だと岩の縁の青い照り返しと苔が
+ * 層になって光り、洞窟の壁が手前へ流れていく画になる。`?tunnelblend=normal|screen` で比べられる。
+ */
+const TUNNEL_BLEND = (() => {
+  if (typeof window === 'undefined') return 'add';
+  const q = new URLSearchParams(window.location.search).get('tunnelblend');
+  return q === 'normal' || q === 'screen' ? q : 'add';
 })();
 /** 出るフェードの尺(ms)。 */
 const FRAME_FADE_MS = 700;
@@ -38,6 +54,8 @@ interface SideView {
   srcTex: Texture | null;
   bakedH: number;
   alpha: number;
+  /** 枠のトンネルの複製(プール・同じ rt を使い回す)。 */
+  copies: Sprite[];
 }
 
 const easeInOut = (t: number): number => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
@@ -46,37 +64,76 @@ export class StageFrameLayer {
   readonly container = new Container();
   private sides = new Map<StageFrameSide, SideView>();
   private lastNow = 0;
+  /** 通常の枠(横長の常時表示)。 */
+  private readonly baseLayer = new Container();
+  /** 枠のトンネルの複製(通常の枠の上=手前)。 */
+  private readonly tunnelLayer = new Container();
 
   constructor(private hooks: StageFrameHooks) {
     this.container.eventMode = 'none';
     this.container.label = 'stageFrames';
     this.container.visible = false;
+    this.baseLayer.eventMode = 'none';
+    this.tunnelLayer.eventMode = 'none';
+    this.container.addChild(this.baseLayer, this.tunnelLayer);
   }
 
-  sync(o: { stageId: string; w: number; h: number; indoor: boolean; corridor: boolean; now: number }): void {
+  /**
+   * @param o.introMs 登場演出の頭からの経過 ms(登場演出中でなければ null)。枠のトンネルの時刻。
+   */
+  sync(o: { stageId: string; w: number; h: number; indoor: boolean; corridor: boolean; now: number; introMs?: number | null }): void {
     const dt = this.lastNow > 0 ? Math.min(100, Math.max(0, o.now - this.lastNow)) : 0;
     this.lastNow = o.now;
-    if (!stageFramesWanted({ stageId: o.stageId, w: o.w, h: o.h, indoor: o.indoor, corridor: o.corridor })) {
-      // 横長でない/対象外: 何も描かない。次に出る時もフェードから。
+    const baseWanted = stageFramesWanted({ stageId: o.stageId, w: o.w, h: o.h, indoor: o.indoor, corridor: o.corridor });
+    const introMs = o.introMs ?? null;
+    const tunnelOn = introMs !== null && introMs < INTRO_TUNNEL_END_MS
+      && stageFramesTunnelWanted({ stageId: o.stageId, indoor: o.indoor, corridor: o.corridor });
+    if (!baseWanted && !tunnelOn) {
+      // 横長でない/対象外/トンネルも無い: 何も描かない。次に出る時もフェードから。
+      // 縦画面でトンネルのために焼いた絵はここで手放す(演出の後の縦画面は今と同じ=何も持たない)。
       this.container.visible = false;
-      for (const v of this.sides.values()) v.alpha = 0;
+      for (const v of this.sides.values()) {
+        v.alpha = 0;
+        v.sprite.visible = false;
+        for (const c of v.copies) c.visible = false;
+        if (v.rt && o.w <= o.h) { v.sprite.texture = Texture.EMPTY; for (const c of v.copies) c.texture = Texture.EMPTY; this.hooks.release(v.rt); v.rt = null; v.srcTex = null; v.bakedH = 0; }
+      }
       return;
     }
     const def = STAGE_FRAMES[o.stageId] ?? {};
+    const copies = tunnelOn ? introTunnelCopies(introMs as number) : [];
     let any = false;
     for (const side of ['left', 'right'] as const) {
       const name = def[side];
       const v = this.sides.get(side);
       const tex = name ? getTexture(name) : null; // 届く前は null(遅延組の網が取りに行く)=出さないだけ
-      if (!tex) { if (v) { v.sprite.visible = false; v.alpha = 0; } continue; }
+      if (!tex) { if (v) { v.sprite.visible = false; v.alpha = 0; for (const c of v.copies) c.visible = false; } continue; }
       const view = v ?? this.makeSide(side);
       if (view.srcTex !== tex || view.bakedH !== o.h) this.bakeSide(side, view, tex, o.h);
-      if (!view.rt) { view.sprite.visible = false; continue; }
-      view.alpha = Math.min(1, view.alpha + dt / FRAME_FADE_MS);
-      view.sprite.alpha = easeInOut(view.alpha);
-      view.sprite.visible = true;
-      view.sprite.position.set(side === 'left' ? 0 : o.w - view.rt.width, 0);
-      any = true;
+      if (!view.rt) { view.sprite.visible = false; for (const c of view.copies) c.visible = false; continue; }
+      const x0 = side === 'left' ? 0 : o.w - view.rt.width;
+      if (baseWanted) {
+        view.alpha = Math.min(1, view.alpha + dt / FRAME_FADE_MS);
+        view.sprite.alpha = easeInOut(view.alpha);
+        view.sprite.visible = true;
+        view.sprite.position.set(x0, 0);
+        any = true;
+      } else {
+        view.alpha = 0;
+        view.sprite.visible = false;
+      }
+      // トンネル: 外側の端(左=x0 / 右=画面の右端)と画面の縦の中央を基準に拡大(端寄せのまま)。
+      for (let i = 0; i < view.copies.length; i++) {
+        const c = view.copies[i];
+        const pose = copies[i];
+        if (!pose || pose.alpha <= 0.004) { c.visible = false; continue; }
+        if (c.texture !== view.rt) c.texture = view.rt;
+        c.scale.set(pose.scale);
+        c.position.set(side === 'left' ? 0 : o.w, o.h / 2);
+        c.alpha = pose.alpha;
+        c.visible = true;
+        any = true;
+      }
     }
     this.container.visible = any;
   }
@@ -85,8 +142,20 @@ export class StageFrameLayer {
     const sprite = new Sprite();
     sprite.eventMode = 'none';
     sprite.visible = false;
-    this.container.addChild(sprite);
-    const v: SideView = { sprite, rt: null, srcTex: null, bakedH: 0, alpha: 0 };
+    this.baseLayer.addChild(sprite);
+    // トンネルの複製: introTunnelCopies は新しい順(小さい=奥)に返す。古い(大きい=手前)ほど上に重ねるため、
+    // プールの i 番目を tunnelLayer の下から i 番目に置く(=i が大きいほど上)。
+    const copies: Sprite[] = [];
+    for (let i = 0; i < INTRO_TUNNEL_MAX_COPIES; i++) {
+      const c = new Sprite();
+      c.eventMode = 'none';
+      c.visible = false;
+      c.anchor.set(side === 'left' ? 0 : 1, 0.5);
+      c.blendMode = TUNNEL_BLEND;
+      this.tunnelLayer.addChild(c);
+      copies.push(c);
+    }
+    const v: SideView = { sprite, rt: null, srcTex: null, bakedH: 0, alpha: 0, copies };
     this.sides.set(side, v);
     return v;
   }
@@ -118,6 +187,7 @@ export class StageFrameLayer {
     wrap.destroy({ children: true });
     v.rt = rt;
     v.sprite.texture = rt;
+    for (const c of v.copies) c.texture = rt;
   }
 
   destroy(): void {

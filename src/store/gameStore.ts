@@ -4328,9 +4328,25 @@ export const PLAYER_INTRO_FLY_X = 0;        // (フェーズB)人間の飛び降
                                             // 横移動はすべてヘリの飛来(FAR_X)で確保し、飛び降りは前進せず垂直落下。
                                             // v0.25.411: 900→450 / v0.25.413: 450→225 / v0.25.450: 225→0(前進やめ)。
 export const PLAYER_INTRO_LOW_Y = 28;       // (フェーズB)開始のわずかな高さ
-export const PLAYER_INTRO_HELI_FAR_X = 4500; // (フェーズA)飛来開始の遠方X(world px。もっと左の遠くから)
-export const PLAYER_INTRO_HELI_HIGH_Y = 420; // (フェーズA)飛来開始の高度(画面上方 px)。v0.25.413: 300→420(もう少し上空から)
-export const PLAYER_INTRO_HELI_START_SCALE = 0.22; // (フェーズA)飛来開始の見た目縮尺(遠さの主表現)
+// ★フェーズAの飛来(社長指示2026-11-21「左下の手前から、ステージの真ん中へヘリ等倍になるようにカーブを描きながら慣性を持って」)。
+// 旧: 左の遠く高い所(-4500, -420)から 0.22倍で現れ拡大しながら着地(遠→近)。
+// 新: 左下の**手前**(カメラに近い=等倍より大きい)から、曲線(3次ベジェ)を描いて着地点へ。縮尺は手前の大きさ→1。
+// 移動距離(出発点→着地点の直線)は旧と同じ ≈4517 world px(テストで固定)。
+export const PLAYER_INTRO_HELI_FAR_X = 4250;  // (フェーズA)出発点の左方向(world px)
+export const PLAYER_INTRO_HELI_NEAR_Y = 1500; // (フェーズA)出発点の下方向(world px・正=下=手前)
+export const PLAYER_INTRO_HELI_HIGH_Y = 420;  // 旧軌道の出発高度(寄りズームの高さ係数の分母として残す。新軌道は下から来るので高さ0)
+export const PLAYER_INTRO_HELI_START_SCALE = 2.6; // (フェーズA)出発点の見た目縮尺(手前=大きい。着地で1)
+// 曲線の制御点(world px・着地点からの相対)。P1=出発点の高さのまま右へ大きく流れる、P2=着地点の左下手前で上へ回り込む。
+const INTRO_HELI_P1 = { x: -2500, y: 1500 };
+const INTRO_HELI_P2 = { x: -700, y: 420 };
+// 飛来の進み s(a): 入ってきた時点で既に速度を持ち(v0)、少し加速してから着地へ減速して止まる(慣性)。
+// 3次エルミート(s(0)=0, s(1)=1, s'(0)=v0, s'(1)=0)。v0<=1.5 なら [0,1] で単調増加。
+const INTRO_HELI_V0 = 1.2;
+export const playerIntroHeliProgress = (a: number): number => {
+  const x = Math.max(0, Math.min(1, a));
+  const v = INTRO_HELI_V0;
+  return v * x + (3 - 2 * v) * x * x + (v - 2) * x * x * x;
+};
 export const PLAYER_INTRO_CAM_FOLLOW = 0.82; // (フェーズB)カメラが飛行Xに追従する割合
 export const PLAYER_INTRO_HELI_CAM_FOLLOW = 0.92; // (フェーズA)カメラ追従(やや弱め=ヘリが左から飛び込んで見える)
 // t:0→1 の登場オフセット(着地位置からの相対 world px)。x<0=左, y<0=上。
@@ -4339,28 +4355,29 @@ export const playerIntroOffset = (t: number): { x: number; y: number } => {
   const tc = Math.max(0, Math.min(1, t));
   const hf = PLAYER_INTRO_HELI_FRAC;
   if (tc < hf) {
-    // フェーズA: 遠方・高所からフェーズB開始点(-FLY_X, -LOW_Y)へ接続。
-    // 横は easeOut(遠くから猛スピードで来て収束)、縦は smoothstep(滑らかに降下)。
-    const a = tc / hf;
-    const sX = 1 - (1 - a) * (1 - a); // easeOut: 高速で飛来
-    const sY = a * a * (3 - 2 * a);   // smoothstep: なめらか降下
-    const startX = -PLAYER_INTRO_HELI_FAR_X;
-    const startY = -PLAYER_INTRO_HELI_HIGH_Y;
-    const endX = -PLAYER_INTRO_FLY_X;
-    const endY = -PLAYER_INTRO_LOW_Y;
-    return { x: startX + (endX - startX) * sX, y: startY + (endY - startY) * sY };
+    // フェーズA: 左下の手前(-FAR_X, +NEAR_Y)から3次ベジェの曲線でフェーズB開始点(-FLY_X, -LOW_Y)へ。
+    // 曲線上の進みは playerIntroHeliProgress(慣性=速度を持って入り、減速して止まる)。
+    const u = playerIntroHeliProgress(tc / hf);
+    const v = 1 - u;
+    const b0 = v * v * v, b1 = 3 * v * v * u, b2 = 3 * v * u * u, b3 = u * u * u;
+    const p0x = -PLAYER_INTRO_HELI_FAR_X, p0y = PLAYER_INTRO_HELI_NEAR_Y;
+    const p3x = -PLAYER_INTRO_FLY_X, p3y = -PLAYER_INTRO_LOW_Y;
+    return {
+      x: b0 * p0x + b1 * INTRO_HELI_P1.x + b2 * INTRO_HELI_P2.x + b3 * p3x,
+      y: b0 * p0y + b1 * INTRO_HELI_P1.y + b2 * INTRO_HELI_P2.y + b3 * p3y,
+    };
   }
   // フェーズB(着陸→離陸): カメラは着地地点(オフセット0)に固定。ヘリの離陸とプレイヤー/NPCの
   // フェードインは pixiScene 側で描く(被写体=着地地点なのでここは 0 を返す)。飛び降り弧は廃止。
   return { x: 0, y: 0 };
 };
-// 登場の見た目縮尺: フェーズA序盤は小さく(遠い)→フェーズA終端で1。フェーズBは常に1。
+// 登場の見た目縮尺: フェーズA序盤は大きく(手前)→フェーズA終端で1(等倍)。フェーズBは常に1。
+// 曲線上の進みと同じ慣性(playerIntroHeliProgress)で縮む=近づき方と小さくなり方が揃う。
 export const playerIntroScale = (t: number): number => {
   const tc = Math.max(0, Math.min(1, t));
   const hf = PLAYER_INTRO_HELI_FRAC;
   if (tc >= hf) return 1;
-  const a = tc / hf;
-  const s = a * a * (3 - 2 * a);
+  const s = playerIntroHeliProgress(tc / hf);
   return PLAYER_INTRO_HELI_START_SCALE + (1 - PLAYER_INTRO_HELI_START_SCALE) * s;
 };
 // カメラ追従割合: フェーズAは強追従でヘリを画面保持→移行域で 0.82 へ滑らかにランプ(段差防止)。
@@ -4378,9 +4395,11 @@ export const playerIntroCamFollow = (t: number): number => {
 
 // 登場の高さ係数 h(t): 1=最も高い(開始/ヘリ高度) → 0=着地。見た目の縦オフセットから算出するため
 // キャラの降下に自動同期する。カメラの縦寄せ(useGameLoop)とズーム(pixiScene)で共有し、ズレなく連動させる。
+// ★2026-11-21: 飛来は下(手前)から来るので、着地点(-LOW_Y)より上へ出ない=常に0(寄りズームはかからない)。
+// 着地点の高さを0に取るので、フェーズAの終わりとフェーズBの境目でズームが段差を作らない。
 export const playerIntroDescent = (t: number): number => {
   const oy = playerIntroOffset(t).y; // 上=負
-  return Math.max(0, Math.min(1, -oy / PLAYER_INTRO_HELI_HIGH_Y));
+  return Math.max(0, Math.min(1, (-oy - PLAYER_INTRO_LOW_Y) / (PLAYER_INTRO_HELI_HIGH_Y - PLAYER_INTRO_LOW_Y)));
 };
 
 // 登場セリフ(ヘリが画面内に入った頃に時間停止して自動表示→流れ終わると開始)。

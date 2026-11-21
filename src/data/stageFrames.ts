@@ -28,6 +28,13 @@ export const stageFrameSprites = (stageId: string): string[] => {
 /** 遅延組のキー(`pixiTextures` の DEFERRED_SPRITE_GROUPS に、ステージごとに1つ)。 */
 export const stageFrameGroupKey = (stageId: string): string => `frames:${stageId}`;
 
+/**
+ * ステージ開始のヘリ飛来の間の「枠のトンネル」(utils/introFrameTunnel.ts)を出すか。**縦持ち・横持ち関係なく**
+ * (社長指示2026-11-21)、枠の絵が登録されたステージ(屋内・回廊を除く)で出す。演出が終わった後の縦画面は何も残さない。
+ */
+export const stageFramesTunnelWanted = (o: { stageId: string; indoor?: boolean; corridor?: boolean }): boolean =>
+  !o.indoor && !o.corridor && stageFrameSprites(o.stageId).length > 0;
+
 /** 横長の時だけ出す(スマホ縦=w <= h では出さない・読まない)。 */
 export const stageFramesWanted = (o: { stageId: string; w: number; h: number; indoor?: boolean; corridor?: boolean }): boolean =>
   o.w > o.h && !o.indoor && !o.corridor && stageFrameSprites(o.stageId).length > 0;
