@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { STAGE_FRAMES, STAGE_FRAME_PORTRAIT_VISIBLE_FRAC, stageFrameSprites, stageFrameVisibleFrac, stageFramesTunnelWanted, stageFramesWanted } from './stageFrames';
 
 describe('stageFrames(横長の左右の枠)', () => {
-  it('スマホ縦(w <= h)でも出し、幅の1/3だけ映り込ませる。横長は全幅', () => {
+  it('スマホ縦(w <= h)でも出し、幅の半分だけ映り込ませる。横長は全幅', () => {
     expect(stageFramesWanted({ stageId: 'stage-1', w: 430, h: 932 })).toBe(true);
     expect(stageFramesWanted({ stageId: 'stage-1', w: 375, h: 667 })).toBe(true);
-    expect(stageFrameVisibleFrac(430, 932)).toBeCloseTo(1 / 3, 9);
+    expect(stageFrameVisibleFrac(430, 932)).toBeCloseTo(1 / 2, 9);
     expect(stageFrameVisibleFrac(800, 800)).toBe(STAGE_FRAME_PORTRAIT_VISIBLE_FRAC);
     expect(stageFrameVisibleFrac(1280, 720)).toBe(1);
   });

@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5722 — スマホ縦の左右の枠を幅の半分まで見せる【2026-11-21 23:59 JST】
+- 社長「見せるの半分にしよう」。`STAGE_FRAME_PORTRAIT_VISIBLE_FRAC` 1/3→1/2。テスト・コメント更新。
+- 確認: 430×932 でステージ1・3を撮って目視(上の蔦・枝が端から覗く)。typecheck・eslint・vitest 全件(失敗0)。状態変化: なし。
+
 ## v0.25.5721 — 洞窟(訓練)の左右の枠【2026-11-21 23:53 JST】
 - 社長支給(ChatGPT生成)の 47×128(IMG_9453・不透明が左に多い=左)・71×128(IMG_9454=右)を `public/sprites/frames/tutorial-{left,right}.png` に置き `stageFrames.ts` に `stage-tutorial` を1行。台帳・CREDITS 更新。これで枠は洞窟・ステージ1〜7(EXのみ無し)。
 - 確認: 1280×720・430×932 で撮って目視。typecheck・eslint・assets:check・vitest 全件(失敗0)。状態変化: なし。

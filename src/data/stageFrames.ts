@@ -64,6 +64,6 @@ export const stageFramesWanted = (o: { stageId: string; w: number; h: number; in
   !o.indoor && (!o.corridor || STAGE_FRAMES_IN_CORRIDOR.has(o.stageId)) && stageFrameSprites(o.stageId).length > 0;
 
 /** 縦画面で画面の中へ映り込ませる枠の幅の割合(残りは画面の外へ押し出す)。 */
-export const STAGE_FRAME_PORTRAIT_VISIBLE_FRAC = 1 / 3;
+export const STAGE_FRAME_PORTRAIT_VISIBLE_FRAC = 1 / 2; // 社長2026-11-21「見せるの半分にしよう」(旧 1/3)
 /** 枠の幅のうち画面の中に見せる割合。横長=1(全部)、縦(w <= h)=STAGE_FRAME_PORTRAIT_VISIBLE_FRAC。 */
 export const stageFrameVisibleFrac = (w: number, h: number): number => (w > h ? 1 : STAGE_FRAME_PORTRAIT_VISIBLE_FRAC);

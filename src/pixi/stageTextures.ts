@@ -141,7 +141,7 @@ export const sortieSpriteGroups = (): string[] => {
   // ★2026-11-21: 登場のヘリ飛来の間は縦持ちでも枠のトンネルを出す(社長指示)ので、縦でも読む(原盤2枚 ≈1MB)。
   const s = useGameStore.getState();
   const stageId = getSelectedStageId();
-  // ★2026-11-21: 常時の枠も縦で出す(幅の1/3)ようになったので、枠のあるステージなら向きに関係なく読む(回廊のステージ6も)。
+  // ★2026-11-21: 常時の枠も縦で出す(幅の一部)ようになったので、枠のあるステージなら向きに関係なく読む(回廊のステージ6も)。
   if (typeof window !== 'undefined' && stageFramesWanted({
     stageId, w: 0, h: 0, indoor: s.indoorMode, corridor: s.corridorMode,
   })) return [...base, stageFrameGroupKey(stageId)];

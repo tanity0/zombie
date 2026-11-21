@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5722', items: ['スマホの縦画面で、左右の端から覗く枝や岩をもう少し大きく見せた'] },
   { version: '0.25.5721', items: ['訓練の洞窟も、画面の左右に鍾乳石の垂れた岩壁が重なる'] },
   { version: '0.25.5720', items: ['ステージ7も、画面の左右に焦げた枯れ木が重なり、出撃の時にくぐり抜けていく'] },
   { version: '0.25.5719', items: ['スマホの縦画面でも、画面の左右の端から手前の枝や岩が少し覗く'] },
