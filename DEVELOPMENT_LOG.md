@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5699 — ステージ1の蛍に遠近と被写界深度【2026-11-21 15:02 JST】
+- 社長「奥ほど小さく手前ほど大きく」「被写体深度の影響を受けて欲しい」: 蛍(magic 分岐)を uiLayer から world 最上段の `s1FireflyLayer` へ(filteredWorld の中=tilt-shift・地平線の覆い・bloom が他の物と同じに掛かる・被写界深度そのものは不変)。大きさに depthScale(y)、濃さに horizonActorAlpha(y)。範囲は実際に映る world(visibleWorldRect)。結果: 地平線より上(空)の蛍は消え、手前は大きくボケ、主人公付近はくっきり。芯 y=−164 で約5px・y=416 で11〜14px(前は一律6〜8.5px)。雪/火の粉/他ステージは uiLayer のまま不変。ズームに合わせて縮む・最大引きでは密度が下がる(社長の実機確認待ち)。
+- 検証: typecheck・eslint・循環import 緑・stage1Fireflies/weatherWet 45件。撮影(scratchpad/ffdepth/)を目視。負荷1/10。Opus サブエージェント。
+
 ## v0.25.5698 — CI修正: 循環importを2本解消【2026-11-21 14:54 JST】
 - CI の check-circular-imports が赤(ed874be 以降): `types/game.ts > utils/alchemyRhythm.ts > utils/summonUtils.ts > …`(v0.25.5673 の錬金術のリズム)と `types/game.ts > utils/brawlerCombo.ts > …`(格闘の浮きの型)。どちらも types/game.ts が型だけを引いていた先が重いハブに繋がっていた。→ 型を依存ゼロの葉へ移した: 新規 `src/utils/alchemyRhythmTypes.ts`(AlchemyRhythmRing/State)・`src/utils/brawlerJuggleTypes.ts`(BrawlerJuggleFields)。元のファイルは re-export。挙動の変更なし。
 - 検証: `node scripts/check-circular-imports.mjs` 緑(既知3本のみ)・typecheck・eslint・`vitest run src/utils src/store`。

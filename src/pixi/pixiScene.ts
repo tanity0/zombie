@@ -11347,7 +11347,14 @@ export class PixiScene {
     }
     // ステージ1の森(晴れた夜・雨上がりとも)だけ、蛍を1匹ずつ灯る/消える・光の輪つき・花の近く・プレイヤーで散る蛍にする。
     const magic = !snow && !ember && this.s1Forest;
-    if (magic) { this.syncMagicFireflies(camera, now, sec, minX, minY, maxX, maxY); return; }
+    if (magic) {
+      // 蛍は world 座標で描く(遠近・被写界深度・地平線フェードを他の物と揃える)。範囲は実際に映っている world の範囲。
+      this.setFireflyParent(true);
+      const v = this.visibleWorldRect();
+      this.syncMagicFireflies(now, sec, v.left - FIREFLY_MARGIN, v.top - FIREFLY_MARGIN, v.right + FIREFLY_MARGIN, v.bottom + FIREFLY_MARGIN);
+      return;
+    }
+    this.setFireflyParent(false);
     this.hideFireflyHalos();
     for (const f of this.fireflies) {
       if (f.extra) { f.sprite.visible = false; continue; }
@@ -11398,12 +11405,37 @@ export class PixiScene {
   /** ステージ1の森の蛍(utils/stage1Fireflies.ts)。粒は既存の蛍プール+光の輪(同じ数・加算の柔らかい丸)。影を落とす光ではない。 */
   private s1Forest = false;
   private fireflyHalosShown = false;
+  /**
+   * ステージ1の森の蛍だけを置く world 内の層(社長指示2026-11-21「奥ほど小さく手前ほど大きく」「被写体深度の影響を受けて欲しい」)。
+   * world の子=filteredWorld の中なので、tilt-shift(被写界深度)・地平線の覆い(worldFadeMask)が他の物と同じく掛かる。
+   * 雪/火の粉/他ステージの蛍は従来どおり uiLayer(画面空間)のまま=この層には入らない。
+   */
+  private s1FireflyLayer: Container | null = null;
+  private fireflyInWorld = false;
+  /** 蛍プールの親を付け替える(切り替わった時だけ・光の輪→芯の順で重なりを保つ)。 */
+  private setFireflyParent(inWorld: boolean) {
+    if (this.fireflyInWorld === inWorld) return;
+    this.fireflyInWorld = inWorld;
+    let target: Container = this.L.uiLayer;
+    if (inWorld) {
+      if (!this.s1FireflyLayer) {
+        this.s1FireflyLayer = new Container();
+        this.s1FireflyLayer.eventMode = 'none';
+        this.L.world.addChild(this.s1FireflyLayer); // world の最上段(=従来どおりアクター/効果の上に灯る)
+      }
+      target = this.s1FireflyLayer;
+    }
+    for (const f of this.fireflies) {
+      if (f.halo) target.addChild(f.halo);
+      target.addChild(f.sprite);
+    }
+  }
   private hideFireflyHalos() {
     if (!this.fireflyHalosShown) return;
     this.fireflyHalosShown = false;
     for (const f of this.fireflies) if (f.halo) f.halo.visible = false;
   }
-  private syncMagicFireflies(camera: { x: number; y: number }, now: number, sec: number, minX: number, minY: number, maxX: number, maxY: number) {
+  private syncMagicFireflies(now: number, sec: number, minX: number, minY: number, maxX: number, maxY: number) {
     const st = useGameStore.getState();
     const ppx = st.player.x + st.player.width / 2, ppy = st.player.y + st.player.height / 2;
     const wet = this.weatherWetOn;
@@ -11477,21 +11509,24 @@ export class PixiScene {
       f.on = f.on! + ((f.rank! < activeFrac ? 1 : 0) - f.on!) * Math.min(1, sec * FIREFLY_ON_EASE);
       const lit = fireflyBlink(now, f.blinkPh!, f.blinkMs!) * easeInOutSine(f.on!);
       const tint = f.cyan ? FIREFLY_CYAN_TINT : FIREFLY_WARM_TINT;
-      const bob = Math.sin(now * 0.0016 + f.seed! * 9) * 3; // 草の上で小さく浮き沈み
-      const x = f.x - camera.x, y = f.y - camera.y + bob;
+      // 遠近: 物(花・草)と同じ depthScale(f.y)=奥ほど小さく手前ほど大きい。地平線フェードも物と同じ。
+      const ds = this.depthScale(f.y);
+      const hz = this.horizonActorAlpha(f.y);
+      const bob = Math.sin(now * 0.0016 + f.seed! * 9) * 3 * ds; // 草の上で小さく浮き沈み
+      const x = f.x, y = f.y + bob; // world 座標(層ごとカメラに乗る)
       f.sprite.position.set(x, y);
       f.sprite.tint = tint;
-      f.sprite.alpha = Math.min(1, lit * 1.05);
-      f.sprite.width = f.sprite.height = FIREFLY_CORE_PX * (0.8 + 0.35 * lit);
-      f.sprite.visible = lit > 0.01;
+      f.sprite.alpha = Math.min(1, lit * 1.05) * hz;
+      f.sprite.width = f.sprite.height = FIREFLY_CORE_PX * (0.8 + 0.35 * lit) * ds;
+      f.sprite.visible = lit > 0.01 && hz > 0.01;
       const h = f.halo!;
       const hl = Math.max(0, (lit - FIREFLY_DIM_FLOOR) / (1 - FIREFLY_DIM_FLOOR)); // 輪は灯っている間だけ
-      h.visible = hl > 0.01;
+      h.visible = hl > 0.01 && hz > 0.01;
       if (h.visible) {
         h.position.set(x, y);
         h.tint = tint;
-        h.alpha = FIREFLY_HALO_ALPHA * hl;
-        h.width = h.height = FIREFLY_CORE_PX * FIREFLY_HALO_MUL * (0.75 + 0.25 * hl);
+        h.alpha = FIREFLY_HALO_ALPHA * hl * hz;
+        h.width = h.height = FIREFLY_CORE_PX * FIREFLY_HALO_MUL * (0.75 + 0.25 * hl) * ds;
       }
     }
   }
