@@ -32,9 +32,17 @@ export const propPlacementVersion = (): number => version;
  * 出撃の開始(resetGame が毎回呼ぶ)。farBackdrop=木の絵(枯れ木/葉付き/雪)と、下の層が避ける置物の種類を決める。
  * 出撃の通し番号の代わりに版を上げる=前の出撃のメモは必ず捨てられる。
  */
-export const beginPropPlacementSortie = (farKey: string): void => { contextFarKey = farKey; version++; };
-/** この出撃の farBackdrop(木の絵の寸法・下の層が避ける置物の種類)。 */
+export const beginPropPlacementSortie = (farKey: string, treeSkin: string = farKey): void => {
+  contextFarKey = farKey; contextTreeSkin = treeSkin; version++;
+};
+/** この出撃の farBackdrop(下の層が避ける置物の種類)。 */
 export const placementFarKey = (): string => contextFarKey;
+let contextTreeSkin = '';
+/**
+ * この出撃の木の絵の種類(木の絵の寸法・描画の出し分け)。既定は farBackdrop と同じ。ステージ1の森だけ
+ * artRects.STAGE1_TREE_SKIN(3本の葉付きの木)=同じ farBackdrop('')の他ステージ(6/7 等)の枯れ木は変えない。
+ */
+export const placementTreeSkin = (): string => contextTreeSkin;
 
 // ---- 手置きの物(拠点の円・城・ボスの場所) ----
 export type HandPlacedAnchor =

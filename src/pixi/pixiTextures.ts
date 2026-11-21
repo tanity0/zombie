@@ -1284,7 +1284,7 @@ export const ensureTextures = (): Promise<void> => {
     // ローディング%(社長指示v0.25.1776): このローダが読むファイル総数を先に一括登録する
     // (atlas 1 + standalone + 色キー5 + atlas-px上書き + 単発3=tree-new2/tree-snow/castle-church)。
     // 完了カウントは loadOne / loadKeyed の finally が1ずつ進める。
-    loadProgressBegin(1 + standalone.length + 5 + atlasPxNames.length + 9); // +9=tree-new2/tree-snow/castle-church/glen-boss/glen-boss2/glen-boss2-parts/glen-boss2-part0-anim/glen-boss2-part1-anim/glen-boss2-anim
+    loadProgressBegin(1 + standalone.length + 5 + atlasPxNames.length + 18); // +18=tree-forest-a/b/c/tree-city-a/b/c/tree-snow-a/b/c/tree-new2/tree-snow/castle-church/glen-boss/glen-boss2/glen-boss2-parts/glen-boss2-part0-anim/glen-boss2-part1-anim/glen-boss2-anim
 
     // 1アセットのロード失敗が全体を巻き込まないよう個別に握りつぶす。失敗した絵は
     // 未登録(getTexture=null)になり、その描画だけスキップ/手続き描画にフォールバック。
@@ -1520,6 +1520,11 @@ export const ensureTextures = (): Promise<void> => {
     // ステージ4(雪原)用の木=雪化粧の針葉樹(社長提供・透過済み)。syncTrees が farBackdrop==='snow' で出し分け。
     const snowTree = await loadOne('tree-snow');
     if (snowTree) { snowTree.source.scaleMode = 'nearest'; textures.set('tree-snow', snowTree); }
+    // ステージ1・ステージ7の森/ステージ3の廃都/ステージ4の雪原の木=3本組(社長支給2026-11-21・ドット絵=nearest)。syncTrees が木の絵の種類で出し分け。
+    for (const name of ['tree-forest-a', 'tree-forest-b', 'tree-forest-c', 'tree-city-a', 'tree-city-b', 'tree-city-c', 'tree-snow-a', 'tree-snow-b', 'tree-snow-c']) {
+      const t = await loadOne(name);
+      if (t) { t.source.scaleMode = 'nearest'; textures.set(name, t); }
+    }
     // 廃教会(社長提供)。ステージ3(廃都)のフィナーレ拠点でのみ使用するため 'castle-church' の別キーで登録。
     // 以前は 'castle' を上書きしていたため全ステージ(ステージ1の城も)が教会になっていた→ syncCastle 側で
     // farBackdrop により出し分ける(city=教会 / その他=castle.png)。

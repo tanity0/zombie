@@ -423,7 +423,7 @@ import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
 import { setPoiClearings } from '../world/poiClearings';
 import { beginPropPlacementSortie, setHandPlacedAnchors, type HandPlacedAnchor } from '../world/propPlacement';
-import { CASTLE_ART_HALF_W, CASTLE_ART_H } from '../world/artRects';
+import { CASTLE_ART_HALF_W, CASTLE_ART_H, STAGE1_TREE_SKIN, STAGE3_TREE_SKIN, STAGE4_TREE_SKIN } from '../world/artRects';
 import { secretPoisForStage, resolveSecretPoiCollision, secretPoiTouchedBy, secretChroniclePhrase, secretPoiRect, ejectDirFromRects, SECRET_EJECT_SPEED, SECRET_EJECT_MS, type SecretPoi } from '../world/secretPois';
 /**
  * ★施設(城・寄り道の建物・祠・隠れ処)の当たり判定を外している間か。ボス戦中(施設ロック)と、ボス戦が明けた直後の
@@ -28310,7 +28310,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       setCityPropsDisabled(bossMakerRoom);
       // 置き物どうしを重ねすぎない決まり(research/PROP_OVERLAP.md): 出撃ごとに区画メモを捨て、木の絵の種類
       // (枯れ木/葉付き/雪)と下の層が避ける置物の種類をこの出撃の farBackdrop に合わせる。
-      beginPropPlacementSortie(farBackdrop);
+      // 木の絵: ステージ1・ステージ7の森/ステージ3の廃都/ステージ4の雪原の屋外だけ葉付きの3本組(社長指示2026-11-21)。他ステージは farBackdrop のまま。
+      const treeStageId = getSelectedStageId();
+      const leafyOutdoor = stageTheme === 'forest' && !indoor && !corridorMode;
+      const treeSkin = leafyOutdoor && (treeStageId === 'stage-1' || treeStageId === 'stage-7') && (farBackdrop === '' || farBackdrop === 'stage7')
+        ? STAGE1_TREE_SKIN
+        : leafyOutdoor && treeStageId === 'stage-3' && farBackdrop === 'city' ? STAGE3_TREE_SKIN
+        : leafyOutdoor && treeStageId === 'stage-4' && farBackdrop === 'snow' ? STAGE4_TREE_SKIN : farBackdrop;
+      beginPropPlacementSortie(farBackdrop, treeSkin);
       // 洋館通路の湧き方向ゲート(上=奥 主体・左右は湧かせない)。generateEnemy が参照(新規/リサイクル両方)。
       setCorridorSpawn(corridorMode);
       // 世界の距離スケール(v0.25.4293): 訓練ステージ(M0)だけ区域の境界を素の値(1500/3000/…)に据え置く(台本が境界に載っている)。

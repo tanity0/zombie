@@ -484,6 +484,40 @@ export const stage1NightActive = (c: Stage1NightCtx): boolean =>
 export const S1N_FOG_TINT_MUL = { r: 0.52, g: 0.72, b: 0.98 } as const;
 /** 近景の森(世界の色行列が掛からない層)を、色行列と同じ涼しい夜へ揃える。 */
 export const S1N_FRONT_TINT_MUL = { r: 0.8, g: 0.92, b: 1 } as const;
+/**
+ * ステージ1・ステージ7の森の木(葉付きの3本・社長支給2026-11-21)の色の掛け率。夜の環境の tint(ENV_TINT)にさらに掛ける。
+ * 素材は昼の色(明るい黄緑の葉・苔)なので、そのままだと夜の森から浮く。晴れ=涼しい青の月夜(赤を落として青を残す)/
+ * 雨=藍の濡れた夜(もう一段暗く・青へ)。世界の色行列(晴れ=S1N_GRADE_*・雨=WET_GRADE_*)はこの後に木にも掛かる。
+ */
+export const S1_TREE_TINT_MUL_CLEAR = { r: 0.74, g: 0.86, b: 1 } as const;
+export const S1_TREE_TINT_MUL_WET = { r: 0.66, g: 0.76, b: 0.98 } as const;
+/** 木の tint: 夜の環境の tint(env)に、晴れ↔雨の掛け率を雨の効き具合 wetMix(0..1・加減速つき)で寄せて掛ける。 */
+export const stage1TreeTint = (env: number, wetMix: number): number => {
+  const k = easeInOutSine(wetMix);
+  const C = S1_TREE_TINT_MUL_CLEAR, W = S1_TREE_TINT_MUL_WET;
+  const ch = (shift: number, c: number, w: number) => Math.min(255, Math.round(((env >> shift) & 255) * (c + (w - c) * k)));
+  return (ch(16, C.r, W.r) << 16) | (ch(8, C.g, W.g) << 8) | ch(0, C.b, W.b);
+};
+/**
+ * ステージ3(昼の廃都)の葉付きの3本の色の掛け率。昼は環境の tint が白(本来色)なので、素材の黄緑のハイライトを少しだけ
+ * 落として昼の霞んだ廃都の光に寄せる(控えめ)。
+ */
+export const S3_TREE_TINT_MUL = { r: 0.94, g: 0.92, b: 0.9 } as const;
+export const stage3TreeTint = (env: number): number => {
+  const M = S3_TREE_TINT_MUL;
+  const ch = (shift: number, m: number) => Math.min(255, Math.round(((env >> shift) & 255) * m));
+  return (ch(16, M.r) << 16) | (ch(8, M.g) << 8) | ch(0, M.b);
+};
+/**
+ * ステージ4(雪の夜)の針葉樹3本の色の掛け率。夜の環境の tint(ENV_TINT)に掛ける(1超え=環境の暗さを少し戻す)。
+ * 素材は濃い紺の葉に雪なので、環境の暗さをそのまま掛けると明るい雪原から黒く沈んで浮く=雪の白が雪原と揃う所まで戻す(青寄り)。
+ */
+export const S4_TREE_TINT_MUL = { r: 1.12, g: 1.16, b: 1.22 } as const;
+export const stage4TreeTint = (env: number): number => {
+  const M = S4_TREE_TINT_MUL;
+  const ch = (shift: number, m: number) => Math.min(255, Math.round(((env >> shift) & 255) * m));
+  return (ch(16, M.r) << 16) | (ch(8, M.g) << 8) | ch(0, M.b);
+};
 /** 2. 月: 澄んだ空の満月=グローは雨上がりより明るく、大きさは控えめ(にじませずくっきり)。暈も明るく。 */
 export const S1N_MOON_GLOW_ALPHA_MUL = 1.9;
 export const S1N_MOON_GLOW_SCALE_MUL = 1.12;

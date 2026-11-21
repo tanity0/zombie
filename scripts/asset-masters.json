@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "1124 files / 復号後 約723MB",
+ "generatedFor": "1133 files / 復号後 約723MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -5894,11 +5894,65 @@
    "bytes": 48838,
    "sha": "13310d361e944a58"
   },
+  "sprites/tree-city-a.png": {
+   "w": 116,
+   "h": 128,
+   "bytes": 20236,
+   "sha": "c4c9ae058b6d9d83"
+  },
+  "sprites/tree-city-b.png": {
+   "w": 99,
+   "h": 127,
+   "bytes": 15369,
+   "sha": "75dd23f3f93649b6"
+  },
+  "sprites/tree-city-c.png": {
+   "w": 86,
+   "h": 127,
+   "bytes": 10565,
+   "sha": "11198f2f1ac7217b"
+  },
+  "sprites/tree-forest-a.png": {
+   "w": 96,
+   "h": 128,
+   "bytes": 14805,
+   "sha": "7fb8760f4daea352"
+  },
+  "sprites/tree-forest-b.png": {
+   "w": 111,
+   "h": 101,
+   "bytes": 12593,
+   "sha": "18f7f60ed584917b"
+  },
+  "sprites/tree-forest-c.png": {
+   "w": 73,
+   "h": 97,
+   "bytes": 7283,
+   "sha": "49ce7e3fbc1bbb92"
+  },
   "sprites/tree-new2.png": {
    "w": 198,
    "h": 249,
    "bytes": 76398,
    "sha": "cc08bb2a74153289"
+  },
+  "sprites/tree-snow-a.png": {
+   "w": 65,
+   "h": 128,
+   "bytes": 10201,
+   "sha": "065cb0062a9eecea"
+  },
+  "sprites/tree-snow-b.png": {
+   "w": 69,
+   "h": 118,
+   "bytes": 11621,
+   "sha": "7595d29a43e15e0d"
+  },
+  "sprites/tree-snow-c.png": {
+   "w": 62,
+   "h": 116,
+   "bytes": 8493,
+   "sha": "f0f4dac4a4527c06"
   },
   "sprites/tree-snow.png": {
    "w": 382,

@@ -468,16 +468,19 @@ import {
   RHYTHM_JUST_CYCLE_COLORS,
 } from '../config/shijin';
 import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
-import { TREE_VISUAL_SCALE, TREE_BOX_W, TREE_BOX_H, TORCH_VISUAL_W, TORCH_VISUAL_H, CAMPFIRE_VISUAL_W, CAMPFIRE_VISUAL_H } from '../world/artRects';
+import { placementTreeSkin } from '../world/propPlacement';
+import { TREE_VISUAL_SCALE, TREE_BOX_W, TREE_BOX_H, LEAFY_TREE_SKINS, STAGE3_TREE_SKIN, STAGE4_TREE_SKIN, leafyTreeDef, treeArtAnchor, TORCH_VISUAL_W, TORCH_VISUAL_H, CAMPFIRE_VISUAL_W, CAMPFIRE_VISUAL_H } from '../world/artRects';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
 import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight, type WetTree } from './weatherWet';
 import { StageFrameLayer } from './stageFrameLayer'; // 横長画面の左右の枠(research/STAGE_FRAMES.md)
-import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR, stage1NightActive, s1nCloudShadowAlpha, S1N_MOON_SHAFT_MULT, S1N_MOON_SHAFT_COLOR, S1N_NIGHT_GRADE_ALPHA_MUL, S1N_MOON_POOL_ALPHA, S1N_MOON_POOL_COLOR, moonPoolPieces, TORCH_STREAK_EASE } from '../utils/weatherWet';
+import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, stage1TreeTint, stage3TreeTint, stage4TreeTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR, stage1NightActive, s1nCloudShadowAlpha, S1N_MOON_SHAFT_MULT, S1N_MOON_SHAFT_COLOR, S1N_NIGHT_GRADE_ALPHA_MUL, S1N_MOON_POOL_ALPHA, S1N_MOON_POOL_COLOR, moonPoolPieces, TORCH_STREAK_EASE } from '../utils/weatherWet';
 import { initStage7Weather, stepStage7Weather, stage7WeatherLook, hasGlenForm2, stepMixToward, STAGE7_WEATHER_STAGE, STAGE7_WEATHER_OFF, S7W_RAIN_START, type Stage7WeatherLook } from '../utils/stage7Weather';
 import { Stage1NightLayer } from './stage1Night';
 import { Stage5BattleLayer, type BurningWreckView, type FlamePainter } from './stage5Battlefield';
 import { stage5BattleActive, stage5EmberSize, S5B_WRECK_MAX } from '../utils/stage5Battlefield';
+import { Stage3DaylightLayer, type S3DTreeView } from './stage3Daylight';
+import { stage3DaylightActive } from '../utils/stage3Daylight';
 import { TorchBackLight, type GlowPoolShape } from './stageLook';
 import { sharedTorchBackPools } from '../utils/torchBackLight';
 import { burningWrecksInRegion } from '../world/burningWrecks';
@@ -775,6 +778,8 @@ const tsNum = (key: string, def: number): number => {
 const S7W_ON = tsNum('s7weather', 1) > 0; // ?s7weather=0 でステージ7の天気(雨→第二形態で晴れの夜)を全部外す(見比べ用)
 const S1N_ON = tsNum('s1n', 1) > 0; // ?s1n=0 で通常のステージ1の夜の上乗せを全部外す(見比べ・計測用)
 const S1N_GRADE_ON = tsNum('s1ngrade', 1) > 0; // ?s1ngrade=0 で色行列だけ外す(計測用)
+const S3D_ON = tsNum('s3look', 1) > 0; // ?s3look=0 でステージ3(昼の廃都)の光と影の上乗せを全部外す(見比べ・計測用)
+const S3D_OLD_SHAFT_KEEP = tsNum('s3oldshaft', 1) > 0; // ステージ3の元の平行な光の筋を残すか(既定=残す・社長判断待ち)
 const S5B_ON = tsNum('s5b', 1) > 0; // ?s5b=0 でステージ5(戦場)の光・色・コントラストの上乗せを全部外す(見比べ・計測用)
 const S5B_GRADE_ON = tsNum('s5bgrade', 1) > 0; // ?s5bgrade=0 で世界の色行列だけ外す(見比べ用)
 const S5B_ATMO_ON = tsNum('s5batmo', 1) > 0; // ?s5batmo=0 で空の色行列と煙/近景の色だけ外す(見比べ用)
@@ -4731,11 +4736,12 @@ const brawlerAirSuplexHoldNow = (b: { suplexPendingId?: string; airSuplexHoldAt?
 export class PixiScene {
   private L: SceneLayers;
 
-  private trees = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>();
+  private trees = new Map<string, { sprite: Sprite; baseScale: number; footY: number; texKey: string }>();
   private wallObjs = new Map<string, LabObstacleView>(); // 壁オブジェクト(区画生成)
   private propObjs = new Map<string, LabObstacleView>(); // 遮蔽物プロップ(区画生成・研究所スキン)
   private cityPropObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ3(廃都)の散布オブジェクト
   private flowerObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ1(森)の装飾花(壁判定なし)
+  private stage3Daylight: Stage3DaylightLayer | null = null; // ステージ3(昼の廃都)の光と影(syncStage3Daylight)
   private stage5Battle: Stage5BattleLayer | null = null; // ステージ5(戦場)の光・色・コントラスト(syncStage5Battle)
   private stage1Night: Stage1NightLayer | null = null; // 通常のステージ1の森の夜(雨上がりの見た目の一部を弱めて流用・syncStage1Night)
   private weatherWet: WeatherWetLayer | null = null; // 天候「雨上がり」(?weather=wet・ステージ1だけ・research/WEATHER_WET.md)
@@ -5859,6 +5865,7 @@ export class PixiScene {
     if (wetGrade) filters.push(this.weatherWet!.gradeFilter); // 雨上がりの色調整(世界の層だけ・HUDはDOM)
     if (s1nGrade) filters.push(this.stage1Night!.gradeFilter); // 通常のステージ1の夜の色調整
     if (!wetGrade && !s1nGrade && this.s5bGradeOn && this.stage5Battle) filters.push(this.stage5Battle.gradeFilter); // ステージ5(戦場)の色調整
+    if (!wetGrade && !s1nGrade && this.s3dGradeOn && this.stage3Daylight) filters.push(this.stage3Daylight.gradeFilter); // ステージ3(昼の廃都)の日なた/日陰(昼のコントラストの後)
     if (this.punchInList && this.punchGrade) filters.push(this.punchGrade);
     if (this.zwarpInList && this.zwarpFilter) filters.push(this.zwarpFilter); // ズーム時だけの遠近(最後=階調の後に形を歪める)
     this.L.worldGroup.filters = filters;
@@ -7445,7 +7452,8 @@ export class PixiScene {
     this.stageLightShaftGfx.position.set(px, 0);
     this.labPitchShaftGfx.position.set(px, 0); // 研究所の闇を削る絵も同じ横の流れ(同じフレームの値)
     this.stageLightShaftGfx.alpha =
-      (1 + Math.sin(now / STAGE_LIGHT_SHAFT_PULSE_MS * Math.PI * 2) * STAGE_LIGHT_SHAFT_PULSE_AMOUNT) * this.labShaftMul;
+      (1 + Math.sin(now / STAGE_LIGHT_SHAFT_PULSE_MS * Math.PI * 2) * STAGE_LIGHT_SHAFT_PULSE_AMOUNT) * this.labShaftMul
+      * (S3D_OLD_SHAFT_KEEP ? 1 : 1 - easeInOutSine(this.s3dMix)); // ステージ3の元の光の筋: 既定は残す(元々あるエフェクトは指示なく消さない)。`?s3oldshaft=0` で太陽の筋へ入れ替え(社長判断待ち)
     // 柔らかい月明りの筋: 同じ横の流れ(周期は自分の並びの周期で折り返す)・同じ脈動。
     const ml = this.moonShaftLayer;
     const mOn = this.moonShaftK > 0 && this.moonShaftPeriod > 0 && this.stageLightShaftGfx.visible;
@@ -8193,11 +8201,15 @@ export class PixiScene {
   // 障害物(木/壁/建物/プロップ)の alpha をフレーム更新。プレイヤーを「覆う」(手前=footY大で、見た目矩形が
   // プレイヤー足元矩形と重なる)ものだけ OBSTACLE_SEE_THROUGH_ALPHA へ滑らかに透かす。それ以外は通常(地平フェード)へ。
   // 既存スプライトの alpha を lerp するだけ=新規描画/フィルタなし(負荷 1/10)。
-  private applyObstacleAlpha(sprite: Sprite, footWorldY: number) {
+  private applyObstacleAlpha(sprite: Sprite, footWorldY: number, useAnchor = false) {
     // 手前(画面下端)でも消える: 地平線フェード × 手前フェード(敵と同じ near-plane フェード)。
     const base = this.horizonActorAlpha(footWorldY) * this.foregroundActorAlpha(footWorldY);
+    // useAnchor: 見た目の中心X・足元から上の高さを anchor から出す(足元が絵の中心からずれる木=ステージ1/3/7の3本だけ)。
+    const vw = Math.abs(sprite.scale.x) * (sprite.texture?.width ?? 0), vh = Math.abs(sprite.scale.y) * (sprite.texture?.height ?? 0);
     const mult = (sprite.visible && sprite.texture && sprite.texture.width > 1)
-      ? this.seeThroughMult(sprite.x, footWorldY, Math.abs(sprite.scale.x) * sprite.texture.width, Math.abs(sprite.scale.y) * sprite.texture.height)
+      ? (useAnchor
+        ? this.seeThroughMult(sprite.x + (0.5 - sprite.anchor.x) * vw, footWorldY, vw, vh * sprite.anchor.y)
+        : this.seeThroughMult(sprite.x, footWorldY, vw, vh))
       : 1;
     sprite.alpha += (base * mult - sprite.alpha) * this.seeThroughLerp;
   }
@@ -9595,6 +9607,7 @@ export class PixiScene {
     this.weatherWet?.restoreAtmosphere(); // 雨上がりの霧/空の色(前フレームに最後に掛けた分)を最初に戻す
     this.stage1Night?.restoreAtmosphere(); // 通常のステージ1の夜の霧/月(同上)
     this.stage5Battle?.restoreAtmosphere(); // ステージ5(戦場)の煙/近景の色(同上)
+    this.stage3Daylight?.restoreAtmosphere(); // ステージ3(昼の廃都)の霧の色(同上)
     this.restoreForestPreview();
     this.restoreWraithDarkness(); // 前フレームに掛けた亡霊戦の暗さを戻してから描く(§12)
     this.restoreZwarpActors(); // 前フレームの逆変形(ズーム時の遠近)を戻してから描く
@@ -11206,6 +11219,7 @@ export class PixiScene {
     if (WEATHER_KNOB === 'wet' || this.s7Look.wetLayer || this.weatherWet) this.syncWeatherWet(s, now); // 天候「雨上がり」(?weather=wet・ステージ7の雨の時だけ。一度作った層は消す側のためにも回す)
     this.syncStage1Night(s, now); // 通常のステージ1の森の夜(雨上がりの後=雨上がりの間は効かない)
     this.syncStage5Battle(s, now); // ステージ5(戦場)の光・色・コントラスト(他ステージ=1命令で終わる)
+    this.syncStage3Daylight(s, now); // ステージ3(昼の廃都)の光と影(他ステージ=1命令で終わる)
     this.syncTorchBack(s, now); // 松明の裏の光(ステージ3/4/7・utils/torchBackLight.ts。他ステージ=1命令で終わる)
     this.syncZoomWarp(s.player.vx ?? 0, s.player.vy ?? 0, realNow); // ★必ず最後(このフレームの世界が全部揃ってから1枚に描く)
   }
@@ -12619,6 +12633,15 @@ export class PixiScene {
     const tex = (st.farBackdrop === 'city' ? getTexture('tree-city') : null)
       ?? (st.farBackdrop === 'snow' ? getTexture('tree-snow') : null)
       ?? getTexture('tree');
+    // ステージ1・ステージ7の森/ステージ3の廃都/ステージ4の雪原は3本組(社長指示2026-11-21)。どの木がどの絵かは区画で決まる(trees.ts の variant)。
+    // 足元(anchor)は幹の根元・大きさは素材1pxあたり LEAFY_TREE_SKINS の px(今の木の約1.4倍)。
+    // 色: 森=晴れ↔雨で毎フレーム寄せる(stage1TreeTint)/廃都(昼)=昼の光に寄せる控えめな掛け率(stage3TreeTint)/雪原=stage4TreeTint。
+    const treeSkin = placementTreeSkin();
+    const leafySkin = LEAFY_TREE_SKINS[treeSkin];
+    const leafyTint = !leafySkin ? 0
+      : treeSkin === STAGE3_TREE_SKIN ? stage3TreeTint(this.envTintNow())
+      : treeSkin === STAGE4_TREE_SKIN ? stage4TreeTint(this.envTintNow())
+      : stage1TreeTint(this.envTintNow(), this.wetLightMix);
     const margin = TREE_CELL;
     let trees = noTrees ? [] : treesInRegion(
       camera.x - margin, camera.y - margin,
@@ -12635,7 +12658,24 @@ export class PixiScene {
     const seen = new Set<string>();
     for (const t of trees) {
       seen.add(t.key);
+      const leafyDef = leafySkin ? leafyTreeDef(treeSkin, t.variant) : null;
+      const leafyTex = leafyDef ? getTexture(leafyDef.tex) : null;
+      const texKey = leafyTex && leafyDef ? leafyDef.tex : 'base';
       let entry = this.trees.get(t.key);
+      if (entry && entry.texKey !== texKey) { entry.sprite.destroy(); this.trees.delete(t.key); entry = undefined; } // 出撃が変わって絵の種類が変わった
+      if (!entry && leafyTex) {
+        const sprite = new Sprite(leafyTex);
+        const an = treeArtAnchor(treeSkin, t.variant);
+        sprite.anchor.set(an.x, an.y); // 幹の根元=足元
+        sprite.tint = leafyTint;
+        sprite.x = t.footX;
+        sprite.y = t.footY;
+        sprite.zIndex = t.footY;
+        this.L.actorLayer.addChild(sprite);
+        // 素材 1px = px × 個体の大きさ(テクスチャは素材の実寸のまま読む)。
+        entry = { sprite, baseScale: (leafySkin!.px * t.scale * leafyDef!.w) / leafyTex.width, footY: t.footY, texKey };
+        this.trees.set(t.key, entry);
+      }
       if (!entry) {
         const sprite = new Sprite(tex ?? undefined);
         sprite.anchor.set(0.5, 1);
@@ -12649,13 +12689,14 @@ export class PixiScene {
         const boxW = TREE_BOX_W * TREE_VISUAL_SCALE * t.scale;
         const boxH = TREE_BOX_H * TREE_VISUAL_SCALE * t.scale;
         const baseScale = tex ? containScale(boxW, boxH, tex.width, tex.height) : 1;
-        entry = { sprite, baseScale, footY: t.footY };
+        entry = { sprite, baseScale, footY: t.footY, texKey };
         this.trees.set(t.key, entry);
       }
+      if (texKey !== 'base' && entry.sprite.tint !== leafyTint) entry.sprite.tint = leafyTint;
       // Depth scale every frame: a tree's apparent size shifts as the player
       // (the focal plane) walks past it. Anchored at the foot, stays rooted.
-      if (tex) entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
-      this.applyObstacleAlpha(entry.sprite, entry.footY);
+      if (tex || texKey !== 'base') entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
+      this.applyObstacleAlpha(entry.sprite, entry.footY, entry.texKey !== 'base');
       // 風でしなる(v0.25.2648)。**炎・花と同じ1本の風**。
       // ★木は花よりずっと控えめ(TREE_WIND_SKEW)。幹まで大きく傾くとゴムに見えるうえ、
       //   **木は当たり判定を持つ**(`trees.ts` の幹の矩形)。判定は動かないので、
@@ -13149,7 +13190,9 @@ export class PixiScene {
     for (const t of treesInRegion(view.left - m, view.top - m, view.right + m, view.bottom + m)) {
       const e = this.trees.get(t.key);
       if (!e || e.sprite.destroyed || !e.sprite.visible || e.sprite.alpha < 0.35) continue; // 地平線/手前で消えている木からは垂らさない
-      trees.push({ footX: t.footX, footY: t.footY, scale: t.scale, w: Math.abs(e.sprite.width), h: Math.abs(e.sprite.height) });
+      const tw = Math.abs(e.sprite.width);
+      // 足元が絵の中心からずれている木(ステージ1/7の3本)は、枝葉の中心から垂らす。
+      trees.push({ footX: t.footX + (0.5 - e.sprite.anchor.x) * tw, footY: t.footY, scale: t.scale, w: tw, h: Math.abs(e.sprite.height) });
     }
     const ppx = s.player.x + s.player.width / 2, ppy = s.player.y + s.player.height;
     // 雨粒の着地点を選ぶ矩形=実際に映っている世界(visibleWorldRect は等倍の画面との和+遠近の余白を含むので広すぎる)。
@@ -13238,6 +13281,56 @@ export class PixiScene {
       moonGlow: [this.stage1MoonGlow],
       moonHalo: [this.stage1MoonHalo],
     }, mix);
+  }
+
+  /**
+   * ステージ3(昼の廃都)の光と影(stage3Daylight.ts・値と効く条件は utils/stage3Daylight.ts)。効き具合は入る/抜ける時に慣性で寄せる。
+   * 太陽の光の筋と塵・太陽のまぶしさ(画面の層)/木漏れ日(雲の影の直上)/日なた・日陰の色行列/空/霧の色。影を落とす光ではない。
+   */
+  private s3dMix = 0;
+  private s3dLastNow = 0;
+  private s3dGradeOn = false;
+  private s3dOrigin = { x: NaN, y: NaN };
+  private s3dPt = new Point();
+  private syncStage3Daylight(s: ReturnType<typeof useGameStore.getState>, now: number) {
+    const active = S3D_ON && stage3DaylightActive({
+      stageId: getSelectedStageId(), indoor: s.indoorMode, corridor: s.corridorMode, farKey: this.currentFarKey,
+    });
+    if (!active && this.s3dMix <= 0 && !this.stage3Daylight) { this.s3dLastNow = now; return; } // 他ステージ=1命令で終わる
+    const dt = this.s3dLastNow > 0 ? Math.min(100, Math.max(0, now - this.s3dLastNow)) : 0;
+    this.s3dLastNow = now;
+    this.s3dMix = stepWetLightMix(this.s3dMix, active, dt);
+    if (!this.stage3Daylight) {
+      this.stage3Daylight = new Stage3DaylightLayer(this.L.uiLayer, this.moonShaftLayer, this.vignette, this.L.worldGroup, this.cloudShadow, this.L.filteredWorld);
+    }
+    const L3 = this.stage3Daylight;
+    const mix = this.s3dMix;
+    const gradeOn = mix > 0;
+    if (gradeOn) L3.setGrade(mix);
+    if (gradeOn !== this.s3dGradeOn) { this.s3dGradeOn = gradeOn; this.syncWorldGroupFilters(); }
+    // 塵は空気と一緒に世界に留まる=world の原点の画面位置の動き(ズーム込み)ぶん流す。
+    this.s3dPt.set(0, 0);
+    this.L.world.toGlobal(this.s3dPt, this.s3dPt);
+    this.L.uiLayer.toLocal(this.s3dPt, undefined, this.s3dPt);
+    const camDx = Number.isFinite(this.s3dOrigin.x) ? this.s3dPt.x - this.s3dOrigin.x : 0;
+    const camDy = Number.isFinite(this.s3dOrigin.y) ? this.s3dPt.y - this.s3dOrigin.y : 0;
+    this.s3dOrigin.x = this.s3dPt.x; this.s3dOrigin.y = this.s3dPt.y;
+    const jump = Math.abs(camDx) > this.screenW * 0.5 || Math.abs(camDy) > this.screenH * 0.5; // 場面の切り替わり=流さない
+    L3.syncShafts(this.screenW, this.screenH, now, mix, jump ? 0 : camDx, jump ? 0 : camDy, this.stageLightShaftGfx.visible);
+    L3.syncGlare(this.screenW, this.screenH, mix);
+    L3.syncBands(this.L.worldGroup, this.cloudShadow, this.screenH, s.camera.x, now, mix); // 木漏れ日: 画面の縁(手前の茂み・建物の側)
+    const trees: S3DTreeView[] = [];
+    if (mix > 0) {
+      for (const [id, e] of this.trees) {
+        const sp = e.sprite;
+        if (sp.visible && sp.alpha > 0.05) trees.push({ id, x: sp.x, y: sp.y, w: Math.abs(sp.width), h: Math.abs(sp.height), alpha: sp.alpha });
+      }
+    }
+    L3.syncCanopies(this.L.world, this.L.worldGroup, trees, mix, now); // 木漏れ日: 木の足元の梢の影
+    L3.syncHaze(this.cloudShadow, this.screenH, this.L.worldGroup.scale.y || 1, mix); // 遠くの暖かいかすみ(左=太陽の側で強く)
+    L3.syncSky(this.farGroup, mix); // 空をごく弱い暖色へ(遠景の箱に色行列1枚・効いている間だけ)
+    if (mix <= 0) return;
+    L3.applyAtmosphere(this.nearHorizonMist ? [...this.fogLayers.map(f => f.sp), this.nearHorizonMist] : this.fogLayers.map(f => f.sp), mix);
   }
 
   /** ステージ5(戦場)の光・色・コントラスト(stage5Battlefield.ts)。効き具合は入る/抜ける時に慣性で寄せる。 */
@@ -44365,6 +44458,7 @@ export class PixiScene {
     this.weatherWet?.destroy(); this.weatherWet = null;
     this.stage1Night?.destroy(); this.stage1Night = null;
     this.stage5Battle?.destroy(); this.stage5Battle = null;
+    this.stage3Daylight?.destroy(); this.stage3Daylight = null;
     this.torchBackClear();
     this.fireflies = [];
     if (this.tiltShift || this.bloom) {

@@ -15,13 +15,13 @@
 
 import type { Rect } from './obstacles';
 import { isInPoiClearing, isClearOfHandPlaced } from './poiClearings';
-import { treesInRegionRaw } from './trees';
+import { treesInRegionRaw, treeArtRect, type TreeInstance } from './trees';
 import { torchFootprintsNear } from './torches';
 import { forestFlowersInRegion, FLOWER_DISPLAY_H } from './forestDecor';
 import { cityPropFootprintsNear } from './cityProps';
-import { treeArtSize } from './artRects';
+import { treeArtSize, treeArtAnchor, TREE_ART_MAX } from './artRects';
 import {
-  CellMemo, MAX_REROLLS, artOverlapRatio, cachedCheck, handPlacedAnchors, placementFarKey, resolveCellLayer, validFirsts,
+  CellMemo, MAX_REROLLS, artOverlapRatio, cachedCheck, handPlacedAnchors, placementFarKey, placementTreeSkin, resolveCellLayer, validFirsts,
   footprintsConflict, type Footprint, type Individual, type NeighborFirst,
 } from './propPlacement';
 
@@ -61,6 +61,17 @@ export const PUDDLE_TORCH_CLEAR = 80;
  *  枯れ木の絵(201×233)を収めた寸法(world/artRects.ts の treeArtSize が正本)。足元から上へ高さぶん・左右へ半幅ぶん。 */
 export const PUDDLE_TREE_ART_HALF_W = Math.ceil(treeArtSize('').w / 2);
 export const PUDDLE_TREE_ART_H = Math.ceil(treeArtSize('').h);
+/**
+ * 1本の木の絵が地面の上に立つ範囲(world px・個体の scale 込み・遠近の前)。木の絵の種類(ステージ1/7 は3本の葉付きの木)ごとの
+ * 実寸と足元(anchor)から出す。cx=絵の横の中心 / bottom=絵の下辺(足元より草のぶん少し下)/ halfW・h=半幅・高さ。
+ */
+export const puddleTreeArt = (
+  t: Pick<TreeInstance, 'footX' | 'footY' | 'scale' | 'variant'>, treeSkin = placementTreeSkin(),
+): { cx: number; bottom: number; halfW: number; h: number } => {
+  const a = treeArtSize(treeSkin, t.variant), an = treeArtAnchor(treeSkin, t.variant);
+  const w = a.w * t.scale, h = a.h * t.scale;
+  return { cx: t.footX + (0.5 - an.x) * w, bottom: t.footY + (1 - an.y) * h, halfW: w / 2, h };
+};
 /** 花の絵の幅÷高さ(花の絵はほぼ正方形よりやや縦長)。高さは FLOWER_DISPLAY_H×個体scale。 */
 export const PUDDLE_FLOWER_ART_ASPECT = 0.9;
 /** 絵の範囲を避ける時の遠近の見込み: 画面の手前の物は遠近で大きく描かれる(最大 1.7 倍)ので、範囲と楕円をこの倍率で広げる。 */
@@ -150,14 +161,16 @@ const blocked = (x: number, y: number, rx: number, ry: number, stageId: string):
   }
   if (!isClearOfHandPlaced(art)) return true;
   // 木: treesInRegionRaw は「区画の原点」で引く(足元は原点から最大 1区画+32×scale 先)ので、1区画ぶん広く引く。
-  const tPadX = (rx + PUDDLE_PROP_GAP + PUDDLE_TREE_ART_HALF_W * 1.25) * PUDDLE_PROP_DEPTH_ALLOW + 220;
-  const tPadY = (ry + PUDDLE_PROP_GAP + PUDDLE_TREE_ART_H * 1.25) * PUDDLE_PROP_DEPTH_ALLOW + 260;
+  // 余白は全種類の木の絵の最大で取る(引く範囲が広がるだけ=結果は個体ごとの実寸で決まる)。
+  const tPadX = (rx + PUDDLE_PROP_GAP + Math.ceil(TREE_ART_MAX.w / 2) * 1.25) * PUDDLE_PROP_DEPTH_ALLOW + 220;
+  const tPadY = (ry + PUDDLE_PROP_GAP + Math.ceil(TREE_ART_MAX.h) * 1.25) * PUDDLE_PROP_DEPTH_ALLOW + 260;
   const farKey = placementFarKey();
-  const ta = treeArtSize(farKey);
+  const treeSkin = placementTreeSkin();
   for (const t of treesInRegionRaw(x - tPadX, y - tPadY, x + tPadX, y + tPadY)) {
     if (Math.hypot(t.footX - x, (t.footY - y) * 1.6) < rx + PUDDLE_TREE_CLEAR * t.scale) return true;
-    if (ellipseHitsPropArt(x, y, rx, ry, t.footX, t.footY, PUDDLE_TREE_ART_HALF_W * t.scale, PUDDLE_TREE_ART_H * t.scale)) return true;
-    if (artOverlapRatio(art, { x: t.footX - (ta.w * t.scale) / 2, y: t.footY - ta.h * t.scale, width: ta.w * t.scale, height: ta.h * t.scale }) > 0.25) return true;
+    const ta = puddleTreeArt(t, treeSkin);
+    if (ellipseHitsPropArt(x, y, rx, ry, ta.cx, ta.bottom, ta.halfW, ta.h)) return true;
+    if (artOverlapRatio(art, treeArtRect(t, treeSkin)) > 0.25) return true;
   }
   // 花(ステージ1の光る花): 足元から上へ立つ絵の範囲を避ける。
   const fPad = (Math.max(rx, ry) + PUDDLE_PROP_GAP + FLOWER_DISPLAY_H) * PUDDLE_PROP_DEPTH_ALLOW;

@@ -16,20 +16,21 @@ import {
   MAX_ART_OVERLAP, MIN_COLLISION_GAP, type HandPlacedAnchor,
 } from './propPlacement';
 import { markObstacleDestroyed, clearDestroyedObstacles } from './destructibles';
+import { STAGE1_TREE_SKIN, STAGE3_TREE_SKIN, STAGE4_TREE_SKIN } from './artRects';
 
 const R = 4000;
 
 type Layer = 'tree' | 'prop' | 'torch' | 'flower' | 'puddle' | 'labWall' | 'labCover' | 'labProp';
 interface Item { id: string; layer: Layer; art: Rect; col: Rect | null; fixed: boolean; cell: string }
 
-interface StageCfg { far: string; lab?: boolean; trees: boolean; flowers?: boolean; puddles?: boolean }
+interface StageCfg { far: string; lab?: boolean; trees: boolean; flowers?: boolean; puddles?: boolean; treeSkin?: string }
 const STAGES: Record<string, StageCfg> = {
-  'stage-1': { far: '', trees: true, flowers: true, puddles: true },
+  'stage-1': { far: '', trees: true, flowers: true, puddles: true, treeSkin: STAGE1_TREE_SKIN }, // 葉付きの3本(2026-11-21)
   'stage-2': { far: '', lab: true, trees: false },
-  'stage-3': { far: 'city', trees: true },
-  'stage-4': { far: 'snow', trees: true },
+  'stage-3': { far: 'city', trees: true, treeSkin: STAGE3_TREE_SKIN }, // 葉付きの3本(2026-11-21)
+  'stage-4': { far: 'snow', trees: true, treeSkin: STAGE4_TREE_SKIN }, // 雪の針葉樹3本(2026-11-21)
   'stage-5': { far: 'stage5', trees: false },
-  'stage-7': { far: 'stage7', trees: true },
+  'stage-7': { far: 'stage7', trees: true, treeSkin: STAGE1_TREE_SKIN }, // ステージ1と同じ3本(2026-11-21)
 };
 // 決まりを入れる前(v0.25.5695)の ±4000 の数(同じ数え方)。置き物の数は 85% 以上残ること(§4)。
 const BEFORE: Record<string, Record<string, number>> = {
@@ -39,6 +40,11 @@ const BEFORE: Record<string, Record<string, number>> = {
   'stage-4': { tree: 476, prop: 295, torch: 154 },
   'stage-5': { prop: 877, torch: 154 },
   'stage-7': { tree: 476, torch: 154 },
+};
+// 木の絵を大きくした分の減り(決まりの劣化ではなく、避ける相手の絵が大きくなった分)。残る割合の下限をここだけ下げる。
+// ステージ1の水たまり: 葉付きの3本(2026-11-21・枯れ木の約1.4倍の高さ・幅も広い)の絵の範囲を避けるので 618→464(75%)。
+const MIN_KEEP: Record<string, Record<string, number>> = {
+  'stage-1': { puddle: 0.72 },
 };
 
 // 手置きの物(テスト用の代表配置): POI 3つ・拠点4つ・城・裏ボスの巣。
@@ -58,7 +64,7 @@ const setup = (stageId: string, withAnchors: boolean) => {
   setCityPropsDisabled(false);
   setPoiClearings(withAnchors ? POIS : []);
   setHandPlacedAnchors(withAnchors ? ANCHORS : []);
-  beginPropPlacementSortie(c.far);
+  beginPropPlacementSortie(c.far, c.treeSkin ?? c.far);
 };
 
 const collect = (stageId: string, minX = -R, minY = -R, maxX = R, maxY = R, torchBonus = TORCH_RELAX_BONUS): Item[] => {
@@ -78,7 +84,7 @@ const collect = (stageId: string, minX = -R, minY = -R, maxX = R, maxY = R, torc
     return out;
   }
   for (const t of treesInRegion(minX - 300, minY - 300, maxX, maxY)) {
-    if (within(t.footX, t.footY)) out.push({ id: t.key, layer: 'tree', art: treeArtRect(t, c.far), col: trunkRect(t), fixed: false, cell: '' });
+    if (within(t.footX, t.footY)) out.push({ id: t.key, layer: 'tree', art: treeArtRect(t, c.treeSkin ?? c.far), col: trunkRect(t), fixed: false, cell: '' });
   }
   const defs = STAGE_PROPS[c.far];
   if (defs) {
@@ -175,7 +181,7 @@ describe('置き物どうしを重ねすぎない(research/PROP_OVERLAP.md §4)'
         const r = audit(items);
         reports[`${stageId}(数)`] = r;
         for (const [layer, before] of Object.entries(BEFORE[stageId])) {
-          expect(r.counts[layer] ?? 0, `${layer}`).toBeGreaterThanOrEqual(Math.floor(before * 0.85));
+          expect(r.counts[layer] ?? 0, `${layer}`).toBeGreaterThanOrEqual(Math.floor(before * (MIN_KEEP[stageId]?.[layer] ?? 0.85)));
         }
       });
 
@@ -196,7 +202,7 @@ describe('置き物どうしを重ねすぎない(research/PROP_OVERLAP.md §4)'
         const key = (it: Item) => `${it.id}@${it.art.x.toFixed(3)},${it.art.y.toFixed(3)}`;
         const bigKeys = new Set(big.map(key));
         // メモを捨てて(新しい出撃)小さい範囲から引き直しても、同じ場所の物は同じ。
-        beginPropPlacementSortie(STAGES[stageId].far);
+        beginPropPlacementSortie(STAGES[stageId].far, STAGES[stageId].treeSkin ?? STAGES[stageId].far);
         for (const [x0, y0] of [[-700, -500], [300, 900], [-1900, 1200], [1500, -1900]]) {
           const small = collect(stageId, x0, y0, x0 + 500, y0 + 400);
           for (const it of small) expect(bigKeys.has(key(it)), key(it)).toBe(true);

@@ -11,9 +11,9 @@
 import { Rect, footRect, resolveAabb } from './obstacles';
 import { isObstacleDestroyed } from './destructibles';
 import { isInPoiClearing, isClearOfHandPlaced } from './poiClearings';
-import { treeArtSize, TREE_ART_MAX } from './artRects';
+import { treeArtSize, treeArtAnchor, TREE_ART_MAX } from './artRects';
 import {
-  CellMemo, MAX_REROLLS, MIN_COLLISION_GAP, bumpPropPlacementVersion, placementFarKey, resolveCellLayer, validFirsts,
+  CellMemo, MAX_REROLLS, MIN_COLLISION_GAP, bumpPropPlacementVersion, placementTreeSkin, resolveCellLayer, validFirsts,
   type Footprint, type Individual, type NeighborFirst,
 } from './propPlacement';
 
@@ -29,12 +29,19 @@ export interface TreeInstance {
   footX: number; // bottom-centre (also the Y-sort key and trunk-collision centre)
   footY: number;
   scale: number;
+  /** 絵の種類(0..2・区画で決まる)。ステージ1の森の3本の木の出し分けに使う(他ステージの木は1種類なので見ない)。 */
+  variant: number;
 }
 
-/** 木の絵の矩形(足元から上・遠近を掛ける前の基準寸法=research/PROP_OVERLAP.md §1)。 */
-export const treeArtRect = (t: Pick<TreeInstance, 'footX' | 'footY' | 'scale'>, farKey = placementFarKey()): Rect => {
-  const a = treeArtSize(farKey);
-  return footRect(t.footX, t.footY, a.w * t.scale, a.h * t.scale);
+/** 区画で決まる絵の種類(0..2=大:中:小を 1:1:1)。同じ場所は毎回同じ絵。 */
+export const treeVariantAt = (cx: number, cy: number): number => Math.min(2, Math.floor(treeHash(cx + 101.7, cy - 37.3) * 3));
+
+/** 木の絵の矩形(足元から上・遠近を掛ける前の基準寸法=research/PROP_OVERLAP.md §1)。足元=描画の anchor の位置。 */
+export const treeArtRect = (t: Pick<TreeInstance, 'footX' | 'footY' | 'scale' | 'variant'>, treeSkin = placementTreeSkin()): Rect => {
+  const a = treeArtSize(treeSkin, t.variant);
+  const an = treeArtAnchor(treeSkin, t.variant);
+  const w = a.w * t.scale, h = a.h * t.scale;
+  return { x: t.footX - w * an.x, y: t.footY - h * an.y, width: w, height: h };
 };
 
 type TreeCand = TreeInstance & Footprint;
@@ -45,7 +52,8 @@ const treeIndividual = (cx: number, cy: number): Individual<TreeCand> | null => 
   if (treeHash(cx + 13, cy - 7) >= 0.35) return null;
   const scale = 0.85 + treeHash(cx + 5, cy + 23) * 0.4;
   const key = `${cx}_${cy}`;
-  const farKey = placementFarKey();
+  const variant = treeVariantAt(cx, cy);
+  const treeSkin = placementTreeSkin();
   const cands: (TreeCand | null)[] = [];
   for (let r = 0; r <= MAX_REROLLS; r++) {
     const ox = (r === 0 ? treeHash(cx, cy + 1) : treeHash(cx + 17.3 * r, cy + 1 - 29.1 * r)) - 0.5;
@@ -56,8 +64,8 @@ const treeIndividual = (cx: number, cy: number): Individual<TreeCand> | null => 
     // trapped inside a trunk.
     // POI(寄り道の建物・武将の祠)の前は空き地(社長指示2026-11-03)。
     if ((Math.abs(footX) < 150 && Math.abs(footY) < 150) || isInPoiClearing(footX, footY)) { cands.push(null); continue; }
-    const t = { key, footX, footY, scale };
-    cands.push({ ...t, art: treeArtRect(t, farKey), col: trunkRect(t) });
+    const t = { key, footX, footY, scale, variant };
+    cands.push({ ...t, art: treeArtRect(t, treeSkin), col: trunkRect(t) });
   }
   return { cands, prio: treeHash(cx + 71.3, cy - 53.7), tie: key };
 };
@@ -84,7 +92,7 @@ const treeCellFinal = (cx: number, cy: number): TreeInstance[] =>
         neighbors.push(...treeFirsts(cx + dx * TREE_CELL, cy + dy * TREE_CELL));
       }
     }
-    return resolveCellLayer([ind], neighbors, treeUpperOk).map(c => ({ key: c.key, footX: c.footX, footY: c.footY, scale: c.scale }));
+    return resolveCellLayer([ind], neighbors, treeUpperOk).map(c => ({ key: c.key, footX: c.footX, footY: c.footY, scale: c.scale, variant: c.variant }));
   });
 
 // ステージ5(対変異体防衛本部)は木を出さない(社長指示2026-07-16: 木の代わりに残骸オブジェクト=
@@ -132,11 +140,11 @@ export const treesInRegion = (
  */
 export const treeFootprintsNear = (art: Rect): (TreeInstance & Footprint)[] => {
   if (treesDisabled) return [];
-  const farKey = placementFarKey();
+  const treeSkin = placementTreeSkin();
   const pw = (TREE_ART_MAX.w * 1.25) / 2 + MIN_COLLISION_GAP;
   const ph = TREE_ART_MAX.h * 1.25 + MIN_COLLISION_GAP;
   const list = treesInRegionRaw(art.x - pw - TREE_CELL, art.y - MIN_COLLISION_GAP - TREE_CELL - 40, art.x + art.width + pw, art.y + art.height + ph);
-  return list.map(t => ({ ...t, art: treeArtRect(t, farKey), col: trunkRect(t) }));
+  return list.map(t => ({ ...t, art: treeArtRect(t, treeSkin), col: trunkRect(t) }));
 };
 
 // Trunk collision box — a narrow rectangle following the shared obstacle

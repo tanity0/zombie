@@ -24,15 +24,69 @@ const containSize = (boxW: number, boxH: number, tw: number, th: number): { w: n
   const k = Math.min(boxW / tw, boxH / th);
   return { w: tw * k, h: th * k };
 };
-/** 木の絵の実寸(scale 1)=箱に縮めて収まった大きさ。farBackdrop で木の絵が変わる。 */
-export const treeArtSize = (farKey: string): { w: number; h: number } => {
-  const t = TREE_TEX[farKey] ?? TREE_TEX[''];
+/**
+ * 葉付きの木の3本組(社長支給2026-11-21「ステージ1の木を入れ替え 3パターンで、大きめに配置」→ステージ7も揃える/
+ * 「ステージ3の木、差し替え3種類 同じく大きめに」)。木の絵の種類キー(treeSkin)がこの表にある出撃だけ3本を使う
+ * (他ステージは farBackdrop のキーのまま=枯れ木/雪の木)。どの木がどの絵かは区画で決まる(trees.ts の variant)。
+ * tex=素材名 / w・h=PNG の実寸 / footX・footUp=幹の根元(左から・下から・素材px)。px=素材1pxあたりの world px(scale 1)。
+ */
+export interface LeafyTreeDef { tex: string; w: number; h: number; footX: number; footUp: number }
+/** ステージ1・ステージ7の森(苔の大木/うねる幹/細い木)。 */
+export const STAGE1_TREE_SKIN = 'stage1';
+/** ステージ3の廃都(藤の垂れる大木/中木/細い木)。 */
+export const STAGE3_TREE_SKIN = 'city3';
+/** ステージ4の雪の封鎖地域(雪をかぶった針葉樹・大/中/小)。 */
+export const STAGE4_TREE_SKIN = 'snow4';
+export const LEAFY_TREE_SKINS: Readonly<Record<string, { px: number; trees: readonly LeafyTreeDef[] }>> = {
+  // 一番大きい木(128px)が枯れ木(約138)の約1.4倍=192。3本の大小は絵の比のまま。
+  [STAGE1_TREE_SKIN]: { px: 1.5, trees: [
+    { tex: 'tree-forest-a', w: 96, h: 128, footX: 43, footUp: 3 }, // 大(苔の大木)
+    { tex: 'tree-forest-b', w: 111, h: 101, footX: 47, footUp: 3 }, // 中(うねる幹・岩)
+    { tex: 'tree-forest-c', w: 73, h: 97, footX: 33, footUp: 3 },   // 小(細い木・倒木)
+  ] },
+  // 3本とも高さ約128px(大中小は幅と茂り)。今の葉付き木(tree-new2・約149)の約1.37倍=205。
+  [STAGE3_TREE_SKIN]: { px: 1.6, trees: [
+    { tex: 'tree-city-a', w: 116, h: 128, footX: 60, footUp: 3 }, // 大(藤の垂れる大木)
+    { tex: 'tree-city-b', w: 99, h: 127, footX: 48, footUp: 3 },  // 中
+    { tex: 'tree-city-c', w: 86, h: 127, footX: 41, footUp: 3 },  // 小(細い木)
+  ] },
+  // 大(1枚もの・128px)が今の雪の木(tree-snow・約158)の約1.38倍=218。中・小は絵の比のまま。
+  [STAGE4_TREE_SKIN]: { px: 1.7, trees: [
+    { tex: 'tree-snow-a', w: 65, h: 128, footX: 33, footUp: 3 }, // 大
+    { tex: 'tree-snow-b', w: 69, h: 118, footX: 38, footUp: 3 }, // 中
+    { tex: 'tree-snow-c', w: 62, h: 116, footX: 33, footUp: 3 }, // 小
+  ] },
+};
+/** 葉付きの3本組の1本(variant は 0..2)。表に無い treeSkin は null。 */
+export const leafyTreeDef = (treeSkin: string, variant: number): LeafyTreeDef | null => {
+  const sk = LEAFY_TREE_SKINS[treeSkin];
+  if (!sk) return null;
+  const n = sk.trees.length;
+  return sk.trees[((variant % n) + n) % n];
+};
+/** 木の絵の実寸(scale 1)=箱に縮めて収まった大きさ。treeSkin(=farBackdrop、葉付きの3本組の出撃はそのキー)で木の絵が変わる。 */
+export const treeArtSize = (treeSkin: string, variant = 0): { w: number; h: number } => {
+  const d = leafyTreeDef(treeSkin, variant);
+  if (d) { const px = LEAFY_TREE_SKINS[treeSkin].px; return { w: d.w * px, h: d.h * px }; }
+  const t = TREE_TEX[treeSkin] ?? TREE_TEX[''];
   return containSize(TREE_BOX_W * TREE_VISUAL_SCALE, TREE_BOX_H * TREE_VISUAL_SCALE, t.w, t.h);
+};
+/**
+ * 木の絵の足元(描画の anchor)。既定は下辺の中心(0.5, 1)。葉付きの3本は幹の根元に合わせる
+ * (幹が絵の中心から少しずれている・根元の下に草が数px垂れる)=幹の当たり判定(足元)の上に幹が立つ。
+ */
+export const treeArtAnchor = (treeSkin: string, variant = 0): { x: number; y: number } => {
+  const d = leafyTreeDef(treeSkin, variant);
+  if (!d) return { x: 0.5, y: 1 };
+  return { x: d.footX / d.w, y: (d.h - d.footUp) / d.h };
 };
 /** 全ステージの木の絵の最大(scale 1)。 */
 export const TREE_ART_MAX = (() => {
   let w = 0, h = 0;
   for (const k of Object.keys(TREE_TEX)) { const s = treeArtSize(k); w = Math.max(w, s.w); h = Math.max(h, s.h); }
+  for (const k of Object.keys(LEAFY_TREE_SKINS)) {
+    for (let v = 0; v < LEAFY_TREE_SKINS[k].trees.length; v++) { const s = treeArtSize(k, v); w = Math.max(w, s.w); h = Math.max(h, s.h); }
+  }
   return { w, h };
 })();
 

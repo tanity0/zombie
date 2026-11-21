@@ -2,13 +2,14 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
   puddlesInRegion, isInPuddle, puddleAt, PUDDLE_SAFE_RADIUS, PUDDLE_TREE_CLEAR, PUDDLE_TORCH_CLEAR, PUDDLE_BASE_PAD,
   PUDDLE_ART_SIZE, PUDDLE_VARIANTS, PUDDLE_ART_SCALE,
-  PUDDLE_TREE_ART_HALF_W, PUDDLE_TREE_ART_H, PUDDLE_FLOWER_ART_ASPECT, PUDDLE_WATER_ONLY_RATE, ellipseHitsPropArt,
+  PUDDLE_TREE_ART_HALF_W, PUDDLE_TREE_ART_H, PUDDLE_FLOWER_ART_ASPECT, puddleTreeArt, PUDDLE_WATER_ONLY_RATE, ellipseHitsPropArt,
 } from './weatherPuddles';
 import { forestFlowersInRegion, FLOWER_DISPLAY_H } from './forestDecor';
 import { treesInRegion } from './trees';
 import { torchesInRegion } from './torches';
 import { setPoiClearings, isInPoiClearing } from './poiClearings';
-import { setHandPlacedAnchors } from './propPlacement';
+import { setHandPlacedAnchors, beginPropPlacementSortie } from './propPlacement';
+import { STAGE1_TREE_SKIN } from './artRects';
 
 const R = [-3000, -3000, 3000, 3000] as const;
 
@@ -81,15 +82,33 @@ describe('weatherPuddles(雨上がりの水たまり配置)', () => {
     expect(puddleAt([p], 0, 0)).toBeNull();
   });
 
-  it('木の絵(足元から上へ立つ幹・根・枝)の範囲に水たまりが掛からない', () => {
-    const list = puddlesInRegion(...R);
-    for (const p of list) {
-      for (const t of treesInRegion(p.x - 600, p.y - 600, p.x + 600, p.y + 600)) {
-        expect(ellipseHitsPropArt(p.x, p.y, p.rx, p.ry, t.footX, t.footY, PUDDLE_TREE_ART_HALF_W * t.scale, PUDDLE_TREE_ART_H * t.scale)).toBe(false);
-        // 素朴な確認: 木の足元の真上(幹の根元)に水たまりの中心は無い
-        expect(Math.abs(p.x - t.footX) < PUDDLE_TREE_ART_HALF_W * t.scale && p.y < t.footY && p.y > t.footY - PUDDLE_TREE_ART_H * t.scale).toBe(false);
+  // 木の絵の種類ごと: 枯れ木('')と、ステージ1/7 の葉付きの3本(大きい・足元が絵の中心からずれる)。
+  for (const skin of ['', STAGE1_TREE_SKIN]) {
+    it(`木の絵(足元から上へ立つ幹・根・枝)の範囲に水たまりが掛からない(木の絵: ${skin || '枯れ木'})`, () => {
+      beginPropPlacementSortie('', skin);
+      try {
+        const list = puddlesInRegion(...R);
+        expect(list.length).toBeGreaterThan(20);
+        for (const p of list) {
+          for (const t of treesInRegion(p.x - 600, p.y - 600, p.x + 600, p.y + 600)) {
+            const a = puddleTreeArt(t);
+            expect(ellipseHitsPropArt(p.x, p.y, p.rx, p.ry, a.cx, a.bottom, a.halfW, a.h)).toBe(false);
+            // 素朴な確認: 木の絵の真上(幹の根元〜枝葉)に水たまりの中心は無い
+            expect(Math.abs(p.x - a.cx) < a.halfW && p.y < a.bottom && p.y > a.bottom - a.h).toBe(false);
+          }
+        }
+      } finally {
+        beginPropPlacementSortie('');
       }
-    }
+    });
+  }
+
+  it('枯れ木の絵の範囲(定数)は木の絵の台帳と同じ寸法', () => {
+    const a = puddleTreeArt({ footX: 0, footY: 0, scale: 1, variant: 0 }, '');
+    expect(Math.ceil(a.halfW)).toBe(PUDDLE_TREE_ART_HALF_W);
+    expect(Math.ceil(a.h)).toBe(PUDDLE_TREE_ART_H);
+    expect(a.cx).toBe(0);
+    expect(a.bottom).toBe(0);
   });
 
   it('ステージ1の花の絵の範囲に水たまりが掛からない(花の足元に重ならない)', () => {
