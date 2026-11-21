@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5716 — ステージ4の左右の枠【2026-11-21 23:18 JST】
+- 社長支給(ChatGPT生成)の左 64×128(雪の枯れ枝・IMG_9437)・右 64×128(有刺鉄線の柵・IMG_9438)を `public/sprites/frames/stage4-{left,right}.png` に置き、`stageFrames.ts` に1行。台帳・CREDITS 更新。
+- 確認: 1280×720 で左右とも出てぼけていることを撮って目視。typecheck・eslint・assets:check・vitest 全件(失敗0)。状態変化: なし。
+
 ## v0.25.5715 — ステージ3の右の枠を差し替え【2026-11-21 23:12 JST】
 - 社長「右だけ差し替え」。`public/sprites/frames/stage3-right.png` を IMG_9434.PNG(91×128・寸法同じ)へ差し替え。台帳・CREDITS 更新。コードの変更なし。
 - 確認: assets:check・stageFrames/sheetResidency テスト。画は撮っていない(同じ寸法の絵の差し替えのみ)。状態変化: なし。
