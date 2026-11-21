@@ -280,44 +280,69 @@ describe('M16: pumpkin jump-cap escape scenario (回帰・PACING_PUZZLE.md §5.1
     // 進行方向以外へ流されて偶発的に閾値を割ることがあった(単発試行のflaky化)。
     // playtestBot.tsのkiterペルソナ(最寄り敵から常に離れる)へ差し替え、設計チャットの
     // ボット実測(実際に敵から距離を取り続ける逃走ロジック)に近い挙動で安定させる。
-    useGameStore.getState().resetGame('warrior');
-    const dt = 1 / 60;
-    let t = useGameStore.getState().gameTime;
-    const start = useGameStore.getState().player;
-    const startX = start.x, startY = start.y;
-    // パンプキンを密着圏内に配置(=交戦シナリオ。溜め→ジャンプの発動条件を満たす)。
-    const pumpkin = spawnEnemyAt('pumpkin', startX + 40, startY, t);
-    useGameStore.setState({ enemies: [pumpkin] });
+    //
+    // ★決定化(2026-11-21・全体実行で1回だけ 869px で落ちた件の真因): 城(castleEvent)は
+    // resetGame の度に Math.random で「原点から900〜1300pxのランダムな角度」へ置かれる。
+    // 逃走ボット(wanderer=一直線・回り込みなし)の進路(真上)に城が乗る回(実測20回中2回)は、
+    // 城の当たり箱の下端(-870〜-1260px付近)で止まって閾値を割っていた=**パンプキンのジャンプcapとは
+    // 無関係な配置の偶然**。製品の挙動ではなくテストの交絡なので、①乱数を固定シードに
+    // ②Date.now をシムの時計に同期(他の playtest シナリオと同じ流儀)③城を進路から外す、で決定化する。
+    // 検査の芯(交戦8秒→逃走60秒で1500px以上離れられる)は変えない。
+    const realEpoch = Date.now();
+    vi.useFakeTimers({ shouldAdvanceTime: false, toFake: ['Date'] });
+    vi.setSystemTime(realEpoch);
+    let seed = 0x5eed16;
+    const randSpy = vi.spyOn(Math, 'random').mockImplementation(() => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 4294967296;
+    });
+    try {
+      useGameStore.getState().resetGame('warrior');
+      // 城を逃走路(と交戦地点)から十分離れた所へ(corridorMode/firstLoop の「城なし」と同じ置き方)。
+      useGameStore.setState(s => ({ castleEvent: { ...s.castleEvent, x: 100000, y: 100000 } }));
+      const dt = 1 / 60;
+      let t = useGameStore.getState().gameTime;
+      const start = useGameStore.getState().player;
+      const startX = start.x, startY = start.y;
+      // パンプキンを密着圏内に配置(=交戦シナリオ。溜め→ジャンプの発動条件を満たす)。
+      const pumpkin = spawnEnemyAt('pumpkin', startX + 40, startY, t);
+      useGameStore.setState({ enemies: [pumpkin] });
 
-    const STILL = { up: false, down: false, left: false, right: false };
-    const stepStill = (frames: number) => {
-      for (let i = 0; i < frames; i++) {
-        t += dt * 1000;
-        useGameStore.getState().setGameTime(t);
-        useGameStore.getState().movePlayer(STILL, dt);
-        useGameStore.getState().updateEnemies(dt);
-      }
-    };
-    // M26 Step1(v0.25.1678)でkiterは「射程バンド維持」へ変更され、無限退避しなくなった。
-    // このシナリオの意図は「逃走が可能か」(ジャンプcap回帰)なので、逃走ボットは wanderer
-    // (固定方向へ直進・戦闘無視=設計チャットの元実測と同じ一直線逃走)へ差し替える。
-    const stepFleeing = (frames: number) => {
-      for (let i = 0; i < frames; i++) {
-        t += dt * 1000;
-        useGameStore.getState().setGameTime(t);
-        const s = useGameStore.getState();
-        const decision = decideBotInput('wanderer', s.player, s.enemies, t, i, 0);
-        useGameStore.getState().movePlayer(decision.input, dt);
-        useGameStore.getState().updateEnemies(dt);
-      }
-    };
+      const STILL = { up: false, down: false, left: false, right: false };
+      const stepStill = (frames: number) => {
+        for (let i = 0; i < frames; i++) {
+          t += dt * 1000;
+          vi.setSystemTime(realEpoch + t); // Date.now() をシムの時計へ同期
+          useGameStore.getState().setGameTime(t);
+          useGameStore.getState().movePlayer(STILL, dt);
+          useGameStore.getState().updateEnemies(dt);
+        }
+      };
+      // M26 Step1(v0.25.1678)でkiterは「射程バンド維持」へ変更され、無限退避しなくなった。
+      // このシナリオの意図は「逃走が可能か」(ジャンプcap回帰)なので、逃走ボットは wanderer
+      // (固定方向へ直進・戦闘無視=設計チャットの元実測と同じ一直線逃走)へ差し替える。
+      const stepFleeing = (frames: number) => {
+        for (let i = 0; i < frames; i++) {
+          t += dt * 1000;
+          vi.setSystemTime(realEpoch + t); // Date.now() をシムの時計へ同期
+          useGameStore.getState().setGameTime(t);
+          const s = useGameStore.getState();
+          const decision = decideBotInput('wanderer', s.player, s.enemies, t, i, 0);
+          useGameStore.getState().movePlayer(decision.input, dt);
+          useGameStore.getState().updateEnemies(dt);
+        }
+      };
 
-    stepStill(8 * 60);    // 8秒交戦(その場で向き合う=溜め→ジャンプが発動する)
-    stepFleeing(60 * 60); // 60秒逃走(固定方向へ直進=パンプキンから離れ続ける)
+      stepStill(8 * 60);    // 8秒交戦(その場で向き合う=溜め→ジャンプが発動する)
+      stepFleeing(60 * 60); // 60秒逃走(固定方向へ直進=パンプキンから離れ続ける)
 
-    const player = useGameStore.getState().player;
-    const dist = Math.hypot(player.x - startX, player.y - startY);
-    expect(dist).toBeGreaterThanOrEqual(1500);
+      const player = useGameStore.getState().player;
+      const dist = Math.hypot(player.x - startX, player.y - startY);
+      expect(dist).toBeGreaterThanOrEqual(1500);
+    } finally {
+      randSpy.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });
 
