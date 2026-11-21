@@ -7,7 +7,7 @@ import type { AcrasielPlan } from '../utils/acrasielScript';
 import type { FirstAidKitState } from '../utils/firstAidKit';
 import type { MasteryKey } from '../data/mastery'; // 熟練度のキー(依存ゼロの純データモジュール・型だけ)
 import type { AvatarId } from '../data/avatars'; // アバターシステム(試験・第1弾)。依存ゼロの純データモジュール(循環しない)。
-import type { BrawlerJuggleFields } from '../utils/brawlerCombo'; // ★プレイヤーの浮き(research/BRAWLER.md §36-0・型だけ)
+import type { BrawlerJuggleFields } from '../utils/brawlerJuggleTypes'; // ★プレイヤーの浮き(research/BRAWLER.md §36-0・型だけ)
 import type { BrawlerState, KenkiPrepTex } from '../utils/brawlerTypes'; // サブウェポン「格闘」の状態機械(research/BRAWLER.md・型だけ)
 import type { SwordLungePlan } from '../utils/swordLunge'; // 剣ボスの踏み込み計画(依存ゼロの純関数モジュール=循環しない)。
 
@@ -459,7 +459,7 @@ export interface Player extends DashLocomotionState {
   // 錬金術: 立ち止まりチャネルの開始 gameTime(ms)。0 = 非チャネル。5秒で召喚。
   alchemyChannelStartedAt?: number;
   // 錬金術の溜めのリズム(research/ALCHEMY_RHYTHM.md)。溜めの間だけ在る(溜めの開始で作り、終わり/中断で消す)。
-  alchemyRhythm?: import('../utils/alchemyRhythm').AlchemyRhythmState;
+  alchemyRhythm?: import('../utils/alchemyRhythmTypes').AlchemyRhythmState;
   // ※刀(一閃)の katanaDash*/katanaRecoveryUntil は DashLocomotionState へ移設(守護霊と共有)。
   // 四神舞フリック=盾バッシュ風スライド。shijinSlideUntil が未来の間、入力を無視して
   // shijinSlideDir 方向へ一定速で滑る(movePlayer がダッシュと同様に上書き)。

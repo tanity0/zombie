@@ -19,25 +19,8 @@ export const ALCHEMY_RHYTHM_CUT_MS = 500;       // 成功1回で縮む溜めの�
 export const ALCHEMY_RHYTHM_CONSUME_MS = 350;   // 到着のこれより手前のタップは判定しない(無視)
 export const ALCHEMY_RHYTHM_RARE_BONUS = 0.03;  // 成功1回ごとのレア(ハンター)確率の上乗せ
 
-export interface AlchemyRhythmRing {
-  spawnAt: number;
-  arriveAt: number;
-  /** 前のサークルの成功で到着を前倒し済みか(二重に前倒ししない)。 */
-  pulled: boolean;
-  result?: 'hit' | 'miss';
-  /** 判定した時刻(成功の弾けの起点)。 */
-  judgedAt?: number;
-}
-
-export interface AlchemyRhythmState {
-  startedAt: number;
-  /** 成功で縮んだ溜めの合計。 */
-  cutMs: number;
-  hits: number;
-  rings: AlchemyRhythmRing[];
-  /** 直近の成功の時刻(魔法陣の脈・音の起点)。 */
-  lastHitAt?: number;
-}
+export type { AlchemyRhythmRing, AlchemyRhythmState } from './alchemyRhythmTypes';
+import type { AlchemyRhythmRing, AlchemyRhythmState } from './alchemyRhythmTypes';
 
 export const newAlchemyRhythm = (startedAt: number): AlchemyRhythmState => ({
   startedAt, cutMs: 0, hits: 0,

@@ -1,3 +1,4 @@
+import type { BrawlerJuggleFields } from './brawlerJuggleTypes';
 // ★サブウェポン「格闘」の敵側の流れ(research/BRAWLER.md §11・§19・社長指示2026-11-08/2026-11-10)。
 // 確定の固まり(§19-3: つながっている間、敵は一切動けない)・コンボの区切りと固まらない時間・浮かせ追撃。
 // 純関数だけ(store が読んで敵へ書く・pixi は読むだけ)。
@@ -539,39 +540,8 @@ export let BRAWLER_JUGGLE_MIN_MS = 140; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 空中から吹き飛ばされた時に地面へ落ちる時間(ms)。 */
 export let BRAWLER_JUGGLE_DROP_MS = 200; // ×BRAWLER_TEMPO(係数1.0の値)
 
-/** 敵の浮きの欄(store の Enemy のうち、ここが読み書きする所だけ)。時計は Date.now。 */
-export interface BrawlerJuggleFields {
-  /** いまの弧の始まり(絵)。 */
-  brawlerLiftAt?: number;
-  /** いまの弧の長さ(ms)・頂点の高さ(基準の高さ BRAWLER_LIFT_VIS_PX に対する倍率)・始まりの高さ(同じ倍率)。 */
-  brLiftMs?: number;
-  brLiftPeak?: number;
-  brLiftFrom?: number;
-  /** この浮きの中で押し上げた回数(0=最初の浮き)。 */
-  brLiftN?: number;
-  /** 浮きの終わり(=動けない間の終わり。liftUntil にも同じ値を書く=全ての敵の制御が「持ち上げ」として止まる)。 */
-  brLiftUntil?: number;
-  /** 着地の砂埃をまだ出していない(絵の弧が終わった瞬間に store が出して消す)。 */
-  brLiftLand?: boolean;
-  /** §13-2: 残りの拾える回数・ダウン中・バウンドを使った流れ・バウンドの落ちる区間。 */
-  brLiftBudget?: number;
-  brLiftDown?: boolean;
-  /** ボス級: 気絶・紫の間に地上から浮かせたコンボ=軽い重さのまま着地まで(社長裁定2026-11-11・research/BRAWLER.md §25)。 */
-  brLiftLight?: boolean;
-  brBounceCombo?: number;
-  brLiftDropMs?: number;
-  /** 弧の形('blast'=爆発の浮き・§14)。無し=格闘の弧。 */
-  brLiftShape?: 'blast' | 'throw';
-  /** ★落ちる部分の時間の倍率(1=元の形)。地上から打ち上げた1回目は遅く、空中で拾うたびに速く(brawlerFallK)。上がり・漂いの時間は変えない。無し=1。 */
-  brLiftFallK?: number;
-  /** ★爆発の浮き(§14): 今の空中が始まった時刻(爆発で浮き直しても続く)・爆発では浮かない窓の終わり(着地から、浮いていた時間と同じ長さ)。Date.now。 */
-  brBlastAirSince?: number;
-  brBlastNoLiftUntil?: number;
-  /** 流れの始まり(バウンドは1コンボに1回の区切り)。 */
-  brComboStart?: number;
-  /** ダウンの着地の後の固まらない時間(Date.now)。ダウンで書き直す時は遅い方を残す(§19-3 ⑤)。 */
-  brNoHoldUntil?: number;
-}
+export type { BrawlerJuggleFields } from './brawlerJuggleTypes';
+
 /** 絵の弧が地面に着いたか(砂埃を出す時刻)。 */
 export const brawlerJuggleLanded = (e: BrawlerJuggleFields, now: number): boolean =>
   e.brLiftLand === true && e.brawlerLiftAt !== undefined && now >= e.brawlerLiftAt + (e.brLiftMs ?? BRAWLER_LIFT_MS);

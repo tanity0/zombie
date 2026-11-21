@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5698 — CI修正: 循環importを2本解消【2026-11-21 14:54 JST】
+- CI の check-circular-imports が赤(ed874be 以降): `types/game.ts > utils/alchemyRhythm.ts > utils/summonUtils.ts > …`(v0.25.5673 の錬金術のリズム)と `types/game.ts > utils/brawlerCombo.ts > …`(格闘の浮きの型)。どちらも types/game.ts が型だけを引いていた先が重いハブに繋がっていた。→ 型を依存ゼロの葉へ移した: 新規 `src/utils/alchemyRhythmTypes.ts`(AlchemyRhythmRing/State)・`src/utils/brawlerJuggleTypes.ts`(BrawlerJuggleFields)。元のファイルは re-export。挙動の変更なし。
+- 検証: `node scripts/check-circular-imports.mjs` 緑(既知3本のみ)・typecheck・eslint・`vitest run src/utils src/store`。
+
 ## v0.25.5697 — 晴れの夜のステージ1(光・色・コントラスト+蛍)・ランダム配置の置き物を重ねすぎない【2026-11-21 14:47 JST】
 - **晴れの夜のステージ1**(社長「通常のステージ1に流用できる部分は流用して」「晴れの日の夜の参考」「晴れは晴れの魅力的な森にしたい」「光る虫とかが飛んでると幻想的かも」「光や色で」「光、色、コントラスト」→残りの差 1・3・4・5 も「はい」): 新規 `src/pixi/stage1Night.ts`(Stage1NightLayer: 色行列・霧/近景の森/月の上塗り・松明の奥の光 0.45・花のほのかな光 0.45)、`src/utils/weatherWet.ts`(stage1NightActive/S1N_*/buildStage1NightGradeMatrix/buildStage1NightSkyMatrix・mix=0 で恒等=他ステージ不変をテスト)、新規 `src/utils/stage1Fireflies.ts`+テスト(1匹ずつ明滅・光の輪・2割が青白・半分は花の近く・プレイヤーで散る・96匹・雨上がりは少なく本降りでほぼ0)、`pixiScene.ts` の配線(?s1n=0 / ?s1ngrade=0 で外せる)。値: 霧の色 r0.52/g0.72/b0.98(濃さ不変)・月グロー α×1.9・暈 α×2.3・色調整 彩度1.12・雲影×1.45・月の筋×2.4(0xbfe8ff)・夜の暗さ ×0.8(晴れの夜だけ)・空の色行列(紫→深い青)。地面 p10/p50/p90 5/22/81→7/27〜30/86〜94(参考 22/51/125)。負荷2〜3/10。被写界深度・霧の濃さ不変。気になる点=蛍が空の高さにも飛ぶ(社長へ)。
 - 雨上がり: 水面のキャラの映り込み REFL_ALPHA 0.55→0.68(社長「ほんの少しだけ上げて」・実効 約0.39→0.48)。
