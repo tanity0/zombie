@@ -1,0 +1,59 @@
+// ファストトラベルの行き先(research/FAST_TRAVEL.md §2-2)のユニット。
+import { describe, it, expect } from 'vitest';
+import { listTravelDestinations, hasTravelTargets, TRAVEL_ARRIVE_GAP_PX } from './fastTravel';
+
+const bases = [
+  { id: 'base-0', x: 4800, y: 0, status: 'captured' },
+  { id: 'base-1', x: 0, y: 4800, status: 'open' },
+  { id: 'base-2', x: -4800, y: 0, status: 'captured' },
+  { id: 'base-3', x: 0, y: -4800, status: 'open' },
+];
+const merchant = { x: 0, y: -130, radius: 58 };
+const base = { merchant, bases, armoryRadius: 50, baseRadius: 130 };
+
+describe('ファストトラベルの行き先', () => {
+  it('襲われている拠点は上へ・行に印', () => {
+    const l = listTravelDestinations({ ...base, bases: bases.map(b => (b.id === 'base-2' ? { ...b, attackerId: 'e1' } : b)), player: { x: 0, y: 0 } });
+    expect(l.map(d => d.id)).toEqual(['base-2', 'merchant', 'base-0']);
+    expect(l[0].attacked).toBe(true);
+  });
+  it('武器商人が解放済みの拠点に居るなら、商人の行はその拠点の行にまとめる', () => {
+    const l = listTravelDestinations({ ...base, merchant: { x: 4800, y: -40, radius: 58 }, player: { x: 0, y: 0 } });
+    expect(l.map(d => d.id)).toEqual(['base-0', 'base-2']);
+    expect(l[0].hasMerchant).toBe(true);
+  });
+  it('武器商人+解放済みの拠点だけ(東→西の順)', () => {
+    const l = listTravelDestinations({ ...base, player: { x: 4800, y: 30 } });
+    expect(l.map(d => d.label)).toEqual(['武器商人', '東部拠点', '西部拠点']);
+  });
+  it('今いる場所は current(拠点の円の中・商人の近く)', () => {
+    const atBase = listTravelDestinations({ ...base, player: { x: 4800, y: 30 } });
+    expect(atBase.find(d => d.id === 'base-0')!.current).toBe(true);
+    expect(atBase.find(d => d.id === 'merchant')!.current).toBe(false);
+    const atMerchant = listTravelDestinations({ ...base, player: { x: 0, y: -130 } });
+    expect(atMerchant.find(d => d.id === 'merchant')!.current).toBe(true);
+  });
+  it('着く地点は武器庫/商人の円の外(下側)・拠点の円の中', () => {
+    const l = listTravelDestinations({ ...base, player: { x: 0, y: 0 } });
+    const b0 = l.find(d => d.id === 'base-0')!;
+    const dy = b0.arriveY - 0;
+    expect(dy).toBe(50 + TRAVEL_ARRIVE_GAP_PX);
+    expect(dy).toBeGreaterThan(50);
+    expect(dy).toBeLessThan(130);
+    const m = l.find(d => d.id === 'merchant')!;
+    expect(m.arriveY - merchant.y).toBeGreaterThan(merchant.radius);
+  });
+  it('商人が居ない(研究所・ウェルカム中)+解放済みの拠点が無い=行き先なし', () => {
+    const l = listTravelDestinations({ merchant: null, bases: bases.map(b => ({ ...b, status: 'open' })), armoryRadius: 50, baseRadius: 130, player: { x: 0, y: 0 } });
+    expect(hasTravelTargets(l)).toBe(false);
+  });
+  it('半径0の商人(世界の外へ退避した出撃)は行き先に出さない', () => {
+    const l = listTravelDestinations({ ...base, merchant: { x: 1e9, y: 1e9, radius: 0 }, player: { x: 4800, y: 30 } });
+    expect(l.map(d => d.id)).toEqual(['base-0', 'base-2']);
+  });
+  it('今いる場所だけなら移動先なし', () => {
+    const l = listTravelDestinations({ ...base, bases: bases.map(b => ({ ...b, status: 'open' })), player: { x: 0, y: -130 } });
+    expect(l).toHaveLength(1);
+    expect(hasTravelTargets(l)).toBe(false);
+  });
+});
