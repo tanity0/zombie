@@ -29,10 +29,13 @@ export const INTRO_TUNNEL_MAX_SCALE = 5;
 export const INTRO_TUNNEL_PEAK_ALPHA = 1;
 /** 縦画面(スマホ)の濃さの倍率。縦は枠1枚が画面幅とほぼ同じで、濃さ1だと画面ほぼ全体が暗い岩で覆われヘリが沈むため薄くする。 */
 export const INTRO_TUNNEL_PORTRAIT_ALPHA_MUL = 0.55;
-/** 出の割合(寿命のこの割合をかけて 0→最大の濃さ。パッと出さない)。 */
-const FADE_IN_FRAC = 0.3;
-/** 抜けの始まり(寿命のこの割合まで濃さを保つ=画面の外へほぼ抜けてから消す)。 */
-const FADE_OUT_FROM = 0.84;
+/** 出の割合(寿命のこの割合をかけて 0→最大の濃さ。パッとは出さないが、すぐ濃くなる)。 */
+const FADE_IN_FRAC = 0.12;
+/**
+ * 抜けの始まり。濃い時間を1枚の動きの前半に寄せ、ここから左右に開きながら最後まで薄れていく
+ * (社長2026-11-21「開始から薄まる曲線が早いのでカーブ前半に寄せて」=1枚ごとの濃さ)。旧 0.84(抜けてから消す)。
+ */
+const FADE_OUT_FROM = 0.5;
 /** 同時に生きている複製の上限(片側)。描画側のプールの大きさ。 */
 export const INTRO_TUNNEL_MAX_COPIES = 4;
 
@@ -75,7 +78,7 @@ export const introTunnelScale = (u: number, maxScale: number = INTRO_TUNNEL_MAX_
 };
 
 /**
- * 1枚の姿(u=寿命の進み 0..1)。濃さは FADE_IN_FRAC かけてゆっくり入り、FADE_OUT_FROM まで最大のまま保ち、最後だけ消す。
+ * 1枚の姿(u=寿命の進み 0..1)。濃さは FADE_IN_FRAC ですぐ最大へ入り、FADE_OUT_FROM まで保ち、そこから開きながら最後まで薄れる。
  */
 export const introTunnelPose = (u: number, maxScale: number = INTRO_TUNNEL_MAX_SCALE): TunnelCopyPose => {
   const x = Math.max(0, Math.min(1, u));

@@ -56,20 +56,19 @@ describe('枠のトンネル(登場のヘリ飛来の間)', () => {
     }
     expect(sc(0.5)).toBeLessThan(2); // 前半はゆっくり
   });
-  it('濃さはゆっくり入り(パッと出さない)、途中で落ちず、最後だけ消える', () => {
+  it('濃さはすぐ入り(パッとは出さない)、前半は濃いまま、後半は開きながら最後まで薄れる', () => {
     const a = (u: number) => introTunnelPose(u).alpha;
     expect(a(0)).toBe(0);
     expect(a(1)).toBe(0);
-    expect(a(0.05)).toBeLessThan(0.15); // ゆっくり入る
+    expect(a(0.02)).toBeLessThan(0.3); // 0フレーム目でいきなり最大にはしない
+    expect(a(0.12)).toBeGreaterThan(0.99); // すぐ濃くなる
     for (let i = 1; i <= 100; i++) {
       const u = i / 100;
-      if (u <= 0.3) expect(a(u)).toBeGreaterThanOrEqual(a(u - 0.01)); // 入りは単調に増える
-      else if (u <= 0.84) expect(a(u)).toBeCloseTo(a(0.3), 9); // 抜ける直前まで保つ
-      else expect(a(u)).toBeLessThanOrEqual(a(u - 0.01)); // 最後だけ消す
+      if (u <= 0.12) expect(a(u)).toBeGreaterThanOrEqual(a(u - 0.01)); // 入りは単調に増える
+      else if (u <= 0.5) expect(a(u)).toBeCloseTo(a(0.12), 9); // 前半は保つ
+      else expect(a(u)).toBeLessThanOrEqual(a(u - 0.01)); // 後半は単調に薄れる
     }
-    expect(a(0.6)).toBeGreaterThan(0.9);
-    // 保っている間に上下の岩が画面の外へ抜ける(最終の半分を超える拡大まで濃いまま)
-    expect(introTunnelPose(0.84).scale).toBeGreaterThan(INTRO_TUNNEL_MAX_SCALE * 0.5);
+    expect(a(0.75)).toBeGreaterThan(0.3); // 一気には消さない(開きながら薄れる)
   });
   it('頭でパッと出さない(全体の入り)、入った後は常にどれか1枚は濃い', () => {
     expect(Math.max(0, ...introTunnelCopies(0).map(c => c.alpha))).toBe(0);
