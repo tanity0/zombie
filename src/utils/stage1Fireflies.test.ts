@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
   fireflyBlink, fireflyActiveFrac, fireflyScatterAcc, FIREFLY_DIM_FLOOR, FIREFLY_WET_FRAC, FIREFLY_SCATTER_R,
-  FIREFLY_BLINK_MS_MIN, FIREFLY_RISE_END, FIREFLY_HOLD_END,
+  FIREFLY_BLINK_MS_MIN, FIREFLY_RISE_END, FIREFLY_HOLD_END, FIREFLY_S1_COUNT,
 } from './stage1Fireflies';
 import { RAIN_INTENSITY_LOW_MAX, RAIN_INTENSITY_HIGH_MIN } from './weatherWet';
 
 describe('ステージ1の森の蛍', () => {
+  it('数は控えめ(社長指示2026-11-21「蛍が多すぎる」で96から減らした)', () => {
+    expect(FIREFLY_S1_COUNT).toBeGreaterThan(0);
+    expect(FIREFLY_S1_COUNT).toBeLessThanOrEqual(48);
+  });
   it('灯る/消えるは途切れず(1フレームで跳ばない)・暗くても消え切らない・灯ると1', () => {
     const P = FIREFLY_BLINK_MS_MIN;
     let prev = fireflyBlink(0, 0.3, P), max = 0, min = 1;

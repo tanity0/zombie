@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5700 — リロードの速さを歩き/停止で変える・晴れの夜の月明かりの地面・蛍を減らす【2026-11-21 15:39 JST】
+- 社長指示(仕様変更)「リロードの仕様変更。歩いていると通常の1.2倍遅く、立ち止まると通常の1.2倍早く」: プレイヤーのリロードの締切(reloadEndsAt・実時間)を毎フレーム dt×(1−rate) ずらす(歩き rate=1/1.2・停止 1.2・判定は player.isMoving)。`src/utils/weaponUtils.ts`(RELOAD_MOVE_TIME_MULT/reloadRateFor/advanceReloadEnd)・`gameStore.ts`(applyReloadMoveRate)・`useGameLoop.ts`(movePlayer の直後)。一時停止・ヒットストップ等の間は movePlayer に入らないので従来どおり。HUD の棒は「普通の時間で進んだ量」になり、滑らかに速く/遅く伸びる(巻き戻らない・テスト)。守護霊・幽霊の射手は不変。リロード音の長さは普通の時間のまま(未変更)。新規テスト `src/utils/reloadMoveRate.test.ts` 12件。
+- 社長「もう少し地面含めて月明かりの雰囲気を…当たってるところは明るく、影は濃く」「蛍が多すぎる」: 晴れたステージ1の夜だけ雲影を濃い青に焼いた4枚目の絵+S1N_CLOUD_SHADOW_MULT 1.45→1.9(s1nCloudShadowAlpha)。月明りの溜まり(筋と同じ形・流れ・脈動の加算・3枚重ね・α0.3・0xb8dcff・地平より上に描かない・ズームでずれない・?s1npool=0 で外せる)。蛍 FIREFLY_S1_COUNT 96→40。地面 p90 65.8→76.8(+17%)。`src/utils/weatherWet.ts`・`src/pixi/lighting.ts`・`pixiScene.ts`・`src/utils/stage1Fireflies.ts`+テスト。負荷1/10。
+- 検証: typecheck・eslint・循環import 緑・`vitest run src/utils src/store src/pixi`。撮影(scratchpad/moonground/)を目視。Opus サブエージェント×2。
+- 自己点検: 憲法第4条・第5条に抵触なし(リロードは歩き/停止の判断を足すだけ・数値は社長指定)。
+
 ## v0.25.5699 — ステージ1の蛍に遠近と被写界深度【2026-11-21 15:02 JST】
 - 社長「奥ほど小さく手前ほど大きく」「被写体深度の影響を受けて欲しい」: 蛍(magic 分岐)を uiLayer から world 最上段の `s1FireflyLayer` へ(filteredWorld の中=tilt-shift・地平線の覆い・bloom が他の物と同じに掛かる・被写界深度そのものは不変)。大きさに depthScale(y)、濃さに horizonActorAlpha(y)。範囲は実際に映る world(visibleWorldRect)。結果: 地平線より上(空)の蛍は消え、手前は大きくボケ、主人公付近はくっきり。芯 y=−164 で約5px・y=416 で11〜14px(前は一律6〜8.5px)。雪/火の粉/他ステージは uiLayer のまま不変。ズームに合わせて縮む・最大引きでは密度が下がる(社長の実機確認待ち)。
 - 検証: typecheck・eslint・循環import 緑・stage1Fireflies/weatherWet 45件。撮影(scratchpad/ffdepth/)を目視。負荷1/10。Opus サブエージェント。

@@ -4,6 +4,7 @@
 // built directly in the scene.
 
 import { Texture } from 'pixi.js';
+import { S1N_CLOUD_SHADOW_TEX_GAIN } from '../utils/weatherWet';
 
 let glowTex: Texture | null = null;
 const vignetteTexByInner = new Map<number, Texture>();
@@ -407,11 +408,12 @@ export const getCineCoolTexture = (): Texture => {
 // cool=true(夜・月夜)は斑を青寄りに焼く=multiplyで寒色の影(白ベースは両方とも白=影以外は色を変えない)。社長指示v0.25.1975。
 // wet=true は雨上がり(?weather=wet)用: 同じ雲の形で斑の暗さを CLOUD_SHADOW_WET_GAIN 倍に焼き、色を藍へ寄せた版
 // (multiply の α は1で頭打ちなので、濃さの倍率の残りをテクスチャ側に持たせる。雨上がりでない時は一度も焼かない)。
-const cloudShadowTex: (Texture | null)[] = [null, null, null]; // [0]=昼(中立グレー) / [1]=夜(青寄り) / [2]=雨上がりの夜(藍・濃い)
+const cloudShadowTex: (Texture | null)[] = [null, null, null, null]; // [0]=昼(中立グレー) / [1]=夜(青寄り) / [2]=雨上がりの夜(藍・濃い) / [3]=晴れたステージ1の夜(深い青・濃い)
 /** 雨上がり用の雲影テクスチャの暗さの倍率(1 - 斑の明るさ に掛ける)。描く側は α をこれで割って、濃さの倍率を連続に保つ。 */
 export const CLOUD_SHADOW_WET_GAIN = 1.25;
-export const getCloudShadowTexture = (cool = false, wet = false): Texture => {
-  const idx = wet ? 2 : cool ? 1 : 0;
+// moon=true は晴れたステージ1の夜用(S1N_CLOUD_SHADOW_TEX_GAIN 倍に暗く・深い青)。その夜でない時は一度も焼かない。
+export const getCloudShadowTexture = (cool = false, wet = false, moon = false): Texture => {
+  const idx = wet ? 2 : moon ? 3 : cool ? 1 : 0;
   if (cloudShadowTex[idx]) return cloudShadowTex[idx]!;
   const s = 256; const c = document.createElement('canvas'); c.width = c.height = s;
   const ctx = c.getContext('2d')!;
@@ -423,11 +425,12 @@ export const getCloudShadowTexture = (cool = false, wet = false): Texture => {
     const bx = rnd() * s, by = rnd() * s;
     const r = s * (0.11 + rnd() * 0.15);
     const v0 = (0.24 + rnd() * 0.22) * 255; // 影の濃さ(小=濃い)。濃くして視認性UP(社長「どこに雲影ある？」v0.25.1976)
-    const v = Math.round(wet ? 255 - Math.min(255, (255 - v0) * CLOUD_SHADOW_WET_GAIN) : v0);
+    const gain = wet ? CLOUD_SHADOW_WET_GAIN : moon ? S1N_CLOUD_SHADOW_TEX_GAIN : 1;
+    const v = Math.round(gain !== 1 ? 255 - Math.min(255, (255 - v0) * gain) : v0);
     // 夜=R/Gを多めに落とし青を残す=寒色の影。昼=中立グレー。雨上がり=もう一段 R/G を落として藍へ。
-    const rr = wet ? Math.round(v * 0.62) : cool ? Math.round(v * 0.80) : v;
-    const gg = wet ? Math.round(v * 0.78) : cool ? Math.round(v * 0.90) : v;
-    const bb = wet ? Math.min(255, Math.round(v * 1.18 + 10)) : cool ? Math.min(255, Math.round(v * 1.06)) : v;
+    const rr = wet ? Math.round(v * 0.62) : moon ? Math.round(v * 0.7) : cool ? Math.round(v * 0.80) : v;
+    const gg = wet ? Math.round(v * 0.78) : moon ? Math.round(v * 0.84) : cool ? Math.round(v * 0.90) : v;
+    const bb = wet ? Math.min(255, Math.round(v * 1.18 + 10)) : moon ? Math.min(255, Math.round(v * 1.1 + 6)) : cool ? Math.min(255, Math.round(v * 1.06)) : v;
     for (const ox of [-s, 0, s]) for (const oy of [-s, 0, s]) { // 8方向ラップ=シームレス
       const g = ctx.createRadialGradient(bx + ox, by + oy, 0, bx + ox, by + oy, r);
       g.addColorStop(0, `rgba(${rr},${gg},${bb},1)`);

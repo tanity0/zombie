@@ -485,9 +485,55 @@ export const S1N_GRADE_SAT = 1.12;
 export const S1N_GRADE_GAIN: readonly [number, number, number] = [1.0, 1.2, 1.36];
 export const S1N_GRADE_LIFT: readonly [number, number, number] = [-0.032, -0.028, -0.016];
 /** 4. 雲の影(照らされた所と影の差をくっきり)・月明りの筋(雨上がりより強く・白い青)。 */
-export const S1N_CLOUD_SHADOW_MULT = 1.45;
+export const S1N_CLOUD_SHADOW_MULT = 1.9;
+/** 雲の影の絵の暗さの倍率(晴れたステージ1の夜だけの絵)。multiply の α は1で頭打ちなので、濃さの残りを絵の側に持たせる。
+ *  描く側は α をこれで割る(=効き始めの濃さが連続になる)。社長指示2026-11-21「当たってるところは明るく、影は濃く」。 */
+export const S1N_CLOUD_SHADOW_TEX_GAIN = 1.4;
+/** 晴れたステージ1の夜の雲の影の α(base=通常の濃さ)。mix=0 なら厳密に base(=他ステージ・抜けた後はそのまま)。 */
+export const s1nCloudShadowAlpha = (base: number, mix: number): number =>
+  mix <= 0 ? base : Math.min(1, base * wetLightMult(mix, S1N_CLOUD_SHADOW_MULT) / S1N_CLOUD_SHADOW_TEX_GAIN);
 export const S1N_MOON_SHAFT_MULT = 2.4;
 export const S1N_MOON_SHAFT_COLOR = 0xbfe8ff;
+/** 月明りの溜まり: 筋が地面に落ちる所を、地面の上(キャラ・雲の影の下)で青白く明るくする(加算・影を落とす光ではない)。 */
+export const S1N_MOON_POOL_ALPHA = 0.3;
+export const S1N_MOON_POOL_COLOR = 0xb8dcff;
+/** 地面の上端から、地面の高さのこの割合をかけて 0→1 に立ち上がる(地平の際で光が切れて見えないように)。 */
+export const S1N_MOON_POOL_FADE = 0.22;
+/** 溜まりの縁を柔らかくする重ね(幅の倍率・濃さの重み=足して1)。ぼかしのフィルタは使わない。 */
+export const S1N_MOON_POOL_LAYERS: readonly (readonly [number, number])[] = [[1.4, 0.22], [1.0, 0.34], [0.62, 0.44]];
+export interface MoonPoolPiece { pts: number[]; a: number }
+/**
+ * 筋1本(筋の絵の座標)の、地面の上端 topY から下端 bottomY までの溜まりの形(台形の束)。
+ * 筋の中心線に沿い、幅を変えて重ねる(芯ほど明るい)。上端の帯は数枚に刻んで 0→1 に立ち上げる。a は筋の濃さの比込み。
+ */
+export const moonPoolPieces = (q: ShaftPoly, topY: number, bottomY: number): MoonPoolPiece[] => {
+  const out: MoonPoolPiece[] = [];
+  const dy = q.y2 - q.y1;
+  const yEnd = Math.min(bottomY, Math.max(q.y1, q.y2));
+  if (dy === 0 || yEnd <= topY) return out;
+  const cAt = (y: number) => {
+    const t = (y - q.y1) / dy;
+    const c1 = q.x1 + q.w / 2, c2 = q.x2 - 0.18 * q.w;
+    return c1 + t * (c2 - c1);
+  };
+  const fadeEnd = Math.min(yEnd, topY + (bottomY - topY) * S1N_MOON_POOL_FADE);
+  const bands: [number, number, number][] = [];
+  const steps = 4;
+  for (let i = 0; i < steps; i++) {
+    const a = topY + (fadeEnd - topY) * (i / steps), b = topY + (fadeEnd - topY) * ((i + 1) / steps);
+    if (b > a) bands.push([a, b, easeInOutSine((i + 0.5) / steps)]);
+  }
+  if (yEnd > fadeEnd) bands.push([fadeEnd, yEnd, 1]);
+  const k = Math.min(1, q.a);
+  for (const [k0, wgt] of S1N_MOON_POOL_LAYERS) {
+    const hw = q.w * k0 / 2;
+    for (const [a, b, s] of bands) {
+      const ca = cAt(a), cb = cAt(b);
+      out.push({ pts: [ca - hw, a, ca + hw, a, cb + hw, b, cb - hw, b], a: wgt * s * k });
+    }
+  }
+  return out;
+};
 /** 5. 松明の裏の光の濃さ(乾いた草に落ちる温かい光)。寸法と色は雨上がりと同じ。 */
 export const S1N_TORCH_BACK_ALPHA = 0.45;
 /** 6. 夜の寒色の乗算(GRADE_TINT)の濃さに掛ける倍率=晴れの夜は少しだけ明るく(黒は色行列の側で深いまま)。 */

@@ -174,7 +174,7 @@ import {
 import type { SkillProcEntry } from '../utils/skillProcFeed';
 import { pushSkillProc, shiftSkillProc, isSkillProcShown, type TechProcKey } from '../utils/skillProcFeed';
 import { noteBrawlerSecret } from '../utils/crashWatch';
-import { getStartingWeapons, createWeapon, ammoBearingGuns, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponRoundsPerAmmo, awakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, mouseSetsAim, gunShotBaseDamage, isPastTravelCap, clampToTravelCap } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, ammoBearingGuns, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, advanceReloadEnd, reloadRateFor, refillWeaponMagazine, weaponRoundsPerAmmo, awakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, mouseSetsAim, gunShotBaseDamage, isPastTravelCap, clampToTravelCap } from '../utils/weaponUtils';
 import { notePileHit } from '../utils/pileHitLog';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の純関数/定数。
 import { alchemyStoneDetonateDamage, alchemyStoneDetonateRadius } from '../utils/alchemyStone';
@@ -10450,6 +10450,8 @@ interface GameState {
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
+  /** リロードの歩き/立ち止まり補正を1フレームぶん掛ける(weaponUtils.advanceReloadEnd)。wallDtMs=実時間のフレーム差(スロー/ゲームスピードを掛けない)。 */
+  applyReloadMoveRate: (wallDtMs: number) => void;
   // スケボー(新仕様): ダブルタップで乗車 / 指離しで降車(+1秒以上乗車なら進行方向へ投擲)。
   mountSkater: () => void;
   dismountSkater: () => void;
@@ -11801,6 +11803,17 @@ export const useGameStore = create<GameState>((set, get) => ({
   rescueSurvivors: [],
 
   // Player actions
+  applyReloadMoveRate: (wallDtMs) => {
+    const p = get().player;
+    if (!p.reloadingWeaponId) return;
+    const now = Date.now();
+    const next = advanceReloadEnd(p.reloadEndsAt, now, wallDtMs, reloadRateFor(p.isMoving));
+    if (next === p.reloadEndsAt) return;
+    set(state => (state.player.reloadingWeaponId === p.reloadingWeaponId
+      ? { player: { ...state.player, reloadEndsAt: next } }
+      : {}));
+  },
+
   movePlayer: (input, deltaTime) => {
     set(state => {
       const { player, gameBounds, swipeDirection, swipeStrength, breakableProps, castleEvent } = state;

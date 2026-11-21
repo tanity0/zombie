@@ -15,8 +15,8 @@ export const FIREFLY_HOLD_END = 0.4;
 export const FIREFLY_FALL_END = 0.64;
 /** 暗い間も消え切らない明るさ(ほんのり居るのが分かる)。 */
 export const FIREFLY_DIM_FLOOR = 0.06;
-/** ステージ1の森の蛍の数(画面と周りの余白に散らす=灯っているのが画面に20〜30匹前後)。 */
-export const FIREFLY_S1_COUNT = 96;
+/** ステージ1の森の蛍の数(画面と周りの余白に散らす=灯っているのが画面に8〜12匹前後・社長指示2026-11-21「蛍が多すぎる」で96から減らした)。 */
+export const FIREFLY_S1_COUNT = 40;
 /** 水色の蛍の割合と色。暖かい黄緑の色。 */
 export const FIREFLY_CYAN_FRAC = 0.22;
 export const FIREFLY_WARM_TINT = 0xd6ff6a;

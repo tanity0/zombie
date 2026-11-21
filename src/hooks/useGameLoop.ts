@@ -10546,6 +10546,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             : inputState,
           deltaTime * MOVE_SPEED_MULT * (endingStage ? endingPhillVelMult * ENDING_PHILL_SPEED_MULT : 1),
         );
+        // リロードの歩き/立ち止まり補正(歩く=1.2倍遅い/止まる=1.2倍早い)。reloadEndsAt は実時間の締切なので実時間のフレーム差で
+        // ずらす(スロー/ゲームスピードは掛けない=従来どおりリロードは実時間で進む)。ポーズ/ヒットストップ等で移動が止まるフレームは
+        // ここも通らない=補正なし(従来どおり実時間で進む)・ずれも溜まらない。
+        useGameStore.getState().applyReloadMoveRate(baseDeltaTime * 1000);
         // ★縮地(SKILL_BUILD_REDESIGN.md §32): ワープが移動処理で解決された直後に斬る(移動より前に斬ると
         // 元の位置で振ってしまう)。SEは前隙明けの振りと同じ条件。
         {

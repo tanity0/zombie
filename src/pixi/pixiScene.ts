@@ -472,7 +472,7 @@ import { TREE_VISUAL_SCALE, TREE_BOX_W, TREE_BOX_H, TORCH_VISUAL_W, TORCH_VISUAL
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
 import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight, type WetTree } from './weatherWet';
-import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR, stage1NightActive, S1N_CLOUD_SHADOW_MULT, S1N_MOON_SHAFT_MULT, S1N_MOON_SHAFT_COLOR, S1N_NIGHT_GRADE_ALPHA_MUL } from '../utils/weatherWet';
+import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR, stage1NightActive, s1nCloudShadowAlpha, S1N_MOON_SHAFT_MULT, S1N_MOON_SHAFT_COLOR, S1N_NIGHT_GRADE_ALPHA_MUL, S1N_MOON_POOL_ALPHA, S1N_MOON_POOL_COLOR, moonPoolPieces } from '../utils/weatherWet';
 import { Stage1NightLayer } from './stage1Night';
 import {
   fireflyBlink, fireflyActiveFrac, fireflyHeading, fireflyScatterAcc, FIREFLY_CYAN_FRAC, FIREFLY_WARM_TINT, FIREFLY_CYAN_TINT,
@@ -761,6 +761,7 @@ const tsNum = (key: string, def: number): number => {
 };
 const S1N_ON = tsNum('s1n', 1) > 0; // ?s1n=0 で通常のステージ1の夜の上乗せを全部外す(見比べ・計測用)
 const S1N_GRADE_ON = tsNum('s1ngrade', 1) > 0; // ?s1ngrade=0 で色行列だけ外す(計測用)
+const S1N_POOL_ON = tsNum('s1npool', 1) > 0; // ?s1npool=0 で月明りの溜まり(地面)だけ外す(見比べ用)
 const POI_TOUCH_FREEZE_MS = tsNum('poitouchfreeze', -1); // 触れた瞬間の絵の撮影用(負=無効)
 const LEVER_GUARD_FREEZE_MS = tsNum('leverguardfreeze', -1); // 格闘のレバーガードの腕で受ける影の撮影用(受けてからの経過msを固定・負=無効)
 const BOOM_CUE_FREEZE_MS = tsNum('boomcuefreeze', -1); // ブーメランの「今打てる」の光の撮影用(負=無効・経過msを固定)
@@ -5636,6 +5637,12 @@ export class PixiScene {
   private playerFirstAidBag = new Sprite();                // 救急鞄スキル発動時に掲げる鞄(first-aid-kit・描画のみ)
   private playerFirstAidBagSetup = false;                  // 鞄スプライトのテクスチャ/親子付け済みか
   private stageLightShaftGfx = new Graphics();
+  /** 晴れたステージ1の夜: 月明りの筋が地面に落ちる所(月明りの溜まり)。worldGroup の地面の直上・雲の影の下(加算)。
+   *  ローカル座標=画面座標(worldGroup の拡大と位置を打ち消す)=画面に固定の筋とズームしてもずれない。筋/地面の上端が変わった時だけ描き直す。 */
+  private s1nMoonPoolGfx = new Graphics();
+  private moonPoolPolysDrawn: ShaftPoly[] | null = null;
+  private moonPoolTopDrawn = NaN;
+  private moonPoolBottomDrawn = NaN;
   private vignette = new Sprite(getVignetteTexture());
   // 戦闘の手触り②(連続撃破の段): 段が上がった瞬間だけ画面端が血の色に染まる(pooled sprite 1枚・プロパティ更新のみ)。
   private killChainEdge = new Sprite(getEdgeGlowTexture());
@@ -5915,7 +5922,8 @@ export class PixiScene {
     // 「m7の雲地面の影見当たらない」)。通常合成の時は形をαに持つ専用テクスチャを張る。
     const shapeAlpha = this.currentFarKey === 'stage7';
     const wetShadow = !shapeAlpha && this.wetLightMix > 0; // 雨上がり(?weather=wet)の間だけ濃い藍の雲影(それ以外は従来のテクスチャ)
-    const tex = shapeAlpha ? getCloudShadowShapeTexture() : getCloudShadowTexture(night, wetShadow);
+    const moonShadow = !shapeAlpha && !wetShadow && this.s1nMix > 0; // 晴れたステージ1の夜だけ深い青の濃い雲影(効き具合0=従来のテクスチャ)
+    const tex = shapeAlpha ? getCloudShadowShapeTexture() : getCloudShadowTexture(night, wetShadow, moonShadow);
     if (sp.texture !== tex) sp.texture = tex;
     const farH = this.farBackdropHeight();
     const overW = this.screenW * ZOOM_OVERSCAN;
@@ -5942,8 +5950,8 @@ export class PixiScene {
       // 濃さ=α×(斑の暗さ)。雨上がり用テクスチャは暗さが CLOUD_SHADOW_WET_GAIN 倍なので α を割って、濃さが倍率どおり連続に寄るようにする。
       // 倍率は雨の強さに沿う(止みかけ 1.35 → 本降り 1.8・社長指示2026-11-21「雨量に合わせて1.8まで」)。
       const wm = wetLightMult(this.wetLightMix, wetCloudShadowMult(this.weatherWet?.rainIntensity.rain ?? RAIN_INTENSITY_LOW_MAX));
-      // 通常のステージ1の森の夜も少しだけ濃く(S1N_CLOUD_SHADOW_MULT・効き具合0=他ステージは厳密に1)。
-      sp.alpha = wetShadow ? Math.min(1, base * wm / CLOUD_SHADOW_WET_GAIN) : Math.min(1, base * wetLightMult(this.s1nMix, S1N_CLOUD_SHADOW_MULT));
+      // 通常のステージ1の森の夜は濃く(s1nCloudShadowAlpha・暗い絵の倍率で割る・効き具合0=他ステージは厳密に base)。
+      sp.alpha = wetShadow ? Math.min(1, base * wm / CLOUD_SHADOW_WET_GAIN) : moonShadow ? s1nCloudShadowAlpha(base, this.s1nMix) : Math.min(1, base);
     }
     const spd = tsNum('cloudshadowspeed', night ? 0.008 : 0.011); // もう少し速く(社長指示v0.25.1977)。夜=ゆっくりめ / 昼=標準
     // ステージ4(雪)は雲影のドリフト向きを雪と同じ(=現状の逆)にし、少し速く(社長指示v0.25.1984)。
@@ -6803,6 +6811,11 @@ export class PixiScene {
     this.cloudShadow.eventMode = 'none';
     this.cloudShadow.visible = false;
     this.L.worldGroup.addChildAt(this.cloudShadow, this.L.worldGroup.getChildIndex(this.L.groundBase) + 1);
+    // 月明りの溜まり(晴れたステージ1の夜だけ)。雲の影の下=雲が掛かった所では溜まりも沈む。
+    this.s1nMoonPoolGfx.blendMode = 'add';
+    this.s1nMoonPoolGfx.eventMode = 'none';
+    this.s1nMoonPoolGfx.visible = false;
+    this.L.worldGroup.addChildAt(this.s1nMoonPoolGfx, this.L.worldGroup.getChildIndex(this.cloudShadow));
 
     // --- スモッグ。奥/森下(やまぎり)/森上 の3層を各1枚で揺らす ---
     // 奥=world内 actorLayer直前(キャラの後ろ)。森下=stageのfrontForest直前(=森の後ろ。森が手前で隠す)。森上=uiLayer最前面。
@@ -7325,6 +7338,32 @@ export class PixiScene {
     this.labPitchShaftGfx.position.set(px, 0); // 研究所の闇を削る絵も同じ横の流れ(同じフレームの値)
     this.stageLightShaftGfx.alpha =
       (1 + Math.sin(now / STAGE_LIGHT_SHAFT_PULSE_MS * Math.PI * 2) * STAGE_LIGHT_SHAFT_PULSE_AMOUNT) * this.labShaftMul;
+    this.syncMoonPool(px);
+  }
+
+  /** 晴れたステージ1の夜の月明りの溜まり(地面)。筋と同じ横の流れ・同じ脈動。効き具合0/他ステージでは非表示のまま1判定で終わる。 */
+  private syncMoonPool(px: number) {
+    const gp = this.s1nMoonPoolGfx;
+    const shaft = this.stageLightShaftGfx;
+    const on = S1N_POOL_ON && this.s1nMix > 0 && !this.daylight && shaft.visible && !!shaft.parent && this.shaftPolys.length > 0 && this.cloudShadow.visible;
+    if (!on) { if (gp.visible) gp.visible = false; return; }
+    const wg = this.L.worldGroup;
+    const zx = wg.scale.x || 1, zy = wg.scale.y || 1;
+    const topY = wg.position.y + this.farBackdropHeight() * zy; // 地面の上端(画面)=雲の影と同じ farH
+    const bottomY = this.screenH;
+    if (this.moonPoolPolysDrawn !== this.shaftPolys || Math.abs(topY - this.moonPoolTopDrawn) > 1 || bottomY !== this.moonPoolBottomDrawn) {
+      this.moonPoolPolysDrawn = this.shaftPolys;
+      this.moonPoolTopDrawn = topY;
+      this.moonPoolBottomDrawn = bottomY;
+      gp.clear();
+      for (const q of this.shaftPolys) {
+        for (const pc of moonPoolPieces(q, topY, bottomY)) gp.poly(pc.pts).fill({ color: S1N_MOON_POOL_COLOR, alpha: pc.a });
+      }
+    }
+    gp.visible = true;
+    gp.scale.set(1 / zx, 1 / zy);
+    gp.position.set((px - wg.position.x) / zx, -wg.position.y / zy);
+    gp.alpha = S1N_MOON_POOL_ALPHA * easeInOutSine(this.s1nMix) * Math.max(0, shaft.alpha);
   }
 
   private farBackdropHeight() {
@@ -43820,6 +43859,7 @@ export class PixiScene {
     this.nearHorizonBlur?.destroy();
     this.nearHorizonBlur = null;
     this.stageLightShaftGfx.destroy();
+    this.s1nMoonPoolGfx.destroy();
     this.L.filteredWorld.mask = null;
     this.worldFadeMask.destroy();
     this.worldFadeMaskTexture?.destroy(true);

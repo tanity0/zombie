@@ -16,6 +16,7 @@ import {
   wetNightGradeAlpha, wetNightEnvTint, WET_NIGHT_GRADE_ALPHA_MUL, WET_NIGHT_ENV_MUL,
   stage1NightActive, stage1NightTintMul, buildStage1NightGradeMatrix, buildStage1NightSkyMatrix, S1N_NIGHT_GRADE_ALPHA_MUL, S1N_FOG_TINT_MUL, S1N_MOON_HALO_ALPHA_MUL, S1N_MOON_GLOW_ALPHA_MUL,
   S1N_CLOUD_SHADOW_MULT, S1N_MOON_SHAFT_MULT, S1N_TORCH_BACK_ALPHA, TORCH_BACK_ALPHA,
+  s1nCloudShadowAlpha, S1N_CLOUD_SHADOW_TEX_GAIN, moonPoolPieces, S1N_MOON_POOL_LAYERS, S1N_MOON_POOL_ALPHA, type ShaftPoly,
 } from './weatherWet';
 
 describe('weatherWet(雨上がりの決めごと)', () => {
@@ -488,5 +489,45 @@ describe('晴れた夜のステージ1の森(雨上がりの仕組みを流用�
       prev = k;
     }
     expect(prev).toBeCloseTo(S1N_FOG_TINT_MUL.r, 6);
+  });
+});
+
+describe('晴れた夜のステージ1の森: 月明りの地面(照らされた所は明るく・雲の影は濃く)', () => {
+  it('雲の影: 効き具合0では厳密に従来の濃さ・効いた時は従来(α上限1)より濃い', () => {
+    for (const b of [0.3, 0.7, 1]) expect(s1nCloudShadowAlpha(b, 0)).toBe(b);
+    const base = 0.7;
+    // 濃さ=α×絵の暗さの倍率。従来は α=min(1, base×旧1.45)×1
+    expect(s1nCloudShadowAlpha(base, 1) * S1N_CLOUD_SHADOW_TEX_GAIN).toBeGreaterThan(Math.min(1, base * 1.45) * 1.2);
+    expect(s1nCloudShadowAlpha(base, 1)).toBeLessThanOrEqual(1);
+  });
+  it('雲の影: 入る間は滑らか(1フレームで跳ばない)', () => {
+    let mix = 0, prev = s1nCloudShadowAlpha(0.7, 0.0001) * S1N_CLOUD_SHADOW_TEX_GAIN;
+    for (let t = 0; t < WET_LIGHT_FADE_MS + 100; t += 16) {
+      mix = stepWetLightMix(mix, true, 16);
+      const d = s1nCloudShadowAlpha(0.7, Math.max(mix, 0.0001)) * S1N_CLOUD_SHADOW_TEX_GAIN;
+      expect(Math.abs(d - prev)).toBeLessThan(0.02);
+      prev = d;
+    }
+  });
+  const q: ShaftPoly = { x1: 0, y1: -100, x2: -800, y2: 1100, w: 120, a: 1 };
+  it('月明りの溜まり: 地面の上端より上には描かない・筋の下端/画面の下端で止まる', () => {
+    const pcs = moonPoolPieces(q, 300, 900);
+    expect(pcs.length).toBeGreaterThan(0);
+    for (const p of pcs) {
+      for (let i = 1; i < 8; i += 2) { expect(p.pts[i]).toBeGreaterThanOrEqual(300); expect(p.pts[i]).toBeLessThanOrEqual(900); }
+      expect(p.a).toBeGreaterThan(0);
+      expect(p.a).toBeLessThanOrEqual(1);
+    }
+    expect(moonPoolPieces(q, 1200, 1400)).toEqual([]);
+    expect(moonPoolPieces({ ...q, y2: q.y1 }, 300, 900)).toEqual([]);
+  });
+  it('月明りの溜まり: 地平の際から立ち上がり(上端の帯ほど薄い)・芯の重ねは足して1・濃さの比が効く', () => {
+    const pcs = moonPoolPieces(q, 300, 900);
+    const core = pcs.slice(-pcs.length / S1N_MOON_POOL_LAYERS.length);
+    for (let i = 1; i < core.length; i++) expect(core[i].a).toBeGreaterThanOrEqual(core[i - 1].a);
+    expect(S1N_MOON_POOL_LAYERS.reduce((a, [, w]) => a + w, 0)).toBeCloseTo(1, 6);
+    const half = moonPoolPieces({ ...q, a: 0.5 }, 300, 900);
+    expect(half[half.length - 1].a).toBeCloseTo(pcs[pcs.length - 1].a * 0.5, 6);
+    expect(S1N_MOON_POOL_ALPHA).toBeGreaterThan(0);
   });
 });

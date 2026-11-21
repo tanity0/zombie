@@ -889,6 +889,30 @@ export const beginWeaponReload = (
   return { reloadingWeaponId: w.id, reloadEndsAt: now + effectiveReloadMs(w, p) };
 };
 
+/**
+ * リロードの「歩き/立ち止まり」補正(社長指示2026-11-21「歩いていると通常の1.2倍遅く、立ち止まると通常の1.2倍早く」)。
+ * 歩いている間は通常の1.2倍の時間、立ち止まっている間は通常の1/1.2の時間で終わる。途中で歩き出す/止まると、その瞬間から残りが変わる。
+ * プレイヤー本人だけ(守護霊/ゴーストは beginWeaponReload の素の時間のまま)。
+ */
+export const RELOAD_MOVE_TIME_MULT = 1.2;
+
+/** リロードの進む速さ(通常=1)。歩いている=1/1.2(遅い)、立ち止まっている=1.2(早い)。 */
+export const reloadRateFor = (moving: boolean): number =>
+  moving ? 1 / RELOAD_MOVE_TIME_MULT : RELOAD_MOVE_TIME_MULT;
+
+/**
+ * 1フレームぶん、リロードの終了時刻を進む速さに合わせてずらす純関数。
+ * reloadEndsAt は実時間(Date.now)の締切で、何もしなければ実時間1msで残り1msが減る(=速さ1)。
+ * 実時間 dtMs のあいだに残りを dtMs×rate 減らしたいので、締切を dtMs×(1−rate) だけ後ろへずらす
+ * (rate<1 なら後ろ=遅く、rate>1 なら前=早く)。前へずらす時は now より前へは行かない(=その場で終わる)。
+ * 終了済み・未リロード(endsAt<=now)・dt<=0・rate=1 はそのまま返す(ずれが溜まらない)。
+ * 進捗バー(1 − (endsAt−now)/通常の総時間)は「通常の時間で何ms分進んだか」になり、速さが変わっても逆戻りしない。
+ */
+export const advanceReloadEnd = (endsAt: number, now: number, dtMs: number, rate: number): number => {
+  if (!(endsAt > now) || !(dtMs > 0) || rate === 1 || !Number.isFinite(rate) || rate < 0) return endsAt;
+  return Math.max(now, endsAt + dtMs * (1 - rate));
+};
+
 /** 終了したリロードを解決する純関数。まだ途中/対象銃違いならnull。 */
 export const finishWeaponReload = (
   w: Weapon,
