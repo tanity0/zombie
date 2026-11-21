@@ -76,8 +76,8 @@ const SKY_ALPHA = 0.1; // 平らな青の塗りに見せない(旧 0.22・その
 const LIGHT_REACH = 300;
 const LIGHT_GAIN = 0.75;
 /** キャラの逆さの映り。 */
-const REFL_TINT = 0xa4bad6;
-const REFL_ALPHA = 0.68; // 社長指示2026-11-21「ほんの少しだけ上げて」(0.55→0.68・WATER_FADE は据え置き=実効 約0.39→約0.48)
+const REFL_TINT = 0xc0d0e6; // 社長指示2026-11-21「水たまりに映る姿、もう少しハッキリ」で明るく(旧 0xa4bad6=沈んで輪郭が読みにくい)
+const REFL_ALPHA = 0.9; // 同上(0.68→0.9・WATER_FADE は据え置き=実効 約0.48→約0.63)。その前 0.55→0.68「ほんの少しだけ上げて」
 const REFL_PER_SLOT = 3;
 /** 小物の色(地面の色に寄せて沈める)。 */
 const DEBRIS_DIM = { r: 0.62, g: 0.64, b: 0.7 };

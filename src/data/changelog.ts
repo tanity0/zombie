@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5724', items: ['水たまりに映る人影がはっきり見える'] },
   { version: '0.25.5723', items: ['出撃の時にくぐり抜ける岩や枝が、左右の絵を交互に入れ替えて流れ、同じ形が続かなくなった'] },
   { version: '0.25.5722', items: ['スマホの縦画面で、左右の端から覗く枝や岩をもう少し大きく見せた'] },
   { version: '0.25.5721', items: ['訓練の洞窟も、画面の左右に鍾乳石の垂れた岩壁が重なる'] },
