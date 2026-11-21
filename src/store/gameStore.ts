@@ -7296,7 +7296,7 @@ const spawnDeathPop = (get: () => GameState, ex: number, ey: number, fromX: numb
 // 量は大きさで出す(粒の数は固定=重さは敵の大きさに依らない・pixi/bloodBurst.ts)。同時に出ている破裂は上限まで(爆弾で一斉に倒れた時の暴発止め)。
 const BLOOD_BURST_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('bloodburst') !== '0';
 const BLOOD_BURST_MAX_ALIVE = 14;
-const BLOOD_BURST_MS = 5600; // 床の血は4〜6秒残る(乾いて暗くなってから消える)
+const BLOOD_BURST_MS = 3600; // 床の血は2.4〜4秒残る(乾いて暗くなってから消える)。社長指示2026-11-21「地面に残る血、もう少し早くフェードアウト」で 5600 から
 /** 破裂の大きさ(ゾンビ=1・当たり判定の幅×高さの平方根に比例・0.75〜4)。 */
 export const bloodBurstScale = (w: number, h: number): number => Math.max(0.75, Math.min(4, Math.sqrt(Math.max(0, w) * Math.max(0, h)) / 36));
 const spawnBloodBurst = (get: () => GameState, enemy: Enemy, fromX: number, fromY: number, melee: boolean): void => {
