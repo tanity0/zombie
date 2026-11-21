@@ -474,8 +474,9 @@ import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/f
 import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight, type WetTree } from './weatherWet';
 import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR, stage1NightActive, s1nCloudShadowAlpha, S1N_MOON_SHAFT_MULT, S1N_MOON_SHAFT_COLOR, S1N_NIGHT_GRADE_ALPHA_MUL, S1N_MOON_POOL_ALPHA, S1N_MOON_POOL_COLOR, moonPoolPieces } from '../utils/weatherWet';
 import { Stage1NightLayer } from './stage1Night';
-import { Stage5BattleLayer } from './stage5Battlefield';
-import { stage5BattleActive, stage5EmberSize } from '../utils/stage5Battlefield';
+import { Stage5BattleLayer, type BurningWreckView, type FlamePainter } from './stage5Battlefield';
+import { stage5BattleActive, stage5EmberSize, S5B_WRECK_MAX } from '../utils/stage5Battlefield';
+import { burningWrecksInRegion } from '../world/burningWrecks';
 import {
   fireflyBlink, fireflyActiveFrac, fireflyHeading, fireflyScatterAcc, FIREFLY_CYAN_FRAC, FIREFLY_WARM_TINT, FIREFLY_CYAN_TINT,
   FIREFLY_CORE_PX, FIREFLY_HALO_MUL, FIREFLY_HALO_ALPHA, FIREFLY_SPEED_MIN, FIREFLY_SPEED_MAX, FIREFLY_STEER,
@@ -773,6 +774,7 @@ const S5B_ON = tsNum('s5b', 1) > 0; // ?s5b=0 でステージ5(戦場)の光・�
 const S5B_GRADE_ON = tsNum('s5bgrade', 1) > 0; // ?s5bgrade=0 で世界の色行列だけ外す(見比べ用)
 const S5B_ATMO_ON = tsNum('s5batmo', 1) > 0; // ?s5batmo=0 で空の色行列と煙/近景の色だけ外す(見比べ用)
 const S5B_POOL_ON = tsNum('s5bpool', 1) > 0; // ?s5bpool=0 で火の溜まりだけ外す(見比べ用)
+const S5B_WRECK_ON = tsNum('s5bwreck', 1) > 0; // ?s5bwreck=0 で燃える残骸だけ外す(見比べ用)
 const S1N_POOL_ON = tsNum('s1npool', 1) > 0; // ?s1npool=0 で月明りの溜まり(地面)だけ外す(見比べ用)
 const MOON_SHAFT_ON = tsNum('moonshaft', 1) > 0; // ?moonshaft=0 でステージ1の森の夜も従来の台形の筋のまま(見比べ用)
 const POI_TOUCH_FREEZE_MS = tsNum('poitouchfreeze', -1); // 触れた瞬間の絵の撮影用(負=無効)
@@ -13177,7 +13179,7 @@ export class PixiScene {
     const dt = this.s5bLastNow > 0 ? Math.min(100, Math.max(0, now - this.s5bLastNow)) : 0;
     this.s5bLastNow = now;
     this.s5bMix = stepWetLightMix(this.s5bMix, active, dt);
-    if (!this.stage5Battle) this.stage5Battle = new Stage5BattleLayer(this.L.groundLayer);
+    if (!this.stage5Battle) this.stage5Battle = new Stage5BattleLayer(this.L.groundLayer, this.L.actorLayer);
     const mix = this.s5bMix;
     const gradeOn = mix > 0 && S5B_GRADE_ON;
     if (gradeOn) this.stage5Battle.setGrade(mix);
@@ -13189,8 +13191,12 @@ export class PixiScene {
         if (r.visible && r.alpha > 0.01) lights.push({ id, x: r.x, y: r.y, color: Number(r.tint), strength: Math.min(1, r.alpha / 0.24) });
       }
     }
+    // 燃える残骸(world/burningWrecks.ts が選ぶ・描くのは stage5Battlefield.ts)。足元の火の溜まりも同じ溜まりの絵で落とす。
+    const view = this.visibleWorldRect();
+    const wrecks = mix > 0 && S5B_WRECK_ON ? this.stage5WreckViews(s.farBackdrop, view) : [];
+    for (const l of this.stage5Battle.syncBurningWrecks(wrecks, mix, now, this.stage5FlamePainter())) if (S5B_POOL_ON) lights.push(l);
     this.stage5Battle.syncFirePools({
-      view: this.visibleWorldRect(), lights, depthScale: y => this.depthScale(y), horizonAlpha: y => this.horizonActorAlpha(y),
+      view, lights, depthScale: y => this.depthScale(y), horizonAlpha: y => this.horizonActorAlpha(y),
     }, mix);
     this.stage5Battle.syncSky(this.farGroup, S5B_ATMO_ON ? mix : 0); // 焦げた赤黒い空(遠景の箱に色行列1枚・効いている間だけ)
     if (mix <= 0 || !S5B_ATMO_ON) return;
@@ -13199,6 +13205,37 @@ export class PixiScene {
       front: [this.L.frontForest, this.frontRidgeCopy, ...this.zoomClouds],
       nightGrade: this.cineEnabled ? null : this.gradeSprite,
     }, mix);
+  }
+
+  /** 画面に映る燃える残骸(画面の中心に近い順に S5B_WRECK_MAX まで)。濃さは置物の絵の今の濃さに揃える。 */
+  private stage5WreckViews(farKey: string, v: { left: number; right: number; top: number; bottom: number }): BurningWreckView[] {
+    const found = burningWrecksInRegion(farKey, v.left - 80, v.top - 40, v.right + 80, v.bottom + 140);
+    if (found.length === 0) return [];
+    const mx = (v.left + v.right) / 2, my = (v.top + v.bottom) / 2;
+    const out: (BurningWreckView & { dist: number })[] = [];
+    for (const w of found) {
+      const sp = this.cityPropObjs.get(w.id)?.sprite;
+      if (!sp || sp.destroyed) continue; // 置物の絵がまだ無い/もう無い=炎も出さない
+      out.push({
+        id: w.id, footX: w.footX, footY: w.footY, artW: w.art.width, artH: w.art.height, seed: w.seed,
+        d: this.depthScale(w.footY), alpha: sp.alpha, dist: Math.hypot(w.footX - mx, w.footY - my),
+      });
+    }
+    out.sort((a, b) => a.dist - b.dist);
+    if (out.length > S5B_WRECK_MAX) out.length = S5B_WRECK_MAX;
+    return out;
+  }
+  private s5bPainter: FlamePainter | null = null;
+  private stage5FlamePainter(): FlamePainter {
+    const p = this.s5bPainter ??= {
+      frames: null,
+      place: (sp, frames, x, baseY, height, now, seed) => this.placeFlame(sp, frames, x, baseY, height, now, seed),
+      embers: (g, x, y, r, seedX, seedY, now, alpha) => this.drawFlameEmbers(g, x, y, r, seedX, seedY, now, alpha),
+      smoke: null,
+    };
+    p.frames = this.flameFrames();
+    p.smoke = getTexture('vfx/smoke_08');
+    return p;
   }
 
   /** 世界の点 (x, y) に落ちている月明りの筋の量(0..1・筋の脈動込み)。筋が無い/見えない時は 0。 */

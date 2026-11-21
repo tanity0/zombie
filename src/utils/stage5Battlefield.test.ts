@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   stage5BattleActive, buildStage5GradeMatrix, buildStage5SkyMatrix, stage5TintMul, stage5EmberSize,
   S5B_FOG_TINT_MUL, S5B_FRONT_TINT_MUL, S5B_FIRE_POOLS, S5B_EMBER_SIZE_MUL, type Stage5BattleCtx,
+  burningWreckFlames, burningWreckSmoke, burningWreckFlicker, S5B_WRECK_MAX,
 } from './stage5Battlefield';
 import { applyColorMatrix, stage1NightActive } from './weatherWet';
 
@@ -67,6 +68,16 @@ describe('ステージ5(戦場)の光・色・コントラスト: 狙いどお�
     const hi = lum(applyColorMatrix(g, 0.5, 0.5, 0.5)), lo = lum(applyColorMatrix(g, 0.1, 0.1, 0.1));
     expect(hi - lo).toBeGreaterThan(0.4 * 1.2);
   });
+  it('松明の光ほどの明るい暖色は黄白へ飛ばない(緑が天井へ届かない=橙のまま)', () => {
+    const [r, gg, b] = applyColorMatrix(g, 0.9, 0.62, 0.3);
+    expect(r).toBeGreaterThan(gg);
+    expect(gg).toBeLessThan(0.95);
+    expect(b).toBeLessThan(0.5);
+  });
+  it('淡い青(主人公の髪)は赤に塗り替えられない(青が赤以上のまま)', () => {
+    const [r, , b] = applyColorMatrix(g, 0.68, 0.75, 0.87);
+    expect(b).toBeGreaterThanOrEqual(r);
+  });
   it('空は赤が立ち、青と緑は沈む(焦げた赤黒い空)', () => {
     const [r, gg, b] = applyColorMatrix(buildStage5SkyMatrix(1), 0.4, 0.4, 0.4);
     expect(r).toBeGreaterThan(0.4);
@@ -95,9 +106,57 @@ describe('ステージ5(戦場): 火の溜まり・火の粉', () => {
       expect(p.tintMix).toBeLessThanOrEqual(1);
     }
   });
+  it('火の溜まりは控えめ(2枚の濃さの和が 0.6 以下=松明の光に重なって白く飛ばない)', () => {
+    expect(S5B_FIRE_POOLS.reduce((a, p) => a + p.alpha, 0)).toBeLessThanOrEqual(0.6);
+  });
   it('火の粉は奥ほど小さく手前ほど大きい(遠近)', () => {
     expect(stage5EmberSize(8, 0.55)).toBeLessThan(stage5EmberSize(8, 1));
     expect(stage5EmberSize(8, 1.85)).toBeGreaterThan(stage5EmberSize(8, 1));
     expect(stage5EmberSize(8, 1)).toBeCloseTo(8 * S5B_EMBER_SIZE_MUL);
+  });
+});
+
+describe('燃える残骸の炎・煙(見た目の数)', () => {
+  it('絵が広いほど炎が増え(1〜3本)、どれも絵の幅の中・足元より上に根元がある', () => {
+    expect(burningWreckFlames(40, 36, 0.3, 0).length).toBe(1);
+    expect(burningWreckFlames(80, 60, 0.3, 0).length).toBe(2);
+    expect(burningWreckFlames(140, 84, 0.3, 0).length).toBe(3);
+    for (const seed of [0, 0.17, 0.5, 0.93]) {
+      for (const [w, h] of [[40, 36], [80, 60], [140, 84], [200, 100]]) {
+        for (const now of [0, 1234, 98765]) {
+          for (const f of burningWreckFlames(w, h, seed, now)) {
+            expect(Math.abs(f.dx)).toBeLessThanOrEqual(w / 2);
+            expect(f.base).toBeGreaterThan(0);
+            expect(f.base).toBeLessThan(h);
+            expect(f.h).toBeGreaterThan(0);
+            expect(f.h).toBeLessThan(160);
+          }
+        }
+      }
+    }
+  });
+  it('同じ種・同じ時刻なら同じ形(決定的)', () => {
+    expect(burningWreckFlames(120, 80, 0.42, 5000)).toEqual(burningWreckFlames(120, 80, 0.42, 5000));
+  });
+  it('煙は昇りながら広がり、生まれる/消える瞬間は透明(パッと出ない)', () => {
+    let prevRise = -1;
+    for (let now = 0; now < 3000; now += 100) {
+      const sm = burningWreckSmoke(100, 0, 0, now);
+      expect(sm.alpha).toBeGreaterThanOrEqual(0);
+      expect(sm.alpha).toBeLessThanOrEqual(0.5);
+      if (now > 0 && sm.rise > prevRise) expect(sm.size).toBeGreaterThan(burningWreckSmoke(100, 0, 0, now - 100).size);
+      prevRise = sm.rise;
+    }
+    const start = burningWreckSmoke(100, 0, 0, 0);
+    expect(start.alpha).toBeLessThan(0.01);
+  });
+  it('揺らぎは0.8〜1.1の範囲・上限は有限', () => {
+    for (let now = 0; now < 5000; now += 37) {
+      const f = burningWreckFlicker(now, 0.6);
+      expect(f).toBeGreaterThan(0.8);
+      expect(f).toBeLessThan(1.1);
+    }
+    expect(S5B_WRECK_MAX).toBeGreaterThan(0);
+    expect(S5B_WRECK_MAX).toBeLessThanOrEqual(16);
   });
 });
