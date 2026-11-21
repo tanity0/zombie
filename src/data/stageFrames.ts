@@ -16,6 +16,8 @@ export const STAGE_FRAMES: Readonly<Record<string, Readonly<Partial<Record<Stage
   // ステージ1 狂い咲きの森: 左=鍾乳石の垂れた岩と苔・つる(社長支給2026-11-21・228×512・試作)。
   // 右=岩の割れ目と垂れる鍾乳石・下に苔と草(社長支給2026-11-21・268×488)。
   'stage-1': { left: 'frames/stage1-left', right: 'frames/stage1-right' },
+  // ステージ2 研究所跡: 左=苔と蔦の絡む岩壁と緑の光、右=蔦の絡む崩れた柱(社長支給2026-11-21・59×128 / 70×128)。
+  'stage-2': { left: 'frames/stage2-left', right: 'frames/stage2-right' },
 };
 
 /** そのステージの枠の絵の名前(左→右の順)。登録が無ければ空。 */

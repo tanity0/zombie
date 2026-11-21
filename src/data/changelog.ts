@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5713', items: ['ステージ2も、横長の画面の左右に手前の岩壁と蔦の柱が重なり、出撃の時にくぐり抜けていく'] },
   { version: '0.25.5712', items: ['出撃の時の岩と枝の流れが、終わり際に速度を落として静かに止む'] },
   { version: '0.25.5711', items: ['出撃の時の岩と枝は、出てすぐ濃く見え、左右へ開きながら薄れていく'] },
   { version: '0.25.5710', items: ['出撃の時の手前の岩と枝が、迫りながら左右へ開いていく'] },
