@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5720 — ステージ7の左右の枠【2026-11-21 23:46 JST】
+- 社長支給(ChatGPT生成)の 80×128(IMG_9449・不透明が左に多い=左)・67×128(IMG_9450=右)を `public/sprites/frames/stage7-{left,right}.png` に置き `stageFrames.ts` に1行。台帳・CREDITS 更新。これで枠はステージ1〜7(洞窟・EXは無し)。
+- 確認: 1280×720 で左右とも出てぼけていることを撮って目視(縦430×932も撮影)。typecheck・eslint・assets:check・vitest 全件(失敗0)。状態変化: なし。
+
 ## v0.25.5719 — 左右の枠をスマホ縦でも幅の1/3だけ映り込ませる【2026-11-21 23:40 JST】
 - 社長「全ステージの枠、左右、3分の1くらいはスマホの縦持ちでも映り込んでみていいかも。上下が少し映り込んでる感じになると思う」(=スマホ縦の見た目を変える明示の指示)。
 - `src/data/stageFrames.ts`: `stageFramesWanted` から横長の条件を外し、`stageFrameVisibleFrac(w,h)`(横長=1・縦=1/3=`STAGE_FRAME_PORTRAIT_VISIBLE_FRAC`)を追加。`src/pixi/stageFrameLayer.ts`: 縦は枠を外側へ押し出し、内側の1/3だけを画面に出す(内側は透明が多く、上下に垂れる枝・下の岩が端から覗く形)。`src/pixi/stageTextures.ts`: 枠の絵は枠のあるステージなら向きに関係なく出撃時に読む(回廊のステージ6も)。テスト更新。

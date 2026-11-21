@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5720', items: ['ステージ7も、画面の左右に焦げた枯れ木が重なり、出撃の時にくぐり抜けていく'] },
   { version: '0.25.5719', items: ['スマホの縦画面でも、画面の左右の端から手前の枝や岩が少し覗く'] },
   { version: '0.25.5718', items: ['ステージ6の洋館は、横長の画面の左右に重いカーテンが垂れる'] },
   { version: '0.25.5717', items: ['ステージ5も、横長の画面の左右に焼けた柵と崩れた鉄骨が重なり、出撃の時にくぐり抜けていく'] },

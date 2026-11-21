@@ -26,6 +26,8 @@ export const STAGE_FRAMES: Readonly<Record<string, Readonly<Partial<Record<Stage
   'stage-5': { left: 'frames/stage5-left', right: 'frames/stage5-right' },
   // ステージ6 古い洋館: 左右とも、上から垂れる重いカーテン(左右で別の形)と燭台(社長支給2026-11-21)。
   'stage-6': { left: 'frames/stage6-left', right: 'frames/stage6-right' },
+  // ステージ7 逆探知地点: 左=垂れた枝の焦げた枯れ木と枯れ草、右=別形の枯れ木と灰の積もった根元(社長支給2026-11-21)。
+  'stage-7': { left: 'frames/stage7-left', right: 'frames/stage7-right' },
 };
 
 /** そのステージの枠の絵の名前(左→右の順)。登録が無ければ空。 */
