@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5706 — 横長画面のステージ1右枠【2026-11-21 18:43 JST】
+- 社長支給の右側の枠(ChatGPT生成・268×488・本物の透明)を `public/sprites/frames/stage1-right.png` に置き、`src/data/stageFrames.ts` の表に1行足しただけ(描画は v0.25.5705 の層が左右とも扱う)。台帳・CREDITS 更新。
+- 確認: 1280×720 で左右とも端に出てぼけていることを撮って目視。typecheck・eslint・stageFrames/sheetResidency テスト・assets:check・vitest 全件(別作業ツリー)。
+- 状態変化: なし(残り: 他ステージの枠は素材待ち)。
+
 ## v0.25.5705 — 全ステージの松明の裏の光・横長画面のステージ1左枠(試作)【2026-11-21 18:42 JST】
 - 松明の裏の光(社長「はい」=全ステージをステージ1と同じ奥に光を置く形へ): 新規 `src/utils/torchBackLight.ts`(ステージ別の表 `TORCH_BACK_STAGES`・ゲート)+テスト8件、`src/pixi/stageLook.ts` に `TorchBackLight`、`stage1Night.ts`/`stage5Battlefield.ts` を共通化、pixiScene `syncTorchBack`。ステージ3(昼・ほのか α0.2)/4(焚き火 外0.36・芯0.28)/7(琥珀 0.36)を追加、ステージ5は火の溜まりの up を 6→50/2→22(奥へ)。ステージ1は値・見た目とも不変(テストで固定)。松明の無いステージ(洞窟・2・6・EX1)は何もしない。`?torchback=0` で比較。負荷1/10。
 - 横長画面の左右の枠(research/STAGE_FRAMES.md・社長「取り急ぎ、ステージ1の左側の枠 ぼかして使ってみて」): 素材 `public/sprites/frames/stage1-left.png`(社長支給・ChatGPT生成・228×512・本物の透明を確認)。新規 `src/data/stageFrames.ts`(ステージ×左右の表と横長判定)+テスト、`src/pixi/stageFrameLayer.ts`(画面座標で端に固定・nearest拡大→ぼかしを1回焼く・出現は慣性フェード)。画面効果の層の中、周辺減光の下(被弾の光・画面外の矢印は隠さない)。ぼかし4(`?framesblur=` で比較。0=ドットのまま/8=形が溶ける)。遅延組 `frames:<stageId>`。スマホ縦は読み込みも描画もしない(テストで固定)。負荷1/10(毎フレームはスプライト1枚)。視差は未実装。

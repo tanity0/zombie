@@ -14,7 +14,8 @@ export type StageFrameSide = 'left' | 'right';
 /** ステージ → 左右の絵(スプライト名=`public/sprites/` からの相対・拡張子なし)。足す時はここに1行。 */
 export const STAGE_FRAMES: Readonly<Record<string, Readonly<Partial<Record<StageFrameSide, string>>>>> = {
   // ステージ1 狂い咲きの森: 左=鍾乳石の垂れた岩と苔・つる(社長支給2026-11-21・228×512・試作)。
-  'stage-1': { left: 'frames/stage1-left' },
+  // 右=岩の割れ目と垂れる鍾乳石・下に苔と草(社長支給2026-11-21・268×488)。
+  'stage-1': { left: 'frames/stage1-left', right: 'frames/stage1-right' },
 };
 
 /** そのステージの枠の絵の名前(左→右の順)。登録が無ければ空。 */
