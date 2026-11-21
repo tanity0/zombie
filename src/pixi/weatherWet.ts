@@ -301,6 +301,9 @@ interface RainDrop { sp: Sprite; at: number; x: number; y: number; spec: RainDro
 interface TorchStreak { id: string; main: Sprite; gloss: Sprite; dashes: Sprite[]; a: number; seed: number; seen: boolean }
 interface LandCopy { src: Sprite | TilingSprite; wrap: Container; sp: Sprite | TilingSprite }
 
+/** 葉先の雫の大きさ(芯と照りに掛ける)。悪目立ちしないよう半分に(社長指示2026-11-21)。 */
+const DRIP_SIZE_MUL = 0.5;
+
 export class WeatherWetLayer {
   readonly gradeFilter: ColorMatrixFilter;
   private skyFilter: ColorMatrixFilter;
@@ -1076,7 +1079,7 @@ export class WeatherWetLayer {
         this.spawnRipple(d.spec.x, d.spec.y, !!pv, pv ? 0.6 : 0.5, now);
         continue;
       }
-      const s = d.s;
+      const s = d.s * DRIP_SIZE_MUL; // 社長指示2026-11-21「滴る水が悪目立ち」→「小さくして」(明るさは保つ)
       const ha = h.horizonAlpha(d.spec.y);
       const y = d.spec.y - pose.h;
       d.sp.visible = true;
