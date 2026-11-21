@@ -33,8 +33,11 @@ import {
   buildWetGradeMatrix, WET_FOG_ALPHA_MUL, WET_FOG_TINT_MUL, WET_FRONT_TINT_MUL,
   WET_MOON_GLOW_ALPHA_MUL, WET_MOON_GLOW_SCALE_MUL, WET_MOON_HALO_ALPHA_MUL, WET_MOON_HALO_SCALE_MUL,
   TORCH_STREAK_LEN, TORCH_STREAK_W, TORCH_STREAK_ALPHA, TORCH_STREAK_TOP, TORCH_STREAK_DASHES,
-  TORCH_STREAK_DASH_W, TORCH_STREAK_DASH_ALPHA, TORCH_STREAK_EASE, torchStreakDash,
+  TORCH_STREAK_DASH_W, TORCH_STREAK_DASH_H, TORCH_STREAK_DASH_ALPHA, TORCH_STREAK_EASE, torchStreakDash,
+  DRIP_EVERY_MS, DRIP_MAX, DRIP_LAG_TAU_MS, makeRainSchedule, advanceRainSchedule, followLag, type RainSchedule,
   leafDripSpec, leafDripPose, type LeafDripSpec,
+  WET_GLOSS_ALPHA, WET_GLOSS_TINT, WET_GLOSS_TILE_WORLD, WET_GLOSS_SHAFT_GAIN,
+  WET_GLOSS_TORCH_W, WET_GLOSS_TORCH_H, WET_GLOSS_TORCH_ALPHA, wetGlossDrift, MOON_RIM_EASE,
 } from '../utils/weatherWet';
 
 // ---- 叩き台の値(設計書 §0-1「数値は叩き台」) ----
@@ -42,25 +45,25 @@ import {
 const WATER_FIT_X = 0.8;
 const WATER_FIT_Y = 0.72;
 /** 水面の色(乗算)と濃さ。空を映した冷たい色。 */
-const WATER_TINT = 0x7d88c4; // 参考画に寄せて藍へ(旧 0x9fb6d4)
+const WATER_TINT = 0x45465a; // 彩度を落として暗く=地面に沈める(旧 0x7d88c4・その前 0x9fb6d4)
 const WATER_ALPHA = 0.9;
 /** 水面と、その上に重ねる映り(空・松明のにじみ・キャラの逆さの映り・光の筋・光の線)の濃さの一律の掛け率。
  *  社長指示2026-11-20「少し薄く」=70%(地面に沈める。縁つきの水たまりの絵と小物はそのまま)。 */
 const WATER_FADE = 0.7;
 /** 風景の映り(遠景の上下反転)の濃さと色(冷たく少し沈める)。濃さは WATER_FADE も掛かる。 */
-const LAND_ALPHA = 1.3; // 参考画に寄せて鏡らしく濃く(旧 0.75・WATER_FADE 込みで 0.91)
-const LAND_TINT = 0xdcd2f2; // 藍の夜空(旧 0xb4c4dc)
+const LAND_ALPHA = 1.0; // 鏡らしさは残して少し沈める(旧 1.3・その前 0.75)
+const LAND_TINT = 0xb2a8a4; // 夜空の色は映りの中身に任せ、乗せる色は彩度を落とす(旧 0xdcd2f2・その前 0xb4c4dc)
 /** 遠景の帯を焼く大きさ(論理px・解像度1)。小さく焼いて引き伸ばす=水面の映りらしく柔らかい(遠景のボケとも揃う)。 */
 const LAND_RT_W = 320;
 const LAND_RT_H = 192;
 /** 夜の暗さ(envTint)をどこまで映りに掛けるか(1=地面と同じ暗さ・大きいほど明るく残す)。 */
-const LAND_ENV_LIFT = 2.1; // 空と月を明るく映す(旧 1.6)
+const LAND_ENV_LIFT = 1.5; // 空と月は映すが、地面から浮かない明るさ(旧 2.1・その前 1.6)
 /** 型の焼きの大きさ(論理px・解像度1)。水たまりを囲む矩形をこの1枚へ縮めて焼く(縁がわずかに柔らかくなるだけ)。 */
 const LAND_MASK_RT_W = 256;
 const LAND_MASK_RT_H = 384;
 /** 空の映り(水面の形の加算)。光が無い所でもうっすら空が映る。 */
-const SKY_TINT = 0x3a4aa6; // 藍(旧 0x34507a)
-const SKY_ALPHA = 0.22; // 旧 0.16
+const SKY_TINT = 0x2a3160; // 彩度を落とした藍(旧 0x3a4aa6・その前 0x34507a)
+const SKY_ALPHA = 0.1; // 平らな青の塗りに見せない(旧 0.22・その前 0.16)
 /** 松明の光だまりが水たまりへにじむ距離(world px)と強さ。 */
 const LIGHT_REACH = 300;
 const LIGHT_GAIN = 0.75;
@@ -84,9 +87,7 @@ const RAIN_WIDTH = 1.1;
 const STEP_RIPPLE_MS = 260;
 const STEP_RIPPLE_DIST = 14;
 /** 霧の薄さ・藍寄せ、近景の森の色、月の暈とグローの倍率は utils/weatherWet.ts(参考画に寄せる)。 */
-/** 雫(葉先から垂れる)の同時上限・何msおきに1粒・芯の色・照りの色。 */
-const DRIP_EVERY_MS = 170;
-const DRIP_MAX = 18;
+/** 雫(葉先から垂れる)の芯の色・照りの色(間隔と同時上限は utils/weatherWet.ts)。 */
 const DRIP_TINT = 0xeef5ff;
 const DRIP_GLOW_TINT = 0xa9c4ff;
 /** 松明の光の映り(縦の筋)を同時に描く松明の上限(使い回し)。 */
@@ -124,6 +125,71 @@ const getRainStreakTexture = (): Texture => {
   }
   rainTex = Texture.from(c);
   return rainTex;
+};
+
+/**
+ * 濡れた地面の照りの絵(1回だけ焼く・素材ファイルではない): 横に伸びた柔らかい斑点を散らした 128px の継ぎ目なしの1枚。
+ * radial=true は中心から楕円に薄れる版(松明の足元に1枚置く)。乱数は固定の種=毎回同じ絵。
+ */
+const glossTex: { tile: Texture | null; pool: Texture | null } = { tile: null, pool: null };
+const getGlossTexture = (radial: boolean): Texture => {
+  const hit = radial ? glossTex.pool : glossTex.tile;
+  if (hit) return hit;
+  const W = 128, H = radial ? 64 : 128;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d')!;
+  let seed = radial ? 91 : 17;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const blob = (x: number, y: number, rx: number, ry: number, a: number) => {
+    ctx.save();
+    ctx.translate(x, y); ctx.scale(rx, ry);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+    g.addColorStop(0, `rgba(190,205,245,${a})`); // 大きい斑=月明りを拾う冷たい照り
+    g.addColorStop(0.5, `rgba(190,205,245,${a * 0.35})`);
+    g.addColorStop(1, 'rgba(190,205,245,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, 1, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  };
+  const n = radial ? 46 : 34;
+  for (let i = 0; i < n; i++) {
+    // 大きく淡い斑と、小さく強い照りの粒を混ぜる(全部同じ大きさにしない)。
+    const big = rnd() < 0.35;
+    const x = rnd() * W, y = rnd() * H;
+    const rx = big ? 10 + 16 * rnd() : 2 + 6 * rnd();
+    const ry = rx * (big ? 0.35 + 0.2 * rnd() : 0.25 + 0.2 * rnd()); // 横長=濡れた面の照り
+    const a = big ? 0.25 + 0.25 * rnd() : 0.5 + 0.5 * rnd();
+    if (radial) blob(x, y, rx, ry, a);
+    else for (const ox of [-W, 0, W]) for (const oy of [-H, 0, H]) blob(x + ox, y + oy, rx, ry, a); // 端で継ぎ目が出ない
+  }
+  // 細かい照りの粒(濡れた土・苔の先が拾う小さな光)。地面の細部として読ませる。1〜2px の角の立った点。
+  //   苔の先(黄緑)と濡れた小石(青白)の2色を混ぜる=参考画の地面の細かな粒。
+  const specks = radial ? 90 : 320;
+  for (let i = 0; i < specks; i++) {
+    const x = Math.floor(rnd() * W), y = Math.floor(rnd() * H);
+    const w = rnd() < 0.6 ? 1 : 2;
+    const moss = rnd() < 0.55;
+    const al = 0.35 + 0.65 * rnd() * rnd();
+    ctx.fillStyle = moss ? `rgba(196,214,110,${al})` : `rgba(176,196,246,${al})`;
+    ctx.fillRect(x, y, w, 1);
+  }
+  if (radial) {
+    // 中心から楕円に薄れる(端が四角く切れない)。
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.save();
+    ctx.translate(W / 2, H / 2); ctx.scale(W / 2, H / 2);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(0.45, 'rgba(0,0,0,0.6)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(-1, -1, 2, 2);
+    ctx.restore();
+  }
+  const t = Texture.from(c);
+  if (radial) glossTex.pool = t; else glossTex.tile = t;
+  return t;
 };
 
 export interface WetActor {
@@ -184,6 +250,10 @@ export interface WetHost {
   focusY: number;
   /** 水たまりに映す遠景(無ければ風景は映さない)。 */
   landscape?: WetLandscape;
+  /** 月明りの筋の今の明るさ(脈動込み・1 前後・筋が無い時は 0)。地面の照りの濃さへ移す。 */
+  shaftLevel?: number;
+  /** 世界の点に落ちている月明りの筋の量(0..1)。水たまりの縁と小物を月明りの絵へ寄せる。 */
+  moonAt?: (x: number, y: number) => number;
 }
 export interface WetAtmosphere {
   fog: readonly (Sprite | TilingSprite)[];
@@ -201,6 +271,11 @@ interface PuddleView {
   /** 風景の映りの型(水面と同じ形・同じ位置)。 */
   landMask: Sprite;
   debris: Sprite[];
+  /** 月明りの縁の絵(縁の絵の上に重ねて寄せる)・小物の月明りの絵。素材が届くまでは null。 */
+  groundMoon: Sprite | null;
+  debrisMoon: (Sprite | null)[];
+  /** 月明りの筋の中にいる量(0..1・慣性で寄せる)。 */
+  moonA: number;
   /** このフレームの見た目の倍率(遠近込み)。 */
   d: number;
   alpha: number;
@@ -223,7 +298,7 @@ interface Ripple { sp: Sprite; at: number; x: number; y: number; water: boolean;
 interface Drip { sp: Sprite; glow: Sprite; at: number; spec: LeafDripSpec; s: number; on: boolean }
 interface Glint { pid: string; at: number; dir: 1 | -1 }
 interface RainDrop { sp: Sprite; at: number; x: number; y: number; spec: RainDropSpec; on: boolean }
-interface TorchStreak { id: string; main: Sprite; dashes: Sprite[]; a: number; seed: number; seen: boolean }
+interface TorchStreak { id: string; main: Sprite; gloss: Sprite; dashes: Sprite[]; a: number; seed: number; seen: boolean }
 interface LandCopy { src: Sprite | TilingSprite; wrap: Container; sp: Sprite | TilingSprite }
 
 export class WeatherWetLayer {
@@ -258,10 +333,18 @@ export class WeatherWetLayer {
   /** 松明の光の映り(濡れた地面に縦に伸びる筋)。水たまりの上・キャラの下。 */
   private streakLayer = new Container();
   private streaks: TorchStreak[] = [];
+  /** 濡れた地面の照り(まだらの絵を地面いっぱいに1枚・加算)と、松明の足元の照りの層。水たまりより下。 */
+  private glossLayer = new Container();
+  private gloss: TilingSprite | null = null;
   /** 雨粒の線(アクターの上・被写界深度の外の層へ置く=キャラの手前も降る)。 */
   private rainLayer = new Container();
   private rain: RainDrop[] = [];
   private nextRainAt = 0;
+  /** 雨の強弱の時刻表(30秒〜1分おきに次の強さ)・今の強さ・それに遅れて付いてくる雫の強さ。 */
+  private rainSched: RainSchedule | null = null;
+  private rainLevel = 1;
+  private dripLevel = 1;
+  private levelAt = 0;
   private views = new Map<string, PuddleView>();
   private slots: Slot[] = [];
   private ripples: Ripple[] = [];
@@ -301,6 +384,9 @@ export class WeatherWetLayer {
     this.landLayer.visible = false;
     this.streakLayer.eventMode = 'none';
     this.puddleLayer.addChild(this.rimLayer, this.waterLayer, this.landLayer, this.skyLayer, this.streakLayer);
+    this.glossLayer.eventMode = 'none';
+    this.glossLayer.label = 'weatherWetGloss';
+    this.root.addChildAt(this.glossLayer, 0);
     // 地面の層の一番下(足元の影・光だまりより下)。
     groundLayer.addChildAt(this.root, 0);
     this.gradeFilter = new ColorMatrixFilter();
@@ -383,7 +469,9 @@ export class WeatherWetLayer {
     for (const [id, pv] of this.views) {
       if (seen.has(id)) continue;
       pv.ground.destroy(); pv.water.destroy(); pv.sky.destroy(); pv.landMask.destroy();
+      pv.groundMoon?.destroy();
       for (const d of pv.debris) d.destroy();
+      for (const d of pv.debrisMoon) d?.destroy();
       this.views.delete(id);
     }
     const boxes: ActorBox[] = [];
@@ -393,10 +481,12 @@ export class WeatherWetLayer {
       if (bx.x < v.left - 100 || bx.x > v.right + 100 || bx.foot < v.top - 100 || bx.foot > v.bottom + 200) continue;
       boxes.push(bx);
     }
+    this.syncGloss(h);
     this.syncLandscape(h);
     this.syncSlots(h, boxes);
     this.syncTorchStreaks(h);
     this.syncSteps(h, boxes);
+    this.syncRainLevel(h.now);
     this.syncDrips(h);
     this.syncRain(h);
     this.syncRipples(h);
@@ -430,7 +520,25 @@ export class WeatherWetLayer {
       this.debrisLayer.addChild(sp);
       debris.push(sp);
     }
-    const pv: PuddleView = { p, ground, water, sky, landMask, debris, d: 1, alpha: 1, lightA: 0, lightColor: SKY_TINT, lightX: p.x };
+    // 月明りの縁(素材が無ければ出さないだけ=水たまり自体は出す)。縁の絵の直上・小物の絵の直上に重ねる。
+    const moonTex = getTexture(`weather/${p.variant}-moon`);
+    let groundMoon: Sprite | null = null;
+    if (moonTex && !p.waterOnly) {
+      groundMoon = new Sprite(moonTex);
+      groundMoon.anchor.set(0.5);
+      groundMoon.visible = false;
+      this.rimLayer.addChild(groundMoon);
+    }
+    const debrisMoon = p.debris.map((dd, i) => {
+      const t = getTexture(`weather/${dd.variant}-moon`);
+      if (!t) return null;
+      const sp = new Sprite(t);
+      sp.anchor.set(0.5, 1);
+      sp.visible = false;
+      this.debrisLayer.addChildAt(sp, this.debrisLayer.getChildIndex(debris[i]) + 1);
+      return sp;
+    });
+    const pv: PuddleView = { p, ground, water, sky, landMask, debris, groundMoon, debrisMoon, moonA: 0, d: 1, alpha: 1, lightA: 0, lightColor: SKY_TINT, lightX: p.x };
     this.views.set(p.id, pv);
     return pv;
   }
@@ -447,6 +555,22 @@ export class WeatherWetLayer {
     pv.ground.alpha = ha;
     pv.ground.tint = h.envTint;
     pv.ground.visible = !p.waterOnly; // 水面だけの膜は縁の絵を出さない(寸法の基準には使う)
+    // 月明りの筋の中では、縁(と小物)を月明りの絵へ寄せる。筋が流れても慣性で寄せる(パッと切り替わらない)。
+    const moonT = h.moonAt ? h.moonAt(p.x, p.y) : 0;
+    pv.moonA += (moonT - pv.moonA) * MOON_RIM_EASE;
+    if (pv.moonA < 0.003) pv.moonA = moonT > 0 ? pv.moonA : 0;
+    const gm = pv.groundMoon;
+    if (gm) {
+      gm.visible = !p.waterOnly && pv.moonA > 0.003;
+      if (gm.visible) {
+        // 縁の絵の外形にぴったり合わせる(月明りの絵は寸法が少し違う=縁の位置を揃える)。
+        const mw = gm.texture.width || 1, mh = gm.texture.height || 1;
+        gm.position.set(p.x, p.y);
+        gm.scale.set((pv.ground.texture.width * s * fx) / mw, (pv.ground.texture.height * s) / mh);
+        gm.alpha = ha * pv.moonA;
+        gm.tint = h.envTint;
+      }
+    }
     // 水面(帯1)は縁の内側へ。帯1は縁まで含む大きさで描かれているので、縮めて中心を揃える。
     // 水面だけの膜は縁が無いので、縮めずに水たまりの大きさいっぱいに出す。
     const gw = pv.ground.texture.width, gh = pv.ground.texture.height;
@@ -484,6 +608,17 @@ export class WeatherWetLayer {
       sp.scale.set(DEBRIS_ART_SCALE * ds * (dd.flip ? -1 : 1), DEBRIS_ART_SCALE * ds);
       sp.alpha = h.horizonAlpha(dd.y);
       sp.tint = mulTint(h.envTint, DEBRIS_DIM); // 小物は地面に沈める(白い小石が光って浮かない)
+      const mp = pv.debrisMoon[i];
+      if (mp) {
+        mp.visible = pv.moonA > 0.003;
+        if (mp.visible) {
+          const mw = mp.texture.width || 1, mh = mp.texture.height || 1;
+          mp.position.set(dd.x, dd.y);
+          mp.scale.set((sp.texture.width * DEBRIS_ART_SCALE * ds * (dd.flip ? -1 : 1)) / mw, (sp.texture.height * DEBRIS_ART_SCALE * ds) / mh);
+          mp.alpha = sp.alpha * pv.moonA;
+          mp.tint = sp.tint;
+        }
+      }
     }
   }
 
@@ -725,13 +860,18 @@ export class WeatherWetLayer {
           main.blendMode = 'add';
           const dashes: Sprite[] = [];
           for (let i = 0; i < TORCH_STREAK_DASHES; i++) {
-            const d = new Sprite(getSoftGlowTexture());
+            // 欠片は角の立った横棒(参考画のドットの照り返し)。偶数本目だけ柔らかい丸=全部同じ硬さにしない。
+            const d = new Sprite(i % 2 === 0 ? getSoftGlowTexture() : Texture.WHITE);
             d.anchor.set(0.5);
             d.blendMode = 'add';
             dashes.push(d);
           }
+          const gloss = new Sprite(getGlossTexture(true));
+          gloss.anchor.set(0.5, 0.35);
+          gloss.blendMode = 'add';
+          this.glossLayer.addChild(gloss);
           this.streakLayer.addChild(main, ...dashes);
-          st = { id: l.id, main, dashes, a: 0, seed: 0, seen: false };
+          st = { id: l.id, main, gloss, dashes, a: 0, seed: 0, seen: false };
           this.streaks.push(st);
         }
         st.id = l.id; st.a = 0; st.seed = (Math.abs(Math.sin(l.x * 0.013 + l.y * 0.007)) * 10) % 6.283;
@@ -745,8 +885,9 @@ export class WeatherWetLayer {
     for (const st of this.streaks) {
       if (st.seen) continue;
       st.a += (0 - st.a) * TORCH_STREAK_EASE; // 画面から外れた/消えた松明は慣性で消える(最後の位置のまま)
-      if (st.a <= 0.004) { st.a = 0; st.main.visible = false; for (const d of st.dashes) d.visible = false; continue; }
+      if (st.a <= 0.004) { st.a = 0; st.main.visible = false; st.gloss.visible = false; for (const d of st.dashes) d.visible = false; continue; }
       st.main.alpha *= 1 - TORCH_STREAK_EASE;
+      st.gloss.alpha *= 1 - TORCH_STREAK_EASE;
       for (const d of st.dashes) d.alpha *= 1 - TORCH_STREAK_EASE;
     }
   }
@@ -763,22 +904,31 @@ export class WeatherWetLayer {
     const m = st.main;
     m.visible = a > 0.004;
     m.tint = l.color;
-    // 柔らかい丸の絵を縦に伸ばす: 中心を筋の上から 32% に置く=上(足元)側が明るく、手前へ細く抜ける。
-    m.position.set(l.x, top + len * 0.32);
+    // 横長の楕円の光だまり: 中心を上から 30% に置く=足元側が明るく、手前へ薄く抜ける。
+    m.position.set(l.x, top + len * 0.3);
     m.width = TORCH_STREAK_W * d;
-    m.height = len * 1.1;
+    m.height = len * 1.15;
     m.alpha = TORCH_STREAK_ALPHA * a;
+    // 足元の濡れた地面の照り(まだらの斑が温かく光る)。松明の背丈より広く、足元の少し奥から手前へ。
+    const g = st.gloss;
+    g.visible = m.visible;
+    g.tint = lerpTint(l.color, 0xffd9a0, 0.3);
+    g.position.set(l.x, l.y);
+    g.width = WET_GLOSS_TORCH_W * d;
+    g.height = WET_GLOSS_TORCH_H * d;
+    g.alpha = WET_GLOSS_TORCH_ALPHA * a;
     for (let i = 0; i < st.dashes.length; i++) {
       const sp = st.dashes[i];
       const ds = torchStreakDash(i, st.dashes.length, h.now, st.seed);
       sp.visible = a > 0.004 && ds.a > 0.01;
       if (!sp.visible) continue;
-      sp.tint = lerpTint(l.color, 0xffe2a8, 0.35); // 欠片は芯より少し白っぽい照り返し
-      const w = TORCH_STREAK_DASH_W * d * ds.w;
+      sp.tint = lerpTint(l.color, 0xffe2a8, 0.5); // 欠片は芯より少し白っぽい照り返し
+      const w = TORCH_STREAK_DASH_W * d * ds.w * (sp.texture === Texture.WHITE ? 0.6 : 1); // 角の立った棒は短め
       sp.position.set(l.x + ds.dx * w * 0.6, top + len * ds.t);
       sp.width = w;
-      sp.height = Math.max(2, 5 * d);
-      sp.alpha = TORCH_STREAK_DASH_ALPHA * ds.a * a;
+      const hard = sp.texture === Texture.WHITE;
+      sp.height = hard ? Math.max(1, TORCH_STREAK_DASH_H * 0.5 * d) : Math.max(2, TORCH_STREAK_DASH_H * d);
+      sp.alpha = TORCH_STREAK_DASH_ALPHA * ds.a * a * (hard ? 0.55 : 1);
     }
   }
 
@@ -843,12 +993,57 @@ export class WeatherWetLayer {
     for (const id of this.steps.keys()) if (!alive.has(id)) this.steps.delete(id);
   }
 
+  // ---- 濡れた地面の照り(地面いっぱいに1枚。地平線の向こう=森・空の上には敷かない) ----
+  private syncGloss(h: WetHost): void {
+    const v = h.rainView ?? h.view;
+    // 地平線の手前(地面が見えている所)から下だけ。上から粗く探す(画面の高さ/24 回まで)。
+    const step = Math.max(8, (v.bottom - v.top) / 24);
+    let top = v.top;
+    while (top < v.bottom && h.horizonAlpha(top) < 0.5) top += step;
+    if (!this.gloss) {
+      this.gloss = new TilingSprite({ texture: getGlossTexture(false), width: 1, height: 1 });
+      this.gloss.blendMode = 'add';
+      this.gloss.tint = WET_GLOSS_TINT;
+      this.glossLayer.addChildAt(this.gloss, 0);
+    }
+    const g = this.gloss;
+    if (top >= v.bottom) { g.visible = false; return; }
+    g.visible = true;
+    const m = 40;
+    g.position.set(v.left - m, top);
+    g.width = v.right - v.left + m * 2;
+    g.height = v.bottom - top + m;
+    const k = WET_GLOSS_TILE_WORLD / 128;
+    g.tileScale.set(k, k);
+    const dr = wetGlossDrift(h.now);
+    // 絵は世界に貼り付く(カメラが動いても地面と一緒に動く)+ごくゆっくりのずれ。
+    g.tilePosition.set(-(v.left - m) + dr.x, -top + dr.y);
+    const shaft = h.shaftLevel ?? 1;
+    g.alpha = WET_GLOSS_ALPHA * dr.shimmer * Math.max(0.6, 1 + (shaft - 1) * WET_GLOSS_SHAFT_GAIN);
+  }
+
+  // ---- 雨の強弱(雨粒の降る量に掛ける。雫はそれに遅れて付いてくる) ----
+  private syncRainLevel(now: number): void {
+    if (!this.rainSched) {
+      this.rainSched = makeRainSchedule(Math.random() * 1000, now);
+      this.levelAt = now;
+    }
+    this.rainLevel = advanceRainSchedule(this.rainSched, now);
+    // 1秒を超える間(タブ復帰)は1秒ぶんだけ進める=一気に追いつかない。
+    const dt = Math.min(1000, Math.max(0, now - this.levelAt));
+    this.levelAt = now;
+    this.dripLevel = followLag(this.dripLevel, this.rainLevel, dt, DRIP_LAG_TAU_MS);
+  }
+
+  /** 開発用: 今の雨の強さと雫の強さ。 */
+  get rainIntensity(): { rain: number; drip: number } { return { rain: this.rainLevel, drip: this.dripLevel }; }
+
   // ---- 葉先から垂れる雫(枝葉の高さで膨らむ→重力で加速して落ちる→着いた所で波紋) ----
   private syncDrips(h: WetHost): void {
     const now = h.now;
     if (now - this.nextDripAt > 1000) this.nextDripAt = now; // タブ復帰で一度に生まない
     if (now >= this.nextDripAt) {
-      this.nextDripAt = now + DRIP_EVERY_MS * rand(0.4, 1.8);
+      this.nextDripAt = now + (DRIP_EVERY_MS / Math.max(0.1, this.dripLevel)) * rand(0.4, 1.8); // 雨が弱いほど間が空く
       const v = h.view;
       // 枝葉が画面に入っている木(足元が画面の下の外でも、絵の高さぶんは対象)。
       const inView = h.trees.filter(t => t.footX + t.w * 0.5 > v.left && t.footX - t.w * 0.5 < v.right
@@ -908,7 +1103,7 @@ export class WeatherWetLayer {
     if (now - this.nextRainAt > 1000) this.nextRainAt = now;
     let budget = RAIN_SPAWN_PER_FRAME;
     while (now >= this.nextRainAt && budget-- > 0) {
-      this.nextRainAt += rainNextGapMs(w * hh, Math.random);
+      this.nextRainAt += rainNextGapMs(w * hh * this.rainLevel, Math.random); // 今の雨の強さぶん
       let d = this.rain.find(q => !q.on);
       if (!d) {
         if (this.rain.length >= RAIN_MAX) break;

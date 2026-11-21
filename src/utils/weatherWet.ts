@@ -132,6 +132,71 @@ export const rainNextGapMs = (viewArea: number, rnd: () => number): number => {
   return -Math.log(1 - u) / perMs;
 };
 
+// ---- 雨の強弱(30秒〜1分おきに、ランダムな間隔で次の強さを決め、数秒かけて寄せる) ----
+/** 次の強さを決めるまでの間隔(ms)の幅。毎回この中でランダム=決まった周期にしない。 */
+export const RAIN_INTENSITY_HOLD_MS_MIN = 30000;
+export const RAIN_INTENSITY_HOLD_MS_MAX = 60000;
+/** 強さの幅。1 = これまでの小雨(RAIN_DROPS_PER_MPX_S そのまま)。下は止みかけ・上はたまに少し強い(粒の上限 RAIN_MAX は据え置き)。 */
+export const RAIN_INTENSITY_MIN = 0.15;
+export const RAIN_INTENSITY_MAX = 1.3;
+/** たまに来る「少し強い」の確率(それ以外は MIN..1 の間)。 */
+export const RAIN_INTENSITY_STRONG_P = 0.2;
+/** 次の強さへ寄せる尺(ms)。加速して減速する(慣性)。HOLD_MS_MIN より短い=区間の終わりには必ず目標に着いている。 */
+export const RAIN_INTENSITY_RAMP_MS = 9000;
+/** 葉先の雫が雨の強さに遅れて付いてくる時定数(ms)=雨が弱まっても、しばらく雫は落ち続ける。 */
+export const DRIP_LAG_TAU_MS = 9000;
+/** 雫の平均間隔(ms・強さ1の時)と同時上限。雨粒より少ない「ときどきの粒」。 */
+export const DRIP_EVERY_MS = 1000;
+export const DRIP_MAX = 4;
+
+/** 0..1 の決定的な値(seed と区間番号 k と小さな番号 j から)。 */
+const hash01 = (seed: number, k: number, j: number): number => {
+  const x = Math.sin(seed * 12.9898 + k * 78.233 + j * 37.719) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+export interface RainSegment {
+  /** この区間の長さ(ms・HOLD_MS_MIN..MAX)。 */
+  len: number;
+  /** この区間で寄せていく強さ。 */
+  target: number;
+}
+
+/** k 番目の区間(seed で決まる=同じ seed なら同じ天気の移り変わり)。 */
+export const rainSegment = (seed: number, k: number): RainSegment => {
+  const len = RAIN_INTENSITY_HOLD_MS_MIN + (RAIN_INTENSITY_HOLD_MS_MAX - RAIN_INTENSITY_HOLD_MS_MIN) * hash01(seed, k, 1);
+  const strong = hash01(seed, k, 2) < RAIN_INTENSITY_STRONG_P;
+  const r = hash01(seed, k, 3);
+  const target = strong
+    ? 1 + (RAIN_INTENSITY_MAX - 1) * r
+    : RAIN_INTENSITY_MIN + (1 - RAIN_INTENSITY_MIN) * Math.sqrt(r); // 止みかけは少なめ(平方根で強い側へ寄せる)
+  return { len, target };
+};
+
+/** 区間の始まりから t ms 経った時の強さ。前の区間の目標から、RAMP_MS かけて加速→減速で寄せる。 */
+export const rainIntensityInSegment = (prevTarget: number, target: number, t: number): number =>
+  prevTarget + (target - prevTarget) * easeInOutSine(t / RAIN_INTENSITY_RAMP_MS);
+
+/**
+ * 雨の強さの時刻表。start から k 番目の区間に居る。advance で今の時刻まで区間を進め、強さを返す。
+ * 区間0の「前の目標」は1(=これまでの小雨から始まる)。
+ */
+export interface RainSchedule { seed: number; k: number; start: number; prev: number }
+export const makeRainSchedule = (seed: number, now: number): RainSchedule => ({ seed, k: 0, start: now, prev: 1 });
+export const advanceRainSchedule = (s: RainSchedule, now: number): number => {
+  let seg = rainSegment(s.seed, s.k);
+  // 長く止まっていた(タブ復帰)時も、区間を順に進めるだけ(1区間 ≥ 30秒なので回数は小さい)。
+  while (now - s.start >= seg.len) {
+    s.start += seg.len; s.prev = seg.target; s.k += 1;
+    seg = rainSegment(s.seed, s.k);
+  }
+  return rainIntensityInSegment(s.prev, seg.target, now - s.start);
+};
+
+/** 遅れて付いてくる値を dt ms 進める(指数の追従=急に跳ばない)。 */
+export const followLag = (prev: number, target: number, dtMs: number, tauMs: number): number =>
+  prev + (target - prev) * (1 - Math.exp(-Math.max(0, dtMs) / Math.max(1, tauMs)));
+
 export interface RainPose {
   /** 着地点からの高さ(world px・遠近前)。 */
   h: number;
@@ -204,7 +269,7 @@ export const reflectedSourceY = (b: LandscapeBand, horizonY: number, y: number, 
 
 // ---- 雲の影と月明りの強まり(雨上がり=雲が切れて、影と月明りの差がはっきりする) ----
 /** 雨上がりの間、地面を流れる雲の影の濃さに掛ける倍率(>1=濃く)。叩き台。 */
-export const WET_CLOUD_SHADOW_MULT = 1.8;
+export const WET_CLOUD_SHADOW_MULT = 1.35; // 旧 1.8=地面の中間が影で潰れた(社長「地面全体が暗く潰れちゃってる」)
 /** 雨上がりの間、月明りの筋の明るさに掛ける倍率(>1=明るく)。叩き台。 */
 export const WET_MOON_SHAFT_MULT = 1.7;
 /** 雨上がりの間の月明りの筋の色(夜の既定 0xc9d6ff より青い=藍の夜の月光。灰色の靄に見えないように)。叩き台。 */
@@ -228,8 +293,9 @@ export const stepWetLightMix = (mix: number, active: boolean, dtMs: number): num
 export const wetLightMult = (mix: number, mult: number): number => 1 + (mult - 1) * easeInOutSine(mix);
 
 // ---- 参考画に寄せる(設計書「追加: 参考画に寄せる」・雨上がりの間だけ) ----
-// 1. 霧: 薄く・藍へ寄せる(灰色の平たい幕に見えない)。霧の元の濃さ・色に掛ける倍率。
-export const WET_FOG_ALPHA_MUL = 0.36;
+// 1. 霧: 藍へ寄せる(灰色の平たい幕に見えない)。濃さは通常のまま(社長指示2026-11-21「薄めなくていい」=遠景と手前の霧の柔らかさと、
+//    くっきりしたプレイ面の対比で見せる)。霧の元の濃さ・色に掛ける倍率。
+export const WET_FOG_ALPHA_MUL = 1;
 export const WET_FOG_TINT_MUL = { r: 0.56, g: 0.6, b: 1 } as const;
 /** 近景の森(世界の色行列が掛からない層)の色の倍率=色行列と同じ藍の夜へ揃える。 */
 export const WET_FRONT_TINT_MUL = { r: 0.72, g: 0.78, b: 1 } as const;
@@ -237,10 +303,10 @@ export const WET_FRONT_TINT_MUL = { r: 0.72, g: 0.78, b: 1 } as const;
 // 2. 世界の色行列: 彩度を上げ、青/藍へ寄せて深い夜にする。暗部は青だけわずかに持ち上げる(黒が灰にならない・キャラの輪郭は残す)。
 /** 彩度(1=そのまま・>1=鮮やか)。 */
 export const WET_GRADE_SAT = 1.12;
-/** チャンネルごとの明るさ(R, G, B)。赤と緑を沈めて青を上げる=藍の夜。 */
-export const WET_GRADE_GAIN: readonly [number, number, number] = [0.8, 0.88, 1.16];
-/** 暗部の持ち上げ(R, G, B・0..1)。青だけ少し=影が藍に沈む(灰色に浮かない)。 */
-export const WET_GRADE_LIFT: readonly [number, number, number] = [0.01, 0.012, 0.045];
+/** チャンネルごとの明るさ(R, G, B)。赤と緑を少し沈めて青を上げる=藍の夜(旧 0.8/0.88/1.16=地面の中間が潰れた)。 */
+export const WET_GRADE_GAIN: readonly [number, number, number] = [0.9, 0.96, 1.2];
+/** 暗部の持ち上げ(R, G, B・-1..1)。負=黒の点を下げる(白っぽい幕を締めて黒を深く)。青だけごくわずか=影は藍に沈む(旧 0.01/0.012/0.045)。 */
+export const WET_GRADE_LIFT: readonly [number, number, number] = [-0.008, -0.008, 0.008];
 
 /** 雨上がりの世界の色行列(5×4 を1列に並べた 20 要素・値は 0..1 の単位)。 */
 export const buildWetGradeMatrix = (
@@ -274,21 +340,83 @@ export const WET_MOON_GLOW_SCALE_MUL = 1.3;
 export const WET_MOON_HALO_ALPHA_MUL = 2.2;
 export const WET_MOON_HALO_SCALE_MUL = 1.45;
 
-// 4. 松明の光の映り: 濡れた地面に、松明の足元から手前(画面の下)へ縦に伸びる暖色の筋。
-//    既存の光のにじみ(柔らかい丸の絵)を縦に伸ばして1枚+途切れた横の光の欠片を数本(水面のさざなみ)。
-/** 筋の長さ・幅(world px・遠近と松明の大きさを掛ける前)。 */
-export const TORCH_STREAK_LEN = 180;
-export const TORCH_STREAK_W = 22;
-/** 筋の濃さ(松明の光だまりの強さ 0..1 に掛ける)。 */
-export const TORCH_STREAK_ALPHA = 0.8;
-/** 筋の上端を足元からどれだけ下げるか(world px・遠近前)=台座の真下から始まる。 */
-export const TORCH_STREAK_TOP = 4;
-/** 横の光の欠片の本数・幅(world px・遠近前)・濃さ。 */
-export const TORCH_STREAK_DASHES = 5;
-export const TORCH_STREAK_DASH_W = 30;
+// 4. 松明の光の映り: 濡れた地面に、松明の足元のすぐ手前へ落ちる暖色の「光だまり」(参考画=松明の背丈ほどの、
+//    台座より幅の広い短い溜まり)。柔らかい丸の絵を横長の楕円に置いた1枚+途切れた横の光の欠片(水面のさざなみ)。
+//    欠片は足元の近くに集まり、手前ほど少なく薄い。
+/** 光だまりの縦の広がり(欠片が散る範囲)・横幅(world px・遠近と松明の大きさを掛ける前)。 */
+export const TORCH_STREAK_LEN = 64;
+export const TORCH_STREAK_W = 84;
+/** 光だまりの濃さ(松明の光だまりの強さ 0..1 に掛ける)。 */
+export const TORCH_STREAK_ALPHA = 0.85;
+/** 光だまりの上端を足元からどれだけ下げるか(world px・遠近前)=台座の真下から始まる。 */
+export const TORCH_STREAK_TOP = 6;
+/** 横の光の欠片の本数・幅(world px・遠近前)・太さ・濃さ。 */
+export const TORCH_STREAK_DASHES = 10;
+export const TORCH_STREAK_DASH_W = 40;
+export const TORCH_STREAK_DASH_H = 4.5;
 export const TORCH_STREAK_DASH_ALPHA = 1;
 /** 筋の濃さを目標へ寄せる割合(1フレームあたり)=点く/消える時にパッと変わらない(慣性)。 */
 export const TORCH_STREAK_EASE = 0.14;
+
+// 8. 濡れた土: 地面の絵(帯)の色を、湿って色の深い土へ寄せる(色行列の層は足さない=帯の tint に掛けるだけ)。
+//    世界の色調整(WET_GRADE_GAIN=赤0.8・緑0.88)が地面の赤と緑を沈めて潰すので、地面の側だけ赤と緑を持ち上げて返す
+//    (乗算なので黒は黒のまま=中間の明るさと土・苔の色だけが戻る)。青は据え置き=最後に温かい焦げ茶と苔の緑に残る。
+//    夜の地面の tint(0x9e9e9e)に掛ける倍率。255 で頭打ち。
+export const WET_SOIL_MUL: readonly [number, number, number] = [1.6, 1.52, 1.12];
+/** 夜の地面の tint(env)に、効き具合 mix(0..1・加減速つき)ぶん湿った土の掛け率を掛けた tint。 */
+export const wetSoilTint = (env: number, mix: number): number => {
+  const k = easeInOutSine(mix);
+  const ch = (shift: number, m: number) => Math.min(255, Math.round(((env >> shift) & 255) * (1 + (m - 1) * k)));
+  return (ch(16, WET_SOIL_MUL[0]) << 16) | (ch(8, WET_SOIL_MUL[1]) << 8) | ch(0, WET_SOIL_MUL[2]);
+};
+
+// 9. 濡れた地面の照り: 地面の上(キャラの下)に、まだらな照りの絵を1枚敷く(加算・薄く)。松明の足元では温かく強く照る。
+/** 照りの濃さ・色。 */
+export const WET_GLOSS_ALPHA = 0.4;
+export const WET_GLOSS_TINT = 0xffffff; // 色は焼いた絵の側(苔の黄緑・月明りの青白)
+/** 照りの絵1枚(焼いた 128px)を世界の何 px に引き伸ばすか。 */
+export const WET_GLOSS_TILE_WORLD = 220;
+/** 月明りの筋の脈動(1 前後)を照りの濃さへどれだけ移すか。 */
+export const WET_GLOSS_SHAFT_GAIN = 2.5;
+/** 松明の足元の照り(world px・遠近前)と濃さ。 */
+export const WET_GLOSS_TORCH_W = 230;
+export const WET_GLOSS_TORCH_H = 120;
+export const WET_GLOSS_TORCH_ALPHA = 0.55;
+
+/**
+ * 照りの絵のずれ(world px)と、きらめきの濃さの倍率。ごくゆっくり行って戻る(正弦=動き始めと終わりで減速=慣性)。
+ * 周期の違う正弦を足すので、決まった往復に見えない。
+ */
+export const wetGlossDrift = (now: number): { x: number; y: number; shimmer: number } => ({
+  x: 14 * Math.sin(now / 9100) + 6 * Math.sin(now / 3700 + 1.3),
+  y: 5 * Math.sin(now / 7300 + 0.4),
+  shimmer: 1 + 0.18 * Math.sin(now / 2300) * Math.sin(now / 5100 + 0.8),
+});
+
+// 11. 月明りの縁: 月明りの筋の中にある水たまりの縁と小物を、月明りの絵へ寄せる(筋の形はそのまま読むだけ・光は足さない)。
+/** 筋1本の形(筋の絵の座標)。上端は x1..x1+w の水平線、下端は (x2-0.68w)..(x2+0.32w)。a=筋どうしの濃さの比(強い筋=1)。 */
+export interface ShaftPoly { x1: number; y1: number; x2: number; y2: number; w: number; a: number }
+/** 筋の縁の柔らかさ(幅に対する割合)。縁から内へこの幅で 0→1。 */
+export const MOON_RIM_EDGE = 0.25;
+/** 縁の絵が月明りへ寄る速さ(1フレームの割合)。筋が流れても絵がパッと切り替わらない(慣性)。 */
+export const MOON_RIM_EASE = 0.05;
+/** 点 (x, y)(筋の絵の座標)に落ちている月明りの量(0..1)。 */
+export const shaftLightAt = (x: number, y: number, polys: readonly ShaftPoly[]): number => {
+  let best = 0;
+  for (const q of polys) {
+    const dy = q.y2 - q.y1;
+    if (dy === 0) continue;
+    const t = (y - q.y1) / dy;
+    if (t < 0 || t > 1) continue;
+    const left = q.x1 + t * (q.x2 - 0.68 * q.w - q.x1);
+    const right = q.x1 + q.w + t * (q.x2 + 0.32 * q.w - q.x1 - q.w);
+    if (x <= left || x >= right) continue;
+    const u = (x - left) / (right - left);
+    const e = easeInOutSine(Math.min(u, 1 - u) / MOON_RIM_EDGE);
+    best = Math.max(best, e * Math.min(1, q.a));
+  }
+  return best;
+};
 
 export interface StreakDash {
   /** 筋の上端からの位置(0..1)。 */
@@ -297,23 +425,24 @@ export interface StreakDash {
   w: number;
   /** 濃さ(0..1)。 */
   a: number;
-  /** 横のずれ(幅の倍率に対する -0.5..0.5)。 */
+  /** 横のずれ(幅の倍率に対する -0.7..0.7)。 */
   dx: number;
 }
 
 /**
- * 筋の i 本目の光の欠片(さざなみの照り返し)。位置は等間隔にせず少し揺らし、幅と濃さは
+ * 光だまりの i 本目の光の欠片(さざなみの照り返し)。位置は足元寄りに詰め、等間隔にせず少し揺らし、幅と濃さは
  * それぞれ違う周期の正弦でゆっくり伸び縮みする(正弦=始まりと終わりで減速する=慣性)。
  * 遠い(下の)欠片ほど薄い。seed は松明ごとの値(全部の松明が同じ拍で揺れない)。
  */
 export const torchStreakDash = (i: number, n: number, now: number, seed: number): StreakDash => {
-  const base = (i + 0.5) / Math.max(1, n);
-  const t = clamp01(base + 0.06 * Math.sin(now / (900 + 130 * i) + seed * 3.1 + i * 2.3));
+  // 足元の近くに詰めて置く(1.5乗=手前ほど間が開く)。
+  const base = ((i + 0.5) / Math.max(1, n)) ** 1.5;
+  const t = clamp01(base + 0.05 * Math.sin(now / (900 + 130 * i) + seed * 3.1 + i * 2.3));
   const sw = Math.sin(now / (520 + 70 * i) + seed + i * 1.7);
   const w = 0.35 + 0.65 * sw * sw;
   const tw = Math.sin(now / (380 + 55 * i) + seed * 1.9 + i * 0.9);
-  const a = (1 - t) ** 1.3 * (0.45 + 0.55 * tw * tw);
-  const dx = 0.5 * Math.sin(now / (1300 + 170 * i) + seed * 0.7 + i * 2.9);
+  const a = (1 - t) ** 1.3 * (0.6 + 0.4 * tw * tw);
+  const dx = 0.7 * Math.sin(now / (1300 + 170 * i) + seed * 0.7 + i * 2.9);
   return { t, w, a, dx };
 };
 

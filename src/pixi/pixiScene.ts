@@ -471,7 +471,7 @@ import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
 import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight, type WetTree } from './weatherWet';
-import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, WET_CLOUD_SHADOW_MULT, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR } from '../utils/weatherWet';
+import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, WET_CLOUD_SHADOW_MULT, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR } from '../utils/weatherWet';
 import { getSelectedStageId } from '../data/progress';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H, wallRect, propRect, isLabObstacleBroken, labDebrisInRegion, type LabBrokenObstacle } from '../world/labWalls';
 import { LAB_WALL_CRUMBLE_MS, LAB_PROP_CRUMBLE_MS, LAB_DEBRIS_PALETTE, labDebrisKind } from '../utils/labCrawlerTick'; // 崩れの尺・破片の色(着地の土煙・音と同じ値)
@@ -7051,6 +7051,8 @@ export class PixiScene {
   private zwarpTmpA = new Float64Array(4);
 
   private shaftPeriod = 0; // 環境光シャフトのタイル反復幅(横パララックスの折り返し単位)
+  /** 月明りの筋の形(筋の絵の座標・描き直した時だけ作る)。雨上がりの水たまりの縁を月明りの絵へ寄せるために読む。 */
+  private shaftPolys: ShaftPoly[] = [];
 
   // M7の遠景に重ねる雲=5コマの下降コンベア+コマ毎三角クロスフェード(社長指示v0.25.1922/1929/1932)。各コマは三角包絡
   // (fpos=jでピーク・j±1で0)でフェードイン→ピーク→フェードアウト。頭(フレーム1)は fpos -1→0 で湧きフェードイン、
@@ -7234,8 +7236,9 @@ export class PixiScene {
     // 雨上がり(?weather=wet)の間だけ月明りの筋を明るく(雲が切れた)。塗りのαに掛ける=器の alpha は脈動で既に1付近のため
     // そこに掛けても1で頭打ちになる。雨上がりでなければ倍率は厳密に1=従来どおり。研究所の闇を削る絵には掛けない。
     this.shaftWetMulDrawn = wetLightMult(this.wetLightMix, WET_MOON_SHAFT_MULT);
-    if (alpha <= 0) { this.shaftPeriod = 0; return; }
+    if (alpha <= 0) { this.shaftPeriod = 0; this.shaftPolys = []; return; }
     const shaftAlpha = alpha * this.shaftWetMulDrawn;
+    this.shaftPolys = [];
     g.blendMode = 'add';
     // 月明りは淡く青白い拡散光。夜はシャフト色を少しパステル寄りの蒼白へ(プレイヤー光の色には影響しない)。
     const color = night ? (this.wetLightMix > 0 ? lerpRgb(0xc9d6ff, WET_MOON_SHAFT_COLOR, easeInOutSine(this.wetLightMix)) : 0xc9d6ff) : lp.color; // 雨上がりの間だけ青い月光へ寄せる
@@ -7262,6 +7265,7 @@ export class PixiScene {
         const y1 = -h * 0.14;
         const x2 = x1 + b.length * STAGE_LIGHT_SHAFT_DIRECTION.x;
         const y2 = y1 + b.length * STAGE_LIGHT_SHAFT_DIRECTION.y;
+        if (night) this.shaftPolys.push({ x1, y1, x2, y2, w: b.width, a: b.alpha / 0.30 });
         g.poly([
           x1,
           y1,
@@ -12543,6 +12547,8 @@ export class PixiScene {
   private weatherWetOn = false;
   /** 雨上がりで雲の影/月明りの筋を強める効き具合(0..1)。?weather=wet を付けない限り 0 のまま=倍率1。 */
   private wetLightMix = 0;
+  /** 濡れた土の tint を地面の帯へ掛けている間 true(抜けた時に1回だけ戻すため)。 */
+  private wetSoilOn = false;
   private wetLightLastNow = 0;
   /** 月明りの筋を最後に描いた時の雨上がりの倍率(変わった時だけ描き直す)。 */
   private shaftWetMulDrawn = 1;
@@ -12554,6 +12560,12 @@ export class PixiScene {
     this.wetLightMix = stepWetLightMix(this.wetLightMix, active, dtLight); // 入る/抜ける時は加減速して効く(慣性)
     // 月明りの筋は画面寸法が変わった時にしか描き直さないので、倍率が動いている間だけ描き直す(入る/抜ける約2秒だけ)。
     if (wetLightMult(this.wetLightMix, WET_MOON_SHAFT_MULT) !== this.shaftWetMulDrawn) this.updateStageLightShafts(this.screenW, this.screenH);
+    // 濡れた土: 地面の帯の tint を湿った土へ寄せる(入る/抜ける時は加減速)。抜け切ったら一度だけ夜の tint へ戻す。
+    if (this.wetLightMix > 0 || this.wetSoilOn) {
+      const tint = wetSoilTint(this.envTintNow(), this.wetLightMix);
+      for (const strip of this.L.groundStrips) if (strip.tint !== tint) strip.tint = tint;
+      this.wetSoilOn = this.wetLightMix > 0;
+    }
     if (!this.weatherWet) {
       if (!active) return;
       this.weatherWet = new WeatherWetLayer(this.L.groundLayer, this.L.danceUiLayer, { // 雨粒は被写界深度の外(細い線がボケて四角い靄にならない)
@@ -12609,7 +12621,21 @@ export class PixiScene {
       horizonAlpha: y => this.horizonActorAlpha(y),
       actors, lights, trees, bases, focusX: ppx, focusY: ppy,
       landscape: this.wetLandscape(),
+      shaftLevel: this.stageLightShaftGfx.visible ? this.stageLightShaftGfx.alpha : 0,
+      moonAt: (x, y) => this.moonLightAt(x, y),
     });
+  }
+
+  /** 世界の点 (x, y) に落ちている月明りの筋の量(0..1・筋の脈動込み)。筋が無い/見えない時は 0。 */
+  private moonPtA = new Point();
+  private moonPtB = new Point();
+  private moonLightAt(x: number, y: number): number {
+    const g = this.stageLightShaftGfx;
+    if (!g.visible || !g.parent || this.shaftPolys.length === 0) return 0;
+    this.moonPtA.set(x, y);
+    this.L.world.toGlobal(this.moonPtA, this.moonPtB);
+    g.toLocal(this.moonPtB, undefined, this.moonPtA);
+    return Math.min(1, shaftLightAt(this.moonPtA.x, this.moonPtA.y, this.shaftPolys) * Math.max(0, g.alpha));
   }
 
   /** 水たまりに映す遠景(空・月・城・森1/2)。描かれている順のまま渡す。地平線=森1の下端(画面座標)。 */

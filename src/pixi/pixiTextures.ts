@@ -66,11 +66,11 @@ const DEFERRED_SHEETS_BY_IDLE_INIT: [string, string[]][] = [...new Set(DEFERRED_
   .map(idle => [idle, DEFERRED_ENEMY_SHEETS.filter(s => s.idle === idle).map(s => s.sheet)]);
 
 /** 拳鬼の絵の名前(15枚・`public/sprites/kenki-*.png`)。並び: 待機・構え・振り・歩き0〜5・走り0〜5。 */
-/** 雨上がりの絵(`public/sprites/weather/*.png`・32枚)。水たまり10種(+水面だけの対)・小物6・波紋3コマ×2。 */
+/** 雨上がりの絵(`public/sprites/weather/*.png`・48枚)。水たまり10種(+水面だけの対+月明りの縁)・小物6(+月明り)・波紋3コマ×2。 */
 export const WEATHER_WET_SPRITES: readonly string[] = [
   ...['r1', 'r2', 'r3', 'r4', 'r5', 'long1', 'long2', 'long3', 'cluster1', 'cluster2']
-    .flatMap(k => [`weather/puddle-${k}`, `weather/puddle-${k}-water`]),
-  ...['stone', 'log', 'grass', 'leaf', 'twig', 'branch'].map(k => `weather/debris-${k}`),
+    .flatMap(k => [`weather/puddle-${k}`, `weather/puddle-${k}-water`, `weather/puddle-${k}-moon`]),
+  ...['stone', 'log', 'grass', 'leaf', 'twig', 'branch'].flatMap(k => [`weather/debris-${k}`, `weather/debris-${k}-moon`]),
   ...[0, 1, 2].flatMap(i => [`weather/ripple-water-${i}`, `weather/ripple-ground-${i}`]),
 ];
 

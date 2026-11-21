@@ -7,6 +7,10 @@ import {
   rainDropSpec, rainPose, rainNextGapMs, RAIN_FALL_MS_MIN, RAIN_FALL_MS_MAX, RAIN_DROPS_PER_MPX_S, RAIN_MAX,
   landscapeBand, reflectedSourceY, landscapeBandStart, LANDSCAPE_REFLECT_STRETCH, LANDSCAPE_BAND_LEAD,
   WET_CLOUD_SHADOW_MULT, WET_MOON_SHAFT_MULT, WET_LIGHT_FADE_MS, stepWetLightMix, wetLightMult, lerpRgb,
+  rainSegment, makeRainSchedule, advanceRainSchedule, followLag, rainIntensityInSegment,
+  RAIN_INTENSITY_HOLD_MS_MIN, RAIN_INTENSITY_HOLD_MS_MAX, RAIN_INTENSITY_MIN, RAIN_INTENSITY_MAX, RAIN_INTENSITY_RAMP_MS,
+  DRIP_LAG_TAU_MS, DRIP_EVERY_MS, DRIP_MAX, TORCH_STREAK_LEN, TORCH_STREAK_W,
+  wetSoilTint, wetGlossDrift, shaftLightAt,
 } from './weatherWet';
 
 describe('weatherWet(雨上がりの決めごと)', () => {
@@ -245,6 +249,96 @@ describe('参考画に寄せる(色行列・松明の筋・葉先の雫)', () =>
     // 揺らぎは滑らか(1フレームで大きく跳ばない=慣性)
     const a = torchStreakDash(1, n, 1000, 0.5), b = torchStreakDash(1, n, 1016, 0.5);
     expect(Math.abs(a.w - b.w)).toBeLessThan(0.1);
+  });
+  it('松明の光だまり: 細長い筋ではなく、縦の広がりは横幅と同じ程度まで', () => {
+    expect(TORCH_STREAK_LEN).toBeLessThanOrEqual(TORCH_STREAK_W * 1.2);
+  });
+  it('濡れた土: 雨上がりでなければ夜の tint のまま・効くと赤と緑が戻り黒は黒のまま', () => {
+    const env = 0x9e9e9e;
+    expect(wetSoilTint(env, 0)).toBe(env);
+    const t = wetSoilTint(env, 1);
+    const r = (t >> 16) & 255, g = (t >> 8) & 255, b = t & 255;
+    expect(r).toBeGreaterThan(0x9e); expect(g).toBeGreaterThan(0x9e);
+    expect(r).toBeLessThanOrEqual(255); expect(b).toBeLessThan(g);
+    expect(wetSoilTint(0xffffff, 1)).toBe(0xffffff); // 255 で頭打ち
+    expect(r).toBeGreaterThanOrEqual(g); // 温かい土(赤 ≥ 緑 ≥ 青)
+    expect(wetSoilTint(0, 1)).toBe(0);
+    // 途中は滑らか(効き具合で跳ばない)
+    const a = wetSoilTint(env, 0.5), c = wetSoilTint(env, 0.51);
+    expect(Math.abs(((a >> 16) & 255) - ((c >> 16) & 255))).toBeLessThanOrEqual(2);
+  });
+  it('地面の照り: ずれは小さく滑らか・きらめきは 1 前後', () => {
+    for (let t = 0; t < 60000; t += 250) {
+      const d = wetGlossDrift(t), e = wetGlossDrift(t + 16);
+      expect(Math.abs(d.x)).toBeLessThan(25); expect(Math.abs(d.y)).toBeLessThan(10);
+      expect(d.shimmer).toBeGreaterThan(0.75); expect(d.shimmer).toBeLessThan(1.25);
+      expect(Math.abs(e.x - d.x)).toBeLessThan(0.2);
+    }
+  });
+  it('月明りの量: 筋の中は明るく・外は0・縁は柔らかい', () => {
+    const polys = [{ x1: 0, y1: 0, x2: 100, y2: 400, w: 100, a: 1 }];
+    // 上端の中心
+    expect(shaftLightAt(50, 1, polys)).toBeCloseTo(1, 3);
+    expect(shaftLightAt(-5, 1, polys)).toBe(0);
+    expect(shaftLightAt(50, -10, polys)).toBe(0);
+    expect(shaftLightAt(50, 410, polys)).toBe(0);
+    // 下端の中心 = x2 - 0.18w
+    expect(shaftLightAt(100 - 18, 399, polys)).toBeGreaterThan(0.95);
+    const edge = shaftLightAt(5, 1, polys);
+    expect(edge).toBeGreaterThan(0); expect(edge).toBeLessThan(0.6);
+    // 弱い筋は弱い
+    expect(shaftLightAt(50, 1, [{ ...polys[0], a: 0.5 }])).toBeCloseTo(0.5, 3);
+  });
+  it('雨の強弱: 間隔はいつも30〜60秒・強さは幅の中・決定的', () => {
+    let strong = 0, weak = 0;
+    for (let k = 0; k < 400; k++) {
+      const g = rainSegment(7.3, k);
+      expect(g.len).toBeGreaterThanOrEqual(30000); expect(g.len).toBeLessThanOrEqual(60000);
+      expect(g.len).toBeGreaterThanOrEqual(RAIN_INTENSITY_HOLD_MS_MIN); expect(g.len).toBeLessThanOrEqual(RAIN_INTENSITY_HOLD_MS_MAX);
+      expect(g.target).toBeGreaterThanOrEqual(RAIN_INTENSITY_MIN); expect(g.target).toBeLessThanOrEqual(RAIN_INTENSITY_MAX);
+      if (g.target > 1) strong++; if (g.target < 0.4) weak++;
+    }
+    expect(strong).toBeGreaterThan(20); expect(weak).toBeGreaterThan(5); // たまに強く・たまに止みかけ
+    expect(rainSegment(3.1, 5)).toEqual(rainSegment(3.1, 5));
+    // 間隔が全部同じ(決まった周期)ではない
+    const lens = new Set(Array.from({ length: 10 }, (_, k) => Math.round(rainSegment(1.1, k).len / 1000)));
+    expect(lens.size).toBeGreaterThan(4);
+    expect(RAIN_INTENSITY_RAMP_MS).toBeLessThan(RAIN_INTENSITY_HOLD_MS_MIN); // 区間の終わりには目標に着いている
+  });
+  it('雨の強弱: 途切れず・跳ばずに移る(慣性)', () => {
+    const s = makeRainSchedule(2.2, 0);
+    let prev = advanceRainSchedule(s, 0);
+    expect(prev).toBeCloseTo(1, 6); // これまでの小雨から始まる
+    for (let t = 16; t < 15 * 60000; t += 16) {
+      const v = advanceRainSchedule(s, t);
+      expect(v).toBeGreaterThanOrEqual(RAIN_INTENSITY_MIN - 1e-9); expect(v).toBeLessThanOrEqual(RAIN_INTENSITY_MAX + 1e-9);
+      expect(Math.abs(v - prev)).toBeLessThan(0.01); // 1フレームで跳ばない
+      prev = v;
+    }
+    // 区間の始まりと終わりでは速さ0(加速して減速)
+    const a0 = rainIntensityInSegment(0.2, 1, 0), a1 = rainIntensityInSegment(0.2, 1, 16);
+    expect(a1 - a0).toBeLessThan(0.001);
+    expect(rainIntensityInSegment(0.2, 1, RAIN_INTENSITY_RAMP_MS)).toBeCloseTo(1, 9);
+  });
+  it('雫は雨の強さに遅れて付いてくる(雨が弱まっても、しばらく落ち続ける)', () => {
+    let drip = 1;
+    const rainAt = (t: number) => (t < 10000 ? 1 : 0.15);
+    let at12 = 0;
+    for (let t = 0; t < 30000; t += 16) {
+      drip = followLag(drip, rainAt(t), 16, DRIP_LAG_TAU_MS);
+      if (Math.abs(t - 12000) < 8) at12 = drip;
+    }
+    expect(at12).toBeGreaterThan(0.6); // 雨が弱まって2秒後も、雫はまだ多い
+    expect(drip).toBeLessThan(0.3); // 20秒後には追いついている
+    expect(followLag(0.5, 1, 0, 1000)).toBe(0.5);
+  });
+  it('雫は雨粒より少ない(強さ1・標準ズームの見込み)', () => {
+    // 雨: 1秒の粒数 × 平均の尺(ms)
+    // 標準ズームの雨の可視域(実測 約 0.36M px²)で見込む。
+    const rainOn = 0.36 * RAIN_DROPS_PER_MPX_S * ((RAIN_FALL_MS_MIN + RAIN_FALL_MS_MAX) / 2) / 1000;
+    // 雫: 平均間隔(×1.1=間隔の揺らぎの平均)・ぶら下がり平均760ms+落下 600ms 前後
+    const dripOn = Math.min(DRIP_MAX, (1000 / (DRIP_EVERY_MS * 1.1)) * 1.36);
+    expect(dripOn).toBeLessThan(rainOn);
   });
   it('葉先の雫: 枝葉の高さで生まれ、木の幅の内側・高いほど長く落ちる', () => {
     const tree = { footX: 100, footY: 200, w: 150, h: 180 };

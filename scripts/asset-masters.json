@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "1092 files / 復号後 約722MB",
+ "generatedFor": "1108 files / 復号後 約722MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -6188,11 +6188,23 @@
    "bytes": 2558,
    "sha": "08631ecea9ed1be6"
   },
+  "sprites/weather/debris-branch-moon.png": {
+   "w": 16,
+   "h": 6,
+   "bytes": 413,
+   "sha": "65983edb2d1017a2"
+  },
   "sprites/weather/debris-branch.png": {
    "w": 17,
    "h": 7,
    "bytes": 287,
    "sha": "3a5823b6342b9f32"
+  },
+  "sprites/weather/debris-grass-moon.png": {
+   "w": 22,
+   "h": 14,
+   "bytes": 677,
+   "sha": "5b3b0280ed30db79"
   },
   "sprites/weather/debris-grass.png": {
    "w": 21,
@@ -6200,11 +6212,23 @@
    "bytes": 475,
    "sha": "588fff215bc9e8e4"
   },
+  "sprites/weather/debris-leaf-moon.png": {
+   "w": 20,
+   "h": 12,
+   "bytes": 622,
+   "sha": "3ddfc7861e10584e"
+  },
   "sprites/weather/debris-leaf.png": {
    "w": 21,
    "h": 12,
    "bytes": 437,
    "sha": "3a25dab22dc25898"
+  },
+  "sprites/weather/debris-log-moon.png": {
+   "w": 22,
+   "h": 15,
+   "bytes": 820,
+   "sha": "6e04b0f2e2adbac6"
   },
   "sprites/weather/debris-log.png": {
    "w": 21,
@@ -6212,17 +6236,35 @@
    "bytes": 722,
    "sha": "5decaedd17af94bc"
   },
+  "sprites/weather/debris-stone-moon.png": {
+   "w": 12,
+   "h": 9,
+   "bytes": 432,
+   "sha": "f55643cf07b3fb31"
+  },
   "sprites/weather/debris-stone.png": {
    "w": 12,
    "h": 9,
    "bytes": 318,
    "sha": "8297a75adf5350bd"
   },
+  "sprites/weather/debris-twig-moon.png": {
+   "w": 22,
+   "h": 11,
+   "bytes": 499,
+   "sha": "2de3953411a5a690"
+  },
   "sprites/weather/debris-twig.png": {
    "w": 23,
    "h": 12,
    "bytes": 392,
    "sha": "e81a93dd17e66c3d"
+  },
+  "sprites/weather/puddle-cluster1-moon.png": {
+   "w": 26,
+   "h": 14,
+   "bytes": 621,
+   "sha": "f6068c46e83bb5ec"
   },
   "sprites/weather/puddle-cluster1-water.png": {
    "w": 33,
@@ -6236,6 +6278,12 @@
    "bytes": 553,
    "sha": "e96e2cb8c1f4e094"
   },
+  "sprites/weather/puddle-cluster2-moon.png": {
+   "w": 38,
+   "h": 13,
+   "bytes": 837,
+   "sha": "f3003d5f3b499de3"
+  },
   "sprites/weather/puddle-cluster2-water.png": {
    "w": 44,
    "h": 13,
@@ -6247,6 +6295,12 @@
    "h": 13,
    "bytes": 854,
    "sha": "4cf618f21cc1c766"
+  },
+  "sprites/weather/puddle-long1-moon.png": {
+   "w": 31,
+   "h": 12,
+   "bytes": 698,
+   "sha": "06a4089f6190f9da"
   },
   "sprites/weather/puddle-long1-water.png": {
    "w": 35,
@@ -6260,6 +6314,12 @@
    "bytes": 716,
    "sha": "b4b7d77e43836541"
   },
+  "sprites/weather/puddle-long2-moon.png": {
+   "w": 32,
+   "h": 12,
+   "bytes": 739,
+   "sha": "acc7be7613089eff"
+  },
   "sprites/weather/puddle-long2-water.png": {
    "w": 37,
    "h": 8,
@@ -6271,6 +6331,12 @@
    "h": 12,
    "bytes": 759,
    "sha": "1651f48939cb5858"
+  },
+  "sprites/weather/puddle-long3-moon.png": {
+   "w": 35,
+   "h": 12,
+   "bytes": 840,
+   "sha": "460c842ede9c08ce"
   },
   "sprites/weather/puddle-long3-water.png": {
    "w": 43,
@@ -6284,6 +6350,12 @@
    "bytes": 825,
    "sha": "547d6f25a33fb90a"
   },
+  "sprites/weather/puddle-r1-moon.png": {
+   "w": 20,
+   "h": 11,
+   "bytes": 547,
+   "sha": "f5e9ebe2fa21a237"
+  },
   "sprites/weather/puddle-r1-water.png": {
    "w": 20,
    "h": 8,
@@ -6295,6 +6367,12 @@
    "h": 10,
    "bytes": 397,
    "sha": "1e503d6f2e67b534"
+  },
+  "sprites/weather/puddle-r2-moon.png": {
+   "w": 33,
+   "h": 18,
+   "bytes": 927,
+   "sha": "1b2be92df967caa4"
   },
   "sprites/weather/puddle-r2-water.png": {
    "w": 36,
@@ -6308,6 +6386,12 @@
    "bytes": 961,
    "sha": "42b4e70a8fce9809"
   },
+  "sprites/weather/puddle-r3-moon.png": {
+   "w": 37,
+   "h": 25,
+   "bytes": 1499,
+   "sha": "a2bfd7515b9076c8"
+  },
   "sprites/weather/puddle-r3-water.png": {
    "w": 39,
    "h": 20,
@@ -6320,6 +6404,12 @@
    "bytes": 1420,
    "sha": "76d055d2b82335f4"
   },
+  "sprites/weather/puddle-r4-moon.png": {
+   "w": 44,
+   "h": 29,
+   "bytes": 1931,
+   "sha": "25014c2abfad0085"
+  },
   "sprites/weather/puddle-r4-water.png": {
    "w": 49,
    "h": 23,
@@ -6331,6 +6421,12 @@
    "h": 28,
    "bytes": 1959,
    "sha": "7c9298c2ed51c618"
+  },
+  "sprites/weather/puddle-r5-moon.png": {
+   "w": 57,
+   "h": 32,
+   "bytes": 2311,
+   "sha": "f7294fdfa49d7121"
   },
   "sprites/weather/puddle-r5-water.png": {
    "w": 65,
