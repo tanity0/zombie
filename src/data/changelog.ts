@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5701', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5700', items: ['リロードは、立ち止まっていると速く、歩きながらだと遅くなる', 'ステージ1の夜は、月の光が地面に落ちて明るく、雲の影はより濃くなった。蛍は数を減らした'] },
   { version: '0.25.5699', items: ['ステージ1の蛍が、奥ほど小さく手前ほど大きく、遠くのものは柔らかくぼけて見えるようになった'] },
   { version: '0.25.5698', items: ['ゲーム内容の変更はありません'] },

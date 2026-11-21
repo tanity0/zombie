@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5701 — 揺れるテスト(パンプキンのカウンター報酬)を固定【2026-11-21 15:45 JST】
+- v0.25.5700 の push 前の全体テストで1件落ちていたのを見落として push した(パイプの終了コードで止まらなかった)。原因=`addPickup` の武器箱が2%で金箱に化ける抽選(仕様どおり)+カウンター受付の Date.now 400ms 窓。`src/utils/combatCritParity.test.ts` の該当 describe で Math.random=0.99・Date.now を固定(検査は弱めていない)。単体5回・全体1回(9852件)失敗0。製品のバグではない。
+- 再発防止: 全体テストは結果の行で失敗0を確かめてから push する(パイプの後ろの && に頼らない)。
+
 ## v0.25.5700 — リロードの速さを歩き/停止で変える・晴れの夜の月明かりの地面・蛍を減らす【2026-11-21 15:39 JST】
 - 社長指示(仕様変更)「リロードの仕様変更。歩いていると通常の1.2倍遅く、立ち止まると通常の1.2倍早く」: プレイヤーのリロードの締切(reloadEndsAt・実時間)を毎フレーム dt×(1−rate) ずらす(歩き rate=1/1.2・停止 1.2・判定は player.isMoving)。`src/utils/weaponUtils.ts`(RELOAD_MOVE_TIME_MULT/reloadRateFor/advanceReloadEnd)・`gameStore.ts`(applyReloadMoveRate)・`useGameLoop.ts`(movePlayer の直後)。一時停止・ヒットストップ等の間は movePlayer に入らないので従来どおり。HUD の棒は「普通の時間で進んだ量」になり、滑らかに速く/遅く伸びる(巻き戻らない・テスト)。守護霊・幽霊の射手は不変。リロード音の長さは普通の時間のまま(未変更)。新規テスト `src/utils/reloadMoveRate.test.ts` 12件。
 - 社長「もう少し地面含めて月明かりの雰囲気を…当たってるところは明るく、影は濃く」「蛍が多すぎる」: 晴れたステージ1の夜だけ雲影を濃い青に焼いた4枚目の絵+S1N_CLOUD_SHADOW_MULT 1.45→1.9(s1nCloudShadowAlpha)。月明りの溜まり(筋と同じ形・流れ・脈動の加算・3枚重ね・α0.3・0xb8dcff・地平より上に描かない・ズームでずれない・?s1npool=0 で外せる)。蛍 FIREFLY_S1_COUNT 96→40。地面 p90 65.8→76.8(+17%)。`src/utils/weatherWet.ts`・`src/pixi/lighting.ts`・`pixiScene.ts`・`src/utils/stage1Fireflies.ts`+テスト。負荷1/10。

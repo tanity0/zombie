@@ -2,7 +2,7 @@
 // crit=trueへ統一したことの検証(旧「見た目クリ・中身非クリ」の解消)。
 //  - ボス対象: crit=trueとcounter体勢属性がdamageEnemyへ渡り、移動半減窓+体勢20%削りが乗る。
 //  - 通常敵対象: 現行クリ規則どおり5秒スタン(stunDurationMult込み)がノックバックと併存する。
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useGameStore, STUN_DURATION_MS } from '../store/gameStore';
 import { applyContactDamage, applyPumpkinBlastDamage, NOOP_COMBAT_EFFECTS } from './combatTick';
 import { spawnEnemyAt } from './enemyUtils';
@@ -135,6 +135,16 @@ describe('刃のパリィ(parryNoDamage): 体勢は削るがHPダメージは入
 // カウンターの2経路(着地の弾き/突進の弾き)は damageEnemy を直に呼ぶだけで、銃キル等が呼び手側で出す
 // 経験値・通貨・強個体の武器箱を出していなかった。倒した時は rewardCounterKill で同じ一式を出す。
 describe('カウンターで倒した時も報酬が出る(rewardCounterKill)', () => {
+  // 武器箱は addPickup の合流点で Math.random() < GOLD_CRATE_RATE(2%)のとき金箱(bounty-chest)へ化ける。
+  // 型まで見るので乱数を「化けない側」へ固定する(フルランで約2%の確率で落ちていた原因)。
+  // カウンターの窓は Date.now() 基準(setupPlayerAt の now+400ms)なので、時計も止めて
+  // 重い並列実行で窓を跨ぐ可能性を消す。
+  beforeEach(() => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const frozen = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(frozen);
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
   it('パンプキンの着地をカウンターして倒す → 死体が残り、経験値と武器箱が落ちる', () => {
     setupPlayerAt(0, 0, 400);
     const player = useGameStore.getState().player;
