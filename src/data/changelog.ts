@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5715', items: ['ステージ3の右端の街灯の絵を描き直した'] },
   { version: '0.25.5714', items: ['ステージ3も、横長の画面の左右に蔦の絡む石壁と傾いた街灯が重なり、出撃の時にくぐり抜けていく'] },
   { version: '0.25.5713', items: ['ステージ2も、横長の画面の左右に手前の岩壁と蔦の柱が重なり、出撃の時にくぐり抜けていく'] },
   { version: '0.25.5712', items: ['出撃の時の岩と枝の流れが、終わり際に速度を落として静かに止む'] },
