@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5714 — ステージ3の左右の枠【2026-11-21 23:11 JST】
+- 社長支給(ChatGPT生成)の左 58×128(蔦の石壁)・右 91×128(傾いた街灯と瓦礫)を `public/sprites/frames/stage3-{left,right}.png` に置き、`stageFrames.ts` に1行。台帳・CREDITS 更新。`stageFrames.test.ts` の「登録の無いステージ」の例を stage-3 → 'no-such-stage' に差し替え(枠が付いたため)。
+- 確認: 1280×720 で左右とも出てぼけていることを撮って目視。typecheck・eslint・assets:check・vitest 全件(失敗0)。
+- 気づき(未対応・積む): 全件実行で `src/store/zombieRedMove.test.ts`「詰めの間は走って近づき続ける」が1回だけ落ちた(単独40件は通過・再実行で通過)=時々落ちるテスト。原因未調査。
+- 状態変化: なし。
+
 ## v0.25.5713 — ステージ2の左右の枠【2026-11-21 22:53 JST】
 - 社長支給(ChatGPT生成)の左 59×128・右 70×128 を `public/sprites/frames/stage2-{left,right}.png` に置き、`src/data/stageFrames.ts` の表に1行。横長の常時表示と出撃のトンネルの両方に効く。台帳・CREDITS 更新。素材が小さい(縦128)ので画面の高さへ約5.6倍に拡大されドットは粗い(ぼかしで目立たない)。
 - 確認: 1280×720 で左右とも出てぼけていることを撮って目視。typecheck・eslint・assets:check・vitest 全件(失敗0)。状態変化: なし。

@@ -18,6 +18,8 @@ export const STAGE_FRAMES: Readonly<Record<string, Readonly<Partial<Record<Stage
   'stage-1': { left: 'frames/stage1-left', right: 'frames/stage1-right' },
   // ステージ2 研究所跡: 左=苔と蔦の絡む岩壁と緑の光、右=蔦の絡む崩れた柱(社長支給2026-11-21・59×128 / 70×128)。
   'stage-2': { left: 'frames/stage2-left', right: 'frames/stage2-right' },
+  // ステージ3 医療科学センター(昼): 左=蔦の絡む崩れた石造りの壁、右=傾いた街灯と崩れた壁と瓦礫(社長支給2026-11-21)。
+  'stage-3': { left: 'frames/stage3-left', right: 'frames/stage3-right' },
 };
 
 /** そのステージの枠の絵の名前(左→右の順)。登録が無ければ空。 */
