@@ -5,6 +5,7 @@ import { Assets } from 'pixi.js';
 import { useGameStore } from '../store/gameStore';
 import { getSelectedStageId } from '../data/progress';
 import { parseWeather, weatherWetActive } from '../utils/weatherWet';
+import { stageFrameGroupKey, stageFramesWanted } from '../data/stageFrames';
 import { skinLayersExpectedFor, type StageSkinLayer } from './stageTextureSkin';
 export { skinLayersExpectedFor, type StageSkinLayer } from './stageTextureSkin';
 
@@ -135,6 +136,17 @@ export const prefetchStageTextures = (stage: { theme?: string; farBackdrop?: str
  * 未知のテーマでは空=何も先読みしない(`getTexture` の網が描く瞬間に拾う)。
  */
 export const sortieSpriteGroups = (): string[] => {
+  const base = sortieSpriteGroupsBase();
+  // 横長画面の左右の枠(data/stageFrames.ts): 横長でそのステージへ出撃した時だけ読む(スマホ縦は読まない)。
+  // 出撃後に横へ回した場合は描画側の `getTexture` の網が拾う。
+  const s = useGameStore.getState();
+  const stageId = getSelectedStageId();
+  if (typeof window !== 'undefined' && stageFramesWanted({
+    stageId, w: window.innerWidth, h: window.innerHeight, indoor: s.indoorMode, corridor: s.corridorMode,
+  })) return [...base, stageFrameGroupKey(stageId)];
+  return base;
+};
+const sortieSpriteGroupsBase = (): string[] => {
   const s = useGameStore.getState();
   if (s.corridorMode) return [];
   // 研究所: 背景(lab)+研究所にしか出ない敵と障害物(labActors・コード監査2026-10-23 M-5)。

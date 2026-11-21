@@ -472,10 +472,13 @@ import { TREE_VISUAL_SCALE, TREE_BOX_W, TREE_BOX_H, TORCH_VISUAL_W, TORCH_VISUAL
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
 import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight, type WetTree } from './weatherWet';
-import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR, stage1NightActive, s1nCloudShadowAlpha, S1N_MOON_SHAFT_MULT, S1N_MOON_SHAFT_COLOR, S1N_NIGHT_GRADE_ALPHA_MUL, S1N_MOON_POOL_ALPHA, S1N_MOON_POOL_COLOR, moonPoolPieces } from '../utils/weatherWet';
+import { StageFrameLayer } from './stageFrameLayer'; // 横長画面の左右の枠(research/STAGE_FRAMES.md)
+import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR, stage1NightActive, s1nCloudShadowAlpha, S1N_MOON_SHAFT_MULT, S1N_MOON_SHAFT_COLOR, S1N_NIGHT_GRADE_ALPHA_MUL, S1N_MOON_POOL_ALPHA, S1N_MOON_POOL_COLOR, moonPoolPieces, TORCH_STREAK_EASE } from '../utils/weatherWet';
 import { Stage1NightLayer } from './stage1Night';
 import { Stage5BattleLayer, type BurningWreckView, type FlamePainter } from './stage5Battlefield';
 import { stage5BattleActive, stage5EmberSize, S5B_WRECK_MAX } from '../utils/stage5Battlefield';
+import { TorchBackLight, type GlowPoolShape } from './stageLook';
+import { sharedTorchBackPools } from '../utils/torchBackLight';
 import { burningWrecksInRegion } from '../world/burningWrecks';
 import {
   fireflyBlink, fireflyActiveFrac, fireflyHeading, fireflyScatterAcc, FIREFLY_CYAN_FRAC, FIREFLY_WARM_TINT, FIREFLY_CYAN_TINT,
@@ -774,6 +777,7 @@ const S5B_ON = tsNum('s5b', 1) > 0; // ?s5b=0 でステージ5(戦場)の光・�
 const S5B_GRADE_ON = tsNum('s5bgrade', 1) > 0; // ?s5bgrade=0 で世界の色行列だけ外す(見比べ用)
 const S5B_ATMO_ON = tsNum('s5batmo', 1) > 0; // ?s5batmo=0 で空の色行列と煙/近景の色だけ外す(見比べ用)
 const S5B_POOL_ON = tsNum('s5bpool', 1) > 0; // ?s5bpool=0 で火の溜まりだけ外す(見比べ用)
+const TORCH_BACK_ON = tsNum('torchback', 1) > 0; // ?torchback=0 でステージ3/4/7の松明の裏の光を外す(見比べ用)
 const S5B_WRECK_ON = tsNum('s5bwreck', 1) > 0; // ?s5bwreck=0 で燃える残骸だけ外す(見比べ用)
 const S1N_POOL_ON = tsNum('s1npool', 1) > 0; // ?s1npool=0 で月明りの溜まり(地面)だけ外す(見比べ用)
 const MOON_SHAFT_ON = tsNum('moonshaft', 1) > 0; // ?moonshaft=0 でステージ1の森の夜も従来の台形の筋のまま(見比べ用)
@@ -10646,6 +10650,7 @@ export class PixiScene {
     this.syncLabProps(); // 遮蔽物プロップ(研究所スキン・区画生成。森/屋内では no-op)
     this.syncCityProps(); // ステージ3(廃都)の散布オブジェクト(その他ステージでは no-op)
     this.syncForestFlowers(); // ステージ1(森)の装飾花(その他ステージでは no-op)
+    this.syncStageFrames(); // 横長画面の左右の枠(横長かつ登録のあるステージだけ・画面座標)
     this.syncWraithGrowths(); // research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石と花(立ち物・足元のYで並べる)
     this.syncCorridorBackdrop(now); // ステージ6(洋館・corridorMode)の疑似3D通路背景(その他ステージでは no-op)
     // 最前面の天井帯: チュートリアル(洞窟)=鍾乳石帯(上寄せループ)。lab(研究所屋外)のケーブル帯は
@@ -11191,6 +11196,7 @@ export class PixiScene {
     if (WEATHER_KNOB === 'wet') this.syncWeatherWet(s, now); // 天候「雨上がり」(?weather=wet の時だけ・付けなければ1命令も走らない)
     this.syncStage1Night(s, now); // 通常のステージ1の森の夜(雨上がりの後=雨上がりの間は効かない)
     this.syncStage5Battle(s, now); // ステージ5(戦場)の光・色・コントラスト(他ステージ=1命令で終わる)
+    this.syncTorchBack(s, now); // 松明の裏の光(ステージ3/4/7・utils/torchBackLight.ts。他ステージ=1命令で終わる)
     this.syncZoomWarp(s.player.vx ?? 0, s.player.vy ?? 0, realNow); // ★必ず最後(このフレームの世界が全部揃ってから1枚に描く)
   }
 
@@ -12981,6 +12987,26 @@ export class PixiScene {
     }
   }
 
+  // 横長画面の左右の枠(research/STAGE_FRAMES.md・pixi/stageFrameLayer.ts)。uiLayer の周辺減光の直下=ワールド・霧・色味の上、
+  // 減光・閃光・画面外の矢印の下。画面座標なのでカメラ・ズームに無関係。横長でない時は何も読まず描かない。
+  private stageFrames: StageFrameLayer | null = null;
+  private syncStageFrames() {
+    if (!this.stageFrames) {
+      if (this.vignette.parent !== this.L.uiLayer) return;
+      this.stageFrames = new StageFrameLayer({
+        bake: (w, h) => bakeRenderTexture('other', { width: w, height: h, resolution: 1 }),
+        release: rt => releaseBakedTexture('other', rt),
+        render: (c, target) => this.renderBake(c, target, true),
+      });
+      this.L.uiLayer.addChildAt(this.stageFrames.container, this.L.uiLayer.getChildIndex(this.vignette));
+    }
+    const s = useGameStore.getState();
+    this.stageFrames.sync({
+      stageId: getSelectedStageId(), w: this.screenW, h: this.screenH,
+      indoor: s.indoorMode, corridor: s.corridorMode, now: performance.now(),
+    });
+  }
+
   // ステージ1(森)の装飾花。立ち物として actorLayer に足元Yで Y-sort(他ステージ/屋内では空=no-op)。
   // 当たり判定なし(純粋な飾り)。明るい花弁は filteredWorld の bloom 閾値を超えるので自然に少し光る
   // (追加の発光スプライトは置かない=描画コストはただのスプライト=軽い)。
@@ -13205,6 +13231,62 @@ export class PixiScene {
       front: [this.L.frontForest, this.frontRidgeCopy, ...this.zoomClouds],
       nightGrade: this.cineEnabled ? null : this.gradeSprite,
     }, mix);
+  }
+
+  /**
+   * 松明の裏の光(社長承認2026-11-21・ステージ3/4/7)。値と効くステージは utils/torchBackLight.ts の表
+   * (ステージ1=stage1Night・ステージ5=stage5Battle が各自描く)。地面の層の一番下=松明の絵より下に、柔らかい丸の絵(加算・使い回し)。
+   * 濃さは松明の光だまり(reflection)の強さ=炎の揺らぎに追従し、効き具合は入る/抜ける時に慣性で寄せる。影を落とす光ではない。
+   */
+  private torchBack: TorchBackLight | null = null;
+  private torchBackRoot: Container | null = null;
+  private torchBackShapes: readonly GlowPoolShape[] | null = null;
+  private torchBackMix = 0;
+  private torchBackLastNow = 0;
+  private syncTorchBack(s: ReturnType<typeof useGameStore.getState>, now: number) {
+    const shapes = TORCH_BACK_ON ? sharedTorchBackPools({
+      stageId: getSelectedStageId(), indoor: s.indoorMode, corridor: s.corridorMode, farKey: this.currentFarKey,
+    }) : null;
+    if (!shapes && this.torchBackMix <= 0) { // 他ステージ=1命令で終わる(残っていた層はここで片付ける)
+      if (this.torchBack) this.torchBackClear();
+      this.torchBackLastNow = now;
+      return;
+    }
+    const dt = this.torchBackLastNow > 0 ? Math.min(100, Math.max(0, now - this.torchBackLastNow)) : 0;
+    this.torchBackLastNow = now;
+    // 別のステージの表へ変わった時は、前の光を抜き切ってから作り直す(パッと入れ替えない)。
+    const active = !!shapes && (!this.torchBack || this.torchBackShapes === shapes);
+    this.torchBackMix = stepWetLightMix(this.torchBackMix, active, dt);
+    if (shapes && this.torchBackShapes !== shapes && this.torchBackMix <= 0) this.torchBackClear();
+    if (!this.torchBack && shapes) {
+      const root = new Container();
+      root.eventMode = 'none';
+      root.label = 'torchBack';
+      this.L.groundLayer.addChildAt(root, 0); // 地面の層の一番下=松明の絵より必ず下(台座が明るい地面の前に影絵で立つ)
+      this.torchBackRoot = root;
+      this.torchBackShapes = shapes;
+      this.torchBack = new TorchBackLight(root, shapes, TORCH_STREAK_EASE, 16);
+    }
+    if (!this.torchBack) return;
+    const mix = this.torchBackMix;
+    const lights: { id: string; x: number; y: number; color: number; strength: number }[] = [];
+    if (mix > 0) {
+      for (const [id, v] of this.breakableProps) {
+        const r = v.reflection;
+        if (r.visible && r.alpha > 0.01) lights.push({ id, x: r.x, y: r.y, color: Number(r.tint), strength: Math.min(1, r.alpha / 0.24) });
+      }
+    }
+    this.torchBack.sync({
+      view: this.visibleWorldRect(), lights, depthScale: y => this.depthScale(y), horizonAlpha: y => this.horizonActorAlpha(y),
+    }, easeInOutSine(mix));
+  }
+  private torchBackClear() {
+    this.torchBack?.clear();
+    this.torchBack = null;
+    if (this.torchBackRoot && !this.torchBackRoot.destroyed) this.torchBackRoot.destroy({ children: true });
+    this.torchBackRoot = null;
+    this.torchBackShapes = null;
+    this.torchBackMix = 0;
   }
 
   /** 画面に映る燃える残骸(画面の中心に近い順に S5B_WRECK_MAX まで)。濃さは置物の絵の今の濃さに揃える。 */
@@ -44233,6 +44315,7 @@ export class PixiScene {
     this.weatherWet?.destroy(); this.weatherWet = null;
     this.stage1Night?.destroy(); this.stage1Night = null;
     this.stage5Battle?.destroy(); this.stage5Battle = null;
+    this.torchBackClear();
     this.fireflies = [];
     if (this.tiltShift || this.bloom) {
       this.L.filteredWorld.filters = [];

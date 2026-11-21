@@ -3,6 +3,7 @@
 //   - FarSkyGrade: 遠景の箱(空)のフィルタの末尾に色行列1枚を足す/外す(効いている間だけ)
 //   - AtmospherePaint: 霧・近景などの色/濃さ/大きさを毎フレームの最後に掛け、次のフレームの頭で戻す
 //   - KeyedGlowPool: 光源(松明など)ごとの柔らかい丸の絵(加算・使い回し・慣性で点く/消える)。影を落とす光ではない
+//   - TorchBackLight: 松明の裏の光(KeyedGlowPool を1〜2枚重ね・値は utils/torchBackLight.ts の表)
 
 import { ColorMatrixFilter, Container, Sprite, type Filter, type TilingSprite } from 'pixi.js';
 import { getSoftGlowTexture } from './lighting';
@@ -139,4 +140,30 @@ export class KeyedGlowPool {
   }
 
   clear(): void { this.slots = []; }
+}
+
+/** 丸の絵1枚ぶんの寸法・濃さ・色(world px・遠近前。utils/torchBackLight.ts の表の1行)。 */
+export type GlowPoolShape = Omit<KeyedGlowSpec, 'ease' | 'max'>;
+
+/**
+ * 松明の裏の光(utils/torchBackLight.ts の表の1ステージぶん)。丸の絵を1〜2枚重ね(各1つの KeyedGlowPool)、
+ * 足元の少し奥(画面の上)の地面を照らす=松明の絵より下の層(地面の層)に置く。影を落とす光ではない。
+ */
+export class TorchBackLight {
+  private pools: KeyedGlowPool[];
+  constructor(parent: Container, shapes: readonly GlowPoolShape[], ease: number, max: number) {
+    this.pools = shapes.map(p => {
+      const layer = new Container();
+      layer.eventMode = 'none';
+      parent.addChild(layer);
+      return new KeyedGlowPool(layer, { ...p, ease, max });
+    });
+  }
+
+  /** k = 効き具合(加減速済み 0..1)。 */
+  sync(h: GlowHost, k: number): void {
+    for (const p of this.pools) p.sync(h, k);
+  }
+
+  clear(): void { for (const p of this.pools) p.clear(); }
 }

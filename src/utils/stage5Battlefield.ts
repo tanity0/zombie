@@ -76,13 +76,14 @@ export const stage5TintMul = (mul: { r: number; g: number; b: number }, mix: num
 
 /**
  * 4. 火の溜まり(松明の足元の地面に落ちる赤橙の光)。2枚重ね=芯(熱い橙)と外側(広く赤い)。寸法は world px・遠近前。
+ * 中心は足元より奥(画面の上)=松明の裏の光(utils/torchBackLight.ts・社長承認2026-11-21)。台座が照らされた地面の前に影絵で立つ。
  * 加算で、しかも上の世界の色行列で持ち上げられる=松明の既存の光だまり・暈に重なって白く飛びやすい。濃さは控えめに置く
  * (社長の実機報告2026-11-21「松明の光が強すぎる」)。
  */
 export interface FirePoolSpec { w: number; h: number; up: number; alpha: number; tint: number; tintMix: number }
 export const S5B_FIRE_POOLS: readonly FirePoolSpec[] = [
-  { w: 720, h: 220, up: 6, alpha: 0.3, tint: 0xc0200a, tintMix: 0.8 }, // 外側: 広く赤い(焼けた地面の照り返し)
-  { w: 320, h: 100, up: 2, alpha: 0.25, tint: 0xff5a14, tintMix: 0.6 }, // 芯: 熱い橙
+  { w: 720, h: 220, up: 50, alpha: 0.3, tint: 0xc0200a, tintMix: 0.8 }, // 外側: 広く赤い(焼けた地面の照り返し)
+  { w: 320, h: 100, up: 22, alpha: 0.25, tint: 0xff5a14, tintMix: 0.6 }, // 芯: 熱い橙
 ];
 /** 炎の揺らぎ(既存の松明の光だまりの強さ 0..1)を溜まりの濃さへ寄せる割合(1フレームあたり・慣性)。 */
 export const S5B_FIRE_POOL_EASE = 0.14;

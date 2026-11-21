@@ -17,6 +17,7 @@ import { LAB_PROP_SPRITES, LAB_ZOMBIE_IDLE_SPRITES, LAB_ZOMBIE_IDLE_SIZE, LAB_ZO
 import { ATLAS_PX2_OVERRIDES } from '../utils/atlasPxOverrides';
 import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
+import { STAGE_FRAMES, stageFrameGroupKey, stageFrameSprites } from '../data/stageFrames';
 import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
 import { STAGE_PROPS } from '../world/cityProps';
 import { setEnemyArtAspect } from './renderSpec';
@@ -210,6 +211,14 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
    * 立ち絵より失敗が軽い。中身は `SHEET_RESIDENCY` が決める(ここに手で名前を書かない)。
    */
   enemySheets: DEFERRED_ENEMY_SHEETS.filter(s => !sheetStageGroup(s.idle)).map(s => ({ name: s.sheet, scaleMode: 'nearest' as const })),
+  /**
+   * 横長画面の左右の枠(research/STAGE_FRAMES.md・data/stageFrames.ts)。ステージごとに1組(`frames:<stageId>`)。
+   * 横長でそのステージへ出撃した時だけ `sortieSpriteGroups` が先読みする。描画(pixi/stageFrameLayer.ts)は
+   * `getTexture` で引く=届く前は出さないだけ。ドット絵=nearest(拡大してからぼかしを焼く)。
+   */
+  ...Object.fromEntries(Object.keys(STAGE_FRAMES).map(id => [
+    stageFrameGroupKey(id), stageFrameSprites(id).map(name => ({ name, scaleMode: 'nearest' as const })),
+  ])),
 };
 
 /** 遅延組の索引(名前→scaleMode)。`getTexture` の網と `loadSpriteGroups` が引く。 */

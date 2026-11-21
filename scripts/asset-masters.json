@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "1108 files / 復号後 約722MB",
+ "generatedFor": "1109 files / 復号後 約722MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -1219,6 +1219,12 @@
    "h": 941,
    "bytes": 77885,
    "sha": "b9e3136671231966"
+  },
+  "sprites/frames/stage1-left.png": {
+   "w": 228,
+   "h": 512,
+   "bytes": 15702,
+   "sha": "45e12dcefce32423"
   },
   "sprites/fx/angel-eye.png": {
    "w": 88,

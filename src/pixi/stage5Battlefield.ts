@@ -3,18 +3,19 @@
 //   - 世界の色行列1枚(`gradeFilter`・効き具合が動く間だけ作り直す)
 //   - 空(遠景の箱)の色行列1枚
 //   - 煙(霧)・近景の残骸の色(毎フレームの最後に掛け、次のフレームの頭で戻す。濃さはそのまま)
-//   - 松明の足元の火の溜まり(地面の層の一番下に柔らかい丸の絵・加算・2枚重ね)。影を落とす光ではない。
+//   - 松明の足元の少し奥の火の溜まり(=松明の裏の光・地面の層の一番下に柔らかい丸の絵・加算・2枚重ね)。影を落とす光ではない。
 //   - 燃える残骸(BurningWreckLayer・社長指示2026-11-21「燃える残骸足して」): どれが燃えるかは world/burningWrecks.ts。
 //     炎(松明と同じ8コマ)・炎の光の暈・火の粉・昇る煙を置物の上に重ね、足元に火の溜まりを落とす。影を落とす光ではない。
 // ★描くだけ。ゲームの状態には書かない。
 
 import { ColorMatrixFilter, Container, Graphics, Sprite, type Texture, type TilingSprite } from 'pixi.js';
-import { AtmospherePaint, FarSkyGrade, KeyedGlowPool, lerpTint, mulTint, type GlowHost, type GlowLight } from './stageLook';
+import { AtmospherePaint, FarSkyGrade, TorchBackLight, lerpTint, mulTint, type GlowHost, type GlowLight } from './stageLook';
+import { TORCH_BACK_STAGES } from '../utils/torchBackLight';
 import { getSoftGlowTexture } from './lighting';
 import { easeInOutSine } from '../utils/weatherWet';
 import {
   buildStage5GradeMatrix, buildStage5SkyMatrix, stage5TintMul,
-  S5B_FOG_TINT_MUL, S5B_FRONT_TINT_MUL, S5B_FIRE_POOLS, S5B_FIRE_POOL_EASE, S5B_NIGHT_GRADE_TINT,
+  S5B_FOG_TINT_MUL, S5B_FRONT_TINT_MUL, S5B_FIRE_POOL_EASE, S5B_NIGHT_GRADE_TINT,
   S5B_WRECK_MAX, S5B_WRECK_EASE, S5B_WRECK_LIGHT_COLOR, burningWreckFlames, burningWreckSmoke, burningWreckFlicker,
 } from '../utils/stage5Battlefield';
 
@@ -32,7 +33,7 @@ export class Stage5BattleLayer {
   private gradeMix = -1;
   private sky = new FarSkyGrade();
   private root = new Container();
-  private pools: KeyedGlowPool[];
+  private pools: TorchBackLight;
   private atmo = new AtmospherePaint();
   private wrecks: BurningWreckLayer;
 
@@ -41,12 +42,8 @@ export class Stage5BattleLayer {
     this.root.eventMode = 'none';
     this.root.label = 'stage5Battle';
     groundLayer.addChildAt(this.root, 0); // 地面の層の一番下=松明・残骸の絵より必ず下
-    this.pools = S5B_FIRE_POOLS.map(p => {
-      const layer = new Container();
-      layer.eventMode = 'none';
-      this.root.addChild(layer);
-      return new KeyedGlowPool(layer, { ...p, ease: S5B_FIRE_POOL_EASE, max: POOL_MAX });
-    });
+    // 松明の裏の光(値は utils/torchBackLight.ts の表=S5B_FIRE_POOLS)。燃える残骸の足元の溜まりも同じ絵。
+    this.pools = new TorchBackLight(this.root, TORCH_BACK_STAGES['stage-5'].pools, S5B_FIRE_POOL_EASE, POOL_MAX);
   }
 
   /** 効き具合 mix の色行列にする(変わった時だけ作り直す)。 */
@@ -67,8 +64,7 @@ export class Stage5BattleLayer {
 
   /** 火の溜まり。濃さは松明の光だまりの強さ(炎の揺らぎ込み)を慣性で寄せ、効き具合 mix を掛ける。 */
   syncFirePools(h: GlowHost, mix: number): void {
-    const k = easeInOutSine(mix);
-    for (const p of this.pools) p.sync(h, k);
+    this.pools.sync(h, easeInOutSine(mix));
   }
 
   /** 煙・近景・夜の乗算の色を、効き具合 mix ぶん掛ける(フレームの最後)。濃さは変えない。 */
@@ -92,7 +88,7 @@ export class Stage5BattleLayer {
     this.sky.destroy();
     this.root.destroy({ children: true });
     this.wrecks.destroy();
-    for (const p of this.pools) p.clear();
+    this.pools.clear();
     this.gradeFilter.destroy();
   }
 }

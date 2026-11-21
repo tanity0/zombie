@@ -12,4 +12,5 @@
 | 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記が必須かは規約を未確認 | public/audio/sfx/brawler-punch.mp3 | (日本語名・末尾「2」) | 格闘の1・2段目の当たり | v0.25.5476 |
 | 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記が必須かは規約を未確認 | public/audio/sfx/brawler-heavy.mp3 | (日本語名・末尾「3」) | 格闘の3〜5段目(掌底など)の当たり | v0.25.5476 |
 | 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記が必須かは規約を未確認 | public/audio/sfx/brawler-kick.mp3 | (日本語名・末尾「1」) | 飛び蹴りの当たり | v0.25.5476 |
+| ChatGPT(画像生成)※社長支給 2026-11-21 | public/sprites/frames/stage1-left.png | IMG_9422.PNG | 横長画面のステージ1の左端の枠 | v0.25.5705 |
 | 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記が必須かは規約を未確認 | public/audio/sfx/brawler-guard.mp3 | (日本語名・末尾「1」) | 格闘のレバーガードで受けた音 | v0.25.5476 |

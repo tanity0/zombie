@@ -7,12 +7,13 @@
 
 import { ColorMatrixFilter, Container, Sprite, type TilingSprite } from 'pixi.js';
 import { getSoftGlowTexture } from './lighting';
-import { AtmospherePaint, FarSkyGrade, KeyedGlowPool, mulTint, type GlowHost, type GlowLight } from './stageLook';
+import { AtmospherePaint, FarSkyGrade, TorchBackLight, mulTint, type GlowHost, type GlowLight } from './stageLook';
+import { TORCH_BACK_STAGES } from '../utils/torchBackLight';
 import {
   easeInOutSine, buildStage1NightGradeMatrix, buildStage1NightSkyMatrix, stage1NightTintMul,
   S1N_FOG_TINT_MUL, S1N_FRONT_TINT_MUL,
   S1N_MOON_GLOW_ALPHA_MUL, S1N_MOON_GLOW_SCALE_MUL, S1N_MOON_HALO_ALPHA_MUL, S1N_MOON_HALO_SCALE_MUL,
-  TORCH_BACK_UP, TORCH_BACK_W, TORCH_BACK_H, TORCH_BACK_TINT, TORCH_BACK_TINT_MIX, TORCH_STREAK_EASE, S1N_TORCH_BACK_ALPHA,
+  TORCH_STREAK_EASE,
 } from '../utils/weatherWet';
 
 export interface S1NAtmosphere {
@@ -38,7 +39,7 @@ export class Stage1NightLayer {
   /** 空(遠景の箱)の色行列。効いている間だけ遠景の箱のフィルタの末尾に足す。 */
   private sky = new FarSkyGrade();
   private root = new Container();
-  private backs: KeyedGlowPool;
+  private backs: TorchBackLight;
   private flowerLayer = new Container();
   private flowerGlows: Sprite[] = [];
   private atmo = new AtmospherePaint();
@@ -49,13 +50,8 @@ export class Stage1NightLayer {
     groundLayer.addChildAt(this.root, 0);
     this.flowerLayer.eventMode = 'none';
     this.root.addChild(this.flowerLayer); // 地面の層の一番下=松明の絵より必ず下(三脚が明るい地面の前に影絵で立つ)
-    const backLayer = new Container();
-    backLayer.eventMode = 'none';
-    this.root.addChild(backLayer); // 花の光の上(=従来どおり花の層の後ろに足す順)
-    this.backs = new KeyedGlowPool(backLayer, {
-      w: TORCH_BACK_W, h: TORCH_BACK_H, up: TORCH_BACK_UP, alpha: S1N_TORCH_BACK_ALPHA,
-      tint: TORCH_BACK_TINT, tintMix: TORCH_BACK_TINT_MIX, ease: TORCH_STREAK_EASE, max: BACK_MAX,
-    });
+    // 花の光の上(=従来どおり花の層の後ろに足す順)。値は utils/torchBackLight.ts の表(ステージ1=従来の値)。
+    this.backs = new TorchBackLight(this.root, TORCH_BACK_STAGES['stage-1'].pools, TORCH_STREAK_EASE, BACK_MAX);
   }
 
   /** 効き具合 mix の色行列にする(変わった時だけ作り直す)。 */
