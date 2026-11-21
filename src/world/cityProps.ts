@@ -7,7 +7,13 @@
 // 当たり判定は「大きい物だけ」(社長指示)。decal(血痕/草/小石)は素通り。
 import { Rect, footRect, resolveAabb } from './obstacles';
 import { isObstacleDestroyed } from './destructibles';
-import { isInPoiClearing } from './poiClearings';
+import { isInPoiClearing, isClearOfHandPlaced } from './poiClearings';
+import { treeFootprintsNear } from './trees';
+import { propArtRect, propTexAspect } from './artRects';
+import {
+  CellMemo, MAX_REROLLS, MIN_COLLISION_GAP, bumpPropPlacementVersion, cachedCheck, footprintsConflict, resolveCellLayer, validFirsts,
+  type Footprint, type Individual, type NeighborFirst,
+} from './propPlacement';
 
 export interface CityPropDef {
   tex: string;       // テクスチャ名(sprites/<tex>.png)
@@ -214,40 +220,134 @@ const hash2 = (x: number, y: number): number => {
  * ★原点から `CITY_SAFE_RADIUS`(240px)は元から空いているが、城ボスの技は 380px 伸びるので足りない。
  */
 let cityPropsDisabled = false;
-export const setCityPropsDisabled = (disabled: boolean): void => { cityPropsDisabled = disabled; };
+export const setCityPropsDisabled = (disabled: boolean): void => {
+  if (cityPropsDisabled !== disabled) bumpPropPlacementVersion(); // 下の層(松明・花・水たまり)の避け方が変わる
+  cityPropsDisabled = disabled;
+};
 
-// farKey の散布カタログを区画ごとに決定的散布。カタログ無し(forest等)は空。
-export const cityPropsInRegion = (
+/** 置物の絵の矩形(足元から上・回転つきは足元中心の外接矩形=research/PROP_OVERLAP.md §1)。 */
+export const cityPropArtRect = (farKey: string, p: Pick<CityProp, 'footX' | 'footY' | 'scale' | 'variant' | 'rotation'>): Rect | null => {
+  const def = STAGE_PROPS[farKey]?.[p.variant];
+  if (!def) return null;
+  const h = def.displayH * p.scale;
+  return propArtRect(p.footX, p.footY, h * propTexAspect(def.tex), h, p.rotation);
+};
+
+type PropCand = CityProp & Footprint;
+
+const propCellCount = (farKey: string, cx: number, cy: number): number => {
+  const [cmin, cextra] = STAGE_PROP_COUNT[farKey] ?? [3, 4];
+  return cmin + Math.floor(hash2(cx * 3.1 + 0.7, cy * 2.7 - 1.9) * (cextra + 1));
+};
+
+// 区画 (cx, cy) の k 番目の置物の個体。候補0 = 元の式の位置(=今までの位置)。候補1〜6 = 選び直し(同じ区画の中・種類と大きさは同じ)。
+// 地面のデカール(decal)は対象外=候補は1番目だけで、他を避けず他からも避けられない(§2 監査A3)。
+const propIndividual = (farKey: string, defs: CityPropDef[], cx: number, cy: number, k: number): Individual<PropCand> & { decal: boolean } => {
+  const id = `cp-${cx}-${cy}-${k}`;
+  const variant = pickVariant(defs, hash2(cx * 5.5 + k * 1.7, cy * 4.4 - k * 2.6));
+  const scale = 0.85 + hash2(cx * 0.9 + k * 4.2, cy * 1.6 - k * 0.8) * 0.3; // 0.85〜1.15
+  // 回転(rotateDeg指定の型のみ): 決定的に範囲内で振る(度→rad)。見た目専用。
+  const rd = defs[variant]?.rotateDeg;
+  const rotation = rd
+    ? (rd[0] + hash2(cx * 6.3 - k * 2.9 + 1.1, cy * 3.8 + k * 5.7 - 7.7) * (rd[1] - rd[0])) * (Math.PI / 180)
+    : 0;
+  const decal = !!defs[variant]?.decal;
+  const cands: (PropCand | null)[] = [];
+  for (let r = 0; r <= (decal ? 0 : MAX_REROLLS); r++) {
+    const o = r * 11.17;
+    const footX = cx * CITY_ZONE + CITY_ZONE * (0.08 + 0.84 * hash2(cx * 1.3 + k * 7.1 + 2.2 + o, cy * 1.9 - k * 3.3 + 4.4 - o * 0.6));
+    const footY = cy * CITY_ZONE + CITY_ZONE * (0.08 + 0.84 * hash2(cx * 2.7 - k * 5.5 + 9.9 - o * 1.4, cy * 1.1 + k * 2.2 - 6.6 + o));
+    if (Math.hypot(footX, footY) < CITY_SAFE_RADIUS || isInPoiClearing(footX, footY)) { cands.push(null); continue; } // POIの前は空き地(社長指示2026-11-03)
+    const p: CityProp = { id, footX, footY, scale, variant, rotation };
+    cands.push({ ...p, art: cityPropArtRect(farKey, p)!, col: cityPropRect(farKey, p) });
+  }
+  return { cands, prio: hash2(cx * 8.3 + k * 2.9 + 0.3, cy * 5.9 - k * 1.3 + 2.2), tie: id, decal };
+};
+
+const propUpperOk = cachedCheck((c: PropCand): boolean => {
+  if (!isClearOfHandPlaced(c.art)) return false;
+  for (const t of treeFootprintsNear(c.art)) if (footprintsConflict(c, t)) return false; // 木は置物より上の層
+  return true;
+});
+
+// 区画の個体(候補の列)もメモする=隣の区画からの参照と自分の区画の決めで同じ候補の物を使う(上の層の確かめを使い回す)。
+const propIndMemo = new CellMemo<(Individual<PropCand> & { decal: boolean })[]>();
+const propCellIndividuals = (farKey: string, cx: number, cy: number) =>
+  propIndMemo.get(`${farKey}|${cx},${cy}`, () => {
+    const defs = STAGE_PROPS[farKey];
+    const n = propCellCount(farKey, cx, cy);
+    const out: (Individual<PropCand> & { decal: boolean })[] = [];
+    for (let k = 0; k < n; k++) out.push(propIndividual(farKey, defs, cx, cy, k));
+    return out;
+  });
+
+const propFirstMemo = new CellMemo<NeighborFirst<PropCand>[]>();
+const propFirsts = (farKey: string, cx: number, cy: number): NeighborFirst<PropCand>[] =>
+  propFirstMemo.get(`${farKey}|${cx},${cy}`, () => validFirsts(propCellIndividuals(farKey, cx, cy).filter(i => !i.decal), propUpperOk));
+
+// 区画の置物の最終位置(壊される前・デカール込み・番号順)。
+const propCellMemo = new CellMemo<CityProp[]>();
+const propCellFinal = (farKey: string, cx: number, cy: number): CityProp[] =>
+  propCellMemo.get(`${farKey}|${cx},${cy}`, () => {
+    const inds = propCellIndividuals(farKey, cx, cy);
+    const neighbors: NeighborFirst<PropCand>[] = [];
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (dx === 0 && dy === 0) continue;
+        neighbors.push(...propFirsts(farKey, cx + dx, cy + dy));
+      }
+    }
+    const standing = resolveCellLayer(inds.filter(i => !i.decal), neighbors, propUpperOk);
+    const byId = new Map(standing.map(c => [c.id, c]));
+    const out: CityProp[] = [];
+    for (const ind of inds) {
+      const c = ind.decal ? ind.cands[0] : byId.get(ind.cands.find(x => x)?.id ?? '');
+      if (c) out.push({ id: c.id, footX: c.footX, footY: c.footY, scale: c.scale, variant: c.variant, rotation: c.rotation });
+    }
+    return out;
+  });
+
+/** 壊される前の置物(区画が範囲+1区画に入る物)。下の層が避ける相手はこちら。 */
+export const cityPropsInRegionRaw = (
   farKey: string, minX: number, minY: number, maxX: number, maxY: number
 ): CityProp[] => {
   if (cityPropsDisabled) return [];
   const defs = STAGE_PROPS[farKey];
   if (!defs || defs.length === 0) return [];
-  const [cmin, cextra] = STAGE_PROP_COUNT[farKey] ?? [3, 4];
   const out: CityProp[] = [];
   const cx0 = Math.floor(minX / CITY_ZONE) - 1, cx1 = Math.floor(maxX / CITY_ZONE) + 1;
   const cy0 = Math.floor(minY / CITY_ZONE) - 1, cy1 = Math.floor(maxY / CITY_ZONE) + 1;
   for (let cy = cy0; cy <= cy1; cy++) {
     for (let cx = cx0; cx <= cx1; cx++) {
-      const n = cmin + Math.floor(hash2(cx * 3.1 + 0.7, cy * 2.7 - 1.9) * (cextra + 1));
-      for (let k = 0; k < n; k++) {
-        const footX = cx * CITY_ZONE + CITY_ZONE * (0.08 + 0.84 * hash2(cx * 1.3 + k * 7.1 + 2.2, cy * 1.9 - k * 3.3 + 4.4));
-        const footY = cy * CITY_ZONE + CITY_ZONE * (0.08 + 0.84 * hash2(cx * 2.7 - k * 5.5 + 9.9, cy * 1.1 + k * 2.2 - 6.6));
-        if (Math.hypot(footX, footY) < CITY_SAFE_RADIUS) continue;
-        if (isInPoiClearing(footX, footY)) continue; // POIの前は空き地(社長指示2026-11-03)
-        const id = `cp-${cx}-${cy}-${k}`;
-        // 裏ボスに破壊されたプロップは欠番(描画・当たり判定とも同時に消える)。
-        if (isObstacleDestroyed(id)) continue;
-        const variant = pickVariant(defs, hash2(cx * 5.5 + k * 1.7, cy * 4.4 - k * 2.6));
-        const scale = 0.85 + hash2(cx * 0.9 + k * 4.2, cy * 1.6 - k * 0.8) * 0.3; // 0.85〜1.15
-        // 回転(rotateDeg指定の型のみ): 決定的に範囲内で振る(度→rad)。見た目専用。
-        const rd = defs[variant]?.rotateDeg;
-        const rotation = rd
-          ? (rd[0] + hash2(cx * 6.3 - k * 2.9 + 1.1, cy * 3.8 + k * 5.7 - 7.7) * (rd[1] - rd[0])) * (Math.PI / 180)
-          : 0;
-        out.push({ id, footX, footY, scale, variant, rotation });
-      }
+      const list = propCellFinal(farKey, cx, cy);
+      for (let i = 0; i < list.length; i++) out.push(list[i]);
     }
+  }
+  return out;
+};
+
+// farKey の散布カタログを区画ごとに決定的散布。カタログ無し(forest等)は空。
+// 裏ボスに破壊されたプロップは欠番(描画・当たり判定とも同時に消える)=メモから取り出した後で外す。
+export const cityPropsInRegion = (
+  farKey: string, minX: number, minY: number, maxX: number, maxY: number
+): CityProp[] => {
+  const all = cityPropsInRegionRaw(farKey, minX, minY, maxX, maxY);
+  return all.some(p => isObstacleDestroyed(p.id)) ? all.filter(p => !isObstacleDestroyed(p.id)) : all;
+};
+
+/**
+ * 絵の矩形 art(と判定の隙間)に届き得る、立っている置物(デカールを除く・壊される前・形つき)。
+ * 下の層(松明・花・水たまり)の「上の層を避ける」に使う。区画の±1を引くので足元のずれは含まれる。
+ */
+export const cityPropFootprintsNear = (farKey: string, art: Rect): (CityProp & Footprint)[] => {
+  const defs = STAGE_PROPS[farKey];
+  if (cityPropsDisabled || !defs) return [];
+  const pad = 300 + MIN_COLLISION_GAP; // 置物の絵の最大(廃墟 約283×228)
+  const out: (CityProp & Footprint)[] = [];
+  for (const p of cityPropsInRegionRaw(farKey, art.x - pad, art.y - pad, art.x + art.width + pad, art.y + art.height + pad)) {
+    if (defs[p.variant]?.decal) continue;
+    const a = cityPropArtRect(farKey, p);
+    if (a) out.push({ ...p, art: a, col: cityPropRect(farKey, p) });
   }
   return out;
 };

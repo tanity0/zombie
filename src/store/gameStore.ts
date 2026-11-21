@@ -402,7 +402,7 @@ import { policePos as policeSpot, resolvePoliceCollision, policeRect } from '../
 import { boomerangBatDamageMult, boomerangBatPick, boomerangBatSpeedMult, boomerangBatSparks, DRONE_BOOM_BAT_HITSTOP_MS, DRONE_BOOM_BAT_PAD_PX } from '../utils/boomerangBat';
 import { poiTouchStarts, poiTouchMayFire, poiTouchStallMult, poiTouchHolding, POI_TOUCH_STALL_MS, POI_TOUCH_HOLD_DECAY_S, type PoiTouchId } from '../world/poiTouch';
 import { assignDetourSectors } from '../world/detourPoi';
-import { bossSectorIndex, poiSectorIndex } from '../world/pois';
+import { bossSectorIndex, poiSectorIndex, bossLairPos } from '../world/pois';
 // PACING_PUZZLE.md §6.24-UX(POI-UX): 寄り道POIの通信/入手トースト/解放帯の文言とゲート(純関数)。
 import {
   emptyPoiIntelShown, poiIntelLine, shouldShowPoiIntel, pickPoiIntelSpeaker,
@@ -422,6 +422,8 @@ import { isExStageRun } from '../utils/exStage'; // PACING_PUZZLE.md §10-20: EX
 import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
 import { setPoiClearings } from '../world/poiClearings';
+import { beginPropPlacementSortie, setHandPlacedAnchors, type HandPlacedAnchor } from '../world/propPlacement';
+import { CASTLE_ART_HALF_W, CASTLE_ART_H } from '../world/artRects';
 import { secretPoisForStage, resolveSecretPoiCollision, secretPoiTouchedBy, secretChroniclePhrase, secretPoiRect, ejectDirFromRects, SECRET_EJECT_SPEED, SECRET_EJECT_MS, type SecretPoi } from '../world/secretPois';
 /**
  * ★施設(城・寄り道の建物・祠・隠れ処)の当たり判定を外している間か。ボス戦中(施設ロック)と、ボス戦が明けた直後の
@@ -28274,6 +28276,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // なった(v0.25.4639)ので、森以外のステージのこれらが初めて部屋へ入ってきた。
       // 木を消したのと同じ理由=弾が引っかかる/ボスが避ける/方眼が読めない。
       setCityPropsDisabled(bossMakerRoom);
+      // 置き物どうしを重ねすぎない決まり(research/PROP_OVERLAP.md): 出撃ごとに区画メモを捨て、木の絵の種類
+      // (枯れ木/葉付き/雪)と下の層が避ける置物の種類をこの出撃の farBackdrop に合わせる。
+      beginPropPlacementSortie(farBackdrop);
       // 洋館通路の湧き方向ゲート(上=奥 主体・左右は湧かせない)。generateEnemy が参照(新規/リサイクル両方)。
       setCorridorSpawn(corridorMode);
       // 世界の距離スケール(v0.25.4293): 訓練ステージ(M0)だけ区域の境界を素の値(1500/3000/…)に据え置く(台本が境界に載っている)。
@@ -29957,6 +29962,34 @@ setHateEscortProvider(() => hateEscortSource(useGameStore.getState()));
     if (cur.every((v, i) => v === last[i])) return;
     last = cur;
     setPoiClearings([st.hospital, st.armory, st.police, ...st.shrines, ...st.secretPois]);
+  };
+  sync(useGameStore.getState());
+  useGameStore.subscribe(sync);
+}
+
+// 手置きの物(拠点の円・城の絵・裏ボスの巣)を world 層へ(research/PROP_OVERLAP.md §3)。ランダムに置く物(木・置物・松明・花・
+// 水たまり)はここを避ける。**位置だけ**を見て、変わった時(=出撃の開始・巻き戻しの復元)だけ渡し直す=出撃中に城が崩れても・
+// 拠点が制圧されても・1周目に隠れていても避ける位置は同じ(見えている所で置き物が移らない)。setState ごとの比較は数値数個=負荷 1/10。
+{
+  let lastSig: number[] = [];
+  let lastFar = '';
+  const sync = (st: GameState) => {
+    const noCastle = st.farBackdrop === 'tutorial' || st.farBackdrop === 'ending' || st.corridorMode;
+    const sig: number[] = [st.castleEvent.x, st.castleEvent.y, noCastle ? 1 : 0];
+    for (const b of st.baseSites) sig.push(b.x, b.y);
+    const lair = bossLairPos(st.hiddenBoss);
+    if (lair) sig.push(lair.x, lair.y);
+    if (st.farBackdrop === lastFar && sig.length === lastSig.length && sig.every((v, i) => v === lastSig[i])) return;
+    lastSig = sig;
+    lastFar = st.farBackdrop;
+    const list: HandPlacedAnchor[] = st.baseSites.map(b => ({ kind: 'circle' as const, x: b.x, y: b.y, r: BASE_CAPTURE_RADIUS }));
+    if (!noCastle) {
+      const fy = st.castleEvent.y + CASTLE_FOOT_OFFSET_Y;
+      list.push({ kind: 'rect', rect: { x: st.castleEvent.x - CASTLE_ART_HALF_W, y: fy - CASTLE_ART_H, width: CASTLE_ART_HALF_W * 2, height: CASTLE_ART_H } });
+    }
+    // 裏ボスの巣: 絵は無いが、ボスが現れる場所=拠点の円と同じ大きさを空ける(研究: PROP_OVERLAP.md §2「ボスの場所」)。
+    if (lair) list.push({ kind: 'circle', x: lair.x, y: lair.y, r: BASE_CAPTURE_RADIUS });
+    setHandPlacedAnchors(list);
   };
   sync(useGameStore.getState());
   useGameStore.subscribe(sync);

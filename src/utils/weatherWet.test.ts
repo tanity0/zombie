@@ -14,6 +14,8 @@ import {
   wetSoilTint, wetGlossDrift, shaftLightAt,
   wetCloudShadowMult, WET_CLOUD_SHADOW_MULT_HEAVY,
   wetNightGradeAlpha, wetNightEnvTint, WET_NIGHT_GRADE_ALPHA_MUL, WET_NIGHT_ENV_MUL,
+  stage1NightActive, stage1NightTintMul, buildStage1NightGradeMatrix, buildStage1NightSkyMatrix, S1N_NIGHT_GRADE_ALPHA_MUL, S1N_FOG_TINT_MUL, S1N_MOON_HALO_ALPHA_MUL, S1N_MOON_GLOW_ALPHA_MUL,
+  S1N_CLOUD_SHADOW_MULT, S1N_MOON_SHAFT_MULT, S1N_TORCH_BACK_ALPHA, TORCH_BACK_ALPHA,
 } from './weatherWet';
 
 describe('weatherWet(雨上がりの決めごと)', () => {
@@ -435,5 +437,56 @@ describe('雨上がりの間だけ夜の暗さを弱める', () => {
       expect(prev - a).toBeLessThan(0.01);
       prev = a;
     }
+  });
+});
+
+describe('晴れた夜のステージ1の森(雨上がりの仕組みを流用・値は別)', () => {
+  const base = { stageId: 'stage-1', indoor: false, corridor: false, farKey: 'forest' as string | null, wetActive: false };
+  it('ステージ1の森の屋外だけ・雨上がりの間は止まる', () => {
+    expect(stage1NightActive(base)).toBe(true);
+    for (const stageId of ['stage-0', 'stage-2', 'stage-3', 'stage-4', 'stage-5', 'stage-6', 'stage-7']) {
+      expect(stage1NightActive({ ...base, stageId })).toBe(false);
+    }
+    expect(stage1NightActive({ ...base, indoor: true })).toBe(false);
+    expect(stage1NightActive({ ...base, corridor: true })).toBe(false);
+    expect(stage1NightActive({ ...base, farKey: 'lab' })).toBe(false);
+    expect(stage1NightActive({ ...base, farKey: null })).toBe(false);
+    expect(stage1NightActive({ ...base, wetActive: true })).toBe(false);
+  });
+  it('効き具合0(他ステージ)では全部厳密に1/単位行列', () => {
+    expect(wetLightMult(0, S1N_CLOUD_SHADOW_MULT)).toBe(1);
+    expect(wetLightMult(0, S1N_MOON_SHAFT_MULT)).toBe(1);
+    expect(stage1NightTintMul(S1N_FOG_TINT_MUL, 0)).toEqual({ r: 1, g: 1, b: 1 });
+    expect(buildStage1NightGradeMatrix(0)).toEqual([1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]);
+    expect(buildStage1NightSkyMatrix(0)).toEqual([1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]);
+    expect(wetLightMult(0, S1N_NIGHT_GRADE_ALPHA_MUL)).toBe(1);
+  });
+  it('晴れの夜の向き(霧は色だけ暗く涼しく・月と筋は明るく・影は濃く・黒は深く・青と緑が上がる)', () => {
+    expect(S1N_FOG_TINT_MUL.r).toBeLessThan(1);
+    expect(S1N_FOG_TINT_MUL.b).toBeLessThanOrEqual(1);
+    expect(S1N_FOG_TINT_MUL.r).toBeLessThan(S1N_FOG_TINT_MUL.b);
+    expect(S1N_MOON_HALO_ALPHA_MUL).toBeGreaterThan(1);
+    expect(S1N_MOON_GLOW_ALPHA_MUL).toBeGreaterThan(1);
+    expect(S1N_CLOUD_SHADOW_MULT).toBeGreaterThan(1);
+    expect(S1N_MOON_SHAFT_MULT).toBeGreaterThan(1);
+    expect(S1N_TORCH_BACK_ALPHA).toBeGreaterThan(0);
+    expect(S1N_TORCH_BACK_ALPHA).toBeLessThan(TORCH_BACK_ALPHA);
+    const m = buildStage1NightGradeMatrix(1);
+    const [r0, g0, b0] = applyColorMatrix(m, 0, 0, 0);
+    expect(Math.max(r0, g0, b0)).toBeLessThanOrEqual(0);
+    const [r, g, b] = applyColorMatrix(m, 0.5, 0.5, 0.5);
+    expect(b).toBeGreaterThan(0.5);
+    expect(g).toBeGreaterThan(r);
+    expect(r).toBeLessThan(0.5);
+  });
+  it('入る時は加減速して効く(1フレームで跳ばない)', () => {
+    let mix = 0, prev = 1;
+    for (let t = 0; t < WET_LIGHT_FADE_MS + 100; t += 16) {
+      mix = stepWetLightMix(mix, true, 16);
+      const k = stage1NightTintMul(S1N_FOG_TINT_MUL, mix).r;
+      expect(Math.abs(prev - k)).toBeLessThan(0.01);
+      prev = k;
+    }
+    expect(prev).toBeCloseTo(S1N_FOG_TINT_MUL.r, 6);
   });
 });

@@ -7,6 +7,8 @@
 // ここで足元を弾く。**描画・当たり判定・湧き回避が同じ1点で同時に消える**(見えない幹にぶつからない)。
 // RENDERER-AGNOSTIC: PixiJS を import しない。
 import type { Rect } from './obstacles';
+import { bumpPropPlacementVersion, handPlacedAnchors, hitsAnchor } from './propPlacement';
+import { POI_ART_HALF_W, POI_ART_H } from './artRects';
 
 /** 空き地の左右の半幅(POIの足元のx から)。建物の絵の幅(約200)に木の枝張りぶんを足す。 */
 export const POI_CLEARING_HALF_W = 210;
@@ -16,11 +18,34 @@ export const POI_CLEARING_BACK = 60;
 export const POI_CLEARING_FRONT = 320;
 
 let clearings: Rect[] = [];
+/** POI の建物の絵(足元から上へ POI_ART_H・左右 POI_ART_HALF_W)。ランダムな物はここに1pxも掛けない(research/PROP_OVERLAP.md §2)。 */
+let buildingArts: Rect[] = [];
 
 /** その出撃の POI の足元から空き地を作り直す(resetGame が呼ぶ・null は無い POI)。 */
 export const setPoiClearings = (feet: readonly ({ x: number; y: number } | null | undefined)[]): void => {
   clearings = [];
-  for (const f of feet) if (f) clearings.push(poiClearingRect(f));
+  buildingArts = [];
+  for (const f of feet) {
+    if (!f) continue;
+    clearings.push(poiClearingRect(f));
+    buildingArts.push({ x: f.x - POI_ART_HALF_W, y: f.y - POI_ART_H, width: POI_ART_HALF_W * 2, height: POI_ART_H });
+  }
+  bumpPropPlacementVersion(); // 置き物の区画メモを捨てる(空き地・建物の絵が変わった)
+};
+
+/** その出撃の POI の建物の絵の矩形(テスト・検証用)。 */
+export const poiBuildingArtRects = (): readonly Rect[] => buildingArts;
+
+/**
+ * 絵の矩形 art が手置きの物(POI の建物の絵・拠点の円・城・ボスの場所)のどれにも掛からないか。
+ * ランダムに置く全ての層(木・置物・松明・花・水たまり)がこれを通す。
+ */
+export const isClearOfHandPlaced = (art: Rect): boolean => {
+  for (const r of buildingArts) {
+    if (art.x < r.x + r.width && art.x + art.width > r.x && art.y < r.y + r.height && art.y + art.height > r.y) return false;
+  }
+  for (const a of handPlacedAnchors()) if (hitsAnchor(art, a)) return false;
+  return true;
 };
 
 export const poiClearingRect = (f: { x: number; y: number }): Rect => ({

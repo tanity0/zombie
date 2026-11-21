@@ -27,6 +27,7 @@ import { getSoftGlowTexture } from './lighting';
 import {
   puddlesInRegion, puddleAt, isInPuddle, PUDDLE_ART_SCALE, DEBRIS_ART_SCALE, PUDDLE_CELL, type Puddle,
 } from '../world/weatherPuddles';
+import { propPlacementVersion } from '../world/propPlacement';
 import {
   ripplePose, glintPose, GLINT_MS,
   rainDropSpec, rainPose, rainNextGapMs, rainNextEvent, RAIN_MAX, RAIN_SPAWN_PER_FRAME, type RainDropSpec,
@@ -74,7 +75,7 @@ const LIGHT_REACH = 300;
 const LIGHT_GAIN = 0.75;
 /** キャラの逆さの映り。 */
 const REFL_TINT = 0xa4bad6;
-const REFL_ALPHA = 0.55;
+const REFL_ALPHA = 0.68; // 社長指示2026-11-21「ほんの少しだけ上げて」(0.55→0.68・WATER_FADE は据え置き=実効 約0.39→約0.48)
 const REFL_PER_SLOT = 3;
 /** 小物の色(地面の色に寄せて沈める)。 */
 const DEBRIS_DIM = { r: 0.62, g: 0.64, b: 0.7 };
@@ -254,7 +255,6 @@ export interface WetHost {
   actors: readonly WetActor[];
   lights: readonly WetLight[];
   trees: readonly WetTree[];
-  bases: readonly { x: number; y: number; r: number }[];
   focusX: number;
   focusY: number;
   /** 水たまりに映す遠景(無ければ風景は映さない)。 */
@@ -467,10 +467,11 @@ export class WeatherWetLayer {
     const m = PUDDLE_CELL * 0.5;
     const cx0 = Math.floor((h.view.left - m) / PUDDLE_CELL), cx1 = Math.floor((h.view.right + m) / PUDDLE_CELL);
     const cy0 = Math.floor((h.view.top - m) / PUDDLE_CELL), cy1 = Math.floor((h.view.bottom + m) / PUDDLE_CELL);
-    const key = `${cx0},${cy0},${cx1},${cy1}|${h.bases.map(b => `${Math.round(b.x)},${Math.round(b.y)}`).join(';')}`;
+    // 拠点の円・POI などの手置きの物は world 層(propPlacement)が持つ=その版が変わったら作り直す。
+    const key = `${cx0},${cy0},${cx1},${cy1}|${propPlacementVersion()}`;
     if (key !== this.cacheKey) {
       this.cacheKey = key;
-      this.cached = puddlesInRegion(cx0 * PUDDLE_CELL, cy0 * PUDDLE_CELL, (cx1 + 1) * PUDDLE_CELL - 1, (cy1 + 1) * PUDDLE_CELL - 1, { bases: h.bases });
+      this.cached = puddlesInRegion(cx0 * PUDDLE_CELL, cy0 * PUDDLE_CELL, (cx1 + 1) * PUDDLE_CELL - 1, (cy1 + 1) * PUDDLE_CELL - 1);
     }
     return this.cached;
   }

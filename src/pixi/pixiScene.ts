@@ -468,10 +468,17 @@ import {
   RHYTHM_JUST_CYCLE_COLORS,
 } from '../config/shijin';
 import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
+import { TREE_VISUAL_SCALE, TREE_BOX_W, TREE_BOX_H, TORCH_VISUAL_W, TORCH_VISUAL_H, CAMPFIRE_VISUAL_W, CAMPFIRE_VISUAL_H } from '../world/artRects';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
 import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight, type WetTree } from './weatherWet';
-import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR } from '../utils/weatherWet';
+import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR, stage1NightActive, S1N_CLOUD_SHADOW_MULT, S1N_MOON_SHAFT_MULT, S1N_MOON_SHAFT_COLOR, S1N_NIGHT_GRADE_ALPHA_MUL } from '../utils/weatherWet';
+import { Stage1NightLayer } from './stage1Night';
+import {
+  fireflyBlink, fireflyActiveFrac, fireflyHeading, fireflyScatterAcc, FIREFLY_CYAN_FRAC, FIREFLY_WARM_TINT, FIREFLY_CYAN_TINT,
+  FIREFLY_CORE_PX, FIREFLY_HALO_MUL, FIREFLY_HALO_ALPHA, FIREFLY_SPEED_MIN, FIREFLY_SPEED_MAX, FIREFLY_STEER,
+  FIREFLY_SCATTER_DECAY, FIREFLY_NEAR_FLOWER_P, FIREFLY_ON_EASE, FIREFLY_BLINK_MS_MIN, FIREFLY_BLINK_MS_MAX, FIREFLY_DIM_FLOOR, FIREFLY_S1_COUNT,
+} from '../utils/stage1Fireflies';
 import { getSelectedStageId } from '../data/progress';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H, wallRect, propRect, isLabObstacleBroken, labDebrisInRegion, type LabBrokenObstacle } from '../world/labWalls';
 import { LAB_WALL_CRUMBLE_MS, LAB_PROP_CRUMBLE_MS, LAB_DEBRIS_PALETTE, labDebrisKind } from '../utils/labCrawlerTick'; // 崩れの尺・破片の色(着地の土煙・音と同じ値)
@@ -752,6 +759,8 @@ const tsNum = (key: string, def: number): number => {
   const n = v == null ? NaN : Number(v);
   return Number.isFinite(n) ? n : def;
 };
+const S1N_ON = tsNum('s1n', 1) > 0; // ?s1n=0 で通常のステージ1の夜の上乗せを全部外す(見比べ・計測用)
+const S1N_GRADE_ON = tsNum('s1ngrade', 1) > 0; // ?s1ngrade=0 で色行列だけ外す(計測用)
 const POI_TOUCH_FREEZE_MS = tsNum('poitouchfreeze', -1); // 触れた瞬間の絵の撮影用(負=無効)
 const LEVER_GUARD_FREEZE_MS = tsNum('leverguardfreeze', -1); // 格闘のレバーガードの腕で受ける影の撮影用(受けてからの経過msを固定・負=無効)
 const BOOM_CUE_FREEZE_MS = tsNum('boomcuefreeze', -1); // ブーメランの「今打てる」の光の撮影用(負=無効・経過msを固定)
@@ -3167,17 +3176,14 @@ const OBJECT_PERSP_FAR = tsNum('ofar', GROUND_TILE_SCALE_Y_FAR);
 const OBJECT_PERSP_PAD = Math.max(0, tsNum('opad', 0));
 // 木の見た目倍率。木はステージ1(森)とステージ3(廃都)にのみ出現するため、この値=その2ステージの木サイズ。
 // 社長指示で 1.5倍(1.65→2.475)。見た目のみ拡大=幹のヒットボックス(world/trees.ts)は不変(視覚と当たりは分離)。
-const TREE_VISUAL_SCALE = 1.65 * 1.5;
+// 値の正本は world/artRects.ts(置き物の重なりの判定が同じ寸法を見る=research/PROP_OVERLAP.md)。
 const PICKUP_VISUAL_SIZE = 30;
-const TORCH_VISUAL_W = 42;
-const TORCH_VISUAL_H = 68;
 // 緑卵(mine)のプールスプライト表示サイズ(社長指示で気持ち大きく: 18/24→22/29。踏む当たり(mineRect)は
 // world/mines.ts 側で別管理)。★弾・光線が卵を割る当たりはこの描かれた箱(eggShotRect)なので、数値の出どころは world/mines.ts の1本。
 const EGG_VISUAL_W = EGG_DRAW_W;
 const EGG_VISUAL_H = EGG_DRAW_H;
 // ステージ4の焚き火(松明の置き換え)。横長の焚き火台なので幅広・低め。炎は台の中央(低い位置)。
-const CAMPFIRE_VISUAL_W = 60;
-const CAMPFIRE_VISUAL_H = 34;
+// CAMPFIRE_VISUAL_W/H・TORCH_VISUAL_W/H の正本は world/artRects.ts(置き物の重なりの判定と同じ寸法)。
 const TORCH_LIGHT_RADIUS = 92;
 // v0.25.2633: 炎のハローの上限(画面高比)。M6の壁灯 GLOW_MAX_R_FRAC=0.11 と同じ考え方
 // (近距離で大玉になると加算オーバードローがベンチのG12 FAIL帯に入るため・v0.25.2149の教訓)。
@@ -4530,6 +4536,18 @@ interface Firefly {
   phase: number; freq: number; base: number; size: number;
   snowFall: number;       // 雪モード時の落下速度(px/s)
   snowDrift: number;      // 雪モード時の横ドリフト(px/s)
+  /** ステージ1の森の蛍だけ(syncFireflies の magic 分岐で初めて作る): 光の輪・色・灯る周期・位相・漂い・散る勢い・出ている量・並び順。 */
+  halo?: Sprite;
+  cyan?: boolean;
+  blinkMs?: number;
+  blinkPh?: number;
+  seed?: number;
+  speed?: number;
+  svx?: number; svy?: number;
+  on?: number;
+  rank?: number;
+  /** ステージ1の森で足した分(他の見せ方では使わない=隠す)。 */
+  extra?: boolean;
 }
 // ステージ4の雪(蛍プールを流用)。進行方向(プレイヤー速度)に連動して流れる。
 const SNOW_TINT = 0xeaf2ff;
@@ -4694,6 +4712,7 @@ export class PixiScene {
   private propObjs = new Map<string, LabObstacleView>(); // 遮蔽物プロップ(区画生成・研究所スキン)
   private cityPropObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ3(廃都)の散布オブジェクト
   private flowerObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ1(森)の装飾花(壁判定なし)
+  private stage1Night: Stage1NightLayer | null = null; // 通常のステージ1の森の夜(雨上がりの見た目の一部を弱めて流用・syncStage1Night)
   private weatherWet: WeatherWetLayer | null = null; // 天候「雨上がり」(?weather=wet・ステージ1だけ・research/WEATHER_WET.md)
   private enemies = new Map<string, ActorView>();
   // ★ヨルムンガルドの星弓(research/JORM_DANMAKU.md §4)の絵: 地面の層(影/光溜まり)と効果の層(光弾/着弾の閃光)。
@@ -5782,6 +5801,7 @@ export class PixiScene {
       filters.push(this.dayContrast);
     }
     if (this.weatherWetOn && this.weatherWet) filters.push(this.weatherWet.gradeFilter); // 雨上がりの色調整(世界の層だけ・HUDはDOM)
+    else if (this.s1nGradeOn && this.stage1Night) filters.push(this.stage1Night.gradeFilter); // 通常のステージ1の夜の色調整(雨上がりの間は上が代わる)
     if (this.punchInList && this.punchGrade) filters.push(this.punchGrade);
     if (this.zwarpInList && this.zwarpFilter) filters.push(this.zwarpFilter); // ズーム時だけの遠近(最後=階調の後に形を歪める)
     this.L.worldGroup.filters = filters;
@@ -5922,7 +5942,8 @@ export class PixiScene {
       // 濃さ=α×(斑の暗さ)。雨上がり用テクスチャは暗さが CLOUD_SHADOW_WET_GAIN 倍なので α を割って、濃さが倍率どおり連続に寄るようにする。
       // 倍率は雨の強さに沿う(止みかけ 1.35 → 本降り 1.8・社長指示2026-11-21「雨量に合わせて1.8まで」)。
       const wm = wetLightMult(this.wetLightMix, wetCloudShadowMult(this.weatherWet?.rainIntensity.rain ?? RAIN_INTENSITY_LOW_MAX));
-      sp.alpha = wetShadow ? Math.min(1, base * wm / CLOUD_SHADOW_WET_GAIN) : base;
+      // 通常のステージ1の森の夜も少しだけ濃く(S1N_CLOUD_SHADOW_MULT・効き具合0=他ステージは厳密に1)。
+      sp.alpha = wetShadow ? Math.min(1, base * wm / CLOUD_SHADOW_WET_GAIN) : Math.min(1, base * wetLightMult(this.s1nMix, S1N_CLOUD_SHADOW_MULT));
     }
     const spd = tsNum('cloudshadowspeed', night ? 0.008 : 0.011); // もう少し速く(社長指示v0.25.1977)。夜=ゆっくりめ / 昼=標準
     // ステージ4(雪)は雲影のドリフト向きを雪と同じ(=現状の逆)にし、少し速く(社長指示v0.25.1984)。
@@ -7239,13 +7260,14 @@ export class PixiScene {
     const alpha = SHAFT_ALPHA * (lp.shaftAlpha / SUNLIGHT_PRESET.shaftAlpha) * (this.daylight ? SHAFT_DAY_BOOST : 1);
     // 雨上がり(?weather=wet)の間だけ月明りの筋を明るく(雲が切れた)。塗りのαに掛ける=器の alpha は脈動で既に1付近のため
     // そこに掛けても1で頭打ちになる。雨上がりでなければ倍率は厳密に1=従来どおり。研究所の闇を削る絵には掛けない。
-    this.shaftWetMulDrawn = wetLightMult(this.wetLightMix, WET_MOON_SHAFT_MULT);
+    this.shaftWetMulDrawn = this.shaftMulNow();
     if (alpha <= 0) { this.shaftPeriod = 0; this.shaftPolys = []; return; }
     const shaftAlpha = alpha * this.shaftWetMulDrawn;
     this.shaftPolys = [];
     g.blendMode = 'add';
     // 月明りは淡く青白い拡散光。夜はシャフト色を少しパステル寄りの蒼白へ(プレイヤー光の色には影響しない)。
-    const color = night ? (this.wetLightMix > 0 ? lerpRgb(0xc9d6ff, WET_MOON_SHAFT_COLOR, easeInOutSine(this.wetLightMix)) : 0xc9d6ff) : lp.color; // 雨上がりの間だけ青い月光へ寄せる
+    const color = night ? (this.wetLightMix > 0 ? lerpRgb(0xc9d6ff, WET_MOON_SHAFT_COLOR, easeInOutSine(this.wetLightMix))
+      : this.s1nMix > 0 ? lerpRgb(0xc9d6ff, S1N_MOON_SHAFT_COLOR, easeInOutSine(this.s1nMix)) : 0xc9d6ff) : lp.color; // 雨上がりの間は青い月光・晴れたステージ1の夜は白い青の月光へ寄せる
     // 一定間隔の斜めビームを period 単位でタイル反復して描く。横パララックスで position.x を
     // [-period, 0] に折り返すと継ぎ目なくスクロールできる(森の tilePosition と同じ発想)。
     const period = Math.max(180, w * SHAFT_PERIOD_FACTOR);
@@ -9284,6 +9306,7 @@ export class PixiScene {
 
   sync() {
     this.weatherWet?.restoreAtmosphere(); // 雨上がりの霧/空の色(前フレームに最後に掛けた分)を最初に戻す
+    this.stage1Night?.restoreAtmosphere(); // 通常のステージ1の夜の霧/月(同上)
     this.restoreForestPreview();
     this.restoreWraithDarkness(); // 前フレームに掛けた亡霊戦の暗さを戻してから描く(§12)
     this.restoreZwarpActors(); // 前フレームの逆変形(ズーム時の遠近)を戻してから描く
@@ -10051,7 +10074,7 @@ export class PixiScene {
     // 研究所スキンは床/素材を見せるため、クール調整を弱める(森はそのまま)。
     // cine時は寒色gradeをCINE値で維持(labThemeFog/daylightの上書きに勝つ)。
     this.gradeSprite.alpha = this.cineEnabled ? CINE_GRADE_ALPHA
-      : labThemeFog ? GRADE_ALPHA * 0.45 : (this.daylight ? DAY_GRADE_ALPHA : wetNightGradeAlpha(GRADE_ALPHA, this.wetLightMix)); // 雨上がりの間だけ夜の寒色を弱める(それ以外は厳密に GRADE_ALPHA)
+      : labThemeFog ? GRADE_ALPHA * 0.45 : (this.daylight ? DAY_GRADE_ALPHA : wetNightGradeAlpha(GRADE_ALPHA, this.wetLightMix) * wetLightMult(this.s1nMix, S1N_NIGHT_GRADE_ALPHA_MUL)); // 雨上がり/晴れたステージ1の夜の間だけ夜の寒色を弱める(それ以外は厳密に GRADE_ALPHA)
 
     // 死神の横切り演出(store.reaperCross から駆動)。world内レイヤーを画面へピン留め(被写界深度が乗る)。
     // ★監査v0.25.3008(A-3): worldGroupのズーム(引き)も打ち消す(bgCloudLayerと同じcounter-scale)。
@@ -10891,6 +10914,7 @@ export class PixiScene {
     this.applyForestPreview();
     this.applyWraithDarkness(); // 亡霊と戦っている間の地面と遠景の暗さ(フレームの最後・§12)
     if (WEATHER_KNOB === 'wet') this.syncWeatherWet(s, now); // 天候「雨上がり」(?weather=wet の時だけ・付けなければ1命令も走らない)
+    this.syncStage1Night(s, now); // 通常のステージ1の森の夜(雨上がりの後=雨上がりの間は効かない)
     this.syncZoomWarp(s.player.vx ?? 0, s.player.vy ?? 0, realNow); // ★必ず最後(このフレームの世界が全部揃ってから1枚に描く)
   }
 
@@ -11321,7 +11345,12 @@ export class PixiScene {
       windX = -(p.vx ?? 0) * SNOW_WIND_FACTOR; // 進む方向と逆へ雪が流れる=移動連動
       windY = -(p.vy ?? 0) * SNOW_WIND_FACTOR;
     }
+    // ステージ1の森(晴れた夜・雨上がりとも)だけ、蛍を1匹ずつ灯る/消える・光の輪つき・花の近く・プレイヤーで散る蛍にする。
+    const magic = !snow && !ember && this.s1Forest;
+    if (magic) { this.syncMagicFireflies(camera, now, sec, minX, minY, maxX, maxY); return; }
+    this.hideFireflyHalos();
     for (const f of this.fireflies) {
+      if (f.extra) { f.sprite.visible = false; continue; }
       if (snow) {
         f.x += (f.snowDrift + windX + blizzardWind) * sec;
         f.y += (f.snowFall * fallBoost + windY) * sec; // +y=下へ落下
@@ -11362,6 +11391,107 @@ export class PixiScene {
         f.sprite.tint = FIREFLY_TINT;
         f.sprite.alpha = f.base * twinkle;
         f.sprite.width = f.sprite.height = f.size;
+      }
+    }
+  }
+
+  /** ステージ1の森の蛍(utils/stage1Fireflies.ts)。粒は既存の蛍プール+光の輪(同じ数・加算の柔らかい丸)。影を落とす光ではない。 */
+  private s1Forest = false;
+  private fireflyHalosShown = false;
+  private hideFireflyHalos() {
+    if (!this.fireflyHalosShown) return;
+    this.fireflyHalosShown = false;
+    for (const f of this.fireflies) if (f.halo) f.halo.visible = false;
+  }
+  private syncMagicFireflies(camera: { x: number; y: number }, now: number, sec: number, minX: number, minY: number, maxX: number, maxY: number) {
+    const st = useGameStore.getState();
+    const ppx = st.player.x + st.player.width / 2, ppy = st.player.y + st.player.height / 2;
+    const wet = this.weatherWetOn;
+    const activeFrac = fireflyActiveFrac(wet, this.weatherWet?.rainIntensity.rain ?? RAIN_INTENSITY_LOW_MAX);
+    const n = this.fireflies.length;
+    let flowers: { x: number; y: number }[] | null = null;
+    const nearFlower = (): { x: number; y: number } | null => {
+      if (!flowers) {
+        flowers = [];
+        for (const [, e] of this.flowerObjs) if (e.sprite.x >= minX && e.sprite.x <= maxX && e.sprite.y >= minY && e.sprite.y <= maxY) flowers.push({ x: e.sprite.x, y: e.sprite.y });
+      }
+      if (!flowers.length || Math.random() > FIREFLY_NEAR_FLOWER_P) return null;
+      const fl = flowers[Math.floor(Math.random() * flowers.length)];
+      return { x: fl.x + (Math.random() - 0.5) * 80, y: fl.y - 10 - Math.random() * 30 };
+    };
+    this.fireflyHalosShown = true;
+    // 粒の数は起動時(遠景が決まる前)に決まるので、足りなければここで足す(1回だけ・同じ層)。
+    if (n < FIREFLY_S1_COUNT && this.fireflies[0]?.sprite.parent) {
+      const parent = this.fireflies[0].sprite.parent;
+      for (let i = n; i < FIREFLY_S1_COUNT; i++) {
+        const sprite = new Sprite(getSoftGlowTexture());
+        sprite.anchor.set(0.5);
+        sprite.blendMode = 'add';
+        sprite.eventMode = 'none';
+        parent.addChild(sprite);
+        this.fireflies.push({
+          sprite, x: minX + Math.random() * (maxX - minX), y: minY + Math.random() * (maxY - minY), vx: 0, vy: 0,
+          phase: 0, freq: 0, base: 0, size: 0, snowFall: 0, snowDrift: 0, extra: true,
+        });
+      }
+      for (let i = 0; i < this.fireflies.length; i++) this.fireflies[i].rank = (i + 0.5) / this.fireflies.length;
+    }
+    const nAll = this.fireflies.length;
+    for (let i = 0; i < nAll; i++) {
+      const f = this.fireflies[i];
+      if (f.halo === undefined) {
+        const halo = new Sprite(getSoftGlowTexture());
+        halo.anchor.set(0.5);
+        halo.blendMode = 'add';
+        halo.eventMode = 'none';
+        f.sprite.parent?.addChildAt(halo, f.sprite.parent.getChildIndex(f.sprite));
+        f.halo = halo;
+        f.cyan = Math.random() < FIREFLY_CYAN_FRAC;
+        f.blinkMs = FIREFLY_BLINK_MS_MIN + Math.random() * (FIREFLY_BLINK_MS_MAX - FIREFLY_BLINK_MS_MIN);
+        f.blinkPh = Math.random();
+        f.seed = Math.random();
+        f.speed = FIREFLY_SPEED_MIN + Math.random() * (FIREFLY_SPEED_MAX - FIREFLY_SPEED_MIN);
+        f.svx = 0; f.svy = 0; f.on = 0;
+        f.rank = (i + 0.5) / nAll;
+        const p = nearFlower();
+        if (p) { f.x = p.x; f.y = p.y; }
+      }
+      // 漂い: 目標の向き・速さへ慣性で寄せる。散る勢いは別に持ち、抜けるのも加減速。
+      const hd = fireflyHeading(now, f.seed!);
+      const k = Math.min(1, sec * FIREFLY_STEER);
+      f.vx += (Math.cos(hd) * f.speed! - f.vx) * k;
+      f.vy += (Math.sin(hd) * f.speed! * 0.6 - f.vy) * k;
+      const sc = fireflyScatterAcc(f.x - ppx, f.y - ppy);
+      const dec = Math.exp(-FIREFLY_SCATTER_DECAY * sec);
+      f.svx = (f.svx! + sc.ax * sec) * dec;
+      f.svy = (f.svy! + sc.ay * sec) * dec;
+      f.x += (f.vx + f.svx) * sec;
+      f.y += (f.vy + f.svy) * sec;
+      if (f.x < minX || f.x > maxX || f.y < minY || f.y > maxY) {
+        const p = nearFlower();
+        if (p) { f.x = p.x; f.y = p.y; }
+        else { f.x = minX + Math.random() * (maxX - minX); f.y = minY + Math.random() * (maxY - minY); }
+        // 置き直した蛍は暗い所からゆっくり出てくる(パッと現れない・カメラが大きく動いても縁に一列に溜まらない)。
+        f.svx = 0; f.svy = 0; f.on = 0;
+      }
+      f.on = f.on! + ((f.rank! < activeFrac ? 1 : 0) - f.on!) * Math.min(1, sec * FIREFLY_ON_EASE);
+      const lit = fireflyBlink(now, f.blinkPh!, f.blinkMs!) * easeInOutSine(f.on!);
+      const tint = f.cyan ? FIREFLY_CYAN_TINT : FIREFLY_WARM_TINT;
+      const bob = Math.sin(now * 0.0016 + f.seed! * 9) * 3; // 草の上で小さく浮き沈み
+      const x = f.x - camera.x, y = f.y - camera.y + bob;
+      f.sprite.position.set(x, y);
+      f.sprite.tint = tint;
+      f.sprite.alpha = Math.min(1, lit * 1.05);
+      f.sprite.width = f.sprite.height = FIREFLY_CORE_PX * (0.8 + 0.35 * lit);
+      f.sprite.visible = lit > 0.01;
+      const h = f.halo!;
+      const hl = Math.max(0, (lit - FIREFLY_DIM_FLOOR) / (1 - FIREFLY_DIM_FLOOR)); // 輪は灯っている間だけ
+      h.visible = hl > 0.01;
+      if (h.visible) {
+        h.position.set(x, y);
+        h.tint = tint;
+        h.alpha = FIREFLY_HALO_ALPHA * hl;
+        h.width = h.height = FIREFLY_CORE_PX * FIREFLY_HALO_MUL * (0.75 + 0.25 * hl);
       }
     }
   }
@@ -12147,8 +12277,8 @@ export class PixiScene {
         // pass in front of (south) or behind (north) each tree.
         sprite.zIndex = t.footY;
         this.L.actorLayer.addChild(sprite);
-        const boxW = 48 * TREE_VISUAL_SCALE * t.scale;
-        const boxH = 64 * TREE_VISUAL_SCALE * t.scale;
+        const boxW = TREE_BOX_W * TREE_VISUAL_SCALE * t.scale;
+        const boxH = TREE_BOX_H * TREE_VISUAL_SCALE * t.scale;
         const baseScale = tex ? containScale(boxW, boxH, tex.width, tex.height) : 1;
         entry = { sprite, baseScale, footY: t.footY };
         this.trees.set(t.key, entry);
@@ -12563,7 +12693,7 @@ export class PixiScene {
     this.wetLightLastNow = now;
     this.wetLightMix = stepWetLightMix(this.wetLightMix, active, dtLight); // 入る/抜ける時は加減速して効く(慣性)
     // 月明りの筋は画面寸法が変わった時にしか描き直さないので、倍率が動いている間だけ描き直す(入る/抜ける約2秒だけ)。
-    if (wetLightMult(this.wetLightMix, WET_MOON_SHAFT_MULT) !== this.shaftWetMulDrawn) this.updateStageLightShafts(this.screenW, this.screenH);
+    if (this.shaftMulNow() !== this.shaftWetMulDrawn) this.updateStageLightShafts(this.screenW, this.screenH);
     // 濡れた土: 地面の帯の tint を湿った土へ寄せる(入る/抜ける時は加減速)。抜け切ったら一度だけ夜の tint へ戻す。
     if (this.wetLightMix > 0 || this.wetSoilOn) {
       const tint = wetSoilTint(wetNightEnvTint(this.envTintNow(), this.wetLightMix), this.wetLightMix); // 夜の暗さも雨上がりの間だけ少し弱める
@@ -12602,7 +12732,6 @@ export class PixiScene {
       if (!e || e.sprite.destroyed || !e.sprite.visible || e.sprite.alpha < 0.35) continue; // 地平線/手前で消えている木からは垂らさない
       trees.push({ footX: t.footX, footY: t.footY, scale: t.scale, w: Math.abs(e.sprite.width), h: Math.abs(e.sprite.height) });
     }
-    const bases = s.baseSites.map(b => ({ x: b.x, y: b.y, r: 130 })); // 130 = BASE_CAPTURE_RADIUS
     const ppx = s.player.x + s.player.width / 2, ppy = s.player.y + s.player.height;
     // 雨粒の着地点を選ぶ矩形=実際に映っている世界(visibleWorldRect は等倍の画面との和+遠近の余白を含むので広すぎる)。
     const wg = this.L.worldGroup, wsc = wg.scale.x > 0 ? wg.scale.x : 1;
@@ -12623,11 +12752,63 @@ export class PixiScene {
       now, envTint: wetNightEnvTint(this.envTintNow(), this.wetLightMix), view, rainView, world: this.L.world, // 水たまりの縁も地面と同じ明るさ
       depthScale: y => this.depthScale(y),
       horizonAlpha: y => this.horizonActorAlpha(y),
-      actors, lights, trees, bases, focusX: ppx, focusY: ppy,
+      actors, lights, trees, focusX: ppx, focusY: ppy,
       landscape: this.wetLandscape(),
       shaftLevel: this.stageLightShaftGfx.visible ? this.stageLightShaftGfx.alpha : 0,
       moonAt: (x, y) => this.moonLightAt(x, y),
     });
+  }
+
+  /**
+   * 通常(雨上がりでない)のステージ1の森の夜(社長指示2026-11-21「通常のステージ1に流用できる部分は流用して」)。
+   * 霧の色・月の暈/グロー・世界の色行列・雲の影・月明りの筋・松明の裏の光を、雨上がりより弱く(utils/weatherWet.ts の S1N_*)。
+   * 効き具合 s1nMix は入る/抜ける時に加減速して動く(慣性)。ステージ1の森以外・雨上がりの間は 0=厳密にそのまま。
+   */
+  private s1nMix = 0;
+  private s1nLastNow = 0;
+  private s1nGradeOn = false;
+  /** 月明りの筋の今の倍率(雨上がり×通常のステージ1の夜。どちらかは必ず1)。 */
+  private shaftMulNow(): number {
+    return wetLightMult(this.wetLightMix, WET_MOON_SHAFT_MULT) * wetLightMult(this.s1nMix, S1N_MOON_SHAFT_MULT);
+  }
+  private syncStage1Night(s: ReturnType<typeof useGameStore.getState>, now: number) {
+    const active = stage1NightActive({
+      stageId: getSelectedStageId(), indoor: s.indoorMode, corridor: s.corridorMode, farKey: this.currentFarKey, wetActive: this.weatherWetOn,
+    }) && !this.daylight && S1N_ON;
+    this.s1Forest = S1N_ON && !this.daylight && stage1NightActive({ // 蛍の見せ方(雨上がりでも森なら)
+      stageId: getSelectedStageId(), indoor: s.indoorMode, corridor: s.corridorMode, farKey: this.currentFarKey, wetActive: false,
+    });
+    if (!active && this.s1nMix <= 0 && !this.stage1Night) { this.s1nLastNow = now; return; } // 他ステージ=1命令で終わる
+    const dt = this.s1nLastNow > 0 ? Math.min(100, Math.max(0, now - this.s1nLastNow)) : 0;
+    this.s1nLastNow = now;
+    this.s1nMix = stepWetLightMix(this.s1nMix, active, dt);
+    if (this.shaftMulNow() !== this.shaftWetMulDrawn) this.updateStageLightShafts(this.screenW, this.screenH); // 入る/抜ける約2秒だけ描き直す
+    if (!this.stage1Night) this.stage1Night = new Stage1NightLayer(this.L.groundLayer);
+    const mix = this.s1nMix;
+    const gradeOn = mix > 0 && S1N_GRADE_ON;
+    if (gradeOn) this.stage1Night.setGrade(mix);
+    if (gradeOn !== this.s1nGradeOn) { this.s1nGradeOn = gradeOn; this.syncWorldGroupFilters(); }
+    const lights: { id: string; x: number; y: number; color: number; strength: number }[] = [];
+    if (mix > 0) {
+      for (const [id, v] of this.breakableProps) {
+        const r = v.reflection;
+        if (r.visible && r.alpha > 0.01) lights.push({ id, x: r.x, y: r.y, color: Number(r.tint), strength: Math.min(1, r.alpha / 0.24) });
+      }
+    }
+    this.stage1Night.syncTorchBacks({
+      view: this.visibleWorldRect(), lights, depthScale: y => this.depthScale(y), horizonAlpha: y => this.horizonActorAlpha(y),
+    }, mix);
+    const fls: { id: string; x: number; y: number; h: number; alpha: number }[] = [];
+    if (mix > 0) for (const [id, e] of this.flowerObjs) fls.push({ id, x: e.sprite.x, y: e.sprite.y, h: Math.abs(e.sprite.height), alpha: e.sprite.alpha });
+    this.stage1Night.syncFlowerGlows(fls, mix, now);
+    this.stage1Night.syncSky(this.farGroup, mix); // 空を深い青〜青緑の夜空へ(遠景の箱に色行列1枚・効いている間だけ)
+    if (mix <= 0) return;
+    this.stage1Night.applyAtmosphere({
+      fog: this.nearHorizonMist ? [...this.fogLayers.map(f => f.sp), this.nearHorizonMist] : this.fogLayers.map(f => f.sp),
+      front: [this.L.frontForest, this.frontRidgeCopy, ...this.zoomClouds],
+      moonGlow: [this.stage1MoonGlow],
+      moonHalo: [this.stage1MoonHalo],
+    }, mix);
   }
 
   /** 世界の点 (x, y) に落ちている月明りの筋の量(0..1・筋の脈動込み)。筋が無い/見えない時は 0。 */
@@ -14733,7 +14914,7 @@ export class PixiScene {
         push(prop.footX, prop.footY, shadowW, propWeight);
       }
       for (const tree of this.trees.values()) {
-        push(tree.sprite.x, tree.footY, 48 * TREE_VISUAL_SCALE * this.depthScale(tree.footY) * 0.36, 0.72);
+        push(tree.sprite.x, tree.footY, TREE_BOX_W * TREE_VISUAL_SCALE * this.depthScale(tree.footY) * 0.36, 0.72);
       }
       // ただのオブジェクト(壊せない: トラック/瓦礫/ドラム=city props、ラボの壁/什器)も影を落とす(グローは無し)。
       // 地面デカール(groundLayer 配置・平面)は除外。影幅は表示幅から算出。
@@ -43617,8 +43798,9 @@ export class PixiScene {
     this.gradeSprite.destroy();
     this.playerLight.destroy();
     this.vignette.destroy();
-    for (const f of this.fireflies) f.sprite.destroy();
+    for (const f of this.fireflies) { f.sprite.destroy(); f.halo?.destroy(); }
     this.weatherWet?.destroy(); this.weatherWet = null;
+    this.stage1Night?.destroy(); this.stage1Night = null;
     this.fireflies = [];
     if (this.tiltShift || this.bloom) {
       this.L.filteredWorld.filters = [];

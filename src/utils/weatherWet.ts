@@ -450,6 +450,78 @@ export const wetNightEnvTint = (env: number, mix: number): number => {
   return (ch(16) << 16) | (ch(8) << 8) | ch(0);
 };
 
+// ---- 晴れた夜(通常=雨上がりでない)のステージ1の森: 雨上がりの仕組み(霧と月の色の掛け方・色行列・雲の影・月明りの筋・
+// 松明の裏の光)を流用し、値は晴れの夜の魅力に合わせて別に決める(社長指示2026-11-21「通常のステージ1に流用できる部分は流用して」
+// 「晴れは晴れの魅力的な森にしたい」)。晴れの夜=澄んだ空気・くっきり明るい満月・はっきりした月明りの筋・
+// 月に照らされた所と木/雲の影の差・涼しい青の光・生き生きした苔の緑・乾いた草に落ちる松明の温かい光。
+// 水たまり・雨・雫・松明の濡れた筋/照り返し・照りの膜・濡れた土・夜の暗さの緩め・映り込みは使わない(雨上がりだけのもの)。
+// 霧の濃さは変えない(色だけ)。効き具合 mix(0..1)は雨上がりと同じ速さで寄せ、見た目の加減速は easeInOutSine(慣性)。
+// 雨上がりの間はこちらは効かない(雨上がり側の値を使う=二重に掛けない)。mix=0 なら全部厳密にそのまま。
+/** 晴れた夜の見た目を足すステージ(ステージ1だけ)。 */
+export const STAGE1_NIGHT_STAGES: ReadonlySet<string> = new Set(['stage-1']);
+export interface Stage1NightCtx {
+  stageId: string;
+  indoor: boolean;
+  corridor: boolean;
+  /** 今の遠景のキー(森=forest の時だけ)。 */
+  farKey: string | null;
+  /** 雨上がりがこのフレームで効いているか(効いている間はこちらは止める)。 */
+  wetActive: boolean;
+}
+/** 晴れた夜のステージ1の見た目がこのフレームで効くか。 */
+export const stage1NightActive = (c: Stage1NightCtx): boolean =>
+  STAGE1_NIGHT_STAGES.has(c.stageId) && !c.indoor && !c.corridor && c.farKey === 'forest' && !c.wetActive;
+/** 1. 霧の色: 灰色の濁りを抜いて、暗く涼しい青へ(暗い色の霧=地面を白く濁らせない=澄んだ空気)。濃さは変えない。 */
+export const S1N_FOG_TINT_MUL = { r: 0.52, g: 0.72, b: 0.98 } as const;
+/** 近景の森(世界の色行列が掛からない層)を、色行列と同じ涼しい夜へ揃える。 */
+export const S1N_FRONT_TINT_MUL = { r: 0.8, g: 0.92, b: 1 } as const;
+/** 2. 月: 澄んだ空の満月=グローは雨上がりより明るく、大きさは控えめ(にじませずくっきり)。暈も明るく。 */
+export const S1N_MOON_GLOW_ALPHA_MUL = 1.9;
+export const S1N_MOON_GLOW_SCALE_MUL = 1.12;
+export const S1N_MOON_HALO_ALPHA_MUL = 2.3;
+export const S1N_MOON_HALO_SCALE_MUL = 1.2;
+/** 3. 世界の色行列: 黒の点を下げ、明るい所は持ち上げる=明暗差(光・色・コントラスト)。苔の緑を生かし、光は涼しい青緑へ。 */
+export const S1N_GRADE_SAT = 1.12;
+export const S1N_GRADE_GAIN: readonly [number, number, number] = [1.0, 1.2, 1.36];
+export const S1N_GRADE_LIFT: readonly [number, number, number] = [-0.032, -0.028, -0.016];
+/** 4. 雲の影(照らされた所と影の差をくっきり)・月明りの筋(雨上がりより強く・白い青)。 */
+export const S1N_CLOUD_SHADOW_MULT = 1.45;
+export const S1N_MOON_SHAFT_MULT = 2.4;
+export const S1N_MOON_SHAFT_COLOR = 0xbfe8ff;
+/** 5. 松明の裏の光の濃さ(乾いた草に落ちる温かい光)。寸法と色は雨上がりと同じ。 */
+export const S1N_TORCH_BACK_ALPHA = 0.45;
+/** 6. 夜の寒色の乗算(GRADE_TINT)の濃さに掛ける倍率=晴れの夜は少しだけ明るく(黒は色行列の側で深いまま)。 */
+export const S1N_NIGHT_GRADE_ALPHA_MUL = 0.8;
+/** 7. 遠景(空)の色行列: 紫の雲を深い青〜青緑の夜空へ(赤を抜き、青と少しの緑を足す)。5×4 を1列に。 */
+export const S1N_SKY_MATRIX: readonly number[] = [
+  0.78, 0, 0, 0, -0.01,
+  0.03, 1.04, 0.02, 0, 0,
+  0.04, 0.04, 1.1, 0, 0.012,
+  0, 0, 0, 1, 0,
+];
+/** 効き具合 mix の時の空の色行列(mix=0 で単位行列)。 */
+export const buildStage1NightSkyMatrix = (mix: number): number[] => {
+  const k = easeInOutSine(mix);
+  const id = [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0];
+  return id.map((v, i) => v + (S1N_SKY_MATRIX[i] - v) * k);
+};
+
+/** 色の掛け率 mul を、効き具合 mix(0..1・加減速つき)ぶん効かせた掛け率。mix=0 なら 1,1,1。 */
+export const stage1NightTintMul = (mul: { r: number; g: number; b: number }, mix: number): { r: number; g: number; b: number } => {
+  const k = easeInOutSine(mix);
+  return { r: 1 + (mul.r - 1) * k, g: 1 + (mul.g - 1) * k, b: 1 + (mul.b - 1) * k };
+};
+/** 効き具合 mix の時の世界の色行列。mix=0 なら単位行列(=何も変えない)。 */
+export const buildStage1NightGradeMatrix = (mix: number): number[] => {
+  const k = easeInOutSine(mix);
+  const l = (a: number, b: number) => a + (b - a) * k;
+  return buildWetGradeMatrix(
+    l(1, S1N_GRADE_SAT),
+    S1N_GRADE_GAIN.map(g => l(1, g)),
+    S1N_GRADE_LIFT.map(v => l(0, v)),
+  );
+};
+
 // 9. 濡れた地面の照り: 地面の上(キャラの下)に、まだらな照りの絵を1枚敷く(加算・薄く)。松明の足元では温かく強く照る。
 /** 照りの濃さ・色。 */
 export const WET_GLOSS_ALPHA = 0.4;

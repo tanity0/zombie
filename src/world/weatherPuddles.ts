@@ -13,10 +13,17 @@
 //
 // RENDERER-AGNOSTIC: PixiJS を import しない。描画は pixi/weatherWet.ts が読んで並べるだけ。
 
-import { isInPoiClearing } from './poiClearings';
-import { treesInRegion } from './trees';
-import { torchesInRegion } from './torches';
+import type { Rect } from './obstacles';
+import { isInPoiClearing, isClearOfHandPlaced } from './poiClearings';
+import { treesInRegionRaw } from './trees';
+import { torchFootprintsNear } from './torches';
 import { forestFlowersInRegion, FLOWER_DISPLAY_H } from './forestDecor';
+import { cityPropFootprintsNear } from './cityProps';
+import { treeArtSize } from './artRects';
+import {
+  CellMemo, MAX_REROLLS, artOverlapRatio, cachedCheck, handPlacedAnchors, placementFarKey, resolveCellLayer, validFirsts,
+  footprintsConflict, type Footprint, type Individual, type NeighborFirst,
+} from './propPlacement';
 
 /** 水たまりの種類(public/sprites/weather/<name>.png と <name>-water.png の対)。 */
 export const PUDDLE_VARIANTS = [
@@ -51,9 +58,9 @@ export const PUDDLE_TREE_CLEAR = 70;
 /** 松明の足元からこれ以内には置かない。 */
 export const PUDDLE_TORCH_CLEAR = 80;
 /** 木の絵が地面の上に立つ範囲(scale 1・world px)。描画(pixiScene.syncTrees)の箱 48×64×TREE_VISUAL_SCALE(2.475)に
- *  絵(206×230)を収めた寸法=幅 119・高さ 133。足元から上へ高さぶん・左右へ半幅ぶん。 */
-export const PUDDLE_TREE_ART_HALF_W = 60;
-export const PUDDLE_TREE_ART_H = 133;
+ *  枯れ木の絵(201×233)を収めた寸法(world/artRects.ts の treeArtSize が正本)。足元から上へ高さぶん・左右へ半幅ぶん。 */
+export const PUDDLE_TREE_ART_HALF_W = Math.ceil(treeArtSize('').w / 2);
+export const PUDDLE_TREE_ART_H = Math.ceil(treeArtSize('').h);
 /** 花の絵の幅÷高さ(花の絵はほぼ正方形よりやや縦長)。高さは FLOWER_DISPLAY_H×個体scale。 */
 export const PUDDLE_FLOWER_ART_ASPECT = 0.9;
 /** 絵の範囲を避ける時の遠近の見込み: 画面の手前の物は遠近で大きく描かれる(最大 1.7 倍)ので、範囲と楕円をこの倍率で広げる。 */
@@ -94,11 +101,10 @@ export interface Puddle {
 }
 
 export interface PuddleAvoid {
-  /** 拠点の円(中心と半径)。 */
-  bases?: readonly { x: number; y: number; r: number }[];
   /** 花(forestDecor)を引くステージ。省略時は 'stage-1'(雨上がりはステージ1だけ)。 */
   stageId?: string;
 }
+// 拠点の円・城・ボスの場所は手置きの物(propPlacement.setHandPlacedAnchors)から引く(research/PROP_OVERLAP.md §3 で一本化)。
 
 /** 足元から上へ立つ絵の範囲(幅 halfW×2・高さ h)に、中心 (x, y)・半径 (rx, ry) の楕円が掛かるか。 */
 export const ellipseHitsPropArt = (
@@ -130,48 +136,111 @@ const pickVariant = (u: number): PuddleVariant => {
   return PUDDLE_VARIANTS[PUDDLE_VARIANTS.length - 1];
 };
 
-const blocked = (x: number, y: number, rx: number, ry: number, avoid: PuddleAvoid): boolean => {
+/** 水たまりの絵の矩形(楕円の外接矩形・中心アンカー)。 */
+const puddleArtRect = (x: number, y: number, rx: number, ry: number): Rect => ({ x: x - rx, y: y - ry, width: rx * 2, height: ry * 2 });
+
+// 水たまりの上の層(出撃地点・空き地・手置きの物・木・置物・松明(RELAX 込みの最大)・花)。木・置物・松明は壊される前の配置で見る。
+const blocked = (x: number, y: number, rx: number, ry: number, stageId: string): boolean => {
   if (Math.hypot(x, y) < PUDDLE_SAFE_RADIUS + rx) return true;
   if (isInPoiClearing(x, y) || isInPoiClearing(x, y + PUDDLE_POI_BACK)) return true;
-  // 木: treesInRegion は「区画の原点」で引く(足元は原点から最大 1区画+32×scale 先)ので、1区画ぶん広く引く。
+  const art = puddleArtRect(x, y, rx, ry);
+  // 手置きの物: 拠点の円は縁に余白(PUDDLE_BASE_PAD)を足して避ける。城・POI の建物の絵には掛けない。
+  for (const a of handPlacedAnchors()) {
+    if (a.kind === 'circle' && Math.hypot(a.x - x, a.y - y) < a.r + PUDDLE_BASE_PAD + rx) return true;
+  }
+  if (!isClearOfHandPlaced(art)) return true;
+  // 木: treesInRegionRaw は「区画の原点」で引く(足元は原点から最大 1区画+32×scale 先)ので、1区画ぶん広く引く。
   const tPadX = (rx + PUDDLE_PROP_GAP + PUDDLE_TREE_ART_HALF_W * 1.25) * PUDDLE_PROP_DEPTH_ALLOW + 220;
   const tPadY = (ry + PUDDLE_PROP_GAP + PUDDLE_TREE_ART_H * 1.25) * PUDDLE_PROP_DEPTH_ALLOW + 260;
-  for (const t of treesInRegion(x - tPadX, y - tPadY, x + tPadX, y + tPadY)) {
+  const farKey = placementFarKey();
+  const ta = treeArtSize(farKey);
+  for (const t of treesInRegionRaw(x - tPadX, y - tPadY, x + tPadX, y + tPadY)) {
     if (Math.hypot(t.footX - x, (t.footY - y) * 1.6) < rx + PUDDLE_TREE_CLEAR * t.scale) return true;
     if (ellipseHitsPropArt(x, y, rx, ry, t.footX, t.footY, PUDDLE_TREE_ART_HALF_W * t.scale, PUDDLE_TREE_ART_H * t.scale)) return true;
+    if (artOverlapRatio(art, { x: t.footX - (ta.w * t.scale) / 2, y: t.footY - ta.h * t.scale, width: ta.w * t.scale, height: ta.h * t.scale }) > 0.25) return true;
   }
   // 花(ステージ1の光る花): 足元から上へ立つ絵の範囲を避ける。
   const fPad = (Math.max(rx, ry) + PUDDLE_PROP_GAP + FLOWER_DISPLAY_H) * PUDDLE_PROP_DEPTH_ALLOW;
-  for (const f of forestFlowersInRegion(avoid.stageId ?? 'stage-1', x - fPad, y - fPad, x + fPad, y + fPad)) {
+  for (const f of forestFlowersInRegion(stageId, x - fPad, y - fPad, x + fPad, y + fPad)) {
     const fh = FLOWER_DISPLAY_H * f.scale;
     if (ellipseHitsPropArt(x, y, rx, ry, f.footX, f.footY, fh * PUDDLE_FLOWER_ART_ASPECT * 0.5, fh)) return true;
   }
+  const self: Footprint = { art, col: null };
+  for (const p of cityPropFootprintsNear(farKey, art)) if (footprintsConflict(self, p)) return true;
   const tp = rx + PUDDLE_TORCH_CLEAR;
-  for (const t of torchesInRegion(x - tp, y - tp, x + tp, y + tp)) {
+  for (const t of torchFootprintsNear({ x: x - tp, y: y - tp, width: tp * 2, height: tp * 2 })) {
     if (Math.hypot(t.footX - x, (t.footY - y) * 1.6) < rx + PUDDLE_TORCH_CLEAR) return true;
-  }
-  for (const b of avoid.bases ?? []) {
-    if (Math.hypot(b.x - x, b.y - y) < b.r + PUDDLE_BASE_PAD + rx) return true;
+    if (footprintsConflict(self, t)) return true;
   }
   return false;
 };
 
-const puddleInCell = (cx: number, cy: number, k: number, avoid: PuddleAvoid): Puddle | null => {
+interface PuddleCand extends Footprint {
+  /** true=上の層に当たらないことを確かめ済み(1番目の候補)。 */
+  firstOk?: boolean;
+  id: string; cell: string; stageId: string; variant: PuddleVariant; x: number; y: number; scale: number; rx: number; ry: number;
+}
+/**
+ * 同じ層どうしの「重なりすぎ」: 絵の重なり率 0.25 超(全体の決まり)。同じ区画の中だけは、元の「2つ目を捨てる」距離
+ * (楕円どうしが近すぎる)も重なりとみなす=今の見え方を保ったまま、捨てずに選び直す(research/PROP_OVERLAP.md §2)。
+ */
+const puddlesConflict = (a: PuddleCand, b: PuddleCand): boolean =>
+  artOverlapRatio(a.art, b.art) > 0.25
+  || (a.cell === b.cell && Math.hypot(a.x - b.x, (a.y - b.y) * 1.6) < a.rx + b.rx + 20);
+
+const puddleCellCount = (cx: number, cy: number): number => {
+  const u = hash(cx * 5.3 + 0.7, cy * 8.9 - 1.3);
+  return u < 0.12 ? 0 : u < 0.55 ? 1 : 2;
+};
+
+// 区画の k 番目の水たまりの個体。候補0 = 今の位置(区画の中の PUDDLE_PLACE_TRIES か所のうち、上の層に当たらない最初の所)。
+// 候補1〜6 = 同じ層どうしで重なった時の選び直し(同じ区画の続きの乱数)。
+const puddleIndividual = (cx: number, cy: number, k: number, stageId: string): Individual<PuddleCand> => {
   const variant = pickVariant(hash(cx * 2.3 + k * 7.1, cy * 3.9 - k * 1.7));
   const scale = 0.85 + hash(cx * 0.7 - k * 2.2, cy * 1.9 + k * 4.4) * 0.35; // 0.85〜1.2
   const art = PUDDLE_ART_SIZE[variant];
   const rx = (art.w / 2) * PUDDLE_ART_SCALE * scale;
   const ry = (art.h / 2) * PUDDLE_ART_SCALE * scale;
+  const id = `pd-${cx}-${cy}-${k}`;
+  const cell = `${cx},${cy}`;
+  const at = (a: number): PuddleCand => {
+    const o = a * 13.37;
+    const x = cx * PUDDLE_CELL + PUDDLE_CELL * (0.1 + 0.8 * hash(cx * 1.3 + k * 5.7 + 2.1 + o, cy * 2.7 - k * 3.3 + 0.4 - o * 0.7));
+    const y = cy * PUDDLE_CELL + PUDDLE_CELL * (0.1 + 0.8 * hash(cx * 3.1 - k * 4.1 + 6.6 - o * 1.3, cy * 1.1 + k * 2.6 - 3.8 + o));
+    return { id, cell, stageId, variant, x, y, scale, rx, ry, art: puddleArtRect(x, y, rx, ry), col: null };
+  };
   // 置き場所は区画の中で最大 PUDDLE_PLACE_TRIES か所を順に試す(1つ目は元の式のまま=避ける物が無ければ位置は変わらない)。
   // 木や花の絵を避けると1か所だけでは半数近くが弾かれて水たまりがまばらになるため、空いた所へずらして数を保つ。
-  let x = 0, y = 0, found = false;
-  for (let a = 0; a < PUDDLE_PLACE_TRIES && !found; a++) {
-    const o = a * 13.37;
-    x = cx * PUDDLE_CELL + PUDDLE_CELL * (0.1 + 0.8 * hash(cx * 1.3 + k * 5.7 + 2.1 + o, cy * 2.7 - k * 3.3 + 0.4 - o * 0.7));
-    y = cy * PUDDLE_CELL + PUDDLE_CELL * (0.1 + 0.8 * hash(cx * 3.1 - k * 4.1 + 6.6 - o * 1.3, cy * 1.1 + k * 2.6 - 3.8 + o));
-    found = !blocked(x, y, rx, ry, avoid);
+  let first: PuddleCand | null = null;
+  for (let a = 0; a < PUDDLE_PLACE_TRIES && !first; a++) {
+    const c = at(a);
+    if (!blocked(c.x, c.y, rx, ry, stageId)) { c.firstOk = true; first = c; }
   }
-  if (!found) return null;
+  const cands: (PuddleCand | null)[] = [first];
+  for (let r = 1; r <= MAX_REROLLS; r++) cands.push(first ? at(PUDDLE_PLACE_TRIES - 1 + r) : null);
+  return { cands, prio: hash(cx * 4.9 - k * 3.1 + 0.2, cy * 7.3 + k * 1.9 - 0.8), tie: id };
+};
+
+// 1番目の候補は作る時に上の層を確かめ済み(同じ確かめを2度しない)。
+const puddleUpperOk = cachedCheck((c: PuddleCand): boolean => c.firstOk === true || !blocked(c.x, c.y, c.rx, c.ry, c.stageId));
+
+// 区画の個体(候補の列)もメモする=隣の区画から「1番目の候補」を引く時と、自分の区画を決める時で作り直さない。
+const puddleIndMemo = new CellMemo<Individual<PuddleCand>[]>();
+const puddleCellIndividuals = (cx: number, cy: number, stageId: string): Individual<PuddleCand>[] =>
+  puddleIndMemo.get(`${stageId}|${cx},${cy}`, () => {
+    const out: Individual<PuddleCand>[] = [];
+    const n = puddleCellCount(cx, cy);
+    for (let k = 0; k < n; k++) out.push(puddleIndividual(cx, cy, k, stageId));
+    return out;
+  });
+
+const puddleFirstMemo = new CellMemo<NeighborFirst<PuddleCand>[]>();
+const puddleFirsts = (cx: number, cy: number, stageId: string): NeighborFirst<PuddleCand>[] =>
+  // 1番目の候補は上の層に当たらない所を選んである(validFirsts の確かめは同じ答えになる)。
+  puddleFirstMemo.get(`${stageId}|${cx},${cy}`, () => validFirsts(puddleCellIndividuals(cx, cy, stageId), () => true));
+
+const withDebris = (c: PuddleCand, cx: number, cy: number, k: number): Puddle => {
+  const { x, y, rx, ry } = c;
   const flip = hash(cx * 9.1 + k, cy * 0.3 - k) < 0.5;
   const waterOnly = hash(cx * 7.7 - k * 3.9 + 1.7, cy * 4.1 + k * 6.3 - 2.9) < PUDDLE_WATER_ONLY_RATE;
   // 小物: 0〜2個を水たまりの縁の外側へ(下側=手前寄りに多め)。水面だけの膜には添えない。
@@ -183,31 +252,38 @@ const puddleInCell = (cx: number, cy: number, k: number, avoid: PuddleAvoid): Pu
     const dv = DEBRIS_VARIANTS[Math.floor(hash(cx * 6.6 + j * 2.9, cy * 5.5 - j * 4.4 + k) * DEBRIS_VARIANTS.length) % DEBRIS_VARIANTS.length];
     debris.push({ variant: dv, x: x + Math.cos(a) * rx * r, y: y + Math.sin(a) * ry * r + 3, flip: hash(j + cx, k - cy) < 0.5 });
   }
-  return { id: `pd-${cx}-${cy}-${k}`, variant, x, y, scale, flip, rx, ry, waterOnly, debris };
+  return { id: c.id, variant: c.variant, x, y, scale: c.scale, flip, rx, ry, waterOnly, debris };
 };
+
+const puddleCellMemo = new CellMemo<Puddle[]>();
+const puddleCellFinal = (cx: number, cy: number, stageId: string): Puddle[] =>
+  puddleCellMemo.get(`${stageId}|${cx},${cy}`, () => {
+    const neighbors: NeighborFirst<PuddleCand>[] = [];
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (dx === 0 && dy === 0) continue;
+        neighbors.push(...puddleFirsts(cx + dx, cy + dy, stageId));
+      }
+    }
+    return resolveCellLayer(puddleCellIndividuals(cx, cy, stageId), neighbors, puddleUpperOk, puddlesConflict)
+      .map(c => withDebris(c, cx, cy, Number(c.id.slice(c.id.lastIndexOf('-') + 1))));
+  });
 
 /**
  * 可視域(+余白)の水たまり。区画ごとに 0〜2 個(約1割の区画は空・木や松明に弾かれる分はさらに減る)。決まった乱数=同じ場所には毎回同じ水たまり。
- * 同じ区画の2つ目が1つ目と重なる時は2つ目を捨てる。
+ * 同じ層どうしで重なる時は、区画の中は番号順・隣の区画とは優先値で、選び直す(research/PROP_OVERLAP.md §2)。
  */
 export const puddlesInRegion = (
   minX: number, minY: number, maxX: number, maxY: number, avoid: PuddleAvoid = {},
 ): Puddle[] => {
+  const stageId = avoid.stageId ?? 'stage-1';
   const out: Puddle[] = [];
   const cx0 = Math.floor(minX / PUDDLE_CELL) - 1, cx1 = Math.floor(maxX / PUDDLE_CELL) + 1;
   const cy0 = Math.floor(minY / PUDDLE_CELL) - 1, cy1 = Math.floor(maxY / PUDDLE_CELL) + 1;
   for (let cy = cy0; cy <= cy1; cy++) {
     for (let cx = cx0; cx <= cx1; cx++) {
-      const u = hash(cx * 5.3 + 0.7, cy * 8.9 - 1.3);
-      const n = u < 0.12 ? 0 : u < 0.55 ? 1 : 2;
-      let first: Puddle | null = null;
-      for (let k = 0; k < n; k++) {
-        const p = puddleInCell(cx, cy, k, avoid);
-        if (!p) continue;
-        if (first && Math.hypot(first.x - p.x, (first.y - p.y) * 1.6) < first.rx + p.rx + 20) continue;
-        if (!first) first = p;
-        out.push(p);
-      }
+      const list = puddleCellFinal(cx, cy, stageId);
+      for (let i = 0; i < list.length; i++) out.push(list[i]);
     }
   }
   return out;

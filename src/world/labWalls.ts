@@ -5,6 +5,12 @@
 //  - 奥には 敵以外を置かない(UVバーも無し)。
 // RENDERER-AGNOSTIC: PixiJS を import しない(描画は pixi 側が読むだけ)。
 import { footRect, rectsOverlap, unstickFromRects, type Rect } from './obstacles';
+import { isClearOfHandPlaced } from './poiClearings';
+import { labPropArtSize, labWallArtSize } from './artRects';
+import {
+  CellMemo, MAX_REROLLS, cachedCheck, footprintsConflict, resolveCellLayer, validFirsts,
+  type Footprint, type Individual, type NeighborFirst,
+} from './propPlacement';
 
 export type WallOrient = 'h' | 'v';
 
@@ -167,27 +173,98 @@ const PROP_HIT_W = 46, PROP_HIT_H = 30;
 
 export const propRect = (p: PlacedProp): Rect => footRect(p.footX, p.footY, PROP_HIT_W, PROP_HIT_H);
 
+/** 研究所の壁の絵の矩形(176×72 の箱に内接・足元から上)。 */
+export const labWallArtRect = (w: Pick<PlacedWall, 'footX' | 'footY'>): Rect => {
+  const a = labWallArtSize(WALL_DISPLAY_H);
+  return footRect(w.footX, w.footY, a.w, a.h);
+};
+/** 研究所の置物の絵の矩形(92×92 の箱に内接・足元から上)。 */
+export const labPropArtRect = (p: Pick<PlacedProp, 'footX' | 'footY' | 'variant'>): Rect => {
+  const a = labPropArtSize(p.variant, PROP_DISPLAY_H);
+  return footRect(p.footX, p.footY, a.w, a.h);
+};
+
+type LabPropCand = PlacedProp & Footprint;
+
+// 区画 (cx, cy) の k 番目の散布プロップ。候補0 = 元の式の位置(=今までの位置)。候補1〜6 = 選び直し(同じ区画の中・種類は同じ)。
+const labPropIndividual = (cx: number, cy: number, k: number): Individual<LabPropCand> => {
+  const id = `lp-${cx}-${cy}-${k}`;
+  const variant = Math.floor(hash2(cx * 5.5 + k * 1.7, cy * 4.4 - k * 2.6) * LAB_PROP_VARIANT_COUNT) % LAB_PROP_VARIANT_COUNT;
+  const cands: (LabPropCand | null)[] = [];
+  for (let r = 0; r <= MAX_REROLLS; r++) {
+    const o = r * 7.91;
+    const footX = cx * LAB_ZONE + LAB_ZONE * (0.1 + 0.8 * hash2(cx * 1.3 + k * 7.1 + 2.2 + o, cy * 1.9 - k * 3.3 + 4.4 - o * 0.9));
+    const footY = cy * LAB_ZONE + LAB_ZONE * (0.1 + 0.8 * hash2(cx * 2.7 - k * 5.5 + 9.9 - o * 1.1, cy * 1.1 + k * 2.2 - 6.6 + o));
+    if (Math.hypot(footX, footY) < LAB_START_SAFE_RADIUS) { cands.push(null); continue; } // 原点(スタート)付近は空ける
+    const p: PlacedProp = { id, footX, footY, variant };
+    cands.push({ ...p, art: labPropArtRect(p), col: propRect(p) });
+  }
+  return { cands, prio: hash2(cx * 6.1 - k * 2.3 + 0.4, cy * 3.7 + k * 4.9 - 1.6), tie: id };
+};
+
+// 散布プロップの上の層 = 手置きの物・壁と保証の遮蔽(固定の層=動かさない・選び直さない・research/PROP_OVERLAP.md §2 監査2巡目A)。
+const LAB_UPPER_PAD = 260; // 壁(120×72)・遮蔽(92×92)の絵+判定の隙間+足元のずれ
+const labPropUpperOk = cachedCheck((c: LabPropCand): boolean => {
+  if (!isClearOfHandPlaced(c.art)) return false;
+  const a = c.art;
+  const minX = a.x - LAB_UPPER_PAD, minY = a.y - LAB_UPPER_PAD, maxX = a.x + a.width + LAB_UPPER_PAD, maxY = a.y + a.height + LAB_UPPER_PAD;
+  for (const w of labWallsInRegionRaw(minX, minY, maxX, maxY)) {
+    if (footprintsConflict(c, { art: labWallArtRect(w), col: wallRect(w) })) return false;
+  }
+  for (const p of coverPropsInRegion(minX, maxX, LAB_CORRIDOR_Y_LIMIT_PX)) {
+    if (footprintsConflict(c, { art: labPropArtRect(p), col: propRect(p) })) return false;
+  }
+  return true;
+});
+
+// 区画の個体(候補の列)もメモする=隣の区画からの参照と自分の区画の決めで同じ候補の物を使う(上の層の確かめを使い回す)。
+const labPropIndMemo = new CellMemo<Individual<LabPropCand>[]>();
+const labPropCellIndividuals = (cx: number, cy: number): Individual<LabPropCand>[] =>
+  labPropIndMemo.get(`${cx},${cy}`, () => {
+    if (isDeepCell(cy)) return []; // 奥は敵以外を置かない(壁/UVバーと同じ方針)
+    const n = 3 + Math.floor(hash2(cx * 3.1 + 0.7, cy * 2.7 - 1.9) * 4); // 3〜6個/区画
+    const out: Individual<LabPropCand>[] = [];
+    for (let k = 0; k < n; k++) out.push(labPropIndividual(cx, cy, k));
+    return out;
+  });
+
+const labPropFirstMemo = new CellMemo<NeighborFirst<LabPropCand>[]>();
+const labPropFirsts = (cx: number, cy: number): NeighborFirst<LabPropCand>[] =>
+  labPropFirstMemo.get(`${cx},${cy}`, () => validFirsts(labPropCellIndividuals(cx, cy), labPropUpperOk));
+
+const labPropCellMemo = new CellMemo<PlacedProp[]>();
+const labPropCellFinal = (cx: number, cy: number): PlacedProp[] =>
+  labPropCellMemo.get(`${cx},${cy}`, () => {
+    const inds = labPropCellIndividuals(cx, cy);
+    if (inds.length === 0) return [];
+    const neighbors: NeighborFirst<LabPropCand>[] = [];
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (dx === 0 && dy === 0) continue;
+        neighbors.push(...labPropFirsts(cx + dx, cy + dy));
+      }
+    }
+    return resolveCellLayer(inds, neighbors, labPropUpperOk)
+      .map(c => ({ id: c.id, footX: c.footX, footY: c.footY, variant: c.variant }));
+  });
+
 // 区画(セル)ごとに 3〜6 個のプロップを散布(社長指示v0.25.2222で 2〜4 から増量=「壁とか」の“とか”側)。
 // 決定的ハッシュなので描画と当たり判定が必ず一致する。
+// ★返すのは**選び直した後・壊す前**の位置(research/PROP_OVERLAP.md §2 監査A4=ここが唯一の正)。
+// 置き場所の計算(nudgeToClearLabSpot)・判定(labObstacleRectsNear)・描画はすべてこれ(か、壊れた物を外した labPropsInRegion)を引く。
 export const labPropsInRegionRaw = (minX: number, minY: number, maxX: number, maxY: number): PlacedProp[] => {
   const out: PlacedProp[] = [];
   const cx0 = Math.floor(minX / LAB_ZONE) - 1, cx1 = Math.floor(maxX / LAB_ZONE) + 1;
   const cy0 = Math.floor(minY / LAB_ZONE) - 1, cy1 = Math.floor(maxY / LAB_ZONE) + 1;
   for (let cy = cy0; cy <= cy1; cy++) {
-    if (isDeepCell(cy)) continue; // 奥は敵以外を置かない(壁/UVバーと同じ方針)
     for (let cx = cx0; cx <= cx1; cx++) {
-      const n = 3 + Math.floor(hash2(cx * 3.1 + 0.7, cy * 2.7 - 1.9) * 4); // 3〜6個/区画
-      for (let k = 0; k < n; k++) {
-        const footX = cx * LAB_ZONE + LAB_ZONE * (0.1 + 0.8 * hash2(cx * 1.3 + k * 7.1 + 2.2, cy * 1.9 - k * 3.3 + 4.4));
-        const footY = cy * LAB_ZONE + LAB_ZONE * (0.1 + 0.8 * hash2(cx * 2.7 - k * 5.5 + 9.9, cy * 1.1 + k * 2.2 - 6.6));
-        if (Math.hypot(footX, footY) < LAB_START_SAFE_RADIUS) continue; // 原点(スタート)付近は空ける
-        const variant = Math.floor(hash2(cx * 5.5 + k * 1.7, cy * 4.4 - k * 2.6) * LAB_PROP_VARIANT_COUNT) % LAB_PROP_VARIANT_COUNT;
-        out.push({ id: `lp-${cx}-${cy}-${k}`, footX, footY, variant });
-      }
+      const list = labPropCellFinal(cx, cy);
+      for (let i = 0; i < list.length; i++) out.push(list[i]);
     }
   }
   // 「敵の近くに必ず1つ」を保証する遮蔽物を合流させる(v0.25.2243)。返り値を1本にしておくことで、
   // 描画(pixiScene)・移動の当たり判定・視線判定(segmentBlocked)すべてに自動で反映される。
+  // 保証の遮蔽は固定の層(動かさない・選び直さない・消さない)。散布プロップの方が避ける。
   out.push(...coverPropsInRegion(minX, maxX, LAB_CORRIDOR_Y_LIMIT_PX));
   return out;
 };

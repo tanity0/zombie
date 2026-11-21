@@ -8,11 +8,12 @@ import { forestFlowersInRegion, FLOWER_DISPLAY_H } from './forestDecor';
 import { treesInRegion } from './trees';
 import { torchesInRegion } from './torches';
 import { setPoiClearings, isInPoiClearing } from './poiClearings';
+import { setHandPlacedAnchors } from './propPlacement';
 
 const R = [-3000, -3000, 3000, 3000] as const;
 
 describe('weatherPuddles(雨上がりの水たまり配置)', () => {
-  afterEach(() => setPoiClearings([]));
+  afterEach(() => { setPoiClearings([]); setHandPlacedAnchors([]); });
 
   it('決まった乱数: 同じ範囲は毎回同じ配置', () => {
     const a = puddlesInRegion(...R);
@@ -48,13 +49,15 @@ describe('weatherPuddles(雨上がりの水たまり配置)', () => {
     const bases = [{ x: 900, y: 400, r: 130 }, { x: -1200, y: -800, r: 130 }];
     const poi = { x: 1500, y: -1400 };
     setPoiClearings([poi]);
-    const list = puddlesInRegion(...R, { bases });
+    setHandPlacedAnchors(bases.map(b => ({ kind: 'circle' as const, ...b }))); // 拠点の円は手置きの物として渡す(§3 で一本化)
+    const list = puddlesInRegion(...R);
     for (const p of list) {
       for (const b of bases) expect(Math.hypot(b.x - p.x, b.y - p.y)).toBeGreaterThanOrEqual(b.r + PUDDLE_BASE_PAD + p.rx);
       expect(isInPoiClearing(p.x, p.y)).toBe(false);
     }
     // 拠点を渡さない時より減っている(避けている証拠)
     setPoiClearings([]);
+    setHandPlacedAnchors([]);
     expect(list.length).toBeLessThan(puddlesInRegion(...R).length);
   });
 
