@@ -36,6 +36,15 @@ const FADE_IN_FRAC = 0.12;
  * (社長2026-11-21「開始から薄まる曲線が早いのでカーブ前半に寄せて」=1枚ごとの濃さ)。旧 0.84(抜けてから消す)。
  */
 const FADE_OUT_FROM = 0.5;
+/**
+ * 終わり方(社長2026-11-21「最後もう少しゆっくり」=トンネル全体の終わり)。INTRO_TUNNEL_TAIL_FROM_MS から
+ * INTRO_TUNNEL_TAIL_MS かけて、発生の間隔と1枚の寿命を加減速つきで伸ばす=流れが速度を落として余韻を残して止む。
+ */
+export const INTRO_TUNNEL_TAIL_FROM_MS = 1300;
+export const INTRO_TUNNEL_TAIL_MS = 800;
+/** 終わりでの間隔・寿命の伸び(ms)。最後の数枚は間隔 270→470・寿命 800→1300。 */
+export const INTRO_TUNNEL_TAIL_INTERVAL_ADD_MS = 200;
+export const INTRO_TUNNEL_TAIL_LIFE_ADD_MS = 500;
 /** 同時に生きている複製の上限(片側)。描画側のプールの大きさ。 */
 export const INTRO_TUNNEL_MAX_COPIES = 4;
 
@@ -46,8 +55,10 @@ interface Spawn { at: number; life: number }
 /** 発生の時刻表(決定的・モジュール読み込み時に1回)。頭より前(負の時刻)から PRE_ROLL 枚ぶん流しておく。 */
 export const INTRO_TUNNEL_SPAWNS: readonly Spawn[] = (() => {
   const out: Spawn[] = [];
-  for (let at = -PRE_ROLL * INTRO_TUNNEL_INTERVAL_MS; at < INTRO_TUNNEL_SPAWN_END_MS; at += INTRO_TUNNEL_INTERVAL_MS) {
-    out.push({ at, life: INTRO_TUNNEL_LIFE_MS });
+  for (let at = -PRE_ROLL * INTRO_TUNNEL_INTERVAL_MS; at < INTRO_TUNNEL_SPAWN_END_MS;) {
+    const k = smooth((at - INTRO_TUNNEL_TAIL_FROM_MS) / INTRO_TUNNEL_TAIL_MS); // 0=通常 → 1=終わり
+    out.push({ at, life: INTRO_TUNNEL_LIFE_MS + INTRO_TUNNEL_TAIL_LIFE_ADD_MS * k });
+    at += INTRO_TUNNEL_INTERVAL_MS + INTRO_TUNNEL_TAIL_INTERVAL_ADD_MS * k;
   }
   return out;
 })();

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   INTRO_TUNNEL_END_MS, INTRO_TUNNEL_INTERVAL_MS, INTRO_TUNNEL_LIFE_MS, INTRO_TUNNEL_MASTER_IN_MS,
   INTRO_TUNNEL_MAX_COPIES, INTRO_TUNNEL_MAX_SCALE, INTRO_TUNNEL_SPAWNS, INTRO_TUNNEL_SPAWN_END_MS,
+  INTRO_TUNNEL_TAIL_FROM_MS, INTRO_TUNNEL_TAIL_MS,
   introTunnelCopies, introTunnelPose,
 } from './introFrameTunnel';
 import { PLAYER_INTRO_HELI_MS, PLAYER_INTRO_MS } from '../store/gameStore';
@@ -14,9 +15,19 @@ describe('枠のトンネル(登場のヘリ飛来の間)', () => {
     expect(INTRO_TUNNEL_LIFE_MS).toBeLessThanOrEqual(900);
     expect(INTRO_TUNNEL_INTERVAL_MS).toBeGreaterThanOrEqual(220);
     expect(INTRO_TUNNEL_INTERVAL_MS).toBeLessThanOrEqual(300);
-    const gaps = INTRO_TUNNEL_SPAWNS.slice(1).map((s, i) => s.at - INTRO_TUNNEL_SPAWNS[i].at);
-    for (const g of gaps) expect(g).toBe(INTRO_TUNNEL_INTERVAL_MS);
-    for (const s of INTRO_TUNNEL_SPAWNS) expect(s.life).toBe(INTRO_TUNNEL_LIFE_MS);
+    const head = INTRO_TUNNEL_SPAWNS.filter(s => s.at <= INTRO_TUNNEL_TAIL_FROM_MS);
+    for (let i = 1; i < head.length; i++) expect(head[i].at - head[i - 1].at).toBe(INTRO_TUNNEL_INTERVAL_MS);
+    for (const s of head) expect(s.life).toBe(INTRO_TUNNEL_LIFE_MS);
+  });
+  it('終わりは間隔と寿命が少しずつ伸び、流れが速度を落として止む(最後もう少しゆっくり)', () => {
+    const sp = INTRO_TUNNEL_SPAWNS;
+    for (let i = 2; i < sp.length; i++) {
+      expect(sp[i].at - sp[i - 1].at).toBeGreaterThanOrEqual(sp[i - 1].at - sp[i - 2].at - 1e-9);
+      expect(sp[i].life).toBeGreaterThanOrEqual(sp[i - 1].life);
+    }
+    const last = sp[sp.length - 1];
+    expect(last.life).toBeGreaterThan(INTRO_TUNNEL_LIFE_MS * 1.3);
+    expect(last.at - sp[sp.length - 2].at).toBeGreaterThan(INTRO_TUNNEL_INTERVAL_MS * 1.2);
   });
   it('発生している間は常に2〜3枚が重なっている(途切れない)', () => {
     for (let ms = 0; ms < INTRO_TUNNEL_SPAWN_END_MS; ms += 5) {
@@ -25,6 +36,7 @@ describe('枠のトンネル(登場のヘリ飛来の間)', () => {
       expect(n).toBeLessThanOrEqual(3);
       expect(introTunnelCopies(ms).length).toBe(n);
     }
+    void INTRO_TUNNEL_TAIL_MS;
   });
   it('同時に生きている複製は上限以内(プールが足りる)', () => {
     for (let ms = -1000; ms < INTRO_TUNNEL_END_MS + 100; ms += 5) expect(aliveAt(ms)).toBeLessThanOrEqual(INTRO_TUNNEL_MAX_COPIES);
