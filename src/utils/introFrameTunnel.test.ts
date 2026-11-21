@@ -83,3 +83,18 @@ describe('枠のトンネル(登場のヘリ飛来の間)', () => {
     for (let i = 1; i < c.length; i++) expect(c[i].scale).toBeGreaterThan(c[i - 1].scale);
   });
 });
+
+describe('枠のトンネル: ズームしつつ左右に開く', () => {
+  it('開く量は0から1へ、加減速つきで単調に増える', () => {
+    expect(introTunnelPose(0).open).toBe(0);
+    expect(introTunnelPose(1).open).toBe(1);
+    let prev = -1;
+    for (let u = 0; u <= 1.0001; u += 0.05) { const o = introTunnelPose(u).open; expect(o).toBeGreaterThanOrEqual(prev); prev = o; }
+    expect(introTunnelPose(0.05).open).toBeLessThan(0.05); // 動き始めはゆっくり
+  });
+  it('内側の縁(拡大後の幅×(1−開く量))は後半で外へ引いていき、最後は画面の外', () => {
+    const inner = (u: number) => { const p = introTunnelPose(u); return p.scale * (1 - p.open); };
+    expect(inner(1)).toBeCloseTo(0, 6);
+    for (let u = 0.5; u < 1; u += 0.05) expect(inner(u + 0.05)).toBeLessThan(inner(u));
+  });
+});

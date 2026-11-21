@@ -57,6 +57,11 @@ export interface TunnelCopyPose {
   scale: number;
   /** 濃さ(0..1)。 */
   alpha: number;
+  /**
+   * 左右に開く量(0..1)。描く側は複製を外側へ「拡大後の幅 × open」だけずらす=内側の縁が画面の外へ引いていく。
+   * 社長2026-11-21「ズームしつつ左右に開いていく方がいいかも」。smoothstep=動き始めと終わりに加減速(慣性)。
+   */
+  open: number;
 }
 
 /**
@@ -75,7 +80,7 @@ export const introTunnelScale = (u: number, maxScale: number = INTRO_TUNNEL_MAX_
 export const introTunnelPose = (u: number, maxScale: number = INTRO_TUNNEL_MAX_SCALE): TunnelCopyPose => {
   const x = Math.max(0, Math.min(1, u));
   const alpha = INTRO_TUNNEL_PEAK_ALPHA * smooth(x / FADE_IN_FRAC) * (1 - smooth((x - FADE_OUT_FROM) / (1 - FADE_OUT_FROM)));
-  return { scale: introTunnelScale(x, maxScale), alpha };
+  return { scale: introTunnelScale(x, maxScale), alpha, open: x * x * (3 - 2 * x) };
 };
 
 /**
@@ -92,7 +97,7 @@ export const introTunnelCopies = (elapsedMs: number): TunnelCopyPose[] => {
     const age = elapsedMs - s.at;
     if (age >= s.life) continue;
     const p = introTunnelPose(age / s.life);
-    out.push({ scale: p.scale, alpha: p.alpha * master });
+    out.push({ scale: p.scale, alpha: p.alpha * master, open: p.open });
   }
   return out;
 };

@@ -129,7 +129,8 @@ export class StageFrameLayer {
         if (!pose || pose.alpha <= 0.004) { c.visible = false; continue; }
         if (c.texture !== view.rt) c.texture = view.rt;
         c.scale.set(pose.scale);
-        c.position.set(side === 'left' ? 0 : o.w, o.h / 2);
+        const openPx = view.rt.width * pose.scale * pose.open; // 左右に開く: 外側へずらす
+        c.position.set(side === 'left' ? -openPx : o.w + openPx, o.h / 2);
         c.alpha = pose.alpha * (o.w <= o.h ? INTRO_TUNNEL_PORTRAIT_ALPHA_MUL : 1);
         c.visible = true;
         any = true;
