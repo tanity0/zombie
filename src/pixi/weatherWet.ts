@@ -28,12 +28,14 @@ import {
 } from '../world/weatherPuddles';
 import {
   ripplePose, glintPose, GLINT_MS,
-  rainDropSpec, rainPose, rainNextGapMs, RAIN_MAX, RAIN_SPAWN_PER_FRAME, type RainDropSpec,
+  rainDropSpec, rainPose, rainNextGapMs, rainNextEvent, RAIN_MAX, RAIN_SPAWN_PER_FRAME, type RainDropSpec,
+  puddleRippleRate,
   landscapeBand, landscapeBandStart,
   buildWetGradeMatrix, WET_FOG_ALPHA_MUL, WET_FOG_TINT_MUL, WET_FRONT_TINT_MUL,
   WET_MOON_GLOW_ALPHA_MUL, WET_MOON_GLOW_SCALE_MUL, WET_MOON_HALO_ALPHA_MUL, WET_MOON_HALO_SCALE_MUL,
   TORCH_STREAK_LEN, TORCH_STREAK_W, TORCH_STREAK_ALPHA, TORCH_STREAK_TOP, TORCH_STREAK_DASHES,
   TORCH_STREAK_DASH_W, TORCH_STREAK_DASH_H, TORCH_STREAK_DASH_ALPHA, TORCH_STREAK_EASE, torchStreakDash,
+  TORCH_BACK_UP, TORCH_BACK_W, TORCH_BACK_H, TORCH_BACK_ALPHA, TORCH_BACK_TINT, TORCH_BACK_TINT_MIX,
   DRIP_EVERY_MS, DRIP_MAX, DRIP_LAG_TAU_MS, makeRainSchedule, advanceRainSchedule, followLag, type RainSchedule,
   leafDripSpec, leafDripPose, type LeafDripSpec,
   WET_GLOSS_ALPHA, WET_GLOSS_TINT, WET_GLOSS_TILE_WORLD, WET_GLOSS_SHAFT_GAIN,
@@ -78,8 +80,12 @@ const MAX_SLOTS = 5;
 /** 光の線: 何msおきに1本(乱数で幅を持たせる)。同時に2本まで。 */
 const GLINT_EVERY_MS = 2200;
 const GLINT_MAX = 2;
-/** 波紋の上限(使い回し)。ポツポツ雨の着地ぶんを足して 24→40。 */
-const RIPPLE_MAX = 40;
+/** 波紋の上限(使い回し)。ポツポツ雨の着地ぶんを足して 24→40、本降りで水たまりが波立つぶんを足して 40→64。 */
+const RIPPLE_MAX = 64;
+/** 水たまりの雨の波紋を1フレームで生む上限(重いフレーム・タブ復帰で一度に立たない)。 */
+const PUDDLE_RIPPLE_PER_FRAME = 4;
+/** 水たまりの雨の波紋の濃さ(雫・着地の波紋に掛ける 1 に対して)。 */
+const PUDDLE_RIPPLE_ALPHA = 1;
 /** 雨粒の色(冷たい白)・太さ(world px・遠近前)。 */
 const RAIN_TINT = 0xd8e4f6;
 const RAIN_WIDTH = 1.1;
@@ -294,11 +300,11 @@ interface Slot {
   reflA: number[];
 }
 interface ActorBox { id: string; sp: Sprite; x: number; foot: number; w: number; h: number; flip: boolean }
-interface Ripple { sp: Sprite; at: number; x: number; y: number; water: boolean; s: number; on: boolean }
+interface Ripple { sp: Sprite; at: number; x: number; y: number; water: boolean; s: number; on: boolean; /** 濃さの掛け率 */ a: number; /** 雨の波紋を立てた水たまり(混み具合を数える) */ pid: string | null }
 interface Drip { sp: Sprite; glow: Sprite; at: number; spec: LeafDripSpec; s: number; on: boolean }
 interface Glint { pid: string; at: number; dir: 1 | -1 }
 interface RainDrop { sp: Sprite; at: number; x: number; y: number; spec: RainDropSpec; on: boolean }
-interface TorchStreak { id: string; main: Sprite; gloss: Sprite; dashes: Sprite[]; a: number; seed: number; seen: boolean }
+interface TorchStreak { id: string; main: Sprite; gloss: Sprite; back: Sprite; dashes: Sprite[]; a: number; seed: number; seen: boolean }
 interface LandCopy { src: Sprite | TilingSprite; wrap: Container; sp: Sprite | TilingSprite }
 
 /** 葉先の雫の大きさ(芯と照りに掛ける)。悪目立ちしないよう半分に(社長指示2026-11-21)。 */
@@ -343,6 +349,12 @@ export class WeatherWetLayer {
   private rainLayer = new Container();
   private rain: RainDrop[] = [];
   private nextRainAt = 0;
+  /** 次の予定が「粒を出さずに強さを見直すだけ」か(止みかけ・強さ0でも予定が止まらない)。 */
+  private rainRecheck = false;
+  /** 水たまりの雨の波紋の前フレームの時刻・このフレームの水たまり(遠近込みの大きさ・1フレームに1回だけ作る)。 */
+  private puddleRippleAt = 0;
+  private rippleBusy = new Map<string, number>();
+  private scaledPuddles: { x: number; y: number; rx: number; ry: number; waterOnly?: boolean }[] = [];
   /** 雨の強弱の時刻表(30秒〜1分おきに次の強さ)・今の強さ・それに遅れて付いてくる雫の強さ。 */
   private rainSched: RainSchedule | null = null;
   private rainLevel = 1;
@@ -488,10 +500,13 @@ export class WeatherWetLayer {
     this.syncLandscape(h);
     this.syncSlots(h, boxes);
     this.syncTorchStreaks(h);
+    this.scaledPuddles.length = 0;
+    for (const pv of this.views.values()) this.scaledPuddles.push({ x: pv.p.x, y: pv.p.y, rx: pv.p.rx * pv.d, ry: pv.p.ry * pv.d, waterOnly: pv.p.waterOnly });
     this.syncSteps(h, boxes);
     this.syncRainLevel(h.now);
     this.syncDrips(h);
     this.syncRain(h);
+    this.syncPuddleRain(h);
     this.syncRipples(h);
   }
 
@@ -872,9 +887,13 @@ export class WeatherWetLayer {
           const gloss = new Sprite(getGlossTexture(true));
           gloss.anchor.set(0.5, 0.35);
           gloss.blendMode = 'add';
-          this.glossLayer.addChild(gloss);
+          // 松明の裏の光(足元の少し奥の地面)。地面の層の中=松明の絵より必ず下に描かれる→三脚が明るい地面の前に影絵で立つ。
+          const back = new Sprite(getSoftGlowTexture());
+          back.anchor.set(0.5, 0.5);
+          back.blendMode = 'add';
+          this.glossLayer.addChild(back, gloss);
           this.streakLayer.addChild(main, ...dashes);
-          st = { id: l.id, main, gloss, dashes, a: 0, seed: 0, seen: false };
+          st = { id: l.id, main, gloss, back, dashes, a: 0, seed: 0, seen: false };
           this.streaks.push(st);
         }
         st.id = l.id; st.a = 0; st.seed = (Math.abs(Math.sin(l.x * 0.013 + l.y * 0.007)) * 10) % 6.283;
@@ -888,9 +907,10 @@ export class WeatherWetLayer {
     for (const st of this.streaks) {
       if (st.seen) continue;
       st.a += (0 - st.a) * TORCH_STREAK_EASE; // 画面から外れた/消えた松明は慣性で消える(最後の位置のまま)
-      if (st.a <= 0.004) { st.a = 0; st.main.visible = false; st.gloss.visible = false; for (const d of st.dashes) d.visible = false; continue; }
+      if (st.a <= 0.004) { st.a = 0; st.main.visible = false; st.gloss.visible = false; st.back.visible = false; for (const d of st.dashes) d.visible = false; continue; }
       st.main.alpha *= 1 - TORCH_STREAK_EASE;
       st.gloss.alpha *= 1 - TORCH_STREAK_EASE;
+      st.back.alpha *= 1 - TORCH_STREAK_EASE;
       for (const d of st.dashes) d.alpha *= 1 - TORCH_STREAK_EASE;
     }
   }
@@ -920,6 +940,14 @@ export class WeatherWetLayer {
     g.width = WET_GLOSS_TORCH_W * d;
     g.height = WET_GLOSS_TORCH_H * d;
     g.alpha = WET_GLOSS_TORCH_ALPHA * a;
+    // 裏の光: 足元の少し奥(画面の上)に横長の柔らかい光。濃さは炎の揺らぎ込みの a をそのまま読む。
+    const b = st.back;
+    b.visible = m.visible;
+    b.tint = lerpTint(l.color, TORCH_BACK_TINT, TORCH_BACK_TINT_MIX);
+    b.position.set(l.x, l.y - TORCH_BACK_UP * d);
+    b.width = TORCH_BACK_W * d;
+    b.height = TORCH_BACK_H * d;
+    b.alpha = TORCH_BACK_ALPHA * a;
     for (let i = 0; i < st.dashes.length; i++) {
       const sp = st.dashes[i];
       const ds = torchStreakDash(i, st.dashes.length, h.now, st.seed);
@@ -936,7 +964,7 @@ export class WeatherWetLayer {
   }
 
   // ---- 波紋 ----
-  private spawnRipple(x: number, y: number, water: boolean, s: number, now: number): void {
+  private spawnRipple(x: number, y: number, water: boolean, s: number, now: number, a = 1, pid: string | null = null): void {
     let r = this.ripples.find(q => !q.on);
     if (!r) {
       if (this.ripples.length >= RIPPLE_MAX) {
@@ -945,11 +973,11 @@ export class WeatherWetLayer {
         const sp = new Sprite(Texture.EMPTY);
         sp.anchor.set(0.5);
         this.rippleLayer.addChild(sp);
-        r = { sp, at: 0, x: 0, y: 0, water: true, s: 1, on: false };
+        r = { sp, at: 0, x: 0, y: 0, water: true, s: 1, on: false, a: 1, pid: null };
         this.ripples.push(r);
       }
     }
-    r.at = now; r.x = x; r.y = y; r.water = water; r.s = s; r.on = true;
+    r.at = now; r.x = x; r.y = y; r.water = water; r.s = s; r.on = true; r.a = a; r.pid = pid;
   }
 
   private syncRipples(h: WetHost): void {
@@ -964,7 +992,7 @@ export class WeatherWetLayer {
       r.sp.position.set(r.x, r.y);
       const sc = DEBRIS_ART_SCALE * h.depthScale(r.y) * r.s * pose.scale; // 波紋は雫の大きさ=水たまりを大きくしても据え置き
       r.sp.scale.set(sc, sc);
-      r.sp.alpha = pose.alpha * (r.water ? 0.6 : 0.45) * h.horizonAlpha(r.y);
+      r.sp.alpha = pose.alpha * (r.water ? 0.6 : 0.45) * r.a * h.horizonAlpha(r.y);
     }
   }
 
@@ -1075,7 +1103,7 @@ export class WeatherWetLayer {
       const pose = leafDripPose(now - d.at, d.spec);
       if (!pose) {
         d.on = false; d.sp.visible = false; d.glow.visible = false;
-        const pv = puddleAt([...this.views.values()].map(v => ({ x: v.p.x, y: v.p.y, rx: v.p.rx * v.d, ry: v.p.ry * v.d })), d.spec.x, d.spec.y);
+        const pv = puddleAt(this.scaledPuddles, d.spec.x, d.spec.y);
         this.spawnRipple(d.spec.x, d.spec.y, !!pv, pv ? 0.6 : 0.5, now);
         continue;
       }
@@ -1106,7 +1134,11 @@ export class WeatherWetLayer {
     if (now - this.nextRainAt > 1000) this.nextRainAt = now;
     let budget = RAIN_SPAWN_PER_FRAME;
     while (now >= this.nextRainAt && budget-- > 0) {
-      this.nextRainAt += rainNextGapMs(w * hh * this.rainLevel, Math.random); // 今の雨の強さぶん
+      const spawn = !this.rainRecheck;
+      const ev = rainNextEvent(rainNextGapMs(w * hh * this.rainLevel, Math.random)); // 今の雨の強さぶん
+      this.nextRainAt += ev.dt;
+      this.rainRecheck = !ev.spawn;
+      if (!spawn) continue; // 見直しだけの予定(止みかけ)
       let d = this.rain.find(q => !q.on);
       if (!d) {
         if (this.rain.length >= RAIN_MAX) break;
@@ -1130,7 +1162,7 @@ export class WeatherWetLayer {
       const ds = h.depthScale(d.y);
       if (!pose) {
         d.on = false; d.sp.visible = false;
-        const pv = puddleAt([...this.views.values()].map(q => ({ x: q.p.x, y: q.p.y, rx: q.p.rx * q.d, ry: q.p.ry * q.d })), d.x, d.y);
+        const pv = puddleAt(this.scaledPuddles, d.x, d.y);
         this.spawnRipple(d.x, d.y, !!pv, pv ? 0.42 + Math.random() * 0.16 : 0.3 + Math.random() * 0.1, now);
         continue;
       }
@@ -1142,6 +1174,40 @@ export class WeatherWetLayer {
       d.sp.width = RAIN_WIDTH * ds;
       d.sp.height = pose.len * ds;
       d.sp.alpha = d.spec.alpha * pose.alpha * h.horizonAlpha(d.y);
+    }
+  }
+
+  // ---- 水たまりの雨の波紋(雨が強いほど水面が忙しく波立つ・止みかけでは立たない) ----
+  private syncPuddleRain(h: WetHost): void {
+    const now = h.now;
+    const dt = Math.min(100, Math.max(0, now - this.puddleRippleAt));
+    this.puddleRippleAt = now;
+    if (dt <= 0) return;
+    let budget = PUDDLE_RIPPLE_PER_FRAME;
+    const v = h.rainView ?? h.view;
+    // 同じ水たまりで今立っている雨の波紋の数(混むほど1つ1つを薄く=重なっても白く潰れず、輪が1つずつ読める)。
+    const busy = this.rippleBusy;
+    busy.clear();
+    for (const r of this.ripples) if (r.on && r.pid) busy.set(r.pid, (busy.get(r.pid) ?? 0) + 1);
+    for (const pv of this.views.values()) {
+      if (budget <= 0) break;
+      if (pv.alpha < 0.05) continue;
+      const p = pv.p;
+      if (p.x < v.left || p.x > v.right || p.y < v.top || p.y > v.bottom + 20) continue;
+      const rx = p.rx * pv.d * WATER_FIT_X, ry = p.ry * pv.d * WATER_FIT_Y; // 水面(縁の内側)
+      const rate = puddleRippleRate(this.rainLevel, Math.PI * rx * ry);
+      if (rate <= 0) continue;
+      // 見込みの数 λ の整数部+端数は確率で(重いフレームでも1つの水たまりに2つまで)。
+      const lam = rate * dt;
+      const n = Math.min(2, Math.floor(lam) + (Math.random() < lam - Math.floor(lam) ? 1 : 0));
+      for (let i = 0; i < n && budget > 0; i++, budget--) {
+        const ang = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * 0.85;
+        const c = busy.get(p.id) ?? 0;
+        busy.set(p.id, c + 1);
+        // 雨粒の輪は雫(0.6)・着地(0.42..0.58)より小さく、混むほど薄く(5つまでは素のまま)。
+        const a = PUDDLE_RIPPLE_ALPHA * Math.min(1, Math.sqrt(5 / Math.max(5, c)));
+        this.spawnRipple(p.x + Math.cos(ang) * rx * rr, p.y + Math.sin(ang) * ry * rr, true, 0.28 + Math.random() * 0.14, now, a, p.id);
+      }
     }
   }
 

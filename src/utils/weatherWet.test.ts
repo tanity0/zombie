@@ -9,6 +9,7 @@ import {
   WET_CLOUD_SHADOW_MULT, WET_MOON_SHAFT_MULT, WET_LIGHT_FADE_MS, stepWetLightMix, wetLightMult, lerpRgb,
   rainSegment, makeRainSchedule, advanceRainSchedule, followLag, rainIntensityInSegment,
   RAIN_INTENSITY_HOLD_MS_MIN, RAIN_INTENSITY_HOLD_MS_MAX, RAIN_INTENSITY_MIN, RAIN_INTENSITY_MAX, RAIN_INTENSITY_RAMP_MS,
+  RAIN_INTENSITY_LOW_MAX, RAIN_INTENSITY_HIGH_MIN, RAIN_RECHECK_MS, rainNextEvent, puddleRippleRate, PUDDLE_RIPPLE_LEVEL_FLOOR,
   DRIP_LAG_TAU_MS, DRIP_EVERY_MS, DRIP_MAX, TORCH_STREAK_LEN, TORCH_STREAK_W,
   wetSoilTint, wetGlossDrift, shaftLightAt,
 } from './weatherWet';
@@ -127,7 +128,9 @@ describe('ポツポツ雨(小雨の決めごと)', () => {
     const onScreen = (area: number) => (RAIN_DROPS_PER_MPX_S * area / 1e6) * (avgFall / 1000);
     expect(onScreen(1.1e6)).toBeGreaterThan(3);
     expect(onScreen(1.1e6)).toBeLessThan(12);
-    expect(RAIN_MAX).toBeLessThanOrEqual(40);
+    expect(RAIN_MAX).toBeLessThanOrEqual(70);
+    // 本降り(強さ最大)でも、最大引き(0.4=可視域 1/0.16 倍)の見込みは上限の内側か、上限で止まる
+    expect(onScreen(1.1e6) * RAIN_INTENSITY_MAX).toBeLessThan(RAIN_MAX);
   });
 });
 
@@ -290,15 +293,21 @@ describe('参考画に寄せる(色行列・松明の筋・葉先の雫)', () =>
     expect(shaftLightAt(50, 1, [{ ...polys[0], a: 0.5 }])).toBeCloseTo(0.5, 3);
   });
   it('雨の強弱: 間隔はいつも30〜60秒・強さは幅の中・決定的', () => {
-    let strong = 0, weak = 0;
+    let strong = 0, weak = 0, mid = 0;
     for (let k = 0; k < 400; k++) {
       const g = rainSegment(7.3, k);
       expect(g.len).toBeGreaterThanOrEqual(30000); expect(g.len).toBeLessThanOrEqual(60000);
       expect(g.len).toBeGreaterThanOrEqual(RAIN_INTENSITY_HOLD_MS_MIN); expect(g.len).toBeLessThanOrEqual(RAIN_INTENSITY_HOLD_MS_MAX);
       expect(g.target).toBeGreaterThanOrEqual(RAIN_INTENSITY_MIN); expect(g.target).toBeLessThanOrEqual(RAIN_INTENSITY_MAX);
-      if (g.target > 1) strong++; if (g.target < 0.4) weak++;
+      if (g.target >= RAIN_INTENSITY_HIGH_MIN) strong++;
+      else if (g.target <= RAIN_INTENSITY_LOW_MAX) weak++;
+      else mid++;
     }
-    expect(strong).toBeGreaterThan(20); expect(weak).toBeGreaterThan(5); // たまに強く・たまに止みかけ
+    // 二つの山: ほとんどが「ほぼ止む」か「はっきり強い」・間はたまにだけ
+    expect(strong).toBeGreaterThan(120); expect(weak).toBeGreaterThan(120);
+    expect(mid).toBeGreaterThan(5); expect(mid).toBeLessThan(80);
+    expect(RAIN_INTENSITY_LOW_MAX).toBeLessThanOrEqual(0.2);
+    expect(RAIN_INTENSITY_HIGH_MIN).toBeGreaterThanOrEqual(1.5); // これまでの小雨(1)よりはっきり強い
     expect(rainSegment(3.1, 5)).toEqual(rainSegment(3.1, 5));
     // 間隔が全部同じ(決まった周期)ではない
     const lens = new Set(Array.from({ length: 10 }, (_, k) => Math.round(rainSegment(1.1, k).len / 1000)));
@@ -319,6 +328,23 @@ describe('参考画に寄せる(色行列・松明の筋・葉先の雫)', () =>
     const a0 = rainIntensityInSegment(0.2, 1, 0), a1 = rainIntensityInSegment(0.2, 1, 16);
     expect(a1 - a0).toBeLessThan(0.001);
     expect(rainIntensityInSegment(0.2, 1, RAIN_INTENSITY_RAMP_MS)).toBeCloseTo(1, 9);
+  });
+  it('雨の予定: 止みかけ(間隔が長い・強さ0)でも予定は止まらず、見直すだけの予定になる', () => {
+    expect(rainNextEvent(120)).toEqual({ dt: 120, spawn: true });
+    expect(rainNextEvent(5000)).toEqual({ dt: RAIN_RECHECK_MS, spawn: false });
+    expect(rainNextEvent(Infinity)).toEqual({ dt: RAIN_RECHECK_MS, spawn: false });
+  });
+  it('水たまりの雨の波紋: 止みかけでは0・強いほど・広いほど多い', () => {
+    const area = 7000;
+    expect(puddleRippleRate(RAIN_INTENSITY_MIN, area)).toBe(0);
+    expect(puddleRippleRate(RAIN_INTENSITY_LOW_MAX, area)).toBe(0);
+    expect(puddleRippleRate(PUDDLE_RIPPLE_LEVEL_FLOOR, area)).toBe(0);
+    const at1 = puddleRippleRate(1, area), atMax = puddleRippleRate(RAIN_INTENSITY_MAX, area);
+    expect(at1).toBeGreaterThan(0);
+    expect(atMax).toBeGreaterThan(at1 * 2); // 本降りは見て分かるほど忙しい
+    expect(atMax * 1000).toBeGreaterThan(3); // 普通の水たまりで1秒に3つ以上=波紋が重なる
+    expect(puddleRippleRate(1, area * 2)).toBeCloseTo(at1 * 2, 12);
+    expect(puddleRippleRate(1, 0)).toBe(0);
   });
   it('雫は雨の強さに遅れて付いてくる(雨が弱まっても、しばらく落ち続ける)', () => {
     let drip = 1;

@@ -87,8 +87,12 @@ export const glintPose = (t: number): { pos: number; alpha: number } | null => {
 // ---- ポツポツ雨(小雨・設計書「追加: ポツポツ雨」) ----
 /** 雨粒の密度(1秒・world 100万px² あたりの粒数)。標準ズームの可視域(約 0.9〜1.2M px²)で画面に数本が見える程度=小雨。叩き台。 */
 export const RAIN_DROPS_PER_MPX_S = 13;
-/** 雨粒(落ちている線)の同時上限。最大引き(0.4)で可視域が広がっても、ここで止まる。 */
-export const RAIN_MAX = 40;
+/** 雨粒(落ちている線)の同時上限。最大引き(0.4)で可視域が広がっても、ここで止まる。
+ *  本降り(強さ RAIN_INTENSITY_MAX)が引きの画でも薄まらないよう 40→70(社長指示2026-11-21「雨量の上下もっとハッキリ」)。 */
+export const RAIN_MAX = 70;
+/** 今の強さで次の粒までが長すぎる時(止みかけ・強さ0)は、この間隔で強さを見直す
+ *  (指数分布は記憶が無いので、見直して引き直しても降り方の統計は変わらない=止みかけから本降りへ移る時に待たされない)。 */
+export const RAIN_RECHECK_MS = 400;
 /** 1フレームで生む粒の上限(重いフレーム・タブ復帰で一度に降ってこない)。 */
 export const RAIN_SPAWN_PER_FRAME = 3;
 /** 落下の尺(ms)の幅。 */
@@ -136,13 +140,19 @@ export const rainNextGapMs = (viewArea: number, rnd: () => number): number => {
 /** 次の強さを決めるまでの間隔(ms)の幅。毎回この中でランダム=決まった周期にしない。 */
 export const RAIN_INTENSITY_HOLD_MS_MIN = 30000;
 export const RAIN_INTENSITY_HOLD_MS_MAX = 60000;
-/** 強さの幅。1 = これまでの小雨(RAIN_DROPS_PER_MPX_S そのまま)。下は止みかけ・上はたまに少し強い(粒の上限 RAIN_MAX は据え置き)。 */
-export const RAIN_INTENSITY_MIN = 0.15;
-export const RAIN_INTENSITY_MAX = 1.3;
-/** たまに来る「少し強い」の確率(それ以外は MIN..1 の間)。 */
-export const RAIN_INTENSITY_STRONG_P = 0.2;
-/** 次の強さへ寄せる尺(ms)。加速して減速する(慣性)。HOLD_MS_MIN より短い=区間の終わりには必ず目標に着いている。 */
-export const RAIN_INTENSITY_RAMP_MS = 9000;
+/** 強さの幅。1 = これまでの小雨(RAIN_DROPS_PER_MPX_S そのまま)。
+ *  社長指示2026-11-21「雨量の上下もっとハッキリさせたい」: 目標はほとんど「ほぼ止む(LOW)」か「はっきり強い(HIGH)」の
+ *  どちらか=二つの山。間(MID)はたまにだけ。 */
+export const RAIN_INTENSITY_MIN = 0.03;
+export const RAIN_INTENSITY_LOW_MAX = 0.2;
+export const RAIN_INTENSITY_HIGH_MIN = 1.6;
+export const RAIN_INTENSITY_MAX = 2.2;
+/** 目標が本降り(HIGH)になる確率・間(MID=LOW_MAX..HIGH_MIN の中ほど)になる確率。残りは止みかけ(LOW)。 */
+export const RAIN_INTENSITY_HIGH_P = 0.45;
+export const RAIN_INTENSITY_MID_P = 0.1;
+/** 次の強さへ寄せる尺(ms)。加速して減速する(慣性)。HOLD_MS_MIN より短い=区間の終わりには必ず目標に着いている。
+ *  上下の差が大きくなったぶん、移り変わりも少し速く(9秒→6秒)=「変わった」と分かる。 */
+export const RAIN_INTENSITY_RAMP_MS = 6000;
 /** 葉先の雫が雨の強さに遅れて付いてくる時定数(ms)=雨が弱まっても、しばらく雫は落ち続ける。 */
 export const DRIP_LAG_TAU_MS = 9000;
 /** 雫の平均間隔(ms・強さ1の時)と同時上限。雨粒より少ない「ときどきの粒」。 */
@@ -165,11 +175,12 @@ export interface RainSegment {
 /** k 番目の区間(seed で決まる=同じ seed なら同じ天気の移り変わり)。 */
 export const rainSegment = (seed: number, k: number): RainSegment => {
   const len = RAIN_INTENSITY_HOLD_MS_MIN + (RAIN_INTENSITY_HOLD_MS_MAX - RAIN_INTENSITY_HOLD_MS_MIN) * hash01(seed, k, 1);
-  const strong = hash01(seed, k, 2) < RAIN_INTENSITY_STRONG_P;
+  const b = hash01(seed, k, 2);
   const r = hash01(seed, k, 3);
-  const target = strong
-    ? 1 + (RAIN_INTENSITY_MAX - 1) * r
-    : RAIN_INTENSITY_MIN + (1 - RAIN_INTENSITY_MIN) * Math.sqrt(r); // 止みかけは少なめ(平方根で強い側へ寄せる)
+  let target: number;
+  if (b < RAIN_INTENSITY_HIGH_P) target = RAIN_INTENSITY_HIGH_MIN + (RAIN_INTENSITY_MAX - RAIN_INTENSITY_HIGH_MIN) * r; // 本降り
+  else if (b < RAIN_INTENSITY_HIGH_P + RAIN_INTENSITY_MID_P) target = 0.5 + 0.7 * r; // たまに間(0.5..1.2)
+  else target = RAIN_INTENSITY_MIN + (RAIN_INTENSITY_LOW_MAX - RAIN_INTENSITY_MIN) * r; // ほぼ止む
   return { len, target };
 };
 
@@ -191,6 +202,21 @@ export const advanceRainSchedule = (s: RainSchedule, now: number): number => {
     seg = rainSegment(s.seed, s.k);
   }
   return rainIntensityInSegment(s.prev, seg.target, now - s.start);
+};
+
+/** 次の雨粒の予定: 引いた間隔が RAIN_RECHECK_MS より長ければ「粒を出さずに見直す」予定にする。 */
+export const rainNextEvent = (gapMs: number): { dt: number; spawn: boolean } =>
+  gapMs > RAIN_RECHECK_MS ? { dt: RAIN_RECHECK_MS, spawn: false } : { dt: gapMs, spawn: true };
+
+// ---- 水たまりの雨の波紋(雨が強いほど水面が忙しく波立つ・止みかけでは0) ----
+/** 強さ1の時の、水面 1000 world px² あたり1秒の波紋の数。 */
+export const PUDDLE_RIPPLE_PER_KPX2_S = 0.6;
+/** これ以下の強さでは雨の波紋を出さない(止みかけ=水面は静か)。 */
+export const PUDDLE_RIPPLE_LEVEL_FLOOR = 0.25;
+/** 強さ level・水面の広さ areaPx2(world px²)の水たまりに、1ms あたり何個の波紋が立つか。 */
+export const puddleRippleRate = (level: number, areaPx2: number): number => {
+  const gain = Math.max(0, level - PUDDLE_RIPPLE_LEVEL_FLOOR) / (1 - PUDDLE_RIPPLE_LEVEL_FLOOR);
+  return PUDDLE_RIPPLE_PER_KPX2_S * (Math.max(0, areaPx2) / 1000) * gain / 1000;
 };
 
 /** 遅れて付いてくる値を dt ms 進める(指数の追従=急に跳ばない)。 */
@@ -355,6 +381,16 @@ export const TORCH_STREAK_DASHES = 10;
 export const TORCH_STREAK_DASH_W = 40;
 export const TORCH_STREAK_DASH_H = 4.5;
 export const TORCH_STREAK_DASH_ALPHA = 1;
+/** 松明の裏の光(社長確認2026-11-21「参考の松明って、光が松明の裏にいる？」→はい): 足元の少し奥(画面の上)の
+ *  地面=苔と草が温かく照らされ、三脚がその明るい地面の前に黒い影絵で立つ。松明の絵より下の層(地面の層)に置く
+ *  柔らかい丸の絵1枚(加算)。影を落とす光ではない。寸法は world px・遠近前。 */
+export const TORCH_BACK_UP = 12;
+export const TORCH_BACK_W = 200;
+export const TORCH_BACK_H = 52;
+export const TORCH_BACK_ALPHA = 0.9;
+/** 裏の光の色: 炎の色から、苔を照らした黄色へ寄せる割合と、その黄色。 */
+export const TORCH_BACK_TINT = 0xffc24e;
+export const TORCH_BACK_TINT_MIX = 0.45;
 /** 筋の濃さを目標へ寄せる割合(1フレームあたり)=点く/消える時にパッと変わらない(慣性)。 */
 export const TORCH_STREAK_EASE = 0.14;
 
