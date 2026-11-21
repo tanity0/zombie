@@ -28,9 +28,12 @@ const run = (stepMs: number, total = 600) => {
 };
 
 describe('刀の一閃は木の幹を素通りしない', () => {
-  const r = trunkRect(treesInRegion(1000, 1000, 6000, 6000)[0]);
+  // 幹は出撃を始めた後(resetGame=拠点などの手置きの位置と置き物の出撃番号が決まった後)に引く。
+  // 先に引くと、出撃の手置きを避けて木が選び直された時に、もう無い幹を相手に測ってしまう(全件実行で時々落ちた)。
+  const trunkAfterReset = () => { setup(null, { x: 0, y: 1 }); return trunkRect(treesInRegion(1000, 1000, 6000, 6000)[0]); };
   for (const step of [10, 17, 33]) {
     it(`幹の真上から下向き(${step}ms 刻み)`, () => {
+      const r = trunkAfterReset();
       const p0 = useGameStore.getState().player;
       setup({ x: r.x + r.width / 2 - p0.width / 2, y: r.y - 60 - p0.height }, { x: 0, y: 1 });
       expect(useGameStore.getState().triggerKatanaDash(0, 1)).toBe(true);
@@ -39,6 +42,7 @@ describe('刀の一閃は木の幹を素通りしない', () => {
       expect(p.y + p.height).toBeLessThanOrEqual(r.y + 0.5);
     });
     it(`幹の横から(${step}ms 刻み)`, () => {
+      const r = trunkAfterReset();
       const p0 = useGameStore.getState().player;
       setup({ x: r.x - 60 - p0.width, y: r.y + r.height - p0.height }, { x: 1, y: 0 });
       expect(useGameStore.getState().triggerKatanaDash(1, 0)).toBe(true);

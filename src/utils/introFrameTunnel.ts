@@ -2,51 +2,49 @@
  * ステージ開始のヘリ飛来(登場演出フェーズA)の間に出す「枠のトンネル」の時間割(社長指示2026-11-21
  * 「この枠を、この大きさから端寄せのままズームしてフェードアウトし、それを何個も高速で繰り返す」)。
  *
- * そのステージの枠(data/stageFrames.ts の左右の絵)の複製を、今の大きさ・端寄せのまま出し、外側の端を基準に
- * 拡大しながらフェードアウトさせる。これを高速で繰り返し、ヘリが着く頃に発生の間隔を広げて収束させる。
+ * 作り直し(社長承認2026-11-21「チカチカしてるだけに見える」への対処): 1枚を長く・発生を間引き、常に2〜3枚が
+ * 重なって**途切れず流れ続ける**形にした。暗い岩・枝の影絵が、遠くからゆっくり近づき、抜ける直前に一気に速くなる
+ * (一定速度で近づく物体の見かけの大きさ ∝ 1/残り距離)。濃さはゆっくり入り、画面の外へほぼ抜けるまで保ち、最後だけ消す。
  *
  * - 見た目だけ(判定・カメラ・ズームに無関係)。renderer 非依存(PixiJS を import しない)。描画は pixi/stageFrameLayer.ts。
  * - 時刻は登場演出の頭からの経過 ms(フェーズAの尺=PLAYER_INTRO_HELI_MS に合わせて組む)。
  */
 
-/** 序盤の発生間隔(ms)。 */
-export const INTRO_TUNNEL_INTERVAL_MS = 100;
-/** 収束の最後の発生間隔(ms)。 */
-export const INTRO_TUNNEL_INTERVAL_LAST_MS = 380;
-/** ここから発生の間隔を広げ始める(ms・ヘリが減速に入る頃)。 */
-export const INTRO_TUNNEL_SETTLE_FROM_MS = 1500;
-/** これ以降は新しい複製を出さない(ms・ヘリの着地=2600 の少し前)。 */
-export const INTRO_TUNNEL_SPAWN_END_MS = 2450;
-/** 1枚の寿命(ms): 序盤 → 収束の最後。 */
-export const INTRO_TUNNEL_LIFE_MS = 480;
-export const INTRO_TUNNEL_LIFE_LAST_MS = 700;
-/** 1枚の最終の拡大率: 序盤 → 収束の最後(最後は緩く=減速して止まる)。 */
-export const INTRO_TUNNEL_MAX_SCALE = 3.0;
-export const INTRO_TUNNEL_MAX_SCALE_LAST = 1.7;
-/** 出の割合(寿命のこの割合で 0→最大の濃さ。パッと出さない)。 */
-const FADE_IN_FRAC = 0.08;
-/** 抜けの始まり(寿命のこの割合まで濃いまま迫り、そこから拡大の加速とともに抜ける)。 */
-const FADE_OUT_FROM = 0.35;
+/** 発生の間隔(ms)。寿命との比で同時枚数が決まる(LIFE/INTERVAL=2.96 → 常に2〜3枚)。 */
+export const INTRO_TUNNEL_INTERVAL_MS = 270;
+/** 1枚の寿命(ms)。 */
+export const INTRO_TUNNEL_LIFE_MS = 800;
+/**
+ * 演出の頭より前に発生させておく枚数(=頭の時点で既に流れが出来ている)。頭でパッと出さないよう、
+ * 全体の濃さは INTRO_TUNNEL_MASTER_IN_MS かけてゆっくり上げる。
+ */
+const PRE_ROLL = 2;
+/** 全体の入り(ms)。 */
+export const INTRO_TUNNEL_MASTER_IN_MS = 350;
+/** これ以降は新しい複製を出さない(ms)。最後の1枚はヘリの着地(2600)の頃に抜け切る。 */
+export const INTRO_TUNNEL_SPAWN_END_MS = 2100;
+/** 1枚の最終の拡大率(外側の端を基準)。上下の岩・つららが画面の外へ抜け切る大きさ。 */
+export const INTRO_TUNNEL_MAX_SCALE = 5;
+/** 1枚の最大の濃さ。普通の重ね方(光らせない)で暗い影絵として読ませる。 */
+export const INTRO_TUNNEL_PEAK_ALPHA = 1;
+/** 縦画面(スマホ)の濃さの倍率。縦は枠1枚が画面幅とほぼ同じで、濃さ1だと画面ほぼ全体が暗い岩で覆われヘリが沈むため薄くする。 */
+export const INTRO_TUNNEL_PORTRAIT_ALPHA_MUL = 0.55;
+/** 出の割合(寿命のこの割合をかけて 0→最大の濃さ。パッと出さない)。 */
+const FADE_IN_FRAC = 0.3;
+/** 抜けの始まり(寿命のこの割合まで濃さを保つ=画面の外へほぼ抜けてから消す)。 */
+const FADE_OUT_FROM = 0.84;
 /** 同時に生きている複製の上限(片側)。描画側のプールの大きさ。 */
-export const INTRO_TUNNEL_MAX_COPIES = 8;
+export const INTRO_TUNNEL_MAX_COPIES = 4;
 
 const smooth = (x: number): number => { const k = Math.max(0, Math.min(1, x)); return k * k * (3 - 2 * k); };
-const lerp = (a: number, b: number, k: number): number => a + (b - a) * k;
 
-interface Spawn { at: number; life: number; maxScale: number }
+interface Spawn { at: number; life: number }
 
-/** 収束の進み(0=序盤 → 1=最後)。発生時刻で決まる。 */
-const settleK = (at: number): number =>
-  smooth((at - INTRO_TUNNEL_SETTLE_FROM_MS) / (INTRO_TUNNEL_SPAWN_END_MS - INTRO_TUNNEL_SETTLE_FROM_MS));
-
-/** 発生の時刻表(決定的・モジュール読み込み時に1回)。 */
+/** 発生の時刻表(決定的・モジュール読み込み時に1回)。頭より前(負の時刻)から PRE_ROLL 枚ぶん流しておく。 */
 export const INTRO_TUNNEL_SPAWNS: readonly Spawn[] = (() => {
   const out: Spawn[] = [];
-  let at = 0;
-  while (at < INTRO_TUNNEL_SPAWN_END_MS) {
-    const k = settleK(at);
-    out.push({ at, life: lerp(INTRO_TUNNEL_LIFE_MS, INTRO_TUNNEL_LIFE_LAST_MS, k), maxScale: lerp(INTRO_TUNNEL_MAX_SCALE, INTRO_TUNNEL_MAX_SCALE_LAST, k) });
-    at += lerp(INTRO_TUNNEL_INTERVAL_MS, INTRO_TUNNEL_INTERVAL_LAST_MS, k);
+  for (let at = -PRE_ROLL * INTRO_TUNNEL_INTERVAL_MS; at < INTRO_TUNNEL_SPAWN_END_MS; at += INTRO_TUNNEL_INTERVAL_MS) {
+    out.push({ at, life: INTRO_TUNNEL_LIFE_MS });
   }
   return out;
 })();
@@ -62,13 +60,22 @@ export interface TunnelCopyPose {
 }
 
 /**
- * 1枚の姿(u=寿命の進み 0..1)。拡大は**加速**(ease-in)=手前へ迫って抜けていく。濃さは素早く出て、FADE_OUT_FROM まで濃いまま、拡大の加速とともに抜ける。
+ * 遠近の拡大: 一定速度で近づく物体の見かけの大きさ ∝ 1/残り距離。s(u) = 1/(1 - k·u)、k = 1 - 1/maxScale。
+ * 初めはゆっくり、抜ける直前に一気に速い(速さ ∝ s²)。
  */
-export const introTunnelPose = (u: number, maxScale: number): TunnelCopyPose => {
+export const introTunnelScale = (u: number, maxScale: number = INTRO_TUNNEL_MAX_SCALE): number => {
   const x = Math.max(0, Math.min(1, u));
-  const scale = 1 + (maxScale - 1) * x * x;
-  const alpha = smooth(x / FADE_IN_FRAC) * (1 - smooth((x - FADE_OUT_FROM) / (1 - FADE_OUT_FROM)));
-  return { scale, alpha };
+  const k = 1 - 1 / Math.max(1, maxScale);
+  return 1 / (1 - k * x);
+};
+
+/**
+ * 1枚の姿(u=寿命の進み 0..1)。濃さは FADE_IN_FRAC かけてゆっくり入り、FADE_OUT_FROM まで最大のまま保ち、最後だけ消す。
+ */
+export const introTunnelPose = (u: number, maxScale: number = INTRO_TUNNEL_MAX_SCALE): TunnelCopyPose => {
+  const x = Math.max(0, Math.min(1, u));
+  const alpha = INTRO_TUNNEL_PEAK_ALPHA * smooth(x / FADE_IN_FRAC) * (1 - smooth((x - FADE_OUT_FROM) / (1 - FADE_OUT_FROM)));
+  return { scale: introTunnelScale(x, maxScale), alpha };
 };
 
 /**
@@ -77,13 +84,15 @@ export const introTunnelPose = (u: number, maxScale: number): TunnelCopyPose => 
  */
 export const introTunnelCopies = (elapsedMs: number): TunnelCopyPose[] => {
   if (!(elapsedMs >= 0) || elapsedMs >= INTRO_TUNNEL_END_MS) return [];
+  const master = smooth(elapsedMs / INTRO_TUNNEL_MASTER_IN_MS);
   const out: TunnelCopyPose[] = [];
   for (let i = INTRO_TUNNEL_SPAWNS.length - 1; i >= 0 && out.length < INTRO_TUNNEL_MAX_COPIES; i--) {
     const s = INTRO_TUNNEL_SPAWNS[i];
     if (s.at > elapsedMs) continue;
     const age = elapsedMs - s.at;
     if (age >= s.life) continue;
-    out.push(introTunnelPose(age / s.life, s.maxScale));
+    const p = introTunnelPose(age / s.life);
+    out.push({ scale: p.scale, alpha: p.alpha * master });
   }
   return out;
 };

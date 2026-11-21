@@ -12,13 +12,14 @@
  * メモリ: 焼いた絵は 1080p で 約490×1080×4 ≈ 2.1MB/枚(+原盤 228×512 ≈ 0.47MB)。
  *
  * ★枠のトンネル(社長指示2026-11-21・時間割は utils/introFrameTunnel.ts): ステージ開始のヘリ飛来の間だけ、
- * **縦持ち・横持ち関係なく**、同じ焼いた絵の複製を外側の端を基準に拡大しながらフェードアウトさせ、高速で繰り返す。
+ * **縦持ち・横持ち関係なく**、同じ焼いた絵の複製を外側の端を基準に遠近の速さで拡大し(奥からゆっくり→抜ける直前に速く)、
+ * 常に2〜3枚を重ねて途切れず流す。
  * 複製は焼いた絵を使い回す(新しい焼き・毎フレームのフィルタは足さない)。片側 INTRO_TUNNEL_MAX_COPIES 枚のプール。
  * 縦画面では演出の間だけ焼き、終わったら焼いた絵を手放す(演出の後の縦画面は何も描かない=今と同じ)。
  */
 import { BlurFilter, Container, Sprite, Texture, type RenderTexture } from 'pixi.js';
 import { STAGE_FRAMES, stageFramesTunnelWanted, stageFramesWanted, type StageFrameSide } from '../data/stageFrames';
-import { INTRO_TUNNEL_END_MS, INTRO_TUNNEL_MAX_COPIES, introTunnelCopies } from '../utils/introFrameTunnel';
+import { INTRO_TUNNEL_END_MS, INTRO_TUNNEL_MAX_COPIES, INTRO_TUNNEL_PORTRAIT_ALPHA_MUL, introTunnelCopies } from '../utils/introFrameTunnel';
 import { getTexture } from './pixiTextures';
 
 /** ぼかしの強さ(画面の論理px)。`?framesblur=` で試せる。 */
@@ -30,14 +31,13 @@ const FRAME_BLUR = (() => {
   return Number.isFinite(v) && v >= 0 ? v : FRAME_BLUR_DEFAULT;
 })();
 /**
- * 枠のトンネルの複製の重ね方。既定は加算: 枠の絵は暗い岩のシルエットで、ステージ1の夜の画面に普通に重ねると
- * 暗いぼかしが増えるだけで「迫って抜ける」が読めなかった(画で確認)。加算だと岩の縁の青い照り返しと苔が
- * 層になって光り、洞窟の壁が手前へ流れていく画になる。`?tunnelblend=normal|screen` で比べられる。
+ * 枠のトンネルの複製の重ね方。既定は普通(光らせない=暗い岩・枝の影絵がこちらへ迫ってくる)。
+ * 加算は「チカチカ光るだけ」に見えたため既定から外した(社長2026-11-21)。`?tunnelblend=add|screen` で比べられる。
  */
 const TUNNEL_BLEND = (() => {
-  if (typeof window === 'undefined') return 'add';
+  if (typeof window === 'undefined') return 'normal';
   const q = new URLSearchParams(window.location.search).get('tunnelblend');
-  return q === 'normal' || q === 'screen' ? q : 'add';
+  return q === 'add' || q === 'screen' ? q : 'normal';
 })();
 /** 出るフェードの尺(ms)。 */
 const FRAME_FADE_MS = 700;
@@ -130,7 +130,7 @@ export class StageFrameLayer {
         if (c.texture !== view.rt) c.texture = view.rt;
         c.scale.set(pose.scale);
         c.position.set(side === 'left' ? 0 : o.w, o.h / 2);
-        c.alpha = pose.alpha;
+        c.alpha = pose.alpha * (o.w <= o.h ? INTRO_TUNNEL_PORTRAIT_ALPHA_MUL : 1);
         c.visible = true;
         any = true;
       }
