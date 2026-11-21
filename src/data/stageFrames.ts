@@ -28,6 +28,8 @@ export const STAGE_FRAMES: Readonly<Record<string, Readonly<Partial<Record<Stage
   'stage-6': { left: 'frames/stage6-left', right: 'frames/stage6-right' },
   // ステージ7 逆探知地点: 左=垂れた枝の焦げた枯れ木と枯れ草、右=別形の枯れ木と灰の積もった根元(社長支給2026-11-21)。
   'stage-7': { left: 'frames/stage7-left', right: 'frames/stage7-right' },
+  // 洞窟(訓練・チュートリアル): 左=鍾乳石の垂れた岩壁、右=鍾乳石と岩の割れ目(社長支給2026-11-21)。
+  'stage-tutorial': { left: 'frames/tutorial-left', right: 'frames/tutorial-right' },
 };
 
 /** そのステージの枠の絵の名前(左→右の順)。登録が無ければ空。 */

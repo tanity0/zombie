@@ -12,6 +12,8 @@
 | 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記が必須かは規約を未確認 | public/audio/sfx/brawler-punch.mp3 | (日本語名・末尾「2」) | 格闘の1・2段目の当たり | v0.25.5476 |
 | 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記が必須かは規約を未確認 | public/audio/sfx/brawler-heavy.mp3 | (日本語名・末尾「3」) | 格闘の3〜5段目(掌底など)の当たり | v0.25.5476 |
 | 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記が必須かは規約を未確認 | public/audio/sfx/brawler-kick.mp3 | (日本語名・末尾「1」) | 飛び蹴りの当たり | v0.25.5476 |
+| ChatGPT(画像生成)※社長支給 2026-11-21 | public/sprites/frames/tutorial-left.png | IMG_9453.PNG | 横長画面の洞窟(訓練)の左端の枠 | v0.25.5721 |
+| ChatGPT(画像生成)※社長支給 2026-11-21 | public/sprites/frames/tutorial-right.png | IMG_9454.PNG | 横長画面の洞窟(訓練)の右端の枠 | v0.25.5721 |
 | ChatGPT(画像生成)※社長支給 2026-11-21 | public/sprites/frames/stage7-left.png | IMG_9449.PNG | 横長画面のステージ7の左端の枠 | v0.25.5720 |
 | ChatGPT(画像生成)※社長支給 2026-11-21 | public/sprites/frames/stage7-right.png | IMG_9450.PNG | 横長画面のステージ7の右端の枠 | v0.25.5720 |
 | ChatGPT(画像生成)※社長支給 2026-11-21 | public/sprites/frames/stage6-left.png | IMG_9446.PNG | 横長画面のステージ6の左端の枠 | v0.25.5718 |
