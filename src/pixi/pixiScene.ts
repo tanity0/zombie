@@ -471,7 +471,7 @@ import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
 import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight, type WetTree } from './weatherWet';
-import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, WET_CLOUD_SHADOW_MULT, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR } from '../utils/weatherWet';
+import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR } from '../utils/weatherWet';
 import { getSelectedStageId } from '../data/progress';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H, wallRect, propRect, isLabObstacleBroken, labDebrisInRegion, type LabBrokenObstacle } from '../world/labWalls';
 import { LAB_WALL_CRUMBLE_MS, LAB_PROP_CRUMBLE_MS, LAB_DEBRIS_PALETTE, labDebrisKind } from '../utils/labCrawlerTick'; // 崩れの尺・破片の色(着地の土煙・音と同じ値)
@@ -1241,6 +1241,9 @@ const TILT_SHIFT_BAND = tsNum('tsband', 0.54);     // sharp-band centre as a fra
 //   ?envdark=0.6  環境の明るさ倍率(1=従来 / 小さいほど暗い。0.5〜0.7 目安)
 //   ?vig=0.95     周辺減光(vignette)の濃さ(0=なし)。既定 0.70(周辺暗部をもう少し明るく)
 const ENV_DARKEN = Math.max(0, Math.min(1, tsNum('envdark', 0.62)));
+/** 雨上がりの水たまりの映り: ステージ1の森1の絵(horizon-forest-band.png・高さ941)で、木の根元を包む霧の帯の下端の高さの割合
+ *  (853/941)。ここから下は絵に描かれた地面の帯=映りには入れない。絵を差し替えたら測り直す。 */
+const WET_LAND_ROOT_FRAC = 0.906;
 const ENV_TINT = (() => {
   const g = Math.round(255 * ENV_DARKEN);
   return (g << 16) | (g << 8) | g;
@@ -5917,7 +5920,8 @@ export class PixiScene {
       const base = tsNum('cloudshadowalpha', 0.7);          // 濃さ=0.7(社長指示v0.25.2278。旧1.0=v0.25.1977)
       // 雨上がり(?weather=wet)の間だけ濃く=雲が切れて影と月明りの差が立つ。雨上がりでなければ倍率は厳密に1=従来どおり。
       // 濃さ=α×(斑の暗さ)。雨上がり用テクスチャは暗さが CLOUD_SHADOW_WET_GAIN 倍なので α を割って、濃さが倍率どおり連続に寄るようにする。
-      const wm = wetLightMult(this.wetLightMix, WET_CLOUD_SHADOW_MULT);
+      // 倍率は雨の強さに沿う(止みかけ 1.35 → 本降り 1.8・社長指示2026-11-21「雨量に合わせて1.8まで」)。
+      const wm = wetLightMult(this.wetLightMix, wetCloudShadowMult(this.weatherWet?.rainIntensity.rain ?? RAIN_INTENSITY_LOW_MAX));
       sp.alpha = wetShadow ? Math.min(1, base * wm / CLOUD_SHADOW_WET_GAIN) : base;
     }
     const spd = tsNum('cloudshadowspeed', night ? 0.008 : 0.011); // もう少し速く(社長指示v0.25.1977)。夜=ゆっくりめ / 昼=標準
@@ -10047,7 +10051,7 @@ export class PixiScene {
     // 研究所スキンは床/素材を見せるため、クール調整を弱める(森はそのまま)。
     // cine時は寒色gradeをCINE値で維持(labThemeFog/daylightの上書きに勝つ)。
     this.gradeSprite.alpha = this.cineEnabled ? CINE_GRADE_ALPHA
-      : labThemeFog ? GRADE_ALPHA * 0.45 : (this.daylight ? DAY_GRADE_ALPHA : GRADE_ALPHA);
+      : labThemeFog ? GRADE_ALPHA * 0.45 : (this.daylight ? DAY_GRADE_ALPHA : wetNightGradeAlpha(GRADE_ALPHA, this.wetLightMix)); // 雨上がりの間だけ夜の寒色を弱める(それ以外は厳密に GRADE_ALPHA)
 
     // 死神の横切り演出(store.reaperCross から駆動)。world内レイヤーを画面へピン留め(被写界深度が乗る)。
     // ★監査v0.25.3008(A-3): worldGroupのズーム(引き)も打ち消す(bgCloudLayerと同じcounter-scale)。
@@ -12562,7 +12566,7 @@ export class PixiScene {
     if (wetLightMult(this.wetLightMix, WET_MOON_SHAFT_MULT) !== this.shaftWetMulDrawn) this.updateStageLightShafts(this.screenW, this.screenH);
     // 濡れた土: 地面の帯の tint を湿った土へ寄せる(入る/抜ける時は加減速)。抜け切ったら一度だけ夜の tint へ戻す。
     if (this.wetLightMix > 0 || this.wetSoilOn) {
-      const tint = wetSoilTint(this.envTintNow(), this.wetLightMix);
+      const tint = wetSoilTint(wetNightEnvTint(this.envTintNow(), this.wetLightMix), this.wetLightMix); // 夜の暗さも雨上がりの間だけ少し弱める
       for (const strip of this.L.groundStrips) if (strip.tint !== tint) strip.tint = tint;
       this.wetSoilOn = this.wetLightMix > 0;
     }
@@ -12616,7 +12620,7 @@ export class PixiScene {
       farGroup: this.farGroup,
     });
     this.weatherWet.sync({
-      now, envTint: this.envTintNow(), view, rainView, world: this.L.world,
+      now, envTint: wetNightEnvTint(this.envTintNow(), this.wetLightMix), view, rainView, world: this.L.world, // 水たまりの縁も地面と同じ明るさ
       depthScale: y => this.depthScale(y),
       horizonAlpha: y => this.horizonActorAlpha(y),
       actors, lights, trees, bases, focusX: ppx, focusY: ppy,
@@ -12638,7 +12642,7 @@ export class PixiScene {
     return Math.min(1, shaftLightAt(this.moonPtA.x, this.moonPtA.y, this.shaftPolys) * Math.max(0, g.alpha));
   }
 
-  /** 水たまりに映す遠景(空・月・城・森1/2)。描かれている順のまま渡す。地平線=森1の下端(画面座標)。 */
+  /** 水たまりに映す遠景(空・月・城・森1/2)。描かれている順のまま渡す。地平線=森1の下端・木の根元=森1の霧の帯の下端(画面座標)。 */
   private wetLandSet: Set<Container> | null = null;
   private wetLandSrc: (Sprite | TilingSprite)[] = [];
   private wetLandscape(): WetLandscape | undefined {
@@ -12660,9 +12664,9 @@ export class PixiScene {
     const br = st.toGlobal({ x: this.screenW, y: this.screenH });
     // 地平線=遠景の森1の下端(木の根元=映りの軸。森2の下端は霧の地面まで含むので軸にすると稜線が遠ざかる)。
     const horizonY = hf.parent.toGlobal({ x: 0, y: hf.position.y + hf.height }).y;
-    const ps = useGameStore.getState().player;
-    const anchorY = this.L.world.toGlobal({ x: ps.x + ps.width / 2, y: ps.y + ps.height }).y;
-    return { sources: src, horizonY, screenTop: tl.y, screenBottom: br.y, screenLeft: tl.x, screenRight: br.x, anchorY };
+    // 木の根元=森1の絵の霧の帯の下端(その下は絵に描かれた地面=映すと「地面が映る」・社長指摘2026-11-21)。
+    const rootY = hf.parent.toGlobal({ x: 0, y: hf.position.y + hf.height * WET_LAND_ROOT_FRAC }).y;
+    return { sources: src, horizonY, rootY, screenTop: tl.y, screenBottom: br.y, screenLeft: tl.x, screenRight: br.x };
   }
 
   // ---- ステージ6(洋館・corridorMode)の見た目: 疑似3D通路の背景(v0.25.2113) ----------

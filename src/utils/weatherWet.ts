@@ -251,51 +251,79 @@ export const LANDSCAPE_REFLECT_STRETCH = 0.38;
 export interface LandscapeBand {
   /** 遠景の帯(画面の上端〜地平線)の高さ。 */
   srcH: number;
-  /** 地面側の映りの帯1本の高さ(= srcH × 伸び)。地平線から下へこの高さごとに繰り返す。 */
+  /** 映りの帯の高さ(= srcH × 伸び)。水たまりごとの寸法は puddleReflection が更に縮める。 */
   bandH: number;
-  /** 地平線から画面の下端まで埋めるのに要る本数(1以上)。 */
-  repeats: number;
 }
 
 /**
- * 遠景(画面の上端〜地平線)を地平線を軸に上下反転して地面側へ敷く時の帯の寸法(画面座標)。
- * 横(x)は触らない=遠景の視差(横の流れ)がそのまま映る。
- * 地平線から下へ「反転した遠景」の帯を縦に繰り返す(地平線の近くには森の稜線、少し手前には空と月、さらに手前で
- * また稜線)=どの高さの水たまりにも何かのシルエットが映る。繰り返しの継ぎ目は「空の上端」と「稜線の根元」で、
- * どちらも暗いので小さな水たまりの中では目に付かない。
+ * 遠景(画面の上端〜地平線)を地平線を軸に上下反転した帯の寸法(画面座標)。横(x)は触らない=遠景の視差(横の流れ)がそのまま映る。
  */
-export const landscapeBand = (horizonY: number, topY: number, bottomY: number, stretch = LANDSCAPE_REFLECT_STRETCH): LandscapeBand => {
+export const landscapeBand = (horizonY: number, topY: number, stretch = LANDSCAPE_REFLECT_STRETCH): LandscapeBand => {
   const srcH = Math.max(1, horizonY - topY);
-  const bandH = srcH * Math.max(0.1, stretch);
-  const below = Math.max(0, bottomY - horizonY);
-  return { srcH, bandH, repeats: Math.max(1, Math.ceil(below / bandH)) };
+  return { srcH, bandH: srcH * Math.max(0.1, stretch) };
 };
 
-/** 帯の頭(=稜線の根元)を、注目点(プレイヤーの足元)からこの割合ぶん上に置く。叩き台。 */
-export const LANDSCAPE_BAND_LEAD = 0.3;
+// ---- 水たまりごとの映り(設計書「追加: 映り込みの木を水たまりの奥の縁に吊るす」) ----
+/** 水面の深さが「遠景の帯の高さ(srcH)×この割合」以上の水たまりは、映りの縦の倍率が LANDSCAPE_REFLECT_STRETCH そのまま。
+ *  これより浅い(小さい・遠い)ほど比例して縮む=小さな水たまりには背の低い木が映る。帯の高さ÷深さ = STRETCH ÷ この割合(上限まで一定)
+ *  =引き(0.4)で水たまりも遠景も小さく映っても、水面の中の木と空の割合は変わらない。叩き台。 */
+export const LANDSCAPE_REF_DEPTH_FRAC = 0.45;
+/** 逆さの稜線(木の根元)を、水面の奥の縁(画面で上の縁)から深さのこの割合だけ内側へ下げる
+ *  (水面の形の上端は楕円の頂点なので、根元が縁の外へ切れて見えないように)。叩き台。 */
+export const LANDSCAPE_FAR_EDGE_INSET = 0.06;
+/** 帯の下端(空の上端)が水面の手前の縁より上で終わった時、続きを埋める空の写しの元=焼きの下端からこの割合
+ *  (空の上の方・雲と星だけ。稜線を含まない)を、帯の継ぎ目を軸に鏡写しにして手前の縁まで伸ばす。叩き台。 */
+export const LANDSCAPE_SKY_SAMPLE = 0.22;
+
+export interface PuddleReflection {
+  /** 逆さの稜線(木の根元=焼きの上端)を置く画面の y。 */
+  ridgeY: number;
+  /** 映りの縦の倍率(遠景の縦px → 映りの縦px)。 */
+  scaleY: number;
+  /** 帯全体(稜線〜空の上端)の高さ。 */
+  bandH: number;
+  /** 水面の内側に出す帯の高さ(手前の縁で切る)と、それが帯全体の何割か(焼きの上から何割を使うか)。 */
+  bandVisH: number;
+  bandVisFrac: number;
+  /** 帯の下に続ける空の写し(鏡写し)の始まりの y と高さ(0 なら無し)。 */
+  skyY: number;
+  skyH: number;
+}
 
 /**
- * 帯の頭が来る画面の y(繰り返しの位相)。注目点(プレイヤーの足元の画面の y)の少し上に稜線の根元が来るよう、
- * 地平線から帯の高さの整数倍だけずらした所を選ぶ=プレイヤーの周りの水たまりには、逆さの森の稜線と、その下に空(月)が映る。
- * 戻り値は地平線と同じか下(地平線より上には帯を始めない)。
+ * 1つの水たまりの風景の映りの縦の配置(画面座標・y は下向き)。farY=水面の奥の縁(上)・nearY=手前の縁(下)・srcH=遠景の帯の高さ。
+ * 逆さの稜線の根元を奥の縁に吊るし、木は下(手前)へ垂れる。稜線より手前は空だけ(帯の残り→足りなければ空の鏡写し)。
+ * 2本目の稜線・地面は出さない(帯は1本だけ・空の写しは焼きの下端=空の上端だけから取る)。
  */
-export const landscapeBandStart = (b: LandscapeBand, horizonY: number, anchorY: number, lead = LANDSCAPE_BAND_LEAD): number => {
-  const want = anchorY - b.bandH * lead;
-  const d = want - horizonY;
-  const phase = ((d % b.bandH) + b.bandH) % b.bandH;
-  return horizonY + phase;
-};
-
-/** 画面の y に映るのは、遠景のどの y か(帯の頭=地平線・下へ行くほど高い空・帯ごとに繰り返す)。bandStart 省略時は地平線から。 */
-export const reflectedSourceY = (b: LandscapeBand, horizonY: number, y: number, bandStart = horizonY): number => {
-  const d = y - bandStart;
-  const inBand = ((d % b.bandH) + b.bandH) % b.bandH;
-  return horizonY - inBand * (b.srcH / b.bandH);
+export const puddleReflection = (
+  farY: number, nearY: number, srcH: number,
+  opts: { stretch?: number; refDepthFrac?: number; inset?: number } = {},
+): PuddleReflection => {
+  const stretch = Math.max(0.01, opts.stretch ?? LANDSCAPE_REFLECT_STRETCH);
+  const src = Math.max(1, srcH);
+  const refDepth = Math.max(1e-6, src * Math.max(0.01, opts.refDepthFrac ?? LANDSCAPE_REF_DEPTH_FRAC));
+  const inset = clamp01(opts.inset ?? LANDSCAPE_FAR_EDGE_INSET);
+  const depth = Math.max(0, nearY - farY);
+  const ridgeY = farY + depth * inset;
+  const scaleY = stretch * Math.min(1, Math.max(0.02, depth / refDepth));
+  const bandH = Math.max(1e-6, src * scaleY);
+  const room = Math.max(0, nearY - ridgeY);
+  const bandVisH = Math.min(bandH, room);
+  const skyY = ridgeY + bandVisH;
+  return { ridgeY, scaleY, bandH, bandVisH, bandVisFrac: bandVisH / bandH, skyY, skyH: Math.max(0, nearY - skyY) };
 };
 
 // ---- 雲の影と月明りの強まり(雨上がり=雲が切れて、影と月明りの差がはっきりする) ----
 /** 雨上がりの間、地面を流れる雲の影の濃さに掛ける倍率(>1=濃く)。叩き台。 */
 export const WET_CLOUD_SHADOW_MULT = 1.35; // 旧 1.8=地面の中間が影で潰れた(社長「地面全体が暗く潰れちゃってる」)
+/** 本降りの時の雲の影の倍率(社長指示2026-11-21「雨量に合わせて1.8まで」)。止みかけ(強さ ≤ RAIN_INTENSITY_LOW_MAX)は
+ *  WET_CLOUD_SHADOW_MULT、本降り(≥ RAIN_INTENSITY_HIGH_MIN)でこの値。間は今の雨の強さ(時刻表で加減速して動く)に沿って滑らかに。 */
+export const WET_CLOUD_SHADOW_MULT_HEAVY = 1.8;
+/** 今の雨の強さ rain の時の、雨上がりの雲の影の倍率(雨上がりの効き具合を掛ける前)。 */
+export const wetCloudShadowMult = (rain: number): number => {
+  const t = clamp01((rain - RAIN_INTENSITY_LOW_MAX) / Math.max(1e-6, RAIN_INTENSITY_HIGH_MIN - RAIN_INTENSITY_LOW_MAX));
+  return WET_CLOUD_SHADOW_MULT + (WET_CLOUD_SHADOW_MULT_HEAVY - WET_CLOUD_SHADOW_MULT) * easeInOutSine(t);
+};
 /** 雨上がりの間、月明りの筋の明るさに掛ける倍率(>1=明るく)。叩き台。 */
 export const WET_MOON_SHAFT_MULT = 1.7;
 /** 雨上がりの間の月明りの筋の色(夜の既定 0xc9d6ff より青い=藍の夜の月光。灰色の靄に見えないように)。叩き台。 */
@@ -404,6 +432,22 @@ export const wetSoilTint = (env: number, mix: number): number => {
   const k = easeInOutSine(mix);
   const ch = (shift: number, m: number) => Math.min(255, Math.round(((env >> shift) & 255) * (1 + (m - 1) * k)));
   return (ch(16, WET_SOIL_MUL[0]) << 16) | (ch(8, WET_SOIL_MUL[1]) << 8) | ch(0, WET_SOIL_MUL[2]);
+};
+
+// 8b. 夜の暗さを雨上がりの間だけ弱める(社長承認2026-11-21・参考画の地面の明るさへ寄せる)。どちらも乗算の掛け率を緩めるだけ
+//     =黒は黒のまま(締まりは残る)。霧の濃さ・被写界深度は触らない。効き具合 mix=0(雨上がりでない)なら厳密にそのまま。
+/** 世界に掛ける寒色の乗算(GRADE_TINT)の濃さに掛ける倍率。 */
+export const WET_NIGHT_GRADE_ALPHA_MUL = 0.45;
+/** 夜の環境の tint(ENV_TINT=地面・水たまりの縁)に掛ける倍率(255 で頭打ち)。 */
+export const WET_NIGHT_ENV_MUL = 1.15;
+/** 寒色の乗算の濃さ(alpha)を、効き具合 mix(0..1・加減速つき)ぶん弱めた値。 */
+export const wetNightGradeAlpha = (alpha: number, mix: number): number =>
+  alpha * (1 + (WET_NIGHT_GRADE_ALPHA_MUL - 1) * easeInOutSine(mix));
+/** 夜の環境の tint を、効き具合 mix ぶん明るくした tint。 */
+export const wetNightEnvTint = (env: number, mix: number): number => {
+  const k = 1 + (WET_NIGHT_ENV_MUL - 1) * easeInOutSine(mix);
+  const ch = (shift: number) => Math.min(255, Math.round(((env >> shift) & 255) * k));
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
 };
 
 // 9. 濡れた地面の照り: 地面の上(キャラの下)に、まだらな照りの絵を1枚敷く(加算・薄く)。松明の足元では温かく強く照る。

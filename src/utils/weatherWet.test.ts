@@ -5,13 +5,15 @@ import {
   parseWeather, weatherWetActive, ripplePose, RIPPLE_MS, RIPPLE_FRAMES, RIPPLE_SCALE_FROM, RIPPLE_SCALE_TO,
   dripHeight, DRIP_FALL_MS, DRIP_FALL_H, glintPose, GLINT_MS,
   rainDropSpec, rainPose, rainNextGapMs, RAIN_FALL_MS_MIN, RAIN_FALL_MS_MAX, RAIN_DROPS_PER_MPX_S, RAIN_MAX,
-  landscapeBand, reflectedSourceY, landscapeBandStart, LANDSCAPE_REFLECT_STRETCH, LANDSCAPE_BAND_LEAD,
+  landscapeBand, puddleReflection, LANDSCAPE_REFLECT_STRETCH, LANDSCAPE_REF_DEPTH_FRAC, LANDSCAPE_FAR_EDGE_INSET,
   WET_CLOUD_SHADOW_MULT, WET_MOON_SHAFT_MULT, WET_LIGHT_FADE_MS, stepWetLightMix, wetLightMult, lerpRgb,
   rainSegment, makeRainSchedule, advanceRainSchedule, followLag, rainIntensityInSegment,
   RAIN_INTENSITY_HOLD_MS_MIN, RAIN_INTENSITY_HOLD_MS_MAX, RAIN_INTENSITY_MIN, RAIN_INTENSITY_MAX, RAIN_INTENSITY_RAMP_MS,
   RAIN_INTENSITY_LOW_MAX, RAIN_INTENSITY_HIGH_MIN, RAIN_RECHECK_MS, rainNextEvent, puddleRippleRate, PUDDLE_RIPPLE_LEVEL_FLOOR,
   DRIP_LAG_TAU_MS, DRIP_EVERY_MS, DRIP_MAX, TORCH_STREAK_LEN, TORCH_STREAK_W,
   wetSoilTint, wetGlossDrift, shaftLightAt,
+  wetCloudShadowMult, WET_CLOUD_SHADOW_MULT_HEAVY,
+  wetNightGradeAlpha, wetNightEnvTint, WET_NIGHT_GRADE_ALPHA_MUL, WET_NIGHT_ENV_MUL,
 } from './weatherWet';
 
 describe('weatherWet(雨上がりの決めごと)', () => {
@@ -134,59 +136,55 @@ describe('ポツポツ雨(小雨の決めごと)', () => {
   });
 });
 
-describe('水たまりに映る風景(上下反転の写し)', () => {
-  it('地平線ちょうどは地平線、下へ行くほど高い空が映る(上下が入れ替わる)', () => {
-    const b = landscapeBand(400, 0, 1600);
-    expect(reflectedSourceY(b, 400, 400)).toBeCloseTo(400);
-    const y1 = 400 + b.bandH * 0.25, y2 = 400 + b.bandH * 0.75;
-    expect(reflectedSourceY(b, 400, y1)).toBeLessThan(400);
-    expect(reflectedSourceY(b, 400, y2)).toBeLessThan(reflectedSourceY(b, 400, y1));
-  });
-
-  it('帯1本で遠景の帯ちょうど1本ぶん(伸びの分だけ縦に伸びる)', () => {
-    const b = landscapeBand(400, 0, 1600);
+describe('水たまりに映る風景(上下反転の写し・水たまりごとに奥の縁へ吊るす)', () => {
+  it('帯は遠景の帯ちょうど1本ぶん(伸びの分だけ縦に縮む)', () => {
+    const b = landscapeBand(400, 0);
     expect(b.srcH).toBe(400);
     expect(b.bandH).toBeCloseTo(400 * LANDSCAPE_REFLECT_STRETCH);
-    expect(reflectedSourceY(b, 400, 400 + b.bandH - 0.001)).toBeCloseTo(0, 1); // 帯の終わり=空の上端
   });
 
-  it('下端まで繰り返して埋める(手前の水たまりにも何か映る)', () => {
-    const b = landscapeBand(400, 0, 1600);
-    expect(400 + b.bandH * b.repeats).toBeGreaterThanOrEqual(1600);
-    expect(reflectedSourceY(b, 400, 400 + b.bandH)).toBeCloseTo(400); // 2本目の頭はまた地平線
-    for (let y = 400; y <= 1600; y += 37) {
-      const src = reflectedSourceY(b, 400, y);
-      expect(src).toBeGreaterThanOrEqual(0 - 1e-6);
-      expect(src).toBeLessThanOrEqual(400 + 1e-6);
+  it('逆さの稜線の根元は水面の奥の縁(上の縁)のすぐ内側', () => {
+    const r = puddleReflection(500, 560, 400);
+    expect(r.ridgeY).toBeGreaterThanOrEqual(500);
+    expect(r.ridgeY).toBeCloseTo(500 + 60 * LANDSCAPE_FAR_EDGE_INSET, 6);
+    expect(r.ridgeY).toBeLessThan(500 + 60 * 0.15);
+  });
+
+  it('水面の中に2本目の稜線は出ない(帯は1本・手前の縁で切る)/帯より手前は空だけで手前の縁まで埋まる', () => {
+    for (const [far, near, srcH] of [[500, 530, 400], [500, 560, 400], [300, 420, 250], [100, 300, 120], [700, 702, 600]]) {
+      const r = puddleReflection(far, near, srcH);
+      // 帯(稜線〜空の上端)は水面の中で1回だけ: 見せる帯は帯全体以下
+      expect(r.bandVisH).toBeLessThanOrEqual(r.bandH + 1e-9);
+      expect(r.bandVisFrac).toBeGreaterThan(0);
+      expect(r.bandVisFrac).toBeLessThanOrEqual(1 + 1e-9);
+      // 帯の下端の先に稜線をもう一度置く余地は無い: 帯が切れていない時は、残りを空の写しが埋める
+      expect(r.skyY).toBeCloseTo(r.ridgeY + r.bandVisH, 9);
+      expect(r.skyY + r.skyH).toBeCloseTo(near, 9);
+      if (r.skyH > 0) expect(r.bandVisFrac).toBeCloseTo(1, 9); // 空の写しは帯を最後(空の上端)まで出した後だけ
+      // 奥の縁より上(水面の外=地面)には何も置かない
+      expect(r.ridgeY).toBeGreaterThanOrEqual(far);
     }
   });
 
-  it('引き(地平線が下がる・上がる)でも寸法は地平線と上端だけで決まる', () => {
-    const a = landscapeBand(400, 0, 1600);
-    const b = landscapeBand(500, 100, 1700);
-    expect(b.bandH).toBeCloseTo(a.bandH);
-    expect(reflectedSourceY(b, 500, 650)).toBeCloseTo(reflectedSourceY(a, 400, 550) + 100);
-  });
-
-  it('帯の頭は注目点(足元)の少し上=足元の周りに逆さの稜線と空が映る', () => {
-    const b = landscapeBand(400, 0, 1600);
-    for (const anchor of [700, 950, 1234, 1500]) {
-      const start = landscapeBandStart(b, 400, anchor);
-      expect(start).toBeGreaterThanOrEqual(400);
-      expect(start).toBeLessThan(400 + b.bandH);
-      // 足元から帯の LEAD 割だけ上(帯の高さの整数倍の違いは同じ絵)
-      const k = (anchor - b.bandH * LANDSCAPE_BAND_LEAD - start) / b.bandH;
-      expect(Math.abs(k - Math.round(k))).toBeLessThan(1e-9);
-      // 足元の高さに映るのは稜線寄り(帯の上の方=地平線に近い遠景)
-      expect(reflectedSourceY(b, 400, anchor, start)).toBeCloseTo(400 - b.srcH * LANDSCAPE_BAND_LEAD, 6);
+  it('小さい(浅い)水たまりほど木は背が低い・大きい水たまりは倍率がそのまま', () => {
+    const small = puddleReflection(0, 20, 400);
+    const mid = puddleReflection(0, 50, 400);
+    const big = puddleReflection(0, 400 * LANDSCAPE_REF_DEPTH_FRAC * 2, 400);
+    expect(small.scaleY).toBeLessThan(mid.scaleY);
+    expect(mid.scaleY).toBeLessThan(big.scaleY);
+    expect(big.scaleY).toBeCloseTo(LANDSCAPE_REFLECT_STRETCH, 9);
+    // 深さに比例(上限まで)=引き(0.4)で水たまりが小さく映っても、木と空の割合は同じ
+    for (const z of [puddleReflection(0, 50 * 0.4, 400 * 0.4), puddleReflection(0, 50 * 0.4, 400)]) {
+      expect(z.bandVisFrac).toBeCloseTo(mid.bandVisFrac, 9);
+      expect(z.skyH / 20).toBeCloseTo(mid.skyH / 50, 9);
     }
   });
 
   it('壊れた入力でも有限の値を返す', () => {
-    const b = landscapeBand(0, 0, 0);
-    expect(Number.isFinite(b.bandH) && b.bandH > 0).toBe(true);
-    expect(b.repeats).toBeGreaterThanOrEqual(1);
-    expect(Number.isFinite(reflectedSourceY(b, 0, 123))).toBe(true);
+    for (const r of [puddleReflection(0, 0, 0), puddleReflection(10, 5, -3), puddleReflection(0, 1e6, 1)]) {
+      for (const v of Object.values(r)) expect(Number.isFinite(v)).toBe(true);
+      expect(r.skyH).toBeGreaterThanOrEqual(0);
+    }
   });
 });
 
@@ -391,5 +389,51 @@ describe('参考画に寄せる(色行列・松明の筋・葉先の雫)', () =>
     expect(Math.abs(f0.h - h2.h)).toBeLessThan(1); // 千切れる瞬間に位置が跳ばない
     expect(leafDripPose(1300, s)).toBeNull();
     expect(leafDripPose(-1, s)).toBeNull();
+  });
+});
+
+describe('雨上がりの雲の影は雨の強さに沿う(止みかけ 1.35 → 本降り 1.8)', () => {
+  it('止みかけ以下は 1.35・本降り以上は 1.8・間は単調で跳ばない', () => {
+    expect(wetCloudShadowMult(0)).toBeCloseTo(WET_CLOUD_SHADOW_MULT, 9);
+    expect(wetCloudShadowMult(RAIN_INTENSITY_LOW_MAX)).toBeCloseTo(WET_CLOUD_SHADOW_MULT, 9);
+    expect(wetCloudShadowMult(RAIN_INTENSITY_HIGH_MIN)).toBeCloseTo(WET_CLOUD_SHADOW_MULT_HEAVY, 9);
+    expect(wetCloudShadowMult(RAIN_INTENSITY_MAX)).toBeCloseTo(WET_CLOUD_SHADOW_MULT_HEAVY, 9);
+    expect(WET_CLOUD_SHADOW_MULT_HEAVY).toBe(1.8);
+    let prev = wetCloudShadowMult(0);
+    for (let r = 0; r <= RAIN_INTENSITY_MAX; r += 0.01) {
+      const m = wetCloudShadowMult(r);
+      expect(m).toBeGreaterThanOrEqual(prev - 1e-12);
+      expect(m - prev).toBeLessThan(0.01); // 強さが 0.01 動いても倍率は跳ばない
+      prev = m;
+    }
+  });
+
+  it('雨上がりでない(mix=0)なら、雨の強さに関わらず倍率は厳密に1', () => {
+    for (const r of [0, 1, 3, 4]) expect(wetLightMult(0, wetCloudShadowMult(r))).toBe(1);
+    expect(wetLightMult(1, wetCloudShadowMult(4))).toBeCloseTo(1.8, 9);
+  });
+});
+
+describe('雨上がりの間だけ夜の暗さを弱める', () => {
+  it('雨上がりでない(mix=0)なら厳密にそのまま', () => {
+    expect(wetNightGradeAlpha(0.4, 0)).toBe(0.4);
+    for (const env of [0x9e9e9e, 0x000000, 0xffffff, 0x123456]) expect(wetNightEnvTint(env, 0)).toBe(env);
+  });
+  it('効き切ると乗算が緩む(黒は黒のまま・255 で頭打ち)', () => {
+    expect(WET_NIGHT_GRADE_ALPHA_MUL).toBeLessThan(1);
+    expect(WET_NIGHT_ENV_MUL).toBeGreaterThan(1);
+    expect(wetNightGradeAlpha(0.4, 1)).toBeCloseTo(0.4 * WET_NIGHT_GRADE_ALPHA_MUL, 9);
+    expect(wetNightEnvTint(0x9e9e9e, 1)).toBe(((Math.round(0x9e * WET_NIGHT_ENV_MUL)) * 0x010101));
+    expect(wetNightEnvTint(0, 1)).toBe(0);
+    expect(wetNightEnvTint(0xffffff, 1)).toBe(0xffffff);
+  });
+  it('入る/抜ける途中は加減速して連続', () => {
+    let prev = wetNightGradeAlpha(0.4, 0);
+    for (let m = 0.01; m <= 1.0001; m += 0.01) {
+      const a = wetNightGradeAlpha(0.4, m);
+      expect(a).toBeLessThanOrEqual(prev + 1e-12);
+      expect(prev - a).toBeLessThan(0.01);
+      prev = a;
+    }
   });
 });
