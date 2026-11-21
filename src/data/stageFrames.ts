@@ -22,6 +22,8 @@ export const STAGE_FRAMES: Readonly<Record<string, Readonly<Partial<Record<Stage
   'stage-3': { left: 'frames/stage3-left', right: 'frames/stage3-right' },
   // ステージ4 封鎖地域: 左=雪をかぶった枯れ木の枝、右=雪に埋もれた有刺鉄線の柵の柱(社長支給2026-11-21)。
   'stage-4': { left: 'frames/stage4-left', right: 'frames/stage4-right' },
+  // ステージ5 軍本部: 左=枯れ木と木の杭の柵と赤い布、右=崩れた鉄骨と破れた布と瓦礫(社長支給2026-11-21)。
+  'stage-5': { left: 'frames/stage5-left', right: 'frames/stage5-right' },
 };
 
 /** そのステージの枠の絵の名前(左→右の順)。登録が無ければ空。 */

@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5717 — ステージ5の左右の枠【2026-11-21 23:24 JST】
+- 社長支給(ChatGPT生成)の 79×128(IMG_9441・不透明の画素が左に多い=左)・78×128(IMG_9442・右に多い=右)を `public/sprites/frames/stage5-{left,right}.png` に置き、`stageFrames.ts` に1行。左右は画素の偏りを数えて決めた。台帳・CREDITS 更新。
+- 確認: 1280×720 で左右とも出てぼけていることを撮って目視。typecheck・eslint・assets:check・vitest 全件(失敗0)。状態変化: なし。
+
 ## v0.25.5716 — ステージ4の左右の枠【2026-11-21 23:18 JST】
 - 社長支給(ChatGPT生成)の左 64×128(雪の枯れ枝・IMG_9437)・右 64×128(有刺鉄線の柵・IMG_9438)を `public/sprites/frames/stage4-{left,right}.png` に置き、`stageFrames.ts` に1行。台帳・CREDITS 更新。
 - 確認: 1280×720 で左右とも出てぼけていることを撮って目視。typecheck・eslint・assets:check・vitest 全件(失敗0)。状態変化: なし。
