@@ -474,11 +474,19 @@ import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/f
 import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight, type WetTree } from './weatherWet';
 import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR, stage1NightActive, s1nCloudShadowAlpha, S1N_MOON_SHAFT_MULT, S1N_MOON_SHAFT_COLOR, S1N_NIGHT_GRADE_ALPHA_MUL, S1N_MOON_POOL_ALPHA, S1N_MOON_POOL_COLOR, moonPoolPieces } from '../utils/weatherWet';
 import { Stage1NightLayer } from './stage1Night';
+import { Stage5BattleLayer } from './stage5Battlefield';
+import { stage5BattleActive, stage5EmberSize } from '../utils/stage5Battlefield';
 import {
   fireflyBlink, fireflyActiveFrac, fireflyHeading, fireflyScatterAcc, FIREFLY_CYAN_FRAC, FIREFLY_WARM_TINT, FIREFLY_CYAN_TINT,
   FIREFLY_CORE_PX, FIREFLY_HALO_MUL, FIREFLY_HALO_ALPHA, FIREFLY_SPEED_MIN, FIREFLY_SPEED_MAX, FIREFLY_STEER,
   FIREFLY_SCATTER_DECAY, FIREFLY_NEAR_FLOWER_P, FIREFLY_ON_EASE, FIREFLY_BLINK_MS_MIN, FIREFLY_BLINK_MS_MAX, FIREFLY_DIM_FLOOR, FIREFLY_S1_COUNT,
 } from '../utils/stage1Fireflies';
+import {
+  layoutMoonShafts, moonShaftLightAt, moonShaftPolys, moonPoolStrip, MOON_SHAFT_GAIN, type MoonShaft,
+  MOON_DUST_COUNT, MOON_DUST_PX, MOON_DUST_ALPHA, MOON_DUST_TINT, MOON_DUST_LIT_GAIN, MOON_DUST_SPEED_MIN, MOON_DUST_SPEED_MAX,
+  MOON_DUST_STEER, MOON_DUST_LIFT_MIN, MOON_DUST_LIFT_MAX, MOON_DUST_ON_EASE, moonDustActiveFrac, moonDustHeading, moonDustTwinkle, moonDustFarFade,
+} from '../utils/moonShafts';
+import { getMoonShaftTexture, getMoonPoolTexture } from './moonShaftTexture';
 import { getSelectedStageId } from '../data/progress';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H, wallRect, propRect, isLabObstacleBroken, labDebrisInRegion, type LabBrokenObstacle } from '../world/labWalls';
 import { LAB_WALL_CRUMBLE_MS, LAB_PROP_CRUMBLE_MS, LAB_DEBRIS_PALETTE, labDebrisKind } from '../utils/labCrawlerTick'; // 崩れの尺・破片の色(着地の土煙・音と同じ値)
@@ -761,7 +769,12 @@ const tsNum = (key: string, def: number): number => {
 };
 const S1N_ON = tsNum('s1n', 1) > 0; // ?s1n=0 で通常のステージ1の夜の上乗せを全部外す(見比べ・計測用)
 const S1N_GRADE_ON = tsNum('s1ngrade', 1) > 0; // ?s1ngrade=0 で色行列だけ外す(計測用)
+const S5B_ON = tsNum('s5b', 1) > 0; // ?s5b=0 でステージ5(戦場)の光・色・コントラストの上乗せを全部外す(見比べ・計測用)
+const S5B_GRADE_ON = tsNum('s5bgrade', 1) > 0; // ?s5bgrade=0 で世界の色行列だけ外す(見比べ用)
+const S5B_ATMO_ON = tsNum('s5batmo', 1) > 0; // ?s5batmo=0 で空の色行列と煙/近景の色だけ外す(見比べ用)
+const S5B_POOL_ON = tsNum('s5bpool', 1) > 0; // ?s5bpool=0 で火の溜まりだけ外す(見比べ用)
 const S1N_POOL_ON = tsNum('s1npool', 1) > 0; // ?s1npool=0 で月明りの溜まり(地面)だけ外す(見比べ用)
+const MOON_SHAFT_ON = tsNum('moonshaft', 1) > 0; // ?moonshaft=0 でステージ1の森の夜も従来の台形の筋のまま(見比べ用)
 const POI_TOUCH_FREEZE_MS = tsNum('poitouchfreeze', -1); // 触れた瞬間の絵の撮影用(負=無効)
 const LEVER_GUARD_FREEZE_MS = tsNum('leverguardfreeze', -1); // 格闘のレバーガードの腕で受ける影の撮影用(受けてからの経過msを固定・負=無効)
 const BOOM_CUE_FREEZE_MS = tsNum('boomcuefreeze', -1); // ブーメランの「今打てる」の光の撮影用(負=無効・経過msを固定)
@@ -4713,6 +4726,7 @@ export class PixiScene {
   private propObjs = new Map<string, LabObstacleView>(); // 遮蔽物プロップ(区画生成・研究所スキン)
   private cityPropObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ3(廃都)の散布オブジェクト
   private flowerObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ1(森)の装飾花(壁判定なし)
+  private stage5Battle: Stage5BattleLayer | null = null; // ステージ5(戦場)の光・色・コントラスト(syncStage5Battle)
   private stage1Night: Stage1NightLayer | null = null; // 通常のステージ1の森の夜(雨上がりの見た目の一部を弱めて流用・syncStage1Night)
   private weatherWet: WeatherWetLayer | null = null; // 天候「雨上がり」(?weather=wet・ステージ1だけ・research/WEATHER_WET.md)
   private enemies = new Map<string, ActorView>();
@@ -5637,10 +5651,32 @@ export class PixiScene {
   private playerFirstAidBag = new Sprite();                // 救急鞄スキル発動時に掲げる鞄(first-aid-kit・描画のみ)
   private playerFirstAidBagSetup = false;                  // 鞄スプライトのテクスチャ/親子付け済みか
   private stageLightShaftGfx = new Graphics();
+  /**
+   * ステージ1の森の夜(晴れ・雨上がり)の月明りの筋(utils/moonShafts.ts)。柔らかい分布を焼いた絵を筋1本につき Sprite 1枚で置く
+   * (毎フレーム描き直さない・並びが変わった時だけ置き直す)。stageLightShaftGfx の直上(画面に固定)・同じ横の流れと脈動。
+   * 効き具合(晴れの夜/雨上がりの mix)で従来の台形の筋と入れ替わる(入る/抜ける時は加減速して混ざる=慣性)。
+   */
+  private moonShaftLayer = new Container();
+  private moonShaftSprites: Sprite[] = [];
+  /** 今置いている筋(筋の絵の座標)。塵が筋の中にいるかを読む。 */
+  private moonShafts: MoonShaft[] = [];
+  /** 新しい筋の効き具合(0..1・最後に描いた時の値)。 */
+  private moonShaftK = 0;
+  /** 筋の中の塵(ごく細かい粒・world 座標=遠近と被写界深度が物と揃う)。 */
+  private moonDustLayer: Container | null = null;
+  private moonDust: { sp: Sprite; x: number; y: number; vx: number; vy: number; lift: number; seed: number; speed: number; rank: number; on: number }[] = [];
+  private moonDustShown = false;
+  private moonDustLastNow = 0;
+  private moonDustPtA = new Point();
+  private moonDustPtB = new Point();
   /** 晴れたステージ1の夜: 月明りの筋が地面に落ちる所(月明りの溜まり)。worldGroup の地面の直上・雲の影の下(加算)。
    *  ローカル座標=画面座標(worldGroup の拡大と位置を打ち消す)=画面に固定の筋とズームしてもずれない。筋/地面の上端が変わった時だけ描き直す。 */
   private s1nMoonPoolGfx = new Graphics();
   private moonPoolPolysDrawn: ShaftPoly[] | null = null;
+  /** 柔らかい筋の時の溜まり(帯の絵・s1nMoonPoolGfx と同じ段・同じ置き方)。 */
+  private moonPoolLayer = new Container();
+  private moonPoolSprites: Sprite[] = [];
+  private moonPoolShaftsDrawn: MoonShaft[] | null = null;
   private moonPoolTopDrawn = NaN;
   private moonPoolBottomDrawn = NaN;
   private vignette = new Sprite(getVignetteTexture());
@@ -5809,6 +5845,7 @@ export class PixiScene {
     }
     if (this.weatherWetOn && this.weatherWet) filters.push(this.weatherWet.gradeFilter); // 雨上がりの色調整(世界の層だけ・HUDはDOM)
     else if (this.s1nGradeOn && this.stage1Night) filters.push(this.stage1Night.gradeFilter); // 通常のステージ1の夜の色調整(雨上がりの間は上が代わる)
+    else if (this.s5bGradeOn && this.stage5Battle) filters.push(this.stage5Battle.gradeFilter); // ステージ5(戦場)の色調整
     if (this.punchInList && this.punchGrade) filters.push(this.punchGrade);
     if (this.zwarpInList && this.zwarpFilter) filters.push(this.zwarpFilter); // ズーム時だけの遠近(最後=階調の後に形を歪める)
     this.L.worldGroup.filters = filters;
@@ -6816,6 +6853,13 @@ export class PixiScene {
     this.s1nMoonPoolGfx.eventMode = 'none';
     this.s1nMoonPoolGfx.visible = false;
     this.L.worldGroup.addChildAt(this.s1nMoonPoolGfx, this.L.worldGroup.getChildIndex(this.cloudShadow));
+    this.moonPoolLayer.eventMode = 'none';
+    this.moonPoolLayer.visible = false;
+    this.L.worldGroup.addChildAt(this.moonPoolLayer, this.L.worldGroup.getChildIndex(this.cloudShadow));
+    // ステージ1の森の夜の柔らかい月明りの筋(従来の筋の直上・画面に固定)。
+    this.moonShaftLayer.eventMode = 'none';
+    this.moonShaftLayer.visible = false;
+    this.L.uiLayer.addChildAt(this.moonShaftLayer, this.L.uiLayer.getChildIndex(this.stageLightShaftGfx) + 1);
 
     // --- スモッグ。奥/森下(やまぎり)/森上 の3層を各1枚で揺らす ---
     // 奥=world内 actorLayer直前(キャラの後ろ)。森下=stageのfrontForest直前(=森の後ろ。森が手前で隠す)。森上=uiLayer最前面。
@@ -7274,7 +7318,11 @@ export class PixiScene {
     // 雨上がり(?weather=wet)の間だけ月明りの筋を明るく(雲が切れた)。塗りのαに掛ける=器の alpha は脈動で既に1付近のため
     // そこに掛けても1で頭打ちになる。雨上がりでなければ倍率は厳密に1=従来どおり。研究所の闇を削る絵には掛けない。
     this.shaftWetMulDrawn = this.shaftMulNow();
-    if (alpha <= 0) { this.shaftPeriod = 0; this.shaftPolys = []; return; }
+    // ステージ1の森の夜(晴れ・雨上がり)は柔らかい筋(moonShaftLayer)へ入れ替える。k=その効き具合(入る/抜ける間は両方を混ぜる)。
+    const k = night ? this.moonShaftMix() : 0;
+    this.moonShaftK = k;
+    g.renderable = k < 1; // 入れ替わり切ったら従来の筋(とそのぼかし)は描かない。visible は「筋が出ている」の印として他が読むので触らない
+    if (alpha <= 0) { this.shaftPeriod = 0; this.shaftPolys = []; this.placeMoonShafts(w, h, 0, 0, 0); return; }
     const shaftAlpha = alpha * this.shaftWetMulDrawn;
     this.shaftPolys = [];
     g.blendMode = 'add';
@@ -7304,8 +7352,8 @@ export class PixiScene {
         const y1 = -h * 0.14;
         const x2 = x1 + b.length * STAGE_LIGHT_SHAFT_DIRECTION.x;
         const y2 = y1 + b.length * STAGE_LIGHT_SHAFT_DIRECTION.y;
-        if (night) this.shaftPolys.push({ x1, y1, x2, y2, w: b.width, a: b.alpha / 0.30 });
-        g.poly([
+        if (night && k <= 0) this.shaftPolys.push({ x1, y1, x2, y2, w: b.width, a: b.alpha / 0.30 });
+        if (k < 1) g.poly([
           x1,
           y1,
           x1 + b.width,
@@ -7314,7 +7362,7 @@ export class PixiScene {
           y2,
           x2 - b.width * 0.68,
           y2,
-        ]).fill({ color, alpha: shaftAlpha * b.alpha });
+        ]).fill({ color, alpha: shaftAlpha * b.alpha * (1 - k) });
         // 闇を削る絵: 同じ形を、幅を変えて5枚重ねる(縁を柔らかく=ぼかしのフィルタは使わない)。芯ほど濃く(外は薄く広く)。
         // 濃さは筋どうしの比だけ持つ(強い筋=1)。
         for (const [k, a] of [[1.55, 0.08], [1.28, 0.13], [1.0, 0.2], [0.72, 0.26], [0.42, 0.33]] as const) {
@@ -7324,6 +7372,51 @@ export class PixiScene {
             .fill({ color: 0xffffff, alpha: a * (b.alpha / 0.30) });
         }
       }
+    }
+    this.placeMoonShafts(w, h, k, shaftAlpha, color);
+  }
+
+  /** 柔らかい月明りの筋の効き具合(0..1)。晴れたステージ1の夜・雨上がりの効き具合(加減速つき)の大きい方。?moonshaft=0 で従来の筋のまま。 */
+  private moonShaftMix(): number {
+    if (!MOON_SHAFT_ON) return 0;
+    return Math.max(easeInOutSine(this.s1nMix), easeInOutSine(this.wetLightMix));
+  }
+
+  /** 柔らかい月明りの筋を置き直す(画面寸法・効き具合・倍率が変わった時だけ=毎フレームは位置と脈動だけ)。k=0 なら全部隠す。 */
+  private moonShaftPeriod = 0;
+  private placeMoonShafts(w: number, h: number, k: number, shaftAlpha: number, color: number) {
+    if (k <= 0) {
+      this.moonShafts = [];
+      this.moonShaftPeriod = 0;
+      for (const sp of this.moonShaftSprites) sp.visible = false;
+      return;
+    }
+    const { period, shafts } = layoutMoonShafts(w, h);
+    this.moonShafts = shafts;
+    this.moonShaftPeriod = period;
+    this.shaftPolys = moonShaftPolys(shafts); // 地面の溜まり・水たまりの縁は新しい筋の形を読む
+    while (this.moonShaftSprites.length < shafts.length) {
+      const sp = new Sprite(getMoonShaftTexture(0));
+      sp.anchor.set(0.5, 0);
+      sp.blendMode = 'add';
+      sp.eventMode = 'none';
+      this.moonShaftLayer.addChild(sp);
+      this.moonShaftSprites.push(sp);
+    }
+    for (let i = 0; i < this.moonShaftSprites.length; i++) {
+      const sp = this.moonShaftSprites[i];
+      const sh = shafts[i];
+      if (!sh) { sp.visible = false; continue; }
+      const len = Math.hypot(sh.dx, sh.dy);
+      sp.texture = getMoonShaftTexture(sh.tex);
+      sp.visible = true;
+      sp.position.set(sh.x, sh.y);
+      sp.rotation = -Math.atan2(sh.dx, sh.dy); // 絵の下向き(0,1)を筋の向き(dx,dy)へ
+      sp.width = sh.w;
+      sp.height = len;
+      sp.scale.x = (sh.flip ? -1 : 1) * Math.abs(sp.scale.x);
+      sp.tint = color;
+      sp.alpha = Math.min(1, shaftAlpha * sh.a * MOON_SHAFT_GAIN * k);
     }
   }
 
@@ -7338,19 +7431,159 @@ export class PixiScene {
     this.labPitchShaftGfx.position.set(px, 0); // 研究所の闇を削る絵も同じ横の流れ(同じフレームの値)
     this.stageLightShaftGfx.alpha =
       (1 + Math.sin(now / STAGE_LIGHT_SHAFT_PULSE_MS * Math.PI * 2) * STAGE_LIGHT_SHAFT_PULSE_AMOUNT) * this.labShaftMul;
-    this.syncMoonPool(px);
+    // 柔らかい月明りの筋: 同じ横の流れ(周期は自分の並びの周期で折り返す)・同じ脈動。
+    const ml = this.moonShaftLayer;
+    const mOn = this.moonShaftK > 0 && this.moonShaftPeriod > 0 && this.stageLightShaftGfx.visible;
+    let pxM = 0;
+    if (mOn) {
+      pxM = (-camera.x * SHAFT_PARALLAX_X) % this.moonShaftPeriod;
+      if (pxM > 0) pxM -= this.moonShaftPeriod;
+      ml.position.set(pxM, 0);
+      ml.alpha = this.stageLightShaftGfx.alpha;
+    }
+    if (ml.visible !== mOn) ml.visible = mOn;
+    this.syncMoonPool(this.moonShaftK > 0 ? pxM : px);
+    this.syncMoonDust(now, mOn);
+  }
+
+  /** 筋の形(shaftPolys)が乗っている絵。柔らかい筋に入れ替わっている間はそちら。 */
+  private shaftPolySource(): Container {
+    return this.moonShaftK > 0 ? this.moonShaftLayer : this.stageLightShaftGfx;
+  }
+
+  /**
+   * 筋の中の塵(utils/moonShafts.ts)。world 座標で漂い、筋の中にいる間だけ光る(加算の柔らかい粒・影を落とす光ではない)。
+   * 遠近=物と同じ depthScale・地平線の覆いも物と同じ・world の層なので被写界深度も掛かる。
+   */
+  private syncMoonDust(now: number, on: boolean) {
+    const dt = this.moonDustLastNow > 0 ? Math.min(50, Math.max(0, now - this.moonDustLastNow)) : 16;
+    this.moonDustLastNow = now;
+    if (!on || this.daylight) {
+      if (this.moonDustShown) { this.moonDustShown = false; for (const d of this.moonDust) d.sp.visible = false; }
+      return;
+    }
+    const sec = dt / 1000;
+    const v = this.visibleWorldRect();
+    const m = 60;
+    const minX = v.left - m, maxX = v.right + m, minY = v.top - m, maxY = v.bottom + m;
+    if (!this.moonDustLayer) {
+      this.moonDustLayer = new Container();
+      this.moonDustLayer.eventMode = 'none';
+      this.L.world.addChild(this.moonDustLayer); // world の最上段(蛍と同じ段)
+    }
+    const world = this.L.world, ml = this.moonShaftLayer;
+    const litAt = (x: number, y: number): number => {
+      this.moonDustPtA.set(x, y);
+      world.toGlobal(this.moonDustPtA, this.moonDustPtB);
+      ml.toLocal(this.moonDustPtB, undefined, this.moonDustPtA);
+      return moonShaftLightAt(this.moonDustPtA.x, this.moonDustPtA.y, this.moonShafts);
+    };
+    // 置き直す時は、筋の中に入る所を数回だけ探す(光らない所に粒を置いても見えない)。
+    const place = (d: (typeof this.moonDust)[number]) => {
+      let bx = minX + Math.random() * (maxX - minX), by = minY + Math.random() * (maxY - minY), best = -1;
+      for (let t = 0; t < 4; t++) {
+        const x = minX + Math.random() * (maxX - minX), y = minY + Math.random() * (maxY - minY);
+        const l = litAt(x, y - d.lift * this.depthScale(y));
+        if (l > best) { best = l; bx = x; by = y; }
+      }
+      d.x = bx; d.y = by; d.vx = 0; d.vy = 0; d.on = 0;
+    };
+    if (!this.moonDust.length) {
+      for (let i = 0; i < MOON_DUST_COUNT; i++) {
+        const sp = new Sprite(getSoftGlowTexture());
+        sp.anchor.set(0.5);
+        sp.blendMode = 'add';
+        sp.eventMode = 'none';
+        sp.tint = MOON_DUST_TINT;
+        sp.visible = false;
+        this.moonDustLayer.addChild(sp);
+        const d = {
+          sp, x: 0, y: 0, vx: 0, vy: 0, on: 0, rank: (i + 0.5) / MOON_DUST_COUNT, seed: Math.random(),
+          lift: MOON_DUST_LIFT_MIN + Math.random() * (MOON_DUST_LIFT_MAX - MOON_DUST_LIFT_MIN),
+          speed: MOON_DUST_SPEED_MIN + Math.random() * (MOON_DUST_SPEED_MAX - MOON_DUST_SPEED_MIN),
+        };
+        this.moonDust.push(d);
+        place(d);
+      }
+    }
+    this.moonDustShown = true;
+    const activeFrac = moonDustActiveFrac(this.weatherWetOn, this.weatherWet?.rainIntensity.rain ?? RAIN_INTENSITY_LOW_MAX);
+    const k = this.moonShaftK * Math.max(0, ml.alpha);
+    const wg = this.L.worldGroup;
+    const groundTop = wg.position.y + this.farBackdropHeight() * (wg.scale.y || 1); // 地面の上端(画面)=溜まりと同じ
+    const steer = Math.min(1, sec * MOON_DUST_STEER);
+    for (const d of this.moonDust) {
+      // 漂い: 目標の向き・速さへ慣性で寄せる(急に向きを変えない)。
+      const hd = moonDustHeading(now, d.seed);
+      d.vx += (Math.cos(hd) * d.speed - d.vx) * steer;
+      d.vy += (Math.sin(hd) * d.speed * 0.5 - d.vy) * steer;
+      d.x += d.vx * sec;
+      d.y += d.vy * sec;
+      if (d.x < minX || d.x > maxX || d.y < minY || d.y > maxY) place(d);
+      d.on += ((d.rank < activeFrac ? 1 : 0) - d.on) * Math.min(1, sec * MOON_DUST_ON_EASE);
+      const ds = this.depthScale(d.y);
+      const hz = this.horizonActorAlpha(d.y);
+      const x = d.x, y = d.y - d.lift * ds; // 地面から浮いた所に描く(遠近は足元の y で決める)
+      const lit = Math.min(1, litAt(x, y) * MOON_DUST_LIT_GAIN) * moonDustFarFade(this.moonDustPtA.y, groundTop, this.screenH);
+      const a = MOON_DUST_ALPHA * lit * moonDustTwinkle(now, d.seed) * easeInOutSine(d.on) * hz * k;
+      d.sp.visible = a > 0.01;
+      if (!d.sp.visible) continue;
+      d.sp.position.set(x, y);
+      d.sp.alpha = Math.min(1, a);
+      d.sp.width = d.sp.height = MOON_DUST_PX * ds;
+    }
   }
 
   /** 晴れたステージ1の夜の月明りの溜まり(地面)。筋と同じ横の流れ・同じ脈動。効き具合0/他ステージでは非表示のまま1判定で終わる。 */
   private syncMoonPool(px: number) {
     const gp = this.s1nMoonPoolGfx;
     const shaft = this.stageLightShaftGfx;
+    const pl = this.moonPoolLayer;
     const on = S1N_POOL_ON && this.s1nMix > 0 && !this.daylight && shaft.visible && !!shaft.parent && this.shaftPolys.length > 0 && this.cloudShadow.visible;
-    if (!on) { if (gp.visible) gp.visible = false; return; }
+    if (!on) { if (gp.visible) gp.visible = false; if (pl.visible) pl.visible = false; return; }
     const wg = this.L.worldGroup;
     const zx = wg.scale.x || 1, zy = wg.scale.y || 1;
     const topY = wg.position.y + this.farBackdropHeight() * zy; // 地面の上端(画面)=雲の影と同じ farH
     const bottomY = this.screenH;
+    const poolA = S1N_MOON_POOL_ALPHA * easeInOutSine(this.s1nMix) * Math.max(0, shaft.alpha);
+    if (this.moonShafts.length > 0) {
+      // 柔らかい筋の時: 溜まりも柔らかい帯の絵(1本につき Sprite 1枚)。縁に段を作らない。
+      if (gp.visible) gp.visible = false;
+      if (this.moonPoolShaftsDrawn !== this.moonShafts || Math.abs(topY - this.moonPoolTopDrawn) > 1 || bottomY !== this.moonPoolBottomDrawn) {
+        this.moonPoolShaftsDrawn = this.moonShafts;
+        this.moonPoolTopDrawn = topY;
+        this.moonPoolBottomDrawn = bottomY;
+        let n = 0;
+        for (const sh of this.moonShafts) {
+          const st = moonPoolStrip(sh, topY, bottomY);
+          if (!st) continue;
+          let sp = this.moonPoolSprites[n];
+          if (!sp) {
+            sp = new Sprite(getMoonPoolTexture());
+            sp.anchor.set(0.5, 0);
+            sp.blendMode = 'add';
+            sp.eventMode = 'none';
+            sp.tint = S1N_MOON_POOL_COLOR;
+            pl.addChild(sp);
+            this.moonPoolSprites.push(sp);
+          }
+          n++;
+          sp.visible = true;
+          sp.position.set(st.x, st.y);
+          sp.rotation = -Math.atan2(st.dx, st.dy);
+          sp.width = st.w;
+          sp.height = Math.hypot(st.dx, st.dy);
+          sp.alpha = st.a;
+        }
+        for (let i = n; i < this.moonPoolSprites.length; i++) this.moonPoolSprites[i].visible = false;
+      }
+      pl.visible = true;
+      pl.scale.set(1 / zx, 1 / zy);
+      pl.position.set((px - wg.position.x) / zx, -wg.position.y / zy);
+      pl.alpha = poolA;
+      return;
+    }
+    if (pl.visible) pl.visible = false;
     if (this.moonPoolPolysDrawn !== this.shaftPolys || Math.abs(topY - this.moonPoolTopDrawn) > 1 || bottomY !== this.moonPoolBottomDrawn) {
       this.moonPoolPolysDrawn = this.shaftPolys;
       this.moonPoolTopDrawn = topY;
@@ -7363,7 +7596,7 @@ export class PixiScene {
     gp.visible = true;
     gp.scale.set(1 / zx, 1 / zy);
     gp.position.set((px - wg.position.x) / zx, -wg.position.y / zy);
-    gp.alpha = S1N_MOON_POOL_ALPHA * easeInOutSine(this.s1nMix) * Math.max(0, shaft.alpha);
+    gp.alpha = poolA;
   }
 
   private farBackdropHeight() {
@@ -9346,6 +9579,7 @@ export class PixiScene {
   sync() {
     this.weatherWet?.restoreAtmosphere(); // 雨上がりの霧/空の色(前フレームに最後に掛けた分)を最初に戻す
     this.stage1Night?.restoreAtmosphere(); // 通常のステージ1の夜の霧/月(同上)
+    this.stage5Battle?.restoreAtmosphere(); // ステージ5(戦場)の煙/近景の色(同上)
     this.restoreForestPreview();
     this.restoreWraithDarkness(); // 前フレームに掛けた亡霊戦の暗さを戻してから描く(§12)
     this.restoreZwarpActors(); // 前フレームの逆変形(ズーム時の遠近)を戻してから描く
@@ -10954,6 +11188,7 @@ export class PixiScene {
     this.applyWraithDarkness(); // 亡霊と戦っている間の地面と遠景の暗さ(フレームの最後・§12)
     if (WEATHER_KNOB === 'wet') this.syncWeatherWet(s, now); // 天候「雨上がり」(?weather=wet の時だけ・付けなければ1命令も走らない)
     this.syncStage1Night(s, now); // 通常のステージ1の森の夜(雨上がりの後=雨上がりの間は効かない)
+    this.syncStage5Battle(s, now); // ステージ5(戦場)の光・色・コントラスト(他ステージ=1命令で終わる)
     this.syncZoomWarp(s.player.vx ?? 0, s.player.vy ?? 0, realNow); // ★必ず最後(このフレームの世界が全部揃ってから1枚に描く)
   }
 
@@ -11340,6 +11575,8 @@ export class PixiScene {
     const maxY = camera.y + this.screenH + FIREFLY_MARGIN;
     const snow = this.snowStage;
     const snowState = snow ? useGameStore.getState() : null;
+    // 開始ヘリ演出中にカメラ差分を足す対象: 雪と、world 座標で描くステージ5の火の粉(どちらも同じ理由で縦一列になる)。
+    const introState = snowState ?? (this.stage5Stage && this.fireflyInWorld ? useGameStore.getState() : null);
 
     if (!this.firefliesPlaced) {
       for (const f of this.fireflies) {
@@ -11353,7 +11590,7 @@ export class PixiScene {
       }
       this.firefliesPlaced = true;
     } else if (
-      snowState && (snowState.introUntil === -1 || now < snowState.introUntil)
+      introState && (introState.introUntil === -1 || now < introState.introUntil)
       && Number.isFinite(this.fireflyCameraX) && Number.isFinite(this.fireflyCameraY)
     ) {
       // 開始ヘリ演出はカメラがフィールドを高速横断する。world座標の雪を置き去りにすると、全粒が
@@ -11393,6 +11630,21 @@ export class PixiScene {
       this.syncMagicFireflies(now, sec, v.left - FIREFLY_MARGIN, v.top - FIREFLY_MARGIN, v.right + FIREFLY_MARGIN, v.bottom + FIREFLY_MARGIN);
       return;
     }
+    // ステージ5(戦場)の火の粉も world 座標で描く(遠近・被写界深度・地平線の覆いを他の物と揃える・stage5Battlefield.ts)。
+    if (ember && this.s5bEmbersInWorld) {
+      const entering = !this.fireflyInWorld;
+      this.setFireflyParent(true);
+      this.hideFireflyHalos();
+      const v = this.visibleWorldRect();
+      const x0 = v.left - FIREFLY_MARGIN, y0 = v.top - FIREFLY_MARGIN, x1 = v.right + FIREFLY_MARGIN, y1 = v.bottom + FIREFLY_MARGIN;
+      if (entering) {
+        // 画面座標の置き方(カメラ基準)から world へ移った最初の1回だけ、映っている world の範囲へ散らし直す
+        // (そのままだと範囲の外の粒が全部同じ端へ折り返され、縦一列に並んで昇る)。
+        for (const f of this.fireflies) { f.x = x0 + Math.random() * (x1 - x0); f.y = y0 + Math.random() * (y1 - y0); }
+      }
+      this.syncWorldEmbers(now, sec, x0, y0, x1, y1, emberRise, emberSway);
+      return;
+    }
     this.setFireflyParent(false);
     this.hideFireflyHalos();
     for (const f of this.fireflies) {
@@ -11429,6 +11681,7 @@ export class PixiScene {
         f.sprite.width = f.sprite.height = f.size * 1.05; // 粒を大きめに(吹雪の視認性)
       } else if (ember) {
         const flick = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(now * f.freq * 3 + f.phase)); // 明滅
+        f.sprite.visible = true; // world 描き(地平線で隠れた粒)から戻った時のため
         f.sprite.tint = EMBER_TINT;
         f.sprite.alpha = Math.min(1, f.base * 1.3 * flick);
         f.sprite.width = f.sprite.height = f.size * 0.85; // 粒は小さめ(強glow回避=軽い)
@@ -11441,13 +11694,37 @@ export class PixiScene {
     }
   }
 
+  /**
+   * ステージ5の火の粉(world 座標)。動き・数・色・明滅は画面座標の時と同じ。遠近=物と同じ depthScale(f.y)、
+   * 地平線の覆いも物と同じ horizonActorAlpha(f.y)。world の層(filteredWorld の中)なので被写界深度も掛かる。
+   */
+  private syncWorldEmbers(now: number, sec: number, minX: number, minY: number, maxX: number, maxY: number, rise: number, sway: number) {
+    for (const f of this.fireflies) {
+      if (f.extra) { f.sprite.visible = false; continue; }
+      f.x += (f.snowDrift * 0.4 + Math.sin(now * f.freq * 2.2 + f.phase) * sway) * sec;
+      f.y -= (rise + f.snowFall * 0.35) * sec; // -y=上へ昇る
+      if (f.x < minX) { f.x = maxX; f.y = minY + Math.random() * (maxY - minY); }
+      else if (f.x > maxX) { f.x = minX; f.y = minY + Math.random() * (maxY - minY); }
+      if (f.y > maxY) { f.y = minY; f.x = minX + Math.random() * (maxX - minX); }
+      else if (f.y < minY) { f.y = maxY; f.x = minX + Math.random() * (maxX - minX); }
+      const hz = this.horizonActorAlpha(f.y);
+      f.sprite.visible = hz > 0.01;
+      if (!f.sprite.visible) continue;
+      const flick = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(now * f.freq * 3 + f.phase)); // 明滅
+      f.sprite.position.set(f.x, f.y);
+      f.sprite.tint = EMBER_TINT;
+      f.sprite.alpha = Math.min(1, f.base * 1.3 * flick) * hz;
+      f.sprite.width = f.sprite.height = stage5EmberSize(f.size, this.depthScale(f.y));
+    }
+  }
+
   /** ステージ1の森の蛍(utils/stage1Fireflies.ts)。粒は既存の蛍プール+光の輪(同じ数・加算の柔らかい丸)。影を落とす光ではない。 */
   private s1Forest = false;
   private fireflyHalosShown = false;
   /**
    * ステージ1の森の蛍だけを置く world 内の層(社長指示2026-11-21「奥ほど小さく手前ほど大きく」「被写体深度の影響を受けて欲しい」)。
    * world の子=filteredWorld の中なので、tilt-shift(被写界深度)・地平線の覆い(worldFadeMask)が他の物と同じく掛かる。
-   * 雪/火の粉/他ステージの蛍は従来どおり uiLayer(画面空間)のまま=この層には入らない。
+   * ステージ5の火の粉も(戦場の上乗せが効いている間)この層に置く。雪/他ステージの蛍は従来どおり uiLayer(画面空間)のまま。
    */
   private s1FireflyLayer: Container | null = null;
   private fireflyInWorld = false;
@@ -12885,6 +13162,45 @@ export class PixiScene {
     }, mix);
   }
 
+  /** ステージ5(戦場)の光・色・コントラスト(stage5Battlefield.ts)。効き具合は入る/抜ける時に慣性で寄せる。 */
+  private s5bMix = 0;
+  private s5bLastNow = 0;
+  private s5bGradeOn = false;
+  /** 火の粉を world 座標(遠近・被写界深度・地平線の覆いつき)で描くか。このフレームの判定。 */
+  private s5bEmbersInWorld = false;
+  private syncStage5Battle(s: ReturnType<typeof useGameStore.getState>, now: number) {
+    const active = S5B_ON && stage5BattleActive({
+      stageId: getSelectedStageId(), indoor: s.indoorMode, corridor: s.corridorMode, farKey: this.currentFarKey, daylight: this.daylight,
+    });
+    this.s5bEmbersInWorld = active;
+    if (!active && this.s5bMix <= 0 && !this.stage5Battle) { this.s5bLastNow = now; return; } // 他ステージ=1命令で終わる
+    const dt = this.s5bLastNow > 0 ? Math.min(100, Math.max(0, now - this.s5bLastNow)) : 0;
+    this.s5bLastNow = now;
+    this.s5bMix = stepWetLightMix(this.s5bMix, active, dt);
+    if (!this.stage5Battle) this.stage5Battle = new Stage5BattleLayer(this.L.groundLayer);
+    const mix = this.s5bMix;
+    const gradeOn = mix > 0 && S5B_GRADE_ON;
+    if (gradeOn) this.stage5Battle.setGrade(mix);
+    if (gradeOn !== this.s5bGradeOn) { this.s5bGradeOn = gradeOn; this.syncWorldGroupFilters(); }
+    const lights: { id: string; x: number; y: number; color: number; strength: number }[] = [];
+    if (mix > 0 && S5B_POOL_ON) {
+      for (const [id, v] of this.breakableProps) {
+        const r = v.reflection;
+        if (r.visible && r.alpha > 0.01) lights.push({ id, x: r.x, y: r.y, color: Number(r.tint), strength: Math.min(1, r.alpha / 0.24) });
+      }
+    }
+    this.stage5Battle.syncFirePools({
+      view: this.visibleWorldRect(), lights, depthScale: y => this.depthScale(y), horizonAlpha: y => this.horizonActorAlpha(y),
+    }, mix);
+    this.stage5Battle.syncSky(this.farGroup, S5B_ATMO_ON ? mix : 0); // 焦げた赤黒い空(遠景の箱に色行列1枚・効いている間だけ)
+    if (mix <= 0 || !S5B_ATMO_ON) return;
+    this.stage5Battle.applyAtmosphere({
+      fog: this.nearHorizonMist ? [...this.fogLayers.map(f => f.sp), this.nearHorizonMist] : this.fogLayers.map(f => f.sp),
+      front: [this.L.frontForest, this.frontRidgeCopy, ...this.zoomClouds],
+      nightGrade: this.cineEnabled ? null : this.gradeSprite,
+    }, mix);
+  }
+
   /** 世界の点 (x, y) に落ちている月明りの筋の量(0..1・筋の脈動込み)。筋が無い/見えない時は 0。 */
   private moonPtA = new Point();
   private moonPtB = new Point();
@@ -12893,7 +13209,7 @@ export class PixiScene {
     if (!g.visible || !g.parent || this.shaftPolys.length === 0) return 0;
     this.moonPtA.set(x, y);
     this.L.world.toGlobal(this.moonPtA, this.moonPtB);
-    g.toLocal(this.moonPtB, undefined, this.moonPtA);
+    this.shaftPolySource().toLocal(this.moonPtB, undefined, this.moonPtA); // 筋の形が乗っている絵の座標へ
     return Math.min(1, shaftLightAt(this.moonPtA.x, this.moonPtA.y, this.shaftPolys) * Math.max(0, g.alpha));
   }
 
@@ -43859,6 +44175,9 @@ export class PixiScene {
     this.nearHorizonBlur?.destroy();
     this.nearHorizonBlur = null;
     this.stageLightShaftGfx.destroy();
+    this.moonShaftLayer.destroy({ children: true });
+    this.moonPoolLayer.destroy({ children: true });
+    this.moonDustLayer?.destroy({ children: true });
     this.s1nMoonPoolGfx.destroy();
     this.L.filteredWorld.mask = null;
     this.worldFadeMask.destroy();
@@ -43876,6 +44195,7 @@ export class PixiScene {
     for (const f of this.fireflies) { f.sprite.destroy(); f.halo?.destroy(); }
     this.weatherWet?.destroy(); this.weatherWet = null;
     this.stage1Night?.destroy(); this.stage1Night = null;
+    this.stage5Battle?.destroy(); this.stage5Battle = null;
     this.fireflies = [];
     if (this.tiltShift || this.bloom) {
       this.L.filteredWorld.filters = [];

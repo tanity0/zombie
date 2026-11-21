@@ -325,7 +325,7 @@ export const wetCloudShadowMult = (rain: number): number => {
   return WET_CLOUD_SHADOW_MULT + (WET_CLOUD_SHADOW_MULT_HEAVY - WET_CLOUD_SHADOW_MULT) * easeInOutSine(t);
 };
 /** 雨上がりの間、月明りの筋の明るさに掛ける倍率(>1=明るく)。叩き台。 */
-export const WET_MOON_SHAFT_MULT = 1.7;
+export const WET_MOON_SHAFT_MULT = 1.25; // 社長指示2026-11-21「月光の線がなんか安っぽい」→筋を柔らかくし、強さも落ち着かせた(旧 1.7。晴れの夜と同じ割合の 1.13 だと雨上がりの暗い色では筋が消えた)
 /** 雨上がりの間の月明りの筋の色(夜の既定 0xc9d6ff より青い=藍の夜の月光。灰色の靄に見えないように)。叩き台。 */
 export const WET_MOON_SHAFT_COLOR = 0xa6bbff;
 /** 2色を t(0..1)で混ぜる(0xRRGGBB)。 */
@@ -492,10 +492,10 @@ export const S1N_CLOUD_SHADOW_TEX_GAIN = 1.4;
 /** 晴れたステージ1の夜の雲の影の α(base=通常の濃さ)。mix=0 なら厳密に base(=他ステージ・抜けた後はそのまま)。 */
 export const s1nCloudShadowAlpha = (base: number, mix: number): number =>
   mix <= 0 ? base : Math.min(1, base * wetLightMult(mix, S1N_CLOUD_SHADOW_MULT) / S1N_CLOUD_SHADOW_TEX_GAIN);
-export const S1N_MOON_SHAFT_MULT = 2.4;
+export const S1N_MOON_SHAFT_MULT = 1.6; // 同上(旧 2.4)。月明りの感じは地面の溜まり(S1N_MOON_POOL_*)で補う
 export const S1N_MOON_SHAFT_COLOR = 0xbfe8ff;
 /** 月明りの溜まり: 筋が地面に落ちる所を、地面の上(キャラ・雲の影の下)で青白く明るくする(加算・影を落とす光ではない)。 */
-export const S1N_MOON_POOL_ALPHA = 0.3;
+export const S1N_MOON_POOL_ALPHA = 0.38; // 旧 0.3。筋を落ち着かせた分、地面の月明りで補う(社長指示2026-11-21)
 export const S1N_MOON_POOL_COLOR = 0xb8dcff;
 /** 地面の上端から、地面の高さのこの割合をかけて 0→1 に立ち上がる(地平の際で光が切れて見えないように)。 */
 export const S1N_MOON_POOL_FADE = 0.22;
