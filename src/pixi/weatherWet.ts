@@ -43,6 +43,8 @@ import {
   WET_GLOSS_ALPHA, WET_GLOSS_TINT, WET_GLOSS_TILE_WORLD, WET_GLOSS_SHAFT_GAIN,
   WET_GLOSS_TORCH_W, WET_GLOSS_TORCH_H, WET_GLOSS_TORCH_ALPHA, wetGlossDrift, MOON_RIM_EASE,
 } from '../utils/weatherWet';
+import { buildWetGradeMatrixMix, mixMatrixFromIdentity } from '../utils/stage7Weather';
+import { easeInOutSine } from '../utils/weatherWet';
 
 // ---- 叩き台の値(設計書 §0-1「数値は叩き台」) ----
 /** 水面(帯1)を縁つきの水たまり(帯2)の内側へ合わせる縮み(帯1は縁まで含む大きさで描かれているため)。 */
@@ -263,6 +265,14 @@ export interface WetHost {
   shaftLevel?: number;
   /** 世界の点に落ちている月明りの筋の量(0..1)。水たまりの縁と小物を月明りの絵へ寄せる。 */
   moonAt?: (x: number, y: number) => number;
+  /** 雨量に掛ける倍率(省略=1)。ステージ7で雨が上がる時に 1→0(utils/stage7Weather.ts)。雫は従来どおり遅れて付いてくる。 */
+  rainScale?: number;
+  /** 水たまりを置くステージ(避ける花を引く・省略=ステージ1)。 */
+  stageId?: string;
+  /** 雨の強さの時刻表を、この強さで降っている所から始める(最初の区間だけ・省略=従来どおり小雨から)。時刻表を作る時だけ読む。 */
+  rainStart?: number;
+  /** この値が変わったら雨の強さの時刻表を作り直す(ステージ7の新しい出撃=また降っている所から)。省略=作り直さない。 */
+  rainRun?: number;
 }
 export interface WetAtmosphere {
   fog: readonly (Sprite | TilingSprite)[];
@@ -270,6 +280,8 @@ export interface WetAtmosphere {
   moonGlow: readonly Sprite[];
   moonHalo: readonly Sprite[];
   farGroup: Container | null;
+  /** 効き具合(0..1・加減速は呼ぶ側。省略=1=従来どおり全部)。ステージ7で雨が上がる時に抜く。0 なら何も掛けない。 */
+  mix?: number;
 }
 
 interface PuddleView {
@@ -311,6 +323,14 @@ interface TorchStreak { id: string; main: Sprite; gloss: Sprite; back: Sprite; d
 interface LandCopy { src: Sprite | TilingSprite; wrap: Container; sp: Sprite | TilingSprite }
 /** 水たまり1つぶんの風景の映り: 帯(焼きの横の切り出し)と、その下に続ける空の鏡写し。切り出しの絵は焼きの使い回し。 */
 interface LandRefl { band: Sprite; sky: Sprite; bandTex: Texture; skyTex: Texture }
+
+/** 空(遠景)の色行列。少し明るく・わずかに冷たく(雲が切れて澄んだ空)。 */
+const SKY_MATRIX: readonly number[] = [
+  1.06, 0, 0, 0, 0.012,
+  0, 1.1, 0, 0, 0.02,
+  0, 0, 1.16, 0, 0.034,
+  0, 0, 0, 1, 0,
+];
 
 /** 葉先の雫の大きさ(芯と照りに掛ける)。悪目立ちしないよう半分に(社長指示2026-11-21)。 */
 const DRIP_SIZE_MUL = 0.5;
@@ -365,6 +385,7 @@ export class WeatherWetLayer {
   private scaledPuddles: { x: number; y: number; rx: number; ry: number; waterOnly?: boolean }[] = [];
   /** 雨の強弱の時刻表(30秒〜1分おきに次の強さ)・今の強さ・それに遅れて付いてくる雫の強さ。 */
   private rainSched: RainSchedule | null = null;
+  private rainRun: number | undefined;
   private rainLevel = 1;
   private dripLevel = 1;
   private levelAt = 0;
@@ -416,12 +437,7 @@ export class WeatherWetLayer {
     this.gradeFilter.matrix = buildWetGradeMatrix() as unknown as typeof this.gradeFilter.matrix;
     // 空(遠景)は少し明るく・わずかに冷たく(雲が切れて澄んだ空)。
     this.skyFilter = new ColorMatrixFilter();
-    this.skyFilter.matrix = [
-      1.06, 0, 0, 0, 0.012,
-      0, 1.1, 0, 0, 0.02,
-      0, 0, 1.16, 0, 0.034,
-      0, 0, 0, 1, 0,
-    ] as unknown as typeof this.skyFilter.matrix;
+    this.skyFilter.matrix = [...SKY_MATRIX] as unknown as typeof this.skyFilter.matrix;
     for (let i = 0; i < MAX_SLOTS; i++) this.slots.push(this.makeSlot());
   }
 
@@ -454,6 +470,16 @@ export class WeatherWetLayer {
     return { root, mask, refl, streak, glint, pid: null, reflA: refl.map(() => 0) };
   }
 
+  /** 色行列(世界・空)の効き具合(0..1・線形。見た目の加減速はここで掛ける)。呼ばなければ 1=従来どおり。変わった時だけ作り直す。 */
+  private wetMix = 1;
+  setWetMix(mix: number): void {
+    const m = Math.max(0, Math.min(1, mix));
+    if (m === this.wetMix) return;
+    this.wetMix = m;
+    this.gradeFilter.matrix = buildWetGradeMatrixMix(m) as unknown as typeof this.gradeFilter.matrix;
+    this.skyFilter.matrix = mixMatrixFromIdentity(SKY_MATRIX, easeInOutSine(m)) as unknown as typeof this.skyFilter.matrix;
+  }
+
   setVisible(on: boolean): void {
     if (this.visible === on) return;
     this.visible = on;
@@ -468,10 +494,10 @@ export class WeatherWetLayer {
     const cx0 = Math.floor((h.view.left - m) / PUDDLE_CELL), cx1 = Math.floor((h.view.right + m) / PUDDLE_CELL);
     const cy0 = Math.floor((h.view.top - m) / PUDDLE_CELL), cy1 = Math.floor((h.view.bottom + m) / PUDDLE_CELL);
     // 拠点の円・POI などの手置きの物は world 層(propPlacement)が持つ=その版が変わったら作り直す。
-    const key = `${cx0},${cy0},${cx1},${cy1}|${propPlacementVersion()}`;
+    const key = `${cx0},${cy0},${cx1},${cy1}|${propPlacementVersion()}|${h.stageId ?? ''}`;
     if (key !== this.cacheKey) {
       this.cacheKey = key;
-      this.cached = puddlesInRegion(cx0 * PUDDLE_CELL, cy0 * PUDDLE_CELL, (cx1 + 1) * PUDDLE_CELL - 1, (cy1 + 1) * PUDDLE_CELL - 1);
+      this.cached = puddlesInRegion(cx0 * PUDDLE_CELL, cy0 * PUDDLE_CELL, (cx1 + 1) * PUDDLE_CELL - 1, (cy1 + 1) * PUDDLE_CELL - 1, { stageId: h.stageId });
     }
     return this.cached;
   }
@@ -512,7 +538,8 @@ export class WeatherWetLayer {
     this.scaledPuddles.length = 0;
     for (const pv of this.views.values()) this.scaledPuddles.push({ x: pv.p.x, y: pv.p.y, rx: pv.p.rx * pv.d, ry: pv.p.ry * pv.d, waterOnly: pv.p.waterOnly });
     this.syncSteps(h, boxes);
-    this.syncRainLevel(h.now);
+    if (h.rainRun !== undefined && h.rainRun !== this.rainRun) { this.rainRun = h.rainRun; this.rainSched = null; }
+    this.syncRainLevel(h.now, h.rainScale ?? 1, h.rainStart);
     this.syncDrips(h);
     this.syncRain(h);
     this.syncPuddleRain(h);
@@ -1124,12 +1151,12 @@ export class WeatherWetLayer {
   }
 
   // ---- 雨の強弱(雨粒の降る量に掛ける。雫はそれに遅れて付いてくる) ----
-  private syncRainLevel(now: number): void {
+  private syncRainLevel(now: number, scale = 1, start?: number): void {
     if (!this.rainSched) {
-      this.rainSched = makeRainSchedule(Math.random() * 1000, now);
+      this.rainSched = makeRainSchedule(Math.random() * 1000, now, start);
       this.levelAt = now;
     }
-    this.rainLevel = advanceRainSchedule(this.rainSched, now);
+    this.rainLevel = advanceRainSchedule(this.rainSched, now) * scale;
     // 1秒を超える間(タブ復帰)は1秒ぶんだけ進める=一気に追いつかない。
     const dt = Math.min(1000, Math.max(0, now - this.levelAt));
     this.levelAt = now;
@@ -1294,11 +1321,16 @@ export class WeatherWetLayer {
 
   applyAtmosphere(a: WetAtmosphere): void {
     if (!this.visible) return;
+    const mix = a.mix ?? 1;
+    if (mix <= 0) { this.detachSky(); return; } // 抜け切った=空の色行列も外す(無変化の行列で1枚描かない)
+    // 効き具合(mix<1 の時だけ=ステージ7の雨上がりの移り変わり)。mix=1 は従来の値そのもの。
+    const l = (v: number) => (mix >= 1 ? v : 1 + (v - 1) * easeInOutSine(mix));
+    const lt = (k: { r: number; g: number; b: number }) => (mix >= 1 ? k : { r: l(k.r), g: l(k.g), b: l(k.b) });
     // 霧は薄く・藍へ(灰色の平たい幕に見えない)。近景の森も同じ藍の夜へ。月の暈とグローは大きく明るく。
-    for (const f of a.fog) this.paint(f, mulTint(Number(f.tint), WET_FOG_TINT_MUL), f.alpha * WET_FOG_ALPHA_MUL);
-    for (const f of a.front) if (f) this.paint(f, mulTint(Number(f.tint), WET_FRONT_TINT_MUL), f.alpha);
-    for (const m of a.moonGlow) this.paint(m, Number(m.tint), m.alpha * WET_MOON_GLOW_ALPHA_MUL, WET_MOON_GLOW_SCALE_MUL);
-    for (const m of a.moonHalo) this.paint(m, Number(m.tint), m.alpha * WET_MOON_HALO_ALPHA_MUL, WET_MOON_HALO_SCALE_MUL);
+    for (const f of a.fog) this.paint(f, mulTint(Number(f.tint), lt(WET_FOG_TINT_MUL)), f.alpha * l(WET_FOG_ALPHA_MUL));
+    for (const f of a.front) if (f) this.paint(f, mulTint(Number(f.tint), lt(WET_FRONT_TINT_MUL)), f.alpha);
+    for (const m of a.moonGlow) this.paint(m, Number(m.tint), m.alpha * l(WET_MOON_GLOW_ALPHA_MUL), l(WET_MOON_GLOW_SCALE_MUL));
+    for (const m of a.moonHalo) this.paint(m, Number(m.tint), m.alpha * l(WET_MOON_HALO_ALPHA_MUL), l(WET_MOON_HALO_SCALE_MUL));
     // 空は遠景の箱に色行列を1枚足す(1回だけ・外す時は detachSky)。
     if (a.farGroup && this.farGroupWithFilter !== a.farGroup) {
       this.detachSky();

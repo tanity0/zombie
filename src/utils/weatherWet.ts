@@ -192,14 +192,23 @@ export const rainIntensityInSegment = (prevTarget: number, target: number, t: nu
  * 雨の強さの時刻表。start から k 番目の区間に居る。advance で今の時刻まで区間を進め、強さを返す。
  * 区間0の「前の目標」は1(=これまでの小雨から始まる)。
  */
-export interface RainSchedule { seed: number; k: number; start: number; prev: number }
-export const makeRainSchedule = (seed: number, now: number): RainSchedule => ({ seed, k: 0, start: now, prev: 1 });
+export interface RainSchedule {
+  seed: number; k: number; start: number; prev: number;
+  /** 区間0をこの強さのまま始めて保つ(省略=従来どおり小雨1から乱数の目標へ)。ステージ7の「降っている所から始まる」用。 */
+  first?: number;
+}
+export const makeRainSchedule = (seed: number, now: number, first?: number): RainSchedule =>
+  first === undefined ? { seed, k: 0, start: now, prev: 1 } : { seed, k: 0, start: now, prev: first, first };
+const scheduleSegment = (s: RainSchedule, k: number): RainSegment => {
+  const seg = rainSegment(s.seed, k);
+  return k === 0 && s.first !== undefined ? { len: seg.len, target: s.first } : seg;
+};
 export const advanceRainSchedule = (s: RainSchedule, now: number): number => {
-  let seg = rainSegment(s.seed, s.k);
+  let seg = scheduleSegment(s, s.k);
   // 長く止まっていた(タブ復帰)時も、区間を順に進めるだけ(1区間 ≥ 30秒なので回数は小さい)。
   while (now - s.start >= seg.len) {
     s.start += seg.len; s.prev = seg.target; s.k += 1;
-    seg = rainSegment(s.seed, s.k);
+    seg = scheduleSegment(s, s.k);
   }
   return rainIntensityInSegment(s.prev, seg.target, now - s.start);
 };

@@ -474,6 +474,7 @@ import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/f
 import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight, type WetTree } from './weatherWet';
 import { StageFrameLayer } from './stageFrameLayer'; // 横長画面の左右の枠(research/STAGE_FRAMES.md)
 import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR, stage1NightActive, s1nCloudShadowAlpha, S1N_MOON_SHAFT_MULT, S1N_MOON_SHAFT_COLOR, S1N_NIGHT_GRADE_ALPHA_MUL, S1N_MOON_POOL_ALPHA, S1N_MOON_POOL_COLOR, moonPoolPieces, TORCH_STREAK_EASE } from '../utils/weatherWet';
+import { initStage7Weather, stepStage7Weather, stage7WeatherLook, hasGlenForm2, stepMixToward, STAGE7_WEATHER_STAGE, STAGE7_WEATHER_OFF, S7W_RAIN_START, type Stage7WeatherLook } from '../utils/stage7Weather';
 import { Stage1NightLayer } from './stage1Night';
 import { Stage5BattleLayer, type BurningWreckView, type FlamePainter } from './stage5Battlefield';
 import { stage5BattleActive, stage5EmberSize, S5B_WRECK_MAX } from '../utils/stage5Battlefield';
@@ -771,6 +772,7 @@ const tsNum = (key: string, def: number): number => {
   const n = v == null ? NaN : Number(v);
   return Number.isFinite(n) ? n : def;
 };
+const S7W_ON = tsNum('s7weather', 1) > 0; // ?s7weather=0 でステージ7の天気(雨→第二形態で晴れの夜)を全部外す(見比べ用)
 const S1N_ON = tsNum('s1n', 1) > 0; // ?s1n=0 で通常のステージ1の夜の上乗せを全部外す(見比べ・計測用)
 const S1N_GRADE_ON = tsNum('s1ngrade', 1) > 0; // ?s1ngrade=0 で色行列だけ外す(計測用)
 const S5B_ON = tsNum('s5b', 1) > 0; // ?s5b=0 でステージ5(戦場)の光・色・コントラストの上乗せを全部外す(見比べ・計測用)
@@ -5849,9 +5851,12 @@ export class PixiScene {
       }
       filters.push(this.dayContrast);
     }
-    if (this.weatherWetOn && this.weatherWet) filters.push(this.weatherWet.gradeFilter); // 雨上がりの色調整(世界の層だけ・HUDはDOM)
-    else if (this.s1nGradeOn && this.stage1Night) filters.push(this.stage1Night.gradeFilter); // 通常のステージ1の夜の色調整(雨上がりの間は上が代わる)
-    else if (this.s5bGradeOn && this.stage5Battle) filters.push(this.stage5Battle.gradeFilter); // ステージ5(戦場)の色調整
+    const wetGrade = this.weatherWetOn && !!this.weatherWet && !this.s7WetGradeOff;
+    // 晴れの夜の色調整は雨上がりの間は上が代わる。ただしステージ7で雨から晴れへ移る間だけは両方を重ねる(効き具合どうしで入れ替わる)。
+    const s1nGrade = this.s1nGradeOn && !!this.stage1Night && (!wetGrade || this.s7Look.outdoor);
+    if (wetGrade) filters.push(this.weatherWet!.gradeFilter); // 雨上がりの色調整(世界の層だけ・HUDはDOM)
+    if (s1nGrade) filters.push(this.stage1Night!.gradeFilter); // 通常のステージ1の夜の色調整
+    if (!wetGrade && !s1nGrade && this.s5bGradeOn && this.stage5Battle) filters.push(this.stage5Battle.gradeFilter); // ステージ5(戦場)の色調整
     if (this.punchInList && this.punchGrade) filters.push(this.punchGrade);
     if (this.zwarpInList && this.zwarpFilter) filters.push(this.zwarpFilter); // ズーム時だけの遠近(最後=階調の後に形を歪める)
     this.L.worldGroup.filters = filters;
@@ -7333,7 +7338,9 @@ export class PixiScene {
     this.shaftPolys = [];
     g.blendMode = 'add';
     // 月明りは淡く青白い拡散光。夜はシャフト色を少しパステル寄りの蒼白へ(プレイヤー光の色には影響しない)。
-    const color = night ? (this.wetLightMix > 0 ? lerpRgb(0xc9d6ff, WET_MOON_SHAFT_COLOR, easeInOutSine(this.wetLightMix))
+    const color = night ? (this.s7Look.outdoor // ステージ7は雨→晴れの夜へ移る間、両方の色を重ねて寄せる(どちらかが 0 になる瞬間に跳ばない)
+      ? lerpRgb(lerpRgb(0xc9d6ff, WET_MOON_SHAFT_COLOR, easeInOutSine(this.wetLightMix)), S1N_MOON_SHAFT_COLOR, easeInOutSine(this.s1nMix))
+      : this.wetLightMix > 0 ? lerpRgb(0xc9d6ff, WET_MOON_SHAFT_COLOR, easeInOutSine(this.wetLightMix))
       : this.s1nMix > 0 ? lerpRgb(0xc9d6ff, S1N_MOON_SHAFT_COLOR, easeInOutSine(this.s1nMix)) : 0xc9d6ff) : lp.color; // 雨上がりの間は青い月光・晴れたステージ1の夜は白い青の月光へ寄せる
     // 一定間隔の斜めビームを period 単位でタイル反復して描く。横パララックスで position.x を
     // [-period, 0] に折り返すと継ぎ目なくスクロールできる(森の tilePosition と同じ発想)。
@@ -11193,7 +11200,8 @@ export class PixiScene {
     }
     this.applyForestPreview();
     this.applyWraithDarkness(); // 亡霊と戦っている間の地面と遠景の暗さ(フレームの最後・§12)
-    if (WEATHER_KNOB === 'wet') this.syncWeatherWet(s, now); // 天候「雨上がり」(?weather=wet の時だけ・付けなければ1命令も走らない)
+    this.syncStage7Weather(s, now); // ステージ7の天気(雨→第二形態で晴れの夜・utils/stage7Weather.ts。他ステージ=数命令で終わる)
+    if (WEATHER_KNOB === 'wet' || this.s7Look.wetLayer || this.weatherWet) this.syncWeatherWet(s, now); // 天候「雨上がり」(?weather=wet・ステージ7の雨の時だけ。一度作った層は消す側のためにも回す)
     this.syncStage1Night(s, now); // 通常のステージ1の森の夜(雨上がりの後=雨上がりの間は効かない)
     this.syncStage5Battle(s, now); // ステージ5(戦場)の光・色・コントラスト(他ステージ=1命令で終わる)
     this.syncTorchBack(s, now); // 松明の裏の光(ステージ3/4/7・utils/torchBackLight.ts。他ステージ=1命令で終わる)
@@ -13065,12 +13073,35 @@ export class PixiScene {
   private wetLightLastNow = 0;
   /** 月明りの筋を最後に描いた時の雨上がりの倍率(変わった時だけ描き直す)。 */
   private shaftWetMulDrawn = 1;
+  /**
+   * ステージ7の天気(社長指示2026-11-21「ステージ7はスタート時は雨、第二形態で晴れの夜にして」)。判定は utils/stage7Weather.ts。
+   * ここはこのフレームの見え方(s7Look)を出すだけ=雨は syncWeatherWet、晴れの夜は syncStage1Night が読む。
+   */
+  private s7Weather = initStage7Weather();
+  private s7Look: Stage7WeatherLook = STAGE7_WEATHER_OFF;
+  /** ステージ7で雨が上がり切って、雨の色行列を世界のフィルタから外している間 true。 */
+  private s7WetGradeOff = false;
+  private syncStage7Weather(s: ReturnType<typeof useGameStore.getState>, now: number) {
+    const stageId = getSelectedStageId();
+    if (!S7W_ON || (stageId !== STAGE7_WEATHER_STAGE && this.s7Weather.stageId !== STAGE7_WEATHER_STAGE)) { this.s7Look = STAGE7_WEATHER_OFF; return; }
+    this.s7Weather = stepStage7Weather(this.s7Weather, {
+      stageId, gameTime: s.gameTime, now,
+      glenForm2: stageId === STAGE7_WEATHER_STAGE && this.s7Weather.clearAt === null && hasGlenForm2(s.enemies),
+    });
+    this.s7Look = stage7WeatherLook(this.s7Weather, {
+      stageId, indoor: s.indoorMode, corridor: s.corridorMode, farKey: this.currentFarKey, daylight: this.daylight,
+    }, now);
+  }
+
   private syncWeatherWet(s: ReturnType<typeof useGameStore.getState>, now: number) {
-    const active = weatherWetActive({ weather: WEATHER_KNOB, stageId: getSelectedStageId(), indoor: s.indoorMode, corridor: s.corridorMode })
+    const knob = weatherWetActive({ weather: WEATHER_KNOB, stageId: getSelectedStageId(), indoor: s.indoorMode, corridor: s.corridorMode })
       && this.currentFarKey === 'forest';
+    const s7 = !knob && this.s7Look.wetLayer; // ステージ7の雨(晴れた後も水たまりのために層は出したまま)
+    const active = knob || s7;
     const dtLight = this.wetLightLastNow > 0 ? Math.min(100, Math.max(0, now - this.wetLightLastNow)) : 0;
     this.wetLightLastNow = now;
-    this.wetLightMix = stepWetLightMix(this.wetLightMix, active, dtLight); // 入る/抜ける時は加減速して効く(慣性)
+    // 入る/抜ける時は加減速して効く(慣性)。ステージ7は雨が上がる間、濡れた夜の色が目標(s7Look.wetMix)に沿ってゆっくり抜ける。
+    this.wetLightMix = s7 ? stepMixToward(this.wetLightMix, this.s7Look.wetMix, dtLight) : stepWetLightMix(this.wetLightMix, active, dtLight);
     // 月明りの筋は画面寸法が変わった時にしか描き直さないので、倍率が動いている間だけ描き直す(入る/抜ける約2秒だけ)。
     if (this.shaftMulNow() !== this.shaftWetMulDrawn) this.updateStageLightShafts(this.screenW, this.screenH);
     // 濡れた土: 地面の帯の tint を湿った土へ寄せる(入る/抜ける時は加減速)。抜け切ったら一度だけ夜の tint へ戻す。
@@ -13087,8 +13118,11 @@ export class PixiScene {
         render: (c, target, transform) => { this.renderer?.render({ container: c, target, clear: true, transform }); },
       });
     }
-    if (active !== this.weatherWetOn) {
+    if (s7) this.weatherWet.setWetMix(this.wetLightMix); // ステージ7: 雨の色行列(世界・空)も効き具合ぶんだけ(ステージ1は呼ばない=従来どおり全部)
+    const gradeOff = s7 && this.wetLightMix <= 0; // 雨が上がり切った=色行列を外す(無変化の行列で1枚描かない)
+    if (active !== this.weatherWetOn || gradeOff !== this.s7WetGradeOff) {
       this.weatherWetOn = active;
+      this.s7WetGradeOff = gradeOff;
       this.weatherWet.setVisible(active);
       this.syncWorldGroupFilters();
     }
@@ -13126,6 +13160,7 @@ export class PixiScene {
       moonGlow: [this.stage1MoonGlow],
       moonHalo: [this.stage1MoonHalo],
       farGroup: this.farGroup,
+      mix: s7 ? this.wetLightMix : 1, // ステージ7は雨が上がる間に抜く
     });
     this.weatherWet.sync({
       now, envTint: wetNightEnvTint(this.envTintNow(), this.wetLightMix), view, rainView, world: this.L.world, // 水たまりの縁も地面と同じ明るさ
@@ -13135,6 +13170,10 @@ export class PixiScene {
       landscape: this.wetLandscape(),
       shaftLevel: this.stageLightShaftGfx.visible ? this.stageLightShaftGfx.alpha : 0,
       moonAt: (x, y) => this.moonLightAt(x, y),
+      rainScale: s7 ? this.s7Look.rainScale : 1, // ステージ7は第二形態で雨量が加減速して 0 へ
+      rainStart: s7 ? S7W_RAIN_START : undefined, // ステージ7は本降りから始まる
+      rainRun: s7 ? this.s7Weather.run : undefined,
+      stageId: getSelectedStageId(),
     });
   }
 
@@ -13151,22 +13190,27 @@ export class PixiScene {
     return wetLightMult(this.wetLightMix, WET_MOON_SHAFT_MULT) * wetLightMult(this.s1nMix, S1N_MOON_SHAFT_MULT);
   }
   private syncStage1Night(s: ReturnType<typeof useGameStore.getState>, now: number) {
-    const active = stage1NightActive({
+    // ステージ7の第二形態の後の晴れの夜: 色調整・月明りの筋・月の光だまりだけ(効き具合は s7Look.clearMix に沿う)。
+    // 松明の裏の光(ステージ7は syncTorchBack が描く)・花・空・霧/近景の色は掛けない(ステージ7の元の見た目のまま)。
+    const s7 = this.s7Look.outdoor && S1N_ON;
+    const s7Target = s7 ? this.s7Look.clearMix : 0;
+    const active = !s7 && stage1NightActive({
       stageId: getSelectedStageId(), indoor: s.indoorMode, corridor: s.corridorMode, farKey: this.currentFarKey, wetActive: this.weatherWetOn,
     }) && !this.daylight && S1N_ON;
     this.s1Forest = S1N_ON && !this.daylight && stage1NightActive({ // 蛍の見せ方(雨上がりでも森なら)
       stageId: getSelectedStageId(), indoor: s.indoorMode, corridor: s.corridorMode, farKey: this.currentFarKey, wetActive: false,
     });
-    if (!active && this.s1nMix <= 0 && !this.stage1Night) { this.s1nLastNow = now; return; } // 他ステージ=1命令で終わる
+    if (!active && s7Target <= 0 && this.s1nMix <= 0 && !this.stage1Night) { this.s1nLastNow = now; return; } // 他ステージ=1命令で終わる
     const dt = this.s1nLastNow > 0 ? Math.min(100, Math.max(0, now - this.s1nLastNow)) : 0;
     this.s1nLastNow = now;
-    this.s1nMix = stepWetLightMix(this.s1nMix, active, dt);
+    this.s1nMix = s7 ? stepMixToward(this.s1nMix, s7Target, dt) : stepWetLightMix(this.s1nMix, active, dt);
     if (this.shaftMulNow() !== this.shaftWetMulDrawn) this.updateStageLightShafts(this.screenW, this.screenH); // 入る/抜ける約2秒だけ描き直す
     if (!this.stage1Night) this.stage1Night = new Stage1NightLayer(this.L.groundLayer);
-    const mix = this.s1nMix;
-    const gradeOn = mix > 0 && S1N_GRADE_ON;
-    if (gradeOn) this.stage1Night.setGrade(mix);
+    const gmix = this.s1nMix;
+    const gradeOn = gmix > 0 && S1N_GRADE_ON;
+    if (gradeOn) this.stage1Night.setGrade(gmix);
     if (gradeOn !== this.s1nGradeOn) { this.s1nGradeOn = gradeOn; this.syncWorldGroupFilters(); }
+    const mix = s7 ? 0 : gmix; // 以下(松明の裏の光・花・空・霧/近景の色)はステージ7では掛けない
     const lights: { id: string; x: number; y: number; color: number; strength: number }[] = [];
     if (mix > 0) {
       for (const [id, v] of this.breakableProps) {
