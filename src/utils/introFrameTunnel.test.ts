@@ -109,3 +109,18 @@ describe('枠のトンネル: ズームしつつ左右に開く', () => {
     for (let u = 0.5; u < 1; u += 0.05) expect(inner(u + 0.05)).toBeLessThan(inner(u));
   });
 });
+
+describe('枠のトンネル: 1枚おきに反対側の絵を左右反転して使う', () => {
+  it('通し番号は1枚の一生の間は変わらず、発生順に連番(偶奇が交互)', () => {
+    const seen = new Map<number, number>(); // id → 最初に見えた時の scale
+    for (let ms = 0; ms < INTRO_TUNNEL_END_MS; ms += 10) {
+      for (const c of introTunnelCopies(ms)) {
+        const prev = seen.get(c.id);
+        if (prev !== undefined) expect(c.scale).toBeGreaterThanOrEqual(prev); // 同じ id は同じ1枚(育つだけ)
+        seen.set(c.id, c.scale);
+      }
+    }
+    const ids = [...seen.keys()].sort((a, b) => a - b);
+    for (let i = 1; i < ids.length; i++) expect(ids[i] - ids[i - 1]).toBe(1);
+  });
+});

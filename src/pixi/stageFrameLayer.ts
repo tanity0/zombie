@@ -124,14 +124,25 @@ export class StageFrameLayer {
         view.alpha = 0;
         view.sprite.visible = false;
       }
-      // トンネル: 外側の端(左=x0 / 右=画面の右端)と画面の縦の中央を基準に拡大(端寄せのまま)。
+    }
+    // トンネル: 外側の端(左=0 / 右=画面の右端)と画面の縦の中央を基準に拡大(端寄せのまま)。
+    // 1枚おき(通し番号が奇数)に、反対側の絵を左右反転して使う(社長2026-11-21「左右を交互に反転して使った方がいいかも」)。
+    // 通し番号は1枚の一生の間は変わらない=途中で絵が切り替わらない。反対側の絵が無ければ自分の絵のまま。
+    for (const side of ['left', 'right'] as const) {
+      const view = this.sides.get(side);
+      if (!view) continue;
+      const other = this.sides.get(side === 'left' ? 'right' : 'left');
       for (let i = 0; i < view.copies.length; i++) {
         const c = view.copies[i];
         const pose = copies[i];
-        if (!pose || pose.alpha <= 0.004) { c.visible = false; continue; }
-        if (c.texture !== view.rt) c.texture = view.rt;
-        c.scale.set(pose.scale);
-        const openPx = view.rt.width * pose.scale * pose.open; // 左右に開く: 外側へずらす
+        if (!pose || pose.alpha <= 0.004 || !view.rt) { c.visible = false; continue; }
+        const mirror = pose.id % 2 === 1 && !!other?.rt;
+        const rt = mirror ? (other!.rt as RenderTexture) : view.rt;
+        if (c.texture !== rt) c.texture = rt;
+        // 反転した時は、絵の外側の端が画面の端に来るよう基準点を反対の辺へ移す。
+        c.anchor.set((side === 'left') !== mirror ? 0 : 1, 0.5);
+        c.scale.set(mirror ? -pose.scale : pose.scale, pose.scale);
+        const openPx = rt.width * pose.scale * pose.open; // 左右に開く: 外側へずらす
         c.position.set(side === 'left' ? -openPx : o.w + openPx, o.h / 2);
         c.alpha = pose.alpha * (o.w <= o.h ? INTRO_TUNNEL_PORTRAIT_ALPHA_MUL : 1);
         c.visible = true;

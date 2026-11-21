@@ -76,6 +76,11 @@ export interface TunnelCopyPose {
    * 社長2026-11-21「ズームしつつ左右に開いていく方がいいかも」。smoothstep=動き始めと終わりに加減速(慣性)。
    */
   open: number;
+  /**
+   * 時刻表の通し番号(発生順)。1枚の一生の間は変わらない。描く側はこれの偶奇で「反対側の絵を左右反転して使う」を交互にする
+   * (社長2026-11-21「左右を交互に反転して使った方がいいかも」)。
+   */
+  id: number;
 }
 
 /**
@@ -94,7 +99,7 @@ export const introTunnelScale = (u: number, maxScale: number = INTRO_TUNNEL_MAX_
 export const introTunnelPose = (u: number, maxScale: number = INTRO_TUNNEL_MAX_SCALE): TunnelCopyPose => {
   const x = Math.max(0, Math.min(1, u));
   const alpha = INTRO_TUNNEL_PEAK_ALPHA * smooth(x / FADE_IN_FRAC) * (1 - smooth((x - FADE_OUT_FROM) / (1 - FADE_OUT_FROM)));
-  return { scale: introTunnelScale(x, maxScale), alpha, open: x * x * (3 - 2 * x) };
+  return { scale: introTunnelScale(x, maxScale), alpha, open: x * x * (3 - 2 * x), id: 0 };
 };
 
 /**
@@ -111,7 +116,7 @@ export const introTunnelCopies = (elapsedMs: number): TunnelCopyPose[] => {
     const age = elapsedMs - s.at;
     if (age >= s.life) continue;
     const p = introTunnelPose(age / s.life);
-    out.push({ scale: p.scale, alpha: p.alpha * master, open: p.open });
+    out.push({ scale: p.scale, alpha: p.alpha * master, open: p.open, id: i });
   }
   return out;
 };
