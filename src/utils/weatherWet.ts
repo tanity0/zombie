@@ -1,19 +1,57 @@
 // ステージの天候「雨上がり」(research/WEATHER_WET.md)の、描画に依らない決めごと。
-// - いつ効くか(`?weather=wet` かつステージ1の屋外)
+// - いつ効くか(出撃の天候が雨 かつステージ1の屋外)・出撃の天候の決め方(周回で決める・`?weather=` が優先)
 // - 波紋・雫・光の線の動き(すべて加速/減速つき=慣性 MUST)
 // RENDERER-AGNOSTIC: PixiJS を import しない。
 
-/** URL の `?weather=` を読む。今は 'wet'(雨上がり)だけ。それ以外・未指定は null(=何も変えない)。 */
-export const parseWeather = (search: string): 'wet' | null => {
+/** 出撃の天候。'wet'=雨上がりの雨の舞台 / 'clear'=晴れ(ステージ1は月夜)。 */
+export type StageWeather = 'clear' | 'wet';
+
+/** URL の `?weather=` を読む(開発用のツマミ)。'wet'=雨に固定 / 'clear'=晴れに固定。それ以外・未指定は null(=周回の決め方に任せる)。 */
+export const parseWeather = (search: string): StageWeather | null => {
   const v = new URLSearchParams(search).get('weather');
-  return v === 'wet' ? 'wet' : null;
+  return v === 'wet' || v === 'clear' ? v : null;
+};
+
+/**
+ * ステージ1の何周目か(STAGE1_FIRST_LOOP.md §2 の定義に従う=クリアで進む)。
+ * 1=1周目(この出撃が1周目=isStage1FirstLoopRun)/ 2=2周目(1周目クリア済み・ステージ1は未クリア=城ボスの周)/
+ * 3=3周目以降(ステージ1クリア済み)。
+ */
+export const stage1Lap = (i: { firstLoopRun: boolean; stage1Cleared: boolean }): 1 | 2 | 3 =>
+  i.firstLoopRun ? 1 : !i.stage1Cleared ? 2 : 3;
+
+export interface StageWeatherInput {
+  stageId: string;
+  /** `?weather=`(開発用のツマミ・最優先)。 */
+  knob: StageWeather | null;
+  /** 周回に数えない出撃(ベンチ・練習(ボスモード)・ガントレット・?castlenow 等のボス試験・?smoke)。晴れ=今のまま。 */
+  special: boolean;
+  firstLoopRun: boolean;
+  stage1Cleared: boolean;
+  /** 0..1 の乱数。3周目以降で1回だけ引く。 */
+  rnd: () => number;
+}
+
+/**
+ * 出撃の天候(社長指示2026-11-22「ステージ1の2周目は必ず雨の舞台にして。その後は晴れと雨でランダムで。」)。
+ * 出撃の開始に1回だけ呼ぶ(その出撃の間は変えない)。1周目=晴れ / 2周目=必ず雨 / 3周目以降=半々。
+ * 対象外のステージ・周回に数えない出撃は晴れ。`?weather=` は全部に優先する。
+ */
+export const decideStageWeather = (i: StageWeatherInput): StageWeather => {
+  if (i.knob) return i.knob;
+  if (!WEATHER_WET_STAGES.has(i.stageId) || i.special) return 'clear';
+  const lap = stage1Lap(i);
+  if (lap === 1) return 'clear';
+  if (lap === 2) return 'wet';
+  return i.rnd() < 0.5 ? 'wet' : 'clear';
 };
 
 /** 雨上がりを出すステージ(今はステージ1だけ・設計書 §0)。 */
 export const WEATHER_WET_STAGES: ReadonlySet<string> = new Set(['stage-1']);
 
 export interface WeatherWetCtx {
-  weather: 'wet' | null;
+  /** その出撃の天候(store の stageWeather)。 */
+  weather: StageWeather | null;
   stageId: string;
   indoor: boolean;
   corridor: boolean;

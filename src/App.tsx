@@ -36,6 +36,7 @@ import {
   type SelectedMission,
 } from './data/progress';
 import { isStage1FirstLoopRun, isStage1GuardianLockRun, parseLoop1Force, STAGE1_FIRST_LOOP_ENABLED } from './utils/stage1FirstLoop';
+import { decideStageWeather, parseWeather } from './utils/weatherWet'; // 出撃の天候(research/WEATHER_WET.md §4)
 import { unlockRecordsForStage, unlockRecords, backfillStoryArchive, ENDING_RECORD_IDS } from './data/storyArchive';
 import { subsAllCompletedFromMeta, endingFollowup } from './utils/storyProgress';
 import { getEventQuestConfig } from './utils/eventQuest';
@@ -404,6 +405,17 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
       firstLoopCleared: getStage1FirstLoopCleared(),
     });
     useGameStore.getState().setPendingStage1FirstLoop(firstLoopRun);
+    // 出撃の天候(research/WEATHER_WET.md §4・社長指示2026-11-22): 1周目=晴れ/2周目=必ず雨/3周目以降=半々。
+    // 乱数はここ(出撃の開始)で1回だけ引き、resetGame が stageWeather へ入れる=出撃の間は変わらない。
+    // 周回に数えない出撃(ベンチ・練習・ガントレット・ボス試験・?smoke)は晴れ。フリー(周回)は端末の周回どおり。
+    useGameStore.getState().setPendingStageWeather(decideStageWeather({
+      stageId: stageForRun?.id ?? '',
+      knob: parseWeather(window.location.search),
+      special: loop1Common.benchmark || loop1Common.practice || loop1Common.bossTestRun || loop1Common.smoke,
+      firstLoopRun,
+      stage1Cleared: getClearedStages().has('stage-1'),
+      rnd: Math.random,
+    }));
     // 守護霊のマスト化(STAGE1_FIRST_LOOP.md §7.8): ステージ1をクリアするまで、ステージ1の出撃は同行者を守護霊に固定(1周目も)。
     useGameStore.getState().setStage1GuardianLock(firstLoopRun || isStage1GuardianLockRun({
       ...loop1Common,

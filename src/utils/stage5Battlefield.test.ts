@@ -3,6 +3,7 @@ import {
   stage5BattleActive, buildStage5GradeMatrix, buildStage5SkyMatrix, stage5TintMul, stage5EmberSize,
   S5B_FOG_TINT_MUL, S5B_FRONT_TINT_MUL, S5B_FIRE_POOLS, S5B_EMBER_SIZE_MUL, type Stage5BattleCtx,
   burningWreckFlames, burningWreckSmoke, burningWreckFlicker, S5B_WRECK_MAX,
+  burningWreckZIndex, S5B_WRECK_Z_BEHIND,
 } from './stage5Battlefield';
 import { applyColorMatrix, stage1NightActive } from './weatherWet';
 
@@ -158,5 +159,26 @@ describe('燃える残骸の炎・煙(見た目の数)', () => {
     }
     expect(S5B_WRECK_MAX).toBeGreaterThan(0);
     expect(S5B_WRECK_MAX).toBeLessThanOrEqual(16);
+  });
+});
+
+describe('燃える残骸の炎の並び順(置物のすぐ奥)', () => {
+  it('炎は置物の zIndex のすぐ奥(置物より小さく・差は小さい)', () => {
+    for (const propZ of [-381.1, 0, 214.07, 326.97, 5000]) {
+      const z = burningWreckZIndex(propZ);
+      expect(z).toBeLessThan(propZ);
+      expect(propZ - z).toBeCloseTo(S5B_WRECK_Z_BEHIND, 9);
+    }
+  });
+  it('置物の手前の物(足元Yがわずかでも大きい)より奥・置物の奥の物(足元Yが小さい)より手前に収まる', () => {
+    const propZ = 214.07;
+    expect(burningWreckZIndex(propZ)).toBeLessThan(propZ + 0.5);
+    expect(burningWreckZIndex(propZ)).toBeGreaterThan(propZ - 1);
+  });
+  it('並び順は置物の zIndex だけで決まる(?proj=1 の投影後の足元Yが world の足元Yより下でも置物の前へ出ない)', () => {
+    // 実測(v0.25.5745・?proj=1): 置物 zIndex=214.07(world の足元)・炎を置く投影後の足元Y=254.54。
+    const propZ = 214.07, projectedFootY = 254.54;
+    expect(burningWreckZIndex(propZ)).toBeLessThan(propZ);
+    expect(burningWreckZIndex(propZ)).toBeLessThan(projectedFootY);
   });
 });

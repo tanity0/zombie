@@ -201,7 +201,7 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
   practice: [{ name: SCARECROW_SHEET, scaleMode: 'nearest' }],
   /**
    * ステージの天候「雨上がり」(research/WEATHER_WET.md・社長支給2026-11-20の帯2本から切り出し・計 約0.03MB)。
-   * ステージ1を `?weather=wet` で出撃した時だけ `sortieSpriteGroups` が先読みする。描画(pixi/weatherWet.ts)は
+   * ステージ1を雨の天候(store の stageWeather)で出撃した時だけ `sortieSpriteGroups` が先読みする。描画(pixi/weatherWet.ts)は
    * `getTexture` で引くので、届く前は水たまりを出さないだけ(網で拾う)。ドット絵=nearest。
    */
   weatherWet: WEATHER_WET_SPRITES.map(name => ({ name, scaleMode: 'nearest' as const })),

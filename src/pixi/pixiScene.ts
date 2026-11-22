@@ -527,7 +527,7 @@ import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
 import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight, type WetTree } from './weatherWet';
 import { StageFrameLayer } from './stageFrameLayer'; // 横長画面の左右の枠(research/STAGE_FRAMES.md)
-import { parseWeather, weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, stage1TreeTint, stage3TreeTint, stage4TreeTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR, stage1NightActive, s1nCloudShadowAlpha, S1N_MOON_SHAFT_MULT, S1N_MOON_SHAFT_COLOR, S1N_NIGHT_GRADE_ALPHA_MUL, S1N_MOON_POOL_ALPHA, S1N_MOON_POOL_COLOR, moonPoolPieces, TORCH_STREAK_EASE } from '../utils/weatherWet';
+import { weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, stage1TreeTint, stage3TreeTint, stage4TreeTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR, stage1NightActive, s1nCloudShadowAlpha, S1N_MOON_SHAFT_MULT, S1N_MOON_SHAFT_COLOR, S1N_NIGHT_GRADE_ALPHA_MUL, S1N_MOON_POOL_ALPHA, S1N_MOON_POOL_COLOR, moonPoolPieces, TORCH_STREAK_EASE } from '../utils/weatherWet';
 import { initStage7Weather, stepStage7Weather, stage7WeatherLook, hasGlenForm2, stepMixToward, STAGE7_WEATHER_STAGE, STAGE7_WEATHER_OFF, S7W_RAIN_START, type Stage7WeatherLook } from '../utils/stage7Weather';
 import { Stage1NightLayer } from './stage1Night';
 import { Stage5BattleLayer, type BurningWreckView, type FlamePainter } from './stage5Battlefield';
@@ -886,8 +886,6 @@ const HIDE_LAYERS = new Set(
     .split(',').map(v => v.trim()).filter(Boolean)
 );
 
-/** 天候のツマミ(`?weather=wet`・research/WEATHER_WET.md)。未指定なら null=雨上がりのコードは1行も走らない。 */
-const WEATHER_KNOB = typeof window === 'undefined' ? null : parseWeather(window.location.search);
 
 const tsBool = (key: string, def: boolean): boolean => {
   if (typeof window === 'undefined') return def;
@@ -12246,7 +12244,7 @@ export class PixiScene {
     this.applyForestPreview();
     this.applyWraithDarkness(); // 亡霊と戦っている間の地面と遠景の暗さ(フレームの最後・§12)
     this.syncStage7Weather(s, now); // ステージ7の天気(雨→第二形態で晴れの夜・utils/stage7Weather.ts。他ステージ=数命令で終わる)
-    if (WEATHER_KNOB === 'wet' || this.s7Look.wetLayer || this.weatherWet) this.syncWeatherWet(s, now); // 天候「雨上がり」(?weather=wet・ステージ7の雨の時だけ。一度作った層は消す側のためにも回す)
+    if (s.stageWeather === 'wet' || this.s7Look.wetLayer || this.weatherWet) this.syncWeatherWet(s, now); // 天候「雨上がり」(この出撃の天候=store の stageWeather が雨・ステージ7の雨の時だけ。一度作った層は消す側のためにも回す)
     this.syncStage1Night(s, now); // 通常のステージ1の森の夜(雨上がりの後=雨上がりの間は効かない)
     this.syncStage5Battle(s, now); // ステージ5(戦場)の光・色・コントラスト(他ステージ=1命令で終わる)
     this.syncStage3Daylight(s, now); // ステージ3(昼の廃都)の光と影(他ステージ=1命令で終わる)
@@ -14263,7 +14261,7 @@ export class PixiScene {
   }
 
   private syncWeatherWet(s: ReturnType<typeof useGameStore.getState>, now: number) {
-    const knob = weatherWetActive({ weather: WEATHER_KNOB, stageId: getSelectedStageId(), indoor: s.indoorMode, corridor: s.corridorMode })
+    const knob = weatherWetActive({ weather: s.stageWeather, stageId: getSelectedStageId(), indoor: s.indoorMode, corridor: s.corridorMode })
       && this.currentFarKey === 'forest';
     const s7 = !knob && this.s7Look.wetLayer; // ステージ7の雨(晴れた後も水たまりのために層は出したまま)
     const active = knob || s7;
@@ -14576,7 +14574,7 @@ export class PixiScene {
       // ?proj=1: 炎は置物の絵に付く=置物の投影後の足元(表示座標)と倍率 s で置く(作る物6)。選ぶ順(dist)は world のまま。
       const pj = this.projFrame && ce.projS !== undefined;
       out.push({
-        id: w.id, footX: pj ? sp.x : w.footX, footY: pj ? sp.y : w.footY, artW: w.art.width, artH: w.art.height, seed: w.seed,
+        id: w.id, footX: pj ? sp.x : w.footX, footY: pj ? sp.y : w.footY, propZ: sp.zIndex, artW: w.art.width, artH: w.art.height, seed: w.seed,
         d: pj ? ce.projS! : this.depthScale(w.footY), alpha: sp.alpha, dist: Math.hypot(w.footX - mx, w.footY - my),
       });
     }

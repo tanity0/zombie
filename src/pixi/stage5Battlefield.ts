@@ -16,7 +16,7 @@ import { easeInOutSine } from '../utils/weatherWet';
 import {
   buildStage5GradeMatrix, buildStage5SkyMatrix, stage5TintMul,
   S5B_FOG_TINT_MUL, S5B_FRONT_TINT_MUL, S5B_FIRE_POOL_EASE, S5B_NIGHT_GRADE_TINT,
-  S5B_WRECK_MAX, S5B_WRECK_EASE, S5B_WRECK_LIGHT_COLOR, burningWreckFlames, burningWreckSmoke, burningWreckFlicker,
+  S5B_WRECK_MAX, S5B_WRECK_EASE, S5B_WRECK_LIGHT_COLOR, burningWreckFlames, burningWreckSmoke, burningWreckFlicker, burningWreckZIndex,
 } from '../utils/stage5Battlefield';
 
 export interface S5BAtmosphere {
@@ -98,6 +98,8 @@ export interface BurningWreckView {
   id: string;
   footX: number;
   footY: number;
+  /** 置物の絵の並び順(zIndex=world の足元Y)。炎はこのすぐ奥に並べる(footY は置く位置で、?proj=1 では投影後=並び順には使えない)。 */
+  propZ: number;
   /** 置物の絵の幅・高さ(world px・遠近前)。 */
   artW: number;
   artH: number;
@@ -183,7 +185,7 @@ export class BurningWreckLayer {
     const a = b.a;
     b.c.visible = a > 0.004;
     if (!b.c.visible) { b.embers.clear(); return; }
-    b.c.zIndex = w.footY - 0.01; // 置物(zIndex=footY)のすぐ奥=残骸が炎を背に影絵で立つ(松明の炎が台座の奥なのと同じ)
+    b.c.zIndex = burningWreckZIndex(w.propZ); // 置物の並び順のすぐ奥=残骸が炎を背に影絵で立つ(松明の炎が台座の奥なのと同じ)。footY(?proj=1 では投影後)からは決めない
     b.c.alpha = a;
     const d = w.d;
     const fl = burningWreckFlicker(now, w.seed);

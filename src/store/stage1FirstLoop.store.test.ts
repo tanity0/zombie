@@ -145,3 +145,16 @@ describe('1周目のゴールの納品(§7.6 F / §7.7 A2・B8)', () => {
     expect(getStage1FirstLoopCleared()).toBe(true);
   });
 });
+
+describe('出撃の天候(research/WEATHER_WET.md §4)', () => {
+  it('resetGame が pendingStageWeather を stageWeather へ1回だけ入れる(出撃の間は変わらない)', () => {
+    setStage('stage-1');
+    useGameStore.getState().setPendingStageWeather('wet');
+    useGameStore.getState().resetGame('warrior');
+    expect(useGameStore.getState().stageWeather).toBe('wet');
+    useGameStore.getState().setPendingStageWeather('clear'); // 次の出撃の準備=今の出撃は変わらない
+    expect(useGameStore.getState().stageWeather).toBe('wet');
+    useGameStore.getState().resetGame('warrior');
+    expect(useGameStore.getState().stageWeather).toBe('clear');
+  });
+});

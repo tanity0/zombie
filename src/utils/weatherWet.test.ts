@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildWetGradeMatrix, applyColorMatrix, WET_GRADE_GAIN, torchStreakDash, TORCH_STREAK_DASHES,
   leafDripSpec, leafDripPose, LEAF_DRIP_H_MIN, LEAF_DRIP_H_MAX,
-  parseWeather, weatherWetActive, ripplePose, RIPPLE_MS, RIPPLE_FRAMES, RIPPLE_SCALE_FROM, RIPPLE_SCALE_TO,
+  parseWeather, weatherWetActive, decideStageWeather, stage1Lap, ripplePose, RIPPLE_MS, RIPPLE_FRAMES, RIPPLE_SCALE_FROM, RIPPLE_SCALE_TO,
   dripHeight, DRIP_FALL_MS, DRIP_FALL_H, glintPose, GLINT_MS,
   rainDropSpec, rainPose, rainNextGapMs, RAIN_FALL_MS_MIN, RAIN_FALL_MS_MAX, RAIN_DROPS_PER_MPX_S, RAIN_MAX,
   landscapeBand, puddleReflection, LANDSCAPE_REFLECT_STRETCH, LANDSCAPE_REF_DEPTH_FRAC, LANDSCAPE_FAR_EDGE_INSET,
@@ -24,8 +24,53 @@ describe('weatherWet(雨上がりの決めごと)', () => {
     expect(parseWeather('?weather=wet')).toBe('wet');
     expect(parseWeather('?stage=stage-1&weather=wet&smoke=1')).toBe('wet');
     expect(parseWeather('')).toBeNull();
+    expect(parseWeather('?weather=clear')).toBe('clear');
     expect(parseWeather('?weather=rain')).toBeNull();
     expect(parseWeather('?weather=')).toBeNull();
+  });
+
+  describe('出撃の天候(社長指示2026-11-22「2周目は必ず雨・その後は晴れと雨でランダム」)', () => {
+    const base = { stageId: 'stage-1', knob: null, special: false, firstLoopRun: false, stage1Cleared: false, rnd: () => 0.99 };
+    it('周回はクリアで進む(1周目=この出撃が1周目/2周目=ステージ1未クリア/3周目以降=クリア済み)', () => {
+      expect(stage1Lap({ firstLoopRun: true, stage1Cleared: false })).toBe(1);
+      expect(stage1Lap({ firstLoopRun: false, stage1Cleared: false })).toBe(2);
+      expect(stage1Lap({ firstLoopRun: false, stage1Cleared: true })).toBe(3);
+    });
+    it('1周目は晴れ・2周目は乱数に関係なく必ず雨', () => {
+      for (const r of [0, 0.3, 0.5, 0.99]) {
+        expect(decideStageWeather({ ...base, firstLoopRun: true, rnd: () => r })).toBe('clear');
+        expect(decideStageWeather({ ...base, rnd: () => r })).toBe('wet');
+      }
+    });
+    it('3周目以降は乱数1回で半々(出撃の開始に1回だけ引く)', () => {
+      let calls = 0;
+      const w = decideStageWeather({ ...base, stage1Cleared: true, rnd: () => { calls++; return 0.2; } });
+      expect(w).toBe('wet');
+      expect(calls).toBe(1);
+      expect(decideStageWeather({ ...base, stage1Cleared: true, rnd: () => 0.5 })).toBe('clear');
+      let wet = 0;
+      let seed = 12345;
+      const lcg = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+      for (let i = 0; i < 2000; i++) if (decideStageWeather({ ...base, stage1Cleared: true, rnd: lcg }) === 'wet') wet++;
+      expect(wet).toBeGreaterThan(900);
+      expect(wet).toBeLessThan(1100);
+    });
+    it('1周目・2周目は乱数を引かない', () => {
+      const rnd = () => { throw new Error('引いてはいけない'); };
+      expect(decideStageWeather({ ...base, firstLoopRun: true, rnd })).toBe('clear');
+      expect(decideStageWeather({ ...base, rnd })).toBe('wet');
+    });
+    it('周回に数えない出撃・ステージ1以外は晴れ', () => {
+      expect(decideStageWeather({ ...base, special: true })).toBe('clear');
+      expect(decideStageWeather({ ...base, special: true, stage1Cleared: true, rnd: () => 0 })).toBe('clear');
+      expect(decideStageWeather({ ...base, stageId: 'stage-3' })).toBe('clear');
+    });
+    it('?weather= のツマミが全部に優先する', () => {
+      expect(decideStageWeather({ ...base, knob: 'wet', firstLoopRun: true })).toBe('wet');
+      expect(decideStageWeather({ ...base, knob: 'wet', special: true })).toBe('wet');
+      expect(decideStageWeather({ ...base, knob: 'clear' })).toBe('clear');
+      expect(decideStageWeather({ ...base, knob: 'clear', stage1Cleared: true, rnd: () => 0 })).toBe('clear');
+    });
   });
 
   it('ステージ1の屋外だけで効く', () => {

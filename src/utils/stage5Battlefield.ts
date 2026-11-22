@@ -103,6 +103,14 @@ export const S5B_WRECK_MAX = 16;
 export const S5B_WRECK_EASE = 0.1;
 /** 足元の火の溜まりの光源の色(松明の光だまりと同じ橙)。 */
 export const S5B_WRECK_LIGHT_COLOR = 0xff9f1c;
+/** 炎を置物のどれだけ奥に並べるか(zIndex の差)。置物のすぐ奥=残骸が炎を背に影絵で立つ。 */
+export const S5B_WRECK_Z_BEHIND = 0.01;
+/**
+ * 燃える残骸の炎の zIndex。★置物の絵の並び順(zIndex)から決める=置物のすぐ奥。
+ * 炎を置く位置(?proj=1 では投影後の足元)から決めてはいけない: 置物とアクターは world の足元Yで並ぶので、
+ * 投影後のYを使うと置物より手前へ出る(v0.25.5735 の段階1で起きた)。
+ */
+export const burningWreckZIndex = (propZIndex: number): number => propZIndex - S5B_WRECK_Z_BEHIND;
 
 const frac = (v: number): number => v - Math.floor(v);
 

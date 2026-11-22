@@ -261,6 +261,7 @@ import { escortAggroCandidates, escortBossHaters, escortInMotionView, hateEscort
 import { JUN_ESCORT_INDEX, JUN_NAME } from '../data/junEscortLines';
 import { npcChatterAllowed, getNpcChatterEnabled } from '../utils/npcChatter'; // オプション「仲間の雑談」
 import { createStage1LoopState, stage1RunCompanion, isLoop1HiddenBase, LOOP1_BASE_ID, stage1LaterLoopSkipsWelcome, STAGE1_FIRST_LOOP_ENABLED, type Stage1LoopState, type Loop1Talk } from '../utils/stage1FirstLoop'; // ステージ1の1周目(STAGE1_FIRST_LOOP.md)
+import type { StageWeather } from '../utils/weatherWet'; // 出撃の天候(research/WEATHER_WET.md §4)
 import { isJunEscort, JUN_ESCORT_ID, junJoinsRun, stepJunWalk, JUN_DEPART_WALK_DELAY_MS, junNextWaypoint, junReachableGoal, junTouchesRect, JUN_ARRIVE_TOUCH_DIST, junFollowsPlayer, junFollowMachine, countsForBaseCapture, junNearOpenBase, junLeftBehindStep, JUN_LEFT_BEHIND_CD_MS, JUN_BASE_ID, junPseudoBase } from '../utils/junEscort';
 // research/ESCORT_FOLLOW.md: 拠点を開けた軍人が、その担当区域の中だけついてくる(判定は utils の純関数)。
 import {
@@ -10230,6 +10231,8 @@ interface GameState {
   eventQuestNpc: EventQuestNpc;
   // ステージ1「1周目」(STAGE1_FIRST_LOOP.md)。null=1周目ではない(フラグOFF・2周目以降・他ステージ)=どの分岐にも入らない。
   stage1Loop: Stage1LoopState | null;
+  // この出撃の天候(research/WEATHER_WET.md §4)。resetGame で pendingStageWeather から1回だけ入る=出撃の間は変わらない。描画はこれを読むだけ。
+  stageWeather: StageWeather;
   // 「1周目会話中」(§7.7 A3): 到着/お礼の通信の間だけ立つ。到着=世界は止めない(v4の通信と同じ)/お礼=納品ロック(v4の納品と同じ)。
   stage1LoopTalk: Loop1Talk | null;
   // 二人組クエストのrun内状態(EVENT_QUEST_DESIGN.md)。受領中のクエスト種別と討伐進捗。
@@ -10358,6 +10361,7 @@ interface GameState {
   // resetGame の前にセットする(isStage1GuardianLockRun / 1周目)。companionSkill(選択の保存値)は書き換えない=
   // 読む側(resetGame の beginGhostOnlineRun・directorTick の召喚)が stage1RunCompanion で実効値を作る。
   stage1GuardianLock: boolean;
+  pendingStageWeather: StageWeather; // 出撃前にAppがセット(decideStageWeather)。resetGame で stageWeather へ
   pendingStage1FirstLoop: boolean; // 出撃前にAppがセット(STAGE1_FIRST_LOOP.md §2・isStage1FirstLoopRun)。resetGame で stage1Loop へ
   revisitMode: boolean;          // このラン=洋館再訪(城ボス停止・洋館=保存槽マーカー・薬ボタン)
   medicineUsedAt: number;        // 薬を使った時刻(Date.now)。0=未使用。使用後 useGameLoop が短い間を置いて勝利化
@@ -11162,6 +11166,7 @@ interface GameState {
   setPendingStoryBoss: (on: boolean) => void;     // 出撃がストーリーボス専用(M7/EX)か
   setPendingRevisit: (on: boolean) => void;       // 出撃が洋館［SUB］再訪か
   setStage1GuardianLock: (on: boolean) => void; // この出撃で同行者を守護霊に固定するか(STAGE1_FIRST_LOOP.md §7.8)
+  setPendingStageWeather: (w: StageWeather) => void; // 出撃の天候(research/WEATHER_WET.md §4)
   setPendingStage1FirstLoop: (on: boolean) => void; // 出撃がステージ1の1周目か(STAGE1_FIRST_LOOP.md)
   // ステージ1の1周目のゴール(STAGE1_FIRST_LOOP.md §7.6 F / §7.7 A2): 現行のサブ納品と同じ報酬+meta.delivered だけを付ける
   // (eventQuestNpc.status は書き換えない=v4の completed 以後の経路へ入れない。syncQuestStageClear も呼ばない=ステージ2は開かない)。
@@ -11792,6 +11797,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   escortFollowEnabled: loadEscortFollowEnabled(),
   eventQuestNpc: createEventQuestNpc(),
   stage1Loop: null,
+  stageWeather: 'clear',
   stage1LoopTalk: null,
   eventQuestActive: null,
   eventQuestKills: 0,
@@ -11857,6 +11863,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   storyBossMode: false,
   pendingRevisit: false,
   stage1GuardianLock: false,
+  pendingStageWeather: 'clear',
   pendingStage1FirstLoop: false,
   revisitMode: false,
   medicineUsedAt: 0,
@@ -26460,6 +26467,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPendingStoryBoss: (on) => {
     set({ pendingStoryBoss: on });
   },
+  setPendingStageWeather: (w) => {
+    set({ pendingStageWeather: w });
+  },
   setPendingStage1FirstLoop: (on) => {
     set({ pendingStage1FirstLoop: on });
   },
@@ -29278,6 +29288,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           : firstLoop ? createBaseSites().map(b => (isLoop1HiddenBase(b.id) ? { ...b, loop1Hidden: true } : b))
           : createBaseSites(),
         stage1Loop: firstLoop ? createStage1LoopState(sortieSol ? (sortieEsc?.soldierIndex ?? -1) : -1) : null,
+        stageWeather: state.pendingStageWeather, // 出撃の天候(App が出撃の開始に1回だけ決めた値・research/WEATHER_WET.md §4)
         stage1LoopTalk: null,
         // 研究所: アイドルの手前に遠隔ショップ(武器庫)。アイドルを置かない出撃(1対1)では置かない(社長指示2026-10-11「やはり研究所の遠隔ショップ復活で」)。
         labArmory: labIdol && !vsEntryOfRun() ? labIdolShopSpot(labIdol) : null,
