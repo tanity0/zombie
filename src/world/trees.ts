@@ -53,7 +53,6 @@ const treeIndividual = (cx: number, cy: number): Individual<TreeCand> | null => 
   const scale = 0.85 + treeHash(cx + 5, cy + 23) * 0.4;
   const key = `${cx}_${cy}`;
   const variant = treeVariantAt(cx, cy);
-  const treeSkin = placementTreeSkin();
   const cands: (TreeCand | null)[] = [];
   for (let r = 0; r <= MAX_REROLLS; r++) {
     const ox = (r === 0 ? treeHash(cx, cy + 1) : treeHash(cx + 17.3 * r, cy + 1 - 29.1 * r)) - 0.5;
@@ -65,12 +64,16 @@ const treeIndividual = (cx: number, cy: number): Individual<TreeCand> | null => 
     // POI(寄り道の建物・武将の祠)の前は空き地(社長指示2026-11-03)。
     if ((Math.abs(footX) < 150 && Math.abs(footY) < 150) || isInPoiClearing(footX, footY)) { cands.push(null); continue; }
     const t = { key, footX, footY, scale, variant };
-    cands.push({ ...t, art: treeArtRect(t, treeSkin), col: trunkRect(t) });
+    // 木どうしは絵が重なってよい(社長2026-11-22「全ステージ木の大きさ2倍」→「木どうしは重なってよい」)=同じ層の重なりは
+    // 幹(判定)だけで測る(幹どうしの隙間 28px の決まりは残る)。手置きの物を避けるのは本当の絵(treeUpperOk)。
+    // 下の層(松明・花・水たまり・置物)は木の本当の絵を避ける(各生成が treeArtRect を引く)。
+    const col = trunkRect(t);
+    cands.push({ ...t, art: col, col });
   }
   return { cands, prio: treeHash(cx + 71.3, cy - 53.7), tie: key };
 };
 
-const treeUpperOk = (c: TreeCand): boolean => isClearOfHandPlaced(c.art); // 木の上の層は手置きの物だけ
+const treeUpperOk = (c: TreeCand): boolean => isClearOfHandPlaced(treeArtRect(c, placementTreeSkin())); // 木の上の層は手置きの物だけ(本当の絵で測る)
 
 const treeFirstMemo = new CellMemo<NeighborFirst<TreeCand>[]>();
 const treeFirsts = (cx: number, cy: number): NeighborFirst<TreeCand>[] =>

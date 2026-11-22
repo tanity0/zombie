@@ -43,8 +43,14 @@ const BEFORE: Record<string, Record<string, number>> = {
 };
 // 木の絵を大きくした分の減り(決まりの劣化ではなく、避ける相手の絵が大きくなった分)。残る割合の下限をここだけ下げる。
 // ステージ1の水たまり: 葉付きの3本(2026-11-21・枯れ木の約1.4倍の高さ・幅も広い)の絵の範囲を避けるので 618→464(75%)。
+// 2026-11-22 社長「全ステージ木の大きさ2倍」→「木どうしは重なってよい」: 木の本数は保ち(下限0.85のまま)、木の本当の絵を避ける
+// 下の層(松明・花・水たまり・置物)は減るのを受け入れる。実測(±4000・手置きなし): ステージ1 松明153→108・花726→474・水たまり559→86、
+// ステージ3 置物720→334・松明150→66、ステージ4 置物293→224・松明149→115、ステージ7 松明153→108。下限はその実測の少し下。
 const MIN_KEEP: Record<string, Record<string, number>> = {
-  'stage-1': { puddle: 0.72 },
+  'stage-1': { puddle: 0.13, torch: 0.65, flower: 0.6 },
+  'stage-3': { prop: 0.43, torch: 0.4 },
+  'stage-4': { prop: 0.7, torch: 0.7 },
+  'stage-7': { torch: 0.65 },
 };
 
 // 手置きの物(テスト用の代表配置): POI 3つ・拠点4つ・城・裏ボスの巣。
@@ -139,6 +145,7 @@ const audit = (items: Item[]): Report => {
   pairsNear(items, (a, b) => {
     if (a.fixed && b.fixed) return; // 固定の層どうし(研究所の壁・遮蔽)は数えの対象外(§2 監査2巡目A)
     const same = a.layer === b.layer;
+    if (same && a.layer === 'tree') return; // 木どうしは絵が重なってよい(2026-11-22 社長「木どうしは重なってよい」)。幹の隙間は下の gap で別に数える
     if (same) rep.sameLayerNear++;
     if (artOverlapRatio(a.art, b.art) > MAX_ART_OVERLAP) {
       if (same) rep.sameLayerOver++; else { rep.crossOver++; if (rep.examples.length < 5) rep.examples.push(`${a.id}~${b.id}`); }

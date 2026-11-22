@@ -56,10 +56,11 @@ describe('weatherPuddles(雨上がりの水たまり配置)', () => {
       for (const b of bases) expect(Math.hypot(b.x - p.x, b.y - p.y)).toBeGreaterThanOrEqual(b.r + PUDDLE_BASE_PAD + p.rx);
       expect(isInPoiClearing(p.x, p.y)).toBe(false);
     }
-    // 拠点を渡さない時より減っている(避けている証拠)
+    // 拠点を渡さない時より増えない(避けている証拠は上の距離の検査)。木を2倍にした(2026-11-22)後は、拠点の周りがもともと
+    // 大きな木の絵で埋まって水たまりが置けず、渡しても渡さなくても同数になる区画がある=「減る」ではなく「増えない」で見る。
     setPoiClearings([]);
     setHandPlacedAnchors([]);
-    expect(list.length).toBeLessThan(puddlesInRegion(...R).length);
+    expect(list.length).toBeLessThanOrEqual(puddlesInRegion(...R).length);
   });
 
   it('楕円の大きさは絵の寸法×倍率から出る', () => {

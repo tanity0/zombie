@@ -10,7 +10,7 @@ import type { Rect } from './obstacles';
 
 // ---- 木(描画: pixiScene.syncTrees) ----
 /** 木の見た目倍率(社長指示で 1.5倍=1.65→2.475)。幹の当たり判定(trees.ts)とは無関係。 */
-export const TREE_VISUAL_SCALE = 1.65 * 1.5;
+export const TREE_VISUAL_SCALE = 1.65 * 1.5 * 2; // 社長指示2026-11-22「全ステージ木の大きさ2倍」(旧 1.65×1.5)
 /** 木の絵を収める箱(scale 1・倍率を掛ける前)。描画は containScale(箱, テクスチャ) で内接させる。 */
 export const TREE_BOX_W = 48;
 export const TREE_BOX_H = 64;
@@ -39,19 +39,19 @@ export const STAGE3_TREE_SKIN = 'city3';
 export const STAGE4_TREE_SKIN = 'snow4';
 export const LEAFY_TREE_SKINS: Readonly<Record<string, { px: number; trees: readonly LeafyTreeDef[] }>> = {
   // 一番大きい木(128px)が枯れ木(約138)の約1.4倍=192。3本の大小は絵の比のまま。
-  [STAGE1_TREE_SKIN]: { px: 1.5, trees: [
+  [STAGE1_TREE_SKIN]: { px: 1.5 * 2, trees: [ // ×2=社長指示2026-11-22「全ステージ木の大きさ2倍」
     { tex: 'tree-forest-a', w: 96, h: 128, footX: 43, footUp: 3 }, // 大(苔の大木)
     { tex: 'tree-forest-b', w: 111, h: 101, footX: 47, footUp: 3 }, // 中(うねる幹・岩)
     { tex: 'tree-forest-c', w: 73, h: 97, footX: 33, footUp: 3 },   // 小(細い木・倒木)
   ] },
   // 3本とも高さ約128px(大中小は幅と茂り)。今の葉付き木(tree-new2・約149)の約1.37倍=205。
-  [STAGE3_TREE_SKIN]: { px: 1.6, trees: [
+  [STAGE3_TREE_SKIN]: { px: 1.6 * 2, trees: [ // ×2=同上
     { tex: 'tree-city-a', w: 116, h: 128, footX: 60, footUp: 3 }, // 大(藤の垂れる大木)
     { tex: 'tree-city-b', w: 99, h: 127, footX: 48, footUp: 3 },  // 中
     { tex: 'tree-city-c', w: 86, h: 127, footX: 41, footUp: 3 },  // 小(細い木)
   ] },
   // 大(1枚もの・128px)が今の雪の木(tree-snow・約158)の約1.38倍=218。中・小は絵の比のまま。
-  [STAGE4_TREE_SKIN]: { px: 1.7, trees: [
+  [STAGE4_TREE_SKIN]: { px: 1.7 * 2, trees: [ // ×2=同上
     { tex: 'tree-snow-a', w: 65, h: 128, footX: 33, footUp: 3 }, // 大
     { tex: 'tree-snow-b', w: 69, h: 118, footX: 38, footUp: 3 }, // 中
     { tex: 'tree-snow-c', w: 62, h: 116, footX: 33, footUp: 3 }, // 小
