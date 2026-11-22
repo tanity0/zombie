@@ -80,11 +80,13 @@ describe('台帳(data/mastery)', () => {
     expect(SUB_TO_MASTERY_KEY.shijin).toBeUndefined();
     for (const k of ['loadout', 'none', 'max', 'shijin', 'murasame']) expect(isGrowingMasteryKey(k), k).toBe(false);
   });
-  it('MASTERY_BASE は区分の値: 格闘 120,000 / 銃(武器ごと)・近接 60,000 / サブウェポン 20,000(値そのものを固定するのはこの1本だけ)', () => {
+  it('MASTERY_BASE は区分の値: 格闘・刀・鞭 120,000 / 銃(武器ごと)・近接 60,000 / サブウェポン 20,000(値そのものを固定するのはこの1本だけ)', () => {
     expect(MASTERY_BASE_BY_TIER).toEqual({ brawler: 120_000, gunMelee: 60_000, sub: 20_000 });
-    expect(masteryBaseTierOf('brawler')).toBe('brawler');
+    const brawlerTier = ['brawler', 'katana', 'whip'] as const;
+    for (const k of brawlerTier) expect(masteryBaseTierOf(k), k).toBe('brawler');
+    expect(SUB_TO_MASTERY_KEY['murasame']).toBe('katana');
     for (const k of [...MASTERY_GUN_KEYS, ...MASTERY_MELEE_KEYS]) expect(masteryBaseTierOf(k), k).toBe('gunMelee');
-    for (const k of MASTERY_SUB_KEYS) if (k !== 'brawler') expect(masteryBaseTierOf(k), k).toBe('sub');
+    for (const k of MASTERY_SUB_KEYS) if (!(brawlerTier as readonly string[]).includes(k)) expect(masteryBaseTierOf(k), k).toBe('sub');
     for (const k of GROWING_MASTERY_KEYS) expect(MASTERY_BASE[k], k).toBe(MASTERY_BASE_BY_TIER[masteryBaseTierOf(k)]);
     expect(Object.keys(MASTERY_BASE).sort()).toEqual([...GROWING_MASTERY_KEYS].sort());
   });

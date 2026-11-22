@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5737', items: ['刀・小烏丸・鞭の熟練度は格闘と同じだけ貯めないと上がらなくなり、一度の出撃で一気に育たなくなった'] },
   { version: '0.25.5736', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5735', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5734', items: ['影の中の人や物の明暗が、ゆっくり移ろうようになった。主人公は沈みすぎず、昼の日陰は少し青く冷える'] },

@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5737 — 刀・鞭の熟練度の区分を格闘と同じに【2026-11-22 17:15 JST】
+- 社長の実機: 刀の熟練度が1出撃で Lv1→3(区分 sub=基準20,000/Lv3まで約47,000)。社長指示「格闘と同じ区分にして 鞭も」。
+- 変更: src/data/mastery.ts の MASTERY_TIER_OF で katana・whip を 'brawler'(基準120,000)へ。小烏丸は katana を引くので同じ。src/utils/mastery.test.ts の区分の固定を更新。必要量の数値は不変。貯めた量はそのまま(段階は量から自動で下がる)。
+- 検証: typecheck 0 / eslint 0 / 熟練度まわりのテスト緑。区分で「格闘だけ」を判定している所は無い(grep)。
+- 実装: Opus サブエージェント。
+- 自己点検: 憲法第4条・第5条に抵触しない(熟練度の必要量のみ)。
+
 ## v0.25.5736 — 遠近の投影 段階1: 成果物の監査(A)2件の是正+影の枠【2026-11-22 15:11 JST】
 - 監査(品質・opus): (A)2件=①見える範囲を台形の外接矩形で取り画面外の物と影を大量に作っていた(PCの引きで環境光の影が枠90を食い尽くし爆発の影が0)②松明・緑卵が store の範囲(±520px・`BREAKABLE_PROP_REGION_PAD` として export)の縁でパッと出入り。`?proj=0` の退行・判定への混入は無し。
 - 是正(Opus サブエージェント): ①取得を行ごとの幅の帯8本(`visibleWorldBands`)+画面の箱判定(`projBoxOnScreen`)・影の間引きは投影4隅の外接箱 ②描画側で範囲の縁の手前150pxを smoothstep で0へ(`utils/regionEdgeFade.ts`)。小さいもの: 毎フレームの確保を作り置きへ・destroy で decalMesh/projAuditText 破棄・雨上がりの雫を投影の見える木から・改行の体裁。

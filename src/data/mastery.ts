@@ -88,14 +88,14 @@ export const MASTERY_GROWTH = 1.37;
 /** 「最初から最大」の倍率(= Lv10 の倍率)。 */
 export const MASTERY_MAX_MULT = 1.9;
 
-/** 必要量の区分(格闘 / 銃・近接 / サブウェポン)。 */
+/** 必要量の区分(格闘・刀・鞭 / 銃・近接 / サブウェポン)。 */
 export type MasteryBaseTier = 'brawler' | 'gunMelee' | 'sub';
 
 /**
  * 区分ごとの基準の必要量(Lv1→2 に要る量。以後は段階ごとに ×MASTERY_GROWTH)。
  * 根拠: 2026-11-12 社長の実機で、格闘がステージ1・10分40秒の1出撃で 97,018 貯まった。
  * 狙い = 主に使う武器が約40出撃で Lv10。後半のステージは敵の体力が多いぶん速く貯まる。
- * 格闘の値はこの実測から。銃・近接・サブウェポンは実測待ちの仮の値。
+ * 格闘(刀・鞭も同じ区分)の値はこの実測から。銃・近接・サブウェポンは実測待ちの仮の値。
  * 保存済みの量(zombie.progress.mastery)は量のまま持っているので、必要量を上げれば段階は自動で下がる(移行の処理は無い)。
  */
 export const MASTERY_BASE_BY_TIER: Readonly<Record<MasteryBaseTier, number>> = {
@@ -112,7 +112,9 @@ const MASTERY_TIER_OF: Readonly<Record<GrowingMasteryKey, MasteryBaseTier>> = {
   ...Object.fromEntries(MASTERY_GUN_KEYS.map(k => [k, 'gunMelee'])) as Record<MasteryGunKey, 'gunMelee'>,
   ...Object.fromEntries(MASTERY_MELEE_KEYS.map(k => [k, 'gunMelee'])) as Record<MasteryMeleeKey, 'gunMelee'>,
   brawler: 'brawler',
-  'heavy-grenade': 'sub', dog: 'sub', katana: 'sub', whip: 'sub', alchemy: 'sub', turret: 'sub', 'fire-knife': 'sub',
+  // 刀・鞭は格闘と同じ区分(社長指示2026-11-22「刀・鞭は格闘と同じ区分」・振り続ける主役の近接武器で、与ダメが格闘並みに貯まるため)。
+  katana: 'brawler', whip: 'brawler',
+  'heavy-grenade': 'sub', dog: 'sub', alchemy: 'sub', turret: 'sub', 'fire-knife': 'sub',
   'drone-boomerang': 'sub', 'wire-anchor': 'sub', homing: 'sub', 'shadow-clone': 'sub', molotov: 'sub',
   'sensor-mine': 'sub', 'support-sniper': 'sub', 'junk-weapon': 'sub', 'gold-ring': 'sub', 'arrow-rain': 'sub',
   decoy: 'sub', shield: 'sub', 'first-aid-kit': 'sub',
