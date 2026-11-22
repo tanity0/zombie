@@ -115,10 +115,10 @@ export const projHudDelta = (
 export const projActorK = (s: number, d: number): number => s / (Math.abs(d) > 1e-9 ? d : 1e-9);
 
 /**
- * ★#22「フィルと使者の遠近の例外」(社長の返事待ち): 'B'=位置だけ投影し大きさは 1(今のまま)/'A'=ほかと同じ s。
- * 返事が来るまでは B。ここ1か所を 'A' に変えれば切り替わる(フィルの k の出どころはこの関数だけ)。
+ * ★#22「フィルと使者の遠近の例外」(裁定済み2026-11-22=A): 'A'=ほかと同じ s/'B'=位置だけ投影し大きさは 1(控え)。
+ * フィルの d=1 なので A では k=s。ここ1か所で切り替わる(フィルの k の出どころはこの関数だけ)。
  */
-export const PROJ_PHILL_SIZE_MODE: 'A' | 'B' = 'B';
+export const PROJ_PHILL_SIZE_MODE: 'A' | 'B' = 'A';
 
 /** フィルの後掛けの k(d=フィルの旧い倍率=今は1)。 */
 export const projPhillK = (s: number, d: number, mode: 'A' | 'B' = PROJ_PHILL_SIZE_MODE): number =>

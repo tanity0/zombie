@@ -73,10 +73,10 @@ describe('projActorPass: 後掛けの相似(§3-5c 型②・作る物11)', () =>
     expect(f).toEqual({ x: 12, y: 34, sx: 2, sy: 2 });
   });
 
-  it('★#22: 返事が来るまでは B(フィルの大きさは1=k は 1/d)。A に変えるとほかと同じ s/d', () => {
-    expect(PROJ_PHILL_SIZE_MODE).toBe('B');
-    expect(projPhillK(0.6, 1)).toBe(1);
-    expect(projPhillK(0.6, 1, 'A')).toBeCloseTo(0.6, 12);
+  it('★#22: 裁定 A(フィルもほかと同じ s/d・d=1 なので k=s)。控えの B は大きさ1=k は 1/d', () => {
+    expect(PROJ_PHILL_SIZE_MODE).toBe('A');
+    expect(projPhillK(0.6, 1)).toBeCloseTo(0.6, 12);
+    expect(projPhillK(0.6, 1, 'B')).toBe(1);
   });
 });
 
