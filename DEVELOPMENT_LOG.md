@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5748 — 緑卵の範囲の見せ方: 起爆の瞬間に線の輪を2回点滅【2026-11-23 01:55 JST】
+- 社長指示「緑卵の爆発範囲内表示やめる」→「起爆モードに入った一瞬、ピピっとサークルの線で範囲を表示 に変更」。v0.25.5743 の常時の紫の円窓(塗り・縁の揺らぎ・点滅)を撤去し、`syncEggArmBlinks`(`eggArmBlinkGfx`・地平線の型抜き `eggArmBlinkMask`)で、store の `armedAt` からの経過で円の線だけを2回(点灯90ms・間70ms・計250ms・立ち上がり3割→減速で消える)。半径・中心は判定と同じ。紫 0xc084fc・太さ2。純関数 `eggArmBlinkAlpha`(utils/telegraphFixes.ts)+テスト3件。卵の本体の見た目・爆発・判定・タイミングは不変。
+- 検証: typecheck 0 / eslint 0 / vitest 全体 11377 passed。画: アーム後 30/120/200/300ms を目視(egg-blink-montage.png)。
+- 実装: Opus サブエージェント。自己点検: 憲法第4条・第5条に抵触しない。
+
 ## v0.25.5747 — ステージ1の天候を周回で決める/ステージ5の燃える炎の前後(?proj=1)【2026-11-23 01:25 JST】
 - 社長指示「ステージ1の2周目は必ず雨の舞台にして。その後は晴れと雨でランダムで。」→ `decideStageWeather`・`stage1Lap`(utils/weatherWet.ts)。周回は既存の定義(STAGE1_FIRST_LOOP.md §2=クリアで進む)に従う: 1周目=晴れ/2周目(1周目クリア後・ステージ1未クリアの間は毎回)=雨/3周目以降=出撃の開始で1回だけ半々。`?weather=wet|clear` が優先。ベンチ・練習・ガントレット・ボス試験・`?smoke` は晴れ。決めた値は store の `stageWeather`(出撃の間は不変)、描画は `WEATHER_KNOB` を廃止して store を読む。research/WEATHER_WET.md §4。画: lap1/lap2 を本物のメニューから出撃して目視。未決: 周回=出撃回数の意図なら保存値が要る。
 - 社長報告「ステージ5の燃える残骸の炎が前に出る」→ 原因は v0.25.5735(段階1)で `?proj=1` の時に炎の footY に投影後の足元を渡し、zIndex もそこから作っていた(置物の zIndex は world の足元)。既定では起きない。炎の zIndex を置物の zIndex のすぐ奥(`burningWreckZIndex`)に。既定は同じ値。画: before/after × proj0/proj1。

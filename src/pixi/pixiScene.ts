@@ -13,7 +13,7 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
-import { EGG_DRAW_W, EGG_DRAW_H, EGG_FUSE_MS, EGG_BLAST_RADIUS } from '../world/mines';
+import { EGG_DRAW_W, EGG_DRAW_H, EGG_BLAST_RADIUS } from '../world/mines';
 import type { RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { VIEW_CORE_W } from '../utils/viewport';
 import { setViewTransform } from '../utils/viewTransform';
@@ -209,7 +209,7 @@ import { zombieRushMarkPhase, ZOMBIE_RUSH_MARK_LEAD_S } from '../utils/zombieRus
 import { ZOMBIE_RUSH_MS_MIRROR, ZOMBIE_RUSH_BODY_SLAM_MS } from '../utils/enemyBite';
 import { dashTelegraphPhase, dashTimes, thorDashArrival, dashStrikeBandEnd, type DashLineArgs } from '../utils/dashTelegraph';
 import { thorPlayableAreaCtx } from '../utils/thorDashPushback';
-import { windupProgFromRemain, windupProgFromElapsed, eggBlastProg, phantomTurretBlastProg, bossFireRimAlpha } from '../utils/telegraphFixes';
+import { windupProgFromRemain, windupProgFromElapsed, phantomTurretBlastProg, eggArmBlinkAlpha, EGG_ARM_BLINK_TOTAL_MS, bossFireRimAlpha } from '../utils/telegraphFixes';
 import { MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED, lanceRemainingMs } from '../utils/angelBossTick';
 // ★v0.25.3564(ボスメーカー横展開・第3弾): 天使6体の技の数値は angelScript.ts のテーブルが正本。
 // **判定(angelBossTick)と描画(ここ)が同じ実体を読む**ので、手写しのミラー定数は作らないこと
@@ -5070,7 +5070,6 @@ export class PixiScene {
   // 1枚へ一括描画」方式(数個〜十数個・一過性=軽い。新規per-frame Graphicsの生成はしない)。
   private bloodSpikeGfx = new Graphics();
   private turretTeleGfx = new Graphics();                  // research/TELEGRAPH_FIXES.md N12: 幻影のタレットの消滅爆発(紫の円窓)を全部まとめて1枚
-  private eggTeleGfx = new Graphics();                     // research/TELEGRAPH_FIXES.md N06: アーム済み緑卵の爆発範囲(紫の円窓)を全部まとめて1枚
   private bossFireGfx = new Graphics();                    // ジブリルのランタン火(紫の単発火)を一括描画(予告=赤円/有効=紫火)
   private sensorMineGfx = new Graphics();                  // センサー地雷(sensor-mine)を一括描画(待機=ディスク+ランプ/感知=赤点滅テレグラフ)
   private supportSniperSprite: Sprite | null = null;       // 援護射撃(support-sniper)のNPC(同時1人・護衛軍人スプライト流用のプールSprite)
@@ -11774,7 +11773,7 @@ export class PixiScene {
     if (this.merchantShadow) this.merchantShadow.alpha *= facFade;
     if (facFade <= 0.01) { this.merchantView.visible = false; }
     this.syncBreakableProps(s.breakableProps, now);
-    this.syncEggBlastTelegraphs(s.breakableProps, s.gameTime, now); // research/TELEGRAPH_FIXES.md N06: アーム済みの緑卵の紫の円窓
+    this.syncEggArmBlinks(s.breakableProps, s.gameTime); // research/TELEGRAPH_FIXES.md N06: アームの瞬間だけ範囲の線を2回点す
     this.syncPickups(s.pickups, now);
     this.syncPumpkinTelegraph(s.enemies, now, s.gameTime, s); // ジャンプ攻撃の着地予告(赤い影)
     if (SHOW_HITBOX) this.syncHitboxDebug(s.enemies, s.player, s.gameTime);
@@ -16482,53 +16481,42 @@ export class PixiScene {
     }
   }
 
-  // research/TELEGRAPH_FIXES.md N06(社長裁定6「紫に揃える」): アーム済みの緑卵の爆発範囲を紫の円窓で出す。
-  //   中心=判定と同じ(useGameLoop の緑卵の起爆 `footX, footY − height×0.5`)、半径=EGG_BLAST_RADIUS、
-  //   prog=(gameTime−armedAt)/EGG_FUSE_MS(アームで0・爆ぜる tick で1)。卵の入れ物(地平線フェードの alpha が掛かる)には
-  //   入れず groundLayer の1枚にまとめて描く=判定を持つ予告は地平線で薄れない(敵の手榴弾・地雷と同じ)。
-  //   待ち伏せの卵がまとめてアームされても Graphics は1枚(負荷は「強glow以外はただ」の範囲)。
-  private syncEggBlastTelegraphs(props: BreakableProp[], gameTime: number, now: number): void {
-    const g = this.eggTeleGfx;
+  // research/TELEGRAPH_FIXES.md N06(社長指示「起爆モードに入った一瞬、ピピっとサークルの線で範囲を表示」):
+  //   緑卵がアームした瞬間だけ、爆発の範囲を**円の線だけ**で2回点す(塗りなし)。濃さは純関数 eggArmBlinkAlpha(armedAt からの経過)。
+  //   中心=判定と同じ(useGameLoop の緑卵の起爆 `footX, footY − height×0.5`)、半径=EGG_BLAST_RADIUS。
+  //   色=紫の文法の縁 0xc084fc。卵の入れ物(地平線フェードが掛かる)には入れず groundLayer の1枚にまとめる。
+  //   store の armedAt を読むだけ(描画から書かない)。点滅の間だけ描く=普段は clear 1回のみ。
+  private eggArmBlinkGfx = new Graphics();
+  private eggArmBlinkMask = new Graphics();
+  private syncEggArmBlinks(props: BreakableProp[], gameTime: number): void {
+    const g = this.eggArmBlinkGfx;
     if (!g.parent) this.L.groundLayer.addChild(g);
     g.clear();
-    // ★地平線より上(遠景の森・空)に紫の円が掛からないよう、地面の範囲で切り抜く(待ち伏せの卵が奥に並ぶ時に空へ円が浮く)。
-    //   切る線=アクターを地平線で消すしきい値と同じ world Y(horizonForestFootWorldY)。掛かる卵が在るフレームだけマスクを付ける。
+    // 地平線より上(遠景の森・空)へ円が掛からないよう、地面の範囲で切り抜く(掛かる卵が在るフレームだけ)。
     const hY = this.horizonForestFootWorldY;
     let crossesHorizon = false;
     for (const prop of props) {
-      if (prop.type !== 'mine') continue;
-      const p = eggBlastProg(prop.armedAt, gameTime, EGG_FUSE_MS);
-      if (p === null) continue;
+      if (prop.type !== 'mine' || prop.armedAt === undefined) continue;
+      const el = gameTime - prop.armedAt;
+      if (el < 0 || el >= EGG_ARM_BLINK_TOTAL_MS) continue;
+      const a = eggArmBlinkAlpha(el);
+      if (a <= 0.001) continue;
       const x = prop.footX, y = prop.footY - prop.height * 0.5;
       if (this.distanceOutsideViewport(x, y, EGG_BLAST_RADIUS + 40) > 0) continue;
       if (Number.isFinite(hY) && y - EGG_BLAST_RADIUS < hY) crossesHorizon = true;
-      // 卵の脈(有機的): 周期は卵ごと・他の紫の円(タレット 110ms・地雷)とずらす。
-      const pulse = 0.5 + 0.5 * Math.sin(now / 137 + prop.footX * 0.05);
-      const mask = CIRCLE_SWEEP_ON
-        ? this.drawSweepCircleFill(g, x, y, EGG_BLAST_RADIUS, p, 0x9333ea, telFillA(p, pulse) * TELEGRAPH_FILL_MULT)
-        : (g.circle(x, y, EGG_BLAST_RADIUS).fill({ color: 0x9333ea, alpha: telFillA(p, pulse) * TELEGRAPH_FILL_MULT }), 1);
-      // 縁=少し揺らぐ有機的な線(半径の揺れは±1.5px 未満=判定の円からはみ出して読ませない程度)。
-      const N = 48, ph = prop.footX * 0.11 + now / 420;
-      const pts: number[] = [];
-      for (let i = 0; i < N; i++) {
-        const a = (i / N) * Math.PI * 2;
-        const rr = EGG_BLAST_RADIUS + 1.4 * Math.sin(a * 5 + ph) + 0.8 * Math.sin(a * 9 - ph * 1.7);
-        pts.push(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
-      }
-      g.poly(pts, true).stroke({ width: 2, color: 0xc084fc, alpha: telStrokeA(p, pulse) * mask, join: 'round' });
+      g.circle(x, y, EGG_BLAST_RADIUS).stroke({ width: 2, color: 0xc084fc, alpha: a });
     }
     if (crossesHorizon) {
-      const m = this.eggTeleMask;
+      const m = this.eggArmBlinkMask;
       if (!m.parent) this.L.groundLayer.addChild(m);
       m.clear();
       m.rect(-1e5, hY, 2e5, 2e5).fill({ color: 0xffffff });
       g.mask = m;
     } else if (g.mask) {
       g.mask = null;
-      this.eggTeleMask.clear();
+      this.eggArmBlinkMask.clear();
     }
   }
-  private eggTeleMask = new Graphics();
 
   private syncBreakableProps(props: BreakableProp[], now: number) {
     this.worldLights.length = 0; // ★v0.25.2779: このフレームの光を集め直す(松明はこの下の描画で積まれる)
@@ -22114,7 +22102,7 @@ export class PixiScene {
           ? this.drawSweepCircleFill(g, m.x, m.y, mineR, p, mineFill, telFillA(p, blinkOn ? 1 : 0) * TELEGRAPH_FILL_MULT)
           : (g.circle(m.x, m.y, mineR).fill({ color: mineFill, alpha: telFillA(p, blinkOn ? 1 : 0) * TELEGRAPH_FILL_MULT }), 1);
         g.circle(m.x, m.y, mineR).stroke({ width: 2, color: mineStroke, alpha: telStrokeA(p, blinkOn ? 1 : 0) * mineMask });
-        // 幻影の地雷(紫の円)の縁は機械の刻み(卵の揺らぐ縁と描き分ける)。プレイヤーの地雷の赤は今のまま。
+        // 幻影の地雷(紫の円)の縁は機械の刻み。プレイヤーの地雷の赤は今のまま。
         if (m.hostile) this.drawRimNotches(g, m.x, m.y, mineR, 16, 5, mineStroke, telStrokeA(p, blinkOn ? 1 : 0) * mineMask, Math.PI / 16);
       }
     }
@@ -34425,7 +34413,7 @@ export class PixiScene {
       const r = phantomTurretBlastRadius(actor ? skillExplosionMult(actor) : null);
       const x = p.x + p.width / 2, y = p.y + p.height / 2;
       if (this.distanceOutsideViewport(x, y, r + 40) > 0) continue;
-      // 点滅の周期は物ごとにずらす(卵 137ms・タレット 118ms・幻影の地雷 104ms)=同じ画面で同じ呼吸に揃わない。
+      // 点滅の周期は物ごとにずらす(タレット 118ms・幻影の地雷 104ms)=同じ画面で同じ呼吸に揃わない。
       const pulse = 0.5 + 0.5 * Math.sin(nowMs / 118 + x * 0.05);
       const mask = CIRCLE_SWEEP_ON
         ? this.drawSweepCircleFill(g, x, y, r, prog, 0x9333ea, telFillA(prog, pulse) * TELEGRAPH_FILL_MULT)

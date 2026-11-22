@@ -1,11 +1,11 @@
-// research/TELEGRAPH_FIXES.md の描画側の位相(E21・C04・N06・N12・E05b): ②出る=溜め開始(prog=0) ③消え切る=当たる(prog=1)。
+// research/TELEGRAPH_FIXES.md の描画側の位相(E21・C04・N12・E05b): ②出る=溜め開始(prog=0) ③消え切る=当たる(prog=1)。
 import { describe, it, expect } from 'vitest';
 import {
-  windupProgFromRemain, windupProgFromElapsed, eggBlastProg, phantomTurretBlastProg, bossFireRimAlpha,
+  windupProgFromRemain, windupProgFromElapsed, phantomTurretBlastProg,
+  eggArmBlinkAlpha, EGG_ARM_BLINK_ON_MS, EGG_ARM_BLINK_GAP_MS, EGG_ARM_BLINK_TOTAL_MS, bossFireRimAlpha,
 } from './telegraphFixes';
 import { ANGEL_ACRASIEL_TUNING as AC_T } from './angelScript';
 import { HIDDEN_MIMIR_TUNING as HB_MI } from './hiddenBossScript';
-import { EGG_FUSE_MS, dueArmedEggs } from '../world/mines';
 import { TURRET_EXPLOSION_RADIUS, phantomTurretBlastRadius, PHANTOM_TURRET_TELEGRAPH_MS } from './turretSpec';
 import { SENSOR_MINE_FUSE_MS } from './sensorMine';
 
@@ -25,17 +25,27 @@ describe('C04 ミーミルの車輪', () => {
   });
 });
 
-describe('N06 緑卵の起爆の円', () => {
-  it('アームで0・爆ぜる tick(dueArmedEggs が拾う時刻)で1・アーム前は描かない', () => {
-    const armedAt = 4000;
-    expect(eggBlastProg(armedAt, armedAt, EGG_FUSE_MS)).toBe(0);
-    expect(eggBlastProg(undefined, armedAt, EGG_FUSE_MS)).toBeNull();
-    const egg = { type: 'mine' as const, armedAt, id: 'e', footX: 0, footY: 0, height: 20 };
-    const tBlast = armedAt + EGG_FUSE_MS;
-    expect(dueArmedEggs([egg] as never[], tBlast - 1)).toHaveLength(0);
-    expect(dueArmedEggs([egg] as never[], tBlast)).toHaveLength(1);
-    expect(eggBlastProg(armedAt, tBlast, EGG_FUSE_MS)).toBe(1);
-    expect(eggBlastProg(armedAt, tBlast - 1, EGG_FUSE_MS)!).toBeLessThan(1);
+describe('N06 緑卵のアームの瞬間のピピッ', () => {
+  it('アーム前・点滅の後は0、全体の尺は2回の点灯+間1つ', () => {
+    expect(EGG_ARM_BLINK_TOTAL_MS).toBe(EGG_ARM_BLINK_ON_MS * 2 + EGG_ARM_BLINK_GAP_MS);
+    expect(eggArmBlinkAlpha(-1)).toBe(0);
+    expect(eggArmBlinkAlpha(EGG_ARM_BLINK_TOTAL_MS)).toBe(0);
+    expect(eggArmBlinkAlpha(EGG_ARM_BLINK_TOTAL_MS + 500)).toBe(0);
+  });
+  it('2回点いて、間は消えている', () => {
+    const peak = (from: number) => {
+      let m = 0;
+      for (let t = from; t < from + EGG_ARM_BLINK_ON_MS; t += 1) m = Math.max(m, eggArmBlinkAlpha(t));
+      return m;
+    };
+    expect(peak(0)).toBeGreaterThan(0.95);
+    expect(peak(EGG_ARM_BLINK_ON_MS + EGG_ARM_BLINK_GAP_MS)).toBeGreaterThan(0.95);
+    for (let t = EGG_ARM_BLINK_ON_MS; t < EGG_ARM_BLINK_ON_MS + EGG_ARM_BLINK_GAP_MS; t += 5) expect(eggArmBlinkAlpha(t)).toBe(0);
+  });
+  it('点く瞬間と消える瞬間は0から/0へ(パッと点かない・パッと消えない)', () => {
+    expect(eggArmBlinkAlpha(0)).toBe(0);
+    expect(eggArmBlinkAlpha(2)).toBeLessThan(0.3);
+    expect(eggArmBlinkAlpha(EGG_ARM_BLINK_ON_MS - 2)).toBeLessThan(0.05);
   });
 });
 
