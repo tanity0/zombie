@@ -12,11 +12,11 @@
 // ゲームの判定(当たり・時刻・威力)には一切関与しない。
 
 import {
-  projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, projDistanceFade, type ProjFrame,
+  projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, projDistanceFade, projScreenRowsL, type ProjFrame,
 } from './perspectiveProjection';
 
 /**
- * ★#23「予告の線の太さと遠近」(社長裁定 2026-11-22「予告はb」=B): 太さが判定を表さない線(縁・芯・流星の線・内側の細い輪・白い針)と記号の大きさ。
+ * ★#23「予告の線の太さと遠近」(社長裁定 2026-11-23「予告はb」=B): 太さが判定を表さない線(縁・芯・流星の線・内側の細い輪・白い針)と記号の大きさ。
  * 'A'=画面の上で今の太さのまま/'B'=s を掛ける(採用・奥で 1px 未満まで細る=最小値は社長の判断待ち)/'C'=√s を掛ける。ここ1か所で切り替わる。
  */
 export const PROJ_TELE_LINE_MODE: 'A' | 'B' | 'C' = 'B';
@@ -24,6 +24,12 @@ export const PROJ_TELE_LINE_MODE: 'A' | 'B' | 'C' = 'B';
 /** 線の太さ(または記号の大きさ)に掛ける倍率(★#23)。s=その点の立っている絵の倍率。 */
 export const projTeleLineScale = (s: number, mode: 'A' | 'B' | 'C' = PROJ_TELE_LINE_MODE): number =>
   mode === 'A' ? 1 : mode === 'B' ? Math.max(0, s) : Math.sqrt(Math.max(0, s));
+
+/**
+ * 線の太さの下限(ズーム後の画面px・★#23 の B で奥の線が細り過ぎる時の口)。0=下限なし(今の B のまま)。
+ * 値は社長の判断待ち。下限に当たった所は線を太らせるだけ(形・色・濃さは変えない)。
+ */
+export const PROJ_TELE_LINE_MIN_PX = 0;
 
 /** 分ける規則の目安(ズーム後の画面px・§3-6b)。 */
 export const PROJ_SHAPE_TOL_PX = 0.5;
@@ -55,6 +61,8 @@ export class ProjPathOut {
   pts = 0;
   wyMin = Infinity;
   wyMax = -Infinity;
+  /** 頂点ごとの s(xy と同じ添字・線を頂点ごとの太さの帯で描く時に読む)。 */
+  ss: number[] = [];
   /** 頂点の s の最大と最小(線の太さ・記号の大きさ用)。 */
   sMin = Infinity;
   sMax = -Infinity;
@@ -130,6 +138,7 @@ const CURVE = mkCurve();
 const PA = mkP2(), PB = mkP2();
 
 const noteVertex = (out: ProjPathOut, p: P2) => {
+  out.ss[out.n - 1] = p.s;
   if (p.s < out.sMin) out.sMin = p.s;
   if (p.s > out.sMax) out.sMax = p.s;
   if (p.a > out.aMax) out.aMax = p.a;
@@ -182,7 +191,7 @@ const subdivide = (
   if (emitB) { out.push(b.x, b.y); noteVertex(out, b); }
 };
 
-const copyP2 = (d: P2, s: P2) => { d.x = s.x; d.y = s.y; d.s = s.s; d.a = s.a; d.sx = s.sx; d.sy = s.sy; return d; };
+const copyP2 = (d: P2, s: P2) => { d.x = s.x; d.y = s.y; d.s = s.s; d.a = s.a; d.sx = s.sx; d.sy = s.sy; d.l = s.l; return d; };
 
 /**
  * 曲線 c を t の列 ts[0..k](底の分け方)で、誤差で2分しながら out の今の輪郭へ足す。
@@ -853,6 +862,104 @@ export const projGridSample = (pos: Float32Array, uv: Float32Array, res: ProjGri
     }
   }
   return best;
+};
+
+// ---------------------------------------------------------------------------------------------
+// 線を頂点ごとの太さの帯で描く(★#23=B の本来の形・監査 A-1)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * 線の太さに掛ける s の頭打ち = 画面(+余白 padPx・ズーム後の画面px)の下端の行の s。
+ * 画面の外(南)へ表の外まで延長した頂点の s で、画面に映る線が太らないようにする。
+ */
+export const projLineScaleCap = (f: ProjFrame, padPx: number = PROJ_SHAPE_SCREEN_PAD): number => {
+  const z = f.wgScale > 0 ? f.wgScale : 1;
+  return projScaleAtLocal(f, Math.max(0, projScreenRowsL(f).bottom + padPx / z));
+};
+
+const STRIP_NX: number[] = [];
+const STRIP_NY: number[] = [];
+const STRIP_H: number[] = [];
+
+/**
+ * src の線(輪郭ごと)を、頂点ごとの半幅を持つ帯(塗り用の多角形)にして out へ足す(監査 A-1)。
+ * 頂点 i の半幅 = width/2 × projTeleLineScale(min(s_i, 画面の下端の行の s))。下限は minPx(ズーム後の画面px)。
+ * 1本の線の中で奥は細く・手前は太くなる。開いた線は1輪郭(左の縁→右の縁を逆順)、閉じた線は2つの半分の輪郭
+ * (projAnnulusInto と同じ=穴を開けない)。継ぎ目は頂点の留め(miter・角が鋭い所は 1/0.3 倍で頭打ち)。
+ */
+export const projStrokeStripInto = (
+  f: ProjFrame, src: ProjPathOut, closed: boolean, width: number, out: ProjPathOut,
+  mode: 'A' | 'B' | 'C' = PROJ_TELE_LINE_MODE, minPx: number = PROJ_TELE_LINE_MIN_PX,
+): ProjPathOut => {
+  const z = f.wgScale > 0 ? f.wgScale : 1;
+  const cap = projLineScaleCap(f);
+  const hMin = Math.max(0, minPx) / (2 * z);
+  const hw = Math.max(0, width) / 2;
+  out.pts += src.pts;
+  if (src.wyMin < out.wyMin) out.wyMin = src.wyMin;
+  if (src.wyMax > out.wyMax) out.wyMax = src.wyMax;
+  if (src.aMax > out.aMax) out.aMax = src.aMax;
+  for (let c = 0; c < src.cn; c++) {
+    const s0 = src.contourStart(c), e0 = src.contourEnd(c);
+    const m = e0 - s0;
+    if (m < 2) continue;
+    const wrap = closed && m >= 3;
+    // 頂点ごとの留めの向き(左の法線)と半幅
+    for (let k = 0; k < m; k++) {
+      const i = s0 + k;
+      const x = src.xy[i * 2], y = src.xy[i * 2 + 1];
+      let pnx = 0, pny = 0, nnx = 0, nny = 0, hasP = false, hasN = false;
+      const ip = k > 0 ? i - 1 : wrap ? e0 - 1 : -1;
+      const inx = k < m - 1 ? i + 1 : wrap ? s0 : -1;
+      if (ip >= 0) {
+        const dx = x - src.xy[ip * 2], dy = y - src.xy[ip * 2 + 1], d = Math.hypot(dx, dy);
+        if (d > 1e-9) { pnx = -dy / d; pny = dx / d; hasP = true; }
+      }
+      if (inx >= 0) {
+        const dx = src.xy[inx * 2] - x, dy = src.xy[inx * 2 + 1] - y, d = Math.hypot(dx, dy);
+        if (d > 1e-9) { nnx = -dy / d; nny = dx / d; hasN = true; }
+      }
+      if (!hasP) { pnx = nnx; pny = nny; }
+      if (!hasN) { nnx = pnx; nny = pny; }
+      let mx = pnx + nnx, my = pny + nny;
+      const ml = Math.hypot(mx, my);
+      if (ml > 1e-9) { mx /= ml; my /= ml; } else { mx = nnx; my = nny; }
+      const cosH = Math.max(0.3, mx * nnx + my * nny);
+      const sv = Math.min(src.ss[i] ?? 1, cap);
+      const h = Math.max(hMin, hw * projTeleLineScale(sv, mode));
+      STRIP_NX[k] = mx / cosH; STRIP_NY[k] = my / cosH; STRIP_H[k] = h;
+    }
+    const piece = (k0: number, k1: number) => {
+      // k1 は m を越えてよい(閉じた線の最後の辺 = 最初の頂点へ戻る)
+      out.beginContour();
+      for (let k = k0; k <= k1; k++) {
+        const q = k % m, i = s0 + q;
+        out.push(src.xy[i * 2] + STRIP_NX[q] * STRIP_H[q], src.xy[i * 2 + 1] + STRIP_NY[q] * STRIP_H[q]);
+        out.ss[out.n - 1] = src.ss[i] ?? 1;
+      }
+      for (let k = k1; k >= k0; k--) {
+        const q = k % m, i = s0 + q;
+        out.push(src.xy[i * 2] - STRIP_NX[q] * STRIP_H[q], src.xy[i * 2 + 1] - STRIP_NY[q] * STRIP_H[q]);
+        out.ss[out.n - 1] = src.ss[i] ?? 1;
+      }
+    };
+    if (wrap) {
+      const half = Math.max(1, Math.floor(m / 2));
+      piece(0, half);
+      piece(half, m);
+    } else {
+      piece(0, m - 1);
+    }
+  }
+  return out;
+};
+
+/** 線の帯の頂点 i の半幅(テスト・計器用: projStrokeStripInto と同じ式)。 */
+export const projStrokeHalfWidth = (
+  f: ProjFrame, s: number, width: number, mode: 'A' | 'B' | 'C' = PROJ_TELE_LINE_MODE, minPx: number = PROJ_TELE_LINE_MIN_PX,
+): number => {
+  const z = f.wgScale > 0 ? f.wgScale : 1;
+  return Math.max(Math.max(0, minPx) / (2 * z), (Math.max(0, width) / 2) * projTeleLineScale(Math.min(s, projLineScaleCap(f)), mode));
 };
 
 // ---------------------------------------------------------------------------------------------

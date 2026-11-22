@@ -8,7 +8,8 @@ import {
   ProjPathOut, projPathInto, projCircleInto, projEllipseInto, projArcInto, projSectorInto, projAnnulusInto,
   projAnnulusAnglesFor, projAnnulusRingInto, projQuadStripInto, projRectFrameInto, projGridInto, projGridSample,
   projGridIndices, projLiftInto, projTeleFadeY, projShapeOutside, projTeleLineScale, projVertexInto, projPointInPath,
-  projDistToSeg, projCircleBaseEdges, PROJ_GRID_VERTS, PROJ_TELE_LINE_MODE,
+  projDistToSeg, projCircleBaseEdges, PROJ_GRID_VERTS, PROJ_TELE_LINE_MODE, PROJ_TELE_LINE_MIN_PX,
+  projStrokeStripInto, projStrokeHalfWidth, projLineScaleCap,
 } from './projShape';
 
 // research/PERSPECTIVE_PROJECTION.md §3-6k 受け入れ条件2・3(純関数の分): 投影後の予告の形と、投影した判定の形が一致する。
@@ -512,5 +513,82 @@ describe('projShape: 線の太さ・高さ・濃さ・間引き', () => {
     expect(projShapeOutside(f, f.cxw, f.wRef - 500, 60, 40)).toBe(false);
     expect(projShapeOutside(f, f.cxw + 9000, f.wRef, 60, 40)).toBe(true);
     expect(projShapeOutside(f, f.cxw, f.wRef + 4000, 60, 40)).toBe(true);
+  });
+});
+
+describe('projShape: 線を頂点ごとの太さの帯で描く(監査 A-1・★#23=B)', () => {
+  /** src の折れ線(表示座標)と点の最短距離。 */
+  const distToSrc = (src: ProjPathOut, x: number, y: number, closed: boolean) => {
+    let best = Infinity;
+    for (let c = 0; c < src.cn; c++) {
+      const s0 = src.contourStart(c), e0 = src.contourEnd(c);
+      const last = closed ? e0 : e0 - 1;
+      for (let i = s0; i < last; i++) {
+        const j = i + 1 < e0 ? i + 1 : s0;
+        best = Math.min(best, projDistToSeg(x, y, src.xy[i * 2], src.xy[i * 2 + 1], src.xy[j * 2], src.xy[j * 2 + 1]));
+      }
+    }
+    return best;
+  };
+  const onScrDisp = (f: ProjFrame, x: number, y: number) => {
+    const z = f.wgScale;
+    return onScreen(f, f.wgX + z * (x - f.camX + f.shakeX), f.wgY + z * (y - f.camY + f.shakeY));
+  };
+  const cases = [
+    { name: '縦持ちで主人公を囲む半径300の円(幅2)', sc: SCREENS[0], z: 1, r: 300, w: 2, dy: 0 },
+    { name: '縦持ち・引き 0.4 で半径300(幅2)', sc: SCREENS[0], z: 0.4, r: 300, w: 2, dy: 0 },
+    { name: 'J08 の縁(半径4,500・幅4・主人公は輪の南の内側)', sc: SCREENS[0], z: 1, r: 4500, w: 4, dy: -4300 },
+    { name: '横長 PC・半径300(幅2)', sc: SCREENS[1], z: 1, r: 300, w: 2, dy: 0 },
+  ];
+  for (const cs of cases) {
+    it(`画面に映る区間の太さ ≤ その点の s × 元の太さ/画面の外の延長に引っ張られない: ${cs.name}`, () => {
+      const f = frameAt(cs.sc, cs.z, 0, 0);
+      const src = new ProjPathOut();
+      projCircleInto(f, f.cxw, f.wRef + cs.dy, cs.r, 0.5, src);
+      const strip = new ProjPathOut();
+      projStrokeStripInto(f, src, true, cs.w, strip);
+      expect(strip.cn).toBeGreaterThan(0);
+      const cap = projLineScaleCap(f);
+      let nOn = 0, maxHalf = 0, northHalf = Infinity, southHalf = 0;
+      let minDy = Infinity, maxDy = -Infinity;
+      for (let j = 0; j < strip.n; j++) {
+        const x = strip.xy[j * 2], y = strip.xy[j * 2 + 1];
+        if (!onScrDisp(f, x, y)) continue;
+        nOn++;
+        const d = distToSrc(src, x, y, true);
+        // その点の s × 元の太さの半分以下(留めの誤差 2%)
+        expect(d).toBeLessThanOrEqual(strip.ss[j] * cs.w * 0.5 * 1.02 + 1e-6);
+        // 画面の外の延長の s(表の外の南)に引っ張られない=画面の下端の行の s で頭打ち
+        expect(d).toBeLessThanOrEqual(cap * cs.w * 0.5 * 1.02 + 1e-6);
+        maxHalf = Math.max(maxHalf, d);
+        if (y < minDy) { minDy = y; northHalf = d; }
+        if (y > maxDy) { maxDy = y; southHalf = d; }
+      }
+      expect(nOn).toBeGreaterThan(10);
+      // 画面の上で数 px に収まる(旧: 形全体の s の中央値で k=6.7 倍・J08 は 350px 超の帯)
+      expect(maxHalf * f.wgScale).toBeLessThan(cs.w * 3);
+      // 1本の中で奥は細く・手前は太い
+      if (maxDy - minDy > 50) expect(northHalf).toBeLessThan(southHalf);
+    });
+  }
+
+  it('開いた線も頂点ごとの太さ(南の画面の外へ延びる長い線)・下限の口は既定 0', () => {
+    const f = frameAt(SCREENS[0], 1, 0, 0);
+    expect(PROJ_TELE_LINE_MIN_PX).toBe(0);
+    const src = new ProjPathOut();
+    projPathInto(f, [f.cxw, f.wRef - 600, f.cxw + 40, f.wRef + 6000], false, 0.5, src);
+    const strip = new ProjPathOut();
+    projStrokeStripInto(f, src, false, 3, strip);
+    expect(strip.cn).toBe(1);
+    const cap = projLineScaleCap(f);
+    for (let j = 0; j < strip.n; j++) {
+      const x = strip.xy[j * 2], y = strip.xy[j * 2 + 1];
+      if (!onScrDisp(f, x, y)) continue;
+      expect(distToSrc(src, x, y, false)).toBeLessThanOrEqual(Math.min(strip.ss[j], cap) * 1.5 * 1.02 + 1e-6);
+    }
+    // 下限: 指定した画面px の半分を下回らない(太らせるだけ)
+    expect(projStrokeHalfWidth(f, 0.05, 2, 'B', 3) * f.wgScale).toBeCloseTo(1.5, 9);
+    expect(projStrokeHalfWidth(f, 1, 2, 'B', 0)).toBeCloseTo(1, 9);
+    expect(projStrokeHalfWidth(f, 50, 2, 'B', 0)).toBeCloseTo(cap, 9);
   });
 });

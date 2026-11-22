@@ -10032,10 +10032,19 @@ export class PixiScene {
       if (g.context.instructions.length > 0) drawn++;
       add(direct, name, Math.max(0, projDrawLeak(g)));
     };
-    const texVis = (name: string, sp: Sprite | null | undefined) => { if (sp && !sp.destroyed && sp.visible && sp.alpha > 0.001) add(tex, name, 1); };
+    // 実際に描かれている Sprite か(visible だけでなく renderable・親の visible も見る。projSpriteMesh に載せた Sprite は renderable=false で
+    // メッシュが代わりに描く=漏れではない・監査 A-5)。同じ Sprite を2回数えない。
+    const seenTex = new Set<Sprite>();
+    const drawnSp = (sp: Sprite) => !sp.destroyed && sp.visible && sp.renderable && sp.alpha > 0.001
+      && sp.parent?.visible !== false && sp.parent?.parent?.visible !== false;
+    const texVis = (name: string, sp: Sprite | null | undefined) => {
+      if (!sp || seenTex.has(sp) || !drawnSp(sp)) return;
+      seenTex.add(sp);
+      add(tex, name, 1);
+    };
     const frameNo = this.projFrameNo;
     const pointVis = (name: string, sp: Sprite | null | undefined) => {
-      if (sp && !sp.destroyed && sp.visible && sp.alpha > 0.001 && this.projAuditMarks.get(sp) !== frameNo) add(point, name, 1);
+      if (sp && drawnSp(sp) && this.projAuditMarks.get(sp) !== frameNo) add(point, name, 1);
     };
     const views: [string, ActorView | null | undefined][] = [['player', this.playerView]];
     for (const v of this.enemies.values()) views.push(['enemy', v]);
@@ -10083,6 +10092,36 @@ export class PixiScene {
     gfx('castleFightRingGfx', this.castleFightRingGfx);
     gfx('tutorialBoundsGfx', this.tutorialBoundsGfx);
     gfx('areaCrossGfx', this.areaCrossGfx);
+    gfx('libArrowGfx', this.libArrowGfx); // A15 の降ってくる矢(刺さった矢は libArrowGroundGfx の申告つきの点)
+    // 素材の漏れ(§3-6j 作る物9 の一覧): 血溜まり・ひび・陣・光だまり・水たまり・I07・I08・J13・I04 の光・summonTornado
+    for (const sp of this.bloodPool) texVis('bloodPool', sp);
+    for (const sp of this.crackPool) texVis('groundCrack', sp);
+    for (const v of this.warpCircleSprites.values()) texVis('warpCircle', v.sp);
+    for (const sp of this.bountySummonSprites.values()) texVis('bountySummon', sp);
+    texVis('castleSummon', this.castleSummonCircle);
+    for (const sp of this.glowGroundPool) texVis('glowPool', sp);
+    texVis('playerPool', this.playerGroundPool);
+    this.weatherWet?.projAuditSprites((sp) => texVis('puddle', sp));
+    for (const c of this.gravityWellViews.values()) {
+      if (c.destroyed || !c.visible) continue;
+      for (let i = 0; i < 3 && i < c.children.length; i++) texVis(i === 0 ? 'gravityDark' : 'gravityRing', c.children[i] as Sprite);
+    }
+    for (const v of this.goldRingViews.values()) texVis('goldRing', v.ring);
+    texVis('alchemyCircle', this.alchemyCircle);
+    for (const v of this.groundFireViews.values()) { texVis('groundFireLight', v.light); pointVis('groundFireFlame', v.flameArt); }
+    for (const k of this.groundFireKids.values()) {
+      for (const sp of k.glows) texVis('groundFireKidGlow', sp);
+      for (const sp of k.sprites) pointVis('groundFireKidFlame', sp);
+    }
+    for (const fx of this.rareSummonFx.values()) texVis('summonTornado', fx.tornado);
+    // 点の漏れ(§3-6j 作る物9): E18 の槍・I05 の氷塊と砕け・A17 の墓石(A15 の矢は Graphics=上の直書きの漏れで数える)
+    for (const sp of this.acrasielSpearPool.values()) pointVis('acrasielSpear', sp);
+    for (const v of this.iceLanceFloorViews.values()) {
+      for (const sp of v.blocks) pointVis('iceBlock', sp);
+      for (const sp of v.sparks) pointVis('iceShard', sp);
+    }
+    const graveTex = new Set<Texture>(this.graveFlyCut.values());
+    for (const sp of this.skadiBladePool.values()) if (graveTex.has(sp.texture)) pointVis('grave', sp);
     // 素材の漏れ(段階4の地面の絵): 一度メッシュにした Sprite が、今フレームはメッシュを通らずに描かれたまま(renderable のまま見えている)
     for (const e of this.projSpriteMeshes) {
       const sp = e.sp;
@@ -10485,6 +10524,8 @@ export class PixiScene {
     if (!this.projFrame) return this.horizonActorAlpha(fy) * (fore ? this.foregroundActorAlpha(fy) : 1);
     return this.projActorFade(projectInto(this.projFrame, fx, fy, this.projScratch2), fore ? PixiScene.PROJ_TERMS_BOTH : PixiScene.PROJ_TERMS_HORIZON_ONLY);
   }
+  /** 水たまり(WeatherWetLayer)へ渡す濃さ(?proj=1 の時だけ・投影後のYの地平線フェード・作り置きの閉包)。 */
+  private projWetFade = (x: number, y: number): number => this.projLooseFade(x, y, false);
   private projAuditLoose: { k: string; x: number; y: number }[] = [];
   private projPostLoose() {
     const f = this.projFrame!;
@@ -12864,7 +12905,9 @@ export class PixiScene {
     const size = PixiScene.ALCHEMY_CIRCLE_SIZE * (1 + 0.16 * beat);
     this.alchemyCircle.width = this.alchemyCircle.height = size;
     this.alchemyCircle.alpha = Math.min(1, base * pulse + 0.6 * beat);
-    if (this.projFrame) this.projSpriteMesh(this.alchemyCircle, 'alchemyCircle', PROJ_GRID_SOFT); // ?proj=1(段階4・J13): 足元の陣=格子メッシュ
+    // ?proj=1(段階4・J13): 足元の陣=格子メッシュ。絵は見下ろしの見せかけで縦を潰した楕円(512 四方に 504×296)なので、world では縦へ 1/潰れ 伸ばして
+    // 丸に戻してから投影する(判定なし・クリエイティブ監査14)。リズムの輪(drawAlchemyRhythm)も同じ丸。
+    if (this.projFrame) this.projSpriteMesh(this.alchemyCircle, 'alchemyCircle', PROJ_GRID_SOFT, 1, undefined, { cx: foot.footX, cy: foot.footY, w: size, h: size / ALCHEMY_RHYTHM_SQUASH, rot: 0 });
     this.drawAlchemyRhythm(player, foot.footX, foot.footY, gameTime);
   }
 
@@ -12886,8 +12929,11 @@ export class PixiScene {
     const ey = cy + PixiScene.ALCHEMY_CIRCLE_SIZE * ALCHEMY_RHYTHM_CENTER_DY_FRAC;
     // ?proj=1(段階4・J13): リズムの輪は陣と同じ中心・同じ潰れの world の楕円として頂点ごとに投影(陣とずれない)
     const pf = this.projFrame;
-    const ringS = (rad: number, st: StrokeStyle) => { if (pf) projEllipse(g, pf, cx, ey, rad, rad * ALCHEMY_RHYTHM_SQUASH, 0, undefined, st); else g.ellipse(cx, ey, rad, rad * ALCHEMY_RHYTHM_SQUASH).stroke(st); };
-    const ringF = (rad: number, fl: FillInput) => { if (pf) projEllipse(g, pf, cx, ey, rad, rad * ALCHEMY_RHYTHM_SQUASH, 0, fl); else g.ellipse(cx, ey, rad, rad * ALCHEMY_RHYTHM_SQUASH).fill(fl); };
+    // ?proj=1: 陣の絵(見下ろしの見せかけで縦を潰した楕円)は syncAlchemyCircle が world で丸に戻してから投影する=輪も丸(判定なし・クリエイティブ監査14)。
+    //   絵は中心(足元)を支点に縦へ 1/潰れ 伸ばすので、絵の中身の中心のずれも 1/潰れ 倍になる。
+    const eyP = cy + (ey - cy) / ALCHEMY_RHYTHM_SQUASH;
+    const ringS = (rad: number, st: StrokeStyle) => { if (pf) projCircle(g, pf, cx, eyP, rad, undefined, st); else g.ellipse(cx, ey, rad, rad * ALCHEMY_RHYTHM_SQUASH).stroke(st); };
+    const ringF = (rad: number, fl: FillInput) => { if (pf) projCircle(g, pf, cx, eyP, rad, fl); else g.ellipse(cx, ey, rad, rad * ALCHEMY_RHYTHM_SQUASH).fill(fl); };
     // 的の輪: いつも薄く在り、輪が近づくほど明るく太くなる(打つ場所と瞬間を読ませる)。
     let near = 0;
     for (const rg of r.rings) {
@@ -14687,6 +14733,7 @@ export class PixiScene {
       rainRun: s7 ? this.s7Weather.run : undefined,
       stageId: getSelectedStageId(),
       projGrid: this.projFrame, // ?proj=1 の時だけ: 水たまりの地面の4枚を格子メッシュで頂点ごとに投影(段階4・K01)
+      projFade: this.projFrame ? this.projWetFade : undefined, // ?proj=1 の時だけ: 水たまりの濃さは投影後のY(§3-6f・監査 A-2)
     });
   }
 
@@ -20448,7 +20495,7 @@ export class PixiScene {
         sp.rotation = b.launched ? spinDir * 4.2 * ft * ft / (ft + 0.35) : jx * 0.018;
         sp.skew.x = 0;
         sp.tint = this.envTintNow();
-        sp.alpha = this.horizonActorAlpha(footY) * this.foregroundActorAlpha(footY);
+        sp.alpha = pf ? this.projLooseFade(b.x, footY) : this.horizonActorAlpha(footY) * this.foregroundActorAlpha(footY); // ?proj=1: 投影後のY(監査 A-4)
         sp.zIndex = footY;
         const lift = Math.max(0, Math.min(1, up));
         const rx = 19 * gr.scale * ds * (1 - 0.3 * lift);
@@ -20458,9 +20505,8 @@ export class PixiScene {
           const k = q.s / (ds || 1);
           sp.position.set(q.x + (sp.position.x - b.x) * k, q.y + (sp.position.y - footY) * k);
           sp.scale.set(sp.scale.x * k, sp.scale.y * k);
-          sp.alpha = this.projLooseFade(b.x, footY);
           const rw = 19 * gr.scale * (1 - 0.3 * lift);
-          projEllipse(this.graveBandGfx, pf, b.x, footY - 2, rw, rw * 0.34, 0, { color: 0x000000, alpha: 0.34 * (1 - 0.45 * lift) * sp.alpha });
+          projEllipse(this.graveBandGfx, pf, b.x, footY - 2, rw, rw, 0, { color: 0x000000, alpha: 0.34 * (1 - 0.45 * lift) * sp.alpha }); // ?proj=1: 影(判定なし)は world で丸に戻してから投影(クリエイティブ監査14)
         } else this.graveBandGfx.ellipse(b.x, footY - 2, rx, rx * 0.34).fill({ color: 0x000000, alpha: 0.34 * (1 - 0.45 * lift) * sp.alpha });
       }
       sp.visible = true;
@@ -21050,9 +21096,12 @@ export class PixiScene {
       const grow = prog * prog * (3 - 2 * prog);
       const fl = 0.8 + 0.2 * Math.sin(now / 45) + 0.1 * Math.sin(now / 23);
       const pr = (2 + 5 * grow) * fl;
+      // 種火は判定を持たない飾り(撃つ本人の手元の絵)=投影しない申告(敵に直に描いている飾りと同じ扱い=④でまとめて)
+      const nEmber = projCmdCount(g);
       g.circle(mx, my, pr * 2.4).fill({ color: 0x7b2cbf, alpha: 0.22 * grow });
       g.ellipse(mx, my - pr * 0.3, pr, pr * 1.5).fill({ color: 0xc77dff, alpha: 0.75 * grow });
       g.circle(mx, my - pr * 0.2, pr * 0.45).fill({ color: 0xf3e8ff, alpha: 0.9 * grow });
+      if (pf) projKeepFrom(g, nEmber);
     } else if (phase === 'spray') {
       // 着火の瞬間に縁が一度太く光り(フレア)、減速しながら落ち着く。以後は炎のちらつきに合わせてわずかに脈打つ。
       const since = gameTime - (ph.gpFlamerSprayStartAt ?? gameTime);
@@ -21586,7 +21635,7 @@ export class PixiScene {
         const ang = Math.atan2(1, -side * LIB_ARROW_FALL_SLANT) + s2.tilt * 2;
         if (pf) {
           // ?proj=1(段階4・A15 の刺さった矢): 接地の影は world の楕円を投影・矢(立つ絵)は根元の点+s(投影しない申告)
-          projEllipse(g, pf, s2.x, s2.y + 1, 5, 2, 0, { color: 0x000000, alpha: 0.35 * fade });
+          projEllipse(g, pf, s2.x, s2.y + 1, 5, 5, 0, { color: 0x000000, alpha: 0.35 * fade }); // ?proj=1: 見下ろしの見せかけの潰れ(判定なし)は world で丸に戻してから投影(クリエイティブ監査14)
           const q = this.projPlace(s2.x, s2.y + 2);
           const n0 = projCmdCount(g);
           drawArrow(g, q.x, q.y, ang, (26 + 14 * r1) * q.s, fade * 0.95);
@@ -21675,7 +21724,7 @@ export class PixiScene {
       const s = 0.95 * p.scale * ds;
       const sW = 0.95 * p.scale;
       const h0 = rainHash01(p.x, p.y, 300), h1 = rainHash01(p.x, p.y, 301), h2 = rainHash01(p.x, p.y, 302);
-      const hz = this.horizonActorAlpha(p.y);
+      const hz = pf ? this.projLooseFade(p.x, p.y, false) : this.horizonActorAlpha(p.y); // ?proj=1: 投影後のY(§3-6f・監査 A-4)
       const sx = p.flip ? -s : s;
       if (gameTime < p.landAt) {
         // 落ちてくる間(§12-1): 技の残骸と同じく、刺さる直前に空からほぼ一直線に叩きつける(赤い予告は投げ物の台帳の当たりが描く)。
@@ -21684,7 +21733,7 @@ export class PixiScene {
         const u = clamp01((gameTime - fallAt) / Math.max(1, p.landAt - fallAt)), k = u * u;
         const stx = p.x + (h1 < 0.5 ? -1 : 1) * (20 + 50 * h2), sty = p.y - 520;
         const px = stx + (p.x - stx) * k, py = sty + (p.y - sty) * k;
-        if (pf) projEllipse(gu, pf, p.x, p.y, (6 + 16 * u) * sW, (2.5 + 6 * u) * sW, 0, { color: 0x000000, alpha: (0.12 + 0.3 * u) * hz });
+        if (pf) projEllipse(gu, pf, p.x, p.y, (6 + 16 * u) * sW, (6 + 16 * u) * sW, 0, { color: 0x000000, alpha: (0.12 + 0.3 * u) * hz });
         else gu.ellipse(p.x, p.y, (6 + 16 * u) * s, (2.5 + 6 * u) * s).fill({ color: 0x000000, alpha: (0.12 + 0.3 * u) * hz });
         // 速さの筋: 根元が太く濃く、尾へ細く薄れる(1本の棒に見せない)。
         const tl = (30 + 50 * u) * ds, ang = Math.atan2(py - sty, px - stx), cx = Math.cos(ang), cy = Math.sin(ang);
@@ -21715,8 +21764,8 @@ export class PixiScene {
             { color: 0x140f0b, alpha: (0.42 - 0.24 * f) * fade });
         }
         if (p.smoke) {
-          projEllipse(gu, pf, p.x + side * 4 * sW, p.y + 2 * sW, 34 * sW, 10 * sW, 0, { color: 0x0c0907, alpha: 0.22 * fade });
-          projEllipse(gu, pf, p.x - side * 6 * sW, p.y + 1 * sW, 24 * sW, 7 * sW, 0, { color: 0x0c0907, alpha: 0.18 * fade });
+          projEllipse(gu, pf, p.x + side * 4 * sW, p.y + 2 * sW, 34 * sW, 34 * sW, 0, { color: 0x0c0907, alpha: 0.22 * fade });
+          projEllipse(gu, pf, p.x - side * 6 * sW, p.y + 1 * sW, 24 * sW, 24 * sW, 0, { color: 0x0c0907, alpha: 0.18 * fade });
         }
       } else {
         for (let k = 0; k < 4; k++) {
@@ -21874,8 +21923,8 @@ export class PixiScene {
           // 影: 広く淡い外側と、近づくほど小さく濃く締まる芯(等間隔の縞にしない)。
           if (pf) {
             // ?proj=1(A12): 影の楕円は world の寸法(dsY を外す)で頂点ごとに投影
-            projEllipse(g, pf, t.x, t.y, 60 + 110 * sh, 24 + 44 * sh, 0, { color: 0x000000, alpha: 0.05 + 0.1 * sh });
-            projEllipse(g, pf, t.x, t.y, 24 + 70 * sh * sh, 10 + 28 * sh * sh, 0, { color: 0x000000, alpha: 0.1 + 0.38 * sh * sh });
+            projEllipse(g, pf, t.x, t.y, 60 + 110 * sh, 60 + 110 * sh, 0, { color: 0x000000, alpha: 0.05 + 0.1 * sh });
+            projEllipse(g, pf, t.x, t.y, 24 + 70 * sh * sh, 24 + 70 * sh * sh, 0, { color: 0x000000, alpha: 0.1 + 0.38 * sh * sh });
           } else {
             const dsY = this.depthScale(t.y);
             g.ellipse(t.x, t.y, (60 + 110 * sh) * dsY, (24 + 44 * sh) * dsY).fill({ color: 0x000000, alpha: 0.05 + 0.1 * sh });
@@ -21958,7 +22007,7 @@ export class PixiScene {
           const ang = Math.atan2((t.y - footY) + handH - H * 4 * (1 - 2 * ue), t.x - handX);
           const ds = this.depthScale(gy);
           const ign = clamp01(sinceRel / 160); // 点火は一拍遅れて全開になる(握っている間は0)
-          if (pf) projEllipse(g, pf, gx, gy, 10, 4, 0, { color: 0x000000, alpha: 0.18 + 0.25 * flyU }); // ?proj=1: 地面の影=world の寸法で投影
+          if (pf) projEllipse(g, pf, gx, gy, 10, 10, 0, { color: 0x000000, alpha: 0.18 + 0.25 * flyU }); // ?proj=1: 地面の影=world の寸法で投影
           else g.ellipse(gx, gy, 10 * ds, 4 * ds).fill({ color: 0x000000, alpha: 0.18 + 0.25 * flyU });
           for (let k = 1; k <= 5; k++) {
             const jh = rainHash01(t.x, t.y, k + 200);
@@ -21973,7 +22022,7 @@ export class PixiScene {
           // 焦げ跡(絵だけ)。燻りの火の粉が消えてから跡が薄れる。
           const age = gameTime - t.hitAt, f = 1 - Math.pow(clamp01(age / ASTRO_MISSILE_SCORCH_MS), 2);
           const ds = this.depthScale(t.y);
-          if (pf) projEllipse(g, pf, t.x, t.y, t.radius * 0.5, t.radius * 0.36, 0, { color: 0x17110d, alpha: 0.5 * f });
+          if (pf) projEllipse(g, pf, t.x, t.y, t.radius * 0.5, t.radius * 0.5, 0, { color: 0x17110d, alpha: 0.5 * f });
           else g.ellipse(t.x, t.y, t.radius * 0.5 * ds, t.radius * 0.36 * ds).fill({ color: 0x17110d, alpha: 0.5 * f });
           for (let i = 0; i < 6; i++) {
             const h1 = rainHash01(t.x, t.y, i + 50), h2 = rainHash01(t.x, t.y, i + 70);
@@ -22058,7 +22107,7 @@ export class PixiScene {
           }));
           const px = st.x + (t.x - st.x) * k, py = st.y + (t.y - st.y) * k;
           const ds = this.depthScale(t.y);
-          if (pf) projEllipse(g, pf, t.x, t.y, 6 + 16 * u, 2.5 + 6 * u, 0, { color: 0x000000, alpha: 0.12 + 0.35 * u });
+          if (pf) projEllipse(g, pf, t.x, t.y, 6 + 16 * u, 6 + 16 * u, 0, { color: 0x000000, alpha: 0.12 + 0.35 * u });
           else g.ellipse(t.x, t.y, (6 + 16 * u) * ds, (2.5 + 6 * u) * ds).fill({ color: 0x000000, alpha: 0.12 + 0.35 * u });
           // 速さの筋: 落ちてきた向きへ細くなる焼けた尾(空気を裂く)。
           const tl = (60 + 120 * u) * ds, ang = Math.atan2(py - st.y, px - st.x);
@@ -22110,8 +22159,8 @@ export class PixiScene {
           const ds = this.depthScale(t.y), R = t.radius * 0.42 * ds;
           const Rw = t.radius * 0.42; // ?proj=1: world の寸法(ds を外す)
           if (pf) {
-            projEllipse(g, pf, t.x, t.y, Rw * 1.25, Rw * 0.9, 0, { color: 0x2a1d16, alpha: 0.4 * f });
-            projEllipse(g, pf, t.x, t.y, Rw, Rw * 0.7, 0, { color: 0x0f0a08, alpha: 0.6 * f }, { width: 3, color: 0x5b4334, alpha: 0.7 * f });
+            projEllipse(g, pf, t.x, t.y, Rw * 1.25, Rw * 1.25, 0, { color: 0x2a1d16, alpha: 0.4 * f });
+            projEllipse(g, pf, t.x, t.y, Rw, Rw, 0, { color: 0x0f0a08, alpha: 0.6 * f }, { width: 3, color: 0x5b4334, alpha: 0.7 * f });
           } else {
             g.ellipse(t.x, t.y, R * 1.25, R * 0.9).fill({ color: 0x2a1d16, alpha: 0.4 * f });
             g.ellipse(t.x, t.y, R, R * 0.7).fill({ color: 0x0f0a08, alpha: 0.6 * f });
@@ -22138,7 +22187,7 @@ export class PixiScene {
           const gx = handX + (t.x - handX) * u, gy = footY + (t.y - footY) * u;
           const h = handH * (1 - u) + H * 4 * u * (1 - u);
           const ds = this.depthScale(gy);
-          if (pf) projEllipse(g, pf, gx, gy, 8, 3, 0, { color: 0x000000, alpha: 0.15 + 0.2 * u });
+          if (pf) projEllipse(g, pf, gx, gy, 8, 8, 0, { color: 0x000000, alpha: 0.15 + 0.2 * u });
           else g.ellipse(gx, gy, 8 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.15 + 0.2 * u });
           // ゆっくり回りながら、着く時に地面に寝る角度へ(着いた瞬間に角度が跳ばない)。
           if (!this.placeAstroArt(t.id, astroThrowArtFrame('bouquet'), this.L.skyFxLayer, gx, gy - h, -0.5 + (LIE_ROT + 0.5) * u, 0.85 * ds * appear, 0.85 * ds * appear, 1, 0.5, ANC_Y)) {
@@ -22295,7 +22344,7 @@ export class PixiScene {
       const size = ds * (1 - 0.15 * 4 * u * (1 - u)); // 頂点で少し縮む
       // 監査 #10: 落ちる先に縮んで濃くなる影(危険の色ではない=黒)。
       const gsy = h.y + (gy - h.y) * (1 - u);
-      if (pf) projEllipse(g, pf, gx, gsy + 1, 9 - 4 * u, 3.6 - 1.6 * u, 0, { color: 0x000000, alpha: 0.08 + 0.3 * u });
+      if (pf) projEllipse(g, pf, gx, gsy + 1, 9 - 4 * u, 9 - 4 * u, 0, { color: 0x000000, alpha: 0.08 + 0.3 * u });
       else g.ellipse(gx, gsy + 1, (9 - 4 * u) * ds, (3.6 - 1.6 * u) * ds).fill({ color: 0x000000, alpha: 0.08 + 0.3 * u });
       drawRainArrow(a, gx, gy - lift, ang, 46 * size, 1);
     }
@@ -22312,7 +22361,7 @@ export class PixiScene {
       // 監査 #13: 刺さった直後だけ少し深くめり込んで戻る(瞬停にしない)+鏃に白い光の1点。
       const settle = age < PLAYER_RAIN_SETTLE_MS ? 1.15 - 0.15 * (1 - (1 - age / PLAYER_RAIN_SETTLE_MS) ** 2) : 1;
       if (pf) {
-        projEllipse(g, pf, s2.x, s2.y + 1, 5, 2, 0, { color: 0x000000, alpha: 0.35 * fade });
+        projEllipse(g, pf, s2.x, s2.y + 1, 5, 5, 0, { color: 0x000000, alpha: 0.35 * fade }); // ?proj=1: 見下ろしの見せかけの潰れ(判定なし)は world で丸に戻してから投影(クリエイティブ監査14)
         const q = this.projPlace(s2.x, s2.y + 2);
         const n0 = projCmdCount(g);
         drawRainArrow(g, q.x, q.y, ang, (26 + 14 * r1) * q.s * settle, fade * 0.95);
@@ -37420,8 +37469,8 @@ export class PixiScene {
         // 影(暗い)+光溜まり(光弾の色が地面に落ちる)=落ちるほど締まって濃くなる(二乗=落下の加速)。
         const uu = u * u;
         const sr = 26 - 12 * uu;
-        if (pf) projEllipse(g, pf, l.x, l.y, sr, sr * 0.45, 0, { color: 0x0b0716, alpha: 0.18 + 0.32 * uu }); else g.ellipse(l.x, l.y, sr, sr * 0.45).fill({ color: 0x0b0716, alpha: 0.18 + 0.32 * uu });
-        if (pf) projEllipse(g, pf, l.x, l.y, sr * 1.25, sr * 0.55, 0, { color: 0x5fb8ff, alpha: 0.08 + 0.17 * uu }); else g.ellipse(l.x, l.y, sr * 1.25, sr * 0.55).fill({ color: 0x5fb8ff, alpha: 0.08 + 0.17 * uu });
+        if (pf) projEllipse(g, pf, l.x, l.y, sr, sr, 0, { color: 0x0b0716, alpha: 0.18 + 0.32 * uu }); else g.ellipse(l.x, l.y, sr, sr * 0.45).fill({ color: 0x0b0716, alpha: 0.18 + 0.32 * uu });
+        if (pf) projEllipse(g, pf, l.x, l.y, sr * 1.25, sr * 1.25, 0, { color: 0x5fb8ff, alpha: 0.08 + 0.17 * uu }); else g.ellipse(l.x, l.y, sr * 1.25, sr * 0.55).fill({ color: 0x5fb8ff, alpha: 0.08 + 0.17 * uu });
         // 光弾: 描画の進みは打ち上げで速く降りで緩む(着地の時刻は変えない)。高さで芯が大きくなり、尾を3つ引く。
         const ud = 1 - Math.pow(1 - u, 1.25);
         for (let tr = 3; tr >= 0; tr--) {
@@ -43228,7 +43277,7 @@ export class PixiScene {
             if (d < passed) continue;
             const side = (k % 2 === 0 ? 1 : -1) * 14;
             const px = e.heroFromX + ux * d + nx * side, py = e.heroFromY + uy * d + ny * side;
-            if (pf) projEllipse(o, pf, px, py, 7, 4.5, 0, { color: 0xe7dccb, alpha: a });
+            if (pf) projEllipse(o, pf, px, py, 7, 7, 0, { color: 0xe7dccb, alpha: a });
             else o.ellipse(px, py, 7, 4.5).fill({ color: 0xe7dccb, alpha: a });
           }
         }

@@ -12,7 +12,8 @@ import type { ProjFrame } from '../utils/perspectiveProjection';
 import {
   ProjPathOut, projCircleInto, projEllipseInto, projArcInto, projSectorInto, projAnnulusInto, projAnnulusAnglesFor,
   projAnnulusRingInto, projQuadStripInto, projRectFrameInto, projPathInto, projGridInto, projGridIndices, projVertexInto,
-  projLiftInto, projTeleLineScale, PROJ_SHAPE_TOL_PX, PROJ_GRID_VERTS, PROJ_GRID_MAX, type ProjFrame4, type ProjGridResult,
+  projLiftInto, projTeleLineScale, projStrokeStripInto, PROJ_SHAPE_TOL_PX, PROJ_GRID_VERTS, PROJ_GRID_MAX, PROJ_TELE_LINE_MODE,
+  PROJ_TELE_LINE_MIN_PX, type ProjFrame4, type ProjGridResult,
 } from '../utils/projShape';
 
 /** 1つの Graphics の今フレームの記録。 */
@@ -99,23 +100,38 @@ const trace = (g: Graphics, out: ProjPathOut, closed: boolean) => {
   }
 };
 
-/** 線の太さ(★#23「予告の線の太さと遠近」)。A=今のまま。B/C は形の s の中央値で掛ける。 */
-const lineStroke = (st: StrokeStyle, out: ProjPathOut): StrokeStyle => {
-  const k = projTeleLineScale(out.sMax >= out.sMin ? 0.5 * (out.sMin + out.sMax) : 1);
-  if (k === 1) return st;
-  return { ...st, width: (st.width ?? 1) * k };
+/** 線の太さが画面の上で今のまま(★#23 が A で下限なし)なら Graphics の線のまま描く。 */
+const LINE_AS_STROKE = PROJ_TELE_LINE_MODE === 'A' && !(PROJ_TELE_LINE_MIN_PX > 0);
+const STRIP = new ProjPathOut();
+let paintFrame: ProjFrame | null = null;
+
+/**
+ * 線(★#23「予告の線の太さと遠近」・監査 A-1): B/C は頂点ごとの半幅の帯として塗る(1本の中で奥は細く・手前は太い)。
+ * s は画面(+余白)の下端の行の値で頭打ち=画面の外へ延長した頂点に太さを引っ張られない。
+ */
+const strokeLine = (g: Graphics, out: ProjPathOut, st: StrokeStyle, closed: boolean) => {
+  const f = paintFrame;
+  if (LINE_AS_STROKE || !f) { trace(g, out, closed); g.stroke(st); return; }
+  STRIP.reset();
+  projStrokeStripInto(f, out, closed, st.width ?? 1, STRIP);
+  if (STRIP.cn === 0) return;
+  trace(g, STRIP, true);
+  const fs: { color?: StrokeStyle['color']; alpha?: number } = {};
+  if (st.color !== undefined) fs.color = st.color;
+  if (st.alpha !== undefined) fs.alpha = st.alpha;
+  g.fill(fs as FillInput);
 };
 
-const paint = (g: Graphics, out: ProjPathOut, fill: FillInput | undefined, stroke: StrokeStyle | undefined, closed: boolean) => {
+const paint = (g: Graphics, out: ProjPathOut, fill: FillInput | undefined, stroke: StrokeStyle | undefined, closed: boolean, f?: ProjFrame) => {
   if (fill !== undefined) { trace(g, out, closed); g.fill(fill); }
-  if (stroke !== undefined) { trace(g, out, closed); g.stroke(lineStroke(stroke, out)); }
+  if (stroke !== undefined) { paintFrame = f ?? null; strokeLine(g, out, stroke, closed); paintFrame = null; }
 };
 
 /** 円(縁は projCircleInto の頂点列)。 */
 export const projCircle = (g: Graphics, f: ProjFrame, wx: number, wy: number, r: number, fill?: FillInput, stroke?: StrokeStyle): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projCircleInto(f, wx, wy, r, TOL, OUT);
-  paint(g, OUT, fill, stroke, true);
+  paint(g, OUT, fill, stroke, true, f);
   record(g, n0, OUT);
 };
 
@@ -132,7 +148,7 @@ export const projCircleLifted = (
   projVertexInto(f, wx, wy, Q4L);
   const dy = -h * Q4L.s;
   for (let i = 0; i < OUT.n; i++) OUT.xy[i * 2 + 1] += dy;
-  paint(g, OUT, fill, stroke, true);
+  paint(g, OUT, fill, stroke, true, f);
   record(g, n0, OUT);
 };
 const Q4L = { x: 0, y: 0, s: 1, a: 1, sx: 0, sy: 0 };
@@ -143,7 +159,7 @@ export const projEllipse = (
 ): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projEllipseInto(f, wx, wy, rx, ry, rot, TOL, OUT);
-  paint(g, OUT, fill, stroke, true);
+  paint(g, OUT, fill, stroke, true, f);
   record(g, n0, OUT);
 };
 
@@ -151,7 +167,7 @@ export const projEllipse = (
 export const projArcLine = (g: Graphics, f: ProjFrame, cx: number, cy: number, r: number, a0: number, a1: number, stroke: StrokeStyle): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projArcInto(f, cx, cy, r, a0, a1, TOL, OUT);
-  paint(g, OUT, undefined, stroke, false);
+  paint(g, OUT, undefined, stroke, false, f);
   record(g, n0, OUT);
 };
 
@@ -161,7 +177,7 @@ export const projSector = (
 ): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projSectorInto(f, cx, cy, r, a0, a1, TOL, OUT);
-  paint(g, OUT, fill, stroke, true);
+  paint(g, OUT, fill, stroke, true, f);
   record(g, n0, OUT);
 };
 
@@ -171,7 +187,7 @@ export const projAnnulus = (
 ): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projAnnulusInto(f, cx, cy, r0, r1, a0, a1, TOL, OUT);
-  paint(g, OUT, fill, undefined, true);
+  paint(g, OUT, fill, undefined, true, f);
   record(g, n0, OUT);
 };
 
@@ -188,7 +204,7 @@ export const projRingsBegin = (
 export const projRing = (g: Graphics, f: ProjFrame, rs: { cx: number; cy: number; n: number; full: boolean }, r0: number, r1: number, fill: FillInput): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projAnnulusRingInto(f, rs.cx, rs.cy, r0, r1, rs.n, rs.full, OUT);
-  paint(g, OUT, fill, undefined, true);
+  paint(g, OUT, fill, undefined, true, f);
   record(g, n0, OUT);
 };
 
@@ -202,7 +218,7 @@ export const projBand = (
 ): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projQuadStripInto(f, fx, fy, tx, ty, hw, s0, s1, capBack, capFront, TOL, OUT);
-  paint(g, OUT, fill, stroke, true);
+  paint(g, OUT, fill, stroke, true, f);
   record(g, n0, OUT);
 };
 
@@ -222,7 +238,7 @@ export const projThickLine = (
 export const projLine = (g: Graphics, f: ProjFrame, wpts: ArrayLike<number>, stroke: StrokeStyle, closed = false): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projPathInto(f, wpts, closed, TOL, OUT);
-  paint(g, OUT, undefined, stroke, closed);
+  paint(g, OUT, undefined, stroke, closed, f);
   record(g, n0, OUT);
 };
 
@@ -237,7 +253,7 @@ export const projSeg = (g: Graphics, f: ProjFrame, ax: number, ay: number, bx: n
 export const projPoly = (g: Graphics, f: ProjFrame, wpts: ArrayLike<number>, fill?: FillInput, stroke?: StrokeStyle): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projPathInto(f, wpts, true, TOL, OUT);
-  paint(g, OUT, fill, stroke, true);
+  paint(g, OUT, fill, stroke, true, f);
   record(g, n0, OUT);
 };
 
@@ -275,7 +291,7 @@ export const projRectFrame = (
 ): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projRectFrameInto(f, rect, r0, r1, TOL, OUT);
-  paint(g, OUT, fill, undefined, true);
+  paint(g, OUT, fill, undefined, true, f);
   record(g, n0, OUT);
 };
 
@@ -294,12 +310,25 @@ export const projGlyph = (f: ProjFrame, wx: number, wy: number, g?: Graphics): P
   return GLY;
 };
 
+/** 記号の塗り/線の alpha に、中心の定義域と描く距離のフェード a(地平線の外の消え方)を掛ける(監査12)。 */
+const glyphFill = (fill: FillInput, a: number): FillInput => {
+  if (a >= 1) return fill;
+  if (typeof fill === 'number' || typeof fill === 'string') return { color: fill, alpha: a };
+  if (fill && typeof fill === 'object' && !Array.isArray(fill) && ('color' in fill || 'alpha' in fill)) {
+    const o = fill as { alpha?: number };
+    return { ...(fill as object), alpha: (o.alpha ?? 1) * a } as FillInput;
+  }
+  return fill;
+};
+const glyphStroke = (st: StrokeStyle, a: number): StrokeStyle => (a >= 1 ? st : { ...st, alpha: (st.alpha ?? 1) * a });
+
 /** 中心だけ投影した円の記号(頭の輝点・終点の輪)。半径は今のまま(★#23 の倍率 k を掛ける)。 */
 export const projGlyphCircle = (g: Graphics, f: ProjFrame, wx: number, wy: number, r: number, fill?: FillInput, stroke?: StrokeStyle): void => {
   const n0 = g.context.instructions.length;
   const q = projGlyph(f, wx, wy, g);
-  if (fill !== undefined) g.circle(q.x, q.y, r * q.k).fill(fill);
-  if (stroke !== undefined) g.circle(q.x, q.y, r * q.k).stroke(stroke);
+  if (!(q.a > 0)) return; // 地平線より北・描く距離の先=描かない
+  if (fill !== undefined) g.circle(q.x, q.y, r * q.k).fill(glyphFill(fill, q.a));
+  if (stroke !== undefined) g.circle(q.x, q.y, r * q.k).stroke(glyphStroke(stroke, q.a));
   statOf(g).cmds += g.context.instructions.length - n0;
 };
 /** 中心だけ投影した潰れた楕円の印(突進の線の終点の印・ゾンビの印)。形と大きさは今のまま(★#23 の倍率 k を掛ける)。 */
@@ -308,8 +337,9 @@ export const projGlyphEllipse = (
 ): void => {
   const n0 = g.context.instructions.length;
   const q = projGlyph(f, wx, wy, g);
-  if (fill !== undefined) g.ellipse(q.x, q.y, rx * q.k, ry * q.k).fill(fill);
-  if (stroke !== undefined) g.ellipse(q.x, q.y, rx * q.k, ry * q.k).stroke(stroke);
+  if (!(q.a > 0)) return;
+  if (fill !== undefined) g.ellipse(q.x, q.y, rx * q.k, ry * q.k).fill(glyphFill(fill, q.a));
+  if (stroke !== undefined) g.ellipse(q.x, q.y, rx * q.k, ry * q.k).stroke(glyphStroke(stroke, q.a));
   statOf(g).cmds += g.context.instructions.length - n0;
 };
 
@@ -351,13 +381,17 @@ export const projLift = (f: ProjFrame, gx: number, gy: number, h: number): { x: 
 /** 段階4のメッシュの名札(計器・役の表)。 */
 export interface ProjMeshTagged { projTag?: string }
 
-/** 作り置きの格子メッシュ(33×33 頂点)。`?proj=1` の時に初めて作る(遅延生成)。 */
+/** 格子メッシュの添字(全メッシュで1本を共有・書き換えない・監査 B-2)。初めて要る時に作る(`?proj=0` では作らない)。 */
+let sharedGridIndices: Uint32Array | null = null;
+const gridIndices = (): Uint32Array => (sharedGridIndices ??= projGridIndices(PROJ_GRID_MAX));
+
+/** 作り置きの格子メッシュ(33×33 頂点)。`?proj=1` の時に初めて作る(遅延生成)。添字の配列は全メッシュで共有。 */
 export const makeProjGridMesh = (tex: Texture, tag: string): MeshSimple & ProjMeshTagged => {
   const m = new MeshSimple({
     texture: tex,
     vertices: new Float32Array(PROJ_GRID_VERTS * 2),
     uvs: new Float32Array(PROJ_GRID_VERTS * 2),
-    indices: projGridIndices(PROJ_GRID_MAX),
+    indices: gridIndices(),
   }) as MeshSimple & ProjMeshTagged;
   m.projTag = tag;
   m.label = 'proj:' + tag;

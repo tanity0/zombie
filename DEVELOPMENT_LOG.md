@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.5757 — 遠近の投影 段階4の監査是正(線の太さを頂点ごと・北の水たまり・計器・見下ろしの潰しの二重)(?proj=1 のみ)【2026-11-23 05:40 JST】
+- 品質監査1巡目(opus・(A)5件)・クリエイティブ監査1巡目(opus・12件=直せる8/社長へ4)を受けて直した。
+- A-1 線の太さが画面外の南の頂点に引っ張られて桁外れに太る→`projStrokeStripInto`(頂点ごとの半幅の帯=1本の中で奥は細く手前は太く)+ `projLineScaleCap`(画面下端の行の s で頭打ち)。下限の口 `PROJ_TELE_LINE_MIN_PX=0`(値は社長待ち)。A-2 北の水たまりが world Y の地平線で消える→`WetHost.projFade`(投影後のY)。A-4 K15・A17 の濃さを投影後のYへ+番人③b。A-5 計器 `s4 tex` が renderable を見ず・一覧不足→足した。B-1 `copyP2` の ℓ。B-2 添字の共有・水たまりのメッシュをプール。C-3 日付。
+- クリエイティブ: 幻影の火炎の種火を keep 申告(direct 3→0)/ 記号に地平線の外の消え方 `GLY.a` / `projDistanceFade` を smoothstep(消え切る距離は不変・段階1/2も同じ関数)/ 判定を持たない見下ろしの潰し(影・焦げ・跡・リズムの輪)を世界で丸に戻してから投影(表は実装報告)。光だまりの「硬い桃色の円盤」と「白い硬い楕円」は、テクスチャ未着の敵の仮の楕円だった(光だまりの減衰は p0 と同じ)。紫の帯は p0 と同じ素材で差なし。狼煙の direct=2 は再現せず(潰れた楕円の印が部品を通っていなかった分と見る)。
+- 監査の巡: (A) を直したので本来は2巡目を回す。ただし残りの未決が社長の判断(手前の縦長・線の下限・月だまり/ホロの陣・陣の潰し)に集まっているため、裁定の後にまとめて2巡目を回す。
+- 画で確認: proj4c/ に光だまり・紫の帯・扇・主人公中心の円(北の弧が細い)・北の水たまり(4つ描かれる)・帰還の円。全場面で s4 direct/tex/point=0。
+- 未決: 手前の地面の拡大(主人公の190px南で s=3.2)/ 線の下限 / ワープ・賞金首・城の陣の潰しを丸へ戻すか / A15 の降ってくる矢は段階5候補 / 線の端が平ら / K15 の燻る火と速さの筋が world 座標のまま。
+- 変えたファイル: src/utils/projShape.ts・projShape.test.ts・perspectiveProjection.ts・perspectiveProjection.test.ts・src/pixi/projDraw.ts・weatherWet.ts・pixiScene.ts・projShapeGuard.test.ts
+- 検証: typecheck / eslint / circular / vitest(実装担当が全件・batMove の1件は負荷下のみ・単独で通過)・rebase後に関係分。
+- 自己点検: 憲法第4条・第5条に抵触しない(既定では何も変わらない)。
+
 ## v0.25.5756 — 遠近の投影 段階4の残り(水たまり・床の印・罠/デコイ/ドローン・メッシュ化・★#23=B)(?proj=1 のみ)【2026-11-23 04:45 JST】
 - 範囲: `?proj=1` の時だけ。`?proj=0` ではメッシュも Graphics も作らない(else 側は不変)。
 - 入れた物: 作る物6 `projShapeGfx`(G07・I10・I11・I02・J15)/ 部品を通した物(A10〜A15・A17・C07・E16・E18・F01・英雄/舞妓・I03〜I08・J01〜J09・J11・J13・K02・K03・K06・K08・K09・K13・K15・亡霊の叫び)/ **K01 水たまり**(`WetHost.projGrid`・縁/水面/空の映り/風景の型/月明りの縁を格子メッシュ・型抜きは焼く元をメッシュに・キャラの映りの型だけ点+s の近似)/ 格子メッシュ化(clawMarks・shockwaves・dashWind・coilBody・summonTornado・汎用 `projSpriteMesh`)/ 点で置く(spikeThrust・burstFrag)/ B20 / 形と判定の差の計器(`?proj=1&hitbox=1`・`s4 judge n / noTele`)/ 間引きを `projShapeOutside` へ(地面の炎・血の履帯・拠点・ハンター・残骸)/ 回転メッシュの画面外の誤差 36px→約2.5px。

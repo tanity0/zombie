@@ -43,7 +43,7 @@ const stripComments = (s: string): string => s.replace(/\/\/[^\n]*/g, (m) => ' '
  * `if (pf) { … return|continue; }` の後の今の行 / `if (!pf)` の中 / 同じ行に projKeep。
  * 数える命令: Graphics(o・g・bg・ot・gb)へ直に図形を足すもの。
  */
-const rawInPfBranch = (body: string): string[] => {
+const rawInPfBranch = (body: string, cmdRe?: RegExp): string[] => {
   const s = stripComments(body);
   const bad: string[] = [];
   // ブロックの種類のスタック: 'pf'=if (pf) {…}、'else'=if (pf) の else、'npf'=if (!pf) {…}、'other'
@@ -51,7 +51,7 @@ const rawInPfBranch = (body: string): string[] => {
   let pendingKind: 'pf' | 'else' | 'npf' | 'other' = 'other';
   let lastClosedPf: { endedWithExit: boolean } | null = null;
   const lines = s.split('\n');
-  const cmd = /\b(o|g|bg|ot|gb)\.(circle|ellipse|poly|rect|moveTo|arc)\(/;
+  const cmd = cmdRe ?? /\b(o|g|bg|ot|gb)\.(circle|ellipse|poly|rect|moveTo|arc)\(/;
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li];
     // 行の中の { } を順に処理しつつ、命令の位置で判定する
@@ -139,6 +139,11 @@ const CONVERTED: string[] = [
   '  private syncAstroThrowsBody(',
   '  private syncPlayerArrowRain(',
   '  private drawAlchemyRhythm(',
+  // 監査 A-4(濃さを投影後のYへ)
+  '  private syncAstroScatter(',
+  '  private syncSkadiHazards(',
+  // クリエイティブ監査8(予告の中の投影していない部分)
+  '  private syncPhantomFlamer(',
 ];
 
 describe('投影の段階4: 形を持つもの(番人)', () => {
@@ -152,6 +157,8 @@ describe('投影の段階4: 形を持つもの(番人)', () => {
     const KEEP: Record<string, RegExp[]> = {
       '  private syncSensorMines(': [/g\.(ellipse|circle)\(mx, my/], // 地雷の本体と待機のランプ(段階2で投影済みの表示座標)
       '  private syncBossFires(': [/g\.(circle|ellipse)\(f\.x( \+ sway \* 0\.\d)?, f\.y (\+ 2|- r \* )/], // 外周のグロウと炎の楕円3枚(派手さ)
+      '  private syncAstroScatter(': [/g\.ellipse\((lx|p\.x \+ cr \* t)\b/], // 刺さった絵の切り口に沿う土(絵と一緒=段階3)
+      '  private syncPhantomFlamer(': [/g\.(circle|ellipse)\(mx, my/], // 銃口の種火(判定を持たない飾り=④)
     };
     for (const sig of CONVERTED) {
       const keep = KEEP[sig] ?? [];
@@ -198,6 +205,28 @@ describe('投影の段階4: 形を持つもの(番人)', () => {
     // 帯の窓: スライスの濃さ(peak * winAt)と白芯(coreA * winAt)の式は1か所で、分岐の前に出す
     const band = bodyOf('  private drawSweepBand(');
     expect(band.split('const a = peak * winAt((s0 + s1) / 2);').length - 1).toBe(1);
+  });
+
+  it('③b 段階4の関数の中で、world の Y の地平線・手前のフェード(horizonActorAlpha/foregroundActorAlpha)を ?proj=1 の分岐で使っていない(§3-6j 作る物10 の ③)', () => {
+    // world の Y を渡す呼び出し(投影後の点 bpp.y を渡す段階1の型は除く)。
+    const worldFade = /this\.(horizonActorAlpha|foregroundActorAlpha)\((?!bpp\.y\))/;
+    // 複数行の三項(`bpp ? { …投影後のY… } : { …今の式… }`)の ?proj=0 側(検出器は複数行の三項を追わないので、形で許す)
+    const KEEP3: Record<string, RegExp[]> = {
+      '  private syncShrines(': [/^\[共通\] alpha: horizonAlpha \* 0\.8 \* this\.foregroundActorAlpha\(footY\), shadowFade: fade,$/],
+    };
+    for (const sig of CONVERTED) {
+      const bad = rawInPfBranch(bodyOf(sig), worldFade)
+        .filter((l) => !(KEEP3[sig] ?? []).some((re) => re.test(l)))
+        // 三項の ?proj=0 側(`pf ? 投影後のY : 今の式`)は許す
+        .filter((l) => !/\b(pf|fpf|kpf|fq|bpp|this\.projFrame)\s*\?[^:]*:[^?]*this\.(horizonActorAlpha|foregroundActorAlpha)\(/.test(l));
+      expect(bad, sig).toEqual([]);
+    }
+  });
+
+  it('③b の検出器自体が、分岐の中/外の world の Y のフェードを拾う(自己点検)', () => {
+    const worldFade = /this\.(horizonActorAlpha|foregroundActorAlpha)\((?!bpp\.y\))/;
+    const bad = rawInPfBranch('{\n  const pf = this.projFrame;\n  const a = this.horizonActorAlpha(y);\n  if (pf) {\n    b = this.foregroundActorAlpha(y);\n  } else c = this.horizonActorAlpha(y);\n}', worldFade);
+    expect(bad.length).toBe(2);
   });
 
   it('④ 予告の役は後掛けで動かさない(段階4でも役の表はそのまま)', () => {

@@ -168,12 +168,16 @@ export const projWorldYOfLocal = (f: ProjFrame, l: number): number =>
 export const projScaleAtLocal = (f: ProjFrame, l: number): number =>
   projConvAt(projTOfL(l, f.table.stripH, f.table.refCount), f.table.p) / f.convRef;
 
-/** 描く距離のフェード(★#4): 北への距離 d が start→end で 1→0(線形)。end<=0 なら常に1。 */
+/**
+ * 描く距離のフェード(★#4): 北への距離 d が start→end で 1→0。end<=0 なら常に1。
+ * 始まりも終わりもなだらか(smoothstep=両端で傾き0・クリエイティブ監査13)。消え切る距離(end)は変えない。
+ */
 export const projDistanceFade = (dNorth: number, start: number, end: number): number => {
   if (!(end > 0)) return 1;
   if (dNorth <= start) return 1;
   if (dNorth >= end) return 0;
-  return (end - dNorth) / Math.max(1e-6, end - start);
+  const t = (dNorth - start) / Math.max(1e-6, end - start);
+  return 1 - t * t * (3 - 2 * t);
 };
 
 export interface ProjPoint {

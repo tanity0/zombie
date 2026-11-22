@@ -164,6 +164,12 @@ describe('北の切り・南の延長(§1-6・§10 B1)', () => {
     expect(projDistanceFade(1350, 1200, 1500)).toBeCloseTo(0.5, 9);
     expect(projDistanceFade(1600, 1200, 1500)).toBe(0);
     expect(projDistanceFade(99999, 0, 0)).toBe(1);
+    // 始まりも終わりもなだらか(両端で傾き0・単調に減る)
+    const e = 1e-3;
+    expect((1 - projDistanceFade(1200 + e, 1200, 1500)) / e).toBeLessThan(1e-3);
+    expect(projDistanceFade(1500 - e, 1200, 1500) / e).toBeLessThan(1e-3);
+    let prevF = 1;
+    for (let d = 1200; d <= 1500; d += 5) { const v = projDistanceFade(d, 1200, 1500); expect(v).toBeLessThanOrEqual(prevF + 1e-12); prevF = v; }
     const f = frameAt(0.4, 0, 0, { farRefY: 0, farStart: 1200, farEnd: 1500 });
     expect(project(f, 0, -1600).alpha).toBe(0);
   });

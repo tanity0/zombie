@@ -283,6 +283,11 @@ export interface WetHost {
    * 小物・キャラの映りの型・光の筋は点+s。null/省略=今の描き方のまま(メッシュは1つも作らない)。
    */
   projGrid?: ProjFrame | null;
+  /**
+   * ?proj=1 の時だけ: 地面の点 (x, y) の濃さ(投影後のYの地平線フェード・§3-6f=pixiScene の projLooseFade)。
+   * 渡されると、水たまりと小物の濃さを world の Y の horizonAlpha ではなくこれで引く(北の見えている地面の水たまりを捨てない)。
+   */
+  projFade?: (x: number, y: number) => number;
 }
 export interface WetAtmosphere {
   fog: readonly (Sprite | TilingSprite)[];
@@ -348,6 +353,9 @@ const SKY_MATRIX: readonly number[] = [
 
 /** 葉先の雫の大きさ(芯と照りに掛ける)。悪目立ちしないよう半分に(社長指示2026-11-21)。 */
 const DRIP_SIZE_MUL = 0.5;
+
+/** ?proj=1 の水たまりの格子メッシュの役(プールの仕分け)。 */
+type ProjPuddleMeshRole = 'ground' | 'water' | 'sky' | 'landMask' | 'groundMoon';
 
 export class WeatherWetLayer {
   readonly gradeFilter: ColorMatrixFilter;
@@ -539,7 +547,7 @@ export class WeatherWetLayer {
       // ?proj=1: 形の端を投影した箱が画面に掛かるか(見える world が北に広く・南に狭い)
       if (pf ? projShapeOutside(pf, p.x, p.y, Math.max(p.rx, p.ry) + 40, 0)
         : (p.x + p.rx < v.left - 40 || p.x - p.rx > v.right + 40 || p.y + p.ry < v.top - 40 || p.y - p.ry > v.bottom + 40)) continue;
-      const ha = h.horizonAlpha(p.y);
+      const ha = pf && h.projFade ? h.projFade(p.x, p.y) : h.horizonAlpha(p.y);
       if (ha <= 0.001) continue;
       const pv = this.viewFor(p);
       if (!pv) continue;
@@ -550,7 +558,7 @@ export class WeatherWetLayer {
       if (seen.has(id)) continue;
       pv.ground.destroy(); pv.water.destroy(); pv.sky.destroy(); pv.landMask.destroy();
       pv.groundMoon?.destroy();
-      if (pv.pm) { pv.pm.ground.destroy(); pv.pm.water.destroy(); pv.pm.sky.destroy(); pv.pm.landMask.destroy(); pv.pm.groundMoon?.destroy(); }
+      if (pv.pm) this.releaseProjMeshes(pv.pm); // ?proj=1 のメッシュは壊さずプールへ戻す(画面を出入りするたびに作り直さない)
       for (const d of pv.debris) d.destroy();
       for (const d of pv.debrisMoon) d?.destroy();
       this.views.delete(id);
@@ -715,23 +723,39 @@ export class WeatherWetLayer {
   }
 
   private projPt = makeProjPoint();
+  /** ?proj=1 の格子メッシュのプール(役ごと・層の子のまま隠して置く・監査 B-2)。 */
+  private projMeshPool: Record<ProjPuddleMeshRole, MeshSimple[]> = {
+    ground: [], water: [], sky: [], landMask: [], groundMoon: [],
+  };
+  private releaseProjMeshes(pm: NonNullable<PuddleView['pm']>): void {
+    const put = (m: MeshSimple | null, k: ProjPuddleMeshRole) => {
+      if (!m || m.destroyed) return;
+      m.visible = false;
+      this.projMeshPool[k].push(m);
+    };
+    put(pm.ground, 'ground'); put(pm.water, 'water'); put(pm.sky, 'sky'); put(pm.landMask, 'landMask'); put(pm.groundMoon, 'groundMoon');
+  }
   /**
    * ?proj=1(段階4・K01): 地面に寝た4枚+月明りの縁を同じ素材の格子メッシュで頂点ごとに投影して置き、Sprite は隠す。
    * 寸法は Sprite に掛かっている旧い遠近の倍率 d を外した world の寸法(足元を支点に)。小物と月明りの小物は点+s。
-   * 濃さ(地平線)は今の式のまま(水たまりの world の Y)。メッシュは projGrid がある時に初めて作る(遅延生成)。
+   * 濃さ(地平線)は投影後のY(host の projFade=§3-6f・sync が ha として Sprite に入れた値をメッシュへ写す)。
+   * メッシュは projGrid がある時に初めて作る(遅延生成)。画面から外れた水たまりのメッシュはプールへ戻し、次の水たまりで使い回す。
    */
   private projPuddle(pv: PuddleView, h: WetHost, f: ProjFrame, d: number): void {
     if (!pv.pm) {
-      const mk = (sp: Sprite, tag: string) => {
-        const m = makeProjGridMesh(sp.texture, tag);
-        m.eventMode = 'none';
+      const mk = (sp: Sprite, tag: string, k: ProjPuddleMeshRole) => {
+        const pool = this.projMeshPool[k];
+        let m = pool.pop();
+        while (m && m.destroyed) m = pool.pop();
+        if (!m) { m = makeProjGridMesh(sp.texture, tag); m.eventMode = 'none'; }
         const par = sp.parent!;
+        if (m.parent) m.parent.removeChild(m);
         par.addChildAt(m, par.getChildIndex(sp) + 1);
         return m;
       };
       pv.pm = {
-        ground: mk(pv.ground, 'puddleGround'), water: mk(pv.water, 'puddleWater'), sky: mk(pv.sky, 'puddleSky'),
-        landMask: mk(pv.landMask, 'puddleLandMask'), groundMoon: pv.groundMoon ? mk(pv.groundMoon, 'puddleGroundMoon') : null,
+        ground: mk(pv.ground, 'puddleGround', 'ground'), water: mk(pv.water, 'puddleWater', 'water'), sky: mk(pv.sky, 'puddleSky', 'sky'),
+        landMask: mk(pv.landMask, 'puddleLandMask', 'landMask'), groundMoon: pv.groundMoon ? mk(pv.groundMoon, 'puddleGroundMoon', 'groundMoon') : null,
       };
     }
     const k = d > 0 ? 1 / d : 1;
@@ -756,8 +780,9 @@ export class WeatherWetLayer {
       const kk = ds > 0 ? qd.s / ds : 1;
       sp.position.set(qd.x, qd.y);
       sp.scale.set(sp.scale.x * kk, sp.scale.y * kk);
+      if (h.projFade) sp.alpha = h.projFade(dd.x, dd.y); // 濃さも投影後のY(§3-6f)
       const mp = pv.debrisMoon[i];
-      if (mp && mp.visible) { mp.position.set(qd.x, qd.y); mp.scale.set(mp.scale.x * kk, mp.scale.y * kk); }
+      if (mp && mp.visible) { mp.position.set(qd.x, qd.y); mp.scale.set(mp.scale.x * kk, mp.scale.y * kk); mp.alpha = sp.alpha * pv.moonA; }
     }
   }
 
@@ -1481,6 +1506,17 @@ export class WeatherWetLayer {
     if (cur.includes(this.skyFilter)) g.filters = cur.filter(f => f !== this.skyFilter);
   }
 
+  /**
+   * 計器(?proj=1&projaudit=1・段階4の素材の漏れ)用: 水たまりの地面に寝た Sprite(縁・水面・空の映り・風景の映りの型・月明りの縁)を順に渡す。
+   * ?proj=1 ではメッシュに替えて隠しているはずの物=見えたままなら漏れ。描画は変えない(読むだけ)。
+   */
+  projAuditSprites(cb: (sp: Sprite) => void): void {
+    for (const pv of this.views.values()) {
+      cb(pv.ground); cb(pv.water); cb(pv.sky); cb(pv.landMask);
+      if (pv.groundMoon) cb(pv.groundMoon);
+    }
+  }
+
   destroy(): void {
     this.restoreAtmosphere();
     this.detachSky();
@@ -1496,6 +1532,7 @@ export class WeatherWetLayer {
     if (!this.rainLayer.destroyed) this.rainLayer.destroy({ children: true });
     this.rain = [];
     this.views.clear();
+    for (const k of Object.keys(this.projMeshPool) as (ProjPuddleMeshRole)[]) this.projMeshPool[k] = []; // 層の子として上で壊れている
     this.gradeFilter.destroy();
     this.skyFilter.destroy();
   }
