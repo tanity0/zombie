@@ -3589,6 +3589,9 @@ export type VisualEffect =
       createdAt: number;
       duration: number;
       face?: number;          // 斬撃の向き(1=右向き=左下→右上 / -1=左向き=反転)。未指定=1。
+      katana?: boolean;       // プレイヤーの刀(刀/小烏丸)の斬撃=刀用の斬撃シート(fx/katana-slash-sheet)で描く。未指定=従来の slash-streak。
+      katanaMove?: 'swing' | 'issen' | 'tsubame' | 'satsujin' | 'kill'; // 刀の技の種類(尺の割合)。描画だけ。
+      katanaFlip?: boolean;   // 上下の反転(切り下ろし)。連撃の偶数発・燕返し。描画だけ。
     }
   | {
       // PACING_PUZZLE.md §5.23 M22 Group C3: 1スイング/1発で複数の敵に当たった時の

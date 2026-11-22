@@ -888,6 +888,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/slash-streak-2', scaleMode: 'nearest' },
       { name: 'fx/slash-streak-3', scaleMode: 'nearest' },
       { name: 'fx/slash-streak-4', scaleMode: 'nearest' },
+      // プレイヤーの刀(刀/小烏丸)の斬撃(社長支給2026-11-22・378×34・横並び3コマ=出→振り切り→余韻)。
+      // コマの矩形は utils/katanaSlashSheet。刀の通常の振り・一閃・燕返し・殺陣・喉搔き・切り傷が使う=全ステージで出るので起動マニフェスト(常駐 0.05MB)。
+      { name: 'fx/katana-slash-sheet', scaleMode: 'nearest' },
       // KILL時の首元斬撃(社長指示2026-09-16「KILL時に敵の首元に流して斬撃を演出」・近接キルのみ)。
       // 17コマの横並びシート(3264×151・1コマ192×151)・アルファ無し(黒背景)=加算合成で描く。
       // 元はProRes実写VFXで、ブラウザ再生不可のため中身のあるコマだけを切り出して焼いてある。

@@ -118,6 +118,11 @@ import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだ�
 import { BRAWLER_WEAK_GUARD_ALPHA } from '../utils/brawlerGuard'; // 弱い構え(払えずに出た構え)の光の薄さ
 import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
 import { satsujinCoverAlpha, SATSUJIN_HITS } from '../utils/katanaTsubame';
+import {
+  KATANA_SLASH_CELL_H, KATANA_SLASH_CELL_W, KATANA_SLASH_CELLS, KATANA_SLASH_SHEET_TEX,
+  katanaCutDeathAlpha, katanaCutLayout, katanaCutLength, katanaCutOpen, katanaCutRgb,
+  katanaSlashIntScale, katanaSlashJitter, katanaSlashPose, katanaSlashVisibleMid, katanaWhiteRgba,
+} from '../utils/katanaSlashSheet'; // プレイヤーの刀の斬撃シート(社長支給2026-11-22)
 import { whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS } from '../utils/whipSwingMotion'; // ★鞭の振りの本体と体の動き // ★刀の殺陣の赤い画面の濃さ
 import { screamerMarkVisible } from '../utils/screamerGate';
 import { airChaseHeightPx } from '../utils/airChaseHeight'; // 高さに追いつく技の高さ(動ける距離の中で相手の高さへ向かう・社長指示2026-11-16)
@@ -300,7 +305,11 @@ import { bossWideShotZoom, zoomedViewportBounds } from '../utils/cameraZoom';
 import { zoomCameraDownFrac } from '../utils/cameraZoom'; // ?proj=1 の基準行 ℓ_ref(★#20 裁定②)
 import { CAMERA_DOWN_OFFSET_FRAC, BREAKABLE_PROP_REGION_PAD } from '../store/gameStore';
 import { playerCenteredRegion, regionEdgeFade, type RegionRect } from '../utils/regionEdgeFade';
-import { stepStaticShadowCap, staticShadowLowAlphaMult, STATIC_SHADOW_CAP, type StaticShadowCand } from '../utils/staticShadowCap'; // ?proj=1 の止まっている物の影の上限
+import { stepStaticShadowCap, staticShadowLowAlphaMult, STATIC_SHADOW_CAP, isStaticProjectedShadow, type StaticShadowCand } from '../utils/staticShadowCap'; // ?proj=1 の止まっている物の影の上限
+import {
+  ProjSavePool, projActorK, projPhillK, projChildAlphaMul, projActorRole, projRoleMove, projFadeTerms, projActorPosFade, projSpawnEdgeAlpha, projSpawnFadeApplies,
+  projSeeThroughBox, projSimilarInverse, projHudDelta, type ProjActorPartKey, type ProjMove,
+} from '../utils/projActorPass'; // 投影の段階2「動くもの」(?proj=1・research/PERSPECTIVE_PROJECTION.md §3-5)
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { getCameraZoomLink } from '../utils/cameraZoomLink';
 import {
@@ -4570,6 +4579,21 @@ interface ActorView {
   breathAmpAt?: number;
   shadowGroundY?: number; // 裏ボス専用: 論理の足元Y(spy±素のhalf-height、リフト無し)。非ボスは
                             // anchor(0.5,1)なので footY で足りるため未使用。
+  // ---- ?proj=1 の段階2「動くもの」の後掛け(research/PERSPECTIVE_PROJECTION.md §3-5c 型②・§3-5k 作る物1) ----
+  /** 後掛けの支点 F(world の足元)・描く関数が掛けていた旧い倍率 d(枝ごとに記録)。描いたフレームの番号(このフレームに描いた物だけ掛ける)。 */
+  projFx?: number; projFy?: number; projD?: number; projDrawnFrame?: number;
+  /** フィルの印(★#22 の k の出どころ=projPhillK)。 */
+  projPhill?: boolean;
+  /** 頭上UI(overlay)の基準点 H(当たり判定の上端の中央・world)。 */
+  projHx?: number; projHy?: number;
+  /** 体と頭上UIに掛ける湧きの一時のフェード(§3-5g・雑魚・強個体だけ。既定1)。 */
+  projSpawnA?: number;
+  /** 後掛けの前の本体の位置(寄りの遠近で予告・演出の子の支点に使う)・今フレームの投影の点と倍率・k(値を写して持つ=§10 B16)。 */
+  projPreX?: number; projPreY?: number; projPx?: number; projPy?: number; projS?: number; projK?: number; projPostFrame?: number;
+  /** 入れ物の外に置いた体の絵の登録(projAttach)。 */
+  projAttached?: Container[];
+  /** 位置の法則のフェード: world の足元で出した値(予告の子に使う)と投影後のYで出した値(?telefade=0 の時に子ごとに掛ける)。 */
+  projPosW?: number; projPosP?: number;
 }
 
 /**
@@ -4675,6 +4699,11 @@ interface ShadowCasterReq {
    * 伸びる影(PerspectiveMesh)は4隅だけを setSilhouetteMeshCorners の直前で投影する。
    */
   projected?: boolean;
+  /**
+   * ?proj=1 の動く物(段階2・§3-5k 作る物4): projected と一緒に付ける。止まっている物の影の上限(staticShadowCap)の候補に入れない
+   * (動く物の影は「動く影のために空ける枚数」の側)。
+   */
+  moving?: boolean;
 }
 
 /** ベイク済みシルエットテクスチャ+その幾何メタ(裁定F: pad補正に使う)。 */
@@ -4768,6 +4797,8 @@ interface ShadowMeshSlot {
   ownerId: string;
   /** ?proj=1 の置き物の影=4隅を投影してから描く(ShadowCasterReq.projected)。 */
   projected?: boolean;
+  /** ?proj=1 の動く物の影(段階2)。止まっている物の影の上限の候補から外す(isStaticProjectedShadow)。 */
+  moving?: boolean;
   mesh: PerspectiveMesh | null;
   /** `'amb'`=環境光(常時) / 強glowのID / `null`=空き。 */
   lightId: string | null;
@@ -5355,6 +5386,8 @@ export class PixiScene {
   private introActive = false;  // 登場演出中(影スキップ判定用)
   // 障害物の「裏に回ったら透ける」用: プレイヤーの足元矩形(world)とフェードlerp係数を毎フレ更新。
   private seeThroughPlayer = { cx: 0, footY: 0, halfW: 0, top: 0 };
+  /** ?proj=1 の重なり用の投影後の主人公の箱(§3-5j)。前後の判定は seeThroughPlayer(world)のまま。 */
+  private seeThroughPlayerProj = { cx: 0, footY: 0, halfW: 0, top: 0 };
   private seeThroughLerp = 1;
   // 透けのピクセル判定(社長指示2026-11-22): 主人公の体の点(世界)と、絵ごとの不透明ピクセルの地図のキャッシュ。
   private seeThroughPoints: { x: number; y: number }[] = [];
@@ -5637,7 +5670,8 @@ export class PixiScene {
   private killFxSeen2 = 0;                      // 噴出2波目(+90ms・間欠泉の密度)を出した startAt
   private killFxDustSeen = 0;                   // 着地の砂埃を出した killFx.startAt(1回きり)
   private killFxText: Text | null = null;       // KILL!文字(実時間駆動。storeのcalloutは停止中凍るため専用)
-  private killFxSlashSp: Sprite | null = null;  // 喉搔きの斬撃(slash-streak素材を横一文字に・FB8)
+  private killFxSlashSp: Sprite | null = null;
+  private killFxSlashShadow: Sprite | null = null; // 刀の致命の斬撃の真下に敷く暗い写し  // 喉搔きの斬撃(slash-streak素材を横一文字に・FB8)
   private killFxBloodPool: Sprite[] = [];       // 血粒のスプライトプール(Texture.WHITE・使い回し)
   private killFxBlood: { x: number; y: number; vx: number; vy: number; size: number; born: number; life: number; tint: number }[] = [];
   private killFxBloodPrevStep = 0;              // 実時間積分の前回時刻(タブ復帰の飛びはクランプ)
@@ -7232,11 +7266,26 @@ export class PixiScene {
       const sp = view.sprite;
       if (!sp.visible || !view.container.visible) return;
       const fx = sp.position.x, fy = sp.position.y;
-      if (!jac(fx, fy)) return;
       const kids = view.container.children;
+      // ?proj=1(段階2・§3-5k 作る物2の最後): 後掛けで動かさなかった子(予告・演出・未分類)は、後掛けの前の本体の位置で jac を出し直し、
+      // そこを支点にする=段階2は寄りの遠近が掛かっている間も予告の位置を1pxも変えない。?proj=0 ではこの分岐に入らない。
+      const posted = !!this.projFrame && view.projPostFrame === this.projFrameNo && view.projPreX !== undefined && view.projPreY !== undefined;
+      const stays = (c: Container): boolean => {
+        const key = this.projChildKey(view, c);
+        return !key || projRoleMove(projActorRole(key)) === 'none';
+      };
+      if (posted && jac(view.projPreX!, view.projPreY!)) {
+        for (let i = 0; i < kids.length; i++) {
+          const c = kids[i];
+          if (c === view.tele || c === view.overlay || c === view.overlayTop || c === view.reticle) continue;
+          if (stays(c)) apply(c, view.projPreX!, view.projPreY!);
+        }
+      }
+      if (!jac(fx, fy)) return;
       for (let i = 0; i < kids.length; i++) {
         const c = kids[i];
         if (c === view.tele || c === view.overlay || c === view.overlayTop || c === view.reticle) continue;
+        if (posted && stays(c)) continue;
         apply(c, fx, fy);
       }
     };
@@ -8322,7 +8371,8 @@ export class PixiScene {
   // 前後の判定(footWorldY <= 主人公の足元)は world の足元のまま行う(research/PERSPECTIVE_PROJECTION.md §3-3 作る物5)。
   private seeThroughMult(centerX: number, footWorldY: number, vw: number, vh: number, sprite?: Sprite, overlapFootY: number = footWorldY): number {
     if (OBSTACLE_SEE_THROUGH_ALPHA >= 1 || footWorldY <= this.seeThroughPlayer.footY) return 1;
-    const p = this.seeThroughPlayer;
+    // ?proj=1(段階2・§3-5j): 四角の重なりは投影後どうし(主人公も投影して描かれている)。前後は上の world の比較のまま。
+    const p = this.projFrame ? this.seeThroughPlayerProj : this.seeThroughPlayer;
     // 障害物の見た目矩形(foot-anchor 0.5,1) vs プレイヤー足元矩形 の AABB 重なり。
     if (centerX + vw / 2 > p.cx - p.halfW && centerX - vw / 2 < p.cx + p.halfW
         && overlapFootY > p.top && overlapFootY - vh < p.footY) {
@@ -9630,6 +9680,7 @@ export class PixiScene {
   private projPtI = 0;
   private projScratch = makeProjPoint();
   private projScratch2 = makeProjPoint();
+  private projScratch3 = makeProjPoint(); // 後掛けの残像(projApply の 'own')専用
   private projScreenPt = { x: 0, y: 0 };
   private projCorner = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
   /** 計器: 今フレーム、木を取ってきた本数・作っている本数・画面に掛かる本数(監査 A1 の測り直し)。 */
@@ -9690,6 +9741,17 @@ export class PixiScene {
     const pr = playerCenteredRegion(s.player.x + s.player.width / 2, s.player.y + s.player.height / 2,
       s.gameBounds.width, s.gameBounds.height, BREAKABLE_PROP_REGION_PAD);
     this.projPropRegion.left = pr.left; this.projPropRegion.right = pr.right; this.projPropRegion.top = pr.top; this.projPropRegion.bottom = pr.bottom;
+    const ov = zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom); // 湧き・回収の一時のフェード(§3-5g)の旧い画面の矩形
+    this.projOldView.left = ov.left; this.projOldView.right = ov.right; this.projOldView.top = ov.top; this.projOldView.bottom = ov.bottom;
+    // 透け(§3-5j): 重なり用の投影後の主人公の箱と体の点(前後の判定は seeThroughPlayer=world のまま)。
+    {
+      const pfb = playerFootBox(s.player);
+      const pp = projectInto(this.projFrame, pfb.footX, pfb.footY, this.projScratch);
+      const b = projSeeThroughBox(pp.x, pp.y, pp.s, pfb.boxW, pfb.boxH);
+      this.seeThroughPlayerProj.cx = b.cx; this.seeThroughPlayerProj.footY = b.footY;
+      this.seeThroughPlayerProj.halfW = b.halfW; this.seeThroughPlayerProj.top = b.top;
+      seeThroughBodyPoints(pp.x, pp.y, pp.s * pfb.boxW, pp.s * pfb.boxH, this.seeThroughPoints);
+    }
     if (PROJ_AUDIT) this.projAuditBeginFrame();
   }
 
@@ -9722,6 +9784,8 @@ export class PixiScene {
     const a = this.projAuditStats;
     a.frame = 0; a.maxDx = 0; a.maxDy = 0; a.maxDxOverBound = 0; a.worstT = 0; a.byT.fill(0);
     a.overlapMax = 0; a.overlapPair = ''; a.overlapT = 0; a.missing.clear();
+    const b = this.projActorAudit;
+    b.leakMax = 0; b.leakName = ''; b.unclassified.clear(); b.playerDsMax = 0; b.spawnDaMax = 0; b.kinds.clear();
   }
 
   /**
@@ -9743,15 +9807,15 @@ export class PixiScene {
     const overW = this.screenW * ZOOM_OVERSCAN;
     let fDx = 0, fDy = 0;
     const wrap = (d: number, per: number) => { if (!(per > 0)) return d; let r = d % per; if (r > per / 2) r -= per; if (r < -per / 2) r += per; return r; };
-    for (let k = 0; k < this.projAuditPts.length; k += 2) {
-      const wx = this.projAuditPts[k], wy = this.projAuditPts[k + 1];
+    // 1点の位置の差(物の投影 − 同じ world 点の地面の模様・ズーム後の画面px)。画面に映っていない点・帯が無い点は null。
+    const slipAt = (wx: number, wy: number): { adx: number; ady: number; t: number; bound: number } | null => {
       const l = projLocalYOfWorld(f, wy);
       const i = Math.floor(l / tb.stripH);
       const st = strips[i];
-      if (!st || !st.visible) continue;
+      if (!st || !st.visible) return null;
       // 画面に映っている点だけを数える(可視域の外の置き物は合否に使わない)。
       const sc = projDisplayToScreenInto(f, f.cxw + projScaleAtLocal(f, l) * (wx - f.cxw), f.camY + f.farH + l, this.projScreenPt);
-      if (sc.x < 0 || sc.x > this.screenW || sc.y < 0 || sc.y > this.screenH) continue;
+      if (sc.x < 0 || sc.x > this.screenW || sc.y < 0 || sc.y > this.screenH) return null;
       const s = projScaleAtLocal(f, l);
       const xo = overW / 2 + s * (wx - f.cxw);           // 物(groundBase のローカル)
       const xg = st.tilePosition.x + wx * kx * st.tileScale.x; // 同じ world 点の模様(周期で同じ)
@@ -9761,7 +9825,12 @@ export class PixiScene {
       const dy = wrap(yo - yg, Math.max(1, st.texture.height) * st.tileScale.y) * f.wgScale;
       const t = projTOfL(l, tb.stripH, tb.refCount);
       const bound = groundSlipBound(t, s * (wx - f.cxw) * f.wgScale, tb.p, tb.refCount);
-      const adx = Math.abs(dx), ady = Math.abs(dy);
+      return { adx: Math.abs(dx), ady: Math.abs(dy), t, bound };
+    };
+    for (let k = 0; k < this.projAuditPts.length; k += 2) {
+      const r = slipAt(this.projAuditPts[k], this.projAuditPts[k + 1]);
+      if (!r) continue;
+      const { adx, ady, t, bound } = r;
       if (adx > fDx) fDx = adx;
       if (ady > fDy) fDy = ady;
       if (adx > a.maxDx) { a.maxDx = adx; a.worstT = t; }
@@ -9776,6 +9845,34 @@ export class PixiScene {
       const d = groundVsObjectDiff(f, this.projAuditPts[k], this.projAuditPts[k + 1]);
       fPure = Math.max(fPure, Math.abs(d.dx));
     }
+    // ---- 段階2(§3-5k 作る物9): 動く物の足元の位置の差(種類別)・通し漏れ(後掛けの記録が無いのに見えている物) ----
+    const aa = this.projActorAudit;
+    const missing2 = new Map<string, number>();
+    const actorSlip = (kind: string, v: ActorView | null | undefined) => {
+      if (!v || v.container.destroyed || !v.container.visible || v.container.alpha <= 0.001) return;
+      if (v.projPostFrame !== this.projFrameNo || v.projFx === undefined || v.projFy === undefined) {
+        if (v.sprite.visible) missing2.set(kind, (missing2.get(kind) ?? 0) + 1);
+        return;
+      }
+      const r = slipAt(v.projFx, v.projFy);
+      if (!r) return;
+      const m = aa.kinds.get(kind) ?? { dx: 0, dy: 0 };
+      if (r.adx > m.dx) m.dx = r.adx;
+      if (r.ady > m.dy) m.dy = r.ady;
+      aa.kinds.set(kind, m);
+    };
+    actorSlip('player', this.playerView);
+    for (const v of this.enemies.values()) actorSlip('enemy', v);
+    for (const v of this.summonViews.values()) actorSlip('ally', v);
+    for (const q of this.projAuditLoose) {
+      const r = slipAt(q.x, q.y);
+      if (!r) continue;
+      const m = aa.kinds.get(q.k) ?? { dx: 0, dy: 0 };
+      if (r.adx > m.dx) m.dx = r.adx;
+      if (r.ady > m.dy) m.dy = r.ady;
+      aa.kinds.set(q.k, m);
+    }
+    this.projAuditLoose.length = 0;
     // ---- 9: 重なり率(描いた後の絵の矩形) ----
     const rects: { id: string; r: { x: number; y: number; width: number; height: number }; y: number }[] = [];
     const addRect = (id: string, sp: Sprite) => {
@@ -9830,6 +9927,7 @@ export class PixiScene {
       check('shadow:outer', e.outer);
       for (const sl of e.slots) check('shadow:mesh', sl.mesh);
     }
+    for (const [k, n] of missing2) missing.set('stage2:' + k, n);
     for (const [k, n] of missing) a.missing.set(k, Math.max(a.missing.get(k) ?? 0, n));
     let missNow = 0;
     for (const n of missing.values()) missNow += n;
@@ -9848,6 +9946,9 @@ export class PixiScene {
       `slip by t: ${byT}`,
       `overlap now=${fOv.toFixed(3)} max=${a.overlapMax.toFixed(3)} @t${a.overlapT.toFixed(2)} ${a.overlapPair}`,
       `missing now=${missNow} max: ${miss}`,
+      `actor slip ${[...aa.kinds].map(([k, m]) => `${k}:dx${m.dx.toFixed(2)}/dy${m.dy.toFixed(2)}`).join(' ') || '-'}`,
+      `actor leak=${aa.leakMax.toFixed(2)}${aa.leakName ? '@' + aa.leakName : ''} uncls now=${aa.unclassifiedNow} max:${[...aa.unclassified].map(([k, n]) => `${k}=${n}`).join(' ') || '0'}`,
+      `player s=${aa.playerS.toFixed(3)} ds/frame max=${aa.playerDsMax.toFixed(4)} spawn da/frame max=${aa.spawnDaMax.toFixed(3)}`,
     ].join('\n');
   }
 
@@ -9856,6 +9957,305 @@ export class PixiScene {
     if (p.alpha <= 0) return 0;
     return p.alpha * this.horizonActorAlpha(p.y) * this.foregroundActorAlpha(p.y);
   }
+
+  // ---- 段階2「動くもの」(research/PERSPECTIVE_PROJECTION.md §3-5) ----
+  // 型②=後掛け: 描く関数は今のまま(旧い位置・旧い倍率 d)で描き、描き終わりに足元 F を支点に 表示 = P + k·(旧い表示 − F)・k = s/d を掛ける。
+  // 次のフレームの sync の先頭(restoreZwarpActors の直後)で元へ戻す(寄りの遠近 counterWarpActors と同じ「保存→掛ける→描く→戻す」)。
+  // 役(体=相似/頭上UI=平行移動/予告・演出=動かさない)は utils/projActorPass.ts の表1本で決める。
+
+  private projSaved = new ProjSavePool<Container>();
+  /** 部品の名札(作る所で付ける・見つけた時に覚える)。名札の無い入れ物の子は「未分類」=動かさずに計器へ出す。 */
+  private projTags = new WeakMap<object, ProjActorPartKey>();
+  /** 同じフレームに2回掛けない(登録の重なり=§10 B18 の守り)。 */
+  private projAppliedFrame = new WeakMap<object, number>();
+  /** 計器(段階2・作る物9): 後掛けの適用漏れの最大(画面px)とその部品・未分類・主人公の s とその1フレームの変化の最大・湧きのフェードの1フレームの変化の最大。 */
+  projActorAudit = {
+    leakMax: 0, leakName: '', unclassified: new Map<string, number>(), unclassifiedNow: 0,
+    playerS: 1, playerDsMax: 0, spawnDaMax: 0, kinds: new Map<string, { dx: number; dy: number }>(),
+  };
+  private projPlayerPrevS = 0;
+  private projUncNow = new Map<string, number>();
+  private projSpawnPrevA = new Map<string, number>();
+
+  private projTag(obj: object | null | undefined, key: ProjActorPartKey) {
+    if (obj) this.projTags.set(obj, key);
+  }
+
+  /** 今描いている敵(syncActors が drawEnemy の前後で立てる)。描く関数の中の共有の絵の関数が、作った物を持ち主へ登録するのに使う。 */
+  private projDrawOwner: ActorView | null = null;
+  /** ?proj=1 で今描いている敵があれば、その敵の体の絵として登録する(?proj=0・持ち主の無い呼び出しでは何もしない)。 */
+  private projOwnerAttach(obj: Container | null | undefined, key: ProjActorPartKey = 'attachedArt') {
+    if (this.projFrame && this.projDrawOwner && obj) this.projAttach(this.projDrawOwner, obj, key);
+  }
+
+  /** 入れ物の外に置いた体の絵を持ち主へ登録する(§3-5k 作る物2 の projAttach)。親が層の物だけ(子孫は親と一緒に動く=§10 B18)。 */
+  private projAttach(owner: ActorView, obj: Container | null | undefined, key: ProjActorPartKey) {
+    if (!obj) return;
+    this.projTags.set(obj, key);
+    const list = owner.projAttached ?? (owner.projAttached = []);
+    if (!list.includes(obj)) list.push(obj);
+  }
+
+  /** 入れ物の子の名札(作る所の印 → ActorView のフィールドの順で引き、見つけたら覚える)。 */
+  private projChildKey(view: ActorView, c: Container): ProjActorPartKey | null {
+    const t = this.projTags.get(c);
+    if (t) return t;
+    let k: ProjActorPartKey | null = null;
+    if (c === view.sprite) k = 'sprite';
+    else if (c === view.hitFlash) k = 'hitFlash';
+    else if (c === view.reticle) k = 'reticle';
+    else if (c === view.tele) k = 'tele';
+    else if (c === view.overlay) k = 'overlay';
+    else if (c === view.overlayTop) k = 'overlayTop';
+    else if (c === view.slash) k = 'slash';
+    else if (c === view.dashWind) k = 'dashWind';
+    else if (c === view.coilBody) k = 'coilBody';
+    else if (view.breathRope && c === view.breathRope.rope) k = 'breathRope';
+    else if (view.rings?.includes(c as Sprite)) k = 'rings';
+    else if (view.bands?.includes(c as Sprite)) k = 'bands';
+    else if (view.bandSlices?.some(a => a?.includes(c as Sprite))) k = 'bandSlices';
+    else if (view.clawMarks?.includes(c as Sprite)) k = 'clawMarks';
+    else if (view.shockwaves?.includes(c as Sprite)) k = 'shockwaves';
+    else if (view.spikeThrust?.includes(c as Sprite)) k = 'spikeThrust';
+    else if (view.burstFrag?.includes(c as Sprite)) k = 'burstFrag';
+    else if (view.atkArt?.includes(c as Sprite)) k = 'atkArt';
+    else if (view.glenParts?.includes(c as Sprite)) k = 'glenParts';
+    else if (c.label === 'objShadeLight') k = 'objShadeTwin';
+    else if (view === this.playerView) {
+      if (c === this.playerKatanaBack) k = 'playerKatanaBack';
+      else if (c === this.playerSkateboard) k = 'playerSkateboard';
+      else if (c === this.playerKintoun) k = 'playerKintoun';
+      else if (c === this.playerBloodRim) k = 'playerBloodRim';
+      else if (c === this.playerKnife) k = 'playerKnife';
+      else if (c === this.playerKnifeSlash) k = 'playerKnifeSlash';
+      else if (c === this.playerKnifeTrail) k = 'playerKnifeTrail';
+      else if (c === this.playerMeleeWpn) k = 'playerMeleeWpn';
+      else if (c === this.playerFirstAidBag) k = 'playerFirstAidBag';
+    }
+    if (k) this.projTags.set(c, k);
+    return k;
+  }
+
+  /** 1つの表示物に役どおりの変換を掛ける(保存してから)。 */
+  private projApply(
+    c: Container, move: ProjMove, fx: number, fy: number, px: number, py: number, k: number, hdx: number, hdy: number, alphaMul: number,
+  ) {
+    if (c.destroyed || !c.visible || (move === 'none' && alphaMul === 1)) return;
+    if (this.projAppliedFrame.get(c) === this.projFrameNo) return;
+    this.projAppliedFrame.set(c, this.projFrameNo);
+    const x = c.position.x, y = c.position.y, sx = c.scale.x, sy = c.scale.y, al = c.alpha;
+    this.projSaved.push(c, x, y, sx, sy, al);
+    if (move === 'similar') {
+      c.position.set(px + k * (x - fx), py + k * (y - fy));
+      c.scale.set(sx * k, sy * k); // 反転の符号・回転・傾きはそのまま(§10 B17)
+    } else if (move === 'translate') {
+      c.position.set(x + hdx, y + hdy); // 頭上UI=平行移動だけ(大きさは変えない・方針②)
+    } else if (move === 'own') {
+      // 残像: その絵が今置かれている world の点そのものを投影して置く(k には持ち主の 1/d が入る)。
+      const q = projectInto(this.projFrame!, x, y, this.projScratch3);
+      c.position.set(q.x, q.y);
+      c.scale.set(sx * q.s * k, sy * q.s * k);
+    } // 'none'=位置も大きさも変えない(予告・演出)。alpha だけ(projChildAlphaMul)
+    if (alphaMul !== 1) c.alpha = al * alphaMul;
+  }
+
+  /** 1体の後掛け。描く関数がこのフレームに F と d を記録した物だけ(記録の無い物は掛けない=計器の通し漏れに出る)。 */
+  private projPostView(view: ActorView, kind: string) {
+    const f = this.projFrame!;
+    if (view.projDrawnFrame !== this.projFrameNo || view.projFx === undefined || view.projFy === undefined) return;
+    if (view.container.destroyed) return;
+    const fx = view.projFx, fy = view.projFy;
+    const p = projectInto(f, fx, fy, this.projScratch);
+    const s = p.s, d = view.projD ?? 1;
+    const k = view.projPhill ? projPhillK(s, d) : projActorK(s, d);
+    // 位置は P を画素に揃え直す(§3-5m の10・倍率のドット揃えは揃わない=§10 B14)。
+    const px = this.snapToScreenPixel(p.x, this.L.world.position.x), py = this.snapToScreenPixel(p.y, this.L.world.position.y);
+    view.projPreX = view.sprite.position.x; view.projPreY = view.sprite.position.y;
+    view.projPx = px; view.projPy = py; view.projS = s; view.projK = k; view.projPostFrame = this.projFrameNo;
+    const hx = view.projHx ?? fx, hy = view.projHy ?? fy;
+    const hdx = px + s * (hx - fx) - hx, hdy = py + s * (hy - fy) - hy; // 頭上UI: H → P + s·(H − F)(b=1)
+    const a = view.projSpawnA ?? 1;
+    const kids = view.container.children;
+    const audit = PROJ_AUDIT ? this.projActorAudit : null;
+    for (let i = 0; i < kids.length; i++) {
+      const c = kids[i] as Container;
+      const key = this.projChildKey(view, c);
+      if (key === 'objShadeTwin') continue; // 後掛けの後に本体から写される(applyObjShade)=ここでは動かさない
+      if (!key) {
+        if (audit && c.visible && c.alpha > 0.001) { audit.unclassifiedNow++; this.projUncNow.set(kind, (this.projUncNow.get(kind) ?? 0) + 1); }
+        continue;
+      }
+      const role = projActorRole(key);
+      const move = projRoleMove(role);
+      const sx0 = c.scale.x, x0 = c.position.x, y0 = c.position.y;
+      // alpha: 予告の子は world の位置のフェードのまま(?proj=0 と同じ)・それ以外は投影後(projChildAlphaMul)。
+      this.projApply(c, move, fx, fy, px, py, move === 'own' ? 1 / Math.max(1e-6, d) : k, hdx, hdy, projChildAlphaMul(role, TELEGRAPH_OWN_FADE, view.projPosW ?? 1, view.projPosP ?? 1, a));
+      // 計器: 実際の変換で写した足元 F と P の差(画面px・0.5px 超を名前で出す)。
+      if (audit && move === 'similar' && c.visible && Math.abs(sx0) > 1e-9) {
+        const r = c.scale.x / sx0;
+        const ex = (c.position.x + r * (fx - x0) - px) * f.wgScale, ey = (c.position.y + r * (fy - y0) - py) * f.wgScale;
+        const e = Math.hypot(ex, ey);
+        if (e > audit.leakMax) { audit.leakMax = e; audit.leakName = `${kind}:${key}`; }
+      }
+    }
+    // 入れ物の外の体の絵(本体の光・浮きの接地・登録した物)。
+    this.projApply(view.light, 'similar', fx, fy, px, py, k, 0, 0, a);
+    if (view.airRing) this.projApply(view.airRing, 'similar', fx, fy, px, py, k, 0, 0, a);
+    if (view.airGroundShadow) this.projApply(view.airGroundShadow, 'similar', fx, fy, px, py, k, 0, 0, a);
+    const att = view.projAttached;
+    if (att) {
+      for (let i = att.length - 1; i >= 0; i--) {
+        const c = att[i];
+        if (c.destroyed) { att.splice(i, 1); continue; }
+        const key = this.projTags.get(c);
+        if (!key) continue;
+        const mv = projRoleMove(projActorRole(key));
+        // 頭上UIの登録物は物自身の位置を基準点 H にする(大きさは変えない)。
+        if (mv === 'translate') this.projApply(c, mv, fx, fy, px, py, k, px + s * (c.position.x - fx) - c.position.x, py + s * (c.position.y - fy) - c.position.y, a);
+        else this.projApply(c, mv, fx, fy, px, py, k, hdx, hdy, a);
+      }
+    }
+  }
+
+  // ActorView を持たない動く物(護衛・生存者・商人・拾い物・主人公の頭上マーク 等)の後掛けの記録。作り置き(毎フレームの確保を増やさない)。
+  // 結果は型①(前掛け)と同じ絵(足元が P・大きさが 基準×s・頭上の物は P + s·(H − F))。alpha の地平線・手前のフェードは各関数が
+  // 投影後のYで引き直す(projLooseFade)=割り戻さない。
+  private projLooseRecs: { kind: string; fx: number; fy: number; d: number; n: number; objs: Container[]; moves: ProjMove[] }[] = [];
+  private projLooseN = 0;
+  /** 動く物1つの後掛けの記録を始める(?proj=1 の時だけ呼ぶ)。d=描く関数が掛けていた旧い倍率(掛けていなければ1)。続けて projLooseAdd で物を足す。 */
+  private projLoose(kind: string, fx: number, fy: number, d: number) {
+    let r = this.projLooseRecs[this.projLooseN];
+    if (!r) { r = { kind, fx, fy, d, n: 0, objs: [], moves: [] }; this.projLooseRecs[this.projLooseN] = r; }
+    r.kind = kind; r.fx = fx; r.fy = fy; r.d = d; r.n = 0;
+    this.projLooseN++;
+  }
+  /** 直前に始めた記録へ体(相似)・頭上UI(平行移動・物自身の位置を基準点 H にする)を足す。 */
+  private projLooseAdd(obj: Container | null | undefined, move: ProjMove = 'similar') {
+    const r = this.projLooseRecs[this.projLooseN - 1];
+    if (!obj || !r) return;
+    r.objs[r.n] = obj; r.moves[r.n] = move; r.n++;
+    if (PROJ_AUDIT) this.projAuditMarks.set(obj, this.projFrameNo);
+  }
+  /**
+   * 頭上の読ませる物を、全員で1枚の Graphics に描いている所(護衛・生存者の体力の線 等)の置く点の移動量(§3-5c・方針②)。
+   * 足元 F=(fx, fy)・基準点 H=(hx, hy)・b=H のずらしに掛かっていた旧い倍率。描く点を (dx, dy) だけずらせば H が P + (s/b)·(H − F) へ行く
+   * (大きさは変えない)。?proj=0 では (0, 0)。
+   */
+  private projHudShift(fx: number, fy: number, hx: number, hy: number, b: number): { dx: number; dy: number } {
+    if (!this.projFrame) return this.projHudZero;
+    const p = projectInto(this.projFrame, fx, fy, this.projScratch2);
+    return projHudDelta(fx, fy, p.x, p.y, p.s, b, hx, hy);
+  }
+  private projHudZero = { dx: 0, dy: 0 };
+  /** ?proj=1: 亡骸の旧い倍率 d(syncBossCorpse が記録・影が s=1 の大きさに戻すのに読む)。 */
+  private bossCorpseProjD = 1;
+  /** ActorView を持たない動く物の、位置の法則のフェード(投影後のY・§3-5i)。?proj=0 では今の式(地平線×手前)そのもの。 */
+  private projLooseFade(fx: number, fy: number, fore = true): number {
+    if (!this.projFrame) return this.horizonActorAlpha(fy) * (fore ? this.foregroundActorAlpha(fy) : 1);
+    return this.projActorFade(projectInto(this.projFrame, fx, fy, this.projScratch2), { horizon: true, fore });
+  }
+  private projAuditLoose: { k: string; x: number; y: number }[] = [];
+  private projPostLoose() {
+    const f = this.projFrame!;
+    for (let i = 0; i < this.projLooseN; i++) {
+      const r = this.projLooseRecs[i];
+      const p = projectInto(f, r.fx, r.fy, this.projScratch);
+      const s = p.s, k = projActorK(s, r.d);
+      const px = this.snapToScreenPixel(p.x, this.L.world.position.x), py = this.snapToScreenPixel(p.y, this.L.world.position.y);
+      for (let j = 0; j < r.n; j++) {
+        const c = r.objs[j];
+        if (r.moves[j] === 'translate') {
+          // 頭上の物: 物自身の位置を基準点 H として P + s·(H − F) へ(大きさは変えない・方針②)。
+          this.projApply(c, 'translate', r.fx, r.fy, px, py, k, px + s * (c.position.x - r.fx) - c.position.x, py + s * (c.position.y - r.fy) - c.position.y, 1);
+        } else {
+          this.projApply(c, r.moves[j], r.fx, r.fy, px, py, k, 0, 0, 1);
+        }
+        r.objs[j] = null as unknown as Container; // 参照を持ち越さない
+      }
+      if (PROJ_AUDIT) this.projAuditLoose.push({ k: r.kind, x: r.fx, y: r.fy });
+    }
+    this.projLooseN = 0;
+  }
+
+  /** 後掛けの窓口(§3-5k 作る物1): 全部の描画の後・projAuditEndFrame の前に1回(=syncZoomWarp の counterWarpActors より前)。 */
+  private projActorPostPass() {
+    if (!this.projFrame) { this.projLooseN = 0; return; }
+    if (PROJ_AUDIT) { this.projActorAudit.unclassifiedNow = 0; this.projUncNow.clear(); }
+    if (this.playerView) this.projPostView(this.playerView, 'player');
+    for (const v of this.enemies.values()) this.projPostView(v, 'enemy');
+    for (const v of this.summonViews.values()) this.projPostView(v, 'summon');
+    this.projPostLoose();
+    // 主人公の頭上マーク6つ(§3-5d の①・方針②): 大きさは変えず、置く点を P + s·(H − F) へ。絵は物自身の位置を H、
+    // world の点に直接描いている Graphics(フレア・マークスマン)は主人公の頭上の基準点 H を使う。
+    const hv = this.playerView;
+    if (hv && hv.projPostFrame === this.projFrameNo && hv.projFx !== undefined && hv.projFy !== undefined) {
+      const fx = hv.projFx, fy = hv.projFy, px = hv.projPx!, py = hv.projPy!, s = hv.projS!;
+      for (const sp of [this.boomReadySp, this.goldRingReadySp, this.benkeiReadySp, this.skillPickSp, this.skillPickGlowSp]) {
+        if (!sp) continue;
+        this.projApply(sp, 'translate', fx, fy, px, py, 1, px + s * (sp.position.x - fx) - sp.position.x, py + s * (sp.position.y - fy) - sp.position.y, 1);
+        if (PROJ_AUDIT) this.projAuditMarks.set(sp, this.projFrameNo);
+      }
+      const hx = hv.projHx ?? fx, hy = hv.projHy ?? fy;
+      for (const g of [this.marksmanMarkGfx, this.flareReadyGfx]) {
+        this.projApply(g, 'translate', fx, fy, px, py, 1, px + s * (hx - fx) - hx, py + s * (hy - fy) - hy, 1);
+        if (PROJ_AUDIT) this.projAuditMarks.set(g, this.projFrameNo);
+      }
+    }
+    if (PROJ_AUDIT) for (const [k, n] of this.projUncNow) this.projActorAudit.unclassified.set(k, Math.max(this.projActorAudit.unclassified.get(k) ?? 0, n));
+    // 主人公の大きさ(★#21 の確認用): 今フレームの s と1フレームの変化の最大。
+    const pv = this.playerView;
+    if (PROJ_AUDIT && pv && pv.projPostFrame === this.projFrameNo && pv.projS !== undefined) {
+      const a = this.projActorAudit;
+      a.playerS = pv.projS;
+      if (this.projPlayerPrevS > 0) a.playerDsMax = Math.max(a.playerDsMax, Math.abs(pv.projS - this.projPlayerPrevS));
+      this.projPlayerPrevS = pv.projS;
+    }
+  }
+
+  /** 前フレームに掛けた後掛けを戻す(sync の先頭・restoreZwarpActors の直後=後に掛けた方を先に戻す)。 */
+  private restoreProjActors() {
+    const pool = this.projSaved;
+    if (pool.length === 0) return;
+    try {
+      for (let i = 0; i < pool.length; i++) {
+        const sv = pool.at(i);
+        const c = sv.obj;
+        if (!c || c.destroyed) continue; // フレーム間に破棄された物は飛ばす(restoreZwarpActors と同じ守り)
+        c.position.set(sv.x, sv.y);
+        c.scale.set(sv.sx, sv.sy);
+        c.alpha = sv.alpha;
+      }
+    } finally {
+      pool.clear();
+    }
+  }
+
+  /**
+   * 動く物の位置の法則のフェード(§3-5i の1): 投影後のYで1回だけ。免除の型(フィル・使者・裏ボス)はその項を掛けない。
+   * 定義域と描く距離のフェード(p.alpha)は全員に掛ける。
+   */
+  private projActorFade(p: ProjPoint, terms: { horizon: boolean; fore: boolean }): number {
+    return projActorPosFade(p.alpha, terms.horizon ? this.horizonActorAlpha(p.y) : 1, terms.fore ? this.foregroundActorAlpha(p.y) : 1, terms);
+  }
+
+  /** 湧き・回収の一時のフェード(§3-5g): 旧い画面の矩形(store と同じ zoomedViewportBounds)の外の距離で 1→0。 */
+  private projSpawnFade(x: number, y: number): number {
+    return projSpawnEdgeAlpha(x, y, this.projOldView);
+  }
+  /** ボスの裏回りのピクセルの確認用(§3-5j): 主人公の投影後の体の点を、ボスの後掛けの逆(旧い座標)へ写した作り置き。 */
+  private projBehindPtsBuf: { x: number; y: number }[] = [];
+  private projBehindPts(fx: number, fy: number, px: number, py: number, k: number): { x: number; y: number }[] {
+    const src = this.seeThroughPoints, out = this.projBehindPtsBuf;
+    out.length = src.length;
+    for (let i = 0; i < src.length; i++) {
+      const q = projSimilarInverse(fx, fy, px, py, k, src[i].x, src[i].y);
+      const o = out[i] ?? (out[i] = { x: 0, y: 0 });
+      o.x = q.x; o.y = q.y;
+    }
+    return out;
+  }
+  /** 旧い画面の矩形(store と同じ zoomedViewportBounds・updateProjFrame で毎フレーム1回)。 */
+  private projOldView: RegionRect = { left: 0, top: 0, right: 0, bottom: 0 };
 
   /**
    * 投影の時の置き物の取得範囲(作る物4・監査 A1): 行ごとの左右の幅(台形そのもの)で切った帯の列を this.projBands に書き、本数を返す。
@@ -10181,6 +10581,7 @@ export class PixiScene {
     this.restoreWraithDarkness(); // 前フレームに掛けた亡霊戦の暗さを戻してから描く(§12)
     this.objShade?.restore(); // 試作 ?objshade=1: 前フレームに物へ掛けた地面の明るさを戻す
     this.restoreZwarpActors(); // 前フレームの逆変形(ズーム時の遠近)を戻してから描く
+    this.restoreProjActors(); // ?proj=1 の段階2の後掛けを戻す(寄りの遠近の後=後に掛けた方を先に戻す)。?proj=0 では空=何もしない
     const s0 = useGameStore.getState();
     // ステージ2の変異塊の代理(攻撃を受ける窓口だけの Enemy・research/LAB_CRAWLER.md §4)は描かない:
     // 敵の絵・影・体力バー・照準・方角マーカーなど、敵配列を読む描画の全部から最初に1回だけ外す(塊の絵は syncLabCrawler)。
@@ -11801,6 +12202,7 @@ export class PixiScene {
     this.syncStage1Night(s, now); // 通常のステージ1の森の夜(雨上がりの後=雨上がりの間は効かない)
     this.syncStage5Battle(s, now); // ステージ5(戦場)の光・色・コントラスト(他ステージ=1命令で終わる)
     this.syncStage3Daylight(s, now); // ステージ3(昼の廃都)の光と影(他ステージ=1命令で終わる)
+    this.projActorPostPass(); // ?proj=1 の段階2「動くもの」の後掛け(全部の描画の後・計器と寄りの遠近の前)。?proj=0 では即 return
     if (PROJ_AUDIT) this.projAuditEndFrame(); // ?proj=1&projaudit=1 の計器(位置の差・重なり率・通し漏れ)。段階1の置き物を描き終えた後
     this.syncTorchBack(s, now); // 松明の裏の光(ステージ3/4/7・utils/torchBackLight.ts。他ステージ=1命令で終わる)
     if (this.objShade) this.applyObjShade(s.enemies); // 既定で有効(?objshade=0 なら null=呼ばない)
@@ -13053,7 +13455,8 @@ export class PixiScene {
       return;
     }
 
-    const horizonAlpha = this.horizonActorAlpha(merchant.y);
+    // ?proj=1(段階2): 地平線フェードは足元の投影後のY(projLooseFade)。?proj=0 では今の horizonActorAlpha(merchant.y) のまま。
+    const horizonAlpha = this.projLooseFade(merchant.x, merchant.y, false);
     if (horizonAlpha <= 0) {
       this.merchantView.visible = false;
       this.merchantShadow = null;
@@ -13099,9 +13502,12 @@ export class PixiScene {
     this.merchantShadow = boxLook ? null : {
       x: merchant.x, y: merchant.y,
       legacyW: 82 * d,
-      rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
-      alpha: horizonAlpha,
+      // ?proj=1(段階2): 影は world の足元と s=1 の大きさ(÷d)で4隅を投影する。
+      rawW: tex.width * sc / (this.projFrame ? d : 1), rawH: tex.height * sc / (this.projFrame ? d : 1), texture: tex,
+      alpha: horizonAlpha, projected: this.projFrame ? true : undefined,
     };
+    // ?proj=1(段階2・§3-5d の①): 商人の入れ物(足元が原点・中身は d 倍の寸法)を、足元を支点に写す=位置 P・大きさ 基準×s。
+    if (this.projFrame) { this.projLoose('merchant', merchant.x, merchant.y, d); this.projLooseAdd(this.merchantView); }
 
     const g = this.merchantGfx;
     g.clear();
@@ -13156,7 +13562,7 @@ export class PixiScene {
       return;
     }
 
-    const horizonAlpha = this.horizonActorAlpha(npc.y);
+    const horizonAlpha = this.projLooseFade(npc.x, npc.y, false); // ?proj=1 は足元の投影後のY(段階2)。?proj=0 は今の式
     if (horizonAlpha <= 0) {
       this.eventNpcView.visible = false;
       this.npcShadow = null;
@@ -13186,6 +13592,8 @@ export class PixiScene {
     // すべて地面のnpc.yから作る=飛んでいる間に絵が縮む/Y-sortが入れ替わる事故を防ぐ)。
     this.eventNpcView.visible = true;
     this.eventNpcView.position.set(Math.round(npc.x), Math.round(npc.y - npc.hopPx));
+    // ?proj=1(段階2・§3-5d の①): 入れ物(足元が原点・中身は d 倍)を足元を支点に写す(飛来の高さ hopPx も k 倍=段階5で直す)。
+    if (this.projFrame) { this.projLoose('questNpc', npc.x, npc.y, d); this.projLooseAdd(this.eventNpcView); }
     this.eventNpcView.alpha = horizonAlpha * statusAlpha;
     this.eventNpcView.zIndex = npc.y;
 
@@ -13206,8 +13614,9 @@ export class PixiScene {
     this.npcShadow = {
       x: npc.x, y: npc.y,
       legacyW: 84 * d,
-      rawW: tex.width * sc * breathX, rawH: tex.height * sc * breathY, texture: tex,
-      alpha: horizonAlpha, shadowFade: statusAlpha, heightPx: npc.hopPx,
+      // ?proj=1(段階2): s=1 の大きさ(÷d)・4隅を投影(動く物)。
+      rawW: tex.width * sc * breathX / (this.projFrame ? d : 1), rawH: tex.height * sc * breathY / (this.projFrame ? d : 1), texture: tex,
+      alpha: horizonAlpha, shadowFade: statusAlpha, heightPx: npc.hopPx, projected: this.projFrame ? true : undefined,
     };
 
     const g = this.eventNpcGfx;
@@ -15599,11 +16008,20 @@ export class PixiScene {
     if (!this.hitboxDebugGfx) { this.hitboxDebugGfx = new Graphics(); this.hitboxDebugGfx.zIndex = 1e9; this.L.effectLayer.addChild(this.hitboxDebugGfx); }
     const g = this.hitboxDebugGfx;
     g.clear();
+    // ?proj=1&hitbox=1(段階2・§3-5k 作る物7): 敵・主人公の判定矩形は4隅を絵と同じ投影で写して描く(判定そのものは world のまま)。
+    // ?proj=0 では今の world の矩形のまま(1pxも変えない)。
+    const pf0 = this.projFrame;
+    const box = (x: number, y: number, w: number, h: number, st: { width: number; color: number; alpha: number }) => {
+      if (!pf0) { g.rect(x, y, w, h).stroke(st); return; }
+      const a = this.projPlace(x, y), b = this.projPlace(x + w, y), c = this.projPlace(x + w, y + h), d = this.projPlace(x, y + h);
+      if (!d.inDomain) return;
+      g.poly([a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y]).stroke(st);
+    };
     for (const e of enemies) {
       if (isCorpse(e)) continue;
       const b = enemyContactBox(e);
       const biting = e.biteAt !== undefined && e.biteAt > 0;
-      g.rect(b.x, b.y, b.width, b.height).stroke({ width: 1.5, color: biting ? 0xff3030 : 0xffd400, alpha: 0.95 });
+      box(b.x, b.y, b.width, b.height, { width: 1.5, color: biting ? 0xff3030 : 0xffd400, alpha: 0.95 });
       // 判定の四角は当たった後も少し残す(エフェクトと重なっているかを撮って確かめるため)。
       const fxShow = e.biteTgtAt !== undefined && e.biteTgtAt > 0 && gameTime - e.biteTgtAt < 1500;
       if (biting || fxShow) {
@@ -15616,9 +16034,9 @@ export class PixiScene {
         }
       }
     }
-    g.rect(player.x, player.y, player.width, player.height).stroke({ width: 1.5, color: 0x22ff66, alpha: 0.95 });
+    box(player.x, player.y, player.width, player.height, { width: 1.5, color: 0x22ff66, alpha: 0.95 });
     const pa = playerArtRect(player); // 雑魚の技を受ける時のキャラの絵の四角(utils/biteFxHit)
-    g.rect(pa.x, pa.y, pa.w, pa.h).stroke({ width: 1, color: 0x22ff66, alpha: 0.5 });
+    box(pa.x, pa.y, pa.w, pa.h, { width: 1, color: 0x22ff66, alpha: 0.5 });
     // ?proj=1&hitbox=1(research/PERSPECTIVE_PROJECTION.md §3-3 作る物7): 木の幹の判定矩形(world/trees.ts)を、絵と同じ投影で
     // 4隅を投影して描く(判定そのものは world のまま=変えない)。?proj=0 では描かない(今の表示を1pxも変えない)。
     const pf = this.projFrame;
@@ -17340,11 +17758,14 @@ export class PixiScene {
       const rawW = disp?.w ?? pf.boxW * 0.55;
       const rawH = disp?.h ?? pf.boxH;
       // ★空中の敵を殴って浮いている間(§18): 通常の影は消え、代わりに真下の地面の接地の楕円(playerView.airGroundShadow)が出る。
+      // ?proj=1(段階2・§3-5k 作る物4): world の足元と s=1 の大きさ(表示の大きさ ÷ d)を渡し、4隅を投影する(動く物の印つき)。
+      const pjP = !!this.projFrame && this.playerView?.projDrawnFrame === this.projFrameNo;
+      const pjD = pjP ? Math.max(1e-4, this.playerView!.projD ?? 1) : 1;
       place({
         id: '__player__', x: pf.footX, y: pf.footY,
-        rawW, rawH, texture: this.playerView?.sprite.texture ?? null,
+        rawW: rawW / pjD, rawH: rawH / pjD, texture: this.playerView?.sprite.texture ?? null,
         alpha: 1, shadowFade: (this.playerView?.shadowFade ?? 1) * this.currentIntroFade(now) * (this.playerView?.shadowAirMul ?? 1),
-        flip: disp?.flip, scaleMult: PLAYER_SHADOW_SCALE,
+        flip: disp?.flip, scaleMult: PLAYER_SHADOW_SCALE, projected: pjP || undefined, moving: pjP || undefined,
       });
     }
 
@@ -17355,7 +17776,13 @@ export class PixiScene {
       // phillLayer内に自前で描く)。
       if (e.type === 'phillboss') continue;
       const footY = e.y + e.height;
-      const horizonAlpha = this.horizonActorAlpha(footY);
+      // ?proj=1(段階2・§3-5k 作る物4): 影の不透明度と早めの continue は投影後のYの値(本体と同じフェードの例外の表)。
+      const pjView = this.projFrame ? this.enemies.get(e.id) : undefined;
+      const pjE = !!pjView && pjView.projDrawnFrame === this.projFrameNo;
+      const pjTerms = pjE ? projFadeTerms({ phill: false, hangedman: isHangedman(e.type), hiddenBoss: isHiddenBoss(e.type) }) : null;
+      const pjPt = pjE ? projectInto(this.projFrame!, e.x + e.width / 2, footY, this.projScratch2) : null;
+      const pjFade = pjPt && pjTerms ? this.projActorFade(pjPt, pjTerms) : 1;
+      const horizonAlpha = pjE ? pjFade : this.horizonActorAlpha(footY);
       if (horizonAlpha <= 0) continue;
       const view = this.enemies.get(e.id);
       const disp = this.actorDisplaySize(view);
@@ -17370,13 +17797,16 @@ export class PixiScene {
       const cy = groundY - liftPx;
       // ★検収差し戻し(F-1の横展開): 非ボス敵の本体alphaは horizonAlpha × foreFade
       // (foregroundActorAlpha。裏ボスは foreFade=1 で対象外=drawEnemyと同じ)。
-      const foreFade = bossFixed ? 1 : this.foregroundActorAlpha(footY);
-      const airS = view?.airScale ?? 1; // 浮いている間の体の拡大は影に入れない(影は1の縮みだけ・§9-76)
+      // ?proj=1: 手前フェードも pjFade に入っている(免除の表どおり)。裏ボスの付け根 (sprite.x, shadowGroundY) は後掛けの支点 F そのもの
+      // =後掛けで P へ写る点なので world の付け根としてそのまま渡せる(§3-5k 作る物4・二重に投影しない)。大きさは ÷d で s=1 に戻す。
+      const foreFade = pjE ? 1 : bossFixed ? 1 : this.foregroundActorAlpha(footY);
+      const airS = (view?.airScale ?? 1) * (pjE ? Math.max(1e-4, view?.projD ?? 1) : 1); // 浮いている間の体の拡大は影に入れない(影は1の縮みだけ・§9-76)
       place({
         id: e.id, x: cx, y: cy,
         rawW: disp.w / airS, rawH: disp.h / airS, texture: view?.sprite.texture ?? null,
         alpha: horizonAlpha * foreFade, shadowFade: view?.shadowFade ?? 1,
         flip: disp.flip, skewX: view?.sprite.skew.x ?? 0, heightPx: liftPx, floatFloor: view?.shadowFloatFloor, airK: view?.shadowAirK,
+        projected: pjE || undefined, moving: pjE || undefined,
       });
     }
     // ---- 裏ボス討伐フェード(★致命4修正: 討伐の瞬間に影だけ消え、2.6秒間「影の無い巨体」が
@@ -17393,10 +17823,13 @@ export class PixiScene {
           // (単純な中心±高さ/2だと透明な余白を「絵の下端」と誤認する)。
           const contentBottomFrac = this.textureContentBottomFrac(corpse.texture);
           const groundY = corpse.y + ch * (contentBottomFrac - 0.5);
+          // ?proj=1(段階2): 亡骸の絵は後掛けの前(world の位置)を読む=付け根は world のまま、大きさは ÷d(syncBossCorpse の記録)。
+          const bcD = this.projFrame ? Math.max(1e-4, this.bossCorpseProjD) : 1;
           place({
             id: 'bossCorpse', x: corpse.x, y: groundY,
-            rawW: cw, rawH: ch, texture: corpse.texture,
+            rawW: cw / bcD, rawH: ch / bcD, texture: corpse.texture,
             alpha: 1, shadowFade: corpse.alpha,
+            projected: this.projFrame ? true : undefined, moving: this.projFrame ? true : undefined,
           });
         }
       }
@@ -17404,22 +17837,28 @@ export class PixiScene {
     // ---- 召喚(味方ユニット) ----
     for (const s of summons) {
       const fb = summonFootBox(s);
-      const horizonAlpha = this.horizonActorAlpha(fb.footY);
-      if (horizonAlpha <= 0) continue;
       const view = this.summonViews.get(s.id);
+      // ?proj=1(段階2): 投影後のYのフェード・world の足元・s=1 の大きさで4隅を投影(動く物の印つき)。
+      const pjS = !!this.projFrame && !!view && view.projDrawnFrame === this.projFrameNo;
+      const horizonAlpha = pjS
+        ? this.projActorFade(projectInto(this.projFrame!, fb.footX, fb.footY, this.projScratch2), { horizon: true, fore: false })
+        : this.horizonActorAlpha(fb.footY);
+      if (horizonAlpha <= 0) continue;
       const disp = this.actorDisplaySize(view);
       if (!disp) continue;
+      const pjD = pjS ? Math.max(1e-4, view!.projD ?? 1) : 1;
       place({
         id: 'sum:' + s.id, x: fb.footX, y: fb.footY,
-        rawW: disp.w, rawH: disp.h, texture: view?.sprite.texture ?? null,
+        rawW: disp.w / pjD, rawH: disp.h / pjD, texture: view?.sprite.texture ?? null,
         alpha: horizonAlpha, flip: disp.flip, skewX: view?.sprite.skew.x,
+        projected: pjS || undefined, moving: pjS || undefined,
       });
     }
     // ---- 設置型ウェポン(盾/デコイ/タレット) ----
     for (const p of projectiles) {
       if (p.weaponType !== 'shield' && p.weaponType !== 'decoy' && p.weaponType !== 'turret') continue;
       const footY = p.y + p.height;
-      const horizonAlpha = this.horizonActorAlpha(footY);
+      const horizonAlpha = this.projLooseFade(p.x + p.width / 2, footY, false); // ?proj=1(段階2): 投影後のY
       if (horizonAlpha <= 0) continue;
       // タレットは Graphics 描画(実テクスチャ無し)=接地2枚のみ。盾/デコイは実テクスチャがあるので
       // シルエットも出す(裁定A: 表示実寸を渡す。placedWeaponShadowWidth の×0.55は使わない)。
@@ -17431,6 +17870,8 @@ export class PixiScene {
         id: 'pw:' + p.id, x: p.x + p.width / 2, y: footY,
         rawW, rawH, texture: wpnTex,
         alpha: horizonAlpha, silhouetteExempt: !wpnTex,
+        // ?proj=1(段階2): 大きさは遠近を掛けていない値(=s=1)のまま・4隅を投影(動く物)。
+        projected: this.projFrame ? true : undefined, moving: this.projFrame ? true : undefined,
       });
     }
     // ---- ステージ1の花 ----
@@ -17453,7 +17894,7 @@ export class PixiScene {
     // ---- 商人/イベントNPC/城/病院/武器庫/警察署 ----
     if (this.merchantShadow) {
       const m = this.merchantShadow;
-      place({ id: 'merchant', x: m.x, y: m.y, rawW: m.rawW, rawH: m.rawH, texture: m.texture, alpha: m.alpha, shadowFade: m.shadowFade });
+      place({ id: 'merchant', x: m.x, y: m.y, rawW: m.rawW, rawH: m.rawH, texture: m.texture, alpha: m.alpha, shadowFade: m.shadowFade, projected: m.projected, moving: m.projected });
     }
     if (this.crawlerShadow) {
       const m = this.crawlerShadow;
@@ -17461,7 +17902,7 @@ export class PixiScene {
     }
     if (this.npcShadow) {
       const n = this.npcShadow;
-      place({ id: 'npc', x: n.x, y: n.y, rawW: n.rawW, rawH: n.rawH, texture: n.texture, alpha: n.alpha, shadowFade: n.shadowFade, heightPx: n.heightPx });
+      place({ id: 'npc', x: n.x, y: n.y, rawW: n.rawW, rawH: n.rawH, texture: n.texture, alpha: n.alpha, shadowFade: n.shadowFade, heightPx: n.heightPx, projected: n.projected, moving: n.projected });
     }
     if (this.castleShadow) {
       const c = this.castleShadow;
@@ -17484,11 +17925,13 @@ export class PixiScene {
     // ---- 護衛軍人NPC ----
     const escIntroFade = this.currentIntroFade(now);
     for (const esc of escorts) {
-      const ha = this.horizonActorAlpha(esc.y) * escIntroFade;
+      // ?proj=1(段階2・§3-5k 作る物4): 投影後のYのフェード・s=1 の大きさ(÷depthScale)で4隅を投影(動く物の印)。
+      const ha = this.projLooseFade(esc.x, esc.y, false) * escIntroFade;
       if (ha <= 0) continue;
       const escSp = this.escortSprites.get(esc.id);
       if (!escSp || escSp.visible === false) continue;
-      const w = Math.abs(escSp.width);
+      const escPj = this.projFrame ? Math.max(1e-4, this.depthScale(esc.y)) : 1;
+      const w = Math.abs(escSp.width) / escPj;
       if (w <= 0) continue;
       // 倒れた姿(research/ESCORT_TARGETED.md §6): 影は広く・平たく・少し濃く(縮めない=縮むと地面に吸い込まれて消えていく読みになる)・接地点は沈めた足元へ。
       // 起き上がりは同じ曲線で戻る(行き過ぎも)。
@@ -17496,74 +17939,82 @@ export class PixiScene {
       place({
         // place() の y=描画上の足元(持ち上げた後)・接地点=y+heightPx。跳躍中は持ち上げた足元を渡す(地面の下へ沈めない・検収2巡目 A-1)。
         id: 'esc:' + esc.id, x: esc.x, y: esc.y - (this.escKickLift.get(esc.id) ?? 0),
-        rawW: w * (ePose ? ePose.shadowW : 1), rawH: Math.abs(escSp.height) * (ePose ? ePose.shadowLen : 1), texture: escSp.texture,
+        rawW: w * (ePose ? ePose.shadowW : 1), rawH: Math.abs(escSp.height) / escPj * (ePose ? ePose.shadowLen : 1), texture: escSp.texture,
         alpha: ePose ? Math.min(1, ha * ePose.shadowAlpha) : ha, flip: escSp.scale.x < 0,
         heightPx: this.escKickLift.get(esc.id) ?? 0,
+        projected: this.projFrame ? true : undefined, moving: this.projFrame ? true : undefined,
       });
     }
     // ---- エンディング(仮組み)の兵士・フィル(既存の護衛と同じ接地影のplace()に相乗り・§6) ----
     for (const es of endingSoldiers) {
       if (isEndingSoldierTumbling(es)) continue; // 一時転倒中(爆撃v3.1)は立ちシルエット影をやめ楕円影へ(監査B-3・drawEndingSoldiers側)
-      const ha = this.horizonActorAlpha(es.y);
+      const ha = this.projLooseFade(es.x, es.y, false); // ?proj=1(段階2): 投影後のY・s=1 の大きさ・4隅を投影(動く物)
       if (ha <= 0) continue;
       const esSp = this.endingSoldierSprites.get(es.id);
       if (!esSp || esSp.visible === false) continue;
-      const w = Math.abs(esSp.width);
+      const esD = this.projFrame ? Math.max(1e-4, this.depthScale(es.y)) : 1;
+      const w = Math.abs(esSp.width) / esD;
       if (w <= 0) continue;
       place({
         id: 'esold:' + es.id, x: es.x, y: es.y,
-        rawW: w, rawH: Math.abs(esSp.height), texture: esSp.texture,
+        rawW: w, rawH: Math.abs(esSp.height) / esD, texture: esSp.texture,
         alpha: ha, flip: esSp.scale.x < 0,
+        projected: this.projFrame ? true : undefined, moving: this.projFrame ? true : undefined,
       });
     }
     if (this.currentFarKey === 'ending' && this.endingPhillSprite?.visible) {
       const phSp = this.endingPhillSprite;
-      const ha = this.horizonActorAlpha(phSp.y);
+      const ha = this.projLooseFade(phSp.x, phSp.y, false); // ?proj=1(段階2): 投影後のY(フィルは d=1)
       const w = Math.abs(phSp.width);
       if (ha > 0 && w > 0) {
         place({
           id: 'endphill', x: phSp.x, y: phSp.y,
           rawW: w, rawH: Math.abs(phSp.height), texture: phSp.texture,
           alpha: ha, flip: phSp.scale.x < 0, scaleMult: PLAYER_SHADOW_SCALE,
+          projected: this.projFrame ? true : undefined, moving: this.projFrame ? true : undefined,
         });
       }
     }
     // ---- 救助NPC(退場フェード=savedAt) ----
     for (const s of rescueSurvivors) {
       const fy = s.y + s.height;
-      const ha = this.horizonActorAlpha(fy);
+      const ha = this.projLooseFade(s.x + s.width / 2, fy, false); // ?proj=1: 投影後のY(段階2)
       if (ha <= 0) continue;
       const sp = this.rescueSurvivorSprites.get(s.id);
       if (!sp || sp.visible === false) continue;
-      const w = Math.abs(sp.width);
+      const svPj = this.projFrame ? Math.max(1e-4, this.depthScale(fy)) : 1; // ?proj=1: s=1 の大きさ
+      const w = Math.abs(sp.width) / svPj;
       if (w <= 0) continue;
       const outroA = s.savedAt ? Math.max(0, 1 - (Date.now() - s.savedAt) / RESCUE_OUTRO_MS) : 1;
       place({
         id: 'rescue:' + s.id, x: s.x + s.width / 2, y: fy,
-        rawW: w, rawH: Math.abs(sp.height), texture: sp.texture,
+        rawW: w, rawH: Math.abs(sp.height) / svPj, texture: sp.texture,
         alpha: ha, shadowFade: outroA, flip: sp.scale.x < 0,
+        projected: this.projFrame ? true : undefined, moving: this.projFrame ? true : undefined,
       });
     }
     // ---- 拠点駐留兵 ----
     for (const bsite of baseSites) {
       for (let i = 0; i < bsite.soldiers.length; i++) {
         const sol = bsite.soldiers[i];
-        const ha = this.horizonActorAlpha(sol.y);
+        const ha = this.projLooseFade(sol.x, sol.y, false); // ?proj=1(段階2): 投影後のY・s=1 の大きさ・4隅を投影(動く物)
         if (ha <= 0) continue;
         const sp = this.baseSoldierSprites.get(`${bsite.id}-${i}`);
         if (!sp || sp.visible === false) continue;
-        const w = Math.abs(sp.width);
+        const bsD = this.projFrame ? Math.max(1e-4, this.depthScale(sol.y)) : 1;
+        const w = Math.abs(sp.width) / bsD;
         if (w <= 0) continue;
         place({
           id: `bsol:${bsite.id}-${i}`, x: sol.x, y: sol.y,
-          rawW: w, rawH: Math.abs(sp.height), texture: sp.texture,
+          rawW: w, rawH: Math.abs(sp.height) / bsD, texture: sp.texture,
           alpha: ha, flip: sp.scale.x < 0,
+          projected: this.projFrame ? true : undefined, moving: this.projFrame ? true : undefined,
         });
       }
     }
     // ---- 拾い物 ----
     for (const ps of this.pickupShadows) {
-      place({ id: ps.id, x: ps.x, y: ps.y, rawW: ps.rawW, rawH: ps.rawH, texture: ps.texture, alpha: ps.alpha, shadowFade: ps.shadowFade });
+      place({ id: ps.id, x: ps.x, y: ps.y, rawW: ps.rawW, rawH: ps.rawH, texture: ps.texture, alpha: ps.alpha, shadowFade: ps.shadowFade, projected: ps.projected, moving: ps.projected });
     }
     // 画面外の拾い物: 既にある影の枠は隠して残す(placeShadowV9 の画面外と同じ扱い=品質監査 B-3)。新しくは作らない。
     for (const id of this.pickupShadowKeepIds) {
@@ -17576,14 +18027,17 @@ export class PixiScene {
     // ---- 救援アライ(スキル救難信号): 飛来・離脱中も影が地面に残るよう高さを明示的に渡す(仕様書確定)。
     for (const [id, v] of this.rescueAllyViews) {
       if (v.body.visible === false || v.shadowAlpha <= 0) continue;
-      const w = Math.abs(v.body.width);
+      // ?proj=1(段階2・§3-5k 作る物4): 投影後のY・s=1 の大きさ(÷描いた時の depthScale)・4隅を投影(動く物)。
+      const raD = this.projFrame ? Math.max(1e-4, this.depthScale(v.shadowFootY + v.shadowHeight)) : 1;
+      const w = Math.abs(v.body.width) / raD;
       if (w <= 0) continue;
-      const ha = this.horizonActorAlpha(v.shadowFootY);
+      const ha = this.projLooseFade(v.body.x, v.shadowFootY, false);
       if (ha <= 0) continue;
       place({
         id: 'rescueAlly:' + id, x: v.body.x, y: v.shadowFootY,
-        rawW: w, rawH: Math.abs(v.body.height), texture: v.body.texture,
+        rawW: w, rawH: Math.abs(v.body.height) / raD, texture: v.body.texture,
         alpha: ha, shadowFade: v.shadowAlpha, flip: v.shadowFlip, heightPx: v.shadowHeight,
+        projected: this.projFrame ? true : undefined, moving: this.projFrame ? true : undefined,
       });
     }
     // ---- 松明/焚き火/緑卵(§3-9-B確定「シルエットの対象外」だが接地2枚は出す)。
@@ -18652,6 +19106,7 @@ export class PixiScene {
       sl.nearHalf = nearHalfSlot; sl.farHalf = Math.max(nearHalfSlot, farHalfBase * persp);
       sl.skewShift = skewShift; sl.uSign = uSign;
       sl.projected = projShadow;
+      sl.moving = projShadow && !!req.moving;
     }
   }
 
@@ -18711,7 +19166,7 @@ export class PixiScene {
       // 判定に使う不透明度は爆発で洗う前の値(ambientSilAlpha(base, 0))=爆発の明滅で候補が入れ替わらない。
       this.staticShadowLowMult.clear();
       for (const sl of ambs) {
-        if (!sl.projected) continue;
+        if (!isStaticProjectedShadow(sl)) continue; // 動く物の影(段階2)は候補に入れない
         const lm = staticShadowLowAlphaMult(ambientSilAlpha(sl.baseAlpha, 0));
         if (lm <= 0) continue;
         this.staticShadowLowMult.set(sl.ownerId, lm);
@@ -18720,7 +19175,7 @@ export class PixiScene {
       stepStaticShadowCap(cands, this.staticShadowCapState, this.staticShadowCapMult, STATIC_SHADOW_CAP, dtMs);
       ambDraw = [];
       for (const sl of ambs) {
-        if (!sl.projected) { ambDraw.push(sl); continue; }
+        if (!isStaticProjectedShadow(sl)) { ambDraw.push(sl); continue; }
         if ((this.staticShadowCapMult.get(sl.ownerId) ?? 0) > 0) ambDraw.push(sl);
         else { if (sl.mesh) sl.mesh.visible = false; sl.alpha = 0; }
       }
@@ -18742,7 +19197,7 @@ export class PixiScene {
     }
     // 環境光シルエット: Σ で洗う。★接地2層は薄めないので、閃光の間も足元の接地は消えない。
     for (const sl of ambDraw) {
-      const capK = sl.projected && this.projFrame
+      const capK = isStaticProjectedShadow(sl) && this.projFrame
         ? (this.staticShadowCapMult.get(sl.ownerId) ?? 0) * (this.staticShadowLowMult.get(sl.ownerId) ?? 0) : 1;
       this.drawShadowSlot(sl, ambientSilAlpha(sl.baseAlpha, sigma.get(sl.ownerId) ?? 0) * capK, now, true);
     }
@@ -18909,6 +19364,7 @@ export class PixiScene {
       }
     }
     this.drawPlayer(this.playerView, player, gameTime, now);
+    if (this.projFrame) this.playerView.projDrawnFrame = this.projFrameNo; // ?proj=1: 後掛けの対象(§3-5k 作る物1)
     // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2 §2/§4「playerTextureNameの8コマ分岐に
     // 3コマ素材を通さない」): プレイヤー本体+武器/背負い物等の重ね絵を丸ごと非表示にし、
     // 代わりにフィル専用スプライト(drawEndingPhill)を同じ位置(=カメラ台車)に描く。
@@ -18944,7 +19400,11 @@ export class PixiScene {
       // v0.25.3206: 既定OFFは try/catch の**外**(=drawEnemy本体が例外を投げても必ず今フレーム分が
       // 反映される場所)で先に済ませる。詳細は resetActorFxDefaults のコメント。
       this.resetActorFxDefaults(view, e);
-      try { this.drawEnemy(view, e, gameTime, now); this.drawKatanaCuts(view, e); } catch (err) {
+      this.projDrawOwner = this.projFrame ? view : null; // ?proj=1: 共有の絵の関数が作った体の絵を、この敵へ登録する
+      try {
+        this.drawEnemy(view, e, gameTime, now); this.drawKatanaCuts(view, e, now);
+        if (this.projFrame) view.projDrawnFrame = this.projFrameNo; // ?proj=1: 描き切った物だけ後掛けする(§3-5k 作る物1)
+      } catch (err) {
         if (!PixiScene.enemyDrawErrLogged) { PixiScene.enemyDrawErrLogged = true; console.error('[pixiScene] drawEnemy error (suppressed):', err); }
         // v0.25.3324: 実機ではconsoleが見えず例外源を特定できない(アクラシエル3度目の報告)。
         // 左下バージョン表示に赤字で要約を出すビーコンへも渡す(storeは書かない=描画専門の掟は維持)。
@@ -18963,6 +19423,7 @@ export class PixiScene {
           view.sprite.position.set(Math.round(fbE.footX), Math.round(fbE.footY));
         } catch { /* 最終フォールバックすら失敗したら諦める(次フレームでまた試す) */ }
       }
+      this.projDrawOwner = null;
     }
     for (const [id, view] of this.enemies) {
       if (!seen.has(id)) {
@@ -19245,8 +19706,10 @@ export class PixiScene {
       if (!anim || anim.count !== count) { anim = { startedAt: now, count }; this.lockAnim.set(enemyId, anim); }
       const t = Math.min(1, Math.max(0, (now - anim.startedAt) / LOCK_ANIM_MS));
       const ease = 1 - Math.pow(1 - t, 3); // easeOutCubic
-      const cx = enemy.x + enemy.width / 2;
-      const headY = enemy.y + enemy.height * 0.28; // 頭のあたり
+      // ?proj=1(段階2・§3-5d): 全員で1枚の Graphics=描く点を頭の投影点へずらす(大きさは変えない)。?proj=0 は (0,0)。
+      const lkHs = this.projHudShift(enemy.x + enemy.width / 2, enemy.y + enemy.height, enemy.x + enemy.width / 2, enemy.y + enemy.height * 0.28, 1);
+      const cx = enemy.x + enemy.width / 2 + lkHs.dx;
+      const headY = enemy.y + enemy.height * 0.28 + lkHs.dy; // 頭のあたり
       const targetRad = Math.max(enemy.width, enemy.height) * 0.5 + 4;
       // 大きい半径(ズームアウト)→ targetRad(ズームイン)へ収束。
       const rad = targetRad * (LOCK_ANIM_START_SCALE - (LOCK_ANIM_START_SCALE - 1) * ease);
@@ -19512,6 +19975,8 @@ export class PixiScene {
           views = { ring1, ring2, spinAng: 0, spinVel: 0, lastSpinAt: now, vanishAt: null };
           this.surielRingSprites.set(e.id, views);
         }
+        // ?proj=1(段階2・§3-5d): 頭上に浮く環=体として持ち主(この敵)へ登録(環を投げる技の飛ぶ環は段階3)。
+        { const ov = this.projFrame ? this.enemies.get(e.id) : undefined; if (ov) { this.projAttach(ov, views.ring1, 'attachedArt'); this.projAttach(ov, views.ring2, 'attachedArt'); } }
         views.vanishAt = null; // 再出現: 残っていた角速度から加速し直す(速度の持ち越し)
         const sdt = Math.max(0, Math.min(100, now - views.lastSpinAt));
         views.lastSpinAt = now;
@@ -21456,13 +21921,18 @@ export class PixiScene {
     for (const m of mines) {
       // 画面外はスキップ(distanceOutsideViewport はズーム引き(CONTEXT_ZOOM_MIN)込みの可視域で判定)。
       if (this.distanceOutsideViewport(m.x, m.y, SENSOR_MINE_RADIUS + 40) > 0) continue;
+      // ?proj=1(段階2・§3-5d の①): 本体(円盤と待機のランプ)だけ足元を投影して置く・大きさ s(地雷は遠近の倍率を掛けていない=d=1)。
+      // 感知後の赤い点滅と爆発範囲の円は予告=段階4まで world のまま(1つも変えない)。
+      const mp = this.projFrame ? projectInto(this.projFrame, m.x, m.y, this.projScratch2) : null;
+      const mx = mp ? mp.x : m.x, my = mp ? mp.y : m.y, ms = mp ? mp.s : 1;
+      const ma = mp ? mp.alpha : 1;
       // 本体: 地面に置いた小型ディスク(楕円=接地感)+外周リム。
-      g.ellipse(m.x, m.y, 7, 4.6).fill({ color: 0x1f2937, alpha: 0.92 });
-      g.ellipse(m.x, m.y, 7, 4.6).stroke({ width: 1.5, color: 0x475569, alpha: 0.9 });
+      g.ellipse(mx, my, 7 * ms, 4.6 * ms).fill({ color: 0x1f2937, alpha: 0.92 * ma });
+      g.ellipse(mx, my, 7 * ms, 4.6 * ms).stroke({ width: 1.5 * ms, color: 0x475569, alpha: 0.9 * ma });
       if (m.triggeredAt <= 0) {
         // 待機: 琥珀ランプがゆっくり明滅(視認用の控えめな存在表示)。
         const lampPulse = 0.5 + 0.5 * Math.sin(now / 420 + m.x * 0.05);
-        g.circle(m.x, m.y - 2, 1.7).fill({ color: 0xfbbf24, alpha: 0.35 + 0.5 * lampPulse });
+        g.circle(mx, my - 2 * ms, 1.7 * ms).fill({ color: 0xfbbf24, alpha: (0.35 + 0.5 * lampPulse) * ma });
       } else {
         // 感知→起爆(2秒): 赤点滅テレグラフ。ランプ赤点滅+爆発範囲の赤円(ジブリル火の予告と同系の見せ方)。
         // ★慣性バッチ(v0.25.3444・旧台帳#7の裁定): 矩形波を**現実基準で維持**する。
@@ -21593,6 +22063,11 @@ export class PixiScene {
       const meleeSince = gameTime - (a.spawnedAt + strikeAt);
       const swinging = meleeSince >= 0 && meleeSince < RESCUE_ALLY_ATTACK_MS;
       const dsc = this.depthScale(footY);
+      // ?proj=1(段階2・§3-5d の②・着地後。飛来の放物線の高さは段階5=今は高さも体と一緒に k 倍): 本体と振りの3枚を足元を支点に写す。
+      if (this.projFrame) {
+        this.projLoose('rescueAlly', footX, footY, dsc);
+        this.projLooseAdd(body); this.projLooseAdd(knife); this.projLooseAdd(slash); this.projLooseAdd(trail);
+      }
       let offX = 0, offY = 0, lean = 0, sqX = 1, sqY = 1;
       if (swinging) {
         const am = Math.hypot(tx - a.fromX, ty - a.fromY) || 1;
@@ -21733,6 +22208,21 @@ export class PixiScene {
       let view = this.summonViews.get(s.id);
       if (!view) { view = this.makeActor(); this.summonViews.set(s.id, view); }
       this.drawSummon(view, s, now);
+      // ?proj=1(段階2・§3-5c 型②): 召喚・犬・守護霊も後掛け。旧い倍率 d は描く関数と同じ式(守護霊=depthScale・それ以外=depthScaleEnemy)。
+      if (this.projFrame) {
+        const sfb = summonFootBox(s);
+        const fx = s.kind === 'ghost-ally' ? s.x + s.width / 2 : sfb.footX, fy = s.kind === 'ghost-ally' ? s.y + s.height : sfb.footY;
+        view.projFx = fx; view.projFy = fy; view.projPhill = false;
+        view.projD = s.kind === 'ghost-ally' ? this.depthScale(fy) : this.depthScaleEnemy(fy);
+        view.projHx = s.x + s.width / 2; view.projHy = s.y; view.projSpawnA = 1;
+        view.projDrawnFrame = this.projFrameNo;
+      }
+      // ?proj=1(段階2・§3-5d): 守護霊の入れ物の外の絵(ナイフ3枚・近接武器・背負い刀・装飾パーツ・銃口の閃光=体/頭上の名前=頭上UI)を登録。
+      if (this.projFrame && s.kind === 'ghost-ally') {
+        for (const sp of [this.ghostKnife, this.ghostKnifeSlash, this.ghostKnifeTrail, this.ghostMeleeWpn, this.ghostKatanaBack, this.ghostMuzzle,
+          ...this.ghostAvatarAbove, ...this.ghostAvatarBelow]) this.projAttach(view, sp, 'attachedArt');
+        this.projAttach(view, this.ghostNameLabel, 'nameLabel');
+      }
     }
     // 守護霊が場に居ないフレームは専用オーバーレイ(ナイフ振り/銃口閃光)も確実に消す
     // (view本体はprune済みでもオーバーレイはactorLayer直下=消し忘れ事故の型・v0.25.2412の教訓)。
@@ -22818,6 +23308,7 @@ export class PixiScene {
         if (opts?.zIndexBase !== undefined) container.addChild(sp); // 共有actorLayer=zIndexで前後を決める
         else if (above) container.addChild(sp);      // 本体より前面(上)
         else container.addChildAt(sp, 1);             // 本体より背面(下・reticleとspriteの間)
+        this.projTag(sp, 'avatarPart'); // ?proj=1 の段階2の役の表: 体(主人公の入れ物の子)
         pool[i] = sp;
       }
       const pc = pieces[i];
@@ -22868,7 +23359,7 @@ export class PixiScene {
     // (「喉を掻っ切ってる」読み)。表示窓外では隠す(常時判定=消し忘れ防止)。
     const slashT = (rt - tB) / 150;
     if (rt >= tB && slashT < 1) this.drawKillFxSlash(k, slashT);
-    else if (this.killFxSlashSp) this.killFxSlashSp.visible = false;
+    else { if (this.killFxSlashSp) this.killFxSlashSp.visible = false; if (this.killFxSlashShadow) this.killFxSlashShadow.visible = false; }
     this.drawKillFxText(k, rt); // KILL!文字(血しぶきと同時に出る・実時間駆動)
     if (rt < 0 || rt >= KILLFX_TOTAL_MS) return null;
     const faceLeft = k.ex < footX;
@@ -22943,6 +23434,7 @@ export class PixiScene {
   ): void {
     const ref = getTexture('fx/slash-streak-4');
     if (!ref) return;
+    const kSheet = k.katana ? this.katanaSlashSheet('base') : null;
     if (!this.killFxSlashSp) {
       this.killFxSlashSp = new Sprite();
       this.killFxSlashSp.anchor.set(0.5);
@@ -22954,12 +23446,43 @@ export class PixiScene {
     // フル長の一文字は最終コマ(4)だけ。旧進行(150msで均等5コマ)だと4コマ目が出る頃には
     // フェード+血しぶき被りで実質見えなかった。振り抜きは頭の35%(≒50ms)で走り切り、
     // 以後は**フルコマを保持**してから終盤フェードする。
-    const idx = Math.min(4, Math.floor((t / 0.35) * 5));
-    const tex = getTexture(`fx/slash-streak-${idx}`) ?? ref;
-    if (sp.texture !== tex) sp.texture = tex;
     this.L.effectLayer.addChild(sp); // 常に最前面へ(血しぶきプールより後に重ねる=線が埋もれない)
     const dir = k.ex < k.px ? -1 : 1; // 振り抜きの向き=プレイヤー→敵の向き
     const len = Math.max(k.ew, k.eh) * 3.2; // ★FB8→FB11でさらに大きく(1.9→2.6→3.2)
+    if (!this.killFxSlashShadow) {
+      this.killFxSlashShadow = new Sprite();
+      this.killFxSlashShadow.tint = 0x000000;
+      this.killFxSlashShadow.visible = false;
+    }
+    const shadow = this.killFxSlashShadow;
+    if (kSheet) {
+      // ★刀の致命(社長支給の刀用の斬撃シート・2026-11-22): 横一文字の素材を首元へ。振った向きへ8°下りながら抜ける。
+      // 覆う範囲は従来の一文字と同じ(斜め素材を寝かせた長さ=len の対角)。倍率は整数。振り切りを長く止め、余韻は短く切る(喉搔きの尺)。
+      // 出は尾を固定して刃先へ伸び、余韻は刃先を固定して尾が追いつく。真下に暗い写しを敷く(夜の背景に溶かさない)。
+      const pose = katanaSlashPose(t, 'kill');
+      const tex = this.katanaSlashCrop('base', pose.frame, pose.side, pose.reveal);
+      if (!tex) { sp.visible = false; shadow.visible = false; return; }
+      const full = Math.hypot(len, (len * ref.height) / Math.max(1, ref.width));
+      const { kx, ky } = katanaSlashIntScale(full);
+      const rot = dir * (8 * Math.PI / 180);
+      const L = KATANA_SLASH_CELL_W * kx;
+      const cx = k.ex, cy = k.ey - k.eh * 0.55;
+      const tailX = cx - Math.cos(rot) * dir * L / 2, tailY = cy - Math.sin(rot) * dir * L / 2;
+      if (shadow.parent !== this.L.effectLayer) this.L.effectLayer.addChild(shadow);
+      this.L.effectLayer.addChildAt(shadow, this.L.effectLayer.getChildIndex(sp)); // 斬撃の真下
+      this.placeKatanaStroke(sp, tex, pose.side, pose.reveal, tailX, tailY, rot, kx * dir, ky);
+      this.placeKatanaStroke(shadow, tex, pose.side, pose.reveal, tailX, tailY, rot, kx * dir, ky);
+      sp.alpha = pose.alpha;
+      sp.visible = sp.alpha > 0.01;
+      shadow.alpha = 0.32 * pose.alpha;
+      shadow.visible = sp.visible;
+      return;
+    }
+    shadow.visible = false;
+    if (sp.anchor.x !== 0.5 || sp.anchor.y !== 0.5) sp.anchor.set(0.5);
+    const idx = Math.min(4, Math.floor((t / 0.35) * 5));
+    const tex = getTexture(`fx/slash-streak-${idx}`) ?? ref;
+    if (sp.texture !== tex) sp.texture = tex;
     const sc = len / Math.max(1, ref.width);
     sp.scale.set(sc * dir, sc);
     sp.rotation = dir * (Math.PI / 4); // 斜め素材を水平へ寝かせる=横一文字
@@ -23264,6 +23787,11 @@ export class PixiScene {
     // 銃発射=反動 / 近接=踏み込み振り抜き / カウンター=決めポーズ / リロード=手元作業の揺れ。
     let actSqX = 1, actSqY = 1, actLean = 0, actOffX = 0, actOffY = 0;
     const dsc = this.depthScale(fb.footY); // pxオフセットは遠近スケールに合わせる(bob と同じ)
+    // ?proj=1(段階2・★#21=A「遠近のまま」): 主人公も後掛けで地面と同じ投影に通す。支点 F=足元・旧い倍率 d=depthScale(足元)・頭上UIの基準 H。
+    if (this.projFrame) {
+      view.projFx = fb.footX; view.projFy = fb.footY; view.projD = dsc; view.projPhill = false;
+      view.projHx = p.x + p.width / 2; view.projHy = p.y; view.projSpawnA = 1;
+    }
     const face = (p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0)) ? -1 : 1;
     // 狙い方向の単位ベクトル(レティクル優先・無ければ直近向き)。踏み込み/反動の方向に使う。
     let aimx = 0, aimy = 0;
@@ -24624,6 +25152,7 @@ export class PixiScene {
       const at = parent.getChildIndex(sp) + 1;
       parent.addChildAt(r.a, at);
       parent.addChildAt(r.b, at + 1);
+      this.projTag(r.a, 'rim'); this.projTag(r.b, 'rim'); // ?proj=1 の段階2の役の表: 本体に重ねる縁=体(縁の向きは投影し直さない)
       this.rimViews.set(id, r);
     }
 
@@ -24757,6 +25286,11 @@ export class PixiScene {
     const boxH = clone.height * PLAYER_VISUAL_SCALE;
     const footX = clone.x + clone.width / 2;
     const footY = clone.y + clone.height;
+    // ?proj=1(段階2・§3-5d の②): 影分身(本体+ナイフ3枚+武器の絵)を足元を支点に写す(旧い倍率 d=depthScale(足元))。
+    if (this.projFrame) {
+      this.projLoose('clone', footX, footY, this.depthScale(footY));
+      this.projLooseAdd(spr); this.projLooseAdd(slot.knife); this.projLooseAdd(slot.slash); this.projLooseAdd(slot.trail); this.projLooseAdd(slot.wpn);
+    }
     const baseScale = playerBaseScale(texSubject, gray, boxW, boxH);
     const sc = this.snapTexelScale(baseScale * this.depthScale(footY)) * playerClassVisualMul(texSubject); // 本体と同じピクセルスナップ(案1)・クラスの見た目倍率
     spr.scale.set(clone.facingLeft ? -sc : sc, sc);
@@ -25442,7 +25976,14 @@ export class PixiScene {
     // =外すのが意図。浮遊ボスは遠近/地平線の演出そのものに乗らない)。
     // §14-4-3(使者・hangedman): 北側(画面奥)へ湧いた使者が地平線フェードで見えないまま迫ると
     // 「囲まれている」の核心=視覚が伝わらない。使者も対象外にする(視覚のみ・判定は元から不変)。
-    const horizonAlpha = (e.type === 'phillboss' || isHangedman(e.type)) ? 1 : this.horizonActorAlpha(fb.footY);
+    // ?proj=1(段階2・§3-5i の1): 位置の法則のフェードは足元の投影点(投影後のY)で1回だけ引く。免除の型は今と同じ組み合わせ
+    // (projFadeTerms)。定義域と描く距離のフェード(地平線より北=0)は全員に掛ける。?proj=0 では今の式のまま。
+    const projEp = this.projFrame ? projectInto(this.projFrame, fb.footX, fb.footY, this.projScratch2) : null;
+    const projEpY = projEp ? projEp.y : 0, projEpA = projEp ? projEp.alpha : 1;
+    const projTerms = projEp ? projFadeTerms({ phill: e.type === 'phillboss', hangedman: isHangedman(e.type), hiddenBoss: bossFixed }) : null;
+    const horizonAlpha = projTerms
+      ? projEpA * (projTerms.horizon ? this.horizonActorAlpha(projEpY) : 1)
+      : (e.type === 'phillboss' || isHangedman(e.type)) ? 1 : this.horizonActorAlpha(fb.footY);
     // 死神の回り込みワープ: 消える(0)→テレポート→出る(1) のフェード(useGameLoop が reaperWarpAlpha を駆動)。
     const reaperWarpFade = e.reaperWarpAlpha ?? 1;
     // ★リッチの転移(§16-B B-5)。消滅は**加速しながら潰れ**、出現は**行き過ぎて収まる**
@@ -25457,7 +25998,7 @@ export class PixiScene {
     const lichBlinkAlpha = lichBlinkP.alpha;
     // 非ボス敵は「手前(画面最下端)で消える」near-plane フェードを掛ける。裏ボスは自前の裏回りフェード
     // (bossBehindAlpha)で別管理なので掛けない。
-    const foreFade = bossFixed ? 1 : this.foregroundActorAlpha(fb.footY);
+    const foreFade = projTerms ? (projTerms.fore ? this.foregroundActorAlpha(projEpY) : 1) : bossFixed ? 1 : this.foregroundActorAlpha(fb.footY);
     // ハンターの索敵タイムアウト立ち去り: hunterLeavingAt(gameTime基準)から HUNTER_LEAVE_FADE_MS
     // かけて透明化(社長指示)。useGameLoop側もgameTime基準で消滅判定するため同じ時計を使う。
     // research/HUNTER_PATROL.md: 巡回のワープ(薄れて消える→薄れて現れる)も「そこに居ない」の濃さとして掛ける。
@@ -25477,9 +26018,16 @@ export class PixiScene {
     //  ・**存在の法則** (reaperWarpFade / hunterLeaveFade) = 「そこに居ない」。
     //    居ない相手の判定は無いので、予告も含めて container ごと消して正しい。
     const posFade = horizonAlpha * foreFade;
-    view.container.alpha = (TELEGRAPH_OWN_FADE
+    // ?proj=1 かつ ?telefade=0: 入れ物には位置のフェードを入れず、後掛けで子ごとに掛ける(予告=world の位置のフェード・それ以外=投影後)
+    // =予告の濃さは ?proj=0 と同じ(projChildAlphaMul)。既定(予告が自分の位置でフェード)と ?proj=0 では今の式のまま。
+    const posInKids = !!projTerms && !TELEGRAPH_OWN_FADE;
+    view.container.alpha = (TELEGRAPH_OWN_FADE || posInKids
       ? reaperWarpFade * hunterLeaveFade * bountyDepartFade
       : posFade * reaperWarpFade * hunterLeaveFade * bountyDepartFade) * lichWarp.alpha * lichBlinkAlpha;
+    if (projTerms) {
+      view.projPosP = posFade;
+      view.projPosW = ((e.type === 'phillboss' || isHangedman(e.type)) ? 1 : this.horizonActorAlpha(fb.footY)) * (bossFixed ? 1 : this.foregroundActorAlpha(fb.footY));
+    }
     // ?telefade=0 のときは従来どおり container 側で位置フェード済み=子には掛けない(旧挙動を完全維持)。
     const artFade = TELEGRAPH_OWN_FADE ? posFade : 1;
     view.reticle.alpha = artFade;
@@ -25489,6 +26037,23 @@ export class PixiScene {
     // 影側が別途持つため含めない(地平線フェードの二重掛け防止。裏回り透け(bossBehindAlpha)も含めない)。
     view.shadowFade = reaperWarpFade * hunterLeaveFade * bountyDepartFade * lichWarp.alpha * lichBlinkAlpha * this.goalTalkFade;
     view.container.alpha *= this.goalTalkFade; // ゴールの会話中は敵が居ない絵にする(上の goalTalkFade の注記)
+    // ?proj=1(段階2・§3-5c 型②): 後掛けの支点 F・旧い倍率 d・頭上UIの基準点 H を記録(裏ボスは下の枝で F を論理の接地点へ差し替える)。
+    // 湧き・回収の一時のフェード(§3-5g・雑魚・強個体だけ)は体と頭上UI(後掛けで掛ける)と影(shadowFade)に掛け、予告には掛けない。
+    if (this.projFrame) {
+      view.projFx = fb.footX; view.projFy = fb.footY;
+      view.projPhill = e.type === 'phillboss';
+      view.projD = view.projPhill ? 1 : this.depthScaleEnemy(fb.footY);
+      view.projHx = e.x + e.width / 2; view.projHy = e.y;
+      const sa = projSpawnFadeApplies(e) ? this.projSpawnFade(fb.footX, fb.footY) : 1;
+      if (PROJ_AUDIT) {
+        const prev = this.projSpawnPrevA.get(e.id);
+        if (prev !== undefined) this.projActorAudit.spawnDaMax = Math.max(this.projActorAudit.spawnDaMax, Math.abs(sa - prev));
+        if (this.projSpawnPrevA.size > 512) this.projSpawnPrevA.clear(); // 計器だけの記録(DEV)=溜めない
+        this.projSpawnPrevA.set(e.id, sa);
+      }
+      view.projSpawnA = sa;
+      view.shadowFade *= sa;
+    }
 
     if (bossFixed && tex) {
       // 裏ボス: 当たり判定=帯(AABB=e.width×e.height)。絵はそれより大きく、帯の上に伸ばす(見た目と判定を分離)。
@@ -25716,6 +26281,8 @@ export class PixiScene {
         Math.round(spx + liftShake + lungeOffX + biteShake + phaseTremble.dx * scale + shotRx),
         Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise + phillDiveOff - idleHopPx - phaseLiftPx - idolLeapLift + idolCrouchSink + phaseTremble.dy * scale + shotRy),
       );
+      // ?proj=1(段階2・§10 B-f): 裏ボスの後掛けの支点 F は論理の接地点(本体の表示の足元ではない)。
+      if (this.projFrame) { view.projFx = view.sprite.x; view.projFy = view.shadowGroundY; }
       // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
       // 専用=プレイヤー分身の描画にしか使われていない)ため、idolだけに最小限の水平ミラーを足す。
       // スケールXの符号だけを反転する見た目専用の変更で、hitbox(e.x/y/width/height)・座標・攻撃方向・
@@ -25745,18 +26312,34 @@ export class PixiScene {
         view.sprite.visible = true;
       } else {
       const behindDist = fb.footY - (ply.y + ply.height);   // 正 = プレイヤーが帯より奥
-      const inHoriz = (ply.x + ply.width) > (spx - spriteW / 2) && ply.x < (spx + spriteW / 2);
+      // ?proj=1(段階2・§3-5j): 前後(behindDist の符号)は world、横の重なりと「絵のどの高さに居るか」は投影後
+      // (ボスの足元 P_e・絵の寸法×k_e、主人公の足元 P・s)で測る。?proj=0 では今の式のまま。
+      const pjB = this.projFrame && view.projFx !== undefined && view.projFy !== undefined ? (() => {
+        const pe = projectInto(this.projFrame!, view.projFx!, view.projFy!, this.projScratch2);
+        const ke = view.projPhill ? projPhillK(pe.s, view.projD ?? 1) : projActorK(pe.s, view.projD ?? 1);
+        const pex = pe.x, pey = pe.y;
+        const pp = projectInto(this.projFrame!, ply.x + ply.width / 2, ply.y + ply.height, this.projScratch2);
+        return { pex, pey, ke, fx: view.projFx!, fy: view.projFy!, ppx: pp.x, ppy: pp.y, ps: pp.s };
+      })() : null;
+      const inHoriz = pjB
+        ? (pjB.ppx + pjB.ps * ply.width / 2) > (pjB.pex + pjB.ke * (spx - pjB.fx) - pjB.ke * spriteW / 2)
+          && (pjB.ppx - pjB.ps * ply.width / 2) < (pjB.pex + pjB.ke * (spx - pjB.fx) + pjB.ke * spriteW / 2)
+        : (ply.x + ply.width) > (spx - spriteW / 2) && ply.x < (spx + spriteW / 2);
       // ★v0.25.3736(社長指示・全ボス共通の新カーブ): 濃さ=「プレイヤーがボスの絵のどの高さに居るか」。
       // ①足元被り(自分の身長の半分ほど)まで=不透明 ②ボスの足元ゾーン=30%見える(一番薄い)
       // ③頭らへん=50%見える。絵の表示高さ基準=ズームもボスのサイズ差も自動で吸収。
       // 旧#1/#2(画面px2段)・#3(近接圏0.5下限)はこのカーブに置き換え(裁定の経緯は定数側コメント)。
       const freePx = ply.height * BOSS_BEHIND_V2_FREE_FRAC;
       let behindTarget: number;
-      if (!inHoriz || behindDist <= freePx) {
+      // ?proj=1: rel は投影後の足元の差 ÷ 投影後の絵の高さ(①の境界も主人公の s 倍)。rel<=0 は①の手前=不透明。
+      const pjRel = pjB
+        ? (pjB.pey - pjB.ppy - freePx * pjB.ps) / Math.max(1, Math.abs(view.sprite.height) * pjB.ke)
+        : 0;
+      if (!inHoriz || behindDist <= (pjB ? 0 : freePx) || (pjB && pjRel <= 0)) {
         behindTarget = 1;
       } else {
         const spriteH = Math.max(1, Math.abs(view.sprite.height));
-        const rel = (behindDist - freePx) / spriteH; // 0=①の境界、≈1=絵の頭頂
+        const rel = pjB ? pjRel : (behindDist - freePx) / spriteH; // 0=①の境界、≈1=絵の頭頂
         if (rel <= BOSS_BEHIND_V2_FOOT_REL) {
           const t = rel / BOSS_BEHIND_V2_FOOT_REL;
           const ease = t * t * (3 - 2 * t); // 慣性(smoothstep)
@@ -25768,7 +26351,9 @@ export class PixiScene {
         }
         // ピクセル判定(社長指示2026-11-22): 上の帯の判定は一次ふるい。主人公の体の点が巨体の絵の不透明な部分に
         // 乗っていない(=絵の隙間・脇に居て隠れていない)なら透かさない。濃さのカーブは上のまま。絵が読めない時は従来どおり。
-        if (behindTarget < 1 && this.seeThroughPx.covers(view.sprite, this.L.actorLayer, this.seeThroughPoints) === false) behindTarget = 1;
+        // ?proj=1: ボスの絵はまだ後掛けの前(旧い座標)なので、主人公の投影後の点を後掛けの逆で写してから渡す(相似の逆=厳密)。
+        const stPts = pjB ? this.projBehindPts(pjB.fx, pjB.fy, pjB.pex, pjB.pey, pjB.ke) : this.seeThroughPoints;
+        if (behindTarget < 1 && this.seeThroughPx.covers(view.sprite, this.L.actorLayer, stPts) === false) behindTarget = 1;
       }
       // 透ける/戻るを滑らかにフェード。速度は障害物の透けの2倍(社長指示)= 1-(1-lerp)^2。
       const fastLerp = 1 - (1 - this.seeThroughLerp) ** 2;
@@ -26085,6 +26670,8 @@ export class PixiScene {
       // (社長承認2026-11-10「この大きさのまま入れる」=体はプレイヤーの約1.15倍に見える)。足元は同じ下端(anchor 0.5,1)。
       const sc = e.type === 'guardian-phantom' && this.isKenkiTex(tex) ? this.kenkiDotScale(fb.footY)
         : containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * this.stageEnemyVisualMul(e.type) * sheetFit;
+      // ?proj=1(段階2・§3-5c): 旧い倍率 d は枝ごとに記録する(拳鬼の絵=kenkiDotScale の中身の depthScale・それ以外=depthScaleEnemy)。
+      if (this.projFrame) view.projD = e.type === 'guardian-phantom' && this.isKenkiTex(tex) ? this.depthScale(fb.footY) : this.depthScaleEnemy(fb.footY);
       // ★★**手で描いたコマが出ているフレームは、疑似呼吸(伸び縮み)を掛けない**
       // (社長指示2026-09-21「絵が入った敵のパターンには歪み入れないで」。歩行二次モーションの
       //  傾ぎ・スカッシュを止めた v0.25.4546 と同じ理由の、呼吸版)。
@@ -26312,6 +26899,7 @@ export class PixiScene {
       }
       label.visible = true;
       label.position.set(Math.round(fb.footX), Math.round(fb.footY - fb.boxH - 10 - liftHop - aiHop - kbHop));
+      if (this.projFrame) this.projAttach(view, label, 'nameLabel'); // ?proj=1(段階2・§10 B-e): 名前の札=頭上の読ませる物(置く点だけ・大きさは変えない)
     } else {
       const label = this.namedFoeLabels.get(e.id);
       if (label) label.visible = false;
@@ -31951,12 +32539,15 @@ export class PixiScene {
     // 本体sprite(index1以降)より必ず下=羽が本体の前に出る経路が構造的に存在しない。
     if (backC.parent !== view.container) view.container.addChildAt(backC, 0);
     else if (view.container.getChildIndex(backC) !== 0) view.container.setChildIndex(backC, 0);
+    this.projTag(backC, 'phillBack'); // ?proj=1 の段階2の役の表: 入れ物の子=体
+    this.projAttach(view, frontC, 'phillFront'); // phillLayer の直下の羽攻撃の武器絵=体として持ち主へ登録
     // ★v0.25.3733(社長指示のレイヤー確定): 下から[羽6本(back=0)→羽一本ずつのエフェクト
     // (featherC=1)→フィル本体(sprite以降)]。**本体が常に一番上**。撒き羽根も本体コンテナ内なので
     // 兄弟の並び替えの影響を受けない(v3732と同じ構造固定)。
     const featherC = this.ensurePhillFeatherC();
     if (featherC.parent !== view.container) view.container.addChildAt(featherC, 1);
     else if (view.container.getChildIndex(featherC) !== 1) view.container.setChildIndex(featherC, 1);
+    this.projTag(featherC, 'featherC');
     // front(羽攻撃の武器絵のみ)はphillLayer直下の末尾=view.containerより常に前(武器は技の絵=見せる)。
     const layer = this.L.phillLayer;
     if (frontC.parent === layer && layer.getChildIndex(frontC) !== layer.children.length - 1) {
@@ -33193,7 +33784,9 @@ export class PixiScene {
     v.container.position.set(p.x + p.width / 2, p.y + p.height / 2 - drop);
     // 設置物の共通: 上方(奥=画面上)へ流れたら地平線フェードで消す(盾/タレットと統一)。
     // v0.25.2472: ゴースト設置(ownerGhost)は守護霊本体と同じ青白tint+半透明(視覚のみ)。
-    v.container.alpha = this.horizonActorAlpha(p.y + p.height) * (p.ownerGhost ? GHOST_ALLY_ALPHA : 1);
+    v.container.alpha = this.projLooseFade(p.x + p.width / 2, p.y + p.height, false) * (p.ownerGhost ? GHOST_ALLY_ALPHA : 1); // ?proj=1 は投影後のY(段階2)
+    // ?proj=1(段階2・§3-5d の①): デコイは遠近の倍率を掛けていない(d=1)=入れ物を足元を支点に写す。
+    if (this.projFrame) { this.projLoose('decoy', p.x + p.width / 2, p.y + p.height, 1); this.projLooseAdd(v.container); }
     // 射程サークル(area=射程半径)。黒フチ+シアン本線の単一ストローク(軽量)。
     const g = v.gfx;
     g.clear();
@@ -33315,12 +33908,14 @@ export class PixiScene {
     // 上方(奥=画面上)へ流れていったら消えるようにする(社長指示・盾と挙動を統一)。
     const remaining = p.duration - age;
     // v0.25.2472: ゴースト設置(ownerGhost)は守護霊本体と同じ青白tint+半透明(視覚のみ・射撃/判定不変)。
-    const alpha = Math.max(0, Math.min(1, remaining / 600)) * this.horizonActorAlpha(footY)
+    const alpha = Math.max(0, Math.min(1, remaining / 600)) * this.projLooseFade(footX, footY, false) // ?proj=1 は投影後のY(段階2)
       * (p.ownerGhost ? GHOST_ALLY_ALPHA : 1);
     v.container.position.set(footX, footY - drop);
     v.container.zIndex = footY;
     v.container.alpha = alpha;
     v.container.scale.set(sqx, sqy);
+    // ?proj=1(段階2・§3-5d の①): タレットは遠近の倍率を掛けていない(d=1)=入れ物を足元を支点に写す(大きさ=基準×s)。
+    if (this.projFrame) { this.projLoose('turret', footX, footY, 1); this.projLooseAdd(v.container); }
 
     const mode = p.turretMode ?? 'forward';
     const accent = mode === 'omni' ? 0x38bdf8 : 0xf59e0b; // 全方位=シアン / 前方集中=琥珀
@@ -34263,11 +34858,13 @@ export class PixiScene {
           sp.texture = tex;
           const sc = this.humanNpcScale(tex.width, tex.height, sol.y) * SHOOTER_SHEET_BODY_MULT; // プレイヤーと同寸
           sp.scale.set(sc * fc.face, sc);
-          sp.alpha = this.horizonActorAlpha(sol.y); // 地平線で透明化(空に浮かない)
+          sp.alpha = this.projLooseFade(sol.x, sol.y, false); // 地平線で透明化(空に浮かない)。?proj=1 は投影後のY(段階2)
           sp.visible = sp.alpha > 0;
         } else sp.visible = false;
         sp.position.set(Math.round(sol.x), Math.round(sol.y));
         sp.zIndex = sol.y;
+        // ?proj=1(段階2・§3-5d の①): 足元を投影・大きさ=基準×s(旧い倍率 depthScale を割り戻す)。
+        if (this.projFrame) { this.projLoose('baseSoldier', sol.x, sol.y, this.depthScale(sol.y)); this.projLooseAdd(sp); }
       });
     }
     for (const [id, sp] of this.baseSoldierSprites) {
@@ -34501,7 +35098,8 @@ export class PixiScene {
         PLAYER_HITBOX_FOR_DUST, this.depthScale(esc.y));
       // §17-14: ウェルカム終了で出陣した個体はappearedAtからeaseOutQuadで0→1フェードイン。
       // 出撃直後から居る通常ケース(appearedAt未設定)はescortAppearFade=1=従来のbaseAlphaのまま。
-      const baseAlpha = this.horizonActorAlpha(esc.y) * this.currentIntroFade(now) * this.corridorRunInFade()
+      // ?proj=1(段階2): 地平線フェードは投影後のY(projLooseFade)。?proj=0 では今の horizonActorAlpha(esc.y) そのもの。
+      const baseAlpha = this.projLooseFade(esc.x, esc.y, false) * this.currentIntroFade(now) * this.corridorRunInFade()
         * this.escortAppearFade(esc, now);
       let escScale = 0; // 体力の線の幅/高さの基準=実際に描いた表示倍率(0=描いていない)
       if (tex) {
@@ -34553,7 +35151,9 @@ export class PixiScene {
       this.updateEscortFlash(esc.id, sp, sp.texture, pose.flash * baseAlpha, esc.y + 0.002);
       // 体力の線・起こす進みの縁取り・倒れた印の点。
       if (tex && sp.visible && escScale > 0 && esc.maxHealth) {
-        this.drawEscortOverlay(eg, esc, tex, base, escScale, px, esc.y + sinkWorld, baseAlpha, pose, now, gameTime);
+        // ?proj=1(段階2): 体力の線は1枚の Graphics なので、描く点を頭の投影点へずらして描く(大きさは変えない・方針②)。
+        const hs = this.projHudShift(esc.x, esc.y, px, esc.y + sinkWorld - tex.height * escScale, this.depthScale(esc.y));
+        this.drawEscortOverlay(eg, esc, tex, base, escScale, px + hs.dx, esc.y + sinkWorld + hs.dy, baseAlpha, pose, now, gameTime);
       }
       // クロスフェードの「次コマ」重ね(同じ変換・同じ足元)。α=frac で徐々に前コマを覆う=A/Bクロスフェード。
       if (crossfade && tex && nextTex && baseAlpha > 0) {
@@ -34572,6 +35172,16 @@ export class PixiScene {
         if (bl) bl.visible = false;
       }
       this.drawEscortMelee(esc, sp.visible ? baseAlpha * pose.alphaMul : 0, px, esc.y, mSince, mSwing, now, escScale);
+      // ?proj=1(段階2・§3-5d の①): 護衛の体・次コマの重ね・被弾の白・ナイフを、足元 (esc.x, esc.y)・旧い倍率 depthScale(esc.y) で写す。
+      // 体力の線(escortGfx=全員で1枚の Graphics)はまだ旧い位置(未対応=報告)。
+      if (this.projFrame) {
+        this.projLoose('escort', esc.x, esc.y, this.depthScale(esc.y));
+        this.projLooseAdd(sp);
+        this.projLooseAdd(this.escortBlendSprites.get(esc.id));
+        this.projLooseAdd(this.escortFlashSprites.get(esc.id));
+        const mv = this.escortMeleeViews.get(esc.id);
+        if (mv) { this.projLooseAdd(mv.knife); this.projLooseAdd(mv.slash); this.projLooseAdd(mv.trail); this.projLooseAdd(mv.wpn); }
+      }
     }
     {
       const jl = junLand;
@@ -34918,16 +35528,21 @@ export class PixiScene {
       const recoil = (!tumbling && s.lastShotAt > 0 && sinceFire >= 0 && sinceFire < ENDING_RECOIL_MS)
         ? ENDING_RECOIL_PX * (1 - sinceFire / ENDING_RECOIL_MS)
         : 0;
-      const ha = this.horizonActorAlpha(s.y);
+      const ha = this.projLooseFade(s.x, s.y, false); // ?proj=1 は投影後のY(段階2)
       sp.alpha = ha;
       sp.visible = ha > 0;
       sp.position.set(Math.round(s.x + recoil), Math.round(s.y));
       sp.zIndex = s.y;
+      if (this.projFrame) { this.projLoose('endingSoldier', s.x, s.y, this.depthScale(s.y)); this.projLooseAdd(sp); } // ?proj=1(段階2・①)
       // しゃがみ中の影: 立ちシルエット影はsyncShadows側でスキップし(監査B-3)、ここで楕円ソフト影
       // (v4054: しゃがみ姿勢なので伸縮なしの短い楕円=治療済み倒れ兵士のしゃがみ影と同型)。
       if (tumbling && ha > 0) {
         const w = Math.abs(sp.width);
-        tsg.ellipse(s.x, s.y + 1, Math.max(8, w * 0.34), 5).fill({ color: 0x000000, alpha: 0.26 * ha });
+        // ?proj=1(段階2・方針⑥): 付け根=足元の投影点・大きさ=本体と同じ倍率(k=s/d)。
+        const tpp = this.projFrame ? projectInto(this.projFrame, s.x, s.y, this.projScratch2) : null;
+        const tk = tpp ? tpp.s / Math.max(1e-6, this.depthScale(s.y)) : 1;
+        if (tpp) tsg.ellipse(tpp.x, tpp.y + tk, Math.max(8, w * 0.34) * tk, 5 * tk).fill({ color: 0x000000, alpha: 0.26 * ha });
+        else tsg.ellipse(s.x, s.y + 1, Math.max(8, w * 0.34), 5).fill({ color: 0x000000, alpha: 0.26 * ha });
       }
     }
     for (const [id, sp] of this.endingSoldierSprites) {
@@ -35016,10 +35631,12 @@ export class PixiScene {
     sp.scale.set(scAbs, scAbs); // 素材は既定右向き=進行方向(右)とそのまま一致(検収A-1で反転を撤回)
     const fb = playerFootBox(player);
     sp.position.set(Math.round(fb.footX), Math.round(fb.footY));
-    const ha = this.horizonActorAlpha(fb.footY);
+    const ha = this.projLooseFade(fb.footX, fb.footY, false); // ?proj=1 は投影後のY(段階2)
     sp.alpha = ha;
     sp.visible = ha > 0;
     sp.zIndex = fb.footY;
+    // ?proj=1(段階2・①): エンディングのフィルは遠近の倍率を掛けていない(d=1)=大きさは基準×s。
+    if (this.projFrame) { this.projLoose('endingPhill', fb.footX, fb.footY, 1); this.projLooseAdd(sp); }
   }
 
   // 爆撃(ENDING_SCENE.md 演出仕様v3.1)。弾=落下中スプライト/爆発=fx/explosion-0..5のflipbookを、
@@ -35122,7 +35739,8 @@ export class PixiScene {
         ? Math.min(1, (now - (this.endingHealedAt.get(spot.index) ?? now)) / ENDING_HEALED_FADE_MS)
         : 0;
       const ease = healT * healT * (3 - 2 * healT); // smoothstep=入り/抜きに慣性
-      const ha = this.horizonActorAlpha(spot.y);
+      const ha = this.projLooseFade(spot.x, spot.y, false); // ?proj=1 は投影後のY(段階2)
+      if (this.projFrame) this.projLoose('endingFallen', spot.x, spot.y, this.depthScale(spot.y)); // ?proj=1(段階2・①): 倒れ絵としゃがみ絵を足元で写す
       // 倒れ絵(治療済みはフェードアウト)
       let sp = this.endingFallenSprites.get(spot.index);
       if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.endingFallenSprites.set(spot.index, sp); }
@@ -35135,6 +35753,7 @@ export class PixiScene {
       sp.alpha = ha * (1 - ease);
       sp.visible = sp.alpha > 0.003;
       sp.position.set(Math.round(spot.x), Math.round(spot.y));
+      if (this.projFrame) this.projLooseAdd(sp);
       sp.zIndex = spot.y - 1; // 兵士/フィルより僅かに奥(通り過ぎる時に足元へ隠れないよう手前寄りにはしない)
       // しゃがみ絵(治療済みだけフェードイン・同じ足元位置)。素材は右向き(社長指摘2026-08-29で確定・
       // 「元から左向き」の旧読みは誤り)→左向きへ水平反転(爆撃しゃがみと同じ向き)。
@@ -35148,6 +35767,7 @@ export class PixiScene {
         wsp.alpha = ha * ease;
         wsp.visible = wsp.alpha > 0.003;
         wsp.position.set(Math.round(spot.x), Math.round(spot.y));
+        if (this.projFrame) this.projLooseAdd(wsp);
         wsp.zIndex = spot.y - 1;
       } else {
         wsp.visible = false;
@@ -35157,7 +35777,11 @@ export class PixiScene {
         const wLying = Math.abs(sp.width);
         const wSit = wtex ? Math.abs(wsp.width) : wLying;
         const shW = wLying * 0.4 * (1 - ease) + wSit * 0.34 * ease;
-        g.ellipse(spot.x, spot.y - 2, Math.max(6, shW), Math.max(4, shW * 0.32)).fill({ color: 0x000000, alpha: 0.32 * ha });
+        // ?proj=1(段階2・方針⑥): 足元の小さな楕円の影=付け根は足元の投影点・大きさは本体と同じ倍率(k=s/d)。
+        const fpp = this.projFrame ? projectInto(this.projFrame, spot.x, spot.y, this.projScratch2) : null;
+        const fk = fpp ? fpp.s / Math.max(1e-6, this.depthScale(spot.y)) : 1;
+        if (fpp) g.ellipse(fpp.x, fpp.y - 2 * fk, Math.max(6, shW) * fk, Math.max(4, shW * 0.32) * fk).fill({ color: 0x000000, alpha: 0.32 * ha });
+        else g.ellipse(spot.x, spot.y - 2, Math.max(6, shW), Math.max(4, shW * 0.32)).fill({ color: 0x000000, alpha: 0.32 * ha });
       }
     }
     for (const [idx, sp] of this.endingFallenSprites) {
@@ -35213,10 +35837,12 @@ export class PixiScene {
     const sc = this.humanNpcScale(tex.width, tex.height, py) * (sheetTex ? ESCORT_SHEET_DISPLAY_MULT : 1); // シートは護衛と同じ係数で旧立ち絵の見た目に揃える
     const faceSign = npc.dirX >= 0 ? 1 : -1; // 向き=敵の方向。発射後も変えない(そのまま後退)
     sp.scale.set(sc * faceSign, sc);
-    sp.alpha = alpha * this.horizonActorAlpha(py);
+    sp.alpha = alpha * this.projLooseFade(px, py, false); // ?proj=1 は投影後のY(段階2)
     sp.visible = sp.alpha > 0.01;
     sp.position.set(Math.round(px), Math.round(py));
     sp.zIndex = py;
+    // ?proj=1(段階2・§3-5d の①): 足元を投影(スライドの起点は画面の縁から出した world 位置のまま=段階6で逆投影へ)。
+    if (this.projFrame) { this.projLoose('supportSniper', px, py, this.depthScale(py)); this.projLooseAdd(sp); }
   }
 
   // 裏ボス討伐演出: store.bossCorpse がある間だけ、死亡位置に頭基準で本体絵を描き、
@@ -36173,6 +36799,7 @@ export class PixiScene {
     if (!sp) {
       sp = new Sprite(tex); sp.anchor.set(MUZZLE_ANCHOR_X, MUZZLE_ANCHOR_Y); sp.blendMode = 'add';
       this.L.effectLayer.addChild(sp); this.bossGunMuzzleSprites.set(key, sp);
+      this.projOwnerAttach(sp); // ?proj=1: 銃口の閃光=銃と一緒に動く
     }
     if (sp.texture !== tex) sp.texture = tex;
     // 発火直後が最大でease-inで縮む。
@@ -37072,6 +37699,14 @@ export class PixiScene {
     sp.position.set(Math.round(baseX + shakeX + corpseRecoilX), Math.round(baseY + shakeY + sinkY - fallLift + corpseRecoilY));
     sp.zIndex = corpse.y + corpse.h + 1; // アクターと同じ y-sort 帯
     sp.alpha = Math.max(0, (1 - t) * flicker);
+    // ?proj=1(段階2・§3-5d の①): 亡骸を足元を支点に写す(旧い倍率 d=生体と同じ式の遠近の項。帯の上に伸ばす型は遠近を掛けていない=1)。
+    if (this.projFrame) {
+      const cfY = corpse.y + corpse.h;
+      const kenkiC = isPhantomCorpse && corpse.phantomUnique === 'brawler' && tex === getTexture('kenki-idle');
+      this.bossCorpseProjD = fit ? 1 : kenkiC ? this.depthScale(cfY) : this.depthScaleEnemy(cfY);
+      this.projLoose('bossCorpse', stripCx, cfY, this.bossCorpseProjD);
+      this.projLooseAdd(sp);
+    }
     // ③崩れている間は足元から瓦礫の砂埃。既存のプール済み drawDust をそのまま使う
     //   (このフレームの使用ぶんは resetBloodPools が毎フレーム先頭で回収する=消し忘れが起きない)。
     if (ce > 0 && sp.alpha > 0.02) {
@@ -37210,9 +37845,12 @@ export class PixiScene {
       }
       // 救助成功の退場: 走りながらフェードアウト。さらに地平線フェード(空に浮かない=他アクターと同じ)。
       const outroA = s.savedAt ? Math.max(0, 1 - (now - s.savedAt) / RESCUE_OUTRO_MS) : 1;
-      sp.alpha = outroA * this.horizonActorAlpha(s.y);
+      // ?proj=1(段階2): 地平線フェードは足元の投影後のY。?proj=0 では今の horizonActorAlpha(s.y) のまま。
+      sp.alpha = outroA * (this.projFrame ? this.projLooseFade(footX, footY, false) : this.horizonActorAlpha(s.y));
       sp.position.set(Math.round(footX), Math.round(footY));
       sp.zIndex = footY;
+      // ?proj=1(段階2・§3-5d の①): 足元を投影・大きさ=基準×s(旧い倍率 depthScale(足元) を割り戻す)。体力の線(rescueGfx)は未対応=報告。
+      if (this.projFrame) { this.projLoose('survivor', footX, footY, this.depthScale(footY)); this.projLooseAdd(sp); }
     }
     for (const [id, sp] of this.rescueSurvivorSprites) {
       if (!seen.has(id)) { sp.destroy(); this.rescueSurvivorSprites.delete(id); this.rescueFace.delete(id); }
@@ -37221,11 +37859,14 @@ export class PixiScene {
     const g = this.rescueGfx;
     g.clear();
     for (const s of survivors) {
-      const cx = s.x + s.width / 2;
+      // ?proj=1(段階2): 体力の線・助けての点・ハートは1枚の Graphics=描く点を頭の投影点へずらす(大きさは変えない・方針②)。?proj=0 は (0,0)。
+      const svFy = s.y + s.height;
+      const svHs = this.projHudShift(s.x + s.width / 2, svFy, s.x + s.width / 2, svFy - PixiScene.RESCUE_NPC_DISPLAY_H * this.depthScaleEnemy(svFy), this.depthScaleEnemy(svFy));
+      const cx = s.x + s.width / 2 + svHs.dx;
       const frac = Math.max(0, Math.min(1, s.health / s.maxHealth));
       const bw = PixiScene.RESCUE_NPC_DISPLAY_H * 0.5;
       const bx = cx - bw / 2;
-      const by = s.y + s.height - PixiScene.RESCUE_NPC_DISPLAY_H * this.depthScaleEnemy(s.y + s.height) - 8;
+      const by = s.y + s.height - PixiScene.RESCUE_NPC_DISPLAY_H * this.depthScaleEnemy(s.y + s.height) - 8 + svHs.dy;
       g.rect(bx, by, bw, 3).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
       g.rect(bx, by, bw * frac, 3).fill({ color: STATUS_GREEN });
       if (s.helpUntil && now < s.helpUntil) {
@@ -37255,8 +37896,10 @@ export class PixiScene {
     for (const s of survivors) {
       if (s.savedAt) continue; // 退場中はハートを優先(汗は出さない)
       if (!(s.speedBoostUntil && now < s.speedBoostUntil)) continue;
-      const cx = s.x + s.width / 2 + rox;
-      const headY = s.y + s.height - PixiScene.RESCUE_NPC_DISPLAY_H * this.depthScaleEnemy(s.y + s.height) - 6 + roy;
+      const swFy = s.y + s.height; // ?proj=1(段階2): 汗マークも頭の投影点へずらす(?proj=0 は 0)
+      const swHs = this.projHudShift(s.x + s.width / 2, swFy, s.x + s.width / 2, swFy - PixiScene.RESCUE_NPC_DISPLAY_H * this.depthScaleEnemy(swFy), this.depthScaleEnemy(swFy));
+      const cx = s.x + s.width / 2 + rox + swHs.dx;
+      const headY = s.y + s.height - PixiScene.RESCUE_NPC_DISPLAY_H * this.depthScaleEnemy(s.y + s.height) - 6 + roy + swHs.dy;
       const bob = Math.sin(now / 90) * 1.5;
       const sxp = cx - PixiScene.RESCUE_NPC_DISPLAY_H * 0.3;
       const syp = headY + bob;
@@ -37443,9 +38086,11 @@ export class PixiScene {
     // 寿命末で早めにフェードアウト。さらに他の者(敵/木)と同じ地平線フェードを乗算(消える位置を統一)。
     // v0.25.2472: ゴースト設置(ownerGhost)は守護霊本体と同じ半透明を乗算(視覚のみ・遮断/耐久は不変)。
     const remaining = p.duration - age;
-    const spriteAlpha = Math.max(0, Math.min(1, remaining / 600)) * this.horizonActorAlpha(footY)
+    const spriteAlpha = Math.max(0, Math.min(1, remaining / 600)) * this.projLooseFade(footX, footY, false) // ?proj=1 は投影後のY(段階2)
       * (p.ownerGhost ? GHOST_ALLY_ALPHA : 1);
     v.sprite.alpha = spriteAlpha;
+    // ?proj=1(段階2・§3-5d の①): 盾の入れ物(絵は depthScale 倍)を足元を支点に写す(大きさ=基準×s)。
+    if (this.projFrame) { this.projLoose('shield', footX, footY, shieldDepth); this.projLooseAdd(v.container); }
 
     // 防いだ光: 盾の絵の alpha(寿命の薄れ・地平線・ゴースト)を必ず掛ける=消えかけの盾の位置に光だけ残らない。
     // 主役は接点の光だまり(防いだ側に集まる)。盾の絵全体への加算は下地だけ(均一に光らせない)。
@@ -38196,7 +38841,8 @@ export class PixiScene {
       // (入れ物+図形を溜めない=品質監査 B-1)。画面に入れば作り直し、上の bornAt で同じ見た目(弾み済み)で出る。
       // 影の要求も積まないが、既にある影の枠は残す(下の pickupShadowKeepIds・他の物と同じ扱い=品質監査 B-3)。
       const pos0 = pickupDisplayPosition(p, now);
-      if (this.distanceOutsideViewport(pos0.x + 8, pos0.y + 8, PICKUP_CULL_MARGIN_PX) > 0) {
+      // ?proj=1(段階2・§3-5d): 間引きは足元を投影して画面の外の距離で測る(段階1と同じ projDistanceOutside)。
+      if ((this.projFrame ? this.projDistanceOutside(pos0.x + 8, pos0.y + 8, PICKUP_CULL_MARGIN_PX) : this.distanceOutsideViewport(pos0.x + 8, pos0.y + 8, PICKUP_CULL_MARGIN_PX)) > 0) {
         if (entry) { entry.container.destroy({ children: true }); this.pickups.delete(p.id); }
         this.pickupShadowKeepIds.push('pk:' + p.id);
         this.pickupCulledCount++;
@@ -38239,7 +38885,8 @@ export class PixiScene {
     // クリアアイテム(書類)は床置きなので浮遊(bob)させない=「浮いて見える」対策。
     const floatOffset = p.type === 'lab-clear-item' ? 0 : Math.sin(now / 300 + p.x * 0.01) * 2;
     const d = this.depthScale(footY); // foot = base of the pickup hitbox
-    const horizonAlpha = this.horizonActorAlpha(footY);
+    // ?proj=1(段階2): 地平線フェードは足元の投影後のY。?proj=0 では今の horizonActorAlpha(footY) のまま。
+    const horizonAlpha = this.projLooseFade(cx, footY, false);
     const glow = entry.glow;
     const g = entry.gfx;
     entry.container.alpha = horizonAlpha;
@@ -38285,15 +38932,17 @@ export class PixiScene {
       x: cx,
       y: footY,
       legacyW: legacyPickupW,
-      rawW: legacyPickupW, rawH: legacyPickupW, texture: null,
-      alpha: horizonAlpha * lift,
+      rawW: legacyPickupW / (this.projFrame ? d : 1), rawH: legacyPickupW / (this.projFrame ? d : 1), texture: null,
+      alpha: horizonAlpha * lift, projected: this.projFrame ? true : undefined,
     });
+    // ?proj=1(段階2・§3-5d の①): 入れ物(子は world 座標・弾みの支点つき)を足元を支点に写す=位置 P・大きさ 基準×s(浮きの上下は段階5)。
+    if (this.projFrame) { this.projLoose('pickup', cx, footY, d); this.projLooseAdd(entry.container); }
     const finalizePickupShadow = (tex: Texture | null, sc: number) => {
       const last = this.pickupShadows[this.pickupShadows.length - 1];
       if (!last || !tex) return;
       last.texture = tex;
-      last.rawW = tex.width * sc;
-      last.rawH = tex.height * sc;
+      last.rawW = tex.width * sc / (last.projected ? d : 1); // ?proj=1: s=1 の大きさ
+      last.rawH = tex.height * sc / (last.projected ? d : 1);
     };
 
     // weapon-drop: ドロップした具体的な銃のスプライト(weaponKey 別)。素材がある銃のみ。
@@ -39111,21 +39760,72 @@ export class PixiScene {
 
   /**
    * ★刀の切り傷(research/KATANA_TSUBAME.md §4)。体に付いた「状態の印」であって予告ではない=予告の流星/帯と見分ける形:
-   * 体の絵の上だけに、短く細い斜めの線(黒い縁+深い赤の芯)を本数ぶん角度と高さをずらして重ねる。動かない(脈打たない・流れない)。
-   * overlay(体力バーと同じ層・ワールド座標)へ毎フレーム数本の線=負荷1/10。
+   * 体の絵の上だけに、短く細い斜めの傷(黒い縁→濡れた暗い赤の縁+暗い血の色の芯)を本数ぶん重ねる。付いた後は脈打たない・流れない。
+   * ★2026-11-22(社長「切り傷にも小さく赤くして使って。切り傷は敵の大きさに比例させて」): 傷の絵=刀用の斬撃シートの
+   * 「出」のコマ(細い1本線)を暗い血の色へ写した写し(linear=縮めても途切れない)。長さは**表示している体の絵の高さ**に比例(雑魚〜ボスで同じ割合)。
+   * 1本ごとの長さ・角度(交差も混ぜる)・位置は敵の id から決まった値で散らす(utils/katanaSlashSheet.katanaCutLayout)。
+   * 付いた瞬間から約120ms で刃の向きへ減速しながら開き、倒れた時は加速しながら薄くなる(体の絵が見えている間だけ)。
+   * 体の絵の左右反転(scale.x の符号)に合わせて、傷の横のずれと角度も反転する。
+   * 1本=プールの Sprite 1枚(最大4枚・体の絵の上/体力バーの下)=負荷1/10。シートの読み込み前は従来の線。
    */
-  private drawKatanaCuts(view: ActorView, e: Enemy): void {
-    const n = Math.min(4, e.katanaCuts ?? 0);
-    if (n <= 0 || e.health <= 0 || !view.sprite.visible) return;
+  private katanaCutState = new WeakMap<ActorView, { sprites: Sprite[]; bornAt: number[]; lastN: number; deathAt: number | null }>();
+  private drawKatanaCuts(view: ActorView, e: Enemy, now: number): void {
+    const cur = Math.min(4, e.katanaCuts ?? 0);
+    const st = this.katanaCutState.get(view);
+    const hideFrom = (k: number) => { if (st) for (let i = k; i < st.sprites.length; i++) st.sprites[i].visible = false; };
+    const dead = e.health <= 0;
+    // 倒れた時: 付いていた傷をすぐ消さず、加速しながら薄くする。生きている間に本数が減った(殺陣で使った)時はその場で消す。
+    const n = dead ? Math.max(cur, st?.lastN ?? 0) : cur;
     const sp = view.sprite;
+    if (n <= 0 || !sp.visible) { hideFrom(0); if (st && !dead && n <= 0) { st.lastN = 0; st.bornAt.length = 0; } return; }
     const h = Math.abs(sp.height), w = Math.abs(sp.width);
-    if (h < 2 || w < 2) return;
+    if (h < 2 || w < 2) { hideFrom(0); return; }
     const top = sp.y - h * sp.anchor.y;
     const cx = sp.x + w * (0.5 - sp.anchor.x);
-    const len = Math.max(10, Math.min(w * 0.62, 34));
-    // 個体ごとに少しだけずらす(全員同じ位置に刻まれない)。
+    const tex0 = this.katanaSlashCrop('red', 0, 'full', 1);
+    if (tex0) {
+      let s = st;
+      if (!s) { s = { sprites: [], bornAt: [], lastN: 0, deathAt: null }; this.katanaCutState.set(view, s); }
+      if (!dead) {
+        s.deathAt = null;
+        if (n < s.lastN) s.bornAt.length = n;
+        for (let i = s.bornAt.length; i < n; i++) s.bornAt.push(now); // 新しく付いた傷の時刻
+        s.lastN = n;
+      } else if (s.deathAt === null) s.deathAt = now;
+      const fade = s.deathAt === null ? 1 : katanaCutDeathAlpha(now - s.deathAt);
+      if (fade <= 0.001) { hideFrom(0); return; }
+      while (s.sprites.length < n) {
+        const cs = new Sprite(tex0);
+        cs.visible = false;
+        view.container.addChildAt(cs, view.container.getChildIndex(view.overlay)); // 体の絵の上・体力バーの下
+        this.projTag(cs, 'attachedArt'); // ?proj=1 の役の表: 体に刻まれた切れ目=体
+        s.sprites.push(cs);
+      }
+      const m = sp.scale.x < 0 ? -1 : 1; // 体の絵の左右反転
+      const base = katanaCutLength(h);
+      for (let i = 0; i < n; i++) {
+        const lay = katanaCutLayout(e.id, i);
+        const len = base * lay.len;
+        const sc = len / KATANA_SLASH_CELL_W;
+        const open = katanaCutOpen(now - (s.bornAt[i] ?? now));
+        const tex = this.katanaSlashCrop('red', 0, open >= 1 ? 'full' : 'tail', open) ?? tex0;
+        const xx = cx + m * lay.fx * w, yy = top + h * lay.fy;
+        const rot = lay.ang * m;
+        const tdx = Math.cos(rot) * m, tdy = Math.sin(rot) * m; // 刃先の向き
+        const L = KATANA_SLASH_CELL_W * sc;
+        const cs = s.sprites[i];
+        this.placeKatanaStroke(cs, tex, open >= 1 ? 'full' : 'tail', open, xx - tdx * L / 2, yy - tdy * L / 2, rot, sc * m, sc);
+        cs.alpha = fade;
+        cs.visible = open > 0.001;
+      }
+      hideFrom(n);
+      return;
+    }
+    hideFrom(0);
+    if (dead) return;
     let seed = 0;
     for (let i = 0; i < e.id.length; i++) seed = (seed * 31 + e.id.charCodeAt(i)) | 0;
+    const len = Math.max(10, Math.min(w * 0.62, 34));
     const g = view.overlay;
     for (let i = 0; i < n; i++) {
       const ang = (i % 2 === 0 ? -0.62 : -0.98) + (((seed >> (i * 3)) & 7) - 3.5) * 0.05; // 「/」寄りの斜め・1本ごとに角度を変える
@@ -39136,6 +39836,7 @@ export class PixiScene {
       g.moveTo(xx - dx * 0.92, yy - dy * 0.92).lineTo(xx + dx * 0.92, yy + dy * 0.92).stroke({ width: 1.5, color: 0xc81e1e, alpha: 1, cap: 'round' });
     }
   }
+
   /**
    * ★刀の殺陣の画面(research/KATANA_TSUBAME.md §4・社長承認)。殺陣の約0.5秒だけ、画面全体を赤で覆い(世界・敵・弾・エフェクトの上)、
    * プレイヤーと殺陣の相手だけを黒い影(今の絵を真っ黒に染めた写し)で、その上に5発の白い筋を描く。HUD(DOM)はそのまま。
@@ -39175,8 +39876,15 @@ export class PixiScene {
       sil.visible = true;
     });
     // 白い筋: 5発ぶんの白い板(Texture.WHITE の写し)を筋の向きに回して置く(影の上)。出た瞬間が一番太く、減速しながら細く消える(慣性)。
+    // ★2026-11-22: 刀の斬撃は全部 刀用の斬撃シートへ(社長指示)。筋の絵=シートを白へ寄せた写し(暗いにじみほど透明・linear で焼いた=
+    // 画面をまたぐ長さでもドットの塊にしない)を、旧い筋と同じ「薄く広い1枚+芯の1枚」で重ねる。広い1枚は出→振り切り→余韻の3コマ、
+    // 芯は細い1本線(出のコマ)。出は尾を固定して刃先へ伸び、余韻は刃先を固定して尾が追いつく。発ごとに上下を反転して柄をずらす。
+    // 読み込み前は従来の白い板へ落ちる。
+    const wSheet = this.katanaSlashSheet('white');
     let used = 0;
+    let si = -1;
     for (const st of sat.strikes) {
+      si++;
       const age = now - st.at;
       const k = Math.max(0, Math.min(1, 1 - age / 420));
       if (k <= 0) continue;
@@ -39187,9 +39895,28 @@ export class PixiScene {
       const e = k * k;
       const len = Math.hypot(p1.x - p0.x, p1.y - p0.y);
       const rot = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+      if (wSheet) {
+        const pose = katanaSlashPose(age / 420, 'satsujin');
+        const sc = len / KATANA_SLASH_CELL_W;
+        const fy = si % 2 === 1 ? -1 : 1;
+        const layers: [number, number][] = [[pose.frame, 0.4 * pose.alpha], [0, pose.alpha]];
+        for (const [f, al] of layers) {
+          const sp = this.satsujinStreaks[used];
+          if (!sp) break;
+          const tex = this.katanaSlashCrop('white', f, pose.side, pose.reveal);
+          if (!tex) { sp.visible = false; used++; continue; }
+          this.placeKatanaStroke(sp, tex, pose.side, pose.reveal, p0.x, p0.y, rot, sc, sc * fy);
+          sp.alpha = al;
+          sp.visible = al > 0.01;
+          used++;
+        }
+        continue;
+      }
       for (const [w, al] of [[2 + 12 * e, 0.35 * k], [1.5 + 3.5 * e, Math.min(1, 0.4 + k)]] as const) {
         const sp = this.satsujinStreaks[used];
         if (!sp) break;
+        if (sp.texture !== Texture.WHITE) sp.texture = Texture.WHITE;
+        sp.anchor.set(0.5);
         sp.position.set((p0.x + p1.x) / 2, (p0.y + p1.y) / 2);
         sp.rotation = rot;
         sp.width = len; sp.height = w;
@@ -39353,28 +40080,156 @@ export class PixiScene {
     sp.visible = true;
   }
 
+  /**
+   * プレイヤーの刀の斬撃シート(fx/katana-slash-sheet)。素材の等間隔のセル(126×34)のまま切る(作り手のコマごとの位置合わせを生かす)。
+   * 'base'=素材そのまま(最近傍)。'red'=切り傷用(素材は青いので乗算の tint では赤くならない=明るさから暗い血の色へ写した写し・linear)。
+   * 'white'=殺陣の白い筋用(白・暗いにじみほど透明・linear=画面をまたぐ長さでもドットの塊にしない)。写しは1回だけ焼く(378×34=約51KB)。
+   * 読み込み前は null(呼び手は従来の絵へ落ちる)。
+   */
+  private katanaSlashSheetCache: Partial<Record<'base' | 'red' | 'white', Texture>> = {};
+  private katanaSlashCropCache = new Map<string, Texture>();
+  private katanaSlashSheet(variant: 'base' | 'red' | 'white'): Texture | null {
+    const hit = this.katanaSlashSheetCache[variant];
+    if (hit) return hit;
+    const sheet = getTexture(KATANA_SLASH_SHEET_TEX);
+    if (!sheet || sheet.width < KATANA_SLASH_CELL_W * KATANA_SLASH_CELLS) return null;
+    if (variant === 'base') { this.katanaSlashSheetCache.base = sheet; return sheet; }
+    const res = sheet.source.resource as CanvasImageSource | undefined;
+    if (!res || typeof document === 'undefined') return null;
+    const cv = document.createElement('canvas');
+    cv.width = sheet.width; cv.height = sheet.height;
+    const ctx = cv.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(res, sheet.frame.x, sheet.frame.y, sheet.width, sheet.height, 0, 0, sheet.width, sheet.height);
+    const img = ctx.getImageData(0, 0, cv.width, cv.height);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] === 0) continue;
+      const L = (0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]) / 255;
+      if (variant === 'red') {
+        const [r, g, b] = katanaCutRgb(L);
+        d[i] = r; d[i + 1] = g; d[i + 2] = b;
+      } else {
+        const [r, g, b, a] = katanaWhiteRgba(L);
+        d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = Math.round(d[i + 3] * a);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const baked = Texture.from(cv);
+    baked.source.scaleMode = 'linear';
+    this.katanaSlashSheetCache[variant] = baked;
+    return baked;
+  }
+  /**
+   * セル f の切り抜き。side=tail は尾(左)から reveal の割合だけ、tip は刃先(右)から reveal の割合だけ、full は全部。
+   * reveal は16段に丸めて持つ(切り抜きを使い回す=毎フレーム作らない)。
+   */
+  private katanaSlashCrop(variant: 'base' | 'red' | 'white', f: number, side: 'tail' | 'full' | 'tip', reveal: number): Texture | null {
+    const sheet = this.katanaSlashSheet(variant);
+    if (!sheet) return null;
+    const q = side === 'full' ? 16 : Math.max(1, Math.min(16, Math.ceil(reveal * 16)));
+    const key = `${variant}|${f}|${side === 'full' ? 'tail' : side}|${q}`;
+    const hit = this.katanaSlashCropCache.get(key);
+    if (hit) return hit;
+    const ox = variant === 'base' ? sheet.frame.x : 0, oy = variant === 'base' ? sheet.frame.y : 0;
+    const w = Math.max(1, Math.round((KATANA_SLASH_CELL_W * q) / 16));
+    const x0 = ox + f * KATANA_SLASH_CELL_W + (side === 'tip' ? KATANA_SLASH_CELL_W - w : 0);
+    const tex = new Texture({ source: sheet.source, frame: new Rectangle(x0, oy, w, KATANA_SLASH_CELL_H) });
+    this.katanaSlashCropCache.set(key, tex);
+    return tex;
+  }
+  /**
+   * 刃筋1本を置く。tail=尾の点(ワールド)、rot/sx/sy=回転と倍率(符号つき=左右・上下の反転)。
+   * 尾を固定する時は anchor(0,0.5) を尾に、刃先を固定する時は anchor(1,0.5) を刃先に置く(刃が走る/尾が追いつく)。
+   * 戻り値=見せている区間の中心(当たりの光を刃筋に追従させる)。
+   */
+  private placeKatanaStroke(
+    sp: Sprite, tex: Texture, side: 'tail' | 'full' | 'tip', reveal: number,
+    tailX: number, tailY: number, rot: number, sx: number, sy: number,
+  ): { x: number; y: number } {
+    if (sp.texture !== tex) sp.texture = tex;
+    const L = KATANA_SLASH_CELL_W * Math.abs(sx);
+    const s = sx < 0 ? -1 : 1;
+    const dx = Math.cos(rot) * s, dy = Math.sin(rot) * s; // 刃先の向き(ワールド)
+    if (side === 'tip') {
+      sp.anchor.set(1, 0.5);
+      sp.position.set(tailX + dx * L, tailY + dy * L);
+    } else {
+      sp.anchor.set(0, 0.5);
+      sp.position.set(tailX, tailY);
+    }
+    sp.rotation = rot;
+    sp.scale.set(sx, sy);
+    const mid = katanaSlashVisibleMid({ side, reveal }) * L;
+    return { x: tailX + dx * mid, y: tailY + dy * mid };
+  }
   // 斬撃エフェクト(ピクセル・社長提供5コマ)。Container に streak(斬撃線)＋burst(中央の当たりバースト)の
   // プールsprite2枚。streak は「右上寄せでグロー(0→4)→折り返して左下寄せでシュリンク(4→0)」で流れるよう動かす。
   // burst は斬撃中央で 0→4 にポップしてフェード。per-frame Graphics ではなくテクスチャ差し替えのみ=安い。
+  // ★プレイヤーの刀(e.katana)だけは刀用の斬撃シートで描き、streak の真下に暗い写し(shadow)を1枚敷く=3枚。
   private drawSlashSprite(e: Extract<VisualEffect, { kind: 'slash' }>, now: number) {
     const t = Math.min(1, (now - e.createdAt) / e.duration);
+    const katana = !!e.katana && !!this.katanaSlashSheet('base');
+    const need = katana ? 3 : 2;
     let view = this.effects.get(e.id);
-    if (!(view instanceof Container) || (view as Container).children.length < 2) {
+    if (!(view instanceof Container) || (view as Container).children.length !== need) {
       if (view) view.destroy({ children: true });
       const c = new Container();
       const streak = new Sprite(); streak.blendMode = 'add';
       const burst = new Sprite(); burst.anchor.set(0.5, 0.5); burst.blendMode = 'add';
+      if (katana) {
+        // 青い夜の背景に溶けないよう、通常合成の暗い写しを低いアルファで真下に敷いて輪郭を立てる(素材の色は変えない)。
+        const shadow = new Sprite(); shadow.tint = 0x000000;
+        c.addChild(shadow);
+      }
       c.addChild(streak, burst);
       this.L.effectLayer.addChild(c);
       this.effects.set(e.id, c);
       view = c;
     }
     const c = view as Container;
-    const streak = c.children[0] as Sprite;
-    const burst = c.children[1] as Sprite;
+    const off = katana ? 1 : 0;
+    const streak = c.children[off] as Sprite;
+    const burst = c.children[off + 1] as Sprite;
     const ref = getTexture('fx/slash-streak-4');
     if (!ref) { c.visible = false; return; }
     c.visible = true;
+    const bref = getTexture('fx/slash-burst-4');
+    if (katana) {
+      // ★プレイヤーの刀(社長支給の刀用の斬撃シート・2026-11-22)。出(尾を固定して刃先へ伸びる)→振り切り→余韻(刃先を固定して尾が追いつく)。
+      // 覆う範囲は従来の streak と同じ斜めの長さ。倍率は整数(最近傍)・太さは上限まで。向きは従来と同じ(右=左下→右上 / 左=反転)。
+      // 1振りごとに ±5〜8° 揺らし、katanaFlip(連撃の偶数発・燕返し)は上下を反転=切り下ろし。
+      const shadow = c.children[0] as Sprite;
+      const move = e.katanaMove ?? 'swing';
+      const sign = (e.face ?? 1) < 0 ? -1 : 1;
+      const flip = e.katanaFlip ? -1 : 1;
+      const pose = katanaSlashPose(t, move);
+      const tex = this.katanaSlashCrop('base', pose.frame, pose.side, pose.reveal);
+      const diag = Math.hypot(e.length, (e.length * ref.height) / Math.max(1, ref.width));
+      const { kx, ky } = katanaSlashIntScale(diag);
+      const rot = (-Math.atan2(ref.height, ref.width) * sign) * flip + katanaSlashJitter(e.id);
+      const L = KATANA_SLASH_CELL_W * kx;
+      const tailX = e.x - Math.cos(rot) * sign * L / 2, tailY = e.y - Math.sin(rot) * sign * L / 2;
+      let mid = { x: e.x, y: e.y };
+      if (tex) {
+        mid = this.placeKatanaStroke(streak, tex, pose.side, pose.reveal, tailX, tailY, rot, kx * sign, ky * flip);
+        this.placeKatanaStroke(shadow, tex, pose.side, pose.reveal, tailX, tailY, rot, kx * sign, ky * flip);
+      }
+      streak.alpha = pose.alpha;
+      streak.visible = !!tex && pose.alpha > 0.01;
+      shadow.alpha = 0.32 * pose.alpha;
+      shadow.visible = streak.visible;
+      // burst(旧い当たりの光・消さない): 振り切りに入る瞬間に一番大きく、刃筋の見えている区間の中心へ追従。
+      const btex = getTexture(`fx/slash-burst-${Math.min(4, Math.floor(pose.burstGrow * 4.999))}`);
+      if (btex && bref) {
+        if (burst.texture !== btex) burst.texture = btex;
+        burst.scale.set((e.length * 0.5) / Math.max(1, bref.width));
+        burst.position.set(mid.x, mid.y);
+        burst.alpha = pose.burstAlpha * pose.alpha;
+        burst.visible = burst.alpha > 0.01;
+      } else burst.visible = false;
+      return;
+    }
     // streak: 最大コマ基準で e.length にスケール。小コマは自然に小さく描かれる(=段々大きく)。
     // 向き: 右(face=1)は「左下→右上」に流れる。左(face=-1)は水平反転(scale.x<0)で「右下→左上」。
     const sign = (e.face ?? 1) < 0 ? -1 : 1;
@@ -39398,7 +40253,6 @@ export class PixiScene {
     streak.scale.set(sc * sign, sc);                     // face=-1 で水平反転
     streak.alpha = 1 - Math.max(0, (t - 0.75) / 0.25);   // 終盤フェード
     // burst: 斬撃中央で 0→4 にポップ→フェード。
-    const bref = getTexture('fx/slash-burst-4');
     const bidx = Math.min(4, Math.floor(t * 6));
     const btex = getTexture(`fx/slash-burst-${bidx}`);
     if (btex && bref) {
@@ -39874,6 +40728,7 @@ export class PixiScene {
     if (!tex) return;
     let sp = this.jibrilLanternSprites.get(id);
     if (!sp) { sp = new Sprite(tex); sp.anchor.set(0.5, 0.15); this.L.effectLayer.addChild(sp); this.jibrilLanternSprites.set(id, sp); }
+    this.projOwnerAttach(sp); // ?proj=1: ジブリルのランタン=手の武器=体
     // §7-15: 戦闘に入って初めて(または長い中断の後に)掲げた瞬間だけ、下からズレ上がり+フェードイン。
     const ease = this.weaponAppearEase(`jibril-lantern:${id}`, now);
     sp.scale.set(JIBRIL_LANTERN_VIS_H / Math.max(1, tex.height));
@@ -39907,6 +40762,7 @@ export class PixiScene {
       sp = new Sprite(tex); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add';
       this.L.effectLayer.addChild(sp); this.holoVolleySprites.set(id, sp);
     }
+    this.projOwnerAttach(sp); // ?proj=1: 体に付くホロ=体
     if (sp.texture !== tex) sp.texture = tex;
     sp.scale.set(sizePx / Math.max(1, Math.max(tex.width, tex.height)));
     sp.position.set(cx, cy);
@@ -39925,6 +40781,7 @@ export class PixiScene {
       sp = new Sprite(tex); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add';
       this.L.effectLayer.addChild(sp); this.holoMiniSprites.set(id, sp);
     }
+    this.projOwnerAttach(sp); // ?proj=1: 体に付く小さなホロ=体
     if (sp.texture !== tex) sp.texture = tex;
     sp.scale.set(widthPx / Math.max(1, tex.width));
     sp.position.set(footX, footY);
@@ -40254,6 +41111,7 @@ export class PixiScene {
       };
       this.sheetTipGlow.set(id, g);
     }
+    if (this.projFrame) for (const sp of [g.outer, g.inner, g.core, g.rayLong, g.rayShort, g.bounce]) this.projAttach(view, sp, 'attachedArt'); // ?proj=1: 剣先の光=体
     const dt = Math.max(0, Math.min(100, now - g.at));
     g.at = now;
     const target = pt !== null ? level : 0;
@@ -40389,6 +41247,8 @@ export class PixiScene {
       view.container.addChildAt(fog, 1);
       view.container.addChildAt(fog2, 2);
       view.container.addChild(motes);
+      // ?proj=1 の段階2の役の表: 霧と粒=体に付く演出(後掛け)。残像は今の足元を支点に写さない(演出=動かさない・段階3)。
+      this.projTag(fog, 'heroFog'); this.projTag(fog2, 'heroFog2'); this.projTag(motes, 'heroMotes'); this.projTag(trail, 'heroTrail');
       n = { fog, fog2, trail, motes, drift: 0, trailAt: -1e9, trailX: 0, trailY: 0, landSwellAt: -1e9, wasAir: false, roarSwelled: false };
       this.heroFogNodes.set(e.id, n);
     }
@@ -40658,6 +41518,7 @@ export class PixiScene {
     }
     const vc = view.container;
     if (c.parent !== vc) { c.parent?.removeChild(c); vc.addChild(c); }
+    this.projTag(c, 'attachedArt'); // ?proj=1 の役の表: 入れ物の子=英雄の旗=体
     const ksp = c.children[0] as Sprite;
     if (ksp.texture !== tex) ksp.texture = tex;
     const flip = face > 0 ? 1 : -1; // 布は向いている側の反対へなびく
@@ -40680,6 +41541,7 @@ export class PixiScene {
       }
       this.L.effectLayer.addChild(glow);
       this.libFlagTipGlow.set(e.id, glow);
+      this.projOwnerAttach(glow); // ?proj=1: 旗の先の光=体
     }
     const tipX = gx + Math.cos(ang) * art.bladePx * sc, tipY = gy + ease.dy + Math.sin(ang) * art.bladePx * sc;
     glow.position.set(tipX, tipY);
@@ -40722,6 +41584,7 @@ export class PixiScene {
       }
       this.L.effectLayer.addChild(c);
       m = { c, shownAt: -1 };
+      if (this.projFrame) this.projAttach(view, c, 'nameLabel'); // ?proj=1(段階2): 叫喚の強化の印=頭上UI(平行移動・大きさは変えない)
       this.screamBuffMarks.set(e.id, m);
     }
     const u = t / SCREAM_BUFF_FLASH_MS;
@@ -40774,6 +41637,7 @@ export class PixiScene {
     if (sil && look.flare > 0.01) {
       const b = fx.body;
       if (b.parent !== view.sprite.parent && view.sprite.parent) { b.parent?.removeChild(b); view.sprite.parent.addChild(b); }
+      this.projTag(b, 'attachedArt'); // ?proj=1 の役の表: 白く光る体の写し=体
       b.texture = sil;
       b.anchor.set(view.sprite.anchor.x, view.sprite.anchor.y);
       b.position.set(view.sprite.position.x, view.sprite.position.y);
@@ -41376,6 +42240,7 @@ export class PixiScene {
       c.addChild(glow);
       // 本体の絵のすぐ上(被弾の白光より上・予告より下)=体に付いて見え、他の敵の手前には出ない。
       view.container.addChildAt(c, view.container.getChildIndex(view.hitFlash) + 1);
+      this.projTag(c, 'alchemyRocks'); // ?proj=1 の段階2の役の表: 敵の体
       rec = { c, rocks, cracks, glow, shadow, specs, k, seed: alchemyRockSeed(id), stage: 0, stageAt: [0, 0, 0, 0], impactAng: [0, 0, 0, 0], basis, bob: null, lastNow: now };
       this.alchemyRockFx.set(id, rec);
     }
@@ -41715,6 +42580,7 @@ export class PixiScene {
         this.L.effectLayer.addChild(sp);
         this.phantomEyeSprites.set(e.id, sp);
       }
+      if (this.projFrame) this.projAttach(view, sp, 'attachedArt'); // ?proj=1(段階2): 幻影の目=体
       sp.width = sp.height = GUARDIAN_PHANTOM_EYE_PX * dsc;
       // anchor(0.5,1)=足元基準なので、スプライトのYからそのまま絵の高さぶん上へ上がればよい
       // (=出現の立ち上がりにも自動で追従する)。
@@ -41756,6 +42622,7 @@ export class PixiScene {
           sp = new Sprite(slash); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add';
           this.L.effectLayer.addChild(sp); this.phantomSlashSprites.set(e.id, sp);
         }
+        if (this.projFrame) this.projAttach(view, sp, 'attachedArt'); // ?proj=1(段階2): 幻影のナイフの振り=手元から出る絵=体
         if (sp.texture !== slash) sp.texture = slash;
         sp.visible = true;
         sp.rotation = ang;
@@ -41783,6 +42650,7 @@ export class PixiScene {
           sp.tint = 0xffe9a8;
           this.L.effectLayer.addChild(sp); this.phantomMuzzleSprites.set(e.id, sp);
         }
+        if (this.projFrame) this.projAttach(view, sp, 'attachedArt'); // ?proj=1(段階2): 幻影の銃口の閃光=体
         sp.visible = true;
         sp.width = sp.height = PixiScene.GP_MUZZLE_PX * (1 - shotT) * dsc;
         sp.alpha = 1 - shotT;
@@ -42058,6 +42926,7 @@ export class PixiScene {
       sp = new Sprite(tex);
       this.L.effectLayer.addChild(sp); this.bountyWeaponSprites.set(id, sp);
     }
+    this.projOwnerAttach(sp); // ?proj=1: 敵の手の武器=体
     if (sp.texture !== tex) sp.texture = tex;
     if (sp.anchor.x !== gripX || sp.anchor.y !== gripY) sp.anchor.set(gripX, gripY);
     const longSide = Math.max(1, Math.max(tex.width, tex.height));
@@ -42100,6 +42969,7 @@ export class PixiScene {
       slot = { rope, pts };
       this.bountyWhipRopes.set(id, slot);
     }
+    this.projOwnerAttach(slot.rope); // ?proj=1: 賞金首の鞭のロープ=手持ちの武器=体
     // 先端遅れのバネ(実時間で積分。タブ復帰などの巨大dtは50msに丸めて破綻させない)
     const nowMs = performance.now();
     let st = this.bountyWhipLag.get(id);
@@ -42172,6 +43042,7 @@ export class PixiScene {
       }
       this.bountyScissorBladeSprites.set(id, blades);
     }
+    for (const b of blades) this.projOwnerAttach(b); // ?proj=1: 鋏=体
     // 旧widthMul(1=閉・1.7=全開)→開きの割合。跳びかかり中の1.5は約0.71開き。
     const openT = Math.max(0, Math.min(1, (widthMul - 1) / 0.7));
     const openHalf = openT * PixiScene.SCISSOR_OPEN_MAX_RAD;
@@ -42780,6 +43651,7 @@ export class PixiScene {
       sp = new Sprite(tex); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add';
       this.L.effectLayer.addChild(sp); this.angelEyeSprites.set(id, sp);
     }
+    this.projOwnerAttach(sp); // ?proj=1: 天使の目=体
     const pulse = 0.85 + 0.15 * Math.sin(now / 90);
     sp.scale.set((sizePx / Math.max(tex.width, tex.height)) * pulse);
     sp.position.set(cx, cy);
@@ -43431,6 +44303,7 @@ export class PixiScene {
     }
     const parent = body.parent;
     if (parent && (sp.parent !== parent || parent.children[parent.children.length - 1] !== sp)) parent.addChild(sp); // 本人の上の層
+    this.projTag(sp, 'brawlerAura'); // ?proj=1 の役の表: 入れ物の子=体に重なる格闘の技の絵=体
     const st = useGameStore.getState();
     const cx = p.x + p.width / 2, cy = p.y + p.height / 2;
     // レバーガード(§12-1c)の腕で受ける影は、受けた相手の方を向く(段・技の向きではない)。
@@ -43508,6 +44381,7 @@ export class PixiScene {
     }
     const aura = this.phantomBrawlerAura;
     if (aura.parent !== body.parent && body.parent) body.parent.addChild(aura);
+    this.projTag(aura, 'brawlerAura'); // ?proj=1 の役の表: 入れ物の子=体に重ねる光
     const hitPop = Math.max(0, 1 - (Date.now() - (s.guardHitAt ?? 0)) / 160);
     const size = (34 + 76 * remain + 30 * hitPop) * dsc;
     aura.scale.set(size / Math.max(1, aura.texture.height));
@@ -43565,6 +44439,7 @@ export class PixiScene {
         }
         const aura = this.brawlerAura;
         if (aura.parent !== body.parent && body.parent) body.parent.addChild(aura);
+        this.projTag(aura, 'brawlerAura'); // ?proj=1 の役の表: 入れ物の子=体に重ねる光
         // 残り時間に比例して等速で絞る(輪は出さない=クリエイティブ監査 #9)。受けた瞬間だけ短く膨らむ。
         // 受けた瞬間・構えを延長した瞬間(§9-41)に一度膨らむ。
         const hitPop = Math.max(Math.max(0, 1 - (Date.now() - Math.max(s.guardHitAt, s.guardRenewAt ?? 0)) / 160), gc.pop);
@@ -43644,6 +44519,7 @@ export class PixiScene {
         this.brawlerGhosts[i] = g;
       }
       if (g.parent !== body.parent && body.parent) body.parent.addChildAt(g, 0);
+      this.projTag(g, 'brawlerGhost'); // ?proj=1 の役の表: 残像=記録した world の点で投影して置く
       const want = now - (i + 1) * 34;
       let pt = this.brawlerTrail[0];
       for (const q of this.brawlerTrail) { if (q.t <= want) pt = q; else break; }
@@ -45275,6 +46151,7 @@ export class PixiScene {
     this.skillIconTexCache.clear();
     this.boomReadySp?.destroy(); this.boomReadySp = null;
     this.killFxSlashSp?.destroy(); this.killFxSlashSp = null;
+    this.killFxSlashShadow?.destroy(); this.killFxSlashShadow = null;
     for (const o of this.killFxBloodPool) o.destroy();
     this.killFxBloodPool = []; this.killFxBlood = [];
     for (const o of this.holoMiniSprites.values()) o.destroy();

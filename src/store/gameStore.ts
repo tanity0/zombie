@@ -320,6 +320,10 @@ import {
   tsubameAccepts, tsubamePath, tsubameDashMs, nextKatanaCuts, triggersSatsujin, satsujinAngles, type TsubameWindow,
   SATSUJIN_HITS, SATSUJIN_STRIKE_MS, SATSUJIN_FADE_OUT_MS, SATSUJIN_HALF_LEN_PX, SATSUJIN_FINAL_HITSTOP_MS,
 } from '../utils/katanaTsubame';
+import type { KatanaSlashMove } from '../utils/katanaSlashSheet';
+// 刀の斬撃シートの絵の指定(描画だけ・判定なし)。katanaSlashSeq=プレイヤーの刀の振りの通し番号(切り上げ/切り下ろしの交互に使う)。
+type KatanaSlashFx = { move: KatanaSlashMove; flip?: boolean };
+let katanaSlashSeq = 0;
 import { screamerStartGate } from '../utils/screamerGate';
 import { blastLiftPatch, slasherLiftMove, blastLiftCloseness, slasherLaunchMinMs, COUNTER_LIFT_MOVE, counterLiftApplies, retaliateLiftPlan, KNIFE_HOLD_MOVE, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil } from '../utils/airLift';
 import { hunterWanderStep } from '../utils/hunterWander';
@@ -3230,7 +3234,7 @@ const satsujinStrike = (get: () => GameState, set: WhipFollowupSet, startAt: num
   const ids = [targetId, ...get().enemies.filter(e => e.id !== targetId && !isCorpse(e) && !isUntouchable(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e))
     && bandBoxOverlap(fromX, fromY, ux, uy, len, KATANA_DASH_HIT_HALF_WIDTH, e)).map(e => e.id)];
   const pre = get().enemies.find(e => e.id === targetId);
-  get().performKatanaStrike(ids, KATANA_DASH_DAMAGE_MULT, true, undefined, warlordIssenMult(get().player));
+  get().performKatanaStrike(ids, KATANA_DASH_DAMAGE_MULT, true, undefined, warlordIssenMult(get().player), 'satsujin');
   // 相手は動かさない(止めたまま・押しを打ち消す)。最後の1発だけ一閃の浮きで打ち上げる(止めを解いてから)。
   const gt = get().gameTime;
   set(s => ({
@@ -3246,7 +3250,7 @@ const satsujinStrike = (get: () => GameState, set: WhipFollowupSet, startAt: num
   // 絵: 抜けた筋(白)・相手の上の斬撃・ワープの残光。音: 一閃の系統を少しずつ高く。
   const g = get();
   g.spawnEffect({ kind: 'trail', id: `fx-satsujin-${startAt}-${now}`, fromX, fromY, toX, toY, color: 'rgba(255,255,255,1)', createdAt: now, duration: 320 });
-  g.spawnSlash(ecx, ecy, 'rgba(255,255,255,0.98)', 1.2, cx >= 0 ? 1 : -1);
+  g.spawnSlash(ecx, ecy, 'rgba(255,255,255,0.98)', 1.2, cx >= 0 ? 1 : -1, { move: 'satsujin', flip: sat.strikes.length % 2 === 1 }); // 殺陣=プレイヤーの刀
   g.spawnGlow(toX, toY - 6, GLOW_R_S, 'rgba(255,248,230,', 200, true);
   const k = sat.strikes.length;
   void import('../audio/audioManager').then(m => m.playSfx('katana-dash', 0.9, undefined, 1.1 + k * 0.08));
@@ -8629,6 +8633,7 @@ const startKillFxCinematic = (
   prim: { cx: number; cy: number; w: number; h: number },
   victims: { x: number; y: number }[],
   pcx: number, pcy: number,
+  katana = false,
 ) => {
   if (!JUICE_ENABLED) return;
   // ★格闘の秘奥義の最中は、跳びつき処刑の絵(本人の位置と形を乗っ取る)を出さない=秘奥義のワープ・落下の絵と取り合わない
@@ -8640,6 +8645,7 @@ const startKillFxCinematic = (
       px: pcx, py: pcy,
       startAt: Date.now(),
       victims,
+      ...(katana ? { katana: true } : {}),
     },
     hitstopUntil: Date.now() + KILLFX_TOTAL_MS,
   });
@@ -10347,6 +10353,7 @@ interface GameState {
     px: number; py: number;                          // プレイヤー中心(発動時=戻り先の記録)
     startAt: number;                                 // 実時刻(Date.now)
     victims: { x: number; y: number }[];
+    katana?: boolean;                                // 刀の致命=首元の斬撃を刀用の斬撃シートで描く(描画だけ)
   } | null;
   // ★PACING_PUZZLE.md §14-4-8/8b(神付き): 死神本体(isTerminalReaper)/使者(isHangedman)の接触予約。
   // 「①接触→②時間停止→③覆いかぶさり→④ダメージ確定→⑤時間再開」の②③をここに置く
@@ -10635,7 +10642,7 @@ interface GameState {
   // v0.25.2518(裁定2): 末尾の ghostId は**主語(オーナー)**。未指定=プレイヤー(従来と完全同一)。
   // 指定すると守護霊(kind='ghost-ally')が同じ状態機械・同じ定数・同じ式で刀/ワイヤーを使う。
   // strikeMult=敵への打撃だけに掛ける上乗せ(縮地の連鎖・§32)。damageMult と違い、死神の波及・救難信号の基準には入れない。
-  performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean, ghostId?: string, strikeMult?: number) => { hit: boolean; finish: boolean; killed: number; hitIds?: string[] };
+  performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean, ghostId?: string, strikeMult?: number, slashMove?: KatanaSlashMove) => { hit: boolean; finish: boolean; killed: number; hitIds?: string[] };
   // tsubame=燕返し(research/KATANA_TSUBAME.md §1): 硬直・CDの門を通さず、指定の距離だけ一閃を出し直す(消費・CDは足さない)。
   triggerKatanaDash: (dirX: number, dirY: number, ghostId?: string, tsubame?: { distance: number }) => boolean;
   // ★燕返し(research/KATANA_TSUBAME.md §1): 受付の間の反対フリックで出す。出たら true。
@@ -11220,7 +11227,7 @@ interface GameState {
   spawnExplosionFx: (x: number, y: number, radius: number, tint?: number) => void;
   // noShadow(§24追加・既定false=挙動不変): trueで支配光(syncShadowsV9)への参加を断つ=見た目はそのまま。
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number, noShadow?: boolean) => void;
-  spawnSlash: (x: number, y: number, color?: string, lengthScale?: number, faceOverride?: 1 | -1) => void; // faceOverride=弧の向き(省略=プレイヤーの向き。進軍NPCの近接は振った向き)
+  spawnSlash: (x: number, y: number, color?: string, lengthScale?: number, faceOverride?: 1 | -1, katana?: KatanaSlashFx) => void; // faceOverride=弧の向き(省略=プレイヤーの向き。進軍NPCの近接は振った向き)
   spawnFlash: (color: string, duration?: number) => void;
   // §5.23 M22 C3: 「N HITS」バナー(頭上・bitmap-text)+小フラッシュ。registerMultiHitから相乗りで呼ぶ。
   spawnMultiHitFx: (x: number, y: number, count: number, opts?: { label?: string; milestoneTier?: number; duration?: number }) => void;
@@ -15371,7 +15378,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  performKatanaStrike: (targetIds, damageMult, allowFinisher, ghostId, strikeMult = 1) => {
+  performKatanaStrike: (targetIds, damageMult, allowFinisher, ghostId, strikeMult = 1, slashMove) => {
     const now = Date.now();
     const { gameTime, enemies } = get();
     // v0.25.2518(裁定2): 主語(オーナー)。ghostId 未指定=プレイヤー本体(従来と完全同一)。
@@ -15673,8 +15680,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 軽量な短命斬撃のみ(常時glowなし)。刀はやや青白い斬閃で識別。
     // 通常斬撃(オート)はエフェクトを2倍サイズで描く(確定仕様)。
     const slashScale = allowFinisher ? 1 : 2;
+    // 刀の斬撃シートの絵の種類(描画だけ)。連撃と殺陣は1振りごとに切り上げ/切り下ろしを交互、燕返しは切り下ろし(一閃とV字)。
+    const move: KatanaSlashMove = slashMove ?? (allowFinisher ? 'issen' : 'swing');
+    const slashFx: KatanaSlashFx | undefined = isGhost ? undefined
+      : { move, flip: move === 'tsubame' || ((move === 'swing' || move === 'satsujin') && (katanaSlashSeq++ % 2 === 1)) };
     for (const s of slashAt) {
-      get().spawnSlash(s.x, s.y, 'rgba(221,238,255,0.95)', slashScale);
+      get().spawnSlash(s.x, s.y, 'rgba(221,238,255,0.95)', slashScale, undefined, slashFx); // 刀の斬撃シート(守護霊は従来の絵)
       get().spawnMeleeBlood(s.x, s.y); // 近接の血飛沫(社長指摘v0.25.2060: メイン近接3経路に未配線だった)
       get().spawnMeleeHit(s.x, s.y);   // v0.25.4334: 刀の通常ヒットにも(同じ「当たった」動作)
     }
@@ -15724,7 +15735,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const kFatal = katanaBossFatalHits[0];
       if (fullCinematic && kFatal && !isGhost) {
         startKillFxCinematic(get, { cx: kFatal.x, cy: kFatal.y, w: kFatal.w, h: kFatal.h },
-          katanaBossFatalHits.map(p => ({ x: p.x, y: p.y })), pcx, pcy);
+          katanaBossFatalHits.map(p => ({ x: p.x, y: p.y })), pcx, pcy, true);
       }
     }
     // スキル: リーパー。刀の一閃フィニッシュ範囲(katanaRange)内の敵を全員フィニッシュ。
@@ -16830,7 +16841,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const zanX = pcx + ux * travel / 2;
         const zanY = pcy + uy * travel / 2;
         const result: { finish: boolean; hitIds?: string[] } = strikeIds.length > 0
-          ? get().performKatanaStrike(strikeIds, KATANA_DASH_DAMAGE_MULT, true, ghostId, ghostId ? 1 : warlordIssenMult(striker))
+          ? get().performKatanaStrike(strikeIds, KATANA_DASH_DAMAGE_MULT, true, ghostId, ghostId ? 1 : warlordIssenMult(striker), tb ? 'tsubame' : 'issen')
           : { finish: false };
         if (ghostId === undefined) {
           const hitIds = result.hitIds ?? [];
@@ -16847,7 +16858,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const prop = get().breakableProps.find(p => p.id === id);
           if (!prop) continue;
           const broken = get().damageBreakableProp(id, propDamage);
-          get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(221,238,255,0.95)');
+          get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(221,238,255,0.95)', 1, undefined, ghostId === undefined ? { move: tb ? 'tsubame' : 'issen', flip: !!tb } : undefined); // 一閃・燕返し(守護霊は従来の絵)
           if (broken) {
             if (broken.type === 'mine') {
               get().spawnBurst(broken.footX, broken.footY - 8, '#84cc16', 30);
@@ -30031,7 +30042,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  spawnSlash: (x, y, color = 'rgba(255,255,255,0.95)', lengthScale = 1, faceOverride) => {
+  spawnSlash: (x, y, color = 'rgba(255,255,255,0.95)', lengthScale = 1, faceOverride, katana) => {
     { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 変異塊の代理の中心→縁(LAB_CRAWLER §4)
     const now = Date.now();
     // 斬撃の向き=プレイヤーの向き(右=左下→右上 / 左=反転)。レンダラの facingLeft 判定と同じ規則。
@@ -30051,6 +30062,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         createdAt: now,
         duration: 260, // 少し長く残す(旧 200)
         face,
+        ...(katana ? { katana: true, katanaMove: katana.move, ...(katana.flip ? { katanaFlip: true } : {}) } : {}), // プレイヤーの刀=刀用の斬撃シート(描画だけ・判定なし)
       }];
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };

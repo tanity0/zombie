@@ -13,6 +13,12 @@
 //      「軍人÷プレイヤー」「敵÷プレイヤー」を出す。PC の各画面サイズの比が、スマホ(430×932・3倍)の比から
 //      RATIO_TOL(既定6%)より離れたら NG。基準ファイルは要らない(同じ回でスマホも測って比べる)。
 //   ② PC の画面の配置: タイトルとゲーム中の HUD の要素の位置と大きさ(phone-guard と同じ方式)。1px でも動けば NG。
+//
+// PC_GUARD_PROJ=1(research/PERSPECTIVE_PROJECTION.md §3-5l 受け入れ条件12「pc-guard の比べ方」・既定の回は1つも変えない):
+//   URL に &proj=1 を足す。大きさの比(スマホと比べる・6%)は**同じ world の行に並べた物どうし**で取る(軍人=主人公の行+8px、
+//   敵=主人公と同じ行の左右 ±110px)。さらに北 −120px に敵を1体置き、測った高さ ÷(主人公の行の同じ型の高さ × その端末の
+//   投影の倍率の比 s(−120)/s(行))が 1±PC_GUARD_FAR_TOL(既定3%)か=端末ごとに純関数の値と比べる(スマホとは比べない)。
+//   getBounds() は描き終わった後・次の sync の先頭で後掛けを戻す前に読む(evaluate はフレームの合間に走る)=後掛けの後の大きさ。
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,6 +28,8 @@ const BASE = process.env.PC_GUARD_URL ?? 'http://localhost:5199/zombie/';
 const DIR = process.env.PC_GUARD_DIR ?? '/tmp/pc-guard';
 const OUT = path.join(DIR, MODE === 'baseline' ? 'baseline' : 'current');
 const RATIO_TOL = Number(process.env.PC_GUARD_RATIO_TOL ?? 0.06);
+const PROJ = process.env.PC_GUARD_PROJ === '1'; // ?proj=1 の回(既定の回は今のまま)
+const FAR_TOL = Number(process.env.PC_GUARD_FAR_TOL ?? 0.03);
 fs.mkdirSync(OUT, { recursive: true });
 
 // [名前, 画面, 解像度, スマホか]。先頭がスマホ=比の基準。
@@ -58,24 +66,41 @@ const closePopups = async (g) => {
 };
 
 // プレイヤーの左右に軍人を並べ、少し離して敵を2体(動かない)置いて、画面上の高さを測る。
-const measureSizes = (g) => g.evaluate(async () => {
+const measureSizes = (g, proj) => g.evaluate(async (proj) => {
   const st = window.__gameStore; const s = st.getState(); const pl = s.player;
   const cx = pl.x + pl.width / 2, cy = pl.y + pl.height / 2;
   const { spawnEnemyAt } = await import('/zombie/src/utils/enemyUtils.ts');
   const mk = (type, dx, dy) => ({ ...spawnEnemyAt(type, cx + dx - 16, cy + dy - 16, s.gameTime), fixed: true, dormant: true, vx: 0, vy: 0, homeX: cx + dx - 16, homeY: cy + dy - 16 });
+  // 既定の回: 今のまま(北 −120px に2体)。PC_GUARD_PROJ=1 の回: 主人公と同じ行の左右に2体+北 −120px に比べる用の1体。
+  const enemies = proj
+    ? [mk('zombie', -110, 0), mk('skeleton', 110, 0), mk('zombie', 0, -120)]
+    : [mk('zombie', -110, -120), mk('skeleton', 110, -120)];
   st.setState({
     escorts: s.escorts.map((e, i) => ({ ...e, x: cx + (i < 2 ? -70 - i * 50 : 70 + (i - 2) * 50), y: cy + 8, moving: false })),
-    enemies: [mk('zombie', -110, -120), mk('skeleton', 110, -120)],
+    enemies,
   });
   await new Promise(r => setTimeout(r, 2500));
   const sc = window.__pixiScene;
   const h = (o) => o.getBounds().height;
   const player = h(sc.playerView.sprite);
   const esc = [...sc.escortSprites.values()].filter(x => x.visible).map(h);
-  const en = [...sc.enemies.values()].map(v => h(v.sprite)).filter(x => x > 1);
   const mean = (a) => a.length ? a.reduce((p, q) => p + q, 0) / a.length : NaN;
-  return { player, escort: mean(esc), enemy: mean(en), nEsc: esc.length, nEn: en.length };
-});
+  if (!proj) {
+    const en = [...sc.enemies.values()].map(v => h(v.sprite)).filter(x => x > 1);
+    return { player, escort: mean(esc), enemy: mean(en), nEsc: esc.length, nEn: en.length };
+  }
+  const cur = st.getState().enemies;
+  const byId = (i) => { const e = cur.find(q => q.id === enemies[i].id); const v = e && sc.enemies.get(e.id); return { e, hgt: v ? h(v.sprite) : 0 }; };
+  const row = [byId(0), byId(1)], far = byId(2);
+  const en = row.map(r => r.hgt).filter(x => x > 1);
+  // 投影の倍率(純関数・その端末の今フレームの状態)で、北の敵の縮みの期待値を出す。
+  const { project } = await import('/zombie/src/utils/perspectiveProjection.ts');
+  const f = sc.projFrame;
+  const sOf = (e) => (f && e ? project(f, e.x + e.width / 2, e.y + e.height).s : NaN);
+  const expect = sOf(far.e) / sOf(row[0].e);
+  const farRatio = row[0].hgt > 1 && far.hgt > 1 ? (far.hgt / row[0].hgt) / expect : NaN;
+  return { player, escort: mean(esc), enemy: mean(en), nEsc: esc.length, nEn: en.length, farRatio, farExpectS: expect, proj: !!f };
+}, proj);
 
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] });
 const sizes = {};
@@ -94,14 +119,14 @@ for (const [dev, vp, dpr, mob] of DEVICES) {
     await p.close();
   }
   const g = await ctx.newPage();
-  await g.goto(`${BASE}?smoke=1&stage=stage-1&nospawn=1&class=warrior&ts=0&welcome=0&autotut=1&hidelayer=fog`);
+  await g.goto(`${BASE}?smoke=1&stage=stage-1&nospawn=1&class=warrior&ts=0&welcome=0&autotut=1&hidelayer=fog${PROJ ? '&proj=1' : ''}`);
   await g.waitForTimeout(30000);
   await closePopups(g);
   if (!mob) {
     await g.waitForTimeout(2500);
     fs.writeFileSync(path.join(OUT, `${dev}-ingame.txt`), (await dumpRects(g)).join('\n'));
   }
-  sizes[dev] = await measureSizes(g);
+  sizes[dev] = await measureSizes(g, PROJ);
   await g.screenshot({ path: path.join(OUT, `${dev}-sizes.png`), timeout: 180000 });
   await g.close();
   await ctx.close();
@@ -119,6 +144,15 @@ for (const [dev] of DEVICES.slice(1)) {
   const bad = !(d1 <= RATIO_TOL) || !(d2 <= RATIO_TOL) || s.nEsc === 0 || s.nEn === 0;
   if (bad) failed = true;
   console.log(`${bad ? 'NG ' : 'OK '} ${dev} 大きさの比: 軍人/プレイヤー ${e1.toFixed(3)}(スマホ比 ${(e1 / refEsc).toFixed(3)}) / 敵/プレイヤー ${e2.toFixed(3)}(スマホ比 ${(e2 / refEn).toFixed(3)}) [測った数 軍人${s.nEsc}・敵${s.nEn}]`);
+}
+// ①b(PC_GUARD_PROJ=1 の回だけ): 北 −120px の敵の縮みが、その端末の投影の倍率の比と 1±FAR_TOL で合うか(スマホを含む全端末)。
+if (PROJ) {
+  for (const [dev] of DEVICES) {
+    const s = sizes[dev];
+    const bad = !s.proj || !(Math.abs(s.farRatio - 1) <= FAR_TOL);
+    if (bad) failed = true;
+    console.log(`${bad ? 'NG ' : 'OK '} ${dev} 奥の物の縮み: 測った比 ÷ 投影の比 ${Number(s.farRatio).toFixed(3)}(投影の比 ${Number(s.farExpectS).toFixed(3)}・許容 ±${FAR_TOL})${s.proj ? '' : ' [投影が効いていない]'}`);
+  }
 }
 // ② PC の画面の配置(基準と比べる)
 if (MODE === 'check') {

@@ -72,3 +72,11 @@ export const staticShadowLowAlphaMult = (a: number, threshold: number = STATIC_S
   const u = (a - lo) / (threshold - lo);
   return u * u * (3 - 2 * u);
 };
+
+/**
+ * 止まっている物の影の上限の候補か(research/PERSPECTIVE_PROJECTION.md §3-5k 作る物4): 投影した影(`projected`)のうち、
+ * 動く物の影(`moving`=段階2の主人公・敵・味方・拾い物 等)ではない物だけ。動く物の影は「動く影のために空ける枚数」の側。
+ * 候補を集める所・上限で間引く所・倍率を掛ける所の3か所はすべてこの1本を使う(1か所でも漏れると動く物の影が消える)。
+ */
+export const isStaticProjectedShadow = (sl: { projected?: boolean; moving?: boolean }): boolean =>
+  !!sl.projected && !sl.moving;

@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "1133 files / 復号後 約723MB",
+ "generatedFor": "1134 files / 復号後 約724MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -1951,6 +1951,12 @@
    "h": 32,
    "bytes": 10467,
    "sha": "223b032ae83eac3f"
+  },
+  "sprites/fx/katana-slash-sheet.png": {
+   "w": 378,
+   "h": 34,
+   "bytes": 6666,
+   "sha": "fed3dba40ec152ce"
   },
   "sprites/fx/kill-slash.png": {
    "w": 3264,
