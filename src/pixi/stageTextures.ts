@@ -7,6 +7,7 @@ import { getSelectedStageId } from '../data/progress';
 import { weatherWetActive } from '../utils/weatherWet';
 import { stageFrameGroupKey, stageFramesWanted } from '../data/stageFrames';
 import { skinLayersExpectedFor, type StageSkinLayer } from './stageTextureSkin';
+import { stageBountyArtGroup } from '../utils/enemyArtWarm';
 export { skinLayersExpectedFor, type StageSkinLayer } from './stageTextureSkin';
 
 // 出撃時に注入するステージ別テクスチャの一覧。ローディング%の分母を初期化冒頭で全登録するため
@@ -136,7 +137,11 @@ export const prefetchStageTextures = (stage: { theme?: string; farBackdrop?: str
  * 未知のテーマでは空=何も先読みしない(`getTexture` の網が描く瞬間に拾う)。
  */
 export const sortieSpriteGroups = (): string[] => {
-  const base = sortieSpriteGroupsBase();
+  const base0 = sortieSpriteGroupsBase();
+  // そのステージの賞金首の立ち絵+シート(utils/enemyArtWarm・社長報告「賞金首のアテンションで魔法陣だけ」)。
+  // 型はステージで決まっている=出現の瞬間に必ず読む絵を出撃時へ前倒しする(ステージ1=約1.5MB)。廊下(洋館)では湧かない。
+  const bountyGroup = useGameStore.getState().corridorMode ? null : stageBountyArtGroup(getSelectedStageId());
+  const base = bountyGroup ? [...base0, bountyGroup] : base0;
   // 左右の枠(data/stageFrames.ts): 枠のあるステージへ出撃した時に読む。旧は横長の時だけだったが、
   // ★2026-11-21: 登場のヘリ飛来の間は縦持ちでも枠のトンネルを出す(社長指示)ので、縦でも読む(原盤2枚 ≈1MB)。
   const s = useGameStore.getState();

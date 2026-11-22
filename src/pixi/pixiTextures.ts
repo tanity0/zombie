@@ -22,6 +22,7 @@ import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
 import { STAGE_PROPS } from '../world/cityProps';
 import { setEnemyArtAspect } from './renderSpec';
 import { SCARECROW_FRAMES, SCARECROW_SHEET } from '../utils/scarecrow';
+import { BOUNTY_ART_GROUPS, enemyArtWarmPlan } from '../utils/enemyArtWarm'; // 賞金首の絵の先読みと、立ち絵→シートの順
 
 /** グレン第二形態のパーツのアニメのコマ数(砲身・中間の箱。社長支給2026-09-26)。 */
 export const GLEN_PART_ANIM_FRAMES = 16;
@@ -219,6 +220,14 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
   ...Object.fromEntries(Object.keys(STAGE_FRAMES).map(id => [
     stageFrameGroupKey(id), stageFrameSprites(id).map(name => ({ name, scaleMode: 'nearest' as const })),
   ])),
+  /**
+   * そのステージの賞金首の立ち絵+歩き・攻撃のシート(`bounty:<型>`・utils/enemyArtWarm)。型はステージで決まっている
+   * (BOUNTY_TYPE_BY_STAGE)ので、出撃時に `sortieSpriteGroups` が先読みする。中身は上の `bosses`/`enemySheets` と同じ名前
+   * (二重には積まれない=同じ名前は1回しか読まない)。どうせ出現の瞬間に全部読む絵を、出撃時へ前倒しするだけ。
+   */
+  ...Object.fromEntries(Object.entries(BOUNTY_ART_GROUPS).map(([k, names]) => [
+    k, names.map(name => ({ name, scaleMode: 'nearest' as const })),
+  ])),
 };
 
 /** 遅延組の索引(名前→scaleMode)。`getTexture` の網と `loadSpriteGroups` が引く。 */
@@ -242,13 +251,24 @@ const deferredInFlight = new Map<string, Promise<void>>();
  */
 const DEFERRED_SHEETS_BY_IDLE = new Map<string, string[]>(DEFERRED_SHEETS_BY_IDLE_INIT);
 const warmedSheetIdles = new Set<string>();
-export const warmEnemySheets = (idleTexName: string): void => {
+/**
+ * ★その個体の絵を全部取りに行く窓口(1か所)。**立ち絵を先に、シートは立ち絵が届いてから**(utils/enemyArtWarm.enemyArtWarmPlan)。
+ * 社長報告(ステージ1の2周目・賞金首の出現アテンションで魔法陣しか映らない): 立ち絵とシートを同時に取りに行くと、
+ * 細い回線では立ち絵が帯域を分け合って寄りに間に合わない。立ち絵が起動時に読んである個体(雑魚・強個体)は
+ * 待たずにシートへ進む(今と同じ)。同じ立ち絵は1回だけ。
+ */
+export const warmEnemyArt = (idleTexName: string): void => {
   if (warmedSheetIdles.has(idleTexName)) return;
   warmedSheetIdles.add(idleTexName);
-  for (const n of DEFERRED_SHEETS_BY_IDLE.get(idleTexName) ?? []) {
-    if (!textures.has(n)) void requestDeferredSprite(n);
-  }
+  const plan = enemyArtWarmPlan(idleTexName);
+  const firsts = plan.first.filter(n => !textures.has(n) && DEFERRED_SPRITE_SET.has(n)).map(n => requestDeferredSprite(n));
+  const sheets = plan.then; // = DEFERRED_SHEETS_BY_IDLE と同じ割り方(sheetDeferred)・テストは utils/enemyArtWarm.test.ts
+  const goSheets = () => { for (const n of sheets) if (!textures.has(n)) void requestDeferredSprite(n); };
+  if (firsts.length === 0) goSheets();
+  else void Promise.all(firsts).then(goSheets);
 };
+/** 旧名(召喚の絵など)。中身は `warmEnemyArt` と同じ。 */
+export const warmEnemySheets = warmEnemyArt;
 
 /**
  * ★出てくる前に読み込み、GPUへの転送まで済ませる(社長「はい」2026-11-02・城ボスの出現の直前に一瞬止まる件)。

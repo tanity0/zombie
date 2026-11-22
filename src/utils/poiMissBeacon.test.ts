@@ -5,7 +5,7 @@ import {
 } from './poiMissBeacon';
 
 describe('targetMissReason(写す相手の敵)', () => {
-  const seen = { exists: true, horizonAlpha: 1, distOutside: 0, visible: true, alpha: 1 };
+  const seen = { exists: true, horizonAlpha: 1, distOutside: 0, visible: true, alpha: 1, hasTex: true };
   it('映っていれば null', () => {
     expect(targetMissReason(seen)).toBeNull();
   });
@@ -15,6 +15,12 @@ describe('targetMissReason(写す相手の敵)', () => {
     expect(targetMissReason({ ...seen, horizonAlpha: 0 })).toBe('horizon a=0.00');
     expect(targetMissReason({ ...seen, visible: null })).toBe('noSprite');
     expect(targetMissReason({ ...seen, visible: false })).toBe('hidden');
+    // 立ち絵が未読(描画は体を隠す=visible:false)なら hidden ではなく noTex(社長報告「賞金首のアテンションで魔法陣だけ」)。
+    expect(targetMissReason({ ...seen, visible: false, hasTex: false })).toBe('noTex');
+    expect(targetMissReason({ ...seen, hasTex: false })).toBe('noTex');
+    // 描画物が無い/画面外の方が先(そちらが本当の理由)。
+    expect(targetMissReason({ ...seen, visible: null, hasTex: false })).toBe('noSprite');
+    expect(targetMissReason({ ...seen, distOutside: 9, hasTex: false })).toBe('offscreen d=9');
     expect(targetMissReason({ ...seen, alpha: 0.01 })).toBe('alpha=0.01');
   });
   it('行の形', () => {

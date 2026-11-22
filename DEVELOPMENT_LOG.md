@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5754 — 賞金首のアテンションで本体が映らない件: 立ち絵を先に・出撃時に先読み【2026-11-23 04:15 JST】
+- 社長報告: ステージ1(2周目)の賞金首の出現アテンションで、魔法陣だけ薄く映り本体が無かった。「今回の一連の作業前は一度も無かった」。
+- 調査(ヘッドレス・?proj=0): 網は画面外の敵も毎フレーム `getTexture`+シート先読みを呼ぶので、出現と同時に立ち絵+歩き+振りの3枚を並行で要求していた。出現→寄り切りの猶予は約1.31秒。回線を細くすると(400ms・0.5Mbps)立ち絵が帯域を分け合って 2.76 秒かかり、「魔法陣だけ」になり得る。v0.25.5731 と今で同じ場面を撮り比べると、どちらも本体は映り、違いは v0.25.5733 の光で tint が 85868c〜a4a7b1 に落ちることだけ。5749(追従)・5735/5736(投影の間引きは ?proj=1 の経路のみ)・5747(雨)は本体を消していない。**原因の変更は特定できていない**(実機で次に出たら左下 `target-miss` で切り分ける)。
+- 直し: `utils/enemyArtWarm.ts`(新)=立ち絵を先に取りに行き、届いてからシート(立ち絵が帯域を独占)。`drawEnemy` の1か所で全ての敵に効く。出撃時の先読み `sortieSpriteGroups` に `bounty:<型>`(そのステージの賞金首の立ち絵と全シート・廊下は除く)。常駐の前倒し: S1 1.54MB / S3 3.20MB / S4 1.31MB / S5 2.35MB(出現時に必ず読む絵を前へ寄せるだけ=最大値は不変)。
+- 診断: `target-miss` に `noTex`(立ち絵未読)を追加。
+- 画で確認: 直した後・雨・北で、寄った最中に本体が映っていることを目視。
+- 変えたファイル: src/utils/enemyArtWarm.ts(新)・enemyArtWarm.test.ts(新)・src/pixi/pixiTextures.ts・pixiScene.ts・stageTextures.ts・src/utils/poiMissBeacon.ts・poiMissBeacon.test.ts
+- 検証: typecheck / eslint / circular / vitest(実装担当が全件 11450 通過・rebase後に関係分)。
+- 自己点検: 憲法第4条・第5条に抵触しない。
+
 ## v0.25.5753 — 遠近の投影 段階4「形を持つもの」の土台と主な場面(?proj=1 のみ・途中)【2026-11-23 03:24 JST】
 - 範囲: `?proj=1` の時だけ効く(各所 `if (pf) 部品; else 今の行` で、else 側は1行も変えていない)。通常のプレイは不変。
 - 新規: `utils/projShape.ts`(誤差で2分する円・楕円・弧・扇・環・帯・矩形・多角形・格子メッシュ・`projShapeOutside`・`PROJ_TELE_LINE_MODE='A'`)、`pixi/projDraw.ts`(描く部品・命令数とworld Yの記録)、番人テスト `pixi/projShapeGuard.test.ts`、`projShape.test.ts`(縁と判定の差は全形状で1.0画面px以下・内外の食い違い0)。

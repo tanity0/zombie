@@ -139,7 +139,7 @@ import { isBackingAway, backpedalFaceSide } from '../utils/backpedal';
 import { ENEMY_VOLLEY_SHEETS, volleySheetName, volleyFrameAt, walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH, walkStopsToIdle, ENEMY_WALK_STOP_HOLD_MS } from '../utils/enemySheets';
 import { stepBiteFxClock, zombieBiteFxInterrupted, type BiteFxClock } from '../utils/biteFxClock';
 import { enemyAttackFrameFor, attackFrameAfterLive, zombieStanceFrame, ZOMBIE_STANCE_HOLD_FRAME, type AttackTailMemo } from '../utils/enemyAttackSheet';
-import { warmEnemySheets, prewarmEnemySheetsGpu, loadSpriteGroups, KENKI_SPRITES } from './pixiTextures';
+import { warmEnemySheets, warmEnemyArt, prewarmEnemySheetsGpu, loadSpriteGroups, KENKI_SPRITES } from './pixiTextures';
 import { KENKI_SHUKUCHI_FADE_IN_MS, KENKI_SHUKUCHI_FADE_OUT_MS } from '../utils/kenkiShukuchi';
 import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
 /** 城ボスの絵を出現の最短時刻のこれだけ前から先読み+GPU転送する(メモリを使い始める時刻と、間に合う余裕の釣り合い)。 */
@@ -26035,7 +26035,10 @@ export class PixiScene {
     // その個体のシートを全部取りに行く。網(`getTexture`)は「最初にその技へ入った瞬間」まで
     // 跳び/薙ぎ/攻撃のシートを1度も引かないので、これが無いと**最初の1発だけ溜めのコマが欠ける**。
     // 立ち絵を持たない個体・遅延シートが無い個体では**1回のSet照会で抜ける**(毎フレームでも無視できる)。
-    warmEnemySheets(idleTexKey);
+    // ★全敵を毎フレームここへ通す(画面外も)=盤上に出た瞬間に取りに行く。遅れて出すアテンション(賞金首・城ボス・グレン・
+    // 天使ゲート・アイドル・幻影)は、どれも予約の時点で相手が既に盤上に居る=予約の瞬間にここで取りに行く。
+    // 立ち絵を先に・シートは立ち絵が届いてから(warmEnemyArt・社長報告「賞金首のアテンションで魔法陣だけ」)。
+    warmEnemyArt(idleTexKey);
     // 見た目の身長(=歩幅の基準)。判定の箱ではなく**描画の箱**(§drawEnemy が使うのと同じ fb)。
     // ★ボスが止まっている間(紫の完全気絶・致命後の停止)は**立ち絵で止める**(社長指示2026-09-29「技の見た目で止めずに、立ち絵で止めて」)。
     //   技/歩き/待機のコマを1枚も引かない=技の途中の姿で固まらない(`utils/bossStopArt.ts`)。
@@ -35595,7 +35598,8 @@ export class PixiScene {
         ),
         visible: tv ? (tv.container.visible && tv.sprite.visible && !!tv.container.parent) : null,
         alpha: tv ? tv.container.alpha * tv.sprite.alpha : 0,
-      } : { exists: false, horizonAlpha: 0, distOutside: 0, visible: null, alpha: 0 });
+        hasTex: !!peekTexture(this.enemyTexKey(te.type, te.id)), // 読み込みを起こさない問い合わせ
+      } : { exists: false, horizonAlpha: 0, distOutside: 0, visible: null, alpha: 0, hasTex: false });
       const tName = te ? te.type : a.target.id;
       if (reason && this.poiMissGate.shouldReport(a.startReal, `target-${tName}`, reason)) {
         reportPoiMiss(formatTargetMissLine(tName, reason, s.camera, view, { x: fx, y: fy }, tf));

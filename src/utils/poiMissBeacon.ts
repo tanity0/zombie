@@ -97,6 +97,8 @@ export interface TargetDrawFacts {
   visible: boolean | null;
   /** 最終の透明度。 */
   alpha: number;
+  /** 立ち絵(enemyTexKey の名前)が読み込み済みか。未読だと描画は体のスプライトを隠す(=hidden に見える)ので先に分ける。 */
+  hasTex: boolean;
 }
 
 /** 写す相手が画面に映っていない理由。映っていれば null。 */
@@ -105,6 +107,7 @@ export const targetMissReason = (f: TargetDrawFacts, alphaEps = POI_MISS_ALPHA_E
   if (f.distOutside > 0) return `offscreen d=${Math.round(f.distOutside)}`;
   if (f.horizonAlpha <= 0) return `horizon a=${f.horizonAlpha.toFixed(2)}`;
   if (f.visible === null) return 'noSprite';
+  if (!f.hasTex) return 'noTex';
   if (!f.visible) return 'hidden';
   if (f.alpha < alphaEps) return `alpha=${f.alpha.toFixed(2)}`;
   return null;
