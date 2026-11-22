@@ -474,6 +474,7 @@ import { summonAttackPose, summonLungeT, rareSummonRaise01, type SummonAttackShe
 import { alchemyChannelDurationMs, alchemyRingProgress } from '../utils/alchemyRhythm';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { ESCORT_MELEE_WINDUP_MS, ESCORT_MELEE_BLADE_MS } from '../utils/escortMelee'; // 進軍NPCのナイフ(research/ESCORT_MELEE.md)
+import { meleeTapArcVisible } from '../utils/meleeTapArc'; // 刀/村雨のタップの振りは斬撃の弧を出さない
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import { SCARECROW_SHEET, scarecrowSwayFrame, scarecrowFaceMul } from '../utils/scarecrow'; // 案山子(変異体対策室の練習の的)の揺れのコマ
 import type { SceneLayers } from './layers';
@@ -23087,8 +23088,11 @@ export class PixiScene {
         sp.alpha = alpha * GHOST_ALLY_ALPHA; // 霊体の半透明を継承
         sp.visible = sp.alpha > 0.01;
       };
+      // ★刀/村雨ビルドの霊は振りで攻撃しない(近接=一閃)ので、振りの斬撃の弧は出さない(本体と同じ・武器の実絵は残す)。
+      const tapArcOn = meleeTapArcVisible(fakeGhost.subWeapons);
       // 弧の7コマ送り(振り抜き〜残光を一本で流す)。絵が無ければ旧弧の配置へフォールバック。
       const placeMeleeArc = (arcSpr: Sprite, arcKt: number, arcAl: number) => {
+        if (!tapArcOn) { arcSpr.visible = false; return; }
         const arcCfg = meleeArcCfg(arcSpr, arcKt);
         place(arcSpr, arcCfg ?? KNIFE_F2, true, arcCfg ? meleeArcAlpha(arcKt) : arcAl);
       };
@@ -24800,8 +24804,12 @@ export class PixiScene {
           spr.alpha = alpha * view.sprite.alpha;
           spr.visible = spr.alpha > 0.01;
         };
+        // ★刀/村雨のタップは攻撃しない(カウンターの受付だけ)ので、振りの斬撃の弧は出さない(社長指示2026-11-22)。
+        // 武器の実絵・体のポーズ・踏み込みは今のまま。オート斬撃・一閃・燕返しの斬撃は別経路(触らない)。
+        const tapArcOn = meleeTapArcVisible(p.subWeapons);
         // 弧の7コマ送り(振り抜き〜残光を一本で流す)。絵が無ければ旧弧の配置へフォールバック。
         const placeMeleeArc = (arcSpr: Sprite, arcKt: number, arcAl: number) => {
+          if (!tapArcOn) { arcSpr.visible = false; return; }
           const arcCfg = meleeArcCfg(arcSpr, arcKt);
           place(arcSpr, arcCfg ?? KNIFE_F2, true, arcCfg ? meleeArcAlpha(arcKt) : arcAl);
         };
