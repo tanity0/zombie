@@ -142,7 +142,7 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 | # 名札 | 種 | 色 | 形 | 持ち主 | 技の入口 | 描く関数 ファイル:行 | 層 | 判定 ファイル:行 | 多段 | 位相 | 頂点投影 | 備考 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | A01 雑魚の噛みの流星線 | 1 | 赤(返せる)/紫(返せない) | 線+終点の潰れ楕円の印 | 噛みつき化した非ボス全部(ゾンビ・骸骨・コウモリ・研究所Lv1/2/3・犬・パンプキン・削岩型・伐採人・ハンター・プラント除く) | `biteAt`。前置きの線=`preBiteTelegraphLine`(ゾンビ `z-red-pause`/`z-stagger`・骸骨 `s-arc`)→`z-bite1`/`z-bite2`/`s-bite`/`b-windup`〜`b-grab`(`chaffMove` 込み・`utils/biteTelegraph.ts:177-258`) | 集め: `syncPumpkinTelegraph` `pS:16094-16103`/描く: `mobMeteorTick` `pS:16254`(呼び `pS:16199`)・`drawMobBiteMeteor` `pS:16344`・中断の退き `mobMeteorEndFrame` `pS:16326` | mM | `cT:1736-1743`: `biteFxRect`(`src/utils/biteFxHit.ts:33`)と `playerArtRect` の重なり。焼いた点が無い時は `biteBodyOverlapsPlayer`(`enemyBite.ts:873`)。※`cT:1772` の `isInBiteRect` は構え始めの届く範囲の判定 | ゾンビ2連=2本(同じキーで続く・2発目は印を2回打つ) | 流星(`biteTelegraph.ts` の `meteorTiming`) | 要(両端+印の楕円) | **線は足元へ写して描く**(判定の中心 `fx,fy/tx,ty` に `footFromOff/footToOff` を足す=絵と判定の中心が意図的にずれている)。群れの強弱(近い3本だけ通常)・軍人を狙う線あり。リッチの転移噛みは出さない(A03) |
-| A02 ボス級の噛みの線 | 1 | 赤/紫(`BITE_TG_RED`/`PURPLE` `pS:16004-16010`) | 線 | 噛みつき化したボス級(城ボス・裏ボス・天使・賞金首・偶像・フィル・英雄 等。死神/使者/幻影は免除) | `biteAt`(追跡中の接触の代わり) | `bossBiteTick` `pS:16398`(呼び `pS:16101`)・`bossBiteEndFrame` | pT | A01 と同じ(`cT:1736-1743`: `biteFxRect`(`src/utils/biteFxHit.ts:33`)と `playerArtRect` の重なり。焼いた点が無い時は `biteBodyOverlapsPlayer`(`enemyBite.ts:873`)。※`cT:1772` の `isInBiteRect` は構え始めの届く範囲の判定) | 単 | 流星(`pS:16405`) | 要 | 腰の高さで引く(雑魚の線は足元・ボスは腰=層も別) |
+| A02 ボス級の噛みの線 | 1 | 赤/紫(`BITE_TG_RED`/`PURPLE` `pS:16004-16010`) | 線 | 噛みつき化したボス級(城ボス・裏ボス・天使・賞金首・偶像・フィル 等。死神/使者/幻影は免除。英雄・旗手・宇宙飛行士群・亡霊・変異塊・案山子は damage 0 で入らない=`enemyBite.ts:716`・`cT:1698`) | `biteAt`(追跡中の接触の代わり) | `bossBiteTick` `pS:16398`(呼び `pS:16101`)・`bossBiteEndFrame` | pT | A01 と同じ(`cT:1736-1743`: `biteFxRect`(`src/utils/biteFxHit.ts:33`)と `playerArtRect` の重なり。焼いた点が無い時は `biteBodyOverlapsPlayer`(`enemyBite.ts:873`)。※`cT:1772` の `isInBiteRect` は構え始めの届く範囲の判定) | 単 | 流星(`pS:16405`) | 要 | 腰の高さで引く(雑魚の線は足元・ボスは腰=層も別) |
 | A03 リッチの転移噛みの円 | 1 | 赤 | 円 | リッチ | `chaffMove==='lich-blink'`(`aiPhase 'lich-blink'`) | `syncPumpkinTelegraph` `pS:16122-16144` | pT | `cT:1738` `isInBiteCircle`(`enemyBite.ts:911`・半径 `LICH_BLINK_RADIUS_PX`) | 単 | 円窓 | 要 | 攻撃先(焼いた点)だけに描く。ワープ元・先の緑の陣は K08 |
 | A04 使者の足元の紫の円 | 2(常設の接触判定) | 紫 | 円 | 使者(hangedman) | 常時(死体・HP0・気絶中を除く=`hangedmanContactCircleLive`) | `syncPumpkinTelegraph` `pS:16109-16116` | pT | `utils/collisionUtils.ts:221 hangedmanContactHit`(`cT:1615` 経由・半径28) | — | 常(流星にしない・出入りフェードも無し=意図) | 要 | 足元中心。段階4で中心を足元の投影点にする |
 | A05 跳びの着地円 | 1 | 赤 | 円 | パンプキン・研究所Lv3・ハンター・拳鬼(幻影 `phantomUnique==='brawler'`)・城ボス(台本OFF時のみ) | `aiPhase 'crouch'→'jump'`(`groundJumpStyleOf` `pS:2292`) | `syncPumpkinTelegraph` `pS:16152-16179` | pT | `gS:22344`(爆風経由・半径 `PUMPKIN_EXPLOSION_RADIUS`)→`cT:286` | 単 | 円窓(進み=着地までの残り÷滞空の総時間) | 要 | 円は `jump` の間だけ(`crouch` の間は出ない)。判定は+14px(`RED_CIRCLE_AUDIT.md` #R2) |
@@ -221,7 +221,7 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 | D03 突きの帯 | 1 | 赤 | 帯 | トール | `tsuki-windup`→`tsuki` | `pS:28394-28443` | tele | `uGL:9234`(9248) | 単 | 帯窓(流星 28424) | 要 | 溜め中は追従(trackFrac) |
 | D04 払いの帯 | 1 | 赤 | 帯+軸 | トール | `harai-windup`→`harai` | `pS:28451-28491` | tele | `uGL:9289`(9303) | 単 | 帯窓(流星 28469) | 要 | |
 | D05 飛び掛かりの着地円 | 1 | 赤 | 円 | トール | `jump-windup`/`jump-attack` | `pS:28506-28531` | tele | `uGL:9440-9442`(`'thor-jump'`) | 単 | 円窓 | 要 | |
-| D06 突進の流星ライン | 1 | 赤 | 線 | トール | `thor-dash-windup`→`thor-dash-move` | `dashLineTick` `pS:28610-28616` | tele | `uGL:9402`(`'capsule:thor-dash'`) | 単 | 流星 | 要 | |
+| D06 突進の流星ライン | 1 | 赤 | 線 | トール | `thor-dash-windup`→`thor-dash-move` | `dashLineTick` `pS:28610-28616` | tele | `uGL:9381-9396`(`distToBandRect`・半幅 `HB_TH.harai.halfWidth`・長さ `HB_TH.harai.range`。`thor-dash-move` の到達時=`uGL:9368`→`9381`)。`uGL:9402` は守護霊向け | 単 | 流星 | 要 | **線は溜めの間だけ・当たるのは走った後**(§6-3 1h)。線の幅6pxに対し判定は幅80(§6-3 1i) |
 
 ### E. 天使6体(ミゲル・ジブリル・ラフィ・ウリ・スリィエル・アクラシエル)
 
@@ -321,12 +321,12 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 
 | # 名札 | 種 | 色 | 形 | 持ち主 | 技の入口 | 描く関数 ファイル:行 | 層 | 判定 ファイル:行 | 多段 | 位相 | 頂点投影 | 備考 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| J01 囲いイベントの柵リング | 5 | 赤系(0xef4444) | 円 | 床(イベント) | `activeEvent` | `syncArena` `pS:34165-34195` | G | ゲートの半径 `aBT:152 GATE_ARENA_RADIUS`(他のイベントは未確認) | — | — | 要 | |
+| J01 囲いイベントの柵リング | 5 | ボスの時だけ赤系(0xef4444)・救助は緑 0x4ade80・horde は青 0x38bdf8(`pS:34172`) | 円 | 床(イベント) | `activeEvent` | `syncArena` `pS:34165-34195` | G | ゲートの半径 `aBT:152 GATE_ARENA_RADIUS`(他のイベントは未確認) | — | — | 要 | |
 | J02 レスキューの待機トリガー円 | 5 | イベント色 | 円 | 床(NPC) | 待機トリガー | `syncQuestTrigger` `pS:34196-34220` | G | `utils/rescueQuestGate.ts`(行は未確認) | — | — | 要 | |
 | J03 帰還サークル | 5 | — | 円 | 床 | `returnCircle` | `syncReturnCircle` `pS:34221-34270` | G | `isInReturnCircle`(`uGL:109` の import 元)・半径 `returnCircle.radius` | — | — | 要 | |
 | J04 拠点候補地サークル | 5 | — | 円 | 床 | `baseSites` | `syncBaseSites` `pS:34814` | G | 行は未確認 | — | — | 要 | |
-| J05 病院サークル | 5 | — | 円 | 床 | 病院 | `syncHospital` `pS:34313` | G | 行は未確認 | — | — | 要 | 入口の光の線は K07 |
-| J06 武器庫サークル | 5 | — | 円 | 床 | 武器庫 | `syncArmory` `pS:34382` | G | 行は未確認 | — | — | 要 | |
+| J05 病院サークル(**撤去済み**) | 5 | — | 円 | 床 | 病院 | `syncHospital` `pS:34313`(今は円を描いていない=`pS:34374-34376` のコメント) | G | 行は未確認 | — | — | 要 | 描いているのは入口の光=K07。段階4で描く物は無い |
+| J06 武器庫サークル | 5 | — | 円(半径50) | 床 | 制圧済み拠点の中心(`pS:34842`)・研究所のアイドル手前(`pS:34819`)・ステージ2の出張武器商人(`pS:34820`) | `drawArmory` `pS:34791-34795`(`syncArmory` `pS:34382` は円を描かない=`pS:34441-34443`) | G | 行は未確認 | — | — | 要 | 3か所から呼ばれる |
 | J07 武将の祠の3秒サークル | 5 | — | 円 | 床 | 祠 | `syncShrines` `pS:34668` | G(+光 `shrineGlowGfx`=actorLayer) | 行は未確認 | — | — | 要 | |
 | J08 城ボス戦の移動制限リング | 5 | 赤系(0xf87171) | 円(半径4500) | 床 | `castleFightNow` | `sync` 内 `pS:11841-11850` | G | `src/world/playableArea.ts:152/164`(`CASTLE_FIGHT_MAX_DIST`) | — | — | 要(巨大な円=分割数に注意) | |
 | J09 訓練の移動制限ライン | 5 | 青 | 線(縦) | 床 | `farBackdrop==='tutorial'` | `sync` 内 `pS:11851-11873` | G | `TUTORIAL_MOVE_*`(`uGL:89` の import 元) | — | — | 要 | |
@@ -335,6 +335,9 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 | J12 研究所の床のプレート | 5 | — | 矩形 | 床 | `updateLabFloorPlate(show)` | `pS:8847-8860` | 未確認 | 行は未確認 | — | — | 要 | |
 | J14 ボスの当たり判定の枠(開発用・**段階4の対象外**) | 5 | 赤系 | 矩形 | ボス | `?bosshitbox=1`・ボスメーカーの判定トグル | `drawEnemy` `pS:27049-27086` | tele | 判定の箱そのもの | — | — | 対象外 | 既定OFF。製品の画面には出ない |
 | J13 錬金の陣(足元) | 5(判定は未確認) | シアン | 円 | プレイヤー | 錬金のリズム | `syncAlchemyCircle` `pS:12494-12530`(`alchemyCircle`/`alchemyRhythmGfx`) | G | 判定の有無は未確認 | — | — | 要 | §7 |
+| J15 商人の滞在サークル | 5 | — | 円 | 床(商人) | 商人の前 | `syncMerchant` `pS:13526-13541` | 未確認 | `gS:18836 updateMerchantDwell` | — | — | 要 | |
+| J16 研究所のボタンの円 | 5 | — | 円(`LAB_BUTTON.radius`=60・`world/labMap.ts:104-110`) | 床(研究所) | ボタン | `syncLab` `pS:38742-38743` | 未確認 | `uGL:17819-17824` | — | — | 要 | |
+| J17 研究所のゴール区画の矩形 | 5 | — | 矩形(`LAB_GOAL_TRIGGER`) | 床(研究所) | ゴール | `syncLab` `pS:38744` | 未確認 | `world/labMap.ts:142`・`uGL:17814` | — | — | 要(4隅) | J12 とは別の絵 |
 
 ### K. 判定を持たない地面の形(種6)
 
@@ -359,8 +362,8 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 
 ## 4. 総数と種類ごとの件数(監査の反映後に数え直し)
 
-**表の行数 = 157**(A20・B28・C10・D6・E22(E05b を含む)・F10・G7・H15・I11・J14・K14)。
-うち H03(バス停のレーザー)は C03 と**同じ描画**を持ち主ごとに分けた行なので、**描く物としては 156**。
+**表の行数 = 160**(A20・B28・C10・D6・E22(E05b を含む)・F10・G7・H15・I11・J17・K14)。
+うち H03(バス停のレーザー)は C03 と**同じ描画**を持ち主ごとに分けた行なので、**描く物としては 158**(J05 病院サークルは撤去済みの記録行=描く物なし)。
 J14(ボスの当たり判定の枠)は開発用で**段階4の対象外**。
 
 | 種類(依頼の1〜6) | 行数 | 行 |
@@ -369,14 +372,14 @@ J14(ボスの当たり判定の枠)は開発用で**段階4の対象外**。
 | 2 紫の予告 | **18** | A04(使者の常設の接触円) A11 A12 A16 A18 B07 B24(血の弧の遅延円=紫) C03 C04 C10 D01(無の境地) E04 E05 G03 G07 H03 H07(溜め=紫・発射中=赤) I01(幻影の地雷=返せないのに赤で描く) |
 | 3 攻撃範囲・射程の円 | **8** | A14(花束=回復の範囲) I02 I03 I07 I08 I09 I10 I11 |
 | 4 判定を持つ床 | **5** | B25(グレンの血溜まり) E05b(ランタン火の起動後) I04 I05 I06 |
-| 5 静的な床の印 | **14** | J01〜J14(J14 は対象外の注記つき) |
+| 5 静的な床の印 | **17** | J01〜J17(J14 は対象外の注記つき・J05 は撤去済みの記録行) |
 | 6 判定を持たない地面の形 | **14** | K01〜K14 |
 
 - 段階4で**判定と結び付く行**(種1〜4)= A〜I の **129 行**。
 - 形の内訳(E05b を足す前の A〜I の128行・「形」欄の先頭の語で機械的に数えた。E05b は円=円 +1): 円 **53**・帯 **48**・線 **17**・扇 **3**・輪 **3**・同上 **1**・環状の扇 **1**・矩形 **1**・多角形 **1**(A19 の「円/扇/帯」は円に入れ、A20 は「同上」)。
 - 層の内訳(種1・2の116行): 敵の入れ物の子(tele/oT)が大半。**groundLayer の Graphics**=A01〜A06(pT/mM)・A09(cr)・A10〜A13(ast)・A15(lib)・A16(wr)・A17(gb)・E04/E05(bf)・E18(acS)・I01(sm)。**effectLayer**=A18・C07〜C09・E06・E07・F10。**弾の Graphics(frontObjectLayer)**=G07。
 
-> 数え直し用の式: `grep -cE "^\| [A-K][0-9][0-9][a-z]? " research/TELEGRAPH_INVENTORY.md` → 157 / `grep -cE "^\| [A-I][0-9][0-9][a-z]? "` → 129 / `grep -c "^| N[0-9][0-9] "` → 15(§5・うち N03 と N11 は「攻撃ではない」記録の行=攻撃は13) / 種類ごと=各行の2列目の先頭の数字。
+> 数え直し用の式: `grep -cE "^\| [A-K][0-9][0-9][a-z]? " research/TELEGRAPH_INVENTORY.md` → 160 / `grep -cE "^\| [A-I][0-9][0-9][a-z]? "` → 129 / `grep -c "^| N[0-9][0-9] "` → 15(§5・うち N03 と N11 は「攻撃ではない」記録の行=攻撃は13) / 種類ごと=各行の2列目の先頭の数字。
 
 ## 5. 「予告なし」の攻撃(当たるのに、地面に赤/紫の形が出ない物)
 
@@ -384,7 +387,7 @@ J14(ボスの当たり判定の枠)は開発用で**段階4の対象外**。
 
 | # | 攻撃 | 持ち主・入口 | 判定 | 分類 | 備考 |
 |---|---|---|---|---|---|
-| N01 | 突進の走行中の体当たり | 犬・研究所Lv2・ハンター・城ボス(`g-dash-charge`/`g-quad-charge`/`g-dive-windup`)・裏ボス `dash`・トール `thor-dash-move`・馬乗り `bm-charge`・ミゲル `mdash-move` | `cT:1615`(`isBodySlamNow`) | ④ | ミゲルは線が走行中も残る(E02)。城ボスの `g-dive-windup`(急降下の溜め)も貫通表 `enemyMotion.ts:21` に入り `isBodySlamNow`(`enemyBite.ts:690`)が真=溜めの間に体へ触れると当たる(`cT:1970-1977` の除外も通る)。赤いのは着地円 B15 だけ(§6-3)。ウリの `thrust` は体当たりではなく帯の判定(`aBT:2420-2432`・E12)。他は走り出しで赤が消える=掟④の体帯は**社長裁定 2026-09-18 で撤去**(CLAUDE.md) |
+| N01 | 突進の走行中の体当たり | 犬・研究所Lv2・ハンター・城ボス(`g-dash-charge`/`g-quad-charge``)・裏ボス `dash`・トール `thor-dash-move`(判定は帯=D06)・馬乗り `bm-charge`・ミゲル `mdash-move` | `cT:1615`(`isBodySlamNow`) | ④ | 城ボスの `g-dive-windup` は外した(溜めの間は本体が -20000 へ退いていて触れられない=`gS:3783`・`gS:20800`・`gS:21431`)。 ミゲルは線が走行中も残る(E02)。ウリの `thrust` は体当たりではなく帯の判定(`aBT:2420-2432`・E12)。他は走り出しで赤が消える=掟④の体帯は**社長裁定 2026-09-18 で撤去**(CLAUDE.md) |
 | N02 | 跳びの滞空中の体の接触 | ラフィ `jump-attack`・鋏 `leap-air` の2型だけ | 着地円(E08・H10)とは別に飛行経路の体の接触が生きている(`cT:1615` の接触) | ① | パンプキン等の `jump`(`cT:1970`)・舞妓 `mk-suiu-hop*`・フィル `phill-dive-fall` は体に触れてもダメージなし=外した。トールの `tsuki`・`issen-dash`・`jump-attack` は `cT:1952-1953` で除外。急降下の溜めは N01 |
 | N03 | (訂正)死神本体の接触 | 死神(reaper) | **ダメージなし**(`cT:1966-1969`・`isReaperFamily` は `reaper` だけ=`enemyUtils.ts:364`) | — | 予告なしの攻撃ではない(記録のみ)。接触で当たるのは使者だけ=A04 |
 | N04 | 幻影の格闘・武器・サブウェポン(拳鬼の格闘含む) | guardian-phantom(`gp-brawler` 等)。サブウェポンの経路は `uGL` 側(タレット・ドッグ・分身・地雷・罠・囮・手榴弾・援護射撃=紫の弾・発火ナイフ・炎の延焼) | `utils/phantomBrawlerTick.ts:275`・`utils/phantomTick.ts`・`uGL`(下の N12〜N15・援護射撃と発火ナイフ `uGL:12315`・`12832`・`12455-12483`) | ④ | 「プレイヤーと同じ即発」の設計(GHOST_BOSS.md v6)。拳鬼の秘奥義の気功の爆ぜ(`phantomBrawlerTick.ts:640-690`・`:686`)も予告なし。形が出るのは炎の扇 A18・地雷 I01・罠 I10・囮 I02・手榴弾 G07 だけ |
@@ -437,8 +440,10 @@ J14(ボスの当たり判定の枠)は開発用で**段階4の対象外**。
 1d. **幻影の地雷(I01)の色と半径**: 返せない攻撃なのに赤で描く(`pS:21962`)。爆発半径は判定=`SENSOR_MINE_RADIUS × skillExplosionMult × heavyGunnerExplosionMult(smActor)`(`uGL:15046-15050`)、描く円は固定(`pS:21962-21964`)=smActor がプレイヤーに戻る時にプレイヤーのエクスプローダーで判定だけ広がる(潜伏)。
 1e. **E03 ランスの進みの上限 0.97**(`pS:29398`): 3本が別の時刻で当たる技で、赤が消え切る前に当たる=掟③(消え切る=当たる)からわずかに外れる。
 1f. **ジブリルのランタン火の起動後(E05b)**: 当たる間(`aBT:3920-3928`)に判定と一致する形が無い(炎の絵とグロー r*3.2 だけ=`pS:21901-21910`)。
-1g. **城ボスの急降下の溜め(`g-dive-windup`)**: 体に触れると当たる(`enemyMotion.ts:21`・`enemyBite.ts:690`・`cT:1970-1977`)のに、赤いのは着地円 B15 だけ。溜めの間に体が画面に見えているかは未確認。
+1h. **D06 トールの突進**: 線は `thor-dash-windup` の間だけ(`pS:28610-28614`)で、当たるのは `thor-dash-move` の到達時(`uGL:9368`→`9381`・230ms後)=赤が消えてから当たる(掟③④の違反)。ミゲル(E02)・ウリ(E12)は走る間も線が残る。
+1i. **D06・E02・E12 の突進線の幅**: 線は幅6px(`drawAngelDashLine` `pS:33169-33171`)、判定の帯は幅80(半幅40)=赤くないのに当たる。
 2. **描く幅と判定の幅の出どころが別の帯**(今は値が一致=潜伏): C05 うねり(描く `HB_TH.harai`/判定 `HB_JO.coil`)・E09 ラフィ(`HB_TH.harai`/`RF_T.sweep`)・E10 ウリ大薙ぎ(`HB_TH.harai`/`UR_T.sweep`)・E15 スリィエル(`HB_TH.harai`/`SR_T.sweep`)。ボスメーカーで片方だけ動かすと崩れる。段階4で描き直す時に**判定と同じ定数を読む**よう揃えるのが安全。
+   - E04/E05 ランタン火の予告円: 描く側は直書きの `HITR = 22`(`pS:21876`)、判定は `JB_T.fire.radius`=22(今は一致=潜伏)。
 3. **C02 ミーミルの噛みの円**: 監査で一致を確認(別名・216)=食い違いではない。
 4. **H07 懲罰狙撃**: 溜めは紫(返せない)・発射中の線は赤(`pS:27879`・`27883`)。
 5. **掟①(流星)から外れて見える物**: E21 アクラシエルの凝視の線(濃くなるだけ)・C04 ミーミルの車輪(紫・濃くなるだけ・例外のレーザーとは別の技)・B17 氷結波の輪(一定)・H12/H15/E19/E20 の実行中の一様な塗り(当たり得る間の赤=掟④側の扱いとして意図かもしれない)。
