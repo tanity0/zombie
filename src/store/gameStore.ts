@@ -8332,6 +8332,23 @@ export const triggerBloodAwakenBurst = (get: () => GameState): void => {
   g.triggerShake(BLOOD_AWAKEN_BURST_SHAKE_MS, BLOOD_AWAKEN_BURST_SHAKE_MAG);
 };
 
+// §6.24 M48「使役」の候補(通常敵だけ=D1)と抽選(20%・先着1体=D3)。射撃のキル経路(damageEnemy)と、
+// 射撃扱いの刀のオート斬撃(performKatanaStrike の asShot・社長指示2026-11-22)の2か所から呼ぶ。中身は damageEnemy から移しただけ。
+export const isPoiThrallCandidate = (player: Player, enemy: Enemy): boolean =>
+  hasSkill(player, 'poi-thrall') && !isBossType(enemy.type) && !enemy.isNamed && !enemy.questTarget;
+export const rollPoiThrall = (get: () => GameState, tc: Enemy): void => {
+  const alreadyHasThrall = get().summons.some(s => s.persistent);
+  if (!alreadyHasThrall && Math.random() < POI_THRALL_CHANCE) {
+    const tx = tc.x + tc.width / 2, ty = tc.y + tc.height / 2;
+    const unit: Summon = { ...buildSummon(1, 'normal', tx, ty), persistent: true };
+    useGameStore.setState(state => ({ summons: [...state.summons, unit] }));
+    get().spawnGlow(tx, ty, GLOW_R_S, 'rgba(56,189,248,', 360);
+    get().spawnBurst(tx, ty, '#38bdf8', 18);
+    get().spawnCallout(tx, ty - 20, '使役！', '#38bdf8');
+    notifySkillProc('poi-thrall');
+  }
+};
+
 export const grantMeleeKillRewards = (
   get: () => GameState,
   killed: { enemy: Enemy; finisher: boolean }[],
@@ -8342,6 +8359,10 @@ export const grantMeleeKillRewards = (
   // 縮地(§32-3): **プレイヤー本人の近接**の撃破だけ true(通常の振り/カウンター・刀・鞭)。
   // 分身・投擲スケボーは同じ player を渡すので関数の中では見分けられない=呼び手が決める。
   opensShukuchi = false,
+  // ★キルの種別(社長指示2026-11-22「オート斬撃は射撃にする」)。'gun'=刀のオート斬撃(射撃扱い)だけ。
+  //   'gun' の時: キルの記録を銃へ数え、経験値・お金・弾・武器箱は**ここでは落とさない**
+  //   (呼び手が射撃のキルと同じ dropGunKillLoot で落とす=二重に落とさない)。演出・賞金首の金箱・ほかの処理は同じ。
+  killMethod: 'melee' | 'gun' = 'melee',
 ) => {
   if (opensShukuchi && killed.length > 0) openShukuchiWindow(get);
   // 叫喚型(screamer)を近接で倒したら強化バフを即座に打ち切る(社長指示)。全ての近接キル経路が
@@ -8366,7 +8387,7 @@ export const grantMeleeKillRewards = (
     // PACING_REDESIGN.mdバッチ2(計測): 近接全経路のキルを種別+スタイル集計へ記録(挙動には影響しない)。
     // バッチ3.5-Bの追補: 型ごとの最終キル時刻も記録(問題児リフラクトリ判定用)。
     // PACING_PUZZLE.md §14-4-3(使者・hangedman): 計測(killTelemetry)の対象外(除外リスト)。
-    if (!isHangedman(enemy.type)) recordKill(enemy.type, 'melee', get().gameTime);
+    if (!isHangedman(enemy.type)) recordKill(enemy.type, killMethod, get().gameTime);
     // 死神を近接で倒した=銃の経路と同じ報い(スキル「死神」・年表)。2026-10-14 まで近接ではここが抜けていた。
     if (isReaperFamily(enemy.type)) grantReaperDefeatRewards(get, { x: enemy.x + enemy.width / 2, y: enemy.y });
     // 天使を近接で倒した=銃の経路と同じ落とし物。
@@ -8411,64 +8432,67 @@ export const grantMeleeKillRewards = (
     if (getsDramaticDeath(enemy)) triggerDramaticDeath(get, enemy, ex, ey);
     if (DEATHPOP_ENABLED) spawnDeathPop(get, ex, ey, player.x + player.width / 2, player.y + player.height / 2);
     spawnBloodBurst(get, enemy, player.x + player.width / 2, player.y + player.height / 2, true); // 近接=手前へ浴びせる
-    const xp = finisher
-      ? Math.max(1, Math.round(enemy.experienceValue * 1.5))
-      : enemy.experienceValue;
-    get().dropEnemyXp(enemy, ex, ey, 'pickup-xp-melee', xp);
-    get().dropEnemyCurrency(enemy, ex, ey);
-    // Ammo scavenge: base rate is the start-screen setting; a finisher
-    // (executing a stunned enemy) rolls at 1.5× that, capped at 100%.
-    // Prefer the active gun's family; if the active pointer is temporarily
-    // invalid, fall back to any owned gun so the slider still governs melee.
-    // research/NEW_GUNS.md(品質監査#5): 弾倉の無い銃(スキャン・衛星弾)は弾種選び・弾薬ディレクターに数えない。
-    const ownedAmmoTypes = ammoBearingGuns(player)
-      .map(w => w.ammoType)
-      .filter((t): t is AmmoType => !!t);
-    // 弾薬AIディレクター(v0.25.2170): 「全所持銃の弾備蓄の枯渇度×敵の多さ」で基礎率を最大20%まで底上げ。
-    // ?ammodir=0で無効化(常にmeleeAmmoDropPercentのまま)。
-    // 弾薬ドロップ率アップ(パッシブ): 既定ドロップ率に ammoDropBonus を加算(0..1)。
-    const dirPct = AMMO_DIRECTOR_ENABLED
-      ? ammoDirectorRate(get().meleeAmmoDropPercent, {
-          families: ownedAmmoTypes.filter(t => t !== 'phill').map(t => ({ reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })),
-          enemyCount: get().enemies.length,
-        })
-      : get().meleeAmmoDropPercent;
-    const baseRateRaw = Math.max(0, Math.min(1, dirPct / 100 + (player.ammoDropBonus ?? 0) + (player.equipBonus?.ammoDropBonus ?? 0)));
-    // PACING_PUZZLE.md §7-11c(3): レール(judge/dps)のドロップバイアス=弾。既定(rail未指定)は
-    // railAmmoDropMultが1を返すため無改変。近接キル全般(grantMeleeKillRewards)が唯一の掛け先。
-    const baseRate = Math.max(0, Math.min(1, baseRateRaw * railAmmoDropMult(RAIL_KIND, RAIL_MULT)));
-    const ammoChance = ammoChanceOverride !== undefined
-      ? ammoChanceOverride
-      : (finisher ? Math.min(1, baseRate * 1.5) : baseRate);
-    // PACING_PUZZLE.md §5.5 M5(RE4式): 残弾割合が最小の弾種を落とす(同率は構え優先・phill対象外)。
-    // ?ammosmart=0で従来(構え銃の弾種)へ。ドロップ率・供給量は不変=弾種の配分のみ。
-    const smartType = AMMO_SMART_ENABLED
-      ? pickAmmoDropType(ownedAmmoTypes.map(t => ({ type: t, reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })), gun?.noAmmo ? undefined : gun?.ammoType)
-      : null;
-    // ステージ2はPHILL弾を敵から落とさない(社長指示2026-11-19・dropAmmoTypeWithoutPhill)。
-    const dropType = dropAmmoTypeWithoutPhill(smartType ?? (gun?.noAmmo ? undefined : gun?.ammoType) ?? ownedAmmoTypes[0], ownedAmmoTypes, get().stageTheme === 'lab' || get().indoorMode);
-    // 旧: ナイフマスターは弾薬ドロップ0%。社長指示2026-11-02「ナイフマスターの弾薬ドロップ無しはやめて」で撤去。
-    // M0(訓練)は弾を拾う教習まで抽選ドロップを封印(社長指示v0.25.2319・m0Unlocked.ammo)。
-    if (dropType && get().m0Unlocked.ammo && Math.random() < ammoChance) {
-      get().addPickup({
-        id: `pickup-ammo-melee-${enemy.id}`,
-        x: ex - 8 + 14, y: ey - 8,
-        type: `ammo-${dropType}` as `ammo-${AmmoType}`, // v0.25.4000: 5種目(glauncher)を落とせる嘘つきキャストを是正
-        value: 0
-      });
-    }
-    // Mid-boss killed in melee still drops its weapon crate (the gun-kill
-    // path drops one too; bosses are usually finished with the counter).
-    // PACING_PUZZLE.md §9-7#1(死亡FXの重さ・useGameLoop.ts:10740付近と対の近接経路):
-    // driller はpumpkinと同格=isPumpkinTier経由でクレート/リング演出を共有する。
-    if (isPumpkinTier(enemy.type) || enemy.type === 'giantbat') {
-      get().addPickup({
-        id: `pickup-crate-${enemy.id}`,
-        x: ex - 8, y: ey - 8 - 18,
-        type: 'weapon-crate',
-        value: 0
-      });
-      get().spawnRing(ex, ey, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
+    // 射撃扱いのキル(killMethod='gun')は呼び手が dropGunKillLoot で落とす(上の宣言のコメント)。
+    if (killMethod === 'melee') {
+      const xp = finisher
+        ? Math.max(1, Math.round(enemy.experienceValue * 1.5))
+        : enemy.experienceValue;
+      get().dropEnemyXp(enemy, ex, ey, 'pickup-xp-melee', xp);
+      get().dropEnemyCurrency(enemy, ex, ey);
+      // Ammo scavenge: base rate is the start-screen setting; a finisher
+      // (executing a stunned enemy) rolls at 1.5× that, capped at 100%.
+      // Prefer the active gun's family; if the active pointer is temporarily
+      // invalid, fall back to any owned gun so the slider still governs melee.
+      // research/NEW_GUNS.md(品質監査#5): 弾倉の無い銃(スキャン・衛星弾)は弾種選び・弾薬ディレクターに数えない。
+      const ownedAmmoTypes = ammoBearingGuns(player)
+        .map(w => w.ammoType)
+        .filter((t): t is AmmoType => !!t);
+      // 弾薬AIディレクター(v0.25.2170): 「全所持銃の弾備蓄の枯渇度×敵の多さ」で基礎率を最大20%まで底上げ。
+      // ?ammodir=0で無効化(常にmeleeAmmoDropPercentのまま)。
+      // 弾薬ドロップ率アップ(パッシブ): 既定ドロップ率に ammoDropBonus を加算(0..1)。
+      const dirPct = AMMO_DIRECTOR_ENABLED
+        ? ammoDirectorRate(get().meleeAmmoDropPercent, {
+            families: ownedAmmoTypes.filter(t => t !== 'phill').map(t => ({ reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })),
+            enemyCount: get().enemies.length,
+          })
+        : get().meleeAmmoDropPercent;
+      const baseRateRaw = Math.max(0, Math.min(1, dirPct / 100 + (player.ammoDropBonus ?? 0) + (player.equipBonus?.ammoDropBonus ?? 0)));
+      // PACING_PUZZLE.md §7-11c(3): レール(judge/dps)のドロップバイアス=弾。既定(rail未指定)は
+      // railAmmoDropMultが1を返すため無改変。近接キル全般(grantMeleeKillRewards)が唯一の掛け先。
+      const baseRate = Math.max(0, Math.min(1, baseRateRaw * railAmmoDropMult(RAIL_KIND, RAIL_MULT)));
+      const ammoChance = ammoChanceOverride !== undefined
+        ? ammoChanceOverride
+        : (finisher ? Math.min(1, baseRate * 1.5) : baseRate);
+      // PACING_PUZZLE.md §5.5 M5(RE4式): 残弾割合が最小の弾種を落とす(同率は構え優先・phill対象外)。
+      // ?ammosmart=0で従来(構え銃の弾種)へ。ドロップ率・供給量は不変=弾種の配分のみ。
+      const smartType = AMMO_SMART_ENABLED
+        ? pickAmmoDropType(ownedAmmoTypes.map(t => ({ type: t, reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })), gun?.noAmmo ? undefined : gun?.ammoType)
+        : null;
+      // ステージ2はPHILL弾を敵から落とさない(社長指示2026-11-19・dropAmmoTypeWithoutPhill)。
+      const dropType = dropAmmoTypeWithoutPhill(smartType ?? (gun?.noAmmo ? undefined : gun?.ammoType) ?? ownedAmmoTypes[0], ownedAmmoTypes, get().stageTheme === 'lab' || get().indoorMode);
+      // 旧: ナイフマスターは弾薬ドロップ0%。社長指示2026-11-02「ナイフマスターの弾薬ドロップ無しはやめて」で撤去。
+      // M0(訓練)は弾を拾う教習まで抽選ドロップを封印(社長指示v0.25.2319・m0Unlocked.ammo)。
+      if (dropType && get().m0Unlocked.ammo && Math.random() < ammoChance) {
+        get().addPickup({
+          id: `pickup-ammo-melee-${enemy.id}`,
+          x: ex - 8 + 14, y: ey - 8,
+          type: `ammo-${dropType}` as `ammo-${AmmoType}`, // v0.25.4000: 5種目(glauncher)を落とせる嘘つきキャストを是正
+          value: 0
+        });
+      }
+      // Mid-boss killed in melee still drops its weapon crate (the gun-kill
+      // path drops one too; bosses are usually finished with the counter).
+      // PACING_PUZZLE.md §9-7#1(死亡FXの重さ・useGameLoop.ts:10740付近と対の近接経路):
+      // driller はpumpkinと同格=isPumpkinTier経由でクレート/リング演出を共有する。
+      if (isPumpkinTier(enemy.type) || enemy.type === 'giantbat') {
+        get().addPickup({
+          id: `pickup-crate-${enemy.id}`,
+          x: ex - 8, y: ey - 8 - 18,
+          type: 'weapon-crate',
+          value: 0
+        });
+        get().spawnRing(ex, ey, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
+      }
     }
     // §6.38 B3(賞金首の金箱): 討伐で1個ドロップ(専用pickup)。中身はcollectPickup側で開封時に
     // 実効エリアrankから計算する(pickup生成=このaddPickup自体はvalue未使用=weapon-crateと同型)。
@@ -11015,7 +11039,10 @@ interface GameState {
   // 指定すると守護霊(kind='ghost-ally')が同じ状態機械・同じ定数・同じ式で刀/ワイヤーを使う。
   // strikeMult=敵への打撃だけに掛ける上乗せ(縮地の連鎖・§32)。damageMult と違い、死神の波及・救難信号の基準には入れない。
   // fxFrom=斬撃の絵・ダメージ数字を置く「斬った体の位置」(描画だけ)。省略=今の体の中心。燕返しは体が動かないので、仮定した通り道の終点(一閃なら体が着いている所)を渡す。
-  performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean, ghostId?: string, strikeMult?: number, slashMove?: KatanaSlashMove, fxFrom?: { x: number; y: number }) => { hit: boolean; finish: boolean; killed: number; hitIds?: string[] };
+  // asShot: ★この1振りは射撃扱い(社長指示2026-11-22「オート斬撃は射撃にする」)。オート斬撃(本人・守護霊)だけが true を渡す。
+  //   キルの記録・与ダメの記録・射撃のキルで動く物(血の覚醒の射撃分・使役)を銃の側へ倒す。威力・届く距離・気絶・絵・音は変えない。
+  //   射撃のキルのドロップ(dropGunKillLoot)は呼び手(useGameLoop)が killedEnemies で出す(store→utils/gunKillDrops は循環importになるため)。
+  performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean, ghostId?: string, strikeMult?: number, slashMove?: KatanaSlashMove, fxFrom?: { x: number; y: number }, asShot?: boolean) => { hit: boolean; finish: boolean; killed: number; hitIds?: string[]; killedEnemies?: Enemy[] };
   // tsubame=燕返し(research/KATANA_TSUBAME.md §1): 硬直・CDの門を通さず、指定の距離だけ一閃を出し直す(消費・CDは足さない)。
   triggerKatanaDash: (dirX: number, dirY: number, ghostId?: string, tsubame?: { distance: number }) => boolean;
   // ★燕返し(research/KATANA_TSUBAME.md §1): 受付の間の反対フリックで出す。出たら true。
@@ -15746,7 +15773,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  performKatanaStrike: (targetIds, damageMult, allowFinisher, ghostId, strikeMult = 1, slashMove, fxFrom) => {
+  performKatanaStrike: (targetIds, damageMult, allowFinisher, ghostId, strikeMult = 1, slashMove, fxFrom, asShot = false) => {
     const now = Date.now();
     const { gameTime, enemies } = get();
     // v0.25.2518(裁定2): 主語(オーナー)。ghostId 未指定=プレイヤー本体(従来と完全同一)。
@@ -15997,9 +16024,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 除外4(運用系): 守護霊起因はプレイヤーの計測(botTelemetry)に混ぜない
     // (既存の damageChannel=null / weaponKey='ghost-gun' と同じ分離方針)。
     if (!isGhost) {
-      recordDamageDealt('melee', katanaSwingDamage);
+      recordDamageDealt(asShot ? 'gun' : 'melee', katanaSwingDamage); // オート斬撃=射撃の与ダメ(社長指示2026-11-22)
       noteMasteryDirectHits(player, 'katana', katanaMasteryHits); // 熟練度(v2.1 A-9): 守護霊の分は貯めない
-      recordMeleeSwing(slashAt.length);
+      if (!asShot) recordMeleeSwing(slashAt.length); // 近接の振りの計測。オート斬撃(射撃扱い)は数えない
     }
     set(state => ({
       // このスイングで近接ダメージを受けた敵(lastHit===now)に meleeAggro を付与(救助で以後プレイヤー狙い)。
@@ -16090,7 +16117,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // 刀の一閃フィニッシュは「斬」コールアウトが主役なので、Kill! と既存の
     // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
-    grantMeleeKillRewards(get, killed, player, gun, true, undefined, !ghostId && allowFinisher /* 縮地: 本人の一閃だけ(オート斬撃・守護霊の刀では開かない=社長裁定2026-10-01) */);
+    grantMeleeKillRewards(get, killed, player, gun, true, undefined, !ghostId && allowFinisher /* 縮地: 本人の一閃だけ(オート斬撃・守護霊の刀では開かない=社長裁定2026-10-01) */, asShot ? 'gun' : 'melee');
+    // ★オート斬撃=射撃のキル(社長指示2026-11-22): 銃のキル経路(damageEnemy)だけで動いていた物を同じ条件で動かす。
+    if (asShot) {
+      for (const { enemy } of killed) {
+        // B10 血の覚醒の射撃分(距離≤90pxだけ)。damageEnemy と同じくプレイヤー本人だけ(守護霊は浴びない)。
+        if (!isGhost) grantGunBlood(get, { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2, w: enemy.width, h: enemy.height });
+        // 使役(銃のキル経路と同じ: 守護霊の撃破でもプレイヤーのスキルで抽選)。
+        if (isPoiThrallCandidate(get().player, enemy)) rollPoiThrall(get, enemy);
+      }
+    }
     if (!ghostId) noteKickAssistKills(get, killed.map(k => k.enemy)); // 蹴りの連携の一言(本人の刀・オート斬撃。守護霊の刀は除く)
     // B10 血の覚醒: 浴びるのは**本人の一閃だけ**(縮地のワープ斬撃・被弾反撃の刀もここ)。オート斬撃・守護霊の刀は浴びない(縮地の窓と同じ線引き)。
     if (!ghostId && allowFinisher) grantMeleeBlood(get, killed.map(k => k.enemy), Math.max(0, katanaHitEnemyIds.length - killed.length));
@@ -16136,7 +16172,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
     }
 
-    return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hitIds: katanaHitEnemyIds };
+    return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hitIds: katanaHitEnemyIds, killedEnemies: killed.map(k => k.enemy) };
   },
 
   performWhipStrike: (targetIds, opts) => {
@@ -19660,7 +19696,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §6.38 v7(賞金首): 旧v6 A-5では`&& !isBountyType(enemy.type)`を個別に足していたが、
         // v7でisBossTypeへフル編入されたため`!isBossType(enemy.type)`だけで自動的に除外される
         // (重複登録の撤去。眷属化させない、という結論自体は不変)。
-        if (hasSkill(state.player, 'poi-thrall') && !isBossType(enemy.type) && !enemy.isNamed && !enemy.questTarget) {
+        if (isPoiThrallCandidate(state.player, enemy)) {
           thrallCandidate = enemy;
         }
         // juice: FF風クランブル統一演出(ネームド/裏ボス/giantbat/hunter討伐)。銃/接触/爆発キル経路。
@@ -19802,19 +19838,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // §6.24 M48「使役」: 20%抽選(D1対象は set() 内で既に絞り込み済み)。既に1体いる時は抽選しない
     // =先着1体を維持(D3)。錬金術の召喚と同じ枠(state.summons)へ persistent:true で1体追加する
     // (updateSummons/summonAlchemyがALCHEMY_DESPAWN_DIST無視/FIFO対象外にpersistentを見る)。
-    if (thrallCandidate) {
-      const tc = thrallCandidate as Enemy;
-      const alreadyHasThrall = get().summons.some(s => s.persistent);
-      if (!alreadyHasThrall && Math.random() < POI_THRALL_CHANCE) {
-        const tx = tc.x + tc.width / 2, ty = tc.y + tc.height / 2;
-        const unit: Summon = { ...buildSummon(1, 'normal', tx, ty), persistent: true };
-        set(state => ({ summons: [...state.summons, unit] }));
-        get().spawnGlow(tx, ty, GLOW_R_S, 'rgba(56,189,248,', 360);
-        get().spawnBurst(tx, ty, '#38bdf8', 18);
-        get().spawnCallout(tx, ty - 20, '使役！', '#38bdf8');
-        notifySkillProc('poi-thrall');
-      }
-    }
+    if (thrallCandidate) rollPoiThrall(get, thrallCandidate as Enemy);
 
     // SKILL_BUILD_REDESIGN.md §28(B7) スキル: 吸血 = キルで確定発動(100%・社長裁定v0.25.3603。
     // 旧: キルの20%・率固定)HP+2/+4/+6(Lv)。

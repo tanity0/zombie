@@ -24,6 +24,8 @@ export interface GunKillDropCtx {
   ammoSmart: boolean;
   ammoDirector: boolean;
   noAmmoRun: boolean;
+  /** false=撃破の血しぶき(赤いバースト2つ+輪)を出さない。刀のオート斬撃(射撃扱い)が使う=撃破の絵は近接の側(grantMeleeKillRewards)が出す。既定 true。 */
+  fx?: boolean;
 }
 
 export const dropGunKillLoot = (enemy: Enemy, ctx: GunKillDropCtx): void => {
@@ -38,9 +40,11 @@ export const dropGunKillLoot = (enemy: Enemy, ctx: GunKillDropCtx): void => {
   // §5.23 M22 C1: 弾/接触キルの死亡血しぶきも弾の進行方向へ寄せる(弾が無い接触キル等はundefined=従来の全方位)。
   const kDirX = ctx.dirX;
   const kDirY = ctx.dirY;
-  spawnBurst(ex, ey, '#dc2626', bloodCount, kDirX, kDirY);
-  spawnBurst(ex, ey, '#7f1d1d', Math.max(6, Math.floor(bloodCount * 0.45)), kDirX, kDirY);
-  spawnRing(ex, ey, 4, isPumpkinTier(enemy.type) || enemy.type === 'giantbat' ? 38 : 24, 'rgba(185,28,28,0.72)', 3, 300);
+  if (ctx.fx !== false) {
+    spawnBurst(ex, ey, '#dc2626', bloodCount, kDirX, kDirY);
+    spawnBurst(ex, ey, '#7f1d1d', Math.max(6, Math.floor(bloodCount * 0.45)), kDirX, kDirY);
+    spawnRing(ex, ey, 4, isPumpkinTier(enemy.type) || enemy.type === 'giantbat' ? 38 : 24, 'rgba(185,28,28,0.72)', 3, 300);
+  }
   useGameStore.getState().dropEnemyCurrency(enemy, ex, ey);
 
   dropEnemyXp(enemy, ex, ey, 'pickup-xp');

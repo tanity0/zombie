@@ -3516,6 +3516,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const newGameTime = gameTime + deltaTime * 1000;
         const newRealGameTime = loopState.realGameTime + baseDeltaTime * 1000;
         setGameTime(newGameTime, newRealGameTime);
+        // ★刀のオート斬撃は射撃扱い(社長指示2026-11-22「オート斬撃は射撃にする」)。弾で倒した時に
+        // 弾の当たり処理(下の enemyKilled の枝)が出している物を、オート斬撃(本人・守護霊)で倒した時も出す:
+        // ①射撃のキルのドロップ(dropGunKillLoot。撃破の絵は近接の側が出すので fx:false)
+        // ②護衛の称賛(短時間に多数を倒した=無双)の数え。キルの記録・血の覚醒・使役は store(performKatanaStrike の asShot)。
+        const noteKatanaShotKills = (killedEnemies: Enemy[]) => {
+          for (const enemy of killedEnemies) {
+            dropGunKillLoot(enemy, {
+              player: useGameStore.getState().player, indoor, gameTime: newGameTime, fx: false,
+              ammoSmart: AMMO_SMART_ENABLED, ammoDirector: AMMO_DIRECTOR_ENABLED, noAmmoRun: NO_AMMO_RUN,
+            });
+            const t = Date.now();
+            const arr = playerKillTimesRef.current;
+            arr.push(t);
+            while (arr.length && t - arr[0] > PRAISE_WINDOW_MS) arr.shift();
+            if (arr.length >= PRAISE_KILL_COUNT) {
+              useGameStore.getState().npcPraiseReact();
+              arr.length = 0;
+            }
+          }
+        };
         useGameStore.getState().updateNpcDialogue(newGameTime); // NPCセリフの表示進行(時間停止なし)
         // 武器商人のチュートリアル: スタート地点の商人のサークルに初めて入った時に1度だけ(端末既読・拠点の商人では出さない)。
         // 取引の開き方には触らない=出している間は止まって滞在が積まれず、閉じた後も立っていれば下の滞在でいつもどおり開く。
@@ -11227,10 +11247,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // ハンティング: 溜まった状態のオート斬撃は一連(オート斬撃→一閃→燕返し)の始まり。次のオート斬撃までに一閃が出なければ使い切る。
               useGameStore.getState().noteKatanaAutoSlashHunting(gameTime + katanaSlashMs); // 次のオート斬撃が出る時刻(同じ時計)
               // 近接フィニッシュは一閃のみ: オート斬撃はallowFinisher=false。
-              const result = performKatanaStrike([targetId], 1, false, undefined, warlordAutoSlashMult(kp)); // 侍の甲冑(青・赤)は ×1.5
+              // ★オート斬撃は射撃扱い(社長指示2026-11-22「オート斬撃は射撃にする」): 最後の true=asShot。
+              const result = performKatanaStrike([targetId], 1, false, undefined, warlordAutoSlashMult(kp), undefined, undefined, true); // 侍の甲冑(青・赤)は ×1.5
               if (result.finish) playSfx('melee-finish');
               else if (result.hit) playSfxLayers('slash-damage', meleeHitSfxLayers(1)); // 近接の命中音は全経路で同じ(揺らぎ)
               if (result.killed > 0) playEnemyDeath();
+              if (result.killedEnemies?.length) noteKatanaShotKills(result.killedEnemies);
             }
           }
         }
@@ -14230,7 +14252,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     // ハンティング: 溜まった状態のオート斬撃は一連(オート斬撃→一閃→燕返し)の始まり(プレイヤーと同じ)。
                     useGameStore.getState().noteKatanaAutoSlashHunting(gameTime + KATANA_SLASH_INTERVAL_MS, ghostNow.id);
                     // 近接フィニッシュは一閃のみ: オート斬撃はallowFinisher=false(プレイヤーと同じ)。
-                    const kResult = useGameStore.getState().performKatanaStrike([kTargetId], 1, false, ghostNow.id);
+                    // ★オート斬撃は射撃扱い(社長指示2026-11-22・プレイヤーと同じ): 最後の true=asShot。
+                    const kResult = useGameStore.getState().performKatanaStrike([kTargetId], 1, false, ghostNow.id, undefined, undefined, undefined, true);
+                    if (kResult.killedEnemies?.length) noteKatanaShotKills(kResult.killedEnemies);
                     const kGain = npcSfxDistGain(kcx, kcy, gfxPcx, gfxPcy, gfxCam, gfxGb);
                     if (kGain > 0) {
                       if (kResult.finish) playSfx('melee-finish', kGain);

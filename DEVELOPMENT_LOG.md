@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5758 — 刀のオート斬撃を射撃扱いに(キル・与ダメ・射撃の落とし物・血の覚醒・使役・護衛の称賛)【2026-11-23 11:11 JST】
+- 社長指示「オート斬撃は射撃扱いにしよう」(オート斬撃でキル出来ていなかった件はこれで解消)。落とし物の変化は社長確認「はい」(2026-11-23)。
+- 実装: `performKatanaStrike` に `asShot`(オート斬撃=本人と守護霊だけ true)。与ダメ・キルを `'gun'` で記録(`grantMeleeKillRewards(..., killMethod)`)、近接の落とし物は止めて `dropGunKillLoot`(呼び手=useGameLoop の `noteKatanaShotKills`・血しぶきは重ねない `fx:false`)、血の覚醒の射撃分(本人のみ)、使役の抽選(`isPoiThrallCandidate`/`rollPoiThrall` へ切り出し)、護衛の称賛。
+- 近接のまま: 近接コンボ・近接で狙われる扱い・刀の熟練度・幻影の受け方・クリ・体勢の削り・揺れ。威力・間隔・狙い・届く距離・絵・音は不変。一閃・燕返し・被弾反撃・タップは近接のまま。
+- 未決: 近接で狙われる扱い(meleeAggro・削岩型の離脱)と幻影の受け方を射撃に揃えるか / グラビティショット(銃が当たった時)をオート斬撃で発動させるか。
+- 変えたファイル: src/store/gameStore.ts・src/hooks/useGameLoop.ts・src/utils/gunKillDrops.ts・src/store/katanaAutoSlashShot.store.test.ts(新)
+- 検証: typecheck / eslint / circular / vitest 全件(rebase前 11451 通過)・rebase後に関係分。監査は付けない(既存の仕組みの分類の付け替え)。
+- 自己点検: 憲法第4条・第5条に抵触しない。
+
 ## v0.25.5757 — 遠近の投影 段階4の監査是正(線の太さを頂点ごと・北の水たまり・計器・見下ろしの潰しの二重)(?proj=1 のみ)【2026-11-23 05:40 JST】
 - 品質監査1巡目(opus・(A)5件)・クリエイティブ監査1巡目(opus・12件=直せる8/社長へ4)を受けて直した。
 - A-1 線の太さが画面外の南の頂点に引っ張られて桁外れに太る→`projStrokeStripInto`(頂点ごとの半幅の帯=1本の中で奥は細く手前は太く)+ `projLineScaleCap`(画面下端の行の s で頭打ち)。下限の口 `PROJ_TELE_LINE_MIN_PX=0`(値は社長待ち)。A-2 北の水たまりが world Y の地平線で消える→`WetHost.projFade`(投影後のY)。A-4 K15・A17 の濃さを投影後のYへ+番人③b。A-5 計器 `s4 tex` が renderable を見ず・一覧不足→足した。B-1 `copyP2` の ℓ。B-2 添字の共有・水たまりのメッシュをプール。C-3 日付。
