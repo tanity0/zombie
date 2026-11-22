@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { brawlerHeldNow, brawlerLiftHoldNow } from '../utils/brawlerCombo'; // 格闘の食らいの固まり(ボス級も・§11-1)
 import { isUntouchable } from '../utils/enemyUtils';
+import { setCameraZoomLink } from '../utils/cameraZoomLink';
 import { arrowRainLevel, pickArrowRainCenter, planArrowRain, reaimArrow, arrowRainHits, ARROW_RAIN_ZONE_PX, ARROW_RAIN_COUNT_BY_LEVEL, ARROW_RAIN_CD_MS_BY_LEVEL, ARROW_RAIN_DAMAGE, ARROW_RAIN_STUCK_MS, ARROW_RAIN_HIT_PX, type RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { latticeBands, latticeStageCount, latticeAxisForStage, latticeHitSource, latticeCenter } from '../utils/skadiLattice';
 import { mimirWheelTheta0, mimirWheelSpokeAngle, mimirWheelShotOffsetMs, MIMIR_WHEEL_EYE_UP } from '../utils/mimirWheel';
@@ -11030,6 +11031,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           camY = Math.max(LAB_OUTER_BOUNDS.y, Math.min(maxCamY, camY));
         }
         setCameraPosition(camX, camY);
+        setCameraZoomLink(camBossZoomRef.current.z); // ?proj=1 の基準行(★#20 裁定②)が同じフレームのカメラのズームを読む(描画用・store を通さない)
         // 監査v0.25.3008: 松明/地雷の生成リージョンは**構図オフセット抜き**のプレイヤー中心カメラで渡す。
         // baseCamY はズーム連動カメラ下げ+縦先読み(最大~1000px)込みのため、そのまま渡すとリージョン
         // 南端がプレイヤーの手前まで縮み、足元の松明/緑卵が配列から落ちて消えることがあった。
