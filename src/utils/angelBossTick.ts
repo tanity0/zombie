@@ -193,6 +193,34 @@ export const estimateLanceFireAt = (
   const flightMs = (distToRim / Math.max(1, JB_T.lance.lanternSpeed)) * 1000;
   return bornAt + Math.max(JB_T.lance.minWindup, flightMs);
 };
+/**
+ * research/TELEGRAPH_FIXES.md E03: ランスの発射までの残り時間を**毎フレーム今の位置から**引き直す(描画用の純関数・
+ * 発射の判定そのものは変えない)。発射の条件は「縁に着いた かつ minWindup を過ぎた」または「州の安全上限 capHit」
+ * (tickJibril の lance 州と同じ)。時計は `gameTime`(= L.bornAt と同じ store の時計)。
+ * 縁までの距離=今の位置から進行方向 `L.dir` の光線がアリーナの円と交わるまでの長さ(estimateLanceFireAt と同じ式)。
+ */
+export const lanceRemainingMs = (
+  L: { x: number; y: number; dir: number; bornAt: number },
+  home: { x: number; y: number },
+  gameTime: number,
+  bossStateUntil: number,
+): number => {
+  const px = L.x - home.x, py = L.y - home.y;
+  const rd = Math.hypot(px, py);
+  let distToRim: number;
+  if (rd >= GATE_ARENA_RADIUS - 1e-6) {
+    distToRim = 0;
+  } else {
+    const dx = Math.cos(L.dir), dy = Math.sin(L.dir);
+    const b = px * dx + py * dy;
+    const c = px * px + py * py - GATE_ARENA_RADIUS * GATE_ARENA_RADIUS;
+    const disc = b * b - c;
+    distToRim = disc >= 0 ? Math.max(0, -b + Math.sqrt(disc)) : GATE_ARENA_RADIUS;
+  }
+  const flightMs = (distToRim / Math.max(1, JB_T.lance.lanternSpeed)) * 1000;
+  const minLeft = JB_T.lance.minWindup - (gameTime - L.bornAt);
+  return Math.max(0, Math.min(bossStateUntil - gameTime, Math.max(minLeft, flightMs)));
+};
 const ORBIT_RADIUS_CORRECT = 4;         // 半径補正の寄せ係数(=THOR_ORBIT_RADIUS_CORRECT)
 const HARAI_TRIGGER_DIST = 250;         // 斬り系を出せる距離(同値・旧実装専用)
 // §6.28共通: フェーズ移行の一瞬だけHPバーを点滅させる長さ(ジャイアントのGIANT_PHASE_FLASH_MSと同値)。

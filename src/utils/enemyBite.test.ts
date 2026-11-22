@@ -679,10 +679,14 @@ describe('★技が始まったら噛みつきは中断する(v0.25.3924)', () =
 describe('★体当たり技の表の漏れ(v0.25.3925)', () => {
   // ★§16-3(ゾンビzrushの体当たり)を足した時にPickへ `type`/`aiPhaseUntil`/`biteAt` が増えたので、
   // 既存呼び出しに `type`(非zombieのボス型=zrush特例に触れない)を明示する(検収監査で発覚)。
-  it('トールの突進・ミゲルの踏み込み・賞金首の突進/飛び掛かりは体当たり技', () => {
-    for (const bs of ['thor-dash-move', 'mdash-move', 'bm-charge', 'leap-air'] as const) {
+  it('トールの突進・ミゲルの踏み込み・賞金首の突進は体当たり技', () => {
+    for (const bs of ['thor-dash-move', 'mdash-move', 'bm-charge'] as const) {
       expect(isBodySlamNow({ type: 'thor', aiPhase: undefined, bossState: bs }, 1000)).toBe(true);
     }
+  });
+  // research/TELEGRAPH_FIXES.md N02(社長裁定 2026-11-22「空中では当たらない」): 鋏の飛び掛かりの滞空は体当たり技ではない。
+  it('N02: 鋏の飛び掛かりの滞空(leap-air)は体当たり技ではない(空中族=接触ゼロ)', () => {
+    expect(isBodySlamNow({ type: 'bounty-balance', aiPhase: undefined, bossState: 'leap-air' }, 1000)).toBe(false);
   });
   it('貫通表にある体当たり技も従来どおり体当たり技', () => {
     expect(isBodySlamNow({ type: 'thor', aiPhase: 'charge', bossState: undefined }, 1000)).toBe(true);

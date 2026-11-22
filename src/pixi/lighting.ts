@@ -598,8 +598,9 @@ export const getCineDustTexture = (): Texture => {
   cineDustTex = Texture.from(c); return cineDustTex;
 };
 
-// アーム済み(起爆待ち)の赤卵(社長仕様v0.25.1846「踏むと赤くプクプク」)。形状は緑卵と同一・
-// パレットだけ赤系に差し替えて一度だけベイク(tintで緑を赤くすると濁るため専用ベイク)。
+// アーム済み(起爆待ち)の卵(社長仕様v0.25.1846「踏むと赤くプクプク」→ research/TELEGRAPH_FIXES.md N06 で紫へ)。形状は緑卵と同一。
+// ★クリエイティブ監査(N06): 殻そのものは**暗い緑のまま**(毒の卵であることは変わらない)。紫は内側から漏れる
+//   ひび・脈だけに置く(+ pixiScene 側の光)=「中で何かが起きている」卵に見せ、紫一色の別物にしない。一度だけベイク。
 let eggTexArmed: Texture | null = null;
 export const getEggTextureArmed = (): Texture => {
   if (eggTexArmed) return eggTexArmed;
@@ -611,23 +612,56 @@ export const getEggTextureArmed = (): Texture => {
   const cx = w / 2;
   ctx.beginPath();
   ctx.ellipse(cx, h - 6, 20, 6, 0, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(16,7,7,0.38)';
+  ctx.fillStyle = 'rgba(7,16,10,0.38)';
   ctx.fill();
   const bodyCx = cx, bodyCy = 40, rx = 18, ry = 27;
+  // 殻=通常の卵より一段暗い苔の緑(張りつめて光を失った殻)。
   const grad = ctx.createRadialGradient(bodyCx - 6, bodyCy - 12, 2, bodyCx, bodyCy, 32);
-  grad.addColorStop(0, 'rgba(235,140,110,1)');  // highlight(熱)
-  grad.addColorStop(0.4, 'rgba(190,55,40,1)');  // mid=赤
-  grad.addColorStop(1, 'rgba(56,10,10,1)');     // shadow=暗赤
+  grad.addColorStop(0, 'rgba(92,108,70,1)');
+  grad.addColorStop(0.4, 'rgba(42,60,34,1)');
+  grad.addColorStop(1, 'rgba(7,22,13,1)');
   ctx.beginPath();
   ctx.ellipse(bodyCx, bodyCy, rx, ry, 0, 0, Math.PI * 2);
   ctx.fillStyle = grad;
   ctx.fill();
   ctx.lineWidth = 1.5;
-  ctx.strokeStyle = 'rgba(30,6,6,0.55)';
+  ctx.strokeStyle = 'rgba(8,18,11,0.55)';
   ctx.stroke();
+  // 殻の内側だけに描く(ひび・脈が輪郭の外へ出ない)。
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(bodyCx, bodyCy, rx - 0.8, ry - 0.8, 0, 0, Math.PI * 2);
+  ctx.clip();
+  // 脈: 下の方から滲む紫(殻の奥で光っている)。
+  const vein = ctx.createRadialGradient(bodyCx + 2, bodyCy + 8, 1, bodyCx + 2, bodyCy + 8, 20);
+  vein.addColorStop(0, 'rgba(176,96,245,0.55)');
+  vein.addColorStop(0.55, 'rgba(126,50,206,0.22)');
+  vein.addColorStop(1, 'rgba(126,50,206,0)');
+  ctx.fillStyle = vein;
+  ctx.fillRect(0, 0, w, h);
+  // ひび: 決まった形の折れ線(毎回同じ絵)。太い暗紫の上に細い明るい紫=割れ目から光が漏れる。
+  const cracks: [number, number][][] = [
+    [[-3, -22], [-1, -15], [-5, -9], [-2, -3], [-6, 4]],
+    [[-2, -15], [4, -11], [6, -4]],
+    [[-2, -3], [3, 2], [2, 9], [7, 15]],
+    [[-6, 4], [-11, 9], [-10, 15]],
+    [[3, 2], [10, 0]],
+  ];
+  for (const [lw, col] of [[2.6, 'rgba(40,10,70,0.75)'], [1.1, 'rgba(206,150,255,0.95)']] as const) {
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = col;
+    ctx.lineJoin = 'miter';
+    ctx.lineCap = 'butt';
+    for (const c of cracks) {
+      ctx.beginPath();
+      c.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(bodyCx + x, bodyCy + y) : ctx.lineTo(bodyCx + x, bodyCy + y)));
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
   ctx.beginPath();
   ctx.ellipse(bodyCx - 7, bodyCy - 14, 4, 6, -0.3, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255,190,150,0.55)';
+  ctx.fillStyle = 'rgba(140,152,108,0.42)';
   ctx.fill();
   eggTexArmed = Texture.from(canvas);
   return eggTexArmed;

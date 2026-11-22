@@ -1836,6 +1836,13 @@ export interface Enemy {
   // 更新はangelBossTick(lance-windup)のみ。pixiSceneは読んで赤ライン/ランタン/ビームを描くだけ。
   // estFireAt=発射予定時刻の見積もり(★v0.25.3588: 予告帯の流星を「消え切り=発射」に同期させる描画用)
   lanceLanterns?: { x: number; y: number; dir: number; bornAt: number; firedUntil?: number; estFireAt?: number }[];
+  /**
+   * research/TELEGRAPH_FIXES.md N01: 裏ボスの突進(bossState 'dash')の**今の速度**(px/秒・向き×速さ)。
+   * 向きは useGameLoop の bossRef(描画から見えない)で毎フレーム寄せているので、走りの間だけ既存の patch に
+   * 相乗りして写す(新しい set は足さない)。描画は「今の中心 + 速度 × 残りの走り時間」を曲がる線の終点にする。
+   */
+  hbDashVelX?: number;
+  hbDashVelY?: number;
   // PACING_PUZZLE.md §10(EXボス「フィル」バッチ3・pixi描画用ミラー): 光の雨(技1)の時間差落下キューは
   // AngelBossState.phill.lightrainQueue(useGameLoopのローカルref)にしか存在せず、Pixiは store/Enemy
   // 経由でしか状態を読めない(CLAUDE.md「PixiJSはstoreを読むだけ」)ため、lanceLanternsと同じ作法で
@@ -3006,6 +3013,11 @@ export interface Projectile {
   // ゴースト(守護霊)がオーナーとして発動したサブウェポンの生成物マーカー。**視覚専用**
   // (レンダラが青白tint/霊体αに使うだけ。判定・ダメージ・CD・挙動には一切使わない)。
   ownerGhost?: boolean;
+  /**
+   * research/TELEGRAPH_FIXES.md N12: 幻影が置いたタレットの、置いた幻影の id(地雷の `ownerGhostId` と同じ意味)。
+   * 消滅爆発の半径を**その幻影のビルド**で決めるために、設置の時に焼く。プレイヤー・守護霊のタレットは省く。
+   */
+  ownerGhostId?: string;
   /**
    * 熟練度(research/MASTERY.md v2.1 A-7・A-8): この弾/置き物の当たりのキー。作る所で持ち主を見て入れ、当たる所で掛けて包む。
    * 跳弾・写し弾は親の値を写す。未指定=本人の銃の弾と分かる物だけその銃(武器ごと)・それ以外 `none`(utils/weaponUtils.ts の projectileMasteryKey)。

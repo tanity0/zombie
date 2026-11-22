@@ -145,6 +145,8 @@ import { pickPhantomIdentity, setPhantomIdentity, getPhantomIdentity, phantomDis
 import { reportSuppressedError, reportSoftNotice } from '../utils/errorBeacon';
 import { bossCutinPayload, glenForm2CutinPayload } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン(オプトイン呼び出しのみ)
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
+import { thorDashRunCenter } from '../utils/dashTelegraph';
+import { TURRET_EXPLOSION_RADIUS, phantomTurretBlastRadius } from '../utils/turretSpec';
 import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの拘束を守護霊にも掛ける(プレイヤーと同じ純関数)
 import { computeWireHopLanding, targetHalfDiagonal } from '../utils/wireHop';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
@@ -285,7 +287,7 @@ import { computeMolotovTick, MOLOTOV_FIRES_BY_LEVEL, molotovSpreadRadiusForLevel
 import {
   stepHomingLocks, ghostHomingHoldMs, HOMING_MAX_LOCKS_BY_LEVEL, HOMING_LOCK_INTERVAL_MS,
 } from '../utils/homing';
-import { tickSensorMines, SENSOR_MINE_DAMAGE, SENSOR_MINE_RADIUS } from '../utils/sensorMine';
+import { tickSensorMines, SENSOR_MINE_DAMAGE, sensorMineBlastRadius } from '../utils/sensorMine';
 import { dueArmedEggs, eggsToChainArm, EGG_BLAST_RADIUS, eggShotRect, sweptBoxHitsRect, eggInFan, eggInBeam, eggBodyPoint, circleHitsEgg, isEggPiercingBlade, eggBladeDamage } from '../world/mines';
 import {
   computeSupportSniperTick, computeSupportSniperEntry, computeSupportSniperFarCorner, pickSupportSniperSoldier,
@@ -791,7 +793,7 @@ const TURRET_OMNI_RANGE = 200;                          // 全方位の射程(�
 const TURRET_BULLET_SIZE = 7;
 const TURRET_GRENADE_CHANCE = 0.10;                     // 通常弾の代わりにグレネードランチャー弾を撃つ確率(全モード共通)
 const TURRET_LAUNCHER_DAMAGE = 44;                      // タレットのグレネードランチャー弾の直撃ダメージ(手榴弾とは別物)
-const TURRET_EXPLOSION_RADIUS = 64;                     // 消滅時の小爆発・範囲。TODO: 実機調整(既存爆発演出を流用)
+// TURRET_EXPLOSION_RADIUS は utils/turretSpec.ts へ移した(research/TELEGRAPH_FIXES.md N12=予告の円と判定の半径を1本に)。
 const TURRET_EXPLOSION_DAMAGE = 36;                     // 消滅時の小爆発・威力。TODO: 実機調整
 // 救急鞄(first-aid-kit・通常サブウェポン): 中身(既存ammo-*/health/bombピックアップ)の払い出し条件
 // 判定は純関数(src/utils/firstAidKit.ts)。ここは投擲アーク(quick-magazineと同じ流儀)の見た目のみ。
@@ -8595,6 +8597,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.x = boss.x + bs.dashDirX * mv; patch.y = boss.y + bs.dashDirY * mv;
                 bs.vx = bs.dashDirX * speed * HB_C.dash.speedMult; // 突進後のチェイスへ慣性を引き継ぐ
                 bs.vy = bs.dashDirY * speed * HB_C.dash.speedMult;
+                // research/TELEGRAPH_FIXES.md N01: 今の速度を描画へ写す(走る道の線の終点=今の中心+速度×残り時間)。同じ patch に相乗り。
+                patch.hbDashVelX = bs.vx; patch.hbDashVelY = bs.vy;
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   if (hiddenScriptOn) { patch.bossState = 'dash-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_C.dash.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
                   else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
@@ -9346,24 +9350,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // ★慣性(CLAUDE.md MUST): 等速の線形補間ではなく、両端で速度0の曲線で運ぶ
                 // (ジャンプ滑空 v0.25.3076 と同じ airHopEase01)。ワープに見せない。
                 const dMoveT = Math.max(0, Math.min(1, dElapsed / HB_TH.dash.moveMs));
-                const dnx0 = dfx + (dtx - dfx) * airHopEase01(dMoveT);
-                const dny0 = dfy + (dty - dfy) * airHopEase01(dMoveT);
                 // ★v0.25.3784(検収監査 低): アクターを動かす時は必ず「行ける帯」を通す
                 // (CLAUDE.md Y方向の掟。旧実装は生の座標をそのまま書いていた)。
                 // ※この関数は tutorial/lab/corridor のクランプだけで、木/壁の解決(resolveAabb)はしない。
                 //   トールは障害物と当たらない設計なので壁判定は不要=「帯」だけ通せば足りる。
+                // ★research/TELEGRAPH_FIXES.md D06: 位置の式は純関数 thorDashRunCenter(描画の斬り抜けの帯の始点=
+                //   thorDashArrival と同じ式)。式・クランプの引数は1バイトも変えていない。
                 const dSt = useGameStore.getState();
-                const dPlaced = clampRectToPlayableArea(dnx0 - boss.width / 2, dny0 - boss.height / 2, boss.width, boss.height, {
-                  farBackdrop: dSt.farBackdrop,
-                  labTheme: dSt.stageTheme === 'lab',
-                  corridorMode: dSt.corridorMode,
-                  m0AdvanceLimitX: null,
-                  corridorRunInActive: dSt.corridorRunInActive,
-                });
-                patch.x = dPlaced.x; patch.y = dPlaced.y;
+                const dC = thorDashRunCenter({ x: dfx, y: dfy }, { x: dtx, y: dty }, airHopEase01(dMoveT), boss, thorPlayableAreaCtx(dSt));
+                patch.x = dC.x - boss.width / 2; patch.y = dC.y - boss.height / 2;
                 // ★v0.25.3785(検収監査 低I): 斬り抜けカプセルの**始点はクランプ後の座標**から引く
                 // (旧実装はクランプ前の生の座標だった=帯の外へ出た時だけ絵と判定が本体からズレる)。
-                const dnx = dPlaced.x + boss.width / 2, dny = dPlaced.y + boss.height / 2;
+                const dnx = dC.x, dny = dC.y;
                 let dCountered = false;
                 if (dElapsed >= HB_TH.dash.moveMs) {
                   // 到達=斬り抜け1回(払いのカプセルを流用=ミゲルが harai を流用しているのと同じ作法)。
@@ -12047,6 +12045,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             passthrough: false,
             hitEnemies: [],
             hostile: isHostileOwner(trOwner), // ★幻影が置いた物は敵対=宛先がプレイヤー側(社長指示2026-08-25)
+            // research/TELEGRAPH_FIXES.md N12(社長裁定2「幻影のビルドで決める」): 置いた幻影の id を焼く(地雷の ownerGhostId と同じ欄)。
+            ...(isHostileOwner(trOwner) ? { ownerGhostId: ownerGhostId(trOwner) } : {}),
             reflected: false,
             turretMode: 'forward', // 設置時は必ず前方集中モードで開始
             ownerGhost: ghostOwned ? true : undefined, // 視覚専用マーカー(青白tint)
@@ -14581,8 +14581,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               turretAimRef.current.delete(turret.id);
               playSfx('bomb');
               // §6.10 M33④: エクスプローダーをタレット消滅爆発(半径+ダメージ)にも適用。
-              const tExMult = skillExplosionMult(useGameStore.getState().player);
-              const tBlastR = TURRET_EXPLOSION_RADIUS * tExMult;
+              // research/TELEGRAPH_FIXES.md N12(社長裁定2): 幻影のタレットの半径は**置いた幻影のビルド**で決める
+              // (予告の紫の円と同じ式 phantomTurretBlastRadius。幻影を引けない時は倍率1)。味方のタレットは従来どおり。
+              // 社長裁定「普通に考えて幻影に合わせるでしょ」: 爆発のダメージの倍率(tExMult)も半径と同じ幻影の倍率で決める。
+              const tPhantomActor = tHostile && turret.ownerGhostId !== undefined ? combatActorPlayer(turret.ownerGhostId) : null;
+              const tExMult = tHostile
+                ? (tPhantomActor ? skillExplosionMult(tPhantomActor) : 1)
+                : skillExplosionMult(useGameStore.getState().player);
+              const tBlastR = tHostile
+                ? phantomTurretBlastRadius(tPhantomActor ? skillExplosionMult(tPhantomActor) : null)
+                : TURRET_EXPLOSION_RADIUS * tExMult;
               // v0.25.2472: ゴースト発(ownerGhost)の消滅爆発FXは青白系(視覚のみ・判定/ダメージ不変)。
               if (turret.ownerGhost) {
                 useGameStore.getState().spawnExplosionFx(tcx, tcy, tBlastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
@@ -15023,6 +15031,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               gameTime,
             });
             if (smResult.changed) smStore.setSensorMines(smResult.mines);
+            // research/TELEGRAPH_FIXES.md I01: 感知の後の地雷に**起爆と同じ式の半径**を書く(予告の円=本当の爆発の大きさ)。
+            // 値が変わった地雷がある時だけ store へ書く(毎フレームの set を増やさない)。主語の解決は起爆と同じ形。
+            {
+              const curMines = useGameStore.getState().sensorMines;
+              let blastChanged = false;
+              const withBlast = curMines.map(m => {
+                if (m.triggeredAt <= 0) return m;
+                const a = (m.ownerGhostId !== undefined ? combatActorPlayer(m.ownerGhostId) : null)
+                  ?? useGameStore.getState().player;
+                const r = sensorMineBlastRadius(skillExplosionMult(a), heavyGunnerExplosionMult(a, gameTime));
+                if (m.blastR === r) return m;
+                blastChanged = true;
+                return { ...m, blastR: r };
+              });
+              if (blastChanged) useGameStore.getState().setSensorMines(withBlast);
+            }
             for (const mine of smResult.detonated) {
               // v0.25.2541(§2.11追補・発注C): 爆発の倍率評価の主語=**置いた本人**
               // (プレイヤー=従来どおり本人 / 守護霊=計測時ビルドの疑似Player)。ビルドが解決できない
@@ -15063,7 +15087,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const smHgMult = heavyGunnerExplosionMult(smActor, gameTime);
               // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)を爆発ダメージにも乗算。
               const smOutMult = skillOutgoingDamageMult(smActor);
-              const smBlastR = SENSOR_MINE_RADIUS * smExMult * smHgMult;
+              const smBlastR = sensorMineBlastRadius(smExMult, smHgMult); // research/TELEGRAPH_FIXES.md I01: 予告の円(m.blastR)と同じ式
               const smFxMs = HEAVY_GRENADE_EXPLOSION_EFFECT_MS;
               spawnRing(mine.x, mine.y, 8, smBlastR, 'rgba(251,146,60,0.82)', 5, smFxMs);
               spawnBurst(mine.x, mine.y, '#f97316', 20);

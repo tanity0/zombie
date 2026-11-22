@@ -35,7 +35,21 @@ export interface SensorMineState {
   hp?: number;
   /** 敵対側(幻影)が置いた地雷か。true の時だけプレイヤーの近接で壊せる。 */
   hostile?: boolean;
+  /**
+   * research/TELEGRAPH_FIXES.md I01: 感知の後、sim が毎フレーム(値が変わった時だけ)書く**起爆と同じ式の半径**
+   * (`sensorMineBlastRadius`)。描画は `blastR ?? SENSOR_MINE_RADIUS` で円を描く(予告の円=本当の爆発の大きさ)。
+   */
+  blastR?: number;
 }
+
+/**
+ * research/TELEGRAPH_FIXES.md I01: 起爆の半径の式(判定=useGameLoop の起爆と、予告の円の両方がこれを呼ぶ)。
+ * 倍率は置いた主語のビルド(エクスプローダー `skillExplosionMult` × ヘビーガンナー `heavyGunnerExplosionMult`)。
+ * ※倍率の関数は gameStore にあり、ここ(gameStore が import する純関数の層)から import すると循環するので、
+ *   呼び出し側が主語と時刻で引いた2つの倍率を渡す。
+ */
+export const sensorMineBlastRadius = (explosionMult: number, heavyGunnerMult: number): number =>
+  SENSOR_MINE_RADIUS * explosionMult * heavyGunnerMult;
 
 // 設置: 上限(cap)到達中は最古(placedAt 最小。同時刻は配列で先のもの)を消して置き直す(§6.4 叩き台)。
 // 副作用なし(新しい配列を返す)。cap<=0 は「置けない」(現状 level>=1 なので通常は到達しない)。

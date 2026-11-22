@@ -628,10 +628,11 @@ const BITE_OK_BOSS_STATES = new Set<string>(['chase']);
  * ★新しい「体当たり技」を足したら**この表にも足す**(貫通表とは別に持つ)。
  */
 const BODY_SLAM_BOSS_STATES = new Set<string>([
-  'thor-dash-move',  // トールの突進(赤い体の帯を描いている)
+  'thor-dash-move',  // トールの突進(走る道の細い線を走者が食う=research/TELEGRAPH_FIXES.md 1-0。体幅の帯は v0.25.4475 で撤去)
   'mdash-move',      // ミゲルの踏み込み
   'bm-charge',       // 賞金首(近接型)の突進
-  'leap-air',        // 賞金首の飛び掛かり(滞空)
+  // 'leap-air'(鋏の飛び掛かりの滞空)は外した: research/TELEGRAPH_FIXES.md N02(社長裁定 2026-11-22
+  // 「空中では当たらない」)=滞空は接触ゼロ・当たるのは着地円だけ(ほかの跳びと同じ空中族)。
 ]);
 
 // ★検収監査2巡目(A)(2026-08-26・v0.25.3948): 貫通表は「地上物をすり抜けるか」の表で、
@@ -644,7 +645,7 @@ const PASS_THROUGH_NOT_BODY_SLAM = new Set<string>(['idol-roll']);
  * gameStore.ts の `ZOMBIE_RUSH_MS`(2000ms=zrushの継続尺)の複製。循環import回避のため値を
  * 複製する(`MELEE_RADIUS_MIRROR` 等と同じ確立済みの作法。enemyBite.tsはgameStore非依存)。
  */
-const ZOMBIE_RUSH_MS_MIRROR = 2000;
+export const ZOMBIE_RUSH_MS_MIRROR = 2000;
 
 /**
  * ★「追尾の終わり際」(PACING_PUZZLE.md §16-3・§16-8「ゾンビ『追尾の終わり際』」)。
@@ -663,7 +664,8 @@ export const ZOMBIE_RUSH_BODY_SLAM_MS = 1600;
  * ★`biteAt` が立っている間(噛みの構え〜実行中)は体当たりではなく噛みの判定に譲る(2つの判定が
  * 同時に有効だと「噛みの窓なのに体当たりでも減る」という二重ダメージ源になるため)。
  */
-const isZombieRushBodySlamNow = (
+// research/TELEGRAPH_FIXES.md N05: 描画(ゾンビの紫の追尾の印)も**この同じ述語**を読む(判定と印を同じ関数で出し入れする)。
+export const isZombieRushBodySlamNow = (
   enemy: Pick<Enemy, 'type' | 'aiPhase' | 'aiPhaseUntil' | 'biteAt'>, gameTime: number,
 ): boolean => {
   if (enemy.type !== 'zombie' || enemy.aiPhase !== 'zrush') return false;

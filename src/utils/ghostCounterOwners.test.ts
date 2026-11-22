@@ -24,13 +24,15 @@ const CLAIM_OWNERS: Record<string, string> = {
   'issen-dash': 'capsule',
   tsuki: 'capsule',
   harai: 'capsule(トール)+angel-handler(ミゲルの払い帯・2026-08-27裁定「はい」)',
-  'jump-attack': 'blast+contact',      // 着地AoE=爆風経路+滞空の体当たり=接触受け流し
+  // research/TELEGRAPH_FIXES.md N02(社長裁定 2026-11-22「空中では当たらない」): ラフィの跳びかかりの滞空(jump-attack)は
+  // 接触の攻撃判定ゼロ=接触受け流しの担当は無い。残る担当は着地AoE(爆風経路)だけ。
+  'jump-attack': 'blast',              // 着地AoE=爆風経路(滞空の体当たりは N02 で接触ゼロ)
   'jump-attack-air': 'blast+contact',
   'bm-charge': 'bounty-figure',        // 接触はshouldSkipで除外(フル報酬側=bounty-figureが担当)
   'bm-whip360': 'bounty-figure',
   'mk-spin': 'bounty-figure',
   leap: 'contact',                     // 鋏: プレイヤーも接触受け流しで取る州(v3949)と同型
-  'leap-air': 'contact',
+  // 'leap-air'(鋏の滞空)は N02 で接触ゼロ=機会州から外した(担当も無い)。
   // ★写し修正(社長裁定2026-08-27「はい」): 天使の振り技は「体の重なり」ではなく**プレイヤーと同じ
   // 振りの図形**を各ハンドラで守護霊再評価(angel-handler)。体の重なり(takeGhostAngelCounter)は
   // 体当たり系(isBodySlamNow)の担当として残る。

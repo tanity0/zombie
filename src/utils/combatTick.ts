@@ -1940,11 +1940,12 @@ export const applyContactDamage = (
     // ★v0.25.3818(社長裁定 §9-6「突進の走行中の体当たり」= **(B)「当てる」**)= **確定仕様**。突進の走り(thor-dash-move)を
     // **除外から外す**(=走行中に体が触れれば接触ダメージが入る。流用元のミゲルと同じ)。
     //   v0.25.3808 の「除外へ戻す」は**裁定が出るまでの暫定退避**であって結論ではなかったので、
-    //   裁定でそのまま解除する。裁定の条件は「当てるなら**①走行中も体幅ぶんの赤い帯 ②botSkill の
-    //   帯脅威への登録**を同時に入れて1セット」であり、**同じ版で3つとも入れてある**:
-    //     ① `pixiScene.thorDashBodyBandTick`(判定=このAABBの掃過形と厳密に一致する赤い帯)
+    //   裁定でそのまま解除する。裁定の条件は「当てるなら**①走行中も赤 ②botSkill の帯脅威への登録**を
+    //   同時に入れて1セット」:
+    //     ① 走行中の赤=**走る道の細い線を走者が根元から食う**(research/TELEGRAPH_FIXES.md 1-0・
+    //        `utils/dashTelegraph.dashTelegraphPhase`)。※v0.25.3818 の「体幅ぶんの赤い帯」(thorDashBodyBandTick)は
+    //        v0.25.4475 で撤去済み(社長が却下した見せ方)。体の半幅ぶんは体そのものを危険の絵と読む。
     //     ② `botSkill.telegraphDodge` の `banded` に `'thor-dash-move'`
-    //   ⇒「赤くないのに当たる」(CLAUDE.md「攻撃ヴィジュアルの2分類」の唯一妥協しない禁則)は残らない。
     // 上の3技(一閃/突き/払い)とジャンプは従来どおり除外=「もとの当たり判定ではなくライン上のみ」
     // (社長指示)を維持する。
     if (enemy.type === 'thor' && enemy.bossState && enemy.bossState !== 'chase' && enemy.bossState !== 'return'
@@ -1971,7 +1972,12 @@ export const applyContactDamage = (
     if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air' || enemy.aiPhase === 'g-trijump-air'
       || (enemy.type === 'giantbat' && enemy.aiPhase === 'g-glide-active')
       // 偶像の大ジャンプの空中(社長指示2026-10-20): ただの移動=着地も含めて判定なし。宙にいる体は地上の相手に触れない。
-      || (enemy.type === 'idol' && enemy.bossState === 'idol-leap')) {
+      || (enemy.type === 'idol' && enemy.bossState === 'idol-leap')
+      // research/TELEGRAPH_FIXES.md N02(社長裁定 2026-11-22「空中では当たらない」=ほかの跳びと揃える):
+      // ラフィの跳びかかりの滞空(jump-attack)と鋏の飛び掛かりの滞空(leap-air)。当たるのは着地円だけ。
+      // ★'jump-attack' はトールとも共有の州名なので**型で絞る**(トールは上の早期 return で先に抜けるが、条件は型で書く)。
+      || (enemy.type === 'rafi' && enemy.bossState === 'jump-attack')
+      || (enemy.type === 'bounty-balance' && enemy.bossState === 'leap-air')) {
       // ★カウンター憲法(v0.25.3947): 空中は「被弾しない」と宣言している=接触の攻撃判定ゼロ。
       // よって空中の接触パリィ(旧: 素のjump=どこでも/着地円・帯の中なら成立=v2601/v3050/v3052の裁定)は
       // 憲法違反として除去した(過去の裁定は事実として上書き)。ジャンプ・滑空への対処は

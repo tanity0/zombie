@@ -167,7 +167,10 @@ export const COUNTER_OPPORTUNITY_STATES: readonly string[] = [
   // 裏ボス系ACTIVE(useGameLoop)+体当たりboss州(combatTickの受け流し)
   'dash', 'thor-dash-move', 'issen-dash', 'tsuki', 'harai', 'jump-attack', 'jump-attack-air',
   // 賞金首ACTIVE(bountyTick)+体当たり
-  'bm-charge', 'bm-whip360', 'mk-spin', 'leap', 'leap-air',
+  // ※'leap-air'(鋏の飛び掛かりの滞空)は外した: research/TELEGRAPH_FIXES.md N02(社長裁定 2026-11-22「空中では当たらない」)
+  //   =滞空は接触の攻撃判定ゼロ・受け流しも立たない(当たるのは着地円だけ=爆風の瞬間・州ではない)。
+  //   'jump-attack' はトールの跳びの着地AoE(爆風)の担当として残す(ラフィの滞空の接触は N02 でゼロ)。
+  'bm-charge', 'bm-whip360', 'mk-spin', 'leap',
   // 天使の実行中(判定時置換 or 体当たり)
   'mdash-move', 'tate', 'sweep', 'downslash', 'thrust', 'ring-active', 'ring-spin',
 ];

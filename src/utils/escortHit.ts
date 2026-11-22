@@ -41,7 +41,7 @@ export const applyBlastToEscorts = (b: PumpkinBlast): number => hitEscortShape(b
 
 /**
  * この敵は、触れた味方(軍人)に「接触ダメージ」を与えるか。プレイヤーの接触(combatTick.applyContactDamage の forEach)と同じ除外を写す:
- * 死体/眠り/ダメージ0/空中の跳び/気絶中/噛みつき個体(噛みで当てる=下のbite経路)/トールの技の最中。
+ * 死体/眠り/ダメージ0/空中の跳び(ラフィ・鋏の滞空=N02 を含む)/気絶中/噛みつき個体(噛みで当てる=下のbite経路)/トールの技の最中。
  * 英雄・旗手(接触ダメージ0)・幻影(接触では削らない)・死神系(神付きはプレイヤー専用の覆いかぶさり)は軍人にも接触しない。
  */
 export const enemyDealsContactToAllies = (e: Enemy, gameTime: number): boolean => {
@@ -49,7 +49,11 @@ export const enemyDealsContactToAllies = (e: Enemy, gameTime: number): boolean =
   if (isBodyWallBoss(e.type) || isGuardianPhantom(e.type) || isReaperFamily(e.type) || isHangedman(e.type)) return false;
   if (e.aiPhase === 'jump' || e.aiPhase === 'g-jump-air' || e.aiPhase === 'g-trijump-air'
     || (e.type === 'giantbat' && e.aiPhase === 'g-glide-active')
-    || (e.type === 'idol' && e.bossState === 'idol-leap')) return false; // 偶像の大ジャンプの空中(プレイヤーへの接触と同じ扱い)
+    || (e.type === 'idol' && e.bossState === 'idol-leap') // 偶像の大ジャンプの空中(プレイヤーへの接触と同じ扱い)
+    // research/TELEGRAPH_FIXES.md N02(社長裁定 2026-11-22「空中では当たらない」): プレイヤーの接触(combatTick)と同じ型の絞り方。
+    // 'jump-attack' はトールとも共有の州名なので型で絞る(トールは下の技の最中の除外で別に落ちる)。
+    || (e.type === 'rafi' && e.bossState === 'jump-attack')
+    || (e.type === 'bounty-balance' && e.bossState === 'leap-air')) return false;
   if (e.stunUntil !== undefined && gameTime < e.stunUntil) return false;
   // トールの技の最中は本体接触を落とす(技自身の判定に委ねる)。突進の走り(thor-dash-move)だけは本体接触が生きている。
   if (e.type === 'thor' && e.bossState && e.bossState !== 'chase' && e.bossState !== 'return' && e.bossState !== 'thor-dash-move') return false;

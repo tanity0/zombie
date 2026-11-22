@@ -100,27 +100,33 @@ describe('ボス接触受け流し: トールの突進の走行中(thor-dash-mov
     expect(useGameStore.getState().player.health).toBe(hp0);
   });
 
-  // ★社長報告2026-08-26「鋏変異のジャンプ攻撃がどうしてもカウンターできない」(v0.25.3949):
-  // 賞金首の体当たり技(leap-air)も受け流しの対象。飛んでくる体に窓を合わせれば無傷+体幹削り+拘束。
-  it('★鋏の飛び掛かり滞空(leap-air)=賞金首でも受け流しが立つ(v0.25.3949)', () => {
-    const e = spawnEnemyAt('bounty-balance', ORIGIN, ORIGIN, START_GT);
-    e.bossState = 'leap-air'; // BODY_SLAM_BOSS_STATES=体を投げ出している技
-    e.bossStateUntil = START_GT + 1000;
-    useGameStore.setState(s2 => ({
-      enemies: [e], gameTime: START_GT,
-      player: {
-        ...s2.player,
-        x: e.x + e.width / 2 - s2.player.width / 2,
-        y: e.y + e.height / 2 - s2.player.height / 2,
-        health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
-        counterWindowEnd: Date.now() + 5000,
-      },
-    }));
-    applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
-    const boss = useGameStore.getState().enemies[0];
-    expect(boss.rootUntil).toBe(START_GT + 900);
-    expect(useGameStore.getState().player.invulnerable).toBe(true);
-  });
+  // ★research/TELEGRAPH_FIXES.md N02(社長裁定 2026-11-22「空中では当たらない」): 鋏の飛び掛かりの滞空(leap-air)と
+  // ラフィの跳びかかりの滞空(jump-attack)は、ほかの跳び(jump/g-jump-air/idol-leap)と同じ空中族=接触の攻撃判定ゼロ。
+  // (旧 v0.25.3949「leap-air も受け流しが立つ」は、この裁定で上書き=当たるのは着地円だけ・カウンターも着地円の中)。
+  for (const [type, bs] of [['bounty-balance', 'leap-air'], ['rafi', 'jump-attack']] as const) {
+    for (const counter of [false, true]) {
+      it(`★N02: ${type} の滞空(${bs})は接触で当たらない・受け流しも立たない(カウンター窓${counter ? 'あり' : 'なし'})`, () => {
+        const e = spawnEnemyAt(type, ORIGIN, ORIGIN, START_GT);
+        e.bossState = bs;
+        e.bossStateUntil = START_GT + 1000;
+        useGameStore.setState(s2 => ({
+          enemies: [e], gameTime: START_GT,
+          player: {
+            ...s2.player,
+            x: e.x + e.width / 2 - s2.player.width / 2,
+            y: e.y + e.height / 2 - s2.player.height / 2,
+            health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
+            counterWindowEnd: counter ? Date.now() + 5000 : 0,
+          },
+        }));
+        applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
+        const boss = useGameStore.getState().enemies[0];
+        expect(boss.rootUntil).toBeUndefined();
+        expect(useGameStore.getState().player.health).toBe(9999);
+        expect(useGameStore.getState().player.invulnerable).toBe(false);
+      });
+    }
+  }
 
   it('★賞金首の突進(bm-charge)は受け流しに先取りさせない=bountyTick側のフル報酬カウンターへ委ねる', () => {
     const e = spawnEnemyAt('bounty-melee', ORIGIN, ORIGIN, START_GT);
