@@ -26,6 +26,29 @@ describe('投影の段階2: 後掛けの役の表(番人)', () => {
     expect(hits.length).toBe(31);
   });
 
+  it('別名(const vc = view.container の後の vc.addChild 等)や体の親(body.parent / view.sprite.parent)へ足す所も数える', () => {
+    const lines = code(src);
+    const alias: string[] = [];
+    lines.forEach((l, i) => {
+      const m = /const (\w+) = (view|this\.playerView)\.container;/.exec(l);
+      if (!m) return;
+      const re = new RegExp(`\\b${m[1]}\\.addChild(At)?\\(`);
+      for (let j = i + 1; j < lines.length; j++) {
+        if (/^ {2}(private |)\w+\(|^ {2}\}$/.test(lines[j])) break;
+        if (re.test(lines[j])) alias.push(lines[j].trim());
+      }
+    });
+    // 内訳: 主人公の背負い血の縁 1(c.addChildAt・上の数にも入る)/ レア召喚の竜巻 1・棺 1 / 英雄の剣 2 / 英雄の旗 1 = 6
+    expect(alias.length).toBe(6);
+    // 体の親へ足す所: 格闘の幻影の構えの光 1・格闘の構えの光 1・格闘の残像 1・英雄の昇天の白い体 1 = 4
+    expect(lines.filter((l) => /\b(body|view\.sprite)\.parent\.addChild(At)?\(/.test(l)).length).toBe(4);
+    // それぞれ名札を付けている
+    for (const key of ['summonTornado', 'attachedArt', 'brawlerAura', 'brawlerGhost']) expect(src.includes(`'${key}')`), key).toBe(true);
+    expect(src).toContain("this.projTag(c, 'attachedArt'); // ?proj=1 の役の表: 英雄の剣");
+    expect(src).toContain("this.projTag(cf, 'attachedArt')");
+    expect(src).toContain("this.projTag(tt, 'summonTornado')");
+  });
+
   it('作る所で名札を付ける物(入れ物の子で ActorView のフィールドに無い物)はすべて projTag している', () => {
     for (const key of ['phillBack', 'featherC', 'heroFog', 'heroFog2', 'heroMotes', 'heroTrail', 'alchemyRocks', 'rim', 'avatarPart', 'brawlerAura', 'brawlerGhost']) {
       expect(src.includes(`'${key}')`), key).toBe(true);

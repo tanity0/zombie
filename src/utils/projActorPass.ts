@@ -35,9 +35,12 @@ export const PROJ_ACTOR_ROLES = {
   playerKnife: 'body', playerKnifeSlash: 'body', playerKnifeTrail: 'body', playerMeleeWpn: 'body', playerFirstAidBag: 'body',
   // 入れ物の外に置く体の絵(projAttach で持ち主に登録する)
   light: 'body', phillFront: 'body', rescueBody: 'body', rescueSwing: 'body',
-  // 敵の体に付く effectLayer の絵(ボスの銃・銃口の閃光・ランタン・賞金首の武器・鞭のロープ・鋏・剣先の光・骸骨の爪・バット・棺・旗の先の光・
-  // 天使の目・ホロ・英雄の旗/剣・英雄の昇天の白い体・スリィエルの環)=体として持ち主へ登録(projAttach)。
+  // 体に付く別スプライトの絵=体。敵: 銃口の閃光・ジブリルのランタン・賞金首の武器・鞭のロープ・鋏・剣先の光・旗の先の光・天使の目・ホロ・
+  // 英雄の旗と剣・英雄の昇天の白い体・スリィエルの環・幻影の目/ナイフの振り/銃口の閃光・刀の切れ目。味方: 守護霊のナイフ・武器・装飾パーツ、
+  // レア召喚の頭上の棺。入れ物の外の物は projAttach で持ち主へ登録し、入れ物の子は projTag で名札を付ける。
   attachedArt: 'body',
+  // レア召喚の竜巻(吸い込む距離に合わせた範囲の絵)=演出(段階3/4まで動かさない)。
+  summonTornado: 'fx',
   // 名前の札・叫喚の強化の印=頭上UI(平行移動だけ)。
   nameLabel: 'hud',
   // 影
@@ -82,23 +85,31 @@ export const projSimilarInto = (xf: ProjXf, fx: number, fy: number, px: number, 
 };
 
 /** 相似の逆(ボスの裏回りのピクセルの確認・裏ボスの影の付け根の world 戻し・§3-5j): 旧い座標の点 = F + (点 − P)/k。 */
-export const projSimilarInverse = (
-  fx: number, fy: number, px: number, py: number, k: number, x: number, y: number,
+export const projSimilarInverseInto = (
+  fx: number, fy: number, px: number, py: number, k: number, x: number, y: number, out: { x: number; y: number },
 ): { x: number; y: number } => {
   const kk = Math.abs(k) > 1e-9 ? k : 1e-9;
-  return { x: fx + (x - px) / kk, y: fy + (y - py) / kk };
+  out.x = fx + (x - px) / kk; out.y = fy + (y - py) / kk;
+  return out;
 };
+export const projSimilarInverse = (
+  fx: number, fy: number, px: number, py: number, k: number, x: number, y: number,
+): { x: number; y: number } => projSimilarInverseInto(fx, fy, px, py, k, x, y, { x: 0, y: 0 });
 
 /**
  * 頭上の読ませる物の平行移動(方針②・§3-5c): 基準点 H を P + (s/b)·(H − F) へ移す量(大きさは変えない)。
  * b = その物のずらしに旧い倍率が掛かっていたらその倍率、掛かっていなければ 1。
  */
-export const projHudDelta = (
-  fx: number, fy: number, px: number, py: number, s: number, b: number, hx: number, hy: number,
+export const projHudDeltaInto = (
+  fx: number, fy: number, px: number, py: number, s: number, b: number, hx: number, hy: number, out: { dx: number; dy: number },
 ): { dx: number; dy: number } => {
   const r = s / (Math.abs(b) > 1e-9 ? b : 1e-9);
-  return { dx: px + r * (hx - fx) - hx, dy: py + r * (hy - fy) - hy };
+  out.dx = px + r * (hx - fx) - hx; out.dy = py + r * (hy - fy) - hy;
+  return out;
 };
+export const projHudDelta = (
+  fx: number, fy: number, px: number, py: number, s: number, b: number, hx: number, hy: number,
+): { dx: number; dy: number } => projHudDeltaInto(fx, fy, px, py, s, b, hx, hy, { dx: 0, dy: 0 });
 
 /** 後掛けの k(§3-5c): 投影の s を、描く関数が掛けていた旧い倍率 d で割り戻す。 */
 export const projActorK = (s: number, d: number): number => s / (Math.abs(d) > 1e-9 ? d : 1e-9);
@@ -118,10 +129,15 @@ export const projPhillK = (s: number, d: number, mode: 'A' | 'B' = PROJ_PHILL_SI
 export interface ProjFadeTypeFlags { phill: boolean; hangedman: boolean; hiddenBoss: boolean }
 
 /** その型に掛ける項(true=掛ける)。フィル=両方免除/使者=地平線だけ免除/裏ボス=手前だけ免除/それ以外=両方掛ける。 */
-export const projFadeTerms = (t: ProjFadeTypeFlags): { horizon: boolean; fore: boolean } => ({
-  horizon: !(t.phill || t.hangedman),
-  fore: !(t.phill || t.hiddenBoss),
-});
+export const projFadeTermsInto = (
+  phill: boolean, hangedman: boolean, hiddenBoss: boolean, out: { horizon: boolean; fore: boolean },
+): { horizon: boolean; fore: boolean } => {
+  out.horizon = !(phill || hangedman);
+  out.fore = !(phill || hiddenBoss);
+  return out;
+};
+export const projFadeTerms = (t: ProjFadeTypeFlags): { horizon: boolean; fore: boolean } =>
+  projFadeTermsInto(t.phill, t.hangedman, t.hiddenBoss, { horizon: true, fore: true });
 
 /**
  * 動く物の位置の法則のフェード(投影後のYで1回だけ・§3-5i の1): domain(定義域と描く距離のフェード=全員)×
