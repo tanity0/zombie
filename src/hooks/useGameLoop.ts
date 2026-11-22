@@ -37,6 +37,7 @@ import {
   BRAWLER_SFX_DEATH,
   subWeaponBlockedByKatana,
   katanaRange,
+  katanaReach,
   KATANA_SLASH_INTERVAL_MS,
   KATANA_DASH_DISTANCE,
   KATANA_DASH_HIT_HALF_WIDTH,
@@ -10624,6 +10625,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           inputState.down ||
           inputState.left ||
           inputState.right;
+        // ★ハンティングの一連の動き(鞭・刀)が終わっていたら溜まりを使い切る(utils/huntingSequence)。溜めの更新の前に。
+        useGameStore.getState().tickHuntingSequence();
         const huntingPlayer = useGameStore.getState().player;
         const huntingLevel = Math.max(0, Math.min(3, huntingPlayer.subWeaponLevels['striker-hunting'] ?? 0));
         if (
@@ -11183,18 +11186,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (katanaActive && !attackLocked && !pvpLocked) { // v0.25.2589: オート斬撃も死亡/アテンション中は止める。★§9(検収監査 重大①): 紫/daze中も止める
           if (gameTime < lastKatanaSlashRef.current) lastKatanaSlashRef.current = 0; // new run
           // 覚醒中は銃の連射と同じ倍率で間隔が縮む(社長指示「覚醒時、刀のオート斬撃早くして」)。
-          if (gameTime - lastKatanaSlashRef.current >= katanaSlashIntervalMs(KATANA_SLASH_INTERVAL_MS, awakenFireRateMult(useGameStore.getState().player))) {
+          const katanaSlashMs = katanaSlashIntervalMs(KATANA_SLASH_INTERVAL_MS, awakenFireRateMult(useGameStore.getState().player));
+          if (gameTime - lastKatanaSlashRef.current >= katanaSlashMs) {
             const kp = useGameStore.getState().player;
             // 標的選択は src/utils/katanaAuto.ts の純関数へ抽出した(v0.25.2518・優先順位/射程の扱いは不変)。
             // 距離は enemyMeleeDist(裏ボスは帯AABBの最近点)。巨体ボスを中心基準にすると帯の端で
             // 「近づいても発動しない」狭い当たりになる(社長報告)。最近点なら表示枠=攻撃判定が一致する。
             // 守護霊のオート斬撃も**同じ関数**を通る(裁定2=共有方式)。
             const targetId = pickKatanaSlashTarget(
-              kp.x + kp.width / 2, kp.y + kp.height / 2, katanaRange(kp),
+              kp.x + kp.width / 2, kp.y + kp.height / 2, katanaReach(kp), // ハンティングが溜まっていれば届く距離が伸びる
               useGameStore.getState().enemies, gameTime, enemyMeleeDist,
             );
             if (targetId) {
               lastKatanaSlashRef.current = gameTime;
+              // ハンティング: 溜まった状態のオート斬撃は一連(オート斬撃→一閃→燕返し)の始まり。次のオート斬撃までに一閃が出なければ使い切る。
+              useGameStore.getState().noteKatanaAutoSlashHunting(gameTime + katanaSlashMs); // 次のオート斬撃が出る時刻(同じ時計)
               // 近接フィニッシュは一閃のみ: オート斬撃はallowFinisher=false。
               const result = performKatanaStrike([targetId], 1, false, undefined, warlordAutoSlashMult(kp)); // 侍の甲冑(青・赤)は ×1.5
               if (result.finish) playSfx('melee-finish');

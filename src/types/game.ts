@@ -455,6 +455,13 @@ export interface Player extends DashLocomotionState {
   phillSnapEnemyId: string | null;
   huntingChargeStartedAt: number;
   huntingCharged: boolean;
+  // ★ハンティングの溜まりを使っている一連の動き(社長裁定2026-11-22「全ての武器で一連の動き中は伸ばす」・utils/huntingSequence)。
+  // 鞭=1撃目→引き寄せ→叩きつけ / 刀=オート斬撃→一閃→燕返し。終わったら溜まりを使い切る(格闘は brawler.huntingCombo が持つ)。
+  huntingSequence?: 'whip' | 'katana';
+  /** 刀: オート斬撃だけで始めた一連の締め切り(gameTime)。この時刻までに一閃が出なければ終わる。 */
+  huntingSeqUntil?: number;
+  /** 刀: この一連で一閃をもう出したか(2回目の一閃は新しい一連=溜まりは前の一連で使い切る)。 */
+  huntingSeqIssen?: boolean;
   // Whip (鞭) sub-weapon charge. Each whip hit increments whipHitCount; at the
   // level threshold whipCharged flips true and the next swing fires a hurricane.
   whipHitCount?: number;

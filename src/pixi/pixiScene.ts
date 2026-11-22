@@ -110,7 +110,7 @@ import {
   SCREAMER_BUFF_MS,
   PLAYER_KNOCKBACK_MS,
   retaliationReadyTarget, // ★被弾反撃の「いま出せるか」(入力と同じ1本・HIT_RETALIATION.md §7)
-  isBrawlerGuarding, brawlerGuardBodyRect, isBrawlerMode, isWhipMode, // ★サブウェポン「格闘」(research/BRAWLER.md)
+  isBrawlerGuarding, brawlerGuardBodyRect, isBrawlerMode, isWhipMode, katanaReach, whipReach, // ★サブウェポン「格闘」(research/BRAWLER.md)
   type SkadiBlade, type SkadiBladeVisual, // 氷刃の列を共用する飛ぶ物(亡霊の呪いの墓石=visual:'grave'・WRAITH_MUTANT.md §11)
 } from '../store/gameStore';
 import { kenkiLevelLook } from '../utils/kenkiLevel'; // 孫悟空のレベルの色(research/BRAWLER.md §36-1)
@@ -45745,11 +45745,13 @@ export class PixiScene {
       }
     } else if (player.huntingCharged) {
       const pulse = 0.72 + 0.28 * Math.sin(now / 260);
-      g.circle(cx, cy, r)
+      // ハンティングの溜まりの輪は、今持っている近接武器の届く距離で出す(刀=刀の間合い・鞭=鞭の長さ・ナイフ/格闘=近接の範囲)。
+      const hr = katana ? katanaReach(player) : isWhipMode(player) ? whipReach(player) : r;
+      g.circle(cx, cy, hr)
         .stroke({ width: 7, color: 0x60a5fa, alpha: 0.055 + 0.035 * pulse });
-      g.circle(cx, cy, r)
+      g.circle(cx, cy, hr)
         .stroke({ width: 1.35, color: 0xbfdbfe, alpha: 0.34 + 0.08 * pulse });
-      g.circle(cx, cy, r - 3)
+      g.circle(cx, cy, hr - 3)
         .stroke({ width: 0.8, color: 0xffffff, alpha: 0.12 + 0.04 * pulse });
     } else if (!katana && now < player.counterCooldownEnd) {
       g.circle(cx, cy, r).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });

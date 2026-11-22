@@ -316,9 +316,10 @@ import {
 import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
 import { planHomingVolley, splitDueHomingShots, homingLiftAllowed, type HomingPendingShot } from '../utils/homingVolley';
 import { isFlickFollowupOpen } from '../utils/flickFollowup';
+import { huntingSequenceAlive } from '../utils/huntingSequence';
 import { whipRopeTotalMs } from '../utils/whipSwingMotion';
 import {
-  tsubameAccepts, tsubamePath, tsubameDashMs, isTsubameCrouching, katanaStrikeTravel, nextKatanaCuts, triggersSatsujin, satsujinAngles, type TsubameWindow,
+  tsubameAccepts, tsubamePath, isTsubameCrouching, katanaStrikeTravel, nextKatanaCuts, triggersSatsujin, satsujinAngles, type TsubameWindow,
   SATSUJIN_HITS, SATSUJIN_STRIKE_MS, SATSUJIN_FADE_OUT_MS, SATSUJIN_HALF_LEN_PX, SATSUJIN_FINAL_HITSTOP_MS,
 } from '../utils/katanaTsubame';
 import type { KatanaSlashMove } from '../utils/katanaSlashSheet';
@@ -1964,14 +1965,23 @@ export const ZOMBIE_LUNGE_SPEED_MULT = 2.8;
 export const ZOMBIE_PAUSE_MS = 1000;        // 1秒停止
 export const ZOMBIE_RUSH_MS = 2000;         // 2秒間突進
 export const ZOMBIE_WOBBLE = 0.38;          // フラフラ(横揺れ)の強さ
+/**
+ * ハンティング(striker-hunting)が溜まっている時に、近接の届く距離へ足す量(px)。溜まっていなければ 0。
+ * ★どの近接武器にも同じ量を足す(社長指示2026-11-22「格闘や鞭、刀など、どの近接武器にも適用される様にしたい」):
+ * ナイフ=huntingMeleeRadius / 刀=katanaReach / 鞭=whipReach / 格闘=huntingMeleeRadius(+技は brawlerReachExtra)。
+ */
+export const huntingReachBonus = (player: Pick<Player, 'huntingCharged' | 'subWeaponLevels'>): number => {
+  if (!player.huntingCharged) return 0;
+  const level = Math.max(1, Math.min(3, player.subWeaponLevels['striker-hunting'] ?? 1));
+  return HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[level];
+};
 export const huntingMeleeRadius = (player: Player): number => {
   // 社長指示v0.25.3300 ナイフマスター覚醒(Lv3): 近接範囲が常にハンティングと同じ間合いになる。
   // その場合ハンティング(溜め)はさらにそこから相対的に伸びる(ボーナスがもう1段乗る)。
   // 参照Lv=ハンティング所持ならそのLv、未所持はLv1相当(subWeaponLevels未設定→1)。
   const level = Math.max(1, Math.min(3, player.subWeaponLevels['striker-hunting'] ?? 1));
   const kmBase = skillLevel(player, 'knife-master') >= 3 ? HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[level] : 0;
-  if (!player.huntingCharged) return MELEE_RADIUS + kmBase;
-  return MELEE_RADIUS + kmBase + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[level];
+  return MELEE_RADIUS + kmBase + huntingReachBonus(player);
 };
 
 // 調査用: 一時的に爆弾(ボム)ピックアップを出さない(社長指示・後で true に戻す)。爆弾は画面内のボス以外を
@@ -2409,9 +2419,12 @@ export const katanaLevel = (player: Player): number =>
   Math.max(1, Math.min(3, player.subWeaponLevels['katana'] ?? (hasMurasame(player) ? 3 : 1)));
 export const katanaRange = (player: Player): number =>
   KATANA_RANGE_BY_LEVEL[katanaLevel(player)];
-// 刀装備中に併用を許可するサブウェポン(許可制)。現状は全サブウェポン停止。
+/** 刀の届く距離(オート斬撃の狙い・振りで物を壊す円)。ハンティングが溜まっていれば同じ量だけ伸びる(huntingReachBonus)。 */
+export const katanaReach = (player: Player): number => katanaRange(player) + huntingReachBonus(player);
+// 刀装備中に併用を許可するサブウェポン(許可制)。
+// ★ハンティングは刀でも溜まる(社長指示2026-11-22「どの近接武器にも適用」)。溜まりは刀の届く距離を伸ばす(katanaReach)。
 // TODO(刀): 併用を解禁する時はこの配列にキーを追加する。
-export const KATANA_ALLOWED_SUBWEAPONS: SubWeaponKey[] = [];
+export const KATANA_ALLOWED_SUBWEAPONS: SubWeaponKey[] = ['striker-hunting'];
 // サブウェポンの実行時ブロック。排他サブ(刀/村雨, ダンスフロア=shijin)を装備していると、その仲間以外の
 // サブウェポンは停止する(銃は別系統なので影響なし)。ダンスフロアは刀と同じく他サブと共存不可。
 // ★サブウェポン「格闘」(research/BRAWLER.md §1): 刀と同じく銃と他のサブを止める近接専用の型。
@@ -2485,6 +2498,22 @@ export const hasWhip = (player: Player): boolean => player.subWeapons.includes('
 export const isWhipMode = (player: Player): boolean => hasWhip(player) && !isMeleeOnlyMode(player); // 格闘中も鞭は動かない(research/BRAWLER.md §7-2)
 export const whipLevel = (player: Player): number =>
   Math.max(1, Math.min(3, player.subWeaponLevels['whip'] ?? 1));
+/** 鞭の届く長さ(振りの線の長さ)。ハンティングが溜まっていれば同じ量だけ伸びる(huntingReachBonus)。幅(WHIP_HIT_HALF_WIDTH)は変えない。 */
+export const whipReach = (player: Player): number => WHIP_LENGTH_BY_LEVEL[whipLevel(player)] + huntingReachBonus(player);
+/**
+ * 次の鞭の振りの長さ。前の一連(1撃目→引き寄せ→叩きつけ)がまだ溜まりを使っている間に振り直したら、それは新しい振り=
+ * 前の一連で溜まりを使い切る扱いなので伸ばさない(utils/huntingSequence)。
+ */
+export const whipSwingReach = (player: Player): number =>
+  player.huntingSequence === 'whip' ? WHIP_LENGTH_BY_LEVEL[whipLevel(player)] : whipReach(player);
+/** ハンティングの溜まりを使い切る(一連の動きの記録も消す)。 */
+export const HUNTING_CONSUME_PATCH = {
+  huntingCharged: false, huntingChargeStartedAt: 0,
+  huntingSequence: undefined, huntingSeqUntil: undefined, huntingSeqIssen: undefined,
+} as const satisfies Partial<Player>;
+/** 一閃(燕返しを含む)の走る時間。一閃と同じ速さ(KATANA_DASH_SPEED)のまま、距離のぶんだけ走る。距離=KATANA_DASH_DISTANCE なら KATANA_DASH_MS。 */
+export const katanaDashMsFor = (dist: number): number =>
+  Math.max(1, Math.round(KATANA_DASH_MS * Math.max(0, dist) / KATANA_DASH_DISTANCE));
 export const whipChargeThreshold = (player: Player): number =>
   WHIP_CHARGE_HITS_BY_LEVEL[whipLevel(player)];
 
@@ -10812,6 +10841,10 @@ interface GameState {
   selectUpgrade: (upgrade: UpgradeOption) => void;
   setSubWeaponCooldown: (key: SubWeaponKey, readyAt: number) => void;
   updateHuntingCharge: (startedAt: number, charged: boolean) => void;
+  /** ★ハンティングの一連の動き(utils/huntingSequence)が終わっていたら溜まりを使い切る。毎フレーム(溜めの更新の前)。 */
+  tickHuntingSequence: () => void;
+  /** ★刀のオート斬撃が溜まった状態で出た。一連が無ければ始める(次のオート斬撃の時刻 untilGameTime までに一閃が出なければ終わる)。 */
+  noteKatanaAutoSlashHunting: (untilGameTime: number) => void;
   buyShopItem: (key: ShopItemKey, ammoType?: AmmoType) => boolean;
   buySkillCardFromShop: (key: SubWeaponKey) => boolean;
   // SKILL_BUILD_REDESIGN.md §13-1+§16-7+§18-1: 商人の装備区画(指名買いカタログ)。defIdは
@@ -13528,7 +13561,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         id: `fx-whipsnare-${now}`,
         fromX: p.x + p.width / 2, fromY: p.y + p.height / 2,
         angle: Math.atan2(ld.y / lmag, ld.x / lmag),
-        len: WHIP_LENGTH_BY_LEVEL[whipLevel(p)],
+        len: whipSwingReach(p),
         createdAt: now,
         windupMs: meleeWindupMs(p),
         duration: meleeWindupMs(p) + WHIP_DRAW_MS,
@@ -13538,7 +13571,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         kind: 'whiprope',
         id: `fx-whiprope-${now}`,
         angle: Math.atan2(ld.y / lmag, ld.x / lmag),
-        len: WHIP_LENGTH_BY_LEVEL[whipLevel(p)],
+        len: whipSwingReach(p),
         createdAt: now,
         windupMs: meleeWindupMs(p),
         duration: whipRopeTotalMs(meleeWindupMs(p)),
@@ -13781,7 +13814,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // §8裁定済み#16: swingAt=「指を離した瞬間」(前隙が有れば実測でそれだけ早い・無ければnowと同じ)。
       get().noteMeleeSwingPressedAt(swingAt);
       // 刀でも松明・卵を破壊できる(刀の間合いの円)。
-      get().breakPropsAlong(pcx, pcy, 1, 0, 0, katanaRange(player), swingBaseDamage * 2.5);
+      get().breakPropsAlong(pcx, pcy, 1, 0, 0, katanaReach(player), swingBaseDamage * 2.5);
       return { swung: false, hit: false, finish: false, killed: 0, katanaSwing: true };
     }
 
@@ -13799,12 +13832,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (res.hits > 0) set({ whipHitFxAt: Date.now() }); // 鞭命中音SEのトリガ
         return { swung: true, hit: res.hit, finish: res.finish, killed: res.killed };
       }
-      const lvl = whipLevel(player);
       const ld = player.lastDirection ?? { x: 1, y: 0 };
       const lmag = Math.max(0.001, Math.hypot(ld.x, ld.y));
       const ux = ld.x / lmag;
       const uy = ld.y / lmag;
-      const reach = WHIP_LENGTH_BY_LEVEL[lvl];
+      const reach = whipSwingReach(player); // ハンティングが溜まっていれば長さが伸びる(1撃目→引き寄せ→叩きつけの一連で使う・utils/huntingSequence)
+      // 前の一連がまだ溜まりを使っている間に振り直した=新しい振り。前の一連で使い切る(この振りは伸ばさない)。
+      const huntUse = player.huntingCharged && player.huntingSequence !== 'whip';
       const tipX = pcx + ux * reach; // 鞭先端 = ハリケーンの根元
       const tipY = pcy + uy * reach;
       // カウンター窓+クールダウンを通常どおり開く(反射はループ側)。
@@ -13816,6 +13850,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           counterWindowEnd: swingAt + counterAcceptMsOf(state.player),
           // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
           counterCooldownEnd: swingAt + (counterWindowMs + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS) * meleeCooldownMult(player),
+          // 前の一連の溜まりはここで使い切る(この振りは新しい振り)。
+          ...(state.player.huntingSequence === 'whip' ? HUNTING_CONSUME_PATCH : {}),
         }
       }));
       get().commitMeleeSwing(); // ★近接スイング確定の打刻(5経路の1つ=鞭・§1-3)
@@ -13871,7 +13907,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // チャージ満タンなら、この一振りでハリケーン発動(チャージ消費)。自動発動しない。
       if (player.whipCharged) {
         get().performHurricane(tipX, tipY);
-        set(state => ({ player: { ...state.player, whipHitCount: 0, whipCharged: false } }));
+        // ハリケーンには追加攻撃が無い=この振りで一連が終わる。溜まりを使っていれば使い切る。
+        set(state => ({ player: { ...state.player, whipHitCount: 0, whipCharged: false, ...(huntUse ? HUNTING_CONSUME_PATCH : {}) } }));
         return { swung: true, hit: true, finish: false, killed: 0 };
       }
       // 通常の鞭スイープ: 進行方向の細長いカプセルに掛かる敵を選択(刀ダッシュと同じ幾何)。
@@ -13892,6 +13929,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (res.hits > 0) set({ whipHitFxAt: Date.now() }); // 鞭命中音SEのトリガ
       // ★鞭の追加攻撃の受付(research/WHIP_FOLLOWUP.md §1): 1体以上に当たった瞬間から(実時間)。向き=この振りの向き。空振りは開かない(前の受付も閉じる)。
       set({ whipFollowup: res.hits > 0 ? { hitAt: Date.now(), dirX: ux, dirY: uy, hitIds: res.hitIds ?? [], used: false, stage: 'hit' } : null });
+      // ハンティング: 当たれば追加攻撃の受付が終わるまで溜まりを残す(一連の動き)。空振りなら追加攻撃が無い=ここで使い切る。
+      if (huntUse) {
+        set(state => ({ player: { ...state.player, ...(res.hits > 0 ? { huntingSequence: 'whip' as const } : HUNTING_CONSUME_PATCH) } }));
+      }
       // チャージ加算(空振りは0)。閾値到達でハリケーン待機。
       if (res.hits > 0) {
         const threshold = whipChargeThreshold(player);
@@ -16804,8 +16845,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 村雨はクールダウン無し(硬直のみ)。刀はさらにクールダウン中は発動しない。
     const mura = hasMurasame(player);
     if (!tb && !mura && now < player.katanaDashCooldownEnd) return false;
-    // 燕返しは距離が「今の位置→元の位置」(一閃の最大距離まで)=同じ速さで、その距離のぶんだけ走る。一閃は今どおり。
-    const dashMs = tb ? tsubameDashMs(tb.distance, KATANA_DASH_DISTANCE, KATANA_DASH_MS) : KATANA_DASH_MS;
+    // ★ハンティング(utils/huntingSequence): 溜まっていれば一閃の走る距離が伸びる(同じ速さで長く走る)。本人だけ。
+    // この一連でもう一閃を出していたら、これは新しい一閃=前の一連で使い切る(伸ばさない)。
+    if (ghostId === undefined && !tb && player.huntingSequence === 'katana' && player.huntingSeqIssen) {
+      set(state => ({ player: { ...state.player, ...HUNTING_CONSUME_PATCH } }));
+    }
+    const huntIssen = ghostId === undefined && get().player.huntingCharged;
+    const issenDist = KATANA_DASH_DISTANCE + (huntIssen && !tb ? huntingReachBonus(get().player) : 0);
+    // 燕返しは距離が「今の位置→元の位置」(一閃の最大距離まで)=同じ速さで、その距離のぶんだけ走る。一閃も同じ速さで issenDist だけ走る。
+    // (katanaDashMsFor は伸びていない距離では従来の tsubameDashMs / KATANA_DASH_MS と同じ値。)
+    const dashMs = katanaDashMsFor(tb ? tb.distance : issenDist);
     const len = Math.hypot(dirX, dirY);
     if (len < 0.001) return false;
     const ux = dirX / len;
@@ -16854,7 +16903,9 @@ export const useGameStore = create<GameState>((set, get) => ({
               : now - Math.max(0, INVULN_MS - dashMs),
             ...abilityInvulnPatch(state.player, now, dashMs), // 技の無敵=sourceId 付きの攻撃(噛みつき・掴み)も受けない
           }),
-          lastDirection: { x: ux, y: uy }
+          lastDirection: { x: ux, y: uy },
+          // ハンティング: 溜まった状態の一閃は一連(オート斬撃→一閃→燕返し)に入る。燕返しの受付が終わるまで溜まりを残す。
+          ...(huntIssen && !tb ? { huntingSequence: 'katana' as const, huntingSeqIssen: true, huntingSeqUntil: undefined } : {}),
         }
       }));
       // ★近接スイング確定の打刻(5経路の1つ=刀/村雨のスワイプ一閃・§1-3)。
@@ -16885,8 +16936,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       id: `fx-katana-dash-${now}`,
       fromX: pcx,
       fromY: pcy,
-      toX: pcx + ux * (tb ? tb.distance : KATANA_DASH_DISTANCE),
-      toY: pcy + uy * (tb ? tb.distance : KATANA_DASH_DISTANCE),
+      toX: pcx + ux * (tb ? tb.distance : issenDist),
+      toY: pcy + uy * (tb ? tb.distance : issenDist),
       color: tb ? 'rgba(255,255,255,0.98)' : 'rgba(196,225,255,0.85)',
       createdAt: now,
       duration: 260
@@ -17006,7 +17057,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (st.satsujin) return false;
     const p = st.player;
     if (!isKatanaMode(p) || isPvpIncapacitated(p.pvpPosture, st.gameTime)) return false;
-    const path = tsubamePath({ x: p.x + p.width / 2, y: p.y + p.height / 2 }, { x: w.originX, y: w.originY }, KATANA_DASH_DISTANCE);
+    // 燕返しは一閃の通り道を戻る=ハンティングで伸びた一閃なら、伸びた距離まで戻る(溜まりは一連の間残っている)。
+    const path = tsubamePath({ x: p.x + p.width / 2, y: p.y + p.height / 2 }, { x: w.originX, y: w.originY }, KATANA_DASH_DISTANCE + huntingReachBonus(p));
     if (!path) return false;
     set({ tsubameWindow: { ...w, used: true } }); // 1回の一閃に1回だけ
     if (!get().triggerKatanaDash(path.ux, path.uy, undefined, { distance: path.dist })) return false;
@@ -18649,6 +18701,23 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  tickHuntingSequence: () => {
+    const st = get();
+    const p = st.player;
+    if (!p.huntingSequence) return;
+    const now = Date.now();
+    const alive = p.huntingCharged && huntingSequenceAlive(p.huntingSequence, {
+      gameTime: st.gameTime, now, seqUntil: p.huntingSeqUntil, katanaRecoveryUntil: p.katanaRecoveryUntil,
+      tsubameOpen: isFlickFollowupOpen(st.tsubameWindow, now),
+      whipFollowupActive: whipFollowupPhase(st.whipFollowup, now) !== null || isWhipFollowupLocked(st.whipFollowup, now),
+    });
+    if (!alive) set(state => ({ player: { ...state.player, ...HUNTING_CONSUME_PATCH } }));
+  },
+  noteKatanaAutoSlashHunting: (untilGameTime) => {
+    const p = get().player;
+    if (!p.huntingCharged || p.huntingSequence === 'katana') return;
+    set(state => ({ player: { ...state.player, huntingSequence: 'katana', huntingSeqUntil: untilGameTime, huntingSeqIssen: false } }));
+  },
   updateHuntingCharge: (startedAt, charged) => {
     set(state => {
       if (
@@ -29017,6 +29086,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,
           huntingCharged: false,
+          huntingSequence: undefined, huntingSeqUntil: undefined, huntingSeqIssen: undefined,
           // 刀の一閃/ワイヤーの状態(共通型)を全ゼロへ。値は従来と同一。
           ...emptyDashState(),
           shijinSlideUntil: 0,
