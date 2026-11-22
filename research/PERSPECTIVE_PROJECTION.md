@@ -321,7 +321,8 @@
 | 建物の入口の地面の帯 | drawPoiThreshold(病院・武器庫・交番の入口に横に引く光の線) | **形**(横の線=両端を投影。線の太さは s) | 1 |
 | 研究所の什器 | syncLabProps・tickLabObstacleCrumble | 点(研究所テーマは段階1の対象外=§1-6) | 8 |
 | 研究所の壁 | syncLabWalls・syncLab(?labpersp の labProjectFootY) | **独自の写像**(LAB_WALL_DEPTH・labProjectFootY) | 8(確認だけ=方針④) |
-| 墓・錬金の岩 | syncWraithGrowths・syncAlchemyRocks(alchemyRocks.ts) | 点 | 1 |
+| 墓 | syncWraithGrowths | 点 | 1 |
+| 錬金の岩 | syncAlchemyRocks(alchemyRocks.ts)=敵の体に付く絵(敵の入れ物の子) | 点 | 2(敵と一緒) |
 | ステージの枠(横長の左右の枠) | syncStageFrames(stageFrameLayer.ts) | **画面固定**(対象外) | — |
 | 置き物の足元の小さな影・映り込み | syncShadowsV9(props/baseSites の足元の楕円)・syncGroundReflections・objShadeOverlay | 点(小さな楕円の影は物と同じ倍率で潰すだけ=方針⑥) | 1 |
 | 置き物の伸びる影 | `PerspectiveMesh` の台形の影(絵の高さの0.85倍まで地面に伸びる) | **形**(4隅を投影) | 1 |
@@ -413,7 +414,7 @@
 **通す物**:
 - **盤面**: 地面の帯。投影の関数(§1-1)から帯の値を標本で取り、模様を絶対値で出す(§1-1a・§1-1b)。`?proj=1` で見た目が変わる点は §1-1c。
 - **動かない置き物(点で置く)**: 木・街/雪/ステージ5の置物・花・松明(炎を含む)・壊せる置き物・城・POIの建物の絵
-  (病院/武器庫/交番/祠/隠しPOI)・墓・錬金の岩。
+  (病院/武器庫/交番/祠/隠しPOI)・墓。(錬金の岩は敵の体に付く絵なので段階2で敵と一緒に通す・v0.25.5735 の監査で判明)
 - **松明に付いている光3枚**(`light`・`lightBokeh`・`reflection`): 台座の Container とは別に groundLayer へ置いているので、台座を投影しても付いて来ない。
   **台座と同じ点として投影して置く**(台座の足元を投影し、炎の高さ・映り込みのずれ `3*d` 等のオフセットは s 倍して足す。大きさも s)。
   松明の光が落とす**床の光だまり**(`torchPoolReqs`)はこれとは別物で、床の光だまり全般と一緒に段階4(下の「入れない物」)。
