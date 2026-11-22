@@ -98,3 +98,60 @@ export const OBJ_SHADE_FOOT_SPREAD = 0.25;
 export const OBJ_SHADE_SCREEN_MARGIN = 160;
 /** 1フレームに掛ける物の上限(負荷の天井)。 */
 export const OBJ_SHADE_MAX_TARGETS = 220;
+
+// ── クリエイティブ監査(2026-11-22)の是正: 慣性・区分ごとの効き・色温度・背の高い物/空中の物・写しの上限・近い順 ──
+
+/** 明暗の寄せの時定数(ms)。暗くなる側は速く、明るくなる側はゆっくり(影に入る→抜けるに慣性)。 */
+export const OBJ_SHADE_TAU_DARK_MS = 100;
+export const OBJ_SHADE_TAU_BRIGHT_MS = 200;
+
+/** 指数で寄せる: cur += (target−cur)·(1−exp(−dt/τ))。下がる側=τDark・上がる側=τBright。dt≤0 は動かない。 */
+export const approachExp = (
+  cur: number, target: number, dtMs: number, tauDark = OBJ_SHADE_TAU_DARK_MS, tauBright = OBJ_SHADE_TAU_BRIGHT_MS,
+): number => {
+  if (!(dtMs > 0)) return cur;
+  const tau = target < cur ? tauDark : tauBright;
+  return cur + (target - cur) * (1 - Math.exp(-dtMs / Math.max(1, tau)));
+};
+
+/** RGB の倍率をチャンネルごとに寄せる(cur を書き換えて返す)。 */
+export const approachRgb = (cur: Rgb, target: Rgb, dtMs: number): Rgb => {
+  cur.r = approachExp(cur.r, target.r, dtMs);
+  cur.g = approachExp(cur.g, target.g, dtMs);
+  cur.b = approachExp(cur.b, target.b, dtMs);
+  return cur;
+};
+
+/** 物の区分。主人公は読めるように浅く、敵と置物は地面と同じ、木は少し浅く。 */
+export type ObjShadeClass = 'player' | 'enemy' | 'prop' | 'tree';
+export const OBJ_SHADE_CLASS_K: Readonly<Record<ObjShadeClass, number>> = { player: 0.62, enemy: 1, prop: 1, tree: 0.85 };
+/** 絵の高さが主人公の体のこの倍を超える物は、足元の明るさを頭まで一色にしない(効きを下げる)。 */
+export const OBJ_SHADE_TALL_RATIO = 2;
+export const OBJ_SHADE_TALL_K = 0.55;
+/** 地面から浮いている物(ヘリ・コウモリ・乗っている主人公)は地面の光と影の受け方を半分。 */
+export const OBJ_SHADE_AIR_K = 0.5;
+
+/** 区分・絵の高さ(画面 px)・主人公の体の高さ(画面 px)・空中か から効き具合 k を出す。 */
+export const objShadeStrength = (cls: ObjShadeClass, heightPx: number, bodyPx: number, airborne: boolean): number => {
+  let k = OBJ_SHADE_CLASS_K[cls];
+  if (bodyPx > 0 && heightPx > bodyPx * OBJ_SHADE_TALL_RATIO) k *= OBJ_SHADE_TALL_K;
+  if (airborne) k *= OBJ_SHADE_AIR_K;
+  return k;
+};
+
+/** 影の色温度: 暗くなった量 d に対し、青の減りを 0.7d に抑える(冷える)。cool=false(夜のステージ1)は無変化。 */
+export const OBJ_SHADE_COOL_BLUE = 0.7;
+export const coolShade = (s: Rgb, cool: boolean): Rgb => (cool
+  ? { r: s.r, g: s.g, b: Math.min(1, 1 - (1 - s.b) * OBJ_SHADE_COOL_BLUE) }
+  : { r: s.r, g: s.g, b: s.b });
+
+/** 月明りの写し(加算)のαの上限(全身が発光して見えないように)。 */
+export const OBJ_SHADE_LIGHT_ALPHA_MAX = 0.5;
+/** 写しを上へずらす量(画面 px)=上の縁が明るい「縁の光」に寄せる。 */
+export const OBJ_SHADE_LIGHT_LIFT_PX = 3;
+/** 写しのα(地面の光の強さ × 強さ → 上限で切る)。 */
+export const objShadeLightAlpha = (light: number, gain: number): number => Math.max(0, Math.min(OBJ_SHADE_LIGHT_ALPHA_MAX, light * gain));
+
+/** 上限は画面の中心から近い順に当てる: d2(中心からの距離²)の小さい順に max 件。元の配列は変えない。 */
+export const nearestFirst = <T extends { d2: number }>(items: readonly T[], max: number): T[] =>
+  items.length <= max ? [...items].sort((a, b) => a.d2 - b.d2) : [...items].sort((a, b) => a.d2 - b.d2).slice(0, Math.max(0, max));

@@ -483,7 +483,9 @@ import { Stage1NightLayer } from './stage1Night';
 import { Stage5BattleLayer, type BurningWreckView, type FlamePainter } from './stage5Battlefield';
 import { stage5BattleActive, stage5EmberSize, S5B_WRECK_MAX } from '../utils/stage5Battlefield';
 import { Stage3DaylightLayer, type S3DTreeView } from './stage3Daylight';
-import { ObjShade, moveGroundLightAboveActors } from './objShade';
+import { ObjShade, type ObjShadeExtra, type ObjShadeKind } from './objShade';
+import { ObjShadeOverlay } from './objShadeOverlay';
+import { parseObjShadeOverlayK } from '../utils/objShadeOverlay';
 import { parseObjShadeMode } from '../utils/objShade';
 import { stage3DaylightActive } from '../utils/stage3Daylight';
 import { TorchBackLight, type GlowPoolShape } from './stageLook';
@@ -796,6 +798,7 @@ const S5B_WRECK_ON = tsNum('s5bwreck', 1) > 0; // ?s5bwreck=0 で燃える残骸
 // 採用(既定・社長2026-11-22「影は1で採用」/ ?objshade=0 で外す・?objshade=2 は不採用の比較用): 地面の光と影(雲の影・木漏れ日・月明りの溜まり)を物にも「足元の地面と同じ明るさ」で掛ける。
 // 既定(無し/0)は何もしない。2=比較用(光と影の層を物の上へ移す)。src/pixi/objShade.ts。
 const OBJ_SHADE_MODE = parseObjShadeMode(typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('objshade'));
+const OBJ_SHADE_OVERLAY_K_RAW = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('objshadek2'); // ?objshade=2 の物に乗る影の濃さ(0.25/0.4/0.55・既定0.4)
 const S1N_POOL_ON = tsNum('s1npool', 1) > 0; // ?s1npool=0 で月明りの溜まり(地面)だけ外す(見比べ用)
 const MOON_SHAFT_ON = tsNum('moonshaft', 1) > 0; // ?moonshaft=0 でステージ1の森の夜も従来の台形の筋のまま(見比べ用)
 const POI_TOUCH_FREEZE_MS = tsNum('poitouchfreeze', -1); // 触れた瞬間の絵の撮影用(負=無効)
@@ -4758,7 +4761,15 @@ export class PixiScene {
   private propObjs = new Map<string, LabObstacleView>(); // 遮蔽物プロップ(区画生成・研究所スキン)
   private cityPropObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ3(廃都)の散布オブジェクト
   private flowerObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ1(森)の装飾花(壁判定なし)
-  private objShade: ObjShade | null = OBJ_SHADE_MODE === 'tint' ? new ObjShade() : null; // 既定で有効(?objshade=0 で null=何もしない)
+  private objShade: ObjShade | null = OBJ_SHADE_MODE !== 'off' ? new ObjShade() : null; // 既定で有効(?objshade=0 で null=何もしない)。?objshade=2 では雲の影だけ外して回す(applyObjShade の mulTiles)
+  /** 比較用 ?objshade=2: 雲の影の2枚目(物の上・予告/弾/エフェクト/HPバーの下・元の k 倍)。src/pixi/objShadeOverlay.ts。 */
+  private objShadeOverlay: ObjShadeOverlay | null = null;
+  /** 計器(__pixiScene.objShadeOverlayStats): ?objshade=2 の直近フレームの値。 */
+  get objShadeOverlayStats() { return this.objShadeOverlay?.stats; }
+  /** 撮影用(DEV・__pixiScene から): 同じ画面のまま ?objshade=2 の2枚目を入/切する。 */
+  set objShadeOverlayEnabled(v: boolean) { if (this.objShadeOverlay) this.objShadeOverlay.enabled = v; }
+  /** 撮影用: 同じ画面のまま ?objshade=2 の k を差し替える(null=?objshadek2= の値)。 */
+  set objShadeOverlayK(v: number | null) { if (this.objShadeOverlay) this.objShadeOverlay.kOverride = v; }
   /** 計器(__pixiScene.objShadeStats): 試作 ?objshade=1 の直近フレームの数。 */
   get objShadeStats() { return this.objShade?.stats; }
   /** 撮影用(DEV・__pixiScene から): 同じ画面のまま試作 ?objshade=1 を入/切して前後を撮る。 */
@@ -6903,8 +6914,9 @@ export class PixiScene {
     this.moonPoolLayer.eventMode = 'none';
     this.moonPoolLayer.visible = false;
     this.L.worldGroup.addChildAt(this.moonPoolLayer, this.L.worldGroup.getChildIndex(this.cloudShadow));
-    // 試作 ?objshade=2(比較用): 雲の影と月明りの溜まりを物の上へ(ステージ3の木漏れ日は雲の影の直後に作られるので一緒に上へ来る)。
-    if (OBJ_SHADE_MODE === 'overlay') moveGroundLightAboveActors(this.L.worldGroup, this.L.filteredWorld, [this.s1nMoonPoolGfx, this.moonPoolLayer, this.cloudShadow]);
+    // 比較用 ?objshade=2: 雲の影の2枚目を物の層の上(予告・弾・エフェクト・HPバーの下)へ。1枚目(上の cloudShadow)は今の位置のまま。
+    // 月明りの溜まり・木漏れ日の帯・梢の影は方式1の写し(applyObjShade・雲の影だけ外す)に任せる。
+    if (OBJ_SHADE_MODE === 'overlay') this.objShadeOverlay = new ObjShadeOverlay(this.L.actorLayer, this.L.world);
     // ステージ1の森の夜の柔らかい月明りの筋(従来の筋の直上・画面に固定)。
     this.moonShaftLayer.eventMode = 'none';
     this.moonShaftLayer.visible = false;
@@ -11310,7 +11322,8 @@ export class PixiScene {
     this.syncStage5Battle(s, now); // ステージ5(戦場)の光・色・コントラスト(他ステージ=1命令で終わる)
     this.syncStage3Daylight(s, now); // ステージ3(昼の廃都)の光と影(他ステージ=1命令で終わる)
     this.syncTorchBack(s, now); // 松明の裏の光(ステージ3/4/7・utils/torchBackLight.ts。他ステージ=1命令で終わる)
-    if (this.objShade) this.applyObjShade(); // 既定で有効(?objshade=0 なら null=呼ばない)
+    if (this.objShade) this.applyObjShade(s.enemies); // 既定で有効(?objshade=0 なら null=呼ばない)
+    if (this.objShadeOverlay) this.syncObjShadeOverlay(); // 比較用 ?objshade=2 の雲の影の2枚目
     this.syncZoomWarp(s.player.vx ?? 0, s.player.vy ?? 0, realNow); // ★必ず最後(このフレームの世界が全部揃ってから1枚に描く)
   }
 
@@ -40342,19 +40355,60 @@ export class PixiScene {
    * 月(本体・光・暈)は「最後に残る光」として沈めない(#1)。キャラ・敵・エフェクト・HUD・近景の森は触らない=画面ごとは暗くしない。
    */
   /** 試作 ?objshade=1: 地面に掛けている光と影を、物の足元の明るさとして物の絵にも掛ける(src/pixi/objShade.ts)。 */
-  private applyObjShade(): void {
+  private applyObjShade(enemies: readonly { id: string; type: string }[]): void {
     const os = this.objShade;
     if (!os) return;
     const s3 = this.stage3Daylight?.shadeSources();
+    // 区分(主人公 / 敵 / 木 / 置物)と空中か。主人公の持ち物は主人公の根っこの下=同じ色を引き継ぐ。
+    const kinds = new Map<Container, ObjShadeKind>();
+    const pv = this.playerView;
+    const riding = !!pv && pv.container.parent !== this.L.actorLayer; // 乗車中=ヘリの前面へ移している
+    if (pv) kinds.set(pv.container, { cls: 'player', airborne: riding, main: pv.sprite });
+    const flyers = new Set<string>();
+    for (const e of enemies) if (e.type === 'bat') flyers.add(e.id);
+    for (const [id, v] of this.enemies) kinds.set(v.container, { cls: 'enemy', airborne: flyers.has(id), main: v.sprite });
+    for (const t of this.trees.values()) kinds.set(t.sprite, { cls: 'tree', airborne: false, main: t.sprite });
+    const prop: ObjShadeKind = { cls: 'prop', airborne: false };
+    const extras: ObjShadeExtra[] = [];
+    if (this.helicopter.visible && this.helicopter.parent) extras.push({ root: this.helicopter, cls: 'prop', airborne: true, main: this.helicopter }); // 登場演出のヘリ=空中
+    if (pv && riding && pv.container.parent) extras.push({ root: pv.container, cls: 'player', airborne: true, main: pv.sprite });
+    const bodyPx = pv && pv.sprite.visible ? pv.sprite.getBounds().height : 0;
     os.apply({
       actorLayer: this.L.actorLayer,
-      mulTiles: s3 ? [this.cloudShadow, ...s3.bands] : [this.cloudShadow],
+      mulTiles: this.objShadeOverlay?.enabled ? (s3 ? [...s3.bands] : []) : s3 ? [this.cloudShadow, ...s3.bands] : [this.cloudShadow], // ?objshade=2 は雲の影を2枚目(objShadeOverlay)が受け持つ=二重にしない
       mulSprites: s3 ? s3.canopies : [],
       addSprites: this.moonPoolLayer.visible ? this.moonPoolSprites : [],
       screenW: this.screenW,
       screenH: this.screenH,
       k: tsNum('objshadek', 1),
       lightGain: tsNum('objshadelight', 1),
+      classify: (top) => kinds.get(top) ?? prop,
+      extras,
+      bodyPx,
+      cool: !!s3, // 昼のステージ3は影で冷える・夜のステージ1は冷やさない
+      nowMs: performance.now(),
+    });
+  }
+
+  /** 比較用 ?objshade=2: 雲の影の2枚目を1枚目と同じ模様・同じ位置で物の上へ(src/pixi/objShadeOverlay.ts)。 */
+  private syncObjShadeOverlay(): void {
+    const ov = this.objShadeOverlay;
+    if (!ov) return;
+    // 下書きの範囲=画面(worldGroup の逆変換・syncWorldFilterArea と同じ式)を actorLayer のローカルへ。ズームの遠近の上下の余白込み。
+    const z = this.L.worldGroup.scale.x || 1;
+    const rw = this.screenW / z, rh = this.screenH / z;
+    const pT = this.zwarpInList ? this.zwarpPadTop : 0, pB = this.zwarpInList ? this.zwarpPadBot : 0;
+    const pad = 16;
+    const ox = this.L.filteredWorld.position.x + this.L.world.position.x + this.L.actorLayer.position.x;
+    const oy = this.L.filteredWorld.position.y + this.L.world.position.y + this.L.actorLayer.position.y;
+    const views: ActorView[] = [...this.enemies.values()];
+    if (this.playerView) views.push(this.playerView);
+    ov.sync({
+      renderer: this.renderer,
+      src: this.cloudShadow,
+      k: parseObjShadeOverlayK(OBJ_SHADE_OVERLAY_K_RAW),
+      area: { x: -this.L.worldGroup.position.x / z - ox - pad, y: -this.L.worldGroup.position.y / z - rh * pT - oy - pad, width: rw + pad * 2, height: rh * (1 + pT + pB) + pad * 2 },
+      views,
     });
   }
 
@@ -44552,6 +44606,8 @@ export class PixiScene {
     this.moonPoolLayer.destroy({ children: true });
     this.moonDustLayer?.destroy({ children: true });
     this.s1nMoonPoolGfx.destroy();
+    this.objShadeOverlay?.destroy();
+    this.objShadeOverlay = null;
     this.L.filteredWorld.mask = null;
     this.worldFadeMask.destroy();
     this.worldFadeMaskTexture?.destroy(true);

@@ -7,7 +7,9 @@
 import { Container, Graphics, Matrix, Point, Sprite, Text, TilingSprite, type Texture } from 'pixi.js';
 import {
   OBJ_SHADE_FOOT_SPREAD, OBJ_SHADE_MAX_TARGETS, OBJ_SHADE_SCREEN_MARGIN,
-  accumulateMultiply, mulTintRgb, sampleRgba, shadeWithStrength, tilingTexel, type Rgb,
+  OBJ_SHADE_LIGHT_LIFT_PX,
+  accumulateMultiply, approachExp, approachRgb, coolShade, mulTintRgb, nearestFirst, objShadeLightAlpha, objShadeStrength,
+  sampleRgba, shadeWithStrength, tilingTexel, type ObjShadeClass, type Rgb,
 } from '../utils/objShade';
 
 interface PixelMap { data: Uint8ClampedArray; w: number; h: number; sx: number; sy: number }
@@ -40,6 +42,10 @@ interface MulSrc { kind: 'tile' | 'sprite'; obj: TilingSprite | Sprite; inv: Mat
 interface AddSrc { obj: Sprite; inv: Matrix; alpha: number; pm: PixelMap; tint: number }
 interface Tinted { sp: Sprite; orig: number; applied: number }
 
+/** 物1つ(根っこの Container/Sprite)の区分。main=足元と高さを測る本体の絵(無ければ一番大きい絵)。 */
+export interface ObjShadeKind { cls: ObjShadeClass; airborne: boolean; main?: Sprite | null }
+export interface ObjShadeExtra extends ObjShadeKind { root: Container }
+
 export interface ObjShadeInputs {
   actorLayer: Container;
   /** 乗算の層(地面に掛けているもの)。TilingSprite=繰り返しの絵、Sprite=1枚絵。 */
@@ -49,11 +55,24 @@ export interface ObjShadeInputs {
   addSprites: readonly Sprite[];
   screenW: number;
   screenH: number;
-  /** 効き具合(1=地面と同じ)。 */
+  /** 全体の効き具合(1=区分どおり)。 */
   k: number;
   /** 加算の光を物に移す強さ。 */
   lightGain: number;
+  /** actorLayer の子の区分(主人公/敵/木/置物・空中か)。 */
+  classify: (top: Container) => ObjShadeKind;
+  /** actorLayer の外にいる物(登場演出のヘリ・乗っている主人公)。 */
+  extras: readonly ObjShadeExtra[];
+  /** 主人公の体の高さ(画面 px)。背の高い物の判定に使う。0=判定しない。 */
+  bodyPx: number;
+  /** 影で冷える(昼のステージ3)か。 */
+  cool: boolean;
+  /** 実時刻(ms)=慣性の寄せに使う。 */
+  nowMs: number;
 }
+
+interface Group { root: Container; kind: ObjShadeKind; sprites: Sprite[]; main: Sprite; fx: number; fy: number; h: number; d2: number; ox: number; oy: number }
+interface Memo { s: Rgb; li: number; seen: number }
 
 export class ObjShade {
   private tinted: Tinted[] = [];
@@ -156,9 +175,49 @@ export class ObjShade {
     return this.shadeAt(gx, gy, this.collectMul(this.lastInp), NaN, NaN, { r: 1, g: 1, b: 1 });
   }
 
+  /** 物ごとの前回の倍率(慣性)。画面から消えた物は捨てる(有界)。 */
+  private memo = new Map<Container, Memo>();
+  private frame = 0;
+  private lastNow = -1;
+
+  /** root の下の描ける絵を深さを問わず全部集める(主人公の持ち物=武器の絵なども本体と同じ色)。 */
+  private gather(c: Container, out: Sprite[]): void {
+    if (c instanceof Sprite) { if (this.paintable(c)) out.push(c); }
+    for (const ch of c.children) {
+      if (!ch.visible || ch.alpha <= 0.01 || ch instanceof Graphics || ch instanceof Text) continue;
+      this.gather(ch, out);
+    }
+  }
+
+  private group(root: Container, kind: ObjShadeKind, W: number, H: number, M: number): Group | null {
+    if (!root.visible || root.alpha <= 0.01 || root instanceof Graphics || root instanceof Text || root.destroyed) return null;
+    const sprites: Sprite[] = [];
+    this.gather(root, sprites);
+    if (!sprites.length) return null;
+    let main = kind.main && sprites.includes(kind.main) ? kind.main : null;
+    if (!main) {
+      let best = -1;
+      for (const sp of sprites) {
+        const g = sp.getGlobalTransform(this.m);
+        const area = Math.abs(g.a * g.d - g.b * g.c) * sp.texture.width * sp.texture.height;
+        if (area > best) { best = area; main = sp; }
+      }
+    }
+    if (!main) return null;
+    const bd = main.getBounds();
+    const fx = (bd.minX + bd.maxX) / 2, fy = bd.maxY;
+    if (bd.maxX < -M || bd.minX > W + M || bd.maxY < -M || bd.minY > H + M) return null;
+    const dx = fx - W / 2, dy = (bd.minY + bd.maxY) / 2 - H / 2;
+    // 梢の影の持ち主を外す照合用(木は actorLayer 直下の Sprite=world の足元が x/y)。
+    return { root, kind, sprites, main, fx, fy, h: bd.maxY - bd.minY, d2: dx * dx + dy * dy, ox: root.x, oy: root.y };
+  }
+
   /** 色を掛ける(sync の最後)。 */
   apply(inp: ObjShadeInputs): void {
     this.lastInp = inp;
+    this.frame++;
+    const dt = this.lastNow < 0 ? 0 : Math.max(0, Math.min(100, inp.nowMs - this.lastNow));
+    this.lastNow = inp.nowMs;
     this.stats.shaded = 0; this.stats.lit = 0;
     const mul = this.enabled ? this.collectMul(inp) : [];
     const add = this.enabled ? this.collectAdd(inp) : [];
@@ -166,42 +225,35 @@ export class ObjShade {
     const used = new Set<Sprite>();
     if (mul.length || add.length) {
       const W = inp.screenW, H = inp.screenH, M = OBJ_SHADE_SCREEN_MARGIN;
-      const targets: Sprite[] = [];
-      let n = 0;
+      const cand: Group[] = [];
       for (const top of inp.actorLayer.children) {
-        if (n >= OBJ_SHADE_MAX_TARGETS) break;
         if (!top.visible || top.alpha <= 0.01 || top instanceof Graphics || top instanceof Text) continue;
-        const g = top.getGlobalTransform(this.m);
-        const fx = g.tx, fy = g.ty;
-        if (fx < -M || fx > W + M || fy < -M || fy > H + M * 3) continue; // 足元が画面の下の外でも、背の高い物は見えている
-        targets.length = 0;
-        if (top instanceof Sprite) { if (this.paintable(top)) targets.push(top); }
-        else {
-          for (const c of top.children) {
-            if (c instanceof Sprite) { if (this.paintable(c)) targets.push(c); }
-            else if (c.visible && !(c instanceof Graphics) && !(c instanceof Text)) {
-              for (const d of c.children) if (d instanceof Sprite && this.paintable(d)) targets.push(d);
-            }
-          }
-        }
-        if (!targets.length) continue;
-        n++;
-        // 足元の幅(画面 px): 一番広い絵の幅。
-        let wpx = 0;
-        for (const sp of targets) wpx = Math.max(wpx, Math.abs(sp.getGlobalTransform(this.m).a) * sp.texture.width);
-        const gfx = top.getGlobalTransform(this.m);
-        const fxx = gfx.tx, fyy = gfx.ty;
-        const off = wpx * OBJ_SHADE_FOOT_SPREAD;
+        const g = this.group(top, inp.classify(top), W, H, M);
+        if (g) cand.push(g);
+      }
+      for (const ex of inp.extras) {
+        const g = this.group(ex.root, ex, W, H, M);
+        if (g) cand.push(g);
+      }
+      // 上限は画面の中心から近い順(手前の主役から確実に掛かる)。
+      for (const g of nearestFirst(cand, OBJ_SHADE_MAX_TARGETS)) {
+        const off = Math.max(2, Math.abs(g.main.getBounds().width)) * OBJ_SHADE_FOOT_SPREAD;
         const r: Rgb = { r: 0, g: 0, b: 0 };
         let li = 0, lt = 0xffffff;
         for (const dx of [-off, 0, off]) {
-          const one = this.shadeAt(fxx + dx, fyy, mul, top.x, top.y, { r: 1, g: 1, b: 1 });
+          const one = this.shadeAt(g.fx + dx, g.fy, mul, g.ox, g.oy, { r: 1, g: 1, b: 1 });
           r.r += one.r / 3; r.g += one.g / 3; r.b += one.b / 3;
-          if (add.length) { const l = this.lightAt(fxx + dx, fyy, add); li += l.i / 3; if (l.i > 0) lt = l.tint; }
+          if (add.length) { const l = this.lightAt(g.fx + dx, g.fy, add); li += l.i / 3; if (l.i > 0) lt = l.tint; }
         }
-        const sh = shadeWithStrength(r, inp.k);
+        const k = inp.k * objShadeStrength(g.kind.cls, g.h, inp.bodyPx, g.kind.airborne);
+        const target = coolShade(shadeWithStrength(r, k), inp.cool);
+        const liT = objShadeLightAlpha(li * (g.kind.airborne ? 0.5 : 1), inp.lightGain);
+        let mm = this.memo.get(g.root);
+        if (!mm) { mm = { s: { ...target }, li: liT, seen: this.frame }; this.memo.set(g.root, mm); }
+        else { approachRgb(mm.s, target, dt); mm.li = approachExp(mm.li, liT, dt); mm.seen = this.frame; }
+        const sh = mm.s;
         const dark = sh.r < 0.997 || sh.g < 0.997 || sh.b < 0.997;
-        for (const sp of targets) {
+        for (const sp of g.sprites) {
           if (dark) {
             const orig = Number(sp.tint);
             const applied = mulTintRgb(orig, sh);
@@ -211,14 +263,15 @@ export class ObjShade {
               this.stats.shaded++;
             }
           }
-          if (li * inp.lightGain > 0.01) {
-            this.twin(sp, Math.min(1, li * inp.lightGain), mulTintRgb(lt, sh));
+          if (mm.li > 0.01) {
+            this.twin(sp, mm.li, mulTintRgb(lt, sh));
             used.add(sp);
             this.stats.lit++;
           }
         }
       }
     }
+    for (const [root, mm] of this.memo) if (mm.seen !== this.frame || root.destroyed) this.memo.delete(root);
     for (const [target, tw] of this.twins) {
       if (used.has(target)) continue;
       if (target.destroyed || !target.parent) { tw.destroy(); this.twins.delete(target); continue; }
@@ -263,6 +316,9 @@ export class ObjShade {
     if (tw.texture !== target.texture) tw.texture = target.texture;
     tw.anchor.copyFrom(target.anchor);
     tw.position.copyFrom(target.position);
+    // 数 px 上へずらす=上の縁が明るい「縁の光」に寄せる(全身に均一に乗って発光して見えないように)。
+    const pg = parent.getGlobalTransform(this.m);
+    tw.position.y -= OBJ_SHADE_LIGHT_LIFT_PX / Math.max(0.01, Math.hypot(pg.c, pg.d));
     tw.scale.copyFrom(target.scale);
     tw.skew.copyFrom(target.skew);
     tw.pivot.copyFrom(target.pivot);
@@ -275,6 +331,7 @@ export class ObjShade {
 
   destroy(): void {
     this.restore();
+    this.memo.clear();
     for (const tw of this.twins.values()) if (!tw.destroyed) tw.destroy();
     this.twins.clear();
   }
