@@ -21,7 +21,7 @@ import { labFlickerLevel, smoothFlicker, easeToward } from '../utils/labFlicker'
 import { LAB_LAMP_SPACING_PX, labLampLevel, labLampScale } from '../world/labLamps'; // 非常灯の並び(塊の置き場所と同じ1本)
 import { labPitchLights, labEaseReveals, stepLabFlash, labFlashLevel, LAB_ALWAYS_REVEAL_TYPES, type LabLight, type LabFlashState } from '../utils/labDarkness'; // ステージ2の闇と懐中電灯(research/LAB_DARKNESS.md)
 import { bossFramingFor } from '../utils/bossFraming';
-import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, GlProgram, UniformGroup, TilingSprite, RenderTexture, MeshRope, Point, Matrix } from 'pixi.js';
+import { BlurFilter, ColorMatrixFilter, Container, Graphics, MeshSimple, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, GlProgram, UniformGroup, TilingSprite, RenderTexture, MeshRope, Point, Matrix } from 'pixi.js';
 import type { ColorMatrix } from 'pixi.js';
 import { heliRotorFrame, HELI_ROTOR_FRAMES } from '../utils/heliRotor';
 import { acrasielSectorPolygon, acrasielEase, ACRASIEL_SPEAR_FLIGHT_MS, acrasielGazeAngles, acrasielWarpRed, acrasielBurstRed } from '../utils/acrasielScript';
@@ -348,6 +348,12 @@ import {
   groundStripTile, groundVsObjectDiff, groundSlipBound, projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, southCullWorldY,
   type ProjFrame, type ProjTable, type ProjPoint,
 } from '../utils/perspectiveProjection'; // 投影(?proj=1・research/PERSPECTIVE_PROJECTION.md 段階1)
+import { projTeleFadeY, projShapeOutside, PROJ_GRID_MAX } from '../utils/projShape'; // 投影の段階4「形を持つもの」(§3-6)
+import {
+  projDrawBeginFrame, projDrawStat, projDrawLeak, projDrawPoints, projDrawResetMax, projKeepFrom, projCmdCount,
+  projCircle, projEllipse, projArcLine, projSector, projAnnulus, projRingsBegin, projRing, projBand, projThickLine, projLine, projSeg, projPoly, projRect,
+  projRectFrame, projGlyphCircle, projGlyphEllipse, makeProjGridMesh, projMeshGrid, PROJ_GRID_SHARP, projRectPath, projFill,
+} from './projDraw'; // 投影の段階4の描く部品(?proj=1 の時だけ呼ぶ)
 import { LIB_VOLLEY_CAST_MS } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md §4c: 号令の旗の突き上げの尺
 import {
   GLEN_CHAIN, GLEN_SLOT_COUNT, GLEN_VISIBLE_BY_COUNT, glenPartCountFull,
@@ -2941,7 +2947,11 @@ const shieldBeamPlan = (ox: number, oy: number, ex: number, ey: number, hw: numb
   return beamDrawPlan(ox, oy, ex, ey, hw, sh, round, startOffset);
 };
 /** 光線の1層(w=盾が無い時の全幅px。cap='round' なら両端が丸い)。core は昔の名残(いまは他の層と同じく元の断面の切り出しで描く)。 */
-interface BeamLayer { w: number; color: number; alpha: number; cap?: 'round'; core?: boolean }
+interface BeamLayer {
+  w: number; color: number; alpha: number; cap?: 'round'; core?: boolean;
+  /** ?proj=1(research/PERSPECTIVE_PROJECTION.md §3-6g): 層の幅 w が判定の半幅 hw から導かれる層=面の帯(projBand)で描く。無し=固定px の線(projLine)。 */
+  judge?: boolean;
+}
 /**
  * 盾の影で切った1層の多角形(研究 SHIELD_BLOCK.md §8・第2回クリエイティブ監査 #1「割れた光線が2〜3本の別の光に見える」の是正)。
  * 元の1本の断面(横幅 w の帯)を (距離 d, 横 l) の座標で作り、**盾の影の横の範囲 [s0,s1] だけ盾の面で終わらせ**、
@@ -2984,6 +2994,12 @@ const beamLayerPoly = (plan: BeamDrawPlan, w: number, round: boolean, startOffse
  * 光線を層ごとに描く。盾が光線を割る時は、層ごとに「元の断面を盾の影で切った多角形」を1つ描く(帯を貼り直さない)。
  * 盾が無い時は従来の `moveTo/lineTo/stroke` と同じ(層の並び=描く順は不変)。
  */
+/** Pixi の arc(anticlockwise なし)と同じ角の範囲(buildArc と同じ): 終わりが始まりより小さいなら 2π を1回足す(?proj=1 の弧の部品が使う)。 */
+const projArcEnd = (a0: number, a1: number): number => (a0 > a1 ? a1 + Math.PI * 2 : a1);
+
+/** ?proj=1 の今フレームの投影の状態(モジュール関数 strokeBeamLayers が読む。pixiScene.updateProjFrame が毎フレーム書く・?proj=0 では null)。 */
+let projBeamFrame: ProjFrame | null = null;
+
 const strokeBeamLayers = (
   o: Graphics, ox: number, oy: number, ex: number, ey: number, hw: number, round: boolean,
   layers: readonly BeamLayer[], startOffset = 0,
@@ -2991,6 +3007,22 @@ const strokeBeamLayers = (
   const plan = shieldBeamPlan(ox, oy, ex, ey, hw, round, startOffset);
   const sx = startOffset > 0 ? ox + ((ex - ox) / (Math.hypot(ex - ox, ey - oy) || 1)) * startOffset : ox;
   const sy = startOffset > 0 ? oy + ((ey - oy) / (Math.hypot(ex - ox, ey - oy) || 1)) * startOffset : oy;
+  const pf = projBeamFrame;
+  if (pf) {
+    // ?proj=1(§3-6b・3-6g): 判定の幅から導かれる層は面の帯(太さも投影)、固定px の層は細い線。盾で割った形は多角形の頂点ごとに投影。
+    for (const L of layers) {
+      if (!plan) {
+        if (L.judge) {
+          const rnd = L.cap === 'round';
+          projBand(o, pf, sx, sy, ex, ey, L.w / 2, { color: L.color, alpha: L.alpha }, 0, 1, rnd, rnd);
+        } else projSeg(o, pf, sx, sy, ex, ey, { width: L.w, color: L.color, alpha: L.alpha, ...(L.cap ? { cap: L.cap } : {}) });
+        continue;
+      }
+      if (L.alpha <= 0.001) continue;
+      projPoly(o, pf, beamLayerPoly(plan, L.w, L.cap === 'round', startOffset), { color: L.color, alpha: L.alpha });
+    }
+    return;
+  }
   for (const L of layers) {
     if (!plan) {
       const cap = L.cap ? { cap: L.cap } : {};
@@ -4492,6 +4524,10 @@ interface ActorView {
   // 既存の技(1体につき同時1本のみ)は idx=0 だけを使うので見た目は変わらない。
   bands?: Sprite[];
   bandSlices?: Sprite[][];  // 帯の窓マスク用(v0.25.4103): 縁の焼き素材を軸方向に等分して描く。
+  // ?proj=1 の段階4(research/PERSPECTIVE_PROJECTION.md §3-6b): rings/bands/bandSlices の同じ添字の格子メッシュ(遅延生成・?proj=0 では作らない)。
+  projRingMesh?: (MeshSimple | undefined)[];
+  projBandMesh?: (MeshSimple | undefined)[];
+  projSliceMesh?: ((MeshSimple | undefined)[] | undefined)[];
   // ★v0.25.4110: **帯ごと(idx)に別のプール**。同じフレームに複数の帯を描く技(三連射2本・爪痕3本・
   //   トールの扇のセクター別)が同じ30枚を取り合って**1本しか出ない**のを防ぐ。
   // 「振った瞬間」の斬撃の弧(社長支給素材 D-1・v0.25.2400)。予告(ring/band)とは役割が別で、
@@ -7303,9 +7339,11 @@ export class PixiScene {
       // ?proj=1(段階2・§3-5k 作る物2の最後): 後掛けで動かさなかった子(予告・演出・未分類)は、後掛けの前の本体の位置で jac を出し直し、
       // そこを支点にする=段階2は寄りの遠近が掛かっている間も予告の位置を1pxも変えない。?proj=0 ではこの分岐に入らない。
       const posted = !!this.projFrame && view.projPostFrame === this.projFrameNo && view.projPreX !== undefined && view.projPreY !== undefined;
+      // 段階4(§3-6d 作る物8): 予告の役の子は描く時に投影済み(表示座標)=支点は体と同じ「投影後の本体の位置」へ戻す。
+      //   後掛けの前の位置を支点にするのは演出・未分類の子だけ(段階3まで今の分岐のまま)。
       const stays = (c: Container): boolean => {
         const key = this.projChildKey(view, c);
-        return !key || projRoleMove(projActorRole(key)) === 'none';
+        return !key || (projRoleMove(projActorRole(key)) === 'none' && projActorRole(key) !== 'telegraph');
       };
       if (posted && jac(view.projPreX!, view.projPreY!)) {
         for (let i = 0; i < kids.length; i++) {
@@ -8346,6 +8384,7 @@ export class PixiScene {
   // 個々の描画呼び出しに手を入れなくても新しい技が自動で対象になる。bounds は Pixi 側で
   // ジオメトリ変更時のみ再計算されるキャッシュ付き=毎フレームの実コストは無視できる(負荷1/10)。
   private telegraphFade(view: ActorView): number {
+    if (this.projFrame) return this.projTelegraphFade(view);
     let minY = Infinity, maxY = -Infinity;
     // 何も描いていないフレーム(=雑魚の大半)は bounds 計算にすら入らない。
     if (view.tele.context.instructions.length > 0) {
@@ -8371,6 +8410,69 @@ export class PixiScene {
     if (minY > maxY) return 1; // このフレームは何も描いていない
     const y = Math.max(minY, Math.min(this.seeThroughPlayer.footY, maxY));
     return this.horizonActorAlpha(y) * this.foregroundActorAlpha(y);
+  }
+
+  /**
+   * ?proj=1 の予告の濃さ(research/PERSPECTIVE_PROJECTION.md §3-6f): 投影の部品が記録した world Y の範囲(格子メッシュの四角を含む)に
+   * 主人公の足元の world Y を寄せ、その点を投影した表示Y で地平線×手前のフェードを引く(投影後のYで1回だけ)。描く距離のフェード(★#4)も掛ける。
+   * まだ部品を通っていない命令(直書き)と、まだメッシュにしていない予告の素材は、今の座標を world として範囲に混ぜる(安全側)。
+   */
+  private projTeleFadeTmp = { y: 0, a: 1 };
+  private projTelegraphFade(view: ActorView): number {
+    const f = this.projFrame!;
+    let minY = Infinity, maxY = -Infinity;
+    const st = projDrawStat(view.tele);
+    if (st && st.wyMax >= st.wyMin) { minY = st.wyMin; maxY = st.wyMax; }
+    if (projDrawLeak(view.tele) > 0) {
+      const b = view.tele.getLocalBounds();
+      if (b.maxY > b.minY) { minY = Math.min(minY, b.minY); maxY = Math.max(maxY, b.maxY); }
+    }
+    const span = (sp: Sprite | undefined) => {
+      if (!sp || !sp.visible) return;
+      const half = Math.max(Math.abs(sp.width), Math.abs(sp.height)) / 2;
+      if (sp.y - half < minY) minY = sp.y - half;
+      if (sp.y + half > maxY) maxY = sp.y + half;
+    };
+    if (view.rings) for (const s of view.rings) span(s);
+    if (view.bands) for (const s of view.bands) span(s);
+    span(view.slash);
+    if (view.clawMarks) for (const s of view.clawMarks) span(s);
+    if (view.shockwaves) for (const s of view.shockwaves) span(s);
+    if (view.spikeThrust) for (const s of view.spikeThrust) span(s);
+    if (view.burstFrag) for (const s of view.burstFrag) span(s);
+    span(view.dashWind);
+    span(view.coilBody);
+    const o = projTeleFadeY(f, minY, maxY, this.seeThroughPlayer.footY, this.projTeleFadeTmp);
+    if (!o) return 1; // このフレームは何も描いていない
+    return o.a * this.horizonActorAlpha(o.y) * this.foregroundActorAlpha(o.y);
+  }
+
+  /** ?proj=1 の段階4: 予告の素材 sp と同じ添字・同じ入れ物の直上に置く格子メッシュ(遅延生成=?proj=1 の時に初めて作る)。 */
+  private projTeleMesh(view: ActorView, sp: Sprite, pool: (MeshSimple | undefined)[], idx: number, key: 'rings' | 'bands' | 'bandSlices'): MeshSimple {
+    let m = pool[idx];
+    if (!m || m.destroyed) {
+      m = makeProjGridMesh(sp.texture, key);
+      const parent = sp.parent ?? view.container;
+      parent.addChildAt(m, parent.getChildIndex(sp) + 1);
+      this.projTag(m, key); // 役の表=予告(後掛けで動かさない・描く時に投影済み)
+      pool[idx] = m;
+    }
+    if (m.texture !== sp.texture) m.texture = sp.texture;
+    return m;
+  }
+
+  /** 予告の格子メッシュを全部隠す(drawEnemy の頭=素材の Sprite を消すのと同じ所)。 */
+  private projHideTeleMeshes(view: ActorView) {
+    if (view.projRingMesh) for (const m of view.projRingMesh) if (m) m.visible = false;
+    if (view.projBandMesh) for (const m of view.projBandMesh) if (m) m.visible = false;
+    if (view.projSliceMesh) for (const arr of view.projSliceMesh) if (arr) for (const m of arr) if (m) m.visible = false;
+  }
+
+  /** 予告の濃さ(teleFade)を格子メッシュにも掛ける(素材の Sprite と同じ値)。 */
+  private projScaleTeleMeshAlpha(view: ActorView, k: number) {
+    if (view.projRingMesh) for (const m of view.projRingMesh) if (m?.visible) m.alpha *= k;
+    if (view.projBandMesh) for (const m of view.projBandMesh) if (m?.visible) m.alpha *= k;
+    if (view.projSliceMesh) for (const arr of view.projSliceMesh) if (arr) for (const m of arr) if (m?.visible) m.alpha *= k;
   }
 
   // 障害物(木/壁/建物/プロップ)の alpha をフレーム更新。プレイヤーを「覆う」(手前=footY大で、見た目矩形が
@@ -9735,7 +9837,7 @@ export class PixiScene {
    */
   private updateProjFrame(s: ReturnType<typeof useGameStore.getState>, shakeX: number, shakeY: number, realNow: number) {
     this.projFrameNo++;
-    if (!PROJ_ON || s.indoorMode || s.corridorMode || s.stageTheme === 'lab') { this.projFrame = null; return; }
+    if (!PROJ_ON || s.indoorMode || s.corridorMode || s.stageTheme === 'lab') { this.projFrame = null; projBeamFrame = null; return; }
     const farH = this.farBackdropHeight();
     const band = computeGroundBandLayout(farH, this.screenH, ZOOM_OVERSCAN);
     const persp: GroundPerspectiveParams = {
@@ -9785,6 +9887,8 @@ export class PixiScene {
       this.seeThroughPlayerProj.halfW = b.halfW; this.seeThroughPlayerProj.top = b.top;
       seeThroughBodyPoints(pp.x, pp.y, pp.s * pfb.boxW, pp.s * pfb.boxH, this.seeThroughPoints);
     }
+    projBeamFrame = this.projFrame; // 段階4: モジュール関数 strokeBeamLayers が読む
+    projDrawBeginFrame(this.projFrameNo); // 段階4の部品の記録(Graphics ごとの命令の数・world Y の範囲)を今フレームへ
     if (PROJ_AUDIT) this.projAuditBeginFrame();
   }
 
@@ -9819,6 +9923,87 @@ export class PixiScene {
     a.overlapMax = 0; a.overlapPair = ''; a.overlapT = 0; a.missing.clear();
     const b = this.projActorAudit;
     b.leakMax = 0; b.leakName = ''; b.unclassified.clear(); b.playerDsMax = 0; b.spawnDaMax = 0; b.kinds.clear();
+    const c = this.projS4;
+    c.direct.clear(); c.tex.clear(); c.point.clear(); c.directNow = 0; c.texNow = 0; c.pointNow = 0; c.drawnNow = 0; c.drawnMax = 0;
+    projDrawResetMax();
+  }
+
+  /**
+   * 段階4の計器(research/PERSPECTIVE_PROJECTION.md §3-6j 作る物9・?proj=1&projaudit=1)。
+   * - 直書きの漏れ: 予告・床の印の Graphics ごとに「今フレームの命令の総数 − 部品が書いた命令の数 − projKeep で申告した数」。0 でない物を名前で出す。
+   * - 素材の漏れ: ?proj=1 なのに見えたままの予告の焼き素材の Sprite(格子メッシュに替わっていない物)。
+   * - 点の漏れ: 点で置く予告の絵で、今フレームの投影の印が無い物。
+   * - 点の数: 今フレームに予告で投影した点の数と、その最大。
+   */
+  private projS4 = {
+    direct: new Map<string, number>(), tex: new Map<string, number>(), point: new Map<string, number>(),
+    directNow: 0, texNow: 0, pointNow: 0, drawnNow: 0, drawnMax: 0,
+  };
+  private projStage4AuditFrame() {
+    const c = this.projS4;
+    const direct = new Map<string, number>(), tex = new Map<string, number>(), point = new Map<string, number>();
+    let drawn = 0;
+    const add = (m: Map<string, number>, k: string, n: number) => { if (n > 0) m.set(k, (m.get(k) ?? 0) + n); };
+    const gfx = (name: string, g: Graphics | null | undefined) => {
+      if (!g || g.destroyed || !g.visible) return;
+      if (g.context.instructions.length > 0) drawn++;
+      add(direct, name, Math.max(0, projDrawLeak(g)));
+    };
+    const texVis = (name: string, sp: Sprite | null | undefined) => { if (sp && !sp.destroyed && sp.visible && sp.alpha > 0.001) add(tex, name, 1); };
+    const frameNo = this.projFrameNo;
+    const pointVis = (name: string, sp: Sprite | null | undefined) => {
+      if (sp && !sp.destroyed && sp.visible && sp.alpha > 0.001 && this.projAuditMarks.get(sp) !== frameNo) add(point, name, 1);
+    };
+    const views: [string, ActorView | null | undefined][] = [['player', this.playerView]];
+    for (const v of this.enemies.values()) views.push(['enemy', v]);
+    for (const [kind, v] of views) {
+      if (!v || v.container.destroyed || !v.container.visible) continue;
+      gfx(`${kind}.tele`, v.tele);
+      gfx(`${kind}.overlayTop`, v.overlayTop);
+      if (v.rings) for (const sp of v.rings) texVis('rings', sp);
+      if (v.bands) for (const sp of v.bands) texVis('bands', sp);
+      if (v.bandSlices) for (const arr of v.bandSlices) if (arr) for (const sp of arr) texVis('bandSlices', sp);
+      if (v.clawMarks) for (const sp of v.clawMarks) texVis('clawMarks', sp);
+      if (v.shockwaves) for (const sp of v.shockwaves) texVis('shockwaves', sp);
+      texVis('dashWind', v.dashWind);
+      texVis('coilBody', v.coilBody);
+      if (v.spikeThrust) for (const sp of v.spikeThrust) pointVis('spikeThrust', sp);
+      if (v.burstFrag) for (const sp of v.burstFrag) pointVis('burstFrag', sp);
+    }
+    gfx('pumpkinTelegraph', this.pumpkinTelegraph);
+    gfx('mobMeteorGfx', this.mobMeteorGfx);
+    gfx('eggArmBlinkGfx', this.eggArmBlinkGfx);
+    gfx('sensorMineGfx', this.sensorMineGfx);
+    gfx('bossFireGfx', this.bossFireGfx);
+    gfx('turretTeleGfx', this.turretTeleGfx);
+    gfx('baseSitesGfx', this.baseSitesGfx);
+    gfx('merchantGfx', this.merchantGfx);
+    gfx('alchemyRhythmGfx', this.alchemyRhythmGfx);
+    gfx('phantomFlamerGfx', this.phantomFlamerGfx);
+    gfx('libArrowGroundGfx', this.libArrowGroundGfx);
+    gfx('skadiHazardGfx', this.skadiHazardGfx);
+    gfx('graveBandGfx', this.graveBandGfx);
+    gfx('astroGroundGfx', this.astroGroundGfx);
+    gfx('playerRainGroundGfx', this.playerRainGroundGfx);
+    gfx('wraithTeleGfx', this.wraithTeleGfx);
+    gfx('jormRainGround', this.jormRainGround);
+    const sum = (m: Map<string, number>) => { let n = 0; for (const v of m.values()) n += v; return n; };
+    c.directNow = sum(direct); c.texNow = sum(tex); c.pointNow = sum(point);
+    const pts = projDrawPoints();
+    c.drawnNow = pts.now; c.drawnMax = Math.max(c.drawnMax, pts.max);
+    void drawn;
+    for (const [k, n] of direct) c.direct.set(k, Math.max(c.direct.get(k) ?? 0, n));
+    for (const [k, n] of tex) c.tex.set(k, Math.max(c.tex.get(k) ?? 0, n));
+    for (const [k, n] of point) c.point.set(k, Math.max(c.point.get(k) ?? 0, n));
+  }
+  private projStage4AuditLines(): string[] {
+    const c = this.projS4;
+    const fmt = (m: Map<string, number>) => [...m].map(([k, n]) => `${k}=${n}`).join(' ') || '0';
+    return [
+      `s4 direct now=${c.directNow} max: ${fmt(c.direct)}`,
+      `s4 tex now=${c.texNow} max: ${fmt(c.tex)} | point now=${c.pointNow} max: ${fmt(c.point)}`,
+      `s4 pts now=${c.drawnNow} max=${c.drawnMax}`,
+    ];
   }
 
   /**
@@ -9961,6 +10146,7 @@ export class PixiScene {
       for (const sl of e.slots) check('shadow:mesh', sl.mesh);
     }
     for (const [k, n] of missing2) missing.set('stage2:' + k, n);
+    this.projStage4AuditFrame();
     for (const [k, n] of missing) a.missing.set(k, Math.max(a.missing.get(k) ?? 0, n));
     let missNow = 0;
     for (const n of missing.values()) missNow += n;
@@ -9982,6 +10168,7 @@ export class PixiScene {
       `actor slip ${[...aa.kinds].map(([k, m]) => `${k}:dx${m.dx.toFixed(2)}/dy${m.dy.toFixed(2)}`).join(' ') || '-'}`,
       `actor leak=${aa.leakMax.toFixed(2)}${aa.leakName ? '@' + aa.leakName : ''} uncls now=${aa.unclassifiedNow} max:${[...aa.unclassified].map(([k, n]) => `${k}=${n}`).join(' ') || '0'}`,
       `player s=${aa.playerS.toFixed(3)} ds/frame max=${aa.playerDsMax.toFixed(4)} spawn da/frame max=${aa.spawnDaMax.toFixed(3)}`,
+      ...this.projStage4AuditLines(),
     ].join('\n');
   }
 
@@ -16103,6 +16290,7 @@ export class PixiScene {
     enemies: Enemy[], now: number, gameTime: number,
     aimSrc: Parameters<typeof escortAggroCandidates>[0] & { player: Player },
   ) {
+    const pf = this.projFrame; // ?proj=1 の段階4: 投影する図形だけ部品で描く(else は今の行のまま)
     const g = this.pumpkinTelegraph;
     g.clear();
     this.mobMeteorGfx.clear();
@@ -16156,8 +16344,8 @@ export class PixiScene {
         const R = HANGEDMAN_CONTACT_R;
         // 縁だけゆっくり息をする(1.9秒周期・塗りは一定)。濃さは常に高い側=「出ていない」に見える瞬間を作らない。
         const breath = 0.5 + 0.5 * Math.sin(gameTime / 300);
-        g.circle(c.x, c.y, R).fill({ color: 0x9333ea, alpha: 0.42 * TELEGRAPH_FILL_MULT });
-        g.circle(c.x, c.y, R).stroke({ width: 2.5, color: 0xc084fc, alpha: 0.78 + 0.17 * breath });
+        if (pf) projCircle(g, pf, c.x, c.y, R, { color: 0x9333ea, alpha: 0.42 * TELEGRAPH_FILL_MULT }); else g.circle(c.x, c.y, R).fill({ color: 0x9333ea, alpha: 0.42 * TELEGRAPH_FILL_MULT });
+        if (pf) projCircle(g, pf, c.x, c.y, R, undefined, { width: 2.5, color: 0xc084fc, alpha: 0.78 + 0.17 * breath }); else g.circle(c.x, c.y, R).stroke({ width: 2.5, color: 0xc084fc, alpha: 0.78 + 0.17 * breath });
       }
       // ★リッチの技「転移噛み」(§16-C)の赤い予告円。攻撃先(=着地点。`lichBlinkAtX/Y`。
       // C-3-a2/3で発火時に焼いた・以後動かない点)だけに描く——ワープ元には赤を1本も描かない
@@ -16183,10 +16371,10 @@ export class PixiScene {
           const lbMask = this.drawSweepCircleFill(
             g, cx, cy, R, prog, 0xff2a2a, lbFillA, tgStyle,
           );
-          g.circle(cx, cy, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * lbMask });
+          if (pf) projCircle(g, pf, cx, cy, R, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * lbMask }); else g.circle(cx, cy, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * lbMask });
         } else {
-          g.ellipse(cx, cy, R, R).fill({ color: 0xff2a2a, alpha: lbFillA });
-          g.ellipse(cx, cy, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
+          if (pf) projEllipse(g, pf, cx, cy, R, R, 0, { color: 0xff2a2a, alpha: lbFillA }); else g.ellipse(cx, cy, R, R).fill({ color: 0xff2a2a, alpha: lbFillA });
+          if (pf) projEllipse(g, pf, cx, cy, R, R, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) }); else g.ellipse(cx, cy, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
         }
       }
       // ジャンプ着地予告(パンプキン/lab-zombie-3/ジャイアントバット/ハンター)。
@@ -16215,10 +16403,10 @@ export class PixiScene {
           const jToLand = Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
           const jProg = Math.max(0, Math.min(1, 1 - jToLand / jTotal));
           const jMask = this.drawSweepCircleFill(g, tx, ty, R, jProg, 0xff2a2a, jFillA, tgStyle);
-          g.circle(tx, ty, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * jMask });
+          if (pf) projCircle(g, pf, tx, ty, R, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * jMask }); else g.circle(tx, ty, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * jMask });
         } else {
-          g.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: jFillA });
-          g.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
+          if (pf) projEllipse(g, pf, tx, ty, R, R, 0, { color: 0xff2a2a, alpha: jFillA }); else g.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: jFillA });
+          if (pf) projEllipse(g, pf, tx, ty, R, R, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) }); else g.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) });
         }
         continue;
       }
@@ -16337,7 +16525,7 @@ export class PixiScene {
     }
     const ux = Math.cos(ang), uy = Math.sin(ang);
     // 攻撃側の輪郭(遠近スケール込みの実際の絵)の外から引く。上へ向かう線は絵の高さぶん、横は影の半幅ぶん。
-    const depth = this.depthScaleEnemy(Fy);
+    const depth = this.projFrame ? 1 : this.depthScaleEnemy(Fy); // ?proj=1(§3-6b 倍率の表 A01): world の寸法にして端点を投影する
     const strip = enemyHitStrip(e);
     const halfW = (strip.width / 2) * depth;
     const spriteH = (strip.height / ENEMY_STRIP_HEIGHT_FRAC) * depth * 0.9;
@@ -16402,6 +16590,7 @@ export class PixiScene {
     o: Graphics, seg: MobMeteorSeg, pal: { base: number; core: number; head: number; mark: number },
     p: number, er: number, pulse: number, headIn: number, markScale: number, markBoost: number, alphaMul: number,
   ): void {
+    const pf = this.projFrame; // ?proj=1 の段階4: 投影する図形だけ部品で描く(else は今の行のまま)
     if (p - er <= 0.001 && alphaMul >= 1) return;
     alphaMul *= seg.aMul;
     const wm = seg.wMul;
@@ -16409,8 +16598,8 @@ export class PixiScene {
     const markA = Math.min(1, (Math.min(1, p / 0.6) * (0.5 + 0.3 * pulse) * (1 - er) + markBoost) * alphaMul);
     if (markA > 0.02) {
       const rx = (13 + 1.5 * pulse) * seg.decor * markScale * (0.6 + 0.4 * wm), ry = rx * 0.45;
-      o.ellipse(seg.mx, seg.my, rx, ry).fill({ color: pal.base, alpha: markA * 0.3 });
-      o.ellipse(seg.mx, seg.my, rx, ry).stroke({ width: 2 * wm, color: pal.mark, alpha: markA });
+      if (pf) projGlyphEllipse(o, pf, seg.mx, seg.my, rx, ry, { color: pal.base, alpha: markA * 0.3 }); else o.ellipse(seg.mx, seg.my, rx, ry).fill({ color: pal.base, alpha: markA * 0.3 });
+      if (pf) projGlyphEllipse(o, pf, seg.mx, seg.my, rx, ry, undefined, { width: 2 * wm, color: pal.mark, alpha: markA }); else o.ellipse(seg.mx, seg.my, rx, ry).stroke({ width: 2 * wm, color: pal.mark, alpha: markA });
     }
     if (!seg.ok || p - er <= 0.001) return;
     const dx = seg.ex - seg.sx, dy = seg.ey - seg.sy;
@@ -16419,8 +16608,8 @@ export class PixiScene {
     const drawn = Math.max(er, p - TAIL);
     if (drawn > er) {
       const [ax, ay] = P(er), [bx, by] = P(drawn);
-      o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: 4.5 * wm, color: pal.base, alpha: (0.55 + 0.1 * pulse) * alphaMul, cap: 'butt' });
-      o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: 1.6 * wm, color: pal.core, alpha: (0.72 + 0.15 * pulse) * alphaMul, cap: 'butt' });
+      if (pf) projSeg(o, pf, ax, ay, bx, by, { width: 4.5 * wm, color: pal.base, alpha: (0.55 + 0.1 * pulse) * alphaMul, cap: 'butt' }); else o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: 4.5 * wm, color: pal.base, alpha: (0.55 + 0.1 * pulse) * alphaMul, cap: 'butt' });
+      if (pf) projSeg(o, pf, ax, ay, bx, by, { width: 1.6 * wm, color: pal.core, alpha: (0.72 + 0.15 * pulse) * alphaMul, cap: 'butt' }); else o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: 1.6 * wm, color: pal.core, alpha: (0.72 + 0.15 * pulse) * alphaMul, cap: 'butt' });
     }
     // 流星の尾: drawn→p(頭ほど太く濃く)。分割の端は平ら=継ぎ目が玉に見えない。
     const SEGS = 8;
@@ -16430,15 +16619,15 @@ export class PixiScene {
       if (a1 - a0 <= 0.0005) continue;
       const k = (i + 1) / SEGS;
       const [ax, ay] = P(a0), [bx, by] = P(a1);
-      o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: (2.5 + 2.5 * k) * wm, color: pal.base, alpha: (0.45 + 0.4 * k) * alphaMul, cap: 'butt' });
-      o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: (1 + 1.3 * k) * wm, color: pal.core, alpha: (0.45 + 0.5 * k * k) * alphaMul, cap: 'butt' });
+      if (pf) projSeg(o, pf, ax, ay, bx, by, { width: (2.5 + 2.5 * k) * wm, color: pal.base, alpha: (0.45 + 0.4 * k) * alphaMul, cap: 'butt' }); else o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: (2.5 + 2.5 * k) * wm, color: pal.base, alpha: (0.45 + 0.4 * k) * alphaMul, cap: 'butt' });
+      if (pf) projSeg(o, pf, ax, ay, bx, by, { width: (1 + 1.3 * k) * wm, color: pal.core, alpha: (0.45 + 0.5 * k * k) * alphaMul, cap: 'butt' }); else o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: (1 + 1.3 * k) * wm, color: pal.core, alpha: (0.45 + 0.5 * k * k) * alphaMul, cap: 'butt' });
     }
     // 頭の点(白に近いのはここだけ)。出始めはイーズイン、終点に近づくほど薄れて印と重ならない。
     const nearEnd = Math.max(0, Math.min(1, (p - 0.7) / 0.3));
     const headA = 0.9 * headIn * (1 - nearEnd * nearEnd * (3 - 2 * nearEnd)) * (1 - er) * alphaMul;
     if (headA > 0.02) {
       const [hx, hy] = P(p);
-      o.circle(hx, hy, (2 + 1.2 * pulse) * seg.decor * wm * (0.4 + 0.6 * headIn)).fill({ color: pal.head, alpha: headA });
+      if (pf) projGlyphCircle(o, pf, hx, hy, (2 + 1.2 * pulse) * seg.decor * wm * (0.4 + 0.6 * headIn), { color: pal.head, alpha: headA }); else o.circle(hx, hy, (2 + 1.2 * pulse) * seg.decor * wm * (0.4 + 0.6 * headIn)).fill({ color: pal.head, alpha: headA });
     }
   }
 
@@ -16491,6 +16680,7 @@ export class PixiScene {
   private eggArmBlinkGfx = new Graphics();
   private eggArmBlinkMask = new Graphics();
   private syncEggArmBlinks(props: BreakableProp[], gameTime: number): void {
+    const pf = this.projFrame; // ?proj=1 の段階4: 投影する図形だけ部品で描く(else は今の行のまま)
     const g = this.eggArmBlinkGfx;
     if (!g.parent) this.L.groundLayer.addChild(g);
     g.clear();
@@ -16504,9 +16694,9 @@ export class PixiScene {
       const a = eggArmBlinkAlpha(el);
       if (a <= 0.001) continue;
       const x = prop.footX, y = prop.footY - prop.height * 0.5;
-      if (this.distanceOutsideViewport(x, y, EGG_BLAST_RADIUS + 40) > 0) continue;
-      if (Number.isFinite(hY) && y - EGG_BLAST_RADIUS < hY) crossesHorizon = true;
-      g.circle(x, y, EGG_BLAST_RADIUS).stroke({ width: 2, color: 0xc084fc, alpha: a });
+      if (pf ? projShapeOutside(pf, x, y, EGG_BLAST_RADIUS, 40) : this.distanceOutsideViewport(x, y, EGG_BLAST_RADIUS + 40) > 0) continue; // ?proj=1: 形の端を投影した箱で間引く(§3-6b)
+      if (!pf && Number.isFinite(hY) && y - EGG_BLAST_RADIUS < hY) crossesHorizon = true; // ?proj=1 は頂点を地平線に寄せる=型抜きは使わない
+      if (pf) projCircle(g, pf, x, y, EGG_BLAST_RADIUS, undefined, { width: 2, color: 0xc084fc, alpha: a }); else g.circle(x, y, EGG_BLAST_RADIUS).stroke({ width: 2, color: 0xc084fc, alpha: a });
     }
     if (crossesHorizon) {
       const m = this.eggArmBlinkMask;
@@ -19869,6 +20059,7 @@ export class PixiScene {
   ) {
     const g = this.skadiHazardGfx;
     g.clear();
+    const pf = this.projFrame; // ?proj=1 の段階4: 投影する図形だけ部品で描く(else は今の行のまま)
     if (this.graveBandGfx.parent !== this.L.groundLayer) this.L.groundLayer.addChild(this.graveBandGfx);
     this.graveBandGfx.clear();
     const seen = new Set<string>();
@@ -19884,8 +20075,9 @@ export class PixiScene {
       const sFillA = telFillA(t, pulse) * TELEGRAPH_FILL_MULT;
       const sMask = CIRCLE_SWEEP_ON
         ? this.drawSweepCircleFill(g, m.x, m.y, R, t, 0xff2a2a, sFillA, PixiScene.SKADI_TG_STYLE)
-        : (g.ellipse(m.x, m.y, R, R).fill({ color: 0xff2a2a, alpha: sFillA }), 1);
-      g.ellipse(m.x, m.y, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(t, pulse) * sMask });
+        : (pf ? projCircle(g, pf, m.x, m.y, R, { color: 0xff2a2a, alpha: sFillA }) : g.ellipse(m.x, m.y, R, R).fill({ color: 0xff2a2a, alpha: sFillA }), 1);
+      if (pf) projCircle(g, pf, m.x, m.y, R, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(t, pulse) * sMask });
+      else g.ellipse(m.x, m.y, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(t, pulse) * sMask });
       // 氷塊スプライト(下からせり上がり)。
       const tex = getTexture('skadi-ice-block');
       if (tex) {
@@ -19963,13 +20155,24 @@ export class PixiScene {
               const s0 = i * skSt, s1 = s0 + skSt;
               const x0 = b.x + (ex - b.x) * s0, y0 = b.y + (ey - b.y) * s0;
               const x1 = b.x + (ex - b.x) * s1, y1 = b.y + (ey - b.y) * s1;
+              if (pf) {
+                // ?proj=1(§3-6g): 刃の当たりの幅=面の帯(半幅 SKADI_BLADE_HIT)・縁は細い線
+                projThickLine(bg, pf, x0, y0, x1, y1, { width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: a });
+                projSeg(bg, pf, x0, y0, x1, y1, { width: 2, color: 0xff6b6b, alpha: Math.min(1, 0.5 * BAND_SWEEP_A) * w });
+                continue;
+              }
               bg.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: a });
               bg.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 2, color: 0xff6b6b, alpha: Math.min(1, 0.5 * BAND_SWEEP_A) * w });
             }
           } else {
             // 発射後(飛行中)は**全形のまま**=「実行中は全形」の従来意図(§11-2d の uniform と同じ扱い)。
-            bg.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: baseA * fadeIn });
-            bg.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: 2, color: 0xff6b6b, alpha: 0.5 * fadeIn });
+            if (pf) {
+              projThickLine(bg, pf, b.x, b.y, ex, ey, { width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: baseA * fadeIn });
+              projSeg(bg, pf, b.x, b.y, ex, ey, { width: 2, color: 0xff6b6b, alpha: 0.5 * fadeIn });
+            } else {
+              bg.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: baseA * fadeIn });
+              bg.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: 2, color: 0xff6b6b, alpha: 0.5 * fadeIn });
+            }
           }
         }
       }
@@ -20530,6 +20733,26 @@ export class PixiScene {
     };
     const layout = beamTipLayout(input);
     // 同じ濃さの四角は1つの塗りにまとめる(段は濃さ4種まで=塗りの回数は層ごとに4回まで)。
+    const pf = this.projFrame;
+    if (pf) {
+      // ?proj=1(§3-6b): 段の四角・粒の四角は4隅を投影(同じ濃さの四角は1つの塗りにまとめるのは ?proj=0 と同じ)。
+      const fillCellsP = (cells: ReturnType<typeof beamTipCells>, color: number) => {
+        cells.sort((p1, p2) => p1.alpha - p2.alpha);
+        let cur = -1;
+        for (const c of cells) {
+          if (c.alpha !== cur) { if (cur >= 0) projFill(o, { color, alpha: cur }); cur = c.alpha; }
+          projRectPath(o, pf, c.x, c.y, c.w, c.h);
+        }
+        if (cur >= 0) projFill(o, { color, alpha: cur });
+      };
+      fillCellsP(beamTipCells(fx, fy, ux, uy, layout.halo, input.dot, PixiScene.BEAM_TIP_GFX_HALO_MAX, 0.7), look.halo);
+      fillCellsP(beamTipCells(fx, fy, ux, uy, layout.core, input.dot, PixiScene.BEAM_TIP_GFX_CORE_MAX, 0.7), look.core);
+      for (const p of beamTipParticlesWithHistory(ent.h, input, fx, fy, ux, uy, maxParts)) {
+        projRectPath(o, pf, p.x, p.y, p.size, p.size);
+        projFill(o, { color: p.core ? look.part : look.halo, alpha: p.alpha });
+      }
+      return;
+    }
     const fillCells = (cells: ReturnType<typeof beamTipCells>, color: number) => {
       cells.sort((p1, p2) => p1.alpha - p2.alpha);
       let cur = -1;
@@ -20585,7 +20808,14 @@ export class PixiScene {
     const R = FLAMER_RANGE_PX;
     const phase = phantomFlamerPhase(ph.gpFlamerWindupAt, gameTime);
     // 扇の縁: 横の2辺は細く、外周の弧(=扇の口)を太く。
+    const pf = this.projFrame;
     const edges = (alpha: number, sideW: number, arcW: number) => {
+      if (pf) {
+        // ?proj=1(§3-6b): 扇の縁(横の2辺は折れ線・外周の弧)を頂点ごとに投影(細い線・★#23)。
+        projLine(g, pf, [cx + Math.cos(a0) * R, cy + Math.sin(a0) * R, cx, cy, cx + Math.cos(a1) * R, cy + Math.sin(a1) * R], { width: sideW, color: 0xa855f7, alpha });
+        projArcLine(g, pf, cx, cy, R, a0, projArcEnd(a0, a1), { width: arcW, color: 0xc084fc, alpha });
+        return;
+      }
       g.moveTo(cx + Math.cos(a0) * R, cy + Math.sin(a0) * R).lineTo(cx, cy).lineTo(cx + Math.cos(a1) * R, cy + Math.sin(a1) * R)
         .stroke({ width: sideW, color: 0xa855f7, alpha });
       g.moveTo(cx + Math.cos(a0) * R, cy + Math.sin(a0) * R).arc(cx, cy, R, a0, a1).stroke({ width: arcW, color: 0xc084fc, alpha });
@@ -21996,6 +22226,7 @@ export class PixiScene {
     const FLAMER = 14; // 火の基準サイズ(火炎瓶相当)。
     const lanternTex = getTexture('jibril-lantern');
     const seenLanterns = new Set<string>();
+    const pf = this.projFrame; // ?proj=1 の段階4: 予告の円窓と縁は頂点ごとに投影・炎とグロウ(派手さ)は今のまま(混在の表)
     for (const f of fires) {
       if (gameTime >= f.expireAt) continue;
       if (gameTime < f.activateAt) {
@@ -22011,8 +22242,9 @@ export class PixiScene {
         // **色は紫のまま**(カウンター不可の文法=CLAUDE.md)。文法だけ他の円と揃える(§11-2c #16 と同じ扱い)。
         const fireMask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(g, f.x, f.y, HITR, p, 0x9333ea, 0.34 * TELEGRAPH_FILL_MULT, PixiScene.JIBRIL_TG_STYLE)
-          : (g.circle(f.x, f.y, HITR).fill({ color: 0x9333ea, alpha: (0.10 + 0.24 * p) * TELEGRAPH_FILL_MULT }), 1);
-        g.circle(f.x, f.y, HITR).stroke({ width: 2, color: 0xa855f7, alpha: (0.4 + 0.45 * p) * fireMask });
+          : (pf ? projCircle(g, pf, f.x, f.y, HITR, { color: 0x9333ea, alpha: (0.10 + 0.24 * p) * TELEGRAPH_FILL_MULT }) : g.circle(f.x, f.y, HITR).fill({ color: 0x9333ea, alpha: (0.10 + 0.24 * p) * TELEGRAPH_FILL_MULT }), 1);
+        if (pf) projCircle(g, pf, f.x, f.y, HITR, undefined, { width: 2, color: 0xa855f7, alpha: (0.4 + 0.45 * p) * fireMask });
+        else g.circle(f.x, f.y, HITR).stroke({ width: 2, color: 0xa855f7, alpha: (0.4 + 0.45 * p) * fireMask });
       } else {
         // 有効=紫の火(色は紫・大きさは火炎瓶相当)。終盤フェードアウト。
         const life = Math.max(0, Math.min(1, 1 - (gameTime - f.activateAt) / Math.max(1, f.expireAt - f.activateAt)));
@@ -22020,10 +22252,12 @@ export class PixiScene {
         const r = FLAMER * pulse;
         const a = 0.55 + 0.45 * life;
         const sway = Math.sin(now / 150 + f.x * 0.02) * r * 0.5;
+        const nk = pf ? projCmdCount(g) : 0;
         g.circle(f.x, f.y + 2, r * 3.2).fill({ color: 0x7c3aed, alpha: 0.10 * life });           // 外周グロウ
         g.ellipse(f.x + sway * 0.2, f.y - r * 0.6, r * 1.7, r * 3.0).fill({ color: 0x7e22ce, alpha: 0.26 * a });
         g.ellipse(f.x + sway * 0.4, f.y - r * 1.4, r * 1.0, r * 2.4).fill({ color: 0xa855f7, alpha: 0.40 * a });
         g.ellipse(f.x + sway * 0.5, f.y - r * 2.0, r * 0.5, r * 1.5).fill({ color: 0xe9d5ff, alpha: 0.50 * a });
+        if (pf) projKeepFrom(g, nk); // 混在の表: 外周のグロウと炎の楕円3枚=派手さの絵(段階3で点として置く)
         // research/TELEGRAPH_FIXES.md E05b: 起動後も触れると当たる(tickAngelBossFires)=持続する床(④・前例 B24/B25)。
         //   判定と同じ半径(HITR=JB_T.fire.radius)の**紫の一様の縁**を出し続け、expireAt でちょうど0にする。
         //   炎とグローはそのまま。
@@ -22037,8 +22271,12 @@ export class PixiScene {
           const rimCol = lerpColor(0xa855f7, 0xc084fc, cu * cu * (3 - 2 * cu));
           const fu = Math.max(0, Math.min(1, el / PixiScene.BOSS_FIRE_RIM_FLASH_MS));
           const flash = 1 + 0.45 * (1 - fu) * (1 - fu);
-          g.circle(f.x, f.y, HITR).fill({ color: 0x9333ea, alpha: 0.10 * rimA * flash * TELEGRAPH_FILL_MULT });
-          g.circle(f.x, f.y, HITR).stroke({ width: 2, color: rimCol, alpha: Math.min(1, 0.75 * rimA * rimFlick * flash) });
+          if (pf) {
+            projCircle(g, pf, f.x, f.y, HITR, { color: 0x9333ea, alpha: 0.10 * rimA * flash * TELEGRAPH_FILL_MULT }, { width: 2, color: rimCol, alpha: Math.min(1, 0.75 * rimA * rimFlick * flash) });
+          } else {
+            g.circle(f.x, f.y, HITR).fill({ color: 0x9333ea, alpha: 0.10 * rimA * flash * TELEGRAPH_FILL_MULT });
+            g.circle(f.x, f.y, HITR).stroke({ width: 2, color: rimCol, alpha: Math.min(1, 0.75 * rimA * rimFlick * flash) });
+          }
         }
       }
       // §6.28-16 ②(社長指示「ゲートボスは武器絵も使ってね」の差し戻し対応): 「投げて地面に置く」=
@@ -22067,7 +22305,9 @@ export class PixiScene {
     if (mines.length === 0) return;
     for (const m of mines) {
       // 画面外はスキップ(distanceOutsideViewport はズーム引き(CONTEXT_ZOOM_MIN)込みの可視域で判定)。
-      if (this.distanceOutsideViewport(m.x, m.y, (m.blastR ?? SENSOR_MINE_RADIUS) + 40) > 0) continue;
+      const pf = this.projFrame;
+      if (pf ? projShapeOutside(pf, m.x, m.y, m.blastR ?? SENSOR_MINE_RADIUS, 40) : this.distanceOutsideViewport(m.x, m.y, (m.blastR ?? SENSOR_MINE_RADIUS) + 40) > 0) continue; // ?proj=1: 形の端を投影した箱で間引く(§3-6b)
+      const n0 = pf ? projCmdCount(g) : 0;
       // ?proj=1(段階2・§3-5d の①): 本体(円盤と待機のランプ)だけ足元を投影して置く・大きさ s(地雷は遠近の倍率を掛けていない=d=1)。
       // 感知後の赤い点滅と爆発範囲の円は予告=段階4まで world のまま(1つも変えない)。
       const mp = this.projFrame ? projectInto(this.projFrame, m.x, m.y, this.projScratch2) : null;
@@ -22080,7 +22320,9 @@ export class PixiScene {
         // 待機: 琥珀ランプがゆっくり明滅(視認用の控えめな存在表示)。
         const lampPulse = 0.5 + 0.5 * Math.sin(now / 420 + m.x * 0.05);
         g.circle(mx, my - 2 * ms, 1.7 * ms).fill({ color: 0xfbbf24, alpha: (0.35 + 0.5 * lampPulse) * ma });
+        if (pf) projKeepFrom(g, n0); // 混在の表(§3-6b): 本体と待機のランプは段階2で投影済みの表示座標=二重に投影しない
       } else {
+        if (pf) projKeepFrom(g, n0); // 本体(段階2で投影済み)
         // 感知→起爆(2秒): 赤点滅テレグラフ。ランプ赤点滅+爆発範囲の赤円(ジブリル火の予告と同系の見せ方)。
         // ★慣性バッチ(v0.25.3444・旧台帳#7の裁定): 矩形波を**現実基準で維持**する。
         // 「現実はどんな動きをするか」の答え: これは電子ランプ(LED)の点滅で、LEDは慣性を持たず
@@ -22092,7 +22334,8 @@ export class PixiScene {
         const blinkOn = Math.floor((gameTime - m.triggeredAt) / (m.hostile ? 104 : 90)) % 2 === 0;
         const p = Math.max(0, Math.min(1, (gameTime - m.triggeredAt) / SENSOR_MINE_FUSE_MS));
         // research/TELEGRAPH_FIXES.md I01: 幻影の地雷(カウンターできない爆発)はランプも紫(範囲の円と同じ色の文法)。
-        g.circle(m.x, m.y - 2, 2.4).fill({ color: m.hostile ? 0xc084fc : 0xff3b3b, alpha: blinkOn ? 0.95 : 0.25 });
+        if (pf) projGlyphCircle(g, pf, m.x, m.y - 2, 2.4, { color: m.hostile ? 0xc084fc : 0xff3b3b, alpha: blinkOn ? 0.95 : 0.25 }); // 赤い点滅の点=中心だけ投影
+        else g.circle(m.x, m.y - 2, 2.4).fill({ color: m.hostile ? 0xc084fc : 0xff3b3b, alpha: blinkOn ? 0.95 : 0.25 });
         // ★v0.25.4206(§11-2c 全数へ): 爆発範囲の円も流星文法(外周→中心へ帯・消え切った瞬間=起爆)。
         // **ランプの矩形波点滅はそのまま**(上のコメントの裁定どおり)=帯の濃さにだけ点滅を掛ける。
         // research/TELEGRAPH_FIXES.md I01: ①幻影の地雷(m.hostile)=カウンターできない爆発なので紫(色の文法)。
@@ -22102,8 +22345,9 @@ export class PixiScene {
         const mineStroke = m.hostile ? 0xc084fc : 0xff3b3b;
         const mineMask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(g, m.x, m.y, mineR, p, mineFill, telFillA(p, blinkOn ? 1 : 0) * TELEGRAPH_FILL_MULT)
-          : (g.circle(m.x, m.y, mineR).fill({ color: mineFill, alpha: telFillA(p, blinkOn ? 1 : 0) * TELEGRAPH_FILL_MULT }), 1);
-        g.circle(m.x, m.y, mineR).stroke({ width: 2, color: mineStroke, alpha: telStrokeA(p, blinkOn ? 1 : 0) * mineMask });
+          : (pf ? projCircle(g, pf, m.x, m.y, mineR, { color: mineFill, alpha: telFillA(p, blinkOn ? 1 : 0) * TELEGRAPH_FILL_MULT }) : g.circle(m.x, m.y, mineR).fill({ color: mineFill, alpha: telFillA(p, blinkOn ? 1 : 0) * TELEGRAPH_FILL_MULT }), 1);
+        if (pf) projCircle(g, pf, m.x, m.y, mineR, undefined, { width: 2, color: mineStroke, alpha: telStrokeA(p, blinkOn ? 1 : 0) * mineMask });
+        else g.circle(m.x, m.y, mineR).stroke({ width: 2, color: mineStroke, alpha: telStrokeA(p, blinkOn ? 1 : 0) * mineMask });
         // 幻影の地雷(紫の円)の縁は機械の刻み。プレイヤーの地雷の赤は今のまま。
         if (m.hostile) this.drawRimNotches(g, m.x, m.y, mineR, 16, 5, mineStroke, telStrokeA(p, blinkOn ? 1 : 0) * mineMask, Math.PI / 16);
       }
@@ -25627,6 +25871,7 @@ export class PixiScene {
     //   (窓が抜け切って alpha≈0 で終わる通常経路では露見しなかった)。歯抜け配列につき要素ガード必須。
     if (view.bandSlices) for (const arr of view.bandSlices) if (arr) for (const s of arr) if (s) s.visible = false;
     if (view.slash) view.slash.visible = false;
+    if (view.projRingMesh || view.projBandMesh || view.projSliceMesh) this.projHideTeleMeshes(view); // ?proj=1 の段階4の格子メッシュも既定OFF
     if (view.clawMarks) for (const s of view.clawMarks) if (s) s.visible = false;
     // ★glenParts(ラスボス第二形態の連結パーツ)はここで消さない(v0.25.2955・社長報告「パーツが
     // くっついてない。本体しかいない」の実バグ)。パーツは攻撃予告ではなく**本体の一部**で、
@@ -25766,6 +26011,7 @@ export class PixiScene {
   }
 
   private drawEnemy(view: ActorView, e: Enemy, gameTime: number, now: number) {
+    const pf = this.projFrame; // ?proj=1 の段階4: 投影する図形だけ部品で描く(else は今の行のまま)
     const fb = enemyFootBox(e);
     // 格闘の浮きの輪・筋(§9-76)は、このフレームで drawBrawlerAir を通った時だけ出す(途中で抜ける経路で残らない)。
     if (view.airRing) view.airRing.visible = false;
@@ -27313,9 +27559,9 @@ export class PixiScene {
           this.drawSweepBand(view, o, dfx, dfy, dtx, dty, dhw, dprog,
             telFillA(dprog, dpulse) * TELEGRAPH_FILL_MULT, telStrokeA(dprog, dpulse), dTgStyle);
         } else {
-        if (dVisible) o.poly(dpts).fill({ color: 0xff2a2a, alpha: telFillA(dprog, dpulse) * TELEGRAPH_FILL_MULT });
+        if (dVisible) { if (pf) projPoly(o, pf, dpts, { color: 0xff2a2a, alpha: telFillA(dprog, dpulse) * TELEGRAPH_FILL_MULT }); else o.poly(dpts).fill({ color: 0xff2a2a, alpha: telFillA(dprog, dpulse) * TELEGRAPH_FILL_MULT }); }
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, dfx, dfy, dtx, dty, dhw, 0xff3b3b, telStrokeA(dprog, dpulse), 0, dprog, undefined, dTgStyle);
-        else if (dVisible) o.poly(dpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(dprog, dpulse) });
+        else if (dVisible) { if (pf) projPoly(o, pf, dpts, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(dprog, dpulse) }); else o.poly(dpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(dprog, dpulse) }); }
         }
         // ★溜め中は赤帯の予告だけ(社長指示2026-08-26で手描きの槍を撤去)。
         // 突きの絵は実行(active)の白い風圧が担う。
@@ -27405,9 +27651,9 @@ export class PixiScene {
           this.drawSweepBand(view, o, sfx, sfy, stx, sty, shw, sprog,
             telFillA(sprog, spulse) * TELEGRAPH_FILL_MULT, telStrokeA(sprog, spulse), sTgStyle);
         } else {
-        if (sVisible) o.poly(spts).fill({ color: 0xff2a2a, alpha: telFillA(sprog, spulse) * TELEGRAPH_FILL_MULT });
+        if (sVisible) { if (pf) projPoly(o, pf, spts, { color: 0xff2a2a, alpha: telFillA(sprog, spulse) * TELEGRAPH_FILL_MULT }); else o.poly(spts).fill({ color: 0xff2a2a, alpha: telFillA(sprog, spulse) * TELEGRAPH_FILL_MULT }); }
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, sfx, sfy, stx, sty, shw, 0xff3b3b, telStrokeA(sprog, spulse), 0, sprog, undefined, sTgStyle);
-        else if (sVisible) o.poly(spts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(sprog, spulse) });
+        else if (sVisible) { if (pf) projPoly(o, pf, spts, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(sprog, spulse) }); else o.poly(spts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(sprog, spulse) }); }
         }
         // ★★社長指示2026-09-23「伐採人、**ための時は武器は出さない**。切るタイミングで表示」:
         // 溜めのあいだは**チェーンソーを描かない**(赤い予告の帯は従来どおり出す=読み方は変えない)。
@@ -28031,7 +28277,7 @@ export class PixiScene {
         strokeBeamLayers(o, bfx, bfy, btx, bty, BM_T.snipe.halfWidth, true, [
           // research/TELEGRAPH_FIXES.md H07: 溜め(紫)と同じ「カウンター不可」の紫で撃ち終わりまで通す
           // (ミーミルのレーザーと同じ組: 帯 0x9333ea・芯 0xf3e8ff)。寸法・life の薄れ・盾で割る処理は不変。
-          { w: BM_T.snipe.halfWidth * 2, color: 0x9333ea, alpha: 0.35 * life, cap: 'round' },
+          { w: BM_T.snipe.halfWidth * 2, color: 0x9333ea, alpha: 0.35 * life, cap: 'round', judge: true },
           { w: 4, color: 0xf3e8ff, alpha: 0.9 * life, cap: 'round', core: true },
         ]);
         this.drawBeamTipGfx(o, `${e.id}:snipe`, gameTime, bfx, bfy, btx, bty, BM_T.snipe.halfWidth, true, 0,
@@ -28083,8 +28329,8 @@ export class PixiScene {
         const w3FillA = telFillA(prog, pulse) * TELEGRAPH_FILL_MULT;
         const w3Mask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(o, cx, cy, BM_T.whip360.radius, prog, 0xff2a2a, w3FillA, telegraphStyleFor(e.type))
-          : (o.circle(cx, cy, BM_T.whip360.radius).fill({ color: 0xff2a2a, alpha: w3FillA }), 1);
-        o.circle(cx, cy, BM_T.whip360.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * w3Mask });
+          : (pf ? projCircle(o, pf, cx, cy, BM_T.whip360.radius, { color: 0xff2a2a, alpha: w3FillA }) : o.circle(cx, cy, BM_T.whip360.radius).fill({ color: 0xff2a2a, alpha: w3FillA }), 1);
+        if (pf) projCircle(o, pf, cx, cy, BM_T.whip360.radius, undefined, { width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * w3Mask }); else o.circle(cx, cy, BM_T.whip360.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * w3Mask });
         // 振りかぶり: 角速度をprog^2で上げる(0からいきなり回さない=慣性)。
         const windAng = prog * prog * 1.6 * Math.PI * 2;
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy - e.height * 0.2, windAng, 170 * (0.7 + 0.3 * prog), 0.9,
@@ -28102,7 +28348,7 @@ export class PixiScene {
           ? this.drawSweepCircleFill(o, cx, cy, BM_T.whip360.radius,
               PixiScene.loopSweepProg(WHIP360_LOOP_MS, WHIP360_LOOP_MS - (now % WHIP360_LOOP_MS)), 0xff2a2a, 0.30, telegraphStyleFor(e.type))
           : 1;
-        o.circle(cx, cy, BM_T.whip360.radius).stroke({ width: 3, color: 0xff5a5a, alpha: 0.5 * whipMask });
+        if (pf) projCircle(o, pf, cx, cy, BM_T.whip360.radius, undefined, { width: 3, color: 0xff5a5a, alpha: 0.5 * whipMask }); else o.circle(cx, cy, BM_T.whip360.radius).stroke({ width: 3, color: 0xff5a5a, alpha: 0.5 * whipMask });
         this.drawBountyWeapon(e.id, 'bounty-melee-whip', cx, cy, ang, BM_T.whip360.radius, 0.98,
           1, false, PixiScene.WHIP_GRIP_X, PixiScene.WHIP_GRIP_Y, PixiScene.WHIP_INTRINSIC);
         // ★v0.25.3566(社長指示「360度振りにはスネアエフェクト使わず弧を描く斬撃の方がいい」):
@@ -28201,8 +28447,8 @@ export class PixiScene {
         const lpFillA = telFillA(prog, 1) * TELEGRAPH_FILL_MULT;
         const lpMask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(o, lx, ly, BB_T.leap.radius, lpProg, 0xff2a2a, lpFillA, telegraphStyleFor(e.type))
-          : (o.circle(lx, ly, BB_T.leap.radius).fill({ color: 0xff2a2a, alpha: lpFillA }), 1);
-        o.circle(lx, ly, BB_T.leap.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * lpMask });
+          : (pf ? projCircle(o, pf, lx, ly, BB_T.leap.radius, { color: 0xff2a2a, alpha: lpFillA }) : o.circle(lx, ly, BB_T.leap.radius).fill({ color: 0xff2a2a, alpha: lpFillA }), 1);
+        if (pf) projCircle(o, pf, lx, ly, BB_T.leap.radius, undefined, { width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * lpMask }); else o.circle(lx, ly, BB_T.leap.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * lpMask });
         if (bs2 === 'leap-air') {
           const airProg = Math.max(0, Math.min(1, 1 - (untilW - gameTime) / BB_T.leap.airMs));
           o.circle(lx, ly, BB_T.leap.radius * (1.6 - 0.6 * airProg)).stroke({ width: 2, color: 0xffe0e0, alpha: 0.5 * (1 - airProg) });
@@ -28280,8 +28526,8 @@ export class PixiScene {
         const pulse = 0.55 + 0.45 * Math.sin(now / 80);
         // v0.25.2961(社長決定): レーザーは**カウンター不可**なので危険色を赤ではなく**紫**で塗る
         // (紫=カウンターできない攻撃、の新しい読み分け。判定と線の一致=掟はそのまま)。
-        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xa855f7, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse) * blink, cap: 'round' });
-        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xf3e8ff, alpha: (0.45 + 0.45 * prog) * blink, cap: 'round' });
+        if (pf) projSeg(o, pf, cx, cy, ex2, ey2, { width: 2 + 7 * prog, color: 0xa855f7, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse) * blink, cap: 'round' }); else o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xa855f7, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse) * blink, cap: 'round' });
+        if (pf) projSeg(o, pf, cx, cy, ex2, ey2, { width: 1 + 2 * prog, color: 0xf3e8ff, alpha: (0.45 + 0.45 * prog) * blink, cap: 'round' }); else o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xf3e8ff, alpha: (0.45 + 0.45 * prog) * blink, cap: 'round' });
         // §6.33(v0.25.2951 社長指示): カラオケの物差し=**プレイヤーの足元まで**。
         // 「どこで満杯か分かりづらい」の答え: 塗りの先端(白い印付き)が root→自分へ向かって伸び、
         // **先端が自分の足元に触れた瞬間=発射**(満杯位置=自分自身なので見失わない)。
@@ -28294,12 +28540,12 @@ export class PixiScene {
           const plyK = useGameStore.getState().player;
           const pDist = Math.min(Math.hypot(plyK.x + plyK.width / 2 - cx, plyK.y + plyK.height / 2 - cy), MIMIR_LASER_VIS_RANGE);
           const fx2 = cx + ux * pDist * fill, fy2 = cy + uy * pDist * fill;
-          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 8, color: 0xc084fc, alpha: 0.9 * blink, cap: 'round' });
-          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 3, color: 0xffffff, alpha: 0.95 * blink, cap: 'round' });
-          o.circle(fx2, fy2, 6).fill({ color: 0xffffff, alpha: 0.95 }); // 塗りの先端の印(=時計の針)
+          if (pf) projSeg(o, pf, cx, cy, fx2, fy2, { width: 8, color: 0xc084fc, alpha: 0.9 * blink, cap: 'round' }); else o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 8, color: 0xc084fc, alpha: 0.9 * blink, cap: 'round' });
+          if (pf) projSeg(o, pf, cx, cy, fx2, fy2, { width: 3, color: 0xffffff, alpha: 0.95 * blink, cap: 'round' }); else o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 3, color: 0xffffff, alpha: 0.95 * blink, cap: 'round' });
+          if (pf) projGlyphCircle(o, pf, fx2, fy2, 6, { color: 0xffffff, alpha: 0.95 }); else o.circle(fx2, fy2, 6).fill({ color: 0xffffff, alpha: 0.95 }); // 塗りの先端の印(=時計の針)
           if (lwRemain <= LASER_TRACK_LOCK_MS) {
             const flick = 0.5 + 0.5 * Math.sin(now / 45);
-            o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 10, color: 0xffffff, alpha: 0.25 + 0.45 * flick, cap: 'round' });
+            if (pf) projSeg(o, pf, cx, cy, ex2, ey2, { width: 10, color: 0xffffff, alpha: 0.25 + 0.45 * flick, cap: 'round' }); else o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 10, color: 0xffffff, alpha: 0.25 + 0.45 * flick, cap: 'round' });
           }
           if (lwRemain <= LASER_TRACK_WEAK_MS && lwRemain > 0) {
             // 弱点発光は普通の Graphics 塗り(投影影を落とす強glow光源にはしない=CLAUDE.md計測結論)。
@@ -28319,9 +28565,9 @@ export class PixiScene {
         // research/SHIELD_BLOCK.md §2/§8: 発射中の光は味方の盾の影で割る(判定と同じ splitBeamAtShield・丸い先端)。予告線は変えない。
         // v0.25.2961: ビーム本体も紫系(紫=カウンター不可)。芯の白は維持=エネルギー感は落とさない。
         strokeBeamLayers(o, cx, cy, ex2, ey2, MIMIR_LASER_VIS_HALFWIDTH, true, [
-          { w, color: 0x9333ea, alpha: 0.45 * fade, cap: 'round' },
-          { w: w * 0.5, color: 0xc084fc, alpha: 0.85 * fade, cap: 'round' },
-          { w: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97 * fade, cap: 'round', core: true },
+          { w, color: 0x9333ea, alpha: 0.45 * fade, cap: 'round', judge: true },
+          { w: w * 0.5, color: 0xc084fc, alpha: 0.85 * fade, cap: 'round', judge: true },
+          { w: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97 * fade, cap: 'round', core: true, judge: true },
         ]);
         // 先端(社長 2026-11-12「他のレーザー系も統一で」): 判定の端(丸の中心)から外へ、紫のドットの段とちぎれる粒。
         this.drawBeamTipGfx(o, `${e.id}:laser`, gameTime, cx, cy, ex2, ey2, MIMIR_LASER_VIS_HALFWIDTH, true, 0,
@@ -28353,8 +28599,14 @@ export class PixiScene {
       const wheelTg = telegraphStyleFor(e.type);
       const wheelHalfWin = Math.max(0.02, wheelTg?.bandHalfW ?? BAND_SWEEP_W);
       const wheelWinProg = windupProgFromElapsed(tW, W.windupMs);
-      const winLine = (ux: number, uy: number, len: number, width: number, color: number, alpha: number, cap?: 'round') => {
+      // judge=true: 太さが判定の幅を表す線(土台の帯・残光)=?proj=1 では面の帯で描く(§3-6g)。無し=細い線。
+      const winLine = (ux: number, uy: number, len: number, width: number, color: number, alpha: number, cap?: 'round', judge = false) => {
         if (!BAND_SWEEP_ON) {
+          if (pf) {
+            if (judge) projThickLine(o, pf, cx, cy, cx + ux * len, cy + uy * len, cap ? { width, color, alpha, cap } : { width, color, alpha });
+            else projSeg(o, pf, cx, cy, cx + ux * len, cy + uy * len, cap ? { width, color, alpha, cap } : { width, color, alpha });
+            return;
+          }
           o.moveTo(cx, cy).lineTo(cx + ux * len, cy + uy * len).stroke(cap ? { width, color, alpha, cap } : { width, color, alpha });
           return;
         }
@@ -28368,7 +28620,10 @@ export class PixiScene {
           const s1 = Math.min(len, s0 + st);
           const w = bandSweepSliceAlpha(((s0 + s1) / 2) / R, wheelWinProg, wheelHalfWin, wheelTg?.easePow, CIRCLE_SWEEP_EASE);
           if (w <= 0.004) continue;
-          o.moveTo(cx + ux * s0, cy + uy * s0).lineTo(cx + ux * s1, cy + uy * s1)
+          if (pf) {
+            if (judge) projBand(o, pf, cx + ux * s0, cy + uy * s0, cx + ux * s1, cy + uy * s1, width / 2, { color, alpha: alpha * w }, 0, 1, false, false);
+            else projSeg(o, pf, cx + ux * s0, cy + uy * s0, cx + ux * s1, cy + uy * s1, { width, color, alpha: alpha * w, cap: 'butt' });
+          } else o.moveTo(cx + ux * s0, cy + uy * s0).lineTo(cx + ux * s1, cy + uy * s1)
             .stroke({ width, color, alpha: alpha * w, cap: 'butt' });
           if (firstS < 0) { firstS = s0; firstW = w; }
           lastS = s1; lastW = w;
@@ -28376,8 +28631,14 @@ export class PixiScene {
         if (cap && firstS >= 0) {
           const ang = Math.atan2(uy, ux), hr = width / 2;
           const ax = cx + ux * firstS, ay = cy + uy * firstS, bx = cx + ux * lastS, by = cy + uy * lastS;
-          o.moveTo(ax, ay).arc(ax, ay, hr, ang + Math.PI / 2, ang + Math.PI * 1.5).closePath().fill({ color, alpha: alpha * firstW });
-          o.moveTo(bx, by).arc(bx, by, hr, ang - Math.PI / 2, ang + Math.PI / 2).closePath().fill({ color, alpha: alpha * lastW });
+          if (pf) {
+            // ?proj=1: 窓の両端の半円(外へ向いた半円)=中心を含む扇を頂点ごとに投影
+            projSector(o, pf, ax, ay, hr, ang + Math.PI / 2, ang + Math.PI * 1.5, { color, alpha: alpha * firstW });
+            projSector(o, pf, bx, by, hr, ang - Math.PI / 2, ang + Math.PI / 2, { color, alpha: alpha * lastW });
+          } else {
+            o.moveTo(ax, ay).arc(ax, ay, hr, ang + Math.PI / 2, ang + Math.PI * 1.5).closePath().fill({ color, alpha: alpha * firstW });
+            o.moveTo(bx, by).arc(bx, by, hr, ang - Math.PI / 2, ang + Math.PI / 2).closePath().fill({ color, alpha: alpha * lastW });
+          }
         }
       };
       const trail = (ang: number, width: number, alpha: number, spread: number, shielded = false, windowed = false) => {
@@ -28387,10 +28648,12 @@ export class PixiScene {
           // 溜め中(予告)は盾の例外=従来どおり全長。発射中(shielded)だけ盾の影で割る。
           const tw = width * (1 - 0.22 * q);
           if (windowed) {
-            winLine(Math.cos(ta), Math.sin(ta), R, tw, 0xa855f7, alpha * Math.pow(0.5, q));
+            winLine(Math.cos(ta), Math.sin(ta), R, tw, 0xa855f7, alpha * Math.pow(0.5, q), undefined, true);
           } else if (shielded) {
             strokeBeamLayers(o, cx, cy, cx + Math.cos(ta) * R, cy + Math.sin(ta) * R, Math.max(1, tw / 2), false,
-              [{ w: tw, color: 0xa855f7, alpha: alpha * Math.pow(0.5, q) }]);
+              [{ w: tw, color: 0xa855f7, alpha: alpha * Math.pow(0.5, q), judge: true }]);
+          } else if (pf) {
+            projThickLine(o, pf, cx, cy, cx + Math.cos(ta) * R, cy + Math.sin(ta) * R, { width: tw, color: 0xa855f7, alpha: alpha * Math.pow(0.5, q) });
           } else {
             o.moveTo(cx, cy).lineTo(cx + Math.cos(ta) * R, cy + Math.sin(ta) * R)
               .stroke({ width: tw, color: 0xa855f7, alpha: alpha * Math.pow(0.5, q) });
@@ -28420,17 +28683,17 @@ export class PixiScene {
         for (let k = 0; k < n; k++) {
           const ang = mimirWheelSpokeAngle(th0, wdir, k, tW, W);
           const ux = Math.cos(ang), uy = Math.sin(ang);
-          winLine(ux, uy, R, W.halfWidth * 2, 0x7e22ce, 0.10 + 0.14 * prog);       // ① 土台の帯
+          winLine(ux, uy, R, W.halfWidth * 2, 0x7e22ce, 0.10 + 0.14 * prog, undefined, true); // ① 土台の帯(判定の幅=?proj=1 は面の帯)
           trail(ang, 2 + 6 * thick, 0.25 + 0.35 * prog, 0.05, false, true);       // ② 残光
           winLine(ux, uy, R, 2 + 8 * thick, 0xa855f7, 0.2 + 0.55 * prog, 'round'); // ③ 全長の線
           winLine(ux, uy, R, 1 + 2 * thick, 0xf3e8ff, 0.45 + 0.45 * prog, 'round'); // ④ 芯
           const fl = pDist * fillE;
           // ⑤ 自分の距離まで伸びる塗り=物差し(予告の帯ではない)。窓で切らず元の描き方のまま。
-          o.moveTo(cx, cy).lineTo(cx + ux * fl, cy + uy * fl).stroke({ width: 7, color: 0xc084fc, alpha: 0.85, cap: 'round' });
-          o.moveTo(cx, cy).lineTo(cx + ux * fl, cy + uy * fl).stroke({ width: 2.5, color: 0xffffff, alpha: 0.9, cap: 'round' });
+          if (pf) projSeg(o, pf, cx, cy, cx + ux * fl, cy + uy * fl, { width: 7, color: 0xc084fc, alpha: 0.85, cap: 'round' }); else o.moveTo(cx, cy).lineTo(cx + ux * fl, cy + uy * fl).stroke({ width: 7, color: 0xc084fc, alpha: 0.85, cap: 'round' });
+          if (pf) projSeg(o, pf, cx, cy, cx + ux * fl, cy + uy * fl, { width: 2.5, color: 0xffffff, alpha: 0.9, cap: 'round' }); else o.moveTo(cx, cy).lineTo(cx + ux * fl, cy + uy * fl).stroke({ width: 2.5, color: 0xffffff, alpha: 0.9, cap: 'round' });
         }
         // 自分の距離へ広がる輪=物差し(輪が自分に届いた瞬間に撃つ)。
-        o.circle(cx, cy, Math.max(4, pDist * fillE)).stroke({ width: 2 + 2 * thick, color: 0xe9d5ff, alpha: 0.35 + 0.5 * prog });
+        if (pf) projCircle(o, pf, cx, cy, Math.max(4, pDist * fillE), undefined, { width: 2 + 2 * thick, color: 0xe9d5ff, alpha: 0.35 + 0.5 * prog }); else o.circle(cx, cy, Math.max(4, pDist * fillE)).stroke({ width: 2 + 2 * thick, color: 0xe9d5ff, alpha: 0.35 + 0.5 * prog });
         // 溜めの終わり(残り150ms)は線全体が白く走る=今から撃つ。
         const remain = W.windupMs - tW;
         if (remain <= 150) {
@@ -28438,7 +28701,7 @@ export class PixiScene {
           for (let k = 0; k < n; k++) {
             const ang = mimirWheelSpokeAngle(th0, wdir, k, tW, W);
             // ⑥ 残り150msの白い全長の線(=今から撃つ)。窓で切らず元の描き方のまま。
-            o.moveTo(cx, cy).lineTo(cx + Math.cos(ang) * R, cy + Math.sin(ang) * R).stroke({ width: 10, color: 0xffffff, alpha: 0.15 + 0.5 * k1 * k1, cap: 'round' });
+            if (pf) projSeg(o, pf, cx, cy, cx + Math.cos(ang) * R, cy + Math.sin(ang) * R, { width: 10, color: 0xffffff, alpha: 0.15 + 0.5 * k1 * k1, cap: 'round' }); else o.moveTo(cx, cy).lineTo(cx + Math.cos(ang) * R, cy + Math.sin(ang) * R).stroke({ width: 10, color: 0xffffff, alpha: 0.15 + 0.5 * k1 * k1, cap: 'round' });
           }
         }
         if (e.mimirWheelHoming) drawHomingOrbs(Math.max(1, Math.round(W.homing.burstCount)), 1 - (1 - prog) * (1 - prog));
@@ -28453,9 +28716,9 @@ export class PixiScene {
           // research/SHIELD_BLOCK.md §2/§8: 各本の光も味方の盾の影で割る(判定と同じ splitBeamAtShield・丸い先端)。残光(trail)も同じ。
           trail(ang, w * 0.7, 0.35 * (0.4 + 0.6 * omegaK), 0.035 + 0.05 * omegaK, true);
           strokeBeamLayers(o, cx, cy, cx + Math.cos(ang) * R, cy + Math.sin(ang) * R, W.halfWidth, true, [
-            { w: w * (1 + 0.6 * flare), color: 0x9333ea, alpha: 0.45, cap: 'round' },
-            { w: w * 0.5, color: 0xc084fc, alpha: 0.85, cap: 'round' },
-            { w: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97, cap: 'round', core: true },
+            { w: w * (1 + 0.6 * flare), color: 0x9333ea, alpha: 0.45, cap: 'round', judge: true },
+            { w: w * 0.5, color: 0xc084fc, alpha: 0.85, cap: 'round', judge: true },
+            { w: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97, cap: 'round', core: true, judge: true },
           ]);
           // 先端(6本ぶん=1本あたりの粒は8まで)。回るので粒は生まれた時の向きで取り残される。
           this.drawBeamTipGfx(o, `${e.id}:wheel:${k}`, gameTime, cx, cy, cx + Math.cos(ang) * R, cy + Math.sin(ang) * R, W.halfWidth, true, 0,
@@ -28488,8 +28751,8 @@ export class PixiScene {
             const ang = mimirWheelSpokeAngle(th0, wdir, k, endT, W);
             // 畳み(撃ち終わり)も盾の影で割る(光が盾を越えて見えない)。
             strokeBeamLayers(o, cx, cy, cx + Math.cos(ang) * R, cy + Math.sin(ang) * R, W.halfWidth, true, [
-              { w: Math.max(0.5, W.halfWidth * 2 * fold), color: 0x9333ea, alpha: 0.45 * fold, cap: 'round' },
-              { w: Math.max(0.5, W.halfWidth * 0.6 * core), color: 0xf3e8ff, alpha: 0.9 * core, cap: 'round', core: true },
+              { w: Math.max(0.5, W.halfWidth * 2 * fold), color: 0x9333ea, alpha: 0.45 * fold, cap: 'round', judge: true },
+              { w: Math.max(0.5, W.halfWidth * 0.6 * core), color: 0xf3e8ff, alpha: 0.9 * core, cap: 'round', core: true, judge: true },
             ]);
             // 先端も帯と一緒に畳まれて消える(発射中の先端から途切れない)。
             this.drawBeamTipGfx(o, `${e.id}:wheel:${k}`, gameTime, cx, cy, cx + Math.cos(ang) * R, cy + Math.sin(ang) * R, W.halfWidth, true, 0,
@@ -28568,11 +28831,11 @@ export class PixiScene {
           this.drawSweepBand(view, o, fx, fy, tx, ty, hw, prog,
             zoneFill * TELEGRAPH_FILL_MULT, telStrokeA(prog, pulse), iTgStyle);
         } else {
-        if (iVisible) o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill * TELEGRAPH_FILL_MULT });
+        if (iVisible) { if (pf) projPoly(o, pf, pts, { color: 0xff2a2a, alpha: zoneFill * TELEGRAPH_FILL_MULT }); else o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill * TELEGRAPH_FILL_MULT }); }
         // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436)。
         // v0.25.3477: 帯も赤ラインと同じ流星の描き→消し(このブロックはissen-windup限定=常にwindup中)。
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hw, 0xff3b3b, telStrokeA(prog, pulse), 0, prog, undefined, iTgStyle);
-        else if (iVisible) o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) });
+        else if (iVisible) { if (pf) projPoly(o, pf, pts, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) }); else o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) }); }
         }
         // 社長指示: 一閃の溜めは刀を腰に構えて(居合腰)ゆっくり溜める。方向はロック済み(fx,fy→tx,ty)。
         this.drawThorIaiCharge(e.id, fb.footX, fb.footY - fb.boxH * 0.32, tx - fx, ty - fy, prog, now);
@@ -28627,9 +28890,9 @@ export class PixiScene {
             this.drawSweepBand(view, o, cx, cy, ttx, tty, thw, prog,
               telFillA(prog, tpulse) * TELEGRAPH_FILL_MULT, telStrokeA(prog, tpulse), tTgStyle);
           } else {
-          if (tVisible) o.poly(tpts).fill({ color: 0xff2a2a, alpha: telFillA(prog, tpulse) * TELEGRAPH_FILL_MULT });
+          if (tVisible) { if (pf) projPoly(o, pf, tpts, { color: 0xff2a2a, alpha: telFillA(prog, tpulse) * TELEGRAPH_FILL_MULT }); else o.poly(tpts).fill({ color: 0xff2a2a, alpha: telFillA(prog, tpulse) * TELEGRAPH_FILL_MULT }); }
           if (FX_RING_ENABLED) this.drawTelegraphBand(view, cx, cy, ttx, tty, thw, 0xff3b3b, telStrokeA(prog, tpulse), 0, prog, undefined, tTgStyle);
-          else if (tVisible) o.poly(tpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, tpulse) });
+          else if (tVisible) { if (pf) projPoly(o, pf, tpts, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, tpulse) }); else o.poly(tpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, tpulse) }); }
           }
         }
       } else if (e.bossState === 'tsuki') {
@@ -28673,12 +28936,12 @@ export class PixiScene {
               hFill * TELEGRAPH_FILL_MULT, telStrokeA(prog, pulse), hTgStyle, 0xff2a2a, 0xff3b3b, 0, false,
               0.35 + 0.35 * prog, 1 + 2 * prog);
           } else {
-          if (hVisible) o.poly(hpts).fill({ color: 0xff2a2a, alpha: hFill * TELEGRAPH_FILL_MULT });
+          if (hVisible) { if (pf) projPoly(o, pf, hpts, { color: 0xff2a2a, alpha: hFill * TELEGRAPH_FILL_MULT }); else o.poly(hpts).fill({ color: 0xff2a2a, alpha: hFill * TELEGRAPH_FILL_MULT }); }
           // 縁取りだけ焼き済み素材(A-2)へ差し替え(v0.25.2436)。
           // v0.25.3477: 帯も赤ラインと同じ流星の描き→消し(このifはharai-windup限定=常にwindup中)。
           if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, hhw, 0xff3b3b, telStrokeA(prog, pulse), 0, prog, undefined, hTgStyle);
-          else if (hVisible) o.poly(hpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) });
-          if (hVisible) o.moveTo(hvfx, hvfy).lineTo(hvtx, hvty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' }); // 薙ぎの軸(白芯)
+          else if (hVisible) { if (pf) projPoly(o, pf, hpts, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) }); else o.poly(hpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) }); }
+          if (hVisible) { if (pf) projSeg(o, pf, hvfx, hvfy, hvtx, hvty, { width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' }); else o.moveTo(hvfx, hvfy).lineTo(hvtx, hvty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' }); } // 薙ぎの軸(白芯)
           }
           // 柄を手元に置き、攻撃方向から140度引いた大薙ぎの開始姿勢へ構える。実行は同じ姿勢から
           // 200度振り切るため、構え→振り→残心が連続する。
@@ -28715,10 +28978,10 @@ export class PixiScene {
           const jFillA = telFillA(1, pulse) * TELEGRAPH_FILL_MULT;
           const jMask = CIRCLE_SWEEP_ON
             ? this.drawSweepCircleFill(o, tx, ty, R, jProg, 0xff2a2a, jFillA, jTgStyle)
-            : (o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: jFillA }), 1);
+            : (pf ? projEllipse(o, pf, tx, ty, R, R, 0, { color: 0xff2a2a, alpha: jFillA }) : o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: jFillA }), 1);
           // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436・城ボスと同じ意匠を残りのボスへ横展開)。
           if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, (0.45 + 0.3 * pulse) * jMask);
-          else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * jMask });
+          else { if (pf) projEllipse(o, pf, tx, ty, R, R, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * jMask }); else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * jMask }); }
         }
         if (e.bossState === 'jump-attack') {
           // §5.25 M24: jumpだけ「ダメージ瞬間」=着地(jump-attack終わり)。windupではなく空中フェーズの
@@ -29028,10 +29291,10 @@ export class PixiScene {
         const bFillA = telFillA(prog, pulse) * TELEGRAPH_FILL_MULT;
         const bMask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(o, cx, cy, R, prog, 0xff2a2a, bFillA, mTgStyle)
-          : (o.ellipse(cx, cy, R, R).fill({ color: 0xff2a2a, alpha: bFillA }), 1);
+          : (pf ? projEllipse(o, pf, cx, cy, R, R, 0, { color: 0xff2a2a, alpha: bFillA }) : o.ellipse(cx, cy, R, R).fill({ color: 0xff2a2a, alpha: bFillA }), 1);
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, R, 0xff3b3b, ((0.35 + 0.35 * prog) + 0.15 * pulse) * bMask);
-        else o.ellipse(cx, cy, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) * bMask });
+        else { if (pf) projEllipse(o, pf, cx, cy, R, R, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) * bMask }); else o.ellipse(cx, cy, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) * bMask }); }
       }
       // FX-V3V4(V3-1): 噛みつきの牙。**「噛みつき」という動作の実装経路は2つ**あり、こちらが
       // 裏ボス側(mimir の bossState 経路)。もう1つは城ボスの g-bite(下の giantbat ブロック)。
@@ -29103,7 +29366,7 @@ export class PixiScene {
           const mask = this.drawSweepRectFill(o, { x: e.x, y: e.y, w: e.width, h: e.height }, reach, sp, 0xff2a2a,
             telFillA(sp, kPulse) * TELEGRAPH_FILL_MULT, jStyle);
           const lineW = k === nextK ? 3.4 : Math.max(1.4, 2.6 - 0.5 * (k - nextK));
-          o.rect(outer.x, outer.y, outer.w, outer.h).stroke({ width: lineW, color: 0xff3b3b, alpha: telStrokeA(sp, kPulse) * mask });
+          if (pf) projRect(o, pf, outer.x, outer.y, outer.w, outer.h, undefined, { width: lineW, color: 0xff3b3b, alpha: telStrokeA(sp, kPulse) * mask }); else o.rect(outer.x, outer.y, outer.w, outer.h).stroke({ width: lineW, color: 0xff3b3b, alpha: telStrokeA(sp, kPulse) * mask });
         }
       }
       if (e.type === 'jormungand') {
@@ -29667,7 +29930,7 @@ export class PixiScene {
             const a = 1 - lt * 0.7;
             // research/SHIELD_BLOCK.md §2/§8: 光条(発射した槍)は味方の盾の影で割る(判定の共通路と同じ splitBeamAtShield・先端は丸めない線)。飛行中の予告線は変えない。
             strokeBeamLayers(o, cx, cy, L.x, L.y, JB_T.lance.halfWidth, false, [
-              { w: JB_T.lance.halfWidth * 2, color: 0xff3b3b, alpha: 0.6 * a },
+              { w: JB_T.lance.halfWidth * 2, color: 0xff3b3b, alpha: 0.6 * a, judge: true },
               { w: 6, color: 0xffffff, alpha: 0.9 * a, core: true },
             ]);
             this.drawBeamTipGfx(o, `${e.id}:lance:${li}`, gameTime, cx, cy, L.x, L.y, JB_T.lance.halfWidth, false, 0,
@@ -29745,10 +30008,10 @@ export class PixiScene {
         const rjFillA = telFillA(1, pulse) * TELEGRAPH_FILL_MULT;
         const rjMask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(o, tx, ty, R, rjProg, 0xff2a2a, rjFillA, rfTgStyle)
-          : (o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: rjFillA }), 1);
+          : (pf ? projEllipse(o, pf, tx, ty, R, R, 0, { color: 0xff2a2a, alpha: rjFillA }) : o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: rjFillA }), 1);
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, (0.45 + 0.3 * pulse) * rjMask);
-        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * rjMask });
+        else { if (pf) projEllipse(o, pf, tx, ty, R, R, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * rjMask }); else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * rjMask }); }
       }
       // ---- ウリ(§6.28-17・M61新規): 大薙ぎ(横・内径あり)=T3帯。差し戻し(社長裁定): ドーナツの
       // くり抜きではなく、始点(aiFromX/Y)そのものを溜め開始時に内径ぶん前へ出してある
@@ -29861,10 +30124,10 @@ export class PixiScene {
         const rsFillA = telFillA(1, pulse) * TELEGRAPH_FILL_MULT;
         const rsMask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(o, cx, cy, SR_T.ringspin.radius, rsProg, 0xff2a2a, rsFillA, srTgStyle)
-          : (o.ellipse(cx, cy, SR_T.ringspin.radius, SR_T.ringspin.radius).fill({ color: 0xff2a2a, alpha: rsFillA }), 1);
+          : (pf ? projEllipse(o, pf, cx, cy, SR_T.ringspin.radius, SR_T.ringspin.radius, 0, { color: 0xff2a2a, alpha: rsFillA }) : o.ellipse(cx, cy, SR_T.ringspin.radius, SR_T.ringspin.radius).fill({ color: 0xff2a2a, alpha: rsFillA }), 1);
         // 縁取りだけ焼き済み素材(A-1)へ差し替え(v0.25.2436)。
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, SR_T.ringspin.radius, 0xff3b3b, (0.45 + 0.3 * pulse) * rsMask);
-        else o.ellipse(cx, cy, SR_T.ringspin.radius, SR_T.ringspin.radius).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * rsMask });
+        else { if (pf) projEllipse(o, pf, cx, cy, SR_T.ringspin.radius, SR_T.ringspin.radius, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * rsMask }); else o.ellipse(cx, cy, SR_T.ringspin.radius, SR_T.ringspin.radius).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * rsMask }); }
         // ★予兆一括バッチ(v0.25.3344・レシピ1): 構え(環を引き寄せる動作)の代わりに震え。
         if (rsWind) {
           view.sprite.position.x += windupTremorPx(rsProg, now);
@@ -30006,10 +30269,10 @@ export class PixiScene {
         const grFillA = telFillA(prog, pulse) * TELEGRAPH_FILL_MULT;
         const grMask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(o, cx, cy, PH_T.goldring.radius, prog, 0xff2a2a, grFillA, PixiScene.PHILL_TG_STYLE)
-          : (o.ellipse(cx, cy, PH_T.goldring.radius, PH_T.goldring.radius).fill({ color: 0xff2a2a, alpha: grFillA }), 1);
+          : (pf ? projEllipse(o, pf, cx, cy, PH_T.goldring.radius, PH_T.goldring.radius, 0, { color: 0xff2a2a, alpha: grFillA }) : o.ellipse(cx, cy, PH_T.goldring.radius, PH_T.goldring.radius).fill({ color: 0xff2a2a, alpha: grFillA }), 1);
         const ringA = ((0.2 + 0.3 * prog) + 0.25 * pulse) * grMask;
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, PH_T.goldring.radius, 0xffd166, ringA);
-        else o.ellipse(cx, cy, PH_T.goldring.radius, PH_T.goldring.radius).stroke({ width: 2, color: 0xffd166, alpha: ringA });
+        else { if (pf) projEllipse(o, pf, cx, cy, PH_T.goldring.radius, PH_T.goldring.radius, 0, undefined, { width: 2, color: 0xffd166, alpha: ringA }); else o.ellipse(cx, cy, PH_T.goldring.radius, PH_T.goldring.radius).stroke({ width: 2, color: 0xffd166, alpha: ringA }); }
       }
       // ---- フィル: 裁きの光(技8★カウンター必須)=追尾円(判定なし)→固定の瞬間に1回blast(§10-9の8) ----
       else if (e.type === 'phillboss' && bs === 'phill-judgment-windup') {
@@ -30024,9 +30287,9 @@ export class PixiScene {
         const jgFillA = telFillA(1, pulse) * TELEGRAPH_FILL_MULT;
         const jgMask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(o, tx, ty, R, jgProg, 0xff2a2a, jgFillA, PixiScene.PHILL_TG_STYLE)
-          : (o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: jgFillA }), 1);
+          : (pf ? projEllipse(o, pf, tx, ty, R, R, 0, { color: 0xff2a2a, alpha: jgFillA }) : o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: jgFillA }), 1);
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, (0.5 + 0.3 * pulse) * jgMask);
-        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * jgMask });
+        else { if (pf) projEllipse(o, pf, tx, ty, R, R, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * jgMask }); else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * jgMask }); }
       }
       // ---- フィル: 羽根の檻(技9★カウンター必須)=全方位から収縮する円(判定なし)→閉じ切る瞬間に
       // blast(§10-9の9)。中心は溜め開始でロック=以後追尾しない。 ----
@@ -30044,9 +30307,9 @@ export class PixiScene {
         const cgFillA = telFillA(prog, pulse) * TELEGRAPH_FILL_MULT;
         const cgMask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(o, tx, ty, R, prog, 0xff2a2a, cgFillA, PixiScene.PHILL_TG_STYLE)
-          : (o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: cgFillA }), 1);
+          : (pf ? projEllipse(o, pf, tx, ty, R, R, 0, { color: 0xff2a2a, alpha: cgFillA }) : o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: cgFillA }), 1);
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, (0.35 + 0.4 * prog + 0.2 * pulse) * cgMask);
-        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) * cgMask });
+        else { if (pf) projEllipse(o, pf, tx, ty, R, R, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) * cgMask }); else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(prog, pulse) * cgMask }); }
       }
       // ---- フィル: 光輪投げ(技11)=往復とも帯判定(横に避ける・§10-9の11) ----
       else if (e.type === 'phillboss' && (bs === 'phill-ringtoss-windup' || bs === 'phill-ringtoss-out' || bs === 'phill-ringtoss-back' || bs === 'phill-ringtoss-recover')) {
@@ -30084,9 +30347,9 @@ export class PixiScene {
         const dvFillA = telFillA(1, pulse) * TELEGRAPH_FILL_MULT;
         const dvMask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(o, tx, ty, R, dvProg, 0xff2a2a, dvFillA, PixiScene.PHILL_TG_STYLE)
-          : (o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: dvFillA }), 1);
+          : (pf ? projEllipse(o, pf, tx, ty, R, R, 0, { color: 0xff2a2a, alpha: dvFillA }) : o.ellipse(tx, ty, R, R).fill({ color: 0xff2a2a, alpha: dvFillA }), 1);
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, tx, ty, R, 0xff3b3b, (0.45 + 0.3 * pulse) * dvMask);
-        else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * dvMask });
+        else { if (pf) projEllipse(o, pf, tx, ty, R, R, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * dvMask }); else o.ellipse(tx, ty, R, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * dvMask }); }
       }
       // ---- スリィエル: 単眼の凝視(小技)=T4のみ(図形なし・tintは上で設定済み) ----
       // ---- 上記いずれにも該当しない状態(chase/volley/bolt-windup/counter-leap等)は図形なし ----
@@ -30295,9 +30558,9 @@ export class PixiScene {
             const spinFillA = telFillA(1, pulse) * TELEGRAPH_FILL_MULT;
             const spinMask = CIRCLE_SWEEP_ON
               ? this.drawSweepCircleFill(o, spinL.d[2], spinL.d[3], SR_T.ringspin.radius, spinTailProg, 0xff2a2a, spinFillA, telegraphStyleFor(e.type))
-              : (o.ellipse(spinL.d[2], spinL.d[3], SR_T.ringspin.radius, SR_T.ringspin.radius).fill({ color: 0xff2a2a, alpha: spinFillA }), 1);
+              : (pf ? projEllipse(o, pf, spinL.d[2], spinL.d[3], SR_T.ringspin.radius, SR_T.ringspin.radius, 0, { color: 0xff2a2a, alpha: spinFillA }) : o.ellipse(spinL.d[2], spinL.d[3], SR_T.ringspin.radius, SR_T.ringspin.radius).fill({ color: 0xff2a2a, alpha: spinFillA }), 1);
             if (FX_RING_ENABLED) this.drawTelegraphRing(view, spinL.d[2], spinL.d[3], SR_T.ringspin.radius, 0xff3b3b, (0.45 + 0.3 * pulse) * spinMask);
-            else o.ellipse(spinL.d[2], spinL.d[3], SR_T.ringspin.radius, SR_T.ringspin.radius).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * spinMask });
+            else { if (pf) projEllipse(o, pf, spinL.d[2], spinL.d[3], SR_T.ringspin.radius, SR_T.ringspin.radius, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * spinMask }); else o.ellipse(spinL.d[2], spinL.d[3], SR_T.ringspin.radius, SR_T.ringspin.radius).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * spinMask }); }
           }
         }
 
@@ -30745,9 +31008,9 @@ export class PixiScene {
         ];
         // 縁取りだけを素材A-2へ差し替える(円=A-1と同じ考え方)。
         // 素材は上の pts と同じ矩形にぴったり重なる(drawTelegraphBand が同じ式で寸法を出す)。
-        if (visible) o.poly(pts).fill({ color: 0xff2a2a, alpha: fillA * TELEGRAPH_FILL_MULT });
+        if (visible) { if (pf) projPoly(o, pf, pts, { color: 0xff2a2a, alpha: fillA * TELEGRAPH_FILL_MULT }); else o.poly(pts).fill({ color: 0xff2a2a, alpha: fillA * TELEGRAPH_FILL_MULT }); }
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, fx, fy, tx, ty, halfWidth, 0xff3b3b, strokeA, bandIdx, prog, undefined, gTgStyle);
-        else if (visible) o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
+        else if (visible) { if (pf) projPoly(o, pf, pts, undefined, { width: 2, color: 0xff3b3b, alpha: strokeA }); else o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA }); }
       };
       // 共通ヘルパ(M66): 扇形(帯が回転する技のwindup予告=最終的に薙ぐ全域を先出しする)。innerR>0で
       // 内径付き(懐が安全=ウリの内径修正と同じ考え方。図形は「くり抜き」ではなく環状の扇そのもの)。
@@ -30778,8 +31041,8 @@ export class PixiScene {
             baseAngle - sweepRad / 2, baseAngle + sweepRad / 2, prog, 0xff2a2a, fillA * TELEGRAPH_FILL_MULT, gTgStyle);
           return;
         }
-        o.poly(pts).fill({ color: 0xff2a2a, alpha: (fillA) * TELEGRAPH_FILL_MULT });
-        o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
+        if (pf) projPoly(o, pf, pts, { color: 0xff2a2a, alpha: (fillA) * TELEGRAPH_FILL_MULT }); else o.poly(pts).fill({ color: 0xff2a2a, alpha: (fillA) * TELEGRAPH_FILL_MULT });
+        if (pf) projPoly(o, pf, pts, undefined, { width: 2, color: 0xff3b3b, alpha: strokeA }); else o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: strokeA });
       };
       // T4: 「実行の瞬間」に紐づける。stomp/sweep/dash/boltは溜め(windup)終わりが実行の瞬間、
       // jumpだけ滞空(air)終わり=着地(トールのjump-attackと同じ作法)。
@@ -31826,9 +32089,9 @@ export class PixiScene {
         const gStompFillA = telFillA(1, gPulse) * TELEGRAPH_FILL_MULT;
         const gStompMask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(o, cx, cy, gStompR, gStompProg, 0xff2a2a, gStompFillA, gTgStyle)
-          : (o.ellipse(cx, cy, gStompR, gStompR).fill({ color: 0xff2a2a, alpha: gStompFillA }), 1);
+          : (pf ? projEllipse(o, pf, cx, cy, gStompR, gStompR, 0, { color: 0xff2a2a, alpha: gStompFillA }) : o.ellipse(cx, cy, gStompR, gStompR).fill({ color: 0xff2a2a, alpha: gStompFillA }), 1);
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, cx, cy, gStompR, 0xff3b3b, (0.55 + 0.35 * gPulse) * gStompMask);
-        else o.ellipse(cx, cy, gStompR, gStompR).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) * gStompMask });
+        else { if (pf) projEllipse(o, pf, cx, cy, gStompR, gStompR, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) * gStompMask }); else o.ellipse(cx, cy, gStompR, gStompR).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) * gStompMask }); }
       } else if (gph === 'g-sweep-windup' || gph === 'g-sweep-active' || gph === 'g-sweep-track') {
         // T3(赤い角ばった四角ゾーン)。トール払い/ミゲル払いと同じ意匠(poly fill+stroke)。
         // §15追尾相(g-sweep-track): storeが毎フレーム書く生のaiFrom/aiTargetを読む=帯が本体+照準に
@@ -31889,14 +32152,14 @@ export class PixiScene {
         // なるのは仕様変更(社長指示が無い)。窓はその上を流れる。ロック後は従来どおり
         // SWEEP_LOCK_FADE_MS の残像として消える(下の§15ロックの合図)。
         if (gSweepMasked && gTrack && gVisible) {
-          o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT * gTrackEase });
+          if (pf) projPoly(o, pf, gpts, { color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT * gTrackEase }); else o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT * gTrackEase });
         }
         if (gSweepMasked) {
           // ★v0.25.4103: 薙ぎ払いも同じスライス方式(切り出さない)。面+縁+白芯が同じ窓で流れる。
           this.drawSweepBand(view, o, gfx, gfy, gtx, gty, ghw, gSweepProg,
             telFillA(gSweepProg, gPulse) * TELEGRAPH_FILL_MULT * gTrackEase,
             telStrokeA(gSweepProg, gPulse) * gTrackEase, gTgStyle);
-        } else if (gVisible) o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT * gTrackEase });
+        } else if (gVisible) { if (pf) projPoly(o, pf, gpts, { color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT * gTrackEase }); else o.poly(gpts).fill({ color: 0xff2a2a, alpha: gZoneFill * TELEGRAPH_FILL_MULT * gTrackEase }); }
         // v0.25.3477: 帯の流星描き→消しはwindup限定(activeは全形のまま=従来どおり。gprogはactive中は
         // 窓の異なる時計を流用しているだけの値なので、そのままmeteorPhaseへ渡さない)。
         if (gSweepMasked) {
@@ -31909,7 +32172,7 @@ export class PixiScene {
             const a = (0.35 + 0.35 * gSweepProg) * gTrackEase * bandSweepAlphaAt((i + 0.5) * gSt2, gCen2, gHW2);
             if (a <= 0.002) continue;
             const s0 = i * gSt2, s1 = s0 + gSt2;
-            o.moveTo(gfx + (gtx - gfx) * s0, gfy + (gty - gfy) * s0)
+            if (pf) projSeg(o, pf, gfx + (gtx - gfx) * s0, gfy + (gty - gfy) * s0, gfx + (gtx - gfx) * s1 + 0.5, gfy + (gty - gfy) * s1, { width: 1 + 2 * gSweepProg, color: 0xffe0e0, alpha: a }); else o.moveTo(gfx + (gtx - gfx) * s0, gfy + (gty - gfy) * s0)
               .lineTo(gfx + (gtx - gfx) * s1 + 0.5, gfy + (gty - gfy) * s1)
               .stroke({ width: 1 + 2 * gSweepProg, color: 0xffe0e0, alpha: a });
           }
@@ -31919,9 +32182,9 @@ export class PixiScene {
         //   追尾相の縁が丸ごと消えていた(v0.25.4105 で修正)。追尾相は undefined=全形が正。
         if (FX_RING_ENABLED) this.drawTelegraphBand(view, gfx, gfy, gtx, gty, ghw, 0xff3b3b, telStrokeA(gprog, gPulse) * gTrackEase, 0,
           gph === 'g-sweep-windup' ? gprog : (gTrack ? undefined : 1), undefined, gTgStyle);
-        else if (gVisible) o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(gprog, gPulse) * gTrackEase });
+        else if (gVisible) { if (pf) projPoly(o, pf, gpts, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(gprog, gPulse) * gTrackEase }); else o.poly(gpts).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(gprog, gPulse) * gTrackEase }); }
         // 白芯も可視区間だけ(面と同じ理由=流星の頭と消しを隠さない)。
-        if (gVisible) o.moveTo(gvfx, gvfy).lineTo(gvtx, gvty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: (0.35 + 0.35 * gprog) * gTrackEase, cap: 'round' });
+        if (gVisible) { if (pf) projSeg(o, pf, gvfx, gvfy, gvtx, gvty, { width: 1 + 2 * gprog, color: 0xffe0e0, alpha: (0.35 + 0.35 * gprog) * gTrackEase, cap: 'round' }); else o.moveTo(gvfx, gvfy).lineTo(gvtx, gvty).stroke({ width: 1 + 2 * gprog, color: 0xffe0e0, alpha: (0.35 + 0.35 * gprog) * gTrackEase, cap: 'round' }); }
         }
         // §15ロックの合図+薄→濃の慣性: 追尾相→windupの瞬間に全形の白い縁を1フラッシュ(60ms)し、
         // 照準表示(trackの薄い全形)は150msの残像として消えながら流星の描き始めへ引き継ぐ(濃度の段差を
@@ -31937,10 +32200,10 @@ export class PixiScene {
           ];
           if (lockAge >= 0 && lockAge < SWEEP_LOCK_FADE_MS) {
             const gRem = (1 - lockAge / SWEEP_LOCK_FADE_MS) ** 2;
-            o.poly(gFullPts).fill({ color: 0xff2a2a, alpha: telFillA(0.25, gPulse) * TELEGRAPH_FILL_MULT * gRem });
+            if (pf) projPoly(o, pf, gFullPts, { color: 0xff2a2a, alpha: telFillA(0.25, gPulse) * TELEGRAPH_FILL_MULT * gRem }); else o.poly(gFullPts).fill({ color: 0xff2a2a, alpha: telFillA(0.25, gPulse) * TELEGRAPH_FILL_MULT * gRem });
           }
           if (lockAge >= 0 && lockAge < 60) {
-            o.poly(gFullPts).stroke({ width: 4, color: 0xffffff, alpha: 0.9 * (1 - lockAge / 60) });
+            if (pf) projPoly(o, pf, gFullPts, undefined, { width: 4, color: 0xffffff, alpha: 0.9 * (1 - lockAge / 60) }); else o.poly(gFullPts).stroke({ width: 4, color: 0xffffff, alpha: 0.9 * (1 - lockAge / 60) });
           }
         }
       } else if (gph === 'g-jump-windup' || gph === 'g-jump-air') {
@@ -31962,9 +32225,9 @@ export class PixiScene {
         const gJumpFillA = telFillA(1, gPulse) * TELEGRAPH_FILL_MULT;
         const gJumpMask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(o, gtx, gty, gR, gJumpProg, 0xff2a2a, gJumpFillA, gTgStyle)
-          : (o.ellipse(gtx, gty, gR, gR).fill({ color: 0xff2a2a, alpha: gJumpFillA }), 1);
+          : (pf ? projEllipse(o, pf, gtx, gty, gR, gR, 0, { color: 0xff2a2a, alpha: gJumpFillA }) : o.ellipse(gtx, gty, gR, gR).fill({ color: 0xff2a2a, alpha: gJumpFillA }), 1);
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, gtx, gty, gR, 0xff3b3b, (0.55 + 0.35 * gPulse) * gJumpMask);
-        else o.ellipse(gtx, gty, gR, gR).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) * gJumpMask });
+        else { if (pf) projEllipse(o, pf, gtx, gty, gR, gR, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) * gJumpMask }); else o.ellipse(gtx, gty, gR, gR).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) * gJumpMask }); }
       } else if (gph === 'g-trijump-windup' || gph === 'g-trijump-air') {
         // 連続ジャンプ(グレン専用・v0.25.2430): **3つの着地円を溜め開始から全部見せる**。
         // 座標は gameStore が glenTriJumpPoints で確定して持たせた `gTriJumpPts` をそのまま読む
@@ -31989,9 +32252,9 @@ export class PixiScene {
           const tjFillA = telFillA(1, gPulse) * lead * TELEGRAPH_FILL_MULT;
           const tjMask = CIRCLE_SWEEP_ON
             ? this.drawSweepCircleFill(o, tjx, tjy, GLEN_TRIJUMP_RADIUS, tjProg, 0xff2a2a, tjFillA, gTgStyle)
-            : (o.ellipse(tjx, tjy, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_RADIUS).fill({ color: 0xff2a2a, alpha: tjFillA }), 1);
+            : (pf ? projEllipse(o, pf, tjx, tjy, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_RADIUS, 0, { color: 0xff2a2a, alpha: tjFillA }) : o.ellipse(tjx, tjy, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_RADIUS).fill({ color: 0xff2a2a, alpha: tjFillA }), 1);
           if (FX_RING_ENABLED) this.drawTelegraphRing(view, tjx, tjy, GLEN_TRIJUMP_RADIUS, 0xff3b3b, (0.55 + 0.35 * gPulse) * lead * tjMask, i - done);
-          else o.ellipse(tjx, tjy, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) * lead * tjMask });
+          else { if (pf) projEllipse(o, pf, tjx, tjy, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_RADIUS, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) * lead * tjMask }); else o.ellipse(tjx, tjy, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, gPulse) * lead * tjMask }); }
         }
       } else if (gph === 'g-bite-windup' || gph === 'g-bite-hold' || gph === 'g-bite-active') {
         // M66 stage-1「噛みつき」: T3前方の短い帯(足元の円=stompと図形で区別)。holdは"間"=図形は
@@ -32047,8 +32310,8 @@ export class PixiScene {
         const dvFillA2 = telFillA(dt, gPulse) * TELEGRAPH_FILL_MULT;
         const dvMask2 = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(o, dtx, dty, GIANT_DIVE_RADIUS, dt, 0xff2a2a, dvFillA2, gTgStyle)
-          : (o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).fill({ color: 0xff2a2a, alpha: dvFillA2 }), 1);
-        o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(dt, gPulse) * dvMask2 });
+          : (pf ? projEllipse(o, pf, dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS, 0, { color: 0xff2a2a, alpha: dvFillA2 }) : o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).fill({ color: 0xff2a2a, alpha: dvFillA2 }), 1);
+        if (pf) projEllipse(o, pf, dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(dt, gPulse) * dvMask2 }); else o.ellipse(dtx, dty, GIANT_DIVE_RADIUS, GIANT_DIVE_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(dt, gPulse) * dvMask2 });
       } else if (gph === 'g-quad-windup') {
         // M66 stage-4「三連突進」の各回: T1ライン+終点リング(既存dashと同じ意匠)。
         // v0.25.3049(社長裁定「カウンター不能技に。紫線に変更で」): 突進の体当たりはパリィ表外=
@@ -32081,7 +32344,7 @@ export class PixiScene {
         // M66 stage-4「氷結波」(大技): windupは最終到達半径(400)/開始半径(60)の輪郭だけを薄く先出し
         // (塗り潰さない=「今爆ぜる」ではない)。
         const nprog = giantNovaWindupProg(gph, (e.aiPhaseUntil ?? gameTime) - gameTime, GIANT_NOVA_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT) ?? 1;
-        o.ellipse(cx, cy, GIANT_NOVA_RADIUS_END, GIANT_NOVA_RADIUS_END).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(nprog, gPulse) });
+        if (pf) projEllipse(o, pf, cx, cy, GIANT_NOVA_RADIUS_END, GIANT_NOVA_RADIUS_END, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(nprog, gPulse) }); else o.ellipse(cx, cy, GIANT_NOVA_RADIUS_END, GIANT_NOVA_RADIUS_END).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(nprog, gPulse) });
         // ★★赤い予告の4つの掟① / PACING_PUZZLE.md §18-1 C-2。旧は**輪郭2本を描くだけ**=塗りも流れも無い。
         // 氷結波が**最初に当たる場所は開始半径の輪**(active でそこから外へ広がる)。だから流星の塗りは
         // 開始半径に掛ける——到達半径まで塗ると「赤いのに当たらない」(内側は通過後=当たらない)になる。
@@ -32089,15 +32352,17 @@ export class PixiScene {
         const nMask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(o, cx, cy, GIANT_NOVA_RADIUS_START, nprog, 0xff2a2a, telFillA(nprog, gPulse) * TELEGRAPH_FILL_MULT, gTgStyle)
           : 1;
-        o.ellipse(cx, cy, GIANT_NOVA_RADIUS_START, GIANT_NOVA_RADIUS_START).stroke({ width: 2, color: 0xff5a5a, alpha: ((0.16 + 0.22 * nprog) + 0.08 * gPulse) * nMask });
+        if (pf) projEllipse(o, pf, cx, cy, GIANT_NOVA_RADIUS_START, GIANT_NOVA_RADIUS_START, 0, undefined, { width: 2, color: 0xff5a5a, alpha: ((0.16 + 0.22 * nprog) + 0.08 * gPulse) * nMask }); else o.ellipse(cx, cy, GIANT_NOVA_RADIUS_START, GIANT_NOVA_RADIUS_START).stroke({ width: 2, color: 0xff5a5a, alpha: ((0.16 + 0.22 * nprog) + 0.08 * gPulse) * nMask });
       } else if (gph === 'g-nova-active') {
         // 判定はその瞬間の輪のみ(内側=既に通過した場所は当たらない・全ボス共通「離れれば安全」の
         // 逆張り)。輪の帯(半幅GIANT_NOVA_BAND_THICKNESS)だけをstrokeで塗る=内側を赤く塗らない。
         const nDurEff = GIANT_NOVA_ACTIVE_MS / ENEMY_ATTACK_SPEED_MULT;
         const nt = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / nDurEff));
         const curR = GIANT_NOVA_RADIUS_START + (GIANT_NOVA_RADIUS_END - GIANT_NOVA_RADIUS_START) * nt;
-        o.ellipse(cx, cy, curR, curR).stroke({ width: GIANT_NOVA_BAND_THICKNESS * 2, color: 0xff2a2a, alpha: 0.5 });
-        o.ellipse(cx, cy, curR, curR).stroke({ width: 2, color: 0xffe0e0, alpha: 0.8 });
+        // ?proj=1(§3-6g B17): 太さが判定の輪の帯の幅=面の環(curR ± GIANT_NOVA_BAND_THICKNESS)で描く。
+        if (pf) projAnnulus(o, pf, cx, cy, Math.max(0, curR - GIANT_NOVA_BAND_THICKNESS), curR + GIANT_NOVA_BAND_THICKNESS, undefined, undefined, { color: 0xff2a2a, alpha: 0.5 });
+        else o.ellipse(cx, cy, curR, curR).stroke({ width: GIANT_NOVA_BAND_THICKNESS * 2, color: 0xff2a2a, alpha: 0.5 });
+        if (pf) projEllipse(o, pf, cx, cy, curR, curR, 0, undefined, { width: 2, color: 0xffe0e0, alpha: 0.8 }); else o.ellipse(cx, cy, curR, curR).stroke({ width: 2, color: 0xffe0e0, alpha: 0.8 });
       } else if (gph === 'g-trishot-windup' || gph === 'g-trishot-active') {
         // 三連射(stage-5固有技): 左右2枚のT3帯(同時)。**判定は旧・翼撃と同一**(社長「内容は変わらず」)。
         // 三拍目(中央)は giantDelayedHits 経由で下の汎用ループが描く。
@@ -32135,9 +32400,9 @@ export class PixiScene {
         //   赤を1pxも描かない。判定は windup→active の遷移で単発成立済み(pumpkinBlasts型)。
         const wMask = CIRCLE_SWEEP_ON
           ? (wWind ? this.drawSweepCircleFill(o, wcx, wcy, GIANT_WING_RADIUS, wprog, 0xff2a2a, wFillA, gTgStyle) : 0)
-          : (wWind ? (o.ellipse(wcx, wcy, GIANT_WING_RADIUS, GIANT_WING_RADIUS).fill({ color: 0xff2a2a, alpha: wFillA }), 1) : 0);
+          : (wWind ? (pf ? projEllipse(o, pf, wcx, wcy, GIANT_WING_RADIUS, GIANT_WING_RADIUS, 0, { color: 0xff2a2a, alpha: wFillA }) : o.ellipse(wcx, wcy, GIANT_WING_RADIUS, GIANT_WING_RADIUS).fill({ color: 0xff2a2a, alpha: wFillA }), 1) : 0);
         if (FX_RING_ENABLED) this.drawTelegraphRing(view, wcx, wcy, GIANT_WING_RADIUS, 0xff3b3b, ((0.42 + 0.38 * wprog) + 0.15 * gPulse) * wMask);
-        else o.ellipse(wcx, wcy, GIANT_WING_RADIUS, GIANT_WING_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(wprog, gPulse) * wMask });
+        else { if (pf) projEllipse(o, pf, wcx, wcy, GIANT_WING_RADIUS, GIANT_WING_RADIUS, 0, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(wprog, gPulse) * wMask }); else o.ellipse(wcx, wcy, GIANT_WING_RADIUS, GIANT_WING_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(wprog, gPulse) * wMask }); }
       } else if (gph === 'g-sweepbeam-windup' || gph === 'g-sweepbeam-active') {
         // M66 stage-5「掃射」(大技): 細いT3帯(半幅30)が120°を回転する。懐(回転の中心付近)が
         // 安全=帯の始点を中心からGIANT_SWEEPBEAM_INNER_RADIUSぶん前へ出した扇/カプセル(ドーナツの
@@ -32207,12 +32472,12 @@ export class PixiScene {
           const rpd = Math.min(Math.hypot(plyCX - rfx, plyCY - rfy), GLEN_REACH_LENGTH);
           const rtipX = rfx + Math.cos(rang) * rpd * rprog, rtipY = rfy + Math.sin(rang) * rpd * rprog;
           const ot = view.overlayTop;
-          ot.moveTo(rfx, rfy).lineTo(rtipX, rtipY).stroke({ width: 8, color: 0xff6b6b, alpha: 0.9, cap: 'round' });
-          ot.moveTo(rfx, rfy).lineTo(rtipX, rtipY).stroke({ width: 3, color: 0xffffff, alpha: 0.95, cap: 'round' });
-          ot.circle(rtipX, rtipY, 6).fill({ color: 0xffffff, alpha: 0.95 }); // 塗りの先端の印(=時計の針)
+          if (pf) projSeg(ot, pf, rfx, rfy, rtipX, rtipY, { width: 8, color: 0xff6b6b, alpha: 0.9, cap: 'round' }); else ot.moveTo(rfx, rfy).lineTo(rtipX, rtipY).stroke({ width: 8, color: 0xff6b6b, alpha: 0.9, cap: 'round' });
+          if (pf) projSeg(ot, pf, rfx, rfy, rtipX, rtipY, { width: 3, color: 0xffffff, alpha: 0.95, cap: 'round' }); else ot.moveTo(rfx, rfy).lineTo(rtipX, rtipY).stroke({ width: 3, color: 0xffffff, alpha: 0.95, cap: 'round' });
+          if (pf) projGlyphCircle(ot, pf, rtipX, rtipY, 6, { color: 0xffffff, alpha: 0.95 }); else ot.circle(rtipX, rtipY, 6).fill({ color: 0xffffff, alpha: 0.95 }); // 塗りの先端の印(=時計の針)
           if (rWindEff * (1 - rprog) <= LASER_TRACK_LOCK_MS) {
             const rflick = 0.5 + 0.5 * Math.sin(now / 45);
-            ot.moveTo(rfx, rfy).lineTo(rtx, rty).stroke({ width: 10, color: 0xffffff, alpha: 0.25 + 0.45 * rflick, cap: 'round' });
+            if (pf) projSeg(ot, pf, rfx, rfy, rtx, rty, { width: 10, color: 0xffffff, alpha: 0.25 + 0.45 * rflick, cap: 'round' }); else ot.moveTo(rfx, rfy).lineTo(rtx, rty).stroke({ width: 10, color: 0xffffff, alpha: 0.25 + 0.45 * rflick, cap: 'round' });
           }
         }
       } else if (gph === 'g-tailslam-windup' || gph === 'g-tailslam-active') {
@@ -32374,7 +32639,12 @@ export class PixiScene {
               const frontCap = i === DSEGS - 1 ? hw * zp : 0;
               const ax = h.capsule.fx + ddx * s0, ay = h.capsule.fy + ddy * s0;
               const bx = h.capsule.fx + ddx * s1, by = h.capsule.fy + ddy * s1;
-              o.poly([
+              if (pf) projPoly(o, pf, [
+                ax - ux * backCap + nx * hw, ay - uy * backCap + ny * hw,
+                bx + ux * frontCap + nx * hw, by + uy * frontCap + ny * hw,
+                bx + ux * frontCap - nx * hw, by + uy * frontCap - ny * hw,
+                ax - ux * backCap - nx * hw, ay - uy * backCap - ny * hw,
+              ], { color: col, alpha: (0.05 + 0.22 * zp + 0.06 * gPulse) * (0.55 + 0.45 * k) * TELEGRAPH_FILL_MULT }); else o.poly([
                 ax - ux * backCap + nx * hw, ay - uy * backCap + ny * hw,
                 bx + ux * frontCap + nx * hw, by + uy * frontCap + ny * hw,
                 bx + ux * frontCap - nx * hw, by + uy * frontCap - ny * hw,
@@ -32386,7 +32656,12 @@ export class PixiScene {
             if (FX_RING_ENABLED) {
               this.drawTelegraphBand(view, defx, defy, detx, dety, hw, strokeCol, telStrokeA(zp, gPulse), delayBandIdx++);
             } else {
-              o.poly([
+              if (pf) projPoly(o, pf, [
+                defx + nx * hw, defy + ny * hw,
+                detx + nx * hw, dety + ny * hw,
+                detx - nx * hw, dety - ny * hw,
+                defx - nx * hw, defy - ny * hw,
+              ], undefined, { width: 2, color: strokeCol, alpha: 0.2 + 0.5 * zp + 0.12 * gPulse }); else o.poly([
                 defx + nx * hw, defy + ny * hw,
                 detx + nx * hw, dety + ny * hw,
                 detx - nx * hw, dety - ny * hw,
@@ -32418,8 +32693,8 @@ export class PixiScene {
           const dFillA = 0.05 + 0.18 * t + 0.06 * gPulse;
           const dMask = (CIRCLE_SWEEP_ON && h.burst !== true)
             ? this.drawSweepCircleFill(o, h.x, h.y, h.radius, t, col, dFillA, gTgStyle)
-            : (o.ellipse(h.x, h.y, h.radius, h.radius).fill({ color: col, alpha: dFillA }), 1);
-          o.ellipse(h.x, h.y, h.radius, h.radius).stroke({ width: 2, color: strokeCol, alpha: (0.2 + 0.45 * t + 0.12 * gPulse) * dMask });
+            : (pf ? projEllipse(o, pf, h.x, h.y, h.radius, h.radius, 0, { color: col, alpha: dFillA }) : o.ellipse(h.x, h.y, h.radius, h.radius).fill({ color: col, alpha: dFillA }), 1);
+          if (pf) projEllipse(o, pf, h.x, h.y, h.radius, h.radius, 0, undefined, { width: 2, color: strokeCol, alpha: (0.2 + 0.45 * t + 0.12 * gPulse) * dMask }); else o.ellipse(h.x, h.y, h.radius, h.radius).stroke({ width: 2, color: strokeCol, alpha: (0.2 + 0.45 * t + 0.12 * gPulse) * dMask });
           // 血溜まり(E-5)。`floorUntil` が付いているのはグレンの「血の弧」だけなので、これで一意に選べる
           // (氷=スカジ/城ボスstage-4 や 虚無の三唱の大円には付けない)。コマは技の寿命に合わせる。
           if (h.floorUntil !== undefined) {
@@ -32515,6 +32790,7 @@ export class PixiScene {
       if (view.burstFrag) for (const s of view.burstFrag) if (s?.visible) s.alpha *= teleFade;
       if (view.dashWind?.visible) view.dashWind.alpha *= teleFade;
       if (view.coilBody?.visible) view.coilBody.alpha *= teleFade;
+      if (view.projRingMesh || view.projBandMesh || view.projSliceMesh) this.projScaleTeleMeshAlpha(view, teleFade);
     }
 
     // Above-sprite layer(後半): 体力バー/ボスマーカー/イベント敵マーク。これらは「アクターに付属する表示」
@@ -33310,6 +33586,17 @@ export class PixiScene {
       const frontCap = i === SEGS - 1 ? halfWidth * zp : 0;
       const ax = fx + ddx * s0, ay = fy + ddy * s0;
       const bx = fx + ddx * s1, by = fy + ddy * s1;
+      const pf = this.projFrame;
+      if (pf) {
+        // ?proj=1(?bsweep=0 の経路・§3-6b): 同じ4隅を頂点ごとに投影
+        projPoly(o, pf, [
+          ax - ux * backCap + nx * halfWidth, ay - uy * backCap + ny * halfWidth,
+          bx + ux * frontCap + nx * halfWidth, by + uy * frontCap + ny * halfWidth,
+          bx + ux * frontCap - nx * halfWidth, by + uy * frontCap - ny * halfWidth,
+          ax - ux * backCap - nx * halfWidth, ay - uy * backCap - ny * halfWidth,
+        ], { color: fillColor, alpha: zoneFill * (0.55 + 0.45 * k) * TELEGRAPH_FILL_MULT });
+        continue;
+      }
       o.poly([
         ax - ux * backCap + nx * halfWidth, ay - uy * backCap + ny * halfWidth,
         bx + ux * frontCap + nx * halfWidth, by + uy * frontCap + ny * halfWidth,
@@ -33321,7 +33608,14 @@ export class PixiScene {
     const efx = fx + ddx * er, efy = fy + ddy * er;
     const etx = fx + ddx * zp, ety = fy + ddy * zp;
     if (FX_RING_ENABLED) this.drawTelegraphBand(view, efx, efy, etx, ety, halfWidth, strokeColor, strokeA, idx);
-    else {
+    else if (this.projFrame) {
+      projPoly(o, this.projFrame, [
+        efx + nx * halfWidth, efy + ny * halfWidth,
+        etx + nx * halfWidth, ety + ny * halfWidth,
+        etx - nx * halfWidth, ety - ny * halfWidth,
+        efx - nx * halfWidth, efy - ny * halfWidth,
+      ], undefined, { width: 2, color: strokeColor, alpha: strokeA });
+    } else {
       o.poly([
         efx + nx * halfWidth, efy + ny * halfWidth,
         etx + nx * halfWidth, ety + ny * halfWidth,
@@ -33437,6 +33731,7 @@ export class PixiScene {
     // 見せ方の追加(省略時=今の絵)。突進の走り(頭の点・終点の輪を落とす)/到着後の細め/帯と重なる区間の下地/ゾンビの印。
     ex?: DashLineEx,
   ) {
+    const pf = this.projFrame; // ?proj=1 の段階4: 投影する図形だけ部品で描く(else は今の行のまま)
     // 帯と同じく**ここで流星の位相を導く**(直接呼ぶ経路にも自動で効く)。
     const ph0 = eraseOverride === undefined
       ? PixiScene.meteorPhase(prog, style?.drawFrac)
@@ -33444,7 +33739,7 @@ export class PixiScene {
     const p = ph0.p;
     const er = ph0.er;
     // ★薄い下地(経路の全形)。メーター(濃い線)が減っても「どこを通るか」は読めるままにする。
-    if (ghost) o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 3, color: base, alpha: 0.18 * alphaMul, cap: 'round' });
+    if (ghost) { if (pf) projSeg(o, pf, fx, fy, tx, ty, { width: 3, color: base, alpha: 0.18 * alphaMul, cap: 'round' }); else o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 3, color: base, alpha: 0.18 * alphaMul, cap: 'round' }); }
     if (p - er <= 0.001 || alphaMul <= 0.001) return; // 消し切った(or まだ何も無い)
     // ★脈の時計は style.pulseAt があればそちら(技自身の経過時間)。無ければ従来どおり壁時計。
     const pulse = 0.5 + 0.5 * Math.sin((style?.pulseAt ?? now) / (style?.pulseMs ?? 110));
@@ -33476,10 +33771,10 @@ export class PixiScene {
           if (a1 - a0 <= 0.0005) continue;
           const mid = (a0 + a1) / 2, wf = wAt(mid), bf = bAt(mid);
           if (bf > 0.02) {
-            o.moveTo(fx + dx * a0, fy + dy * a0).lineTo(fx + dx * a1, fy + dy * a1)
+            if (pf) projSeg(o, pf, fx + dx * a0, fy + dy * a0, fx + dx * a1, fy + dy * a1, { width: 6 * wf, color: base, alpha: (0.3 + 0.14 * pulse) * alphaMul * bf, cap: 'butt' }); else o.moveTo(fx + dx * a0, fy + dy * a0).lineTo(fx + dx * a1, fy + dy * a1)
               .stroke({ width: 6 * wf, color: base, alpha: (0.3 + 0.14 * pulse) * alphaMul * bf, cap: 'butt' });
           }
-          o.moveTo(fx + dx * a0, fy + dy * a0).lineTo(fx + dx * a1, fy + dy * a1)
+          if (pf) projSeg(o, pf, fx + dx * a0, fy + dy * a0, fx + dx * a1, fy + dy * a1, { width: Math.max(0.8, 2 * wf), color: core, alpha: (0.55 + 0.25 * pulse) * alphaMul, cap: 'butt' }); else o.moveTo(fx + dx * a0, fy + dy * a0).lineTo(fx + dx * a1, fy + dy * a1)
             .stroke({ width: Math.max(0.8, 2 * wf), color: core, alpha: (0.55 + 0.25 * pulse) * alphaMul, cap: 'butt' });
         }
       }
@@ -33491,14 +33786,14 @@ export class PixiScene {
         const k = (i + 1) / SEGS2;
         const mid = (s0 + s1) / 2, wf = wAt(mid), bf = bAt(mid);
         // 尾の太い側(4k)は下地の役。重なる区間では芯の太さ(2)まで落とす。
-        o.moveTo(fx + dx * s0, fy + dy * s0).lineTo(fx + dx * s1, fy + dy * s1)
+        if (pf) projSeg(o, pf, fx + dx * s0, fy + dy * s0, fx + dx * s1, fy + dy * s1, { width: (2 + 4 * k * bf) * wf, color: core, alpha: (0.3 + 0.6 * k * k) * alphaMul, cap: 'butt' }); else o.moveTo(fx + dx * s0, fy + dy * s0).lineTo(fx + dx * s1, fy + dy * s1)
           .stroke({ width: (2 + 4 * k * bf) * wf, color: core, alpha: (0.3 + 0.6 * k * k) * alphaMul, cap: 'butt' });
       }
     } else {
       if (drawn > er) {
-        o.moveTo(fx + dx * er, fy + dy * er).lineTo(fx + dx * drawn, fy + dy * drawn)
+        if (pf) projSeg(o, pf, fx + dx * er, fy + dy * er, fx + dx * drawn, fy + dy * drawn, { width: 6, color: base, alpha: (0.3 + 0.14 * pulse) * alphaMul, cap: 'round' }); else o.moveTo(fx + dx * er, fy + dy * er).lineTo(fx + dx * drawn, fy + dy * drawn)
           .stroke({ width: 6, color: base, alpha: (0.3 + 0.14 * pulse) * alphaMul, cap: 'round' });
-        o.moveTo(fx + dx * er, fy + dy * er).lineTo(fx + dx * drawn, fy + dy * drawn)
+        if (pf) projSeg(o, pf, fx + dx * er, fy + dy * er, fx + dx * drawn, fy + dy * drawn, { width: 2, color: core, alpha: (0.55 + 0.25 * pulse) * alphaMul, cap: 'round' }); else o.moveTo(fx + dx * er, fy + dy * er).lineTo(fx + dx * drawn, fy + dy * drawn)
           .stroke({ width: 2, color: core, alpha: (0.55 + 0.25 * pulse) * alphaMul, cap: 'round' });
       }
       // 流星の尾: drawn→p をグラデーション(頭ほど明るく太く)。
@@ -33508,13 +33803,13 @@ export class PixiScene {
         const s1 = drawn + (p - drawn) * ((i + 1) / SEGS);
         if (s1 - s0 <= 0.0005) continue;
         const k = (i + 1) / SEGS;
-        o.moveTo(fx + dx * s0, fy + dy * s0).lineTo(fx + dx * s1, fy + dy * s1)
+        if (pf) projSeg(o, pf, fx + dx * s0, fy + dy * s0, fx + dx * s1, fy + dy * s1, { width: 2 + 4 * k, color: core, alpha: (0.3 + 0.6 * k * k) * alphaMul, cap: 'round' }); else o.moveTo(fx + dx * s0, fy + dy * s0).lineTo(fx + dx * s1, fy + dy * s1)
           .stroke({ width: 2 + 4 * k, color: core, alpha: (0.3 + 0.6 * k * k) * alphaMul, cap: 'round' });
       }
     }
     // 頭の輝点(溜め中=先端を走る。消え段階ではゴールに留まる)。ex.headMul=0 で出さない(突進の走り・ゾンビの印)。
     const headA = 0.9 * (1 - er) * alphaMul * (ex?.headMul ?? 1);
-    if (headA > 0.01) o.circle(fx + dx * p, fy + dy * p, 3 + 2 * pulse).fill({ color: head, alpha: headA });
+    if (headA > 0.01) { if (pf) projGlyphCircle(o, pf, fx + dx * p, fy + dy * p, 3 + 2 * pulse, { color: head, alpha: headA }); else o.circle(fx + dx * p, fy + dy * p, 3 + 2 * pulse).fill({ color: head, alpha: headA }); }
     // 終点リング: 溜め後半で立ち上がり、消え段階では薄れていく。
     const ringA = Math.max(0, (p - 0.5) * 2) * (0.45 + 0.4 * pulse) * (1 - er) * alphaMul * (ex?.ringMul ?? 1);
     if (ringA > 0.02) {
@@ -33522,9 +33817,9 @@ export class PixiScene {
         // 潰れた楕円(既定の縦横比0.45)=地面に置いた印。真円の輪+頭の点の「赤い二重丸=弾」に見せない。
         const rx = 10 + 3 * pulse;
         const ry = rx * (ex?.markRatio ?? 0.45);
-        o.ellipse(tx, ty, rx, ry).fill({ color: base, alpha: ringA * 0.3 * (ex?.markFillMul ?? 1) });
-        o.ellipse(tx, ty, rx, ry).stroke({ width: ex?.markStrokeW ?? 2, color: core, alpha: ringA });
-      } else o.circle(tx, ty, 9 + 3 * pulse).stroke({ width: 2, color: core, alpha: ringA });
+        if (pf) projGlyphEllipse(o, pf, tx, ty, rx, ry, { color: base, alpha: ringA * 0.3 * (ex?.markFillMul ?? 1) }); else o.ellipse(tx, ty, rx, ry).fill({ color: base, alpha: ringA * 0.3 * (ex?.markFillMul ?? 1) });
+        if (pf) projGlyphEllipse(o, pf, tx, ty, rx, ry, undefined, { width: ex?.markStrokeW ?? 2, color: core, alpha: ringA }); else o.ellipse(tx, ty, rx, ry).stroke({ width: ex?.markStrokeW ?? 2, color: core, alpha: ringA });
+      } else { if (pf) projGlyphCircle(o, pf, tx, ty, 9 + 3 * pulse, undefined, { width: 2, color: core, alpha: ringA }); else o.circle(tx, ty, 9 + 3 * pulse).stroke({ width: 2, color: core, alpha: ringA }); }
     }
   }
 
@@ -33809,7 +34104,7 @@ export class PixiScene {
     // 発射中は drawAngelBeamLine の uniform 経路(全形)と同じ層を、盾の影で切った1本として描く(盾が無ければ従来の2本の線そのまま)。
     const L = this.angelBeamLayers(THIN_BEAM_VIS_HALFWIDTH, prog, now);
     strokeBeamLayers(o, fx, fy, ex, ey, SR_T.beam.halfWidth, false, [
-      { w: L.baseW, color: 0xff3030, alpha: L.baseA },
+      { w: L.baseW, color: 0xff3030, alpha: L.baseA, judge: true },
       { w: L.coreW, color: 0xffe0e0, alpha: L.coreA, cap: 'round' },
     ]);
     // 先端(発射中だけ・予告の線には入れない)。
@@ -33855,7 +34150,14 @@ export class PixiScene {
     const coreA = (0.45 + 0.45 * prog) * cm;
     const baseW = 2 + (halfWidth - 2) * prog;
     const coreW = 1 + 2 * prog;
+    // ?proj=1(§3-6g): baseW は判定の半幅から導かれる=面の帯(半幅 baseW/2=今の見え方のまま)/coreW は固定px の式=細い線。
+    const pf = this.projFrame;
     if (uniform || !BAND_SWEEP_ON) {
+      if (pf) {
+        projThickLine(o, pf, fx, fy, ex, ey, { width: baseW, color: 0xff3030, alpha: Math.min(1, baseA) });
+        projSeg(o, pf, fx, fy, ex, ey, { width: coreW, color: 0xffe0e0, alpha: Math.min(1, coreA), cap: 'round' });
+        return;
+      }
       o.moveTo(fx, fy).lineTo(ex, ey).stroke({ width: baseW, color: 0xff3030, alpha: Math.min(1, baseA) });
       o.moveTo(fx, fy).lineTo(ex, ey).stroke({ width: coreW, color: 0xffe0e0, alpha: Math.min(1, coreA), cap: 'round' });
       return;
@@ -33871,6 +34173,11 @@ export class PixiScene {
       const bx = fx + dx * s1, by = fy + dy * s1;
       const along = (s0 + s1) / 2;
       const wf = 1 - 0.55 * fa * along, af = 1 - 0.6 * fa * along;
+      if (pf) {
+        projThickLine(o, pf, ax, ay, bx, by, { width: baseW * wf, color: 0xff3030, alpha: Math.min(1, baseA * BAND_SWEEP_A) * w * af });
+        projSeg(o, pf, ax, ay, bx, by, { width: Math.max(0.8, coreW * wf), color: 0xffe0e0, alpha: Math.min(1, coreA * BAND_SWEEP_A) * w * af, cap: 'round' });
+        continue;
+      }
       o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: baseW * wf, color: 0xff3030, alpha: Math.min(1, baseA * BAND_SWEEP_A) * w * af });
       o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: Math.max(0.8, coreW * wf), color: 0xffe0e0, alpha: Math.min(1, coreA * BAND_SWEEP_A) * w * af, cap: 'round' });
     }
@@ -34421,20 +34728,32 @@ export class PixiScene {
       const actor = p.ownerGhostId !== undefined ? combatActorPlayer(p.ownerGhostId) : null;
       const r = phantomTurretBlastRadius(actor ? skillExplosionMult(actor) : null);
       const x = p.x + p.width / 2, y = p.y + p.height / 2;
-      if (this.distanceOutsideViewport(x, y, r + 40) > 0) continue;
+      const pf = this.projFrame;
+      if (pf ? projShapeOutside(pf, x, y, r, 40) : this.distanceOutsideViewport(x, y, r + 40) > 0) continue; // ?proj=1: 形の端を投影した箱で間引く(§3-6b)
       // 点滅の周期は物ごとにずらす(タレット 118ms・幻影の地雷 104ms)=同じ画面で同じ呼吸に揃わない。
       const pulse = 0.5 + 0.5 * Math.sin(nowMs / 118 + x * 0.05);
       const mask = CIRCLE_SWEEP_ON
         ? this.drawSweepCircleFill(g, x, y, r, prog, 0x9333ea, telFillA(prog, pulse) * TELEGRAPH_FILL_MULT)
-        : (g.circle(x, y, r).fill({ color: 0x9333ea, alpha: telFillA(prog, pulse) * TELEGRAPH_FILL_MULT }), 1);
+        : (pf ? projCircle(g, pf, x, y, r, { color: 0x9333ea, alpha: telFillA(prog, pulse) * TELEGRAPH_FILL_MULT }) : g.circle(x, y, r).fill({ color: 0x9333ea, alpha: telFillA(prog, pulse) * TELEGRAPH_FILL_MULT }), 1);
       const ra = telStrokeA(prog, pulse) * mask;
-      g.circle(x, y, r).stroke({ width: 2, color: 0xc084fc, alpha: ra });
+      if (pf) projCircle(g, pf, x, y, r, undefined, { width: 2, color: 0xc084fc, alpha: ra });
+      else g.circle(x, y, r).stroke({ width: 2, color: 0xc084fc, alpha: ra });
       this.drawRimNotches(g, x, y, r, 20, 6, 0xc084fc, ra, 0);
     }
   }
   /** 機械の物(タレット・地雷)の紫の円の縁の刻み: 縁から内側へ短い目盛りを等間隔に打つ(縁の外へは出さない)。 */
   private drawRimNotches(g: Graphics, x: number, y: number, r: number, n: number, len: number, color: number, alpha: number, rot: number): void {
     if (alpha <= 0.02 || r <= len + 2) return;
+    const pf = this.projFrame;
+    if (pf) {
+      // ?proj=1(§3-6b): 刻みの両端を world で出して1本ずつ投影(細い線・★#23)。
+      for (let i = 0; i < n; i++) {
+        const a = rot + (i / n) * Math.PI * 2;
+        const c = Math.cos(a), s = Math.sin(a);
+        projSeg(g, pf, x + c * r, y + s * r, x + c * (r - len), y + s * (r - len), { width: 2, color, alpha: alpha * 0.85, cap: 'butt' });
+      }
+      return;
+    }
     for (let i = 0; i < n; i++) {
       const a = rot + (i / n) * Math.PI * 2;
       const c = Math.cos(a), s = Math.sin(a);
@@ -36622,11 +36941,25 @@ export class PixiScene {
     const hi = Math.min(radius, band + halfW);
     if (hi > lo) {
       const step = (hi - lo) / CIRCLE_SWEEP_STEPS;
-      for (let i = 0; i < CIRCLE_SWEEP_STEPS; i++) {
-        const r = lo + step * (i + 0.5);
-        const a = Math.min(1, peakAlpha * CIRCLE_SWEEP_A) * circleSweepAlphaAt(r, band, halfW);
-        if (a <= 0.003) continue;
-        o.circle(cx, cy, r).stroke({ width: step + 0.6, color, alpha: a });
+      const pf = this.projFrame;
+      if (pf) {
+        // ?proj=1(§3-6b): 線では敷き詰められない(投影後は輪の間隔が北で詰まり南で開く)=14本の塗った環(内外 r±step/2)。
+        // 角の並びは一番外の環で1回だけ決め、隣の環と頂点の列を共有する(継ぎ目なし)。濃さの式・step・戻り値は ?proj=0 と同じ。
+        let rs: ReturnType<typeof projRingsBegin> | null = null;
+        for (let i = 0; i < CIRCLE_SWEEP_STEPS; i++) {
+          const r = lo + step * (i + 0.5);
+          const a = Math.min(1, peakAlpha * CIRCLE_SWEEP_A) * circleSweepAlphaAt(r, band, halfW);
+          if (a <= 0.003) continue;
+          rs ??= projRingsBegin(pf, cx, cy, hi, lo);
+          projRing(o, pf, rs, lo + step * i, lo + step * (i + 1), { color, alpha: a });
+        }
+      } else {
+        for (let i = 0; i < CIRCLE_SWEEP_STEPS; i++) {
+          const r = lo + step * (i + 0.5);
+          const a = Math.min(1, peakAlpha * CIRCLE_SWEEP_A) * circleSweepAlphaAt(r, band, halfW);
+          if (a <= 0.003) continue;
+          o.circle(cx, cy, r).stroke({ width: step + 0.6, color, alpha: a });
+        }
       }
     }
     return CIRCLE_SWEEP_RING_ALWAYS ? 1 : circleSweepAlphaAt(radius, band, halfW);
@@ -36645,6 +36978,7 @@ export class PixiScene {
    * 光弾は放物線(打ち上げは速く、降りは緩む)・高さで大きく・短い尾。着地した光弾(リストから消えた物)は閃光+輪で弾ける。
    */
   private drawJormRain(e: Enemy, bs: string | undefined, gameTime: number, now: number): void {
+    const pf = this.projFrame; // ?proj=1 の段階4: 投影する図形だけ部品で描く(else は今の行のまま)
     this.jormRainBeginFrame(now);
     if (!this.jormRainGround) { this.jormRainGround = new Graphics(); this.L.groundLayer.addChild(this.jormRainGround); }
     if (!this.jormRainAir) { this.jormRainAir = new Graphics(); this.L.effectLayer.addChild(this.jormRainAir); }
@@ -36662,8 +36996,8 @@ export class PixiScene {
         // 影(暗い)+光溜まり(光弾の色が地面に落ちる)=落ちるほど締まって濃くなる(二乗=落下の加速)。
         const uu = u * u;
         const sr = 26 - 12 * uu;
-        g.ellipse(l.x, l.y, sr, sr * 0.45).fill({ color: 0x0b0716, alpha: 0.18 + 0.32 * uu });
-        g.ellipse(l.x, l.y, sr * 1.25, sr * 0.55).fill({ color: 0x5fb8ff, alpha: 0.08 + 0.17 * uu });
+        if (pf) projEllipse(g, pf, l.x, l.y, sr, sr * 0.45, 0, { color: 0x0b0716, alpha: 0.18 + 0.32 * uu }); else g.ellipse(l.x, l.y, sr, sr * 0.45).fill({ color: 0x0b0716, alpha: 0.18 + 0.32 * uu });
+        if (pf) projEllipse(g, pf, l.x, l.y, sr * 1.25, sr * 0.55, 0, { color: 0x5fb8ff, alpha: 0.08 + 0.17 * uu }); else g.ellipse(l.x, l.y, sr * 1.25, sr * 0.55).fill({ color: 0x5fb8ff, alpha: 0.08 + 0.17 * uu });
         // 光弾: 描画の進みは打ち上げで速く降りで緩む(着地の時刻は変えない)。高さで芯が大きくなり、尾を3つ引く。
         const ud = 1 - Math.pow(1 - u, 1.25);
         for (let tr = 3; tr >= 0; tr--) {
@@ -36853,6 +37187,7 @@ export class PixiScene {
   private skadiLatticeSeen = new Map<string, { k: number; stages: number; cx: number; cy: number; side: 1 | -1; until: number; bx: number; by: number }>();
   private skadiLatticeFx: { bands: { fx: number; fy: number; tx: number; ty: number }[]; axis: 'v' | 'h'; at: number; seed: number; flip: boolean; final: boolean; cx: number; cy: number }[] = [];
   private drawSkadiLattice(o: Graphics, e: Enemy, gameTime: number): void {
+    const pf = this.projFrame; // ?proj=1 の段階4: 投影する図形だけ部品で描く(else は今の行のまま)
     const L = HB_SK.lattice;
     // 色: 作品の「紫=カウンター不可」の1組(ミーミルのレーザー・トールの無と同じ)。刃は作品の氷の階調(白→氷青→青)。
     const PURPLE = 0x9333ea, PURPLE_L = 0xc084fc;
@@ -36897,20 +37232,20 @@ export class PixiScene {
         const x0 = Math.min(b.fx, b.tx) - hw, y0 = Math.min(b.fy, b.ty) - hw;
         const w = Math.abs(b.tx - b.fx) + 2 * hw, h = Math.abs(b.ty - b.fy) + 2 * hw;
         // 外側へ溶ける縁(線で切らない): 少し広い四角を薄く重ねる。
-        if (vert) o.rect(x0 - 5, y0, w + 10, h).fill({ color: PURPLE, alpha: base * 0.35 });
-        else o.rect(x0, y0 - 5, w, h + 10).fill({ color: PURPLE, alpha: base * 0.35 });
-        o.rect(x0, y0, w, h).fill({ color: PURPLE, alpha: base * (isCenter ? 1.25 : 1) });
+        if (vert) { if (pf) projRect(o, pf, x0 - 5, y0, w + 10, h, { color: PURPLE, alpha: base * 0.35 }); else o.rect(x0 - 5, y0, w + 10, h).fill({ color: PURPLE, alpha: base * 0.35 }); }
+        else { if (pf) projRect(o, pf, x0, y0 - 5, w, h + 10, { color: PURPLE, alpha: base * 0.35 }); else o.rect(x0, y0 - 5, w, h + 10).fill({ color: PURPLE, alpha: base * 0.35 }); }
+        if (pf) projRect(o, pf, x0, y0, w, h, { color: PURPLE, alpha: base * (isCenter ? 1.25 : 1) }); else o.rect(x0, y0, w, h).fill({ color: PURPLE, alpha: base * (isCenter ? 1.25 : 1) });
         for (let i = 0; i < SL; i++) {
           const s = (i + 0.5) / SL;
           const a = bandSweepAlphaAt(flip ? 1 - s : s, center, halfWin);
           if (a <= 0.01) continue;
-          if (vert) o.rect(x0, y0 + (h * i) / SL, w, h / SL + 0.5).fill({ color: PURPLE_L, alpha: a * 0.55 });
-          else o.rect(x0 + (w * i) / SL, y0, w / SL + 0.5, h).fill({ color: PURPLE_L, alpha: a * 0.55 });
+          if (vert) { if (pf) projRect(o, pf, x0, y0 + (h * i) / SL, w, h / SL + 0.5, { color: PURPLE_L, alpha: a * 0.55 }); else o.rect(x0, y0 + (h * i) / SL, w, h / SL + 0.5).fill({ color: PURPLE_L, alpha: a * 0.55 }); }
+          else { if (pf) projRect(o, pf, x0 + (w * i) / SL, y0, w / SL + 0.5, h, { color: PURPLE_L, alpha: a * 0.55 }); else o.rect(x0 + (w * i) / SL, y0, w / SL + 0.5, h).fill({ color: PURPLE_L, alpha: a * 0.55 }); }
         }
         if (isCenter) {
           const cw = 2 + 2 * prog;
-          if (vert) o.rect(b.fx - cw / 2, y0, cw, h).fill({ color: PURPLE_L, alpha: (0.35 + 0.45 * prog) * appear });
-          else o.rect(x0, b.fy - cw / 2, w, cw).fill({ color: PURPLE_L, alpha: (0.35 + 0.45 * prog) * appear });
+          if (vert) { if (pf) projRect(o, pf, b.fx - cw / 2, y0, cw, h, { color: PURPLE_L, alpha: (0.35 + 0.45 * prog) * appear }); else o.rect(b.fx - cw / 2, y0, cw, h).fill({ color: PURPLE_L, alpha: (0.35 + 0.45 * prog) * appear }); }
+          else { if (pf) projRect(o, pf, x0, b.fy - cw / 2, w, cw, { color: PURPLE_L, alpha: (0.35 + 0.45 * prog) * appear }); else o.rect(x0, b.fy - cw / 2, w, cw).fill({ color: PURPLE_L, alpha: (0.35 + 0.45 * prog) * appear }); }
         }
       }
     }
@@ -36990,11 +37325,22 @@ export class PixiScene {
     const hi = Math.min(reach, band + halfW);
     if (hi > lo) {
       const step = (hi - lo) / CIRCLE_SWEEP_STEPS;
-      for (let i = 0; i < CIRCLE_SWEEP_STEPS; i++) {
-        const r = lo + step * (i + 0.5);
-        const a = Math.min(1, peakAlpha * CIRCLE_SWEEP_A) * circleSweepAlphaAt(r, band, halfW);
-        if (a <= 0.003) continue;
-        o.rect(body.x - r, body.y - r, body.w + 2 * r, body.h + 2 * r).stroke({ width: step + 0.6, color, alpha: a });
+      const pf = this.projFrame;
+      if (pf) {
+        // ?proj=1(§3-6b): 矩形の枠の線14本 → 塗った矩形の枠14枚(内外 r±step/2)。濃さの式は ?proj=0 と同じ。
+        for (let i = 0; i < CIRCLE_SWEEP_STEPS; i++) {
+          const r = lo + step * (i + 0.5);
+          const a = Math.min(1, peakAlpha * CIRCLE_SWEEP_A) * circleSweepAlphaAt(r, band, halfW);
+          if (a <= 0.003) continue;
+          projRectFrame(o, pf, body, lo + step * i, lo + step * (i + 1), { color, alpha: a });
+        }
+      } else {
+        for (let i = 0; i < CIRCLE_SWEEP_STEPS; i++) {
+          const r = lo + step * (i + 0.5);
+          const a = Math.min(1, peakAlpha * CIRCLE_SWEEP_A) * circleSweepAlphaAt(r, band, halfW);
+          if (a <= 0.003) continue;
+          o.rect(body.x - r, body.y - r, body.w + 2 * r, body.h + 2 * r).stroke({ width: step + 0.6, color, alpha: a });
+        }
       }
     }
     return CIRCLE_SWEEP_RING_ALWAYS ? 1 : circleSweepAlphaAt(reach, band, halfW);
@@ -37019,7 +37365,19 @@ export class PixiScene {
     const hi = Math.min(radius, band + halfW);
     if (hi > lo) {
       const step = (hi - lo) / CIRCLE_SWEEP_STEPS;
-      for (let i = 0; i < CIRCLE_SWEEP_STEPS; i++) {
+      const pf = this.projFrame;
+      if (pf) {
+        // ?proj=1(§3-6b): 弧の線14本 → 塗った環状の扇14枚(内外 r±step/2・角の並びを共有)。濃さの式は ?proj=0 と同じ。
+        let rs: ReturnType<typeof projRingsBegin> | null = null;
+        const a1 = projArcEnd(startAngle, endAngle);
+        for (let i = 0; i < CIRCLE_SWEEP_STEPS; i++) {
+          const r = lo + step * (i + 0.5);
+          const a = Math.min(1, peakAlpha * CIRCLE_SWEEP_A) * circleSweepAlphaAt(r, band, halfW);
+          if (a <= 0.003) continue;
+          rs ??= projRingsBegin(pf, cx, cy, hi, lo, startAngle, a1);
+          projRing(o, pf, rs, lo + step * i, lo + step * (i + 1), { color, alpha: a });
+        }
+      } else for (let i = 0; i < CIRCLE_SWEEP_STEPS; i++) {
         const r = lo + step * (i + 0.5);
         const a = Math.min(1, peakAlpha * CIRCLE_SWEEP_A) * circleSweepAlphaAt(r, band, halfW);
         if (a <= 0.003) continue;
@@ -37086,6 +37444,7 @@ export class PixiScene {
     const peak = uniform ? Math.min(1, fillA) : Math.min(1, fillA * BAND_SWEEP_A);
     const winAt = (s: number) => (uniform ? 1 : bandSweepAlphaAt(s, center, halfWin));
     const st = 1 / BAND_SWEEP_SLICES;
+    const pf = this.projFrame;
     // ---- 面: 全長を等分し、スライスごとに窓の濃さを掛ける ----
     for (let i = 0; i < BAND_SWEEP_SLICES; i++) {
       const s0 = i * st, s1 = s0 + st;
@@ -37097,9 +37456,11 @@ export class PixiScene {
         // 盾の面に掛かる縞: 元の縞の四角から、盾の影の横の範囲を面の向こうだけ抜いた形。
         sliceCut[i] = true;
         const cp = beamCombPts(cut.plan, halfWidth, cut.d0 + ddl * s0 - bc, cut.d0 + ddl * s1 + fc, false, false);
-        o.poly(beamPtsToXY(cut.plan, cp)).fill({ color: fillColor, alpha: a });
+        if (pf) projPoly(o, pf, beamPtsToXY(cut.plan, cp), { color: fillColor, alpha: a }); // ?proj=1: 頂点ごとに投影
+        else o.poly(beamPtsToXY(cut.plan, cp)).fill({ color: fillColor, alpha: a });
         continue;
       }
+      if (pf) { projBand(o, pf, fx, fy, tx, ty, halfWidth, { color: fillColor, alpha: a }, s0, s1, i === 0, i === BAND_SWEEP_SLICES - 1); continue; }
       const ax = fx + ddx * s0, ay = fy + ddy * s0;
       const bx = fx + ddx * s1, by = fy + ddy * s1;
       o.poly([
@@ -37115,6 +37476,7 @@ export class PixiScene {
         const s0 = i * st, s1 = s0 + st;
         const ca = coreA * winAt((s0 + s1) / 2);
         if (ca <= 0.002) continue;
+        if (pf) { projSeg(o, pf, fx + ddx * s0, fy + ddy * s0, fx + ddx * s1 + 0.5, fy + ddy * s1, { width: coreW, color: 0xffe0e0, alpha: ca }); continue; }
         o.moveTo(fx + ddx * s0, fy + ddy * s0)
           .lineTo(fx + ddx * s1 + 0.5, fy + ddy * s1)
           .stroke({ width: coreW, color: 0xffe0e0, alpha: ca });
@@ -37151,8 +37513,10 @@ export class PixiScene {
         const bc = i === 0 ? halfWidth : 0, fc = i === BAND_SWEEP_SLICES - 1 ? halfWidth : 0;
         const dA = cut.d0 + ddl * (i * st) - bc, dB = cut.d0 + ddl * ((i + 1) * st) + fc;
         const cp = beamCombPts(cut.plan, halfWidth, dA, dB, false, false);
+        const edgeStroke = { width: 2, color: strokeColor, alpha: Math.min(1, a) };
         const edge = (p0: [number, number], p1: [number, number]): void => {
           const q0 = beamPtsToXY(cut.plan, [p0]), q1 = beamPtsToXY(cut.plan, [p1]);
+          if (pf) { projSeg(o, pf, q0[0], q0[1], q1[0], q1[1], edgeStroke); return; } // ?proj=1: 縁取りの線を1本ずつ投影
           o.moveTo(q0[0], q0[1]).lineTo(q1[0], q1[1]);
         };
         for (let k = 0; k < cp.length; k++) {
@@ -37162,7 +37526,7 @@ export class PixiScene {
           if (isStartSide || isSeamEnd) continue;
           edge(p0, p1);
         }
-        o.stroke({ width: 2, color: strokeColor, alpha: Math.min(1, a) });
+        if (!pf) o.stroke({ width: 2, color: strokeColor, alpha: Math.min(1, a) });
         continue;
       }
       const dw = totalW / BAND_SWEEP_SLICES;
@@ -37173,6 +37537,15 @@ export class PixiScene {
       sp.tint = strokeColor;
       sp.alpha = a;
       sp.visible = true;
+      if (pf) {
+        // ?proj=1(§3-6b): 帯の素材の30枚は30枚の格子メッシュ(1スライス=1メッシュ・濃さはスライスごと)。Sprite は隠す。
+        const mp = view.projSliceMesh ?? (view.projSliceMesh = []);
+        const m = this.projTeleMesh(view, sp, mp[idx] ?? (mp[idx] = []), i, 'bandSlices');
+        const off = -totalW / 2 + dw * i + (dw + 0.6) / 2;
+        projMeshGrid(m, pf, { cx: midX + Math.cos(rot) * off, cy: midY + Math.sin(rot) * off, w: dw + 0.6, h: halfWidth * 2, rot }, PROJ_GRID_SHARP, PROJ_GRID_MAX, view.tele);
+        m.tint = strokeColor; m.alpha = a; m.visible = true;
+        sp.visible = false;
+      }
     }
   }
 
@@ -37199,6 +37572,14 @@ export class PixiScene {
     sp.tint = tint;
     sp.alpha = alpha;
     sp.visible = true;
+    const pf = this.projFrame;
+    if (pf) {
+      // ?proj=1(§3-6b): 同じ素材の格子メッシュ(頂点ごとに投影)。Sprite は隠す。
+      const m = this.projTeleMesh(view, sp, view.projRingMesh ?? (view.projRingMesh = []), idx, 'rings');
+      projMeshGrid(m, pf, { cx, cy, w: radius * 2, h: radius * 2, rot: 0 }, PROJ_GRID_SHARP, PROJ_GRID_MAX, view.tele);
+      m.tint = tint; m.alpha = alpha; m.visible = true;
+      sp.visible = false;
+    }
   }
 
   /**
@@ -37260,6 +37641,14 @@ export class PixiScene {
     sp.tint = tint;
     sp.alpha = alpha;
     sp.visible = true;
+    const pf = this.projFrame;
+    if (pf) {
+      // ?proj=1(§3-6b): 同じ四角の格子メッシュ。Sprite は隠す。
+      const m = this.projTeleMesh(view, sp, view.projBandMesh ?? (view.projBandMesh = []), idx, 'bands');
+      projMeshGrid(m, pf, { cx: (bfx + btx) / 2, cy: (bfy + bty) / 2, w: len + halfWidth * 2, h: halfWidth * 2, rot: sp.rotation }, PROJ_GRID_SHARP, PROJ_GRID_MAX, view.tele);
+      m.tint = tint; m.alpha = alpha; m.visible = true;
+      sp.visible = false;
+    }
   }
 
   /**

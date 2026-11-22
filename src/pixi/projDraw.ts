@@ -1,0 +1,342 @@
+// 投影の段階4「形を持つもの」の描く部品(research/PERSPECTIVE_PROJECTION.md §3-6b・3-6j 作る物2)。
+// `?proj=1` の時だけ、呼び出し側が **投影する図形の所でだけ** 呼ぶ:
+//   const f = this.projFrame; if (f) projCircle(g, f, x, y, r, …); else g.circle(x, y, r).fill(…);
+// else の側は今の行のまま(`?proj=0` の経路は1字も変えない)。部品は world の形の頂点を投影して表示座標で描く
+// (中で utils/projShape.ts の純関数を呼ぶ)。
+//
+// 部品は、書いた命令の数(Graphics の fill/stroke の数)と、書いた頂点の world Y の範囲を、描いている Graphics ごとに記録する
+// (計器の「直書きの漏れ」・予告の濃さ 3-6f が読む)。わざと投影しない命令は projKeep で申告する。
+
+import { MeshSimple, type Graphics, type Texture, type FillInput, type StrokeStyle } from 'pixi.js';
+import type { ProjFrame } from '../utils/perspectiveProjection';
+import {
+  ProjPathOut, projCircleInto, projEllipseInto, projArcInto, projSectorInto, projAnnulusInto, projAnnulusAnglesFor,
+  projAnnulusRingInto, projQuadStripInto, projRectFrameInto, projPathInto, projGridInto, projGridIndices, projVertexInto,
+  projLiftInto, projTeleLineScale, PROJ_SHAPE_TOL_PX, PROJ_GRID_VERTS, PROJ_GRID_MAX, type ProjFrame4, type ProjGridResult,
+} from '../utils/projShape';
+
+/** 1つの Graphics の今フレームの記録。 */
+export interface ProjDrawStat {
+  frame: number;
+  /** 部品が書いた命令の数。 */
+  cmds: number;
+  /** projKeep で申告した「わざと投影しない」命令の数。 */
+  keep: number;
+  wyMin: number;
+  wyMax: number;
+  pts: number;
+}
+
+const stats = new WeakMap<Graphics, ProjDrawStat>();
+let frameNo = -1;
+let ptsFrame = 0;
+let ptsMax = 0;
+
+/** フレームの頭に1回(pixiScene の projFrameNo を渡す)。 */
+export const projDrawBeginFrame = (no: number): void => {
+  frameNo = no;
+  if (ptsFrame > ptsMax) ptsMax = ptsFrame;
+  ptsFrame = 0;
+};
+/** 今フレームに予告で投影した点の数と、その最大(計器・負荷の材料 3-6l)。 */
+export const projDrawPoints = (): { now: number; max: number } => ({ now: ptsFrame, max: Math.max(ptsMax, ptsFrame) });
+export const projDrawResetMax = (): void => { ptsMax = 0; };
+
+const statOf = (g: Graphics): ProjDrawStat => {
+  let s = stats.get(g);
+  if (!s) { s = { frame: frameNo, cmds: 0, keep: 0, wyMin: Infinity, wyMax: -Infinity, pts: 0 }; stats.set(g, s); }
+  if (s.frame !== frameNo) { s.frame = frameNo; s.cmds = 0; s.keep = 0; s.wyMin = Infinity; s.wyMax = -Infinity; s.pts = 0; }
+  return s;
+};
+
+/** 今フレームの記録(無ければ null)。 */
+export const projDrawStat = (g: Graphics): ProjDrawStat | null => {
+  const s = stats.get(g);
+  return s && s.frame === frameNo ? s : null;
+};
+
+/** 直書きの漏れ: 今フレームの命令の総数 − 部品が書いた命令の数 − 申告した数。Graphics はフレームの頭で clear されている前提。 */
+export const projDrawLeak = (g: Graphics): number => {
+  const total = g.context.instructions.length;
+  const s = projDrawStat(g);
+  return total - (s ? s.cmds + s.keep : 0);
+};
+
+/** わざと投影しない命令の数を申告する(混在の Graphics の「投影しない」の列)。 */
+export const projKeep = (g: Graphics, n: number): void => { statOf(g).keep += Math.max(0, n); };
+/** n0(呼ぶ前の命令の数)から今までに増えた命令を「投影しない」として申告する。 */
+export const projKeepFrom = (g: Graphics, n0: number): void => { projKeep(g, g.context.instructions.length - n0); };
+/** 命令の数(projKeepFrom と組で使う)。 */
+export const projCmdCount = (g: Graphics): number => g.context.instructions.length;
+
+/** 予告の world Y の範囲を記録だけする(メッシュ・点で置く絵など Graphics に書かない物=予告の濃さ 3-6f が読む)。 */
+export const projNoteWorldY = (g: Graphics, wyMin: number, wyMax: number): void => {
+  const s = statOf(g);
+  if (wyMin < s.wyMin) s.wyMin = wyMin;
+  if (wyMax > s.wyMax) s.wyMax = wyMax;
+};
+
+const OUT = new ProjPathOut();
+const TOL = PROJ_SHAPE_TOL_PX;
+
+const record = (g: Graphics, n0: number, out: ProjPathOut) => {
+  const s = statOf(g);
+  s.cmds += g.context.instructions.length - n0;
+  if (out.wyMin < s.wyMin) s.wyMin = out.wyMin;
+  if (out.wyMax > s.wyMax) s.wyMax = out.wyMax;
+  s.pts += out.pts;
+  ptsFrame += out.pts;
+};
+
+/** out の輪郭を Graphics の道へ(閉じる/開く)。 */
+const trace = (g: Graphics, out: ProjPathOut, closed: boolean) => {
+  for (let c = 0; c < out.cn; c++) {
+    const s = out.contourStart(c), e = out.contourEnd(c);
+    if (e - s < 2) continue;
+    g.moveTo(out.xy[s * 2], out.xy[s * 2 + 1]);
+    for (let i = s + 1; i < e; i++) g.lineTo(out.xy[i * 2], out.xy[i * 2 + 1]);
+    if (closed) g.closePath();
+  }
+};
+
+/** 線の太さ(★#23「予告の線の太さと遠近」)。A=今のまま。B/C は形の s の中央値で掛ける。 */
+const lineStroke = (st: StrokeStyle, out: ProjPathOut): StrokeStyle => {
+  const k = projTeleLineScale(out.sMax >= out.sMin ? 0.5 * (out.sMin + out.sMax) : 1);
+  if (k === 1) return st;
+  return { ...st, width: (st.width ?? 1) * k };
+};
+
+const paint = (g: Graphics, out: ProjPathOut, fill: FillInput | undefined, stroke: StrokeStyle | undefined, closed: boolean) => {
+  if (fill !== undefined) { trace(g, out, closed); g.fill(fill); }
+  if (stroke !== undefined) { trace(g, out, closed); g.stroke(lineStroke(stroke, out)); }
+};
+
+/** 円(縁は projCircleInto の頂点列)。 */
+export const projCircle = (g: Graphics, f: ProjFrame, wx: number, wy: number, r: number, fill?: FillInput, stroke?: StrokeStyle): void => {
+  const n0 = g.context.instructions.length;
+  OUT.reset(); projCircleInto(f, wx, wy, r, TOL, OUT);
+  paint(g, OUT, fill, stroke, true);
+  record(g, n0, OUT);
+};
+
+/** 楕円(rx・ry・回転)。 */
+export const projEllipse = (
+  g: Graphics, f: ProjFrame, wx: number, wy: number, rx: number, ry: number, rot: number, fill?: FillInput, stroke?: StrokeStyle,
+): void => {
+  const n0 = g.context.instructions.length;
+  OUT.reset(); projEllipseInto(f, wx, wy, rx, ry, rot, TOL, OUT);
+  paint(g, OUT, fill, stroke, true);
+  record(g, n0, OUT);
+};
+
+/** 弧の線(Pixi の arc と同じ向き: a0→a1)。 */
+export const projArcLine = (g: Graphics, f: ProjFrame, cx: number, cy: number, r: number, a0: number, a1: number, stroke: StrokeStyle): void => {
+  const n0 = g.context.instructions.length;
+  OUT.reset(); projArcInto(f, cx, cy, r, a0, a1, TOL, OUT);
+  paint(g, OUT, undefined, stroke, false);
+  record(g, n0, OUT);
+};
+
+/** 扇(中心+弧)。 */
+export const projSector = (
+  g: Graphics, f: ProjFrame, cx: number, cy: number, r: number, a0: number, a1: number, fill?: FillInput, stroke?: StrokeStyle,
+): void => {
+  const n0 = g.context.instructions.length;
+  OUT.reset(); projSectorInto(f, cx, cy, r, a0, a1, TOL, OUT);
+  paint(g, OUT, fill, stroke, true);
+  record(g, n0, OUT);
+};
+
+/** 環・環状の扇(塗り)。 */
+export const projAnnulus = (
+  g: Graphics, f: ProjFrame, cx: number, cy: number, r0: number, r1: number, a0: number | undefined, a1: number | undefined, fill: FillInput,
+): void => {
+  const n0 = g.context.instructions.length;
+  OUT.reset(); projAnnulusInto(f, cx, cy, r0, r1, a0, a1, TOL, OUT);
+  paint(g, OUT, fill, undefined, true);
+  record(g, n0, OUT);
+};
+
+/**
+ * 同心の環を何本も塗る時の角の並びを1回だけ決める(projRing と組)。rIn=一番内の半径(内周の誤差も測る)。
+ * 隣の環と頂点の列を共有する=継ぎ目なし(drawSweepCircleFill の14本の環)。
+ */
+export const projRingsBegin = (
+  f: ProjFrame, cx: number, cy: number, rOut: number, rIn: number, a0?: number, a1?: number,
+): { cx: number; cy: number; n: number; full: boolean } =>
+  ({ cx, cy, n: projAnnulusAnglesFor(f, cx, cy, rOut, a0, a1, TOL, rIn), full: a0 === undefined || a1 === undefined });
+
+/** projRingsBegin で決めた角の並びで環 [r0, r1] を塗る。 */
+export const projRing = (g: Graphics, f: ProjFrame, rs: { cx: number; cy: number; n: number; full: boolean }, r0: number, r1: number, fill: FillInput): void => {
+  const n0 = g.context.instructions.length;
+  OUT.reset(); projAnnulusRingInto(f, rs.cx, rs.cy, r0, r1, rs.n, rs.full, OUT);
+  paint(g, OUT, fill, undefined, true);
+  record(g, n0, OUT);
+};
+
+/**
+ * 面の帯(今の四角の帯と同じ4隅・判定の幅 hw を投影する)。s0〜s1=帯の割合・capBack/capFront=端を hw ぶん伸ばす。
+ * 太さが判定の幅を表す線も、線ではなくこれで描く(3-6g)。
+ */
+export const projBand = (
+  g: Graphics, f: ProjFrame, fx: number, fy: number, tx: number, ty: number, hw: number, fill: FillInput,
+  s0 = 0, s1 = 1, capBack = true, capFront = true, stroke?: StrokeStyle,
+): void => {
+  const n0 = g.context.instructions.length;
+  OUT.reset(); projQuadStripInto(f, fx, fy, tx, ty, hw, s0, s1, capBack, capFront, TOL, OUT);
+  paint(g, OUT, fill, stroke, true);
+  record(g, n0, OUT);
+};
+
+/**
+ * 「太さが判定の幅を表す線」の置き換え(3-6g): moveTo(a)→lineTo(b).stroke({width}) を、半幅 width/2 の面の帯で描く。
+ * cap が 'round'/'square' なら端を半幅ぶん伸ばす(線の端の形と同じ長さ)。
+ */
+export const projThickLine = (
+  g: Graphics, f: ProjFrame, ax: number, ay: number, bx: number, by: number, st: StrokeStyle,
+): void => {
+  const w = st.width ?? 1;
+  const capped = st.cap === 'round' || st.cap === 'square';
+  projBand(g, f, ax, ay, bx, by, w / 2, { color: st.color, alpha: st.alpha }, 0, 1, capped, capped);
+};
+
+/** 細い線(折れ線を誤差で分けて投影。太さは ★#23「予告の線の太さと遠近」)。wpts=flat の world 点。 */
+export const projLine = (g: Graphics, f: ProjFrame, wpts: ArrayLike<number>, stroke: StrokeStyle, closed = false): void => {
+  const n0 = g.context.instructions.length;
+  OUT.reset(); projPathInto(f, wpts, closed, TOL, OUT);
+  paint(g, OUT, undefined, stroke, closed);
+  record(g, n0, OUT);
+};
+
+const SEG: number[] = [0, 0, 0, 0];
+/** 細い線の1区間(moveTo(a).lineTo(b).stroke の置き換え)。 */
+export const projSeg = (g: Graphics, f: ProjFrame, ax: number, ay: number, bx: number, by: number, stroke: StrokeStyle): void => {
+  SEG[0] = ax; SEG[1] = ay; SEG[2] = bx; SEG[3] = by;
+  projLine(g, f, SEG, stroke, false);
+};
+
+/** 多角形(塗り・縁)。 */
+export const projPoly = (g: Graphics, f: ProjFrame, wpts: ArrayLike<number>, fill?: FillInput, stroke?: StrokeStyle): void => {
+  const n0 = g.context.instructions.length;
+  OUT.reset(); projPathInto(f, wpts, true, TOL, OUT);
+  paint(g, OUT, fill, stroke, true);
+  record(g, n0, OUT);
+};
+
+/** 矩形(塗り・縁)= 4隅の多角形。 */
+const RECT: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
+export const projRect = (g: Graphics, f: ProjFrame, x: number, y: number, w: number, h: number, fill?: FillInput, stroke?: StrokeStyle): void => {
+  RECT[0] = x; RECT[1] = y; RECT[2] = x + w; RECT[3] = y; RECT[4] = x + w; RECT[5] = y + h; RECT[6] = x; RECT[7] = y + h;
+  projPoly(g, f, RECT, fill, stroke);
+};
+
+/**
+ * 矩形を道だけ足す(塗りは呼び出し側が projFill でまとめて掛ける=同じ濃さの四角を1つの塗りにまとめる所用)。
+ * 小さな四角(光線の先端の段・粒)用: 4隅を投影するだけ(分けない)。
+ */
+const Q4 = { x: 0, y: 0, s: 1, a: 1, sx: 0, sy: 0 };
+export const projRectPath = (g: Graphics, f: ProjFrame, x: number, y: number, w: number, h: number): void => {
+  projVertexInto(f, x, y, Q4); g.moveTo(Q4.x, Q4.y);
+  projVertexInto(f, x + w, y, Q4); g.lineTo(Q4.x, Q4.y);
+  projVertexInto(f, x + w, y + h, Q4); g.lineTo(Q4.x, Q4.y);
+  projVertexInto(f, x, y + h, Q4); g.lineTo(Q4.x, Q4.y);
+  g.closePath();
+  ptsFrame += 4;
+  projNoteWorldY(g, Math.min(y, y + h), Math.max(y, y + h));
+};
+/** projRectPath で足した道をまとめて塗る(部品の命令として数える)。 */
+export const projFill = (g: Graphics, fill: FillInput): void => {
+  const n0 = g.context.instructions.length;
+  g.fill(fill);
+  statOf(g).cmds += g.context.instructions.length - n0;
+};
+
+/** 矩形の窓の枠(矩形を r0〜r1 広げた間)。 */
+export const projRectFrame = (
+  g: Graphics, f: ProjFrame, rect: { x: number; y: number; w: number; h: number }, r0: number, r1: number, fill: FillInput,
+): void => {
+  const n0 = g.context.instructions.length;
+  OUT.reset(); projRectFrameInto(f, rect, r0, r1, TOL, OUT);
+  paint(g, OUT, fill, undefined, true);
+  record(g, n0, OUT);
+};
+
+/** 中心だけ投影する記号の置き場(表示座標・s・定義域と描く距離のフェード a)。大きさは ★#23 の倍率 k を掛けて使う。 */
+export interface ProjGlyphPt { x: number; y: number; s: number; a: number; sx: number; sy: number; l?: number; k: number }
+const GLY: ProjGlyphPt = { x: 0, y: 0, s: 1, a: 1, sx: 0, sy: 0, k: 1 };
+/**
+ * 中心だけ投影する記号(潰れた楕円の印・頭の輝点・終点の輪・地雷の赤い点滅の点)。記号の形と大きさは今のまま描く(k=★#23 の倍率)。
+ * g を渡すと world Y を予告の範囲として記録する。返す入れ物は次の呼び出しで上書きされる。
+ */
+export const projGlyph = (f: ProjFrame, wx: number, wy: number, g?: Graphics): ProjGlyphPt => {
+  projVertexInto(f, wx, wy, GLY);
+  GLY.k = projTeleLineScale(GLY.s);
+  ptsFrame++;
+  if (g) projNoteWorldY(g, wy, wy);
+  return GLY;
+};
+
+/** 中心だけ投影した円の記号(頭の輝点・終点の輪)。半径は今のまま(★#23 の倍率 k を掛ける)。 */
+export const projGlyphCircle = (g: Graphics, f: ProjFrame, wx: number, wy: number, r: number, fill?: FillInput, stroke?: StrokeStyle): void => {
+  const n0 = g.context.instructions.length;
+  const q = projGlyph(f, wx, wy, g);
+  if (fill !== undefined) g.circle(q.x, q.y, r * q.k).fill(fill);
+  if (stroke !== undefined) g.circle(q.x, q.y, r * q.k).stroke(stroke);
+  statOf(g).cmds += g.context.instructions.length - n0;
+};
+/** 中心だけ投影した潰れた楕円の印(突進の線の終点の印・ゾンビの印)。形と大きさは今のまま(★#23 の倍率 k を掛ける)。 */
+export const projGlyphEllipse = (
+  g: Graphics, f: ProjFrame, wx: number, wy: number, rx: number, ry: number, fill?: FillInput, stroke?: StrokeStyle,
+): void => {
+  const n0 = g.context.instructions.length;
+  const q = projGlyph(f, wx, wy, g);
+  if (fill !== undefined) g.ellipse(q.x, q.y, rx * q.k, ry * q.k).fill(fill);
+  if (stroke !== undefined) g.ellipse(q.x, q.y, rx * q.k, ry * q.k).stroke(stroke);
+  statOf(g).cmds += g.context.instructions.length - n0;
+};
+
+const LIFT = { x: 0, y: 0, s: 1 };
+/** 高さを持つ頂点(地面の点 (gx, gy) から上へ h)の表示座標(3-6e)。返す入れ物は次の呼び出しで上書きされる。 */
+export const projLift = (f: ProjFrame, gx: number, gy: number, h: number): { x: number; y: number; s: number } => {
+  ptsFrame++;
+  return projLiftInto(f, gx, gy, h, LIFT);
+};
+
+// ---- 焼き素材の格子メッシュ ----
+
+/** 段階4のメッシュの名札(計器・役の表)。 */
+export interface ProjMeshTagged { projTag?: string }
+
+/** 作り置きの格子メッシュ(33×33 頂点)。`?proj=1` の時に初めて作る(遅延生成)。 */
+export const makeProjGridMesh = (tex: Texture, tag: string): MeshSimple & ProjMeshTagged => {
+  const m = new MeshSimple({
+    texture: tex,
+    vertices: new Float32Array(PROJ_GRID_VERTS * 2),
+    uvs: new Float32Array(PROJ_GRID_VERTS * 2),
+    indices: projGridIndices(PROJ_GRID_MAX),
+  }) as MeshSimple & ProjMeshTagged;
+  m.projTag = tag;
+  m.label = 'proj:' + tag;
+  return m;
+};
+
+/** 素材の絵の格子の細かさ(3-6b): 予告の縁の意匠=12/24・柔らかい光の絵=24/48。 */
+export const PROJ_GRID_SHARP = { rowPx: 12, colPx: 24 } as const;
+export const PROJ_GRID_SOFT = { rowPx: 24, colPx: 48 } as const;
+
+/**
+ * 焼き素材の格子メッシュの頂点と UV を、世界に寝かせた四角 fr から書く。g を渡すと world Y の範囲をその Graphics の
+ * 予告の範囲として記録する(予告の濃さ 3-6f)。
+ */
+export const projMeshGrid = (
+  mesh: MeshSimple, f: ProjFrame, fr: ProjFrame4, grid: { rowPx: number; colPx: number } = PROJ_GRID_SHARP,
+  maxN = PROJ_GRID_MAX, g?: Graphics,
+): ProjGridResult => {
+  const pos = mesh.geometry.getBuffer('aPosition').data as Float32Array;
+  const uvBuf = mesh.geometry.getBuffer('aUV');
+  const res = projGridInto(f, fr, grid.rowPx, grid.colPx, maxN, pos, uvBuf.data as Float32Array);
+  uvBuf.update();
+  ptsFrame += res.pts;
+  if (g) projNoteWorldY(g, res.wyMin, res.wyMax);
+  return res;
+};

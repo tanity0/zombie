@@ -1,0 +1,731 @@
+// 投影の段階4「形を持つもの」の純関数(PixiJS を読まない・描画の写像だけ)。
+// 設計書: research/PERSPECTIVE_PROJECTION.md §3-6(3-6b 描き方の共通部品・3-6f 予告の濃さ・3-6g 線の太さ・3-6j 作る物1)。
+//
+// 芯: 予告の形を、判定と同じ平面の座標(world)のまま作り、**頂点ごとに投影**して描く。投影は単調な1対1の写像なので、
+// world で判定の形の内側だった点は、画面でも投影した形の内側に入る(赤い所=当たる所)。中心だけ投影して円のまま描くのは違反。
+//
+// 分け方は「画面での誤差」で決める(world の半径で決め打ちしない): 辺の中点を投影した点と、投影した両端の中点の差が
+// tolPx(ズーム後の画面px)を超えたら2分する。深さ5まで。画面(+16px)に掛からない辺は分けない。
+// 定義域の外(地平線より北・ℓ<0)の頂点は ℓ=0 に寄せる(地平線の線に潰す・§3-6b 原則3)。
+//
+// `?proj=1` の時だけ pixiScene(src/pixi/projDraw.ts)が使う。既定 `?proj=0` では1ビットも使われない。
+// ゲームの判定(当たり・時刻・威力)には一切関与しない。
+
+import {
+  projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, projDistanceFade, type ProjFrame,
+} from './perspectiveProjection';
+
+/**
+ * ★#23「予告の線の太さと遠近」(社長の判断待ち): 太さが判定を表さない線(縁・芯・流星の線・内側の細い輪・白い針)と記号の大きさ。
+ * 'A'=画面の上で今の太さのまま(s を掛けない・推薦)/'B'=s を掛ける/'C'=√s を掛ける。ここ1か所で切り替わる。
+ */
+export const PROJ_TELE_LINE_MODE: 'A' | 'B' | 'C' = 'A';
+
+/** 線の太さ(または記号の大きさ)に掛ける倍率(★#23)。s=その点の立っている絵の倍率。 */
+export const projTeleLineScale = (s: number, mode: 'A' | 'B' | 'C' = PROJ_TELE_LINE_MODE): number =>
+  mode === 'A' ? 1 : mode === 'B' ? Math.max(0, s) : Math.sqrt(Math.max(0, s));
+
+/** 分ける規則の目安(ズーム後の画面px・§3-6b)。 */
+export const PROJ_SHAPE_TOL_PX = 0.5;
+/** 2分の深さの上限。 */
+export const PROJ_SHAPE_MAX_DEPTH = 5;
+/** 画面に掛かるかの余白(ズーム後の画面px)。 */
+export const PROJ_SHAPE_SCREEN_PAD = 16;
+
+/** 円の底の辺の数 = clamp(ceil(2πr/200), 24, 160)(§3-6b)。 */
+export const projCircleBaseEdges = (r: number): number =>
+  Math.max(24, Math.min(160, Math.ceil((2 * Math.PI * Math.max(0, r)) / 200)));
+
+// ---------------------------------------------------------------------------------------------
+// 出力の入れ物(作り置き・毎フレームの確保を増やさない)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * 投影した頂点列(表示座標)。複数の輪郭(contour)を持てる: 輪郭 c の頂点は [cs[c], cs[c+1]) (最後は n まで)。
+ * 入れた world 点の Y の範囲(wyMin/wyMax・予告の濃さ 3-6f が読む)と、投影した点の数(計器)を持つ。
+ */
+export class ProjPathOut {
+  xy: number[] = [];
+  /** 頂点の数。 */
+  n = 0;
+  /** 輪郭の始まりの頂点の添字。 */
+  cs: number[] = [];
+  cn = 0;
+  /** 投影した点の数(中点の試しを含む・計器の「点の数」)。 */
+  pts = 0;
+  wyMin = Infinity;
+  wyMax = -Infinity;
+  /** 頂点の s の最大と最小(線の太さ・記号の大きさ用)。 */
+  sMin = Infinity;
+  sMax = -Infinity;
+  /** 頂点の定義域と描く距離のフェードの最大(全部 0 なら描かない側の判断に使える)。 */
+  aMax = 0;
+  reset(): this {
+    this.n = 0; this.cn = 0; this.pts = 0;
+    this.wyMin = Infinity; this.wyMax = -Infinity; this.sMin = Infinity; this.sMax = -Infinity; this.aMax = 0;
+    return this;
+  }
+  beginContour(): void {
+    this.cs[this.cn++] = this.n;
+  }
+  push(x: number, y: number): void {
+    const k = this.n * 2;
+    this.xy[k] = x; this.xy[k + 1] = y;
+    this.n++;
+  }
+  /** 輪郭 c の頂点の範囲 [start, end)。 */
+  contourStart(c: number): number { return this.cs[c]; }
+  contourEnd(c: number): number { return c + 1 < this.cn ? this.cs[c + 1] : this.n; }
+  noteWorldY(wy: number): void {
+    if (wy < this.wyMin) this.wyMin = wy;
+    if (wy > this.wyMax) this.wyMax = wy;
+  }
+}
+
+/** 1点の投影の結果(作り置き)。 */
+interface P2 { x: number; y: number; s: number; a: number; sx: number; sy: number; l?: number }
+const mkP2 = (): P2 => ({ x: 0, y: 0, s: 1, a: 1, sx: 0, sy: 0, l: 0 });
+
+/**
+ * world 点 → 表示座標(地平線より北は ℓ=0 に寄せる)。sx/sy はズーム後の画面px。
+ * out.a = 定義域と描く距離のフェード(地平線より北で 0)。
+ */
+export const projVertexInto = (f: ProjFrame, wx: number, wy: number, out: { x: number; y: number; s: number; a: number; sx: number; sy: number; l?: number }) => {
+  let l = projLocalYOfWorld(f, wy);
+  out.l = l;
+  const inDomain = l >= 0;
+  if (!inDomain) l = 0;
+  const s = projScaleAtLocal(f, l);
+  out.x = f.cxw + s * (wx - f.cxw);
+  out.y = f.camY + f.farH + l;
+  out.s = s;
+  out.a = inDomain ? projDistanceFade(f.farRefY - wy, f.farStart, f.farEnd) : 0;
+  out.sx = f.wgX + f.wgScale * (out.x - f.camX + f.shakeX);
+  out.sy = f.wgY + f.wgScale * (out.y - f.camY + f.shakeY);
+  return out;
+};
+
+/** 3点の画面の箱が画面(+pad)に掛かるか。 */
+const segOnScreen = (f: ProjFrame, a: P2, b: P2, m: P2, pad: number): boolean => {
+  const minX = Math.min(a.sx, b.sx, m.sx), maxX = Math.max(a.sx, b.sx, m.sx);
+  const minY = Math.min(a.sy, b.sy, m.sy), maxY = Math.max(a.sy, b.sy, m.sy);
+  return maxX >= -pad && minX <= f.screenW + pad && maxY >= -pad && minY <= f.screenH + pad;
+};
+
+// ---- 曲線の記述(作り置き・閉包を毎フレーム作らない) ----
+// kind 0=線分(ax,ay)→(bx,by)・t∈[0,1] / 1=楕円の弧(cx,cy,rx,ry,rot)・t=角
+interface Curve { kind: 0 | 1; ax: number; ay: number; bx: number; by: number; cx: number; cy: number; rx: number; ry: number; cr: number; sr: number }
+const mkCurve = (): Curve => ({ kind: 0, ax: 0, ay: 0, bx: 0, by: 0, cx: 0, cy: 0, rx: 0, ry: 0, cr: 1, sr: 0 });
+const evalCurve = (c: Curve, t: number, o: { x: number; y: number }) => {
+  if (c.kind === 0) { o.x = c.ax + (c.bx - c.ax) * t; o.y = c.ay + (c.by - c.ay) * t; return o; }
+  const ex = c.rx * Math.cos(t), ey = c.ry * Math.sin(t);
+  o.x = c.cx + ex * c.cr - ey * c.sr; o.y = c.cy + ex * c.sr + ey * c.cr;
+  return o;
+};
+
+// 再帰の作り置き(深さ5まで=各深さに中点を1つ)。
+const STACK_M: P2[] = Array.from({ length: PROJ_SHAPE_MAX_DEPTH + 6 }, mkP2);
+const W_TMP = { x: 0, y: 0 };
+const CURVE = mkCurve();
+const PA = mkP2(), PB = mkP2();
+
+const noteVertex = (out: ProjPathOut, p: P2) => {
+  if (p.s < out.sMin) out.sMin = p.s;
+  if (p.s > out.sMax) out.sMax = p.s;
+  if (p.a > out.aMax) out.aMax = p.a;
+};
+
+/** 地平線を跨ぐ辺の跨ぐ点の t(二分で 14 回)。northA=始点が北(ℓ<0)。 */
+const horizonT = (f: ProjFrame, c: Curve, t0: number, t1: number, northA: boolean): number => {
+  let lo = t0, hi = t1;
+  for (let k = 0; k < 14; k++) {
+    const mid = 0.5 * (lo + hi);
+    const w = evalCurve(c, mid, W_TMP);
+    const north = projLocalYOfWorld(f, w.y) < 0;
+    if (north === northA) lo = mid; else hi = mid;
+  }
+  return northA ? hi : lo;
+};
+/** 地平線を跨ぐ辺だけに許す深さの上乗せ(跨ぐ点で割った後の両側も誤差で分けられるように)。 */
+const HORIZON_EXTRA_DEPTH = 3;
+/** 跨ぐとみなす ℓ の幅(跨ぐ点で割った後の端を、もう一度跨ぐと数えない)。 */
+const HORIZON_EPS_L = 0.05;
+
+/**
+ * 曲線 c の [t0, t1] を、端 a(t0)・b(t1) を投影済みで受け、必要なら2分して out へ **a を除き b まで** の頂点を足す
+ * (b は呼び出し側が最後の辺でなければ次の辺の a になる)。
+ */
+const subdivide = (
+  f: ProjFrame, c: Curve, t0: number, t1: number, a: P2, b: P2, tolPx: number, depth: number, out: ProjPathOut, emitB: boolean,
+): void => {
+  if (depth < PROJ_SHAPE_MAX_DEPTH + HORIZON_EXTRA_DEPTH) {
+    // 地平線を跨ぐ辺: 跨ぐ点で必ず分ける(北の頂点は ℓ=0 に寄るので、そこに折れ目がある)。
+    let tm = 0.5 * (t0 + t1);
+    const la = a.l ?? 0, lb = b.l ?? 0;
+    const crosses = (la < -HORIZON_EPS_L && lb > HORIZON_EPS_L) || (lb < -HORIZON_EPS_L && la > HORIZON_EPS_L);
+    if (!crosses && depth >= PROJ_SHAPE_MAX_DEPTH) { if (emitB) { out.push(b.x, b.y); noteVertex(out, b); } return; }
+    if (crosses) tm = horizonT(f, c, t0, t1, la < 0);
+    const m = STACK_M[depth];
+    const w = evalCurve(c, tm, W_TMP);
+    projVertexInto(f, w.x, w.y, m);
+    out.pts++;
+    out.noteWorldY(w.y);
+    const ex = m.sx - 0.5 * (a.sx + b.sx), ey = m.sy - 0.5 * (a.sy + b.sy);
+    const onScr = segOnScreen(f, a, b, m, PROJ_SHAPE_SCREEN_PAD);
+    if (onScr && (crosses || ex * ex + ey * ey > tolPx * tolPx)) {
+      // m を保存(下の再帰が STACK_M[depth+1..] を使うので depth の m は壊れない)
+      subdivide(f, c, t0, tm, a, m, tolPx, depth + 1, out, true);
+      subdivide(f, c, tm, t1, m, b, tolPx, depth + 1, out, emitB);
+      return;
+    }
+  }
+  if (emitB) { out.push(b.x, b.y); noteVertex(out, b); }
+};
+
+const copyP2 = (d: P2, s: P2) => { d.x = s.x; d.y = s.y; d.s = s.s; d.a = s.a; d.sx = s.sx; d.sy = s.sy; return d; };
+
+/**
+ * 曲線 c を t の列 ts[0..k](底の分け方)で、誤差で2分しながら out の今の輪郭へ足す。
+ * closed=true なら最後の点(=最初の点)は足さない。
+ */
+const emitCurve = (f: ProjFrame, c: Curve, t0: number, t1: number, baseN: number, closed: boolean, tolPx: number, out: ProjPathOut) => {
+  const n = Math.max(1, Math.floor(baseN));
+  let w = evalCurve(c, t0, W_TMP);
+  projVertexInto(f, w.x, w.y, PA);
+  out.pts++; out.noteWorldY(w.y);
+  out.push(PA.x, PA.y); noteVertex(out, PA);
+  for (let i = 1; i <= n; i++) {
+    const ti = t0 + ((t1 - t0) * i) / n;
+    w = evalCurve(c, ti, W_TMP);
+    projVertexInto(f, w.x, w.y, PB);
+    out.pts++; out.noteWorldY(w.y);
+    const ta = t0 + ((t1 - t0) * (i - 1)) / n;
+    subdivide(f, c, ta, ti, PA, PB, tolPx, 0, out, !(closed && i === n));
+    copyP2(PA, PB);
+  }
+};
+
+const tolOf = (tolPx: number) => (tolPx > 0 ? tolPx : PROJ_SHAPE_TOL_PX);
+
+// ---------------------------------------------------------------------------------------------
+// 形の純関数(§3-6b の表)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * world の折れ線/多角形(flat の [x0,y0,x1,y1,…])→ 表示座標の頂点列(1輪郭)。
+ * closed=true なら最後の頂点から最初の頂点へ戻る辺も分ける(最初の点は繰り返さない)。
+ */
+export const projPathInto = (f: ProjFrame, wpts: ArrayLike<number>, closed: boolean, tolPx: number, out: ProjPathOut): ProjPathOut => {
+  const k = Math.floor(wpts.length / 2);
+  if (k <= 0) return out;
+  out.beginContour();
+  const tol = tolOf(tolPx);
+  projVertexInto(f, wpts[0], wpts[1], PA);
+  out.pts++; out.noteWorldY(wpts[1]);
+  out.push(PA.x, PA.y); noteVertex(out, PA);
+  const edges = closed ? k : k - 1;
+  for (let i = 0; i < edges; i++) {
+    const j = (i + 1) % k;
+    const ax = wpts[i * 2], ay = wpts[i * 2 + 1], bx = wpts[j * 2], by = wpts[j * 2 + 1];
+    projVertexInto(f, bx, by, PB);
+    out.pts++; out.noteWorldY(by);
+    CURVE.kind = 0; CURVE.ax = ax; CURVE.ay = ay; CURVE.bx = bx; CURVE.by = by;
+    // PA は i の点(前の辺の終点)。閉じた多角形の最後の辺は終点(=最初の点)を足さない。
+    subdivide(f, CURVE, 0, 1, PA, PB, tol, 0, out, !(closed && i === edges - 1));
+    copyP2(PA, PB);
+  }
+  return out;
+};
+
+/** 円の周(1輪郭・閉じた多角形)。 */
+export const projCircleInto = (f: ProjFrame, cx: number, cy: number, r: number, tolPx: number, out: ProjPathOut): ProjPathOut =>
+  projEllipseInto(f, cx, cy, r, r, 0, tolPx, out);
+
+/** 楕円の周(rx・ry・回転 rot)。1輪郭・閉じた多角形。 */
+export const projEllipseInto = (
+  f: ProjFrame, cx: number, cy: number, rx: number, ry: number, rot: number, tolPx: number, out: ProjPathOut,
+): ProjPathOut => {
+  out.beginContour();
+  CURVE.kind = 1; CURVE.cx = cx; CURVE.cy = cy; CURVE.rx = Math.max(0, rx); CURVE.ry = Math.max(0, ry);
+  CURVE.cr = Math.cos(rot); CURVE.sr = Math.sin(rot);
+  emitCurve(f, CURVE, 0, Math.PI * 2, projCircleBaseEdges(Math.max(rx, ry)), true, tolOf(tolPx), out);
+  return out;
+};
+
+/** 弧(開いた折れ線・a0→a1)。底の辺の数は角の範囲に比例。 */
+export const projArcInto = (
+  f: ProjFrame, cx: number, cy: number, r: number, a0: number, a1: number, tolPx: number, out: ProjPathOut,
+): ProjPathOut => {
+  out.beginContour();
+  CURVE.kind = 1; CURVE.cx = cx; CURVE.cy = cy; CURVE.rx = Math.max(0, r); CURVE.ry = Math.max(0, r); CURVE.cr = 1; CURVE.sr = 0;
+  const frac = Math.min(1, Math.abs(a1 - a0) / (Math.PI * 2));
+  emitCurve(f, CURVE, a0, a1, Math.max(2, Math.ceil(projCircleBaseEdges(r) * frac)), false, tolOf(tolPx), out);
+  return out;
+};
+
+/** 扇(中心+弧・1輪郭・閉じた多角形)。 */
+export const projSectorInto = (
+  f: ProjFrame, cx: number, cy: number, r: number, a0: number, a1: number, tolPx: number, out: ProjPathOut,
+): ProjPathOut => {
+  // 中心 → 弧の始点 → 弧 → 終点 → 中心。弧の部分は projArcInto と同じ分け方、2本の半径は直線の分け方。
+  const tol = tolOf(tolPx);
+  out.beginContour();
+  projVertexInto(f, cx, cy, PA);
+  out.pts++; out.noteWorldY(cy);
+  out.push(PA.x, PA.y); noteVertex(out, PA);
+  // 半径1(中心→始点)
+  const sx0 = cx + Math.cos(a0) * r, sy0 = cy + Math.sin(a0) * r;
+  projVertexInto(f, sx0, sy0, PB); out.pts++; out.noteWorldY(sy0);
+  CURVE.kind = 0; CURVE.ax = cx; CURVE.ay = cy; CURVE.bx = sx0; CURVE.by = sy0;
+  subdivide(f, CURVE, 0, 1, PA, PB, tol, 0, out, true);
+  // 弧(始点は足し済み)
+  copyP2(PA, PB);
+  CURVE.kind = 1; CURVE.cx = cx; CURVE.cy = cy; CURVE.rx = Math.max(0, r); CURVE.ry = Math.max(0, r); CURVE.cr = 1; CURVE.sr = 0;
+  const frac = Math.min(1, Math.abs(a1 - a0) / (Math.PI * 2));
+  const n = Math.max(2, Math.ceil(projCircleBaseEdges(r) * frac));
+  for (let i = 1; i <= n; i++) {
+    const ti = a0 + ((a1 - a0) * i) / n, ta = a0 + ((a1 - a0) * (i - 1)) / n;
+    const w = evalCurve(CURVE, ti, W_TMP);
+    projVertexInto(f, w.x, w.y, PB); out.pts++; out.noteWorldY(w.y);
+    subdivide(f, CURVE, ta, ti, PA, PB, tol, 0, out, true);
+    copyP2(PA, PB);
+  }
+  // 半径2(終点→中心・中心は最初の点なので足さない)
+  const ex1 = cx + Math.cos(a1) * r, ey1 = cy + Math.sin(a1) * r;
+  projVertexInto(f, cx, cy, PB); out.pts++;
+  CURVE.kind = 0; CURVE.ax = ex1; CURVE.ay = ey1; CURVE.bx = cx; CURVE.by = cy;
+  subdivide(f, CURVE, 0, 1, PA, PB, tol, 0, out, false);
+  return out;
+};
+
+// 環の角の並び(外周で1回だけ決める・内周は同じ角)
+const ANG: number[] = [];
+
+// 環の角の並び: 外周だけでなく内周(と中間)の円でも誤差を測り、どれかが超えたら2分する
+// (内周は外周と投影の歪み方が違う=外周の角だけでは南で内周の弦が 1px を超えることがある)。
+const RADS: number[] = [0, 0, 0];
+let radN = 0;
+const ANG_A: P2[] = [mkP2(), mkP2(), mkP2()];
+const ANG_B: P2[] = [mkP2(), mkP2(), mkP2()];
+const ANG_STACK: P2[][] = Array.from({ length: PROJ_SHAPE_MAX_DEPTH + 6 }, () => [mkP2(), mkP2(), mkP2()]);
+let angN = 0;
+const angRec = (f: ProjFrame, cx: number, cy: number, ta: number, tb: number, a: P2[], b: P2[], depth: number, tol: number): void => {
+  let crosses = false;
+  for (let q = 0; q < radN; q++) {
+    const la = a[q].l ?? 0, lb = b[q].l ?? 0;
+    if ((la < -HORIZON_EPS_L && lb > HORIZON_EPS_L) || (lb < -HORIZON_EPS_L && la > HORIZON_EPS_L)) crosses = true;
+  }
+  if (depth < PROJ_SHAPE_MAX_DEPTH || (crosses && depth < PROJ_SHAPE_MAX_DEPTH + HORIZON_EXTRA_DEPTH)) {
+    const tm = 0.5 * (ta + tb);
+    const m = ANG_STACK[depth]; // 深い再帰は depth+1 以降を使う=m は壊れない
+    let split = crosses; // 地平線を跨ぐ(北の頂点は ℓ=0 に寄る=折れ目がある)
+    for (let q = 0; q < radN; q++) {
+      const r = RADS[q];
+      projVertexInto(f, cx + Math.cos(tm) * r, cy + Math.sin(tm) * r, m[q]);
+      const ex = m[q].sx - 0.5 * (a[q].sx + b[q].sx), ey = m[q].sy - 0.5 * (a[q].sy + b[q].sy);
+      if (ex * ex + ey * ey > tol * tol && segOnScreen(f, a[q], b[q], m[q], PROJ_SHAPE_SCREEN_PAD)) split = true;
+    }
+    if (split && crosses && !segOnScreen(f, a[0], b[0], m[0], PROJ_SHAPE_SCREEN_PAD)) split = false;
+    if (split) {
+      angRec(f, cx, cy, ta, tm, a, m, depth + 1, tol);
+      angRec(f, cx, cy, tm, tb, m, b, depth + 1, tol);
+      return;
+    }
+  }
+  ANG[angN++] = tb;
+};
+
+/** 円 r(と内周 rIn)の角 a0→a1 を誤差で分けた角の列を ANG へ書き、数を返す(最初の角 a0 と最後の角 a1 を含む)。 */
+const annulusAngles = (f: ProjFrame, cx: number, cy: number, r: number, a0: number, a1: number, tol: number, rIn = -1): number => {
+  angN = 0;
+  radN = 0;
+  RADS[radN++] = r;
+  if (rIn > 0 && rIn < r) { RADS[radN++] = rIn; RADS[radN++] = 0.5 * (r + rIn); }
+  const frac = Math.min(1, Math.abs(a1 - a0) / (Math.PI * 2));
+  const base = Math.max(2, Math.ceil(projCircleBaseEdges(r) * frac));
+  ANG[angN++] = a0;
+  for (let q = 0; q < radN; q++) projVertexInto(f, cx + Math.cos(a0) * RADS[q], cy + Math.sin(a0) * RADS[q], ANG_A[q]);
+  for (let i = 1; i <= base; i++) {
+    const tb = a0 + ((a1 - a0) * i) / base, ta = a0 + ((a1 - a0) * (i - 1)) / base;
+    for (let q = 0; q < radN; q++) projVertexInto(f, cx + Math.cos(tb) * RADS[q], cy + Math.sin(tb) * RADS[q], ANG_B[q]);
+    angRec(f, cx, cy, ta, tb, ANG_A, ANG_B, 0, tol);
+    for (let q = 0; q < radN; q++) copyP2(ANG_A[q], ANG_B[q]);
+  }
+  return angN;
+};
+
+/** 角の列 ANG[i0..i1] の環状の扇を1輪郭(外周 i0→i1・内周 i1→i0)で out へ。 */
+const emitAnnularPiece = (f: ProjFrame, cx: number, cy: number, r0: number, r1: number, i0: number, i1: number, out: ProjPathOut) => {
+  out.beginContour();
+  const p = PA;
+  for (let i = i0; i <= i1; i++) {
+    const a = ANG[i];
+    const wy = cy + Math.sin(a) * r1;
+    projVertexInto(f, cx + Math.cos(a) * r1, wy, p); out.pts++; out.noteWorldY(wy);
+    out.push(p.x, p.y); noteVertex(out, p);
+  }
+  if (r0 > 0) {
+    for (let i = i1; i >= i0; i--) {
+      const a = ANG[i];
+      const wy = cy + Math.sin(a) * r0;
+      projVertexInto(f, cx + Math.cos(a) * r0, wy, p); out.pts++; out.noteWorldY(wy);
+      out.push(p.x, p.y); noteVertex(out, p);
+    }
+  } else {
+    projVertexInto(f, cx, cy, p); out.pts++; out.noteWorldY(cy);
+    out.push(p.x, p.y); noteVertex(out, p);
+  }
+};
+
+/**
+ * 環・環状の扇(塗り用)。外周の角の並びを1回だけ決め、内周は同じ角で作る(何重でも角の並びが揃う=継ぎ目が出ない)。
+ * 角を省くと全周。全周は2つの半分の輪郭に分けて出す(1つの輪郭に穴を開けない=塗りの三角分割が単純な多角形で済む)。
+ * angleR を渡すとその半径で角の並びを決める(同心の環を何本も描く時に、一番外の半径で1回だけ決めて共有する)。
+ */
+export const projAnnulusInto = (
+  f: ProjFrame, cx: number, cy: number, r0: number, r1: number, a0: number | undefined, a1: number | undefined,
+  tolPx: number, out: ProjPathOut, angleR?: number,
+): ProjPathOut => {
+  const tol = tolOf(tolPx);
+  const full = a0 === undefined || a1 === undefined;
+  const s = full ? 0 : a0!, e = full ? Math.PI * 2 : a1!;
+  const ri = Math.max(0, Math.min(r0, r1)), ro = Math.max(r0, r1);
+  const n = annulusAngles(f, cx, cy, Math.max(ro, angleR ?? 0), s, e, tol, ri);
+  if (full) {
+    const half = Math.max(1, Math.floor((n - 1) / 2));
+    emitAnnularPiece(f, cx, cy, ri, ro, 0, half, out);
+    emitAnnularPiece(f, cx, cy, ri, ro, half, n - 1, out);
+  } else {
+    emitAnnularPiece(f, cx, cy, ri, ro, 0, n - 1, out);
+  }
+  return out;
+};
+
+/** 同心の環を何本も描く時の角の並びを先に決める(projAnnulusRingInto と組で使う)。数を返す。 */
+export const projAnnulusAnglesFor = (
+  f: ProjFrame, cx: number, cy: number, r: number, a0: number | undefined, a1: number | undefined, tolPx: number, rIn = -1,
+): number => annulusAngles(f, cx, cy, r, a0 ?? 0, a1 ?? Math.PI * 2, tolOf(tolPx), rIn);
+
+/** projAnnulusAnglesFor で決めた角の並び(数 n)で、環 [r0, r1] を out へ(全周なら2つの半分)。 */
+export const projAnnulusRingInto = (
+  f: ProjFrame, cx: number, cy: number, r0: number, r1: number, n: number, full: boolean, out: ProjPathOut,
+): ProjPathOut => {
+  const ri = Math.max(0, Math.min(r0, r1)), ro = Math.max(r0, r1);
+  if (full) {
+    const half = Math.max(1, Math.floor((n - 1) / 2));
+    emitAnnularPiece(f, cx, cy, ri, ro, 0, half, out);
+    emitAnnularPiece(f, cx, cy, ri, ro, half, n - 1, out);
+  } else {
+    emitAnnularPiece(f, cx, cy, ri, ro, 0, n - 1, out);
+  }
+  return out;
+};
+
+/**
+ * 帯の1スライス(今の drawSweepBand の四角と同じ式の4隅)。s0〜s1 は帯の割合、capBack/capFront は端のキャップ(hw ぶん伸ばす)。
+ * 4つの辺を誤差で分ける(1輪郭・閉じた多角形)。s0=0・s1=1・両キャップ=今の「判定のカプセルを囲む四角」。
+ */
+export const projQuadStripInto = (
+  f: ProjFrame, fx: number, fy: number, tx: number, ty: number, hw: number, s0: number, s1: number,
+  capBack: boolean, capFront: boolean, tolPx: number, out: ProjPathOut,
+): ProjPathOut => {
+  const ddx = tx - fx, ddy = ty - fy;
+  const ddl = Math.hypot(ddx, ddy) || 1;
+  const ux = ddx / ddl, uy = ddy / ddl;
+  const nx = -uy, ny = ux;
+  const bc = capBack ? hw : 0, fc = capFront ? hw : 0;
+  const ax = fx + ddx * s0, ay = fy + ddy * s0;
+  const bx = fx + ddx * s1, by = fy + ddy * s1;
+  QUAD[0] = ax - ux * bc + nx * hw; QUAD[1] = ay - uy * bc + ny * hw;
+  QUAD[2] = bx + ux * fc + nx * hw; QUAD[3] = by + uy * fc + ny * hw;
+  QUAD[4] = bx + ux * fc - nx * hw; QUAD[5] = by + uy * fc - ny * hw;
+  QUAD[6] = ax - ux * bc - nx * hw; QUAD[7] = ay - uy * bc - ny * hw;
+  return projPathInto(f, QUAD, true, tolPx, out);
+};
+const QUAD: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
+
+/**
+ * 矩形の窓の1枠(矩形 rect を r0 と r1 だけ広げた2つの矩形の間)。4つの台形の輪郭で出す(穴を開けない)。
+ */
+export const projRectFrameInto = (
+  f: ProjFrame, rect: { x: number; y: number; w: number; h: number }, r0: number, r1: number, tolPx: number, out: ProjPathOut,
+): ProjPathOut => {
+  const ri = Math.max(0, Math.min(r0, r1)), ro = Math.max(r0, r1);
+  const ox0 = rect.x - ro, oy0 = rect.y - ro, ox1 = rect.x + rect.w + ro, oy1 = rect.y + rect.h + ro;
+  const ix0 = rect.x - ri, iy0 = rect.y - ri, ix1 = rect.x + rect.w + ri, iy1 = rect.y + rect.h + ri;
+  const piece = (a: number, b: number, c: number, d: number, e: number, g: number, h: number, k: number) => {
+    QUAD[0] = a; QUAD[1] = b; QUAD[2] = c; QUAD[3] = d; QUAD[4] = e; QUAD[5] = g; QUAD[6] = h; QUAD[7] = k;
+    projPathInto(f, QUAD, true, tolPx, out);
+  };
+  piece(ox0, oy0, ox1, oy0, ix1, iy0, ix0, iy0); // 上
+  piece(ox1, oy0, ox1, oy1, ix1, iy1, ix1, iy0); // 右
+  piece(ox1, oy1, ox0, oy1, ix0, iy1, ix1, iy1); // 下
+  piece(ox0, oy1, ox0, oy0, ix0, iy0, ix0, iy1); // 左
+  return out;
+};
+
+// ---------------------------------------------------------------------------------------------
+// 焼き素材の格子メッシュ(§3-6b projGridInto)
+// ---------------------------------------------------------------------------------------------
+
+/** 世界に寝かせた四角(中心・幅・高さ・回転)。素材の (u,v)=(0,0) が四角の左上(回転前)。 */
+export interface ProjFrame4 { cx: number; cy: number; w: number; h: number; rot: number }
+
+/** 格子の頂点の上限(1辺)= 32 マス+1。メッシュはこの大きさで作り置く。 */
+export const PROJ_GRID_MAX = 32;
+export const PROJ_GRID_VERTS = (PROJ_GRID_MAX + 1) * (PROJ_GRID_MAX + 1);
+
+/** 作り置きの格子メッシュの添字(33×33 頂点・32×32 マス・三角2枚ずつ)。 */
+export const projGridIndices = (maxN: number = PROJ_GRID_MAX): Uint32Array => {
+  const w = maxN + 1;
+  const idx = new Uint32Array(maxN * maxN * 6);
+  let k = 0;
+  for (let j = 0; j < maxN; j++) {
+    for (let i = 0; i < maxN; i++) {
+      const a = j * w + i, b = a + 1, c = a + w, d = c + 1;
+      idx[k++] = a; idx[k++] = b; idx[k++] = c;
+      idx[k++] = b; idx[k++] = d; idx[k++] = c;
+    }
+  }
+  return idx;
+};
+
+/** 格子の結果: 使った列と行の数(マス)・投影した点の数・world の Y の範囲。 */
+export interface ProjGridResult { nx: number; ny: number; pts: number; wyMin: number; wyMax: number; sMax: number; aMax: number }
+
+const GRID_U: number[] = [];
+const GRID_V: number[] = [];
+const GRID_L: number[] = [];
+const GP = mkP2(), GA = mkP2(), GB = mkP2(), GC = mkP2(), GD = mkP2();
+
+/** 四角の (u,v) → world 点。 */
+const frameAt = (fr: ProjFrame4, u: number, v: number, cr: number, sr: number, o: { x: number; y: number }) => {
+  const lx = (u - 0.5) * fr.w, ly = (v - 0.5) * fr.h;
+  o.x = fr.cx + lx * cr - ly * sr; o.y = fr.cy + lx * sr + ly * cr;
+  return o;
+};
+
+/**
+ * 焼き素材の絵(世界に寝かせた四角)の格子の頂点(表示座標)と UV を、33×33 の作り置きの配列へ書く。
+ * - 回転していない四角: 行は投影後の ℓ で等間隔(≤ rowPx 画面px)、列は投影後の幅で等間隔(≤ colPx)。
+ *   どちらも画面(+16px)で切り、外は1マスに潰す。
+ * - 回転している四角: 格子の辺の中点のずれが tolPx 以下になるまで縦横を2分(上限 maxN)。
+ * 使わない頂点(列・行の数が maxN より少ない時)は最後の列・行に潰す=添字は常に 33×33 のまま。
+ */
+export const projGridInto = (
+  f: ProjFrame, fr: ProjFrame4, rowPx: number, colPx: number, maxN: number,
+  outPos: Float32Array, outUv: Float32Array, tolPx: number = PROJ_SHAPE_TOL_PX,
+): ProjGridResult => {
+  const M = Math.max(1, Math.min(PROJ_GRID_MAX, Math.floor(maxN)));
+  const z = f.wgScale > 0 ? f.wgScale : 1;
+  const cr = Math.cos(fr.rot), sr = Math.sin(fr.rot);
+  const res: ProjGridResult = { nx: 1, ny: 1, pts: 0, wyMin: Infinity, wyMax: -Infinity, sMax: 0, aMax: 0 };
+  const rotated = Math.abs(sr) > 1e-6 || cr < 0;
+  if (!rotated) {
+    // 行: ℓ で等間隔
+    const y0 = fr.cy - fr.h / 2, y1 = fr.cy + fr.h / 2;
+    const l0r = projLocalYOfWorld(f, y0), l1r = projLocalYOfWorld(f, y1);
+    const l0 = Math.max(0, l0r), l1 = Math.max(0, l1r);
+    const pad = PROJ_SHAPE_SCREEN_PAD / z;
+    const lTop = (0 - f.wgY) / z - f.shakeY - f.farH - pad;
+    const lBot = (f.screenH - f.wgY) / z - f.shakeY - f.farH + pad;
+    const c0 = Math.max(l0, Math.min(l1, lTop)), c1 = Math.max(l0, Math.min(l1, lBot));
+    const extra = (c0 > l0 ? 1 : 0) + (c1 < l1 ? 1 : 0);
+    const want = Math.max(1, Math.ceil(((c1 - c0) * z) / Math.max(1, rowPx)));
+    const ni = Math.max(1, Math.min(Math.max(1, M - extra), want));
+    let nl = 0;
+    GRID_L[nl++] = l0;
+    if (c0 > l0) GRID_L[nl++] = c0;
+    for (let k = 1; k <= ni; k++) GRID_L[nl++] = c0 + ((c1 - c0) * k) / ni;
+    if (c1 < l1) GRID_L[nl++] = l1;
+    // ℓ → v(v=0 は四角の北の端。地平線より北の部分は頂点の寄せで ℓ=0 に潰れる)
+    let nv = 0;
+    GRID_V[nv++] = 0;
+    for (let k = 0; k < nl; k++) {
+      const l = GRID_L[k];
+      const v = l >= l1 && l1r >= 0 ? 1 : fr.h > 0 ? Math.max(0, Math.min(1, (projWorldYOfLocal(f, l) - y0) / fr.h)) : 1;
+      if (v > GRID_V[nv - 1] + 1e-9 && nv <= M) GRID_V[nv++] = v;
+    }
+    if (GRID_V[nv - 1] < 1) { if (nv <= M) GRID_V[nv++] = 1; else GRID_V[nv - 1] = 1; }
+    res.ny = nv - 1;
+    // 列: 投影後の幅で等間隔(一番広い行=南の行の s で数える)
+    const sMaxRow = projScaleAtLocal(f, Math.max(l0, l1));
+    const nxWant = Math.max(1, Math.ceil((fr.w * sMaxRow * z) / Math.max(1, colPx)));
+    res.nx = Math.max(1, Math.min(M, nxWant));
+    for (let i = 0; i <= res.nx; i++) GRID_U[i] = i / res.nx;
+  } else {
+    // 回転: 縦横を誤差で2分。測る物=格子の辺の中点のずれ(u 向き・v 向き)と、マスの中心のずれ(三角2枚で描く=対角線の中点で補間される)。
+    // 測るマスは端と中央の行・列だけ(全部のマスを測ると重い・ずれは場所でなめらかに変わる)。
+    let nx = 1, ny = 1;
+    const tol = tolOf(tolPx);
+    const at = (u: number, v: number, o: P2) => { const w = frameAt(fr, u, v, cr, sr, W_TMP); projVertexInto(f, w.x, w.y, o); res.pts++; return o; };
+    const cellErr = (i: number, j: number, o: { u: number; v: number; d: number }) => {
+      const u0 = i / nx, u1 = (i + 1) / nx, v0 = j / ny, v1 = (j + 1) / ny;
+      const a = at(u0, v0, GA), b = at(u1, v0, GB), c = at(u0, v1, GC), d = at(u1, v1, GD);
+      if (!segOnScreen(f, a, d, b, PROJ_SHAPE_SCREEN_PAD) && !segOnScreen(f, a, d, c, PROJ_SHAPE_SCREEN_PAD)) return;
+      const mu = at((u0 + u1) / 2, v0, GP);
+      o.u = Math.max(o.u, Math.hypot(mu.sx - 0.5 * (a.sx + b.sx), mu.sy - 0.5 * (a.sy + b.sy)));
+      const mv = at(u0, (v0 + v1) / 2, GP);
+      o.v = Math.max(o.v, Math.hypot(mv.sx - 0.5 * (a.sx + c.sx), mv.sy - 0.5 * (a.sy + c.sy)));
+      const mc = at((u0 + u1) / 2, (v0 + v1) / 2, GP);
+      o.d = Math.max(o.d, Math.hypot(mc.sx - 0.5 * (b.sx + c.sx), mc.sy - 0.5 * (b.sy + c.sy)));
+      // 下の辺・右の辺も(端の行・列で測る)
+      const mu2 = at((u0 + u1) / 2, v1, GP);
+      o.u = Math.max(o.u, Math.hypot(mu2.sx - 0.5 * (c.sx + d.sx), mu2.sy - 0.5 * (c.sy + d.sy)));
+      const mv2 = at(u1, (v0 + v1) / 2, GP);
+      o.v = Math.max(o.v, Math.hypot(mv2.sx - 0.5 * (b.sx + d.sx), mv2.sy - 0.5 * (b.sy + d.sy)));
+    };
+    const E = { u: 0, v: 0, d: 0 };
+    for (let it = 0; it < 12; it++) {
+      E.u = 0; E.v = 0; E.d = 0;
+      const rows = ny <= 3 ? ny : 3, cols = nx <= 3 ? nx : 3;
+      for (let rj = 0; rj < rows; rj++) {
+        const j = ny <= 3 ? rj : rj === 0 ? 0 : rj === 1 ? ny >> 1 : ny - 1;
+        for (let i = 0; i < nx; i++) cellErr(i, j, E);
+      }
+      for (let ci = 0; ci < cols; ci++) {
+        const i = nx <= 3 ? ci : ci === 0 ? 0 : ci === 1 ? nx >> 1 : nx - 1;
+        for (let j = 0; j < ny; j++) cellErr(i, j, E);
+      }
+      let grew = false;
+      if (E.u > tol && nx < M) { nx = Math.min(M, nx * 2); grew = true; }
+      if (E.v > tol && ny < M) { ny = Math.min(M, ny * 2); grew = true; }
+      if (!grew && E.d > tol) {
+        // 対角だけが超える: マスの画面での長い辺の向きを2分
+        const a = at(0, 0, GA), b = at(1 / nx, 0, GB), c = at(0, 1 / ny, GC);
+        const lu = Math.hypot(b.sx - a.sx, b.sy - a.sy), lv = Math.hypot(c.sx - a.sx, c.sy - a.sy);
+        if (lu >= lv && nx < M) { nx = Math.min(M, nx * 2); grew = true; }
+        else if (ny < M) { ny = Math.min(M, ny * 2); grew = true; }
+        else if (nx < M) { nx = Math.min(M, nx * 2); grew = true; }
+      }
+      if (!grew) break;
+    }
+    res.nx = nx; res.ny = ny;
+    for (let i = 0; i <= nx; i++) GRID_U[i] = i / nx;
+    for (let j = 0; j <= ny; j++) GRID_V[j] = j / ny;
+  }
+  // 頂点を書く(33×33・使わない列/行は最後に潰す)
+  const W = PROJ_GRID_MAX + 1;
+  for (let j = 0; j <= PROJ_GRID_MAX; j++) {
+    const v = GRID_V[Math.min(j, res.ny)];
+    for (let i = 0; i <= PROJ_GRID_MAX; i++) {
+      const k = (j * W + i) * 2;
+      if (i <= res.nx && j <= res.ny) {
+        const u = GRID_U[i];
+        const wp = frameAt(fr, u, v, cr, sr, W_TMP);
+        projVertexInto(f, wp.x, wp.y, GP);
+        res.pts++;
+        if (wp.y < res.wyMin) res.wyMin = wp.y;
+        if (wp.y > res.wyMax) res.wyMax = wp.y;
+        if (GP.s > res.sMax) res.sMax = GP.s;
+        if (GP.a > res.aMax) res.aMax = GP.a;
+        outPos[k] = GP.x; outPos[k + 1] = GP.y;
+        outUv[k] = u; outUv[k + 1] = v;
+      } else {
+        const src = (Math.min(j, res.ny) * W + Math.min(i, res.nx)) * 2;
+        outPos[k] = outPos[src]; outPos[k + 1] = outPos[src + 1];
+        outUv[k] = outUv[src]; outUv[k + 1] = outUv[src + 1];
+      }
+    }
+  }
+  return res;
+};
+
+/**
+ * 格子メッシュの1点の補間(テスト・計器用): 書いた格子(nx×ny)で (u,v) を双1次補間した表示座標。
+ * 三角2枚の分け方(a,b,c / b,d,c)と同じ補間をする(描画と同じ)。
+ */
+export const projGridSample = (pos: Float32Array, uv: Float32Array, res: ProjGridResult, u: number, v: number): { x: number; y: number } => {
+  const W = PROJ_GRID_MAX + 1;
+  // 列 i: uv の u で探す(等間隔とは限らない列にも対応)
+  let i = 0;
+  while (i < res.nx - 1 && uv[(0 * W + i + 1) * 2] <= u) i++;
+  let j = 0;
+  while (j < res.ny - 1 && uv[((j + 1) * W) * 2 + 1] <= v) j++;
+  const ua = uv[(j * W + i) * 2], ub = uv[(j * W + i + 1) * 2];
+  const va = uv[(j * W + i) * 2 + 1], vb = uv[((j + 1) * W + i) * 2 + 1];
+  const fu = ub > ua ? (u - ua) / (ub - ua) : 0;
+  const fv = vb > va ? (v - va) / (vb - va) : 0;
+  const a = (j * W + i) * 2, b = (j * W + i + 1) * 2, c = ((j + 1) * W + i) * 2, d = ((j + 1) * W + i + 1) * 2;
+  // 三角 (a,b,c) は fu+fv<=1、(b,d,c) はそれ以外
+  if (fu + fv <= 1) {
+    return { x: pos[a] + (pos[b] - pos[a]) * fu + (pos[c] - pos[a]) * fv, y: pos[a + 1] + (pos[b + 1] - pos[a + 1]) * fu + (pos[c + 1] - pos[a + 1]) * fv };
+  }
+  const gu = 1 - fu, gv = 1 - fv;
+  return { x: pos[d] + (pos[c] - pos[d]) * gu + (pos[b] - pos[d]) * gv, y: pos[d + 1] + (pos[c + 1] - pos[d + 1]) * gu + (pos[b + 1] - pos[d + 1]) * gv };
+};
+
+// ---------------------------------------------------------------------------------------------
+// 高さ・濃さ・間引き
+// ---------------------------------------------------------------------------------------------
+
+/** 高さを持つ頂点(地面の点 (gx, gy) から上へ h)の表示座標: 投影(gx, gy) − (0, h·s)(§1-3・★#6「浮きの倍率」の推薦=s)。 */
+export const projLiftInto = (f: ProjFrame, gx: number, gy: number, h: number, out: { x: number; y: number; s: number }) => {
+  projVertexInto(f, gx, gy, GP);
+  out.x = GP.x; out.y = GP.y - h * GP.s; out.s = GP.s;
+  return out;
+};
+
+/**
+ * 予告の濃さの行(3-6f): world の範囲 [wyMin, wyMax] に主人公の足元の world Y を寄せ、その点を投影した表示Y と
+ * その点の定義域と描く距離のフェード(★#4)を返す。範囲が空(min>max)なら null。
+ */
+export const projTeleFadeY = (
+  f: ProjFrame, wyMin: number, wyMax: number, footY: number, out: { y: number; a: number },
+): { y: number; a: number } | null => {
+  if (!(wyMax >= wyMin)) return null;
+  const wy = Math.max(wyMin, Math.min(footY, wyMax));
+  projVertexInto(f, f.cxw, wy, GP);
+  out.y = GP.y; out.a = GP.a;
+  return out;
+};
+
+/**
+ * 間引き(3-6b): 形(中心 cx,cy・半径 r)の東西南北の端と中心を投影した箱が、画面(ズーム後の画面px+marginPx)に掛からないなら true。
+ * 地平線より北は ℓ=0 に寄せた点で測る(地平線の線に潰れて残る=描く側は頂点の寄せで正しく描く)。
+ */
+export const projShapeOutside = (f: ProjFrame, cx: number, cy: number, r: number, marginPx: number): boolean => {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  const take = (x: number, y: number) => {
+    projVertexInto(f, x, y, GP);
+    if (GP.sx < minX) minX = GP.sx;
+    if (GP.sx > maxX) maxX = GP.sx;
+    if (GP.sy < minY) minY = GP.sy;
+    if (GP.sy > maxY) maxY = GP.sy;
+  };
+  const rr = Math.max(0, r);
+  take(cx, cy); take(cx - rr, cy); take(cx + rr, cy); take(cx, cy - rr); take(cx, cy + rr);
+  // 北の端の行は一番狭く南の端の行は一番広い=東西の端は南の行でも測る
+  take(cx - rr, cy + rr); take(cx + rr, cy + rr);
+  const m = Math.max(0, marginPx);
+  return maxX < -m || minX > f.screenW + m || maxY < -m || minY > f.screenH + m;
+};
+
+// ---------------------------------------------------------------------------------------------
+// テスト・計器用の小物
+// ---------------------------------------------------------------------------------------------
+
+/** 点 (x,y) が多角形(out の輪郭 c)の内か(偶奇)。 */
+export const projPointInContour = (out: ProjPathOut, c: number, x: number, y: number): boolean => {
+  const s = out.contourStart(c), e = out.contourEnd(c);
+  let inside = false;
+  for (let i = s, j = e - 1; i < e; j = i++) {
+    const xi = out.xy[i * 2], yi = out.xy[i * 2 + 1], xj = out.xy[j * 2], yj = out.xy[j * 2 + 1];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi || 1e-12) + xi) inside = !inside;
+  }
+  return inside;
+};
+
+/** 点 (x,y) が out のどれかの輪郭の内か。 */
+export const projPointInPath = (out: ProjPathOut, x: number, y: number): boolean => {
+  for (let c = 0; c < out.cn; c++) if (projPointInContour(out, c, x, y)) return true;
+  return false;
+};
+
+/** 点と線分の距離。 */
+export const projDistToSeg = (px: number, py: number, ax: number, ay: number, bx: number, by: number): number => {
+  const dx = bx - ax, dy = by - ay;
+  const l2 = dx * dx + dy * dy;
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+};

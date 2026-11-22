@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.5753 — 遠近の投影 段階4「形を持つもの」の土台と主な場面(?proj=1 のみ・途中)【2026-11-23 03:24 JST】
+- 範囲: `?proj=1` の時だけ効く(各所 `if (pf) 部品; else 今の行` で、else 側は1行も変えていない)。通常のプレイは不変。
+- 新規: `utils/projShape.ts`(誤差で2分する円・楕円・弧・扇・環・帯・矩形・多角形・格子メッシュ・`projShapeOutside`・`PROJ_TELE_LINE_MODE='A'`)、`pixi/projDraw.ts`(描く部品・命令数とworld Yの記録)、番人テスト `pixi/projShapeGuard.test.ts`、`projShape.test.ts`(縁と判定の差は全形状で1.0画面px以下・内外の食い違い0)。
+- 書き換えた主な描画: 円/扇/矩形の窓、`drawSweepBand`、`drawTelegraphRing/Band`(格子メッシュ)、`drawAngelDashLine`・`drawMobBiteMeteor`・`strokeBeamLayers`(judge)・`drawAngelBeamLine`・`drawBeamTipGfx`・`drawRimNotches`・スカジ・ヨルムンガンドの影・卵の点滅・幻影のタレット/火炎の扇・地雷・`syncPumpkinTelegraph`・`drawEnemy` 直書き約72か所。メッシュのプールは rings/bands/bandSlices。予告の濃さ(`projTeleFadeY`)と寄りの支点も。
+- 計器(`?projaudit=1`): s4 direct/tex/point/pts。撮った4場面で direct 0/0/0/3(3=幻影火炎の銃口の種火・派手さの絵・未分類)。
+- 残り(次の段): 作る物6 `projShapeGfx`、K/J/I/F系と英雄・舞妓・アクラシエル等の関数、爪痕/衝撃波/風圧/胴/竜巻のメッシュ化、spikeThrust/burstFrag の点、B20、形と判定の差の計器、reticle、台帳の欄、全場面の撮影、phone/pc-guard。
+- 未決: ★#23「予告の線の太さと遠近」(既定A)/ drawEnemy の飾り(C04の玉・ハブ・目の光、ヨルムンガンドの冷気、銃口の閃光・煙など)を「投影しない申告」か「段階3」か。
+- 負荷: 3/10(描画CPU・予告1つで数百〜数千点を毎フレーム投影・ボス3体で約8,200点≒端末1ms見込み・`?proj=0` ではメッシュを作らない)。
+- 検証: v0.25.5752 の上へ rebase 後に typecheck / eslint / circular / vitest 全件(11443通過)。画は ?proj=0/1 で撮って目視(ボスの絵自体は撮影条件で写らず)。品質監査・クリエイティブ監査は段階4の残りと合わせて回す(この版は途中の土台)。
+- 自己点検: 憲法第4条・第5条に抵触しない(既定では何も変わらない)。
+
 ## v0.25.5752 — 守護霊・幻影をプレイヤーの仕様に揃える2巡目(社長裁定5件)【2026-11-23 03:18 JST】
 - 社長指示「守護霊や幻影も揃えないと矛盾する。矛盾するものは残さない」→「5件とも推薦ではい」。
 - ①幻影のカウンターマスターの吹き飛ばし: 式を `counterMasterBlowVector` 1本に。幻影用 `counterMasterBlowOpponents`(プレイヤー・守護霊・英雄を同じ速さ・長さで弾く・雑魚は弾かない)。`Summon.knockbackMs` 追加。
