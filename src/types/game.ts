@@ -382,6 +382,12 @@ export interface Player extends DashLocomotionState {
   // Temporary sub-weapon skill test bed. Keys are unlocked by level-up cards;
   // cooldowns are gameTime timestamps, so they pause with the game.
   subWeapons: SubWeaponKey[];
+  /**
+   * 出撃した時に持っていたサブ(resetGame の runSubs の写し)。刀/村雨を持っても、ここにあるサブは止めない
+   * (社長指示2026-11-22「刀装備時も、初期装備サブウェポンは活きで」・subWeaponBlockedByKatana)。
+   * 出撃の途中で拾った/買ったサブは入れない。未設定=空扱い。
+   */
+  startingSubWeapons?: SubWeaponKey[];
   subWeaponLevels: Partial<Record<SubWeaponKey, number>>;
   subWeaponCooldowns: Partial<Record<SubWeaponKey, number>>;
   // 装備スキル(サブウェポンとは別枠のアクティブ能力。最大2)。
@@ -533,6 +539,8 @@ export interface PlayerBuildSnapshot {
   /** レベルアップで積んだリロード時間倍率(<1ほど速い)。 */
   reloadMult?: number;
   subWeapons?: SubWeaponKey[];
+  /** 出撃した時に持っていたサブ(Player.startingSubWeapons の写し)。刀の排他で止めない側。 */
+  startingSubWeapons?: SubWeaponKey[];
   subWeaponLevels?: Partial<Record<SubWeaponKey, number>>;
   /** 計測時のクラス(キャラ固有スキルの評価に使う。絵の選択は従来どおりPlayerProfile.srcClass)。 */
   characterClass?: CharacterClass;

@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.5751 — 刀装備中も出撃時のサブウェポンは止めない【2026-11-23 03:04 JST】
+- 社長指示「刀装備時も、初期装備サブウェポンは活きで」。「初期装備」=出撃時の所持サブ(クラス固有+装備メニューの1つ=resetGame の runSubs)と解した。
+- 直し: `Player.startingSubWeapons`(出撃時に控える・途中取得は入らない)。`subWeaponBlockedByKatana` は刀モードでも控えにあるサブを止めない(ダンスフロアの排他は不変)。
+- 指示を効かせるための付随2点: ①途中で刀/村雨を取った時の排他リセット(`applySubWeaponCard`)で控えにあるサブを外さない(外すと装備メニューで刀を選んだ時しか効かない) ②プレイヤーの刀の振りの分岐が分身(`spawnShadowCloneOnSwing`)の手前で戻っていたので、刀の振りでも出撃時の分身は出す(守護霊の一閃は既に通っていた=食い違い解消)。
+- 守護霊・幻影: `snapshotPlayerBuild` が控えも写し、疑似プレイヤーへ載せる(本人の控えは乗せない)。固定守護霊は全サブを出撃時扱い→小烏丸持ちの固定守護霊の職業サブが動くようになる。
+- 表示: 刀による停止の表示はもともと無い(判定は `subWeaponBlockedByKatana` 1本)。
+- 既存テスト2件を新規則に合わせて直した(戦士の手榴弾は出撃時サブ=止まらない)。
+- 変えたファイル: src/types/game.ts・src/store/gameStore.ts・src/utils/playerBuild.ts・src/data/fixedGuardians.ts・src/store/katanaStartingSubs.store.test.ts(新)・src/store/huntingAllMelee.store.test.ts・src/utils/newGunsScanBrawler.test.ts
+- 検証: typecheck / eslint / circular / vitest 全件(実装担当 11388件通過)。監査は付けない(既存の規則の範囲の変更)。
+- 自己点検: 憲法第4条・第5条に抵触しない。
+
 ## v0.25.5750 — 刀のタップの振りから斬撃の弧を外す【2026-11-23 02:56 JST】
 - 社長指示「刀のタップの振りの絵から、斬撃の絵を無くしたい」。刀/村雨装備中のタップは攻撃しない(カウンター受付のみ)のに、ナイフと同じ弧と残光が出ていた。
 - 直し: 純関数 `utils/meleeTapArc.ts`(`meleeTapArcVisible(subWeapons)`=刀/村雨なら false)。pixiScene のタップの振りの弧(`placeMeleeArc`=slash/trail・7コマ・旧弧フォールバック)の頭で止める。武器の実絵・体のポーズ・踏み込み・SE・判定・オート斬撃/一閃/燕返しは不変。

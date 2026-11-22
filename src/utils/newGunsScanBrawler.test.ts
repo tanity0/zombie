@@ -32,8 +32,8 @@ describe('格闘中もサブウェポンは止めない(社長指示2026-11-09�
     const p = playerWith(['brawler', 'heavy-grenade', 'marksman-trap', 'turret']);
     for (const k of ['heavy-grenade', 'marksman-trap', 'turret', 'brawler'] as const) expect(subWeaponBlockedByKatana(p, k)).toBe(false);
   });
-  it('刀は今どおり他を止める', () => {
-    const p = playerWith(['katana', 'heavy-grenade']);
+  it('刀は今どおり他を止める(出撃時に持っていなかったサブ)', () => {
+    const p = { ...playerWith(['katana', 'heavy-grenade']), startingSubWeapons: [] };
     expect(subWeaponBlockedByKatana(p, 'heavy-grenade')).toBe(true);
   });
   it('一緒に持てないのは刀・村雨・鞭だけ', () => {

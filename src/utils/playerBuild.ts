@@ -84,6 +84,7 @@ export const snapshotPlayerBuild = (
     magBonus: p.magBonus,
     reloadMult: p.reloadMult,
     subWeapons: [...p.subWeapons],
+    startingSubWeapons: [...(p.startingSubWeapons ?? [])], // 出撃時のサブ(刀の排他で止めない側)も記録する
     subWeaponLevels: { ...p.subWeaponLevels },
     characterClass: p.characterClass,
     // research/GROWTH.md v4: 育成(攻撃力)も「計測時のビルド」の一部として記録する。
@@ -199,6 +200,8 @@ const buildPseudoPlayerRaw = (snap: PlayerBuildSnapshot | undefined, live: Playe
     magBonus: snap.magBonus ?? live.magBonus,
     reloadMult: snap.reloadMult ?? live.reloadMult,
     subWeapons: snap.subWeapons ?? live.subWeapons,
+    // 出撃時のサブ(刀でも止めない側)は記録どおり。本人の値は持たせない(サブの記録が無い旧データだけ本人の所持に合わせる)。
+    startingSubWeapons: snap.startingSubWeapons ?? (snap.subWeapons === undefined ? live.startingSubWeapons : []),
     subWeaponLevels: snap.subWeaponLevels ?? live.subWeaponLevels,
     // research/GROWTH.md v4(社長裁定Q4): 育成(攻撃力)は計測時の値を復元する。欠損=旧データは 1.0(0段)。
     growthAtkMult: snap.growthAtkMult ?? 1,

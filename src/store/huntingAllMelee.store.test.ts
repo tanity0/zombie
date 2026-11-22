@@ -158,7 +158,7 @@ describe('刀: オート斬撃→一閃→燕返しの間は伸びたまま、�
       const pick = (charged: boolean) => {
         setup([sword, 'striker-hunting'], { [sword]: 3, 'striker-hunting': 3 }, charged);
         expect(subWeaponBlockedByKatana(pl(), 'striker-hunting')).toBe(false);
-        expect(subWeaponBlockedByKatana(pl(), 'heavy-grenade')).toBe(true); // ほかのサブは今までどおり止まる
+        expect(subWeaponBlockedByKatana(pl(), 'turret')).toBe(true); // 途中で手に入れたほかのサブは今までどおり止まる(手榴弾=戦士の出撃時のサブは止まらない)
         const c = center();
         const z = zombieAt(katanaRange(pl()) + LV3 / 2 + zombieWidth() / 2, 'z');
         return pickKatanaSlashTarget(c.x, c.y, katanaReach(pl()), [z], st().gameTime, enemyMeleeDist);

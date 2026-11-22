@@ -188,6 +188,7 @@ const fixedGuardian = (s: GuardianSpec): FixedGuardian => {
         magBonus: 0,
         reloadMult: 1,
         subWeapons,
+        startingSubWeapons: [...subWeapons], // 固定の守護霊は全部が最初からの装備(刀でも止めない側)
         subWeaponLevels: subLevels(subWeapons),
         characterClass: s.classId,
         phillHeadshotRate: s.phillHeadshotRate,

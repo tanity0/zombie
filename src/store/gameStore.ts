@@ -2450,7 +2450,10 @@ export const isBrawlerWeakGuarding = (player: Player, gameTime: number): boolean
   isBrawlerGuarding(player, gameTime) && player.brawler?.guardWeak === true;
 export const subWeaponBlockedByKatana = (player: Player, key: SubWeaponKey): boolean => {
   if (isKatanaMode(player)) {
-    return key !== 'katana' && key !== 'murasame' && !KATANA_ALLOWED_SUBWEAPONS.includes(key);
+    if (key === 'katana' || key === 'murasame' || KATANA_ALLOWED_SUBWEAPONS.includes(key)) return false;
+    // 出撃した時に持っていたサブは刀では止めない(社長指示2026-11-22「刀装備時も、初期装備サブウェポンは活きで」)。
+    // 止めないのは刀の排他だけ=下のダンスフロアの排他はそのまま効く。途中で手に入れたサブは今までどおり止める。
+    if (!player.startingSubWeapons?.includes(key)) return true;
   }
   // 格闘中もサブウェポンは止めない(社長指示2026-11-09「銃はとめるけど、サブウェポンは止めないよ」・旧§1の全停止を撤回)。
   // ダンスフロア(shijin)装備中: shijin 以外のサブを停止。
@@ -9150,8 +9153,8 @@ const setActorShadowClone = (ghostId: string | undefined, clone: ShadowCloneStat
  * 分身(近接スイング入口)。READY(自分の枠が空 & 自分のCD明け)なら攻撃位置に1体生成する。
  * プレイヤーの `triggerCounter` と守護霊の `fireGhostMeleeSwingSubs` が**この1本**を通る
  * (相乗り型サブ3種と同じ形)。生成したら true。
- * ※ subWeaponBlockedByKatana はプレイヤー経路では常に false(刀モードは triggerCounter が
- *   手前で return する)= 相乗り型サブ3種と同じ扱い。守護霊の一閃から呼ばれた時に効く。
+ * ※ 刀の振り(プレイヤーの triggerCounter の刀の分岐・守護霊の一閃)からも呼ばれる。刀を持っている時は
+ *   subWeaponBlockedByKatana が「出撃時に持っていた分身だけ出す」を決める(相乗り型サブ3種と同じ扱い)。
  * ★O-3b-2(SAME_ARENA.md §3-d-4): 幻影の近接スイング(phantomTick.runPhantomTick)からも
  * **この1本**を通す(export済み)。owner.kind==='phantom' でも分岐は増えない
  * (setActorShadowClone / ownerGhostId が宛先を吸収する)。
@@ -9570,7 +9573,10 @@ const applySubWeaponCard = (player: Player, key: SubWeaponKey, cardLevel?: numbe
   };
   // 共存不可スキル(刀/村雨/ダンスフロア)を取得したら、同グループ以外の取得済みスキルをリセット(除去)。
   const group = EXCLUSIVE_SUBWEAPON_GROUPS.find(g => g.includes(key));
-  if (group) subWeapons = subWeapons.filter(k => group.includes(k));
+  // ただし刀/村雨を取った時、出撃時に持っていたサブは外さない(刀でも止めない側=subWeaponBlockedByKatana と揃える。
+  // 社長指示2026-11-22「刀装備時も、初期装備サブウェポンは活きで」)。ダンスフロア・錬金の組は今までどおり全部外す。
+  const keepStarting = group?.includes('katana') ? (player.startingSubWeapons ?? []) : [];
+  if (group) subWeapons = subWeapons.filter(k => group.includes(k) || keepStarting.includes(k));
   subWeapons = dropBrawlerConflicts(subWeapons, key);
   if (subWeapons.length !== (known ? player.subWeapons.length : player.subWeapons.length + 1)) {
     const cleaned: Partial<Record<SubWeaponKey, number>> = {};
@@ -13833,6 +13839,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().noteMeleeSwingPressedAt(swingAt);
       // 刀でも松明・卵を破壊できる(刀の間合いの円)。
       get().breakPropsAlong(pcx, pcy, 1, 0, 0, katanaReach(player), swingBaseDamage * 2.5);
+      // 分身: 刀の振りでも、出撃時に持っていた分身は出す(社長指示2026-11-22「刀装備時も、初期装備サブウェポンは活きで」)。
+      // 守護霊の一閃(fireGhostMeleeSwingSubs)と同じ1本。途中で手に入れた分身は subWeaponBlockedByKatana が止める。
+      spawnShadowCloneOnSwing(get, player, swingOwner, gameTime);
       return { swung: false, hit: false, finish: false, killed: 0, katanaSwing: true };
     }
 
@@ -29092,6 +29101,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 仮: ダンスモードはダンスフロア(shijin)を指定レベルだけ覚えた状態で開始(敵なしで練習)。
           // 通常開始は固有スキルを Lv1 所持(新規取得スキル1個はこれと別枠=upgradeUtils 側で管理)。
           subWeapons: runSubs,
+          startingSubWeapons: [...runSubs], // 出撃時のサブ(刀でも止めない側・subWeaponBlockedByKatana)
           skills: runSkills,
           skillLevels: runSkillLevels,
           fireShooterCdUntil: 0, reflexCdUntil: 0, slasherChainReadyAt: 0, slasherStrikeStep: 0, slasherReach: 0, slasherQueuedTap: false,
