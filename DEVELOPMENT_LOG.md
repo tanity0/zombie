@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5749 — 遅れて出すアテンションが写す相手を外す不具合: 座標ではなく相手を控える【2026-11-23 02:49 JST】
+- 社長報告: ステージ1(2周目)で賞金首の出現アテンションが賞金首の映っていない場所へ寄った(店の画面が開いていた)。
+- 原因: 遅れて出すアテンション(950ms後・他のアテンションや店で更に遅れる)が**出現時の座標**を控えていた。幻影は行ける帯へ寄せる前の湧き点を控え、950ms追ってくるので必ず外れていた。`bountyAttnRef` はリスタートで消えていなかった。
+- 直し: `src/utils/attentionTarget.ts`(新規)=控えるのは相手の id。発火の瞬間に今の位置から寄り先を出し直し、いなければ出さない(SEも鳴らさない)。hold中は寄り先が相手へ慣性つきで付いて行く(τ=120ms・ジュンの寄り先追従と同じく attention.x/y を書き換えるだけ)。対象=城ボス/賞金首/幻影/保留箱(グレン・天使ゲート2・アイドル)。新ランで `bountyAttnRef`/`pendingCutinAttnRef` を空にする。尺・カットイン・時間停止・カメラの式は不変。
+- 診断: `poiMissBeacon` を広げ、hold中に写す相手が映っていなければ左下に `target-miss <型>: <理由>` を1行(gone/offscreen/horizon/noSprite/hidden/alpha)。
+- 廃病院の件: その場で動かない座標へ寄るので今回の型では起きない(見立ては地平線フェード/素材未読/カットイン無しの上書き/前ランの残り予約=今回で解消、の順。未確定)。
+- 変えたファイル: src/utils/attentionTarget.ts(新)・attentionTarget.test.ts(新)・poiMissBeacon.ts・poiMissBeacon.test.ts・store/gameStore.ts・hooks/useGameLoop.ts・pixi/pixiScene.ts
+- 検証: typecheck / eslint(変更ファイル) / circular / vitest 全件(実装担当が実行・11387件通過)。画面での確認は未(社長の実機待ち)。品質監査は付けない(既存の仕組みの不具合修正=新しい仕組みではない)。
+- 自己点検: 憲法第4条・第5条に抵触しない(カメラの寄り先だけ)。
+
 ## v0.25.5748 — 緑卵の範囲の見せ方: 起爆の瞬間に線の輪を2回点滅【2026-11-23 01:55 JST】
 - 社長指示「緑卵の爆発範囲内表示やめる」→「起爆モードに入った一瞬、ピピっとサークルの線で範囲を表示 に変更」。v0.25.5743 の常時の紫の円窓(塗り・縁の揺らぎ・点滅)を撤去し、`syncEggArmBlinks`(`eggArmBlinkGfx`・地平線の型抜き `eggArmBlinkMask`)で、store の `armedAt` からの経過で円の線だけを2回(点灯90ms・間70ms・計250ms・立ち上がり3割→減速で消える)。半径・中心は判定と同じ。紫 0xc084fc・太さ2。純関数 `eggArmBlinkAlpha`(utils/telegraphFixes.ts)+テスト3件。卵の本体の見た目・爆発・判定・タイミングは不変。
 - 検証: typecheck 0 / eslint 0 / vitest 全体 11377 passed。画: アーム後 30/120/200/300ms を目視(egg-blink-montage.png)。

@@ -145,6 +145,7 @@ import { idForLabSex } from '../utils/labZombieSex';
 import { pickPhantomIdentity, setPhantomIdentity, getPhantomIdentity, phantomDisplayLabel, clearPhantomIdentity } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の人格(癖・ビルド・HP・名前を1人から)
 import { reportSuppressedError, reportSoftNotice } from '../utils/errorBeacon';
 import { bossCutinPayload, glenForm2CutinPayload } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン(オプトイン呼び出しのみ)
+import { resolveDeferredAttentionFocus, findAttentionTarget, attentionFocusOf, followAttentionFocus, type AttentionTarget } from '../utils/attentionTarget'; // 遅れて出す寄り=控えるのは相手(座標ではない)
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { thorDashRunCenter } from '../utils/dashTelegraph';
 import { TURRET_EXPLOSION_RADIUS, phantomTurretBlastRadius } from '../utils/turretSpec';
@@ -2186,8 +2187,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // event-clear が誤爆していた(boss-death型と違い「ラン開始時に必ず偽」になる条件が無い)。
   const subquestClearSfxRef = useRef(useGameStore.getState().subquestClearSeq);
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
-  // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
-  const castleAttnRef = useRef<{ at: number; x: number; y: number }>({ at: 0, x: 0, y: 0 });
+  // (出現直後だと演出で本体がぼやける・社長指示)。{at,target}=発火予定gameTime と写す相手。0=予約なし。
+  // ★控えるのは座標ではなく相手(utils/attentionTarget): 発火の瞬間に今の位置から寄り先を出し直す(遅れた間に動いても外さない)。
+  const castleAttnRef = useRef<{ at: number; target: AttentionTarget | null }>({ at: 0, target: null });
   // ステージ4のジュン(research/JUN_ESCORT.md): 城ボスの条件が満ちてから待っている起点(gameTime・null=待っていない)/
   // 離脱の時刻が来てからピントの帯を待っている起点/変身の後、カットインが明けたら出す「危険変異体出現」の帯の予約。
   const junHoldSinceRef = useRef<number | null>(null);
@@ -2206,13 +2208,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const shrineCrumbleRef = useRef<Record<string, { at: number; wave: number }>>({});
   // §6.38 v9(完全コピー原則): 賞金首も城ボスと同じ「出現エフェクトが消えてからカメラアテンション
   // +カットイン」の並びにする(castleAttnRefと同型。null=予約なし)。
-  const bountyAttnRef = useRef<{ at: number; x: number; y: number; cutin: ReturnType<typeof bossCutinPayload> } | null>(null);
+  // ★控えるのは相手(target)。座標を控えると、遅れた間(他のアテンション・店の画面)に相手が動いて何も無い所へ寄った(社長実機)。
+  const bountyAttnRef = useRef<{ at: number; target: AttentionTarget; cutin: ReturnType<typeof bossCutinPayload> } | null>(null);
   // 賞金首のチュートリアル('bounty')の待ち: 賞金首が出た(spawnBountyEncounter)ら立て、出現のアテンションが終わり切ったら出す。
   const bountyTutPendingRef = useRef(false);
   // §6.36(監査指摘1): カットイン付きattentionの保留箱。素のattention(ハンター/救援/死神等)が
   // 生きている間にボスが出ると、first-winsで後着のカットインが丸ごと消える(=「毎回出す」違反+
   // 出現アテンション自体の退行)。attention生存中は発火せずここへ置き、空いた最初のフレームで撃つ。
-  const pendingCutinAttnRef = useRef<{ x: number; y: number; cutin: NonNullable<ReturnType<typeof bossCutinPayload>> } | null>(null);
+  // ★控えるのは相手(target)。撃つ瞬間に今の位置から寄り先を出し直す(いなければ撃たない)。
+  const pendingCutinAttnRef = useRef<{ target: AttentionTarget; cutin: NonNullable<ReturnType<typeof bossCutinPayload>> } | null>(null);
+  // 寄り先の追従(写す相手が動いたら付いて行く)の前フレームの実時刻。0=初回。
+  const attnFollowLastRef = useRef(0);
   // v0.25.3028: グレン連結パーツの前フレーム本数(減少検知でパーツ破壊爆発を出す)。count=null は第一形態(パーツ未表示)。
   const glenPartsPrevRef = useRef<{ id: string; count: number | null } | null>(null);
   // v0.25.3038: ヒットストップ中のエフェクト実時間tick用の前フレーム時刻(0=非停止中)。
@@ -2736,12 +2742,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       return boss;
     };
     // 城ボスの出現アテンション(§6.36 カットイン=ステージ別の名前)。chain=出ている素のアテンションへ継ぎ足す(ジュンの変身)。
-    const fireCastleBossAttention = (x: number, y: number, gt: number, chain = false) => {
+    const fireCastleBossAttention = (x: number, y: number, gt: number, chain = false, target?: AttentionTarget) => {
       // §6.36: 城ボス出現カットイン。名前はステージ別台帳(bossCutin.ts)。台帳に無いステージ
       // (=実装してないボス)は undefined でカットイン無し=従来のattentionのみ。
       const cutin = bossCutinPayload('giantbat', getSelectedStageId());
       if (chain) useGameStore.getState().chainAttentionCutin(x, y, cutin);
-      else useGameStore.getState().triggerAttention(x, y, cutin);
+      else useGameStore.getState().triggerAttention(x, y, cutin, undefined, undefined, target ? { target } : undefined);
       playSfx('boss-appear');
       // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-7・B3): アテンションが実際に張られた瞬間を打刻
       // (HUDの黄色い行の表示条件・§2-14「アテンション完了の打刻」)。triggerAttentionを呼んだのと
@@ -2879,7 +2885,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (pendingCutinAttnRef.current && !useGameStore.getState().attention) {
           const p = pendingCutinAttnRef.current;
           pendingCutinAttnRef.current = null;
-          useGameStore.getState().triggerAttention(p.x, p.y, p.cutin);
+          const pf = resolveDeferredAttentionFocus(useGameStore.getState().enemies, p.target);
+          if (pf) useGameStore.getState().triggerAttention(pf.x, pf.y, p.cutin, undefined, undefined, { target: p.target });
         }
         const att = useGameStore.getState().attention;
         // v0.25.2953(社長指示「ボスモードもボス消えるまでは終わらないで」): 練習ランの勝利は
@@ -2901,8 +2908,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 今回の出撃で歩いた道(THEONE_ROUND2 §2-6): 1.5秒ごとに自分の中心を記録(間隔・移動量の判定は utils/runRoutes)
           if (!ms.isPaused) recordRoutePoint(ms.gameTime, ms.player.x + ms.player.width / 2, ms.player.y + ms.player.height / 2);
         }
+        if (!att) attnFollowLastRef.current = 0;
         if (att) {
           const el = nowMs - att.startReal;
+          // 写す相手が分かっているアテンションは、寄り先が相手の今の位置へ慣性つきで付いて行く(utils/attentionTarget・
+          // 2822行付近のジュンの寄り先の追従と同じ作り=attention.x/y を書き換えるだけ。尺・カメラの動き方は変えない)。
+          // 変身の後の寄り先の移り(junPanRef)が動いている間はそちらに任せる。相手が消えたら最後の位置のまま。
+          let attX = att.x, attY = att.y;
+          if (att.target && !junPanRef.current) {
+            const te = findAttentionTarget(useGameStore.getState().enemies, att.target.id);
+            const dtF = attnFollowLastRef.current ? nowMs - attnFollowLastRef.current : 0;
+            const nf = te ? followAttentionFocus(att, attentionFocusOf(te, att.target.focus), dtF) : null;
+            if (nf) { attX = nf.x; attY = nf.y; useGameStore.setState({ attention: { ...att, x: nf.x, y: nf.y } }); }
+          }
+          attnFollowLastRef.current = nowMs;
           // §6.36(v0.25.2958・社長指示で復帰): cutin付きattentionは hold と out の間に cutinMs
           // (カメラは注目点に静止のまま)を挟む。素のattention(cutinMs=0)は式が従来と完全一致。
           const cutinMs = att.cutinMs ?? 0;
@@ -2911,10 +2930,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().clearAttention();
           } else {
             const gb = useGameStore.getState().gameBounds;
-            const focusX = att.x - gb.width / 2;   // 注目点を画面中央に(横は幾何中央のまま)
+            const focusX = attX - gb.width / 2;   // 注目点を画面中央に(横は幾何中央のまま)
             // ★v0.25.3742(社長診断): 縦は遠景帯のぶん「可視領域内の真ん中」=画面高の60%位置に置く
             // (幾何中央50%だと対象が上に寄って見える)。定数はgameStore.ATTENTION_FOCUS_Y_FRAC。
-            const focusY = att.y - gb.height * ATTENTION_FOCUS_Y_FRAC;
+            const focusY = attY - gb.height * ATTENTION_FOCUS_Y_FRAC;
             const smooth = (t: number) => { const c = Math.max(0, Math.min(1, t)); return c * c * (3 - 2 * c); };
             let cx: number, cy: number;
             if (el < ATTENTION_IN_MS) {
@@ -3681,7 +3700,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           resetSeededRngs();
           botReportedRef.current = false;
           botPausedSinceRef.current = 0;
-          castleAttnRef.current = { at: 0, x: 0, y: 0 };
+          castleAttnRef.current = { at: 0, target: null };
+          bountyAttnRef.current = null; pendingCutinAttnRef.current = null; // 前のランの相手へ寄らない(相手の id は見つからないので出ないが、念のため捨てる)
           junHoldSinceRef.current = null; junDueSinceRef.current = null; junBannerPendingRef.current = false; junPanRef.current = null;
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
@@ -3869,8 +3889,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const boss = spawnCastleBossNow(newGameTime);
             // アテンションは出現エフェクトが消えてから(=ぼやけ防止・社長指示)。下のディスパッチャが発火。
             // v0.25.3727: 寄り先=絵の中心(城ボスはBOSS_SPRITE_FIT表に無い=帯中心のまま返る。表に載せたら自動追従)。
-            const cAc = bossArtCenter(boss);
-            castleAttnRef.current = { at: newGameTime + 950, x: cAc.x, y: cAc.y };
+            // 控えるのは相手(発火の瞬間に bossArtCenter で今の位置から出し直す)。
+            castleAttnRef.current = { at: newGameTime + 950, target: { id: boss.id, focus: 'art' } };
           } else if (route === 'relocate' && jd) {
             // 城へ向かう道の上で、画面の外のいちばん城寄りの点へ(そこから歩いて入って来る=置き直しは画面に見えない)。
             const rp = junRelocatePoint({ x: jd.x, y: jd.y }, castleBossFoot, junVisible);
@@ -3934,9 +3954,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         // 城ボスの遅延アテンション発火(出現演出が落ち着いてからカメラを寄せる)。
         if (castleAttnRef.current.at > 0 && newGameTime >= castleAttnRef.current.at && !useGameStore.getState().attention) {
-          const { x, y } = castleAttnRef.current;
-          castleAttnRef.current = { at: 0, x: 0, y: 0 };
-          fireCastleBossAttention(x, y, newGameTime);
+          const ct = castleAttnRef.current.target;
+          castleAttnRef.current = { at: 0, target: null };
+          const cf = ct ? resolveDeferredAttentionFocus(useGameStore.getState().enemies, ct) : null;
+          if (cf && ct) fireCastleBossAttention(cf.x, cf.y, newGameTime, false, ct);
+          else useGameStore.setState({ castleAttnDoneAt: newGameTime }); // 相手がもういない=寄らない(HUD の進行の打刻だけは打つ)
         }
 
         // --- the ONE ストーリーボス(M7=グレン巨大化) ---
@@ -4052,8 +4074,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             {
               const glenCutin = bossCutinPayload('giantbat', storyStageId);
               const gAc = bossArtCenter(boss); // v0.25.3727: 寄り先=絵の中心
-              if (glenCutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { x: gAc.x, y: gAc.y, cutin: glenCutin };
-              else useGameStore.getState().triggerAttention(gAc.x, gAc.y, glenCutin);
+              const gT: AttentionTarget = { id: boss.id, focus: 'art' };
+              if (glenCutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { target: gT, cutin: glenCutin };
+              else useGameStore.getState().triggerAttention(gAc.x, gAc.y, glenCutin, undefined, undefined, { target: gT });
             }
             playSfx('boss-appear');
           } else if (storyBossSpawnedRef.current && storyBossWinAtRef.current === 0) {
@@ -4569,8 +4592,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             {
               const g2Cutin = bossCutinPayload(gate2BossType);
               const g2Ac = bossArtCenter(boss); // v0.25.3727: 寄り先=絵の中心(天使は縦長=従来は頭が切れていた)
-              if (g2Cutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { x: g2Ac.x, y: g2Ac.y, cutin: g2Cutin };
-              else useGameStore.getState().triggerAttention(g2Ac.x, g2Ac.y, g2Cutin);
+              const g2T: AttentionTarget = { id: boss.id, focus: 'art' };
+              if (g2Cutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { target: g2T, cutin: g2Cutin };
+              else useGameStore.getState().triggerAttention(g2Ac.x, g2Ac.y, g2Cutin, undefined, undefined, { target: g2T });
             }
             activeGateRef.current = 2;
             useGameStore.setState({ eventBannerText: 'ボスを倒すまで深層から出られない', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
@@ -5797,17 +5821,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnBurst(bx0, by0 + 20, '#7f1d1d', 28);
           // アテンション+カットインは出現エフェクトが消えてから(城ボスと同じ950ms・下のディスパッチャが発火)。
           {
-            const bAc = bossArtCenter(bountyE); // v0.25.3727: 寄り先=絵の中心(表に無い賞金首型は帯中心のまま)
-            bountyAttnRef.current = { at: atGameTime + 950, x: bAc.x, y: bAc.y, cutin: bossCutinPayload(bType) };
+            // v0.25.3727: 寄り先=絵の中心(表に無い賞金首型は帯中心のまま)。控えるのは相手=発火の瞬間に今の位置から出し直す。
+            bountyAttnRef.current = { at: atGameTime + 950, target: { id: bountyE.id, focus: 'art' }, cutin: bossCutinPayload(bType) };
           }
           bountyTutPendingRef.current = true; // 賞金首のチュートリアル: 出現のアテンションが終わってから出す(下の判定)
         };
         // 賞金首の遅延アテンション発火(出現演出が落ち着いてからカメラを寄せる。城ボスと同じ並び)。
         if (bountyAttnRef.current && newGameTime >= bountyAttnRef.current.at && !useGameStore.getState().attention) {
-          const { x, y, cutin } = bountyAttnRef.current;
+          const { target: bt, cutin } = bountyAttnRef.current;
           bountyAttnRef.current = null;
-          useGameStore.getState().triggerAttention(x, y, cutin);
-          playSfx('boss-appear');
+          const bf = resolveDeferredAttentionFocus(useGameStore.getState().enemies, bt);
+          if (bf) { // 相手がもういない(倒された・消えた)なら寄らない
+            useGameStore.getState().triggerAttention(bf.x, bf.y, cutin, undefined, undefined, { target: bt });
+            playSfx('boss-appear');
+          }
         }
         // 賞金首のチュートリアル: 初めて現れた賞金首の出現アテンションが終わり切った後、会話も流れ切ったら1度だけ(端末既読・1周目も同じ)。
         // 1周目の「守護霊」(交戦時・下の1周目の段)より前に判定する=同じフレームならこちらが先に出て、あちらはポップアップが閉じるまで待つ。
@@ -9969,7 +9996,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnBurst(gpX0, gpY0 + 16, '#7f1d1d', 22);
               // アテンションは出現演出が落ち着いてから(城ボス/賞金首と同じ並び)。カットイン台帳には
               // 載せない(専用素材を作らない=設計書の「ではない」条件)ので payload は渡さない。
-              bountyAttnRef.current = { at: newGameTime + 950, x: gpX0, y: gpY0, cutin: undefined };
+              // 寄り先=帯の中心(相手を控え、発火の瞬間に今の位置から出し直す。旧: 行ける帯へ寄せる前の湧き点を控えていた=
+              // 寄せた・追ってきた分だけ外れた)。
+              bountyAttnRef.current = { at: newGameTime + 950, target: { id: gpE.id, focus: 'center' }, cutin: undefined };
             }
           };
           // 案山子(社長指示2026-11-19「HPは無限で何もしないサンドバック。練習用」・utils/scarecrow.ts)。
@@ -10258,8 +10287,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 監査指摘1: attention生存中は保留箱へ。
                 {
                   const idolCutin = bossCutinPayload('idol');
-                  if (idolCutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { x: icx, y: icy, cutin: idolCutin };
-                  else useGameStore.getState().triggerAttention(icx, icy, idolCutin);
+                  const iT: AttentionTarget = { id: idol.id, focus: 'center' }; // 寄り先=帯の中心(icx,icy と同じ式)
+                  if (idolCutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { target: iT, cutin: idolCutin };
+                  else useGameStore.getState().triggerAttention(icx, icy, idolCutin, undefined, undefined, { target: iT });
                 }
               }
             } else {

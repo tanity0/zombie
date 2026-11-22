@@ -1,8 +1,29 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   poiMissReason, attentionInHold, isNearFocus, formatPoiMissLine, PoiMissGate,
-  reportPoiMiss, lastPoiMissLine, resetPoiMiss, type PoiDrawFacts,
+  reportPoiMiss, lastPoiMissLine, resetPoiMiss, type PoiDrawFacts, targetMissReason, formatTargetMissLine,
 } from './poiMissBeacon';
+
+describe('targetMissReason(写す相手の敵)', () => {
+  const seen = { exists: true, horizonAlpha: 1, distOutside: 0, visible: true, alpha: 1 };
+  it('映っていれば null', () => {
+    expect(targetMissReason(seen)).toBeNull();
+  });
+  it('存在しない/画面外/地平線/描画物なし/非表示/透明の順に理由を返す', () => {
+    expect(targetMissReason({ ...seen, exists: false, distOutside: 50 })).toBe('gone');
+    expect(targetMissReason({ ...seen, distOutside: 123.4, horizonAlpha: 0 })).toBe('offscreen d=123');
+    expect(targetMissReason({ ...seen, horizonAlpha: 0 })).toBe('horizon a=0.00');
+    expect(targetMissReason({ ...seen, visible: null })).toBe('noSprite');
+    expect(targetMissReason({ ...seen, visible: false })).toBe('hidden');
+    expect(targetMissReason({ ...seen, alpha: 0.01 })).toBe('alpha=0.01');
+  });
+  it('行の形', () => {
+    expect(formatTargetMissLine('busstop', 'offscreen d=80', { x: 1.2, y: 2 }, { x: 3, y: 4 }, { x: 5, y: 6 }, { x: 7, y: 8 }))
+      .toBe('target-miss busstop: offscreen d=80 cam(1,2) view(3,4) focus(5,6) enemy(7,8)');
+    expect(formatTargetMissLine('e1', 'gone', { x: 0, y: 0 }, null, { x: 5, y: 6 }, null))
+      .toBe('target-miss e1: gone cam(0,0) focus(5,6)');
+  });
+});
 
 const drawn: PoiDrawFacts = {
   hasPos: true, indoor: false, fade: 1, hasTex: true, horizonAlpha: 1, distOutside: 0,

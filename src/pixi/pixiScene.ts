@@ -230,7 +230,8 @@ import { sampleRim, rimBuckets, rimBucketDir, rimFollow, rimFollowDir, type RimL
 import { meleeHitFrame, meleeHitTexture } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
 import { skillBurstFrame, skillBurstTexture, skillBurstScale, skillBurstAlpha, skillBurstTint } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
 import { reportSuppressedError } from '../utils/errorBeacon';
-import { poiMissReason, attentionInHold, isNearFocus, formatPoiMissLine, PoiMissGate, reportPoiMiss, POI_MISS_NEAR_PX, type PoiDrawFacts } from '../utils/poiMissBeacon';
+import { poiMissReason, attentionInHold, isNearFocus, formatPoiMissLine, PoiMissGate, reportPoiMiss, POI_MISS_NEAR_PX, type PoiDrawFacts, targetMissReason, formatTargetMissLine } from '../utils/poiMissBeacon';
+import { findAttentionTarget, attentionFocusOf } from '../utils/attentionTarget';
 import { labZombieSexOf } from '../utils/labZombieSex';
 import { withoutLeakedDestroyListeners, type DestroyEmitter } from './extractGuard'; // 読み戻しが古い描画器を残さない(2026-11-15)
 import { setRenderStats, setFxDiag, setSceneDiag, noteBakeCall } from '../utils/renderStats'; // 実機で「増え続けていないか」を見る窓口(v0.25.4347 / 表示物と表の件数 v0.25.5054)
@@ -35250,6 +35251,29 @@ export class PixiScene {
       if (!reason || !this.poiMissGate.shouldReport(a.startReal, name, reason)) return;
       reportPoiMiss(formatPoiMissLine(name, reason, s.camera, view, { x: fx, y: fy }, { x, y }));
     };
+    // 写す相手(敵)が付いたアテンション: その相手が画面に映っていなければ理由を1行(画面外/地平線フェード/透明/存在しない)。
+    if (a.target) {
+      const te = findAttentionTarget(s.enemies, a.target.id);
+      const tv = te ? this.enemies.get(te.id) : undefined;
+      const tf = te ? attentionFocusOf(te, a.target.focus) : null;
+      const fx2 = te ? te.x + te.width / 2 : 0, footY = te ? te.y + te.height : 0;
+      const pf = te ? placeFacts(fx2, footY, null) : null;
+      const reason = targetMissReason(te && tf && pf ? {
+        exists: true,
+        horizonAlpha: pf.horizonAlpha,
+        // 絵の中心(寄り先の取り方と同じ点)も足元も画面の外なら「画面外」。
+        distOutside: Math.min(
+          this.projFrame ? this.projDistanceOutside(tf.x, tf.y, 0) : this.distanceOutsideViewport(tf.x, tf.y, 0),
+          this.projFrame ? this.projDistanceOutside(fx2, footY, 0) : this.distanceOutsideViewport(fx2, footY, 0),
+        ),
+        visible: tv ? (tv.container.visible && tv.sprite.visible && !!tv.container.parent) : null,
+        alpha: tv ? tv.container.alpha * tv.sprite.alpha : 0,
+      } : { exists: false, horizonAlpha: 0, distOutside: 0, visible: null, alpha: 0 });
+      const tName = te ? te.type : a.target.id;
+      if (reason && this.poiMissGate.shouldReport(a.startReal, `target-${tName}`, reason)) {
+        reportPoiMiss(formatTargetMissLine(tName, reason, s.camera, view, { x: fx, y: fy }, tf));
+      }
+    }
     const takenFade = (taken: boolean, takenAt: number, ms: number) =>
       taken ? 1 - Math.max(0, Math.min(1, (s.gameTime - takenAt) / ms)) : 1;
     // 廃病院・武器庫・警察署(sync* と同じ順の条件)。

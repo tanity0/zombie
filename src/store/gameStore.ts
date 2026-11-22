@@ -398,6 +398,7 @@ import { isTrapDebuffed, trapGatedOverclockChance, trapGatedCooldownMult, TRAP_R
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { BOSS_CUTIN_MS, shouldIgnoreAttention, isCutinRepeat, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
 import { attentionZoomFor, findAttentionSubject, type AttentionSubject } from '../utils/attentionZoom'; // 小さめの相手は少し寄る(社長指示2026-11-14)
+import { findAttentionTarget, type AttentionTarget } from '../utils/attentionTarget'; // 遅れて出す寄りの「写す相手」(寄り先の追従・診断)
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision, setCityPropsDisabled, cityPropsInRegion, cityPropRect, cityPropDef } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, touchesHospital, isApproachingHospital, hospitalRect } from '../world/hospital';
@@ -10524,6 +10525,9 @@ interface GameState {
     /** 等倍に見せる(utils/attentionZoom.attentionUnityZoom・社長指示2026-11-19 ステージ1ループ1の廃病院/二人組)。
      * pixiScene が今の引き(idle×文脈×走り)を打ち消して画面上の倍率を1.0にする寄りを、zoomIn と同じ包絡線で掛ける。 */
     zoomToUnity?: boolean;
+    /** 写す相手(敵の id と寄り先の取り方・utils/attentionTarget)。有り=hold の間、寄り先が相手の今の位置へ慣性つきで付いて行く
+     * (useGameLoop)。左下の診断ビーコンも、この相手が映っていない理由を出す。無し=注目点は固定(従来どおり)。 */
+    target?: AttentionTarget;
   } | null;
   // 練習ラン: 対象ボス撃破の実時刻(Date.now)。死亡アテンションを見せ終えてから useGameLoop が
   // gameWon を立てる(v0.25.2953)。null=保留なし。
@@ -11298,7 +11302,7 @@ interface GameState {
   updateGameStats: (stats: Partial<GameStats>) => void;
   resetGame: (characterClass: string) => void;
   setCameraPosition: (x: number, y: number) => void;
-  triggerAttention: (x: number, y: number, cutin?: AttentionCutin, extraHoldMs?: number, subject?: AttentionSubject | null, opts?: { zoomToUnity?: boolean }) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)。cutin指定=§6.36ボス出現カットイン付き。extraHoldMs=ホールド延長(討伐の崩壊見届け用)
+  triggerAttention: (x: number, y: number, cutin?: AttentionCutin, extraHoldMs?: number, subject?: AttentionSubject | null, opts?: { zoomToUnity?: boolean; target?: AttentionTarget }) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)。cutin指定=§6.36ボス出現カットイン付き。extraHoldMs=ホールド延長(討伐の崩壊見届け用)
   clearAttention: () => void;
   /**
    * ステージ4のジュンの変身(research/JUN_ESCORT.md §1): 出ている素のアテンション(ジュンへの寄り)を、その場でボスの紹介(カットイン)
@@ -29490,10 +29494,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     const holdMs = (cutin ? Math.round(ATTENTION_HOLD_MS / 2) : ATTENTION_HOLD_MS) + extraHoldMs;
     // 小さめの相手は少し寄る(utils/attentionZoom・社長指示2026-11-14)。対象=呼び手が渡した敵(討伐の見届け・孫悟空の紹介)、
     // 無ければ出現の紹介(カットイン付きで呼ばれた=2回目でカットインが外れても同じ)の注目点にいるボス級。それ以外は寄らない。
-    const subject = subjectIn ?? (cutinIn ? findAttentionSubject(get().enemies, x, y) : null);
+    // 写す相手が分かっている時(遅れて出す寄り)は、注目点から探し直さずその相手を使う(寄る/寄らないの条件=カットイン付きは同じ)。
+    const targetEnemy = opts?.target ? findAttentionTarget(get().enemies, opts.target.id) : null;
+    const subject = subjectIn ?? (cutinIn ? (targetEnemy ?? findAttentionSubject(get().enemies, x, y)) : null);
     const zoomIn = attentionZoomFor(subject);
     set({
-      attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y, holdMs, ...(cutin ? { cutin, cutinMs } : {}), ...(zoomIn ? { zoomIn } : {}), ...(opts?.zoomToUnity ? { zoomToUnity: true } : {}) },
+      attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y, holdMs, ...(cutin ? { cutin, cutinMs } : {}), ...(zoomIn ? { zoomIn } : {}), ...(opts?.zoomToUnity ? { zoomToUnity: true } : {}), ...(opts?.target ? { target: opts.target } : {}) },
       hitstopUntil: Date.now() + ATTENTION_IN_MS + holdMs + ATTENTION_OUT_MS + cutinMs,
     });
   },

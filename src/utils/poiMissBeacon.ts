@@ -81,6 +81,46 @@ export class PoiMissGate {
   }
 }
 
+// ---- 写す相手(敵)が映っていない時(社長実機・ステージ1の2周目「賞金首のアテンションが賞金首の映っていない所へ寄った」)。----
+// アテンションに写す相手(attention.target)が付いている時、hold の間にその相手が画面に映っていなければ理由を1行出す。
+// POI と同じく計測器であって挙動ではない(描画側が読んだ値を渡すだけ)。
+
+/** 描画側が写す相手について読んだ事実。 */
+export interface TargetDrawFacts {
+  /** 盤上にいる(生きている)か。 */
+  exists: boolean;
+  /** 地平線フェード(0以下=透明)。 */
+  horizonAlpha: number;
+  /** 画面の外までの距離。0以下=画面内。 */
+  distOutside: number;
+  /** その敵の絵(体のスプライトと入れ物)が今フレーム visible で描画ツリーに繋がっているか。null=描画物が見つからない。 */
+  visible: boolean | null;
+  /** 最終の透明度。 */
+  alpha: number;
+}
+
+/** 写す相手が画面に映っていない理由。映っていれば null。 */
+export const targetMissReason = (f: TargetDrawFacts, alphaEps = POI_MISS_ALPHA_EPS): string | null => {
+  if (!f.exists) return 'gone';
+  if (f.distOutside > 0) return `offscreen d=${Math.round(f.distOutside)}`;
+  if (f.horizonAlpha <= 0) return `horizon a=${f.horizonAlpha.toFixed(2)}`;
+  if (f.visible === null) return 'noSprite';
+  if (!f.visible) return 'hidden';
+  if (f.alpha < alphaEps) return `alpha=${f.alpha.toFixed(2)}`;
+  return null;
+};
+
+/** ビーコンの1行(写す相手)。 */
+export const formatTargetMissLine = (
+  name: string, reason: string,
+  cam: { x: number; y: number }, view: { x: number; y: number } | null,
+  focus: { x: number; y: number }, target: { x: number; y: number } | null,
+): string =>
+  `target-miss ${name}: ${reason} cam(${r0(cam.x)},${r0(cam.y)})`
+  + (view ? ` view(${r0(view.x)},${r0(view.y)})` : '')
+  + ` focus(${r0(focus.x)},${r0(focus.y)})`
+  + (target ? ` enemy(${r0(target.x)},${r0(target.y)})` : '');
+
 let lastLine: string | null = null;
 /** 出した行を残す(最新の1行。ビーコンが1秒ごとに読む)。 */
 export const reportPoiMiss = (line: string): void => { lastLine = line.slice(0, 200); };
