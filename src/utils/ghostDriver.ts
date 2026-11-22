@@ -306,7 +306,7 @@ export const GHOST_LEASH_PX = 600;      // これを超えたらプレイヤー�
 // MELEE_RADIUS(gameStore.ts)=74 の複製値。store非依存を保つため import せず複製する
 // (playerTraits.ts / playtestBot.ts の MELEE_ENGAGE_DIST と同じ前例)。
 export const GHOST_MELEE_RANGE = 74;
-const GHOST_MELEE_COOLDOWN_MS = 600;   // 叩き台(実機調整前提)。通常近接スイングの間隔=不変(社長指示)。
+export const GHOST_MELEE_COOLDOWN_MS = 600;   // 叩き台(実機調整前提)。通常近接スイングの間隔=不変(社長指示)。
 /**
  * GHOST-COUNTER-PARITY: カウンターが成立しうるスイングだけの周期(プレイヤーの820ms=
  * COUNTER_WINDOW+COUNTER_COOLDOWNをimportして加算。値そのものを手写ししない)。

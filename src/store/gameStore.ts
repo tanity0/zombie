@@ -8867,8 +8867,15 @@ export const counterMasterOnCounterSuccess = (): void => {
   if (!hasSkill(player, 'counter-master')) return;
   if (BRCM.counterMasterSkipsRefundAndBlow(isBrawlerMode(player))) return; // 格闘のときは吹き飛ばしを付けない(発動の表示は自動の反撃を出した所=brawlerGuardReceive)
   notifySkillProcFor(player, 'counter-master');
-  counterMasterKnockback(useGameStore.getState, player.x + player.width / 2, player.y + player.height / 2, counterMasterKbScale(player));
+  counterMasterBlowAround(player.x + player.width / 2, player.y + player.height / 2, player);
 };
+
+/**
+ * カウンターマスターの吹き飛ばし(中心 cx,cy の周りの敵を、主語 actor の Lv の強さで弾く)。プレイヤー・守護霊が同じ1本を通る
+ * (守護霊は utils/actorCounterMaster から・中心=守護霊の体)。
+ */
+export const counterMasterBlowAround = (cx: number, cy: number, actor: Player): void =>
+  counterMasterKnockback(useGameStore.getState, cx, cy, counterMasterKbScale(actor));
 
 // ---------------------------------------------------------------------------
 // 近接スイング相乗り型サブウェポンの発動 — 唯一の出どころ(主語=オーナー引数)。
@@ -15822,11 +15829,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const slashScale = allowFinisher ? 1 : 2;
     // 刀の斬撃シートの絵の種類(描画だけ)。連撃と殺陣は1振りごとに切り上げ/切り下ろしを交互、燕返しは切り下ろし(一閃とV字)。
     const move: KatanaSlashMove = slashMove ?? (allowFinisher ? 'issen' : 'swing');
-    const slashFx: KatanaSlashFx | undefined = isGhost ? undefined
-      : { move, flip: move === 'tsubame' || ((move === 'swing' || move === 'satsujin') && (katanaSlashSeq++ % 2 === 1)) };
+    // 守護霊の刀も同じ斬撃の絵(社長指示2026-11-22「守護霊や幻影も揃えないと矛盾する」。旧: 守護霊だけ従来の絵)。
+    const slashFx: KatanaSlashFx = { move, flip: move === 'tsubame' || ((move === 'swing' || move === 'satsujin') && (katanaSlashSeq++ % 2 === 1)) };
+    // 斬撃の向き=斬った本人の向き(プレイヤー=プレイヤーの向き・守護霊=守護霊の向き)。
+    const slashFace: 1 | -1 | undefined = isGhost ? (get().summons.find(su => su.id === ghostId)?.ghostFacing ?? 1) : undefined;
     for (const s of slashAt) {
       // 燕返しの斬撃の絵は敵ごとに出さず、通り道の全長に1本だけ出す(triggerKatanaDash・社長指示2026-11-22「燕返しの斬撃、一閃の範囲に刀斬撃の絵に変更」)。血・当たりの光は敵ごとのまま。
-      if (move !== 'tsubame') get().spawnSlash(s.x, s.y, 'rgba(221,238,255,0.95)', slashScale, undefined, slashFx); // 刀の斬撃シート(守護霊は従来の絵)
+      if (move !== 'tsubame') get().spawnSlash(s.x, s.y, 'rgba(221,238,255,0.95)', slashScale, slashFace, slashFx); // 刀の斬撃シート(プレイヤー・守護霊とも)
       get().spawnMeleeBlood(s.x, s.y); // 近接の血飛沫(社長指摘v0.25.2060: メイン近接3経路に未配線だった)
       get().spawnMeleeHit(s.x, s.y);   // v0.25.4334: 刀の通常ヒットにも(同じ「当たった」動作)
     }
@@ -17022,7 +17031,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const prop = get().breakableProps.find(p => p.id === id);
           if (!prop) continue;
           const broken = get().damageBreakableProp(id, propDamage);
-          if (!tb) get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(221,238,255,0.95)', 1, undefined, ghostId === undefined ? { move: 'issen' } : undefined); // 一閃(守護霊は従来の絵)。燕返しは下の通り道の1本
+          if (!tb) get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(221,238,255,0.95)', 1, ghostId === undefined ? undefined : (ux >= 0 ? 1 : -1), { move: 'issen' }); // 一閃(プレイヤー・守護霊とも刀の斬撃シート)。燕返しは下の通り道の1本
           if (broken) {
             if (broken.type === 'mine') {
               get().spawnBurst(broken.footX, broken.footY - 8, '#84cc16', 30);

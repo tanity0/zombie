@@ -94,6 +94,7 @@ import { escortAggroCandidates, hittableEscorts } from './escortView';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { contactDamageMoveKey } from './moveReaction'; // G4a(§2.9): 接触被弾の技キー導出(記録専用)
+import { applyGhostCounterMaster } from './actorCounterMaster'; // カウンターマスター(守護霊)
 import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect, applyGhostReflectCounterFx, ghostCounterBlueLayer, type GhostCounterClaim } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流 / v0.25.2525: 弾反射の成立演出 / 2026-08-27: 判定時置換ミラー / v0.25.3985: 受け流しも同じ青い成立層
 import { npcSfxDistGain } from './npcSfx'; // CRIT-UNIFY §9.3: ゴーストのブラストパリィ成立SEの距離減衰(escort/他ゴースト経路と同流儀)
 import { applyBossPostureDamage } from './bossPosture'; // v0.25.2946: 裏ボス体当たりの受け流し(体幹削り)
@@ -1155,6 +1156,7 @@ export const applyEnemyProjectileHits = (
           gs.camera, gs.gameBounds,
         );
         applyGhostReflectCounterFx(ghostReflectedAt.x, ghostReflectedAt.y, gain, (key, g) => fx.playSfx(key, g));
+        applyGhostCounterMaster(ghostAlly.id, now); // カウンターマスター(守護霊の弾の打ち返しも成立=プレイヤーの弾反射と同じ)
       }
     }
   }
@@ -1469,6 +1471,7 @@ export const tryGhostContactParry = (
   // fx引数は不要になった(ghostCounterBlueLayerがstoreのspawn系を直接呼ぶ=applyGhostCounterEffectと同型)。
   const gain = sfxGainAt(gcx, gcy);
   ghostCounterBlueLayer(gcx, gcy, gain, playCounterSfx ? (key, g) => { if (key === 'counter') playCounterSfx(g); } : null);
+  applyGhostCounterMaster(ghost.id, nowMs); // カウンターマスター(受け流しも成立=プレイヤーの接触パリィと同じ)
   return true;
 };
 

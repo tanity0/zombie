@@ -1295,6 +1295,8 @@ export interface Enemy {
   gpIsMoving?: boolean;
   /** 援護射撃の専用タイマー(store.supportSniperCdMs / Summon.ghostSupportSniperCdMs と同型・移動中のみ進む)。 */
   gpSupportSniperCdMs?: number;
+  /** カウンターマスター覚醒(Lv3)の+30%の締め切り(gameTime)。幻影自身のカウンター成立で付く(プレイヤーの player.counterMasterBuffUntil と同じ意味・utils/actorCounterMaster)。 */
+  actorCounterMasterBuffUntil?: number;
   // 連続ジャンプ(グレン専用・v0.25.2430)。3つの着地点を**溜め開始でまとめてロック**して持ち回る。
   // 平たい配列 [x1,y1,x2,y2,x3,y3](中心座標)。判定側と描画側が同じ配列を読む=図形と判定が必ず一致する。
   gTriJumpPts?: number[];
@@ -2113,6 +2115,8 @@ export interface Summon {
   ghostMolotovCycle?: MolotovCycleState | null; // 火炎瓶の投下サイクル(store.molotovCycle と同型)
   ghostFirstAidKit?: FirstAidKitState;          // 救急鞄の在庫(store.firstAidKitState と同型・1ラン使い切り)
   ghostSupportSniperCdMs?: number;              // 援護射撃の専用タイマー(store.supportSniperCdMs と同型・移動中のみ進む)
+  actorCounterMasterBuffUntil?: number;         // カウンターマスター覚醒(Lv3)の+30%の締め切り(gameTime)。守護霊自身のカウンター成立で付く(player.counterMasterBuffUntil と同じ意味・utils/actorCounterMaster)
+  ghostCounterMasterBlowAt?: number;            // カウンターマスターの吹き飛ばしを最後に出した gameTime(同じフレームに何度成立しても1回=プレイヤーと同じ)
   ghostHomingLocks?: string[];                  // ホーミングのロック(store.homingLocks と同型)
   ghostHomingHoldStartAt?: number;              // ホーミングを「押し始めた」時刻(ms・Date.now基準)。undefined=押していない
   ghostHomingNextLockAt?: number;               // 次のロック付与時刻(gameTime基準・プレイヤーの nextHomingLockRef と同型)

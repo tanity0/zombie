@@ -155,6 +155,11 @@ export const buildPseudoPlayer = (
     // 記録へ写す値も本人の物は持たせない(疑似プレイヤーから記録を作る道=守護霊ソロ出撃でも本人の段階が混ざらない)。
     masteryRecordMult: undefined,
     masteryRecordLoadoutMult: undefined,
+    // ハンティングの溜まり・カウンターマスター覚醒は本人の今の状態=写さない(記録が無く本人をそのまま返す道も含めて)。
+    // ビルドは召喚1体につき1回作って使い回すので、写すと召喚した瞬間に本人が溜めていれば守護霊・幻影の近接が永久に伸び、
+    // 覚醒の+30%も本人の分を借りる。守護霊・幻影の覚醒は自分のカウンター成立で付く分だけ(ghostActorPlayer が重ねる)。
+    huntingCharged: false, huntingChargeStartedAt: 0, huntingSequence: undefined, huntingSeqUntil: undefined, huntingSeqIssen: undefined,
+    counterMasterBuffUntil: 0,
   };
 };
 const buildPseudoPlayerRaw = (snap: PlayerBuildSnapshot | undefined, live: Player): Player => {

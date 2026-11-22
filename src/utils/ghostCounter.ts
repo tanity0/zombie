@@ -30,6 +30,7 @@ import {
 // カウンター(combatTick.ts の checkPlayerEnemyCollisions+counterActiveNow)は「体が重なっている」
 // (矩形オーバーラップ)が必須。同じ2つの矩形生成関数を import して同じ幾何を使う(二重実装しない)。
 import { checkCollision, playerHitbox, enemyContactBox } from './collisionUtils';
+import { applyGhostCounterMaster } from './actorCounterMaster'; // カウンターマスター(守護霊自身の帳簿へ・プレイヤーと同じ純関数)
 
 // (useGameLoop v0.25.2479 から移設: angelBossTick/combatTickのゴースト分岐も同じゲートを見るため)
 // 守護霊の戦闘フィードバック(社長指示「カウンターとかキルとかは守護霊にもちゃんと入れて。全部だよ全部」):
@@ -292,6 +293,8 @@ export const applyGhostCounterEffect = (
         : su),
     }));
   }
+  // カウンターマスター(スキルを記録している守護霊だけ): 守護霊自身の待ち時間の前倒し+周りの敵の吹き飛ばし+覚醒(プレイヤーと同じ仕様)。
+  for (const su of useGameStore.getState().summons) if (su.kind === 'ghost-ally') applyGhostCounterMaster(su.id);
   // 確定クリ(crit=true → bumpBossCrit)+金クリ層
   withMastery('none', () => st.damageEnemy(boss.id, fire.claim.dmg, false, true, false, null, 'ghost', 'counter'), { mult: fire.claim.masteryMult }); // 熟練度: 守護霊の反撃=貯めない(none)・倍率は請求に掛け済み
   st.spawnDamageNumber(bcx, boss.y, fire.claim.dmg, true, { enemyId: boss.id });

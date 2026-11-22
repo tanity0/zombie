@@ -138,9 +138,11 @@ export const clearGhostBuildCache = (): void => { buildCache.clear(); lastResolv
  */
 export const ghostActorPlayer = (
   build: GhostBuild,
-  actor: { x: number; y: number; width: number; height: number; health: number; maxHealth: number },
+  actor: { x: number; y: number; width: number; height: number; health: number; maxHealth: number; actorCounterMasterBuffUntil?: number },
 ): Player => ({
   ...build.player,
   x: actor.x, y: actor.y, width: actor.width, height: actor.height,
   health: actor.health, maxHealth: actor.maxHealth,
+  // カウンターマスター覚醒(Lv3)の+30%は、その実体(守護霊・幻影)自身のカウンター成立で付いた分だけ(utils/actorCounterMaster)。
+  counterMasterBuffUntil: actor.actorCounterMasterBuffUntil ?? 0,
 });

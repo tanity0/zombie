@@ -112,6 +112,7 @@ import {
 import { phantomBrawlerHolding } from './phantomBrawlerAi';
 import { kenkiRetreating, kenkiRetreatDirNow, kenkiRetreatStop, kenkiLeverOf } from './kenkiRetreat'; // 拳鬼の後ろへ下がる歩きとレバー(§16-10)
 import { isBrawlerBusy } from './brawler';
+import { applyPhantomCounterMaster } from './actorCounterMaster'; // カウンターマスター(幻影自身の帳簿へ)
 
 /** 制御対象の型(判定の出どころを1箇所に)。 */
 export const GUARDIAN_PHANTOM_TYPE: EnemyType = 'guardian-phantom';
@@ -364,6 +365,8 @@ export interface PhantomTickState {
   nextMeleeAt: number;
   /** 消費済みのパリィ打刻(gameTime)。`enemy.gpParriedAt` がこれより新しければ即反撃を1回出す。 */
   lastParryConsumedAt: number;
+  /** カウンターマスターを当てた最後の成立打刻(gameTime・近接 gpParriedAt / 弾 gpBulletParriedAt の新しい方)。成立1回につき1回。 */
+  lastCounterMasterAt?: number;
   /** 銃の実体(台帳武器)。リザーブは∞(=弾薬は尽きない。息継ぎ=リロードだけがある)。 */
   gun: Weapon | null;
   /** リロードの状態(Date.now基準=weaponUtils と同じ時計)。 */
@@ -413,6 +416,7 @@ const resetPhantomRunState = (s: PhantomTickState): void => {
   s.ghost = { facing: 1, lastShotAt: 0, lastMeleeAt: 0 };
   s.nextMeleeAt = 0;
   s.lastParryConsumedAt = 0;
+  s.lastCounterMasterAt = undefined;
   s.gun = null;
   s.reloadEndsAt = 0;
   s.reloadingWeaponId = '';
@@ -1268,6 +1272,15 @@ export const runPhantomTick = (
   // ---- パリィの即反撃(周期を無視した割り込み) ---------------------------------------------------
   const parried = consumePhantomParry(phantom, s, player, bcx, bcy, sfx, patch, newGameTime);
   if (parried) abortPhantomFlamer(phantom, patch); // §17-6b P6: パリィされたら打ち切る
+  // カウンターマスター(記録にスキルがある幻影だけ・プレイヤーと同じ純関数・utils/actorCounterMaster): 成立(近接の窓・構えの受け・弾の打ち返し)の
+  // 新しい打刻1つにつき1回、幻影自身の近接の周期・サブ・リロードを前倒し+覚醒の+30%。吹き飛ばし(プレイヤーを弾く)は入れていない(未決)。
+  {
+    const cmAt = Math.max(phantom.gpParriedAt ?? -Infinity, phantom.gpBulletParriedAt ?? -Infinity);
+    if (Number.isFinite(cmAt) && cmAt > (s.lastCounterMasterAt ?? -Infinity)) {
+      s.lastCounterMasterAt = cmAt;
+      applyPhantomCounterMaster(phantom.id, s, newGameTime, nowMs, phantom.phantomUnique === 'brawler');
+    }
+  }
   // 格闘の幻影: 構えで受けた時の絵の合図(guardHitAt)だけ打つ。★技ポイントの全回復は撤去(社長指示2026-11-10「まず格闘のカウンターをすると、
   // ポイント全回復 は削除」・research/BRAWLER_PHANTOM.md §16-9)。受けた後に拳鬼が大きく下がるのは制御(phantomBrawlerTick)の側。
   if (parried && phantom.phantomUnique === 'brawler' && phantom.phantomBrawler) {
