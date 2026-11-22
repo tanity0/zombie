@@ -5,7 +5,7 @@ import { useGameStore, KATANA_DASH_MS, KATANA_DASH_DISTANCE } from './gameStore'
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { brawlerAirborne } from '../utils/brawlerCombo';
-import { SATSUJIN_HITS, SATSUJIN_STRIKE_MS, KATANA_CUT_MAX } from '../utils/katanaTsubame';
+import { SATSUJIN_HITS, SATSUJIN_STRIKE_MS, KATANA_CUT_MAX, isTsubameCrouching, tsubameDashMs } from '../utils/katanaTsubame';
 
 let now = 17_000_000;
 const NO = { up: false, down: false, left: false, right: false } as never;
@@ -74,7 +74,7 @@ describe('一閃(今の挙動+浮き)', () => {
 });
 
 describe('燕返し', () => {
-  it('300ms以内の反対フリックで元の位置へ戻る一閃が出て、通り道の敵に当たる。浮かせず、止めの後に走った向きへ吹き飛ぶ。1回まで', () => {
+  it('300ms以内の反対フリックで、元の位置へ戻るように走ったと仮定した通り道の敵に当たる(体は動かない)。浮かせず、止めの後に走った向きへ吹き飛ぶ。1回まで', () => {
     useGameStore.setState({ enemies: [place('zombie', 90, 30, 'z')] });
     const origin = center();
     st().triggerKatanaDash(1, 0);
@@ -88,12 +88,15 @@ describe('燕返し', () => {
     expect(st().skillProcFeed.some(r => r.key === 'tech:tsubame')).toBe(true);
     expect(st().tryTsubame(-1, 0)).toBe(false); // 1回まで
     const rx0 = en('r').x;
+    const atTsubame = center();
     let hitAtMs = -1;
-    for (let t = 0; t < KATANA_DASH_MS + 40; t += 10) { step(10); if (hitAtMs < 0 && en('r').health < 99999) hitAtMs = now; }
-    const back = center();
-    // 元の位置へ向かって戻った(一閃と同じ速さ・同じ動きの器=一閃の行きと同じだけ進む)。元の位置は越えない。
-    expect(landed.x - back.x).toBeGreaterThan((landed.x - origin.x) * 0.6);
-    expect(back.x).toBeGreaterThan(origin.x - 2);
+    for (let t = 0; t < KATANA_DASH_MS + 40; t += 10) {
+      step(10);
+      if (hitAtMs < 0 && en('r').health < 99999) hitAtMs = now;
+      // ★燕返しの間、体は一閃で着いた位置から動かない(社長指示2026-11-22)。
+      expect(center().x).toBeCloseTo(atTsubame.x, 6);
+      expect(center().y).toBeCloseTo(atTsubame.y, 6);
+    }
     expect(hitAtMs).toBeGreaterThan(0);
     const r = en('r');
     expect(brawlerAirborne(r, now)).toBe(false); // 燕返しは浮かせない
@@ -110,6 +113,29 @@ describe('燕返し', () => {
     expect(en('r').x).toBeLessThan(xDuring - 10);
     // 燕返しの後に受付は開かない(連鎖しない)。
     expect(st().tsubameWindow).toBeNull();
+  });
+  it('燕返しの間はしゃがんで止まり(走っていた時間と同じだけ)、無敵ではない=ふつうに被弾する', () => {
+    useGameStore.setState({ enemies: [place('zombie', 90, 30, 'z')] });
+    st().triggerKatanaDash(1, 0);
+    run(KATANA_DASH_MS + 10);
+    // 一閃の無敵はループ側が INVULN_MS で外す(このテストはループを回さないので、明けた状態を手で作る)。
+    useGameStore.setState(s => ({ player: { ...s.player, invulnerable: false, abilityInvulnUntil: 0 } }));
+    run(50);
+    const p0 = center();
+    const dist = Math.min(KATANA_DASH_DISTANCE, Math.hypot(p0.x - st().tsubameWindow!.originX, p0.y - st().tsubameWindow!.originY));
+    const t0 = now;
+    expect(st().tryTsubame(-1, 0)).toBe(true);
+    const p = st().player;
+    expect(p.invulnerable).toBe(false);
+    expect(isTsubameCrouching(p, now)).toBe(true);
+    expect(p.tsubameCrouchUntil).toBe(t0 + tsubameDashMs(dist, KATANA_DASH_DISTANCE, KATANA_DASH_MS));
+    run(20);
+    const hp = st().player.health;
+    st().damagePlayer(10, 'test');
+    expect(st().player.health).toBeLessThan(hp);
+    // しゃがみが明ければ解ける。
+    run(KATANA_DASH_MS + 20);
+    expect(isTsubameCrouching(st().player, now)).toBe(false);
   });
   it('300msを過ぎた・反対でない向きでは出ない', () => {
     useGameStore.setState({ enemies: [place('zombie', 90, 30, 'z')] });

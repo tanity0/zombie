@@ -117,7 +117,7 @@ import { kenkiLevelLook } from '../utils/kenkiLevel'; // 孫悟空のレベル�
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
 import { BRAWLER_WEAK_GUARD_ALPHA } from '../utils/brawlerGuard'; // 弱い構え(払えずに出た構え)の光の薄さ
 import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
-import { satsujinCoverAlpha, SATSUJIN_HITS } from '../utils/katanaTsubame';
+import { satsujinCoverAlpha, SATSUJIN_HITS, isTsubameCrouching } from '../utils/katanaTsubame';
 import {
   KATANA_SLASH_CELL_H, KATANA_SLASH_CELL_W, KATANA_SLASH_CELLS, KATANA_SLASH_SHEET_TEX,
   katanaCutDeathAlpha, katanaCutLayout, katanaCutLength, katanaCutOpen, katanaCutRgb,
@@ -23924,6 +23924,12 @@ export class PixiScene {
         const poseTex = getTexture(`${meleePosePrefix}${killSuffix}`);
         if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}${killSuffix}`; }
       }
+    }
+    // ★燕返しのしゃがみ(research/KATANA_TSUBAME.md §1・社長指示2026-11-22「その場合から動かずしゃがみ体勢で止まってる」):
+    // 体は一閃で着いた位置に留まり、しゃがみ絵(-ready)で止まる(変形はしない=被弾のしゃがみと同じ絵)。描画のみ(時刻は store が持つ)。
+    if (meleePosePrefix && !warlordFull && !killFxActiveForPose && isTsubameCrouching(p, now)) {
+      const poseTex = getTexture(`${meleePosePrefix}-ready`);
+      if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}-ready`; }
     }
     // ★格闘(research/BRAWLER.md §4・§7-6): しゃがみ(-ready)=弱・掌底の突き / 振り上げ(-swing)=強(アッパー)・跳び・大踏み潰しの振りかぶり。
     // 連続中は立ち絵へ戻さない(コンボが切れた時だけ立ちへ)。武将フル装備はポーズ無し(歩き絵のまま)。描画のみ(store には書かない)。

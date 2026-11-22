@@ -1,7 +1,7 @@
 // 刀の燕返し・切り傷・殺陣(research/KATANA_TSUBAME.md)の純関数。
 import { describe, it, expect } from 'vitest';
 import {
-  tsubameAccepts, tsubamePath, tsubameDashMs, nextKatanaCuts, triggersSatsujin, satsujinAngles, satsujinCoverAlpha,
+  tsubameAccepts, tsubamePath, tsubameDashMs, isTsubameCrouching, katanaStrikeTravel, nextKatanaCuts, triggersSatsujin, satsujinAngles, satsujinCoverAlpha,
   KATANA_CUT_MAX, SATSUJIN_HITS, SATSUJIN_FADE_IN_MS, SATSUJIN_FADE_OUT_MS,
 } from './katanaTsubame';
 import { FLICK_FOLLOWUP_WINDOW_MS } from './flickFollowup';
@@ -33,6 +33,18 @@ describe('燕返しの道', () => {
     expect(tsubameDashMs(154, 154, 180)).toBe(180);
     expect(tsubameDashMs(77, 154, 180)).toBe(90);
     expect(tsubameDashMs(500, 154, 180)).toBe(180);
+  });
+});
+
+describe('燕返しのしゃがみと通り道', () => {
+  it('しゃがみは tsubameCrouchUntil まで', () => {
+    expect(isTsubameCrouching({ tsubameCrouchUntil: 1200 }, 1199)).toBe(true);
+    expect(isTsubameCrouching({ tsubameCrouchUntil: 1200 }, 1200)).toBe(false);
+    expect(isTsubameCrouching({}, 0)).toBe(false);
+  });
+  it('一閃=実際に通った長さ / 燕返し=体が動かなくても仮定した長さ', () => {
+    expect(katanaStrikeTravel({ x: 0, y: 0 }, { x: 30, y: 40 }, null)).toBeCloseTo(50);
+    expect(katanaStrikeTravel({ x: 0, y: 0 }, { x: 0, y: 0 }, 120)).toBe(120);
   });
 });
 

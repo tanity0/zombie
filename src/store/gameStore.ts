@@ -317,7 +317,7 @@ import { planHomingVolley, splitDueHomingShots, homingLiftAllowed, type HomingPe
 import { isFlickFollowupOpen } from '../utils/flickFollowup';
 import { whipRopeTotalMs } from '../utils/whipSwingMotion';
 import {
-  tsubameAccepts, tsubamePath, tsubameDashMs, nextKatanaCuts, triggersSatsujin, satsujinAngles, type TsubameWindow,
+  tsubameAccepts, tsubamePath, tsubameDashMs, isTsubameCrouching, katanaStrikeTravel, nextKatanaCuts, triggersSatsujin, satsujinAngles, type TsubameWindow,
   SATSUJIN_HITS, SATSUJIN_STRIKE_MS, SATSUJIN_FADE_OUT_MS, SATSUJIN_HALF_LEN_PX, SATSUJIN_FINAL_HITSTOP_MS,
 } from '../utils/katanaTsubame';
 import type { KatanaSlashMove } from '../utils/katanaSlashSheet';
@@ -11975,8 +11975,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       const wireHopping = dashMode === 'wire-hop';
       const dashing = dashMode === 'katana-dash';
       const recovering = dashMode === 'katana-recovery';
+      // ★燕返し(research/KATANA_TSUBAME.md §1・社長指示2026-11-22): 一閃の走りの間でも、しゃがみの間は体を動かさない(着地硬直と同じ停止)。
       const dashOv = dashMode !== null
-        ? dashOverride(player, dashMode, player.x + player.width / 2, player.y + player.height / 2, KATANA_DASH_SPEED)
+        ? (dashing && isTsubameCrouching(player, nowMs)
+          ? dashOverride(player, 'katana-recovery', 0, 0, KATANA_DASH_SPEED)
+          : dashOverride(player, dashMode, player.x + player.width / 2, player.y + player.height / 2, KATANA_DASH_SPEED))
         : null;
       // 四神舞フリックの盾バッシュ風スライド(入力を無視して固定方向へ短く滑る)。
       const sliding = dashMode === null && nowMs < player.shijinSlideUntil;
@@ -16741,14 +16744,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           counterCooldownEnd: mura
             ? state.player.counterCooldownEnd
             : Math.max(state.player.counterCooldownEnd, cooldownEnd),
-          // ダッシュ中の無敵は既存の被弾無敵(ループ側のINVULN_MS自動解除)を再利用。
-          // 解除タイミングがダッシュ終了とほぼ一致するよう開始時刻を過去にずらす。
-          // 既に長い無敵(被弾の無敵など)が残っていれば縮めない(縮地・格闘の5段目と同じ・社長指示2026-11-07)。
-          invulnerable: true,
-          invulnerableTime: state.player.invulnerable
-            ? Math.max(state.player.invulnerableTime, now - Math.max(0, INVULN_MS - dashMs))
-            : now - Math.max(0, INVULN_MS - dashMs),
-          ...abilityInvulnPatch(state.player, now, dashMs), // 技の無敵=sourceId 付きの攻撃(噛みつき・掴み)も受けない
+          // ★燕返し(research/KATANA_TSUBAME.md §1・社長指示2026-11-22「燕返しは、一閃から移動しない…しゃがみ体勢で止まってる。(無敵ではない)」):
+          // 体は一閃で着いた位置に留まってしゃがむ(走っていた時間と同じだけ)。無敵は付けない=しゃがんでいる間はふつうに被弾する。
+          // しゃがんだ瞬間に足を止める(一閃の着地の滑りの残りもここで止める=燕返しの間は位置が変わらない)。
+          ...(tb ? { tsubameCrouchUntil: now + dashMs, vx: 0, vy: 0 } : {
+            // ダッシュ中の無敵は既存の被弾無敵(ループ側のINVULN_MS自動解除)を再利用。
+            // 解除タイミングがダッシュ終了とほぼ一致するよう開始時刻を過去にずらす。
+            // 既に長い無敵(被弾の無敵など)が残っていれば縮めない(縮地・格闘の5段目と同じ・社長指示2026-11-07)。
+            invulnerable: true,
+            invulnerableTime: state.player.invulnerable
+              ? Math.max(state.player.invulnerableTime, now - Math.max(0, INVULN_MS - dashMs))
+              : now - Math.max(0, INVULN_MS - dashMs),
+            ...abilityInvulnPatch(state.player, now, dashMs), // 技の無敵=sourceId 付きの攻撃(噛みつき・掴み)も受けない
+          }),
           lastDirection: { x: ux, y: uy }
         }
       }));
@@ -16802,8 +16810,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         const striker = combatActorPlayer(ghostId);
         if (!striker || !isKatanaMode(striker)) return;
         // ★実際に通った経路(始点=発動位置 / 終点=着地した実位置)。壁で止まればここが短くなる。
+        // ★燕返し(research/KATANA_TSUBAME.md §1・社長指示2026-11-22)は体が動かない=「元の位置へ戻るように走った」と仮定した通り道
+        // (発動位置→元の位置・一閃の最大距離まで)で取る。一閃の行きを戻る道なので、壁・行ける帯に止められていない道。
         const endX = striker.x + striker.width / 2, endY = striker.y + striker.height / 2;
-        const travel = Math.hypot(endX - pcx, endY - pcy);
+        const travel = katanaStrikeTravel({ x: pcx, y: pcy }, { x: endX, y: endY }, tb ? tb.distance : null);
         // 距離0(その場で止められた)なら斬らない。向きは焼いた ux/uy をそのまま使う
         // (実位置がわずかに横へずれても「振った向き」は変わらないため)。
         const targetIds: string[] = [];

@@ -31,6 +31,18 @@ export const tsubamePath = (
 export const tsubameDashMs = (dist: number, maxDist: number, dashMs: number): number =>
   Math.max(1, Math.round(dashMs * Math.max(0, Math.min(1, dist / Math.max(1e-6, maxDist)))));
 
+// ---- 燕返しのしゃがみ(§1・社長指示2026-11-22「燕返しは、一閃から移動しない」) ----
+/** 燕返しのしゃがみの最中か(この間は一閃の走りの間でも体を動かさない)。 */
+export const isTsubameCrouching = (p: { tsubameCrouchUntil?: number }, now: number): boolean => now < (p.tsubameCrouchUntil ?? 0);
+
+/**
+ * 一閃・燕返しの当たりを取る通り道の長さ。一閃=実際に通った長さ(始点→着地した実位置)。
+ * 燕返し=体は動かないので、仮定して走った長さ(今の位置→元の位置・一閃の最大距離まで)。
+ */
+export const katanaStrikeTravel = (
+  start: { x: number; y: number }, end: { x: number; y: number }, tsubameDist: number | null,
+): number => (tsubameDist !== null ? Math.max(0, tsubameDist) : Math.hypot(end.x - start.x, end.y - start.y));
+
 // ---- 切り傷と殺陣(§4) ----
 /** 1体に刻める切り傷の最大本数。 */
 export const KATANA_CUT_MAX = 4;

@@ -351,6 +351,9 @@ export interface Player extends DashLocomotionState {
   // これが立っている間、本体の絵を**しゃがみ(`-ready`)へ差し替える**(変形はしない=社長指示
   // 「歪ませなくていいんじゃない? しゃがみの絵があるから」)。
   lastHurtAt?: number;
+  // ★燕返しのしゃがみ(research/KATANA_TSUBAME.md §1・社長指示2026-11-22): 燕返しの間、体は一閃で着いた位置に留まってしゃがむ。
+  // この時刻(Date.now)まで、一閃の走り(katanaDashUntil)の間でも位置を動かさない。無敵は付かない。絵は `-ready`(しゃがみ)。0/未設定=無し。
+  tsubameCrouchUntil?: number;
   // 被弾の重さの段(0=軽 / 1=中 / 2=重)。しゃがみの尺とヒットストップの長さを引くのに使う
   // (表は `utils/playerHurt.ts`)。**敵の体勢値とは別系統**——プレイヤーは無敵1秒が頻度を守るので、
   // 「出す/出さない」ではなく「どれだけ効いたか」を段で出す(社長裁定2026-09-16)。
