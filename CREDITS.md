@@ -12,6 +12,7 @@
 | 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記が必須かは規約を未確認 | public/audio/sfx/brawler-punch.mp3 | (日本語名・末尾「2」) | 格闘の1・2段目の当たり | v0.25.5476 |
 | 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記が必須かは規約を未確認 | public/audio/sfx/brawler-heavy.mp3 | (日本語名・末尾「3」) | 格闘の3〜5段目(掌底など)の当たり | v0.25.5476 |
 | 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記が必須かは規約を未確認 | public/audio/sfx/brawler-kick.mp3 | (日本語名・末尾「1」) | 飛び蹴りの当たり | v0.25.5476 |
+| ChatGPT(画像生成)※社長支給 2026-11-22 | public/sprites/fx/katana-slash-sheet.png | IMG_9479.PNG | プレイヤーの刀の斬撃(3コマ)・切り傷 | v0.25.5738 |
 | ChatGPT(画像生成)※社長支給 2026-11-21 | public/sprites/tree-forest-a.png / -b / -c | IMG_9458.PNG(3本を切り分け) | ステージ1・7の木 | v0.25.5725 |
 | ChatGPT(画像生成)※社長支給 2026-11-21 | public/sprites/tree-city-a.png / -b / -c | IMG_9462.PNG(3本を切り分け) | ステージ3の木 | v0.25.5725 |
 | ChatGPT(画像生成)※社長支給 2026-11-21 | public/sprites/tree-snow-a.png / -b / -c | IMG_9471.PNG(大)・IMG_9470.PNG(中小を切り分け) | ステージ4の木 | v0.25.5725 |
