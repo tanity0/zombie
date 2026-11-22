@@ -101,14 +101,14 @@ describe('2. カウンターマスターの吹き飛ばしはカウンター成�
   it('ナイフの近接: 周りの敵の飛び方はスキル無しと同じ(ナイフ自身の範囲の押し返しだけ・上乗せが無い)', () => {
     expect(pushedByMelee(false, 's1', true)).toEqual(pushedByMelee(false, 's1', false));
   });
-  it('成立の瞬間(counterMasterOnCounterSuccess)に周りの敵が飛ぶ・未所持では飛ばない', () => {
-    setup(['counter-master'], { 'counter-master': 1 });
+  it('成立の瞬間(counterMasterOnCounterSuccess)に周りの敵が飛ぶ・未所持では飛ばない(格闘以外。格闘では飛ばさない=brawlerCounterMaster.store.test)', () => {
+    setup(['counter-master'], { 'counter-master': 1 }, false);
     useGameStore.setState({ enemies: [bodyAt('zombie', 0, 90, 'near'), bodyAt('zombie', 600, 0, 'far')] });
     counterMasterOnCounterSuccess();
     const st = useGameStore.getState();
     expect(st.enemies.find(e => e.id === 'near')!.knockbackUntil ?? 0).toBeGreaterThan(0);
     expect(st.enemies.find(e => e.id === 'far')!.knockbackUntil ?? 0).toBe(0);
-    setup([], {});
+    setup([], {}, false);
     useGameStore.setState({ enemies: [bodyAt('zombie', 0, 90, 'near')] });
     counterMasterOnCounterSuccess();
     expect(useGameStore.getState().enemies.find(e => e.id === 'near')!.knockbackUntil ?? 0).toBe(0);
@@ -169,8 +169,8 @@ describe('10. カウンターマスター覚醒: 構えの受けでも付く', (
   });
 });
 
-describe('10b. カウンターマスターの前倒し: 構えの受けもカウンター成立', () => {
-  it('Lv3 なら構えで受けた瞬間にサブウェポンのCD・リロードが明ける・未所持では変わらない', () => {
+describe('10b. カウンターマスターの前倒し: 格闘では付けない(社長指示2026-11-22「格闘では変えず技が変更」)', () => {
+  it('格闘の構えで受けても、Lv3 でもサブウェポンのCD・リロードは前倒しされない(未所持と同じ)', () => {
     const run = (lv: number) => {
       setup(lv ? ['counter-master'] : [], lv ? { 'counter-master': lv } : {});
       useGameStore.setState(st => ({ player: {
@@ -182,7 +182,7 @@ describe('10b. カウンターマスターの前倒し: 構えの受けもカウ
       const st = useGameStore.getState();
       return { cd: (st.player.subWeaponCooldowns.decoy ?? 0) - st.gameTime, reload: st.player.reloadEndsAt - now };
     };
-    expect(run(3)).toEqual({ cd: 0, reload: 0 });
+    expect(run(3)).toEqual({ cd: 5000, reload: 1000 });
     expect(run(0)).toEqual({ cd: 5000, reload: 1000 });
   });
 });

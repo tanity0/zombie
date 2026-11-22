@@ -143,6 +143,7 @@ import * as BRC from '../utils/brawlerCombo'; // 格闘の敵側の流れ(食ら
 import * as BRS from '../utils/brawlerSkills'; // 格闘×スキルの純関数(research/BRAWLER.md §15)
 import * as BLG from '../utils/brawlerLeverGuard'; // 格闘のレバーガード(成立・半減・小さい押し・research/BRAWLER.md §12-1c)
 import { noteLeverGuardFull, clearLeverGuardFull, leverGuardHurtMuted, isPlayerHurtFlashColor, isPlayerHurtBurstColor, LEVER_GUARD_BURST_NEAR_PX } from '../utils/leverGuardStamp'; // 受け切った直後は被弾の演出を出さない
+import * as BRCM from '../utils/brawlerCounterMaster'; // 格闘のときのカウンターマスター(受けた直後の自動の反撃・前倒し/吹き飛ばしを付けない)
 import * as BRG from '../utils/brawlerGuard'; // 格闘の構えの成立の効果(雑魚=潰し/雑魚より上=自分がノックバック/光線の中断・research/BRAWLER.md §12-3d)
 import { noteAirMeleeHit, resetAirMeleeHit, playerAirTargetPx } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18)
 import { airChaseHeightPx } from '../utils/airChaseHeight'; // 高さに追いつく技の高さ(社長指示2026-11-16)
@@ -8690,6 +8691,7 @@ export const applyCounterMasterRefund = (nowMs: number = Date.now()): void => {
   const st = useGameStore.getState();
   const lv = skillLevel(st.player, 'counter-master');
   if (!lv) return;
+  if (BRCM.counterMasterSkipsRefundAndBlow(isBrawlerMode(st.player))) return; // 格闘のときは前倒しを付けない(代わりに構えの受けで自動の反撃=brawlerGuardReceive)
   let whipBecameCharged = false;
   useGameStore.setState(s => {
     const p = s.player;
@@ -8729,6 +8731,7 @@ export const counterMasterOnCounterSuccess = (): void => {
   const st = useGameStore.getState();
   const player = st.player;
   if (!hasSkill(player, 'counter-master')) return;
+  if (BRCM.counterMasterSkipsRefundAndBlow(isBrawlerMode(player))) return; // 格闘のときは吹き飛ばしを付けない(発動の表示は自動の反撃を出した所=brawlerGuardReceive)
   notifySkillProcFor(player, 'counter-master');
   counterMasterKnockback(useGameStore.getState, player.x + player.width / 2, player.y + player.height / 2, counterMasterKbScale(player));
 };
@@ -12812,8 +12815,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const pk = get().player;
       const rk = pk.brawler?.guardKiko;
       if (pk.brawler && rk && Date.now() >= rk.at) {
-        setBrawler(set, { ...pk.brawler, guardKiko: undefined });
-        if (isBrawlerMode(pk) && brawlerGateOk(get)) fireBrawlerGuardCounterKiko(get, set, rk);
+        const fireOk = isBrawlerMode(pk) && brawlerGateOk(get);
+        // カウンターマスターの二連発(left=2): 1発目を撃ったら、間を置いた2発目の予約を残す(撃てない時は残りごと捨てる)。
+        setBrawler(set, { ...pk.brawler, guardKiko: fireOk ? BRCM.brawlerCounterKikoAfterShot(rk) : undefined });
+        if (fireOk) fireBrawlerGuardCounterKiko(get, set, rk);
       }
     }
     // ★空中投げ(§34-3): 掴みの時間停止が明けたら放す(投げ/スープレックス)。飛んでいる投げを進める(着いた所で爆撃)。
@@ -12943,6 +12948,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     const outcome = BRG.brawlerGuardOutcome({
       throttled, dot: opts?.dot, weak: s.guardWeak === true, projectile: opts?.projectile, classes: sources.map(src => BRG.brawlerGuardSourceClass(src, st.enemies)),
     });
+    // ★カウンターマスター(格闘・社長指示2026-11-22「雑魚:土竜 ボス:気功を2連発」): 成立した受けの直後に自動で反撃する(技ポイントは使わない)。
+    //   雑魚・強個体=代金なしの地割りの代わりに土竜 / ボス級・終端・不明=反撃の気功を二連発。弾を受けた時は出さない(2026-11-13 の指示どおり・src/utils/brawlerCounterMaster.ts)。
+    const cmReply = BRCM.brawlerCounterMasterReply({
+      brawlerMode: isBrawlerMode(p), counterMasterLv: skillLevel(p, 'counter-master'), counter: fxOn.counter, throttled, dot: opts?.dot, projectile: opts?.projectile,
+      classes: sources.map(src => BRG.brawlerGuardSourceClass(src, st.enemies)),
+    });
     // ★成立の記録(lastCounterSuccessTime)も通常のカウンターと同じく書く(社長承認2026-11-07・§9-42)。ループのエッジ検出が
     // 金の輪・ボムカウンター(とボマーの子爆弾)を出し、決めポーズの膨らみ・速度線・守護霊の記録(カウンター直後の窓)も同じ記録を読む。
     // ★技ポイント: 普通の受けでは増やさない(2026-11-08 の「カウンター成立で全回復」は社長指示2026-11-10 で撤去。HUD の跳ね=gainAt も打たない)。
@@ -13005,8 +13016,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       brawlerSfx('heavy-impact', 0.9, 0.55, undefined, 20);
     }
     // ★成立の効果を出す(§12-3d)。成立の演出・相手の気絶は上で今どおり出し終えている。
-    if (outcome === 'stomp') {
-      // 雑魚を受けた: その瞬間に大踏み潰しを代金なしで出す。構えはここで終わる(受けの窓もカウンター窓も閉じる)。
+    if (cmReply === 'mogura' || (cmReply === null && outcome === 'stomp')) {
+      // 雑魚を受けた: その瞬間に大踏み潰しを代金なしで出す。(カウンターマスター所持=土竜で出す)構えはここで終わる(受けの窓もカウンター窓も閉じる)。
       // 潰しの当たり・絵・音・強制ノックバックは普通の技と同じ経路(startBrawlerTech → 判定)。関所(掴み・紫など)に掛かっていれば出さない。
       const cur = get().player.brawler;
       // ★カウンター投げ(スープレックス/サマーソルト)の最中に受けた: 代金なしの地割りは出さない(掴み・投げは続く)。受けの成立・被害の無効は上で済んでいる。
@@ -13019,6 +13030,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         const keep = pushing ? { lungeVx: pre.lungeVx, lungeVy: pre.lungeVy, lungeUntil: pre.lungeUntil, lungeMs: pre.lungeMs, lungeShape: pre.lungeShape, lungeHoldUntil: pre.lungeHoldUntil } : null;
         startBrawlerTech(get, set, BR.brawlerEndGuardForStomp(cur, gt), 'stomp', isBloodAwakening(get().player, gt), false, true);
         set(state => ({ player: { ...state.player, ...(keep ?? {}), counterWindowEnd: Math.min(state.player.counterWindowEnd, now) } }));
+        // ★カウンターマスター: 出した地割りを土竜にする(手で出す土竜と同じ印=判定で押さずに浮かせる・取り消しの道も土竜)。代金なし。
+        const mb = get().player.brawler;
+        if (cmReply === 'mogura' && mb && mb.phase === 'tech' && mb.tech === 'stomp') {
+          setBrawler(set, { ...mb, mogura: true });
+          notifyTechProc('mogura');
+          notifySkillProcFor(get().player, 'counter-master');
+          brawlerSfx('whip-swing', 0.42, 1.35 * brJitter(), 160);
+        }
       }
     } else if (outcome === 'knockback' && !brawlerContactGrabbing(get().player.brawler)) {
       // ★カウンター投げの最中は押されない・反撃の気功(§32)も予約しない(掴み・投げを続ける)。
@@ -13037,9 +13056,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       //   撃つのは受けた瞬間の止めが明けた時刻(=押され始めと同時・tickBrawler が撃つ)。狙い=受けた相手のうち雑魚より上で狙える一番近い相手。
       {
         const b = get().player.brawler;
-        if (b && fxOn.kiko && BRG.brawlerGuardCounterDue({ outcome, guardSince: b.guardSince, firedFor: b.guardKikoFor, projectile: opts?.projectile })) {
+        // ★カウンターマスター(格闘): 1発の代わりに二連発(left=2・間は BRCM.BRAWLER_CM_KIKO_GAP_MS)。弾を受けた時も出す。構え1回に1度は同じ。
+        const cmKiko = cmReply === 'kiko2';
+        const due = b && fxOn.kiko && (cmKiko
+          ? BRCM.brawlerCounterMasterKikoDue(b.guardSince, b.guardKikoFor)
+          : BRG.brawlerGuardCounterDue({ outcome, guardSince: b.guardSince, firedFor: b.guardKikoFor, projectile: opts?.projectile }));
+        if (b && due) {
           const tgt = BRG.brawlerGuardCounterTarget(sources, stn.enemies, c, BR.isBrawlerTargetable);
-          setBrawler(set, { ...b, guardKikoFor: b.guardSince, guardKiko: { at: startAt, targetId: tgt?.id, hitX: x, hitY: y } });
+          setBrawler(set, { ...b, guardKikoFor: b.guardSince, guardKiko: { at: startAt, targetId: tgt?.id, hitX: x, hitY: y, ...(cmKiko ? { left: BRCM.BRAWLER_CM_KIKO_SHOTS } : {}) } });
+          if (cmKiko) notifySkillProcFor(get().player, 'counter-master');
         }
       }
       // 絵(派手さの絵・判定なし): 踏ん張った足が地面を削った砂埃(社長指示2026-11-10「ステップのエフェクトは砂埃にして。白い線やめる」と同じ扱い=
