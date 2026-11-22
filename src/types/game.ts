@@ -49,6 +49,10 @@ export interface DashLocomotionState {
   // 一閃の着地後に動けない硬直(後隙)が切れる時刻。刀・村雨共通。
   // 着地(katanaDashUntil)から KATANA_DASH_RECOVERY_MS の間は移動も次の一閃も不可。
   katanaRecoveryUntil: number;
+  // ★燕返しのしゃがみ(research/KATANA_TSUBAME.md §1・社長指示2026-11-22): 燕返しの間、体は一閃で着いた位置に留まってしゃがむ。
+  // この時刻(Date.now)まで、一閃の走り(katanaDashUntil)の間でも位置を動かさない。無敵は付かない。絵は `-ready`(しゃがみ)。0/未設定=無し。
+  // 一閃の状態機械の一部なので主語ごと(プレイヤー=Player 直付け・守護霊=Summon.ghostDash)に持つ。
+  tsubameCrouchUntil?: number;
   // ワイヤーアンカー(移動系サブ)。装備中は前方に青サークルを常時表示。指離しで「即座に」アンカーを
   // 打ち込み(ワイヤーが表示される)、溜(wirePlantUntil まで)の後に追加タップでアンカー地点へ高速移動。
   // アンカーは一度打ち込むと、プレイヤーが一定距離(WIRE_CLEAR_DIST)離れるか、移動に使うまでそこに留まる。
@@ -351,9 +355,6 @@ export interface Player extends DashLocomotionState {
   // これが立っている間、本体の絵を**しゃがみ(`-ready`)へ差し替える**(変形はしない=社長指示
   // 「歪ませなくていいんじゃない? しゃがみの絵があるから」)。
   lastHurtAt?: number;
-  // ★燕返しのしゃがみ(research/KATANA_TSUBAME.md §1・社長指示2026-11-22): 燕返しの間、体は一閃で着いた位置に留まってしゃがむ。
-  // この時刻(Date.now)まで、一閃の走り(katanaDashUntil)の間でも位置を動かさない。無敵は付かない。絵は `-ready`(しゃがみ)。0/未設定=無し。
-  tsubameCrouchUntil?: number;
   // 被弾の重さの段(0=軽 / 1=中 / 2=重)。しゃがみの尺とヒットストップの長さを引くのに使う
   // (表は `utils/playerHurt.ts`)。**敵の体勢値とは別系統**——プレイヤーは無敵1秒が頻度を守るので、
   // 「出す/出さない」ではなく「どれだけ効いたか」を段で出す(社長裁定2026-09-16)。
@@ -1249,6 +1250,8 @@ export interface Enemy {
   gpKiko?: { id: string; x: number; y: number; dirX: number; dirY: number; traveled: number; createdAt: number; melee?: boolean;
     /** 構えの反撃の気功(代金なし・威力×BRAWLER_GUARD_COUNTER_KIKO_MULT・utils/kenkiGuardKb.kenkiGuardCounterKikoDue)。 */
     counter?: boolean };
+  /** 2発目の気功(カウンターマスターの気功の二連発で1発目がまだ飛んでいる時・型と扱いは gpKiko と同じ・描画も読む)。 */
+  gpKiko2?: Enemy['gpKiko'];
   /**
    * research/SAME_ARENA.md O-1: 幻影**自前**のサブウェポンCD帳簿(gameTime基準)。
    * 守護霊の `Summon.ghostSubWeaponCooldowns` と同型=**3者が別財布**(社長裁定2026-08-23)。
@@ -2125,6 +2128,18 @@ export interface Summon {
   ghostSupportSniperCdMs?: number;              // 援護射撃の専用タイマー(store.supportSniperCdMs と同型・移動中のみ進む)
   actorCounterMasterBuffUntil?: number;         // カウンターマスター覚醒(Lv3)の+30%の締め切り(gameTime)。守護霊自身のカウンター成立で付く(player.counterMasterBuffUntil と同じ意味・utils/actorCounterMaster)
   ghostCounterMasterBlowAt?: number;            // カウンターマスターの吹き飛ばしを最後に出した gameTime(同じフレームに何度成立しても1回=プレイヤーと同じ)
+  /** 被弾・吹き飛ばしの押しの持続(ms・減衰の割り算)。未設定=PLAYER_KNOCKBACK_MS(Player.knockbackMs と同じ意味)。 */
+  knockbackMs?: number;
+  /** ★燕返しの受付(プレイヤーの GameState.tsubameWindow と同じ型・守護霊自身の一閃が当たった時に開く)。 */
+  ghostTsubameWindow?: import('../utils/katanaTsubame').TsubameWindow | null;
+  /** ★鞭の追加攻撃の受付(プレイヤーの GameState.whipFollowup と同じ型・守護霊自身の鞭が当たった時に開く)。 */
+  ghostWhipFollowup?: (import('../utils/flickFollowup').FlickFollowupWindow & { stage: 'hit' | 'pulled'; lockUntil?: number; armAt?: number }) | null; // = utils/whipFollowup.WhipFollowupWindow(循環を作らないよう葉の型から組む)
+  /** ★ハンティングの溜め(プレイヤーの huntingChargeStartedAt / huntingCharged / huntingSequence… と同じ意味・守護霊自身の動きで溜まる)。 */
+  actorHuntingChargeStartedAt?: number;
+  actorHuntingCharged?: boolean;
+  actorHuntingSequence?: 'whip' | 'katana';
+  actorHuntingSeqUntil?: number;
+  actorHuntingSeqIssen?: boolean;
   ghostHomingLocks?: string[];                  // ホーミングのロック(store.homingLocks と同型)
   ghostHomingHoldStartAt?: number;              // ホーミングを「押し始めた」時刻(ms・Date.now基準)。undefined=押していない
   ghostHomingNextLockAt?: number;               // 次のロック付与時刻(gameTime基準・プレイヤーの nextHomingLockRef と同型)
@@ -3289,6 +3304,8 @@ export interface GameBounds {
  */
 export interface SatsujinState {
   targetId: string;
+  /** 殺陣を出した主語(守護霊の id)。未設定=プレイヤー本人。体が飛ぶ・無敵・斬る主語はこの実体。 */
+  ownerId?: string;
   startAt: number;
   lastStrikeEndAt: number;
   endAt: number;
@@ -3545,6 +3562,8 @@ export type VisualEffect =
       halfWidth: number; // 当たり帯の半幅(px)
       /** ★鞭の引き寄せ(research/WHIP_FOLLOWUP.md §2): 先端をこの敵の今の中心へ追わせ、柄をプレイヤーの今の中心へ追わせる(敵が寄るほど鞭が縮む=巻き取り)。 */
       followEnemyId?: string;
+      /** 引き寄せの柄を fromX/fromY に留める(守護霊の鞭=柄は守護霊の体・引き寄せの間は守護霊が止まっている)。未設定=柄はプレイヤーを追う。 */
+      holdFrom?: boolean;
       color: string;
       createdAt: number;
       duration: number;

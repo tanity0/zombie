@@ -22890,7 +22890,7 @@ export class PixiScene {
     let bodyTexName2 = playerTextureName(fakeGhost, frame, walking, false);
     let tex = getTexture(bodyTexName2)
       ?? getTexture(PLAYER_IDLE_SPRITE[gcls] ?? 'player-shotgun-idle') ?? getTexture('player');
-    if (departureElapsed >= 0 && departureElapsed < RESCUE_ALLY_CROUCH_MS) {
+    if ((departureElapsed >= 0 && departureElapsed < RESCUE_ALLY_CROUCH_MS) || isTsubameCrouching(s.ghostDash ?? {}, now)) { // 燕返しのしゃがみ(守護霊も同じ絵・時刻は store)
       const crouchPrefix = MELEE_POSE_PREFIX[gcls];
       if (crouchPrefix) {
         const crouchTex = getTexture(`${crouchPrefix}-ready`);
@@ -40564,7 +40564,7 @@ export class PixiScene {
     layer.alpha = a;
     const red = this.satsujinRed!;
     red.clear().rect(-8, -8, this.screenW + 16, this.screenH + 16).fill({ color: 0xb0000c, alpha: 1 });
-    const srcs = [this.playerView?.sprite ?? null, this.enemies.get(sat.targetId)?.sprite ?? null];
+    const srcs = [(sat.ownerId !== undefined ? this.summonViews.get(sat.ownerId)?.sprite : this.playerView?.sprite) ?? null, this.enemies.get(sat.targetId)?.sprite ?? null]; // 出した本人(守護霊の殺陣=守護霊)
     srcs.forEach((src, i) => {
       const sil = this.satsujinSil[i];
       if (!src || src.destroyed || !src.visible || !src.texture) { sil.visible = false; return; }
@@ -40698,7 +40698,7 @@ export class PixiScene {
         ty0 = fv.sprite.y - h * fv.sprite.anchor.y + h * 0.5;
       }
       const pl = this.fxPlayer;
-      if (pl) { fx0 = pl.x + pl.width / 2; fy0 = pl.y + pl.height / 2; }
+      if (pl && !e.holdFrom) { fx0 = pl.x + pl.width / 2; fy0 = pl.y + pl.height / 2; } // 守護霊の鞭は柄を守護霊の体に留める
     }
     const dx = tx0 - fx0;
     const dy = ty0 - fy0;
@@ -45125,7 +45125,7 @@ export class PixiScene {
       if (this.kenkiShukuchiGhost) this.kenkiShukuchiGhost.visible = false;
     }
     // research/BRAWLER_PHANTOM.md: 格闘の幻影の気功も同じ絵(1本の絵の台帳で描く=プレイヤーの気功と取り合わない)。
-    const gpKikos = st.enemies.filter(e => e.gpKiko !== undefined).map(e => e.gpKiko!);
+    const gpKikos = st.enemies.flatMap(e => (e.gpKiko || e.gpKiko2 ? [e.gpKiko, e.gpKiko2].filter((k): k is NonNullable<typeof k> => k !== undefined) : [])); // 2発目=カウンターマスターの気功の二連発
     this.drawBrawlerKiko(gpKikos.length > 0 ? [...st.brawlerKiko, ...gpKikos] : st.brawlerKiko, now);
     if (!s || !isBrawlerMode(p)) { this.brawlerDustGates.clear(); this.hideBrawlerGhosts(); if (this.brawlerAura) this.brawlerAura.visible = false; if (this.brawlerStand) this.brawlerStand.visible = false; return; }
     const gt = st.gameTime;

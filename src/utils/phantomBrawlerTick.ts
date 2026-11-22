@@ -23,6 +23,7 @@ import type { PbTechVariant } from './phantomBrawlerAi';
 import { kenkiPrepDue, kenkiPrepStart, type KenkiPrep } from './kenkiPrep';
 import { kenkiAccDecAlong, kenkiGuardKbActive, kenkiGuardKbVector, kenkiNewGuardReceive, kenkiGuardCounterKikoDue, KENKI_GUARD_KB_MS } from './kenkiGuardKb';
 import { BRAWLER_GUARD_COUNTER_KIKO_MULT } from './brawlerGuard';
+import { brawlerCounterMasterReply, brawlerCounterKikoAfterShot, BRAWLER_CM_KIKO_SHOTS as BRCM_KIKO_SHOTS } from './brawlerCounterMaster'; // ★カウンターマスター(格闘): 受けた直後の自動の反撃(プレイヤーと同じ純関数)
 import {
   kenkiBulletRetreatRoll, kenkiBulletRetreatDue, kenkiRetreatReady, kenkiRetreatStop, kenkiRetreating, kenkiRetreatDirNow, kenkiRetreatCanCover, kenkiBulletRepick,
 } from './kenkiRetreat';
@@ -92,6 +93,13 @@ export interface PhantomBrawlerRuntime {
   prepCounterKiko: boolean;
   /** 反撃の気功として出した気功の、行動の始まりの時刻(BrawlerState.startAt)。判定を解く時に弾へ反撃の印(威力×1.5)を持たせる。 */
   counterKikoStartAt: number;
+  /**
+   * ★カウンターマスター(格闘)の気功の二連発(社長裁定2026-11-22): 反撃の気功の発数(1=通常・2=二連発)。構えの受けで決め、1発目を撃った時に読む。
+   * 2発目は予備動作なしで間を置いて撃つ(プレイヤーの予約 guardKiko{left} と同じ・brawlerCounterKikoAfterShot)。
+   */
+  counterKikoShots: number;
+  /** 2発目の予約(at=撃つ時刻・Date.now・left=残りの発数)。null=無し。 */
+  counterKikoFollow: { at: number; left: number } | null;
   /** 跳びかかりの溜めを始めた時刻(gameTime)。クールダウンは実際に跳んだ時に、この時刻から数えて使う。 */
   leapCrouchAt: number | null;
   /** ★予備動作を始めた技の派生(research/BRAWLER.md §36-1・踵落とし/蹴り上げ/土竜)。 */
@@ -103,7 +111,7 @@ export const createPhantomBrawlerRuntime = (): PhantomBrawlerRuntime => ({
   mind: createPhantomBrawlerMind(), move: null, bulletPlans: new Map(), reachSince: null, lastHitSeen: 0,
   lastCounterSeen: 0, shukuchiReadyAt: 0, leapReadyAt: 0, hitTimes: [], prep: null, lastMeleeHurtSeen: 0, lastGuardKbSeen: 0,
   guardKbUntil: 0, lastLeverGuardSeen: 0, prepUndo: null, prepFinisherKiko: false, finisherKikoStartAt: -1, leapCrouchAt: null,
-  prepCounterKiko: false, counterKikoStartAt: -1,
+  prepCounterKiko: false, counterKikoStartAt: -1, counterKikoShots: 1, counterKikoFollow: null,
 });
 
 /** 予備動作を片付ける(終わった・取り消した の共通)。 */
@@ -450,8 +458,10 @@ const beginTech = (c: PhantomBrawlerCtx, s: BrawlerState, kind: BrawlerTechKind,
  * 下がる動き(rt.move)は止めない=下がりながら腕を上げて撃つ。構えの窓(guardUntil)は技の間も残る(brawlerStartTech が引き継ぐ)=構えは時間いっぱい続く。
  * 撃った構えの印(guardKikoFor=guardSince)はここで付ける=予備動作が取り消されても、同じ構えでもう1発は出ない(プレイヤーの予約と同じ)。
  */
-const beginCounterKiko = (c: PhantomBrawlerCtx, s0: BrawlerState): BrawlerState => {
+const beginCounterKiko = (c: PhantomBrawlerCtx, s0: BrawlerState, shots = 1): BrawlerState => {
   const { t, phantom, player } = c;
+  c.rt.counterKikoShots = shots;
+  c.rt.counterKikoFollow = null;
   const s: BrawlerState = { ...s0, guardKikoFor: s0.guardSince };
   const cancel = s.phase === 'tech';
   const prep = kenkiPrepStart('kiko', 0, t, cancel, player.x + player.width / 2 >= phantom.x + phantom.width / 2 ? 1 : -1);
@@ -559,14 +569,18 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     return hits > 0 ? BR.brawlerFlowOnHit(next, 1) : next;
   }
   if (s.tech === 'kiko') {
-    if (!phantom.gpKiko) {
-      c.patch.gpKiko = { id: `gpkiko-${c.nowMs}`, x: cx + dir.x * 18, y: cy - 4 + dir.y * 18, dirX: dir.x, dirY: dir.y, traveled: 0, createdAt: c.nowMs,
-        // 台本(2・3)の締めの気功は当てる=近接の打撃と同じ扱い(社長裁定2026-11-10 §16-8)。単発の気功は今どおり(遠隔=被弾無敵を守る)。
-        // 印は気功を決めた時点で決めてある(finisherKikoStartAt)。判定を解く今の台本の状態は見ない(検収監査2026-11-10)。
-        ...(c.rt.finisherKikoStartAt === s.startAt ? { melee: true } : {}),
-        // 構えの反撃の気功(代金なし・威力×1.5)。印は気功を始めた時点で決めてある(counterKikoStartAt)。
-        ...(c.rt.counterKikoStartAt === s.startAt ? { counter: true } : {}) };
+    const counterKiko = c.rt.counterKikoStartAt === s.startAt;
+    placePhantomKiko(c, { id: `gpkiko-${c.nowMs}`, x: cx + dir.x * 18, y: cy - 4 + dir.y * 18, dirX: dir.x, dirY: dir.y, traveled: 0, createdAt: c.nowMs,
+      // 台本(2・3)の締めの気功は当てる=近接の打撃と同じ扱い(社長裁定2026-11-10 §16-8)。単発の気功は今どおり(遠隔=被弾無敵を守る)。
+      // 印は気功を決めた時点で決めてある(finisherKikoStartAt)。判定を解く今の台本の状態は見ない(検収監査2026-11-10)。
+      ...(c.rt.finisherKikoStartAt === s.startAt ? { melee: true } : {}),
+      // 構えの反撃の気功(代金なし・威力×1.5)。印は気功を始めた時点で決めてある(counterKikoStartAt)。
+      ...(counterKiko ? { counter: true } : {}) }, 'gpKiko');
+    // ★カウンターマスターの二連発: 1発目を撃ったら、間を置いた2発目の予約を残す(プレイヤーの予約と同じ数え方)。
+    if (counterKiko && c.rt.counterKikoShots > 1) {
+      c.rt.counterKikoFollow = brawlerCounterKikoAfterShot({ at: c.nowMs, left: c.rt.counterKikoShots }) ?? null;
     }
+    if (counterKiko) c.rt.counterKikoShots = 1;
     return { ...s, resolved: true, dirX: dir.x, dirY: dir.y };
   }
   // 飛び蹴り(着いた瞬間に判定)
@@ -597,16 +611,52 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
 // ---------------------------------------------------------------------------------------------
 // 気功(1発・プレイヤーの気功と同じ速さ・届く距離・爆発の半径)。遠隔=被弾無敵は守る。
 // ---------------------------------------------------------------------------------------------
+type PhantomKiko = NonNullable<Enemy['gpKiko']>;
+type PhantomKikoSlot = 'gpKiko' | 'gpKiko2';
+/** その枠の今の気功(この tick で書いた分を優先)。 */
+const phantomKikoIn = (c: PhantomBrawlerCtx, slot: PhantomKikoSlot): PhantomKiko | undefined =>
+  slot in c.patch ? c.patch[slot] : c.phantom[slot];
+/**
+ * 気功を空いている枠へ置く(既定の枠が埋まっていればもう一方)。両方埋まっていれば撃たない(今までの「1発まで」の取り扱いと同じ=出ない)。
+ * 2つ目の枠は、カウンターマスターの二連発で1発目がまだ飛んでいる時のため(プレイヤーの気功は何発でも並んで飛ぶ)。
+ */
+const placePhantomKiko = (c: PhantomBrawlerCtx, k: PhantomKiko, prefer: PhantomKikoSlot): boolean => {
+  const order: PhantomKikoSlot[] = prefer === 'gpKiko' ? ['gpKiko', 'gpKiko2'] : ['gpKiko2', 'gpKiko'];
+  for (const slot of order) {
+    if (phantomKikoIn(c, slot)) continue;
+    c.patch[slot] = k;
+    return true;
+  }
+  return false;
+};
+/**
+ * ★カウンターマスターの気功の2発目(予備動作なし・1発目から BRAWLER_CM_KIKO_GAP_MS 後・反撃の気功の印つき)。狙い=その時のプレイヤー。
+ * プレイヤーの2発目(gameStore.fireBrawlerGuardCounterKiko)と同じく、撃てない時(相手が倒れた・秘奥義の最中)は残りごと捨てる。
+ */
+const stepCounterKikoFollow = (c: PhantomBrawlerCtx, s: BrawlerState): void => {
+  const f = c.rt.counterKikoFollow;
+  if (!f || c.nowMs < f.at) return;
+  c.rt.counterKikoFollow = null;
+  if (c.player.health <= 0 || s.secret) return;
+  const cx = (c.patch.x ?? c.phantom.x) + c.phantom.width / 2, cy = (c.patch.y ?? c.phantom.y) + c.phantom.height / 2;
+  const dir = unit(c.player.x + c.player.width / 2 - cx, c.player.y + c.player.height / 2 - cy);
+  placePhantomKiko(c, { id: `gpkiko-cm-${c.nowMs}`, x: cx + dir.x * 18, y: cy - 4 + dir.y * 18, dirX: dir.x, dirY: dir.y, traveled: 0, createdAt: c.nowMs, counter: true }, 'gpKiko2');
+  c.rt.counterKikoFollow = brawlerCounterKikoAfterShot(f) ?? null;
+};
 const stepKiko = (c: PhantomBrawlerCtx): void => {
-  const k = c.patch.gpKiko ?? c.phantom.gpKiko;
+  stepKikoSlot(c, 'gpKiko');
+  stepKikoSlot(c, 'gpKiko2');
+};
+const stepKikoSlot = (c: PhantomBrawlerCtx, slot: PhantomKikoSlot): void => {
+  const k = phantomKikoIn(c, slot);
   if (!k) return;
   const stepPx = BR.BRAWLER_KIKO_SPEED * c.deltaTime;
   const nx = k.x + k.dirX * stepPx, ny = k.y + k.dirY * stepPx;
   const traveled = k.traveled + stepPx;
   const pl = c.player;
   const touch = edgeDist(nx, ny, pl) <= BR.BRAWLER_KIKO_HIT_PAD;
-  if (!touch && traveled < BR.BRAWLER_KIKO_RANGE) { c.patch.gpKiko = { ...k, x: nx, y: ny, traveled }; return; }
-  c.patch.gpKiko = undefined;
+  if (!touch && traveled < BR.BRAWLER_KIKO_RANGE) { c.patch[slot] = { ...k, x: nx, y: ny, traveled }; return; }
+  c.patch[slot] = undefined;
   const g = useGameStore.getState();
   // カウンターの窓の中で触れたら弾ける(赤=カウンター可の技・research/BRAWLER.md §4)。ダメージは無い。
   // 締めの気功(近接扱い)は、爆発の縁で返された時も同じく弾けるだけ(近接の1本へ流すと、遠くの拳鬼が押されて体勢が削れる=結果を1つに揃える)。
@@ -966,7 +1016,12 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
     }
     if (!s.secret && player.health > 0
       && kenkiGuardCounterKikoDue({ guardSince: s.guardSince, guardUntil: s.guardUntil, firedFor: s.guardKikoFor, receivedAt, shukuchi })) {
-      s = beginCounterKiko(c, s);
+      // ★カウンターマスター(格闘・社長裁定2026-11-22): 相手のプレイヤーは「ボス級」とみなす=プレイヤーの格闘の自動の反撃と同じ純関数で
+      //   気功の二連発になる(雑魚へ出る土竜の側は相手がプレイヤーなので出ない)。予告は付けない(拳鬼の技と同じ)。
+      const cmReply = brawlerCounterMasterReply({
+        brawlerMode: true, counterMasterLv: skillLevel(c.actor, 'counter-master'), counter: true, throttled: false, classes: ['boss'],
+      });
+      s = beginCounterKiko(c, s, cmReply === 'kiko2' ? BRCM_KIKO_SHOTS : 1);
     }
   }
   // 下がり切るまで(280ms)は次の行動(段・技・予備動作・跳びかかり・ステップ)を始めない=下がる動きを途中で止めない(慣性)。
@@ -1044,6 +1099,7 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
   }
 
   stepMove(c);
+  stepCounterKikoFollow(c, s);
   stepKiko(c);
   if (s !== before) c.patch.phantomBrawler = s;
   const leapStarted = c.patch.aiPhase === 'crouch';

@@ -710,5 +710,34 @@ describe('拳鬼が格闘で戦う(結合)', () => {
       expect(d0).toBeGreaterThan(0);
       expect(d1 / d0).toBeCloseTo(BRAWLER_GUARD_COUNTER_KIKO_MULT, 1);
     });
+
+    // ★カウンターマスター(格闘・社長裁定2026-11-22): プレイヤーの格闘のカウンターマスターと同じ自動の反撃。相手のプレイヤーは「ボス級」=気功の二連発。
+    it('カウンターマスターを持つ拳鬼: 構えの受けの反撃の気功が二連発(2発目は間を置いて・反撃の印つき・威力の式は同じ)', () => {
+      const blasts = (withSkill: boolean): { n: number; counters: number } => {
+        const k = uniquePhantomSpec('brawler');
+        const base = k.profile.snapshot!;
+        const snap = withSkill
+          ? { ...base, skills: [...(base.skills ?? []), 'counter-master' as const], skillLevels: { ...(base.skillLevels ?? {}), 'counter-master': 1 } }
+          : base;
+        const h = setup(40, { phantomBrawler: guarding(0), gpGuardUntil: START_GT + 1000, phantomBuild: snap });
+        let n = 0;
+        const orig = useGameStore.getState().spawnExplosionFx;
+        useGameStore.setState({ spawnExplosionFx: (x: number, y: number, r: number) => { if (r === 70) n++; orig(x, y, r); } });
+        let counters = 0;
+        const seen = new Set<string>();
+        patchKenki(h.id, { gpParriedAt: START_GT });
+        for (let i = 0; i < 60; i++) {
+          h.step(16);
+          const e = h.cur();
+          for (const kk of [e.gpKiko, e.gpKiko2]) if (kk && !seen.has(kk.id)) { seen.add(kk.id); if (kk.counter) counters++; }
+        }
+        useGameStore.setState({ spawnExplosionFx: orig });
+        return { n, counters };
+      };
+      const one = blasts(false);
+      const two = blasts(true);
+      expect(one.n).toBe(1);
+      expect(two.n).toBe(2);
+    });
   });
 });

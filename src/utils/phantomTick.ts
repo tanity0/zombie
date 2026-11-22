@@ -43,7 +43,7 @@ import {
   MELEE_WINDUP_MS,                              // 近接の前隙(プレイヤーと同じ1本を読む)
   KNOCKBACK_SPEED, KNOCKBACK_DURATION,          // カウンターされた側のノックバック=**敵と同じ量**(社長指示)
   meleeLungePx, MELEE_LUNGE_MS, knockbackSpeedFor, // ★踏み込み(プレイヤーと同じ関数=武器別も揃う)
-  MELEE_RADIUS, WHIP_LENGTH_BY_LEVEL, whipLevel, // research/LUNGE_DODGE.md §4(b): プレイヤーの近接の届く距離(武器別)
+  meleeReachOf, // research/LUNGE_DODGE.md §4(b): プレイヤーの近接の届く距離(武器別・ハンティングの伸びを含む)
   counterAcceptMsOf,                            // GHOST_BOSS.md v10: 弾を打ち返す振りを出す時機=着弾が窓(プレイヤーの受付と同じ長さ)以内
   playerPvpChipPatch,                           // ★SAME_ARENA §9: プレイヤー体勢の削り(紫入りの破棄込み)
   showPvpFatalOnPlayerPresentation,             // ★2026-08-27: 幻影→プレイヤーの致命もKILL演出(ズーム)
@@ -367,6 +367,8 @@ export interface PhantomTickState {
   lastParryConsumedAt: number;
   /** カウンターマスターを当てた最後の成立打刻(gameTime・近接 gpParriedAt / 弾 gpBulletParriedAt の新しい方)。成立1回につき1回。 */
   lastCounterMasterAt?: number;
+  /** カウンターマスターの吹き飛ばしを最後に出した gameTime(同じフレームで2回出さない・utils/actorCounterMaster)。 */
+  counterMasterBlowAt?: number;
   /** 銃の実体(台帳武器)。リザーブは∞(=弾薬は尽きない。息継ぎ=リロードだけがある)。 */
   gun: Weapon | null;
   /** リロードの状態(Date.now基準=weaponUtils と同じ時計)。 */
@@ -417,6 +419,7 @@ const resetPhantomRunState = (s: PhantomTickState): void => {
   s.nextMeleeAt = 0;
   s.lastParryConsumedAt = 0;
   s.lastCounterMasterAt = undefined;
+  s.counterMasterBlowAt = undefined;
   s.gun = null;
   s.reloadEndsAt = 0;
   s.reloadingWeaponId = '';
@@ -517,9 +520,9 @@ const pickPhantomEscapeLunge = (
   // ---- (b)詰め ----
   if (isClosing && !L.closeInJudged && L.closingSince !== null && gt - L.closingSince >= reactionMs) {
     const style = currentEscapeStyle();
-    // 届く距離=プレイヤーの近接の届く距離(鞭は鞭の長さ)+走りの踏み込み(武器別)。
-    const reachP = (player.subWeapons.includes('whip') ? WHIP_LENGTH_BY_LEVEL[whipLevel(player)] : MELEE_RADIUS)
-      + meleeLungePx(player);
+    // 届く距離=プレイヤーの近接の届く距離(刀=katanaReach・鞭=whipReach・ほか=huntingMeleeRadius。ハンティングの伸びを含む=meleeReachOf)
+    // +走りの踏み込み(武器別)。プレイヤーと同じ関数(社長裁定2026-11-22)。
+    const reachP = meleeReachOf(player) + meleeLungePx(player);
     const eta = closeInEtaMs(edgeDistTo(pcx, pcy, phantom), closing, reachP);
     if (eta <= style.leadMs) {
       L.closeInJudged = true;
@@ -1170,7 +1173,7 @@ const clearKenkiLever = (phantom: Enemy, patch: Partial<Enemy>): void => {
 /** 格闘の幻影の出かかった行動を取り消す(紫・気絶・拘束・浮き)。印の無い幻影には何もしない。 */
 const cancelPhantomBrawler = (phantom: Enemy, patch: Partial<Enemy>, gameTime: number, rt?: PhantomBrawlerRuntime): void => {
   clearKenkiLever(phantom, patch); // 動けない=レバーガードも張れない(research/BRAWLER_PHANTOM.md §16-10)
-  if (rt) kenkiRetreatStop(rt.mind); // 下がりも打ち切る
+  if (rt) { kenkiRetreatStop(rt.mind); rt.counterKikoFollow = null; } // 下がりも打ち切る・カウンターマスターの気功の2発目も捨てる(プレイヤーの「撃てない時は残りごと捨てる」と同じ)
   // 跳びかかりの溜め(research/BRAWLER_PHANTOM.md §15)も出かかった行動として取り消す(跳んだ後・着地後は続ける)。
   if (phantom.phantomUnique === 'brawler' && phantom.aiPhase === 'crouch') {
     patch.aiPhase = undefined; patch.aiPhaseUntil = undefined; patch.bossState = 'chase';
@@ -1273,7 +1276,7 @@ export const runPhantomTick = (
   const parried = consumePhantomParry(phantom, s, player, bcx, bcy, sfx, patch, newGameTime);
   if (parried) abortPhantomFlamer(phantom, patch); // §17-6b P6: パリィされたら打ち切る
   // カウンターマスター(記録にスキルがある幻影だけ・プレイヤーと同じ純関数・utils/actorCounterMaster): 成立(近接の窓・構えの受け・弾の打ち返し)の
-  // 新しい打刻1つにつき1回、幻影自身の近接の周期・サブ・リロードを前倒し+覚醒の+30%。吹き飛ばし(プレイヤーを弾く)は入れていない(未決)。
+  // 新しい打刻1つにつき1回、幻影自身の近接の周期・サブ・リロードを前倒し+覚醒の+30%+周りのプレイヤー・守護霊・英雄の吹き飛ばし(予告なし・同じフレームで1回)。
   {
     const cmAt = Math.max(phantom.gpParriedAt ?? -Infinity, phantom.gpBulletParriedAt ?? -Infinity);
     if (Number.isFinite(cmAt) && cmAt > (s.lastCounterMasterAt ?? -Infinity)) {

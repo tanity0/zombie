@@ -32,11 +32,12 @@ import {
   CRIT_DAMAGE_MULT,
   BOSS_CRIT_DAMAGE_MULT,
   isKatanaMode,
+  isWhipMode,
+  swingGhostWhip, tickGhostHunting, ghostHuntingPatch, HUNTING_CONSUME_PATCH, huntingReachBonus, // ★守護霊の鞭・ハンティング(プレイヤーと同じ部品)
   isMeleeOnlyMode,
   drainBrawlerSfx,
   BRAWLER_SFX_DEATH,
   subWeaponBlockedByKatana,
-  katanaRange,
   katanaReach,
   KATANA_SLASH_INTERVAL_MS,
   KATANA_DASH_DISTANCE,
@@ -196,6 +197,9 @@ import { ghostArrivalPoint, ghostDeparturePoint } from '../utils/ghostLifecycle'
 // v0.25.2518(GHOST-KATANA-WIRE・裁定2「共有方式」): 刀のオート斬撃の標的選択と、
 // 刀の一閃/ワイヤーのロコモーション上書き。どちらもプレイヤーと守護霊が同じ純関数を通る。
 import { pickKatanaSlashTarget, katanaSlashIntervalMs } from '../utils/katanaAuto';
+import { huntingChargeStep } from '../utils/huntingSequence'; // ハンティングの溜めの1歩(プレイヤー・守護霊で同じ)
+import { isTsubameCrouching } from '../utils/katanaTsubame'; // 守護霊の燕返しのしゃがみ(プレイヤーと同じ判定)
+import { isWhipFollowupLocked } from '../utils/whipFollowup'; // 守護霊の鞭の追加攻撃の止め(プレイヤーと同じ判定)
 import { pickSafeKatanaDashDirection } from '../utils/katanaLanding';
 import { dashModeAt, dashOverride, dashStateOf, dashStep } from '../utils/dashLocomotion';
 import { npcSfxDistGain } from '../utils/npcSfx'; // v0.25.2480: ローカル定義から移設(式は無変更)
@@ -543,7 +547,7 @@ import { cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品ス
 import { recordRunFinal, getRunTelemetrySnapshot } from '../utils/runTelemetry';
 import { decideBotShopPurchase } from '../utils/botShopPolicy';
 import { notifyCounterHit, notifyMoveCounter, recordShieldPlacement, recordPhillHeadshot, recordHomingHold } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
-import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, ghostIsMovingNow, GHOST_MELEE_RANGE, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
+import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, ghostIsMovingNow, GHOST_MELEE_RANGE, ghostTsubameDir, ghostWhipFollowupDir, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
 import { hashSeed } from '../utils/microRhythmReplay'; // research/AI_HUMANIZE.md B3(§4専用乱数流のシード)
 import { rampVelocity } from '../utils/motionRamp'; // research/AI_HUMANIZE.md B3(§4慣性=速度状態モデル)
 import { playerAsOwner, ghostAsOwner, phantomAsOwner, isHostileOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
@@ -10659,22 +10663,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         useGameStore.getState().tickHuntingSequence();
         const huntingPlayer = useGameStore.getState().player;
         const huntingLevel = Math.max(0, Math.min(3, huntingPlayer.subWeaponLevels['striker-hunting'] ?? 0));
-        if (
-          huntingPlayer.subWeapons.includes('striker-hunting') &&
-          !subWeaponBlockedByKatana(huntingPlayer, 'striker-hunting') &&
-          huntingLevel > 0 &&
-          huntingInputActive
-        ) {
-          const startedAt = huntingPlayer.huntingChargeStartedAt > 0
-            ? huntingPlayer.huntingChargeStartedAt
-            : newGameTime;
-          updateHuntingCharge(
-            startedAt,
-            huntingPlayer.huntingCharged ||
-              newGameTime - startedAt >= HUNTING_CHARGE_MS_BY_LEVEL[huntingLevel]
-          );
-        } else if (!huntingPlayer.huntingCharged && huntingPlayer.huntingChargeStartedAt !== 0) {
-          updateHuntingCharge(0, false);
+        {
+          // 溜めの1歩は守護霊と同じ純関数(utils/huntingSequence.huntingChargeStep)。
+          const hs = huntingChargeStep({
+            enabled: huntingPlayer.subWeapons.includes('striker-hunting') && !subWeaponBlockedByKatana(huntingPlayer, 'striker-hunting') && huntingLevel > 0,
+            active: huntingInputActive, startedAt: huntingPlayer.huntingChargeStartedAt, charged: huntingPlayer.huntingCharged,
+            now: newGameTime, chargeMs: HUNTING_CHARGE_MS_BY_LEVEL[huntingLevel] ?? 0,
+          });
+          if (hs.startedAt !== huntingPlayer.huntingChargeStartedAt || hs.charged !== huntingPlayer.huntingCharged) updateHuntingCharge(hs.startedAt, hs.charged);
         }
 
         // 錬金術: 立ち止まり5秒で魔法陣完成→召喚。移動で中断、レア在席中は不可。被弾では中断しない。
@@ -13631,7 +13627,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 置換する(プレイヤーと同型)。B3で速度ランプを導入した際、下のtargetVxを0にするだけで
               // ランプ自体は続けていたため、KB中も残速度がなだらかに0へ減衰しながらnx/nyへ加算され続け
               // ていた(=「自分の移動を止める」が実際には止まっていなかった)。
-              const kbLocked = nowMs < (ghostNow.knockbackUntil ?? 0);
+              // ★鞭の追加攻撃の止め(引き寄せ〜叩きつけの受付の終わり)も同じく自分の移動を止める(プレイヤーの movePlayer と同じ判定)。
+              const kbLocked = nowMs < (ghostNow.knockbackUntil ?? 0) || isWhipFollowupLocked(ghostNow.ghostWhipFollowup, nowMs);
               // v0.25.2518(裁定2): 刀の一閃/ワイヤーのロコモーション上書きを**プレイヤーと同じ純関数**で
               // ゴースト実体のx/yへ乗せる。優先順(ワイヤー高速移動>ホップ>一閃>着地硬直)も
               // movePlayer と同一。被弾ノックバック中はプレイヤー同様KBが勝つ(kbLocked)。
@@ -13644,7 +13641,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // (旧: decision.moveX/Yへの直接積分=瞬間加減速)。オーバーシュートは目標が変わっても
               // 残速度で流れることから自然に出る(専用の乱数・定数は足さない)。
               let ghostVxNext: number, ghostVyNext: number;
-              if (gDashMode !== null) {
+              if (gDashMode === 'katana-dash' && isTsubameCrouching(gDashState, nowMs)) {
+                // ★燕返しのしゃがみ(プレイヤーと同じ): 一閃の走りの間でも体は動かない(着地硬直と同じ停止)。
+                nx = ghostNow.x; ny = ghostNow.y;
+                ghostVxNext = 0; ghostVyNext = 0;
+              } else if (gDashMode !== null) {
                 const gStep = dashStep(
                   dashOverride(
                     gDashState, gDashMode,
@@ -14099,9 +14100,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (GHOST_DMG_LOG_ENABLED && !dashed && wasCounterMelee) {
                   ghostLogPush(`${Math.round(gameTime / 100) / 10}s 一閃不発 ${boundBoss.bossState ?? boundBoss.aiPhase ?? '?'}`);
                 }
+              } else if (ghostMeleeResolvesNow && boundBoss && isWhipMode(ghostOwner)) {
+                // ★鞭(社長裁定2026-11-22「守護霊にも鞭」): 鞭を持つ守護霊の近接はプレイヤーと同じ鞭の1撃目(線の長さ・当たる敵・打撃・追加攻撃の受付・
+                // ハンティングの一連=gameStore.swingGhostWhip)。当たるかは線が決める(届かない振りは線が誰にも掛からない=空振り)。向き=紐付きボスへ。
+                const gmcx = resolved.x + ghostNow.width / 2, gmcy = resolved.y + ghostNow.height / 2;
+                const wdx = boundBoss.x + boundBoss.width / 2 - gmcx, wdy = boundBoss.y + boundBoss.height / 2 - gmcy;
+                const wdl = Math.hypot(wdx, wdy) || 1;
+                fireGhostSwingSubs(gmcx, gmcy);
+                const wres = swingGhostWhip(ghostNow.id, wdx / wdl, wdy / wdl);
+                const wGain = npcSfxDistGain(gmcx, gmcy, gfxPcx, gfxPcy, gfxCam, gfxGb);
+                if (wGain > 0) {
+                  playSfx('whip-swing', wGain);
+                  if (wres.hits > 0) playSfx(wres.finish ? 'melee-finish' : 'whip-hit', wGain);
+                }
+                if (wres.killed > 0) playEnemyDeath();
               } else if (ghostMeleeResolvesNow
                 && boundBoss
-                && enemyMeleeDist(resolved.x + ghostNow.width / 2, resolved.y + ghostNow.height / 2, boundBoss) > GHOST_MELEE_RANGE) {
+                // ハンティングが溜まっていれば届く距離が伸びる(ナイフ=振るたびに使い切る・プレイヤーと同じ)。
+                && enemyMeleeDist(resolved.x + ghostNow.width / 2, resolved.y + ghostNow.height / 2, boundBoss) > GHOST_MELEE_RANGE + huntingReachBonus(ghostOwner)) {
                 // ★v0.25.3979: 構えの距離ゲート撤廃(帯・円の成立域は74pxより広い)に伴う**空振り**——
                 // 近接の届かない距離で解決フレームを迎えた振りは、通常近接ぶんのダメージ/血/斬撃を
                 // 出さない(プレイヤーの「届かない振りは当たらない」と同じ)。カウンターの請求は
@@ -14125,6 +14141,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // スイングと**同じ裁定+同じ素ダメージ式**(applyGhostMeleeFinisher → resolveStunnedMeleeHit)。
                 // 成立時はダメージ/金の数字/気絶解除/浮きまで共有アクション側で適用済み(クリ抽選は
                 // 走らない=プレイヤーも気絶敵にはクリを振らないのと同じ)。null=気絶していない→従来経路。
+                // ハンティング: ナイフの振りは一連のつながりが無いので、振るたびに使い切る(プレイヤーと同じ)。
+                if (ghostOwner.huntingCharged) {
+                  const hp = ghostHuntingPatch(HUNTING_CONSUME_PATCH);
+                  useGameStore.setState(st => ({ summons: st.summons.map(sm => (sm.id === ghostNow.id ? { ...sm, ...hp } : sm)) }));
+                }
                 const ghostFinish = useGameStore.getState().applyGhostMeleeFinisher(ghostNow.id, boundBoss.id);
                 const ghostMeleeCrit = ghostFinish === null
                   && Math.random() < meleeHitCritChance(meleeWeapon?.critChance ?? 0, ghostOwner, gameTime, boundBoss);
@@ -14196,11 +14217,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (gameTime - gks.at >= KATANA_SLASH_INTERVAL_MS) {
                   const kcx = resolved.x + ghostNow.width / 2, kcy = resolved.y + ghostNow.height / 2;
                   const kTargetId = pickKatanaSlashTarget(
-                    kcx, kcy, katanaRange(ghostOwner),
+                    kcx, kcy, katanaReach(ghostOwner), // ハンティングが溜まっていれば届く距離が伸びる(プレイヤーと同じ)
                     useGameStore.getState().enemies, gameTime, enemyMeleeDist,
                   );
                   if (kTargetId) {
                     gks.at = gameTime;
+                    // ハンティング: 溜まった状態のオート斬撃は一連(オート斬撃→一閃→燕返し)の始まり(プレイヤーと同じ)。
+                    useGameStore.getState().noteKatanaAutoSlashHunting(gameTime + KATANA_SLASH_INTERVAL_MS, ghostNow.id);
                     // 近接フィニッシュは一閃のみ: オート斬撃はallowFinisher=false(プレイヤーと同じ)。
                     const kResult = useGameStore.getState().performKatanaStrike([kTargetId], 1, false, ghostNow.id);
                     const kGain = npcSfxDistGain(kcx, kcy, gfxPcx, gfxPcy, gfxCam, gfxGb);
@@ -14211,6 +14234,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     if (kResult.killed > 0) playEnemyDeath();
                   }
                 }
+              }
+
+              // ★当てた直後のフリックの追加攻撃(社長裁定2026-11-22「プレイヤーの受付の窓の中で、守護霊が出せる時は出す」):
+              //   刀=燕返し(一閃が当たった後)・鞭=引き寄せ→叩きつけ。受付・向き・技はプレイヤーと同じ(ghostDriver が向きを決め、store の同じ入口へ ghostId で渡す)。
+              {
+                const gNow = useGameStore.getState().summons.find(sm => sm.id === ghostNow.id);
+                if (gNow) {
+                  const fcx = gNow.x + gNow.width / 2, fcy = gNow.y + gNow.height / 2;
+                  const fGain = npcSfxDistGain(fcx, fcy, gfxPcx, gfxPcy, gfxCam, gfxGb);
+                  const tDir = ghostKatana ? ghostTsubameDir(gNow.ghostTsubameWindow, fcx, fcy, nowMs) : null;
+                  if (tDir && useGameStore.getState().tryTsubame(tDir.x, tDir.y, ghostNow.id) && fGain > 0) playSfx('katana-dash', fGain, undefined, 1.35);
+                  const wDir = !ghostKatana && isWhipMode(ghostOwner) ? ghostWhipFollowupDir(gNow.ghostWhipFollowup, nowMs) : null;
+                  if (wDir && useGameStore.getState().tryWhipFollowup(wDir.x, wDir.y, ghostNow.id) && fGain > 0) {
+                    playSfx('whip-hit', fGain, undefined, 1.0);
+                    if ((wDir.x * (gNow.ghostWhipFollowup?.dirX ?? 0) + wDir.y * (gNow.ghostWhipFollowup?.dirY ?? 0)) > 0) playSfx('bomb', fGain); // 卵: 叩きつけの爆発の音だけ(卵を割る・浮かせるのは store の whipSlamExplode=playerBlast)
+                  }
+                }
+                // ★ハンティング: 一連が終わっていたら使い切る+動いている間に溜まる(プレイヤーと同じ純関数)。
+                tickGhostHunting(ghostNow.id, !kbLocked && ghostIsMovingNow(decision.moveX, decision.moveY));
               }
 
               // v0.25.2518(裁定2・台帳§9-3): ワイヤーアンカー。発動の意思決定は既存のサブ予約

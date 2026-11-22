@@ -28,3 +28,20 @@ export const huntingSequenceAlive = (kind: HuntingSequenceKind, v: HuntingSequen
   if (kind === 'whip') return v.whipFollowupActive;
   return v.gameTime < (v.seqUntil ?? 0) || v.now < v.katanaRecoveryUntil || v.tsubameOpen;
 };
+
+/**
+ * ハンティングの溜めの1歩(プレイヤー=入力がある間・守護霊=動いている間に溜まる・社長裁定2026-11-22「守護霊の動きで溜まる」)。
+ *  - 使える(enabled)かつ溜めている(active): 溜め始めの時刻を持ち、chargeMs 経てば溜まる(溜まったら止めても残る)。
+ *  - そうでない・まだ溜まっていない: 溜め始めを捨てる(0)。溜まっていれば残す。
+ * 変わらない時は同じ値を返す(呼び手が書き込みを省ける)。
+ */
+export const huntingChargeStep = (o: {
+  enabled: boolean; active: boolean; startedAt: number; charged: boolean; now: number; chargeMs: number;
+}): { startedAt: number; charged: boolean } => {
+  if (o.enabled && o.active) {
+    const startedAt = o.startedAt > 0 ? o.startedAt : o.now;
+    return { startedAt, charged: o.charged || o.now - startedAt >= o.chargeMs };
+  }
+  if (!o.charged && o.startedAt !== 0) return { startedAt: 0, charged: false };
+  return { startedAt: o.startedAt, charged: o.charged };
+};

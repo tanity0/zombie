@@ -138,11 +138,20 @@ export const clearGhostBuildCache = (): void => { buildCache.clear(); lastResolv
  */
 export const ghostActorPlayer = (
   build: GhostBuild,
-  actor: { x: number; y: number; width: number; height: number; health: number; maxHealth: number; actorCounterMasterBuffUntil?: number },
+  actor: {
+    x: number; y: number; width: number; height: number; health: number; maxHealth: number; actorCounterMasterBuffUntil?: number;
+    actorHuntingChargeStartedAt?: number; actorHuntingCharged?: boolean; actorHuntingSequence?: 'whip' | 'katana'; actorHuntingSeqUntil?: number; actorHuntingSeqIssen?: boolean;
+  },
 ): Player => ({
   ...build.player,
   x: actor.x, y: actor.y, width: actor.width, height: actor.height,
   health: actor.health, maxHealth: actor.maxHealth,
   // カウンターマスター覚醒(Lv3)の+30%は、その実体(守護霊・幻影)自身のカウンター成立で付いた分だけ(utils/actorCounterMaster)。
   counterMasterBuffUntil: actor.actorCounterMasterBuffUntil ?? 0,
+  // ハンティングの溜めも、その実体(守護霊)自身の動きで溜まった分だけ(社長裁定2026-11-22・本人の溜まりは写らない)。
+  huntingChargeStartedAt: actor.actorHuntingChargeStartedAt ?? 0,
+  huntingCharged: actor.actorHuntingCharged ?? false,
+  huntingSequence: actor.actorHuntingSequence,
+  huntingSeqUntil: actor.actorHuntingSeqUntil,
+  huntingSeqIssen: actor.actorHuntingSeqIssen,
 });

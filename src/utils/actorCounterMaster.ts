@@ -9,11 +9,12 @@
 //    近接の間隔は守護霊の頭脳の起点(ghostLastMeleeAt / ghostLastCounterAttemptAt)=起点を過去へずらして同じ割合だけ縮める。
 //  - 幻影: 成立(gpParriedAt / gpBulletParriedAt の新しい打刻)を phantomTick が拾って呼ぶ。近接の周期(nextMeleeAt)・
 //    銃のリロードは phantomTick の状態、サブは Enemy.phantomSubWeaponCooldowns。
-//    ★幻影の吹き飛ばし(=プレイヤーを弾く)は入れていない(新しくプレイヤーに当たる効果=予告の扱いが設計書に無いため・未決)。
-//    ★格闘の幻影(拳鬼)の「受けた直後の自動の反撃(土竜/気功二連発)」も入れていない(未決)。
+//    幻影の吹き飛ばし(社長裁定2026-11-22): 周りのプレイヤー・守護霊・英雄を、プレイヤーの吹き飛ばしと同じ強さ・同じ関数
+//    (gameStore.counterMasterBlowVector)で弾く。予告は出さない(成立の瞬間の効果=幻影の近接と同じ「予告なし」)。同じフレームで2回出さない。
+//    格闘の幻影(拳鬼)の自動の反撃(相手のプレイヤー=ボス級とみなして気功の二連発)は utils/phantomBrawlerTick 側。
 import type { Player } from '../types/game';
 import {
-  useGameStore, combatActorPlayer, skillLevel, isBrawlerMode, counterMasterAwakenBuffPatch, counterMasterBlowAround,
+  useGameStore, combatActorPlayer, skillLevel, isBrawlerMode, counterMasterAwakenBuffPatch, counterMasterBlowAround, counterMasterBlowOpponents,
 } from '../store/gameStore';
 import { counterMasterRefund, counterMasterRefundFrac, shortenRemaining, type CounterMasterRefundResult } from './counterMaster';
 import { counterMasterSkipsRefundAndBlow } from './brawlerCounterMaster';
@@ -101,12 +102,14 @@ export interface PhantomCounterMasterClocks {
   /** リロードの終わり(Date.now)。 */
   reloadEndsAt: number;
   reloadingWeaponId: string;
+  /** 吹き飛ばしを最後に出した gameTime(同じフレームで2回出さない)。ここで書く。 */
+  counterMasterBlowAt?: number;
 }
 
 /**
  * 幻影のカウンター成立の瞬間(成立1回につき1回・phantomTick が打刻の新しさで拾う)。clocks は書き換える。
  * 幻影の Enemy の欄(サブの帳簿・援護射撃・覚醒の締め切り)はここで store へ書く(同じ tick の後の書き込みを古い値で潰さないよう、パッチにしない)。
- * 格闘の幻影(拳鬼)は前倒しを付けない(プレイヤーの格闘と同じ=自動の反撃側は未決)。覚醒の+30%はプレイヤーと同じく付く。
+ * 格闘の幻影(拳鬼)は前倒し・吹き飛ばしを付けない(プレイヤーの格闘と同じ=代わりに自動の反撃・utils/phantomBrawlerTick)。覚醒の+30%はプレイヤーと同じく付く。
  */
 export const applyPhantomCounterMaster = (
   phantomId: string, clocks: PhantomCounterMasterClocks, gameTime: number, nowMs: number, brawler: boolean,
@@ -135,6 +138,11 @@ export const applyPhantomCounterMaster = (
     if (r.player.reloadEndsAt !== undefined) clocks.reloadEndsAt = r.player.reloadEndsAt;
   }
   const rp = r.player;
+  // 吹き飛ばし(格闘の幻影は付けない=lv 0・プレイヤーの格闘と同じ関所)。中心=幻影の体。
+  if (lv > 0 && clocks.counterMasterBlowAt !== gameTime) {
+    clocks.counterMasterBlowAt = gameTime;
+    counterMasterBlowOpponents(e.x + e.width / 2, e.y + e.height / 2, actor, phantomId);
+  }
   if (buff === undefined && !rp.subWeaponCooldowns && r.supportSniperCdMs === undefined) return;
   useGameStore.setState(s => ({
     enemies: s.enemies.map(x => x.id !== phantomId ? x : {

@@ -317,7 +317,7 @@ import {
 import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
 import { planHomingVolley, splitDueHomingShots, homingLiftAllowed, type HomingPendingShot } from '../utils/homingVolley';
 import { isFlickFollowupOpen } from '../utils/flickFollowup';
-import { huntingSequenceAlive } from '../utils/huntingSequence';
+import { huntingSequenceAlive, huntingChargeStep } from '../utils/huntingSequence';
 import { whipRopeTotalMs } from '../utils/whipSwingMotion';
 import {
   tsubameAccepts, tsubamePath, isTsubameCrouching, katanaStrikeTravel, nextKatanaCuts, triggersSatsujin, satsujinAngles, type TsubameWindow,
@@ -2511,6 +2511,12 @@ export const whipReach = (player: Player): number => WHIP_LENGTH_BY_LEVEL[whipLe
  */
 export const whipSwingReach = (player: Player): number =>
   player.huntingSequence === 'whip' ? WHIP_LENGTH_BY_LEVEL[whipLevel(player)] : whipReach(player);
+/**
+ * 近接の届く距離(持っている近接の手段の長さ・ハンティングの伸びを含む)。刀=katanaReach / 鞭=whipReach / それ以外(ナイフ・格闘)=huntingMeleeRadius。
+ * 幻影がプレイヤーの届く距離を読む式(utils/phantomTick の詰め)もこの1本(社長裁定2026-11-22)。
+ */
+export const meleeReachOf = (player: Player): number =>
+  isKatanaMode(player) ? katanaReach(player) : isWhipMode(player) ? whipReach(player) : huntingMeleeRadius(player);
 /** ハンティングの溜まりを使い切る(一連の動きの記録も消す)。 */
 export const HUNTING_CONSUME_PATCH = {
   huntingCharged: false, huntingChargeStartedAt: 0,
@@ -3015,8 +3021,58 @@ const knifeHoldLiftPatch = (enemy: Enemy, now: number, gameTime: number, dmg: nu
   Object.assign(out, BRC.brawlerLockOnHit(enemy, KNIFE_HOLD_MOVE, gameTime, now, { stopMs, enemyStopMs: stopMs, canHold, airborneAfter }).patch);
   return out;
 };
+// ---- 鞭の1撃目の共通部品(プレイヤーの振り triggerCounter と守護霊の振り swingGhostWhip が同じ1本を通る・社長裁定2026-11-22) ----
+/** 鞭の線(根元 pcx,pcy・向き ux,uy・長さ reach)に掛かる敵(刀ダッシュと同じ幾何・箱の縁でも測る)。 */
+const whipSweepTargets = (enemies: readonly Enemy[], pcx: number, pcy: number, ux: number, uy: number, reach: number): string[] => {
+  const targetIds: string[] = [];
+  for (const e of enemies) {
+    if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue; // 深奥チェイサーは近接対象(ボス級)
+    if (isCorpse(e) || isUntouchable(e)) continue; // KILL吹き飛び(死体・§26-2): 鞭の標的選定から除外 / 英雄の昇天中・亡霊のワープ中
+    const ex = e.x + e.width / 2 - pcx;
+    const ey = e.y + e.height / 2 - pcy;
+    const along = ex * ux + ey * uy;
+    // ★箱の縁でも測る(§9-75・OR=今当たっている敵は外れない): 大きな箱(研究所の塊)は中心が遠くて外れていた。
+    if (bandBoxOverlap(pcx, pcy, ux, uy, reach, WHIP_HIT_HALF_WIDTH, e)) { targetIds.push(e.id); continue; }
+    if (along < -e.width / 2 || along > reach + e.width / 2) continue;
+    const perp = Math.abs(ex * uy - ey * ux);
+    if (perp <= WHIP_HIT_HALF_WIDTH + e.width / 2) targetIds.push(e.id);
+  }
+  return targetIds;
+};
+/** 鞭の軌跡・当たり範囲の可視化と先端のパチン(派手さの絵=判定なし)。shake=本人の振りだけ揺らす(揺れの整理の境界)。 */
+const spawnWhipSwingFx = (
+  get: () => GameState, pcx: number, pcy: number, tipX: number, tipY: number, ux: number, uy: number, now: number, shake: boolean, idTag = '',
+): void => {
+  // 鞭の軌跡 + 当たり範囲の可視化(全長を即表示→フェード。太い帯=当たり範囲)。
+  get().spawnEffect({
+    kind: 'whip',
+    id: `fx-whip-${idTag}${now}`,
+    fromX: pcx, fromY: pcy, toX: tipX, toY: tipY,
+    halfWidth: WHIP_HIT_HALF_WIDTH,
+    color: 'rgba(186,230,253,0.95)', createdAt: now, duration: WHIP_DRAW_MS,
+  });
+  // 視認性アップ(軽量): 鞭の軌道に沿って明るい加算ストリークを重ねる(発光=bloomで暗い画面でも映える)。
+  get().spawnEffect({
+    kind: 'trail',
+    id: `fx-whip-glow-${idTag}${now}`,
+    fromX: pcx, fromY: pcy, toX: tipX, toY: tipY,
+    color: 'rgba(125,211,252,1)', createdAt: now, duration: WHIP_DRAW_MS,
+  });
+  // ★パチン(社長「先端がパチンと鳴る」): 判定の瞬間に先端で短い閃光・小さな弾け・細い輪・わずかな揺れ(派手さの絵=判定なし)。音は既存の振る音(whipSwingFxAt)。
+  get().spawnGlow(tipX, tipY, GLOW_R_XS, 'rgba(255,255,255,', 120, true);
+  get().spawnBurst(tipX, tipY, '#f8fafc', 7, ux, uy);
+  get().spawnRing(tipX, tipY, 3, 26, 'rgba(255,255,255,0.95)', 2, 160, true);
+  if (shake) get().triggerShake(70, 2.5, ux, uy);
+};
+
 // ---- ★鞭の追加攻撃(research/WHIP_FOLLOWUP.md)。受付・向きの判定は utils/whipFollowup の純関数。ここは敵への書き込みと演出だけ。 ----
+// 主語(ownerId)=守護霊の鞭(社長裁定2026-11-22「守護霊にも鞭」)。未指定=プレイヤー本人。受付・止め(lockUntil)は主語ごとの欄(GameState.whipFollowup / Summon.ghostWhipFollowup)。
 type WhipFollowupSet = (fn: (s: GameState) => Partial<GameState>) => void;
+const actorWhipFollowup = (st: GameState, ownerId: string | undefined): WhipFollowupWindow | null =>
+  ownerId === undefined ? st.whipFollowup : (st.summons.find(x => x.id === ownerId)?.ghostWhipFollowup ?? null);
+/** 受付の書き込み(set の中で返す差分)。 */
+const whipFollowupStatePatch = (st: GameState, ownerId: string | undefined, w: WhipFollowupWindow | null): Partial<GameState> =>
+  ownerId === undefined ? { whipFollowup: w } : { summons: st.summons.map(x => (x.id === ownerId ? { ...x, ghostWhipFollowup: w } : x)) };
 /** 引き寄せの絵(鞭の巻き取り)を引き寄せより少し長く残す(ms)。 */
 const WHIP_PULL_FX_TAIL_MS = 160;
 /**
@@ -3035,7 +3091,9 @@ const whipPullable = (e: Enemy): boolean =>
  * 落ち始めてしばらくで閉じる(社長「鞭の叩きつけ、敵が頂点に浮いてるくらいのタイミングの入力受けにしたい。まだ今だと早い。」・長さは300msのまま)。ボス級だけなら雑魚と同じ間合いで開く。
  * 引き寄せた瞬間から受付の終わりまで、プレイヤーの位置と向きを止める。
  */
-const whipFollowupPull = (get: () => GameState, set: WhipFollowupSet, w: WhipFollowupWindow, now: number): void => {
+const whipFollowupPull = (get: () => GameState, set: WhipFollowupSet, w: WhipFollowupWindow, now: number, ownerId?: string): void => {
+  const owner = combatActorPlayer(ownerId); // 引き寄せる先=鞭を持つ本人の体(守護霊=守護霊の体)
+  if (!owner) return;
   const ids = new Set(w.hitIds);
   const pulledIds: string[] = [];
   const slamIds: string[] = []; // 2段目の対象=浮かせた敵+当たっていたボス級(浮かないが叩き落としの2倍は当たる)
@@ -3048,7 +3106,7 @@ const whipFollowupPull = (get: () => GameState, set: WhipFollowupSet, w: WhipFol
       if (!whipPullable(e)) return e;
       const lp = issenLiftPatch(e, e, now, gt);
       const lifted = !!lp && (lp.brLiftUntil ?? 0) > now;
-      const to = whipPullTarget(state.player, e);
+      const to = whipPullTarget(ownerId === undefined ? state.player : owner, e);
       if (lifted) { slamIds.push(e.id); topAts.push(whipLiftTopAt({ ...e, ...lp })); }
       if (to) pulledIds.push(e.id);
       if (!to && !lp) return e;
@@ -3067,10 +3125,10 @@ const whipFollowupPull = (get: () => GameState, set: WhipFollowupSet, w: WhipFol
     const whipFollowup: WhipFollowupWindow = slamIds.length > 0
       ? { hitAt: openAt, armAt: now, dirX: w.dirX, dirY: w.dirY, hitIds: slamIds, used: false, stage: 'pulled', lockUntil: openAt + WHIP_FOLLOWUP_WINDOW_MS }
       : { ...w, used: true, lockUntil: now + WHIP_PULL_MS };
-    return { enemies, whipFollowup };
+    return { enemies, ...whipFollowupStatePatch(state, ownerId, whipFollowup) };
   });
   const g = get();
-  const p = g.player;
+  const p = ownerId === undefined ? g.player : owner;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
   // 絵: 当たった敵ぜんぶへ鞭を伸ばして絡め、寄るほど縮む(先端が敵を、柄がプレイヤーを追う=描画の followEnemyId)。ボス級にも絡む(動かないだけ)。
   for (const id of w.hitIds) {
@@ -3080,7 +3138,7 @@ const whipFollowupPull = (get: () => GameState, set: WhipFollowupSet, w: WhipFol
     g.spawnEffect({
       kind: 'whip', id: `fx-whippull-${id}-${now}`, fromX: pcx, fromY: pcy, toX: ecx, toY: ecy,
       halfWidth: WHIP_HIT_HALF_WIDTH, color: 'rgba(186,230,253,0.95)', createdAt: now, duration: WHIP_PULL_MS + WHIP_PULL_FX_TAIL_MS,
-      followEnemyId: id,
+      followEnemyId: id, ...(ownerId !== undefined ? { holdFrom: true } : {}), // 守護霊は引き寄せの間止まっている=柄は守護霊の体のまま
     });
     g.spawnBurst(ecx, ecy, '#bae6fd', 8, pcx - ecx, pcy - ecy); // 絡んだ瞬間の弾ける光(手前へ向けて)
     if (pulledIds.includes(id)) {
@@ -3093,8 +3151,8 @@ const whipFollowupPull = (get: () => GameState, set: WhipFollowupSet, w: WhipFol
       g.spawnImageMark(ecx, e.y + e.height - 2, 'fx/dust-puff', { scale: 0.32, scaleY: 0.9, duration: 640, tint: 0x9a8b7a, alpha: 0.65, moveY: -30, fadeFrom: 0.3 });
     }
   }
-  // 音: 鞭の「パシッ」を高く・巻き取りの振り音を速く。
-  void import('../audio/audioManager').then(m => { m.playSfx('whip-hit', 0.85, undefined, 1.3); m.playSfx('whip-swing', 0.6, 160, 1.55); });
+  // 音: 鞭の「パシッ」を高く・巻き取りの振り音を速く(守護霊の鞭は鳴らし手=useGameLoop が距離減衰つきで鳴らす)。
+  if (ownerId === undefined) void import('../audio/audioManager').then(m => { m.playSfx('whip-hit', 0.85, undefined, 1.3); m.playSfx('whip-swing', 0.6, 160, 1.55); });
 };
 /** 2段目の対象(まだ浮いている引き寄せた敵・ボス級)。居なければ空=叩き落としは出ない。 */
 const whipSlamTargetIds = (st: GameState, w: WhipFollowupWindow, now: number): string[] =>
@@ -3110,16 +3168,16 @@ const WHIP_SLAM_BLAST_KB_MULT = 3.6;
  * 爆発は周りの敵にだけ当たるので、爆発の規約でクリ・処刑(気絶中の即死/ボス5倍)・スキャンの印は掛けない。エクスプローダー等(skillExplosionMult)は爆発として掛ける。
  * 叩きつけた本体へは鞭の打撃(performWhipStrike)で今までどおり当てる(爆発は入れない)。
  */
-const whipSlamBlastBase = (st: GameState, slammed: Enemy, now: number): number => {
-  const p = st.player;
+const whipSlamBlastBase = (st: GameState, slammed: Enemy, now: number, p: Player, isGhost: boolean): number => {
   const melee = p.weapons.find(w => w.isMelee);
   const h = st.hurricane;
   const ecx = slammed.x + slammed.width / 2, ecy = slammed.y + slammed.height / 2;
   const inHurricane = !!h && now < h.endsAt && (ecx - h.rootX) ** 2 + (ecy - h.rootY) ** 2 <= h.radius * h.radius;
-  return (melee?.damage ?? 6) * (p.shukuchiStrikeMult ?? 1) * WHIP_SLAM_DAMAGE_MULT * (inHurricane ? 1 : WHIP_DAMAGE_MULT)
+  // 守護霊=縮地の上乗せ・コンボ計数・空中の倍率を持たない(鞭の1撃目 performWhipStrike の守護霊と同じ)。熟練度=守護霊の記録の鞭。
+  return (melee?.damage ?? 6) * (isGhost ? 1 : (p.shukuchiStrikeMult ?? 1)) * WHIP_SLAM_DAMAGE_MULT * (inHurricane ? 1 : WHIP_DAMAGE_MULT)
     * skillOutgoingDamageMult(p) * skillBloodAwakenDamageMult(p)
-    * skillMeleeComboMult(p, st.gameTime, st.meleeFinishComboCount, st.meleeFinishComboUntil)
-    * meleeAirMult(slammed, now) * masteryMultOf(p, 'whip');
+    * skillMeleeComboMult(p, st.gameTime, isGhost ? 0 : st.meleeFinishComboCount, isGhost ? 0 : st.meleeFinishComboUntil)
+    * (isGhost ? 1 : meleeAirMult(slammed, now)) * masteryMultOf(p, 'whip');
 };
 /** 叩きつけの爆発の爆心(叩きつけた敵の体の中心)と威力の満額。叩きつけの打撃の前の敵から取る(空中の倍率は浮いている間の値)。 */
 type WhipSlamCenter = { id: string; x: number; y: number; base: number };
@@ -3130,9 +3188,8 @@ type WhipSlamCenter = { id: string; x: number; y: number; base: number };
  * 爆発はプレイヤーの手榴弾と同じ扱い: 半径=手榴弾(HEAVY_GRENADE_RADIUS)×エクスプローダー×ヘビーガンナー・威力×エクスプローダー・距離の減り・壁越し不可・
  * 敵だけに当たる(プレイヤー・仲間には当たらない)・ボス系には非致死(damageEnemy の blast)・卵も割る・爆発の浮き。熟練度は鞭に貯まる。
  */
-const whipSlamExplode = (get: () => GameState, centers: readonly WhipSlamCenter[], now: number): void => {
+const whipSlamExplode = (get: () => GameState, centers: readonly WhipSlamCenter[], now: number, p: Player, isGhost: boolean): void => {
   const st = get();
-  const p = st.player;
   const exMult = skillExplosionMult(p);
   const radius = HEAVY_GRENADE_RADIUS * exMult * heavyGunnerExplosionMult(p, st.gameTime);
   const slammedIds = new Set(centers.map(c => c.id));
@@ -3162,7 +3219,10 @@ const whipSlamExplode = (get: () => GameState, centers: readonly WhipSlamCenter[
     if (!e || !(e.health > 0) || isCorpse(e)) continue;
     const c = centers.find(cc => cc.id === h.centerId)!;
     const dmg = Math.max(1, Math.round((baseOf.get(h.centerId) ?? 0) * exMult * h.scale));
-    const killed = withMastery('whip', () => get().damageEnemy(e.id, dmg, true, false, false, 'other'));
+    // 熟練度: 本人=鞭に貯まる / 守護霊=貯めない(倍率は素ダメに掛け済み)・ヘイトは守護霊(守護霊の近接と同じ)。
+    const killed = isGhost
+      ? withMastery('none', () => get().damageEnemy(e.id, dmg, true, false, false, null, 'ghost'))
+      : withMastery('whip', () => get().damageEnemy(e.id, dmg, true, false, false, 'other'));
     hitCount++;
     const a = blastAnchorOf(e, c.x, c.y);
     get().spawnDamageNumber(a.x, e.y, dmg, false, { enemyId: e.id });
@@ -3186,7 +3246,8 @@ const whipSlamExplode = (get: () => GameState, centers: readonly WhipSlamCenter[
     g.spawnExplosionFx(c.x, c.y, radius);
     g.playerBlast(c.x, c.y, radius, plan.filter(h => h.centerId === c.id && !slammedIds.has(h.targetId)).map(h => h.targetId)); // 卵も割る・ほかの敵を爆発の浮きで浮かせる
   }
-  if (hitCount > 0) g.registerMultiHit(hitCount);
+  if (hitCount > 0 && !isGhost) g.registerMultiHit(hitCount);
+  if (isGhost) return; // 守護霊の爆発の音は鳴らし手=useGameLoop(距離減衰つき)
   if (killedAny) brawlerSfx(BRAWLER_SFX_DEATH);
   if (centers.length > 0) brawlerSfx('bomb');
 };
@@ -3195,22 +3256,24 @@ const whipSlamExplode = (get: () => GameState, centers: readonly WhipSlamCenter[
  * さらに叩きつけた敵1体ごとにその敵を中心に爆発し、周りの敵にだけ爆発のダメージ(社長「鞭の叩きつけは爆発ダメージにして」「爆発は叩きつけられた敵を中心にです」・whipSlamExplode)。
  * 叩き落としは格闘の5段目(空中から叩き落とす)の浮き。重い衝撃(ヒットストップ・揺れ・地割れ・砂埃)。ボス級は浮かないので、当たりの2倍だけ。
  */
-const whipFollowupSlam = (get: () => GameState, set: WhipFollowupSet, w: WhipFollowupWindow, ids: string[], now: number): void => {
+const whipFollowupSlam = (get: () => GameState, set: WhipFollowupSet, w: WhipFollowupWindow, ids: string[], now: number, ownerId?: string): void => {
   const st = get();
-  const p = st.player;
+  const isGhost = ownerId !== undefined;
+  const p = combatActorPlayer(ownerId);
+  if (!p) return;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
   const before = new Map(st.enemies.filter(e => ids.includes(e.id)).map(e => [e.id, e] as const));
   // 爆発の爆心と威力は、打撃の前(浮いている間)の敵から取る。
-  const centers: WhipSlamCenter[] = [...before.values()].map(e => ({ id: e.id, x: e.x + e.width / 2, y: e.y + e.height / 2, base: whipSlamBlastBase(st, e, now) }));
-  // 本体への威力=鞭の1撃目の2倍(クリ・処刑・コンボ・報酬・数字も同じ経路)。敵への打撃だけに掛かる上乗せ欄へ一時的に2倍を載せる(被弾反撃と同じ作法)。
-  const prevMult = p.shukuchiStrikeMult;
-  set(state => ({ player: { ...state.player, shukuchiStrikeMult: (prevMult ?? 1) * WHIP_SLAM_DAMAGE_MULT } }));
-  const res = get().performWhipStrike(ids);
-  set(state => ({ player: { ...state.player, shukuchiStrikeMult: prevMult } }));
-  if (res.hits > 0) set(() => ({ whipHitFxAt: Date.now() }));
+  const centers: WhipSlamCenter[] = [...before.values()].map(e => ({ id: e.id, x: e.x + e.width / 2, y: e.y + e.height / 2, base: whipSlamBlastBase(st, e, now, p, isGhost) }));
+  // 本体への威力=鞭の1撃目の2倍(クリ・処刑・コンボ・報酬・数字も同じ経路)。敵への打撃だけに掛かる上乗せ(本人=縮地の上乗せ×2・守護霊=×2)。
+  const res = get().performWhipStrike(ids, {
+    ...(isGhost ? { ghostId: ownerId } : {}), dir: { x: w.dirX, y: w.dirY },
+    strikeMult: (isGhost ? 1 : (p.shukuchiStrikeMult ?? 1)) * WHIP_SLAM_DAMAGE_MULT,
+  });
+  if (res.hits > 0 && !isGhost) set(() => ({ whipHitFxAt: Date.now() }));
   const hit = new Set(res.hitIds ?? []);
   // 爆発は打撃が通った敵(幻影に弾かれた等は除く)を中心に。
-  whipSlamExplode(get, centers.filter(c => hit.has(c.id)), now);
+  whipSlamExplode(get, centers.filter(c => hit.has(c.id)), now, p, isGhost);
   set(state => ({
     enemies: state.enemies.map(e => {
       if (!hit.has(e.id) || isCorpse(e)) return e;
@@ -3221,7 +3284,7 @@ const whipFollowupSlam = (get: () => GameState, set: WhipFollowupSet, w: WhipFol
       const jp = brawlerJugglePatch(base, BRC.brawlerLiftWeightClass(base, BRC.brawlerEnemyClass(base)), 's5', now, false, true);
       return jp ? { ...base, ...jp } : base;
     }),
-    whipFollowup: { ...w, used: true, lockUntil: now + WHIP_SLAM_HITSTOP_MS },
+    ...whipFollowupStatePatch(state, ownerId, { ...w, used: true, lockUntil: now + WHIP_SLAM_HITSTOP_MS }),
   }));
   // 重い衝撃: 止め+揺れ(ヒットストップ=時間を止めるだけ・スローではない)。
   const g = get();
@@ -3244,6 +3307,8 @@ const whipFollowupSlam = (get: () => GameState, set: WhipFollowupSet, w: WhipFol
     g.spawnImageMark(fx, fy - 6, 'fx/dust-puff', { scale: 0.42, scaleY: 0.95, duration: 760, tint: 0x9a8b7a, alpha: 0.6, moveY: -40, fadeFrom: 0.3 });
     g.spawnRing(fx, fy, 10, 110, 'rgba(214,196,160,0.85)', 5, 460, true);
   }
+  // 止め・揺れは本人の叩きつけだけ(守護霊の攻撃で全体を止めない=揺れの整理の境界・守護霊の刀と同じ)。音も守護霊は鳴らし手=useGameLoop。
+  if (isGhost) return;
   if (n > 0) g.triggerHitImpact(WHIP_SLAM_HITSTOP_MS, 320, 11, 0, cx / n, cy / n);
   // 音: 鞭を重く(低く)+地面の音。
   void import('../audio/audioManager').then(m => {
@@ -3300,13 +3365,29 @@ const applyIssenHitPatch = (
     }),
   }));
 };
-/** 殺陣を始める(§4): 傷を0へ・相手を止める・プレイヤーを無敵に・5発を90msおきに。燕返しの受付は閉じる。スローは使わない。 */
-const startSatsujin = (get: () => GameState, set: WhipFollowupSet, targetId: string, ux: number, uy: number): void => {
+/**
+ * 殺陣を始める(§4): 傷を0へ・相手を止める・出した本人を無敵に・5発を90msおきに。燕返しの受付は閉じる。スローは使わない。
+ * ownerId=守護霊が出した殺陣(社長裁定2026-11-22「殺陣の発動も同じ」)。体が飛ぶ・無敵・斬る主語がその守護霊になる(赤い画面は同じ)。
+ */
+const startSatsujin = (get: () => GameState, set: WhipFollowupSet, targetId: string, ux: number, uy: number, ownerId?: string): void => {
   const now = Date.now();
   const lastStrikeEndAt = now + (SATSUJIN_HITS - 1) * SATSUJIN_STRIKE_MS + SATSUJIN_FINAL_HITSTOP_MS;
   const span = lastStrikeEndAt - now;
-  set(state => ({
-    satsujin: { targetId, startAt: now, lastStrikeEndAt, endAt: lastStrikeEndAt + SATSUJIN_FADE_OUT_MS, strikes: [] },
+  const satsujin: SatsujinState = { targetId, startAt: now, lastStrikeEndAt, endAt: lastStrikeEndAt + SATSUJIN_FADE_OUT_MS, strikes: [], ...(ownerId !== undefined ? { ownerId } : {}) };
+  const holdTarget = (state: GameState) => state.enemies.map(e => (e.id === targetId
+    ? { ...e, katanaCuts: 0, brHoldUntil: Math.max(e.brHoldUntil ?? 0, lastStrikeEndAt), knockbackVx: 0, knockbackVy: 0 } : e));
+  if (ownerId !== undefined) {
+    // 守護霊: 無敵=守護霊の無敵窓(一閃と同じ欄)・殺陣の間は動かない=一閃の硬直(ghostDash)。受付は守護霊の欄を閉じる。
+    set(state => ({
+      satsujin,
+      summons: state.summons.map(x => (x.id !== ownerId ? x : {
+        ...x, ghostInvulnUntil: Math.max(x.ghostInvulnUntil ?? 0, lastStrikeEndAt), ghostTsubameWindow: null,
+        ghostDash: { ...dashStateOf(x.ghostDash), katanaRecoveryUntil: Math.max(dashStateOf(x.ghostDash).katanaRecoveryUntil, lastStrikeEndAt) },
+      })),
+      enemies: holdTarget(state),
+    }));
+  } else set(state => ({
+    satsujin,
     tsubameWindow: null,
     player: {
       ...state.player,
@@ -3318,13 +3399,12 @@ const startSatsujin = (get: () => GameState, set: WhipFollowupSet, targetId: str
       katanaRecoveryUntil: Math.max(state.player.katanaRecoveryUntil, lastStrikeEndAt), // 殺陣の間は動かない(体は各方向へ瞬間移動する)
     },
     // 相手は殺陣の間ずっと止める(格闘の固まりと同じ欄=行動の時計も止まる)。押しは打ち消す。
-    enemies: state.enemies.map(e => (e.id === targetId
-      ? { ...e, katanaCuts: 0, brHoldUntil: Math.max(e.brHoldUntil ?? 0, lastStrikeEndAt), knockbackVx: 0, knockbackVy: 0 } : e)),
+    enemies: holdTarget(state),
   }));
-  notifyTechProc('satsujin');
+  if (ownerId === undefined) notifyTechProc('satsujin'); // 技の行は本人の技だけ(一閃・燕返しの行と同じ)
   const angles = satsujinAngles(Math.atan2(uy, ux), Math.random);
   angles.forEach((a, k) => {
-    const strike = () => satsujinStrike(get, set, now, targetId, a, k === SATSUJIN_HITS - 1);
+    const strike = () => satsujinStrike(get, set, now, targetId, a, k === SATSUJIN_HITS - 1, ownerId);
     if (k === 0) strike(); else setTimeout(strike, k * SATSUJIN_STRIKE_MS);
   });
   // 戻り切ったら消す(同じ殺陣の時だけ)。
@@ -3334,18 +3414,18 @@ const startSatsujin = (get: () => GameState, set: WhipFollowupSet, targetId: str
   }, lastStrikeEndAt + SATSUJIN_FADE_OUT_MS - now + 20);
 };
 /** 殺陣の1発: 相手の周りの一方向から中心を通り抜けて斬る(プレイヤーの体は抜けた先へ瞬間移動=格闘の秘奥義のワープ先の探し方 brawlerSecretSpot を使う)。 */
-const satsujinStrike = (get: () => GameState, set: WhipFollowupSet, startAt: number, targetId: string, ang: number, last: boolean): void => {
+const satsujinStrike = (get: () => GameState, set: WhipFollowupSet, startAt: number, targetId: string, ang: number, last: boolean, ownerId?: string): void => {
   const st = get();
   const sat = st.satsujin;
   if (!sat || sat.startAt !== startAt) return; // 終わった・作り直された
   const now = Date.now();
   const tgt = st.enemies.find(e => e.id === targetId);
-  if (!tgt || isCorpse(tgt) || tgt.health <= 0 || !isKatanaMode(st.player)) {
+  const p = combatActorPlayer(ownerId); // 斬る主語(プレイヤー本人 or 守護霊の疑似プレイヤー=位置・大きさは守護霊の体)
+  if (!tgt || isCorpse(tgt) || tgt.health <= 0 || !p || !isKatanaMode(p)) {
     // 相手が倒れた=残りは打たず、今から戻る(止めの後と同じ戻り)。
     if (now < sat.lastStrikeEndAt) set(s => (s.satsujin ? { satsujin: { ...s.satsujin, lastStrikeEndAt: now, endAt: now + SATSUJIN_FADE_OUT_MS } } : {}));
     return;
   }
-  const p = st.player;
   const ecx = tgt.x + tgt.width / 2, ecy = tgt.y + tgt.height / 2;
   const cx = Math.cos(ang), cy = Math.sin(ang);
   const fromX = ecx - cx * SATSUJIN_HALF_LEN_PX, fromY = ecy - cy * SATSUJIN_HALF_LEN_PX;
@@ -3353,7 +3433,9 @@ const satsujinStrike = (get: () => GameState, set: WhipFollowupSet, startAt: num
     ?? brawlerSecretSpot(get, ecx, ecy) ?? { x: p.x, y: p.y };
   const toX = spot.x + p.width / 2, toY = spot.y + p.height / 2;
   set(s => ({
-    player: { ...s.player, x: spot.x, y: spot.y, vx: 0, vy: 0, lastDirection: { x: cx, y: cy } },
+    ...(ownerId === undefined
+      ? { player: { ...s.player, x: spot.x, y: spot.y, vx: 0, vy: 0, lastDirection: { x: cx, y: cy } } }
+      : { summons: s.summons.map(x => (x.id === ownerId ? { ...x, x: spot.x, y: spot.y, vx: 0, vy: 0, ghostFacing: cx >= 0 ? 1 : -1 } : x)) }),
     satsujin: s.satsujin ? { ...s.satsujin, strikes: [...s.satsujin.strikes, { fromX, fromY, toX, toY, at: now }] } : s.satsujin,
   }));
   // 通り道の敵にも一閃と同じ当たり(相手は必ず)。殺陣の各発は切り傷を数えない。
@@ -3362,7 +3444,7 @@ const satsujinStrike = (get: () => GameState, set: WhipFollowupSet, startAt: num
   const ids = [targetId, ...get().enemies.filter(e => e.id !== targetId && !isCorpse(e) && !isUntouchable(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e))
     && bandBoxOverlap(fromX, fromY, ux, uy, len, KATANA_DASH_HIT_HALF_WIDTH, e)).map(e => e.id)];
   const pre = get().enemies.find(e => e.id === targetId);
-  get().performKatanaStrike(ids, KATANA_DASH_DAMAGE_MULT, true, undefined, warlordIssenMult(get().player), 'satsujin');
+  get().performKatanaStrike(ids, KATANA_DASH_DAMAGE_MULT, true, ownerId, ownerId ? 1 : warlordIssenMult(get().player), 'satsujin');
   // 相手は動かさない(止めたまま・押しを打ち消す)。最後の1発だけ一閃の浮きで打ち上げる(止めを解いてから)。
   const gt = get().gameTime;
   set(s => ({
@@ -7935,6 +8017,34 @@ const setActorDashState = (
   }));
 };
 
+/** ハンティングの帳簿(プレイヤーの欄の名前)。守護霊は Summon.actorHunting* に同じ意味で持つ。 */
+type HuntingFields = Pick<Player, 'huntingChargeStartedAt' | 'huntingCharged' | 'huntingSequence' | 'huntingSeqUntil' | 'huntingSeqIssen'>;
+/** 守護霊の欄へ写す(未指定の欄は書かない・undefined は undefined として書く)。 */
+export const ghostHuntingPatch = (patch: Partial<HuntingFields>): Partial<Summon> => {
+  const out: Partial<Summon> = {};
+  if ('huntingChargeStartedAt' in patch) out.actorHuntingChargeStartedAt = patch.huntingChargeStartedAt;
+  if ('huntingCharged' in patch) out.actorHuntingCharged = patch.huntingCharged;
+  if ('huntingSequence' in patch) out.actorHuntingSequence = patch.huntingSequence;
+  if ('huntingSeqUntil' in patch) out.actorHuntingSeqUntil = patch.huntingSeqUntil;
+  if ('huntingSeqIssen' in patch) out.actorHuntingSeqIssen = patch.huntingSeqIssen;
+  return out;
+};
+/** ハンティングの帳簿の書き込み(主語で宛先を振り分ける・setActorDashState と同型)。 */
+const setActorHunting = (ghostId: string | undefined, patch: Partial<HuntingFields>): void => {
+  if (ghostId === undefined) { useGameStore.setState(s => ({ player: { ...s.player, ...patch } })); return; }
+  const gp = ghostHuntingPatch(patch);
+  useGameStore.setState(s => ({ summons: s.summons.map(x => (x.id === ghostId ? { ...x, ...gp } : x)) }));
+};
+/** 守護霊の燕返しの受付・鞭の追加攻撃の受付の書き込み(プレイヤー=GameState の欄・守護霊=Summon の欄)。 */
+const setActorTsubameWindow = (ghostId: string | undefined, w: TsubameWindow | null): void => {
+  if (ghostId === undefined) { useGameStore.setState({ tsubameWindow: w }); return; }
+  useGameStore.setState(s => ({ summons: s.summons.map(x => (x.id === ghostId ? { ...x, ghostTsubameWindow: w } : x)) }));
+};
+const actorTsubameWindow = (ghostId: string | undefined): TsubameWindow | null => {
+  const st = useGameStore.getState();
+  return ghostId === undefined ? st.tsubameWindow : (st.summons.find(x => x.id === ghostId)?.ghostTsubameWindow ?? null);
+};
+
 // Shared per-kill rewards for melee-grade kills (the release counter swing and
 // the katana strikes). Mirrors what the counter has always granted: XP pickup,
 // enemy currency, ammo scavenge for the active gun family, boss weapon crates,
@@ -8795,22 +8905,28 @@ const startKillFxCinematic = (
 // スキル: カウンターマスター = **カウンター成立の瞬間**に、プレイヤー近傍(~MELEE_RADIUS*1.5)の敵を
 // KNOCKBACK_SPEED×Lv倍で弾く。近傍だけ走査(有界)。呼ぶのは counterMasterOnCounterSuccess だけ
 // (社長指示2026-11-22「カウンター成立時に周りの敵を吹き飛ばし」。旧: 近接が当たる度)。
-const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number, kbScale = 2) => {
+/**
+ * カウンターマスターの吹き飛ばし1件(中心 cx,cy → 相手の体の中心 tx,ty)。届く距離(MELEE_RADIUS×1.5)の外=null。
+ * 向き(単位)と速さ(KNOCKBACK_SPEED の kbScale 倍)。敵へも、幻影が弾くプレイヤー・守護霊・英雄へも同じ1本(社長裁定2026-11-22)。
+ */
+export const counterMasterBlowVector = (cx: number, cy: number, tx: number, ty: number, kbScale: number): { dirX: number; dirY: number; speed: number } | null => {
   const reach = MELEE_RADIUS * 1.5;
-  const reach2 = reach * reach;
+  const dx = tx - cx;
+  const dy = ty - cy;
+  const d2 = dx * dx + dy * dy;
+  if (d2 > reach * reach) return null;
+  const dist = Math.max(0.001, Math.sqrt(d2));
+  // KNOCKBACK_SPEED の kbScale 倍相当(v0.25.3260: 底上げ(3259)も含めて社長指示で従来値へ戻し)。
+  return { dirX: dx / dist, dirY: dy / dist, speed: KNOCKBACK_SPEED * kbScale };
+};
+const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number, kbScale = 2) => {
   for (const e of get().enemies) {
     if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue; // 不倒の通常リーパーは対象外。深奥チェイサーはノックバック対象(ボス級・他の近接系と統一)
     if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体の飛びを上書きしない
-    const ecx = e.x + e.width / 2;
-    const ecy = e.y + e.height / 2;
-    const dx = ecx - pcx;
-    const dy = ecy - pcy;
-    const d2 = dx * dx + dy * dy;
-    if (d2 > reach2) continue;
-    const dist = Math.max(0.001, Math.sqrt(d2));
-    // KNOCKBACK_SPEED の kbScale 倍相当(v0.25.3260: 底上げ(3259)も含めて社長指示で従来値へ戻し)。
-    const mult = (KNOCKBACK_SPEED * kbScale) / BULLET_KNOCKBACK_SPEED;
-    get().knockbackEnemy(e.id, dx / dist, dy / dist, mult, mult);
+    const v = counterMasterBlowVector(pcx, pcy, e.x + e.width / 2, e.y + e.height / 2, kbScale);
+    if (!v) continue;
+    const mult = v.speed / BULLET_KNOCKBACK_SPEED;
+    get().knockbackEnemy(e.id, v.dirX, v.dirY, mult, mult);
   }
 };
 // カウンターマスターのノックバック倍率(KNOCKBACK_SPEED 基準): Lv1 ×2 / Lv2 ×2.5 / Lv3 ×3。
@@ -8881,6 +8997,102 @@ export const counterMasterOnCounterSuccess = (): void => {
  */
 export const counterMasterBlowAround = (cx: number, cy: number, actor: Player): void =>
   counterMasterKnockback(useGameStore.getState, cx, cy, counterMasterKbScale(actor));
+
+/**
+ * ★守護霊の鞭の1撃目(社長裁定2026-11-22「守護霊にも鞭とハンティング」)。プレイヤーの振り(triggerCounter の鞭の枝)と同じ部品:
+ * 線の長さ=whipSwingReach(ハンティングの一連)・軌跡の絵(spawnWhipSwingFx)・当たる敵(whipSweepTargets)・打撃(performWhipStrike の守護霊)・
+ * 追加攻撃の受付(守護霊の欄)・ハンティングの一連。守護霊に無いもの(ハリケーンの溜め・本人の押し道具・揺れ・カウンターの窓=守護霊の頭脳の側)は通らない。
+ * 向き ux,uy は単位ベクトル。戻り値=打撃の結果(音は呼び手が距離減衰つきで鳴らす)。
+ */
+export const swingGhostWhip = (ghostId: string, ux: number, uy: number): { hit: boolean; finish: boolean; killed: number; hits: number } => {
+  const get = useGameStore.getState;
+  const actor = combatActorPlayer(ghostId);
+  if (!actor || !isWhipMode(actor)) return { hit: false, finish: false, killed: 0, hits: 0 };
+  const now = Date.now();
+  const pcx = actor.x + actor.width / 2, pcy = actor.y + actor.height / 2;
+  const reach = whipSwingReach(actor);
+  const huntUse = actor.huntingCharged && actor.huntingSequence !== 'whip';
+  if (actor.huntingSequence === 'whip') setActorHunting(ghostId, HUNTING_CONSUME_PATCH); // 前の一連の溜まりはここで使い切る(この振りは新しい振り)
+  const tipX = pcx + ux * reach, tipY = pcy + uy * reach;
+  spawnWhipSwingFx(get, pcx, pcy, tipX, tipY, ux, uy, now, false, `${ghostId}-`);
+  const targetIds = whipSweepTargets(get().enemies, pcx, pcy, ux, uy, reach);
+  const res = get().performWhipStrike(targetIds, { ghostId, dir: { x: ux, y: uy } });
+  const w: WhipFollowupWindow | null = res.hits > 0 ? { hitAt: Date.now(), dirX: ux, dirY: uy, hitIds: res.hitIds ?? [], used: false, stage: 'hit' } : null;
+  useGameStore.setState(st => whipFollowupStatePatch(st, ghostId, w));
+  if (huntUse) setActorHunting(ghostId, res.hits > 0 ? { huntingSequence: 'whip' } : HUNTING_CONSUME_PATCH);
+  return res;
+};
+
+/**
+ * ★守護霊のハンティング(社長裁定2026-11-22「守護霊の動きで溜まり、一連の動きの間は届く距離が伸びる」)。毎フレーム(守護霊の頭脳の後)。
+ * ①一連の動き(刀=オート斬撃→一閃→燕返し / 鞭=1撃目→引き寄せ→叩きつけ)が終わっていたら使い切る(プレイヤーの tickHuntingSequence と同じ判定)。
+ * ②動いている間に溜まる(プレイヤーの「入力がある間」と同じ純関数 huntingChargeStep)。変わった時だけ書く。
+ */
+export const tickGhostHunting = (ghostId: string, moving: boolean): void => {
+  const st = useGameStore.getState();
+  const g = st.summons.find(x => x.id === ghostId && x.kind === 'ghost-ally');
+  const actor = g ? combatActorPlayer(ghostId) : null;
+  if (!g || !actor) return;
+  const now = Date.now();
+  if (actor.huntingSequence) {
+    const alive = actor.huntingCharged && huntingSequenceAlive(actor.huntingSequence, {
+      gameTime: st.gameTime, now, seqUntil: actor.huntingSeqUntil, katanaRecoveryUntil: actor.katanaRecoveryUntil,
+      tsubameOpen: isFlickFollowupOpen(g.ghostTsubameWindow, now),
+      whipFollowupActive: whipFollowupPhase(g.ghostWhipFollowup, now) !== null || isWhipFollowupLocked(g.ghostWhipFollowup, now),
+    });
+    if (!alive) { setActorHunting(ghostId, HUNTING_CONSUME_PATCH); return; }
+  }
+  const level = Math.max(0, Math.min(3, actor.subWeaponLevels['striker-hunting'] ?? 0));
+  const hs = huntingChargeStep({
+    enabled: actor.subWeapons.includes('striker-hunting') && !subWeaponBlockedByKatana(actor, 'striker-hunting') && level > 0,
+    active: moving, startedAt: actor.huntingChargeStartedAt, charged: actor.huntingCharged,
+    now: st.gameTime, chargeMs: HUNTING_CHARGE_MS_BY_LEVEL[level] ?? 0,
+  });
+  if (hs.startedAt !== actor.huntingChargeStartedAt || hs.charged !== actor.huntingCharged) {
+    setActorHunting(ghostId, { huntingChargeStartedAt: hs.startedAt, huntingCharged: hs.charged });
+  }
+};
+
+/**
+ * ★幻影のカウンターマスターの吹き飛ばし(社長裁定2026-11-22「幻影がカウンターを決めた時、周りのプレイヤー・守護霊・英雄を吹き飛ばす。
+ * プレイヤーの吹き飛ばしと同じ強さ・同じ関数」)。幻影は敵の側なので、弾く相手は幻影にとっての相手=プレイヤー・守護霊・英雄(周りの敵は弾かない)。
+ * 強さ・届く距離は counterMasterBlowVector(敵を弾く時と同じ1本)・持続は敵と同じ KNOCKBACK_DURATION。予告は出さない(成立の瞬間の効果)。
+ * 呼び手(utils/actorCounterMaster)が同じフレームに2回呼ばないことを守る。srcId=吹き飛ばした幻影(英雄の判定で自分を除く)。
+ */
+export const counterMasterBlowOpponents = (cx: number, cy: number, actor: Player, srcId: string): void => {
+  const get = useGameStore.getState;
+  const st = get();
+  const kbScale = counterMasterKbScale(actor);
+  const now = Date.now();
+  const p = st.player;
+  const pv = p.health > 0 ? counterMasterBlowVector(cx, cy, p.x + p.width / 2, p.y + p.height / 2, kbScale) : null;
+  const ghostKb = new Map<string, { dirX: number; dirY: number; speed: number }>();
+  for (const g of st.summons) {
+    if (g.kind !== 'ghost-ally' || g.health <= 0) continue;
+    const v = counterMasterBlowVector(cx, cy, g.x + g.width / 2, g.y + g.height / 2, kbScale);
+    if (v) ghostKb.set(g.id, v);
+  }
+  if (pv || ghostKb.size > 0) {
+    useGameStore.setState(s => ({
+      ...(pv ? { player: {
+        ...s.player, knockbackVx: pv.dirX * pv.speed, knockbackVy: pv.dirY * pv.speed,
+        knockbackUntil: now + KNOCKBACK_DURATION, knockbackMs: KNOCKBACK_DURATION,
+      } } : {}),
+      ...(ghostKb.size > 0 ? { summons: s.summons.map(g => {
+        const v = ghostKb.get(g.id);
+        return v ? { ...g, knockbackVx: v.dirX * v.speed, knockbackVy: v.dirY * v.speed, knockbackUntil: now + KNOCKBACK_DURATION, knockbackMs: KNOCKBACK_DURATION } : g;
+      }) } : {}),
+    }));
+  }
+  // 英雄(敵の体の器に乗っている=敵を弾く時と同じ knockbackEnemy・同じ倍率)。
+  for (const e of st.enemies) {
+    if (e.id === srcId || !isMutantHero(e.type) || isCorpse(e) || e.health <= 0) continue;
+    const v = counterMasterBlowVector(cx, cy, e.x + e.width / 2, e.y + e.height / 2, kbScale);
+    if (!v) continue;
+    const mult = v.speed / BULLET_KNOCKBACK_SPEED;
+    get().knockbackEnemy(e.id, v.dirX, v.dirY, mult, mult);
+  }
+};
 
 // ---------------------------------------------------------------------------
 // 近接スイング相乗り型サブウェポンの発動 — 唯一の出どころ(主語=オーナー引数)。
@@ -10791,7 +11003,7 @@ interface GameState {
   // tsubame=燕返し(research/KATANA_TSUBAME.md §1): 硬直・CDの門を通さず、指定の距離だけ一閃を出し直す(消費・CDは足さない)。
   triggerKatanaDash: (dirX: number, dirY: number, ghostId?: string, tsubame?: { distance: number }) => boolean;
   // ★燕返し(research/KATANA_TSUBAME.md §1): 受付の間の反対フリックで出す。出たら true。
-  tryTsubame: (dirX: number, dirY: number) => boolean;
+  tryTsubame: (dirX: number, dirY: number, ghostId?: string) => boolean;
   // ★当てた直後のフリックの追加攻撃の入口(鞭の引き寄せ/叩きつけ・刀の燕返し)。入力側はこれだけを呼ぶ。出たら true。
   tryFlickFollowup: (dirX: number, dirY: number) => boolean;
   // 当てた直後のフリックの受付が開いているか(入力側がフリックの判定を先に回すかを決める)。
@@ -10818,9 +11030,10 @@ interface GameState {
   // (low damage, big knockback, crit, finisher, 20% ammo) and returns the hit
   // count for charge. performHurricane spawns the suction vortex at the tip;
   // tickHurricane pulls nearby enemies toward the root each frame.
-  performWhipStrike: (targetIds: string[]) => { hit: boolean; finish: boolean; killed: number; hits: number; hitIds?: string[] };
+  /** opts: ghostId=守護霊の鞭(主語)・dir=振りの向き(未指定=主語の lastDirection)・strikeMult=敵への打撃だけの上乗せ(未指定=本人の縮地の上乗せ/守護霊は1)。 */
+  performWhipStrike: (targetIds: string[], opts?: { ghostId?: string; dir?: { x: number; y: number }; strikeMult?: number }) => { hit: boolean; finish: boolean; killed: number; hits: number; hitIds?: string[] };
   // ★鞭の追加攻撃(research/WHIP_FOLLOWUP.md): 受付の間のフリック(向き)で引き寄せ/叩きつけ。出たら true(受付の外・横向き・空の向きは false=何もしない)。
-  tryWhipFollowup: (dirX: number, dirY: number) => boolean;
+  tryWhipFollowup: (dirX: number, dirY: number, ghostId?: string) => boolean;
   performHurricane: (rootX: number, rootY: number) => void;
   tickHurricane: () => void;
   // 錬金術 actions. updateAlchemyChannel は立ち止まりチャネルの開始/維持/中断、summonAlchemy は
@@ -10865,7 +11078,7 @@ interface GameState {
   /** ★ハンティングの一連の動き(utils/huntingSequence)が終わっていたら溜まりを使い切る。毎フレーム(溜めの更新の前)。 */
   tickHuntingSequence: () => void;
   /** ★刀のオート斬撃が溜まった状態で出た。一連が無ければ始める(次のオート斬撃の時刻 untilGameTime までに一閃が出なければ終わる)。 */
-  noteKatanaAutoSlashHunting: (untilGameTime: number) => void;
+  noteKatanaAutoSlashHunting: (untilGameTime: number, ghostId?: string) => void;
   buyShopItem: (key: ShopItemKey, ammoType?: AmmoType) => boolean;
   buySkillCardFromShop: (key: SubWeaponKey) => boolean;
   // SKILL_BUILD_REDESIGN.md §13-1+§16-7+§18-1: 商人の装備区画(指名買いカタログ)。defIdは
@@ -13884,26 +14097,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().commitMeleeSwing(); // ★近接スイング確定の打刻(5経路の1つ=鞭・§1-3)
       get().noteMeleeSwingPressedAt(swingAt); // §8裁定済み#16(katana分岐と同じ理由)
       set({ whipSwingFxAt: now }); // 鞭を振る音SEのトリガ(命中の有無に関わらず鳴る)
-      // 鞭の軌跡 + 当たり範囲の可視化(全長を即表示→フェード。太い帯=当たり範囲)。
-      get().spawnEffect({
-        kind: 'whip',
-        id: `fx-whip-${now}`,
-        fromX: pcx, fromY: pcy, toX: tipX, toY: tipY,
-        halfWidth: WHIP_HIT_HALF_WIDTH,
-        color: 'rgba(186,230,253,0.95)', createdAt: now, duration: WHIP_DRAW_MS,
-      });
-      // 視認性アップ(軽量): 鞭の軌道に沿って明るい加算ストリークを重ねる(発光=bloomで暗い画面でも映える)。
-      get().spawnEffect({
-        kind: 'trail',
-        id: `fx-whip-glow-${now}`,
-        fromX: pcx, fromY: pcy, toX: tipX, toY: tipY,
-        color: 'rgba(125,211,252,1)', createdAt: now, duration: WHIP_DRAW_MS,
-      });
-      // ★パチン(社長「先端がパチンと鳴る」): 判定の瞬間に先端で短い閃光・小さな弾け・細い輪・わずかな揺れ(派手さの絵=判定なし)。音は既存の振る音(whipSwingFxAt)。
-      get().spawnGlow(tipX, tipY, GLOW_R_XS, 'rgba(255,255,255,', 120, true);
-      get().spawnBurst(tipX, tipY, '#f8fafc', 7, ux, uy);
-      get().spawnRing(tipX, tipY, 3, 26, 'rgba(255,255,255,0.95)', 2, 160, true);
-      get().triggerShake(70, 2.5, ux, uy);
+      spawnWhipSwingFx(get, pcx, pcy, tipX, tipY, ux, uy, now, true); // 鞭の軌跡・当たり範囲・先端のパチン(守護霊の鞭も同じ1本)
       // 鞭でも松明・卵を破壊できる(線=カプセル範囲。ハリケーン有無に関わらず毎振り)。
       get().breakPropsAlong(pcx, pcy, ux, uy, reach, WHIP_HIT_HALF_WIDTH, swingBaseDamage * 2.5);
       // 鞭でもスキルの手榴弾を起爆できる(鞭の当たり範囲=線カプセル内の手榴弾を即起爆)。通常近接と同じ挙動。
@@ -13938,20 +14132,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         set(state => ({ player: { ...state.player, whipHitCount: 0, whipCharged: false, ...(huntUse ? HUNTING_CONSUME_PATCH : {}) } }));
         return { swung: true, hit: true, finish: false, killed: 0 };
       }
-      // 通常の鞭スイープ: 進行方向の細長いカプセルに掛かる敵を選択(刀ダッシュと同じ幾何)。
-      const targetIds: string[] = [];
-      for (const e of enemies) {
-        if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue; // 深奥チェイサーは近接対象(ボス級)
-        if (isCorpse(e) || isUntouchable(e)) continue; // KILL吹き飛び(死体・§26-2): 鞭の標的選定から除外 / 英雄の昇天中・亡霊のワープ中
-        const ex = e.x + e.width / 2 - pcx;
-        const ey = e.y + e.height / 2 - pcy;
-        const along = ex * ux + ey * uy;
-        // ★箱の縁でも測る(§9-75・OR=今当たっている敵は外れない): 大きな箱(研究所の塊)は中心が遠くて外れていた。
-        if (bandBoxOverlap(pcx, pcy, ux, uy, reach, WHIP_HIT_HALF_WIDTH, e)) { targetIds.push(e.id); continue; }
-        if (along < -e.width / 2 || along > reach + e.width / 2) continue;
-        const perp = Math.abs(ex * uy - ey * ux);
-        if (perp <= WHIP_HIT_HALF_WIDTH + e.width / 2) targetIds.push(e.id);
-      }
+      // 通常の鞭スイープ: 進行方向の細長いカプセルに掛かる敵を選択(刀ダッシュと同じ幾何・守護霊の鞭も同じ1本)。
+      const targetIds = whipSweepTargets(enemies, pcx, pcy, ux, uy, reach);
       const res = get().performWhipStrike(targetIds);
       if (res.hits > 0) set({ whipHitFxAt: Date.now() }); // 鞭命中音SEのトリガ
       // ★鞭の追加攻撃の受付(research/WHIP_FOLLOWUP.md §1): 1体以上に当たった瞬間から(実時間)。向き=この振りの向き。空振りは開かない(前の受付も閉じる)。
@@ -15937,16 +16119,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hitIds: katanaHitEnemyIds };
   },
 
-  performWhipStrike: (targetIds) => {
+  performWhipStrike: (targetIds, opts) => {
     const now = Date.now();
-    const { player, gameTime, enemies, hurricane } = get();
+    const { gameTime, enemies, hurricane } = get();
     if (targetIds.length === 0) return { hit: false, finish: false, killed: 0, hits: 0 };
+    // ★主語(社長裁定2026-11-22「守護霊にも鞭」): 未指定=プレイヤー本人(従来と完全同一)。守護霊は疑似プレイヤー(記録のビルド+守護霊の体)。
+    // 守護霊の扱いは刀(performKatanaStrike の isGhost)と同じ線: 計測・コンボ・熟練度を貯める・体勢の削り・空中の倍率・揺れは本人だけ。
+    const ghostId = opts?.ghostId;
+    const isGhost = ghostId !== undefined;
+    const player = combatActorPlayer(ghostId);
+    if (!player) return { hit: false, finish: false, killed: 0, hits: 0 };
 
     const gun = getActiveGun(player);
     const meleeWeapon = player.weapons.find(w => w.isMelee);
     const meleeBase = meleeWeapon?.damage ?? 6;     // 近接の素ダメージ。鞭は通常0.25倍
     // 敵への打撃だけ縮地(§32)の連鎖の上乗せを掛ける(ワープ斬撃以外は ×1)。救難信号・死神の波及は meleeBase のまま。
-    const strikeBase = meleeBase * (player.shukuchiStrikeMult ?? 1);
+    const strikeBase = meleeBase * (opts?.strikeMult ?? (isGhost ? 1 : (player.shukuchiStrikeMult ?? 1)));
     // 熟練度(research/MASTERY.md v2.1 A-9): 鞭=whip(近接の素ダメを借りるが近接武器の熟練度は掛けない)。strikeBase には掛けない(式の側で1回)。
     const whipMm = masteryMultOf(player, 'whip');
     const whipMasteryHits: MasteryDirectHit[] = [];
@@ -15960,7 +16148,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const pcy = player.y + player.height / 2;
     // 鞭の線(進行方向)に直交する単位ベクトル。敵を「線のどちら側にいるか」で
     // その側へ弾き、中央に直線の避難路を作る。
-    const ld = player.lastDirection ?? { x: 1, y: 0 };
+    const ld = opts?.dir ?? player.lastDirection ?? { x: 1, y: 0 };
     const lmag = Math.max(0.001, Math.hypot(ld.x, ld.y));
     const nx = -ld.y / lmag;
     const ny = ld.x / lmag;
@@ -15979,10 +16167,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
     let hits = 0;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。
-    const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
+    const meleeComboMult = skillMeleeComboMult(player, gameTime, isGhost ? 0 : get().meleeFinishComboCount, isGhost ? 0 : get().meleeFinishComboUntil); // 守護霊はコンボ計数を持たない(刀と同じ)
     // research/NEW_GUNS.md §4(スキャンセンサー): 鞭は近接と同じ倍率(雑魚×2.75/ボス級×4.7)を、線が当てる中で
     // 一番近い印付きの1体だけに掛ける。
-    const whipScanTargetId = pickScanMarkTarget(
+    const whipScanTargetId = isGhost ? undefined : pickScanMarkTarget(
       enemies.filter(e => targetIds.includes(e.id) && !isCorpse(e) && !isUntouchable(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e))
         // 気絶中の敵への一撃のうち、即死(処刑)とボスの5倍には印を掛けない=枠を使わない。強個体の3倍には掛ける(社長決定2026-10-18)。
         && !(e.stunUntil !== undefined && gameTime < e.stunUntil && !isEliteHeavyStun(e, gameTime))),
@@ -16002,7 +16190,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const gp = gatePhantomHit(enemy, 0, 'melee', gameTime, true, { from: { x: pcx, y: pcy } }); // 拳鬼のレバーガード(§16-10)の出どころ=振った本人の体
         if (!gp.effects) {
           // ★SAME_ARENA §9: 幻影のパリィ成立=鞭はプレイヤー本人の武器なので体勢counter削り。
-          if (gp.parried) set(st => ({ player: { ...st.player, ...playerPvpChipPatch(st.player, 'counter', st.gameTime) } }));
+          if (gp.parried && !isGhost) set(st => ({ player: { ...st.player, ...playerPvpChipPatch(st.player, 'counter', st.gameTime) } }));
           survivors.push({ ...enemy, ...gp.patch }); continue;
         }
         gpHitPatch = { id: enemy.id, patch: gp.patch };
@@ -16027,12 +16215,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         // v0.25.3171(案A): 強個体(pumpkin/lab-zombie-3)はボス枝へ落とさない。
         if (usesBossStunnedMelee(enemy.type)) {
           bossFinishHit = true;
-          const fatal = applyBrokenMeleeFatal(enemy, whipExecBase, gameTime);
+          const fatal = !isGhost ? applyBrokenMeleeFatal(enemy, whipExecBase, gameTime) : null;
           const dmg = fatal?.damage ?? whipExecBase * BOSS_MELEE_STUN_MULT;
           if (fatal) whipBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
           damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health });
           whipMasteryHits.push({ enemy, amount: dmg });
-          recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ
+          if (!isGhost) recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ
           // §5.21-追補4: スタン中ボスへの5×鞭打ち=ボスのフィニッシュ経路そのものなのでclampしない。
           const newHealth = enemyHealthAfterHit(enemy, dmg);
           if (newHealth <= 0) killed.push({ enemy, finisher: false });
@@ -16048,7 +16236,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ★v0.25.4154: 紫中の強個体はここへ来ない(即死=execute へ回る)。ここは通常の気絶からの3×だけ。
           damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
           whipMasteryHits.push({ enemy, amount: dmg });
-          recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
+          if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = enemyHealthAfterHit(enemy, dmg);
           if (newHealth <= 0) {
             killed.push({ enemy, finisher: false });
@@ -16061,17 +16249,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         whipMasteryHits.push({ enemy, amount: Math.max(0, enemy.health), execute: true }); // 熟練度: 処刑=直前の残り体力(割り戻さない)
         // ★紫中の強個体の即死=「致命の一撃」。CDを無視して必ずフル演出(v0.25.4389・通常近接と同じ扱い)。
         if (isEliteFatalStun(enemy, gameTime)) whipEliteFatalKill = true;
-        recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死(鞭)
+        if (!isGhost) recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死(鞭)
         continue;
       }
-      const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy, true);
+      const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy, !isGhost);
       const whipScanMult = enemy.id === whipScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'whip') : 1;
       if (whipScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
-      let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * whipScanMult * meleeAirMult(enemy, now) // 空中の敵への倍率(§16)
+      let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * whipScanMult * (isGhost ? 1 : meleeAirMult(enemy, now)) // 空中の敵への倍率(§16・守護霊は対象外=刀と同じ)
         * whipMmVs; // 熟練度: 鞭=whip(幻影には乗せない)
       // ★SAME_ARENA §9(検収監査 重大③): 鞭にも致命(×5+最大HP25%)とmelee削り(site1と同型・鞭はプレイヤー本人のみの武器)。
       let pvpMeleePatch: Partial<Enemy> = {};
-      if (isGuardianPhantom(enemy.type)) {
+      if (isGuardianPhantom(enemy.type) && !isGhost) {
         if (isPvpFatalTarget(enemy.pvpPosture, gameTime)) {
           dmg = pvpFatalDamage(dmg, enemy.maxHealth);
           pvpMeleePatch = { pvpPosture: pvpAfterFatal(enemy.pvpPosture, gameTime) };
@@ -16087,17 +16275,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit, hp: enemy.health, scan: whipScanMult !== 1 });
       whipMasteryHits.push({ enemy, amount: dmg });
-      recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
+      if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = enemyHealthAfterHit(enemy, dmg);
       if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
       if (crit) critStunAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
       // §9.4(v0.25.2502・CRIT-UNIFY★未決2の解消): 鞭のクリも紫カウントへ(発生枠=近接系共通。
       // ナイフ4737/刀5479/分身5076と同じ作法=GAME_AUDIT #17「プレイヤーが直接出したクリは全部乗せる」)。
       // research/NEW_GUNS.md §4: 印付きのボスへの 'melee' の削りは 0.04→0.09 相当。
-      const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime, scanMarkMeleePostureMult(enemy, gameTime));
+      const bossBump = !isGhost ? applyBossPostureDamage(enemy, 'melee', gameTime, scanMarkMeleePostureMult(enemy, gameTime)) : null;
       if (bossBump?.triggered) { whipBossFullStunHits.push({ x: ecx, y: ecy }); recordPostureBroken(); }
       // §6.33(LASER-TRACK): レーザー弱点窓の中断(鞭もプレイヤーの近接=対象)。
-      const laserBreak = mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime);
+      const laserBreak = !isGhost ? mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime) : null;
       if (laserBreak) { mimirLaserBreakHits.push({ x: ecx, y: ecy }); notifyCounterHit(enemy.id); } // 記録(v0.25.5044)
       if (laserBreak?.postureTriggered) whipBossFullStunHits.push({ x: ecx, y: ecy });
       // 大ノックバック(通常の約3倍): 鞭の線に直交する向きへ、敵がいる側へ強く弾く=避難路。
@@ -16117,7 +16305,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         knockbackUntil: now + KNOCKBACK_DURATION,
         knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
         knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
-        ...meleeHitStunPatch(enemy, now, dmg, true), // 戦闘の手触り①(v0.25.4269): 鞭も局所ストップ(shove の期限も同じだけ後ろ)
+        ...(isGhost ? { lastHitDmg: dmg } : meleeHitStunPatch(enemy, now, dmg, true)), // 戦闘の手触り①(v0.25.4269): 鞭も局所ストップ(shove の期限も同じだけ後ろ)・守護霊は刀と同じく止めない
         ...(bossBump?.patch ?? {}), // 紫カウント/発動を反映(最後に展開して優先=刀5490と同じ作法)
         ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
         ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(鞭のmelee削り/致命後daze)
@@ -16128,13 +16316,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
     const bossKilled = killed.some(k => isFinalBossKill(k.enemy));
     // ナイフマスター(2026-08-29一本化): 通常ヒットも表示コンボへ。
-    const comboGain = comboFinishCount + knifeMasterHitComboGain(player, slashAt.length > 0, comboFinishCount);
+    const comboGain = comboFinishCount + (isGhost ? 0 : knifeMasterHitComboGain(player, slashAt.length > 0, comboFinishCount));
     const finishWindowMs = meleeFinishComboWindowMs(player);
     // §6.21 M46: 近接カウンター振り(鞭)の計測。channel='melee'。1振り=1回(hitCount=命中数)。
     const whipSwingDamage = damageNumbers.reduce((s, n) => s + n.value, 0);
-    recordDamageDealt('melee', whipSwingDamage);
-    noteMasteryDirectHits(player, 'whip', whipMasteryHits); // 熟練度(v2.1 A-9)
-    recordMeleeSwing(slashAt.length);
+    if (!isGhost) {
+      recordDamageDealt('melee', whipSwingDamage);
+      noteMasteryDirectHits(player, 'whip', whipMasteryHits); // 熟練度(v2.1 A-9)・守護霊の分は貯めない
+      recordMeleeSwing(slashAt.length);
+    }
     set(state => ({
       // このスイングで近接ダメージを受けた敵(lastHit===now)に meleeAggro を付与(救助で以後プレイヤー狙い)。
       // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
@@ -16155,15 +16345,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         eliteKills: state.gameStats.eliteKills + killed.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
         bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
         damageDealt: state.gameStats.damageDealt + whipSwingDamage,
-        maxCombo: comboGain > 0
+        maxCombo: (comboGain > 0 && !isGhost)
           ? Math.max(state.gameStats.maxCombo, state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboGain : comboGain)
           : state.gameStats.maxCombo,
       },
       finaleDefeated: state.finaleDefeated || bossKilled,
-      meleeFinishComboCount: comboGain > 0
-        ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboGain : comboGain)
-        : state.meleeFinishComboCount,
-      meleeFinishComboUntil: comboGain > 0 ? gameTime + finishWindowMs : state.meleeFinishComboUntil,
+      // コンボ台帳はプレイヤーの振りだけが書く(刀の守護霊と同じ)。
+      ...(isGhost ? {} : {
+        meleeFinishComboCount: comboGain > 0
+          ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboGain : comboGain)
+          : state.meleeFinishComboCount,
+        meleeFinishComboUntil: comboGain > 0 ? gameTime + finishWindowMs : state.meleeFinishComboUntil,
+      }),
       // hitstopはtriggerFinishImpact側でCD込みで一括管理(M21・§5.22)。ここでの個別設定は廃止。
     }));
 
@@ -16192,16 +16385,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       showBossFatalPresentation(get, p.x, p.y, p.labelY);
     }
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
-    grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE, true /* 縮地: 本人の近接 */);
-    noteKickAssistKills(get, killed.map(k => k.enemy)); // 蹴りの連携の一言(本人の鞭)
-    grantMeleeBlood(get, killed.map(k => k.enemy), Math.max(0, whipHitEnemyIds.length - killed.length)); // B10 血の覚醒: 本人の鞭
+    grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE, !isGhost /* 縮地: 本人の近接だけ */);
+    if (!isGhost) noteKickAssistKills(get, killed.map(k => k.enemy)); // 蹴りの連携の一言(本人の鞭)
+    if (!isGhost) grantMeleeBlood(get, killed.map(k => k.enemy), Math.max(0, whipHitEnemyIds.length - killed.length)); // B10 血の覚醒: 本人の鞭
     // スキル: 救難信号(§6.10 M33⑦: 鞭のヒットでも発動判定。基本近接/刀と同条件。アライの一撃は
     // 鞭の通常打撃基準=meleeBase×WHIP_DAMAGE_MULT を素通し)。
     applyRescueSignalProc(get, player, meleeBase * WHIP_DAMAGE_MULT, whipHitEnemyIds, pcx, pcy);
     // 吸血覚醒(Lv3・v0.25.3300): 鞭のヒットでも1%回復。
     applyMeleeHitHeals(get, player, whipHitEnemyIds, pcx, pcy);
     let whipFinishFull = false; // 処刑が起きたか。揺れの finish 倍率はCD内でも掛ける(v0.25.4301)
-    if (finisherHit || bossFinishHit) {
+    if ((finisherHit || bossFinishHit) && (!isGhost || GHOST_ZOOM_TRIAL_ENABLED)) {
       const [ztx, zty] = whipBossFatalHits[0]
         ? [whipBossFatalHits[0].x, whipBossFatalHits[0].y]
         : finishZoomTargetOf(killed);
@@ -16209,7 +16402,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       whipFinishFull = true; // CD内でも処刑の揺れは出す(v0.25.4301)
       // v0.25.3703: 鞭の致命にもKILL跳びつき(v3622の取りこぼし)。処刑(finisher)は従来どおり=致命のみ。
       const wFatal = whipBossFatalHits[0];
-      if (fullCinematic && wFatal) {
+      if (fullCinematic && wFatal && !isGhost) {
         startKillFxCinematic(get, { cx: wFatal.x, cy: wFatal.y, w: wFatal.w, h: wFatal.h },
           whipBossFatalHits.map(p => ({ x: p.x, y: p.y })), pcx, pcy);
       }
@@ -16217,10 +16410,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     // スキル: リーパー。鞭フィニッシュ範囲(WHIP_LENGTH)内の敵を全員フィニッシュ。
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, WHIP_LENGTH_BY_LEVEL[1], meleeBase, meleeFinisherAt(killed));
 
-    if (killed.length > 0) get().registerPlayerKills(killed.length, true); // 戦闘の手触り②(v0.25.4269): 鞭のキルも段へ
-    if (slashAt.length > 0) get().registerMeleeHits(slashAt.length); // 左上 COMBO(表示専用)
-    // 揺れの整理(v0.25.4284): 鞭の一振りを1事象で登録。
-    if (damageNumbers.length > 0) {
+    if (!isGhost && killed.length > 0) get().registerPlayerKills(killed.length, true); // 戦闘の手触り②(v0.25.4269): 鞭のキルも段へ
+    if (!isGhost && slashAt.length > 0) get().registerMeleeHits(slashAt.length); // 左上 COMBO(表示専用)
+    // 揺れの整理(v0.25.4284): 鞭の一振りを1事象で登録(守護霊の鞭は揺らさない=刀と同じ境界)。
+    if (!isGhost && damageNumbers.length > 0) {
       let hx = 0, hy = 0;
       for (const n of damageNumbers) { hx += n.x; hy += n.y; }
       get().registerImpact({
@@ -16233,30 +16426,32 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hits, hitIds: whipHitEnemyIds };
   },
 
-  tryWhipFollowup: (dirX, dirY) => {
+  tryWhipFollowup: (dirX, dirY, ghostId) => {
     const now = Date.now();
     const st = get();
-    const w = st.whipFollowup;
+    const w = actorWhipFollowup(st, ghostId);
     const phase = whipFollowupPhase(w, now);
     if (!w || !phase) return false;
-    const p = st.player;
-    // 鞭を持っていない/格闘中・紫/daze・掴まれ・浮いている間は出さない(振りの入口 beginMeleeSwing と同じ門)。
-    if (!isWhipMode(p) || isPvpIncapacitated(p.pvpPosture, st.gameTime) || isPlayerGrabbed(p, st.gameTime) || playerAirLocked(p, now)) return false;
+    // 主語=プレイヤー本人 or 守護霊の疑似プレイヤー(社長裁定2026-11-22「守護霊にも鞭」=同じ受付・同じ向きの帯・同じ引き寄せ/叩きつけ)。
+    const p = combatActorPlayer(ghostId);
+    if (!p || !isWhipMode(p)) return false;
+    // 鞭を持っていない/格闘中・紫/daze・掴まれ・浮いている間は出さない(振りの入口 beginMeleeSwing と同じ門・本人の状態)。
+    if (ghostId === undefined && (isPvpIncapacitated(p.pvpPosture, st.gameTime) || isPlayerGrabbed(p, st.gameTime) || playerAirLocked(p, now))) return false;
     // 1段目(当たった直後)=反対で浮かせつつ引き寄せ / 2段目(引き寄せた直後)=進行方向で叩き落とし。それ以外の向き・段の組は何も起きない(受付は残す)。
     const act = whipFollowupAction(w.stage, classifyWhipFlick({ x: w.dirX, y: w.dirY }, { x: dirX, y: dirY }));
     if (!act) return false;
     // 早すぎ(叩き落としの受付が開く前=頂点に浮いている時刻より前)の進行方向=何も起きない。受付は消費しない(覚えもしない)・ほかのフリック(ワイヤー・一閃)へも流さない。
     if (phase === 'early') return true;
     if (act === 'pull') {
-      set({ whipFollowup: { ...w, used: true } }); // 1振りに1回だけ(続きの受付は引き寄せが開く)
-      whipFollowupPull(get, set, w, now);
-      notifyTechProc('whippull'); // 通信の下に技の行(刀の一閃と同じ線)
+      set(state => whipFollowupStatePatch(state, ghostId, { ...w, used: true })); // 1振りに1回だけ(続きの受付は引き寄せが開く)
+      whipFollowupPull(get, set, w, now, ghostId);
+      if (ghostId === undefined) notifyTechProc('whippull'); // 通信の下に技の行(刀の一閃と同じ線・本人の技だけ)
       return true;
     }
     const ids = whipSlamTargetIds(st, w, now);
     if (ids.length === 0) return false; // 浮いている敵が居ない(着地した・倒れた)=何も起きない
-    whipFollowupSlam(get, set, w, ids, now);
-    notifyTechProc('whipslam'); // └叩きつけ(刀の燕返しと同じ続きの行)
+    whipFollowupSlam(get, set, w, ids, now, ghostId);
+    if (ghostId === undefined) notifyTechProc('whipslam'); // └叩きつけ(刀の燕返しと同じ続きの行)
     return true;
   },
 
@@ -16497,7 +16692,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (s0.kind === 'ghost-ally') {
         const kbUntil = s0.knockbackUntil ?? 0;
         if (now < kbUntil) {
-          const decay = Math.max(0, (kbUntil - now) / PLAYER_KNOCKBACK_MS); // 1→0
+          const decay = Math.max(0, (kbUntil - now) / (s0.knockbackMs ?? PLAYER_KNOCKBACK_MS)); // 1→0(持続は押した側が決める=プレイヤーの knockbackMs と同じ)
           nextSummons.push({
             ...s0,
             x: s0.x + (s0.knockbackVx ?? 0) * decay * deltaTime,
@@ -16733,6 +16928,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               knockbackVx: dx * PLAYER_KNOCKBACK_SPEED,
               knockbackVy: dy * PLAYER_KNOCKBACK_SPEED,
               knockbackUntil: now + PLAYER_KNOCKBACK_MS,
+              knockbackMs: PLAYER_KNOCKBACK_MS,
             };
           }
           // テスト診断(依頼#7・?ghostlog=1): 守護霊の被弾源の内訳をconsoleへ(記録専用・挙動不変)。
@@ -16868,19 +17064,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (ghostId === undefined && isPvpIncapacitated(get().player.pvpPosture, get().gameTime)) return false; // ★SAME_ARENA §9: 紫/daze中
     // 発動中(移動中)〜着地後の硬直中は新しい一閃を出せない = モーション
     // キャンセル不可 + 後隙。村雨でも共通(連発は硬直0.2sぶん間隔が空く)。
-    // ★燕返し(research/KATANA_TSUBAME.md §1)は一閃の着地の硬直の中から出る=硬直・CDの門を通さない(追加の消費なし=CDも足さない)。本人だけ。
-    const tb = ghostId === undefined ? tsubame : undefined;
+    // ★燕返し(research/KATANA_TSUBAME.md §1)は一閃の着地の硬直の中から出る=硬直・CDの門を通さない(追加の消費なし=CDも足さない)。
+    // 守護霊も同じ(社長裁定2026-11-22「守護霊にも燕返し」)。
+    const tb = tsubame;
     if (!tb && now < player.katanaRecoveryUntil) return false;
     // 村雨はクールダウン無し(硬直のみ)。刀はさらにクールダウン中は発動しない。
     const mura = hasMurasame(player);
     if (!tb && !mura && now < player.katanaDashCooldownEnd) return false;
-    // ★ハンティング(utils/huntingSequence): 溜まっていれば一閃の走る距離が伸びる(同じ速さで長く走る)。本人だけ。
+    // ★ハンティング(utils/huntingSequence): 溜まっていれば一閃の走る距離が伸びる(同じ速さで長く走る)。守護霊も自分の溜まりで同じ(社長裁定2026-11-22)。
     // この一連でもう一閃を出していたら、これは新しい一閃=前の一連で使い切る(伸ばさない)。
-    if (ghostId === undefined && !tb && player.huntingSequence === 'katana' && player.huntingSeqIssen) {
-      set(state => ({ player: { ...state.player, ...HUNTING_CONSUME_PATCH } }));
-    }
-    const huntIssen = ghostId === undefined && get().player.huntingCharged;
-    const issenDist = KATANA_DASH_DISTANCE + (huntIssen && !tb ? huntingReachBonus(get().player) : 0);
+    if (!tb && player.huntingSequence === 'katana' && player.huntingSeqIssen) setActorHunting(ghostId, HUNTING_CONSUME_PATCH);
+    const huntActor = combatActorPlayer(ghostId) ?? player;
+    const huntIssen = huntActor.huntingCharged;
+    const issenDist = KATANA_DASH_DISTANCE + (huntIssen && !tb ? huntingReachBonus(huntActor) : 0);
     // 燕返しは距離が「今の位置→元の位置」(一閃の最大距離まで)=同じ速さで、その距離のぶんだけ走る。一閃も同じ速さで issenDist だけ走る。
     // (katanaDashMsFor は伸びていない距離では従来の tsubameDashMs / KATANA_DASH_MS と同じ値。)
     const dashMs = katanaDashMsFor(tb ? tb.distance : issenDist);
@@ -16953,10 +17149,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (ghostInvulnUntil = damageSummon が見る)へ同じ終了時刻を入れる。向きは ghostFacing。
       // (プレイヤーの counterCooldownEnd 延長に対応するフィールドはゴーストに無い=近接の間隔は
       //  ghostDriver の lastMeleeAt が持つ。一閃自体のCDは katanaDashCooldownEnd で共有済み。)
-      setActorDashState(ghostId, dashPatch, {
-        ghostInvulnUntil: Math.max(0, now + KATANA_DASH_MS),
+      // ★燕返し(社長裁定2026-11-22「守護霊にも燕返し」): プレイヤーと同じく体は動かずしゃがむ(走っていた時間と同じだけ)・無敵は付けない。
+      // 新しい一閃は前の燕返しの受付を閉じる(プレイヤーと同じ)。
+      setActorDashState(ghostId, tb ? { ...dashPatch, tsubameCrouchUntil: now + dashMs } : dashPatch, {
+        ...(tb ? { vx: 0, vy: 0 } : { ghostInvulnUntil: Math.max(0, now + KATANA_DASH_MS), ghostTsubameWindow: null }),
         ghostFacing: ux >= 0 ? 1 : -1,
       });
+      if (huntIssen && !tb) setActorHunting(ghostId, { huntingSequence: 'katana', huntingSeqIssen: true, huntingSeqUntil: undefined });
     }
 
     // 軌跡は既存trail 1本のみの軽量表現(常時発光・大量パーティクルなし)。
@@ -17017,9 +17216,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (perp <= KATANA_DASH_HIT_HALF_WIDTH + prop.width / 2) propTargetIds.push(prop.id);
           }
         }
-        if (targetIds.length === 0 && propTargetIds.length === 0) { if (tb) set({ tsubameWindow: null }); return; } // 空振り(=かわされた)
-        // ★殺陣(research/KATANA_TSUBAME.md §4): 本人の一閃・燕返しが、切り傷4本の敵に当たった瞬間=その敵だけ通常の当たりの代わりに殺陣へ(1体だけ・通り道の順で最初)。
-        const satsujinTarget = ghostId === undefined
+        if (targetIds.length === 0 && propTargetIds.length === 0) { if (tb) setActorTsubameWindow(ghostId, null); return; } // 空振り(=かわされた)
+        // ★殺陣(research/KATANA_TSUBAME.md §4): 一閃・燕返しが、切り傷4本の敵に当たった瞬間=その敵だけ通常の当たりの代わりに殺陣へ(1体だけ・通り道の順で最初)。
+        // 守護霊が刻んだ傷も同じ敵の傷=守護霊の一閃でも殺陣になる(社長裁定2026-11-22)。殺陣は場に1つだけ(出ている間は通常の当たり)。
+        const satsujinTarget = !get().satsujin
           ? targetIds.map(id => get().enemies.find(e => e.id === id)).find(e => !!e && !isCorpse(e) && !isUntouchable(e) && e.health > 0 && triggersSatsujin(e.katanaCuts) && e.aiPhase !== 'jump') ?? null
           : null;
         const strikeIds = satsujinTarget ? targetIds.filter(id => id !== satsujinTarget.id) : targetIds;
@@ -17031,18 +17231,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           ? get().performKatanaStrike(strikeIds, KATANA_DASH_DAMAGE_MULT, true, ghostId, ghostId ? 1 : warlordIssenMult(striker), tb ? 'tsubame' : 'issen',
             tb ? { x: pcx + ux * travel, y: pcy + uy * travel } : undefined) // 燕返し: 斬撃の絵は仮定の通り道の終点(一閃で体が着く所に当たる)から
           : { finish: false };
-        if (ghostId === undefined) {
+        {
+          // 守護霊も同じ(社長裁定2026-11-22「守護霊にも燕返し・一閃の浮かせ・切り傷・殺陣」)。宛先だけ主語ごと(受付=GameState / Summon)。
           const hitIds = result.hitIds ?? [];
           // 一閃=浮かせる / 燕返し=止めの後に走った向きへ吹き飛ばす(血を吹きながら)。どちらも切り傷を1本刻む。
           if (hitIds.length > 0) applyIssenHitPatch(get, set, hitIds, preStrike, tb ? { ux, uy } : null);
           // 燕返しの受付(§1): 一閃が1体以上に当たった瞬間から。燕返しの後・殺陣の後は開かない(1回まで・連鎖しない)。
-          set({ tsubameWindow: !tb && !satsujinTarget && hitIds.length > 0
-            ? { hitAt: Date.now(), dirX: ux, dirY: uy, hitIds, used: false, originX: pcx, originY: pcy } : null });
-          if (satsujinTarget) startSatsujin(get, set, satsujinTarget.id, ux, uy);
+          setActorTsubameWindow(ghostId, !tb && !satsujinTarget && hitIds.length > 0
+            ? { hitAt: Date.now(), dirX: ux, dirY: uy, hitIds, used: false, originX: pcx, originY: pcy } : null);
+          if (satsujinTarget) startSatsujin(get, set, satsujinTarget.id, ux, uy, ghostId);
         }
         // ★燕返しの斬撃(社長指示2026-11-22「燕返しの斬撃、一閃の範囲に刀斬撃の絵に変更」): 仮定の通り道(今の位置→元の位置)の全長を覆う
-        // 刀の斬撃の絵を1本。向き=通り道・上下反転(V字の切り返し)は保つ。何かに当たった時だけ(一閃も空振りでは斬撃の絵を出さない)。描画だけ。
-        if (tb && ghostId === undefined) {
+        // 刀の斬撃の絵を1本。向き=通り道・上下反転(V字の切り返し)は保つ。何かに当たった時だけ(一閃も空振りでは斬撃の絵を出さない)。描画だけ。守護霊も同じ。
+        if (tb) {
           get().spawnSlash(zanX, zanY, 'rgba(221,238,255,0.95)', 1, ux < 0 ? -1 : 1, { move: 'tsubame', flip: true, path: { dx: ux * travel, dy: uy * travel } });
         }
         // 経路上の松明などを破壊(近接フィニッシュと同等の高ダメージ)。
@@ -17078,21 +17279,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     return true;
   },
 
-  tryTsubame: (dirX, dirY) => {
+  tryTsubame: (dirX, dirY, ghostId) => {
     const now = Date.now();
     const st = get();
-    const w = st.tsubameWindow;
+    const w = actorTsubameWindow(ghostId);
     if (!w || !tsubameAccepts(w, { x: dirX, y: dirY }, now)) return false;
     if (st.satsujin) return false;
-    const p = st.player;
-    if (!isKatanaMode(p) || isPvpIncapacitated(p.pvpPosture, st.gameTime)) return false;
+    // 主語=プレイヤー本人 or 守護霊の疑似プレイヤー(社長裁定2026-11-22「守護霊にも燕返し」=同じ受付・同じ通り道・同じ一閃の出し直し)。
+    const p = combatActorPlayer(ghostId);
+    if (!p || !isKatanaMode(p) || (ghostId === undefined && isPvpIncapacitated(p.pvpPosture, st.gameTime))) return false;
     // 燕返しは一閃の通り道を戻る=ハンティングで伸びた一閃なら、伸びた距離まで戻る(溜まりは一連の間残っている)。
     const path = tsubamePath({ x: p.x + p.width / 2, y: p.y + p.height / 2 }, { x: w.originX, y: w.originY }, KATANA_DASH_DISTANCE + huntingReachBonus(p));
     if (!path) return false;
-    set({ tsubameWindow: { ...w, used: true } }); // 1回の一閃に1回だけ
-    if (!get().triggerKatanaDash(path.ux, path.uy, undefined, { distance: path.dist })) return false;
-    // 音: 一閃と同じ系統で高め。
-    void import('../audio/audioManager').then(m => m.playSfx('katana-dash', 1, undefined, 1.35));
+    setActorTsubameWindow(ghostId, { ...w, used: true }); // 1回の一閃に1回だけ
+    if (!get().triggerKatanaDash(path.ux, path.uy, ghostId, { distance: path.dist })) return false;
+    // 音: 一閃と同じ系統で高め(守護霊は鳴らし手=useGameLoop が距離減衰つきで鳴らす)。
+    if (ghostId === undefined) void import('../audio/audioManager').then(m => m.playSfx('katana-dash', 1, undefined, 1.35));
     return true;
   },
 
@@ -18742,10 +18944,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
     if (!alive) set(state => ({ player: { ...state.player, ...HUNTING_CONSUME_PATCH } }));
   },
-  noteKatanaAutoSlashHunting: (untilGameTime) => {
-    const p = get().player;
-    if (!p.huntingCharged || p.huntingSequence === 'katana') return;
-    set(state => ({ player: { ...state.player, huntingSequence: 'katana', huntingSeqUntil: untilGameTime, huntingSeqIssen: false } }));
+  noteKatanaAutoSlashHunting: (untilGameTime, ghostId) => {
+    const p = combatActorPlayer(ghostId); // 守護霊のオート斬撃も自分の溜まりで同じ(社長裁定2026-11-22)
+    if (!p || !p.huntingCharged || p.huntingSequence === 'katana') return;
+    setActorHunting(ghostId, { huntingSequence: 'katana', huntingSeqUntil: untilGameTime, huntingSeqIssen: false });
   },
   updateHuntingCharge: (startedAt, charged) => {
     set(state => {

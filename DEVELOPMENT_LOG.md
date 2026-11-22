@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.5752 — 守護霊・幻影をプレイヤーの仕様に揃える2巡目(社長裁定5件)【2026-11-23 03:18 JST】
+- 社長指示「守護霊や幻影も揃えないと矛盾する。矛盾するものは残さない」→「5件とも推薦ではい」。
+- ①幻影のカウンターマスターの吹き飛ばし: 式を `counterMasterBlowVector` 1本に。幻影用 `counterMasterBlowOpponents`(プレイヤー・守護霊・英雄を同じ速さ・長さで弾く・雑魚は弾かない)。`Summon.knockbackMs` 追加。
+- ②拳鬼の自動反撃: 構えで受けた時 `brawlerCounterMasterReply`(相手=ボス級)で決定=気功二連発(2発目160ms後・`Enemy.gpKiko2`)。
+- ③守護霊の刀: 一閃の浮かせ・切り傷・燕返し(しゃがみ・無敵なし)・殺陣を本人と同じ処理へ(`Summon.ghostTsubameWindow`・`DashLocomotionState.tsubameCrouchUntil`・`SatsujinState.ownerId`)。
+- ④守護霊の鞭とハンティング: `performWhipStrike` に主語、`whipSweepTargets`/`spawnWhipSwingFx` を切り出し共有、引き寄せ・叩きつけ・爆発も主語つき。ハンティングの溜めは純関数 `huntingChargeStep`(プレイヤーも通す・挙動不変)、守護霊は自分に溜まる。
+- ⑤幻影の間合い: `meleeReachOf`(刀/鞭/ほか)で詰める。
+- pixiScene は4か所(守護霊のしゃがみ絵・殺陣の写しの主語・引き寄せの柄・気功2発目の描画)。
+- 実装者の未決(社長へ報告): 守護霊の叩きつけはヒットストップ・揺れ無し(本人の技だけ)/守護霊の鞭はハリケーン・物壊し・手榴弾起爆を通らない/幻影の吹き飛ばしは無敵中・一閃中も押す/守護霊の殺陣も赤い画面は全面/守護霊の頭脳は受付の最初のフレームで出す。
+- 画で確認: 守護霊の燕返し(しゃがみ+斬撃1本+輪)と鞭の叩きつけ(爆発・砂埃)を時間を止めて撮って目視。
+- 変えたファイル: store/gameStore.ts・hooks/useGameLoop.ts・types/game.ts・pixi/pixiScene.ts・utils/actorCounterMaster.ts・phantomTick.ts・phantomBrawlerTick.ts・ghostDriver.ts・ghostBuild.ts・huntingSequence.ts・テスト(actorParity2.store.test.ts 新・phantomBrawlerTick.test.ts・masterySites.test.ts 66→67)
+- 検証: v0.25.5751 の上へ rebase 後に typecheck / eslint / circular / vitest 全件(11418通過)。品質監査は未実施(既存の仕組みを主語違いへ広げる揃え=社長の指示どおり・実機確認待ち)。
+- 自己点検: 憲法第4条・第5条に抵触しない。
+
 ## v0.25.5751 — 刀装備中も出撃時のサブウェポンは止めない【2026-11-23 03:04 JST】
 - 社長指示「刀装備時も、初期装備サブウェポンは活きで」。「初期装備」=出撃時の所持サブ(クラス固有+装備メニューの1つ=resetGame の runSubs)と解した。
 - 直し: `Player.startingSubWeapons`(出撃時に控える・途中取得は入らない)。`subWeaponBlockedByKatana` は刀モードでも控えにあるサブを止めない(ダンスフロアの排他は不変)。
