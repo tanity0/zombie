@@ -4,15 +4,17 @@
 - 入力: `research/TELEGRAPH_INVENTORY.md`(§5 の N01〜N15、§6-3 の 1〜7)。行番号は**同じ版 v0.25.5741(`155a300` 系・HEAD `62a21e4`)の値**。版が進むとずれるので、名札と関数名で引き直すこと。
 - 書いた人は**読んだだけ**(コードは1行も変えていない)。
 - 略号は台帳 §0 と同じ(`pS:`=pixiScene.ts / `gS:`=gameStore.ts / `uGL:`=useGameLoop.ts / `cT:`=combatTick.ts / `aBT:`=angelBossTick.ts / `bT:`=bountyTick.ts)。
-- 改訂: 2026-11-22 社長の裁定7件(§6)と品質監査の指摘(A)11件・(B)・(C)を反映。
+- 改訂: 2026-11-22 社長の裁定7件(§6)と品質監査の指摘(A)11件・(B)・(C)を反映。同日、2巡目の整合監査の(A)9件・(C)を反映し、(B)は §10 に積んだ。
+- **時刻の取り方(全項目共通)**: 予告の位相を決める純関数(`dashTelegraphPhase`・`lanceRemainingMs` ほか)には **`gameTime`**(store の時計)を渡す。pixi の `now`(`Date.now()`)は脈動・ラッチの尺にだけ使い、位相の計算に混ぜない。※弾・置き物のように sim 側が `Date.now()` で寿命を持つ物(タレット `createdAt`・手榴弾)は、sim と同じ時計で引く(下の各項目に書く)。
 
 ## 0. 分け方と件数
 
 | 分類 | 意味 | 件数 |
 |---|---|---|
-| (a) 直す | 予告を判定に揃える/予告を足す(N02 は社長裁定で判定を直す) | **18** |
-| (b) 記録の訂正で済む | 今の見え方で既に予告になっている/当たらない(台帳の書き方を直す) | **12** |
+| (a) 直す | 予告を判定に揃える/予告を足す(N02 は社長裁定で判定を直す) | **17** |
+| (b) 記録の訂正で済む | 今の見え方で既に予告になっている/当たらない/攻撃ではない(台帳の書き方を直す) | **12** |
 | 社長裁定で予告なし | 直す対象から外す(記録だけ) | **2**(N04 の格闘・近接・秘奥義/N14 分身) |
+| 保留(社長に聞く) | §9 | 0(N13 は社長裁定で予告なし=2026-11-22「いらない」) |
 | (c) 社長へ戻す | 2026-11-22 の裁定で全部決着(§6) | **0** |
 | — | 不具合ではない/この設計の外(段階4で決める) | 4 |
 
@@ -40,53 +42,69 @@
 1. **走る道の細い線**(今の `drawAngelDashLine` の線・幅は今のまま)
 2. **斬り抜けの帯**(斬り抜けを持つ技だけ・判定と同じ幅=トール/ミゲル/ウリは半幅40=幅80)
 
-**新しい純関数** `src/utils/dashTelegraph.ts` の `dashTelegraphPhase(...)`。**自前の位相は作らない**: 溜めの間の流星は `meteorPhase`(`telegraphStyle.ts:105`)を呼んで取り、走りの間の「走者が線を食う」ぶんだけを足す薄い関数にする。
+**新しい純関数** `src/utils/dashTelegraph.ts` の `dashTelegraphPhase(...)`。**自前の位相は作らない**: 溜めの間の流星は `meteorPhase`(`telegraphStyle.ts:105`)を呼んで取り、走りの間の「走者が線を食う」ぶんだけを足す薄い関数にする。**時刻は全部 `gameTime`**。
 
 ```
-dashTelegraphPhase({ windupStart, runStart, strikeStart, now, drawFrac,
-                     bodySlamInRun, lineFrom, lineEnd, runnerPos }) → {
-  line: { p, er } | null,
-  band: { p, er } | null,        // 斬り抜けを持つ技だけ
+dashTelegraphPhase({
+  gameTime, windupMs, moveMs,            // 尺は各技の表の値
+  state: 'windup' | 'run' | 'other',     // 走りの州そのもので判定する(下の runOn)
+  bossStateUntil, aiStartedAt,           // 時刻の出どころ(下の「時刻の式」)
+  path: 'straight' | 'curved',           // 直進/曲がる(下の表)
+  bodySlamInRun: boolean,
+  lineFrom, lineEnd, runnerPos,          // 曲がる型は毎フレームの値を渡す
+  hasStrike: boolean, drawFrac,
+}) → {
+  // 戻り値は「描く経路の引数そのもの」にする(描画側で位相を作り直さない)
+  line: { prog, eraseOverride: number | undefined, alpha, from, to } | null,
+       // → drawAngelDashLine(o, from.x, from.y, to.x, to.y, now, prog, eraseOverride, style, …) へそのまま渡す
+  band: { prog, windupOn } | null,
+       // → zoneCapsuleTick(view, o, key, windupOn, remainMs, …, halfWidth, now, prog, …) の prog・windupOn へそのまま渡す
+       //   (帯の窓マスク=BAND_SWEEP_ON の経路は zoneCapsuleTick→drawAngelZoneCapsule→drawSweepBand が prog から引く)
 }
 ```
 
+**時刻の式**
+- 溜めの間(`state='windup'`): `windupStart = bossStateUntil − windupMs`、走り出し `runStart = bossStateUntil`、斬る瞬間 `strikeStart = bossStateUntil + moveMs`。**`aiStartedAt` は溜めの間は使わない**(走り出す瞬間に書かれる値=溜めの間は前の技の値が残っている)。
+- 走りの間(`state='run'`): `runStart = aiStartedAt`、`windupStart = aiStartedAt − windupMs`、`strikeStart = aiStartedAt + moveMs`。
+- 雑魚・城ボスの `aiPhaseUntil` で動く型は `bossStateUntil` を `aiPhaseUntil` に読み替え、尺は速度倍率込みの式(`GIANT_DASH_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT` 等。今の `dashLineTick` の呼び出しと同じ)で割る。
+
+**runOn(走りの間か)**: `isBodySlamNow` ではなく**走りの州そのもの**で決める(`thor-dash-move`・`mdash-move`・`thrust`・`'charge'`・`'g-dash-charge'`・`'g-quad-charge'`・`dash`・`bm-charge`)。`isBodySlamNow` は `'jump'`・`'g-glide-active'`・`'g-dive-windup'` など突進でない州でも真になり(`enemyMotion.ts:17-24`)、`biteAt` でも切れるので、線の出し入れの述語に使うとずれる。
+
 **線(走る道)の位相**
-- 溜めの間: `ph = meteorPhase((now−windupStart)/(runStart−windupStart), drawFrac)`。
-  - **走りの間に体当たりが無い型**(`bodySlamInRun=false`): `line = ph` そのまま=溜めの中で描いて消し切る(今の `dashLineTick` と同じ)。走りに入ったら描かない。
-  - **走りの間に体当たりが有る型**(`bodySlamInRun=true`): `line = { p: ph.p, er: 0 }`=描きの位置は `meteorPhase` から取り、消しは走りへ持ち越す(④=当たり得る間ずっと赤)。
-- 走りの間(`bodySlamInRun=true` の型だけ): `p = 1`、`er = 走者の位置の割合`。
-  - **割合は「伸ばした全長」に対して取る**: `er = clamp(dot(runnerPos − lineFrom, u) / |lineEnd − lineFrom|, 0, 1)`(`u`=`lineFrom→lineEnd` の単位ベクトル)。`lineEnd` は斬り抜けの先端まで伸ばした点(`dashLineStrikeEnd` `geometry.ts:115`)。
-  - **時刻からは引かない**。トールは `airHopEase01` で加減速して走る(`uGL:9349-9350`)ので、時刻から引くと線と体がずれる。
-  - `dashLineEraseRescale`(`geometry.ts:133`)は「線形に走る型で、時刻の割合を全長の割合へ直す係数」だった。位置から直接割合を取れば要らなくなるので、**描画からは呼ばない**。線形に走る型(ミゲル)では「`dashLineEraseRescale(時刻の割合, 距離, range)` = 位置の割合」になることを**テストで1本だけ残して**、置き換えが同じ絵になることを確かめる。
-  - 今のミゲルは「始点は今の中心 `cx`、係数の距離も今の中心から」で描いている(`pS:29339-29341`)。新しい型では**始点を固定**する(下の `lineFrom` の定義)。
-- **`lineFrom` の定義**: 溜めの間=**今の体の中心**(溜めで後退りする犬も線の根元が体に付いたまま)。走りに入ったフレームの**体の中心を焼いて**、走りの間はそれを使う。`aiFromX/Y` は使わない(左上の座標の型があり、中心ではない)。
+- 溜めの間: `ph = meteorPhase((gameTime−windupStart)/windupMs, drawFrac)`。
+  - **走りの間に体当たりが無い型**(`bodySlamInRun=false`): `line = { prog: 溜めの進行, eraseOverride: undefined }`=`drawAngelDashLine` が中で `meteorPhase` を引き、溜めの中で描いて消し切る(今の `dashLineTick` と同じ)。走りに入ったら `line = null`。
+  - **走りの間に体当たりが有る型**(`bodySlamInRun=true`): `line = { prog: ph.p, eraseOverride: 0 }`=描きの位置は `meteorPhase` から取り、消しは走りへ持ち越す(④)。
+- 走りの間(`bodySlamInRun=true` の型だけ):
+  - **直進の型**(`path='straight'`): `prog = 1`、`eraseOverride = 走者の位置の割合`。割合は**伸ばした全長**に対して取る: `clamp(dot(runnerPos − lineFrom, u) / |lineEnd − lineFrom|, 0, 1)`(`u`=`lineFrom→lineEnd` の単位ベクトル・`lineEnd` は斬り抜けの先端まで伸ばした点=`dashLineStrikeEnd` `geometry.ts:115`)。**時刻からは引かない**(トールは `airHopEase01` で加減速して走る `uGL:9349-9350`)。
+  - **曲がる型**(`path='curved'`): `from = 今の体の中心`・`to = 今の終点`(下の表)・`prog = 1`・`eraseOverride = 0` を**毎フレーム引き直す**。
+  - `dashLineEraseRescale`(`geometry.ts:133`)は「線形に走る型で、時刻の割合を全長の割合へ直す係数」だった。位置から割合を取れば要らなくなるので描画からは呼ばない。線形に走るミゲルで「`dashLineEraseRescale(時刻の割合, 距離, range)` = 位置の割合」になるテストを1本だけ残し、置き換えが同じ絵になることを確かめる。今のミゲルは始点も係数の距離も「今の中心 `cx`」から取っている(`pS:29339-29341`)ので、新しい型では始点を固定する。
+- **`lineFrom` の定義**: 溜めの間=**今の体の中心**(溜めで後退りする犬・裏ボスも線の根元が体に付いたまま)。直進の型は走りに入ったフレームの**体の中心を焼いて**走りの間はそれを使う。`aiFromX/Y` は使わない(左上の座標の型があり、中心ではない)。
+- **到着後の線(斬り抜けを持つ直進の型=トール・ミゲル)**: 到達点に着いた後(斬り抜けの間)も走りの州は続き、体当たりも生きている(`BODY_SLAM_BOSS_STATES`)。残った線(到達点→帯の終点)は州の終わりまで残し、**`alpha = 1 − easeIn((gameTime − strikeStart) / strikeMs)`** で州の終わり(`bossStateUntil`)にちょうど0にする。
 - 走りが途中で止まった(壁・盾・カウンター・州の打ち切り)時は、残りを既存の「中断の型」(灰へ落として根元へ縮める=`bossBiteEndFrame` `pS:16413-16426` の `BOSS_BITE_CUT`)で消す。パッと消さない(慣性)。
 
 **帯(斬り抜け)の位相**
-- `band = meteorPhase((now−windupStart)/(strikeStart−windupStart), drawFrac)`=**溜め始めから出て、斬る瞬間に消え切る**1本の流星(②③)。溜め+走りの全体で1本。
-- 斬り抜けの判定は `strikeStart` から州の終わりまで毎フレーム生きているが、**帯は斬る瞬間に消え切る**(社長裁定5)。その間の危険の絵は既存の斬撃の絵(`drawMiguelSlash`/`drawUriSlash`/トールの刀+ストリーク)。
-- 描くのは `zoneCapsuleTick`(`pS:33090`)経由(素の `drawAngelZoneCapsule` は最後のフレームを取りこぼす=`pS:32959-32960`)。
+- `band = { prog: (gameTime−windupStart)/(strikeStart−windupStart), windupOn: gameTime < strikeStart }`=**溜め始めから出て、斬る瞬間に消え切る**1本の流星(②③)。溜め+走りの全体で1本。`zoneCapsuleTick` に**溜めの州だけでなく走りの間も `windupOn=true`** で渡す(帯にとっての「溜め」は斬る瞬間まで)。
+- **型③の例外(社長裁定5)**: 帯は斬る瞬間に消え切るが、**斬り抜けの判定はその後 `strikeMs` の間(トール110・ミゲル `MG_T.dash.strikeMs`・ウリ220)毎フレーム残る**。その間の危険の絵は既存の斬撃の絵(`drawMiguelSlash`/`drawUriSlash`/トールの刀+ストリーク)で、赤い帯は出さない。掟③「消え切る=当たる」は**最初の当たりの瞬間**で満たし、④(当たり得る間ずっと赤)はこの区間だけ社長裁定で外す、と記録する。
+- 素の `drawAngelZoneCapsule` は使わない(最後のフレームを取りこぼす=`pS:32959-32960`)。
 
-**曲がる突進の扱い(監査 A6)**: 犬・研究所Lv2・大蝙蝠・ハンターの `'charge'` は「固定の狙い点へ直進+毎フレーム少しだけプレイヤーへ寄せる」(`gS:22263-22268` `DASH_ATTACK_HOMING`)、城ボス `g-quad` は膨らむ。これらは走りの間、**線を毎フレーム「今の体の中心 → 今の狙い点(`aiTargetX/Y`)」で引き直す**(`p=1, er=0` の線をその区間で描く)。今いる所から先の道は必ず覆える。**覆えないのは、これから寄せて曲がるぶんの膨らみ**=「残る妥協」として下に書く。直進の型(トール・ミゲル・裏ボス `dash`・`bm-charge`・`g-dash`)は位置の割合で食わせる(線が世界に固定されて読みやすい)。どちらの型かは敵の種類の表で持ち、テストで全突進が表に載っていることを止める。
+**走りの間の線の型(直進/曲がる)と体当たりの有無**(体当たり=`BODY_SLAM_BOSS_STATES` `enemyBite.ts:630-635`・`PASS_THROUGH_*` `enemyMotion.ts:17-29`)
+
+| 技 | 走りの州(runOn) | 体当たり | 型 | 曲がる型の終点 `to` |
+|---|---|---|---|---|
+| トール 突進 | `thor-dash-move` | 有 | 直進 | — |
+| ミゲル 踏み込み | `mdash-move` | 有 | 直進 | — |
+| ウリ 踏み込み突き | `thrust` | **無** | (線は溜めの中で消し切る) | — |
+| 馬乗り 突進 | `bm-charge` | 有 | 直進 | — |
+| 犬/Lv2/大蝙蝠/ハンター | `'charge'` | 有 | **曲がる**(弱いホーミング `gS:22263-22268`・溜めで後退り) | 固定の狙い点 `aiTargetX/Y` |
+| 城ボス 突進 | `'g-dash-charge'` | 有 | **曲がる**(`gS:21096-21100` `DASH_ATTACK_HOMING`) | 固定の狙い点 `aiTargetX/Y` |
+| 城ボス 三連 | `'g-quad-charge'` | 有 | **曲がる**(膨らむ)・段ごと | その段の `aiTargetX/Y` |
+| 裏ボス 突進 | `dash` | 有 | **曲がる**(向き `bs.dashDirX/Y` を毎フレーム寄せる `uGL:8585-8595`・溜めで後退り・終点は溜め開始の位置から) | 今の中心 + 今の向き × 残りの走り距離(`speed × HB_C.dash.speedMult × (bossStateUntil − gameTime)`) |
 
 **残る妥協(2行)**
 - 体当たりの**横幅(体の半幅ぶん)**は細い線の外で当たる。体そのものを危険の絵と読む(体幅の帯は社長が却下)。
-- 曲がる突進の**これから曲がるぶん**は線の外。線は「今から狙い点まで」の直線。
+- 曲がる型の**これから曲がるぶん**は線の外(線は「今の体から今の終点まで」の直線)。走っている間に線が途切れることは無い。
 
 **なぜこの型が面白いか**: 走者が自分の線を食っていくので、線の先端=もうすぐ来る所が一目で読め、横へ一歩外す回避がはっきり決まる。抜けた先の太い帯が別に流れることで「突進は躱した、でも抜けた先で斬られる」という二段の読み合いが生まれる。
-
-**走りの間に体当たりがあるか(`BODY_SLAM_BOSS_STATES` `enemyBite.ts:630-635` と `isPassThroughPhase` `enemyMotion.ts:17-24` で確認)**
-
-| 技 | 走りの州 | 走りの間の体当たり | 線の扱い |
-|---|---|---|---|
-| トール 突進 | `thor-dash-move` | **有**(`BODY_SLAM_BOSS_STATES`・`cT:1951`) | 走者が食う |
-| ミゲル 踏み込み | `mdash-move` | **有**(同上) | 走者が食う |
-| ウリ 踏み込み突き | `thrust` | **無**(表に無い・台帳 N01) | **溜めの中で消し切る** |
-| 犬/Lv2/大蝙蝠/ハンター | `'charge'` | 有(`PASS_THROUGH_PHASES`) | 引き直す(曲がる) |
-| 城ボス 突進 | `'g-dash-charge'` | 有 | 走者が食う |
-| 城ボス 三連 | `'g-quad-charge'` | 有 | 引き直す(膨らむ)・段ごと |
-| 裏ボス 突進 | `dash` | 有(`PASS_THROUGH_BOSS_STATES` `enemyMotion.ts:29`) | 走者が食う |
-| 馬乗り 突進 | `bm-charge` | 有(`BODY_SLAM_BOSS_STATES`) | 走者が食う |
 
 ### 1h+1i. トールの突進(D06)
 
@@ -94,9 +112,9 @@ dashTelegraphPhase({ windupStart, runStart, strikeStart, now, drawFrac,
 |---|---|
 | 今 | 線は `thor-dash-windup` の間だけ(`pS:28606-28616` の `dashLineTick`=溜めの中で描いて消し切る)。当たるのは `thor-dash-move` の間ずっと体当たり(`cT:1951`)と、入って **230ms 後**からの斬り抜け(`uGL:9381` の `dElapsed >= HB_TH.dash.moveMs`・州の尺は `moveMs + strikeMs` `uGL:9331`)。斬り抜けは**クランプ後の到達点** `dnx,dny`(`uGL:9358-9370`)から `dir × HB_TH.harai.range`(`uGL:9376-9379`)・半幅 `HB_TH.harai.halfWidth`=40。線の幅は6px |
 | 分類 | **(a)** |
-| 直し方 | ① **到達点の純関数** `thorDashArrival(from, target, box, playableOpts)` を `src/utils/` に置く(`clampRectToPlayableArea` を通した目標の中心)。判定(`uGL:9369` の `dnx/dny` の出どころ)と描画の両方が読む。<br>② 帯: 始点=`thorDashArrival(...)`、終点=始点 + `dir × HB_TH.harai.range`(`dir`=判定と同じ `normalize(target − from)` `uGL:9376-9377`)、半幅=`HB_TH.harai.halfWidth`。`windupStart = bossStateUntil − HB_TH.dash.windup`(溜めの間)/`aiStartedAt − HB_TH.dash.windup`(走りの間)、`strikeStart = aiStartedAt + HB_TH.dash.moveMs`。<br>③ 線: `lineEnd` = ②の帯の終点(判定の届く先端)。走りの間は位置の割合で食わせる。到達点に着いた後(斬り抜けの間)も体当たりは生きているので、残った線(到達点→帯の終点)は州の終わりまで残し、州の終わりでちょうど0になるよう `ease` で薄める。<br>④ `cT:1940-1945` のコメント「① `pixiScene.thorDashBodyBandTick`…赤くないのに当たるは残らない」と `enemyBite.ts:631` の「赤い体の帯を描いている」は、v0.25.4475 で帯を撤去した後は**事実と違う**。この直しと同じコミットで「走る道の細い線を走者が食う(1-0)」に書き換える |
+| 直し方 | ① **到達点の純関数** `thorDashArrival(from, target, box, playableOpts)` を `src/utils/` に置く(`clampRectToPlayableArea` を通した目標の中心)。判定(`uGL:9369` の `dnx/dny` の出どころ)と描画の両方が読む。<br>② 帯: 始点=`thorDashArrival(...)`、終点=始点 + `dir × HB_TH.harai.range`(`dir`=判定と同じ `normalize(target − from)` `uGL:9376-9377`)、半幅=`HB_TH.harai.halfWidth`。時刻は 1-0 の「時刻の式」(溜めの間 `strikeStart = bossStateUntil + HB_TH.dash.moveMs`/走りの間 `aiStartedAt + HB_TH.dash.moveMs`)。<br>③ 線: `lineEnd` = ②の帯の終点(判定の届く先端)。走りの間は位置の割合で食わせる。到着後の線は 1-0 の「到着後の線」の式で州の終わりに0。<br>④ `cT:1940-1945` のコメント「① `pixiScene.thorDashBodyBandTick`…赤くないのに当たるは残らない」と `enemyBite.ts:631` の「赤い体の帯を描いている」と `pS:28617-28619` のコメント(「走行中は体幅ぶんの赤い帯を描く」「共通処理へ移した」)は、v0.25.4475 で帯を撤去した後は**事実と違う**。この直しと同じコミットで「走る道の細い線を走者が食う(1-0)」に書き換える |
 | 見え方 | 溜めで細い赤線が伸び、同時に抜けた先へ太い帯が流れ始める。走り出すとトールが線を根元から食い、着いて斬る瞬間に帯が消え切る。斬り抜けの先の細い線が最後に薄れて消える |
-| 確かめ | テスト: (1) 溜めの頭で `line.p=0`・`band.p=0` (2) `aiStartedAt+moveMs` で `band.er=1` (3) **`thor-dash-move` の全フレーム**(=`isBodySlamNow` が真の間。斬り抜けの間も真)で `line.p−line.er>0`、州の終わりで線の濃さ0 (4) 走りの間の全フレームで `line.er ≤ 走者の位置の割合`(走者より前の線が先に消えない) (5) `thorDashArrival` が判定の到達点と一致・帯の終点が判定のカプセルの終点と一致。画: 溜め50%・走り50%・斬り抜け中の3コマ |
+| 確かめ | テスト: (1) 溜めの頭で `line.prog=0`・`band.prog=0` (2) `aiStartedAt+moveMs` で `band.prog=1`(`meteorPhase(1).er=1`) (3) **`thor-dash-move` の全フレーム**(走りの州そのもの。到着後の斬り抜けの間も含む)で線が描かれる(`prog − eraseOverride > 0` かつ `alpha > 0`)、州の終わりで `alpha = 0` (4) 走りの間の全フレームで `eraseOverride ≤ 走者の位置の割合`(走者より前の線が先に消えない) (5) `thorDashArrival` が判定の到達点と一致・帯の終点が判定のカプセルの終点と一致。画: 溜め50%・走り50%・斬り抜け中の3コマ |
 
 ### 1i(続き). ミゲルの踏み込み(E02)・ウリの踏み込み突き(E12)
 
@@ -104,7 +122,7 @@ dashTelegraphPhase({ windupStart, runStart, strikeStart, now, drawFrac,
 |---|---|---|
 | 今 | 線は走る間も残る(`pS:29326-29363`・`merase` を時刻から引き `dashLineEraseRescale` で直す)。斬り抜けは到達後 `MG_T.harai.halfWidth`・`MG_T.harai.range` のカプセル(`aBT:936-941`)。走りの間の体当たり有(`mdash-move`) | 同じ作り(`pS:29511-29550`)。判定は `UR_T.thrust.halfWidth`=40・`range`=190(`angelScript.ts:207`・`aBT:2425-2432`)。**走りの間の体当たり無**=走りの間の細い線は「当たらない赤」になっている |
 | 分類 | **(a)** | **(a)** |
-| 直し方 | 1-0 の型へ移す。線は位置の割合で食わせる(始点は走り始めの中心を焼く)。**斬り抜けの帯を足す**(始点=到達点・半幅 `MG_T.harai.halfWidth`・長さ `MG_T.harai.range`・`strikeStart = aiStartedAt + MG_T.dash.moveMs`)。`drawMiguelSlash` は残す | **走る道の線は溜めの中で消し切る**(`bodySlamInRun=false`=今の `dashLineTick` と同じ)。走りの間の赤は**斬り抜けの帯だけ**(半幅 `UR_T.thrust.halfWidth`・長さ `UR_T.thrust.range`・`strikeStart = aiStartedAt + UR_T.thrust.moveMs`)。あわせて `drawUriSlash` の半幅 `HB_TH.tsuki.halfWidth`(`pS:29540`)と完了ラッチの剣の振り(`pS:29933`)を `UR_T.thrust.halfWidth` へ |
+| 直し方 | 1-0 の型へ移す。線は位置の割合で食わせる(始点は走り始めの中心を焼く)。**斬り抜けの帯を足す**(始点=到達点・半幅 `MG_T.harai.halfWidth`・長さ `MG_T.harai.range`・時刻は 1-0 の式)。到着後の線は 1-0 の「到着後の線」の式で `mdash-move` の終わりに0。`drawMiguelSlash` は残す | **走る道の線は溜めの中で消し切る**(`bodySlamInRun=false`=今の `dashLineTick` と同じ)。走りの間の赤は**斬り抜けの帯だけ**(半幅 `UR_T.thrust.halfWidth`・長さ `UR_T.thrust.range`・時刻は 1-0 の式)。あわせて `drawUriSlash` の半幅 `HB_TH.tsuki.halfWidth`(`pS:29540`)と完了ラッチの剣の振り(`pS:29933`)を `UR_T.thrust.halfWidth` へ |
 | 見え方 | トールと同じ | 溜めで細い線が流れて消え、同時に流れ始めた太い帯が、踏み込んで突く瞬間に消え切る |
 | 確かめ | トールの(1)〜(4)を `MG_T.dash` で。ミゲルは線形に走るので、`dashLineEraseRescale(時刻の割合, 距離, range)` と位置の割合が一致するテストを1本 | (1)(2) を `UR_T.thrust` で。**`thrust` の間は線が描かれない**(当たらない赤を出さない)。描く帯・剣の半幅=判定の半幅 |
 
@@ -114,9 +132,9 @@ dashTelegraphPhase({ windupStart, runStart, strikeStart, now, drawFrac,
 |---|---|
 | 今 | 走っている間(`isBodySlamNow` `enemyBite.ts:684` が真)に体で当たるが、線は溜めの中で消し切る: 犬/研究所Lv2/大蝙蝠/ハンター `pS:16180-16189`(`'charge'`)、城ボス `g-dash`/`g-quad` `pS:31521-31530`(`'g-dash-charge'`/`'g-quad-charge'`)、裏ボス `dash` `pS:28771-28778`、馬乗り `bm-charge` `pS:27627` |
 | 分類 | **(a)** |
-| 直し方 | 全部を 1-0 の型の**線だけ**(斬り抜けの帯なし・`bodySlamInRun=true`)へ。`dashLineTick` に走りの州の判定(`runOn`=`isBodySlamNow(e)`)と `runnerPos`(体の中心)を渡す口を足す。直進の型は位置の割合、曲がる型(`'charge'`・`g-quad`)は毎フレーム「今の中心→今の狙い点」。城ボスの `g-quad`(紫・三連)は**段ごとに別の線**(各段の狙い点は sim が段ごとに書き直す `aiTargetX/Y` を読む=多段は段ごとの時刻)。色は今のまま(赤/`g-quad` は紫) |
+| 直し方 | 全部を 1-0 の型の**線だけ**(斬り抜けの帯なし・`bodySlamInRun=true`)へ。`dashLineTick` に `runOn`(**走りの州そのもの**=`e.aiPhase === 'charge'`/`'g-dash-charge'`/`'g-quad-charge'`・`e.bossState === 'dash'`/`'bm-charge'`)と `runnerPos`(体の中心)と `path` を渡す口を足す。直進の型(`bm-charge`)は位置の割合、曲がる型(`'charge'`・`g-dash`・`g-quad`・裏ボス `dash`)は毎フレーム「今の中心→1-0 の表の終点」。城ボスの `g-quad`(紫・三連)は**段ごとに別の線**(各段の狙い点は sim が段ごとに書き直す `aiTargetX/Y` を読む=多段は段ごとの時刻)。色は今のまま(赤/`g-quad` は紫) |
 | 見え方 | 溜めで伸び切った線が走り出しても消えず、走者が根元から食っていく(曲がる突進は線が体から狙い点へ張り直される)。止まった時は灰に落ちて縮む |
-| 確かめ | テスト: 敵の種類ごとの表で「`isBodySlamNow` が真の全フレームで線が在る」「直進の型は `er ≤ 走者の割合`」「走り終わり(狙い点の12px以内 `gS:22260`/州の終わり/ぶつかり)で消える or 中断の型へ」。表に無い突進があれば落とす。画: 犬の走り途中・`g-quad` の2段目 |
+| 確かめ | テスト: 敵の種類ごとの表で (1) **走りの州の全フレームで線が在る**(走っている間に線の無いフレームが1つも無い) (2) 直進の型は `eraseOverride ≤ 走者の割合` (3) 曲がる型は**線の横のずれ**=走りの間の実際の体の軌跡と、各フレームに描いた線との最大の横距離を測って記録する(上限は実機の画で決める。測った値は残る妥協の大きさとして DEVELOPMENT_LOG に書く) (4) 走り終わり(狙い点の12px以内 `gS:22260`/州の終わり/ぶつかり)で消える or 中断の型へ (5) 表に無い走りの州があれば落とす。画: 犬の走り途中・`g-quad` の2段目・裏ボスの走り途中 |
 
 ### N02. 跳びの滞空中の体の接触(ラフィ `jump-attack`・鋏 `leap-air`)
 
@@ -124,7 +142,7 @@ dashTelegraphPhase({ windupStart, runStart, strikeStart, now, drawFrac,
 |---|---|
 | 今 | 着地円(E08 `pS:29443-29461`・H10 `pS:28032-28063`)とは別に、滞空中の体の接触が生きている(`cT:1615`。`leap-air` は `enemyBite.ts:634 BODY_SLAM_BOSS_STATES` に入っている)。他の跳び(パンプキン `jump`・城ボス `g-jump-air`/`g-trijump-air`・偶像 `idol-leap`)は「空中=接触の攻撃判定ゼロ」(`cT:1971-1976`) |
 | 分類 | **(a) 判定を直す**(社長裁定1「空中では当たらない」=ほかの跳びと揃える) |
-| 直し方 | `cT:1971` の空中族の条件にラフィの `jump-attack` と鋏の `leap-air` を足す。`BODY_SLAM_BOSS_STATES` から `leap-air` を抜く(コメントも「滞空=接触ゼロ」に)。カウンターの扱いは空中族の既存の枝(着地円の中でだけ)に乗る。※`enemyMotion.ts:28` の `PASS_THROUGH_BOSS_STATES` の `'jump-attack'` がトールとラフィのどちらを指すかは実装時に確かめる |
+| 直し方 | `cT:1971` の空中族の条件に `(enemy.type === 'rafi' && enemy.bossState === 'jump-attack')` と鋏の `leap-air`(`enemy.type === 'bounty-balance' && enemy.bossState === 'leap-air'`)を足す。**`jump-attack` はトールとも共有の州名**(`enemyMotion.ts:28`)なので、型で絞らずに足すとトールの州まで巻き込む(トールは `cT:1950-1951` で先に返るので実害は無いが、条件は型で絞る)。`BODY_SLAM_BOSS_STATES` から `leap-air` を抜く(コメントも「滞空=接触ゼロ」に)。カウンターの扱いは空中族の既存の枝(着地円の中でだけ)に乗る |
 | 見え方 | 変わらない(着地円だけが当たる) |
 | 確かめ | テスト: 2型の滞空中フレームで接触ダメージ0(既存の空中族のテストへ足す)・着地円は今どおり当たる |
 
@@ -140,19 +158,13 @@ dashTelegraphPhase({ windupStart, runStart, strikeStart, now, drawFrac,
 |---|---|
 | 今 | hostile のタレット(`uGL:14573 tHostile`)が `createdAt + duration` で消える時(`uGL:14578`)、半径 `TURRET_EXPLOSION_RADIUS × tExMult`(`uGL:14584-14585`・64×倍率)の爆発がプレイヤーに当たる(`uGL:14603-14616`)。範囲の円は無い。**`tExMult` は戦っている側のプレイヤーのエクスプローダー**(`uGL:14584`) |
 | 分類 | **(a)**(+社長裁定2で半径の出どころを直す) |
-| 直し方 | ① 半径(社長裁定2「幻影のビルドで決める」): 地雷と同じく `combatActorPlayer(ownerGhostId)` の倍率にする(地雷 `uGL:15031-15032` と同じ形)。式は純関数 `phantomTurretBlastRadius(actor)` として `src/utils/` に出し、判定と描画の両方が読む。`TURRET_EXPLOSION_RADIUS`(今 `uGL:794` の非公開定数)も `src/utils/` へ移す。<br>② 予告: `syncTurrets` で hostile のタレットに紫の円窓。`prog = 1 − (createdAt+duration − now)/T`、`T = SENSOR_MINE_FUSE_MS`(2000ms=「置いた物が爆ぜる」家族の既存の溜め・見え方の値なので叩き台)。`now < createdAt+duration−T` の間は描かない。遠近の拡大が入れ物に掛かるなら `radius / depthD` で打ち消す(罠 I10 と同じ) |
+| 直し方 | ① 半径(社長裁定2「幻影のビルドで決める」): **設置の時に、置いた幻影の id をタレットの弾に焼く**(幻影がタレットを置く `addProjectile` の所で `ownerGhostId: <幻影の id>` を書く。地雷が `mine.ownerGhostId` を持つのと同じ欄)。爆発の時は `combatActorPlayer(turret.ownerGhostId)` の倍率を使う(地雷 `uGL:15030-15032` と同じ形)。**引けない時(幻影が倒れた後など)はプレイヤーに戻さず、幻影の既定のビルド=倍率1**にする(地雷の `?? player` のフォールバックとはここだけ違う)。式は純関数 `phantomTurretBlastRadius(actor | null)`(null なら `TURRET_EXPLOSION_RADIUS × 1`)として `src/utils/` に出し、判定と描画の両方が読む。`TURRET_EXPLOSION_RADIUS`(今 `uGL:794` の非公開定数)も `src/utils/` へ移す。<br>② 予告: `syncTurrets` で hostile のタレットに紫の円窓。`prog = 1 − (createdAt+duration − t)/T`、`T = SENSOR_MINE_FUSE_MS`(2000ms=「置いた物が爆ぜる」家族の既存の溜め・見え方の値なので叩き台)。**`t` は sim が寿命を測るのと同じ `Date.now()`**(`uGL:14578` は `nowMs − turret.createdAt >= turret.duration`)。`t < createdAt+duration−T` の間は描かない。遠近の拡大が入れ物に掛かるなら `radius / depthD` で打ち消す(罠 I10 と同じ) |
 | 見え方 | 幻影のタレットの寿命の最後2秒、足元に紫の円が外から内へ流れ、消え切った瞬間に爆ぜる |
 | 確かめ | テスト: `prog(createdAt+duration)=1`・`prog(createdAt+duration−T)=0`・描く半径=判定の半径・半径がプレイヤー本人のエクスプローダーで変わらない。画: 消える1秒前 |
 
 ### N13. 幻影のドッグの噛み
 
-| 欄 | 中身 |
-|---|---|
-| 今 | 往復する犬の補間位置を中心に半径 `DOG_BITE_RADIUS`=28 の円で1回だけ噛む(`uGL:11522-11545`)。狙いが消えて引き返している犬(`job.aborted`)は噛まない(`uGL:11516-11518`)。予告なし |
-| 分類 | **(a)** |
-| 直し方 | 「通る」型の円(前例=舞妓の飛ぶ手毬 H15 `pS:43468-43482`=円が物と一緒に動く一様の色)を紫で。犬の中心に半径 `DOG_BITE_RADIUS` の紫の一様の円を、**噛める間**(往路の始め〜`bitten` に `__player__` が入るまで)だけ描く(④)。**`job.aborted` になったら円を消す**(噛まない犬に紫を残さない)。噛んだ時・引き返した時は短いフェードで消す(慣性)。犬の補間位置は**位置を返す純関数**(`phantomDogPos(job, now, home)`)を `src/utils/` に出して判定と描画が読む。`DOG_BITE_RADIUS` も `utils` へ |
-| 見え方 | 走ってくる幻影の犬の足元に紫の輪が付いて回り、噛んだら・引き返したら消える |
-| 確かめ | テスト: 「噛める ⇔ 円を描く」を往復の全区間と `aborted` で。描く中心=判定の中心。画: 往路の途中 |
+**社長裁定で予告なし**(2026-11-22。紫の円の案を見せたところ「いらない」)。実装しない。§9 は経緯の記録。
 
 ### N15. 幻影の炎の延焼
 
@@ -172,7 +184,7 @@ dashTelegraphPhase({ windupStart, runStart, strikeStart, now, drawFrac,
 | 発火ナイフの爆発 | 刺さる相手・爆発の相手は**敵だけ**で、プレイヤーに当たる経路が無い(`uGL:15156-15241`・`stuckToEnemyId` の枝) | **(b)** | 「当たらない」が実態。台帳の N04 から外す(予告は要らない) |
 | 手榴弾 | G07 | (a) | 下の G07 |
 | 地雷 | I01 | (a) | 下の I01 |
-| 罠(I10) | 範囲円が青(`pS:38404`) | **(a)** | hostile の罠の範囲円を青(`0x38bdf8`)から紫の縁 `0xc084fc` へ。半径の遠近補正は既に入っている。画: 置かれた罠 |
+| 罠(I10) | 範囲円がシアン(`pS:38404`)。幻影の罠は `p.hostile` で見分ける(`ownerGhost` は味方の守護霊の印なので使わない)。捕まるとプレイヤーに状態異常が付くだけ(`uGL:15988-15995`) | **(b)** | **攻撃ではなく状態異常の印**なので、紫にせずシアンのまま(`uGL:15991-15993` のコメント「紫=カウンター不可の文法ではなく、これは攻撃ではなく状態異常なので、既存トラップのシアンをそのまま使う」)。台帳 I10 の「幻影」の行に「状態異常=シアン」と書く |
 
 ### N14. 幻影の分身の近接
 
@@ -223,9 +235,9 @@ dashTelegraphPhase({ windupStart, runStart, strikeStart, now, drawFrac,
 |---|---|
 | 今 | 発射は「ランタンが縁に着いた、かつ `minWindup` を過ぎた」時(`aBT:1452`)で、事前に決まらない。描画は射出時の見積もり `estFireAt`(`aBT:184-195`=直線飛行の仮定)を分母にし、旋回で遅れるぶんを `Math.min(0.97, …)`(`pS:29398`)で抑えている=3本とも消え切る前に当たる。さらに**発射の tick で描画が光条の枝(`pS:29381` `L.firedUntil !== undefined`)へ移るので、`prog=1` のコマが一度も描かれない** |
 | 分類 | **(a)**(描画だけ。発射の判定は変えない) |
-| 直し方 | ① 見積もりを毎フレーム今の位置から引き直す純関数 `lanceRemainingMs(L, home, now, bossStateUntil)` を `aBT` に足す: `remaining = min(bossStateUntil−now, max(minWindup−(now−bornAt), 縁までの距離/lanternSpeed×1000))`。**縁までの距離=今の位置 `(L.x, L.y)` から進行方向 `L.dir` の光線がアリーナの円(`GATE_ARENA_RADIUS`)と交わるまでの長さ**(`estimateLanceFireAt` と同じ光線と円の交点の式)。縁に居る(`rd ≥ GATE_ARENA_RADIUS − ε`)なら0。<br>② `prog = 経過/(経過+remaining)`。旋回で戻ることがあるので、ランタンごと(`${e.id}:lance:${li}`)に最大値を持って単調にする。0.97 の上限は消す。<br>③ **最後のコマ**: ランタンごとの帯を `zoneCapsuleTick` 経由で描き、`windupOn = (L.firedUntil === undefined)` を渡す。`zoneCapsuleTick` は溜めの間の位相を毎フレーム控え、溜めが終わった最初のフレーム(=発射の tick)で控えた続きを描き切る仕組みを持っている(`pS:33090-` の arm/latch)。これで発射の tick に `prog=1` の位相まで描かれてから光条に替わる。**3本は別々の時刻**のまま(段ごと) |
+| 直し方 | ① 見積もりを毎フレーム今の位置から引き直す純関数 `lanceRemainingMs(L, home, gameTime, bossStateUntil)` を `aBT` に足す(時刻は `gameTime`=`L.bornAt` と同じ時計): `remaining = min(bossStateUntil−gameTime, max(minWindup−(gameTime−bornAt), 縁までの距離/lanternSpeed×1000))`。**縁までの距離=今の位置 `(L.x, L.y)` から進行方向 `L.dir` の光線がアリーナの円(`GATE_ARENA_RADIUS`)と交わるまでの長さ**(`estimateLanceFireAt` と同じ光線と円の交点の式)。縁に居る(`rd ≥ GATE_ARENA_RADIUS − ε`)なら0。<br>② `prog = 経過/(経過+remaining)`。旋回で戻ることがあるので、ランタンごとに最大値を持って単調にする。**キーは配列の番号 `li` ではなく、ランタンごとに変わらない `${e.id}:lance:${L.bornAt}`**(回収で配列が詰まると `li` が別のランタンを指すため)。0.97 の上限は消す。<br>③ **最後のコマ**: `zoneCapsuleTick`(`pS:33090-33131`)は**完走した時は何も描かない**(`pS:33110`「完走なら消しは溜めの中で終わっている=何も描かない」)。中断の時だけ(控えた残り時間 ≥60ms かつ消しが途中)残りを 320ms で消し切る。だから `zoneCapsuleTick` に任せても発射の tick の `prog=1` は描かれない。**直し**: ランタンごとに最後に描いた位相を控えるマップ(キーは上と同じ)を持ち、光条の枝に初めて入ったフレーム(控えがある=前のフレームまで飛んでいた)で、**同じフレームに帯を `prog=1` で1回描いてから**控えを消す(`drawAngelZoneCapsule` を `prog=1` で直に呼ぶ。この1回だけ)。`zoneCapsuleTick` の中断の残光は使わない(当たった後に赤を320ms残すことになるため)。**3本は別々の時刻**のまま(段ごと) |
 | 見え方 | 3本の赤い帯が、それぞれのランタンが縁に着いて撃つ瞬間にちょうど消え切る |
-| 確かめ | テスト: 直進・旋回・縁を滑る・`capHit`(安全上限での一斉発射)の4通りで、発射の tick に `prog=1`、それより前は `<1`、単調。画: 2本目が飛んでいる途中 |
+| 確かめ | テスト: 直進・旋回・縁を滑る・`capHit`(安全上限での一斉発射)の4通りで、発射の tick に `prog=1`、それより前は `<1`、単調。ランタンが回収されて配列が詰まっても単調の控えが別のランタンに移らない。画: 2本目が飛んでいる途中 |
 
 ### E05b(§6-3 1f)+§6-3 2 の E04/E05. ジブリルのランタン火の起動後
 
@@ -276,7 +288,7 @@ dashTelegraphPhase({ windupStart, runStart, strikeStart, now, drawFrac,
 |---|---|
 | 今 | `wheel-windup` の間、スポークの帯が「速く出て終盤で太る」だけ(`pS:28226-28242`)。自分の距離まで伸びる芯の塗りと、自分へ広がる輪(`pS:28239-28246`)はある。発射(`wheel-fire`)は回り続ける紫のレーザー(④は満たす) |
 | 分類 | **(a)**(社長裁定4「流れる形に揃える」=レーザーの例外に入れない) |
-| 直し方 | スポークの土台の帯(`pS:28231` の `W.halfWidth*2`)を、帯窓(`drawSweepBand` `pS:36390`・根元→先端)の紫に置き換える。`prog = tW / W.windupMs`。スポークは溜めの間も回る(`mimirWheelSpokeAngle`)ので毎フレームその角で描く。**芯の塗り・自分へ広がる輪・残り150msの白い走りは残す**(元々あるエフェクト) |
+| 直し方 | `wheel-windup` の**全部の線**を、同じ帯窓(根元→先端・`prog = tW / W.windupMs`)のアルファで切る。色・太さの式はそのまま、**窓の外は描かない**。対象は1本のスポークにつき: ① 土台の帯 `pS:28234`(`W.halfWidth*2`・`0x7e22ce`) ② 残光 `trail` `pS:28235`(後ろ3本) ③ 全長の線 `pS:28236`(`0xa855f7`) ④ **芯**=全長の細い線 `pS:28237`(`0xf3e8ff`・この設計書で「芯」と呼ぶのはこの線) ⑤ 自分の距離まで伸びる塗りの線2本 `pS:28239-28240`(`0xc084fc`/白) ⑥ 残り150msの白い全長の線 `pS:28244-28249`。窓は `drawSweepBand`(`pS:36390`)の位相 `bandSweepSliceAlpha`/`bandSweepCenter`(`utils/bandSweep.ts`)から引く(偶像の射線 `drawAngelBeamLine` と同じ作り=自前の位相を作らない)。スポークは溜めの間も回る(`mimirWheelSpokeAngle`)ので毎フレームその角で描く。**自分へ広がる輪(`pS:28243`・円)は線ではないので今のまま**(物差しとして残す) |
 | 見え方 | 紫のスポークに根元から窓が流れ、消え切った瞬間に回転レーザーへ変わる |
 | 確かめ | テスト: `tW = W.windupMs` で `prog=1`。画: 溜め50% |
 
@@ -300,12 +312,12 @@ dashTelegraphPhase({ windupStart, runStart, strikeStart, now, drawFrac,
 
 | # 名札 | 今 | 分類 | 直し方/台帳の直し | 確かめ |
 |---|---|---|---|---|
-| **N05 ゾンビの紫の追尾** | `zrush` の頭から `ZOMBIE_RUSH_BODY_SLAM_MS`(1600ms)だけ体当たり(`enemyBite.ts:655-672`)。体の紫の点滅(`BITE_BLINK_TINT`)だけ | **(b)** | 追尾なので地面に形を置けない(置けば体幅の帯)。危険の絵=紫に光る体(紫=返せない・社長裁定 2026-09-16)。台帳を「体の紫=危険の絵」と書く | テスト(§8 順12): 点滅の出ている区間=`isZombieRushBodySlamNow` が真の区間。ずれていたら(a)に上げる |
+| **N05 ゾンビの紫の追尾** | 体当たりは `zrush` の開始から1600ms未満、かつ `biteAt` が立っていない間だけ(`enemyBite.ts:666-672`)。紫の点滅は `biteAt` のある噛みの構え(windup)の間だけ(`pS:26784-26786`)=**0〜1600msの体当たりには予告が無い** | **(a)** | **体の前の紫の短い流星の印**(体幅の帯は出さない)。① 形: 体の中心から進む向き(`vx,vy`=プレイヤーへの追尾の向き)へ、体の前の縁から短い線(長さは「この先 約0.25秒で進む距離」=`|v| × 0.25`・叩き台)を `drawAngelDashLine` の紫(`BITE_TG_PURPLE` の組)で描き、終点は潰れた楕円の印(`markEllipse=true`=弾の二重丸に見せない)。② 位相: 停止 `zpause`(`ZOMBIE_PAUSE_MS`=1000 `gS:1963`)を溜めとして、`meteorPhase((gameTime−zpause開始)/ZOMBIE_PAUSE_MS).p` で線を描き(②=溜め開始で出る)、`zrush` に入ったら `prog=1` で保つ(④=体当たりの間ずっと在る)。体当たりが切れる時刻 `zrush開始+1600ms` の手前 `ERASE`(雑魚の残光と同じ短い尺)から消しを進め、**1600msちょうどで消し切る**(③)。`biteAt` が立って途中で切れた時は中断の型(灰へ落として縮める)。③ 判定の述語は `isZombieRushBodySlamNow` と同じ式を純関数で出して、描画と判定が同じ関数を読む | テスト(§8 順12): 「体当たりが生きている ⇔ 印が描かれている」を `zrush` の全区間と `biteAt` の割り込みで。1600msで `er=1`。画: zrush の途中 |
 | **N06 緑卵の起爆** | 踏む/連鎖でアーム→`armedAt + EGG_FUSE_MS`(1500ms)で半径 `EGG_BLAST_RADIUS`=80 の爆発(`uGL:17216-17241`・`world/mines.ts:7-8`)。アーム済みの卵は赤いベイク版のテクスチャ(`getEggTextureArmed`)と赤い光(`view.light.tint = 0xf87171` `pS:16868`)で速くプクプクするだけで、範囲の円が無い | **(a)** | 社長裁定6「紫に揃える」。① **範囲の円**: アーム済みの卵に紫の円窓。中心=判定と同じ `footX, footY − height×0.5`(`uGL:17220`)、半径 `EGG_BLAST_RADIUS`、`prog = (gameTime−armedAt)/EGG_FUSE_MS`。**卵の入れ物(`view.container` は `alpha = horizonAlpha` `pS:16855`)には入れない**: 地平線フェードで予告が薄れないよう、`groundLayer` に卵の予告用の Graphics を1枚置いてそこへ全部の卵の円をまとめて描く(敵の手榴弾・地雷と同じく、判定を持つ予告は消えない)。② **卵の光り**: アーム済みの光の tint `0xf87171` を紫(`0xc084fc`)へ、赤いベイク版テクスチャも紫で焼き直す(社長の指示で元のエフェクトを変える)。プクプクの速さ・大きさは今のまま。待ち伏せの卵がまとめてアームされても、円は1枚の Graphics(負荷は「強glow以外はただ」の範囲) | テスト: `prog(armedAt)=0`・`prog(爆発の tick)=1`・描く中心と半径=判定。画: 連鎖でアームした卵の群れ(画面の上の方=地平線フェードの掛かる所でも円が見えること) |
 | **N07 スカジの氷結の檻の溜め** | 溜めの間は体の震えだけ。溜め明けに置かれる氷塊の円(C08・円窓・2秒)が予告 | **(b)** | 溜めそのものは当たらない。当たる物は置いた瞬間から流星で出る。「攻撃の予告なし」から外す | — |
 | **N08 ジブリルの聖別の溜め** | 同上(火の環 E05) | **(b)** | 同上 | — |
 | **N09 弾の技** | 弾そのものが共通の赤い二重丸。最初のフレームから描かれ、発射の閃光も出る(`pS:33587-33610`)。弾の描画に画面外の間引きは無い | **(b)** | 弾の文法で読める。偶像だけが射線を出しているのは揃っていないが違反ではない。全ボスへ射線を足すのは勧めない(**面白さ**: 弾を見てから捌くシューティングの読みが弾の価値) | 画: 画面の外のボスの弾が入ってくる瞬間(`?zoomlock=0.4` でも) |
-| **N10 噛みつきの線が出ない噛み** | 台帳の前提「`biteDirX/Y` が未定義で線が出ない」は誤り。未定義で `null` を返すのはリッチの転移噛み(`biteTelegraph.ts:261`・意図)の経路だけで、それ以外の噛みは線を返す。ただし線の長さは踏み込み `lp`(`biteLungePx ?? spec.lungePx`)で決まり(`lineGeometry` `biteTelegraph.ts:220-231`・`reach = lp + contact`)、`lp` が小さい噛みでは**ほぼ点**(下限 `MIN_DRAWN_PX`)になる | **(b)**(テストで確かめる) | 台帳の N10 を「線は出る。長さが下限まで縮む場合がある」に直す | テスト: 全敵の噛みの州で `biteTelegraphLine` の描く区間(`dfx,dfy`→`dtx,dty`)の長さが `MIN_DRAWN_PX` 以上。下限まで縮む噛みが見つかり、画で読めなければ (a) に上げる |
+| **N10 噛みつきの線が出ない噛み** | 台帳の前提「`biteDirX/Y` が未定義で線が出ない」は誤り。`biteTelegraphLine` が `null` を返すのは、①リッチの転移噛み(`biteTelegraph.ts:261`・意図) ②噛みの州の外(`bitePhaseOf === 'none'`) ③`biteDirX/Y` が未定義(転移噛みは向きを焼かない `gS:22522-22528`。それ以外は構えの間に焼かれる `gS:22528-22536`) ④溜め+実行の尺が0、の4つ。①②④は線が要らない場面で、③は①の経路の結果。ただし線の長さは踏み込み `lp`(`biteLungePx ?? spec.lungePx`)で決まり(`lineGeometry` `biteTelegraph.ts:220-231`・`reach = lp + contact`)、`lp` が小さい噛みでは**ほぼ点**(下限 `MIN_DRAWN_PX`)になる | **(b)**(テストで確かめる) | 台帳の N10 を「線は出る。長さが下限まで縮む場合がある」に直す | テスト: 全敵の噛みの州で `biteTelegraphLine` の描く区間(`dfx,dfy`→`dtx,dty`)の長さが `MIN_DRAWN_PX` 以上。下限まで縮む噛みが見つかり、画で読めなければ (a) に上げる |
 
 ---
 
@@ -321,7 +333,7 @@ dashTelegraphPhase({ windupStart, runStart, strikeStart, now, drawFrac,
 | 6 | 緑卵=**紫に揃える**。範囲の円は紫、卵の赤い光り(`pS:16840-16870`・tint `0xf87171`)も紫へ | N06 |
 | 7 | E11 ウリの振り下ろし=(a) 予告を40に広げる | E11 |
 
-**社長へ戻す項目は、いま無い。**
+**社長へ戻す項目**: なし(N13 は 2026-11-22 に「いらない」=予告なしで裁定済み)。
 
 ---
 
@@ -343,19 +355,45 @@ dashTelegraphPhase({ windupStart, runStart, strikeStart, now, drawFrac,
 | 順 | 単位 | 含む項目 | 大きさ |
 |---|---|---|---|
 | 1 | 幅の読み違い | E11(`pS:29494`・`29502`・完了ラッチ `29916`)・E12 の剣(`pS:29540`・完了ラッチ `29933`)・§6-3 2(定数の出どころの揃え)・E05b の `HITR` | 数行+テスト |
-| 2 | 色 | H07 の発射中の紫・I10 の幻影の罠の紫・I01 の幻影の地雷の紫 | 数行 |
+| 2 | 色 | H07 の発射中の紫・I01 の幻影の地雷の紫 | 数行 |
 | 3 | 円の大きさ | G07 の `/depthD`・I01 の半径(`sensorMineBlastRadius`+`m.blastR`) | 小 |
 | 4 | 流星化(1) | E21 凝視の線(`drawAngelBeamLine` へ) | 小 |
-| 5 | 流星化(2) | C04 車輪の帯窓 | 小 |
-| 6 | 時刻の同期 | E03 ランス(`lanceRemainingMs`+`zoneCapsuleTick` 経由) | 中 |
+| 5 | 流星化(2) | C04 車輪の全部の線に帯窓 | 小 |
+| 6 | 時刻の同期 | E03 ランス(`lanceRemainingMs`・`L.bornAt` のキー・最後のコマ) | 中 |
 | 7 | 床の判定円 | E05b ランタン火の起動後の紫の縁 | 小 |
-| 8a | 突進の純関数 | `dashTelegraphPhase`(`meteorPhase` を呼ぶ薄い関数)・`thorDashArrival`・突進の表(直進/曲がる・体当たりの有無)+テスト(描画は触らない) | 中 |
-| 8b | 突進(斬り抜けあり) | D06 トール・E02 ミゲル・E12 ウリ(線の扱い+斬り抜けの帯)・`cT:1940-1945`/`enemyBite.ts:631` の古いコメントの訂正 | 中 |
-| 8c | 突進(体当たりのみ) | N01 の残り(犬/Lv2/大蝙蝠/ハンター/`g-dash`/`g-quad`/裏ボス/`bm-charge`) | 中 |
-| 9 | 跳びの判定 | N02(空中族へ2型を足す・`BODY_SLAM_BOSS_STATES` から `leap-air` を抜く)+テスト | 小 |
+| 8 | 跳びの判定 | N02(空中族へ `type==='rafi'` の `jump-attack` と鋏の `leap-air` を足す・`BODY_SLAM_BOSS_STATES` から `leap-air` を抜く)+テスト。**突進(順9)より前**に入れる(`leap-air` を体当たりの表から抜いてから、突進の表のテストを書く) | 小 |
+| 9a | 突進の純関数 | `dashTelegraphPhase`(`meteorPhase` を呼ぶ薄い関数・戻り値は描く経路の引数)・`thorDashArrival`・突進の表(走りの州=runOn・直進/曲がる・体当たりの有無)+テスト(述語は**走りの州そのもの**。描画は触らない) | 中 |
+| 9b | 突進(斬り抜けあり) | D06 トール・E02 ミゲル・E12 ウリ(線の扱い+斬り抜けの帯)・`cT:1940-1945`/`enemyBite.ts:631`/`pS:28617-28619` の古いコメントの訂正 | 中 |
+| 9c | 突進(体当たりのみ) | N01 の残り(直進=`bm-charge`/曲がる=犬・Lv2・大蝙蝠・ハンター・`g-dash`・`g-quad`・裏ボス `dash`)。テストの述語は走りの州そのもの・曲がる型は横のずれの記録と「線の無いフレームが無い」 | 中 |
 | 10 | 卵 | N06 緑卵の紫の円窓(groundLayer の1枚)+光り・ベイクの紫化 | 小 |
-| 11 | 幻影の置き物 | N12 タレット(半径の式の差し替え込み)・N13 ドッグ(定数を `utils` へ移す込み) | 中 |
-| 12 | テストだけ | N05(点滅の区間=体当たりの区間)・N10(噛みの線の長さ ≥ `MIN_DRAWN_PX`) | 小 |
-| 13 | 台帳の訂正 | (b) の12件と「社長裁定で予告なし」の2件を `TELEGRAPH_INVENTORY.md` に反映(文書のみ) | 文書 |
+| 11 | 幻影のタレット | N12(設置の時に幻影の id を焼く・半径の式・倍率1のフォールバック・紫の円窓・定数を `utils` へ) | 中 |
+| 12 | ゾンビの追尾の印 | N05(体当たりの述語の純関数+紫の短い流星の印)+テスト | 小 |
+| 13 | テストだけ | N10(噛みの線の長さ ≥ `MIN_DRAWN_PX`) | 小 |
+| 14 | 台帳の訂正 | (b) の12件と「社長裁定で予告なし」の2件を `TELEGRAPH_INVENTORY.md` に反映(文書のみ) | 文書 |
+| — | (裁定済み・実装しない) | N13 幻影のドッグ=予告なし | — |
 
-**止まっている物**: 無い(2026-11-22 の裁定で全部決着)。順12のテストが落ちた時だけ、該当項目を (a) に上げて別単位にする。
+**止まっている物**: なし。順13のテストが落ちた時だけ、N10 を (a) に上げて別単位にする。
+
+---
+
+## 9. N13 幻影のドッグの噛み(社長裁定 2026-11-22「いらない」=予告なし。以下は検討の記録)
+
+| 欄 | 中身 |
+|---|---|
+| 今 | 往復する犬の補間位置を中心に半径 `DOG_BITE_RADIUS`=28(`uGL:711`)の円で1回だけ噛む(`uGL:11522-11545`)。引き返している犬(`job.aborted` `uGL:11516-11518`)は噛まない。予告なし |
+| 聞く理由 | ① 往復の状態は hook の `useRef`(`phantomDogRef` `uGL:1995`)にあり、描画(pixi は store だけを読む)から見えない。② **判定は線形の補間**(`uGL:11524-11535`)なのに、**犬の絵は ease-in-out** で動くため、絵と判定が**最大12.5%**(往路・復路それぞれの道のりに対して)ずれている。予告の円をどちらに付けるか(判定に付ける=絵から外れて見える/絵に付ける=赤い円と当たりがずれる)は見え方の意図の判断になる |
+| 直すなら(案) | ① **store へ写す**: `phantomDogRef` を進めた直後(`uGL:11536` の判定の直前)に、描画用の小さな欄 `phantomDogTele: { x, y, r, active } | null` を store へ書く。`x,y` は判定と同じ補間位置(純関数 `phantomDogPos(job, nowMs, home)` に出して判定と写しの両方が使う)、`active = !job.aborted && !job.bitten.has('__player__')`。**値が変わったフレームだけ書く**(CLAUDE.md の React 再描画の規律・これを読む React 部品は作らない)。② 円: `active` の間だけ紫の一様の円(前例=飛ぶ手毬 H15)。`aborted`・噛んだ後は短いフェードで消す。③ ずれ: 推薦は**絵の動きを判定と同じ線形補間に揃える**か、**判定を絵と同じ ease-in-out に揃える**かのどちらか(後者は判定の変更)。どちらにするかが社長への質問 |
+| 推薦 | 判定を絵の ease-in-out に揃える(見た目どおりに噛まれる方が、犬の動きを見て躱す手触りが素直)。判定の変更なので社長の承認が要る |
+
+---
+
+## 10. (B) 積んだ物(2巡目の整合監査)
+
+今回の設計に入れた物(上の本文に反映済み):
+1. `dashTelegraphPhase` の戻り値を描く経路の引数に合わせた(線=`drawAngelDashLine` の `prog`/`eraseOverride`、帯=`zoneCapsuleTick` の `prog`/`windupOn`。帯の窓マスクは `zoneCapsuleTick` の中の経路が `prog` から引く)。
+2. 戻り値に濃さの欄 `alpha`、引数に直進/曲がる `path` を足した。
+3. ミゲルの到着後の線の薄め方(1-0「到着後の線」・`mdash-move` の終わりに0)。
+4. 型③の例外(帯は斬る瞬間に消え切るが、判定は `strikeMs` 残る=社長裁定5)。
+
+それ以外の (B) は別案件として積む(この巡では直さない)。※この改訂の発注文には、上の4つ以外の (B) の本文が含まれていなかったので、ここには項目名を書いていない。監査の原文から書き足すこと。
+
