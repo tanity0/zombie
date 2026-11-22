@@ -7,7 +7,7 @@ import { useGameStore, WHIP_KNOCKBACK_SPEED } from './gameStore';
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { brawlerAirborne } from '../utils/brawlerCombo';
-import { WHIP_FOLLOWUP_WINDOW_MS, whipZakoApexDelayMs } from '../utils/whipFollowup';
+import { WHIP_FOLLOWUP_WINDOW_MS, whipZakoTopDelayMs, whipLiftTopAt } from '../utils/whipFollowup';
 import { COUNTER_LIFT_MOVE } from '../utils/airLift';
 import { WHIP_PULL_GAP_PX, WHIP_PULL_MS } from '../utils/whipFollowup';
 
@@ -119,7 +119,7 @@ describe('2段目: 進行方向フリック=叩き落とし', () => {
     expect(useGameStore.getState().tryWhipFollowup(-1, 0)).toBe(true);
     expect(brawlerAirborne(en('z'), now)).toBe(true); // 浮かせつつ
     expect(useGameStore.getState().whipFollowup?.stage).toBe('pulled');
-    run(150);
+    run(useGameStore.getState().whipFollowup!.hitAt - now + 10); // 叩き落としの受付が開いた後(頂点〜)
     expect(brawlerAirborne(en('z'), now)).toBe(true);
     const hp0 = en('z').health;
     expect(useGameStore.getState().tryWhipFollowup(1, 0.1)).toBe(true);
@@ -140,7 +140,7 @@ describe('2段目: 進行方向フリック=叩き落とし', () => {
     swing();
     run(50);
     useGameStore.getState().tryWhipFollowup(-1, 0);
-    run(whipZakoApexDelayMs(COUNTER_LIFT_MOVE) + 10); // 受付が開いた後
+    run(whipZakoTopDelayMs(COUNTER_LIFT_MOVE) + 10); // 受付が開いた後
     useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({ ...e, brLiftUntil: now - 1, liftUntil: now - 1 })) }));
     const hp0 = en('z').health;
     expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(false);
@@ -154,9 +154,9 @@ describe('2段目: 進行方向フリック=叩き落とし', () => {
     const x0 = en('h').x;
     expect(useGameStore.getState().tryWhipFollowup(-1, 0)).toBe(true);
     expect(brawlerAirborne(en('h'), now)).toBe(false);
-    // ボス級だけ=雑魚の頂点と同じ間合いで開く。
-    expect(useGameStore.getState().whipFollowup!.hitAt).toBe(now + whipZakoApexDelayMs(COUNTER_LIFT_MOVE));
-    run(whipZakoApexDelayMs(COUNTER_LIFT_MOVE) + 10);
+    // ボス級だけ=雑魚の「頂点に浮いている」時刻と同じ間合いで開く。
+    expect(useGameStore.getState().whipFollowup!.hitAt).toBe(now + whipZakoTopDelayMs(COUNTER_LIFT_MOVE));
+    run(whipZakoTopDelayMs(COUNTER_LIFT_MOVE) + 10);
     expect(en('h').whipPull).toBeUndefined();
     const hp0 = en('h').health;
     expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(true);
@@ -174,8 +174,8 @@ describe('2段目: 進行方向フリック=叩き落とし', () => {
   });
 });
 
-describe('叩き落としの受付=浮き上がり切ってから(社長「敵が浮いたのを見てから入力窓。(早すぎてもだめ)」)', () => {
-  it('引き寄せた直後(頂点の手前)の進行方向は何も起きず受付も残る/頂点〜+300msで叩き落とせる', () => {
+describe('叩き落としの受付=頂点に浮いている間(社長「敵が浮いたのを見てから入力窓。(早すぎてもだめ)」「敵が頂点に浮いてるくらいのタイミングの入力受けにしたい。まだ今だと早い。」)', () => {
+  it('引き寄せた直後(受付の開く前)の進行方向は何も起きず受付も残る/頂点〜+300msで叩き落とせる', () => {
     useGameStore.setState({ enemies: [place('zombie', 120, 0, 'z')] });
     swing();
     run(100);
@@ -184,6 +184,9 @@ describe('叩き落としの受付=浮き上がり切ってから(社長「敵�
     const w = useGameStore.getState().whipFollowup!;
     expect(w.armAt).toBe(pullAt);
     expect(w.hitAt).toBeGreaterThan(pullAt); // 引き寄せた瞬間には開かない
+    const top = whipLiftTopAt(en('z'))!;
+    expect(w.hitAt).toBe(top); // 頂点ちょうどに開き
+    expect(w.hitAt + WHIP_FOLLOWUP_WINDOW_MS).toBeGreaterThan(top); // 頂点の後に閉じる
     expect(w.hitAt).toBeLessThanOrEqual((en('z').brawlerLiftAt ?? 0) + (en('z').brLiftMs ?? 0));
     // 早すぎ: 何も起きない(ダメージなし・叩き落としなし)・受付は消費しない。
     const hp0 = en('z').health;
@@ -192,18 +195,18 @@ describe('叩き落としの受付=浮き上がり切ってから(社長「敵�
     expect(en('z').health).toBe(hp0);
     expect(en('z').brLiftDown).not.toBe(true);
     expect(useGameStore.getState().whipFollowup!.used).toBe(false);
-    // 頂点の1ms手前もまだ早すぎ。
+    // 受付の開く1ms手前もまだ早すぎ。
     now = w.hitAt - 1;
     expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(true);
     expect(en('z').health).toBe(hp0);
-    // 頂点で叩き落とせる(まだ浮いている)。
+    // 受付が開いた瞬間に叩き落とせる(まだ浮いている)。
     now = w.hitAt;
     expect(brawlerAirborne(en('z'), now)).toBe(true);
     expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(true);
     expect(en('z').health).toBeLessThan(hp0);
     expect(en('z').brLiftDown).toBe(true);
   });
-  it('頂点+300msを過ぎたら閉じる(何も起きない)', () => {
+  it('受付の開いた時刻+300msを過ぎたら閉じる(何も起きない)', () => {
     useGameStore.setState({ enemies: [place('zombie', 120, 0, 'z')] });
     swing();
     run(100);
@@ -214,7 +217,7 @@ describe('叩き落としの受付=浮き上がり切ってから(社長「敵�
     expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(false);
     expect(en('z').health).toBe(hp0);
   });
-  it('強個体(浮きの短い区分)でも頂点+300msはまだ浮いている', () => {
+  it('強個体(浮きの短い区分)でも受付の終わりはまだ浮いている', () => {
     useGameStore.setState({ enemies: [place('pumpkin' as EnemyType, 140, 0, 'k')] });
     swing();
     run(100);
@@ -239,7 +242,7 @@ describe('位置と向きの固定', () => {
     useGameStore.getState().setLastDirection({ x: 0, y: -1 });
     expect(Math.abs(useGameStore.getState().player.x - x0)).toBeLessThan(0.5);
     expect(useGameStore.getState().player.lastDirection).toEqual({ x: 1, y: 0 });
-    // 固定は叩き落としの受付(浮き上がり切ってから300ms)の終わりまで続く。
+    // 固定は叩き落としの受付(頂点から300ms)の終わりまで続く。
     const w = useGameStore.getState().whipFollowup!;
     expect(w.lockUntil).toBe(w.hitAt + WHIP_FOLLOWUP_WINDOW_MS);
     now = w.lockUntil! - 1;
@@ -267,5 +270,81 @@ describe('何も起きない', () => {
     swing();
     expect(useGameStore.getState().tryWhipFollowup(-1, 0)).toBe(false);
     expect(useGameStore.getState().tryFlickFollowup(1, 0)).toBe(false);
+  });
+});
+
+describe('叩きつけ=爆発(社長「鞭の叩きつけは爆発ダメージにして」「爆発は叩きつけられた敵を中心にです」)', () => {
+  /** 引き寄せて、叩き落としの受付が開いた所まで進める。 */
+  const pullAndWait = () => {
+    swing();
+    run(100);
+    expect(useGameStore.getState().tryWhipFollowup(-1, 0)).toBe(true);
+    run(useGameStore.getState().whipFollowup!.hitAt - now + 10);
+  };
+  /** 叩きつける敵(z)の横 dx に、1撃目に当たっていない敵を置く。 */
+  const addBeside = (id: string, dx: number) => {
+    const z = en('z');
+    useGameStore.setState(st => ({ enemies: [...st.enemies, { ...place('zombie', 0, 0, id), x: z.x + dx, y: z.y }] }));
+  };
+  it('叩きつけた敵を中心に爆発し、その周りの敵(1撃目に当たっていない敵)にもダメージが入る。遠くの敵とプレイヤーには入らない', () => {
+    useGameStore.setState({ enemies: [place('zombie', 120, 0, 'z')] });
+    pullAndWait();
+    addBeside('b', 30); // 爆発の半径の内
+    addBeside('f', 600); // 半径の外
+    const php0 = useGameStore.getState().player.health;
+    expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(true);
+    expect(en('b').health).toBeLessThan(99999);
+    expect(en('f').health).toBe(99999);
+    expect(useGameStore.getState().player.health).toBe(php0);
+    // 周りの敵は距離で減る(爆心の本体より小さい)。
+    expect(99999 - en('b').health).toBeLessThan(99999 - en('z').health);
+  });
+  it('叩きつけた本体には鞭の打撃が1回だけ(爆発のダメージは入らない=二重にしない)', () => {
+    useGameStore.setState({ enemies: [place('zombie', 120, 0, 'z')] });
+    pullAndWait();
+    const calls: { id: string; blast: boolean | undefined }[] = [];
+    const orig = useGameStore.getState().damageEnemy;
+    const origStrike = useGameStore.getState().performWhipStrike;
+    let strikes = 0;
+    const spyDamage: typeof orig = (id, amount, blast, ...rest) => { calls.push({ id, blast }); return orig(id, amount, blast, ...rest); };
+    const spyStrike: typeof origStrike = ids => { strikes++; return origStrike(ids); };
+    useGameStore.setState({ damageEnemy: spyDamage, performWhipStrike: spyStrike });
+    const hp0 = en('z').health;
+    expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(true);
+    useGameStore.setState({ damageEnemy: orig, performWhipStrike: origStrike });
+    expect(strikes).toBe(1);
+    expect(calls.filter(c => c.id === 'z')).toEqual([]); // 爆発(damageEnemy の blast)は本体に入らない
+    expect(en('z').health).toBeLessThan(hp0); // 打撃は入る
+  });
+  it('熟練度の貯まり先は鞭(打撃も爆発の与ダメも鞭に貯まる)', async () => {
+    const { getPendingMastery, isMasteryRunIgnored } = await import('../utils/masteryRun');
+    useGameStore.setState({ enemies: [place('zombie', 120, 0, 'z')] });
+    pullAndWait();
+    addBeside('b', 30);
+    // 爆発の分も鞭に貯まることを分けて見る: 周りの敵への爆発(damageEnemy の blast)の前後で、鞭の貯まりが増えるか。
+    const orig = useGameStore.getState().damageEnemy;
+    let blastOnB = 0, blastWhipGain = 0;
+    const spyDamage: typeof orig = (id, amount, blast, ...rest) => {
+      if (!(id === 'b' && blast)) return orig(id, amount, blast, ...rest);
+      blastOnB++;
+      const w0 = getPendingMastery().whip ?? 0;
+      const r = orig(id, amount, blast, ...rest);
+      blastWhipGain += (getPendingMastery().whip ?? 0) - w0;
+      return r;
+    };
+    useGameStore.setState({ damageEnemy: spyDamage });
+    const before = getPendingMastery();
+    expect(useGameStore.getState().tryWhipFollowup(1, 0)).toBe(true);
+    const after = getPendingMastery();
+    useGameStore.setState({ damageEnemy: orig });
+    expect(blastOnB).toBe(1);
+    expect(blastWhipGain).toBeGreaterThan(0); // 爆発の与ダメが鞭に貯まる
+    expect(isMasteryRunIgnored()).toBe(false);
+    expect(after.whip ?? 0).toBeGreaterThan(before.whip ?? 0);
+    // ほかの熟練度(手榴弾・近接武器・格闘など)には貯まらない。
+    for (const k of Object.keys(after) as (keyof typeof after)[]) {
+      if (k === 'whip') continue;
+      expect(after[k] ?? 0).toBe(before[k] ?? 0);
+    }
   });
 });

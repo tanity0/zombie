@@ -19,7 +19,7 @@ const SOURCES = import.meta.glob<string>(
 );
 
 /** `damageEnemy(` の呼び出しの総数(包んだ数+印で済ませた数)。呼び口を足したら、包んでからこの数を直す。 */
-const EXPECTED_CALLS = 65; // +1: 格闘のスープレックスの叩きつけの小爆発(research/BRAWLER.md §34-9・withMastery('brawler')) / +1: 格闘の空中投げの爆撃(research/BRAWLER.md §34-3・withMastery('brawler')) / +1: 爆弾の拾い物が案山子に当てる1発(withMastery('none'))
+const EXPECTED_CALLS = 66; // +1: 鞭の叩きつけの爆発(research/WHIP_FOLLOWUP.md §6・withMastery('whip')) / +1: 格闘のスープレックスの叩きつけの小爆発(research/BRAWLER.md §34-9・withMastery('brawler')) / +1: 格闘の空中投げの爆撃(research/BRAWLER.md §34-3・withMastery('brawler')) / +1: 爆弾の拾い物が案山子に当てる1発(withMastery('none'))
 
 const VALID_KEYS = new Set<string>([...GROWING_MASTERY_KEYS, 'loadout', 'none', 'max']);
 

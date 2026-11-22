@@ -230,6 +230,7 @@ import { sampleRim, rimBuckets, rimBucketDir, rimFollow, rimFollowDir, type RimL
 import { meleeHitFrame, meleeHitTexture } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
 import { skillBurstFrame, skillBurstTexture, skillBurstScale, skillBurstAlpha, skillBurstTint } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
 import { reportSuppressedError } from '../utils/errorBeacon';
+import { poiMissReason, attentionInHold, isNearFocus, formatPoiMissLine, PoiMissGate, reportPoiMiss, POI_MISS_NEAR_PX, type PoiDrawFacts } from '../utils/poiMissBeacon';
 import { labZombieSexOf } from '../utils/labZombieSex';
 import { withoutLeakedDestroyListeners, type DestroyEmitter } from './extractGuard'; // 読み戻しが古い描画器を残さない(2026-11-15)
 import { setRenderStats, setFxDiag, setSceneDiag, noteBakeCall } from '../utils/renderStats'; // 実機で「増え続けていないか」を見る窓口(v0.25.4347 / 表示物と表の件数 v0.25.5054)
@@ -476,7 +477,7 @@ import { pickupDisplayPosition } from '../utils/collisionUtils';
 import { SCARECROW_SHEET, scarecrowSwayFrame, scarecrowFaceMul } from '../utils/scarecrow'; // 案山子(変異体対策室の練習の的)の揺れのコマ
 import type { SceneLayers } from './layers';
 import {
-  getTexture, PLAYER_ART_BASE_W, ESCORT_WALK_SHEETS, ESCORT_STAND_FRAME,
+  getTexture, peekTexture, PLAYER_ART_BASE_W, ESCORT_WALK_SHEETS, ESCORT_STAND_FRAME,
   FLAME_SHEET, FLAME_FRAMES, FLAME_FRAME_W, FLAME_FRAME_H, FLAME_LIGHT_FRAC, TORCH_STAND_RIM_ABOVE_FOOT,
   avatarHeadDeltaPx, avatarHeadCxDeltaPx, isAvatarHeadMeasured, GLEN_PART_ANIM_FRAMES, GLEN2_BODY_ANIM_FRAMES,
 } from './pixiTextures';
@@ -11869,6 +11870,7 @@ export class PixiScene {
     this.syncPolice(now); // §6.24 M48: 警察署(同上)
     this.syncShrines(now); // 武将の祠(寄り道が立つ出撃のみ。無ければ即 return)
     this.syncSecretPois(realNow); // 隠しPOI(ステージ1・3・4・5の深層域のみ。無ければ即 return)
+    this.syncPoiMissDiag(realNow, now); // 診断: アテンションの hold 中、注目点の近くの POI が描かれていなければ左下のビーコンへ理由を1行(読むだけ)
     this.syncBaseSites(basesDrawn, now, s.safeBaseId, s.labArmory,
       // ステージ2の武器商人=拠点の武器庫と同じ絵(同じ層・同じ加算)で描く(社長指示2026-10-18)。
       s.stageTheme === 'lab' && !s.merchantHidden ? s.weaponMerchant : null);
@@ -35229,6 +35231,87 @@ export class PixiScene {
     const rings: readonly (readonly [number, number])[] = [[46, 0.10], [32, 0.16], [20, 0.26], [10, 0.5]];
     gg.zIndex = footY + 0.5; // その祠の絵のすぐ手前(手前を通る敵やプレイヤーより奥)
     for (const [r, al] of rings) gg.circle(x, y, r * d * (0.7 + 0.3 * k)).fill({ color: 0xffe8c2, alpha: al * k * alpha });
+  }
+
+  private poiMissGate = new PoiMissGate();
+  private poiMissPt = makeProjPoint();
+  /**
+   * 診断(社長実機・ステージ1「廃病院へ寄ったのに地面しか映らない」1回きり): アテンションが寄り切って止まっている間、
+   * 注目点の近く(POI_MISS_NEAR_PX)に足元がある POI が描かれていなければ、sync* と同じ条件を読み直して
+   * どこで描かなかったかを左下のビーコンへ1行出す(utils/poiMissBeacon)。**読むだけ**(store にも絵にも触らない。
+   * 素材は peekTexture=読み込みを起こさない問い合わせで見る)。
+   * 負荷 1/10: アテンションの hold 中だけ・POI 数ぶんの距離計算。同じ理由は1回のアテンションにつき1回だけ。
+   */
+  private syncPoiMissDiag(realNow: number, now: number) {
+    const s = useGameStore.getState();
+    const a = s.attention;
+    if (!a) return;
+    if (!attentionInHold(realNow - a.startReal, ATTENTION_IN_MS, a.holdMs ?? ATTENTION_HOLD_MS, a.cutinMs ?? 0)) return;
+    const fx = a.x, fy = a.y;
+    // 足元が注目点から十分遠い物は、何も読まずに飛ばす(大半のフレームはここで終わる)。
+    const near = (x: number, y: number) => isNearFocus(x, y, fx, fy, POI_MISS_NEAR_PX);
+    const placeFacts = (x: number, footY: number, margin: number | null) => {
+      if (this.projFrame) {
+        const p = projectInto(this.projFrame, x, footY, this.poiMissPt);
+        return { horizonAlpha: p.alpha * this.horizonActorAlpha(p.y), distOutside: margin === null ? null : this.projDistanceOutside(x, footY, margin) };
+      }
+      return { horizonAlpha: this.horizonActorAlpha(footY), distOutside: margin === null ? null : this.distanceOutsideViewport(x, footY, margin) };
+    };
+    const v = this.visibleWorldRect();
+    const view = { x: (v.left + v.right) / 2, y: (v.top + v.bottom) / 2 };
+    const report = (name: string, x: number, y: number, f: PoiDrawFacts) => {
+      const reason = poiMissReason(f);
+      if (!reason || !this.poiMissGate.shouldReport(a.startReal, name, reason)) return;
+      reportPoiMiss(formatPoiMissLine(name, reason, s.camera, view, { x: fx, y: fy }, { x, y }));
+    };
+    const takenFade = (taken: boolean, takenAt: number, ms: number) =>
+      taken ? 1 - Math.max(0, Math.min(1, (s.gameTime - takenAt) / ms)) : 1;
+    // 廃病院・武器庫・警察署(sync* と同じ順の条件)。
+    const building = (name: string, pos: { x: number; y: number } | null, taken: boolean, takenAt: number, fadeMs: number, texKey: string, margin: number, sp: Sprite) => {
+      if (!pos || !near(pos.x, pos.y)) return;
+      report(name, pos.x, pos.y, {
+        hasPos: true, indoor: s.indoorMode, fade: takenFade(taken, takenAt, fadeMs), hasTex: !!peekTexture(texKey),
+        ...placeFacts(pos.x, pos.y, margin), visible: sp.visible, alpha: sp.alpha, attached: !!sp.parent,
+      });
+    };
+    building('hospital', s.hospital, s.hospitalTaken, s.hospitalTakenAt, HOSPITAL_FADE_MS, 'hospital', POI_CIRCLE_CULL_MARGIN, this.hospitalSprite);
+    building('armory', s.armory, s.armoryTaken, s.armoryTakenAt, ARMORY_FADE_MS, 'armory', POI_CIRCLE_CULL_MARGIN, this.armorySprite);
+    building('police', s.police, s.policeTaken, s.policeTakenAt, POLICE_FADE_MS, 'police', POLICE_CULL_MARGIN, this.policeSprite);
+    // 祠
+    s.shrines.forEach((sh, i) => {
+      if (!near(sh.x, sh.y)) return;
+      const sp = this.shrineSprites[i];
+      const colP = sh.takenAt !== undefined ? Math.max(0, Math.min(1, (s.gameTime - sh.takenAt) / SHRINE_CRUMBLE_MS)) : null;
+      const sinkP = colP === null ? 0 : Math.max(0, (colP - SHRINE_CRUMBLE_TREMOR_FRAC) / (1 - SHRINE_CRUMBLE_TREMOR_FRAC));
+      report(`shrine-${sh.slot}`, sh.x, sh.y, {
+        hasPos: true, indoor: s.indoorMode, fade: colP === null ? 1 : Math.max(0, 1 - sinkP * sinkP * 1.25),
+        hasTex: !!peekTexture(SHRINE_TEXTURE[sh.slot]), ...placeFacts(sh.x, sh.y, POI_CIRCLE_CULL_MARGIN),
+        visible: !!sp?.visible, alpha: sp?.alpha ?? 0, attached: !!sp?.parent,
+      });
+    });
+    // 隠しPOI
+    s.secretPois.forEach((p, i) => {
+      if (!near(p.x, p.y)) return;
+      const sp = this.secretSprites[i];
+      report(`secret-${p.id}`, p.x, p.y, {
+        hasPos: true, indoor: s.indoorMode, fade: 1, hasTex: !!peekTexture(p.texture), ...placeFacts(p.x, p.y, POI_CIRCLE_CULL_MARGIN),
+        visible: !!sp?.visible, alpha: sp?.alpha ?? 0, attached: !!sp?.parent,
+      });
+    });
+    // 二人組(syncEventQuestNpc と同じ条件。画面の判定は持たない)。
+    const npc = loop1DuoNpcView(s.stage1Loop, s.gameTime) ?? s.eventQuestNpc;
+    if (near(npc.x, npc.y)) {
+      const fadeElapsed = npc.status === 'completed' && npc.fadeStartedAt > 0 ? now - npc.fadeStartedAt : 0;
+      const statusAlpha = (npc.status === 'completed' ? Math.max(0, 1 - fadeElapsed / EVENT_NPC_FADE_MS) : 1) * (npc.viewAlpha ?? 1);
+      const view2 = this.eventNpcView;
+      report('duo', npc.x, npc.y, {
+        hasPos: true, indoor: false,
+        statusHidden: npc.status === 'gone' || npc.status === 'hidden' || npc.status === 'briefed' ? npc.status : null,
+        fade: statusAlpha, hasTex: !!peekTexture('quest-futari'),
+        horizonAlpha: this.projLooseFade(npc.x, npc.y, false), distOutside: null,
+        visible: view2.visible, alpha: view2.alpha, attached: !!view2.parent,
+      });
+    }
   }
 
   private syncShrines(now: number) {

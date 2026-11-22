@@ -3,7 +3,8 @@ import { describe, it, expect } from 'vitest';
 import {
   classifyWhipFlick, isWhipFollowupOpen, whipPullTarget, whipPullProgress, whipPullPosAt, whipSlamTargets, whipFollowupAction, isWhipFollowupLocked,
   WHIP_FOLLOWUP_WINDOW_MS, WHIP_PULL_GAP_PX,
-  whipFollowupPhase, whipLiftApexAt, whipZakoApexDelayMs, whipSlamOpenAt,
+  whipFollowupPhase, whipLiftApexAt, whipLiftHoverEndAt, whipLiftTopAt, whipZakoTopDelayMs, whipSlamOpenAt,
+  whipSlamBlastPlan, whipSlamBlastFalloff,
 } from './whipFollowup';
 import { flickBand, isFlickFollowupOpen, FLICK_FOLLOWUP_WINDOW_MS } from './flickFollowup';
 import { brawlerJugglePush, brawlerJuggleHeightRel } from './brawlerCombo';
@@ -119,8 +120,8 @@ describe('位置と向きの固定', () => {
   });
 });
 
-describe('叩き落とし(3段目)の受付=浮き上がり切ってから(社長「敵が浮いたのを見てから入力窓。(早すぎてもだめ)」「入力窓の長さは広げない。覚えもしない」)', () => {
-  // 引き寄せた瞬間=1000・頂点=1137 として開いた2段目の窓。
+describe('叩き落とし(3段目)の受付=開く前は早すぎ(社長「敵が浮いたのを見てから入力窓。(早すぎてもだめ)」「入力窓の長さは広げない。覚えもしない」)', () => {
+  // 引き寄せた瞬間=1000・受付の開く時刻=1137 として開いた2段目の窓。
   const w = { hitAt: 1137, armAt: 1000, dirX: 1, dirY: 0, hitIds: ['a'], used: false, stage: 'pulled' as const, lockUntil: 1137 + WHIP_FOLLOWUP_WINDOW_MS };
   it('頂点より前=早すぎ(受付は開いていない・使ってもいない)/頂点〜+300ms=受付/過ぎたら閉じる', () => {
     expect(whipFollowupPhase(w, 999)).toBeNull();
@@ -157,14 +158,91 @@ describe('叩き落とし(3段目)の受付=浮き上がり切ってから(社�
     expect(whipLiftApexAt({ brawlerLiftAt: 100, brLiftMs: 260, brLiftPeak: 0, brLiftFrom: 0.8 })).toBe(100);
     expect(whipLiftApexAt({})).toBeNull();
   });
-  it('ボス級(浮かない)は雑魚の頂点と同じ間合い・全員が浮き上がり切ってから開く(遅い方)', () => {
-    const zako = whipZakoApexDelayMs(COUNTER_LIFT_MOVE);
+  it('ボス級(浮かない)は雑魚と同じ間合い・全員の中で一番遅い頂点ちょうどに開く', () => {
+    const zako = whipZakoTopDelayMs(COUNTER_LIFT_MOVE);
     const jp = brawlerJugglePush({}, 'mob', COUNTER_LIFT_MOVE, 0, false, false, false)!;
-    expect(zako).toBe(whipLiftApexAt(jp));
+    expect(zako).toBe(whipLiftTopAt(jp));
     expect(whipSlamOpenAt(1000, [null], zako)).toBe(1000 + zako);
     expect(whipSlamOpenAt(1000, [], zako)).toBe(1000 + zako);
-    expect(whipSlamOpenAt(1000, [1080, 1137], zako)).toBe(1137);
-    expect(whipSlamOpenAt(1000, [1080, null], 50)).toBe(1080);
+    expect(whipSlamOpenAt(1000, [1180, 1240], zako)).toBe(1240);
+    expect(whipSlamOpenAt(1000, [1180, null], 50)).toBe(1180);
     expect(whipSlamOpenAt(1000, [900], zako)).toBe(1000); // 引き寄せより前には開かない
+  });
+});
+
+describe('叩き落としの受付=頂点に浮いている間(社長「鞭の叩きつけ、敵が頂点に浮いてるくらいのタイミングの入力受けにしたい。まだ今だと早い。」)', () => {
+  it('窓が開くのは頂点ちょうど・閉じるのは頂点の後(落ち始めてから)。窓の長さは300msのまま・閉じる時はまだ浮いている', () => {
+    for (const cls of ['mob', 'strong'] as const) {
+      const pullAt = 5000;
+      const jp = brawlerJugglePush({}, cls, COUNTER_LIFT_MOVE, pullAt, false, false, false)!;
+      const top = whipLiftTopAt(jp)!;
+      // 頂点=上り切ってから落ち始めるまでの真ん中(上りの途中ではない)。
+      expect(top).toBeGreaterThan(whipLiftApexAt(jp)!);
+      expect(top).toBeLessThan(whipLiftHoverEndAt(jp)!);
+      const open = whipSlamOpenAt(pullAt, [top], 0);
+      const close = open + WHIP_FOLLOWUP_WINDOW_MS;
+      expect(open).toBe(top);
+      expect(close).toBeGreaterThan(top);
+      expect(close).toBeGreaterThan(whipLiftHoverEndAt(jp)!); // 落ち始めてしばらくまで
+      expect(close).toBeLessThan(jp.brLiftUntil ?? 0); // 閉じる時はまだ浮いている
+      // 落ち始めは、それまでより低くなっていく(漂いの後=落下)。
+      const he = whipLiftHoverEndAt(jp)!;
+      expect(brawlerJuggleHeightRel(jp, he + 50)).toBeLessThan(brawlerJuggleHeightRel(jp, he));
+    }
+  });
+  it('不変条件: どの区分でも、新しい開く時刻は変更前(上り切った瞬間)より遅い(社長「まだ今だと早い」)', () => {
+    const pullAt = 5000;
+    for (const cls of ['mob', 'strong'] as const) {
+      // 地上から打ち上げた時・空中で拾い直した時(始まりの高さが0でない弧)の両方。
+      const ground = brawlerJugglePush({}, cls, COUNTER_LIFT_MOVE, pullAt, false, false, false)!;
+      const air = brawlerJugglePush(ground, cls, COUNTER_LIFT_MOVE, pullAt + 200, false, false, false);
+      for (const jp of air ? [ground, air] : [ground]) {
+        const oldOpen = Math.max(pullAt, whipLiftApexAt(jp)!); // 変更前=上り切った瞬間に開いていた
+        const newOpen = whipSlamOpenAt(pullAt, [whipLiftTopAt(jp)], whipZakoTopDelayMs(COUNTER_LIFT_MOVE));
+        expect(newOpen).toBeGreaterThan(oldOpen);
+      }
+    }
+    // ボス級(浮かない)=雑魚の間合い。変更前は雑魚の上り切りまでの時間だった。
+    const mob = brawlerJugglePush({}, 'mob', COUNTER_LIFT_MOVE, 0, false, false, false)!;
+    const oldBoss = pullAt + whipLiftApexAt(mob)!;
+    expect(whipSlamOpenAt(pullAt, [null], whipZakoTopDelayMs(COUNTER_LIFT_MOVE))).toBeGreaterThan(oldBoss);
+  });
+  it('浮きの尺を変えると窓が追従する(頂点の時刻を定数で持たない)', () => {
+    const jp = brawlerJugglePush({}, 'mob', COUNTER_LIFT_MOVE, 0, false, false, false)!;
+    const ms = jp.brLiftMs ?? 0;
+    const longer = { ...jp, brLiftMs: ms * 2, brLiftUntil: ms * 2 };
+    const t1 = whipLiftTopAt(jp)!, t2 = whipLiftTopAt(longer)!;
+    expect(Math.abs(t2 - 2 * t1)).toBeLessThanOrEqual(2); // 尺を2倍=頂点の時刻も2倍
+    expect(whipSlamOpenAt(0, [t2], 0) - whipSlamOpenAt(0, [t1], 0)).toBe(t2 - t1); // 窓も同じだけずれる
+    // 落ちる部分を伸ばす(拾い直しの重さ)と配分が変わり、頂点の時刻も描いている弧に合わせて動く。
+    const slowFall = { ...jp, brLiftFallK: 2 };
+    expect(whipLiftHoverEndAt(slowFall)! - whipLiftApexAt(slowFall)!).toBeGreaterThan(0);
+    expect(whipLiftTopAt(slowFall)).not.toBe(null);
+  });
+  it('押し上げ0(叩き落とし中)は始まりが頂点・浮いていなければ null', () => {
+    expect(whipLiftTopAt({ brawlerLiftAt: 100, brLiftMs: 260, brLiftPeak: 0, brLiftFrom: 0.8 })).toBe(100);
+    expect(whipLiftTopAt({})).toBeNull();
+    expect(whipLiftHoverEndAt({})).toBeNull();
+  });
+});
+
+describe('叩きつけの爆発(社長「爆発は叩きつけられた敵を中心にです」)', () => {
+  const pt = (id: string, x: number, y: number) => ({ id, anchor: () => ({ x, y }) });
+  it('減りは手榴弾と同じ(爆心1・縁0.55)', () => {
+    expect(whipSlamBlastFalloff(0, 66)).toBe(1);
+    expect(whipSlamBlastFalloff(66, 66)).toBeCloseTo(0.55);
+    expect(whipSlamBlastFalloff(33, 66)).toBeCloseTo(0.775);
+  });
+  it('爆心の敵本体には入らない(鞭の打撃で当てる=二重にしない)・半径の外と壁越しは当たらない', () => {
+    const plan = whipSlamBlastPlan([{ id: 'a', x: 0, y: 0 }],
+      [pt('a', 0, 0), pt('near', 30, 0), pt('far', 100, 0), { ...pt('wall', 10, 0), blocked: () => true }], 66);
+    expect(plan).toEqual([{ centerId: 'a', targetId: 'near', dist: 30, scale: whipSlamBlastFalloff(30, 66) }]);
+  });
+  it('叩きつけた敵が複数=1体ずつを中心に爆発。重なりは手榴弾の同時爆発と同じ=それぞれ独立に当たる', () => {
+    const plan = whipSlamBlastPlan([{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 40, y: 0 }],
+      [pt('a', 0, 0), pt('b', 40, 0), pt('mid', 20, 0)], 66);
+    expect(plan.filter(h => h.targetId === 'mid').map(h => h.centerId)).toEqual(['a', 'b']);
+    // 叩きつけた a は自分の爆発は受けず、近くの b の爆発(減った分)だけ受ける。
+    expect(plan.filter(h => h.targetId === 'a').map(h => [h.centerId, h.scale])).toEqual([['b', whipSlamBlastFalloff(40, 66)]]);
   });
 });

@@ -15,6 +15,7 @@ import { peekTexture } from '../pixi/pixiTextures';
 import { rafTimeout } from '../utils/rafTimeout';
 import { deathResultSafetyMs } from '../utils/playerDeathWatch';
 import { lastSuppressedError } from '../utils/errorBeacon';
+import { lastPoiMissLine } from '../utils/poiMissBeacon';
 import { renderStatsText, bakedTextureText, sceneDiagText, takeBakeCalls } from '../utils/renderStats';
 import { prevBeatText, startCrashWatch, rendererMountCount, contextLostCount, brawlerSecretCount } from '../utils/crashWatch';
 import { textureMemoryMB, textureTopGroups } from '../pixi/pixiTextures';
@@ -436,6 +437,7 @@ const ErrBeacon: React.FC = () => {
     const iv = setInterval(() => { lastTimerAt = performance.now(); }, 250);
     const writeLine = (now: number) => {
       const msg = lastSuppressedError();
+      const poi = lastPoiMissLine();
       // ★増え続けていないかを常に出す(v0.25.4347)。例外が出たら赤字でその後ろへ。
       const pv = prevBeatText();
       const sec = Math.max(0.001, (now - lastLineAt) / 1000);
@@ -448,6 +450,7 @@ const ErrBeacon: React.FC = () => {
         : '';
       const line = `fps${fps} bk${bk} tm${tm}${why} ${renderStatsText()} tex${textureMemoryMB()}MB ${bakedTextureText()} ${sceneDiagText()}`
         + (pv ? ` · 前回最後 ${pv}` : '')
+        + (poi ? ` · ${poi}` : '') // 診断: アテンションの hold 中に注目点の近くの POI が描かれなかった理由(utils/poiMissBeacon)
         + (msg ? ` · ERR ${msg}` : '');
       if (ref.current && ref.current.textContent !== line) ref.current.textContent = line;
     };

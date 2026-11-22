@@ -310,9 +310,10 @@ import { ZOOM_MIN_ABS, isPointInZoomedViewport, zoomedViewportBounds } from '../
 import { meleeImpactPoint, meleeNumberPoint, bandBoxOverlap } from '../utils/meleeImpact';
 import {
   classifyWhipFlick, whipPullTarget, whipPullPosAt, whipSlamTargets, whipFollowupAction, isWhipFollowupLocked,
-  whipFollowupPhase, whipLiftApexAt, whipZakoApexDelayMs, whipSlamOpenAt,
+  whipFollowupPhase, whipLiftTopAt, whipZakoTopDelayMs, whipSlamOpenAt, whipSlamBlastPlan,
   WHIP_PULL_MS, WHIP_SLAM_DAMAGE_MULT, WHIP_SLAM_HITSTOP_MS, WHIP_FOLLOWUP_WINDOW_MS, WHIP_PULL_BLOCK_EPS_PX, WHIP_PULL_DUST_INTERVAL_MS, type WhipFollowupWindow,
 } from '../utils/whipFollowup';
+import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
 import { planHomingVolley, splitDueHomingShots, homingLiftAllowed, type HomingPendingShot } from '../utils/homingVolley';
 import { isFlickFollowupOpen } from '../utils/flickFollowup';
 import { whipRopeTotalMs } from '../utils/whipSwingMotion';
@@ -2996,25 +2997,25 @@ const whipPullable = (e: Enemy): boolean =>
 /**
  * 1段目: 反対フリック=浮かせつつ引き寄せる(社長「ヒットした瞬間反対にフリックで浮かせつつ引き寄せる」)。
  * 当たった敵(押されて飛んでいる最中も)の押しを打ち消し、一閃と同じ打ち上げ(格闘の4段目)で浮かせて、プレイヤーの手前へ寄せる(追加ダメージなし)。
- * ボス級は浮かせず・動かさない(区分)。2段目(叩き落とし)の受付は、引き寄せた敵が浮き上がり切った(打ち上げの頂点)瞬間に開く
- * (社長「鞭の３段目は、敵が浮いたのを見てから入力窓。(早すぎてもだめ)」・長さは300msのまま)。ボス級だけなら雑魚の頂点と同じ間合いで開く。
+ * ボス級は浮かせず・動かさない(区分)。2段目(叩き落とし)の受付は、引き寄せた敵が頂点に浮いている時刻(上り切りから落ち始めまでの真ん中)ちょうどに開き、
+ * 落ち始めてしばらくで閉じる(社長「鞭の叩きつけ、敵が頂点に浮いてるくらいのタイミングの入力受けにしたい。まだ今だと早い。」・長さは300msのまま)。ボス級だけなら雑魚と同じ間合いで開く。
  * 引き寄せた瞬間から受付の終わりまで、プレイヤーの位置と向きを止める。
  */
 const whipFollowupPull = (get: () => GameState, set: WhipFollowupSet, w: WhipFollowupWindow, now: number): void => {
   const ids = new Set(w.hitIds);
   const pulledIds: string[] = [];
   const slamIds: string[] = []; // 2段目の対象=浮かせた敵+当たっていたボス級(浮かないが叩き落としの2倍は当たる)
-  const apexAts: (number | null)[] = []; // 2段目の対象ごとの頂点の時刻(ボス級=null=雑魚の頂点までの時間で開く)
+  const topAts: (number | null)[] = []; // 2段目の対象ごとの「頂点に浮いている」時刻(ボス級=null=雑魚のその時間で開く)
   const gt = get().gameTime;
   set(state => {
     const enemies = state.enemies.map(e => {
       if (!ids.has(e.id) || isCorpse(e) || isUntouchable(e) || e.health <= 0) return e;
-      if (BRC.brawlerEnemyClass(e) === 'boss') { slamIds.push(e.id); apexAts.push(null); return e; }
+      if (BRC.brawlerEnemyClass(e) === 'boss') { slamIds.push(e.id); topAts.push(null); return e; }
       if (!whipPullable(e)) return e;
       const lp = issenLiftPatch(e, e, now, gt);
       const lifted = !!lp && (lp.brLiftUntil ?? 0) > now;
       const to = whipPullTarget(state.player, e);
-      if (lifted) { slamIds.push(e.id); apexAts.push(whipLiftApexAt({ ...e, ...lp })); }
+      if (lifted) { slamIds.push(e.id); topAts.push(whipLiftTopAt({ ...e, ...lp })); }
       if (to) pulledIds.push(e.id);
       if (!to && !lp) return e;
       return {
@@ -3026,9 +3027,9 @@ const whipFollowupPull = (get: () => GameState, set: WhipFollowupSet, w: WhipFol
         knockbackStopFor: undefined, knockbackStopMs: undefined, vx: 0, vy: 0,
       };
     });
-    // 2段目の受付=浮き上がり切った瞬間(hitAt)から同じ長さ。引き寄せた瞬間(armAt)〜頂点の手前は「早すぎ」(何も起きない・受付は残す)。
+    // 2段目の受付=頂点に浮いている時刻ちょうど(hitAt)から同じ長さ(閉じるのは落ち始めてしばらく)。引き寄せた瞬間(armAt)〜hitAt の手前は「早すぎ」(何も起きない・受付は残す)。
     // 対象が居なければ閉じる。引き寄せた瞬間から受付の終わりまで、プレイヤーの位置と向きを止める。
-    const openAt = whipSlamOpenAt(now, apexAts, whipZakoApexDelayMs(ISSEN_LIFT_MOVE));
+    const openAt = whipSlamOpenAt(now, topAts, whipZakoTopDelayMs(ISSEN_LIFT_MOVE));
     const whipFollowup: WhipFollowupWindow = slamIds.length > 0
       ? { hitAt: openAt, armAt: now, dirX: w.dirX, dirY: w.dirY, hitIds: slamIds, used: false, stage: 'pulled', lockUntil: openAt + WHIP_FOLLOWUP_WINDOW_MS }
       : { ...w, used: true, lockUntil: now + WHIP_PULL_MS };
@@ -3067,8 +3068,97 @@ const whipSlamTargetIds = (st: GameState, w: WhipFollowupWindow, now: number): s
     id: e.id, alive: !isCorpse(e) && !isUntouchable(e) && e.health > 0,
     airborne: BRC.brawlerAirborne(e, now), boss: BRC.brawlerEnemyClass(e) === 'boss',
   })), w.hitIds);
+/** 叩きつけの爆発の押し(=手榴弾の HEAVY_GRENADE_KNOCKBACK_MULT・useGameLoop と同じ値)。 */
+const WHIP_SLAM_BLAST_KB_MULT = 3.6;
+/**
+ * 叩きつけた敵1体を爆心にする爆発の威力(距離0の満額)=今までの叩きつけのダメージ(鞭の1撃目の2倍)。
+ * 1撃目と同じ掛け算(近接の素ダメ・縮地の上乗せ・鞭の倍率(ハリケーンの中は1)・全攻撃倍率・血の覚醒・近接コンボ・空中の倍率・熟練度=鞭)。
+ * 爆発は周りの敵にだけ当たるので、爆発の規約でクリ・処刑(気絶中の即死/ボス5倍)・スキャンの印は掛けない。エクスプローダー等(skillExplosionMult)は爆発として掛ける。
+ * 叩きつけた本体へは鞭の打撃(performWhipStrike)で今までどおり当てる(爆発は入れない)。
+ */
+const whipSlamBlastBase = (st: GameState, slammed: Enemy, now: number): number => {
+  const p = st.player;
+  const melee = p.weapons.find(w => w.isMelee);
+  const h = st.hurricane;
+  const ecx = slammed.x + slammed.width / 2, ecy = slammed.y + slammed.height / 2;
+  const inHurricane = !!h && now < h.endsAt && (ecx - h.rootX) ** 2 + (ecy - h.rootY) ** 2 <= h.radius * h.radius;
+  return (melee?.damage ?? 6) * (p.shukuchiStrikeMult ?? 1) * WHIP_SLAM_DAMAGE_MULT * (inHurricane ? 1 : WHIP_DAMAGE_MULT)
+    * skillOutgoingDamageMult(p) * skillBloodAwakenDamageMult(p)
+    * skillMeleeComboMult(p, st.gameTime, st.meleeFinishComboCount, st.meleeFinishComboUntil)
+    * meleeAirMult(slammed, now) * masteryMultOf(p, 'whip');
+};
+/** 叩きつけの爆発の爆心(叩きつけた敵の体の中心)と威力の満額。叩きつけの打撃の前の敵から取る(空中の倍率は浮いている間の値)。 */
+type WhipSlamCenter = { id: string; x: number; y: number; base: number };
+/**
+ * 叩きつけの爆発(社長「鞭の叩きつけは爆発ダメージにして」「爆発は叩きつけられた敵を中心にです」・research/WHIP_FOLLOWUP.md §6)。
+ * 叩きつけた敵1体ごとに、その体の中心を爆心にした爆発を1発ずつ(重なりは手榴弾が同時に爆発した時と同じ=それぞれ独立に当たる)。
+ * 爆発は周りの敵にだけ当たる(爆心の本体は鞭の打撃で当てているので入れない=二重にしない。別の叩きつけた敵の爆発には入る)。
+ * 爆発はプレイヤーの手榴弾と同じ扱い: 半径=手榴弾(HEAVY_GRENADE_RADIUS)×エクスプローダー×ヘビーガンナー・威力×エクスプローダー・距離の減り・壁越し不可・
+ * 敵だけに当たる(プレイヤー・仲間には当たらない)・ボス系には非致死(damageEnemy の blast)・卵も割る・爆発の浮き。熟練度は鞭に貯まる。
+ */
+const whipSlamExplode = (get: () => GameState, centers: readonly WhipSlamCenter[], now: number): void => {
+  const st = get();
+  const p = st.player;
+  const exMult = skillExplosionMult(p);
+  const radius = HEAVY_GRENADE_RADIUS * exMult * heavyGunnerExplosionMult(p, st.gameTime);
+  const slammedIds = new Set(centers.map(c => c.id));
+  const baseOf = new Map(centers.map(c => [c.id, c.base] as const));
+  const wallsAt = new Map<string, Rect[]>(); // 爆心ごとの壁(手榴弾と同じく壁越しには効かない)
+  const wallsFor = (cx: number, cy: number): Rect[] => {
+    const k = `${cx},${cy}`;
+    let wl = wallsAt.get(k);
+    if (!wl) { wl = meleeWallsAround(get, cx, cy, radius); wallsAt.set(k, wl); }
+    return wl;
+  };
+  const targets = st.enemies
+    .filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e) && !isUntouchable(e) && e.health > 0)
+    .map(e => ({
+      id: e.id,
+      anchor: (cx: number, cy: number) => blastAnchorOf(e, cx, cy),
+      blocked: (cx: number, cy: number, x: number, y: number) => {
+        const walls = wallsFor(cx, cy);
+        return walls.length > 0 && segmentBlocked(cx, cy, x, y, walls);
+      },
+    }));
+  const plan = whipSlamBlastPlan(centers, targets, radius);
+  const exKb = skillExplosionKbMult(p);
+  let hitCount = 0, killedAny = false;
+  for (const h of plan) {
+    const e = get().enemies.find(en => en.id === h.targetId);
+    if (!e || !(e.health > 0) || isCorpse(e)) continue;
+    const c = centers.find(cc => cc.id === h.centerId)!;
+    const dmg = Math.max(1, Math.round((baseOf.get(h.centerId) ?? 0) * exMult * h.scale));
+    const killed = withMastery('whip', () => get().damageEnemy(e.id, dmg, true, false, false, 'other'));
+    hitCount++;
+    const a = blastAnchorOf(e, c.x, c.y);
+    get().spawnDamageNumber(a.x, e.y, dmg, false, { enemyId: e.id });
+    if (slammedIds.has(e.id)) blastHitIds.delete(e.id); // 別の爆心の叩きつけた敵は、爆発の浮きではなく叩き落としの浮き(呼び手が掛ける)
+    if (killed) {
+      killedAny = true;
+      get().dropEnemyXp(e, a.x, a.y, `pickup-xp-whipslam-${now}-${e.id}`);
+      continue;
+    }
+    if (slammedIds.has(e.id) || resistsChipKnockback(e.type)) continue; // 叩きつけた敵は真下へ(押さない)
+    const dx = a.x - c.x, dy = a.y - c.y, dl = Math.max(0.001, Math.hypot(dx, dy));
+    get().knockbackEnemy(e.id, dx / dl, dy / dl, WHIP_SLAM_BLAST_KB_MULT * h.scale * exKb, 3 * exKb);
+  }
+  const g = get();
+  for (const c of centers) {
+    // 絵と音=手榴弾の爆発と同じ組(橙の輪・橙と暗赤の飛沫・橙の光・爆発の絵)。
+    g.spawnRing(c.x, c.y, 8, radius, 'rgba(251,146,60,0.82)', 5, 440);
+    g.spawnBurst(c.x, c.y, '#f97316', 20);
+    g.spawnBurst(c.x, c.y, '#7f1d1d', 8);
+    g.spawnGlow(c.x, c.y, GLOW_R_S, 'rgba(251,146,60,', 440);
+    g.spawnExplosionFx(c.x, c.y, radius);
+    g.playerBlast(c.x, c.y, radius, plan.filter(h => h.centerId === c.id && !slammedIds.has(h.targetId)).map(h => h.targetId)); // 卵も割る・ほかの敵を爆発の浮きで浮かせる
+  }
+  if (hitCount > 0) g.registerMultiHit(hitCount);
+  if (killedAny) brawlerSfx(BRAWLER_SFX_DEATH);
+  if (centers.length > 0) brawlerSfx('bomb');
+};
 /**
  * 2段目: 進行方向フリック=浮いている敵を叩き落とし、鞭の1撃目の2倍のダメージ(社長「浮いてる敵を再度叩き落とし、2倍ダメージを与える」)。
+ * さらに叩きつけた敵1体ごとにその敵を中心に爆発し、周りの敵にだけ爆発のダメージ(社長「鞭の叩きつけは爆発ダメージにして」「爆発は叩きつけられた敵を中心にです」・whipSlamExplode)。
  * 叩き落としは格闘の5段目(空中から叩き落とす)の浮き。重い衝撃(ヒットストップ・揺れ・地割れ・砂埃)。ボス級は浮かないので、当たりの2倍だけ。
  */
 const whipFollowupSlam = (get: () => GameState, set: WhipFollowupSet, w: WhipFollowupWindow, ids: string[], now: number): void => {
@@ -3076,13 +3166,17 @@ const whipFollowupSlam = (get: () => GameState, set: WhipFollowupSet, w: WhipFol
   const p = st.player;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
   const before = new Map(st.enemies.filter(e => ids.includes(e.id)).map(e => [e.id, e] as const));
-  // 威力=鞭の1撃目の2倍(クリ・処刑・コンボ・報酬・数字も同じ経路)。敵への打撃だけに掛かる上乗せ欄へ一時的に2倍を載せる(被弾反撃と同じ作法)。
+  // 爆発の爆心と威力は、打撃の前(浮いている間)の敵から取る。
+  const centers: WhipSlamCenter[] = [...before.values()].map(e => ({ id: e.id, x: e.x + e.width / 2, y: e.y + e.height / 2, base: whipSlamBlastBase(st, e, now) }));
+  // 本体への威力=鞭の1撃目の2倍(クリ・処刑・コンボ・報酬・数字も同じ経路)。敵への打撃だけに掛かる上乗せ欄へ一時的に2倍を載せる(被弾反撃と同じ作法)。
   const prevMult = p.shukuchiStrikeMult;
   set(state => ({ player: { ...state.player, shukuchiStrikeMult: (prevMult ?? 1) * WHIP_SLAM_DAMAGE_MULT } }));
   const res = get().performWhipStrike(ids);
   set(state => ({ player: { ...state.player, shukuchiStrikeMult: prevMult } }));
   if (res.hits > 0) set(() => ({ whipHitFxAt: Date.now() }));
   const hit = new Set(res.hitIds ?? []);
+  // 爆発は打撃が通った敵(幻影に弾かれた等は除く)を中心に。
+  whipSlamExplode(get, centers.filter(c => hit.has(c.id)), now);
   set(state => ({
     enemies: state.enemies.map(e => {
       if (!hit.has(e.id) || isCorpse(e)) return e;
@@ -16081,7 +16175,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 1段目(当たった直後)=反対で浮かせつつ引き寄せ / 2段目(引き寄せた直後)=進行方向で叩き落とし。それ以外の向き・段の組は何も起きない(受付は残す)。
     const act = whipFollowupAction(w.stage, classifyWhipFlick({ x: w.dirX, y: w.dirY }, { x: dirX, y: dirY }));
     if (!act) return false;
-    // 早すぎ(引き寄せた敵が浮き上がり切る前)の進行方向=何も起きない。受付は消費しない(覚えもしない)・ほかのフリック(ワイヤー・一閃)へも流さない。
+    // 早すぎ(叩き落としの受付が開く前=頂点に浮いている時刻より前)の進行方向=何も起きない。受付は消費しない(覚えもしない)・ほかのフリック(ワイヤー・一閃)へも流さない。
     if (phase === 'early') return true;
     if (act === 'pull') {
       set({ whipFollowup: { ...w, used: true } }); // 1振りに1回だけ(続きの受付は引き寄せが開く)
