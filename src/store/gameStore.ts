@@ -3333,6 +3333,11 @@ export const CAMERA_LOOKAHEAD_MAX = camNum('camlook', 40);        // 進行方�
 export const CAMERA_CENTER_CLAMP_FRAC = camNum('camclamp', 0.07); // 強制中心復帰距離(画面幅比)。見失い防止。範囲0.05〜0.07
 // プレイヤーを画面中央より下へずらす量(画面高比)。上方向(進行先)の視界を広げる(社長要望: 上の敵が見えない対策)。
 // 屋内/ラボは0(中央維持)。スポーン側も同じ量だけ縦バンドを上へずらす(上端で湧きが画面内に出ないように)。
+/**
+ * 松明・緑卵(壊せる置き物)を作って回収する範囲の余白(world px)。範囲=プレイヤー中心の画面の矩形をこの量だけ広げた物
+ * (useGameLoop が渡す構図オフセット抜きのカメラ × gameBounds)。描画(?proj=1)はこの縁の手前で絵を薄くする=同じ値を読む。
+ */
+export const BREAKABLE_PROP_REGION_PAD = 520;
 export const CAMERA_DOWN_OFFSET_FRAC = Math.max(0, Math.min(0.32, camNum('camdown', 0.08)));
 // 洋館通路(corridorMode)専用のカメラ下げ量(v0.25.2148・社長指示「敵が上から出てきて見える位置を
 // もう少し上に」): プレイヤーを画面のより下に置き、前方(奥)の視界を広げる=敵の入場ラインが
@@ -25363,7 +25368,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   syncBreakableProps: (camera, bounds, torchBonusChance = 0) => {
-    const pad = 520;
+    const pad = BREAKABLE_PROP_REGION_PAD;
     set(state => {
       // 屋内(研究施設)はステージ1の松明/地雷を「生成」しない。ただし resetGame で置いた
       // UVバー(type:'uv-bar'=破壊可能)はそのまま保持する(壊れたら damageBreakableProp が除去)。

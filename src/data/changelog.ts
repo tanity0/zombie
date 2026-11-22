@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5736', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5735', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5734', items: ['影の中の人や物の明暗が、ゆっくり移ろうようになった。主人公は沈みすぎず、昼の日陰は少し青く冷える'] },
   { version: '0.25.5733', items: ['木陰に入ると人も物も暗く沈み、月明かりの中では青白く照らされる。地面と同じ光の中に立って見える'] },

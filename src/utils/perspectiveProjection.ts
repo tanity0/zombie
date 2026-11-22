@@ -190,26 +190,97 @@ export interface ProjPoint {
   inDomain: boolean;
 }
 
-/** world 点 → 表示座標・倍率・フェード(§3-3 作る物1)。 */
-export const project = (f: ProjFrame, wx: number, wy: number): ProjPoint => {
+/** 空の ProjPoint(作り置きの入れ物用)。 */
+export const makeProjPoint = (): ProjPoint => ({ x: 0, y: 0, l: 0, s: 1, alpha: 1, inDomain: true });
+
+/** world 点 → 表示座標・倍率・フェードを out へ書く(毎フレームの確保を増やさない形)。 */
+export const projectInto = (f: ProjFrame, wx: number, wy: number, out: ProjPoint): ProjPoint => {
   const l = projLocalYOfWorld(f, wy);
   const s = projScaleAtLocal(f, l);
   const inDomain = l >= 0;
   const fade = projDistanceFade(f.farRefY - wy, f.farStart, f.farEnd);
-  return {
-    x: f.cxw + s * (wx - f.cxw),
-    y: f.camY + f.farH + l,
-    l, s,
-    alpha: inDomain ? fade : 0,
-    inDomain,
-  };
+  out.x = f.cxw + s * (wx - f.cxw);
+  out.y = f.camY + f.farH + l;
+  out.l = l; out.s = s;
+  out.alpha = inDomain ? fade : 0;
+  out.inDomain = inDomain;
+  return out;
+};
+
+/** world 点 → 表示座標・倍率・フェード(§3-3 作る物1)。新しい入れ物を返す(テスト・稀な呼び出し用)。 */
+export const project = (f: ProjFrame, wx: number, wy: number): ProjPoint => projectInto(f, wx, wy, makeProjPoint());
+
+/** 表示座標 → 画面px(ズーム後)を out へ書く。 */
+export const projDisplayToScreenInto = (f: ProjFrame, dx: number, dy: number, out: { x: number; y: number }): { x: number; y: number } => {
+  out.x = f.wgX + f.wgScale * (dx - f.camX + f.shakeX);
+  out.y = f.wgY + f.wgScale * (dy - f.camY + f.shakeY);
+  return out;
 };
 
 /** 表示座標 → 画面px(ズーム後)。 */
-export const projDisplayToScreen = (f: ProjFrame, dx: number, dy: number): { x: number; y: number } => ({
-  x: f.wgX + f.wgScale * (dx - f.camX + f.shakeX),
-  y: f.wgY + f.wgScale * (dy - f.camY + f.shakeY),
-});
+export const projDisplayToScreen = (f: ProjFrame, dx: number, dy: number): { x: number; y: number } =>
+  projDisplayToScreenInto(f, dx, dy, { x: 0, y: 0 });
+
+/**
+ * 足元 (wx, wy) に立つ絵(s=1 の world の幅 artW・高さ artH・横のアンカー ax)を投影した箱が、画面(ズーム後の画面px)に
+ * marginPx の余白込みで掛かるか。掛からない物は作らない/隠す(段階1 監査 A1)。定義域の外(地平線より北)は false。
+ */
+export const projBoxOnScreen = (
+  f: ProjFrame, wx: number, wy: number, artW: number, artH: number, ax: number, marginPx: number, scratch: ProjPoint,
+): boolean => {
+  const p = projectInto(f, wx, wy, scratch);
+  if (!p.inDomain || p.alpha <= 0) return false;
+  const z = f.wgScale;
+  const sx = f.wgX + z * (p.x - f.camX + f.shakeX);
+  const sy = f.wgY + z * (p.y - f.camY + f.shakeY);
+  const w = Math.max(0, artW) * p.s * z, h = Math.max(0, artH) * p.s * z;
+  const left = sx - ax * w, right = sx + (1 - ax) * w;
+  return right >= -marginPx && left <= f.screenW + marginPx && sy >= -marginPx && sy - h <= f.screenH + marginPx;
+};
+
+/** 投影した world 点が画面(ズーム後の画面px)の外へどれだけ出ているか(表示座標の px=画面px÷ズーム)。中なら 0。 */
+export const projScreenOutside = (f: ProjFrame, wx: number, wy: number, scratch: ProjPoint): number => {
+  const p = projectInto(f, wx, wy, scratch);
+  if (!p.inDomain) return Infinity;
+  const z = f.wgScale > 0 ? f.wgScale : 1;
+  const sx = f.wgX + z * (p.x - f.camX + f.shakeX);
+  const sy = f.wgY + z * (p.y - f.camY + f.shakeY);
+  const dx = sx < 0 ? -sx : sx > f.screenW ? sx - f.screenW : 0;
+  const dy = sy < 0 ? -sy : sy > f.screenH ? sy - f.screenH : 0;
+  return Math.hypot(dx, dy) / z;
+};
+
+/** 帯の行 ℓ の画面Y(ズーム後)の上端・下端に当たる ℓ。 */
+export const projScreenRowsL = (f: ProjFrame): { top: number; bottom: number } => {
+  const sc = f.wgScale > 0 ? f.wgScale : 1;
+  return { top: (0 - f.wgY) / sc - f.shakeY - f.farH, bottom: (f.screenH - f.wgY) / sc - f.shakeY - f.farH };
+};
+
+/**
+ * 物を取ってくる範囲を、行ごとの左右の幅(台形そのもの)で切った帯の列(world の矩形・段階1 監査 A1)。
+ * ℓ ∈ [lTop, lBot] を n 本に分け、各帯の左右は帯の北の端の行(一番広い)で画面の左右の縁を逆投影し、marginX(world)を足す。
+ * 縦は帯の world の範囲。out に書き、使った本数を返す。
+ */
+export const visibleWorldBands = (
+  f: ProjFrame, lTop: number, lBot: number, n: number, marginX: number,
+  out: { left: number; top: number; right: number; bottom: number }[],
+): number => {
+  const sc = f.wgScale > 0 ? f.wgScale : 1;
+  const dxL = (0 - f.wgX) / sc + f.camX - f.shakeX;
+  const dxR = (f.screenW - f.wgX) / sc + f.camX - f.shakeX;
+  const k = Math.max(1, Math.floor(n));
+  const span = Math.max(0, lBot - lTop);
+  for (let i = 0; i < k; i++) {
+    const l0 = lTop + (span * i) / k, l1 = lTop + (span * (i + 1)) / k;
+    const s = Math.max(1e-6, projScaleAtLocal(f, l0));
+    const r = out[i] ?? (out[i] = { left: 0, top: 0, right: 0, bottom: 0 });
+    r.left = f.cxw + (dxL - f.cxw) / s - marginX;
+    r.right = f.cxw + (dxR - f.cxw) / s + marginX;
+    r.top = projWorldYOfLocal(f, l0);
+    r.bottom = projWorldYOfLocal(f, l1);
+  }
+  return k;
+};
 
 /** 画面px(ズーム後・canvas の論理px)→ world(§3-3 作る物1。ズーム・支点・パンを中で外す)。 */
 export const unproject = (f: ProjFrame, sx: number, sy: number): { x: number; y: number; l: number } => {

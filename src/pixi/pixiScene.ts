@@ -298,12 +298,14 @@ import { dashLineStrikeEnd, dashLineEraseRescale } from '../utils/geometry';
 import { SKADI_BLADE_NATIVE_ANGLE, RAFI_BLADE_NATIVE_ANGLE, PHILL_FEATHER_NATIVE_ANGLE } from '../utils/bladeArt';
 import { bossWideShotZoom, zoomedViewportBounds } from '../utils/cameraZoom';
 import { zoomCameraDownFrac } from '../utils/cameraZoom'; // ?proj=1 の基準行 ℓ_ref(★#20 裁定②)
-import { CAMERA_DOWN_OFFSET_FRAC } from '../store/gameStore';
+import { CAMERA_DOWN_OFFSET_FRAC, BREAKABLE_PROP_REGION_PAD } from '../store/gameStore';
+import { playerCenteredRegion, regionEdgeFade, type RegionRect } from '../utils/regionEdgeFade';
+import { stepStaticShadowCap, staticShadowLowAlphaMult, STATIC_SHADOW_CAP, type StaticShadowCand } from '../utils/staticShadowCap'; // ?proj=1 の止まっている物の影の上限
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { getCameraZoomLink } from '../utils/cameraZoomLink';
 import {
-  buildProjTable, projTableKey, PROJ_TABLE_SUBDIV, makeProjFrame, project as projProject, projRefLocalY, projTOfL, projAttentionRef, visibleWorldQuad,
-  groundStripTile, groundVsObjectDiff, projDisplayToScreen, groundSlipBound, projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, southCullWorldY,
+  buildProjTable, projTableKey, PROJ_TABLE_SUBDIV, makeProjFrame, projectInto, makeProjPoint, visibleWorldBands, projScreenRowsL, projBoxOnScreen, projScreenOutside, projDisplayToScreenInto, projRefLocalY, projTOfL, projAttentionRef,
+  groundStripTile, groundVsObjectDiff, groundSlipBound, projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, southCullWorldY,
   type ProjFrame, type ProjTable, type ProjPoint,
 } from '../utils/perspectiveProjection'; // 投影(?proj=1・research/PERSPECTIVE_PROJECTION.md 段階1)
 import { LIB_VOLLEY_CAST_MS } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md §4c: 号令の旗の突き上げの尺
@@ -481,7 +483,7 @@ import {
 import { treesInRegion, TREE_CELL, treeHash, trunkRect } from '../world/trees';
 import { stepObstacleAlpha } from '../utils/obstacleAlpha';
 import { placementTreeSkin, artOverlapRatio } from '../world/propPlacement';
-import { TREE_VISUAL_SCALE, TREE_BOX_W, TREE_BOX_H, LEAFY_TREE_SKINS, STAGE3_TREE_SKIN, STAGE4_TREE_SKIN, leafyTreeDef, treeArtAnchor, TREE_ART_MAX, TORCH_VISUAL_W, TORCH_VISUAL_H, CAMPFIRE_VISUAL_W, CAMPFIRE_VISUAL_H } from '../world/artRects';
+import { TREE_VISUAL_SCALE, TREE_BOX_W, TREE_BOX_H, LEAFY_TREE_SKINS, STAGE3_TREE_SKIN, STAGE4_TREE_SKIN, leafyTreeDef, treeArtAnchor, treeArtSize, TREE_ART_MAX, TORCH_VISUAL_W, TORCH_VISUAL_H, CAMPFIRE_VISUAL_W, CAMPFIRE_VISUAL_H } from '../world/artRects';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
 import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight, type WetTree } from './weatherWet';
@@ -3169,6 +3171,9 @@ const PROJ_FAR_END = Math.max(0, tsNum('projfar', 1500)); // ★#4「描く距�
 const PROJ_FAR_START = PROJ_FAR_END * (1200 / 1500); // フェードの始まり(叩き台 1,200→1,500 の比のまま ?projfar に付いて動く)
 const PROJ_TREE_SCALE_MAX = 1.25; // 木の個体の大きさの上限(world/trees.ts の scale 0.85..1.25)=南のカリングの余白用
 const PROJ_PROP_ART_H = 420; // 置き物の絵の高さの上限の目安(南のカリングの余白・作る物4)。帯の範囲の外へは延ばさないので大きめでよい
+const PROJ_FETCH_BANDS = 8; // 物を取ってくる範囲を行ごとに切る帯の本数(監査 A1・叩き台)
+const PROJ_ONSCREEN_MARGIN_PX = 16; // 投影した絵の箱を画面と比べる時の余白(画面px)
+const PROJ_PROP_REGION_FADE_PX = 150; // 松明・緑卵の作る/回収する範囲の縁の手前で薄くする幅(world px・監査 A2・叩き台)
 const PROJ_AUDIT = PROJ_ON && DEV_TOOLS_ENABLED && tsBool('projaudit', false); // 計器(位置の差・重なり率・通し漏れ=作る物8〜10)
 const DEPTH_POS_MAP = PROJ_ON ? true : tsBool('depthmap', true);
 const DEPTH_MAP_CURVE = Math.max(0.2, tsNum('dmapcurve', 1.0)); // 1=線形 / >1=プレイヤー付近ゆっくり・端で速い
@@ -4802,7 +4807,7 @@ const brawlerAirSuplexHoldNow = (b: { suplexPendingId?: string; airSuplexHoldAt?
 export class PixiScene {
   private L: SceneLayers;
 
-  private trees = new Map<string, { sprite: Sprite; baseScale: number; footY: number; texKey: string } & ProjStaticInfo>();
+  private trees = new Map<string, { sprite: Sprite; baseScale: number; footY: number; texKey: string; tscale?: number } & ProjStaticInfo>();
   private wallObjs = new Map<string, LabObstacleView>(); // 壁オブジェクト(区画生成)
   private propObjs = new Map<string, LabObstacleView>(); // 遮蔽物プロップ(区画生成・研究所スキン)
   private cityPropObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number; decalMesh?: PerspectiveMesh } & ProjStaticInfo>(); // ステージ3(廃都)の散布オブジェクト
@@ -9618,8 +9623,19 @@ export class PixiScene {
   private projTable: ProjTable | null = null;
   /** 置き物の南のカリング(作る物4)用: 画面の下端の行(帯のローカルY)。 */
   private projScreenBottomL = 0;
-  /** 今フレームの可視域の台形を囲む長方形(world)。 */
-  private projVisRect = { left: 0, top: 0, right: 0, bottom: 0 };
+  /** 物を取ってくる範囲の帯(行ごとの左右の幅=台形そのもの・監査 A1)の作り置き。 */
+  private projBands: { left: number; top: number; right: number; bottom: number }[] = [];
+  /** 投影の結果の作り置き(毎フレームの確保を増やさない)。projPlace は輪番で使う=同時に持つのは16個まで。 */
+  private projPts: ProjPoint[] = Array.from({ length: 16 }, () => makeProjPoint());
+  private projPtI = 0;
+  private projScratch = makeProjPoint();
+  private projScratch2 = makeProjPoint();
+  private projScreenPt = { x: 0, y: 0 };
+  private projCorner = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
+  /** 計器: 今フレーム、木を取ってきた本数・作っている本数・画面に掛かる本数(監査 A1 の測り直し)。 */
+  projTreeCounts = { fetched: 0, held: 0, onScreen: 0 };
+  /** 松明・緑卵を作って回収する範囲(store と同じ形・監査 A2)。 */
+  private projPropRegion: RegionRect = { left: 0, top: 0, right: 0, bottom: 0 };
   /** 計器(作る物8〜10)の今フレームの集計。 */
   projAuditStats = {
     frame: 0, maxDx: 0, maxDy: 0, maxDxOverBound: 0, worstT: 0,
@@ -9670,7 +9686,10 @@ export class PixiScene {
       farRefY: s.player.y + s.player.height, farStart: PROJ_FAR_START, farEnd: PROJ_FAR_END,
     });
     this.projScreenBottomL = (this.screenH - wg.position.y) / (wg.scale.x || 1) - shakeY - farH;
-    this.projVisRect = visibleWorldQuad(this.projFrame).rect; // 1フレーム1回(置き物・影のカリングが読む)
+    // 松明・緑卵の作る/回収する範囲(store.syncBreakableProps と同じ: プレイヤー中心の画面 ± BREAKABLE_PROP_REGION_PAD・監査 A2)。
+    const pr = playerCenteredRegion(s.player.x + s.player.width / 2, s.player.y + s.player.height / 2,
+      s.gameBounds.width, s.gameBounds.height, BREAKABLE_PROP_REGION_PAD);
+    this.projPropRegion.left = pr.left; this.projPropRegion.right = pr.right; this.projPropRegion.top = pr.top; this.projPropRegion.bottom = pr.bottom;
     if (PROJ_AUDIT) this.projAuditBeginFrame();
   }
 
@@ -9679,7 +9698,8 @@ export class PixiScene {
    * obj を渡すと計器(通し漏れ)の印を付ける。projFrame が無い(=?proj=0 等)時は呼ばないこと。
    */
   private projPlace(wx: number, footY: number, obj?: object): ProjPoint {
-    const p = projProject(this.projFrame!, wx, footY);
+    const p = projectInto(this.projFrame!, wx, footY, this.projPts[this.projPtI]);
+    this.projPtI = (this.projPtI + 1) & 15;
     if (PROJ_AUDIT) {
       if (obj) this.projAuditMarks.set(obj, this.projFrameNo);
       if (p.inDomain && p.alpha > 0) this.projAuditPts.push(wx, footY);
@@ -9730,7 +9750,7 @@ export class PixiScene {
       const st = strips[i];
       if (!st || !st.visible) continue;
       // 画面に映っている点だけを数える(可視域の外の置き物は合否に使わない)。
-      const sc = projDisplayToScreen(f, f.cxw + projScaleAtLocal(f, l) * (wx - f.cxw), f.camY + f.farH + l);
+      const sc = projDisplayToScreenInto(f, f.cxw + projScaleAtLocal(f, l) * (wx - f.cxw), f.camY + f.farH + l, this.projScreenPt);
       if (sc.x < 0 || sc.x > this.screenW || sc.y < 0 || sc.y > this.screenH) continue;
       const s = projScaleAtLocal(f, l);
       const xo = overW / 2 + s * (wx - f.cxw);           // 物(groundBase のローカル)
@@ -9760,7 +9780,7 @@ export class PixiScene {
     const rects: { id: string; r: { x: number; y: number; width: number; height: number }; y: number }[] = [];
     const addRect = (id: string, sp: Sprite) => {
       if (!sp.visible || sp.alpha < 0.05 || !sp.texture || sp.texture.width <= 1) return;
-      const ft = projDisplayToScreen(f, sp.x, sp.y); // 足元が画面に映っている物だけ
+      const ft = projDisplayToScreenInto(f, sp.x, sp.y, this.projScreenPt); // 足元が画面に映っている物だけ
       if (ft.x < 0 || ft.x > this.screenW || ft.y < 0 || ft.y > this.screenH) return;
       const w = Math.abs(sp.scale.x) * sp.texture.width, h = Math.abs(sp.scale.y) * sp.texture.height;
       rects.push({ id, r: { x: sp.x - sp.anchor.x * w, y: sp.y - sp.anchor.y * h, width: w, height: h }, y: sp.y });
@@ -9838,20 +9858,39 @@ export class PixiScene {
   }
 
   /**
-   * 投影の時の置き物の取得範囲(作る物4): 可視域の台形を囲む長方形(方針③)+余白 margin。北は台形の上の辺(地平線/描く距離の上限)で切る。
-   * 南は切らない: 絵の高さ artH(s=1 の world の大きさ)の分だけ南へ広げる。
+   * 投影の時の置き物の取得範囲(作る物4・監査 A1): 行ごとの左右の幅(台形そのもの)で切った帯の列を this.projBands に書き、本数を返す。
+   * 北は地平線/描く距離の上限、南は絵の高さ artH(s=1 の world の大きさ)×s の分だけ広げる。左右の余白は marginX(world)。
+   * 取ってきた物は、さらに projBoxOnScreen(投影した絵の箱が画面に掛かるか)で作る/隠すを決める。
    */
-  private projCullRect(margin: number, artH: number): { left: number; top: number; right: number; bottom: number } {
+  private projCullBands(marginX: number, artH: number): number {
     const f = this.projFrame!;
-    const q = this.projVisRect;
-    const south = southCullWorldY(f, artH, this.projScreenBottomL);
-    return { left: q.left - margin, top: q.top - margin, right: q.right + margin, bottom: Math.max(q.bottom, south) + margin };
+    const rows = projScreenRowsL(f);
+    let lTop = Math.max(0, rows.top);
+    if (f.farEnd > 0) lTop = Math.max(lTop, projLocalYOfWorld(f, f.farRefY - f.farEnd));
+    const lBot = Math.max(lTop, projLocalYOfWorld(f, southCullWorldY(f, artH, this.projScreenBottomL)));
+    return visibleWorldBands(f, lTop, lBot, PROJ_FETCH_BANDS, marginX, this.projBands);
   }
 
-  /** ?proj=1: 可視域の台形を囲む長方形(world)+余白。北は地平線/描く距離の上限で切る(方針③)。 */
-  private projViewRect(margin: number): { left: number; top: number; right: number; bottom: number } {
-    const q = this.projVisRect;
-    return { left: q.left - margin, top: q.top - margin, right: q.right + margin, bottom: q.bottom + margin };
+  /** 帯の列で区画の物を取ってくる(帯の境目で重なった物は1つにする)。 */
+  private projFetch<T>(marginX: number, artH: number, inRegion: (l: number, t: number, r: number, b: number) => readonly T[], key: (t: T) => string): T[] {
+    const n = this.projCullBands(marginX, artH);
+    const out: T[] = [];
+    const seen = new Set<string>();
+    for (let i = 0; i < n; i++) {
+      const b = this.projBands[i];
+      for (const t of inRegion(b.left, b.top, b.right, b.bottom)) {
+        const k = key(t);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push(t);
+      }
+    }
+    return out;
+  }
+
+  /** 足元 (wx, wy) に立つ絵(s=1 の幅・高さ・横のアンカー)の投影した箱が画面に掛かるか(監査 A1)。 */
+  private projOnScreen(wx: number, wy: number, artW: number, artH: number, ax = 0.5): boolean {
+    return projBoxOnScreen(this.projFrame!, wx, wy, artW, artH, ax, PROJ_ONSCREEN_MARGIN_PX, this.projScratch);
   }
 
   /**
@@ -9864,7 +9903,7 @@ export class PixiScene {
   ): boolean {
     if (!this.projFrame || e.footX === undefined || e.projS === undefined || e.projA === undefined) return false;
     const s = Math.max(1e-4, e.projS);
-    if (e.projA > 0) {
+    if (e.projA > 0 && e.sprite.visible) { // 画面に掛からない=隠した物は影も出さない(監査 A1)
       place({
         id, x: e.footX, y: e.footY, rawW: Math.abs(e.sprite.width) / s, rawH: Math.abs(e.sprite.height) / s,
         texture: e.sprite.texture, alpha: e.projA, isStatic: isStatic || undefined, projected: true,
@@ -9886,6 +9925,7 @@ export class PixiScene {
     entry.projA = this.projBaseAlpha(pp);
     entry.sprite.position.set(pp.x, pp.y);
     entry.sprite.scale.set(entry.baseScale * pp.s);
+    entry.sprite.visible = true;
     return pp;
   }
 
@@ -9916,8 +9956,7 @@ export class PixiScene {
     const c = Math.cos(rotation), sn = Math.sin(rotation);
     const corner = (lx: number, ly: number) => {
       const rx = lx - ax, ry = ly - ay;
-      const p = projProject(this.projFrame!, footX + rx * c - ry * sn, footY + rx * sn + ry * c);
-      return p;
+      return this.projPlace(footX + rx * c - ry * sn, footY + rx * sn + ry * c);
     };
     const tl = corner(0, 0), tr = corner(w, 0), br = corner(w, h), bl = corner(0, h);
     m.setCorners(tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y);
@@ -9936,15 +9975,47 @@ export class PixiScene {
     return f ? projScaleAtLocal(f, y - f.camY - f.farH) : this.depthScale(y);
   };
 
-  /** ?proj=1 版の distanceOutsideViewport(可視域=台形を囲む長方形)。 */
+  /**
+   * ?proj=1 版の distanceOutsideViewport(監査 A1): 足元を投影して画面pxへ写し、画面の外へ出ている距離(表示px=画面px÷ズーム)から
+   * 余白 margin を引いた値(>0=外)。台形を囲む長方形は使わない。
+   */
   private projDistanceOutside(x: number, y: number, margin = 0): number {
-    const v = this.projViewRect(margin);
-    const dx = x < v.left ? v.left - x : x > v.right ? x - v.right : 0;
-    const dy = y < v.top ? v.top - y : y > v.bottom ? y - v.bottom : 0;
-    return Math.hypot(dx, dy);
+    return Math.max(0, projScreenOutside(this.projFrame!, x, y, this.projScratch) - margin);
   }
 
-  /** ?proj=1 版の shadowStaticFade(可視域=台形を囲む長方形で距離クロスフェード)。 */
+  /** 投影した4点の外接箱(画面px)が、余白 marginPx 込みで画面に掛かるか。点は this.projCorner に入っている前提。 */
+  private projCornersOnScreen(marginPx: number): boolean {
+    const f = this.projFrame!;
+    let l = Infinity, r = -Infinity, t = Infinity, b = -Infinity;
+    for (const c of this.projCorner) {
+      const sc = projDisplayToScreenInto(f, c.x, c.y, this.projScreenPt);
+      if (sc.x < l) l = sc.x; if (sc.x > r) r = sc.x; if (sc.y < t) t = sc.y; if (sc.y > b) b = sc.y;
+    }
+    return r >= -marginPx && l <= f.screenW + marginPx && b >= -marginPx && t <= f.screenH + marginPx;
+  }
+
+  /** world の箱(足元の周り ±R)の4隅を投影し、その外接箱が画面に掛かるか(影の間引き・監査 A1)。 */
+  private projWorldBoxOnScreen(x: number, y: number, R: number, marginPx: number): boolean {
+    const f = this.projFrame!, sp = this.projScratch, cs = this.projCorner;
+    projectInto(f, x - R, y - R, sp); cs[0].x = sp.x; cs[0].y = sp.y;
+    projectInto(f, x + R, y - R, sp); cs[1].x = sp.x; cs[1].y = sp.y;
+    projectInto(f, x + R, y + R, sp); cs[2].x = sp.x; cs[2].y = sp.y;
+    projectInto(f, x - R, y + R, sp); cs[3].x = sp.x; cs[3].y = sp.y;
+    return this.projCornersOnScreen(marginPx);
+  }
+
+  /** 伸びる影1枚の4隅(根元と先端・幅 half)を投影し、その外接箱が画面に掛かるか(影の間引き・監査 A1)。 */
+  private projShadowQuadOnScreen(x: number, y: number, dirX: number, dirY: number, length: number, half: number): boolean {
+    const f = this.projFrame!, sp = this.projScratch, cs = this.projCorner;
+    const tx = x + dirX * length, ty = y + dirY * length;
+    projectInto(f, tx - half, ty, sp); cs[0].x = sp.x; cs[0].y = sp.y;
+    projectInto(f, tx + half, ty, sp); cs[1].x = sp.x; cs[1].y = sp.y;
+    projectInto(f, x + half, y, sp); cs[2].x = sp.x; cs[2].y = sp.y;
+    projectInto(f, x - half, y, sp); cs[3].x = sp.x; cs[3].y = sp.y;
+    return this.projCornersOnScreen(0);
+  }
+
+  /** ?proj=1 版の shadowStaticFade(画面からの距離で距離クロスフェード)。 */
   private projShadowStaticFade(x: number, y: number): number {
     const d = this.projDistanceOutside(x, y, SHADOW_STATIC_FADE_MARGIN_PX);
     if (d <= 0) return 1;
@@ -13168,8 +13239,11 @@ export class PixiScene {
       : stage1TreeTint(this.envTintNow(), this.wetLightMix);
     const margin = TREE_CELL;
     // ?proj=1: 見える world は台形=台形を囲む長方形で取り、南は絵の高さ×s の分だけ広げる(作る物4・方針③)。
-    const pr = this.projFrame ? this.projCullRect(margin, TREE_ART_MAX.h * PROJ_TREE_SCALE_MAX) : null;
-    let trees = noTrees ? [] : pr ? treesInRegion(pr.left, pr.top, pr.right, pr.bottom) : treesInRegion(
+    // ?proj=1(監査 A1): 行ごとの左右の幅(台形そのもの)で切った帯で取り、投影した絵の箱が画面に掛からない木は作らない/隠す。
+    const projOn = !!this.projFrame;
+    let trees = noTrees ? [] : projOn
+      ? this.projFetch(TREE_ART_MAX.w * PROJ_TREE_SCALE_MAX / 2, TREE_ART_MAX.h * PROJ_TREE_SCALE_MAX, treesInRegion, t => t.key)
+      : treesInRegion(
       camera.x - margin, camera.y - margin,
       camera.x + this.screenW + margin, camera.y + this.screenH + margin,
     );
@@ -13182,7 +13256,17 @@ export class PixiScene {
     }
 
     const seen = new Set<string>();
+    if (projOn) { this.projTreeCounts.fetched = trees.length; this.projTreeCounts.onScreen = 0; }
     for (const t of trees) {
+      if (projOn) {
+        const a = treeArtSize(treeSkin, t.variant), an = treeArtAnchor(treeSkin, t.variant);
+        if (!this.projOnScreen(t.footX, t.footY, a.w * t.scale, a.h * t.scale, an.x)) {
+          const off = this.trees.get(t.key);
+          if (off) { seen.add(t.key); off.sprite.visible = false; } // 画面に掛からない=隠す(影も出さない)。画面へ戻れば下でまた出す
+          continue;
+        }
+        this.projTreeCounts.onScreen++;
+      }
       seen.add(t.key);
       const leafyDef = leafySkin ? leafyTreeDef(treeSkin, t.variant) : null;
       const leafyTex = leafyDef ? getTexture(leafyDef.tex) : null;
@@ -13227,6 +13311,8 @@ export class PixiScene {
         entry.projS = pp.s;
         entry.projA = this.projBaseAlpha(pp);
         entry.sprite.position.set(pp.x, pp.y);
+        entry.sprite.visible = true;
+        entry.tscale = t.scale;
         if (tex || texKey !== 'base') entry.sprite.scale.set(entry.baseScale * pp.s);
         this.applyObstacleAlpha(entry.sprite, entry.footY, entry.texKey !== 'base', fresh, pp);
         entry.sprite.skew.x = this.windNow * TREE_WIND_SKEW;
@@ -13248,6 +13334,7 @@ export class PixiScene {
         this.trees.delete(key);
       }
     }
+    if (projOn) this.projTreeCounts.held = this.trees.size;
   }
 
   // ---- 壁オブジェクト(研究所スキン・区画生成): 木と同じく足元アンカー(0.5,1)+zIndex=footY+depthScale で
@@ -13480,16 +13567,27 @@ export class PixiScene {
     const enabled = !s.indoorMode && !!STAGE_PROPS[farKey]; // city(廃都)/snow(雪原) など散布カタログがある時だけ
     const cam = s.camera;
     const m = CITY_ZONE;
-    const cr = enabled && this.projFrame ? this.projCullRect(m, PROJ_PROP_ART_H) : null; // ?proj=1: 台形を囲む長方形(作る物4)
+    // ?proj=1(監査 A1): 行ごとの左右の幅で切った帯で取り、投影した絵の箱が画面に掛からない物は作らない/隠す。
+    const projOn = !!this.projFrame;
     const props = enabled
-      ? (cr ? cityPropsInRegion(farKey, cr.left, cr.top, cr.right, cr.bottom)
+      ? (projOn ? this.projFetch(PROJ_PROP_ART_H / 2, PROJ_PROP_ART_H, (l, t, r, b) => cityPropsInRegion(farKey, l, t, r, b), q => q.id)
         : cityPropsInRegion(farKey, cam.x - m, cam.y - m, cam.x + this.screenW + m, cam.y + this.screenH + m))
       : [];
     const tint = this.envTintNow(); // 昼=本来色 / 夜=ENV_TINT
     const seen = new Set<string>();
     for (const p of props) {
-      seen.add(p.id);
       const def = cityPropDef(farKey, p.variant);
+      if (projOn && def) {
+        const th = def.displayH * p.scale, tt = getTexture(def.tex);
+        const tw = tt && tt.height > 0 ? th * tt.width / tt.height : th * 2;
+        const big = p.rotation !== 0 ? Math.max(tw, th) * 1.5 : 0; // 回転つき(中心アンカー)は回しても収まる大きさで見る
+        if (!this.projOnScreen(p.footX, p.footY + big / 2, big || tw, big || th)) {
+          const off = this.cityPropObjs.get(p.id);
+          if (off) { seen.add(p.id); off.sprite.visible = false; if (off.decalMesh) off.decalMesh.visible = false; off.projA = 0; }
+          continue;
+        }
+      }
+      seen.add(p.id);
       if (!def) continue;
       let entry = this.cityPropObjs.get(p.id);
       if (!entry) {
@@ -13623,12 +13721,19 @@ export class PixiScene {
     const stageId = s.indoorMode ? '' : getSelectedStageId();
     const cam = s.camera;
     const m = FLOWER_ZONE;
-    const fr = this.projFrame ? this.projCullRect(m, FLOWER_DISPLAY_H * 1.5) : null; // ?proj=1: 台形を囲む長方形+南は絵の高さ×s(作る物4)
-    const flowers = fr ? forestFlowersInRegion(stageId, fr.left, fr.top, fr.right, fr.bottom)
+    // ?proj=1(監査 A1): 行ごとの左右の幅で切った帯で取り、投影した絵の箱が画面に掛からない花は作らない/隠す。
+    const projOn = !!this.projFrame;
+    const flowers = projOn
+      ? this.projFetch(FLOWER_DISPLAY_H, FLOWER_DISPLAY_H * 1.5, (l, t, r, b) => forestFlowersInRegion(stageId, l, t, r, b), q => q.id)
       : forestFlowersInRegion(stageId, cam.x - m, cam.y - m, cam.x + this.screenW + m, cam.y + this.screenH + m);
     const tint = this.envTintNow();
     const seen = new Set<string>();
     for (const f of flowers) {
+      if (projOn && !this.projOnScreen(f.footX, f.footY, FLOWER_DISPLAY_H * f.scale * 1.5, FLOWER_DISPLAY_H * f.scale)) {
+        const off = this.flowerObjs.get(f.id);
+        if (off) { seen.add(f.id); off.sprite.visible = false; }
+        continue;
+      }
       seen.add(f.id);
       let entry = this.flowerObjs.get(f.id);
       if (!entry) {
@@ -13747,15 +13852,19 @@ export class PixiScene {
     const m = 120;
     // 木は描いている絵の寸法(遠近込み)も渡す=葉先の雫を枝葉の高さから落とす。絵がまだ無い木は渡さない。
     const trees: WetTree[] = [];
-    for (const t of treesInRegion(view.left - m, view.top - m, view.right + m, view.bottom + m)) {
+    if (this.projFrame) {
+      // ?proj=1: 木を取る範囲は投影の見える範囲(画面に掛かるので出している木=this.trees の見えている物)。雫は描かれた木から垂らす
+      // =投影後の表示座標(sprite.x/y)と描かれた大きさを渡す(作る物6・受け入れ条件4f・監査の小さな指摘)。
+      for (const e of this.trees.values()) {
+        if (e.sprite.destroyed || !e.sprite.visible || e.sprite.alpha < 0.35 || e.projS === undefined) continue;
+        const tw = Math.abs(e.sprite.width);
+        trees.push({ footX: e.sprite.x + (0.5 - e.sprite.anchor.x) * tw, footY: e.sprite.y, scale: (e.tscale ?? 1) * e.projS, w: tw, h: Math.abs(e.sprite.height) });
+      }
+    }
+    for (const t of this.projFrame ? [] : treesInRegion(view.left - m, view.top - m, view.right + m, view.bottom + m)) {
       const e = this.trees.get(t.key);
       if (!e || e.sprite.destroyed || !e.sprite.visible || e.sprite.alpha < 0.35) continue; // 地平線/手前で消えている木からは垂らさない
       const tw = Math.abs(e.sprite.width);
-      // ?proj=1: 雫は描かれた木から垂らす=投影後の表示座標(sprite.x/y)と描かれた大きさを渡す(作る物6・受け入れ条件4f)。
-      if (this.projFrame && e.projS !== undefined) {
-        trees.push({ footX: e.sprite.x + (0.5 - e.sprite.anchor.x) * tw, footY: e.sprite.y, scale: t.scale * e.projS, w: tw, h: Math.abs(e.sprite.height) });
-        continue;
-      }
       // 足元が絵の中心からずれている木(ステージ1/7の3本)は、枝葉の中心から垂らす。
       trees.push({ footX: t.footX + (0.5 - e.sprite.anchor.x) * tw, footY: t.footY, scale: t.scale, w: tw, h: Math.abs(e.sprite.height) });
     }
@@ -15509,15 +15618,16 @@ export class PixiScene {
     }
     g.rect(player.x, player.y, player.width, player.height).stroke({ width: 1.5, color: 0x22ff66, alpha: 0.95 });
     const pa = playerArtRect(player); // 雑魚の技を受ける時のキャラの絵の四角(utils/biteFxHit)
-    g.rect(pa.x, pa.y, pa.w, pa.h).stroke({ width: 1, color: 0x22ff66, alpha: 0.5 });    // ?proj=1&hitbox=1(research/PERSPECTIVE_PROJECTION.md §3-3 作る物7): 木の幹の判定矩形(world/trees.ts)を、絵と同じ投影で
+    g.rect(pa.x, pa.y, pa.w, pa.h).stroke({ width: 1, color: 0x22ff66, alpha: 0.5 });
+    // ?proj=1&hitbox=1(research/PERSPECTIVE_PROJECTION.md §3-3 作る物7): 木の幹の判定矩形(world/trees.ts)を、絵と同じ投影で
     // 4隅を投影して描く(判定そのものは world のまま=変えない)。?proj=0 では描かない(今の表示を1pxも変えない)。
     const pf = this.projFrame;
     if (pf) {
-      const r = this.projViewRect(TREE_CELL);
-      for (const t of treesInRegion(r.left, r.top, r.right, r.bottom)) {
+      for (const t of this.projFetch(TREE_CELL, 0, treesInRegion, q => q.key)) {
         const tr = trunkRect(t);
-        const a = projProject(pf, tr.x, tr.y), b = projProject(pf, tr.x + tr.width, tr.y);
-        const c = projProject(pf, tr.x + tr.width, tr.y + tr.height), d = projProject(pf, tr.x, tr.y + tr.height);
+        if (!this.projOnScreen(t.footX, t.footY, tr.width, tr.height)) continue;
+        const a = this.projPlace(tr.x, tr.y), b = this.projPlace(tr.x + tr.width, tr.y);
+        const c = this.projPlace(tr.x + tr.width, tr.y + tr.height), d = this.projPlace(tr.x, tr.y + tr.height);
         if (!a.inDomain) continue;
         g.poly([a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y]).stroke({ width: 1.5, color: 0x38bdf8, alpha: 0.95 });
       }
@@ -16304,7 +16414,10 @@ export class PixiScene {
       view.projFootX = epp ? prop.footX : undefined; view.projFootY = epp ? prop.footY : undefined; view.projS = epp ? epp.s : undefined;
       const ex = epp ? epp.x : prop.footX, ey = epp ? epp.y : prop.footY;
       const d = epp ? epp.s : this.depthScale(prop.footY);
-      const horizonAlpha = epp ? epp.alpha * this.horizonActorAlpha(epp.y) : this.horizonActorAlpha(prop.footY);
+      // ?proj=1(監査 A2): store が作って回収する範囲の縁の手前で薄くする(パッと出て消えない)。範囲は store と同じ定数。
+      const horizonAlpha = epp
+        ? epp.alpha * this.horizonActorAlpha(epp.y) * regionEdgeFade(prop.footX, prop.footY, this.projPropRegion, PROJ_PROP_REGION_FADE_PX)
+        : this.horizonActorAlpha(prop.footY);
       const pulse = armed
         ? 0.94 + 0.10 * Math.sin(now / 85 + prop.footX * 0.04)
         : 0.97 + 0.03 * Math.sin(now / 320 + prop.footX * 0.04);
@@ -16395,7 +16508,10 @@ export class PixiScene {
     const visualW = (campfire ? CAMPFIRE_VISUAL_W : TORCH_VISUAL_W) * prop.scale;
     const visualH = (campfire ? CAMPFIRE_VISUAL_H : TORCH_VISUAL_H) * prop.scale;
     const sc = tex ? containScale(visualW, visualH, tex.width, tex.height) * d : d;
-    const horizonAlpha = tpp ? tpp.alpha * this.horizonActorAlpha(tpp.y) : this.horizonActorAlpha(prop.footY);
+    // ?proj=1(監査 A2): store が作って回収する範囲の縁の手前で薄くする(パッと出て消えない)。範囲は store と同じ定数。
+    const horizonAlpha = tpp
+      ? tpp.alpha * this.horizonActorAlpha(tpp.y) * regionEdgeFade(prop.footX, prop.footY, this.projPropRegion, PROJ_PROP_REGION_FADE_PX)
+      : this.horizonActorAlpha(prop.footY);
     const flameX = Math.round(px);
     // 炎の**根元**。松明は台座の鉢の縁(支給絵の実測)、焚き火は台の中央付近(従来どおり)。
     const usingStandArt = !campfire && !!getTexture('props/torch-stand');
@@ -18289,8 +18405,9 @@ export class PixiScene {
       const lenMax = req.rawH * lenRatio * Math.max(1, SHADOW_GLOW_LEN_CAP) * shrink;
       const sideMax = req.rawW * (3 * (req.scaleMult ?? 1) + SHADOW_FAR_MULT * SHADOW_PERSP_MAX)
         + Math.abs(Math.tan(req.skewX ?? 0) * req.rawH);
-      if ((projShadow ? this.projDistanceOutside(footX, footY, lenMax + sideMax + SHADOW_CULL_MARGIN_PX)
-        : this.distanceOutsideViewport(footX, footY, lenMax + sideMax + SHADOW_CULL_MARGIN_PX)) > 0) {
+      // ?proj=1(監査 A1): 影が届き得る world の箱の4隅を投影し、その外接箱(画面px)を画面と比べる。
+      if (projShadow ? !this.projWorldBoxOnScreen(footX, footY, lenMax + sideMax, SHADOW_CULL_MARGIN_PX)
+        : this.distanceOutsideViewport(footX, footY, lenMax + sideMax + SHADOW_CULL_MARGIN_PX) > 0) {
         if (entry) {
           seen.add(req.id);
           entry.lastSeenAt = now;
@@ -18430,8 +18547,8 @@ export class PixiScene {
 
     // core/outer は普通の Sprite なので renderer の roundPixels に丸めを任せる(本体スプライトと同じ経路)。
     // ?proj=1 の置き物: 付け根を投影し、大きさは付け根の倍率 s で潰すだけ(方針⑥・頂点ごとには投影しない)。
-    const coreP = projShadow ? projProject(this.projFrame!, footX, footY) : null;
-    const outerP = projShadow ? projProject(this.projFrame!, footX + gdirX * offset, footY + gdirY * offset) : null;
+    const coreP = projShadow ? projectInto(this.projFrame!, footX, footY, this.projScratch) : null;
+    const outerP = projShadow ? projectInto(this.projFrame!, footX + gdirX * offset, footY + gdirY * offset, this.projScratch2) : null;
     const ks = coreP ? coreP.s : 1;
     entry.core.position.set(coreP ? coreP.x : footX, coreP ? coreP.y : footY);
     entry.core.width = Math.max(3, coreW * ks);
@@ -18469,7 +18586,7 @@ export class PixiScene {
     const skewShift = Math.tan(req.skewX ?? 0) * req.rawH;
     const uSign = req.flip ? -1 : 1;
     const silBase = SHADOW_SIL_ALPHA_BASE * densityMult * totalAlpha;
-    const visRect = projShadow ? this.projViewRect(0) : this.shadowVisibleRect();
+    const visRect = this.shadowVisibleRect(); // ?proj=1 の置き物は下で4隅の投影の外接箱を画面と比べる(監査 A1)
     // 地平線帯の詰めのしきい値(world)。?proj=1 の置き物は、しきい値の表示Y(地平線フェードの線)を逆投影した world で比べる。
     const horizonTrimW = projShadow
       ? projWorldYOfLocal(this.projFrame!, this.horizonForestFootWorldY - this.projFrame!.camY - this.projFrame!.farH)
@@ -18513,7 +18630,9 @@ export class PixiScene {
         if (sl.mesh) sl.mesh.visible = false; continue;
       }
       // カリングは3枚それぞれ独立(爆発シルエットは環境光より長い)。
-      if (!this.segmentIntersectsRect(footX, footY, footX + dirX * length, footY + dirY * length, visRect)) {
+      if (projShadow
+        ? !this.projShadowQuadOnScreen(footX, footY, dirX, dirY, length, req.rawW * SHADOW_FAR_MULT * SHADOW_PERSP_MAX / 2 * shrink + Math.abs(skewShift))
+        : !this.segmentIntersectsRect(footX, footY, footX + dirX * length, footY + dirY * length, visRect)) {
         if (sl.mesh) sl.mesh.visible = false; continue;
       }
       sl.want = true;
@@ -18565,6 +18684,11 @@ export class PixiScene {
    * - ★Σ は「**実際に描いた**爆発シルエット」だけで数える。圏内の全光で数えると、混戦で環境光も
    *   爆発影も薄くなって**影がほぼ消える**。枠から溢れたぶんを数えると**影ゼロ**になる。
    */
+  /** ?proj=1 の止まっている物の影の上限(utils/staticShadowCap.ts)のフェードの状態。 */
+  private staticShadowCapState = new Map<string, number>();
+  private staticShadowCapMult = new Map<string, number>();
+  private staticShadowLowMult = new Map<string, number>(); // 薄い影を消す倍率(STATIC_SHADOW_MIN_ALPHA の近くでなめらかに0へ)
+  private staticShadowCapLastNow = 0;
   private finishShadowSilhouettesV12(now: number) {
     const ambs: ShadowMeshSlot[] = [];
     const expls: ShadowMeshSlot[] = [];
@@ -18575,7 +18699,33 @@ export class PixiScene {
         (i === 0 ? ambs : expls).push(sl);
       }
     }
-    const explBudget = Math.max(0, SHADOW_TOTAL_MESH_MAX - ambs.length);
+    // ?proj=1: 止まっている物(投影した置き物)の環境光の影は上限 STATIC_SHADOW_CAP 枚まで(主人公に近い順・入れ替わりは ease で 0↔目標)。
+    // 動く影(爆発の影など)のために STATIC_SHADOW_RESERVED_FOR_MOVING 枚を必ず空ける(utils/staticShadowCap.ts)。?proj=0 はこの分岐に入らない。
+    let ambDraw: ShadowMeshSlot[] = ambs;
+    if (this.projFrame) {
+      const dtMs = this.staticShadowCapLastNow > 0 ? Math.min(100, Math.max(0, now - this.staticShadowCapLastNow)) : 0;
+      this.staticShadowCapLastNow = now;
+      const p = this.seeThroughPlayer;
+      const cands: StaticShadowCand[] = [];
+      // 薄すぎる影(描くと決まった不透明度がしきい値未満)は描かず、上限の候補にも入れない。しきい値の近くは倍率でなめらかに0へ。
+      // 判定に使う不透明度は爆発で洗う前の値(ambientSilAlpha(base, 0))=爆発の明滅で候補が入れ替わらない。
+      this.staticShadowLowMult.clear();
+      for (const sl of ambs) {
+        if (!sl.projected) continue;
+        const lm = staticShadowLowAlphaMult(ambientSilAlpha(sl.baseAlpha, 0));
+        if (lm <= 0) continue;
+        this.staticShadowLowMult.set(sl.ownerId, lm);
+        cands.push({ id: sl.ownerId, d2: (sl.footX - p.cx) ** 2 + (sl.footY - p.footY) ** 2 });
+      }
+      stepStaticShadowCap(cands, this.staticShadowCapState, this.staticShadowCapMult, STATIC_SHADOW_CAP, dtMs);
+      ambDraw = [];
+      for (const sl of ambs) {
+        if (!sl.projected) { ambDraw.push(sl); continue; }
+        if ((this.staticShadowCapMult.get(sl.ownerId) ?? 0) > 0) ambDraw.push(sl);
+        else { if (sl.mesh) sl.mesh.visible = false; sl.alpha = 0; }
+      }
+    }
+    const explBudget = Math.max(0, SHADOW_TOTAL_MESH_MAX - ambDraw.length);
     expls.sort((a, b) => b.score - a.score);
 
     // 爆発シルエット: 枠の中だけ描き、Σ をキャスター単位で積む(環境光を洗う量)。
@@ -18591,8 +18741,10 @@ export class PixiScene {
       sigma.set(sl.ownerId, (sigma.get(sl.ownerId) ?? 0) + sl.score * fade);
     }
     // 環境光シルエット: Σ で洗う。★接地2層は薄めないので、閃光の間も足元の接地は消えない。
-    for (const sl of ambs) {
-      this.drawShadowSlot(sl, ambientSilAlpha(sl.baseAlpha, sigma.get(sl.ownerId) ?? 0), now, true);
+    for (const sl of ambDraw) {
+      const capK = sl.projected && this.projFrame
+        ? (this.staticShadowCapMult.get(sl.ownerId) ?? 0) * (this.staticShadowLowMult.get(sl.ownerId) ?? 0) : 1;
+      this.drawShadowSlot(sl, ambientSilAlpha(sl.baseAlpha, sigma.get(sl.ownerId) ?? 0) * capK, now, true);
     }
   }
 
@@ -18636,12 +18788,18 @@ export class PixiScene {
     );
     // ?proj=1 の置き物の影: 形は world で出したまま、4隅だけを投影する(先端も根元も地面と同じ速さで流れる)。
     const pf = projected ? this.projFrame : null;
-    const pj = (x: number, y: number) => { if (!pf) return { x, y }; const p = projProject(pf, x, y); return { x: p.x, y: p.y }; };
-    const q0 = pj(q.c0.x, q.c0.y), q1 = pj(q.c1.x, q.c1.y), q2 = pj(q.c2.x, q.c2.y), q3 = pj(q.c3.x, q.c3.y);
-    const c0 = this.shadowSnap(q0.x, q0.y);
-    const c1 = this.shadowSnap(q1.x, q1.y);
-    const c2 = this.shadowSnap(q2.x, q2.y);
-    const c3 = this.shadowSnap(q3.x, q3.y);
+    if (pf) {
+      // 作り置きの入れ物へ書く(毎フレームの確保を増やさない)。q の4隅をその場で投影後の表示座標へ置き換える。
+      const sp = this.projScratch;
+      projectInto(pf, q.c0.x, q.c0.y, sp); q.c0.x = sp.x; q.c0.y = sp.y;
+      projectInto(pf, q.c1.x, q.c1.y, sp); q.c1.x = sp.x; q.c1.y = sp.y;
+      projectInto(pf, q.c2.x, q.c2.y, sp); q.c2.x = sp.x; q.c2.y = sp.y;
+      projectInto(pf, q.c3.x, q.c3.y, sp); q.c3.x = sp.x; q.c3.y = sp.y;
+    }
+    const c0 = this.shadowSnap(q.c0.x, q.c0.y);
+    const c1 = this.shadowSnap(q.c1.x, q.c1.y);
+    const c2 = this.shadowSnap(q.c2.x, q.c2.y);
+    const c3 = this.shadowSnap(q.c3.x, q.c3.y);
     mesh.setCorners(c0.x, c0.y, c1.x, c1.y, c2.x, c2.y, c3.x, c3.y);
     if (pf) this.projAuditMark(mesh);
   }
@@ -33701,7 +33859,7 @@ export class PixiScene {
       // ?proj=1(地面に寝ている置き物・入口の帯): 横の線の両端を world で出して投影し、結ぶ。線の太さは s(d=建物の足元の s)。
       const yw = by + 3;
       const a = this.projPlace(x1, yw, g), b = this.projPlace(x2, yw, g);
-      const a4 = projProject(this.projFrame, x1 + 4, yw), b4 = projProject(this.projFrame, x2 - 4, yw);
+      const a4 = this.projPlace(x1 + 4, yw), b4 = this.projPlace(x2 - 4, yw);
       const ka = k * (a.inDomain ? a.alpha : 0);
       g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 16 * a.s, color, alpha: 0.10 * ka, cap: 'round' });
       g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 6 * a.s, color, alpha: 0.30 * ka, cap: 'round' });
@@ -45077,7 +45235,8 @@ export class PixiScene {
     try { this.corridorBackdrop?.destroy(); } catch { /* ignore */ }
     this.corridorBackdrop = null;
     for (const e of this.trees.values()) e.sprite.destroy();
-    for (const e of this.cityPropObjs.values()) e.sprite.destroy();
+    for (const e of this.cityPropObjs.values()) { e.sprite.destroy(); if (e.decalMesh) this.destroyShadowMesh(e.decalMesh); } // ?proj=1 の地面デカールのメッシュも
+    this.projAuditText?.destroy(); this.projAuditText = null; // ?proj=1&projaudit=1 の計器の文字
     for (const v of this.enemies.values()) {
       v.light.destroy();
       v.container.destroy({ children: true });

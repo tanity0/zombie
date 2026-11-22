@@ -3,6 +3,7 @@ import {
   buildProjTable, makeProjFrame, project, unproject, projDisplayToScreen, projG, projGInv,
   projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, projTOfL, projRefLocalY, projAttentionRef,
   visibleWorldQuad, groundStripTile, groundVsObjectDiff, groundSlipBound, projDistanceFade, southCullWorldY,
+  visibleWorldBands, projScreenRowsL, projBoxOnScreen, projScreenOutside, projectInto, makeProjPoint,
   type GroundPerspectiveParams, type ProjFrame, type ProjFrameInput,
 } from './perspectiveProjection';
 import { zoomCameraDownFrac } from './cameraZoom';
@@ -314,5 +315,38 @@ describe('傾きのツマミ(?gfar・?gcurve・?g3d・?g3dfar・?g3dc)を変え�
   it('値が違えば表の鍵が変わる(作り直しの条件)', () => {
     expect(buildProjTable({ ...P, curve: 3 }, STRIP_H, 180).key).not.toBe(TABLE.key);
     expect(buildProjTable({ ...P }, STRIP_H, 180).key).toBe(TABLE.key);
+  });
+});
+
+describe('見える範囲の切り方(監査 A1)', () => {
+  it('帯は北ほど左右に広く、画面に掛かる物は必ずどこかの帯に入る', () => {
+    const f = frameAt(1, 0, 0);
+    const bands: { left: number; top: number; right: number; bottom: number }[] = [];
+    const rows = projScreenRowsL(f);
+    const n = visibleWorldBands(f, Math.max(0, rows.top), rows.bottom, 8, 0, bands);
+    expect(n).toBe(8);
+    for (let i = 1; i < n; i++) expect(bands[i].right - bands[i].left).toBeLessThanOrEqual(bands[i - 1].right - bands[i - 1].left + 1e-6);
+    const sp = makeProjPoint();
+    const r = rng(41);
+    for (let k = 0; k < 500; k++) {
+      const wx = (r() - 0.5) * 4000, wy = f.wRef + (r() - 0.8) * 900;
+      const on = projBoxOnScreen(f, wx, wy, 0, 0, 0.5, 0, sp);
+      if (!on) continue;
+      expect(bands.some(b => wx >= b.left && wx <= b.right && wy >= b.top - 1e-6 && wy <= b.bottom + 1e-6)).toBe(true);
+    }
+  });
+  it('画面の外の足元は箱が掛からない・画面外への距離は表示px', () => {
+    const f = frameAt(1, 0, 0);
+    const sp = makeProjPoint();
+    expect(projBoxOnScreen(f, f.cxw, f.wRef, 40, 80, 0.5, 0, sp)).toBe(true);
+    expect(projBoxOnScreen(f, f.cxw + 5000, f.wRef, 40, 80, 0.5, 0, sp)).toBe(false);
+    expect(projScreenOutside(f, f.cxw, f.wRef, sp)).toBe(0);
+    expect(projScreenOutside(f, f.cxw + 1000, f.wRef, sp)).toBeCloseTo(1000 - SW / 2, 6);
+  });
+  it('projectInto は project と同じ値を入れ物へ書く', () => {
+    const f = frameAt(0.7, 12, 34);
+    const a = project(f, 100, f.wRef - 200);
+    const b = projectInto(f, 100, f.wRef - 200, makeProjPoint());
+    expect(b).toEqual(a);
   });
 });

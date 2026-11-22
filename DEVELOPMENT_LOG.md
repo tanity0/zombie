@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.5736 — 遠近の投影 段階1: 成果物の監査(A)2件の是正+影の枠【2026-11-22 15:11 JST】
+- 監査(品質・opus): (A)2件=①見える範囲を台形の外接矩形で取り画面外の物と影を大量に作っていた(PCの引きで環境光の影が枠90を食い尽くし爆発の影が0)②松明・緑卵が store の範囲(±520px・`BREAKABLE_PROP_REGION_PAD` として export)の縁でパッと出入り。`?proj=0` の退行・判定への混入は無し。
+- 是正(Opus サブエージェント): ①取得を行ごとの幅の帯8本(`visibleWorldBands`)+画面の箱判定(`projBoxOnScreen`)・影の間引きは投影4隅の外接箱 ②描画側で範囲の縁の手前150pxを smoothstep で0へ(`utils/regionEdgeFade.ts`)。小さいもの: 毎フレームの確保を作り置きへ・destroy で decalMesh/projAuditText 破棄・雨上がりの雫を投影の見える木から・改行の体裁。
+- 追加(設計チャット判断・`?proj=1` のみ): 止まっている物の環境光の影に上限(`STATIC_SHADOW_CAP`=90−20。動く影のために20枚を空ける・主人公に近い順・入れ替わりは250msの ease。`utils/staticShadowCap.ts`)。不透明度0.08未満の薄い影は描かず候補にも入れない(0.04〜0.08で smoothstep)。
+- 社長の指摘「画面にそんなに木はいない」への実測(PC 1280×720・引き0.7・ステージ1): 画面に見える木は約10本・花約20。旧計測の「影90」は薄くて見えない影や画面外から伸びる影を含んでいた。是正後の実測で画面に掛かる影メッシュ 70(proj=0 は22)・うち不透明度8%未満6。
+- 変更: src/pixi/pixiScene.ts・src/utils/perspectiveProjection.ts/.test.ts・src/utils/regionEdgeFade.ts/.test.ts(新)・src/utils/staticShadowCap.ts/.test.ts(新)・src/store/gameStore.ts(定数の export のみ)。
+- 検証: typecheck 0 / eslint 0 / 循環 新規なし / vitest 全体 11225 passed。pc-guard: 配置の差はタイトル(基準の古さ)と左下のデバッグ文字列の幅のみ。画: PC 引き0.7 で ?proj=0/1 を撮って目視。
+- 負荷: 4/10 に改める(v0.25.5735 の 3/10 は過小=PC の引きで影メッシュが約3倍。上限70で頭打ち)。
+- 監査の(C): 錬金の岩は敵の体に付く絵=設計書を段階2へ移した(push済み)。
+- 自己点検: `?proj=0` は不変=憲法第4条・第5条に抵触しない。
+- 状態変化: 遠近の投影 → 段階1 社長の実機確認待ち(残り: 段階2以降)。
+
 ## v0.25.5735 — 遠近の投影 段階1「盤面と置き物」を ?proj=1 の裏で実装【2026-11-22 14:26 JST】
 - 要約: research/PERSPECTIVE_PROJECTION.md §3-3 の段階1。`?proj=1` の時だけ、地面(絶対値・帯の中央で標本)と動かない置き物(木・置物・松明とその光3枚・地面デカール4隅・入口の帯の両端・建物)を1本の投影 `utils/perspectiveProjection.ts` で描く。影は world で計算して4隅だけ投影。透けは前後=world・重なり/フェード=投影後に分離。ズームの基準行は ★#20=② を既定(`?projzref=2`、`?projzref=1` は控え)。カメラのズームは `utils/cameraZoomLink.ts` で useGameLoop→pixi へ途切れずに渡す。傾きは地面と同じ定数(`?gfar/?gcurve/?g3d/?g3dfar/?g3dc`)を引数で受け、値が変わった時だけ表を作り直す。計器 `?projaudit=1`(位置の差/重なり率/通し漏れ)、`?proj=1&hitbox=1` で幹の判定の投影。描く距離のフェード `?projfar=`(既定1500・始まりは0.8倍)。
 - 実装: Opus サブエージェント。設計書の監査は4巡(1〜3巡は(A)あり→反映、4巡目は整合監査で(A)5件=文書の整え直しのみ→反映して実装へ。5巡目は回さない判断: 段階1の中身を変える指摘が出ていないため)。
