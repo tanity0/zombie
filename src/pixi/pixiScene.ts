@@ -1739,6 +1739,8 @@ const PLAYER_WALK_CYCLE_MS = 460;
 const PLAYER_CLASS_MENU_SPRITE_WIDTH = 86;
 // 背負い刀の大きさ倍率(中心固定で縮小)。
 const KATANA_BACK_SCALE = 0.72;
+/** 燕返しの通り道の斬撃の当たりの光の基準の長さ=一閃の斬撃1本の長さの真ん中(spawnSlash の 72〜88px)。 */
+const KATANA_PATH_BURST_LEN = 80;
 // (旧)近接ナイフのアンカー/角度/三日月定数は、2枚差し替えスイングへの移行で不要になり撤去。
 // 2枚差し替えスイング(回転なし・左右ミラーのみ。参考: 社長提供の位置絵)。
 // frame1=ダガーをキャラ左下に構え、frame2=ダガー左上+青スラッシュが右へ弧。kt で切替。
@@ -40234,15 +40236,23 @@ export class PixiScene {
       const flip = e.katanaFlip ? -1 : 1;
       const pose = katanaSlashPose(t, move);
       const tex = this.katanaSlashCrop('base', pose.frame, pose.side, pose.reveal);
+      // ★燕返しの1本の大きな斬撃(katanaPathDx/Dy・社長指示2026-11-22「燕返しの斬撃、一閃の範囲に刀斬撃の絵に変更」):
+      // 尾=通り道の始点・刃先=終点(元の位置)。刃筋は通り道の向き(揺らぎなし)、長さは通り道の全長=横の倍率だけ整数の決まりを外す
+      // (整数だと 126px 刻みで通り道に届かない/はみ出す)。太さは今の決まり(整数・上限)のまま。上下の反転(V字)は flip で保つ。
+      const pathLen = e.katanaPathDx !== undefined ? Math.hypot(e.katanaPathDx, e.katanaPathDy ?? 0) : 0;
+      const onPath = pathLen > 1;
       const diag = Math.hypot(e.length, (e.length * ref.height) / Math.max(1, ref.width));
-      const { kx, ky } = katanaSlashIntScale(diag);
-      const rot = (-Math.atan2(ref.height, ref.width) * sign) * flip + katanaSlashJitter(e.id);
+      const { kx: kxInt, ky } = katanaSlashIntScale(onPath ? pathLen : diag);
+      const kx = onPath ? pathLen / KATANA_SLASH_CELL_W : kxInt;
+      const rot = onPath ? Math.atan2(e.katanaPathDy ?? 0, e.katanaPathDx ?? 0)
+        : (-Math.atan2(ref.height, ref.width) * sign) * flip + katanaSlashJitter(e.id);
+      const xs = onPath ? 1 : sign; // 通り道の斬撃は rot がそのまま刃先の向き(左右の反転は掛けない)
       const L = KATANA_SLASH_CELL_W * kx;
-      const tailX = e.x - Math.cos(rot) * sign * L / 2, tailY = e.y - Math.sin(rot) * sign * L / 2;
+      const tailX = e.x - Math.cos(rot) * xs * L / 2, tailY = e.y - Math.sin(rot) * xs * L / 2;
       let mid = { x: e.x, y: e.y };
       if (tex) {
-        mid = this.placeKatanaStroke(streak, tex, pose.side, pose.reveal, tailX, tailY, rot, kx * sign, ky * flip);
-        this.placeKatanaStroke(shadow, tex, pose.side, pose.reveal, tailX, tailY, rot, kx * sign, ky * flip);
+        mid = this.placeKatanaStroke(streak, tex, pose.side, pose.reveal, tailX, tailY, rot, kx * xs, ky * flip);
+        this.placeKatanaStroke(shadow, tex, pose.side, pose.reveal, tailX, tailY, rot, kx * xs, ky * flip);
       }
       streak.alpha = pose.alpha;
       streak.visible = !!tex && pose.alpha > 0.01;
@@ -40252,7 +40262,8 @@ export class PixiScene {
       const btex = getTexture(`fx/slash-burst-${Math.min(4, Math.floor(pose.burstGrow * 4.999))}`);
       if (btex && bref) {
         if (burst.texture !== btex) burst.texture = btex;
-        burst.scale.set((e.length * 0.5) / Math.max(1, bref.width));
+        // 通り道の斬撃(燕返し)の当たりの光は一閃の1本と同じ大きさ(通り道の全長に比例させると光が刃筋を覆い隠す)。
+        burst.scale.set(((onPath ? KATANA_PATH_BURST_LEN : e.length) * 0.5) / Math.max(1, bref.width));
         burst.position.set(mid.x, mid.y);
         burst.alpha = pose.burstAlpha * pose.alpha;
         burst.visible = burst.alpha > 0.01;

@@ -137,6 +137,44 @@ describe('燕返し', () => {
     run(KATANA_DASH_MS + 20);
     expect(isTsubameCrouching(st().player, now)).toBe(false);
   });
+  it('燕返しの演出: 通り道の全長を覆う刀の斬撃1本(上下反転のV字)・残光の筋・スピードラインの時計・当たりの光と数字は仮定の終点側の縁', () => {
+    useGameStore.setState({ enemies: [place('zombie', 90, 30, 'z')] });
+    st().triggerKatanaDash(1, 0);
+    run(KATANA_DASH_MS + 10);
+    expect(st().effects.some(e => e.kind === 'slash' && e.katanaMove === 'issen')).toBe(true);
+    // 帰り道の敵を1体だけにする(一閃で浮いた z は外す)=当たった所(箱の縁)が体の位置で変わる大きさの敵。
+    useGameStore.setState({ enemies: [place('hunter', -70, 30, 'r', { width: 80 })] });
+    run(50);
+    const at = center();
+    const w = st().tsubameWindow!;
+    const dist = Math.min(KATANA_DASH_DISTANCE, Math.hypot(at.x - w.originX, at.y - w.originY));
+    const t0 = now;
+    expect(st().tryTsubame(-1, 0)).toBe(true);
+    const trail = st().effects.find(e => e.kind === 'trail' && e.createdAt >= t0);
+    expect(trail && trail.kind === 'trail' && trail.fromX).toBeCloseTo(at.x, 6);
+    if (trail && trail.kind === 'trail') expect(trail.toX).toBeLessThan(at.x); // 元の位置の方へ
+    expect(st().player.katanaDashUntil).toBeGreaterThan(now); // スピードラインはこの時計を読む
+    const slashes = () => st().effects.filter(e => e.kind === 'slash' && e.createdAt > t0 && e.katanaMove === 'tsubame');
+    const hits = () => st().effects.filter(e => e.kind === 'meleeHit' && e.createdAt > t0);
+    for (let t = 0; t < KATANA_DASH_MS + 40 && slashes().length === 0; t += 10) step(10);
+    const all = slashes();
+    expect(all.length).toBe(1); // 敵ごとではなく通り道に1本
+    const slash = all[0];
+    if (slash.kind === 'slash') {
+      expect(slash.katana).toBe(true);
+      expect(slash.katanaFlip).toBe(true);
+      expect(slash.length).toBeCloseTo(dist, 3);
+      expect(slash.katanaPathDx).toBeCloseTo(-dist, 3);
+      expect(slash.x).toBeCloseTo(at.x - dist / 2, 3); // 通り道の真ん中
+      expect(slash.y).toBeCloseTo(at.y, 3);
+    }
+    // 当たりの光は仮定の終点(元の位置=敵の左)側の縁: 敵の中心より左。
+    const r = en('r');
+    expect(at.x).toBeGreaterThan(r.x + r.width);
+    const h = hits()[0];
+    expect(h).toBeTruthy();
+    if (h && 'x' in h) expect(h.x).toBeLessThan(r.x + r.width / 2 - 5);
+  });
   it('300msを過ぎた・反対でない向きでは出ない', () => {
     useGameStore.setState({ enemies: [place('zombie', 90, 30, 'z')] });
     st().triggerKatanaDash(1, 0);

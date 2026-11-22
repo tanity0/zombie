@@ -44,6 +44,10 @@ describe('刀の斬撃シート(fx/katana-slash-sheet)', () => {
     expect(holdLen('issen')).toBeGreaterThan(holdLen('swing'));
   });
 
+  it('燕返しの斬撃は一閃と同じ尺の割合(違いは上下の反転だけ)', () => {
+    for (let i = 0; i <= 100; i++) expect(katanaSlashPose(i / 100, 'tsubame')).toEqual(katanaSlashPose(i / 100, 'issen'));
+  });
+
   it('当たりの光は振り切りに入る瞬間に最大で、見せている区間の中心に付く', () => {
     expect(katanaSlashPose(0.21).burstGrow).toBe(1);
     expect(katanaSlashPose(0.05).burstGrow).toBeLessThan(1);

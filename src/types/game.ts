@@ -3595,6 +3595,10 @@ export type VisualEffect =
       katana?: boolean;       // プレイヤーの刀(刀/小烏丸)の斬撃=刀用の斬撃シート(fx/katana-slash-sheet)で描く。未指定=従来の slash-streak。
       katanaMove?: 'swing' | 'issen' | 'tsubame' | 'satsujin' | 'kill'; // 刀の技の種類(尺の割合)。描画だけ。
       katanaFlip?: boolean;   // 上下の反転(切り下ろし)。連撃の偶数発・燕返し。描画だけ。
+      // 燕返しの1本の大きな斬撃(社長指示2026-11-22「燕返しの斬撃、一閃の範囲に刀斬撃の絵に変更」): 通り道の始点→終点のベクトル(px)。
+      // あれば刃筋をこの向き・この長さに合わせる(x,y=通り道の真ん中)。描画だけ。
+      katanaPathDx?: number;
+      katanaPathDy?: number;
     }
   | {
       // PACING_PUZZLE.md §5.23 M22 Group C3: 1スイング/1発で複数の敵に当たった時の

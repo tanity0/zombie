@@ -322,7 +322,7 @@ import {
 } from '../utils/katanaTsubame';
 import type { KatanaSlashMove } from '../utils/katanaSlashSheet';
 // 刀の斬撃シートの絵の指定(描画だけ・判定なし)。katanaSlashSeq=プレイヤーの刀の振りの通し番号(切り上げ/切り下ろしの交互に使う)。
-type KatanaSlashFx = { move: KatanaSlashMove; flip?: boolean };
+type KatanaSlashFx = { move: KatanaSlashMove; flip?: boolean; path?: { dx: number; dy: number } }; // path=燕返しの通り道(始点→終点・x,y は真ん中)
 let katanaSlashSeq = 0;
 import { screamerStartGate } from '../utils/screamerGate';
 import { blastLiftPatch, slasherLiftMove, blastLiftCloseness, slasherLaunchMinMs, COUNTER_LIFT_MOVE, counterLiftApplies, retaliateLiftPlan, KNIFE_HOLD_MOVE, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil } from '../utils/airLift';
@@ -10642,7 +10642,8 @@ interface GameState {
   // v0.25.2518(裁定2): 末尾の ghostId は**主語(オーナー)**。未指定=プレイヤー(従来と完全同一)。
   // 指定すると守護霊(kind='ghost-ally')が同じ状態機械・同じ定数・同じ式で刀/ワイヤーを使う。
   // strikeMult=敵への打撃だけに掛ける上乗せ(縮地の連鎖・§32)。damageMult と違い、死神の波及・救難信号の基準には入れない。
-  performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean, ghostId?: string, strikeMult?: number, slashMove?: KatanaSlashMove) => { hit: boolean; finish: boolean; killed: number; hitIds?: string[] };
+  // fxFrom=斬撃の絵・ダメージ数字を置く「斬った体の位置」(描画だけ)。省略=今の体の中心。燕返しは体が動かないので、仮定した通り道の終点(一閃なら体が着いている所)を渡す。
+  performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean, ghostId?: string, strikeMult?: number, slashMove?: KatanaSlashMove, fxFrom?: { x: number; y: number }) => { hit: boolean; finish: boolean; killed: number; hitIds?: string[] };
   // tsubame=燕返し(research/KATANA_TSUBAME.md §1): 硬直・CDの門を通さず、指定の距離だけ一閃を出し直す(消費・CDは足さない)。
   triggerKatanaDash: (dirX: number, dirY: number, ghostId?: string, tsubame?: { distance: number }) => boolean;
   // ★燕返し(research/KATANA_TSUBAME.md §1): 受付の間の反対フリックで出す。出たら true。
@@ -15381,7 +15382,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  performKatanaStrike: (targetIds, damageMult, allowFinisher, ghostId, strikeMult = 1, slashMove) => {
+  performKatanaStrike: (targetIds, damageMult, allowFinisher, ghostId, strikeMult = 1, slashMove, fxFrom) => {
     const now = Date.now();
     const { gameTime, enemies } = get();
     // v0.25.2518(裁定2): 主語(オーナー)。ghostId 未指定=プレイヤー本体(従来と完全同一)。
@@ -15445,8 +15446,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
-      const imp = meleeImpactPoint(pcx, pcy, enemy); // ★当たった所(§9-75・小さな敵は中心のまま)
-      const numAt = meleeNumberPoint(pcx, pcy, enemy);
+      // ★当たった所(§9-75・小さな敵は中心のまま)。絵と数字だけ fxFrom(燕返しの仮定の終点)から測る=判定には使わない。
+      const imp = meleeImpactPoint(fxFrom?.x ?? pcx, fxFrom?.y ?? pcy, enemy);
+      const numAt = meleeNumberPoint(fxFrom?.x ?? pcx, fxFrom?.y ?? pcy, enemy);
       // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統④=刀)。オート斬撃も一閃もパリィ対象。
       let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
       if (isGuardianPhantom(enemy.type)) {
@@ -15688,7 +15690,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const slashFx: KatanaSlashFx | undefined = isGhost ? undefined
       : { move, flip: move === 'tsubame' || ((move === 'swing' || move === 'satsujin') && (katanaSlashSeq++ % 2 === 1)) };
     for (const s of slashAt) {
-      get().spawnSlash(s.x, s.y, 'rgba(221,238,255,0.95)', slashScale, undefined, slashFx); // 刀の斬撃シート(守護霊は従来の絵)
+      // 燕返しの斬撃の絵は敵ごとに出さず、通り道の全長に1本だけ出す(triggerKatanaDash・社長指示2026-11-22「燕返しの斬撃、一閃の範囲に刀斬撃の絵に変更」)。血・当たりの光は敵ごとのまま。
+      if (move !== 'tsubame') get().spawnSlash(s.x, s.y, 'rgba(221,238,255,0.95)', slashScale, undefined, slashFx); // 刀の斬撃シート(守護霊は従来の絵)
       get().spawnMeleeBlood(s.x, s.y); // 近接の血飛沫(社長指摘v0.25.2060: メイン近接3経路に未配線だった)
       get().spawnMeleeHit(s.x, s.y);   // v0.25.4334: 刀の通常ヒットにも(同じ「当たった」動作)
     }
@@ -16851,7 +16854,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         const zanX = pcx + ux * travel / 2;
         const zanY = pcy + uy * travel / 2;
         const result: { finish: boolean; hitIds?: string[] } = strikeIds.length > 0
-          ? get().performKatanaStrike(strikeIds, KATANA_DASH_DAMAGE_MULT, true, ghostId, ghostId ? 1 : warlordIssenMult(striker), tb ? 'tsubame' : 'issen')
+          ? get().performKatanaStrike(strikeIds, KATANA_DASH_DAMAGE_MULT, true, ghostId, ghostId ? 1 : warlordIssenMult(striker), tb ? 'tsubame' : 'issen',
+            tb ? { x: pcx + ux * travel, y: pcy + uy * travel } : undefined) // 燕返し: 斬撃の絵は仮定の通り道の終点(一閃で体が着く所に当たる)から
           : { finish: false };
         if (ghostId === undefined) {
           const hitIds = result.hitIds ?? [];
@@ -16862,13 +16866,18 @@ export const useGameStore = create<GameState>((set, get) => ({
             ? { hitAt: Date.now(), dirX: ux, dirY: uy, hitIds, used: false, originX: pcx, originY: pcy } : null });
           if (satsujinTarget) startSatsujin(get, set, satsujinTarget.id, ux, uy);
         }
+        // ★燕返しの斬撃(社長指示2026-11-22「燕返しの斬撃、一閃の範囲に刀斬撃の絵に変更」): 仮定の通り道(今の位置→元の位置)の全長を覆う
+        // 刀の斬撃の絵を1本。向き=通り道・上下反転(V字の切り返し)は保つ。何かに当たった時だけ(一閃も空振りでは斬撃の絵を出さない)。描画だけ。
+        if (tb && ghostId === undefined) {
+          get().spawnSlash(zanX, zanY, 'rgba(221,238,255,0.95)', 1, ux < 0 ? -1 : 1, { move: 'tsubame', flip: true, path: { dx: ux * travel, dy: uy * travel } });
+        }
         // 経路上の松明などを破壊(近接フィニッシュと同等の高ダメージ)。
         const propDamage = KATANA_DAMAGE_BY_LEVEL[katanaLevel(striker)] * KATANA_DASH_DAMAGE_MULT * 2.5;
         for (const id of propTargetIds) {
           const prop = get().breakableProps.find(p => p.id === id);
           if (!prop) continue;
           const broken = get().damageBreakableProp(id, propDamage);
-          get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(221,238,255,0.95)', 1, undefined, ghostId === undefined ? { move: tb ? 'tsubame' : 'issen', flip: !!tb } : undefined); // 一閃・燕返し(守護霊は従来の絵)
+          if (!tb) get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(221,238,255,0.95)', 1, undefined, ghostId === undefined ? { move: 'issen' } : undefined); // 一閃(守護霊は従来の絵)。燕返しは下の通り道の1本
           if (broken) {
             if (broken.type === 'mine') {
               get().spawnBurst(broken.footX, broken.footY - 8, '#84cc16', 30);
@@ -30060,19 +30069,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     const p = get().player;
     const facingLeft = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
     const face = faceOverride ?? (facingLeft ? -1 : 1);
+    const path = katana?.path;
     set(state => {
       const next = [...state.effects, {
         kind: 'slash' as const,
         id: `fx-slash-${now}-${Math.random().toString(36).slice(2, 6)}`,
-        x: x + (Math.random() - 0.5) * 8,
-        y: y + (Math.random() - 0.5) * 8,
+        // 燕返しの通り道の斬撃は通り道に揃える(位置を散らさない・長さ=通り道の全長)。
+        x: path ? x : x + (Math.random() - 0.5) * 8,
+        y: path ? y : y + (Math.random() - 0.5) * 8,
         angle: -0.9 + Math.random() * 0.5, // roughly diagonal, slight variance
-        length: (72 + Math.random() * 16) * lengthScale, // 斬撃をもっと大きく(社長指示。旧 44+12)
+        length: path ? Math.hypot(path.dx, path.dy) : (72 + Math.random() * 16) * lengthScale, // 斬撃をもっと大きく(社長指示。旧 44+12)
         color,
         createdAt: now,
         duration: 260, // 少し長く残す(旧 200)
         face,
-        ...(katana ? { katana: true, katanaMove: katana.move, ...(katana.flip ? { katanaFlip: true } : {}) } : {}), // プレイヤーの刀=刀用の斬撃シート(描画だけ・判定なし)
+        ...(katana ? { katana: true, katanaMove: katana.move, ...(katana.flip ? { katanaFlip: true } : {}), ...(path ? { katanaPathDx: path.dx, katanaPathDy: path.dy } : {}) } : {}), // プレイヤーの刀=刀用の斬撃シート(描画だけ・判定なし)
       }];
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };

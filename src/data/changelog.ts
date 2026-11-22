@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5742', items: ['燕返しの斬撃は、一閃で走った道を一本の刀の斬撃が切り裂く。出から余韻までの間は一閃と同じ'] },
   { version: '0.25.5741', items: ['燕返しはその場から動かない。一閃で着いた所でしゃがんで構え、戻る通り道の敵を斬る。しゃがんでいる間は攻撃を受ける'] },
   { version: '0.25.5740', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5739', items: ['ゲーム内容の変更はありません'] },

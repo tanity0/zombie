@@ -28,9 +28,10 @@ export const katanaSlashIntScale = (wantLen: number): { kx: number; ky: number }
 export type KatanaSlashMove = 'swing' | 'issen' | 'tsubame' | 'satsujin' | 'kill';
 
 /** 技ごとの尺の割合: out=出の終わり / hold=振り切りの終わり。喉搔きと一閃は振り切りを長く止め、余韻を短く切る。 */
+// 燕返しは一閃と同じ斬撃の見え方(社長指示2026-11-22「燕返しも、ちゃんと一閃の斬撃出して」)。違いは上下の反転(V字=katanaFlip)だけ。
 export const KATANA_SLASH_TIMING: Record<KatanaSlashMove, { out: number; hold: number }> = {
   swing: { out: 0.2, hold: 0.55 },
-  tsubame: { out: 0.2, hold: 0.55 },
+  tsubame: { out: 0.12, hold: 0.82 },
   satsujin: { out: 0.2, hold: 0.55 },
   issen: { out: 0.12, hold: 0.82 },
   kill: { out: 0.12, hold: 0.82 },
