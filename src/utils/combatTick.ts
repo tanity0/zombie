@@ -74,6 +74,7 @@ import {
   currentFriendlyShield, noteShieldGuard, shieldGuardsPlayerLine, type PumpkinBlast, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
   REFLECT_DAMAGE_MULTIPLIER, // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王の倍率計算に使う基準値
   counterMasterAwakenBuffPatch, // v0.25.3303 カウンターマスター覚醒(成立後3秒+30%)
+  applyCounterMasterRefund, // カウンターマスター: 成立時に近接・サブウェポン・リロードの残りを前倒し
   playerPvpChipPatch, // ★SAME_ARENA §9(対人体勢): 幻影の弾クリ/弾パリィ返しの被弾でプレイヤー体勢を削る
   brawlerGuardCounterFx, // 格闘の構えの受け(research/BRAWLER.md §8-5)
   brawlerJustStunMult, // 格闘のジャスト構え=カウンターの気絶2倍(research/BRAWLER.md §12-2)
@@ -93,7 +94,6 @@ import { escortAggroCandidates, hittableEscorts } from './escortView';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { contactDamageMoveKey } from './moveReaction'; // G4a(§2.9): 接触被弾の技キー導出(記録専用)
-import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { peekGhostCounterClaim, consumeGhostCounterClaim, applyGhostCounterEffect, applyGhostReflectCounterFx, ghostCounterBlueLayer, type GhostCounterClaim } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの城ボス系合流 / v0.25.2525: 弾反射の成立演出 / 2026-08-27: 判定時置換ミラー / v0.25.3985: 受け流しも同じ青い成立層
 import { npcSfxDistGain } from './npcSfx'; // CRIT-UNIFY §9.3: ゴーストのブラストパリィ成立SEの距離減衰(escort/他ゴースト経路と同流儀)
 import { applyBossPostureDamage } from './bossPosture'; // v0.25.2946: 裏ボス体当たりの受け流し(体幹削り)
@@ -619,11 +619,10 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     useGameStore.setState(st => ({
       // 弾いた直後は敵がプレイヤーに重なっている(着地)ので、通常接触ダメージで被弾しないよう
       // 短い無敵(i-frame)を付与。これで「カウンターしたのに被弾」を防ぐ。
-      // counter-master v2: カウンター成立(ジャンプパリィ)時のみCDリファンド(未所持は無変換)。
+      // カウンターマスター: 待ち時間の前倒しは setState の直後の applyCounterMasterRefund(未所持は無変換)。
       player: {
         ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
         ...abilityInvulnPatch(st.player, pnow, INVULN_MS), // 技の無敵(カウンター成立の1秒=INVULN_MS で外れる被弾の無敵と同じ長さ)=sourceId 付きの攻撃(噛みつき・掴み)も受けない
-        counterCooldownEnd: refundCounterCooldown(st.player.counterCooldownEnd, pnow, skillLevel(st.player, 'counter-master')),
         // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
         ...counterMasterAwakenBuffPatch(st.player, st.gameTime),
       },
@@ -695,6 +694,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         };
       }),
     }));
+    applyCounterMasterRefund(pnow); // カウンターマスター: 近接・サブウェポン・リロードの残りを前倒し(未所持は何もしない)
     // クリティカル反撃(ヘッドショット): 弾いたジャンプ敵へ。aiPhase 解除済みでダメージが通る。
     const cBase = getActiveGun(bp)?.damage ?? 12;
     const cMk = counterMasteryKeyOf(bp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=装備している近接武器)
@@ -927,7 +927,7 @@ export const applyEnemyFire = (now: number): void => {
 // 「窓中に自分へ当たった敵弾を打ち返す」1回分。プレイヤーと守護霊が**同じ1本**を通る
 // (BOT_AND_GHOST.md §2.11補足「写すな、共通化しろ」)。差分は主語(窓の宛先)だけ:
 //   ghostId 未指定 → プレイヤー(従来と1bitも変わらない: 窓延長+lastCounterSuccessTime+
-//                    counter-masterのCDリファンド)。
+//                    counter-masterの待ち時間の前倒し)。
 //   ghostId 指定   → 守護霊(窓=Summon.ghostCounterWindowEnd を同じ COUNTER_EXTEND_PER_HIT で延長。
 //                    プレイヤーのシステム値(CD/成立時刻/コンボ/計測)には触らない=除外4)。
 // 反射弾の生成(向き反転/速度/×REFLECT_DAMAGE_MULTIPLIER/貫通なし)とボムカウンター化は共有。
@@ -983,13 +983,11 @@ const applyCounterReflect = (
           now + COUNTER_EXTEND_PER_HIT
         ),
         lastCounterSuccessTime: now,
-        // counter-master v2: カウンター成立(弾反射)時のみCDリファンド(未所持は無変換)。
-        counterCooldownEnd: refundCounterCooldown(
-          state.player.counterCooldownEnd, now, skillLevel(state.player, 'counter-master')),
         // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
         ...counterMasterAwakenBuffPatch(state.player, state.gameTime),
       }
     }));
+    applyCounterMasterRefund(now); // カウンターマスター: 近接・サブウェポン・リロードの残りを前倒し(未所持は何もしない)
     return;
   }
   // 守護霊: 窓の延長だけ同じ規格で行う(ゴーストにCD/成立時刻の帳簿は無い=ghostDriverのlastMeleeAtが
@@ -2216,17 +2214,17 @@ export const applyContactDamage = (
     }
     useGameStore.setState(st => ({
       // 弾いた直後は突進してきた敵が重なっているので、短い無敵で次フレームの接触被弾を防ぐ。
-      // counter-master v2: カウンター成立(突進パリィ)時のみCDリファンド(未所持は無変換)。
+      // カウンターマスター: 待ち時間の前倒しは setState の直後の applyCounterMasterRefund(未所持は無変換)。
       player: {
         ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
         ...abilityInvulnPatch(st.player, pnow, INVULN_MS), // 技の無敵(カウンター成立の1秒=INVULN_MS で外れる被弾の無敵と同じ長さ)=sourceId 付きの攻撃(噛みつき・掴み)も受けない
-        counterCooldownEnd: refundCounterCooldown(st.player.counterCooldownEnd, pnow, skillLevel(st.player, 'counter-master')),
         // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
         ...counterMasterAwakenBuffPatch(st.player, st.gameTime),
       },
       // v0.25.2480: 中断+ノックバック変換を dashParriedEnemyPatch へ切り出し(守護霊経路と共有・挙動同一)。
       enemies: st.enemies.map(e => dashParried.includes(e.id) ? dashParriedEnemyPatch(e, ppx, ppy, pnow, st.gameTime, biteChaffMoveById.get(e.id)) : e),
     }));
+    applyCounterMasterRefund(pnow); // カウンターマスター: 近接・サブウェポン・リロードの残りを前倒し(未所持は何もしない)
     // クリティカル反撃(ヘッドショット): aiPhase を解除済みなのでダメージが通る(ジャンプ中無敵を回避)。
     // 威力は装備中の銃ダメージ基準 × クリ倍率(通常×1.5 / ボス×5)× スキル/装備補正。
     const counterBase = getActiveGun(collPlayer)?.damage ?? 12;

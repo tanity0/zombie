@@ -24,7 +24,7 @@ import { isEnemyFrozenForClocks, tickModuleClockFreeze } from './enemyClocks';
 import { GLOW_R_L } from './glowTiers';
 import {
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
-  useGameStore, counterReplyDamage, skillLevel, enemyDeathLabel, counterMasterAwakenBuffPatch,
+  useGameStore, counterReplyDamage, enemyDeathLabel, counterMasterAwakenBuffPatch, applyCounterMasterRefund,
   BOSS_CRIT_DAMAGE_MULT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossSlowMult, bossCritCdMult,
   shieldGuardsPlayerArea, shieldGuardsPlayerLine, currentFriendlyShield, noteShieldBeam, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
@@ -52,7 +52,6 @@ import { episodeShapeFor } from './episodeShape';
 import { phaseForHealth, phaseJustChanged, BOSS_ALERT_SFX_KEY } from './bossScript';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
-import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { consumeGhostCounterClaim, applyGhostCounterEffect, type GhostCounterFire } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの合流
 import { isBodySlamNow } from './enemyBite'; // ★カウンター憲法(v0.25.3947): 面成立は体当たり技の最中のみ
 import { npcSfxDistGain } from './npcSfx'; // v0.25.2480: 守護霊カウンターSEの距離減衰
@@ -293,14 +292,13 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
     st.spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
     { const cl = counterClashPoint(cp.x + cp.width / 2, cp.y + cp.height / 2, hitX, hitY); st.spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
   }
-  // counter-master v2(CD_REWORK.md 確定2): カウンター成立時のみCDリファンド(未所持は無変換)。
-  useGameStore.setState(stt => ({ player: {
+    useGameStore.setState(stt => ({ player: {
     ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
     ...abilityInvulnPatch(stt.player, pnow, INVULN_MS), // 技の無敵(カウンター成立の1秒=INVULN_MS で外れる被弾の無敵と同じ長さ)=sourceId 付きの攻撃(噛みつき・掴み)も受けない
-    counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
     // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
     ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
   } }));
+  applyCounterMasterRefund(pnow); // カウンターマスター: 近接・サブウェポン・リロードの残りを前倒し(未所持は何もしない)
   const counterBase = getActiveGun(cp)?.damage ?? 12;
   const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=装備している近接武器)
   const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);

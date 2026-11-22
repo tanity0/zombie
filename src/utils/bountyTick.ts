@@ -24,7 +24,7 @@ import { isEnemyFrozenForClocks, tickModuleClockFreeze } from './enemyClocks';
 import {
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore, HUNTER_LEAVE_FADE_MS, resolveBountyMove,
-  counterReplyDamage, skillLevel, BOSS_CRIT_DAMAGE_MULT, counterMasterAwakenBuffPatch,
+  counterReplyDamage, BOSS_CRIT_DAMAGE_MULT, counterMasterAwakenBuffPatch, applyCounterMasterRefund,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, knockbackSpeedFor, enemyDeathLabel,
   bossSlowMult, ENEMY_REMOVE_CAUSE,
@@ -120,7 +120,6 @@ import { notifyCounterHit, notifyMoveCounter } from './playerTraits';
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { TEST_BRIDGE_ACTIVE } from './devTestKnobs';
 import { recordTestEvent } from './testEvents'; // TEST_HANDOFF/REQUEST-devbridge.md B節(記録専用・挙動不変)
-import { refundCounterCooldown } from './counterMaster';
 import { BOUNTY_NEUTRAL_RULED_MS } from './bossRebuild'; // ★社長裁定2026-08-27: 賞金首の技間=2秒
 import { consumeGhostCounterClaim, applyGhostCounterEffect } from './ghostCounter'; // ★v0.25.3962: 守護霊カウンターの消費(賞金首側の配線)
 import { resolveBossHateAim, resolveBossLockedHateAim } from './bossHate'; // ★v0.25.3971: 賞金首もヘイト制で守護霊を狙う
@@ -605,9 +604,9 @@ const bountyCounterHit = (bounty: Enemy, hx: number, hy: number, sfx: BountySfx)
   useGameStore.setState(stt => ({ player: {
     ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
     ...abilityInvulnPatch(stt.player, pnow, INVULN_MS), // 技の無敵(カウンター成立の1秒=INVULN_MS で外れる被弾の無敵と同じ長さ)=sourceId 付きの攻撃(噛みつき・掴み)も受けない
-    counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
     ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
   } }));
+  applyCounterMasterRefund(pnow); // カウンターマスター: 近接・サブウェポン・リロードの残りを前倒し(未所持は何もしない)
   const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=装備している近接武器)
   const dmg = counterReplyDamage(getActiveGun(cp)?.damage ?? 12, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
   const g2 = useGameStore.getState();

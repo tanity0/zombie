@@ -312,6 +312,7 @@ import {
   whipFollowupPhase, whipLiftApexAt, whipZakoApexDelayMs, whipSlamOpenAt,
   WHIP_PULL_MS, WHIP_SLAM_DAMAGE_MULT, WHIP_SLAM_HITSTOP_MS, WHIP_FOLLOWUP_WINDOW_MS, WHIP_PULL_BLOCK_EPS_PX, WHIP_PULL_DUST_INTERVAL_MS, type WhipFollowupWindow,
 } from '../utils/whipFollowup';
+import { planHomingVolley, splitDueHomingShots, homingLiftAllowed, type HomingPendingShot } from '../utils/homingVolley';
 import { isFlickFollowupOpen } from '../utils/flickFollowup';
 import { whipRopeTotalMs } from '../utils/whipSwingMotion';
 import {
@@ -351,7 +352,7 @@ import {
   ALCHEMY_DESPAWN_DIST, ALCHEMY_FOLLOW_GAP_PX,
   ALCHEMY_ATTACK_RANGE, ALCHEMY_ATTACK_INTERVAL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE,
   ALCHEMY_RARE_SUCTION_MAX_TARGETS, ALCHEMY_RARE_SUCTION_SPEED, SHOP_ALCHEMY_COST,
-  ALCHEMY_RARE_MELEE_INTERVAL_MS, ALCHEMY_RARE_MELEE_DAMAGE, ALCHEMY_RARE_SUCTION_RADIUS
+  ALCHEMY_RARE_MELEE_INTERVAL_MS, ALCHEMY_RARE_MELEE_DAMAGE, ALCHEMY_RARE_SUCTION_RADIUS, ALCHEMY_CHANNEL_MS
 } from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
 import { healthDropMult } from '../utils/healthDropBias';
@@ -523,7 +524,8 @@ import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB
 import { labIdolSpotForDoc, labIdolShopSpot, type LabIdolSpot } from '../world/labIdolSpot';
 import { createLabCrawler, crawlerRect, crawlerSolid, LAB_ESCAPE_BANNER_TEXT, type LabCrawler } from '../world/labCrawler'; // ステージ2の這う塊(壁のように通れない・第2版で HP あり=research/LAB_CRAWLER.md §4)
 import { crawlerDamageNumberAt, crawlerDmgNumberViewX, isCrawlerDamageNumber, crawlerCenterFxPoint } from '../utils/labCrawlerProxy'; // 変異塊のダメージの数字・手応えの絵の位置(描画だけ)
-import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
+import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL, HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
+import { counterMasterRefund } from '../utils/counterMaster'; // カウンターマスター(成立時の待ち時間の前倒し)
 import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
 import { cineAccepts, cineCameraAt, cineSideOf, type CineEvent, type CineKind } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜)
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
@@ -1424,6 +1426,44 @@ const HOMING_MISSILE_DAMAGE = Math.round(42 / 3); // 14 = 手榴弾(42)の1/3(�
 const HOMING_MISSILE_TURN_RATE = 5.0;      // rad/s TODO(ホーミング): 仮値
 const HOMING_EXPLOSION_RADIUS = 66;        // 命中時の爆発半径(手榴弾と同じ HEAVY_GRENADE_RADIUS)
 const HOMING_COOLDOWN_MS = 5000;           // 社長指示: 5秒
+/**
+ * ホーミング弾1発(fireHoming の1発目と、赤サークルの2発目=drainHomingPendingShots の共通の1本)。威力・速さ・追尾・爆発は全弾同じ。
+ * targetEnemyId 未指定=狙う敵が消えていた(直進)。seed=指を離した時刻(id の種)・createdAt=実際に撃った時刻。
+ */
+const buildHomingMissile = (
+  player: Player, ghost: Summon | undefined, targetEnemyId: string | undefined, dir: { x: number; y: number },
+  pcx: number, pcy: number, index: number, seed: number, createdAt: number,
+): Projectile => ({
+  id: ghost ? `proj-homing-${ghost.id}-${seed}-${index}` : `proj-homing-${seed}-${index}`,
+  x: pcx - HOMING_MISSILE_SIZE / 2,
+  y: pcy - HOMING_MISSILE_SIZE / 2,
+  width: HOMING_MISSILE_SIZE,
+  height: HOMING_MISSILE_SIZE,
+  speed: HOMING_MISSILE_SPEED,
+  damage: HOMING_MISSILE_DAMAGE,
+  direction: dir,
+  weaponType: 'homing-missile' as const,
+  weaponKey: 'sub-homing',
+  masteryKey: (ghost ? 'none' : 'homing') as MasteryKey, // 熟練度: 守護霊のホーミング=貯めない(none)
+  ...(ghost ? { masteryMult: guardianMasteryMult(player, 'homing') } : {}), // 倍率は守護霊の記録の値(作る所で確定)
+  duration: HOMING_MISSILE_DURATION_MS,
+  createdAt,
+  passthrough: false,
+  hitEnemies: [] as string[],
+  hostile: false,
+  reflected: false,
+  ...(targetEnemyId !== undefined ? { targetEnemyId } : {}),
+  // 命中時に手榴弾と同じ範囲爆発(直撃ダメージは据え置き14、周囲は ×1 フォールオフ)。
+  explodeOnHit: true,
+  explodeRadius: HOMING_EXPLOSION_RADIUS,
+  explodeDamageMult: 1,
+  // 既存のゴースト発動サブと同じ視覚専用マーカー(青白tint)。判定/ダメージは不変。
+  ...(ghost ? { ownerGhost: true } : {}),
+});
+/** ホーミング弾の発射の光(銃口の小さな光・判定なし・強glowではない=投影影なし)。「タン」1回ごとに1つ。守護霊=青白。 */
+const spawnHomingMuzzle = (get: () => GameState, dir: { x: number; y: number }, pcx: number, pcy: number, ghost: boolean): void => {
+  get().spawnGlow(pcx + dir.x * 16, pcy + dir.y * 16, 15, ghost ? 'rgba(159,216,255,' : 'rgba(125,211,252,', 110);
+};
 // プレイヤーが帰還サークル内にいるか。内側では攻撃を停止する(置き攻撃の出入りハメ防止)。
 export const isInReturnCircle = (player: Player, rc: { x: number; y: number; radius: number } | null): boolean => {
   if (!rc) return false;
@@ -2541,7 +2581,7 @@ export const skillHeroIncomingMult = (player: Pick<Player, 'skills'>): number =>
 export const skillHeroMult = (player: Pick<Player, 'skills' | 'health' | 'maxHealth'>): number =>
   skillHeroActive(player) ? HERO_SKILL_MULT : 1;
 // 社長指示v0.25.3303 カウンターマスター覚醒(Lv3): カウンター成立直後3秒間、全攻撃力+30%。
-// バフの付与=カウンター成立の全7箇所(refundCounterCooldownを呼ぶ場所)がplayerパッチに広げる。
+// バフの付与=カウンター成立の全箇所(lastCounterSuccessTime を打刻する所。applyCounterMasterRefund を呼ぶ所と同じ)がplayerパッチに広げる。
 export const COUNTER_MASTER_AWAKEN_BUFF_MS = 3000;
 export const COUNTER_MASTER_AWAKEN_DMG_MULT = 1.3;
 export const counterMasterAwakenBuffPatch = (player: Player, gameTime: number): Partial<Player> =>
@@ -8612,8 +8652,9 @@ const startKillFxCinematic = (
   }, KILLFX_BURST_AT_MS + KILLFX_BLOOD_LAG_MS);
 };
 
-// スキル: カウンターマスター = カウンター成立スイングで、プレイヤー近傍(~MELEE_RADIUS*1.5)の敵を
-// 2× KNOCKBACK_SPEED で弾く。近傍だけ走査(有界)。
+// スキル: カウンターマスター = **カウンター成立の瞬間**に、プレイヤー近傍(~MELEE_RADIUS*1.5)の敵を
+// KNOCKBACK_SPEED×Lv倍で弾く。近傍だけ走査(有界)。呼ぶのは counterMasterOnCounterSuccess だけ
+// (社長指示2026-11-22「カウンター成立時に周りの敵を吹き飛ばし」。旧: 近接が当たる度)。
 const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number, kbScale = 2) => {
   const reach = MELEE_RADIUS * 1.5;
   const reach2 = reach * reach;
@@ -8636,6 +8677,60 @@ const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number, 
 const counterMasterKbScale = (player: Player): number => {
   const lv = skillLevel(player, 'counter-master');
   return lv ? [0, 2, 2.5, 3][lv] : 2;
+};
+
+/**
+ * カウンターマスター: カウンター成立の瞬間の「待ち時間の前倒し」(社長指示2026-11-22
+ * 「近接(カウンター)、サブウェポン、リロード 全てを短縮」)。計算は純関数 counterMasterRefund
+ * (src/utils/counterMaster.ts)1本で、これはその結果を store に書くだけ。
+ * **lastCounterSuccessTime を打刻する全箇所**が、打刻の直後にこれを呼ぶ(未所持=何も書かない)。
+ * 守護霊・幻影のサブウェポン帳簿は対象外(スキルはプレイヤー本人のもの)。
+ */
+export const applyCounterMasterRefund = (nowMs: number = Date.now()): void => {
+  const st = useGameStore.getState();
+  const lv = skillLevel(st.player, 'counter-master');
+  if (!lv) return;
+  let whipBecameCharged = false;
+  useGameStore.setState(s => {
+    const p = s.player;
+    const r = counterMasterRefund({
+      counterMasterLv: lv, nowMs, gameTime: s.gameTime, player: p,
+      sensorMineCharges: s.sensorMineCharges, supportSniperCdMs: s.supportSniperCdMs,
+      huntingChargeMs: HUNTING_CHARGE_MS_BY_LEVEL[Math.max(0, Math.min(3, p.subWeaponLevels['striker-hunting'] ?? 0))] ?? 0,
+      whipChargeHits: whipChargeThreshold(p),
+      alchemyChannelMs: ALCHEMY_CHANNEL_MS,
+    });
+    const patch: Partial<GameState> = {};
+    if (Object.keys(r.player).length > 0) {
+      whipBecameCharged = !p.whipCharged && r.player.whipCharged === true;
+      patch.player = { ...p, ...r.player };
+    }
+    if (r.sensorMineCharges) patch.sensorMineCharges = r.sensorMineCharges;
+    if (r.supportSniperCdMs !== undefined) patch.supportSniperCdMs = r.supportSniperCdMs;
+    return patch;
+  });
+  if (whipBecameCharged) {
+    // 鞭のハリケーン待機に入った知らせ(ヒットで溜まった時と同じ光)。
+    const p = useGameStore.getState().player;
+    const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+    st.spawnFlash('rgba(186,230,253,0.34)', 150);
+    st.spawnRing(pcx, pcy, 10, 72, 'rgba(255,255,255,0.95)', 3, 260);
+    st.spawnRing(pcx, pcy, 6, 50, 'rgba(125,211,252,0.9)', 3, 360);
+    st.spawnBurst(pcx, pcy, '#bae6fd', 12);
+  }
+};
+
+/**
+ * カウンターマスター: カウンター成立の瞬間の吹き飛ばし+スキル発動の表示。成立の縁(useGameLoop の
+ * lastCounterSuccessTime の増加検知=金の輪・ボムカウンターと同じ所)で1回だけ呼ぶ
+ * (弾の連続反射で同じフレームに何度も成立しても1回)。未所持=何もしない。
+ */
+export const counterMasterOnCounterSuccess = (): void => {
+  const st = useGameStore.getState();
+  const player = st.player;
+  if (!hasSkill(player, 'counter-master')) return;
+  notifySkillProcFor(player, 'counter-master');
+  counterMasterKnockback(useGameStore.getState, player.x + player.width / 2, player.y + player.height / 2, counterMasterKbScale(player));
 };
 
 // ---------------------------------------------------------------------------
@@ -10351,6 +10446,12 @@ interface GameState {
   homingLocks: string[];
   setHomingLocks: (locks: string[]) => void;
   fireHoming: (ghostId?: string) => void; // ghostId=守護霊の主語(未指定=プレイヤー=従来と1bit同じ)
+  // 赤サークル(同じ敵の2ロック目)の2発目の待ち行列(utils/homingVolley)。fireHoming が積み、drainHomingPendingShots が撃つ。
+  homingPendingShots: HomingPendingShot[];
+  /** 撃つ時刻になった2発目を撃つ(毎フレーム useGameLoop)。戻り値=撃った弾の主語と位置(発射音を鳴らす側が使う)。 */
+  drainHomingPendingShots: () => { ghostId?: string; x: number; y: number }[];
+  /** ホーミング弾が当たった敵を浮かせる(鞭の引き寄せと同じ打ち上げ・ボス級は浮かせない)。 */
+  liftEnemyByHoming: (enemyId: string) => void;
 
   // 分身(サブウェポン)。生成中=ACTIVE、null=READY/COOLDOWN。レンダラが直読みして白黒で描く。
   // ※これは**プレイヤーの枠**。守護霊の枠は Summon.ghostShadowClone(§2.11追補=主語ごとに1枠)。
@@ -11505,6 +11606,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   junkShotFxAt: 0,
   summonFxAt: 0,
   homingLocks: [],
+  homingPendingShots: [],
   shadowClone: null,
   molotovCycle: null,
   arrowRainShots: [],
@@ -12849,6 +12951,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     //   ★弱い構えでもジャストなら +5(社長指示2026-11-12「それでもジャストカウンターはポイント付与有り」)。成立の記録は弱い構えでは書かない。
     const nextPts = BR.brawlerAfterJustGuardPoints(next, BR.brawlerPointCap(brawlerLevel(p)), just && fxOn.justPoints, now);
     setBrawler(set, { ...nextPts, guardHitAt: now, ...(just ? { justAt: now } : {}) }, fxOn.counter ? { lastCounterSuccessTime: now, ...counterMasterAwakenBuffPatch(p, st.gameTime) /* §15: カウンターマスター覚醒(成立後3秒+30%)も他のカウンターと揃える */ } : undefined);
+    if (fxOn.counter) applyCounterMasterRefund(now); // カウンターマスター: 構えの受けもカウンター成立=近接・サブウェポン・リロードの残りを前倒し(他の成立箇所と同じ1本)
     // 受けた瞬間: 大きめの止め・閃光・揺れ(固有色の白金)。
     // 画面全体は止めない・スローも使わない(カウンターの絵の時間停止は撤回済み+サブウェポンのスロー禁則)。揺れと小さな寄りで受ける。
     get().triggerShake(COUNTER_SHAKE_MS + 80, COUNTER_SHAKE_MAG * 1.4, c.x - x, c.y - y);
@@ -13396,8 +13499,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     // counter-master v2(CD_REWORK.md 確定2・v0.25.2450): 旧効果「カウンター窓延長(+120/180/250ms)」は
-    // 廃止=窓は全員 COUNTER_WINDOW 固定。新効果は「カウンター成立時のみCDリファンド」で、成立箇所
-    // (lastCounterSuccessTime打刻の7箇所)が refundCounterCooldown(src/utils/counterMaster.ts)を呼ぶ。
+    // 廃止=窓は全員 COUNTER_WINDOW 固定。新効果は「カウンター成立時のみ待ち時間の前倒し」で、成立箇所
+    // (lastCounterSuccessTime打刻の全箇所)が applyCounterMasterRefund(計算=src/utils/counterMaster.ts)を呼ぶ。
     // 素振り(不成立スイング)のCDはスキル有無に関わらず同一=素振りDPS不変。
     const counterWindowMs = COUNTER_WINDOW;
     // ★前隙(SAME_ARENA.md §7): 窓とCDは**指を離した瞬間**が基準。判定だけが200ms遅れて
@@ -14427,11 +14530,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
     get().registerMultiHit(slashAt.length); // キャラ固有 ヘビーガンナー: 近接が2体以上に当たれば爆発範囲バフ
-    // ★格闘(§15): カウンターマスターの吹き飛ばしは締めの当たり(5段目・蹴りの3発目・大踏み潰し・秘奥義の締め)だけ。ほかの近接は今までどおり毎回。
-    if (hasSkill(player, 'counter-master') && slashAt.length > 0 && BRS.counterMasterBlowFires(!!bs, bs?.combo?.move)) {
-      notifySkillProcFor(player, 'counter-master');
-      counterMasterKnockback(get, pcx, pcy, counterMasterKbScale(player));
-    }
+    // (カウンターマスターの吹き飛ばしは近接ヒットではなくカウンター成立時へ移した=counterMasterOnCounterSuccess・社長指示2026-11-22)
     // スキル スラッシャーのチェーン開始はこの近接スイングの set()(player.slasherChainReadyAt)で行う。
     // 追撃自体は「チェーンCD明けのタップ」で applySlasherChainStrike が出す(自動ではない)。
     // ★v0.25.3616(実機FB「敵を2撃目追いかけてない」): 初撃にも追撃と同じ自動追尾(v0.25.3540)を付ける。
@@ -14690,7 +14789,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ヘビーガンナー: 2体以上ヒットで爆発範囲バフ。**プレイヤーの分身だけ**が本人のバフを積む
     // (守護霊の分身で本人のバフ窓が伸びる=主語をまたぐ横取り。N HITSバナーもプレイヤー頭上=除外1)。
     if (!isGhost) get().registerMultiHit(slashAt.length);
-    if (hasSkill(player, 'counter-master') && slashAt.length > 0) counterMasterKnockback(get, ccx, ccy, counterMasterKbScale(player));
+    // (カウンターマスターの吹き飛ばしはカウンター成立時だけ=分身の近接では出さない・社長指示2026-11-22)
     // スキル: 救難信号(§6.10 M33⑦: 分身のヒットでも発動判定。基本近接/刀と同条件・索敵起点は分身中心)。
     applyRescueSignalProc(get, player, meleeDamage, cloneHitEnemyIds, ccx, ccy);
     // 吸血覚醒(Lv3・v0.25.3300): 分身の近接ヒットでも1%回復(同じ動作を持つ全員に付ける)。
@@ -18306,43 +18405,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     const pcx = ownerCenterX(homingOwner);
     const pcy = ownerCenterY(homingOwner);
     const now = Date.now();
-    const newProjectiles = locks
-      .map((enemyId, i) => {
-        const target = enemies.find(e => e.id === enemyId);
-        if (!target) return null;
-        const tx = target.x + target.width / 2;
-        const ty = target.y + target.height / 2;
-        const dist = Math.max(0.001, Math.hypot(tx - pcx, ty - pcy));
-        return {
-          id: ghost ? `proj-homing-${ghost.id}-${now}-${i}` : `proj-homing-${now}-${i}`,
-          x: pcx - HOMING_MISSILE_SIZE / 2,
-          y: pcy - HOMING_MISSILE_SIZE / 2,
-          width: HOMING_MISSILE_SIZE,
-          height: HOMING_MISSILE_SIZE,
-          speed: HOMING_MISSILE_SPEED,
-          damage: HOMING_MISSILE_DAMAGE,
-          direction: { x: (tx - pcx) / dist, y: (ty - pcy) / dist },
-          weaponType: 'homing-missile' as const,
-          weaponKey: 'sub-homing',
-          masteryKey: (ghost ? 'none' : 'homing') as MasteryKey, // 熟練度: 守護霊のホーミング=貯めない(none)
-          ...(ghost ? { masteryMult: guardianMasteryMult(player, 'homing') } : {}), // 倍率は守護霊の記録の値(作る所で確定)
-          duration: HOMING_MISSILE_DURATION_MS,
-          createdAt: now,
-          passthrough: false,
-          hitEnemies: [] as string[],
-          hostile: false,
-          reflected: false,
-          targetEnemyId: enemyId,
-          // 命中時に手榴弾と同じ範囲爆発(直撃ダメージは据え置き14、周囲は ×1 フォールオフ)。
-          explodeOnHit: true,
-          explodeRadius: HOMING_EXPLOSION_RADIUS,
-          explodeDamageMult: 1,
-          // 既存のゴースト発動サブと同じ視覚専用マーカー(青白tint)。判定/ダメージは不変。
-          ...(ghost ? { ownerGhost: true } : {}),
-        };
-      })
-      .filter((p): p is NonNullable<typeof p> => p !== null);
-    if (newProjectiles.length === 0) return;
+    // 社長指示2026-11-22「赤サークルで発射したらタンタン、と2発ちゃんと発射して」: 同じ敵の2つ目のロック(赤サークル)の弾は
+    // HOMING_SECOND_SHOT_DELAY_MS 後に撃つ(旧=1発目と同じ位置・向き・時刻に重ねていたので1発に見えた)。1つ目のロックは今どおり一斉発射。
+    const newProjectiles: Projectile[] = [];
+    const pending: HomingPendingShot[] = [];
+    for (const shot of planHomingVolley(locks)) {
+      const target = enemies.find(e => e.id === shot.enemyId);
+      if (!target) continue;
+      const tx = target.x + target.width / 2;
+      const ty = target.y + target.height / 2;
+      const dist = Math.max(0.001, Math.hypot(tx - pcx, ty - pcy));
+      const dir = { x: (tx - pcx) / dist, y: (ty - pcy) / dist };
+      if (shot.delayMs > 0) {
+        pending.push({ enemyId: shot.enemyId, index: shot.index, at: gameTime + shot.delayMs, ...(ghost ? { ghostId: ghost.id } : {}), dirX: dir.x, dirY: dir.y, seed: now });
+        continue;
+      }
+      newProjectiles.push(buildHomingMissile(player, ghost, shot.enemyId, dir, pcx, pcy, shot.index, now, now));
+    }
+    if (newProjectiles.length === 0 && pending.length === 0) return;
+    const pendingAdd = (state: GameState) => (pending.length > 0 ? { homingPendingShots: [...state.homingPendingShots, ...pending] } : {});
     if (ghost) {
       // 守護霊: 自分のロックだけを消す(プレイヤーのロック配列には触らない=2人分が独立)。
       set(state => ({
@@ -18350,11 +18431,68 @@ export const useGameStore = create<GameState>((set, get) => ({
         summons: state.summons.map(s => s.id === ghost.id
           ? { ...s, ghostHomingLocks: [], ghostHomingHoldStartAt: undefined, ghostHomingNextLockAt: undefined }
           : s),
+        ...pendingAdd(state),
       }));
     } else {
-      set(state => ({ projectiles: [...state.projectiles, ...newProjectiles.map(ensureProjectileOrigin)], homingLocks: [] }));
+      set(state => ({ projectiles: [...state.projectiles, ...newProjectiles.map(ensureProjectileOrigin)], homingLocks: [], ...pendingAdd(state) }));
     }
+    if (newProjectiles.length > 0) spawnHomingMuzzle(get, newProjectiles[0].direction, pcx, pcy, !!ghost);
     setActorSubWeaponCooldown(ghostId, 'homing', gameTime + HOMING_COOLDOWN_MS);
+  },
+
+  drainHomingPendingShots: () => {
+    const st = get();
+    if (st.homingPendingShots.length === 0) return [];
+    const { due } = splitDueHomingShots(st.homingPendingShots, st.gameTime);
+    if (due.length === 0) return [];
+    const now = Date.now();
+    const fired: { ghostId?: string; x: number; y: number }[] = [];
+    const out: Projectile[] = [];
+    for (const shot of due) {
+      const ghost = shot.ghostId === undefined
+        ? undefined
+        : st.summons.find(s => s.id === shot.ghostId && s.kind === 'ghost-ally');
+      if (shot.ghostId !== undefined && !ghost) continue; // 守護霊が居なくなった=撃たない
+      const player = combatActorPlayer(shot.ghostId);
+      if (!player) continue;
+      const owner = ghost ? ghostAsOwner(ghost) : playerAsOwner(player);
+      const pcx = ownerCenterX(owner);
+      const pcy = ownerCenterY(owner);
+      // 2発目も1発目と同じ追尾: 狙う敵へ向けて撃つ。敵が消えていたら指を離した時の向きへ真っすぐ(対象が消えたら直進=従来の規則)。
+      const target = st.enemies.find(e => e.id === shot.enemyId);
+      let dir = { x: shot.dirX, y: shot.dirY };
+      if (target) {
+        const tx = target.x + target.width / 2;
+        const ty = target.y + target.height / 2;
+        const dist = Math.max(0.001, Math.hypot(tx - pcx, ty - pcy));
+        dir = { x: (tx - pcx) / dist, y: (ty - pcy) / dist };
+      }
+      out.push(buildHomingMissile(player, ghost, target ? shot.enemyId : undefined, dir, pcx, pcy, shot.index, shot.seed, now));
+      spawnHomingMuzzle(get, dir, pcx, pcy, !!ghost);
+      fired.push({ ...(shot.ghostId !== undefined ? { ghostId: shot.ghostId } : {}), x: pcx, y: pcy });
+    }
+    set(state => ({
+      projectiles: out.length > 0 ? [...state.projectiles, ...out.map(ensureProjectileOrigin)] : state.projectiles,
+      homingPendingShots: state.homingPendingShots.filter(s => !due.includes(s)),
+    }));
+    return fired;
+  },
+
+  liftEnemyByHoming: (enemyId) => {
+    const now = Date.now();
+    set(state => {
+      const gt = state.gameTime;
+      let changed = false;
+      const enemies = state.enemies.map(e => {
+        if (e.id !== enemyId || isCorpse(e) || isUntouchable(e)) return e;
+        if (!homingLiftAllowed(BRC.brawlerLiftClass(e), whipPullable(e), e.health > 0)) return e;
+        const lp = issenLiftPatch(e, e, now, gt); // 鞭の引き寄せ・一閃と同じ打ち上げ(格闘の4段目・区分の重さ・拾える予算)
+        if (!lp) return e;
+        changed = true;
+        return { ...e, ...lp };
+      });
+      return changed ? { enemies } : {};
+    });
   },
 
   updateHuntingCharge: (startedAt, charged) => {
@@ -28769,6 +28907,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         skadiIceMarkers: [],
         skadiIceBlades: [],
         homingLocks: [],
+        homingPendingShots: [],
         shadowClone: null,
         groundFires: [],
         bloodSpikes: [],

@@ -453,6 +453,8 @@ import { berserkerFrameLight, overclockFrameLit, OVERCLOCK_LIGHT_MS } from '../u
 import { bloodAwakenRedAlpha, bloodAwakenGlowAlpha, bloodPulseMult } from '../utils/bloodAwaken'; // B10 血の覚醒: 体の赤・赤い光の濃さ(光が先・体が遅れて染まる・入りはオーバーシュート・終わり1秒)と心拍の脈
 import { superArmorSquashY, superArmorSquashX, superArmorLeanRad, SUPER_ARMOR_SINK_MS } from '../utils/superArmor'; // B12 スーパーアーマー: 踏ん張りの縦横倍率・傾き
 import { GLOW_R_M, GLOW_R_L, GLOW_R_XL } from '../utils/glowTiers';
+import { seeThroughBodyPoints } from '../utils/seeThroughMask';
+import { SeeThroughPixelProbe } from './seeThroughPixels';
 import { FONT_STACK, JP_SERIF_STACK } from '../config/font';
 import {
   enemyFootBox, enemyHitStrip, ENEMY_STRIP_HEIGHT_FRAC, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE, horizonActorFadePx, HORIZON_ACTOR_FADE_PX, bossBehindFadeApplies,
@@ -5270,6 +5272,9 @@ export class PixiScene {
   // 障害物の「裏に回ったら透ける」用: プレイヤーの足元矩形(world)とフェードlerp係数を毎フレ更新。
   private seeThroughPlayer = { cx: 0, footY: 0, halfW: 0, top: 0 };
   private seeThroughLerp = 1;
+  // 透けのピクセル判定(社長指示2026-11-22): 主人公の体の点(世界)と、絵ごとの不透明ピクセルの地図のキャッシュ。
+  private seeThroughPoints: { x: number; y: number }[] = [];
+  readonly seeThroughPx = new SeeThroughPixelProbe();
   private playerRidingHeli = false; // フェーズA中=プレイヤーをヘリ前面(danceUiLayer)へ移しているか
   private helicopter = new Sprite(); // 登場演出のヘリ(画像 'helicopter' 登録時のみ表示)
   private heliRotorFrames: Texture[] | null = null; // ローター回転の18コマ(遅延スライス)
@@ -8208,8 +8213,8 @@ export class PixiScene {
     const vw = Math.abs(sprite.scale.x) * (sprite.texture?.width ?? 0), vh = Math.abs(sprite.scale.y) * (sprite.texture?.height ?? 0);
     const mult = (sprite.visible && sprite.texture && sprite.texture.width > 1)
       ? (useAnchor
-        ? this.seeThroughMult(sprite.x + (0.5 - sprite.anchor.x) * vw, footWorldY, vw, vh * sprite.anchor.y)
-        : this.seeThroughMult(sprite.x, footWorldY, vw, vh))
+        ? this.seeThroughMult(sprite.x + (0.5 - sprite.anchor.x) * vw, footWorldY, vw, vh * sprite.anchor.y, sprite)
+        : this.seeThroughMult(sprite.x, footWorldY, vw, vh, sprite))
       : 1;
     sprite.alpha += (base * mult - sprite.alpha) * this.seeThroughLerp;
   }
@@ -8217,12 +8222,16 @@ export class PixiScene {
   // 「裏に回ったら透ける」倍率。プレイヤーを覆う(手前=footWorldYが大きく、見た目矩形が足元矩形と重なる)
   // 障害物は OBSTACLE_SEE_THROUGH_ALPHA、それ以外は 1。城/将来のダンジョン系オブジェも共有(社長指示)。
   // centerX/footWorldY=見た目の中心X・足元Y(world)、vw/vh=見た目の幅・高さ。
-  private seeThroughMult(centerX: number, footWorldY: number, vw: number, vh: number): number {
+  // sprite を渡すと、四角は一次ふるいになり、その中で「主人公の体の点が絵の不透明な部分に乗っているか」を
+  // ピクセルで確かめる(社長指示2026-11-22「木に重なってなくてもその正方形に入ると透けちゃってるのが過剰」)。
+  // 絵が読めない時(クロスオリジン等)は四角の判定のまま。
+  private seeThroughMult(centerX: number, footWorldY: number, vw: number, vh: number, sprite?: Sprite): number {
     if (OBSTACLE_SEE_THROUGH_ALPHA >= 1 || footWorldY <= this.seeThroughPlayer.footY) return 1;
     const p = this.seeThroughPlayer;
     // 障害物の見た目矩形(foot-anchor 0.5,1) vs プレイヤー足元矩形 の AABB 重なり。
     if (centerX + vw / 2 > p.cx - p.halfW && centerX - vw / 2 < p.cx + p.halfW
         && footWorldY > p.top && footWorldY - vh < p.footY) {
+      if (sprite && this.seeThroughPx.covers(sprite, this.L.actorLayer, this.seeThroughPoints) === false) return 1;
       return OBSTACLE_SEE_THROUGH_ALPHA;
     }
     return 1;
@@ -9679,6 +9688,9 @@ export class PixiScene {
     }
     // 「裏に回ったら透ける」判定用のプレイヤー足元矩形(world)。障害物の可視矩形とAABBで重なり判定する。
     this.seeThroughPlayer = { cx: pfb.footX, footY: pfb.footY, halfW: pfb.boxW / 2, top: pfb.footY - pfb.boxH };
+    // ピクセル判定に使う主人公の体の点(頭・胸・腰・足元)。四角の判定に入った物だけ、この点が絵の不透明な所に乗るかを見る。
+    seeThroughBodyPoints(pfb.footX, pfb.footY, pfb.boxW, pfb.boxH, this.seeThroughPoints);
+    this.seeThroughPx.beginFrame();
 
     // Camera offset + screen shake on the whole world (and the floor).
     let sx = 0;
@@ -11967,7 +11979,7 @@ export class PixiScene {
     // ★傾き(v0.25.4331)。城スプライトのアンカーは足元なので、回すと足を軸に倒れる=支えを失った形になる。
     this.castleView.rotation = leanRad;
     // プレイヤーが城の裏に回り込んだら透かす(木/壁/プロップと同じ規格)。将来のダンジョン系オブジェも同様に。
-    const stMult = this.seeThroughMult(castle.x, footY, tex.width * sc, targetH);
+    const stMult = this.seeThroughMult(castle.x, footY, tex.width * sc, targetH, this.castleSprite);
     const targetAlpha = Math.min(0.96, horizonAlpha * 0.9) * stMult;
     if (colP !== null) {
       // 崩落中はlerpを使わず直接(フェードの尺=崩落時計と1:1で決定的に)。
@@ -24977,6 +24989,9 @@ export class PixiScene {
           const ease = t * t * (3 - 2 * t);
           behindTarget = BOSS_BEHIND_V2_FOOT_ALPHA + (BOSS_BEHIND_V2_HEAD_ALPHA - BOSS_BEHIND_V2_FOOT_ALPHA) * ease;
         }
+        // ピクセル判定(社長指示2026-11-22): 上の帯の判定は一次ふるい。主人公の体の点が巨体の絵の不透明な部分に
+        // 乗っていない(=絵の隙間・脇に居て隠れていない)なら透かさない。濃さのカーブは上のまま。絵が読めない時は従来どおり。
+        if (behindTarget < 1 && this.seeThroughPx.covers(view.sprite, this.L.actorLayer, this.seeThroughPoints) === false) behindTarget = 1;
       }
       // 透ける/戻るを滑らかにフェード。速度は障害物の透けの2倍(社長指示)= 1-(1-lerp)^2。
       const fastLerp = 1 - (1 - this.seeThroughLerp) ** 2;

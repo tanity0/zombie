@@ -16,11 +16,8 @@ export const stunnedFinishDamage = (
 ): number => (finishPart * mult + Math.max(0, reward) * rewardMult) * scanMult;
 
 // ---- 2. カウンターマスターの吹き飛ばし ----
-/** 格闘の締めの当たり(5段目・蹴りの3発目・大踏み潰し・秘奥義の締め)。秘奥義の9連撃の中の技は 'secret' で、締めに数えない。 */
-export const BRAWLER_FINISHER_MOVES: readonly BrawlerMoveKey[] = ['s5', 'kick3', 'stomp', 'secret-land'];
-/** カウンターマスターの吹き飛ばしを出すか。格闘以外の近接は今どおり毎回・格闘は締めの当たりだけ。 */
-export const counterMasterBlowFires = (brawlerStrike: boolean, move: BrawlerMoveKey | undefined): boolean =>
-  !brawlerStrike || (move !== undefined && BRAWLER_FINISHER_MOVES.includes(move));
+// (欠番)旧「格闘は締めの当たりだけ」の分岐(counterMasterBlowFires)は、吹き飛ばしが近接ヒットから
+// カウンター成立時へ移ったので撤去(社長指示2026-11-22)。構えの受けもカウンター成立=吹き飛ばしが出る。
 
 // ---- 3. 当たるたびの回復(吸血Lv3・英雄) ----
 export const isBrawlerSecretMove = (move: BrawlerMoveKey | undefined): boolean => move === 'secret' || move === 'secret-land';

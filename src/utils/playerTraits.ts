@@ -1207,7 +1207,7 @@ export const notifyRetaliationHit = (targetEnemyId: string): void => {
 // ==== G4a(BOT_AND_GHOST.md §2.9): 記録専用の通知フック ==========================================
 
 /**
- * カウンター成立の通知(技への反応表用・挙動不変)。フック点=counterMaster.refundCounterCooldownの
+ * カウンター成立の通知(技への反応表用・挙動不変)。フック点=旧 counterMaster.refundCounterCooldown(現 applyCounterMasterRefund)の
  * 呼び出し箇所と同じ7箇所(①弾反射/②ジャンプ着地パリィ/③突進パリィ=combatTick.ts、
  * ④thorCounterHit/⑤hiddenBossCounterHit/⑥idolCounterHit=useGameLoop.ts、⑦angelCounterHit=
  * angelBossTick.ts)。セッションが無ければ(非交戦/ゴーストラン)何もしない。

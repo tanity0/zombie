@@ -1,7 +1,7 @@
 // 格闘×スキル(research/BRAWLER.md §15)の純関数。格闘以外の経路が今までどおりであることもここで固定する。
 import { describe, it, expect } from 'vitest';
 import {
-  stunnedFinishDamage, counterMasterBlowFires, BRAWLER_FINISHER_MOVES, brawlerHitHealAllowed, isBrawlerSecretMove,
+  stunnedFinishDamage, brawlerHitHealAllowed, isBrawlerSecretMove,
   brawlerVampireHealReady, BRAWLER_VAMPIRE_HEAL_MIN_INTERVAL_MS,
   brawlerTimeKeeperDiscount, brawlerOverclockRefunds, BRAWLER_OVERCLOCK_REFUND_CHANCE, brawlerJustWindowMs,
   brawlerSpeedDamageMult, brawlerHuntingComboStart, brawlerComboEnded,
@@ -25,19 +25,6 @@ describe('1. 処刑系: 段の倍率は5倍の部分だけ・報酬予算には�
   });
   it('強個体の3倍(報酬なし)・印の倍率', () => {
     expect(stunnedFinishDamage(30, 0, 0.8, 1, 2)).toBeCloseTo(30 * 0.8 * 2, 10);
-  });
-});
-
-describe('2. カウンターマスターの吹き飛ばし', () => {
-  it('格闘以外は毎回(move の有無を問わない)', () => {
-    expect(counterMasterBlowFires(false, undefined)).toBe(true);
-    expect(counterMasterBlowFires(false, 's1')).toBe(true);
-  });
-  it('格闘は締めの当たりだけ', () => {
-    for (const m of ['s1', 's2', 's3', 's4', 'kick1', 'kick2', 'kiko', 'secret'] as const) expect(counterMasterBlowFires(true, m)).toBe(false);
-    for (const m of ['s5', 'kick3', 'stomp', 'secret-land'] as const) expect(counterMasterBlowFires(true, m)).toBe(true);
-    expect(counterMasterBlowFires(true, undefined)).toBe(false);
-    expect(BRAWLER_FINISHER_MOVES).toHaveLength(4);
   });
 });
 

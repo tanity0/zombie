@@ -1,6 +1,6 @@
 // ★格闘×スキル(research/BRAWLER.md §15)をストアで実際に動かして固める。格闘以外(ナイフ)の経路が変わらないことも見る。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useGameStore, strikerMeleeMult, counterMasterAwakenBuffPatch } from './gameStore';
+import { useGameStore, strikerMeleeMult, counterMasterAwakenBuffPatch, counterMasterOnCounterSuccess } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll } from '../utils/brawlerCombo';
 import { initialBrawlerState } from '../utils/brawler';
@@ -85,21 +85,33 @@ describe('1b. 気絶中の処刑系にも空中の倍率(5倍の部分だけ・�
   });
 });
 
-describe('2. カウンターマスターの吹き飛ばしは格闘では締めだけ', () => {
-  const pushed = (brawler: boolean, move: 's1' | 's5'): boolean => {
-    setup(['counter-master'], { 'counter-master': 1 }, brawler);
+describe('2. カウンターマスターの吹き飛ばしはカウンター成立時だけ(社長指示2026-11-22)', () => {
+  const pushedByMelee = (brawler: boolean, move: 's1' | 's5', skill = true): { until: number; vx: number; vy: number } => {
+    setup(skill ? ['counter-master'] : [], skill ? { 'counter-master': 1 } : {}, brawler);
     useGameStore.setState({ enemies: [bodyAt('zombie', 40, 0, 'hit'), bodyAt('zombie', 0, 90, 'near')] });
     if (brawler) useGameStore.getState().triggerCounter(undefined, strikeOpts('hit', 0.3, move));
     else useGameStore.getState().triggerCounter();
-    const n = useGameStore.getState().enemies.find(e => e.id === 'near')!;
-    return (n.knockbackUntil ?? 0) > 0;
+    const e = useGameStore.getState().enemies.find(x => x.id === 'near')!;
+    return { until: e.knockbackUntil ?? 0, vx: e.knockbackVx ?? 0, vy: e.knockbackVy ?? 0 };
   };
-  it('格闘の1段目では周りの敵は飛ばない・5段目では飛ぶ', () => {
-    expect(pushed(true, 's1')).toBe(false);
-    expect(pushed(true, 's5')).toBe(true);
+  it('近接が当たっただけでは周りの敵は飛ばない(格闘の1段目・5段目)', () => {
+    expect(pushedByMelee(true, 's1').until).toBe(0);
+    expect(pushedByMelee(true, 's5').until).toBe(0);
   });
-  it('ナイフは今までどおり毎回飛ばす', () => {
-    expect(pushed(false, 's1')).toBe(true);
+  it('ナイフの近接: 周りの敵の飛び方はスキル無しと同じ(ナイフ自身の範囲の押し返しだけ・上乗せが無い)', () => {
+    expect(pushedByMelee(false, 's1', true)).toEqual(pushedByMelee(false, 's1', false));
+  });
+  it('成立の瞬間(counterMasterOnCounterSuccess)に周りの敵が飛ぶ・未所持では飛ばない', () => {
+    setup(['counter-master'], { 'counter-master': 1 });
+    useGameStore.setState({ enemies: [bodyAt('zombie', 0, 90, 'near'), bodyAt('zombie', 600, 0, 'far')] });
+    counterMasterOnCounterSuccess();
+    const st = useGameStore.getState();
+    expect(st.enemies.find(e => e.id === 'near')!.knockbackUntil ?? 0).toBeGreaterThan(0);
+    expect(st.enemies.find(e => e.id === 'far')!.knockbackUntil ?? 0).toBe(0);
+    setup([], {});
+    useGameStore.setState({ enemies: [bodyAt('zombie', 0, 90, 'near')] });
+    counterMasterOnCounterSuccess();
+    expect(useGameStore.getState().enemies.find(e => e.id === 'near')!.knockbackUntil ?? 0).toBe(0);
   });
 });
 
@@ -154,6 +166,24 @@ describe('10. カウンターマスター覚醒: 構えの受けでも付く', (
     useGameStore.getState().brawlerGuardReceive(center().x + 30, center().y);
     expect(useGameStore.getState().player.counterMasterBuffUntil ?? 0).toBe(0);
     expect(counterMasterAwakenBuffPatch(useGameStore.getState().player, 1)).toEqual({});
+  });
+});
+
+describe('10b. カウンターマスターの前倒し: 構えの受けもカウンター成立', () => {
+  it('Lv3 なら構えで受けた瞬間にサブウェポンのCD・リロードが明ける・未所持では変わらない', () => {
+    const run = (lv: number) => {
+      setup(lv ? ['counter-master'] : [], lv ? { 'counter-master': lv } : {});
+      useGameStore.setState(st => ({ player: {
+        ...st.player, subWeapons: ['brawler', 'decoy'], subWeaponCooldowns: { decoy: st.gameTime + 5000 },
+        reloadingWeaponId: 'w-x', reloadEndsAt: now + 1000,
+        brawler: { ...initialBrawlerState(), guardUntil: st.gameTime + 1000, guardSince: st.gameTime },
+      } }));
+      useGameStore.getState().brawlerGuardReceive(center().x + 30, center().y);
+      const st = useGameStore.getState();
+      return { cd: (st.player.subWeaponCooldowns.decoy ?? 0) - st.gameTime, reload: st.player.reloadEndsAt - now };
+    };
+    expect(run(3)).toEqual({ cd: 0, reload: 0 });
+    expect(run(0)).toEqual({ cd: 5000, reload: 1000 });
   });
 });
 

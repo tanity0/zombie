@@ -67,6 +67,7 @@ import {
   // オーバークロックproc時クイックリロード / シーカー半透明中の攻撃封印(覚醒で解除)。
   BOMB_COUNTER_AWAKEN_KB_PX, skillExplosionKbMult, overclockAwakenReloadPatch, isSeekerActive,
   counterMasterAwakenBuffPatch, // v0.25.3303 カウンターマスター覚醒(成立後3秒+30%)
+  applyCounterMasterRefund, counterMasterOnCounterSuccess, // カウンターマスター(成立時の前倒し/吹き飛ばし)
   skillCritMult, skillOutgoingDamageMult, skillBloodAwakenDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
   // v0.25.2514(GHOST-BUILD-1): 近接/カウンター反撃の唯一の式(プレイヤーと守護霊で共有)。
   meleeSwingBaseDamage, meleeHitCritChance, counterReplyDamage,
@@ -541,7 +542,6 @@ import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, 
 import { hashSeed } from '../utils/microRhythmReplay'; // research/AI_HUMANIZE.md B3(§4専用乱数流のシード)
 import { rampVelocity } from '../utils/motionRamp'; // research/AI_HUMANIZE.md B3(§4慣性=速度状態モデル)
 import { playerAsOwner, ghostAsOwner, phantomAsOwner, isHostileOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
-import { refundCounterCooldown } from '../utils/counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化
 import { escortHateSide, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
 import { calculateResultScore } from '../utils/resultScoring';
@@ -7643,14 +7643,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
                   { const cl = counterClashPoint(pcx, pcy, hitX, hitY); useGameStore.getState().spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
                 }
-                // counter-master v2(CD_REWORK.md 確定2): カウンター成立時のみCDリファンド(未所持は無変換)。
-                useGameStore.setState(stt => ({ player: {
+                                useGameStore.setState(stt => ({ player: {
                   ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
                   ...abilityInvulnPatch(stt.player, pnow, INVULN_MS), // 技の無敵(カウンター成立の1秒=INVULN_MS で外れる被弾の無敵と同じ長さ)=sourceId 付きの攻撃(噛みつき・掴み)も受けない
-                  counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
                   // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
                   ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
                 } }));
+                applyCounterMasterRefund(pnow); // カウンターマスター: 近接・サブウェポン・リロードの残りを前倒し(未所持は何もしない)
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
                 const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=装備している近接武器)
                 const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
@@ -7748,14 +7747,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
                   { const cl = counterClashPoint(pcx, pcy, hitX, hitY); useGameStore.getState().spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
                 }
-                // counter-master v2(CD_REWORK.md 確定2): カウンター成立時のみCDリファンド(未所持は無変換)。
-                useGameStore.setState(stt => ({ player: {
+                                useGameStore.setState(stt => ({ player: {
                   ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
                   ...abilityInvulnPatch(stt.player, pnow, INVULN_MS), // 技の無敵(カウンター成立の1秒=INVULN_MS で外れる被弾の無敵と同じ長さ)=sourceId 付きの攻撃(噛みつき・掴み)も受けない
-                  counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
                   // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
                   ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
                 } }));
+                applyCounterMasterRefund(pnow); // カウンターマスター: 近接・サブウェポン・リロードの残りを前倒し(未所持は何もしない)
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
                 const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=装備している近接武器)
                 const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
@@ -12543,6 +12541,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().setHomingLocks(newLocks);
           }
         }
+        // ホーミング弾の赤サークル(2ロック目)の2発目=「タン、タン」の2回目(utils/homingVolley)。プレイヤー・守護霊とも同じ1本。
+        // 発射音: プレイヤー=指を離した時と同じ homing-fire / 守護霊=発射時と同じ shot-damage(距離減衰)。
+        for (const hs of useGameStore.getState().drainHomingPendingShots()) {
+          if (hs.ghostId === undefined) playSfx('homing-fire');
+          else { const hg = subSfxGainAt(hs.x, hs.y); if (hg > 0) playSfx('shot-damage', hg); }
+        }
 
         // ============================================================================================
         // GHOST-SUBS-FINAL(v0.25.2563 / research/GHOST_PARITY_LEDGER.md「構造ズレ組サブ6種の裁定」):
@@ -16449,6 +16453,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             );
             recordGunKnockback(); // research/WEAPON_AI_TEST.md S3-b: パイルドライバー「KB>0」の観測用(計測のみ)。
           }
+          // 社長指示2026-11-22「ホーミング弾は敵を浮かせるようにして」: 直撃した敵を鞭の引き寄せ・一閃と同じ打ち上げで浮かせる
+          // (ボス級・終端・倒した一撃は浮かせない=判定は store の liftEnemyByHoming / utils/homingVolley)。爆発に巻き込んだ敵は浮かせない。
+          if (projectile?.weaponType === 'homing-missile' && !enemyKilled) useGameStore.getState().liftEnemyByHoming(enemyId);
           // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG): **命中した「射撃(トリガー)」ごとに**
           // 散り角を1段階狭める(focusSpread.ts)。★ペレットごとではない——1トリガー5ペレットなので
           // ペレット単位だと1トリガーで 1.30→0.40、2トリガー目で下限に達し「連続命中するほど収束」
@@ -19119,6 +19126,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             '#fcd34d',
             12
           );
+          // スキル: カウンターマスター = カウンター成立の瞬間に周りの敵を吹き飛ばす(社長指示2026-11-22。旧: 近接が当たる度)。
+          // 成立の縁で1回(弾の連続反射で何度成立しても1回)。構えの受けもここを通る。
+          counterMasterOnCounterSuccess();
           // スキル: ボムカウンター = カウンター成立の瞬間にもプレイヤー中心で爆発ダメージ。
           // SKILL_BUILD_REDESIGN.md §28-1(社長指示・全Lv): 自分中心爆発を大爆発に(半径×1.8=叩き台)。
           const bcLv2 = skillLevel(currentPlayer, 'bomb-counter');
