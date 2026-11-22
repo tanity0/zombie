@@ -116,7 +116,7 @@ import {
 import { kenkiLevelLook } from '../utils/kenkiLevel'; // 孫悟空のレベルの色(research/BRAWLER.md §36-1)
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
 import { BRAWLER_WEAK_GUARD_ALPHA } from '../utils/brawlerGuard'; // 弱い構え(払えずに出た構え)の光の薄さ
-import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
+import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne, brawlerLiftVisBasePx } from '../utils/brawlerCombo';
 import { satsujinCoverAlpha, SATSUJIN_HITS, isTsubameCrouching } from '../utils/katanaTsubame';
 import {
   KATANA_SLASH_CELL_H, KATANA_SLASH_CELL_W, KATANA_SLASH_CELLS, KATANA_SLASH_SHEET_TEX,
@@ -12213,7 +12213,7 @@ export class PixiScene {
     this.syncDroneBoomerangs(s.projectiles, s.player, now); // ★慣性バッチ: 帰還減速に手元(プレイヤー)距離を使う
     this.syncSummons(s.summons, now);
     this.syncEventBloom(s.effects, fxNow);
-    this.fxEnemies = s.enemies; this.fxPlayer = s.player; // 鞭の引き寄せの絵(followEnemyId)が端点を追う(読むだけ)
+    this.fxPlayer = s.player; // 鞭の縄の絵の根元がプレイヤーを追う(読むだけ)
     this.syncEffects(s.effects, s.camera, fxNow); // v0.25.3038: 光系は停止中も進む
     this.syncSatsujin(s.satsujin, Date.now()); // ★刀の殺陣の赤い画面(殺陣の間だけ)
     this.syncGravityWells(s.gravityWells, s.gameTime); // §28(B7) グラビティショットの渦(v0.25.3276)
@@ -26328,7 +26328,7 @@ export class PixiScene {
       // ★空中投げの掴み(research/BRAWLER.md §34-3)の時間停止の間は、止まり始めた時刻の高さで止めて描く(浮きの時計は放した時に store がずらす)。
       const grabB = stZ.player.brawler?.grab;
       const liftNow = grabB && Date.now() < grabB.releaseAt ? grabB.at : brawlerAirSuplexHoldNow(stZ.player.brawler, e.id, gameTime) ?? Date.now();
-      brLiftPx = brawlerJuggleHeightRel(e, liftNow) * Math.min(fb.boxH * BRW.BRAWLER_LIFT_VIS_BODY_K, viewH * BRW.BRAWLER_LIFT_VIS_MAX_VIEW_FRAC);
+      brLiftPx = brawlerJuggleHeightRel(e, liftNow) * brawlerLiftVisBasePx(e, fb.boxH, viewH); // 鞭の高い浮きは画面の上限をその倍率で割って守る
     }
     // ★浮いているのを分かりやすく(§12-1・§9-76・社長「敵が空中にいるのを分かりやすくしたい」→「1.2.4.5 がいいな」):
     // ①影を小さく薄く ⑤体をわずかに大きく(縦横同じ・倒さない・回さない・歪ませない)。②足元の輪と④上昇の筋は drawBrawlerAir。
@@ -41062,8 +41062,7 @@ export class PixiScene {
     rope.alpha = shape.alpha;
     rope.visible = true;
   }
-  /** 鞭の引き寄せの絵が読む敵・プレイヤー(syncEffects の直前に毎フレーム入れる・読むだけ)。 */
-  private fxEnemies: readonly Enemy[] = [];
+  /** 鞭の縄の絵が読むプレイヤー(syncEffects の直前に毎フレーム入れる・読むだけ)。 */
   private fxPlayer: Player | null = null;
   private drawWhipSprite(e: Extract<VisualEffect, { kind: 'whip' }>, now: number) {
     const t = Math.min(1, (now - e.createdAt) / e.duration);
@@ -41079,20 +41078,7 @@ export class PixiScene {
     const tex = getTexture('whip');
     if (!tex) { sp.visible = false; return; }
     if (sp.texture !== tex) sp.texture = tex;
-    // ★鞭の引き寄せ(research/WHIP_FOLLOWUP.md §2): 先端=絡んだ敵の今の中心・柄=プレイヤーの今の中心(寄るほど縮む=巻き取り)。
-    let fx0 = e.fromX, fy0 = e.fromY, tx0 = e.toX, ty0 = e.toY;
-    if (e.followEnemyId) {
-      const fe = this.fxEnemies.find(en => en.id === e.followEnemyId);
-      if (fe) { tx0 = fe.x + fe.width / 2; ty0 = fe.y + fe.height / 2; }
-      // 浮いている敵は絵の高さへ(足元の判定の位置ではなく、見えている体へ絡める)。絵の体の中心=足元から絵の高さの半分。
-      const fv = this.enemies.get(e.followEnemyId);
-      if (fe && fv && fv.sprite.visible) {
-        const h = Math.abs(fv.sprite.height);
-        ty0 = fv.sprite.y - h * fv.sprite.anchor.y + h * 0.5;
-      }
-      const pl = this.fxPlayer;
-      if (pl && !e.holdFrom) { fx0 = pl.x + pl.width / 2; fy0 = pl.y + pl.height / 2; } // 守護霊の鞭は柄を守護霊の体に留める
-    }
+    const fx0 = e.fromX, fy0 = e.fromY, tx0 = e.toX, ty0 = e.toY;
     const dx = tx0 - fx0;
     const dy = ty0 - fy0;
     const reach = Math.hypot(dx, dy) || 1;

@@ -463,7 +463,7 @@ export interface Player extends DashLocomotionState {
   huntingChargeStartedAt: number;
   huntingCharged: boolean;
   // ★ハンティングの溜まりを使っている一連の動き(社長裁定2026-11-22「全ての武器で一連の動き中は伸ばす」・utils/huntingSequence)。
-  // 鞭=1撃目→引き寄せ→叩きつけ / 刀=オート斬撃→一閃→燕返し。終わったら溜まりを使い切る(格闘は brawler.huntingCombo が持つ)。
+  // 鞭=1撃目→スラッシャーの追加の振り→最後の叩きつけ / 刀=オート斬撃→一閃→燕返し。終わったら溜まりを使い切る(格闘は brawler.huntingCombo が持つ)。
   huntingSequence?: 'whip' | 'katana';
   /** 刀: オート斬撃だけで始めた一連の締め切り(gameTime)。この時刻までに一閃が出なければ終わる。 */
   huntingSeqUntil?: number;
@@ -729,9 +729,6 @@ export interface Enemy {
   // free=気絶していなくても滑り切る(亡霊の指差し=research/WRAITH_MUTANT.md §11・着地しても気絶しない普通の雑魚)。
   escortToss?: { fromX: number; fromY: number; toX: number; toY: number; startAt: number; endAt: number; free?: boolean };
   escortTossLandedAt?: number; // 着地した時刻(ゲーム時間・描画の砂埃/バウンド/気絶の輪のポップの起点)
-  // ★鞭の追加攻撃の引き寄せ(research/WHIP_FOLLOWUP.md §2)。引き寄せている間だけ在る(Date.now)。敵の更新はトスの直後にこの欄を見て
-  // from→to(敵の左上)を ease-out で動かす(壁・木・建物の押し出し+行ける帯を通す・押し戻されたらそこで止める)。dustAt=砂埃の尾の種。
-  whipPull?: { fromX: number; fromY: number; toX: number; toY: number; startAt: number; endAt: number; dustAt?: number };
   // ★刀の切り傷(research/KATANA_TSUBAME.md §4)。一閃・燕返しが当たるたびに+1(最大4)。死ぬか殺陣が出るまで残る。描画は体の上の細い斜めの赤線。
   katanaCuts?: number;
   // ★燕返しの吹き飛び中の血の尾(§1・社長「ノックバックは斬のストップの後、血を吹きながら」)。この時刻(Date.now)まで、押されて動いている間だけ血を吹く。bleedAt=最後に吹いた時刻。
@@ -951,7 +948,9 @@ export interface Enemy {
   brBounceCombo?: number;
   brLiftDropMs?: number;
   /** ★浮きの弧の形(research/BRAWLER.md §14・社長「浮き入れよう。落ちてくるのを爆発のは少しゆっくりに」)。'blast'=爆発で浮いた弧(上り15%・漂い20%・落ち65%)。無し=格闘の弧。 */
-  brLiftShape?: 'blast' | 'throw';
+  brLiftShape?: 'blast' | 'throw' | 'whip';
+  /** ★鞭の浮きの弧の配分(brLiftShape='whip' の時だけ・research/WHIP_FOLLOWUP.md §7)。上り・漂いの割合と上りの動き方(継ぎ足しで漂いが伸びる)。 */
+  brLiftArc?: { rise: number; hover: number; riseEase?: 'out' | 'inOut' };
   /** ★落ちる部分の時間の倍率(utils/brawlerCombo の brawlerFallK・社長裁定2026-11-13)。地上から打ち上げた1回目は遅く、空中で拾うたびに速く。無し=1。 */
   brLiftFallK?: number;
   /** ★爆発の浮き(§14): 今の空中が始まった時刻・爆発では浮かない窓の終わり(着地から、浮いていた時間と同じ長さ)。Date.now。 */
@@ -2132,8 +2131,8 @@ export interface Summon {
   knockbackMs?: number;
   /** ★燕返しの受付(プレイヤーの GameState.tsubameWindow と同じ型・守護霊自身の一閃が当たった時に開く)。 */
   ghostTsubameWindow?: import('../utils/katanaTsubame').TsubameWindow | null;
-  /** ★鞭の追加攻撃の受付(プレイヤーの GameState.whipFollowup と同じ型・守護霊自身の鞭が当たった時に開く)。 */
-  ghostWhipFollowup?: (import('../utils/flickFollowup').FlickFollowupWindow & { stage: 'hit' | 'pulled'; lockUntil?: number; armAt?: number }) | null; // = utils/whipFollowup.WhipFollowupWindow(循環を作らないよう葉の型から組む)
+  /** ★鞭のスラッシャーの追加の振り(プレイヤーの GameState.whipChain と同じ形・守護霊自身の鞭が当たった時に始まる・research/WHIP_FOLLOWUP.md §7)。 */
+  ghostWhipChain?: { dirX: number; dirY: number; nextAt: number; done: number; extras: number; priorityIds: string[] } | null; // = utils/whipFollowup.WhipChainState(循環を作らないよう型をここで書く)
   /** ★ハンティングの溜め(プレイヤーの huntingChargeStartedAt / huntingCharged / huntingSequence… と同じ意味・守護霊自身の動きで溜まる)。 */
   actorHuntingChargeStartedAt?: number;
   actorHuntingCharged?: boolean;
@@ -3560,10 +3559,6 @@ export type VisualEffect =
       fromX: number; fromY: number;
       toX: number; toY: number;
       halfWidth: number; // 当たり帯の半幅(px)
-      /** ★鞭の引き寄せ(research/WHIP_FOLLOWUP.md §2): 先端をこの敵の今の中心へ追わせ、柄をプレイヤーの今の中心へ追わせる(敵が寄るほど鞭が縮む=巻き取り)。 */
-      followEnemyId?: string;
-      /** 引き寄せの柄を fromX/fromY に留める(守護霊の鞭=柄は守護霊の体・引き寄せの間は守護霊が止まっている)。未設定=柄はプレイヤーを追う。 */
-      holdFrom?: boolean;
       color: string;
       createdAt: number;
       duration: number;

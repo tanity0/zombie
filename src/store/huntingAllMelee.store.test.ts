@@ -1,7 +1,7 @@
 // ★ハンティング(striker-hunting)をどの近接武器にも効かせる(社長指示2026-11-22「格闘や鞭、刀など、どの近接武器にも適用される様にしたい」
 //  →裁定「全ての武器で一連の動き中は伸ばす」)。溜まった時の効果=近接の届く距離が HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[Lv] だけ伸びる。
 //  どの武器でも「溜まった状態で始めた一連の動きの途中は伸びたまま、終わったら溜まりが消える」。
-//  ナイフ=一連のつながりの仕組みが無い=振るたびに消える / 鞭=1撃目→引き寄せ→叩きつけ / 刀=オート斬撃→一閃→燕返し / 格闘=連撃(§16)。
+//  ナイフ=一連のつながりの仕組みが無い=振るたびに消える / 鞭=1撃目→スラッシャーの追加の振り→最後の叩きつけ(research/WHIP_FOLLOWUP.md §7) / 刀=オート斬撃→一閃→燕返し / 格闘=連撃(§16)。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   useGameStore, huntingReachBonus, huntingMeleeRadius, katanaRange, katanaReach, whipReach,
@@ -11,7 +11,7 @@ import {
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { pickKatanaSlashTarget } from '../utils/katanaAuto';
 import { huntingSequenceAlive } from '../utils/huntingSequence';
-import { WHIP_FOLLOWUP_WINDOW_MS, WHIP_PULL_MS } from '../utils/whipFollowup';
+import { WHIP_CHAIN_INTERVAL_MS } from '../utils/whipFollowup';
 import { FLICK_FOLLOWUP_WINDOW_MS } from '../utils/flickFollowup';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll } from '../utils/brawlerCombo';
@@ -51,6 +51,7 @@ const step = (ms = 10, brawler = false) => {
   now += ms;
   useGameStore.setState(s => ({ gameTime: s.gameTime + ms }));
   vi.advanceTimersByTime(ms);
+  if (st().whipChain) st().tickWhipChain(); // 鞭のスラッシャーの追加の振り(ループと同じく毎フレーム)
   st().tickHuntingSequence();
   st().movePlayer(NO_INPUT, ms / 1000);
   if (brawler) st().tickBrawler();
@@ -85,9 +86,9 @@ describe('伸びる量はどの近接武器でも同じ(huntingReachBonus)', () 
     expect(katanaDashMsFor(KATANA_DASH_DISTANCE + LV3)).toBe(Math.round(KATANA_DASH_MS * (KATANA_DASH_DISTANCE + LV3) / KATANA_DASH_DISTANCE));
   });
   it('一連が続いているかの判定(純関数)', () => {
-    const v = { gameTime: 100, now: 1000, katanaRecoveryUntil: 0, tsubameOpen: false, whipFollowupActive: false };
+    const v = { gameTime: 100, now: 1000, katanaRecoveryUntil: 0, tsubameOpen: false, whipChainActive: false };
     expect(huntingSequenceAlive('whip', v)).toBe(false);
-    expect(huntingSequenceAlive('whip', { ...v, whipFollowupActive: true })).toBe(true);
+    expect(huntingSequenceAlive('whip', { ...v, whipChainActive: true })).toBe(true);
     expect(huntingSequenceAlive('katana', v)).toBe(false);
     expect(huntingSequenceAlive('katana', { ...v, seqUntil: 101 })).toBe(true); // オート斬撃の後、次のオート斬撃まで
     expect(huntingSequenceAlive('katana', { ...v, seqUntil: 100 })).toBe(false);
@@ -107,11 +108,12 @@ describe('ナイフ: 一連のつながりが無い=振るたびに消える', (
   });
 });
 
-describe('鞭: 1撃目→引き寄せ→叩きつけの間は伸びたまま、追加攻撃の受付が終わったら消える', () => {
+describe('鞭: 1撃目→スラッシャーの追加の振り→最後の叩きつけの間は伸びたまま、連続が終わったら消える', () => {
   // 鞭の長さ(150)の外・伸び(+34)の内側に中心がある敵
   const farDx = () => WHIP_LENGTH_BY_LEVEL[1] + zombieWidth() / 2 + LV3 / 2;
-  const swingAt = (charged: boolean) => {
+  const swingAt = (charged: boolean, slasherLv = 0) => {
     setup(['whip', 'striker-hunting'], { whip: 1, 'striker-hunting': 3 }, charged);
+    if (slasherLv > 0) useGameStore.setState(s => ({ player: { ...s.player, skills: ['slasher'], skillLevels: { slasher: slasherLv } } }));
     useGameStore.setState({ enemies: [zombieAt(farDx(), 'z')] });
     st().triggerCounter();
   };
@@ -119,35 +121,34 @@ describe('鞭: 1撃目→引き寄せ→叩きつけの間は伸びたまま、�
     swingAt(false);
     expect(hpOf('z')).toBe(99999);
   });
-  it('当たった振り: 受付の間は伸びたまま(輪も同じ大きさ)、受付が過ぎたら消える', () => {
+  it('スラッシャーが無ければ、当たった振りでもその振りで消える(追加の振りが無い)', () => {
     swingAt(true);
     expect(hpOf('z')).toBeLessThan(99999);
-    expect(pl().huntingCharged).toBe(true);
+    expect(st().whipChain).toBeNull();
+    expect(pl().huntingCharged).toBe(false);
+  });
+  it('スラッシャー Lv2: 追加の振りの間は伸びたまま(追加の振りも伸びた長さで届く)、最後の叩きつけの後に消える', () => {
+    swingAt(true, 2);
+    expect(hpOf('z')).toBeLessThan(99999);
     expect(pl().huntingSequence).toBe('whip');
     expect(whipReach(pl())).toBe(WHIP_LENGTH_BY_LEVEL[1] + LV3);
-    run(WHIP_FOLLOWUP_WINDOW_MS - 50);
+    const hp1 = hpOf('z');
+    run(WHIP_CHAIN_INTERVAL_MS + 20); // 1つ目の追加の振り
+    expect(hpOf('z')).toBeLessThan(hp1);
     expect(pl().huntingCharged).toBe(true);
-    run(100);
+    const hp2 = hpOf('z');
+    run(WHIP_CHAIN_INTERVAL_MS); // 2つ目(最後=叩きつけ)
+    expect(hpOf('z')).toBeLessThan(hp2);
+    expect(st().whipChain).toBeNull();
+    run(20);
     expect(pl().huntingCharged).toBe(false);
     expect(pl().huntingSequence).toBeUndefined();
   });
-  it('引き寄せ→叩きつけの間も伸びたまま、叩きつけの後に消える', () => {
-    swingAt(true);
-    run(100);
-    expect(st().tryWhipFollowup(-1, 0)).toBe(true); // 引き寄せ
-    run(WHIP_PULL_MS);
-    expect(pl().huntingCharged).toBe(true); // 引き寄せ〜叩きつけの受付の間
-    // 叩きつけの受付が開くまで待って進行方向へ
-    let slammed = false;
-    for (let i = 0; i < 80 && !slammed; i++) { slammed = st().tryWhipFollowup(1, 0); if (!slammed) step(10); }
-    expect(slammed).toBe(true);
-    expect(pl().huntingCharged).toBe(true); // 叩きつけの止めの間
-    run(400);
-    expect(pl().huntingCharged).toBe(false);
-  });
-  it('空振りは追加攻撃が無い=その振りで消える', () => {
+  it('空振りは追加の振りが無い=その振りで消える', () => {
     setup(['whip', 'striker-hunting'], { whip: 1, 'striker-hunting': 3 }, true);
+    useGameStore.setState(s => ({ player: { ...s.player, skills: ['slasher'], skillLevels: { slasher: 3 } } }));
     st().triggerCounter();
+    expect(st().whipChain).toBeNull();
     expect(pl().huntingCharged).toBe(false);
   });
 });

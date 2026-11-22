@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5755 — 鞭の作り替え: フリック廃止・1発目でその場に浮かせ・浮いた敵は自動で叩きつけ・スラッシャーの連続【2026-11-23 04:32 JST】
+- 社長指示(research/WHIP_FOLLOWUP.md §7): 反対フリックの技やめる/1発目で当たった敵はその場で浮く/浮いている間に当てると自動で叩きつけ/スラッシャー持ちは0.5秒間隔で追加分浮かせ続け最後は必ず叩きつけ/1秒かけて頂点に浮く高め。
+- 実装: フリックの引き寄せ・叩き落とし・受付・位置と向きの固定を撤去(フリックは燕返しと元の経路へ)。判定は `resolveWhipHits` 1本(プレイヤー・守護霊・追加の振り)で `classifyWhipHit`=浮かせる/叩きつけ/普通の打撃。浮かせた敵は押しを打ち消して真上へ。鞭専用の浮き(`LiftArcShape` に `riseEase:'inOut'`・上り1000/漂い300/落ち600ms・高さ=格闘の打ち上げ×2×区分の重さ・画面の上限は `brawlerLiftVisBasePx`)。叩きつけは§6のまま(2倍+各爆心の爆発・縦の鞭・地割れ・砂埃・輪・ヒットストップ・揺れ)。スラッシャー=`GameState.whipChain`/`Summon.ghostWhipChain`・Lv1/2/3で追加1/2/3・最後はfinal。ボス級は浮かない=通常の打撃。技の行の「叩きつけ」は地割りと同じ下向きの印へ。`tech:whippull`・引き寄せの柄の描き分けを削除。
+- 品質監査1巡(opus): (A)1件=ポーズ明けにスラッシャーの追加の振りが一斉に出る→`whipChainAfterStall` で遅れた段は後ろへずらす(テストで固定)。B-4①=ボスだけに当たっても連続が始まる→浮かせた敵がいない時は始めない。(C)設計書の「押しは今のまま」を実装(その場で浮く)へ直した。2巡目は回さない(直した(A)は純関数+storeのテストで固定済み・新しい角度が無い)。(B)は設計書§7の未決へ(頂点がボケ帯に入る・爆発が体の落下より先・スラッシャーの説明文が鞭に合わない・ハンティングの一連・被弾反撃の鞭・守護霊の追加の振りに体の動きが無い等)。クリエイティブ監査は既存の絵の流用のみで新しい見え方は浮きの高さだけのため付けない。
+- 画で確認: その場で浮いた敵(押し0)・スラッシャーLv3の最後の叩きつけ(2体)を目視。
+- 変えたファイル: src/utils/whipFollowup.ts・brawler.ts・brawlerCombo.ts・brawlerJuggleTypes.ts・ghostDriver.ts・huntingSequence.ts・flickFollowup.ts(コメント)・homingVolley.ts(コメント)・src/data/brawlerTechNames.ts・src/types/game.ts・src/store/gameStore.ts・src/hooks/useGameLoop.ts・src/pixi/pixiScene.ts・src/components/VirtualJoystick.tsx(コメント)・テスト(whipFollowup.test.ts・whipFollowup.store.test.ts・actorParity2.store.test.ts・huntingAllMelee.store.test.ts・meleeSwingCommit.test.ts)
+- 検証: typecheck / eslint / circular / vitest 全件(実装担当 11450通過・rebase 後に関係分)。
+- 自己点検: 憲法第4条・第5条に抵触しない。
+
 ## v0.25.5754 — 賞金首のアテンションで本体が映らない件: 立ち絵を先に・出撃時に先読み【2026-11-23 04:15 JST】
 - 社長報告: ステージ1(2周目)の賞金首の出現アテンションで、魔法陣だけ薄く映り本体が無かった。「今回の一連の作業前は一度も無かった」。
 - 調査(ヘッドレス・?proj=0): 網は画面外の敵も毎フレーム `getTexture`+シート先読みを呼ぶので、出現と同時に立ち絵+歩き+振りの3枚を並行で要求していた。出現→寄り切りの猶予は約1.31秒。回線を細くすると(400ms・0.5Mbps)立ち絵が帯域を分け合って 2.76 秒かかり、「魔法陣だけ」になり得る。v0.25.5731 と今で同じ場面を撮り比べると、どちらも本体は映り、違いは v0.25.5733 の光で tint が 85868c〜a4a7b1 に落ちることだけ。5749(追従)・5735/5736(投影の間引きは ?proj=1 の経路のみ)・5747(雨)は本体を消していない。**原因の変更は特定できていない**(実機で次に出たら左下 `target-miss` で切り分ける)。

@@ -18,7 +18,7 @@ import { POSTURE_ELITE_TYPES } from './bossPosture';
 import { isRecoverHoldPhase } from './recoverPhase';
 import {
   BRAWLER_LIFT_MS, BRAWLER_TEMPO, BRAWLER_CANCEL_WINDOW_MS, brawlerLiftArcRel, brawlerTempoMs, setBrawlerTempo, brawlerStageSpec, BLAST_LIFT_SHAPE,
-  BRAWLER_LIFT_RISE_FRAC, BRAWLER_LIFT_HOVER_FRAC, type LiftArcShape,
+  BRAWLER_LIFT_RISE_FRAC, BRAWLER_LIFT_HOVER_FRAC, type LiftArcShape, WHIP_LIFT_HEIGHT_MULT, BRAWLER_LIFT_VIS_BODY_K, BRAWLER_LIFT_VIS_MAX_VIEW_FRAC,
   BRAWLER_HOLD_MS, BRAWLER_TECHS, BRAWLER_KICK3_CHARGE_MS, BRAWLER_KICK_HITSTOP_MS, BRAWLER_STOMP_HITSTOP_MS, BRAWLER_KIKO_SPEED, BRAWLER_KIKO_HIT_PAD,
   brawlerRouteAllows,
 } from './brawler';
@@ -606,8 +606,17 @@ export const brawlerFallShape = (k: number, shape?: LiftArcShape): LiftArcShape 
   if (k === 1) return shape;
   const R = shape?.rise ?? BRAWLER_LIFT_RISE_FRAC, H = shape?.hover ?? BRAWLER_LIFT_HOVER_FRAC, F = 1 - R - H;
   const tot = R + H + F * k;
-  return { rise: R / tot, hover: H / tot };
+  return { rise: R / tot, hover: H / tot, ...(shape?.riseEase ? { riseEase: shape.riseEase } : {}) };
 };
+/** その敵の今の弧の配分(爆発=BLAST_LIFT_SHAPE / 鞭=敵ごとの brLiftArc / それ以外=格闘の弧=undefined)。 */
+export const brawlerArcShapeOf = (e: Pick<BrawlerJuggleFields, 'brLiftShape' | 'brLiftArc'>): LiftArcShape | undefined =>
+  e.brLiftShape === 'blast' ? BLAST_LIFT_SHAPE : e.brLiftShape === 'whip' ? e.brLiftArc : undefined;
+/**
+ * 浮いた高さの倍率1 が何 px か(絵だけ)。体の高さ×BRAWLER_LIFT_VIS_BODY_K、ただし画面の縦の BRAWLER_LIFT_VIS_MAX_VIEW_FRAC まで。
+ * 鞭の浮き(倍率 WHIP_LIFT_HEIGHT_MULT の高さ)は、画面の上限をその倍率で割る=大きい敵でも頂点は格闘の上限の割合を守る。
+ */
+export const brawlerLiftVisBasePx = (e: Pick<BrawlerJuggleFields, 'brLiftShape'>, boxH: number, viewH: number): number =>
+  Math.min(boxH * BRAWLER_LIFT_VIS_BODY_K, viewH * BRAWLER_LIFT_VIS_MAX_VIEW_FRAC / (e.brLiftShape === 'whip' ? WHIP_LIFT_HEIGHT_MULT : 1));
 
 /** いまの浮いた高さ(基準の高さに対する倍率・絵だけ)。弧の頭は始まりの高さから続き、頂点を越えて地面(0)で終わる。 */
 export const brawlerJuggleHeightRel = (e: BrawlerJuggleFields, now: number): number => {
@@ -629,7 +638,7 @@ export const brawlerJuggleHeightRel = (e: BrawlerJuggleFields, now: number): num
   if (peak <= 0 && e.brLiftShape === 'throw') return from * (1 - u * u);
   if (peak <= 0) return from * (1 - u) * (1 - u) * (1 + 2 * u);
   // 浮き(最初も追撃の浮き直しも同じ形): 打ち上がり18% → 頂点の漂い27% → 落下55%(§12-1・2026-11-13に上りを速く)。爆発の浮きは 15%・20%・65%(§14)。
-  return brawlerLiftArcRel(u, from, brawlerJuggleTop(from, peak), brawlerFallShape(e.brLiftFallK ?? 1, e.brLiftShape === 'blast' ? BLAST_LIFT_SHAPE : undefined));
+  return brawlerLiftArcRel(u, from, brawlerJuggleTop(from, peak), brawlerFallShape(e.brLiftFallK ?? 1, brawlerArcShapeOf(e)));
 };
 
 /**

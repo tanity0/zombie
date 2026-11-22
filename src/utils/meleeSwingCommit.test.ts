@@ -135,9 +135,9 @@ const WRITE_SITES: readonly WriteSite[] = [
 
 /**
  * この3フィールドを**書かずに**打刻する経路(=振り方の目印を持たない近接)。
- * 現時点はスラッシャー追撃だけ(既存の近接ヒットから連鎖する追撃で、窓も演出も再度は開かない)。
+ * スラッシャー追撃と、鞭のスラッシャーの追加の振り(どちらも既存の近接ヒットから連鎖する追撃で、窓も演出も再度は開かない)。
  */
-const STAMPS_WITHOUT_FIELD_WRITE = ['スラッシャー追撃(applySlasherChainStrike)'];
+const STAMPS_WITHOUT_FIELD_WRITE = ['スラッシャー追撃(applySlasherChainStrike)', '鞭のスラッシャーの追加の振り(fireWhipChainStep・research/WHIP_FOLLOWUP.md §7)'];
 
 /** ソースから3フィールドの**書き込み**を出現順に拾う(読み取り・コメントは拾わない)。 */
 const scanWrites = (text: string): SwingField[] => {

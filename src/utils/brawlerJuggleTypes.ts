@@ -21,8 +21,10 @@ export interface BrawlerJuggleFields {
   brLiftLight?: boolean;
   brBounceCombo?: number;
   brLiftDropMs?: number;
-  /** 弧の形('blast'=爆発の浮き・§14)。無し=格闘の弧。 */
-  brLiftShape?: 'blast' | 'throw';
+  /** 弧の形('blast'=爆発の浮き・§14 / 'whip'=鞭の浮き・research/WHIP_FOLLOWUP.md §7=配分は brLiftArc)。無し=格闘の弧。 */
+  brLiftShape?: 'blast' | 'throw' | 'whip';
+  /** ★鞭の浮きの弧の配分(brLiftShape='whip' の時だけ読む。上り・漂いの割合と上りの動き方)。継ぎ足しで漂いが伸びるので敵ごとに持つ。 */
+  brLiftArc?: { rise: number; hover: number; riseEase?: 'out' | 'inOut' };
   /** ★落ちる部分の時間の倍率(1=元の形)。地上から打ち上げた1回目は遅く、空中で拾うたびに速く(brawlerFallK)。上がり・漂いの時間は変えない。無し=1。 */
   brLiftFallK?: number;
   /** ★爆発の浮き(§14): 今の空中が始まった時刻(爆発で浮き直しても続く)・爆発では浮かない窓の終わり(着地から、浮いていた時間と同じ長さ)。Date.now。 */

@@ -22,7 +22,6 @@
 // ③移動リズム(stationaryFrac/approachPerMin) ④苦手技は食らう(tank率=現行維持) で出す。
 import type { Enemy, Projectile, SkillKey } from '../types/game';
 import { tsubameAccepts, type TsubameWindow } from './katanaTsubame'; // 守護霊の燕返し(プレイヤーと同じ受付の判定)
-import { whipFollowupPhase, type WhipFollowupWindow } from './whipFollowup'; // 守護霊の鞭の追加攻撃(プレイヤーと同じ受付の判定)
 import { dodgeVector, pickTarget, botSkillProfile, type BotSkillProfile } from './botSkill';
 // v0.25.2470: 雑魚回避(非ボス判定)用 / ENEMY_PROJECTILE_DURATION=弾の寿命(tankした弾技の弾を無視し続ける長さ)
 import { isBossType, aimEnemyDist2, ENEMY_PROJECTILE_DURATION } from './enemyUtils';
@@ -1722,9 +1721,10 @@ export const ghostLeashWarp = (
   };
 };
 
-// ---- ★守護霊の燕返し・鞭の追加攻撃の頭脳(社長裁定2026-11-22「プレイヤーの受付の窓の中で、守護霊が出せる時は出す」) ----
-// どちらも「当てた直後のフリック」の受付(utils/flickFollowup)をプレイヤーと同じ判定で読み、受付が開いていれば出す向きを返すだけ。
-// 実際に出すのは store(tryTsubame / tryWhipFollowup に ghostId)=プレイヤーと同じ1本。
+// ---- ★守護霊の燕返しの頭脳(社長裁定2026-11-22「プレイヤーの受付の窓の中で、守護霊が出せる時は出す」) ----
+// 「当てた直後のフリック」の受付(utils/flickFollowup)をプレイヤーと同じ判定で読み、受付が開いていれば出す向きを返すだけ。
+// 実際に出すのは store(tryTsubame に ghostId)=プレイヤーと同じ1本。
+// (鞭のフリックの頭脳 ghostWhipFollowupDir は廃止=research/WHIP_FOLLOWUP.md §7。鞭の浮き・叩きつけ・スラッシャーの連続は store の鞭の振りの中で自動。)
 
 /** 燕返しを出す向き(今の位置→一閃の元の位置)。受付が開いていない・その向きが受付の帯に入らない・戻る所が無い=null。 */
 export const ghostTsubameDir = (
@@ -1738,13 +1738,3 @@ export const ghostTsubameDir = (
   return tsubameAccepts(w, dir, now) ? dir : null;
 };
 
-/**
- * 鞭の追加攻撃を出す向き。1撃目が当たった後(stage='hit')=反対(引き寄せ)/ 引き寄せた後(stage='pulled')=進行方向(叩きつけ)。
- * 受付が開いていない・早すぎ(叩きつけの受付が開く前)=null(プレイヤーの早すぎの入力と違い、守護霊は早すぎには振らない)。
- */
-export const ghostWhipFollowupDir = (
-  w: WhipFollowupWindow | null | undefined, now: number,
-): { x: number; y: number } | null => {
-  if (!w || whipFollowupPhase(w, now) !== 'open') return null;
-  return w.stage === 'hit' ? { x: -w.dirX, y: -w.dirY } : { x: w.dirX, y: w.dirY };
-};

@@ -1,4 +1,4 @@
-// ★「当てた直後のフリック」の追加攻撃の共通部品(鞭の引き寄せ/叩きつけ=research/WHIP_FOLLOWUP.md・刀の燕返し=research/KATANA_TSUBAME.md)。
+// ★「当てた直後のフリック」の追加攻撃の共通部品(刀の燕返し=research/KATANA_TSUBAME.md。鞭の引き寄せ/叩きつけのフリックは廃止=research/WHIP_FOLLOWUP.md §7)。
 // 受付の窓(当たった瞬間から実時間300ms・1回だけ)と、元の技の向きとフリックの向きの角度の帯の判定だけを置く純関数。
 // store にも描画にも依存しない。数値は叩き台(実機で詰める)。
 

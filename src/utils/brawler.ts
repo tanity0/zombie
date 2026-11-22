@@ -1570,20 +1570,33 @@ export const BRAWLER_LIFT_HOVER_SAG = 0.06;
  *  - 落下: 漂いの終わりの速さを引き継いで、二次で加速して 0 へ(つなぎ目で速さが跳ばない)。
  * 追撃の浮き直しも同じ形(start=押し上げた瞬間の高さ=つなぎ目で高さが跳ばない)。
  */
-/** 浮きの弧の配分(上り・漂いの割合)。省略=格闘の弧(18%・27%)。 */
-export interface LiftArcShape { rise: number; hover: number }
+/**
+ * 浮きの弧の配分(上り・漂いの割合)。省略=格闘の弧(18%・27%)。
+ * riseEase=上りの動き方。省略/'out'=三次の ease-out(打たれた瞬間が一番速い)。'inOut'=加速してから減速(鞭の浮き=1秒かけて頂点へ・research/WHIP_FOLLOWUP.md §7)。
+ */
+export interface LiftArcShape { rise: number; hover: number; riseEase?: 'out' | 'inOut' }
 /**
  * ★爆発で浮いた弧(research/BRAWLER.md §14・社長「落ちてくるのを爆発のは少しゆっくりに」): 上り15%・漂い20%・落ち65%。
  * ★社長指示2026-11-13(上りを速く・その分の慣性を強く): 上り 20%→15%・漂い 15%→20%(落ちの65%は据え置き)。
  */
 export const BLAST_LIFT_SHAPE: LiftArcShape = { rise: 0.15, hover: 0.2 };
+/**
+ * ★鞭の浮きの高さ(格闘の浮き=4段目の打ち上げ1に対する倍率・research/WHIP_FOLLOWUP.md §7「鞭の浮きは高めにしないとかも」・叩き台)。
+ * 画面の上限(BRAWLER_LIFT_VIS_MAX_VIEW_FRAC)は、この倍率で割って守る(大きい敵でも画面の縦の割合は格闘の上限まで=brawlerLiftVisBasePx)。
+ */
+export const WHIP_LIFT_HEIGHT_MULT = 2;
 /** 浮きの上り専用の ease-out(三次=頂点への減速が二次より強い・社長指示2026-11-13)。他の easeOut は二次のまま。 */
 const liftRiseEase = (x: number): number => 1 - (1 - x) * (1 - x) * (1 - x);
+/**
+ * 鞭の浮きの上り(加速→減速)。出だしは速さ0から加速し、速さの山は前寄り(約4割)・頂点へは長く減速して寄り付く(三次)。
+ * 端の速さはどちらも0=パッと動き出さず、パッと止まらない。
+ */
+const liftRiseEaseInOut = (x: number): number => 1 - (1 - x ** 1.6) ** 3;
 export const brawlerLiftArcRel = (u: number, start: number, top: number, shape?: LiftArcShape): number => {
   if (u <= 0) return start;
   if (u >= 1) return 0;
   const R = shape?.rise ?? BRAWLER_LIFT_RISE_FRAC, H = shape?.hover ?? BRAWLER_LIFT_HOVER_FRAC, F = 1 - R - H, S = BRAWLER_LIFT_HOVER_SAG;
-  if (u < R) return start + (top - start) * liftRiseEase(u / R);
+  if (u < R) return start + (top - start) * (shape?.riseEase === 'inOut' ? liftRiseEaseInOut(u / R) : liftRiseEase(u / R));
   if (u < R + H) { const t = (u - R) / H; return top * (1 - S * t * t); }
   const t = (u - R - H) / F;
   const v0 = 2 * S * F / H;           // 漂いの終わりの沈む速さ(落下の区間の単位へ換算)

@@ -1,199 +1,200 @@
-// ★鞭の追加攻撃(research/WHIP_FOLLOWUP.md・社長 2026-11-20「ヒットした瞬間反対にフリックで浮かせつつ引き寄せる /
-//   その直後、進行方向にフリックすると、浮いてる敵を再度叩き落とし、2倍ダメージを与える」)。
+// ★鞭の追加攻撃(research/WHIP_FOLLOWUP.md §7・社長 2026-11-23「反対フリックの技やめる。一度目の通常当てで、当たった敵はその場で浮く。
+//   その浮いてる間に2発目当てると、自動で叩きつけ。…スラッシャーのスキル持ってる時は、0.5秒間隔で追加分、浮かせ続ける。最後は必ず叩きつけ。
+//   鞭の浮きは高めにしないとかも。1秒掛けて頂点に浮く感じ。」)。§6 の叩きつけの爆発はそのまま。
 // 判定だけを置く純関数(store にも描画にも依存しない)。数値は叩き台(実機で詰める)。
-//  - 1段目(stage 'hit'): 鞭の振りが1体以上に当たった瞬間から WHIP_FOLLOWUP_WINDOW_MS の間の、振りと反対(120°以上)のフリック
-//    =当たった敵を浮かせつつ、プレイヤーの体の縁から WHIP_PULL_GAP_PX 手前まで引き寄せる(速く始まり、着く手前で減速)。
-//    進行方向・横のフリックはこの段では何も起きない(1段目を飛ばした叩きつけは無い)。
-//  - 2段目(stage 'pulled'): 引き寄せた敵が頂点に浮いている間の受付(同じ長さ)の、振りの向き(60°以内)のフリック
-//    (社長「鞭の３段目は、敵が浮いたのを見てから入力窓。(早すぎてもだめ)」「鞭の叩きつけ、敵が頂点に浮いてるくらいのタイミングの入力受けにしたい。まだ今だと早い。」
-//    =受付は頂点(上り切ってから落ち始めるまでの漂いの真ん中)ちょうどに開き、落ち始めてしばらくで閉じる。開く前のフリックは何も起きない・受付も消費しない・覚えない)
-//    =まだ浮いている引き寄せた敵(ボス級は浮かないので当たっていれば対象)を叩き落とし、鞭の1撃目の2倍のダメージ。
-import {
-  FLICK_FOLLOWUP_WINDOW_MS, FLICK_FOLLOWUP_FORWARD_DEG, FLICK_FOLLOWUP_BACK_DEG, isFlickFollowupOpen, flickBand, type FlickFollowupWindow,
-} from './flickFollowup';
-import { brawlerFallShape, brawlerJugglePush, type BrawlerJuggleFields } from './brawlerCombo';
-import { BRAWLER_LIFT_MS, BRAWLER_LIFT_RISE_FRAC, BRAWLER_LIFT_HOVER_FRAC, BLAST_LIFT_SHAPE } from './brawler';
-import type { BrawlerMoveKey } from './brawlerTypes';
+//  - 鞭の振りが当たった地上の敵(ボス級を除く)=その場で浮く(鞭専用の高く・ゆっくりの浮き)。
+//  - 浮いている敵に鞭の振りが当たった=入力なしで叩きつけ(本体は鞭の1撃目の2倍の打撃+周りへの爆発)。
+//  - スラッシャー持ち=当たった後 0.5秒ごとに段数ぶんの追加の振り。追加の振りは浮かせ続け、最後の1発は必ず叩きつけ。
+import { brawlerJuggleHeightRel, brawlerAirborne, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_BUDGET, type BrawlerJuggleFields } from './brawlerCombo';
+import { WHIP_LIFT_HEIGHT_MULT, type LiftArcShape } from './brawler';
 
-/** 受付の長さ・角度の帯は「当てた直後のフリック」の共通部品(utils/flickFollowup)と同じ1本。 */
-export const WHIP_FOLLOWUP_WINDOW_MS = FLICK_FOLLOWUP_WINDOW_MS;
-export const WHIP_FOLLOWUP_FORWARD_DEG = FLICK_FOLLOWUP_FORWARD_DEG;
-export const WHIP_FOLLOWUP_BACK_DEG = FLICK_FOLLOWUP_BACK_DEG;
-/** 引き寄せの止まる位置 = プレイヤーの体の縁からこの距離手前(敵の体の縁まで・重ならない)。叩き台。 */
-export const WHIP_PULL_GAP_PX = 40;
-/** 引き寄せの長さ(ms・実時間)。叩き台。 */
-export const WHIP_PULL_MS = 260;
-/** 叩き落としのダメージの倍率(鞭の1撃目に対して)。 */
+export { WHIP_LIFT_HEIGHT_MULT };
+/** 叩きつけのダメージの倍率(鞭の1撃目に対して)。 */
 export const WHIP_SLAM_DAMAGE_MULT = 2;
-/** 引き寄せの途中で壁・帯に押し戻された量がこれを超えたら、そこで止める(途中で止まればそこで止まる)。 */
-export const WHIP_PULL_BLOCK_EPS_PX = 3;
-/** 引き寄せの砂埃の尾の間隔(ms)。 */
-export const WHIP_PULL_DUST_INTERVAL_MS = 45;
-
-export type WhipFollowupKind = 'pull' | 'slam';
-
-/** 受付の窓(store が持つ)=共通の窓+段。dirX/dirY=振りの向き。hitIds=1段目=その振りで当たった敵 / 2段目=引き寄せた敵(とボス級)。 */
-export type WhipFollowupStage = 'hit' | 'pulled';
-// lockUntil=プレイヤーの位置と向きを止めておく終わり(社長「この動作中はプレイヤーの位置と向きは固定」・Date.now)。
-//   引き寄せた瞬間から2段目の受付の終わりまで/叩き落としたらその止めの終わりまで。1段目(当たっただけ)では止めない。
-// armAt=2段目(stage 'pulled')だけ: 引き寄せた瞬間。叩き落としの受付(hitAt)は頂点ちょうどに開くので、armAt..hitAt は「早すぎ」の間。
-export type WhipFollowupWindow = FlickFollowupWindow & { stage: WhipFollowupStage; lockUntil?: number; armAt?: number };
-
-/** 叩き落とした後に位置と向きを止めておく長さ(ms)=叩き落としのヒットストップと同じ。 */
+/** 叩きつけのヒットストップ(ms)。 */
 export const WHIP_SLAM_HITSTOP_MS = 120;
 
-/** 追加攻撃の最中か(プレイヤーの位置と向きを止める・振りの向きでフリックを判定する)。 */
-export const isWhipFollowupLocked = (w: WhipFollowupWindow | null | undefined, now: number): boolean =>
-  !!w && w.lockUntil !== undefined && now < w.lockUntil;
+// ---- 鞭の浮き(格闘の浮きの式 utils/brawler の brawlerLiftArcRel に、鞭専用の形と尺を渡す) ----
+/** 地上から頂点まで(ms)=1秒かけて頂点へ(加速→減速)。 */
+export const WHIP_LIFT_RISE_MS = 1000;
+/** 頂点で漂う長さ(ms)。 */
+export const WHIP_LIFT_HOVER_MS = 300;
+/** 漂いの終わりから地面まで(ms・漂いの沈みの速さを引き継いで加速して落ちる)。 */
+export const WHIP_LIFT_FALL_MS = 600;
+/** 頂点を過ぎてから(漂い・落ち)の当たりで浮かせ直す時の、跳ね上がりの長さ(ms・打たれた瞬間が一番速い ease-out)。 */
+export const WHIP_RELIFT_RISE_MS = 260;
+/** 継ぎ足しの漂いは、次の追加の振りの時刻よりこれだけ長く残す(ms・次の振りが漂いの中で当たる)。 */
+export const WHIP_KEEP_MARGIN_MS = 150;
+/** 継ぎ足しで浮かせ直した時、今の高さより必ず上がる量(頂点の高さに対する割合)。 */
+export const WHIP_RELIFT_MIN_RISE = 0.08;
 
-/** 今の段とフリックの向きの帯で、何を出すか(1段目×反対=引き寄せ / 2段目×進行方向=叩き落とし / それ以外=何も起きない)。 */
-export const whipFollowupAction = (stage: WhipFollowupStage, kind: WhipFollowupKind | null): WhipFollowupKind | null =>
-  stage === 'hit' && kind === 'pull' ? 'pull' : stage === 'pulled' && kind === 'slam' ? 'slam' : null;
-
-/** 引き寄せ中の敵の欄(Enemy.whipPull)。座標は敵の左上(x/y)。時刻は Date.now。 */
-export interface WhipPullState {
-  fromX: number; fromY: number;
-  toX: number; toY: number;
-  startAt: number; endAt: number;
-  /** 砂埃の尾を最後に出した時刻(描画の種・判定なし)。 */
-  dustAt?: number;
-}
-
-/** 受付が開いているか(当たった瞬間〜+300ms・未使用)。2段目は hitAt=頂点ちょうどなので、それより前は開いていない。 */
-export const isWhipFollowupOpen = isFlickFollowupOpen;
-
-/**
- * 受付の今の相(社長「鞭の３段目は、敵が浮いたのを見てから入力窓。(早すぎてもだめ)」「入力窓の長さは広げない。覚えもしない」)。
- *  - 'open' = 受付の中(hitAt〜+WHIP_FOLLOWUP_WINDOW_MS・未使用)。
- *  - 'early' = 2段目の「早すぎ」の間(引き寄せた瞬間 armAt 〜 受付の開く hitAt の手前)。フリックは何も起こさず、受付も消費しない(覚えもしない)。
- *  - null = それ以外(受付なし・使った・過ぎた・当たりなし)。
- */
-export type WhipFollowupPhase = 'early' | 'open';
-export const whipFollowupPhase = (w: WhipFollowupWindow | null | undefined, now: number): WhipFollowupPhase | null => {
-  if (!w || w.used || w.hitIds.length === 0) return null;
-  if (now < w.hitAt) return w.armAt !== undefined && now >= w.armAt ? 'early' : null;
-  return isFlickFollowupOpen(w, now) ? 'open' : null;
+/** 上り・漂い・落ちの長さ(ms)から弧の配分を作る。 */
+export const whipLiftArcShape = (riseMs: number, hoverMs: number, fallMs: number, riseEase: 'out' | 'inOut'): LiftArcShape => {
+  const tot = Math.max(1, riseMs + hoverMs + fallMs);
+  return { rise: riseMs / tot, hover: hoverMs / tot, riseEase };
 };
+/** 地上から浮かせた1回目の弧の配分(1秒で頂点・加速→減速)。 */
+export const WHIP_LIFT_SHAPE: LiftArcShape = whipLiftArcShape(WHIP_LIFT_RISE_MS, WHIP_LIFT_HOVER_MS, WHIP_LIFT_FALL_MS, 'inOut');
+/** 地上から浮かせた1回目の弧の長さ(ms)。 */
+export const WHIP_LIFT_MS = WHIP_LIFT_RISE_MS + WHIP_LIFT_HOVER_MS + WHIP_LIFT_FALL_MS;
 
-/**
- * 浮きの弧が頂点に達する時刻(Date.now)=浮き上がり切った瞬間。式は描画と同じ弧(utils/brawlerCombo の brawlerJuggleHeightRel・utils/brawler の brawlerLiftArcRel)の
- * 上りの終わり(上りの割合 rise は落ちる部分の伸ばし brLiftFallK・爆発の弧を反映)。地面バウンドは頭の落ちる区間の後の弧の上りの終わり。
- * 押し上げ0(叩き落とし・ダウン)は始まりが一番高い=始まりの時刻。浮いていなければ null。
- */
+/** 鞭の浮きの頂点の高さ(格闘の4段目の打ち上げ=1 に対する倍率)。区分の重さは格闘と同じ(強個体は低め)。 */
+export const whipLiftTop = (cls: 'mob' | 'strong'): number => WHIP_LIFT_HEIGHT_MULT * BRAWLER_JUGGLE_WEIGHT[cls];
+
+/** 今の鞭の浮きの上りの終わり(=頂点に着く時刻・Date.now)。鞭の浮きでなければ null。 */
 export const whipLiftApexAt = (e: BrawlerJuggleFields): number | null => {
-  if (e.brawlerLiftAt === undefined) return null;
-  const ms = e.brLiftMs ?? BRAWLER_LIFT_MS;
-  if ((e.brLiftPeak ?? 1) <= 0) return e.brawlerLiftAt;
-  const drop = Math.max(0, e.brLiftDropMs ?? 0);
-  const shape = brawlerFallShape(e.brLiftFallK ?? 1, drop <= 0 && e.brLiftShape === 'blast' ? BLAST_LIFT_SHAPE : undefined);
-  const rise = shape?.rise ?? BRAWLER_LIFT_RISE_FRAC;
-  return e.brawlerLiftAt + drop + Math.ceil(Math.max(0, ms - drop) * rise); // 切り上げ=頂点より前には開かない
+  if (e.brLiftShape !== 'whip' || e.brawlerLiftAt === undefined || !e.brLiftArc) return null;
+  return e.brawlerLiftAt + Math.round((e.brLiftMs ?? 0) * e.brLiftArc.rise);
+};
+/** 今の鞭の浮きの落ち始める時刻(漂いの終わり・Date.now)。鞭の浮きでなければ null。 */
+export const whipLiftFallAt = (e: BrawlerJuggleFields): number | null => {
+  if (e.brLiftShape !== 'whip' || e.brawlerLiftAt === undefined || !e.brLiftArc) return null;
+  return e.brawlerLiftAt + Math.round((e.brLiftMs ?? 0) * (e.brLiftArc.rise + e.brLiftArc.hover));
 };
 
+export type WhipLiftPatch = Partial<BrawlerJuggleFields> & { liftUntil: number };
+
 /**
- * 浮きの漂いが終わる(落ち始める)時刻(Date.now)。上り・漂いの割合は whipLiftApexAt と同じ弧から取る。
- * 押し上げ0(叩き落とし・ダウン)は漂いが無い=始まりの時刻。浮いていなければ null。
+ * 鞭の当たり1回ぶんの浮き。cls=区分(ボス級は浮かないので呼び手が外す)。
+ *  - 地上の敵: その場で浮かせる(1秒で頂点へ加速→減速・頂点で漂う・落ちる)。高さ=whipLiftTop。
+ *  - 浮いている敵(追加の振り=浮かせ続ける):
+ *     ・鞭の浮きの上りの途中なら、弧はそのまま(高さが跳ばない)で漂いだけ継ぎ足す(次の追加の振りが漂いの中で当たる長さまで)。
+ *     ・頂点を過ぎた(漂い・落ち)/鞭以外の浮きなら、今の高さから打ち上げ直す(打たれた瞬間が一番速い・頂点は鞭の頂点か今より少し上)。
+ *  拾える回数の予算(格闘と共有)は使わない(鞭の連続は段数が決まっていて、必ず最後に叩きつける=永久には浮かない)。
  */
-export const whipLiftHoverEndAt = (e: BrawlerJuggleFields): number | null => {
-  if (e.brawlerLiftAt === undefined) return null;
-  const ms = e.brLiftMs ?? BRAWLER_LIFT_MS;
-  if ((e.brLiftPeak ?? 1) <= 0) return e.brawlerLiftAt;
-  const drop = Math.max(0, e.brLiftDropMs ?? 0);
-  const shape = brawlerFallShape(e.brLiftFallK ?? 1, drop <= 0 && e.brLiftShape === 'blast' ? BLAST_LIFT_SHAPE : undefined);
-  const frac = (shape?.rise ?? BRAWLER_LIFT_RISE_FRAC) + (shape?.hover ?? BRAWLER_LIFT_HOVER_FRAC);
-  return e.brawlerLiftAt + drop + Math.round(Math.max(0, ms - drop) * frac);
+export const whipLiftPatch = (
+  e: BrawlerJuggleFields, cls: 'mob' | 'strong', now: number, nextHitInMs = 0,
+): WhipLiftPatch => {
+  const top = whipLiftTop(cls);
+  const keepHover = Math.max(WHIP_LIFT_HOVER_MS, nextHitInMs + WHIP_KEEP_MARGIN_MS);
+  if (!brawlerAirborne(e, now)) {
+    const ms = WHIP_LIFT_MS;
+    return {
+      brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: top, brLiftFrom: 0, brLiftN: 0, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true,
+      brLiftShape: 'whip', brLiftArc: WHIP_LIFT_SHAPE, brLiftFallK: 1, brLiftDown: false, brLiftDropMs: 0, brBlastAirSince: now,
+      brLiftBudget: BRAWLER_JUGGLE_BUDGET[cls],
+    };
+  }
+  const apexAt = whipLiftApexAt(e);
+  if (apexAt !== null && now < apexAt && e.brawlerLiftAt !== undefined && (e.brLiftDropMs ?? 0) <= 0 && (e.brLiftPeak ?? 0) > 0) {
+    // 上りの途中: 上りの時刻・高さはそのまま。漂いの終わり(落ち始め)だけを後ろへ(早くはしない)。
+    const riseMs = apexAt - e.brawlerLiftAt;
+    const fallAt = whipLiftFallAt(e) ?? apexAt;
+    const hoverMs = Math.max(fallAt, now + keepHover) - apexAt;
+    const ms = riseMs + hoverMs + WHIP_LIFT_FALL_MS;
+    return {
+      brLiftMs: ms, brLiftUntil: e.brawlerLiftAt + ms, liftUntil: e.brawlerLiftAt + ms,
+      brLiftArc: whipLiftArcShape(riseMs, hoverMs, WHIP_LIFT_FALL_MS, e.brLiftArc?.riseEase ?? 'inOut'),
+    };
+  }
+  // 頂点の後(または鞭以外の浮き・叩き落としの最中): 今の高さから打ち上げ直す。
+  const h = brawlerJuggleHeightRel(e, now);
+  const want = Math.max(top, h + WHIP_RELIFT_MIN_RISE * top);
+  const peak = whipReliftPeak(h, want);
+  const hoverMs = Math.max(WHIP_LIFT_HOVER_MS, nextHitInMs + WHIP_KEEP_MARGIN_MS - WHIP_RELIFT_RISE_MS);
+  const ms = WHIP_RELIFT_RISE_MS + hoverMs + WHIP_LIFT_FALL_MS;
+  return {
+    brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: peak, brLiftFrom: h, brLiftN: (e.brLiftN ?? 0) + 1, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true,
+    brLiftShape: 'whip', brLiftArc: whipLiftArcShape(WHIP_RELIFT_RISE_MS, hoverMs, WHIP_LIFT_FALL_MS, 'out'), brLiftFallK: 1, brLiftDown: false, brLiftDropMs: 0,
+  };
+};
+/** 今の高さ h から頂点 want へ上がり直す押し上げ量(格闘の浮き直しの頂点の式 brawlerJuggleTop の逆)。 */
+export const whipReliftPeak = (h: number, want: number): number => {
+  // brawlerJuggleTop(h, p) = max(0.8h + p, h + 0.3p) は p について増える=want に届く最小の p。
+  // 2本の増える直線の大きい方が want に届く所=それぞれが届く p の小さい方。
+  return Math.max(0, Math.min(want - 0.8 * h, (want - h) / 0.3));
 };
 
+// ---- 当たりの分類(浮かせる/叩きつけ/普通の打撃) ----
+/** 振りの種類。'swing'=普通の振り(1発目・スラッシャーなしの振り) / 'keep'=スラッシャーの追加の振り(最後以外) / 'final'=スラッシャーの最後の追加の振り。 */
+export type WhipStrikeMode = 'swing' | 'keep' | 'final';
+/** 当たった敵1体の扱い。'lift'=浮かせる(浮いていれば浮かせ続ける) / 'slam'=叩きつけ / 'plain'=普通の打撃(浮かない)。 */
+export type WhipHitKind = 'lift' | 'slam' | 'plain';
 /**
- * ★「頂点に浮いている」時刻(社長「鞭の叩きつけ、敵が頂点に浮いてるくらいのタイミングの入力受けにしたい。まだ今だと早い。」):
- * 上り切った瞬間(whipLiftApexAt)から落ち始める瞬間(whipLiftHoverEndAt)までの漂いの真ん中。浮きの尺・配分が変われば追従する。浮いていなければ null。
+ * 鞭の振りが当たった敵1体をどう扱うか。
+ *  - ボス級=浮かない(だから叩きつけにもならない)=普通の打撃。
+ *  - 浮いている敵: 'swing'・'final'=叩きつけ / 'keep'=浮かせ続ける(浮かせられない状況なら普通の打撃)。
+ *  - 地上の敵: 浮かせられる(liftable=技の最中でない・専用の動かし手の型でない等)なら浮かせる / そうでなければ普通の打撃。
+ *  強個体は雑魚と同じ(区分の重さで高さだけ変わる)。
  */
-export const whipLiftTopAt = (e: BrawlerJuggleFields): number | null => {
-  const a = whipLiftApexAt(e), h = whipLiftHoverEndAt(e);
-  return a === null || h === null ? null : Math.round((a + Math.max(a, h)) / 2);
+export const classifyWhipHit = (
+  e: { boss: boolean; airborne: boolean; liftable: boolean }, mode: WhipStrikeMode,
+): WhipHitKind => {
+  if (e.boss) return 'plain';
+  if (e.airborne) return mode === 'keep' ? (e.liftable ? 'lift' : 'plain') : 'slam';
+  return e.liftable ? 'lift' : 'plain';
 };
 
+// ---- スラッシャーの追加の振り(0.5秒ごと・段数ぶん・最後は必ず叩きつけ) ----
+/** 追加の振りの間隔(ms・Date.now=浮きの時計と同じ)。 */
+export const WHIP_CHAIN_INTERVAL_MS = 500;
+/** スラッシャーの Lv から追加の振りの数(Lv1=最大2連→追加1 / Lv2=追加2 / Lv3=追加3・持っていなければ0)。 */
+export const whipChainExtras = (slasherLv: number): number => Math.max(0, Math.min(3, Math.floor(slasherLv)));
+/** k 番目(1始まり)の追加の振りの種類(最後=必ず叩きつけの 'final')。 */
+export const whipChainModeAt = (k: number, extras: number): WhipStrikeMode => (k >= extras ? 'final' : 'keep');
+/** 追加の振りの時刻と種類の並び(1発目が当たった時刻 hitAt から)。 */
+export const planWhipChain = (hitAt: number, extras: number): { at: number; mode: WhipStrikeMode }[] =>
+  Array.from({ length: whipChainExtras(extras) }, (_, i) => ({ at: hitAt + (i + 1) * WHIP_CHAIN_INTERVAL_MS, mode: whipChainModeAt(i + 1, extras) }));
+
 /**
- * 雑魚を地上から move で打ち上げた時(一閃・引き寄せと同じ=落ちる速さの重さの増え方なし)の、打ち上げから「頂点に浮いている」時刻(whipLiftTopAt)までの時間(ms)。
- * ボス級(浮かない)の叩き落としの受付を、雑魚と同じ間合いで開くのに使う。テンポ係数(BRAWLER_TEMPO)が変われば追従する(毎回計算)。
+ * 追加の振りの状態(主語ごとに1つ・store が持つ)。dirX/dirY=1発目の振りの向き(追加の振りの向きの既定)。
+ * nextAt=次の追加の振りの時刻・done=出した数・extras=全部の数。priorityIds=1発目で浮いた敵(追加の振りはこの敵を狙う)。
  */
-export const whipZakoTopDelayMs = (move: BrawlerMoveKey): number => {
-  const jp = brawlerJugglePush({}, 'mob', move, 0, false, false, false);
-  const at = jp ? whipLiftTopAt(jp) : null;
-  return at === null ? 0 : Math.max(0, at);
+export interface WhipChainState {
+  dirX: number; dirY: number;
+  nextAt: number;
+  done: number;
+  extras: number;
+  priorityIds: string[];
+}
+/** 1発目が当たった時の追加の振りの状態(追加が無ければ null)。 */
+export const startWhipChain = (hitAt: number, extras: number, dirX: number, dirY: number, priorityIds: readonly string[]): WhipChainState | null => {
+  const n = whipChainExtras(extras);
+  return n > 0 ? { dirX, dirY, nextAt: hitAt + WHIP_CHAIN_INTERVAL_MS, done: 0, extras: n, priorityIds: [...priorityIds] } : null;
 };
-
+/** 追加の振りがまだ残っているか(ハンティングの一連の動きもこの間)。 */
+export const whipChainActive = (c: WhipChainState | null | undefined): boolean => !!c && c.done < c.extras;
 /**
- * 叩き落とし(2段目)の受付が開く時刻。topAts=2段目の対象ごとの「頂点に浮いている」時刻(whipLiftTopAt・浮かないボス級は null=引き寄せた瞬間+雑魚のその時間)。
- * 全員の中で一番遅い「頂点」ちょうどに開く(受付の長さは WHIP_FOLLOWUP_WINDOW_MS のまま=閉じるのは頂点を過ぎて落ち始めてしばらく)。
- * 対象が居なければ引き寄せた瞬間+雑魚のその時間を頂点とする。引き寄せた瞬間より前には開かない。
+ * 時計が止まっていた後(レベルアップ画面・チュートリアル・アプリが裏に回った間も壁時計は進む)の置き直し。
+ * 次の追加の振りの時刻から1間隔より遅れていたら、取りこぼした段は出さずに nextAt = now + 間隔 へ後ろへずらす(明けた直後に残りの段を一斉に出さない)。
+ * 遅れていなければ同じ状態をそのまま返す(呼び手は「変わったか」で書き込みを決められる)。
  */
-export const whipSlamOpenAt = (pullAt: number, topAts: readonly (number | null)[], zakoTopDelayMs: number): number => {
-  const fallback = pullAt + zakoTopDelayMs;
-  let at = topAts.length === 0 ? fallback : -Infinity;
-  for (const a of topAts) at = Math.max(at, a ?? fallback);
-  return Math.max(pullAt, at);
+export const whipChainAfterStall = (c: WhipChainState, now: number): WhipChainState =>
+  now - c.nextAt > WHIP_CHAIN_INTERVAL_MS ? { ...c, nextAt: now + WHIP_CHAIN_INTERVAL_MS } : c;
+/** 今出す追加の振り(時刻が来ていない・止まっていた後で置き直しが要る=null)。出したら nextWhipChain で進める。 */
+export const dueWhipChainStep = (c: WhipChainState | null | undefined, now: number): { k: number; mode: WhipStrikeMode } | null => {
+  if (!c || c.done >= c.extras || now < c.nextAt) return null;
+  if (whipChainAfterStall(c, now) !== c) return null; // 遅れすぎ=まず置き直す(この時刻には出さない)
+  const k = c.done + 1;
+  return { k, mode: whipChainModeAt(k, c.extras) };
 };
-
-/** 振りの向きとフリックの向きから、どちらの追加攻撃か(進行方向=叩きつけ・反対=引き寄せ・横=null)。 */
-export const classifyWhipFlick = (
-  swing: { x: number; y: number }, flick: { x: number; y: number },
-): WhipFollowupKind | null => {
-  const b = flickBand(swing, flick);
-  return b === 'forward' ? 'slam' : b === 'back' ? 'pull' : null;
+/** 追加の振りを1つ出した後の状態(最後を出したら null)。次は「実際に出した時刻 now」から1間隔後(遅れて出ても次が詰まって続けて出ない)。 */
+export const nextWhipChain = (c: WhipChainState, now: number): WhipChainState | null => {
+  const done = c.done + 1;
+  return done >= c.extras ? null : { ...c, done, nextAt: Math.max(c.nextAt, now) + WHIP_CHAIN_INTERVAL_MS };
 };
-
-interface Box { x: number; y: number; width: number; height: number }
-
-/** 箱の中心から向き u への「縁までの距離」(支持関数)。 */
-const halfExtentAlong = (b: Box, ux: number, uy: number): number =>
-  (Math.abs(ux) * b.width + Math.abs(uy) * b.height) / 2;
-
 /**
- * 引き寄せの止まる位置(敵の左上)。敵の中心→プレイヤーの中心の線上で、敵の縁がプレイヤーの縁から gap 手前になる所。
- * 既にそれより近い(重なっている/手前にいる)なら null(動かさない)。
+ * 追加の振りの向き。1発目で浮いた敵(生きている)のうち一番近い敵へ向ける。居なければ1発目の振りの向き。
+ * cx,cy=振る本人の体の中心。targets=1発目で浮いた敵の今の中心。
  */
-export const whipPullTarget = (player: Box, enemy: Box, gap = WHIP_PULL_GAP_PX): { x: number; y: number } | null => {
-  const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
-  const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
-  const dx = ecx - pcx, dy = ecy - pcy;
-  const d = Math.hypot(dx, dy);
-  if (d < 1e-6) return null;
-  const ux = dx / d, uy = dy / d;
-  const stop = halfExtentAlong(player, ux, uy) + gap + halfExtentAlong(enemy, ux, uy);
-  if (d <= stop) return null;
-  return { x: pcx + ux * stop - enemy.width / 2, y: pcy + uy * stop - enemy.height / 2 };
+export const whipChainAimDir = (
+  c: Pick<WhipChainState, 'dirX' | 'dirY'>, cx: number, cy: number, targets: readonly { x: number; y: number }[],
+): { x: number; y: number } => {
+  let best: { x: number; y: number } | null = null, bd = Infinity;
+  for (const t of targets) {
+    const d = Math.hypot(t.x - cx, t.y - cy);
+    if (d > 1e-6 && d < bd) { bd = d; best = { x: (t.x - cx) / d, y: (t.y - cy) / d }; }
+  }
+  if (best) return best;
+  const l = Math.hypot(c.dirX, c.dirY) || 1;
+  return { x: c.dirX / l, y: c.dirY / l };
 };
 
-/** 引き寄せの進み(0..1)。速く始まり、着く手前で減速(ease-out の3乗)。 */
-export const whipPullProgress = (startAt: number, endAt: number, now: number): number => {
-  const span = Math.max(1, endAt - startAt);
-  const t = Math.max(0, Math.min(1, (now - startAt) / span));
-  return 1 - (1 - t) ** 3;
-};
-
-/** 引き寄せの今の位置(敵の左上・壁と帯のクランプの前)。 */
-export const whipPullPosAt = (p: WhipPullState, now: number): { x: number; y: number } => {
-  const k = whipPullProgress(p.startAt, p.endAt, now);
-  return { x: p.fromX + (p.toX - p.fromX) * k, y: p.fromY + (p.toY - p.fromY) * k };
-};
-
+// ---- ★叩きつけの爆発(§6・社長 2026-11-22「鞭の叩きつけは爆発ダメージにして」「爆発は叩きつけられた敵を中心にです」) ----
 /**
- * 叩き落としの対象(id の並び)。2段目の受付の敵のうち、生きていて、まだ浮いている敵。ボス級は浮かないので、当たっていれば浮きを問わず対象。
- * 浮きが終わった(着地した)・倒れた敵は外れる=全員外れたら何も起きない。
- */
-export const whipSlamTargets = (
-  enemies: readonly { id: string; alive: boolean; airborne: boolean; boss: boolean }[], ids: readonly string[],
-): string[] => {
-  const want = new Set(ids);
-  return enemies.filter(e => want.has(e.id) && e.alive && (e.airborne || e.boss)).map(e => e.id);
-};
-
-/**
- * ★叩きつけの爆発(社長 2026-11-22「鞭の叩きつけは爆発ダメージにして」「爆発は叩きつけられた敵を中心にです」)。
  * 叩きつけた敵1体ごとに、その体の中心(地面に着いた点)を爆心にした爆発を1発ずつ起こす。
  * 爆発どうしの重なりは、手榴弾が同時に複数爆発した時と同じ=それぞれが独立に当たる(1体に2発の爆発が届けば2回当たる)。
- * 爆発は周りの敵にだけ当たる。爆心の敵本体は鞭の打撃(今までの叩きつけ)で当てているので、自分の爆発は受けない(二重にしない)。
+ * 爆発は周りの敵にだけ当たる。爆心の敵本体は鞭の打撃(叩きつけ)で当てているので、自分の爆発は受けない(二重にしない)。
  * 叩きつけた別の敵の爆発の中に入っていれば、その爆発は受ける。
  * 距離による減りは手榴弾と同じ(爆心で1・縁で0.55)。
  */

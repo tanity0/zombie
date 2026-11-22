@@ -199,7 +199,6 @@ import { ghostArrivalPoint, ghostDeparturePoint } from '../utils/ghostLifecycle'
 import { pickKatanaSlashTarget, katanaSlashIntervalMs } from '../utils/katanaAuto';
 import { huntingChargeStep } from '../utils/huntingSequence'; // ハンティングの溜めの1歩(プレイヤー・守護霊で同じ)
 import { isTsubameCrouching } from '../utils/katanaTsubame'; // 守護霊の燕返しのしゃがみ(プレイヤーと同じ判定)
-import { isWhipFollowupLocked } from '../utils/whipFollowup'; // 守護霊の鞭の追加攻撃の止め(プレイヤーと同じ判定)
 import { pickSafeKatanaDashDirection } from '../utils/katanaLanding';
 import { dashModeAt, dashOverride, dashStateOf, dashStep } from '../utils/dashLocomotion';
 import { npcSfxDistGain } from '../utils/npcSfx'; // v0.25.2480: ローカル定義から移設(式は無変更)
@@ -547,7 +546,7 @@ import { cineToggleOn } from '../utils/cineToggles'; // 寄り演目の部品ス
 import { recordRunFinal, getRunTelemetrySnapshot } from '../utils/runTelemetry';
 import { decideBotShopPurchase } from '../utils/botShopPolicy';
 import { notifyCounterHit, notifyMoveCounter, recordShieldPlacement, recordPhillHeadshot, recordHomingHold } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
-import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, ghostIsMovingNow, GHOST_MELEE_RANGE, ghostTsubameDir, ghostWhipFollowupDir, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
+import { decideGhost, defaultGhostProfile, ghostLeashWarp, shouldGhostClaimSub, ghostIsMovingNow, GHOST_MELEE_RANGE, ghostTsubameDir, type GhostProfile, type GhostMoveRoll } from '../utils/ghostDriver'; // BOT_AND_GHOST.md G2/G2.6/G4b
 import { hashSeed } from '../utils/microRhythmReplay'; // research/AI_HUMANIZE.md B3(§4専用乱数流のシード)
 import { rampVelocity } from '../utils/motionRamp'; // research/AI_HUMANIZE.md B3(§4慣性=速度状態モデル)
 import { playerAsOwner, ghostAsOwner, phantomAsOwner, isHostileOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
@@ -13000,6 +12999,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // スラッシャー先行入力の自動発動(v0.25.3254: CD中のタップを予約→CD明けにここで発動)。
         // 予約なしなら即return=実質ゼロコスト。
         useGameStore.getState().pumpSlasherQueuedTap();
+        // ★鞭のスラッシャーの追加の振り(research/WHIP_FOLLOWUP.md §7・0.5秒ごと・最後は叩きつけ)。連続なし/時刻前なら即return。
+        // 振る音・当たる音・叩きつけの音は store(whipSwingFxAt / whipHitFxAt / 叩きつけの絵と音)が鳴らす。倒した音だけここで。
+        if (useGameStore.getState().whipChain) {
+          const wc = useGameStore.getState().tickWhipChain();
+          if (wc && wc.killed > 0) playEnemyDeath();
+        }
 
         // Update enemies
         // 敵の移動のみ MOVE_SPEED_MULT 倍速(攻撃タイマー等はtimestamp基準で影響なし)。
@@ -13627,8 +13632,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 置換する(プレイヤーと同型)。B3で速度ランプを導入した際、下のtargetVxを0にするだけで
               // ランプ自体は続けていたため、KB中も残速度がなだらかに0へ減衰しながらnx/nyへ加算され続け
               // ていた(=「自分の移動を止める」が実際には止まっていなかった)。
-              // ★鞭の追加攻撃の止め(引き寄せ〜叩きつけの受付の終わり)も同じく自分の移動を止める(プレイヤーの movePlayer と同じ判定)。
-              const kbLocked = nowMs < (ghostNow.knockbackUntil ?? 0) || isWhipFollowupLocked(ghostNow.ghostWhipFollowup, nowMs);
+              const kbLocked = nowMs < (ghostNow.knockbackUntil ?? 0);
               // v0.25.2518(裁定2): 刀の一閃/ワイヤーのロコモーション上書きを**プレイヤーと同じ純関数**で
               // ゴースト実体のx/yへ乗せる。優先順(ワイヤー高速移動>ホップ>一閃>着地硬直)も
               // movePlayer と同一。被弾ノックバック中はプレイヤー同様KBが勝つ(kbLocked)。
@@ -14112,6 +14116,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (wGain > 0) {
                   playSfx('whip-swing', wGain);
                   if (wres.hits > 0) playSfx(wres.finish ? 'melee-finish' : 'whip-hit', wGain);
+                  if (wres.slammed > 0) { playSfx('whip-hit', wGain, undefined, 0.7); playSfx('bomb', wGain); } // 卵: 叩きつけの爆発の音だけ(卵を割る・浮かせるのは store の whipSlamExplode=playerBlast)
                 }
                 if (wres.killed > 0) playEnemyDeath();
               } else if (ghostMeleeResolvesNow
@@ -14237,7 +14242,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
 
               // ★当てた直後のフリックの追加攻撃(社長裁定2026-11-22「プレイヤーの受付の窓の中で、守護霊が出せる時は出す」):
-              //   刀=燕返し(一閃が当たった後)・鞭=引き寄せ→叩きつけ。受付・向き・技はプレイヤーと同じ(ghostDriver が向きを決め、store の同じ入口へ ghostId で渡す)。
+              //   刀=燕返し(一閃が当たった後)。受付・向き・技はプレイヤーと同じ(ghostDriver が向きを決め、store の同じ入口へ ghostId で渡す)。
+              //   鞭=スラッシャーの追加の振り(0.5秒ごと・最後は叩きつけ=research/WHIP_FOLLOWUP.md §7)。時刻が来ていればプレイヤーと同じ1本(tickWhipChain)が出す。
               {
                 const gNow = useGameStore.getState().summons.find(sm => sm.id === ghostNow.id);
                 if (gNow) {
@@ -14245,11 +14251,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const fGain = npcSfxDistGain(fcx, fcy, gfxPcx, gfxPcy, gfxCam, gfxGb);
                   const tDir = ghostKatana ? ghostTsubameDir(gNow.ghostTsubameWindow, fcx, fcy, nowMs) : null;
                   if (tDir && useGameStore.getState().tryTsubame(tDir.x, tDir.y, ghostNow.id) && fGain > 0) playSfx('katana-dash', fGain, undefined, 1.35);
-                  const wDir = !ghostKatana && isWhipMode(ghostOwner) ? ghostWhipFollowupDir(gNow.ghostWhipFollowup, nowMs) : null;
-                  if (wDir && useGameStore.getState().tryWhipFollowup(wDir.x, wDir.y, ghostNow.id) && fGain > 0) {
-                    playSfx('whip-hit', fGain, undefined, 1.0);
-                    if ((wDir.x * (gNow.ghostWhipFollowup?.dirX ?? 0) + wDir.y * (gNow.ghostWhipFollowup?.dirY ?? 0)) > 0) playSfx('bomb', fGain); // 卵: 叩きつけの爆発の音だけ(卵を割る・浮かせるのは store の whipSlamExplode=playerBlast)
+                  const wc = !ghostKatana && gNow.ghostWhipChain ? useGameStore.getState().tickWhipChain(ghostNow.id) : null;
+                  if (wc && fGain > 0) {
+                    playSfx('whip-swing', fGain);
+                    if (wc.hits > 0) playSfx(wc.finish ? 'melee-finish' : 'whip-hit', fGain);
+                    if (wc.slammed > 0) { playSfx('whip-hit', fGain, undefined, 0.7); playSfx('bomb', fGain); } // 卵: 叩きつけの爆発の音だけ(卵を割る・浮かせるのは store の whipSlamExplode=playerBlast)
                   }
+                  if (wc && wc.killed > 0) playEnemyDeath();
                 }
                 // ★ハンティング: 一連が終わっていたら使い切る+動いている間に溜まる(プレイヤーと同じ純関数)。
                 tickGhostHunting(ghostNow.id, !kbLocked && ghostIsMovingNow(decision.moveX, decision.moveY));
@@ -16557,7 +16565,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             );
             recordGunKnockback(); // research/WEAPON_AI_TEST.md S3-b: パイルドライバー「KB>0」の観測用(計測のみ)。
           }
-          // 社長指示2026-11-22「ホーミング弾は敵を浮かせるようにして」: 直撃した敵を鞭の引き寄せ・一閃と同じ打ち上げで浮かせる
+          // 社長指示2026-11-22「ホーミング弾は敵を浮かせるようにして」: 直撃した敵を一閃と同じ打ち上げで浮かせる
           // (ボス級・終端・倒した一撃は浮かせない=判定は store の liftEnemyByHoming / utils/homingVolley)。爆発に巻き込んだ敵は浮かせない。
           if (projectile?.weaponType === 'homing-missile' && !enemyKilled) useGameStore.getState().liftEnemyByHoming(enemyId);
           // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG): **命中した「射撃(トリガー)」ごとに**

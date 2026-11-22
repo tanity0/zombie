@@ -131,7 +131,7 @@ const VirtualJoystick: React.FC = () => {
     return true;
   }, [detectFlick, tryHitRetaliation]);
 
-  // ★当たった直後のフリックの追加攻撃(鞭の引き寄せ/叩きつけ=research/WHIP_FOLLOWUP.md・刀の燕返し=research/KATANA_TSUBAME.md)。
+  // ★当たった直後のフリックの追加攻撃(刀の燕返し=research/KATANA_TSUBAME.md。鞭のフリックの技は廃止=research/WHIP_FOLLOWUP.md §7)。
   // 受付(当たってから300ms)の間だけ、ほかのフリック(被弾反撃・一閃・ワイヤー)より先に試す。受付の外・向きが外れたら何もせず従来の経路へ。
   const tryFireFlickFollowup = useCallback((): boolean => {
     if (flickFiredRef.current) return false;
