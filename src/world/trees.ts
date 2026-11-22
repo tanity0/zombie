@@ -160,8 +160,9 @@ const TRUNK_W = 16; // at scale 1
 // north stops with its feet right at the trunk base — no per-actor fudge.
 const TRUNK_H = 8;
 // 見た目を1.5倍にしたのに合わせ、足元判定も拡大(社長指示): 横×1.5 / 縦は上へ×1.2。
-const TRUNK_FOOT_W_MULT = 1.5;
-const TRUNK_FOOT_H_MULT = 1.2;
+// さらに 2026-11-22 社長「木の当たり判定も1.5倍に」(木の見た目を ×1.5 したのに合わせて): 横・縦とも ×1.5 → 横 2.25 / 縦 1.8。
+const TRUNK_FOOT_W_MULT = 1.5 * 1.5;
+const TRUNK_FOOT_H_MULT = 1.2 * 1.5;
 export const trunkRect = (t: TreeInstance): Rect =>
   footRect(t.footX, t.footY, TRUNK_W * t.scale * TRUNK_FOOT_W_MULT, TRUNK_H * t.scale * TRUNK_FOOT_H_MULT);
 
