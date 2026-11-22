@@ -470,6 +470,7 @@ import {
   RHYTHM_JUST_CYCLE_COLORS,
 } from '../config/shijin';
 import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
+import { stepObstacleAlpha } from '../utils/obstacleAlpha';
 import { placementTreeSkin } from '../world/propPlacement';
 import { TREE_VISUAL_SCALE, TREE_BOX_W, TREE_BOX_H, LEAFY_TREE_SKINS, STAGE3_TREE_SKIN, STAGE4_TREE_SKIN, leafyTreeDef, treeArtAnchor, TORCH_VISUAL_W, TORCH_VISUAL_H, CAMPFIRE_VISUAL_W, CAMPFIRE_VISUAL_H } from '../world/artRects';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
@@ -8206,7 +8207,9 @@ export class PixiScene {
   // 障害物(木/壁/建物/プロップ)の alpha をフレーム更新。プレイヤーを「覆う」(手前=footY大で、見た目矩形が
   // プレイヤー足元矩形と重なる)ものだけ OBSTACLE_SEE_THROUGH_ALPHA へ滑らかに透かす。それ以外は通常(地平フェード)へ。
   // 既存スプライトの alpha を lerp するだけ=新規描画/フィルタなし(負荷 1/10)。
-  private applyObstacleAlpha(sprite: Sprite, footWorldY: number, useAnchor = false) {
+  // snap: 作ったばかりの絵は lerp せず目標の alpha から始める(utils/obstacleAlpha.ts。既定 alpha=1 から寄せると、
+  // 足元が画面の下=手前フェードの外にある大きな木が「一瞬出て消える」)。
+  private applyObstacleAlpha(sprite: Sprite, footWorldY: number, useAnchor = false, snap = false) {
     // 手前(画面下端)でも消える: 地平線フェード × 手前フェード(敵と同じ near-plane フェード)。
     const base = this.horizonActorAlpha(footWorldY) * this.foregroundActorAlpha(footWorldY);
     // useAnchor: 見た目の中心X・足元から上の高さを anchor から出す(足元が絵の中心からずれる木=ステージ1/3/7の3本だけ)。
@@ -8216,7 +8219,7 @@ export class PixiScene {
         ? this.seeThroughMult(sprite.x + (0.5 - sprite.anchor.x) * vw, footWorldY, vw, vh * sprite.anchor.y, sprite)
         : this.seeThroughMult(sprite.x, footWorldY, vw, vh, sprite))
       : 1;
-    sprite.alpha += (base * mult - sprite.alpha) * this.seeThroughLerp;
+    sprite.alpha = stepObstacleAlpha(sprite.alpha, base * mult, this.seeThroughLerp, snap);
   }
 
   // 「裏に回ったら透ける」倍率。プレイヤーを覆う(手前=footWorldYが大きく、見た目矩形が足元矩形と重なる)
@@ -12674,6 +12677,7 @@ export class PixiScene {
       const leafyTex = leafyDef ? getTexture(leafyDef.tex) : null;
       const texKey = leafyTex && leafyDef ? leafyDef.tex : 'base';
       let entry = this.trees.get(t.key);
+      const fresh = !entry || entry.texKey !== texKey; // このフレームに作る木(alpha を目標から始める)
       if (entry && entry.texKey !== texKey) { entry.sprite.destroy(); this.trees.delete(t.key); entry = undefined; } // 出撃が変わって絵の種類が変わった
       if (!entry && leafyTex) {
         const sprite = new Sprite(leafyTex);
@@ -12708,7 +12712,7 @@ export class PixiScene {
       // Depth scale every frame: a tree's apparent size shifts as the player
       // (the focal plane) walks past it. Anchored at the foot, stays rooted.
       if (tex || texKey !== 'base') entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
-      this.applyObstacleAlpha(entry.sprite, entry.footY, entry.texKey !== 'base');
+      this.applyObstacleAlpha(entry.sprite, entry.footY, entry.texKey !== 'base', fresh);
       // 風でしなる(v0.25.2648)。**炎・花と同じ1本の風**。
       // ★木は花よりずっと控えめ(TREE_WIND_SKEW)。幹まで大きく傾くとゴムに見えるうえ、
       //   **木は当たり判定を持つ**(`trees.ts` の幹の矩形)。判定は動かないので、
