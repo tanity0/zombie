@@ -23,6 +23,10 @@
 
 import { ColorMatrixFilter, Container, Matrix, Point, Rectangle, Sprite, Texture, TilingSprite, type Filter, type RenderTexture } from 'pixi.js';
 import { getTexture } from './pixiTextures';
+import { makeProjGridMesh, projMeshFromSprite, PROJ_GRID_SOFT } from './projDraw'; // 投影の段階4(?proj=1 の時だけ・K01)
+import { projectInto, makeProjPoint, type ProjFrame } from '../utils/perspectiveProjection';
+import { projShapeOutside } from '../utils/projShape';
+import type { MeshSimple } from 'pixi.js';
 import { getSoftGlowTexture } from './lighting';
 import {
   puddlesInRegion, puddleAt, isInPuddle, PUDDLE_ART_SCALE, DEBRIS_ART_SCALE, PUDDLE_CELL, type Puddle,
@@ -273,6 +277,12 @@ export interface WetHost {
   rainStart?: number;
   /** この値が変わったら雨の強さの時刻表を作り直す(ステージ7の新しい出撃=また降っている所から)。省略=作り直さない。 */
   rainRun?: number;
+  /**
+   * 投影の口(?proj=1 の時だけ・research/PERSPECTIVE_PROJECTION.md §3-6b の K01・段階4)。渡されると、水たまりの地面に寝た4枚
+   * (縁・水面・空の映り・風景の映りの型)と月明りの縁を、同じ素材の格子メッシュ(柔らかい絵の粗い規則 24/48)で頂点ごとに投影して置く。
+   * 小物・キャラの映りの型・光の筋は点+s。null/省略=今の描き方のまま(メッシュは1つも作らない)。
+   */
+  projGrid?: ProjFrame | null;
 }
 export interface WetAtmosphere {
   fog: readonly (Sprite | TilingSprite)[];
@@ -297,6 +307,10 @@ interface PuddleView {
   debrisMoon: (Sprite | null)[];
   /** 月明りの筋の中にいる量(0..1・慣性で寄せる)。 */
   moonA: number;
+  /** ?proj=1 の格子メッシュ(遅延生成・projGrid がある時に初めて作る)。 */
+  pm?: { ground: MeshSimple; water: MeshSimple; sky: MeshSimple; landMask: MeshSimple; groundMoon: MeshSimple | null };
+  /** ?proj=1: 水面の中心の投影(表示座標)と s(映りの型・光の筋が読む)。 */
+  projX?: number; projY?: number; projS?: number;
   /** このフレームの見た目の倍率(遠近込み)。 */
   d: number;
   alpha: number;
@@ -502,13 +516,29 @@ export class WeatherWetLayer {
     return this.cached;
   }
 
+  /** ?proj=1 の投影(このフレームの sync の間だけ・映りの型と光の筋が読む)。 */
+  private projFrameNow: ProjFrame | null = null;
+  private depthNow: ((y: number) => number) | null = null;
+  /** ?proj=1: 水面の上に置いた光の筋・光の線(world の点・大きさに d)を点+s へ写す。 */
+  private projSlotFx(sp: Sprite, pv: PuddleView): void {
+    const q = projectInto(this.projFrameNow!, sp.position.x, sp.position.y, this.projPt);
+    const k = q.s / (pv.d || 1);
+    sp.position.set(q.x, q.y);
+    sp.scale.set(sp.scale.x * k, sp.scale.y * k);
+  }
+
   sync(h: WetHost): void {
     if (!this.visible) return;
+    this.projFrameNow = h.projGrid ?? null;
+    this.depthNow = h.depthScale;
     const puddles = this.puddlesFor(h);
     const seen = new Set<string>();
     const v = h.view;
+    const pf = h.projGrid ?? null;
     for (const p of puddles) {
-      if (p.x + p.rx < v.left - 40 || p.x - p.rx > v.right + 40 || p.y + p.ry < v.top - 40 || p.y - p.ry > v.bottom + 40) continue;
+      // ?proj=1: 形の端を投影した箱が画面に掛かるか(見える world が北に広く・南に狭い)
+      if (pf ? projShapeOutside(pf, p.x, p.y, Math.max(p.rx, p.ry) + 40, 0)
+        : (p.x + p.rx < v.left - 40 || p.x - p.rx > v.right + 40 || p.y + p.ry < v.top - 40 || p.y - p.ry > v.bottom + 40)) continue;
       const ha = h.horizonAlpha(p.y);
       if (ha <= 0.001) continue;
       const pv = this.viewFor(p);
@@ -520,6 +550,7 @@ export class WeatherWetLayer {
       if (seen.has(id)) continue;
       pv.ground.destroy(); pv.water.destroy(); pv.sky.destroy(); pv.landMask.destroy();
       pv.groundMoon?.destroy();
+      if (pv.pm) { pv.pm.ground.destroy(); pv.pm.water.destroy(); pv.pm.sky.destroy(); pv.pm.landMask.destroy(); pv.pm.groundMoon?.destroy(); }
       for (const d of pv.debris) d.destroy();
       for (const d of pv.debrisMoon) d?.destroy();
       this.views.delete(id);
@@ -674,7 +705,81 @@ export class WeatherWetLayer {
         }
       }
     }
+    // 水面・空・型の Sprite は ?proj=1 の時だけ隠す(毎フレーム戻してから決める=投影の場面を出入りしても残らない)
+    pv.water.visible = true; pv.sky.visible = true; pv.landMask.visible = true;
+    if (h.projGrid) this.projPuddle(pv, h, h.projGrid, d);
+    else {
+      pv.projS = undefined;
+      if (pv.pm) { pv.pm.ground.visible = false; pv.pm.water.visible = false; pv.pm.sky.visible = false; pv.pm.landMask.visible = false; if (pv.pm.groundMoon) pv.pm.groundMoon.visible = false; }
+    }
   }
+
+  private projPt = makeProjPoint();
+  /**
+   * ?proj=1(段階4・K01): 地面に寝た4枚+月明りの縁を同じ素材の格子メッシュで頂点ごとに投影して置き、Sprite は隠す。
+   * 寸法は Sprite に掛かっている旧い遠近の倍率 d を外した world の寸法(足元を支点に)。小物と月明りの小物は点+s。
+   * 濃さ(地平線)は今の式のまま(水たまりの world の Y)。メッシュは projGrid がある時に初めて作る(遅延生成)。
+   */
+  private projPuddle(pv: PuddleView, h: WetHost, f: ProjFrame, d: number): void {
+    if (!pv.pm) {
+      const mk = (sp: Sprite, tag: string) => {
+        const m = makeProjGridMesh(sp.texture, tag);
+        m.eventMode = 'none';
+        const par = sp.parent!;
+        par.addChildAt(m, par.getChildIndex(sp) + 1);
+        return m;
+      };
+      pv.pm = {
+        ground: mk(pv.ground, 'puddleGround'), water: mk(pv.water, 'puddleWater'), sky: mk(pv.sky, 'puddleSky'),
+        landMask: mk(pv.landMask, 'puddleLandMask'), groundMoon: pv.groundMoon ? mk(pv.groundMoon, 'puddleGroundMoon') : null,
+      };
+    }
+    const k = d > 0 ? 1 / d : 1;
+    const pairs: [Sprite | null, MeshSimple | null][] = [
+      [pv.ground, pv.pm.ground], [pv.water, pv.pm.water], [pv.sky, pv.pm.sky], [pv.landMask, pv.pm.landMask], [pv.groundMoon, pv.pm.groundMoon],
+    ];
+    for (const [sp, m] of pairs) {
+      if (!sp || !m) continue;
+      projMeshFromSprite(m, f, sp, PROJ_GRID_SOFT, k);
+      sp.visible = false;
+    }
+    // 水面の中心(映りの型・光の筋が読む)
+    const q = projectInto(f, pv.water.position.x, pv.water.position.y, this.projPt);
+    pv.projX = q.x; pv.projY = q.y; pv.projS = q.s;
+    // 小物(立つ絵): 足元を投影して置き、大きさは s(旧い ds を外す)
+    for (let i = 0; i < pv.debris.length; i++) {
+      const dd = pv.p.debris[i];
+      const sp = pv.debris[i];
+      if (!dd || !sp) continue;
+      const ds = h.depthScale(dd.y);
+      const qd = projectInto(f, dd.x, dd.y, this.projPt);
+      const kk = ds > 0 ? qd.s / ds : 1;
+      sp.position.set(qd.x, qd.y);
+      sp.scale.set(sp.scale.x * kk, sp.scale.y * kk);
+      const mp = pv.debrisMoon[i];
+      if (mp && mp.visible) { mp.position.set(qd.x, qd.y); mp.scale.set(mp.scale.x * kk, mp.scale.y * kk); }
+    }
+  }
+
+  /** 風景の映りの型の world の矩形(?proj=1 は型のメッシュの頂点の箱=表示座標)。 */
+  private maskRect(pv: PuddleView, o: { x0: number; y0: number; x1: number; y1: number }): { x0: number; y0: number; x1: number; y1: number } {
+    const m = pv.pm?.landMask;
+    if (m && pv.projS !== undefined) {
+      const pos = m.geometry.getBuffer('aPosition').data as Float32Array;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (let i = 0; i < pos.length; i += 2) {
+        const x = pos[i], y = pos[i + 1];
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+      o.x0 = x0; o.y0 = y0; o.x1 = x1; o.y1 = y1;
+      return o;
+    }
+    const w = pv.landMask;
+    const hw = Math.abs(w.scale.x) * w.texture.width * 0.5, hh = Math.abs(w.scale.y) * w.texture.height * 0.5;
+    o.x0 = w.x - hw; o.x1 = w.x + hw; o.y0 = w.y - hh; o.y1 = w.y + hh;
+    return o;
+  }
+  private mrTmp = { x0: 0, y0: 0, x1: 0, y1: 0 };
 
   // ---- 風景の映り(遠景の上下反転を、水面の形の型の内側にだけ) ----
   // 1. 遠景の絵の写し(表示ツリーの外の箱 landScene)を、画面の上端〜地平線の帯ごと小さな焼き(LAND_RT_*)へ
@@ -755,11 +860,11 @@ export class WeatherWetLayer {
     const skyRow0 = rt.height * (1 - LANDSCAPE_SKY_SAMPLE);
     let used = 0;
     for (const pv of order) {
-      const w = pv.landMask;
-      const hw = Math.abs(w.scale.x) * w.texture.width * 0.5, hh = Math.abs(w.scale.y) * w.texture.height * 0.5;
+      // ?proj=1 は型のメッシュの箱(表示座標)=型と同じ所へ帯を置く
+      const mr = this.maskRect(pv, this.mrTmp);
       // world の矩形の4隅 → 画面(回転は無い前提=拡大と平行移動だけ。左上・右下の2点で足りる)。
-      const ax = g.a * (w.x - hw) + g.c * (w.y - hh) + g.tx, ay = g.b * (w.x - hw) + g.d * (w.y - hh) + g.ty;
-      const bx = g.a * (w.x + hw) + g.c * (w.y + hh) + g.tx, by = g.b * (w.x + hw) + g.d * (w.y + hh) + g.ty;
+      const ax = g.a * mr.x0 + g.c * mr.y0 + g.tx, ay = g.b * mr.x0 + g.d * mr.y0 + g.ty;
+      const bx = g.a * mr.x1 + g.c * mr.y1 + g.tx, by = g.b * mr.x1 + g.d * mr.y1 + g.ty;
       // 横は画面の内側だけ切り出す(焼きの外は無い)。
       const xl = Math.max(gx0, Math.min(ax, bx)), xr = Math.min(gx0 + gw, Math.max(ax, bx));
       const far = Math.min(ay, by), near = Math.max(ay, by);
@@ -816,11 +921,10 @@ export class WeatherWetLayer {
     if (!gpu) return false;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const pv of this.views.values()) {
-      const w = pv.landMask;
-      if (w.alpha <= 0.004) continue;
-      const hw = Math.abs(w.scale.x) * w.texture.width * 0.5, hh = Math.abs(w.scale.y) * w.texture.height * 0.5;
-      x0 = Math.min(x0, w.x - hw); x1 = Math.max(x1, w.x + hw);
-      y0 = Math.min(y0, w.y - hh); y1 = Math.max(y1, w.y + hh);
+      if (pv.landMask.alpha <= 0.004) continue;
+      const mr = this.maskRect(pv, this.mrTmp); // ?proj=1 は型のメッシュの箱(焼く絵も型のメッシュ)
+      x0 = Math.min(x0, mr.x0); x1 = Math.max(x1, mr.x1);
+      y0 = Math.min(y0, mr.y0); y1 = Math.max(y1, mr.y1);
     }
     if (!(x1 > x0 && y1 > y0)) return false;
     x0 = Math.floor(x0) - 2; y0 = Math.floor(y0) - 2; x1 = Math.ceil(x1) + 2; y1 = Math.ceil(y1) + 2;
@@ -919,6 +1023,15 @@ export class WeatherWetLayer {
     sl.mask.texture = pv.water.texture;
     sl.mask.position.copyFrom(pv.water.position);
     sl.mask.scale.copyFrom(pv.water.scale);
+    // ?proj=1: 映りの型(Sprite の alpha の型=メッシュにはできない)は水面の中心の投影に置き、大きさは s(点+s・水面のメッシュとは
+    // 形の遠近の歪みぶんだけ違う=小さな水たまりで数px)。映る物・光の筋・光の線も同じ点+s の座標へ写す。
+    const ps = pv.projS;
+    const pj = ps !== undefined && this.projFrameNow;
+    if (pj) {
+      const k = ps! / (pv.d || 1);
+      sl.mask.position.set(pv.projX!, pv.projY!);
+      sl.mask.scale.set(pv.water.scale.x * k, pv.water.scale.y * k);
+    }
     const rx = p.rx * pv.d, ry = p.ry * pv.d;
     // 逆さの映り(足元から下へ・薄く冷たく)。濃さは慣性で寄せる(入る・出るがパッと切り替わらない)。
     for (let i = 0; i < sl.refl.length; i++) {
@@ -932,6 +1045,13 @@ export class WeatherWetLayer {
       const tw = tex.width || 1, th = tex.height || 1;
       r.position.set(a.x, a.foot);
       r.scale.set((a.w / tw) * (a.flip ? -1 : 1), -(a.h / th) * 0.85);
+      if (pj) { // ?proj=1: 足元の投影に置く(体は段階2で投影された所に描かれる)。大きさは s/d
+        const q = projectInto(this.projFrameNow!, a.x, a.foot, this.projPt);
+        const da = this.depthNow ? this.depthNow(a.foot) : 1;
+        const kk = da > 0 ? q.s / da : 1;
+        r.position.set(q.x, q.y);
+        r.scale.set(r.scale.x * kk, r.scale.y * kk);
+      }
       r.visible = true;
       r.alpha = sl.reflA[i];
     }
@@ -944,6 +1064,7 @@ export class WeatherWetLayer {
       sl.streak.width = Math.max(8, rx * 0.32);
       sl.streak.height = ry * 2.4;
       sl.streak.alpha = 0.55 * WATER_FADE * k * pv.alpha * (0.9 + 0.1 * Math.sin(now / 340 + p.x));
+      if (pj) this.projSlotFx(sl.streak, pv);
     } else sl.streak.visible = false;
     // 光の線(水面の端から端へ、加速して減速しながらゆっくり渡る)。
     const gp = glint ? glintPose(now - glint.at) : null;
@@ -954,6 +1075,7 @@ export class WeatherWetLayer {
       sl.glint.width = Math.max(2, 2.2 * pv.d);
       sl.glint.height = ry * 3.2;
       sl.glint.alpha = 0.6 * WATER_FADE * gp.alpha * pv.alpha;
+      if (pj) this.projSlotFx(sl.glint, pv);
     } else sl.glint.visible = false;
   }
 

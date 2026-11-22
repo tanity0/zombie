@@ -16,10 +16,10 @@ import {
 } from './perspectiveProjection';
 
 /**
- * ★#23「予告の線の太さと遠近」(社長の判断待ち): 太さが判定を表さない線(縁・芯・流星の線・内側の細い輪・白い針)と記号の大きさ。
- * 'A'=画面の上で今の太さのまま(s を掛けない・推薦)/'B'=s を掛ける/'C'=√s を掛ける。ここ1か所で切り替わる。
+ * ★#23「予告の線の太さと遠近」(社長裁定 2026-11-22「予告はb」=B): 太さが判定を表さない線(縁・芯・流星の線・内側の細い輪・白い針)と記号の大きさ。
+ * 'A'=画面の上で今の太さのまま/'B'=s を掛ける(採用・奥で 1px 未満まで細る=最小値は社長の判断待ち)/'C'=√s を掛ける。ここ1か所で切り替わる。
  */
-export const PROJ_TELE_LINE_MODE: 'A' | 'B' | 'C' = 'A';
+export const PROJ_TELE_LINE_MODE: 'A' | 'B' | 'C' = 'B';
 
 /** 線の太さ(または記号の大きさ)に掛ける倍率(★#23)。s=その点の立っている絵の倍率。 */
 export const projTeleLineScale = (s: number, mode: 'A' | 'B' | 'C' = PROJ_TELE_LINE_MODE): number =>
@@ -469,7 +469,8 @@ export const projRectFrameInto = (
 // ---------------------------------------------------------------------------------------------
 
 /** 世界に寝かせた四角(中心・幅・高さ・回転)。素材の (u,v)=(0,0) が四角の左上(回転前)。 */
-export interface ProjFrame4 { cx: number; cy: number; w: number; h: number; rot: number }
+/** sq=回してから縦(world の Y)を潰す倍率(床に寝た陣を見下ろし角ぶん潰す所・省略=1)。 */
+export interface ProjFrame4 { cx: number; cy: number; w: number; h: number; rot: number; sq?: number }
 
 /** 格子の頂点の上限(1辺)= 32 マス+1。メッシュはこの大きさで作り置く。 */
 export const PROJ_GRID_MAX = 32;
@@ -501,8 +502,191 @@ const GP = mkP2(), GA = mkP2(), GB = mkP2(), GC = mkP2(), GD = mkP2();
 /** 四角の (u,v) → world 点。 */
 const frameAt = (fr: ProjFrame4, u: number, v: number, cr: number, sr: number, o: { x: number; y: number }) => {
   const lx = (u - 0.5) * fr.w, ly = (v - 0.5) * fr.h;
-  o.x = fr.cx + lx * cr - ly * sr; o.y = fr.cy + lx * sr + ly * cr;
+  o.x = fr.cx + lx * cr - ly * sr; o.y = fr.cy + (lx * sr + ly * cr) * (fr.sq ?? 1);
   return o;
+};
+
+const CORNER_UV: [number, number][] = [[0, 0], [1, 0], [0, 1], [1, 1]];
+const ROW_Y: number[] = [];
+const ROW_E: number[] = [];
+const ROW_T = [0.0625, 0.25, 0.5, 0.75, 0.9375];
+const ROW_TMP: number[] = [];
+const CORNER = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
+
+/**
+ * 回転している四角の格子(作る物の9・画面に掛かる所だけ細かく切る): 行を **world の水平線(=投影の行 ℓ が一定)** に取り、
+ * ℓ で等間隔(≤ rowPx)・画面(+16px)で切って外は1マスに潰す(回転していない四角と同じ規則)。四角の4隅の行も必ず行に入れる
+ * (行と行の間の縁が1本の直線=縁が正しく写る)。各行は四角との交わりの線分で、列はその線分を画面の横で切って等間隔(≤ colPx)。
+ * 同じ行の中では投影が x の1次式なので列は細かくしなくてよい。UV は頂点の world 点を四角の向きへ戻して出す(格子は UV で直交しない)。
+ * 4隅が画面の外へ出ても(南の延長=数十px で数倍に膨らむ所)、画面に映る所の行・列が 32×32 の上限を食われない。
+ */
+const projGridRotatedInto = (
+  f: ProjFrame, fr: ProjFrame4, rowPx: number, colPx: number, M: number,
+  outPos: Float32Array, outUv: Float32Array, cr: number, sr: number, res: ProjGridResult,
+): ProjGridResult => {
+  const z = f.wgScale > 0 ? f.wgScale : 1;
+  const hw = fr.w / 2, hh = fr.h / 2;
+  const cs = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+  for (let k = 0; k < 4; k++) {
+    const lx = cs[k][0] * hw, ly = cs[k][1] * hh;
+    CORNER[k].x = fr.cx + lx * cr - ly * sr; CORNER[k].y = fr.cy + (lx * sr + ly * cr) * (fr.sq ?? 1);
+  }
+  let yMin = Infinity, yMax = -Infinity;
+  for (const c of CORNER) { if (c.y < yMin) yMin = c.y; if (c.y > yMax) yMax = c.y; }
+  // 行(world Y): 端・4隅・画面の上下の切れ目・ℓ で等間隔
+  const l0r = projLocalYOfWorld(f, yMin), l1r = projLocalYOfWorld(f, yMax);
+  const l0 = Math.max(0, l0r), l1 = Math.max(0, l1r);
+  const pad = PROJ_SHAPE_SCREEN_PAD / z;
+  const lTop = (0 - f.wgY) / z - f.shakeY - f.farH - pad;
+  const lBot = (f.screenH - f.wgY) / z - f.shakeY - f.farH + pad;
+  const c0 = Math.max(l0, Math.min(l1, lTop)), c1 = Math.max(l0, Math.min(l1, lBot));
+  const yOfL = (l: number) => (l <= 0 && l0r < 0 ? Math.max(yMin, projWorldYOfLocal(f, 0)) : projWorldYOfLocal(f, l));
+  let nt = 0;
+  ROW_TMP[nt++] = yMin; ROW_TMP[nt++] = yMax;
+  // 隅の行: 画面(+16px)の行の範囲にある隅だけ(範囲の外の隅の行は、外の潰したマス=画面に映らない所に入る)
+  for (const c of CORNER) { const lc = projLocalYOfWorld(f, c.y); if (lc > lTop && lc < lBot) ROW_TMP[nt++] = c.y; }
+  if (c0 > l0) ROW_TMP[nt++] = yOfL(c0);
+  if (c1 < l1) ROW_TMP[nt++] = yOfL(c1);
+  // ℓ で等間隔の行は少しだけ(6まで)。残りは下の「行の間の誤差」で、曲がりの強い所(南)へ足す
+  const want = Math.max(1, Math.ceil(((c1 - c0) * z) / Math.max(1, rowPx)));
+  const ni = Math.max(1, Math.min(6, want));
+  if (c1 > c0) for (let k = 0; k <= ni; k++) ROW_TMP[nt++] = yOfL(c0 + ((c1 - c0) * k) / ni);
+  ROW_TMP.length = nt;
+  ROW_TMP.sort((p, q) => p - q);
+  let ny = 0;
+  for (let k = 0; k < nt; k++) {
+    const y = Math.max(yMin, Math.min(yMax, ROW_TMP[k]));
+    if (ny === 0 || y > ROW_Y[ny - 1] + 1e-6) ROW_Y[ny++] = y;
+  }
+  // 行 y と四角の交わりの線分 [a, b](world x)
+  const segAt = (y: number, o: { a: number; b: number }) => {
+    let a = Infinity, b = -Infinity;
+    for (let k = 0; k < 4; k++) {
+      const p = CORNER[k], q = CORNER[(k + 1) & 3];
+      const ylo = Math.min(p.y, q.y), yhi = Math.max(p.y, q.y);
+      if (y < ylo - 1e-9 || y > yhi + 1e-9) continue;
+      const x = yhi - ylo < 1e-9 ? (y === p.y ? p.x : q.x) : p.x + ((q.x - p.x) * (y - p.y)) / (q.y - p.y);
+      if (yhi - ylo < 1e-9) { a = Math.min(a, p.x, q.x); b = Math.max(b, p.x, q.x); continue; }
+      if (x < a) a = x;
+      if (x > b) b = x;
+    }
+    if (!(b >= a)) { a = b = fr.cx; }
+    o.a = a; o.b = b;
+    return o;
+  };
+  while (ny > M + 1) { // 上限を超えたら、隅でも端でもない行を間引く(稀)
+    let drop = -1;
+    for (let k = 1; k < ny - 1; k++) { const y = ROW_Y[k]; if (!CORNER.some((c) => Math.abs(c.y - y) < 1e-6)) { drop = k; break; } }
+    if (drop < 0) drop = 1;
+    for (let k = drop; k < ny - 1; k++) ROW_Y[k] = ROW_Y[k + 1];
+    ny--;
+  }
+  if (ny < 2) { ROW_Y[1] = ROW_Y[0]; ny = 2; }
+  const SEG = { a: 0, b: 0 };
+  const padPx = PROJ_SHAPE_SCREEN_PAD;
+  // 行の上の world x → 画面 x は1次式: sx = A + B·x(B = wgScale·s)
+  const xClip = (y: number, xa: number, xb: number, o: { a: number; b: number }) => {
+    projVertexInto(f, f.cxw, y, GP);
+    const B = z * GP.s, A = GP.sx - B * f.cxw;
+    if (!(B > 0)) { o.a = xa; o.b = xb; return o; }
+    const xl = (-padPx - A) / B, xr = (f.screenW + padPx - A) / B;
+    o.a = Math.max(xa, Math.min(xb, xl)); o.b = Math.max(xa, Math.min(xb, xr));
+    return o;
+  };
+  const CL = { a: 0, b: 0 };
+  // 行の間の誤差で足す: 行の間の真ん中の行で、四角の縁(左右の端)と行の中央の点の投影が、上下の行の点の中点からずれる量が
+  // tol を超える間を、ずれの大きい順に2分する(上限 M+1 行)。画面に掛からない間は測らない。
+  const tol = PROJ_SHAPE_TOL_PX;
+  const S1 = { a: 0, b: 0 }, S2 = { a: 0, b: 0 };
+  const rowErr = (k: number): number => {
+    const ya = ROW_Y[k], yb = ROW_Y[k + 1];
+    if (yb - ya < 1e-3) return 0;
+    const la = projLocalYOfWorld(f, ya), lb = projLocalYOfWorld(f, yb);
+    if (lb <= lTop + 1e-6 || la >= lBot - 1e-6 || lb <= 0) return 0; // 画面(+16px)の外の間は測らない(外は潰す)
+    // 列の線(上下の行の、画面の横で切った線分の同じ割合の点を結ぶ線=格子の縦の線)の真ん中で、投影と、上下の投影の中点の差
+    // 切った線分の5点と、切る前の線分の5点(行の間で画面の横の端が曲がって、四角の端が行の間だけ画面へ入る所も拾う)
+    let e = 0;
+    // 加えて、マスの対角(上の行の割合 fq と下の行の fq+1/4 を結ぶ線=三角の辺)も測る(行の間が広い所で幅のあるマスが曲がる)
+    segAt(ya, S1); xClip(ya, S1.a, S1.b, S1); segAt(yb, S2); xClip(yb, S2.a, S2.b, S2);
+    for (let q = 0; q <= 8; q++) {
+      const fq = q >= 5 ? (q - 5) / 4 : q / 4, fq2 = q >= 5 ? fq + 0.25 : fq;
+      const xa = S1.a + (S1.b - S1.a) * fq, xb = S2.a + (S2.b - S2.a) * fq2;
+      projVertexInto(f, xa, ya, GA); projVertexInto(f, xb, yb, GB);
+      res.pts += 2;
+      for (let tq = 0; tq < 5; tq++) {
+        const t = ROW_T[tq];
+        projVertexInto(f, xa + (xb - xa) * t, ya + (yb - ya) * t, GC);
+        res.pts++;
+        // 測るのは点が画面(余白なし)に映る時だけ
+        if (GC.sx < 0 || GC.sx > f.screenW || GC.sy < 0 || GC.sy > f.screenH) continue;
+        e = Math.max(e, Math.hypot(GC.sx - ((1 - t) * GA.sx + t * GB.sx), GC.sy - ((1 - t) * GA.sy + t * GB.sy)));
+      }
+    }
+    return e;
+  };
+  for (let k = 0; k < ny - 1; k++) ROW_E[k] = rowErr(k);
+  while (ny < M + 1) {
+    let wk = -1, we = tol;
+    for (let k = 0; k < ny - 1; k++) if (ROW_E[k] > we) { we = ROW_E[k]; wk = k; }
+    if (wk < 0) break;
+    for (let k = ny; k > wk + 1; k--) ROW_Y[k] = ROW_Y[k - 1];
+    for (let k = ny - 1; k > wk + 1; k--) ROW_E[k] = ROW_E[k - 1];
+    ROW_Y[wk + 1] = (ROW_Y[wk] + ROW_Y[wk + 2]) / 2;
+    ny++;
+    ROW_E[wk] = rowErr(wk); ROW_E[wk + 1] = rowErr(wk + 1);
+  }
+  // 列: どの行でも同じ「線分の割合」[fa, fb] に並べる(列の線=四角の中の world の直線=上下の行で同じ割合の点を結ぶ)。
+  // [fa, fb] は画面に映る行の、画面の横で切った割合の和。外の割合 [0, fa]・[fb, 1] は1マスに潰す。数は画面に映る幅の最大 / colPx。
+  let nx = 1, fa = 1, fb = 0;
+  // 割合は行の上と、行の間(1/4・1/2・3/4)でも測る(行の間だけ画面へ入る所を落とさない)
+  for (let jq = 0; jq < ny * 4 - 3; jq++) {
+    const j0 = jq >> 2, tq = (jq & 3) / 4;
+    const y = tq === 0 ? ROW_Y[j0] : ROW_Y[j0] + (ROW_Y[j0 + 1] - ROW_Y[j0]) * tq;
+    const l = projLocalYOfWorld(f, y);
+    if (l > lBot || l < lTop) continue;
+    segAt(y, SEG); xClip(y, SEG.a, SEG.b, CL);
+    if (!(CL.b > CL.a) || !(SEG.b > SEG.a)) continue;
+    fa = Math.min(fa, (CL.a - SEG.a) / (SEG.b - SEG.a)); fb = Math.max(fb, (CL.b - SEG.a) / (SEG.b - SEG.a));
+    projVertexInto(f, f.cxw, y, GP);
+    nx = Math.max(nx, Math.ceil(((CL.b - CL.a) * GP.s * z) / Math.max(1, colPx)));
+  }
+  // 行と行の間だけ画面に入る所があるので、割合は少し広げる(1/16)
+  if (fb > fa) { fa = Math.max(0, fa - 1 / 16); fb = Math.min(1, fb + 1 / 16); } else { fa = 0; fb = 1; }
+  const lo = fa > 1e-6, hi = fb < 1 - 1e-6;
+  nx = Math.max(1, Math.min(M, nx + (lo ? 1 : 0) + (hi ? 1 : 0)));
+  const inner = Math.max(1, nx - (lo ? 1 : 0) - (hi ? 1 : 0));
+  res.nx = nx; res.ny = ny - 1;
+  // 頂点を書く
+  const W = PROJ_GRID_MAX + 1;
+  const invW = fr.w !== 0 ? 1 / fr.w : 0, invH = fr.h !== 0 ? 1 / fr.h : 0;
+  for (let j = 0; j <= PROJ_GRID_MAX; j++) {
+    const jj = Math.min(j, ny - 1);
+    const y = ROW_Y[jj];
+    segAt(y, SEG);
+    for (let i = 0; i <= PROJ_GRID_MAX; i++) {
+      const k = (j * W + i) * 2;
+      if (j > ny - 1 || i > nx) {
+        const src = (jj * W + Math.min(i, nx)) * 2;
+        outPos[k] = outPos[src]; outPos[k + 1] = outPos[src + 1];
+        outUv[k] = outUv[src]; outUv[k + 1] = outUv[src + 1];
+        continue;
+      }
+      const ii = i - (lo ? 1 : 0);
+      const fq = i === 0 ? 0 : i === nx ? 1 : ii <= 0 ? fa : ii >= inner ? fb : fa + ((fb - fa) * ii) / inner;
+      const x = SEG.a + (SEG.b - SEG.a) * fq;
+      projVertexInto(f, x, y, GP);
+      res.pts++;
+      if (y < res.wyMin) res.wyMin = y;
+      if (y > res.wyMax) res.wyMax = y;
+      if (GP.s > res.sMax) res.sMax = GP.s;
+      if (GP.a > res.aMax) res.aMax = GP.a;
+      outPos[k] = GP.x; outPos[k + 1] = GP.y;
+      const dx = x - fr.cx, dy = (y - fr.cy) / (fr.sq ?? 1);
+      outUv[k] = Math.max(0, Math.min(1, (dx * cr + dy * sr) * invW + 0.5));
+      outUv[k + 1] = Math.max(0, Math.min(1, (-dx * sr + dy * cr) * invH + 0.5));
+    }
+  }
+  return res;
 };
 
 /**
@@ -521,6 +705,7 @@ export const projGridInto = (
   const cr = Math.cos(fr.rot), sr = Math.sin(fr.rot);
   const res: ProjGridResult = { nx: 1, ny: 1, pts: 0, wyMin: Infinity, wyMax: -Infinity, sMax: 0, aMax: 0 };
   const rotated = Math.abs(sr) > 1e-6 || cr < 0;
+  if (!rotated && fr.sq !== undefined && fr.sq !== 1) fr = { cx: fr.cx, cy: fr.cy, w: fr.w, h: fr.h * fr.sq, rot: 0 }; // 回っていない時の潰し=縦の短い四角
   if (!rotated) {
     // 行: ℓ で等間隔
     const y0 = fr.cy - fr.h / 2, y1 = fr.cy + fr.h / 2;
@@ -554,6 +739,14 @@ export const projGridInto = (
     res.nx = Math.max(1, Math.min(M, nxWant));
     for (let i = 0; i <= res.nx; i++) GRID_U[i] = i / res.nx;
   } else {
+    // ★4隅のどれかが画面(+16px)の外=画面の外(南の延長・左右)へ掛かる四角は、行を world の水平線に取る格子へ(作る物の9)。
+    const pad = PROJ_SHAPE_SCREEN_PAD;
+    let allOn = true;
+    for (const [qu, qv] of CORNER_UV) {
+      const w = frameAt(fr, qu, qv, cr, sr, W_TMP); projVertexInto(f, w.x, w.y, GA); res.pts++;
+      if (GA.sx < -pad || GA.sx > f.screenW + pad || GA.sy < -pad || GA.sy > f.screenH + pad) { allOn = false; break; }
+    }
+    if (!allOn) return projGridRotatedInto(f, fr, rowPx, colPx, M, outPos, outUv, cr, sr, res);
     // 回転: 縦横を誤差で2分。測る物=格子の辺の中点のずれ(u 向き・v 向き)と、マスの中心のずれ(三角2枚で描く=対角線の中点で補間される)。
     // 測るマスは端と中央の行・列だけ(全部のマスを測ると重い・ずれは場所でなめらかに変わる)。
     let nx = 1, ny = 1;
@@ -636,23 +829,30 @@ export const projGridInto = (
  * 三角2枚の分け方(a,b,c / b,d,c)と同じ補間をする(描画と同じ)。
  */
 export const projGridSample = (pos: Float32Array, uv: Float32Array, res: ProjGridResult, u: number, v: number): { x: number; y: number } => {
+  // 格子は UV で直交するとは限らない(回転した四角は行が world の水平線)=三角を全部探して、(u,v) を含む三角の重心座標で補間する。
   const W = PROJ_GRID_MAX + 1;
-  // 列 i: uv の u で探す(等間隔とは限らない列にも対応)
-  let i = 0;
-  while (i < res.nx - 1 && uv[(0 * W + i + 1) * 2] <= u) i++;
-  let j = 0;
-  while (j < res.ny - 1 && uv[((j + 1) * W) * 2 + 1] <= v) j++;
-  const ua = uv[(j * W + i) * 2], ub = uv[(j * W + i + 1) * 2];
-  const va = uv[(j * W + i) * 2 + 1], vb = uv[((j + 1) * W + i) * 2 + 1];
-  const fu = ub > ua ? (u - ua) / (ub - ua) : 0;
-  const fv = vb > va ? (v - va) / (vb - va) : 0;
-  const a = (j * W + i) * 2, b = (j * W + i + 1) * 2, c = ((j + 1) * W + i) * 2, d = ((j + 1) * W + i + 1) * 2;
-  // 三角 (a,b,c) は fu+fv<=1、(b,d,c) はそれ以外
-  if (fu + fv <= 1) {
-    return { x: pos[a] + (pos[b] - pos[a]) * fu + (pos[c] - pos[a]) * fv, y: pos[a + 1] + (pos[b + 1] - pos[a + 1]) * fu + (pos[c + 1] - pos[a + 1]) * fv };
+  let best = { x: NaN, y: NaN }, bestOut = Infinity;
+  const tri = (a: number, b: number, c: number) => {
+    const ax = uv[a], ay = uv[a + 1], bx = uv[b], by = uv[b + 1], cx = uv[c], cy = uv[c + 1];
+    const det = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay);
+    if (Math.abs(det) < 1e-12) return;
+    const l1 = ((u - ax) * (cy - ay) - (cx - ax) * (v - ay)) / det;
+    const l2 = ((bx - ax) * (v - ay) - (u - ax) * (by - ay)) / det;
+    const l0 = 1 - l1 - l2;
+    const out = Math.max(0, -l0, -l1, -l2);
+    if (out < bestOut) {
+      bestOut = out;
+      best = { x: pos[a] * l0 + pos[b] * l1 + pos[c] * l2, y: pos[a + 1] * l0 + pos[b + 1] * l1 + pos[c + 1] * l2 };
+    }
+  };
+  for (let j = 0; j < res.ny; j++) {
+    for (let i = 0; i < res.nx; i++) {
+      const a = (j * W + i) * 2, b = (j * W + i + 1) * 2, c = ((j + 1) * W + i) * 2, d = ((j + 1) * W + i + 1) * 2;
+      tri(a, b, c); tri(b, d, c);
+      if (bestOut === 0) return best;
+    }
   }
-  const gu = 1 - fu, gv = 1 - fv;
-  return { x: pos[d] + (pos[c] - pos[d]) * gu + (pos[b] - pos[d]) * gv, y: pos[d + 1] + (pos[c + 1] - pos[d + 1]) * gu + (pos[b + 1] - pos[d + 1]) * gv };
+  return best;
 };
 
 // ---------------------------------------------------------------------------------------------

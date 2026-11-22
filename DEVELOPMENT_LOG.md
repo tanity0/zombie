@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.5756 — 遠近の投影 段階4の残り(水たまり・床の印・罠/デコイ/ドローン・メッシュ化・★#23=B)(?proj=1 のみ)【2026-11-23 04:45 JST】
+- 範囲: `?proj=1` の時だけ。`?proj=0` ではメッシュも Graphics も作らない(else 側は不変)。
+- 入れた物: 作る物6 `projShapeGfx`(G07・I10・I11・I02・J15)/ 部品を通した物(A10〜A15・A17・C07・E16・E18・F01・英雄/舞妓・I03〜I08・J01〜J09・J11・J13・K02・K03・K06・K08・K09・K13・K15・亡霊の叫び)/ **K01 水たまり**(`WetHost.projGrid`・縁/水面/空の映り/風景の型/月明りの縁を格子メッシュ・型抜きは焼く元をメッシュに・キャラの映りの型だけ点+s の近似)/ 格子メッシュ化(clawMarks・shockwaves・dashWind・coilBody・summonTornado・汎用 `projSpriteMesh`)/ 点で置く(spikeThrust・burstFrag)/ B20 / 形と判定の差の計器(`?proj=1&hitbox=1`・`s4 judge n / noTele`)/ 間引きを `projShapeOutside` へ(地面の炎・血の履帯・拠点・ハンター・残骸)/ 回転メッシュの画面外の誤差 36px→約2.5px。
+- ★#23=B(社長裁定2026-11-23「予告はb」)を `PROJ_TELE_LINE_MODE='B'` に。
+- 画で確認: S13(罠・デコイ・ドローン・手榴弾ほか)・S14(囲い・帰還・拠点・城の円)・S12(舞妓・英雄)・S15(水たまり・カメラを動かした2コマで滑らない)。計器 direct/tex/point はどれも 0。
+- 未決: ★#23=B で奥の線が1px未満(奥の赤い予告はまだ撮れていない・最小値を設けるかは社長)/ K05 月だまりは画面固定の絵で投影しない扱いでよいか / K14 ホロの陣は段階2の後掛けのままか格子メッシュか。
+- 残り: 回転メッシュの1px(33行の上限)・盾で切った衝撃波のメッシュ・C03/C09/E16 の判定を計器へ・J10/J11 の板の文字・F02〜F10 の確認・ボス戦(S06〜S11)と S16・ズーム0.4 の撮影・phone/pc-guard・台帳の欄・品質監査とクリエイティブ監査。
+- 負荷: 4/10(最悪5/10)。描画CPU・予告の点の投影 数千〜7千点/フレーム≒端末1ms前後。
+- 変えたファイル: src/pixi/pixiScene.ts・projDraw.ts・weatherWet.ts・projShapeGuard.test.ts・projActorGuard.test.ts・src/utils/projShape.ts・projShape.test.ts・projActorPass.ts
+- 検証: v0.25.5755 の上へ rebase 後に typecheck / eslint / circular / vitest 全件(11451通過)。
+- 自己点検: 憲法第4条・第5条に抵触しない(既定では何も変わらない)。
+
 ## v0.25.5755 — 鞭の作り替え: フリック廃止・1発目でその場に浮かせ・浮いた敵は自動で叩きつけ・スラッシャーの連続【2026-11-23 04:32 JST】
 - 社長指示(research/WHIP_FOLLOWUP.md §7): 反対フリックの技やめる/1発目で当たった敵はその場で浮く/浮いている間に当てると自動で叩きつけ/スラッシャー持ちは0.5秒間隔で追加分浮かせ続け最後は必ず叩きつけ/1秒かけて頂点に浮く高め。
 - 実装: フリックの引き寄せ・叩き落とし・受付・位置と向きの固定を撤去(フリックは燕返しと元の経路へ)。判定は `resolveWhipHits` 1本(プレイヤー・守護霊・追加の振り)で `classifyWhipHit`=浮かせる/叩きつけ/普通の打撃。浮かせた敵は押しを打ち消して真上へ。鞭専用の浮き(`LiftArcShape` に `riseEase:'inOut'`・上り1000/漂い300/落ち600ms・高さ=格闘の打ち上げ×2×区分の重さ・画面の上限は `brawlerLiftVisBasePx`)。叩きつけは§6のまま(2倍+各爆心の爆発・縦の鞭・地割れ・砂埃・輪・ヒットストップ・揺れ)。スラッシャー=`GameState.whipChain`/`Summon.ghostWhipChain`・Lv1/2/3で追加1/2/3・最後はfinal。ボス級は浮かない=通常の打撃。技の行の「叩きつけ」は地割りと同じ下向きの印へ。`tech:whippull`・引き寄せの柄の描き分けを削除。

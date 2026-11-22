@@ -119,6 +119,24 @@ export const projCircle = (g: Graphics, f: ProjFrame, wx: number, wy: number, r:
   record(g, n0, OUT);
 };
 
+/**
+ * 高さ h だけ持ち上げた円(3-6e の projLift・デコイの落下の drop など)。地面の円を頂点ごとに投影し、
+ * 中心の高さの持ち上げ(h·s)を全頂点に同じだけ足す(落下の間の短い間だけの高さ)。h=0 なら projCircle と同じ。
+ */
+export const projCircleLifted = (
+  g: Graphics, f: ProjFrame, wx: number, wy: number, r: number, h: number, fill?: FillInput, stroke?: StrokeStyle,
+): void => {
+  if (!(h > 0)) { projCircle(g, f, wx, wy, r, fill, stroke); return; }
+  const n0 = g.context.instructions.length;
+  OUT.reset(); projCircleInto(f, wx, wy, r, TOL, OUT);
+  projVertexInto(f, wx, wy, Q4L);
+  const dy = -h * Q4L.s;
+  for (let i = 0; i < OUT.n; i++) OUT.xy[i * 2 + 1] += dy;
+  paint(g, OUT, fill, stroke, true);
+  record(g, n0, OUT);
+};
+const Q4L = { x: 0, y: 0, s: 1, a: 1, sx: 0, sy: 0 };
+
 /** 楕円(rx・ry・回転)。 */
 export const projEllipse = (
   g: Graphics, f: ProjFrame, wx: number, wy: number, rx: number, ry: number, rot: number, fill?: FillInput, stroke?: StrokeStyle,
@@ -295,6 +313,32 @@ export const projGlyphEllipse = (
   statOf(g).cmds += g.context.instructions.length - n0;
 };
 
+const DOT = { x: 0, y: 0, s: 1 };
+/**
+ * 点で置く小さな絵(判定を持たない熾火・花弁・粒など・§3-6e の方針⑥): 地面の点 (wx, wy) から高さ h の点を投影し、
+ * 大きさは s を掛ける(段階1の置き物と同じ「点+s」)。円。
+ */
+export const projDotCircle = (g: Graphics, f: ProjFrame, wx: number, wy: number, r: number, fill: FillInput, h = 0): void => {
+  const n0 = g.context.instructions.length;
+  projLiftInto(f, wx, wy, h, DOT);
+  g.circle(DOT.x, DOT.y, r * DOT.s).fill(fill);
+  ptsFrame++;
+  const s = statOf(g); s.cmds += g.context.instructions.length - n0;
+  projNoteWorldY(g, wy, wy);
+};
+/** 点で置く小さな四角(左上が点・大きさは s・round=画素に揃える)。 */
+export const projDotRect = (
+  g: Graphics, f: ProjFrame, wx: number, wy: number, w: number, hgt: number, fill: FillInput, h = 0, round = false,
+): void => {
+  const n0 = g.context.instructions.length;
+  projLiftInto(f, wx, wy, h, DOT);
+  const x = round ? Math.round(DOT.x) : DOT.x, y = round ? Math.round(DOT.y) : DOT.y;
+  g.rect(x, y, w * DOT.s, hgt * DOT.s).fill(fill);
+  ptsFrame++;
+  const s = statOf(g); s.cmds += g.context.instructions.length - n0;
+  projNoteWorldY(g, wy, wy);
+};
+
 const LIFT = { x: 0, y: 0, s: 1 };
 /** 高さを持つ頂点(地面の点 (gx, gy) から上へ h)の表示座標(3-6e)。返す入れ物は次の呼び出しで上書きされる。 */
 export const projLift = (f: ProjFrame, gx: number, gy: number, h: number): { x: number; y: number; s: number } => {
@@ -330,13 +374,42 @@ export const PROJ_GRID_SOFT = { rowPx: 24, colPx: 48 } as const;
  */
 export const projMeshGrid = (
   mesh: MeshSimple, f: ProjFrame, fr: ProjFrame4, grid: { rowPx: number; colPx: number } = PROJ_GRID_SHARP,
-  maxN = PROJ_GRID_MAX, g?: Graphics,
+  maxN = PROJ_GRID_MAX, g?: Graphics, flipU = false, flipV = false,
 ): ProjGridResult => {
   const pos = mesh.geometry.getBuffer('aPosition').data as Float32Array;
   const uvBuf = mesh.geometry.getBuffer('aUV');
-  const res = projGridInto(f, fr, grid.rowPx, grid.colPx, maxN, pos, uvBuf.data as Float32Array);
+  const uv = uvBuf.data as Float32Array;
+  const res = projGridInto(f, fr, grid.rowPx, grid.colPx, maxN, pos, uv);
+  // 左右/上下に返した絵(Sprite の scale が負)は UV を返す(頂点の位置はそのまま=四角は同じ)
+  if (flipU || flipV) for (let k = 0; k < uv.length; k += 2) { if (flipU) uv[k] = 1 - uv[k]; if (flipV) uv[k + 1] = 1 - uv[k + 1]; }
   uvBuf.update();
   ptsFrame += res.pts;
   if (g) projNoteWorldY(g, res.wyMin, res.wyMax);
   return res;
+};
+
+/**
+ * 世界に寝かせた Sprite(回転なし・親は world と同じ座標)の四角を、同じ素材の格子メッシュで頂点ごとに投影して置く(段階4・地面の絵)。
+ * Sprite の今の位置・大きさ(scale の符号=返し)・アンカーから world の四角を出す。dInv=Sprite の大きさに掛かっている旧い遠近の倍率の逆数
+ * (掛かっていなければ 1)=足元の点を支点に world の寸法へ戻してから投影する(二重に縮めない)。素材・tint・alpha・合成・見える/見えないは写す。
+ * 呼んだ後、呼び出し側が Sprite を隠す。
+ */
+export const projMeshFromSprite = (
+  mesh: MeshSimple, f: ProjFrame, sp: { position: { x: number; y: number }; scale: { x: number; y: number }; anchor: { x: number; y: number }; texture: Texture; tint: number | string | unknown; alpha: number; blendMode: unknown; visible: boolean; rotation?: number },
+  grid: { rowPx: number; colPx: number } = PROJ_GRID_SOFT, dScale = 1, g?: Graphics,
+): ProjGridResult | null => {
+  const tw = sp.texture.width, th = sp.texture.height;
+  const sx = sp.scale.x * dScale, sy = sp.scale.y * dScale;
+  const w = Math.abs(tw * sx), h = Math.abs(th * sy);
+  if (mesh.texture !== sp.texture) mesh.texture = sp.texture;
+  mesh.tint = sp.tint as number;
+  mesh.alpha = sp.alpha;
+  (mesh as { blendMode: unknown }).blendMode = sp.blendMode;
+  mesh.visible = sp.visible && w > 0 && h > 0;
+  if (!mesh.visible) return null;
+  // アンカーの点=sp.position。四角の中心は (0.5 − anchor)·(符号つきの幅) だけ(回転して)ずれる
+  const rot = sp.rotation ?? 0, c = Math.cos(rot), sn = Math.sin(rot);
+  const ox = (0.5 - sp.anchor.x) * tw * sx, oy = (0.5 - sp.anchor.y) * th * sy;
+  const cx = sp.position.x + ox * c - oy * sn, cy = sp.position.y + ox * sn + oy * c;
+  return projMeshGrid(mesh, f, { cx, cy, w, h, rot }, grid, PROJ_GRID_MAX, g, sx < 0, sy < 0);
 };

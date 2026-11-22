@@ -73,7 +73,9 @@ describe('投影の段階2: 後掛けの役の表(番人)', () => {
   it('予告の子の alpha は ?proj=0 と同じ(world の位置のフェード)=後掛けの alpha の倍率は projChildAlphaMul の1本だけ', () => {
     const body = src.slice(src.indexOf('private projPostView('), src.indexOf('private projActorPostPass('));
     // 入れ物の子の alpha は役ごとに projChildAlphaMul(予告=既定で1・?telefade=0 で world の位置のフェード)で掛ける。
-    expect(body).toContain('projChildAlphaMul(role, TELEGRAPH_OWN_FADE, view.projPosW ?? 1, view.projPosP ?? 1, a)');
+    // §10 B20(段階4で閉じた): ?telefade=0 の予告の子は「予告自身の投影後のY」のフェード(teleW=projTelegraphFade)。既定(ownFade)では 1。
+    expect(body).toContain('projChildAlphaMul(role, TELEGRAPH_OWN_FADE, teleW, view.projPosP ?? 1, a)');
+    expect(body).toContain('const teleW = TELEGRAPH_OWN_FADE ? 1 : this.projTelegraphFade(view);');
     // 予告の部品は投影後のフェードを受け取らない: drawEnemy の artFade(投影後)を予告の部品の描く関数へ渡していない
     // (予告は自分の world の位置でフェードする telegraphFade の経路)。
     const enemy = src.slice(src.indexOf('private drawEnemy('), src.indexOf('private drawPhillExtras('));

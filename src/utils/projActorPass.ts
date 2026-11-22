@@ -39,8 +39,8 @@ export const PROJ_ACTOR_ROLES = {
   // 英雄の旗と剣・英雄の昇天の白い体・スリィエルの環・幻影の目/ナイフの振り/銃口の閃光・刀の切れ目。味方: 守護霊のナイフ・武器・装飾パーツ、
   // レア召喚の頭上の棺。入れ物の外の物は projAttach で持ち主へ登録し、入れ物の子は projTag で名札を付ける。
   attachedArt: 'body',
-  // レア召喚の竜巻(吸い込む距離に合わせた範囲の絵)=演出(段階3/4まで動かさない)。
-  summonTornado: 'fx',
+  // レア召喚の竜巻(吸い込む距離に合わせた範囲の絵)=段階4で予告と同じ「描く時に投影」側へ(足元に寝かせた四角の格子メッシュ・後掛けで動かさない)。
+  summonTornado: 'telegraph',
   // 名前の札・叫喚の強化の印=頭上UI(平行移動だけ)。
   nameLabel: 'hud',
   // 影
@@ -210,8 +210,8 @@ export class ProjSavePool<T> {
  * 後掛けで子に掛ける alpha の倍率(§3-5i の1・予告の濃さは world のまま=社長側の答え 2026-11-22)。
  * - ownFade(=TELEGRAPH_OWN_FADE・既定)では、描く関数が体・頭上UI・演出に投影後のYのフェードを掛け済み、予告は予告自身の
  *   world の位置のフェードを掛け済み。後掛けは湧きの一時のフェード spawnA を予告以外に掛けるだけ(予告は 1=?proj=0 と同じ)。
- * - ownFade=false(?telefade=0)では、入れ物の alpha から位置のフェードを外し、子ごとに掛ける: 予告=world の位置のフェード posW
- *   (入れ物×子の積が ?proj=0 と同じになる)・それ以外=投影後のYのフェード posP × spawnA。
+ * - ownFade=false(?telefade=0)では、入れ物の alpha から位置のフェードを外し、子ごとに掛ける: 予告=posW・それ以外=投影後のYのフェード posP × spawnA。
+ *   段階4(§10 B20 を閉じた)から、呼び手は posW に「予告自身の投影後のYのフェード」(projTelegraphFade)を渡す。
  */
 export const projChildAlphaMul = (
   role: ProjActorRole, ownFade: boolean, posW: number, posP: number, spawnA: number,

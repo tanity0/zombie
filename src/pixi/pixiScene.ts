@@ -22,7 +22,7 @@ import { LAB_LAMP_SPACING_PX, labLampLevel, labLampScale } from '../world/labLam
 import { labPitchLights, labEaseReveals, stepLabFlash, labFlashLevel, LAB_ALWAYS_REVEAL_TYPES, type LabLight, type LabFlashState } from '../utils/labDarkness'; // ステージ2の闇と懐中電灯(research/LAB_DARKNESS.md)
 import { bossFramingFor } from '../utils/bossFraming';
 import { BlurFilter, ColorMatrixFilter, Container, Graphics, MeshSimple, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, GlProgram, UniformGroup, TilingSprite, RenderTexture, MeshRope, Point, Matrix } from 'pixi.js';
-import type { ColorMatrix } from 'pixi.js';
+import type { ColorMatrix, StrokeStyle, FillInput } from 'pixi.js';
 import { heliRotorFrame, HELI_ROTOR_FRAMES } from '../utils/heliRotor';
 import { acrasielSectorPolygon, acrasielEase, ACRASIEL_SPEAR_FLIGHT_MS, acrasielGazeAngles, acrasielWarpRed, acrasielBurstRed } from '../utils/acrasielScript';
 import type { Renderer } from 'pixi.js';
@@ -338,7 +338,7 @@ import { phantomTurretBlastRadius, PHANTOM_TURRET_TELEGRAPH_MS } from '../utils/
 import { playerCenteredRegion, regionEdgeFade, type RegionRect } from '../utils/regionEdgeFade';
 import { stepStaticShadowCap, staticShadowLowAlphaMult, STATIC_SHADOW_CAP, isStaticProjectedShadow, type StaticShadowCand } from '../utils/staticShadowCap'; // ?proj=1 の止まっている物の影の上限
 import {
-  ProjSavePool, projActorK, projPhillK, projChildAlphaMul, projActorRole, projRoleMove, projActorPosFade, projSpawnEdgeAlpha, projSpawnFadeApplies,
+  ProjSavePool, PROJ_ACTOR_ROLES, projActorK, projPhillK, projChildAlphaMul, projActorRole, projRoleMove, projActorPosFade, projSpawnEdgeAlpha, projSpawnFadeApplies,
   projSeeThroughBox, projSimilarInverseInto, projHudDeltaInto, projFadeTermsInto, type ProjActorPartKey, type ProjMove,
 } from '../utils/projActorPass'; // 投影の段階2「動くもの」(?proj=1・research/PERSPECTIVE_PROJECTION.md §3-5)
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
@@ -348,11 +348,11 @@ import {
   groundStripTile, groundVsObjectDiff, groundSlipBound, projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, southCullWorldY,
   type ProjFrame, type ProjTable, type ProjPoint,
 } from '../utils/perspectiveProjection'; // 投影(?proj=1・research/PERSPECTIVE_PROJECTION.md 段階1)
-import { projTeleFadeY, projShapeOutside, PROJ_GRID_MAX } from '../utils/projShape'; // 投影の段階4「形を持つもの」(§3-6)
+import { projTeleFadeY, projShapeOutside, PROJ_GRID_MAX, type ProjFrame4 } from '../utils/projShape'; // 投影の段階4「形を持つもの」(§3-6)
 import {
   projDrawBeginFrame, projDrawStat, projDrawLeak, projDrawPoints, projDrawResetMax, projKeepFrom, projCmdCount,
-  projCircle, projEllipse, projArcLine, projSector, projAnnulus, projRingsBegin, projRing, projBand, projThickLine, projLine, projSeg, projPoly, projRect,
-  projRectFrame, projGlyphCircle, projGlyphEllipse, makeProjGridMesh, projMeshGrid, PROJ_GRID_SHARP, projRectPath, projFill,
+  projCircle, projCircleLifted, projEllipse, projArcLine, projSector, projAnnulus, projRingsBegin, projRing, projBand, projThickLine, projLine, projSeg, projPoly, projRect,
+  projRectFrame, projGlyphCircle, projGlyphEllipse, projDotCircle, projDotRect, makeProjGridMesh, projMeshGrid, projMeshFromSprite, PROJ_GRID_SHARP, PROJ_GRID_SOFT, projRectPath, projFill,
 } from './projDraw'; // 投影の段階4の描く部品(?proj=1 の時だけ呼ぶ)
 import { LIB_VOLLEY_CAST_MS } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md §4c: 号令の旗の突き上げの尺
 import {
@@ -5473,6 +5473,7 @@ export class PixiScene {
   private alchemyRhythmGfx = new Graphics();
   // 城フィナーレボスの出現魔法陣(錬金と同じ magic-circle テクスチャを流用)。bossSummonAt 起点に短時間表示。
   private castleSummonCircle = new Sprite();
+  private castleSummonFr: ProjFrame4 = { cx: 0, cy: 0, w: 0, h: 0, rot: 0 }; // ?proj=1 の陣の world の四角
   private castleSummonTextured = false;
   // 鞭ハリケーン: 吸引中心に立つ竜巻スプライト。store の hurricane 状態で駆動。
   private whipHurricane = new Sprite();
@@ -6146,6 +6147,7 @@ export class PixiScene {
       sp.width = sp.height = q.r * GLOW_GROUND_POOL_R_MULT * 2;
       sp.alpha = Math.min(1, GLOW_GROUND_POOL_ALPHA * q.life);
       sp.visible = true;
+      if (this.projFrame) this.projSpriteMesh(sp, 'glowPool', PROJ_GRID_SOFT); // ?proj=1(段階4・K02): 床の光だまり=格子メッシュ(柔らかい絵の粗い規則)
     }
     for (let i = n; i < this.glowGroundPool.length; i++) this.glowGroundPool[i].visible = false;
   }
@@ -8461,6 +8463,83 @@ export class PixiScene {
     return m;
   }
 
+  /**
+   * 段階4 作る物6(§3-6b・3-6j の6): 入れ物ごと拡縮される円・入れ物のローカル座標で描いている円を、入れ物の外で描く作り置きの Graphics。
+   * 'front'=frontObjectLayer の一番下(G07 敵の手榴弾・I10 罠・I11 ドローン・ブーメラン・I02 デコイ)/'ground'=groundLayer の一番下(J15 商人の滞在の円)。
+   * **`projFrame` がある時に初めて作る**(遅延生成=?proj=0 では1つも作らない・層へ足さない)。updateProjFrame の頭で毎フレーム clear。
+   */
+  private projShapeFront: Graphics | null = null;
+  private projShapeGround: Graphics | null = null;
+  private projShapeGfx(which: 'front' | 'ground'): Graphics {
+    const cur = which === 'front' ? this.projShapeFront : this.projShapeGround;
+    if (cur && !cur.destroyed) return cur;
+    const g = new Graphics();
+    g.label = which === 'front' ? 'proj:shapeFront' : 'proj:shapeGround';
+    (which === 'front' ? this.L.frontObjectLayer : this.L.groundLayer).addChildAt(g, 0);
+    if (which === 'front') this.projShapeFront = g; else this.projShapeGround = g;
+    return g;
+  }
+
+  /**
+   * 段階4 作る物5(§3-6b): 地面に寝かせた Sprite(親は world と同じ座標の層)を、同じ素材の格子メッシュで頂点ごとに投影して置く。
+   * メッシュは Sprite ごとに1枚・**projFrame がある時に初めて作る**(遅延生成)・Sprite の直上に置く。Sprite は renderable=false で
+   * 描かないだけにする(visible は呼び手の物のまま=見える/見えないの判定はそのまま写す)。毎フレームの頭(updateProjFrame)で
+   * Sprite の renderable を戻しメッシュを隠す=今フレームに呼ばれた物だけが出る(消えた絵のメッシュが残らない)。
+   * dScale=Sprite の大きさに掛かっている旧い遠近の倍率の逆数(足元=アンカーの点を支点に world の寸法へ戻す)。
+   */
+  private projSpriteMeshes: { sp: Sprite; m: MeshSimple }[] = [];
+  private projSpriteMeshOf = new WeakMap<Sprite, MeshSimple>();
+  private projSpriteMesh(
+    sp: Sprite, tag: string, grid: { rowPx: number; colPx: number }, dScale = 1, g?: Graphics,
+    /** 入れ物の中の Sprite(親が拡縮・回転を持つ)は、world の四角を呼び手が渡し、メッシュは入れ物 host の直上に置く。 */
+    fr?: ProjFrame4, host?: Container,
+  ): MeshSimple | null {
+    const f = this.projFrame;
+    const at: Container = host ?? sp;
+    if (!f || sp.destroyed || !at.parent) return null;
+    let m = this.projSpriteMeshOf.get(sp);
+    if (!m || m.destroyed) {
+      m = makeProjGridMesh(sp.texture, tag);
+      m.eventMode = 'none';
+      const key = this.projTags.get(sp) ?? ((tag in PROJ_ACTOR_ROLES) ? tag as ProjActorPartKey : undefined);
+      if (key) this.projTag(m, key); // 入れ物の子の Sprite の役(予告など)をメッシュにも写す(後掛け・計器)
+      this.projSpriteMeshOf.set(sp, m);
+      this.projSpriteMeshes.push({ sp, m });
+    }
+    const par = at.parent!;
+    const want = par.getChildIndex(at) + 1;
+    if (m.parent !== par) par.addChildAt(m, want);
+    else { const cur = par.getChildIndex(m); if (cur !== want) par.setChildIndex(m, cur < want ? want - 1 : want); }
+    m.zIndex = at.zIndex;
+    if (fr) {
+      if (m.texture !== sp.texture) m.texture = sp.texture;
+      m.tint = sp.tint; m.alpha = sp.alpha * (host ? host.alpha : 1); m.blendMode = sp.blendMode;
+      m.visible = sp.visible && (!host || host.visible);
+      if (m.visible) projMeshGrid(m, f, fr, grid, PROJ_GRID_MAX, g, sp.scale.x < 0, sp.scale.y < 0);
+    } else projMeshFromSprite(m, f, sp, grid, dScale, g);
+    sp.renderable = false;
+    return m;
+  }
+  /** 予告の濃さ(teleFade)を Sprite に掛けた後、その Sprite のメッシュへ同じ alpha を写す。 */
+  private projMeshAlphaFrom(sp: Sprite | undefined | null) {
+    if (!sp) return;
+    const m = this.projSpriteMeshOf.get(sp);
+    if (m && m.visible && !m.destroyed) m.alpha = sp.alpha;
+  }
+  /** 毎フレームの頭: 地面の絵のメッシュを隠し、元の Sprite を描く側へ戻す(消えた Sprite のメッシュは捨てる)。 */
+  private projSpriteMeshReset() {
+    const a = this.projSpriteMeshes;
+    let n = 0;
+    for (let i = 0; i < a.length; i++) {
+      const e = a[i];
+      if (e.sp.destroyed || e.m.destroyed) { if (!e.m.destroyed) e.m.destroy(); continue; }
+      e.sp.renderable = true;
+      e.m.visible = false;
+      a[n++] = e;
+    }
+    a.length = n;
+  }
+
   /** 予告の格子メッシュを全部隠す(drawEnemy の頭=素材の Sprite を消すのと同じ所)。 */
   private projHideTeleMeshes(view: ActorView) {
     if (view.projRingMesh) for (const m of view.projRingMesh) if (m) m.visible = false;
@@ -9837,6 +9916,10 @@ export class PixiScene {
    */
   private updateProjFrame(s: ReturnType<typeof useGameStore.getState>, shakeX: number, shakeY: number, realNow: number) {
     this.projFrameNo++;
+    // 段階4 作る物6: 入れ物の外の円は毎フレーム描き直す(?proj=0 では作られていない=何もしない)。
+    if (this.projShapeFront) this.projShapeFront.clear();
+    if (this.projShapeGround) this.projShapeGround.clear();
+    if (this.projSpriteMeshes.length > 0) this.projSpriteMeshReset();
     if (!PROJ_ON || s.indoorMode || s.corridorMode || s.stageTheme === 'lab') { this.projFrame = null; projBeamFrame = null; return; }
     const farH = this.farBackdropHeight();
     const band = computeGroundBandLayout(farH, this.screenH, ZOOM_OVERSCAN);
@@ -9987,6 +10070,24 @@ export class PixiScene {
     gfx('playerRainGroundGfx', this.playerRainGroundGfx);
     gfx('wraithTeleGfx', this.wraithTeleGfx);
     gfx('jormRainGround', this.jormRainGround);
+    // 段階4の残り(作る物6 の入れ物の外の円・床の印・I/J/K系)
+    gfx('projShapeFront', this.projShapeFront);
+    gfx('projShapeGround', this.projShapeGround);
+    gfx('acrasielSpearGfx', this.acrasielSpearGfx);
+    gfx('bloodSpikeGfx', this.bloodSpikeGfx);
+    gfx('arenaGfx', this.arenaGfx);
+    gfx('questTriggerGfx', this.questTriggerGfx);
+    gfx('returnGfx', this.returnGfx);
+    gfx('hunterVisionGfx', this.hunterVisionGfx);
+    gfx('shrineGfx', this.shrineGfx);
+    gfx('castleFightRingGfx', this.castleFightRingGfx);
+    gfx('tutorialBoundsGfx', this.tutorialBoundsGfx);
+    gfx('areaCrossGfx', this.areaCrossGfx);
+    // 素材の漏れ(段階4の地面の絵): 一度メッシュにした Sprite が、今フレームはメッシュを通らずに描かれたまま(renderable のまま見えている)
+    for (const e of this.projSpriteMeshes) {
+      const sp = e.sp;
+      if (!sp.destroyed && sp.visible && sp.renderable && sp.alpha > 0.001 && sp.parent?.visible && sp.parent.parent?.visible !== false) texVis(e.m.label, sp);
+    }
     const sum = (m: Map<string, number>) => { let n = 0; for (const v of m.values()) n += v; return n; };
     c.directNow = sum(direct); c.texNow = sum(tex); c.pointNow = sum(point);
     const pts = projDrawPoints();
@@ -10003,6 +10104,7 @@ export class PixiScene {
       `s4 direct now=${c.directNow} max: ${fmt(c.direct)}`,
       `s4 tex now=${c.texNow} max: ${fmt(c.tex)} | point now=${c.pointNow} max: ${fmt(c.point)}`,
       `s4 pts now=${c.drawnNow} max=${c.drawnMax}`,
+      `s4 judge(hitbox) n=${this.projJudgeStat.n} noTele=${this.projJudgeStat.miss} max=${this.projJudgeStat.missMax}${this.projJudgeStat.missWhat ? ' ' + this.projJudgeStat.missWhat : ''}`,
     ];
   }
 
@@ -10295,6 +10397,8 @@ export class PixiScene {
     const hx = view.projHx ?? fx, hy = view.projHy ?? fy;
     const hdx = px + s * (hx - fx) - hx, hdy = py + s * (hy - fy) - hy; // 頭上UI: H → P + s·(H − F)(b=1)
     const a = view.projSpawnA ?? 1;
+    // §10 B20(段階4・作る物7): ?telefade=0 の時、予告の子の濃さは「予告自身の投影後のY」のフェード(world の体の位置のフェード posW ではない)。
+    const teleW = TELEGRAPH_OWN_FADE ? 1 : this.projTelegraphFade(view);
     const kids = view.container.children;
     const audit = PROJ_AUDIT ? this.projActorAudit : null;
     for (let i = 0; i < kids.length; i++) {
@@ -10309,7 +10413,7 @@ export class PixiScene {
       const move = projRoleMove(role);
       const sx0 = c.scale.x, x0 = c.position.x, y0 = c.position.y;
       // alpha: 予告の子は world の位置のフェードのまま(?proj=0 と同じ)・それ以外は投影後(projChildAlphaMul)。
-      this.projApply(c, move, fx, fy, px, py, move === 'own' ? 1 / Math.max(1e-6, d) : k, hdx, hdy, projChildAlphaMul(role, TELEGRAPH_OWN_FADE, view.projPosW ?? 1, view.projPosP ?? 1, a));
+      this.projApply(c, move, fx, fy, px, py, move === 'own' ? 1 / Math.max(1e-6, d) : k, hdx, hdy, projChildAlphaMul(role, TELEGRAPH_OWN_FADE, teleW, view.projPosP ?? 1, a));
       // 計器: 実際の変換で写した足元 F と P の差(画面px・0.5px 超を名前で出す)。
       if (audit && move === 'similar' && c.visible && Math.abs(sx0) > 1e-9) {
         const r = c.scale.x / sx0;
@@ -11958,6 +12062,7 @@ export class PixiScene {
     this.castleView.alpha = Math.min(this.castleView.alpha, this.applyFacilityGray(this.castleView, facGray));
     if (this.castleShadow) this.castleShadow.alpha *= 1 - 0.5 * facGray;
     this.castleSummonCircle.alpha *= facFade;
+    if (this.projFrame && this.castleSummonCircle.visible) this.projSpriteMesh(this.castleSummonCircle, 'castleSummon', PROJ_GRID_SOFT, 1, undefined, this.castleSummonFr);
     this.merchantView.alpha = facFade;
     if (this.merchantShadow) this.merchantShadow.alpha *= facFade;
     if (facFade <= 0.01) { this.merchantView.visible = false; }
@@ -12068,8 +12173,14 @@ export class PixiScene {
       this.castleRingAlpha += ((s.castleFightNow ? 1 : 0) - this.castleRingAlpha) * 0.08;
       if (this.castleRingAlpha > 0.02 && !s.indoorMode && !this.isLabStage) {
         const rPulse = 0.5 + 0.5 * Math.sin(now / 300);
-        g.circle(0, 0, CASTLE_FIGHT_MAX_DIST).stroke({ width: 4, color: 0xf87171, alpha: this.castleRingAlpha * (0.16 + 0.08 * rPulse) });
-        g.circle(0, 0, CASTLE_FIGHT_MAX_DIST - 6).stroke({ width: 1.5, color: 0xfecaca, alpha: this.castleRingAlpha * (0.26 + 0.10 * rPulse) });
+        const pf = this.projFrame; // ?proj=1(段階4・J08): 巨大な円も頂点ごとに投影(底の辺の数は半径で足す・画面の外の辺は分けない)
+        if (pf) {
+          projCircle(g, pf, 0, 0, CASTLE_FIGHT_MAX_DIST, undefined, { width: 4, color: 0xf87171, alpha: this.castleRingAlpha * (0.16 + 0.08 * rPulse) });
+          projCircle(g, pf, 0, 0, CASTLE_FIGHT_MAX_DIST - 6, undefined, { width: 1.5, color: 0xfecaca, alpha: this.castleRingAlpha * (0.26 + 0.10 * rPulse) });
+        } else {
+          g.circle(0, 0, CASTLE_FIGHT_MAX_DIST).stroke({ width: 4, color: 0xf87171, alpha: this.castleRingAlpha * (0.16 + 0.08 * rPulse) });
+          g.circle(0, 0, CASTLE_FIGHT_MAX_DIST - 6).stroke({ width: 1.5, color: 0xfecaca, alpha: this.castleRingAlpha * (0.26 + 0.10 * rPulse) });
+        }
       }
     }
     // v0.25.3513(社長指示「チュートリアルステージ、移動できる範囲を城ボス戦と同じく線引いて」):
@@ -12099,7 +12210,13 @@ export class PixiScene {
         const innerA = 0.26 + 0.10 * rPulse;
         // 色は青(社長指示v0.25.3514)。城ボス戦の赤(0xf87171/0xfecaca)と**同じ明度差の対**を選ぶ
         // =意匠は揃えたまま色だけ替える(城=赤・訓練=青、で意味が読み分けられる)。
+        const tpf = this.projFrame; // ?proj=1(段階4・J09): 縦の線は端の点を投影(直線=誤差で分ける規則で数点)
         const line = (x0: number, y0: number, x1: number, y1: number, a: number) => {
+          if (tpf) {
+            projSeg(g, tpf, x0, y0, x1, y1, { width: 4, color: 0x60a5fa, alpha: outerA * a });
+            projSeg(g, tpf, x0, y0, x1, y1, { width: 1.5, color: 0xbfdbfe, alpha: innerA * a });
+            return;
+          }
           g.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 4, color: 0x60a5fa, alpha: outerA * a });
           g.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 1.5, color: 0xbfdbfe, alpha: innerA * a });
         };
@@ -12368,6 +12485,7 @@ export class PixiScene {
       this.playerGroundPool.position.set(lx, ly);
       this.playerGroundPool.alpha = LIGHT_POOL_ALPHA * LIGHT_CURVE_ALPHA_GAIN * (0.94 + 0.06 * Math.sin(now / 700)) * assistMult;
       this.playerGroundPool.width = this.playerGroundPool.height = LIGHT_POOL_RADIUS * 2 * lightScale;
+      if (this.projFrame) this.projSpriteMesh(this.playerGroundPool, 'playerPool', PROJ_GRID_SOFT); // ?proj=1(段階4・K03): 足元の光だまり=格子メッシュ
     }
 
     // §24(社長指示2026-08-13): 枠光=本体オーラ。判定はframeLight.tsの純関数(pixiは読むだけ)。
@@ -12746,6 +12864,7 @@ export class PixiScene {
     const size = PixiScene.ALCHEMY_CIRCLE_SIZE * (1 + 0.16 * beat);
     this.alchemyCircle.width = this.alchemyCircle.height = size;
     this.alchemyCircle.alpha = Math.min(1, base * pulse + 0.6 * beat);
+    if (this.projFrame) this.projSpriteMesh(this.alchemyCircle, 'alchemyCircle', PROJ_GRID_SOFT); // ?proj=1(段階4・J13): 足元の陣=格子メッシュ
     this.drawAlchemyRhythm(player, foot.footX, foot.footY, gameTime);
   }
 
@@ -12765,14 +12884,17 @@ export class PixiScene {
     const rt = PixiScene.ALCHEMY_CIRCLE_SIZE * ALCHEMY_RHYTHM_TARGET_FRAC;
     const r0 = rt * ALCHEMY_RHYTHM_START_MUL;
     const ey = cy + PixiScene.ALCHEMY_CIRCLE_SIZE * ALCHEMY_RHYTHM_CENTER_DY_FRAC;
-    const ring = (rad: number) => g.ellipse(cx, ey, rad, rad * ALCHEMY_RHYTHM_SQUASH);
+    // ?proj=1(段階4・J13): リズムの輪は陣と同じ中心・同じ潰れの world の楕円として頂点ごとに投影(陣とずれない)
+    const pf = this.projFrame;
+    const ringS = (rad: number, st: StrokeStyle) => { if (pf) projEllipse(g, pf, cx, ey, rad, rad * ALCHEMY_RHYTHM_SQUASH, 0, undefined, st); else g.ellipse(cx, ey, rad, rad * ALCHEMY_RHYTHM_SQUASH).stroke(st); };
+    const ringF = (rad: number, fl: FillInput) => { if (pf) projEllipse(g, pf, cx, ey, rad, rad * ALCHEMY_RHYTHM_SQUASH, 0, fl); else g.ellipse(cx, ey, rad, rad * ALCHEMY_RHYTHM_SQUASH).fill(fl); };
     // 的の輪: いつも薄く在り、輪が近づくほど明るく太くなる(打つ場所と瞬間を読ませる)。
     let near = 0;
     for (const rg of r.rings) {
       const p = alchemyRingProgress(rg, gameTime);
       if (p !== null) near = Math.max(near, p);
     }
-    ring(rt).stroke({ color: 0xf5c542, alpha: 0.22 + 0.5 * near * near, width: 1.5 + 2 * near });
+    ringS(rt, { color: 0xf5c542, alpha: 0.22 + 0.5 * near * near, width: 1.5 + 2 * near });
     for (const rg of r.rings) {
       const p = alchemyRingProgress(rg, gameTime);
       if (p !== null) {
@@ -12780,8 +12902,8 @@ export class PixiScene {
         // 外側では見えず、的へ寄るほど今の濃さへ(社長指示2026-11-20「外側から内側に来るほど今の濃さになるようにフェードイン」)。
         const fadeIn = linT * linT * (3 - 2 * linT);
         const rad = r0 + (rt - r0) * p;
-        ring(rad).stroke({ color: 0xffd76a, alpha: 0.85 * fadeIn, width: 3.5 });
-        ring(rad - 3).stroke({ color: 0xfff1c2, alpha: 0.35 * fadeIn, width: 1.5 });
+        ringS(rad, { color: 0xffd76a, alpha: 0.85 * fadeIn, width: 3.5 });
+        ringS(rad - 3, { color: 0xfff1c2, alpha: 0.35 * fadeIn, width: 1.5 });
         continue;
       }
       if (rg.judgedAt === undefined) continue;
@@ -12791,13 +12913,13 @@ export class PixiScene {
         const u = since / ALCHEMY_RHYTHM_BURST_MS;
         const e = 1 - (1 - u) ** 3;
         const fade = (1 - u) ** 1.5;
-        ring(rt * (1 + 0.55 * e)).stroke({ color: 0xfff1c2, alpha: 0.95 * fade, width: 6 * (1 - u) + 1.5 });
-        ring(rt * (1 + 0.25 * e)).stroke({ color: 0xffd76a, alpha: 0.7 * fade, width: 3 });
-        ring(rt * (0.9 + 0.2 * e)).fill({ color: 0xffe9a3, alpha: 0.22 * fade });
+        ringS(rt * (1 + 0.55 * e), { color: 0xfff1c2, alpha: 0.95 * fade, width: 6 * (1 - u) + 1.5 });
+        ringS(rt * (1 + 0.25 * e), { color: 0xffd76a, alpha: 0.7 * fade, width: 3 });
+        ringF(rt * (0.9 + 0.2 * e), { color: 0xffe9a3, alpha: 0.22 * fade });
       } else if (rg.result === 'miss' && since >= 0 && since < ALCHEMY_RHYTHM_MISS_FADE_MS) {
         // 外れ: 的を通り過ぎ、内へ沈みながら薄れる(勢いを持ったまま消える)。
         const u = since / ALCHEMY_RHYTHM_MISS_FADE_MS;
-        ring(rt * (1 - 0.22 * u * (2 - u))).stroke({ color: 0xd9b45a, alpha: 0.45 * (1 - u), width: 2.5 });
+        ringS(rt * (1 - 0.22 * u * (2 - u)), { color: 0xd9b45a, alpha: 0.45 * (1 - u), width: 2.5 });
       }
     }
   }
@@ -13250,6 +13372,9 @@ export class PixiScene {
         // 回転もease-out(初速→減速して止まる。等速回転=慣性ルール違反だった)。
         // 最終角度(t=1で1.2rad)は変えず、曲線だけease-outに差し替える。
         sc2.rotation = 1.2 * (1 - Math.pow(1 - t, 2));
+        // ?proj=1(段階4・K09): world の陣(中心=城の足元・大きさ=倍率 d を外した寸法)。メッシュは施設フェードを掛けた後に置く
+        const fr = this.castleSummonFr;
+        fr.cx = castle.x; fr.cy = castle.y + CASTLE_FOOT_OFFSET_Y; fr.w = fr.h = 160 + 120 * t; fr.rot = sc2.rotation;
       }
     } else if (sc2.visible) {
       sc2.visible = false;
@@ -13746,11 +13871,18 @@ export class PixiScene {
     const g = this.merchantGfx;
     g.clear();
     // 武器箱の本体は syncBaseSites が拠点の武器庫と同じ層(地面・加算)で描く。ここでは滞在のアークだけ。
+    // ?proj=1(§3-6b 作る物6・J15): 滞在の円と弧は入れ物のローカル座標(* d)ではなく world の寸法(中心 merchant.x, merchant.y − 8・
+    // 半径 merchant.radius)で、入れ物の外の projShapeGfx(groundLayer)へ頂点ごとに投影して描く。頭上の点は入れ物に残す(体として後掛けで動く)。
+    const pf = this.projFrame;
     if (near && !boxLook) {
-      g.circle(0, -8 * d, merchant.radius * d)
+      if (pf) projCircle(this.projShapeGfx('ground'), pf, merchant.x, merchant.y - 8, merchant.radius, undefined,
+        { width: 2, color: 0xfbbf24, alpha: (0.38 + pulse * 0.22) * horizonAlpha });
+      else g.circle(0, -8 * d, merchant.radius * d)
         .stroke({ width: 2 * d, color: 0xfbbf24, alpha: 0.38 + pulse * 0.22 });
+      const nHead = pf ? projCmdCount(g) : 0;
       g.circle(0, -targetH * 0.82, 4 * d)
         .fill({ color: 0xfde68a, alpha: 0.82 + pulse * 0.16 });
+      if (pf) projKeepFrom(g, nHead); // 頭上の点=体(後掛けで動く)=投影しない申告(混在の表)
     }
     // 滞在→話しかけの進捗アーク(社長指示v0.25.1842「サークルに3秒滞在」)。帰還/クエスト円の
     // 白アーク・12時起点と同じ意匠(既存のdwellメーターと操作感を揃える)。
@@ -13760,7 +13892,11 @@ export class PixiScene {
       // 武器箱の見た目の時は、箱の円(半径50・中心=足元)の外側に沿わせる。
       const rr = boxLook ? 55 : (merchant.radius + 6) * d;
       const cyw = boxLook ? 0 : -8 * d;
-      g.moveTo(Math.cos(start) * rr, cyw + Math.sin(start) * rr)
+      if (pf) {
+        const rw = boxLook ? 55 : merchant.radius + 6, cw = boxLook ? 0 : -8;
+        projArcLine(this.projShapeGfx('ground'), pf, merchant.x, merchant.y + cw, rw, start, start + Math.PI * 2 * frac,
+          { width: 4, color: 0xfff7cc, alpha: 0.95 * horizonAlpha });
+      } else g.moveTo(Math.cos(start) * rr, cyw + Math.sin(start) * rr)
         .arc(0, cyw, rr, start, start + Math.PI * 2 * frac)
         .stroke({ width: 4 * d, color: 0xfff7cc, alpha: 0.95 });
     }
@@ -14482,7 +14618,17 @@ export class PixiScene {
       this.syncWorldGroupFilters();
     }
     if (!active) return;
-    const view = this.visibleWorldRect();
+    let view = this.visibleWorldRect();
+    if (this.projFrame) {
+      // ?proj=1(段階4・K01): 水たまりを取る範囲は投影の見える範囲(帯の列の外接=北に広く・南に狭い)。1つずつの間引きは weatherWet が
+      // 形の端を投影した箱で決める(projShapeOutside)。
+      const n = this.projCullBands(120, 0);
+      if (n > 0) {
+        let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+        for (let i = 0; i < n; i++) { const q = this.projBands[i]; l = Math.min(l, q.left); t = Math.min(t, q.top); r = Math.max(r, q.right); b = Math.max(b, q.bottom); }
+        view = { left: l, top: t, right: r, bottom: b };
+      }
+    }
     const actors: WetActor[] = [];
     if (this.playerView) actors.push({ id: 'player', sprite: this.playerView.sprite });
     for (const [id, v] of this.enemies) actors.push({ id, sprite: v.sprite });
@@ -14540,6 +14686,7 @@ export class PixiScene {
       rainStart: s7 ? S7W_RAIN_START : undefined, // ステージ7は本降りから始まる
       rainRun: s7 ? this.s7Weather.run : undefined,
       stageId: getSelectedStageId(),
+      projGrid: this.projFrame, // ?proj=1 の時だけ: 水たまりの地面の4枚を格子メッシュで頂点ごとに投影(段階4・K01)
     });
   }
 
@@ -16283,7 +16430,59 @@ export class PixiScene {
         if (!a.inDomain) continue;
         g.poly([a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y]).stroke({ width: 1.5, color: 0x38bdf8, alpha: 0.95 });
       }
+      this.projJudgeDebug(g, pf, enemies, gameTime);
     }
+  }
+
+  /**
+   * 段階4 作る物9 の最後(§3-6j・DEV・?proj=1&hitbox=1): 予告の**判定の形**を store の値そのまま(読むだけ)で、予告と同じ投影で細い線で描く
+   * (このフレームに積まれた爆風 pumpkinBlasts の円・帯・扇/遅延起爆 giantDelayedHits の円・帯)。予告の縁と重ねて見比べる。
+   * 「形と判定の差」の数: 判定の形の world の Y の範囲に、このフレームの予告の Graphics(部品が記録した world Y の範囲)が1つも
+   * 掛かっていない物=**判定はあるのに予告が描かれていない**疑い(赤くないのに当たる)を数えて計器の行に出す。
+   */
+  private projJudgeStat = { n: 0, miss: 0, missMax: 0, missWhat: '' };
+  private projJudgeDebug(g: Graphics, pf: ProjFrame, enemies: readonly Enemy[], gameTime: number) {
+    const st = this.projJudgeStat;
+    st.n = 0; st.miss = 0;
+    const ranges: [number, number][] = [];
+    const take = (gg: Graphics | null | undefined) => { if (!gg) return; const r = projDrawStat(gg); if (r && r.wyMax >= r.wyMin) ranges.push([r.wyMin, r.wyMax]); };
+    take(this.pumpkinTelegraph); take(this.skadiHazardGfx); take(this.graveBandGfx); take(this.astroGroundGfx); take(this.libArrowGroundGfx);
+    take(this.wraithTeleGfx); take(this.jormRainGround); take(this.bossFireGfx); take(this.acrasielSpearGfx);
+    for (const v of this.enemies.values()) { take(v.tele); take(v.overlayTop); }
+    if (this.projShapeFront) take(this.projShapeFront);
+    const covered = (y0: number, y1: number) => ranges.some(([a, b]) => b >= y0 - 2 && a <= y1 + 2);
+    const line = { width: 1, color: 0x22ffee, alpha: 0.95 };
+    const judge = (what: string, y0: number, y1: number) => {
+      st.n++;
+      if (!covered(y0, y1)) { st.miss++; st.missWhat = what; }
+    };
+    for (const b of useGameStore.getState().pumpkinBlasts) {
+      if (b.fan) {
+        projSector(g, pf, b.fan.cx, b.fan.cy, b.fan.radius, b.fan.angle - b.fan.halfArc, b.fan.angle + b.fan.halfArc, undefined, line);
+        judge('blastFan', b.fan.cy - b.fan.radius, b.fan.cy + b.fan.radius);
+      } else if (b.capsule) {
+        const c = b.capsule;
+        projBand(g, pf, c.fx, c.fy, c.tx, c.ty, c.halfWidth, { color: 0, alpha: 0 }, 0, 1, true, true, line);
+        judge('blastBand', Math.min(c.fy, c.ty) - c.halfWidth, Math.max(c.fy, c.ty) + c.halfWidth);
+      } else {
+        projCircle(g, pf, b.x, b.y, b.radius, undefined, line);
+        judge('blastCircle', b.y - b.radius, b.y + b.radius);
+      }
+    }
+    for (const e of enemies) {
+      for (const h of e.giantDelayedHits ?? []) {
+        if (gameTime < h.bornAt || gameTime > h.fireAt) continue;
+        if (h.capsule) {
+          const c = h.capsule;
+          projBand(g, pf, c.fx, c.fy, c.tx, c.ty, c.halfWidth, { color: 0, alpha: 0 }, 0, 1, true, true, line);
+          judge('delayedBand', Math.min(c.fy, c.ty) - c.halfWidth, Math.max(c.fy, c.ty) + c.halfWidth);
+        } else {
+          projCircle(g, pf, h.x, h.y, h.radius, undefined, line);
+          judge('delayedCircle', h.y - h.radius, h.y + h.radius);
+        }
+      }
+    }
+    st.missMax = Math.max(st.missMax, st.miss);
   }
 
   private syncPumpkinTelegraph(
@@ -20089,6 +20288,7 @@ export class PixiScene {
         sp.position.set(m.x, m.y + 4);
         sp.alpha = 0.5 + 0.5 * t;
         sp.visible = true;
+        if (pf) { const q = this.projPlace(m.x, m.y + 4, sp); sp.position.set(q.x, q.y); sp.scale.set(sc * q.s); } // ?proj=1(段階4・C07 の氷塊): 足元の点+s
       }
     }
     // 氷刃(skadi)/骨刃(rafi=visual:'bone')/羽根散弾(phill=visual:'feather')は判定/挙動は同じ・
@@ -20252,7 +20452,16 @@ export class PixiScene {
         sp.zIndex = footY;
         const lift = Math.max(0, Math.min(1, up));
         const rx = 19 * gr.scale * ds * (1 - 0.3 * lift);
-        this.graveBandGfx.ellipse(b.x, footY - 2, rx, rx * 0.34).fill({ color: 0x000000, alpha: 0.34 * (1 - 0.45 * lift) * sp.alpha });
+        if (pf) {
+          // ?proj=1(段階4・A17 の墓石): 足元 (b.x, footY) を支点に点+s(ds を s へ)・地面の影は world の楕円を投影
+          const q = this.projPlace(b.x, footY, sp);
+          const k = q.s / (ds || 1);
+          sp.position.set(q.x + (sp.position.x - b.x) * k, q.y + (sp.position.y - footY) * k);
+          sp.scale.set(sp.scale.x * k, sp.scale.y * k);
+          sp.alpha = this.projLooseFade(b.x, footY);
+          const rw = 19 * gr.scale * (1 - 0.3 * lift);
+          projEllipse(this.graveBandGfx, pf, b.x, footY - 2, rw, rw * 0.34, 0, { color: 0x000000, alpha: 0.34 * (1 - 0.45 * lift) * sp.alpha });
+        } else this.graveBandGfx.ellipse(b.x, footY - 2, rx, rx * 0.34).fill({ color: 0x000000, alpha: 0.34 * (1 - 0.45 * lift) * sp.alpha });
       }
       sp.visible = true;
     }
@@ -20395,6 +20604,7 @@ export class PixiScene {
       v.ring.tint = ring.ownerGhost ? GHOST_ALLY_TINT : 0xffffff; // 既存のゴースト発動サブと同じ視覚マーカー
       v.ring.alpha = ringEase.alphaMul;
       v.ring.visible = !!tex && ringEase.alphaMul > 0.01;
+      if (this.projFrame && v.ring.visible) this.projSpriteMesh(v.ring, 'goldRing', PROJ_GRID_SHARP); // ?proj=1(段階4・I08): 地面の金環=格子メッシュ(光線は段階5で分類)
       // 金環=世界の光(照射中は輪が光源)。出現/消滅の alphaMul に同期。
       this.registerWorldLight(pos.x, pos.y, 240, 1.2 * ringEase.alphaMul, { r: 36, life: 0.6 * ringEase.alphaMul, tint: 0xffe08a });
 
@@ -20501,6 +20711,12 @@ export class PixiScene {
         sp.position.set(floor.ax + ux * d, floor.ay + uy * d + (1 - grow) * 4);
         sp.alpha = brk < 1 ? grow * Math.max(0, 1 - brk * brk) : 0;
         sp.visible = sp.alpha > 0.02 && !!blockTex; // 素材未読込なら白い四角を出さない
+        if (this.projFrame) { // ?proj=1(段階4・I05 の氷塊): 地面の点 (ax+ux·d, ay+uy·d) を支点に点+s(せり上がりの 4px も s 倍)
+          const gx = floor.ax + ux * d, gy = floor.ay + uy * d;
+          const q = this.projPlace(gx, gy, sp);
+          sp.position.set(q.x, q.y + (1 - grow) * 4 * q.s);
+          sp.scale.set(sp.scale.x * q.s, sp.scale.y * q.s);
+        }
       }
       for (let i = n; i < v.blocks.length; i++) v.blocks[i].visible = false;
       // 砕ける間だけのキラキラ(城ボスの余韻と同じ動き: 外へ弾け、跳ね上がって落ちる)。判定ゼロ=分類②。
@@ -20531,6 +20747,11 @@ export class PixiScene {
             sp.position.set(bx + Math.cos(a2) * dist, by - size * 0.4 + Math.sin(a2) * dist * 0.6 + up);
             sp.alpha = a;
             sp.visible = a > 0.02;
+            if (this.projFrame) { // ?proj=1(段階4・I05 の砕け): 氷の地面の点を支点に点+s
+              const q = this.projPlace(bx, by, sp);
+              sp.position.set(q.x + (sp.position.x - bx) * q.s, q.y + (sp.position.y - by) * q.s);
+              sp.scale.set(sp.scale.x * q.s, sp.scale.y * q.s);
+            }
           }
         }
       }
@@ -21109,6 +21330,7 @@ export class PixiScene {
 
   // 予告と実行はstoreの同じ計画を描く。中断後に赤い攻撃だけ残すラッチは持たない。
   private drawAcrasielPattern(view: ActorView, e: Enemy, time: number): void {
+    const pf = this.projFrame; // ?proj=1(段階4): 形は頂点ごとに投影(else は今の行のまま)
     const p = e.acrasielPlan;
     if (!p) return;
     const state = e.bossState ?? '';
@@ -21141,9 +21363,10 @@ export class PixiScene {
     const circle = (x: number, y: number, radius: number, alpha: number, prog: number = t, uniform = false): void => {
       const mask = (CIRCLE_SWEEP_ON && !uniform)
         ? this.drawSweepCircleFill(g, x, y, radius, prog, 0xff2a2a, alpha, tgStyle)
-        : (g.circle(x, y, radius).fill({ color: 0xff3030, alpha }), 1);
+        : (pf ? projCircle(g, pf, x, y, radius, { color: 0xff3030, alpha }) : g.circle(x, y, radius).fill({ color: 0xff3030, alpha }), 1);
       this.drawTelegraphRing(view, x, y, radius, 0xff3b3b, (0.5 + 0.3 * prog + 0.15 * pulse) * mask, ringIdx++);
-      g.circle(x, y, radius).stroke({ color: 0xff6b6b, alpha: 0.9 * mask, width: 2.5 });
+      if (pf) projCircle(g, pf, x, y, radius, undefined, { color: 0xff6b6b, alpha: 0.9 * mask, width: 2.5 });
+      else g.circle(x, y, radius).stroke({ color: 0xff6b6b, alpha: 0.9 * mask, width: 2.5 });
     };
     if (spike && !recover) {
       // ★実行の瞬間だけ扇が白熱して縁が太る(分類②=派手さの絵。判定は不変)。
@@ -21161,7 +21384,10 @@ export class PixiScene {
           this.drawSweepSectorFill(g, p.x, p.y, AC_T.spike.range, a0, a0 + Math.PI / 4, sweepProg, 0xff2a2a, 0.40, tgStyle);
         } else {
           // 実行中(=消え切った後の当たっている瞬間)と、csweep を切った時のフォールバック。
-          g.poly(acrasielSectorPolygon(p.x, p.y, p.rotation, i, AC_T.spike.range))
+          if (pf) projPoly(g, pf, acrasielSectorPolygon(p.x, p.y, p.rotation, i, AC_T.spike.range),
+            { color: flash > 0 ? 0xff6a4a : 0xff3030, alpha: (wind ? fill : 0.40) + 0.25 * flash },
+            { color: flash > 0.25 ? 0xffffff : 0xff6b6b, alpha: 0.9, width: 2.5 + 7 * flash + 0.8 * pulse });
+          else g.poly(acrasielSectorPolygon(p.x, p.y, p.rotation, i, AC_T.spike.range))
             .fill({ color: flash > 0 ? 0xff6a4a : 0xff3030, alpha: (wind ? fill : 0.40) + 0.25 * flash })
             .stroke({ color: flash > 0.25 ? 0xffffff : 0xff6b6b, alpha: 0.9, width: 2.5 + 7 * flash + 0.8 * pulse });
         }
@@ -21210,8 +21436,15 @@ export class PixiScene {
       // 根元(目)の小さな光の溜まり: 溜めとともに膨らんで明るくなる(視線がここから出ている、と読ませる)。
       const gp = gazeProg * gazeProg;
       const gBreath = 0.85 + 0.15 * Math.sin(time / 95);
-      g.circle(gcx, gcy, (7 + 9 * gp) * gBreath).fill({ color: 0xff3030, alpha: 0.10 + 0.22 * gp });
-      g.circle(gcx, gcy, (3 + 4 * gp) * gBreath).fill({ color: 0xffe0e0, alpha: 0.25 + 0.5 * gp });
+      if (pf) { // ?proj=1: 根元の光の溜まり=中心だけ投影する記号(★#23 B=大きさに s)
+        projGlyphCircle(g, pf, gcx, gcy, (7 + 9 * gp) * gBreath, { color: 0xff3030, alpha: 0.10 + 0.22 * gp });
+        projGlyphCircle(g, pf, gcx, gcy, (3 + 4 * gp) * gBreath, { color: 0xffe0e0, alpha: 0.25 + 0.5 * gp });
+      } else {
+        if (pf) projCircle(g, pf, gcx, gcy, (7 + 9 * gp) * gBreath, { color: 0xff3030, alpha: 0.10 + 0.22 * gp });
+        else g.circle(gcx, gcy, (7 + 9 * gp) * gBreath).fill({ color: 0xff3030, alpha: 0.10 + 0.22 * gp });
+        if (pf) projCircle(g, pf, gcx, gcy, (3 + 4 * gp) * gBreath, { color: 0xffe0e0, alpha: 0.25 + 0.5 * gp });
+        else g.circle(gcx, gcy, (3 + 4 * gp) * gBreath).fill({ color: 0xffe0e0, alpha: 0.25 + 0.5 * gp });
+      }
     }
     // 棘を外へ開く→射出→引き戻す。既存槍絵を全ステートで保持(W9)。
     const activeProgress = state === 'spike' ? acrasielEase(1 - remain / AC_T.spike.active)
@@ -21264,6 +21497,7 @@ export class PixiScene {
   // 運ばないので、この関数はボス級=アクラシエルのスタイルを固定で引く)。
   private static readonly ACRASIEL_TG_STYLE = telegraphStyleFor('acrasiel');
   private syncAcrasielSpears(spears: AcrasielSpear[], gameTime: number, now: number) {
+    const pf = this.projFrame; // ?proj=1(段階4): 形は頂点ごとに投影(else は今の行のまま)
     const g = this.acrasielSpearGfx;
     if (!g.parent) this.L.groundLayer.addChild(g);
     g.clear();
@@ -21278,8 +21512,9 @@ export class PixiScene {
       // だけで、**いつ爆ぜるか**は濃さの微差からしか読めなかった。外周→中心へ帯が流れ、消え切った瞬間=起爆。
       const spearMask = CIRCLE_SWEEP_ON
         ? this.drawSweepCircleFill(g, sp.x, sp.y, R, t, 0xff2a2a, 0.24, PixiScene.ACRASIEL_TG_STYLE)
-        : (g.circle(sp.x, sp.y, R).fill({ color: 0xff3030, alpha: 0.12 + 0.12 * t }), 1);
-      g.circle(sp.x, sp.y, R).stroke({ width: 1.5, color: 0xff5555, alpha: 0.85 * spearMask });
+        : (pf ? projCircle(g, pf, sp.x, sp.y, R, { color: 0xff3030, alpha: 0.12 + 0.12 * t }) : g.circle(sp.x, sp.y, R).fill({ color: 0xff3030, alpha: 0.12 + 0.12 * t }), 1);
+      if (pf) projCircle(g, pf, sp.x, sp.y, R, undefined, { width: 1.5, color: 0xff5555, alpha: 0.85 * spearMask });
+      else g.circle(sp.x, sp.y, R).stroke({ width: 1.5, color: 0xff5555, alpha: 0.85 * spearMask });
       if (tex) {
         seen.add(sp.id);
         let vsp = this.acrasielSpearPool.get(sp.id);
@@ -21291,6 +21526,13 @@ export class PixiScene {
           (sp.originY ?? sp.y) + (sp.y - (sp.originY ?? sp.y)) * flight - Math.sin(Math.PI * flight) * 45);
         vsp.alpha = 0.5 + 0.5 * t;
         vsp.visible = true;
+        if (pf) {
+          // ?proj=1(段階4・E18 の槍の絵): 自分の地面の点を投影して置き(飛ぶ間の高さ 45·sin は持ち上げ)、大きさは s(点+s)
+          const gx = (sp.originX ?? sp.x) + (sp.x - (sp.originX ?? sp.x)) * flight, gy = (sp.originY ?? sp.y) + (sp.y - (sp.originY ?? sp.y)) * flight;
+          const q = this.projPlace(gx, gy, vsp);
+          vsp.position.set(q.x, q.y - Math.sin(Math.PI * flight) * 45 * q.s);
+          vsp.scale.set(vsp.scale.x * q.s, vsp.scale.y * q.s);
+        }
       }
     }
     for (const [id, vsp] of this.acrasielSpearPool) { if (!seen.has(id)) { vsp.destroy(); this.acrasielSpearPool.delete(id); } }
@@ -21303,6 +21545,7 @@ export class PixiScene {
    */
   private syncLibertyArrows(enemies: readonly Enemy[], gameTime: number, viewTopWorld: number,
     orphan: { ownerX: number; hits: { x: number; y: number; radius: number; bornAt: number; fireAt: number }[]; stuck: { x: number; y: number; at: number; tilt: number }[] } | null): void {
+    const pf = this.projFrame; // ?proj=1(段階4): 形は頂点ごとに投影(else は今の行のまま)
     const g = this.libArrowGroundGfx, a = this.libArrowGfx;
     if (!g.parent) this.L.groundLayer.addChild(g);
     if (!a.parent) this.L.effectLayer.addChild(a);
@@ -21317,8 +21560,9 @@ export class PixiScene {
         const t = Math.max(0, Math.min(1, (gameTime - h.bornAt) / Math.max(1, h.fireAt - h.bornAt)));
         const mask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(g, h.x, h.y, h.radius, t, 0xff2a2a, 0.26, style)
-          : (g.circle(h.x, h.y, h.radius).fill({ color: 0xff3030, alpha: 0.12 + 0.12 * t }), 1);
-        g.circle(h.x, h.y, h.radius).stroke({ width: 1.5, color: 0xff5555, alpha: 0.85 * mask });
+          : (pf ? projCircle(g, pf, h.x, h.y, h.radius, { color: 0xff3030, alpha: 0.12 + 0.12 * t }) : g.circle(h.x, h.y, h.radius).fill({ color: 0xff3030, alpha: 0.12 + 0.12 * t }), 1);
+        if (pf) projCircle(g, pf, h.x, h.y, h.radius, undefined, { width: 1.5, color: 0xff5555, alpha: 0.85 * mask });
+        else g.circle(h.x, h.y, h.radius).stroke({ width: 1.5, color: 0xff5555, alpha: 0.85 * mask });
         // 落ちてくる矢(クリエイティブ監査 #4/#8): 画面の上端の外から、旗手のいる側(射手の側)から斜めに、加速しながら刺さる点へ。
         const left = h.fireAt - gameTime;
         if (left <= LIB_ARROW_FALL_MS) {
@@ -21340,6 +21584,15 @@ export class PixiScene {
         if (fade <= 0) continue;
         const side = ex >= s2.x ? 1 : -1;
         const ang = Math.atan2(1, -side * LIB_ARROW_FALL_SLANT) + s2.tilt * 2;
+        if (pf) {
+          // ?proj=1(段階4・A15 の刺さった矢): 接地の影は world の楕円を投影・矢(立つ絵)は根元の点+s(投影しない申告)
+          projEllipse(g, pf, s2.x, s2.y + 1, 5, 2, 0, { color: 0x000000, alpha: 0.35 * fade });
+          const q = this.projPlace(s2.x, s2.y + 2);
+          const n0 = projCmdCount(g);
+          drawArrow(g, q.x, q.y, ang, (26 + 14 * r1) * q.s, fade * 0.95);
+          projKeepFrom(g, n0);
+          continue;
+        }
         g.ellipse(s2.x, s2.y + 1, 5, 2).fill({ color: 0x000000, alpha: 0.35 * fade });
         drawArrow(g, s2.x, s2.y + 2, ang, 26 + 14 * r1, fade * 0.95);
       }
@@ -21413,10 +21666,14 @@ export class PixiScene {
     // 夜の地面に沈める色(投げた物の地面の色より一段暗く、月明かりの青へ寄せる=落ちてしばらく経った物)。
     const TINT = 0x9c9ea8;
     const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+    // ?proj=1(段階4・K15): 地面の楕円(落ちる影・引きずった跡・焦げ)は world の寸法(ds を外した sW)で頂点ごとに投影する。
+    // 間引きは形の端を投影した箱が画面に掛かるか(projShapeOutside)。刺さった絵に沿う土(g)は絵と一緒=段階3(投影しない申告)。
+    const pf = this.projFrame;
     for (const p of scatter) {
-      if (this.distanceOutsideViewport(p.x, p.y, 160) > 0) continue;
+      if (pf ? projShapeOutside(pf, p.x, p.y, 160, 0) : this.distanceOutsideViewport(p.x, p.y, 160) > 0) continue;
       const ds = this.depthScale(p.y);
       const s = 0.95 * p.scale * ds;
+      const sW = 0.95 * p.scale;
       const h0 = rainHash01(p.x, p.y, 300), h1 = rainHash01(p.x, p.y, 301), h2 = rainHash01(p.x, p.y, 302);
       const hz = this.horizonActorAlpha(p.y);
       const sx = p.flip ? -s : s;
@@ -21427,7 +21684,8 @@ export class PixiScene {
         const u = clamp01((gameTime - fallAt) / Math.max(1, p.landAt - fallAt)), k = u * u;
         const stx = p.x + (h1 < 0.5 ? -1 : 1) * (20 + 50 * h2), sty = p.y - 520;
         const px = stx + (p.x - stx) * k, py = sty + (p.y - sty) * k;
-        gu.ellipse(p.x, p.y, (6 + 16 * u) * s, (2.5 + 6 * u) * s).fill({ color: 0x000000, alpha: (0.12 + 0.3 * u) * hz });
+        if (pf) projEllipse(gu, pf, p.x, p.y, (6 + 16 * u) * sW, (2.5 + 6 * u) * sW, 0, { color: 0x000000, alpha: (0.12 + 0.3 * u) * hz });
+        else gu.ellipse(p.x, p.y, (6 + 16 * u) * s, (2.5 + 6 * u) * s).fill({ color: 0x000000, alpha: (0.12 + 0.3 * u) * hz });
         // 速さの筋: 根元が太く濃く、尾へ細く薄れる(1本の棒に見せない)。
         const tl = (30 + 50 * u) * ds, ang = Math.atan2(py - sty, px - stx), cx = Math.cos(ang), cy = Math.sin(ang);
         for (let k = 0; k < 3; k++) {
@@ -21449,19 +21707,33 @@ export class PixiScene {
       // 引きずった跡: 落ちてきた向き(物ごとに左右どちらか)へ伸びる削れ。煙の出ている物は周りが焦げている。
       const side = h1 < 0.5 ? -1 : 1;
       const len = (26 + 34 * h2) * s;
-      for (let k = 0; k < 4; k++) {
-        const f = k / 3;
-        gu.ellipse(p.x + side * len * f, p.y + 1 + f * 1.5 * s, (17 - 9 * f) * s, (5 - 2.5 * f) * s)
-          .fill({ color: 0x140f0b, alpha: (0.42 - 0.24 * f) * fade });
-      }
-      if (p.smoke) {
-        gu.ellipse(p.x + side * 4 * s, p.y + 2 * s, 34 * s, 10 * s).fill({ color: 0x0c0907, alpha: 0.22 * fade });
-        gu.ellipse(p.x - side * 6 * s, p.y + 1 * s, 24 * s, 7 * s).fill({ color: 0x0c0907, alpha: 0.18 * fade });
+      if (pf) {
+        const lenW = (26 + 34 * h2) * sW;
+        for (let k = 0; k < 4; k++) {
+          const f = k / 3;
+          projEllipse(gu, pf, p.x + side * lenW * f, p.y + 1 + f * 1.5 * sW, (17 - 9 * f) * sW, (5 - 2.5 * f) * sW, 0,
+            { color: 0x140f0b, alpha: (0.42 - 0.24 * f) * fade });
+        }
+        if (p.smoke) {
+          projEllipse(gu, pf, p.x + side * 4 * sW, p.y + 2 * sW, 34 * sW, 10 * sW, 0, { color: 0x0c0907, alpha: 0.22 * fade });
+          projEllipse(gu, pf, p.x - side * 6 * sW, p.y + 1 * sW, 24 * sW, 7 * sW, 0, { color: 0x0c0907, alpha: 0.18 * fade });
+        }
+      } else {
+        for (let k = 0; k < 4; k++) {
+          const f = k / 3;
+          gu.ellipse(p.x + side * len * f, p.y + 1 + f * 1.5 * s, (17 - 9 * f) * s, (5 - 2.5 * f) * s)
+            .fill({ color: 0x140f0b, alpha: (0.42 - 0.24 * f) * fade });
+        }
+        if (p.smoke) {
+          gu.ellipse(p.x + side * 4 * s, p.y + 2 * s, 34 * s, 10 * s).fill({ color: 0x0c0907, alpha: 0.22 * fade });
+          gu.ellipse(p.x - side * 6 * s, p.y + 1 * s, 24 * s, 7 * s).fill({ color: 0x0c0907, alpha: 0.18 * fade });
+        }
       }
       if (!this.placeAstroArt(p.id, astroThrowArtFrame('debris', p.variant), this.L.groundLayer, p.x, p.y + 2 * ds, p.rot + quiver, sx, s, fade, 0.5, 1, tint, keep)) continue;
       // 切り口を土で隠す: 刺さった根元に盛り上がった土と、はね上げた土くれ(まっすぐな切り口を見せない)。
       // 切り口は絵と一緒に傾いているので、土も切り口の線に沿って盛る(水平に盛ると下がった側の角がはみ出す)。
       const cr = Math.cos(p.rot), sr = Math.sin(p.rot), half = 66 * s * 0.46, by = p.y + 2 * ds;
+      const nSoil = projCmdCount(g);
       for (let k = 0; k < 7; k++) {
         const t = (k / 6 - 0.5) * 2 * half, hk = rainHash01(p.x, p.y, 310 + k);
         const lx = p.x + cr * t, ly = by + sr * t;
@@ -21474,6 +21746,7 @@ export class PixiScene {
         g.ellipse(p.x + cr * t, by + sr * t + (cy - 0.2) * 5 * s, (1.6 + 2.2 * cy) * s, (1.1 + 1.2 * ck) * s)
           .fill({ color: k % 2 ? 0x13100c : 0x1e1913, alpha: 0.85 * fade });
       }
+      if (pf) projKeepFrom(g, nSoil); // 刺さった絵の切り口に沿う土=絵(段階3)と一緒に置く=投影しない申告
       if (!p.smoke) continue;
       // 根元で燻る火: 縁の立たない淡い光を置くだけ(明滅・火の粉は付けない=キラキラさせない・社長指示2026-10-29)。
       for (let k = 0; k < 4; k++) {
@@ -21562,6 +21835,8 @@ export class PixiScene {
     const LIE_ROT = Math.PI / 2 - 0.2; // 花束が地面に寝た角度
     const ASTRO_GROUND_TINT = 0xbdb4aa; // 地面に置いた物は夜の地面に沈める(白い外板・旗が光って浮かない・監査#17)。乗算なので黒く潰さない程度
     const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+    // ?proj=1(段階4・§3-6b): 予告(A10〜A14)と地面に寝た跡の形は world の寸法で頂点ごとに投影する(else は今の行のまま・ds/dsY を外す)。
+    const pf = this.projFrame;
     for (const t of list) {
       if (gameTime < t.bornAt) continue;
       const prog = clamp01((gameTime - t.bornAt) / Math.max(1, t.hitAt - t.bornAt));
@@ -21581,22 +21856,31 @@ export class PixiScene {
         if (t.kind === 'debris' && t.ambient) {
           // 周りに降り注ぐ残骸(技ではない方)=紫(弾けない・色と形の文法②・社長指示2026-10-29)。形と流れは技の残骸と同じ。
           const mask = CIRCLE_SWEEP_ON ? this.drawSweepCircleFill(g, t.x, t.y, t.radius, prog, 0x9333ea, 0.28, style)
-            : (g.circle(t.x, t.y, t.radius).fill({ color: 0x9333ea, alpha: 0.12 + 0.12 * prog }), 1);
-          g.circle(t.x, t.y, t.radius).stroke({ width: 1.5, color: 0xc084fc, alpha: 0.85 * mask });
+            : (pf ? projCircle(g, pf, t.x, t.y, t.radius, { color: 0x9333ea, alpha: 0.12 + 0.12 * prog }) : g.circle(t.x, t.y, t.radius).fill({ color: 0x9333ea, alpha: 0.12 + 0.12 * prog }), 1);
+          if (pf) projCircle(g, pf, t.x, t.y, t.radius, undefined, { width: 1.5, color: 0xc084fc, alpha: 0.85 * mask });
+          else g.circle(t.x, t.y, t.radius).stroke({ width: 1.5, color: 0xc084fc, alpha: 0.85 * mask });
         } else if (t.kind === 'missile' || t.kind === 'debris') {
           const mask = CIRCLE_SWEEP_ON ? this.drawSweepCircleFill(g, t.x, t.y, t.radius, prog, 0xff2a2a, 0.26, style)
-            : (g.circle(t.x, t.y, t.radius).fill({ color: 0xff3030, alpha: 0.12 + 0.12 * prog }), 1);
-          g.circle(t.x, t.y, t.radius).stroke({ width: 1.5, color: 0xff5555, alpha: 0.85 * mask });
+            : (pf ? projCircle(g, pf, t.x, t.y, t.radius, { color: 0xff3030, alpha: 0.12 + 0.12 * prog }) : g.circle(t.x, t.y, t.radius).fill({ color: 0xff3030, alpha: 0.12 + 0.12 * prog }), 1);
+          if (pf) projCircle(g, pf, t.x, t.y, t.radius, undefined, { width: 1.5, color: 0xff5555, alpha: 0.85 * mask });
+          else g.circle(t.x, t.y, t.radius).stroke({ width: 1.5, color: 0xff5555, alpha: 0.85 * mask });
         } else if (t.kind === 'meteor') {
           // 紫=弾けない(色と形の文法)。巨大なので縁を太く。落ちてくる影は縁がぼけたまま、近づくほど濃く締まる。
           const mask = CIRCLE_SWEEP_ON ? this.drawSweepCircleFill(g, t.x, t.y, t.radius, prog, 0x9333ea, 0.3, style)
-            : (g.circle(t.x, t.y, t.radius).fill({ color: 0x9333ea, alpha: 0.12 + 0.14 * prog }), 1);
-          g.circle(t.x, t.y, t.radius).stroke({ width: 2.5, color: 0xc084fc, alpha: 0.9 * mask });
+            : (pf ? projCircle(g, pf, t.x, t.y, t.radius, { color: 0x9333ea, alpha: 0.12 + 0.14 * prog }) : g.circle(t.x, t.y, t.radius).fill({ color: 0x9333ea, alpha: 0.12 + 0.14 * prog }), 1);
+          if (pf) projCircle(g, pf, t.x, t.y, t.radius, undefined, { width: 2.5, color: 0xc084fc, alpha: 0.9 * mask });
+          else g.circle(t.x, t.y, t.radius).stroke({ width: 2.5, color: 0xc084fc, alpha: 0.9 * mask });
           const sh = clamp01(sinceRel / Math.max(1, t.hitAt - t.releaseAt));
-          const dsY = this.depthScale(t.y);
           // 影: 広く淡い外側と、近づくほど小さく濃く締まる芯(等間隔の縞にしない)。
-          g.ellipse(t.x, t.y, (60 + 110 * sh) * dsY, (24 + 44 * sh) * dsY).fill({ color: 0x000000, alpha: 0.05 + 0.1 * sh });
-          g.ellipse(t.x, t.y, (24 + 70 * sh * sh) * dsY, (10 + 28 * sh * sh) * dsY).fill({ color: 0x000000, alpha: 0.1 + 0.38 * sh * sh });
+          if (pf) {
+            // ?proj=1(A12): 影の楕円は world の寸法(dsY を外す)で頂点ごとに投影
+            projEllipse(g, pf, t.x, t.y, 60 + 110 * sh, 24 + 44 * sh, 0, { color: 0x000000, alpha: 0.05 + 0.1 * sh });
+            projEllipse(g, pf, t.x, t.y, 24 + 70 * sh * sh, 10 + 28 * sh * sh, 0, { color: 0x000000, alpha: 0.1 + 0.38 * sh * sh });
+          } else {
+            const dsY = this.depthScale(t.y);
+            g.ellipse(t.x, t.y, (60 + 110 * sh) * dsY, (24 + 44 * sh) * dsY).fill({ color: 0x000000, alpha: 0.05 + 0.1 * sh });
+            g.ellipse(t.x, t.y, (24 + 70 * sh * sh) * dsY, (10 + 28 * sh * sh) * dsY).fill({ color: 0x000000, alpha: 0.1 + 0.38 * sh * sh });
+          }
         } else if (t.kind === 'flag' && t.capsule) {
           const c = t.capsule;
           const halfWin = Math.max(0.02, style.bandHalfW ?? BAND_SWEEP_W);
@@ -21609,6 +21893,13 @@ export class PixiScene {
             const al = Math.min(1, 0.26 * BAND_SWEEP_A) * bandSweepAlphaAt((s0 + s1) / 2, center, halfWin);
             if (al <= 0.003) continue;
             const ax = c.fx + ddx * s0, ay = c.fy + ddy * s0, bx2 = c.fx + ddx * s1, by2 = c.fy + ddy * s1;
+            if (pf) {
+              // ?proj=1(A13): 帯のスライスの4隅と両縁を頂点ごとに投影
+              projPoly(g, pf, [ax + nx, ay + ny, bx2 + nx, by2 + ny, bx2 - nx, by2 - ny, ax - nx, ay - ny], { color: 0xff2a2a, alpha: al });
+              projSeg(g, pf, ax + nx, ay + ny, bx2 + nx, by2 + ny, { width: 1.5, color: 0xff5555, alpha: Math.min(1, al * 2.6) });
+              projSeg(g, pf, ax - nx, ay - ny, bx2 - nx, by2 - ny, { width: 1.5, color: 0xff5555, alpha: Math.min(1, al * 2.6) });
+              continue;
+            }
             g.poly([ax + nx, ay + ny, bx2 + nx, by2 + ny, bx2 - nx, by2 - ny, ax - nx, ay - ny]).fill({ color: 0xff2a2a, alpha: al });
             g.moveTo(ax + nx, ay + ny).lineTo(bx2 + nx, by2 + ny).stroke({ width: 1.5, color: 0xff5555, alpha: Math.min(1, al * 2.6) });
             g.moveTo(ax - nx, ay - ny).lineTo(bx2 - nx, by2 - ny).stroke({ width: 1.5, color: 0xff5555, alpha: Math.min(1, al * 2.6) });
@@ -21627,9 +21918,12 @@ export class PixiScene {
             const px = gx2 + Math.sin((gameTime + h3 * 4000) / (260 + 140 * h1)) * (5 + 4 * h2), py = gy2 - fall;
             const al = 0.8 * clamp01(prog * 3) * clamp01(ph * 5) * (ph > 0.85 ? (1 - ph) / 0.15 : 1);
             const w = h1 > 0.5 ? 3 : 2;
-            g.rect(Math.round(px), Math.round(py), w, 2).fill({ color: h1 > 0.85 ? 0x8b1e2a : 0xf2ece2, alpha: al });
+            // ?proj=1(A14): 花びらは立つ粒=地面の点 (px, gy2) から高さ fall の点+s
+            if (pf) projDotRect(g, pf, px, gy2, w, 2, { color: h1 > 0.85 ? 0x8b1e2a : 0xf2ece2, alpha: al }, fall, true);
+            else g.rect(Math.round(px), Math.round(py), w, 2).fill({ color: h1 > 0.85 ? 0x8b1e2a : 0xf2ece2, alpha: al });
           }
-          g.circle(t.x, t.y, t.radius).fill({ color: 0xf2ece2, alpha: 0.04 });
+          if (pf) projCircle(g, pf, t.x, t.y, t.radius, { color: 0xf2ece2, alpha: 0.04 });
+          else g.circle(t.x, t.y, t.radius).fill({ color: 0xf2ece2, alpha: 0.04 });
         }
       }
       // ---- 手から空へ打ち上げる(隕石・残骸は空から来る=投げた動作と降ってくる物をつなぐ・監査#15) ----
@@ -21664,7 +21958,8 @@ export class PixiScene {
           const ang = Math.atan2((t.y - footY) + handH - H * 4 * (1 - 2 * ue), t.x - handX);
           const ds = this.depthScale(gy);
           const ign = clamp01(sinceRel / 160); // 点火は一拍遅れて全開になる(握っている間は0)
-          g.ellipse(gx, gy, 10 * ds, 4 * ds).fill({ color: 0x000000, alpha: 0.18 + 0.25 * flyU });
+          if (pf) projEllipse(g, pf, gx, gy, 10, 4, 0, { color: 0x000000, alpha: 0.18 + 0.25 * flyU }); // ?proj=1: 地面の影=world の寸法で投影
+          else g.ellipse(gx, gy, 10 * ds, 4 * ds).fill({ color: 0x000000, alpha: 0.18 + 0.25 * flyU });
           for (let k = 1; k <= 5; k++) {
             const jh = rainHash01(t.x, t.y, k + 200);
             const uk = Math.max(0, ue - k * (0.035 + 0.03 * jh));
@@ -21678,11 +21973,14 @@ export class PixiScene {
           // 焦げ跡(絵だけ)。燻りの火の粉が消えてから跡が薄れる。
           const age = gameTime - t.hitAt, f = 1 - Math.pow(clamp01(age / ASTRO_MISSILE_SCORCH_MS), 2);
           const ds = this.depthScale(t.y);
-          g.ellipse(t.x, t.y, t.radius * 0.5 * ds, t.radius * 0.36 * ds).fill({ color: 0x17110d, alpha: 0.5 * f });
+          if (pf) projEllipse(g, pf, t.x, t.y, t.radius * 0.5, t.radius * 0.36, 0, { color: 0x17110d, alpha: 0.5 * f });
+          else g.ellipse(t.x, t.y, t.radius * 0.5 * ds, t.radius * 0.36 * ds).fill({ color: 0x17110d, alpha: 0.5 * f });
           for (let i = 0; i < 6; i++) {
             const h1 = rainHash01(t.x, t.y, i + 50), h2 = rainHash01(t.x, t.y, i + 70);
             const on = 0.55 + 0.45 * Math.sin(gameTime / (180 + 120 * h1) + i * 2.3);
-            g.circle(t.x + (h1 - 0.5) * t.radius * 0.7 * ds, t.y + (h2 - 0.5) * t.radius * 0.5 * ds, 1.8 * ds)
+            // ?proj=1: 熾火は地面の点+s(world の寸法で置き場を出す)
+            if (pf) projDotCircle(g, pf, t.x + (h1 - 0.5) * t.radius * 0.7, t.y + (h2 - 0.5) * t.radius * 0.5, 1.8, { color: 0xfb923c, alpha: 0.8 * on * clamp01(1 - age / 1400) });
+            else g.circle(t.x + (h1 - 0.5) * t.radius * 0.7 * ds, t.y + (h2 - 0.5) * t.radius * 0.5 * ds, 1.8 * ds)
               .fill({ color: 0xfb923c, alpha: 0.8 * on * clamp01(1 - age / 1400) });
           }
         }
@@ -21739,7 +22037,9 @@ export class PixiScene {
           const fade = 1 - clamp01((tk - 0.67) / 0.33);
           gu.ellipse(c.tx, c.ty + 2, 9 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.35 * fade });
           if (!this.placeAstroArt(t.id, astroThrowArtFrame('flag'), this.L.groundLayer, c.tx, c.ty, rot, 1.2 * ds * -side, 1.2 * ds, fade, FOOT_X, FOOT_Y, ASTRO_GROUND_TINT)) {
+            const nKeep = projCmdCount(g); // 素材が無い時の代わりの絵(立つ絵=段階3の点)。?proj=1 では投影しない申告
             this.drawAstroFlag(g, c.tx, c.ty, flagAng + wob, ds, gameTime, fade, false);
+            if (pf) projKeepFrom(g, nKeep);
           }
         }
       } else if (t.kind === 'debris') {
@@ -21758,7 +22058,8 @@ export class PixiScene {
           }));
           const px = st.x + (t.x - st.x) * k, py = st.y + (t.y - st.y) * k;
           const ds = this.depthScale(t.y);
-          g.ellipse(t.x, t.y, (6 + 16 * u) * ds, (2.5 + 6 * u) * ds).fill({ color: 0x000000, alpha: 0.12 + 0.35 * u });
+          if (pf) projEllipse(g, pf, t.x, t.y, 6 + 16 * u, 2.5 + 6 * u, 0, { color: 0x000000, alpha: 0.12 + 0.35 * u });
+          else g.ellipse(t.x, t.y, (6 + 16 * u) * ds, (2.5 + 6 * u) * ds).fill({ color: 0x000000, alpha: 0.12 + 0.35 * u });
           // 速さの筋: 落ちてきた向きへ細くなる焼けた尾(空気を裂く)。
           const tl = (60 + 120 * u) * ds, ang = Math.atan2(py - st.y, px - st.x);
           const tx2 = px - Math.cos(ang) * tl, ty2 = py - Math.sin(ang) * tl;
@@ -21783,7 +22084,9 @@ export class PixiScene {
           // 刺さった深さぶん絵の下側を切り落とし、切り口を地面に立てる。最後はさらに沈む(見えている割合を減らす)。
           const keep = Math.max(0.2, Math.round((0.88 - sinkPx / 66 - 0.25 * sinkK * sinkK) * 20) / 20);
           if (!this.placeAstroArt(t.id, astroThrowArtFrame('debris', t.variant), this.L.groundLayer, t.x, groundY + 2 * ds, stickRot + quiver, 0.95 * ds, 0.95 * ds, fade, 0.5, 1, ASTRO_GROUND_TINT, keep)) {
+            const nKeep = projCmdCount(g); // 素材が無い時の代わりの絵(立つ絵=段階3の点)。?proj=1 では投影しない申告
             this.drawAstroDebris(g, null, t.x, groundY - 4, stickRot + quiver, t.variant ?? 0, ds, fade, false);
+            if (pf) projKeepFrom(g, nKeep);
           }
         }
       } else if (t.kind === 'meteor') {
@@ -21805,15 +22108,24 @@ export class PixiScene {
           // クレーター(絵だけ): 焼けた窪みと、紫に燻る破片。最大の技の跡として旗と同じくらい残す。
           const age = gameTime - t.hitAt, f = 1 - Math.pow(clamp01(age / ASTRO_METEOR_CRATER_MS), 2);
           const ds = this.depthScale(t.y), R = t.radius * 0.42 * ds;
-          g.ellipse(t.x, t.y, R * 1.25, R * 0.9).fill({ color: 0x2a1d16, alpha: 0.4 * f });
-          g.ellipse(t.x, t.y, R, R * 0.7).fill({ color: 0x0f0a08, alpha: 0.6 * f });
-          g.ellipse(t.x, t.y, R, R * 0.7).stroke({ width: 3 * ds, color: 0x5b4334, alpha: 0.7 * f });
+          const Rw = t.radius * 0.42; // ?proj=1: world の寸法(ds を外す)
+          if (pf) {
+            projEllipse(g, pf, t.x, t.y, Rw * 1.25, Rw * 0.9, 0, { color: 0x2a1d16, alpha: 0.4 * f });
+            projEllipse(g, pf, t.x, t.y, Rw, Rw * 0.7, 0, { color: 0x0f0a08, alpha: 0.6 * f }, { width: 3, color: 0x5b4334, alpha: 0.7 * f });
+          } else {
+            g.ellipse(t.x, t.y, R * 1.25, R * 0.9).fill({ color: 0x2a1d16, alpha: 0.4 * f });
+            g.ellipse(t.x, t.y, R, R * 0.7).fill({ color: 0x0f0a08, alpha: 0.6 * f });
+            g.ellipse(t.x, t.y, R, R * 0.7).stroke({ width: 3 * ds, color: 0x5b4334, alpha: 0.7 * f });
+          }
           for (let i = 0; i < 9; i++) {
             const h1 = rainHash01(t.x, t.y, i + 90), h2 = rainHash01(t.x, t.y, i + 110);
             const an = h1 * Math.PI * 2, rr = R * (0.2 + 0.9 * h2);
             const on = 0.5 + 0.5 * Math.sin(gameTime / (220 + 160 * h1) + i * 1.7);
             // 跡は焦げと橙の熾火だけ(紫を残すと「まだ危ない床」に読める・監査2巡目#3)。
-            g.circle(t.x + Math.cos(an) * rr, t.y + Math.sin(an) * rr * 0.7, (1.6 + 1.6 * h2) * ds)
+            if (pf) {
+              const rrw = Rw * (0.2 + 0.9 * h2);
+              projDotCircle(g, pf, t.x + Math.cos(an) * rrw, t.y + Math.sin(an) * rrw * 0.7, 1.6 + 1.6 * h2, { color: h2 > 0.6 ? 0xfdba74 : 0xea580c, alpha: 0.85 * on * clamp01(1 - age / 3500) });
+            } else g.circle(t.x + Math.cos(an) * rr, t.y + Math.sin(an) * rr * 0.7, (1.6 + 1.6 * h2) * ds)
               .fill({ color: h2 > 0.6 ? 0xfdba74 : 0xea580c, alpha: 0.85 * on * clamp01(1 - age / 3500) });
           }
         }
@@ -21826,7 +22138,8 @@ export class PixiScene {
           const gx = handX + (t.x - handX) * u, gy = footY + (t.y - footY) * u;
           const h = handH * (1 - u) + H * 4 * u * (1 - u);
           const ds = this.depthScale(gy);
-          g.ellipse(gx, gy, 8 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.15 + 0.2 * u });
+          if (pf) projEllipse(g, pf, gx, gy, 8, 3, 0, { color: 0x000000, alpha: 0.15 + 0.2 * u });
+          else g.ellipse(gx, gy, 8 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.15 + 0.2 * u });
           // ゆっくり回りながら、着く時に地面に寝る角度へ(着いた瞬間に角度が跳ばない)。
           if (!this.placeAstroArt(t.id, astroThrowArtFrame('bouquet'), this.L.skyFxLayer, gx, gy - h, -0.5 + (LIE_ROT + 0.5) * u, 0.85 * ds * appear, 0.85 * ds * appear, 1, 0.5, ANC_Y)) {
             this.drawAstroBouquet(a, gx, gy - h, u * 7, ds, 1);
@@ -21849,7 +22162,9 @@ export class PixiScene {
             const fade = 1 - Math.pow(sinkK, 1.6);
             gu.ellipse(t.x + back, t.y + 2, 9 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.25 * fade });
             if (!this.placeAstroArt(t.id, astroThrowArtFrame('bouquet'), this.L.groundLayer, t.x + back, t.y + 4 * ds * sinkK * sinkK, LIE_ROT, 0.85 * ds, 0.85 * ds, fade, 0.5, ANC_Y, ASTRO_GROUND_TINT)) {
+              const nKeep = projCmdCount(g); // 素材が無い時の代わりの絵(立つ絵=段階3の点)。?proj=1 では投影しない申告
               this.drawAstroBouquet(g, t.x + back, t.y - 4 * ds, 1.35, ds, fade);
+              if (pf) projKeepFrom(g, nKeep);
             }
           }
         }
@@ -21964,6 +22279,7 @@ export class PixiScene {
     if (!a.parent) this.L.effectLayer.addChild(a);
     g.clear(); a.clear();
     if (shots.length === 0 && stuckList.length === 0) return;
+    const pf = this.projFrame; // ?proj=1(段階4・K13): 地面の影は world の寸法の楕円を投影(ds を外す)・刺さった矢は根元の点+s(投影しない申告)
     // クリエイティブ監査 #1/#2: 自分の矢は自分から出す。プレイヤーの手元から山なりに射ち上げ、頂点で緩み、加速して落ちる
     // (水平は等速・高さは放物線=重力そのまま)。向きは軌道の接線。刺さる点と時刻は判定(useGameLoop)と同じ。
     const arc = (sx: number, sy: number, ex: number, ey: number) => ({ H: PLAYER_RAIN_APEX_PX + Math.hypot(ex - sx, ey - sy) * 0.35 });
@@ -21979,7 +22295,8 @@ export class PixiScene {
       const size = ds * (1 - 0.15 * 4 * u * (1 - u)); // 頂点で少し縮む
       // 監査 #10: 落ちる先に縮んで濃くなる影(危険の色ではない=黒)。
       const gsy = h.y + (gy - h.y) * (1 - u);
-      g.ellipse(gx, gsy + 1, (9 - 4 * u) * ds, (3.6 - 1.6 * u) * ds).fill({ color: 0x000000, alpha: 0.08 + 0.3 * u });
+      if (pf) projEllipse(g, pf, gx, gsy + 1, 9 - 4 * u, 3.6 - 1.6 * u, 0, { color: 0x000000, alpha: 0.08 + 0.3 * u });
+      else g.ellipse(gx, gsy + 1, (9 - 4 * u) * ds, (3.6 - 1.6 * u) * ds).fill({ color: 0x000000, alpha: 0.08 + 0.3 * u });
       drawRainArrow(a, gx, gy - lift, ang, 46 * size, 1);
     }
     for (const s2 of stuckList) {
@@ -21994,6 +22311,15 @@ export class PixiScene {
       const ds = this.depthScale(s2.y);
       // 監査 #13: 刺さった直後だけ少し深くめり込んで戻る(瞬停にしない)+鏃に白い光の1点。
       const settle = age < PLAYER_RAIN_SETTLE_MS ? 1.15 - 0.15 * (1 - (1 - age / PLAYER_RAIN_SETTLE_MS) ** 2) : 1;
+      if (pf) {
+        projEllipse(g, pf, s2.x, s2.y + 1, 5, 2, 0, { color: 0x000000, alpha: 0.35 * fade });
+        const q = this.projPlace(s2.x, s2.y + 2);
+        const n0 = projCmdCount(g);
+        drawRainArrow(g, q.x, q.y, ang, (26 + 14 * r1) * q.s * settle, fade * 0.95);
+        projKeepFrom(g, n0);
+        if (age < 160) a.circle(q.x, q.y - 1, 2.2 * q.s).fill({ color: 0xffffff, alpha: 0.8 * (1 - age / 160) });
+        continue;
+      }
       g.ellipse(s2.x, s2.y + 1, 5 * ds, 2 * ds).fill({ color: 0x000000, alpha: 0.35 * fade });
       drawRainArrow(g, s2.x, s2.y + 2, ang, (26 + 14 * r1) * ds * settle, fade * 0.95);
       if (age < 160) a.circle(s2.x, s2.y + 1, 2.2 * ds).fill({ color: 0xffffff, alpha: 0.8 * (1 - age / 160) });
@@ -22012,9 +22338,12 @@ export class PixiScene {
       // research/MOLOTOV_SPREAD.md: 延焼の子の火(火元より先に。火元が画面外でも輪の一部は映りうる)。
       if (fire.spreadRadius !== undefined) this.syncGroundFireKids(fire, now, gameTime);
 
-      const d = this.depthScale(fire.y);
-      const horizonAlpha = this.horizonActorAlpha(fire.y);
-      const viewportDistance = this.distanceOutsideViewport(fire.x, fire.y, GROUND_FIRE_VIEWPORT_MARGIN);
+      // ?proj=1(段階4・I04): 炎は足元の点+s(旧い d を投影の s に)・照り返しの光は格子メッシュ・間引きは形の端を投影した箱。
+      const fpf = this.projFrame;
+      const fq = fpf ? this.projPlace(fire.x, fire.y, view.flameArt) : null;
+      const d = fq ? fq.s : this.depthScale(fire.y);
+      const horizonAlpha = fq ? this.projLooseFade(fire.x, fire.y, false) : this.horizonActorAlpha(fire.y);
+      const viewportDistance = fpf ? (projShapeOutside(fpf, fire.x, fire.y, GROUND_FIRE_VIEWPORT_MARGIN, 0) ? 1 : 0) : this.distanceOutsideViewport(fire.x, fire.y, GROUND_FIRE_VIEWPORT_MARGIN);
       const visible = viewportDistance <= 0 && horizonAlpha > 0;
 
       view.container.zIndex = fire.y;
@@ -22032,8 +22361,8 @@ export class PixiScene {
       const pulse = 0.80 + 0.13 * Math.sin(now / 125 + fire.x * 0.03) + 0.07 * Math.sin(now / 53 + fire.y * 0.05);
       const r = GROUND_FIRE_FLAME_R * d * pulse * fireRadiusRatio;
       const sway = Math.sin(now / 160 + fire.x * 0.015) * r * 0.55;
-      const flameX = Math.round(fire.x);
-      const flameY = Math.round(fire.y);
+      const flameX = Math.round(fq ? fq.x : fire.x);
+      const flameY = Math.round(fq ? fq.y : fire.y);
 
       view.light.position.set(fire.x, fire.y);
       view.light.tint = 0xffb45f;
@@ -22041,6 +22370,7 @@ export class PixiScene {
       const spreadLightW = fire.spreadRadius !== undefined ? groundFireRadiusAt(fire, gameTime) * 2.6 * d * pulse : 0;
       view.light.width = view.light.height = Math.max(GROUND_FIRE_LIGHT_RADIUS * d * pulse * fireRadiusRatio, spreadLightW);
       view.light.alpha = (spreadLightW > 0 ? 0.34 : 0.16) * horizonAlpha * pulse;
+      if (fpf) this.projSpriteMesh(view.light, 'groundFireLight', PROJ_GRID_SOFT, d > 0 ? 1 / d : 1); // 光の広がり(大きさは s で作った=1/s で world へ戻す)
 
       view.flame.clear();
       // v0.25.2641(社長指示「火炎瓶とキャンプでもこの炎つかって」): 松明と同じ支給素材の炎へ。
@@ -22082,7 +22412,9 @@ export class PixiScene {
     }
     const frames = this.flameFrames();
     const age = gameTime - fire.createdAt;
-    const offscreen = this.distanceOutsideViewport(fire.x, fire.y, GROUND_FIRE_VIEWPORT_MARGIN + (fire.spreadRadius ?? 0)) > 0;
+    const kpf = this.projFrame; // ?proj=1(段階4・I04 の子): 間引きは形の端を投影した箱・炎は点+s・照り返しは格子メッシュ
+    const offscreen = kpf ? projShapeOutside(kpf, fire.x, fire.y, GROUND_FIRE_VIEWPORT_MARGIN + (fire.spreadRadius ?? 0), 0)
+      : this.distanceOutsideViewport(fire.x, fire.y, GROUND_FIRE_VIEWPORT_MARGIN + (fire.spreadRadius ?? 0)) > 0;
     for (let i = 0; i < kids.layout.length; i++) {
       const kid = kids.layout[i];
       let sp = kids.sprites[i];
@@ -22091,18 +22423,19 @@ export class PixiScene {
       if (k <= 0.001) { if (sp) sp.visible = false; if (glow) glow.visible = false; continue; }
       const kx = fire.x + kid.dx;
       const ky = fire.y + kid.dy;
-      const horizonAlpha = this.horizonActorAlpha(ky);
+      const horizonAlpha = kpf ? this.projLooseFade(kx, ky, false) : this.horizonActorAlpha(ky);
       if (horizonAlpha <= 0) { if (sp) sp.visible = false; if (glow) glow.visible = false; continue; }
       if (!sp) { sp = new Sprite(); this.L.actorLayer.addChild(sp); kids.sprites[i] = sp; }
       // 足元の照り返し(焼いたソフトグロー1枚・加算。光源の投影影には乗らない)=点ではなく「燃えている地面」に見せる。
       // groundLayer だと夜の暗がりの下に沈んで見えない(実測)ので actorLayer の子の炎のすぐ奥へ置く。
       if (!glow) { glow = new Sprite(getSoftGlowTexture()); glow.anchor.set(0.5); glow.blendMode = 'add'; glow.tint = 0xff9a3c; this.L.actorLayer.addChild(glow); kids.glows[i] = glow; }
-      const d = this.depthScale(ky);
+      const kq = kpf ? this.projPlace(kx, ky, sp) : null;
+      const d = kq ? kq.s : this.depthScale(ky);
       const pulse = 0.80 + 0.13 * Math.sin(now / 125 + kid.seed * 3.1) + 0.07 * Math.sin(now / 53 + kid.seed * 1.7);
       const r = GROUND_FIRE_FLAME_R * d * pulse * MOLOTOV_CHILD_FLAME_SCALE * kid.size;
       // 灯る時は根元の少し下から伸び上がり、消える時は沈みながら縮む(慣性つきのズレ+フェード)。
       const sink = (1 - Math.min(1, k)) * r * 1.6;
-      this.placeFlame(sp, frames!, Math.round(kx), Math.round(ky + r + sink), FLAME_ART_H_PER_R * r * MOLOTOV_VISUAL_SCALE * k, now, kid.seed);
+      this.placeFlame(sp, frames!, Math.round(kq ? kq.x : kx), Math.round((kq ? kq.y : ky) + r + sink), FLAME_ART_H_PER_R * r * MOLOTOV_VISUAL_SCALE * k, now, kid.seed);
       sp.zIndex = ky;
       sp.alpha = MOLOTOV_CHILD_FLAME_ALPHA * horizonAlpha * Math.min(1, k * 1.6);
       glow.visible = true;
@@ -22111,6 +22444,7 @@ export class PixiScene {
       glow.width = 64 * d * k * kid.size;
       glow.height = glow.width * 0.55;
       glow.alpha = 0.28 * horizonAlpha * Math.min(1, k) * pulse; // 社長指示「少し火を薄く」で 0.42 から
+      if (kpf) this.projSpriteMesh(glow, 'groundFireKidGlow', PROJ_GRID_SOFT, d > 0 ? 1 / d : 1);
     }
   }
 
@@ -22121,7 +22455,18 @@ export class PixiScene {
     const g = this.bloodSpikeGfx;
     if (!g.parent) { this.L.groundLayer.addChild(g); }
     g.clear();
+    const pf = this.projFrame; // ?proj=1(段階4・I06): 判定を持つ床の小円=頂点ごとに投影(* d を外す)・間引きは形の端を投影した箱
     for (const s of spikes) {
+      if (pf) {
+        if (projShapeOutside(pf, s.x, s.y, GROUND_FIRE_VIEWPORT_MARGIN, 0)) continue;
+        const ha = this.projLooseFade(s.x, s.y, false);
+        if (ha <= 0) continue;
+        const fadeInP = Math.min(1, (gameTime - s.createdAt) / 80);
+        const aP = 0.6 * fadeInP * (0.8 + 0.2 * Math.sin(now / 90 + s.x * 0.05)) * ha;
+        projCircle(g, pf, s.x, s.y, BLOOD_TREADS_RADIUS_PX, { color: 0x7f1d1d, alpha: aP });
+        projCircle(g, pf, s.x, s.y, BLOOD_TREADS_RADIUS_PX * 0.5, { color: 0xdc2626, alpha: aP * 0.95 });
+        continue;
+      }
       const viewportDistance = this.distanceOutsideViewport(s.x, s.y, GROUND_FIRE_VIEWPORT_MARGIN);
       const horizonAlpha = this.horizonActorAlpha(s.y);
       if (viewportDistance > 0 || horizonAlpha <= 0) continue;
@@ -23047,6 +23392,8 @@ export class PixiScene {
       tt.tint = ALCHEMY_SUMMON_TINT;
       tt.alpha = RARE_TORNADO_ALPHA * (1 - (1 - fadeIn) ** 2) * fadeOut;
       tt.visible = true;
+      // ?proj=1(段階4・3-6b): 吸い込む距離に合わせた範囲の絵=足元に寝かせた四角の格子メッシュ(旧い倍率 dsc を外して world の寸法へ)
+      if (this.projFrame) this.projSpriteMesh(tt, 'summonTornado', PROJ_GRID_SHARP, dsc > 0 ? 1 / dsc : 1);
     }
     // 棺桶(敵のハンターの突進と同じ頭上の回し=coffinSpinPose。寿命の残りで減速する)
     let angle = 0;
@@ -32794,6 +33141,11 @@ export class PixiScene {
       if (view.dashWind?.visible) view.dashWind.alpha *= teleFade;
       if (view.coilBody?.visible) view.coilBody.alpha *= teleFade;
       if (view.projRingMesh || view.projBandMesh || view.projSliceMesh) this.projScaleTeleMeshAlpha(view, teleFade);
+      if (this.projFrame) { // 段階4: 爪痕・衝撃波・風圧・胴のメッシュも同じ濃さ
+        if (view.clawMarks) for (const s of view.clawMarks) this.projMeshAlphaFrom(s);
+        if (view.shockwaves) for (const s of view.shockwaves) this.projMeshAlphaFrom(s);
+        this.projMeshAlphaFrom(view.dashWind); this.projMeshAlphaFrom(view.coilBody);
+      }
     }
 
     // Above-sprite layer(後半): 体力バー/ボスマーカー/イベント敵マーク。これらは「アクターに付属する表示」
@@ -34228,6 +34580,7 @@ export class PixiScene {
     sp.position.set(originX, originY);
     sp.alpha = Math.min(1, t / 0.2);
     sp.visible = true;
+    if (this.projFrame) { const q = this.projPlace(originX, originY, sp); sp.position.set(q.x, q.y); sp.scale.set(sp.scale.x * q.s, sp.scale.y * q.s); } // ?proj=1(段階4): 地面の1点に立つ槍=自分の点+s
   }
 
   // FX-V2b #2: 収縮→爆発(burst)の瞬間に飛び散る槍(結晶)の断片。判定はACRASIEL_BURST_RADIUS_VIS
@@ -34253,6 +34606,7 @@ export class PixiScene {
     sp.position.set(fx, fy);
     sp.alpha = 1 - t;
     sp.visible = true;
+    if (this.projFrame) { const q = this.projPlace(fx, fy, sp); sp.position.set(q.x, q.y); sp.scale.set(sp.scale.x * q.s, sp.scale.y * q.s); } // ?proj=1(段階4): 破片=自分の点+s
   }
 
   // FX-V2b #3: warp-out→warp-in(消失)/warp-in開始(出現)の瞬間だけ光る金色フラッシュ+短いリング
@@ -34350,6 +34704,8 @@ export class PixiScene {
     v.at = now;
     v.spin += (mode === 'vanish' ? 1 : -1) * spinRate * (dt / 1000);
     v.sp.rotation = v.spin;
+    // ?proj=1(段階4・K08): 回してから縦を潰した world の陣(潰し 0.62 込み)を格子メッシュで頂点ごとに投影
+    if (this.projFrame) this.projSpriteMesh(v.sp, 'warpCircle', PROJ_GRID_SOFT, 1, undefined, { cx: x, cy: y, w, h: w, rot: v.spin, sq: 0.62 }, v.c);
   }
 
   // ★旧 `drawWarpFlash`(金色フラッシュ+短いリングの仮実装)は削除した。
@@ -34646,8 +35002,18 @@ export class PixiScene {
     const range = p.area ?? 0;
     if (range > 0) {
       const pulse = 0.85 + Math.sin(Date.now() / 320) * 0.15;
-      g.circle(0, 0, range).stroke({ color: 0x06121f, alpha: 0.5, width: 3 });
-      g.circle(0, 0, range).stroke({ color: p.ownerGhost ? 0x9fd8ff : 0x38bdf8, alpha: 0.55 * pulse, width: 1.5 });
+      const pf = this.projFrame;
+      if (pf) {
+        // ?proj=1(§3-6b 作る物6・I02): 射程の円はデコイの入れ物の外の projShapeGfx へ。中心=world のデコイの中心・半径=判定の area。
+        // 落下の drop は高さとして持ち上げる(今の見え方のまま)。濃さは入れ物の alpha と同じ値。
+        const sg = this.projShapeGfx('front');
+        const wx = p.x + p.width / 2, wy = p.y + p.height / 2, ca = v.container.alpha;
+        projCircleLifted(sg, pf, wx, wy, range, drop, undefined, { color: 0x06121f, alpha: 0.5 * ca, width: 3 });
+        projCircleLifted(sg, pf, wx, wy, range, drop, undefined, { color: p.ownerGhost ? 0x9fd8ff : 0x38bdf8, alpha: 0.55 * pulse * ca, width: 1.5 });
+      } else {
+        g.circle(0, 0, range).stroke({ color: 0x06121f, alpha: 0.5, width: 3 });
+        g.circle(0, 0, range).stroke({ color: p.ownerGhost ? 0x9fd8ff : 0x38bdf8, alpha: 0.55 * pulse, width: 1.5 });
+      }
     }
     // 装置本体スプライト(向きなし・全方向)。
     const tex = getTexture('decoy');
@@ -35048,6 +35414,7 @@ export class PixiScene {
   // 囲い系イベントの柵リング: 半透明の光る円ストローク(world座標・地面=アクターの下)。
   // 単一 Graphics に円を数本引くだけ。負荷 1/10(描画のみ・毎フレーム1図形)。
   private syncArena(ae: ActiveEvent | null, now: number) {
+    const pf = this.projFrame; // ?proj=1(段階4): 床の印の円・弧は頂点ごとに投影(else は今の行のまま)
     const g = this.arenaGfx;
     g.clear();
     if (!ae) return;
@@ -35056,9 +35423,12 @@ export class PixiScene {
     // rescue=緑(ホールド帯) / boss=赤 / horde=青
     const color = ae.kind === 'boss' ? 0xef4444 : ae.kind === 'rescue' ? 0x4ade80 : 0x38bdf8;
     // 内側の淡い塗り(囲われている感)+ 二重リング(太い半透明の外周 / 細く明るい内周)。
-    g.circle(ae.x, ae.y, ae.radius - 4).fill({ color, alpha: 0.05 + 0.04 * pulse });
-    g.circle(ae.x, ae.y, ae.radius).stroke({ width: 6, color, alpha: a * 0.6 });
-    g.circle(ae.x, ae.y, ae.radius - 3).stroke({ width: 2, color, alpha: a });
+    if (pf) projCircle(g, pf, ae.x, ae.y, ae.radius - 4, { color, alpha: 0.05 + 0.04 * pulse });
+    else g.circle(ae.x, ae.y, ae.radius - 4).fill({ color, alpha: 0.05 + 0.04 * pulse });
+    if (pf) projCircle(g, pf, ae.x, ae.y, ae.radius, undefined, { width: 6, color, alpha: a * 0.6 });
+    else g.circle(ae.x, ae.y, ae.radius).stroke({ width: 6, color, alpha: a * 0.6 });
+    if (pf) projCircle(g, pf, ae.x, ae.y, ae.radius - 3, undefined, { width: 2, color, alpha: a });
+    else g.circle(ae.x, ae.y, ae.radius - 3).stroke({ width: 2, color, alpha: a });
     // rescue: ホールド進捗を外周の円弧で表示(上端始点・時計回り)。
     // ※ arc の前に開始点へ moveTo しないと、直前に描いた円の終点から弧開始点まで
     //   直線が引かれてしまう(地面を横切る線として見える)。必ず moveTo してから arc。
@@ -35067,7 +35437,8 @@ export class PixiScene {
       if (frac > 0) {
         const start = -Math.PI / 2;
         const rr = ae.radius + 5;
-        g.moveTo(ae.x + Math.cos(start) * rr, ae.y + Math.sin(start) * rr)
+        if (pf) projArcLine(g, pf, ae.x, ae.y, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xbbf7d0, alpha: 0.95 });
+        else g.moveTo(ae.x + Math.cos(start) * rr, ae.y + Math.sin(start) * rr)
           .arc(ae.x, ae.y, rr, start, start + Math.PI * 2 * frac)
           .stroke({ width: 4, color: 0xbbf7d0, alpha: 0.95 });
       }
@@ -35079,6 +35450,7 @@ export class PixiScene {
   // 描かない=待機中に円を描く実体が他に無い)。叩き台の色はhordeと同じ青(§2-15 #10の裁定待ち)。
   // 半径はstoreのtriggerRadius(=ARENA_EVENT_RADIUSの唯一の出どころ・二重管理にしない)。
   private syncQuestTrigger(npc: EventQuestNpc, gameTime: number, now: number) {
+    const pf = this.projFrame; // ?proj=1(段階4): 床の印の円・弧は頂点ごとに投影(else は今の行のまま)
     const g = this.questTriggerGfx;
     g.clear();
     if (npc.status !== 'rescue') return;
@@ -35094,9 +35466,12 @@ export class PixiScene {
     const a = (0.30 + 0.18 * pulse) * alpha;
     const color = 0x38bdf8; // hordeと同じ青(叩き台)
     const r = npc.triggerRadius;
-    g.circle(npc.x, npc.y, r - 4).fill({ color, alpha: (0.05 + 0.04 * pulse) * alpha });
-    g.circle(npc.x, npc.y, r).stroke({ width: 6, color, alpha: a * 0.6 });
-    g.circle(npc.x, npc.y, r - 3).stroke({ width: 2, color, alpha: a });
+    if (pf) projCircle(g, pf, npc.x, npc.y, r - 4, { color, alpha: (0.05 + 0.04 * pulse) * alpha });
+    else g.circle(npc.x, npc.y, r - 4).fill({ color, alpha: (0.05 + 0.04 * pulse) * alpha });
+    if (pf) projCircle(g, pf, npc.x, npc.y, r, undefined, { width: 6, color, alpha: a * 0.6 });
+    else g.circle(npc.x, npc.y, r).stroke({ width: 6, color, alpha: a * 0.6 });
+    if (pf) projCircle(g, pf, npc.x, npc.y, r - 3, undefined, { width: 2, color, alpha: a });
+    else g.circle(npc.x, npc.y, r - 3).stroke({ width: 2, color, alpha: a });
   }
 
   // 帰還サークル: フィナーレ撃破/終了アイテム後に出る帰還地点。地面の二重リング+滞在進捗の外周円弧。
@@ -35104,6 +35479,7 @@ export class PixiScene {
   // 洋館通路(corridorMode・v0.25.2142 社長指示「奥行き出て見えるように楕円に」): 疑似3D床に合わせ、
   // 中心ローカルに描いてyスケールで潰す=進捗弧ごと楕円化。【見た目のみ】滞在判定・敵押し出しの円(r=95)は不変。
   private syncReturnCircle(rc: { x: number; y: number; radius: number; dwellMs: number; revealedAt?: number } | null, now: number) {
+    const pf = this.projFrame; // ?proj=1(段階4): 床の印の円・弧は頂点ごとに投影(else は今の行のまま)
     const CORRIDOR_RETURN_SQUASH = 0.55; // 縦の潰し率(叩き台・実機調整前提)
     const g = this.returnGfx;
     g.clear();
@@ -35128,9 +35504,12 @@ export class PixiScene {
     const pulse = 0.5 + 0.5 * Math.sin(now / 240);
     const a = 0.34 + 0.2 * pulse;
     const color = 0x86efac; // 帰還=緑(安全・脱出)
-    g.circle(cx, cy, rc.radius - 4).fill({ color, alpha: 0.06 + 0.05 * pulse });
-    g.circle(cx, cy, rc.radius).stroke({ width: 6, color, alpha: a * 0.6 });
-    g.circle(cx, cy, rc.radius - 3).stroke({ width: 2, color, alpha: a });
+    if (pf) projCircle(g, pf, cx, cy, rc.radius - 4, { color, alpha: 0.06 + 0.05 * pulse });
+    else g.circle(cx, cy, rc.radius - 4).fill({ color, alpha: 0.06 + 0.05 * pulse });
+    if (pf) projCircle(g, pf, cx, cy, rc.radius, undefined, { width: 6, color, alpha: a * 0.6 });
+    else g.circle(cx, cy, rc.radius).stroke({ width: 6, color, alpha: a * 0.6 });
+    if (pf) projCircle(g, pf, cx, cy, rc.radius - 3, undefined, { width: 2, color, alpha: a });
+    else g.circle(cx, cy, rc.radius - 3).stroke({ width: 2, color, alpha: a });
     // 滞在進捗を外周の円弧で表示(上端始点・時計回り)。arc 前に moveTo して地面を横切る線を防ぐ。
     // 洋館通路のゴールは5秒ホールド(v0.25.2132)=分母をモードで切替(判定側updateReturnPhaseと同じ)。
     // 二人組クエストv2(§2-8「★★ただし『3秒滞在のメーター』は帰還サークル側に必ず出す」・B4):
@@ -35145,7 +35524,8 @@ export class PixiScene {
     if (frac > 0) {
       const start = -Math.PI / 2;
       const rr = rc.radius + 5;
-      g.moveTo(cx + Math.cos(start) * rr, cy + Math.sin(start) * rr)
+      if (pf) projArcLine(g, pf, cx, cy, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xdcfce7, alpha: 0.95 });
+      else g.moveTo(cx + Math.cos(start) * rr, cy + Math.sin(start) * rr)
         .arc(cx, cy, rr, start, start + Math.PI * 2 * frac)
         .stroke({ width: 4, color: 0xdcfce7, alpha: 0.95 });
     }
@@ -35730,8 +36110,14 @@ export class PixiScene {
         const k = Math.max(0, Math.min(1, (s.gameTime - sh.takenAt) / 560));
         if (k < 1) {
           const e = 1 - (1 - k) ** 3;
-          g.circle(c.x, c.y, SHRINE_CIRCLE_RADIUS + 70 * e).stroke({ width: 5 * (1 - k) + 1, color: 0xfdf4ff, alpha: 0.9 * (1 - k) ** 1.5 });
-          g.circle(c.x, c.y, SHRINE_CIRCLE_RADIUS - 3 + 26 * e).stroke({ width: 2, color: 0xf0abfc, alpha: 0.6 * (1 - k) });
+          const pf = this.projFrame; // ?proj=1(段階4・J07): 祠の円は頂点ごとに投影
+          if (pf) {
+            projCircle(g, pf, c.x, c.y, SHRINE_CIRCLE_RADIUS + 70 * e, undefined, { width: 5 * (1 - k) + 1, color: 0xfdf4ff, alpha: 0.9 * (1 - k) ** 1.5 });
+            projCircle(g, pf, c.x, c.y, SHRINE_CIRCLE_RADIUS - 3 + 26 * e, undefined, { width: 2, color: 0xf0abfc, alpha: 0.6 * (1 - k) });
+          } else {
+            g.circle(c.x, c.y, SHRINE_CIRCLE_RADIUS + 70 * e).stroke({ width: 5 * (1 - k) + 1, color: 0xfdf4ff, alpha: 0.9 * (1 - k) ** 1.5 });
+            g.circle(c.x, c.y, SHRINE_CIRCLE_RADIUS - 3 + 26 * e).stroke({ width: 2, color: 0xf0abfc, alpha: 0.6 * (1 - k) });
+          }
         }
         const gk = Math.max(0, 1 - (s.gameTime - sh.takenAt) / 900);
         if (gk > 0) this.drawShrineGlow(sh.x, footY - SHRINE_DISPLAY_H * d * 0.42, footY, d, gk * gk, sp.alpha);
@@ -35759,13 +36145,21 @@ export class PixiScene {
       const a = (0.34 + 0.2 * pulse + 0.25 * frac + 0.3 * swell) * near;
       const color = 0xf0abfc;
       const R0 = SHRINE_CIRCLE_RADIUS + 10 * swell;
-      g.circle(c.x, c.y, R0 - 4).fill({ color, alpha: (0.06 + 0.05 * pulse + 0.08 * frac) * near });
-      g.circle(c.x, c.y, R0).stroke({ width: 6, color, alpha: Math.min(1, a) * 0.6 });
-      g.circle(c.x, c.y, R0 - 3).stroke({ width: 2, color, alpha: Math.min(1, a) });
+      const pf = this.projFrame; // ?proj=1(段階4・J07): 祠の3秒サークルと溜めの弧は頂点ごとに投影
+      if (pf) {
+        projCircle(g, pf, c.x, c.y, R0 - 4, { color, alpha: (0.06 + 0.05 * pulse + 0.08 * frac) * near });
+        projCircle(g, pf, c.x, c.y, R0, undefined, { width: 6, color, alpha: Math.min(1, a) * 0.6 });
+        projCircle(g, pf, c.x, c.y, R0 - 3, undefined, { width: 2, color, alpha: Math.min(1, a) });
+      } else {
+        g.circle(c.x, c.y, R0 - 4).fill({ color, alpha: (0.06 + 0.05 * pulse + 0.08 * frac) * near });
+        g.circle(c.x, c.y, R0).stroke({ width: 6, color, alpha: Math.min(1, a) * 0.6 });
+        g.circle(c.x, c.y, R0 - 3).stroke({ width: 2, color, alpha: Math.min(1, a) });
+      }
       if (frac > 0.002) {
         const start = -Math.PI / 2;
         const rr = SHRINE_CIRCLE_RADIUS + 5;
-        g.moveTo(c.x + Math.cos(start) * rr, c.y + Math.sin(start) * rr)
+        if (pf) projArcLine(g, pf, c.x, c.y, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xfdf4ff, alpha: 0.95 * (inside ? 1 : 0.6) });
+        else g.moveTo(c.x + Math.cos(start) * rr, c.y + Math.sin(start) * rr)
           .arc(c.x, c.y, rr, start, start + Math.PI * 2 * frac)
           .stroke({ width: 4, color: 0xfdf4ff, alpha: 0.95 * (inside ? 1 : 0.6) });
         // 祠の奥(中身の位置)が溜めに合わせて灯る=円と祠がつながる。
@@ -35780,6 +36174,17 @@ export class PixiScene {
   // 制圧済みの拠点の中央と、研究所のアイドル手前(labArmory・2026-10-11)の2か所で同じ絵を使う。
   private drawArmory(g: Graphics, x: number, y: number, pulse: number) {
     const AR = 50; // ARMORY_RADIUS と一致
+    const pf = this.projFrame;
+    if (pf) {
+      // ?proj=1(段階4・J06): 円は頂点ごとに投影。武器箱(立つ絵)は中心を写し、箱の倍率 k に s(点+s・混在の表=投影しない申告)
+      projCircle(g, pf, x, y, AR, undefined, { width: 2, color: 0xfbbf24, alpha: 0.45 + 0.3 * pulse });
+      projCircle(g, pf, x, y, AR - 3, { color: 0xfbbf24, alpha: 0.05 + 0.05 * pulse });
+      const q = this.projPlace(x, y);
+      const n0 = projCmdCount(g);
+      PixiScene.drawArmoryBox(g, q.x, q.y, pulse, q.s);
+      projKeepFrom(g, n0);
+      return;
+    }
     g.circle(x, y, AR).stroke({ width: 2, color: 0xfbbf24, alpha: 0.45 + 0.3 * pulse });
     g.circle(x, y, AR - 3).fill({ color: 0xfbbf24, alpha: 0.05 + 0.05 * pulse });
     PixiScene.drawArmoryBox(g, x, y, pulse, 1);
@@ -35805,26 +36210,36 @@ export class PixiScene {
     const g = this.baseSitesGfx;
     g.clear();
     const pulse = 0.5 + 0.5 * Math.sin(now / 260);
+    // ?proj=1(段階4・J04/J06): 間引きは形の端を投影した箱(projShapeOutside)・円と弧は頂点ごとに投影
+    const pf = this.projFrame;
+    const outside = (x: number, y: number, m: number) => (pf ? projShapeOutside(pf, x, y, m, 0) : this.distanceOutsideViewport(x, y, m) > 0);
     // 研究所: 拠点は無いが、アイドル手前の遠隔ショップ(武器庫)だけ描く(画面外はカリング)。
-    if (labArmory && this.distanceOutsideViewport(labArmory.x, labArmory.y, 110) <= 0) this.drawArmory(g, labArmory.x, labArmory.y, pulse);
-    if (merchantArmory && this.distanceOutsideViewport(merchantArmory.x, merchantArmory.y, 110) <= 0) this.drawArmory(g, merchantArmory.x, merchantArmory.y, pulse);
+    if (labArmory && !outside(labArmory.x, labArmory.y, 110)) this.drawArmory(g, labArmory.x, labArmory.y, pulse);
+    if (merchantArmory && !outside(merchantArmory.x, merchantArmory.y, 110)) this.drawArmory(g, merchantArmory.x, merchantArmory.y, pulse);
     if (!sites || !sites.length || this.isLabStage) return; // ラボ(屋内/野外)では拠点を出さない
     const R = 130; // BASE_CAPTURE_RADIUS と一致
     for (const s of sites) {
-      if (this.distanceOutsideViewport(s.x, s.y, R + 60) > 0) continue; // 画面外はスキップ
+      if (outside(s.x, s.y, R + 60)) continue; // 画面外はスキップ
       const captured = s.status === 'captured';
       const safe = s.id === safeBaseId;
       const color = safe ? 0x60a5fa : captured ? 0x34d399 : 0xfbbf24; // 安全=青/制圧=緑/未制圧=琥珀
       const a = 0.22 + 0.14 * pulse;
-      g.circle(s.x, s.y, R - 4).fill({ color, alpha: 0.04 + 0.04 * pulse });
-      g.circle(s.x, s.y, R).stroke({ width: 5, color, alpha: a * 0.6 });
-      g.circle(s.x, s.y, R - 3).stroke({ width: 2, color, alpha: a });
+      if (pf) {
+        projCircle(g, pf, s.x, s.y, R - 4, { color, alpha: 0.04 + 0.04 * pulse });
+        projCircle(g, pf, s.x, s.y, R, undefined, { width: 5, color, alpha: a * 0.6 });
+        projCircle(g, pf, s.x, s.y, R - 3, undefined, { width: 2, color, alpha: a });
+      } else {
+        g.circle(s.x, s.y, R - 4).fill({ color, alpha: 0.04 + 0.04 * pulse });
+        g.circle(s.x, s.y, R).stroke({ width: 5, color, alpha: a * 0.6 });
+        g.circle(s.x, s.y, R - 3).stroke({ width: 2, color, alpha: a });
+      }
       if (!captured) {
         // 未制圧: 滞在(制圧)進捗アーク。
         const frac = Math.max(0, Math.min(1, s.dwellMs / BASE_CAPTURE_HOLD_MS));
         if (frac > 0) {
           const start = -Math.PI / 2, rr = R + 5;
-          g.moveTo(s.x + Math.cos(start) * rr, s.y + Math.sin(start) * rr)
+          if (pf) projArcLine(g, pf, s.x, s.y, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xfff7cc, alpha: 0.95 });
+          else g.moveTo(s.x + Math.cos(start) * rr, s.y + Math.sin(start) * rr)
             .arc(s.x, s.y, rr, start, start + Math.PI * 2 * frac)
             .stroke({ width: 4, color: 0xfff7cc, alpha: 0.95 });
         }
@@ -35846,12 +36261,17 @@ export class PixiScene {
     for (const e of enemies) {
       if (e.type !== 'hunter' || e.hunterFleeing) continue;
       const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
-      if (this.distanceOutsideViewport(cx, cy, R + 40) > 0) continue; // 円が完全に画面外なら描かない
+      const pf = this.projFrame; // ?proj=1(段階4・I03): 間引きは形の端を投影した箱・円は頂点ごとに投影
+      if (pf ? projShapeOutside(pf, cx, cy, R + 40, 0) : this.distanceOutsideViewport(cx, cy, R + 40) > 0) continue; // 円が完全に画面外なら描かない
       // ワープ中・立ち去り中は円も一緒に薄れる(体だけ消えて円が残らない)。
       const gt0 = useGameStore.getState().gameTime;
       const va = hunterWarpAlpha(gt0, e.hunterWarpOutAt, e.hunterWarpInAt)
         * (e.hunterLeavingAt !== undefined ? Math.max(0, 1 - (gt0 - e.hunterLeavingAt) / HUNTER_LEAVE_FADE_MS) : 1);
       if (va <= 0.01 || e.hunterWatchOff) continue; // 見つけない間(大きなイベント・演出の最中)は円を出さない=円が出ていれば必ず見られる
+      if (pf) {
+        projCircle(g, pf, cx, cy, R, { color: 0x7c3aed, alpha: 0.05 * va }, { width: 3, color: 0xa78bfa, alpha: (0.12 + 0.08 * pulse) * va });
+        continue;
+      }
       g.circle(cx, cy, R).fill({ color: 0x7c3aed, alpha: 0.05 * va });                          // 薄い紫の塗り
       g.circle(cx, cy, R).stroke({ width: 3, color: 0xa78bfa, alpha: (0.12 + 0.08 * pulse) * va }); // 境界(脈動)
     }
@@ -37698,6 +38118,7 @@ export class PixiScene {
     sp.tint = SHOCKWAVE_TINT;
     sp.alpha = alpha;
     sp.visible = true;
+    if (this.projFrame) this.projSpriteMesh(sp, 'shockwaves', PROJ_GRID_SHARP); // ?proj=1(段階4・3-6b): 帯に沿う絵=同じ四角の格子メッシュ
   }
 
   /**
@@ -37800,6 +38221,7 @@ export class PixiScene {
     sp.position.set(ox, oy);
     sp.alpha = alpha;
     sp.visible = true;
+    if (this.projFrame) this.projSpriteMesh(sp, 'dashWind', PROJ_GRID_SHARP); // ?proj=1(段階4): 突進の風圧=同じ四角の格子メッシュ
   }
 
   // FX-V2d(発注仕様research/FX_GAP_LEDGER.md「裏ボス便3」): coilの胴体本体。素材(fx/jorm-coil-body)は
@@ -37838,6 +38260,7 @@ export class PixiScene {
     sp.position.set(cx, cy);
     sp.alpha = alpha;
     sp.visible = true;
+    if (this.projFrame) this.projSpriteMesh(sp, 'coilBody', PROJ_GRID_SHARP); // ?proj=1(段階4): ヨルムンガンドの胴=帯と同じ四角の格子メッシュ
   }
 
   /**
@@ -38169,6 +38592,7 @@ export class PixiScene {
     sp.position.set(startX + ux * shown * 0.5, startY + uy * shown * 0.5);
     sp.alpha = alpha;
     sp.visible = true;
+    if (this.projFrame) this.projSpriteMesh(sp, 'clawMarks', PROJ_GRID_SHARP); // ?proj=1(段階4): 爪痕=同じ四角の格子メッシュ
   }
 
   /**
@@ -38204,6 +38628,7 @@ export class PixiScene {
     sp.position.set(x, y);
     sp.alpha = alpha;
     sp.visible = true;
+    if (this.projFrame) this.projSpriteMesh(sp, 'bloodPool', PROJ_GRID_SHARP); // ?proj=1(段階4・B25): 判定を持つ床の絵=格子メッシュ
   }
   /** 毎フレーム先頭で呼ぶ(使わなかった分を消す)。ring/band と同じ「消し忘れが起きない」作法。 */
   private resetBloodPools(): void {
@@ -38593,6 +39018,7 @@ export class PixiScene {
     sp.position.set(x, y);
     sp.alpha = alpha;
     sp.visible = true;
+    if (this.projFrame) this.projSpriteMesh(sp, 'groundCrack', PROJ_GRID_SHARP); // ?proj=1(段階4・K06): 床のひび(回転・広がりは world の四角のまま)=格子メッシュ
   }
 
   /**
@@ -39408,12 +39834,23 @@ export class PixiScene {
           //   円の大きさ・流星の進み方(信管)・判定は不変。
           // research/TELEGRAPH_FIXES.md G07: この Graphics は最後に depthD で拡大縮小される(設置物の遠近)ので、
           //   半径を depthD で割って打ち消す=画面上の円の大きさ=判定(固定の HEAVY_GRENADE_RADIUS)。罠の範囲円と同じ形。
+          const pf = this.projFrame;
+          if (pf) {
+            // ?proj=1(§3-6b 作る物6): 入れ物(弾の Graphics=depthD で拡縮)の外の projShapeGfx へ。中心=弾の地面の位置・半径=判定(打ち消しを外す)。
+            // 予告の濃さは予告自身の投影後のY(弾の Graphics の alpha の代わり)。窓の入力 fu は今と同じ。
+            const sg = this.projShapeGfx('front');
+            const fa = this.projLooseFade(cx, cy, false);
+            const nadeMaskP = CIRCLE_SWEEP_ON
+              ? this.drawSweepCircleFill(sg, cx, cy, HEAVY_GRENADE_RADIUS, fu, 0x9333ea, 0.22 * fa)
+              : (projCircle(sg, pf, cx, cy, HEAVY_GRENADE_RADIUS, { color: 0x9333ea, alpha: (0.08 + 0.14 * t) * fa }), 1);
+            projCircle(sg, pf, cx, cy, HEAVY_GRENADE_RADIUS, undefined, { color: 0xc084fc, alpha: (0.5 + 0.4 * t) * nadeMaskP * fa, width: 2 });
+          }
           const nadeR = HEAVY_GRENADE_RADIUS / depthD;
-          const nadeMask = CIRCLE_SWEEP_ON
+          const nadeMask = pf ? 0 : CIRCLE_SWEEP_ON
             ? this.drawSweepCircleFill(g, 0, 0, nadeR, fu, 0x9333ea, 0.22)
             : (g.circle(0, 0, nadeR).fill({ color: 0x9333ea, alpha: 0.08 + 0.14 * t }), 1);
           // 縁の太さも depthD で打ち消す(画面上の太さ=ほかの紫の円と同じ 2px)。
-          g.circle(0, 0, nadeR).stroke({ color: 0xc084fc, alpha: (0.5 + 0.4 * t) * nadeMask, width: 2 / depthD });
+          if (!pf) g.circle(0, 0, nadeR).stroke({ color: 0xc084fc, alpha: (0.5 + 0.4 * t) * nadeMask, width: 2 / depthD });
         }
         // 社長指示v0.25.3450「ちゃんと飛び跳ねて(飛び跳ねだけ戻して)」: v3447で消した影+跳ねを復活。
         const hopEnvelope = Math.max(0, 1 - t * 0.58);
@@ -39447,8 +39884,17 @@ export class PixiScene {
         if (p.boomPhase === 'stop') {
           const range = p.area ?? 0;
           const pulse = 0.7 + Math.sin(Date.now() / 120) * 0.3;
-          g.circle(0, 0, range).stroke({ color: 0x06121f, alpha: 0.5, width: 3 });
-          g.circle(0, 0, range).stroke({ color: 0x22d3ee, alpha: 0.5 * pulse, width: 1.5 });
+          const pf = this.projFrame;
+          if (pf) {
+            // ?proj=1(§3-6b 作る物6・I11): 弾の Graphics の外の projShapeGfx へ(中心=弾の位置・半径=判定の area)。
+            const sg = this.projShapeGfx('front');
+            const fa = this.projLooseFade(cx, cy, false);
+            projCircle(sg, pf, cx, cy, range, undefined, { color: 0x06121f, alpha: 0.5 * fa, width: 3 });
+            projCircle(sg, pf, cx, cy, range, undefined, { color: 0x22d3ee, alpha: 0.5 * pulse * fa, width: 1.5 });
+          } else {
+            g.circle(0, 0, range).stroke({ color: 0x06121f, alpha: 0.5, width: 3 });
+            g.circle(0, 0, range).stroke({ color: 0x22d3ee, alpha: 0.5 * pulse, width: 1.5 });
+          }
         }
         break;
       }
@@ -39465,7 +39911,12 @@ export class PixiScene {
         const pulse = 0.65 + Math.sin(age * Math.PI * 12) * 0.16;
         const radius = p.area ?? 34;
         // v0.25.2472: ownerGhost(守護霊が置いたトラップ)は青白の霊体色(視覚のみ・判定/挙動不変)。
-        g.circle(0, 0, radius / depthD).stroke({ color: p.ownerGhost ? 0x9fd8ff : 0x38bdf8, alpha: 0.42 * pulse, width: 1.5 });
+        const pf = this.projFrame;
+        if (pf) {
+          // ?proj=1(§3-6b 作る物6・I10): 罠の範囲は入れ物(depthD で拡縮)の外の projShapeGfx へ。半径=判定の area(打ち消しを外す)。
+          projCircle(this.projShapeGfx('front'), pf, cx, cy, radius, undefined,
+            { color: p.ownerGhost ? 0x9fd8ff : 0x38bdf8, alpha: 0.42 * pulse * this.projLooseFade(cx, cy, false), width: 1.5 });
+        } else g.circle(0, 0, radius / depthD).stroke({ color: p.ownerGhost ? 0x9fd8ff : 0x38bdf8, alpha: 0.42 * pulse, width: 1.5 });
         g.circle(0, 0, Math.max(4, p.width * 0.38)).fill({ color: p.ownerGhost ? 0x64748b : 0x0f172a, alpha: 0.88 });
         g.circle(0, 0, Math.max(2, p.width * 0.18)).fill({ color: p.ownerGhost ? 0xe0f2fe : 0x7dd3fc, alpha: 0.76 });
         break;
@@ -40671,12 +41122,15 @@ export class PixiScene {
       const dr = w.radius * (0.5 - 0.2 * t);
       dark.width = dr * 2; dark.height = dr * 2;
       dark.alpha = 0.45 * fade;
+      // ?proj=1(段階4・I07): 柔らかい闇と輪の素材は、入れ物の中心(world の井戸の中心)に寝かせた四角の格子メッシュ(入れ物の直上)
+      if (this.projFrame) this.projSpriteMesh(dark, 'gravityDark', PROJ_GRID_SOFT, 1, undefined, { cx: w.x, cy: w.y, w: dr * 2, h: dr * 2, rot: 0 }, c);
       for (let i = 0; i < 2; i++) {
         const ring = c.children[1 + i] as Sprite;
         const rt = Math.max(0, Math.min(1, t * 1.25 - i * 0.25)); // 2枚を時間差で縮める
         const rr = Math.max(6, w.radius * (1 - 0.85 * rt));
         ring.width = rr * 2; ring.height = rr * 2;
         ring.alpha = (rt <= 0 || rt >= 1 ? 0 : 0.7 * Math.sin(Math.PI * Math.min(1, rt + 0.15))) * fade;
+        if (this.projFrame) this.projSpriteMesh(ring, 'gravityRing', PROJ_GRID_SHARP, 1, undefined, { cx: w.x, cy: w.y, w: rr * 2, h: rr * 2, rot: 0 }, c);
       }
       for (let i = 0; i < SPIRAL; i++) {
         const sp = c.children[3 + i] as Sprite;
@@ -42752,6 +43206,7 @@ export class PixiScene {
     const st = e.bossState;
     const sh = e.heroShape;
     const style = telegraphStyleFor(e.type);
+    const pf = this.projFrame; // ?proj=1(段階4・H英雄・K10): 予告と蹄跡は頂点ごとに投影(else は今の行のまま)
     if (sh && (st === 'hero-windup' || st === 'hero-motion') && e.heroHitAt !== undefined && e.bossWindupStartAt !== undefined && e.heroMove) {
       this.heroShapeMemo.set(e.id, { shape: sh, move: e.heroMove, step: e.heroStep ?? 0 });
       const prog = Math.max(0, Math.min(1, (gameTime - e.bossWindupStartAt) / Math.max(1, e.heroHitAt - e.bossWindupStartAt)));
@@ -42773,19 +43228,22 @@ export class PixiScene {
             if (d < passed) continue;
             const side = (k % 2 === 0 ? 1 : -1) * 14;
             const px = e.heroFromX + ux * d + nx * side, py = e.heroFromY + uy * d + ny * side;
-            o.ellipse(px, py, 7, 4.5).fill({ color: 0xe7dccb, alpha: a });
+            if (pf) projEllipse(o, pf, px, py, 7, 4.5, 0, { color: 0xe7dccb, alpha: a });
+            else o.ellipse(px, py, 7, 4.5).fill({ color: 0xe7dccb, alpha: a });
           }
         }
       }
       if (sh.kind === 'circle') {
         const mask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(o, sh.cx, sh.cy, sh.radius, prog, 0xff2a2a, fillA, style)
-          : (o.circle(sh.cx, sh.cy, sh.radius).fill({ color: 0xff2a2a, alpha: fillA }), 1);
-        o.circle(sh.cx, sh.cy, sh.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: strokeA * mask });
+          : (pf ? projCircle(o, pf, sh.cx, sh.cy, sh.radius, { color: 0xff2a2a, alpha: fillA }) : o.circle(sh.cx, sh.cy, sh.radius).fill({ color: 0xff2a2a, alpha: fillA }), 1);
+        if (pf) projCircle(o, pf, sh.cx, sh.cy, sh.radius, undefined, { width: 2 + 3 * prog, color: 0xff3b3b, alpha: strokeA * mask });
+        else o.circle(sh.cx, sh.cy, sh.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: strokeA * mask });
       } else if (sh.kind === 'fan') {
         const a0 = sh.angle - sh.halfArc, a1 = sh.angle + sh.halfArc;
         const mask = this.drawSweepSectorFill(o, sh.cx, sh.cy, sh.radius, a0, a1, prog, 0xff2a2a, fillA, style);
-        o.moveTo(sh.cx, sh.cy).lineTo(sh.cx + Math.cos(a0) * sh.radius, sh.cy + Math.sin(a0) * sh.radius)
+        if (pf) projSector(o, pf, sh.cx, sh.cy, sh.radius, a0, a1, undefined, { width: 2 + 3 * prog, color: 0xff3b3b, alpha: strokeA * mask });
+        else o.moveTo(sh.cx, sh.cy).lineTo(sh.cx + Math.cos(a0) * sh.radius, sh.cy + Math.sin(a0) * sh.radius)
           .arc(sh.cx, sh.cy, sh.radius, a0, a1).lineTo(sh.cx, sh.cy)
           .stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: strokeA * mask });
       } else {
@@ -42966,6 +43424,7 @@ export class PixiScene {
    */
   private wraithTeleGfx = new Graphics();
   private syncWraithTelegraph(enemies: readonly Enemy[], gameTime: number): void {
+    const pf = this.projFrame; // ?proj=1(段階4): 形は頂点ごとに投影(else は今の行のまま)
     const g = this.wraithTeleGfx;
     if (g.parent !== this.L.groundLayer) this.L.groundLayer.addChild(g);
     g.clear();
@@ -42977,8 +43436,9 @@ export class PixiScene {
       const prog = t / WRAITH_SCREAM_WINDUP_MS;
       const x = e.x + e.width / 2, y = e.y + e.height / 2;
       const mask = CIRCLE_SWEEP_ON ? this.drawSweepCircleFill(g, x, y, WRAITH_SCREAM_RADIUS, prog, 0x9333ea, 0.3, style)
-        : (g.circle(x, y, WRAITH_SCREAM_RADIUS).fill({ color: 0x9333ea, alpha: 0.12 + 0.14 * prog }), 1);
-      g.circle(x, y, WRAITH_SCREAM_RADIUS).stroke({ width: 2.5, color: 0xc084fc, alpha: 0.9 * mask });
+        : (pf ? projCircle(g, pf, x, y, WRAITH_SCREAM_RADIUS, { color: 0x9333ea, alpha: 0.12 + 0.14 * prog }) : g.circle(x, y, WRAITH_SCREAM_RADIUS).fill({ color: 0x9333ea, alpha: 0.12 + 0.14 * prog }), 1);
+      if (pf) projCircle(g, pf, x, y, WRAITH_SCREAM_RADIUS, undefined, { width: 2.5, color: 0xc084fc, alpha: 0.9 * mask });
+      else g.circle(x, y, WRAITH_SCREAM_RADIUS).stroke({ width: 2.5, color: 0xc084fc, alpha: 0.9 * mask });
     }
   }
 
@@ -43787,6 +44247,7 @@ export class PixiScene {
     sp.alpha = fadeIn * (1 - t) * 0.95;
     sp.rotation = 1.2 * (1 - Math.pow(1 - t, 2));
     sp.visible = true;
+    if (this.projFrame) this.projSpriteMesh(sp, 'bountySummon', PROJ_GRID_SOFT, d > 0 ? 1 / d : 1); // ?proj=1(段階4・K09): 旧い倍率 d を外した world の陣を格子メッシュで
   }
 
   // §6.38 B2b(持ち越し①): 賞金首の武器スプライト(バス停=標識/馬乗り=鞭/鋏=裁ち鋏/舞妓=毬)。
@@ -43838,6 +44299,7 @@ export class PixiScene {
     e: Enemy, view: ActorView, o: Graphics, gameTime: number, now: number, windupEndMs: number,
   ): void {
     const pulse = 0.5 + 0.5 * Math.sin(now / PixiScene.PHILL_TG_STYLE.pulseMs);
+    const pf = this.projFrame; // ?proj=1(段階4・F01): 光の雨の円は頂点ごとに投影
     const born = phillLightrainDrawAt(windupEndMs, PH_T.lightrain.shotGapMs);
     for (const q of e.phillLightrainQueue ?? []) {
       if (gameTime >= q.at) continue; // 発火済み(保険=既にキューから外れている想定)
@@ -43845,8 +44307,9 @@ export class PixiScene {
       const lrFillA = telFillA(1, pulse) * TELEGRAPH_FILL_MULT;
       const lrMask = CIRCLE_SWEEP_ON
         ? this.drawSweepCircleFill(o, q.x, q.y, PH_T.lightrain.radius, lrProg, 0xff2a2a, lrFillA, PixiScene.PHILL_TG_STYLE)
-        : (o.ellipse(q.x, q.y, PH_T.lightrain.radius, PH_T.lightrain.radius).fill({ color: 0xff2a2a, alpha: lrFillA }), 1);
+        : (pf ? projCircle(o, pf, q.x, q.y, PH_T.lightrain.radius, { color: 0xff2a2a, alpha: lrFillA }) : o.ellipse(q.x, q.y, PH_T.lightrain.radius, PH_T.lightrain.radius).fill({ color: 0xff2a2a, alpha: lrFillA }), 1);
       if (FX_RING_ENABLED) this.drawTelegraphRing(view, q.x, q.y, PH_T.lightrain.radius, 0xff3b3b, (0.4 + 0.3 * pulse) * lrMask);
+      else if (pf) projCircle(o, pf, q.x, q.y, PH_T.lightrain.radius, undefined, { width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * lrMask });
       else o.ellipse(q.x, q.y, PH_T.lightrain.radius, PH_T.lightrain.radius).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(1, pulse) * lrMask });
     }
   }
@@ -44343,6 +44806,7 @@ export class PixiScene {
     cx: number, cy: number, bfx: number, bfy: number, btx: number, bty: number,
     gameTime: number, now: number,
   ): void {
+    const pf = this.projFrame; // ?proj=1(段階4): 形は頂点ごとに投影(else は今の行のまま)
     const orbitR = 46;
     const orbitAng = (now / 500) % (Math.PI * 2);
     const idleX = cx + Math.cos(orbitAng) * orbitR, idleY = cy + Math.sin(orbitAng) * orbitR * 0.55;
@@ -44434,8 +44898,9 @@ export class PixiScene {
       const mkSpinFillA = telFillA(prog, pulse) * TELEGRAPH_FILL_MULT;
       const mkSpinMask = (CIRCLE_SWEEP_ON && bs === 'mk-spin-windup')
         ? this.drawSweepCircleFill(o, cx, cy, MK_T.spin.radius, prog, 0xff2a2a, mkSpinFillA, telegraphStyleFor(e.type))
-        : (o.circle(cx, cy, MK_T.spin.radius).fill({ color: 0xff2a2a, alpha: mkSpinFillA }), 1);
-      o.circle(cx, cy, MK_T.spin.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * mkSpinMask });
+        : (pf ? projCircle(o, pf, cx, cy, MK_T.spin.radius, { color: 0xff2a2a, alpha: mkSpinFillA }) : o.circle(cx, cy, MK_T.spin.radius).fill({ color: 0xff2a2a, alpha: mkSpinFillA }), 1);
+      if (pf) projCircle(o, pf, cx, cy, MK_T.spin.radius, undefined, { width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * mkSpinMask });
+      else o.circle(cx, cy, MK_T.spin.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * mkSpinMask });
       // 毬が周囲を高速で回る(判定=円そのもの。速い周回で「回している」感=派手側)。
       const spinAng = now / (bs === 'mk-spin' ? 40 : 90);
       // 技表GO: 技前=一瞬止まってふくらむ(スカッシュ・windup側のみ)。
@@ -44490,8 +44955,9 @@ export class PixiScene {
       const suiuFillA = telFillA(1, 1) * pulse * TELEGRAPH_FILL_MULT;
       const suiuMask = CIRCLE_SWEEP_ON
         ? this.drawSweepCircleFill(o, lx, ly, radius, tH, 0xff2a2a, suiuFillA, telegraphStyleFor(e.type))
-        : (o.circle(lx, ly, radius).fill({ color: 0xff2a2a, alpha: suiuFillA }), 1);
-      o.circle(lx, ly, radius).stroke({ width: isFinal ? 4 : 2.5, color: 0xff3b3b, alpha: telStrokeA(1, 1) * suiuMask });
+        : (pf ? projCircle(o, pf, lx, ly, radius, { color: 0xff2a2a, alpha: suiuFillA }) : o.circle(lx, ly, radius).fill({ color: 0xff2a2a, alpha: suiuFillA }), 1);
+      if (pf) projCircle(o, pf, lx, ly, radius, undefined, { width: isFinal ? 4 : 2.5, color: 0xff3b3b, alpha: telStrokeA(1, 1) * suiuMask });
+      else o.circle(lx, ly, radius).stroke({ width: isFinal ? 4 : 2.5, color: 0xff3b3b, alpha: telStrokeA(1, 1) * suiuMask });
       const arc = 4 * tH * (1 - tH); // 0→1→0(頂点=中間)
       const hopH = (isFinal ? 170 : 130) * arc;
       const bxH = hs.x0 + (lx - hs.x0) * tH;
@@ -44537,8 +45003,9 @@ export class PixiScene {
         ? this.drawSweepCircleFill(o, px, py, MK_T.boom.hitRadius,
             PixiScene.loopSweepProg(MAIKO_BOOM_LOOP_MS, MAIKO_BOOM_LOOP_MS - (now % MAIKO_BOOM_LOOP_MS)),
             0xff2a2a, telFillA(1, 1) * TELEGRAPH_FILL_MULT, telegraphStyleFor(e.type))
-        : (o.circle(px, py, MK_T.boom.hitRadius).fill({ color: 0xff2a2a, alpha: telFillA(1, 1) * TELEGRAPH_FILL_MULT }), 1);
-      o.circle(px, py, MK_T.boom.hitRadius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.6 * boomMask });
+        : (pf ? projCircle(o, pf, px, py, MK_T.boom.hitRadius, { color: 0xff2a2a, alpha: telFillA(1, 1) * TELEGRAPH_FILL_MULT }) : o.circle(px, py, MK_T.boom.hitRadius).fill({ color: 0xff2a2a, alpha: telFillA(1, 1) * TELEGRAPH_FILL_MULT }), 1);
+      if (pf) projCircle(o, pf, px, py, MK_T.boom.hitRadius, undefined, { width: 2, color: 0xff3b3b, alpha: 0.6 * boomMask });
+      else o.circle(px, py, MK_T.boom.hitRadius).stroke({ width: 2, color: 0xff3b3b, alpha: 0.6 * boomMask });
       this.drawBountyWeapon(e.id, 'bounty-maiko-temari', px, py, now / 30, 62, 0.98);
       // ★慣性バッチ: 射出スピンの残像(motion trail)。往路・復路とも毬の軌跡へ約30ms間隔で
       // 「その瞬間の毬」を置き去りにする(判定不変・分類②=派手側)。
@@ -45835,7 +46302,8 @@ export class PixiScene {
     if (fx && this.areaFlashKey !== fx.at) { this.areaFlashKey = fx.at; this.areaFlashAngle = pAng; }
     const easeOut = (u: number) => 1 - (1 - u) * (1 - u) * (1 - u);
     const color = 0xffb340; // UI の琥珀(--menu-accent)
-    const hz = (r: number, ang: number) => this.horizonActorAlpha(r * Math.sin(ang));
+    const tpf = this.projFrame; // ?proj=1(段階4・J11): テープの帯と線は頂点ごとに投影・地平線フェードは投影後のY(板の文字は今のまま)
+    const hz = (r: number, ang: number) => (tpf ? this.projLooseFade(r * Math.cos(ang), r * Math.sin(ang), false) : this.horizonActorAlpha(r * Math.sin(ang)));
     const hash01 = (n: number) => { const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); }; // 板/区間ごとの決定的な擦れ
     g.clear(); g.visible = true;
     let used = 0;
@@ -45860,6 +46328,11 @@ export class PixiScene {
         if (hk < 0.02) continue;
         const wear = 0.9 + 0.2 * hash01(i * 1000 + Math.floor(mid * 400)); // 区間ごとの擦れ(±10%)。角度で固定=歩いても揺れない
         const fl = flashAt(mid);
+        if (tpf) {
+          projArcLine(g, tpf, 0, 0, bandR, s0, s1, { width: BAND_PX / wz, color: 0x120a0c, alpha: (0.34 + 0.1 * fl) * vis * hk * wear });
+          projArcLine(g, tpf, 0, 0, r, s0, s1, { width: (LINE_PX + 1.4 * fl) / wz, color, alpha: (0.5 + 0.5 * fl) * vis * hk * wear });
+          continue;
+        }
         g.arc(0, 0, bandR, s0, s1).stroke({ width: BAND_PX / wz, color: 0x120a0c, alpha: (0.34 + 0.1 * fl) * vis * hk * wear });
         g.arc(0, 0, r, s0, s1).stroke({ width: (LINE_PX + 1.4 * fl) / wz, color, alpha: (0.5 + 0.5 * fl) * vis * hk * wear });
       }

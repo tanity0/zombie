@@ -120,6 +120,25 @@ const CONVERTED: string[] = [
   '  private syncBossFires(',
   '  private syncPumpkinTelegraph(',
   'const strokeBeamLayers = (',
+  // 段階4の残り(v0.25.5753 の次の段)
+  '  private syncBloodSpikes(',
+  '  private syncArena(',
+  '  private syncQuestTrigger(',
+  '  private syncReturnCircle(',
+  '  private syncHunterVision(',
+  '  private syncShrines(',
+  '  private syncBaseSites(',
+  '  private drawArmory(',
+  '  private drawHeroTelegraph(',
+  '  private drawPhillLightrainCircles(',
+  '  private drawAcrasielPattern(',
+  '  private drawMaikoState(',
+  '  private syncAcrasielSpears(',
+  '  private syncLibertyArrows(',
+  '  private syncWraithTelegraph(',
+  '  private syncAstroThrowsBody(',
+  '  private syncPlayerArrowRain(',
+  '  private drawAlchemyRhythm(',
 ];
 
 describe('投影の段階4: 形を持つもの(番人)', () => {
@@ -200,12 +219,26 @@ describe('投影の段階4: 形を持つもの(番人)', () => {
   it('⑥ メッシュは projFrame がある時だけ作る(遅延生成・?proj=0 では1つも作らない)', () => {
     const lines = src.split('\n');
     const mk = lines.filter((l) => /makeProjGridMesh\(/.test(l) && !/^\s*(import|\/\/|\*)/.test(l) && !/projRectFrame, projGlyph/.test(l));
-    expect(mk.length).toBe(1); // projTeleMesh の中だけ
+    expect(mk.length).toBe(2); // projTeleMesh(予告の素材)と projSpriteMesh(地面の絵)の中だけ
     // projTeleMesh を呼ぶ所は全部 `if (pf) {` の塊の中(直前の数行に if (pf) がある)
     lines.forEach((l, i) => {
       if (!/this\.projTeleMesh\(/.test(l) || /private projTeleMesh\(/.test(l)) return;
       const back = lines.slice(Math.max(0, i - 4), i).join('\n');
       expect(/if \(pf\) \{/.test(back), l.trim()).toBe(true);
+    });
+    // projSpriteMesh は中で projFrame が無ければ何も作らずに戻る(遅延生成)。呼ぶ所も ?proj=1 の分岐の中(同じ行か直前の数行)
+    expect(bodyOf('  private projSpriteMesh(')).toMatch(/const f = this\.projFrame;[\s\S]*if \(!f \|\| /);
+    lines.forEach((l, i) => {
+      if (!/this\.projSpriteMesh\(/.test(l) || /private projSpriteMesh\(/.test(l)) return;
+      const back = lines.slice(Math.max(0, i - 6), i + 1).join('\n');
+      expect(/if \((this\.projFrame|pf|fpf|kpf)\b/.test(back), l.trim()).toBe(true);
+    });
+    // 入れ物の外の円の Graphics(作る物6)も projFrame がある時に初めて作る
+    expect(bodyOf('  private projShapeGfx(').length).toBeGreaterThan(50);
+    lines.forEach((l, i) => {
+      if (!/this\.projShapeGfx\(/.test(l) || /private projShapeGfx\(/.test(l)) return;
+      const back = lines.slice(Math.max(0, i - 8), i + 1).join('\n');
+      expect(/if \((pf|this\.projFrame)\)/.test(back) || /pf \?/.test(back), l.trim()).toBe(true);
     });
   });
 

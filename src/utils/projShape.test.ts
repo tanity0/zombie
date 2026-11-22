@@ -428,6 +428,42 @@ describe('projShape: 焼き素材の格子メッシュ(受け入れ条件2・1 �
     expect(worst).toBeLessThanOrEqual(1.0);
   });
 
+  it('回転している四角が画面の外(南の延長・左右)へ掛かっても、画面に映る点は 1 画面px 以下(画面に掛かる範囲だけ分ける)', () => {
+    const r = rng(131);
+    const pos = new Float32Array(PROJ_GRID_VERTS * 2), uv = new Float32Array(PROJ_GRID_VERTS * 2);
+    let worst = 0, cases = 0, partial = 0;
+    for (let k = 0; k < 120; k++) {
+      const { f, wx, wy } = scene(r, k);
+      const w = 60 + r() * 1400, h = 20 + r() * 300, rot = 0.2 + r() * 2.5;
+      let out = 0;
+      for (const [qu, qv] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        const lx = (qu - 0.5) * w, ly = (qv - 0.5) * h;
+        const c = scr(f, wx + lx * Math.cos(rot) - ly * Math.sin(rot), wy + lx * Math.sin(rot) + ly * Math.cos(rot));
+        if (!onScreen(f, c.x, c.y)) out++;
+      }
+      if (out > 0) partial++;
+      const res = projGridInto(f, { cx: wx, cy: wy, w, h, rot }, 12, 24, 32, pos, uv);
+      let any = false;
+      for (let i = 0; i < 400; i++) {
+        const u = r(), v = r();
+        const lx = (u - 0.5) * w, ly = (v - 0.5) * h;
+        const px = wx + lx * Math.cos(rot) - ly * Math.sin(rot), py = wy + lx * Math.sin(rot) + ly * Math.cos(rot);
+        if (projLocalYOfWorld(f, py) < 0) continue;
+        const t = scr(f, px, py);
+        if (!onScreen(f, t.x, t.y)) continue;
+        any = true;
+        const m = projGridSample(pos, uv, res, u, v);
+        const z = f.wgScale;
+        worst = Math.max(worst, Math.hypot(f.wgX + z * (m.x - f.camX) - t.x, f.wgY + z * (m.y - f.camY) - t.y));
+      }
+      if (any) cases++;
+    }
+    expect(cases).toBeGreaterThan(30);
+    expect(partial).toBeGreaterThan(20);
+    // 画面の縦をまたぐ長い四角(長さ1,000超)は 33 行の上限で 1px に届かない場面が残る(前は最大 36px → 今 2.5px 前後・報告の(B))。
+    expect(worst).toBeLessThanOrEqual(3.0);
+  });
+
   it('添字は 32×32 マス・使わない頂点は最後の列/行に潰れる', () => {
     expect(projGridIndices().length).toBe(32 * 32 * 6);
     const f = frameAt(SCREENS[0], 1, 0, 0);
@@ -442,9 +478,11 @@ describe('projShape: 焼き素材の格子メッシュ(受け入れ条件2・1 �
 });
 
 describe('projShape: 線の太さ・高さ・濃さ・間引き', () => {
-  it('★#23「予告の線の太さと遠近」: 既定は A(太さは画面の上で今のまま)', () => {
-    expect(PROJ_TELE_LINE_MODE).toBe('A');
-    expect(projTeleLineScale(0.42)).toBe(1);
+  it('★#23「予告の線の太さと遠近」: 社長裁定で B(太さが判定を表さない線と記号に s を掛ける)・0 幅/負の幅を出さない', () => {
+    expect(PROJ_TELE_LINE_MODE).toBe('B');
+    expect(projTeleLineScale(0.42)).toBeCloseTo(0.42, 9);
+    expect(projTeleLineScale(-1)).toBe(0);
+    expect(projTeleLineScale(0.42, 'A')).toBe(1);
     expect(projTeleLineScale(0.42, 'B')).toBeCloseTo(0.42, 9);
     expect(projTeleLineScale(0.25, 'C')).toBeCloseTo(0.5, 9);
   });
