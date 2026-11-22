@@ -12,7 +12,8 @@ export type ObjShadeMode = 'off' | 'tint' | 'overlay';
 export const parseObjShadeMode = (v: string | null | undefined): ObjShadeMode => {
   if (v === '1' || v === 'tint') return 'tint';
   if (v === '2' || v === 'overlay') return 'overlay';
-  return 'off';
+  if (v === '0' || v === 'off') return 'off';
+  return 'tint'; // 既定=採用(社長2026-11-22「影は1で採用」)。`?objshade=0` で外す
 };
 
 /** 0..1 の RGB の倍率。 */

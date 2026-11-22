@@ -793,7 +793,7 @@ const S5B_ATMO_ON = tsNum('s5batmo', 1) > 0; // ?s5batmo=0 で空の色行列と
 const S5B_POOL_ON = tsNum('s5bpool', 1) > 0; // ?s5bpool=0 で火の溜まりだけ外す(見比べ用)
 const TORCH_BACK_ON = tsNum('torchback', 1) > 0; // ?torchback=0 でステージ3/4/7の松明の裏の光を外す(見比べ用)
 const S5B_WRECK_ON = tsNum('s5bwreck', 1) > 0; // ?s5bwreck=0 で燃える残骸だけ外す(見比べ用)
-// 試作(?objshade=1): 地面の光と影(雲の影・木漏れ日・月明りの溜まり)を物にも「足元の地面と同じ明るさ」で掛ける。
+// 採用(既定・社長2026-11-22「影は1で採用」/ ?objshade=0 で外す・?objshade=2 は不採用の比較用): 地面の光と影(雲の影・木漏れ日・月明りの溜まり)を物にも「足元の地面と同じ明るさ」で掛ける。
 // 既定(無し/0)は何もしない。2=比較用(光と影の層を物の上へ移す)。src/pixi/objShade.ts。
 const OBJ_SHADE_MODE = parseObjShadeMode(typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('objshade'));
 const S1N_POOL_ON = tsNum('s1npool', 1) > 0; // ?s1npool=0 で月明りの溜まり(地面)だけ外す(見比べ用)
@@ -4758,7 +4758,7 @@ export class PixiScene {
   private propObjs = new Map<string, LabObstacleView>(); // 遮蔽物プロップ(区画生成・研究所スキン)
   private cityPropObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ3(廃都)の散布オブジェクト
   private flowerObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ1(森)の装飾花(壁判定なし)
-  private objShade: ObjShade | null = OBJ_SHADE_MODE === 'tint' ? new ObjShade() : null; // 試作 ?objshade=1(既定 null=何もしない)
+  private objShade: ObjShade | null = OBJ_SHADE_MODE === 'tint' ? new ObjShade() : null; // 既定で有効(?objshade=0 で null=何もしない)
   /** 計器(__pixiScene.objShadeStats): 試作 ?objshade=1 の直近フレームの数。 */
   get objShadeStats() { return this.objShade?.stats; }
   /** 撮影用(DEV・__pixiScene から): 同じ画面のまま試作 ?objshade=1 を入/切して前後を撮る。 */
@@ -11310,7 +11310,7 @@ export class PixiScene {
     this.syncStage5Battle(s, now); // ステージ5(戦場)の光・色・コントラスト(他ステージ=1命令で終わる)
     this.syncStage3Daylight(s, now); // ステージ3(昼の廃都)の光と影(他ステージ=1命令で終わる)
     this.syncTorchBack(s, now); // 松明の裏の光(ステージ3/4/7・utils/torchBackLight.ts。他ステージ=1命令で終わる)
-    if (this.objShade) this.applyObjShade(); // 試作 ?objshade=1(既定は null=呼ばない)
+    if (this.objShade) this.applyObjShade(); // 既定で有効(?objshade=0 なら null=呼ばない)
     this.syncZoomWarp(s.player.vx ?? 0, s.player.vy ?? 0, realNow); // ★必ず最後(このフレームの世界が全部揃ってから1枚に描く)
   }
 

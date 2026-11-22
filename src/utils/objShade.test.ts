@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { accumulateMultiply, averageRgb, mulTintRgb, parseObjShadeMode, sampleRgba, shadeWithStrength, tilingTexel, wrapMod } from './objShade';
 
 describe('objShade (試作 ?objshade)', () => {
-  it('URL の値 → 方式(既定は off=何もしない)', () => {
-    expect(parseObjShadeMode(null)).toBe('off');
+  it('URL の値 → 方式(既定は tint=採用・0 で外す)', () => {
+    expect(parseObjShadeMode(null)).toBe('tint'); // 既定=採用(社長2026-11-22「影は1で採用」)
     expect(parseObjShadeMode('0')).toBe('off');
     expect(parseObjShadeMode('1')).toBe('tint');
     expect(parseObjShadeMode('2')).toBe('overlay');
