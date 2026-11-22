@@ -483,6 +483,8 @@ import { Stage1NightLayer } from './stage1Night';
 import { Stage5BattleLayer, type BurningWreckView, type FlamePainter } from './stage5Battlefield';
 import { stage5BattleActive, stage5EmberSize, S5B_WRECK_MAX } from '../utils/stage5Battlefield';
 import { Stage3DaylightLayer, type S3DTreeView } from './stage3Daylight';
+import { ObjShade, moveGroundLightAboveActors } from './objShade';
+import { parseObjShadeMode } from '../utils/objShade';
 import { stage3DaylightActive } from '../utils/stage3Daylight';
 import { TorchBackLight, type GlowPoolShape } from './stageLook';
 import { sharedTorchBackPools } from '../utils/torchBackLight';
@@ -517,6 +519,8 @@ import { giantSweepWindowProg, giantNovaWindupProg } from '../utils/giantRedTele
 import { memoryTier, rimBakeBudgetMb, whiteBakeBudgetMb, canBakeWithin, shadowSilBudgetMb } from '../utils/memoryTier';
 import { allowBake, newBakeGovernor, BAKE_SATURATED_INTERVAL_MS } from '../utils/bakeGovernor'; // 天井に張り付いた時の焼き直しの間引き(ステージ4で急に重い)
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // 対人トラップの3秒の見え方(drawTrapBind) // 焼きの天井をスマホ/PCで分ける(v0.25.4867)
+import { groundFeelAtFoot, groundRowTileScaleX, groundRowTileScaleY, GroundScrollAccumulator, GROUND_SCROLL_LEGACY_FEEL_X, GROUND_SCROLL_LEGACY_FEEL_Y, type GroundPerspectiveParams } from '../utils/groundScroll'; // 地面の流れる速さ(足元の行=等倍)
+import { groundMatchedDepthScale, parseObjDepthMode, OBJ_DEPTH_TILT_TRAP_FAR, OBJ_DEPTH_TILT_GFAR } from '../utils/groundDepthScale'; // ?objdepth= 物の遠近を地面の倒れ具合に合わせる試作
 import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相の実効長(窓を追尾→溜めで通すため)
 
 /**
@@ -789,6 +793,9 @@ const S5B_ATMO_ON = tsNum('s5batmo', 1) > 0; // ?s5batmo=0 で空の色行列と
 const S5B_POOL_ON = tsNum('s5bpool', 1) > 0; // ?s5bpool=0 で火の溜まりだけ外す(見比べ用)
 const TORCH_BACK_ON = tsNum('torchback', 1) > 0; // ?torchback=0 でステージ3/4/7の松明の裏の光を外す(見比べ用)
 const S5B_WRECK_ON = tsNum('s5bwreck', 1) > 0; // ?s5bwreck=0 で燃える残骸だけ外す(見比べ用)
+// 試作(?objshade=1): 地面の光と影(雲の影・木漏れ日・月明りの溜まり)を物にも「足元の地面と同じ明るさ」で掛ける。
+// 既定(無し/0)は何もしない。2=比較用(光と影の層を物の上へ移す)。src/pixi/objShade.ts。
+const OBJ_SHADE_MODE = parseObjShadeMode(typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('objshade'));
 const S1N_POOL_ON = tsNum('s1npool', 1) > 0; // ?s1npool=0 で月明りの溜まり(地面)だけ外す(見比べ用)
 const MOON_SHAFT_ON = tsNum('moonshaft', 1) > 0; // ?moonshaft=0 でステージ1の森の夜も従来の台形の筋のまま(見比べ用)
 const POI_TOUCH_FREEZE_MS = tsNum('poitouchfreeze', -1); // 触れた瞬間の絵の撮影用(負=無効)
@@ -3160,9 +3167,16 @@ const GROUND_TILE_SCALE_Y_NEAR = 0.82;
 // 戻すなら FAR 0.12 / CURVE 2.05。
 // 床の遠景効果(奥の縦圧縮)。?gfar=0.04 等でURL生調整可。小さいほど遠くが圧縮=遠く見える。
 // 既定 0.055(旧 0.12→0.09→0.055。社長指示でさらに強化)。
-const GROUND_TILE_SCALE_Y_FAR = tsNum('gfar', 0.055);
-const GROUND_SCROLL_X_FEEL = 1.2;
-const GROUND_SCROLL_Y_FEEL = 3.0;
+// ?objdepth=(社長指示2026-11-22・試作): 0=今の遠近(既定) / 1=物の大きさを地面の横の縮みに合わせる / 2=地面を少し奥に倒して1と同じ合わせ方。
+// 2 の時だけ下の gfar / g3dfar の既定値が強まる(URLで明示した値が勝つ)。0/1 では地面は1pxも変わらない。
+const OBJ_DEPTH_MODE = parseObjDepthMode(tsNum('objdepth', 0));
+const OBJ_DEPTH_MIN = tsNum('objdmin', 0.35); // 1/2 の時の物の大きさの下限(奥)
+const OBJ_DEPTH_MAX = tsNum('objdmax', 1.85); // 1/2 の時の物の大きさの上限(手前)
+const GROUND_TILE_SCALE_Y_FAR = tsNum('gfar', OBJ_DEPTH_MODE === 2 ? OBJ_DEPTH_TILT_GFAR : 0.055);
+const GROUND_SCROLL_X_FEEL = GROUND_SCROLL_LEGACY_FEEL_X; // ?gfeel=0 の時だけ使う旧来の固定係数
+const GROUND_SCROLL_Y_FEEL = GROUND_SCROLL_LEGACY_FEEL_Y;
+// 地面の流れる速さを「主人公の足元の行=物と等倍」に合わせる(社長指示2026-11-22・既定ON)。?gfeel=0 で旧来の固定係数。
+const GROUND_FOOT_FEEL = tsBool('gfeel', true);
 // 床の遠近カーブ。?gcurve=3 等でURL生調整可。大きいほど手前まで圧縮が効く=奥行き強。
 // 既定 2.6(旧 2.05→2.35→2.6。社長指示で強化)。
 const GROUND_PERSPECTIVE_CURVE = tsNum('gcurve', 2.6);
@@ -3177,7 +3191,7 @@ const GROUND_TRAPEZOID = Math.max(0, Math.min(1, tsNum('g3d', 1)));
 // (横 ∝ 1/z、かつ 画面yと1/zが直線関係のため)。v2216/2217は横を**縦のカーブから導いていた**のが誤り——
 // 縦カーブ(t^2.6+下限)は社長が調整した手作りの値であって物理の1/z²ではないので、その平方根を取ると
 // 横が t^1.3 になり中盤で急に詰まる=不自然だった。ここでは**縦カーブには一切触れず**、横だけを直線にする。
-const GROUND_TRAPEZOID_FAR = Math.max(0.05, Math.min(1, tsNum('g3dfar', 0.10))); // 最奥での横倍率(手前=1)。実機確認で0.30→0.10(社長決定v0.25.2219)。?g3dfar=
+const GROUND_TRAPEZOID_FAR = Math.max(0.05, Math.min(1, tsNum('g3dfar', OBJ_DEPTH_MODE === 2 ? OBJ_DEPTH_TILT_TRAP_FAR : 0.10))); // 最奥での横倍率(手前=1)。実機確認で0.30→0.10(社長決定v0.25.2219)。?g3dfar=
 const GROUND_TRAPEZOID_CURVE = Math.max(0.2, Math.min(3, tsNum('g3dc', 1)));     // 1=直線(既定)。?g3dc=
 const NEAR_GROUND_BLUR_STRIP_RATIO = 0.34;
 const NEAR_GROUND_BLUR_STRENGTHS = [0.8, 1.45, 2.05];
@@ -4744,6 +4758,13 @@ export class PixiScene {
   private propObjs = new Map<string, LabObstacleView>(); // 遮蔽物プロップ(区画生成・研究所スキン)
   private cityPropObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ3(廃都)の散布オブジェクト
   private flowerObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ1(森)の装飾花(壁判定なし)
+  private objShade: ObjShade | null = OBJ_SHADE_MODE === 'tint' ? new ObjShade() : null; // 試作 ?objshade=1(既定 null=何もしない)
+  /** 計器(__pixiScene.objShadeStats): 試作 ?objshade=1 の直近フレームの数。 */
+  get objShadeStats() { return this.objShade?.stats; }
+  /** 撮影用(DEV・__pixiScene から): 同じ画面のまま試作 ?objshade=1 を入/切して前後を撮る。 */
+  set objShadeEnabled(v: boolean) { if (this.objShade) this.objShade.enabled = v; }
+  /** 撮影用: 画面の1点の、地面に掛かっている乗算の影の倍率(試作 ?objshade=1 の照合用)。 */
+  objShadeProbe(gx: number, gy: number) { return this.objShade?.probe(gx, gy) ?? null; }
   private stage3Daylight: Stage3DaylightLayer | null = null; // ステージ3(昼の廃都)の光と影(syncStage3Daylight)
   private stage5Battle: Stage5BattleLayer | null = null; // ステージ5(戦場)の光・色・コントラスト(syncStage5Battle)
   private stage1Night: Stage1NightLayer | null = null; // 通常のステージ1の森の夜(雨上がりの見た目の一部を弱めて流用・syncStage1Night)
@@ -6882,6 +6903,8 @@ export class PixiScene {
     this.moonPoolLayer.eventMode = 'none';
     this.moonPoolLayer.visible = false;
     this.L.worldGroup.addChildAt(this.moonPoolLayer, this.L.worldGroup.getChildIndex(this.cloudShadow));
+    // 試作 ?objshade=2(比較用): 雲の影と月明りの溜まりを物の上へ(ステージ3の木漏れ日は雲の影の直後に作られるので一緒に上へ来る)。
+    if (OBJ_SHADE_MODE === 'overlay') moveGroundLightAboveActors(this.L.worldGroup, this.L.filteredWorld, [this.s1nMoonPoolGfx, this.moonPoolLayer, this.cloudShadow]);
     // ステージ1の森の夜の柔らかい月明りの筋(従来の筋の直上・画面に固定)。
     this.moonShaftLayer.eventMode = 'none';
     this.moonShaftLayer.visible = false;
@@ -8489,6 +8512,7 @@ export class PixiScene {
 
   private depthScaleWith(footWorldY: number, k: number, min: number, max: number): number {
     if (!DEPTH_SCALE_ENABLED) return 1;
+    if (OBJ_DEPTH_MODE !== 0) return this.depthScaleGroundMatched(footWorldY);
     if (DEPTH_POS_MAP) return this.depthScaleMapped(footWorldY, min, max);
     // 旧方式(?depthmap=0)もズーム整合: 引き中は「同じ画面位置なら同じスケール」になるよう
     // 世界px勾配kをzoomで縮める(v8)。等倍は従来どおり。
@@ -8569,6 +8593,21 @@ export class PixiScene {
     }
     integ *= span / n; // ∫ 相対スケール dy(=床に沿った表示距離)
     return { worldY: ref + integ, scale: this.groundRelativeScale(footWorldY, far, near, curve) };
+  }
+
+  /**
+   * ?objdepth=1/2(試作): 物の大きさ = 地面の横の縮み conv(物の足元の行) / conv(主人公の足元の行)。
+   * 床の帯と物は同じ worldGroup の中なので、ローカルY(=worldY − camera.y − farH)で行を引けばズームしても床と一致する。
+   * 敵と物で同じ式(地面は1枚なので)。見た目の大きさだけ(判定・移動・位置は不変)。
+   */
+  private depthScaleGroundMatched(footWorldY: number): number {
+    const farH = this.farBackdropHeight();
+    const stripH = Math.max(1, this.screenH - farH) / GROUND_STRIP_REF_COUNT; // = computeGroundBandLayout().stripH
+    return groundMatchedDepthScale(
+      footWorldY - this.cameraY - farH, this.depthRefY - this.cameraY - farH, stripH, GROUND_STRIP_REF_COUNT,
+      { trapFar: GROUND_TRAPEZOID_FAR, trapCurve: GROUND_TRAPEZOID_CURVE, trapezoid: GROUND_TRAPEZOID },
+      OBJ_DEPTH_MIN, OBJ_DEPTH_MAX,
+    );
   }
 
   private depthScale(footWorldY: number): number {
@@ -9503,11 +9542,18 @@ export class PixiScene {
     }
   }
 
+  // 地面の流れる速さ(utils/groundScroll.ts)。積み上げ値・出撃の検知・直近の係数(DEV計測用)。
+  private groundScrollAcc = new GroundScrollAccumulator();
+  private groundScrollRunEpoch = 0;
+  private groundScrollLastGameTime = 0;
+  groundFeelLast: { feelX: number; feelY: number; row: number } | null = null;
+
   private updatePerspectiveGround(
     cameraX: number, cameraY: number, shakeX: number, shakeY: number,
     farScale: number = GROUND_TILE_SCALE_Y_FAR,
     nearScale: number = GROUND_TILE_SCALE_Y_NEAR,
     curve: number = GROUND_PERSPECTIVE_CURVE,
+    scroll?: { footWorldY: number; epoch: string },
   ) {
     // lab(M2)の床上端=境界線(farBackdropHeight=LAB_FAR_BOUNDARY_YR)に密着(v0.25.2190・スケール追従化)。
     // §6.37 床の縦延長(「本数追加」方式): stripH/t の定義(72本基準の式)は不変のまま、下方向へだけ
@@ -9516,7 +9562,30 @@ export class PixiScene {
     const band = computeGroundBandLayout(farH, this.screenH, ZOOM_OVERSCAN);
     const strips = this.L.groundStrips;
     const stripH = band.stripH; // 値そのものは旧来 groundH/72 と不変
-    let sourceY = cameraY * GROUND_SCROLL_Y_FEEL + farH;
+    // 地面の流れる速さ(社長指示2026-11-22「足元の地面は等倍に」・utils/groundScroll.ts)。
+    // 主人公の足元の行の模様が物と同じ速さで流れる係数を毎フレーム求め、カメラの移動量×係数を積み上げる
+    // (係数が変わっても模様が飛ばない)。?gfeel=0 で旧来の固定係数(1.2/3.0 × カメラの絶対値)に戻る。
+    const persp: GroundPerspectiveParams = {
+      tileScaleX: GROUND_TILE_SCALE_X, trapFar: GROUND_TRAPEZOID_FAR, trapCurve: GROUND_TRAPEZOID_CURVE,
+      trapezoid: GROUND_TRAPEZOID, farScale, nearScale, curve,
+    };
+    let scrollX: number; // テクスチャpx(旧 cameraX × GROUND_SCROLL_X_FEEL に相当)
+    let scrollY: number; // テクスチャpx(旧 cameraY × GROUND_SCROLL_Y_FEEL に相当)
+    if (!GROUND_FOOT_FEEL) {
+      scrollX = cameraX * GROUND_SCROLL_X_FEEL;
+      scrollY = cameraY * GROUND_SCROLL_Y_FEEL;
+    } else {
+      if (scroll) {
+        const feel = groundFeelAtFoot(scroll.footWorldY - cameraY - farH, stripH, groundStripT, persp, 1, Math.max(1, strips.length - 1));
+        const tex0 = strips[0]?.texture;
+        this.groundFeelLast = feel;
+        this.groundScrollAcc.step(cameraX, cameraY, feel.feelX, feel.feelY,
+          Math.max(1, tex0?.width ?? 1), Math.max(1, tex0?.height ?? 1), scroll.epoch);
+      }
+      scrollX = this.groundScrollAcc.offX;
+      scrollY = this.groundScrollAcc.offY;
+    }
+    let sourceY = scrollY + farH;
     // 横オーバースキャン: 引いた時に左右の黒帯が出ないよう、地面帯を画面より広く敷いて中央寄せ(視覚のみ)。
     const overW = this.screenW * ZOOM_OVERSCAN;
     const marginX = (overW - this.screenW) / 2;
@@ -9549,8 +9618,7 @@ export class PixiScene {
       // ※下部の「地面は速い/物は遅い」の乖離は未解決に戻る=対処するなら案2(オブジェクト側の
       // 疑似3D座標変換・設計書+監査つき)を別途起こす。
       const tc = t;
-      const perspective = Math.pow(tc, curve);
-      const scaleY = farScale + (nearScale - farScale) * perspective;
+      const scaleY = groundRowTileScaleY(tc, persp); // = farScale + (nearScale - farScale) * tc^curve(従来式)
 
       strip.position.set(0, y);
       strip.width = overW;
@@ -9558,14 +9626,12 @@ export class PixiScene {
       // 台形化: 横倍率は行位置tに対して**直線**(奥=GROUND_TRAPEZOID_FAR → 手前=1)。tは画面yに比例するので
       // これが「地平線からの距離に比例」=教科書どおりの遠近になる。縦(scaleY)は従来のまま一切いじらない。
       // GROUND_TRAPEZOID=0 なら conv=1 で従来と完全一致(復帰)。
-      const convLine = GROUND_TRAPEZOID_FAR + (1 - GROUND_TRAPEZOID_FAR) * Math.pow(tc, GROUND_TRAPEZOID_CURVE);
-      const conv = 1 + (convLine - 1) * GROUND_TRAPEZOID;
-      const tsx = GROUND_TILE_SCALE_X * Math.max(0.02, conv);
+      const tsx = groundRowTileScaleX(tc, persp); // = GROUND_TILE_SCALE_X × max(0.02, conv)(従来式)
       strip.tileScale.set(tsx, scaleY);
       // 消失点を画面中央に固定: どの行でも「画面中央のワールド列」が同じUになるよう tilePosition を逆算する
       // (左端基準のままだと横が縮むだけで収束せず、左へ寄って見える)。conv=1 のとき従来式と厳密に一致。
       const texW = Math.max(1, strip.texture.width);
-      const u0 = overW / (2 * texW * GROUND_TILE_SCALE_X) + cameraX * GROUND_SCROLL_X_FEEL / texW;
+      const u0 = overW / (2 * texW * GROUND_TILE_SCALE_X) + scrollX / texW;
       strip.tilePosition.set(overW / 2 - u0 * texW * tsx, -sourceY * scaleY);
       strip.visible = true;
       sourceY += stripH / Math.max(0.001, scaleY);
@@ -9622,6 +9688,7 @@ export class PixiScene {
     this.stage3Daylight?.restoreAtmosphere(); // ステージ3(昼の廃都)の霧の色(同上)
     this.restoreForestPreview();
     this.restoreWraithDarkness(); // 前フレームに掛けた亡霊戦の暗さを戻してから描く(§12)
+    this.objShade?.restore(); // 試作 ?objshade=1: 前フレームに物へ掛けた地面の明るさを戻す
     this.restoreZwarpActors(); // 前フレームの逆変形(ズーム時の遠近)を戻してから描く
     const s0 = useGameStore.getState();
     // ステージ2の変異塊の代理(攻撃を受ける窓口だけの Enemy・research/LAB_CRAWLER.md §4)は描かない:
@@ -10543,11 +10610,18 @@ export class PixiScene {
     }
     // ?labpersp の研究所では床専用の強い遠近カーブを使う(屋外は従来定数)。
     const labPerspNow = s.indoorMode && LAB_PERSP;
+    // 地面の積み上げのリセット: 出撃(gameTimeが巻き戻る)・ステージ/テーマ/屋内外の切替。
+    if (s.gameTime < this.groundScrollLastGameTime) this.groundScrollRunEpoch++;
+    this.groundScrollLastGameTime = s.gameTime;
     this.updatePerspectiveGround(
       s.camera.x, s.camera.y, sx, sy,
       labPerspNow ? LAB_PERSP_FAR : GROUND_TILE_SCALE_Y_FAR,
       GROUND_TILE_SCALE_Y_NEAR,
       labPerspNow ? LAB_PERSP_CURVE : GROUND_PERSPECTIVE_CURVE,
+      {
+        footWorldY: s.player.y + s.player.height,
+        epoch: `${getSelectedStageId()}|${s.stageTheme}|${s.indoorMode ? 1 : 0}|${s.corridorMode ? 1 : 0}|${this.groundScrollRunEpoch}`,
+      },
     );
     const frontH = this.frontForestHeight();
     this.L.frontForest.position.set(sx * 0.75, this.screenH - frontH + this.frontForestYOffset(frontH));
@@ -11236,6 +11310,7 @@ export class PixiScene {
     this.syncStage5Battle(s, now); // ステージ5(戦場)の光・色・コントラスト(他ステージ=1命令で終わる)
     this.syncStage3Daylight(s, now); // ステージ3(昼の廃都)の光と影(他ステージ=1命令で終わる)
     this.syncTorchBack(s, now); // 松明の裏の光(ステージ3/4/7・utils/torchBackLight.ts。他ステージ=1命令で終わる)
+    if (this.objShade) this.applyObjShade(); // 試作 ?objshade=1(既定は null=呼ばない)
     this.syncZoomWarp(s.player.vx ?? 0, s.player.vy ?? 0, realNow); // ★必ず最後(このフレームの世界が全部揃ってから1枚に描く)
   }
 
@@ -40266,6 +40341,23 @@ export class PixiScene {
    * (applyForestPreview と同じ型)。床が一番深く・地平の森と霧はその次・空は浅く沈む。沈むほど赤から抜けて冷える(#2#3)。
    * 月(本体・光・暈)は「最後に残る光」として沈めない(#1)。キャラ・敵・エフェクト・HUD・近景の森は触らない=画面ごとは暗くしない。
    */
+  /** 試作 ?objshade=1: 地面に掛けている光と影を、物の足元の明るさとして物の絵にも掛ける(src/pixi/objShade.ts)。 */
+  private applyObjShade(): void {
+    const os = this.objShade;
+    if (!os) return;
+    const s3 = this.stage3Daylight?.shadeSources();
+    os.apply({
+      actorLayer: this.L.actorLayer,
+      mulTiles: s3 ? [this.cloudShadow, ...s3.bands] : [this.cloudShadow],
+      mulSprites: s3 ? s3.canopies : [],
+      addSprites: this.moonPoolLayer.visible ? this.moonPoolSprites : [],
+      screenW: this.screenW,
+      screenH: this.screenH,
+      k: tsNum('objshadek', 1),
+      lightGain: tsNum('objshadelight', 1),
+    });
+  }
+
   private applyWraithDarkness(): void {
     const L = this.wraithDarkLayers;
     if (L.ground >= 0.999 && L.mid >= 0.999 && L.sky >= 0.999) return;

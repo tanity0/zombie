@@ -130,7 +130,7 @@ const getHazeTexture = (): Texture => {
 interface Dust { sp: Sprite; x: number; y: number; vx: number; vy: number; seed: number; speed: number }
 /** 木1本ぶんの、このフレームの入力(描画側が木の絵から作る)。 */
 export interface S3DTreeView { id: string; x: number; y: number; w: number; h: number; alpha: number }
-interface CanopySlot { id: string; sp: Sprite; a: number; seen: boolean }
+interface CanopySlot { id: string; sp: Sprite; a: number; seen: boolean; fx: number; fy: number }
 
 export class Stage3DaylightLayer {
   readonly gradeFilter = new ColorMatrixFilter();
@@ -387,12 +387,13 @@ export class Stage3DaylightLayer {
             sp.blendMode = 'multiply';
             sp.eventMode = 'none';
             this.canopyRoot.addChild(sp);
-            c = { id: t.id, sp, a: 0, seen: false };
+            c = { id: t.id, sp, a: 0, seen: false, fx: t.x, fy: t.y };
             this.canopies.push(c);
           }
           c.id = t.id; c.a = 0;
         }
         c.seen = true;
+        c.fx = t.x; c.fy = t.y;
         c.a += (t.alpha - c.a) * 0.12;
         const seed = hash01(t.x * 0.013 + t.y * 0.007, 0.5);
         const sw = dappleSway(now, seed);
@@ -412,6 +413,14 @@ export class Stage3DaylightLayer {
       if (c.a <= 0.004) { c.a = 0; c.sp.visible = false; continue; }
       c.sp.alpha = S3D_CANOPY.alpha * c.a * k;
     }
+  }
+
+  /**
+   * 試作(?objshade=1): 地面に掛けている乗算の影(縁の帯4枚・梢の影)を、物にも同じ明るさを掛ける側(objShade.ts)へ渡す。
+   * 梢の影は持ち主の木の足元(world 座標)も添える=木が自分の梢の影で暗くならないように外せる。読むだけ。
+   */
+  shadeSources(): { bands: readonly TilingSprite[]; canopies: readonly { sp: Sprite; fx: number; fy: number }[] } {
+    return { bands: this.bands, canopies: this.canopies };
   }
 
   /** 地平の帯の暖かいかすみ(左=太陽の側で強く、右で弱い)。地平線(雲の影の上端)を真ん中に。 */
