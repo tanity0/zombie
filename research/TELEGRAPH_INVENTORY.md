@@ -154,7 +154,7 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 | A11 周りに降る残骸の円 | 2 | 紫 | 円 | 同上 | `debris` かつ `ambient`(技ではない方) | `pS:21232-21243` | ast | 同上 | 多数 | 円窓 | 要 | 弾けない=紫 |
 | A12 隕石の着弾円 | 2 | 紫 | 円+影の楕円2枚 | 同上 | kind `meteor` | `pS:21248-21257` | ast | 同上(`noParry`) | 単 | 円窓 | 要(円)・影の楕円は点+倍率でも可 | 影の楕円は判定なし(大きさは `depthScale` 済み) |
 | A13 旗の帯 | 1 | 赤 | 帯 | 同上 | kind `flag`(`capsule`) | `pS:21258-21273`(帯窓を自前で刻む) | ast | 同上 | 単 | 帯窓(`bandSweepCenter` を直に呼ぶ) | 要 | |
-| A14 花束の円 | 要確認 | 白(0xf2ece2 α0.04)+花弁 | 円 | 同上 | kind `bouquet` | `pS:21274-21288` | ast | `astroTick.ts`(判定の有無と中身は未確認) | — | — | 要(円を描くなら) | **判定を持つか未確認**(§7) |
+| A14 花束の円 | 3(良い効果の範囲円) | 白(0xf2ece2 α0.04)+花弁 | 円 | 同上 | kind `bouquet` | `pS:21274-21288` | ast | `utils/astroTick.ts:403-415`(回復の範囲) | — | — | 要 | 判定あり=回復(監査で確認) |
 | A15 旗手の矢の雨の着弾円 | 1 | 赤 | 円 | 解放軍の旗手(mutant-liberty)+旗手が死んだ後の孤児の矢 | 旗手の `giantDelayedHits`(`moveKey 'liberty-arrow'`)・`libertyOrphanArrows.hits` の `fireAt`(描く側 `pS:21007`/`21010`) | `syncLibertyArrows` `pS:20962-20979` | lib | `utils/libertyTick.ts:479/504/554`(`'liberty-arrow'`) | 多数(各矢が別時刻) | 円窓 | 要 | 画面外の旗手でも描く。刺さった矢(`stuck`)は絵 |
 | A16 亡霊の叫びの紫の円 | 2 | 紫 | 円 | 亡霊(mutant-wraith) | `wraithScreamAt`(溜め `WRAITH_SCREAM_WINDUP_MS`) | `syncWraithTelegraph` `pS:41909-41922` | wr | `utils/wraithTick.ts:201`(`'wraith-scream'`) | 単 | 円窓 | 要 | |
 | A17 呪いの墓石の通り道 | 1 | 赤 | 帯(太い線) | 亡霊 | `skadiIceBlades` の `visual==='grave'` | `syncSkadiHazards` `pS:19815-19877`(墓石は `gb` へ) | gb | `gS:23714-23721`(`'wraith-grave'`・`parryLocal`) | 多数 | 帯窓(自前でスライス) | 要 | 刃の行(C11)と同じ関数。墓石だけ層が `groundLayer` |
@@ -202,7 +202,7 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 | # 名札 | 種 | 色 | 形 | 持ち主 | 技の入口 | 描く関数 ファイル:行 | 層 | 判定 ファイル:行 | 多段 | 位相 | 頂点投影 | 備考 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | C01 裏ボスの突進ライン | 1 | 赤 | 線 | 3体 | `dash-windup`→`dash` | `dashLineTick` `pS:28774-28778` | tele | 走行中の体当たり `cT:1615` | 単 | 流星 | 要 | |
-| C02 ミーミルの群体の噛みつき円 | 1 | 赤 | 円 | ミーミル | `bite-windup` | `pS:28794-28806` | tele | `uGL:8699`(爆風経由・`MIMIR_BITE_RADIUS`) | 単 | 円窓 | 要 | 描く半径は `MIMIR_BITE_RADIUS_VIS`(判定と別名の定数=値の一致は要確認) |
+| C02 ミーミルの群体の噛みつき円 | 1 | 赤 | 円 | ミーミル | `bite-windup` | `pS:28794-28806` | tele | `uGL:8699`(爆風経由・`MIMIR_BITE_RADIUS`) | 単 | 円窓 | 要 | 描く半径 `MIMIR_BITE_RADIUS_VIS` は判定 `MIMIR_BITE_RADIUS` の別名(216)=一致を確認済み |
 | C03 レーザー(カラオケ塗り) | 2 | 紫 | 帯(根元→足元へ伸びる) | ミーミル・バス停(`usesMimirLaser`) | `laser-windup`/`laser-fire` | `pS:28102-28175`(溜め 28128・発射 28167/28173) | tele | ミーミル `uGL:8549-8558`/バス停 `bT:1038` | 発射中は持続(追尾) | 自前(カラオケ塗り=掟①の唯一の例外) | 要 | 盾で割る(`strokeBeamLayers`) |
 | C04 ミーミルの紫の車輪 | 2 | 紫 | 線×スポーク(回転) | ミーミル | `wheel-windup`/`wheel-fire` | `pS:28184-28310` | tele | `uGL:8659`(`'capsule:mimir-wheel'`) | スポーク本数ぶん同時・持続 | 濃(塗りと太りが溜めで増す=流星でない) | 要 | 寄り集まる玉(`pS:28207-28222`)は判定なしの②。**掟①: 紫で流星でない=例外の1件(レーザー)に入らない**(§6) |
 | C05 うねり薙ぎの帯 | 1 | 赤 | 帯 | ヨルムンガンド | `coil-windup`(実行 `coil`) | `pS:28846-28851`(`drawAngelZoneCapsule`) | tele | `uGL:8716`(爆風経由 `HB_JO.coil.halfWidth`) | 単 | 帯窓 | 要 | **描く幅は `HB_TH.harai.halfWidth`(トールの値)・判定は `HB_JO.coil.halfWidth`**=今は両方40だが出どころが別(§6)。実行中の胴(`coilBody`)は絵 |
@@ -229,7 +229,7 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | E01 払い/縦払いの帯 | 1 | 赤 | 帯 | ミゲル | `harai-windup`→`harai`→`tate-windup`→`tate` | `pS:29300-29325`(`drawAngelZoneCapsule` 29309)+完了ラッチ `pS:29821-29843` | tele | `aBT:811-820`(旧経路 `aBT:1088-1097`) | **2段(払い→縦払い・段ごとに溜め)** | 帯窓 | 要 | |
 | E02 踏み込みの線 | 1 | 赤 | 線 | ミゲル | `mdash-windup`→`mdash-move` | `drawAngelDashLine` `pS:29341`(29326-29363) | tele | `aBT:934-941` | 単 | 流星(走行で消しが進む `merase`) | 要 | 通る技=走行中も線が残る |
-| E03 ランスの帯 | 1 | 赤 | 帯 | ジブリル | `lance-windup`/`lance` | `pS:29376-29412`(29400) | tele | `aBT:1451`(爆風経由 `capsule`) | 単 | 帯窓 | 要 | 追尾ランタン(`lanceLanterns`)は絵 |
+| E03 ランスの帯 | 1 | 赤 | 帯×3 | ジブリル | `lance-windup`/`lance` | `pS:29376-29412`(本数 29380・帯 29400) | tele | `aBT:1415-1463`(爆風経由 `capsule`・1451) | **3本・1秒おきに別の時刻** | 帯窓(進みは 0.97 が上限=`pS:29398`) | 要 | 進みの上限で掟③からわずかに外れる(§6-3)。追尾ランタン(`lanceLanterns`)は絵 |
 | E04 ランタン火の円 | 2 | 紫 | 円 | ジブリル | `lantern` → `bossFires` | `syncBossFires` `pS:21872-21896` | bf | `aBT:3912/3928 tickAngelBossFires` | 多数・別時刻 | 円窓 | 要 | 有効中の紫の炎は絵(`pS:21904-21907`) |
 | E05 聖別の火の環 | 2 | 紫 | 円×N | ジブリル | `consecrate-windup` 明けに火を環に置く(`aBT:1541-1545`) | E04 と同じ | bf | E04 と同じ | N個・同時 | 円窓 | 要 | 溜め中の地面の予告は無い(ランタンを掲げる絵だけ) |
 | E06 骨刃の通り道 | 1 | 赤 | 帯(太い線) | ラフィ | `bone-windup`→`skadiIceBlades`(`visual 'bone'`・`aBT:1872`) | `syncSkadiHazards` `pS:19815-19877` | skH | `gS:23717/23721` | 刃ごと | 帯窓 | 要 | |
@@ -276,7 +276,7 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 | G04 追尾弾の線 | 1 | 赤 | 線 | 偶像 | `idol-orb-windup` | `pS:29023-29046` | tele | 弾 | 本数同時 | 帯窓 | 要 | |
 | G05 メーカーの射撃枠の線 | 1 | 赤 | 線 | 偶像 | `idol-s*-windup`(`IDOL_SHOT_SLOTS`) | `pS:29048-29070` | tele | 弾 | 本数同時 | 帯窓 | 要 | 既定OFF |
 | G06 殴りの帯 | 1 | 赤 | 帯 | 偶像 | `idol-punch-windup` | `drawAngelZoneCapsule` `pS:29072-29081` | tele | `iT:953`(`hitCapsule`→`iT:576`) | 単 | 帯窓 | 要 | |
-| G07 手榴弾の爆発円 | 2 | 紫 | 円(弾に付く) | 偶像 | `idol-nade-windup`→`idol-nade`(敵の手榴弾=`p.hostile`) | `drawProjectile` `pS:38344-38352` | **pj(frontObjectLayer・弾の Graphics の原点=弾の位置)** | `uGL:14826-14840`(`HEAVY_GRENADE_RADIUS`) | 単 | 円窓(信管 `fu`) | 要 | 円が弾と一緒に動く=段階4では円の中心=弾の地面の位置 |
+| G07 手榴弾の爆発円 | 2 | 紫 | 円(弾に付く) | 偶像・**幻影**(`utils/phantomTick.ts:194`) | `idol-nade-windup`→`idol-nade`(敵の手榴弾=`p.hostile`) | `drawProjectile` `pS:38344-38352` | **pj(frontObjectLayer・弾の Graphics の原点=弾の位置)** | `uGL:14826-14840`(`HEAVY_GRENADE_RADIUS`) | 単 | 円窓(信管 `fu`) | 要 | 円が弾と一緒に動く=段階4では円の中心=弾の地面の位置。**円が遠近で拡大・縮小される**(§6-3) |
 
 ### H. 賞金首4型(`isBountyType`)
 
@@ -304,14 +304,17 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 
 | # 名札 | 種 | 色 | 形 | 持ち主 | 技の入口 | 描く関数 ファイル:行 | 層 | 判定 ファイル:行 | 多段 | 位相 | 頂点投影 | 備考 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| I01 センサー地雷の範囲円 | 3 | 赤(感知後の点滅) | 円 | プレイヤー(サブ) | `sensorMines`(感知→起爆) | `syncSensorMines` `pS:21928-21966`(円 21962-21964) | sm | `cT:1193 applyMineDamage`・`utils/sensorMine.ts:84 tickSensorMines`(`SENSOR_MINE_RADIUS`) | 地雷ごと | 円窓 | 要 | 敵に当たる物(プレイヤーには当たらない)だが赤を使う |
-| I02 デコイの射程の円 | 3 | 青 | 円(二重線) | プレイヤー(サブ) | 置いたデコイ(`p.area`) | `syncDecoys` `pS:33823-33828` | **frontObjectLayer**(デコイの入れ物の子) | `uGL:12916`(`decoy.area`) | — | — | 要 | |
+| I01 センサー地雷の範囲円 | 2(返せない=紫の文法のはずが赤で描く=§6-3) | 赤(感知後の点滅) | 円 | プレイヤー(サブ)・**幻影**(幻影の地雷はプレイヤーに当たる=`utils/sensorMine.ts:111`・`uGL:15078-15095`) | `sensorMines`(感知→起爆) | `syncSensorMines` `pS:21928-21966`(円 21962-21964) | sm | `cT:1193 applyMineDamage`・`utils/sensorMine.ts:84 tickSensorMines`(`SENSOR_MINE_RADIUS`) | 地雷ごと | 円窓 | 要 | プレイヤーの地雷は敵に当たる。幻影の地雷はプレイヤーに当たる |
+| I02 デコイの射程の円 | 3 | 青 | 円(二重線) | プレイヤー(サブ)・**幻影**(`uGL:11902`) | 置いたデコイ(`p.area`) | `syncDecoys` `pS:33823-33828` | **frontObjectLayer**(デコイの入れ物の子) | `uGL:12916`(`decoy.area`) | — | — | 要 | |
 | I03 ハンターの視界の円 | 3 | 薄紫 | 円 | ハンター | 巡回・索敵中 | `syncHunterVision` `pS:34850-34866` | G(`hunterVisionGfx`) | `HUNTER_VISION_RANGE`(`gS:3500`)・`uGL:929` | — | — | 要 | 当たる円ではなく「見つかる円」 |
 | I04 火炎瓶の地面の火 | 4 | 炎の絵 | 円(判定)・**絵は炎の Sprite** | プレイヤー(サブ) | `groundFires` | `syncGroundFires` `pS:21664-21733`/子の炎 `pS:21735` | actorLayer(子の足元で奥行き) | `utils/molotov.ts:85/104`(円・半径 `groundFireRadiusAt` 155) | 火ごと | — | 点で足りる(円を描いていない) | 段階4に入れるかは「形を描いていない」ので要決定 |
 | I05 氷槍の床(線) | 4 | 氷の絵 | 帯(線) | プレイヤー(武器 rifle-t2-icelance) | `iceLanceFloors` | `syncIceLanceFloors` `pS:20157-20230` | effectLayer | `utils/iceLanceFloor.ts:71`(幅28) | — | — | 要(線の両端) | |
 | I06 血の履帯の棘 | 4 | 赤黒 | 小円 | プレイヤー(スキル) | `bloodSpikes` | `syncBloodSpikes` `pS:21778-21795` | `groundLayer` | `gS:15126`(`BLOOD_TREADS_RADIUS_PX`) | 多数 | — | 要(小円・省略⑥の候補) | |
 | I07 重力井戸の輪 | 3 | 紫系 | 輪 | プレイヤー(サブ) | `gravityWells` | `syncGravityWells` `pS:39574-39602` | effectLayer | 判定の行は未確認 | — | — | 要 | §7 |
 | I08 金環(サブ)の輪 | 3 | 金 | 輪+光線 | プレイヤー(サブ) | `goldRings` | `syncGoldRings` `pS:20054-20140` | effectLayer | `utils/goldRing.ts`(行は未確認) | — | — | 要 | §7 |
+| I09 研究所の休眠ゾンビの視界 | 3 | 薄い赤 | 多角形(扇状の視界) | 研究所の休眠ゾンビ | 研究所で見える時 | `updateLabVisionCones` `pS:15162` | `groundLayer`(`labVisionLayer`・`pS:15170`) | 見つかる範囲(`utils/labStealth.ts`・行は未確認) | — | — | 要 | I03 と同じ「見つかる形」 |
+| I10 マークスマン罠の範囲円 | 3 | 青 | 円 | プレイヤー(サブ)・**幻影**(`hostile`・`uGL:11413`) | 置いた罠(`p.area`) | `drawProjectile` `case 'trap'` `pS:38399-38406` | pj | 幻影の罠はプレイヤーを捕まえる `uGL:15972-15990` | — | — | 要 | 半径は `radius / depthD` で遠近の拡大を打ち消してある |
+| I11 ドローン・ブーメランの範囲リング | 3 | シアン | 円 | プレイヤー(サブ) | 止まっている間(`p.area`) | `drawProjectile` `pS:38380-38388` | pj | 行は未確認 | — | — | 要 | |
 
 ### J. 静的な床の印(種5)
 
@@ -329,6 +332,7 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 | J10 EX結界/南の膜 | 5 | 金 | 帯(横の膜) | 床 | `s.exBarrier` | `sync` 内 `pS:11875-` | G | 行は未確認 | — | — | 要 | |
 | J11 区域の境界テープ | 5 | — | 線 | 床 | 区域の境 | `syncAreaBoundaryTape` `pS:44748` | `groundLayer`(`pS:6870`) | 行は未確認 | — | — | 要 | |
 | J12 研究所の床のプレート | 5 | — | 矩形 | 床 | `updateLabFloorPlate(show)` | `pS:8847-8860` | 未確認 | 行は未確認 | — | — | 要 | |
+| J14 ボスの当たり判定の枠(開発用・**段階4の対象外**) | 5 | 赤系 | 矩形 | ボス | `?bosshitbox=1`・ボスメーカーの判定トグル | `drawEnemy` `pS:27049-27086` | tele | 判定の箱そのもの | — | — | 対象外 | 既定OFF。製品の画面には出ない |
 | J13 錬金の陣(足元) | 5(判定は未確認) | シアン | 円 | プレイヤー | 錬金のリズム | `syncAlchemyCircle` `pS:12494-12530`(`alchemyCircle`/`alchemyRhythmGfx`) | G | 判定の有無は未確認 | — | — | 要 | §7 |
 
 ### K. 判定を持たない地面の形(種6)
@@ -347,30 +351,31 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 | K10 英雄の突進の道筋(蹄跡) | 6 | 骨色 | 小楕円の列 | 英雄 | `heroMove` charge/leapcharge | `drawHeroTelegraph` `pS:41702-41717` | tele | なし(赤にしない=当たらない意図) | — | — | 点で足りる | |
 | K11 星弓の落下点の影 | 6 | 黒+青 | 楕円 | ヨルムンガンド | `jrain`(`jormRainLobs` の `landAt`) | `drawJormRain` `pS:35988-36000` | 未確認(`drawJormRain` 内の g) | なし(着地で弾を撒くだけ `uGL:8834-8841`) | 多数 | — | 要 | |
 | K12 凍てつく牙の輪の印 | 6 | 青 | 円・弧の印 | ヨルムンガンド | `jfreeze`(`jormFreezeRings`) | `drawJormRain` `pS:36030-36130` | 同上 | なし(当たるのは弾) | 輪ごと | — | 要 | |
+| K14 ホロの魔法陣 | 6 | ホロ色 | 円(焼き素材) | ミゲル・ジブリル | `volley-windup`/`volley`(`drawHoloVolleyCircle` `pS:40785`)・ジブリル `warp-windup`(`drawHoloMiniAt` `pS:40804`) | 呼び `pS:29273-29287` | 未確認 | なし(②) | — | — | 要(寝かせた陣) | K08 と同じ扱い |
 | K13 プレイヤーの矢の雨の影 | 6 | 黒 | 小楕円 | プレイヤー(スキル) | `arrowRainShots`/`arrowRainStuck` | `syncPlayerArrowRain` `pS:21619-21657` | groundLayer | 当たるのは矢の着地点(`utils/arrowRain.ts`) | 多数 | — | 点で足りる | |
 
 ---
 
-## 4. 総数と種類ごとの件数
+## 4. 総数と種類ごとの件数(監査の反映後に数え直し)
 
-**表の行数 = 151**(A20・B28・C10・D6・E21・F10・G7・H15・I8・J13・K13)。
-うち H03(バス停のレーザー)は C03 と**同じ描画**(`usesMimirLaser`)を持ち主ごとに分けた行なので、**描く物としては 150**。
+**表の行数 = 156**(A20・B28・C10・D6・E21・F10・G7・H15・I11・J14・K14)。
+うち H03(バス停のレーザー)は C03 と**同じ描画**を持ち主ごとに分けた行なので、**描く物としては 155**。
+J14(ボスの当たり判定の枠)は開発用で**段階4の対象外**。
 
 | 種類(依頼の1〜6) | 行数 | 行 |
 |---|---|---|
 | 1 赤い予告 | **98** | A01 A02 A03 A05 A06 A07 A08 A09 A10 A13 A15 A17 A19 A20 / B01〜B06 B08〜B23 B26〜B28 / C01 C02 C05〜C09 / D02〜D06 / E01〜E03 E06〜E21 / F01〜F10 / G01 G02 G04〜G06 / H01 H02 H04〜H06 H08〜H15 |
-| 2 紫の予告 | **17** | A04(使者の常設の接触円) A11 A12 A16 A18 B07 B24(血の弧の遅延円=紫) C03 C04 C10 D01(無の境地) E04 E05 G03 G07 H03 H07(溜め=紫・発射中=赤) |
-| 3 攻撃範囲・射程の円 | **5** | I01 I02 I03 I07 I08 |
+| 2 紫の予告 | **18** | A04(使者の常設の接触円) A11 A12 A16 A18 B07 B24(血の弧の遅延円=紫) C03 C04 C10 D01(無の境地) E04 E05 G03 G07 H03 H07(溜め=紫・発射中=赤) I01(幻影の地雷=返せないのに赤で描く) |
+| 3 攻撃範囲・射程の円 | **8** | A14(花束=回復の範囲) I02 I03 I07 I08 I09 I10 I11 |
 | 4 判定を持つ床 | **4** | B25(グレンの血溜まり) I04 I05 I06 |
-| 5 静的な床の印 | **13** | J01〜J13 |
-| 6 判定を持たない地面の形 | **13** | K01〜K13 |
-| 判定の有無が未確認 | **1** | A14(花束) |
+| 5 静的な床の印 | **14** | J01〜J14(J14 は対象外の注記つき) |
+| 6 判定を持たない地面の形 | **14** | K01〜K14 |
 
-- 段階4で**判定と厳密一致が要る行**(種1〜4+未確認)= A〜I の **125 行**。
-- 形の内訳(A〜I の125行・「形」欄の先頭の語で機械的に数えた): 円 **51**(A19 の「円/扇/帯」を円に入れた)・帯 **48**・線 **17**・扇 **3**(A18 B08 E16)・環状の扇 **1**(B21)・輪 **3**(B17 I07 I08)・矩形 **1**(C06)・「同上」**1**(A20=A19 と同じ3形)。
-- 層の内訳(種1・2の115行): 敵の入れ物の子(tele/oT)が大半。**groundLayer の Graphics**=A01〜A06(pT/mM)・A09(cr)・A10〜A13(ast)・A15(lib)・A16(wr)・A17(gb)・E04/E05(bf)・E18(acS)。**effectLayer**=A18・C07〜C09・E06・E07・F10。**弾の Graphics(frontObjectLayer)**=G07。
+- 段階4で**判定と結び付く行**(種1〜4)= A〜I の **128 行**。
+- 形の内訳(A〜I の128行・「形」欄の先頭の語で機械的に数えた): 円 **53**・帯 **48**・線 **17**・扇 **3**・輪 **3**・同上 **1**・環状の扇 **1**・矩形 **1**・多角形 **1**(A19 の「円/扇/帯」は円に入れ、A20 は「同上」)。
+- 層の内訳(種1・2の116行): 敵の入れ物の子(tele/oT)が大半。**groundLayer の Graphics**=A01〜A06(pT/mM)・A09(cr)・A10〜A13(ast)・A15(lib)・A16(wr)・A17(gb)・E04/E05(bf)・E18(acS)・I01(sm)。**effectLayer**=A18・C07〜C09・E06・E07・F10。**弾の Graphics(frontObjectLayer)**=G07。
 
-> 数え直し用の式: `grep -c "^| [A-K][0-9][0-9] " research/TELEGRAPH_INVENTORY.md` → 151 / `grep -c "^| [A-I][0-9][0-9] "` → 125 / 種類ごと=各行の2列目の先頭の数字。
+> 数え直し用の式: `grep -c "^| [A-K][0-9][0-9] " research/TELEGRAPH_INVENTORY.md` → 156 / `grep -c "^| [A-I][0-9][0-9] "` → 128 / `grep -c "^| N[0-9][0-9] "` → 14(§5) / 種類ごと=各行の2列目の先頭の数字。
 
 ## 5. 「予告なし」の攻撃(当たるのに、地面に赤/紫の形が出ない物)
 
@@ -381,13 +386,16 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 | N01 | 突進の走行中の体当たり | 犬・研究所Lv2・ハンター・城ボス(`g-dash-charge`/`g-quad-charge`)・裏ボス `dash`・トール `thor-dash-move`・馬乗り `bm-charge`・ミゲル `mdash-move`・ウリ `thrust` | `cT:1615`(`isBodySlamNow`) | ④ | ミゲル/ウリは線が走行中も残る(E02・E12)。他は走り出しで赤が消える=掟④の体帯は**社長裁定 2026-09-18 で撤去**(CLAUDE.md) |
 | N02 | 跳びの滞空中・着地前の体 | パンプキン等の `jump`・ラフィ `jump-attack`・鋏 `leap-air`・舞妓 `mk-suiu-hop*`・フィル `phill-dive-fall` | 着地円(A05・E08・H10・H13・F09)とは別に**飛行経路の体の接触**が生きている型がある | ① | `RED_CIRCLE_AUDIT.md` C(#R3)の未抑止の4型 |
 | N03 | 死神の体当たり | 死神(reaper・噛みつき免除) | `utils/collisionUtils.ts:191 checkPlayerEnemyCollisions`→`cT:1615` | ① | 体そのものが判定・地面の形なし |
-| N04 | 幻影の格闘・武器(拳鬼の格闘含む) | guardian-phantom(`gp-brawler` 等) | `utils/phantomBrawlerTick.ts:275`・`utils/phantomTick.ts` | ④ | 「プレイヤーと同じ即発」の設計(`types/game.ts` の幻影のコメント・GHOST_BOSS.md v6)。炎の扇だけは A18 |
+| N04 | 幻影の格闘・武器・サブウェポン(拳鬼の格闘含む) | guardian-phantom(`gp-brawler` 等)。サブウェポンの経路は `uGL` 側(タレット・ドッグ・分身・地雷・罠・囮・手榴弾) | `utils/phantomBrawlerTick.ts:275`・`utils/phantomTick.ts`・`uGL`(下の N12〜N14) | ④ | 「プレイヤーと同じ即発」の設計(GHOST_BOSS.md v6)。形が出るのは炎の扇 A18・地雷 I01・罠 I10・囮 I02・手榴弾 G07 だけ |
 | N05 | ゾンビの紫の追尾(体当たり) | ゾンビ `zpause`→`zrush` | `enemyBite.ts:655 ZOMBIE_RUSH_BODY_SLAM_MS`・`isBodySlamNow` | ③ | 体の紫の点滅(`BITE_BLINK_TINT` `enemyBite.ts:932`)だけ |
-| N06 | 抱卵型の卵(地雷) | 抱卵型(ghost)が撒く `breakableProps` type `mine` | `gS:5001/16873/25659`(壊れた時の処理) | ③ | 卵の絵が armed で光る(`pS:16834-16846`)・**範囲の円は無い**。プレイヤーに当たるかは未確認(§7) |
+| N06 | 抱卵型の卵(地雷) | 抱卵型(ghost)が撒く `breakableProps` type `mine` | `gS:5001/16873/25659`(壊れた時の処理) | ① | 当たる(`uGL:17241`・半径80)。卵の絵が armed で光るだけで**範囲の円は無い**=予告なしで確定 |
 | N07 | スカジの氷結の檻の溜め | `cage-windup` | 溜め明けに氷塊が置かれ、その円(C08)が予告になる | ③ | 溜めの間は体の震えだけ |
 | N08 | ジブリルの聖別の溜め | `consecrate-windup` | 同上(E05) | ③ | ランタンを掲げる絵だけ |
 | N09 | 弾の技(地面の形なし) | ミーミル族 `aim-burst`/`burst`(ミーミル族の方)/`aim-radial`/`radial`・`jwave`/`jrain`/`jfreeze` の弾・城ボス `g-bolt-*`/`g-tailslam-volley`・ミゲル/ジブリル `volley`・ウリ `bolt`・スリィエル/アクラシエル `gaze`(アクラシエルは線 E21 あり)・鋏 `bb-quickshot`・フィル `phill-lancefan`/`phill-meteor`・偶像 `idol-aim`/`fan`/`orb`/`s*`(線 G01-G05 あり)・プラントの種・拳鬼の気功(`phantomBrawlerTick.ts:630`)(※刃=氷刃・骨刃・羽根・墓石は通り道の帯がある=C09 E06 E07 F10 A17) | `cT:1006 applyEnemyProjectileHits` | ② | 弾そのものが共通の赤い二重丸(CLAUDE.md「色と形の文法」③)。**偶像は線を出すのに他のボスは出さない**=揃っていない |
 | N10 | 噛みつきの線が出ない噛み | 噛みつき化した敵のうち `biteDirX/Y` が未設定の瞬間 | `biteTelegraph.ts:265` で線を返さない | ① | 起きうるかは未確認(§7) |
+| N12 | 幻影のタレットが消える時の爆発 | 幻影のタレット | `uGL:14585-14616`(`TURRET_EXPLOSION_RADIUS×tExMult`) | ① | 範囲の円なし |
+| N13 | 幻影のドッグの噛み | 幻影のドッグ | `uGL:11520-11545`(`DOG_BITE_RADIUS`) | ① | |
+| N14 | 幻影の分身の近接 | 幻影の分身(`gpShadowClone`・`uGL:12861-12863`) | `gS:14847-14875 phantomShadowCloneStrike`(中心から `meleeRange` の円・`gS:14868`・当たると `damagePlayer` `gS:14875`) | ① | プレイヤーに当たる=コードで確認 |
 | N11 | (参考)骸骨の噛みの前の溜め(しゃがみ) | `s-crouch` | 判定なし(線は `s-arc` の頭から) | — | 判定を持たないので違反ではない(記録のみ) |
 
 ---
@@ -422,8 +430,12 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 ### 6-3. 食い違い(台帳づくりの途中で見つけた・**直していない**)
 
 1. **E11 ウリの振り下ろし: 赤の半幅=`HB_TH.tsuki.halfWidth`(15)/判定の半幅=`UR_T.downslash.halfWidth`(40)**(`pS:29494`・`pS:29502` と `aBT:2355`)。`angelScript.ts:201` のコメントに「halfWidth 15→40 = v0.25.3589 ボスメーカー貼り戻し(社長確定)」とあり、**描く側だけ15のまま**に見える=「赤くないのに当たる」の疑い。実機で未確認。
+1b. **(確定・監査)** 上の1は監査で確定: 描く半幅15=`hiddenBossScript.ts:307 HB_TH.tsuki.halfWidth`(`pS:29494`/`29502`)、判定の半幅40=`angelScript.ts:202 UR_T.downslash.halfWidth`(`aBT:2355`)。
+1c. **敵の手榴弾の紫の円が遠近で拡大・縮小される**(G07): `pS:38221` で設置物扱い→円は `HEAVY_GRENADE_RADIUS`(`pS:38350-38352`)→`pS:38473` の `g.scale.set(depthD)` で **R×depthD** になる。罠(I10)と囮は `radius / depthD` で補正済みだが手榴弾だけ抜けている。判定は固定(`uGL:14821-14840`)。
+1d. **幻影の地雷(I01)の色と半径**: 返せない攻撃なのに赤で描く(`pS:21962`)。爆発半径は判定=`SENSOR_MINE_RADIUS × skillExplosionMult × heavyGunnerExplosionMult(smActor)`(`uGL:15046-15050`)、描く円は固定(`pS:21962-21964`)=smActor がプレイヤーに戻る時にプレイヤーのエクスプローダーで判定だけ広がる(潜伏)。
+1e. **E03 ランスの進みの上限 0.97**(`pS:29398`): 3本が別の時刻で当たる技で、赤が消え切る前に当たる=掟③(消え切る=当たる)からわずかに外れる。
 2. **描く幅と判定の幅の出どころが別の帯**(今は値が一致=潜伏): C05 うねり(描く `HB_TH.harai`/判定 `HB_JO.coil`)・E09 ラフィ(`HB_TH.harai`/`RF_T.sweep`)・E10 ウリ大薙ぎ(`HB_TH.harai`/`UR_T.sweep`)・E15 スリィエル(`HB_TH.harai`/`SR_T.sweep`)。ボスメーカーで片方だけ動かすと崩れる。段階4で描き直す時に**判定と同じ定数を読む**よう揃えるのが安全。
-3. **C02 ミーミルの噛みの円**: 描く半径 `MIMIR_BITE_RADIUS_VIS`/判定 `MIMIR_BITE_RADIUS`(別名の定数・値の一致は未確認)。
+3. **C02 ミーミルの噛みの円**: 監査で一致を確認(別名・216)=食い違いではない。
 4. **H07 懲罰狙撃**: 溜めは紫(返せない)・発射中の線は赤(`pS:27879`・`27883`)。
 5. **掟①(流星)から外れて見える物**: E21 アクラシエルの凝視の線(濃くなるだけ)・C04 ミーミルの車輪(紫・濃くなるだけ・例外のレーザーとは別の技)・B17 氷結波の輪(一定)・H12/H15/E19/E20 の実行中の一様な塗り(当たり得る間の赤=掟④側の扱いとして意図かもしれない)。
 6. **A01 雑魚の噛みの線は足元へ写して描く**(判定の中心から `e.height/2` 等ずらしてある)=段階4で「判定どおりの位置」を投影すると今の絵と位置が変わる。どちらを正にするかは要決定。
@@ -438,8 +450,6 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 - **段階1の物(デカール・入口の帯・伸びる影)・段階2の物(足元の影)は数えていない**(依頼の6種に入らないと判断)。
 - **`weatherWet.ts`(1,380行)・`stage1Night.ts`・`stage5Battlefield.ts`・`objShadeOverlay.ts` の中の地面の図形**は関数単位で1行(K01 等)にまとめ、中の図形は数えていない。
 - **判定の行が未確認**: J01(ゲート以外のイベント)・J02・J04-J07・J10-J13・I07・I08・K03・K05 の層。
-- **A14 花束**(宇宙飛行士群の `bouquet`)が判定を持つか未確認。
-- **N06 抱卵型の卵**がプレイヤーに当たるか未確認(壊れた時の処理は `gS:5001` 等にある)。
 - **N10**(噛みつきで線が出ない瞬間)が実際に起きるか未確認。
 - **I04 火炎瓶の床**は判定が円なのに円を描いていない(炎の絵だけ)=段階4の対象にするか要決定。
 - **行番号の幅**(`pS:29300-29325` 等)は分岐の範囲の目安。予告の図形の呼び出し行は単独の行番号で書いた方が正確(欄7のカッコ内)。
