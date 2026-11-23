@@ -85,14 +85,19 @@ export const projLineWidth = (base: number, k: number, wgScale: number): number 
 
 /** 型の名札(点/点o/向/両/読/体/形/済/外)。 */
 export type ProjFxType = 'point' | 'origin' | 'dir' | 'seg' | 'hud' | 'body' | 'shape' | 'done' | 'exempt';
-/** 倍率の出し方。's'=判定に揃える(下限なし)・'fx'=s_fx・'fxRing'=閃光の輪・'bullet'=s_b・'hud'=1・'body'=持ち主の s/d・'none'=投影の形そのもの。 */
-export type ProjFxKMode = 's' | 'fx' | 'fxRing' | 'bullet' | 'hud' | 'body' | 'none';
+/**
+ * 倍率の出し方。's'=判定に揃える(下限なし)・'fx'=s_fx・'fxRing'=閃光の輪・'fxFlat'=地面に付いた派手さの絵(★#30・中心の s_fx で一様に寝かせる
+ * =projFlatInto)・'bullet'=s_b・'hud'=1・'body'=持ち主の s/d・'none'=投影の形そのもの。
+ */
+export type ProjFxKMode = 's' | 'fx' | 'fxRing' | 'fxFlat' | 'bullet' | 'hud' | 'body' | 'none';
 
 export interface ProjFxRow { type: ProjFxType; k: ProjFxKMode; what: string }
 
 /**
  * 段階3の台帳(鍵=台帳の行 ID・行を分けた所は枝を付ける)。research/PERSPECTIVE_PROJECTION.md §3-7b の表を写した物。
  * 1行に2つの型がある行は枝に分けた('A14.drop'/'A14.stain' 等)。
+ * ★#30「地面に付いた物の型」(社長裁定 2026-11-23): 地面に接する物は全部「形」(寝かせる)。判定を持たない物は 'fxFlat'(中心の s_fx で一様に潰す・
+ * 縦は横を超えない・★#24 の下限 0.6・手前の天井 1.25)。宙にある物(火の粉・血しぶき・破片の飛んでいる間)は点のまま。
  */
 export const PROJ_FX_ROWS = {
   // A. エフェクト20種(syncEffects)
@@ -112,10 +117,11 @@ export const PROJ_FX_ROWS = {
   'A12': { type: 'dir', k: 'fx', what: 'firejet' },
   'A13': { type: 'dir', k: 'fx', what: 'blood' },
   'A14.drop': { type: 'origin', k: 'fx', what: 'bloodBurst(drops)' },
-  'A14.stain': { type: 'point', k: 'fx', what: 'bloodBurst(stain)' },
+  'A14.stain': { type: 'shape', k: 'fxFlat', what: 'bloodBurst(pool/stain)' },
   'A15': { type: 'dir', k: 'fx', what: 'slash' },
   'A15.path': { type: 'seg', k: 's', what: 'slash(katanaPath)' },
   'A16': { type: 'origin', k: 'fx', what: 'particle' },
+  'A16.floor': { type: 'shape', k: 'fxFlat', what: 'particle(on the floor: shell/settled drop)' },
   'A17': { type: 'shape', k: 'fxRing', what: 'ring' },
   'A17.judge': { type: 'shape', k: 'none', what: 'ring(judge)' },
   'A18': { type: 'point', k: 'fx', what: 'explosion' },
@@ -135,7 +141,8 @@ export const PROJ_FX_ROWS = {
   'B8': { type: 'point', k: 'bullet', what: 'syncDroneBoomerangs' },
   'B9': { type: 'done', k: 'none', what: 'syncDecoys' },
   'B10.bullet': { type: 'point', k: 'bullet', what: 'NewGunsFx(satellite orb/released shot/blob shot)' },
-  'B10.fx': { type: 'point', k: 'fx', what: 'NewGunsFx(scorch/dust/steam/sparks/marks)' },
+  'B10.fx': { type: 'point', k: 'fx', what: 'NewGunsFx(steam/sparks/fire smoke/release lines/marks)' },
+  'B10.ground': { type: 'shape', k: 'fxFlat', what: 'NewGunsFx(scorch/blob shadow/drag dust/stop dust)' },
   'B10.fan': { type: 'shape', k: 'none', what: 'NewGunsFx(scanFan)' },
   'B11': { type: 'seg', k: 's', what: 'PileDriverFx(pile)' },
   // 蒸気の噴き・蒸気の粒=主人公の体の相似(筒から出て近くを漂う=付け根≒主人公の足元・実装に合わせた・監査 C-3)。火花・閃光=刺さった所の点
@@ -179,12 +186,13 @@ export const PROJ_FX_ROWS = {
   'D6': { type: 'shape', k: 'fxRing', what: 'jump ring' },
   'D7': { type: 'body', k: 'body', what: 'phantom flamer ember' },
   'D8': { type: 'body', k: 'body', what: 'thin polygons' },
-  'D9': { type: 'point', k: 'fx', what: 'bossFire glow' },
-  'D10': { type: 'point', k: 'fx', what: 'arrow rain soil' },
+  'D9': { type: 'point', k: 'fx', what: 'bossFire flames' },
+  'D9.ground': { type: 'shape', k: 'fxFlat', what: 'bossFire outer glow (on the ground)' },
+  'D10': { type: 'shape', k: 'fxFlat', what: 'arrow rain soil' },
   'D11': { type: 'point', k: 'fx', what: 'fallback art' },
   // E. 地面の粉・粒
-  'E1': { type: 'point', k: 'fx', what: 'drawDust' },
-  'E2': { type: 'point', k: 'fx', what: 'drawRunDust' },
+  'E1': { type: 'shape', k: 'fxFlat', what: 'drawDust' },
+  'E2': { type: 'shape', k: 'fxFlat', what: 'drawRunDust' },
   // F. 光
   'F1': { type: 'point', k: 'fx', what: 'strong glow art' },
   'F2': { type: 'point', k: 'fx', what: 'small glow art' },
@@ -198,7 +206,8 @@ export const PROJ_FX_ROWS = {
   'G2': { type: 'point', k: 'fx', what: 'syncWorldEmbers' },
   'G3': { type: 'point', k: 'fx', what: 'syncMoonDust' },
   'G4': { type: 'point', k: 'fx', what: 'endingAmbient' },
-  'G5': { type: 'point', k: 'fx', what: 'WeatherWetLayer' },
+  'G5': { type: 'point', k: 'fx', what: 'WeatherWetLayer(drops/splashes/torch sheen)' },
+  'G5.ripple': { type: 'shape', k: 'fxFlat', what: 'WeatherWetLayer(ripples on the ground)' },
   'G6': { type: 'done', k: 'none', what: 'BurningWreckLayer' },
   'G7': { type: 'exempt', k: 'none', what: 'stage7 weather' },
 } as const satisfies Record<string, ProjFxRow>;
@@ -321,6 +330,88 @@ export const projAmbientCount = (base: number, areaRatio: number, cap: number = 
  */
 export const projBulletForm = (o: { weaponType: string; rocketArt: boolean; arrowArt: boolean }): 'round' | 'x' | 'y' =>
   o.rocketArt ? 'y' : o.arrowArt ? 'x' : (o.weaponType === 'handgun' || o.weaponType === 'rifle') ? 'x' : 'round';
+
+// ---------------------------------------------------------------------------------------------
+// 地面に付いた物(★#30=社長裁定 2026-11-23「地面に接する物は全部寝かせる」)
+// ---------------------------------------------------------------------------------------------
+
+export interface ProjFlatOut {
+  /** 中心(付け根)の表示座標。 */
+  x: number; y: number;
+  /** 中心の s と、定義域と描く距離のフェード。 */
+  s: number; a: number;
+  /** 横の倍率(=k・既定 s_fx=★#24 の奥の下限 0.6・手前の天井 1.25)。 */
+  kx: number;
+  /** 縦の倍率(=横 × 中心の縦の詰め/s・縦は横を超えない)。 */
+  ky: number;
+  /** 潰しの比 ky/kx(=min(1, 中心の縦の詰め/s))。k を呼ぶ側で決める所(雨の波紋 等)はこれを掛ける。 */
+  r: number;
+}
+export const makeProjFlatOut = (): ProjFlatOut => ({ x: 0, y: 0, s: 1, a: 1, kx: 1, ky: 1, r: 1 });
+
+/**
+ * ★#30「地面に付いた物の型」(判定を持たない地面の跡=派手さの絵: 血溜まり・焦げ・粉塵・刺さった土 等): 閃光の輪(CR-3)と同じく、
+ * 中心を投影し、中心の s で一様に潰す(頂点ごとの投影だと手前で下だけ膨らむ卵形になる)。横=k(既定 s_fx)・縦=横×(中心の縦の詰め/s)。
+ * 縦は横を超えない。k を渡すとその値(判定に揃える物は s)。
+ */
+export const projFlatInto = (f: ProjFrame, wx: number, wy: number, out: ProjFlatOut, k?: number): ProjFlatOut => {
+  const p = projectInto(f, wx, wy, PA);
+  out.x = p.x; out.y = p.y; out.s = p.s; out.a = p.alpha;
+  const s = Math.max(1e-6, p.s);
+  const ya = projectInto(f, wx, wy - 2, PB).y;
+  const yb = projectInto(f, wx, wy + 2, PB).y;
+  const sy = Math.max(0, (yb - ya) / 4);
+  const kx = k ?? projFxScale(p.s);
+  out.r = Math.min(1, sy / s);
+  out.kx = kx;
+  out.ky = kx * out.r;
+  return out;
+};
+
+// ---------------------------------------------------------------------------------------------
+// 雪の奥行きの3層(★#31=社長裁定 2026-11-23「地面の投影に乗せず、画面に奥行きの3層」・G1 は「外」のまま)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * 雪の層の叩き台(画面座標で降らせる・地面の投影には乗せない)。中の層=今の雪(G1)そのもの(数・大きさ・速さは今のまま)。
+ * 値は全部「中の層に対する倍率」。fall=落ちる速さ・wind=風と主人公の動きで流れる速さ・par=カメラが動いた分の流れ(中=1)・
+ * size=粒の直径(画面px)・alpha=濃さ・lean=落ちる向きを消失点の側へ寄せる量(0=真っ直ぐ・1=消失点から放射)・soft=強くぼける絵を使う。
+ */
+export const PROJ_SNOW_LAYERS = {
+  near: { fall: 2.1, wind: 1.8, par: 1.7, sizeMin: 16, sizeMax: 30, alphaMin: 0.26, alphaMax: 0.46, lean: 0.22, soft: true },
+  mid: { lean: 0.12 },
+  far: { fall: 0.42, wind: 0.4, par: 0.45, sizeMin: 1.6, sizeMax: 3.4, alphaMin: 0.22, alphaMax: 0.42, lean: 0.06, soft: false },
+} as const;
+/** 奥の層の数=中の層の数 × この比(密)。 */
+export const PROJ_SNOW_FAR_RATIO = 2 / 3;
+/** 手前の層の数=中の層の数 × (まばら) + (吹雪の強さ b=0..1) × (増やす分)。b=1 で中の 1/3。 */
+export const PROJ_SNOW_NEAR_BASE_RATIO = 2 / 15;
+export const PROJ_SNOW_NEAR_STORM_RATIO = 1 / 5;
+/** 粒の総数の上限=中の層の数 × この値(負荷・今の2倍まで)。 */
+export const PROJ_SNOW_TOTAL_CAP = 2;
+
+/**
+ * 雪の層の数(★#31): 中の層の数 mid と吹雪の強さ b(0..1)から、奥と手前の数を返す。総数(mid+奥+手前)は mid × PROJ_SNOW_TOTAL_CAP を超えない。
+ */
+export const projSnowCounts = (mid: number, b: number): { far: number; near: number } => {
+  const m = Math.max(0, Math.round(mid));
+  const bb = Number.isFinite(b) ? Math.min(1, Math.max(0, b)) : 0;
+  const cap = Math.max(0, Math.floor(m * PROJ_SNOW_TOTAL_CAP) - m);
+  const far = Math.min(cap, Math.round(m * PROJ_SNOW_FAR_RATIO));
+  const near = Math.min(cap - far, Math.round(m * (PROJ_SNOW_NEAR_BASE_RATIO + PROJ_SNOW_NEAR_STORM_RATIO * bb)));
+  return { far, near: Math.max(0, near) };
+};
+
+/**
+ * 落ちる向きを消失点の側へ寄せる(★#31): 画面の点 (sx, sy) で下へ vy 落ちる粒に足す横の速さ。消失点 (vpX, vpY) から粒へ向かう線の傾き
+ * (dx/dy)に lean を掛けた分=落ちる線の延長が消失点の方を向く(左の粒は少し左下へ・右の粒は少し右下へ)。消失点より上の粒は寄せない。
+ */
+export const projSnowLeanVx = (sx: number, sy: number, vpX: number, vpY: number, vy: number, lean: number): number => {
+  const dy = sy - vpY;
+  if (!(dy > 1) || !(vy > 0)) return 0;
+  const slope = Math.max(-1.5, Math.min(1.5, (sx - vpX) / dy));
+  return slope * vy * Math.max(0, lean);
+};
 
 /** 小物: 点の投影(作り置きを返す・次の呼び出しで上書き)。 */
 export const projFxPoint = (f: ProjFrame, wx: number, wy: number): ProjPoint => projectInto(f, wx, wy, PA);

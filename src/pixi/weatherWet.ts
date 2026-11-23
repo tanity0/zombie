@@ -26,7 +26,7 @@ import { getTexture } from './pixiTextures';
 import { makeProjGridMesh, projMeshFromSprite, PROJ_GRID_SOFT } from './projDraw'; // 投影の段階4(?proj=1 の時だけ・K01)
 import { projectInto, makeProjPoint, type ProjFrame } from '../utils/perspectiveProjection';
 import { projShapeOutside } from '../utils/projShape';
-import { projFxScale, PROJ_FX_MAX_S } from '../utils/projFx'; // 投影の段階3(?proj=1 の時だけ・G5)
+import { projFxScale, PROJ_FX_MAX_S, projFlatInto, makeProjFlatOut } from '../utils/projFx'; // 投影の段階3(?proj=1 の時だけ・G5)
 import type { MeshSimple } from 'pixi.js';
 import { getSoftGlowTexture } from './lighting';
 import {
@@ -51,6 +51,7 @@ import {
 import { buildWetGradeMatrixMix, mixMatrixFromIdentity } from '../utils/stage7Weather';
 import { easeInOutSine } from '../utils/weatherWet';
 
+const PFLAT = makeProjFlatOut(); // ?proj=1(段階3・G5.ripple・★#30): 寝かせる倍率の作り置き
 // ---- 叩き台の値(設計書 §0-1「数値は叩き台」) ----
 /** 水面(帯1)を縁つきの水たまり(帯2)の内側へ合わせる縮み(帯1は縁まで含む大きさで描かれているため)。 */
 const WATER_FIT_X = 0.8;
@@ -1261,15 +1262,16 @@ export class WeatherWetLayer {
       r.sp.alpha = pose.alpha * (r.water ? 0.6 : 0.45) * r.a * h.horizonAlpha(r.y);
       const pf = this.projFrameNow;
       if (pf) {
-        // ?proj=1(段階3・G5): 地面に落ちた波紋=点(付け根=波紋の地面の点・旧い depthScale は外す)・濃さは投影後のY。
+        // ?proj=1(段階3・G5.ripple・★#30): 地面に落ちた波紋=地面に付いた物=寝かせる(付け根=波紋の地面の点・中心の s で一様に潰す・縦は横を超えない。
+        // 旧い depthScale は外す)・濃さは投影後のY。
         // CR-7: 投影で薄まって見える分を補う=大きさは s(奥は細かく・手前は天井まで大きく)・濃さは手前ほどはっきり(1.2..1.6 倍・1 まで)
-        const q = projectInto(pf, r.x, r.y, this.projPt);
+        const q = projFlatInto(pf, r.x, r.y, PFLAT);
         const ks = Math.min(PROJ_FX_MAX_S, q.s);
         const sq = DEBRIS_ART_SCALE * ks * r.s * pose.scale;
         r.sp.position.set(q.x, q.y);
-        r.sp.scale.set(sq, sq);
+        r.sp.scale.set(sq, sq * q.r);
         const boost = 1.2 + 0.4 * Math.min(1, Math.max(0, (q.s - 0.6) / 0.65));
-        r.sp.alpha = Math.min(1, pose.alpha * (r.water ? 0.6 : 0.45) * r.a * boost) * (h.projFade ? h.projFade(r.x, r.y) : q.alpha);
+        r.sp.alpha = Math.min(1, pose.alpha * (r.water ? 0.6 : 0.45) * r.a * boost) * (h.projFade ? h.projFade(r.x, r.y) : q.a);
       }
     }
   }

@@ -165,8 +165,8 @@ describe('投影の段階4: 形を持つもの(番人)', () => {
     for (const sig of CONVERTED) {
       const keep = KEEP[sig] ?? [];
       const body = bodyOf(sig);
-      // 段階3(§3-7b の D)で申告を「点/体の相似で写す」(projPointFrom・projBodyFrom)へ替えた所も同じ扱い
-      if (keep.length > 0) expect(/projKeepFrom\(|projPointFrom\(|projBodyFrom\(/.test(body), sig).toBe(true);
+      // 段階3(§3-7b の D)で申告を「点/体の相似で写す」(projPointFrom・projBodyFrom)・寝かせる(projFlatFrom=★#30)へ替えた所も同じ扱い
+      if (keep.length > 0) expect(/projKeepFrom\(|projPointFrom\(|projBodyFrom\(|projFlatFrom\(/.test(body), sig).toBe(true);
       if (sig !== 'const strokeBeamLayers = (') expect(/\b(o|g|bg|ot|gb)\.(circle|ellipse|poly|rect|moveTo|arc)\(/.test(body), sig).toBe(true);
       const bad = rawInPfBranch(body).filter((l) => !keep.some((re) => re.test(l)));
       expect(bad, sig).toEqual([]);

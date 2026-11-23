@@ -8,6 +8,7 @@ import {
   PROJ_FX_MIN_S, PROJ_FX_MAX_S, PROJ_FX_DISC_MAX_S, projBulletForm, projFxScale, projFxRingRadiusMul, projBulletScale, PROJ_BULLET_MIN_PX, projLineWidth, projDirInto, makeProjDirOut,
   projFloorAnchorInto, projNumberAnchorInto, PROJ_NUMBER_LIFT_H0, projAmbientRegion, projAmbientCount, PROJ_FX_ROWS, PROJ_FX_KINDS, projFxK,
   PROJ_FX_SIZE_MODE, PROJ_BULLET_SIZE_MODE, PROJ_NUMBER_SIZE_MODE,
+  projFlatInto, makeProjFlatOut, projSnowCounts, projSnowLeanVx, PROJ_SNOW_TOTAL_CAP, PROJ_SNOW_LAYERS,
 } from './projFx';
 
 // research/PERSPECTIVE_PROJECTION.md §3-7l 作る物10(純関数のテスト)。手前の伸びを抑える案が既定ON の表で回す(3-7i)。
@@ -199,6 +200,72 @@ describe('projFx: 漂う粒(★#26=B)', () => {
   });
 });
 
+describe('projFx: 地面に付いた物を寝かせる(★#30)', () => {
+  const o = makeProjFlatOut();
+  it('閃光の輪と同じ潰し方: 横=s_fx・縦=横×縦の詰め/s・縦は横を超えない', () => {
+    for (const { f } of FRAMES) {
+      for (const dy of [-600, -300, -100, 0, 80, 200]) {
+        const wx = 1000 + 215, wy = 2000 + f.screenH * 0.6 + dy;
+        const p = projectInto(f, wx, wy, sp);
+        if (!p.inDomain || p.s <= 0) continue;
+        projFlatInto(f, wx, wy, o);
+        expect(o.x).toBeCloseTo(p.x, 9);
+        expect(o.y).toBeCloseTo(p.y, 9);
+        expect(o.kx).toBeCloseTo(projFxScale(p.s), 12);
+        expect(o.ky).toBeLessThanOrEqual(o.kx + 1e-12);
+        expect(o.ky).toBeGreaterThanOrEqual(0);
+        expect(o.kx).toBeGreaterThanOrEqual(PROJ_FX_MIN_S - 1e-12);
+        expect(o.kx).toBeLessThanOrEqual(PROJ_FX_MAX_S + 1e-12);
+        expect(o.ky).toBeCloseTo(o.kx * o.r, 12);
+        // 閃光の輪(drawRingSprite の ?proj=1)の式と同じ: kx = s × s_fx/s
+        expect(o.kx).toBeCloseTo(p.s * projFxRingRadiusMul(p.s), 9);
+      }
+    }
+  });
+  it('k を渡すとその値(縦の比は同じ)', () => {
+    const { f } = FRAMES[0];
+    const wx = 1100, wy = 2000 + f.screenH * 0.7;
+    projFlatInto(f, wx, wy, o);
+    const r = o.r;
+    projFlatInto(f, wx, wy, o, 0.37);
+    expect(o.kx).toBe(0.37);
+    expect(o.ky).toBeCloseTo(0.37 * r, 12);
+  });
+});
+
+describe('projFx: 雪の奥行きの3層(★#31)', () => {
+  it('総数は今の雪の2倍まで・吹雪で手前の層が増える', () => {
+    for (const mid of [0, 1, 40, 180, 333]) {
+      for (const b of [0, 0.5, 1, 3, NaN]) {
+        const c = projSnowCounts(mid, b);
+        expect(mid + c.far + c.near).toBeLessThanOrEqual(Math.floor(mid * PROJ_SNOW_TOTAL_CAP) + 1e-9);
+        expect(c.far).toBeGreaterThanOrEqual(0);
+        expect(c.near).toBeGreaterThanOrEqual(0);
+      }
+      if (mid >= 40) {
+        expect(projSnowCounts(mid, 1).near).toBeGreaterThan(projSnowCounts(mid, 0).near);
+        expect(projSnowCounts(mid, 0).far).toBeGreaterThan(projSnowCounts(mid, 0).near); // 奥=密・手前=まばら
+      }
+    }
+    expect(projSnowCounts(180, 1)).toEqual({ far: 120, near: 60 });
+  });
+  it('層の並び: 手前ほど大きく速い・奥ほど小さく遅い', () => {
+    const { near, far } = PROJ_SNOW_LAYERS;
+    expect(near.sizeMin).toBeGreaterThan(far.sizeMax);
+    expect(near.fall).toBeGreaterThan(1);
+    expect(far.fall).toBeLessThan(1);
+    expect(far.alphaMax).toBeLessThan(1);
+  });
+  it('落ちる向きは消失点の側へ(左の粒は左へ・右の粒は右へ・真下の粒と消失点より上は寄せない)', () => {
+    expect(projSnowLeanVx(100, 500, 200, 100, 100, 0.2)).toBeLessThan(0);
+    expect(projSnowLeanVx(300, 500, 200, 100, 100, 0.2)).toBeGreaterThan(0);
+    expect(projSnowLeanVx(200, 500, 200, 100, 100, 0.2)).toBe(0);
+    expect(projSnowLeanVx(100, 50, 200, 100, 100, 0.2)).toBe(0);
+    expect(projSnowLeanVx(100, 500, 200, 100, 100, 0)).toBeCloseTo(0, 12);
+    expect(Math.abs(projSnowLeanVx(-5000, 102, 200, 100, 100, 0.2))).toBeLessThanOrEqual(1.5 * 100 * 0.2 + 1e-9);
+  });
+});
+
 describe('projFx: 台帳', () => {
   it('kind → 行 ID は全部台帳に在る・flash は外', () => {
     for (const id of Object.values(PROJ_FX_KINDS)) expect(PROJ_FX_ROWS[id], id).toBeDefined();
@@ -213,6 +280,13 @@ describe('projFx: 台帳', () => {
     // 監査 A-3: 判定を持つ衛星弾・放った弾・塊弾は弾の倍率、焦げ・土埃・湯気・火の粉は派手さ
     expect(PROJ_FX_ROWS['B10.bullet'].k).toBe('bullet');
     expect(PROJ_FX_ROWS['B10.fx'].k).toBe('fx');
+  });
+  it('★#30: 地面に接する物は形(寝かせる)・宙にある物は点のまま', () => {
+    for (const id of ['A14.stain', 'A16.floor', 'B10.ground', 'D9.ground', 'D10', 'E1', 'E2', 'G5.ripple'] as const) {
+      expect(PROJ_FX_ROWS[id].type, id).toBe('shape');
+      expect(PROJ_FX_ROWS[id].k, id).toBe('fxFlat');
+    }
+    for (const id of ['A14.drop', 'A13', 'A16', 'G2'] as const) expect(PROJ_FX_ROWS[id].type, id).not.toBe('shape');
   });
   it('弾の形は弾の種類の表で決める(監査 A-4・3-7d)', () => {
     expect(projBulletForm({ weaponType: 'enemy_bolt', rocketArt: false, arrowArt: false })).toBe('round');

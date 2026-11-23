@@ -100,8 +100,8 @@ describe('投影の段階3: 点で出る演出(番人)', () => {
   });
 
   it('③ 旧い遠近の倍率は ?proj の分岐で外している(演出の大きさに二重に掛けない)', () => {
-    expect(bodyOf(src, '  private drawRunDust(')).toContain("if (this.projFrame) this.projFxAt(sp, x, y, 'fx', 0, dsc);");
-    expect(bodyOf(src, '  private drawDust(')).toContain("if (this.projFrame) this.projFxAt(sp, x, y, 'fx');");
+    expect(bodyOf(src, '  private drawRunDust(')).toContain('if (this.projFrame) this.projFxFlatAt(sp, x, y, dsc, lift);'); // ★#30=寝かせる
+    expect(bodyOf(src, '  private drawDust(')).toContain('if (this.projFrame) this.projFxFlatAt(sp, x, y);'); // ★#30=寝かせる
     expect(bodyOf(src, '  private projFxBloodBurst(')).toContain('/ Math.max(1e-6, d.ds)');
     expect(bodyOf(src, '  private syncWorldEmbers(')).toContain('eq ? projFxScale(eq.s) : this.depthScale(f.y)');
     expect(bodyOf(src, '  private syncMagicFireflies(')).toContain('fq ? fq.s : this.depthScale(f.y)'); // 蛍は奥の下限を外す(CR-6)

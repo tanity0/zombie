@@ -7,8 +7,8 @@
 // (絵の読み込み前の Graphics の塊だけは冷えかけの鉱滓の色のまま)。
 // 会心(#fbbf24)・レベルアップ(#fde68a)・弾薬回収(#67e8f9)・危険の赤/紫とは別の色にしてある。
 import { projectInto, makeProjPoint, type ProjFrame, type ProjPoint } from '../utils/perspectiveProjection'; // 投影の段階3(?proj=1 の時だけ)
-import { projFxScale, projBulletScale } from '../utils/projFx';
-import { projLine, projPoly, projSeg, projSimFrom } from './projDraw';
+import { projFxScale, projBulletScale, projFlatInto, makeProjFlatOut } from '../utils/projFx';
+import { projLine, projPoly, projSeg, projSimFrom, projAffineFrom } from './projDraw';
 import { Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 import { getTexture } from './pixiTextures';
 import type { Enemy, Player, Projectile } from '../types/game';
@@ -85,6 +85,7 @@ interface BlobFxState { swirl: number; lastGt: number; trail: { x: number; y: nu
 const PFAN = makeProjPoint();
 const PMARK = makeProjPoint();
 const PPT = makeProjPoint();
+const PFLAT = makeProjFlatOut(); // ?proj=1(段階3・★#30): 寝かせる倍率の作り置き
 
 export class NewGunsFx {
   private readonly ground = new Graphics();
@@ -142,6 +143,16 @@ export class NewGunsFx {
     const q = projectInto(pf, ax, ay, PPT);
     const kb = projBulletScale(q.s, diam);
     projSimFrom(gfx, n0, ax, ay, q.x, q.y, kb, kb, q.alpha);
+  }
+  /**
+   * ?proj=1(段階3・B10.ground・★#30「地面に付いた物の型」): 命令 n0 から今までを、地面の中心 (ax, ay) で寝かせる
+   * (横=s_fx・縦=横×中心の縦の詰め/s・縦は横を超えない=閃光の輪と同じ潰し方)。焦げ跡・足元の影・土埃。
+   */
+  private ptFlat(gfx: Graphics, n0: number, ax: number, ay: number): void {
+    const pf = this.pf;
+    if (!pf) return;
+    const q = projFlatInto(pf, ax, ay, PFLAT);
+    projAffineFrom(gfx, n0, q.kx, 0, 0, q.ky, q.x - q.kx * ax, q.y - q.ky * ay, q.kx, q.a);
   }
   private n(gfx: Graphics): number { return this.pf ? gfx.context.instructions.length : 0; }
 
@@ -374,7 +385,7 @@ export class NewGunsFx {
     // 足元の潰れた影。
     const nSh = this.n(g);
     g.ellipse(b.x, b.y + R * 0.55, R * 1.1, R * 1.1 * 0.35).fill({ color: 0x000000, alpha: 0.35 * (1 - coolT * 0.5) });
-    this.pt(g, nSh, b.x, b.y + R * 0.55); // ?proj=1(段階3・B10): 足元の影=点(付け根=影の中心)
+    this.ptFlat(g, nSh, b.x, b.y + R * 0.55); // ?proj=1(段階3・B10.ground・★#30): 足元の影=地面に付いた物=寝かせる(付け根=影の中心)
     // 形: 撃ち出しの0.25秒だけ1.5倍まで伸びた涙形(後ろが尖る)→進む間は少し伸び→止まると潰れて戻るばね。
     let along = 1, across = 1, tear = 0;
     if (b.stoppedAt === undefined) {
@@ -478,7 +489,7 @@ export class NewGunsFx {
       const n0 = this.n(g);
       g.ellipse(s.x, s.y, s.r * 1.15, s.r * 0.42).fill({ color: VOID_SCORCH, alpha: a });
       g.ellipse(s.x - s.r * 0.2, s.y + 1, s.r * 0.6, s.r * 0.22).fill({ color: VOID_SCORCH, alpha: a * 0.8 });
-      this.pt(g, n0, s.x, s.y); // ?proj=1(段階3・B10): 焦げ跡=点(付け根=跡の中心)
+      this.ptFlat(g, n0, s.x, s.y); // ?proj=1(段階3・B10.ground・★#30): 焦げ跡=地面に付いた物=寝かせる(付け根=跡の中心)
     }
   }
 
@@ -504,13 +515,13 @@ export class NewGunsFx {
       const p = pushed[pi];
       const l = Math.hypot(p.dx, p.dy) || 1;
       const bx = -p.dx / l, by = -p.dy / l;
-      const n0 = this.n(g); // ?proj=1(段階3・B10): 引きずりの土埃=点(付け根=押された敵の足元)
+      const n0 = this.n(g); // ?proj=1(段階3・B10.ground・★#30): 引きずりの土埃=地面に付いた粉塵=寝かせる(付け根=押された敵の足元)
       for (let k = 0; k < 3; k++) {
         const ph = frac(gameTime / 420 + k / 3 + pi * 0.21);
         const d = 4 + k * 7 + ph * 6;
         g.circle(p.x + bx * d, p.y + by * d - ph * 4, 3 + k * 2 + ph * 3).fill({ color: VOID_DUST, alpha: 0.22 * (1 - ph) });
       }
-      this.pt(g, n0, p.x, p.y);
+      this.ptFlat(g, n0, p.x, p.y);
     }
   }
 
@@ -518,9 +529,11 @@ export class NewGunsFx {
   private drawEvent(gameTime: number, g: Graphics, f: Graphics, ev: NewGunsEvent): void {
     const age = gameTime - ev.at;
     if (age < 0) return;
-    const nF = this.n(f); // ?proj=1(段階3・B10): 発射の煙・止まった時の土埃・放つ線=点(付け根=出来事の点)
+    // ?proj=1(段階3・B10): 発射の煙・放つ線=点(付け根=出来事の点)。止まった時の土埃=地面に付いた粉塵(B10.ground・★#30)=寝かせる
+    const nF = this.n(f);
     this.drawEventBody(gameTime, age, g, f, ev);
-    this.pt(f, nF, ev.x, ev.y);
+    if (ev.kind === 'blob-stop') this.ptFlat(f, nF, ev.x, ev.y);
+    else this.pt(f, nF, ev.x, ev.y);
   }
   private drawEventBody(gameTime: number, age: number, g: Graphics, f: Graphics, ev: NewGunsEvent): void {
     void gameTime;
