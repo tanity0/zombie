@@ -3239,7 +3239,7 @@ const LAB_CRAWLER_VANISH_SLIDE_PX = 90;
 // 投影(research/PERSPECTIVE_PROJECTION.md・段階1「盤面と置き物」): `?proj=1` の時だけ、地面と置き物を1本の遠近の計算(utils/perspectiveProjection)で描く。
 // 既定(省略/0)は今と1ビットも変わらない。★#19「ツマミの同時指定の優先」: `?proj=1` の時は ?objdepth / ?depthmap を無視する(?proj が勝つ)。
 const PROJ_ON = tsBool('proj', false);
-const PROJ_NEAR = PROJ_ON && tsBool('projnear', false); // 手前の地面の伸びを抑える案(基準行より南だけ「縦の伸び ≤ 横の倍率」・社長「みせて」の比較用・既定=今のまま)
+const PROJ_NEAR = PROJ_ON && tsBool('projnear', true); // 手前の地面の伸びを抑える(基準行より南だけ「縦の伸び ≤ 横の倍率」)。社長裁定2026-11-23「抑えた案で」=既定ON。`?projnear=0` で旧い伸び方(比較用)
 const PROJ_ZREF: 1 | 2 = tsNum('projzref', 2) === 1 ? 1 : 2; // ★#20 裁定②=2(既定)。1=比べるための控え(ℓ_ref をズーム1の値の定数のまま)
 const PROJ_FAR_END = Math.max(0, tsNum('projfar', 1500)); // ★#4「描く距離の上限」(叩き台): 主人公から北へこの距離で alpha 0。0=上限なし
 const PROJ_FAR_START = PROJ_FAR_END * (1200 / 1500); // フェードの始まり(叩き台 1,200→1,500 の比のまま ?projfar に付いて動く)

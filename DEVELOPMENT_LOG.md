@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5760 — 遠近の投影: 手前の伸びを抑える案を ?proj=1 の既定に(社長「抑えた案で」)【2026-11-23 11:41 JST】
+- `PROJ_NEAR` の既定を true に(`?projnear=0` で旧い伸び方)。中身は v0.25.5759 の `projScaleYNearAt`(基準行より南だけ縦の詰めに上限)。設計書 §3-6g3 を裁定に更新。
+- 変えたファイル: src/pixi/pixiScene.ts(1行)・research/PERSPECTIVE_PROJECTION.md
+- 検証: typecheck / eslint / 関係テスト。`?proj=0` は不変(PROJ_ON が偽なら PROJ_NEAR も偽)。
+- 自己点検: 憲法第4条・第5条に抵触しない。
+
 ## v0.25.5759 — 遠近の投影: 予告の線の下限1px/手前の伸びを抑える案のつまみ ?projnear=1(?proj=1 のみ)【2026-11-23 11:37 JST】
 - 社長裁定「線の下限 はい」(2026-11-23): `PROJ_TELE_LINE_MIN_PX=1`・`PROJ_TELE_LINE_MIN_ALPHA=0.35`。下限に当たった所は太さ1pxで濃さを「本来の太さ/1px」へ(`projTeleLineAlpha`)。帯の線は頂点ごとの濃さを0.1刻みの区間で塗る(最大8回)、記号は `projGlyphMinSize`。判定の幅の面は対象外。
 - 社長「(手前の縦長を)みせて」: 基準行より南だけ縦の詰めに上限(`projScaleYNearAt`=南の地面の円が縦横比1で止まる)を掛ける案を `?projnear=1` のつまみで入れた(既定は今のまま・表の key も中身も不変)。基準行より北は ℓ・world Y・投影・gRef/syRef/convRef をビット一致でテスト固定。比較: 南120px の跳びの円 縦/横 1.94→0.99、帰還の円 1.45→0.87、南150px の地面の円の目安 3.04→0.99。主人公の190px南の s 2.5→1.68。滑りの計器 dy はほぼ0のまま。採否は社長。

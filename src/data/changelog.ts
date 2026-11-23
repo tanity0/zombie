@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5760', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5759', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5758', items: ['刀のオート斬撃で倒した敵は、銃で倒した時と同じに数えられる。レアの武器や肉、磁石、爆弾も落とすようになった'] },
   { version: '0.25.5757', items: ['ゲーム内容の変更はありません'] },
