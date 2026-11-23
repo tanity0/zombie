@@ -122,7 +122,7 @@ const BOSS_CONTACT_PARRY_ROOT_MS = 900;
 export interface CombatEffects {
   playSfx: (key: SfxKey, gainMult?: number, durationMsOverride?: number) => void;
   spawnFlash: (color: string, duration?: number) => void;
-  spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
+  spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number, easeOut?: boolean, judge?: boolean) => void;
   spawnBurst: (x: number, y: number, color: string, count?: number) => void;
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number) => void;
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number; holdMs?: number; duration?: number }) => void;
@@ -339,7 +339,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     if (b.ice) {
       // スカジ氷=青版の爆発エフェクト(社長指示。爆発処理自体は流用)。
       fx.spawnFlash('rgba(140,200,255,0.16)', 200);
-      fx.spawnRing(b.x, b.y, 6, b.radius, 'rgba(150,210,255,0.9)', 4, 300);
+      fx.spawnRing(b.x, b.y, 6, b.radius, 'rgba(150,210,255,0.9)', 4, 300, false, true);
       fx.spawnBurst(b.x, b.y, '#bfe6ff', 16);
       fx.spawnGlow(b.x, b.y, b.radius, 'rgba(150,210,255,', 280);
     } else if (b.moveKey?.startsWith('hero-')) {
@@ -446,7 +446,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       fx.spawnBurst(bpcx, bpcy, '#c2410c', 10);
     } else {
       fx.spawnFlash('rgba(255,150,60,0.16)', 200);
-      fx.spawnRing(b.x, b.y, 6, b.radius, 'rgba(255,170,80,0.9)', 4, 300);
+      fx.spawnRing(b.x, b.y, 6, b.radius, 'rgba(255,170,80,0.9)', 4, 300, false, true);
       fx.spawnBurst(b.x, b.y, '#fb923c', 16);
     }
     const pr = Math.max(bp.width, bp.height) / 2;

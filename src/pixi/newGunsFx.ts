@@ -8,7 +8,7 @@
 // 会心(#fbbf24)・レベルアップ(#fde68a)・弾薬回収(#67e8f9)・危険の赤/紫とは別の色にしてある。
 import { projectInto, makeProjPoint, type ProjFrame, type ProjPoint } from '../utils/perspectiveProjection'; // 投影の段階3(?proj=1 の時だけ)
 import { projFxScale } from '../utils/projFx';
-import { projLine, projPoly, projSeg } from './projDraw';
+import { projLine, projPoly, projSeg, projSimFrom } from './projDraw';
 import { Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 import { getTexture } from './pixiTextures';
 import type { Enemy, Player, Projectile } from '../types/game';
@@ -77,11 +77,14 @@ interface BlobDraw {
   outer: number[]; inner: number[]; step: number[]; band: number[];
   rim: number; dull: number; body: number; bodyHi: number; heat: number; alpha: number;
   cracks: number[][]; crackW: number; crackA: number;
+  /** ?proj=1(段階3・B10): 付け根(塊の world の中心)。 */
+  cx: number; cy: number;
 }
 interface BlobFxState { swirl: number; lastGt: number; trail: { x: number; y: number; t: number }[]; x: number; y: number; dirX: number; dirY: number; seed: number }
 
 const PFAN = makeProjPoint();
 const PMARK = makeProjPoint();
+const PPT = makeProjPoint();
 
 export class NewGunsFx {
   private readonly ground = new Graphics();
@@ -119,6 +122,17 @@ export class NewGunsFx {
   projFanDiffPx = 0;
   /** 今フレームの投影の枠(?proj=1 の時だけ・null=今の描き方そのまま)。WeatherWetLayer の projGrid と同じ型。 */
   private pf: ProjFrame | null = null;
+  /**
+   * ?proj=1(段階3・B10「点」): Graphics の命令 n0 から今までを、付け根 (ax, ay)(world の点)の相似で写す(k=s_fx・定義域と描く距離のフェード)。
+   * ?proj=0 では何もしない。
+   */
+  private pt(gfx: Graphics, n0: number, ax: number, ay: number): void {
+    const pf = this.pf;
+    if (!pf) return;
+    const q = projectInto(pf, ax, ay, PPT);
+    projSimFrom(gfx, n0, ax, ay, q.x, q.y, projFxScale(q.s), projFxScale(q.s), q.alpha);
+  }
+  private n(gfx: Graphics): number { return this.pf ? gfx.context.instructions.length : 0; }
 
   sync(
     enemies: readonly Enemy[], player: Player, projectiles: readonly Projectile[], gameTime: number, now: number,
@@ -157,6 +171,7 @@ export class NewGunsFx {
     f: Graphics, x: number, y: number, tail: readonly { x: number; y: number }[], r: number, bright: number, alpha: number,
   ): void {
     if (alpha <= 0.01 || r <= 0.2) return;
+    const n0 = this.n(f); // ?proj=1(段階3・B10): 衛星の玉と尾=点(付け根=玉の world の点)
     f.circle(x, y, r * 3.1).fill({ color: SAT_OUT, alpha: 0.03 * alpha * bright });
     f.circle(x, y, r * 2.2).fill({ color: SAT_OUT, alpha: 0.06 * alpha * bright });
     f.circle(x, y, r * 1.5).fill({ color: SAT_OUT, alpha: 0.12 * alpha * bright });
@@ -180,6 +195,7 @@ export class NewGunsFx {
     }
     f.circle(x, y, r).fill({ color: SAT, alpha: Math.min(1, 0.9 * bright) * alpha });
     f.circle(x, y, r * 0.5).fill({ color: SAT_HOT, alpha: Math.min(1, 0.75 * bright) * alpha });
+    this.pt(f, n0, x, y);
   }
 
   /** 回っている(または死亡・出撃の終わりで消えていく)軌道。fadeMs!==null の時は減速しながら回り続けて縮む。 */
@@ -278,6 +294,14 @@ export class NewGunsFx {
         sp.position.set(b.x, b.y);
         sp.alpha = 1 - 0.35 * fade;
         sp.visible = k > 0.01;
+        if (this.pf) {
+          // ?proj=1(段階3・B10): 塊弾の絵=点(付け根=塊の world の中心・大きさ s_fx)。毎フレーム入れ直すので戻さなくてよい
+          const q = projectInto(this.pf, b.x, b.y, PPT);
+          const kf = projFxScale(q.s);
+          sp.position.set(q.x, q.y);
+          sp.scale.set(flip * k * kf, k * kf);
+          sp.alpha *= q.alpha;
+        }
       } else if (d) draws.push(d);
     }
     for (const [id, sp] of this.blobSprites) {
@@ -286,16 +310,23 @@ export class NewGunsFx {
       this.blobSprites.delete(id);
     }
     // 重なった塊が融け合って見えるよう、縁を全部先に描き、本体を後からまとめて描く(1個ずつ重ねるとコインの山に見える)。
+    // ?proj=1(段階3・B10): 塊の形=点(塊ごとに付け根の相似で写す・描く順は今のまま)
     for (const d of draws) {
+      const n0 = this.n(f);
       f.poly(d.outer).fill({ color: d.dull, alpha: 0.95 * d.alpha });
       if (d.band.length >= 6) f.poly(d.band).fill({ color: d.rim, alpha: 0.95 * d.alpha });
+      this.pt(f, n0, d.cx, d.cy);
     }
     for (const d of draws) {
+      const n0 = this.n(f);
       f.poly(d.inner).fill({ color: d.body, alpha: 0.96 * d.alpha });
       f.poly(d.step).fill({ color: d.bodyHi, alpha: 0.55 * d.alpha });
+      this.pt(f, n0, d.cx, d.cy);
     }
     for (const d of draws) {
+      const n0 = this.n(f);
       for (const line of d.cracks) f.poly(line, false).stroke({ width: d.crackW, color: d.heat, alpha: d.crackA, join: 'miter' });
+      this.pt(f, n0, d.cx, d.cy);
     }
     // 消えた塊の最後の場所に、黒い焦げ跡を0.8秒。
     for (const [id, st] of this.blobState) {
@@ -316,6 +347,11 @@ export class NewGunsFx {
       const a = st.trail[i - 1], c = st.trail[i];
       const k = 1 - (gameTime - c.t) / TRAIL_MS;
       if (k <= 0) continue;
+      if (this.pf) { // ?proj=1(段階3・B10): 焦げ線=地面の線(両端を投影・段階3の線の規則=派手さ)
+        projSeg(g, this.pf, a.x, a.y + BLOB_RADIUS_PX * 0.5, c.x, c.y + BLOB_RADIUS_PX * 0.5, { width: 9 * k, color: VOID_SCORCH, alpha: 0.5 * k, cap: 'round' }, 'fx');
+        projSeg(g, this.pf, a.x, a.y + BLOB_RADIUS_PX * 0.5, c.x, c.y + BLOB_RADIUS_PX * 0.5, { width: 2.2 * k, color: VOID_EMBER, alpha: 0.55 * k * k, cap: 'round' }, 'fx');
+        continue;
+      }
       g.moveTo(a.x, a.y + BLOB_RADIUS_PX * 0.5).lineTo(c.x, c.y + BLOB_RADIUS_PX * 0.5)
         .stroke({ width: 9 * k, color: VOID_SCORCH, alpha: 0.5 * k, cap: 'round' });
       // 焦げの中に残る熾火(先に冷える)。
@@ -325,7 +361,9 @@ export class NewGunsFx {
     if (sc <= 0.01) return null;
     const R = BLOB_RADIUS_PX * sc;
     // 足元の潰れた影。
+    const nSh = this.n(g);
     g.ellipse(b.x, b.y + R * 0.55, R * 1.1, R * 1.1 * 0.35).fill({ color: 0x000000, alpha: 0.35 * (1 - coolT * 0.5) });
+    this.pt(g, nSh, b.x, b.y + R * 0.55); // ?proj=1(段階3・B10): 足元の影=点(付け根=影の中心)
     // 形: 撃ち出しの0.25秒だけ1.5倍まで伸びた涙形(後ろが尖る)→進む間は少し伸び→止まると潰れて戻るばね。
     let along = 1, across = 1, tear = 0;
     if (b.stoppedAt === undefined) {
@@ -416,6 +454,7 @@ export class NewGunsFx {
       dull: lerpColor(COOL_RED, COOL_ASH, coolT * 0.6),
       body: lerpColor(BLOB_BODY, COOL_ASH, coolT * 0.6), bodyHi: lerpColor(BLOB_BODY_HI, COOL_ASH, coolT * 0.6),
       heat, alpha, cracks, crackW: Math.max(1, 2.6 * sc), crackA: (0.9 - 0.5 * coolT) * alpha,
+      cx: b.x, cy: b.y,
     };
   }
 
@@ -425,8 +464,10 @@ export class NewGunsFx {
       const t = (gameTime - s.at) / SCORCH_MS;
       if (t >= 1 || t < 0) { this.scorches.splice(i, 1); continue; }
       const a = 0.5 * (1 - easeInQuad(t));
+      const n0 = this.n(g);
       g.ellipse(s.x, s.y, s.r * 1.15, s.r * 0.42).fill({ color: VOID_SCORCH, alpha: a });
       g.ellipse(s.x - s.r * 0.2, s.y + 1, s.r * 0.6, s.r * 0.22).fill({ color: VOID_SCORCH, alpha: a * 0.8 });
+      this.pt(g, n0, s.x, s.y); // ?proj=1(段階3・B10): 焦げ跡=点(付け根=跡の中心)
     }
   }
 
@@ -437,6 +478,7 @@ export class NewGunsFx {
   ): void {
     for (let ci = 0; ci < contacts.length; ci++) {
       const c = contacts[ci];
+      const n0 = this.n(f); // ?proj=1(段階3・B10): 接点の火の粉と湯気=点(付け根=接点)
       for (let k = 0; k < 4; k++) {
         const ph = frac(gameTime / 640 + k / 4 + ci * 0.13);
         const rise = easeOutCubic(ph) * 26;
@@ -445,16 +487,19 @@ export class NewGunsFx {
         const ember = k % 2 === 0;
         f.circle(x, y, (ember ? 1.8 : 3.2) * (1 - ph * 0.6)).fill({ color: ember ? VOID_EMBER : 0xcdc4d8, alpha: (ember ? 0.9 : 0.3) * (1 - ph) });
       }
+      this.pt(f, n0, c.x, c.y);
     }
     for (let pi = 0; pi < pushed.length; pi++) {
       const p = pushed[pi];
       const l = Math.hypot(p.dx, p.dy) || 1;
       const bx = -p.dx / l, by = -p.dy / l;
+      const n0 = this.n(g); // ?proj=1(段階3・B10): 引きずりの土埃=点(付け根=押された敵の足元)
       for (let k = 0; k < 3; k++) {
         const ph = frac(gameTime / 420 + k / 3 + pi * 0.21);
         const d = 4 + k * 7 + ph * 6;
         g.circle(p.x + bx * d, p.y + by * d - ph * 4, 3 + k * 2 + ph * 3).fill({ color: VOID_DUST, alpha: 0.22 * (1 - ph) });
       }
+      this.pt(g, n0, p.x, p.y);
     }
   }
 
@@ -462,6 +507,12 @@ export class NewGunsFx {
   private drawEvent(gameTime: number, g: Graphics, f: Graphics, ev: NewGunsEvent): void {
     const age = gameTime - ev.at;
     if (age < 0) return;
+    const nF = this.n(f); // ?proj=1(段階3・B10): 発射の煙・止まった時の土埃・放つ線=点(付け根=出来事の点)
+    this.drawEventBody(gameTime, age, g, f, ev);
+    this.pt(f, nF, ev.x, ev.y);
+  }
+  private drawEventBody(gameTime: number, age: number, g: Graphics, f: Graphics, ev: NewGunsEvent): void {
+    void gameTime;
     if (ev.kind === 'blob-fire') {
       const t = age / 420;
       if (t >= 1) return;
@@ -502,10 +553,15 @@ export class NewGunsFx {
           gx += Math.cos(aj) * L / 3; gy += Math.sin(aj) * L / 3;
           pts.push(ev.x + gx, gy0 + gy * GY);
         }
-        g.poly(pts, false).stroke({ width: 4, color: VOID_SCORCH, alpha: 0.85 * fade, join: 'miter' });
-        // 先端の短い熾火(最後の区間の後ろ半分だけ)。先に冷える。
         const n = pts.length;
         const tx = pts[n - 2], ty = pts[n - 1], px = pts[n - 4], py = pts[n - 3];
+        if (this.pf) { // ?proj=1(段階3・B10): 地面のひび=地面の線(頂点ごとに投影・段階3の線の規則=派手さ)
+          projLine(g, this.pf, pts, { width: 4, color: VOID_SCORCH, alpha: 0.85 * fade, join: 'miter' }, false, 'fx');
+          projSeg(g, this.pf, px + (tx - px) * 0.5, py + (ty - py) * 0.5, tx, ty, { width: 1.2, color: VOID_EMBER, alpha: 0.85 * fade * fade, cap: 'round' }, 'fx');
+          continue;
+        }
+        g.poly(pts, false).stroke({ width: 4, color: VOID_SCORCH, alpha: 0.85 * fade, join: 'miter' });
+        // 先端の短い熾火(最後の区間の後ろ半分だけ)。先に冷える。
         g.moveTo(px + (tx - px) * 0.5, py + (ty - py) * 0.5).lineTo(tx, ty)
           .stroke({ width: 1.2, color: VOID_EMBER, alpha: 0.85 * fade * fade, cap: 'round' });
       }
@@ -558,14 +614,14 @@ export class NewGunsFx {
       const body = arc(reach);
       projPoly(g, pf, [pcx, pcy, ...body], { color: SCAN_DEEP, alpha: (0.10 + 0.08 * sideK) * fade });
       const lagReachP = SCAN_FAN_LENGTH_PX * Math.min(stopFrac, scanFanSweepFrac(fan, Math.min(gameTime, endAt) - 70));
-      if (lagReachP > 10) projLine(g, pf, arc(lagReachP), { width: lw(2), color: SCAN, alpha: 0.38 * fade });
+      if (lagReachP > 10) projLine(g, pf, arc(lagReachP), { width: lw(2), color: SCAN, alpha: 0.38 * fade }, false, 's');
       const leadP = arc(reach, 1.04);
       const sweepingP = !fan.resolved;
-      projLine(g, pf, leadP, { width: lw((sweepingP ? 9 + 3 * sideK : 4 + 1.5 * sideK) * grow), color: SCAN, alpha: (sweepingP ? 0.5 : 0.3) * fade });
-      projLine(g, pf, leadP, { width: lw((sweepingP ? 2.5 + sideK : 1.2) * grow), color: WHITE, alpha: 0.9 * fade });
+      projLine(g, pf, leadP, { width: lw((sweepingP ? 9 + 3 * sideK : 4 + 1.5 * sideK) * grow), color: SCAN, alpha: (sweepingP ? 0.5 : 0.3) * fade }, false, 's');
+      projLine(g, pf, leadP, { width: lw((sweepingP ? 2.5 + sideK : 1.2) * grow), color: WHITE, alpha: 0.9 * fade }, false, 's');
       for (const sg of [-1, 1]) {
         const q = scanFanScreenPoint(pcx, pcy, base + sg * half, reach);
-        projSeg(g, pf, pcx, pcy, q.x, q.y, { width: lw(1.2), color: SCAN, alpha: 0.35 * fade });
+        projSeg(g, pf, pcx, pcy, q.x, q.y, { width: lw(1.2), color: SCAN, alpha: 0.35 * fade }, 's');
       }
       // 計器 s3 fan: 描いた扇の外周の頂点(world)を判定の式で地面の上へ戻し、判定の扇の境界(長さ reach)との差を画面px で測る。
       let worst = 0;
@@ -682,8 +738,8 @@ export class NewGunsFx {
       const stackW = [0, 0, 0.6, 1.3, 2.6, 3.4][Math.min(SCAN_STACK_MAX, stacks)];
       if (pf && pq) {
         const lw = (w: number) => w; // 太さは部品(projLine)が頂点ごとに × s を掛ける
-        projLine(g, pf, pts, { width: lw(3 + stackW + 3 * hitK), color: SCAN, alpha: Math.min(1, a0 * tail * (0.75 + 0.05 * stacks + hitK)) * pq.alpha });
-        projLine(g, pf, pts, { width: lw(1), color: WHITE, alpha: Math.min(1, (0.6 * a0 + hitK + blink) * tail) * pq.alpha });
+        projLine(g, pf, pts, { width: lw(3 + stackW + 3 * hitK), color: SCAN, alpha: Math.min(1, a0 * tail * (0.75 + 0.05 * stacks + hitK)) * pq.alpha }, false, 'fx');
+        projLine(g, pf, pts, { width: lw(1), color: WHITE, alpha: Math.min(1, (0.6 * a0 + hitK + blink) * tail) * pq.alpha }, false, 'fx');
         // 頭上の菱形と重ねの枠=点(付け根=足元の投影 P・頭の高さは × s・大きさは s_fx)。下の今の行を P の周りへ写して描く。
         this.drawMarkHead(f, e, fb, pq, a0, tail, hitK, blink, pop, stacks, now);
         continue;

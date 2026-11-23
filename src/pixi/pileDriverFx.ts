@@ -17,6 +17,8 @@
 // 負荷: 杭は同時に最大 PILE_MAX 本(実際は1〜2本)、Graphics を毎フレーム描き直す(1本あたり約30図形)。衝撃は最大 IMPACT_MAX 件
 // (1件あたり線・多角形約30)。蒸気は pooled sprite STEAM_MAX 枚。強glow・投影影・フィルタは使わない。
 import { projectInto, makeProjPoint, type ProjFrame } from '../utils/perspectiveProjection'; // 投影の段階3(?proj=1 の時だけ)
+import { projAffineFrom, projSimFrom } from './projDraw';
+import { projFxScale } from '../utils/projFx';
 import { Container, Graphics, Sprite } from 'pixi.js';
 import type { Enemy, Player, Projectile } from '../types/game';
 import { PILEDRIVER_WEAPON_KEY, piledriverRangePx } from '../utils/weaponUtils';
@@ -173,8 +175,16 @@ export class PileDriverFx {
     return p.weaponKey === PILEDRIVER_WEAPON_KEY && !p.hostile && !p.reflected;
   }
 
+  /** 今フレームの投影の枠と、主人公の足元 F・その投影 P・s(?proj=1 の時だけ)。 */
+  private pfNow: ProjFrame | null = null;
+  private pfF = { x: 0, y: 0, px: 0, py: 0, s: 1 };
   sync(projectiles: readonly Projectile[], player: Player, enemies: readonly Enemy[], now: number, projF: ProjFrame | null = null): void {
     for (const pen of [this.back, this.front]) { pen.glow.clear(); pen.body.clear(); }
+    this.pfNow = projF;
+    if (projF) {
+      const q = projectInto(projF, player.x + player.width / 2, player.y + player.height, PQ);
+      this.pfF.x = player.x + player.width / 2; this.pfF.y = player.y + player.height; this.pfF.px = q.x; this.pfF.py = q.y; this.pfF.s = q.s;
+    }
     this.fxg.clear(); this.fxAdd.clear();
     const footY = player.y + player.height;
     this.back.holder.zIndex = footY - 0.5;
@@ -264,9 +274,10 @@ export class PileDriverFx {
     this.drawImpacts(now);
     this.drawJets(now);
     this.drawSteam(now);
-    // ?proj=1(段階3・B11): 杭・筒・蒸気・火花を、主人公の足元を支点にした体の相似(k=s)で写す(1枚の Graphics に複数の演出=入れ物ごと)。
-    // 杭の先を弾の world の位置の投影へ厳密に合わせる(両)のは図形ごとの投影が要る=段階3の残り(報告済み)。null なら今のまま(恒等)。
-    const objs = [this.back.holder, this.front.holder, this.steamLayer, this.fxg, this.fxAdd];
+    // ?proj=1(段階3・B11): 杭=両(根元=主人公の体の相似・先=弾の world の位置の投影へ厳密に・drawStake の中で杭ごとに写す)。
+    // 火花・閃光=点(付け根=刺さった所・drawImpacts)、筒の蒸気の噴き=体(drawJets)。蒸気の粒の層は主人公の足元の体の相似(入れ物ごと)。
+    // null なら今のまま(恒等)。
+    const objs = [this.steamLayer];
     if (projF) {
       const pq = projectInto(projF, pcx, footY, PQ);
       for (const o of objs) { o.position.set(pq.x - pq.s * pcx, pq.y - pq.s * footY); o.scale.set(pq.s); }
@@ -318,8 +329,39 @@ export class PileDriverFx {
     const sinceFire = now - v.firedAt;
     const trail = v.phase === 'extend' || (v.phase === 'freeze') ? clamp01(1 - (sinceFire - PILE_SNAP_MS) / 120) : 0;
     const pen = uy < -0.2 ? this.back : this.front;
+    const nb = this.pfNow ? pen.body.context.instructions.length : 0, ng = this.pfNow ? pen.glow.context.instructions.length : 0;
     this.drawStake(pen, bx, by, ux, uy, tipD, clipD, recoilPx(sinceFire), trail);
+    if (this.pfNow) this.projStake(pen, nb, ng, bx, by, ux, uy, Math.min(tipD, clipD));
     return true;
+  }
+
+  /**
+   * ?proj=1(段階3・B11=両): 1本の杭の命令を、軸の座標で写す。根元 B → 主人公の体の相似 P + s·(B − F)・先 T=B+u·L → T の投影。
+   * 軸に沿う向きは B'→T' へ(長さは |T' − B'| / L 倍)、横は s 倍(太さは体と同じ s)。
+   */
+  private projStake(pen: Pen, nb: number, ng: number, bx: number, by: number, ux: number, uy: number, L: number): void {
+    const f = this.pfNow!, F = this.pfF;
+    const b2x = F.px + F.s * (bx - F.x), b2y = F.py + F.s * (by - F.y);
+    const len = Math.max(1, L);
+    const tq = projectInto(f, bx + ux * len, by + uy * len, PQ);
+    const vx = (tq.x - b2x) / len, vy = (tq.y - b2y) / len; // 軸 1px あたりの表示の進み
+    const vl = Math.hypot(vx, vy) || 1;
+    const wx = (-vy / vl) * F.s, wy = (vx / vl) * F.s; // 横 1px あたり(軸の左の法線 × s)
+    const nx = -uy, ny = ux;
+    // M·u = (vx, vy)・M·n = (wx, wy) → M = [v w]·[u n]^T
+    const ma = vx * ux + wx * nx, mc = vx * uy + wx * ny, mb = vy * ux + wy * nx, md = vy * uy + wy * ny;
+    const tx = b2x - (ma * bx + mc * by), ty = b2y - (mb * bx + md * by);
+    projAffineFrom(pen.body, nb, ma, mb, mc, md, tx, ty, F.s, tq.alpha);
+    projAffineFrom(pen.glow, ng, ma, mb, mc, md, tx, ty, F.s, tq.alpha);
+  }
+  /** ?proj=1(段階3): 命令 n0 から今までを、付け根 (ax, ay) の点(k=s_fx)か主人公の体(body=true・k=s)の相似で写す。 */
+  private projPt(g: Graphics, n0: number, ax: number, ay: number, body = false): void {
+    const f = this.pfNow;
+    if (!f) return;
+    if (body) { const F = this.pfF; projSimFrom(g, n0, F.x, F.y, F.px, F.py, F.s); return; }
+    const q = projectInto(f, ax, ay, PQ);
+    const k = projFxScale(q.s);
+    projSimFrom(g, n0, ax, ay, q.x, q.y, k, k, q.alpha);
   }
 
   private drawStake(pen: Pen, bx: number, by: number, ux: number, uy: number, tipD: number, clipD: number, recoil: number, trail: number): void {
@@ -399,6 +441,11 @@ export class PileDriverFx {
 
   private drawJets(now: number): void {
     const g = this.fxg;
+    const n0 = this.pfNow ? g.context.instructions.length : 0; // ?proj=1(段階3・B11): 筒の蒸気の噴き=主人公の体の相似
+    this.drawJetsBody(now, g);
+    if (this.pfNow) this.projPt(g, n0, 0, 0, true);
+  }
+  private drawJetsBody(now: number, g: Graphics): void {
     for (let i = this.jets.length - 1; i >= 0; i--) {
       const j = this.jets[i];
       const t = (now - j.at) / 110;
@@ -448,6 +495,14 @@ export class PileDriverFx {
       const te = Math.max(0, now - im.freezeUntil) + 18; // 止まっている間は 18ms 目のコマのまま
       const life = im.miss ? 170 : 460;
       if (te >= life) { this.impacts.splice(i, 1); continue; }
+      // ?proj=1(段階3・B11): 火花・衝撃の輪・破片=点(付け根=刺さった所の world の点・s_fx)。1つの衝撃ごとに写す
+      const n0g = this.pfNow ? g.context.instructions.length : 0, n0a = this.pfNow ? ga.context.instructions.length : 0;
+      this.drawImpactOne(im, te, life, g, ga);
+      if (this.pfNow) { this.projPt(g, n0g, im.x, im.y); this.projPt(ga, n0a, im.x, im.y); }
+    }
+  }
+  private drawImpactOne(im: Impact, te: number, life: number, g: Graphics, ga: Graphics): void {
+    {
       const ux = im.ux, uy = im.uy, nx = -uy, ny = ux;
       const sparkN = im.miss ? 5 : 13;
       const sparkLife = im.miss ? 150 : 260;
@@ -469,7 +524,7 @@ export class PileDriverFx {
           ga.moveTo(sx - dx * sl, sy - dy * sl).lineTo(sx, sy).stroke({ width: im.miss ? 1.4 : 2, color: h2 > 0.5 ? SPARK_HOT : SPARK_WARM, alpha: a });
         }
       }
-      if (im.miss) continue;
+      if (im.miss) return;
       // 衝撃: 撃った向きへずらした扁平な楕円(外=紫/内=白)。出始めが速く止まり際で緩む。
       const ring = (dur: number, fwd0: number, fwd1: number, ra0: number, ra1: number, rb0: number, rb1: number, w: number, color: number, alpha: number) => {
         const k = te / dur;

@@ -3285,7 +3285,7 @@ const whipSlamExplode = (get: () => GameState, centers: readonly WhipSlamCenter[
   const g = get();
   for (const c of centers) {
     // 絵と音=手榴弾の爆発と同じ組(橙の輪・橙と暗赤の飛沫・橙の光・爆発の絵)。
-    g.spawnRing(c.x, c.y, 8, radius, 'rgba(251,146,60,0.82)', 5, 440);
+    g.spawnRing(c.x, c.y, 8, radius, 'rgba(251,146,60,0.82)', 5, 440, false, true);
     g.spawnBurst(c.x, c.y, '#f97316', 20);
     g.spawnBurst(c.x, c.y, '#7f1d1d', 8);
     g.spawnGlow(c.x, c.y, GLOW_R_S, 'rgba(251,146,60,', 440);
@@ -8836,7 +8836,7 @@ const applyMeleeFinishSkillSpread = (
     // 社長指示v0.25.3325: 爆発中心=フィニッシュした敵の位置(複数同時フィニッシュ時は最初の1体。
     // 爆発は従来どおり1スイング1発=威力仕様不変)。座標が取れない経路は従来のプレイヤー中心へフォールバック。
     const fcx = finishAt?.x ?? pcx, fcy = finishAt?.y ?? pcy;
-    get().spawnRing(fcx, fcy, 8, radius, 'rgba(251,146,60,0.82)', 5, 440);
+    get().spawnRing(fcx, fcy, 8, radius, 'rgba(251,146,60,0.82)', 5, 440, false, true);
     get().spawnBurst(fcx, fcy, '#f97316', 20);
     get().spawnBurst(fcx, fcy, '#7f1d1d', 8);
     get().spawnGlow(fcx, fcy, GLOW_R_S, 'rgba(251,146,60,', 440);
@@ -9745,7 +9745,7 @@ const applySlasherChainStrike = (
     }
   }
   // 一閃の絵は**判定と同じ円**(いま立っている位置・半径=meleeRange)に揃える。
-  get().spawnRing(pcx, pcy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200);
+  get().spawnRing(pcx, pcy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200, false, true);
   // ★v0.25.3540 社長発案「スラッシャーは射程内であれば、その敵から規定の距離(近接入る距離)まで
   // 自動追尾 であれば事故が減りそう」: 踏み込みを**定数(旧20px)から自動追尾へ**作り替える。
   //
@@ -11634,7 +11634,7 @@ interface GameState {
   // rot(v0.25.4202): 絵の向き(rad)。VisualEffect側は元から rot を持っていたが、この入口が渡していなかった。
   // cols/additive(社長指示2026-09-16・fx/kill-slash): 横並びシートのコマ送り/加算合成。未指定=従来どおり。
   spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number; cols?: number; additive?: boolean; noPop?: boolean; fadeFrom?: number; frameEaseOut?: boolean; tint?: number; scaleX?: number; scaleY?: number; moveX?: number; moveY?: number; alpha?: number; frames?: string[]; followPlayer?: boolean; titlePop?: boolean; growFrom?: number; growPow?: number; ground?: boolean }) => void;
-  spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number, easeOut?: boolean) => void;
+  spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number, easeOut?: boolean, judge?: boolean) => void;
   // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。
   spawnExplosionFx: (x: number, y: number, radius: number, tint?: number) => void;
   // noShadow(§24追加・既定false=挙動不変): trueで支配光(syncShadowsV9)への参加を断つ=見た目はそのまま。
@@ -13625,7 +13625,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     noteMasteryDirectHits(player, 'loadout', skMasteryHits); // 熟練度: loadout=貯まらない(台帳の形を揃えるため呼ぶ)
     if (killedList.length > 0) grantMeleeKillRewards(get, killedList, player, getActiveGun(player));
     noteKickAssistKills(get, killedList.map(k => k.enemy)); // 蹴りの連携の一言(本人の投擲スケボー)
-    get().spawnRing(x, y, 8, bashRange, 'rgba(190,242,100,0.62)', 4, 260);
+    get().spawnRing(x, y, 8, bashRange, 'rgba(190,242,100,0.62)', 4, 260, false, true);
     get().breakEggsInBlast(x, y, bashRange); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
     get().spawnBurst(x, y, '#bef264', 14);
     if (skAwaken) {
@@ -15740,7 +15740,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         for (const mini of buildBomberMinis(cx, cy, `bag-${b.id}`, undefined, undefined, bomberMiniCount(get().player))) get().addProjectile(b.masteryMult !== undefined ? { ...mini, masteryKey: 'none', masteryMult: b.masteryMult } : mini);
         get().spawnBurst(cx, cy, '#fbbf24', 8);
       }
-      get().spawnRing(cx, cy, 12, radius, 'rgba(255,170,70,0.9)', 5, 400);
+      get().spawnRing(cx, cy, 12, radius, 'rgba(255,170,70,0.9)', 5, 400, false, true);
       get().spawnBurst(cx, cy, '#ffae46', 22);
       get().playerBlast(cx, cy, radius); // ★救急鞄(空鞄)の爆発も卵を割り、当たった敵を浮かせる(§14)
       get().spawnGlow(cx, cy, snapGlowRadius(radius * 0.55), 'rgba(255,150,60,', 400); // ★段へ丸める(v0.25.2808)
@@ -17952,7 +17952,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §6.10 M33②: 反射神経の反撃爆発にも skillOutgoingDamageMult(バーサーカー等)を乗算。
         const baseDmg = [0, 60, 80, 100][rfLv] * exMult * skillOutgoingDamageMult(p)
           * masteryMultOf(p, 'loadout'); // 熟練度: 反射神経(スキル)の反撃爆発=loadout
-        get().spawnRing(pcx, pcy, 10, radius, 'rgba(56,189,248,0.85)', 5, 360);
+        get().spawnRing(pcx, pcy, 10, radius, 'rgba(56,189,248,0.85)', 5, 360, false, true);
         get().spawnBurst(pcx, pcy, '#38bdf8', 18);
         get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(56,189,248,', 360);
         get().spawnExplosionFx(pcx, pcy, radius); // v0.25.3283: 爆発flipbook(全爆発共通)
@@ -18156,7 +18156,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().triggerTimeSlow(0.25, LEVELUP_INTRO_MS);
     const lp = get().player;
     const cx = lp.x + lp.width / 2, cy = lp.y + lp.height / 2;
-    get().spawnRing(cx, cy, 14, LEVELUP_KNOCKBACK_RADIUS, 'rgba(250,204,21,0.7)', 3, 260);
+    get().spawnRing(cx, cy, 14, LEVELUP_KNOCKBACK_RADIUS, 'rgba(250,204,21,0.7)', 3, 260, false, true);
     // キャラを派手に: 大きく明るいグロー(芯=白＋金ハロー)を重ねがけ。
     get().spawnGlow(cx, cy, GLOW_R_XXL, 'rgba(253,224,71,', LEVELUP_INTRO_MS + 200);
     get().spawnGlow(cx, cy, GLOW_R_L, 'rgba(255,255,255,', LEVELUP_INTRO_MS);
@@ -18390,7 +18390,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       * consumableAttackMult(player, gameTime) * (player.equipBonus?.damageMult ?? 1)
       * skillLastMagazineMult(player, weapon.magazine ?? 0)
       * masteryMultOf(player, SIGNAL_WEAPON_KEY); // 熟練度: シグナルランチャー(武器ごと。空爆の当たり=useGameLoop で同じキーに包む)
-    get().spawnRing(strikeX, strikeY, 10, SIGNAL_STRIKE_RADIUS_PX, 'rgba(251,191,36,0.55)', 3, SIGNAL_STRIKE_DELAY_MS);
+    get().spawnRing(strikeX, strikeY, 10, SIGNAL_STRIKE_RADIUS_PX, 'rgba(251,191,36,0.55)', 3, SIGNAL_STRIKE_DELAY_MS, false, true);
     get().spawnGlow(strikeX, strikeY, 30, 'rgba(251,191,36,', SIGNAL_STRIKE_DELAY_MS);
     // 戦闘の手触り③(v0.25.4269): 砲身式=反動キックだけ(薬莢なし)。向き=レティクルの逆。
     {
@@ -18438,7 +18438,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         * masteryMultOf(player, ALCHEMY_WEAPON_KEY))); // 熟練度: 錬金砲の石の起爆=錬金砲(武器ごと)
       const ex = center.x + center.width / 2;
       const ey = center.y + center.height / 2;
-      get().spawnRing(ex, ey, 8, radius, 'rgba(250,204,21,0.85)', 4, 420);
+      get().spawnRing(ex, ey, 8, radius, 'rgba(250,204,21,0.85)', 4, 420, false, true);
       get().spawnBurst(ex, ey, '#facc15', 16);
       get().spawnBurst(ex, ey, '#f97316', 8);
       get().spawnExplosionFx(ex, ey, radius, 0xfacc15);
@@ -19882,7 +19882,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const p = gunHitAt as { x: number; y: number };
         // 覚醒(Lv3・v0.25.3300): 2倍の長さで引き寄せ続ける。
         get().spawnGravityWell(p.x, p.y, well.radius, gravLv >= 3 ? GRAVITY_SHOT_PULL_MS * 2 : undefined);
-        get().spawnRing(p.x, p.y, 6, well.radius, 'rgba(168,85,247,0.75)', 3, 420);
+        get().spawnRing(p.x, p.y, 6, well.radius, 'rgba(168,85,247,0.75)', 3, 420, false, true);
         get().spawnBurst(p.x, p.y, '#a855f7', 16);
         get().spawnGlow(p.x, p.y, GLOW_R_M, 'rgba(168,85,247,', 420);
       }
@@ -30313,7 +30313,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   spawnDamageNumber: (x, y, value, crit = false, opts) => {
     // 当てた敵を名指しされた数字だけ、宙の偶像なら体の高さへ(品質/クリエイティブ監査#13・名指しの無い数字は動かさない)。
-    if (opts?.enemyId !== undefined) y -= idolAirLift(get().enemies.find(e => e.id === opts.enemyId));
+    const hitE = opts?.enemyId !== undefined ? get().enemies.find(e => e.id === opts.enemyId) : undefined;
+    if (opts?.enemyId !== undefined) y -= idolAirLift(hitE);
     const now = Date.now();
     // 空中の敵への倍率(§16): 直前の damageEnemy がその敵に掛けた倍率を、名指しの数字にも掛ける(1回だけ・案A)。
     if (opts?.enemyId !== undefined) value *= takeAirNumberMult(opts.enemyId, now);
@@ -30330,6 +30331,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       id: `fx-dmg-${now}-${Math.random().toString(36).slice(2, 6)}`,
       x: x + (Math.random() - 0.5) * 18,
       y: y + (Math.random() - 0.5) * 8 - (scanMarked ? SCAN_MARK_NUMBER_LIFT_PX : 0),
+      ...(hitE ? { footX: hitE.x + hitE.width / 2, footY: hitE.y + hitE.height } : {}), // 描画の付け根だけ(?proj=1・§3-7e)
       value: Math.max(1, Math.ceil(value)), // 表示ダメージは切り上げ(社長指示・最低1)。内部の実ダメージは丸めない
       // 印: 白い芯(会心なら金のまま)+燐光の縁取り・1.5倍・出だし80msで1.8倍から縮む(research/NEW_GUNS.md §4)。
       color: crit ? '#fbbf24' : (flash ? '#fde68a' : (scanMarked ? '#ffffff' : '#fef9c3')),
@@ -30416,7 +30418,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  spawnRing: (x, y, startRadius, endRadius, color, width = 3, duration = 500, easeOut = false) => {
+  spawnRing: (x, y, startRadius, endRadius, color, width = 3, duration = 500, easeOut = false, judge = false) => {
     { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 変異塊の代理の中心→縁(LAB_CRAWLER §4)
     const now = Date.now();
     set(state => ({
@@ -30429,6 +30431,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           createdAt: now,
           duration,
           ...(easeOut ? { easeOut: true } : {}),
+          ...(judge ? { judge: true } : {}), // 描画の印だけ(判定と一致する輪・§3-7g2)
         }
       ]
     }));

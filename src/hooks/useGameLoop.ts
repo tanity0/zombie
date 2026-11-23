@@ -2609,7 +2609,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         for (const t of targets) {
           // 爆心=狙った敵の中心(変異塊の代理は四神の位置に一番近い箱の点=縁で爆ぜる・LAB_CRAWLER §4)。
           const { x: bx, y: by } = blastAnchorOf(t, x, y);
-          spawnRing(bx, by, 10, blastR, 'rgba(248,113,113,0.85)', 5, fxMs);
+          spawnRing(bx, by, 10, blastR, 'rgba(248,113,113,0.85)', 5, fxMs, false, true);
           spawnBurst(bx, by, '#f87171', 20);
           spawnBurst(bx, by, '#7f1d1d', 8);
           useGameStore.getState().spawnGlow(bx, by, GLOW_R_S, 'rgba(248,113,113,', fxMs);
@@ -15020,14 +15020,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const fxMs = HEAVY_GRENADE_EXPLOSION_EFFECT_MS;
           // v0.25.2472: ゴースト発(ownerGhost)の爆発FXは青白系へtint差し替え(視覚のみ・判定/ダメージ不変)。
           if (grenade.ownerGhost) {
-            spawnRing(gx, gy, 8, blastR, 'rgba(159,216,255,0.82)', 5, fxMs);
+            spawnRing(gx, gy, 8, blastR, 'rgba(159,216,255,0.82)', 5, fxMs, false, true);
             spawnBurst(gx, gy, '#9fd8ff', 20);
             spawnBurst(gx, gy, '#1e3a5f', 8);
             useGameStore.getState().spawnGlow(gx, gy, GLOW_R_S, 'rgba(159,216,255,', fxMs);
             useGameStore.getState().spawnExplosionFx(gx, gy, blastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
             useGameStore.getState().playerBlast(gx, gy, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
           } else {
-            spawnRing(gx, gy, 8, blastR, 'rgba(251,146,60,0.82)', 5, fxMs);
+            spawnRing(gx, gy, 8, blastR, 'rgba(251,146,60,0.82)', 5, fxMs, false, true);
             spawnBurst(gx, gy, '#f97316', 20);
             spawnBurst(gx, gy, '#7f1d1d', 8);
             useGameStore.getState().spawnGlow(gx, gy, GLOW_R_S, 'rgba(251,146,60,', fxMs);
@@ -15312,14 +15312,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (knife.ownerGhost) {
                 useGameStore.getState().spawnExplosionFx(bx, by, blastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
                 useGameStore.getState().playerBlast(bx, by, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
-                spawnRing(bx, by, 8, blastR, 'rgba(159,216,255,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
+                spawnRing(bx, by, 8, blastR, 'rgba(159,216,255,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS, false, true);
                 spawnBurst(bx, by, '#9fd8ff', 18);
                 spawnBurst(bx, by, '#1e3a5f', 8);
                 useGameStore.getState().spawnGlow(bx, by, snapGlowRadius(blastR * 0.68), 'rgba(159,216,255,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
               } else {
                 useGameStore.getState().spawnExplosionFx(bx, by, blastR); // v0.25.3283: 爆発flipbook
                 useGameStore.getState().playerBlast(bx, by, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
-                spawnRing(bx, by, 8, blastR, 'rgba(251,146,60,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
+                spawnRing(bx, by, 8, blastR, 'rgba(251,146,60,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS, false, true);
                 spawnBurst(bx, by, '#f97316', 18);
                 spawnBurst(bx, by, '#7f1d1d', 8);
                 useGameStore.getState().spawnGlow(bx, by, snapGlowRadius(blastR * 0.68), 'rgba(251,146,60,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
@@ -15737,7 +15737,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const sgAimable = sgState.enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)));
                 for (const strike of due) {
                   playSfx('bomb');
-                  spawnRing(strike.x, strike.y, 12, SIGNAL_STRIKE_RADIUS_PX, 'rgba(251,146,60,0.85)', 5, GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
+                  spawnRing(strike.x, strike.y, 12, SIGNAL_STRIKE_RADIUS_PX, 'rgba(251,146,60,0.85)', 5, GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS, false, true);
                   spawnBurst(strike.x, strike.y, '#f97316', 24);
                   spawnBurst(strike.x, strike.y, '#7f1d1d', 10);
                   useGameStore.getState().spawnExplosionFx(strike.x, strike.y, SIGNAL_STRIKE_RADIUS_PX);
@@ -19278,7 +19278,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)をボムカウンター爆発にも乗算。
             const base = BOMB_COUNTER_BLAST_DAMAGE * exMult * bcDmgMult * (currentPlayer.equipBonus?.damageMult ?? 1) * skillOutgoingDamageMult(currentPlayer)
               * masteryMultOf(currentPlayer, 'loadout'); // 熟練度: ボムカウンター(スキル)=loadout
-            spawnRing(bcx, bcy, 10, radius, 'rgba(251,146,60,0.85)', 5, 380);
+            spawnRing(bcx, bcy, 10, radius, 'rgba(251,146,60,0.85)', 5, 380, false, true);
             spawnBurst(bcx, bcy, '#f97316', 20);
             spawnBurst(bcx, bcy, '#7f1d1d', 8);
             useGameStore.getState().spawnGlow(bcx, bcy, GLOW_R_S, 'rgba(251,146,60,', 380);

@@ -934,8 +934,11 @@ const STRIP_A: number[] = [];
  */
 export const projStrokeStripInto = (
   f: ProjFrame, src: ProjPathOut, closed: boolean, width: number, out: ProjPathOut,
-  mode: 'A' | 'B' | 'C' = PROJ_TELE_LINE_MODE, minPx: number = PROJ_TELE_LINE_MIN_PX,
+  mode: 'A' | 'B' | 'C' = PROJ_TELE_LINE_MODE, minPx: number = PROJ_TELE_LINE_MIN_PX, fxKMin = -1,
 ): ProjPathOut => {
+  // fxKMin ≥ 0 = 段階3の線の規則(§3-7c): 太さ = 今の太さ × max(s, fxKMin)(判定に揃える線は 0・派手さは s_fx の下限)。
+  // 画面で minPx を下回らない(今の太さが既に下限より細い時は今の太さまで=太らせない)・**濃さは落とさない**(la=1)。
+  // 負(既定)=★#23=B の予告の線(下限に当たった所は薄くする)。
   const z = f.wgScale > 0 ? f.wgScale : 1;
   const cap = projLineScaleCap(f);
   const hMin = Math.max(0, minPx) / (2 * z);
@@ -971,6 +974,12 @@ export const projStrokeStripInto = (
       if (ml > 1e-9) { mx /= ml; my /= ml; } else { mx = nnx; my = nny; }
       const cosH = Math.max(0.3, mx * nnx + my * nny);
       const sv = Math.min(src.ss[i] ?? 1, cap);
+      if (fxKMin >= 0) {
+        const hT = hw * Math.max(Math.max(0, sv), fxKMin);
+        STRIP_NX[k] = mx / cosH; STRIP_NY[k] = my / cosH; STRIP_H[k] = Math.max(Math.min(hw, hMin), hT);
+        STRIP_A[k] = 1;
+        continue;
+      }
       const hTrue = hw * projTeleLineScale(sv, mode);
       const h = Math.max(hMin, hTrue);
       STRIP_NX[k] = mx / cosH; STRIP_NY[k] = my / cosH; STRIP_H[k] = h;

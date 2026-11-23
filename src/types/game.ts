@@ -3344,6 +3344,11 @@ export type VisualEffect =
       kind: 'damageNumber';
       id: string;
       x: number; y: number;
+      /**
+       * 当てた敵の足元(当たり判定の下端の中央・world)。名指し(enemyId)の数字だけ。描画だけが読む(?proj=1 で数字の置く点を
+       * 当たった敵の体の相似で写す付け根=research/PERSPECTIVE_PROJECTION.md §3-7e)。判定・挙動には使わない。
+       */
+      footX?: number; footY?: number;
       value: number;
       color: string;
       createdAt: number;
@@ -3439,6 +3444,11 @@ export type VisualEffect =
       duration: number;
       /** 広がりを減速させ(出始めが速く止まり際で緩む)、後半で消す。未指定=従来の一定の速さ(既存の全用途は不変)。 */
       easeOut?: boolean;
+      /**
+       * 半径(endRadius)が当たり判定の半径そのもの(爆発・押し返し・届く距離など)。描画だけが読む(?proj=1 で投影そのまま寝かせる・
+       * 印の無い輪は閃光の輪=半径を s_fx/s 倍)。判定・挙動には使わない。research/PERSPECTIVE_PROJECTION.md §3-7g2。
+       */
+      judge?: boolean;
     }
   | {
       // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。

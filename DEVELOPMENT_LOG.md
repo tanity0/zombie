@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.5763 — 遠近の投影 段階3の後半(敵の飾り・KILL・殺陣・気功・アイレーザー・周回する物・判定と一致する輪・数字の付け根)(?proj=1 のみ)【2026-11-23 14:57 JST】
+- 入れた物: 敵の飾り D1〜D11(部品 `projBodyFrom`=体の部位を本体と同じ相似で写す/地面に出る物は両・点・閃光の輪)・城ボスの速度線・ヨルムンガンドの雨の層 / C7〜C9(`projFxLateSprites`)・C10 KILL・C11 殺陣(1フレーム遅れを直した)・C15・C18 守護霊の輪(判定と一致) / B12 気功・B13 アイレーザー・向の長さの詰め `projBulletDir` / 光柱・凝視の閃光・G5 / NewGunsFx の残り(塊弾・衛星の玉と尾・接点・焦げ・ひび)・PileDriverFx の杭の両端 / 段階4の部品に `look`('tele'/'s'/'fx'=段階3の線の規則) / 輪の `judge` 印(省略可の欄・判定と一致する半径の呼び出し約20か所)/ 数字と被弾点の付け根を敵の足元に(`damageNumber.footX/footY`・名指しの54か所)=誤差 7〜14px→0 / 計器の付け根の位置の差。
+- 社長の指摘「周りを回るスキルが漏れそう・銃にもあったかも」: 防衛(poi-guard・弾の点=判定)・衛星弾(判定の点=0.36で潰した軌道のまま投影)・舞妓の毬(体)を確認・投影。汎用の周回欄を使うのは poi-guard だけ。
+- 雪(G1)は world に乗せると四角い塊になって北に固まったので、画面座標のまま(投影しない)に戻した=未決。
+- 画で確認(proj3b/): P06・P08・P09・P10(殺陣・KILL)・P12・P17・敵の飾り・城ボスの薙ぎ/トールの払いと一閃・数字(縦持ち・PC)・周回。s4 direct=0。
+- phone-guard/pc-guard: 元の HEAD(6e4c527)と比べ、差はどれも元から出ていた物(版表示の1要素・タイトル/キャラ選択)=今回の原因なし。ゲーム中の残りは差0。
+- 未決: 雪の扱い / weatherWet・burningWreck に s3 fx の印 / 血の筋と名指しの無い数字8か所は H0 方式 / C18 を TELEGRAPH_INVENTORY へ / 舞妓の mk-spin の毬が赤い円と少しずれ得る / 雨の降る範囲 / 衛星弾の実機撮影。
+- 負荷: 2/10(輪が多い場面 3/10)。
+- 変えたファイル: src/pixi/pixiScene.ts・projDraw.ts・newGunsFx.ts・pileDriverFx.ts・weatherWet.ts・projFxGuard.test.ts・projShapeGuard.test.ts・src/utils/projShape.ts・projShape.test.ts・combatTick.ts・src/types/game.ts(省略可の欄2つ)・src/store/gameStore.ts・src/hooks/useGameLoop.ts
+- 検証: typecheck / eslint / circular / vitest 全件(実装担当 11526 通過)・rebase後に関係分。監査は次に回す。
+- 自己点検: 憲法第4条・第5条に抵触しない(既定では何も変わらない・判定と挙動は不変)。
+
 ## v0.25.5762 — 遠近の投影 段階3「点で出る演出」の前半(エフェクト20種・弾・砂埃・光・輪・数字・漂う粒の一部)(?proj=1 のみ・途中)【2026-11-23 13:54 JST】
 - 仕様: research/PERSPECTIVE_PROJECTION.md §3-7(監査2巡・社長裁定 ★#24=B・#25=A・#26=B・#27=B・#28=B・#29=A)。
 - 入れた物: 純関数 `utils/projFx.ts`(台帳 `PROJ_FX_ROWS`・`PROJ_FX_KINDS`・倍率 s/s_fx/s_b)+テスト16本 / `syncEffects` の後掛け `projFxEffect`(点・点o・向・両・読)/ `projExempt` / `projRoleMove` の演出を相似へ(寄りの支点・斬撃の弧を予告の濃さから外す件も閉じた)/ 持ち主への登録 C2・C3・C13・C14・C16 / 弾 `projBullet`(丸=点・長手=向・s_b・下限6px)/ 数字と被弾点の H0 方式 / 光 A7・A8・F3 / 全部の ring を2枚の格子メッシュで寝かせる / 主人公の輪(I12〜I15)・三日月・ワイヤー / スキャンの扇=判定と同じ点を投影(★#29=A・差 0.00px)/ NewGunsFx・PileDriverFx・weatherWet に `pf` / 漂う粒(蛍・火の粉・月の塵)/ 計器 `s3 …` 一式(層を全部歩く)/ 番人 `projFxGuard.test.ts` ①〜⑤。

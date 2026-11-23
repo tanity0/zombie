@@ -7,7 +7,8 @@
 // 部品は、書いた命令の数(Graphics の fill/stroke の数)と、書いた頂点の world Y の範囲を、描いている Graphics ごとに記録する
 // (計器の「直書きの漏れ」・予告の濃さ 3-6f が読む)。わざと投影しない命令は projKeep で申告する。
 
-import { MeshSimple, type Graphics, type Texture, type FillInput, type StrokeStyle } from 'pixi.js';
+import { GraphicsPath, Matrix, MeshSimple, type Graphics, type Texture, type FillInput, type StrokeStyle } from 'pixi.js';
+import { PROJ_FX_MIN_S, PROJ_FX_SIZE_MODE } from '../utils/projFx';
 import type { ProjFrame } from '../utils/perspectiveProjection';
 import {
   ProjPathOut, projCircleInto, projEllipseInto, projArcInto, projSectorInto, projAnnulusInto, projAnnulusAnglesFor,
@@ -109,10 +110,18 @@ let paintFrame: ProjFrame | null = null;
  * 線(★#23「予告の線の太さと遠近」・監査 A-1): B/C は頂点ごとの半幅の帯として塗る(1本の中で奥は細く・手前は太い)。
  * s は画面(+余白)の下端の行の値で頭打ち=画面の外へ延長した頂点に太さを引っ張られない。
  */
-const strokeLine = (g: Graphics, out: ProjPathOut, st: StrokeStyle, closed: boolean) => {
+const strokeLine = (g: Graphics, out: ProjPathOut, st: StrokeStyle, closed: boolean, look: ProjLineLook = 'tele') => {
   const f = paintFrame;
-  if (LINE_AS_STROKE || !f) { trace(g, out, closed); g.stroke(st); return; }
+  if ((LINE_AS_STROKE && look === 'tele') || !f) { trace(g, out, closed); g.stroke(st); return; }
   STRIP.reset();
+  if (look !== 'tele') {
+    // 段階3の線の規則(§3-7c): 太さ × k(判定に揃える線=s・派手さ=s_fx)・画面で 1px の下限・濃さは落とさない
+    projStrokeStripInto(f, out, closed, st.width ?? 1, STRIP, PROJ_TELE_LINE_MODE, PROJ_TELE_LINE_MIN_PX, projLineLookKMin(look));
+    if (STRIP.cn === 0) return;
+    trace(g, STRIP, true);
+    g.fill({ color: st.color, alpha: st.alpha } as FillInput);
+    return;
+  }
   projStrokeStripInto(f, out, closed, st.width ?? 1, STRIP);
   if (STRIP.cn === 0) return;
   const fs: { color?: StrokeStyle['color']; alpha?: number } = {};
@@ -166,16 +175,25 @@ const traceBucket = (g: Graphics, out: ProjPathOut, bv: number): boolean => {
   return any;
 };
 
-const paint = (g: Graphics, out: ProjPathOut, fill: FillInput | undefined, stroke: StrokeStyle | undefined, closed: boolean, f?: ProjFrame) => {
+/**
+ * 線の見た目の規則。'tele'=段階4の予告の線(★#23=B・下限に当たった所は薄くする=既定)。
+ * 's'/'fx'=段階3の線の規則(§3-7c・判定に揃える線=s/派手さ=s_fx・画面で 1px の下限・**濃さは落とさない**)。
+ */
+export type ProjLineLook = 'tele' | 's' | 'fx';
+/** 段階3の線の k の下限(s=0・fx=★#24 の下限。★#24 の案 A は 0・C は今の太さのまま=1 を下限に)。 */
+export const projLineLookKMin = (look: ProjLineLook): number =>
+  look === 's' ? 0 : PROJ_FX_SIZE_MODE === 'A' ? 0 : PROJ_FX_SIZE_MODE === 'C' ? 1 : PROJ_FX_MIN_S;
+
+const paint = (g: Graphics, out: ProjPathOut, fill: FillInput | undefined, stroke: StrokeStyle | undefined, closed: boolean, f?: ProjFrame, look: ProjLineLook = 'tele') => {
   if (fill !== undefined) { trace(g, out, closed); g.fill(fill); }
-  if (stroke !== undefined) { paintFrame = f ?? null; strokeLine(g, out, stroke, closed); paintFrame = null; }
+  if (stroke !== undefined) { paintFrame = f ?? null; strokeLine(g, out, stroke, closed, look); paintFrame = null; }
 };
 
 /** 円(縁は projCircleInto の頂点列)。 */
-export const projCircle = (g: Graphics, f: ProjFrame, wx: number, wy: number, r: number, fill?: FillInput, stroke?: StrokeStyle): void => {
+export const projCircle = (g: Graphics, f: ProjFrame, wx: number, wy: number, r: number, fill?: FillInput, stroke?: StrokeStyle, look: ProjLineLook = 'tele'): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projCircleInto(f, wx, wy, r, TOL, OUT);
-  paint(g, OUT, fill, stroke, true, f);
+  paint(g, OUT, fill, stroke, true, f, look);
   record(g, n0, OUT);
 };
 
@@ -199,29 +217,29 @@ const Q4L = { x: 0, y: 0, s: 1, a: 1, sx: 0, sy: 0 };
 
 /** 楕円(rx・ry・回転)。 */
 export const projEllipse = (
-  g: Graphics, f: ProjFrame, wx: number, wy: number, rx: number, ry: number, rot: number, fill?: FillInput, stroke?: StrokeStyle,
+  g: Graphics, f: ProjFrame, wx: number, wy: number, rx: number, ry: number, rot: number, fill?: FillInput, stroke?: StrokeStyle, look: ProjLineLook = 'tele',
 ): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projEllipseInto(f, wx, wy, rx, ry, rot, TOL, OUT);
-  paint(g, OUT, fill, stroke, true, f);
+  paint(g, OUT, fill, stroke, true, f, look);
   record(g, n0, OUT);
 };
 
 /** 弧の線(Pixi の arc と同じ向き: a0→a1)。 */
-export const projArcLine = (g: Graphics, f: ProjFrame, cx: number, cy: number, r: number, a0: number, a1: number, stroke: StrokeStyle): void => {
+export const projArcLine = (g: Graphics, f: ProjFrame, cx: number, cy: number, r: number, a0: number, a1: number, stroke: StrokeStyle, look: ProjLineLook = 'tele'): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projArcInto(f, cx, cy, r, a0, a1, TOL, OUT);
-  paint(g, OUT, undefined, stroke, false, f);
+  paint(g, OUT, undefined, stroke, false, f, look);
   record(g, n0, OUT);
 };
 
 /** 扇(中心+弧)。 */
 export const projSector = (
-  g: Graphics, f: ProjFrame, cx: number, cy: number, r: number, a0: number, a1: number, fill?: FillInput, stroke?: StrokeStyle,
+  g: Graphics, f: ProjFrame, cx: number, cy: number, r: number, a0: number, a1: number, fill?: FillInput, stroke?: StrokeStyle, look: ProjLineLook = 'tele',
 ): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projSectorInto(f, cx, cy, r, a0, a1, TOL, OUT);
-  paint(g, OUT, fill, stroke, true, f);
+  paint(g, OUT, fill, stroke, true, f, look);
   record(g, n0, OUT);
 };
 
@@ -279,25 +297,25 @@ export const projThickLine = (
 };
 
 /** 細い線(折れ線を誤差で分けて投影。太さは ★#23「予告の線の太さと遠近」)。wpts=flat の world 点。 */
-export const projLine = (g: Graphics, f: ProjFrame, wpts: ArrayLike<number>, stroke: StrokeStyle, closed = false): void => {
+export const projLine = (g: Graphics, f: ProjFrame, wpts: ArrayLike<number>, stroke: StrokeStyle, closed = false, look: ProjLineLook = 'tele'): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projPathInto(f, wpts, closed, TOL, OUT);
-  paint(g, OUT, undefined, stroke, closed, f);
+  paint(g, OUT, undefined, stroke, closed, f, look);
   record(g, n0, OUT);
 };
 
 const SEG: number[] = [0, 0, 0, 0];
 /** 細い線の1区間(moveTo(a).lineTo(b).stroke の置き換え)。 */
-export const projSeg = (g: Graphics, f: ProjFrame, ax: number, ay: number, bx: number, by: number, stroke: StrokeStyle): void => {
+export const projSeg = (g: Graphics, f: ProjFrame, ax: number, ay: number, bx: number, by: number, stroke: StrokeStyle, look: ProjLineLook = 'tele'): void => {
   SEG[0] = ax; SEG[1] = ay; SEG[2] = bx; SEG[3] = by;
-  projLine(g, f, SEG, stroke, false);
+  projLine(g, f, SEG, stroke, false, look);
 };
 
 /** 多角形(塗り・縁)。 */
-export const projPoly = (g: Graphics, f: ProjFrame, wpts: ArrayLike<number>, fill?: FillInput, stroke?: StrokeStyle): void => {
+export const projPoly = (g: Graphics, f: ProjFrame, wpts: ArrayLike<number>, fill?: FillInput, stroke?: StrokeStyle, look: ProjLineLook = 'tele'): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projPathInto(f, wpts, true, TOL, OUT);
-  paint(g, OUT, fill, stroke, true, f);
+  paint(g, OUT, fill, stroke, true, f, look);
   record(g, n0, OUT);
 };
 
@@ -504,4 +522,89 @@ export const projMeshFromSprite = (
   const ox = (0.5 - sp.anchor.x) * tw * sx, oy = (0.5 - sp.anchor.y) * th * sy;
   const cx = sp.position.x + ox * c - oy * sn, cy = sp.position.y + ox * sn + oy * c;
   return projMeshGrid(mesh, f, { cx, cy, w, h, rot }, grid, PROJ_GRID_MAX, g, sx < 0, sy < 0);
+};
+
+// ---- 段階3: 描いた命令をまとめて相似で写す(§3-7c・3-7l 作る物2 の projOnBody を命令の範囲へ) ----
+
+const SIM_M = new Matrix();
+const SIM_TMP = new GraphicsPath();
+const SIM_PATHS = new Set<GraphicsPath>();
+const SIM_STYLES = new Map<object, object>();
+/** 形の命令の data の中の変換行列の添字(GraphicsPath の circle/rect/ellipse/poly/roundRect/regularPoly/chamferRect)。 */
+const SIM_XF_AT: Record<string, number> = { circle: 3, rect: 4, ellipse: 4, poly: 2, roundRect: 5, regularPoly: 5, chamferRect: 5 };
+
+/**
+ * Graphics の命令 n0 から今まで(このフレームに描いた分)を、world の点 X → P + k·(X − F) の相似で写す
+ * (体の部位の飾り=持ち主の体の相似 k=s/d・地面の点の派手さ=付け根の相似 k=s_fx)。線の太さは kLine 倍。
+ * 頂点ごとの投影ではない(相似=小さな絵を付け根の点で置く「点」「体」の型)。写した命令は部品の命令として数える
+ * (計器の「直書きの漏れ」に出さない)。`?proj=1` の時だけ呼ぶ。
+ */
+export const projSimFrom = (
+  g: Graphics, n0: number, fx: number, fy: number, px: number, py: number, k: number, kLine: number = k, alphaMul = 1, n1In = -1,
+): void => {
+  projAffineFrom(g, n0, k, 0, 0, k, px - k * fx, py - k * fy, kLine, alphaMul, n1In);
+};
+
+/**
+ * projSimFrom の一般形: 命令 n0 から今まで(または n1)を、アフィン X → [a c; b d]·X + (tx, ty) で写す(杭の「両」=根元と先を別々の点へ)。
+ * 弧(arc・arcTo)は中心を写し、半径は sqrt|det| 倍(相似でない時は近似=弧を使う絵には相似だけを使う)。線の太さは kLine 倍。
+ */
+export const projAffineFrom = (
+  g: Graphics, n0: number, ma: number, mb: number, mc: number, md: number, tx: number, ty: number, kLine = 1, alphaMul = 1, n1In = -1,
+): void => {
+  const ins = g.context.instructions;
+  const n1 = n1In >= 0 ? Math.min(n1In, ins.length) : ins.length;
+  if (n1 <= n0) return;
+  SIM_M.set(ma, mb, mc, md, tx, ty);
+  const k = Math.sqrt(Math.abs(ma * md - mb * mc));
+  const ax = (x: number, y: number) => ma * x + mc * y + tx, ay = (x: number, y: number) => mb * x + md * y + ty;
+  SIM_PATHS.clear(); SIM_STYLES.clear();
+  for (let i = n0; i < n1; i++) {
+    const it = ins[i] as { action: string; data: { path?: GraphicsPath; style?: { width?: number; alpha?: number }; transform?: Matrix; dx?: number; dy?: number; dw?: number; dh?: number } };
+    const d = it.data;
+    if (it.action === 'texture') {
+      if (d.transform) d.transform = d.transform.clone().prepend(SIM_M);
+      continue;
+    }
+    const path = d.path;
+    if (path && !SIM_PATHS.has(path)) {
+      SIM_PATHS.add(path);
+      const pis = path.instructions as { action: string; data: unknown[] }[];
+      for (let j = 0; j < pis.length; j++) {
+        const pi = pis[j];
+        const a = pi.data as number[];
+        if (pi.action === 'arc') { // [x, y, r, a0, a1, ccw]=相似(回転なし)なら中心を写して半径を k 倍
+          const x0 = a[0], y0 = a[1];
+          a[0] = ax(x0, y0); a[1] = ay(x0, y0); a[2] *= k;
+        } else if (pi.action === 'arcTo') { // [x1, y1, x2, y2, r]
+          const x1 = a[0], y1 = a[1], x2 = a[2], y2 = a[3];
+          a[0] = ax(x1, y1); a[1] = ay(x1, y1); a[2] = ax(x2, y2); a[3] = ay(x2, y2); a[4] *= k;
+        } else if (SIM_XF_AT[pi.action] !== undefined) {
+          // 形の命令(circle・rect・ellipse・poly 等)は自分の変換行列を持つ(Pixi の transform は ellipse の添字を誤る=自前で写す)
+          const at = SIM_XF_AT[pi.action];
+          const m = (pi.data as unknown[])[at] as Matrix | undefined;
+          (pi.data as unknown[])[at] = m ? m.prepend(SIM_M) : SIM_M.clone();
+        } else {
+          SIM_TMP.instructions.length = 0;
+          SIM_TMP.instructions.push(pi as never);
+          SIM_TMP.transform(SIM_M);
+        }
+      }
+      SIM_TMP.instructions.length = 0;
+      (path as unknown as { _dirty: boolean })._dirty = true;
+    }
+    const st = d.style;
+    if (st && (it.action === 'stroke' ? kLine !== 1 || alphaMul !== 1 : alphaMul !== 1)) {
+      // 線の太さ・濃さ(style は命令の間で共有されることがある=写した物を使い回す)
+      let ns = SIM_STYLES.get(st);
+      if (!ns) {
+        ns = { ...st, ...(it.action === 'stroke' ? { width: (st.width ?? 1) * kLine } : {}), alpha: (st.alpha ?? 1) * alphaMul };
+        SIM_STYLES.set(st, ns);
+      }
+      d.style = ns as typeof st;
+    }
+  }
+  SIM_PATHS.clear(); SIM_STYLES.clear();
+  g.context.onUpdate();
+  statOf(g).cmds += n1 - n0;
 };

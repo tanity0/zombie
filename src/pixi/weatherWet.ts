@@ -778,7 +778,7 @@ export class WeatherWetLayer {
       if (!dd || !sp) continue;
       const ds = h.depthScale(dd.y);
       const qd = projectInto(f, dd.x, dd.y, this.projPt);
-      const kk = ds > 0 ? qd.s / ds : 1;
+      const kk = ds > 0 ? projFxScale(qd.s) / ds : 1; // 段階3(G5・3-7i の表): 破片の大きさは旧い ds を外して s_fx
       sp.position.set(qd.x, qd.y);
       sp.scale.set(sp.scale.x * kk, sp.scale.y * kk);
       if (h.projFade) sp.alpha = h.projFade(dd.x, dd.y); // 濃さも投影後のY(§3-6f)
@@ -1206,6 +1206,17 @@ export class WeatherWetLayer {
       sp.height = hard ? Math.max(1, TORCH_STREAK_DASH_H * 0.5 * d) : Math.max(2, TORCH_STREAK_DASH_H * d);
       sp.alpha = TORCH_STREAK_DASH_ALPHA * ds.a * a * (hard ? 0.55 : 1);
     }
+    const pf = this.projFrameNow;
+    if (pf) {
+      // ?proj=1(段階3・光=点): 濡れた地面の松明の照り=付け根(松明の足元の world の点)の相似。旧い depthScale は外して s_fx
+      const q = projectInto(pf, l.x, l.y, this.projPt);
+      const kk = projFxScale(q.s) / (d || 1);
+      for (const sp of [m, g, b, ...st.dashes]) {
+        if (!sp.visible) continue;
+        sp.position.set(q.x + kk * (sp.position.x - l.x), q.y + kk * (sp.position.y - l.y));
+        sp.scale.set(sp.scale.x * kk, sp.scale.y * kk);
+      }
+    }
   }
 
   // ---- 波紋 ----
@@ -1376,6 +1387,22 @@ export class WeatherWetLayer {
       const gs = (pose.falling ? 7 : 4 + 6 * pose.swell) * s;
       d.glow.width = gs; d.glow.height = gs * (pose.falling ? 1.5 : 1);
       d.glow.alpha = 0.7 * pose.alpha * ha;
+      const pf = this.projFrameNow;
+      if (pf) {
+        // ?proj=1(段階3・G5): 葉から滴る雫=落ちる先の地面の点を投影し、高さは × s で持ち上げる。大きさは旧い ds を外して s_fx
+        const q = projectInto(pf, d.spec.x, d.spec.y, this.projPt);
+        const kf = projFxScale(q.s) * DRIP_SIZE_MUL;
+        const qa = h.projFade ? h.projFade(d.spec.x, d.spec.y) : q.alpha;
+        const yq = q.y - pose.h * q.s;
+        d.sp.position.set(q.x, yq);
+        d.sp.width = (pose.falling ? 1.5 : 1.2 + 1.3 * pose.swell) * kf;
+        d.sp.height = (pose.falling ? 3 + 11 * pose.tail : 1.2 + 2 * pose.swell) * kf;
+        d.sp.alpha = 0.95 * pose.alpha * qa;
+        d.glow.position.set(q.x, yq - (pose.falling ? 2 : 1) * kf);
+        const gq = (pose.falling ? 7 : 4 + 6 * pose.swell) * kf;
+        d.glow.width = gq; d.glow.height = gq * (pose.falling ? 1.5 : 1);
+        d.glow.alpha = 0.7 * pose.alpha * qa;
+      }
     }
   }
 

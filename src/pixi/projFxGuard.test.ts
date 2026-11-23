@@ -130,6 +130,24 @@ describe('投影の段階3: 点で出る演出(番人)', () => {
     expect(fan).toContain('projPoly(g, pf, [pcx, pcy, ...body]');
   });
 
+  it('段階3の後半: 判定と一致する輪の印・殺陣は後掛けの後・数字は敵の足元・体の飾りは後掛けで写す', () => {
+    // 輪: 印(e.judge)のある輪は投影そのまま(半径の倍率 1)・印の無い輪だけ閃光の輪
+    expect(bodyOf(src, '  private drawRingSprite(')).toContain('const mul = e.judge ? 1 : projFxRingRadiusMul(');
+    expect(types).toContain('judge?: boolean;');
+    // 殺陣(C11): ?proj=1 は後掛け(と計器)の後に呼ぶ=影の1フレーム遅れを直す
+    const sync = bodyOf(src, '  sync(');
+    const a = sync.indexOf('this.projActorPostPass();'), b = sync.indexOf('if (this.projFrame) this.syncSatsujin(');
+    expect(a).toBeGreaterThan(0);
+    expect(b).toBeGreaterThan(a);
+    expect(sync).toContain('if (!this.projFrame) this.syncSatsujin(');
+    // 数字(A1): 当てた敵の足元がある数字は体の相似で置く
+    expect(bodyOf(src, '  private projFxEffect(')).toContain('this.projFxHudOnFoot(view, e.x, e.y, e.footX, e.footY)');
+    // 体の飾り(D): 後掛け projPostView の中で、記録した命令の範囲を本体と同じ相似で写す
+    expect(bodyOf(src, '  private projPostView(')).toContain('projSimFrom(r.g, r.n0, fx, fy, px, py, k, k, 1, r.n1)');
+    // 杭(B11=両): 杭ごとに根元=体・先=投影のアフィンで写す
+    expect(bodyOf(pdf, '  private projStake(')).toContain('projAffineFrom(pen.body');
+  });
+
   it('⑤ drawPlantSeed は drawProjectile と projBullet の後に位置を写す', () => {
     const sp = bodyOf(src, '  private syncProjectiles(');
     const a = sp.indexOf('this.drawProjectile(g, p);'), b = sp.indexOf('this.projBullet(g, p);'), c = sp.indexOf('this.drawPlantSeed(g, p);');

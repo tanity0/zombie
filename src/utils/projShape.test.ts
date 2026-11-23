@@ -635,6 +635,27 @@ describe('projShape: 線を頂点ごとの太さの帯で描く(監査 A-1・★
     }
   });
 
+  it('段階3の線の規則(fxKMin≥0): 濃さを落とさない・太さ=今の太さ×max(s, 下限)・画面で 1px の下限(今の太さより太くしない)', () => {
+    const f = frameAt(SCREENS[0], 1, 0, 0);
+    const src = new ProjPathOut();
+    projPathInto(f, [f.cxw, f.wRef - 600, f.cxw, f.wRef], false, 0.5, src);
+    for (const [w, kMin] of [[1, 0], [3, 0], [3, 0.6], [0.5, 0.6]] as const) {
+      const strip = new ProjPathOut();
+      projStrokeStripInto(f, src, false, w, strip, 'B', 1, kMin);
+      expect(strip.laMin).toBe(1); // 濃さは落とさない
+      for (let j = 0; j < strip.n; j++) expect(strip.la[j]).toBe(1);
+      // 頂点の半幅: 左右の縁の距離の半分 ≥ min(今の半幅, 0.5px)・≈ 今の半幅 × max(s, kMin)(留めの補正は縦線なので無い)
+      const L = strip.n / 2;
+      for (let i = 0; i < L; i++) {
+        const a = i, b = strip.n - 1 - i;
+        const half = Math.hypot(strip.xy[a * 2] - strip.xy[b * 2], strip.xy[a * 2 + 1] - strip.xy[b * 2 + 1]) / 2;
+        const sv = Math.min(strip.ss[a], projLineScaleCap(f));
+        const want = Math.max(Math.min(w / 2, 0.5), (w / 2) * Math.max(sv, kMin));
+        expect(half).toBeCloseTo(want, 6);
+      }
+    }
+  });
+
   it('線の下限: 記号の大きさ(短い方の直径)も 1px で止めて薄くする', () => {
     // 直径 0.4px(z=1)→ 1px に広げて濃さ 0.4
     const a = projGlyphMinSize(0.4, 1);
