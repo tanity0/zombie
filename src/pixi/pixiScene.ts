@@ -351,7 +351,7 @@ import {
 import { projTeleFadeY, projShapeOutside, PROJ_GRID_MAX, type ProjFrame4 } from '../utils/projShape'; // 投影の段階4「形を持つもの」(§3-6)
 import {
   projLiftScale, projLiftTermsFixDy, projLiftPartMul, projGroundOffsetFix, projSkyTopY, projSkyStartH, projLiftOutside,
-  projHelperSimilar, projLiftPointInto, makeProjLiftPoint, projLiftCapStat, projLiftFixDy, type ProjLiftKind, type ProjLiftRowKey,
+  projHelperAnchor, projIntroHeliPoint, projLiftPointInto, makeProjLiftPoint, projLiftCapStat, projLiftFixDy, type ProjLiftKind, type ProjLiftRowKey,
 } from '../utils/projLift'; // 投影の段階5「高さ」(§3-8)
 import {
   projDrawBeginFrame, projDrawStat, projDrawLeak, projDrawPoints, projDrawResetMax, projKeepFrom, projCmdCount, projSimFrom,
@@ -19391,11 +19391,13 @@ export class PixiScene {
     // 画像は左向きなので X 反転して右向きに(進行=右へ飛来)。
     const hpf = this.projFrame;
     if (hpf) {
-      // ?proj=1(段階5・Z25=拡・★#35 の推薦 A=基準行で今の見え方を保つ): 着地点 G(主人公の足元)を支点に、今の描き方を s_G 倍の相似で写す。
-      // off・heliAboveAt・離陸の上昇は全部この差に入る(地面の点として投影しない)。回転と濃さは今のまま。層は danceUiLayer のまま。
+      // ?proj=1(段階5・Z25=拡・★#35=B=拡縮を外す・社長裁定 2026-11-23): 支点はヘリの真下の地面の点 A=着地点 G(主人公の足元)+off。
+      // A を投影した点に、今の描き方の A への差をそのまま足す(相似の倍率1・遠近の倍率は掛けない=大きさは今のまま)。
+      // 着地の瞬間は off=0 で A=G(着地点の投影に乗る)。heliAboveAt・離陸の上昇はこの差に入る。回転と濃さは今のまま。層は danceUiLayer のまま。
       const gxH = player.x + player.width / 2, gyH = player.y + player.height;
-      const hq = projHelperSimilar(hpf, gxH, gyH, base.cx + HELI_DRIFT_X * dEase, base.cy - HELI_RISE * dEase, this.projHeliBuf); // proj-lift: Z25
-      this.helicopter.scale.set(-sc * hq.s, sc * hq.s);
+      const offH = playerIntroOffset(baseT);
+      const hq = projIntroHeliPoint(hpf, gxH, gyH, offH.x, offH.y, base.cx + HELI_DRIFT_X * dEase, base.cy - HELI_RISE * dEase, this.projHeliBuf); // proj-lift: Z25
+      this.helicopter.scale.set(-sc, sc);
       this.helicopter.position.set(hq.x, hq.y);
       this.projLiftMark('Z25');
     } else {
@@ -41258,11 +41260,13 @@ export class PixiScene {
     const fb = enemyFootBox({ x: e.x, y: e.y, width: e.width, height: e.height, type: e.type } as Enemy);
     const dpf = this.projFrame;
     if (dpf) {
-      // ?proj=1(段階5・Z19=拡+分・★#35 の推薦 A=基準行で今の見え方を保つ): 支点 G=飛び立つ点/着く点の足元を投影し、
-      // slide は高さとして σ・大きさ=containScale × s_G × stageEnemyVisualMul × zoom(depthScaleEnemy を s_G に置き換える)。拡大の zoom は演出として残す。
+      // ?proj=1(段階5・Z19=拡+分・★#35=B=拡縮を外す・社長裁定 2026-11-23): 支点 G=飛び立つ点/着く点の足元を投影した点に、
+      // 今の slide の差をそのまま足す(相似の倍率1・σ も s_G も掛けない)。大きさは今(?proj=0)の式のまま
+      // (containScale × depthScaleEnemy(footY) × stageEnemyVisualMul × zoom)。拡大の zoom は演出として残す。
       // 濃さは今の alpha × G の定義域・描く距離のフェード × 地平線フェード(G の投影後のY)。
-      const lp = projLiftPointInto(dpf, baseX, footY, -slide, this.projSkyLift); // proj-lift: Z19
-      const scaleP = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * lp.s * this.stageEnemyVisualMul(e.type) * zoom;
+      const lp = projHelperAnchor(dpf, baseX, footY, baseX, footY + slide, this.projHeliBuf); // proj-lift: Z19
+      const scaleP = containScale(fb.boxW, fb.boxH, tex.width, tex.height)
+        * this.depthScaleEnemy(footY) * this.stageEnemyVisualMul(e.type) * zoom;
       const aP = alpha * this.projLooseFade(baseX, footY, false);
       sp.visible = aP > 0.01;
       sp.texture = tex;

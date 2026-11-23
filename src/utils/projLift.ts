@@ -128,18 +128,28 @@ export const projLiftOutside = (f: ProjFrame, gx: number, gy: number, h: number,
 };
 
 /**
- * ★#35「拡縮で高さ・近さを表す演出」の推薦 A(ヘリ): 地面の点 G を支点に、今の描き方の点 (x, y) を s_G 倍の相似で写す。
- * 表示 = P_G + s_G·((x, y) − G)。G では恒等(P_G)・s_G=1 かつ P_G=G の時は今の点そのもの。
+ * ★#35「拡縮で高さ・近さを表す演出」=B(社長裁定 2026-11-23・拡縮を外す): 地面の点 G を投影した P_G に、今の描き方の
+ * (x, y) − G の差をそのまま足す(相似の倍率は1=遠近の倍率 s_G は掛けない)。表示 = P_G + ((x, y) − G)。
+ * G では P_G・P_G=G の時は今の点そのもの。out.s は G の s_G(掛けない・控えの値)。
  */
-export const projHelperSimilar = (
+export const projHelperAnchor = (
   f: ProjFrame, gx: number, gy: number, x: number, y: number, out: { x: number; y: number; s: number },
 ): { x: number; y: number; s: number } => {
   const p = projectInto(f, gx, gy, P0);
-  out.x = p.x + p.s * (x - gx);
-  out.y = p.y + p.s * (y - gy);
+  out.x = p.x + (x - gx);
+  out.y = p.y + (y - gy);
   out.s = p.s;
   return out;
 };
+
+/**
+ * ★#35=B のヘリ(Z25): 支点は「ヘリの真下の地面の点 A = 着地点 G(主人公の足元)+ 登場の off」。表示 = P_A + ((x, y) − A)・大きさは今のまま。
+ * 着地の瞬間は off=0 で A=G=着地点の投影に乗る。飛来の途中は A がカメラの近くの行に居るので、今の見え方の位置にほぼ重なる
+ * (支点を G に固定すると、遠い北の G の投影へ今の差を足すことになり、飛来の前半で画面の外へ出る)。
+ */
+export const projIntroHeliPoint = (
+  f: ProjFrame, gx: number, gy: number, offX: number, offY: number, x: number, y: number, out: { x: number; y: number; s: number },
+): { x: number; y: number; s: number } => projHelperAnchor(f, gx + offX, gy + offY, x, y, out);
 
 // ---- 段階5の台帳(§3-8d・鍵は Z1〜Z58・Z37=再掲は入れない) ----
 

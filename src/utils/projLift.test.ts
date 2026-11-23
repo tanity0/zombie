@@ -6,8 +6,11 @@ import {
 import { zoomCameraDownFrac } from './cameraZoom';
 import { projLiftInto } from './projShape';
 import {
+  playerIntroOffset, playerIntroCamFollow, CAMERA_INTRO_LIFT_FRAC, PLAYER_INTRO_HELI_FRAC,
+} from '../store/gameStore';
+import {
   PROJ_LIFT_MODE, PROJ_LIFT_ROWS, projLiftScale, projLiftFixDy, projLiftTermsFixDy, projLiftPartMul, projGroundOffsetFix,
-  projSkyStartH, projSkyTopY, projLiftOutside, projHelperSimilar, projLiftPointInto, makeProjLiftPoint, projLiftRowNeedsFix,
+  projSkyStartH, projSkyTopY, projLiftOutside, projHelperAnchor, projIntroHeliPoint, projLiftPointInto, makeProjLiftPoint, projLiftRowNeedsFix,
   projLiftRowCountsUnfixed, type ProjLiftRow,
 } from './projLift';
 
@@ -157,17 +160,55 @@ describe('段階5: 間引き(3-8h の4)', () => {
   });
 });
 
-describe('段階5: ヘリの相似(★#35 の推薦 A)', () => {
-  it('G で恒等(P_G)・s_G=1 かつ P_G=G の点では今の点と一致', () => {
+describe('段階5: ヘリの置き方(★#35=B・拡縮を外す)', () => {
+  it('G で P_G・G への差は今の差のまま(北の行でも縮めない)・基準行の中央では今の点と一致', () => {
     const o = { x: 0, y: 0, s: 1 }, q = makeProjPoint();
     for (const f of FRAMES) {
-      const gx = f.camX + 100, gy = f.wRef;
-      projHelperSimilar(f, gx, gy, gx, gy, o); projectInto(f, gx, gy, q);
-      expect(o.x).toBeCloseTo(q.x, 9); expect(o.y).toBeCloseTo(q.y, 9);
-      // 基準行・画面中央の列: s_G=1・P_G=G → 今の点そのもの
-      projHelperSimilar(f, f.cxw, f.wRef, f.cxw + 37, f.wRef - 220, o);
-      expect(o.s).toBeCloseTo(1, 6);
+      for (const gy of [f.wRef, f.wRef - 400, f.wRef + 150]) {
+        const gx = f.camX + 100;
+        projHelperAnchor(f, gx, gy, gx, gy, o); projectInto(f, gx, gy, q);
+        expect(o.x).toBeCloseTo(q.x, 9); expect(o.y).toBeCloseTo(q.y, 9);
+        projHelperAnchor(f, gx, gy, gx + 37, gy - 220, o);
+        expect(o.x - q.x).toBeCloseTo(37, 9); expect(o.y - q.y).toBeCloseTo(-220, 9);
+      }
+      // 基準行・画面中央の列: P_G=G → 今の点そのもの
+      projHelperAnchor(f, f.cxw, f.wRef, f.cxw + 37, f.wRef - 220, o);
       expect(o.x).toBeCloseTo(f.cxw + 37, 4); expect(o.y).toBeCloseTo(f.wRef - 220, 4);
+    }
+  });
+});
+
+describe('段階5: 登場のヘリ(★#35=B・支点=ヘリの真下の地面の点 A=G+off)', () => {
+  // ゲームと同じ式でカメラを動かす(setCameraPosition の式: 主人公+off·追従 を画面の中央へ)。ヘリの中心は今の描き方(G の上 70px+off)。
+  const PW = 28, PHH = 28, ABOVE = 70;
+  const heliAt = (sc: Scr, t: number) => {
+    const plx = 0, ply = 0, gx = plx + PW / 2, gy = ply + PHH;
+    const off = playerIntroOffset(t), fol = playerIntroCamFollow(t);
+    const camX = (plx + off.x * fol) - sc.w / 2 + PW / 2, camY = (ply + off.y * CAMERA_INTRO_LIFT_FRAC) - sc.h / 2 + PHH / 2;
+    const f = frameAt(sc, 1, camX, camY);
+    return { f, gx, gy, off, cx: gx + off.x, cy: gy + off.y - ABOVE };
+  };
+  const toScreen = (f: ProjFrame, x: number, y: number) => ({ x: f.wgX + f.wgScale * (x - f.camX), y: f.wgY + f.wgScale * (y - f.camY) });
+  it('飛来の途中(t=0.3・0.45・0.55)で、ヘリの中心が画面の中に居る', () => {
+    const o = { x: 0, y: 0, s: 1 };
+    for (const sc of SCREENS) {
+      for (const t of [0.3, 0.45, 0.55]) {
+        const h = heliAt(sc, t);
+        projIntroHeliPoint(h.f, h.gx, h.gy, h.off.x, h.off.y, h.cx, h.cy, o);
+        const p = toScreen(h.f, o.x, o.y);
+        expect(p.x).toBeGreaterThan(0); expect(p.x).toBeLessThan(sc.w);
+        expect(p.y).toBeGreaterThan(0); expect(p.y).toBeLessThan(sc.h);
+      }
+    }
+  });
+  it('着地の瞬間は off=0 で A=G: G の投影に今の差(上 70px)を足した点に乗る', () => {
+    const o = { x: 0, y: 0, s: 1 }, q = makeProjPoint();
+    for (const sc of SCREENS) {
+      const h = heliAt(sc, PLAYER_INTRO_HELI_FRAC);
+      expect(Math.abs(h.off.x) + Math.abs(h.off.y)).toBeLessThan(1e-9);
+      projIntroHeliPoint(h.f, h.gx, h.gy, h.off.x, h.off.y, h.cx, h.cy, o);
+      projectInto(h.f, h.gx, h.gy, q);
+      expect(o.x - q.x).toBeCloseTo(0, 9); expect(o.y - q.y).toBeCloseTo(-ABOVE, 9);
     }
   });
 });
