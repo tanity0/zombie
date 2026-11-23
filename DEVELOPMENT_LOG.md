@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5764 — 型の誤り1件の直し(v0.25.5763 の projDraw.ts)【2026-11-23 14:58 JST】
+- v0.25.5763 を typecheck エラーのまま push した(`projDraw.ts:608` の `g.context.onUpdate()` が protected)。私の push 手順で typecheck を `&&` の連鎖に置いていたため、失敗しても後ろの commit/push が走った。
+- 直し: `(g.context as unknown as { onUpdate(): void }).onUpdate()`(挙動は同じ)。
+- 再発防止: push 前の検査は、失敗したら止まる形(`|| exit 1`)で走らせる。
+- 検証: typecheck 0 / eslint / 関係テスト。
+
 ## v0.25.5763 — 遠近の投影 段階3の後半(敵の飾り・KILL・殺陣・気功・アイレーザー・周回する物・判定と一致する輪・数字の付け根)(?proj=1 のみ)【2026-11-23 14:57 JST】
 - 入れた物: 敵の飾り D1〜D11(部品 `projBodyFrom`=体の部位を本体と同じ相似で写す/地面に出る物は両・点・閃光の輪)・城ボスの速度線・ヨルムンガンドの雨の層 / C7〜C9(`projFxLateSprites`)・C10 KILL・C11 殺陣(1フレーム遅れを直した)・C15・C18 守護霊の輪(判定と一致) / B12 気功・B13 アイレーザー・向の長さの詰め `projBulletDir` / 光柱・凝視の閃光・G5 / NewGunsFx の残り(塊弾・衛星の玉と尾・接点・焦げ・ひび)・PileDriverFx の杭の両端 / 段階4の部品に `look`('tele'/'s'/'fx'=段階3の線の規則) / 輪の `judge` 印(省略可の欄・判定と一致する半径の呼び出し約20か所)/ 数字と被弾点の付け根を敵の足元に(`damageNumber.footX/footY`・名指しの54か所)=誤差 7〜14px→0 / 計器の付け根の位置の差。
 - 社長の指摘「周りを回るスキルが漏れそう・銃にもあったかも」: 防衛(poi-guard・弾の点=判定)・衛星弾(判定の点=0.36で潰した軌道のまま投影)・舞妓の毬(体)を確認・投影。汎用の周回欄を使うのは poi-guard だけ。

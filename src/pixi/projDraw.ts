@@ -605,6 +605,7 @@ export const projAffineFrom = (
     }
   }
   SIM_PATHS.clear(); SIM_STYLES.clear();
-  g.context.onUpdate();
+  // onUpdate は GraphicsContext の protected(命令を直に書き換えた後に描き直しを知らせる唯一の口)。
+  (g.context as unknown as { onUpdate(): void }).onUpdate();
   statOf(g).cmds += n1 - n0;
 };
