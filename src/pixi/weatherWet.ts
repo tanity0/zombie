@@ -26,7 +26,7 @@ import { getTexture } from './pixiTextures';
 import { makeProjGridMesh, projMeshFromSprite, PROJ_GRID_SOFT } from './projDraw'; // 投影の段階4(?proj=1 の時だけ・K01)
 import { projectInto, makeProjPoint, type ProjFrame } from '../utils/perspectiveProjection';
 import { projShapeOutside } from '../utils/projShape';
-import { projFxScale, PROJ_FX_MAX_S, projFlatInto, makeProjFlatOut } from '../utils/projFx'; // 投影の段階3(?proj=1 の時だけ・G5)
+import { projFxScale, projFlatInto, makeProjFlatOut } from '../utils/projFx'; // 投影の段階3(?proj=1 の時だけ・G5)
 import type { MeshSimple } from 'pixi.js';
 import { getSoftGlowTexture } from './lighting';
 import {
@@ -1264,9 +1264,9 @@ export class WeatherWetLayer {
       if (pf) {
         // ?proj=1(段階3・G5.ripple・★#30): 地面に落ちた波紋=地面に付いた物=寝かせる(付け根=波紋の地面の点・中心の s で一様に潰す・縦は横を超えない。
         // 旧い depthScale は外す)・濃さは投影後のY。
-        // CR-7: 投影で薄まって見える分を補う=大きさは s(奥は細かく・手前は天井まで大きく)・濃さは手前ほどはっきり(1.2..1.6 倍・1 まで)
+        // CR-7: 投影で薄まって見える分を補う=濃さは手前ほどはっきり(1.2..1.6 倍・1 まで)。大きさは s_fx(★#24=B の下限 0.6・南は s のまま=監査2巡目 C-2)
         const q = projFlatInto(pf, r.x, r.y, PFLAT);
-        const ks = Math.min(PROJ_FX_MAX_S, q.s);
+        const ks = projFxScale(q.s);
         const sq = DEBRIS_ART_SCALE * ks * r.s * pose.scale;
         r.sp.position.set(q.x, q.y);
         r.sp.scale.set(sq, sq * q.r);

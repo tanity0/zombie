@@ -21,13 +21,15 @@ export const PROJ_FX_MIN_S = 0.6;
 /** ★#24 の案(A=s のまま/B=下限 0.6/C=今の大きさ)。ここ1か所で切り替わる。 */
 export const PROJ_FX_SIZE_MODE: 'A' | 'B' | 'C' = 'B';
 
-/**
- * 手前の天井(クリエイティブ監査1巡目 CR-1「手前の派手さの絵が上限なしで膨らみボケて安い」・叩き台 1.25)。B の時だけ効く。
- * 南(s>1)の派手さの絵は s のまま大きくなるが、この倍率で止める(濃さは変えない)。
+/*
+ * 手前(南)の天井は全体には掛けない(監査2巡目 A-1: 全体の天井 1.25 は ★#24=B の式「s_fx = max(s, 0.6)・南は s のまま」を変え、
+ * 閃光の輪が判定と一致する輪の内側に入り、当たった所の派手さの絵が南で判定や敵より小さくなった)。
+ * 天井は、膨らむとボケて安く見える個別の絵(硬い縁の光の円盤など・CR-1)だけに、呼ぶ所で掛ける。
  */
-export const PROJ_FX_MAX_S = 1.25;
 /** 硬い縁の光の円盤(口の冷気の円盤など・CR-1)の手前の天井(叩き台 1.1)。呼ぶ所で体の相似の倍率をこの値で頭打ちにする。 */
 export const PROJ_FX_DISC_MAX_S = 1.1;
+/** 層を重ねた柔らかい光の円盤(凍てつく牙の口の光・CR-1)の手前の天井(叩き台 1.25)。個別の絵の天井(全体には掛けない)。 */
+export const PROJ_FX_SOFT_DISC_MAX_S = 1.25;
 
 /**
  * 細長い絵の先(鞭の縄・火炎の噴き)の太さと先の炎の大きさの奥の下限(クリエイティブ監査1巡目 CR-14「奥で小さな火花に」・叩き台 0.9)。
@@ -35,9 +37,9 @@ export const PROJ_FX_DISC_MAX_S = 1.1;
  */
 export const PROJ_FX_TIP_MIN_S = 0.9;
 
-/** 派手さの倍率 s_fx(★#24・手前は CR-1 の天井)。濃さの掛け率は持たない(下限・天井に当たっても濃さは落とさない)。 */
+/** 派手さの倍率 s_fx(★#24=B: max(s, 0.6)・南は s のまま=天井なし)。濃さの掛け率は持たない(下限に当たっても濃さは落とさない)。 */
 export const projFxScale = (s: number, mode: 'A' | 'B' | 'C' = PROJ_FX_SIZE_MODE): number =>
-  mode === 'A' ? Math.max(0, s) : mode === 'B' ? Math.min(PROJ_FX_MAX_S, Math.max(Math.max(0, s), PROJ_FX_MIN_S)) : 1;
+  mode === 'A' ? Math.max(0, s) : mode === 'B' ? Math.max(Math.max(0, s), PROJ_FX_MIN_S) : 1;
 
 /** 閃光の輪(★#27=B): 中心を投影し、world の半径を s_fx/s 倍してから地面に寝かせる。この倍率(判定と一致する輪は 1)。 */
 export const projFxRingRadiusMul = (s: number, mode: 'A' | 'B' | 'C' = PROJ_FX_SIZE_MODE): number =>
@@ -97,7 +99,7 @@ export interface ProjFxRow { type: ProjFxType; k: ProjFxKMode; what: string }
  * 段階3の台帳(鍵=台帳の行 ID・行を分けた所は枝を付ける)。research/PERSPECTIVE_PROJECTION.md §3-7b の表を写した物。
  * 1行に2つの型がある行は枝に分けた('A14.drop'/'A14.stain' 等)。
  * ★#30「地面に付いた物の型」(社長裁定 2026-11-23): 地面に接する物は全部「形」(寝かせる)。判定を持たない物は 'fxFlat'(中心の s_fx で一様に潰す・
- * 縦は横を超えない・★#24 の下限 0.6・手前の天井 1.25)。宙にある物(火の粉・血しぶき・破片の飛んでいる間)は点のまま。
+ * 縦は横を超えない・★#24 の下限 0.6・南は s のまま)。宙にある物(火の粉・血しぶき・破片の飛んでいる間)は点のまま。
  */
 export const PROJ_FX_ROWS = {
   // A. エフェクト20種(syncEffects)
@@ -124,7 +126,7 @@ export const PROJ_FX_ROWS = {
   'A16.floor': { type: 'shape', k: 'fxFlat', what: 'particle(on the floor: shell/settled drop)' },
   'A17': { type: 'shape', k: 'fxRing', what: 'ring' },
   'A17.judge': { type: 'shape', k: 'none', what: 'ring(judge)' },
-  'A18': { type: 'point', k: 'fx', what: 'explosion' },
+  'A18': { type: 'point', k: 's', what: 'explosion' }, // 判定に揃える絵(幅=判定の直径×1.1)=k は s(監査2巡目 A-2)・絵の下辺=爆心(v0.25.3285)
   'A19': { type: 'seg', k: 'fx', what: 'trail' },
   'A20': { type: 'seg', k: 'fx', what: 'drain' },
   'A21': { type: 'hud', k: 'hud', what: 'multiHit' },
@@ -132,6 +134,8 @@ export const PROJ_FX_ROWS = {
   // B. 弾・飛ぶ物
   'B1.round': { type: 'point', k: 'bullet', what: 'drawProjectile(round)' },
   'B1.long': { type: 'dir', k: 'bullet', what: 'drawProjectile(long)' },
+  // 盾=判定を持つ壁(長手=ローカルの y・k は判定に揃える s=監査2巡目 A-5)。今の盾は syncShields の立つ絵(段階2)で、drawProjectile は通らない
+  'B1.wall': { type: 'dir', k: 's', what: 'drawProjectile(shield wall)' },
   'B2': { type: 'point', k: 'bullet', what: 'drawPlantSeed' },
   'B3': { type: 'point', k: 'fx', what: 'boltFx' },
   'B4': { type: 'dir', k: 'bullet', what: 'syncIceLanceBolts' },
@@ -166,6 +170,7 @@ export const PROJ_FX_ROWS = {
   'C10.slash': { type: 'point', k: 'fx', what: 'killFxSlash' },
   'C10.text': { type: 'hud', k: 'hud', what: 'killFxText' },
   'C10.blood': { type: 'origin', k: 'fx', what: 'kamitsuki/killFxBlood' },
+  'C10.puff': { type: 'shape', k: 'fxFlat', what: 'killFx return landing dust puff (on the ground)' }, // 監査2巡目 A-6
   // 白い筋は赤い幕と同じ画面の絵(大きさ・向きは今のまま)・X の交点だけ相手の体の中心の写りへ平行移動(CR-8)
   'C11.strike': { type: 'hud', k: 'hud', what: 'satsujin(strikes)' },
   'C11.shadow': { type: 'body', k: 'body', what: 'satsujin(shadow)' },
@@ -180,6 +185,9 @@ export const PROJ_FX_ROWS = {
   // D. 敵に直に描いている飾り・段階4の projKeep
   'D1': { type: 'body', k: 'body', what: 'mimirWheel' },
   'D2': { type: 'body', k: 'body', what: 'jormungandr breath' },
+  // 監査2巡目 A-6(★#30・★#27=B): 地面に接するヨルムンガンドの演出=寝かせる。宙の光弾・息の塊・殻は点のまま
+  'D2.land': { type: 'shape', k: 'fxFlat', what: 'jormungandr rain landing disc/ring (on the ground)' },
+  'D2.frost': { type: 'shape', k: 'fxFlat', what: 'jormungandr freeze frost flower / crushed crystals (on the ground)' },
   'D3': { type: 'body', k: 'body', what: 'muzzle(tele)' },
   'D4': { type: 'seg', k: 'fx', what: 'dust streak' },
   'D5': { type: 'seg', k: 'fx', what: 'skadi blade/frost' },
@@ -196,13 +204,19 @@ export const PROJ_FX_ROWS = {
   // F. 光
   'F1': { type: 'point', k: 'fx', what: 'strong glow art' },
   'F2': { type: 'point', k: 'fx', what: 'small glow art' },
+  // 監査2巡目 A-6: 地面に落ちる光=寝かせる
+  'F2.foot': { type: 'shape', k: 'fxFlat', what: 'player foot assist light (on the ground)' },
+  'F2.refl': { type: 'shape', k: 'fxFlat', what: 'ground reflection of a light (groundReflSprite)' },
   'F3': { type: 'shape', k: 'none', what: 'localEventShade' },
   'F4': { type: 'exempt', k: 'none', what: 'old silhouette shadow' },
   'F5': { type: 'exempt', k: 'none', what: 'light math' },
   'F6': { type: 'done', k: 'none', what: 'torch/dof/rim/pool' },
   'F7': { type: 'exempt', k: 'none', what: 'lab lights' },
   // G. 漂う粒
-  'G1': { type: 'point', k: 'fx', what: 'syncFireflies' },
+  // G1(監査2巡目 C-2): ステージ1の蛍(world の漂う粒)=点・大きさは s(下限なし)。★#24 の下限の例外=漂う粒は判定を持たない背景で ★#26 の対象
+  // (CR-6 で下限を外した=奥で素直に小さく)。雪の中の層は ★#31 で画面座標の3層=外(G1.snow)
+  'G1': { type: 'point', k: 's', what: 'syncFireflies(stage1 fireflies: drifting motes, no floor)' },
+  'G1.snow': { type: 'exempt', k: 'none', what: 'syncFireflies(snow: screen-space 3 layers ★#31)' },
   'G2': { type: 'point', k: 'fx', what: 'syncWorldEmbers' },
   'G3': { type: 'point', k: 'fx', what: 'syncMoonDust' },
   'G4': { type: 'point', k: 'fx', what: 'endingAmbient' },
@@ -325,11 +339,15 @@ export const projAmbientCount = (base: number, areaRatio: number, cap: number = 
 
 /**
  * 弾の形の振り分け(3-7d の軸の表=弾の種類で決める・監査 A-4。描いた回転の有無では決めない)。
- * 'round'=丸い弾(点・縦横同じ倍率)・'x'=長手の弾でローカルの x が長手(矢・曳光)・'y'=ローカルの y が長手(ロケットの素材)。
- * 赤い二重丸・散弾・phill-bullet・反射のハロー・追尾弾・手榴弾・設置物は 'round'(回転は今のまま)。
+ * 'round'=丸い弾(点・縦横同じ倍率)・'x'=長手の弾でローカルの x が長手(矢・曳光)・'y'=ローカルの y が長手(ロケットの素材・盾の壁)。
+ * 表(監査2巡目 A-5):
+ * - 'y': ロケットの素材・盾 'shield'(判定を持つ壁。長さ=ローカルの y・厚み=ローカルの x。南北に立てても長さは判定の投影のまま)
+ * - 'x': 拳銃・小銃の曳光・矢の素材
+ * - 'round': 赤い二重丸・散弾・phill-bullet・反射のハロー・追尾弾・手榴弾・罠 'trap'(丸い装置+範囲の円は別に判定の円で投影)・
+ *   デコイ 'decoy'・タレット 'turret'(この2つは別の関数で描く=ここを通らない。通っても丸い装置=点)
  */
 export const projBulletForm = (o: { weaponType: string; rocketArt: boolean; arrowArt: boolean }): 'round' | 'x' | 'y' =>
-  o.rocketArt ? 'y' : o.arrowArt ? 'x' : (o.weaponType === 'handgun' || o.weaponType === 'rifle') ? 'x' : 'round';
+  o.rocketArt || o.weaponType === 'shield' ? 'y' : o.arrowArt ? 'x' : (o.weaponType === 'handgun' || o.weaponType === 'rifle') ? 'x' : 'round';
 
 // ---------------------------------------------------------------------------------------------
 // 地面に付いた物(★#30=社長裁定 2026-11-23「地面に接する物は全部寝かせる」)
@@ -340,7 +358,7 @@ export interface ProjFlatOut {
   x: number; y: number;
   /** 中心の s と、定義域と描く距離のフェード。 */
   s: number; a: number;
-  /** 横の倍率(=k・既定 s_fx=★#24 の奥の下限 0.6・手前の天井 1.25)。 */
+  /** 横の倍率(=k・既定 s_fx=★#24 の奥の下限 0.6・南は s のまま)。 */
   kx: number;
   /** 縦の倍率(=横 × 中心の縦の詰め/s・縦は横を超えない)。 */
   ky: number;

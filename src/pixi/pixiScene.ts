@@ -357,7 +357,7 @@ import {
 } from './projDraw'; // 投影の段階4の描く部品(?proj=1 の時だけ呼ぶ)
 import {
   projFxScale, projFxRingRadiusMul, projBulletScale, projLineWidth, projDirInto, makeProjDirOut, projFloorAnchorInto, projNumberAnchorInto,
-  projAmbientRegion, projAmbientCount, PROJ_NUMBER_LIFT_H0, type ProjRegion, projBulletForm, PROJ_FX_DISC_MAX_S, PROJ_FX_MAX_S, PROJ_FX_TIP_MIN_S,
+  projAmbientRegion, projAmbientCount, PROJ_NUMBER_LIFT_H0, type ProjRegion, projBulletForm, PROJ_FX_DISC_MAX_S, PROJ_FX_SOFT_DISC_MAX_S, PROJ_FX_TIP_MIN_S,
   projFlatInto, makeProjFlatOut, PROJ_SNOW_LAYERS, projSnowCounts, projSnowLeanVx,
 } from '../utils/projFx'; // 投影の段階3「点で出る演出」(§3-7)
 import { LIB_VOLLEY_CAST_MS } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md §4c: 号令の旗の突き上げの尺
@@ -3549,6 +3549,8 @@ const TORCH_POOL_TINT = tsNum('torchpooltint', 0xffb870);             // 松明�
 // ★向きの縁ライティング(research/LIGHT_REWORK.md §6・社長指示2026-09-15「まず縁だけ入れて様子見よう」)。
 // 光の当たっている側の**内側の縁**だけを光らせる。面の陰影(擬似法線)はやらない(§5は破棄)。
 // 縁は向きごとに**焼いて**キャッシュする=毎フレームのシェーダーは無し(被弾フラッシュの whiteSilhouette と同型)。
+/** ?proj=1(監査2巡目 A-3): 縁の光の Sprite に、写した本体と濃さの掛け率・焼きの縮め率を持たせる(後掛けの後に写し直す)。 */
+type RimBodyLink = Sprite & { __rimBody?: Sprite; __rimMul?: number; __rimF?: number };
 const RIM_ON = tsNum('rim', 1) !== 0;                  // ?rim=0 で完全に切る(受け入れ条件5のA/B)
 const RIM_PX = tsNum('rimpx', 2);                      // 焼く時の縁の太さ(元テクスチャのpx)
 const RIM_GAIN = tsNum('rimgain', 1.15);               // 縁の濃さ
@@ -5793,7 +5795,7 @@ export class PixiScene {
   private killFxSlashShadow: Sprite | null = null; // 刀の致命の斬撃の真下に敷く暗い写し  // 喉搔きの斬撃(slash-streak素材を横一文字に・FB8)
   private killFxBloodPool: Sprite[] = [];       // 血粒のスプライトプール(Texture.WHITE・使い回し)
   private kamitsukiProjAnchor: { sx: number; sy: number; fx: number; fy: number; fd: number } | null = null;
-  private killFxBlood: { x: number; y: number; vx: number; vy: number; size: number; born: number; life: number; tint: number; fx?: number; fy?: number }[] = [];
+  private killFxBlood: { x: number; y: number; vx: number; vy: number; size: number; born: number; life: number; tint: number; fx?: number; fy?: number; flat?: boolean }[] = [];
   private killFxBloodPrevStep = 0;              // 実時間積分の前回時刻(タブ復帰の飛びはクランプ)
   private killFxVisPos: { x: number; y: number } | null = null; // 演出中のプレイヤー見た目位置(ズーム追尾用・FB4)
   // ★神付き(PACING_PUZZLE.md §14-4-8/8b)。store.kamitsukiFxを実時間(Date.now)で再生する描画専用一式
@@ -9458,7 +9460,7 @@ export class PixiScene {
     const r = this.projAmbientRect();
     const m = 40;
     const x0 = r.left - m, x1 = r.right + m, y0 = r.top - m, y1 = r.bottom + m;
-    const base = this.endingAmbient.reduce((n, p) => n + (p.extra ? 0 : 1), 0);
+    const base = this.projBaseCount(this.endingAmbient);
     const want = projAmbientCount(base, this.projAmbientRatio);
     while (this.endingAmbient.length < want) {
       const kind: 'ember' | 'ash' = this.endingAmbient.length % 2 === 0 ? 'ember' : 'ash';
@@ -10927,12 +10929,13 @@ export class PixiScene {
    * ★#30「地面に付いた物の型」(判定を持たない地面の跡): 中心 F=(fx, fy) を投影し、位置は P + (kx, ky)·(今 − F)・大きさは (kx, ky)/d 倍
    * (横=s_fx・縦=横×中心の縦の詰め/s・縦は横を超えない)。lift=地面から持ち上げている高さ(world・高さは横の倍率で写す)。
    */
-  private projFxFlatAt(c: Container | null | undefined, fx: number, fy: number, d = 1, lift = 0) {
+  private projFxFlatAt(c: Container | null | undefined, fx: number, fy: number, d = 1, lift = 0, blend = 1) {
     const f = this.projFrame;
     if (!f || !this.projFxSave(c)) return;
     const q = projFlatInto(f, fx, fy, this.projFlatBuf);
     const dd = d > 1e-6 ? d : 1;
-    const kx = q.kx / dd, ky = q.ky / dd;
+    // blend<1: 縦の潰しを途中まで(0=縦横同じ k=点・1=寝かせ切り)。床に着いた瞬間に跳ねないよう寄せる所(監査2巡目 B-4)
+    const kx = q.kx / dd, ky = (q.kx + (q.ky - q.kx) * Math.max(0, Math.min(1, blend))) / dd;
     c.position.set(q.x + kx * (c.position.x - fx), q.y + ky * (c.position.y + lift - fy) - kx * lift);
     c.scale.set(c.scale.x * kx, c.scale.y * ky);
     if (q.a !== 1) c.alpha *= q.a;
@@ -11038,10 +11041,10 @@ export class PixiScene {
     const fx = c.position.x, fy = c.position.y + lift;
     const rot = c.rotation + (lenAxisY ? Math.PI / 2 : 0);
     const s0 = projectInto(f, fx, fy, this.projFxP).s;
-    // widMin: 長さは投影のまま(k=s)・太さだけ widMin..天井(CR-14)
+    // widMin: 長さは投影のまま(k=s)・太さだけ奥の下限 widMin(CR-14・南は s のまま=全体の天井は掛けない・監査2巡目 A-1)
     const k = widMin !== undefined ? s0 : kOverride ? kOverride(s0) : this.projFxKOf(mode, s0);
     const d = projDirInto(f, fx, fy, Math.cos(rot), Math.sin(rot), 8, k, this.projFxDirBuf);
-    if (widMin !== undefined) d.wid = Math.min(Math.max(PROJ_FX_MAX_S, widMin), Math.max(widMin, d.wid));
+    if (widMin !== undefined) d.wid = Math.max(widMin, d.wid);
     c.position.set(d.x, d.y - lift * d.s);
     c.rotation = d.rot - (lenAxisY ? Math.PI / 2 : 0);
     if (lenAxisY) c.scale.set(c.scale.x * d.wid, c.scale.y * d.len);
@@ -11060,7 +11063,7 @@ export class PixiScene {
     const pb = projectInto(f, bx, by, this.projScratch2);
     const wl = Math.hypot(bx - ax, by - ay);
     const pl = Math.hypot(pb.x - pax, pb.y - pay);
-    const k = widMin > 0 ? Math.min(Math.max(PROJ_FX_MAX_S, widMin), Math.max(widMin, sa)) : this.projFxKOf(mode, sa); // widMin=太さの奥の下限(CR-14)
+    const k = widMin > 0 ? Math.max(widMin, sa) : this.projFxKOf(mode, sa); // widMin=太さの奥の下限(CR-14・南は s のまま)
     c.position.set(pax, pay);
     if (wl > 1e-6) c.rotation = Math.atan2(pb.y - pay, pb.x - pax);
     const sxMul = wl > 1e-6 ? pl / wl : k;
@@ -11222,18 +11225,30 @@ export class PixiScene {
         const fl = e.solid && e.floorY !== undefined ? e.floorY : e.settleY;
         // A16.floor(★#30): 床に落ちて止まった粒(殻・止まった滴)=地面に付いた物=寝かせる。飛んでいる間は点のまま
         const onFloor = fl !== undefined && (e.solid ? e.restedAt !== undefined : view.position.y >= fl - 0.5);
-        if (onFloor) this.projFxFlatAt(view, view.position.x, view.position.y);
-        else if (fl !== undefined) this.projFxFloor(view, view.position.x, view.position.y, fl);
-        else this.projFxOrigin(view);
+        if (onFloor) {
+          // 監査2巡目 B-4: 着いた瞬間に縦の潰しが跳ねないよう、着いてから PROJ_FLOOR_SETTLE_MS で寝かせ切る(減速して寄せる)
+          const rn = Date.now();
+          let t0 = this.projFloorAt.get(view);
+          if (t0 === undefined) { t0 = rn; this.projFloorAt.set(view, t0); }
+          const u = Math.min(1, (rn - t0) / PixiScene.PROJ_FLOOR_SETTLE_MS);
+          this.projFxFlatAt(view, view.position.x, view.position.y, 1, 0, 1 - (1 - u) * (1 - u));
+        } else {
+          this.projFloorAt.delete(view);
+          if (fl !== undefined) this.projFxFloor(view, view.position.x, view.position.y, fl);
+          else this.projFxOrigin(view);
+        }
         return;
       }
       case 'ring': this.projFxMarks.set(view, this.projFrameNo); return; // A17(形・drawRingSprite の ?proj=1 の分岐で格子メッシュ)
-      case 'explosion': this.projFxSelf(view); return; // A18(点・絵の下辺=爆心)
+      case 'explosion': this.projFxSelf(view, 's'); return; // A18(点・判定に揃える絵=幅は判定の直径×1.1=k は s・監査2巡目 A-2。絵の下辺=爆心・v0.25.3285)
       case 'trail': this.projFxSeg(view, e.fromX, e.fromY, e.toX, e.toY, 'fx', 2.5, Math.max(1, (view as Sprite).texture?.height ?? 1)); return; // A19(両・線の規則)
       case 'drain': this.projFxEachChild(view); return; // A20(両=粒ごとに投影)
       default: return;
     }
   }
+  /** ?proj=1(監査2巡目 B-4): 床に着いた粒の着いた時刻(縦の潰しを寄せる)と、寝かせ切るまでの時間(叩き台 120ms)。 */
+  private projFloorAt = new WeakMap<Container, number>();
+  private static readonly PROJ_FLOOR_SETTLE_MS = 120;
   /** A14: 飛ぶ塊と滴・芯(effectLayer の入れ物)と床の染み(groundLayer の入れ物)。旧い倍率 depthScaleEnemy(e.floorY) は外して s_fx(k = s_fx/ds)。 */
   private projFxBloodBurst(e: Extract<VisualEffect, { kind: 'bloodBurst' }>, view: Container) {
     const f = this.projFrame;
@@ -11396,6 +11411,7 @@ export class PixiScene {
       if (PROJ_AUDIT) { this.projAuditMarks.set(this.marksmanMarkGfx, this.projFrameNo); this.projAuditMarks.set(this.flareReadyGfx, this.projFrameNo); }
     }
     if (PROJ_AUDIT) for (const [k, n] of this.projUncNow) this.projActorAudit.unclassified.set(k, Math.max(this.projActorAudit.unclassified.get(k) ?? 0, n));
+    this.projRimFollow(); // 監査2巡目 A-3: 縁の光を本体の最終の写し(後掛けの後)に合わせ直す
     // 主人公の大きさ(★#21 の確認用): 今フレームの s と1フレームの変化の最大。
     const pv = this.playerView;
     if (PROJ_AUDIT && pv && pv.projPostFrame === this.projFrameNo && pv.projS !== undefined) {
@@ -13339,7 +13355,7 @@ export class PixiScene {
     this.playerLight.tint = s.player.huntingCharged ? PLAYER_HUNTING_LIGHT_TINT : lp.color;
     this.playerLight.alpha = lp.playerAssistAlpha * LIGHT_CURVE_ALPHA_GAIN * PLAYER_LIGHT_ALPHA_GAIN * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600)) * assistMult;
     this.playerLight.width = this.playerLight.height = lp.playerAssistRadius * (s.player.huntingCharged ? 2.2 : 2) * lightScale;
-    if (this.projFrame) this.projFxAt(this.playerLight, lx, ly, 'fx'); // ?proj=1(段階3・F2 の光の絵=点): 主人公の補助光=付け根(光の world の点)の相似(監査 A-7)
+    if (this.projFrame) this.projFxFlatAt(this.playerLight, lx, ly); // ?proj=1(段階3・★#30・監査2巡目 A-6): 主人公の足元の補助光=地面に落ちる光=寝かせる(付け根=光の world の点)
 
     // A: 光だまり(足元の地面プール)を追従。?pool=0 で無効。微かに脈動。
     if (this.playerGroundPool.visible) {
@@ -13890,8 +13906,9 @@ export class PixiScene {
       this.syncWorldEmbers(now, sec, x0, y0, x1, y1, emberRise, emberSway);
       return;
     }
-    // ?proj=1(段階3・G1 の雪): 雪は画面座標(uiLayer)で降らせる天候=投影しない(外)。world に乗せて投影すると、world の画面の粗さで
-    // 粒が大きな四角の塊に見え、見える world が北に広い分だけ密度も落ちる(proj3b/p09_snow で確認)。設計書 ★#30 で社長判断待ち。
+    // ?proj=1(段階3・G1.snow): 雪は画面座標(uiLayer)で降らせる天候=投影しない(外)。world に乗せて投影すると、world の画面の粗さで
+    // 粒が大きな四角の塊に見え、見える world が北に広い分だけ密度も落ちる(proj3b/p09_snow で確認)。★#31「雪の見せ方」で裁定済み
+    // (社長 2026-11-23「地面の投影に乗せず、画面に奥行きの3層」)・実装済み(中の層=ここ・奥と手前=syncProjSnowLayers)。
     this.setFireflyParent(false);
     this.hideFireflyHalos();
     // ?proj=1(段階3・★#31): 雪は地面の投影に乗せず、画面に奥行きの3層(中=今の雪・奥と手前は syncProjSnowLayers)。消失点は画面の点
@@ -14007,17 +14024,21 @@ export class PixiScene {
       ui.addChild(this.projSnowFarC, this.projSnowNearC);
     }
     const farC = this.projSnowFarC, nearC = this.projSnowNearC;
-    // 並び: 奥の層 → 中の層(今の雪) → 手前の層
-    let lo = Infinity, hi = -1;
-    for (const f of this.fireflies) if (f.sprite.parent === ui) { const i = ui.getChildIndex(f.sprite); if (i < lo) lo = i; if (i > hi) hi = i; }
-    if (hi >= 0) {
+    // 並び: 奥の層 → 中の層(今の雪) → 手前の層。中の層の粒は順に足してある=最初と最後の粒の位置だけ見る(監査2巡目 B-5: 毎フレーム全粒の getChildIndex をやめる)
+    const ffs = this.fireflies;
+    const firstSp = ffs[0]?.sprite, lastSp = ffs[ffs.length - 1]?.sprite;
+    if (firstSp && lastSp && firstSp.parent === ui && lastSp.parent === ui) {
+      const lo = ui.getChildIndex(firstSp);
       if (ui.getChildIndex(farC) > lo) ui.setChildIndex(farC, lo);
-      const hi2 = ui.getChildIndex(this.fireflies[this.fireflies.length - 1].sprite);
+      const hi2 = ui.getChildIndex(lastSp);
       if (ui.getChildIndex(nearC) < hi2) ui.setChildIndex(nearC, Math.min(ui.children.length - 1, hi2));
     }
     farC.visible = true; nearC.visible = true;
-    const mid = this.fireflies.reduce((n, f) => n + (f.extra ? 0 : 1), 0);
-    const storm = Math.min(1, Math.abs(blizzardWind) / 210); // 吹雪の強さ=定常の横風の大きさ(既定の -210 で 1)
+    const mid = this.projBaseCount(this.fireflies);
+    // 吹雪の強さ(監査2巡目 C-4): 既定の横風(-210)で 0.5=手前の層は中くらい・横風が強い場面だけ増える(2倍の -420 で 1)。
+    // ゲームの中に「本物の吹雪の場面」の値はまだ無い(雪の横風は既定の -210 で一定・変えられるのは ?snowwind だけ)。
+    // 突風(windAt)は使わない=突風のたびに数が変わると、増えた/減った粒がパッと出入りする(慣性の掟)
+    const storm = Math.min(1, 0.5 * Math.abs(blizzardWind) / 210);
     const cnt = projSnowCounts(mid, storm);
     this.projSnowGrow(this.projSnowFar, cnt.far, farC, 'far');
     this.projSnowGrow(this.projSnowNear, cnt.near, nearC, 'near');
@@ -14026,29 +14047,33 @@ export class PixiScene {
     let dcy = Number.isFinite(this.projSnowCamY) ? camera.y - this.projSnowCamY : 0;
     if (intro || Math.abs(dcx) > 80 || Math.abs(dcy) > 80) { dcx = 0; dcy = 0; }
     this.projSnowCamX = camera.x; this.projSnowCamY = camera.y;
+    this.projSnowStep(this.projSnowFar, cnt.far, 'far', vp, sec, windX, windY, fallBoost, dcx, dcy);
+    this.projSnowStep(this.projSnowNear, cnt.near, 'near', vp, sec, windX, windY, fallBoost, dcx, dcy);
+  }
+  /** ?proj=1(★#31): 雪の層1つを進めて置く(毎フレームの閉じた関数を作らない=監査2巡目 B-5)。 */
+  private projSnowStep(
+    list: ProjSnowMote[], n: number, layer: 'near' | 'far', vp: { x: number; y: number }, sec: number,
+    windX: number, windY: number, fallBoost: number, dcx: number, dcy: number,
+  ) {
     const W = this.screenW, H = this.screenH, M = 40;
-    const step = (list: ProjSnowMote[], n: number, layer: 'near' | 'far') => {
-      const L = PROJ_SNOW_LAYERS[layer];
-      for (let i = 0; i < list.length; i++) {
-        const m = list[i];
-        if (i >= n) { m.sprite.visible = false; continue; }
-        const vy = m.fall * fallBoost * L.fall + windY * L.wind;
-        const vx = (m.drift + windX) * L.wind + projSnowLeanVx(m.x, m.y, vp.x, vp.y, vy, L.lean);
-        m.x += vx * sec - dcx * L.par;
-        m.y += vy * sec - dcy * L.par;
-        // 折り返しは入り直す端の外側へ少し散らす(同じ時に折り返した粒が一列に並ばない)
-        if (m.x < -M) { m.x = W + M * (1 + Math.random()); m.y = -M + Math.random() * (H + 2 * M); }
-        else if (m.x > W + M) { m.x = -M * (1 + Math.random()); m.y = -M + Math.random() * (H + 2 * M); }
-        if (m.y > H + M) { m.y = -M * (1 + Math.random()); m.x = -M + Math.random() * (W + 2 * M); }
-        else if (m.y < -M) { m.y = H + M * (1 + Math.random()); m.x = -M + Math.random() * (W + 2 * M); }
-        m.sprite.visible = true;
-        m.sprite.position.set(m.x, m.y);
-        m.sprite.width = m.sprite.height = m.size;
-        m.sprite.alpha = m.alpha;
-      }
-    };
-    step(this.projSnowFar, cnt.far, 'far');
-    step(this.projSnowNear, cnt.near, 'near');
+    const L = PROJ_SNOW_LAYERS[layer];
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      if (i >= n) { m.sprite.visible = false; continue; }
+      const vy = m.fall * fallBoost * L.fall + windY * L.wind;
+      const vx = (m.drift + windX) * L.wind + projSnowLeanVx(m.x, m.y, vp.x, vp.y, vy, L.lean);
+      m.x += vx * sec - dcx * L.par;
+      m.y += vy * sec - dcy * L.par;
+      // 折り返しは入り直す端の外側へ少し散らす(同じ時に折り返した粒が一列に並ばない)
+      if (m.x < -M) { m.x = W + M * (1 + Math.random()); m.y = -M + Math.random() * (H + 2 * M); }
+      else if (m.x > W + M) { m.x = -M * (1 + Math.random()); m.y = -M + Math.random() * (H + 2 * M); }
+      if (m.y > H + M) { m.y = -M * (1 + Math.random()); m.x = -M + Math.random() * (W + 2 * M); }
+      else if (m.y < -M) { m.y = H + M * (1 + Math.random()); m.x = -M + Math.random() * (W + 2 * M); }
+      m.sprite.visible = true;
+      m.sprite.position.set(m.x, m.y);
+      m.sprite.width = m.sprite.height = m.size;
+      m.sprite.alpha = m.alpha;
+    }
   }
 
   /**
@@ -14059,7 +14084,7 @@ export class PixiScene {
     // ?proj=1(段階3・G2・★#26=B): 数を見える world の面積の比で増やす(上限2倍・増やした分は作り置きの別の列=基の粒は今のまま)
     let extraN = 0;
     if (this.projFrame) {
-      const base = this.fireflies.reduce((n, f) => n + (f.extra ? 0 : 1), 0);
+      const base = this.projBaseCount(this.fireflies);
       extraN = Math.max(0, projAmbientCount(base, this.projAmbientRatio) - base);
       const parent = this.fireflies[0]?.sprite.parent;
       while (this.projEmberExtras.length < extraN && parent) {
@@ -14100,9 +14125,20 @@ export class PixiScene {
       if (eq) this.projFxMarks.set(f.sprite, this.projFrameNo);
     }
     if (this.projFrame && PROJ_AUDIT) {
-      const base = this.fireflies.reduce((n, f) => n + (f.extra ? 0 : 1), 0);
+      const base = this.projBaseCount(this.fireflies);
       this.projAmbientAudit(base + extraN, base);
     }
+  }
+  /** 漂う粒の基の数(増やした分 extra を除く)。増やした分は足すだけ=長さが変わった時だけ数え直す(監査2巡目 B-5: 毎フレームの reduce をやめる)。 */
+  private projBaseCountBuf = new WeakMap<object, { len: number; n: number }>();
+  private projBaseCount(list: readonly { extra?: boolean }[]): number {
+    let c = this.projBaseCountBuf.get(list);
+    if (c && c.len === list.length) return c.n;
+    let n = 0;
+    for (let i = 0; i < list.length; i++) if (!list[i].extra) n++;
+    if (!c) { c = { len: 0, n: 0 }; this.projBaseCountBuf.set(list, c); }
+    c.len = list.length; c.n = n;
+    return n;
   }
   /** ?proj=1(段階3・G2): ステージ5の火の粉の増やした分(作り置き・?proj=0 では作らない)。 */
   private projEmberExtras: Firefly[] = [];
@@ -14135,6 +14171,9 @@ export class PixiScene {
   private fireflyInWorld = false;
   /** 蛍プールの親を付け替える(切り替わった時だけ・光の輪→芯の順で重なりを保つ)。 */
   private setFireflyParent(inWorld: boolean) {
+    // ?proj=1(段階3・G2・監査2巡目 A-4): 火の粉の増やした分は world の層に残る=画面座標へ戻る(屋内・通路・昼)時は全部隠す
+    // (作り置きの無い ?proj=0 と他ステージは空の列=何もしない)
+    if (!inWorld) for (const f of this.projEmberExtras) if (f.sprite.visible) f.sprite.visible = false;
     if (this.fireflyInWorld === inWorld) return;
     this.fireflyInWorld = inWorld;
     let target: Container = this.L.uiLayer;
@@ -18009,10 +18048,10 @@ export class PixiScene {
     core.width = width * 0.56; core.height = height * 0.68;
     core.alpha = alpha * 0.22;    const rf = this.projFrame;
     if (rf) {
-      // ?proj=1(段階3): 地面の映り込み=点(付け根=映り込みの地面の点)。呼ぶ側が寸法に掛けた旧い depthScale は外して s_fx。
+      // ?proj=1(段階3): 地面の映り込み=形(付け根=映り込みの地面の点で寝かせる)。呼ぶ側が寸法に掛けた旧い depthScale は外して s_fx。
       const d0 = this.depthScale(y);
-      this.projFxAt(halo, x, y, 'fx', 0, d0);
-      this.projFxAt(core, x, y, 'fx', 0, d0);
+      this.projFxFlatAt(halo, x, y, d0); // 地面に映る光=地面に付いた物=寝かせる(★#30・監査2巡目 A-6)
+      this.projFxFlatAt(core, x, y, d0);
     }
   }
 
@@ -25448,6 +25487,7 @@ export class PixiScene {
         size: 3 + Math.random() * 5,
         born, life: 380 + Math.random() * 220,
         tint: 0x9ca3af,
+        fx: x, fy: y, flat: true, // ?proj=1(段階3・★#30・監査2巡目 A-6): 着地の土煙=地面に付いた物=着地点で寝かせる
       });
     }
   }
@@ -25616,8 +25656,11 @@ export class PixiScene {
       sp.alpha = 1 - Math.max(0, (age - 0.55) / 0.45);
       sp.position.set(b.x, b.y);
       sp.visible = true;
-      // ?proj=1(段階3・C10): 血=点o(付け根=噴き出した相手の足元・飛んだ分は s 倍・大きさは s_fx)
-      if (this.projFrame && b.fx !== undefined && b.fy !== undefined) this.projFxOriginAt(sp, b.fx, b.fy);
+      // ?proj=1(段階3・C10): 血=点o(付け根=噴き出した相手の足元・飛んだ分は s 倍・大きさは s_fx)。
+      // 帰還着地の土煙(flat)=地面に付いた物=着地点で寝かせる(★#30・監査2巡目 A-6)
+      if (this.projFrame && b.fx !== undefined && b.fy !== undefined) {
+        if (b.flat) this.projFxFlatAt(sp, b.fx, b.fy); else this.projFxOriginAt(sp, b.fx, b.fy);
+      }
     }
     for (let i = write; i < this.killFxBloodPool.length; i++) this.killFxBloodPool[i].visible = false;
   }
@@ -26969,6 +27012,27 @@ export class PixiScene {
     this.pruneRims(views, now);
   }
 
+  /**
+   * ?proj=1(監査2巡目 A-3「縁の光を本体なしで出さない・本体と同じ写し」): 縁の光は syncRimLights(後掛けより前)で本体を写すので、
+   * 後掛け(projActorPostPass)の後にもう一度、本体の最終の位置・倍率・傾き・回転・濃さを写し直す。本体が描かれていない
+   * (visible でない・renderable でない・壊れた)なら縁も隠す。見えている縁だけ(光の当たっている物=数枚〜十数枚)。
+   */
+  private projRimFollow() {
+    for (const r of this.rimViews.values()) { this.projRimFollowOne(r.a as RimBodyLink); this.projRimFollowOne(r.b as RimBodyLink); }
+  }
+  private projRimFollowOne(s2: RimBodyLink) {
+    if (!s2.visible || s2.destroyed) return;
+    const sp = s2.__rimBody, f = s2.__rimF ?? 1, mul = s2.__rimMul ?? 0;
+    if (!sp || sp.destroyed || !sp.visible || !sp.renderable || sp.parent !== s2.parent) { s2.visible = false; return; }
+    s2.anchor.set(sp.anchor.x, sp.anchor.y);
+    s2.position.set(sp.position.x, sp.position.y);
+    s2.scale.set(sp.scale.x / f, sp.scale.y / f);
+    s2.skew.set(sp.skew.x, sp.skew.y);
+    s2.rotation = sp.rotation;
+    s2.zIndex = sp.zIndex + 0.01;
+    s2.alpha = Math.min(1, sp.alpha * mul);
+  }
+
   private hideRim(id: string) {
     const r = this.rimViews.get(id);
     if (r) { r.a.visible = false; r.b.visible = false; }
@@ -27104,6 +27168,8 @@ export class PixiScene {
       // (アクターは容器の中なので zIndex は使われない=無害)。
       s2.zIndex = sp.zIndex + 0.01;
       s2.alpha = Math.min(1, sp.alpha * r!.k * w * RIM_GAIN * boost);
+      // ?proj=1(監査2巡目 A-3): 後掛けの後に本体の最終の位置・倍率・濃さを写し直す材料(projRimFollow)。?proj=0 では読まない
+      if (this.projFrame) { const rb = s2 as RimBodyLink; rb.__rimBody = sp; rb.__rimMul = r!.k * w * RIM_GAIN * boost; rb.__rimF = bake.f; }
     };
     put(r.a, ta, 1 - t);
     put(r.b, tb, t);
@@ -30910,7 +30976,7 @@ export class PixiScene {
         const beat = 1 + 0.5 * kick;
         const freezing = bs === 'jfreeze-open' || bs === 'jfreeze';
         // ?proj=1(CR-1): 口の光の円盤は手前で膨らませない(硬い縁の円盤=1.1・凍てつく牙の層を重ねた柔らかい光=1.25 で頭打ち)。?proj=0 は 1
-        const mR = (14 + 16 * grow) * beat * (pf ? this.projBodyCap(view, freezing ? PROJ_FX_MAX_S : PROJ_FX_DISC_MAX_S) : 1);
+        const mR = (14 + 16 * grow) * beat * (pf ? this.projBodyCap(view, freezing ? PROJ_FX_SOFT_DISC_MAX_S : PROJ_FX_DISC_MAX_S) : 1);
         const nMouth = pf ? projCmdCount(o) : 0; // ?proj=1(段階3・D2): 口の冷気=体の部位(漂う息も口と一緒に写す)
         if (freezing) {
           // 凍てつく牙だけは冷たく絞った口: 光は息の向きへ偏って流れ(円ではない)、縁は層を重ねて溶かす(凍C2#J-1)。
@@ -36097,23 +36163,26 @@ export class PixiScene {
    * 長さ=投影長×(k/s)・幅=k)。設置物の depthD は外して s_b(★#28)。地平線フェードは投影後のY・定義域と描く距離のフェードも掛ける。
    * drawProjectile は毎フレーム頭で rotation/scale/alpha を入れ直す=保存して戻さなくても毎フレーム正しい(戻しても同じ)。
    */
+  private projBulletFormBuf: { weaponType: string; rocketArt: boolean; arrowArt: boolean } = { weaponType: '', rocketArt: false, arrowArt: false };
   private projBullet(g: Graphics, p: Projectile) {
     const f = this.projFrame!;
     const cx = g.position.x, cy = g.position.y;
     const pp = projectInto(f, cx, cy, this.projScratch2);
     const ppx = pp.x, ppy = pp.y, ps = pp.s, pa = pp.alpha;
     const diam = Math.max(1, p.width);
-    const kb = projBulletScale(ps, diam);
+    // 盾=判定を持つ壁=長さも厚みも判定の投影(k=s・弾の直径の下限は掛けない=監査2巡目 A-5)
+    const kb = p.weaponType === 'shield' ? ps : projBulletScale(ps, diam);
     // 長手かは弾の種類の表(3-7d・projBulletForm)で決める(回転の有無で決めない=phill-bullet・追尾弾は点のまま・監査 A-4)
-    const form = projBulletForm({
-      weaponType: p.weaponType, rocketArt: p.weaponKey === ROCKET_WEAPON_KEY && !!getTexture('fx/ending-bomb'),
-      arrowArt: p.weaponKey === CROSSBOW_WEAPON_KEY && !!getTexture('fx/arrow'),
-    });
-    const rocket = form === 'y';
+    const fb = this.projBulletFormBuf; // 作り置き(毎フレームの弾ごとの確保をやめる・監査2巡目 B-5)
+    fb.weaponType = p.weaponType;
+    fb.rocketArt = p.weaponKey === ROCKET_WEAPON_KEY && !!getTexture('fx/ending-bomb');
+    fb.arrowArt = p.weaponKey === CROSSBOW_WEAPON_KEY && !!getTexture('fx/arrow');
+    const form = projBulletForm(fb);
+    const rocket = form === 'y'; // ローカルの y が長手(ロケットの素材・盾の壁=監査2巡目 A-5)
     const long = form !== 'round';
     if (!this.projFxSave(g, long)) return;
     if (long) {
-      // 向: ロケットは素材の長手=ローカルの y(rotation = 向き − π/2)・ほかはローカルの x
+      // 向: ロケット・盾は長手=ローカルの y(rotation = 向き − π/2)・ほかはローカルの x
       const rot = rocket ? g.rotation + Math.PI / 2 : g.rotation;
       const d = projDirInto(f, cx, cy, Math.cos(rot), Math.sin(rot), 8, kb, this.projFxDirBuf);
       g.position.set(d.x, d.y);
@@ -38824,7 +38893,7 @@ export class PixiScene {
       const nLand = pf ? projCmdCount(a) : 0;
       a.circle(f.x, f.y, 40 * (1 - t)).fill({ color: 0x9fd8ff, alpha: 0.7 * (1 - t) });
       a.circle(f.x, f.y, 8 + 52 * eo).stroke({ width: 2.5, color: 0xe8f6ff, alpha: 0.9 * (1 - eo) });
-      if (pf) this.projPointFrom(a, nLand, f.x, f.y); // ?proj=1(段階3): 着地の閃光=点(付け根=着地点)
+      if (pf) this.projFlatFrom(a, nLand, f.x, f.y); // ?proj=1(段階3・★#30/★#27=B・監査2巡目 A-6): 着地の地面の円と広がる輪=地面に寝かせる(閃光の輪と同じ潰し方)
     }
     // ★弾幕C「凍てつく牙」(§10): 口から冷気の筋が相手のまわりへ走り、霜が結晶する(牙が現れる前ぶれ=派手さの絵・判定なし)→
     //   凍った牙に氷の殻(判定は弾そのもの=赤い二重丸のまま。**殻は弾の外側だけ**=弾の上を塗らない・凍C#1)→
@@ -38904,7 +38973,7 @@ export class PixiScene {
             }
             a.stroke({ width: 1.6, color: 0xe8f6ff, alpha: (0.3 + 0.6 * ke) * (0.75 + 0.25 * hash(i + 11)) });
             a.circle(sl.x, sl.y, 4 + 10 * ke).fill({ color: 0x5fb8ff, alpha: 0.10 + 0.16 * ke });
-            if (pf) this.projPointFrom(a, nFl, sl.x, sl.y); // ?proj=1(段階3): 六花=点(付け根=枠)
+            if (pf) this.projFlatFrom(a, nFl, sl.x, sl.y); // ?proj=1(段階3・★#30・監査2巡目 A-6): 地面に結晶する霜の六花=寝かせる(付け根=枠)
           }
           continue;
         }
@@ -38921,7 +38990,7 @@ export class PixiScene {
                 const fr = (4 + 26 * ue) * (0.7 + 0.6 * hash(i * 5 + f));
                 a.circle(sl.x + Math.cos(fa) * fr, sl.y + Math.sin(fa) * fr, 2.4 * (1 - u) * (0.6 + 0.8 * hash(f + i))).fill({ color: 0xe8f6ff, alpha: 0.85 * (1 - u) });
               }
-              if (pf) this.projPointFrom(a, nCr, sl.x, sl.y); // ?proj=1(段階3): 踏み砕かれた結晶=点
+              if (pf) this.projFlatFrom(a, nCr, sl.x, sl.y); // ?proj=1(段階3・★#30・監査2巡目 A-6): 踏み砕かれて地面に散る結晶=寝かせる
             }
             return;
           }
@@ -42346,8 +42415,9 @@ export class PixiScene {
       ringSp.tint = this.glowTint(e.color);
       const coreSp = new Sprite(getRingCoreTexture(base)); coreSp.anchor.set(0.5); coreSp.blendMode = 'add';
       c.addChild(ringSp, coreSp);
-      // ?proj=1(CR-15): 輪は火の玉(爆発の絵)の後ろの層へ=効果の層のいちばん下に入れる(?proj=0 は今どおり上に足す)
-      this.L.effectLayer.addChildAt(c, this.projFrame ? 0 : this.L.effectLayer.children.length);
+      // ?proj=1(CR-15・監査2巡目 B-6): 爆発の輪(同じ爆心の爆発の絵が既に在る輪)だけを火の玉の後ろへ。ほかの輪は今どおり上に足す
+      // (?proj=0 は全部今どおり上に足す)。出た時の1回だけ数える(毎フレームではない)
+      this.L.effectLayer.addChildAt(c, this.projFrame ? this.projExplosionIndexAt(e.x, e.y) : this.L.effectLayer.children.length);
       this.effects.set(e.id, c);
       view = c;
     }
@@ -42422,7 +42492,19 @@ export class PixiScene {
   // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。プールsprite1枚をコマ差し替え。
   // 幅=判定直径×1.1(判定を持つ絵=サイズは判定準拠・僅かなはみ出しのみ)。プルームの根元を爆心の
   // 下端(y+radius)に置き、上へ立ち上る。終盤の煙コマは素材側で消えていくのでαは終端だけ軽く抜く。
-  private static readonly PROJ_EXPLOSION_ANCHOR_Y = 0.72;
+  /**
+   * ?proj=1(監査2巡目 B-6): 爆心 (x, y) の爆発の絵が効果の層に在ればその1つ下の位置(=火の玉の後ろ)・無ければ層の上(今どおり)。
+   * 輪が出た時の1回だけ呼ぶ。
+   */
+  private projExplosionIndexAt(x: number, y: number): number {
+    const kids = this.L.effectLayer.children;
+    for (let i = 0; i < kids.length; i++) {
+      const k = kids[i] as { __explFx?: boolean; __explX?: number; __explY?: number };
+      if (k.__explFx && k.__explX !== undefined && k.__explY !== undefined
+        && Math.abs(k.__explX - x) < 0.5 && Math.abs(k.__explY - y) < 0.5) return i;
+    }
+    return kids.length;
+  }
   private drawExplosionSprite(e: Extract<VisualEffect, { kind: 'explosion' }>, now: number) {
     const t = Math.min(1, (now - e.createdAt) / e.duration);
     let sprite = this.effects.get(e.id);
@@ -42446,10 +42528,9 @@ export class PixiScene {
     // 社長指示v0.25.3285「絵的に下辺が発生源っぽい。発生源の下辺同士で揃える」: 絵の下辺(anchor 1)を
     // **爆心そのもの**に置く(旧=爆心の下端y+radiusでは低すぎた)。プルームは爆心から上へ立ち上る。
     sp.position.set(e.x, e.y);
-    // ?proj=1(CR-15): 地面に寝た輪の上では、絵の下辺を爆心に置くと火の玉が輪の上の縁に乗って見える=火の玉の下3分の1(絵の上から 0.72)を爆心へ。
-    // ?proj=0 は今どおり下辺(アンカー 1)
-    const ay = this.projFrame ? PixiScene.PROJ_EXPLOSION_ANCHOR_Y : 1;
-    if (sp.anchor.y !== ay) sp.anchor.set(0.5, ay);
+    // 爆心(world)を覚える(?proj=1 の輪の層の順=監査2巡目 B-6。?proj=0 の絵は変えない)
+    const xs = sp as unknown as { __explX?: number; __explY?: number };
+    xs.__explX = e.x; xs.__explY = e.y;
     if (e.tint !== undefined) sp.tint = e.tint;
     sp.alpha = t > 0.85 ? Math.max(0, (1 - t) / 0.15) : 1;
     sp.visible = true;

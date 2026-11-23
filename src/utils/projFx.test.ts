@@ -5,7 +5,7 @@ import {
 } from './perspectiveProjection';
 import { zoomCameraDownFrac } from './cameraZoom';
 import {
-  PROJ_FX_MIN_S, PROJ_FX_MAX_S, PROJ_FX_DISC_MAX_S, projBulletForm, projFxScale, projFxRingRadiusMul, projBulletScale, PROJ_BULLET_MIN_PX, projLineWidth, projDirInto, makeProjDirOut,
+  PROJ_FX_MIN_S, PROJ_FX_DISC_MAX_S, PROJ_FX_SOFT_DISC_MAX_S, projBulletForm, projFxScale, projFxRingRadiusMul, projBulletScale, PROJ_BULLET_MIN_PX, projLineWidth, projDirInto, makeProjDirOut,
   projFloorAnchorInto, projNumberAnchorInto, PROJ_NUMBER_LIFT_H0, projAmbientRegion, projAmbientCount, PROJ_FX_ROWS, PROJ_FX_KINDS, projFxK,
   PROJ_FX_SIZE_MODE, PROJ_BULLET_SIZE_MODE, PROJ_NUMBER_SIZE_MODE,
   projFlatInto, makeProjFlatOut, projSnowCounts, projSnowLeanVx, PROJ_SNOW_TOTAL_CAP, PROJ_SNOW_LAYERS,
@@ -47,13 +47,12 @@ describe('projFx: 倍率(★#24・★#28・★#25)', () => {
     expect(PROJ_FX_MIN_S).toBe(0.6);
     expect(PROJ_BULLET_MIN_PX).toBe(6);
   });
-  it('projFxScale: 下限と手前の天井(CR-1)の間で s・下限未満で下限・天井より上で天井・単調', () => {
+  it('projFxScale: ★#24=B の式 max(s, 0.6)・南は s のまま(全体の天井なし=監査2巡目 A-1)・単調', () => {
     let prev = -Infinity;
-    expect(PROJ_FX_MAX_S).toBe(1.25);
-    expect(PROJ_FX_DISC_MAX_S).toBeLessThan(PROJ_FX_MAX_S);
+    expect(PROJ_FX_DISC_MAX_S).toBeLessThan(PROJ_FX_SOFT_DISC_MAX_S);
     for (let s = 0; s <= 3; s += 0.01) {
       const v = projFxScale(s);
-      expect(v).toBeCloseTo(Math.min(PROJ_FX_MAX_S, s >= PROJ_FX_MIN_S ? s : PROJ_FX_MIN_S), 12);
+      expect(v).toBeCloseTo(s >= PROJ_FX_MIN_S ? s : PROJ_FX_MIN_S, 12);
       expect(v).toBeGreaterThanOrEqual(prev);
       prev = v;
     }
@@ -68,7 +67,7 @@ describe('projFx: 倍率(★#24・★#28・★#25)', () => {
     expect(projFxRingRadiusMul(0.3)).toBeCloseTo(PROJ_FX_MIN_S / 0.3, 12);
     expect(projFxRingRadiusMul(0.9)).toBeCloseTo(1, 12);
     expect(projFxRingRadiusMul(1.2)).toBeCloseTo(1, 12);
-    expect(projFxRingRadiusMul(1.6)).toBeCloseTo(PROJ_FX_MAX_S / 1.6, 12); // 手前の天井(CR-1)
+    expect(projFxRingRadiusMul(1.6)).toBeCloseTo(1, 12); // 南は s のまま=閃光の輪が判定と一致する輪の内側に入らない(監査2巡目 A-1)
   });
   it('projBulletScale: 下限を下回らず、ズームの値に依らない(表示座標の値)', () => {
     for (const d of [4, 6, 8, 12, 20, 40]) {
@@ -215,7 +214,7 @@ describe('projFx: 地面に付いた物を寝かせる(★#30)', () => {
         expect(o.ky).toBeLessThanOrEqual(o.kx + 1e-12);
         expect(o.ky).toBeGreaterThanOrEqual(0);
         expect(o.kx).toBeGreaterThanOrEqual(PROJ_FX_MIN_S - 1e-12);
-        expect(o.kx).toBeLessThanOrEqual(PROJ_FX_MAX_S + 1e-12);
+        expect(o.kx).toBeGreaterThanOrEqual(p.s - 1e-12); // 南も s を下回らない(全体の天井なし)
         expect(o.ky).toBeCloseTo(o.kx * o.r, 12);
         // 閃光の輪(drawRingSprite の ?proj=1)の式と同じ: kx = s × s_fx/s
         expect(o.kx).toBeCloseTo(p.s * projFxRingRadiusMul(p.s), 9);
@@ -277,12 +276,15 @@ describe('projFx: 台帳', () => {
     expect(PROJ_FX_ROWS['B1.round'].k).toBe('bullet');
     expect(PROJ_FX_ROWS['A17.judge'].k).toBe('none');
     expect(PROJ_FX_ROWS['A1'].k).toBe('hud');
+    // 監査2巡目 A-2・A-5: 爆発の絵(幅=判定の直径×1.1)と盾の壁は判定に揃える
+    expect(PROJ_FX_ROWS['A18'].k).toBe('s');
+    expect(PROJ_FX_ROWS['B1.wall'].k).toBe('s');
     // 監査 A-3: 判定を持つ衛星弾・放った弾・塊弾は弾の倍率、焦げ・土埃・湯気・火の粉は派手さ
     expect(PROJ_FX_ROWS['B10.bullet'].k).toBe('bullet');
     expect(PROJ_FX_ROWS['B10.fx'].k).toBe('fx');
   });
   it('★#30: 地面に接する物は形(寝かせる)・宙にある物は点のまま', () => {
-    for (const id of ['A14.stain', 'A16.floor', 'B10.ground', 'D9.ground', 'D10', 'E1', 'E2', 'G5.ripple'] as const) {
+    for (const id of ['A14.stain', 'A16.floor', 'B10.ground', 'D9.ground', 'D10', 'E1', 'E2', 'G5.ripple', 'D2.land', 'D2.frost', 'F2.foot', 'F2.refl', 'C10.puff'] as const) {
       expect(PROJ_FX_ROWS[id].type, id).toBe('shape');
       expect(PROJ_FX_ROWS[id].k, id).toBe('fxFlat');
     }
@@ -297,5 +299,8 @@ describe('projFx: 台帳', () => {
     expect(projBulletForm({ weaponType: 'rifle', rocketArt: false, arrowArt: false })).toBe('x');
     expect(projBulletForm({ weaponType: 'rifle', rocketArt: false, arrowArt: true })).toBe('x');
     expect(projBulletForm({ weaponType: 'rocket', rocketArt: true, arrowArt: false })).toBe('y');
+    // 監査2巡目 A-5: 盾=判定を持つ壁(長手=ローカルの y)・罠/デコイ/タレット=丸い装置
+    expect(projBulletForm({ weaponType: 'shield', rocketArt: false, arrowArt: false })).toBe('y');
+    for (const w of ['trap', 'decoy', 'turret']) expect(projBulletForm({ weaponType: w, rocketArt: false, arrowArt: false })).toBe('round');
   });
 });

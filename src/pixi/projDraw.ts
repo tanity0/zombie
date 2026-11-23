@@ -530,8 +530,122 @@ const SIM_M = new Matrix();
 const SIM_TMP = new GraphicsPath();
 const SIM_PATHS = new Set<GraphicsPath>();
 const SIM_STYLES = new Map<object, object>();
+/** 範囲の外の命令と共有していた path → 写す側の複製(範囲の中で同じ path を使う命令は同じ複製=1回だけ写す・監査2巡目 B-1)。 */
+const SIM_CLONES = new Map<GraphicsPath, GraphicsPath>();
+/** 写せない形を含む path(その path は全部写さない・監査2巡目 B-2)。 */
+const SIM_BAD = new Set<GraphicsPath>();
 /** 形の命令の data の中の変換行列の添字(GraphicsPath の circle/rect/ellipse/poly/roundRect/regularPoly/chamferRect)。 */
 const SIM_XF_AT: Record<string, number> = { circle: 3, rect: 4, ellipse: 4, poly: 2, roundRect: 5, regularPoly: 5, chamferRect: 5 };
+/** 点の列の命令(Pixi の GraphicsPath.transform で写す)。 */
+const SIM_PT_ACTS = new Set(['moveTo', 'lineTo', 'bezierCurveTo', 'quadraticCurveTo', 'arcToSvg', 'closePath']);
+/** 自分の行列を持たない形と arcTo(相似の時だけ数で写せる)。 */
+const SIM_SIMILAR_ONLY = new Set(['roundPoly', 'filletRect', 'roundShape', 'arcTo']);
+
+type SimPI = { action: string; data: unknown[] };
+type SimAff = { a: number; b: number; c: number; d: number; tx: number; ty: number; k: number; similar: boolean };
+const SIM_A: SimAff = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0, k: 1, similar: true };
+
+/** path(addPath の入れ子も)が全部写せる形か(1つでも外があれば false=その path は全部写さない・監査2巡目 B-2)。 */
+const simPathOk = (path: GraphicsPath, similar: boolean): boolean => {
+  const pis = path.instructions as unknown as SimPI[];
+  for (let j = 0; j < pis.length; j++) {
+    const act = pis[j].action;
+    if (act === 'arc' || SIM_XF_AT[act] !== undefined || SIM_PT_ACTS.has(act)) continue; // arc は相似でなければ折れ線に直す
+    if (SIM_SIMILAR_ONLY.has(act)) { if (similar) continue; return false; }
+    if (act === 'addPath') {
+      const sub = pis[j].data[0] as GraphicsPath | undefined;
+      const t = pis[j].data[1] as Matrix | undefined;
+      if (!sub || (t && !t.isIdentity()) || !simPathOk(sub, similar)) return false; // 入れ子の行列つきは写さない(掛ける順が合わない)
+      continue;
+    }
+    return false;
+  }
+  return true;
+};
+
+/** arc を Pixi の buildArc と同じ点の列にする(相似でない写し=楕円に潰す・監査2巡目 B-2)。作り置きの配列に world の点を書いて返す。 */
+const SIM_ARC: number[] = [];
+const simArcPoints = (x: number, y: number, r: number, start: number, end: number, ccw: boolean): number[] => {
+  const out = SIM_ARC;
+  out.length = 0;
+  let dist = Math.abs(start - end);
+  if (!ccw && start > end) dist = 2 * Math.PI - dist;
+  else if (ccw && end > start) dist = 2 * Math.PI - dist;
+  const steps = Math.max(3, Math.max(6, Math.floor(6 * Math.pow(Math.max(0, r), 1 / 3) * (dist / Math.PI))));
+  const f = (dist / steps) * (ccw ? -1 : 1);
+  let t = start;
+  for (let i = 0; i < steps + 1; i++) { out.push(x + Math.cos(t) * r, y + Math.sin(t) * r); t += f; }
+  return out;
+};
+
+/**
+ * path の命令を A で写す(simPathOk が通った path だけ)。own=false は data の中の行列・点の物を元の path と共有している(複製を写す)。
+ * addPath の入れ子は深く複製してから写す(入れ子の path は元の path と命令の物を共有している=元を動かさない・監査2巡目 B-1)。
+ */
+const simXfPath = (path: GraphicsPath, own: boolean, A: SimAff): void => {
+  const pis = path.instructions as unknown as SimPI[];
+  let poly = false; // 開いている線の列があるか(arc を折れ線に直す時の最初の点=lineTo か moveTo か=Pixi の arc と同じつなぎ方)
+  for (let j = 0; j < pis.length; j++) {
+    const pi = pis[j];
+    const a = pi.data as number[];
+    const act = pi.action;
+    if (act === 'arc') { // [x, y, r, a0, a1, ccw]
+      if (A.similar) { // 相似(回転なし)なら中心を写して半径を k 倍
+        const x0 = a[0], y0 = a[1];
+        a[0] = A.a * x0 + A.c * y0 + A.tx; a[1] = A.b * x0 + A.d * y0 + A.ty; a[2] *= A.k;
+      } else { // 相似でない=同じ点の列の折れ線にして写す(楕円に潰れる)
+        const pts = simArcPoints(a[0], a[1], a[2], a[3], a[4], !!a[5]);
+        const rep: SimPI[] = [];
+        for (let q = 0; q < pts.length; q += 2) {
+          const x = pts[q], y = pts[q + 1];
+          rep.push({ action: q === 0 && !poly ? 'moveTo' : 'lineTo', data: [A.a * x + A.c * y + A.tx, A.b * x + A.d * y + A.ty] });
+        }
+        pis.splice(j, 1, ...rep);
+        j += rep.length - 1;
+      }
+      poly = true;
+    } else if (act === 'arcTo') { // [x1, y1, x2, y2, r](相似の時だけ=simPathOk)
+      const x1 = a[0], y1 = a[1], x2 = a[2], y2 = a[3];
+      a[0] = A.a * x1 + A.c * y1 + A.tx; a[1] = A.b * x1 + A.d * y1 + A.ty; a[2] = A.a * x2 + A.c * y2 + A.tx; a[3] = A.b * x2 + A.d * y2 + A.ty; a[4] *= A.k;
+      poly = true;
+    } else if (SIM_XF_AT[act] !== undefined) {
+      // 形の命令(circle・rect・ellipse・poly 等)は自分の変換行列を持つ(Pixi の transform は ellipse の添字を誤る=自前で写す)
+      const at = SIM_XF_AT[act];
+      const m = pi.data[at] as Matrix | undefined;
+      pi.data[at] = m ? (own ? m : m.clone()).prepend(SIM_M) : SIM_M.clone();
+      poly = false;
+    } else if (SIM_PT_ACTS.has(act)) {
+      SIM_TMP.instructions.length = 0;
+      SIM_TMP.instructions.push(pi as never);
+      SIM_TMP.transform(SIM_M);
+      SIM_TMP.instructions.length = 0;
+      poly = act !== 'closePath';
+    } else if (act === 'addPath') { // [path, transform](行列つきは simPathOk で外した)
+      const sub = (pi.data[0] as GraphicsPath).clone(true);
+      pi.data[0] = sub;
+      simXfPath(sub, false, A);
+      poly = false;
+    } else if (act === 'roundPoly') { // [x, y, radius, sides, corner, rotation](相似の時だけ)
+      const x0 = a[0], y0 = a[1];
+      a[0] = A.a * x0 + A.tx; a[1] = A.d * y0 + A.ty; a[2] *= A.k; a[4] *= A.k;
+      poly = false;
+    } else if (act === 'filletRect') { // [x, y, w, h, fillet](相似の時だけ)
+      const x0 = a[0], y0 = a[1];
+      a[0] = A.a * x0 + A.tx; a[1] = A.d * y0 + A.ty; a[2] *= A.k; a[3] *= A.k; a[4] *= A.k;
+      poly = false;
+    } else if (act === 'roundShape') { // [points{x, y, radius?}[], radius, ...](相似の時だけ)
+      let pts = pi.data[0] as { x: number; y: number; radius?: number }[];
+      if (!own) { pts = pts.map(q => ({ ...q })); pi.data[0] = pts; }
+      for (const q of pts) { q.x = A.a * q.x + A.tx; q.y = A.d * q.y + A.ty; if (typeof q.radius === 'number') q.radius *= A.k; }
+      pi.data[1] = ((pi.data[1] as number) ?? 0) * A.k;
+      poly = false;
+    }
+  }
+  (path as unknown as { _dirty: boolean })._dirty = true;
+};
+
+/** 監査2巡目 B-2: 写せない形を含んで写さなかった命令の数(累計・番人テストと計器が読む)。 */
+export const PROJ_AFFINE_SKIPPED = { n: 0 };
 
 /**
  * Graphics の命令 n0 から今まで(このフレームに描いた分)を、world の点 X → P + k·(X − F) の相似で写す
@@ -547,7 +661,11 @@ export const projSimFrom = (
 
 /**
  * projSimFrom の一般形: 命令 n0 から今まで(または n1)を、アフィン X → [a c; b d]·X + (tx, ty) で写す(杭の「両」=根元と先を別々の点へ)。
- * 弧(arc・arcTo)は中心を写し、半径は sqrt|det| 倍(相似でない時は近似=弧を使う絵には相似だけを使う)。線の太さは kLine 倍。
+ * 弧(arc)は相似なら中心を写して半径を sqrt|det| 倍・相似でなければ同じ点の列の折れ線にして写す(楕円に潰れる)。arcTo と
+ * 自分の行列を持たない形(roundPoly・filletRect・roundShape)は相似の時だけ写す。写せない形を1つでも含む path は全部写さない
+ * (半分だけ写さない・数えない=計器の漏れに残る・監査2巡目 B-2)。線の太さは kLine 倍。
+ * path の共有の守り(監査2巡目 B-1): 範囲の始まりの前(n0−1)・終わりの後(n1)の命令と同じ path を使う命令は複製を写す
+ * (範囲の中で同じ path を使う命令=fill→stroke→fill は同じ複製を1回だけ写す)。addPath の入れ子は深く複製してから写す。
  */
 export const projAffineFrom = (
   g: Graphics, n0: number, ma: number, mb: number, mc: number, md: number, tx: number, ty: number, kLine = 1, alphaMul = 1, n1In = -1,
@@ -556,13 +674,17 @@ export const projAffineFrom = (
   const n1 = n1In >= 0 ? Math.min(n1In, ins.length) : ins.length;
   if (n1 <= n0) return;
   SIM_M.set(ma, mb, mc, md, tx, ty);
-  const k = Math.sqrt(Math.abs(ma * md - mb * mc));
-  // 相似(回転なし・縦横同じ正の倍率)か。roundPoly・roundShape・filletRect(自分の行列を持たない形)は相似の時だけ数で写せる
-  const similar = Math.abs(mb) < 1e-12 && Math.abs(mc) < 1e-12 && Math.abs(ma - md) < 1e-9 && ma > 0;
-  // 監査 B-2 ①: 命令 n0 の fill/stroke は、_tick===0 の時に直前(n0 より前)の命令と同じ path を共有することがある
-  // (Pixi の GraphicsContext.fill/stroke)。そのまま写すと n0 より前の命令の形まで動く=共有していたら写す側に複製を持たせる。
-  const before = n0 > 0 ? (ins[n0 - 1] as { data?: { path?: GraphicsPath } }).data?.path : undefined;
-  SIM_PATHS.clear(); SIM_STYLES.clear();
+  const A = SIM_A;
+  A.a = ma; A.b = mb; A.c = mc; A.d = md; A.tx = tx; A.ty = ty;
+  A.k = Math.sqrt(Math.abs(ma * md - mb * mc));
+  // 相似(回転なし・縦横同じ正の倍率)か
+  A.similar = Math.abs(mb) < 1e-12 && Math.abs(mc) < 1e-12 && Math.abs(ma - md) < 1e-9 && ma > 0;
+  // 監査 B-2 ①・2巡目 B-1: fill/stroke は _tick===0 の時に直前の命令と同じ path を共有する(Pixi の GraphicsContext.fill/stroke・続けて何回でも)。
+  // 範囲をまたいで共有していれば、範囲の外の命令は必ず境目の隣(n0−1 か n1)にいる=その2つの path を使う命令は複製を写す
+  const pathAt = (i: number) => (ins[i] as { data?: { path?: GraphicsPath } } | undefined)?.data?.path;
+  const before = n0 > 0 ? pathAt(n0 - 1) : undefined;
+  const after = n1 < ins.length ? pathAt(n1) : undefined;
+  SIM_PATHS.clear(); SIM_STYLES.clear(); SIM_CLONES.clear(); SIM_BAD.clear();
   let skipped = 0;
   for (let i = n0; i < n1; i++) {
     const it = ins[i] as { action: string; data: { path?: GraphicsPath; style?: { width?: number; alpha?: number }; transform?: Matrix; alpha?: number } };
@@ -575,50 +697,20 @@ export const projAffineFrom = (
     }
     if (it.action !== 'fill' && it.action !== 'stroke') { skipped++; continue; } // 許可リスト(cut 等は写さない=計器の漏れに残る)
     let path = d.path;
-    // ① 共有していたら複製を写す(命令ごとの data まで複製=clone(true)。形の行列・点の列は下で写す前に複製する)
-    const own = !(path && path === before && i === n0);
-    if (!own) { path = path!.clone(true); d.path = path; }
-    if (path && !SIM_PATHS.has(path)) {
-      SIM_PATHS.add(path);
-      let bad = false;
-      const pis = path.instructions as { action: string; data: unknown[] }[];
-      for (let j = 0; j < pis.length; j++) {
-        const pi = pis[j];
-        const a = pi.data as number[];
-        const act = pi.action;
-        if (act === 'arc') { // [x, y, r, a0, a1, ccw]=相似(回転なし)なら中心を写して半径を k 倍
-          const x0 = a[0], y0 = a[1];
-          a[0] = ma * x0 + mc * y0 + tx; a[1] = mb * x0 + md * y0 + ty; a[2] *= k;
-        } else if (act === 'arcTo') { // [x1, y1, x2, y2, r]
-          const x1 = a[0], y1 = a[1], x2 = a[2], y2 = a[3];
-          a[0] = ma * x1 + mc * y1 + tx; a[1] = mb * x1 + md * y1 + ty; a[2] = ma * x2 + mc * y2 + tx; a[3] = mb * x2 + md * y2 + ty; a[4] *= k;
-        } else if (SIM_XF_AT[act] !== undefined) {
-          // 形の命令(circle・rect・ellipse・poly 等)は自分の変換行列を持つ(Pixi の transform は ellipse の添字を誤る=自前で写す)
-          const at = SIM_XF_AT[act];
-          const m = (pi.data as unknown[])[at] as Matrix | undefined;
-          (pi.data as unknown[])[at] = m ? (own ? m : m.clone()).prepend(SIM_M) : SIM_M.clone();
-        } else if (act === 'moveTo' || act === 'lineTo' || act === 'bezierCurveTo' || act === 'quadraticCurveTo' || act === 'arcToSvg' || act === 'closePath' || act === 'addPath') {
-          SIM_TMP.instructions.length = 0;
-          SIM_TMP.instructions.push(pi as never);
-          SIM_TMP.transform(SIM_M);
-        } else if (similar && act === 'roundPoly') { // [x, y, radius, sides, corner, rotation]
-          const x0 = a[0], y0 = a[1];
-          a[0] = ma * x0 + tx; a[1] = md * y0 + ty; a[2] *= k; a[4] *= k;
-        } else if (similar && act === 'filletRect') { // [x, y, w, h, fillet]
-          const x0 = a[0], y0 = a[1];
-          a[0] = ma * x0 + tx; a[1] = md * y0 + ty; a[2] *= k; a[3] *= k; a[4] *= k;
-        } else if (similar && act === 'roundShape') { // [points{x, y, radius?}[], radius, ...]
-          let pts = (pi.data as unknown[])[0] as { x: number; y: number; radius?: number }[];
-          if (!own) { pts = pts.map(q => ({ ...q })); (pi.data as unknown[])[0] = pts; }
-          for (const q of pts) { q.x = ma * q.x + tx; q.y = md * q.y + ty; if (typeof q.radius === 'number') q.radius *= k; }
-          (pi.data as unknown[])[1] = (((pi.data as unknown[])[1] as number) ?? 0) * k;
-        } else {
-          bad = true; // 許可リストの外(写せない形)=写さない(計器の「直書きの漏れ」に残す)
-        }
+    if (!path || SIM_BAD.has(path)) { skipped++; continue; }
+    let own = true;
+    if (path === before || path === after) { // 範囲の外と共有=複製を写す(命令ごとの data まで複製=clone(true))
+      let c = SIM_CLONES.get(path);
+      if (!c) {
+        if (!simPathOk(path, A.similar)) { SIM_BAD.add(path); skipped++; continue; }
+        c = path.clone(true); SIM_CLONES.set(path, c);
       }
-      if (bad) skipped++;
-      SIM_TMP.instructions.length = 0;
-      (path as unknown as { _dirty: boolean })._dirty = true;
+      d.path = c; path = c; own = false;
+    }
+    if (!SIM_PATHS.has(path)) {
+      if (own && !simPathOk(path, A.similar)) { SIM_BAD.add(path); skipped++; continue; } // 写せない形を含む=全部写さない(数える)
+      SIM_PATHS.add(path);
+      simXfPath(path, own, A);
     }
     const st = d.style;
     if (st && (it.action === 'stroke' ? kLine !== 1 || alphaMul !== 1 : alphaMul !== 1)) {
@@ -631,15 +723,16 @@ export const projAffineFrom = (
       d.style = ns as typeof st;
     }
   }
-  SIM_PATHS.clear(); SIM_STYLES.clear();
+  SIM_PATHS.clear(); SIM_STYLES.clear(); SIM_CLONES.clear(); SIM_BAD.clear();
   // onUpdate は GraphicsContext の protected(命令を直に書き換えた後に描き直しを知らせる唯一の口)。
   (g.context as unknown as { onUpdate(): void }).onUpdate();
+  if (skipped > 0) PROJ_AFFINE_SKIPPED.n += skipped;
   statOf(g).cmds += n1 - n0 - Math.min(n1 - n0, skipped);
 };
 
 /** 番人テスト用(監査 B-2): projAffineFrom が写す命令と形の種類(許可リスト)。 */
 export const PROJ_AFFINE_ALLOWED = {
   cmds: ['fill', 'stroke', 'texture'],
-  shapes: ['arc', 'arcTo', ...Object.keys(SIM_XF_AT), 'moveTo', 'lineTo', 'bezierCurveTo', 'quadraticCurveTo', 'arcToSvg', 'closePath', 'addPath'],
-  similarOnly: ['roundPoly', 'filletRect', 'roundShape'],
+  shapes: ['arc', ...Object.keys(SIM_XF_AT), 'moveTo', 'lineTo', 'bezierCurveTo', 'quadraticCurveTo', 'arcToSvg', 'closePath', 'addPath'],
+  similarOnly: ['roundPoly', 'filletRect', 'roundShape', 'arcTo'],
 } as const;
