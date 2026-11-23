@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5759 — 遠近の投影: 予告の線の下限1px/手前の伸びを抑える案のつまみ ?projnear=1(?proj=1 のみ)【2026-11-23 11:37 JST】
+- 社長裁定「線の下限 はい」(2026-11-23): `PROJ_TELE_LINE_MIN_PX=1`・`PROJ_TELE_LINE_MIN_ALPHA=0.35`。下限に当たった所は太さ1pxで濃さを「本来の太さ/1px」へ(`projTeleLineAlpha`)。帯の線は頂点ごとの濃さを0.1刻みの区間で塗る(最大8回)、記号は `projGlyphMinSize`。判定の幅の面は対象外。
+- 社長「(手前の縦長を)みせて」: 基準行より南だけ縦の詰めに上限(`projScaleYNearAt`=南の地面の円が縦横比1で止まる)を掛ける案を `?projnear=1` のつまみで入れた(既定は今のまま・表の key も中身も不変)。基準行より北は ℓ・world Y・投影・gRef/syRef/convRef をビット一致でテスト固定。比較: 南120px の跳びの円 縦/横 1.94→0.99、帰還の円 1.45→0.87、南150px の地面の円の目安 3.04→0.99。主人公の190px南の s 2.5→1.68。滑りの計器 dy はほぼ0のまま。採否は社長。
+- 変えたファイル: src/utils/projShape.ts・projShape.test.ts・perspectiveProjection.ts・perspectiveProjection.test.ts・src/pixi/projDraw.ts・pixiScene.ts
+- 検証: typecheck / eslint / circular / vitest 全件(実装担当 11482 通過)。負荷 1/10。
+- 自己点検: 憲法第4条・第5条に抵触しない(既定では何も変わらない)。
+
 ## v0.25.5758 — 刀のオート斬撃を射撃扱いに(キル・与ダメ・射撃の落とし物・血の覚醒・使役・護衛の称賛)【2026-11-23 11:11 JST】
 - 社長指示「オート斬撃は射撃扱いにしよう」(オート斬撃でキル出来ていなかった件はこれで解消)。落とし物の変化は社長確認「はい」(2026-11-23)。
 - 実装: `performKatanaStrike` に `asShot`(オート斬撃=本人と守護霊だけ true)。与ダメ・キルを `'gun'` で記録(`grantMeleeKillRewards(..., killMethod)`)、近接の落とし物は止めて `dropGunKillLoot`(呼び手=useGameLoop の `noteKatanaShotKills`・血しぶきは重ねない `fx:false`)、血の覚醒の射撃分(本人のみ)、使役の抽選(`isPoiThrallCandidate`/`rollPoiThrall` へ切り出し)、護衛の称賛。

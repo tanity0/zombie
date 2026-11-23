@@ -9,7 +9,8 @@ import {
   projAnnulusAnglesFor, projAnnulusRingInto, projQuadStripInto, projRectFrameInto, projGridInto, projGridSample,
   projGridIndices, projLiftInto, projTeleFadeY, projShapeOutside, projTeleLineScale, projVertexInto, projPointInPath,
   projDistToSeg, projCircleBaseEdges, PROJ_GRID_VERTS, PROJ_TELE_LINE_MODE, PROJ_TELE_LINE_MIN_PX,
-  projStrokeStripInto, projStrokeHalfWidth, projLineScaleCap,
+  projStrokeStripInto, projStrokeHalfWidth, projLineScaleCap, projStrokeAlpha, projTeleLineAlpha, projTeleAlphaBucket,
+  projGlyphMinSize, PROJ_TELE_LINE_MIN_ALPHA,
 } from './projShape';
 
 // research/PERSPECTIVE_PROJECTION.md §3-6k 受け入れ条件2・3(純関数の分): 投影後の予告の形と、投影した判定の形が一致する。
@@ -556,10 +557,11 @@ describe('projShape: 線を頂点ごとの太さの帯で描く(監査 A-1・★
         if (!onScrDisp(f, x, y)) continue;
         nOn++;
         const d = distToSrc(src, x, y, true);
-        // その点の s × 元の太さの半分以下(留めの誤差 2%)
-        expect(d).toBeLessThanOrEqual(strip.ss[j] * cs.w * 0.5 * 1.02 + 1e-6);
+        // その点の s × 元の太さの半分以下(留めの誤差 2%)。ただし線の下限(1px)に当たった所は 1px の半分
+        const hMin = PROJ_TELE_LINE_MIN_PX / (2 * f.wgScale);
+        expect(d).toBeLessThanOrEqual(Math.max(hMin, strip.ss[j] * cs.w * 0.5) * 1.02 + 1e-6);
         // 画面の外の延長の s(表の外の南)に引っ張られない=画面の下端の行の s で頭打ち
-        expect(d).toBeLessThanOrEqual(cap * cs.w * 0.5 * 1.02 + 1e-6);
+        expect(d).toBeLessThanOrEqual(Math.max(hMin, cap * cs.w * 0.5) * 1.02 + 1e-6);
         maxHalf = Math.max(maxHalf, d);
         if (y < minDy) { minDy = y; northHalf = d; }
         if (y > maxDy) { maxDy = y; southHalf = d; }
@@ -572,9 +574,8 @@ describe('projShape: 線を頂点ごとの太さの帯で描く(監査 A-1・★
     });
   }
 
-  it('開いた線も頂点ごとの太さ(南の画面の外へ延びる長い線)・下限の口は既定 0', () => {
+  it('開いた線も頂点ごとの太さ(南の画面の外へ延びる長い線)', () => {
     const f = frameAt(SCREENS[0], 1, 0, 0);
-    expect(PROJ_TELE_LINE_MIN_PX).toBe(0);
     const src = new ProjPathOut();
     projPathInto(f, [f.cxw, f.wRef - 600, f.cxw + 40, f.wRef + 6000], false, 0.5, src);
     const strip = new ProjPathOut();
@@ -584,11 +585,66 @@ describe('projShape: 線を頂点ごとの太さの帯で描く(監査 A-1・★
     for (let j = 0; j < strip.n; j++) {
       const x = strip.xy[j * 2], y = strip.xy[j * 2 + 1];
       if (!onScrDisp(f, x, y)) continue;
-      expect(distToSrc(src, x, y, false)).toBeLessThanOrEqual(Math.min(strip.ss[j], cap) * 1.5 * 1.02 + 1e-6);
+      expect(distToSrc(src, x, y, false)).toBeLessThanOrEqual(Math.max(0.5 / f.wgScale, Math.min(strip.ss[j], cap) * 1.5) * 1.02 + 1e-6);
     }
     // 下限: 指定した画面px の半分を下回らない(太らせるだけ)
     expect(projStrokeHalfWidth(f, 0.05, 2, 'B', 3) * f.wgScale).toBeCloseTo(1.5, 9);
     expect(projStrokeHalfWidth(f, 1, 2, 'B', 0)).toBeCloseTo(1, 9);
     expect(projStrokeHalfWidth(f, 50, 2, 'B', 0)).toBeCloseTo(cap, 9);
+  });
+
+  it('線の太さの下限=1px(社長裁定 2026-11-23・§3-6g3): 奥で本来 0.4px の線は 1px で描かれて薄くなる/本来 2px の線はそのまま', () => {
+    expect(PROJ_TELE_LINE_MIN_PX).toBe(1);
+    expect(PROJ_TELE_LINE_MIN_ALPHA).toBeCloseTo(0.35, 9);
+    for (const z of [1, 0.4, 1.5]) {
+      const f = frameAt(SCREENS[0], z, 0, 0);
+      // 画面で幅 2px(s=1)の線: 画面での本来の太さ = 2 × s。0.4px になる s=0.2 と 2px のまま s=1
+      const w = 2 / z;
+      expect(1).toBeLessThanOrEqual(projLineScaleCap(f));
+      // 0.4px → 1px で描く・濃さ 0.4
+      expect(2 * projStrokeHalfWidth(f, 0.2, w) * z).toBeCloseTo(1, 9);
+      expect(projStrokeAlpha(f, 0.2, w)).toBeCloseTo(0.4, 9);
+      // 2px → 2px のまま・濃さ 1
+      expect(2 * projStrokeHalfWidth(f, 1, w) * z).toBeCloseTo(2, 9);
+      expect(projStrokeAlpha(f, 1, w)).toBe(1);
+    }
+    // 掛け率の形: 1px 以上は 1・下回ると本来の太さ/1px・下限 0.35
+    expect(projTeleLineAlpha(1)).toBe(1);
+    expect(projTeleLineAlpha(3)).toBe(1);
+    expect(projTeleLineAlpha(0.6)).toBeCloseTo(0.6, 9);
+    expect(projTeleLineAlpha(0.1)).toBeCloseTo(0.35, 9);
+    expect(projTeleLineAlpha(0.1, 0)).toBe(1);
+    expect(projTeleAlphaBucket(1)).toBe(1);
+    expect(projTeleAlphaBucket(0.62)).toBeCloseTo(0.6, 9);
+    expect(projTeleAlphaBucket(0.1)).toBeCloseTo(0.35, 9);
+  });
+
+  it('線の下限: 帯の頂点の濃さ(out.la)は、奥の細い所だけ <1・1px 以上の所は 1', () => {
+    const f = frameAt(SCREENS[0], 1, 0, 0);
+    const src = new ProjPathOut();
+    // 地平線際(北)から足元まで縦に延びる開いた線(幅 1)
+    projPathInto(f, [f.cxw, f.wRef - 600, f.cxw, f.wRef], false, 0.5, src);
+    const strip = new ProjPathOut();
+    projStrokeStripInto(f, src, false, 1, strip);
+    expect(strip.laMin).toBeLessThan(1);
+    expect(strip.laMin).toBeGreaterThanOrEqual(PROJ_TELE_LINE_MIN_ALPHA);
+    for (let j = 0; j < strip.n; j++) {
+      const truePx = Math.min(strip.ss[j], projLineScaleCap(f)) * 1 * f.wgScale;
+      if (truePx >= 1) expect(strip.la[j]).toBe(1);
+      else expect(strip.la[j]).toBeCloseTo(Math.max(PROJ_TELE_LINE_MIN_ALPHA, truePx), 9);
+    }
+  });
+
+  it('線の下限: 記号の大きさ(短い方の直径)も 1px で止めて薄くする', () => {
+    // 直径 0.4px(z=1)→ 1px に広げて濃さ 0.4
+    const a = projGlyphMinSize(0.4, 1);
+    expect(a.grow * 0.4).toBeCloseTo(1, 9);
+    expect(a.alpha).toBeCloseTo(0.4, 9);
+    // 直径 2px は変えない
+    expect(projGlyphMinSize(2, 1)).toEqual({ grow: 1, alpha: 1 });
+    // 引き 0.4: 表示座標の直径 2 = 画面 0.8px → 1px・濃さ 0.8
+    const b = projGlyphMinSize(2, 0.4);
+    expect(b.grow * 2 * 0.4).toBeCloseTo(1, 9);
+    expect(b.alpha).toBeCloseTo(0.8, 9);
   });
 });

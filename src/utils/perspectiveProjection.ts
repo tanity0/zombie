@@ -37,7 +37,24 @@ export const projConvAt = (t: number, p: GroundPerspectiveParams): number =>
 export const projScaleYAt = (t: number, p: GroundPerspectiveParams): number =>
   Math.max(1e-6, groundRowTileScaleY(t, p));
 
-/** G(ℓ)=∫dℓ/scaleY の細かい表(台形則)。帯の引数(stripH・本数・曲線)だけで決まり、ℓ_ref に依らない(§1-1d)。 */
+/**
+ * 手前の地面の伸びを抑える案(`?projnear=1`・社長「みせて」の比較用・既定は無し): 行 ℓ_near(=基準行 ℓ_ref)より南だけ、
+ * 縦の詰めを「縦の伸び ≤ 横の倍率」に抑える:
+ *   scaleY'(ℓ) = min( scaleY(ℓ), scaleY(ℓ_near) · conv(ℓ)/conv(ℓ_near) )   (ℓ > ℓ_near)
+ *   scaleY'(ℓ) = scaleY(ℓ)                                               (ℓ ≤ ℓ_near)
+ * 地面の円の縦横比(縦/横)= (scaleY'/scaleY_ref)/(conv/conv_ref) ≤ 1 になる(=手前の円は縦長の卵にならず、基準行の円と同じ丸さで止まる)。
+ * ℓ_near 以北の scaleY は1ビットも変えないので、G(ℓ) − G(ℓ_ref)(ℓ ≤ ℓ_ref)・横の倍率 s=conv/conv_ref は北で同じ=北の投影は不変。
+ * lNear が有限でない時は抑えない(今のまま)。
+ */
+export const projScaleYNearAt = (l: number, stripH: number, refCount: number, p: GroundPerspectiveParams, lNear: number): number => {
+  const sy = projScaleYAt(projTOfL(l, stripH, refCount), p);
+  if (!Number.isFinite(lNear) || !(l > lNear)) return sy;
+  const tN = projTOfL(lNear, stripH, refCount);
+  const cap = projScaleYAt(tN, p) * projConvAt(projTOfL(l, stripH, refCount), p) / Math.max(1e-9, projConvAt(tN, p));
+  return Math.max(1e-6, Math.min(sy, cap));
+};
+
+/** G(ℓ)=∫dℓ/scaleY の細かい表(台形則)。帯の引数(stripH・本数・曲線)だけで決まり、ℓ_ref に依らない(§1-1d)。手前を抑える案(lNear)の時だけ ℓ_near に依る。 */
 export interface ProjTable {
   readonly stripH: number;
   readonly refCount: number;
@@ -49,12 +66,29 @@ export interface ProjTable {
   /** g[k] = G(k·step)。G(0)=0。単調増加。 */
   readonly g: Float64Array;
   readonly p: GroundPerspectiveParams;
+  /** 手前を抑える行(`?projnear=1` の時の ℓ_ref)。抑えない時は NaN。 */
+  readonly lNear: number;
+  /**
+   * ℓ_near が刻みの中(端点でない)にある時の、その刻みの左端の添字 kc(無ければ −1)と、
+   * その刻みで ℓ ≤ ℓ_near の側に使う「抑えない表の右端の値」gOrig と、G(ℓ_near)=gNear。
+   * ℓ ≤ ℓ_near の G は抑えない表と同じ補間になる(=基準行より北は1ビットも変わらない)。
+   */
+  readonly kc: number;
+  readonly gOrig: number;
+  readonly gNear: number;
   /** 作り直す条件の比較用(§10 B7)。 */
   readonly key: string;
 }
 
-export const projTableKey = (p: GroundPerspectiveParams, stripH: number, stripCount: number, refCount: number, subdiv: number): string =>
-  `${p.tileScaleX}|${p.trapFar}|${p.trapCurve}|${p.trapezoid}|${p.farScale}|${p.nearScale}|${p.curve}|${stripH}|${stripCount}|${refCount}|${subdiv}`;
+export const projTableKey = (
+  p: GroundPerspectiveParams, stripH: number, stripCount: number, refCount: number, subdiv: number, lNear: number = NaN,
+): string =>
+  `${p.tileScaleX}|${p.trapFar}|${p.trapCurve}|${p.trapezoid}|${p.farScale}|${p.nearScale}|${p.curve}|${stripH}|${stripCount}|${refCount}|${subdiv}` +
+  (Number.isFinite(lNear) ? `|near${lNear}` : '');
+
+/** 表の行 ℓ の縦の詰め(手前を抑える案の時は scaleY'・§ projScaleYNearAt)。地面の帯・物・延長の傾きは全部これを引く。 */
+export const projTableScaleY = (tb: ProjTable, l: number): number =>
+  projScaleYNearAt(l, tb.stripH, tb.refCount, tb.p, tb.lNear);
 
 /**
  * 表を作る。範囲は ℓ ∈ [0, stripCount·stripH](地面を敷いている範囲。引き 0.4 で 180 本=t 2.5 まで)。
@@ -62,23 +96,48 @@ export const projTableKey = (p: GroundPerspectiveParams, stripH: number, stripCo
  */
 export const buildProjTable = (
   p: GroundPerspectiveParams, stripH: number, stripCount: number,
-  refCount: number = PROJ_REF_STRIP_COUNT, subdiv: number = PROJ_TABLE_SUBDIV,
+  refCount: number = PROJ_REF_STRIP_COUNT, subdiv: number = PROJ_TABLE_SUBDIV, lNear: number = NaN,
 ): ProjTable => {
   const sh = Math.max(1e-3, stripH);
   const n = Math.max(1, Math.round(Math.max(1, stripCount) * Math.max(1, subdiv)));
   const step = sh / Math.max(1, subdiv);
   const g = new Float64Array(n + 1);
-  let prev = 1 / projScaleYAt(0, p);
-  for (let k = 1; k <= n; k++) {
-    const cur = 1 / projScaleYAt(projTOfL(k * step, sh, refCount), p);
-    g[k] = g[k - 1] + 0.5 * (prev + cur) * step;
-    prev = cur;
+  const ln = Number.isFinite(lNear) ? lNear : NaN;
+  let prev = 1 / projScaleYNearAt(0, sh, refCount, p, ln);
+  let kc = -1, gOrig = 0, gNear = 0;
+  if (!Number.isFinite(ln)) {
+    for (let k = 1; k <= n; k++) {
+      const cur = 1 / projScaleYAt(projTOfL(k * step, sh, refCount), p);
+      g[k] = g[k - 1] + 0.5 * (prev + cur) * step;
+      prev = cur;
+    }
+  } else {
+    // 手前を抑える案: ℓ_near より北の刻みは抑えない表と同じ。ℓ_near をまたぐ刻みは、北側を抑えない表の補間のまま
+    // G(ℓ_near) を取り、南側だけ抑えた傾きで積む。
+    for (let k = 1; k <= n; k++) {
+      const l0 = (k - 1) * step, l1 = k * step;
+      const curOrig = 1 / projScaleYAt(projTOfL(l1, sh, refCount), p);
+      const cur = 1 / projScaleYNearAt(l1, sh, refCount, p, ln);
+      if (l0 < ln && ln < l1) {
+        kc = k - 1;
+        gOrig = g[k - 1] + 0.5 * (prev + curOrig) * step;
+        gNear = g[k - 1] + (gOrig - g[k - 1]) * ((ln - l0) / step);
+        const mid = 1 / projScaleYAt(projTOfL(ln, sh, refCount), p);
+        g[k] = gNear + 0.5 * (mid + cur) * (l1 - ln);
+      } else {
+        g[k] = g[k - 1] + 0.5 * (prev + cur) * step;
+      }
+      prev = cur;
+    }
   }
-  return { stripH: sh, refCount, step, n, lMax: n * step, g, p, key: projTableKey(p, stripH, stripCount, refCount, subdiv) };
+  return {
+    stripH: sh, refCount, step, n, lMax: n * step, g, p, lNear: ln, kc, gOrig, gNear,
+    key: projTableKey(p, stripH, stripCount, refCount, subdiv, ln),
+  };
 };
 
 /** 北端(ℓ<0)の延長の傾き=1/scaleY(0)。南端(ℓ>lMax)の延長の傾き=1/scaleY(lMax)。 */
-const slopeAt = (tb: ProjTable, l: number): number => 1 / projScaleYAt(projTOfL(l, tb.stripH, tb.refCount), tb.p);
+const slopeAt = (tb: ProjTable, l: number): number => 1 / projTableScaleY(tb, l);
 
 /** G(ℓ)。表の中は1次補間(O(1))、外は端の傾きで直線に延長。 */
 export const projG = (tb: ProjTable, l: number): number => {
@@ -87,6 +146,11 @@ export const projG = (tb: ProjTable, l: number): number => {
   const x = l / tb.step;
   const k = Math.floor(x);
   const f = x - k;
+  if (k === tb.kc) {
+    if (l <= tb.lNear) return tb.g[k] + (tb.gOrig - tb.g[k]) * f;
+    const l1 = (k + 1) * tb.step;
+    return tb.gNear + (tb.g[k + 1] - tb.gNear) * ((l - tb.lNear) / Math.max(1e-12, l1 - tb.lNear));
+  }
   return tb.g[k] + (tb.g[k + 1] - tb.g[k]) * f;
 };
 
@@ -99,6 +163,15 @@ export const projGInv = (tb: ProjTable, gv: number): number => {
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1;
     if (tb.g[mid] <= gv) lo = mid; else hi = mid;
+  }
+  if (lo === tb.kc) {
+    if (gv <= tb.gNear) {
+      const d0 = tb.gOrig - tb.g[lo];
+      return (lo + (d0 > 0 ? (gv - tb.g[lo]) / d0 : 0)) * tb.step;
+    }
+    const d1 = tb.g[hi] - tb.gNear;
+    const l1 = hi * tb.step;
+    return tb.lNear + (d1 > 0 ? (gv - tb.gNear) / d1 : 0) * (l1 - tb.lNear);
   }
   const d = tb.g[hi] - tb.g[lo];
   const f = d > 0 ? (gv - tb.g[lo]) / d : 0;
@@ -392,7 +465,7 @@ export const groundStripTile = (
   const lc = (i + 0.5) * tb.stripH;
   const tc = projTOfL(lc, tb.stripH, tb.refCount);
   const convC = projConvAt(tc, p);
-  const syC = projScaleYAt(tc, p);
+  const syC = projTableScaleY(tb, lc);
   const tsx = p.tileScaleX * f.convStd * convC / f.convRef;
   const tsy = f.syStd * syC / f.syRef;
   const kx = 1 / (p.tileScaleX * f.convStd);
@@ -419,7 +492,7 @@ export const groundVsObjectDiff = (f: ProjFrame, wx: number, wy: number): { dx: 
   const lc = (i + 0.5) * tb.stripH;
   const tc = projTOfL(lc, tb.stripH, tb.refCount);
   const convC = projConvAt(tc, p);
-  const syC = projScaleYAt(tc, p);
+  const syC = projTableScaleY(tb, lc);
   const sObj = projScaleAtLocal(f, lObj);
   const xObj = sObj * (wx - f.cxw);
   const xGround = (convC / f.convRef) * (wx - f.cxw);

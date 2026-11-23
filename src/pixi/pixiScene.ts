@@ -3239,6 +3239,7 @@ const LAB_CRAWLER_VANISH_SLIDE_PX = 90;
 // 投影(research/PERSPECTIVE_PROJECTION.md・段階1「盤面と置き物」): `?proj=1` の時だけ、地面と置き物を1本の遠近の計算(utils/perspectiveProjection)で描く。
 // 既定(省略/0)は今と1ビットも変わらない。★#19「ツマミの同時指定の優先」: `?proj=1` の時は ?objdepth / ?depthmap を無視する(?proj が勝つ)。
 const PROJ_ON = tsBool('proj', false);
+const PROJ_NEAR = PROJ_ON && tsBool('projnear', false); // 手前の地面の伸びを抑える案(基準行より南だけ「縦の伸び ≤ 横の倍率」・社長「みせて」の比較用・既定=今のまま)
 const PROJ_ZREF: 1 | 2 = tsNum('projzref', 2) === 1 ? 1 : 2; // ★#20 裁定②=2(既定)。1=比べるための控え(ℓ_ref をズーム1の値の定数のまま)
 const PROJ_FAR_END = Math.max(0, tsNum('projfar', 1500)); // ★#4「描く距離の上限」(叩き台): 主人公から北へこの距離で alpha 0。0=上限なし
 const PROJ_FAR_START = PROJ_FAR_END * (1200 / 1500); // フェードの始まり(叩き台 1,200→1,500 の比のまま ?projfar に付いて動く)
@@ -9927,13 +9928,6 @@ export class PixiScene {
       tileScaleX: GROUND_TILE_SCALE_X, trapFar: GROUND_TRAPEZOID_FAR, trapCurve: GROUND_TRAPEZOID_CURVE,
       trapezoid: GROUND_TRAPEZOID, farScale: GROUND_TILE_SCALE_Y_FAR, nearScale: GROUND_TILE_SCALE_Y_NEAR, curve: GROUND_PERSPECTIVE_CURVE,
     };
-    // 表は帯の引数が変わった時だけ作り直す(§10 B7)。ℓ_ref には依らない。
-    // 曲線の値は地面と同じ定数(?gfar・?gcurve・?g3d・?g3dfar・?g3dc)を読む=ツマミで傾きを変えると地面と物が一緒に傾く。
-    const tb0 = this.projTable;
-    if (!tb0 || tb0.key !== projTableKey(persp, band.stripH, band.stripCount, GROUND_STRIP_REF_COUNT, PROJ_TABLE_SUBDIV)) {
-      this.projTable = buildProjTable(persp, band.stripH, band.stripCount, GROUND_STRIP_REF_COUNT);
-    }
-    const table = this.projTable!;
     const viewH = s.gameBounds.height; // カメラ(useGameLoop の baseCamY)と同じ高さで定位置を出す
     const camZ = PROJ_ZREF === 2 ? getCameraZoomLink() : 1;
     const lRef1 = projRefLocalY(viewH, zoomCameraDownFrac(CAMERA_DOWN_OFFSET_FRAC, 1), s.player.height, farH);
@@ -9947,6 +9941,14 @@ export class PixiScene {
       const att = projAttentionRef(wRef, a.y, env, s.camera.y, farH);
       wRef = att.wRef; lRef = att.lRef;
     }
+    // 表は帯の引数が変わった時だけ作り直す(§10 B7)。ℓ_ref には依らない(?projnear=1 の時だけ ℓ_ref が変わった時も作り直す)。
+    // 曲線の値は地面と同じ定数(?gfar・?gcurve・?g3d・?g3dfar・?g3dc)を読む=ツマミで傾きを変えると地面と物が一緒に傾く。
+    const lNear = PROJ_NEAR ? lRef : NaN;
+    const tb0 = this.projTable;
+    if (!tb0 || tb0.key !== projTableKey(persp, band.stripH, band.stripCount, GROUND_STRIP_REF_COUNT, PROJ_TABLE_SUBDIV, lNear)) {
+      this.projTable = buildProjTable(persp, band.stripH, band.stripCount, GROUND_STRIP_REF_COUNT, PROJ_TABLE_SUBDIV, lNear);
+    }
+    const table = this.projTable!;
     const wg = this.L.worldGroup;
     this.projFrame = makeProjFrame({
       table, camX: s.camera.x, camY: s.camera.y, farH, screenW: this.screenW, screenH: this.screenH,

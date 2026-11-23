@@ -17,7 +17,7 @@ import {
 
 /**
  * ★#23「予告の線の太さと遠近」(社長裁定 2026-11-23「予告はb」=B): 太さが判定を表さない線(縁・芯・流星の線・内側の細い輪・白い針)と記号の大きさ。
- * 'A'=画面の上で今の太さのまま/'B'=s を掛ける(採用・奥で 1px 未満まで細る=最小値は社長の判断待ち)/'C'=√s を掛ける。ここ1か所で切り替わる。
+ * 'A'=画面の上で今の太さのまま/'B'=s を掛ける(採用・画面で 1px を下回る所は PROJ_TELE_LINE_MIN_PX で止めて薄くする=§3-6g3)/'C'=√s を掛ける。ここ1か所で切り替わる。
  */
 export const PROJ_TELE_LINE_MODE: 'A' | 'B' | 'C' = 'B';
 
@@ -26,10 +26,37 @@ export const projTeleLineScale = (s: number, mode: 'A' | 'B' | 'C' = PROJ_TELE_L
   mode === 'A' ? 1 : mode === 'B' ? Math.max(0, s) : Math.sqrt(Math.max(0, s));
 
 /**
- * 線の太さの下限(ズーム後の画面px・★#23 の B で奥の線が細り過ぎる時の口)。0=下限なし(今の B のまま)。
- * 値は社長の判断待ち。下限に当たった所は線を太らせるだけ(形・色・濃さは変えない)。
+ * 線の太さの下限(ズーム後の画面px・社長裁定 2026-11-23=1px・§3-6g3)。太さが判定を表さない線と記号は、画面で 1px を下回らない。
+ * 下限に当たった所は、細くする代わりに濃さを落とす(projTeleLineAlpha)。0=下限なし。
  */
-export const PROJ_TELE_LINE_MIN_PX = 0;
+export const PROJ_TELE_LINE_MIN_PX = 1;
+/** 下限に当たった所の濃さの掛け率の下限(叩き台 0.35)。 */
+export const PROJ_TELE_LINE_MIN_ALPHA = 0.35;
+
+/**
+ * 下限に当たった所の濃さの掛け率: 本来の太さ truePx(ズーム後の画面px)が minPx 以上なら 1(濃さを変えない)、
+ * 下回れば truePx/minPx(下限 floor)。=「細くする代わりに薄くする」(線の画素の総量がおおよそ保たれる)。
+ */
+export const projTeleLineAlpha = (
+  truePx: number, minPx: number = PROJ_TELE_LINE_MIN_PX, floor: number = PROJ_TELE_LINE_MIN_ALPHA,
+): number => (!(minPx > 0) || truePx >= minPx ? 1 : Math.max(floor, Math.min(1, Math.max(0, truePx) / minPx)));
+
+/** 線の帯の濃さを塗りの命令ごとにまとめる刻み(0.1 刻み・1 は 1 のまま・floor を下回らない)。 */
+export const projTeleAlphaBucket = (a: number, floor: number = PROJ_TELE_LINE_MIN_ALPHA): number =>
+  a >= 1 ? 1 : Math.max(floor, Math.min(1, Math.round(a * 10) / 10));
+
+/**
+ * 記号(中心だけ投影する輝点・終点の輪・潰れた楕円の印)の大きさの下限: 記号の短い方の直径 minDiamDisp(表示座標=k 掛け後)が
+ * 画面で minPx を下回るなら、形の比を保って短い方を minPx に広げる倍率 grow と、濃さの掛け率 alpha を返す。下回らなければ {1, 1}。
+ */
+export const projGlyphMinSize = (
+  minDiamDisp: number, z: number, minPx: number = PROJ_TELE_LINE_MIN_PX, floor: number = PROJ_TELE_LINE_MIN_ALPHA,
+): { grow: number; alpha: number } => {
+  const zz = z > 0 ? z : 1;
+  const px = Math.max(0, minDiamDisp) * zz;
+  if (!(minPx > 0) || px >= minPx) return { grow: 1, alpha: 1 };
+  return { grow: px > 1e-9 ? minPx / px : 1, alpha: projTeleLineAlpha(px, minPx, floor) };
+};
 
 /** 分ける規則の目安(ズーム後の画面px・§3-6b)。 */
 export const PROJ_SHAPE_TOL_PX = 0.5;
@@ -68,9 +95,12 @@ export class ProjPathOut {
   sMax = -Infinity;
   /** 頂点の定義域と描く距離のフェードの最大(全部 0 なら描かない側の判断に使える)。 */
   aMax = 0;
+  /** 線の帯(projStrokeStripInto)の頂点ごとの濃さの掛け率(線の下限に当たった所 <1)と、その最小。帯以外では使わない。 */
+  la: number[] = [];
+  laMin = 1;
   reset(): this {
     this.n = 0; this.cn = 0; this.pts = 0;
-    this.wyMin = Infinity; this.wyMax = -Infinity; this.sMin = Infinity; this.sMax = -Infinity; this.aMax = 0;
+    this.wyMin = Infinity; this.wyMax = -Infinity; this.sMin = Infinity; this.sMax = -Infinity; this.aMax = 0; this.laMin = 1;
     return this;
   }
   beginContour(): void {
@@ -880,10 +910,12 @@ export const projLineScaleCap = (f: ProjFrame, padPx: number = PROJ_SHAPE_SCREEN
 const STRIP_NX: number[] = [];
 const STRIP_NY: number[] = [];
 const STRIP_H: number[] = [];
+const STRIP_A: number[] = [];
 
 /**
  * src の線(輪郭ごと)を、頂点ごとの半幅を持つ帯(塗り用の多角形)にして out へ足す(監査 A-1)。
  * 頂点 i の半幅 = width/2 × projTeleLineScale(min(s_i, 画面の下端の行の s))。下限は minPx(ズーム後の画面px)。
+ * 下限に当たった頂点は、本来の太さ/minPx の濃さの掛け率を out.la に書く(下限 PROJ_TELE_LINE_MIN_ALPHA・当たらない頂点は 1)。
  * 1本の線の中で奥は細く・手前は太くなる。開いた線は1輪郭(左の縁→右の縁を逆順)、閉じた線は2つの半分の輪郭
  * (projAnnulusInto と同じ=穴を開けない)。継ぎ目は頂点の留め(miter・角が鋭い所は 1/0.3 倍で頭打ち)。
  */
@@ -926,8 +958,10 @@ export const projStrokeStripInto = (
       if (ml > 1e-9) { mx /= ml; my /= ml; } else { mx = nnx; my = nny; }
       const cosH = Math.max(0.3, mx * nnx + my * nny);
       const sv = Math.min(src.ss[i] ?? 1, cap);
-      const h = Math.max(hMin, hw * projTeleLineScale(sv, mode));
+      const hTrue = hw * projTeleLineScale(sv, mode);
+      const h = Math.max(hMin, hTrue);
       STRIP_NX[k] = mx / cosH; STRIP_NY[k] = my / cosH; STRIP_H[k] = h;
+      STRIP_A[k] = projTeleLineAlpha(2 * hTrue * z, minPx);
     }
     const piece = (k0: number, k1: number) => {
       // k1 は m を越えてよい(閉じた線の最後の辺 = 最初の頂点へ戻る)
@@ -936,11 +970,14 @@ export const projStrokeStripInto = (
         const q = k % m, i = s0 + q;
         out.push(src.xy[i * 2] + STRIP_NX[q] * STRIP_H[q], src.xy[i * 2 + 1] + STRIP_NY[q] * STRIP_H[q]);
         out.ss[out.n - 1] = src.ss[i] ?? 1;
+        out.la[out.n - 1] = STRIP_A[q];
+        if (STRIP_A[q] < out.laMin) out.laMin = STRIP_A[q];
       }
       for (let k = k1; k >= k0; k--) {
         const q = k % m, i = s0 + q;
         out.push(src.xy[i * 2] - STRIP_NX[q] * STRIP_H[q], src.xy[i * 2 + 1] - STRIP_NY[q] * STRIP_H[q]);
         out.ss[out.n - 1] = src.ss[i] ?? 1;
+        out.la[out.n - 1] = STRIP_A[q];
       }
     };
     if (wrap) {
@@ -952,6 +989,14 @@ export const projStrokeStripInto = (
     }
   }
   return out;
+};
+
+/** 線の帯の頂点の濃さの掛け率(テスト・計器用: projStrokeStripInto と同じ式)。 */
+export const projStrokeAlpha = (
+  f: ProjFrame, s: number, width: number, mode: 'A' | 'B' | 'C' = PROJ_TELE_LINE_MODE, minPx: number = PROJ_TELE_LINE_MIN_PX,
+): number => {
+  const z = f.wgScale > 0 ? f.wgScale : 1;
+  return projTeleLineAlpha(Math.max(0, width) * projTeleLineScale(Math.min(s, projLineScaleCap(f)), mode) * z, minPx);
 };
 
 /** 線の帯の頂点 i の半幅(テスト・計器用: projStrokeStripInto と同じ式)。 */

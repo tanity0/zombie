@@ -12,7 +12,7 @@ import type { ProjFrame } from '../utils/perspectiveProjection';
 import {
   ProjPathOut, projCircleInto, projEllipseInto, projArcInto, projSectorInto, projAnnulusInto, projAnnulusAnglesFor,
   projAnnulusRingInto, projQuadStripInto, projRectFrameInto, projPathInto, projGridInto, projGridIndices, projVertexInto,
-  projLiftInto, projTeleLineScale, projStrokeStripInto, PROJ_SHAPE_TOL_PX, PROJ_GRID_VERTS, PROJ_GRID_MAX, PROJ_TELE_LINE_MODE,
+  projLiftInto, projTeleLineScale, projStrokeStripInto, projTeleAlphaBucket, projGlyphMinSize, PROJ_SHAPE_TOL_PX, PROJ_GRID_VERTS, PROJ_GRID_MAX, PROJ_TELE_LINE_MODE,
   PROJ_TELE_LINE_MIN_PX, type ProjFrame4, type ProjGridResult,
 } from '../utils/projShape';
 
@@ -115,11 +115,55 @@ const strokeLine = (g: Graphics, out: ProjPathOut, st: StrokeStyle, closed: bool
   STRIP.reset();
   projStrokeStripInto(f, out, closed, st.width ?? 1, STRIP);
   if (STRIP.cn === 0) return;
-  trace(g, STRIP, true);
   const fs: { color?: StrokeStyle['color']; alpha?: number } = {};
   if (st.color !== undefined) fs.color = st.color;
-  if (st.alpha !== undefined) fs.alpha = st.alpha;
-  g.fill(fs as FillInput);
+  if (STRIP.laMin >= 1) {
+    trace(g, STRIP, true);
+    if (st.alpha !== undefined) fs.alpha = st.alpha;
+    g.fill(fs as FillInput);
+    return;
+  }
+  // 線の下限(1px・§3-6g3)に当たった所は薄くする: 区間の濃さを 0.1 刻みにまとめ、同じ濃さの区間ごとに1回塗る
+  const a0 = st.alpha ?? 1;
+  for (let bi = 0; bi < BUCKETS.length; bi++) {
+    const bv = BUCKETS[bi];
+    if (bv < STRIP.laMin - 0.051) continue;
+    if (traceBucket(g, STRIP, bv)) { fs.alpha = a0 * bv; g.fill({ ...fs } as FillInput); }
+  }
+};
+
+/** 濃さの刻み(projTeleAlphaBucket が返し得る値)。 */
+const BUCKETS: number[] = (() => {
+  const o: number[] = [];
+  for (const v of [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, projTeleAlphaBucket(0)]) if (!o.includes(v)) o.push(v);
+  return o;
+})();
+/**
+ * 線の帯(輪郭ごとに「左の縁 L 点 → 右の縁 L 点を逆順」)のうち、区間の濃さの刻みが bv の区間を、続いている所ごとに1つの多角形として道へ足す。
+ * 足した区間があれば true。
+ */
+const traceBucket = (g: Graphics, out: ProjPathOut, bv: number): boolean => {
+  let any = false;
+  for (let c = 0; c < out.cn; c++) {
+    const s = out.contourStart(c), e = out.contourEnd(c);
+    const L = (e - s) >> 1;
+    if (L < 2) continue;
+    const segB = (j: number) => projTeleAlphaBucket(0.5 * ((out.la[s + j] ?? 1) + (out.la[s + j + 1] ?? 1)));
+    let j = 0;
+    while (j < L - 1) {
+      if (segB(j) !== bv) { j++; continue; }
+      let j1 = j;
+      while (j1 + 1 < L - 1 && segB(j1 + 1) === bv) j1++;
+      // 区間 j..j1(頂点 j..j1+1)
+      g.moveTo(out.xy[(s + j) * 2], out.xy[(s + j) * 2 + 1]);
+      for (let q = j + 1; q <= j1 + 1; q++) g.lineTo(out.xy[(s + q) * 2], out.xy[(s + q) * 2 + 1]);
+      for (let q = j1 + 1; q >= j; q--) { const r = e - 1 - q; g.lineTo(out.xy[r * 2], out.xy[r * 2 + 1]); }
+      g.closePath();
+      any = true;
+      j = j1 + 1;
+    }
+  }
+  return any;
 };
 
 const paint = (g: Graphics, out: ProjPathOut, fill: FillInput | undefined, stroke: StrokeStyle | undefined, closed: boolean, f?: ProjFrame) => {
@@ -320,15 +364,25 @@ const glyphFill = (fill: FillInput, a: number): FillInput => {
   }
   return fill;
 };
-const glyphStroke = (st: StrokeStyle, a: number): StrokeStyle => (a >= 1 ? st : { ...st, alpha: (st.alpha ?? 1) * a });
+/** 記号の線(終点の輪・楕円の印の縁)。線の幅が画面で 1px を下回るなら 1px に止めて薄くする(§3-6g3)。 */
+const glyphStroke = (st: StrokeStyle, a: number, z = 1): StrokeStyle => {
+  const w = st.width ?? 1;
+  const m = projGlyphMinSize(w, z);
+  const aa = a * m.alpha;
+  if (aa >= 1 && m.grow === 1) return st;
+  return { ...st, width: w * m.grow, alpha: (st.alpha ?? 1) * aa };
+};
 
 /** 中心だけ投影した円の記号(頭の輝点・終点の輪)。半径は今のまま(★#23 の倍率 k を掛ける)。 */
 export const projGlyphCircle = (g: Graphics, f: ProjFrame, wx: number, wy: number, r: number, fill?: FillInput, stroke?: StrokeStyle): void => {
   const n0 = g.context.instructions.length;
   const q = projGlyph(f, wx, wy, g);
   if (!(q.a > 0)) return; // 地平線より北・描く距離の先=描かない
-  if (fill !== undefined) g.circle(q.x, q.y, r * q.k).fill(glyphFill(fill, q.a));
-  if (stroke !== undefined) g.circle(q.x, q.y, r * q.k).stroke(glyphStroke(stroke, q.a));
+  // 線の下限(1px・§3-6g3): 直径が画面で 1px を下回るなら 1px に止めて薄くする
+  const m = projGlyphMinSize(2 * Math.max(0, r) * q.k, f.wgScale);
+  const rr = r * q.k * m.grow, aa = q.a * m.alpha;
+  if (fill !== undefined) g.circle(q.x, q.y, rr).fill(glyphFill(fill, aa));
+  if (stroke !== undefined) g.circle(q.x, q.y, rr).stroke(glyphStroke(stroke, aa, f.wgScale));
   statOf(g).cmds += g.context.instructions.length - n0;
 };
 /** 中心だけ投影した潰れた楕円の印(突進の線の終点の印・ゾンビの印)。形と大きさは今のまま(★#23 の倍率 k を掛ける)。 */
@@ -338,8 +392,11 @@ export const projGlyphEllipse = (
   const n0 = g.context.instructions.length;
   const q = projGlyph(f, wx, wy, g);
   if (!(q.a > 0)) return;
-  if (fill !== undefined) g.ellipse(q.x, q.y, rx * q.k, ry * q.k).fill(glyphFill(fill, q.a));
-  if (stroke !== undefined) g.ellipse(q.x, q.y, rx * q.k, ry * q.k).stroke(glyphStroke(stroke, q.a));
+  // 線の下限(1px・§3-6g3): 短い方の直径が画面で 1px を下回るなら、形の比を保って 1px に止めて薄くする
+  const m = projGlyphMinSize(2 * Math.max(0, Math.min(rx, ry)) * q.k, f.wgScale);
+  const kk = q.k * m.grow, aa = q.a * m.alpha;
+  if (fill !== undefined) g.ellipse(q.x, q.y, rx * kk, ry * kk).fill(glyphFill(fill, aa));
+  if (stroke !== undefined) g.ellipse(q.x, q.y, rx * kk, ry * kk).stroke(glyphStroke(stroke, aa, f.wgScale));
   statOf(g).cmds += g.context.instructions.length - n0;
 };
 

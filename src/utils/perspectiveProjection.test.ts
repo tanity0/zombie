@@ -4,6 +4,7 @@ import {
   projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, projTOfL, projRefLocalY, projAttentionRef,
   visibleWorldQuad, groundStripTile, groundVsObjectDiff, groundSlipBound, projDistanceFade, southCullWorldY,
   visibleWorldBands, projScreenRowsL, projBoxOnScreen, projScreenOutside, projectInto, makeProjPoint,
+  projTableKey, projScaleYNearAt, projConvAt, projScaleYAt,
   type GroundPerspectiveParams, type ProjFrame, type ProjFrameInput,
 } from './perspectiveProjection';
 import { zoomCameraDownFrac } from './cameraZoom';
@@ -355,4 +356,67 @@ describe('見える範囲の切り方(監査 A1)', () => {
     const b = projectInto(f, 100, f.wRef - 200, makeProjPoint());
     expect(b).toEqual(a);
   });
+});
+
+describe('手前の地面の伸びを抑える案(?projnear=1・比較用)', () => {
+  // 主人公の行=基準行で抑える表
+  const mk = (z: number, camX: number, camY: number) => {
+    const base = frameAt(z, camX, camY);
+    const near = buildProjTable(P, STRIP_H, 180, 72, 8, base.lRef);
+    return { base, near: makeProjFrame({ ...base, table: near }) };
+  };
+  it('抑えない時(既定)の表は今と同じ(key も同じ)', () => {
+    expect(TABLE.lNear).toBeNaN();
+    expect(TABLE.kc).toBe(-1);
+    expect(TABLE.key).toBe(projTableKey(P, STRIP_H, 180, 72, 8));
+  });
+  for (const z of [1, 0.7, 0.4, 1.3]) {
+    it(`基準行より北は1ビットも変わらない(G・投影・倍率・地面の帯): z=${z}`, () => {
+      const { base, near } = mk(z, 1234.5, -987.25);
+      expect(near.gRef).toBe(base.gRef);
+      expect(near.syRef).toBe(base.syRef);
+      expect(near.convRef).toBe(base.convRef);
+      expect(near.syStd).toBe(base.syStd);
+      for (let l = -50; l <= base.lRef; l += 0.37) {
+        expect(projG(near.table, l)).toBe(projG(base.table, l));
+        expect(projWorldYOfLocal(near, l)).toBe(projWorldYOfLocal(base, l));
+      }
+      for (let wy = base.wRef - 3000; wy <= base.wRef; wy += 1.7) {
+        const a = project(base, base.cxw + 150, wy), b = project(near, near.cxw + 150, wy);
+        expect(b.y).toBe(a.y); expect(b.x).toBe(a.x); expect(b.s).toBe(a.s);
+      }
+      // 地面の帯: 下端が基準行より北の帯は同じ値
+      for (let i = 0; (i + 1) * STRIP_H <= base.lRef; i++) {
+        const a = groundStripTile(base, i, 256, 256, SW * 2.5), b = groundStripTile(near, i, 256, 256, SW * 2.5);
+        expect(b).toEqual(a);
+      }
+    });
+    it(`基準行より南: 縦の伸び ≤ 横の倍率(地面の円の縦/横 ≤ 1)・今は縦長: z=${z}`, () => {
+      const { base, near } = mk(z, 0, 0);
+      let baseMax = 0;
+      for (let l = base.lRef + 1; l < base.table.lMax; l += 3) {
+        const t = projTOfL(l, STRIP_H);
+        const sAt = projConvAt(t, P) / base.convRef;
+        const vNear = projScaleYNearAt(l, STRIP_H, 72, P, near.table.lNear) / near.syRef;
+        const vBase = projScaleYAt(t, P) / base.syRef;
+        expect(vNear / sAt).toBeLessThanOrEqual(1 + 1e-9);
+        baseMax = Math.max(baseMax, vBase / sAt);
+      }
+      expect(baseMax).toBeGreaterThan(1.2);
+    });
+    it(`抑えた表も単調で逆が往復する・物と地面が滑らない: z=${z}`, () => {
+      const { near } = mk(z, 300, 200);
+      let prev = -Infinity;
+      for (let l = -200; l <= near.table.lMax + 300; l += 0.91) {
+        const g = projG(near.table, l);
+        expect(g).toBeGreaterThan(prev);
+        prev = g;
+        expect(projGInv(near.table, g)).toBeCloseTo(l, 7);
+      }
+      for (let wy = near.wRef - 400; wy < near.wRef + 600; wy += 13) {
+        const d = groundVsObjectDiff(near, near.cxw + 120, wy);
+        expect(Math.abs(d.dy)).toBeLessThan(0.1);
+      }
+    });
+  }
 });
