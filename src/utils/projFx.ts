@@ -21,9 +21,23 @@ export const PROJ_FX_MIN_S = 0.6;
 /** ★#24 の案(A=s のまま/B=下限 0.6/C=今の大きさ)。ここ1か所で切り替わる。 */
 export const PROJ_FX_SIZE_MODE: 'A' | 'B' | 'C' = 'B';
 
-/** 派手さの倍率 s_fx(★#24)。濃さの掛け率は持たない(下限に当たっても濃さは落とさない)。 */
+/**
+ * 手前の天井(クリエイティブ監査1巡目 CR-1「手前の派手さの絵が上限なしで膨らみボケて安い」・叩き台 1.25)。B の時だけ効く。
+ * 南(s>1)の派手さの絵は s のまま大きくなるが、この倍率で止める(濃さは変えない)。
+ */
+export const PROJ_FX_MAX_S = 1.25;
+/** 硬い縁の光の円盤(口の冷気の円盤など・CR-1)の手前の天井(叩き台 1.1)。呼ぶ所で体の相似の倍率をこの値で頭打ちにする。 */
+export const PROJ_FX_DISC_MAX_S = 1.1;
+
+/**
+ * 細長い絵の先(鞭の縄・火炎の噴き)の太さと先の炎の大きさの奥の下限(クリエイティブ監査1巡目 CR-14「奥で小さな火花に」・叩き台 0.9)。
+ * 長さは投影のまま(=s)・太さと大きさだけこの値まで。
+ */
+export const PROJ_FX_TIP_MIN_S = 0.9;
+
+/** 派手さの倍率 s_fx(★#24・手前は CR-1 の天井)。濃さの掛け率は持たない(下限・天井に当たっても濃さは落とさない)。 */
 export const projFxScale = (s: number, mode: 'A' | 'B' | 'C' = PROJ_FX_SIZE_MODE): number =>
-  mode === 'A' ? Math.max(0, s) : mode === 'B' ? Math.max(Math.max(0, s), PROJ_FX_MIN_S) : 1;
+  mode === 'A' ? Math.max(0, s) : mode === 'B' ? Math.min(PROJ_FX_MAX_S, Math.max(Math.max(0, s), PROJ_FX_MIN_S)) : 1;
 
 /** 閃光の輪(★#27=B): 中心を投影し、world の半径を s_fx/s 倍してから地面に寝かせる。この倍率(判定と一致する輪は 1)。 */
 export const projFxRingRadiusMul = (s: number, mode: 'A' | 'B' | 'C' = PROJ_FX_SIZE_MODE): number =>
@@ -120,10 +134,13 @@ export const PROJ_FX_ROWS = {
   'B7': { type: 'dir', k: 'bullet', what: 'syncSkateboards' },
   'B8': { type: 'point', k: 'bullet', what: 'syncDroneBoomerangs' },
   'B9': { type: 'done', k: 'none', what: 'syncDecoys' },
-  'B10': { type: 'point', k: 'fx', what: 'NewGunsFx' },
+  'B10.bullet': { type: 'point', k: 'bullet', what: 'NewGunsFx(satellite orb/released shot/blob shot)' },
+  'B10.fx': { type: 'point', k: 'fx', what: 'NewGunsFx(scorch/dust/steam/sparks/marks)' },
   'B10.fan': { type: 'shape', k: 'none', what: 'NewGunsFx(scanFan)' },
   'B11': { type: 'seg', k: 's', what: 'PileDriverFx(pile)' },
-  'B11.fx': { type: 'origin', k: 'fx', what: 'PileDriverFx(steam/spark)' },
+  // 蒸気の噴き・蒸気の粒=主人公の体の相似(筒から出て近くを漂う=付け根≒主人公の足元・実装に合わせた・監査 C-3)。火花・閃光=刺さった所の点
+  'B11.steam': { type: 'body', k: 'body', what: 'PileDriverFx(jets/steam puffs)' },
+  'B11.impact': { type: 'point', k: 'fx', what: 'PileDriverFx(impact sparks/flash)' },
   'B12': { type: 'dir', k: 's', what: 'drawBrawlerKiko' },
   'B13': { type: 'seg', k: 's', what: 'syncEyeLaser' },
   'B14': { type: 'exempt', k: 'none', what: 'astroThrows/skyFx(stage5)' },
@@ -142,7 +159,8 @@ export const PROJ_FX_ROWS = {
   'C10.slash': { type: 'point', k: 'fx', what: 'killFxSlash' },
   'C10.text': { type: 'hud', k: 'hud', what: 'killFxText' },
   'C10.blood': { type: 'origin', k: 'fx', what: 'kamitsuki/killFxBlood' },
-  'C11.strike': { type: 'seg', k: 'fx', what: 'satsujin(strikes)' },
+  // 白い筋は赤い幕と同じ画面の絵(大きさ・向きは今のまま)・X の交点だけ相手の体の中心の写りへ平行移動(CR-8)
+  'C11.strike': { type: 'hud', k: 'hud', what: 'satsujin(strikes)' },
   'C11.shadow': { type: 'body', k: 'body', what: 'satsujin(shadow)' },
   'C11.curtain': { type: 'exempt', k: 'none', what: 'satsujin(curtain)' },
   'C12': { type: 'done', k: 'none', what: 'stage2 attachedArt' },
@@ -278,6 +296,13 @@ export const projAmbientRegion = (f: ProjFrame, marginWorld: number, out: ProjRe
     if (q.bottom > b) b = q.bottom;
   }
   const m = Math.max(0, marginWorld);
+  if (n === 0 || !Number.isFinite(l) || !Number.isFinite(t) || !Number.isFinite(r) || !Number.isFinite(b)) {
+    // 帯が1本も無い(地面が画面に映っていない等)=±Infinity をそのまま返すと面積が NaN になる(監査 B-4)。
+    // 中心の列の基準点の1点(広さ0)+余白に縮める(呼ぶ側の面積の比は 0=増やさない・取り直しは余白の中)。
+    const cx = Number.isFinite(f.cxw) ? f.cxw : 0, cy = Number.isFinite(f.farRefY) ? f.farRefY : 0;
+    out.left = cx - m; out.right = cx + m; out.top = cy - m; out.bottom = cy + m;
+    return out;
+  }
   out.left = l - m; out.right = r + m; out.top = t - m; out.bottom = b + m;
   return out;
 };
@@ -288,6 +313,14 @@ export const projAmbientCount = (base: number, areaRatio: number, cap: number = 
   const r = Number.isFinite(areaRatio) ? areaRatio : 1;
   return Math.round(Math.max(0, base) * Math.min(Math.max(1, cap), Math.max(1, r)));
 };
+
+/**
+ * 弾の形の振り分け(3-7d の軸の表=弾の種類で決める・監査 A-4。描いた回転の有無では決めない)。
+ * 'round'=丸い弾(点・縦横同じ倍率)・'x'=長手の弾でローカルの x が長手(矢・曳光)・'y'=ローカルの y が長手(ロケットの素材)。
+ * 赤い二重丸・散弾・phill-bullet・反射のハロー・追尾弾・手榴弾・設置物は 'round'(回転は今のまま)。
+ */
+export const projBulletForm = (o: { weaponType: string; rocketArt: boolean; arrowArt: boolean }): 'round' | 'x' | 'y' =>
+  o.rocketArt ? 'y' : o.arrowArt ? 'x' : (o.weaponType === 'handgun' || o.weaponType === 'rifle') ? 'x' : 'round';
 
 /** 小物: 点の投影(作り置きを返す・次の呼び出しで上書き)。 */
 export const projFxPoint = (f: ProjFrame, wx: number, wy: number): ProjPoint => projectInto(f, wx, wy, PA);

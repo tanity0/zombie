@@ -104,11 +104,11 @@ describe('投影の段階3: 点で出る演出(番人)', () => {
     expect(bodyOf(src, '  private drawDust(')).toContain("if (this.projFrame) this.projFxAt(sp, x, y, 'fx');");
     expect(bodyOf(src, '  private projFxBloodBurst(')).toContain('/ Math.max(1e-6, d.ds)');
     expect(bodyOf(src, '  private syncWorldEmbers(')).toContain('eq ? projFxScale(eq.s) : this.depthScale(f.y)');
-    expect(bodyOf(src, '  private syncMagicFireflies(')).toContain('fq ? projFxScale(fq.s) : this.depthScale(f.y)');
+    expect(bodyOf(src, '  private syncMagicFireflies(')).toContain('fq ? fq.s : this.depthScale(f.y)'); // 蛍は奥の下限を外す(CR-6)
     expect(bodyOf(src, '  private syncMoonDust(')).toContain('MOON_DUST_PX * projFxScale(q.s)');
     expect(bodyOf(src, '  private projBullet(')).toContain('g.scale.set(kb); // 設置物の depthD は外す');
     expect(ngf).toContain('const ds = pq ? 1 : depthEnemy(fb.footY);');
-    expect(wet).toContain('DEBRIS_ART_SCALE * projFxScale(q.s) * r.s * pose.scale');
+    expect(wet).toContain('DEBRIS_ART_SCALE * ks * r.s * pose.scale'); // 波紋: 旧い depthScale を外して s(天井つき・CR-7)
     expect(wet).toContain('d.sp.width = RAIN_WIDTH * kf;');
     expect(pdf).toContain('projF: ProjFrame | null = null');
     // 別ファイルの sync へ投影の枠を渡している(null=今の描き方)

@@ -123,6 +123,12 @@ export class Stage1NightLayer {
     for (let i = used; i < this.flowerGlows.length; i++) this.flowerGlows[i].visible = false;
   }
 
+  /**
+   * ?proj=1 の計器(段階3・s3 fx・監査 A-7): この層の絵(花のほのかな光・松明の裏の光)は、置き物の投影後の表示座標(花の絵・松明の照りの位置)に置く
+   * =付け根と一緒に投影済み。計器へ入れ物を知らせる(呼ぶのは ?proj=1 の計器だけ)。
+   */
+  projStage3Each(cb: (o: Container) => void): void { cb(this.root); }
+
   destroy(): void {
     this.restoreAtmosphere();
     this.sky.destroy();

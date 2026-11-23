@@ -5,7 +5,7 @@ import {
 } from './perspectiveProjection';
 import { zoomCameraDownFrac } from './cameraZoom';
 import {
-  PROJ_FX_MIN_S, projFxScale, projFxRingRadiusMul, projBulletScale, PROJ_BULLET_MIN_PX, projLineWidth, projDirInto, makeProjDirOut,
+  PROJ_FX_MIN_S, PROJ_FX_MAX_S, PROJ_FX_DISC_MAX_S, projBulletForm, projFxScale, projFxRingRadiusMul, projBulletScale, PROJ_BULLET_MIN_PX, projLineWidth, projDirInto, makeProjDirOut,
   projFloorAnchorInto, projNumberAnchorInto, PROJ_NUMBER_LIFT_H0, projAmbientRegion, projAmbientCount, PROJ_FX_ROWS, PROJ_FX_KINDS, projFxK,
   PROJ_FX_SIZE_MODE, PROJ_BULLET_SIZE_MODE, PROJ_NUMBER_SIZE_MODE,
 } from './projFx';
@@ -46,11 +46,13 @@ describe('projFx: 倍率(★#24・★#28・★#25)', () => {
     expect(PROJ_FX_MIN_S).toBe(0.6);
     expect(PROJ_BULLET_MIN_PX).toBe(6);
   });
-  it('projFxScale: s≥下限で s・下限未満で下限・単調', () => {
+  it('projFxScale: 下限と手前の天井(CR-1)の間で s・下限未満で下限・天井より上で天井・単調', () => {
     let prev = -Infinity;
+    expect(PROJ_FX_MAX_S).toBe(1.25);
+    expect(PROJ_FX_DISC_MAX_S).toBeLessThan(PROJ_FX_MAX_S);
     for (let s = 0; s <= 3; s += 0.01) {
       const v = projFxScale(s);
-      expect(v).toBeCloseTo(s >= PROJ_FX_MIN_S ? s : PROJ_FX_MIN_S, 12);
+      expect(v).toBeCloseTo(Math.min(PROJ_FX_MAX_S, s >= PROJ_FX_MIN_S ? s : PROJ_FX_MIN_S), 12);
       expect(v).toBeGreaterThanOrEqual(prev);
       prev = v;
     }
@@ -64,7 +66,8 @@ describe('projFx: 倍率(★#24・★#28・★#25)', () => {
     expect(projFxRingRadiusMul(0.3)).toBeGreaterThan(1);
     expect(projFxRingRadiusMul(0.3)).toBeCloseTo(PROJ_FX_MIN_S / 0.3, 12);
     expect(projFxRingRadiusMul(0.9)).toBeCloseTo(1, 12);
-    expect(projFxRingRadiusMul(1.6)).toBeCloseTo(1, 12);
+    expect(projFxRingRadiusMul(1.2)).toBeCloseTo(1, 12);
+    expect(projFxRingRadiusMul(1.6)).toBeCloseTo(PROJ_FX_MAX_S / 1.6, 12); // 手前の天井(CR-1)
   });
   it('projBulletScale: 下限を下回らず、ズームの値に依らない(表示座標の値)', () => {
     for (const d of [4, 6, 8, 12, 20, 40]) {
@@ -180,6 +183,14 @@ describe('projFx: 漂う粒(★#26=B)', () => {
       expect(r.top).toBeGreaterThanOrEqual(f.farRefY - f.farEnd - 1e-6);
     }
   });
+  it('projAmbientRegion: 帯が0本でも NaN/Infinity を返さない(監査 B-4)', () => {
+    const { f } = FRAMES[0];
+    // 地面が画面に映らない枠(描く距離の上限を基準行の手前に)=帯が0本
+    const g = { ...f, farEnd: 1e-6, farStart: 0, farRefY: f.farRefY + 1e7 };
+    const r = projAmbientRegion(g, 10, { left: 0, top: 0, right: 0, bottom: 0 });
+    for (const v of [r.left, r.top, r.right, r.bottom]) expect(Number.isFinite(v)).toBe(true);
+    expect((r.right - r.left) * (r.bottom - r.top)).toBeGreaterThanOrEqual(0);
+  });
   it('projAmbientCount: 面積の比で増やし、上限2倍・減らさない', () => {
     expect(projAmbientCount(40, 0.5)).toBe(40);
     expect(projAmbientCount(40, 1.5)).toBe(60);
@@ -199,5 +210,18 @@ describe('projFx: 台帳', () => {
     expect(PROJ_FX_ROWS['B1.round'].k).toBe('bullet');
     expect(PROJ_FX_ROWS['A17.judge'].k).toBe('none');
     expect(PROJ_FX_ROWS['A1'].k).toBe('hud');
+    // 監査 A-3: 判定を持つ衛星弾・放った弾・塊弾は弾の倍率、焦げ・土埃・湯気・火の粉は派手さ
+    expect(PROJ_FX_ROWS['B10.bullet'].k).toBe('bullet');
+    expect(PROJ_FX_ROWS['B10.fx'].k).toBe('fx');
+  });
+  it('弾の形は弾の種類の表で決める(監査 A-4・3-7d)', () => {
+    expect(projBulletForm({ weaponType: 'enemy_bolt', rocketArt: false, arrowArt: false })).toBe('round');
+    expect(projBulletForm({ weaponType: 'phill-bullet', rocketArt: false, arrowArt: false })).toBe('round');
+    expect(projBulletForm({ weaponType: 'homing-missile', rocketArt: false, arrowArt: false })).toBe('round');
+    expect(projBulletForm({ weaponType: 'grenade', rocketArt: false, arrowArt: false })).toBe('round');
+    expect(projBulletForm({ weaponType: 'handgun', rocketArt: false, arrowArt: false })).toBe('x');
+    expect(projBulletForm({ weaponType: 'rifle', rocketArt: false, arrowArt: false })).toBe('x');
+    expect(projBulletForm({ weaponType: 'rifle', rocketArt: false, arrowArt: true })).toBe('x');
+    expect(projBulletForm({ weaponType: 'rocket', rocketArt: true, arrowArt: false })).toBe('y');
   });
 });

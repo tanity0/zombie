@@ -26,7 +26,7 @@ import { getTexture } from './pixiTextures';
 import { makeProjGridMesh, projMeshFromSprite, PROJ_GRID_SOFT } from './projDraw'; // 投影の段階4(?proj=1 の時だけ・K01)
 import { projectInto, makeProjPoint, type ProjFrame } from '../utils/perspectiveProjection';
 import { projShapeOutside } from '../utils/projShape';
-import { projFxScale } from '../utils/projFx'; // 投影の段階3(?proj=1 の時だけ・G5)
+import { projFxScale, PROJ_FX_MAX_S } from '../utils/projFx'; // 投影の段階3(?proj=1 の時だけ・G5)
 import type { MeshSimple } from 'pixi.js';
 import { getSoftGlowTexture } from './lighting';
 import {
@@ -1220,7 +1220,17 @@ export class WeatherWetLayer {
   }
 
   // ---- 波紋 ----
-  private spawnRipple(x: number, y: number, water: boolean, s: number, now: number, a = 1, pid: string | null = null): void {
+  private spawnRipple(x: number, y: number, water: boolean, s: number, now: number, a = 1, pid: string | null = null, dense = false): void {
+    // ?proj=1(段階3・G5・CR-7): 雨の輪は、奥ほど細かく密に=投影で詰まって減って見える分を補う(奥の s が小さいほど、近くにもう1つ出す確率を上げる)。
+    // ?proj=0 では何もしない(乱数も引かない)
+    const pf = this.projFrameNow;
+    if (pf && dense) {
+      const ss = projectInto(pf, x, y, this.projPt).s;
+      if (Math.random() < Math.min(1, Math.max(0, 1 / Math.max(0.2, ss) - 1))) {
+        const j = 10 + Math.random() * 14, ang = Math.random() * Math.PI * 2;
+        this.spawnRipple(x + Math.cos(ang) * j, y + Math.sin(ang) * j * 0.5, water, s * 0.8, now - Math.random() * 120, a, pid, false);
+      }
+    }
     let r = this.ripples.find(q => !q.on);
     if (!r) {
       if (this.ripples.length >= RIPPLE_MAX) {
@@ -1251,12 +1261,15 @@ export class WeatherWetLayer {
       r.sp.alpha = pose.alpha * (r.water ? 0.6 : 0.45) * r.a * h.horizonAlpha(r.y);
       const pf = this.projFrameNow;
       if (pf) {
-        // ?proj=1(段階3・G5): 地面に落ちた波紋=点(付け根=波紋の地面の点・大きさは旧い depthScale を外して s_fx)・濃さは投影後のY
+        // ?proj=1(段階3・G5): 地面に落ちた波紋=点(付け根=波紋の地面の点・旧い depthScale は外す)・濃さは投影後のY。
+        // CR-7: 投影で薄まって見える分を補う=大きさは s(奥は細かく・手前は天井まで大きく)・濃さは手前ほどはっきり(1.2..1.6 倍・1 まで)
         const q = projectInto(pf, r.x, r.y, this.projPt);
-        const sq = DEBRIS_ART_SCALE * projFxScale(q.s) * r.s * pose.scale;
+        const ks = Math.min(PROJ_FX_MAX_S, q.s);
+        const sq = DEBRIS_ART_SCALE * ks * r.s * pose.scale;
         r.sp.position.set(q.x, q.y);
         r.sp.scale.set(sq, sq);
-        r.sp.alpha = pose.alpha * (r.water ? 0.6 : 0.45) * r.a * (h.projFade ? h.projFade(r.x, r.y) : q.alpha);
+        const boost = 1.2 + 0.4 * Math.min(1, Math.max(0, (q.s - 0.6) / 0.65));
+        r.sp.alpha = Math.min(1, pose.alpha * (r.water ? 0.6 : 0.45) * r.a * boost) * (h.projFade ? h.projFade(r.x, r.y) : q.alpha);
       }
     }
   }
@@ -1446,7 +1459,7 @@ export class WeatherWetLayer {
       if (!pose) {
         d.on = false; d.sp.visible = false;
         const pv = puddleAt(this.scaledPuddles, d.x, d.y);
-        this.spawnRipple(d.x, d.y, !!pv, pv ? 0.42 + Math.random() * 0.16 : 0.3 + Math.random() * 0.1, now);
+        this.spawnRipple(d.x, d.y, !!pv, pv ? 0.42 + Math.random() * 0.16 : 0.3 + Math.random() * 0.1, now, 1, null, true);
         continue;
       }
       const sl = d.spec.slant;
@@ -1499,7 +1512,7 @@ export class WeatherWetLayer {
         busy.set(p.id, c + 1);
         // 雨粒の輪は雫(0.6)・着地(0.42..0.58)より小さく、混むほど薄く(5つまでは素のまま)。
         const a = PUDDLE_RIPPLE_ALPHA * Math.min(1, Math.sqrt(5 / Math.max(5, c)));
-        this.spawnRipple(p.x + Math.cos(ang) * rx * rr, p.y + Math.sin(ang) * ry * rr, true, 0.28 + Math.random() * 0.14, now, a, p.id);
+        this.spawnRipple(p.x + Math.cos(ang) * rx * rr, p.y + Math.sin(ang) * ry * rr, true, 0.28 + Math.random() * 0.14, now, a, p.id, true);
       }
     }
   }
@@ -1557,6 +1570,19 @@ export class WeatherWetLayer {
    * 計器(?proj=1&projaudit=1・段階4の素材の漏れ)用: 水たまりの地面に寝た Sprite(縁・水面・空の映り・風景の映りの型・月明りの縁)を順に渡す。
    * ?proj=1 ではメッシュに替えて隠しているはずの物=見えたままなら漏れ。描画は変えない(読むだけ)。
    */
+  /**
+   * ?proj=1 の計器(段階3・s3 fx の層を歩く数え方・監査 A-7): このフレームに投影した入れ物('fx'=破片・波紋・松明の照り・雫・雨粒は
+   * 描く所で投影済み)と、段階1・4の担当の物('stage4'=水たまりの映りと体の映り=格子メッシュの型で切り抜く・'stage1'=地面いっぱいの照りの
+   * 貼り絵=地面の帯の担当)を知らせる。?proj=0(projFrameNow=null)では何も知らせない。
+   */
+  projStage3Each(cb: (o: Container, how: 'fx' | 'stage4' | 'stage1') => void): void {
+    if (!this.projFrameNow || !this.visible) return;
+    cb(this.debrisLayer, 'fx'); cb(this.rippleLayer, 'fx'); cb(this.streakLayer, 'fx'); cb(this.rainLayer, 'fx');
+    for (const st of this.streaks) { cb(st.back, 'fx'); cb(st.gloss, 'fx'); }
+    cb(this.landLayer, 'stage4'); cb(this.slotLayer, 'stage4');
+    if (this.gloss) cb(this.gloss, 'stage1');
+  }
+
   projAuditSprites(cb: (sp: Sprite) => void): void {
     for (const pv of this.views.values()) {
       cb(pv.ground); cb(pv.water); cb(pv.sky); cb(pv.landMask);

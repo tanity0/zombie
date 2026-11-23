@@ -46,6 +46,12 @@ export class Stage5BattleLayer {
     this.pools = new TorchBackLight(this.root, TORCH_BACK_STAGES['stage-5'].pools, S5B_FIRE_POOL_EASE, POOL_MAX);
   }
 
+  /**
+   * ?proj=1 の計器(段階3・s3 fx・監査 A-7・G6=済): 火の溜まり(松明の照りの表示座標)と燃える残骸(置物の投影後の足元と s)は投影済み。
+   * 計器へ入れ物を知らせる(呼ぶのは ?proj=1 の計器だけ)。
+   */
+  projStage3Each(cb: (o: Container) => void): void { cb(this.root); this.wrecks.projStage3Each(cb); }
+
   /** 効き具合 mix の色行列にする(変わった時だけ作り直す)。 */
   setGrade(mix: number): void {
     if (mix === this.gradeMix) return;
@@ -149,6 +155,8 @@ export class BurningWreckLayer {
     this.parent.addChild(c);
     return { id: '', c, halo, flames, smoke, embers, a: 0, seen: false, last: null };
   }
+
+  projStage3Each(cb: (o: Container) => void): void { for (const b of this.slots) cb(b.c); }
 
   /** k = 効き具合(加減速済み 0..1)。戻り値=足元の火の溜まりの光源(KeyedGlowPool へ渡す)。 */
   sync(list: readonly BurningWreckView[], k: number, now: number, painter: FlamePainter): readonly GlowLight[] {

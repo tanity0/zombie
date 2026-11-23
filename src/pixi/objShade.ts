@@ -296,6 +296,9 @@ export class ObjShade {
     const parent = target.parent;
     if (!parent) return;
     let tw = this.twins.get(target);
+    // 本体が描かれていない(renderable=false=?proj=1 で格子メッシュが代わりに描く物・撮影の道具で隠した物)なら、縁の光だけ浮かせない
+    // (クリエイティブ監査 CR-16「白い破線の縁取りが本体なしで浮く」)。?proj=0 では renderable を落とす所が無い=今のまま。
+    if (!target.renderable) { if (tw && !tw.destroyed && tw.visible) tw.visible = false; return; }
     if (!tw || tw.destroyed) {
       tw = new Sprite(target.texture);
       tw.blendMode = 'add';

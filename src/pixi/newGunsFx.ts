@@ -7,7 +7,7 @@
 // (絵の読み込み前の Graphics の塊だけは冷えかけの鉱滓の色のまま)。
 // 会心(#fbbf24)・レベルアップ(#fde68a)・弾薬回収(#67e8f9)・危険の赤/紫とは別の色にしてある。
 import { projectInto, makeProjPoint, type ProjFrame, type ProjPoint } from '../utils/perspectiveProjection'; // 投影の段階3(?proj=1 の時だけ)
-import { projFxScale } from '../utils/projFx';
+import { projFxScale, projBulletScale } from '../utils/projFx';
 import { projLine, projPoly, projSeg, projSimFrom } from './projDraw';
 import { Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 import { getTexture } from './pixiTextures';
@@ -132,6 +132,17 @@ export class NewGunsFx {
     const q = projectInto(pf, ax, ay, PPT);
     projSimFrom(gfx, n0, ax, ay, q.x, q.y, projFxScale(q.s), projFxScale(q.s), q.alpha);
   }
+  /**
+   * ?proj=1(段階3・B10.bullet=点・弾の倍率 s_b): 判定を持つ衛星弾・放った弾・塊弾は、判定に揃える弾の倍率(★#28=B・projBulletScale)で写す
+   * (s_fx の下限 0.6 だと北で見た目が判定より大きくなる・監査 A-3)。diam=判定の直径(world)。
+   */
+  private ptB(gfx: Graphics, n0: number, ax: number, ay: number, diam: number): void {
+    const pf = this.pf;
+    if (!pf) return;
+    const q = projectInto(pf, ax, ay, PPT);
+    const kb = projBulletScale(q.s, diam);
+    projSimFrom(gfx, n0, ax, ay, q.x, q.y, kb, kb, q.alpha);
+  }
   private n(gfx: Graphics): number { return this.pf ? gfx.context.instructions.length : 0; }
 
   sync(
@@ -195,7 +206,7 @@ export class NewGunsFx {
     }
     f.circle(x, y, r).fill({ color: SAT, alpha: Math.min(1, 0.9 * bright) * alpha });
     f.circle(x, y, r * 0.5).fill({ color: SAT_HOT, alpha: Math.min(1, 0.75 * bright) * alpha });
-    this.pt(f, n0, x, y);
+    this.ptB(f, n0, x, y, SAT_BULLET_RADIUS_PX * 2); // 衛星の玉と放った弾=接触の判定を持つ弾(B10.bullet)
   }
 
   /** 回っている(または死亡・出撃の終わりで消えていく)軌道。fadeMs!==null の時は減速しながら回り続けて縮む。 */
@@ -295,9 +306,9 @@ export class NewGunsFx {
         sp.alpha = 1 - 0.35 * fade;
         sp.visible = k > 0.01;
         if (this.pf) {
-          // ?proj=1(段階3・B10): 塊弾の絵=点(付け根=塊の world の中心・大きさ s_fx)。毎フレーム入れ直すので戻さなくてよい
+          // ?proj=1(段階3・B10.bullet): 塊弾の絵=点(付け根=塊の world の中心・大きさ=弾の倍率 s_b=判定の直径)。毎フレーム入れ直すので戻さなくてよい
           const q = projectInto(this.pf, b.x, b.y, PPT);
-          const kf = projFxScale(q.s);
+          const kf = projBulletScale(q.s, BLOB_RADIUS_PX * 2);
           sp.position.set(q.x, q.y);
           sp.scale.set(flip * k * kf, k * kf);
           sp.alpha *= q.alpha;
@@ -315,18 +326,18 @@ export class NewGunsFx {
       const n0 = this.n(f);
       f.poly(d.outer).fill({ color: d.dull, alpha: 0.95 * d.alpha });
       if (d.band.length >= 6) f.poly(d.band).fill({ color: d.rim, alpha: 0.95 * d.alpha });
-      this.pt(f, n0, d.cx, d.cy);
+      this.ptB(f, n0, d.cx, d.cy, BLOB_RADIUS_PX * 2); // 塊の形=判定を持つ弾(B10.bullet)
     }
     for (const d of draws) {
       const n0 = this.n(f);
       f.poly(d.inner).fill({ color: d.body, alpha: 0.96 * d.alpha });
       f.poly(d.step).fill({ color: d.bodyHi, alpha: 0.55 * d.alpha });
-      this.pt(f, n0, d.cx, d.cy);
+      this.ptB(f, n0, d.cx, d.cy, BLOB_RADIUS_PX * 2);
     }
     for (const d of draws) {
       const n0 = this.n(f);
       for (const line of d.cracks) f.poly(line, false).stroke({ width: d.crackW, color: d.heat, alpha: d.crackA, join: 'miter' });
-      this.pt(f, n0, d.cx, d.cy);
+      this.ptB(f, n0, d.cx, d.cy, BLOB_RADIUS_PX * 2);
     }
     // 消えた塊の最後の場所に、黒い焦げ跡を0.8秒。
     for (const [id, st] of this.blobState) {

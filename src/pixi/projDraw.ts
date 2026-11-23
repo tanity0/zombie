@@ -557,39 +557,66 @@ export const projAffineFrom = (
   if (n1 <= n0) return;
   SIM_M.set(ma, mb, mc, md, tx, ty);
   const k = Math.sqrt(Math.abs(ma * md - mb * mc));
-  const ax = (x: number, y: number) => ma * x + mc * y + tx, ay = (x: number, y: number) => mb * x + md * y + ty;
+  // 相似(回転なし・縦横同じ正の倍率)か。roundPoly・roundShape・filletRect(自分の行列を持たない形)は相似の時だけ数で写せる
+  const similar = Math.abs(mb) < 1e-12 && Math.abs(mc) < 1e-12 && Math.abs(ma - md) < 1e-9 && ma > 0;
+  // 監査 B-2 ①: 命令 n0 の fill/stroke は、_tick===0 の時に直前(n0 より前)の命令と同じ path を共有することがある
+  // (Pixi の GraphicsContext.fill/stroke)。そのまま写すと n0 より前の命令の形まで動く=共有していたら写す側に複製を持たせる。
+  const before = n0 > 0 ? (ins[n0 - 1] as { data?: { path?: GraphicsPath } }).data?.path : undefined;
   SIM_PATHS.clear(); SIM_STYLES.clear();
+  let skipped = 0;
   for (let i = n0; i < n1; i++) {
-    const it = ins[i] as { action: string; data: { path?: GraphicsPath; style?: { width?: number; alpha?: number }; transform?: Matrix; dx?: number; dy?: number; dw?: number; dh?: number } };
+    const it = ins[i] as { action: string; data: { path?: GraphicsPath; style?: { width?: number; alpha?: number }; transform?: Matrix; alpha?: number } };
     const d = it.data;
     if (it.action === 'texture') {
-      if (d.transform) d.transform = d.transform.clone().prepend(SIM_M);
+      // 行列は命令ごとの複製(GraphicsContext.texture が clone している)=その場で掛けてよい(毎フレームの複製をやめる・監査 B-1)
+      if (d.transform) d.transform.prepend(SIM_M);
+      if (alphaMul !== 1 && typeof d.alpha === 'number') d.alpha *= alphaMul; // 監査 B-2 ④: 絵の命令にも濃さを掛ける
       continue;
     }
-    const path = d.path;
+    if (it.action !== 'fill' && it.action !== 'stroke') { skipped++; continue; } // 許可リスト(cut 等は写さない=計器の漏れに残る)
+    let path = d.path;
+    // ① 共有していたら複製を写す(命令ごとの data まで複製=clone(true)。形の行列・点の列は下で写す前に複製する)
+    const own = !(path && path === before && i === n0);
+    if (!own) { path = path!.clone(true); d.path = path; }
     if (path && !SIM_PATHS.has(path)) {
       SIM_PATHS.add(path);
+      let bad = false;
       const pis = path.instructions as { action: string; data: unknown[] }[];
       for (let j = 0; j < pis.length; j++) {
         const pi = pis[j];
         const a = pi.data as number[];
-        if (pi.action === 'arc') { // [x, y, r, a0, a1, ccw]=相似(回転なし)なら中心を写して半径を k 倍
+        const act = pi.action;
+        if (act === 'arc') { // [x, y, r, a0, a1, ccw]=相似(回転なし)なら中心を写して半径を k 倍
           const x0 = a[0], y0 = a[1];
-          a[0] = ax(x0, y0); a[1] = ay(x0, y0); a[2] *= k;
-        } else if (pi.action === 'arcTo') { // [x1, y1, x2, y2, r]
+          a[0] = ma * x0 + mc * y0 + tx; a[1] = mb * x0 + md * y0 + ty; a[2] *= k;
+        } else if (act === 'arcTo') { // [x1, y1, x2, y2, r]
           const x1 = a[0], y1 = a[1], x2 = a[2], y2 = a[3];
-          a[0] = ax(x1, y1); a[1] = ay(x1, y1); a[2] = ax(x2, y2); a[3] = ay(x2, y2); a[4] *= k;
-        } else if (SIM_XF_AT[pi.action] !== undefined) {
+          a[0] = ma * x1 + mc * y1 + tx; a[1] = mb * x1 + md * y1 + ty; a[2] = ma * x2 + mc * y2 + tx; a[3] = mb * x2 + md * y2 + ty; a[4] *= k;
+        } else if (SIM_XF_AT[act] !== undefined) {
           // 形の命令(circle・rect・ellipse・poly 等)は自分の変換行列を持つ(Pixi の transform は ellipse の添字を誤る=自前で写す)
-          const at = SIM_XF_AT[pi.action];
+          const at = SIM_XF_AT[act];
           const m = (pi.data as unknown[])[at] as Matrix | undefined;
-          (pi.data as unknown[])[at] = m ? m.prepend(SIM_M) : SIM_M.clone();
-        } else {
+          (pi.data as unknown[])[at] = m ? (own ? m : m.clone()).prepend(SIM_M) : SIM_M.clone();
+        } else if (act === 'moveTo' || act === 'lineTo' || act === 'bezierCurveTo' || act === 'quadraticCurveTo' || act === 'arcToSvg' || act === 'closePath' || act === 'addPath') {
           SIM_TMP.instructions.length = 0;
           SIM_TMP.instructions.push(pi as never);
           SIM_TMP.transform(SIM_M);
+        } else if (similar && act === 'roundPoly') { // [x, y, radius, sides, corner, rotation]
+          const x0 = a[0], y0 = a[1];
+          a[0] = ma * x0 + tx; a[1] = md * y0 + ty; a[2] *= k; a[4] *= k;
+        } else if (similar && act === 'filletRect') { // [x, y, w, h, fillet]
+          const x0 = a[0], y0 = a[1];
+          a[0] = ma * x0 + tx; a[1] = md * y0 + ty; a[2] *= k; a[3] *= k; a[4] *= k;
+        } else if (similar && act === 'roundShape') { // [points{x, y, radius?}[], radius, ...]
+          let pts = (pi.data as unknown[])[0] as { x: number; y: number; radius?: number }[];
+          if (!own) { pts = pts.map(q => ({ ...q })); (pi.data as unknown[])[0] = pts; }
+          for (const q of pts) { q.x = ma * q.x + tx; q.y = md * q.y + ty; if (typeof q.radius === 'number') q.radius *= k; }
+          (pi.data as unknown[])[1] = (((pi.data as unknown[])[1] as number) ?? 0) * k;
+        } else {
+          bad = true; // 許可リストの外(写せない形)=写さない(計器の「直書きの漏れ」に残す)
         }
       }
+      if (bad) skipped++;
       SIM_TMP.instructions.length = 0;
       (path as unknown as { _dirty: boolean })._dirty = true;
     }
@@ -607,5 +634,12 @@ export const projAffineFrom = (
   SIM_PATHS.clear(); SIM_STYLES.clear();
   // onUpdate は GraphicsContext の protected(命令を直に書き換えた後に描き直しを知らせる唯一の口)。
   (g.context as unknown as { onUpdate(): void }).onUpdate();
-  statOf(g).cmds += n1 - n0;
+  statOf(g).cmds += n1 - n0 - Math.min(n1 - n0, skipped);
 };
+
+/** 番人テスト用(監査 B-2): projAffineFrom が写す命令と形の種類(許可リスト)。 */
+export const PROJ_AFFINE_ALLOWED = {
+  cmds: ['fill', 'stroke', 'texture'],
+  shapes: ['arc', 'arcTo', ...Object.keys(SIM_XF_AT), 'moveTo', 'lineTo', 'bezierCurveTo', 'quadraticCurveTo', 'arcToSvg', 'closePath', 'addPath'],
+  similarOnly: ['roundPoly', 'filletRect', 'roundShape'],
+} as const;
