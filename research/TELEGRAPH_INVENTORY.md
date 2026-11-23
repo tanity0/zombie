@@ -42,6 +42,8 @@
 | egg | `eggArmBlinkGfx`(A21・v0.25.5748。旧 `eggTeleGfx` は社長指示で撤去)・型抜き `eggArmBlinkMask` | `groundLayer`(`pS:16493` の `if (!g.parent)`) |
 | tur | `turretTeleGfx`(v0.25.5743) | `groundLayer`(`pS:34406` の `if (!g.parent)`) |
 | pj | 弾ごとの Graphics(`drawProjectile`) | `frontObjectLayer` |
+| pfx | 主人公の `playerFx`(Graphics・輪の Sprite `counterReachRing` は同じ親の子) | `effectLayer`(`pS:6937`・PERSPECTIVE_PROJECTION.md §3-7 の監査で足した略号) |
+| ngf | `NewGunsFx` の `fanGfx` | `groundLayer`(`newGunsFx.ts:96`・同上) |
 | G | `groundLayer` に直に並ぶ床の Graphics 群(`pS:6742-6770`: arena/questTrigger/return/baseSites/castleFightRing/tutorialBounds/exBarrier/hospital/armory/police/shrine/hunterVision ほか) | `groundLayer` |
 
 ### 流星の位相の略号(欄11)
@@ -347,6 +349,11 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 | I09 研究所の休眠ゾンビの視界 | 3 | 薄い赤 | 多角形(扇状の視界) | 研究所の休眠ゾンビ | 研究所で見える時 | `updateLabVisionCones` `pS:15196` | `groundLayer`(`labVisionLayer`・`pS:15204`) | 見つかる範囲(`utils/labStealth.ts`・行は未確認) | — | — | 要 | I03 と同じ「見つかる形」 | 対象外(研究所) |
 | I10 マークスマン罠の範囲円 | 3 | 青 | 円 | プレイヤー(サブ)・**幻影**(`hostile`・`uGL:11417`) | 置いた罠(`p.area`) | `drawProjectile` `case 'trap'` `pS:39038-39045` | pj | 幻影の罠はプレイヤーを捕まえる `uGL:16002-16020` | — | — | 要 | 半径は `radius / depthD` で遠近の拡大を打ち消してある。**幻影の罠も状態異常=シアンのまま**(攻撃ではなく状態異常の印=紫の文法の対象外・TELEGRAPH_FIXES.md N04 の罠=(b)) | S13・S05(幻影の罠) |
 | I11 ドローン・ブーメランの範囲リング | 3 | シアン | 円 | プレイヤー(サブ) | 止まっている間(`p.area`) | `drawProjectile` `pS:39019-39027` | pj | 行は未確認 | — | — | 要 | | S13 |
+| I12 近接のリーチの輪と三日月 | 3 | 青白 `0x9ecbff`(輪)・`0x2a78ff`/`0xeaf8ff`(三日月) | 円(焼いた輪の Sprite `counterReachRing`)+弧(三日月) | プレイヤー(近接。格闘は出さない) | 近接の振りの当たる瞬間(`meleeSwingCommitAt`)から 140ms | `syncPlayerFx` `pS:46610-46666`(輪 `pS:46627-46647`・三日月 `pS:46650-46665`) | pfx | 半径 `r = huntingMeleeRadius(player)`(`pS:46516`)。判定側の行は着手時に確かめる | — | — | 要 | PERSPECTIVE_PROJECTION.md §3-7 の1巡目監査 A-1 で足した(v0.25.5760 時点の漏れ)。輪は焼いた素材=格子メッシュ・三日月は弧の線(太さは判定を表さない) | S13 |
+| I13 ハンティングの溜まりの輪 | 3 | 青 `0x60a5fa`・`0xbfdbfe`・白 | 円(三重の線) | プレイヤー | `player.huntingCharged` の間 | `syncPlayerFx` `pS:46667-46676` | pfx | 半径=今の近接武器の届く距離(刀 `katanaReach`・鞭 `whipReach`・それ以外 `huntingMeleeRadius`) | — | — | 要 | 同上(A-1) | S13 |
+| I14 近接のクールダウンの輪 | 3 | 灰 `0x94a3b8` | 円(線) | プレイヤー(刀以外) | `now < player.counterCooldownEnd` | `syncPlayerFx` `pS:46677-46679` | pfx | 半径 `r`(I12 と同じ) | — | — | 要 | 同上(A-1) | S13 |
+| I15 刀の一閃のクールダウンの輪 | 3 | 灰 `0x94a3b8` | 円(線) | プレイヤー(刀) | 一閃のクールダウン中(`katanaDashCooldownEnd`) | `syncPlayerFx` `pS:46683-46685` | pfx | 半径 `katanaRange(player)` | — | — | 要 | 同上(A-1) | S13 |
+| I16 スキャンの扇 | 3 | `newGunsFx.ts` の扇の色 | 扇(地面に倒した形=world の縦を `SCAN_FAN_GROUND_Y_SCALE` 0.36 で潰した扇) | プレイヤー(スキャンの銃) | 照準の向き(`scanFanGroundAngle`) | `NewGunsFx` `newGunsFx.ts:513-529`(`fanGfx`・`scanFanScreenPoint`) | ngf | `utils/scanSensor.ts:176 scanFanContains`(縦の潰し 0.36=`scanSensor.ts:163`) | — | — | 要(見せ方は PERSPECTIVE_PROJECTION.md ★#29) | 同上(A-11)。判定も描く形も同じ潰し=頂点ごとに投影すると二重に潰れる | S13 |
 
 ### J. 静的な床の印(種5)
 
@@ -397,6 +404,8 @@ grep -n "if (!g.parent)\|g.parent !== this.L" src/pixi/pixiScene.ts
 **表の行数 = 167**(A23・B28・C10・D7(D06b を含む)・E24(E05b・E02b・E12b を含む)・F10・G7・H15・I11・J17・K15)。v0.25.5747 で A21〜A23・D06b・E02b・E12b の6行を足した(初版は160)。
 うち H03(バス停のレーザー)は C03 と**同じ描画**を持ち主ごとに分けた行なので、**描く物としては 158**(J05 病院サークルは撤去済みの記録行=描く物なし)。
 J14(ボスの当たり判定の枠)は開発用で**段階4の対象外**。
+
+**追記(PERSPECTIVE_PROJECTION.md §3-7 段階3の1巡目監査 A-1・A-11)**: I12〜I16 の5行を足した(主人公の近接・ハンティング・クールダウンの輪とスキャンの扇=判定の半径を持つ形で、v0.25.5748 の取り直しで漏れていた物)。**表の行数は 172・種3 は 13 行**(下の表と式の数はこの5行を足す前の値のまま)。投影は段階3の作業の中で段階4の部品を使って行う。
 
 | 種類(依頼の1〜6) | 行数 | 行 |
 |---|---|---|
