@@ -344,7 +344,7 @@ import {
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { getCameraZoomLink } from '../utils/cameraZoomLink';
 import {
-  buildProjTable, projTableKey, PROJ_TABLE_SUBDIV, makeProjFrame, projectInto, makeProjPoint, visibleWorldBands, projScreenRowsL, projBoxOnScreen, projScreenOutside, projDisplayToScreenInto, projRefLocalY, projTOfL, projAttentionRef,
+  updateProjTable, PROJ_TABLE_SUBDIV, makeProjFrame, projectInto, makeProjPoint, visibleWorldBands, projScreenRowsL, projBoxOnScreen, projScreenOutside, projDisplayToScreenInto, projRefLocalY, projTOfL, projAttentionRef,
   groundStripTile, groundVsObjectDiff, groundSlipBound, projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, southCullWorldY,
   type ProjFrame, type ProjTable, type ProjPoint,
 } from '../utils/perspectiveProjection'; // 投影(?proj=1・research/PERSPECTIVE_PROJECTION.md 段階1)
@@ -3019,7 +3019,17 @@ const strokeBeamLayers = (
         continue;
       }
       if (L.alpha <= 0.001) continue;
-      projPoly(o, pf, beamLayerPoly(plan, L.w, L.cap === 'round', startOffset), { color: L.color, alpha: L.alpha });
+      if (L.judge) {
+        projPoly(o, pf, beamLayerPoly(plan, L.w, L.cap === 'round', startOffset), { color: L.color, alpha: L.alpha });
+        continue;
+      }
+      // 判定でない層(芯など固定px の細い線・監査 A-2): 割った後の中心線(起点→盾の面/元の終点)を細い線の部品で描く
+      // (★#23 の太さ B と 1px の下限が効く)。盾の面で終わる時は端を丸めない(面へ食い込ませない)。
+      const d1 = plan.centerEnd;
+      if (!(d1 > startOffset + 1e-6)) continue; // 起点より手前で塞がれた=芯は出ない(?proj=0 の多角形も起点の丸だけ)
+      const cut = plan.centerEnd < plan.len - 1e-6;
+      projSeg(o, pf, plan.fx + plan.ux * startOffset, plan.fy + plan.uy * startOffset, plan.fx + plan.ux * d1, plan.fy + plan.uy * d1,
+        { width: L.w, color: L.color, alpha: L.alpha, ...(L.cap && !cut ? { cap: L.cap } : {}) });
     }
     return;
   }
@@ -9910,6 +9920,8 @@ export class PixiScene {
   private projAuditMarks = new WeakMap<object, number>();
   private projAuditText: Text | null = null;
   private projFrameNo = 0;
+  /** 計器(?projaudit=1・監査 B-1): 表の作り直しの回数(うち北を使い回した回数)・1回の時間・毎フレームの表の更新の費用。 */
+  projTableStats = { frames: 0, builds: 0, partial: 0, lastPts: 0, lastMs: 0, buildMsMax: 0, frameMs: 0, frameMsMax: 0, frameMsSum: 0 };
 
   /**
    * 投影の状態を作る(§1-1d・§1-6・§3-3 作る物1/2/11)。worldGroup のズームを決めた後・地面を描く前に1回だけ呼ぶ。
@@ -9941,14 +9953,23 @@ export class PixiScene {
       const att = projAttentionRef(wRef, a.y, env, s.camera.y, farH);
       wRef = att.wRef; lRef = att.lRef;
     }
-    // 表は帯の引数が変わった時だけ作り直す(§10 B7)。ℓ_ref には依らない(?projnear=1 の時だけ ℓ_ref が変わった時も作り直す)。
+    // 表は帯の引数が変わった時に作り直す(§10 B7)。手前を抑える案(既定 ON・?projnear=0 で無し)は ℓ_near=ℓ_ref なので、ボス戦の引き・
+    // アテンションで ℓ_ref が動くたびに表が変わる=updateProjTable が北の g を使い回して南だけ積み直す(監査 B-1)。
     // 曲線の値は地面と同じ定数(?gfar・?gcurve・?g3d・?g3dfar・?g3dc)を読む=ツマミで傾きを変えると地面と物が一緒に傾く。
     const lNear = PROJ_NEAR ? lRef : NaN;
     const tb0 = this.projTable;
-    if (!tb0 || tb0.key !== projTableKey(persp, band.stripH, band.stripCount, GROUND_STRIP_REF_COUNT, PROJ_TABLE_SUBDIV, lNear)) {
-      this.projTable = buildProjTable(persp, band.stripH, band.stripCount, GROUND_STRIP_REF_COUNT, PROJ_TABLE_SUBDIV, lNear);
+    const tbT0 = PROJ_AUDIT ? performance.now() : 0;
+    const table = updateProjTable(tb0, persp, band.stripH, band.stripCount, GROUND_STRIP_REF_COUNT, PROJ_TABLE_SUBDIV, lNear);
+    this.projTable = table;
+    if (PROJ_AUDIT) {
+      const ms = performance.now() - tbT0;
+      const ts = this.projTableStats;
+      ts.frames++; ts.frameMs = ms; if (ms > ts.frameMsMax) ts.frameMsMax = ms; ts.frameMsSum += ms;
+      if (table !== tb0) {
+        ts.builds++; if (table.builtPts < table.n) ts.partial++;
+        ts.lastPts = table.builtPts; ts.lastMs = ms; if (ms > ts.buildMsMax) ts.buildMsMax = ms;
+      }
     }
-    const table = this.projTable!;
     const wg = this.L.worldGroup;
     this.projFrame = makeProjFrame({
       table, camX: s.camera.x, camY: s.camera.y, farH, screenW: this.screenW, screenH: this.screenH,
@@ -10311,6 +10332,7 @@ export class PixiScene {
       `actor slip ${[...aa.kinds].map(([k, m]) => `${k}:dx${m.dx.toFixed(2)}/dy${m.dy.toFixed(2)}`).join(' ') || '-'}`,
       `actor leak=${aa.leakMax.toFixed(2)}${aa.leakName ? '@' + aa.leakName : ''} uncls now=${aa.unclassifiedNow} max:${[...aa.unclassified].map(([k, n]) => `${k}=${n}`).join(' ') || '0'}`,
       `player s=${aa.playerS.toFixed(3)} ds/frame max=${aa.playerDsMax.toFixed(4)} spawn da/frame max=${aa.spawnDaMax.toFixed(3)}`,
+      (() => { const t = this.projTableStats; return `table builds=${t.builds} (south-only ${t.partial}) last=${t.lastPts}pts/${t.lastMs.toFixed(3)}ms buildMax=${t.buildMsMax.toFixed(3)}ms | frame now=${t.frameMs.toFixed(3)} avg=${(t.frameMsSum / Math.max(1, t.frames)).toFixed(4)} max=${t.frameMsMax.toFixed(3)}ms n=${t.frames} lNear=${Number.isFinite(f.table.lNear) ? f.table.lNear.toFixed(1) : '-'}`; })(),
       ...this.projStage4AuditLines(),
     ].join('\n');
   }

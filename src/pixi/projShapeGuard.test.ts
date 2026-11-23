@@ -6,6 +6,8 @@ import { PROJ_ACTOR_ROLES, projRoleMove } from '../utils/projActorPass';
 //   ① 図形の命令(circle・ellipse・poly・rect・moveTo・arc)は、`if (pf)` の分岐の else 側(または pf の分岐の後の今の行)か、
 //      projKeep の申告つきの所にしか無い(= ?proj=1 で投影されない図形が分岐の中に紛れ込んでいない)
 //   ② 流星の窓の関数で、?proj=1 の分岐が窓の入力(prog・circleSweepBand・bandSweepCenter)より後にある
+//   ③ 濃さの列は ?proj=0 と同じ式(円窓・矩形の窓・扇の窓は、2つの分岐の濃さの行が1字も違わない)
+//   ③b 段階4の関数の中で、world の Y の地平線・手前のフェード(horizonActorAlpha/foregroundActorAlpha)を ?proj=1 の分岐で使っていない
 //   ④ 予告の役は後掛けの対象に入っていない
 //   ⑤ ?proj の分岐の中で旧い遠近の倍率(depthScale・dsY・depthD)を予告の寸法に掛けていない
 //   ⑥ メッシュ(makeProjGridMesh)を作る所は projTeleMesh だけで、projTeleMesh は projFrame がある時だけ呼ばれる(遅延生成)

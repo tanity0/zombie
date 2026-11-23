@@ -10,7 +10,7 @@ import {
   projGridIndices, projLiftInto, projTeleFadeY, projShapeOutside, projTeleLineScale, projVertexInto, projPointInPath,
   projDistToSeg, projCircleBaseEdges, PROJ_GRID_VERTS, PROJ_TELE_LINE_MODE, PROJ_TELE_LINE_MIN_PX,
   projStrokeStripInto, projStrokeHalfWidth, projLineScaleCap, projStrokeAlpha, projTeleLineAlpha, projTeleAlphaBucket,
-  projGlyphMinSize, PROJ_TELE_LINE_MIN_ALPHA,
+  projGlyphMinSize, projGlyphStrokeLook, PROJ_TELE_LINE_MIN_ALPHA,
 } from './projShape';
 
 // research/PERSPECTIVE_PROJECTION.md §3-6k 受け入れ条件2・3(純関数の分): 投影後の予告の形と、投影した判定の形が一致する。
@@ -646,5 +646,44 @@ describe('projShape: 線を頂点ごとの太さの帯で描く(監査 A-1・★
     const b = projGlyphMinSize(2, 0.4);
     expect(b.grow * 2 * 0.4).toBeCloseTo(1, 9);
     expect(b.alpha).toBeCloseTo(0.8, 9);
+  });
+
+  it('記号の縁の線(監査 A-1): 幅に記号の倍率 k(=s)が掛かり、北の縁は細くなる', () => {
+    for (const sc of SCREENS) {
+      const f = frameAt(sc, 1, 0, 0);
+      // 北(s<1)と基準行(s=1)の同じ記号の縁(幅 3)
+      projVertexInto(f, f.cxw, f.wRef - 300, V);
+      const kN = projTeleLineScale(V.s);
+      expect(kN).toBeLessThan(1);
+      const north = projGlyphStrokeLook(3, 1, kN, f.wgScale);
+      const ref = projGlyphStrokeLook(3, 1, projTeleLineScale(1), f.wgScale);
+      expect(ref.width).toBeCloseTo(3, 9);
+      expect(north.width).toBeLessThan(ref.width);
+      // 1px を下回らない幅は k を掛けたそのまま
+      if (3 * kN * f.wgScale >= 1) expect(north.width).toBeCloseTo(3 * kN, 9);
+    }
+    // 線幅の下限: 幅 2 × k 0.25 = 0.5px → 1px に止めて濃さ 0.5
+    const t = projGlyphStrokeLook(2, 1, 0.25, 1);
+    expect(t.width).toBeCloseTo(1, 9);
+    expect(t.alpha).toBeCloseTo(0.5, 9);
+    // 引き 0.4: 表示の幅 1 = 画面 0.4px → 表示 2.5(画面 1px)
+    const z = projGlyphStrokeLook(1, 1, 1, 0.4);
+    expect(z.width * 0.4).toBeCloseTo(1, 9);
+  });
+
+  it('記号の縁の線(監査 A-1): 濃さの下げは「直径の下限」と「線幅の下限」の強い方の1回だけ(0.35×0.35 にしない)', () => {
+    // 直径も線幅も下限の床まで薄くなる記号
+    const diam = projGlyphMinSize(0.1, 1);
+    expect(diam.alpha).toBeCloseTo(PROJ_TELE_LINE_MIN_ALPHA, 9);
+    const st = projGlyphStrokeLook(0.1, 1, 1, 1, diam.alpha);
+    expect(st.alpha).toBeCloseTo(PROJ_TELE_LINE_MIN_ALPHA, 9);
+    expect(st.alpha).toBeGreaterThan(PROJ_TELE_LINE_MIN_ALPHA * PROJ_TELE_LINE_MIN_ALPHA + 0.1);
+    // 直径の方が強い時は直径の掛け率、線幅の方が強い時は線幅の掛け率
+    expect(projGlyphStrokeLook(0.5, 1, 1, 1, 0.8).alpha).toBeCloseTo(0.5, 9);
+    expect(projGlyphStrokeLook(0.9, 1, 1, 1, 0.4).alpha).toBeCloseTo(0.4, 9);
+    // 中心のフェード a は掛け算のまま(下限の下げとは別の物)
+    expect(projGlyphStrokeLook(0.5, 0.6, 1, 1, 0.8).alpha).toBeCloseTo(0.3, 9);
+    // 下限に当たらない時は濃さを変えない
+    expect(projGlyphStrokeLook(3, 1, 1, 1, 1)).toEqual({ width: 3, alpha: 1 });
   });
 });

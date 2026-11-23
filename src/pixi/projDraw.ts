@@ -12,7 +12,7 @@ import type { ProjFrame } from '../utils/perspectiveProjection';
 import {
   ProjPathOut, projCircleInto, projEllipseInto, projArcInto, projSectorInto, projAnnulusInto, projAnnulusAnglesFor,
   projAnnulusRingInto, projQuadStripInto, projRectFrameInto, projPathInto, projGridInto, projGridIndices, projVertexInto,
-  projLiftInto, projTeleLineScale, projStrokeStripInto, projTeleAlphaBucket, projGlyphMinSize, PROJ_SHAPE_TOL_PX, PROJ_GRID_VERTS, PROJ_GRID_MAX, PROJ_TELE_LINE_MODE,
+  projLiftInto, projTeleLineScale, projStrokeStripInto, projTeleAlphaBucket, projGlyphMinSize, projGlyphStrokeLook, PROJ_SHAPE_TOL_PX, PROJ_GRID_VERTS, PROJ_GRID_MAX, PROJ_TELE_LINE_MODE,
   PROJ_TELE_LINE_MIN_PX, type ProjFrame4, type ProjGridResult,
 } from '../utils/projShape';
 
@@ -364,13 +364,14 @@ const glyphFill = (fill: FillInput, a: number): FillInput => {
   }
   return fill;
 };
-/** 記号の線(終点の輪・楕円の印の縁)。線の幅が画面で 1px を下回るなら 1px に止めて薄くする(§3-6g3)。 */
-const glyphStroke = (st: StrokeStyle, a: number, z = 1): StrokeStyle => {
-  const w = st.width ?? 1;
-  const m = projGlyphMinSize(w, z);
-  const aa = a * m.alpha;
-  if (aa >= 1 && m.grow === 1) return st;
-  return { ...st, width: w * m.grow, alpha: (st.alpha ?? 1) * aa };
+/**
+ * 記号の線(終点の輪・楕円の印の縁)。線の幅にも記号と同じ倍率 k(★#23=s)を掛け(北の縁は細く)、その幅が画面で 1px を
+ * 下回るなら 1px に止めて薄くする(§3-6g3・監査 A-1)。a=中心のフェード、diamAlpha=直径の下限の濃さの掛け率。
+ * 濃さの下げは「直径の下限」と「線幅の下限」の強い方の1回だけ(掛け合わせて二重に薄くしない)。
+ */
+const projGlyphStrokeStyle = (st: StrokeStyle, a: number, k: number, z: number, diamAlpha = 1): StrokeStyle => {
+  const o = projGlyphStrokeLook(st.width ?? 1, a, k, z, diamAlpha);
+  return { ...st, width: o.width, alpha: (st.alpha ?? 1) * o.alpha };
 };
 
 /** 中心だけ投影した円の記号(頭の輝点・終点の輪)。半径は今のまま(★#23 の倍率 k を掛ける)。 */
@@ -382,7 +383,7 @@ export const projGlyphCircle = (g: Graphics, f: ProjFrame, wx: number, wy: numbe
   const m = projGlyphMinSize(2 * Math.max(0, r) * q.k, f.wgScale);
   const rr = r * q.k * m.grow, aa = q.a * m.alpha;
   if (fill !== undefined) g.circle(q.x, q.y, rr).fill(glyphFill(fill, aa));
-  if (stroke !== undefined) g.circle(q.x, q.y, rr).stroke(glyphStroke(stroke, aa, f.wgScale));
+  if (stroke !== undefined) g.circle(q.x, q.y, rr).stroke(projGlyphStrokeStyle(stroke, q.a, q.k, f.wgScale, m.alpha));
   statOf(g).cmds += g.context.instructions.length - n0;
 };
 /** 中心だけ投影した潰れた楕円の印(突進の線の終点の印・ゾンビの印)。形と大きさは今のまま(★#23 の倍率 k を掛ける)。 */
@@ -396,7 +397,7 @@ export const projGlyphEllipse = (
   const m = projGlyphMinSize(2 * Math.max(0, Math.min(rx, ry)) * q.k, f.wgScale);
   const kk = q.k * m.grow, aa = q.a * m.alpha;
   if (fill !== undefined) g.ellipse(q.x, q.y, rx * kk, ry * kk).fill(glyphFill(fill, aa));
-  if (stroke !== undefined) g.ellipse(q.x, q.y, rx * kk, ry * kk).stroke(glyphStroke(stroke, aa, f.wgScale));
+  if (stroke !== undefined) g.ellipse(q.x, q.y, rx * kk, ry * kk).stroke(projGlyphStrokeStyle(stroke, q.a, q.k, f.wgScale, m.alpha));
   statOf(g).cmds += g.context.instructions.length - n0;
 };
 

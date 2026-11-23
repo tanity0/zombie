@@ -38,7 +38,7 @@ export const projScaleYAt = (t: number, p: GroundPerspectiveParams): number =>
   Math.max(1e-6, groundRowTileScaleY(t, p));
 
 /**
- * 手前の地面の伸びを抑える案(`?projnear=1`・社長「みせて」の比較用・既定は無し): 行 ℓ_near(=基準行 ℓ_ref)より南だけ、
+ * 手前の地面の伸びを抑える案(社長裁定2026-11-23「抑えた案で」=`?proj=1` の既定 ON・`?projnear=0` で旧い伸び方=比較用): 行 ℓ_near(=基準行 ℓ_ref)より南だけ、
  * 縦の詰めを「縦の伸び ≤ 横の倍率」に抑える:
  *   scaleY'(ℓ) = min( scaleY(ℓ), scaleY(ℓ_near) · conv(ℓ)/conv(ℓ_near) )   (ℓ > ℓ_near)
  *   scaleY'(ℓ) = scaleY(ℓ)                                               (ℓ ≤ ℓ_near)
@@ -54,7 +54,7 @@ export const projScaleYNearAt = (l: number, stripH: number, refCount: number, p:
   return Math.max(1e-6, Math.min(sy, cap));
 };
 
-/** G(ℓ)=∫dℓ/scaleY の細かい表(台形則)。帯の引数(stripH・本数・曲線)だけで決まり、ℓ_ref に依らない(§1-1d)。手前を抑える案(lNear)の時だけ ℓ_near に依る。 */
+/** G(ℓ)=∫dℓ/scaleY の細かい表(台形則)。帯の引数(stripH・本数・曲線)と、手前を抑える行 ℓ_near(既定 ON=ℓ_ref)で決まる。抑えない時(`?projnear=0`)は ℓ_ref に依らない(§1-1d)。 */
 export interface ProjTable {
   readonly stripH: number;
   readonly refCount: number;
@@ -66,7 +66,7 @@ export interface ProjTable {
   /** g[k] = G(k·step)。G(0)=0。単調増加。 */
   readonly g: Float64Array;
   readonly p: GroundPerspectiveParams;
-  /** 手前を抑える行(`?projnear=1` の時の ℓ_ref)。抑えない時は NaN。 */
+  /** 手前を抑える行(既定=ℓ_ref)。抑えない時(`?projnear=0`)は NaN。 */
   readonly lNear: number;
   /**
    * ℓ_near が刻みの中(端点でない)にある時の、その刻みの左端の添字 kc(無ければ −1)と、
@@ -78,6 +78,14 @@ export interface ProjTable {
   readonly gNear: number;
   /** 作り直す条件の比較用(§10 B7)。 */
   readonly key: string;
+  /** 作った時の帯の本数と分割数(updateProjTable が作り直すかを比べる)。 */
+  readonly stripCount: number;
+  readonly subdiv: number;
+  /** この表を作った時に積み直した点の数(n=全部・それ未満=北を使い回して南だけ・計器 ?projaudit=1 用)。 */
+  readonly builtPts: number;
+  /** 表の点 k の縦の詰め scaleY(k·step) と横の縮み conv(k·step)(抑える前・ℓ_near に依らない=作り直しの時に冪を引かない)。 */
+  readonly syK: Float64Array;
+  readonly cvK: Float64Array;
 }
 
 export const projTableKey = (
@@ -89,6 +97,57 @@ export const projTableKey = (
 /** 表の行 ℓ の縦の詰め(手前を抑える案の時は scaleY'・§ projScaleYNearAt)。地面の帯・物・延長の傾きは全部これを引く。 */
 export const projTableScaleY = (tb: ProjTable, l: number): number =>
   projScaleYNearAt(l, tb.stripH, tb.refCount, tb.p, tb.lNear);
+
+/** 表の点の scaleY・conv(抑える前)。帯の引数だけで決まる。 */
+const projTableRows = (n: number, step: number, sh: number, refCount: number, p: GroundPerspectiveParams) => {
+  const syK = new Float64Array(n + 1), cvK = new Float64Array(n + 1);
+  for (let k = 0; k <= n; k++) {
+    const t = projTOfL(k * step, sh, refCount);
+    syK[k] = projScaleYAt(t, p);
+    cvK[k] = projConvAt(t, p);
+  }
+  return { syK, cvK };
+};
+
+/**
+ * 表の g を k=kStart+1..n へ積む(g[0..kStart] は正しい値が入っている前提)。kc・gOrig・gNear を返す。
+ * 点ごとの scaleY・conv は syK・cvK を引き、傾きの定数(ℓ_near の行の scaleY・conv)はループの外で1回だけ出す
+ * (projScaleYNearAt と同じ式・同じ演算の順=ビット単位で同じ値)。
+ */
+const fillProjTable = (
+  g: Float64Array, syK: Float64Array, cvK: Float64Array, kStart: number, n: number, step: number,
+  sh: number, refCount: number, p: GroundPerspectiveParams, ln: number,
+): { kc: number; gOrig: number; gNear: number } => {
+  const near = Number.isFinite(ln);
+  const tN = near ? projTOfL(ln, sh, refCount) : 0;
+  const syN = near ? projScaleYAt(tN, p) : 1;
+  const cvN = near ? Math.max(1e-9, projConvAt(tN, p)) : 1;
+  /** projScaleYNearAt(k·step, sh, refCount, p, ln) と同じ値。 */
+  const syAt = (k: number): number => {
+    const sy = syK[k];
+    if (!near || !(k * step > ln)) return sy;
+    return Math.max(1e-6, Math.min(sy, syN * cvK[k] / cvN));
+  };
+  let kc = -1, gOrig = 0, gNear = 0;
+  let prev = 1 / syAt(kStart);
+  for (let k = kStart + 1; k <= n; k++) {
+    const l0 = (k - 1) * step, l1 = k * step;
+    const cur = 1 / syAt(k);
+    if (near && l0 < ln && ln < l1) {
+      // 手前を抑える案: ℓ_near をまたぐ刻みは、北側を抑えない表の補間のまま G(ℓ_near) を取り、南側だけ抑えた傾きで積む。
+      const curOrig = 1 / syK[k];
+      kc = k - 1;
+      gOrig = g[k - 1] + 0.5 * (prev + curOrig) * step;
+      gNear = g[k - 1] + (gOrig - g[k - 1]) * ((ln - l0) / step);
+      const mid = 1 / syN;
+      g[k] = gNear + 0.5 * (mid + cur) * (l1 - ln);
+    } else {
+      g[k] = g[k - 1] + 0.5 * (prev + cur) * step;
+    }
+    prev = cur;
+  }
+  return { kc, gOrig, gNear };
+};
 
 /**
  * 表を作る。範囲は ℓ ∈ [0, stripCount·stripH](地面を敷いている範囲。引き 0.4 で 180 本=t 2.5 まで)。
@@ -103,36 +162,47 @@ export const buildProjTable = (
   const step = sh / Math.max(1, subdiv);
   const g = new Float64Array(n + 1);
   const ln = Number.isFinite(lNear) ? lNear : NaN;
-  let prev = 1 / projScaleYNearAt(0, sh, refCount, p, ln);
-  let kc = -1, gOrig = 0, gNear = 0;
-  if (!Number.isFinite(ln)) {
-    for (let k = 1; k <= n; k++) {
-      const cur = 1 / projScaleYAt(projTOfL(k * step, sh, refCount), p);
-      g[k] = g[k - 1] + 0.5 * (prev + cur) * step;
-      prev = cur;
-    }
-  } else {
-    // 手前を抑える案: ℓ_near より北の刻みは抑えない表と同じ。ℓ_near をまたぐ刻みは、北側を抑えない表の補間のまま
-    // G(ℓ_near) を取り、南側だけ抑えた傾きで積む。
-    for (let k = 1; k <= n; k++) {
-      const l0 = (k - 1) * step, l1 = k * step;
-      const curOrig = 1 / projScaleYAt(projTOfL(l1, sh, refCount), p);
-      const cur = 1 / projScaleYNearAt(l1, sh, refCount, p, ln);
-      if (l0 < ln && ln < l1) {
-        kc = k - 1;
-        gOrig = g[k - 1] + 0.5 * (prev + curOrig) * step;
-        gNear = g[k - 1] + (gOrig - g[k - 1]) * ((ln - l0) / step);
-        const mid = 1 / projScaleYAt(projTOfL(ln, sh, refCount), p);
-        g[k] = gNear + 0.5 * (mid + cur) * (l1 - ln);
-      } else {
-        g[k] = g[k - 1] + 0.5 * (prev + cur) * step;
-      }
-      prev = cur;
-    }
-  }
+  const { syK, cvK } = projTableRows(n, step, sh, refCount, p);
+  const c = fillProjTable(g, syK, cvK, 0, n, step, sh, refCount, p, ln);
   return {
-    stripH: sh, refCount, step, n, lMax: n * step, g, p, lNear: ln, kc, gOrig, gNear,
-    key: projTableKey(p, stripH, stripCount, refCount, subdiv, ln),
+    stripH: sh, refCount, step, n, lMax: n * step, g, p, lNear: ln, kc: c.kc, gOrig: c.gOrig, gNear: c.gNear,
+    key: projTableKey(p, stripH, stripCount, refCount, subdiv, ln), stripCount, subdiv, builtPts: n, syK, cvK,
+  };
+};
+
+const sameParams = (a: GroundPerspectiveParams, b: GroundPerspectiveParams): boolean =>
+  a === b || (a.tileScaleX === b.tileScaleX && a.trapFar === b.trapFar && a.trapCurve === b.trapCurve && a.trapezoid === b.trapezoid
+    && a.farScale === b.farScale && a.nearScale === b.nearScale && a.curve === b.curve);
+
+/**
+ * 毎フレームの表の更新(監査 B-1): 帯の引数も ℓ_near も同じなら prev をそのまま返す(作り直さない)。
+ * 帯の引数が同じで ℓ_near だけが動いた時(手前を抑える案でボス戦の引き・アテンションが ℓ_ref を運ぶ時)は、
+ * 新旧の ℓ_near の北の側の g を使い回し(そこは抑えない表と同じ値)、南だけ積み直す。g の配列も使い回す
+ * (=prev の表は書き換わる。返した表に乗り換え、prev はもう使わないこと)。結果は buildProjTable と同じ値。
+ */
+export const updateProjTable = (
+  prev: ProjTable | null, p: GroundPerspectiveParams, stripH: number, stripCount: number,
+  refCount: number = PROJ_REF_STRIP_COUNT, subdiv: number = PROJ_TABLE_SUBDIV, lNear: number = NaN,
+): ProjTable => {
+  const ln = Number.isFinite(lNear) ? lNear : NaN;
+  const sh = Math.max(1e-3, stripH);
+  if (!prev || prev.stripH !== sh || prev.stripCount !== stripCount || prev.refCount !== refCount || prev.subdiv !== subdiv
+    || !sameParams(prev.p, p)) {
+    return buildProjTable(p, stripH, stripCount, refCount, subdiv, lNear);
+  }
+  const lnOld = prev.lNear;
+  if (lnOld === ln || (Number.isNaN(lnOld) && Number.isNaN(ln))) return prev;
+  // 北の使い回せる範囲: 新旧の ℓ_near の北(抑えない表と同じ値)。抑えない側(NaN)は全域が抑えない表。
+  const lKeep = Math.min(Number.isFinite(lnOld) ? lnOld : Infinity, Number.isFinite(ln) ? ln : Infinity);
+  const n = prev.n, step = prev.step;
+  const kStart = lKeep >= 0 ? Math.min(n, Math.floor(lKeep / step)) : -1;
+  const kS = Math.max(0, kStart); // ℓ_near<0 でも g[0]=0 と点ごとの値は使い回せる(prev は fillProjTable が新しい ℓ_near で出し直す)
+  const g = prev.g as Float64Array;
+  const c = fillProjTable(g, prev.syK, prev.cvK, kS, n, step, sh, refCount, p, ln);
+  return {
+    stripH: sh, refCount, step, n, lMax: prev.lMax, g, p, lNear: ln, kc: c.kc, gOrig: c.gOrig, gNear: c.gNear,
+    key: projTableKey(p, stripH, stripCount, refCount, subdiv, ln), stripCount, subdiv, builtPts: n - kS,
+    syK: prev.syK, cvK: prev.cvK,
   };
 };
 
@@ -222,7 +292,7 @@ export const makeProjFrame = (i: ProjFrameInput): ProjFrame => {
     ...i,
     cxw: i.camX + i.screenW / 2,
     gRef: projG(i.table, i.lRef),
-    syRef: projScaleYAt(tRef, p),
+    syRef: projTableScaleY(i.table, i.lRef), // 地面の帯・延長の傾きと同じ表の値(手前を抑える案でも ℓ_near===ℓ_ref なら抑えない値=監査 B-2)
     convRef: Math.max(1e-6, projConvAt(tRef, p)),
     convStd: Math.max(1e-6, projConvAt(i.tStd, p)),
     syStd: projScaleYAt(i.tStd, p),

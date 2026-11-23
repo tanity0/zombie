@@ -4,7 +4,7 @@ import {
   projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, projTOfL, projRefLocalY, projAttentionRef,
   visibleWorldQuad, groundStripTile, groundVsObjectDiff, groundSlipBound, projDistanceFade, southCullWorldY,
   visibleWorldBands, projScreenRowsL, projBoxOnScreen, projScreenOutside, projectInto, makeProjPoint,
-  projTableKey, projScaleYNearAt, projConvAt, projScaleYAt,
+  projTableKey, projScaleYNearAt, projConvAt, projScaleYAt, updateProjTable, projTableScaleY, type ProjTable,
   type GroundPerspectiveParams, type ProjFrame, type ProjFrameInput,
 } from './perspectiveProjection';
 import { zoomCameraDownFrac } from './cameraZoom';
@@ -358,7 +358,7 @@ describe('見える範囲の切り方(監査 A1)', () => {
   });
 });
 
-describe('手前の地面の伸びを抑える案(?projnear=1・比較用)', () => {
+describe('手前の地面の伸びを抑える案(?proj=1 の既定 ON・?projnear=0 で旧い伸び方=比較用)', () => {
   // 主人公の行=基準行で抑える表
   const mk = (z: number, camX: number, camY: number) => {
     const base = frameAt(z, camX, camY);
@@ -419,4 +419,160 @@ describe('手前の地面の伸びを抑える案(?projnear=1・比較用)', () 
       }
     });
   }
+});
+
+describe('手前を抑える案: 基準行の傾き syRef(監査 B-2)', () => {
+  for (const z of [1, 0.7, 0.4, 1.3]) {
+    it(`syRef は表の値 projTableScaleY(table, ℓ_ref) と同じ・ℓ_near===ℓ_ref なら抑えない値: z=${z}`, () => {
+      const base = frameAt(z, 10, 20);
+      const near = buildProjTable(P, STRIP_H, 180, 72, 8, base.lRef);
+      const f = makeProjFrame({ ...base, table: near });
+      expect(near.lNear).toBe(f.lRef); // ℓ_near===ℓ_ref(pixiScene が組で渡す)
+      expect(f.syRef).toBe(projTableScaleY(near, f.lRef));
+      expect(f.syRef).toBe(projScaleYAt(projTOfL(f.lRef, STRIP_H), P));
+      expect(base.syRef).toBe(projTableScaleY(TABLE, base.lRef));
+    });
+  }
+});
+
+/** 表が同じ値か(g は1ビット単位)。 */
+const expectSameTable = (a: ProjTable, b: ProjTable) => {
+  expect(a.n).toBe(b.n);
+  expect(a.step).toBe(b.step);
+  expect(a.kc).toBe(b.kc);
+  expect(a.gOrig).toBe(b.gOrig);
+  expect(a.gNear).toBe(b.gNear);
+  expect(Object.is(a.lNear, b.lNear)).toBe(true);
+  expect(a.key).toBe(b.key);
+  for (let k = 0; k <= a.n; k++) if (a.g[k] !== b.g[k]) expect(`g[${k}]=${a.g[k]}`).toBe(`g[${k}]=${b.g[k]}`);
+};
+
+describe('表の更新 updateProjTable(監査 B-1: 北を使い回して南だけ積み直す)', () => {
+  it('同じ引数なら作り直さない(同じ物を返す)', () => {
+    const t0 = buildProjTable(P, STRIP_H, 180, 72, 8, 300);
+    expect(updateProjTable(t0, P, STRIP_H, 180, 72, 8, 300)).toBe(t0);
+    const t1 = buildProjTable(P, STRIP_H, 180, 72, 8);
+    expect(updateProjTable(t1, P, STRIP_H, 180, 72, 8, NaN)).toBe(t1);
+  });
+  it('ℓ_near が動く列(ボス戦の引き・アテンション・範囲の外・抑えない⇄抑える)で、毎回 buildProjTable と1ビットも違わない', () => {
+    const seq = [NaN, 420, 421.3, 500, 380.25, 120, 0, -40, 9e3, TABLE.lMax, TABLE.lMax + 5, 0.5 * STRIP_H / 8, NaN, 333, 333, 610.7];
+    // ボス戦の引き: ズーム 1→0.4 で ℓ_ref が毎フレーム動く
+    for (let i = 0; i <= 30; i++) seq.push(projRefLocalY(SH, zoomCameraDownFrac(CAMDOWN, 1 - 0.6 * i / 30), PH, FAR_H));
+    // アテンション: ℓ_refAtt が北へ運ばれて戻る
+    for (let i = 0; i <= 20; i++) {
+      const env = i <= 10 ? i / 10 : (20 - i) / 10;
+      seq.push(projAttentionRef(FAR_H + L_REF_1, FAR_H + 80, env, 0, FAR_H).lRef);
+    }
+    let cur: ProjTable | null = null;
+    let partial = 0;
+    for (const ln of seq) {
+      const fresh = buildProjTable(P, STRIP_H, 180, 72, 8, ln);
+      const prevRef: ProjTable | null = cur;
+      cur = updateProjTable(cur, P, STRIP_H, 180, 72, 8, ln);
+      expectSameTable(cur, fresh);
+      if (prevRef && cur !== prevRef && cur.builtPts < cur.n) partial++;
+    }
+    expect(partial).toBeGreaterThan(30); // 北を使い回した回が大半
+  });
+  it('南だけ積み直す: 積み直した点の数は ℓ_near の南の分だけ・配列は使い回す', () => {
+    const t0 = buildProjTable(P, STRIP_H, 180, 72, 8, 500);
+    const g0 = t0.g;
+    const t1 = updateProjTable(t0, P, STRIP_H, 180, 72, 8, 520);
+    expect(t1.g).toBe(g0);
+    expect(t1.builtPts).toBe(t1.n - Math.floor(500 / t1.step));
+  });
+  it('帯の引数が変わったら全部作り直す(key も変わる)', () => {
+    const t0 = buildProjTable(P, STRIP_H, 180, 72, 8, 400);
+    const P2 = { ...P, curve: 2.2 };
+    const t1 = updateProjTable(t0, P2, STRIP_H, 180, 72, 8, 400);
+    expect(t1.key).not.toBe(t0.key);
+    expect(t1.builtPts).toBe(t1.n);
+    expectSameTable(t1, buildProjTable(P2, STRIP_H, 180, 72, 8, 400));
+    const t2 = updateProjTable(t1, P2, STRIP_H * 1.1, 180, 72, 8, 400);
+    expectSameTable(t2, buildProjTable(P2, STRIP_H * 1.1, 180, 72, 8, 400));
+    const t3 = updateProjTable(t2, P2, STRIP_H * 1.1, 200, 72, 8, 400);
+    expect(t3.n).toBe(1600);
+    expectSameTable(t3, buildProjTable(P2, STRIP_H * 1.1, 200, 72, 8, 400));
+  });
+  it('表の key は ℓ_near が変わると変わる(抑えない表とも違う)', () => {
+    const a = buildProjTable(P, STRIP_H, 180, 72, 8, 400), b = buildProjTable(P, STRIP_H, 180, 72, 8, 401);
+    expect(a.key).not.toBe(b.key);
+    expect(a.key).not.toBe(TABLE.key);
+    expect(updateProjTable(a, P, STRIP_H, 180, 72, 8, 401).key).toBe(b.key);
+  });
+});
+
+describe('手前を抑える案の場面(監査 B-3)', () => {
+  interface Scene { name: string; sw: number; sh: number; farH: number; z: number; att?: { attDy: number; env: number }; lNear?: (lRef: number, lMax: number) => number }
+  const scenes: Scene[] = [
+    { name: 'スマホ z=1', sw: SW, sh: SH, farH: FAR_H, z: 1 },
+    { name: 'スマホ ズーム 0.4 の ℓ_ref', sw: SW, sh: SH, farH: FAR_H, z: 0.4 },
+    { name: 'アテンション中(ℓ_refAtt が北へ)', sw: SW, sh: SH, farH: FAR_H, z: 1, att: { attDy: -260, env: 0.7 } },
+    { name: 'アテンション中・ズーム 0.4', sw: SW, sh: SH, farH: FAR_H, z: 0.4, att: { attDy: -400, env: 1 } },
+    { name: 'PC 1280×720 z=1', sw: 1280, sh: 720, farH: 180, z: 1 },
+    { name: 'PC 1280×720 ズーム 0.4', sw: 1280, sh: 720, farH: 180, z: 0.4 },
+    { name: 'PC 1280×720 アテンション中', sw: 1280, sh: 720, farH: 180, z: 1, att: { attDy: -200, env: 0.5 } },
+  ];
+  const build = (sc: Scene, camX: number, camY: number) => {
+    const stripH = (sc.sh - sc.farH) / 72;
+    const plain = buildProjTable(P, stripH, 180);
+    let lRef = projRefLocalY(sc.sh, zoomCameraDownFrac(CAMDOWN, sc.z), PH, sc.farH);
+    let wRef = camY + sc.farH + lRef;
+    if (sc.att) { const r = projAttentionRef(wRef, wRef + sc.att.attDy, sc.att.env, camY, sc.farH); wRef = r.wRef; lRef = r.lRef; }
+    const lRef1 = projRefLocalY(sc.sh, zoomCameraDownFrac(CAMDOWN, 1), PH, sc.farH);
+    const pivotY = sc.z < 1 ? sc.farH : sc.sh / 2;
+    const inp: ProjFrameInput = {
+      table: plain, camX, camY, farH: sc.farH, screenW: sc.sw, screenH: sc.sh, wRef, lRef, tStd: projTOfL(lRef1, stripH),
+      wgScale: sc.z, wgX: (sc.sw / 2) * (1 - sc.z), wgY: pivotY * (1 - sc.z),
+    };
+    const near = buildProjTable(P, stripH, 180, 72, 8, lRef);
+    return { stripH, base: makeProjFrame(inp), near: makeProjFrame({ ...inp, table: near }) };
+  };
+  for (const sc of scenes) {
+    it(`${sc.name}: 北は1ビットも変わらない・南は縦/横 ≤ 1・単調で逆が往復する`, () => {
+      const { stripH, base, near } = build(sc, 77, -310);
+      expect(near.table.lNear).toBe(near.lRef);
+      expect(near.syRef).toBe(base.syRef);
+      expect(near.gRef).toBe(base.gRef);
+      for (let wy = base.wRef - 2500; wy <= base.wRef; wy += 3.1) {
+        const a = project(base, base.cxw - 220, wy), b = project(near, near.cxw - 220, wy);
+        expect(b.y).toBe(a.y); expect(b.x).toBe(a.x); expect(b.s).toBe(a.s);
+      }
+      for (let l = Math.max(0, near.lRef) + 1; l < near.table.lMax; l += 5) {
+        const sAt = projConvAt(projTOfL(l, stripH), P) / near.convRef;
+        expect(projTableScaleY(near.table, l) / near.syRef / sAt).toBeLessThanOrEqual(1 + 1e-9);
+      }
+      let prev = -Infinity;
+      for (let l = -150; l <= near.table.lMax + 200; l += 1.3) {
+        const g = projG(near.table, l);
+        expect(g).toBeGreaterThan(prev);
+        prev = g;
+        expect(projGInv(near.table, g)).toBeCloseTo(l, 7);
+      }
+    });
+  }
+  it('lNear<0(基準行が地平線より北): 定義域(ℓ≥0)は全部抑えた側・有限で単調・逆が往復する', () => {
+    const t = buildProjTable(P, STRIP_H, 180, 72, 8, -60);
+    expect(t.kc).toBe(-1);
+    for (let l = 0; l < t.lMax; l += 7) {
+      expect(projTableScaleY(t, l)).toBeLessThanOrEqual(projScaleYAt(projTOfL(l, STRIP_H), P));
+    }
+    let prev = -Infinity;
+    for (let l = -300; l <= t.lMax + 300; l += 2.3) {
+      const g = projG(t, l);
+      expect(Number.isFinite(g)).toBe(true);
+      expect(g).toBeGreaterThan(prev);
+      prev = g;
+      expect(projGInv(t, g)).toBeCloseTo(l, 7);
+    }
+    const f = makeProjFrame({ ...frameAt(1, 0, 0), table: t, lRef: -60, wRef: FAR_H - 60 });
+    expect(f.syRef).toBe(projTableScaleY(t, -60));
+    expect(Number.isFinite(f.syRef) && f.syRef > 0).toBe(true);
+  });
+  it('lNear>lMax(基準行が表の南の外): 表の中は抑えない表と同じ', () => {
+    const t = buildProjTable(P, STRIP_H, 180, 72, 8, TABLE.lMax + 120);
+    expect(t.kc).toBe(-1);
+    for (let k = 0; k <= t.n; k++) expect(t.g[k]).toBe(TABLE.g[k]);
+    for (let l = -100; l <= TABLE.lMax + 100; l += 3.3) expect(projG(t, l)).toBe(projG(TABLE, l));
+  });
 });

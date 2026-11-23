@@ -58,6 +58,19 @@ export const projGlyphMinSize = (
   return { grow: px > 1e-9 ? minPx / px : 1, alpha: projTeleLineAlpha(px, minPx, floor) };
 };
 
+/**
+ * 記号の縁の線(終点の輪・楕円の印の縁)の幅と濃さの掛け率(監査 A-1): 幅 width(s=1 の world)に記号と同じ倍率 k(★#23=s)を掛け、
+ * その幅が画面で minPx を下回るなら minPx に止める。濃さは中心のフェード a × min(直径の下限の掛け率 diamAlpha, 線幅の下限の掛け率)
+ * =下げは強い方の1回だけ(二重に薄くしない)。
+ */
+export const projGlyphStrokeLook = (
+  width: number, a: number, k: number, z: number, diamAlpha = 1,
+): { width: number; alpha: number } => {
+  const w = Math.max(0, width) * Math.max(0, k);
+  const m = projGlyphMinSize(w, z);
+  return { width: w * m.grow, alpha: a * Math.min(diamAlpha, m.alpha) };
+};
+
 /** 分ける規則の目安(ズーム後の画面px・§3-6b)。 */
 export const PROJ_SHAPE_TOL_PX = 0.5;
 /** 2分の深さの上限。 */
