@@ -140,6 +140,7 @@ import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
 import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceWantsGlenForm2, practiceBossType } from '../utils/bossPractice';
+import { practiceBossAttnDelayMs, practiceSpawnWaitMs, practiceEdgeInsideDistance } from '../utils/practiceAttention'; // 変異体対策室だけ出現のアテンションを開始直後に(社長指示2026-11-23)
 import { loadKenkiLevel, kenkiSpawnLevel, kenkiLevelHealth, kenkiLevelLook } from '../utils/kenkiLevel'; // 孫悟空のレベル(research/BRAWLER.md §36)
 import { vsEntryOfRun, isNoAmmoRun, idForVariant, vsBodyInit, VS_RESPAWN_MS, VS_SPAWN_DIST_MIN, VS_SPAWN_DIST_MAX } from '../utils/vsTest';
 import { idForLabSex } from '../utils/labZombieSex';
@@ -3913,7 +3914,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // アテンションは出現エフェクトが消えてから(=ぼやけ防止・社長指示)。下のディスパッチャが発火。
             // v0.25.3727: 寄り先=絵の中心(城ボスはBOSS_SPRITE_FIT表に無い=帯中心のまま返る。表に載せたら自動追従)。
             // 控えるのは相手(発火の瞬間に bossArtCenter で今の位置から出し直す)。
-            castleAttnRef.current = { at: newGameTime + 950, target: { id: boss.id, focus: 'art' } };
+            castleAttnRef.current = { at: newGameTime + practiceBossAttnDelayMs(isPracticeRun(), 950), target: { id: boss.id, focus: 'art' } }; // 練習ランだけ遅れ0
           } else if (route === 'relocate' && jd) {
             // 城へ向かう道の上で、画面の外のいちばん城寄りの点へ(そこから歩いて入って来る=置き直しは画面に見えない)。
             const rp = junRelocatePoint({ x: jd.x, y: jd.y }, castleBossFoot, junVisible);
@@ -5845,7 +5846,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // アテンション+カットインは出現エフェクトが消えてから(城ボスと同じ950ms・下のディスパッチャが発火)。
           {
             // v0.25.3727: 寄り先=絵の中心(表に無い賞金首型は帯中心のまま)。控えるのは相手=発火の瞬間に今の位置から出し直す。
-            bountyAttnRef.current = { at: atGameTime + 950, target: { id: bountyE.id, focus: 'art' }, cutin: bossCutinPayload(bType) };
+            bountyAttnRef.current = { at: atGameTime + practiceBossAttnDelayMs(isPracticeRun(), 950), target: { id: bountyE.id, focus: 'art' }, cutin: bossCutinPayload(bType) }; // 練習ランだけ遅れ0
           }
           bountyTutPendingRef.current = true; // 賞金首のチュートリアル: 出現のアテンションが終わってから出す(下の判定)
         };
@@ -9729,14 +9730,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // research/MUTANT_HERO.md §2-0: 英雄(変異)の強制出現(`?heronow=1` / 対策室の枠)。開始から少し待って(=3秒)出す。
           // 置き場所=プレイヤーの向いている先の画面の外(画面端から200px外)。**音が先・姿が後**: 出現の告知は出さず、
           // 蹄の音が近づき、姿が画面に入った最初のフレームでカットイン(下の「英雄(変異)」の制御ブロック)。
-          if ((FORCE_HERO || practiceForces('heronow')) && !heroForceRef.current && newGameTime >= 3000) {
+          // 変異体対策室(練習ラン)だけ: 3秒待たず、中心点が画面の縁のすぐ内側に来る距離へ置く=出た瞬間に「画面に入った」でカットイン
+          // (社長指示2026-11-23)。カメラがまだ主人公に合っていないフレームは距離が出ない(null)ので次のフレームで置く。
+          const heroPractice = isPracticeRun();
+          const heroPracticeDist = (FORCE_HERO || practiceForces('heronow')) && !heroForceRef.current && heroPractice
+            ? (() => {
+              const sp = useGameStore.getState();
+              return practiceEdgeInsideDistance({ x: player.x + player.width / 2, y: player.y + player.height / 2 },
+                player.lastDirection ?? { x: 0, y: -1 }, sp.camera, sp.gameBounds, sp.viewZoom);
+            })() : null;
+          if ((FORCE_HERO || practiceForces('heronow')) && !heroForceRef.current && newGameTime >= practiceSpawnWaitMs(heroPractice, 3000)
+            && (!heroPractice || heroPracticeDist !== null)) {
             heroForceRef.current = true;
             const hPcx = player.x + player.width / 2, hPcy = player.y + player.height / 2;
             const ld = player.lastDirection ?? { x: 0, y: -1 };
             const ldl = Math.hypot(ld.x, ld.y) || 1;
             const st0 = useGameStore.getState();
             const z0 = Math.max(0.3, Math.min(1, st0.viewZoom || 1));
-            const hDist = Math.hypot(st0.gameBounds.width, st0.gameBounds.height) / 2 / z0 + 200;
+            const hDist = heroPractice && heroPracticeDist !== null ? heroPracticeDist
+              : Math.hypot(st0.gameBounds.width, st0.gameBounds.height) / 2 / z0 + 200;
             const hx0 = hPcx + (ld.x / ldl) * hDist, hy0 = hPcy + (ld.y / ldl) * hDist;
             const hE = spawnEnemyAt('mutant-hero', hx0 - 55, hy0 - 30, newGameTime);
             const hClamped = clampRectToPlayableArea(hE.x, hE.y, hE.width, hE.height, {
@@ -9782,7 +9794,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const forceLib = FORCE_LIBERTY || practiceForces('libertynow');
             const patrolLib = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
               && (HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '') && !firstLoop);
-            if ((forceLib || patrolLib) && !libertyForceRef.current && newGameTime >= 3000) {
+            // 変異体対策室(練習ラン)だけ: 3秒待たず、主人公の真上で中心点が画面の上の縁のすぐ内側に来る所へ置く(社長指示2026-11-23)。
+            const libPractice = forceLib && isPracticeRun();
+            const libUpDist = libPractice && !libertyForceRef.current ? (() => {
+              const sp = useGameStore.getState();
+              return practiceEdgeInsideDistance({ x: player.x + player.width / 2, y: player.y + player.height / 2 }, { x: 0, y: -1 }, sp.camera, sp.gameBounds, sp.viewZoom);
+            })() : null;
+            if ((forceLib || patrolLib) && !libertyForceRef.current && newGameTime >= practiceSpawnWaitMs(libPractice, 3000)
+              && (!libPractice || libUpDist !== null)) {
               libertyForceRef.current = true;
               const st0 = useGameStore.getState();
               let cx: number, cy: number, R: number | undefined, a0 = 0;
@@ -9790,7 +9809,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (forceLib) {
                 const z0 = Math.max(0.3, Math.min(1, st0.viewZoom || 1));
                 cx = player.x + player.width / 2;
-                cy = player.y + player.height / 2 - (st0.gameBounds.height / 2 / z0 + 140);
+                cy = player.y + player.height / 2 - (libPractice && libUpDist !== null ? libUpDist : st0.gameBounds.height / 2 / z0 + 140);
                 // 社長「はい」2026-10-05: ボスモードでも置いた場所のそばで小さく回る(前方だけの索敵=向きが変わらないと試せない)。
                 // 置いた場所を輪の下端にする(中心はその上)=輪の大半は画面の上の外、近い側を通る時に画面へ入る。
                 R = LIB_PRACTICE_PATROL_R; a0 = Math.PI / 2;
@@ -9874,7 +9893,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 本編は20%でどちらか1体だけ(社長指示2026-10-29)。確認用の枠(force)はいつでも出す。
             if (patrolAstroStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
             const patrolAstro = patrolAstroStage && runMutantBossRef.current === 'astro' && !patrolHeldByWelcome;
-            if ((forceAstro || patrolAstro) && !astroForceRef.current && newGameTime >= 3000) {
+            // 変異体対策室(練習ラン)だけ: 3秒待たず、主人公の真上で中心点が画面の上の縁のすぐ内側に来る所へ置く(社長指示2026-11-23)。
+            const astroPractice = forceAstro && isPracticeRun();
+            const astroUpDist = astroPractice && !astroForceRef.current ? (() => {
+              const sp = useGameStore.getState();
+              return practiceEdgeInsideDistance({ x: player.x + player.width / 2, y: player.y + player.height / 2 }, { x: 0, y: -1 }, sp.camera, sp.gameBounds, sp.viewZoom);
+            })() : null;
+            if ((forceAstro || patrolAstro) && !astroForceRef.current && newGameTime >= practiceSpawnWaitMs(astroPractice, 3000)
+              && (!astroPractice || astroUpDist !== null)) {
               astroForceRef.current = true;
               const st0 = useGameStore.getState();
               const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
@@ -9884,7 +9910,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (forceAstro) {
                 const z0 = Math.max(0.3, Math.min(1, st0.viewZoom || 1));
                 cx = pcx;
-                cy = pcy - (st0.gameBounds.height / 2 / z0 + 140);
+                cy = pcy - (astroPractice && astroUpDist !== null ? astroUpDist : st0.gameBounds.height / 2 / z0 + 140);
                 ring = { cx, cy: cy - LIB_PRACTICE_PATROL_R, r: LIB_PRACTICE_PATROL_R };
               } else {
                 const cands = astroRunPois();
@@ -9917,7 +9943,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               && (HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '') && !firstLoop);
             if (patrolWraithStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
             const patrolWraith = patrolWraithStage && runMutantBossRef.current === 'wraith' && !patrolHeldByWelcome;
-            if ((forceWraith || patrolWraith) && !wraithForceRef.current && newGameTime >= 3000) {
+            // 変異体対策室(練習ラン)だけ: 3秒待たず、主人公の真上で中心点が画面の上の縁のすぐ内側に来る所へ置く(社長指示2026-11-23)。
+            const wraithPractice = forceWraith && isPracticeRun();
+            const wraithUpDist = wraithPractice && !wraithForceRef.current ? (() => {
+              const sp = useGameStore.getState();
+              return practiceEdgeInsideDistance({ x: player.x + player.width / 2, y: player.y + player.height / 2 }, { x: 0, y: -1 }, sp.camera, sp.gameBounds, sp.viewZoom);
+            })() : null;
+            if ((forceWraith || patrolWraith) && !wraithForceRef.current && newGameTime >= practiceSpawnWaitMs(wraithPractice, 3000)
+              && (!wraithPractice || wraithUpDist !== null)) {
               wraithForceRef.current = true;
               const st0 = useGameStore.getState();
               const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
@@ -9927,7 +9960,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (forceWraith) {
                 const z0 = Math.max(0.3, Math.min(1, st0.viewZoom || 1));
                 cx = pcx;
-                cy = pcy - (st0.gameBounds.height / 2 / z0 + 140);
+                cy = pcy - (wraithPractice && wraithUpDist !== null ? wraithUpDist : st0.gameBounds.height / 2 / z0 + 140);
                 ring = { cx, cy: cy - LIB_PRACTICE_PATROL_R, r: LIB_PRACTICE_PATROL_R };
               } else {
                 const astroNow = st0.enemies.find(e => e.type === 'mutant-astro');
@@ -10021,7 +10054,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 載せない(専用素材を作らない=設計書の「ではない」条件)ので payload は渡さない。
               // 寄り先=帯の中心(相手を控え、発火の瞬間に今の位置から出し直す。旧: 行ける帯へ寄せる前の湧き点を控えていた=
               // 寄せた・追ってきた分だけ外れた)。
-              bountyAttnRef.current = { at: newGameTime + 950, target: { id: gpE.id, focus: 'center' }, cutin: undefined };
+              bountyAttnRef.current = { at: newGameTime + practiceBossAttnDelayMs(isPracticeRun(), 950), target: { id: gpE.id, focus: 'center' }, cutin: undefined }; // 練習ランだけ遅れ0
             }
           };
           // 案山子(社長指示2026-11-19「HPは無限で何もしないサンドバック。練習用」・utils/scarecrow.ts)。

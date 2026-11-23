@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5771', items: ['変異体対策室で、どのボスも始まってすぐに登場の紹介が入る。紹介の前に歩けてしまう間が無くなった'] },
   { version: '0.25.5770', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5769', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5768', items: ['ゲーム内容の変更はありません'] },
