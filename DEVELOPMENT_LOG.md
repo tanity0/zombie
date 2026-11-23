@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.5772 — ?proj=1 で画面が真っ暗のままになる不具合(投影の格子メッシュ)を直す【2026-11-24 02:23 JST】
+- 社長報告「手榴弾爆発した後(画面が真っ暗・ゲームは進む・proj=1 の方しか起きない)」。`&debug=1`(撮影モードを外して)の左下: `ERR uncaught: null is not an object (evaluating 'this.geometry.getBuffer')`。
+- 原因: Pixi の `MeshSimple._render`(onRender で毎フレーム位置バッファを update)が、destroy 済み(_geometry=null)の MeshSimple に対して RenderGroup の `_onRenderContainers` から呼ばれ、毎フレーム投げて描画が止まっていた。このゲームの MeshSimple は `makeProjGridMesh`(?proj=1 の投影の格子メッシュ)だけ=proj=1 でだけ起きる。どの経路で destroy 済みが一覧に残るか(Pixi の `removeOnRender` は indexOf が -1 だと末尾を消す)までは突き止めていない。
+- 直し: `src/pixi/projDraw.ts` の `makeProjGridMesh` で `m.onRender = null`(一覧に入らない)・`projMeshGrid` が位置のバッファも自分で `update()`・`projMeshGrid`/`projMeshFromSprite` の頭で destroy 済みなら書かない。?proj=0 は不変(MeshSimple を作らない)。
+- 検証: typecheck・eslint・循環import・vitest(projShapeGuard 等 22件)。ヘッドレス(430×932・stage-1・?proj=1)のスクショで地面・光だまり・水たまりが描かれていること、エラー0を目視。destroy 済みが一覧に残る場面そのものはヘッドレスで再現できていない=実機確認待ち。
+- 調べた順(記録): 松明→再現せず/手榴弾を直接爆発(proj=0/1・敵を巻き込む)→再現せず・投影の枠と全表示物の行列に NaN 無し/WebGL のコンテキスト喪失からの立て直しは proj=0/1 とも正常 → 撮影モードが ERR を隠していたと気づき、社長に外してもらって確定。
+- 状態変化: なし。
+
 ## v0.25.5771 — 変異体対策室: 全部のボスで開始直後に出現のアテンション(練習ランだけ)【2026-11-24 01:31 JST】
 - 社長指示「全部のボスでアテンションが出る位置に配置して欲しい(ギリギリ)。その上で、アテンションが最初に」。
 - 調査(枠ごと): 出現と同時=アイドル・天使・裏ボス・フィル・グレン(変えない)/出現+950ms=賞金首・幻影・拳鬼・城ボス/姿が画面に入った時=英雄・解放群・宇宙飛行群・亡霊(3秒待ち+画面の外)/案山子はアテンション無し。

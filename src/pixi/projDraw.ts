@@ -469,6 +469,9 @@ export const makeProjGridMesh = (tex: Texture, tag: string): MeshSimple & ProjMe
     uvs: new Float32Array(PROJ_GRID_VERTS * 2),
     indices: gridIndices(),
   }) as MeshSimple & ProjMeshTagged;
+  // MeshSimple の onRender(毎フレーム位置バッファを update)を外す: destroy 後も RenderGroup に残って
+  // this.geometry=null で毎フレーム投げ、画面が真っ暗になった(iPhone Safari)。位置の update は projMeshGrid が自分で呼ぶ。
+  m.onRender = null;
   m.projTag = tag;
   m.label = 'proj:' + tag;
   return m;
@@ -486,12 +489,15 @@ export const projMeshGrid = (
   mesh: MeshSimple, f: ProjFrame, fr: ProjFrame4, grid: { rowPx: number; colPx: number } = PROJ_GRID_SHARP,
   maxN = PROJ_GRID_MAX, g?: Graphics, flipU = false, flipV = false,
 ): ProjGridResult => {
-  const pos = mesh.geometry.getBuffer('aPosition').data as Float32Array;
+  if (mesh.destroyed || !mesh.geometry) return { nx: 0, ny: 0, pts: 0, wyMin: 0, wyMax: 0, sMax: 0, aMax: 0 }; // destroy 済みは書かない
+  const posBuf = mesh.geometry.getBuffer('aPosition');
+  const pos = posBuf.data as Float32Array;
   const uvBuf = mesh.geometry.getBuffer('aUV');
   const uv = uvBuf.data as Float32Array;
   const res = projGridInto(f, fr, grid.rowPx, grid.colPx, maxN, pos, uv);
   // 左右/上下に返した絵(Sprite の scale が負)は UV を返す(頂点の位置はそのまま=四角は同じ)
   if (flipU || flipV) for (let k = 0; k < uv.length; k += 2) { if (flipU) uv[k] = 1 - uv[k]; if (flipV) uv[k + 1] = 1 - uv[k + 1]; }
+  posBuf.update();
   uvBuf.update();
   ptsFrame += res.pts;
   if (g) projNoteWorldY(g, res.wyMin, res.wyMax);
@@ -508,6 +514,7 @@ export const projMeshFromSprite = (
   mesh: MeshSimple, f: ProjFrame, sp: { position: { x: number; y: number }; scale: { x: number; y: number }; anchor: { x: number; y: number }; texture: Texture; tint: number | string | unknown; alpha: number; blendMode: unknown; visible: boolean; rotation?: number },
   grid: { rowPx: number; colPx: number } = PROJ_GRID_SOFT, dScale = 1, g?: Graphics,
 ): ProjGridResult | null => {
+  if (mesh.destroyed || !mesh.geometry) return null; // destroy 済みは触らない
   const tw = sp.texture.width, th = sp.texture.height;
   const sx = sp.scale.x * dScale, sy = sp.scale.y * dScale;
   const w = Math.abs(tw * sx), h = Math.abs(th * sy);
