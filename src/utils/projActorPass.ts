@@ -51,7 +51,7 @@ export const PROJ_ACTOR_ROLES = {
   tele: 'telegraph', overlayTop: 'telegraph', rings: 'telegraph', bands: 'telegraph', bandSlices: 'telegraph',
   clawMarks: 'telegraph', shockwaves: 'telegraph', spikeThrust: 'telegraph', burstFrag: 'telegraph',
   dashWind: 'telegraph', coilBody: 'telegraph',
-  // 演出(段階3/5まで動かさない)
+  // 演出(段階3=体の相似で動かす・§3-7j の1)
   slash: 'fx', breathRope: 'fx', airStreaks: 'fx', playerAirStreaks: 'fx',
   // 残像(記録した自分の world の点に置く絵): 英雄の残像・格闘の残像
   heroTrail: 'trail', brawlerGhost: 'trail',
@@ -66,7 +66,8 @@ export const projActorRole = (key: ProjActorPartKey): ProjActorRole => PROJ_ACTO
 /** 後掛けがその役に何をするか: 相似で写す/平行移動だけ/動かさない。 */
 export type ProjMove = 'similar' | 'translate' | 'none' | 'own';
 export const projRoleMove = (r: ProjActorRole): ProjMove =>
-  r === 'body' || r === 'shadow' ? 'similar' : r === 'hud' ? 'translate' : r === 'trail' ? 'own' : 'none';
+  // 段階3(§3-7j の1・C1): 演出(斬撃の弧・冷気ブレス・空中の筋)は持ち主の体の相似で動かす(この関数は ?proj=1 の後掛けだけが読む)。
+  r === 'body' || r === 'shadow' || r === 'fx' ? 'similar' : r === 'hud' ? 'translate' : r === 'trail' ? 'own' : 'none';
 
 // ---- 後掛けの相似(§3-5c 型②・§10 B17) ----
 

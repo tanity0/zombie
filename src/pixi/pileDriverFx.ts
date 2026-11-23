@@ -16,6 +16,7 @@
 // 2分類(CLAUDE.md): 杭は自分の弾(敵の危険を伝える絵ではない)。火花・衝撃・破片・蒸気は派手さの絵。
 // 負荷: 杭は同時に最大 PILE_MAX 本(実際は1〜2本)、Graphics を毎フレーム描き直す(1本あたり約30図形)。衝撃は最大 IMPACT_MAX 件
 // (1件あたり線・多角形約30)。蒸気は pooled sprite STEAM_MAX 枚。強glow・投影影・フィルタは使わない。
+import { projectInto, makeProjPoint, type ProjFrame } from '../utils/perspectiveProjection'; // 投影の段階3(?proj=1 の時だけ)
 import { Container, Graphics, Sprite } from 'pixi.js';
 import type { Enemy, Player, Projectile } from '../types/game';
 import { PILEDRIVER_WEAPON_KEY, piledriverRangePx } from '../utils/weaponUtils';
@@ -132,6 +133,8 @@ interface Jet { x: number; y: number; dx: number; dy: number; at: number; len: n
 
 interface Pen { glow: Graphics; body: Graphics; holder: Container }
 
+const PQ = makeProjPoint();
+
 export class PileDriverFx {
   /** 上へ撃った杭(自分の体の奥)と、それ以外(手前)。どちらもアクターの層で自分の足元Yに並べる。 */
   private readonly back: Pen;
@@ -170,7 +173,7 @@ export class PileDriverFx {
     return p.weaponKey === PILEDRIVER_WEAPON_KEY && !p.hostile && !p.reflected;
   }
 
-  sync(projectiles: readonly Projectile[], player: Player, enemies: readonly Enemy[], now: number): void {
+  sync(projectiles: readonly Projectile[], player: Player, enemies: readonly Enemy[], now: number, projF: ProjFrame | null = null): void {
     for (const pen of [this.back, this.front]) { pen.glow.clear(); pen.body.clear(); }
     this.fxg.clear(); this.fxAdd.clear();
     const footY = player.y + player.height;
@@ -261,7 +264,18 @@ export class PileDriverFx {
     this.drawImpacts(now);
     this.drawJets(now);
     this.drawSteam(now);
+    // ?proj=1(段階3・B11): 杭・筒・蒸気・火花を、主人公の足元を支点にした体の相似(k=s)で写す(1枚の Graphics に複数の演出=入れ物ごと)。
+    // 杭の先を弾の world の位置の投影へ厳密に合わせる(両)のは図形ごとの投影が要る=段階3の残り(報告済み)。null なら今のまま(恒等)。
+    const objs = [this.back.holder, this.front.holder, this.steamLayer, this.fxg, this.fxAdd];
+    if (projF) {
+      const pq = projectInto(projF, pcx, footY, PQ);
+      for (const o of objs) { o.position.set(pq.x - pq.s * pcx, pq.y - pq.s * footY); o.scale.set(pq.s); }
+    } else if (this.projWas) {
+      for (const o of objs) { o.position.set(0, 0); o.scale.set(1); }
+    }
+    this.projWas = !!projF;
   }
+  private projWas = false;
 
   private pushImpact(x: number, y: number, ux: number, uy: number, now: number, miss: boolean): void {
     if (this.impacts.length >= IMPACT_MAX) this.impacts.shift();

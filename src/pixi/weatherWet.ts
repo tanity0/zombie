@@ -26,6 +26,7 @@ import { getTexture } from './pixiTextures';
 import { makeProjGridMesh, projMeshFromSprite, PROJ_GRID_SOFT } from './projDraw'; // 投影の段階4(?proj=1 の時だけ・K01)
 import { projectInto, makeProjPoint, type ProjFrame } from '../utils/perspectiveProjection';
 import { projShapeOutside } from '../utils/projShape';
+import { projFxScale } from '../utils/projFx'; // 投影の段階3(?proj=1 の時だけ・G5)
 import type { MeshSimple } from 'pixi.js';
 import { getSoftGlowTexture } from './lighting';
 import {
@@ -1237,6 +1238,15 @@ export class WeatherWetLayer {
       const sc = DEBRIS_ART_SCALE * h.depthScale(r.y) * r.s * pose.scale; // 波紋は雫の大きさ=水たまりを大きくしても据え置き
       r.sp.scale.set(sc, sc);
       r.sp.alpha = pose.alpha * (r.water ? 0.6 : 0.45) * r.a * h.horizonAlpha(r.y);
+      const pf = this.projFrameNow;
+      if (pf) {
+        // ?proj=1(段階3・G5): 地面に落ちた波紋=点(付け根=波紋の地面の点・大きさは旧い depthScale を外して s_fx)・濃さは投影後のY
+        const q = projectInto(pf, r.x, r.y, this.projPt);
+        const sq = DEBRIS_ART_SCALE * projFxScale(q.s) * r.s * pose.scale;
+        r.sp.position.set(q.x, q.y);
+        r.sp.scale.set(sq, sq);
+        r.sp.alpha = pose.alpha * (r.water ? 0.6 : 0.45) * r.a * (h.projFade ? h.projFade(r.x, r.y) : q.alpha);
+      }
     }
   }
 
@@ -1420,6 +1430,16 @@ export class WeatherWetLayer {
       d.sp.width = RAIN_WIDTH * ds;
       d.sp.height = pose.len * ds;
       d.sp.alpha = d.spec.alpha * pose.alpha * h.horizonAlpha(d.y);
+      const pf = this.projFrameNow;
+      if (pf) {
+        // ?proj=1(段階3・G5): 落ちる雫=着地点(地面の点)を投影し、高さと斜めのずれを × s で持ち上げる。大きさは旧い ds を外して s_fx
+        const q = projectInto(pf, d.x, d.y, this.projPt);
+        const kf = projFxScale(q.s);
+        d.sp.position.set(q.x - pose.h * sl * q.s, q.y - pose.h * q.s);
+        d.sp.width = RAIN_WIDTH * kf;
+        d.sp.height = pose.len * kf;
+        d.sp.alpha = d.spec.alpha * pose.alpha * (h.projFade ? h.projFade(d.x, d.y) : q.alpha);
+      }
     }
   }
 

@@ -94,12 +94,13 @@ describe('projActorPass: 頭上の読ませる物(方針②)', () => {
 });
 
 describe('projActorPass: 役の表(作る物2)', () => {
-  it('予告・演出は動かさない/頭上UIは平行移動/体と影は相似', () => {
+  it('予告は動かさない/頭上UIは平行移動/体と影と演出は相似', () => {
     for (const k of ['tele', 'overlayTop', 'rings', 'bands', 'bandSlices', 'clawMarks', 'shockwaves', 'spikeThrust', 'burstFrag', 'dashWind', 'coilBody'] as const) {
       expect(PROJ_ACTOR_ROLES[k]).toBe('telegraph');
       expect(projRoleMove(PROJ_ACTOR_ROLES[k])).toBe('none');
     }
-    for (const k of ['slash', 'breathRope', 'airStreaks', 'playerAirStreaks'] as const) expect(projRoleMove(PROJ_ACTOR_ROLES[k])).toBe('none');
+    // 段階3(§3-7j の1): 演出は体の相似で動かす
+    for (const k of ['slash', 'breathRope', 'airStreaks', 'playerAirStreaks'] as const) expect(projRoleMove(PROJ_ACTOR_ROLES[k])).toBe('similar');
     for (const k of ['heroTrail', 'brawlerGhost'] as const) expect(projRoleMove(PROJ_ACTOR_ROLES[k])).toBe('own'); // 残像=自分の world の点で投影
     expect(projRoleMove(PROJ_ACTOR_ROLES.overlay)).toBe('translate');
     for (const k of ['sprite', 'hitFlash', 'reticle', 'atkArt', 'glenParts', 'alchemyRocks', 'phillBack', 'featherC', 'phillFront', 'rim', 'light',

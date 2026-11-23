@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5762 — 遠近の投影 段階3「点で出る演出」の前半(エフェクト20種・弾・砂埃・光・輪・数字・漂う粒の一部)(?proj=1 のみ・途中)【2026-11-23 13:54 JST】
+- 仕様: research/PERSPECTIVE_PROJECTION.md §3-7(監査2巡・社長裁定 ★#24=B・#25=A・#26=B・#27=B・#28=B・#29=A)。
+- 入れた物: 純関数 `utils/projFx.ts`(台帳 `PROJ_FX_ROWS`・`PROJ_FX_KINDS`・倍率 s/s_fx/s_b)+テスト16本 / `syncEffects` の後掛け `projFxEffect`(点・点o・向・両・読)/ `projExempt` / `projRoleMove` の演出を相似へ(寄りの支点・斬撃の弧を予告の濃さから外す件も閉じた)/ 持ち主への登録 C2・C3・C13・C14・C16 / 弾 `projBullet`(丸=点・長手=向・s_b・下限6px)/ 数字と被弾点の H0 方式 / 光 A7・A8・F3 / 全部の ring を2枚の格子メッシュで寝かせる / 主人公の輪(I12〜I15)・三日月・ワイヤー / スキャンの扇=判定と同じ点を投影(★#29=A・差 0.00px)/ NewGunsFx・PileDriverFx・weatherWet に `pf` / 漂う粒(蛍・火の粉・月の塵)/ 計器 `s3 …` 一式(層を全部歩く)/ 番人 `projFxGuard.test.ts` ①〜⑤。
+- 画で確認(proj3/): P01〜P05・P07・P11(引き0.4/0.7)・P14(PC)・P15・P16。段階4で撮れなかった6技のうち城ボスの踏み鳴らし・アクラシエル・フィル2技を撮り直し(城ボスの薙ぎ・トールの払い/一閃はまだ)。全場面 cull/origin/s4 direct=0。
+- 残り: 敵の飾り D1〜D11・城ボスの速度線 / C7〜C11(KILL・殺陣の1フレーム遅れ)・C15・C17・C18 / B12 気功・B13 アイレーザー・向の長さの詰め / A5 犬の向き / 雪・G4・G5 / 光柱 / 輪の「判定と一致」の印 / 扇と輪の縁を段階3の線の規則(濃さを落とさない)へ / 数字と被弾点の誤差が条件6pxを超える(縦持ち 14.7px・PC 18.9px)/ P06・P08〜P10・P12・P13・P17 の撮影 / phone-guard・pc-guard / 監査。
+- 負荷: 2/10(輪が多い場面 3/10)。描画CPU。`?proj=0` ではメッシュも作らない。
+- 変えたファイル: src/pixi/pixiScene.ts・newGunsFx.ts・pileDriverFx.ts・weatherWet.ts・src/utils/projActorPass.ts・projActorPass.test.ts・projFx.ts(新)・projFx.test.ts(新)・src/pixi/projFxGuard.test.ts(新)
+- 検証: typecheck / eslint / circular / vitest 全件(実装担当 11523 通過・batMove の1件は負荷下のみ・単独で通過)・rebase後に関係分。
+- 自己点検: 憲法第4条・第5条に抵触しない(既定では何も変わらない)。
+
 ## v0.25.5761 — 遠近の投影 段階4の監査2巡目の是正と仕上げ(記号の縁・盾で割った光線・表の南だけ積み直し)(?proj=1 のみ)【2026-11-23 12:41 JST】
 - 品質監査2巡目(opus・角度=手前を抑えた式と段階1/2の食い違い・1巡目の直しの効き・?proj=0 への漏れ・文書)で (A)2件: ①記号の縁の線に s が掛かっていない+濃さの二重の下げ→`projGlyphStrokeLook`(縁の幅×s・濃さの下げは強い方1回) ②盾で割った光線の判定でない層に B と 1px の下限が効かない→割った中心線を `projSeg`。
 - (B) B-1 表を毎フレーム作り直していた(手前を抑える案の既定ONで ℓ_ref が動くたび)→`updateProjTable`(北の g を使い回し南だけ積み直し・配列再利用・冪の前計算・全部作り直しと1ビット一致をテスト)。実測: 全部の作り直し 0.371→0.179ms、南だけ 0.010ms。ボス戦の引き60秒で 1フレーム平均 0.024ms・最大 0.3ms(単発)。計器に `table builds` の行。B-2 `syRef` を表の値へ。B-3 手前を抑える案のテスト追加。(C) コメント・番人の一覧。設計書の §1-1d・負荷の節は f9d2f8d で直した。

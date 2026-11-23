@@ -6,6 +6,9 @@
 // 色: スキャン=彩度を落とした青白い燐光+白い芯 / 衛星弾=ランタンの炎の濁った琥珀 / 塊=紫の渦(支給の絵)と、周りの焦げ・火の粉・土埃も紫寄り
 // (絵の読み込み前の Graphics の塊だけは冷えかけの鉱滓の色のまま)。
 // 会心(#fbbf24)・レベルアップ(#fde68a)・弾薬回収(#67e8f9)・危険の赤/紫とは別の色にしてある。
+import { projectInto, makeProjPoint, type ProjFrame, type ProjPoint } from '../utils/perspectiveProjection'; // 投影の段階3(?proj=1 の時だけ)
+import { projFxScale } from '../utils/projFx';
+import { projLine, projPoly, projSeg } from './projDraw';
 import { Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 import { getTexture } from './pixiTextures';
 import type { Enemy, Player, Projectile } from '../types/game';
@@ -77,6 +80,9 @@ interface BlobDraw {
 }
 interface BlobFxState { swirl: number; lastGt: number; trail: { x: number; y: number; t: number }[]; x: number; y: number; dirX: number; dirY: number; seed: number }
 
+const PFAN = makeProjPoint();
+const PMARK = makeProjPoint();
+
 export class NewGunsFx {
   private readonly ground = new Graphics();
   private readonly fanGfx = new Graphics();
@@ -109,10 +115,16 @@ export class NewGunsFx {
     return this.blobFrames;
   }
 
+  /** 計器(?proj=1&projaudit=1・s3 fan): 描いた扇の頂点と判定の扇(scanFanContains の境界)の差の最大(ズーム後の画面px)。 */
+  projFanDiffPx = 0;
+  /** 今フレームの投影の枠(?proj=1 の時だけ・null=今の描き方そのまま)。WeatherWetLayer の projGrid と同じ型。 */
+  private pf: ProjFrame | null = null;
+
   sync(
     enemies: readonly Enemy[], player: Player, projectiles: readonly Projectile[], gameTime: number, now: number,
-    depthEnemy: (footY: number) => number,
+    depthEnemy: (footY: number) => number, pf: ProjFrame | null = null,
   ): void {
+    this.pf = pf;
     const v = getNewGunsView();
     const g = this.ground; const f = this.fx; const fan = this.fanGfx;
     g.clear(); f.clear(); fan.clear();
@@ -532,9 +544,40 @@ export class NewGunsFx {
       return pts;
     };
     // 横向きほど地面へ潰れて細くなる。潰れた分だけ塗りと先頭の弧を足す(横向きで塗り0.18・弧12px)。
-    const sideK = Math.abs(Math.cos(base));
+    // ?proj=1(段階3・B10・★#29=A): 判定の扇(scanFanContains の形=0.36 で潰した world の扇・中心角 scanFanGroundAngle)を頂点ごとに投影する。
+    // sideK は判定の形に無い補正(塗りの濃さと線の太さだけ)=投影の時は外す(sideK=0 の値)。形は判定の扇と一致する。
+    const pf = this.pf;
+    const sideK = pf ? 0 : Math.abs(Math.cos(base));
     // 出始めは先頭の弧を細く(届いた長さに比例・最初の40msはさらに細い=白い欠片に見せない)。
     const grow = clamp01(stopFrac * 1.6) * clamp01((gameTime - fan.startAt) / 40);
+    if (pf) {
+      // 線の太さ=段階3の線の規則(今の太さ×s・ズーム後の画面で 1px の下限・濃さは落とさない)。s=根元の s。
+      // 太さは部品(projLine)が頂点ごとに × s を掛ける(★#23 の帯)=ここでは今の太さを渡す。
+      const z = pf.wgScale;
+      const lw = (w: number) => w;
+      const body = arc(reach);
+      projPoly(g, pf, [pcx, pcy, ...body], { color: SCAN_DEEP, alpha: (0.10 + 0.08 * sideK) * fade });
+      const lagReachP = SCAN_FAN_LENGTH_PX * Math.min(stopFrac, scanFanSweepFrac(fan, Math.min(gameTime, endAt) - 70));
+      if (lagReachP > 10) projLine(g, pf, arc(lagReachP), { width: lw(2), color: SCAN, alpha: 0.38 * fade });
+      const leadP = arc(reach, 1.04);
+      const sweepingP = !fan.resolved;
+      projLine(g, pf, leadP, { width: lw((sweepingP ? 9 + 3 * sideK : 4 + 1.5 * sideK) * grow), color: SCAN, alpha: (sweepingP ? 0.5 : 0.3) * fade });
+      projLine(g, pf, leadP, { width: lw((sweepingP ? 2.5 + sideK : 1.2) * grow), color: WHITE, alpha: 0.9 * fade });
+      for (const sg of [-1, 1]) {
+        const q = scanFanScreenPoint(pcx, pcy, base + sg * half, reach);
+        projSeg(g, pf, pcx, pcy, q.x, q.y, { width: lw(1.2), color: SCAN, alpha: 0.35 * fade });
+      }
+      // 計器 s3 fan: 描いた扇の外周の頂点(world)を判定の式で地面の上へ戻し、判定の扇の境界(長さ reach)との差を画面px で測る。
+      let worst = 0;
+      for (let i = 0; i < body.length; i += 2) {
+        const gx = body[i] - pcx, gy = (body[i + 1] - pcy) / SCAN_FAN_GROUND_Y_SCALE;
+        const pq = projectInto(pf, body[i], body[i + 1], PFAN);
+        const d = Math.abs(Math.hypot(gx, gy) - reach) * SCAN_FAN_GROUND_Y_SCALE * pq.s * z;
+        if (d > worst) worst = d;
+      }
+      this.projFanDiffPx = worst;
+      return;
+    }
     g.poly([pcx, pcy, ...arc(reach)]).fill({ color: SCAN_DEEP, alpha: (0.10 + 0.08 * sideK) * fade });
     // 遅れて追う1本(70ms遅れ)。
     const lagReach = SCAN_FAN_LENGTH_PX * Math.min(stopFrac, scanFanSweepFrac(fan, Math.min(gameTime, endAt) - 70));
@@ -612,7 +655,10 @@ export class NewGunsFx {
       const stacks = scanStacksAt(e, gameTime);
       const remain = scanStackRemainFrac(e, gameTime);
       const fb = enemyFootBox(e);
-      const ds = depthEnemy(fb.footY);
+      const pf = this.pf;
+      // ?proj=1(段階3・B10): 旧い倍率 depthEnemy は外す。足元の輪は world の寸法で頂点ごとに投影、頭上の印は点(大きさ s_fx・下の pq)。
+      const pq = pf ? projectInto(pf, fb.footX, fb.footY, PMARK) : null;
+      const ds = pq ? 1 : depthEnemy(fb.footY);
       const strip = enemyHitStrip(e);
       const at = markedAt.get(e.id);
       const pop = at !== undefined ? easeOutCubic((gameTime - at) / MARK_POP_MS) : 1;
@@ -634,6 +680,14 @@ export class NewGunsFx {
       }
       // 重ねるほど太く明るく(4で大きく跳ねて王手に見せる・クリエイティブ監査#6)。
       const stackW = [0, 0, 0.6, 1.3, 2.6, 3.4][Math.min(SCAN_STACK_MAX, stacks)];
+      if (pf && pq) {
+        const lw = (w: number) => w; // 太さは部品(projLine)が頂点ごとに × s を掛ける
+        projLine(g, pf, pts, { width: lw(3 + stackW + 3 * hitK), color: SCAN, alpha: Math.min(1, a0 * tail * (0.75 + 0.05 * stacks + hitK)) * pq.alpha });
+        projLine(g, pf, pts, { width: lw(1), color: WHITE, alpha: Math.min(1, (0.6 * a0 + hitK + blink) * tail) * pq.alpha });
+        // 頭上の菱形と重ねの枠=点(付け根=足元の投影 P・頭の高さは × s・大きさは s_fx)。下の今の行を P の周りへ写して描く。
+        this.drawMarkHead(f, e, fb, pq, a0, tail, hitK, blink, pop, stacks, now);
+        continue;
+      }
       g.poly(pts, false).stroke({ width: 3 + stackW + 3 * hitK, color: SCAN, alpha: Math.min(1, a0 * tail * (0.75 + 0.05 * stacks + hitK)) });
       g.poly(pts, false).stroke({ width: 1, color: WHITE, alpha: Math.min(1, (0.6 * a0 + hitK + blink) * tail) });
       const headY = fb.footY - (fb.footY - enemyHeadY(e, false)) * ds;
@@ -659,6 +713,35 @@ export class NewGunsFx {
         if (k < stacks) f.circle(dx, dy, dotR).fill({ color: full ? WHITE : SCAN, alpha: 0.95 * a0 * tail }).stroke({ width: 1.2, color: WHITE, alpha: 0.8 * a0 * tail });
         else f.circle(dx, dy, dotR * 0.85).fill({ color: 0x0b1220, alpha: 0.45 * a0 * tail }).stroke({ width: 1.2, color: SCAN, alpha: 0.55 * a0 * tail });
       }
+    }
+  }
+  /** ?proj=1(段階3・B10): 印の頭上の菱形と重ねの枠を、足元の投影 P を付け根に置く(頭の高さ × s・大きさ × s_fx・濃さは中心のフェード)。 */
+  private drawMarkHead(
+    f: Graphics, e: Enemy, fb: { footX: number; footY: number }, pq: ProjPoint, a0In: number, tail: number, hitK: number, blink: number,
+    pop: number, stacks: number, now: number,
+  ): void {
+    const ks = projFxScale(pq.s);
+    const a0 = a0In * pq.alpha;
+    const cx = pq.x;
+    const headY = pq.y - (fb.footY - enemyHeadY(e, false)) * pq.s;
+    const drop = (1 - pop) * 14;
+    const cy = headY - 16 * ks - drop;
+    const full = stacks >= SCAN_STACK_MAX;
+    const beat = (now % 760) / 760;
+    const thump = (t: number) => (t < 0 ? 0 : Math.exp(-t * 9));
+    const pulse = full ? Math.min(1, thump(beat) + 0.7 * thump(beat - 0.22)) : 0;
+    const s = 5.5 * ks * (1 + 0.45 * hitK) * (full ? 1.35 + 0.45 * pulse : 1);
+    const dia = [cx, cy - s * 1.25, cx + s, cy, cx, cy + s * 1.25, cx - s, cy];
+    if (full) f.circle(cx, cy, s * 2.2).fill({ color: SCAN, alpha: (0.18 + 0.22 * pulse) * a0 * tail });
+    f.poly(dia).fill({ color: SCAN, alpha: 0.85 * a0 * tail }).stroke({ width: 1.2, color: WHITE, alpha: 0.9 * a0 * tail });
+    if (hitK + blink + pulse * 0.5 > 0.01) f.poly(dia).fill({ color: WHITE, alpha: Math.min(1, hitK + blink + pulse * 0.45) * tail });
+    const dotR = 3.2 * ks;
+    const gap = dotR * 2.7;
+    const dy = cy - 5.5 * ks * 1.6 - dotR * 2.4;
+    for (let k = 0; k < SCAN_STACK_MAX; k++) {
+      const dx = cx + (k - (SCAN_STACK_MAX - 1) / 2) * gap;
+      if (k < stacks) f.circle(dx, dy, dotR).fill({ color: full ? WHITE : SCAN, alpha: 0.95 * a0 * tail }).stroke({ width: 1.2, color: WHITE, alpha: 0.8 * a0 * tail });
+      else f.circle(dx, dy, dotR * 0.85).fill({ color: 0x0b1220, alpha: 0.45 * a0 * tail }).stroke({ width: 1.2, color: SCAN, alpha: 0.55 * a0 * tail });
     }
   }
 }
