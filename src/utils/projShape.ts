@@ -14,6 +14,7 @@
 import {
   projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, projDistanceFade, projScreenRowsL, type ProjFrame,
 } from './perspectiveProjection';
+import { projLiftScale } from './projLift'; // 段階5: 高さの倍率 σ(★#6)の出どころ
 
 /**
  * ★#23「予告の線の太さと遠近」(社長裁定 2026-11-23「予告はb」=B): 太さが判定を表さない線(縁・芯・流星の線・内側の細い輪・白い針)と記号の大きさ。
@@ -1033,10 +1034,13 @@ export const projStrokeHalfWidth = (
 // 高さ・濃さ・間引き
 // ---------------------------------------------------------------------------------------------
 
-/** 高さを持つ頂点(地面の点 (gx, gy) から上へ h)の表示座標: 投影(gx, gy) − (0, h·s)(§1-3・★#6「浮きの倍率」の推薦=s)。 */
+/**
+ * 高さを持つ頂点(地面の点 (gx, gy) から上へ h)の表示座標: 投影(gx, gy) − (0, h·σ)(§1-3・§3-8b・★#6「浮きの倍率」=A で σ=s)。
+ * σ は utils/projLift.ts の projLiftScale の1か所から出す(段階5・作る物1)。地平線より北は ℓ=0 に寄せた行の σ。
+ */
 export const projLiftInto = (f: ProjFrame, gx: number, gy: number, h: number, out: { x: number; y: number; s: number }) => {
   projVertexInto(f, gx, gy, GP);
-  out.x = GP.x; out.y = GP.y - h * GP.s; out.s = GP.s;
+  out.x = GP.x; out.y = GP.y - h * projLiftScale(f, Math.max(0, GP.l ?? 0)); out.s = GP.s;
   return out;
 };
 

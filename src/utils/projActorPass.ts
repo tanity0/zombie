@@ -7,6 +7,7 @@ import { brawlerEnemyClass } from './brawlerCombo';
 import { isTerminalReaper, OFFSCREEN_SPAWN_MARGIN } from './enemyUtils';
 import { regionEdgeFade, type RegionRect } from './regionEdgeFade';
 import type { EnemyType } from '../types/game';
+import type { ProjLiftKind } from './projLift';
 
 // ---- 役の表(§3-5k 作る物2・1本) ----
 
@@ -62,6 +63,29 @@ export const PROJ_ACTOR_ROLES = {
 export type ProjActorPartKey = keyof typeof PROJ_ACTOR_ROLES;
 
 export const projActorRole = (key: ProjActorPartKey): ProjActorRole => PROJ_ACTOR_ROLES[key];
+
+/**
+ * 段階5「高さ」(research/PERSPECTIVE_PROJECTION.md §3-8e・作る物2): 部品の名札ごとの高さの付き方の既定。
+ * 今の描き方で「本体と一緒に − h されているか」で決める(体の絵・手の武器・体の光=body/地面の輪・影・予告=ground/
+ * 名前の札・頭上マーク=H に高さを含む頭上の物=hudWithH/浮きの筋=streak)。同じ名札でも物ごとに違う所は
+ * pixiScene の projLiftTag で物ごとに上書きする(例: 主人公の体力の線=hudNoH・敵の体力バー=ground)。
+ */
+export const PROJ_ACTOR_LIFTED = {
+  sprite: 'body', hitFlash: 'body', reticle: 'ground', atkArt: 'body', glenParts: 'body', alchemyRocks: 'body',
+  phillBack: 'body', featherC: 'body', rim: 'body', avatarPart: 'body', objShadeTwin: 'body',
+  heroFog: 'body', heroFog2: 'body', heroMotes: 'body',
+  playerKatanaBack: 'body', playerSkateboard: 'body', playerKintoun: 'body', playerBloodRim: 'body',
+  playerKnife: 'body', playerKnifeSlash: 'body', playerKnifeTrail: 'body', playerMeleeWpn: 'body', playerFirstAidBag: 'body',
+  light: 'body', phillFront: 'body', rescueBody: 'body', rescueSwing: 'body', attachedArt: 'body',
+  summonTornado: 'ground', nameLabel: 'hudWithH', airRing: 'ground', airGroundShadow: 'ground',
+  overlay: 'ground', headMark: 'hudWithH',
+  tele: 'ground', overlayTop: 'ground', rings: 'ground', bands: 'ground', bandSlices: 'ground',
+  clawMarks: 'ground', shockwaves: 'ground', spikeThrust: 'ground', burstFrag: 'ground', dashWind: 'ground', coilBody: 'ground',
+  slash: 'body', breathRope: 'body', airStreaks: 'streak', playerAirStreaks: 'streak',
+  heroTrail: 'ground', brawlerGhost: 'ground', brawlerAura: 'body',
+} as const satisfies Record<ProjActorPartKey, ProjLiftKind>;
+
+export const projActorLift = (key: ProjActorPartKey): ProjLiftKind => PROJ_ACTOR_LIFTED[key];
 
 /** 後掛けがその役に何をするか: 相似で写す/平行移動だけ/動かさない。 */
 export type ProjMove = 'similar' | 'translate' | 'none' | 'own';
