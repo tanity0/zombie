@@ -33,8 +33,9 @@ export const projLiftFixDy = (h: number, m: number, sigma: number): number => -(
  * - hudWithH: 前掛け P + s·(H − F)・平行移動で H に高さを含む頭上の物(m = s·δ)
  * - ground: 高さと一緒に上がらない部品(影・足元の輪・接地の楕円・地面の予告)=直さない
  * - streak: 足元から体までを結ぶ浮きの筋(位置は body と同じ・長さも σ/m 倍)
+ * - bodyAlt: 体の相似で写るが、体の高さの項のうち別に記録した1項(projLiftAltH)だけで上がっている物(主人公に付いて回る image=playerAirPx だけ)
  */
-export type ProjLiftKind = 'body' | 'hudNoH' | 'hudWithH' | 'ground' | 'streak';
+export type ProjLiftKind = 'body' | 'hudNoH' | 'hudWithH' | 'ground' | 'streak' | 'bodyAlt';
 
 /**
  * 部品の m(1項ぶん)。drawn=描く関数が実際に引いた量(=δ·h)・delta=δ・k=後掛けの k・s=投影の s。
@@ -43,7 +44,7 @@ export type ProjLiftKind = 'body' | 'hudNoH' | 'hudWithH' | 'ground' | 'streak';
 export const projLiftPartMul = (kind: ProjLiftKind, k: number, s: number, sigma: number, delta: number): number => {
   const dd = Math.abs(delta) > 1e-9 ? delta : 1;
   switch (kind) {
-    case 'body': case 'streak': return k;
+    case 'body': case 'streak': case 'bodyAlt': return k;
     case 'hudNoH': return 1;
     case 'hudWithH': return s;
     default: return sigma / dd;
@@ -149,7 +150,7 @@ const R = (types: ProjLiftRowType[], delta: 1 | 'd' | 'check' | null): ProjLiftR
 
 export const PROJ_LIFT_ROWS = {
   // ア. 主人公
-  Z1: R(['split'], 1), Z2: R(['split'], 'd'), Z3: R(['split'], 1), Z4: R(['split'], 'd'), Z5: R(['dead'], null),
+  Z1: R(['split'], 'check'), Z2: R(['split'], 'd'), Z3: R(['split'], 1), Z4: R(['split'], 'd'), Z5: R(['dead'], null),
   Z6: R(['done'], null), Z7: R(['split', 'ground'], 1), Z8: R(['split', 'ground'], 'check'), Z9: R(['split'], 'check'),
   Z57: R(['split'], 1), Z40: R(['done'], 'd'),
   // イ. 敵・ボス

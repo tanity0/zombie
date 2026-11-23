@@ -3,7 +3,10 @@ import { PROJ_LIFT_ROWS, type ProjLiftRow } from '../utils/projLift';
 
 // research/PERSPECTIVE_PROJECTION.md §3-8i 作る物10(段階5「高さ」のソースの番人・§3-4 の2 の流儀)。
 // 高さを使う行(同じ行か、すぐ上の行)に `// proj-lift: Z10` のように台帳の番号を書く。免除は `// proj-lift: exempt(理由)`
-// (理由は dead・lab・stage8・not-height・core=段階5の割り戻しの本体)。済の行も免除ではなく台帳の番号で印を付ける。1行に複数の番号は `// proj-lift: Z10 Z12`。
+// (理由は dead・lab・stage8・not-height)。済の行も免除ではなく台帳の番号で印を付ける。1行に複数の番号は `// proj-lift: Z10 Z12`。
+// ★仕組みの行(段階5の割り戻しの本体=高さの直しそのものを足す行)は、免除でも台帳の行でもなく「台帳の外の仕組みの行」として
+//   番人①の対象から外す: 下の CORE_FNS の関数の本体の行は数えない(旧: 印 `exempt(core …)` で免除していた=免除の理由から core を外した)。
+//   仕組みの関数を増やした時はこの一覧に足す(関数の名前が無くなったらテストが落ちる)。
 
 const sources = import.meta.glob(['./pixiScene.ts', '../utils/projLift.ts', '../utils/projShape.ts', '../utils/collisionUtils.ts', '../utils/endingScene.ts'], {
   eager: true, import: 'default', query: '?raw',
@@ -28,16 +31,35 @@ const markOf = (i: number): string | null => {
   const m = MARK_RE.exec(lines[i]) ?? (i > 0 && isComment(lines[i - 1]) ? MARK_RE.exec(lines[i - 1]) : null);
   return m ? m[1] : null;
 };
-const EXEMPT_RE = /^exempt\((dead|lab|stage8|not-height|core)\b/; // core=段階5の割り戻しの本体(高さの直しそのものの行)
+const EXEMPT_RE = /^exempt\((dead|lab|stage8|not-height)\b/;
+/** 台帳の外の仕組みの行(段階5の割り戻しの本体): この関数の本体の行は番人①の対象から外す。 */
+const CORE_FNS = ['projLiftFixPart', 'projPostLoose', 'projPostView'] as const;
+/** 関数の本体の行の範囲 [開始, 終わり](0 始まり・中括弧を数えて閉じるまで)。見つからなければ null。 */
+const fnRange = (name: string): [number, number] | null => {
+  const st = lines.findIndex((l) => new RegExp(`^\\s*private ${name}\\(`).test(l));
+  if (st < 0) return null;
+  let depth = 0, seen = false;
+  for (let i = st; i < lines.length; i++) {
+    for (const ch of lines[i]) { if (ch === '{') { depth++; seen = true; } else if (ch === '}') depth--; }
+    if (seen && depth <= 0) return [st, i];
+  }
+  return null;
+};
+const CORE_RANGES = CORE_FNS.map((n) => [n, fnRange(n)] as const);
+const inCore = (i: number) => CORE_RANGES.some(([, r]) => r !== null && i >= r[0] && i <= r[1]);
 const ROWS = PROJ_LIFT_ROWS as Record<string, ProjLiftRow>;
 
 describe('投影の段階5: 高さの番人(§3-8i の10)', () => {
   it('pixiScene.ts を読めている', () => { expect(src.length).toBeGreaterThan(100000); });
 
-  it('① 高さの正規表現に当たる行すべてに proj-lift: の印(台帳の番号か免除)がある', () => {
+  it('仕組みの行の関数(CORE_FNS)が pixiScene に在る', () => {
+    expect(CORE_RANGES.filter(([, r]) => r === null).map(([n]) => n)).toEqual([]);
+  });
+
+  it('① 高さの正規表現に当たる行すべてに proj-lift: の印(台帳の番号か免除)がある(仕組みの行=CORE_FNS の本体は対象外)', () => {
     const missing: string[] = [];
     lines.forEach((l, i) => {
-      if (isComment(l)) return;
+      if (isComment(l) || inCore(i)) return;
       if (!HEIGHT_RES.some((re) => re.test(l))) return;
       const m = markOf(i);
       if (!m || !(EXEMPT_RE.test(m.trim()) || /\bZ\d+\b/.test(m))) missing.push(`${i + 1}: ${l.trim().slice(0, 120)}`);

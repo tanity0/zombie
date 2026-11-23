@@ -72,8 +72,10 @@ export const projActorRole = (key: ProjActorPartKey): ProjActorRole => PROJ_ACTO
  */
 export const PROJ_ACTOR_LIFTED = {
   sprite: 'body', hitFlash: 'body', reticle: 'ground', atkArt: 'body', glenParts: 'body', alchemyRocks: 'body',
-  phillBack: 'body', featherC: 'body', rim: 'body', avatarPart: 'body', objShadeTwin: 'body',
-  heroFog: 'body', heroFog2: 'body', heroMotes: 'body',
+  // avatarPart=ground: 生きたアバター部品は ?proj=0 で歩きの上下 bob(δ=d)だけで上がり、跳び・浮き・跳ねでは上がらない
+  // (pixiScene の syncAvatarPartLayer の位置)=A では割り戻し0(段階5・Z9 を確かめた)。
+  phillBack: 'body', featherC: 'body', rim: 'body', avatarPart: 'ground', objShadeTwin: 'body',
+  heroFog: 'ground', heroFog2: 'ground', heroMotes: 'ground', // 足元の霧と粒=地面に残る(跳ぶと霧は消える・?proj=0 で体の高さと一緒に上がらない)
   playerKatanaBack: 'body', playerSkateboard: 'body', playerKintoun: 'body', playerBloodRim: 'body',
   playerKnife: 'body', playerKnifeSlash: 'body', playerKnifeTrail: 'body', playerMeleeWpn: 'body', playerFirstAidBag: 'body',
   light: 'body', phillFront: 'body', rescueBody: 'body', rescueSwing: 'body', attachedArt: 'body',

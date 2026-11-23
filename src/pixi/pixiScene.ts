@@ -351,7 +351,7 @@ import {
 import { projTeleFadeY, projShapeOutside, PROJ_GRID_MAX, type ProjFrame4 } from '../utils/projShape'; // 投影の段階4「形を持つもの」(§3-6)
 import {
   projLiftScale, projLiftTermsFixDy, projLiftPartMul, projGroundOffsetFix, projSkyTopY, projSkyStartH, projLiftOutside,
-  projHelperSimilar, projLiftPointInto, makeProjLiftPoint, projLiftCapStat, type ProjLiftKind, type ProjLiftRowKey,
+  projHelperSimilar, projLiftPointInto, makeProjLiftPoint, projLiftCapStat, projLiftFixDy, type ProjLiftKind, type ProjLiftRowKey,
 } from '../utils/projLift'; // 投影の段階5「高さ」(§3-8)
 import {
   projDrawBeginFrame, projDrawStat, projDrawLeak, projDrawPoints, projDrawResetMax, projKeepFrom, projCmdCount, projSimFrom,
@@ -4692,13 +4692,17 @@ interface ActorView {
   /** ?proj=1(段階5「高さ」・§3-8e): 今フレームに描く関数が本体から引いた高さの項(drawn=δ·h)と δ(作り置きの配列・項ごと)。 */
   projLiftDrawn?: number[]; projLiftDelta?: number[]; projLiftN?: number; projLiftFrame?: number;
   /** 段階5: 頭上の体力の線・浮きの筋だけが持つ高さ(δ=1・主人公の playerAirPx=Z57・Z7)。無いフレームは全部の項を使う。 */
-  projLiftAltH?: number; projLiftAltFrame?: number;
+  projLiftAltH?: number; projLiftAltD?: number; projLiftAltFrame?: number;
   /** 段階5: 体の縦横のずれのうち地面の成分(踏み込みの向き・構えの引き=Z13)。後掛けの後に 投影(F + g) − P − k·g を足す。 */
   projGroundX?: number; projGroundY?: number; projGroundFrame?: number;
   /** 段階5(Z50・★#33=A): フィルの急降下の上昇=描いた量・絵の高さ(world)・0→1 の進み。後掛けで画面の上端の外へ抜ける量へ置き直す。 */
   projDiveDrawn?: number; projDiveTexH?: number; projDiveLift?: number; projDiveFrame?: number;
   /** 段階5の計器 s5 step: 前フレームの σ と ℓ。 */
-  projLiftPrevSig?: number; projLiftPrevL?: number;
+  projLiftPrevSig?: number; projLiftPrevL?: number; projLiftPrevLRef?: number; projLiftPrevFrame?: number;
+  /** 段階5(Z34・★#32=A): store が当たった印の y に溶かす項(偶像の大ジャンプ idolLeapLift + 格闘の浮き brLiftPx)の今フレームの和(world)。 */
+  projHitE?: number; projHitEFrame?: number;
+  /** 段階5の計器 s5 gap(監査 B1): この体の影の要求の id(placeShadowV9 が影の根元を記録する鍵)。 */
+  projShadowKey?: string;
   /** 入れ物の外に置いた体の絵の登録(projAttach)。 */
   projAttached?: Container[];
   /** ?proj=1(段階3・D の体の飾り): このフレームに tele 等へ直に描いた体の部位の飾りの命令の範囲(後掛けで体の相似に写す)。 */
@@ -10661,9 +10665,9 @@ export class PixiScene {
     if (gf && (lift === 'body' || lift === 'streak')) { c.position.x += gf.x; c.position.y += gf.y; }
     if (n <= 0) return;
     let hs: ArrayLike<number> = view.projLiftDrawn!, ds: ArrayLike<number> = view.projLiftDelta!;
-    if ((lift === 'hudNoH' || lift === 'streak') && view.projLiftAltFrame === this.projFrameNo) {
-      const t = this.projLiftAltBuf; t.h[0] = view.projLiftAltH ?? 0; hs = t.h; ds = t.d; n = 1;
-    }
+    if ((lift === 'hudNoH' || lift === 'streak' || lift === 'bodyAlt') && view.projLiftAltFrame === this.projFrameNo) {
+      const t = this.projLiftAltBuf; t.h[0] = view.projLiftAltH ?? 0; t.d[0] = view.projLiftAltD ?? 1; hs = t.h; ds = t.d; n = 1;
+    } else if (lift === 'bodyAlt') return; // 別の高さの項が無いフレーム(敵の浮きの筋の高さが0)は直さない
     const dy = projLiftTermsFixDy(lift, k, s, sig, hs, ds, n);
     const y0 = c.position.y;
     c.position.y = y0 + dy;
@@ -10687,7 +10691,10 @@ export class PixiScene {
       if (err > 0.5) a.liftBad.set(`${kind}:${key}`, Math.max(a.liftBad.get(`${kind}:${key}`) ?? 0, err));
       // s5 gap(影が G に居る物=体の本体だけ): 影の根元(P)と本体の足元の離れ ÷ h·σ。
       if (key === 'sprite' && Math.abs(want) > 1) {
-        const hy = view.projPy ?? 0;
+        // 監査 B1: 影の根元は影が実際に置いた world の点(placeShadowV9 の記録)を投影して読む(記録が無ければ数えない)。
+        const sr = view.projShadowKey !== undefined ? this.projShadowRoots.get(view.projShadowKey) : undefined;
+        if (!sr || sr.frame !== this.projFrameNo) return;
+        const hy = projectInto(this.projFrame!, sr.x, sr.y, this.projScratch2).y;
         const preNoLift = (view.projPreY ?? 0) + back / Math.max(1e-9, k) - (view.projFy ?? 0); // 高さを抜いた本体の足元の world のずれ
         const gap = ((hy + k * preNoLift + (gf ? gf.y : 0)) - c.position.y) / -want;
         if (gap < a.gapMin) a.gapMin = gap;
@@ -10696,6 +10703,10 @@ export class PixiScene {
     }
   }
   private projLiftAltBuf = { h: [0], d: [1] };
+  /** 計器 s5 gap(監査 B1): 影の根元の world の点(影の要求の id ごと)。 */
+  private projShadowRoots = new Map<string, { x: number; y: number; frame: number }>();
+  /** 段階5: 部品ごとに違う高さ(Z54 グレンの尾のパーツ=δ=1)。projPostView が今フレームの物だけ割り戻す。 */
+  private projPartLift = new WeakMap<object, { h: number; frame: number }>();
   private projGroundBuf = { x: 0, y: 0 };
   private projHeliBuf = { x: 0, y: 0, s: 1 };
   /** 残像の高さ(world・段階5の Z58)。役 trail の 'own' が読む。 */
@@ -10726,12 +10737,13 @@ export class PixiScene {
   private projS5StepAudit(view: ActorView, sig: number, l: number) {
     const a = this.projS5;
     const f = this.projFrame!;
-    if (view.projLiftPrevSig !== undefined && view.projLiftPrevL !== undefined && a.stepLRef === f.lRef) {
+    // 監査 B3: 比べるのは「すぐ前のフレーム」の値だけ(高さの無いフレームを挟んだ古い値は持ち越さない)・基準行 ℓ_ref が変わったフレームは数えない。
+    if (view.projLiftPrevSig !== undefined && view.projLiftPrevL !== undefined && view.projLiftPrevFrame === this.projFrameNo - 1 && view.projLiftPrevLRef === f.lRef) {
       const ds = Math.abs(sig - view.projLiftPrevSig);
       if (ds > a.stepMax) a.stepMax = ds;
       if (ds > this.projS5DSigMax() * 1.01 * Math.abs(l - view.projLiftPrevL) + 1e-9) a.stepBad++;
     }
-    view.projLiftPrevSig = sig; view.projLiftPrevL = l;
+    view.projLiftPrevSig = sig; view.projLiftPrevL = l; view.projLiftPrevLRef = f.lRef; view.projLiftPrevFrame = this.projFrameNo;
   }
   private projS5DSigCache = { lRef: NaN, stripH: NaN, bottom: NaN, v: 0 };
   /** 今フレームの表で dσ/dℓ の最大(隣どうしの差から・表が変わった時だけ測り直す)。 */
@@ -10940,9 +10952,9 @@ export class PixiScene {
     if (view.projDiveFrame === this.projFrameNo) {
       // Z50: 今の写し(k·描いた量)を外し、−((足元の表示Y − 画面の上端の表示Y) + 絵の高さ×s)·diveLift に置き直す。
       if (!gfix) { gfix = this.projGroundBuf; gfix.x = 0; gfix.y = 0; }
-      const want = ((p.y - projSkyTopY(f, 0)) + (view.projDiveTexH ?? 0) * s) * (view.projDiveLift ?? 0);
+      const want = ((p.y - projSkyTopY(f, 0)) + (view.projDiveTexH ?? 0) * k) * (view.projDiveLift ?? 0);
       gfix.y += k * (view.projDiveDrawn ?? 0) - want;
-      if (PROJ_AUDIT) this.projS5Sky('Z50', p.y - want - (view.projDiveTexH ?? 0) * s);
+      if (PROJ_AUDIT) this.projS5Sky('Z50', p.y - want - (view.projDiveTexH ?? 0) * k);
     }
     this.projGroundFixNow = gfix;
     const liftOn = liftN > 0 || gfix !== null;
@@ -10985,6 +10997,20 @@ export class PixiScene {
       }
       // 段階5「高さ」(§3-8e): 相似の計器の後に、高さと一緒に上がる部品へ割り戻しを足す(段階2の計器は相似そのものを測る)。
       if (applied && liftOn && move !== 'none' && move !== 'own') this.projLiftFixPart(view, c, this.projLiftTags.get(c) ?? projActorLift(key), k, s, sig, liftN, kind, key);
+      // 段階5(Z54): 部品ごとの高さ(グレンの尾の叩きつけ=パーツごとに違う持ち上げ・δ=1)は、その部品だけ −(σ − k)·h。
+      if (applied && move === 'similar') {
+        const pl = this.projPartLift.get(c);
+        if (pl && pl.frame === this.projFrameNo) {
+          const sigP = liftN > 0 ? sig : projLiftScale(f, Math.max(0, p.l));
+          const y1 = c.position.y;
+          c.position.y = y1 + projLiftFixDy(pl.h, k, sigP);
+          this.projS5.pts++;
+          if (PROJ_AUDIT) {
+            const err = Math.abs((c.position.y - (y1 + k * pl.h)) + sigP * pl.h); // h=0 の時の表示Y からの差が −σ·h か(s5 lift)
+            if (err > this.projS5.liftErrMax) { this.projS5.liftErrMax = err; this.projS5.liftErrName = `${kind}:${key}`; }
+          }
+        }
+      }
     }
     // 入れ物の外の体の絵(本体の光・浮きの接地・登録した物)。
     if (this.projApply(view.light, 'similar', fx, fy, px, py, k, 0, 0, a) && liftOn) this.projLiftFixPart(view, view.light, this.projLiftTags.get(view.light) ?? 'body', k, s, sig, liftN, kind, 'light');
@@ -11012,15 +11038,15 @@ export class PixiScene {
   // 投影後のYで引き直す(projLooseFade)=割り戻さない。
   private projLooseRecs: {
     kind: string; fx: number; fy: number; d: number; ox: number; oy: number; n: number; objs: Container[]; moves: ProjMove[];
-    lifts: ProjLiftKind[]; lh: number[]; ld: number[]; ln: number;
+    lifts: ProjLiftKind[]; lh: number[]; ld: number[]; ln: number; gx: number; gy: number;
   }[] = [];
   private projLooseN = 0;
   /** 動く物1つの後掛けの記録を始める(?proj=1 の時だけ呼ぶ)。d=描く関数が掛けていた旧い倍率(掛けていなければ1)。続けて projLooseAdd で物を足す。 */
   // ox/oy=足す物の親の world の原点(親が層なら 0。親が拡縮していない入れ物の時だけ使う=デコイの絵)。
   private projLoose(kind: string, fx: number, fy: number, d: number, ox = 0, oy = 0) {
     let r = this.projLooseRecs[this.projLooseN];
-    if (!r) { r = { kind, fx, fy, d, ox, oy, n: 0, objs: [], moves: [], lifts: [], lh: [], ld: [], ln: 0 }; this.projLooseRecs[this.projLooseN] = r; }
-    r.kind = kind; r.fx = fx; r.fy = fy; r.d = d; r.ox = ox; r.oy = oy; r.n = 0; r.ln = 0;
+    if (!r) { r = { kind, fx, fy, d, ox, oy, n: 0, objs: [], moves: [], lifts: [], lh: [], ld: [], ln: 0, gx: 0, gy: 0 }; this.projLooseRecs[this.projLooseN] = r; }
+    r.kind = kind; r.fx = fx; r.fy = fy; r.d = d; r.ox = ox; r.oy = oy; r.n = 0; r.ln = 0; r.gx = 0; r.gy = 0;
     this.projLooseN++;
   }
   /**
@@ -11032,6 +11058,15 @@ export class PixiScene {
     if (!r || !(Math.abs(drawn) > 1e-6)) return;
     r.lh[r.ln] = drawn; r.ld[r.ln] = delta; r.ln++;
     this.projLiftMark(id);
+  }
+  /**
+   * 段階5(§3-8e「地面の成分の分け方」): 直前に始めた記録へ、体の位置のずれのうち地面の上の移動(world の量 gx, gy=描いた量 ÷ d)を足す。
+   * 後掛けの後、高さと一緒に上がる物へ 投影(F + g) − P − s·g を足す(相似は描いた量 d·g を k·d·g = s·g へ写すため)。
+   */
+  private projLooseGround(gx: number, gy: number) {
+    const r = this.projLooseRecs[this.projLooseN - 1];
+    if (!r) return;
+    r.gx += gx; r.gy += gy;
   }
   /** 直前に始めた記録へ体(相似)・頭上UI(平行移動・物自身の位置を基準点 H にする)を足す。 */
   private projLooseAdd(obj: Container | null | undefined, move: ProjMove = 'similar', lift?: ProjLiftKind) {
@@ -11077,6 +11112,7 @@ export class PixiScene {
       const px = this.snapToScreenPixel(p.x, this.L.world.position.x) - r.ox, py = this.snapToScreenPixel(p.y, this.L.world.position.y) - r.oy;
       const fx = r.fx - r.ox, fy = r.fy - r.oy;
       const sig = r.ln > 0 ? projLiftScale(f, Math.max(0, p.l)) : s;
+      const gfix = r.gx !== 0 || r.gy !== 0 ? projGroundOffsetFix(f, r.fx, r.fy, r.gx, r.gy, s, this.projGroundBuf) : null;
       for (let j = 0; j < r.n; j++) {
         const c = r.objs[j];
         let ap: boolean;
@@ -11088,9 +11124,10 @@ export class PixiScene {
         }
         // 段階5: 高さの割り戻し(高さと一緒に上がる物だけ)。
         if (ap && r.ln > 0 && r.lifts[j] !== 'ground') {
-          c.position.y += projLiftTermsFixDy(r.lifts[j], k, s, sig, r.lh, r.ld, r.ln); // proj-lift: exempt(core 段階5の割り戻しの本体)
+          c.position.y += projLiftTermsFixDy(r.lifts[j], k, s, sig, r.lh, r.ld, r.ln);
           this.projS5.pts++;
         }
+        if (ap && gfix && r.lifts[j] !== 'ground' && r.moves[j] === 'similar') { c.position.x += gfix.x; c.position.y += gfix.y; }
         r.objs[j] = null as unknown as Container; // 参照を持ち越さない
       }
       if (PROJ_AUDIT) this.projAuditLoose.push({ k: r.kind, x: r.fx, y: r.fy });
@@ -11234,7 +11271,7 @@ export class PixiScene {
     this.projFxAt(c, c.position.x, c.position.y, mode, lift);
   }
   /** 点o: 付け根=出た点(初めて描いた時の world の点を覚える)。位置は P + s·(今 − 出た点)・大きさは k(3-7c)。 */
-  private projFxOrigin(c: Container | null | undefined, mode: 's' | 'fx' = 'fx', ox?: number, oy?: number) {
+  private projFxOrigin(c: Container | null | undefined, mode: 's' | 'fx' = 'fx', ox?: number, oy?: number, lift = 0) {
     const f = this.projFrame;
     if (!f || !c || c.destroyed || !c.visible) return;
     let o = this.projFxOrigins.get(c);
@@ -11246,6 +11283,13 @@ export class PixiScene {
     }
     if (PROJ_AUDIT) this.projFxSeen.add(c);
     if (!this.projFxSave(c)) return;
+    if (lift > 0) {
+      // 段階5(Z34): 出た点 O を地面の点 (O.x, O.y + lift) と高さ lift に分ける=P(O.x, O.y + lift) − (0, lift·σ) + s·(今 − O)。
+      const q = projLiftPointInto(f, o.x, o.y + lift, lift, this.projHitLiftPt); // proj-lift: Z34
+      this.projFxXf(c, o.x, o.y, q.x, q.y, q.s, this.projFxKOf(mode, q.s), q.alpha);
+      if (PROJ_AUDIT) this.projFxAnchorAudit(o.x, o.y + lift);
+      return;
+    }
     const p = projectInto(f, o.x, o.y, this.projFxP);
     this.projFxXf(c, o.x, o.y, p.x, p.y, p.s, this.projFxKOf(mode, p.s), p.alpha);
     if (PROJ_AUDIT) this.projFxAnchorAudit(o.x, o.y);
@@ -11305,14 +11349,18 @@ export class PixiScene {
     if (aa !== 1) c.alpha *= aa;
   }
   /** 読(3-7e): 付け根 F=(hx, hy + H0)・基準点 H=(hx, hy)。H を P + s·(H − F) へ平行移動(大きさは変えない=★#25=A)。 */
-  private projFxHud(c: Container | null | undefined, hx: number, hy: number) {
+  private projFxHud(c: Container | null | undefined, hx: number, hy: number, hitMark = false) {
     const f = this.projFrame;
-    if (!f || !this.projFxSave(c)) return;
-    const q = projNumberAnchorInto(f, hx, hy, PROJ_NUMBER_LIFT_H0, this.projFxLiftBuf);
+    if (!f || !c || !this.projFxSave(c)) return;
+    // 段階5(Z34・★#32=A): 宙の体に当たった数字は、初めて描いた時に覚えた高さ h_e を足し戻す=G=(X.x, X.y + h_e + H0)・高さ (h_e + H0)×σ。
+    const hm = hitMark ? this.projHitLiftOf(c, hx, hy) : null;
+    const he = hm ? hm.h : 0; // proj-lift: Z34
+    const q = projNumberAnchorInto(f, hx, hy, PROJ_NUMBER_LIFT_H0 + he, this.projFxLiftBuf);
     const qx = q.x, qy = q.y;
-    const a = projectInto(f, hx, hy + PROJ_NUMBER_LIFT_H0, this.projFxP).alpha;
+    const a = projectInto(f, hx, hy + PROJ_NUMBER_LIFT_H0 + he, this.projFxP).alpha;
     c.position.set(c.position.x + (qx - hx), c.position.y + (qy - hy));
     if (a !== 1) c.alpha *= a;
+    if (hm) this.projS5HitAudit(hm, hx, hy, qx, qy);
     if (PROJ_AUDIT) {
       this.projS3NumPush(hx, hy, qx, qy, false);
       const h = (c as Sprite).height;
@@ -11342,9 +11390,12 @@ export class PixiScene {
     const dEn = best ? (best.projD ?? 1) : this.depthScaleEnemy(fy);
     const k = best?.projPhill ? projPhillK(p.s, dEn) : projActorK(p.s, dEn);
     const px0 = this.snapToScreenPixel(p.x, this.L.world.position.x), py0 = this.snapToScreenPixel(p.y, this.L.world.position.y);
-    const qx = px0 + k * (hx - fx), qy = py0 + k * (hy - fy);
+    // 段階5(Z34・★#32=A): store が数字の y に溶かした宙の高さ h_e(初めて描いた時に当てた敵から覚える)は、体の相似では k·h_e で写る=σ·h_e へ割り戻す。
+    const hm = this.projHitLiftOf(c, hx, hy, best);
+    const qx = px0 + k * (hx - fx), qy = py0 + k * (hy - fy) + (hm.h > 0 ? projLiftFixDy(hm.h, k, projLiftScale(f, Math.max(0, p.l))) : 0); // proj-lift: Z34
     c.position.set(c.position.x + (qx - hx), c.position.y + (qy - hy));
     if (p.alpha !== 1) c.alpha *= p.alpha;
+    this.projS5HitAudit(hm, hx, hy, qx, qy);
     if (PROJ_AUDIT) {
       this.projS3NumPush(hx, hy, qx, qy, false);
       const h = (c as Sprite).height;
@@ -11359,12 +11410,14 @@ export class PixiScene {
    * 体の高さで出る演出(A2 被弾の光・A15 当たった所の筋)を、当たった敵の体の相似で置く(付け根=その敵の描き絵の足元 F_e・位置は
    * P_e + k_e·(X − F_e)・大きさは s_fx)。敵=X が当たり判定の箱(+余白)に入るいちばん近い敵。見つからなければ false(呼び手が H0 方式)。
    */
-  private projFxOnHitBody(c: Container, x: number, y: number): boolean { // proj-lift: Z34(★#32=A・未対応=今は段階3の体の相似の判定のまま)
+  private projFxOnHitBody(c: Container, x: number, y: number): boolean {
     const f = this.projFrame;
     if (!f) return false;
+    // 段階5(Z34・★#32=A): 初めて描いた時に覚えた宙の高さ h_e。箱は上へ h_e だけ広げる(印は当たった瞬間の空中の点に残る)。
+    const hm = this.projHitLiftOf(c, x, y);
     let best: ActorView | null = null, bd = Infinity;
     for (const en of useGameStore.getState().enemies) {
-      if (x < en.x - 24 || x > en.x + en.width + 24 || y < en.y - 40 || y > en.y + en.height + 24) continue;
+      if (x < en.x - 24 || x > en.x + en.width + 24 || y < en.y - 40 - hm.h || y > en.y + en.height + 24) continue;
       const v = this.enemies.get(en.id);
       if (!v || v.projDrawnFrame !== this.projFrameNo || v.projFx === undefined || v.projFy === undefined) continue;
       const dd = Math.hypot(x - (en.x + en.width / 2), y - (en.y + en.height / 2));
@@ -11378,12 +11431,97 @@ export class PixiScene {
     const px = this.snapToScreenPixel(p.x, this.L.world.position.x), py = this.snapToScreenPixel(p.y, this.L.world.position.y);
     // 置く点 X を体の相似で写す(c の位置=X)。大きさは派手さの s_fx(★#24)
     const kf = this.projFxKOf('fx', p.s);
-    c.position.set(px + ke * (c.position.x - fx), py + ke * (c.position.y - fy));
+    // 段階5(Z34): 覚えた h_e の敵の体なら、溶けた高さ k·h_e を σ·h_e へ割り戻す(持ち上げた体の同じ点に乗る)。
+    const hfix = hm.h > 0 && hm.v === best ? projLiftFixDy(hm.h, ke, projLiftScale(f, Math.max(0, p.l))) : 0; // proj-lift: Z34
+    c.position.set(px + ke * (c.position.x - fx), py + ke * (c.position.y - fy) + hfix);
     c.scale.set(c.scale.x * kf, c.scale.y * kf);
     if (p.alpha !== 1) c.alpha *= p.alpha;
-    this.projFxLastX = px + ke * (x - fx); this.projFxLastY = py + ke * (y - fy);
+    this.projFxLastX = px + ke * (x - fx); this.projFxLastY = py + ke * (y - fy) + hfix;
+    this.projS5HitAudit(hm, x, y, this.projFxLastX, this.projFxLastY);
     if (PROJ_AUDIT) this.projFxAnchorAudit(fx, fy);
     return true;
+  }
+  // ---- 段階5(Z34・★#32=A「宙の体に当たった印の高さ」・§3-8e): 印を初めて描いた時に1回だけ、印の点 X が浮いている敵の箱
+  // (当たり判定の箱を左右 24px・上へ 今の高さ+24px 広げた範囲)に入るかを見て、その敵の h_e を覚えて足し戻す。store は不変。
+  // h_e=store が印の y に溶かした項(偶像の大ジャンプ idolLeapLift + 格闘の浮き brLiftPx)だけの和(drawEnemy が projHitE に記録)。
+  // ノックバックの跳ね・跳びの aiHop など store が溶かしていない項は足さない(足すと印が体より上へ出る)。
+  private projHitMem = new WeakMap<object, { h: number; v: ActorView | null; audited: boolean }>();
+  private projHitAir: { x0: number; x1: number; y0: number; y1: number; cx: number; cy: number; h: number; v: ActorView }[] = [];
+  private projHitAirN = 0;
+  private projHitAirFrame = -1;
+  private projHitLiftPt = makeProjLiftPoint();
+  private static readonly PROJ_HIT_ZERO = { h: 0, v: null, audited: true };
+  /** 今フレームの浮いている敵の箱(フレームに1回だけ作る・浮いている敵が居なければ空)。 */
+  private projHitAirList(): number {
+    if (this.projHitAirFrame === this.projFrameNo) return this.projHitAirN;
+    this.projHitAirFrame = this.projFrameNo;
+    let n = 0;
+    for (const en of useGameStore.getState().enemies) {
+      const v = this.enemies.get(en.id);
+      if (!v || v.projHitEFrame !== this.projFrameNo || !((v.projHitE ?? 0) > 0.5)) continue;
+      const h = v.projHitE!;
+      let r = this.projHitAir[n];
+      if (!r) { r = { x0: 0, x1: 0, y0: 0, y1: 0, cx: 0, cy: 0, h: 0, v }; this.projHitAir[n] = r; }
+      r.x0 = en.x - 24; r.x1 = en.x + en.width + 24; r.y0 = en.y - (h + 24); r.y1 = en.y + en.height;
+      r.cx = en.x + en.width / 2; r.cy = en.y + en.height / 2 - h; r.h = h; r.v = v;
+      n++;
+    }
+    this.projHitAirN = n;
+    return n;
+  }
+  /**
+   * 印の表示物 c の h_e(初めて描いた時に1回だけ決めて覚える=以後は敵が落ちていっても変えない)。prefer を渡すと箱を探さずその敵
+   * (当てた敵が分かっている数字=足元つき)の h_e を使う。浮いている敵が1体も居ない時に初めて描いた印は 0 を覚える。
+   */
+  private projHitLiftOf(c: object, x: number, y: number, prefer?: ActorView | null): { h: number; v: ActorView | null; audited: boolean } {
+    if (!this.projFrame) return PixiScene.PROJ_HIT_ZERO;
+    const m0 = this.projHitMem.get(c);
+    if (m0) return m0;
+    let best: ActorView | null = null, bh = 0;
+    const n = this.projHitAirList();
+    if (prefer !== undefined) {
+      if (prefer && prefer.projHitEFrame === this.projFrameNo && (prefer.projHitE ?? 0) > 0.5) { best = prefer; bh = prefer.projHitE!; }
+    } else if (n > 0) {
+      let bd = Infinity;
+      for (let i = 0; i < n; i++) {
+        const r = this.projHitAir[i];
+        if (x < r.x0 || x > r.x1 || y < r.y0 || y > r.y1) continue;
+        const dd = Math.hypot(x - r.cx, y - r.cy);
+        if (dd < bd) { bd = dd; best = r.v; bh = r.h; }
+      }
+    }
+    // 計器 s5 hit の zero は「浮いている敵が居るフレームに、どの箱にも入らず高さ0で描いた印」だけ数える(それ以外は audited=true で数えない)。
+    const m = { h: bh, v: best, audited: !PROJ_AUDIT || (bh <= 0 && n === 0) };
+    this.projHitMem.set(c, m);
+    if (bh > 0) this.projLiftMark('Z34');
+    return m;
+  }
+  /**
+   * 計器 s5 hit(★#32・初めて描いた時の1回だけ): 印の付け根の表示点 (ax, ay) と、当たった敵の持ち上げた体の同じ点
+   * (P_e + k_e·((X.x, X.y + h_e) − F_e) − (0, σ_e·h_e))の差(ローカル)。高さ0で描いた印は zero に数える。
+   */
+  private projS5HitAudit(m: { h: number; v: ActorView | null; audited: boolean }, x: number, y: number, ax: number, ay: number) {
+    if (!PROJ_AUDIT || m.audited || !this.projFrame) return;
+    m.audited = true;
+    const a = this.projS5;
+    a.hitN++;
+    const v = m.v;
+    if (!v || m.h <= 0 || v.projFx === undefined || v.projFy === undefined) { a.hitZero++; return; }
+    const f = this.projFrame;
+    const p = projectInto(f, v.projFx, v.projFy, this.projScratch2);
+    const d = v.projD ?? 1;
+    const k = v.projPhill ? projPhillK(p.s, d) : projActorK(p.s, d);
+    const sig = projLiftScale(f, Math.max(0, p.l));
+    const px = this.snapToScreenPixel(p.x, this.L.world.position.x), py = this.snapToScreenPixel(p.y, this.L.world.position.y);
+    const bx = px + k * (x - v.projFx), by = py + k * (y + m.h - v.projFy) - sig * m.h;
+    const e = Math.hypot(ax - bx, ay - by);
+    if (e > a.hitMax) a.hitMax = e;
+  }
+  /** 体の相似が見つからない当たりの印(H0 方式): 覚えた h_e を H0 に足す(G=(X.x, X.y + h_e + H0)・高さ (h_e + H0)×σ)。 */
+  private projFxAtHit(c: Container, x: number, y: number) {
+    const hm = this.projHitLiftOf(c, x, y);
+    this.projFxAt(c, x, y, 'fx', PROJ_NUMBER_LIFT_H0 + hm.h); // proj-lift: Z34
+    if (this.projFrame) this.projS5HitAudit(hm, x, y, this.projFxLastX, this.projFxLastY);
   }
   private projS3NumPush(x: number, y: number, dx: number, dy: number, hit: boolean) {
     let r = this.projS3Num[this.projS3NumN];
@@ -11415,26 +11553,34 @@ export class PixiScene {
     switch (e.kind) {
       case 'damageNumber': // A1(読)。当てた敵の足元がある数字は、置く点を敵の体の相似で写す(付け根=敵の足元・§3-7e)
         if (e.footX !== undefined && e.footY !== undefined) this.projFxHudOnFoot(view, e.x, e.y, e.footX, e.footY);
-        else this.projFxHud(view, e.x, e.y);
+        else this.projFxHud(view, e.x, e.y, true);
         return;
       case 'multiHit': this.projFxHud(view, e.x, e.y); return; // A21(読)
       case 'meleeHit': { // A2(点・体の高さ。当たった敵が見つかればその体の相似・無ければ H0 方式)
-        if (!this.projFxOnHitBody(view, e.x, e.y)) this.projFxAt(view, e.x, e.y, 'fx', PROJ_NUMBER_LIFT_H0);
+        if (!this.projFxOnHitBody(view, e.x, e.y)) this.projFxAtHit(view, e.x, e.y);
         if (PROJ_AUDIT) this.projS3NumPush(e.x, e.y, this.projFxLastX, this.projFxLastY, true);
         return;
       }
       case 'skillBurst': this.projFxSelf(view); return; // A3(点・world の点で追従したものを投影)
       case 'image': { // A4(点o・体)
-        if (e.followPlayer) { if (this.playerView) this.projAttach(this.playerView, view, 'attachedArt'); this.projFxMarks.set(view, this.projFrameNo); return; }
+        if (e.followPlayer) {
+          // 段階5(監査 A1): 付いて回る image は主人公の playerAirPx だけで上がる(drawImageSprite の oy)=その項だけで割り戻す。
+          if (this.playerView) { this.projAttach(this.playerView, view, 'attachedArt'); this.projLiftTag(view, 'bodyAlt'); }
+          this.projFxMarks.set(view, this.projFrameNo);
+          return;
+        }
         if (this.projFrame && e.ground && view instanceof Sprite) { this.projSpriteMesh(view, 'imageGround', PROJ_GRID_SOFT); this.projFxMarks.set(view, this.projFrameNo); return; } // 地面に寝かせる絵=形
         this.projFxOrigin(view, 'fx', e.x, e.y);
         return;
       }
       case 'dogFetch': this.projFxSelf(view); return; // A5(点)
       case 'smoke': this.projFxOrigin(view, 'fx', e.x, e.y); return; // A6(点o)
-      case 'glow': { // A7・A8(点)
-        this.projFxSelf(view);
-        if (PROJ_AUDIT && this.projFrame) {
+      case 'glow': { // A7・A8(点)。段階5(Z34): 宙の体に当たった光は覚えた h_e で G=(x, y + h_e)・高さ h_e×σ
+        const hg = this.projHitLiftOf(view, view.position.x, view.position.y);
+        if (hg.h > 0) this.projFxAt(view, view.position.x, view.position.y, 'fx', hg.h); // proj-lift: Z34
+        else this.projFxSelf(view);
+        if (PROJ_AUDIT && this.projFrame && hg.h > 0) this.projS5HitAudit(hg, e.x, e.y, view.position.x, view.position.y);
+        else if (PROJ_AUDIT && this.projFrame) {
           const p = projectInto(this.projFrame, e.x, e.y, this.projScratch2);
           const d = Math.hypot(view.position.x - p.x, view.position.y - p.y) * this.projFrame.wgScale;
           if (d > this.projS3.glowMax) this.projS3.glowMax = d;
@@ -11446,11 +11592,18 @@ export class PixiScene {
       case 'whip': this.projFxSeg(view, e.fromX, e.fromY, e.toX, e.toY, 's'); return; // A10(両・分類1=当たり帯の半幅 halfWidth を持つ=長さも太さも判定の投影 k=s)
       case 'whiprope': this.projFxMarks.set(view, this.projFrameNo); return; // A11(両・点列は drawWhipRope の ?proj=1 の分岐で投影済み)
       case 'firejet': this.projFxDir(view, 'fx', 0, false, undefined, PROJ_FX_TIP_MIN_S); return; // A12(向・長さは投影のまま・太さと炎の大きさは奥の下限 CR-14)
-      case 'blood': this.projFxDir(view, 'fx', PROJ_NUMBER_LIFT_H0); return; // A13(向・H0 方式)
+      case 'blood': { // A13(向・H0 方式)。段階5(Z34): 宙の体に当たった血は覚えた h_e を H0 に足す
+        const bx = view.position.x, by = view.position.y;
+        const hm = this.projHitLiftOf(view, bx, by);
+        this.projFxDir(view, 'fx', PROJ_NUMBER_LIFT_H0 + hm.h); // proj-lift: Z34
+        this.projS5HitAudit(hm, bx, by, view.position.x, view.position.y);
+        return;
+      }
       case 'bloodBurst': this.projFxBloodBurst(e, view); return; // A14(点o・床の染み)
       case 'slash': { // A15(点・H0 方式。燕返しの1本は通り道=判定の帯=k=s)
         const onPath = e.katanaPathDx !== undefined && Math.hypot(e.katanaPathDx, e.katanaPathDy ?? 0) > 1;
-        if (onPath || !this.projFxOnHitBody(view, e.x, e.y)) this.projFxAt(view, e.x, e.y, onPath ? 's' : 'fx', onPath ? 0 : PROJ_NUMBER_LIFT_H0);
+        if (onPath) this.projFxAt(view, e.x, e.y, 's', 0);
+        else if (!this.projFxOnHitBody(view, e.x, e.y)) this.projFxAtHit(view, e.x, e.y);
         if (PROJ_AUDIT && !onPath) this.projS3NumPush(e.x, e.y, this.projFxLastX, this.projFxLastY, true);
         return;
       }
@@ -11467,8 +11620,13 @@ export class PixiScene {
           this.projFxFlatAt(view, view.position.x, view.position.y, 1, 0, 1 - (1 - u) * (1 - u));
         } else {
           this.projFloorAt.delete(view);
-          if (fl !== undefined) this.projFxFloor(view, view.position.x, view.position.y, fl);
-          else this.projFxOrigin(view);
+          // 段階5(Z34・★#32=A): 床を持つ血は床からの高さが h_e を含む=直しは要らない(h_e は計器だけが読む)/点o の血は出た点を
+          // (O.x, O.y + h_e) の地面の点と h_e の高さに分ける。
+          const wx = view.position.x, wy = view.position.y;
+          const hp = this.projHitLiftOf(view, wx, wy);
+          if (fl !== undefined) this.projFxFloor(view, wx, wy, fl);
+          else this.projFxOrigin(view, 'fx', undefined, undefined, hp.h); // proj-lift: Z34
+          if (hp.h > 0) this.projS5HitAudit(hp, wx, wy, view.position.x, view.position.y);
         }
         return;
       }
@@ -14950,7 +15108,7 @@ export class PixiScene {
       const zoom = this.L.worldGroup.scale.x || 1;
       // 光の柱: 柔らかい光の絵を縦に伸ばす(左右と下の縁がぼける)。下端は胴の中心あたりで溶ける=体の下から芯が伸びない。
       if (look.beam > 0.002) {
-        const beamH = (this.screenH / zoom) * 1.25; // proj-lift: Z30(死の光の柱の上端=未対応・同型)
+        const beamH = (this.screenH / zoom) * 1.25; // proj-lift: exempt(lab 這う者の死の光の柱=研究所テーマ=段階8・監査 C4)
         const place = (b: Sprite, wMul: number, a: number) => {
           b.width = artW * wMul; b.height = beamH;
           b.position.set(deathEdgeX, bodyCy - beamH * 0.44);
@@ -19624,6 +19782,7 @@ export class PixiScene {
       // (drawn位置)なので、論理の足元(ground)から liftPx を引いた値を渡す(投影点=req.y+heightPx=ground)。
       const bossFixed = isHiddenBoss(e.type);
       const liftPx = view?.shadowLiftPx ?? 0;
+      if (view && PROJ_AUDIT) view.projShadowKey = e.id; // 計器 s5 gap(監査 B1)
       const cx = bossFixed ? view!.sprite.x : e.x + e.width / 2;
       const groundY = bossFixed ? (view!.shadowGroundY ?? view!.sprite.y + disp.h / 2) : footY;
       const cy = groundY - liftPx;
@@ -20668,6 +20827,8 @@ export class PixiScene {
       : prevFootXOffset + (rawFootXOffset - prevFootXOffset) * footXTrimLerp;
     this.shadowFootXOffsetState.set(req.id, footXOffset);
     let footX = req.x + footXOffset, footY = req.y + height;
+    // ?proj=1&projaudit=1(段階5・計器 s5 gap・監査 B1): 影の根元の world の点(後掛けの計器が投影して本体の足元と比べる)。
+    if (PROJ_AUDIT && this.projFrame) { const r0 = this.projShadowRoots.get(req.id); if (r0) { r0.x = footX; r0.y = footY; r0.frame = this.projFrameNo; } else this.projShadowRoots.set(req.id, { x: footX, y: footY, frame: this.projFrameNo }); }
     // 静物の食い込み(上の SHADOW_TUCK_FRAC 参照): 影の錨点を伸び方向と逆へ引き込む=影の根元と
     // 接地丸影が本体の裾の下へ潜る。シルエット・接地2枚・光収集がまとめて同じだけ動く(ズレない)。
     if (req.isStatic && SHADOW_TUCK_FRAC > 0) {
@@ -23261,7 +23422,9 @@ export class PixiScene {
       const footY = t.fromY + 30;
       const dsFrom = this.depthScale(footY);
       const handH = HAND_PX * dsFrom;
-      const handX = t.fromX + (t.x >= t.fromX ? 1 : -1) * HAND_FWD_PX * dsFrom;
+      // ?proj=1(段階5・監査 A3): 手の位置は world の値(旧い遠近 dsFrom を掛けない=投影の s と σ が1回だけ縮める)。?proj=0 は今の式。
+      const dW = pf ? 1 : dsFrom;
+      const handX = t.fromX + (t.x >= t.fromX ? 1 : -1) * HAND_FWD_PX * dW;
       const flyU = clamp01((gameTime - t.releaseAt) / Math.max(1, t.hitAt - t.releaseAt));
       const flying = live && gameTime >= t.releaseAt;
       const sinceRel = gameTime - t.releaseAt;
@@ -23351,12 +23514,12 @@ export class PixiScene {
         const dirX = t.x >= t.fromX ? 1 : -1;
         // 隕石は上げたままの手(5コマ目)から打ち上がる(落ちるまで手を上げたまま・社長指示2026-10-29)。
         const topHand = ASTRO_THROW_HAND[ASTRO_THROW_TOP_FRAME];
-        const hy = t.kind === 'meteor' ? footY - topHand[1] * HAND_ART_K * dsFrom : footY - handH;
-        const hx0 = t.kind === 'meteor' ? t.fromX + dirX * topHand[0] * HAND_ART_K * dsFrom : handX;
+        const hy = t.kind === 'meteor' ? footY - topHand[1] * HAND_ART_K * dW : footY - (pf ? HAND_PX : handH);
+        const hx0 = t.kind === 'meteor' ? t.fromX + dirX * topHand[0] * HAND_ART_K * dW : handX;
         // ?proj=1(段階5・Z46=空・★#33=A): G=手の真下の地面(投げ手の足元の y)・高さ=手の高さ→画面の上端の外(余白 80)へ届く高さ(出た時に1回だけ決める)。
         const hTop = pf ? this.projSkyH0Of(t.id + ':launch', hx0, footY, 80) : 0;
         const at = pf
-          ? (kk: number) => { const e2 = 1 - (1 - kk) * (1 - kk); const lp = projLiftPointInto(pf, hx0 + dirX * 80 * dsFrom * e2, footY, (footY - hy) + (hTop - (footY - hy)) * e2, this.projSkyLift); return { x: lp.x, y: lp.y }; } // proj-lift: Z46
+          ? (kk: number) => { const e2 = 1 - (1 - kk) * (1 - kk); const lp = projLiftPointInto(pf, hx0 + dirX * 80 * e2, footY, (footY - hy) + (hTop - (footY - hy)) * e2, this.projSkyLift); return { x: lp.x, y: lp.y }; } // proj-lift: Z46
           : (kk: number) => { const e2 = 1 - (1 - kk) * (1 - kk); return { x: hx0 + dirX * 80 * dsFrom * e2, y: hy + (viewTopWorld - 80 - hy) * e2 }; }; // proj-lift: Z46
         const k = sinceRel / launchMs;
         if (pf) { this.projLiftMark('Z46'); this.projS5Sky('Z46', at(1).y); }
@@ -23447,6 +23610,16 @@ export class PixiScene {
           const swing = fr <= ASTRO_THROW_TOP_FRAME ? 0 : Math.min(1, (fr - ASTRO_THROW_TOP_FRAME) / 2);
           let dr = flyRot - upRot; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
           const sway = fr === ASTRO_THROW_TOP_FRAME ? Math.sin(gameTime / 47) * 0.05 : 0; // 掲げている間、布の重みで竿がわずかに揺れる
+          if (pf) {
+            // ?proj=1(段階5・Z27): 握っている旗は手の真下の地面の点 (t.fromX + 手の横, footY) と手の高さ(world)で置く(大きさは s_fx)。
+            const lp = projLiftPointInto(pf, t.fromX + side * hp[0] * HAND_ART_K, footY, hp[1] * HAND_ART_K - 16, this.projSkyLift); // proj-lift: Z27
+            const dsP = projFxScale(lp.s);
+            if (!this.placeAstroArt(t.id, astroThrowArtFrame('flag'), this.L.skyFxLayer, lp.x, lp.y, upRot + dr * swing * swing + sway, 1.2 * dsP * -side, 1.2 * dsP, lp.alpha, FOOT_X, FOOT_Y)) {
+              this.drawAstroFlag(a, lp.x, lp.y, flagAng, dsP, gameTime, lp.alpha, false);
+            }
+            this.projLiftMark('Z27');
+            continue;
+          }
           if (!this.placeAstroArt(t.id, astroThrowArtFrame('flag'), this.L.skyFxLayer, hx, hy + 16 * ds, upRot + dr * swing * swing + sway, 1.2 * ds * -side, 1.2 * ds, 1, FOOT_X, FOOT_Y)) {
             this.drawAstroFlag(a, hx, hy + 16 * ds, flagAng, ds, gameTime, 1, false);
           }
@@ -23454,8 +23627,29 @@ export class PixiScene {
           const u = flyU * flyU * 0.3 + flyU * 0.7; // 素早く一直線(わずかに加速)
           // 手元から刺さる点へ。終点は刺さった旗と同じ点(=刺さる瞬間に跳ばない)。
           const gx = handX + (c.tx - handX) * u, gy = footY + (c.ty - footY) * u;
+          if (pf) {
+            // ?proj=1(段階5・Z27=分): 飛ぶ旗は地面の点 G=(gx, gy) と高さ(world の手の高さ HAND_PX×(1−u))に分けて、G の投影から高さ·σ 上へ。
+            // 向きは表示座標の差(進みを 0.02 戻した点から)・大きさは派手さ=s_fx。刺さる瞬間(u=1)は高さ0=刺さった旗と同じ点。
+            const lp = projLiftPointInto(pf, gx, gy, HAND_PX * (1 - u), this.projSkyLift); // proj-lift: Z27
+            const ub0 = Math.max(0, flyU - 0.02), ub = ub0 * ub0 * 0.3 + ub0 * 0.7;
+            const lb = projLiftPointInto(pf, handX + (c.tx - handX) * ub, footY + (c.ty - footY) * ub, HAND_PX * (1 - ub), this.projSkyLift2);
+            const angP = Math.hypot(lp.x - lb.x, lp.y - lb.y) > 1e-3 ? Math.atan2(lp.y - lb.y, lp.x - lb.x) : flagAng;
+            const dsP = projFxScale(lp.s);
+            const flyTexP = getTexture('fx/astro-flag-fly');
+            if (flyTexP) {
+              const mirror = Math.cos(flagAng) < 0;
+              this.placeAstroFlyFlag(t.id, flyTexP, lp.x, lp.y, angP - (mirror ? Math.PI - PixiScene.ASTRO_FLAG_FLY_POLE_RAD : PixiScene.ASTRO_FLAG_FLY_POLE_RAD), 1.1 * dsP, mirror);
+              const spF = this.astroArtPool.get(t.id);
+              if (spF) spF.alpha = lp.alpha;
+            } else if (!this.placeAstroArt(t.id, astroThrowArtFrame('flag'), this.L.skyFxLayer, lp.x, lp.y, angP - Math.PI / 2, 1.2 * dsP * -side * appear, 1.2 * dsP * appear, lp.alpha, FOOT_X, FOOT_Y)) {
+              this.drawAstroFlag(a, lp.x, lp.y, angP, dsP, gameTime, lp.alpha, true);
+            }
+            this.projLiftMark('Z27');
+            if (PROJ_AUDIT && t.hitAt - gameTime <= 17) { const q = projectInto(pf, c.tx, c.ty, this.projScratch2); this.projS5Land(true, lp.x - q.x, lp.y - q.y); }
+            continue;
+          }
           const ds = this.depthScale(gy);
-          const fy2 = gy - handH * (1 - u);
+          const fy2 = gy - handH * (1 - u); // proj-lift: Z27(?proj=0 の今の行)
           // 飛んでいる旗は支給の専用の絵(竿が長い・布が後ろへなびく)。穂先(絵の左下)を進む向きへ向け、
           // 左へ投げた時は左右を返して布が上側へなびくようにする。読み込み前は刺さった旗の絵で代用。
           const flyTex = getTexture('fx/astro-flag-fly');
@@ -23628,8 +23822,16 @@ export class PixiScene {
             // 当たって軽く跳ね返る(上へ弾んで、投げ手の側へ少し戻りながら落ちる)。回っても寝た角度へ戻って着く。
             const u = age / 520;
             const hop = 54 * 4 * u * (1 - u);
-            if (!this.placeAstroArt(t.id, astroThrowArtFrame('bouquet'), this.L.skyFxLayer, t.x + dir * 46 * u, t.y - hop, LIE_ROT + 1.4 * Math.sin(Math.PI * u), 0.85 * ds, 0.85 * ds, 1, 0.5, ANC_Y)) { // proj-lift: Z27(未対応)
-              this.drawAstroBouquet(a, t.x + dir * 46 * u, t.y - 10 - hop, 7 + u * 4, ds, 1); // proj-lift: Z27(未対応)
+            if (pf) {
+              // ?proj=1(段階5・Z27=分): 跳ね返る花束は地面の点 G=(t.x + dir·46·u, t.y) と高さ hop で置く(大きさは s_fx)。
+              const lp = projLiftPointInto(pf, t.x + dir * 46 * u, t.y, hop, this.projSkyLift); // proj-lift: Z27
+              const dsP = projFxScale(lp.s);
+              if (!this.placeAstroArt(t.id, astroThrowArtFrame('bouquet'), this.L.skyFxLayer, lp.x, lp.y, LIE_ROT + 1.4 * Math.sin(Math.PI * u), 0.85 * dsP, 0.85 * dsP, lp.alpha, 0.5, ANC_Y)) {
+                this.drawAstroBouquet(a, lp.x, lp.y - 10 * dsP, 7 + u * 4, dsP, lp.alpha);
+              }
+              this.projLiftMark('Z27');
+            } else if (!this.placeAstroArt(t.id, astroThrowArtFrame('bouquet'), this.L.skyFxLayer, t.x + dir * 46 * u, t.y - hop, LIE_ROT + 1.4 * Math.sin(Math.PI * u), 0.85 * ds, 0.85 * ds, 1, 0.5, ANC_Y)) { // proj-lift: Z27(?proj=0 の今の行)
+              this.drawAstroBouquet(a, t.x + dir * 46 * u, t.y - 10 - hop, 7 + u * 4, ds, 1); // proj-lift: Z27(?proj=0 の今の行)
             }
           } else {
             const back = t.bounced ? dir * 46 : 0;
@@ -23782,7 +23984,7 @@ export class PixiScene {
         projEllipse(g, pf, gx, gsyG + 1, 9 - 4 * u, 9 - 4 * u, 0, { color: 0x000000, alpha: 0.08 + 0.3 * u });
         if (lp.alpha > 0) drawRainArrow(a, lp.x, lp.y, angP, 46 * projFxScale(lp.s) * (1 - 0.15 * 4 * u * (1 - u)), this.projLooseFade(gx, gyG, false));
         this.projLiftMark('Z44');
-        if (PROJ_AUDIT && u >= 1) { const q = projectInto(pf, h.x, h.y, this.projScratch2); this.projS5Land(false, lp.x - q.x, lp.y - q.y); }
+        if (PROJ_AUDIT && h.landAt - gameTime <= 17) { const q = projectInto(pf, h.x, h.y, this.projScratch2); this.projS5Land(false, lp.x - q.x, lp.y - q.y); } // 監査 B5: 刺さる前の最後のフレームで測る
         continue;
       }
       // 監査 #10: 落ちる先に縮んで濃くなる影(危険の色ではない=黒)。
@@ -24614,6 +24816,7 @@ export class PixiScene {
       const pounce = s.kind === 'normal' && s.lastContactAt !== undefined && atk ? atk.lift01 * SUMMON_POUNCE_LIFT_PX * dS : 0;
       this.projLiftRec(view, pounce, dS, 'Z51');
       this.projLiftRec(view, -(sinkY + atkOffY + pounce), 1, 'Z51');
+      this.projGroundRec(view, atkOffX, 0); // 踏み込みの横=地面の成分(監査 A5・Z13 と同じ形)
     }
     view.container.zIndex = fb.footY;
     // v0.25.3179(社長指示): 召喚は**金色半透明**=「半透明の金色=味方」の文法(敵は常に不透明)。
@@ -25562,7 +25765,7 @@ export class PixiScene {
     return t;
   }
 
-  private syncAvatarPartLayer( // proj-lift: Z9(体の高さに付いて上がる=体の割り戻しに乗る見込み・未確認)
+  private syncAvatarPartLayer( // proj-lift: Z9(確かめた: 位置は bob(δ=d)だけで上がる=跳び・浮きで上がらない=役の表で ground・A で割り戻し0)
     pool: Sprite[], pieces: AvatarPartPiece[], above: boolean, container: Container,
     fb: { footX: number; footY: number; boxW: number; boxH: number },
     dsc: number, bob: number, introOffX: number, introOffY: number, actOffX: number, actOffY: number,
@@ -26296,6 +26499,8 @@ export class PixiScene {
     // 絵の位置だけ上へずらす=足元(fb.footY=地面の値)・判定・移動・カメラは動かさない。地平線フェード・帯の外の減光・遠近スケール・可視域・移動可能帯は足元のまま。
     // 高さの曲線(飛び立ちの沈み・初速つきの放物線・漂い・重力の落下・落下中の再追従・当たりごとの跳ね・着地の強さ)は utils/playerAirFollow の純関数。状態はこの view だけ(store には書かない)。
     let playerAirPx = 0;
+    // ?proj=1(段階5・監査 A2): playerAirPx の中の Math.max で勝った項の δ(追いかけの浮き st0.h=1/幻影の打ち上げ・浮かせる攻撃=dsc=体の高さ bodyH に d 込み)。
+    let playerAirD = 1;
     if (PLAYER_MOTION_FX) {
       const tAir = Date.now();
       const stAir = useGameStore.getState();
@@ -26442,9 +26647,9 @@ export class PixiScene {
       const bump = hitAt !== null && phase !== 'ground' && phase !== 'crouch' && !kicking ? playerAirBumpPx(tAir - hitAt) : 0; // 蹴りの間は跳ねを足さない(上りがうねる)
       playerAirPx = st0.h + bump;
       // research/BRAWLER_PHANTOM.md §4-9: 格闘の幻影に打ち上げられた時の見た目の浮き(操作は奪わない)。追いかけの浮きと max で合わせる。
-      playerAirPx = Math.max(playerAirPx, playerLaunchHeightPx(tAir, bodyH));
+      { const hL = playerLaunchHeightPx(tAir, bodyH); if (hL > playerAirPx) { playerAirPx = hL; playerAirD = dsc; } } // proj-lift: Z1(δ=d の枝)
       // ★§36-0: 浮かせる攻撃で本当に浮いている(動けない)間は、雑魚の浮きと同じ弧の高さ(体の高さに比例・敵と同じ係数)。
-      if (p.brAir && brawlerAirborne(p.brAir, tAir)) playerAirPx = Math.max(playerAirPx, brawlerJuggleHeightRel(p.brAir, tAir) * bodyH * BRW.BRAWLER_LIFT_VIS_BODY_K);
+      if (p.brAir && brawlerAirborne(p.brAir, tAir)) { const hJ = brawlerJuggleHeightRel(p.brAir, tAir) * bodyH * BRW.BRAWLER_LIFT_VIS_BODY_K; if (hJ > playerAirPx) { playerAirPx = hJ; playerAirD = dsc; } } // proj-lift: Z1(δ=d の枝)
       // 姿勢: 上り=縦に伸びる / 頂点=少し縮む / 落下=やや伸びる / 飛び立ち前=沈む。コマ替えで跳ねないよう時間で寄せる。前傾は敵の方へ。
       const pose = playerAirPoseTarget(phase);
       const kP = 1 - Math.exp(-Math.min(100, Math.max(0, dtAir)) / 50);
@@ -26726,12 +26931,12 @@ export class PixiScene {
       this.projLiftRec(view, pKbHop, 1, 'Z3'); // proj-lift: Z3
       this.projLiftRec(view, -(slamOffY + hopOffY), dsc, 'Z4'); // proj-lift: Z4(δ=d)
       if (brawlerJumpPx >= playerAirPx) this.projLiftRec(view, brawlerJumpPx, dsc, 'Z2'); // proj-lift: Z2(δ=d)
-      else this.projLiftRec(view, playerAirPx, 1, 'Z1'); // proj-lift: Z1
-      // 体力の線(Z57)と浮きの筋(Z7)は playerAirPx だけで上げている=その項だけで割り戻す。
-      view.projLiftAltH = playerAirPx; view.projLiftAltFrame = this.projFrameNo;
+      else this.projLiftRec(view, playerAirPx, playerAirD, 'Z1'); // proj-lift: Z1(δ=勝った項の δ=監査 A2)
+      // 体力の線(Z57)と浮きの筋(Z7)・付いて回る image は playerAirPx だけで上げている=その項だけで割り戻す(δ も同じ)。
+      view.projLiftAltH = playerAirPx; view.projLiftAltD = playerAirD; view.projLiftAltFrame = this.projFrameNo;
       this.projLiftTag(view.overlay, 'hudNoH'); // proj-lift: Z57(H=p.y=高さを含まない・m=1)
     }
-    this.drawBrawlerFx(p, fb.footX, fb.footY, dsc, view.sprite, now); // proj-lift: Z8(体に付く分は体と一緒=着手時に確かめる・未確認)
+    this.drawBrawlerFx(p, fb.footX, fb.footY, dsc, view.sprite, now); // proj-lift: Z8(確かめた: 体に重ねる光 brawlerAura と技の影 brawlerStand は体の位置から置く=体の割り戻しに乗る/砂埃は地面の演出・ゲートは高さを読むだけ)
     // シーカー発動中は半透明(通常敵から狙われない演出)。被弾無敵の点滅より優先。
     const seekerActive = p.seekerUntil > gameTime;
     // 死亡時: 立ち絵を1秒でフェードアウト(現状の死亡演出はそのまま)。health>0 で基準時刻をリセット。
@@ -28668,6 +28873,9 @@ export class PixiScene {
         this.projLiftRec(view, lungeSinkH, 1, 'Z13'); // proj-lift: Z13(踏み込みの沈み)
         this.projLiftRec(view, phillBob - phillIntroRise + idolLeapLift - idolCrouchSink, 1, 'Z14'); // proj-lift: Z14
         this.projLiftRec(view, idleHopPx + phaseLiftPx, dB, 'Z14'); // proj-lift: Z14(δ=d)
+        view.projHitE = brLiftPx + idolLeapLift; view.projHitEFrame = this.projFrameNo; // proj-lift: Z34(store が印に溶かす項だけ=Z20 と同じ偶像の高さ)
+        // 浮きの筋(Z18)は shadowLiftPx(δ=1)だけで伸ばしている=その項だけで割り戻す(監査 A4・主人公の alt と同じ形)。
+        view.projLiftAltH = view.shadowLiftPx ?? 0; view.projLiftAltD = 1; view.projLiftAltFrame = this.projFrameNo; // proj-lift: Z18
         this.projGroundRec(view, lungeOffX, lungeOffY + lungeSinkH);
         // Z50 フィルの急降下の上昇(空・★#33=A): 表示上のずれとして直接足す(σ は掛けない)。後掛けで「足元の表示Y − 画面の上端」から決め直す。
         if (phillDiveOff !== 0) { view.projDiveDrawn = -phillDiveOff; view.projDiveTexH = scale * tex.height; view.projDiveLift = this.phillDiveLift01(e, gameTime); view.projDiveFrame = this.projFrameNo; } // proj-lift: Z50
@@ -28968,6 +29176,7 @@ export class PixiScene {
     // ★スープレックスの投げ越し(research/BRAWLER.md §34-3・§34-7・社長実機報告2026-11-19): 掴まれた相手の絵だけを、頭の上を越えて背中側へ運び、
     //   反りの頂点で逆さまに叩きつけ、起き上がりながら元の位置へ戻す。体の中心で回す(足元の anchor から中心へ補う)。判定・位置・影は動かさない。
     let s5SupH = 0; // ?proj=1(段階5・Z13): 空中のスープレックスの上昇と投げ越しの持ち上げ(上=正)
+    let s5SupGX = 0, s5SupGY = 0; // ?proj=1(段階5・監査 A5): 投げ越しの地面の成分(背中側へ運ぶ r.dx・r.dy)
     {
       const pb = useGameStore.getState().player.brawler;
       // ★投げ越しは相手ごとに持つ(e.brSuplexSwing・続けて別の相手を投げても上書きされない)。叩きつけた瞬間に store が相手を着地点へ移す(§34-12)。
@@ -28985,6 +29194,7 @@ export class PixiScene {
           view.sprite.position.x += Math.round(r.dx - hh * Math.sin(r.rot));
           view.sprite.position.y += Math.round(r.dy - r.lift + hh * (Math.cos(r.rot) - 1)); // proj-lift: Z13(r.lift=投げ越しの持ち上げ)
           s5SupH += r.lift;
+          s5SupGX = Math.round(r.dx); s5SupGY = Math.round(r.dy);
           view.sprite.rotation += r.rot;
           view.container.zIndex = fb.footY + 2000; // 頭の上を越える間はプレイヤーより手前に描く
         }
@@ -29242,7 +29452,9 @@ export class PixiScene {
         this.projLiftRec(view, kbHop, 1, 'Z12'); // proj-lift: Z12
         this.projLiftRec(view, motBob - eggSinkPx + heroLift + flingLift + s5SupH + lungeSinkH + aiOffH, 1, 'Z13'); // proj-lift: Z13
         this.projLiftRec(view, -swellShift, 1, 'Z17'); // proj-lift: Z17(膨らみの支点ずらし=浮きの分を下げる)
-        this.projGroundRec(view, lungeOffX + aiOffX, lungeOffY + lungeSinkH + aiOffY + aiOffH); // 地面の成分(向きへの踏み込みの縦横)
+        view.projHitE = brLiftPx; view.projHitEFrame = this.projFrameNo; // proj-lift: Z34(store が印に溶かす項だけ=格闘の浮き)
+        view.projLiftAltH = view.shadowLiftPx ?? 0; view.projLiftAltD = 1; view.projLiftAltFrame = this.projFrameNo; // proj-lift: Z18(浮きの筋=監査 A4)
+        this.projGroundRec(view, lungeOffX + aiOffX + s5SupGX, lungeOffY + lungeSinkH + aiOffY + aiOffH + s5SupGY); // 地面の成分(向きへの踏み込みの縦横・投げ越しの運び)
       }
       view.sprite.visible = true;
       // ラスボス第二形態の連結パーツ(HPで真ん中から欠ける)。第二形態でない時は隠すだけ。
@@ -35527,6 +35739,7 @@ export class PixiScene {
     view.light.visible = true;
     view.light.tint = ENEMY_LIGHT_TINT[e.type] ?? 0x9de58f;
     view.light.position.set(footX, footY - e.height * 0.22);
+    if (this.projFrame) this.projLiftTag(view.light, 'ground'); // ?proj=1(段階5・監査 A1): 敵の光は足元の地面の点光源=跳んでも上がらない(?proj=0 と同じ)
     view.light.width = radius * 2;
     view.light.height = radius * 1.45;
     view.light.alpha = (boss ? 0.18 : 0.08) + hitT * 0.22;
@@ -38501,6 +38714,13 @@ export class PixiScene {
         this.projLoose('escort', esc.x, esc.y, this.depthScale(esc.y));
         this.projLooseLift(this.escKickLift.get(esc.id) ?? 0, this.depthScale(esc.y), 'Z39'); // proj-lift: Z39(跳び蹴りの高さ δ=d=A で割り戻し0)
         this.projLooseLift(bob, this.depthScale(esc.y), 'Z42'); // proj-lift: Z42(歩きの上下 δ=d=済)
+        // 段階5(Z39・地面の向きの成分): 蹴りの溜めの引き・蹴り抜きの踏み込み(kick.dir の向き)とナイフの踏み込みは地面の上の移動
+        // =描いた量(d 倍)を world へ戻して 投影(F + g) − P − s·g を足す(跳躍の空中の縦は高さ=上の Z39)。
+        {
+          const dE = Math.max(1e-6, this.depthScale(esc.y));
+          const gKx = kickPhase === 'air' ? 0 : kickOffX, gKy = kickPhase === 'air' ? 0 : kickOffY;
+          this.projLooseGround((gKx + (esc.knifeDirX ?? 0) * lungeK) / dE, (gKy + (esc.knifeDirY ?? 0) * lungeK) / dE);
+        }
         this.projLooseAdd(sp);
         this.projLooseAdd(this.escortBlendSprites.get(esc.id));
         this.projLooseAdd(this.escortFlashSprites.get(esc.id));
@@ -40231,7 +40451,10 @@ export class PixiScene {
     sp.zIndex = sortY + 1; // 撃った本人のすぐ手前
     sp.alpha = alpha;
     sp.visible = true;    // ?proj=1(段階3・C16): 主人公の銃口の閃光=主人公の体の相似(呼ぶ側の dsc は後掛けの k=s/d が割り戻す)。敵が描く時はその敵へ。
-    if (this.projFrame) { if (this.projDrawOwner) this.projOwnerAttach(sp); else if (this.playerView) this.projAttach(this.playerView, sp, 'attachedArt'); }
+    if (this.projFrame) {
+      if (this.projDrawOwner) this.projOwnerAttach(sp); else if (this.playerView) this.projAttach(this.playerView, sp, 'attachedArt');
+      this.projLiftTag(sp, 'ground'); // 段階5(監査 A1): 焼き付けた点(撃った瞬間の足元から決めた点)=体の高さと一緒に上がらない(?proj=0 と同じ)
+    }
   }
   private hideMuzzleFlash(): void { if (this.muzzleSprite) this.muzzleSprite.visible = false; }
   // 技表GO(城ボス銃): マズルフラッシュ大。守護霊/プレイヤーのdrawMuzzleFlash(単一スプライト)とは別に、
@@ -40425,8 +40648,10 @@ export class PixiScene {
         px = pt.x + (ex - pt.x) * b;
         py = (pt.y - bob) + (ey - (pt.y - bob)) * b;
         // 持ち上げは「伸ばし切っているパーツほど大きく」= 根元は上がらず、先が高く振り上がる。
-        py -= slam.lift * b * (0.35 + 0.65 * (i / Math.max(1, show.length - 1))); // proj-lift: Z54(未対応=パーツは本体の相似・1本ずつは段階8)
-        if (slam.lift > 0) this.projLiftMark('Z54', false); // ?proj=1&projaudit=1: 段階5の直しを通していない高さ(計器 s5 unfixed)
+        const partLift = slam.lift * b * (0.35 + 0.65 * (i / Math.max(1, show.length - 1)));
+        py -= partLift; // proj-lift: Z54(パーツの位置は本体の相似のまま=1本ずつは段階8・高さだけ後掛けで σ へ割り戻す)
+        // ?proj=1(段階5・Z54): パーツごとの持ち上げ(δ=1)を記録=後掛けの後に −(σ − k)·h(projPostView)。
+        if (this.projFrame && partLift > 0) { this.projPartLift.set(sp, { h: partLift, frame: this.projFrameNo }); this.projLiftMark('Z54'); }
         if (!animTex) {
           pscale = sc * (1 + (slam.swell - 1) * b);
           prot += slam.ang * 0.05 * b; // わずかに帯の向きへ傾ぐ(倒し切らない=絵は立ったまま)
@@ -44908,7 +45133,7 @@ export class PixiScene {
     if (tu >= 0 && tu < 1) {
       n.trail.visible = true;
       n.trail.texture = tex;
-      n.trail.position.set(n.trailX, n.trailY + 2);
+      n.trail.position.set(n.trailX, n.trailY + 2); // proj-lift: Z58(英雄の残像=跳んだ所の地面に残る霧=覚える点は足元の地面・高さ0=役 trail の own で地面の点のまま正しい・確かめた)
       n.trail.scale.set(w0 / Math.max(1, tex.width) * (1 + 0.15 * tu), h0 / Math.max(1, tex.height) * (1 + 0.1 * tu));
       n.trail.alpha = HERO_FOG_ALPHA * (1 - tu) * (1 - tu);
     } else n.trail.visible = false;
@@ -45230,7 +45455,16 @@ export class PixiScene {
     const bodyW = Math.abs(view.sprite.width) || e.width * 2;
     const zoom = this.L.worldGroup.scale.x || 1;
     fx.beam.clear();
-    if (look.beam > 0.002) this.drawPhillSkylightColumn(fx.beam, footX, footY, Math.min(bodyW, e.width * 2.2) * 1.15, footY - this.screenH / zoom, Math.min(1.35, look.beam), 0.35); // proj-lift: Z30(英雄の昇天の光柱の上端=未対応・同型)
+    const pfA = this.projFrame;
+    if (look.beam > 0.002 && pfA) {
+      // ?proj=1(段階5・Z30=空・★#33=A): 付け根=足元の地面の点を投影・幅は s_fx・上端は毎フレーム画面の上端の外(余白 PROJ_SKY_PILLAR_MARGIN)。
+      // 光柱は effectLayer の Graphics(後掛けの外)=表示座標で直に描く。足元の光だまりは今の形のまま(柔らかい縁=CR-3 と同じ)。
+      const q = projectInto(pfA, footX, footY, this.projScratch2);
+      const topA = projSkyTopY(pfA, PROJ_SKY_PILLAR_MARGIN); // proj-lift: Z30
+      this.drawPhillSkylightColumn(fx.beam, q.x, q.y, Math.min(bodyW * (view.projK ?? 1), e.width * 2.2 * projFxScale(q.s)) * 1.15, topA, Math.min(1.35, look.beam) * q.alpha, 0.35, true);
+      this.projFxMarks.set(fx.beam, this.projFrameNo);
+      this.projLiftMark('Z30'); this.projS5Sky('Z30', topA);
+    } else if (look.beam > 0.002) this.drawPhillSkylightColumn(fx.beam, footX, footY, Math.min(bodyW, e.width * 2.2) * 1.15, footY - this.screenH / zoom, Math.min(1.35, look.beam), 0.35); // proj-lift: Z30(英雄の昇天の光柱の上端=?proj=0 の今の行)
     fx.beam.visible = look.beam > 0.002;
     // 体そのものが光る: 同じ絵の白いシルエットを加算で重ねる(体と同じ所・同じ大きさ・同じ向き)。
     const sil = view.sprite.visible ? this.whiteSilhouette(view.sprite.texture) : null;
@@ -46502,6 +46736,22 @@ export class PixiScene {
     }
   }
 
+  /**
+   * ?proj=1(段階5・Z29「舞妓の毬」): 体を離れて飛ぶ得物を、自分の地面の点 G=(gx, gy) と高さ h(world)で置き直す
+   * (表示=投影(G) − (0, h·σ)・大きさ=今の大きさ×s_fx=判定を持たない絵=派手さ)。描く関数が置いた点 (gx, gy − h) から写す。
+   * 後掛けの体の相似(projOwnerAttach)は同じフレームに2回掛けないので、ここで掛けた物は体と一緒には動かない。
+   */
+  private projFlyLift = makeProjLiftPoint();
+  private projFlyingWeapon(sp: Container | undefined, gx: number, gy: number, h: number) {
+    const f = this.projFrame;
+    if (!f || !sp || !this.projFxSave(sp)) return;
+    const q = projLiftPointInto(f, gx, gy, h, this.projFlyLift); // proj-lift: Z29
+    const k = this.projFxKOf('fx', q.s);
+    sp.position.set(q.x + k * (sp.position.x - gx), q.y + k * (sp.position.y - (gy - h))); // proj-lift: Z29(描いた点=(gx, gy − h) から写す)
+    sp.scale.set(sp.scale.x * k, sp.scale.y * k);
+    if (q.alpha !== 1) sp.alpha *= q.alpha;
+    this.projLiftMark('Z29');
+  }
   private drawBountyWeapon(
     id: string, texName: string, px: number, py: number, angleRad: number,
     lengthPx: number, alpha: number,
@@ -46937,8 +47187,9 @@ export class PixiScene {
       const eoB = 1 - Math.pow(1 - tB, 2);
       const bxp = btx + (cx - btx) * eoB, byp = bty + (cy - bty) * eoB;
       const hop = Math.abs(Math.sin(tB * Math.PI * 2)) * 34 * (1 - tB); // 2バウンド・減衰
-      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bxp, byp - hop, now / 100, 58, 0.9); // proj-lift: Z29(未対応)
-      if (hop > 0) this.projLiftMark('Z29', false); // ?proj=1&projaudit=1: 段階5の直しを通していない高さ(計器 s5 unfixed)
+      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bxp, byp - hop, now / 100, 58, 0.9); // proj-lift: Z29(?proj=0 の今の行)
+      // ?proj=1(段階5・Z29): 体を離れて跳ねる毬は自分の地面の点 (bxp, byp) と高さ hop で置き直す(体の相似の登録より先に掛ける)。
+      if (pf) this.projFlyingWeapon(this.bountyWeaponSprites.get(e.id), bxp, byp, hop);
       // ★v0.25.3586: 打ち出しの瞬間に帯の先端へ花びらを散らす(舞妓の全技=桜のアイデンティティ)。
       this.triggerPetalOnce(e.id, `naginata-hit:${bs}:${this.moveInstanceNo(e.id, bs ?? '')}`, btx, bty, 8, now);
       // 斬撃弧(v0.25.3444): 毬の薙ぎが振り抜けた瞬間(recover入り)に帯の軌道へ1回スタンプ。
@@ -47022,7 +47273,13 @@ export class PixiScene {
       const byH = hs.y0 + (ly - hs.y0) * tH - hopH;
       hs.lastX = lx; hs.lastY = ly;
       const sizeH = (isFinal ? 80 : 60) * (0.85 + 0.85 * arc); // 着地小さく・頂点大きく
-      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bxH, byH, now / spinDiv, sizeH, 0.95 - 0.2 * arc);
+      this.drawBountyWeapon(e.id, 'bounty-maiko-temari', bxH, byH, now / spinDiv, sizeH, 0.95 - 0.2 * arc); // proj-lift: Z29(?proj=0 の今の行)
+      // ?proj=1(段階5・Z29): 水雨の跳びの毬は、着地点 (lx, ly) へ寄る地面の線を G にして高さ hopH を σ で持ち上げる(大きさの頂点の膨らみは演出のまま)。
+      if (pf) {
+        const gyH = hs.y0 + (ly - hs.y0) * tH;
+        this.projFlyingWeapon(this.bountyWeaponSprites.get(e.id), bxH, gyH, hopH);
+        if (PROJ_AUDIT && untilH - gameTime <= 17) { const q = projectInto(pf, lx, ly, this.projScratch2); this.projS5Land(true, this.projFlyLift.x - q.x, this.projFlyLift.y - q.y); }
+      }
       // ぼかし: 高さに比例(頂点で最大)。共有BlurFilterを毬スプライトに着脱する(他状態では冒頭で外す)。
       const wspH = this.bountyWeaponSprites.get(e.id);
       if (wspH) {
@@ -47189,8 +47446,8 @@ export class PixiScene {
       + PixiScene.MAIKO_DROP_FWD_ROLL_PX * (1 - Math.pow(1 - rT, 3));
     const drop = 26 * fT * fT;                                   // 落下=加速(重力)
     const bounce = Math.sin(Math.min(1, rT * 3) * Math.PI) * 7 * (1 - rT); // 着地の小さな弾み
-    d.sp.position.set(d.x + d.ux * fwd, d.y + d.uy * fwd + drop - bounce); // proj-lift: Z56(未確認)
-    if (drop - bounce !== 0) this.projLiftMark('Z56', false); // ?proj=1&projaudit=1: 段階3の後掛けに入っているかは未確認(計器 s5 unfixed)
+    d.sp.position.set(d.x + d.ux * fwd, d.y + d.uy * fwd + drop - bounce); // proj-lift: Z56(済=段階3の点o projFxOriginAt(出た点 d.x, d.y)で写る=落下と弾みは s 倍=A の σ)
+    if (drop - bounce !== 0 && d.sp.visible) this.projLiftMark('Z56'); // ?proj=1&projaudit=1: 確かめた(projFxLateSprites の C9 が毎フレーム点o で写す)
     d.sp.rotation = fwd / PixiScene.MAIKO_DROP_FWD_ROLL_PX;      // 進んだ距離で回る=止まれば回転も止まる
     const size = PixiScene.MAIKO_DROP_SIZE_PX * (1 - 0.18 * Math.min(1, el / (FALL + ROLL)));
     d.sp.scale.set(size / Math.max(1, d.sp.texture.width));
