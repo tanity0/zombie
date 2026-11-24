@@ -150,6 +150,7 @@ import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
 import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceWantsGlenForm2, practiceBossType } from '../utils/bossPractice';
+import { shouldBeginFinaleReturnPhase } from '../utils/finaleReturnPhase';
 import { practiceBossAttnDelayMs, practiceSpawnWaitMs, practiceEdgeInsideDistance } from '../utils/practiceAttention'; // 変異体対策室だけ出現のアテンションを開始直後に(社長指示2026-11-23)
 import { loadKenkiLevel, kenkiSpawnLevel, kenkiLevelHealth, kenkiLevelLook } from '../utils/kenkiLevel'; // 孫悟空のレベル(research/BRAWLER.md §36)
 import { vsEntryOfRun, isNoAmmoRun, idForVariant, vsBodyInit, VS_RESPAWN_MS, VS_SPAWN_DIST_MIN, VS_SPAWN_DIST_MAX } from '../utils/vsTest';
@@ -5223,7 +5224,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 終了アイテムは triggerEventVictory が直接サークルを出す)。通常ストーリーは地点内で離指確認、イベントは3秒滞在で帰還完了。
         {
           const grs = useGameStore.getState();
-          if (grs.finaleDefeated && !grs.returnCircle && !grs.gameWon) {
+          // ステージ7(storyBossMode)は会話の後に直接クリア=帰還サークルを出さない(utils/finaleReturnPhase)。
+          if (shouldBeginFinaleReturnPhase({ finaleDefeated: grs.finaleDefeated, hasReturnCircle: !!grs.returnCircle, gameWon: grs.gameWon, storyBossMode: grs.storyBossMode })) {
             useGameStore.getState().beginReturnPhase(grs.castleEvent.x, grs.castleEvent.y);
             playSfx('event-start');
           }

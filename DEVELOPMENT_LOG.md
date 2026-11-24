@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5781 — ステージ7: グレン撃破後に帰還サークルを出さない(会話の後そのままエンディング)【2026-11-24 19:35 JST】
+- 社長「ステージ7、帰還サークル出さずに、会話終了と共にエンディングへ。いまそうなってる気がする」。今の作り: 形態2の撃破でミラの会話→予約時刻(行数×3300+900ms)で `gameWon`(帰還サークルなしの直接クリア)。隙間: 撃破で `finaleDefeated` も立ち、帰還フェーズ(`useGameLoop.ts` 5226 付近)が会話の間に城の跡地へ `beginReturnPhase`+`event-start` の音を出していた。
+- 直し: 新規 `src/utils/finaleReturnPhase.ts` の `shouldBeginFinaleReturnPhase`(`finaleDefeated && !returnCircle && !gameWon && !storyBossMode`)+テスト3件。ほかのステージは今どおり。練習ラン(giantbat@stage-7)の即リザルトの経路は別で影響なし。
+- 事実: `gameWon` は最後の会話の行が消えてから約1.4秒後(1行でも3行でも同じ)。撃破の時点で通信欄に前の会話が残っていると、その分会話が後ろへずれ `gameWon` が先に来て会話が切れる可能性あり(未修正・報告のみ)。
+- 検証: typecheck・eslint・循環import・vitest(3件)。
+- 状態変化: なし。
+
 ## v0.25.5780 — 研究所(ステージ2)と洋館(ステージ6)で、画面に出ないのに動いていた処理を止める【2026-11-24 15:58 JST】
 - 社長「見えない処理は当然無くして」。洗い出し(Explore)の5件を全部止めた(Opus サブエージェント)。
   1. 研究所の見えない木: `setTreesDisabled` の条件に `stageTheme==='lab'`(描画の `noTrees` と同じ)。爆発の遮り `aoeWalls`・英雄の犬・錬金の味方・レベルアップの押し返し・練習の置き場から見えない幹が消える(手榴弾等が元の木の向こうの敵に当たる)。練習ランのステージ2の金箱・商人の置き場が見えない幹を避けなくなる(乱数は同じ)。新規テスト `src/store/labTreeGate.store.test.ts`。
