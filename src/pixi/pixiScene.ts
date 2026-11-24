@@ -596,6 +596,7 @@ import {
 } from '../utils/moonShafts';
 import { getMoonShaftTexture, getMoonPoolTexture } from './moonShaftTexture';
 import { getSelectedStageId } from '../data/progress';
+import { castlePresent } from '../utils/castlePresence';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H, wallRect, propRect, isLabObstacleBroken, labDebrisInRegion, type LabBrokenObstacle } from '../world/labWalls';
 import { LAB_WALL_CRUMBLE_MS, LAB_PROP_CRUMBLE_MS, LAB_DEBRIS_PALETTE, labDebrisKind } from '../utils/labCrawlerTick'; // 崩れの尺・破片の色(着地の土煙・音と同じ値)
 import {
@@ -13960,7 +13961,8 @@ export class PixiScene {
       s.breakableProps,
       // v0.25.3054(監査指摘「消した建物が投影影を落とし続ける」): 施設フェード中は城/商人を
       // 遠方座標に差し替えて強glowの投影影スキャンから外す(距離カリングで自然に落ちる)。
-      facFade < 0.5 ? { ...s.castleEvent, x: 1e9, y: 1e9 } : s.castleEvent,
+      // 城の無いラン(ステージ7等)も同じく遠方へ=投影影を落とさない。
+      (facFade < 0.5 || !this.castleOnRun(s)) ? { ...s.castleEvent, x: 1e9, y: 1e9 } : s.castleEvent,
       facFade < 0.5 ? { ...s.weaponMerchant, x: 1e9, y: 1e9 } : s.weaponMerchant,
       loop1DuoNpcView(s.stage1Loop) ?? s.eventQuestNpc,
       s.camera,
@@ -14033,7 +14035,7 @@ export class PixiScene {
     this.arrowSafeBaseId = s.safeBaseId ?? null; // 拠点の目印の色(安全な拠点=最後に解放した拠点=青・地面の円と同じ)
     // 1周目(STAGE1_FIRST_LOOP.md §4-1): 西の拠点は確保するまで、遠くからでも画面端の印を出す(近くの足切りを外す)。
     this.arrowFarBaseId = s.stage1Loop?.phase === 'base' ? LOOP1_BASE_ID : null;
-    this.syncArrows(s.pickups, s.castleEvent, (facHidden || s.merchantHidden || s.stageTheme === 'lab') ? { ...s.weaponMerchant, radius: 0 } : s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab') && !facHidden, s.activeEvent, facHidden ? [] : revealedPois, facHidden ? [] : basesDrawn, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, rescuePoints, {
+    this.syncArrows(s.pickups, s.castleEvent, (facHidden || s.merchantHidden || s.stageTheme === 'lab') ? { ...s.weaponMerchant, radius: 0 } : s.weaponMerchant, s.camera, !s.indoorMode && this.castleOnRun(s) && !facHidden, s.activeEvent, facHidden ? [] : revealedPois, facHidden ? [] : basesDrawn, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, rescuePoints, {
       targets: markedBosses,
       // 距離は**ボスメーカーの部屋の中だけ常時**表示(社長指示v0.25.2657)。本編は数字を出さない=
       // マーク(方角)だけ。道具としての計測値をゲーム画面へ持ち込まない。
@@ -15044,10 +15046,16 @@ export class PixiScene {
     if (this.projFrame && PROJ_AUDIT) this.projAmbientAudit(nAll, FIREFLY_S1_COUNT);
   }
 
+  /** このランに城が在るか(store の状態を読むだけ。判定は utils/castlePresence)。 */
+  private castleOnRun(s: { farBackdrop: string; stageTheme: string; corridorMode: boolean }): boolean {
+    return castlePresent({ stageId: getSelectedStageId() ?? '', farBackdrop: s.farBackdrop, stageTheme: s.stageTheme, corridorMode: s.corridorMode });
+  }
+
   private syncCastle(castle: CastleEvent, now: number) {
     // チュートリアルは城(構造物)そのものを出さない(社長指示v0.25.1822「何もかも無し」・報告「ボス城がのこってる」)。
     // エンディング(仮組み)も同様=見せるだけのステージにボス城のランドマークは不要(ENDING_SCENE.md)。
-    if (useGameStore.getState().farBackdrop === 'tutorial' || useGameStore.getState().farBackdrop === 'ending') {
+    // ステージ7も城なし(社長指示2026-11-24)。在る/無いの判定は utils/castlePresence の1本。
+    if (!this.castleOnRun(useGameStore.getState())) {
       this.castleView.visible = false;
       this.castleShadow = null;
       return;

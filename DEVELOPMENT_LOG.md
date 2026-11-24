@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5779 — ステージ7の城を出さない(城が在るかを純関数1本に)【2026-11-24 15:06 JST】
+- 社長指示「ステージ7は城のオブジェクト要らない。」。新規 `src/utils/castlePresence.ts` の `castlePresent({stageId, farBackdrop, stageTheme, corridorMode})`=stage-7・tutorial・ending・lab・洋館通路で false(+テスト)。gameStore の `castleOnRun(s)` を7か所(ジュンの道筋・弾を止める物・`resolveOutOfSolids`・敵の押し戻し・帰還サークルの置き場の障害物・`updateFacilityEject`・置き物の場所取り)、pixiScene の `castleOnRun()` を3か所(`syncCastle`・城の投影影・`syncArrows`)で使う。屋内・施設ロック・崩落は今どおり各所。
+- 波及(事実): チュートリアルとエンディングで、描かれていない城の当たり箱が弾を止め(エンディングは押し戻しも)・帰還サークルの置き場を避けていた=見えない壁が消える(不具合の直しとして扱う・戻すこともできる)。洋館は城が遠方(100000)で変化なし。研究所は場所取りだけ従来どおり(城の座標に giantbat が出るため)。
+- 触っていない(社長に確認中): グレン撃破後の `beginReturnPhase(castleEvent.x, castleEvent.y)`(useGameLoop 5227 付近)=城の跡地に帰還サークルが出うる。ボットの「城へ向かう」(開発用)。
+- 検証: typecheck・eslint・循環import・vitest(castlePresence+src/store 3,332件)。ヘッドレスで stage-7 の城の座標に城の絵が無く押し戻されない/stage-1 は城が出て押し戻されるを目視。
+- 状態変化: なし。
+
 ## v0.25.5778 — 遠近の投影 段階6(後半+監査の直し): 湧く範囲・湧きのフェードイン・回収と残像・吸い付き・置く範囲の行(?proj=1 のみ)【2026-11-24 14:45 JST】
 - 後半(Opus サブエージェント): ①★#36 の湧き(V21・`projGameSpawnRect`・spawnBounds は不変・乱数は同じ)②湧きのフェードイン(`Enemy.projFadeInAt`・`projFadeScreen`=min(viewZoom, 湧きの目標ズーム)を3秒保持・V24 の位置のフェードを撤去・対象区分は `projSpawnFadeApplies`)③★#37 の回収(V25/V25c=回収の矩形・V25b=余白0+★#38 の画面・V26 は中心 pcy・V28=`projPropRegionRect` を store と描画で共有・V76・V78 横長 2195・V27 は shouldRetireBehind だけ台形)④回収の残像(store `projRecycleGhosts` 上限24・`projBulletGhosts` 上限48)⑤★#40=B の吸い付き(新規 `utils/projAimSnap.ts`)⑥置く範囲・縁の点(V5・V38・V43・V47・V49・V50(193行)・V77)⑦計器 `s6 spawn/recycle/cull`。新規 `utils/projSpawnFade.ts`・`utils/hudAvoidRects.ts`。
 - 監査1巡目: 品質 (A)5(吸い付きが古いカメラ/揺れの向き/フェード中の「見えていない」の取りこぼし/gfPlayer に先読み/残像の色と影)・クリエイティブ10(弾の残像が赤=当たらない赤/残像が止まる/静止画/出と消えが対称/半透明の幽霊/光の写し/照準が寝ていない/空を指した時の手掛かり無し/矢印が会話窓に重なる/KILL の寄せ未確認)。**全部直した**: 弾の残像は灰・200ms/残像は直前の速度で減速して流れ(敵260ms・弾600ms の時定数)歩きのコマを送る/フェードイン 900ms ease-out・フェードアウト(敵)450ms ease-in/明るさを尺の30%から戻す=闇から浮かぶ/照準の円は地面の点の s と縦の詰めで寝かせた楕円/ℓ_min で止まる間は欠けた薄い円+カーソルへ細い線・約90ms で寄る/画面外の矢印は会話窓(DOM から測って `hudAvoidRects`)を避ける・切り替えに約0.14秒の慣性/`resetProjFadeState` を resetGame で/計器の誤検知/段階5の計器の過小/亡霊の生やす位置の余白。品質 (B) で積んだ物: 地平線の境目の farBackdrop の 'forest' 置き換えの不一致(既知)・矢印が出る/消える瞬間のフェード・ボスのマークの会話窓避け。

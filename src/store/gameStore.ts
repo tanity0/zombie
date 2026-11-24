@@ -437,6 +437,7 @@ import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
 import { setPoiClearings } from '../world/poiClearings';
 import { beginPropPlacementSortie, setHandPlacedAnchors, type HandPlacedAnchor } from '../world/propPlacement';
+import { castlePresent } from '../utils/castlePresence';
 import { CASTLE_ART_HALF_W, CASTLE_ART_H, STAGE1_TREE_SKIN, STAGE3_TREE_SKIN, STAGE4_TREE_SKIN } from '../world/artRects';
 import { secretPoisForStage, resolveSecretPoiCollision, secretPoiTouchedBy, secretChroniclePhrase, secretPoiRect, ejectDirFromRects, SECRET_EJECT_SPEED, SECRET_EJECT_MS, type SecretPoi } from '../world/secretPois';
 /**
@@ -986,9 +987,9 @@ const makeEscorts = (px: number, py: number, corridorRow = false, playerMaxHealt
   }
   return arr;
 };
-// ステージ4のジュンの道筋(research/JUN_ESCORT.md): 城の当たり箱(崩れた後・ボス戦で施設が隠れている間は無し=resolveOutOfSolids と同じ)。
+// ステージ4のジュンの道筋(research/JUN_ESCORT.md): 城の当たり箱(崩れた後・ボス戦で施設が隠れている間・城の無いランは無し=resolveOutOfSolids と同じ)。
 const junCastlePathRect = (s: GameState): Rect | null =>
-  (s.castleEvent.collapsedAt !== undefined || s.farBackdrop === 'tutorial' || s.stageTheme === 'lab'
+  (s.castleEvent.collapsedAt !== undefined || !castleOnRun(s)
     || facilitySolidsOff(s)) ? null : castleRect(s.castleEvent);
 // 道筋で回り込む障害物=城+歩く範囲の木の幹+散布物(車両・見張り台)。押し戻しは resolveShieldWalls が別に掛ける。
 const junPathObstacles = (s: GameState, ax: number, ay: number, bx: number, by: number): Rect[] => {
@@ -1498,6 +1499,9 @@ const createCastleEvent = (): CastleEvent => {
 const castleFootY = (castle: CastleEvent): number => castle.y + CASTLE_FOOT_OFFSET_Y;
 const castleRect = (castle: CastleEvent): Rect =>
   footRect(castle.x, castleFootY(castle), CASTLE_COLLISION_W, CASTLE_COLLISION_H);
+/** このランに城が在るか(utils/castlePresence の1本を store の状態で引く)。ステージ7・チュートリアル・エンディング・研究所スキン・洋館通路は無し。 */
+const castleOnRun = (s: { farBackdrop: string; stageTheme: string; corridorMode: boolean }): boolean =>
+  castlePresent({ stageId: getSelectedStageId() ?? '', farBackdrop: s.farBackdrop, stageTheme: s.stageTheme, corridorMode: s.corridorMode });
 const resolveCastleCollision = (rect: Rect, castle: CastleEvent): { x: number; y: number } =>
   // v0.25.3983: 崩落した城は壁ではない(絵と判定の一致。プレイヤー/敵の両呼び出し元へここ1箇所で効く)。
   castle.collapsedAt !== undefined ? { x: rect.x, y: rect.y } : resolveAabb(rect, [castleRect(castle)]);
@@ -5050,7 +5054,7 @@ export const bulletBlockersAround = (s: GameState, cx: number, cy: number, pad: 
   const torches = s.breakableProps.filter(prop => prop.type === 'torch' && prop.health > 0).map(torchRect);
   // v0.25.3054: ボス戦中は城の判定を弾も素通し(絵と判定の一致・見えない壁を作らない)。
   // v0.25.3983: 崩落した城も同じく弾を遮らない(壁判定の撤去と同じ理由)。
-  return facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime) || s.castleEvent.collapsedAt !== undefined
+  return facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime) || s.castleEvent.collapsedAt !== undefined || !castleOnRun(s)
     ? [...trunks, ...torches]
     : [...trunks, ...torches, castleRect(s.castleEvent)];
 };
@@ -11698,7 +11702,8 @@ export const resolveOutOfSolids = (
   const w = rect.width, h = rect.height;
   const treeResolved = labTheme ? { x: rect.x, y: rect.y } : resolveTreeCollision(rect);
   const torchResolved = resolveTorchCollision({ x: treeResolved.x, y: treeResolved.y, width: w, height: h }, ctx.solidProps);
-  const castleResolved = (labTheme || ctx.farBackdrop === 'tutorial' || noFac) ? torchResolved
+  // 城の無いラン(utils/castlePresence)は押し戻さない。洋館通路は城の実体が遥か遠方=当たらないので corridorMode は渡さなくてよい。
+  const castleResolved = (noFac || !castleOnRun({ farBackdrop: ctx.farBackdrop, stageTheme: labTheme ? 'lab' : '', corridorMode: false })) ? torchResolved
     : resolveCastleCollision({ x: torchResolved.x, y: torchResolved.y, width: w, height: h }, ctx.castleEvent);
   const cityPropResolved = !labTheme
     ? resolveCityPropCollision(ctx.farBackdrop, { x: castleResolved.x, y: castleResolved.y, width: w, height: h })
@@ -20299,7 +20304,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // v0.25.3054: ボス戦中は城の判定も消す(プレイヤー側resolveOutOfSolidsと同じ・見えない壁を作らない)。
             // ★施設はボス戦中(+明けの弾き出しの間)は敵にも当たらない(灰色で残るだけ・社長指示2026-11-04)。
             const facOff = facilitySolidsOff(state, gameTime);
-            const castleR = (labTheme || state.farBackdrop === 'tutorial' || facOff)
+            const castleR = (facOff || !castleOnRun(state))
               ? torchR : resolveCastleCollision({ x: torchR.x, y: torchR.y, width: enemy.width, height: enemy.height }, state.castleEvent);
             // ラボ壁＋ラボプロップ(研究所スキン)。labProps も敵に当たり判定(従来は壁のみ=プロップすり抜け)。
             const labRects = labTheme ? [...labWallRects, ...labPropRects] : labWallRects;
@@ -26890,7 +26895,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ];
         const trunks = treesInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(trunkRect);
         const torches = state.breakableProps.filter(pr => pr.type === 'torch' && pr.health > 0).map(torchRect);
-        return [...trunks, ...torches, castleRect(state.castleEvent)];
+        return castleOnRun(state) ? [...trunks, ...torches, castleRect(state.castleEvent)] : [...trunks, ...torches];
       };
       const overlaps = (cx: number, cy: number): boolean => {
         const bx = cx - radius, by = cy - radius, bw = radius * 2, bh = radius * 2;
@@ -27317,7 +27322,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (locked) return state.facilityLockedPrev ? {} : { facilityLockedPrev: true };
       if (!state.facilityLockedPrev) return {};
       const rects: Rect[] = [];
-      if (!state.indoorMode && state.stageTheme !== 'lab' && state.farBackdrop !== 'tutorial' && state.castleEvent.collapsedAt === undefined) rects.push(castleRect(state.castleEvent));
+      if (!state.indoorMode && castleOnRun(state) && state.castleEvent.collapsedAt === undefined) rects.push(castleRect(state.castleEvent));
       if (state.hospital && !state.hospitalTaken) rects.push(hospitalRect(state.hospital));
       if (state.armory && !state.armoryTaken) rects.push(armoryRect(state.armory));
       if (state.police && !state.policeTaken) rects.push(policeRect(state.police));
@@ -30677,7 +30682,8 @@ setHateEscortProvider(() => hateEscortSource(useGameStore.getState()));
   let lastSig: number[] = [];
   let lastFar = '';
   const sync = (st: GameState) => {
-    const noCastle = st.farBackdrop === 'tutorial' || st.farBackdrop === 'ending' || st.corridorMode;
+    // 城の場所を空けるか。研究所スキンは城の絵を描かないが、城座標に giantbat が出る(クリア条件)ので場所は従来どおり空ける。
+    const noCastle = !castleOnRun(st) && !(st.stageTheme === 'lab' && castleOnRun({ ...st, stageTheme: '' }));
     const sig: number[] = [st.castleEvent.x, st.castleEvent.y, noCastle ? 1 : 0];
     for (const b of st.baseSites) sig.push(b.x, b.y);
     const lair = bossLairPos(st.hiddenBoss);
