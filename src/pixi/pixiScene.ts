@@ -16166,6 +16166,8 @@ export class PixiScene {
       stageId: getSelectedStageId(),
       projGrid: this.projFrame, // ?proj=1 の時だけ: 水たまりの地面の4枚を格子メッシュで頂点ごとに投影(段階4・K01)
       projFade: this.projFrame ? this.projWetFade : undefined, // ?proj=1 の時だけ: 水たまりの濃さは投影後のY(§3-6f・監査 A-2)
+      // ?proj=1 の時だけ(★#26=B): 雨粒・水たまりの雨の輪・地面の照りを見える world(台形の外接矩形)まで広げる(旧い矩形の上辺で水平に切れない)
+      projAmbient: this.projFrame ? { ...this.projAmbientRect() } : undefined,
     });
   }
 

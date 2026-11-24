@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5775', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5774', items: ['踏んで爆発を待つ緑卵が、また赤く光るようになった。爆発の範囲を知らせる紫の円はそのまま'] },
   { version: '0.25.5773', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5772', items: ['ゲーム内容の変更はありません'] },

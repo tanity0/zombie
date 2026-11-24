@@ -26,7 +26,7 @@ import { getTexture } from './pixiTextures';
 import { makeProjGridMesh, projMeshFromSprite, PROJ_GRID_SOFT } from './projDraw'; // 投影の段階4(?proj=1 の時だけ・K01)
 import { projectInto, makeProjPoint, type ProjFrame } from '../utils/perspectiveProjection';
 import { projShapeOutside } from '../utils/projShape';
-import { projFxScale, projFlatInto, makeProjFlatOut } from '../utils/projFx'; // 投影の段階3(?proj=1 の時だけ・G5)
+import { projFxScale, projFlatInto, makeProjFlatOut, PROJ_AMBIENT_CAP } from '../utils/projFx'; // 投影の段階3(?proj=1 の時だけ・G5)
 import type { MeshSimple } from 'pixi.js';
 import { getSoftGlowTexture } from './lighting';
 import {
@@ -290,6 +290,12 @@ export interface WetHost {
    * 渡されると、水たまりと小物の濃さを world の Y の horizonAlpha ではなくこれで引く(北の見えている地面の水たまりを捨てない)。
    */
   projFade?: (x: number, y: number) => number;
+  /**
+   * ?proj=1 の時だけ: 見える world(台形の外接矩形・北は描く距離の上限=pixiScene の projAmbientRect・★#26=B)。
+   * 渡されると、雨粒の着地点・水たまりの雨の波紋を取る範囲を旧い画面の矩形(rainView)からこれへ広げ、数は面積の比(上限 PROJ_AMBIENT_CAP 倍)で増やす。
+   * 濡れた地面の照りの上端も投影後の地平線から取る。null/省略=今のまま。
+   */
+  projAmbient?: { left: number; top: number; right: number; bottom: number } | null;
 }
 export interface WetAtmosphere {
   fog: readonly (Sprite | TilingSprite)[];
@@ -528,6 +534,9 @@ export class WeatherWetLayer {
 
   /** ?proj=1 の投影(このフレームの sync の間だけ・映りの型と光の筋が読む)。 */
   private projFrameNow: ProjFrame | null = null;
+  /** ?proj=1: このフレームの見える world(★#26=B)と、旧い矩形(rainView)との面積の比(1..PROJ_AMBIENT_CAP)。?proj=0 は null / 1。 */
+  private projAmbNow: { left: number; top: number; right: number; bottom: number } | null = null;
+  private projAmbK = 1;
   private depthNow: ((y: number) => number) | null = null;
   /** ?proj=1: 水面の上に置いた光の筋・光の線(world の点・大きさに d)を点+s へ写す。 */
   private projSlotFx(sp: Sprite, pv: PuddleView): void {
@@ -541,6 +550,15 @@ export class WeatherWetLayer {
     if (!this.visible) return;
     this.projFrameNow = h.projGrid ?? null;
     this.depthNow = h.depthScale;
+    this.projAmbNow = null; this.projAmbK = 1;
+    if (this.projFrameNow && h.projAmbient) {
+      // ?proj=1(★#26=B): 取り直す範囲=見える world・数=面積の比(減らさない・上限 PROJ_AMBIENT_CAP 倍)
+      const a = h.projAmbient, b = h.rainView ?? h.view;
+      const a0 = Math.max(1, (b.right - b.left) * (b.bottom - b.top));
+      const r = Math.max(0, (a.right - a.left) * (a.bottom - a.top)) / a0;
+      this.projAmbNow = a;
+      this.projAmbK = Math.min(PROJ_AMBIENT_CAP, Math.max(1, Number.isFinite(r) ? r : 1));
+    }
     const puddles = this.puddlesFor(h);
     const seen = new Set<string>();
     const v = h.view;
@@ -1235,7 +1253,7 @@ export class WeatherWetLayer {
     }
     let r = this.ripples.find(q => !q.on);
     if (!r) {
-      if (this.ripples.length >= RIPPLE_MAX) {
+      if (this.ripples.length >= Math.round(RIPPLE_MAX * this.projAmbK)) { // ?proj=1: 雨粒を増やした分だけ(上限2倍)
         r = this.ripples.reduce((o, q) => (q.at < o.at ? q : o)); // 一番古いものを使い回す
       } else {
         const sp = new Sprite(Texture.EMPTY);
@@ -1311,7 +1329,19 @@ export class WeatherWetLayer {
     // 地平線の手前(地面が見えている所)から下だけ。上から粗く探す(画面の高さ/24 回まで)。
     const step = Math.max(8, (v.bottom - v.top) / 24);
     let top = v.top;
-    while (top < v.bottom && h.horizonAlpha(top) < 0.5) top += step;
+    const pf = this.projFrameNow;
+    if (pf && h.projFade) {
+      // ?proj=1: 照りの1枚は投影しない(画面の矩形に敷く)ので、上端は「見えている地面の一番奥」を投影した y。
+      // world の Y の horizonAlpha で探すと旧い地平線(画面の中ほど)で水平に切れる=奥の見えている地面に照りが無い。
+      const a = this.projAmbNow ?? h.view;
+      const cx = (v.left + v.right) * 0.5;
+      const ws = Math.max(8, (a.bottom - a.top) / 48);
+      let wy = a.top;
+      while (wy < a.bottom && h.projFade(cx, wy) < 0.5) wy += ws;
+      top = wy < a.bottom ? Math.max(v.top, projectInto(pf, cx, wy, this.projPt).y) : v.bottom;
+    } else {
+      while (top < v.bottom && h.horizonAlpha(top) < 0.5) top += step;
+    }
     if (!this.gloss) {
       this.gloss = new TilingSprite({ texture: getGlossTexture(false), width: 1, height: 1 });
       this.gloss.blendMode = 'add';
@@ -1425,20 +1455,25 @@ export class WeatherWetLayer {
   // ---- ポツポツ雨 ----
   private syncRain(h: WetHost): void {
     const now = h.now;
-    const v = h.rainView ?? h.view;
+    const v0 = h.rainView ?? h.view;
+    // ?proj=1(★#26=B): 着地点は見える world(台形の外接矩形)から選ぶ。降る量は旧い矩形の面積×比(上限2倍)=粒の上限も同じ倍率。
+    const pf = this.projFrameNow, amb = pf ? this.projAmbNow : null, k = this.projAmbK;
+    const v = amb ?? v0;
     const w = Math.max(0, v.right - v.left), hh = Math.max(0, v.bottom - v.top);
+    const area = amb ? Math.max(0, v0.right - v0.left) * Math.max(0, v0.bottom - v0.top) * k : w * hh;
+    const rainMax = amb ? Math.round(RAIN_MAX * k) : RAIN_MAX;
     // 遅れが1秒を超えたら追いかけない(タブ復帰・重いフレームで一度に降らせない)。
     if (now - this.nextRainAt > 1000) this.nextRainAt = now;
-    let budget = RAIN_SPAWN_PER_FRAME;
+    let budget = amb ? Math.round(RAIN_SPAWN_PER_FRAME * k) : RAIN_SPAWN_PER_FRAME;
     while (now >= this.nextRainAt && budget-- > 0) {
       const spawn = !this.rainRecheck;
-      const ev = rainNextEvent(rainNextGapMs(w * hh * this.rainLevel, Math.random)); // 今の雨の強さぶん
+      const ev = rainNextEvent(rainNextGapMs(area * this.rainLevel, Math.random)); // 今の雨の強さぶん
       this.nextRainAt += ev.dt;
       this.rainRecheck = !ev.spawn;
       if (!spawn) continue; // 見直しだけの予定(止みかけ)
       let d = this.rain.find(q => !q.on);
       if (!d) {
-        if (this.rain.length >= RAIN_MAX) break;
+        if (this.rain.length >= rainMax) break;
         const sp = new Sprite(getRainStreakTexture());
         sp.anchor.set(0.5, 1); // 線の下端=雨粒の先
         sp.tint = RAIN_TINT;
@@ -1449,6 +1484,17 @@ export class WeatherWetLayer {
       }
       // 着地点は可視域の中(下は少し外まで=画面の下端へ落ちる粒も描く)。地平線の向こうには降らせない。
       // 地平線の向こうに落ちる点は捨てずに引き直す(最大4回)=本降りが見える地面に全数降る(社長指示2026-11-21「もっと土砂降りに」)。
+      if (amb && pf) {
+        // ?proj=1: 外接矩形のうち画面に映らない所(台形の外)と地平線の向こうは引き直す(最大8回)。濃さは投影後のY(projFade)で測る。
+        const fade = (px: number, py: number) => (h.projFade ? h.projFade(px, py) : projectInto(pf, px, py, this.projPt).alpha);
+        let px = v.left + Math.random() * w, py = v.top + Math.random() * (hh + 60);
+        for (let j = 0; j < 8 && (projShapeOutside(pf, px, py, 0, 40) || fade(px, py) <= 0.02); j++) {
+          px = v.left + Math.random() * w; py = v.top + Math.random() * (hh + 60);
+        }
+        if (projShapeOutside(pf, px, py, 0, 40) || fade(px, py) <= 0.02) continue;
+        d.at = now; d.x = px; d.y = py; d.spec = rainDropSpec(Math.random); d.on = true;
+        continue;
+      }
       const x = v.left + Math.random() * w;
       let y = v.top + Math.random() * (hh + 60);
       for (let k = 0; k < 4 && h.horizonAlpha(y) <= 0.02; k++) y = v.top + Math.random() * (hh + 60);
@@ -1492,8 +1538,10 @@ export class WeatherWetLayer {
     const dt = Math.min(100, Math.max(0, now - this.puddleRippleAt));
     this.puddleRippleAt = now;
     if (dt <= 0) return;
-    let budget = PUDDLE_RIPPLE_PER_FRAME;
+    // ?proj=1(★#26=B): 見えている水たまりが北に広がる分、1フレームに立てる数の上限も面積の比(上限2倍)。
+    let budget = this.projAmbNow ? Math.round(PUDDLE_RIPPLE_PER_FRAME * this.projAmbK) : PUDDLE_RIPPLE_PER_FRAME;
     const v = h.rainView ?? h.view;
+    const pf = this.projAmbNow ? this.projFrameNow : null;
     // 同じ水たまりで今立っている雨の波紋の数(混むほど1つ1つを薄く=重なっても白く潰れず、輪が1つずつ読める)。
     const busy = this.rippleBusy;
     busy.clear();
@@ -1502,7 +1550,9 @@ export class WeatherWetLayer {
       if (budget <= 0) break;
       if (pv.alpha < 0.05) continue;
       const p = pv.p;
-      if (p.x < v.left || p.x > v.right || p.y < v.top || p.y > v.bottom + 20) continue;
+      // ?proj=1: 画面に映っているか=中心を投影して測る(旧い矩形で測ると奥の見えている水たまりに雨の輪が立たない)
+      if (pf ? projShapeOutside(pf, p.x, p.y, 0, 0)
+        : (p.x < v.left || p.x > v.right || p.y < v.top || p.y > v.bottom + 20)) continue;
       const rx = p.rx * pv.d * WATER_FIT_X, ry = p.ry * pv.d * WATER_FIT_Y; // 水面(縁の内側)
       const rate = puddleRippleRate(this.rainLevel, Math.PI * rx * ry);
       if (rate <= 0) continue;
