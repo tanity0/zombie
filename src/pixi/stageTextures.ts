@@ -67,7 +67,9 @@ export type SortieTexturePath = (typeof SORTIE_STAGE_TEXTURE_PATHS)[number];
 // ・要素はSortieTexturePath型=綴りミスはtypecheckで検出される。
 const STAGE_TEXTURE_GROUPS: Record<string, readonly SortieTexturePath[]> = {
   forest: ['backgrounds/stage1-near-forest.png', 'backgrounds/stage1-sky-anim.jpg', 'backgrounds/stage1-castle.png', 'backgrounds/stage1-moon.png'],
-  lab: ['sprites/lab-floor/lab-floor-stage2.png', 'backgrounds/stage2-lab-far.jpg', 'backgrounds/stage2-near-horizon2.png', 'backgrounds/stage2-front.png', 'backgrounds/stage2-front2.png', 'backgrounds/stage2-far-glass.png', 'backgrounds/stage2-far-frame.png'],
+  // ★stage2-near-horizon2.png(遠景森2)は研究所では出さない(pixiScene.applyNearHorizon が 'lab' を非表示)ので読まない
+  // (社長指示2026-11-24「見えない処理は当然無くして」・6.0MB)。素材と注入口は残す=出すと決めたらここへ戻すだけ。
+  lab: ['sprites/lab-floor/lab-floor-stage2.png', 'backgrounds/stage2-lab-far.jpg', 'backgrounds/stage2-front.png', 'backgrounds/stage2-front2.png', 'backgrounds/stage2-far-glass.png', 'backgrounds/stage2-far-frame.png'],
   city: ['backgrounds/stage3-distant-city-day.jpg', 'backgrounds/stage3-ground-cobble2.jpg', 'backgrounds/stage3-horizon-city.png', 'backgrounds/stage3-near-horizon-city.png', 'backgrounds/stage3-front-rooftops.png'],
   snow: ['backgrounds/stage4-far.jpg', 'backgrounds/stage4-front2.png', 'backgrounds/stage4-ground.jpg', 'backgrounds/stage4-horizon.png'],
   stage5: ['backgrounds/stage5-far.jpg', 'backgrounds/stage5-horizon.png', 'backgrounds/stage5-near-horizon.png', 'backgrounds/stage5-front.png', 'backgrounds/stage5-ground.jpg'],
@@ -81,7 +83,7 @@ const STAGE_TEXTURE_GROUPS: Record<string, readonly SortieTexturePath[]> = {
 const NEAR_HORIZON_TEXTURES: Record<string, SortieTexturePath> = {
   forest: 'backgrounds/stage1-near-forest.png',
   city: 'backgrounds/stage3-near-horizon-city.png',
-  lab: 'backgrounds/stage2-near-horizon2.png',
+  // lab: 研究所は遠景森2を出さない(上の STAGE_TEXTURE_GROUPS.lab と同じ理由)=読まない。
   stage5: 'backgrounds/stage5-near-horizon.png',
   tutorial: 'backgrounds/tutorial-near-rocks.png',
   ending: 'backgrounds/ending-near-rubble.png', // エンディング(仮組み)の近景帯(ENDING_SCENE.md)

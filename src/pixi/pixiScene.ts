@@ -7707,18 +7707,22 @@ export class PixiScene {
     }
   }
 
-  private syncStageLightShaftDrift(camera: { x: number; y: number }, now: number) {
+  private syncStageLightShaftDrift(camera: { x: number; y: number }, now: number, corridorOut = false) {
     // 左右の移動(camera.x)に連動して森のように横へ流す。period 単位で折り返して継ぎ目なし。
     let px = 0;
     if (this.shaftPeriod > 0) {
       px = (-camera.x * SHAFT_PARALLAX_X) % this.shaftPeriod;
       if (px > 0) px -= this.shaftPeriod; // [-period, 0] に正規化
     }
-    this.stageLightShaftGfx.position.set(px, 0);
-    this.labPitchShaftGfx.position.set(px, 0); // 研究所の闇を削る絵も同じ横の流れ(同じフレームの値)
-    this.stageLightShaftGfx.alpha =
-      (1 + Math.sin(now / STAGE_LIGHT_SHAFT_PULSE_MS * Math.PI * 2) * STAGE_LIGHT_SHAFT_PULSE_AMOUNT) * this.labShaftMul
-      * (S3D_OLD_SHAFT_KEEP ? 1 : 1 - easeInOutSine(this.s3dMix)); // ステージ3の元の光の筋: 既定は残す(元々あるエフェクトは指示なく消さない)。`?s3oldshaft=0` で太陽の筋へ入れ替え(社長判断待ち)
+    // 洋館(通路)は光の筋を出さない(syncLab の corridorDressOff)=筋の位置・脈動も置かない(社長指示2026-11-24「見えない処理は当然無くして」)。
+    // 月明りの筋・溜まり・塵の「隠す」処理は下でそのまま通す(前の出撃で出ていた物を残さないため)。
+    if (!corridorOut) {
+      this.stageLightShaftGfx.position.set(px, 0);
+      this.labPitchShaftGfx.position.set(px, 0); // 研究所の闇を削る絵も同じ横の流れ(同じフレームの値)
+      this.stageLightShaftGfx.alpha =
+        (1 + Math.sin(now / STAGE_LIGHT_SHAFT_PULSE_MS * Math.PI * 2) * STAGE_LIGHT_SHAFT_PULSE_AMOUNT) * this.labShaftMul
+        * (S3D_OLD_SHAFT_KEEP ? 1 : 1 - easeInOutSine(this.s3dMix)); // ステージ3の元の光の筋: 既定は残す(元々あるエフェクトは指示なく消さない)。`?s3oldshaft=0` で太陽の筋へ入れ替え(社長判断待ち)
+    }
     // 柔らかい月明りの筋: 同じ横の流れ(周期は自分の並びの周期で折り返す)・同じ脈動。
     const ml = this.moonShaftLayer;
     const mOn = this.moonShaftK > 0 && this.moonShaftPeriod > 0 && this.stageLightShaftGfx.visible;
@@ -9196,6 +9200,14 @@ export class PixiScene {
   // v0.25.2205でlabだけ入れた措置の一般化(社長報告v0.25.2279「たまにステージ1がチラッと映る」)。
   private stageTexturesInjected = false;
   setStageTexturesInjected() { this.stageTexturesInjected = true; }
+  /**
+   * 研究所の旧素材(pixiTextures の labSpare・計 約18MB)を予備として引く。出撃側の差し替えが先に使われるので普段は一度も描かれない
+   * (社長指示2026-11-24「見えない処理は当然無くして」)。**注入が済むまでは読みに行かない**(peek)=差し替えが届く前の数フレームで
+   * 網が 6MB ずつ読みに行かないようにする。注入後に差し替えが無い(=読み込み失敗)時だけ網で読む=従来どおりこの絵へ落ちる。
+   */
+  private labSpareTex(name: string): Texture | null {
+    return this.stageTexturesInjected ? getTexture(name) : peekTexture(name);
+  }
   private farBackdropOverrides: Record<string, Texture | null> = {};
   // いま遠景に張っている種別。'forest'(既定)/'lab'/差し替えキー。差分があるときだけ張り替える。
   private currentFarKey = 'forest';
@@ -9660,7 +9672,7 @@ export class PixiScene {
     // 初回の森遠景(distant-night-panorama)を復元用に退避。
     if (!this.farBackdropBaseTex) this.farBackdropBaseTex = this.L.farBackdrop.texture;
     let tex: Texture | null = null;
-    if (desired === 'lab') tex = this.farBackdropOverrides['lab'] ?? getTexture('lab/lab-far-backdrop') ?? null;
+    if (desired === 'lab') tex = this.farBackdropOverrides['lab'] ?? this.labSpareTex('lab/lab-far-backdrop') ?? null;
     else if (desired === 'forest') tex = this.farBackdropBaseTex;
     else tex = this.farBackdropOverrides[desired] ?? this.farBackdropBaseTex;
     if (tex) {
@@ -9969,7 +9981,7 @@ export class PixiScene {
     const strips = this.L.groundStrips;
     this.applyFarBackdrop(theme, farKey);
     if (theme === 'lab') {
-      const tex = this.labGroundTex ?? getTexture('lab-floor/lab-floor-stage2') ?? getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-clean');
+      const tex = this.labGroundTex ?? getTexture('lab-floor/lab-floor-stage2') ?? this.labSpareTex('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-clean');
       if (!tex) return; // まだロードされていなければ次フレームで再試行(テーマは未確定のまま)
       // NPOT でもタイル反復できるよう wrap=repeat を明示(屋内ラボ床と同じ扱い)。
       try {
@@ -9989,7 +10001,7 @@ export class PixiScene {
       // 注入)を優先し、未ロードならlab-front-bandへフォールバック。ground stripsと同じく毎フレーム差分
       // チェックで貼り替える(遅延注入対応・社長指示v0.25.2184)。レイアウト/パララックス/ぼかしは
       // 他ステージの近景森と同じ既定のまま(専用の高さ指定はしない)。
-      const frontTex = this.frontOverrides['lab'] ?? getTexture('lab/lab-front-band');
+      const frontTex = this.frontOverrides['lab'] ?? this.labSpareTex('lab/lab-front-band');
       if (frontTex && this.L.frontForest.texture !== frontTex) {
         if (!this.frontForestBaseTex) this.frontForestBaseTex = this.L.frontForest.texture;
         this.L.frontForest.texture = frontTex;
@@ -9998,10 +10010,9 @@ export class PixiScene {
     this.clampTilingV(this.L.frontForest); // ★縦の継ぎ目対策
       }
       if (this.outdoorGroundTheme !== 'lab') {
-        // 地平帯(遠景森1)を研究所版へ(森→ラボ)。遠景は applyFarBackdrop・近景森は上のfrontTexが管理。
-        // 元テクスチャは復元用に一度だけ退避。テーマ変化時のみ。
-        const horizon = getTexture('lab/lab-horizon-band');
-        if (horizon) { if (!this.horizonForestBaseTex) this.horizonForestBaseTex = this.L.horizonForest.texture; this.L.horizonForest.texture = horizon; }
+        // 地平帯(遠景森1)は研究所では出さない(STAGE_SKINS.lab.horizon1Visible=false)ので、絵の差し替えもしない
+        // (社長指示2026-11-24「見えない処理は当然無くして」。旧: lab-horizon-band 6MB を読んで見えない層へ貼っていた)。
+        // ※森1の位置(y・高さ)は張り替えに関係なく従来どおり毎フレーム置く=地平線フェード(horizonRevealZeroScreenY)は変わらない。
         this.outdoorGroundTheme = 'lab';
       }
     } else if (this.outdoorGroundTheme !== 'forest') {
@@ -13041,7 +13052,9 @@ export class PixiScene {
     // (ストリップ束のBlurFilter)はストリップ番号=ワールド固定なので、引くと帯が画面中央へ上がって
     // ピント帯に入るのにボケたまま+帯境界の継ぎ目(フィルタ矩形の縁)が露出する。引きに比例して強度を
     // 落とし、ほぼ0でフィルタパス自体を外す(=継ぎ目も消える)。恒等(zoom>=1)では係数1=従来と不変。
-    {
+    // 洋館(通路)は地面の帯(groundBase)を出さない(syncLab の corridorDressOff)=帯のぼかしの切り替えもしない
+    // (社長指示2026-11-24「見えない処理は当然無くして」)。洋館かどうかは出撃中に変わらない。
+    if (!(s.corridorMode && !s.indoorMode)) {
       const dofK = Math.max(0, Math.min(1, (zoom - ZOOM_MIN_ABS) / (1 - ZOOM_MIN_ABS)));
       for (const e of this.nearBlurZoomFade) {
         const st = e.base * dofK;
@@ -13239,9 +13252,13 @@ export class PixiScene {
     }
     const fogT = now - this.fogT0;
     const labThemeFog = s.stageTheme === 'lab'; // 研究所スキンは森の霧を出さない(床を見せる)
+    // 洋館(通路)は霧3層の入れ物(奥/森下/森上)ごと隠している(syncLab の corridorDressOff)。
+    // 研究所(描かない)と洋館(入れ物が見えない)では位置・流れの計算もしない(社長指示2026-11-24「見えない処理は当然無くして」)。
+    // 位置も流れも now からその場で出す式なので、見える場面に戻った最初のフレームで正しい値になる(積み上げは無い)。
+    const fogUnseen = labThemeFog || (s.corridorMode && !s.indoorMode);
     for (const f of this.fogLayers) {
       f.sp.renderable = !labThemeFog; // ラボでは霧を非表示(visible 設定=有効フラグは保持)
-      if (!f.sp.visible) continue;
+      if (!f.sp.visible || fogUnseen) continue;
       // 外部PNG(fog.png 等)は非同期ロード。読めたら割当+サイズ/tileScale を確定。
       if (f.texKey && (!f.sp.texture || f.sp.texture.width <= 1)) {
         const ft = getTexture(f.texKey);
@@ -13345,11 +13362,16 @@ export class PixiScene {
     }
 
     const farH = this.farBackdropHeight();
-    this.L.farBackdrop.position.set(sx * 0.25, 0);
-    this.L.farBackdrop.tilePosition.set(
-      -s.camera.x * FAR_BACKDROP_PARALLAX_X,
-      0
-    );
+    // 洋館(通路)は遠景・森1・近景・地面の帯を出さない(syncLab の corridorDressOff/frontForest)=位置の更新もしない
+    // (社長指示2026-11-24「見えない処理は当然無くして」)。洋館の地平線フェードは森1ではなく固定ライン(下の分岐)なので影響しない。
+    const corridorOut = s.corridorMode && !s.indoorMode;
+    if (!corridorOut) {
+      this.L.farBackdrop.position.set(sx * 0.25, 0);
+      this.L.farBackdrop.tilePosition.set(
+        -s.camera.x * FAR_BACKDROP_PARALLAX_X,
+        0
+      );
+    }
     // 遠景のソフトブルーム(lab=M2のみ)。遠景のジオメトリ確定直後に追従させる。
     this.updateLabFarBloom(this.currentFarKey === 'lab' && this.L.farBackdrop.visible);
     // 川の流れ(チュートリアル): 遠景と同じパララックス+速度差の横流し+アルファの微揺らぎ。
@@ -13373,14 +13395,17 @@ export class PixiScene {
     // 横オーバースキャンを中央寄せ(resizeと同一): 引き(ズームアウト)で森1の左右が切れて黒帯が出るのを防ぐ。
     // 以前は x=0 固定でオーバースキャンが右だけに寄り、引きで左側が切れていた(社長指示v0.25.1884)。
     const horizonMarginX = (this.screenW * ZOOM_OVERSCAN - this.screenW) / 2;
-    this.L.horizonForest.position.set(-horizonMarginX, this.horizonForestY(farH, horizonH));
-    // 北部(snow)は森1の横速度を森2と同等に(社長指示v0.25.1894)。他ステージは従来どおり。
-    const horizonParaX = this.currentFarKey === 'snow' ? HORIZON_FOREST_SNOW_PARALLAX_X : HORIZON_FOREST_PARALLAX_X;
-    this.L.horizonForest.tilePosition.set(
-      -s.camera.x * horizonParaX,
-      0
-    );
-    this.horizonForestFadeMask.position.copyFrom(this.L.horizonForest.position);
+    // ※研究所も森1は描かないが、森1の y・高さが地平線フェード(horizonActorHideScreenY)の基準なので位置は置き続ける。
+    if (!corridorOut) {
+      this.L.horizonForest.position.set(-horizonMarginX, this.horizonForestY(farH, horizonH));
+      // 北部(snow)は森1の横速度を森2と同等に(社長指示v0.25.1894)。他ステージは従来どおり。
+      const horizonParaX = this.currentFarKey === 'snow' ? HORIZON_FOREST_SNOW_PARALLAX_X : HORIZON_FOREST_PARALLAX_X;
+      this.L.horizonForest.tilePosition.set(
+        -s.camera.x * horizonParaX,
+        0
+      );
+      this.horizonForestFadeMask.position.copyFrom(this.L.horizonForest.position);
+    }
     // 遠景手前森(ステージ3): 縦位置は layout 固定、横だけパララックス(地平より速い=近い)。
     if (this.L.nearHorizon.visible) {
       this.L.nearHorizon.tilePosition.set(-s.camera.x * NEAR_HORIZON_PARALLAX_X, 0);
@@ -13460,7 +13485,8 @@ export class PixiScene {
     this.groundScrollLastGameTime = s.gameTime;
     this.updateProjFrame(s, sx, sy, realNow); // ?proj=1 の時だけ投影の状態を作る(地面と置き物で同じ関数・同じ基準行)
     setViewProjection(this.projFrame); // ?proj=1: PC のマウスの照準を逆投影で戻す(§3-9b・作る物2)。?proj=0・場面の外は null=今の式
-    this.updatePerspectiveGround(
+    // 洋館(通路)は地面の帯(groundBase)を出さない=180本の帯の毎フレーム更新をしない(上の corridorOut と同じ理由)。
+    if (!corridorOut) this.updatePerspectiveGround(
       s.camera.x, s.camera.y, sx, sy,
       labPerspNow ? LAB_PERSP_FAR : GROUND_TILE_SCALE_Y_FAR,
       GROUND_TILE_SCALE_Y_NEAR,
@@ -13470,15 +13496,17 @@ export class PixiScene {
         epoch: `${getSelectedStageId()}|${s.stageTheme}|${s.indoorMode ? 1 : 0}|${s.corridorMode ? 1 : 0}|${this.groundScrollRunEpoch}`,
       },
     );
-    const frontH = this.frontForestHeight();
-    this.L.frontForest.position.set(sx * 0.75, this.screenH - frontH + this.frontForestYOffset(frontH));
-    // lab(近景森1=什器シルエット)だけ専用のパララックス係数を使う(社長指示v0.25.2200)。他ステージは
-    // 従来どおり FRONT_FOREST_PARALLAX_X(既定値は同じ0.68なので lab も見た目は現状維持)。
-    this.L.frontForest.tilePosition.set(
-      -s.camera.x * (this.isLabStage ? LAB_FRONT_PARALLAX_X : FRONT_FOREST_PARALLAX_X),
-      0
-    );
-    this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
+    if (!corridorOut) {
+      const frontH = this.frontForestHeight();
+      this.L.frontForest.position.set(sx * 0.75, this.screenH - frontH + this.frontForestYOffset(frontH));
+      // lab(近景森1=什器シルエット)だけ専用のパララックス係数を使う(社長指示v0.25.2200)。他ステージは
+      // 従来どおり FRONT_FOREST_PARALLAX_X(既定値は同じ0.68なので lab も見た目は現状維持)。
+      this.L.frontForest.tilePosition.set(
+        -s.camera.x * (this.isLabStage ? LAB_FRONT_PARALLAX_X : FRONT_FOREST_PARALLAX_X),
+        0
+      );
+      this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
+    }
     // 近景コピー(下部レイヤー・社長裁定v0.25.3000で復活): 実近景の少し上に引きの深さでフェードイン。
     // 上ずらしは**遠景リッジと同じ実測px(horizonRidgeStepPx)**——近景高さ比(v2998)は廃都で壁が
     // 浮いたため廃止。実近景と必ず重なる小さな刻みなので、間に地面が見えて浮くことは起きない。
@@ -13764,7 +13792,7 @@ export class PixiScene {
     const basesDrawn = s.stage1Loop ? s.baseSites.filter(b => !b.loop1Hidden) : s.baseSites;
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, escortsDrawn, s.rescueSurvivors, basesDrawn, now, s.effects, s.breakableProps, s.endingSoldiers);
     this.syncShadowProbe(s.camera, now, s.effects); // 計測専用(ベンチ以外では count=0 で即 return)
-    this.syncStageLightShaftDrift(s.camera, now);
+    this.syncStageLightShaftDrift(s.camera, now, s.corridorMode && !s.indoorMode);
     this.syncProjectiles(s.projectiles, now);
     this.syncIceLanceBolts(s.projectiles, now); // 氷槍ライフルの弾(氷の刃スプライト。Graphics の弾は出さない)
     // パイルドライバーの弾=撃ち手から伸びて戻る鋼の杭(描くだけ・判定は弾のまま)。

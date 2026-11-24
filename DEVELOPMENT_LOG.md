@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.5780 — 研究所(ステージ2)と洋館(ステージ6)で、画面に出ないのに動いていた処理を止める【2026-11-24 15:58 JST】
+- 社長「見えない処理は当然無くして」。洗い出し(Explore)の5件を全部止めた(Opus サブエージェント)。
+  1. 研究所の見えない木: `setTreesDisabled` の条件に `stageTheme==='lab'`(描画の `noTrees` と同じ)。爆発の遮り `aoeWalls`・英雄の犬・錬金の味方・レベルアップの押し返し・練習の置き場から見えない幹が消える(手榴弾等が元の木の向こうの敵に当たる)。練習ランのステージ2の金箱・商人の置き場が見えない幹を避けなくなる(乱数は同じ)。新規テスト `src/store/labTreeGate.store.test.ts`。
+  2. 研究所で読むが描かない絵: `lab-far-backdrop`・`lab-front-band`・`lab-floor-ground`・`lab-horizon-band` を予備の組 `labSpare`(出撃では読まない・描く瞬間の網には残す)へ、`stage2-near-horizon2.png` を研究所の読み込み一覧から外す。`public/` は消さない(assets:check 通過)。tex 193→169MB(遠景森2の6MB は tex 外)。
+  3. 洋館の `updatePerspectiveGround`(帯180本)と帯のぼかしの切り替えを呼ばない。
+  4. 研究所・洋館で霧3層の計算と読み込みをしない(時刻からの式なので戻れば正しい位置)。
+  5. 洋館で隠している遠景・森1・近景・光の筋の位置と脈動の更新を止める(研究所の森1の位置は地平線の薄れの基準なので残す)。
+- 蛍(40粒)は画面に出ているので対象外(残すか消すかは社長に確認中)。
+- 負荷 1/10(軽くなる向き)。
+- 検証: typecheck・eslint・循環import・assets:check・vitest 全部(11,695件通過・batMove 1件は全件並走の揺れ=単独で23件通過)。前後の画素の差は同じ版2回撮影の揺れ以内(研究所 6.27% 対 揺れ 7.65%・洋館 0.78%)。phone-guard の NG 4件(title・charselect)は変更前から同じ。
+- 状態変化: なし。
+
 ## v0.25.5779 — ステージ7の城を出さない(城が在るかを純関数1本に)【2026-11-24 15:06 JST】
 - 社長指示「ステージ7は城のオブジェクト要らない。」。新規 `src/utils/castlePresence.ts` の `castlePresent({stageId, farBackdrop, stageTheme, corridorMode})`=stage-7・tutorial・ending・lab・洋館通路で false(+テスト)。gameStore の `castleOnRun(s)` を7か所(ジュンの道筋・弾を止める物・`resolveOutOfSolids`・敵の押し戻し・帰還サークルの置き場の障害物・`updateFacilityEject`・置き物の場所取り)、pixiScene の `castleOnRun()` を3か所(`syncCastle`・城の投影影・`syncArrows`)で使う。屋内・施設ロック・崩落は今どおり各所。
 - 波及(事実): チュートリアルとエンディングで、描かれていない城の当たり箱が弾を止め(エンディングは押し戻しも)・帰還サークルの置き場を避けていた=見えない壁が消える(不具合の直しとして扱う・戻すこともできる)。洋館は城が遠方(100000)で変化なし。研究所は場所取りだけ従来どおり(城の座標に giantbat が出るため)。

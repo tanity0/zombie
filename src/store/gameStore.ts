@@ -28949,7 +28949,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 弾が木に当たって消える/ボスが引っかかる/方眼が読めない、で数字を詰める邪魔になる(社長指示v0.25.2628)。
       const bossMakerRoom = isBossMakerRun() && !state.danceTestMode;
       // エンディング(仮組み)も同じ扱い=見せるだけのステージに木/松明/緑卵は不要(ENDING_SCENE.md)。
-      setTreesDisabled(farBackdrop === 'stage5' || farBackdrop === 'tutorial' || farBackdrop === 'ending' || corridorMode || bossMakerRoom);
+      // 研究所スキン(stageTheme==='lab')も木の絵を出さない(pixiScene.syncTrees の noTrees)ので、世界の層でも木を返さない
+      // (社長指示2026-11-24「見えない処理は当然無くして」)。見えない幹が爆発の遮り・味方の移動・押し返し・練習の置き場に
+      // 残っていたのを止める。プレイヤー/敵の移動・弾・ビーム等の研究所分岐は元から木を見ていないので結果は変わらない。
+      setTreesDisabled(farBackdrop === 'stage5' || farBackdrop === 'tutorial' || farBackdrop === 'ending' || corridorMode || bossMakerRoom || stageTheme === 'lab');
       // チュートリアル: 松明(破壊可能プロップ=資材ドロップ源)も出さない(社長指示v0.25.1818
       // 「アイテムも通常NPCも何もかも無し。全てイベントで特別仕様のみ」)。
       setTorchesDisabled(farBackdrop === 'tutorial' || farBackdrop === 'ending' || corridorMode || bossMakerRoom);

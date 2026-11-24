@@ -83,18 +83,27 @@ export const KENKI_SPRITES: readonly string[] = [
 ];
 
 const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear' | 'nearest' }[]> = {
-  // 研究所ステージ(theme='lab')の背景3層と床。実測 約22MB。
+  // 研究所ステージ(theme='lab')の床。
   // ★`scaleMode` は起動マニフェストの記述と**1文字も違えない**(違えると見た目が変わる。
   //   未指定だったものは未指定のまま=Pixiの既定に委ねる)。
   lab: [
-    { name: 'lab/lab-far-backdrop' },                              // 1672x941 = 6.0MB
-    { name: 'lab/lab-horizon-band' },                              // 1536x1024 = 6.0MB
-    { name: 'lab/lab-front-band' },                                // 2172x724 = 6.0MB
-    { name: 'lab-floor/lab-floor-ground', scaleMode: 'nearest' },  // 1254x1254 = 6.0MB
     { name: 'lab-floor/lab-floor-stage2', scaleMode: 'nearest' },  // 1000x1000 = 3.8MB(出撃側でも読む=二重には積まれない)
     // ステージ2の這う塊(world/labCrawler.ts・ステージ2にしか出ない)。歩き12コマ/攻撃16コマ。
     { name: 'lab/lab-crawler-walk', scaleMode: 'nearest' },        // 4800x130 = 2.5MB
     { name: 'lab/lab-crawler-attack', scaleMode: 'nearest' },      // 6688x130 = 3.5MB
+  ],
+  /**
+   * ★研究所の旧素材(予備・計 約24MB)。**所属は付けない=出撃では読まない**(社長指示2026-11-24「見えない処理は当然無くして」)。
+   * 研究所では出撃側の差し替え(stage2-lab-far.jpg / stage2-front.png / lab-floor-stage2)が先に使われ、
+   * 地平帯(森1)は研究所では出さないので、この4枚は**一度も描かれないのに 約24MB 読んでいた**。
+   * 網(`getTexture`)には残す=差し替えの読み込みに失敗した時だけ、従来どおりこの絵へ落ちる(pixiScene.labSpareTex)。
+   * 屋内(indoorMode)の床の予備(lab-floor-ground)も網のまま。
+   */
+  labSpare: [
+    { name: 'lab/lab-far-backdrop' },                              // 1672x941 = 6.0MB
+    { name: 'lab/lab-horizon-band' },                              // 1536x1024 = 6.0MB
+    { name: 'lab/lab-front-band' },                                // 2172x724 = 6.0MB
+    { name: 'lab-floor/lab-floor-ground', scaleMode: 'nearest' },  // 1254x1254 = 6.0MB
   ],
   /**
    * ★研究所(ステージ2)にしか出ない敵と障害物(コード監査2026-10-23 M-5・社長承認)。計 約11MB。
