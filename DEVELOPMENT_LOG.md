@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5782 — ?proj=1: 判定の無い円を「真円を倒した楕円」へ(判定のある円は厳密な投影のまま=案A)【2026-11-24 19:45 JST】
+- 社長「やはり真円にしたい」→ 全部の円を楕円にしたところ、判定と一致させている円の縁のずれが大きかった(主人公の行・r200 でスマホ約70px/PC約94px・r400 で150〜276px・引き0.4 で 17〜66px)=赤い予告の掟に触れるので社長へ戻し、**案A**(判定のある円は今の形・判定の無い円は楕円)で裁定。
+- 部品: 厳密=`projCircle`/`projCircleLifted`/`projEllipse`/`projArcLine`/`projSector`/`projAnnulus`/`projRing`(元の頂点ごとの投影)・楕円=新規 `projFlatCircle`/`projFlatEllipse`/`projFlatArcLine`(`utils/projShape.ts` の `projFlat*Into`・倍率は `projFlatCoreInto` の1本=CR-3 の閃光の輪・★#30 の地面の絵・照準の円も通す)。格子メッシュは `PROJ_FLAT_MESH_TAGS` の名札だけ楕円の写し。計器 `circle dev`(楕円だけ測る)。
+- 楕円にした物(判定なし): 商人の滞在の円(J15)・拠点・武器庫・帰還の円・クエストの発火円・祠・イベントの囲い・錬金のリズムの輪・影や煙や暗い幕・派手さの輪・閃光の輪・照準の円・格子メッシュ(warpCircle・castleSummon・alchemyCircle・gravity*・goldRing・glowPool・playerPool・groundFire*・bountySummon)。厳密のまま(判定の半径そのもの): 赤と紫の予告(drawSweepCircleFill)・予告の輪・ring/ringCore(e.judge)・カウンターの届く輪・緑卵の範囲・判定を持つ床と罠・届く距離の輪・ファントムの火炎の扇・ハンターの視界・城ボス戦の移動制限の円・エリア境界のテープ。迷った4つ(イベントの囲い=楕円/ハンターの視界・移動制限の円・境界テープ=厳密)は社長に報告済み。
+- 検証: typecheck・eslint・循環import・vitest 全部(11,705件通過・`ghostReflectMeleeSubs` 1件は全件並走の揺れ=単独で22件通過・円と無関係)。ヘッドレスで商人の円=対称の楕円・赤い予告の円と緑卵の紫の円=今の形を目視(scratchpad circA_cmp.png)・計器 商人の円 max 6.3px。
+- 状態変化: なし。
+
 ## v0.25.5781 — ステージ7: グレン撃破後に帰還サークルを出さない(会話の後そのままエンディング)【2026-11-24 19:35 JST】
 - 社長「ステージ7、帰還サークル出さずに、会話終了と共にエンディングへ。いまそうなってる気がする」。今の作り: 形態2の撃破でミラの会話→予約時刻(行数×3300+900ms)で `gameWon`(帰還サークルなしの直接クリア)。隙間: 撃破で `finaleDefeated` も立ち、帰還フェーズ(`useGameLoop.ts` 5226 付近)が会話の間に城の跡地へ `beginReturnPhase`+`event-start` の音を出していた。
 - 直し: 新規 `src/utils/finaleReturnPhase.ts` の `shouldBeginFinaleReturnPhase`(`finaleDefeated && !returnCircle && !gameWon && !storyBossMode`)+テスト3件。ほかのステージは今どおり。練習ラン(giantbat@stage-7)の即リザルトの経路は別で影響なし。

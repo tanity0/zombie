@@ -12,7 +12,7 @@
 // ゲームの判定(当たり・時刻・威力)には一切関与しない。
 
 import {
-  projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, projDistanceFade, projScreenRowsL, type ProjFrame,
+  projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, projDistanceFade, projScreenRowsL, projectInto, makeProjPoint, type ProjFrame,
 } from './perspectiveProjection';
 import { projLiftScale } from './projLift'; // 段階5: 高さの倍率 σ(★#6)の出どころ
 
@@ -1075,6 +1075,13 @@ export const projShapeOutside = (f: ProjFrame, cx: number, cy: number, r: number
   take(cx, cy); take(cx - rr, cy); take(cx + rr, cy); take(cx, cy - rr); take(cx, cy + rr);
   // 北の端の行は一番狭く南の端の行は一番広い=東西の端は南の行でも測る
   take(cx - rr, cy + rr); take(cx + rr, cy + rr);
+  // 真円を倒した楕円(projFlat*)の北の端は頂点ごとの投影より北へ出る=その端も箱に入れる(中心が定義域の中の時だけ)
+  projFlatCoreInto(f, cx, cy, FL);
+  if (flatOk(FL)) {
+    const fy = Math.max(horizonY(f), FL.y - FL.ky * rr);
+    const sy = f.wgY + f.wgScale * (fy - f.camY + f.shakeY);
+    if (sy < minY) minY = sy;
+  }
   const m = Math.max(0, marginPx);
   return maxX < -m || minX > f.screenW + m || maxY < -m || minY > f.screenH + m;
 };
@@ -1106,4 +1113,283 @@ export const projDistToSeg = (px: number, py: number, ax: number, ay: number, bx
   const l2 = dx * dx + dy * dy;
   const t = l2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
   return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+};
+
+// ---------------------------------------------------------------------------------------------
+// 真円を倒した楕円(社長 2026-11-24「やはり真円にしたい」→ 同日の裁定=案A「判定のある円だけ今の形のまま、判定の無い円を真円を倒した楕円にする」)
+// ---------------------------------------------------------------------------------------------
+//
+// **判定の無い円**(商人・拠点・祠の円、影・煙・派手さの輪 等)だけが使う。判定の半径を描く円(赤い予告・紫の範囲・届く距離の輪・
+// 判定を持つ床)は上の頂点ごとの投影(projCircleInto 等)のまま=赤い所=当たる所を保つ。どちらを使うかは呼び出し元が選ぶ。
+// 判定の無い円の形は、頂点ごとに投影せず、**中心の点を投影し、中心の s で大きさを掛け、
+// 縦はその行の縦の詰めで一様に潰した楕円**(上下左右対称)で描く。段階3の閃光の輪(CR-3)・★#30 の地面に付いた絵・段階6の照準の円と
+// 同じ1本(projFlatCoreInto)で倍率を出す。world の点 (wx, wy) の写し: X = x + kx·(wx − cx)・Y = y + ky·(wy − cy)(地平線より上は地平線の線に寄せる)。
+// 中心が地平線より北(ℓ<0=中心の s・縦の詰めが無い)の円だけは、今の頂点ごとの投影へ戻す。
+
+export interface ProjFlatOut {
+  /** 中心(付け根)の表示座標。 */
+  x: number; y: number;
+  /** 中心の s と、定義域と描く距離のフェード。 */
+  s: number; a: number;
+  /** 横の倍率(=k)。 */
+  kx: number;
+  /** 縦の倍率(=横 × 中心の縦の詰め/s・縦は横を超えない)。 */
+  ky: number;
+  /** 潰しの比 ky/kx(=min(1, 中心の縦の詰め/s))。 */
+  r: number;
+  /** 中心の行 ℓ(<0=地平線より北)。 */
+  l: number;
+}
+export const makeProjFlatOut = (): ProjFlatOut => ({ x: 0, y: 0, s: 1, a: 1, kx: 1, ky: 1, r: 1, l: 0 });
+
+const FLAT_PA = makeProjPoint(), FLAT_PB = makeProjPoint();
+/**
+ * 真円を倒した楕円の倍率の1本: 中心を投影し、中心の s と中心の行の縦の詰め(中心の南北 ±2 world px の投影の差=地面の帯と同じ表=
+ * 手前を抑える案 projnear の既定で)を出す。kx=横の倍率(省略=s=判定に揃える円)。ky=kx×min(1, 縦の詰め/s)。
+ */
+export const projFlatCoreInto = (f: ProjFrame, wx: number, wy: number, out: ProjFlatOut, k?: number): ProjFlatOut => {
+  const p = projectInto(f, wx, wy, FLAT_PA);
+  out.x = p.x; out.y = p.y; out.s = p.s; out.a = p.alpha; out.l = p.l;
+  const s = Math.max(1e-6, p.s);
+  const ya = projectInto(f, wx, wy - 2, FLAT_PB).y;
+  const yb = projectInto(f, wx, wy + 2, FLAT_PB).y;
+  const sy = Math.max(0, (yb - ya) / 4);
+  const kx = k ?? p.s;
+  out.r = Math.min(1, sy / s);
+  out.kx = kx;
+  out.ky = kx * out.r;
+  return out;
+};
+
+const FL = makeProjFlatOut();
+/** 楕円の写しが使えるか(中心が地平線より南=定義域の中)。 */
+const flatOk = (fl: ProjFlatOut) => fl.l >= 0 && fl.s > 0;
+/** 地平線の線(表示の Y)。 */
+const horizonY = (f: ProjFrame) => f.camY + f.farH;
+/** 楕円の写しで world 点を out へ足す(地平線より上は地平線の線に寄せる)。 */
+const flatPush = (f: ProjFrame, fl: ProjFlatOut, cx: number, cy: number, wx: number, wy: number, out: ProjPathOut) => {
+  out.push(fl.x + fl.kx * (wx - cx), Math.max(horizonY(f), fl.y + fl.ky * (wy - cy)));
+  out.ss[out.n - 1] = fl.s;
+  out.pts++;
+  out.noteWorldY(wy);
+};
+const flatNote = (out: ProjPathOut, fl: ProjFlatOut) => {
+  if (fl.s < out.sMin) out.sMin = fl.s;
+  if (fl.s > out.sMax) out.sMax = fl.s;
+  if (fl.a > out.aMax) out.aMax = fl.a;
+};
+/** 楕円(画面での長い方の半径 R px)の全周の辺の数: 弦の膨らみが tol 以下(24〜1024)。 */
+export const projFlatEdges = (rScreenPx: number, tolPx: number): number => {
+  const R = Math.max(0, rScreenPx), tol = tolOf(tolPx);
+  if (R <= tol) return 24;
+  // 4 の倍数(東西南北の端を必ず頂点に取る=上下左右対称の多角形)
+  return 4 * Math.ceil(Math.max(24, Math.min(1024, Math.ceil(Math.PI / Math.acos(Math.max(-1, 1 - tol / R))))) / 4);
+};
+const flatEdgesFor = (f: ProjFrame, fl: ProjFlatOut, r: number, tolPx: number, frac = 1) =>
+  Math.max(2, Math.ceil(projFlatEdges(Math.max(fl.kx, fl.ky) * Math.max(0, r) * (f.wgScale > 0 ? f.wgScale : 1), tolPx) * Math.min(1, frac)));
+/** 中心の楕円の上端が地平線より上へ出るか(出るなら半径の直線・格子も分ける=寄せた所で折れる)。 */
+const flatClips = (f: ProjFrame, fl: ProjFlatOut, r: number) => fl.y - fl.ky * Math.max(0, r) < horizonY(f);
+
+/** 真円を倒した楕円(world の楕円 rx・ry・回転 rot を一様に潰す)。1輪郭・閉じた多角形。中心が地平線より北なら今の頂点ごとの投影。 */
+export const projFlatEllipseInto = (
+  f: ProjFrame, cx: number, cy: number, rx: number, ry: number, rot: number, tolPx: number, out: ProjPathOut,
+): ProjPathOut => {
+  projFlatCoreInto(f, cx, cy, FL);
+  if (!flatOk(FL)) return projEllipseInto(f, cx, cy, rx, ry, rot, tolPx, out);
+  const ax = Math.max(0, rx), ay = Math.max(0, ry), cr = Math.cos(rot), sr = Math.sin(rot);
+  const n = flatEdgesFor(f, FL, Math.max(ax, ay), tolPx);
+  out.beginContour();
+  for (let i = 0; i < n; i++) {
+    const t = (Math.PI * 2 * i) / n, ex = ax * Math.cos(t), ey = ay * Math.sin(t);
+    flatPush(f, FL, cx, cy, cx + ex * cr - ey * sr, cy + ex * sr + ey * cr, out);
+  }
+  flatNote(out, FL);
+  return out;
+};
+
+/** 真円を倒した円の周。 */
+export const projFlatCircleInto = (f: ProjFrame, cx: number, cy: number, r: number, tolPx: number, out: ProjPathOut): ProjPathOut =>
+  projFlatEllipseInto(f, cx, cy, r, r, 0, tolPx, out);
+
+/** 真円を倒した弧(開いた折れ線・a0→a1・Pixi の arc と同じ向き)。 */
+export const projFlatArcInto = (
+  f: ProjFrame, cx: number, cy: number, r: number, a0: number, a1: number, tolPx: number, out: ProjPathOut,
+): ProjPathOut => {
+  projFlatCoreInto(f, cx, cy, FL);
+  if (!flatOk(FL)) return projArcInto(f, cx, cy, r, a0, a1, tolPx, out);
+  const rr = Math.max(0, r);
+  const n = flatEdgesFor(f, FL, rr, tolPx, Math.abs(a1 - a0) / (Math.PI * 2));
+  out.beginContour();
+  for (let i = 0; i <= n; i++) {
+    const t = a0 + ((a1 - a0) * i) / n;
+    flatPush(f, FL, cx, cy, cx + Math.cos(t) * rr, cy + Math.sin(t) * rr, out);
+  }
+  flatNote(out, FL);
+  return out;
+};
+
+/** 真円を倒した扇(中心+弧・1輪郭・閉じた多角形)。中心角の向きは world の角のまま(写しは一様なので左右・上下の向きは保たれる)。 */
+export const projFlatSectorInto = (
+  f: ProjFrame, cx: number, cy: number, r: number, a0: number, a1: number, tolPx: number, out: ProjPathOut,
+): ProjPathOut => {
+  projFlatCoreInto(f, cx, cy, FL);
+  if (!flatOk(FL)) return projSectorInto(f, cx, cy, r, a0, a1, tolPx, out);
+  const rr = Math.max(0, r);
+  const n = flatEdgesFor(f, FL, rr, tolPx, Math.abs(a1 - a0) / (Math.PI * 2));
+  // 半径の直線は写しが一様なので両端だけでよい。地平線に寄せる所がある時だけ分ける(寄せた所で折れる)。
+  const nr = flatClips(f, FL, rr) ? 16 : 1;
+  out.beginContour();
+  flatPush(f, FL, cx, cy, cx, cy, out);
+  const ex0 = cx + Math.cos(a0) * rr, ey0 = cy + Math.sin(a0) * rr;
+  for (let j = 1; j < nr; j++) flatPush(f, FL, cx, cy, cx + (ex0 - cx) * (j / nr), cy + (ey0 - cy) * (j / nr), out);
+  for (let i = 0; i <= n; i++) {
+    const t = a0 + ((a1 - a0) * i) / n;
+    flatPush(f, FL, cx, cy, cx + Math.cos(t) * rr, cy + Math.sin(t) * rr, out);
+  }
+  const ex1 = cx + Math.cos(a1) * rr, ey1 = cy + Math.sin(a1) * rr;
+  for (let j = nr - 1; j >= 1; j--) flatPush(f, FL, cx, cy, cx + (ex1 - cx) * (j / nr), cy + (ey1 - cy) * (j / nr), out);
+  flatNote(out, FL);
+  return out;
+};
+
+// 真円を倒した環の角の並び(等間隔・同心の環で共有する)
+const FANG: number[] = [];
+let fangN = 0;
+let fangFlat = false;
+const flatAngles = (f: ProjFrame, rOut: number, a0: number, a1: number, tolPx: number): number => {
+  const n = flatEdgesFor(f, FL, rOut, tolPx, Math.abs(a1 - a0) / (Math.PI * 2));
+  fangN = 0;
+  for (let i = 0; i <= n; i++) FANG[fangN++] = a0 + ((a1 - a0) * i) / n;
+  return fangN;
+};
+/** 角の列 FANG[i0..i1] の環状の扇を1輪郭(外周 i0→i1・内周 i1→i0)で out へ(真円を倒した写し)。 */
+const emitFlatAnnularPiece = (f: ProjFrame, cx: number, cy: number, r0: number, r1: number, i0: number, i1: number, out: ProjPathOut) => {
+  out.beginContour();
+  for (let i = i0; i <= i1; i++) { const a = FANG[i]; flatPush(f, FL, cx, cy, cx + Math.cos(a) * r1, cy + Math.sin(a) * r1, out); }
+  if (r0 > 0) {
+    for (let i = i1; i >= i0; i--) { const a = FANG[i]; flatPush(f, FL, cx, cy, cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, out); }
+  } else flatPush(f, FL, cx, cy, cx, cy, out);
+  flatNote(out, FL);
+};
+const emitFlatRing = (f: ProjFrame, cx: number, cy: number, ri: number, ro: number, n: number, full: boolean, out: ProjPathOut) => {
+  if (full) {
+    const half = Math.max(1, Math.floor((n - 1) / 2));
+    emitFlatAnnularPiece(f, cx, cy, ri, ro, 0, half, out);
+    emitFlatAnnularPiece(f, cx, cy, ri, ro, half, n - 1, out);
+  } else emitFlatAnnularPiece(f, cx, cy, ri, ro, 0, n - 1, out);
+};
+
+/** 真円を倒した環・環状の扇(塗り用・projAnnulusInto と同じ輪郭の組み方)。中心が地平線より北なら今の頂点ごとの投影。 */
+export const projFlatAnnulusInto = (
+  f: ProjFrame, cx: number, cy: number, r0: number, r1: number, a0: number | undefined, a1: number | undefined,
+  tolPx: number, out: ProjPathOut,
+): ProjPathOut => {
+  projFlatCoreInto(f, cx, cy, FL);
+  if (!flatOk(FL)) return projAnnulusInto(f, cx, cy, r0, r1, a0, a1, tolPx, out);
+  const full = a0 === undefined || a1 === undefined;
+  const ri = Math.max(0, Math.min(r0, r1)), ro = Math.max(r0, r1);
+  const n = flatAngles(f, ro, full ? 0 : a0!, full ? Math.PI * 2 : a1!, tolPx);
+  emitFlatRing(f, cx, cy, ri, ro, n, full, out);
+  return out;
+};
+
+/** 同心の環を何本も描く時の角の並びを先に決める(projFlatAnnulusRingInto と組)。数を返す。中心が地平線より北なら今の角の並び。 */
+export const projFlatAnnulusAnglesFor = (
+  f: ProjFrame, cx: number, cy: number, r: number, a0: number | undefined, a1: number | undefined, tolPx: number, rIn = -1,
+): number => {
+  projFlatCoreInto(f, cx, cy, FL);
+  fangFlat = flatOk(FL);
+  if (!fangFlat) return projAnnulusAnglesFor(f, cx, cy, r, a0, a1, tolPx, rIn);
+  return flatAngles(f, r, a0 ?? 0, a1 ?? Math.PI * 2, tolPx);
+};
+
+/** projFlatAnnulusAnglesFor で決めた角の並び(数 n)で、環 [r0, r1] を out へ(全周なら2つの半分)。 */
+export const projFlatAnnulusRingInto = (
+  f: ProjFrame, cx: number, cy: number, r0: number, r1: number, n: number, full: boolean, out: ProjPathOut,
+): ProjPathOut => {
+  if (!fangFlat) return projAnnulusRingInto(f, cx, cy, r0, r1, n, full, out);
+  projFlatCoreInto(f, cx, cy, FL);
+  const ri = Math.max(0, Math.min(r0, r1)), ro = Math.max(r0, r1);
+  emitFlatRing(f, cx, cy, ri, ro, Math.min(n, fangN), full, out);
+  return out;
+};
+
+/**
+ * 計器(`?projaudit=1` の circle dev・ユニットテスト): 真円を倒した楕円の縁と、厳密に頂点ごとに投影した縁の最大のずれ(ズーム後の画面px)。
+ * 厳密な縁の点(world の円の周を等角に dense 点)ごとに楕円の縁(折れ線)までの最短距離を測る。inner=楕円が厳密な縁より内側に入っている所の
+ * 最大(判定の内なのに楕円の外=赤くないのに当たる側)・outer=外へ出ている所の最大(赤いのに当たらない側)。中心が地平線より北なら全部 0。
+ * onScreen=true(既定)なら、厳密な縁の点が画面(+16px)に映っている所だけを測る(画面の外の延長のずれは数えない)。
+ */
+export const projFlatCircleDev = (
+  f: ProjFrame, cx: number, cy: number, r: number, dense = 128, onScreen = true,
+): { max: number; inner: number; outer: number } => {
+  const fl = projFlatCoreInto(f, cx, cy, makeProjFlatOut());
+  const res = { max: 0, inner: 0, outer: 0 };
+  if (!flatOk(fl) || !(r > 0)) return res;
+  const z = f.wgScale > 0 ? f.wgScale : 1, hy = horizonY(f);
+  const m = Math.max(64, dense * 2);
+  const ex: number[] = [], ey: number[] = [];
+  for (let i = 0; i < m; i++) {
+    const t = (Math.PI * 2 * i) / m;
+    ex.push(z * (fl.x + fl.kx * r * Math.cos(t)));
+    ey.push(z * Math.max(hy, fl.y + fl.ky * r * Math.sin(t)));
+  }
+  const V = mkP2();
+  for (let i = 0; i < dense; i++) {
+    const t = (Math.PI * 2 * i) / dense;
+    projVertexInto(f, cx + r * Math.cos(t), cy + r * Math.sin(t), V);
+    if (onScreen && (V.sx < -PROJ_SHAPE_SCREEN_PAD || V.sx > f.screenW + PROJ_SHAPE_SCREEN_PAD || V.sy < -PROJ_SHAPE_SCREEN_PAD || V.sy > f.screenH + PROJ_SHAPE_SCREEN_PAD)) continue;
+    const px = z * V.x, py = z * V.y;
+    let d = Infinity;
+    for (let j = 0; j < m; j++) {
+      const k = (j + 1) % m;
+      const dx = ex[k] - ex[j], dy = ey[k] - ey[j], l2 = dx * dx + dy * dy;
+      const u = l2 > 0 ? Math.max(0, Math.min(1, ((px - ex[j]) * dx + (py - ey[j]) * dy) / l2)) : 0;
+      d = Math.min(d, Math.hypot(px - (ex[j] + dx * u), py - (ey[j] + dy * u)));
+    }
+    // 厳密な縁の点が楕円の外 = 楕円がそこで内側に入っている
+    const qx = (V.x - fl.x) / Math.max(1e-9, fl.kx * r), qy = (V.y - fl.y) / Math.max(1e-9, fl.ky * r);
+    const outside = qx * qx + qy * qy > 1;
+    if (d > res.max) res.max = d;
+    if (outside) { if (d > res.inner) res.inner = d; } else if (d > res.outer) res.outer = d;
+  }
+  return res;
+};
+
+/**
+ * 円の絵(世界に寝かせた四角 fr の中の円)の格子メッシュを、真円を倒した写しで書く(projGridInto と同じ 33×33 の作り置きの配列・
+ * 使わない頂点は最後の列/行に潰す)。写しは一様なので 1×1 マス(地平線に寄せる所がある時だけ 8×8)。中心が地平線より北なら projGridInto。
+ */
+export const projGridFlatInto = (
+  f: ProjFrame, fr: ProjFrame4, rowPx: number, colPx: number, maxN: number, outPos: Float32Array, outUv: Float32Array,
+): ProjGridResult => {
+  projFlatCoreInto(f, fr.cx, fr.cy, FL);
+  if (!flatOk(FL)) return projGridInto(f, fr, rowPx, colPx, maxN, outPos, outUv);
+  const cr = Math.cos(fr.rot), sr = Math.sin(fr.rot);
+  const res: ProjGridResult = { nx: 1, ny: 1, pts: 1, wyMin: Infinity, wyMax: -Infinity, sMax: FL.s, aMax: FL.a };
+  const half = Math.hypot(fr.w, fr.h) / 2;
+  const nn = flatClips(f, FL, half) ? Math.min(8, Math.max(1, Math.floor(maxN))) : 1;
+  res.nx = nn; res.ny = nn;
+  const hy = horizonY(f);
+  const W = PROJ_GRID_MAX + 1;
+  for (let j = 0; j <= PROJ_GRID_MAX; j++) {
+    const v = Math.min(j, nn) / nn;
+    for (let i = 0; i <= PROJ_GRID_MAX; i++) {
+      const k = (j * W + i) * 2;
+      if (i <= nn && j <= nn) {
+        const u = i / nn;
+        const wp = frameAt(fr, u, v, cr, sr, W_TMP);
+        res.pts++;
+        if (wp.y < res.wyMin) res.wyMin = wp.y;
+        if (wp.y > res.wyMax) res.wyMax = wp.y;
+        outPos[k] = FL.x + FL.kx * (wp.x - fr.cx); outPos[k + 1] = Math.max(hy, FL.y + FL.ky * (wp.y - fr.cy));
+        outUv[k] = u; outUv[k + 1] = v;
+      } else {
+        const src = (Math.min(j, nn) * W + Math.min(i, nn)) * 2;
+        outPos[k] = outPos[src]; outPos[k + 1] = outPos[src + 1];
+        outUv[k] = outUv[src]; outUv[k + 1] = outUv[src + 1];
+      }
+    }
+  }
+  return res;
 };

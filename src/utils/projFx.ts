@@ -9,7 +9,7 @@
 import {
   projectInto, makeProjPoint, projLocalYOfWorld, projScreenRowsL, visibleWorldBands, type ProjFrame, type ProjPoint,
 } from './perspectiveProjection';
-import { projLiftInto } from './projShape';
+import { projLiftInto, projFlatCoreInto, makeProjFlatOut, type ProjFlatOut } from './projShape';
 import type { VisualEffect } from '../types/game';
 
 // ---------------------------------------------------------------------------------------------
@@ -353,19 +353,8 @@ export const projBulletForm = (o: { weaponType: string; rocketArt: boolean; arro
 // 地面に付いた物(★#30=社長裁定 2026-11-23「地面に接する物は全部寝かせる」)
 // ---------------------------------------------------------------------------------------------
 
-export interface ProjFlatOut {
-  /** 中心(付け根)の表示座標。 */
-  x: number; y: number;
-  /** 中心の s と、定義域と描く距離のフェード。 */
-  s: number; a: number;
-  /** 横の倍率(=k・既定 s_fx=★#24 の奥の下限 0.6・南は s のまま)。 */
-  kx: number;
-  /** 縦の倍率(=横 × 中心の縦の詰め/s・縦は横を超えない)。 */
-  ky: number;
-  /** 潰しの比 ky/kx(=min(1, 中心の縦の詰め/s))。k を呼ぶ側で決める所(雨の波紋 等)はこれを掛ける。 */
-  r: number;
-}
-export const makeProjFlatOut = (): ProjFlatOut => ({ x: 0, y: 0, s: 1, a: 1, kx: 1, ky: 1, r: 1 });
+// 入れ物と倍率の式は utils/projShape.ts の projFlatCoreInto の1本(段階4の円・段階6の照準の円と同じ・社長 2026-11-24「やはり真円にしたい」)。
+export { makeProjFlatOut, type ProjFlatOut };
 
 /**
  * ★#30「地面に付いた物の型」(判定を持たない地面の跡=派手さの絵: 血溜まり・焦げ・粉塵・刺さった土 等): 閃光の輪(CR-3)と同じく、
@@ -373,16 +362,8 @@ export const makeProjFlatOut = (): ProjFlatOut => ({ x: 0, y: 0, s: 1, a: 1, kx:
  * 縦は横を超えない。k を渡すとその値(判定に揃える物は s)。
  */
 export const projFlatInto = (f: ProjFrame, wx: number, wy: number, out: ProjFlatOut, k?: number): ProjFlatOut => {
-  const p = projectInto(f, wx, wy, PA);
-  out.x = p.x; out.y = p.y; out.s = p.s; out.a = p.alpha;
-  const s = Math.max(1e-6, p.s);
-  const ya = projectInto(f, wx, wy - 2, PB).y;
-  const yb = projectInto(f, wx, wy + 2, PB).y;
-  const sy = Math.max(0, (yb - ya) / 4);
-  const kx = k ?? projFxScale(p.s);
-  out.r = Math.min(1, sy / s);
-  out.kx = kx;
-  out.ky = kx * out.r;
+  projFlatCoreInto(f, wx, wy, out, k);
+  if (k === undefined) { out.kx = projFxScale(out.s); out.ky = out.kx * out.r; }
   return out;
 };
 

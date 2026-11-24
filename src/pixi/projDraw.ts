@@ -12,7 +12,7 @@ import { PROJ_FX_MIN_S, PROJ_FX_SIZE_MODE } from '../utils/projFx';
 import type { ProjFrame } from '../utils/perspectiveProjection';
 import {
   ProjPathOut, projCircleInto, projEllipseInto, projArcInto, projSectorInto, projAnnulusInto, projAnnulusAnglesFor,
-  projAnnulusRingInto, projQuadStripInto, projRectFrameInto, projPathInto, projGridInto, projGridIndices, projVertexInto,
+  projAnnulusRingInto, projFlatCircleInto, projFlatEllipseInto, projFlatArcInto, projGridFlatInto, projFlatCircleDev, projQuadStripInto, projRectFrameInto, projPathInto, projGridInto, projGridIndices, projVertexInto,
   projLiftInto, projTeleLineScale, projStrokeStripInto, projTeleAlphaBucket, projGlyphMinSize, projGlyphStrokeLook, PROJ_SHAPE_TOL_PX, PROJ_GRID_VERTS, PROJ_GRID_MAX, PROJ_TELE_LINE_MODE,
   PROJ_TELE_LINE_MIN_PX, type ProjFrame4, type ProjGridResult,
 } from '../utils/projShape';
@@ -39,6 +39,7 @@ export const projDrawBeginFrame = (no: number): void => {
   frameNo = no;
   if (ptsFrame > ptsMax) ptsMax = ptsFrame;
   ptsFrame = 0;
+  if (projCircleDevStat.on) devFrameReset();
 };
 /** 今フレームに予告で投影した点の数と、その最大(計器・負荷の材料 3-6l)。 */
 export const projDrawPoints = (): { now: number; max: number } => ({ now: ptsFrame, max: Math.max(ptsMax, ptsFrame) });
@@ -80,6 +81,41 @@ export const projNoteWorldY = (g: Graphics, wyMin: number, wyMax: number): void 
 
 const OUT = new ProjPathOut();
 const TOL = PROJ_SHAPE_TOL_PX;
+
+/**
+ * 計器 `?projaudit=1` の circle dev(社長 2026-11-24 裁定=案A): 真円を倒した楕円で描いた円(判定の無い円だけ)ごとに、楕円の縁と厳密に投影した縁の最大のずれ(画面px)を測る。
+ * on は pixiScene が PROJ_AUDIT の時だけ立てる(?proj=0・計器なしでは1回も測らない)。1フレームに測る円は CIRCLE_DEV_CAP 個まで。
+ */
+export const projCircleDevStat = {
+  on: false,
+  /** 今フレームに測った円の数・ずれの最大(画面px)・内側/外側の最大。 */
+  n: 0, max: 0, inner: 0, outer: 0,
+  /** 今フレームで一番ずれた円の半径(world)と、基準点からの南北(world px)・部品の名。 */
+  worstR: 0, worstDy: 0, worstWhat: '',
+  /** 計測を始めてからの最大。 */
+  maxAll: 0, innerAll: 0, outerAll: 0, worstAll: '',
+};
+const CIRCLE_DEV_CAP = 12;
+const devFrameReset = () => {
+  const d = projCircleDevStat;
+  d.n = 0; d.max = 0; d.inner = 0; d.outer = 0; d.worstR = 0; d.worstDy = 0; d.worstWhat = '';
+};
+/** 楕円にした円を1つ測る(計器が on の時だけ)。 */
+export const projCircleDevNote = (f: ProjFrame, cx: number, cy: number, r: number, what: string): void => {
+  const d = projCircleDevStat;
+  if (!d.on || d.n >= CIRCLE_DEV_CAP || !(r > 0)) return;
+  const v = projFlatCircleDev(f, cx, cy, r, 96);
+  d.n++;
+  if (v.inner > d.inner) d.inner = v.inner;
+  if (v.outer > d.outer) d.outer = v.outer;
+  if (v.max > d.max) {
+    d.max = v.max; d.worstR = r; d.worstWhat = what;
+    d.worstDy = Math.round(cy - f.wRef); // 基準点(主人公の行)からの world の南北(px・南が正)
+  }
+  if (v.inner > d.innerAll) d.innerAll = v.inner;
+  if (v.outer > d.outerAll) d.outerAll = v.outer;
+  if (v.max > d.maxAll) { d.maxAll = v.max; d.worstAll = `${what} r=${Math.round(r)} dy=${Math.round(cy - f.wRef)}`; }
+};
 
 const record = (g: Graphics, n0: number, out: ProjPathOut) => {
   const s = statOf(g);
@@ -189,7 +225,13 @@ const paint = (g: Graphics, out: ProjPathOut, fill: FillInput | undefined, strok
   if (stroke !== undefined) { paintFrame = f ?? null; strokeLine(g, out, stroke, closed, look); paintFrame = null; }
 };
 
-/** 円(縁は projCircleInto の頂点列)。 */
+// 円の形の部品は2組(社長 2026-11-24 裁定=案A「判定のある円だけ今の形のまま、判定の無い円を真円を倒した楕円にする」):
+// - projCircle/projEllipse/projArcLine/projSector/projAnnulus/projRingsBegin+projRing/projCircleLifted = **厳密**(頂点ごとに投影)。
+//   判定の半径そのものを描く円(赤い予告・紫の範囲・カウンターの届く距離・判定を持つ床 等=危険を伝える絵)はこちら。
+// - projFlatCircle/projFlatEllipse/projFlatArcLine = **真円を倒した楕円**(中心を投影し、中心の s と中心の行の縦の詰めで一様に潰す)。
+//   判定の無い円(商人・拠点・祠の円、影・煙・派手さの輪 等)はこちら。呼び出し元で選ぶ。
+
+/** 円(縁は projCircleInto の頂点列=厳密)。 */
 export const projCircle = (g: Graphics, f: ProjFrame, wx: number, wy: number, r: number, fill?: FillInput, stroke?: StrokeStyle, look: ProjLineLook = 'tele'): void => {
   const n0 = g.context.instructions.length;
   OUT.reset(); projCircleInto(f, wx, wy, r, TOL, OUT);
@@ -267,6 +309,41 @@ export const projRing = (g: Graphics, f: ProjFrame, rs: { cx: number; cy: number
   const n0 = g.context.instructions.length;
   OUT.reset(); projAnnulusRingInto(f, rs.cx, rs.cy, r0, r1, rs.n, rs.full, OUT);
   paint(g, OUT, fill, undefined, true, f);
+  record(g, n0, OUT);
+};
+
+/**
+ * 判定の無い円=真円を倒した楕円(utils/projShape.ts の projFlatCircleInto・中心が地平線より北の円だけ頂点ごとの投影)。
+ * what=計器 circle dev に出す名(楕円にした円のずれだけ測る)。
+ */
+export const projFlatCircle = (
+  g: Graphics, f: ProjFrame, wx: number, wy: number, r: number, fill?: FillInput, stroke?: StrokeStyle, look: ProjLineLook = 'tele', what = 'flatCircle',
+): void => {
+  const n0 = g.context.instructions.length;
+  OUT.reset(); projFlatCircleInto(f, wx, wy, r, TOL, OUT);
+  projCircleDevNote(f, wx, wy, r, what);
+  paint(g, OUT, fill, stroke, true, f, look);
+  record(g, n0, OUT);
+};
+
+/** 判定の無い楕円(world の楕円 rx・ry・回転を真円を倒した写しで一様に潰す・projFlatEllipseInto)。影・煙・暗い幕など。 */
+export const projFlatEllipse = (
+  g: Graphics, f: ProjFrame, wx: number, wy: number, rx: number, ry: number, rot: number, fill?: FillInput, stroke?: StrokeStyle, look: ProjLineLook = 'tele',
+): void => {
+  const n0 = g.context.instructions.length;
+  OUT.reset(); projFlatEllipseInto(f, wx, wy, rx, ry, rot, TOL, OUT);
+  if (rx === ry) projCircleDevNote(f, wx, wy, rx, 'flatEllipse');
+  paint(g, OUT, fill, stroke, true, f, look);
+  record(g, n0, OUT);
+};
+
+/** 判定の無い弧の線(真円を倒した楕円の上の弧・projFlatArcInto)。滞在の進捗の弧・派手さの弧など。 */
+export const projFlatArcLine = (
+  g: Graphics, f: ProjFrame, cx: number, cy: number, r: number, a0: number, a1: number, stroke: StrokeStyle, look: ProjLineLook = 'tele',
+): void => {
+  const n0 = g.context.instructions.length;
+  OUT.reset(); projFlatArcInto(f, cx, cy, r, a0, a1, TOL, OUT);
+  paint(g, OUT, undefined, stroke, false, f, look);
   record(g, n0, OUT);
 };
 
@@ -488,13 +565,15 @@ export const PROJ_GRID_SOFT = { rowPx: 24, colPx: 48 } as const;
 export const projMeshGrid = (
   mesh: MeshSimple, f: ProjFrame, fr: ProjFrame4, grid: { rowPx: number; colPx: number } = PROJ_GRID_SHARP,
   maxN = PROJ_GRID_MAX, g?: Graphics, flipU = false, flipV = false,
+  /** 円の絵(予告の輪・届く距離の輪・陣・光だまり 等)=真円を倒した写し(projGridFlatInto・社長 2026-11-24「やはり真円にしたい」)。 */
+  flat = false,
 ): ProjGridResult => {
   if (mesh.destroyed || !mesh.geometry) return { nx: 0, ny: 0, pts: 0, wyMin: 0, wyMax: 0, sMax: 0, aMax: 0 }; // destroy 済みは書かない
   const posBuf = mesh.geometry.getBuffer('aPosition');
   const pos = posBuf.data as Float32Array;
   const uvBuf = mesh.geometry.getBuffer('aUV');
   const uv = uvBuf.data as Float32Array;
-  const res = projGridInto(f, fr, grid.rowPx, grid.colPx, maxN, pos, uv);
+  const res = flat ? projGridFlatInto(f, fr, grid.rowPx, grid.colPx, maxN, pos, uv) : projGridInto(f, fr, grid.rowPx, grid.colPx, maxN, pos, uv);
   // 左右/上下に返した絵(Sprite の scale が負)は UV を返す(頂点の位置はそのまま=四角は同じ)
   if (flipU || flipV) for (let k = 0; k < uv.length; k += 2) { if (flipU) uv[k] = 1 - uv[k]; if (flipV) uv[k + 1] = 1 - uv[k + 1]; }
   posBuf.update();
@@ -512,7 +591,7 @@ export const projMeshGrid = (
  */
 export const projMeshFromSprite = (
   mesh: MeshSimple, f: ProjFrame, sp: { position: { x: number; y: number }; scale: { x: number; y: number }; anchor: { x: number; y: number }; texture: Texture; tint: number | string | unknown; alpha: number; blendMode: unknown; visible: boolean; rotation?: number },
-  grid: { rowPx: number; colPx: number } = PROJ_GRID_SOFT, dScale = 1, g?: Graphics,
+  grid: { rowPx: number; colPx: number } = PROJ_GRID_SOFT, dScale = 1, g?: Graphics, flat = false,
 ): ProjGridResult | null => {
   if (mesh.destroyed || !mesh.geometry) return null; // destroy 済みは触らない
   const tw = sp.texture.width, th = sp.texture.height;
@@ -528,7 +607,7 @@ export const projMeshFromSprite = (
   const rot = sp.rotation ?? 0, c = Math.cos(rot), sn = Math.sin(rot);
   const ox = (0.5 - sp.anchor.x) * tw * sx, oy = (0.5 - sp.anchor.y) * th * sy;
   const cx = sp.position.x + ox * c - oy * sn, cy = sp.position.y + ox * sn + oy * c;
-  return projMeshGrid(mesh, f, { cx, cy, w, h, rot }, grid, PROJ_GRID_MAX, g, sx < 0, sy < 0);
+  return projMeshGrid(mesh, f, { cx, cy, w, h, rot }, grid, PROJ_GRID_MAX, g, sx < 0, sy < 0, flat);
 };
 
 // ---- 段階3: 描いた命令をまとめて相似で写す(§3-7c・3-7l 作る物2 の projOnBody を命令の範囲へ) ----
