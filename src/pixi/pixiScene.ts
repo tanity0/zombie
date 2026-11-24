@@ -1734,6 +1734,17 @@ const EMBER_MOTE_COUNT = Math.max(1, Math.round(tsNum('embercount', 90)));
 const FIREFLY_TINT = 0xcfe89a;   // soft warm green-yellow
 const EMBER_TINT = 0xff8a3a;     // 火の粉=暖色オレンジ(加算)
 const FIREFLY_MARGIN = 90;       // spawn/recycle band around the visible view
+// ステージ2(研究所 stageTheme 'lab')は蛍をやめて火山灰に置き換え(社長指示2026-11-24「下から斜め上にゆっくり登っていく感じで。火山灰の様な」)。
+// 蛍プールを流用し、足りない分だけ足す(?ashcount= で調整)。加算の光ではなく通常合成のくすんだ灰。
+const ASH_COUNT = Math.max(1, Math.round(tsNum('ashcount', 72)));
+const ASH_WIND = tsNum('ashwind', 0.45);   // 風の中心(横へ流れる量=昇る速さに対する比・+=右)。ゆっくり 0.25〜0.65 を行き来する
+const ASH_WIND_SWING = 0.2;                // 風の振れ幅(中心±)
+const ASH_SWAY = 10;                       // 粒ごとの漂い(px/s)
+const ASH_TOP_FADE = 0.22;                 // 画面の上からこの割合の高さで薄くなり始め、上端で消える
+const ASH_BLUR_N = 5;                      // 手前のぼけた塊の数(少数)
+const ASH_DARK = 0.35;                     // 闇の中の明るさ
+const ASH_LIT = 1.4;                       // 光の中の明るさ
+const ASH_BLUR_DARK = 0.7;                 // 手前のぼけた塊の闇の中の明るさ
 
 // Enemy ground lights: subtle self-emission plus a short brighter pulse when
 // hit. These sit under actors so sprites never get washed out.
@@ -4751,6 +4762,11 @@ interface Firefly {
   phase: number; freq: number; base: number; size: number;
   snowFall: number;       // 雪モード時の落下速度(px/s)
   snowDrift: number;      // 雪モード時の横ドリフト(px/s)
+  /** ステージ2の火山灰だけ(syncLabAsh で初めて決める): 形(0=細かい粒/1=薄片/2=手前のぼけ)・奥行き z(0=奥〜1=手前)・大きさ・縦横比・濃さ・色・昇る速さ・漂い・回り・返り・湧いてからの時間・現れる時間・カメラへの追従。 */
+  ash?: {
+    kind: 0 | 1 | 2; z: number; size: number; aspect: number; alpha: number; r: number; g: number; b: number;
+    rise: number; drift: number; spin: number; flip: number; th: number; flutter: number; age: number; fadeIn: number; par: number;
+  };
   /** ステージ1の森の蛍だけ(syncFireflies の magic 分岐で初めて作る): 光の輪・色・灯る周期・位相・漂い・散る勢い・出ている量・並び順。 */
   halo?: Sprite;
   cyan?: boolean;
@@ -14695,6 +14711,14 @@ export class PixiScene {
       this.syncWorldEmbers(now, sec, x0, y0, x1, y1, emberRise, emberSway);
       return;
     }
+    // ステージ2(研究所)は火山灰。画面座標(uiLayer)で描く=今までの研究所の蛍と同じ層(研究所は ?proj=1 でも投影しない=projFrame が無い)。
+    if (this.isLabStage && !snow && !ember) {
+      this.setFireflyParent(false);
+      this.hideFireflyHalos();
+      this.syncLabAsh(camera, now, sec);
+      return;
+    }
+    if (this.ashActive) this.leaveLabAsh();
     // ?proj=1(段階3・G1.snow): 雪は画面座標(uiLayer)で降らせる天候=投影しない(外)。world に乗せて投影すると、world の画面の粗さで
     // 粒が大きな四角の塊に見え、見える world が北に広い分だけ密度も落ちる(proj3b/p09_snow で確認)。★#31「雪の見せ方」で裁定済み
     // (社長 2026-11-23「地面の投影に乗せず、画面に奥行きの3層」)・実装済み(中の層=ここ・奥と手前=syncProjSnowLayers)。
@@ -14756,6 +14780,227 @@ export class PixiScene {
     // 開始ヘリ演出の間は中の層と同じくカメラの流れを足さない(全粒が同じ端へ折り返して縦一列になる)
     const introNow = !!introState && (introState.introUntil === -1 || now < introState.introUntil);
     this.syncProjSnowLayers(snowVp, camera, sec, windX + blizzardWind, windY, fallBoost, blizzardWind, introNow);
+  }
+
+  private ashActive = false;
+  /** 灰の時計(秒・雪と同じ時の流れ)・風の突風・下から湧く濃い所(2〜3筋)・カメラの前の位置。 */
+  private ashClock = 0;
+  private ashGustStart = -1;
+  private ashGustDur = 1.5;
+  private ashGustAmp = 1.7;
+  private ashNextGust = 6 + Math.random() * 8;
+  private ashPlumes = [0, 0, 0];
+  private ashCamX = NaN;
+  private ashCamY = NaN;
+  /**
+   * 灰の1粒の見た目と動きを決め直す(湧く時)。大きさ・速さ・濃さ・明るさ・カメラへの追従は奥行き z の1本から一緒に決める(大きいほど速く濃い)。
+   * 手前のぼけた塊(先頭の ASH_BLUR_N 粒)は画面の端寄りを通る。他は7〜8割を画面の下端の外で湧かせ、2〜3割だけ画面の中で湧く。
+   */
+  private ashRespawn(f: Firefly, idx: number, scatter: boolean) {
+    const W = this.screenW, H = this.screenH;
+    const R = Math.random;
+    const kind: 0 | 1 | 2 = idx < ASH_BLUR_N ? 2 : R() < 0.62 ? 0 : 1;
+    const z = kind === 2 ? 1 : kind === 1 ? 0.25 + R() * 0.6 : Math.pow(R(), 1.3) * 0.8;
+    // 色: 暗めの灰を主に・茶色寄りの灰を2〜3割・明るい粒は少数(燃えさしは入れない)
+    const c = R();
+    let g: number, r: number, b: number;
+    if (kind === 2) { g = 110 + R() * 35; r = g + 4; b = g - 4; } // 手前のぼけ=少し明るい灰(闇の端で塊として読める)
+    else if (c < 0.26) { g = 85 + R() * 45; r = g + 12; b = g - 12; }
+    else if (c < 0.34) { g = 160 + R() * 40; r = g + 3; b = g - 3; }
+    else { g = 80 + R() * 60; r = g + 2; b = g - 2; }
+    const a = f.ash ?? {
+      kind, z, size: 0, aspect: 1, alpha: 0, r, g, b, rise: 0, drift: 0, spin: 0, flip: 0, th: 0, flutter: 0, age: 0, fadeIn: 1000, par: 1,
+    };
+    a.kind = kind; a.z = z; a.r = r; a.g = g; a.b = b;
+    a.par = 0.7 + 0.6 * z; // 奥×0.7 〜 手前のぼけ×1.3
+    a.size = kind === 2 ? 30 + R() * 30 : kind === 1 ? 3 + z * 6.5 : 1.6 + z * 4.2;
+    a.aspect = kind === 1 ? 0.3 + R() * 0.3 : 1;
+    a.alpha = kind === 2 ? 0.3 + R() * 0.15 : Math.max(0.2, 0.32 + z * 0.5 + (R() - 0.5) * 0.12);
+    a.rise = kind === 2 ? 95 + R() * 35 : (22 + 48 * z) * (kind === 1 ? 0.8 : 1) * (0.85 + R() * 0.3); // 薄片は空気を受けて遅い
+    a.drift = (R() - 0.5) * 8;
+    a.spin = (R() < 0.5 ? -1 : 1) * (0.4 + R() * 1.2);
+    a.flip = 1.2 + R() * 2.2;
+    a.th = R() * Math.PI * 2;
+    a.flutter = 0.0012 + R() * 0.0022;
+    a.fadeIn = 800 + R() * 1700; // 現れるのに掛かる時間をばらつかせる
+    a.age = scatter ? R() * a.fadeIn * 2 : 0;
+    f.ash = a;
+    f.phase = R() * Math.PI * 2;
+    const inScreen = !scatter && R() < 0.25;
+    const edgeX = () => (R() < 0.5 ? -0.06 * W + R() * 0.18 * W : 0.8 * W + R() * 0.18 * W); // 手前のぼけ=画面の端寄り
+    if (scatter) { f.x = kind === 2 ? edgeX() : -0.3 * W + R() * 1.3 * W; f.y = R() * H * 1.05; }
+    else {
+      f.y = inScreen ? H * (0.45 + R() * 0.5) : H + 6 + R() * 60 + (kind === 2 ? a.size * 0.5 : 0);
+      if (kind === 2) f.x = edgeX();
+      else if (R() < 0.7) f.x = this.ashPlumes[Math.floor(R() * this.ashPlumes.length)] + (R() + R() + R() - 1.5) * 0.1 * W; // 濃い所に寄せる
+      else f.x = -0.35 * W + R() * 1.35 * W;
+    }
+    // 湧いた直後は止まっていて、昇り始める(慣性)。散らして置く時は今の速さから
+    f.vx = scatter ? a.rise * ASH_WIND : 0;
+    f.vy = scatter ? -a.rise : 0;
+    const sp = f.sprite;
+    sp.texture = kind === 2 ? getSoftGlowTexture() : getCircleTexture();
+    sp.blendMode = 'normal';
+    sp.rotation = kind === 1 ? R() * Math.PI : 0;
+  }
+  /**
+   * 灰の位置の明るさ(0=闇〜1=光の中)。研究所の闇の幕に開いている穴(自分・敵・非常灯の床・光のエフェクト・懐中電灯の先)と、
+   * 非常灯の円錐(上から差す光)を読むだけ(新しい光は足さない)。座標は uiLayer。
+   */
+  private ashLightAt(x: number, y: number): number {
+    let L = 0;
+    for (const sp of this.labPitchDiscs) {
+      if (!sp.visible || sp.alpha <= 0.01) continue;
+      const rx = sp.width * 0.5, ry = Math.abs(sp.height) * 0.5;
+      if (rx < 1 || ry < 1) continue;
+      const dx = (x - sp.x) / rx, dy = (y - sp.y) / ry;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= 1) continue;
+      const v = Math.min(1, (1 - Math.sqrt(d2)) * 2.2) * Math.min(1, sp.alpha * 1.5); // 穴の縁は柔らかいので内側の6割ほどで「光の中」
+      if (v > L) L = v;
+    }
+    const lampK = 1 / Math.max(0.001, LAB_EMLIGHT_ALPHA);
+    for (const sp of this.labEmLights) {
+      if (!sp.visible) continue;
+      const h = sp.height, top = sp.y - h * 0.78;
+      if (y < top || y > sp.y + h * 0.1) continue;
+      const t = Math.min(1, (y - top) / Math.max(1, h * 0.78));
+      const half = sp.width * 0.5 * (0.15 + 0.85 * t);
+      const dx = Math.abs(x - sp.x);
+      if (dx >= half) continue;
+      const v = Math.min(1, (1 - dx / half) * 1.8) * (0.6 + 0.4 * t) * Math.min(1, sp.alpha * lampK);
+      if (v > L) L = v;
+    }
+    return Math.min(1, L);
+  }
+  /**
+   * ステージ2(研究所)の火山灰(社長指示2026-11-24)。蛍プールを流用した画面座標の粒(カメラへの追従は奥行きで ×0.7〜1.3)。
+   * 下から湧いてフェードイン→風(10〜20秒周期でゆっくり変わる+たまの突風)で右上へゆっくり昇る+粒ごとの漂い→上ほど薄くなって消える→下で湧き直す。
+   * 明るさは光からの距離で変わる(闇で暗く・光の中で明るく少し緑へ)=光の筋の中だけ灰が浮かぶ。速さは目標へ近づける形(慣性)。
+   * 負荷: Sprite 72 個の位置・α・大きさ・色の更新と、粒ごとに闇の穴(十数個)との距離を見るだけ(per-frame Graphics なし・生成は足りない時の1回だけ)。
+   */
+  private syncLabAsh(camera: { x: number; y: number }, now: number, sec: number) {
+    const ffs = this.fireflies;
+    // 粒の数は起動時(遠景が決まる前)に決まるので、足りなければ足す(1回だけ・蛍の並びのすぐ後ろ=同じ重なり)。他の見せ方では extra=隠す
+    if (ffs.length < ASH_COUNT && ffs[0]?.sprite.parent) {
+      const parent = ffs[0].sprite.parent;
+      let at = parent.getChildIndex(ffs[ffs.length - 1].sprite) + 1;
+      while (ffs.length < ASH_COUNT) {
+        const sprite = new Sprite(getCircleTexture());
+        sprite.anchor.set(0.5);
+        sprite.eventMode = 'none';
+        sprite.visible = false;
+        parent.addChildAt(sprite, Math.min(at++, parent.children.length));
+        ffs.push({ sprite, x: 0, y: 0, vx: 0, vy: 0, phase: 0, freq: 0, base: 0, size: 0, snowFall: 0, snowDrift: 0, extra: true });
+      }
+    }
+    const W = this.screenW, H = this.screenH;
+    // 時計・風・突風・濃い所
+    const c = (this.ashClock += sec);
+    let wind = ASH_WIND + ASH_WIND_SWING * (0.7 * Math.sin(c * Math.PI * 2 / 15) + 0.3 * Math.sin(c * Math.PI * 2 / 9.3 + 1.3));
+    wind = Math.max(ASH_WIND - ASH_WIND_SWING, Math.min(ASH_WIND + ASH_WIND_SWING, wind));
+    if (this.ashGustStart < 0 && c >= this.ashNextGust) {
+      this.ashGustStart = c; this.ashGustDur = 1 + Math.random(); this.ashGustAmp = 1.5 + Math.random() * 0.5;
+    }
+    let gust = 1;
+    if (this.ashGustStart >= 0) {
+      const u = (c - this.ashGustStart) / this.ashGustDur;
+      if (u >= 1) { this.ashGustStart = -1; this.ashNextGust = c + 7 + Math.random() * 10; }
+      else { const s1 = Math.sin(Math.PI * u); gust = 1 + (this.ashGustAmp - 1) * s1 * s1; } // 吹き始め・吹き終わりに加減速
+    }
+    const P = this.ashPlumes;
+    P[0] = W * (-0.1 + 0.15 * Math.sin(c / 17 * Math.PI * 2 + 0.4));
+    P[1] = W * (0.3 + 0.15 * Math.sin(c / 23 * Math.PI * 2 + 2.1));
+    P[2] = W * (0.62 + 0.15 * Math.sin(c / 29 * Math.PI * 2 + 4.0));
+    if (!this.ashActive) {
+      this.ashActive = true;
+      for (let i = 0; i < ffs.length; i++) this.ashRespawn(ffs[i], i, true);
+      this.ashCamX = NaN; this.ashCamY = NaN;
+    }
+    // カメラが動いた分(画面の px)。大きく飛んだフレーム(開始の演出・場面の切り替え)は流さない
+    const sc = this.worldUiScale();
+    let dcx = Number.isFinite(this.ashCamX) ? (camera.x - this.ashCamX) * sc : 0;
+    let dcy = Number.isFinite(this.ashCamY) ? (camera.y - this.ashCamY) * sc : 0;
+    if (Math.abs(dcx) > 80 || Math.abs(dcy) > 80) { dcx = 0; dcy = 0; }
+    this.ashCamX = camera.x; this.ashCamY = camera.y;
+    // 闇の濃さ(0=闇が無い=光で変えない・1=闇が濃い)。ボス戦などで闇が引くと、灰の明るさも一様に戻る
+    const vs = this.labPitchSprite;
+    const pitch = vs && vs.visible && this.labDarkLayer?.visible ? Math.min(1, vs.alpha / Math.max(0.001, LAB_PITCH_ALPHA)) : 0;
+    const k = Math.min(1, sec * 1.4); // 速さの追従(大きいほど速く目標の速さへ)
+    const M = 70;
+    for (let i = 0; i < ffs.length; i++) {
+      const f = ffs[i];
+      if (i >= ASH_COUNT) { f.sprite.visible = false; continue; }
+      const a = f.ash!;
+      a.age += sec * 1000;
+      // 目標の速さ: 全体の風(突風で強まる)+粒ごとの漂い。手前ほど風もよく受ける
+      const sway = Math.sin(now * a.flutter + f.phase);
+      const rise = a.rise * (1 + 0.15 * (gust - 1));
+      // 手前のぼけた塊は横へはあまり流さない(画面の端寄りを縦に抜ける=真ん中を塞がない)
+      const windK = a.kind === 2 ? 0.35 : 0.8 + 0.4 * a.z;
+      const tvx = rise * wind * gust * windK + a.drift + sway * ASH_SWAY;
+      const tvy = -rise * (1 + 0.18 * Math.sin(now * a.flutter * 0.7 + f.phase * 1.7));
+      f.vx += (tvx - f.vx) * k;
+      f.vy += (tvy - f.vy) * k;
+      f.x += f.vx * sec - dcx * a.par;
+      f.y += f.vy * sec - dcy * a.par; // -y=上へ昇る // proj-lift: exempt(not-height 天気の粒の動き)
+      const m = M + (a.kind === 2 ? a.size * 0.5 : 0);
+      // 横の外へ出た粒(カメラの横移動)は反対の端から入り直す(現れ直しのフェードつき)。上端で消えた粒・下の外へ沈んだ粒は下で湧き直す
+      if (f.x < -0.4 * W - m) { f.x = W + m * 0.5; a.age = 0; }
+      else if (f.x > W + m) { f.x = -m * 0.5; a.age = 0; }
+      const u = f.y / H; // 0=画面の上端・1=下端
+      if (u <= 0.005 || f.y > H + m + 80) {
+        this.ashRespawn(f, i, false);
+        f.sprite.visible = false;
+        continue;
+      }
+      // 上の方で薄くなり上端で0(パッと消えない)。湧いた直後は薄→濃(時間は粒ごとにばらつく)
+      const top = Math.max(0, Math.min(1, u / ASH_TOP_FADE));
+      const topFade = top * (1.5 - 0.5 * top);
+      const inT = Math.min(1, a.age / a.fadeIn);
+      const inFade = 1 - (1 - inT) * (1 - inT);
+      const alpha = a.alpha * topFade * inFade;
+      const sp = f.sprite;
+      sp.visible = alpha > 0.004 && f.x > -m && f.x < W + m;
+      if (!sp.visible) continue;
+      sp.position.set(f.x, f.y);
+      sp.alpha = alpha;
+      // 明るさ: 光の中は明るく少し緑へ・闇では沈む(闇が引いている間は一様)。奥ほど少し暗い
+      const L = pitch > 0 ? this.ashLightAt(f.x, f.y) : 0;
+      // 手前のぼけた塊は闇でも沈み切らない(画面の端寄りを通る=闇の中が多い・見えないと居ないのと同じ)
+      const dark = a.kind === 2 ? ASH_BLUR_DARK : ASH_DARK;
+      const bright = (1 - pitch) + pitch * (dark + (ASH_LIT - dark) * L);
+      const lum = bright * (0.82 + 0.3 * a.z);
+      const gs = L * pitch;
+      const cr = Math.min(255, Math.round(a.r * lum * (1 - 0.08 * gs)));
+      const cg = Math.min(255, Math.round(a.g * lum * (1 + 0.1 * gs)));
+      const cb = Math.min(255, Math.round(a.b * lum));
+      sp.tint = (cr << 16) | (cg << 8) | cb;
+      if (a.kind === 1) {
+        // 薄片: 平らに見えている時間が長く、ぱたっと返る。返る/回る速さは 0.3〜1.5倍でゆっくり揺れる
+        const rate = Math.max(0.3, Math.min(1.5, 0.9 + 0.7 * Math.sin(c * 0.37 + f.phase)));
+        a.th += a.flip * rate * sec;
+        sp.rotation += a.spin * rate * sec;
+        const thick = 1 - Math.pow(1 - Math.abs(Math.sin(a.th)), 2.5);
+        sp.width = a.size;
+        sp.height = a.size * a.aspect * Math.max(0.12, thick);
+      } else {
+        sp.width = sp.height = a.size;
+      }
+    }
+  }
+  /** 研究所を出た時だけ(1回): 灰の見た目を蛍プールの既定(加算・柔らかい丸)へ戻す。 */
+  private leaveLabAsh() {
+    this.ashActive = false;
+    const tex = getSoftGlowTexture();
+    for (const f of this.fireflies) {
+      f.sprite.texture = tex;
+      f.sprite.blendMode = 'add';
+      f.sprite.rotation = 0;
+      f.ash = undefined;
+      if (f.extra) f.sprite.visible = false;
+    }
+    this.firefliesPlaced = false; // 次の見せ方の初回に散らし直す(座標を world へ戻す)
   }
 
   private projSnowFar: ProjSnowMote[] = [];
