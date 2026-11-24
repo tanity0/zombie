@@ -6,8 +6,9 @@
 // PixiJS を読まない。
 import {
   makeProjFrame, makeProjPoint, projectInto, projDisplayToScreenInto, updateProjTable,
-  type GroundPerspectiveParams, type ProjFrame,
+  type GroundPerspectiveParams, type ProjFrame, type ProjKind, type ProjM7,
 } from './perspectiveProjection';
+import { corridorNoTable } from './corridorFloorMap';
 
 /** 枠の入力のスカラー値(描画の投影の枠の写し・揺れは 0=ケ10)。 */
 export interface ProjAimFrameScalars {
@@ -17,6 +18,9 @@ export interface ProjAimFrameScalars {
   wRef: number; lRef: number; tStd: number;
   wgScale: number; wgX: number; wgY: number;
   farRefY: number; farStart: number; farEnd: number;
+  /** 写像の種類(段階8・§3-10c)と、洋館の床の写像の値の写し(kind==='corridor' の時だけ)。 */
+  kind: ProjKind;
+  m7: ProjM7 | null;
 }
 
 /** store に置くマウスの吸い付きの入力(カーソルの画面点そのもの・枠は揺れ 0)。 */
@@ -30,6 +34,7 @@ export const projAimFrameScalars = (f: ProjFrame): ProjAimFrameScalars => ({
   wRef: f.wRef, lRef: f.lRef, tStd: f.tStd,
   wgScale: f.wgScale, wgX: f.wgX, wgY: f.wgY,
   farRefY: f.farRefY, farStart: f.farStart, farEnd: f.farEnd,
+  kind: f.kind, m7: f.m7 ? { ...f.m7 } : null,
 });
 
 
@@ -45,6 +50,19 @@ let frame: ProjFrame | null = null;
  */
 export const projAimFrameFrom = (s: ProjAimFrameScalars, camX: number = s.camX, camY: number = s.camY): ProjFrame => {
   if (frame && lastIn === s && lastCamX === camX && lastCamY === camY) return frame;
+  if (s.kind === 'corridor' && s.m7) {
+    // 洋館(段階8 2巡目監査 A2): 表を持たない閉じた式の枠を、カメラの縦の移動量だけずらして組み直す(makeProjFrame を通らない)。
+    const dy = camY - s.camY;
+    frame = {
+      table: corridorNoTable(s.m7.lMax), camX, camY, farH: s.farH, screenW: s.screenW, screenH: s.screenH,
+      wRef: s.wRef + dy, lRef: s.lRef, tStd: NaN, wgScale: s.wgScale, wgX: s.wgX, wgY: s.wgY, shakeX: 0, shakeY: 0,
+      farRefY: s.farRefY + dy, farStart: s.farStart, farEnd: s.farEnd,
+      kind: 'corridor', m7: s.m7, noHorizonFade: true, cxw: 0,
+      gRef: NaN, syRef: NaN, convRef: NaN, convStd: NaN, syStd: NaN,
+    };
+    lastIn = s; lastCamX = camX; lastCamY = camY;
+    return frame;
+  }
   if (!(frame && lastIn === s)) table = updateProjTable(table, s.persp, s.stripH, s.stripCount, s.refCount, s.subdiv, s.lNear);
   frame = makeProjFrame({
     table: table!, camX, camY, farH: s.farH, screenW: s.screenW, screenH: s.screenH,

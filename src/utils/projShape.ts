@@ -12,7 +12,7 @@
 // ゲームの判定(当たり・時刻・威力)には一切関与しない。
 
 import {
-  projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, projDistanceFade, projScreenRowsL, projectInto, makeProjPoint, type ProjFrame,
+  projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, projDistanceFade, projScreenRowsL, projectInto, makeProjPoint, projRowAffine, type ProjFrame,
 } from './perspectiveProjection';
 import { projLiftScale } from './projLift'; // 段階5: 高さの倍率 σ(★#6)の出どころ
 
@@ -135,22 +135,27 @@ export class ProjPathOut {
 }
 
 /** 1点の投影の結果(作り置き)。 */
-interface P2 { x: number; y: number; s: number; a: number; sx: number; sy: number; l?: number }
-const mkP2 = (): P2 => ({ x: 0, y: 0, s: 1, a: 1, sx: 0, sy: 0, l: 0 });
+interface P2 { x: number; y: number; s: number; a: number; sx: number; sy: number; l?: number; kx?: number }
+const mkP2 = (): P2 => ({ x: 0, y: 0, s: 1, a: 1, sx: 0, sy: 0, l: 0, kx: 1 });
+
+const ROW_AFF = { c: 0, k: 1 };
 
 /**
  * world 点 → 表示座標(地平線より北は ℓ=0 に寄せる)。sx/sy はズーム後の画面px。
  * out.a = 定義域と描く距離のフェード(地平線より北で 0)。
  */
-export const projVertexInto = (f: ProjFrame, wx: number, wy: number, out: { x: number; y: number; s: number; a: number; sx: number; sy: number; l?: number }) => {
+export const projVertexInto = (f: ProjFrame, wx: number, wy: number, out: { x: number; y: number; s: number; a: number; sx: number; sy: number; l?: number; kx?: number }) => {
   let l = projLocalYOfWorld(f, wy);
   out.l = l;
   const inDomain = l >= 0;
   if (!inDomain) l = 0;
   const s = projScaleAtLocal(f, l);
-  out.x = f.cxw + s * (wx - f.cxw);
+  // 横は projectInto と同じ式(段階8 §3-10c: 行の横の倍率 kx=ground は s と同じ値・洋館は床の写像)
+  const kx = f.kind === 'corridor' ? projRowAffine(f, l, ROW_AFF).k : s;
+  out.x = f.cxw + kx * (wx - f.cxw);
   out.y = f.camY + f.farH + l;
   out.s = s;
+  out.kx = kx;
   out.a = inDomain ? projDistanceFade(f.farRefY - wy, f.farStart, f.farEnd) : 0;
   out.sx = f.wgX + f.wgScale * (out.x - f.camX + f.shakeX);
   out.sy = f.wgY + f.wgScale * (out.y - f.camY + f.shakeY);
@@ -640,7 +645,7 @@ const projGridRotatedInto = (
   // 行の上の world x → 画面 x は1次式: sx = A + B·x(B = wgScale·s)
   const xClip = (y: number, xa: number, xb: number, o: { a: number; b: number }) => {
     projVertexInto(f, f.cxw, y, GP);
-    const B = z * GP.s, A = GP.sx - B * f.cxw;
+    const B = z * (GP.kx ?? GP.s), A = GP.sx - B * f.cxw;
     if (!(B > 0)) { o.a = xa; o.b = xb; return o; }
     const xl = (-padPx - A) / B, xr = (f.screenW + padPx - A) / B;
     o.a = Math.max(xa, Math.min(xb, xl)); o.b = Math.max(xa, Math.min(xb, xr));
@@ -701,7 +706,7 @@ const projGridRotatedInto = (
     if (!(CL.b > CL.a) || !(SEG.b > SEG.a)) continue;
     fa = Math.min(fa, (CL.a - SEG.a) / (SEG.b - SEG.a)); fb = Math.max(fb, (CL.b - SEG.a) / (SEG.b - SEG.a));
     projVertexInto(f, f.cxw, y, GP);
-    nx = Math.max(nx, Math.ceil(((CL.b - CL.a) * GP.s * z) / Math.max(1, colPx)));
+    nx = Math.max(nx, Math.ceil(((CL.b - CL.a) * (GP.kx ?? GP.s) * z) / Math.max(1, colPx)));
   }
   // 行と行の間だけ画面に入る所があるので、割合は少し広げる(1/16)
   if (fb > fa) { fa = Math.max(0, fa - 1 / 16); fb = Math.min(1, fb + 1 / 16); } else { fa = 0; fb = 1; }
@@ -1154,8 +1159,10 @@ export const projFlatCoreInto = (f: ProjFrame, wx: number, wy: number, out: Proj
   const ya = projectInto(f, wx, wy - 2, FLAT_PB).y;
   const yb = projectInto(f, wx, wy + 2, FLAT_PB).y;
   const sy = Math.max(0, (yb - ya) / 4);
-  const kx = k ?? p.s;
-  out.r = Math.min(1, sy / s);
+  // 段階8(§3-10c): 洋館の枠は横の倍率が行の kx(床の写像)=縦横比も kx で測る。ground は kx=s なので1ビットも変わらない。
+  const corr = f.kind === 'corridor';
+  const kx = k ?? (corr ? p.kx : p.s);
+  out.r = Math.min(1, sy / (corr ? Math.max(1e-6, p.kx) : s));
   out.kx = kx;
   out.ky = kx * out.r;
   return out;

@@ -274,7 +274,43 @@ export interface ProjFrameInput {
   farEnd?: number;
 }
 
+/**
+ * 段階8(§3-10c): 写像の種類。'ground'=今の帯の表(屋外・研究所)/'corridor'=洋館の通路の床の Mode-7 の式。
+ * 種類で式を選ぶのは下の窓口の関数だけ(呼ぶ側=pixiScene は1行も変えない)。ground の数値は1ビットも変えない。
+ */
+export type ProjKind = 'ground' | 'corridor';
+
+/**
+ * 洋館の床の Mode-7 の定数と基準(§3-10c の 1〜6・kind==='corridor' の時だけ)。画面の論理px。
+ * 行 ℓ(= 表示Y − camera.y − hY)と床の s7 は ℓ = denom·s7、奥行き d = focal(1/s7 − 1)、d(y) = dRef + (wRef − y)。
+ */
+export interface ProjM7 {
+  hY: number;
+  denom: number;
+  focal: number;
+  /** 通路の幅(画面px・PC の横長はスマホ相当の 405)。 */
+  W: number;
+  /** aisleHalfXr × FLOOR_W_MULT。 */
+  aisleW: number;
+  /** 柱の world の x(行ける端の柱の中心)。 */
+  pillarX: number;
+  dRef: number;
+  sRef: number;
+  /** 南の頭打ち(d ≥ dMin=−0.6·focal・s7 ≤ s7Max)。 */
+  dMin: number;
+  s7Max: number;
+  /** 頭打ちの行(= denom·s7Max)と、その先の直線の延長の傾き(dℓ/d(−d))。 */
+  lMax: number;
+  slopeMax: number;
+}
+
 export interface ProjFrame extends Required<ProjFrameInput> {
+  /** 写像の種類(段階8)。makeProjFrame は 'ground'。 */
+  kind: ProjKind;
+  /** kind==='corridor' の時だけ。 */
+  m7: ProjM7 | null;
+  /** 投影後の Y の地平線フェードを掛けない枠(洋館だけ・§3-10c)。 */
+  noHorizonFade: boolean;
   /** 画面中央の列(world)。横の消失点。 */
   cxw: number;
   gRef: number;
@@ -290,6 +326,7 @@ export const makeProjFrame = (i: ProjFrameInput): ProjFrame => {
   return {
     wgScale: 1, wgX: 0, wgY: 0, shakeX: 0, shakeY: 0, farRefY: 0, farStart: 0, farEnd: 0,
     ...i,
+    kind: 'ground', m7: null, noHorizonFade: false,
     cxw: i.camX + i.screenW / 2,
     gRef: projG(i.table, i.lRef),
     syRef: projTableScaleY(i.table, i.lRef), // 地面の帯・延長の傾きと同じ表の値(手前を抑える案でも ℓ_near===ℓ_ref なら抑えない値=監査 B-2)
@@ -299,17 +336,63 @@ export const makeProjFrame = (i: ProjFrameInput): ProjFrame => {
   };
 };
 
+// ---- 洋館の床の Mode-7(§3-10c の 3〜6・kind==='corridor') ----
+
+/** 北の端の行の下限(ℓ→0 で d が発散するので、逆の式はこの行で止める)。 */
+const M7_L_EPS = 1e-3;
+
+/** world Y → 行 ℓ(洋館)。南は d ≥ dMin で頭打ちにし、その先は直線で延ばす(発散・逆転しない)。 */
+const m7LocalYOfWorld = (m: ProjM7, wRef: number, wy: number): number => {
+  const d = m.dRef + (wRef - wy);
+  if (d >= m.dMin) return m.denom * (m.focal / (m.focal + d));
+  return m.lMax + (m.dMin - d) * m.slopeMax;
+};
+
+/** 行 ℓ → world Y(洋館)。m7LocalYOfWorld の逆。 */
+const m7WorldYOfLocal = (m: ProjM7, wRef: number, l: number): number => {
+  let d: number;
+  if (l > m.lMax) d = m.dMin - (l - m.lMax) / m.slopeMax;
+  else {
+    const s7 = Math.max(M7_L_EPS, l) / m.denom;
+    d = m.focal * (1 / s7 - 1);
+  }
+  return wRef + m.dRef - d;
+};
+
+/** 行 ℓ の床の s7(頭打ちの中)。 */
+const m7S7AtLocal = (m: ProjM7, l: number): number => Math.max(M7_L_EPS, Math.min(l, m.lMax)) / m.denom;
+
 /** world Y → 帯のローカル ℓ(投影の縦)。 */
 export const projLocalYOfWorld = (f: ProjFrame, wy: number): number =>
-  projGInv(f.table, f.gRef + (wy - f.wRef) / f.syRef);
+  f.kind === 'corridor' && f.m7 ? m7LocalYOfWorld(f.m7, f.wRef, wy)
+    : projGInv(f.table, f.gRef + (wy - f.wRef) / f.syRef);
 
 /** 帯のローカル ℓ → world Y(逆投影の縦)。 */
 export const projWorldYOfLocal = (f: ProjFrame, l: number): number =>
-  f.wRef + f.syRef * (projG(f.table, l) - f.gRef);
+  f.kind === 'corridor' && f.m7 ? m7WorldYOfLocal(f.m7, f.wRef, l)
+    : f.wRef + f.syRef * (projG(f.table, l) - f.gRef);
 
-/** 帯のローカル ℓ での立っている絵の倍率 s。 */
+/** 帯のローカル ℓ での立っている絵の倍率 s(洋館は s7/s_ref=主人公の行で1・§3-10c の5)。 */
 export const projScaleAtLocal = (f: ProjFrame, l: number): number =>
-  projConvAt(projTOfL(l, f.table.stripH, f.table.refCount), f.table.p) / f.convRef;
+  f.kind === 'corridor' && f.m7 ? m7S7AtLocal(f.m7, l) / f.m7.sRef
+    : projConvAt(projTOfL(l, f.table.stripH, f.table.refCount), f.table.p) / f.convRef;
+
+/**
+ * 行 ℓ の横の広がりの倍率 kx(表示x = cxw + kx·(worldX − cxw))。ground は s と同じ値(1ビットも変えない)。
+ * 洋館は床の写像そのまま kx = W·aisleW·s7 / pillarX(★#44=A・柱の world の x が床の柱の中心に乗る)。
+ */
+export const projRowKx = (f: ProjFrame, l: number): number => {
+  const m = f.m7;
+  if (f.kind === 'corridor' && m) return m.W * m.aisleW * m7S7AtLocal(m, l) / m.pillarX;
+  return projScaleAtLocal(f, l);
+};
+
+/** 行 ℓ の横の写しの組(中心の列 c と倍率 k・表示x = c + k·(worldX − c))。窓口の外で横を組む所はこれを読む(§3-10c)。 */
+export const projRowAffine = (f: ProjFrame, l: number, out: { c: number; k: number }): { c: number; k: number } => {
+  out.c = f.cxw;
+  out.k = projRowKx(f, l);
+  return out;
+};
 
 /**
  * 描く距離のフェード(★#4): 北への距離 d が start→end で 1→0。end<=0 なら常に1。
@@ -331,6 +414,8 @@ export interface ProjPoint {
   l: number;
   /** 立っている絵の倍率(基準行で 1)。 */
   s: number;
+  /** 横の広がりの倍率(ground は s と同じ値・洋館は床の写像の kx)。 */
+  kx: number;
   /** 定義域と描く距離のフェード(地平線より北=0・描く距離の上限の先=0)。地平線フェードは別(pixiScene)。 */
   alpha: number;
   /** 定義域の中か(地平線より北=false。南は表の外へ延長するので常に true)。 */
@@ -338,7 +423,7 @@ export interface ProjPoint {
 }
 
 /** 空の ProjPoint(作り置きの入れ物用)。 */
-export const makeProjPoint = (): ProjPoint => ({ x: 0, y: 0, l: 0, s: 1, alpha: 1, inDomain: true });
+export const makeProjPoint = (): ProjPoint => ({ x: 0, y: 0, l: 0, s: 1, kx: 1, alpha: 1, inDomain: true });
 
 /** world 点 → 表示座標・倍率・フェードを out へ書く(毎フレームの確保を増やさない形)。 */
 export const projectInto = (f: ProjFrame, wx: number, wy: number, out: ProjPoint): ProjPoint => {
@@ -346,9 +431,10 @@ export const projectInto = (f: ProjFrame, wx: number, wy: number, out: ProjPoint
   const s = projScaleAtLocal(f, l);
   const inDomain = l >= 0;
   const fade = projDistanceFade(f.farRefY - wy, f.farStart, f.farEnd);
-  out.x = f.cxw + s * (wx - f.cxw);
+  const kx = f.kind === 'corridor' ? projRowKx(f, l) : s;
+  out.x = f.cxw + kx * (wx - f.cxw);
   out.y = f.camY + f.farH + l;
-  out.l = l; out.s = s;
+  out.l = l; out.s = s; out.kx = kx;
   out.alpha = inDomain ? fade : 0;
   out.inDomain = inDomain;
   return out;
@@ -419,7 +505,7 @@ export const visibleWorldBands = (
   const span = Math.max(0, lBot - lTop);
   for (let i = 0; i < k; i++) {
     const l0 = lTop + (span * i) / k, l1 = lTop + (span * (i + 1)) / k;
-    const s = Math.max(1e-6, projScaleAtLocal(f, l0));
+    const s = Math.max(1e-6, projRowKx(f, l0));
     const r = out[i] ?? (out[i] = { left: 0, top: 0, right: 0, bottom: 0 });
     r.left = f.cxw + (dxL - f.cxw) / s - marginX;
     r.right = f.cxw + (dxR - f.cxw) / s + marginX;
@@ -435,7 +521,7 @@ export const unproject = (f: ProjFrame, sx: number, sy: number): { x: number; y:
   const dx = (sx - f.wgX) / sc + f.camX - f.shakeX;
   const dy = (sy - f.wgY) / sc + f.camY - f.shakeY;
   const l = dy - f.camY - f.farH;
-  const s = Math.max(1e-6, projScaleAtLocal(f, l));
+  const s = Math.max(1e-6, projRowKx(f, l));
   return { x: f.cxw + (dx - f.cxw) / s, y: projWorldYOfLocal(f, l), l };
 };
 
@@ -463,7 +549,7 @@ export const visibleWorldQuad = (f: ProjFrame): ProjQuad => {
   let lBot = lOfScreenY(f.screenH);
   if (lBot < lTop) lBot = lTop;
   const rowCorners = (l: number) => {
-    const s = Math.max(1e-6, projScaleAtLocal(f, l));
+    const s = Math.max(1e-6, projRowKx(f, l));
     const wy = projWorldYOfLocal(f, l);
     const dxL = (0 - f.wgX) / sc + f.camX - f.shakeX;
     const dxR = (f.screenW - f.wgX) / sc + f.camX - f.shakeX;
@@ -486,7 +572,7 @@ export const visibleWorldQuad = (f: ProjFrame): ProjQuad => {
  */
 export const southCullWorldY = (f: ProjFrame, artH: number, lScreenBottom: number): number => {
   const lb = Math.max(0, lScreenBottom);
-  const lCap = Math.max(lb, f.table.lMax);
+  const lCap = Math.max(lb, f.kind === 'corridor' && f.m7 ? f.m7.lMax : f.table.lMax);
   const top = (l: number) => l - Math.max(0, artH) * projScaleAtLocal(f, l); // 絵の上端の ℓ
   if (top(lCap) <= lb) return projWorldYOfLocal(f, lCap);
   let lo = lb, hi = lCap;
@@ -589,7 +675,7 @@ export const groundSlipBound = (t: number, x: number, p: GroundPerspectiveParams
  * 描く距離の上限の行 = visibleWorldQuad の上の辺と同じ(`projLocalYOfWorld(f, farRefY − farEnd)`)。farEnd が 0 なら帯1本だけ。
  */
 export const projUnprojectLMin = (f: ProjFrame): number => {
-  const strip = f.table.stripH;
+  const strip = f.kind === 'corridor' ? M7_L_EPS : f.table.stripH;
   if (!(f.farEnd > 0)) return strip;
   return Math.max(strip, projLocalYOfWorld(f, f.farRefY - f.farEnd));
 };
@@ -619,7 +705,7 @@ export const projUnprojectInto = (f: ProjFrame, sx: number, sy: number, lMin: nu
   let l = dy - f.camY - f.farH;
   let clamped = false;
   if (!(l >= lMin)) { l = lMin; clamped = true; }
-  const s = Math.max(1e-6, projScaleAtLocal(f, l));
+  const s = Math.max(1e-6, projRowKx(f, l));
   out.x = f.cxw + (dx - f.cxw) / s;
   out.y = projWorldYOfLocal(f, l);
   out.l = l;

@@ -16,7 +16,8 @@ export const PROJ_LIFT_MODE: 'A' | 'B' = 'A';
 
 /** 高さの倍率 σ(ℓ)(§3-8b)。基準行で 1。 */
 export const projLiftScale = (f: ProjFrame, l: number, mode: 'A' | 'B' = PROJ_LIFT_MODE): number => {
-  if (mode === 'A') return projScaleAtLocal(f, l);
+  // 洋館(段階8・kind='corridor')は表を持たない=B の型は使わず A へ落とす(§3-10d)。
+  if (mode === 'A' || f.kind !== 'ground') return projScaleAtLocal(f, l);
   const tb = f.table;
   const lRef = f.lRef;
   const ref = projScaleYNearAt(lRef, tb.stripH, tb.refCount, tb.p, lRef);

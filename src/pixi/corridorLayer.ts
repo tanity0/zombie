@@ -16,6 +16,9 @@
 
 import { Container, Mesh, MeshGeometry, Sprite, Texture, Rectangle, Assets } from 'pixi.js';
 import { CORRIDOR_CFG, projectCorridorPillars, type CorridorConfig } from '../utils/corridorProjection';
+import {
+  CORRIDOR_FLOOR_CFG, CORRIDOR_FLOOR_REPEAT, CORRIDOR_FLOOR_W_MULT, CORRIDOR_GOAL_TILE_START,
+} from '../utils/corridorFloorMap';
 
 // ゲーム内背景用の幾何(v0.25.2113): ?corridor=1プレビューはfootYr=1.55(視点が低い=近景が画面外まで
 // 続く)だが、ゲームはm0カメラ=プレイヤーが画面中央(0.5H)に立つ。中央の行でカーペット半幅が
@@ -24,7 +27,8 @@ import { CORRIDOR_CFG, projectCorridorPillars, type CorridorConfig } from '../ut
 // プレイヤー行のカーペット幅とクランプの一致は不変。プレビュー側のCORRIDOR_CFGは不変。
 // PACING_PUZZLE.md §10-20#5/#11(EX舞台の洋館通路化): pixiScene.tsが「プレイヤー足元の画面Y」の
 // 支点を計算する時にfootYrを写さず参照できるようexportする(値を2箇所に持たない=ズレ防止)。
-export const CFG: CorridorConfig = { ...CORRIDOR_CFG, horizonYr: 0.26, footYr: 0.793 };
+// 段階8(research/PERSPECTIVE_PROJECTION.md §3-10i の2): 値は utils/corridorFloorMap の1か所(物の床の写像と同じ値を読む)。
+export const CFG: CorridorConfig = CORRIDOR_FLOOR_CFG;
 // 横移動対応(v0.25.2113): 通路はworld x=0に固定し、pixiSceneがカメラx分だけcontainerを逆シフトする。
 // その際に黒背景が切れないよう左右に持たせる余白(px)。クランプ±170×ズーム+余裕。
 export const CORRIDOR_BG_X_OVERSCAN = 420;
@@ -93,14 +97,14 @@ const GLOW_Y_R = 0.40;         // グロー中心の高さ(柱の高さ比・足
 const CANDLE_H_R = GLOW_Y_R / (1 - CANDLE_FLAME_YR); // ≒0.411(炎=グロー中心に一致する燭台高)
 const BLUR_PAD = 24;       // 近距離ブラー版の余白(make-blur.mjsのpadと一致)
 const FAR_BLUR_PAD = 40;   // 遠方ブラー版の余白(同)
-const FLOOR_REPEAT = 520;  // 床テクスチャ縦1枚ぶんの前進量(world px)
-const FLOOR_W_MULT = 1.0;  // 床の横幅=柱中心間ちょうど
+const FLOOR_REPEAT = CORRIDOR_FLOOR_REPEAT;  // 床テクスチャ縦1枚ぶんの前進量(world px・値は utils/corridorFloorMap)
+const FLOOR_W_MULT = CORRIDOR_FLOOR_W_MULT;  // 床の横幅=柱中心間ちょうど(値は utils/corridorFloorMap)
 // ステージ6のゴール床(社長指示v0.25.2132「床の一部をこの床に・4000px付近」): 通常床と同寸1254×1254の
 // ハッチ付きタイル(floor-goal)を、床タイル境界に揃えた1枚ぶんの帯[GOAL_START, GOAL_START+520)にだけ
 // 重ねて描く(専用の小メッシュ・行の縁=world固定位置なので境界が正確、通常床と紋様が連続する)。
 // gameStore.CORRIDOR_GOAL_Y は現在 **-3390**(「到達時にハッチと重なる補正済み」= 帯の中心3900から
 // 手前へ510pxずらした確定値)。旧コメントの「-3900=帯の中心と一致」は補正前の記述(v0.25.2893で訂正)。
-const GOAL_TILE_START = 3640;              // ハッチ床タイルの手前端(world前進量。520の倍数=タイル境界)
+const GOAL_TILE_START = CORRIDOR_GOAL_TILE_START; // ハッチ床タイルの手前端(world前進量。520の倍数=タイル境界・値は utils/corridorFloorMap)
 const GOAL_TILE_LEN = FLOOR_REPEAT;        // 1タイルぶん
 const GOAL_ROWS = 24;                      // ゴール床メッシュの分割(帯1枚ぶんなので床本体より少なくて良い)
 const BACK_DEPTH = 4200;   // 奥壁(ステンドグラス窓)の固定奥行き(M6=常にこの値。EXは下記exBackTravel参照)
@@ -149,7 +153,9 @@ export interface CorridorLayerFrameOpts {
 }
 // 被写界深度クロスフェード(事前ブラー方式・ランタイムぼかしゼロ)。
 const dofNear = (d: number): number => Math.min(0.9, Math.max(0, Math.min(1, (300 - d) / 400)));  // 手前: d=300で0 → d=-100で1
-const dofFar = (d: number): number => Math.min(0.9, Math.max(0, Math.min(1, (d - 1000) / 1400))); // 遠方: d=1000で0 → d=2400で1
+/** 遠方のぼけが立ち上がる奥行き(段階8: pixiScene の ?proj=1 の洋館のチルトシフトも同じ値を読む)。 */
+export const CORRIDOR_DOF_FAR_D0 = 1000;
+const dofFar = (d: number): number => Math.min(0.9, Math.max(0, Math.min(1, (d - CORRIDOR_DOF_FAR_D0) / 1400))); // 遠方: d=1000で0 → d=2400で1
 
 // Mode-7メッシュの分割数(多いほど滑らか・重いが1メッシュ描画なので安い)。叩き台。
 const FLOOR_ROWS = 64;

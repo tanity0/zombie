@@ -18,7 +18,7 @@ import type { RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { VIEW_CORE_W } from '../utils/viewport';
 import { setViewTransform, setViewProjection, getLastCursorScreen, projAimStats } from '../utils/viewTransform';
 import { getHudAvoidRects, slideOutOfRects } from '../utils/hudAvoidRects';
-import { projFrameBase, projGroundPersp, getProjGameView, projGameViewContains, projPropRegionRect, projFadeInBrightness, type ProjFrameBaseParams } from '../utils/projGameView';
+import { projFrameBase, projGroundPersp, projAimAllowed, projCamDownFracFor, type ProjScene, getProjGameView, projGameViewContains, projPropRegionRect, projFadeInBrightness, type ProjFrameBaseParams } from '../utils/projGameView';
 import { projEnemyFadeAlpha, projGhostAlpha, projBulletGhostAlpha, projGhostOverflow, projGhostDrift, projRecycledNear, PROJ_GHOST_DRIFT_TAU_MS, PROJ_BULLET_GHOST_DRIFT_TAU_MS, type ProjRecycleGhost, type ProjBulletGhost } from '../utils/projSpawnFade'; // ?proj=1 段階6(★#36・★#37) // 投影の組み立て(§3-9d=ゲーム側と1本)
 import { HORIZON_FOREST_UP_BY_STAGE, HORIZON_ACTOR_HIDE_OFFSET_PX, horizonForestHeightFor, horizonForestYFor, type HorizonForestInput } from '../utils/horizonForestLine'; // 森1の配置(§3-9d=ゲーム側と1本)
 import {
@@ -358,7 +358,7 @@ import {
 import { airHopHeight01 } from '../utils/airHop';
 import { SKADI_BLADE_NATIVE_ANGLE, RAFI_BLADE_NATIVE_ANGLE, PHILL_FEATHER_NATIVE_ANGLE } from '../utils/bladeArt';
 import { bossWideShotZoom, zoomedViewportBounds } from '../utils/cameraZoom';
-import { CAMERA_DOWN_OFFSET_FRAC, BREAKABLE_PROP_REGION_PAD, combatActorPlayer, skillExplosionMult, ZOMBIE_SPEED_MULT, ZOMBIE_RUSH_SPEED_MULT } from '../store/gameStore';
+import { CAMERA_DOWN_OFFSET_FRAC, CORRIDOR_CAMERA_DOWN_FRAC, CORRIDOR_GOAL_Y, BREAKABLE_PROP_REGION_PAD, combatActorPlayer, skillExplosionMult, ZOMBIE_SPEED_MULT, ZOMBIE_RUSH_SPEED_MULT } from '../store/gameStore';
 import { phantomTurretBlastRadius, PHANTOM_TURRET_TELEGRAPH_MS } from '../utils/turretSpec';
 import { playerCenteredRegion, regionEdgeFade, type RegionRect } from '../utils/regionEdgeFade';
 import { stepStaticShadowCap, staticShadowLowAlphaMult, STATIC_SHADOW_CAP, isStaticProjectedShadow, type StaticShadowCand } from '../utils/staticShadowCap'; // ?proj=1 の止まっている物の影の上限
@@ -370,7 +370,7 @@ import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { getCameraZoomLink } from '../utils/cameraZoomLink';
 import {
   makeProjFrame, projectInto, makeProjPoint, visibleWorldBands, projScreenRowsL, projBoxOnScreen, projScreenOutside, projDisplayToScreenInto, projTOfL, projWorldToScreenInto, projArrowTargetInto, projUnprojectLMin, visibleWorldQuad,
-  groundStripTile, groundVsObjectDiff, groundSlipBound, projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, southCullWorldY,
+  groundStripTile, groundVsObjectDiff, groundSlipBound, projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, projRowKx, southCullWorldY,
   type ProjFrame, type ProjTable, type ProjPoint,
 } from '../utils/perspectiveProjection'; // 投影(?proj=1・research/PERSPECTIVE_PROJECTION.md 段階1)
 import { projTeleFadeY, projShapeOutside, PROJ_GRID_MAX, type ProjFrame4 } from '../utils/projShape'; // 投影の段階4「形を持つもの」(§3-6)
@@ -492,6 +492,7 @@ import {
 } from '../world/playableArea';
 // PACING_PUZZLE.md §10-20(EX舞台の洋館通路化): EX専用の広間定数(描画は読むだけ・書かない)。
 import { isExStageRun } from '../utils/exStage';
+import { corridorFloorFrame, corridorFloorTravel, corridorDarkMul, corridorFloorU0, corridorFloorUAtLocal, type CorridorFloorFrameInput } from '../utils/corridorFloorMap';
 import { EX_HALL_SCALE, EX_HALL_LATERAL_CLAMP, exHallScaleT, exHallTravel, EX_BACK_WORLD_Y } from '../world/exHall';
 import {
   bossEngagementDistancePx, isEngageableBoss, isBossCameraSubject,
@@ -608,7 +609,7 @@ import { visibilityPolygon } from '../world/vision';
 import type { Rect } from '../world/obstacles';
 import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/rescue';
 import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
-import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
+import { CorridorLayer, CFG as CORRIDOR_GAME_CFG, CORRIDOR_DOF_FAR_D0 } from './corridorLayer';
 import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt, loopSweepProg as csLoopSweepProg } from '../utils/circleSweep';
 import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt, bandSweepSliceAlpha, sweepTelegraphProg, twoPhaseTelegraphProg } from '../utils/bandSweep';
 import { giantSweepWindowProg, giantNovaWindupProg } from '../utils/giantRedTelegraph';
@@ -3169,7 +3170,7 @@ const LAB_OBSTACLE_DEBRIS_TINT = 0x3e3c40;
 /** 残骸の絵を記録から作り直す範囲・捨てる範囲(可視域からの余白px)。捨てる方を広くして境目のちらつき(作る/捨てるの繰り返し)を防ぐ。 */
 const LAB_DEBRIS_RESTORE_MARGIN = 120;
 const LAB_DEBRIS_DROP_MARGIN = 240;
-interface LabObstacleView {
+interface LabObstacleView extends ProjStaticInfo {
   sprite: Sprite; baseScale: number; footY: number;
   /** 絵がまだ届いていない時の素材名(届いたら絵と大きさの係数を入れ直す・品質監査 A-1)。届いていれば undefined。 */
   pendingTex?: string;
@@ -3268,6 +3269,11 @@ const PROJ_FETCH_BANDS = 8; // 物を取ってくる範囲を行ごとに切る�
 const PROJ_ONSCREEN_MARGIN_PX = 16; // 投影した絵の箱を画面と比べる時の余白(画面px)
 const PROJ_PROP_REGION_FADE_PX = 150; // 松明・緑卵の作る/回収する範囲の縁の手前で薄くする幅(world px・監査 A2・叩き台)
 const PROJ_AUDIT = PROJ_ON && DEV_TOOLS_ENABLED && tsBool('projaudit', false); // 計器(位置の差・重なり率・通し漏れ=作る物8〜10)
+/**
+ * ?proj=1 段階8 U34(★#47=A・社長 2026-11-24「はい」=実装後に画を見せて決め切る): 洋館の奥の闇(床の遠方の暗幕)を物にも掛ける。
+ * 新しい見え方なので既定 OFF のツマミの中だけ(`?corrdark=1`)。明るさ = (1 − 暗幕の α(物の行)) ÷ (1 − 暗幕の α(主人公の行))・上限1。
+ */
+const PROJ_CORR_DARK = PROJ_ON && tsBool('corrdark', false);
 const DEPTH_POS_MAP = PROJ_ON ? true : tsBool('depthmap', true);
 const DEPTH_MAP_CURVE = Math.max(0.2, tsNum('dmapcurve', 1.0)); // 1=線形 / >1=プレイヤー付近ゆっくり・端で速い
 const DEPTH_EDGE_MARGIN = Math.max(0, tsNum('depthedge', 500)); // 画面端の外側マージン(背の高い物の頭ぶん)px。社長確定値。
@@ -6407,7 +6413,7 @@ export class PixiScene {
   private labFarZombieT0 = 0; // 相対時刻の起点(エポックmsをそのまま速度に掛けると桁が溢れる=v0.25.1807の教訓)
   private labFarFront: TilingSprite | null = null; // 遠景の窓の手前に置く「遠くの什器」(近景森1の縮小版)
   private labVisionLayer: Container | null = null; // 敵の視界表示(薄い赤・休眠敵ぶん)
-  private labVisionObjs = new Map<string, { g: Graphics; key: string }>(); // 敵id→形(位置が変わらない限り再利用)
+  private labVisionObjs = new Map<string, { g: Graphics; key: string; pts?: number[] }>(); // 敵id→形(位置が変わらない限り再利用)
   private labDarkLayer: Container | null = null;  // M2の暗転幕+非常灯(幕1枚 + プール済みグロー)
   private labDarkVeil: Sprite | null = null;
   private labEmLights: Sprite[] = [];
@@ -6435,6 +6441,11 @@ export class PixiScene {
   private labShaftMul = 1;        // 暗転中は月明りの筋も一緒に沈める
   private labOutDim: Container | null = null; // 移動可能帯の外を暗くする幕(4枚: 上ベタ/上グラデ/下グラデ/下ベタ)
   private labOutDimParts: Sprite[] = [];
+  /**
+   * ?proj=1 段階8 U20(§3-10c2 の③④): 研究所の帯の外の影の「遠景の区間」(farH より上)を今と同じに保つための切り抜きと、
+   * 「床の区間」(farH より下)の上の影(ベタ+グラデ)。?proj=0 では作らない。
+   */
+  private labOutDimProj: { far: Container; mask: Graphics; floorBase: Sprite; floorRise: Sprite; floorSolid: Sprite; floorFade: Sprite } | null = null;
   private labFarBloom: TilingSprite | null = null;      // 遠景のソフトブルーム(ぼかし焼き込みのscreen重ね)
   private farBloomCache = new Map<Texture, Texture>();  // 遠景テクスチャ→ぼかし焼き込みの1度きりキャッシュ
   setLabFarWindowTextures(glass: Texture | null, frame: Texture | null) {
@@ -8195,6 +8206,8 @@ export class PixiScene {
   }
 
   private horizonActorAlpha(footWorldY: number) {
+    // 段階8 U07(§3-10c): 投影後の Y の地平線フェードを掛けない枠(洋館だけ)は入口で 1。北の線は枠の描く距離のフェードが担う。
+    if (this.projFrame?.noHorizonFade) return 1;
     const localY = footWorldY - this.cameraY;
     // horizonForestFootWorldY = camera.y + (森1の足元由来のしきい値) なので、-cameraY でローカルYへ。
     // ★監査v0.25.3008(A-2): このしきい値は森1(hzFixed=worldGroupと一緒に縮む)のレイアウト値=
@@ -10059,6 +10072,8 @@ export class PixiScene {
   // ---- 投影(?proj=1・research/PERSPECTIVE_PROJECTION.md 段階1「盤面と置き物」) ----
   /** 今フレームの投影の状態。?proj=0・屋内・洋館の通路・研究所テーマでは null(=今の描き方)。 */
   projFrame: ProjFrame | null = null;
+  /** 段階8 U30: ?proj=1 のステージ6で床に渡した前進量(計器 s8 用・それ以外は NaN)。 */
+  private projCorridorTravel = NaN;
   private projTable: ProjTable | null = null;
   /** 置き物の南のカリング(作る物4)用: 画面の下端の行(帯のローカルY)。 */
   private projScreenBottomL = 0;
@@ -10096,7 +10111,9 @@ export class PixiScene {
    * 寄り先・支点・ピント帯の表示座標はこれで出せる(updateProjFrame は後で同じ表に wg を足す=循環しない)。場面の外・?proj=0 は null。
    */
   private projGroundFrameNow(s: ReturnType<typeof useGameStore.getState>, realNow: number): ProjFrame | null {
-    if (!PROJ_ON || s.indoorMode || s.corridorMode || s.stageTheme === 'lab') return null;
+    const scene = this.projSceneOf(s);
+    if (scene === null) return null;
+    if (scene === 'corridor') return corridorFloorFrame(this.projCorridorInput(s, realNow)); // 段階8 U01: 洋館は Mode-7 の枠(wg・揺れなし)
     const tb0 = this.projTable;
     const t0 = PROJ_AUDIT ? performance.now() : 0;
     const base = projFrameBase(tb0, this.projFrameBaseParams(s, this.farBackdropHeight(), realNow));
@@ -10108,6 +10125,35 @@ export class PixiScene {
     }
     return makeProjFrame(base.input);
   }
+  /**
+   * 段階8 U01(§3-10e): 投影の枠を立てる場面。null=枠を作らない(?proj=0・屋内・EX の洋館=★#48=A)。
+   * 研究所(stageTheme==='lab'・屋外の作り)は常に ground の枠(★#43=A')、ステージ6の洋館は corridor の枠。
+   */
+  private projSceneOf(s: ReturnType<typeof useGameStore.getState>): ProjScene | null {
+    if (!PROJ_ON || s.indoorMode) return null;
+    if (s.corridorMode) return isExStageRun() ? null : 'corridor';
+    return s.stageTheme === 'lab' ? 'lab' : 'outdoor';
+  }
+
+  /** 段階8 U04: 洋館の枠の入力(§3-10c の 2・7。アテンションは屋外と同じ包絡線で基準点と基準行を組で運ぶ)。 */
+  private projCorridorInput(s: ReturnType<typeof useGameStore.getState>, realNow: number): CorridorFloorFrameInput {
+    let att: { y: number; env: number } | null = null;
+    if (s.attention?.zoomToUnity) {
+      const a = s.attention;
+      const outStart = ATTENTION_IN_MS + (a.holdMs ?? ATTENTION_HOLD_MS) + (a.cutinMs ?? 0);
+      att = { y: a.y, env: attentionZoomEnvelope(realNow - a.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS) };
+    }
+    return {
+      camX: s.camera.x, camY: s.camera.y, screenW: this.screenW, screenH: this.screenH, viewH: s.gameBounds.height,
+      corridorW: this.screenW > this.screenH ? VIEW_CORE_W : this.screenW, // syncCorridorBackdrop の corridorW と同じ
+      playerH: s.player.height, camDown: CORRIDOR_CAMERA_DOWN_FRAC, camZ: PROJ_ZREF === 2 ? getCameraZoomLink() : 1,
+      fadeTopFrac: CORRIDOR_ACTOR_FADE_TOP_FRAC, fadePx: CORRIDOR_ACTOR_FADE_PX, att,
+    };
+  }
+
+  /** 段階8 U02: 縦の下げ量の1本(projCamDownFracFor)を場面ごとに作り置き(毎フレームの閉包を作らない)。 */
+  private projDownFracOutdoor = (z: number): number => projCamDownFracFor('outdoor', z, CAMERA_DOWN_OFFSET_FRAC, CORRIDOR_CAMERA_DOWN_FRAC);
+  private projDownFracLab = (z: number): number => projCamDownFracFor('lab', z, CAMERA_DOWN_OFFSET_FRAC, CORRIDOR_CAMERA_DOWN_FRAC);
   /** 計器: このフレームの updateProjFrame より前に projGroundFrameNow が作り直した表と時間(updateProjFrame が数えて空にする)。 */
   private projTablePre: { ms: number; built: ProjTable | null } = { ms: 0, built: null };
 
@@ -10124,6 +10170,8 @@ export class PixiScene {
       viewH: s.gameBounds.height, // カメラ(useGameLoop の baseCamY)と同じ高さで定位置を出す
       playerH: s.player.height, playerFootY: s.player.y + s.player.height,
       camZoom: getCameraZoomLink(), camDown: CAMERA_DOWN_OFFSET_FRAC, zref: PROJ_ZREF, near: PROJ_NEAR,
+      // 段階8 U02: 縦の下げ量は projCamDownFracFor の1本から(研究所=字の 0・屋外=今の zoomCameraDownFrac と同じ値)。
+      downFracAt: s.stageTheme === 'lab' ? this.projDownFracLab : this.projDownFracOutdoor,
       att, farStart: PROJ_FAR_START, farEnd: PROJ_FAR_END, overscan: ZOOM_OVERSCAN,
     };
   }
@@ -10134,7 +10182,18 @@ export class PixiScene {
     if (this.projShapeFront) this.projShapeFront.clear();
     if (this.projShapeGround) this.projShapeGround.clear();
     if (this.projSpriteMeshes.length > 0) this.projSpriteMeshReset();
-    if (!PROJ_ON || s.indoorMode || s.corridorMode || s.stageTheme === 'lab') { this.projFrame = null; projBeamFrame = null; return; }
+    const scene = this.projSceneOf(s);
+    if (scene === null) { this.projFrame = null; projBeamFrame = null; return; }
+    const wg = this.L.worldGroup;
+    if (scene === 'corridor') {
+      // 段階8 U01/U04: 洋館は Mode-7 の閉じた式の枠(表を作らない・makeProjFrame を通らない)。
+      this.projFrame = corridorFloorFrame({
+        ...this.projCorridorInput(s, realNow),
+        wgScale: wg.scale.x || 1, wgX: wg.position.x, wgY: wg.position.y, shakeX, shakeY,
+      });
+      this.projAfterFrame(s, wg, shakeY);
+      return;
+    }
     const farH = this.farBackdropHeight();
     // 組み立ては utils/projGameView.projFrameBase の1本(ゲーム側の「ゲームの画面」と同じ式・§3-9d)。基準点と基準行は組 (W_ref, ℓ_ref)。
     // 表は帯の引数が変わった時に作り直す(§10 B7)。手前を抑える案(既定 ON・?projnear=0 で無し)は ℓ_near=ℓ_ref なので、ボス戦の引き・
@@ -10157,12 +10216,18 @@ export class PixiScene {
         ts.lastPts = table.builtPts; ts.lastMs = ms; if (ms > ts.buildMsMax) ts.buildMsMax = ms;
       }
     }
-    const wg = this.L.worldGroup;
     this.projFrame = makeProjFrame({
       ...base.input,
       wgScale: wg.scale.x || 1, wgX: wg.position.x, wgY: wg.position.y, shakeX, shakeY,
     });
-    this.projScreenBottomL = (this.screenH - wg.position.y) / (wg.scale.x || 1) - shakeY - farH;
+    this.projAfterFrame(s, wg, shakeY);
+  }
+
+  /** 枠を作った後の共通の後始末(画面の下端の行・回収の範囲・透け・段階4の記録・計器)。 */
+  private projAfterFrame(s: ReturnType<typeof useGameStore.getState>, wg: Container, shakeY: number) {
+    if (!this.projFrame) return;
+    // 段階8 U05: 画面の下端の行は枠の farH から引く(洋館は消失点 hY・研究所/屋外は今の farBackdropHeight() のまま=同じ値)。
+    this.projScreenBottomL = (this.screenH - wg.position.y) / (wg.scale.x || 1) - shakeY - this.projFrame.farH;
     // 松明・緑卵の作る/回収する範囲(store.syncBreakableProps と同じ: プレイヤー中心の画面 ± BREAKABLE_PROP_REGION_PAD・監査 A2)。
     // ★#37(V28・ケ4): ゲーム側の回収の枝が立っている場面では store と同じ純関数 projPropRegionRect(基準点=中心)を呼ぶ。
     this.projGameSceneOn = getProjGameView() !== null;
@@ -10490,6 +10555,7 @@ export class PixiScene {
     const wrap = (d: number, per: number) => { if (!(per > 0)) return d; let r = d % per; if (r > per / 2) r -= per; if (r < -per / 2) r += per; return r; };
     // 1点の位置の差(物の投影 − 同じ world 点の地面の模様・ズーム後の画面px)。画面に映っていない点・帯が無い点は null。
     const slipAt = (wx: number, wy: number): { adx: number; ady: number; t: number; bound: number } | null => {
+      if (f.kind !== 'ground') return null; // 段階8: 洋館の床は地面の帯ではない(計器 s8 slip が別に測る)
       const l = projLocalYOfWorld(f, wy);
       const i = Math.floor(l / tb.stripH);
       const st = strips[i];
@@ -10522,7 +10588,7 @@ export class PixiScene {
     }
     // 他の読み方(純関数の式)と合っているか: 同じ点を groundVsObjectDiff でも見る(帯の値の書き込み漏れの検出)。
     let fPure = 0;
-    for (let k = 0; k < Math.min(40, this.projAuditPts.length); k += 2) {
+    for (let k = 0; f.kind === 'ground' && k < Math.min(40, this.projAuditPts.length); k += 2) { // 段階8: 洋館は地面の帯ではない
       const d = groundVsObjectDiff(f, this.projAuditPts[k], this.projAuditPts[k + 1]);
       fPure = Math.max(fPure, Math.abs(d.dx));
     }
@@ -10637,6 +10703,7 @@ export class PixiScene {
       ...this.projStage3AuditLines(),
       ...this.projStage5AuditLines(),
       ...this.projStage6AuditLines(),
+      ...this.projStage8AuditLines(),
     ].join('\n');
   }
 
@@ -10795,6 +10862,7 @@ export class PixiScene {
   private projS5StepAudit(view: ActorView, sig: number, l: number) {
     const a = this.projS5;
     const f = this.projFrame!;
+    if (f.kind !== 'ground') return; // 段階8: 洋館は地面の帯の表を持たない=段階5の段差の計器は数えない
     // 監査 B3: 比べるのは「すぐ前のフレーム」の値だけ(高さの無いフレームを挟んだ古い値は持ち越さない)・基準行 ℓ_ref が変わったフレームは数えない。
     if (view.projLiftPrevSig !== undefined && view.projLiftPrevL !== undefined && view.projLiftPrevFrame === this.projFrameNo - 1 && view.projLiftPrevLRef === f.lRef) {
       const ds = Math.abs(sig - view.projLiftPrevSig);
@@ -10807,6 +10875,7 @@ export class PixiScene {
   /** 今フレームの表で dσ/dℓ の最大(隣どうしの差から・表が変わった時だけ測り直す)。 */
   private projS5DSigMax(): number {
     const f = this.projFrame!;
+    if (f.kind !== 'ground') return 0; // 段階8: 洋館では数えない
     const c = this.projS5DSigCache;
     const bottom = Math.max(1, this.projScreenBottomL + 400);
     if (c.lRef === f.lRef && c.stripH === f.table.stripH && Math.abs(c.bottom - bottom) < 1) return c.v;
@@ -11082,6 +11151,97 @@ export class PixiScene {
    * 余白 16px の帯は数えない・描画だけのズームの間は合否の外=別に数える)/ s6 arrow(画面の中だが薄い・北のため矢印にした数)/
    * s6 cam(KILL の寄せの間の寄り先と画面の中央の差の最大)。
    */
+  // ---- 段階8 の計器(?proj=1&projaudit=1・§3-10i 作る物7) ----
+  private projS8 = {
+    labMiss: 0, labMissMax: 0, edgeDiff: NaN, edgeDiffMax: 0,
+    slipMax: 0, slipNow: 0, hatch: NaN, aboveV: 0, aboveFade: 0, aboveMax: 0, aboveFadeMax: 0,
+    spawnSeen: new Set<string>(), spawnVisible: 0, spawnTotal: 0,
+    prevU: new Map<string, { u: number; y: number; frame: number }>(),
+  };
+  private projStage8AuditLines(): string[] {
+    const f = this.projFrame;
+    if (!f) return [];
+    const s = useGameStore.getState();
+    const a = this.projS8;
+    const frameNo = this.projFrameNo;
+    const out: string[] = [];
+    if (s.stageTheme === 'lab' && !s.indoorMode) {
+      // s8 lab: 窓口を通らずに旧い置き方で描いた物の数(0 のはず)・主人公の s・上の影の床の区間の境目と帯の北の縁を投影した行の差。
+      let miss = 0;
+      const chk = (o: Container | null | undefined) => {
+        if (!o || o.destroyed || !o.visible || o.alpha <= 0.001) return;
+        if (this.projAuditMarks.get(o) !== frameNo) miss++;
+      };
+      for (const e of this.wallObjs.values()) chk(e.sprite);
+      for (const e of this.propObjs.values()) chk(e.sprite);
+      chk(this.crawlerSprite);
+      for (const o of this.labVisionObjs.values()) chk(o.g);
+      a.labMiss = miss; a.labMissMax = Math.max(a.labMissMax, miss);
+      // 帯の北の縁(world −200)の投影の行(画面px・ズーム後の式)と、影の境目(worldToUi の式)を2つの道で出して比べる。
+      const pt = projectInto(f, f.cxw, -LAB_CORRIDOR_Y_LIMIT_PX, this.projScratch2);
+      const P = this.labOutDimProj;
+      if (pt.inDomain && P && P.floorFade.visible) {
+        const sc = projDisplayToScreenInto(f, pt.x, pt.y, this.projScreenPt);
+        a.edgeDiff = Math.abs(sc.y - P.floorFade.position.y);
+        a.edgeDiffMax = Math.max(a.edgeDiffMax, a.edgeDiff);
+      } else a.edgeDiff = NaN;
+      // 湧き(★#46 の材料=合否にしない): 湧いた最初のフレームに投影の画面の中で α0.05 以上で描かれた数。
+      for (const e of s.enemies) {
+        if (a.spawnSeen.has(e.id)) continue;
+        a.spawnSeen.add(e.id); a.spawnTotal++;
+        const v = this.enemies.get(e.id);
+        if (v && v.container.visible && v.container.alpha >= 0.05 && this.projOnScreen(e.x + e.width / 2, e.y + e.height, e.width, e.height)) a.spawnVisible++;
+      }
+      const cd = projCamDownFracFor('lab', getCameraZoomLink(), CAMERA_DOWN_OFFSET_FRAC, CORRIDOR_CAMERA_DOWN_FRAC);
+      out.push(`s8 lab miss now=${miss} max=${a.labMissMax} playerS=${this.projActorAudit.playerS.toFixed(4)} camDown=${cd} farH=${f.farH.toFixed(1)} edge diff=${Number.isFinite(a.edgeDiff) ? a.edgeDiff.toFixed(2) : '-'} max=${a.edgeDiffMax.toFixed(2)}`);
+      out.push(`s8 spawn visibleOnFirstFrame=${a.spawnVisible}/${a.spawnTotal}`);
+    }
+    if (f.kind === 'corridor' && f.m7) {
+      const m = f.m7;
+      const travel = this.projCorridorTravel;
+      // s8 slip: 足元の下の床の模様の行 u の1フレームの変化 − その物の world の動き(u = U0 − y なら 0)。
+      let slip = 0;
+      const one = (id: string, fx: number, fy: number) => {
+        const p = projectInto(f, fx, fy, this.projScratch2);
+        const u = corridorFloorUAtLocal(f, p.l, travel);
+        const prev = a.prevU.get(id);
+        if (prev && prev.frame === frameNo - 1 && Number.isFinite(u) && Number.isFinite(prev.u)) {
+          const d = Math.abs((u - prev.u) + (fy - prev.y));
+          if (d < 400) slip = Math.max(slip, d); // 床の模様の1周(520)を跨いだ巻き戻しは数えない
+        }
+        a.prevU.set(id, { u, y: fy, frame: frameNo });
+      };
+      one('player', s.player.x + s.player.width / 2, s.player.y + s.player.height);
+      for (const e of s.enemies) one(e.id, e.x + e.width / 2, e.y + e.height);
+      if (a.prevU.size > 400) a.prevU.clear();
+      a.slipNow = slip; a.slipMax = Math.max(a.slipMax, slip);
+      // s8 hatch: ハッチの中心(床の模様の行 u = GOAL_TILE_START + FLOOR_REPEAT/2)の画面Y と帰還の円の中心の画面Y の差。
+      const rc = s.returnCircle;
+      if (rc && Number.isFinite(travel)) {
+        const uH = corridorFloorU0(0) - 0; // = GOAL_TILE_START + FLOOR_REPEAT/2(goalY=0)
+        const dH = uH - travel;
+        const yH = m.hY + m.denom * (m.focal / (m.focal + dH));
+        const pc = projectInto(f, rc.x, rc.y, this.projScratch2);
+        const sc = projDisplayToScreenInto(f, pc.x, pc.y, this.projScreenPt);
+        a.hatch = (sc.y - f.wgY) / (f.wgScale || 1) - f.shakeY - yH; // 床はズームしない=ズーム前の画面Y で比べる
+      } else a.hatch = NaN;
+      // s8 above: 消失点より上に描かれた物・物のフェードの線より北に α0.05 以上で描かれた物。
+      let above = 0, aboveFade = 0;
+      for (const e of s.enemies) {
+        const v = this.enemies.get(e.id);
+        if (!v || !v.container.visible || v.container.alpha < 0.05) continue;
+        const fy = e.y + e.height;
+        const p = projectInto(f, e.x + e.width / 2, fy, this.projScratch2);
+        if (p.y - f.camY < m.hY - 0.5) above++;
+        if (fy < f.farRefY - f.farEnd) aboveFade++;
+      }
+      a.aboveV = above; a.aboveFade = aboveFade; a.aboveMax = Math.max(a.aboveMax, above); a.aboveFadeMax = Math.max(a.aboveFadeMax, aboveFade);
+      out.push(`s8 slip now=${a.slipNow.toFixed(3)} max=${a.slipMax.toFixed(3)} travel=${travel.toFixed(1)} sRef=${m.sRef.toFixed(4)} dRef=${m.dRef.toFixed(1)}`);
+      out.push(`s8 hatch diff=${Number.isFinite(a.hatch) ? a.hatch.toFixed(2) : '-'}px  s8 above now=${above}/${aboveFade} max=${a.aboveMax}/${a.aboveFadeMax}`);
+    }
+    return out;
+  }
+
   private projStage6AuditLines(): string[] {
     const a = this.projS6;
     const f = this.projFrame;
@@ -12124,8 +12284,40 @@ export class PixiScene {
   }
 
   /** 後掛けの窓口(§3-5k 作る物1): 全部の描画の後・projAuditEndFrame の前に1回(=syncZoomWarp の counterWarpActors より前)。 */
+  // ---- 段階8 U34(★#47・?proj=1&corrdark=1 の時だけ): 洋館の奥の闇を物(敵・召喚)の体の絵に掛ける ----
+  private projDarkSaved: { sp: Sprite; tint: number }[] = [];
+  private projDarkN = 0;
+  private projCorrDarkPass() {
+    const f = this.projFrame;
+    if (!PROJ_CORR_DARK || !f || f.kind !== 'corridor') return;
+    const one = (v: ActorView, fy: number, fx: number) => {
+      const sp = v.sprite;
+      if (!sp || sp.destroyed || !sp.visible) return;
+      const p = projectInto(f, fx, fy, this.projScratch2);
+      const m = corridorDarkMul(f, p.l);
+      if (m >= 0.999) return;
+      let r = this.projDarkSaved[this.projDarkN];
+      if (!r) { r = { sp, tint: 0 }; this.projDarkSaved[this.projDarkN] = r; }
+      r.sp = sp; r.tint = sp.tint as number;
+      this.projDarkN++;
+      const t = r.tint, k = Math.max(0, Math.min(1, m));
+      sp.tint = (Math.round(((t >> 16) & 255) * k) << 16) | (Math.round(((t >> 8) & 255) * k) << 8) | Math.round((t & 255) * k);
+    };
+    const s = useGameStore.getState();
+    for (const e of s.enemies) { const v = this.enemies.get(e.id); if (v) one(v, e.y + e.height, e.x + e.width / 2); }
+  }
+  private restoreProjCorrDark() {
+    for (let i = 0; i < this.projDarkN; i++) {
+      const r = this.projDarkSaved[i];
+      if (!r.sp.destroyed) r.sp.tint = r.tint;
+      r.sp = null as unknown as Sprite;
+    }
+    this.projDarkN = 0;
+  }
+
   private projActorPostPass() {
     if (!this.projFrame) { this.projLooseN = 0; return; }
+    this.projCorrDarkPass();
     if (PROJ_AUDIT) { this.projActorAudit.unclassifiedNow = 0; this.projUncNow.clear(); }
     if (this.playerView) this.projPostView(this.playerView, 'player');
     for (const v of this.enemies.values()) this.projPostView(v, 'enemy');
@@ -12166,6 +12358,7 @@ export class PixiScene {
   /** 前フレームに掛けた後掛けを戻す(sync の先頭・restoreZwarpActors の直後=後に掛けた方を先に戻す)。 */
   private restoreProjActors() {
     if (this.projFxRotN > 0) this.restoreProjFxRot(); // 段階3: 回転を入れ直した演出(向・両)の回転を戻す
+    if (this.projDarkN > 0) this.restoreProjCorrDark(); // 段階8 U34(?corrdark=1 の時だけ積まれる)
     const pool = this.projSaved;
     if (pool.length === 0) return;
     try {
@@ -12451,7 +12644,7 @@ export class PixiScene {
     const seamPad = Math.ceil(GROUND_SEAM_PAD_PX * Math.max(0, 1 / Math.max(ZOOM_MIN_ABS, zoomNow) - 1));
     // ?proj=1(research/PERSPECTIVE_PROJECTION.md §1-1a・§1-1b): 模様を world に固定した1枚の布として、物と同じ投影の関数から
     // 絶対値で出す(足し込みを使わない)。帯の縮みは帯の中央で標本を取る。?proj=0 はこの分岐に入らない(下の従来のまま)。
-    const pf = this.projFrame;
+    const pf = this.projFrame?.kind === 'ground' ? this.projFrame : null; // 段階8 U06: 帯の模様は ground の枠だけ(洋館は帯を描かない)
     if (pf) {
       for (let i = 0; i < stripCount; i++) {
         const strip = strips[i];
@@ -13199,6 +13392,15 @@ export class PixiScene {
         this.bossDofGrad += (need - this.bossDofGrad) * k;
         gradNow = Math.max(gradNow, this.bossDofGrad);
       }
+      // ?proj=1 段階8(見た目9): 洋館の背景(柱・燭台)のぼけは床の奥行き d で決まる(遠方のぼけは d=CORRIDOR_DOF_FAR_D から立ち上がる・
+      // corridorLayer の dofFar)。物は画面のチルトシフト1枚なので、その行(床の写像で d の行)でボケの立ち上がり(ボスのピントと同じ
+      // smoothstep の 0.2 地点)になるよう勾配を広げる=背景がくっきりの奥行きでは敵もくっきり。?proj=0・屋外は通らない。
+      if (pfG && pfG.kind === 'corridor' && pfG.m7) {
+        const m = pfG.m7;
+        const yFarDisp = pfG.camY + m.hY + m.denom * (m.focal / (m.focal + CORRIDOR_DOF_FAR_D0));
+        const yFar = ((this.L.world.position.y + yFarDisp) * tz + this.L.worldGroup.position.y) * vpScale;
+        gradNow = Math.max(gradNow, Math.abs(bandY - yFar) / (BOSS_DOF_EDGE_FRAC * vpScale));
+      }
       this.tiltShift.start = { x: 0, y: bandY };
       this.tiltShift.end = { x: this.screenW * vpScale, y: bandY };
       this.tiltShift.gradientBlur = gradNow * vpScale;
@@ -13517,7 +13719,10 @@ export class PixiScene {
     if (s.gameTime < this.groundScrollLastGameTime) this.groundScrollRunEpoch++;
     this.groundScrollLastGameTime = s.gameTime;
     this.updateProjFrame(s, sx, sy, realNow); // ?proj=1 の時だけ投影の状態を作る(地面と置き物で同じ関数・同じ基準行)
-    setViewProjection(this.projFrame); // ?proj=1: PC のマウスの照準を逆投影で戻す(§3-9b・作る物2)。?proj=0・場面の外は null=今の式
+    // ?proj=1: PC のマウスの照準を逆投影で戻す(§3-9b・作る物2)。?proj=0・場面の外は null=今の式。
+    // 段階8 U40: 門 aimOK(★#46=A=研究所・洋館も照準だけ揃える=門を開ける)。
+    const aimOK = this.projFrame !== null && projAimAllowed(this.projSceneOf(s));
+    setViewProjection(aimOK ? this.projFrame : null);
     // 洋館(通路)は地面の帯(groundBase)を出さない=180本の帯の毎フレーム更新をしない(上の corridorOut と同じ理由)。
     if (!corridorOut) this.updatePerspectiveGround(
       s.camera.x, s.camera.y, sx, sy,
@@ -15687,13 +15892,17 @@ export class PixiScene {
       fx.sprite.rotation = toward * look.tilt;
       fx.mask.clear();
       fx.mask.rect(baseX - 300, baseY - 600, 600, 600).fill({ color: 0xffffff });
-      fx.sprite.alpha = look.alpha * this.horizonActorAlpha(baseY);
+      fx.sprite.alpha = look.alpha * this.projLooseFade(baseX, baseY, false); // ?proj=1: 投影後の Y の地平線フェード(?proj=0 は今の式)
       // 呑まれていく=肉の色へ沈む(出だしは元の色)。
       const dk = Math.round(255 - 140 * look.k);
       fx.sprite.tint = (dk << 16) | (Math.round(dk * 0.8) << 8) | Math.round(dk * 0.75);
       // 潰れている間は自分の足元で前後を決め、引きずられ始めたら本体の後ろへ回る(本体が手前で隠す)。
       fx.sprite.zIndex = look.k < 0.12 ? a.y : bf.y - 1;
       fx.sprite.visible = fx.sprite.alpha > 0.01;
+      if (this.projFrame) { // ?proj=1 段階8 U14: 取り込まれる敵の姿も足元1点+s の後掛け(型マスクも同じ相似)
+        this.projLoose('lab-crawler:absorb', baseX, baseY, 1);
+        this.projLooseAdd(fx.sprite); this.projLooseAdd(fx.mask);
+      }
     }
     for (const [id, fx] of this.crawlerAbsorbFx) {
       if (!absorbAlive.has(id)) { fx.sprite.destroy(); fx.mask.destroy(); this.crawlerAbsorbFx.delete(id); }
@@ -15741,7 +15950,7 @@ export class PixiScene {
       fc.from = cur; fc.to = want; fc.at = now;
     }
     const face = this.crawlerFaceNow(now);
-    let alpha = this.horizonActorAlpha(bf.y) * this.foregroundActorAlpha(bf.y);
+    let alpha = this.projLooseFade(c.x, bf.y); // ?proj=1: 投影後の Y の地平線×手前のフェード(?proj=0 は今の式そのもの)
     const artW = tex.width * baseScale, artH = tex.height * baseScale;
     let sinkPx = 0;
     if (ascendLook) {
@@ -15756,7 +15965,7 @@ export class PixiScene {
       const zoom = this.L.worldGroup.scale.x || 1;
       // 光の柱: 柔らかい光の絵を縦に伸ばす(左右と下の縁がぼける)。下端は胴の中心あたりで溶ける=体の下から芯が伸びない。
       if (look.beam > 0.002) {
-        const beamH = (this.screenH / zoom) * 1.25; // proj-lift: exempt(lab 這う者の死の光の柱=研究所テーマ=段階8・監査 C4)
+        const beamH = (this.screenH / zoom) * 1.25; // proj-lift: exempt(stage8-done 這う者の死の光の柱=付け根だけ投影・長さは画面基準のまま=段階8 U16)
         const place = (b: Sprite, wMul: number, a: number) => {
           b.width = artW * wMul; b.height = beamH;
           b.position.set(deathEdgeX, bodyCy - beamH * 0.44);
@@ -15774,7 +15983,7 @@ export class PixiScene {
         b.texture = sil;
         b.position.set(c.x + shotRo.x, bf.y + sinkPx + shotRy - LAB_CRAWLER_RIM_UP_PX * fxK); // 押し戻しが0へ戻り切る間も本体と揃える
         b.scale.set(baseScale * face, baseScale);
-        b.alpha = Math.min(1, look.flare) * this.horizonActorAlpha(bf.y);
+        b.alpha = Math.min(1, look.flare) * this.projLooseFade(c.x, bf.y, false);
         b.zIndex = bf.y - 0.5;
         b.mask = this.crawlerBodyMask;
         b.visible = true;
@@ -15789,7 +15998,7 @@ export class PixiScene {
         const ox = ((i * 37) % 11 - 5) / 5 * LAB_CRAWLER_SOUL_SPREAD_PX;
         s.position.set(deathEdgeX + ox, bodyCy - sl.rise * fxK);
         s.width = s.height = 16 * sl.scale * fxK; // 5倍の絵で約80px
-        s.alpha = sl.alpha * this.horizonActorAlpha(bf.y);
+        s.alpha = sl.alpha * this.projLooseFade(c.x, bf.y, false);
         s.visible = true;
       }
       const gl = this.crawlerGlow;
@@ -15858,6 +16067,7 @@ export class PixiScene {
         legacyW: artW * 0.85 * shrink,
         rawW: artW * shrink, rawH: artH * shrink, texture: tex,
         alpha: alpha * (1 - 0.8 * sinkK),
+        projected: !!this.projFrame || undefined, // ?proj=1 段階8 U14: x/y/rawW/rawH は world(s=1・遠近を掛けない絵)=4隅を投影
       };
     }
     // ランタンの灯り: 目覚めた瞬間にぽっと灯り(実時間・加減速つき)、以後は弱く揺らぐ。柔らかい光の絵だけ(投影影を落とさない)。
@@ -15904,6 +16114,17 @@ export class PixiScene {
       });
     }
 
+    // ?proj=1 段階8 U14・U16(§3-10e): 体と付属(ランタン・魂・光・土埃・型)は足元1点+s の後掛け(型②)。遠近は掛けていない絵=d=1。
+    // 死の光の柱は付け根だけ投影し、長さは今の画面基準のまま(画面いっぱいの光の柱=画面固定の性格)=平行移動。
+    if (this.projFrame) {
+      this.projLoose('lab-crawler', c.x, bf.y, 1);
+      this.projLooseAdd(sp); this.projLooseAdd(this.crawlerBody); this.projLooseAdd(this.crawlerFlash);
+      this.projLooseAdd(this.crawlerGlow); this.projLooseAdd(this.crawlerBodyMask);
+      for (const o of this.crawlerSouls) this.projLooseAdd(o);
+      for (const o of this.crawlerLanterns) this.projLooseAdd(o);
+      for (const o of this.crawlerWakeDust) this.projLooseAdd(o);
+      this.projLooseAdd(this.crawlerBeamSoft, 'translate'); this.projLooseAdd(this.crawlerBeamCore, 'translate');
+    }
     // ---- 叩きつけの赤い予告(★赤い予告の4つの掟: 流星=外から内へ流れ、溜め開始で出て、当たる瞬間に消え切る) ----
     // 円の位置=c.slamX/Y(=当たる位置)。雑魚を狙う時・資料の前は溜め開始で地面に固定。資料の後にプレイヤーを狙う時(slamMoving)は
     // 溜めの前半だけ塊と一緒に動き、後半は止まる(CRAWLER_CHASE_SLAM_ADVANCE_FRAC)=最後に描いた円が当たる。半径=判定半径(CRAWLER_SLAM_RADIUS)そのもの。
@@ -15913,9 +16134,12 @@ export class PixiScene {
       const fillA = telFillA(prog, 1) * TELEGRAPH_FILL_MULT;
       const mask = CIRCLE_SWEEP_ON
         ? this.drawSweepCircleFill(g, c.slamX, c.slamY, CRAWLER_SLAM_RADIUS, prog, 0xff2a2a, fillA, style)
-        : (g.circle(c.slamX, c.slamY, CRAWLER_SLAM_RADIUS).fill({ color: 0xff2a2a, alpha: fillA }), 1);
-      g.circle(c.slamX, c.slamY, CRAWLER_SLAM_RADIUS).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * mask });
-      g.alpha = this.horizonActorAlpha(c.slamY);
+        : (this.projFrame ? projCircle(g, this.projFrame, c.slamX, c.slamY, CRAWLER_SLAM_RADIUS, { color: 0xff2a2a, alpha: fillA }) : g.circle(c.slamX, c.slamY, CRAWLER_SLAM_RADIUS).fill({ color: 0xff2a2a, alpha: fillA }), 1);
+      // ?proj=1 段階8 U15: 判定のある円=段階4の頂点ごとの厳密な投影(流星の窓・時刻は今のまま world で作る)。
+      const pfS = this.projFrame;
+      if (pfS) projCircle(g, pfS, c.slamX, c.slamY, CRAWLER_SLAM_RADIUS, undefined, { width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * mask });
+      else g.circle(c.slamX, c.slamY, CRAWLER_SLAM_RADIUS).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * mask });
+      g.alpha = this.projLooseFade(c.slamX, c.slamY, false);
     }
   }
 
@@ -16246,11 +16470,19 @@ export class PixiScene {
     const m = LAB_ZONE;
     // 範囲は可視域(ズーム込み)+1区画。引いた画角でも奥の壁が描かれ、変異塊に壊された時に崩れの絵・残骸が出る(品質監査2巡目A-3)。
     const vb = this.labObstacleViewBounds(cam);
+    // ?proj=1 段階8 U13: 木と同じく行ごとの左右の幅で切った帯で取り、投影した絵の箱が画面に掛からない物は隠す(段階1 監査 A1)。
+    const projOn = !!this.projFrame;
     const walls = labTheme
-      ? labWallsInRegion(vb.left - m, vb.top - m, vb.right + m, vb.bottom + m)
+      ? (projOn ? this.projFetch(WALL_DISPLAY_H.w, WALL_DISPLAY_H.h, (l, t, r, b) => labWallsInRegion(l, t, r, b), q => q.id)
+        : labWallsInRegion(vb.left - m, vb.top - m, vb.right + m, vb.bottom + m))
       : [];
     const seen = new Set<string>();
     for (const w of walls) {
+      if (projOn && !this.projOnScreen(w.footX, w.footY, WALL_DISPLAY_H.w, WALL_DISPLAY_H.h)) {
+        const off = this.wallObjs.get(w.id);
+        if (off && off.crumbleAt === undefined && !off.debris) { seen.add(w.id); off.sprite.visible = false; off.projA = 0; }
+        continue;
+      }
       seen.add(w.id);
       let entry = this.wallObjs.get(w.id);
       if (!entry) {
@@ -16258,6 +16490,7 @@ export class PixiScene {
         this.wallObjs.set(w.id, entry);
       }
       if (entry.crumbleAt !== undefined || entry.debris) { entry.crumbleAt = undefined; entry.debris = false; entry.sprite.rotation = 0; entry.sprite.tint = ENV_TINT; entry.stain?.destroy(); entry.stain = undefined; entry.stainTint = undefined; } // 新しいランで立ち直った
+      if (this.projFrame) { this.labObstacleProjPlace(entry, w.footX); continue; } // ?proj=1 段階8 U10: 木と同じ置き方
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
       this.applyObstacleAlpha(entry.sprite, entry.footY);
     }
@@ -16288,7 +16521,22 @@ export class PixiScene {
     sprite.zIndex = footY; // 足元Yでプレイヤー/敵とY-sort(背面は被る)
     this.L.actorLayer.addChild(sprite);
     const baseScale = tex ? containScale(WALL_DISPLAY_H.w, WALL_DISPLAY_H.h, tex.width, tex.height) : 1;
-    return { sprite, baseScale, footY };
+    return { sprite, baseScale, footY, footX };
+  }
+
+  /**
+   * ?proj=1 段階8 U10/U11(§3-10e): 研究所の壁・什器を段階1の木と同じに置く(足元を投影・大きさ baseScale×s・zIndex は元の footY・
+   * 透けは段階1の判定)。記録(footX・projS・projA)は影(projShadowReq)が読む。
+   */
+  private labObstacleProjPlace(entry: LabObstacleView, footX: number) {
+    const pp = this.projPlace(footX, entry.footY, entry.sprite);
+    entry.footX = footX;
+    entry.projS = pp.s;
+    entry.projA = this.projBaseAlpha(pp);
+    entry.sprite.position.set(pp.x, pp.y);
+    entry.sprite.visible = true;
+    entry.sprite.scale.set(entry.baseScale * pp.s);
+    this.applyObstacleAlpha(entry.sprite, entry.footY, false, false, pp);
   }
 
   private makeLabPropView(variant: number, footX: number, footY: number): LabObstacleView {
@@ -16305,7 +16553,7 @@ export class PixiScene {
     const baseScale = tex ? containScale(PROP_DISPLAY_H, PROP_DISPLAY_H, tex.width, tex.height) : 1;
     // ★研究所の障害物はステージ2の出撃時に読む組(labActors)になった(コード監査2026-10-23 M-5)。読み終わる前に
     // 作られた物は空の絵のまま固定されてしまう(=見えない壁)ので、名前を覚えて syncLabProps が毎フレーム引き直す。
-    return { sprite, baseScale, footY, pendingTex: tex ? undefined : name };
+    return { sprite, baseScale, footY, footX, pendingTex: tex ? undefined : name };
   }
 
   /** 絵が届いていなかった障害物に、届いた絵と大きさの係数を入れ直す(届くまで毎フレーム呼ばれる・品質監査 A-1)。 */
@@ -16330,6 +16578,8 @@ export class PixiScene {
 
   /** 研究所の壁・プロップを並べる範囲の基準=可視域(ズーム込み・cameraZoom.zoomedViewportBounds と同じ式)。 */
   private labObstacleViewBounds(cam: { x: number; y: number }): { left: number; top: number; right: number; bottom: number } {
+    // ?proj=1 段階8 U13: 見える world の台形を囲む長方形(方針③・北は地平線で切る=屋外と同じ)。
+    if (this.projFrame) return visibleWorldQuad(this.projFrame).rect;
     const zoom = this.L.worldGroup.scale.x || 1;
     const z = zoom > 0 ? Math.min(1, zoom) : 1;
     const ex = (this.screenW / z - this.screenW) / 2, ey = (this.screenH / z - this.screenH) / 2; // proj-lift: exempt(not-height)
@@ -16351,19 +16601,25 @@ export class PixiScene {
       const rec = broken.find(b => b.id === id);
       if (rec?.revealAt !== undefined && realNow < rec.revealAt) return true; // カメラが着くまで立ったまま
       entry.crumbleAt = realNow;
-      entry.crumbleDir = rec?.dir ?? ((Math.round(sp.x) & 1) ? 1 : -1);
+      entry.crumbleDir = rec?.dir ?? ((Math.round(entry.footX ?? sp.x) & 1) ? 1 : -1); // ?proj=1: sp.x は投影後=world の足元を読む
       entry.crumbleKind = kind;
       entry.crumbleMs = (kind === 'wall' ? LAB_WALL_CRUMBLE_MS : LAB_PROP_CRUMBLE_MS) * LAB_OBSTACLE_CRUMBLE_SCALE;
       const pal = rec ? LAB_DEBRIS_PALETTE[labDebrisKind(rec)] : undefined;
       if (pal?.stain !== undefined) entry.stainTint = pal.stain;
     }
-    const k = entry.baseScale * this.depthScale(entry.footY);
+    // ?proj=1 段階8 U12: 体は U10 と同じ相似(足元を投影・倍率 s)で写し、回転・潰し(崩れの慣性の形)は今のまま。
+    const pf = this.projFrame;
+    const fx = entry.footX ?? sp.x;
+    const pp = pf ? this.projPlace(fx, entry.footY, sp) : null;
+    if (pp) { sp.position.set(pp.x, pp.y); entry.projS = pp.s; }
+    const k = entry.baseScale * (pp ? pp.s : this.depthScale(entry.footY));
     const dir = entry.crumbleDir ?? 1;
     const T = entry.crumbleMs ?? LAB_PROP_CRUMBLE_MS;
     const fallRad = (entry.crumbleKind === 'wall' ? LAB_WALL_FALL_RAD : LAB_PROP_FALL_RAD) * dir;
     const squash = entry.crumbleKind === 'wall' ? LAB_WALL_FALL_SQUASH : LAB_PROP_FALL_SQUASH;
     const el = realNow - entry.crumbleAt;
-    const a0 = this.horizonActorAlpha(entry.footY) * this.foregroundActorAlpha(entry.footY);
+    const a0 = pp ? this.projBaseAlpha(pp) : this.horizonActorAlpha(entry.footY) * this.foregroundActorAlpha(entry.footY);
+    if (pp) entry.projA = a0;
     // 染み(薬液・カプセル): 着地から広がる床の楕円。
     if (entry.stainTint !== undefined && el >= T) {
       if (!entry.stain) { entry.stain = new Graphics(); this.L.groundLayer.addChild(entry.stain); }
@@ -16371,7 +16627,9 @@ export class PixiScene {
       const u = Math.min(1, (el - T) / 700);
       const e = 1 - (1 - u) ** 3;
       g.clear();
-      g.ellipse(sp.x + dir * 18, entry.footY - 2, 14 + 40 * e, 4 + 10 * e).fill({ color: entry.stainTint, alpha: 0.6 * a0 });
+      // ?proj=1 段階8 U12: 染みは床の印=段階4の頂点ごと(world の楕円をそのまま投影)。
+      if (pf) projEllipse(g, pf, fx + dir * 18, entry.footY - 2, 14 + 40 * e, 4 + 10 * e, 0, { color: entry.stainTint, alpha: 0.6 * a0 }, undefined, 'fx');
+      else g.ellipse(sp.x + dir * 18, entry.footY - 2, 14 + 40 * e, 4 + 10 * e).fill({ color: entry.stainTint, alpha: 0.6 * a0 });
     }
     if (entry.debris || el >= T + LAB_OBSTACLE_LAND_BOUNCE_MS) {
       // 残骸: 倒れ切った姿勢のまま、暗く平たく不透明で残す。画面(ズーム込み+余白)の外へ出たら絵だけ捨てる
@@ -16385,7 +16643,7 @@ export class PixiScene {
       sp.alpha = a0;
       const vb = this.labObstacleViewBounds(cam);
       const m = LAB_DEBRIS_DROP_MARGIN; // 作り直す範囲(LAB_DEBRIS_RESTORE_MARGIN)より広く=境目で作る/捨てるを繰り返さない
-      return !(sp.x < vb.left - m || sp.x > vb.right + m || entry.footY < vb.top - m || entry.footY > vb.bottom + m + 200);
+      return !(fx < vb.left - m || fx > vb.right + m || entry.footY < vb.top - m || entry.footY > vb.bottom + m + 200);
     }
     sp.alpha = a0;
     const jolt = T * LAB_OBSTACLE_CRUMBLE_JOLT_FRAC;
@@ -16424,11 +16682,19 @@ export class PixiScene {
     const cam = s.camera;
     const m = LAB_ZONE;
     const vb = this.labObstacleViewBounds(cam);
+    // ?proj=1 段階8 U13: 壁と同じ(帯で取り、画面に掛からない物は隠す)。
+    const projOn = !!this.projFrame;
     const props = labTheme
-      ? labPropsInRegion(vb.left - m, vb.top - m, vb.right + m, vb.bottom + m)
+      ? (projOn ? this.projFetch(PROP_DISPLAY_H, PROP_DISPLAY_H, (l, t, r, b) => labPropsInRegion(l, t, r, b), q => q.id)
+        : labPropsInRegion(vb.left - m, vb.top - m, vb.right + m, vb.bottom + m))
       : [];
     const seen = new Set<string>();
     for (const p of props) {
+      if (projOn && !this.projOnScreen(p.footX, p.footY, PROP_DISPLAY_H * 1.6, PROP_DISPLAY_H)) {
+        const off = this.propObjs.get(p.id);
+        if (off && off.crumbleAt === undefined && !off.debris) { seen.add(p.id); off.sprite.visible = false; off.projA = 0; }
+        continue;
+      }
       seen.add(p.id);
       let entry = this.propObjs.get(p.id);
       if (!entry) {
@@ -16437,6 +16703,7 @@ export class PixiScene {
       }
       this.resolveLabPropTexture(entry);
       if (entry.crumbleAt !== undefined || entry.debris) { entry.crumbleAt = undefined; entry.debris = false; entry.sprite.rotation = 0; entry.sprite.tint = ENV_TINT; entry.stain?.destroy(); entry.stain = undefined; entry.stainTint = undefined; } // 新しいランで立ち直った
+      if (this.projFrame) { this.labObstacleProjPlace(entry, p.footX); continue; } // ?proj=1 段階8 U11: 木と同じ置き方
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
       this.applyObstacleAlpha(entry.sprite, entry.footY);
     }
@@ -17181,7 +17448,11 @@ export class PixiScene {
     // yの純関数O(y)=∫₀^y dy'/hallS(y')(exHallTravel)に置き換えた。経路非依存=再基準化/ワープ弁が
     // 不要になり、床/柱/灯と奥壁を**同じO空間**に置ける(奥壁もexHallTravel(EX_BACK_WORLD_Y)で
     // 求めるため、rawTravelを別扱いする必要が無くなった=exBackRawTravelは廃止)。
-    const travelForCorridor = ex ? exHallTravel(playerCenterY) : -s.player.y;
+    // 段階8 U30(★#45=A): ?proj=1 のステージ6は床に渡す前進量をカメラの基準点から出す(床がカメラに付いて流れ・ハッチが円の真下)。
+    // 床の式・絵・暗幕・柱・壁灯は1行も変えない(模様の位相だけ)。EX・?proj=0 は今のまま。
+    const pfC = !ex && this.projFrame?.kind === 'corridor' ? this.projFrame : null;
+    const travelForCorridor = ex ? exHallTravel(playerCenterY) : pfC ? corridorFloorTravel(pfC, CORRIDOR_GOAL_Y) : -s.player.y;
+    this.projCorridorTravel = pfC ? travelForCorridor : NaN;
     const exBackTravel = ex ? exHallTravel(EX_BACK_WORLD_Y) : 0;
     const pcWide = corridorW !== this.screenW ? { screenW: this.screenW } : {};
     this.corridorBackdrop.update(travelForCorridor, corridorW, this.screenH, now, ex ? {
@@ -17682,9 +17953,13 @@ export class PixiScene {
     layer.visible = true;
     // 画面内(+余裕)の休眠敵だけ。近い順に上限まで。
     const m = 320;
+    // ?proj=1 段階8 U17: 作る範囲は U13 と同じ(見える world の台形を囲む長方形)。
+    const vb = this.projFrame ? visibleWorldQuad(this.projFrame).rect : null;
     const inView = enemies.filter(e =>
-      e.dormant && e.x > cameraX - m && e.x < cameraX + this.screenW + m
-      && e.y > cameraY - m && e.y < cameraY + this.screenH + m);
+      e.dormant && (vb
+        ? e.x > vb.left - m && e.x < vb.right + m && e.y > vb.top - m && e.y < vb.bottom + m
+        : e.x > cameraX - m && e.x < cameraX + this.screenW + m
+          && e.y > cameraY - m && e.y < cameraY + this.screenH + m));
     inView.sort((a, b) => (Math.abs(a.x - cameraX) - Math.abs(b.x - cameraX)));
     const targets = inView.slice(0, LAB_VISION_MAX);
     let walls: Rect[] | null = null; // 形を作る時だけ用意(キャッシュヒットなら不要)
@@ -17695,7 +17970,13 @@ export class PixiScene {
       const key = `${Math.round(cx)}:${Math.round(cy)}:${Math.round(radius)}`;
       seen.add(e.id);
       const entry = this.labVisionObjs.get(e.id);
-      if (entry && entry.key === key) { entry.g.visible = true; continue; } // 静止=作り直し不要
+      const pfV = this.projFrame;
+      if (entry && entry.key === key) {
+        entry.g.visible = true;
+        // ?proj=1 段階8 U17(§10 B44 は「形は world のまま作り置き・カメラが動くたびに投影だけやり直す」で着手): 頂点ごとに投影して描き直す。
+        if (pfV && entry.pts) { entry.g.clear(); projPoly(entry.g, pfV, entry.pts, { color: LAB_VISION_COLOR, alpha: LAB_VISION_ALPHA }, undefined, 'fx'); this.projAuditMark(entry.g); }
+        continue;
+      } // 静止=作り直し不要
       if (!walls) {
         const q = Math.max(this.screenW, this.screenH) + 600;
         walls = [
@@ -17706,11 +17987,13 @@ export class PixiScene {
       const pts = visibilityPolygon(cx, cy, radius, walls, LAB_VISION_RAYS);
       const g = entry?.g ?? new Graphics();
       g.clear();
-      g.poly(pts).fill({ color: LAB_VISION_COLOR, alpha: LAB_VISION_ALPHA });
+      // ?proj=1 段階8 U17: 形は world の多角形のまま作り(壁の影の切り欠き=判定 labStealth と同じ)、頂点ごとに投影する。
+      if (pfV) { projPoly(g, pfV, pts, { color: LAB_VISION_COLOR, alpha: LAB_VISION_ALPHA }, undefined, 'fx'); this.projAuditMark(g); }
+      else g.poly(pts).fill({ color: LAB_VISION_COLOR, alpha: LAB_VISION_ALPHA });
       g.eventMode = 'none';
       g.visible = true;
       if (!entry) layer.addChild(g);
-      this.labVisionObjs.set(e.id, { g, key });
+      this.labVisionObjs.set(e.id, { g, key, pts: pfV ? pts : undefined });
     }
     for (const [id, o] of this.labVisionObjs) {
       if (seen.has(id)) continue;
@@ -17800,7 +18083,9 @@ export class PixiScene {
       this.labVeilAlphaNow = veil.visible ? va : 0; // 遠景の非常灯の足し戻しに使う
     }
     // 闇の穴にする非常灯(uiLayer の座標・灯りの絵と同じ位置と大きさ・その灯りの今の明るさ)。
-    const lampHoles: { x: number; y: number; w: number; h: number; k: number }[] = [];
+    const lampHoles: { x: number; y: number; w: number; h: number; k: number; s?: number; sq?: number }[] = [];
+    // ?proj=1 段階8(見た目7): 床の光だまりは床に寝る物=world の楕円として写す。横は s・縦はその行の床の縦の詰め dℓ/dy(基準行で 1=今と同じ)。
+    const pfLm = this.projFrame;
     if (LAB_EMLIGHT_RADIUS <= 0 || LAB_EMLIGHT_ALPHA <= 0) {
       for (const sp of this.labEmLights) sp.visible = false;
       this.updateLabPitch(now, dt, ramp, lampHoles);
@@ -17808,8 +18093,15 @@ export class PixiScene {
     }
     // 可視ワールドX範囲(ズーム込み)。画面端を toLocal でワールドへ戻す。
     const M = LAB_EMLIGHT_RADIUS; // 画面外の光も端に滲むぶんだけ余裕を取る
-    const wl = this.L.world.toLocal({ x: -M, y: 0 }, this.L.uiLayer).x;
-    const wr = this.L.world.toLocal({ x: this.screenW + M, y: 0 }, this.L.uiLayer).x;
+    let wl = this.L.world.toLocal({ x: -M, y: 0 }, this.L.uiLayer).x;
+    let wr = this.L.world.toLocal({ x: this.screenW + M, y: 0 }, this.L.uiLayer).x;
+    const pfL = this.projFrame;
+    if (pfL) {
+      // ?proj=1 段階8 U18: 灯りの列(world y=0)の行で、画面の左右の縁(余白込み)を逆投影した world の範囲。
+      const lRow = projLocalYOfWorld(pfL, 0), kxRow = Math.max(1e-6, projRowKx(pfL, lRow)), sc = pfL.wgScale > 0 ? pfL.wgScale : 1;
+      const dxL = (-M - pfL.wgX) / sc + pfL.camX - pfL.shakeX, dxR = (this.screenW + M - pfL.wgX) / sc + pfL.camX - pfL.shakeX;
+      wl = pfL.cxw + (dxL - pfL.cxw) / kxRow; wr = pfL.cxw + (dxR - pfL.cxw) / kxRow;
+    }
     // ★画面上の実際の倍率(ズーム)。ズームは worldGroup に掛かる(world.scale は常に1)ので、2点を uiLayer の座標へ直して測る。
     // 旧: world.scale.x を読んでいた=引いても灯りの大きさが変わらず、最大引きで隣の灯りと繋がっていた(上のコメントの意図どおりに直した)。
     // 位置も worldToUi で出す(旧: toGlobal=画面合わせの拡大が二重に掛かり、灯りが床の上を少し滑っていた)。
@@ -17828,7 +18120,10 @@ export class PixiScene {
       const lt = (LAB_FLICKER_ON ? labFlickerLevel(gameTime - lag, this.labFlickerSeed) : 1) * (LAB_LAMP_MIX_ON ? labLampLevel(k, gameTime) : 1);
       const lc = smoothFlicker(this.labLampCur.get(k) ?? lt, lt, dt);
       this.labLampCur.set(k, lc);
-      const g = this.worldToUi(k * LAB_EMLIGHT_SPACING, 0);
+      // ?proj=1 段階8 U18: 灯りは吊る物=付け根(床の点)だけ投影し、筋の長さ・幅に s を掛けない(?proj=0 は今の点)。
+      // 地平線より奥(定義域の外)の灯りは出さない。床の光だまり(闇の穴)は床に寝る物=s を掛ける(updateLabPitch)。
+      const g = this.projWorldToUi(k * LAB_EMLIGHT_SPACING, 0);
+      if (!g.inD) { sp.visible = false; continue; }
       sp.position.set(g.x, g.y);
       // 暗い灯りは光の届く広さも狭い(world/labLamps.labLampScale=「薄い灯り」ではなく「届かない灯り」)。
       const size = size0 * (LAB_LAMP_MIX_ON ? labLampScale(k) : 1);
@@ -17844,7 +18139,8 @@ export class PixiScene {
       const dofFade = over <= 0 ? 1 : Math.max(0, 1 - over / LAB_EMLIGHT_DOF_FADE_PX);
       sp.alpha = LAB_EMLIGHT_ALPHA * ramp * dofFade * lc; // 蛍光灯と一緒に消える(灯りごとに少しずれる)
       sp.visible = sp.alpha > 0.002;
-      if (sp.visible) lampHoles.push({ x: g.x, y: g.y, w: size, h: coneH, k: dofFade * lc }); // 灯りが切れている間は穴も閉じる
+      const sq = pfLm ? ((projLocalYOfWorld(pfLm, 1) - projLocalYOfWorld(pfLm, -1)) / 2) / Math.max(1e-6, g.s) : 1; // 縦の詰め ÷ 横の s
+      if (sp.visible) lampHoles.push({ x: g.x, y: g.y, w: size, h: coneH, k: dofFade * lc, s: g.s, sq }); // 灯りが切れている間は穴も閉じる
     }
     for (let i = n; i < this.labEmLights.length; i++) this.labEmLights[i].visible = false;
     if (this.labLampCur.size > 64) for (const key of this.labLampCur.keys()) if (key < kFrom - 4 || key > kTo + 4) this.labLampCur.delete(key);
@@ -17858,6 +18154,17 @@ export class PixiScene {
    */
   private worldToUi(x: number, y: number): { x: number; y: number } {
     return this.L.uiLayer.toLocal({ x, y }, this.L.world);
+  }
+  /**
+   * ?proj=1 段階8 U18/U19(§3-10e): world の地面の点 → 投影 → uiLayer の座標と、その点の立っている絵の倍率 s(研究所の非常灯・闇の穴)。
+   * 枠が無い(?proj=0)時は worldToUi と同じ点・s=1(今のまま)。
+   */
+  private projWorldToUi(x: number, y: number): { x: number; y: number; s: number; inD: boolean } {
+    const f = this.projFrame;
+    if (!f) { const u = this.worldToUi(x, y); return { x: u.x, y: u.y, s: 1, inD: true }; }
+    const p = projectInto(f, x, y, this.projScratch2);
+    const u = this.worldToUi(p.x, p.y);
+    return { x: u.x, y: u.y, s: p.s, inD: p.inDomain }; // inD=false: 地平線より奥(定義域の外)
   }
   /** ?proj=1: カーソルの画面点(論理座標・MouseControls と同じ)→ uiLayer の座標(投影の枠の表示座標を経て worldToUi)。 */
   private projCursorToUi(sx: number, sy: number): { x: number; y: number } {
@@ -17896,7 +18203,7 @@ export class PixiScene {
    *  - ボス戦の間は幕ごと消える(慣性つき)。アテンションの間は闇を保ち、注目点の周りだけ開ける。登場の間・ほかのステージは呼び手が hideLabPitch。
    * ramp=着地の後の立ち上がり(0..1)。lamps=非常灯の画面上の位置と大きさ(灯りの絵と同じ)と今の明るさ。
    */
-  private updateLabPitch(now: number, dt: number, ramp: number, lamps: readonly { x: number; y: number; w: number; h: number; k: number }[]) {
+  private updateLabPitch(now: number, dt: number, ramp: number, lamps: readonly { x: number; y: number; w: number; h: number; k: number; s?: number; sq?: number }[]) {
     const s = useGameStore.getState();
     // ボス戦の間は闇を消す。アテンション(カメラが見せたい物へ寄る)の間は闇を保ち、注目点の周りだけ開ける(下の focus)。
     const lit = s.bossFightNow;
@@ -17942,7 +18249,11 @@ export class PixiScene {
     // 画面上の実際の倍率(ズームは worldGroup に掛かる=world.scale は常に1なので、2点を uiLayer の座標へ直して測る)。
     const scale = this.worldUiScale();
     // 見えているワールドの範囲(余白込み)。
-    const tl = world.toLocal({ x: -260, y: -260 }, this.L.uiLayer), br = world.toLocal({ x: this.screenW + 260, y: this.screenH + 260 }, this.L.uiLayer);
+    let tl = world.toLocal({ x: -260, y: -260 }, this.L.uiLayer), br = world.toLocal({ x: this.screenW + 260, y: this.screenH + 260 }, this.L.uiLayer);
+    if (this.projFrame) { // ?proj=1 段階8 U19: 見える world の台形を囲む長方形+余白
+      const q = visibleWorldQuad(this.projFrame).rect;
+      tl = { x: q.left - 260, y: q.top - 260 } as typeof tl; br = { x: q.right + 260, y: q.bottom + 260 } as typeof br;
+    }
     const p = s.player;
     // 自分の穴・懐中電灯の根元は、体の絵の高さ(跳び・空中の浮き)に合わせる。
     const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2 - this.playerAirLiftPx;
@@ -17997,16 +18308,18 @@ export class PixiScene {
       const a = LAB_PITCH_SPOT_A * l.k;
       if (a <= 0.01) continue;
       cone(l.x, l.y, l.w, l.h, a * 0.7);
-      disc(l.x, l.y, l.w * 1.05, l.w * LAB_PITCH_POOL_RATIO, a);
+      const ps = l.s ?? 1; // ?proj=1 段階8: 床の光だまりは床に寝る物=その点の s(筋=吊る物は掛けない)。?proj=0 は 1
+      disc(l.x, l.y, l.w * 1.05 * ps, l.w * LAB_PITCH_POOL_RATIO * ps * (l.sq ?? 1), a); // 縦は床の縦横比で潰す(楕円の輪郭を保つ)
     }
     let beam: LabLight | null = null;
     for (const l of eased.lights) {
-      const g = this.worldToUi(l.x, l.y);
+      const g = this.projWorldToUi(l.x, l.y); // ?proj=1 段階8 U19: 穴の中心=投影した点・半径に s(?proj=0 は今の点・s=1)
+      if (!g.inD) continue; // ?proj=1 段階8(品質A-1): 地平線より奥(定義域の外)の物は穴を作らない
       if (l.shape === 'beam') {
         beam = l;
         // 筋(円錐の絵の上側だけ=光だまりを含まない)を、手元→光だまりへ回して置く。光だまりは回さない平たい楕円(床に落ちた光)。
-        const root = this.worldToUi(l.rootX ?? l.x, l.rootY ?? l.y);
-        const bl = Math.hypot(g.x - root.x, g.y - root.y), w = l.r * 2 * scale;
+        const root = this.projWorldToUi(l.rootX ?? l.x, l.rootY ?? l.y);
+        const bl = Math.hypot(g.x - root.x, g.y - root.y), w = l.r * 2 * scale * g.s;
         let sp = this.labFlashBeamHole;
         if (!sp) { sp = new Sprite(getSpotBeamTexture()); sp.anchor.set(0.5, 1); sp.blendMode = 'erase'; scene.addChild(sp); this.labFlashBeamHole = sp; }
         sp.visible = bl > 2; sp.position.set(g.x, g.y);
@@ -18015,7 +18328,7 @@ export class PixiScene {
         sp.alpha = Math.max(0, Math.min(1, l.a * 0.85));
         disc(g.x, g.y, w * 1.1, w * 1.1 * LAB_PITCH_POOL_RATIO, l.a);
       } else {
-        const d = l.r * 2 * scale, dh = l.ry !== undefined ? l.ry * 2 * scale : d;
+        const d = l.r * 2 * scale * g.s, dh = l.ry !== undefined ? l.ry * 2 * scale * g.s : d;
         disc(g.x, g.y, d, dh, l.a, l.rot ?? 0);
         // 危険を伝える絵のための穴は2回削る(縁の近くまで闇を残さない)。2回目の強さは hardK(技の終わりに残光で抜ける)。
         const hk = l.hardK ?? (l.hard ? 1 : 0);
@@ -18035,8 +18348,11 @@ export class PixiScene {
     // 起きた塊のランタン(描いてある灯りの位置=1フレーム前の絵)の周りを開ける。体は瓶の周りだけが照らされ、残りは闇に溶ける。
     for (const lt of this.crawlerLanterns) {
       if (!lt.visible || !lt.parent) continue;
-      const lp = this.L.uiLayer.toLocal(lt.position, lt.parent);
-      const d = LAB_PITCH_LANTERN_R * 2 * scale;
+      // ?proj=1 段階8 U19: ランタンは後掛けを戻した後の world の点(1フレーム前)=投影して置く。
+      const lpP = this.projFrame ? this.projWorldToUi(lt.position.x, lt.position.y) : null;
+      if (lpP && !lpP.inD) continue; // 地平線より奥のランタンは穴を作らない(品質A-1)
+      const lp = lpP ?? this.L.uiLayer.toLocal(lt.position, lt.parent);
+      const d = LAB_PITCH_LANTERN_R * 2 * scale * (lpP ? lpP.s : 1);
       disc(lp.x, lp.y, d, d, 0.85 * Math.min(1, lt.alpha * 1.4));
     }
     for (let i = nd; i < this.labPitchDiscs.length; i++) this.labPitchDiscs[i].visible = false;
@@ -18055,9 +18371,9 @@ export class PixiScene {
         pool = new Sprite(getVisibilityLightTexture()); pool.eventMode = 'none'; pool.anchor.set(0.5); pool.tint = LAB_FLASH_TINT; pool.blendMode = 'screen';
         cont.addChild(gl, pool); this.labFlashGlow = gl; this.labFlashPool = pool;
       }
-      const g = this.worldToUi(beam.x, beam.y);
-      const root = this.worldToUi(beam.rootX ?? beam.x, beam.rootY ?? beam.y);
-      const bl = Math.hypot(g.x - root.x, g.y - root.y), w = beam.r * 2 * scale;
+      const g = this.projWorldToUi(beam.x, beam.y);
+      const root = this.projWorldToUi(beam.rootX ?? beam.x, beam.rootY ?? beam.y);
+      const bl = Math.hypot(g.x - root.x, g.y - root.y), w = beam.r * 2 * scale * g.s;
       // 光だまりが地平より上(遠景)へ出た分は薄くする(遠景は今の見え方のまま=懐中電灯の色で染めない)。
       const overTop = Math.max(0, Math.min(1, (veilTop + fadeH - g.y) / Math.max(1, fadeH * 2)));
       const ga = LAB_FLASH_TINT_A * (beam.a / Math.max(0.001, LAB_PITCH_CFG.flashA)) * this.labPitchAllow * rampE * (1 - overTop);
@@ -18111,8 +18427,27 @@ export class PixiScene {
     }
     const cont = this.labOutDim;
     const w = this.screenW, h = this.screenH;
-    const top = this.L.world.toGlobal({ x: 0, y: -limitPx }).y;
-    const bot = this.L.world.toGlobal({ x: 0, y: limitPx }).y;
+    let top = this.L.world.toGlobal({ x: 0, y: -limitPx }).y;
+    let bot = this.L.world.toGlobal({ x: 0, y: limitPx }).y;
+    // ?proj=1(段階6の直し 3-9p・段階8 U20): 枠があれば、帯の縁の行=帯の縁の world 点を投影した行(worldToUi)。?proj=0 は今の行のまま。
+    // 研究所(打ち止め無し)は「床の区間」(farH の行より下)だけ投影の行で暗くし、「遠景の区間」(farH より上)は今の行のまま(下で切り分け)。
+    const pfO = this.projFrame;
+    const labSplit = !!pfO && !Number.isFinite(topClampY);
+    let floorTop = NaN; // 研究所: 床の区間の上の影の境目(画面Y・NaN=床の区間は暗くしない)
+    let farScreenY = NaN;
+    if (pfO) {
+      const pT = projectInto(pfO, pfO.cxw, -limitPx, this.projScratch2);
+      const tY = pT.inDomain ? this.worldToUi(pT.x, pT.y).y : -Infinity; // 定義域の外(地平線より奥)=床の区間に縁は無い
+      const pB = projectInto(pfO, pfO.cxw, limitPx, this.projScratch2);
+      bot = this.worldToUi(pB.x, pB.y).y;
+      if (labSplit) {
+        const wgp = this.L.worldGroup;
+        farScreenY = wgp.position.y + (wgp.scale.y || 1) * pfO.farH; // 地平線の行=奥の壁の足元(veilTop と同じ式)
+        floorTop = tY > farScreenY ? tY : NaN;
+      } else {
+        top = Number.isFinite(tY) ? tY : Math.min(top, topClampY); // M0: 縁が地平線より奥なら上の影は出さない(打ち止めで潰れる)
+      }
+    }
     // 保険: 帯が画面から完全に外れている=いま廊下を映していない(演出カメラ等)。この時に幕を出すと
     // 画面全体が暗転して事故に見えるので出さない(全画面暗転の再発防止・v0.25.2226)。
     if (bot < 0 || top > h) { cont.visible = false; return; }
@@ -18174,6 +18509,58 @@ export class PixiScene {
     botSolid.position.set(0, botSolidY);
     botSolid.width = w; botSolid.height = botSolidH;
     botSolid.visible = botSolidH > 0;
+    // 研究所(?proj=1): 遠景の区間の影の、地平線の行(farH)での濃さ(上ベタ=1・上グラデ=線形で 1→0・帯の中=0)。床の区間はこの値から始めて繋ぐ。
+    const aFar = !labSplit ? 0 : farScreenY <= fadeTopY ? 1 : farScreenY < top ? (top - farScreenY) / Math.max(1e-6, top - fadeTopY) : 0;
+    this.labOutDimProjSplit(cont, labSplit, farScreenY, floorTop, w, fade, OVER, aFar);
+  }
+
+  /**
+   * ?proj=1 段階8 U20(§3-10c2 の③): 研究所の上の影を2つの区間に分ける。遠景の区間(farH の行より上)は今の4枚を farH の行で切り抜く
+   * (=奥の壁の暗さは今と1px も変わらない)。床の区間は帯の北の縁を投影した行から farH の行までを暗くする(グラデの幅は今と同じ画面px)。
+   */
+  private labOutDimProjSplit(cont: Container, on: boolean, farY: number, floorTop: number, w: number, fade: number, over: number, aFar: number) {
+    const parts = this.labOutDimParts;
+    const P0 = this.labOutDimProj;
+    if (!on) {
+      if (P0) { P0.far.mask = null; P0.mask.visible = false; P0.floorBase.visible = false; P0.floorRise.visible = false; P0.floorSolid.visible = false; P0.floorFade.visible = false; }
+      return;
+    }
+    if (!this.labOutDimProj) {
+      const far = new Container(); far.eventMode = 'none';
+      cont.addChildAt(far, 0);
+      for (let i = 0; i < 3; i++) far.addChild(parts[i]); // 上端ぼかし・上ベタ・上グラデ(遠景の区間)を切り抜きの中へ
+      const mask = new Graphics(); cont.addChild(mask);
+      const mk = (tex: Texture) => { const sp = new Sprite(tex); sp.eventMode = 'none'; sp.tint = 0x000000; cont.addChild(sp); return sp; };
+      const fadeTex = this.ensureVeilFadeTexture();
+      this.labOutDimProj = { far, mask, floorBase: mk(Texture.WHITE), floorRise: mk(fadeTex), floorSolid: mk(Texture.WHITE), floorFade: mk(fadeTex) };
+    }
+    const P = this.labOutDimProj;
+    P.mask.visible = true;
+    P.mask.clear();
+    P.mask.rect(-over, -over * 4, w + over * 2, Math.max(0, farY + over * 4)).fill({ color: 0xffffff });
+    P.far.mask = P.mask;
+    // 床の区間(farY から下): 壁の足元の暗さ aFar から始めて(境目で段差を作らない・境目のすぐ下が壁の足元より明るくならない)、
+    // 帯の北の縁を投影した行 floorTop へ向けて 1 まで上げ、縁の手前のグラデで帯の中(0)へ溶かす。縁が地平線より奥なら aFar から 0 へ溶かす。
+    const a = Math.max(0, Math.min(1, aFar));
+    const band = Number.isFinite(floorTop) ? Math.max(0, floorTop - farY) : 0;
+    const riseH = band > 0 && a < 1 ? Math.min(fade, band / 2) : 0;
+    const fadeH = band > 0 ? Math.min(fade, band - riseH) : (a > 0 ? fade : 0);
+    const fadeEnd = band > 0 ? floorTop : farY + fadeH;
+    // 上げ(a → 1): 下地のベタ(濃さ a)+ 透明→不透明のグラデ
+    P.floorBase.position.set(0, farY); P.floorBase.width = w; P.floorBase.height = riseH; P.floorBase.alpha = a;
+    P.floorBase.visible = riseH > 0 && a > 0;
+    P.floorRise.position.set(0, farY); P.floorRise.width = w;
+    P.floorRise.scale.y = riseH / Math.max(1, P.floorRise.texture.height); P.floorRise.visible = riseH > 0;
+    // ベタ(1)
+    const sh = Math.max(0, fadeEnd - fadeH - (farY + riseH));
+    P.floorSolid.position.set(0, farY + riseH); P.floorSolid.width = w; P.floorSolid.height = sh;
+    P.floorSolid.visible = band > 0 && sh > 0;
+    // 縁へ溶かす(反転=上が不透明・下(帯側)が透明)。縁が地平線より奥の時は濃さ a から。
+    P.floorFade.width = w;
+    P.floorFade.scale.y = -(fadeH / Math.max(1, P.floorFade.texture.height));
+    P.floorFade.position.set(0, fadeEnd);
+    P.floorFade.alpha = band > 0 ? 1 : a;
+    P.floorFade.visible = fadeH > 0;
   }
 
   private updateLabVisibility(show: boolean, sx: number, sy: number) {
@@ -19331,10 +19718,12 @@ export class PixiScene {
         push(pjs ? entry.footX! : entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.32 / (pjs || 1)), 0.6);
       }
       for (const entry of this.wallObjs.values()) {
-        push(entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.3), 0.55);
+        const pjs = this.projFrame && entry.footX !== undefined && entry.projS !== undefined ? entry.projS : 0; // ?proj=1 段階8: world の足元と s=1 の幅
+        push(pjs ? entry.footX! : entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.3 / (pjs || 1)), 0.55);
       }
       for (const entry of this.propObjs.values()) {
-        push(entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.32), 0.6);
+        const pjs = this.projFrame && entry.footX !== undefined && entry.projS !== undefined ? entry.projS : 0;
+        push(pjs ? entry.footX! : entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.32 / (pjs || 1)), 0.6);
       }
       if (castle.collapsedAt === undefined) push(castle.x, castle.y + CASTLE_FOOT_OFFSET_Y, 90 * this.depthScale(castle.y + CASTLE_FOOT_OFFSET_Y), castle.bossSpawned ? 1.15 : 0.82); // v0.25.3983: 崩落した城は消す
       push(merchant.x, merchant.y, 82 * this.depthScale(merchant.y), 0.9);
@@ -19530,8 +19919,12 @@ export class PixiScene {
     if (prop.type === 'uv-bar') {
       // UVライトバー(松明と同じ扱い=破壊可能)。バー本体+紫グロー。container.zIndex=footY で
       // 木/敵と深度ソート(裏に回り込むと上に被る)。当たり判定は無し(屋内移動は壁/プロップのみ)。
-      const d = this.depthScale(prop.footY);
-      const horizonAlpha = this.horizonActorAlpha(prop.footY);
+      // ?proj=1 段階8(研究所の物): 足元を投影し、置く座標・大きさ(d=s)・フェード(投影後の Y)を投影から(段階1の緑卵・松明と同じ)。
+      const upp = this.projFrame ? this.projPlace(prop.footX, prop.footY, view.container) : null;
+      view.projFootX = upp ? prop.footX : undefined; view.projFootY = upp ? prop.footY : undefined; view.projS = upp ? upp.s : undefined;
+      const ux = upp ? upp.x : prop.footX, uy = upp ? upp.y : prop.footY;
+      const d = upp ? upp.s : this.depthScale(prop.footY);
+      const horizonAlpha = upp ? upp.alpha * this.horizonActorAlpha(upp.y) : this.horizonActorAlpha(prop.footY);
       const tex = getTexture('lab-uv-bar');
       view.container.zIndex = prop.footY;
       view.container.alpha = horizonAlpha;
@@ -19540,12 +19933,13 @@ export class PixiScene {
       view.sprite.visible = !!tex;
       if (tex) {
         view.sprite.texture = tex;
-        view.sprite.position.set(Math.round(prop.footX), Math.round(prop.footY));
+        view.sprite.position.set(Math.round(ux), Math.round(uy));
         view.sprite.scale.set(containScale(22, 13, tex.width, tex.height) * d); // 1/5サイズ
       }
       // 紫グロー(広く弱く=周囲を照らす)。加算スプライト。ハイライトは抑え、暗部を紫がかって少し明るく。
       view.light.visible = true;
-      view.light.position.set(prop.footX, prop.footY - 4 * d);
+      if (upp) this.projAuditMark(view.light);
+      view.light.position.set(ux, uy - 4 * d);
       view.light.tint = 0x9a4fd6;
       const uvPulse = 0.22 + 0.06 * Math.sin(now * 0.0018 + prop.footX * 0.05); // ピーク控えめ(~0.28)
       view.light.width = view.light.height = 190 * d; // 広めに敷いて周囲を照らす
@@ -19553,7 +19947,7 @@ export class PixiScene {
       const o = view.overlay;
       o.clear();
       if (now - prop.lastHit < 90) {
-        o.circle(Math.round(prop.footX), Math.round(prop.footY - 8 * d), 16 * d).fill({ color: 0xffffff, alpha: 0.3 });
+        o.circle(Math.round(ux), Math.round(uy - 8 * d), 16 * d).fill({ color: 0xffffff, alpha: 0.3 });
       }
       return;
     }
@@ -20322,8 +20716,8 @@ export class PixiScene {
         cands.push({ id, x: sx, y: fy, w, d: dx * dx + dy * dy });
       };
       for (const [key, t] of this.trees) addObj('osh:tree:' + key, t.sprite.x, t.footY, Math.max(8, Math.abs(t.sprite.width) * 0.34));
-      for (const [id, e] of this.wallObjs) addObj('osh:wall:' + id, e.sprite.x, e.footY, Math.max(8, Math.abs(e.sprite.width) * 0.34));
-      for (const [id, e] of this.propObjs) addObj('osh:prop:' + id, e.sprite.x, e.footY, Math.max(8, Math.abs(e.sprite.width) * 0.36));
+      for (const [id, e] of this.wallObjs) addObj('osh:wall:' + id, this.projFrame && e.footX !== undefined ? e.footX : e.sprite.x, e.footY, Math.max(8, Math.abs(e.sprite.width) * 0.34));
+      for (const [id, e] of this.propObjs) addObj('osh:prop:' + id, this.projFrame && e.footX !== undefined ? e.footX : e.sprite.x, e.footY, Math.max(8, Math.abs(e.sprite.width) * 0.36));
       for (const [id, e] of this.cityPropObjs) {
         if (e.sprite.parent === this.L.groundLayer) continue; // 地面デカールは影なし
         addObj('osh:city:' + id, e.sprite.x, e.footY, Math.max(8, Math.abs(e.sprite.width) * 0.36));
@@ -20577,7 +20971,7 @@ export class PixiScene {
     }
     if (this.crawlerShadow) {
       const m = this.crawlerShadow;
-      place({ id: 'lab-crawler', x: m.x, y: m.y, rawW: m.rawW, rawH: m.rawH, texture: m.texture, alpha: m.alpha, shadowFade: m.shadowFade });
+      place({ id: 'lab-crawler', x: m.x, y: m.y, rawW: m.rawW, rawH: m.rawH, texture: m.texture, alpha: m.alpha, shadowFade: m.shadowFade, projected: m.projected, moving: m.projected });
     }
     if (this.npcShadow) {
       const n = this.npcShadow;
@@ -20762,12 +21156,14 @@ export class PixiScene {
     for (const [id, e] of this.wallObjs) {
       const w = Math.abs(e.sprite.width);
       if (w <= 0) continue;
+      if (this.projShadowReq('osh:wall:' + id, e, place)) continue; // ?proj=1 段階8 U10: 木と同じ
       const alpha = this.horizonActorAlpha(e.footY) * this.foregroundActorAlpha(e.footY);
       place({ id: 'osh:wall:' + id, x: e.sprite.x, y: e.footY, rawW: w, rawH: Math.abs(e.sprite.height), texture: e.sprite.texture, alpha, isStatic: true });
     }
     for (const [id, e] of this.propObjs) {
       const w = Math.abs(e.sprite.width);
       if (w <= 0) continue;
+      if (this.projShadowReq('osh:prop:' + id, e, place)) continue; // ?proj=1 段階8 U11: 木と同じ
       const alpha = this.horizonActorAlpha(e.footY) * this.foregroundActorAlpha(e.footY);
       place({ id: 'osh:prop:' + id, x: e.sprite.x, y: e.footY, rawW: w, rawH: Math.abs(e.sprite.height), texture: e.sprite.texture, alpha, isStatic: true });
     }
@@ -21696,7 +22092,8 @@ export class PixiScene {
     entry.core.alpha = Math.min(1, SHADOW_CORE_ALPHA_BASE * densityMult * totalAlpha);
     entry.core.visible = true;
 
-    if (outerP) entry.outer.position.set(outerP.x, outerP.y);
+    // 段階8(見た目10): 洋館の枠では外側のずれの横を足元を中心に s で写す(行の横の広がり kx を掛けない=屋外と同じ扱い)。
+    if (outerP) entry.outer.position.set(this.projFrame!.kind === 'corridor' && coreP ? coreP.x + outerP.s * gdirX * offset : outerP.x, outerP.y);
     else entry.outer.position.set(footX + gdirX * offset, footY + gdirY * offset);
     entry.outer.width = Math.max(3, outerW * ks);
     entry.outer.height = Math.max(3, outerH * ks);
@@ -21931,10 +22328,18 @@ export class PixiScene {
     if (pf) {
       // 作り置きの入れ物へ書く(毎フレームの確保を増やさない)。q の4隅をその場で投影後の表示座標へ置き換える。
       const sp = this.projScratch;
-      projectInto(pf, q.c0.x, q.c0.y, sp); q.c0.x = sp.x; q.c0.y = sp.y;
-      projectInto(pf, q.c1.x, q.c1.y, sp); q.c1.x = sp.x; q.c1.y = sp.y;
-      projectInto(pf, q.c2.x, q.c2.y, sp); q.c2.x = sp.x; q.c2.y = sp.y;
-      projectInto(pf, q.c3.x, q.c3.y, sp); q.c3.x = sp.x; q.c3.y = sp.y;
+      if (pf.kind === 'corridor') {
+        // 段階8(見た目10): 洋館の床は行の横の広がり kx(主人公の行で 1.66)が立つ絵の s より大きい。影の横は足元を中心に s で写す
+        // (屋外の接地影=横も s と同じ扱い)。縦(行)は床の写像のまま。
+        const fx0 = projectInto(pf, footX, footY, this.projScratch2).x;
+        const one = (c: { x: number; y: number }) => { projectInto(pf, c.x, c.y, sp); c.x = fx0 + sp.s * (c.x - footX); c.y = sp.y; };
+        one(q.c0); one(q.c1); one(q.c2); one(q.c3);
+      } else {
+        projectInto(pf, q.c0.x, q.c0.y, sp); q.c0.x = sp.x; q.c0.y = sp.y;
+        projectInto(pf, q.c1.x, q.c1.y, sp); q.c1.x = sp.x; q.c1.y = sp.y;
+        projectInto(pf, q.c2.x, q.c2.y, sp); q.c2.x = sp.x; q.c2.y = sp.y;
+        projectInto(pf, q.c3.x, q.c3.y, sp); q.c3.x = sp.x; q.c3.y = sp.y;
+      }
     }
     const c0 = this.shadowSnap(q.c0.x, q.c0.y);
     const c1 = this.shadowSnap(q.c1.x, q.c1.y);
@@ -38294,8 +38699,10 @@ export class PixiScene {
       g.alpha = 1;
     }
     // 通路では中心ローカル(0,0)描画+Graphicsごと縦スケール。他ステージは従来どおりworld座標に直描き。
-    const cx = corridor ? 0 : rc.x, cy = corridor ? 0 : rc.y;
-    if (corridor) { g.position.set(rc.x, rc.y); g.scale.set(1, CORRIDOR_RETURN_SQUASH); }
+    // ?proj=1 段階8 U32: 洋館の枠(corridor)がある時は潰さず、中心は world で頂点ごと(床の写像が楕円を作る)。枠が無い時(?proj=0・EX)は今の行のまま。
+    const corrSquash = corridor && pf?.kind !== 'corridor';
+    const cx = corrSquash ? 0 : rc.x, cy = corrSquash ? 0 : rc.y;
+    if (corrSquash) { g.position.set(rc.x, rc.y); g.scale.set(1, CORRIDOR_RETURN_SQUASH); }
     else { g.position.set(0, 0); g.scale.set(1, 1); }
     const pulse = 0.5 + 0.5 * Math.sin(now / 240);
     const a = 0.34 + 0.2 * pulse;
@@ -38975,11 +39382,17 @@ export class PixiScene {
     const pf = this.projFrame;
     if (pf) {
       // ?proj=1(段階4・J06): 円は頂点ごとに投影。武器箱(立つ絵)は中心を写し、箱の倍率 k に s(点+s・混在の表=投影しない申告)
-      projFlatCircle(g, pf, x, y, AR, undefined, { width: 2, color: 0xfbbf24, alpha: 0.45 + 0.3 * pulse });
-      projFlatCircle(g, pf, x, y, AR - 3, { color: 0xfbbf24, alpha: 0.05 + 0.05 * pulse });
+      // 段階8(品質A-2・研究所だけ): 今の武器箱は地平線フェードを持たない(?proj=0 でも奥の壁の上に描かれていた)。投影では地平線の行
+      // (奥の壁の足元)へ寄るので、地平線の行で 0・そこから地平線フェードの帯の幅(画面px)で 1 になるように薄める=壁の手前で消え、
+      // 地平線で欠けた輪を出さない。主人公の近くでは今と同じ濃さ(1)。屋外(拠点の武器庫)は今のまま(fa=1)。
       const q = this.projPlace(x, y);
+      const fa = !this.isLabStage ? 1 : !q.inDomain ? 0
+        : q.alpha * Math.max(0, Math.min(1, (q.l * pf.wgScale) / Math.max(1, this.horizonActorFadePx)));
+      if (fa <= 0.01) return;
+      projFlatCircle(g, pf, x, y, AR, undefined, { width: 2, color: 0xfbbf24, alpha: (0.45 + 0.3 * pulse) * fa });
+      projFlatCircle(g, pf, x, y, AR - 3, { color: 0xfbbf24, alpha: (0.05 + 0.05 * pulse) * fa });
       const n0 = projCmdCount(g);
-      PixiScene.drawArmoryBox(g, q.x, q.y, pulse, q.s);
+      PixiScene.drawArmoryBox(g, q.x, q.y, pulse, q.s, fa);
       projKeepFrom(g, n0);
       return;
     }
@@ -38992,7 +39405,19 @@ export class PixiScene {
   // 拠点の武器庫と、ステージ2の武器商人(出張武器商人=この箱の見た目・社長指示2026-10-18)で同じ絵を使う。
   static readonly ARMORY_BOX_W = 30;
   static readonly ARMORY_BOX_H = 22;
-  private static drawArmoryBox(g: Graphics, x: number, y: number, pulse: number, k: number) {
+  private static drawArmoryBox(g: Graphics, x: number, y: number, pulse: number, k: number, fa = 1) {
+    if (fa !== 1) { // ?proj=1 段階8: 地平線フェードの濃さを全部の塗りに掛ける(?proj=0 は fa=1=今の行のまま)
+      const bw = PixiScene.ARMORY_BOX_W * k, bh = PixiScene.ARMORY_BOX_H * k, bx = x - bw / 2, by = y - bh;
+      g.ellipse(x, y + 2 * k, bw * 0.55, 5 * k).fill({ color: 0x000000, alpha: 0.28 * fa });
+      g.rect(bx, by, bw, bh).fill({ color: 0x5b4326, alpha: 0.97 * fa });
+      g.rect(bx, by, bw, 5 * k).fill({ color: 0x7a5a33, alpha: 0.97 * fa });
+      g.rect(bx + 5 * k, by, 3 * k, bh).fill({ color: 0x3f3a33, alpha: 0.95 * fa });
+      g.rect(bx + bw - 8 * k, by, 3 * k, bh).fill({ color: 0x3f3a33, alpha: 0.95 * fa });
+      g.rect(bx, by + bh / 2 - 1.5 * k, bw, 3 * k).fill({ color: 0x3f3a33, alpha: 0.9 * fa });
+      g.rect(bx + bw / 2 - 4 * k, by + bh / 2 - 3 * k, 8 * k, 6 * k).fill({ color: 0xfbbf24, alpha: (0.55 + 0.35 * pulse) * fa });
+      g.rect(bx, by, bw, bh).stroke({ width: 1.5 * k, color: 0x2a2018, alpha: 0.9 * fa });
+      return;
+    }
     const bw = PixiScene.ARMORY_BOX_W * k, bh = PixiScene.ARMORY_BOX_H * k, bx = x - bw / 2, by = y - bh;
     g.ellipse(x, y + 2 * k, bw * 0.55, 5 * k).fill({ color: 0x000000, alpha: 0.28 });        // 接地影
     g.rect(bx, by, bw, bh).fill({ color: 0x5b4326, alpha: 0.97 });                            // 木箱本体

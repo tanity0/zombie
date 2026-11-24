@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5786', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5785', items: ['ステージ2の蛍が火山灰に変わった。下から斜め上へ、風に揺られてゆっくり昇っていく。明かりの中ほど灰がよく見える'] },
   { version: '0.25.5784', items: ['ステージ7でグレンを倒した後のミラの言葉が、途中で切れずに最後まで聞けるようになった'] },
   { version: '0.25.5783', items: ['PCとタブレットの横持ちで、キャラや敵がひと回り大きく映るようになった'] },

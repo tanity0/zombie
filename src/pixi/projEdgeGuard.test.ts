@@ -62,6 +62,8 @@ describe('③ pixiScene の旧い写像(grep ④)を含む関数は、段階6で
     'worldToUi', 'worldUiScale', 'projCursorToUi', // 定義(projCursorToUi は ?proj=1 の枠からの写し=投影済み)
     'drawAcrasielPattern', 'drawEnemy', 'drawAcrasielBurstFragment', // originX が別の意味の局所の変数(予告の形の原点)
     'syncObjShadeOverlay', // 層の位置合わせ(中の物は段階1〜5で投影済み)
+    'projWorldToUi', // 段階8 U18/U19 の定義(?proj=1 は投影した点を worldToUi へ渡す)
+    'updateLabOutsideDim', // 研究所・M0 の帯の外の影(段階8 U20・3-9p: ?proj=1 は縁を投影した行を worldToUi で出す)
   ]);
   const re = /L\.world\.position\.[xy] \+ |toScreenX|toScreenY|worldToUi\(|originX \+ /;
   const hits = { n: 0 };

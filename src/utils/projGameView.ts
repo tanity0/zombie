@@ -9,7 +9,7 @@
 // 既定(`?proj=0`)・屋内・洋館・研究所・M0 では getProjGameView() が null を返し、呼ぶ所は今の関数へ落ちる。
 import {
   makeProjFrame, makeProjPoint, makeProjUnprojectOut, projUnprojectInto, projUnprojectLMin, projAttentionRef, projectInto, projDisplayToScreenInto, projLocalYOfWorld, projRefLocalY,
-  projScaleAtLocal, projTOfL, projWorldYOfLocal, updateProjTable, visibleWorldBands, visibleWorldQuad,
+  projScaleAtLocal, projRowKx, projTOfL, projWorldYOfLocal, updateProjTable, visibleWorldBands, visibleWorldQuad,
   PROJ_REF_STRIP_COUNT, PROJ_TABLE_SUBDIV,
   type GroundPerspectiveParams, type ProjFrame, type ProjFrameInput, type ProjPoint, type ProjTable,
 } from './perspectiveProjection';
@@ -21,6 +21,26 @@ import {
   GROUND_TRAPEZOID, GROUND_TRAPEZOID_FAR, GROUND_TRAPEZOID_CURVE,
   PROJ_GAME_VIEW,
 } from './projFlag';
+
+/** 投影の枠の場面(段階8・§3-10c)。 */
+export type ProjScene = 'outdoor' | 'lab' | 'indoor' | 'corridor';
+
+/**
+ * 縦の下げ量の1本(段階8 §3-10i の3): 研究所・屋内=字の 0(useGameLoop のカメラと同じ)・洋館=zoomCameraDownFrac(洋館の基準, camZ)・
+ * ほか=zoomCameraDownFrac(屋外の基準, camZ)。基準の値は store の CAMERA_DOWN_OFFSET_FRAC / CORRIDOR_CAMERA_DOWN_FRAC を呼び手が渡す。
+ */
+export const projCamDownFracFor = (scene: ProjScene, camZ: number, outdoorBase: number, corridorBase: number): number => {
+  if (scene === 'lab' || scene === 'indoor') return 0;
+  return zoomCameraDownFrac(scene === 'corridor' ? corridorBase : outdoorBase, camZ);
+};
+
+/**
+ * 照準の門(段階8 U40・§3-10e): 投影の枠を照準(逆投影・吸い付き)へ渡してよい場面。
+ * ★#46=A(社長 2026-11-24「はい」=研究所・洋館も照準だけ揃える): 屋外・研究所・洋館で開ける。屋内は枠を作らない。
+ * 見えている・湧き・回収(★#36〜#38)は研究所・洋館では今の独自の作りのまま(ゲームの画面=getProjGameView は null のまま)。
+ */
+export const PROJ_AIM_SCENE_OK: Readonly<Record<ProjScene, boolean>> = { outdoor: true, lab: true, corridor: true, indoor: false };
+export const projAimAllowed = (scene: ProjScene | null): boolean => scene !== null && PROJ_AIM_SCENE_OK[scene];
 
 /** 地面の曲線(pixiScene の地面と同じ定数)。 */
 export const projGroundPersp = (): GroundPerspectiveParams => ({
@@ -50,6 +70,11 @@ export interface ProjFrameBaseParams {
   camZoom: number;
   /** カメラの縦の下げ量の基準(CAMERA_DOWN_OFFSET_FRAC)。 */
   camDown: number;
+  /**
+   * 段階8(§3-10c・2巡目監査 A5): 縦の下げ量の1本(projCamDownFracFor)を渡す時のズーム → 下げ量の関数。研究所は字の 0
+   * (zoomCameraDownFrac(0, z) は z<1 で 0 にならない)。省略は今の式 zoomCameraDownFrac(camDown, z)(屋外は同じ値)。
+   */
+  downFracAt?: (z: number) => number;
   zref: 1 | 2;
   near: boolean;
   /** アテンション(zoomToUnity)の注目点と包絡線。null=掛けない。 */
@@ -67,8 +92,9 @@ export interface ProjFrameBaseParams {
 export const projFrameBase = (prev: ProjTable | null, p: ProjFrameBaseParams): { table: ProjTable; input: ProjFrameInput } => {
   const band = computeGroundBandLayout(p.farH, p.screenH, p.overscan);
   const camZ = p.zref === 2 ? p.camZoom : 1;
-  const lRef1 = projRefLocalY(p.viewH, zoomCameraDownFrac(p.camDown, 1), p.playerH, p.farH);
-  let lRef = p.zref === 2 ? projRefLocalY(p.viewH, zoomCameraDownFrac(p.camDown, camZ), p.playerH, p.farH) : lRef1;
+  const df = p.downFracAt ?? ((z: number) => zoomCameraDownFrac(p.camDown, z));
+  const lRef1 = projRefLocalY(p.viewH, df(1), p.playerH, p.farH);
+  let lRef = p.zref === 2 ? projRefLocalY(p.viewH, df(camZ), p.playerH, p.farH) : lRef1;
   let wRef = p.camY + p.farH + lRef;
   if (p.att) {
     const a = projAttentionRef(wRef, p.att.y, p.att.env, p.camY, p.farH);
@@ -207,7 +233,7 @@ export const projGameEdgePoint = (
 export const projGameRowSpan = (gv: ProjGameView, l: number): { left: number; right: number; y: number } => {
   const f = gv.f;
   const sc = f.wgScale > 0 ? f.wgScale : 1;
-  const s = Math.max(1e-6, projScaleAtLocal(f, l));
+  const s = Math.max(1e-6, projRowKx(f, l)); // 行の横の倍率(ground は s と同じ値・段階8 §3-10c)
   const dxL = (0 - f.wgX) / sc + f.camX - f.shakeX;
   const dxR = (f.screenW - f.wgX) / sc + f.camX - f.shakeX;
   return { left: f.cxw + (dxL - f.cxw) / s, right: f.cxw + (dxR - f.cxw) / s, y: projWorldYOfLocal(f, l) };
