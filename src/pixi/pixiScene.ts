@@ -18837,7 +18837,7 @@ export class PixiScene {
         : 1 + 0.22 * Math.sin(now / 540 + prop.footX * 0.05 + 1.6);
       view.light.visible = horizonAlpha > 0;
       view.light.position.set(Math.round(ex), Math.round(ey - EGG_VISUAL_H * 0.35 * d));
-      view.light.tint = armed ? 0xc084fc : 0x4ade80; // アーム=警告の紫(research/TELEGRAPH_FIXES.md N06・社長裁定6) / 通常=毒の緑
+      view.light.tint = armed ? 0xf87171 : 0x4ade80; // アーム済み=赤(社長指示2026-11-24で紫から赤へ戻す) / 通常=毒の緑
       // アーム後の光の輪は小さく(範囲の紫の円と大きさが近づくと、どちらが爆発の範囲か読めなくなる)。
       view.light.width = view.light.height = EGG_VISUAL_W * (armed ? 1.5 : 2.6) * prop.scale * d * eggGlowSizePulse;
       view.light.alpha = (armed ? 0.4 : 0.34) * horizonAlpha * eggGlowAlphaPulse;
