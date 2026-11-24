@@ -644,6 +644,12 @@ export interface Enemy {
   y: number;
   width: number;
   height: number;
+  /**
+   * ?proj=1 段階6(★#36・research/PERSPECTIVE_PROJECTION.md §3-9o イ): 湧きのフェードインの始まり(gameTime の ms)。
+   * 湧いた/同じ id のまま移った最初のフレームに、絵の箱がゲームの画面に掛かっていた時だけ store(utils/projSpawnFade)が付ける。
+   * 濃さは projFadeInAlpha(gameTime − これ)。濃さ 0.5 未満の間は ★#38 の「見えていない」。`?proj=0` では付かない。
+   */
+  projFadeInAt?: number;
   speed: number;
   health: number;
   maxHealth: number;

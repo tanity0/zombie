@@ -9,7 +9,9 @@
 // レンダラーに依存しない(PixiJSをimportしない)。store(useGameStore)・audioManager(playSfx)への
 // 呼び出しは、他の src/utils/*.ts (例: inputActions.ts, weaponUtils.ts)と同じ既存パターンに倣う。
 
-import { projViewCam, projCountVisible } from './projGameView'; // ★#38=A: ?proj=1 の画面内の数(§3-9d)
+import { projViewCam, projCountVisible, getProjGameView, projGameRecycleRect, projGameBoxOnScreen, PROJ_GAME_VISIBLE_ALPHA } from './projGameView'; // ★#38=A: ?proj=1 の画面内の数(§3-9d)
+import { PROJ_GAME_RECYCLE } from './projFlag';
+import { projMarkFadeIn, queueProjRecycleGhost, projViewAtZoom, projEnemyArtOnScreen, projFadeHidden } from './projSpawnFade'; // ?proj=1 段階6(★#36・★#37)
 import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED, SPAWN_CLAMP_ENABLED, RESCUE_ALLY_SPAWN_DIST, huntingMeleeRadius } from '../store/gameStore';
 import { isScarecrow } from './scarecrow';
 import { placeLabSpawn } from './labSpawn';
@@ -683,7 +685,8 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     );
     // ★#38=A(V51): ?proj=1 はゲームの画面(store のカメラ)に描かれる敵の数で数える(?proj=0 は今の矩形のまま)。
     const pgvC = projViewCam();
-    cdMs = catchUpSpawnCdMs(cdMs, pgvC ? projCountVisible(pgvC, puzzleEnemiesNow.filter(countsTowardEnemyCap))
+    // 段階6(イ): フェードインの濃さ 0.5 未満の敵は「見えていない」(画面に0体に数えうる=3-9o オ15)。
+    cdMs = catchUpSpawnCdMs(cdMs, pgvC ? projCountVisible(pgvC, puzzleEnemiesNow.filter(e => countsTowardEnemyCap(e) && !projFadeHidden(e, gameTime)))
       : countVisibleBelowHorizon(puzzleEnemiesNow.filter(countsTowardEnemyCap), view));
   }
   // ★社長指示2026-10-18(敵出現は推薦で): リラックスのコマは3体になったが、ボス交戦中の強制
@@ -1242,8 +1245,16 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
   // 大型=常時最大引き対象になって露見)。レンダラ側カリング(v0.25.1253 zoomViewportOverscan)
   // と同思想で、絶対最大引き(ZOOM_MIN_ABS)でも覆える倍率だけ常に外へ広げる(安全側=消えなくなるだけ)。
   const recycleZoomOverscan = (labTheme || indoor) ? 1 : 1 / ZOOM_MIN_ABS; // ★一番引いた時を基準に(v0.25.2412)
-  const recycleHalfW = (gameBounds.width / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
-  const recycleHalfH = (gameBounds.height / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
+  let recycleHalfW = (gameBounds.width / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
+  let recycleHalfH = (gameBounds.height / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
+  // ?proj=1 段階6(★#37・§3-9o ウ): 縦持ち=今の矩形+上下 E/横長=基準のスマホを倒した矩形(左右 +E)。式はこの1本(倍率を2回掛けない)。
+  // 投影の場面(ゲームの画面が組めている時)だけ。?proj=0・屋内・研究所・洋館・M0 は今の式のまま。
+  const projRecycleOn = PROJ_GAME_RECYCLE && !labTheme && !indoor && getProjGameView() !== null;
+  if (projRecycleOn) {
+    const rr = projGameRecycleRect(gameBounds.width, gameBounds.height, playerCenterX, playerCenterY - spawnViewOffsetY, OFFSCREEN_RECYCLE_MARGIN);
+    recycleHalfW = (rr.right - rr.left) / 2;
+    recycleHalfH = (rr.bottom - rr.top) / 2;
+  }
   let recycledAnyEnemy = false;
   // ★置き去りの回収(PACING_PUZZLE.md §20 ★未決②・社長指示2026-10-18「敵出現は推薦でなおして」):
   // 歩き続けている時、**後ろ側**で、**見えている範囲(絵の背丈込み)+300px の外**へ出た雑魚を、**進む先の辺の外**へ
@@ -1277,6 +1288,15 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     ];
     if (retireGapReady(lastBehindRetireAt, gameTime)) retireBudget = 1;
   }
+  // ?proj=1 段階6(V27・ケ1・コ2): 置き去りの回収・叫喚型のワープの「見えている範囲」だけ投影のゲームの画面(台形)で測る
+  // (主人公中心の基準と store のカメラの両方の外の時だけ=今と同じ)。ズームは retireZoomHold.z。置き先と置いた後の確かめは今の矩形のまま。
+  const projRetireGv = projRecycleOn && retireViews.length > 0 ? getProjGameView() : null;
+  const projRetireViews = projRetireGv
+    ? [projViewAtZoom(projRetireGv.player, retireZoomHold.z), projViewAtZoom(projRetireGv.cam, retireZoomHold.z)] : null;
+  const projRetireOutside = (e: Enemy) => (m: number): boolean => {
+    const fb = enemyFootBox(e);
+    return projRetireViews!.every(v => !projGameBoxOnScreen(v, fb.footX, fb.footY, fb.boxW, fb.boxH, m * retireZoomHold.z));
+  };
   const recycledEnemies = currentEnemiesForRecycle.map(enemy => {
     // 裏ボスは距離リサイクル(ワープ先回り)対象外。専用コントローラが帰巣/再生を独自に管理する。
     if (isHiddenBoss(enemy.type)) return enemy;
@@ -1381,7 +1401,8 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
         // 見えている範囲に入ってしまうなら今回は動かさない(次のフレーム以降にまた試す)。
         if (retireViews.every(v => isBoxOutsideRect(placedVis, v, 0))) {
           recycledAnyEnemy = true;
-          return {
+          if (projRecycleOn) queueProjRecycleGhost(enemy, gameTime); // ?proj=1 段階6(イ): 前の位置の残像
+          return projMarkFadeIn({
             ...enemy,
             x: placed.x,
             y: placed.y,
@@ -1392,7 +1413,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
             knockbackVy: undefined,
             frozenClocks: undefined,
             screamerWarpAt: gameTime,
-          };
+          }, gameTime); // ?proj=1 段階6(コ2): 移った先が画面に掛かっていればフェードイン(?proj=0 はそのまま返す)
         }
       }
       if (
@@ -1436,8 +1457,10 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     // §5.7「画面内の敵は強制消去しない」の裁定に揃え、可視域(ズーム最大引き考慮)の外に出てから回収する。
     // エリア純度の仕組み自体は不変(視界から外れ次第、余白240pxを待たずに即回収)。ghostの例外化
     // (「割と消える」)と同根のバグの、タイプ個別対処ではない恒久版。
-    const outsideView = Math.abs(enemyCenterX - playerCenterX) > recycleHalfW - OFFSCREEN_RECYCLE_MARGIN
-      || Math.abs(enemyCenterY - (playerCenterY - spawnViewOffsetY)) > recycleHalfH - OFFSCREEN_RECYCLE_MARGIN;
+    const outsideView = (Math.abs(enemyCenterX - playerCenterX) > recycleHalfW - OFFSCREEN_RECYCLE_MARGIN
+      || Math.abs(enemyCenterY - (playerCenterY - spawnViewOffsetY)) > recycleHalfH - OFFSCREEN_RECYCLE_MARGIN)
+      // ?proj=1 段階6(V25b・ウ・コ4): 「画面の中」は ★#38 のゲームの画面(絵の箱)も見る=見えている敵は強制回収しない。
+      && !(projRecycleOn && projViewCam() !== null && projEnemyArtOnScreen(projViewCam()!, enemy, PROJ_GAME_VISIBLE_ALPHA) && !projFadeHidden(enemy, gameTime));
     // ★置き去りの回収(上の retireEnabled のコメント)。対象は盤面の雑魚だけ(叫喚型=fixed は上で除外済み・
     // ghost/ボス系=preserveEnemyState は対象外)。技の最中(aiPhase あり/噛みつき中)も対象外。
     if (retireBudget > 0 && !offRect && !waveProtected && !preserveEnemyState
@@ -1447,12 +1470,14 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
       if (shouldRetireBehind({
         box: vis, playerCx: playerCenterX, playerCy: playerCenterY,
         heading: retireWalk, walkStrength: retireWalkStrength, views: retireViews,
+        ...(projRetireViews ? { outsideAll: projRetireOutside(enemy) } : {}), // ?proj=1 段階6(V27)
       })) {
         // 邪魔者・ゾンビ・赤い個体(リラックスの顔ぶれに無い型)は、リラックス/ハーベスト中は前へ持ち込まず退場させる
         // (空いた枠はコマ自身の湧きが埋める)。判定は retireDisposition(純関数)。
         if (retireDisposition(enemy.type, enemy.colorTier, retireKomaNow(gameTime)) === 'remove') {
           retireBudget -= 1; lastBehindRetireAt = gameTime; recycledAnyEnemy = true;
           ENEMY_REMOVE_CAUSE.set(enemy.id, 'behindRetire'); // 消失ログ用(置き去りの回収で退場)
+          if (projRecycleOn) queueProjRecycleGhost(enemy, gameTime); // ?proj=1 段階6(イ)
           return null;
         }
         // 同じ個体を**進む先の辺の外**へ動かす(型・色・HPは引き直さない=台本の帳簿と顔ぶれを崩さない)。
@@ -1473,7 +1498,8 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
         // 歩ける帯へ寄せた結果、見えている範囲に入ってしまうなら今回は動かさない(目の前に湧かせない)。
         if (retireViews.every(v => isBoxOutsideRect(placedVis, v, 0))) {
           retireBudget -= 1; lastBehindRetireAt = gameTime; recycledAnyEnemy = true;
-          return {
+          if (projRecycleOn) queueProjRecycleGhost(enemy, gameTime); // ?proj=1 段階6(イ)
+          return projMarkFadeIn({
             ...enemy,
             x: placed.x,
             y: placed.y,
@@ -1488,11 +1514,12 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
             biteTgtY: undefined,
             biteTgtAt: undefined,
             spawnedAt: gameTime,
-          };
+          }, gameTime); // ?proj=1 段階6(コ2)
         }
       }
     }
     if ((!offRect && !(areaInvalid && outsideView)) || waveProtected) return enemy;
+    if (projRecycleOn) queueProjRecycleGhost(enemy, gameTime); // ?proj=1 段階6(イ): V25・V25b の回収の瞬間の残像
     // 研究所スキンはリサイクル先もラボ用ゾンビに固定(森敵を出さない)。
     const recycleType = preserveEnemyState ? enemy.type : (labTheme ? selectLabEnemyType(gameTime) : undefined);
     const replacement = generateEnemy(
@@ -1541,7 +1568,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     }
 
     if (preserveEnemyState) {
-      return {
+      const kept: Enemy = {
         ...enemy,
         x: replacement.x,
         y: replacement.y,
@@ -1558,14 +1585,16 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
         frozenClocks: undefined,
         spawnedAt: gameTime
       };
+      return projRecycleOn ? projMarkFadeIn(kept, gameTime) : kept; // ?proj=1 段階6(イ): 移った先が画面の中ならフェードイン
     }
 
-    return {
+    const fresh: Enemy = {
       ...replacement,
       id: enemy.id,
       // ラボはリサイクル個体も索敵仕様(休眠+半径)で再配置。
       ...(labTheme ? { dormant: true, aggroRange: labSpawnAggroRange, vx: 0, vy: 0 } : {})
     };
+    return projRecycleOn ? projMarkFadeIn(fresh, gameTime) : fresh;
   });
   if (recycledAnyEnemy) {
     // null = 「通った道しか置き場が無く再配置しなかった個体」= 除去する(v0.25.2244)。
@@ -1605,6 +1634,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     );
     if (toRemoveIds.size > 0) {
       toRemoveIds.forEach(id => ENEMY_REMOVE_CAUSE.set(id, 'cap')); // 消失ログ用: 上限カリング(fromEventは保護のはず)
+      if (projRecycleOn) for (const e of currentEnemiesForCap) if (toRemoveIds.has(e.id)) queueProjRecycleGhost(e, gameTime); // ?proj=1 段階6(イ・V25c)
       useGameStore.setState({
         enemies: currentEnemiesForCap.filter(enemy => !toRemoveIds.has(enemy.id))
       });

@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5778', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5777', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5776', items: ['ステージ4のボスの周り一面を凍らせる大技は、跳び上がらずにその場で両腕を振り上げ、地面へ叩きつけて放つ'] },
   { version: '0.25.5775', items: ['ゲーム内容の変更はありません'] },

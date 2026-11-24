@@ -5,7 +5,7 @@
 // 掟:
 //  - 移動は必ず ①障害物(resolveBountyMove)→ ②行ける帯(clampRectToPlayableArea)の順で通す。
 //  - 旗手の攻撃は旗振りだけ(プレイヤーが体の縁から120px以内・§4b)。叫ぶのは画面に入っている時だけ(見つける条件に「画面内」を含む)。
-import { projSeen } from './projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
+import { projSeen, projViewCam, projGameBandPick, projFadeHidden } from './projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import type { Enemy } from '../types/game';
 import { useGameStore, resolveBountyMove, SCREAMER_WINDUP_MS, SCREAMER_BUFF_MS, screamerWindupFx, screamerCryFx, cancelScreamerWindupFx, type PumpkinBlast } from '../store/gameStore';
@@ -134,7 +134,7 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
   }
 
   // ---- 見つける / 見失う ----
-  const onScreen = projSeen(bx, by, 0, isPointInZoomedViewport(bx, by, st.camera, st.gameBounds, st.viewZoom));
+  const onScreen = !projFadeHidden(bearer, gt) && projSeen(bx, by, 0, isPointInZoomedViewport(bx, by, st.camera, st.gameBounds, st.viewZoom)); // フェードイン中 0.5 未満は見えていない
   // 向き=進む向き(周回・後ずさりの s.dir)。止まっていて向きが無ければ顔の左右。
   const faceLen = Math.hypot(s.dirX, s.dirY);
   const sight = faceLen > 0.5
@@ -253,7 +253,9 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
   else if (alerted && !attacking && !stunned && onScreen && s.alertSince !== null
     && gt >= Math.max(bearer.libVolleyReadyAt ?? 0, s.alertSince + LIB_VOLLEY_FIRST_DELAY_MS)) { // 見つけ直した時も2.5秒置く(品質監査 C-2)
     const vb = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
-    const arrows = libVolleyArrows(vb, { x: pl.x + pl.width / 2, y: pl.y + pl.height / 2 }, gt, Math.random);
+    const pgvL = projViewCam(); // ?proj=1 段階6(★#38=A・V43): 矢が見える地面に降る(北の奥の左右にも・南の見えない帯には降らない)
+    const arrows = libVolleyArrows(vb, { x: pl.x + pl.width / 2, y: pl.y + pl.height / 2 }, gt, Math.random,
+      ...(pgvL ? [(u: number, v: number) => projGameBandPick(pgvL, 0, u, v)] as const : []));
     s.volleyQueue.push(...arrows);
     s.volleyQueue.sort((a, b) => a.bornAt - b.bornAt);
     // 技の間=号令から最後の矢が刺さるまで(社長支給の号令の絵は「最後まで再生してまだ技中なら最後の3コマを繰り返す」)。

@@ -2,7 +2,7 @@
 // - 英雄の技(持ち主が英雄の爆風)を、プレイヤー・守護霊に加えて**敵にも**当てる。
 // - 敵の攻撃(持ち主が英雄以外の爆風・弾・接触・技)を**英雄にも**当てる(第三者の的)。
 // 判定は全部 store 側(描画は読むだけ)。プレイヤーへの判定・ダメージは1bitも変えない(全て独立の追加分岐)。
-import { projSeen } from './projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
+import { projSeen, projFadeHidden } from './projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import { heroHealAfterHits } from './heroScript';
 import type { Enemy } from '../types/game';
 import { useGameStore, knockbackSpeedFor, setThirdPartyHook, type PumpkinBlast } from '../store/gameStore';
@@ -25,7 +25,7 @@ export const findHero = (enemies: readonly Enemy[]): Enemy | undefined =>
 /** 英雄の中心が画面(ズーム込み)の中か。画面外の英雄は攻撃しない・受けない(§6-2)。 */
 export const heroOnScreen = (e: Enemy): boolean => {
   const st = useGameStore.getState();
-  return projSeen(e.x + e.width / 2, e.y + e.height / 2, 0, isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, st.camera, st.gameBounds, st.viewZoom));
+  return !projFadeHidden(e, st.gameTime) && projSeen(e.x + e.width / 2, e.y + e.height / 2, 0, isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, st.camera, st.gameBounds, st.viewZoom));
 };
 
 /** 第三者の的としての英雄(画面内に居る時だけ)。 */

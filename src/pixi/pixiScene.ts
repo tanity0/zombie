@@ -17,10 +17,12 @@ import { EGG_DRAW_W, EGG_DRAW_H, EGG_BLAST_RADIUS } from '../world/mines';
 import type { RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { VIEW_CORE_W } from '../utils/viewport';
 import { setViewTransform, setViewProjection, getLastCursorScreen, projAimStats } from '../utils/viewTransform';
-import { projFrameBase, projGroundPersp, getProjGameView, projGameViewContains, type ProjFrameBaseParams } from '../utils/projGameView'; // 投影の組み立て(§3-9d=ゲーム側と1本)
+import { getHudAvoidRects, slideOutOfRects } from '../utils/hudAvoidRects';
+import { projFrameBase, projGroundPersp, getProjGameView, projGameViewContains, projPropRegionRect, projFadeInBrightness, type ProjFrameBaseParams } from '../utils/projGameView';
+import { projEnemyFadeAlpha, projGhostAlpha, projBulletGhostAlpha, projGhostOverflow, projGhostDrift, projRecycledNear, PROJ_GHOST_DRIFT_TAU_MS, PROJ_BULLET_GHOST_DRIFT_TAU_MS, type ProjRecycleGhost, type ProjBulletGhost } from '../utils/projSpawnFade'; // ?proj=1 段階6(★#36・★#37) // 投影の組み立て(§3-9d=ゲーム側と1本)
 import { HORIZON_FOREST_UP_BY_STAGE, HORIZON_ACTOR_HIDE_OFFSET_PX, horizonForestHeightFor, horizonForestYFor, type HorizonForestInput } from '../utils/horizonForestLine'; // 森1の配置(§3-9d=ゲーム側と1本)
 import {
-  PROJ_ON, PROJ_NEAR, PROJ_ZREF, PROJ_FAR_END, PROJ_FAR_START, OBJ_DEPTH_MODE,
+  PROJ_ON, PROJ_NEAR, PROJ_ZREF, PROJ_FAR_END, PROJ_FAR_START, OBJ_DEPTH_MODE, PROJ_GAME_SPAWN, PROJ_GAME_RECYCLE,
   GROUND_TILE_SCALE_X, GROUND_TILE_SCALE_Y_NEAR, GROUND_TILE_SCALE_Y_FAR, GROUND_PERSPECTIVE_CURVE,
   GROUND_TRAPEZOID, GROUND_TRAPEZOID_FAR, GROUND_TRAPEZOID_CURVE,
 } from '../utils/projFlag'; // 投影の旗・地面の曲線の定数(§3-9d「utils へ移す物」=値は1本)
@@ -141,7 +143,24 @@ import {
 } from '../utils/bossScript';
 import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
-import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
+import { enemyWalkFrame, enemyWalkPlaybackFor, type EnemyWalkGate } from '../utils/enemyWalkSheet';
+import type { SheetPlayback } from '../utils/enemySheets';
+
+/** ?proj=1 段階6: 回収の残像の1件(projGhostCapture が写した本体の絵の置き方と、流れた今の足元・濃さ)。 */
+interface ProjGhostRec {
+  sp: Sprite; g: ProjRecycleGhost;
+  /** 足元の投影点 P からの絵の位置のずれ・絵の倍率(どちらも s で割った値=写した時の本体と同じ置き方)。 */
+  offX: number; offY: number; rsX: number; rsY: number;
+  tint: number;
+  /** 影の寸法(s=1・浮きの拡大を除く)。 */
+  rawW: number; rawH: number;
+  /** 歩きのシートのコマを出していた時の、距離の時計(本体の enemyWalkTexture と同じ)。 */
+  walk: { slices: Texture[]; frames: number; dist0: number; boxH: number; playback: SheetPlayback; stride: number } | null;
+  /** 写した時の足元・今の流れた足元(world)・今の濃さ(影が読む)・写した時の本体の湧きの濃さ(フェードインの途中なら 1 未満)。 */
+  fb0x: number; fb0y: number; fx: number; fy: number; a: number; a0: number;
+}
+/** 残像は止まった・押された扱いをしない(流れている間ずっと歩きのコマを送る)。 */
+const PROJ_GHOST_WALK_GATE: EnemyWalkGate = {};
 import { isBackingAway, backpedalFaceSide } from '../utils/backpedal';
 import { ENEMY_VOLLEY_SHEETS, volleySheetName, volleyFrameAt, walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH, walkStopsToIdle, ENEMY_WALK_STOP_HOLD_MS } from '../utils/enemySheets';
 import { stepBiteFxClock, zombieBiteFxInterrupted, type BiteFxClock } from '../utils/biteFxClock';
@@ -4641,6 +4660,8 @@ interface ActorView {
   projHx?: number; projHy?: number;
   /** 体と頭上UIに掛ける湧きの一時のフェード(§3-5g・雑魚・強個体だけ。既定1)。 */
   projSpawnA?: number;
+  /** ?proj=1 段階6: フェードインの暗さを掛ける前の色と、掛けた後の色(projFadeInTint・次のフレームに戻して掛け直す)。 */
+  projFadeTintOrig?: number; projFadeTintApplied?: number;
   /** 後掛けの前の本体の位置(寄りの遠近で予告・演出の子の支点に使う)・今フレームの投影の点と倍率・k(値を写して持つ=§10 B16)。 */
   projPreX?: number; projPreY?: number; projPx?: number; projPy?: number; projS?: number; projK?: number; projPostFrame?: number;
   /** ?proj=1(段階5「高さ」・§3-8e): 今フレームに描く関数が本体から引いた高さの項(drawn=δ·h)と δ(作り置きの配列・項ごと)。 */
@@ -9004,6 +9025,7 @@ export class PixiScene {
    * 寄り(拡大>1)の間は可視域が画面より狭くなるが、**等倍の画面より狭くはしない**(旧と同じ。寄りの戻りで端が欠けない)。
    */
   private visibleWorldRect(): { left: number; top: number; right: number; bottom: number } {
+    if (PROJ_AUDIT && this.projFrame) this.projS6CullMark(); // 計器 s6 cull(段階6・作る物9): ?proj=1 で旧い矩形を引いた呼び出し元
     const wg = this.L.worldGroup;
     const sc = wg.scale.x > 0 ? wg.scale.x : 1;
     const wx = this.L.world.position.x, wy = this.L.world.position.y;
@@ -9018,6 +9040,21 @@ export class PixiScene {
     // 寄りの遠近(zwarp)が奥側の辺を縮めて画面の外の絵を縁に映している間は、フィルタ枠と同じだけ上下へ広げる(品質監査2巡目A-1)。
     if (this.zwarpInList) { tt -= (this.screenH / sc) * this.zwarpPadTop; b += (this.screenH / sc) * this.zwarpPadBot; } // proj-lift: exempt(not-height)
     return { left: Math.min(l, l1), top: Math.min(tt, t1), right: Math.max(r, r1), bottom: Math.max(b, b1) };
+  }
+
+  /**
+   * 計器 s6 cull: ?proj=1(枠あり)の間に旧い矩形(visibleWorldRect)を引いた呼び出し元の関数名ごとの数(DEV・?projaudit=1 だけ)。
+   * 旧い矩形の間引きが意図(V19 の面積の比・V20 は projFxNear に置き換え済み=呼ばれない)以外で残っていないかを見る。
+   */
+  private projS6CullMark() {
+    const st = new Error().stack?.split('\n') ?? [];
+    // [0]=Error [1]=projS6CullMark [2]=visibleWorldRect [3]=isPointNearViewport/distanceOutsideViewport か呼び出し元
+    let i = 3;
+    while (i < st.length && /isPointNearViewport|distanceOutsideViewport/.test(st[i])) i++;
+    const m = /at (?:PixiScene\.)?([A-Za-z0-9_$]+)/.exec(st[i] ?? '');
+    const k = m ? m[1] : '?';
+    const c = this.projS6.cullOld;
+    if (c.size < 64 || c.has(k)) c.set(k, (c.get(k) ?? 0) + 1);
   }
 
   private isPointNearViewport(
@@ -10021,10 +10058,19 @@ export class PixiScene {
    */
   private projGroundFrameNow(s: ReturnType<typeof useGameStore.getState>, realNow: number): ProjFrame | null {
     if (!PROJ_ON || s.indoorMode || s.corridorMode || s.stageTheme === 'lab') return null;
-    const base = projFrameBase(this.projTable, this.projFrameBaseParams(s, this.farBackdropHeight(), realNow));
+    const tb0 = this.projTable;
+    const t0 = PROJ_AUDIT ? performance.now() : 0;
+    const base = projFrameBase(tb0, this.projFrameBaseParams(s, this.farBackdropHeight(), realNow));
     this.projTable = base.table; // updateProjTable は前の表を書き換えて使い回す=乗り換える(ケ8)
+    if (PROJ_AUDIT) {
+      // 計器(段階5 の表の作り直し): ここが先に表を作り直すと updateProjFrame では「変わっていない」に見える=ここの分を持ち越して数える。
+      this.projTablePre.ms += performance.now() - t0;
+      if (base.table !== tb0) this.projTablePre.built = base.table;
+    }
     return makeProjFrame(base.input);
   }
+  /** 計器: このフレームの updateProjFrame より前に projGroundFrameNow が作り直した表と時間(updateProjFrame が数えて空にする)。 */
+  private projTablePre: { ms: number; built: ProjTable | null } = { ms: 0, built: null };
 
   /** 投影の組み立ての入力(utils/projGameView.projFrameBase・ゲーム側と同じ式)。アテンション(zoomToUnity)は今の depthRefY と同じ包絡線(§1-6)。 */
   private projFrameBaseParams(s: ReturnType<typeof useGameStore.getState>, farH: number, realNow: number): ProjFrameBaseParams {
@@ -10061,10 +10107,13 @@ export class PixiScene {
     const table = base.table;
     this.projTable = table;
     if (PROJ_AUDIT) {
-      const ms = performance.now() - tbT0;
+      const pre = this.projTablePre;
+      const ms = performance.now() - tbT0 + pre.ms;
       const ts = this.projTableStats;
       ts.frames++; ts.frameMs = ms; if (ms > ts.frameMsMax) ts.frameMsMax = ms; ts.frameMsSum += ms;
-      if (table !== tb0) {
+      const rebuilt = table !== tb0 || pre.built !== null;
+      pre.ms = 0; pre.built = null;
+      if (rebuilt) {
         ts.builds++; if (table.builtPts < table.n) ts.partial++;
         ts.lastPts = table.builtPts; ts.lastMs = ms; if (ms > ts.buildMsMax) ts.buildMsMax = ms;
       }
@@ -10076,8 +10125,12 @@ export class PixiScene {
     });
     this.projScreenBottomL = (this.screenH - wg.position.y) / (wg.scale.x || 1) - shakeY - farH;
     // 松明・緑卵の作る/回収する範囲(store.syncBreakableProps と同じ: プレイヤー中心の画面 ± BREAKABLE_PROP_REGION_PAD・監査 A2)。
-    const pr = playerCenteredRegion(s.player.x + s.player.width / 2, s.player.y + s.player.height / 2,
-      s.gameBounds.width, s.gameBounds.height, BREAKABLE_PROP_REGION_PAD);
+    // ★#37(V28・ケ4): ゲーム側の回収の枝が立っている場面では store と同じ純関数 projPropRegionRect(基準点=中心)を呼ぶ。
+    this.projGameSceneOn = getProjGameView() !== null;
+    const pr = PROJ_GAME_RECYCLE && this.projGameSceneOn
+      ? projPropRegionRect(s.gameBounds.width, s.gameBounds.height, s.player.x + s.player.width / 2, s.player.y + s.player.height / 2, BREAKABLE_PROP_REGION_PAD)
+      : playerCenteredRegion(s.player.x + s.player.width / 2, s.player.y + s.player.height / 2,
+        s.gameBounds.width, s.gameBounds.height, BREAKABLE_PROP_REGION_PAD);
     this.projPropRegion.left = pr.left; this.projPropRegion.right = pr.right; this.projPropRegion.top = pr.top; this.projPropRegion.bottom = pr.bottom;
     const ov = zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom); // 湧き・回収の一時のフェード(§3-5g)の旧い画面の矩形
     this.projOldView.left = ov.left; this.projOldView.right = ov.right; this.projOldView.top = ov.top; this.projOldView.bottom = ov.bottom;
@@ -10568,6 +10621,8 @@ export class PixiScene {
     cullOld: new Map<string, number>(),
   };
   private projS6Pt = { x: 0, y: 0 };
+  /** ?proj=1 段階6: 照準の円の空を指す度合い(k 0..1・慣性で寄せる)と、追いかけて描く位置(ui 座標)。 */
+  private projReticleSm = { k: 0, x: 0, y: 0, at: 0, has: false };
   projActorAudit = {
     leakMax: 0, leakName: '', unclassified: new Map<string, number>(), unclassifiedNow: 0,
     playerS: 1, playerDsMax: 0, spawnDaMax: 0, kinds: new Map<string, { dx: number; dy: number }>(),
@@ -10740,6 +10795,243 @@ export class PixiScene {
     const d = y - projSkyTopY(this.projFrame, 0);
     if (d > this.projS5.skyMax) { this.projS5.skyMax = d; this.projS5.skyName = name; }
   }
+  // ---- ?proj=1 段階6(★#36・★#37): 回収の残像と計器 s6 spawn / s6 recycle ----
+  /**
+   * 敵の残像(pooled Sprite・判定なし)。キー=`id@gameTime`。写した時の本体の絵の置き方(足元の投影点 P からのずれ・倍率を s で割った値・
+   * アンカー・色)を持ち、毎フレーム「流れた足元」を投影して同じ置き方で立てる(本体と同じ位置・大きさから始まる=跳ねない)。
+   * 歩きのシートのコマを出していた物は、流れた距離で歩きのコマを送り続ける(本体と同じ「進んだ距離」の時計)。
+   */
+  private projGhostSprites = new Map<string, ProjGhostRec>();
+  private projGhostPool: Sprite[] = [];
+  /** 弾の残像(pooled Graphics・赤を抜く色の層 projBulletGhostLayer の中)。 */
+  private projBulletGhostGfx = new Map<string, { gfx: Graphics; g: ProjBulletGhost; p: Projectile }>();
+  private projBulletGhostPool: Graphics[] = [];
+  /** 弾の残像の層: 色を灰〜白へ寄せる ColorMatrixFilter 1枚(残像がある間だけ表示=無い時は描かない)。 */
+  private projBulletGhostLayer: Container | null = null;
+  /** 計器: 前のフレームの敵ごとの描かれ方(id → 足元・濃さ・画面に掛かっていたか)。 */
+  private projS6Last = new Map<string, { x: number; y: number; a: number; on: boolean }>();
+  private projS6Now = new Map<string, { x: number; y: number; a: number; on: boolean }>();
+  projS6Spawn = { total: 0, visible: 0, aMax: 0, recycleEvents: 0, recycleMissing: 0 };
+
+  /** 敵の残像の写しを始める(前のフレームの絵=view の今の絵の置き方)・列から外れた物を片付ける・計器 s6 recycle。 */
+  private projGhostBegin(enemies: Enemy[], gameTime: number) {
+    const st = useGameStore.getState();
+    const list = st.projRecycleGhosts;
+    const live = new Set<string>();
+    for (const g of list) {
+      const k = `${g.id}@${g.at}`;
+      live.add(k);
+      if (this.projGhostSprites.has(k)) continue;
+      const rec = this.projGhostCapture(g);
+      if (rec) this.projGhostSprites.set(k, rec);
+    }
+    for (const [k, r] of this.projGhostSprites) {
+      if (live.has(k)) continue;
+      r.sp.visible = false; this.projGhostPool.push(r.sp); this.projGhostSprites.delete(k);
+    }
+    // 弾の残像(前の絵は弾の写しから描き直す=drawProjectile と同じ形・色の層で赤を抜く)。
+    const blist = st.projBulletGhosts;
+    const bl = new Set<string>();
+    for (const g of blist) {
+      const k = `${g.id}@${g.at}`;
+      bl.add(k);
+      if (this.projBulletGhostGfx.has(k)) continue;
+      const layer = this.projBulletGhostLayerGet();
+      const gfx = this.projBulletGhostPool.pop() ?? new Graphics();
+      if (gfx.parent !== layer) layer.addChild(gfx);
+      gfx.visible = false;
+      this.projBulletGhostGfx.set(k, { gfx, g, p: { ...g.p } });
+    }
+    for (const [k, r] of this.projBulletGhostGfx) {
+      if (bl.has(k)) continue;
+      r.gfx.clear(); r.gfx.visible = false; this.projBulletGhostPool.push(r.gfx); this.projBulletGhostGfx.delete(k);
+    }
+    if (!PROJ_AUDIT) return;
+    // 計器 s6 recycle: 前のフレームに濃さ 0.05 以上で画面に掛かって描かれていた敵のうち、store が回収の出来事を記録した物
+    // (projRecycledNear=同じ id のまま移った/配列から抜いた)で、残像が無い数。位置が跳んだだけ(弾き飛ばし・ワープ)・
+    // 倒されて抜けた・台本で消えた物は回収と数えない(記録が無い)。
+    const nowE = new Map<string, Enemy>();
+    for (const e of enemies) nowE.set(e.id, e);
+    for (const [id, last] of this.projS6Last) {
+      const e = nowE.get(id);
+      const fb = e ? enemyFootBox(e) : null;
+      const moved = !fb || Math.hypot(fb.footX - last.x, fb.footY - last.y) > 160;
+      if (!moved) continue;
+      if (!(last.a >= 0.05 && last.on)) continue;
+      if (!projRecycledNear(id, gameTime)) continue;
+      this.projS6Spawn.recycleEvents++;
+      const hasGhost = list.some(g => g.id === id && gameTime - g.at <= 100);
+      if (!hasGhost) this.projS6Spawn.recycleMissing++;
+    }
+    this.projS6Now.clear();
+  }
+
+  /** 弾の残像の層(遅延生成): 灰〜白へ寄せる色(赤=当たる、の文法を残像に持ち込まない)。 */
+  private projBulletGhostLayerGet(): Container {
+    let L = this.projBulletGhostLayer;
+    if (!L || L.destroyed) {
+      L = new Container();
+      const cm = new ColorMatrixFilter();
+      cm.greyscale(0.42, false); // 赤い二重丸(1, .27, .27)→ 0.65 の灰・白い芯は白のまま
+      L.filters = [cm];
+      this.L.frontObjectLayer.addChild(L);
+      this.projBulletGhostLayer = L;
+    }
+    return L;
+  }
+
+  /** 回収の瞬間の本体の絵を写す(view が前のフレームに後掛けまで済んでいれば、その置き方をそのまま。無ければ立ち絵から)。 */
+  private projGhostCapture(g: ProjRecycleGhost): ProjGhostRec | null {
+    const v = this.enemies.get(g.id);
+    const fb = enemyFootBox(g.e);
+    const sp = this.projGhostPool.pop() ?? new Sprite();
+    if (sp.parent !== this.L.actorLayer) this.L.actorLayer.addChild(sp);
+    sp.visible = false;
+    const key = this.enemyTexKey(g.e.type, g.e.id);
+    const posted = !!v && v.sprite.visible && v.projPostFrame !== undefined && v.projPostFrame >= this.projFrameNo - 1
+      && v.projPx !== undefined && v.projPy !== undefined && (v.projS ?? 0) > 1e-6;
+    const vtex = v && v.sprite.visible && v.sprite.texture && v.sprite.texture !== Texture.EMPTY ? v.sprite.texture : null;
+    const tex = vtex ?? getTexture(key) ?? Texture.EMPTY;
+    sp.texture = tex;
+    let offX = 0, offY = 0, rsX = 1, rsY = 1, ax = 0.5, ay = 1, tint = 0xffffff, skew = 0, rot = 0, a0 = 1;
+    let rawW = fb.boxW, rawH = fb.boxH;
+    if (posted && v) {
+      const s0 = v.projS!;
+      const c = v.container;
+      const csx = c.scale.x || 1, csy = c.scale.y || 1;
+      let px = c.position.x + v.sprite.position.x * csx, py = c.position.y + v.sprite.position.y * csy;
+      let kk = 1;
+      // フレームの始めには本体の絵が後掛けの前(drawEnemy の置き方・projPreX/Y)へ戻っている=後掛けと同じ相似(F→P・k)で写してから測る。
+      const pre = v.projPreX !== undefined && v.projPreY !== undefined
+        && Math.abs(v.sprite.position.x - v.projPreX) < 1e-6 && Math.abs(v.sprite.position.y - v.projPreY) < 1e-6;
+      if (pre && v.projK !== undefined && v.projFx !== undefined && v.projFy !== undefined) {
+        kk = v.projK;
+        px = v.projPx! + kk * (px - v.projFx); py = v.projPy! + kk * (py - v.projFy);
+      }
+      offX = (px - v.projPx!) / s0; offY = (py - v.projPy!) / s0;
+      rsX = v.sprite.scale.x * csx * kk / s0; rsY = v.sprite.scale.y * csy * kk / s0;
+      ax = v.sprite.anchor.x; ay = v.sprite.anchor.y;
+      tint = Number(v.sprite.tint); skew = v.sprite.skew.x; rot = v.sprite.rotation;
+      a0 = Math.max(0, Math.min(1, v.projSpawnA ?? 1)); // フェードインの途中で回収された物は、その濃さから薄れる(パッと濃くならない)
+      const disp = this.actorDisplaySize(v);
+      if (disp) { const air = v.airScale ?? 1; rawW = disp.w * kk / s0 / air; rawH = disp.h * kk / s0 / air; }
+    } else {
+      // 前のフレームの置き方が無い(初めて見た・描かれていなかった)時は立ち絵を足元に立てる(drawEnemy の素の置き方)。
+      const sc = containScale(fb.boxW, fb.boxH, tex.width || 1, tex.height || 1) * this.stageEnemyVisualMul(g.e.type);
+      const flip = v && v.sprite.scale.x < 0 ? -1 : 1;
+      rsX = sc * flip; rsY = sc;
+      if (v) tint = Number(v.sprite.tint);
+    }
+    sp.anchor.set(ax, ay);
+    sp.skew.set(skew, 0);
+    sp.rotation = rot;
+    // 歩きのシートのコマを出していた物は、流れた距離でコマを送り続ける(enemyWalkTexture と同じ距離の時計)。
+    let walk: ProjGhostRec['walk'] = null;
+    const frames = walkSheetFrames(key);
+    if (frames > 1 && vtex) {
+      const slices = this.sheetSlices(walkSheetName(key), frames);
+      if (slices && slices.includes(vtex)) {
+        walk = { slices, frames, dist0: v?.walkDist ?? 0, boxH: fb.boxH, playback: enemyWalkPlaybackFor(key), stride: walkStrideMul(key, false) };
+      }
+    }
+    return { sp, g, offX, offY, rsX, rsY, tint, rawW, rawH, walk, fx: fb.footX, fy: fb.footY, a: 0, a0, fb0x: fb.footX, fb0y: fb.footY };
+  }
+
+  /** 計器 s6 spawn: 湧いた(前のフレームに居ない/store が回収で移したと記録した)最初のフレームに、濃さ 0.5 以上で画面に掛かって描かれた数。 */
+  private projS6EnemyDrawn(view: ActorView, e: Enemy, gameTime: number) {
+    const f = this.projFrame!;
+    const fb = enemyFootBox(e);
+    const pp = projectInto(f, fb.footX, fb.footY, this.projScratch);
+    const a = (view.container.visible ? view.container.alpha : 0) * (view.projSpawnA ?? 1) * this.projBaseAlpha(pp);
+    const sc = projDisplayToScreenInto(f, pp.x, pp.y, this.projScreenPt);
+    const z = f.wgScale || 1;
+    const w = fb.boxW * pp.s * z, h = fb.boxH * pp.s * z;
+    const on = pp.inDomain && sc.x + w / 2 >= 0 && sc.x - w / 2 <= f.screenW && sc.y >= 0 && sc.y - h <= f.screenH;
+    const last = this.projS6Last.get(e.id);
+    // 湧き=前のフレームに居なかった id、または store が回収の出来事を記録して大きく移った物(弾き飛ばし・ワープの跳びは数えない)。
+    const first = !last || (Math.hypot(fb.footX - last.x, fb.footY - last.y) > 160 && projRecycledNear(e.id, gameTime));
+    if (first && this.projS6Last.size > 0 && projSpawnFadeApplies(e)) {
+      this.projS6Spawn.total++;
+      if (on && a >= 0.5) { this.projS6Spawn.visible++; if (a > this.projS6Spawn.aMax) this.projS6Spawn.aMax = a; }
+    }
+    this.projS6Now.set(e.id, { x: fb.footX, y: fb.footY, a, on });
+  }
+
+  /**
+   * 残像を描く: 回収直前の速度を引き継いで減速しながら流れ(慣性)、濃さ 1→0(敵 450ms・弾 200ms・ease-in)。
+   * 敵は写した置き方のまま流れた足元に立て、歩きのコマを送る。弾は流れた位置に描き直す(色の層で灰〜白)。
+   */
+  private projGhostDraw(gameTime: number) {
+    const f = this.projFrame!;
+    for (const r of this.projGhostSprites.values()) {
+      const { sp, g } = r;
+      const el = gameTime - g.at;
+      const a0 = projGhostAlpha(g.at, gameTime) * r.a0;
+      if (r.walk) {
+        const d = projGhostDrift(g.vx, g.vy, el, PROJ_GHOST_DRIFT_TAU_MS);
+        const i = enemyWalkFrame(g.e.id, r.walk.frames, r.walk.dist0 + Math.hypot(d.dx, d.dy), r.walk.boxH, PROJ_GHOST_WALK_GATE, r.walk.playback, r.walk.stride);
+        if (i !== null && r.walk.slices[i]) sp.texture = r.walk.slices[i];
+      }
+      const tex = sp.texture;
+      if (!tex || tex === Texture.EMPTY || a0 <= 0.01) { sp.visible = false; r.a = 0; continue; }
+      const d = projGhostDrift(g.vx, g.vy, el, PROJ_GHOST_DRIFT_TAU_MS);
+      r.fx = r.fb0x + d.dx; r.fy = r.fb0y + d.dy;
+      const pp = projectInto(f, r.fx, r.fy, this.projScratch2);
+      const s1 = pp.s;
+      sp.scale.set(r.rsX * s1, r.rsY * s1);
+      sp.position.set(pp.x + r.offX * s1, pp.y + r.offY * s1);
+      sp.zIndex = r.fy;
+      sp.tint = r.tint; // 写した時の色(色付き個体・宿敵の金・フェードインの暗さ)。地面の明るさ(objShade)は敵と同じ区分で後から掛かる
+      r.a = a0 * this.projLooseFade(r.fx, r.fy, false);
+      sp.alpha = r.a;
+      sp.visible = pp.inDomain && sp.alpha > 0.01;
+      this.projAuditMark(sp);
+    }
+    let anyBullet = false;
+    for (const r of this.projBulletGhostGfx.values()) {
+      const el = gameTime - r.g.at;
+      const a0 = projBulletGhostAlpha(r.g.at, gameTime);
+      if (a0 <= 0.01) { r.gfx.visible = false; continue; }
+      const d = projGhostDrift(r.g.vx, r.g.vy, el, PROJ_BULLET_GHOST_DRIFT_TAU_MS);
+      r.p.x = r.g.p.x + d.dx; r.p.y = r.g.p.y + d.dy;
+      this.drawProjectile(r.gfx, r.p);
+      this.projBullet(r.gfx, r.p);
+      r.gfx.alpha *= a0;
+      r.gfx.visible = r.gfx.alpha > 0.01;
+      if (r.gfx.visible) anyBullet = true;
+    }
+    if (this.projBulletGhostLayer) this.projBulletGhostLayer.visible = anyBullet; // 残像が無いフレームは色の層を描かない
+    if (PROJ_AUDIT) { const t = this.projS6Last; this.projS6Last = this.projS6Now; this.projS6Now = t; }
+  }
+
+  /** 投影の枠が無い場面: 残像を全部隠す(列は store が尺で外す)。 */
+  private projGhostHide() {
+    for (const r of this.projGhostSprites.values()) { r.sp.visible = false; r.a = 0; }
+    for (const r of this.projBulletGhostGfx.values()) r.gfx.visible = false;
+    if (this.projBulletGhostLayer) this.projBulletGhostLayer.visible = false;
+  }
+
+  /**
+   * フェードインの明るさ(クリエイティブ監査: 闇から浮かび上がる): 不透明度より遅れて tint を暗い色→本来の色へ戻す。
+   * 今の tint(色付き個体・宿敵の金・点滅)の上に掛ける=色は潰さない。前のフレームに掛けた色は、誰も書き換えていなければ戻してから掛け直す
+   * (objShade と同じ型=掛け算が積もらない)。`?proj=0`・印が無い敵は何もしない。
+   */
+  private projFadeInTint(view: ActorView, e: Enemy, gameTime: number) {
+    const sp = view.sprite;
+    if (view.projFadeTintApplied !== undefined) {
+      if (Number(sp.tint) === view.projFadeTintApplied) sp.tint = view.projFadeTintOrig ?? 0xffffff;
+      view.projFadeTintApplied = undefined;
+    }
+    if (!PROJ_GAME_SPAWN || !this.projGameSceneOn || e.projFadeInAt === undefined || !projSpawnFadeApplies(e)) return;
+    const b = projFadeInBrightness(gameTime - e.projFadeInAt);
+    if (b >= 0.999) return;
+    const o = Number(sp.tint);
+    const r = Math.round(((o >> 16) & 255) * b), gg = Math.round(((o >> 8) & 255) * b), bb = Math.round((o & 255) * b);
+    sp.tint = (r << 16) | (gg << 8) | bb;
+    view.projFadeTintOrig = o;
+    view.projFadeTintApplied = Number(sp.tint);
+  }
+
   /**
    * 計器(段階6・作る物9): s6 aim(往復の差・ℓ_min で切った回数・照準の円とカーソルの差)/ s6 view(ゲームの画面と描画の画面の食い違い・
    * 余白 16px の帯は数えない・描画だけのズームの間は合否の外=別に数える)/ s6 arrow(画面の中だが薄い・北のため矢印にした数)/
@@ -10783,7 +11075,12 @@ export class PixiScene {
       if (d > a.camKillDiffMax) a.camKillDiffMax = d;
     }
     const mis = [...a.viewMismatch].map(([k, n]) => `${k}=${n}`).join(' ') || '0';
+    const sp = this.projS6Spawn;
+    const ov = projGhostOverflow();
+    const cull = [...a.cullOld].map(([k, n]) => `${k}=${n}`).join(' ') || '0';
     return [
+      `s6 spawn 画面の中で濃く描かれた最初のフレーム ${sp.visible}/${sp.total}(alpha max ${sp.aMax.toFixed(2)}) | recycle 残像なしで消えた ${sp.recycleMissing}/${sp.recycleEvents}・上限超え 敵${ov.enemy} 弾${ov.bullet}`,
+      `s6 cull 旧い矩形の間引き ${cull}`,
       `s6 aim rt max=${projAimStats.maxRoundTripPx.toFixed(3)}px clamp=${projAimStats.clamps}/${projAimStats.calls} | reticle-cursor max=${a.reticleDiffMax.toFixed(3)}px`,
       `s6 view mismatch ${mis} (checked ${a.viewChecked}・描画だけのズームの間 ${a.viewZoomExcluded}) | arrow 薄い/北→矢印 ${a.arrowDouble} | cam kill-center max=${a.camKillDiffMax.toFixed(1)}px`,
     ];
@@ -11866,6 +12163,8 @@ export class PixiScene {
   }
   /** 旧い画面の矩形(store と同じ zoomedViewportBounds・updateProjFrame で毎フレーム1回)。 */
   private projOldView: RegionRect = { left: 0, top: 0, right: 0, bottom: 0 };
+  /** このフレームにゲームの画面が組めているか(段階6・★#36〜#38 の枝の場面。updateProjFrame で毎フレーム1回)。 */
+  private projGameSceneOn = false;
 
   /**
    * 投影の時の置き物の取得範囲(作る物4・監査 A1): 行ごとの左右の幅(台形そのもの)で切った帯の列を this.projBands に書き、本数を返す。
@@ -17262,6 +17561,13 @@ export class PixiScene {
   private worldToUi(x: number, y: number): { x: number; y: number } {
     return this.L.uiLayer.toLocal({ x, y }, this.L.world);
   }
+  /** ?proj=1: カーソルの画面点(論理座標・MouseControls と同じ)→ uiLayer の座標(投影の枠の表示座標を経て worldToUi)。 */
+  private projCursorToUi(sx: number, sy: number): { x: number; y: number } {
+    const f = this.projFrame;
+    if (!f) return { x: sx, y: sy };
+    const sc = f.wgScale > 0 ? f.wgScale : 1;
+    return this.worldToUi((sx - f.wgX) / sc + f.camX - f.shakeX, (sy - f.wgY) / sc + f.camY - f.shakeY);
+  }
   /** uiLayer の座標で測った world の倍率(=ズーム。world.scale は常に1なので読んではいけない)。 */
   private worldUiScale(): number {
     const a = this.worldToUi(0, 0), b = this.worldToUi(100, 0);
@@ -19870,6 +20176,19 @@ export class PixiScene {
         projected: pjE || undefined, moving: pjE || undefined,
       });
     }
+    // ---- ?proj=1 段階6: 回収の残像の影(本体の残像と同じ濃さでフェード=影だけパッと消えない・流れた足元に落とす) ----
+    if (this.projFrame) {
+      for (const [k, r] of this.projGhostSprites) {
+        if (!r.sp.visible || r.a <= 0.01 || r.g.e.type === 'phillboss') continue;
+        place({
+          id: 'pghost:' + k, x: r.fx, y: r.fy,
+          rawW: r.rawW, rawH: r.rawH, texture: r.sp.texture,
+          alpha: this.projLooseFade(r.fx, r.fy, false), shadowFade: projGhostAlpha(r.g.at, useGameStore.getState().gameTime) * r.a0,
+          flip: r.rsX < 0, skewX: r.sp.skew.x, heightPx: 0,
+          projected: true, moving: true,
+        });
+      }
+    }
     // ---- 裏ボス討伐フェード(★致命4修正: 討伐の瞬間に影だけ消え、2.6秒間「影の無い巨体」が
     // 残っていた)。`store.bossCorpse` は `syncBossCorpse` が `bossCorpseSprite` へ焼く
     // (anchor 0.5,0.5・alpha=討伐フェードそのもの)。syncBossCorpse は syncShadows より後に走るため
@@ -21450,6 +21769,8 @@ export class PixiScene {
       const t = this.goalTalkFadeFrom ? Math.min(1, (now - this.goalTalkFadeFrom) / GOAL_TALK_ENEMY_FADE_MS) : 0;
       this.goalTalkFade = 1 - t * t * (3 - 2 * t);
     }
+    // ?proj=1 段階6(★#37・3-9o イ・ケ7): 回収の残像は、敵の絵が今フレームの新しい中身で塗り替えられる前に、前のフレームの絵を写して始める。
+    if (this.projFrame) this.projGhostBegin(enemies, gameTime);
     // Enemies (mark-and-sweep pool)
     const seen = new Set<string>();
     for (const e of enemies) {
@@ -21472,6 +21793,7 @@ export class PixiScene {
       try {
         this.drawEnemy(view, e, gameTime, now); this.drawKatanaCuts(view, e, now);
         if (this.projFrame) view.projDrawnFrame = this.projFrameNo; // ?proj=1: 描き切った物だけ後掛けする(§3-5k 作る物1)
+        if (this.projFrame || view.projFadeTintApplied !== undefined) this.projFadeInTint(view, e, gameTime); // ?proj=1 段階6: 闇から浮かび上がる
       } catch (err) {
         if (!PixiScene.enemyDrawErrLogged) { PixiScene.enemyDrawErrLogged = true; console.error('[pixiScene] drawEnemy error (suppressed):', err); }
         // v0.25.3324: 実機ではconsoleが見えず例外源を特定できない(アクラシエル3度目の報告)。
@@ -21492,7 +21814,10 @@ export class PixiScene {
         } catch { /* 最終フォールバックすら失敗したら諦める(次フレームでまた試す) */ }
       }
       this.projDrawOwner = null;
+      if (PROJ_AUDIT && this.projFrame) this.projS6EnemyDrawn(view, e, gameTime);
     }
+    if (this.projFrame) this.projGhostDraw(gameTime);
+    else this.projGhostHide();
     for (const [id, view] of this.enemies) {
       if (!seen.has(id)) {
         view.light.destroy();
@@ -28699,7 +29024,9 @@ export class PixiScene {
       view.projPhill = e.type === 'phillboss';
       view.projD = view.projPhill ? 1 : this.depthScaleEnemy(fb.footY);
       view.projHx = e.x + e.width / 2; view.projHy = e.y;
-      const sa = projSpawnFadeApplies(e) ? this.projSpawnFade(fb.footX, fb.footY) : 1;
+      // ★#36(3-9o イ): ゲーム側の湧きの枝が立っている場面では、位置のフェード(V24)を撤去し時間のフェード(store の projFadeInAt)を読むだけ。
+      const sa = !projSpawnFadeApplies(e) ? 1
+        : (PROJ_GAME_SPAWN && this.projGameSceneOn ? projEnemyFadeAlpha(e, gameTime) : this.projSpawnFade(fb.footX, fb.footY));
       if (PROJ_AUDIT) {
         const prev = this.projSpawnPrevA.get(e.id);
         if (prev !== undefined) this.projActorAudit.spawnDaMax = Math.max(this.projActorAudit.spawnDaMax, Math.abs(sa - prev));
@@ -45883,6 +46210,7 @@ export class PixiScene {
     const flyers = new Set<string>();
     for (const e of enemies) if (e.type === 'bat') flyers.add(e.id);
     for (const [id, v] of this.enemies) kinds.set(v.container, { cls: 'enemy', airborne: flyers.has(id), main: v.sprite });
+    for (const r of this.projGhostSprites.values()) kinds.set(r.sp, { cls: 'enemy', airborne: r.g.e.type === 'bat', main: r.sp }); // ?proj=1 段階6: 回収の残像も敵と同じ地面の明るさ
     for (const t of this.trees.values()) kinds.set(t.sprite, { cls: 'tree', airborne: false, main: t.sprite });
     const prop: ObjShadeKind = { cls: 'prop', airborne: false };
     const extras: ObjShadeExtra[] = [];
@@ -48942,6 +49270,8 @@ export class PixiScene {
         // ?proj=1(段階6・V6・3-9e): 置く点を地面の点 G と高さ h に分けて投影する(描く距離・地平線のフェードは掛けない=自分の照準は消さない)。
         //   マウス・吸い付いていない=G はカーソルの地面の点(h=0)/吸い付いている=G は敵の足元・h は頭の高さ/
         //   タッチ・キー=G は主人公の足元の行+aim×130・h は主人公の中心の高さ。円の大きさは画面で一定(今どおり)。
+        // 地面に寝かせた照準(段階6・クリエイティブ監査): 地面の点 G の s で大きさを掛け、縦はその行の縦の詰めで一様に潰す(真円を倒した楕円)。
+        let ringSx = 1, ringSy = 1, skyK = 0;
         if (pf) {
           const rx = cx + player.phillReticleDX, ry = cy + player.phillReticleDY;
           let gy = ry, h = 0;
@@ -48950,8 +49280,28 @@ export class PixiScene {
           if (snapE) { gy = snapE.y + snapE.height; h = gy - ry; }
           else if (!gs.mouseAim) { h = player.height / 2; gy = ry + h; }
           const rp = projectInto(pf, rx, gy, this.projScratch);
+          const gS = rp.s;
           aimG = this.worldToUi(rp.x, rp.y - h * rp.s);
-          if (PROJ_AUDIT && !snapE && gs.mouseAim) {
+          // 縦の詰め: world の 1px を南へ進んだ時の表示の縦 ÷ 横(=s)。地平線の際で薄く、手前で丸に近い。
+          const dl = projLocalYOfWorld(pf, gy + 1) - projLocalYOfWorld(pf, gy);
+          const squash = Math.min(1, Math.max(0.12, dl / Math.max(1e-6, gS)));
+          ringSx = Math.min(1.6, Math.max(0.35, gS)); ringSy = ringSx * squash;
+          // 空を指して ℓ_min で止まっている(マウス・吸い付いていない): 見た目を変える(薄く・欠けた円・カーソルへ細い線)。切り替えは慣性で。
+          const skyNow = !!gs.mouseAim && !snapE && projAimStats.lastClamped;
+          const rt = this.projReticleSm;
+          const dtR = rt.at > 0 ? Math.min(0.1, Math.max(0, (now - rt.at) / 1000)) : 0;
+          rt.at = now;
+          rt.k += ((skyNow ? 1 : 0) - rt.k) * (1 - Math.exp(-dtR / 0.12));
+          if (rt.k < 0.002 && !skyNow) rt.k = 0;
+          skyK = rt.k * rt.k * (3 - 2 * rt.k);
+          // 止まる瞬間は硬く当てず、減速して寄る(空を指している間と、戻る途中だけ位置を追いかける)。
+          if (rt.k > 0 && rt.has) {
+            const fk = 1 - Math.exp(-dtR / 0.09);
+            rt.x += (aimG.x - rt.x) * fk; rt.y += (aimG.y - rt.y) * fk;
+            aimG = { x: rt.x, y: rt.y };
+          } else { rt.x = aimG.x; rt.y = aimG.y; }
+          rt.has = true;
+          if (PROJ_AUDIT && !snapE && gs.mouseAim && rt.k === 0) {
             // 計器 s6 aim: カーソルの画面点と照準の円の描いた点(画面px)の差(吸い付いていない・照準がカーソルの点に居る時・0.5px 以内のはず)。
             const cur = getLastCursorScreen();
             const mw = gs.mouseAim;
@@ -48977,12 +49327,45 @@ export class PixiScene {
         const snapped = !isSignalGun && player.phillSnapEnemyId != null;
         const ringColor = isSignalGun ? 0xfbbf24 : (snapped ? 0x34d399 : 0xf97316); // 琥珀=シグナル / 緑=ヘッドショット狙撃可 / 橙=通常
         const dotColor = isSignalGun ? 0xfde68a : (snapped ? 0xa7f3d0 : 0xfca5a5);
+        if (pf) {
+          // ?proj=1: 地面に寝かせた楕円(上下左右対称)。空を指している間は薄く・欠けた円にし、カーソルへ細い線を引く。
+          const R = snapped ? 11 : 9;
+          const rxE = R * ringSx, ryE = R * ringSy;
+          const aR = a * (1 - 0.55 * skyK);
+          if (skyK < 0.98) rg.ellipse(ax, ay, rxE, ryE).stroke({ width: snapped ? 2.5 : 2, color: ringColor, alpha: aR * (1 - skyK) });
+          if (skyK > 0.02) {
+            // 欠けた円: 8本の弧のうち、上(空の側)の3本を抜く=地面の上にだけ残る。
+            for (let i = 0; i < 8; i++) {
+              if (i >= 5) continue; // 5,6,7=上半分寄り(角度 π+…)
+              const t0 = (i / 8) * Math.PI * 2 + 0.12, t1 = ((i + 1) / 8) * Math.PI * 2 - 0.12;
+              const n = 6;
+              for (let j = 0; j <= n; j++) {
+                const t = t0 + (t1 - t0) * (j / n);
+                const px = ax + Math.cos(t) * rxE, py = ay + Math.sin(t) * ryE;
+                if (j === 0) rg.moveTo(px, py); else rg.lineTo(px, py);
+              }
+            }
+            rg.stroke({ width: 1.5, color: ringColor, alpha: aR * skyK });
+            const cur = getLastCursorScreen();
+            if (cur) {
+              const cu = this.projCursorToUi(cur.x, cur.y);
+              rg.moveTo(ax, ay - ryE).lineTo(cu.x, cu.y).stroke({ width: 1, color: ringColor, alpha: aR * skyK * 0.7 });
+              rg.circle(cu.x, cu.y, 1.6).fill({ color: dotColor, alpha: aR * skyK * 0.8 });
+            }
+          }
+          rg.ellipse(ax, ay, 3 * ringSx, 3 * ringSy).fill({ color: dotColor, alpha: aR });
+          const hx0 = 13 * ringSx, hx1 = 6 * ringSx, hy0 = 13 * ringSy, hy1 = 6 * ringSy;
+          rg.moveTo(ax - hx0, ay).lineTo(ax - hx1, ay).moveTo(ax + hx1, ay).lineTo(ax + hx0, ay)
+            .moveTo(ax, ay - hy0).lineTo(ax, ay - hy1).moveTo(ax, ay + hy1).lineTo(ax, ay + hy0)
+            .stroke({ width: 1.5, color: ringColor, alpha: aR * 0.8 });
+        } else {
         rg.circle(ax, ay, snapped ? 11 : 9).stroke({ width: snapped ? 2.5 : 2, color: ringColor, alpha: a });
         rg.circle(ax, ay, 3).fill({ color: dotColor, alpha: a });
         // 照準の十字(小)。
         rg.moveTo(ax - 13, ay).lineTo(ax - 6, ay).moveTo(ax + 6, ay).lineTo(ax + 13, ay)
           .moveTo(ax, ay - 13).lineTo(ax, ay - 6).moveTo(ax, ay + 6).lineTo(ax, ay + 13)
           .stroke({ width: 1.5, color: ringColor, alpha: a * 0.8 });
+        }
       }
     }
     // ドローンブーメランのクールダウンサークルは廃止(復帰時に頭上マーク+SEで通知=updateBoomerangReadyMark)。
@@ -49281,6 +49664,34 @@ export class PixiScene {
   /** プレイヤーが今いるエリア(world/pois.playerAreaSector・ヒステリシスのため前の値を持つ)。 */
   private poiArea: number | null = null;
   private poiAreaLastGt = 0;
+  /** ?proj=1 段階6: 矢印の「見えていない」の慣性(対象ごと・前のフレームの近い点で見分ける)。 */
+  private arrowHideRecs: { x: number; y: number; h: number; used: boolean }[] = [];
+  private arrowHideNext: { x: number; y: number; h: number; used: boolean }[] = [];
+  private arrowHideDt = 0;
+  private arrowHideAt = 0;
+  private arrowHideBegin(nowMs: number) {
+    const t = this.arrowHideRecs; this.arrowHideRecs = this.arrowHideNext; this.arrowHideNext = t;
+    this.arrowHideNext.length = 0;
+    for (const r of this.arrowHideRecs) r.used = false;
+    this.arrowHideDt = this.arrowHideAt > 0 ? Math.min(0.1, Math.max(0, (nowMs - this.arrowHideAt) / 1000)) : 0;
+    this.arrowHideAt = nowMs;
+  }
+  private arrowHiddenEased(x: number, y: number, raw: boolean, _nowMs: number): boolean {
+    let best: { x: number; y: number; h: number; used: boolean } | null = null, bd = 120 * 120;
+    for (const r of this.arrowHideRecs) {
+      if (r.used) continue;
+      const d = (r.x - x) ** 2 + (r.y - y) ** 2;
+      if (d < bd) { bd = d; best = r; }
+    }
+    const want = raw ? 1 : 0;
+    let h = want;
+    if (best) {
+      best.used = true;
+      h = best.h + (want - best.h) * (1 - Math.exp(-this.arrowHideDt / 0.14)); // 約 0.14 秒の慣性
+    }
+    if (this.arrowHideNext.length < 64) this.arrowHideNext.push({ x, y, h, used: false });
+    return h >= 0.5;
+  }
   private syncArrows(
     pickups: Pickup[],
     castle: CastleEvent,
@@ -49322,6 +49733,8 @@ export class PixiScene {
     const stA = useGameStore.getState();
     const pFootX = stA.player.x + stA.player.width / 2, pFootY = stA.player.y + stA.player.height;
     const scrA = { x: 0, y: 0 };
+    const aNow = performance.now();
+    this.arrowHideBegin(aNow);
     let memoA = NaN, memoB = NaN;
     let ringRawX = 0, ringRawY = 0; // 押し出しの起点(下でリング中心を出した後に入る)
     const toScr = (x: number, y: number): { x: number; y: number } => {
@@ -49330,7 +49743,9 @@ export class PixiScene {
       if (!pfA) { scrA.x = originX + x * wz; scrA.y = originY + y * wz; return scrA; }
       const pp = projWorldToScreenInto(pfA, x, y, this.projScratch, scrA);
       const north = !pp.inDomain || pp.l < lMinA;
-      const hidden = north || this.projBaseAlpha(pp) < 0.5;
+      // 濃さ 0.5 を境に画面の中の位置⇔縁を瞬間で行き来しない: 対象ごとの「見えていない」度合いを慣性で寄せ、半分を越えた側に倒す
+      // (地平線の際をうろつく物が毎フレーム矢印と画面の中を往復しない)。対象は前のフレームの近い点で見分ける。
+      const hidden = this.arrowHiddenEased(x, y, north || this.projBaseAlpha(pp) < 0.5, aNow);
       if (north) projArrowTargetInto(pfA, pFootX, pFootY, x, y, lMinA, this.projScratch, scrA);
       if (hidden && scrA.x >= 0 && scrA.x <= this.screenW && scrA.y >= 0 && scrA.y <= this.screenH) {
         // 画面の中の薄い/北の点: リング中心→点の向きのまま、画面の縁の 2px 外へ押し出す(=画面外として矢印を出す)。
@@ -49370,6 +49785,14 @@ export class PixiScene {
     ringRawX = pcsX; ringRawY = pcsY;
     const cxC = Math.min(Math.max(pcsX, marginX), this.screenW - marginX);
     const cyC = Math.min(Math.max(pcsY, marginTop), this.screenH - marginBottom);
+    // ?proj=1 段階6(クリエイティブ監査): 縁の矢印は HUD の会話窓の矩形を避けて縁に沿わせる(余白は今の縁の帯 marginX/Top/Bottom のまま)。
+    // ?proj=0 は今のまま(素通し)。
+    const avoidList = pfA ? [...getHudAvoidRects()] : null;
+    const arrowAvoid = (x: number, y: number): [number, number] => {
+      if (!avoidList || avoidList.length === 0) return [x, y];
+      const q = slideOutOfRects(x, y, avoidList, 18, marginX, this.screenW - marginX, marginTop, this.screenH - marginBottom);
+      return [q.x, q.y];
+    };
     const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 220);
     for (const p of pickups) {
       // v0.25.3161(社長指示「ステージ7の宝箱は下のギリギリ画面外に設置(マークが出るくらいのとこ)」):
@@ -49396,8 +49819,7 @@ export class PixiScene {
       if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
       else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
       if (!isFinite(tdist)) continue;
-      const ex = cxC + dx * tdist;
-      const ey = cyC + dy * tdist;
+      const [ex, ey] = arrowAvoid(cxC + dx * tdist, cyC + dy * tdist);
       const color = parseInt(colorStr.slice(1), 16);
 
       g.rect(ex - 8, ey - 6, 16, 12).fill({ color: 0x1f2937, alpha: 0.9 });
@@ -49429,8 +49851,7 @@ export class PixiScene {
       if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
       else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
       if (isFinite(tdist)) {
-        const ex = cxC + dx * tdist;
-        const ey = cyC + dy * tdist;
+        const [ex, ey] = arrowAvoid(cxC + dx * tdist, cyC + dy * tdist);
         const color = castle.bossSpawned ? 0xef4444 : 0xf97316;
 
         g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.88 });
@@ -49466,8 +49887,7 @@ export class PixiScene {
       if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
       else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
       if (isFinite(tdist)) {
-        const ex = cxC + dx * tdist;
-        const ey = cyC + dy * tdist;
+        const [ex, ey] = arrowAvoid(cxC + dx * tdist, cyC + dy * tdist);
         const color = 0xfbbf24;
         const accent = 0xa855f7;
 
@@ -49502,7 +49922,7 @@ export class PixiScene {
           if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
           else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
           if (isFinite(tdist)) {
-            const ex = cxC + dx * tdist, ey = cyC + dy * tdist;
+            const [ex, ey] = arrowAvoid(cxC + dx * tdist, cyC + dy * tdist);
             const color = 0x34d399; // 帰還=エメラルド
             g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.88 });
             g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.92 });
@@ -49536,7 +49956,7 @@ export class PixiScene {
           if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
           else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
           if (isFinite(tdist)) {
-            const ex = cxC + dx * tdist, ey = cyC + dy * tdist;
+            const [ex, ey] = arrowAvoid(cxC + dx * tdist, cyC + dy * tdist);
             const color = 0x4ade80; // 味方NPC=緑
             g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.88 });
             g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.92 });
@@ -49574,7 +49994,7 @@ export class PixiScene {
         let fx = this.escortMarkFx.get(dn.id);
         if (!fx) { fx = { visible: true, sinceMs: nowT, lastX: 0, lastY: 0, lastAngle: 0, downedAt: dn.downedAt }; this.escortMarkFx.set(dn.id, fx); }
         else if (!fx.visible) { fx.visible = true; fx.sinceMs = nowT; }
-        fx.lastX = cxC + dx * tdist; fx.lastY = cyC + dy * tdist; fx.lastAngle = angle; fx.downedAt = dn.downedAt;
+        [fx.lastX, fx.lastY] = arrowAvoid(cxC + dx * tdist, cyC + dy * tdist); fx.lastAngle = angle; fx.downedAt = dn.downedAt;
       }
       // 描く: 出ている印 + 消えていく最中の印(最後に出ていた位置で下へ抜ける)。
       for (const [id, fx] of this.escortMarkFx) {
@@ -49613,8 +50033,7 @@ export class PixiScene {
       if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
       else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
       if (!isFinite(tdist)) continue;
-      const ex = cxC + dx * tdist;
-      const ey = cyC + dy * tdist;
+      const [ex, ey] = arrowAvoid(cxC + dx * tdist, cyC + dy * tdist);
       const color = 0xef4444; // 脅威=赤
       g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
       g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.7 + 0.25 * pulse });
@@ -49644,8 +50063,7 @@ export class PixiScene {
       if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
       else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
       if (!isFinite(tdist)) continue;
-      const ex = cxC + dx * tdist;
-      const ey = cyC + dy * tdist;
+      const [ex, ey] = arrowAvoid(cxC + dx * tdist, cyC + dy * tdist);
       const color = 0xbef264; // screamer演出と同じ毒々しい黄緑(叫喚コールアウト/FXと同系色)
       g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
       g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.7 + 0.25 * pulse });
@@ -49685,8 +50103,7 @@ export class PixiScene {
       if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
       else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
       if (!isFinite(tdist)) continue;
-      const ex = cxC + dx * tdist;
-      const ey = cyC + dy * tdist;
+      const [ex, ey] = arrowAvoid(cxC + dx * tdist, cyC + dy * tdist);
       // 色は城(赤)/商人(0xfbbf24)/帰還サークル(0x34d399)と重複しない既存系統(★未決#4の見せ方裁定待ち)。
       const color = 0x38bdf8; // 出現時のトリガー円(spawnRing)と同じ水色
       g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.88 });
@@ -49711,8 +50128,7 @@ export class PixiScene {
         if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
         else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
         if (isFinite(tdist)) {
-          const ex = cxC + dx * tdist;
-          const ey = cyC + dy * tdist;
+          const [ex, ey] = arrowAvoid(cxC + dx * tdist, cyC + dy * tdist);
           const color = event.kind === 'boss' ? 0xef4444 : event.kind === 'rescue' ? 0x4ade80 : 0x38bdf8;
           g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
           g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.95 });
@@ -49741,8 +50157,7 @@ export class PixiScene {
       if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
       else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
       if (!isFinite(tdist)) continue;
-      const ex = cxC + dx * tdist;
-      const ey = cyC + dy * tdist;
+      const [ex, ey] = arrowAvoid(cxC + dx * tdist, cyC + dy * tdist);
       const color = 0x22d3ee; // シアン=重要データ(クリア目標)
 
       g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.88 });
@@ -49775,7 +50190,9 @@ export class PixiScene {
       else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
       if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
       else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
-      return isFinite(tdist) ? { ex: cxC + dx * tdist, ey: cyC + dy * tdist, dx, dy } : null;
+      if (!isFinite(tdist)) return null;
+      const [ex, ey] = arrowAvoid(cxC + dx * tdist, cyC + dy * tdist);
+      return { ex, ey, dx, dy };
     };
     const lerpC = (c1: number, c2: number, t: number): number => {
       const r = ((c1 >> 16) & 255) + ((((c2 >> 16) & 255) - ((c1 >> 16) & 255)) * t);
@@ -49974,7 +50391,7 @@ export class PixiScene {
         rec = { shownAt: baseArrowNow - back, hiddenAt: null, ex: 0, ey: 0, dx, dy, angle, color, captured };
         this.baseArrowRecs.set(bKey, rec);
       }
-      rec.ex = cxC + dx * tdist; rec.ey = cyC + dy * tdist; rec.dx = dx; rec.dy = dy; rec.angle = angle; rec.color = color; rec.captured = captured;
+      [rec.ex, rec.ey] = arrowAvoid(cxC + dx * tdist, cyC + dy * tdist); rec.dx = dx; rec.dy = dy; rec.angle = angle; rec.color = color; rec.captured = captured;
       const bEase = weaponSpawnEase(baseArrowNow - rec.shownAt, Infinity);
       drawBaseArrow(rec, bEase.alphaMul, bEase.dy); // 縁の外側から内へ滑り込む
     }
@@ -50003,7 +50420,7 @@ export class PixiScene {
       if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
       else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
       if (!isFinite(tdist)) continue;
-      const ex = cxC + dx * tdist, ey = cyC + dy * tdist;
+      const [ex, ey] = arrowAvoid(cxC + dx * tdist, cyC + dy * tdist);
       const color = 0xffd700; // ネームドと同じ金(NAMED_TINT)
       g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
       g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.95 });

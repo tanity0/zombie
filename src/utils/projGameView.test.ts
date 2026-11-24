@@ -7,7 +7,7 @@ import {
 } from './perspectiveProjection';
 import {
   projFrameBase, projGameFrame, projGameViewContains, projGameViewBands, projGameViewRect, projGameEdgePoint, projGameBoxOnScreen,
-  projGameZoomPlacement, projGameVisibleRows, projGameRowSpan, projGameSpawnRect, projGameRecycleRect, projFadeInAlpha, PROJ_FADE_MS,
+  projGameZoomPlacement, projGameVisibleRows, projGameRowSpan, projGameSpawnRect, projGameRecycleRect, projFadeInAlpha, projFadeInBrightness, PROJ_FADE_IN_DARK, PROJ_FADE_MS,
   PROJ_GAME_OVERSCAN, PROJ_REF_PHONE_H, PROJ_REF_PHONE_W, PROJ_SPAWN_LONG_EXTRA_PX, type ProjFrameBaseParams,
 } from './projGameView';
 import { horizonForestFootLocalY, horizonFadeAlphaAt, horizonForestHeightFor, horizonForestYFor, type HorizonForestInput } from './horizonForestLine';
@@ -281,7 +281,7 @@ describe('★#36 湧く範囲・★#37 回収の範囲(3-9o ア・ウ)', () => {
 });
 
 describe('湧きのフェードイン projFadeInAlpha(3-9o イ)', () => {
-  it('0→1 の単調・600ms で 1・経過 0 以下は 0', () => {
+  it('0→1 の単調・900ms で 1・経過 0 以下は 0', () => {
     let prev = -1;
     for (let t = -100; t <= PROJ_FADE_MS + 100; t += 10) {
       const a = projFadeInAlpha(t);
@@ -294,6 +294,17 @@ describe('湧きのフェードイン projFadeInAlpha(3-9o イ)', () => {
     const d0 = projFadeInAlpha(30) - projFadeInAlpha(0);
     const dm = projFadeInAlpha(315) - projFadeInAlpha(285);
     expect(d0).toBeLessThan(dm);
+    const d1 = projFadeInAlpha(PROJ_FADE_MS) - projFadeInAlpha(PROJ_FADE_MS - 30);
+    expect(d1).toBeLessThan(dm);
+  });
+  it('明るさは不透明度より遅れて戻る(前半は暗い輪郭・後半で色が乗る)・単調・尺で 1', () => {
+    let prev = 0;
+    for (let t = 0; t <= PROJ_FADE_MS; t += 10) { const b = projFadeInBrightness(t); expect(b).toBeGreaterThanOrEqual(prev - 1e-12); prev = b; }
+    expect(projFadeInBrightness(0)).toBeCloseTo(PROJ_FADE_IN_DARK, 9);
+    expect(projFadeInBrightness(PROJ_FADE_MS)).toBe(1);
+    // 不透明度が半分を越えた時刻でも、明るさはまだ半分に届かない
+    let tHalf = 0; while (projFadeInAlpha(tHalf) < 0.5) tHalf++;
+    expect(projFadeInBrightness(tHalf)).toBeLessThan(0.5);
   });
 });
 

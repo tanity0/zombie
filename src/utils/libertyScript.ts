@@ -201,6 +201,8 @@ export interface LibArrow { x: number; y: number; bornAt: number; fireAt: number
 export const libVolleyArrows = (
   bounds: { left: number; right: number; top: number; bottom: number },
   target: { x: number; y: number }, start: number, rng: () => number,
+  /** ?proj=1 段階6(★#38=A・V43): 遠くの矢の置き場所を見える地面の帯から選ぶ(乱数2本)。`?proj=0` では渡さない。 */
+  pick?: (u: number, v: number) => { x: number; y: number },
 ): LibArrow[] => {
   const out: LibArrow[] = [];
   for (let i = 0; i < LIB_VOLLEY_ARROWS; i++) {
@@ -209,9 +211,12 @@ export const libVolleyArrows = (
       const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * LIB_VOLLEY_NEAR_SPREAD_PX;
       x = target.x + Math.cos(a) * r; y = target.y + Math.sin(a) * r;
     } else {
-      const top = bounds.top + (bounds.bottom - bounds.top) * LIB_VOLLEY_SKY_FRAC;
-      x = bounds.left + rng() * (bounds.right - bounds.left);
-      y = top + rng() * (bounds.bottom - top);
+      if (pick) { const u = rng(), v = rng(); const q = pick(v, u); x = q.x; y = q.y; } // 乱数の順は今と同じ(1本目=横・2本目=縦)
+      else {
+        const top = bounds.top + (bounds.bottom - bounds.top) * LIB_VOLLEY_SKY_FRAC;
+        x = bounds.left + rng() * (bounds.right - bounds.left);
+        y = top + rng() * (bounds.bottom - top);
+      }
     }
     // 斉射の形(クリエイティブ監査 #10): 最初の数本→中ほどが密→遅れて数本。一様にばらさない。
     const straggler = i >= LIB_VOLLEY_ARROWS - LIB_VOLLEY_STRAGGLERS;

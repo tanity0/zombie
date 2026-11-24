@@ -1,6 +1,7 @@
 // 亡霊(変異体)の1フレーム(research/WRAITH_MUTANT.md)。useGameLoop が毎フレーム呼ぶ。
 // 移動は宇宙飛行群と同じく行ける帯(clampRectToPlayableArea)だけを通す(`placeAt`・浮いている=障害物は透き通る・§9)。
-import { projSeen } from './projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
+import { projSeen, projViewCam, projGameViewContains, projGameBandPick, projGameViewRect, type ProjGameView } from './projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
+import { projFadeHidden } from './projSpawnFade'; // ?proj=1 段階6: フェードイン中(濃さ 0.5 未満)は見えていない
 import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import type { Enemy } from '../types/game';
 import { useGameStore, PLAYER_BASE_SPEED, resolveBountyMove, type PumpkinBlast } from '../store/gameStore';
@@ -25,7 +26,7 @@ import {
   wraithGrowthStep, wraithGraveSolids, isWraithGrave, type WraithGrowthState, type WraithGrowth, WRAITH_CURSE_MARK_MS,
   WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_HOLD_MS, WRAITH_HEAD_Y_PX, wraithFloatFrame, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_RADIUS, WRAITH_SCREAM_DAMAGE, WRAITH_SCREAM_GAP_MIN_MS, WRAITH_SCREAM_GAP_MAX_MS,
   pickWraithSkill, type WraithSkill, isWraithPinch, wraithPinchNext, wraithBehindPoint, WRAITH_PINCH_STEP_GAP_MS, WRAITH_POINT_RAISE_MS, WRAITH_POINT_LOWER_MS, WRAITH_FLING_RANGE_PX, WRAITH_FLING_MIN_PLAYER_PX, WRAITH_FLING_MAX_PLAYER_PX, WRAITH_CURSE_GAP_MS, WRAITH_FLING_MIN, WRAITH_FLING_MAX,
-  isWraithForced, inWraithTerritory, WRAITH_HOME_ARRIVE_PX, WRAITH_TERRITORY_FORGET_MS, wraithSummonSpots, WRAITH_SUMMON_SCREEN_MAX, WRAITH_SUMMON_HORIZON_PAD_PX, WRAITH_SUMMON_BOTTOM_PAD_PX, WRAITH_SUMMON_STAGGER_MS, WRAITH_SUMMON_FRESH_MS,
+  isWraithForced, inWraithTerritory, WRAITH_HOME_ARRIVE_PX, WRAITH_TERRITORY_FORGET_MS, wraithSummonSpots, WRAITH_SUMMON_INSET_PX, WRAITH_SUMMON_SCREEN_MAX, WRAITH_SUMMON_HORIZON_PAD_PX, WRAITH_SUMMON_BOTTOM_PAD_PX, WRAITH_SUMMON_STAGGER_MS, WRAITH_SUMMON_FRESH_MS,
   WRAITH_FLING_HOLD_MS, wraithFlingLandings, pickWraithCurseGraves, wraithCurseLiftAt, WRAITH_CURSE_MAX, WRAITH_CURSE_PRE_MS, WRAITH_CURSE_HOVER_PX, WRAITH_CURSE_TAIL_MS,
 } from './wraithScript';
 
@@ -112,7 +113,7 @@ const flingOk = (m: Enemy, gt: number, nowMs: number, pcx: number, pcy: number, 
   const d = Math.hypot(mx - pcx, my - pcy);
   // 召喚(§15)で呼んだばかりのコウモリは近くても飛ばす(縦長の画面では200px以上の所に置き切れない=呼んだのに指差しで飛ばない、を作らない)。
   const fresh = m.wraithSummoned && m.spawnedAt !== undefined && gt - m.spawnedAt < WRAITH_SUMMON_FRESH_MS;
-  return (fresh || d >= WRAITH_FLING_MIN_PLAYER_PX) && d <= WRAITH_FLING_MAX_PLAYER_PX && inView(mx, my);
+  return (fresh || d >= WRAITH_FLING_MIN_PLAYER_PX) && d <= WRAITH_FLING_MAX_PLAYER_PX && !projFadeHidden(m, gt) && inView(mx, my);
 };
 const flingCandidates = (e: Enemy, enemies: readonly Enemy[], pcx: number, pcy: number, gt: number, nowMs: number, inView: (x: number, y: number) => boolean): Enemy[] => {
   const bx = e.x + e.width / 2, by = e.y + e.height / 2;
@@ -132,7 +133,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
   const st = useGameStore.getState();
   const bx = e.x + e.width / 2, by = e.y + e.height / 2;
   const patch: Partial<Enemy> = {};
-  const onScreen = projSeen(bx, by, 0, isPointInZoomedViewport(bx, by, st.camera, st.gameBounds, st.viewZoom));
+  const onScreen = !projFadeHidden(e, gt) && projSeen(bx, by, 0, isPointInZoomedViewport(bx, by, st.camera, st.gameBounds, st.viewZoom)); // フェードイン中 0.5 未満は見えていない
   const collapse = (e.bossFullStunUntil !== undefined && gt < e.bossFullStunUntil) || (e.stunUntil !== undefined && gt < e.stunUntil);
   const held = (e.rootUntil !== undefined && gt < e.rootUntil) || (e.liftUntil !== undefined && nowMs < e.liftUntil);
 
@@ -255,7 +256,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
       if (!s.summonSpots.length) {
         // 置き場所を決める前に状態が作り直された時の保険(溜めの始まりと同じ決め方)。
         const rv = renderedViewRect(st.camera.x, st.camera.y, st.gameBounds.width, st.gameBounds.height, st.viewZoom);
-        s.summonSpots = wraithSummonSpots(pcx, pcy, bx, by, { left: rv.left, right: rv.right, top: rv.horizonY + WRAITH_SUMMON_HORIZON_PAD_PX, bottom: rv.bottom - WRAITH_SUMMON_BOTTOM_PAD_PX });
+        s.summonSpots = wraithSummonSpots(pcx, pcy, bx, by, { left: rv.left, right: rv.right, top: rv.horizonY + WRAITH_SUMMON_HORIZON_PAD_PX, bottom: rv.bottom - WRAITH_SUMMON_BOTTOM_PAD_PX }, projSummonInside());
       }
       const bats: Enemy[] = s.summonSpots.map((q, i) => {
         const b = spawnEnemyAt('bat', q.x, q.y, gt);
@@ -476,7 +477,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
           // 置き場所を今決め、溜めの間そこに灰色の靄を溜める=叫びではなく「呼ぶ」技だと場所ごと分かる(クリエイティブ監査#7)。
           // 置ける所=実際に映る範囲のうち地平線より下・画面の下端の暗がりより上(CLAUDE.md「Y方向」の表の1行目・監査#2)。
           const rv = renderedViewRect(st.camera.x, st.camera.y, st.gameBounds.width, st.gameBounds.height, st.viewZoom);
-          const spots = wraithSummonSpots(pcx0, pcy0, bx, by, { left: rv.left, right: rv.right, top: rv.horizonY + WRAITH_SUMMON_HORIZON_PAD_PX, bottom: rv.bottom - WRAITH_SUMMON_BOTTOM_PAD_PX });
+          const spots = wraithSummonSpots(pcx0, pcy0, bx, by, { left: rv.left, right: rv.right, top: rv.horizonY + WRAITH_SUMMON_HORIZON_PAD_PX, bottom: rv.bottom - WRAITH_SUMMON_BOTTOM_PAD_PX }, projSummonInside());
           // 揃えない: 半径と角度に少し揺らぎ(横一列に整列しない・監査#4)。
           s.summonSpots = spots.map(q => {
             const dx = q.x - pcx0, dy = q.y - pcy0, d = Math.hypot(dx, dy) + rand(-24, 24), a = Math.atan2(dy, dx) + rand(-0.14, 0.14);
@@ -602,6 +603,17 @@ export const releaseWraithOwner = (s: WraithTickState): void => {
 };
 
 // ---- 近づくと地面から生えてくる物(§9) ----
+/**
+ * ?proj=1 段階6(★#38=A・V47): 召喚の置き場所の「置いてよい所」を投影のゲームの画面で(余白は今の物差しの写し=内側 WRAITH_SUMMON_INSET_PX・
+ * 地平線側 WRAITH_SUMMON_HORIZON_PAD_PX 北の点・下端側 WRAITH_SUMMON_BOTTOM_PAD_PX 南の点もまだ見えている所)。ゲームの画面が無い時は undefined(今の矩形)。
+ */
+const projSummonInside = (): ((q: { x: number; y: number }) => boolean) | undefined => {
+  const gv: ProjGameView | null = projViewCam();
+  if (!gv) return undefined;
+  const ins = -WRAITH_SUMMON_INSET_PX * gv.f.wgScale;
+  return q => projGameViewContains(gv, q.x, q.y - WRAITH_SUMMON_HORIZON_PAD_PX, ins) && projGameViewContains(gv, q.x, q.y + WRAITH_SUMMON_BOTTOM_PAD_PX, ins);
+};
+
 const growthState: WraithGrowthState = { nextAt: 0, seq: 0, lastSinkAt: -1e9 };
 let growthLastGt = 0;
 /** 亡霊の近くに墓石と花を生やす(毎フレーム)。伸び切った墓石は壁(world/wraithGraves へ写す)。 */
@@ -620,7 +632,12 @@ export const runWraithGrowths = (gt: number): void => {
     if (Math.hypot(r.x - (x - 20), r.y - (y - 16)) >= 2) return false;
     return !st.enemies.some(e => !isCorpse(e) && Math.abs(e.x + e.width / 2 - x) < e.width / 2 + 30 && Math.abs(e.y + e.height - y) < 40);
   };
-  const next = wraithGrowthStep(st.wraithGrowths, w ? { x: w.x + w.width / 2, y: w.y + w.height } : null, pc, view, canPlace, gt, Math.random, growthState);
+  // ?proj=1 段階6(★#38=A・V49): 見える地面に生やす(余白は今の写し=左右 30・下 30・上 60 の内側を画面px で)。消す範囲は囲む長方形。
+  const pgvG = projViewCam();
+  const next = pgvG
+    ? wraithGrowthStep(st.wraithGrowths, w ? { x: w.x + w.width / 2, y: w.y + w.height } : null, pc, projGameViewRect(pgvG), canPlace, gt, Math.random, growthState,
+      (u, v) => projGameBandPick(pgvG, -30 * pgvG.f.wgScale, u, v, 30 * pgvG.f.wgScale)) // 上だけ +30(=上 60)
+    : wraithGrowthStep(st.wraithGrowths, w ? { x: w.x + w.width / 2, y: w.y + w.height } : null, pc, view, canPlace, gt, Math.random, growthState);
   if (next !== st.wraithGrowths) {
     const old = new Set(st.wraithGrowths.map(g => g.id));
     for (const g of next) {

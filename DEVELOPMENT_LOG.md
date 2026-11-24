@@ -1,9 +1,17 @@
 # Development Log
 
+## v0.25.5778 — 遠近の投影 段階6(後半+監査の直し): 湧く範囲・湧きのフェードイン・回収と残像・吸い付き・置く範囲の行(?proj=1 のみ)【2026-11-24 14:45 JST】
+- 後半(Opus サブエージェント): ①★#36 の湧き(V21・`projGameSpawnRect`・spawnBounds は不変・乱数は同じ)②湧きのフェードイン(`Enemy.projFadeInAt`・`projFadeScreen`=min(viewZoom, 湧きの目標ズーム)を3秒保持・V24 の位置のフェードを撤去・対象区分は `projSpawnFadeApplies`)③★#37 の回収(V25/V25c=回収の矩形・V25b=余白0+★#38 の画面・V26 は中心 pcy・V28=`projPropRegionRect` を store と描画で共有・V76・V78 横長 2195・V27 は shouldRetireBehind だけ台形)④回収の残像(store `projRecycleGhosts` 上限24・`projBulletGhosts` 上限48)⑤★#40=B の吸い付き(新規 `utils/projAimSnap.ts`)⑥置く範囲・縁の点(V5・V38・V43・V47・V49・V50(193行)・V77)⑦計器 `s6 spawn/recycle/cull`。新規 `utils/projSpawnFade.ts`・`utils/hudAvoidRects.ts`。
+- 監査1巡目: 品質 (A)5(吸い付きが古いカメラ/揺れの向き/フェード中の「見えていない」の取りこぼし/gfPlayer に先読み/残像の色と影)・クリエイティブ10(弾の残像が赤=当たらない赤/残像が止まる/静止画/出と消えが対称/半透明の幽霊/光の写し/照準が寝ていない/空を指した時の手掛かり無し/矢印が会話窓に重なる/KILL の寄せ未確認)。**全部直した**: 弾の残像は灰・200ms/残像は直前の速度で減速して流れ(敵260ms・弾600ms の時定数)歩きのコマを送る/フェードイン 900ms ease-out・フェードアウト(敵)450ms ease-in/明るさを尺の30%から戻す=闇から浮かぶ/照準の円は地面の点の s と縦の詰めで寝かせた楕円/ℓ_min で止まる間は欠けた薄い円+カーソルへ細い線・約90ms で寄る/画面外の矢印は会話窓(DOM から測って `hudAvoidRects`)を避ける・切り替えに約0.14秒の慣性/`resetProjFadeState` を resetGame で/計器の誤検知/段階5の計器の過小/亡霊の生やす位置の余白。品質 (B) で積んだ物: 地平線の境目の farBackdrop の 'forest' 置き換えの不一致(既知)・矢印が出る/消える瞬間のフェード・ボスのマークの会話窓避け。
+- 検証: typecheck・eslint・循環import(新規なし)・**vitest 全部 11,690 件通過**。ヘッドレスで ①フェードイン(120/380/700/2000ms=透明→黒い輪郭→色)②敵の残像が流れながら薄れ脚のコマが変わる ③弾の残像が灰 ④PC の照準(手前=大きい円・奥=小さく平たい楕円・空=欠けた円+線)⑤矢印が会話窓を避ける ⑥KILL の寄せの戻り3コマ を目視(scratchpad s6c_*)。`s6 spawn` 0/11(直す前の測定: スマホ/PC・ズーム1/0.4 で 0)。`s6 recycle` は直した後の短い走行で回収が起きず未測(直す前は全条件 0)。phone-guard(?proj=0): 先頭の版でも同じ4画面(タイトル・charselect)が NG=元々の差・ゲーム中/ポーズは OK。
+- 監査の巡: 1巡目で (A) が出た=直した。2巡目は回さず実機へ(★#41・#42 の画を見ての決めと、吸い付き・s6 recycle の実機確認が残る)。
+- 憲法の自己点検: ?proj=1 の枝だけ。★#36 の上下 +64(縦持ちで上下から来る敵が少し遅く着く)/★#37 横長は PC の遠くの敵が早く回収される/V51 でフェード中の敵が「画面に0体」に数えられ追い上げの湧きが速まりうる=緩の時の湧きに触れうる(実機で見る)。?proj=0 は不変。
+- 状態変化: 遠近の投影 段階6 → 実装着地(残り: 実機確認・★#41/#42 の画での決め)。
+
 ## v0.25.5777 — 遠近の投影 段階6(前半): 逆投影・マウスの照準・ゲーム側の「見えている」・矢印・寄せ・描く範囲(?proj=1 のみ)【2026-11-24 11:54 JST】
 - 仕様 research/PERSPECTIVE_PROJECTION.md §3-9(§3-9o が正)。Opus サブエージェントが実装。
 - 作った物: ①逆投影の守り(`projUnprojectInto`・`projUnprojectLMin`=★#39 A・`projWorldToScreenInto`・`projArrowTargetInto`=★#42 A)②マウスの照準(`viewTransform.setViewProjection`・`screenToCameraLocal` の ?proj=1 枝・揺れは入れない)③ゲームの画面(新規 `utils/projGameView.ts`・`projFlag.ts`・`horizonForestLine.ts`・`groundBandLayout.ts`。pixiScene の `updateProjFrame` も `projFrameBase` を共有・gfCam/gfPlayer は表を別に持つ)④ゲーム側の「見えている」(★#38=A)の大半: V29〜V37・V39〜V42・V44〜V46・V48・V50(130行)・V51・V71〜V75 ⑤照準の円(V6)・反撃の矢印(V7)・KILL の寄せ(V53)・ジュンの支点(V54)・ピント帯(V55)⑥画面外の矢印(V8〜V10)⑦描く範囲(V12〜V15・V17)⑨計器 `s6 aim/view/arrow/cam` ⑩番人テスト `projEdgeGuard.test.ts` ⑪純関数テスト `projGameView.test.ts`(65件)。
-- **後半に残した物**: ★#36 の湧き(V21)と作る物8(V24 を時間のフェードへ)/★#37 の回収(V25〜V28・V76・V78)と残像/★#40=B の吸い付き(V4)/置く範囲・縁の点の行(V5・V38・V43・V47・V49・V50(193行)・V77)/計器 `s6 spawn/recycle/cull`。純関数は作ってある。
+- **後半に残した物**(→ v0.25.5778 で実装): ★#36 の湧き(V21)と作る物8(V24 を時間のフェードへ)/★#37 の回収(V25〜V28・V76・V78)と残像/★#40=B の吸い付き(V4)/置く範囲・縁の点の行(V5・V38・V43・V47・V49・V50(193行)・V77)/計器 `s6 spawn/recycle/cull`。純関数は作ってある。
 - 実装者が仕様の読みで決めた所(後で確かめる): V51 の基準のカメラ=表どおり gfCam/KILL の寄り先の点は地面の点として投影/store の farBackdrop はテクスチャ無しの 'forest' 置き換えを写していない。
 - 検証: typecheck・eslint(変えたファイル)・循環import(新規なし)・**vitest 全部 11,650 件通過**。ヘッドレス: PC の照準の往復の差 0.000px・地平線より上で ℓ_min に止まる・照準の円がカーソルの真下/縦持ちで北の薄い金箱に矢印。phone-guard(?proj=0)は OK 8・NG 6(ingame/pause は左下のデバッグ行の有無で高さ ±1・title は背景が1px=時刻の揺れと判断・HUD の配置は同じを並べた画で確認)。pc-guard は未実施。
 - 監査: 段階6を全部そろえてから品質監査+クリエイティブ監査を回す(前半だけでは出さない)。

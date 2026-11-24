@@ -17,6 +17,9 @@ import {
   commsSpeakerKey, shouldHideCompanionOnEntrance, shouldPlayCommsEntrance,
 } from '../utils/commsEntrance';
 import { playCommsEntrance, playCommsExit } from './commsMotionAnim';
+import { PROJ_ON } from '../utils/projFlag';
+import { setHudAvoidRect } from '../utils/hudAvoidRects';
+import { computeViewport } from '../utils/viewport';
 
 // 話者名 → 立ち絵のベースパス(spritePathの`${base}-0`)+枠幅。セリフ表示時に上半身(バスト)を出す。
 // 用語(社長決定v0.25.1851): この左上のモデル付き吹き出し=**「会話」**。会話は必ずモデル入り
@@ -453,6 +456,24 @@ export const NpcDialogue = () => {
   const comboActive = useGameStore(s => s.meleeFinishComboCount >= 2 && s.meleeFinishComboUntil >= s.gameTime); // HUD の COMBO(スキルが読むコンボの回数)と同じ条件
   const bannerActive = useGameStore(s => !!s.eventBannerText && s.eventBannerUntil >= s.gameTime);
   const landscape = useHudLandscape();
+  // ?proj=1 段階6: 画面の縁の矢印が会話窓を避けるよう、窓の矩形(論理座標)を測って置く(5回/秒・描画は読むだけ)。?proj=0 は測らない。
+  const outerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!PROJ_ON) return;
+    const measure = () => {
+      const el = outerRef.current;
+      const root = el?.closest('.game-frame') as HTMLElement | null;
+      if (!el || !root) { setHudAvoidRect('npcDialogue', null); return; }
+      const rr = root.getBoundingClientRect();
+      const b = el.getBoundingClientRect();
+      if (b.width <= 0 || b.height <= 0 || rr.width <= 0) { setHudAvoidRect('npcDialogue', null); return; }
+      const sc = computeViewport(rr.width, rr.height).scale || 1;
+      setHudAvoidRect('npcDialogue', { left: (b.left - rr.left) / sc, top: (b.top - rr.top) / sc, right: (b.right - rr.left) / sc, bottom: (b.bottom - rr.top) / sc });
+    };
+    measure();
+    const id = window.setInterval(measure, 200);
+    return () => { window.clearInterval(id); setHudAvoidRect('npcDialogue', null); };
+  }, []);
   const hasProc = useGameStore(s => s.skillProcFeed.length > 0); // 会話が無くてもスキル発動は同じ位置に出す
   // 入りの回数(社長指示2026-11-17)。板が消えている所から現れた時だけ増える=出たまま次の行へ替わる時は飛ばし直さず文字だけ替える。
   // 前回の描画の値から決める(React の「前の描画の情報を保つ」型=effect を挟まず、同じ描画で入りが始まる)。
@@ -489,6 +510,7 @@ export const NpcDialogue = () => {
   const boxShift = commsRowsShift(!!line, !!line?.slow);
   return (
     <div
+      ref={outerRef}
       data-phone-guard-skip // 会話は乱数で文言と長さが変わる=スマホの回帰チェック(scripts/phone-guard.mjs)の対象外
       className="absolute text-left"
       // PC の横長は画面の下(字幕の位置)へ。視線の落ち着く所・HUD の隙間に浮かせない(クリエイティブ監査 #10)。

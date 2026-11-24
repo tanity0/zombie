@@ -1,5 +1,9 @@
 import { MAGNET_PULL_RADIUS_BY_LEVEL } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ半径(社長裁定2026-09-13)
-import { projSeen, projSeenPlayer, projViewCam, projGameScreenCenter } from '../utils/projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
+import { projSeen, projSeenPlayer, projViewCam, projViewPlayer, projGameRowHalfW, projGameBandPick, projGameViewContains, projGameScreenCenter, getProjGameView, projGameRecycleRect, projPropRegionRect, projEndingReentryHalfW, projBulletCullRadius } from '../utils/projGameView';
+import { PROJ_GAME_RECYCLE, PROJ_GAME_SNAP } from '../utils/projFlag';
+import type { ProjRecycleGhost, ProjBulletGhost } from '../utils/projSpawnFade';
+import { projAimFrameFrom, projHeadScreenDist2, type ProjAimSnapInput } from '../utils/projAimSnap';
+import { queueProjBulletGhost, projFadeHidden, resetProjFadeState } from '../utils/projSpawnFade'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import { canTogglePause } from '../utils/pauseGate';
 import type { RainArrow } from '../utils/arrowRain';
 import { tickSpawnWalk, resetSpawnWalk } from '../utils/spawnWalkBias';
@@ -386,7 +390,7 @@ import {
   type RunTelemetryEquipSnapshot, type RunTelemetryEquipSlotSnapshot,
 } from '../utils/runTelemetry';
 import { isPracticeRun, isNoProgressRun, practiceBossType, GUARDIAN_PHANTOM_LABEL } from '../utils/bossPractice';
-import { practiceDryAmmoTypes, practiceAmmoTypesToDrop, pickPracticeAmmoSpot } from '../utils/practiceAmmoResupply';
+import { practiceDryAmmoTypes, practiceAmmoTypesToDrop, pickPracticeAmmoSpot, PRACTICE_AMMO_PICKUP_SIZE, PRACTICE_AMMO_EDGE_INSET_X_FRAC, PRACTICE_AMMO_BOTTOM_PAD_PX } from '../utils/practiceAmmoResupply';
 import { renderedViewRect } from '../utils/spawnRefill';
 import { phantomDisplayLabel } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の表示名はその回の人格 // BOSS_MAKER.md §20-7-c / research/GHOST_BOSS.md
 // research/GHOST_BOSS.md v6: 幻影が受ける打撃の関所(被弾無敵+パリィ)。**7系統の全てがここを通る**。
@@ -1156,7 +1160,7 @@ const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s:
   if (locked || now - st.lastEscortTossAt < ESCORT_TOSS_CD_MS) return;
   if (escortShouldHoldForWelcome(st.activeEvent?.kind)) return;
   const targets = st.enemies.filter(e => e.stunUntil !== undefined && now < e.stunUntil
-    && escortKickTargetOk(e, now, pcx, pcy, projSeen(e.x + e.width / 2, e.y + e.height / 2, 0, isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, st.camera, st.gameBounds, st.viewZoom, 0)), st.escortKickAbort, e.id));
+    && escortKickTargetOk(e, now, pcx, pcy, !projFadeHidden(e, st.gameTime) && projSeen(e.x + e.width / 2, e.y + e.height / 2, 0, isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, st.camera, st.gameBounds, st.viewZoom, 0)), st.escortKickAbort, e.id));
   if (targets.length === 0) return;
   // ★プレイヤーの居る区画の担当兵士だけ(社長報告2026-10-16「区画外のNPCが飛んできて吹っ飛ばしに参加」)。拠点の無いステージは全員。
   const pSector = poiSectorIndex({ x: pcx, y: pcy });
@@ -5901,7 +5905,7 @@ const brawlerSecretReachTest = (st: GameState): ((e: Enemy) => boolean) => {
   if (pgv) { const c = projGameScreenCenter(pgv); vcx = c.x; vcy = c.y; }
   return e => {
     const q = meleeImpactPoint(vcx, vcy, e);
-    return projSeen(q.x, q.y, BR.BRAWLER_SECRET_REACH_OUT_PX, isPointInZoomedViewport(q.x, q.y, st.camera, st.gameBounds, st.viewZoom, BR.BRAWLER_SECRET_REACH_OUT_PX)); // 正の余白=外へ広げる(社長指示2026-11-12 案A・旧は -8=8px内側)
+    return !projFadeHidden(e, st.gameTime) && projSeen(q.x, q.y, BR.BRAWLER_SECRET_REACH_OUT_PX, isPointInZoomedViewport(q.x, q.y, st.camera, st.gameBounds, st.viewZoom, BR.BRAWLER_SECRET_REACH_OUT_PX)); // 正の余白=外へ広げる(社長指示2026-11-12 案A・旧は -8=8px内側)
   };
 };
 const brawlerSecretTargets = (st: GameState): string[] => {
@@ -10947,6 +10951,13 @@ interface GameState {
   libertyOrphanArrows: { ownerId: string; ownerX: number; hits: { x: number; y: number; radius: number; bornAt: number; fireAt: number }[]; stuck: { x: number; y: number; at: number; tilt: number }[] } | null;
   /** research/ASTRONAUT_HORDE.md §8 A7・§9: 宇宙飛行群が投げた物の台帳(予告+当たり)。投げ手とは別=倒れても最後まで飛んで当たる。 */
   astroThrows: AstroThrowEntry[];
+  /**
+   * ?proj=1 段階6(★#37・§3-9o イ・ケ7): 回収の残像(回収の瞬間に絵がゲームの画面に掛かっていた敵の写し)。上限24・各項目 600ms で外す。
+   * 描画は pooled の Sprite で前の位置に alpha 1→0 を描く(判定なし)。`?proj=0` では常に空。
+   */
+  projRecycleGhosts: ProjRecycleGhost[];
+  /** 同上の弾(V78 の半径で消えた弾のうち画面の中だった物)。上限48。 */
+  projBulletGhosts: ProjBulletGhost[];
   /** research/ASTRONAUT_HORDE.md §12-1: 宇宙飛行群の周りに降り注ぐ残骸の絵(落ちる・刺さる・沈む)。当たりは astroThrows の ambient の項目が持つ。 */
   astroScatter: AstroScatterPiece[];
   /** research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石と花(見た目+墓石は伸び切ったら壁=world/wraithGraves)。 */
@@ -10993,7 +11004,10 @@ interface GameState {
   // 投擲したスケボーが敵に当たった時の前方バッシュ(useGameLoop が衝突検出して呼ぶ)。
   skaterBoardHit: (x: number, y: number, dirX: number, dirY: number) => void;
   setSwipeDirection: (direction: { x: number; y: number } | null, strength?: number) => void;
-  setMouseAim: (screen: { x: number; y: number } | null) => void;
+  /** snap: ?proj=1 段階6(★#40=B)のカーソルの画面点と投影の枠のスカラー値(マウスの出来事の時だけ)。省略=写しは触らない。 */
+  setMouseAim: (screen: { x: number; y: number } | null, snap?: ProjAimSnapInput | null) => void;
+  /** ?proj=1 段階6(★#40=B・§3-9o ケ13・コ3): マウスの吸い付きの入力(カーソルの画面点+枠のスカラー値)。`?proj=0` では常に null。 */
+  mouseSnap: ProjAimSnapInput | null;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
   damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string, killerHint?: { type?: EnemyType; id?: string }, opts?: { dot?: boolean; knockback?: 'none' | { speed: number; dirX: number; dirY: number }; guardDir?: { x: number; y: number }; guardFrom?: { x: number; y: number }; leverGuard?: 'damageOnly' | 'none'; projectile?: boolean }) => boolean; // opts.projectile: 敵の弾の被弾(格闘の弱い構えで受けた時の押しを短くする・社長指示2026-11-13「ボスの弾の弾かれは少しだけ」) // opts.guardDir/guardFrom/leverGuard: ★格闘のレバーガード(research/BRAWLER.md §12-1c)の「攻撃の向き」の材料。guardDir=弾が飛んできた向き(弾の速度)/ guardFrom=爆発・範囲技の中心(爆心)/ leverGuard:'damageOnly'=掴み・演出つきの技(半減だけ掛け、押し・怯みは今どおり)・'none'=床と置かれた火(踏んでいる間ダメージを受け続ける物=「攻撃してきた相手」ではない=ガードにしない)。どれも未指定=被弾の点(fromX/Y)と攻撃してきた個体の位置から引く // opts.knockback: ★組み込みの被弾の押しの差し替え(research/BRAWLER_PHANTOM.md §4-8・格闘の幻影の段ごとの押し)。'none'=押さない(揺れの向きは残す)/ 速さと向き=その押し。未指定=今どおり / opts.dot: ★持続ダメージ(炎・延焼。UNIQUE_WEAPONS.md §17-6b)=HPと記録だけ減らし、怯み・ストップ・揺れ・全体の被弾無敵・反撃の窓・被弾で動くスキルを起こさない(敵ごとの被弾無敵は通常どおり) // killerHint: ★倒した相手の記録専用(リザルトの絵・宿敵昇格)。被弾無敵・被弾反撃には効かない(弾の発射元など、id を渡すと挙動が変わる経路用) // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
@@ -12054,6 +12068,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   signalStrikes: [],
   libertyOrphanArrows: null,
   astroThrows: [],
+  projRecycleGhosts: [],
+  projBulletGhosts: [],
+  mouseSnap: null,
   astroScatter: [],
   wraithGrowths: [],
   firstAidKitState: createFirstAidKitState(),
@@ -12846,13 +12863,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 吸い付くと進行方向の少し先に置けなくなる(武器の芯が消える)。PHILL/レールガンは従来どおり。
         const skipSnap = getActiveGun(player)?.key === SIGNAL_WEAPON_KEY;
         if (!skipSnap) {
+          // ?proj=1 段階6(★#40=B・V4): マウスの照準の時だけ、描かれた頭の画面点とカーソルの画面点の距離(半径 PHILL_SNAP_RADIUS 表示px=
+          // 画面では ×ズーム)で測る。枠は入力の層が置いたスカラー値から store 自身の表で組み直す。タッチ・キーボードは今のまま(world の距離)。
+          const msnap = PROJ_GAME_SNAP && mouseWorld ? state.mouseSnap : null;
+          const mf = msnap ? projAimFrameFrom(msnap.frame, state.camera.x, state.camera.y) : null; // カメラは今の値(マウスを止めて歩いてもずれない・A1)
+          if (msnap && mf) { const rr = PHILL_SNAP_RADIUS * (mf.wgScale || 1); bestD2 = rr * rr; }
           for (const e of state.enemies) {
             if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
             if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): PHILL手動照準のスナップ対象から除外
             const fb = enemyFootBox(e);
             const hx = fb.footX;
             const hy = enemyHeadY(e, stage3); // 実描画の縦範囲に基づく頭付近(横長素材でも頭に乗る)
-            const d2 = (hx - baseX) ** 2 + (hy - baseY) ** 2;
+            const d2 = msnap && mf ? projHeadScreenDist2(mf, msnap.sx, msnap.sy, fb.footX, fb.footY, hy) : (hx - baseX) ** 2 + (hy - baseY) ** 2;
             if (d2 <= bestD2) { bestD2 = d2; snapX = hx; snapY = hy; phillSnapEnemyId = e.id; }
           }
         }
@@ -13738,8 +13760,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     return true;
   },
-  setMouseAim: (screen) => {
-    set({ mouseAim: screen });
+  setMouseAim: (screen, snap) => {
+    if (snap !== undefined) set({ mouseAim: screen, mouseSnap: snap }); // ?proj=1 段階6(★#40=B)だけ通る
+    else set({ mouseAim: screen });
   },
 
   setLastDirection: (direction) => {
@@ -19483,8 +19506,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // research/MUTANT_HERO.md §6-2(社長「画面に映っていない時は…喰らわないでよい」): 画面外の英雄は
       // どの攻撃も受けない。入口はここ1か所(銃・近接・爆発・継続の全経路が通る)。
-      if (isBodyWallBoss(enemy.type) && !projSeen(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, 0, isPointInZoomedViewport( // 解放軍群の旗手も同じ(LIBERTY_HORDE §7)
-        enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, state.camera, state.gameBounds, state.viewZoom))) { // ★#38=A(V35)
+      if (isBodyWallBoss(enemy.type) && (projFadeHidden(enemy, state.gameTime) || !projSeen(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, 0, isPointInZoomedViewport( // 解放軍群の旗手も同じ(LIBERTY_HORDE §7)
+        enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, state.camera, state.gameBounds, state.viewZoom)))) { // ★#38=A(V35)・フェードイン中 0.5 未満は見えていない
         return { enemies };
       }
 
@@ -20146,7 +20169,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // research/MUTANT_HERO.md §3-2: 画面内の英雄(中立)。雑魚・強個体は近ければ英雄を追う(resolveEnemyTarget)。
       const heroLure = (() => {
         const h = state.enemies.find(e => isMutantHero(e.type) && !isCorpse(e) && e.health > 0 && !isUntouchable(e)); // 昇天中は誘わない
-        return h && projSeen(h.x + h.width / 2, h.y + h.height / 2, 0, isPointInZoomedViewport(h.x + h.width / 2, h.y + h.height / 2, state.camera, state.gameBounds, state.viewZoom)) ? h : null;
+        return h && !projFadeHidden(h, state.gameTime) && projSeen(h.x + h.width / 2, h.y + h.height / 2, 0, isPointInZoomedViewport(h.x + h.width / 2, h.y + h.height / 2, state.camera, state.gameBounds, state.viewZoom)) ? h : null;
       })();
       const solidProps = breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar');
       const now = Date.now();
@@ -20467,8 +20490,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 越えた瞬間に次フレームでリサイクルされて「カウンターした敵が消える」不具合を防ぐ。
           // 通常の追跡AI(このifブロックの外)には影響しない。
           const recycleZoomOverscan = (labTheme || indoor) ? 1 : 1 / ZOOM_MIN_ABS; // ★一番引いた時を基準に(v0.25.2412)
-          const recycleHalfW = (state.gameBounds.width / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
-          const recycleHalfH = (state.gameBounds.height / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
+          let recycleHalfW = (state.gameBounds.width / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
+          let recycleHalfH = (state.gameBounds.height / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
+          // ?proj=1 段階6(★#37・V26・ケ11): 回収の矩形は projGameRecycleRect の1本(中心は今の pcy=spawnViewOffsetY を引かない)。
+          if (PROJ_GAME_RECYCLE && !labTheme && !indoor && getProjGameView() !== null) {
+            const rr = projGameRecycleRect(state.gameBounds.width, state.gameBounds.height, pcx, pcy, OFFSCREEN_RECYCLE_MARGIN);
+            recycleHalfW = (rr.right - rr.left) / 2; recycleHalfH = (rr.bottom - rr.top) / 2;
+          }
           const bufferX = enemy.width;  // 境界ぎりぎりではなく内側へ余裕を持って着地させる
           const bufferY = enemy.height;
           const kbCenterX = kb.x + enemy.width / 2;
@@ -23635,7 +23663,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           // ★叫びは画面に見えている時だけ始める(社長報告2026-11-11「遠くに居てもずっと叫んでる」・utils/screamerGate)。
           //   画面の外で時刻を過ぎた個体は溜めに入らず、今までどおり距離を保って動く。もう始まっている溜めは最後まで続く。
-          const scrGate = screamerStartGate(nextScream, gameTime, projSeen(ecx, ecy, 0, isPointInZoomedViewport(ecx, ecy, state.camera, state.gameBounds, state.viewZoom)));
+          const scrGate = screamerStartGate(nextScream, gameTime, !projFadeHidden(enemy, gameTime) && projSeen(ecx, ecy, 0, isPointInZoomedViewport(ecx, ecy, state.camera, state.gameBounds, state.viewZoom)));
           if (scrGate.start) {
             screamerWindupAt.push({ x: ecx, y: ecy }); // set 後に予兆FX(2秒かけて広がるリング)
             return { ...enemy, vx: 0, vy: 0, aiPhase: 'scream', aiPhaseUntil: gameTime + SCREAMER_WINDUP_MS, screamNextAt: nextScream };
@@ -25080,7 +25108,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 監査v0.25.3008: 弾のカリング半径は「一番引いた時(ZOOM_MIN_ABS)の可視域」を覆う値にする。
       // 旧値 max(W,H) は等倍前提で、ボス戦の最大引き(2.5倍)では画面内を飛ぶ弾が途中で消えていた
       // (CLAUDE.mdズーム掟のマージン基準に合わせる。弾数は有限で回転も速いため負荷影響は僅少)。
-      const cullRadius = Math.max(gameBounds.width, gameBounds.height) / ZOOM_MIN_ABS;
+      // ?proj=1 段階6(★#37・V78・ウ): 横長は基準のスマホの値(878/0.4)の固定。消えた弾が画面の中だったら残像を積む(イ)。
+      const projBulletOn = PROJ_GAME_RECYCLE && !state.indoorMode && getProjGameView() !== null;
+      const cullRadius = projBulletOn ? projBulletCullRadius(gameBounds.width, gameBounds.height) : Math.max(gameBounds.width, gameBounds.height) / ZOOM_MIN_ABS;
       const playerCX = player.x + player.width / 2;
       const playerCY = player.y + player.height / 2;
       const indoor = state.indoorMode;
@@ -25131,7 +25161,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           // their static spawn position; check distance from player.
           const px = p.x + p.width / 2;
           const py = p.y + p.height / 2;
-          if (Math.hypot(px - playerCX, py - playerCY) > cullRadius) return false;
+          if (Math.hypot(px - playerCX, py - playerCY) > cullRadius) {
+            if (projBulletOn) queueProjBulletGhost(p, state.gameTime);
+            return false;
+          }
           return true;
         })
         .map(pIn => {
@@ -25809,18 +25842,26 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
           : null
       );
+      // ?proj=1 段階6(★#37・V28・§3-9o ウ・ケ4): 作る範囲は projPropRegionRect の1本(描画の縁のフェードも同じ関数)。
+      // 基準点は中心(左上のカメラを中心へ直し、横長は基準のスマホを縦横入れ替えた大きさ、左上へ戻す)。?proj=0 は今の式のまま。
+      const projRegion = PROJ_GAME_RECYCLE && !labTheme && getProjGameView() !== null
+        ? projPropRegionRect(bounds.width, bounds.height, camera.x + bounds.width / 2, camera.y + bounds.height / 2, pad) : null;
+      const rgL = projRegion ? projRegion.left : camera.x - pad;
+      const rgT = projRegion ? projRegion.top : camera.y - pad;
+      const rgR = projRegion ? projRegion.right : camera.x + bounds.width + pad;
+      const rgB = projRegion ? projRegion.bottom : camera.y + bounds.height + pad;
       const generated = labTheme ? [] : torchesInRegion(
-        camera.x - pad,
-        camera.y - pad,
-        camera.x + bounds.width + pad,
-        camera.y + bounds.height + pad,
+        rgL,
+        rgT,
+        rgR,
+        rgB,
         torchBonusChance, // ★v0.25.3595
       );
       const generatedMines = MINES_DISABLED ? [] : minesInRegion(
-        camera.x - pad,
-        camera.y - pad,
-        camera.x + bounds.width + pad,
-        camera.y + bounds.height + pad
+        rgL,
+        rgT,
+        rgR,
+        rgB
       );
       const pressureMines = MINES_DISABLED ? [] : pressureMinesNearPlayer(
         state.player.x + state.player.width / 2,
@@ -26380,7 +26421,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { x: rect.x, y: rect.y };
     };
     for (const t of toDrop) {
-      const spot = pickPracticeAmmoSpot({ view, playerCx: p.x + p.width / 2, playerCy: p.y + p.height / 2, rng: Math.random, standable });
+      // ?proj=1 段階6(★#38=A・V38): 見えている地面(投影のゲームの画面)に落とす=見えない南の帯に落ちない。?proj=0 は今の矩形のまま。
+      const pgvA = projViewCam();
+      const sA = PRACTICE_AMMO_PICKUP_SIZE;
+      // 余白は今の物差しの写し: 左右=画面の幅の PRACTICE_AMMO_EDGE_INSET_X_FRAC 内側・下=PRACTICE_AMMO_BOTTOM_PAD_PX 南の点もまだ見えている所。
+      const insA = -st.gameBounds.width * PRACTICE_AMMO_EDGE_INSET_X_FRAC;
+      const spot = pickPracticeAmmoSpot({
+        view, playerCx: p.x + p.width / 2, playerCy: p.y + p.height / 2, rng: Math.random, standable,
+        ...(pgvA ? {
+          projPick: (u: number, v: number) => { const q = projGameBandPick(pgvA, insA, u, v); return { x: q.x - sA / 2, y: q.y - sA / 2 }; },
+          projInside: (x: number, y: number) => projGameViewContains(pgvA, x + sA / 2, y + sA / 2, insA)
+            && projGameViewContains(pgvA, x + sA / 2, y + sA / 2 + PRACTICE_AMMO_BOTTOM_PAD_PX, 0),
+        } : {}),
+      });
       if (!spot) continue; // 置ける所が無い=次のフレームでまた探す
       // 見せ方は空からの弾薬補給(useGameLoop の airdrop)と同じ: worldDrop(小さく湧いて弾んで着地)+金色のリング。
       get().addPickup({
@@ -28166,7 +28219,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const dtMs = deltaTime * 1000;
     const now = state.gameTime;
     // 兵士: 状態機械を1歩進め、左画面外(ズーム外周+マージン)へ抜けたら右から再投入(§9・監査B-1)。
-    const overscanHalfW = (state.gameBounds.width / 2) / ZOOM_MIN_ABS + ENDING_SOLDIER_REENTRY_MARGIN_PX;
+    const overscanHalfW = PROJ_GAME_RECYCLE && getProjGameView() !== null // ?proj=1 段階6(★#37・V76・ウ): 横長は幅の項を基準のスマホの縦に(残像なし=ケ16)
+      ? projEndingReentryHalfW(state.gameBounds.width, state.gameBounds.height, ENDING_SOLDIER_REENTRY_MARGIN_PX)
+      : (state.gameBounds.width / 2) / ZOOM_MIN_ABS + ENDING_SOLDIER_REENTRY_MARGIN_PX;
     const leftBoundX = state.player.x - overscanHalfW;
     const rightEdgeX = state.player.x + overscanHalfW;
     const shots: { x: number; y: number }[] = [];
@@ -28212,6 +28267,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const nb = trySpawnEndingBomb(
             `ending-bomb-${now}`, nextSoldiers, camCenterX, phillFootY, state.gameBounds.width / 2,
             Math.random, t,
+            ...(projViewPlayer() ? [(y: number) => projGameRowHalfW(projViewPlayer()!, y)] as const : []), // ?proj=1 段階6(★#38=A・V77): 行ごとの帯の幅
           );
           if (nb) {
             bombs = [...bombs, nb];
@@ -28611,6 +28667,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     cutinShownThisRun.clear(); // 紹介カットインの既出はランごと(v0.25.4302)
     practiceAmmoLatch.clear(); practiceAmmoRecheckAt = 0; // 変異体対策室の弾の補給の確かめ済みも前ランへ持ち越さない
     resetMapSightings(); // 一時停止の地図の「出会った敵」は出撃ごと(THEONE_ROUND2 §2-3)
+    resetProjFadeState(); // ?proj=1 段階6: 湧きの印の id の記録・フェードの判定のズームの保持を出撃ごとに戻す(持ち越さない)
     resetBossAppearances(); // 一時停止のボス一覧の「出現したボス」も出撃ごと
     resetRunRoute(); // 一時停止の地図の「今回歩いた道」も出撃ごと(THEONE_ROUND2 §2-6)
     resetSpawnWalk(); // 湧く向きの寄せ(PACING_PUZZLE §20)も前ランから持ち越さない
@@ -29389,6 +29446,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         signalStrikes: [], // ★同上(シグナルランチャーの予約済み空爆。UNIQUE_WEAPONS.md §16-5受け入れ条件5)
         libertyOrphanArrows: null, // 旗手が倒れた後の矢の雨(ランを跨がない)
         astroThrows: [], // 宇宙飛行群の投げ物(ランを跨がない)
+        projRecycleGhosts: [], // ?proj=1 の回収の残像(ランを跨がない)
+        projBulletGhosts: [],
+        mouseSnap: null,
         astroScatter: [], // 宇宙飛行群の周りの残骸(ランを跨がない)
         wraithGrowths: [], // 亡霊の近くに生えた物(ランを跨がない)
         firstAidKitState: createFirstAidKitState(),

@@ -126,6 +126,11 @@ export interface RetireBehindInput {
   /** 見えている範囲の候補(プレイヤー中心の推定・store のカメラ等)。**全部の外**の時だけ回収する。 */
   views: readonly ViewRect[];
   margin?: number;
+  /**
+   * ?proj=1 段階6(V27・§3-9o ケ1・コ2): 「見えている範囲の全部の外か」を投影のゲームの画面(台形)で答える関数。
+   * 渡された時だけ views の矩形の代わりに使う(views は空でない時だけ=今と同じ条件で呼ぶ)。`?proj=0` では渡さない。
+   */
+  outsideAll?: (margin: number) => boolean;
 }
 
 /** 後ろへ置き去りにした敵を回収してよいか(対象の種類・保護の判定は呼び出し側)。 */
@@ -136,7 +141,7 @@ export const shouldRetireBehind = (input: RetireBehindInput): boolean => {
   const ex = box.x + box.width / 2, ey = box.y + box.height / 2;
   if (!isBehindHeading(ex, ey, input.playerCx, input.playerCy, input.heading)) return false;
   const m = input.margin ?? BEHIND_RETIRE_MARGIN_PX;
-  return input.views.every(v => isBoxOutsideRect(box, v, m));
+  return input.outsideAll ? input.outsideAll(m) : input.views.every(v => isBoxOutsideRect(box, v, m));
 };
 
 /** リラックス/ハーベストのコマで、前へ動かしてよい型(そのコマの顔ぶれ=バット・スケルトン)。 */

@@ -91,6 +91,12 @@ export interface PracticeAmmoSpotInput {
   standable: (x: number, y: number) => { x: number; y: number } | null;
   minPlayerDist?: number;
   tries?: number;
+  /**
+   * ?proj=1 段階6(★#38=A・V38): 置く範囲を投影のゲームの画面の見える地面で選ぶ(乱数2本 → 拾い物の左上)と、その中かの確かめ。
+   * 渡された時だけ view の矩形の代わりに使う(`?proj=0` では渡さない)。
+   */
+  projPick?: (u: number, v: number) => { x: number; y: number };
+  projInside?: (x: number, y: number) => boolean;
 }
 
 /** 画面に見えている範囲のランダムな位置(拾い物の左上)。置ける所が見つからなければ null。 */
@@ -100,13 +106,14 @@ export const pickPracticeAmmoSpot = (input: PracticeAmmoSpotInput): { x: number;
   const tries = input.tries ?? PRACTICE_AMMO_TRIES;
   const s = PRACTICE_AMMO_PICKUP_SIZE;
   const { x0, x1, y0, y1 } = practiceAmmoDropArea(view);
-  if (!(x1 > x0) || !(y1 > y0)) return null;
-  const inside = (x: number, y: number): boolean => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+  if (!input.projPick && (!(x1 > x0) || !(y1 > y0))) return null;
+  const inside = input.projInside ?? ((x: number, y: number): boolean => x >= x0 && x <= x1 && y >= y0 && y <= y1);
   const farEnough = (x: number, y: number): boolean =>
     Math.hypot(x + s / 2 - playerCx, y + s / 2 - playerCy) >= minD;
   for (let i = 0; i < tries; i++) {
-    const x = x0 + rng() * (x1 - x0);
-    const y = y0 + rng() * (y1 - y0);
+    let x: number, y: number;
+    if (input.projPick) { const u = rng(), v = rng(); const q = input.projPick(u, v); x = q.x; y = q.y; } // 乱数の順は今と同じ(1本目→2本目)
+    else { x = x0 + rng() * (x1 - x0); y = y0 + rng() * (y1 - y0); }
     if (!farEnough(x, y)) continue;
     const r = standable(x, y);
     // 帯へ寄せた結果が可視域の外・プレイヤーの近くへずれたら採らない。

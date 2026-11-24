@@ -450,13 +450,15 @@ export const trySpawnEndingBomb = (
   id: string, soldiers: EndingSoldier[], camCenterX: number, phillY: number, viewHalfWPx: number,
   rand: () => number = Math.random,
   tuning: EndingBombTuning = DEFAULT_ENDING_BOMB_TUNING,
+  /** ?proj=1 段階6(★#38=A・V77): 兵士の行 y の見える半幅(world)。渡された時だけ viewHalfWPx の代わりに使う。 */
+  rowHalfW?: (y: number) => number,
 ): EndingBomb | null => {
   const halfW = viewHalfWPx * tuning.viewFracX;
   const fallSec = tuning.fallMs / 1000;
   const camAtImpact = camCenterX + tuning.camLeadPx; // 着弾時のカメラ中心(検収A-2)
   const candidates = soldiers
     .map(s => ({ s, predictedX: s.x - s.speed * s.velMult * fallSec })) // 兵士は左へ歩き続ける前提の予測
-    .filter(c => !isEndingSoldierTumbling(c.s) && Math.abs(c.predictedX - camAtImpact) <= halfW);
+    .filter(c => !isEndingSoldierTumbling(c.s) && Math.abs(c.predictedX - camAtImpact) <= (rowHalfW ? rowHalfW(c.s.y) * tuning.viewFracX : halfW));
   if (candidates.length === 0) return null;
   const pick = candidates[Math.floor(rand() * candidates.length) % candidates.length];
   let impactX = pick.predictedX + (rand() * 2 - 1) * tuning.anchorOffsetXPx;

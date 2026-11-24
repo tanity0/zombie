@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { projSeen, projSeenPlayer, projBoxFullyOffPlayer, projScreenYFracOr } from '../utils/projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
+import { projSeen, projSeenPlayer, projBoxFullyOffPlayer, projScreenYFracOr, projViewPlayer, projGameEdgePoint } from '../utils/projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import { brawlerHeldNow, brawlerLiftHoldNow } from '../utils/brawlerCombo'; // 格闘の食らいの固まり(ボス級も・§11-1)
 import { isUntouchable } from '../utils/enemyUtils';
 import { setCameraZoomLink } from '../utils/cameraZoomLink';
 // ?proj=1(段階6・research/PERSPECTIVE_PROJECTION.md §3-9d): ゲーム側の「ゲームの画面」をカメラと同じフレームで作り直す。
-import { PROJ_GAME_VIEW, PROJ_ZREF, PROJ_NEAR, PROJ_FAR_START, PROJ_FAR_END } from '../utils/projFlag';
+import { PROJ_GAME_VIEW, PROJ_GAME_SPAWN, PROJ_GAME_RECYCLE, PROJ_ZREF, PROJ_NEAR, PROJ_FAR_START, PROJ_FAR_END } from '../utils/projFlag';
+import { noteProjFadeZoom, projFadeInNewEnemies, flushProjGhosts, projFadeHidden } from '../utils/projSpawnFade'; // ?proj=1 段階6(★#36・★#37)
+import type { SpawnBoundsProj } from '../utils/enemyUtils';
 import { rebuildProjGameViews, setProjGameView } from '../utils/projGameView';
 import { horizonForestFootLocalY, HORIZON_FOREST_UP_BY_STAGE } from '../utils/horizonForestLine';
 import { farBackdropHeightFor } from '../utils/spawnRefill';
@@ -663,6 +665,16 @@ import { decideLevelUpIntro } from '../utils/levelUpMenuOpen';
 // ゲームプレイ中の「プレイヤーの移動」と「敵の移動」だけを倍速にする係数。
 // movePlayer / updateEnemies に渡す deltaTime にのみ掛ける(弾・召喚・軍人・進行・演出・
 // スポーンは等速のまま)。すぐ戻せるよう単一定数で管理: 1.0 = 従来等速 / 1.2 = 現在。
+/** ?proj=1 段階6(★#38=A・V5): 援護射撃NPCの出る縁=主人公中心の基準のゲームの画面の縁(projGameEdgePoint)。無い時は空=今の矩形。 */
+const projSniperEdge = (): [] | [(fx: number, fy: number, dx: number, dy: number) => { x: number; y: number }] => {
+  const gv = projViewPlayer();
+  return gv ? [(fx, fy, dx, dy) => projGameEdgePoint(gv, fx, fy, dx, dy)] : [];
+};
+/** 同(幻影版): 4隅の代わりに、主人公から斜め4方向の線がゲームの画面の縁と交わる点。 */
+const projSniperCorners = (px: number, py: number): [] | [{ x: number; y: number }[]] => {
+  const gv = projViewPlayer();
+  return gv ? [[projGameEdgePoint(gv, px, py, -1, -1), projGameEdgePoint(gv, px, py, 1, -1), projGameEdgePoint(gv, px, py, -1, 1), projGameEdgePoint(gv, px, py, 1, 1)]] : [];
+};
 let bloodDripNextAt = 0; // B10: 覚醒中の血の粒の次の発生 gameTime(覚醒が終われば0へ戻る)
 const MOVE_SPEED_MULT = GAME_SPEED; // ゲームスピード(?speed=で調整)。既定1.2。プレイヤー/敵の移動テンポ。
 
@@ -2915,7 +2927,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         { // 一時停止の地図(THEONE_ROUND2 §2-3): 画面に入ったボス級・宿敵を「出会った」として記録(store へは書かない)。
           // アテンション(ボスの紹介でカメラが寄る間)は下で return するので、その前で記録する(品質監査 A-1)
           const ms = useGameStore.getState();
-          recordMapSightings(ms.enemies, ms.camera, ms.gameBounds, ms.viewZoom);
+          recordMapSightings(ms.enemies, ms.camera, ms.gameBounds, ms.viewZoom, ms.gameTime);
           recordBossAppearances(ms.enemies, getSelectedStageId()); // 一時停止のボス一覧(社長指示2026-11-09): 盤上に出たボス(休眠含む)
           // 今回の出撃で歩いた道(THEONE_ROUND2 §2-6): 1.5秒ごとに自分の中心を記録(間隔・移動量の判定は utils/runRoutes)
           if (!ms.isPaused) recordRoutePoint(ms.gameTime, ms.player.x + ms.player.width / 2, ms.player.y + ms.player.height / 2);
@@ -5572,7 +5584,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const onscreen = hs.enemies.reduce((n, e) => {
               if (isBossType(e.type) || e.type === 'hunter') return n;
               const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-              return projSeenPlayer(ex, ey, 0, Math.abs(ex - hpcx) <= gameBounds.width / 2 && Math.abs(ey - hpcy) <= gameBounds.height / 2) ? n + 1 : n; // ★#38=A(V75)
+              return !projFadeHidden(e, hs.gameTime) && projSeenPlayer(ex, ey, 0, Math.abs(ex - hpcx) <= gameBounds.width / 2 && Math.abs(ey - hpcy) <= gameBounds.height / 2) ? n + 1 : n; // ★#38=A(V75)・フェード中 0.5 未満は見えていない
             }, 0);
             const captured = hs.baseSites.filter(b => b.status === 'captured').length;
             const gun = getActiveGun(hs.player);
@@ -10133,7 +10145,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const kx = kenkiE.x + kenkiE.width / 2, ky = kenkiE.y + kenkiE.height / 2;
                 const kpcx = player.x + player.width / 2, kpcy = player.y + player.height / 2;
                 const kStep = kenkiPatrolStep({
-                  onScreen: projSeen(kx, ky, 0, isPointInZoomedViewport(kx, ky, ks.camera, ks.gameBounds, ks.viewZoom)),
+                  onScreen: !projFadeHidden(kenkiE, ks.gameTime) && projSeen(kx, ky, 0, isPointInZoomedViewport(kx, ky, ks.camera, ks.gameBounds, ks.viewZoom)),
                   introduced: kenkiCutinIdRef.current === kenkiE.id,
                   attention: !!ks.attention,
                   blocked: phantomBrawlerSceneBlocked({
@@ -11024,10 +11036,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 寄せる=上下の地面幅が揃う(§6.37 v6)。スポーン帯(spawnViewOffsetY)も同じ値を読む。
         // §6.37 v7: 実効の縦構図オフセット=均衡の下げ(camdown×ズーム連動)+ボス方向の縦先読み。
         // 正=カメラを北へ(プレイヤーが画面下へ)。クランプ(offY)もこの実効値を基準に測る。
-        const camDownOff = ((indoor || labTheme) ? 0
+        const camDownBase = (indoor || labTheme) ? 0
           : gameBounds.height * zoomCameraDownFrac(
               useGameStore.getState().corridorMode ? CORRIDOR_CAMERA_DOWN_FRAC : CAMERA_DOWN_OFFSET_FRAC,
-              camBossZoomRef.current.z))
+              camBossZoomRef.current.z);
+        const camDownOff = camDownBase
           + camBossLeadYRef.current
           - camMeteorLeadRef.current.y; // 隕石へ寄せる縦(南=正の寄せはカメラを南へ=下げ量を減らす)
         const baseCamY = pcCamY - gameBounds.height / 2 - camDownOff;
@@ -11137,7 +11150,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             const fk = gsv.farBackdrop ?? '';
             rebuildProjGameViews({
-              camX, camY, playerCamX: baseCamX, playerCamY: baseCamY, viewW: gameBounds.width, viewH: gameBounds.height,
+              camX, camY, playerCamX: baseCamX, playerCamY: pcCamY - gameBounds.height / 2 - camDownBase, viewW: gameBounds.width, viewH: gameBounds.height, // gfPlayer はボス・隕石の先読みを含めない(構図の下げだけ)
               viewZoom: gsv.viewZoom, playerH: player.height, playerFootY: player.y + player.height,
               camZoom: camBossZoomRef.current.z, camDown: CAMERA_DOWN_OFFSET_FRAC, zref: PROJ_ZREF, near: PROJ_NEAR,
               farStart: PROJ_FAR_START, farEnd: PROJ_FAR_END, att: attv,
@@ -12369,6 +12382,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               ssPcx, ssPcy,
               { left: ssPcx - ssGb.width / 2, top: ssPcy - ssGb.height / 2, right: ssPcx + ssGb.width / 2, bottom: ssPcy + ssGb.height / 2 },
               (Math.random() - 0.5) * 0.24, // ±少しランダム(叩き台: 約±7°)
+              ...projSniperEdge(), // ?proj=1 段階6(★#38=A・V5): 描かれた画面の縁から入る(?proj=0 は何も足さない)
             );
             if (entry) {
               useGameStore.getState().setSupportSniperNpc({
@@ -12486,9 +12500,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 監査v0.25.3008: カメラ矩形→プレイヤー中心(ズーム連動カメラ下げで南側が漏れて過少カウントに)。
             const kpl = useGameStore.getState().player;
             const kpx = kpl.x + kpl.width / 2, kpy = kpl.y + kpl.height / 2;
+            const kgt = useGameStore.getState().gameTime;
             onScreenEnemyCount = useGameStore.getState().enemies.reduce((n, e) => {
               const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-              return projSeenPlayer(ex, ey, 0, Math.abs(ex - kpx) <= gameBounds.width / 2 && Math.abs(ey - kpy) <= gameBounds.height / 2) ? n + 1 : n; // ★#38=A(V74)
+              return !projFadeHidden(e, kgt) && projSeenPlayer(ex, ey, 0, Math.abs(ex - kpx) <= gameBounds.width / 2 && Math.abs(ey - kpy) <= gameBounds.height / 2) ? n + 1 : n; // ★#38=A(V74)
             }, 0);
           }
 
@@ -12750,6 +12765,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 gcx, gcy,
                 { left: spcx - gameBounds.width / 2, top: spcy - gameBounds.height / 2, right: spcx + gameBounds.width / 2, bottom: spcy + gameBounds.height / 2 },
                 (Math.random() - 0.5) * 0.24,
+                ...projSniperEdge(), // ?proj=1 段階6(★#38=A・V5)
               );
               if (entry) {
                 useGameStore.getState().setSupportSniperNpc({
@@ -12945,6 +12961,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const corner = computeSupportSniperFarCorner(
                 p2cx, p2cy,
                 { left: p2cx - gameBounds.width / 2, top: p2cy - gameBounds.height / 2, right: p2cx + gameBounds.width / 2, bottom: p2cy + gameBounds.height / 2 },
+                ...projSniperCorners(p2cx, p2cy), // ?proj=1 段階6(★#38=A・V5 の幻影版): 投影の画面の4方向の縁の点
               );
               useGameStore.getState().setSupportSniperNpc({
                 id: Date.now(),
@@ -18611,9 +18628,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           : Math.min(contextZoomTarget(nearEnemies.length, nearEnemies.some(e => isLargeForZoom(e.type))),
             runZoomTarget(useGameStore.getState().player.speedRampSustainMs, nearEnemies.length > 0));
         const czInvZoom = (labTheme || indoor) ? 1 : 1 / spawnZoomTarget;
-        const spawnBounds = czInvZoom > 1.0001
-          ? { width: gameBounds.width * czInvZoom, height: gameBounds.height * czInvZoom }
+        const spawnBounds: SpawnBoundsProj = czInvZoom > 1.0001
+          ? (PROJ_GAME_SPAWN
+            ? { width: gameBounds.width * czInvZoom, height: gameBounds.height * czInvZoom, projZ: 1 / czInvZoom } // ?proj=1 段階6: 横長の湧く矩形が z を読む(★#36)
+            : { width: gameBounds.width * czInvZoom, height: gameBounds.height * czInvZoom })
           : gameBounds;
+        // ?proj=1 段階6(コ1): フェードの判定の画面のズーム=min(viewZoom, 湧きの目標ズーム) を数秒保持した一番引いた値。?proj=0 は何もしない。
+        noteProjFadeZoom(Math.min(useGameStore.getState().viewZoom || 1, (labTheme || indoor) ? 1 : spawnZoomTarget), gameTime);
         // バッチ3(最小版・配役): pressureが0.50/0.65を新規に上向きに跨いだ瞬間、forcedTypeで
         // 1体だけ即座に投入する(L4DのTank/特殊感染者のような「ディレクターが意図した瞬間に落とす」演出)。
         // spawn CD(sceneIntervalMult)とは独立=通常湧きの間隔を消費しない。1体目のスタイルはラン内で
@@ -19436,6 +19457,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // 揺れの整理: このtickに登録された命中(registerImpact)を同じフレームで1回の揺れに解決(SE/血/数字と同時)。
       // このtickでヒットストップが始まった場合は flushImpacts が保留し、停止明けの先頭(上)で出る。
       useGameStore.getState().flushImpacts();
+      // ?proj=1 段階6(★#36・★#37・§3-9o イ): tick の終わり(全部の湧き・回収の後・描画の前)に、湧いた最初のフレームの敵へ
+      // フェードインの印を付け、回収の残像の列を進める。?proj=0 では1行も通らない(どちらの関数も入力をそのまま返す)。
+      if (PROJ_GAME_SPAWN || PROJ_GAME_RECYCLE) {
+        const fs = useGameStore.getState();
+        const fe = projFadeInNewEnemies(fs.enemies, fs.gameTime);
+        const fg = flushProjGhosts(fs, fs.gameTime);
+        if (fe !== fs.enemies || fg) useGameStore.setState({ ...(fe !== fs.enemies ? { enemies: fe } : {}), ...(fg ?? {}) });
+      }
       // Request next frame
       frameRef.current = requestAnimationFrame(gameLoop);
      } catch (err) {

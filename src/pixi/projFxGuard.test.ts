@@ -38,7 +38,8 @@ const bodyOf = (s: string, sig: string): string => {
 
 /** 層へ addChild する所の、関数ごとの数(段階3の着手時=HEAD 743ec87 の上で数えた台帳)。足したら台帳へ載せ、型(3-7b)を決めてから数を直す。 */
 const LAYER_ADD_LEDGER: Record<string, number> = {
-  constructor: 30, makeActor: 2, makeProp: 2, makeGroundFireView: 2, projDecal: 1, syncLabCrawler: 2,
+  constructor: 30, makeActor: 2, makeProp: 2, makeGroundFireView: 2, projDecal: 1, syncLabCrawler: 2, projGhostCapture: 1, projBulletGhostLayerGet: 1, // 回収の残像(段階6・敵の残像は投影の足元に立てる=型①・弾の残像は projBullet で写す)
+ 
   syncTrees: 2, makeLabWallView: 1, makeLabPropView: 1, tickLabObstacleCrumble: 1, syncCityProps: 2, syncWraithGrowths: 1,
   syncForestFlowers: 1, syncTorchBack: 1, updateLabVisionCones: 1, updateSkillPickMark: 2, updateBoomerangReadyMark: 1, updateGoldRingReadyMark: 1,
   syncHitboxDebug: 1, syncEggArmBlinks: 2, drawBrawlerAir: 2, updateBenkeiReadyMark: 1, syncSkadiHazards: 1, syncSurielRing: 1,

@@ -188,6 +188,8 @@ export const wraithGrowthStep = (
   pieces: readonly WraithGrowth[], wraith: { x: number; y: number } | null, player: { x: number; y: number },
   view: { left: number; right: number; top: number; bottom: number }, canPlace: (x: number, y: number) => boolean,
   gt: number, rng: () => number, st: WraithGrowthState,
+  /** ?proj=1 段階6(★#38=A・V49): 生やす所を見える地面の帯から選ぶ(乱数2本)。`?proj=0` では渡さない(消す範囲 far は view のまま)。 */
+  pick?: (u: number, v: number) => { x: number; y: number },
 ): WraithGrowth[] => {
   let out: WraithGrowth[] | null = null;
   const cur = () => out ?? pieces;
@@ -200,8 +202,12 @@ export const wraithGrowthStep = (
   if (wraith && dist <= WRAITH_GROWTH_NEAR_PX && gt >= st.nextAt) {
     st.nextAt = gt + wraithGrowthGapMs(dist) * (0.7 + 0.6 * rng());
     for (let tries = 0; tries < 12; tries++) {
-      const x = view.left + 30 + rng() * Math.max(1, view.right - view.left - 60);
-      const y = view.top + 60 + rng() * Math.max(1, view.bottom - view.top - 90);
+      let x: number, y: number;
+      if (pick) { const u = rng(), v = rng(); const q = pick(v, u); x = q.x; y = q.y; } // 乱数の順は今と同じ(1本目=横・2本目=縦)
+      else {
+        x = view.left + 30 + rng() * Math.max(1, view.right - view.left - 60);
+        y = view.top + 60 + rng() * Math.max(1, view.bottom - view.top - 90);
+      }
       if (Math.hypot(x - player.x, y - player.y) < WRAITH_GROWTH_AVOID_PLAYER_PX) continue;
       const dw = Math.hypot(x - wraith.x, y - wraith.y);
       // 離れた物を沈める距離より遠くには生やさない(伸び切った直後に沈む物を作らない)。
@@ -479,6 +485,8 @@ export const WRAITH_SUMMON_FRESH_MS = 5000;
 export const wraithSummonSpots = (
   px: number, py: number, wx: number, wy: number,
   view: { left: number; right: number; top: number; bottom: number },
+  /** ?proj=1 段階6(★#38=A・V47): 「置いてよい所か」を投影のゲームの画面で答える関数。渡された時だけ view の矩形の代わりに使う。 */
+  insideFn?: (q: { x: number; y: number }) => boolean,
 ): { x: number; y: number }[] => {
   const a0 = Math.atan2(wy - py, wx - px);
   const n = WRAITH_SUMMON_COUNT;
@@ -486,8 +494,8 @@ export const wraithSummonSpots = (
     const a = c + (i - (n - 1) / 2) * WRAITH_SUMMON_SPREAD_RAD;
     return { x: px + Math.cos(a) * d, y: py + Math.sin(a) * d };
   });
-  const inside = (q: { x: number; y: number }) => q.x >= view.left + WRAITH_SUMMON_INSET_PX && q.x <= view.right - WRAITH_SUMMON_INSET_PX
-    && q.y >= view.top + WRAITH_SUMMON_INSET_PX && q.y <= view.bottom - WRAITH_SUMMON_INSET_PX;
+  const inside = insideFn ?? ((q: { x: number; y: number }) => q.x >= view.left + WRAITH_SUMMON_INSET_PX && q.x <= view.right - WRAITH_SUMMON_INSET_PX
+    && q.y >= view.top + WRAITH_SUMMON_INSET_PX && q.y <= view.bottom - WRAITH_SUMMON_INSET_PX);
   for (const d of WRAITH_SUMMON_DISTS_PX) {
     for (let k = 0; k <= 36; k++) {
       const da = (k % 2 === 0 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 18);

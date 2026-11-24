@@ -13,6 +13,8 @@ import { effectiveDifficultyArea, lerpAreaTable } from './timeDifficulty';
 // renderSpec は utils を逆輸入しない(types と cameraZoom だけ)ので循環しない。
 import { enemyHitStrip } from '../pixi/renderSpec';
 import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
+import { getProjGameView, projGameSpawnRect } from './projGameView'; // ?proj=1 段階6(★#36・§3-9o ア)
+import { PROJ_GAME_SPAWN } from './projFlag';
 
 // 固定ビュー矩形からの「画面外」バンド(px・社長指示Bで具体値決め直し)。全辺一律で「画面端から○px外」を意味する。
 // 固定ビューにしたので画面サイズ比ではなく固定px。SPAWN<RECYCLE のヒステリシスで湧いた敵が即リサイクルされない。実機で微調整可。
@@ -1137,6 +1139,12 @@ export const spawnSideFromRoll = (roll: number, viewportW: number, viewportH: nu
   return x < cuts[0] ? 0 : x < cuts[1] ? 1 : x < cuts[2] ? 2 : 3;
 };
 
+/**
+ * 湧きの矩形(spawnBounds=画面×1/目標ズーム)に、目標ズーム z を添えた物(?proj=1 段階6・★#36 の横長の矩形が z を読む)。
+ * projZ が無い時は 1(spawnBounds=gameBounds のまま=引いていない)。?proj=0 では付けない。
+ */
+export interface SpawnBoundsProj extends GameBounds { projZ?: number }
+
 export const generateEnemy = (
   gameTime: number,
   player: Player,
@@ -1167,15 +1175,28 @@ export const generateEnemy = (
   const viewportHeight = gameBounds.height;
   // 可視範囲はワールドと1:1(カメラ幅=gameBounds)。プレイヤーは中央より viewOffsetY 下にいるので、
   // 可視縦バンドの中心は player.y より viewOffsetY 上(=vy0)。そこを基準に上下端の外へ湧かせる。
-  const halfW = viewportWidth / 2;
-  const halfH = viewportHeight / 2;
+  let halfW = viewportWidth / 2;
+  let halfH = viewportHeight / 2;
   const vy0 = player.y - viewOffsetY; // 可視縦バンドの中心(world Y 近似)
   const margin = OFFSCREEN_SPAWN_MARGIN; // 固定ビュー矩形の外側この距離(全辺一律・社長指示B)
+  // ?proj=1 段階6(★#36=§3-9o ア・ケ6): 縦持ち=今の矩形の上下の辺の y だけ E 遠く/横長=基準のスマホを倒した矩形の左右の辺の x だけ E 遠く。
+  // 投影の場面(ゲームの画面が組めている時)だけ。?proj=0・屋内・洋館・研究所・M0 は今の式のまま(乱数の引き方・回数も同じ)。
+  let padX = 0, padY = 0;
+  let sideW = viewportWidth, sideH = viewportHeight;
+  if (PROJ_GAME_SPAWN && getProjGameView()) {
+    const landscape = viewportWidth > viewportHeight;
+    const z = (gameBounds as SpawnBoundsProj).projZ ?? 1;
+    // 縦持ちは spawnBounds が既に 1/z 倍(z=1 で渡す)。横長は基準のスマホの寸法を z で割る(寸法は向きだけ読む)。
+    const r = projGameSpawnRect(viewportWidth, viewportHeight, landscape ? z : 1);
+    halfW = r.halfW; halfH = r.halfH; padX = r.padX; padY = r.padY;
+    if (landscape) { sideW = 2 * (halfW + padX); sideH = 2 * (halfH + padY); } // 辺の割合はこの矩形の寸法で(ア)
+  }
+  const spanW = 2 * halfW, spanH = 2 * halfH; // 辺に沿った散らばり(縦持ちは今の viewportWidth/Height と同じ値)
 
   const dirMag = pressureDirection
     ? Math.hypot(pressureDirection.x, pressureDirection.y)
     : 0;
-  let spawnSide = spawnSideFromRoll(spawnRng(), viewportWidth, viewportHeight, margin);
+  let spawnSide = spawnSideFromRoll(spawnRng(), sideW, sideH, margin);
   // ★引く回数を固定する(TEST_HANDOFF/REQUEST-devbridge.md C・ランの再現性)。
   // 分岐の中で引くと「通路かどうか」「プレイヤーがどちらを向いているか」で流れの位置がズレ、
   // 同じseedでも以降の並びが揃わなくなる。**確率も使い道も従来どおり**で、引く場所を前へ出しただけ。
@@ -1213,20 +1234,20 @@ export const generateEnemy = (
   // 各辺の「外側」(半幅/半高+margin)へ。直交方向は画面幅/高いっぱいに散らす(歩いて入ってくる)。
   switch (spawnSide) {
     case 0: // 上辺の外
-      x = player.x - halfW + along() * viewportWidth;
-      y = vy0 - halfH - margin;
+      x = player.x - halfW + along() * spanW;
+      y = vy0 - halfH - margin - padY;
       break;
     case 1: // 右辺の外
-      x = player.x + halfW + margin;
-      y = vy0 - halfH + along() * viewportHeight;
+      x = player.x + halfW + margin + padX;
+      y = vy0 - halfH + along() * spanH;
       break;
     case 2: // 下辺の外
-      x = player.x - halfW + along() * viewportWidth;
-      y = vy0 + halfH + margin;
+      x = player.x - halfW + along() * spanW;
+      y = vy0 + halfH + margin + padY;
       break;
     case 3: // 左辺の外
-      x = player.x - halfW - margin;
-      y = vy0 - halfH + along() * viewportHeight;
+      x = player.x - halfW - margin - padX;
+      y = vy0 - halfH + along() * spanH;
       break;
   }
   return buildEnemy(type, x, y, gameTime, false, esc, rareMult, forcedColorTier, noRedTier);

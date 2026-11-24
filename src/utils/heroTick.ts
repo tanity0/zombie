@@ -6,7 +6,7 @@
 //  - 当たりは全部 pumpkinBlasts へ積む(プレイヤー・守護霊・カウンター・吹き飛ばし・敵への当たりは解決側=combatTick)。
 //  - 赤い予告=heroShape。溜め開始で置き場所を決め、heroHitAt(当たる瞬間)まで動かさない。
 //  - 画面外では技を始めない(始まった技は最後まで出して当てる=赤いのに当たらない、を作らない)。
-import { projSeen } from './projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
+import { projSeen, projFadeHidden } from './projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import { brawlerHeldNow, brawlerLiftHoldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import { bossFaceDeadzonePx } from './bossFacing';
 import type { Enemy } from '../types/game';
@@ -147,7 +147,7 @@ const targetCands = (hero: Enemy): HeroTargetCand[] => {
     // 社長 2026-10-17「英雄はボスも強個体も区別は無し。全ての敵味方が対象です」=ボス級・強個体も狙う(旧=ボス級の表で除外=強個体も外れていた)。
     if (e.id === hero.id || isCorpse(e) || e.health <= 0 || isUntouchable(e) || e.dormant) continue;
     const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-    out.push({ id: e.id, x: ex, y: ey, onScreen: vis(ex, ey) });
+    out.push({ id: e.id, x: ex, y: ey, onScreen: !projFadeHidden(e, st.gameTime) && vis(ex, ey) }); // フェードイン中 0.5 未満は見えていない
   }
   return out;
 };

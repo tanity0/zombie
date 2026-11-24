@@ -126,25 +126,27 @@ export const projGameAlphaAt = (gv: ProjGameView, p: ProjPoint): number => {
  * world 点(地面の点として)がゲームの画面の中か(★#38=A)。余白 marginPx は画面px(今の zoomedViewportBounds の余白と同じ意味)。
  * 定義域の外・描く距離のフェード/地平線フェードの濃さ 0.5 未満=false。
  */
-export const projGameViewContains = (gv: ProjGameView, x: number, y: number, marginPx = 0): boolean => {
+export const projGameViewContains = (gv: ProjGameView, x: number, y: number, marginPx = 0, minAlpha = PROJ_GAME_VISIBLE_ALPHA): boolean => {
   const f = gv.f;
   const p = projectInto(f, x, y, scratchP);
   if (!p.inDomain) return false;
-  if (p.alpha < PROJ_GAME_VISIBLE_ALPHA) return false;
-  if (horizonFadeAlphaAt(p.y - f.camY, gv.horizonLocal, f.wgScale, gv.fadePx) < PROJ_GAME_VISIBLE_ALPHA) return false;
+  if (p.alpha < minAlpha) return false;
+  if (horizonFadeAlphaAt(p.y - f.camY, gv.horizonLocal, f.wgScale, gv.fadePx) < minAlpha) return false;
   projDisplayToScreenInto(f, p.x, p.y, scratchS);
   return scratchS.x >= -marginPx && scratchS.x <= f.screenW + marginPx && scratchS.y >= -marginPx && scratchS.y <= f.screenH + marginPx;
 };
 
 /**
  * 足元 (footX, footY) に立つ絵(s=1 の幅 artW・高さ artH・横は中央)の投影した箱が、ゲームの画面に掛かるか(ケ14)。
- * 足元の点が定義域の外・濃さ 0.5 未満なら false。
+ * 足元の点が定義域の外・濃さ minAlpha(既定 0.5=★#38 の「見えている」)未満なら false。
  */
-export const projGameBoxOnScreen = (gv: ProjGameView, footX: number, footY: number, artW: number, artH: number, marginPx = 0): boolean => {
+export const projGameBoxOnScreen = (
+  gv: ProjGameView, footX: number, footY: number, artW: number, artH: number, marginPx = 0, minAlpha = PROJ_GAME_VISIBLE_ALPHA,
+): boolean => {
   const f = gv.f;
   const p = projectInto(f, footX, footY, scratchP);
-  if (!p.inDomain || p.alpha < PROJ_GAME_VISIBLE_ALPHA) return false;
-  if (horizonFadeAlphaAt(p.y - f.camY, gv.horizonLocal, f.wgScale, gv.fadePx) < PROJ_GAME_VISIBLE_ALPHA) return false;
+  if (!p.inDomain || p.alpha < minAlpha) return false;
+  if (horizonFadeAlphaAt(p.y - f.camY, gv.horizonLocal, f.wgScale, gv.fadePx) < minAlpha) return false;
   projDisplayToScreenInto(f, p.x, p.y, scratchS);
   const z = f.wgScale;
   const w = Math.max(0, artW) * p.s * z, h = Math.max(0, artH) * p.s * z;
@@ -211,6 +213,44 @@ export const projGameRowSpan = (gv: ProjGameView, l: number): { left: number; ri
   return { left: f.cxw + (dxL - f.cxw) / s, right: f.cxw + (dxR - f.cxw) / s, y: projWorldYOfLocal(f, l) };
 };
 
+/** world の行 y の見える左右の半幅(world・余白なし・V77 の行ごとの帯の幅)。定義域の外(地平線より北)は 0。 */
+export const projGameRowHalfW = (gv: ProjGameView, worldY: number): number => {
+  const p = projectInto(gv.f, gv.f.cxw, worldY, scratchP);
+  if (!p.inDomain) return 0;
+  const r = projGameRowSpan(gv, p.l);
+  return Math.max(0, (r.right - r.left) / 2);
+};
+
+/** 置く範囲の帯の本数(V38/V43/V47/V49)。 */
+export const PROJ_PLACE_BANDS = 8;
+const placeBands: { left: number; top: number; right: number; bottom: number }[] = [];
+/**
+ * 置く範囲(★#38=A・V38/V43/V49): ゲームの画面の見える地面(projGameViewBands の帯・余白 marginPx は画面px・負=内側)から、
+ * 乱数2本 (u, v) で world 点を1つ。縦は帯の全体を u で、横はその行の見える左右(行ごとの実際の幅)を v で。乱数の本数は今の矩形と同じ2本。
+ */
+export const projGameBandPick = (
+  gv: ProjGameView, marginPx: number, u: number, v: number, topExtraPx = 0,
+): { x: number; y: number } => {
+  const n = projGameViewBands(gv, PROJ_PLACE_BANDS, marginPx, placeBands);
+  const f = gv.f;
+  let top = placeBands[0].top;
+  const bot = placeBands[n - 1].bottom;
+  // 上の辺だけさらに内側へ(画面px・正=内側): 今の矩形の「上だけ余白が大きい」置き方の写し(V49 の上 60・下 30)。
+  if (topExtraPx > 0) {
+    const sc0 = f.wgScale > 0 ? f.wgScale : 1;
+    const yIn = projWorldYOfLocal(f, projLocalYOfWorld(f, top) + topExtraPx / sc0);
+    top = Math.min(bot, Math.max(top, yIn));
+  }
+  const y = top + Math.min(1, Math.max(0, u)) * (bot - top);
+  const l = projLocalYOfWorld(f, y);
+  const r = projGameRowSpan(gv, l);
+  const sc = f.wgScale > 0 ? f.wgScale : 1;
+  const s = Math.max(1e-6, projScaleAtLocal(f, l));
+  const m = marginPx / sc / s; // 画面px の余白をその行の world へ
+  const left = r.left - m, right = r.right + m;
+  return { x: left + Math.min(1, Math.max(0, v)) * Math.max(0, right - left), y };
+};
+
 // ---- ★#36・★#37 の縦横で使い回す矩形(3-9o ア・ウ・純関数。配線は作る物4) ----
 
 /** 基準のスマホの論理寸法(3-9o の寸法の前提: 430×932 → 405×878)。 */
@@ -245,16 +285,81 @@ export const projGameRecycleRect = (
   return { left: cx - hw, right: cx + hw, top: cy - hh, bottom: cy + hh };
 };
 
-/** 湧き/回収のフェードの尺(3-9o イ・叩き台 600ms)。 */
-export const PROJ_FADE_MS = 600;
+/**
+ * ★#37 作る範囲(V28・3-9o ウ・ケ4): 中心 (cx, cy) ± (画面の大きさの半分 + pad)。縦持ち=その端末の画面(今のまま)/
+ * 横長=基準のスマホを縦横入れ替えた大きさ(幅 Hs・高さ Ws)。store の syncBreakableProps と描画の縁のフェードの両方がこれを呼ぶ。
+ */
+export const projPropRegionRect = (
+  viewW: number, viewH: number, cx: number, cy: number, pad: number,
+): { left: number; top: number; right: number; bottom: number } => {
+  const portrait = viewW <= viewH;
+  const hw = (portrait ? viewW : PROJ_REF_PHONE_H) / 2 + pad;
+  const hh = (portrait ? viewH : PROJ_REF_PHONE_W) / 2 + pad;
+  return { left: cx - hw, right: cx + hw, top: cy - hh, bottom: cy + hh };
+};
 
-/** 湧きのフェードイン(3-9o イ): 経過 gameTime の ms → 濃さ 0..1(ease-in-out=慣性 MUST・単調・600ms で 1)。 */
+/** ★#37 エンディングの兵士の入れ直しの半幅(V76・ウ): 縦持ち=今の式/横長=幅の項を基準のスマホの縦(878)に入れ替え。 */
+export const projEndingReentryHalfW = (viewW: number, viewH: number, margin: number): number =>
+  (viewW <= viewH ? viewW : PROJ_REF_PHONE_H) / 2 / ZOOM_MIN_ABS + margin;
+
+/** ★#37 弾のカリングの半径(V78・ウ): 縦持ち=今の max(W,H)/ZOOM_MIN_ABS/横長=基準のスマホの値 878/0.4 の固定。 */
+export const projBulletCullRadius = (viewW: number, viewH: number): number =>
+  viewW <= viewH ? Math.max(viewW, viewH) / ZOOM_MIN_ABS : PROJ_REF_PHONE_H / ZOOM_MIN_ABS;
+
+/**
+ * 湧きのフェードインの尺(3-9o イ・クリエイティブ監査: 出と消えを非対称に=闇から立ち上がる・叩き台 900ms)。
+ * 互換の名前 PROJ_FADE_MS はフェードインの尺を指す。
+ */
+export const PROJ_FADE_IN_MS = 900;
+export const PROJ_FADE_MS = PROJ_FADE_IN_MS;
+/** 敵の回収の残像のフェードアウトの尺(叩き台 450ms・ease-in=最後に抜ける)。 */
+export const PROJ_GHOST_FADE_MS = 450;
+/** 弾の回収の残像のフェードアウトの尺(叩き台 200ms・ease-in)。 */
+export const PROJ_BULLET_GHOST_FADE_MS = 200;
+
+/**
+ * 湧きのフェードイン(3-9o イ): 経過 gameTime の ms → 濃さ 0..1。ease-out 寄り(速く立ち上がり、長く寄せる)だが
+ * 始まりと終わりの速さは 0(慣性 MUST)。f(t)=1−(1−t)³(1+3t)・f'(t)=12t(1−t)²=t=1/3 で一番速い。単調・900ms で 1。
+ */
 export const projFadeInAlpha = (elapsedMs: number): number => {
   if (!(elapsedMs > 0)) return 0;
-  if (elapsedMs >= PROJ_FADE_MS) return 1;
-  const t = elapsedMs / PROJ_FADE_MS;
-  return t * t * (3 - 2 * t);
+  if (elapsedMs >= PROJ_FADE_IN_MS) return 1;
+  const t = elapsedMs / PROJ_FADE_IN_MS;
+  const u = 1 - t;
+  return 1 - u * u * u * (1 + 3 * t);
 };
+
+/** フェードインの明るさの下限(暗い輪郭)。 */
+export const PROJ_FADE_IN_DARK = 0.12;
+/** 明るさは不透明度より遅れて戻す(前半は黒い輪郭・後半で色が乗る): 経過のこの割合までは暗いまま。 */
+export const PROJ_FADE_IN_BRIGHT_DELAY = 0.3;
+
+/**
+ * フェードインの明るさ(tint に掛ける倍率 PROJ_FADE_IN_DARK..1): 不透明度より遅れて(尺の 30% から)ease-in-out で戻る。
+ * 印が無い(経過が尺を越えた)時は 1。
+ */
+export const projFadeInBrightness = (elapsedMs: number): number => {
+  if (elapsedMs >= PROJ_FADE_IN_MS) return 1;
+  const t0 = Math.max(0, elapsedMs) / PROJ_FADE_IN_MS;
+  const t = Math.min(1, Math.max(0, (t0 - PROJ_FADE_IN_BRIGHT_DELAY) / (1 - PROJ_FADE_IN_BRIGHT_DELAY)));
+  const e = t * t * (3 - 2 * t);
+  return PROJ_FADE_IN_DARK + (1 - PROJ_FADE_IN_DARK) * e;
+};
+
+/**
+ * 回収の残像の濃さ(1→0): ease-in 寄り(はじめはゆっくり薄れ、最後に抜ける)・始まりと終わりの速さは 0。
+ * g(t)=t³(4−3t)=フェードインの曲線を時間で裏返した形。単調・尺で 0。
+ */
+export const projGhostFadeAlpha = (elapsedMs: number, durMs: number): number => {
+  if (!(elapsedMs > 0)) return 1;
+  if (elapsedMs >= durMs) return 0;
+  const t = elapsedMs / durMs;
+  return 1 - t * t * t * (4 - 3 * t);
+};
+
+/** 濃さ 0.5 未満の間は ★#38 の「見えていない」(フェードインの曲線で測る)。印が無ければ false(=`?proj=0` は1ビットも変わらない)。 */
+export const projFadeHidden = (e: { projFadeInAt?: number }, gameTime: number): boolean =>
+  e.projFadeInAt !== undefined && projFadeInAlpha(gameTime - e.projFadeInAt) < PROJ_GAME_VISIBLE_ALPHA;
 
 // ---- モジュールに1つ(cameraZoomLink と同じ形・§3-9d「置き場所と作り直す時刻」) ----
 
@@ -277,7 +382,7 @@ export interface ProjGameViewsInput {
   /** store のカメラ(追従の遅れ・先読みを含む=描かれている画面)。 */
   camX: number;
   camY: number;
-  /** 主人公中心の基準のカメラ(先読み・追従の遅れを含まない)。 */
+  /** 主人公中心の基準のカメラ(先読み=ボス・隕石の寄せ・追従の遅れを含まない。縦は構図の下げ zoomCameraDownFrac だけ入る)。 */
   playerCamX: number;
   playerCamY: number;
   viewW: number;

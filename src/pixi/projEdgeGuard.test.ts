@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 const RAW = import.meta.glob([
   './pixiScene.ts', '../utils/projGameView.ts', '../utils/projFlag.ts', '../utils/horizonForestLine.ts', '../utils/groundBandLayout.ts',
   '../utils/viewTransform.ts', '../store/gameStore.ts', '../hooks/useGameLoop.ts', '../utils/escortView.ts', '../utils/heroBlast.ts',
-  '../utils/heroTick.ts', '../utils/libertyTick.ts', '../utils/mapSightings.ts', '../utils/wraithTick.ts', '../utils/astroTick.ts', '../utils/npcSfx.ts',
+  '../utils/heroTick.ts', '../utils/libertyTick.ts', '../utils/mapSightings.ts', '../utils/wraithTick.ts', '../utils/astroTick.ts', '../utils/npcSfx.ts', '../utils/projSpawnFade.ts', '../utils/projAimSnap.ts',
 ], { eager: true, import: 'default', query: '?raw' }) as Record<string, string>;
 /** src からの相対(例 'pixi/pixiScene.ts')で生の文字列を引く。 */
 const src = (p: string): string => {
@@ -59,7 +59,7 @@ describe('③ pixiScene の旧い写像(grep ④)を含む関数は、段階6で
   const EXEMPT = new Set([
     'updateLabDarkLights', 'updateLabPitch', 'hideLabPitch', // 研究所
     'syncCorridorBackdrop', // 洋館
-    'worldToUi', 'worldUiScale', // 定義
+    'worldToUi', 'worldUiScale', 'projCursorToUi', // 定義(projCursorToUi は ?proj=1 の枠からの写し=投影済み)
     'drawAcrasielPattern', 'drawEnemy', 'drawAcrasielBurstFragment', // originX が別の意味の局所の変数(予告の形の原点)
     'syncObjShadeOverlay', // 層の位置合わせ(中の物は段階1〜5で投影済み)
   ]);
@@ -97,7 +97,13 @@ describe('⑥ utils/projGameView.ts は PixiJS・src/pixi を読まない', () =
       expect(l).not.toMatch(/pixi\.js|\/pixi\//);
     }
   });
-  for (const f of ['utils/projFlag.ts', 'utils/horizonForestLine.ts', 'utils/groundBandLayout.ts']) {
+  it('utils/projSpawnFade.ts は pixi.js を読まない(src/pixi は描画の寸法の純データ renderSpec だけ)', () => {
+    const s = src('utils/projSpawnFade.ts');
+    expect(s).not.toMatch(/from 'pixi\.js'/);
+    const pix = s.split('\n').filter(l => /from '\.\.\/pixi\//.test(l));
+    for (const l of pix) expect(l).toMatch(/\/pixi\/renderSpec'/);
+  });
+  for (const f of ['utils/projFlag.ts', 'utils/horizonForestLine.ts', 'utils/groundBandLayout.ts', 'utils/projAimSnap.ts']) {
     it(`${f} も pixi を読まない`, () => {
       const s = src(f);
       expect(s).not.toMatch(/from 'pixi\.js'|from '\.\.\/pixi\//);

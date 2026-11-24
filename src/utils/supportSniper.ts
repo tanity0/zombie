@@ -98,6 +98,11 @@ export const computeSupportSniperEntry = (
   playerX: number, playerY: number,
   view: ViewRect,
   jitterRad = 0,
+  /**
+   * ?proj=1 段階6(★#38=A・V5): 線 (playerX,playerY)+t·(dx,dy) が投影のゲームの画面の縁と交わる点(projGameEdgePoint)。
+   * 渡された時だけ view の矩形の代わりに使う(`?proj=0` では渡さない)。
+   */
+  edgeFn?: (fromX: number, fromY: number, dirX: number, dirY: number) => { x: number; y: number },
 ): { x: number; y: number; dirX: number; dirY: number } | null => {
   // 縁へ向かう方向 = 敵→プレイヤー(敵から遠い側)。敵とプレイヤーが同座標なら下方向へ(縮退の保険)。
   let dx = playerX - enemyX;
@@ -110,6 +115,7 @@ export const computeSupportSniperEntry = (
     const ry = dx * s + dy * c;
     dx = rx; dy = ry;
   }
+  if (edgeFn) { const q = edgeFn(playerX, playerY, dx, dy); return { x: q.x, y: q.y, dirX: -dx, dirY: -dy }; }
   // レイ (playerX,playerY) + t*(dx,dy) と矩形縁の交点(最小の正のt)。
   let t = Infinity;
   if (dx > 1e-6) t = Math.min(t, (view.right - playerX) / dx);
@@ -128,8 +134,10 @@ export const computeSupportSniperEntry = (
 export const computeSupportSniperFarCorner = (
   playerX: number, playerY: number,
   view: ViewRect,
+  /** ?proj=1 段階6(★#38=A・V5 の幻影版): 4隅の代わりに使う点(投影のゲームの画面の縁の点)。`?proj=0` では渡さない。 */
+  projCorners?: readonly { x: number; y: number }[],
 ): { x: number; y: number; dirX: number; dirY: number } => {
-  const corners = [
+  const corners = projCorners ?? [
     { x: view.left, y: view.top },
     { x: view.right, y: view.top },
     { x: view.left, y: view.bottom },

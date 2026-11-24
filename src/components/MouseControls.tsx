@@ -3,7 +3,8 @@ import { useGameStore, isInputLocked } from '../store/gameStore';
 import { performFlickAction } from '../utils/inputActions';
 import { pcPressDown, pcPressUp, markPcFlick } from '../utils/pcPress';
 import { computeViewport } from '../utils/viewport';
-import { screenToCameraLocal } from '../utils/viewTransform';
+import { screenToCameraLocal, takeAimSnap } from '../utils/viewTransform';
+import { PROJ_GAME_SNAP } from '../utils/projFlag';
 import { pcCycleGun } from '../utils/weaponCycle';
 
 // PC(マウス)操作レイヤー。スマホの4操作に対応(research/PC_SUPPORT.md §11):
@@ -32,7 +33,9 @@ const MouseControls: React.FC = () => {
   const updateAim = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (isInputLocked()) return; // 操作不可中は照準(=向き)も更新しない
     rawRef.current = cursorScreen(e, e.currentTarget);
-    setMouseAim(cursorLocal(e, e.currentTarget));
+    const v = cursorLocal(e, e.currentTarget);
+    // ?proj=1 段階6(★#40=B): マウスの出来事の時だけ、カーソルの画面点と枠のスカラー値を一緒に置く(?proj=0 は今の1引数のまま)。
+    if (PROJ_GAME_SNAP) setMouseAim(v, takeAimSnap()); else setMouseAim(v);
   }, [setMouseAim, cursorLocal, cursorScreen]);
   useEffect(() => {
     let raf = 0;
@@ -43,7 +46,10 @@ const MouseControls: React.FC = () => {
       const cur = useGameStore.getState().mouseAim;
       if (!cur) return; // パッドで遊んでいる間は外れている(utils/gamepad)。マウスが動けばまた付く
       const v = screenToCameraLocal(raw.x, raw.y);
-      if (Math.abs(v.x - cur.x) > 0.25 || Math.abs(v.y - cur.y) > 0.25) setMouseAim(v);
+      if (Math.abs(v.x - cur.x) > 0.25 || Math.abs(v.y - cur.y) > 0.25) {
+        // ?proj=1 段階6(★#40=B): 照準を書き直す時だけ写しも書き直す(新しい set() は作らない)。
+        if (PROJ_GAME_SNAP) setMouseAim(v, takeAimSnap()); else setMouseAim(v);
+      }
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
