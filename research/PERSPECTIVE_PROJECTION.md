@@ -2897,6 +2897,12 @@ pixiScene の `projFrame`(`updateProjFrame` `pS:10079`・呼ぶ所 `pS:13111`)�
 **ク. 積んだ物(2巡目監査 (B)・この巡で直さない)**: 残像の上限超えの見え方/M0 を段階6のゲーム側の場面から外すかの扱い(推薦のまま)/横長の `spawnSideFromRoll` に渡す寸法の実測の確かめ(アで新しい矩形を渡すと決めた)/V28 の pad の実画の確かめ。
 
 
+#### 3-9p. 段階6の直し: M0 の帯の外の減光の縁(段階8から切り出し・§3-9 の末尾へ置く)
+
+- **事実**: `updateLabOutsideDim`(`pS:17794`)は M0(訓練)でも呼ばれる(`m0Dim` `pS:13634-13639`・帯は ±`TUTORIAL_MOVE_Y_LIMIT_PX`・上は地平で打ち止め)。M0 は段階1〜6で枠が立つ場面なので、**`?proj=1` の M0 では帯の外の減光の縁が投影とずれている**(縁を `world.toGlobal` で出している `pS:17824-17825`)。段階1〜6の「帯の外の減光=研究所の話で場面の外」(§3-5i の2・§3-8h の2・3-9h の2)の書き漏れ。
+- **直し**: 枠があれば、縁の行=帯の縁の world 点を投影した行(`y_disp` を `worldToUi`)。上の打ち止め(地平)は今のまま。`?proj=0` は今の行のまま。研究所の U20 と同じ関数の同じ枝(研究所で枠が立つのは段階8・M0 は段階6の直しとして先に入れてよい)。
+- **受け入れ**: `?proj=1` の M0 で縁が帯の端の行に乗る(差 2px 以内・画で確かめる)。段階6の受け入れ条件の「屋外の `?proj=1` が今と同じ」には入れない(書き漏れの直し=この項の画で確かめる)。
+
 ### 3-10. 段階8「研究所と洋館の通路」(★#12「研究所・洋館の独自の写像」=裁定 B の中身)
 
 - **★#43「研究所の床と壁を投影に揃えるか」裁定=A'(社長 2026-11-24「では研究所はそうして」)**: 研究所(ステージ2)は**投影に揃えたうえで、見える世界を研究所の広さに絞る**。社長の言葉「厳密に角度や遠近感を今と揃える必要はなく、そこは新仕様でよい」「遠景に壁と上下の限界があることや、それが影になってて分かりやすくなってることなどは持ち越したい」。
@@ -2905,14 +2911,14 @@ pixiScene の `projFrame`(`updateProjFrame` `pS:10079`・呼ぶ所 `pS:13111`)�
   3. **北の限界の線に遠景の壁を立て、床をそこで終わらせる**(壁の向こうの地面・地平線までの床は描かない)。壁は投影で奥の分だけ小さく潰れる。どの絵を壁に使うか・壁の高さ・壁の上(空の代わり)に何を描くかは、この節の作る物・台帳に書き足してから着手する(書き足した部分も監査に回す)。
   4. ★#43 の B'(床は今のまま・物だけ合わせる)は採らない。
 
-**裁定(社長 2026-11-24「2-6ステージはBで」)**: ステージ2(研究所)・ステージ6(洋館の通路)は**床・壁は今の独自の描き方のまま、敵・アイテム(・その付属のエフェクト)をその床の写像に合わせて置き直す**。全部を投影に揃える A・今のままの C は採らない。
+**裁定(社長 2026-11-24「2-6ステージはBで」)**: ステージ2(研究所)・ステージ6(洋館の通路)は**床・壁は今の独自の描き方のまま、敵・アイテム(・その付属のエフェクト)をその床の写像に合わせて置き直す**。全部を投影に揃える A・今のままの C は採らない。**研究所は ★#43=A'(上)で、床・壁も投影へ寄せる**(研究所の床はもともと屋外と同じ曲線の帯=事実4・5)。洋館は B のまま。
 
-**前提(段階1〜6で実装済み・作り直さない)**: 投影の純関数(`utils/perspectiveProjection.ts`)・組み立ての1本(`utils/projGameView.ts` の `projFrameBase` `:67`)・pixiScene の `projFrame`(`updateProjFrame` `pS:10092`)と、その枠が null でない時だけ通る段階1〜6の全部の枝(`this.projFrame` を読む行は pixiScene に **452 行**・`grep -c "this.projFrame"`)。
-行番号は HEAD 75a5c0f(段階8の下書きを入れた版。pixiScene の行は ba0494f と同じ)(`pS:`=pixiScene.ts の行・`uGL:`=useGameLoop.ts・`gS:`=gameStore.ts・`cL:`=`pixi/corridorLayer.ts`)。**作業ツリーは並行の作業で数行ずれうる**ので着手時に grep で取り直す。
+**前提(段階1〜6で実装済み・作り直さない)**: 投影の純関数(`utils/perspectiveProjection.ts`)・組み立ての1本(`utils/projGameView.ts` の `projFrameBase` `:67`)・pixiScene の `projFrame`(`updateProjFrame` `pS:10093`)と、その枠が null でない時だけ通る段階1〜6の全部の枝(`this.projFrame` を読む行は pixiScene に **452 行**・`grep -c "this.projFrame"`)。
+行番号は HEAD 2c71b19 の物を grep で取り直した(`pS:`=pixiScene.ts の行・`uGL:`=useGameLoop.ts・`gS:`=gameStore.ts・`cL:`=`pixi/corridorLayer.ts`)。**作業ツリーは並行の作業で数行ずれうる**ので着手時に grep で取り直す。
 
 **作品の掟(発注文へ必ず写す)**: 「Y方向の5つの副作用」(3-10h で1つずつ)・ズーム引き考慮(`?zoomlock=0.4`)・慣性(出る/消えるでパッと出ない)・★PC版の作業はスマホを1pxも動かさない(`?proj=0` は1ビットも変えない)・★★赤い予告の4つの掟(段階8は予告の**時刻**に1行も触れない。形は「床の写像」で頂点ごとに写す=判定と一致を保つ)・仕様変更のルール(ゲームの判定に触れる所=★#46 は裁定の後だけ)。
 
-**この段階の芯(1行)**: 「床の写像」を**今の投影の枠(`ProjFrame`)と同じ窓口**に包む。研究所は今の投影の枠(★#43=A の時。床と壁の描き方は §1-1c の3点ぶん投影の床へ寄る)か、足し込みの床の写像の枠(★#43=B' の時・式は未確認)、洋館は Mode-7 の式を持つ別の枠。枠が null でなくなれば、段階1〜6で作った物は**床の写像を差し替えるだけで**そのまま効く。
+**この段階の芯(1行)**: 「床の写像」を**今の投影の枠(`ProjFrame`)と同じ窓口**に包む。研究所は今の投影の枠(研究所の入力で組む・北の壁の行で世界を切る)、洋館は Mode-7 の式を持つ別の種類の枠。枠が null でなくなれば、段階1〜6で作った物は**床の写像を差し替えるだけで**そのまま効く。
 
 #### 3-10a. 事実(コードで確かめた)
 
@@ -2921,48 +2927,54 @@ pixiScene の `projFrame`(`updateProjFrame` `pS:10079`・呼ぶ所 `pS:13111`)�
 | # | 事実 | 在処 |
 |---|---|---|
 | 1 | ステージ2は**見た目は屋内の研究所**(社長「ステージ2は屋内だよ?」)だが、**コードは屋外の作りの上に研究所の見た目をかぶせている**(`theme:'lab'`・`indoorMode=false`=屋外のスクロール・屋外の地面の帯・屋外のカメラ)。コードの「屋内」(`indoorMode`・`labMap.ts` の迷路)は今のキャンペーンのどのステージからも到達しない(「本作では不採用」)。以下「屋外/屋内」はコードの言葉で書く | `data/campaign.ts:225-228`・`gS:29037` のコメント・`App.tsx:383`(`setPendingIndoor(!!stageForRun?.indoor)`=どのステージも `indoor` を持たない) |
-| 2 | **`?labpersp` は既定 OFF**(`tsBool('labpersp', false)`)。しかも効くのは **屋内だけ**(`labPerspNow = s.indoorMode && LAB_PERSP` `pS:13456`・`persp = indoor && LAB_PERSP` `pS:42591`) | `pS:1098` |
-| 3 | ⇒ **`labProjectFootY`(`pS:8979`)と `LAB_WALL_DEPTH`(`pS:3265-3267`・`pS:42815-42820`)は、ステージ2では1行も走らない**(どちらも `syncLab` の屋内の枝の中=`pS:42810`・`:42819`・`:42882`)。★#12 の表で「研究所は `labProjectFootY`/`LAB_WALL_DEPTH` の写像」と書いた前提は、**屋内の控えの経路の話で、ステージ2の実体ではない** | — |
-| 4 | ステージ2の**床は屋外と同じ地面の帯**(`groundBase`・`updatePerspectiveGround`)に研究所の床の絵を貼った物。曲線も屋外と同じ定数(`GROUND_TILE_SCALE_Y_FAR`・`GROUND_PERSPECTIVE_CURVE`=`labPerspNow` が false のため)。違うのは遠景の帯の高さだけ(`farBackdropHeight` `pS:7919`=`screenH × LAB_FAR_BOUNDARY_YR`(0.30) `pS:777`。屋外は 0.26・上限0.38・下限168) | `pS:13460-13470`・`pS:42622`(`groundBase.visible = !indoor`)・`applyOutdoorGroundTheme` |
-| 5 | ⇒ ステージ2の床は**投影と同じ曲線・同じ farH を使うが、同じ描き方ではない**。今の床(`?proj=0`)は v0.25.5732 の足し込み(`GroundScrollAccumulator`)の経路で、投影の床とは **§1-1c の3点**(①帯の縮みを帯の中央で取る ②1:1 の行=足元→カメラの基準行 ③模様を足し込み→絶対値)で違う。壁・什器も旧い `depthScale`(事実6)。**研究所で「物を今の床に合わせる」には、今の床の写像(足し込みの経路)を新しく書く要がある**。今の投影に揃える(★#43 の A)なら写像は作らなくてよいが、それは床と壁の描き方を §1-1c の3点ぶん変える=**裁定 B の一部を改める案** | — |
-| 6 | ステージ2の**壁・什器**(`syncLabWalls` `pS:15944`・`syncLabProps` `pS:16123`)は、木と同じ**旧い置き方**(world の足元にそのまま置き・`depthScale(footY)` で大きさ・`zIndex=footY`)。独自の写像は持たない | `makeLabWallView` `pS:15983`・`makeLabPropView` `pS:15996`・崩れ `tickLabObstacleCrumble` `pS:16047`(`k = baseScale × depthScale` `pS:16062`) |
-| 7 | 研究所のカメラは**縦の下げ量 0**(主人公の中心=画面の 0.5H)。屋外は `CAMERA_DOWN_OFFSET_FRAC`(既定 0.08) | `uGL:11039`(`(indoor ∥ labTheme) ? 0`)・湧きの帯も同じ `uGL:18611` |
-| 8 | **今の投影の組み立ては、場面によらず下げ量を `CAMERA_DOWN_OFFSET_FRAC` に固定**している(`camDown: CAMERA_DOWN_OFFSET_FRAC` `pS:10087`)。研究所でそのまま枠を作ると、基準行が主人公の足元から **0.08H(縦持ち 878 で約 70px)南にずれる**=主人公が等倍にならない(試算: 主人公の足元の行で s≈0.86) | — |
-| 9 | 枠を作らない場面の判定は3か所で同じ形: `projGroundFrameNow` `pS:10060`・`updateProjFrame` `pS:10098`(`!PROJ_ON ∥ indoorMode ∥ corridorMode ∥ stageTheme==='lab'` で null)・ゲーム側 `uGL:11142`(`indoor ∥ corridorMode ∥ labTheme ∥ tutorialStage` で `setProjGameView(null)`) | — |
-| 10 | 研究所だけの描画(枠を読む行は **0**): 変異塊 `syncLabCrawler` `pS:15228`(叩きつけの赤い円=TI:A09 `pS:15618-15619`・死の光の柱 `pS:15461`=`proj-lift: exempt(lab …)`)・休眠ゾンビの視界 `updateLabVisionCones` `pS:17372`(TI:I09)・非常灯と闇 `updateLabDarkLights` `pS:17428`(灯りの位置 `worldToUi(k × LAB_EMLIGHT_SPACING, 0)` `pS:17533`)・`updateLabPitch` `pS:17601`(闇の穴=主人公・敵・光の world 点)・帯の外の減光 `updateLabOutsideDim` `pS:17786`(帯の縁 ±`LAB_CORRIDOR_Y_LIMIT_PX`=200 を `world.toGlobal` で画面へ `pS:17816-17817`)・壁と什器の作る範囲 `labObstacleViewBounds` `pS:16034`(旧い矩形) | grep で各関数の範囲の `projFrame`・`pf`・`projPlace` を数えた=全部 0 |
-| 11 | 画面固定の研究所の層(投影しない): 遠景の窓 `updateLabFarWindow`・天井 `updateLabCeiling`・近景の什器 `frontForest`。屋内専用(到達しない): `updateLabFloorPlate`(TI:J12)・ボタンの円(J16)・ゴール区画(J17) | `pS:13615-13629` |
-| 12 | **`updateLabOutsideDim` は M0(訓練)でも呼ばれる**(`m0Dim` `pS:13633-13638`)。M0 は段階1〜6で枠が立つ場面なので、**`?proj=1` の M0 では帯の外の減光の縁が投影とずれている**(段階1〜6の「帯の外の減光=研究所の話で場面の外」(§3-5i の2・§3-8h の2・3-9h の2)の書き漏れ) | — |
+| 2 | **`?labpersp` は既定 OFF**(`tsBool('labpersp', false)`)。しかも効くのは **屋内だけ**(`labPerspNow = s.indoorMode && LAB_PERSP` `pS:13457`・`persp = indoor && LAB_PERSP` `pS:42599`) | `pS:1099` |
+| 3 | ⇒ **`labProjectFootY`(`pS:8980`)と `LAB_WALL_DEPTH`(`pS:3266-3268`・`pS:42823-42828`)は、ステージ2では1行も走らない**(どちらも `syncLab` の屋内の枝の中=`pS:42818`・`:42827`・`:42890`)。★#12 の表で「研究所は `labProjectFootY`/`LAB_WALL_DEPTH` の写像」と書いた前提は、**屋内の控えの経路の話で、ステージ2の実体ではない** | — |
+| 4 | ステージ2の**床は屋外と同じ地面の帯**(`groundBase`・`updatePerspectiveGround`)に研究所の床の絵を貼った物。曲線も屋外と同じ定数(`GROUND_TILE_SCALE_Y_FAR`・`GROUND_PERSPECTIVE_CURVE`=`labPerspNow` が false のため)。違うのは遠景の帯の高さだけ(`farBackdropHeight` `pS:7920`=`screenH × LAB_FAR_BOUNDARY_YR`(0.30) `pS:778`。屋外は 0.26・上限0.38・下限168) | `pS:13461-13471`・`pS:42622`(`groundBase.visible = !indoor`)・`applyOutdoorGroundTheme` |
+| 5 | ステージ2の床は投影と同じ曲線・同じ farH を使うが、今の床(`?proj=0`)は v0.25.5732 の足し込み(`GroundScrollAccumulator`)の経路で、投影の床とは **§1-1c の3点**(①帯の縮みを帯の中央で取る ②1:1 の行=足元→カメラの基準行 ③模様を足し込み→絶対値)で違う。壁・什器も旧い `depthScale`(事実6)。**★#43=A' で、この3点と壁・什器の置き方は投影の側へ変わる**(社長「厳密に角度や遠近感を今と揃える必要はなく、そこは新仕様でよい」) | — |
+| 6 | ステージ2の**壁・什器**(`syncLabWalls` `pS:15952`・`syncLabProps` `pS:16131`)は、木と同じ**旧い置き方**(world の足元にそのまま置き・`depthScale(footY)` で大きさ・`zIndex=footY`)。独自の写像は持たない | `makeLabWallView` `pS:15991`・`makeLabPropView` `pS:16004`・崩れ `tickLabObstacleCrumble` `pS:16055`(`k = baseScale × depthScale` `pS:16070`) |
+| 7 | 研究所のカメラは**縦の下げ量が字の 0**(主人公の中心=画面の 0.5H・ズームの連動も通さない)。屋外は `zoomCameraDownFrac(CAMERA_DOWN_OFFSET_FRAC, z)`(既定 0.08・引きでは大きくなる) | `uGL:11039`(`(indoor ∥ labTheme) ? 0`)・湧きの帯も同じ `uGL:18611` |
+| 8 | **今の投影の組み立ては、場面によらず下げ量を `CAMERA_DOWN_OFFSET_FRAC` に固定**している(`camDown: CAMERA_DOWN_OFFSET_FRAC` `pS:10088`)。研究所でそのまま枠を作ると、基準行が主人公の足元から **0.08H(縦持ち 878 で約 70px)南にずれる**=主人公が等倍にならない(試算: 主人公の足元の行で s≈0.86)。また **`zoomCameraDownFrac(0, z)` は z<1 で 0 にならない**(`cameraZoom.ts:331-336`=`max(base, eq)` の eq が正)ので、研究所の 0 はこの関数を通さずに書く | — |
+| 9 | 枠を作らない場面の判定は3か所で同じ形: `projGroundFrameNow` `pS:10061`・`updateProjFrame` `pS:10099`(`!PROJ_ON ∥ indoorMode ∥ corridorMode ∥ stageTheme==='lab'` で null)・ゲーム側 `uGL:11142`(`indoor ∥ corridorMode ∥ labTheme ∥ tutorialStage` で `setProjGameView(null)`) | — |
+| 10 | 研究所だけの描画(枠を読む行は **0**): 変異塊 `syncLabCrawler` `pS:15236`(叩きつけの赤い円=TI:A09 `pS:15626-15627`・死の光の柱 `pS:15469`=`proj-lift: exempt(lab …)`)・休眠ゾンビの視界 `updateLabVisionCones` `pS:17380`(TI:I09)・非常灯と闇 `updateLabDarkLights` `pS:17436`(灯りの位置 `worldToUi(k × LAB_EMLIGHT_SPACING, 0)` `pS:17541`)・`updateLabPitch` `pS:17609`(闇の穴=主人公・敵・光の world 点)・帯の外の減光 `updateLabOutsideDim` `pS:17794`(帯の縁 ±`LAB_CORRIDOR_Y_LIMIT_PX`=200 を `world.toGlobal` で画面へ `pS:17824-17825`)・壁と什器の作る範囲 `labObstacleViewBounds` `pS:16042`(旧い矩形) | grep で各関数の範囲の `projFrame`・`pf`・`projPlace` を数えた=全部 0 |
+| 11 | 屋内専用(到達しない): `updateLabFloorPlate`(TI:J12)・ボタンの円(J16)・ゴール区画(J17) | — |
+| 12 | **歩ける帯の上下の限界**: 主人公の中心 y を ±`LAB_CORRIDOR_Y_LIMIT_PX`(=200)に数値で留める(`world/playableArea.ts:100-104`・定数 `world/labWalls.ts:79`)。壁・什器の矩形も同じ帯の中(`LAB_WALL_Y_LIMIT` `labWalls.ts:80`)・拾い物は 176 まで(`LAB_ITEM_Y_LIMIT` `labWalls.ts:304`)。帯の外の影は4枚の幕(上ベタ/上グラデ/下グラデ/下ベタ・`labOutDim` `pS:6411`) | — |
+| 13 | **今の研究所の「遠景の壁」は画面に貼った組**: ①部屋の絵 `stage2-lab-far.jpg`(1624×906・ガラス越しの研究室)を遠景の帯 [0, farH] に高さで合わせて横ループ(`layoutFarBackdrop` `pS:9786`・`applyFarBackdrop` の `lab` `pS:9663`・暗転なし `LAB_FAR_TINT`) ②窓=ガラス `stage2-far-glass.png`(1884×282・α0.3)+枠 `stage2-far-frame.png`(1884×307・8面)を、下辺を遠景の帯の下辺(`farH − LAB_FAR_WINDOW_BOTTOM_UP` `pS:1286`)に揃えて worldGroup の床の直上に横ループ(`updateLabFarWindow` `pS:16972`)。窓の中のゾンビ・部屋の明かり・非常灯も付く(`updateLabFarWindowZombies` `pS:17208`・`updateLabFarRoomLight` `:17033`・`updateLabFarEmergency` `:17066`) ③什器の帯 `stage2-near-horizon2.png`(2172×724)を遠景の帯の下辺の少し下に横ループ(`layoutNearHorizon` `pS:9544`) ④天井の帯(画面固定・`updateLabCeiling` `pS:16912`)。**どれも world の行ではなく画面(遠景の帯の下辺)に付いている**=北の壁は「床の上端の行」に常に居る | — |
 
 **洋館の通路(ステージ6)**
 
 | # | 事実 | 在処 |
 |---|---|---|
-| 13 | `corridorMode` は stage-6 のメイン出撃と **stage-ex1**(EX)で立つ(再訪・ベンチ・フリー周回は除く) | `App.tsx:370-374`・`gS:28936` |
-| 14 | 物(敵・アイテム・主人公)の Mode-7 投影(`projectCorridorEntity`)は **v0.25.2108 に社長裁定で廃止**。今は物は**屋外と同じ旧い置き方**(world の座標・`depthScaleEnemy` 等) | `utils/corridorProjection.ts:73-76` |
-| 15 | 床・天井・柱・壁灯・奥壁は `CorridorLayer`(`cL`)が **画面に固定した入れ物**に描く。縦はカメラに付かない(入れ物の位置 = 揺れ×ズーム+支点だけ `pS:16860-16882`)。横は world x=0 の画面位置へ平行移動(`worldZeroScreenX`)。M6 は入れ物の拡大 1(EX だけ広間の倍率×ズーム) | `syncCorridorBackdrop` `pS:16818` |
-| 16 | 床の式(`updateFloor` `cL:395`): 消失点 `hY = H × 0.26`・`footY0 = H × 0.793`(`CFG` `cL:27`)・`denom = footY0 − hY`。行 y の `s = (y − hY)/denom`・奥行き `d = focal(1/s − 1)`(focal 420)・床の幅の半分 `W × 1.05 × s`。床の模様の行は `u = d + travel`、**`travel = −player.y`**(主人公に付く・`pS:16886`)。PC の横長は通路の幅 `W` をスマホ相当の 405 で組む(`corridorW` `pS:16851`) | `cL:395-428` |
-| 17 | 床の遠方の暗幕(`floorDark`): 消失点(α1)→画面の下端(α0)の直線のグラデ | `cL:382-384`・`bakeVerticalGradient` `cL:709` |
-| 18 | 物の地平線フェードは洋館だけ **画面の 0.14H** の固定の線(world では `camera.y + 0.14H`)から幅 80px(`CORRIDOR_ACTOR_FADE_TOP_FRAC` `pS:970`・`_PX` `:971`・`pS:13445-13447`)。**床の消失点(0.26H)より上**=今は物が天井・奥壁の上にも描かれる | — |
-| 19 | 洋館のカメラの下げ量は `CORRIDOR_CAMERA_DOWN_FRAC`=0.16(v0.25.2148)=主人公の中心が画面の 0.66H | `gS:3578`・`uGL:11039-11041` |
-| 20 | ゴールの円 `CORRIDOR_GOAL_Y = −3390` は「主人公が画面の中央(0.5H)に立つ時、ハッチ床(模様の行 u=3900)の真上」になるよう 513px 手前へずらした値(v0.25.2140)。その後 v0.25.2148 で主人公が 0.66H へ下がったので、**今は止まっている時でハッチの中心が円の中心より約 137px 上に描かれる**(試算・縦持ち 405×878・先読み 0) | `gS:1417-1423`・`cL:103` |
-| 21 | ゴールの円の床の絵は、洋館では world の円を縦 0.55 に潰して描く(`CORRIDOR_RETURN_SQUASH` `pS:37981`・`pS:38000`)。`?proj=1` の枝(`projCircle` 等)は円の中心を **ローカル (0,0)** で呼んでいる(洋館の枝と同じ変数 `cx, cy`)=洋館で枠を立てると円が world の原点に描かれる | `syncReturnCircle` `pS:37979` |
-| 22 | 柱の world の位置の記述: 「通路幅の縮小(柱±200)」(`CORRIDOR_LATERAL_CLAMP`=170 のコメント) | `utils/corridorProjection.ts:79` |
+| 14 | `corridorMode` は stage-6 のメイン出撃と **stage-ex1**(EX)で立つ(再訪・ベンチ・フリー周回は除く) | `App.tsx:370-374`・`gS:28936` |
+| 15 | 物(敵・アイテム・主人公)の Mode-7 投影(`projectCorridorEntity`)は **v0.25.2108 に社長裁定で廃止**。今は物は**屋外と同じ旧い置き方**(world の座標・`depthScaleEnemy` 等) | `utils/corridorProjection.ts:73-76` |
+| 16 | 床・天井・柱・壁灯・奥壁は `CorridorLayer`(`cL`)が **画面に固定した入れ物**に描く。縦はカメラに付かない(入れ物の位置 = 揺れ×ズーム+支点だけ)。横は world x=0 の画面位置へ平行移動(`worldZeroScreenX`)。M6 は入れ物の拡大 1(EX だけ広間の倍率×ズーム `pS:16889`) | `syncCorridorBackdrop` `pS:16826` |
+| 17 | 床の式(`updateFloor` `cL:395`): 消失点 `hY = H × 0.26`・`footY0 = H × 0.793`(pixi 側の上書き `CFG` `cL:27`=`CORRIDOR_CFG`(`utils/corridorProjection.ts:17`)の `horizonYr`・`footYr` だけを上書き)・`denom = footY0 − hY`。行 y の `s = (y − hY)/denom`・奥行き `d = focal(1/s − 1)`(focal 420)・床の幅の半分 `W × aisleHalfXr(1.05) × FLOOR_W_MULT(1.0 `cL:97`) × s`。床の模様の行は `u = d + travel`、**`travel = −player.y`**(主人公に付く・`pS:16894`)。PC の横長は通路の幅 `W` をスマホ相当の 405 で組む(`corridorW` `pS:16859`) | `cL:395-428` |
+| 18 | 床の遠方の暗幕(`floorDark`): 消失点(α1)→画面の下端(α0)の直線のグラデ | `cL:382-384`・`bakeVerticalGradient` `cL:709` |
+| 19 | 物の地平線フェードは洋館だけ **画面の 0.14H** の固定の線(world では `camera.y + 0.14H`)から幅 80px(`CORRIDOR_ACTOR_FADE_TOP_FRAC` `pS:971`・`pS:13446-13448`)。**床の消失点(0.26H)より上**=今は物が天井・奥壁の上にも描かれる | — |
+| 20 | 洋館のカメラの下げ量は `CORRIDOR_CAMERA_DOWN_FRAC`=0.16(v0.25.2148)=主人公の中心が画面の 0.66H | `gS:3578`・`uGL:11039-11041` |
+| 21 | ゴールの円 `CORRIDOR_GOAL_Y = −3390`(`gS:1423`)は「主人公が画面の中央(0.5H)に立つ時、ハッチ床(模様の行 u=3900=`GOAL_TILE_START` 3640 `cL:103` + `FLOOR_REPEAT`/2=260 `cL:96`)の真上」になるよう 513px 手前へずらした値(v0.25.2140)。その後 v0.25.2148 で主人公が 0.66H へ下がったので、**今は止まっている時でハッチの中心が円の中心より約 137px 上に描かれる**(試算・縦持ち 405×878・先読み 0) | `gS:1417-1423` |
+| 22 | ゴールの円の床の絵は、洋館では world の円を縦 0.55 に潰して描く(`CORRIDOR_RETURN_SQUASH` `pS:37989`・`pS:38008`)。`?proj=1` の枝(`projCircle` 等)は円の中心を **ローカル (0,0)** で呼んでいる(洋館の枝と同じ変数 `cx, cy`)=洋館で枠を立てると円が world の原点に描かれる | `syncReturnCircle` `pS:37987` |
+| 23 | 柱の world の位置の記述: 「通路幅の縮小(柱±200)」(`CORRIDOR_LATERAL_CLAMP`=170 のコメント) | `utils/corridorProjection.ts:79` |
 
 **ずれの試算**(scratchpad の使い捨ての計算=上の式と `perspectiveProjection.ts` そのもの・縦持ち 405×878・ズーム1・先読み 0・主人公の高さ 28。D=主人公の足元から北への world の距離)
 
-研究所(今の投影の式・研究所の farH 263・下げ量 0):
+研究所(今の投影の式・研究所の今の farH 263=0.30H・下げ量 0):
 
-| 量 | 今(旧い置き方) | 床の写像(投影) |
+| 量 | 今(旧い置き方) | 投影(farH 0.30H のまま) |
 |---|---|---|
 | 地平線(定義域の端) | — | 北 274px |
-| 地平線フェードが 0.5 の行 | 北 42px | 北 47px |
 | 南の見える距離(画面の下端) | 425px | **251px** |
 | D=+200 の行の倍率・見える左右の半幅 | 0.80・±203 | 0.44・±465 |
 | D=−200 の行の倍率・見える左右の半幅 | 1.40・±203 | **2.18・±93** |
 
-- **研究所は北がもともとほとんど見えない**(地平線フェードの境目が画面の 0.40H=主人公の足元の約 100px 北。式からの値・**実機で未確認**)。歩ける帯(±200)の北の端は今も投影でも見えない。
-- **南は投影で見える距離が 425→251px に縮む**(★#3「手前(南)の見える距離」の研究所版)。主人公が帯の北の端に居る時、帯の南の端(400px 南)は今は見え、投影では画面の外。
-- PC 1280×720(farH 216): 南の見える距離 346→206px・D=−200 の倍率 2.55。
+- **北の壁の行(world −240・3-10c2)は、主人公が帯の南寄りに居ると地平線(北 274px)より奥になる**(主人公が帯の南の端なら壁まで 454px)=farH 0.30H のままでは壁が描けない(★#49)。farH を 0.18H にすると地平線は北 551px(PC 1280×720 で 462px)で、壁は常に定義域の中(下の表)。
+- **南は投影で見える距離が 425→251px に縮む**(★#3「手前(南)の見える距離」の研究所版・A' で新仕様として受け入れた側)。
+
+| 研究所の farH | 地平線 | 壁(world −240)の画面Y・倍率: 主人公が北の端 / 中央 / 南の端 | 南の見える距離 |
+|---|---|---|---|
+| 0.30H(今) | 274 | 405・0.81 / 276・0.31 / **外** | 251 |
+| 0.22H | 449 | 405・0.86 / 285・0.50 / **外** | 274 |
+| 0.18H | 551 | 405・0.87 / 286・0.55 / 198・0.32 | 284 |
+| PC 0.18H(1280×720) | 462 | 327・0.85 / 216・0.49 / 133・0.22 | 232 |
 
 洋館(上の Mode-7 の式。物を床の写像に乗せた時。★#44=A・★#45=A の形):
 
@@ -2978,71 +2990,97 @@ pixiScene の `projFrame`(`updateProjFrame` `pS:10079`・呼ぶ所 `pS:13111`)�
 | D=+300 の行: 画面Y・大きさ | 293・0.77 | 463・0.64 |
 | D=−200 の行: 画面Y・大きさ | 794・1.60 | 809・1.59 |
 
-- **今のずれの大きさ**: 床は主人公の行で縦 0.68・横 1.66 倍で流れ、物は 1.00 で流れる(縦は床が物より遅い・横は床が物より速い)。主人公は行ける端(x=170)へ寄っても、描かれる位置は柱の中心から 162px 内側。
-- **物を床に乗せると、北が 471→170px の帯に詰まる**(北 300px の敵は今の 293→463 の行=主人公の 131px 上)。大きさはほぼ今と同じ範囲(フェードの線で 0.53・画面の下で 1.78。今の `ENEMY_DEPTH_MIN/MAX`=0.55/1.85 に近い)。
+- **今のずれの大きさ**: 床は主人公の行で縦 0.68・横 1.66 倍で流れ、物は 1.00 で流れる。主人公は行ける端(x=170)へ寄っても、描かれる位置は柱の中心から 162px 内側。
+- **物を床に乗せると、北が 471→170px の帯に詰まる**。大きさはほぼ今と同じ範囲(フェードの線で 0.53・画面の下で 1.78。今の `ENEMY_DEPTH_MIN/MAX`=0.55/1.85 に近い)。
 - PC 1280×720(通路の幅 405・縦 720): 北の帯 388→127px・南 231→231px・主人公の行の横 1.67。
 
 #### 3-10b. 通す物/入れない物
 
-- **通す物(研究所・ステージ2・★#43=A の時の形で書く。B' なら床と壁は通さず、物だけを `labLegacy` の枠で)**: 段階1〜6で `projFrame` の枝を持つ物の全部(主人公・敵・ボス・NPC・拾い物・設置物・影・HPバー・頭上マーク・赤い予告・判定を持つ床・点で出る演出・弾・高さ・照準の絵・画面外の矢印・描く範囲)+研究所だけの物(壁・什器・崩れと染み・変異塊・叩きつけの円 A09・視界 I09・非常灯・闇の穴・帯の外の減光)。
+- **通す物(研究所・ステージ2)**: 段階1〜6で `projFrame` の枝を持つ物の全部(主人公・敵・ボス・NPC・拾い物・設置物・影・HPバー・頭上マーク・赤い予告・判定を持つ床・点で出る演出・弾・高さ・照準の絵・画面外の矢印・描く範囲)+研究所だけの物(床・壁・什器・崩れと染み・変異塊・叩きつけの円 A09・視界 I09・非常灯・闇の穴・帯の外の影)+**北の壁**(今の遠景の組を world の行へ・3-10c2)。
 - **通す物(洋館・ステージ6)**: 同じく段階1〜6の全部+洋館だけの物(ゴールの円の潰し・物のフェードの線・床に渡す前進量)。
 - **入れない物**:
-  - **床・天井・柱・壁灯・奥壁の描き方**(裁定 B)。研究所の床は ★#43 の答えで扱いが変わる(3-10c)。洋館の床は**式を1行も変えない**(渡す前進量だけ ★#45)。
-  - **画面固定の層**(研究所の遠景の窓・天井の帯・近景の什器/洋館の黒背景・暗幕)。
+  - **洋館の床・天井・柱・壁灯・奥壁の描き方**(裁定 B)。洋館の床は**式を1行も変えない**(渡す前進量だけ ★#45)。
+  - **画面固定の層**(研究所の天井の帯・近景の什器 `frontForest`/洋館の黒背景・暗幕)。
   - **屋内(`indoorMode`)**: 到達しない経路。枠は null のまま(`labProjectFootY`・`LAB_WALL_DEPTH`・`?labpersp` は触らない)。
-  - **EX(stage-ex1)の洋館の通路**: 広間の倍率 S・world に固定した奥壁(`exHallTravel`)で写像が M6 と別。★#48「EX の洋館の通路」。
-  - **ゲームの判定**(★#46 の答えの範囲だけ変わる)。
+  - **EX(stage-ex1)の洋館の通路**: ★#48「EX の洋館の通路」。
+  - **ゲームの判定**(★#46 の答えの範囲だけ変わる。答えが出るまで研究所・洋館の照準の枠は null=U40)。
 
 #### 3-10c. 床の写像の窓口(★1本の窓口に包む)
 
 **形**: 今の `ProjFrame`(`perspectiveProjection.ts:277`)に**写像の種類**を1つ足す。`projectInto` などの関数は、枠の種類を見て式を選ぶ(呼ぶ側=pixiScene の 452 行は1行も変えない)。
 
-
 ```
 ProjFrame.kind: 'ground'(今の帯の表)| 'corridor'(Mode-7)
-ProjFrame.m7?: { hY, denom, focal, W, aisle, pillarX, dRef, sRef }   // kind==='corridor' の時だけ
-ProjPoint.sx: 横の広がりの倍率(ground は s と同じ値)
+ProjFrame.m7?: { hY, denom, focal, W, aisleW, pillarX, dRef, sRef }   // kind==='corridor' の時だけ(aisleW = aisleHalfXr × FLOOR_W_MULT)
+ProjFrame.noHorizonFade: boolean   // 投影後の Y の地平線フェードを掛けない枠(洋館・北の壁を立てた研究所)
+ProjPoint.kx: 横の広がりの倍率(ground は s と同じ値)   // 既存の P2.sx(画面X)・unproject の引数 sx と衝突しない名前
 ```
 
-- **洋館の枠の `table`(段階8 1巡目監査 A2・1行で決める)**: `ProjFrame` は `table` 必須のまま、洋館の枠には**空の表の印 `CORRIDOR_NO_TABLE`**(`n=0`・`lMax`=南の頭打ちの行・`stripH`=1)を入れ、表を読む関数は全部 `kind` で先に分ける。**`groundStripTile` は ground の枠でしか呼ばない**(呼んだら例外=番人テスト⑧)。型を2つに分ける案は、pixiScene の 452 行の型が全部変わるので採らない。
-- **ground の枠は数値を1ビットも変えない**(`sx = s`・式の枝を足すだけ)。番人テスト(作る物 9 の①)で、全部の関数の出力が今と同じであることを固定する。
-- 種類で式を選ぶ関数(**`f.table` を読む所**と、**窓口の外で `f.cxw` と `s` から横を自前で組む所**の2本の grep で数えた・段階8 1巡目監査 A1): `projLocalYOfWorld` `:303`・`projWorldYOfLocal` `:307`・`projScaleAtLocal` `:311`・`projectInto` `:344`(x に `sx`)・`unproject` `:433`・`visibleWorldBands` `:411`・`visibleWorldQuad` `:455`・`southCullWorldY` `:487`(`table.lMax`)・`projUnprojectLMin` `:591`(`table.stripH`)・`projUnprojectInto` `:615`(x を `sx` で戻す)/`utils/projLift.ts:20`(B の型だけ表を読む=洋館では A の型のみ・B を呼んだら A へ落とす)/`utils/projAimSnap.ts:27-28`(枠の写しに `kind` と `m7` を足す)/pixiScene の計器 `pS:10441`・段階5の計器 `pS:10767`(洋館では数えない)。`groundStripTile` `:531`・`groundVsObjectDiff` `:558` は地面の帯の計器=洋館では呼ばない。
-- **窓口の外で横を組んでいる所(段階8 1巡目監査 A1・`grep -n "cxw"` の当たり・テストと `perspectiveProjection.ts` の中を除く)**: `utils/projShape.ts:151`(`projVertexInto`=`f.cxw + s·(wx − f.cxw)`=**段階4の赤い円・弧・床の印・格子メッシュが全部通る**)・`projShape.ts:642-643`(`xClip`)・`:703`・`:1056`/`pS:14726`(`projSnowVanish`)/`utils/projGameView.ts:213`(`projGameRowSpan`)・`:218`/`utils/projFx.ts:325`/`pS:10454`・`:10457`・`:10464`(段階1の滑りの計器=地面の帯の計器・洋館では呼ばない)。**直し方**: `projVertexInto` は横を `projectInto` の `x`(=`sx`)から取る形に寄せる(行の縦は今どおり)。`xClip` の `A = GP.sx − B·f.cxw` の式は「横 = 中心 + 倍率×(x − 中心)」を前提にしている=洋館は中心 0・倍率 `sx` を返す小関数 `projRowAffine(f, l)`(中心と横の倍率の組)を `perspectiveProjection.ts` に足し、上の全部の所がそれを読む。**ground では `projRowAffine` が (cxw, s) を返す=数値は同じ**。これで洋館で赤い予告と物の横が同じ式になる(しないと予告の円が物と 1.66 倍ずれる)。
+- **洋館の枠は `makeProjFrame` を通らない**(段階8 2巡目監査 A3): `corridorFloorFrame(input)` が `ProjFrame` を直に組む。`cxw = 0`(通路の中心の列=world x=0)。表に依る値(`gRef`・`syRef`・`convRef`・`convStd`・`syStd`・`tStd`)には **`NaN` を入れる=表の値は使わない印**(種類の枝で先に分けるので読まれない。読まれたら NaN が出る=番人テスト⑩とテストで捕まえる)。
+- **洋館の枠の `table`**: `ProjFrame` は `table` 必須のまま、空の表の印 `CORRIDOR_NO_TABLE`(`n=0`・`lMax`=南の頭打ちの行・`stripH`=1)を入れる。**`groundStripTile` は ground の枠でしか呼ばない**(番人テスト⑧)。型を2つに分ける案は、pixiScene の 452 行の型が全部変わるので採らない。
+- **ground の枠は数値を1ビットも変えない**(`kx = s`・式の枝を足すだけ)。番人テスト①で固定する。
+- 種類で式を選ぶ関数(**`f.table` を読む所**と、**窓口の外で `f.cxw` と `s` から横を自前で組む所**の2本の grep で数えた): `projLocalYOfWorld` `:303`・`projWorldYOfLocal` `:307`・`projScaleAtLocal` `:311`・`projectInto` `:344`(x に `kx`)・`unproject` `:433`・`visibleWorldBands` `:411`・`visibleWorldQuad` `:455`・`southCullWorldY` `:487`(`table.lMax`)・`projUnprojectLMin` `:591`(`table.stripH`)・`projUnprojectInto` `:615`(x を `kx` で戻す)/`utils/projLift.ts:20`(B の型だけ表を読む=洋館では A の型のみ・B を呼んだら A へ落とす)/`utils/projAimSnap.ts`(写し `:27-28` に `kind` と `m7` を足し、組み直し `projAimFrameFrom` `:46-56` を種類で分ける: ground は今どおり `updateProjTable`+`makeProjFrame`、corridor は `corridorFloorFrame` で組み直す=段階8 2巡目監査 A2)/pixiScene の計器 `pS:10442`・段階5の計器 `pS:10768`(洋館では数えない)。
+- **窓口の外で横を組んでいる所**(`grep -n "cxw"`・テストと `perspectiveProjection.ts` の中を除く): `utils/projShape.ts:151`(`projVertexInto`=段階4の赤い円・弧・床の印・格子メッシュが全部通る)・`projShape.ts:642-643`(`xClip`)・`:703`・`:1056`/`pS:14724-14726`(`projSnowVanish`)/`utils/projGameView.ts:213`・`:218`/`utils/projFx.ts:325`/`pS:10454`・`:10457`・`:10464`(段階1の滑りの計器=地面の帯の計器・洋館では呼ばない)。**直し方**: 小関数 `projRowAffine(f, l)`(行 l の横の中心と倍率の組=ground は (cxw, s)・corridor は (0, kx))を `perspectiveProjection.ts` に足し、上の全部の所がそれを読む。`projVertexInto` は横を `projectInto` の `x` から取る形に寄せる。これで洋館で赤い予告と物の横が同じ式になる(しないと予告の円が物と 1.66 倍ずれる)。
+- **地平線フェードを外す所は1本**(段階8 2巡目監査 A4): `horizonActorAlpha`(`pS:8168`)の入口で `this.projFrame?.noHorizonFade` なら 1 を返す。投影後の Y で地平線フェードを掛けている所は `projBaseAlpha` `pS:10602`・`projActorFade` `pS:12145-12146`・`projLooseFade` `pS:11403` ほか、`horizonActorAlpha(` の呼び出しは pixiScene に **82 か所**あるので、1つずつ外さず入口で外す。北の線のフェードは枠の「描く距離のフェード」(`p.alpha`)が担う(洋館=3-10c の7・研究所=3-10c2 の④)。
 
-**研究所の枠(kind='ground')**: **★#43 が A の時だけ立てる**(段階8 1巡目監査 A3: 枠を立てると、床も `updatePerspectiveGround` の `if (pf)` の枝 `pS:12410-12414` へ自動で乗り換わる=床の描き方が §1-1c の3点ぶん変わる)。今の `projFrameBase` に研究所の入力を入れるだけ。
-- `farH` = `farBackdropHeight()`(研究所の 0.30H。今の `projFrameBaseParams` が既に読む)。
-- **`camDown` を場面で選ぶ**(事実8): `indoor ∥ labTheme ? 0 : corridorMode ? CORRIDOR_CAMERA_DOWN_FRAC : CAMERA_DOWN_OFFSET_FRAC`(`uGL:11039-11041` と同じ式・utils に1本の関数 `projCamDownFrac(scene)` を作り、useGameLoop もそれを呼ぶ形に寄せる)。
-- 地平線フェード・描く距離のフェード・手前のフェードは屋外と同じ(投影後の Y)。
-- ★#43 が A の時、床は屋外の `?proj=1` と同じ3点だけ変わる(§1-1c)。**B' の時**は枠を立てても床を `?proj=0` の経路に残す門が要る: 置き場は `updatePerspectiveGround` の `const pf = this.projFrame` の行(`pS:12410`)で、`pf && pf.kind === 'ground' && !labTheme` の時だけ枝へ入れる。物は「足し込みの床の写像」の枠(新しい種類 `kind='labLegacy'`)で置く。**足し込みの床が閉じた式で書けるかは未確認**(`GroundScrollAccumulator` は帯ごとの係数を毎フレーム積む=経路に依る。帯の切り捨ての係数×積み上げの値を毎フレーム読み出して、帯の行ごとの区分一次式として枠に渡す形なら書ける見込み・推測)。**B' が選ばれたら、この式を書き足してから着手**する。
+**研究所の枠(kind='ground')**: 今の `projFrameBase` に研究所の入力を入れる(研究所では常に ground の枠・★#43=A')。
+- `farH` = 研究所の `?proj=1` の遠景の帯の高さ(★#49 の推薦=0.18H・叩き台 `LAB_PROJ_FAR_YR`)。`?proj=0` の `farBackdropHeight()`(0.30H)は変えない。
+- **`camDown` は研究所では字の 0**(段階8 2巡目監査 A5): 組み立ての `projRefLocalY(viewH, zoomCameraDownFrac(camDown, camZ), …)` は z<1 で 0 にならない(事実8)ので、研究所は `downFrac = 0` を直に渡す枝にする(`uGL:11039` と同じ)。utils に `projCamDownFracFor(scene, camZ)`(研究所・屋内=0・洋館=`zoomCameraDownFrac(CORRIDOR_CAMERA_DOWN_FRAC, camZ)`・ほか=`zoomCameraDownFrac(CAMERA_DOWN_OFFSET_FRAC, camZ)`)を作り、`pS:10088` が呼ぶ。**`?proj=0` の研究所のカメラ(`uGL:11039`・`uGL:18611`)は1行も変えない**(読む値が同じになることをテストで固定するだけ)。`uGL:11155`(`rebuildProjGameViews` の `camDown`)は研究所・洋館では呼ばれない(`uGL:11142` で null)=★#46=B の時だけ対象。
+- 投影後の Y の地平線フェードは外し(`noHorizonFade`)、北の壁の行で切る(3-10c2 の④)。手前のフェードは屋外と同じ。
 
-**洋館の枠(kind='corridor')**: 式(画面の論理px・ズーム1。`W`=通路の幅=`corridorW`・`H`=画面の高さ)
+**洋館の枠(kind='corridor')**: 式(画面の論理px。`W`=通路の幅=`corridorW`・`H`=画面の高さ)
 
-1. 床の定数: `hY = H·0.26`・`denom = H·(0.793 − 0.26)`・`focal = 420`(`CFG` をそのまま読む=値を2か所に持たない)。
-2. 基準点と基準行(★#45 の A): `W_ref = camera.y + H·(0.5 + zoomCameraDownFrac(0.16, camZoom)) + playerH/2`(屋外の `projRefLocalY` と同じ形で farH を 0 にした物)・`y_ref = W_ref − camera.y`・`s_ref = (y_ref − hY)/denom`・`d_ref = focal(1/s_ref − 1)`。アテンション(`zoomToUnity`)は屋外と同じく基準点と基準行を**組で**運ぶ(§1-6)。
+1. 床の定数: `hY = H·horizonYr(0.26)`・`denom = H·(footYr(0.793) − horizonYr)`・`focal = CORRIDOR_CFG.focal(420)`・`aisleW = CORRIDOR_CFG.aisleHalfXr(1.05) × FLOOR_W_MULT(1.0)`(値を2か所に持たない=3-10i の2)。
+2. 基準点と基準行(★#45 の A): `W_ref = camera.y + H·(0.5 + zoomCameraDownFrac(0.16, camZ)) + playerH/2`(屋外の `projRefLocalY` と同じ形で farH を 0 にした物)。**`camZ` は屋外と同じ決まり**: `zref === 2 ? camZoom : 1`、`camZoom` は `getCameraZoomLink()`(useGameLoop が `setCameraZoomLink(camBossZoomRef.current.z)` で書く値)。洋館はボスのズームから外れている(`pS:12682`)ので普段は 1。`y_ref = W_ref − camera.y`・`s_ref = (y_ref − hY)/denom`・`d_ref = focal(1/s_ref − 1)`。アテンション(`zoomToUnity`)は屋外と同じく基準点と基準行を**組で**運ぶ(§1-6)。
 3. world → 画面: `d(y) = d_ref + (W_ref − y)`・`s7 = focal/(focal + d)`・行 `ℓ = denom·s7`(ℓ=0 が消失点=定義域の端)・表示 `y_disp = camera.y + hY + ℓ`(枠の `farH` に `hY` を入れる)。
-4. 横: 消失点の列は **world x=0**(通路の中心。屋外の `cxw`=画面の中央の列ではない)。`sx = W·1.05·s7 / pillarX`・表示 `x_disp = sx · x`(★#44 の A)。
+4. 横: 消失点の列は **world x=0**(`cxw = 0`)。`kx = W·aisleW·s7 / pillarX`・表示 `x_disp = kx · x`(★#44 の A)。
 5. 立っている絵の倍率: `s = s7 / s_ref`(主人公の行で1)。
 6. 南: `d → −focal` で発散するので、`d ≥ −0.6·focal`(s7 ≤ 2.5・画面の下端は s7 = 1.39)で頭打ちにする(叩き台・`southCullWorldY` の `lMax` に当たる値)。
-7. 物のフェード(事実18): 枠の「描く距離のフェード」を world の今の線に合わせる: `farRefY = camera.y + 0.14H + 80`・`farStart = 0`・`farEnd = 80`(=world で今と同じ線・同じ幅。形はなめらか(smoothstep)になる)。**洋館の枠では、投影後の Y で掛ける地平線フェード(`projBaseAlpha` の `horizonActorAlpha(p.y)` `pS:10599`)を明示的に外す**(段階8 1巡目監査 C2: 「投影後の Y は消失点より下なので必ず 1」は、消失点 0.26H が物の線 0.14H+80 より下にある時=画面の高さ 667 以上の時だけ成り立つ。H<667 では二重に薄くなるため、式の偶然に頼らず枝で外す)。
-8. 逆投影(マウス): `ℓ = y_disp − camera.y − hY` → `s7 = ℓ/denom` → `d` → `y = W_ref + d_ref − d`・`x = x_disp / sx`。`ℓ_min` = 物のフェードの線の行(描かれていない奥を狙えない=★#39 裁定 A と同じ考え)。
+7. 物のフェード(事実19): 枠の「描く距離のフェード」を world の今の線に合わせる: `farRefY = camera.y + 0.14H + 80`・`farStart = 0`・`farEnd = 80`(=world で今と同じ線・同じ幅。形はなめらか(smoothstep)になる)。**投影後の Y の地平線フェードは `noHorizonFade` で外す**(上の「1本」。「消失点より下なので必ず 1」は画面の高さ 667 以上の時だけ成り立つため、偶然に頼らない)。
+8. 逆投影(マウス): `ℓ = y_disp − camera.y − hY` → `s7 = ℓ/denom` → `d` → `y = W_ref + d_ref − d`・`x = x_disp / kx`。`ℓ_min = projLocalYOfWorld(f, f.farRefY − f.farEnd)`(`projUnprojectLMin` と同じ式=物のフェードの線の行・★#39 裁定 A と同じ考え)。
 9. 揺れ・ズーム: 表示座標(world の入れ物の座標)で返すので、揺れは今の world の入れ物の揺れがそのまま掛かる。**床は今もズームしない**(M6 の入れ物の拡大は 1)ので、走りの引き(0.85)・寄りのパンチの間は物と床が今と同じだけずれる(3-10k の1・§10 へ積む)。
 
-**床に渡す前進量(★#45 の A)**: `travel' = U0 − d_ref − W_ref`(`U0 = 510`=ハッチの中心 u=3900 と円の中心 −3390 の差)。止まっている時は `travel' = −player.y + (482 − d_ref)`(縦持ち 878 で **+364**・PC 720 で +368)。模様の位相がずれるだけで、床の式・絵・暗幕・柱・壁灯は1行も変えない。帰結: ①床がカメラに付いて流れる(今は主人公に付く=カメラの遅れ・先読みの間も物と床が同じだけ動く) ②ハッチが帰還の円の真下に来る(今の約 137px のずれ=事実20 が消える)。柱・壁灯の並びの位相も同じだけずれる(周期 520 の飾り)。
+**床に渡す前進量(★#45 の A)**: `travel' = U0 − d_ref − W_ref`。`U0 = GOAL_TILE_START + FLOOR_REPEAT/2 + CORRIDOR_GOAL_Y`(= 3640 + 260 − 3390 = 510・元の定数は `cL:103`・`cL:96`・`gS:1423`=3-10i の2 で utils へ)。止まっている時は `travel' = −player.y + (482 − d_ref)`(縦持ち 878 で **+364**・PC 720 で +368)。模様の位相がずれるだけで、床の式・絵・暗幕・柱・壁灯は1行も変えない。帰結: ①床がカメラに付いて流れる(今は主人公に付く) ②ハッチが帰還の円の真下に来る(今の約 137px のずれ=事実21 が消える)。柱・壁灯の並びの位相も同じだけずれる(周期 520 の飾り)。
+
+#### 3-10c2. 研究所の北の壁と上下の限界(★#43=A' の 2・3)
+
+**① 壁に使う絵(既存の素材のみ)**: **今の遠景の組そのもの**(事実13)を「北の壁の板」として world の行に立てる。新しい素材は作らない。
+- 板の中身(奥→手前): 部屋の絵 `stage2-lab-far.jpg`(ガラスの向こうの研究室)→ガラス `stage2-far-glass.png`(α0.3)→枠 `stage2-far-frame.png`+窓の中のゾンビ・部屋の明かり・非常灯(今の付属をそのまま)→什器の帯 `stage2-near-horizon2.png`(壁の足元に並ぶ什器)。
+- 今の組の縦の並び(遠景の帯の高さ・窓の下辺 `farH − LAB_FAR_WINDOW_BOTTOM_UP`・什器の帯の下辺 `farH + H·NEAR_HORIZON_BOTTOM_RATIO`)を、**縦持ち 878・遠景の帯 263px の時の比のまま**1枚の板の中の比に写す(板の中の配置は今の画面で見えている姿と同じ)。
+- 横は world に付ける: 板の横のループの位置は `x_disp = cxw + s_N·(x − cxw)`(`s_N` = 壁の行の倍率)で決め、今の視差 `LAB_FAR_WINDOW_PARALLAX`・遠景の視差の代わりにする(壁が床と同じ速さで流れる)。
+- **画面に貼っていた今の遠景(`farBackdrop`)・窓・什器の帯は `?proj=1` の研究所では隠し**、同じ絵を板として描く(同じテクスチャを使い回す=メモリは増えない)。`?proj=0` は今のまま。
+
+**② 壁の立つ world の行と高さ**:
+- 行: `y_N = −(LAB_CORRIDOR_Y_LIMIT_PX + LAB_NORTH_WALL_GAP)`=**−240**(`LAB_NORTH_WALL_GAP` 叩き台 40=帯の北の端と壁の間に、上の影の帯が見える幅)。壁は帯の外なので当たり判定は持たない(行ける所は今の ±200 のまま)。
+- 高さ: 板の world の高さ `LAB_NORTH_WALL_H` 叩き台 **264**(=今の縦持ち 878 の遠景の帯の高さ 263px を、主人公の行の倍率1の時の world px とみなした値)。描かれる高さは `264 × s_N`。試算(farH 0.18H): 主人公が帯の北の端 230px・中央 145px・南の端 84px(3-10a の表の倍率から)。
+- 研究所の `?proj=1` の farH は ★#49 の答え(推薦 0.18H)。0.30H のままでは主人公が帯の中央より南で壁が地平線の向こうへ出る(3-10a)。
+
+**③ 壁の上(空の代わり)に何を描くか**: **推薦=闇(黒)+今の天井の帯**。板の上端より上は、研究所の暗さの単色(今の `lab-bg-void` の色・叩き台)で埋め、画面の上端には今の天井の帯(`updateLabCeiling`・画面固定)をそのまま重ねる。
+- 理由: ステージ2は屋内(社長)=空を描く場所ではない。壁の上が闇だと「天井の高い部屋の奥の壁」に見え、ガラスの向こうの明るい研究室(社長指示2026-10-20「遠目に明るいところ」)が闇の中で目立つ。新しい素材が要らない。
+- 部屋の絵を上へ伸ばす案は採らない(縦にループしない絵=継ぎ目が出る)。
+
+**④ 壁より北の床・物を描かない仕組み**:
+- **床**: 地面の帯のうち、下端が壁の行の ℓ_N(`projLocalYOfWorld(f, y_N)`)より上にある帯は出さない(`updatePerspectiveGround` の `if (pf)` の枝の中で帯ごとに `visible=false`)。ℓ_N を跨ぐ帯は板が覆う(板は不透明・床の直上の層)。
+- **物**: 枠の「描く距離のフェード」を壁の行で切る: `farRefY = y_N + LAB_NORTH_WALL_FADE`(叩き台 24)・`farStart = 0`・`farEnd = LAB_NORTH_WALL_FADE`=壁の行で α0。屋外の `PROJ_FAR_START/END`(1200/1500)の代わり。投影後の Y の地平線フェードは外す(`noHorizonFade`=今の研究所の地平線フェード=画面の 0.40H の線は使わない)。
+- **カリング・逆投影**: `visibleWorldQuad` の上の辺・`ℓ_min`(マウスが狙える奥)も同じ `farRefY − farEnd` から出る=壁の行より奥は作らない・狙えない。
+- 層: 板は今の窓と同じ所(worldGroup の床 `groundBase` の直上・物の層の下)=物は必ず壁の手前に描かれる。
+
+**⑤ 上下の限界の外の影**: U20(`labOutDim` の4枚を、world の帯の縁 y=−200・+200 を投影した行で掛ける)。上の影=帯の北の縁〜壁の行(投影で細く)、下の影=帯の南の縁〜画面の下(投影で太く)。影の濃さ・グラデの幅(画面px)は今のまま。
 
 #### 3-10d. 段階1〜6の部品の使い回し
 
 | 部品 | 研究所 | 洋館 | 理由 |
 |---|---|---|---|
-| `projPlace`(`pS:10155`)・`projPlaceStatic`(`pS:12228`) | そのまま | そのまま | `projectInto` の窓口を通るだけ |
-| 後掛け `projLoose`・`projPostView`・役の表 `PROJ_ACTOR_ROLES`/`PROJ_ACTOR_LIFTED`(`utils/projActorPass.ts:26`・`:73`) | そのまま | そのまま | 足元 F を支点に `k = s/d` の相似。体の大きさは `s` で、横の位置は `projectInto` の `x`(=`sx`)で決まる |
-| 段階3 `projFx*`(`pS:11474-11830`) | そのまま | そのまま(ただし `s_fx` の下限 ★#24 は `s` に掛かる=洋館の北は下限に当たりやすい) | 付け根を投影・飛び方は s 倍 |
-| 段階4 頂点ごとの投影(`projCircle`・`projArcLine` 等・焼き素材の格子メッシュ) | そのまま | そのまま(円は床に寝た楕円=主人公の行で縦横比 0.68/1.66 ≈ 0.41) | 頂点ごとに `projectInto`。判定と一致は種類によらず保たれる |
+| `projPlace`(`pS:10156`)・`projPlaceStatic`(`pS:12229`) | そのまま | そのまま | `projectInto` の窓口を通るだけ |
+| 後掛け `projLoose`・`projPostView`・役の表 `PROJ_ACTOR_ROLES`/`PROJ_ACTOR_LIFTED`(`utils/projActorPass.ts:26`・`:73`) | そのまま | そのまま | 足元 F を支点に `k = s/d` の相似。体の大きさは `s` で、横の位置は `projectInto` の `x`(=`kx`)で決まる |
+| 段階3 `projFx*` | そのまま | そのまま(ただし `s_fx` の下限 ★#24 は `s` に掛かる=洋館の北は下限に当たりやすい) | 付け根を投影・飛び方は s 倍 |
+| 段階4 頂点ごとの投影(`projCircle`・`projArcLine` 等・焼き素材の格子メッシュ) | そのまま | `projRowAffine` に寄せた後はそのまま(円は床に寝た楕円=主人公の行で縦横比 0.68/1.66 ≈ 0.41) | 頂点ごとに投影。判定と一致は種類によらず保たれる |
 | 段階5 `projLift`(A の型 σ=s) | そのまま | そのまま(A のみ) | B の型は表を読む=洋館では使わない |
-| 段階6 逆投影・`projUnprojectInto`・`setViewProjection`(`viewTransform.ts`)・`projArrowTargetInto` | そのまま | 種類の枝で使える | 3-10c の 8 |
-| 段階6 照準の吸い付き `projAimSnap` | そのまま | 枠の写しに `kind`・`m7` を足す | 写しが表のスカラーしか持っていない |
+| 段階6 逆投影・`projUnprojectInto`・`projArrowTargetInto` | ★#46 の答えまで照準は null | 同左 | U40 |
+| 段階6 照準の吸い付き `projAimSnap` | ★#46 の答えまで null | 同左(写しと組み直しに種類) | U41 |
 | 段階6 ゲームの画面 `projGameView`(`rebuildProjGameViews`) | ★#46 次第(推薦=作らない) | ★#46 次第(推薦=作らない) | 3-10f |
-| 地面の帯 `groundStripTile`・計器 `groundVsObjectDiff` | ★#43 が A なら使う | **使えない**(床は CorridorLayer) | 洋館の床は帯ではない |
-| `visibleWorldQuad`/`visibleWorldBands`(カリング) | そのまま | 種類の枝(台形の上の辺=物のフェードの線) | — |
+| 地面の帯 `groundStripTile`・計器 `groundVsObjectDiff` | 使う(壁の行より上の帯は出さない) | **使えない**(床は CorridorLayer) | 洋館の床は帯ではない |
+| `visibleWorldQuad`/`visibleWorldBands`(カリング) | そのまま(上の辺=壁の行) | 種類の枝(上の辺=物のフェードの線) | — |
 | 旧い倍率の打ち消し(`depthScaleEnemy` 等を `k=s/d` で外す) | そのまま | そのまま | 旧い倍率は今どおり描く関数が掛け、後掛けが打ち消す |
 
 #### 3-10e. 台帳(段階8で手を入れる所・番号は `U01`〜・付け替えない)
@@ -3051,135 +3089,145 @@ ProjPoint.sx: 横の広がりの倍率(ground は s と同じ値)
 
 | # | 物 | 在処 | 今 | 段階8で |
 |---|---|---|---|---|
-| U01 | 枠を作らない場面の判定 | `pS:10061`(`projGroundFrameNow`)・`pS:10099`(`updateProjFrame`)の**2か所** | 研究所・洋館で null | 研究所=**★#43 が A の時だけ** ground の枠(B' の時は 3-10c の門と `labLegacy` の枠)。洋館(EX を除く)=`updateProjFrame` は corridor の枠。**`projGroundFrameNow`(寄せの計算の前の「地面の部分だけ」の枠)は洋館でも corridor の枠を返す**(寄せ・支点・ピント帯の表示座標を同じ写像で出すため・揺れ・wg なし)。屋内・EX は2か所とも null のまま |
-| U02 | 下げ量の固定 | `pS:10087` | `CAMERA_DOWN_OFFSET_FRAC` | `projCamDownFrac(scene)`(研究所 0・洋館 0.16・ほか今の値)。**屋外は数値が同じ**(番人テスト) |
-| U03 | 写像の種類の枝 | `perspectiveProjection.ts` の 10 関数・`projLift.ts:20`・`projAimSnap.ts:27-28`+**窓口の外で横を組む所**(`projShape.ts:151`・`:642-643`・`:703`・`:1056`・`pS:14726`・`projGameView.ts:213`・`:218`・`projFx.ts:325`) | ground だけ | 3-10c の表。窓口の外の所は `projRowAffine` を読む形へ |
-| U04 | 洋館の枠の組み立て | 新規 `utils/corridorFloorMap.ts`(PixiJS を読まない) | — | 3-10c の 1〜9 |
-| U05 | 画面の下端の行 | `pS:10126`(`projScreenBottomL` が局所の `farH` を引く) | 遠景の帯の高さ | 枠の `f.farH` を引く(洋館は `hY`。今は縦持ち 878 で `farBackdropHeight()` も 0.26H と**偶然**同じ値=画面の高さ 646 未満では食い違う) |
-| U06 | 地面の帯の模様 | `updatePerspectiveGround` の `if (pf)` の枝(`pS:12410-12414`=`groundStripTile`) | 枠があれば無条件に呼ぶ | `pf.kind === 'ground'` の時だけ(洋館は帯を描かない=`groundBase` は隠れている `pS:42628` が、呼ぶと空の表を読む)。B' の研究所は 3-10c の門 |
+| U01 | 枠を作らない場面の判定 | `pS:10061`(`projGroundFrameNow`)・`pS:10099`(`updateProjFrame`)の**2か所** | 研究所・洋館で null | 研究所=**常に** ground の枠(研究所の入力・3-10c)。洋館(EX を除く)=2か所とも corridor の枠(`projGroundFrameNow` は寄せ・支点・ピント帯の表示座標を同じ写像で出すため・揺れ・wg なし)。屋内・EX は2か所とも null のまま |
+| U02 | 下げ量の固定 | `pS:10088` | `CAMERA_DOWN_OFFSET_FRAC` | `projCamDownFracFor(scene, camZ)`(研究所 字の0・洋館 0.16 を `zoomCameraDownFrac` で・ほか今の値)。**屋外は数値が同じ**(番人テスト①) |
+| U03 | 写像の種類の枝 | `perspectiveProjection.ts` の 10 関数・`projLift.ts:20`・`projAimSnap.ts:27-28`・`:46-56`+**窓口の外で横を組む所**(`projShape.ts:151`・`:642-643`・`:703`・`:1056`・`pS:14724-14726`・`projGameView.ts:213`・`:218`・`projFx.ts:325`) | ground だけ | 3-10c の表。窓口の外の所は `projRowAffine` を読む形へ。`projAimFrameFrom` は種類で分ける |
+| U04 | 洋館の枠の組み立て | 新規 `utils/corridorFloorMap.ts`(PixiJS を読まない) | — | 3-10c の 1〜9(`makeProjFrame` を通らない・`cxw=0`・表の値は NaN の印) |
+| U05 | 画面の下端の行 | `pS:10127`(`projScreenBottomL` が局所の `farH` を引く) | 遠景の帯の高さ | 枠の `f.farH` を引く(洋館は `hY`・研究所は ★#49 の farH。今は縦持ち 878 で `farBackdropHeight()` も 0.26H と**偶然**同じ値=画面の高さ 646 未満では食い違う) |
+| U06 | 地面の帯の模様 | `updatePerspectiveGround` の `if (pf)` の枝(`pS:12410-12414`=`groundStripTile`) | 枠があれば無条件に呼ぶ | `pf.kind === 'ground'` の時だけ(洋館は帯を描かない=`groundBase` は隠れている `pS:42635` が、呼ぶと空の表を読む)。研究所は壁の行より上の帯を出さない(3-10c2 の④) |
+| U07 | 地平線フェードの入口 | `horizonActorAlpha` `pS:8168` | 場面によらず掛かる | 枠の `noHorizonFade` なら 1(洋館・研究所)。呼び出し 82 か所は触らない |
 
 **イ. 研究所だけの描画**
 
 | # | 物 | 在処 | 今 | 段階8で |
 |---|---|---|---|---|
-| U10 | 壁 | `syncLabWalls` `pS:15944`・`makeLabWallView` `pS:15983` | world の足元・`depthScale` | ★#43=A なら段階1の木と同じ(`projPlaceStatic`・倍率 s・`zIndex` は元の footY・透けは段階1の判定) |
-| U11 | 什器 | `syncLabProps` `pS:16123`・`makeLabPropView` `pS:15996`・`resolveLabPropTexture` | 同上 | 同上 |
-| U12 | 崩れ・残骸・染み | `tickLabObstacleCrumble` `pS:16047`(`k` `pS:16062`・染みの楕円 `g.ellipse` の行) | 旧い倍率 k・world の楕円 | 体の部分は U10 と同じ相似で写し、回転・潰しは今のまま(慣性の崩れの形は変えない)。染みは床の印=段階4の頂点ごと |
-| U13 | 壁・什器を作る範囲 | `labObstacleViewBounds` `pS:16034` | 旧い矩形 | `visibleWorldQuad(f).rect`(方針③)・北は地平線で切る |
-| U14 | 変異塊の体と付属(ランタン・魂・光) | `syncLabCrawler` `pS:15228` | world の点・独自の `fxK` | 足元1点+s(型②の後掛け)。光は段階3の光と同じ付け根 |
-| U15 | 叩きつけの赤い円(TI:A09) | `pS:15618-15619` | world の円 | 段階4の頂点ごと(`projCircle`)。流星の窓は今のまま world で作る |
-| U16 | 死の光の柱 | `pS:15461`(`exempt(lab …)`) | 画面の高さ基準 | 付け根を投影・柱の長さは今の画面基準のまま(画面いっぱいの光の柱=画面固定の性格)。免除の印を `exempt(stage8-done …)` に付け替える |
-| U17 | 休眠ゾンビの視界(TI:I09) | `updateLabVisionCones` `pS:17372` | world の多角形 | 頂点ごとに投影(壁の影の切り欠きは world の多角形のまま作って投影=形は判定 `labStealth` と同じ)。作る範囲 `inView` は U13 と同じ |
-| U18 | 非常灯 | `updateLabDarkLights` `pS:17428`(`pS:17533`) | `worldToUi(world 点)` | `worldToUi(projectInto(点))`・大きさに `s` |
-| U19 | 闇の穴 | `updateLabPitch` `pS:17601`・純関数 `labPitchLights`(`utils/labDarkness.ts`) | 主人公・敵・光の world 点を `worldToUi` | 穴の中心=投影した点・半径に `s`(闇の暗さ・穴の数は変えない) |
-| U20 | 帯の外の減光(研究所と **M0**) | `updateLabOutsideDim` `pS:17786`(`pS:17816-17817`) | 帯の縁 ±limit を `world.toGlobal` | 縁の行=投影した行(`y_disp` を `worldToUi`)。M0 は段階1〜6の書き漏れ(事実12)をここで直す |
+| U10 | 壁 | `syncLabWalls` `pS:15952`・`makeLabWallView` `pS:15991` | world の足元・`depthScale` | 段階1の木と同じ(`projPlaceStatic`・倍率 s・`zIndex` は元の footY・透けは段階1の判定) |
+| U11 | 什器 | `syncLabProps` `pS:16131`・`makeLabPropView` `pS:16004`・`resolveLabPropTexture` | 同上 | 同上 |
+| U12 | 崩れ・残骸・染み | `tickLabObstacleCrumble` `pS:16055`(`k` `pS:16070`・染みの楕円 `g.ellipse` の行) | 旧い倍率 k・world の楕円 | 体の部分は U10 と同じ相似で写し、回転・潰しは今のまま(慣性の崩れの形は変えない)。染みは床の印=段階4の頂点ごと |
+| U13 | 壁・什器を作る範囲 | `labObstacleViewBounds` `pS:16042` | 旧い矩形 | `visibleWorldQuad(f).rect`(方針③)・北は壁の行で切る |
+| U14 | 変異塊の体と付属(ランタン・魂・光) | `syncLabCrawler` `pS:15236` | world の点・独自の `fxK` | 足元1点+s(型②の後掛け)。光は段階3の光と同じ付け根 |
+| U15 | 叩きつけの赤い円(TI:A09) | `pS:15626-15627` | world の円 | 段階4の頂点ごと(`projCircle`)。流星の窓は今のまま world で作る |
+| U16 | 死の光の柱 | `pS:15469`(`exempt(lab …)`) | 画面の高さ基準 | 付け根を投影・柱の長さは今の画面基準のまま(画面いっぱいの光の柱=画面固定の性格)。免除の印を `exempt(stage8-done …)` に付け替える |
+| U17 | 休眠ゾンビの視界(TI:I09) | `updateLabVisionCones` `pS:17380` | world の多角形 | 頂点ごとに投影(壁の影の切り欠きは world の多角形のまま作って投影=形は判定 `labStealth` と同じ)。作る範囲 `inView` は U13 と同じ |
+| U18 | 非常灯 | `updateLabDarkLights` `pS:17436`(`pS:17541`) | `worldToUi(world 点)` | `worldToUi(projectInto(点))`・大きさに `s` |
+| U19 | 闇の穴 | `updateLabPitch` `pS:17609`・純関数 `labPitchLights`(`utils/labDarkness.ts`) | 主人公・敵・光の world 点を `worldToUi` | 穴の中心=投影した点・半径に `s`(闇の暗さ・穴の数は変えない) |
+| U20 | 帯の外の影(研究所) | `updateLabOutsideDim` `pS:17794`(`pS:17824-17825`) | 帯の縁 ±limit を `world.toGlobal` | 縁の行=投影した行(`y_disp` を `worldToUi`)。上の影は壁の行まで(3-10c2 の⑤)。M0 の分は 3-9p(段階6の直し)へ切り出した |
+| U21 | 北の壁の板 | `updateLabFarWindow` `pS:16972`・`layoutFarBackdrop` `pS:9786`・`layoutNearHorizon` `pS:9544`・付属 `pS:17033`・`:17066`・`:17208` | 画面の遠景の帯の下辺に付く組 | 3-10c2 の①②(`?proj=1` の研究所では画面の層を隠し、同じテクスチャで world の行 `y_N` に板を立てる) |
+| U22 | 壁の上の闇 | 新規(板の上の単色)・今の天井の帯 `updateLabCeiling` `pS:16912` | — | 3-10c2 の③ |
+| U23 | 壁より北を描かない | U06 の帯の出し入れ・枠の `farRefY`/`farEnd` | — | 3-10c2 の④ |
 
 **ウ. 洋館だけの描画**
 
 | # | 物 | 在処 | 今 | 段階8で |
 |---|---|---|---|---|
-| U30 | 床に渡す前進量 | `pS:16886` | `−player.y` | ★#45=A なら `travel'`(3-10c)。EX の `exHallTravel` は触らない |
-| U31 | 物のフェードの線 | `pS:13445-13447` | 画面 0.14H(world `camera.y + 0.14H`) | 線は world のまま・**洋館の枠では投影後の Y の地平線フェードを明示的に外す**(3-10c の 7 と同じ1本) |
-| U32 | ゴールの円の潰し | `syncReturnCircle` `pS:37979`(`pS:37981`・`:38000`) | 縦 0.55 に潰す・中心ローカル | `?proj=1` の洋館では潰さない・中心は world(`rc.x, rc.y`)で頂点ごと(床の写像が楕円を作る)。`?proj=0` は今の行のまま |
+| U30 | 床に渡す前進量 | `pS:16894` | `−player.y` | ★#45=A なら `travel'`(3-10c)。EX の `exHallTravel` は触らない |
+| U31 | 物のフェードの線 | `pS:13446-13448` | 画面 0.14H(world `camera.y + 0.14H`) | 線は world のまま(枠の `farRefY/farEnd`)・投影後の Y の地平線フェードは U07 で外す |
+| U32 | ゴールの円の潰し | `syncReturnCircle` `pS:37987`(`pS:37989`・`:38008`) | 縦 0.55 に潰す・中心ローカル | **枠が corridor の時は**潰さない・中心は world(`rc.x, rc.y`)で頂点ごと(床の写像が楕円を作る)。枠が null の時(`?proj=0`・EX)は今の行のまま |
 | U33 | 洋館の画面の外の矢印・ボスの印 | `syncArrows`(段階6・V8/V9) | 段階6の枝 | 枠の種類で同じ式(地平線=消失点。北の対象は ★#42 裁定 A と同じ切り方) |
-| U34 | 洋館の奥の闇を物に掛ける | 新規(**★#47 の裁定の後だけ**作る。先に作るなら既定 OFF のツマミ `?corrdark=1` の中だけ) | 物は明るいまま | 物の明るさ = (1 − 暗幕の α(物の行)) ÷ (1 − 暗幕の α(主人公の行))・上限1(主人公の行より手前は今のまま) |
+| U34 | 洋館の奥の闇を物に掛ける | 新規(**★#47 の裁定の後だけ**作る。先に作るなら既定 OFF のツマミ `?corrdark=1` の中だけ) | 物は明るいまま | 物の明るさ = (1 − 暗幕の α(物の行)) ÷ (1 − 暗幕の α(主人公の行))・上限1 |
 
-**エ. ゲーム側**(★#46 の推薦 A の時)
+**エ. ゲーム側**(★#46 の答えで決まる)
 
 | # | 物 | 在処 | 今 | 段階8で |
 |---|---|---|---|---|
-| U40 | マウスの照準(逆投影) | `viewTransform.ts`(`setViewProjection`) | 研究所・洋館は null=今の式 | 枠が立てば自動で効く(研究所=今の式・洋館=種類の枝)。ズームの逆だけの今の式は `?proj=0` で残る |
-| U41 | 照準の吸い付き(★#40=B) | `projAimSnap.ts`・`gS:12868` | 同上 | 同上(`PROJ_GAME_SNAP` は今どおり `PROJ_ON`)。洋館は写しに種類を足す(U03) |
-| U42 | 見えている・湧き・回収(★#36〜#38) | `uGL:11142` | 研究所・洋館は null | **今のまま null**(推薦)。洋館は描画のフェードの線を今の world の線に置く(U31)ので、北は「描かれる⇔今の判定」の食い違いが今と同じ桁 |
+| U40 | マウスの照準(逆投影)の門 | `pS:13462`(`setViewProjection(this.projFrame)` を無条件に呼ぶ) | 枠が立てば照準も変わる | **門を置く**: `setViewProjection(aimOK ? this.projFrame : null)`、`aimOK` = 枠が屋外の ground(研究所でない)・または ★#46 の答えが A/B の場面。**★#46 の答えが出るまで研究所・洋館は null**(U01 を作っただけでは照準が変わらない) |
+| U41 | 照準の吸い付き(★#40=B) | `projAimSnap.ts`・`gS:12868` | — | U40 の門の後ろで自動(写しは `screenToCameraLocal` が枠のある時だけ作る)。★#46=A/B の時、洋館は写しと組み直しに種類(U03) |
+| U42 | 見えている・湧き・回収(★#36〜#38) | `uGL:11142` | 研究所・洋館は null | ★#46=A・C は今のまま null。B の時は 3-10f の作り直し(節を書き足してから着手) |
+| U43 | ★#46=C の時の作る物 | U40 の門 | — | `aimOK` を研究所・洋館で常に false に固定するだけ(照準は今の式・描画だけ投影)。描かれた頭と吸い付きのずれは計器 `s6 snap` で数えて記録する |
 
-**台帳の件数**: 25 行(ア 6・イ 11・ウ 5・エ 3)。
+**台帳の件数**: 30 行(ア 7・イ 14・ウ 5・エ 4)。
 
 #### 3-10f. ゲームの判定に触れる所(★#46「研究所・洋館のゲーム側」)
 
-- **事実**: マウスの照準の逆投影(★#39 裁定 A)と吸い付き(★#40 裁定 B)は、**ゲーム側の画面(`projGameView`)ではなく描画の枠(`setViewProjection`)を読む**(`viewTransform.ts` の `screenToCameraLocal`・`PROJ_GAME_SNAP = PROJ_ON` `projFlag.ts:64`)。だから研究所・洋館で描画の枠を立てるだけで、`?proj=1` の照準の判定は研究所・洋館でも変わる。
-- **ステージ2は PHILL ガン固定**(`data/campaign.ts:257` の `specialEquipment`)で、照準の吸い付きが遊びの芯。描画だけ投影して吸い付きを旧い world の距離に残すと、描かれた頭にカーソルを乗せても吸い付かない(★#40 で屋外が直した食い違いが研究所で出る)。
+- **事実**: マウスの照準の逆投影(★#39 裁定 A)と吸い付き(★#40 裁定 B)は、**ゲーム側の画面(`projGameView`)ではなく描画の枠(`setViewProjection` `pS:13462`)を読む**(`viewTransform.ts` の `screenToCameraLocal`・`PROJ_GAME_SNAP = PROJ_ON` `projFlag.ts:64`)。門(U40)が無いと、研究所・洋館で枠を立てた時点で照準の判定が変わる。
+- **ステージ2は PHILL ガン固定**(`data/campaign.ts:257` の `specialEquipment`)で、照準の吸い付きが遊びの芯。描画だけ投影して吸い付きを旧い world の距離に残すと(★#46=C)、描かれた頭にカーソルを乗せても吸い付かない。
 - 見えている・湧き・回収(★#36〜#38)は研究所・洋館とも独自の作り(研究所の湧き `placeLabSpawn`・研究所の「見えている」`labBaitTick.ts:129`・`labCrawlerTick.ts:321`・洋館の湧き方向のゲート `setCorridorSpawn`)。推薦はここを**変えない**。
-  - 研究所で変えない帰結: 南の見えない帯(251〜425px)の敵が「見えている」扱いのまま(屋外の段階2〜5の間と同じ食い違い・§3-5m の5)。研究所の湧きは横の端の外=北の行では投影の画面の方が横に広いので、**北寄りの湧きが画面の端に描かれる**ことがある(地平線フェードで薄い・試算 D=100 の行で α≈0.17)。計器 `s8 spawn` で数える。
+  - 研究所で変えない帰結: 南の見えない帯の敵が「見えている」扱いのまま(屋外の段階2〜5の間と同じ食い違い・§3-5m の5)。研究所の湧きは横の端の外=北の行では投影の画面の方が横に広いので、北寄りの湧きが画面の端に描かれることがある。計器 `s8 spawn` で数える。
   - 洋館で変えない帰結: 物のフェードの線を今の world の線に置くので、北で「描かれている⇔見えている」は今と同じ。南は 285→236px で画面の下の外に出る帯ができる(★#3 と同じ桁)。
 
 #### 3-10g. 段階1〜6から持ち越した物
 
 | # | 持ち越し(出どころ) | 段階8で |
 |---|---|---|
-| 1 | §1-6・§3-3「研究所テーマは段階1の対象外」・§3-5b「研究所の変異塊(段階8)」・§3-6a「対象外の5行(A09・I09・J12・J16・J17)」・§3-7a・§3-7b F7「研究所の変異塊の光」・§3-8a「研究所テーマの物」 | U10〜U20。J12・J16・J17 は屋内=到達しない=対象外のまま(事実11) |
-| 2 | §3-5i の2・§3-8h の2・3-9h の2「帯の外の減光=研究所の話で場面の外」 | **M0 で書き漏れ**(事実12)。U20 で研究所と M0 を一緒に直す |
-| 3 | 3-9a「研究所テーマ・屋内・洋館の通路(`projFrame` が null=今のまま)」 | 研究所・洋館は枠を立てる。屋内は null のまま |
+| 1 | §1-6・§3-3「研究所テーマは段階1の対象外」・§3-5b「研究所の変異塊(段階8)」・§3-6a「対象外の5行(A09・I09・J12・J16・J17)」・§3-7a・§3-7b F7「研究所の変異塊の光」・§3-8a「研究所テーマの物」 | U10〜U23。J12・J16・J17 は屋内=到達しない=対象外のまま(事実11) |
+| 2 | §3-5i の2・§3-8h の2・3-9h の2「帯の外の減光=研究所の話で場面の外」 | 研究所は U20。**M0 の分は段階6の書き漏れ=3-9p で直す**(段階8から切り出した) |
+| 3 | 3-9a「研究所テーマ・屋内・洋館の通路(`projFrame` が null=今のまま)」 | 研究所・洋館は枠を立てる。屋内は null のまま。照準は U40 の門 |
 | 4 | §6 の表「`labProjectFootY`(?labpersp)・`LAB_WALL_DEPTH`=`?proj=1` と排他・段階8で確認だけ」 | 事実3=ステージ2では走らない。屋内の控えとして残す(§6 の行を「屋内専用・段階8の対象外」に書き直す) |
-| 5 | §6 の表「洋館の回廊=段階8で確認だけ・★#12」・§0-1 の最後の行・§3-2b の④ | ★#12=B で「物を合わせる」に変わった。§0-1・§3-2・§3-2b・§6 の該当行を書き直す |
+| 5 | §6 の表「洋館の回廊=段階8で確認だけ・★#12」・§0-1 の最後の行・§3-2b の④ | ★#12=B・★#43=A' で変わった。§0-1・§3-2・§3-2b・§6 の該当行を書き直す |
 | 6 | §10 B2「研究所の闇の光の穴の位置が投影とどう揃うか」 | U18・U19 で閉じる |
 | 7 | 3-9l の2「ヨルムンガンドの胴・グレンの遠いパーツ(部位ごと)」 | **この節の外**(段階8の3つ目「ボスの特殊描画」)。洋館に出るボスも同じ扱い |
 
 #### 3-10h. Y方向の5つの副作用・慣性・ズーム
 
-1. **地平線フェード**: 研究所=投影後の Y で1回(屋外と同じ)。洋館=投影後の Y の地平線フェードは必ず 1(3-10c の7)・物のフェードは world の今の線で1回。**二重に掛けない**。
-2. **帯の外の減光**(`LAB_CORRIDOR_Y_LIMIT_PX`): 研究所と M0 で縁の行を投影(U20)。判定(行ける帯 ±200)は world のまま。
-3. **擬似遠近スケール**: 旧い倍率は描く関数が今どおり掛け、後掛けが `k = s/d` で打ち消す(研究所の壁・什器の `depthScale` も同じ)。洋館の `s` は 3-10c の 5。
-4. **可視域**: 研究所=屋外と同じ台形。洋館=消失点〜画面の下端の台形(上の辺=物のフェードの線)。`?zoomlock=0.4` で研究所の壁・什器・視界・非常灯が端で欠けないこと(研究所はボスのズームから外れている `pS:12681` が、`?zoomlock` は効く)。
-5. **移動可能帯**: 判定は world のまま(`clampRectToPlayableArea`)。研究所は帯の南の端が画面の外へ出うる(3-10a)=見え方の話で、行ける所は変わらない。
-- **慣性**: 場面はラン中に切り替わらない(§1-6)=写像の切替に慣性は要らない。洋館の床の前進量はカメラに付くので、カメラの追従の時定数がそのまま床の動き出し・止まりの慣性になる。崩れ・染みの動きは今の ease のまま。
-- **ズーム**: 研究所=屋外と同じ(枠が wg を読む)。洋館=床がズームしない今の作り(事実15)のまま=走りの引き・パンチの間は物と床がずれる(3-10k の1)。
+1. **地平線フェード**: 研究所・洋館とも、投影後の Y の地平線フェードは**枠の `noHorizonFade` で入口から外す**(U07・3-10c の「1本」)。北の線のフェードは枠の描く距離のフェード(`p.alpha`)で1回=研究所は北の壁の行・洋館は今の world の線(0.14H)。**二重に掛けない**。
+2. **帯の外の影**(`LAB_CORRIDOR_Y_LIMIT_PX`): 研究所で縁の行を投影(U20)。判定(行ける帯 ±200)は world のまま。
+3. **擬似遠近スケール**: 旧い倍率は描く関数が今どおり掛け、後掛けが `k = s/d` で打ち消す(研究所の壁・什器の `depthScale` も同じ)。洋館の `s` は 3-10c の 5。北の壁の板は `s_N` で縮む(3-10c2)。
+4. **可視域**: 研究所=屋外と同じ台形で、上の辺は北の壁の行。洋館=消失点〜画面の下端の台形(上の辺=物のフェードの線)。`?zoomlock=0.4` と餌の場面のズーム(`labBaitZoomTarget` `pS:12796`)で、研究所の壁・什器・視界・非常灯・北の壁の板が端で欠けないこと。
+5. **移動可能帯**: 判定は world のまま(`clampRectToPlayableArea`)。研究所は帯の南の端が画面の外へ出うる(3-10a)=見え方の話で、行ける所は変わらない。北の壁は帯の外(world −240)。
+- **慣性**: 場面はラン中に切り替わらない(§1-6)=写像の切替に慣性は要らない。洋館の床の前進量はカメラに付くので、カメラの追従の時定数がそのまま床の動き出し・止まりの慣性になる。研究所の北の壁もカメラに付いて床と同じ速さで流れる。崩れ・染みの動きは今の ease のまま。
+- **ズーム**: 研究所=屋外と同じ(枠が wg を読む・板も worldGroup の中)。洋館=床がズームしない今の作り(事実16)のまま=走りの引き・パンチの間は物と床がずれる(3-10k の1)。
 
 #### 3-10i. 作る物
 
-1. **写像の種類**(`perspectiveProjection.ts`): `ProjFrame.kind`・`m7`・`ProjPoint.sx`。3-10c の 10 関数の枝。ground の枝は今の式のまま(差分は `sx = s` を書く1行と枝の入口だけ)。
-2. **洋館の枠**(新規 `src/utils/corridorFloorMap.ts`・純関数・PixiJS を読まない): `corridorFloorFrame(input)`(3-10c の1〜9)・`corridorFloorTravel(f)`(3-10c の前進量)。`CFG`(`cL:27`)は今 pixi の中にある(pixiScene は既に `CFG as CORRIDOR_GAME_CFG` の名前で import している `pS:611`)。**数値だけを utils へ移し、`corridorLayer.ts` は utils から同じ名前 `CFG` で import し直す**(段階8 1巡目監査 C4: `updateFloor` 等の `CFG.` の行は1字も変わらない=番人テスト⑤が通る。pixiScene の `CORRIDOR_GAME_CFG` も import 元だけ変わる)。柱の world の位置 `CORRIDOR_PILLAR_WORLD_X`(叩き台 200=事実22)。
-3. **下げ量の1本**: `projCamDownFrac(scene)`(utils)。`uGL:11039-11041`・`uGL:18611`・`pS:10087` が呼ぶ。
-4. **枠を立てる**(U01)・**画面の下端の行**(U05)。
-5. **研究所の描画**(U10〜U20)・**洋館の描画**(U30〜U34)。
-6. **照準の写しの種類**(U41)。
+1. **写像の種類**(`perspectiveProjection.ts`): `ProjFrame.kind`・`m7`・`noHorizonFade`・`ProjPoint.kx`・`projRowAffine`。3-10c の 10 関数の枝。ground の枝は今の式のまま(差分は `kx = s` を書く1行と枝の入口だけ)。
+2. **洋館の枠**(新規 `src/utils/corridorFloorMap.ts`・純関数・PixiJS を読まない): `corridorFloorFrame(input)`(3-10c の1〜9・`makeProjFrame` を通らない)・`corridorFloorTravel(f)`(3-10c の前進量)。**utils へ移す定数**(値を2か所に持たない):
+   - pixi 側の上書き `horizonYr: 0.26`・`footYr: 0.793`(`cL:27`)。`CORRIDOR_CFG`(focal・aisleHalfXr 等)は既に `utils/corridorProjection.ts:17` にある=移すのはこの2つだけ。`corridorLayer.ts` は utils から同じ名前 `CFG` で import し直す(`updateFloor` 等の `CFG.` の行は1字も変わらない=番人テスト⑤が通る)。pixiScene の `CFG as CORRIDOR_GAME_CFG`(`pS:611`)も import 元だけ変わる。
+   - `FLOOR_W_MULT`(`cL:97`)・`FLOOR_REPEAT`(`cL:96`)・`GOAL_TILE_START`(`cL:103`)=`aisleW` と `U0` の元。`CORRIDOR_GOAL_Y`(`gS:1423`)は store に在る=utils からはそれを読む。
+   - 柱の world の位置 `CORRIDOR_PILLAR_WORLD_X`(叩き台 200=事実23)。
+3. **下げ量の1本**: `projCamDownFracFor(scene, camZ)`(utils・研究所は字の0)。`pS:10088` が呼ぶ。`uGL:11039-11041`・`uGL:18611`(`?proj=0` の研究所のカメラ)は呼び替えない=値が同じことをテストで固定するだけ。
+4. **枠を立てる**(U01)・**画面の下端の行**(U05)・**帯の出し入れ**(U06)・**地平線フェードの入口**(U07)。
+5. **研究所の描画**(U10〜U23。北の壁の板 U21・壁の上の闇 U22・壁より北を描かない U23)・**洋館の描画**(U30〜U33)。U34 は ★#47 の裁定の後。
+6. **照準の門と写しの種類**(U40・U41・U43)。
 7. **計器**(`?proj=1&projaudit=1` に足す行・DEV 限定):
-   - `s8 lab`: 研究所の壁・什器・変異塊・視界・非常灯のうち、窓口を通らずに旧い置き方で描いた物の数(0 のはず)・主人公の `s`(止まっている時 1±0.005=U02 の確かめ)。
-   - `s8 slip`: 洋館で、主人公と敵の足元の下の**床の模様の座標**(描いた行の `u = d + travel'`・横は `x_disp / (W·1.05·s7)`)の1フレームの変化から、その物の world の動きを引いた量の最大(床の上で足が滑っているか・world px)。
+   - `s8 lab`: 研究所の壁・什器・変異塊・視界・非常灯・北の壁の板のうち、窓口を通らずに旧い置き方で描いた物の数(0 のはず)・主人公の `s`(止まっている時 1±0.005=U02 の確かめ)・壁の行より北に α 0.05 以上で描かれた物の数(0 のはず)。
+   - `s8 slip`: 洋館で、主人公と敵の足元の下の**床の模様の座標**(描いた行の `u = d + travel'`・横は `x_disp / (W·aisleW·s7)`)の1フレームの変化から、その物の world の動きを引いた量の最大(床の上で足が滑っているか・world px)。
    - `s8 hatch`: ハッチの中心の画面Y と帰還の円の中心の画面Y の差(px)。
-   - `s8 above`: 洋館で、消失点(`hY`)より上に描かれた物の数(高さを持つ物の持ち上げを除く・0 のはず)。あわせて、洋館で地平線フェードと物のフェードが**両方 1 未満**だった物の数(画面の高さ 667 未満の二重の薄さ=0 のはず・段階8 1巡目監査 C2)。
+   - `s8 above`: 洋館で、消失点(`hY`)より上に描かれた物の数(高さを持つ物の持ち上げを除く・0 のはず)・物のフェードの線より北に α 0.05 以上で描かれた物の数(0 のはず=地平線フェードを入口で外した後に world の Y の経路が漏れていないか)。
    - `s8 spawn`: 研究所の湧きのうち、湧いた最初のフレームに投影の画面の中で α 0.05 以上で描かれた数(★#46 の材料=合否にしない)。
 8. **ソースの番人テスト**(新規 `src/pixi/projStage8Guard.test.ts`・§3-4 の2 の流儀):
-   ① `kind==='ground'` の枠で、3-10c の 10 関数と `projLift`・`projAimSnap` の出力が、変更前の関数(テストの中に写した今の式)と**全部の入力で同じ値**(差 0)。
-   ② 研究所だけの関数(U10〜U20 の関数名)の範囲に `projFrame` の枝があること。
+   ① `kind==='ground'` の枠で、3-10c の 10 関数・`projLift`・`projAimSnap`・**`projRowAffine` に寄せた窓口の外の読み手(U03 の一覧)**の出力が、変更前の式(テストの中に写した今の式)と**全部の入力で同じ値**(差 0)。`projCamDownFracFor` が屋外・洋館で今の値、研究所で 0。
+   ② 研究所だけの関数(U10〜U21 の関数名)の範囲に `projFrame` の枝があること。
    ③ `labProjectFootY`・`LAB_WALL_DEPTH`・`?labpersp` の行に差分が無いこと(屋内の控えは触らない)。
    ④ 予告の時刻(`meteorPhase` を使う所)に差分が無いこと。
-   ⑤ `corridorLayer.ts` の `updateFloor`・`updateGoalFloor`・`updateCeiling`・`updatePillars`・`updateWallLamps`・`updateBack` に差分が無いこと(床・壁の描き方は今のまま=裁定 B)。
+   ⑤ `corridorLayer.ts` の `updateFloor`・`updateGoalFloor`・`updateCeiling`・`updatePillars`・`updateWallLamps`・`updateBack` に差分が無いこと(洋館の床・壁の描き方は今のまま=裁定 B)。
    ⑥ `utils/corridorFloorMap.ts` が `pixi.js`・`src/pixi/` を import しないこと。
-   ⑦ **窓口の外で `f.cxw` を読む所の数**(`grep -n "cxw"`・テストと `perspectiveProjection.ts` を除く)が、`projRowAffine` に寄せた後の一覧(計器 `pS:10454-10464` だけ=洋館では呼ばない)と一致すること。足された所は一覧に載せないと落ちる(段階8 1巡目監査 A1)。
-   ⑧ `groundStripTile`・`groundVsObjectDiff` を呼ぶ所が `kind === 'ground'` の枝の中だけであること(段階8 1巡目監査 A2)。
-   ⑨ ★#47 の暗さ(U34)は既定 OFF のツマミの枝の中だけ(段階8 1巡目監査 A5)。
-9. **純関数のテスト**(`src/utils/corridorFloorMap.test.ts`): 往復 `unproject(projectInto(p)) = p`(定義域の中で 1e-6)・基準点で `s = 1`・`y_disp = W_ref`・床の行の式(`cL:409-410` を写した式)と `projectInto` の行が一致・`travel'` で模様の座標が world の点ごとに時間で一定・ハッチの中心と円の中心が同じ行・`d ≥ −0.6·focal` の頭打ちで発散しない・PC(W=405・H=720)と縦持ちで同じ性質。
+   ⑦ **窓口の外で `f.cxw` を読む所の数**(`grep -n "cxw"`・テストと `perspectiveProjection.ts` を除く)が、`projRowAffine` に寄せた後の一覧(計器 `pS:10454-10464` だけ=洋館では呼ばない)と一致すること。
+   ⑧ `groundStripTile`・`groundVsObjectDiff` を呼ぶ所が `kind === 'ground'` の枝の中だけであること。
+   ⑨ ★#47 の暗さ(U34)は既定 OFF のツマミの枝の中だけ。
+   ⑩ `setViewProjection(` の呼び出しが U40 の門(`aimOK`)を通っていること。
+9. **純関数のテスト**(`src/utils/corridorFloorMap.test.ts`): 往復 `unproject(projectInto(p)) = p`(定義域の中で 1e-6)・基準点で `s = 1`・`y_disp = W_ref`・床の行の式(`cL:409-410` を写した式)と `projectInto` の行が一致・`travel'` で模様の座標が world の点ごとに時間で一定・ハッチの中心と円の中心が同じ行・`d ≥ −0.6·focal` の頭打ちで発散しない・出力に NaN が出ない(表の値の印が読まれていない)・PC(W=405・H=720)と縦持ちで同じ性質。研究所: 北の壁の行が、帯のどこに主人公が居ても定義域の中(★#49 の farH で)。
 
 #### 3-10j. 受け入れ条件と、確かめる場面(数値は叩き台)
 
 1. **既定(ツマミなし)で今と1ビットも同じ**: `node scripts/phone-guard.mjs check`・`node scripts/pc-guard.mjs check` が基準のまま。番人テスト①(屋外の枠の数値が同じ)。
-2. **屋外の `?proj=1` が今と同じ**: 段階1〜6の計器の値が、段階8の前後で同じ(下げ量の1本・種類の枝・`projRowAffine` で屋外が変わっていない)。**例外は M0 の帯の外の減光の縁だけ**(U20=段階1〜6の書き漏れの直し。M0 の `?proj=1` では縁が投影した行へ動く=これは合否の「同じ」から外し、X05 の画で確かめる)。
-3. **研究所**: `s8 lab` の通し漏れ 0・主人公の `s` が止まっている時 1±0.005。壁・什器・敵が床の上で滑らない(段階1の計器 `groundVsObjectDiff` の差が屋外と同じ上限=§3-3 の受け入れ条件の値)。叩きつけの円・視界が判定と一致(段階4の計器と同じ)。
-4. **洋館**: `s8 slip` が歩いている間 0.5 world px 以内(式では 0)・`s8 hatch` が 2px 以内(★#45=A の時)・`s8 above` が 0。
-5. **予告の掟**: 段階4の計器(形)と番人テスト④(時刻)。洋館でも「赤い予告が消え切った瞬間に当たる」は今と同じ。
-6. **マウスの照準**: 研究所・洋館で往復の差 0.5px 以内(段階6の `s6 aim`)・照準の円がカーソルの真下(0.5px)・吸い付きの「描かれた頭の円の中なのに吸い付かない」が 0(★#40=B の計器 `s6 snap`)。
-7. **パッと出ない・消えない**: 湧き・崩れ・フェードの線を越える時の α の1フレームの変化が 0.1 以下(段階2の計器)。
+2. **屋外の `?proj=1` が今と同じ**: 段階1〜6の計器の値が、段階8の前後で同じ(下げ量の1本・種類の枝・`projRowAffine`・地平線フェードの入口で屋外が変わっていない)。
+3. **研究所(★#43=A')**: `s8 lab` の通し漏れ 0・主人公の `s` が止まっている時 1±0.005・壁の行より北の物 0。壁・什器・敵・北の壁の板が床の上で滑らない(段階1の計器 `groundVsObjectDiff` の差が屋外と同じ上限=§3-3 の受け入れ条件の値)。北の壁が帯のどこからでも画面に見える(主人公が帯の北の端/中央/南の端で板が描かれる)。上下の影の縁が帯の端(±200)の行に乗る(差 2px 以内)。叩きつけの円・視界が判定と一致(段階4の計器と同じ)。
+4. **洋館**: `s8 slip` が歩いている間 0.5 world px 以内(式では 0)・`s8 hatch` が 2px 以内(★#45=A の時)・`s8 above` の2つが 0。
+5. **予告の掟**: 段階4の計器(形)と番人テスト④(時刻)。洋館でも「赤い予告が消え切った瞬間に当たる」は今と同じ。洋館で予告の円・弧の横が物と同じ式(U03・`projRowAffine`)。
+6. **マウスの照準**: ★#46 の答えが出るまで、研究所・洋館の照準は今と同じ(U40 の門・番人テスト⑩)。A/B の後は、研究所・洋館で往復の差 0.5px 以内(段階6の `s6 aim`)・照準の円がカーソルの真下(0.5px)・吸い付きの「描かれた頭の円の中なのに吸い付かない」が 0(`s6 snap`)。
+7. **パッと出ない・消えない**: 湧き・崩れ・北の壁の行・フェードの線を越える時の α の1フレームの変化が 0.1 以下(段階2の計器)。
 8. 数値は手前の伸びを抑える案 ON の表で測る(研究所)。
 9. 見た目の変更なので **push 前に必ず画を撮って見る**。`?proj=0/1` を同じ場面で並べた画を社長に渡す。
-10. 品質監査・クリエイティブ監査を通す(新しい仕組み=写像の種類・洋館の枠を足すため)。発注文に作品の掟(この節の冒頭)を写す。
+10. 品質監査・クリエイティブ監査を通す(新しい仕組み=写像の種類・洋館の枠・研究所の北の壁を足すため。北の壁の書き足し部分も監査に回す=★#43 の裁定の3)。発注文に作品の掟(この節の冒頭)を写す。
 11. **憲法の自己点検**(実装精度の規律5): ★#46=A なら照準の吸い付きだけがゲーム側で変わる=初心者ゾーン(第4条)・緩を荒らさない(第5条)には触れない、を DEVELOPMENT_LOG に1行。`?proj=0` では触れない。
 
 **確かめる場面**(撮る画。全部 `?proj=0/1` を並べる。ズームは指定が無ければ1):
 
 | # | 場面 | 見る物 | 台帳の行 |
 |---|---|---|---|
-| X01 | ステージ2の出撃直後・主人公が帯の中央/北の端/南の端 | 壁・什器・敵が床に立っているか・南の端が画面の外へ出る量(★#3) | U01・U02・U10・U11 |
+| X01 | ステージ2の出撃直後・主人公が帯の中央/北の端/南の端 | 北の壁の板が見え、床が壁の足元で終わる・壁・什器・敵が床に立つ・南の端が画面の外へ出る量 | U01・U02・U10・U11・U21・U23 |
 | X02 | ステージ2で壁の陰の休眠ゾンビ(視界が出ている) | 視界の扇が床に寝て、壁の影の切り欠きが壁の絵の足元と揃う | U17 |
 | X03 | ステージ2の非常灯の列の下を歩く・闇の中で PHILL を撃つ | 灯りと闇の穴が床の上の位置に出る | U18・U19 |
 | X04 | 変異塊の叩きつけ・壁を壊す・残骸の上を歩く | 赤い円が判定どおり・崩れの慣性・染みが床に寝る | U12・U14・U15 |
-| X05 | M0 とステージ2の帯の外の減光の縁 | 縁が歩ける帯の端の行に乗る | U20 |
-| X05b | ステージ2の餌の場面(生け贄を投げて変異塊を呼ぶ)のズーム(`labBaitZoomTarget` `pS:12796`=研究所はボスのズームから外れているが、この場面のズームは掛かる) | 引いている間も壁・什器・視界・非常灯・闇の穴が床に立ち、端で欠けない(段階8 1巡目監査 C5) | U10〜U19 |
-| X06 | PC 1280×720 でステージ2の PHILL の照準(北の敵・南の敵の頭) | 照準の円がカーソルの下・頭で吸い付く | U40・U41 |
+| X05 | ステージ2の帯の北の端・南の端に立つ | 上下の影の縁が帯の端の行に乗る・上の影が壁の足元まで(奥ほど細い) | U20 |
+| X05b | ステージ2の餌の場面(生け贄を投げて変異塊を呼ぶ)のズーム(`labBaitZoomTarget` `pS:12796`=研究所はボスのズームから外れているが、この場面のズームは掛かる) | 引いている間も北の壁の板・壁・什器・視界・非常灯・闇の穴が床に立ち、端で欠けない | U10〜U21 |
+| X05c | ステージ2で横へ長く走る | 北の壁の窓・中のゾンビが床と同じ速さで流れる(今の視差ではなく) | U21 |
+| X06 | PC 1280×720 でステージ2の PHILL の照準(北の敵・南の敵の頭) | ★#46 の答えまで今と同じ/A の後は照準の円がカーソルの下・頭で吸い付く | U40・U41 |
 | X07 | ステージ6の出撃・北へ歩く・左右の端(柱際)へ寄る | 足元が絨毯に吸い付いて流れるか・柱の列が行ける端に見えるか(★#44) | U03・U04・U30 |
 | X08 | ステージ6で北から敵が来る | 北の帯の詰まり(470→170px)・フェードの線からの出方(★#47) | U31・U34 |
 | X09 | ステージ6のゴールの円 | ハッチと円が重なる・円が床に寝る | U30・U32 |
 | X10 | ステージ6で走る(走りの引き)・倒した時の寄り | 床と物のずれ(今と同じ桁か) | 3-10k の1 |
-| X11 | ステージ6で赤い予告(噛み・跳び・突進) | 消え切った瞬間に当たる・形が床に寝る | 段階4の部品 |
+| X11 | ステージ6で赤い予告(噛み・跳び・突進) | 消え切った瞬間に当たる・形が床に寝る・横が物と揃う | U03 |
 | X12 | PC 1280×720・1440×900(2倍)でステージ6 | 通路の 405 の外に物・床がはみ出す量(推測では床も今はみ出している) | U04 |
 
 #### 3-10k. 段階8の間だけ起きる見た目の食い違い(と扱い)
@@ -3188,32 +3236,36 @@ ProjPoint.sx: 横の広がりの倍率(ground は s と同じ値)
 |---|---|---|
 | 1 | 洋館の床はズームしない(M6 の入れ物の拡大 1)ので、走りの引き(0.85)・寄りのパンチの間は物と床がずれる(引き0.85で主人公の行で約 55px=(1−0.85)×(主人公の行 − 支点の行)・試算)。**今も同じだけずれている** | §10 B43 へ積む(床もズームさせるか・物のズームを外すか) |
 | 2 | 洋館は★#44=A の時、体が床の割に小さく見える(体の大きさ ÷ 横の広がり=1/1.66≈0.60)。当たり判定が触れている2体が、描くと間が空く(幅40の2体で約27px) | ★#44 の画で決める |
-| 3 | 研究所の南の見えない帯(251〜425px)の敵が「見えている」扱い(★#46=A の時) | ★#3・★#46 |
-| 4 | ボスの特殊描画(多関節・帯状の絵)は部位ごとの投影の前 | 段階8の3つ目(この節の外) |
+| 3 | 研究所の南の見えない帯の敵が「見えている」扱い(★#46=A・C の時) | ★#3・★#46 |
+| 4 | ★#46 の答えが出るまで、研究所・洋館の照準は旧い式(描かれた物は投影)=照準の円・吸い付きが描かれた敵とずれる | ★#46 |
+| 5 | ボスの特殊描画(多関節・帯状の絵)は部位ごとの投影の前 | 段階8の3つ目(この節の外) |
 
 #### 3-10l. 負荷(段階8の見込み)
 
 **段階8: 2/10**(全段階の見込み 4/10 は変えない)。
-- **描画(CPU)が払う**: 研究所=屋外の `?proj=1` と同じ費用(表の作り直し・投影1点ずつ)。研究所は屋外より物が少ない(木・松明・緑卵が無い)。洋館=表を作らない閉じた式(投影1点で割り算2回)=屋外より安い。物の数は今と同じ。
-- **研究所の闇**(`updateLabPitch`=常設の描き込み)は穴の位置と半径が変わるだけ=数は同じ。視界の多角形は作り直す条件(静止の鍵)に投影の値が入ると、カメラが動くたびに頂点の投影をやり直す(頂点 `LAB_VISION_RAYS` 本×上限 `LAB_VISION_MAX` 体・形は world のまま作り置き=作り直すのは投影だけ)。
-- **メモリ: ほぼ0**。
+- **描画(CPU)が払う**: 研究所=屋外の `?proj=1` と同じ費用(表の作り直し・投影1点ずつ)。研究所は屋外より物が少ない(木・松明・緑卵が無い)。北の壁の板は今の遠景の組と同じ枚数のスプライト(画面の層を隠して同じテクスチャを使う)=増えない。洋館=表を作らない閉じた式(投影1点で割り算2回)=屋外より安い。物の数は今と同じ。
+- **研究所の闇**(`updateLabPitch`=常設の描き込み)は穴の位置と半径が変わるだけ=数は同じ。視界の多角形は、カメラが動くたびに頂点の投影をやり直す(頂点 `LAB_VISION_RAYS` 本×上限 `LAB_VISION_MAX` 体・形は world のまま作り置き)。
+- **メモリ: ほぼ0**(北の壁は既存のテクスチャの使い回し)。
 - 安全策: `?proj=1` は既定 OFF。屋外の枠の数値は番人テスト①で固定。
 
 #### 3-10m. ★未決(段階8)
 
 | # | 名札 | 何を決めるか | 推薦(なぜ面白いか) | 段階8の着手の前に要るか |
 |---|---|---|---|---|
-| 43 | 研究所の床と壁を投影に揃えるか | ★#12=B の前提「研究所は独自の写像」がステージ2には無い(事実3〜6: 床は屋外と同じ帯・壁と什器は木と同じ旧い置き方)。A=研究所の床・壁・什器・物を全部、屋外の `?proj=1` と同じ投影に(床は §1-1c の3点だけ変わる)/B'=床と壁は `?proj=0` のまま残し、物だけを旧い床(足し込みの地面)に合わせる写像を新しく作る(壁は旧い倍率のまま=物と壁が滑る)/C=研究所は今のまま | **A**。ただし **A は研究所の床と壁の描き方を §1-1c の3点ぶん変える=裁定 B の一部を改める案**(事実5)。B を字のとおり守るなら B'(足し込みの床の写像を新しく書く・閉じた式で書けるかは未確認=3-10c)。なぜ面白いか: 壁の陰に隠れるステルスで、壁と敵が同じ床に立って見える=隠れているかが目で分かる(B' は壁が旧い倍率のまま=物と壁が滑る)。**B'・C が選ばれたら、この節(3-10c・台帳)を書き足してから着手** | **はい** |
-| 44 | 洋館の物の横の広がりと大きさ | 洋館の床は主人公の行で横 1.66 倍・縦 0.68 倍に流れる(3-10a)。A=横の位置は床の写像そのまま(主人公の行で 1.66 倍)・大きさは主人公の行で1/B=横も大きさも主人公の行で1(横は床と 0.60 倍の速さでずれ続ける=社長の最初の観察の横の版)/C=位置も大きさも床そのまま(主人公が今の約1.66倍の大きさ) | **A**(B の式: `sx = s`(屋外と同じ形・中心は world x=0 のまま)。C の式: `s = sx`=大きさも `W·1.05·s7/柱の world x`。どちらも 3-10c の 4・5 の1行を差し替えるだけ)。なぜ面白いか: 足元が絨毯に吸い付き、柱の列が見たまま行ける端になる(今は柱まで 162px 届かない)。代償=体が床の割に小さく見える(3-10k の2) | **はい** |
-| 45 | 洋館の床の流れの合わせ方 | A=床に渡す前進量をカメラの基準点から出す(模様の位相を約 364 ずらす・床がカメラに付いて流れる・ハッチが円の真下)/B=前進量は今のまま(床の入力も1ビットも変えない)。物は床の写像に乗るので、主人公が画面の 0.51H(今の 0.68H より約 147px 上)に描かれ、北に物が描かれる帯が 75px・南が 599px になる(v0.25.2148 で主人公を下げた「前方を広く見せる」の逆)。B だと横の広がりはほぼ1(0.99)=★#44 が要らなくなる | **A**(B の式: `travel` は今の `−player.y` のまま・`W_ref = player.y + playerH`・`d_ref = U0 − W_ref − travel = 482`(止まっている時)=基準行は `d=482` の行(画面 0.51H)。3-10c の 2 を差し替えるだけ)。なぜ面白いか: 奥から来る敵を見る間が B の約2.3倍(170px 対 75px)。v0.25.2148 の「前を広く」を保てる | **はい** |
-| 46 | 研究所・洋館のゲーム側 | 描画の枠を立てると、照準の逆投影(★#39)と吸い付き(★#40)は自動で研究所・洋館にも効く(3-10f)。A=照準だけ揃える(見えている・湧き・回収=★#36〜#38 は研究所・洋館の独自の作りのまま)/B=屋外の ★#36〜#38 も研究所・洋館へ(研究所の湧き・研究所の「見えている」を投影の画面で作り直す)/C=照準も今のまま(研究所の枠を照準に渡さない=PHILL の吸い付きが描かれた頭とずれる) | **A**。なぜ面白いか: PHILL だけで戦うステージ2で、描かれた頭に乗せれば必ず吸い付く。**ゲームの判定が変わる**(A・B) | **はい**(A・B は裁定の後でしか作らない) |
-| 47 | 洋館の奥の闇を物にも掛けるか | 床は奥ほど暗幕で闇に沈む(主人公の行で 44%・フェードの線の行で 70%)が、物は明るいまま描かれる。A=床と同じ暗さを、主人公の行を基準に物にも掛ける(フェードの線の行で明るさ約 0.53)/B=掛けない(今どおり・フェードの線で消えるだけ) | **A**。なぜ面白いか: 奥の敵が闇から浮かび上がって歩いてくる(ホラーの手触り)。新しい見え方を足す=§0-1「新しい演出を足す案件ではない」との兼ね合いは社長の判断 | **はい(作るのは裁定の後)**。先に画を見せるなら既定 OFF のツマミ `?corrdark=1` の中だけで作る(段階8 1巡目監査 A5) |
-| 48 | EX の洋館の通路 | stage-ex1 も `corridorMode` で同じ床の絵を使うが、広間の倍率 S と world に固定した奥壁で写像が M6 と違う。A=段階8では M6 だけ(EX は枠を立てない=今のまま)/B=EX も同じ枠に(広間の倍率を枠の基準へ入れる) | **A**。ステージ6の画で洋館の見え方を決めてから EX を合わせる方が手戻りが無い | いいえ |
+| 43 | 研究所の床と壁を投影に揃えるか | **裁定 A'(この節の冒頭)** | — | 済 |
+| 44 | 洋館の物の横の広がりと大きさ | 洋館の床は主人公の行で横 1.66 倍・縦 0.68 倍に流れる(3-10a)。A=横の位置は床の写像そのまま(主人公の行で 1.66 倍)・大きさは主人公の行で1/B=横も大きさも主人公の行で1(横は床と 0.60 倍の速さでずれ続ける=社長の最初の観察の横の版)/C=位置も大きさも床そのまま(主人公が今の約1.66倍の大きさ) | **A**(B の式: `kx = s`(中心は world x=0 のまま)。C の式: `s = kx`=大きさも `W·aisleW·s7/柱の world x`。どちらも 3-10c の 4・5 の1行を差し替えるだけ)。なぜ面白いか: 足元が絨毯に吸い付き、柱の列が見たまま行ける端になる(今は柱まで 162px 届かない)。代償=体が床の割に小さく見える(3-10k の2) | **はい** |
+| 45 | 洋館の床の流れの合わせ方 | A=床に渡す前進量をカメラの基準点から出す(模様の位相を約 364 ずらす・床がカメラに付いて流れる・ハッチが円の真下)/B=前進量は今のまま(床の入力も1ビットも変えない)。物は床の写像に乗るので、主人公が画面の 0.51H(今の 0.68H より約 147px 上)に描かれ、北に物が描かれる帯が 75px・南が 599px になる。B だと横の広がりはほぼ1(0.99)=★#44 が要らなくなる | **A**(B の式: `travel` は今の `−player.y` のまま・`W_ref = player.y + playerH`・`d_ref = U0 − W_ref − travel = 482`(止まっている時)=基準行は `d=482` の行(画面 0.51H)。3-10c の 2 を差し替えるだけ)。なぜ面白いか: 奥から来る敵を見る間が B の約2.3倍(170px 対 75px)。v0.25.2148 の「前を広く」を保てる | **はい** |
+| 46 | 研究所・洋館のゲーム側 | 描画の枠を立てても、照準は U40 の門で答えが出るまで今のまま。A=照準だけ揃える(門を研究所・洋館でも開ける。見えている・湧き・回収=★#36〜#38 は研究所・洋館の独自の作りのまま)/B=屋外の ★#36〜#38 も研究所・洋館へ(研究所の湧き・研究所の「見えている」を投影の画面で作り直す=**選ばれたら 3-10f・台帳を書き足してから着手**)/C=照準も今のまま(門を閉じたまま=U43。PHILL の吸い付きが描かれた頭とずれる) | **A**。なぜ面白いか: PHILL だけで戦うステージ2で、描かれた頭に乗せれば必ず吸い付く。**ゲームの判定が変わる**(A・B) | **はい**(A・B は裁定の後でしか門を開けない) |
+| 47 | 洋館の奥の闇を物にも掛けるか | 床は奥ほど暗幕で闇に沈む(主人公の行で 44%・フェードの線の行で 70%)が、物は明るいまま描かれる。A=床と同じ暗さを、主人公の行を基準に物にも掛ける(フェードの線の行で明るさ約 0.53)/B=掛けない(今どおり・フェードの線で消えるだけ) | **A**。なぜ面白いか: 奥の敵が闇から浮かび上がって歩いてくる(ホラーの手触り)。新しい見え方を足す=§0-1「新しい演出を足す案件ではない」との兼ね合いは社長の判断 | **はい(作るのは裁定の後)**。先に画を見せるなら既定 OFF のツマミ `?corrdark=1` の中だけで作る |
+| 48 | EX の洋館の通路 | stage-ex1 も `corridorMode` で同じ床の絵を使うが、広間の倍率 S と world に固定した奥壁で写像が M6 と違う。A=段階8では M6 だけ(EX は枠を立てない=今のまま)/B=EX も同じ枠に(広間の倍率を枠の基準へ入れる) | **A**。ステージ6の画で洋館の見え方を決めてから EX を合わせる方が手戻りが無い。**B が選ばれたら、この節(EX の枠の式・台帳)を書き足してから着手** | いいえ |
+| 49 | 研究所の地平線と北の壁 | 今の研究所の遠景の帯の高さ(0.30H)のまま投影すると、地平線が主人公の足元の北 274px で、北の壁(world −240)が主人公が帯の中央より南に居る時に地平線の向こうへ出る(3-10a の表)。A=研究所の `?proj=1` の farH を下げる(叩き台 0.18H=地平線 551px・PC 462px・壁は帯のどこからでも見える。画面の遠景の帯は ★#43=A' で使わなくなるので、farH は投影の数値だけの意味になる)/B=壁の行を地平線の手前で頭打ちにする(壁が world に付かず、主人公が上下すると壁だけ床の上を滑る)/C=研究所のカメラの縦を帯の中央に留める(ゲーム側のカメラの変更=湧きの帯・ゲームの画面の基準も変わる) | **A**。なぜ面白いか: どこに立っても奥の壁とガラスの向こうの研究室が見え、帯の北の端へ寄るほど壁が大きく迫る=歩いた分だけ部屋の奥行きが手に取れる。社長「厳密に角度や遠近感を今と揃える必要はなく、そこは新仕様でよい」の範囲 | **はい**(北の壁の行と farH が決まらないと U21〜U23 が組めない) |
 
 **§10 へ積む(B)**:
 - **B43「洋館の床はズームしない」**: 走りの引き・パンチ・アテンションの寄りの間、物と床がずれる(今も同じ)。直すなら床の入れ物にも worldGroup のズームを掛けるか、洋館だけ物のズームを外すか(どちらも見え方の変更=社長判断)。
 - **B44「研究所の視界の作り直しの条件」**: 視界の多角形の作り置きの鍵に投影の値を入れるか(カメラが動くたびに投影だけやり直す形)を着手時に決める。
-- **B45「研究所の北の見え方の実機確認」**: 地平線フェードの境目が画面の 0.40H(主人公の足元の約 100px 北)という式の値(3-10a)を、実機で確かめる。違っていれば試算を取り直す。
+- **B45「研究所の北の壁の板の縦の比」**: 板の中の部屋の絵・窓・什器の帯の縦の比を、縦持ち 878 の今の画面から写す(3-10c2 の①)。PC の横長で今の組の比が違う(窓の大きさの基準の幅 `LAB_FAR_WINDOW_LANDSCAPE_BASE_W`)ので、PC の比をどちらに合わせるかを画で決める。
+
+---
 
 ---
 
