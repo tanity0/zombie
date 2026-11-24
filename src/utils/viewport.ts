@@ -20,12 +20,13 @@ export const VIEW_CORE_H = 720;
 export const VIEW_MAX_W = 540;
 export const VIEW_MAX_H = 960;
 
-// ★PC版(横長の画面・research/PC_SUPPORT.md・社長裁定2026-10-02「やってみよか推薦で」):
-//   横長では**縦をスマホが必ず見せている高さ(VIEW_CORE_H=720)に固定**し、横は画面の比率なり(16:9 で 1280)。
-//   16:9 より横に広い画面はゲームの枠そのものを 16:9 に絞る(左右に帯=Game.tsx の .game-frame)ので、横は 1280 を超えない
+// ★PC版(横長の画面・research/PC_SUPPORT.md・社長裁定2026-10-02「やってみよか推薦で」→ 2026-11-24 で縦540へ):
+//   横長では**縦を 540 に固定**し、横は画面の比率なり(16:9 で 960)。縦持ちの定数(VIEW_CORE_H=720)とは切り離した独立の値
+//   (旧は縦720=VIEW_CORE_H で、見える面積がスマホの約2.6倍=敵が小さく遠かった。540 でキャラ約1.33倍・面積は約1.5倍)。
+//   16:9 より横に広い画面はゲームの枠そのものを 16:9 に絞る(左右に帯=Game.tsx の .game-frame)ので、横は 960 を超えない
 //   (ウルトラワイドで横が見え過ぎて有利になる、を作らない=Vampire Survivors と同じ考え)。
-export const VIEW_PC_H = VIEW_CORE_H;
-export const VIEW_PC_MAX_W = Math.round((VIEW_PC_H * 16) / 9); // 1280
+export const VIEW_PC_H = 540;
+export const VIEW_PC_MAX_W = Math.round((VIEW_PC_H * 16) / 9); // 960
 
 export interface Viewport {
   scale: number;     // ワールドpx → デバイスpx(= app.stage.scale 兼 入力の割り算係数)
@@ -37,10 +38,12 @@ export interface Viewport {
 export const computeViewport = (realW: number, realH: number): Viewport => {
   const w = Math.max(1, realW);
   const h = Math.max(1, realH);
-  if (w * VIEW_PC_H >= h * VIEW_MAX_W) {
-    // 横長(PC)と、それに近い窓(幅/高さ ≥ 540/720=3:4): 縦=720 固定。横は比率なり(枠が 16:9 に絞られていれば 1280。
-    // 万一絞られていなくても 1280 で頭打ち=見せ過ぎない)。境目を 3:4 に置くのは縦持ちの式と**ちょうど同じ値(540×720)で繋がる**
-    // から(正方形の窓で 540×540 ⇔ 720×720 と視野が跳ぶ、を作らない=設計監査 B-3)。縦持ちのスマホ(9:16〜9:21)はこの分岐に入らない。
+  if (w >= h) {
+    // 横長(PC・タブレットの横持ち)と正方形: 縦=540 固定。横は比率なり(枠が 16:9 に絞られていれば 960。
+    // 万一絞られていなくても 960 で頭打ち=見せ過ぎない)。境目を 1:1 に置くのは、縦持ちの式(3:4 より横に広い所では 横540・縦=540÷比率)と
+    // 横長の式(縦540・横=540×比率)が**正方形でちょうど同じ 540×540 で繋がる**から(境目で視野が跳ぶ、を作らない=設計監査 B-3)。
+    // 旧(縦720)は 3:4 で両式が 540×720 に揃うので境目が 3:4 だった。幅/高さ 3:4〜1:1 の窓は今は縦持ちの式に入る。
+    // 縦持ちのスマホ(9:16〜9:21)・iPad の縦持ち(〜3:4)はこの分岐に入らず、結果も変わらない。
     const scale = Math.max(h / VIEW_PC_H, w / VIEW_PC_MAX_W);
     return { scale, logicalW: w / scale, logicalH: h / scale };
   }
@@ -56,7 +59,7 @@ export const computeViewport = (realW: number, realH: number): Viewport => {
 
 /**
  * PC の横長で HUD・ゲーム中のメニューを拡大する倍率(research/PC_SUPPORT.md 段3・components/HudScale.tsx)。
- * ゲーム画面と同じ 720 基準(枠の高さ/720)を **1 / 1.25 / 1.5 / 2 の段**に丸める(連続値だとドット絵のアイコンの
+ * 窓(枠)の高さ 720 基準(枠の高さ/720。ゲーム画面の見える範囲=縦540 とは別の物差し=見える範囲を変えても HUD の大きさは変わらない)を **1 / 1.25 / 1.5 / 2 の段**に丸める(連続値だとドット絵のアイコンの
  * ドットが列ごとに不揃いになる=クリエイティブ監査 #8)。横長だけ。1280×720 は 1、1366×768・1536×864(多いノートPC)と
  * 1600×900 は 1.25、1080p は 1.5、1440p は 2(ノートPCの 1.07〜1.2 を 1 に落とすと 60cm 離れて読む字がスマホの寸法のまま=段3-2 の監査 #5)。
  */
