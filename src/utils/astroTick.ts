@@ -6,6 +6,7 @@
 //  - 浮いて見えるのは絵だけ(判定・影・帯の y は地面のまま=上下の5つの副作用に触れない)。
 //  - 投げるのは必ず着地してから・姿が画面に入っている時だけ。投げた物は台帳(store.astroThrows)に置き、
 //    投げ手が倒れても最後まで飛んで当たる。手を離す前に崩されたら、その投げの分を台帳から消す(赤が残って当たらない、を作らない)。
+import { projSeen } from './projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import type { Enemy } from '../types/game';
 import { useGameStore, resolveBountyMove, PLAYER_BASE_SPEED, type PumpkinBlast } from '../store/gameStore';
@@ -127,7 +128,7 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
   const st = useGameStore.getState();
   const bx = e.x + e.width / 2, by = e.y + e.height / 2;
   const patch: Partial<Enemy> = {};
-  const onScreen = isPointInZoomedViewport(bx, by, st.camera, st.gameBounds, st.viewZoom);
+  const onScreen = projSeen(bx, by, 0, isPointInZoomedViewport(bx, by, st.camera, st.gameBounds, st.viewZoom));
   const collapse = (e.bossFullStunUntil !== undefined && gt < e.bossFullStunUntil) || (e.stunUntil !== undefined && gt < e.stunUntil);
   const held = (e.rootUntil !== undefined && gt < e.rootUntil) || (e.liftUntil !== undefined && nowMs < e.liftUntil);
   const vmaxEngage = astroEngageSpeed();

@@ -16,7 +16,14 @@
 import { EGG_DRAW_W, EGG_DRAW_H, EGG_BLAST_RADIUS } from '../world/mines';
 import type { RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { VIEW_CORE_W } from '../utils/viewport';
-import { setViewTransform } from '../utils/viewTransform';
+import { setViewTransform, setViewProjection, getLastCursorScreen, projAimStats } from '../utils/viewTransform';
+import { projFrameBase, projGroundPersp, getProjGameView, projGameViewContains, type ProjFrameBaseParams } from '../utils/projGameView'; // 投影の組み立て(§3-9d=ゲーム側と1本)
+import { HORIZON_FOREST_UP_BY_STAGE, HORIZON_ACTOR_HIDE_OFFSET_PX, horizonForestHeightFor, horizonForestYFor, type HorizonForestInput } from '../utils/horizonForestLine'; // 森1の配置(§3-9d=ゲーム側と1本)
+import {
+  PROJ_ON, PROJ_NEAR, PROJ_ZREF, PROJ_FAR_END, PROJ_FAR_START, OBJ_DEPTH_MODE,
+  GROUND_TILE_SCALE_X, GROUND_TILE_SCALE_Y_NEAR, GROUND_TILE_SCALE_Y_FAR, GROUND_PERSPECTIVE_CURVE,
+  GROUND_TRAPEZOID, GROUND_TRAPEZOID_FAR, GROUND_TRAPEZOID_CURVE,
+} from '../utils/projFlag'; // 投影の旗・地面の曲線の定数(§3-9d「utils へ移す物」=値は1本)
 import { labFlickerLevel, smoothFlicker, easeToward } from '../utils/labFlicker'; // ステージ2の切れかけの蛍光灯
 import { LAB_LAMP_SPACING_PX, labLampLevel, labLampScale } from '../world/labLamps'; // 非常灯の並び(塊の置き場所と同じ1本)
 import { labPitchLights, labEaseReveals, stepLabFlash, labFlashLevel, LAB_ALWAYS_REVEAL_TYPES, type LabLight, type LabFlashState } from '../utils/labDarkness'; // ステージ2の闇と懐中電灯(research/LAB_DARKNESS.md)
@@ -332,7 +339,6 @@ import {
 import { airHopHeight01 } from '../utils/airHop';
 import { SKADI_BLADE_NATIVE_ANGLE, RAFI_BLADE_NATIVE_ANGLE, PHILL_FEATHER_NATIVE_ANGLE } from '../utils/bladeArt';
 import { bossWideShotZoom, zoomedViewportBounds } from '../utils/cameraZoom';
-import { zoomCameraDownFrac } from '../utils/cameraZoom'; // ?proj=1 の基準行 ℓ_ref(★#20 裁定②)
 import { CAMERA_DOWN_OFFSET_FRAC, BREAKABLE_PROP_REGION_PAD, combatActorPlayer, skillExplosionMult, ZOMBIE_SPEED_MULT, ZOMBIE_RUSH_SPEED_MULT } from '../store/gameStore';
 import { phantomTurretBlastRadius, PHANTOM_TURRET_TELEGRAPH_MS } from '../utils/turretSpec';
 import { playerCenteredRegion, regionEdgeFade, type RegionRect } from '../utils/regionEdgeFade';
@@ -344,7 +350,7 @@ import {
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { getCameraZoomLink } from '../utils/cameraZoomLink';
 import {
-  updateProjTable, PROJ_TABLE_SUBDIV, makeProjFrame, projectInto, makeProjPoint, visibleWorldBands, projScreenRowsL, projBoxOnScreen, projScreenOutside, projDisplayToScreenInto, projRefLocalY, projTOfL, projAttentionRef,
+  makeProjFrame, projectInto, makeProjPoint, visibleWorldBands, projScreenRowsL, projBoxOnScreen, projScreenOutside, projDisplayToScreenInto, projTOfL, projWorldToScreenInto, projArrowTargetInto, projUnprojectLMin, visibleWorldQuad,
   groundStripTile, groundVsObjectDiff, groundSlipBound, projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, southCullWorldY,
   type ProjFrame, type ProjTable, type ProjPoint,
 } from '../utils/perspectiveProjection'; // 投影(?proj=1・research/PERSPECTIVE_PROJECTION.md 段階1)
@@ -590,7 +596,7 @@ import { memoryTier, rimBakeBudgetMb, whiteBakeBudgetMb, canBakeWithin, shadowSi
 import { allowBake, newBakeGovernor, BAKE_SATURATED_INTERVAL_MS } from '../utils/bakeGovernor'; // 天井に張り付いた時の焼き直しの間引き(ステージ4で急に重い)
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // 対人トラップの3秒の見え方(drawTrapBind) // 焼きの天井をスマホ/PCで分ける(v0.25.4867)
 import { groundFeelAtFoot, groundRowTileScaleX, groundRowTileScaleY, GroundScrollAccumulator, GROUND_SCROLL_LEGACY_FEEL_X, GROUND_SCROLL_LEGACY_FEEL_Y, type GroundPerspectiveParams } from '../utils/groundScroll'; // 地面の流れる速さ(足元の行=等倍)
-import { groundMatchedDepthScale, parseObjDepthMode, OBJ_DEPTH_TILT_TRAP_FAR, OBJ_DEPTH_TILT_GFAR } from '../utils/groundDepthScale'; // ?objdepth= 物の遠近を地面の倒れ具合に合わせる試作
+import { groundMatchedDepthScale } from '../utils/groundDepthScale'; // ?objdepth= 物の遠近を地面の倒れ具合に合わせる試作
 import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相の実効長(窓を追尾→溜めで通すため)
 
 /**
@@ -826,15 +832,8 @@ const WORLD_GAP_BAND_BOTTOM_COLOR = 0x161c28; // 帯の下端(森1の上端に�
 const WORLD_GAP_MASK_MARGIN_PX = 64;          // マスク矩形の静的な安全マージン(zoom>1のクランプ余裕)
 const HORIZON_FOREST_PARALLAX_X = 0.16;
 const HORIZON_FOREST_BLUR = 0.8; // 地平の森(遠景森)を少しだけぼかす(0=なし)。0.65→0.8(社長指示v0.25.1988)
-const HORIZON_FOREST_HEIGHT_RATIO = 0.22;
-const HORIZON_FOREST_MIN_HEIGHT = 120;
-const HORIZON_FOREST_MAX_HEIGHT = 185;
 // 遠景森1(地平の森)のサイズ倍率(社長指示v0.25.1884「1.5倍」)。通常ステージのみ(stage5/tutorialは実寸固定)。
-const FAR_FOREST_SIZE_SCALE = 1.5;
 // 北部(stage-4=唯一の farBackdrop 'snow')の遠景森1の拡大/位置は tsNum 定数で下方に定義(?north* で現地調整可)。
-const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
-const HORIZON_FOREST_Y_OFFSET_PX = -100;
-const LAB_HORIZON_FOREST_EXTRA_DOWN = 20; // ステージ2だけ遠景森1を下げる量(px)。他ステージは0。
 // 遠景森1の下端フェード幅は tsNum 定数(?horizonfade=)で下方に定義。10pxだと事実上ハードカット(社長「パッツリ切れてる」)。
 // 遠景手前森(ステージ3): 地平の森の「手前」に重なる近めの帯。closer=大きく/下/速いパララックス/弱ブラー。
 // 遠景森2の高さ(screenH比)。全ステージ共通の既定=0.42(原典)。
@@ -912,17 +911,12 @@ const tsBool = (key: string, def: boolean): boolean => {
 };
 // ステージ5の森1/森2は実寸px指定(社長指示v0.25.1742: 比率+クランプ方式だと端末次第で
 // 倍率が効かず「大きくならない」ため、固定pxに切り替え)。底は遠景境界線(farH)基準の下オフセット。
-const STAGE5_HORIZON_FOREST_HEIGHT_PX = 130; // 森1の高さ(px・社長指示v0.25.1743で150→130)
-const STAGE5_HORIZON_FOREST_DOWN_PX = 20;    // 森1の底=境界線から下へ(px)
 // チュートリアルの遠景森1=岩帯(社長指示v0.25.1810「川に少しだけ頭被るくらいの位置に遠景森1」)。
 // 水面の下端(遠景テクスチャ y516/710)を基準に、帯の上端(トゲ岩の先端)が少しだけ川へ食い込むよう
 // farH からの比率で上端を決め、下端は stage5 と同じく境界線(farH)+固定pxで地面へ食い込ませる。
-const TUTORIAL_HORIZON_WATER_BOTTOM_FRAC = 516 / 710; // 遠景内の水面下端(クロップ後710px基準)
-const TUTORIAL_HORIZON_HEAD_PX = 54;  // 帯上端が水面に被る量(v0.25.1819: 社長指示「10px上へ」で44→54)
 // v0.25.1816(社長指示「追従する式に戻しつつ、相対的に20px落として」): 高さ=端末追従式−20px。
 // 追従式=上端(水面下端−34px)から境界線(farH)までの距離。−20pxのぶん下端が境界線の20px上で
 // 終わり、その下は遠景自身の岩肌が見える(岩on岩なので馴染む想定)。上端アンカー(川被り34px)は不変。
-const TUTORIAL_HORIZON_HEIGHT_TRIM_PX = 40; // v0.25.1819: 社長指示「高さを10px縮める」+上移動10px分で20→40(下端=境界線−40px)
 // チュートリアルの遠景森2=岩帯2(v0.25.1817・社長指示「この岩帯2を1の手前レイヤーに表示」)。
 // ステージ5と同じ実寸px指定(高さ+底=境界線からの下オフセット)。素材2172x368(下端は浮き石の散り)。
 // 数値は叩き台(実機調整前提)。
@@ -947,7 +941,6 @@ const STAGE5_NEAR_HORIZON_DOWN_PX = 30;      // 森2の底=境界線から下へ
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
 const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに screenH×この割合だけ下へ(大きいほど下)。少し上へ
 const NEAR_HORIZON_BLUR = 0.5;              // 近いので地平の森より弱いブラー。0.35→0.5(社長指示v0.25.1988)
-const HORIZON_ACTOR_HIDE_OFFSET_PX = 0;
 // 地平線フェード帯の幅は renderSpec の純関数(論理画面高に応じて縮む・案A v0.25.2334)へ移した。
 // 縦持ちでは従来と同値の120pxに張り付く。?horizonfade=<px> で固定値へ戻せる(診断用)。
 const HORIZON_FADE_OVERRIDE = tsNum('horizonfade', 0);
@@ -1281,9 +1274,6 @@ const LAB_FRONT_FOREST_DOWN_PX = tsNum('labf1down', 20);
 const LAB_FRONT_PARALLAX_X = tsNum('labfpx', FRONT_FOREST_PARALLAX_X); // ?labfpx= で現地調整可
 const LAB_FRONT2_PARALLAX_X = tsNum('labf2px', 0.80); // ?labf2px= で現地調整可
 // 北部(stage-4=snow)の遠景森1(氷壁)の拡大/上移動/高さトリム。?northscale= /?northup= /?northtrim= で現地調整可。
-const NORTH_FAR_FOREST_EXTRA_SCALE = tsNum('northscale', 1.5);   // 全体1.5倍にさらに上乗せ(=元base比2.25倍)
-const NORTH_FAR_FOREST_UP_PX = tsNum('northup', 50);            // 位置を上へ(px。上=Y減算)。v1890で-50、v1891で50に確定(社長・下-50から100px上=+50)
-const NORTH_FAR_FOREST_HEIGHT_TRIM_PX = tsNum('northtrim', 100); // 高さを戻す(px)
 // 遠景森1(地平の森)の縦「上移動」px を全ステージ個別に持たせる(上=Y減算)。ミッションコード名の ?mXup= で現地調整
 // (m0up=tutorial 〜 m7up, ex1up/ex2up)。既定は現行維持(m1up=40, m2up=100, 他=0)。社長指示v0.25.1901。
 // 加算関係: snow は別途 northup も効く(加算)/ lab は別途 LAB_HORIZON_FOREST_EXTRA_DOWN(+20下)も効く。
@@ -1292,28 +1282,6 @@ const NORTH_FAR_FOREST_HEIGHT_TRIM_PX = tsNum('northtrim', 100); // 高さを戻
 // 岩帯1の素材(tutorial-horizon-rocks.png)は下端まで不透明・輝度4〜5のほぼ真っ黒(素材にアルファの
 // 抜きが無い)、コード側フェードは min(120px, 帯高×0.12)=洞窟では約11.5pxしかない、が事実。
 // 次に試すなら「素材の下端にアルファを焼く」か「洞窟だけフェード幅を伸ばす」。現地調整は ?m0up=。
-const M0_HORIZON_FOREST_UP_PX = tsNum('m0up', 0);
-const M1_HORIZON_FOREST_UP_PX = tsNum('m1up', 60); // 40→60(社長v0.25.1942「森1を20px上へ」)
-const M2_HORIZON_FOREST_UP_PX = tsNum('m2up', 60);
-const M3_HORIZON_FOREST_UP_PX = tsNum('m3up', 50);
-const M4_HORIZON_FOREST_UP_PX = tsNum('m4up', 0);
-const M5_HORIZON_FOREST_UP_PX = tsNum('m5up', 0);
-const M6_HORIZON_FOREST_UP_PX = tsNum('m6up', 0);
-const M7_HORIZON_FOREST_UP_PX = tsNum('m7up', 60); // M1と同じく40→60(社長v0.25.1942「m7のも同時に」)
-const EX1_HORIZON_FOREST_UP_PX = tsNum('ex1up', 0); // v0.25.3718(社長「EXステージは6だよ」): stage-6と同じ既定0へ(旧: stage-7仮流用の60)
-const EX2_HORIZON_FOREST_UP_PX = tsNum('ex2up', 0);
-const HORIZON_FOREST_UP_BY_STAGE: Record<string, number> = {
-  'stage-tutorial': M0_HORIZON_FOREST_UP_PX,
-  'stage-1': M1_HORIZON_FOREST_UP_PX,
-  'stage-2': M2_HORIZON_FOREST_UP_PX,
-  'stage-3': M3_HORIZON_FOREST_UP_PX,
-  'stage-4': M4_HORIZON_FOREST_UP_PX,
-  'stage-5': M5_HORIZON_FOREST_UP_PX,
-  'stage-6': M6_HORIZON_FOREST_UP_PX,
-  'stage-7': M7_HORIZON_FOREST_UP_PX,
-  'stage-ex1': EX1_HORIZON_FOREST_UP_PX,
-  'stage-ex2': EX2_HORIZON_FOREST_UP_PX,
-};
 // 遠景森1の下端フェード幅(px)。素材下側(雪の地面等)を地面へ滑らかに溶かす。10だと事実上ハードカット。?horizonfade= で調整。
 const HORIZON_FOREST_BOTTOM_FADE_PX = tsNum('horizonfade', 120);
 // 下端フェードは「絶対px」だと短い森1(tutorial 113px/stage5 130px等)で全体が半透明になる回帰を生む(v1889で10→120にした
@@ -1489,7 +1457,6 @@ const ENDING_ASH_COUNT = Math.max(0, Math.floor(tsNum('endash', 28)));
 // ★v0.25.4044で対象を訂正(社長指摘2026-08-29「遠景森小さくなってない。もしかして奥の方小さくしてる?」):
 // 「遠景森の手前の方」=遠景森2(nearHorizon=ending-near-rubble)であり、v4032/4041で縮めていた
 // 地平帯(遠景森1=ending-horizon-ruins・奥)は誤りだった→奥は等倍へ戻す。
-const ENDING_HORIZON_SCALE = Math.max(0.2, tsNum('endhz', 1));   // 奥(遠景森1・地平帯)。既定=等倍
 const ENDING_NEAR_SCALE = Math.max(0.2, tsNum('endnear', 0.6));  // 手前(遠景森2)。「もっと+もう少し小さく」=0.6叩き台
 // ENDING_SCENE.md 演出仕様v2 §1(発砲の絵。実在部品はSE=npc-gunfireのみ・マズルフラッシュ/トレイル/
 // 薬莢/反動は全てコード生成)。数値は全て叩き台・実機調整用ツマミ付き。
@@ -3264,11 +3231,6 @@ const LAB_CRAWLER_VANISH_SLIDE_PX = 90;
 // 平坦になるのは画面外 ±DEPTH_EDGE_MARGIN を超えた所だけ=可視範囲では止まらない。
 // 投影(research/PERSPECTIVE_PROJECTION.md・段階1「盤面と置き物」): `?proj=1` の時だけ、地面と置き物を1本の遠近の計算(utils/perspectiveProjection)で描く。
 // 既定(省略/0)は今と1ビットも変わらない。★#19「ツマミの同時指定の優先」: `?proj=1` の時は ?objdepth / ?depthmap を無視する(?proj が勝つ)。
-const PROJ_ON = tsBool('proj', false);
-const PROJ_NEAR = PROJ_ON && tsBool('projnear', true); // 手前の地面の伸びを抑える(基準行より南だけ「縦の伸び ≤ 横の倍率」)。社長裁定2026-11-23「抑えた案で」=既定ON。`?projnear=0` で旧い伸び方(比較用)
-const PROJ_ZREF: 1 | 2 = tsNum('projzref', 2) === 1 ? 1 : 2; // ★#20 裁定②=2(既定)。1=比べるための控え(ℓ_ref をズーム1の値の定数のまま)
-const PROJ_FAR_END = Math.max(0, tsNum('projfar', 1500)); // ★#4「描く距離の上限」(叩き台): 主人公から北へこの距離で alpha 0。0=上限なし
-const PROJ_FAR_START = PROJ_FAR_END * (1200 / 1500); // フェードの始まり(叩き台 1,200→1,500 の比のまま ?projfar に付いて動く)
 const PROJ_TREE_SCALE_MAX = 1.25; // 木の個体の大きさの上限(world/trees.ts の scale 0.85..1.25)=南のカリングの余白用
 const PROJ_PROP_ART_H = 420; // 置き物の絵の高さの上限の目安(南のカリングの余白・作る物4)。帯の範囲の外へは延ばさないので大きめでよい
 const PROJ_FETCH_BANDS = 8; // 物を取ってくる範囲を行ごとに切る帯の本数(監査 A1・叩き台)
@@ -3287,38 +3249,30 @@ const LAB_WALL_DEPTH_MAX = 1.35;
 // 背景 void プレートの低速パララックス係数(0=世界と一緒に動く / 大きいほど奥に見える=ゆっくり)。
 const LAB_VOID_PARALLAX = 0.12;
 const LAB_VOID_TILE = 420; // 1タイルの world 幅(px)。大きめにして外周での繰り返しを目立たせない。
-const GROUND_TILE_SCALE_X = 0.82;
-const GROUND_TILE_SCALE_Y_NEAR = 0.82;
 // 遠近を少し強める(遠くをもっと遠くへ): 最遠を more 圧縮 + カーブを立てて圧縮域を広げる。
 // 戻すなら FAR 0.12 / CURVE 2.05。
 // 床の遠景効果(奥の縦圧縮)。?gfar=0.04 等でURL生調整可。小さいほど遠くが圧縮=遠く見える。
 // 既定 0.055(旧 0.12→0.09→0.055。社長指示でさらに強化)。
 // ?objdepth=(社長指示2026-11-22・試作): 0=今の遠近(既定) / 1=物の大きさを地面の横の縮みに合わせる / 2=地面を少し奥に倒して1と同じ合わせ方。
 // 2 の時だけ下の gfar / g3dfar の既定値が強まる(URLで明示した値が勝つ)。0/1 では地面は1pxも変わらない。
-const OBJ_DEPTH_MODE = PROJ_ON ? 0 : parseObjDepthMode(tsNum('objdepth', 0)); // ?proj=1 が勝つ(★#19・§3-1: objdepth=2 の地面の傾きも効かない)
 const OBJ_DEPTH_MIN = tsNum('objdmin', 0.35); // 1/2 の時の物の大きさの下限(奥)
 const OBJ_DEPTH_MAX = tsNum('objdmax', 1.85); // 1/2 の時の物の大きさの上限(手前)
-const GROUND_TILE_SCALE_Y_FAR = tsNum('gfar', OBJ_DEPTH_MODE === 2 ? OBJ_DEPTH_TILT_GFAR : 0.055);
 const GROUND_SCROLL_X_FEEL = GROUND_SCROLL_LEGACY_FEEL_X; // ?gfeel=0 の時だけ使う旧来の固定係数
 const GROUND_SCROLL_Y_FEEL = GROUND_SCROLL_LEGACY_FEEL_Y;
 // 地面の流れる速さを「主人公の足元の行=物と等倍」に合わせる(社長指示2026-11-22・既定ON)。?gfeel=0 で旧来の固定係数。
 const GROUND_FOOT_FEEL = tsBool('gfeel', true);
 // 床の遠近カーブ。?gcurve=3 等でURL生調整可。大きいほど手前まで圧縮が効く=奥行き強。
 // 既定 2.6(旧 2.05→2.35→2.6。社長指示で強化)。
-const GROUND_PERSPECTIVE_CURVE = tsNum('gcurve', 2.6);
 // 床の台形化(社長指示v0.25.2216「台形おねがい」): 従来は**縦だけ**詰めていた(奥ほど平べったい帯)ため、
 // タイルが奥で横に伸びて奥行きが出なかった。ここで**横も縦と同率で詰め、画面中央の消失点へ収束**させる
 // =等方(幾何的に正しい遠近)。床の矩形自体は従来どおり画面外まで広く敷いたまま(社長案「範囲を常に画面外に
 // 大きく持っておいて、その中でループ」)なので、引きズームでも端が欠けない。
 // 0=従来と完全に同一(復帰フラグ) / 1=フル適用。?g3d=
-const GROUND_TRAPEZOID = Math.max(0, Math.min(1, tsNum('g3d', 1)));
 // 横の詰め方(社長報告v0.25.2217「奥ほど細いのは良いがカーブが不自然」の修正)。
 // 教科書どおりの遠近では、床のタイルの**横**の間隔は「地平線からの距離に**直線**で比例」して詰まる
 // (横 ∝ 1/z、かつ 画面yと1/zが直線関係のため)。v2216/2217は横を**縦のカーブから導いていた**のが誤り——
 // 縦カーブ(t^2.6+下限)は社長が調整した手作りの値であって物理の1/z²ではないので、その平方根を取ると
 // 横が t^1.3 になり中盤で急に詰まる=不自然だった。ここでは**縦カーブには一切触れず**、横だけを直線にする。
-const GROUND_TRAPEZOID_FAR = Math.max(0.05, Math.min(1, tsNum('g3dfar', OBJ_DEPTH_MODE === 2 ? OBJ_DEPTH_TILT_TRAP_FAR : 0.10))); // 最奥での横倍率(手前=1)。実機確認で0.30→0.10(社長決定v0.25.2219)。?g3dfar=
-const GROUND_TRAPEZOID_CURVE = Math.max(0.2, Math.min(3, tsNum('g3dc', 1)));     // 1=直線(既定)。?g3dc=
 const NEAR_GROUND_BLUR_STRIP_RATIO = 0.34;
 const NEAR_GROUND_BLUR_STRENGTHS = [0.8, 1.45, 2.05];
 // ★引いた時に画面下部へ出る「薄い黒線3本」対策(社長報告v0.25.3113。v3006の強度減衰だけでは
@@ -5045,6 +4999,7 @@ export class PixiScene {
   private zwarpPadBot = 0;
   private zwarpEventSide: -1 | 1 = 1;                // 奥にする側(+1=右 / −1=左)
   private cineAimY: number | null = null;             // ダイナミック・カメラワーク: このフレームの寄り先Y(ピント帯が読む)
+  private cineAimDispY: number | null = null;         // ?proj=1: 寄り先の表示Y(投影済み・ピント帯が読む)
   // 近景の板(research/CINEMATIC_CAMERA.md §6・v0.25.4296): 寄り演出の間だけ画面の縁に大きくボケた近景を斜めに割り込ませる。
   // 画面空間(L.cinePlates)・pooled sprite 2枚・ぼかしは読み込み時に1回焼く(毎フレームのフィルタ無し)。
   private cinePlateSprites: Sprite[] = [];
@@ -5818,6 +5773,7 @@ export class PixiScene {
   private killFxBlood: { x: number; y: number; vx: number; vy: number; size: number; born: number; life: number; tint: number; fx?: number; fy?: number; flat?: boolean }[] = [];
   private killFxBloodPrevStep = 0;              // 実時間積分の前回時刻(タブ復帰の飛びはクランプ)
   private killFxVisPos: { x: number; y: number } | null = null; // 演出中のプレイヤー見た目位置(ズーム追尾用・FB4)
+  private killFxVisH = 0; // ?proj=1(§3-9o ケ15): killFxVisPos の足元からの高さ(足元=y+この値を地面の点として投影し、高さ×s を上に足す)
   // ★神付き(PACING_PUZZLE.md §14-4-8/8b)。store.kamitsukiFxを実時間(Date.now)で再生する描画専用一式
   // (killFxと同じ流儀=hitstop中も動く)。figure=触れた個体(実スプライト)が倒れ込む絵/shadow=
   // プレイヤーを覆う紫の影。
@@ -7951,34 +7907,17 @@ export class PixiScene {
   // 帯が浮いたため、底を遠景の境界線(farH)に直接合わせる(社長指示v0.25.1740「遠景の境界線に合わせて」)。
   // 他ステージは従来式(重なり比+固定オフセット+lab追加下げ)のまま。
   private horizonForestY(farH: number, horizonH: number): number {
-    // 全ステージ共通の「上移動」(?mXup=)。上=Y減算。各分岐で最後に引く(社長指示v0.25.1901)。
-    const up = this.horizonForestUpNow;
-    // ステージ5: 底=境界線(farH)+20px下(社長指示v0.25.1742の実寸指定)。
-    if (this.stage5Stage) return farH + STAGE5_HORIZON_FOREST_DOWN_PX - horizonH - up;
-    // チュートリアル: 上端合わせ=水面下端(farH×FRAC)-HEAD_PX(頭が川に少し被る)。高さ140px固定。
-    if (this.currentFarKey === 'tutorial') return farH * TUTORIAL_HORIZON_WATER_BOTTOM_FRAC - TUTORIAL_HORIZON_HEAD_PX - up;
-    return farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0)
-      - (this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_UP_PX : 0) // 北部だけ別途 northup も加算(社長指示v0.25.1886)
-      - up; // 全ステージ共通の上移動(m1up=40/m2up=100/他=0。?mXup=)
+    // 式は utils/horizonForestLine(ゲーム側の「ゲームの画面」と同じ1本・§3-9d)。ステージ5=底を境界線へ/チュートリアル=水面下端合わせ/
+    // 他=重なり比+固定オフセット+lab追加下げ。全ステージ共通の「上移動」(?mXup=)を最後に引く(社長指示v0.25.1901)。
+    return horizonForestYFor(this.horizonForestInput(farH), horizonH);
   }
   private horizonForestHeight() {
-    const base = Math.min(
-      HORIZON_FOREST_MAX_HEIGHT,
-      Math.max(HORIZON_FOREST_MIN_HEIGHT, this.screenH * HORIZON_FOREST_HEIGHT_RATIO)
-    );
-    // ステージ5は実寸150px固定(社長指示v0.25.1742。比率×クランプ×倍率だと端末次第で伸びないため)。
-    // 地平の薄消し線(horizonActorHideScreenY)は帯の実位置から導出しているので自動で追従する。
-    if (this.currentFarKey === 'tutorial') {
-      // 追従式(上端=水面下端−HEAD_PX から境界線まで)−TRIM。上端合わせなので下端がTRIMぶん上がる。
-      const farH = this.farBackdropHeight();
-      return farH * (1 - TUTORIAL_HORIZON_WATER_BOTTOM_FRAC) + TUTORIAL_HORIZON_HEAD_PX - TUTORIAL_HORIZON_HEIGHT_TRIM_PX;
-    }
-    // 北部(snow)は遠景森が雪原に溶けて小さく見えるため、さらに拡大(社長指示v0.25.1886)。高さは-100px戻す(v0.25.1888)。
-    const northExtra = this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_EXTRA_SCALE : 1;
-    const northTrim = this.currentFarKey === 'snow' ? NORTH_FAR_FOREST_HEIGHT_TRIM_PX : 0;
-    // エンディング: 地平帯(廃墟+木々のシルエット)を縮小(社長指示2026-08-28「手前のもっと小さく」)。
-    const endingScale = this.currentFarKey === 'ending' ? ENDING_HORIZON_SCALE : 1;
-    return this.stage5Stage ? STAGE5_HORIZON_FOREST_HEIGHT_PX : base * FAR_FOREST_SIZE_SCALE * northExtra * endingScale - northTrim;
+    // ステージ5は実寸固定・チュートリアルは水面下端からの追従式・北部は拡大とトリム・エンディングは倍率(式は utils/horizonForestLine)。
+    return horizonForestHeightFor(this.horizonForestInput(this.farBackdropHeight()));
+  }
+  /** 森1の配置の入力(utils/horizonForestLine)。 */
+  private horizonForestInput(farH: number): HorizonForestInput {
+    return { screenH: this.screenH, farH, farKey: this.currentFarKey, stage5: this.stage5Stage, lab: this.isLabStage, upPx: this.horizonForestUpNow };
   }
 
   private frontForestHeight() {
@@ -10076,6 +10015,34 @@ export class PixiScene {
    * 投影の状態を作る(§1-1d・§1-6・§3-3 作る物1/2/11)。worldGroup のズームを決めた後・地面を描く前に1回だけ呼ぶ。
    * 基準点と基準行は組 (W_ref, ℓ_ref)。②(?projzref=2=既定)は ℓ_ref をカメラのズーム(useGameLoop の camBossZoomRef)の定位置へ毎フレーム運ぶ。
    */
+  /**
+   * ?proj=1(段階6・3-9g): 寄せの計算の前に使う「地面の部分だけ」の投影の枠(wg・揺れなし)。表示座標は wg に依らないので、
+   * 寄り先・支点・ピント帯の表示座標はこれで出せる(updateProjFrame は後で同じ表に wg を足す=循環しない)。場面の外・?proj=0 は null。
+   */
+  private projGroundFrameNow(s: ReturnType<typeof useGameStore.getState>, realNow: number): ProjFrame | null {
+    if (!PROJ_ON || s.indoorMode || s.corridorMode || s.stageTheme === 'lab') return null;
+    const base = projFrameBase(this.projTable, this.projFrameBaseParams(s, this.farBackdropHeight(), realNow));
+    this.projTable = base.table; // updateProjTable は前の表を書き換えて使い回す=乗り換える(ケ8)
+    return makeProjFrame(base.input);
+  }
+
+  /** 投影の組み立ての入力(utils/projGameView.projFrameBase・ゲーム側と同じ式)。アテンション(zoomToUnity)は今の depthRefY と同じ包絡線(§1-6)。 */
+  private projFrameBaseParams(s: ReturnType<typeof useGameStore.getState>, farH: number, realNow: number): ProjFrameBaseParams {
+    let att: { y: number; env: number } | null = null;
+    if (s.attention?.zoomToUnity) {
+      const a = s.attention;
+      const outStart = ATTENTION_IN_MS + (a.holdMs ?? ATTENTION_HOLD_MS) + (a.cutinMs ?? 0);
+      att = { y: a.y, env: attentionZoomEnvelope(realNow - a.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS) };
+    }
+    return {
+      persp: projGroundPersp(), camX: s.camera.x, camY: s.camera.y, screenW: this.screenW, screenH: this.screenH, farH,
+      viewH: s.gameBounds.height, // カメラ(useGameLoop の baseCamY)と同じ高さで定位置を出す
+      playerH: s.player.height, playerFootY: s.player.y + s.player.height,
+      camZoom: getCameraZoomLink(), camDown: CAMERA_DOWN_OFFSET_FRAC, zref: PROJ_ZREF, near: PROJ_NEAR,
+      att, farStart: PROJ_FAR_START, farEnd: PROJ_FAR_END, overscan: ZOOM_OVERSCAN,
+    };
+  }
+
   private updateProjFrame(s: ReturnType<typeof useGameStore.getState>, shakeX: number, shakeY: number, realNow: number) {
     this.projFrameNo++;
     // 段階4 作る物6: 入れ物の外の円は毎フレーム描き直す(?proj=0 では作られていない=何もしない)。
@@ -10084,31 +10051,14 @@ export class PixiScene {
     if (this.projSpriteMeshes.length > 0) this.projSpriteMeshReset();
     if (!PROJ_ON || s.indoorMode || s.corridorMode || s.stageTheme === 'lab') { this.projFrame = null; projBeamFrame = null; return; }
     const farH = this.farBackdropHeight();
-    const band = computeGroundBandLayout(farH, this.screenH, ZOOM_OVERSCAN);
-    const persp: GroundPerspectiveParams = {
-      tileScaleX: GROUND_TILE_SCALE_X, trapFar: GROUND_TRAPEZOID_FAR, trapCurve: GROUND_TRAPEZOID_CURVE,
-      trapezoid: GROUND_TRAPEZOID, farScale: GROUND_TILE_SCALE_Y_FAR, nearScale: GROUND_TILE_SCALE_Y_NEAR, curve: GROUND_PERSPECTIVE_CURVE,
-    };
-    const viewH = s.gameBounds.height; // カメラ(useGameLoop の baseCamY)と同じ高さで定位置を出す
-    const camZ = PROJ_ZREF === 2 ? getCameraZoomLink() : 1;
-    const lRef1 = projRefLocalY(viewH, zoomCameraDownFrac(CAMERA_DOWN_OFFSET_FRAC, 1), s.player.height, farH);
-    let lRef = PROJ_ZREF === 2 ? projRefLocalY(viewH, zoomCameraDownFrac(CAMERA_DOWN_OFFSET_FRAC, camZ), s.player.height, farH) : lRef1;
-    let wRef = s.camera.y + farH + lRef;
-    // アテンション(zoomToUnity): 基準点を今の depthRefY と同じ包絡線で注目点へ運び、基準行も組で運ぶ(§1-6)。
-    if (s.attention?.zoomToUnity) {
-      const a = s.attention;
-      const outStart = ATTENTION_IN_MS + (a.holdMs ?? ATTENTION_HOLD_MS) + (a.cutinMs ?? 0);
-      const env = attentionZoomEnvelope(realNow - a.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS);
-      const att = projAttentionRef(wRef, a.y, env, s.camera.y, farH);
-      wRef = att.wRef; lRef = att.lRef;
-    }
+    // 組み立ては utils/projGameView.projFrameBase の1本(ゲーム側の「ゲームの画面」と同じ式・§3-9d)。基準点と基準行は組 (W_ref, ℓ_ref)。
     // 表は帯の引数が変わった時に作り直す(§10 B7)。手前を抑える案(既定 ON・?projnear=0 で無し)は ℓ_near=ℓ_ref なので、ボス戦の引き・
     // アテンションで ℓ_ref が動くたびに表が変わる=updateProjTable が北の g を使い回して南だけ積み直す(監査 B-1)。
     // 曲線の値は地面と同じ定数(?gfar・?gcurve・?g3d・?g3dfar・?g3dc)を読む=ツマミで傾きを変えると地面と物が一緒に傾く。
-    const lNear = PROJ_NEAR ? lRef : NaN;
     const tb0 = this.projTable;
     const tbT0 = PROJ_AUDIT ? performance.now() : 0;
-    const table = updateProjTable(tb0, persp, band.stripH, band.stripCount, GROUND_STRIP_REF_COUNT, PROJ_TABLE_SUBDIV, lNear);
+    const base = projFrameBase(tb0, this.projFrameBaseParams(s, farH, realNow));
+    const table = base.table;
     this.projTable = table;
     if (PROJ_AUDIT) {
       const ms = performance.now() - tbT0;
@@ -10121,10 +10071,8 @@ export class PixiScene {
     }
     const wg = this.L.worldGroup;
     this.projFrame = makeProjFrame({
-      table, camX: s.camera.x, camY: s.camera.y, farH, screenW: this.screenW, screenH: this.screenH,
-      wRef, lRef, tStd: projTOfL(lRef1, band.stripH, GROUND_STRIP_REF_COUNT),
+      ...base.input,
       wgScale: wg.scale.x || 1, wgX: wg.position.x, wgY: wg.position.y, shakeX, shakeY,
-      farRefY: s.player.y + s.player.height, farStart: PROJ_FAR_START, farEnd: PROJ_FAR_END,
     });
     this.projScreenBottomL = (this.screenH - wg.position.y) / (wg.scale.x || 1) - shakeY - farH;
     // 松明・緑卵の作る/回収する範囲(store.syncBreakableProps と同じ: プレイヤー中心の画面 ± BREAKABLE_PROP_REGION_PAD・監査 A2)。
@@ -10590,6 +10538,7 @@ export class PixiScene {
       ...this.projStage4AuditLines(),
       ...this.projStage3AuditLines(),
       ...this.projStage5AuditLines(),
+      ...this.projStage6AuditLines(),
     ].join('\n');
   }
 
@@ -10610,6 +10559,15 @@ export class PixiScene {
   /** 同じフレームに2回掛けない(登録の重なり=§10 B18 の守り)。 */
   private projAppliedFrame = new WeakMap<object, number>();
   /** 計器(段階2・作る物9): 後掛けの適用漏れの最大(画面px)とその部品・未分類・主人公の s とその1フレームの変化の最大・湧きのフェードの1フレームの変化の最大。 */
+  /** 計器(段階6・作る物9 ?projaudit=1): s6 aim / view / arrow / cam / cull の今の集計。 */
+  projS6 = {
+    reticleDiffMax: 0,
+    viewMismatch: new Map<string, number>(), viewChecked: 0, viewZoomExcluded: 0,
+    arrowDouble: 0, arrowMissing: 0,
+    camKillDiffMax: 0,
+    cullOld: new Map<string, number>(),
+  };
+  private projS6Pt = { x: 0, y: 0 };
   projActorAudit = {
     leakMax: 0, leakName: '', unclassified: new Map<string, number>(), unclassifiedNow: 0,
     playerS: 1, playerDsMax: 0, spawnDaMax: 0, kinds: new Map<string, { dx: number; dy: number }>(),
@@ -10782,6 +10740,55 @@ export class PixiScene {
     const d = y - projSkyTopY(this.projFrame, 0);
     if (d > this.projS5.skyMax) { this.projS5.skyMax = d; this.projS5.skyName = name; }
   }
+  /**
+   * 計器(段階6・作る物9): s6 aim(往復の差・ℓ_min で切った回数・照準の円とカーソルの差)/ s6 view(ゲームの画面と描画の画面の食い違い・
+   * 余白 16px の帯は数えない・描画だけのズームの間は合否の外=別に数える)/ s6 arrow(画面の中だが薄い・北のため矢印にした数)/
+   * s6 cam(KILL の寄せの間の寄り先と画面の中央の差の最大)。
+   */
+  private projStage6AuditLines(): string[] {
+    const a = this.projS6;
+    const f = this.projFrame;
+    const st = useGameStore.getState();
+    const gvs = getProjGameView();
+    if (f && gvs) {
+      const zoomOnly = Math.abs(f.wgScale - st.viewZoom) < 0.005;
+      const M = PROJ_ONSCREEN_MARGIN_PX;
+      const drawnIn = (x: number, y: number, m: number): boolean => {
+        const pp = projectInto(f, x, y, this.projScratch);
+        if (!pp.inDomain || this.projBaseAlpha(pp) < 0.5) return false;
+        const sc = projDisplayToScreenInto(f, pp.x, pp.y, this.projScreenPt);
+        return sc.x >= -m && sc.x <= f.screenW + m && sc.y >= -m && sc.y <= f.screenH + m;
+      };
+      for (const e of st.enemies) {
+        const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
+        const g = projGameViewContains(gvs.cam, cx, cy, 0);
+        // 境目の帯(余白 16px の中)は数えない: 描画が広い側でも狭い側でも同じ答えの時だけ食い違いとして数える。
+        const dOut = drawnIn(cx, cy, M), dIn = drawnIn(cx, cy, -M);
+        a.viewChecked++;
+        if (g === dOut && g === dIn) continue;
+        if (g !== dOut && g !== dIn) {
+          if (!zoomOnly) { a.viewZoomExcluded++; continue; }
+          const k = e.type;
+          a.viewMismatch.set(k, (a.viewMismatch.get(k) ?? 0) + 1);
+        }
+      }
+    }
+    if (f && st.zoomHasTarget) {
+      const kvp = this.killFxVisPos;
+      const h = kvp ? this.killFxVisH : 0;
+      const tx = kvp ? kvp.x : st.zoomTargetX, ty = kvp ? kvp.y + h : st.zoomTargetY;
+      const pp = projectInto(f, tx, ty, this.projScratch);
+      const sc = projDisplayToScreenInto(f, pp.x, pp.y - h * pp.s, this.projScreenPt);
+      const d = Math.hypot(sc.x - f.screenW / 2, sc.y - f.screenH / 2); // proj-lift: exempt(not-height)
+      if (d > a.camKillDiffMax) a.camKillDiffMax = d;
+    }
+    const mis = [...a.viewMismatch].map(([k, n]) => `${k}=${n}`).join(' ') || '0';
+    return [
+      `s6 aim rt max=${projAimStats.maxRoundTripPx.toFixed(3)}px clamp=${projAimStats.clamps}/${projAimStats.calls} | reticle-cursor max=${a.reticleDiffMax.toFixed(3)}px`,
+      `s6 view mismatch ${mis} (checked ${a.viewChecked}・描画だけのズームの間 ${a.viewZoomExcluded}) | arrow 薄い/北→矢印 ${a.arrowDouble} | cam kill-center max=${a.camKillDiffMax.toFixed(1)}px`,
+    ];
+  }
+
   private projStage5AuditLines(): string[] {
     const a = this.projS5;
     if (a.pts > a.ptsMax) a.ptsMax = a.pts;
@@ -11986,6 +11993,18 @@ export class PixiScene {
     return Math.max(0, projScreenOutside(this.projFrame!, x, y, this.projScratch) - margin);
   }
 
+  /** ?proj=1: 足元 (x, footY) を地面の点として投影し、高さ h×s 上の点が画面の外へ出ている距離(表示px=画面px÷ズーム)。定義域の外は Infinity。 */
+  private projLiftedOutside(x: number, footY: number, h: number): number {
+    const f = this.projFrame!;
+    const p = projectInto(f, x, footY, this.projScratch);
+    if (!p.inDomain) return Infinity;
+    const z = f.wgScale > 0 ? f.wgScale : 1;
+    const sc = projDisplayToScreenInto(f, p.x, p.y - h * p.s, this.projScreenPt);
+    const dx = sc.x < 0 ? -sc.x : sc.x > f.screenW ? sc.x - f.screenW : 0;
+    const dy = sc.y < 0 ? -sc.y : sc.y > f.screenH ? sc.y - f.screenH : 0;
+    return Math.hypot(dx, dy) / z;
+  }
+
   /** 投影した4点の外接箱(画面px)が、余白 marginPx 込みで画面に掛かるか。点は this.projCorner に入っている前提。 */
   private projCornersOnScreen(marginPx: number): boolean {
     const f = this.projFrame!;
@@ -12580,7 +12599,7 @@ export class PixiScene {
     // ずらす(ずらし量は zoomDecay=演出エンベロープで0→1→0するので、終わると自然に元の画角へ戻る)。
     // 検算: decay=1 で対象は厳密に画面中央(下の式に代入すると center に一致)/ decay=0 で従来と同一。
     const centerX = this.screenW / 2, centerY = this.screenH / 2; // proj-lift: exempt(not-height)
-    const zoomAimsTarget = s.zoomHasTarget && zoomDecay > 0;
+    const zoomAimsTargetRaw = s.zoomHasTarget && zoomDecay > 0;
     // 対象の「等倍時の画面座標」(world.position は本関数の先頭でカメラオフセット込み更新済み)。
     // ★実機FB4(v0.25.3610「KILLズームはちゃんとプレイヤーを追尾して。もともと立ってた場所で
     // ズームしちゃってる」): KILL処刑演出中は寄り先を固定座標(キル位置)ではなく**プレイヤーの
@@ -12594,8 +12613,18 @@ export class PixiScene {
     const aimW = { x: kvp ? kvp.x : s.zoomTargetX, y: kvp ? kvp.y : s.zoomTargetY };
     // 相手の側(+1=右)。横滑り・板の向きの基準。開始時に確定した側を使い、決まらない時(死亡=相手が自機)は zwarp の奥側(最も近い敵の側)で代用(監査4)。
     const cineSideX: 1 | -1 = cineEv && cineEv.sideX !== 0 ? cineEv.sideX : this.zwarpEventSide;
-    const targetScreenX = this.L.world.position.x + aimW.x;
-    const targetScreenY = this.L.world.position.y + aimW.y;
+    // ?proj=1(段階6・V53・3-9g): 寄り先を投影した表示座標から(表示座標は wg に依らない=寄せの計算の前に地面の部分だけで出す)。
+    // 処刑中の見た目位置(kvp)は高さを持つ点=足元を地面の点として投影し、高さ×s を上に足す(ケ15)。寄り先が地平線より北なら寄せない。
+    const pfG = this.projGroundFrameNow(s, realNow);
+    let aimDX = aimW.x, aimDY = aimW.y, aimInDomain = true;
+    if (pfG) {
+      const h = kvp ? this.killFxVisH : 0;
+      const pp = projectInto(pfG, aimW.x, aimW.y + h, this.projScratch);
+      aimDX = pp.x; aimDY = pp.y - h * pp.s; aimInDomain = pp.inDomain;
+    }
+    const targetScreenX = this.L.world.position.x + aimDX;
+    const targetScreenY = this.L.world.position.y + aimDY;
+    const zoomAimsTarget = zoomAimsTargetRaw && aimInDomain;
     // v0.25.2593(社長報告「起点が守護霊によったことで、映ってはいけない画面外がでちゃってる感じ。
     // レイヤーが切れてる」): 寄せ量に**安全上限**を掛ける。ズーム倍率 z で拡大している間は可視範囲が
     // 1/z に縮むので、**(1 - 1/z) × 画面半分**までなら平行移動しても「等倍時に見えていた範囲」の内側に
@@ -12618,6 +12647,7 @@ export class PixiScene {
     const panRawX = Math.max(-centerRoom, Math.min(centerRoom, centerRawX)) + orbitClamped;
     const panRawY = zoomAimsTarget ? (targetScreenY - centerY) * zoom * zoomDecayCine * ZOOM_TARGET_CENTER_FRAC : 0;
     this.cineAimY = zoomAimsTarget ? aimW.y : null; // ピント帯(tilt-shift)が同じ寄り先を見る
+    this.cineAimDispY = zoomAimsTarget ? aimDY : null; // ?proj=1: 同じ寄り先の表示Y(ピント帯・V55)
     const panX = Math.max(-panLimitX, Math.min(panLimitX, panRawX));
     const panY = Math.max(-panLimitY, Math.min(panLimitY, panRawY));
     // v0.25.2965: ボス方向へのカメラ寄せ(社長報告「上下がボス見えない」)。
@@ -12674,8 +12704,14 @@ export class PixiScene {
       // 重み(寄り始め0→寄り切り1→引きで0)で今の支点から移す=つなぎ目で跳ばない。支点は画面の中なので、寄り(>1)で見える範囲は等倍の画面の内側。
       if (this.junPivotW > 0 && s.attention) {
         const w = this.junPivotW;
-        pivotX += (this.L.world.position.x + s.attention.x - pivotX) * w;
-        pivotY += (this.L.world.position.y + s.attention.y - pivotY) * w;
+        // ?proj=1(V54): 支点の注目点も投影した表示座標から(地平線より北なら今の点のまま)。
+        let jx = s.attention.x, jy = s.attention.y;
+        if (pfG) {
+          const jp = projectInto(pfG, jx, jy, this.projScratch);
+          if (jp.inDomain) { jx = jp.x; jy = jp.y; }
+        }
+        pivotX += (this.L.world.position.x + jx - pivotX) * w;
+        pivotY += (this.L.world.position.y + jy - pivotY) * w;
       }
       this.L.worldGroup.position.set(pivotX * (1 - zoom) - totalPanX, pivotY * (1 - zoom) - totalPanY);
       this.zoomApplied = true;
@@ -12749,7 +12785,21 @@ export class PixiScene {
       const bandFocalY = s.attention ? s.attention.y
         : (s.zoomHasTarget && zoomDecay > 0) ? (this.cineAimY ?? s.zoomTargetY) // v0.25.4294: 三分割/処刑の見た目位置と同じ寄り先
         : zpy;
-      const bandY = ((this.L.world.position.y + bandFocalY) * tz + this.L.worldGroup.position.y) * vpScale;
+      // ?proj=1(V55・3-9g): 焦点の行=描かれた主人公・注目点の行(world 点を投影した表示Y)。主人公は足元を投影して半身×s 上。
+      let bandDispY = bandFocalY;
+      if (pfG) {
+        if (s.attention) {
+          const bp = projectInto(pfG, s.attention.x, s.attention.y, this.projScratch);
+          if (bp.inDomain) bandDispY = bp.y;
+        } else if (s.zoomHasTarget && zoomDecay > 0) {
+          bandDispY = this.cineAimDispY ?? projectInto(pfG, s.zoomTargetX, s.zoomTargetY, this.projScratch).y;
+        } else {
+          const hh = s.player.height / 2;
+          const bp = projectInto(pfG, zpx, zpy + hh, this.projScratch);
+          bandDispY = bp.y - hh * bp.s;
+        }
+      }
+      const bandY = ((this.L.world.position.y + bandDispY) * tz + this.L.worldGroup.position.y) * vpScale;
       // B-1(社長裁定2026-08-08): **アテンション中だけ**ボケの勾配幅を広げる。出現アテンションは
       // ズームが引く前(等倍)に巨大ボスを大写しするため、固定の勾配(440px)を1体で跨ぎ切り
       // 「頭だけ最大ボケで切れる」(社長報告)。勾配を2.5倍へ広げてボス全身を緩やかなシャープ帯に
@@ -13109,6 +13159,7 @@ export class PixiScene {
     if (s.gameTime < this.groundScrollLastGameTime) this.groundScrollRunEpoch++;
     this.groundScrollLastGameTime = s.gameTime;
     this.updateProjFrame(s, sx, sy, realNow); // ?proj=1 の時だけ投影の状態を作る(地面と置き物で同じ関数・同じ基準行)
+    setViewProjection(this.projFrame); // ?proj=1: PC のマウスの照準を逆投影で戻す(§3-9b・作る物2)。?proj=0・場面の外は null=今の式
     this.updatePerspectiveGround(
       s.camera.x, s.camera.y, sx, sy,
       labPerspNow ? LAB_PERSP_FAR : GROUND_TILE_SCALE_Y_FAR,
@@ -16306,7 +16357,16 @@ export class PixiScene {
       }
     }
     // 燃える残骸(world/burningWrecks.ts が選ぶ・描くのは stage5Battlefield.ts)。足元の火の溜まりも同じ溜まりの絵で落とす。
-    const view = this.visibleWorldRect();
+    let view = this.visibleWorldRect();
+    if (this.projFrame) {
+      // ?proj=1(段階6・V12): 選ぶ範囲は投影の見える範囲(帯の列の外接=水たまり K01 と同じ作り)。
+      const n = this.projCullBands(120, 0);
+      if (n > 0) {
+        let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+        for (let i = 0; i < n; i++) { const q = this.projBands[i]; l = Math.min(l, q.left); t = Math.min(t, q.top); r = Math.max(r, q.right); b = Math.max(b, q.bottom); }
+        view = { left: l, top: t, right: r, bottom: b };
+      }
+    }
     const wrecks = mix > 0 && S5B_WRECK_ON ? this.stage5WreckViews(s.farBackdrop, view) : [];
     for (const l of this.stage5Battle.syncBurningWrecks(wrecks, mix, now, this.stage5FlamePainter())) if (S5B_POOL_ON) lights.push(l);
     this.stage5Battle.syncFirePools({
@@ -18543,7 +18603,8 @@ export class PixiScene {
 
     for (const e of effects) {
       if (e.kind !== 'glow') continue;
-      if (!this.isPointNearViewport(e.x, e.y, camera, e.radius + EFFECT_VIEWPORT_MARGIN)) continue;
+      if (this.projFrame ? projShapeOutside(this.projFrame, e.x, e.y, e.radius, EFFECT_VIEWPORT_MARGIN) // ?proj=1(段階6・V13): 形の端を投影した箱で間引く
+        : !this.isPointNearViewport(e.x, e.y, camera, e.radius + EFFECT_VIEWPORT_MARGIN)) continue;
       const t = Math.min(1, (now - e.createdAt) / e.duration);
       const horizonAlpha = this.horizonActorAlpha(e.y);
       if (t >= 1 || horizonAlpha <= 0) continue;
@@ -20602,6 +20663,8 @@ export class PixiScene {
 
   /** 可視matrix(world座標)。distanceOutsideViewport と同じ式(margin=0)。 */
   private shadowVisibleRect(): { left: number; top: number; right: number; bottom: number } {
+    // ?proj=1(段階6・V14): 投影の見える台形を囲む長方形(方針③=描画の間引きは囲む長方形でよい)。
+    if (this.projFrame) return visibleWorldQuad(this.projFrame).rect;
     return this.visibleWorldRect();
   }
 
@@ -20628,7 +20691,8 @@ export class PixiScene {
 
   /** 静止物(木/壁/プロップ/city props)の距離クロスフェード(旧 rankFade / OBJECT_SHADOW_MAX の代替。裁定B)。 */
   private shadowStaticFade(x: number, y: number): number {
-    const d = this.distanceOutsideViewport(x, y, SHADOW_STATIC_FADE_MARGIN_PX);
+    const d = this.projFrame ? this.projDistanceOutside(x, y, SHADOW_STATIC_FADE_MARGIN_PX) // ?proj=1(段階6・V15)
+      : this.distanceOutsideViewport(x, y, SHADOW_STATIC_FADE_MARGIN_PX);
     if (d <= 0) return 1;
     return Math.max(0, 1 - d / SHADOW_STATIC_FADE_RANGE_PX);
   }
@@ -26789,6 +26853,7 @@ export class PixiScene {
       actLean += killPose.lean;
       // ★実機FB4: KILLズームの追尾点=体の見た目中心(足元+オフセット−半身)。ズーム適用側が読む。
       this.killFxVisPos = { x: fb.footX + killPose.offX, y: fb.footY - fb.boxH * 0.5 + killPose.offY };
+      this.killFxVisH = fb.boxH * 0.5;
     } else {
       this.killFxVisPos = null;
     }
@@ -37968,7 +38033,9 @@ export class PixiScene {
     // 地平線の薄れ(horizonActorAlpha)を掛ける=手がかりと答えが同時に見える(クリエイティブ監査#2)。
     let gain = 0;
     for (const p of list) {
-      const out = this.distanceOutsideViewport(p.x, p.y - (SECRET_DISPLAY_H * this.depthScale(p.y)) / 2);
+      // ?proj=1(段階6・V17): 絵の中心(足元を投影して半身×s 上)が画面の外へ出ている距離(表示px)。
+      const out = this.projFrame ? this.projLiftedOutside(p.x, p.y, SECRET_DISPLAY_H / 2)
+        : this.distanceOutsideViewport(p.x, p.y - (SECRET_DISPLAY_H * this.depthScale(p.y)) / 2);
       const g = (1 - secretSepiaMult(out)) * this.horizonActorAlpha(p.y);
       if (g > gain) gain = g;
     }
@@ -48745,9 +48812,24 @@ export class PixiScene {
     const wz = this.L.worldGroup.scale.x || 1;
     const originX = this.L.world.position.x * wz + this.L.worldGroup.position.x;
     const originY = this.L.world.position.y * wz + this.L.worldGroup.position.y;
-    const cxs = originX + (player.x + player.width / 2) * wz;
-    const cys = originY + (player.y + player.height - 26) * wz;
-    const edge = 24 * wz + 4;  // 体の縁(画面px・矢印の中心がここまで戻ると体に吸い込まれて見える)
+    let cxs = originX + (player.x + player.width / 2) * wz;
+    let cys = originY + (player.y + player.height - 26) * wz;
+    let edge = 24 * wz + 4;  // 体の縁(画面px・矢印の中心がここまで戻ると体に吸い込まれて見える)
+    let sdx = a.dirX, sdy = a.dirY; // 画面の向き(?proj=0 は world の向きのまま)
+    const pf = this.projFrame;
+    if (pf) {
+      // ?proj=1(段階6・V7・3-9e): 中心=主人公の足元の投影点から 26·s 上・体の縁は s 倍。向き=world の向きを足元の行での写像(差分=ヤコビアン)で画面の向きへ。
+      const fx = player.x + player.width / 2, fy = player.y + player.height;
+      const p0 = projectInto(pf, fx, fy, this.projScratch);
+      const p0x = p0.x, p0y = p0.y, s0 = p0.s;
+      const c = this.worldToUi(p0x, p0y - 26 * s0);
+      cxs = c.x; cys = c.y;
+      edge = 24 * wz * s0 + 4;
+      const EPS = 8;
+      const p1 = projectInto(pf, fx + a.dirX * EPS, fy + a.dirY * EPS, this.projScratch);
+      const jx = p1.x - p0x, jy = p1.y - p0y, jl = Math.hypot(jx, jy);
+      if (jl > 1e-6) { sdx = jx / jl; sdy = jy / jl; }
+    }
     const GAP = 26;            // 出た時の縁からの距離(画面px)
     const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
     let out: number, alpha: number;
@@ -48785,8 +48867,8 @@ export class PixiScene {
     g.poly([16, 0, -9, -10, -6, 0, -9, 10]).fill({ color: 0x0b1020, alpha: 0.85 });
     g.poly([12.5, 0, -6.5, -7, -4.2, 0, -6.5, 7]).fill({ color: 0xe7dccb, alpha: 1 });
     g.alpha = alpha;
-    g.rotation = Math.atan2(a.dirY, a.dirX);
-    g.position.set(cxs + a.dirX * (edge + out), cys + a.dirY * (edge + out));
+    g.rotation = Math.atan2(sdy, sdx);
+    g.position.set(cxs + sdx * (edge + out), cys + sdy * (edge + out));
   }
 
   private syncPlayerFx(player: Player, now: number) {
@@ -48856,7 +48938,31 @@ export class PixiScene {
         // シグナルにヘッドショット概念は無いので、スナップ状態に関わらず常に琥珀の1色。
         // ★画面上の位置は worldToUi で出す(カメラ・ズーム込み)。旧: world.position を足すだけ=ズーム中は
         //   絵だけが実際の狙い(発砲・吸い付きの world 座標)からずれていた(最大引きで100px超)。等倍では同じ位置。
-        const aimG = this.worldToUi(cx + player.phillReticleDX, cy + player.phillReticleDY);
+        let aimG = this.worldToUi(cx + player.phillReticleDX, cy + player.phillReticleDY);
+        // ?proj=1(段階6・V6・3-9e): 置く点を地面の点 G と高さ h に分けて投影する(描く距離・地平線のフェードは掛けない=自分の照準は消さない)。
+        //   マウス・吸い付いていない=G はカーソルの地面の点(h=0)/吸い付いている=G は敵の足元・h は頭の高さ/
+        //   タッチ・キー=G は主人公の足元の行+aim×130・h は主人公の中心の高さ。円の大きさは画面で一定(今どおり)。
+        if (pf) {
+          const rx = cx + player.phillReticleDX, ry = cy + player.phillReticleDY;
+          let gy = ry, h = 0;
+          const gs = useGameStore.getState();
+          const snapE = player.phillSnapEnemyId != null ? gs.enemies.find(e => e.id === player.phillSnapEnemyId) : undefined;
+          if (snapE) { gy = snapE.y + snapE.height; h = gy - ry; }
+          else if (!gs.mouseAim) { h = player.height / 2; gy = ry + h; }
+          const rp = projectInto(pf, rx, gy, this.projScratch);
+          aimG = this.worldToUi(rp.x, rp.y - h * rp.s);
+          if (PROJ_AUDIT && !snapE && gs.mouseAim) {
+            // 計器 s6 aim: カーソルの画面点と照準の円の描いた点(画面px)の差(吸い付いていない・照準がカーソルの点に居る時・0.5px 以内のはず)。
+            const cur = getLastCursorScreen();
+            const mw = gs.mouseAim;
+            if (cur && !projAimStats.lastClamped && Math.hypot(gs.camera.x + mw.x - rx, gs.camera.y + mw.y - ry) < 0.5) {
+              projWorldToScreenInto(pf, rx, ry, this.projScratch, this.projS6Pt);
+              // 照準は揺れ 0 の枠で逆投影(ケ10)=描いた円は世界と一緒に揺れる。比べる側にも揺れ(画面px)を足す。
+              const d = Math.hypot(this.projS6Pt.x - (cur.x + pf.wgScale * pf.shakeX), this.projS6Pt.y - (cur.y + pf.wgScale * pf.shakeY));
+              if (d > this.projS6.reticleDiffMax) this.projS6.reticleDiffMax = d;
+            }
+          }
+        }
         const ax = aimG.x;
         const ay = aimG.y;
         // ★v0.25.4283(社長報告「レールガンの吸い付きが実装されていない気がする」の正体): レールガンは
@@ -49207,8 +49313,42 @@ export class PixiScene {
     const wz = this.L.worldGroup.scale.x || 1;
     const originX = this.L.world.position.x * wz + this.L.worldGroup.position.x;
     const originY = this.L.world.position.y * wz + this.L.worldGroup.position.y;
-    const toScreenX = (x: number) => originX + x * wz; // ワールドX→実画面X
-    const toScreenY = (y: number) => originY + y * wz; // ワールドY→実画面Y
+    // ?proj=1(段階6・V8〜V10・3-9f): 1つの点の x と y を別々に写さない=world 点→画面点の1関数 toScr(x, y)。
+    // ?proj=0 は今の1次の写像(origin + world × zoom)のまま。?proj=1 は projectInto → 画面px。描かれる濃さ(定義域・描く距離・地平線)が
+    // 0.5 未満の物は画面の中でも「画面外」として縁へ押し出す(矢印を出す)。地平線より北(ℓ_min より北)の物は、主人公→対象の
+    // world の線を ℓ_min の行で切った点の向きを指す(★#42 の A)。
+    const pfA = this.projFrame;
+    const lMinA = pfA ? projUnprojectLMin(pfA) : 0;
+    const stA = useGameStore.getState();
+    const pFootX = stA.player.x + stA.player.width / 2, pFootY = stA.player.y + stA.player.height;
+    const scrA = { x: 0, y: 0 };
+    let memoA = NaN, memoB = NaN;
+    let ringRawX = 0, ringRawY = 0; // 押し出しの起点(下でリング中心を出した後に入る)
+    const toScr = (x: number, y: number): { x: number; y: number } => {
+      if (x === memoA && y === memoB) return scrA;
+      memoA = x; memoB = y;
+      if (!pfA) { scrA.x = originX + x * wz; scrA.y = originY + y * wz; return scrA; }
+      const pp = projWorldToScreenInto(pfA, x, y, this.projScratch, scrA);
+      const north = !pp.inDomain || pp.l < lMinA;
+      const hidden = north || this.projBaseAlpha(pp) < 0.5;
+      if (north) projArrowTargetInto(pfA, pFootX, pFootY, x, y, lMinA, this.projScratch, scrA);
+      if (hidden && scrA.x >= 0 && scrA.x <= this.screenW && scrA.y >= 0 && scrA.y <= this.screenH) {
+        // 画面の中の薄い/北の点: リング中心→点の向きのまま、画面の縁の 2px 外へ押し出す(=画面外として矢印を出す)。
+        const dx = scrA.x - ringRawX, dy = scrA.y - ringRawY;
+        const dl = Math.hypot(dx, dy) || 1;
+        const ux = dx / dl, uy = dy / dl;
+        let t = Infinity;
+        if (ux > 1e-6) t = Math.min(t, (this.screenW - ringRawX) / ux);
+        else if (ux < -1e-6) t = Math.min(t, -ringRawX / ux);
+        if (uy > 1e-6) t = Math.min(t, (this.screenH - ringRawY) / uy);
+        else if (uy < -1e-6) t = Math.min(t, -ringRawY / uy);
+        if (Number.isFinite(t)) { scrA.x = ringRawX + ux * (t + 2); scrA.y = ringRawY + uy * (t + 2); }
+        if (PROJ_AUDIT) this.projS6.arrowDouble++; // 計器 s6 arrow: 画面の中だが薄い/北のため矢印にした数(旧い写像なら出ていなかった)
+      }
+      return scrA;
+    };
+    const toScreenX = (x: number) => originX + x * wz; // ワールドX→実画面X(?proj=0 の写像・下の toScr の控え)
+    void toScreenX;
     const ARROW_NEAR_RADIUS = 500; // 「近く」の方向矢印を出す半径(弾/拠点。社長指示)
     const marginX = 26;
     // Keep upward arrows below the iOS status bar and the top HUD. The icon
@@ -49220,8 +49360,16 @@ export class PixiScene {
     // やめ、動的カメラ下げ(ボス戦)にも追従する。画面外へ出ないよう矢印マージン矩形へクランプ。
     const st = useGameStore.getState();
     const pC = playerCenter ?? { x: st.player.x + st.player.width / 2, y: st.player.y + st.player.height / 2 };
-    const cxC = Math.min(Math.max(toScreenX(pC.x), marginX), this.screenW - marginX);
-    const cyC = Math.min(Math.max(toScreenY(pC.y), marginTop), this.screenH - marginBottom);
+    // リング中心: ?proj=1 は高さを持つ点=足元を地面の点として投影し、半身×s を上に足す(ケ15)。
+    let pcsX = originX + pC.x * wz, pcsY = originY + pC.y * wz;
+    if (pfA) {
+      const hh = st.player.height / 2;
+      const pp = projWorldToScreenInto(pfA, pC.x, pC.y + hh, this.projScratch, this.projS6Pt);
+      pcsX = this.projS6Pt.x; pcsY = this.projS6Pt.y - hh * pp.s * pfA.wgScale;
+    }
+    ringRawX = pcsX; ringRawY = pcsY;
+    const cxC = Math.min(Math.max(pcsX, marginX), this.screenW - marginX);
+    const cyC = Math.min(Math.max(pcsY, marginTop), this.screenH - marginBottom);
     const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 220);
     for (const p of pickups) {
       // v0.25.3161(社長指示「ステージ7の宝箱は下のギリギリ画面外に設置(マークが出るくらいのとこ)」):
@@ -49236,8 +49384,8 @@ export class PixiScene {
       if (!isStartChest && !p.worldDrop && !isWeaponPickup) continue;
       const colorStr = isStartChest ? '#facc15' : AMMO_INDICATOR_COLOR[p.type];
       if (!colorStr) continue;
-      const tx = toScreenX(p.x + 8); // 監査v0.25.3008(A-1): post-zoom実画面座標
-      const ty = toScreenY(p.y + 8);
+      const tx = toScr(p.x + 8, p.y + 8).x; // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const ty = toScr(p.x + 8, p.y + 8).y;
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue;
       if (!isStartChest && Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue; // 弾は近く(500px以内)のものだけ矢印表示(社長指示)
       const angle = Math.atan2(ty - cyC, tx - cxC);
@@ -49265,8 +49413,8 @@ export class PixiScene {
       g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
     }
 
-    const castleX = toScreenX(castle.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
-    const castleY = toScreenY(castle.y + 40);
+    const castleX = toScr(castle.x, castle.y + 40).x; // 監査v0.25.3008(A-1): post-zoom実画面座標
+    const castleY = toScr(castle.x, castle.y + 40).y;
     // 城マーカーは城が実在するステージ(屋外・非ラボ)でのみ表示。
     // ステージ2(ラボ/屋内)は城を描かないので、位置マーカーも出さない。
     // さらにボス出現まで(bossSpawned)はマーカー非表示(社長指示)。洋館再訪(the ONE)は目的地=洋館
@@ -49304,8 +49452,8 @@ export class PixiScene {
       }
     }
 
-    const merchantX = toScreenX(merchant.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
-    const merchantY = toScreenY(merchant.y - 28);
+    const merchantX = toScr(merchant.x, merchant.y - 28).x; // 監査v0.25.3008(A-1): post-zoom実画面座標
+    const merchantY = toScr(merchant.x, merchant.y - 28).y;
     // radius<=0 は「商人不在」(チュートリアル=到達不能座標へ退避・v0.25.1820)。誘導マーカーも出さない。
     // 研究所(ステージ2)も方角マーカーは出さない(社長報告2026-10-10「これが出るのはおかしい」・呼び出し側で radius 0 にして渡す)。
     // 商人そのもの(スタート地点に立つ・PHILL弾を売る)は残す。
@@ -49344,7 +49492,7 @@ export class PixiScene {
     {
       const rc = st.returnCircle; // 冒頭で読んだstateを再利用
       if (rc) {
-        const rx = toScreenX(rc.x), ry = toScreenY(rc.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
+        const rx = toScr(rc.x, rc.y).x, ry = toScr(rc.x, rc.y).y; // 監査v0.25.3008(A-1): post-zoom実画面座標
         if (rx < 0 || rx > this.screenW || ry < 0 || ry > this.screenH) {
           const angle = Math.atan2(ry - cyC, rx - cxC);
           const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -49378,7 +49526,7 @@ export class PixiScene {
       const npc = escorts.find(e => e.baseId === `base-${sector}`);
       // 倒れている間はその軍人の緑の印を出さず、下の薄紅の印へ置き換える(重ねない・research/ESCORT_TARGETED.md §6)。
       if (npc && !isEscortDowned(npc)) {
-        const nx = toScreenX(npc.x), ny = toScreenY(npc.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
+        const nx = toScr(npc.x, npc.y).x, ny = toScr(npc.x, npc.y).y; // 監査v0.25.3008(A-1): post-zoom実画面座標
         if (nx < 0 || nx > this.screenW || ny < 0 || ny > this.screenH) {
           const angle = Math.atan2(ny - cyC, nx - cxC);
           const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -49412,7 +49560,7 @@ export class PixiScene {
       const wantIds = new Set<string>();
       for (const dn of escorts) {
         if (!dn.maxHealth || !isEscortDowned(dn) || dn.downedAt === undefined) continue;
-        const nx = toScreenX(dn.x), ny = toScreenY(dn.y);
+        const nx = toScr(dn.x, dn.y).x, ny = toScr(dn.x, dn.y).y;
         if (nx >= 0 && nx <= this.screenW && ny >= 0 && ny <= this.screenH) continue; // 画面内=本体と頭上の点で足りる
         const angle = Math.atan2(ny - cyC, nx - cxC);
         const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -49454,8 +49602,8 @@ export class PixiScene {
     // ハンター変異体の方角矢印(社長指示): 視界に入った(=検知された)ハンターを赤い矢印で示す。
     // 画面外のときだけ画面端に表示(画面内=直接見えるので不要)。撤退中は出さない(呼び出し側でフィルタ済み)。
     for (const ht of hunters) {
-      const tx = toScreenX(ht.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
-      const ty = toScreenY(ht.y);
+      const tx = toScr(ht.x, ht.y).x; // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const ty = toScr(ht.x, ht.y).y;
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内なら不要
       const angle = Math.atan2(ty - cyC, tx - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -49485,8 +49633,8 @@ export class PixiScene {
     // 変異体(叫喚型・screamer)の方角矢印(社長指示): 画面外に居る間は常に位置を示す(優先処理対象=
     // 叫ぶ前に見つけて倒してほしいため、ハンターと違い「検知」条件なしで常時表示)。
     for (const sc of screamers) {
-      const tx = toScreenX(sc.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
-      const ty = toScreenY(sc.y);
+      const tx = toScr(sc.x, sc.y).x; // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const ty = toScr(sc.x, sc.y).y;
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内なら不要
       const angle = Math.atan2(ty - cyC, tx - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -49523,8 +49671,8 @@ export class PixiScene {
     // 「制限時間なし=見失うと城ボスが出ず勝利不能」なので、この枝だけ「画面内でも地平線フェードで
     // 実質見えない」時に出す(距離足切りは掛けない・§2-3のfloor撤回とセット)。
     for (const rp of rescuePoints) {
-      const tx = toScreenX(rp.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
-      const ty = toScreenY(rp.y);
+      const tx = toScr(rp.x, rp.y).x; // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const ty = toScr(rp.x, rp.y).y;
       const onScreen = tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH;
       // §2-9「画面外 or horizonActorAlpha(npc.y)がほぼ0(=地平線フェードで実質見えない)」。
       // 他の対象(拠点/城/商人/帰還サークル/ハンター/叫喚)の条件は1つも変えない=この枝だけで完結。
@@ -49553,7 +49701,7 @@ export class PixiScene {
 
     // イベント(囲い/救助)の場所マーカー。画面外のとき必ず位置を示す(社長指示=各イベントは常にマップ表示)。
     if (event) {
-      const exC = toScreenX(event.x), eyC = toScreenY(event.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const exC = toScr(event.x, event.y).x, eyC = toScr(event.x, event.y).y; // 監査v0.25.3008(A-1): post-zoom実画面座標
       if (exC < 0 || exC > this.screenW || eyC < 0 || eyC > this.screenH) {
         const angle = Math.atan2(eyC - cyC, exC - cxC);
         const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -49582,8 +49730,8 @@ export class PixiScene {
     // 研究所クリアアイテム(重要データ)の場所マーカー。画面外のとき画面端に書類アイコン+矢印で誘導。
     for (const p of pickups) {
       if (p.type !== 'lab-clear-item') continue;
-      const tx = toScreenX(p.x + 8); // 監査v0.25.3008(A-1): post-zoom実画面座標
-      const ty = toScreenY(p.y + 8);
+      const tx = toScr(p.x + 8, p.y + 8).x; // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const ty = toScr(p.x + 8, p.y + 8).y;
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内なら不要
       const angle = Math.atan2(ty - cyC, tx - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -49732,8 +49880,8 @@ export class PixiScene {
     const POI_LINGER_MS = 1200, POI_LINGER_ALPHA = 0.35, POI_SINK_MS = 300;
     for (const poi of pois) {
       const key = poi.id ?? `${poi.kind}:${Math.round(poi.x)},${Math.round(poi.y)}`;
-      const tx = toScreenX(poi.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
-      const ty = toScreenY(poi.y);
+      const tx = toScr(poi.x, poi.y).x; // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const ty = toScr(poi.x, poi.y).y;
       const onScreen = tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH;
       if (onScreen) { const r0 = this.poiArrowRecs.get(key); if (r0 && r0.hiddenAt === null) { r0.hiddenAt = poiNow; r0.hideByScreen = true; } continue; } // 画面内なら不要
       const angle = Math.atan2(ty - cyC, tx - cxC);
@@ -49805,7 +49953,7 @@ export class PixiScene {
     for (const b of baseSites) {
       const captured = b.status === 'captured';
       const bKey = b.id ?? `${b.x},${b.y}`;
-      const tx = toScreenX(b.x), ty = toScreenY(b.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const tx = toScr(b.x, b.y).x, ty = toScr(b.x, b.y).y; // 監査v0.25.3008(A-1): post-zoom実画面座標
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内は地面サークルで見える
       if (b.id !== this.arrowFarBaseId && Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue;
       const angle = Math.atan2(ty - cyC, tx - cxC);
@@ -49844,7 +49992,7 @@ export class PixiScene {
     // 注意誘導はせず「近づいたらマーク表示」)。近く(500px以内)かつ画面外の時だけ縁矢印。
     // 画面内は本体(金tint+名前)がそのままマーク。
     for (const qt of questTargets) {
-      const tx = toScreenX(qt.x), ty = toScreenY(qt.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const tx = toScr(qt.x, qt.y).x, ty = toScr(qt.x, qt.y).y; // 監査v0.25.3008(A-1): post-zoom実画面座標
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue;
       if (Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue;
       const angle = Math.atan2(ty - cyC, tx - cxC);
@@ -49881,13 +50029,23 @@ export class PixiScene {
       // 監査v0.25.3008(A-1): wz/originX/originY は関数冒頭の post-zoom 写像を再利用(重複計算の1本化)。
       const view = { zoom: wz, originX, originY };
       // 矢印の起点=プレイヤーの**実際の画面位置**(同じ写像で出す)。クランプ無し=bossMarkFor に生の位置を渡す。
-      const centerScreen = {
-        x: toScreenX(playerCenter.x),
-        y: toScreenY(playerCenter.y),
+      const centerScreen = pfA ? { x: ringRawX, y: ringRawY } : {
+        x: originX + playerCenter.x * wz,
+        y: originY + playerCenter.y * wz,
       };
       for (let bi = 0; bi < bossMark.targets.length; bi++) {
         const b = bossMark.targets[bi];
-        const m = bossMarkFor({ boss: b, playerCenter, view, center: centerScreen, box });
+        // ?proj=1: world 点→画面点の関数を渡す(ボスの中心=足元から半身上・頭上=足元から背丈上・薄い/北は画面外)。
+        const m = bossMarkFor({ boss: b, playerCenter, view, center: centerScreen, box, toScreen: pfA ? (x, footY, h) => {
+          const pp = projWorldToScreenInto(pfA, x, footY, this.projScratch, this.projS6Pt);
+          const north = !pp.inDomain || pp.l < lMinA;
+          const hidden = north || this.projBaseAlpha(pp) < 0.5;
+          if (north) {
+            projArrowTargetInto(pfA, pFootX, pFootY, x, footY, lMinA, this.projScratch, this.projS6Pt);
+            return { x: this.projS6Pt.x, y: this.projS6Pt.y, hidden };
+          }
+          return { x: this.projS6Pt.x, y: this.projS6Pt.y - h * pp.s * pfA.wgScale, hidden };
+        } : undefined });
         if (!m) continue;
         // 台帳#1: 画面外ボスマークの出現・消滅にフェード+スライドを付ける(パッと出入りしない)。
         // index基準のキー(bossMark.targetsにidが無い=通常1体なので十分)。offscreen→trueで出現ease、

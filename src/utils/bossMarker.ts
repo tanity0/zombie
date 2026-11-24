@@ -152,19 +152,30 @@ export const bossMarkFor = (args: {
   /** 画面上のリング中心(=プレイヤーの画面位置)。既存の方角矢印と同じ基準。 */
   center: { x: number; y: number };
   box: MarkBox;
+  /**
+   * `?proj=1`(段階6・3-9f・★#42): world の足元 (x, footY) から高さ h 上の点 → 画面点の関数(投影)。hidden=描かれる濃さが
+   * 叩き台 0.5 未満・地平線より北(画面の中でも画面外として扱う)。省略時(`?proj=0`)は view の1次の写像のまま。
+   */
+  toScreen?: (x: number, footY: number, h: number) => { x: number; y: number; hidden: boolean };
 }): BossMark | null => {
-  const { boss, playerCenter, view, center, box } = args;
+  const { boss, playerCenter, view, center, box, toScreen } = args;
   const z = view.zoom || 1;
   const bcx = boss.x + boss.width / 2;
   const bcy = boss.y + boss.height / 2;
-  const tx = view.originX + bcx * z, ty = view.originY + bcy * z;
+  let tx = view.originX + bcx * z, ty = view.originY + bcy * z;
+  let hidden = false;
+  if (toScreen) {
+    const c = toScreen(bcx, boss.y + boss.height, boss.height / 2);
+    tx = c.x; ty = c.y; hidden = c.hidden;
+  }
   // 距離は**中心↔中心のワールド距離**。idolTick / bossSkeleton の距離帯(zoneForDistance)と同じ
   // 測り方にしないと「表示は melee なのに台本は near を引く」というズレた道具になる。
   // ズーム倍率は掛けない=引き/寄りで数字が動かない(調整の基準がぶれない)。
   const distPx = Math.round(Math.hypot(bcx - playerCenter.x, bcy - playerCenter.y));
   const angle = Math.atan2(ty - center.y, tx - center.x);
-  if (tx >= 0 && tx <= box.w && ty >= 0 && ty <= box.h) {
-    return { x: tx, y: view.originY + boss.y * z, angle, offscreen: false, distPx };
+  if (!hidden && tx >= 0 && tx <= box.w && ty >= 0 && ty <= box.h) {
+    const headY = toScreen ? toScreen(bcx, boss.y + boss.height, boss.height).y : view.originY + boss.y * z;
+    return { x: tx, y: headY, angle, offscreen: false, distPx };
   }
   const p = projectToEdge(angle, center.x, center.y, box);
   return p ? { x: p.x, y: p.y, angle, offscreen: true, distPx } : null;

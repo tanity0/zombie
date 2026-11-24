@@ -9,6 +9,7 @@
 // レンダラーに依存しない(PixiJSをimportしない)。store(useGameStore)・audioManager(playSfx)への
 // 呼び出しは、他の src/utils/*.ts (例: inputActions.ts, weaponUtils.ts)と同じ既存パターンに倣う。
 
+import { projViewCam, projCountVisible } from './projGameView'; // ★#38=A: ?proj=1 の画面内の数(§3-9d)
 import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED, SPAWN_CLAMP_ENABLED, RESCUE_ALLY_SPAWN_DIST, huntingMeleeRadius } from '../store/gameStore';
 import { isScarecrow } from './scarecrow';
 import { placeLabSpawn } from './labSpawn';
@@ -680,7 +681,10 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
       player.x + player.width / 2 - gb.width / 2, player.y + player.height / 2 - gb.height / 2 - spawnViewOffsetY,
       gb.width, gb.height, vz,
     );
-    cdMs = catchUpSpawnCdMs(cdMs, countVisibleBelowHorizon(puzzleEnemiesNow.filter(countsTowardEnemyCap), view));
+    // ★#38=A(V51): ?proj=1 はゲームの画面(store のカメラ)に描かれる敵の数で数える(?proj=0 は今の矩形のまま)。
+    const pgvC = projViewCam();
+    cdMs = catchUpSpawnCdMs(cdMs, pgvC ? projCountVisible(pgvC, puzzleEnemiesNow.filter(countsTowardEnemyCap))
+      : countVisibleBelowHorizon(puzzleEnemiesNow.filter(countsTowardEnemyCap), view));
   }
   // ★社長指示2026-10-18(敵出現は推薦で): リラックスのコマは3体になったが、ボス交戦中の強制
   // リラックス(v0.25.2412)は従来の1体のまま(bossRelaxChaffTarget)。

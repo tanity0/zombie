@@ -4,6 +4,7 @@
 //
 // 仕様(v0.25.2155〜の護衛NPC前例): 発砲音=NPC位置 / その弾の被弾音=着弾位置 で共通。画面外=0(無音)。
 // 近=1.0 / 画面中ほど≈0.27 / 端≈0.08(遠いほど強く減衰)。プレイヤー自身の攻撃音には使わない。
+import { projSeen } from './projGameView';
 export const npcSfxDistGain = (
   hx: number, hy: number, ppx: number, ppy: number,
   cam: { x: number; y: number }, gb: { width: number; height: number },
@@ -13,7 +14,7 @@ export const npcSfxDistGain = (
   // (画面のど真ん中)が矩形外=カウンター/天使/偶像のSEが無音になっていた。プレイヤー中心の
   // 同寸矩形で判定する(プレイヤーは常に画面内なのでどの構図でも破綻しない)。減衰式は不変。
   void cam;
-  if (Math.abs(hx - ppx) > gb.width / 2 || Math.abs(hy - ppy) > gb.height / 2) return 0;
+  if (!projSeen(hx, hy, 0, !(Math.abs(hx - ppx) > gb.width / 2 || Math.abs(hy - ppy) > gb.height / 2))) return 0; // ★#38=A(V71): ?proj=1 はゲームの画面(store のカメラ)
   const maxDist = 0.5 * Math.hypot(gb.width, gb.height);
   const tt = Math.min(1, Math.hypot(hx - ppx, hy - ppy) / maxDist);
   return Math.max(0.08, Math.pow(1 - tt, 1.9));

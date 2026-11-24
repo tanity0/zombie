@@ -1,4 +1,5 @@
 import { MAGNET_PULL_RADIUS_BY_LEVEL } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ半径(社長裁定2026-09-13)
+import { projSeen, projSeenPlayer, projViewCam, projGameScreenCenter } from '../utils/projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import { canTogglePause } from '../utils/pauseGate';
 import type { RainArrow } from '../utils/arrowRain';
 import { tickSpawnWalk, resetSpawnWalk } from '../utils/spawnWalkBias';
@@ -1155,7 +1156,7 @@ const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s:
   if (locked || now - st.lastEscortTossAt < ESCORT_TOSS_CD_MS) return;
   if (escortShouldHoldForWelcome(st.activeEvent?.kind)) return;
   const targets = st.enemies.filter(e => e.stunUntil !== undefined && now < e.stunUntil
-    && escortKickTargetOk(e, now, pcx, pcy, isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, st.camera, st.gameBounds, st.viewZoom, 0), st.escortKickAbort, e.id));
+    && escortKickTargetOk(e, now, pcx, pcy, projSeen(e.x + e.width / 2, e.y + e.height / 2, 0, isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, st.camera, st.gameBounds, st.viewZoom, 0)), st.escortKickAbort, e.id));
   if (targets.length === 0) return;
   // ★プレイヤーの居る区画の担当兵士だけ(社長報告2026-10-16「区画外のNPCが飛んできて吹っ飛ばしに参加」)。拠点の無いステージは全員。
   const pSector = poiSectorIndex({ x: pcx, y: pcy });
@@ -5894,10 +5895,13 @@ const startBrawlerTech = (
 /** 秘奥義の届く範囲か(狙う=brawlerSecretTargets と止める=applySecretFreeze が共用する1本・社長裁定2026-11-12「A」=狙える敵と止まる敵を同じ集合にする)。 */
 const brawlerSecretReachTest = (st: GameState): ((e: Enemy) => boolean) => {
   const vb = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
-  const vcx = (vb.left + vb.right) / 2, vcy = (vb.top + vb.bottom) / 2;
+  let vcx = (vb.left + vb.right) / 2, vcy = (vb.top + vb.bottom) / 2;
+  // ?proj=1(V34・★#38=A): 中心は投影の画面の中心を逆投影した地面の点。
+  const pgv = projViewCam();
+  if (pgv) { const c = projGameScreenCenter(pgv); vcx = c.x; vcy = c.y; }
   return e => {
     const q = meleeImpactPoint(vcx, vcy, e);
-    return isPointInZoomedViewport(q.x, q.y, st.camera, st.gameBounds, st.viewZoom, BR.BRAWLER_SECRET_REACH_OUT_PX); // 正の余白=外へ広げる(社長指示2026-11-12 案A・旧は -8=8px内側)
+    return projSeen(q.x, q.y, BR.BRAWLER_SECRET_REACH_OUT_PX, isPointInZoomedViewport(q.x, q.y, st.camera, st.gameBounds, st.viewZoom, BR.BRAWLER_SECRET_REACH_OUT_PX)); // 正の余白=外へ広げる(社長指示2026-11-12 案A・旧は -8=8px内側)
   };
 };
 const brawlerSecretTargets = (st: GameState): string[] => {
@@ -19479,8 +19483,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // research/MUTANT_HERO.md §6-2(社長「画面に映っていない時は…喰らわないでよい」): 画面外の英雄は
       // どの攻撃も受けない。入口はここ1か所(銃・近接・爆発・継続の全経路が通る)。
-      if (isBodyWallBoss(enemy.type) && !isPointInZoomedViewport( // 解放軍群の旗手も同じ(LIBERTY_HORDE §7)
-        enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, state.camera, state.gameBounds, state.viewZoom)) {
+      if (isBodyWallBoss(enemy.type) && !projSeen(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, 0, isPointInZoomedViewport( // 解放軍群の旗手も同じ(LIBERTY_HORDE §7)
+        enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, state.camera, state.gameBounds, state.viewZoom))) { // ★#38=A(V35)
         return { enemies };
       }
 
@@ -20142,7 +20146,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // research/MUTANT_HERO.md §3-2: 画面内の英雄(中立)。雑魚・強個体は近ければ英雄を追う(resolveEnemyTarget)。
       const heroLure = (() => {
         const h = state.enemies.find(e => isMutantHero(e.type) && !isCorpse(e) && e.health > 0 && !isUntouchable(e)); // 昇天中は誘わない
-        return h && isPointInZoomedViewport(h.x + h.width / 2, h.y + h.height / 2, state.camera, state.gameBounds, state.viewZoom) ? h : null;
+        return h && projSeen(h.x + h.width / 2, h.y + h.height / 2, 0, isPointInZoomedViewport(h.x + h.width / 2, h.y + h.height / 2, state.camera, state.gameBounds, state.viewZoom)) ? h : null;
       })();
       const solidProps = breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar');
       const now = Date.now();
@@ -23631,7 +23635,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           // ★叫びは画面に見えている時だけ始める(社長報告2026-11-11「遠くに居てもずっと叫んでる」・utils/screamerGate)。
           //   画面の外で時刻を過ぎた個体は溜めに入らず、今までどおり距離を保って動く。もう始まっている溜めは最後まで続く。
-          const scrGate = screamerStartGate(nextScream, gameTime, isPointInZoomedViewport(ecx, ecy, state.camera, state.gameBounds, state.viewZoom));
+          const scrGate = screamerStartGate(nextScream, gameTime, projSeen(ecx, ecy, 0, isPointInZoomedViewport(ecx, ecy, state.camera, state.gameBounds, state.viewZoom)));
           if (scrGate.start) {
             screamerWindupAt.push({ x: ecx, y: ecy }); // set 後に予兆FX(2秒かけて広がるリング)
             return { ...enemy, vx: 0, vy: 0, aiPhase: 'scream', aiPhaseUntil: gameTime + SCREAMER_WINDUP_MS, screamNextAt: nextScream };
@@ -25186,7 +25190,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // プレイヤー中心の同寸矩形で判定する(意図=「画面から出たら帰還」は保たれる)。
               const bpcx = state.player.x + state.player.width / 2;
               const bpcy = state.player.y + state.player.height / 2;
-              const offScreen = Math.abs(ncx - bpcx) > gameBounds.width / 2 || Math.abs(ncy - bpcy) > gameBounds.height / 2;
+              const offScreen = !projSeenPlayer(ncx, ncy, 0, !(Math.abs(ncx - bpcx) > gameBounds.width / 2 || Math.abs(ncy - bpcy) > gameBounds.height / 2)); // ★#38=A(V72)
               const traveled = Math.hypot(ncx - (p.boomOriginX ?? ncx), ncy - (p.boomOriginY ?? ncy));
               if (offScreen) {
                 return { ...p, x: nx, y: ny, boomPhase: 'return' as const, hitEnemies: [] };

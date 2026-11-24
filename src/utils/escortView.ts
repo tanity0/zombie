@@ -3,6 +3,7 @@
 //   - 被弾・狙われる候補 = 可視域ぴったり(余白なし・社長指示「見えない所で倒れない」)。
 //   - 動きの切り替え(画面内=索敵/射撃/前進 ⇔ 画面外=1/5の自動進行)= 可視域 + 100px(画面px換算)。
 // store の状態は構造的な型で受ける(store を import しない葉モジュール=循環import禁止)。
+import { projSeen } from './projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import type { EscortSoldier } from '../types/game';
 import { isPointInZoomedViewport } from './cameraZoom';
 import { escortCenter, escortHasHealth, isEscortDowned } from './escortHealth';
@@ -23,12 +24,12 @@ export interface EscortViewState {
 /** 体の中心が見えている範囲(余白なし)に居るか。被弾・狙われる候補の判定。 */
 export const escortInHitView = (st: EscortViewState, e: Pick<EscortSoldier, 'x' | 'y'>): boolean => {
   const c = escortCenter(e);
-  return isPointInZoomedViewport(c.x, c.y, st.camera, st.gameBounds, st.viewZoom);
+  return projSeen(c.x, c.y, 0, isPointInZoomedViewport(c.x, c.y, st.camera, st.gameBounds, st.viewZoom));
 };
 
 /** 足元が可視域+100pxに居るか。動きの切り替え(画面内の索敵・射撃 ⇔ 画面外の自動進行)。 */
 export const escortInMotionView = (st: Omit<EscortViewState, 'escorts'>, x: number, y: number): boolean =>
-  isPointInZoomedViewport(x, y, st.camera, st.gameBounds, st.viewZoom, ESCORT_MOTION_MARGIN_PX);
+  projSeen(x, y, ESCORT_MOTION_MARGIN_PX, isPointInZoomedViewport(x, y, st.camera, st.gameBounds, st.viewZoom, ESCORT_MOTION_MARGIN_PX));
 
 /** 敵の攻撃が当たる軍人(体力あり・倒れていない・見えている範囲)。無敵かどうかは当てる側(damageEscort)が見る。 */
 export const hittableEscorts = (st: EscortViewState): EscortSoldier[] =>

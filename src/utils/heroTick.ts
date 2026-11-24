@@ -6,6 +6,7 @@
 //  - 当たりは全部 pumpkinBlasts へ積む(プレイヤー・守護霊・カウンター・吹き飛ばし・敵への当たりは解決側=combatTick)。
 //  - 赤い予告=heroShape。溜め開始で置き場所を決め、heroHitAt(当たる瞬間)まで動かさない。
 //  - 画面外では技を始めない(始まった技は最後まで出して当てる=赤いのに当たらない、を作らない)。
+import { projSeen } from './projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import { brawlerHeldNow, brawlerLiftHoldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import { bossFaceDeadzonePx } from './bossFacing';
 import type { Enemy } from '../types/game';
@@ -133,7 +134,7 @@ const cancelMove = (gt: number, rest: number): Partial<Enemy> => ({
 /** 狙いの候補(プレイヤー/守護霊/敵)。死体・ボス級・英雄自身は入れない。 */
 const targetCands = (hero: Enemy): HeroTargetCand[] => {
   const st = useGameStore.getState();
-  const vis = (x: number, y: number) => isPointInZoomedViewport(x, y, st.camera, st.gameBounds, st.viewZoom);
+  const vis = (x: number, y: number) => projSeen(x, y, 0, isPointInZoomedViewport(x, y, st.camera, st.gameBounds, st.viewZoom));
   const out: HeroTargetCand[] = [];
   const p = st.player;
   if (p.health > 0) {

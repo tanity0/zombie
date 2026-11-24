@@ -1,5 +1,6 @@
 // 亡霊(変異体)の1フレーム(research/WRAITH_MUTANT.md)。useGameLoop が毎フレーム呼ぶ。
 // 移動は宇宙飛行群と同じく行ける帯(clampRectToPlayableArea)だけを通す(`placeAt`・浮いている=障害物は透き通る・§9)。
+import { projSeen } from './projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import type { Enemy } from '../types/game';
 import { useGameStore, PLAYER_BASE_SPEED, resolveBountyMove, type PumpkinBlast } from '../store/gameStore';
@@ -75,7 +76,7 @@ const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
 const wraithSfxGain = (x: number, y: number, ppx: number, ppy: number): number => {
   const st = useGameStore.getState();
   const g = npcSfxDistGain(x, y, ppx, ppy, st.camera, st.gameBounds);
-  return isPointInZoomedViewport(x, y, st.camera, st.gameBounds, st.viewZoom) ? Math.max(g, 0.4) : g;
+  return projSeen(x, y, 0, isPointInZoomedViewport(x, y, st.camera, st.gameBounds, st.viewZoom)) ? Math.max(g, 0.4) : g;
 };
 /** 確認用: `?wraithskill=fling|curse|scream` で、使える時はその技だけを選ぶ(§11)。`summon` は技の番を必ず召喚つきの指差しにする(§15-1)。 */
 const FORCE_SKILL: WraithSkill | 'summon' | null = (() => {
@@ -131,7 +132,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
   const st = useGameStore.getState();
   const bx = e.x + e.width / 2, by = e.y + e.height / 2;
   const patch: Partial<Enemy> = {};
-  const onScreen = isPointInZoomedViewport(bx, by, st.camera, st.gameBounds, st.viewZoom);
+  const onScreen = projSeen(bx, by, 0, isPointInZoomedViewport(bx, by, st.camera, st.gameBounds, st.viewZoom));
   const collapse = (e.bossFullStunUntil !== undefined && gt < e.bossFullStunUntil) || (e.stunUntil !== undefined && gt < e.stunUntil);
   const held = (e.rootUntil !== undefined && gt < e.rootUntil) || (e.liftUntil !== undefined && nowMs < e.liftUntil);
 
@@ -309,7 +310,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
         const ids = new Set(s.flingIds);
         const vw = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
         const mobs = st.enemies.filter(m => ids.has(m.id)
-          && flingOk(m, gt, nowMs, pcx, pcy, (x, y) => x >= vw.left && x <= vw.right && y >= vw.top && y <= vw.bottom));
+          && flingOk(m, gt, nowMs, pcx, pcy, (x, y) => projSeen(x, y, 0, x >= vw.left && x <= vw.right && y >= vw.top && y <= vw.bottom))); // ★#38=A(V48)
         if (mobs.length > 0) {
           const lands = wraithFlingLandings(mobs.map(m => ({ x: m.x + m.width / 2, y: m.y + m.height / 2 })), pcx, pcy);
           const to = new Map(mobs.map((m, i) => [m.id, lands[i]]));
@@ -342,7 +343,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
       // 呪い: 腕が伸び切った瞬間に1つ目、以後1秒ごとに1つ。その瞬間に飛ばせる墓石を選び直す(沈んだ・近づかれた墓石は使わない)。
       // 1フレームに1つだけ・前の墓石から必ず1秒空ける(止まっていたフレームの後にまとめて抜けない・§11-1 A5)。
       const view = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
-      const inView = (x: number, y: number) => x >= view.left && x <= view.right && y >= view.top && y <= view.bottom;
+      const inView = (x: number, y: number) => projSeen(x, y, 0, x >= view.left && x <= view.right && y >= view.top && y <= view.bottom); // ★#38=A(V48)
       const nextLiftT = Math.max(wraithCurseLiftAt(s.curseIdx), s.curseIdx > 0 ? s.curseLastLift + WRAITH_CURSE_GAP_MS : 0);
       const choices = (): WraithGrowth[] => pickWraithCurseGraves(useGameStore.getState().wraithGrowths, { x: bx, y: e.y + e.height }, { x: pcx, y: pl.y + pl.height }, gt, inView);
       // 次に抜く墓石にだけ、抜ける少し前に印(縮む靄)。1秒ごとの「来るぞ」の拍(クリエイティブ監査#10)。
@@ -430,9 +431,9 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
         const pl0 = st.player;
         const pcx0 = pl0.x + pl0.width / 2, pcy0 = pl0.y + pl0.height / 2;
         const view0 = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
-        const mobs = flingCandidates(e, st.enemies, pcx0, pcy0, gt, nowMs, (x, y) => x >= view0.left && x <= view0.right && y >= view0.top && y <= view0.bottom);
+        const mobs = flingCandidates(e, st.enemies, pcx0, pcy0, gt, nowMs, (x, y) => projSeen(x, y, 0, x >= view0.left && x <= view0.right && y >= view0.top && y <= view0.bottom)); // ★#38=A(V48)
         const graves = pickWraithCurseGraves(st.wraithGrowths, { x: bx, y: e.y + e.height }, { x: pcx0, y: pl0.y + pl0.height }, gt,
-          (x, y) => x >= view0.left && x <= view0.right && y >= view0.top && y <= view0.bottom);
+          (x, y) => projSeen(x, y, 0, x >= view0.left && x <= view0.right && y >= view0.top && y <= view0.bottom)); // ★#38=A(V48)
         // 召喚(§15): 指差しの番で画面の敵が3体以下なら、先にコウモリを呼ぶ=敵が少なくても指差しを選べる。
         // 呼んだ直後の番(summonThenFling)はもう呼ばない(呼んだのに飛ばせない時は指差しをしない)。
         const thenFling = s.summonThenFling;

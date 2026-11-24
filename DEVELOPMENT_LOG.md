@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5777 — 遠近の投影 段階6(前半): 逆投影・マウスの照準・ゲーム側の「見えている」・矢印・寄せ・描く範囲(?proj=1 のみ)【2026-11-24 11:54 JST】
+- 仕様 research/PERSPECTIVE_PROJECTION.md §3-9(§3-9o が正)。Opus サブエージェントが実装。
+- 作った物: ①逆投影の守り(`projUnprojectInto`・`projUnprojectLMin`=★#39 A・`projWorldToScreenInto`・`projArrowTargetInto`=★#42 A)②マウスの照準(`viewTransform.setViewProjection`・`screenToCameraLocal` の ?proj=1 枝・揺れは入れない)③ゲームの画面(新規 `utils/projGameView.ts`・`projFlag.ts`・`horizonForestLine.ts`・`groundBandLayout.ts`。pixiScene の `updateProjFrame` も `projFrameBase` を共有・gfCam/gfPlayer は表を別に持つ)④ゲーム側の「見えている」(★#38=A)の大半: V29〜V37・V39〜V42・V44〜V46・V48・V50(130行)・V51・V71〜V75 ⑤照準の円(V6)・反撃の矢印(V7)・KILL の寄せ(V53)・ジュンの支点(V54)・ピント帯(V55)⑥画面外の矢印(V8〜V10)⑦描く範囲(V12〜V15・V17)⑨計器 `s6 aim/view/arrow/cam` ⑩番人テスト `projEdgeGuard.test.ts` ⑪純関数テスト `projGameView.test.ts`(65件)。
+- **後半に残した物**: ★#36 の湧き(V21)と作る物8(V24 を時間のフェードへ)/★#37 の回収(V25〜V28・V76・V78)と残像/★#40=B の吸い付き(V4)/置く範囲・縁の点の行(V5・V38・V43・V47・V49・V50(193行)・V77)/計器 `s6 spawn/recycle/cull`。純関数は作ってある。
+- 実装者が仕様の読みで決めた所(後で確かめる): V51 の基準のカメラ=表どおり gfCam/KILL の寄り先の点は地面の点として投影/store の farBackdrop はテクスチャ無しの 'forest' 置き換えを写していない。
+- 検証: typecheck・eslint(変えたファイル)・循環import(新規なし)・**vitest 全部 11,650 件通過**。ヘッドレス: PC の照準の往復の差 0.000px・地平線より上で ℓ_min に止まる・照準の円がカーソルの真下/縦持ちで北の薄い金箱に矢印。phone-guard(?proj=0)は OK 8・NG 6(ingame/pause は左下のデバッグ行の有無で高さ ±1・title は背景が1px=時刻の揺れと判断・HUD の配置は同じを並べた画で確認)。pc-guard は未実施。
+- 監査: 段階6を全部そろえてから品質監査+クリエイティブ監査を回す(前半だけでは出さない)。
+- 憲法の自己点検: ?proj=1 の枝だけ。★#38 の V51(追い上げの湧きの数え方が描かれた敵に変わる)は緩の時の湧きの間隔に触れうる=後半の実機確認で見る。?proj=0 は不変。
+- 状態変化: 遠近の投影 段階6 → 前半着地(残り: 湧き・回収・フェード・吸い付き・置く範囲の行・監査)。
+
 ## v0.25.5776 — ステージ4の城ボスの氷結波を、跳ばずにその場で叩きつける絵へ【2026-11-24 11:41 JST】
 - 社長指示「ステージ4の城ボスのその場で全方位攻撃する技のモーション、いまジャンプしてるけど、ジャンプせずに、その場で手を地面に叩きつけるモーションの方に変えて」。
 - `src/utils/enemySheets.ts` の `GIANT_ALT_SWEEP['stage4-enemies/giantbat']` に `{ techs: ['g-nova-'], suffix: 'jump', from: 8, split: { windup: 3, active: 1, recover: 4, bodyH: 136 } }`=跳びのシートの後半だけ(8〜10 振り上げ=溜め/11 叩きつけ=当たり/12〜15 立ち直り)。グレンの踏み潰しと同じ作法。浮きは掛からない(`SHEET_FRAME_LIFT`・`GIANT_JUMP_TECHS` の外)。`g-nova-active` に入った瞬間に輪が出る=叩きつけのコマと一致。エフェクト・判定・予告・SE・時間は不変。

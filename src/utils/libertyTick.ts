@@ -5,6 +5,7 @@
 // 掟:
 //  - 移動は必ず ①障害物(resolveBountyMove)→ ②行ける帯(clampRectToPlayableArea)の順で通す。
 //  - 旗手の攻撃は旗振りだけ(プレイヤーが体の縁から120px以内・§4b)。叫ぶのは画面に入っている時だけ(見つける条件に「画面内」を含む)。
+import { projSeen } from './projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import type { Enemy } from '../types/game';
 import { useGameStore, resolveBountyMove, SCREAMER_WINDUP_MS, SCREAMER_BUFF_MS, screamerWindupFx, screamerCryFx, cancelScreamerWindupFx, type PumpkinBlast } from '../store/gameStore';
@@ -133,7 +134,7 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
   }
 
   // ---- 見つける / 見失う ----
-  const onScreen = isPointInZoomedViewport(bx, by, st.camera, st.gameBounds, st.viewZoom);
+  const onScreen = projSeen(bx, by, 0, isPointInZoomedViewport(bx, by, st.camera, st.gameBounds, st.viewZoom));
   // 向き=進む向き(周回・後ずさりの s.dir)。止まっていて向きが無ければ顔の左右。
   const faceLen = Math.hypot(s.dirX, s.dirY);
   const sight = faceLen > 0.5

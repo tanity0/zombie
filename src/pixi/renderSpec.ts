@@ -8,6 +8,7 @@
 
 import type { Enemy, Player, Summon } from '../types/game';
 import { ZOOM_MIN_ABS } from '../utils/cameraZoom';
+import { GROUND_STRIP_REF_COUNT } from '../utils/groundBandLayout';
 
 // The sprites read as chunky pixel art by drawing larger than their gameplay
 // hitboxes. Feet stay anchored to the hitbox bottom; the extra height rises
@@ -261,42 +262,14 @@ export const postZoomFadeAlpha = (
 // `refStripCount × overscan` へ増やし、追加分は**下方向へ**(=t を1超へ延長して)積み増す。
 // 上端(t=0・farHの位置)は一切動かさない——「床を地平線より上まで描くと不自然」(§6.37-2)なので、
 // 上の隙間は床でなく farBackdrop 側の下延長で埋める(postZoomScreenY 経由・pixiScene 側)。
-export const GROUND_STRIP_REF_COUNT = 72;
+export { GROUND_STRIP_REF_COUNT };
 
 // layers.ts が組む床ストリップの実本数(=72 → 72×1/ZOOM_MIN_ABS へ延長・§6.37-1)。ZOOM_MIN_ABS を
 // 直接ここから導くことで、絶対最大引きの値が変わっても本数が自動で追従する(ハードコード180の一致は
 // renderSpec.test.ts で固定・指摘4)。
 export const GROUND_STRIP_COUNT = Math.round(GROUND_STRIP_REF_COUNT / ZOOM_MIN_ABS);
 
-export interface GroundBandLayout {
-  /** 帯の上端(ローカルY)。常に farH のまま(不変)。 */
-  top: number;
-  /** 帯の下端(ローカルY)。overscan=1 なら screenH 相当・overscan>1 ならその分下へ延長。 */
-  bottom: number;
-  /** ストリップ総本数。overscan=1 なら refStripCount(=72)。 */
-  stripCount: number;
-  /** 1本の高さ(ローカルpx)。overscan に関わらず値は不変(=定義域不変)。 */
-  stripH: number;
-}
-
-/**
- * 床帯の上下端・本数・stripH を算出する。
- * 恒等(overscan=1): top=farH, bottom=screenH相当(=farH+groundH), stripCount=refStripCount,
- * stripH=groundH/refStripCount ——旧来の 72本ぶんの値と厳密一致(受け入れ条件1)。
- * overscan=1/ZOOM_MIN_ABS(=2.5)なら stripCount=180(=72×2.5)で、下端が groundH×2.5 ぶん延長される。
- */
-export const computeGroundBandLayout = (
-  farH: number,
-  screenH: number,
-  overscan: number,
-  refStripCount: number = GROUND_STRIP_REF_COUNT,
-): GroundBandLayout => {
-  const groundH = Math.max(1, screenH - farH);
-  const stripH = groundH / refStripCount;
-  const stripCount = Math.max(1, Math.round(refStripCount * Math.max(1, overscan)));
-  const bottom = farH + stripCount * stripH;
-  return { top: farH, bottom, stripCount, stripH };
-};
+export { computeGroundBandLayout, type GroundBandLayout } from '../utils/groundBandLayout';
 
 /**
  * ストリップ i の遠近進行度 t。**旧来と同じ式**(refStripCount−1 で正規化)を i が旧来の範囲

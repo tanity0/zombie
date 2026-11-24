@@ -581,3 +581,76 @@ export const groundSlipBound = (t: number, x: number, p: GroundPerspectiveParams
   const c1 = projConvAt(t + 1 / (refCount - 1), p);
   return Math.abs(c1 - c0) / 2 / Math.max(1e-6, c0) * Math.abs(x);
 };
+
+// ---- 段階6「逆向きの計算と画面の端」(research/PERSPECTIVE_PROJECTION.md §3-9b・§3-9f・作る物1/6) ----
+
+/**
+ * 逆投影の行の下限 ℓ_min(★#39 裁定 A): max(帯1本, 描く距離の上限の行)。
+ * 描く距離の上限の行 = visibleWorldQuad の上の辺と同じ(`projLocalYOfWorld(f, farRefY − farEnd)`)。farEnd が 0 なら帯1本だけ。
+ */
+export const projUnprojectLMin = (f: ProjFrame): number => {
+  const strip = f.table.stripH;
+  if (!(f.farEnd > 0)) return strip;
+  return Math.max(strip, projLocalYOfWorld(f, f.farRefY - f.farEnd));
+};
+
+/** 逆投影の結果(作り置きの入れ物)。 */
+export interface ProjUnprojectOut {
+  x: number;
+  y: number;
+  /** 使った行(ℓ_min で切った時は ℓ_min)。 */
+  l: number;
+  /** ℓ_min で切ったか。 */
+  clamped: boolean;
+}
+
+export const makeProjUnprojectOut = (): ProjUnprojectOut => ({ x: 0, y: 0, l: 0, clamped: false });
+
+/**
+ * 画面px(ズーム後・canvas の論理px)→ world の地面の点(§3-9b・作る物1)。
+ * ズーム・支点・パン・揺れを外し、行 ℓ が lMin より北(地平線より上・地平線のすぐ下・描く距離の先)なら**縦だけ** lMin の行に切り、
+ * 横はその行の s で戻す(★#39 裁定 A)。定義域の中(ℓ ≥ lMin)は `unproject` と同じ値(往復 `projectInto` で元の画面点へ戻る)。
+ * `unproject` は今のまま残す(テストと段階1の呼ぶ所を変えない)。
+ */
+export const projUnprojectInto = (f: ProjFrame, sx: number, sy: number, lMin: number, out: ProjUnprojectOut): ProjUnprojectOut => {
+  const sc = f.wgScale > 0 ? f.wgScale : 1;
+  const dx = (sx - f.wgX) / sc + f.camX - f.shakeX;
+  const dy = (sy - f.wgY) / sc + f.camY - f.shakeY;
+  let l = dy - f.camY - f.farH;
+  let clamped = false;
+  if (!(l >= lMin)) { l = lMin; clamped = true; }
+  const s = Math.max(1e-6, projScaleAtLocal(f, l));
+  out.x = f.cxw + (dx - f.cxw) / s;
+  out.y = projWorldYOfLocal(f, l);
+  out.l = l;
+  out.clamped = clamped;
+  return out;
+};
+
+/** world 点 → 画面px(ズーム後)を out へ書く(projectInto → projDisplayToScreenInto の1本)。返り値は投影の点(scratch)。 */
+export const projWorldToScreenInto = (
+  f: ProjFrame, wx: number, wy: number, scratch: ProjPoint, out: { x: number; y: number },
+): ProjPoint => {
+  const p = projectInto(f, wx, wy, scratch);
+  projDisplayToScreenInto(f, p.x, p.y, out);
+  return p;
+};
+
+/**
+ * 画面外の矢印の向きの先の点(★#42 の A・作る物6): 対象 (tx, ty) が行 lMin より北(地平線より北・描く距離の先)なら、
+ * 主人公 (px, py) → 対象の world の線を lMin の行で切った点を投影した画面点を out へ書く。lMin より南なら対象そのものの画面点。
+ * 主人公自身が lMin より北(線が行と交わらない)時は対象の world の向きをその行の点として使う。返り値: 切ったか。
+ */
+export const projArrowTargetInto = (
+  f: ProjFrame, px: number, py: number, tx: number, ty: number, lMin: number, scratch: ProjPoint, out: { x: number; y: number },
+): boolean => {
+  const yCut = projWorldYOfLocal(f, lMin);
+  if (ty >= yCut) { projWorldToScreenInto(f, tx, ty, scratch, out); return false; }
+  let cx = tx;
+  if (py > yCut && py !== ty) {
+    const t = (yCut - py) / (ty - py);
+    cx = px + (tx - px) * t;
+  }
+  projWorldToScreenInto(f, cx, yCut, scratch, out);
+  return true;
+};

@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { projSeen, projSeenPlayer, projBoxFullyOffPlayer, projScreenYFracOr } from '../utils/projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import { brawlerHeldNow, brawlerLiftHoldNow } from '../utils/brawlerCombo'; // 格闘の食らいの固まり(ボス級も・§11-1)
 import { isUntouchable } from '../utils/enemyUtils';
 import { setCameraZoomLink } from '../utils/cameraZoomLink';
+// ?proj=1(段階6・research/PERSPECTIVE_PROJECTION.md §3-9d): ゲーム側の「ゲームの画面」をカメラと同じフレームで作り直す。
+import { PROJ_GAME_VIEW, PROJ_ZREF, PROJ_NEAR, PROJ_FAR_START, PROJ_FAR_END } from '../utils/projFlag';
+import { rebuildProjGameViews, setProjGameView } from '../utils/projGameView';
+import { horizonForestFootLocalY, HORIZON_FOREST_UP_BY_STAGE } from '../utils/horizonForestLine';
+import { farBackdropHeightFor } from '../utils/spawnRefill';
+import { attentionZoomEnvelope } from '../utils/attentionZoom';
+import { horizonActorFadePx } from '../pixi/renderSpec';
 import { arrowRainLevel, pickArrowRainCenter, planArrowRain, reaimArrow, arrowRainHits, ARROW_RAIN_ZONE_PX, ARROW_RAIN_COUNT_BY_LEVEL, ARROW_RAIN_CD_MS_BY_LEVEL, ARROW_RAIN_DAMAGE, ARROW_RAIN_STUCK_MS, ARROW_RAIN_HIT_PX, type RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { latticeBands, latticeStageCount, latticeAxisForStage, latticeHitSource, latticeCenter } from '../utils/skadiLattice';
 import { mimirWheelTheta0, mimirWheelSpokeAngle, mimirWheelShotOffsetMs, MIMIR_WHEEL_EYE_UP } from '../utils/mimirWheel';
@@ -3860,7 +3868,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 画面(+余白)に見えているか。置き直しは見えない所でだけ行う。
         const junVisible = (x: number, y: number): boolean => {
           const vs = useGameStore.getState();
-          return isPointInZoomedViewport(x, y, vs.camera, vs.gameBounds, vs.viewZoom, JUN_VIEW_MARGIN_PX);
+          return projSeen(x, y, JUN_VIEW_MARGIN_PX, isPointInZoomedViewport(x, y, vs.camera, vs.gameBounds, vs.viewZoom, JUN_VIEW_MARGIN_PX));
         };
         {
           // 離脱: 城ボスの時刻に城の足元へ着くよう逆算して(距離÷歩く速さ)、黙って隊を離れる(離脱では通信しない=社長指示2026-11-12)。
@@ -3885,7 +3893,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               kicking: js.escortKick?.escortId === jun.id,
               focusOk: junFocusOk({
                 onScreen,
-                screenYFrac: worldToScreenYFrac(jun.y - JUN_ATTENTION_CHEST_UP_PX, js.camera.y, js.gameBounds.height, js.viewZoom),
+                // ★#38=A(V30): ?proj=1 は jun.y を地面の点として投影し、胸の高さ×s 上の点の画面Y の割合。
+                screenYFrac: projScreenYFracOr(jun.x, jun.y, JUN_ATTENTION_CHEST_UP_PX,
+                  worldToScreenYFrac(jun.y - JUN_ATTENTION_CHEST_UP_PX, js.camera.y, js.gameBounds.height, js.viewZoom)),
                 waitedMs: newGameTime - (junDueSinceRef.current ?? newGameTime),
               }),
             })) {
@@ -5562,7 +5572,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const onscreen = hs.enemies.reduce((n, e) => {
               if (isBossType(e.type) || e.type === 'hunter') return n;
               const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-              return (Math.abs(ex - hpcx) <= gameBounds.width / 2 && Math.abs(ey - hpcy) <= gameBounds.height / 2) ? n + 1 : n;
+              return projSeenPlayer(ex, ey, 0, Math.abs(ex - hpcx) <= gameBounds.width / 2 && Math.abs(ey - hpcy) <= gameBounds.height / 2) ? n + 1 : n; // ★#38=A(V75)
             }, 0);
             const captured = hs.baseSites.filter(b => b.status === 'captured').length;
             const gun = getActiveGun(hs.player);
@@ -10123,7 +10133,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const kx = kenkiE.x + kenkiE.width / 2, ky = kenkiE.y + kenkiE.height / 2;
                 const kpcx = player.x + player.width / 2, kpcy = player.y + player.height / 2;
                 const kStep = kenkiPatrolStep({
-                  onScreen: isPointInZoomedViewport(kx, ky, ks.camera, ks.gameBounds, ks.viewZoom),
+                  onScreen: projSeen(kx, ky, 0, isPointInZoomedViewport(kx, ky, ks.camera, ks.gameBounds, ks.viewZoom)),
                   introduced: kenkiCutinIdRef.current === kenkiE.id,
                   attention: !!ks.attention,
                   blocked: phantomBrawlerSceneBlocked({
@@ -10440,8 +10450,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const activeLib = pickActiveLiberty(useGameStore.getState().enemies);
           if (activeLib && !useGameStore.getState().bossMaker.paused) {
             // 姿が画面に入った最初のフレームでカットイン(英雄と同じ・1体につき1回)。体力は出会った時刻で決め直す(手付かずの時だけ)。
-            const libOnScreen = isPointInZoomedViewport(activeLib.x + activeLib.width / 2, activeLib.y + activeLib.height / 2,
-              useGameStore.getState().camera, useGameStore.getState().gameBounds, useGameStore.getState().viewZoom);
+            const libOnScreen = projSeen(activeLib.x + activeLib.width / 2, activeLib.y + activeLib.height / 2, 0, isPointInZoomedViewport(activeLib.x + activeLib.width / 2, activeLib.y + activeLib.height / 2,
+              useGameStore.getState().camera, useGameStore.getState().gameBounds, useGameStore.getState().viewZoom)); // ★#38=A(V32)
             if (libertyCutinIdRef.current !== activeLib.id && libOnScreen && !useGameStore.getState().attention) {
               libertyCutinIdRef.current = activeLib.id;
               if (activeLib.health >= activeLib.maxHealth) {
@@ -10474,8 +10484,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const activeAstro = pickActiveAstro(useGameStore.getState().enemies);
           if (activeAstro && !useGameStore.getState().bossMaker.paused) {
             // 姿が画面に入った最初のフレームでカットイン(解放軍群と同じ・1体につき1回)。体力は出会った場所と時刻で決め直す(手付かずの時だけ)。
-            const aOnScreen = isPointInZoomedViewport(activeAstro.x + activeAstro.width / 2, activeAstro.y + activeAstro.height / 2,
-              useGameStore.getState().camera, useGameStore.getState().gameBounds, useGameStore.getState().viewZoom);
+            const aOnScreen = projSeen(activeAstro.x + activeAstro.width / 2, activeAstro.y + activeAstro.height / 2, 0, isPointInZoomedViewport(activeAstro.x + activeAstro.width / 2, activeAstro.y + activeAstro.height / 2,
+              useGameStore.getState().camera, useGameStore.getState().gameBounds, useGameStore.getState().viewZoom)); // ★#38=A(V32)
             if (astroCutinIdRef.current !== activeAstro.id && aOnScreen && !useGameStore.getState().attention) {
               astroCutinIdRef.current = activeAstro.id;
               if (activeAstro.health >= activeAstro.maxHealth) {
@@ -10500,7 +10510,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const gsW = useGameStore.getState();
           const activeWraith = pickActiveWraith(gsW.enemies);
           if (activeWraith && !gsW.bossMaker.paused) {
-            const wOnScreen = isPointInZoomedViewport(activeWraith.x + activeWraith.width / 2, activeWraith.y + activeWraith.height / 2, gsW.camera, gsW.gameBounds, gsW.viewZoom);
+            const wOnScreen = projSeen(activeWraith.x + activeWraith.width / 2, activeWraith.y + activeWraith.height / 2, 0, isPointInZoomedViewport(activeWraith.x + activeWraith.width / 2, activeWraith.y + activeWraith.height / 2, gsW.camera, gsW.gameBounds, gsW.viewZoom));
             if (wraithCutinIdRef.current !== activeWraith.id && wOnScreen && !gsW.attention) {
               wraithCutinIdRef.current = activeWraith.id;
               if (activeWraith.health >= activeWraith.maxHealth) {
@@ -11111,6 +11121,34 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         setCameraPosition(camX, camY);
         setCameraZoomLink(camBossZoomRef.current.z); // ?proj=1 の基準行(★#20 裁定②)が同じフレームのカメラのズームを読む(描画用・store を通さない)
+        // ?proj=1(段階6・§3-9d「置き場所と作り直す時刻」): ゲームの画面(gfCam=store のカメラ・gfPlayer=主人公中心の基準)を
+        // このフレームの値で作り直す。tick の途中では作り直さない(1フレームの中で判定の物差しが揺れない)。
+        // 屋内・洋館・研究所・M0(チュートリアル)は場面の外=null(呼ぶ所は今の関数へ落ちる)。?proj=0 では1行も通らない。
+        if (PROJ_GAME_VIEW) {
+          const gsv = useGameStore.getState();
+          if (indoor || gsv.corridorMode || labTheme || tutorialStage) setProjGameView(null);
+          else {
+            const farHv = farBackdropHeightFor(gameBounds.height);
+            const at = gsv.attention;
+            let attv: { y: number; env: number } | null = null;
+            if (at?.zoomToUnity) {
+              const outStart = ATTENTION_IN_MS + (at.holdMs ?? ATTENTION_HOLD_MS) + (at.cutinMs ?? 0);
+              attv = { y: at.y, env: attentionZoomEnvelope(Date.now() - at.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS) };
+            }
+            const fk = gsv.farBackdrop ?? '';
+            rebuildProjGameViews({
+              camX, camY, playerCamX: baseCamX, playerCamY: baseCamY, viewW: gameBounds.width, viewH: gameBounds.height,
+              viewZoom: gsv.viewZoom, playerH: player.height, playerFootY: player.y + player.height,
+              camZoom: camBossZoomRef.current.z, camDown: CAMERA_DOWN_OFFSET_FRAC, zref: PROJ_ZREF, near: PROJ_NEAR,
+              farStart: PROJ_FAR_START, farEnd: PROJ_FAR_END, att: attv,
+              horizonLocal: horizonForestFootLocalY({
+                screenH: gameBounds.height, farH: farHv, farKey: fk, stage5: fk === 'stage5', lab: false,
+                upPx: HORIZON_FOREST_UP_BY_STAGE[getSelectedStageId()] ?? 0,
+              }),
+              fadePx: horizonActorFadePx(gameBounds.height, gameBounds.width),
+            }, farHv);
+          }
+        }
         // 監査v0.25.3008: 松明/地雷の生成リージョンは**構図オフセット抜き**のプレイヤー中心カメラで渡す。
         // baseCamY はズーム連動カメラ下げ+縦先読み(最大~1000px)込みのため、そのまま渡すとリージョン
         // 南端がプレイヤーの手前まで縮み、足元の松明/緑卵が配列から落ちて消えることがあった。
@@ -12450,7 +12488,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const kpx = kpl.x + kpl.width / 2, kpy = kpl.y + kpl.height / 2;
             onScreenEnemyCount = useGameStore.getState().enemies.reduce((n, e) => {
               const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-              return (Math.abs(ex - kpx) <= gameBounds.width / 2 && Math.abs(ey - kpy) <= gameBounds.height / 2) ? n + 1 : n;
+              return projSeenPlayer(ex, ey, 0, Math.abs(ex - kpx) <= gameBounds.width / 2 && Math.abs(ey - kpy) <= gameBounds.height / 2) ? n + 1 : n; // ★#38=A(V74)
             }, 0);
           }
 
@@ -12932,11 +12970,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // プレイヤー中心の同寸矩形で判定する(意図=「画面から完全に出たら消す」は保たれる)。
             const { player: pl, gameBounds } = useGameStore.getState();
             const plcx = pl.x + pl.width / 2, plcy = pl.y + pl.height / 2;
-            const fullyOff =
+            const fullyOff = projBoxFullyOffPlayer(clone, // ★#38=A(V73): ?proj=1 は箱を投影したゲームの画面(主人公中心の基準)
               clone.x + clone.width < plcx - gameBounds.width / 2 ||
               clone.x > plcx + gameBounds.width / 2 ||
               clone.y + clone.height < plcy - gameBounds.height / 2 ||
-              clone.y > plcy + gameBounds.height / 2;
+              clone.y > plcy + gameBounds.height / 2);
             if (fullyOff) useGameStore.getState().expireShadowClone(ghostId);
             else useGameStore.getState().tickShadowClone(ghostId);
           };

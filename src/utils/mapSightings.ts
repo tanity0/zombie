@@ -3,6 +3,7 @@
 // 出す=ボス級から強個体(パンプキン/削岩型/伐採人)・研究所の大型・ハンター・死神を除いた物+宿敵。
 // 出会った=その出撃で一度でも画面(ズーム込みの可視域)に体の中心が入った個体(敵ID単位。裏ボスだけは型単位=下の sightKey)。一度出会えば今の位置を出す。
 // 記録はこのモジュールの中だけ(store へは書かない=毎ティック呼んでも購読者を起こさない)。出撃ごとに resetMapSightings で空にする。
+import { projSeen } from './projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import type { Enemy } from '../types/game';
 import { isBossType, isPumpkinTier, isHiddenBoss, isReaperFamily, isLabCrawlerProxyType } from './enemyUtils';
 import { isPointInZoomedViewport } from './cameraZoom';
@@ -56,7 +57,7 @@ export const recordMapSightings = (
     const k = sightKey(e);
     if (seen.has(k)) { if (isMapTrackedEnemy(e) || (e.health !== undefined && e.health <= 0)) noteSighted(e, k); continue; }
     if (!isMapTrackedEnemy(e)) continue;
-    if (!isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, camera, viewport, zoom)) continue;
+    if (!projSeen(e.x + e.width / 2, e.y + e.height / 2, 0, isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, camera, viewport, zoom))) continue;
     seen.add(k);
     kindOf.set(k, { type: e.type, ...(e.phantomUnique ? { phantomUnique: e.phantomUnique } : {}) });
     noteSighted(e, k);
