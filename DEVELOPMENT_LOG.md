@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.5773 — ?proj=1: 雨の濡れた地面に映る松明の光が、主人公の動きに合わせて画面の中央寄りへずれるのを直す【2026-11-24 10:38 JST】
+- 社長報告「松明の水に映る光が左右に動くとズレる」「プレイヤーが動くとそれに合わせてズレていく」(ステージ1の雨・?proj=1)。
+- 原因: 二重投影。`pixiScene.ts` が水の層へ渡す松明の光 `lights` を映り込み Sprite の位置(?proj=1 では投影済みの表示座標)から作り、`weatherWet.ts` の `drawStreak`(と水たまりへのにじみ)がそれを world の点としてもう一度 `projectInto` していた(直す前の実測で約13 world px・画面の中央寄り)。
+- 直し: ?proj=1 の時は world の点(台座の足元 `projFootX/Y`+3)を渡す。`syncTorchStreaks` の濃さも ?proj=1 は `projFade`(水たまりと同じ)。?proj=0 は不変。
+- 表示座標を前提にした他の読み手(`stage1Night.syncTorchBacks`・ステージ5の光だまり・`torchBack.sync`)は描く側が投影し直さないので触らない。
+- 検証: typecheck・eslint・循環import。ヘッドレス(430×932・stage-1・weather=wet・proj=1)で松明を画面の右寄り/左寄りに置いた直す前/後を撮り、後は照りと筋が台座の真下に来ているのを目視。?proj=0 も真下。
+- 状態変化: なし。
+
 ## v0.25.5772 — ?proj=1 で画面が真っ暗のままになる不具合(投影の格子メッシュ)を直す【2026-11-24 02:23 JST】
 - 社長報告「手榴弾爆発した後(画面が真っ暗・ゲームは進む・proj=1 の方しか起きない)」。`&debug=1`(撮影モードを外して)の左下: `ERR uncaught: null is not an object (evaluating 'this.geometry.getBuffer')`。
 - 原因: Pixi の `MeshSimple._render`(onRender で毎フレーム位置バッファを update)が、destroy 済み(_geometry=null)の MeshSimple に対して RenderGroup の `_onRenderContainers` から呼ばれ、毎フレーム投げて描画が止まっていた。このゲームの MeshSimple は `makeProjGridMesh`(?proj=1 の投影の格子メッシュ)だけ=proj=1 でだけ起きる。どの経路で destroy 済みが一覧に残るか(Pixi の `removeOnRender` は indexOf が -1 だと末尾を消す)までは突き止めていない。

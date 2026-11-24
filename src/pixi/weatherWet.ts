@@ -1145,7 +1145,8 @@ export class WeatherWetLayer {
         st.id = l.id; st.a = 0; st.seed = (Math.abs(Math.sin(l.x * 0.013 + l.y * 0.007)) * 10) % 6.283;
       }
       st.seen = true;
-      const ha = h.horizonAlpha(l.y);
+      // ?proj=1: l は world の点=濃さは投影後のY(水たまりと同じ projFade)。?proj=0 は従来どおり。
+      const ha = this.projFrameNow && h.projFade ? h.projFade(l.x, l.y) : h.horizonAlpha(l.y);
       const target = Math.min(1, l.strength) * ha;
       st.a += (target - st.a) * TORCH_STREAK_EASE;
       this.drawStreak(st, l, h);

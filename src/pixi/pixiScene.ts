@@ -16109,7 +16109,12 @@ export class PixiScene {
     const lights: WetLight[] = [];
     for (const [id, v] of this.breakableProps) {
       const r = v.reflection;
-      if (r.visible && r.alpha > 0.01) lights.push({ id, x: r.x, y: r.y, color: Number(r.tint), strength: Math.min(1, r.alpha / 0.24) });
+      if (!r.visible || r.alpha <= 0.01) continue;
+      // ?proj=1: reflection は投影済みの表示座標。水の層は lights を world の点として自分で投影する(streak・水たまりのにじみ)ので、
+      // world の点(台座の足元+光だまりのずらし 3*d を s で割り戻した 3)を渡す=二重投影で画面の中央寄りへずれない。?proj=0 は従来どおり。
+      const wx = v.projFootX !== undefined && v.projFootY !== undefined ? v.projFootX : r.x;
+      const wy = v.projFootX !== undefined && v.projFootY !== undefined ? v.projFootY + 3 : r.y;
+      lights.push({ id, x: wx, y: wy, color: Number(r.tint), strength: Math.min(1, r.alpha / 0.24) });
     }
     const m = 120;
     // 木は描いている絵の寸法(遠近込み)も渡す=葉先の雫を枝葉の高さから落とす。絵がまだ無い木は渡さない。
