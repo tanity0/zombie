@@ -29,6 +29,7 @@ import type { HitRetaliationWindow } from '../utils/hitRetaliation';
 import { poiUnlockBandText, POI_BAND_MS, POI_SKILL_NOTE, POI_LABEL } from '../utils/detourPoiUx';
 import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_PRACTICE_COUNT, type M0Beat, type M0BeatDef } from '../utils/m0Tutorial';
 import { GLEN_FINAL_LINE, GLEN_ROAR_LINE, isGlenBossSpawnReady } from '../utils/glenIntro';
+import { dialogueBacklogMs, startStoryBossOutro, stepStoryBossOutro, type StoryBossOutro } from '../utils/storyBossOutro';
 import { loadSeenForGate, markTutorialSeen } from '../utils/tutorialArchive';
 import { getTutorial, type TutorialId } from '../data/tutorials';
 import { JUN_TRANSFORM_SCENE_LINES } from '../data/junEscortLines';
@@ -2252,6 +2253,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // the ONE ストーリーボス(M7)の進行: 出現済みか / 終幕(勝利化)予定時刻(0=未予約)。
   const storyBossSpawnedRef = useRef(false);
   const storyBossWinAtRef = useRef(0);
+  // ステージ7終幕: ミラの会話(撃破で積んだ行)が出終わるまで勝利を待つ状態(utils/storyBossOutro)。
+  const storyBossOutroRef = useRef<{ outro: StoryBossOutro; wasFrozen: boolean } | null>(null);
   // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」): 出現済みか(二重スポーン防止)+スポーン座標
   // (撃破検知後にこの座標へbeginReturnPhaseするため)。
   const phillBossSpawnedRef = useRef(false);
@@ -3778,6 +3781,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           resetDirectorSamples(); // リザルトのタイムライン記録も新ランでクリア
           storyBossSpawnedRef.current = false; // the ONE ストーリーボス進行も新ランで再アーム
           storyBossWinAtRef.current = 0;
+          storyBossOutroRef.current = null;
           phillBossSpawnedRef.current = false; // EXボス「フィル(変異体)」も新ランで再アーム
           phillOutroAtRef.current = null;      // ★v0.25.3743: 撃破フェードの打刻も再アーム
           phillBossSpawnPosRef.current = { x: 0, y: 0 };
@@ -4138,8 +4142,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (subsAllCompletedFromMeta()) {
                 lines.push({ name: 'ミラ', text: 'グレンの薬を託すよ' }, { name: 'グレン', text: '……' });
               }
+              // 撃破の時点で通信欄に前の会話が残っていても、ミラの会話を最後まで見せてから勝利へ進む
+              // (決め打ちの予約時刻だと前の会話の分だけ後ろへずれて途中で切れていた)。
+              // 上限=旧の予約時刻+前の会話の残りの最大分+1行ぶんのゆとり(会話が詰まっても永久に勝てない、を作らない)。
+              const timing = { lineMs: NPC_DIALOGUE_MS, gapMs: NPC_DIALOGUE_GAP_MS, slowExtraMs: NPC_DIALOGUE_SLOW_EXTRA_MS };
+              const pre = useGameStore.getState();
+              const backlog = dialogueBacklogMs(pre.npcDialogue, pre.npcDialogueQueue, pre.npcDialogueNextAt, newGameTime, timing);
               useGameStore.getState().enqueueNpcDialogue(lines);
-              storyBossWinAtRef.current = newGameTime + lines.length * (NPC_DIALOGUE_MS + NPC_DIALOGUE_GAP_MS) + 900;
+              const outro = startStoryBossOutro(lines, newGameTime, backlog, timing);
+              storyBossOutroRef.current = { outro, wasFrozen: false };
+              storyBossWinAtRef.current = outro.deadline; // 0以外=終幕に入った印(勝利の判定は下の stepStoryBossOutro)
             }
           }
           // v0.25.3029(社長裁定「二体」): 形態1の討伐アテンションが終わったら、同位置に第二形態を
@@ -4194,8 +4206,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           }
           // 終幕の間が明けたら勝利(帰還サークルなしの直接クリア)。
-          if (storyBossWinAtRef.current > 0 && newGameTime >= storyBossWinAtRef.current && !sbs.gameWon) {
-            useGameStore.setState({ gameWon: true });
+          // ミラの会話が全部出て、最後の行が消えてから余韻(約1.4秒)の後。保険の上限時刻でも勝利。
+          if (storyBossWinAtRef.current > 0 && storyBossOutroRef.current && !sbs.gameWon) {
+            const ost = useGameStore.getState();
+            const frozen = ost.attention !== null;
+            const r = stepStoryBossOutro(storyBossOutroRef.current.outro, {
+              now: newGameTime, current: ost.npcDialogue, queue: ost.npcDialogueQueue,
+              frozen, wasFrozen: storyBossOutroRef.current.wasFrozen, dtMs: deltaTime * 1000,
+            }, { lineMs: NPC_DIALOGUE_MS, gapMs: NPC_DIALOGUE_GAP_MS, slowExtraMs: NPC_DIALOGUE_SLOW_EXTRA_MS });
+            storyBossOutroRef.current = { outro: r.outro, wasFrozen: frozen };
+            if (r.win) useGameStore.setState({ gameWon: true });
           }
         }
 

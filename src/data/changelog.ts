@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5784', items: ['ステージ7でグレンを倒した後のミラの言葉が、途中で切れずに最後まで聞けるようになった'] },
   { version: '0.25.5783', items: ['PCとタブレットの横持ちで、キャラや敵がひと回り大きく映るようになった'] },
   { version: '0.25.5782', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5781', items: ['ステージ7でグレンを倒した後、帰還の円が出なくなった。会話が終わるとそのままエンディングへ進む'] },
