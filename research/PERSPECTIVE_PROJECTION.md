@@ -940,6 +940,8 @@
 
 ### 3-6. 段階4「形を持つもの」
 
+- **円の描き方の見直し(社長 2026-11-24「円は一旦そのままでいいや」)**: 頂点ごとに投影する今の円(手前が膨らむ卵形)を、中心の s で一様に潰した「真円を倒した」楕円へ揃える案は**今は採らない(今のまま)**。例外として残っている物: 段階3の派手さの輪(CR-3 で一様に潰す形)と、段階6の照準の円(クリエイティブ監査で地面に寝かせた楕円)。再検討する時はこの3つを揃えるかから始める。
+
 **前提(段階1・2で実装済み・作り直さない)**: 投影の式・表・基準点と基準行の組(`utils/perspectiveProjection.ts` の `projectInto`・`project`・`unproject`・
 `visibleWorldBands`・`projLocalYOfWorld`・`projWorldYOfLocal`・`projScaleAtLocal`)、pixiScene の `projFrame`(null=`?proj=0`・屋内・洋館の通路・研究所テーマ)・
 `projPlace`・`projBaseAlpha`・後掛け(`projActorPostPass`・役の表 `utils/projActorPass.ts` の `PROJ_ACTOR_ROLES`)・計器 `projAuditEndFrame`。
