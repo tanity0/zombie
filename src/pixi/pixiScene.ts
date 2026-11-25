@@ -12131,13 +12131,16 @@ export class PixiScene {
       const dd = Math.hypot(x - (r.x + r.w / 2), y - (r.y + r.h / 2 - he));
       if (dd < bd) { bd = dd; best = { fx: r.fx, fy: r.fy, d: r.d, phill: r.phill, h: he }; }
     }
-    if (best) { // 爆心の光・輪は爆発の絵(地面の点)に揃える(同じ点の爆発が出ている間)
-      for (const ef of useGameStore.getState().effects) {
-        if (ef.kind === 'explosion' && Math.abs(ef.x - x) < 0.5 && Math.abs(ef.y - y) < 0.5) { best = null; break; }
-      }
-    }
+    if (best && this.projFxOnExplosion(x, y)) best = null; // 爆心の光・輪は爆発の絵(地面の点)に揃える(同じ点の爆発が出ている間)
     this.projFxBodyMem.set(c, best);
     return best;
+  }
+  /** (x, y) に爆発の絵が出ているか(爆心の光・輪・印は爆発の絵=地面の点に揃える=体の相似にも宙の高さ h_e にも付けない)。 */
+  private projFxOnExplosion(x: number, y: number): boolean {
+    for (const ef of useGameStore.getState().effects) {
+      if (ef.kind === 'explosion' && Math.abs(ef.x - x) < 0.5 && Math.abs(ef.y - y) < 0.5) return true;
+    }
+    return false;
   }
   private projFxBodyBuf = { x: 0, y: 0, ke: 1, kf: 1, a: 1 };
   /** 体の相似で world の点 (x, y) を写した表示座標(T(X))と、体の倍率 k_e・派手さの倍率 s_fx・濃さ。 */
@@ -12195,7 +12198,7 @@ export class PixiScene {
     const n = this.projHitAirList();
     if (prefer !== undefined) {
       if (prefer && prefer.projHitEFrame === this.projFrameNo && (prefer.projHitE ?? 0) > 0.5) { best = prefer; bh = prefer.projHitE!; }
-    } else if (n > 0) {
+    } else if (n > 0 && !this.projFxOnExplosion(x, y)) { // 爆心の物は爆発の絵(地面の点)に揃える=浮いた敵の h_e を足さない
       let bd = Infinity;
       for (let i = 0; i < n; i++) {
         const r = this.projHitAir[i];
@@ -12362,15 +12365,25 @@ export class PixiScene {
     const d = this.bloodBurstData.get(view);
     if (!f || !d) return;
     const p = projectInto(f, e.x, e.floorY, this.projFxP);
-    const px = p.x, py = p.y, a = p.alpha, ps = p.s;
+    const a = p.alpha, ps = p.s;
     const k = this.projFxKOf('fx', ps) / Math.max(1e-6, d.ds);
-    // 位置(飛んだ分)は s・1片の大きさだけ k(点o の形・監査 A-6)。入れ物は原点のまま=子ごとに写す
+    // 入れ物は原点のまま=子ごとに写す。1片の大きさだけ k(点o の形・監査 A-6)。
+    // 位置は「床の点 G を投影」+「床からの高さ z を体の倍率で上へ」: 高さは描く関数が敵の旧い倍率 ds の体に合わせて出している
+    // (破裂の芯=体の真ん中)=当たった敵の体の相似と同じ k_e = s/ds で写す(旧: s=ds の分だけ体からずれた)。床に着けば z=0=床の跡と同じ点。
     if (!view.destroyed && view.visible) {
       this.projFxMarks.set(view, this.projFrameNo);
       const kids = view.children;
+      const np = d.pieces.length, base = kids.length - np; // 子の並び=光・芯・塊と滴(layout の順)
+      const ids = 1 / Math.max(1e-6, d.ds);
       for (let i = 0; i < kids.length; i++) {
         const ch = kids[i] as Container;
-        if (this.projFxSave(ch)) this.projFxXf(ch, e.x, e.floorY, px, py, ps, k, a);
+        if (!this.projFxSave(ch)) continue;
+        const pi = i - base;
+        const z = pi >= 0 && pi < np && d.pieces[pi] === ch ? d.pz[pi] : e.floorY - ch.position.y; // 光・芯=床の線からの高さ
+        const q = projectInto(f, ch.position.x, ch.position.y + z, this.projFxP);
+        ch.position.set(q.x, q.y - z * q.s * ids);
+        ch.scale.set(ch.scale.x * k, ch.scale.y * k);
+        if (a !== 1) ch.alpha *= a;
       }
     }
     // A14.stain(★#30): 床の血溜まりと染み=地面に付いた物=1枚ずつ自分の地面の点で寝かせる(旧い ds は外す)
@@ -49823,6 +49836,8 @@ export class PixiScene {
     ground: Container; flash: Sprite; core: Sprite; pool: Sprite; blast: number; chained: boolean;
     pieces: Sprite[]; stains: (Sprite | null)[]; layout: BloodBurstPiece[];
     ds: number; kGob: number[]; kDrop: number; kStain: number; kPool: number; kStar: number; kSheet: number; seed: number;
+    /** ?proj=1 用: 塊と滴の今の床からの高さ z(world・描いた位置 = 床の点 − (0, z))。投影で高さだけ体の倍率で写すために覚える。 */
+    pz: number[];
   }>();
   private bloodBurstSheetCache: Texture[] | null = null;
   private bloodBurstRecent: { x: number; y: number; at: number }[] = [];
@@ -49886,7 +49901,7 @@ export class PixiScene {
         const sp = new Sprite(pc.kind === 'gob' ? art.stain[pc.variant] : art.gob[0][pc.variant]);
         sp.anchor.set(0.35, 0.5); sp.visible = false; ground.addChild(sp); return sp;
       });
-      d = { ground, flash, core, pool, pieces, stains, layout, ds, kGob, kDrop, kStain, kPool, kStar, kSheet, blast, seed, chained };
+      d = { ground, flash, core, pool, pieces, stains, layout, ds, kGob, kDrop, kStain, kPool, kStar, kSheet, blast, seed, chained, pz: layout.map(() => 0) };
       this.bloodBurstData.set(c, d);
       this.L.effectLayer.addChild(c);
       this.L.groundLayer.addChild(ground);
@@ -49978,6 +49993,7 @@ export class PixiScene {
         sp.visible = true;
         sp.alpha = 1;
         sp.position.set(Math.round(gx), Math.round(gy - z));
+        d.pz[i] = gy - sp.position.y; // 描いた位置から床の点 (gx, gy) へ戻す高さ(丸めの分も含める)
         if (pc.kind === 'drop') {
           const dgo = (1.2 - 0.4 * u) / T;
           const vx = (ex2 - sx) * dgo, vy = (ey2 - sy) * dgo - (pc.skim ? 0 : vz - g * tt);
@@ -50005,6 +50021,7 @@ export class PixiScene {
         sp.texture = art.drop[2][1];
         sp.scale.set(d.kDrop);
         sp.position.set(Math.round(ex2), Math.round(ey2 - zEnd + 6 * d.ds * q));
+        d.pz[i] = Math.round(ey2) - sp.position.y; // 体に付いた滴の床(当たった主人公の足元の線)からの高さ
         sp.alpha = 1 - q * q;
         continue;
       }
@@ -50014,6 +50031,7 @@ export class PixiScene {
         sp.visible = true;
         sp.alpha = 1;
         sp.position.set(Math.round(ex2), Math.round(ey2));
+        d.pz[i] = 0; // 床に着いた塊
         sp.scale.set(d.kGob[pc.size] * 1.4, d.kGob[pc.size] * 0.7);
       } else sp.visible = false;
       if (st) {
