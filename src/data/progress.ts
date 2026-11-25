@@ -505,7 +505,7 @@ export const markKogarasuUnlocked = (): boolean => {
 //   medicineOwned  = グレンの薬を所持(任意サブ3本完了でM7クリア→ED後に付与)
 //   medicineUsed   = 洋館再訪で薬を使用済み(=EX解放条件)
 //   revisitCleared = 洋館［SUB］再訪クリア
-//   glenIntroSeen  = M7戦闘前会話を一度表示済み(以後は会話を省略)
+//   glenIntroSeen  = M7戦闘前会話を一度表示済み(記録のみ。ステージ7の会話は毎回流す=省略には使わない・2026-11-25)
 export interface StoryFlags {
   endingSeen: boolean;
   hintShown: boolean;

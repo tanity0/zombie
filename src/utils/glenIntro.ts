@@ -1,7 +1,9 @@
 // ステージ7の戦闘前会話とグレン出現の順序を一箇所で定義する。
-// 初回は咆哮を最後まで見せてから出現し、既読後の出撃は会話を省略して即出現できる。
+// ステージ7は毎回、会話の最後(咆哮)から変身の場面へ繋いで出現する。会話が空の出撃(cine の実験台など)は即出現。
 export const GLEN_FINAL_LINE = '……終わらせてあげて！';
 export const GLEN_ROAR_LINE = 'グガガガガガガガガ！';
+/** 咆哮の行(会話の窓に出す1行。立ち絵は変異後の頭部)。積む時も、変身の場面で出す時も、この1つを使う。 */
+export const GLEN_ROAR_DIALOGUE = { name: 'グレン', text: GLEN_ROAR_LINE, portrait: 'グレン(変異)' } as const;
 
 export interface GlenIntroSpawnGate {
   introSkipped: boolean;
@@ -20,14 +22,15 @@ export const isGlenBossSpawnReady = (gate: GlenIntroSpawnGate): boolean => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────
-// 変身の場面(research/GLEN_TRANSFORM.md §2): 咆哮の行が表示に入った瞬間から、時間を止めた寄りの中で
-// 人間のグレンが現れ → 苦しみ → 弾けて第一形態が出る。時間停止の中で進むので、全部「場面の開始からの
+// 変身の場面(research/GLEN_TRANSFORM.md §2): 咆哮の行が表示に入るはずの瞬間から、時間を止めた寄りの中で
+// 人間のグレンが現れ → 苦しみ → 弾けて第一形態が出る。咆哮の文字はその瞬間には出さず、苦しむ絵へ変わる瞬間
+// (GLEN_TF_SUFFER_AT_MS・出来事 'roar')に初めて会話の窓へ出し、弾けで閉じる。時間停止の中で進むので、全部「場面の開始からの
 // 実時間(ms)」で決める。ここは純関数だけ(store が状態を持ち、useGameLoop が出来事を撃ち、pixi は姿を読んで描く)。
 // ─────────────────────────────────────────────────────────────────────────
 
 /** 立ち姿で現れる尺(下から上がりながらフェードイン・ease-out)。 */
 export const GLEN_TF_APPEAR_MS = 450;
-/** 現れ終わった所で体がビクッと跳ねる(咆哮の行への反応・位置だけ)。始まりと尺。 */
+/** 現れ終わった所で体がビクッと跳ねる(寄られたことに気づく=発作の前触れ・位置だけ)。始まりと尺。 */
 export const GLEN_TF_JOLT_AT_MS = GLEN_TF_APPEAR_MS;
 export const GLEN_TF_JOLT_MS = 300;
 /** 苦しげな深い息を1回: ゆっくり吸い上げ(肩が上がる)→止まる→吐き落ちて苦しむ絵へ。 */
@@ -36,7 +39,7 @@ export const GLEN_TF_BREATH_TOP_AT_MS = 1160;
 export const GLEN_TF_BREATH_RELEASE_AT_MS = 1240;
 /** 吸い上げた時の肩の上がり(体の高さ比)。 */
 export const GLEN_TF_BREATH_RISE = 0.045;
-/** 苦しむ絵へ切り替わり、膝が落ちる時刻(カメラの寄りが止まる 360ms から約0.9秒、人間の立ち姿を見せる)。 */
+/** 苦しむ絵へ切り替わり、膝が落ちる時刻(カメラの寄りが止まる 360ms から約0.9秒、人間の立ち姿を見せる)。咆哮の文字もここで初めて出る。 */
 export const GLEN_TF_SUFFER_AT_MS = 1300;
 /** 苦しみの1段の長さ(4段)。 */
 export const GLEN_TF_STAGE_MS = 400;
@@ -209,7 +212,7 @@ const kneeSink = (t: number): number => {
 };
 
 /**
- * 咆哮の行への反応(現れ終わった所で一度ビクッ)。位置だけ=上へ短く跳ねて落ちる+首が横へ引きつって戻る(減衰)。
+ * 寄りに気づいた/発作の前触れ(現れ終わった所で一度ビクッ)。位置だけ=上へ短く跳ねて落ちる+首が横へ引きつって戻る(減衰)。
  * 戻り値は体の高さ比 [dx, dy]。
  */
 const joltAt = (t: number): [number, number] => {
@@ -271,6 +274,8 @@ export const glenTransformPose = (t: number): GlenTransformPose => {
 /** 場面の出来事(useGameLoop が時刻順に1回ずつ撃つ)。 */
 export type GlenTransformEvent =
   | { at: number; kind: 'growl'; rate: number; gain: number }
+  /** 咆哮の文字を会話の窓に出す(苦しむ絵へ変わる瞬間)。弾け('burst')で閉じる。 */
+  | { at: number; kind: 'roar' }
   /** 胸の赤い光(1つ・noShadow)。強さは脈の間隔と尾の長さ(durationMs)で出す(重ねない・白へ飛ばさない)。 */
   | { at: number; kind: 'pulse'; radius: number; durationMs: number; color: string }
   /** 鼓動(既存の heartbeat の頭だけを切って鳴らす)。capMs=素材の何msまで鳴らすか。 */
@@ -292,10 +297,11 @@ const BEAT_CAP = [0, 600, 450, 300, 200, 180];
 /**
  * 出来事の並び(時刻順)。胸の赤い光は、各段の頭で必ず1回撃ち、その段の間隔で続ける(次の段の頭が先に来たらそこで撃つ)。
  * 溜め(GLEN_TF_HUSH_AT_MS〜弾け)は光を撃たない。鼓動は光の脈に合わせて鳴らし(最大の段は詰まりすぎないよう溜めの少し前まで)、
- * 溜めの頭で最後に大きく1回。呻きは苦しむ絵へ変わる瞬間の1回だけ。弾けた後は残り火の光を3回(揺らぎ)。
+ * 溜めの頭で最後に大きく1回。呻きと咆哮の文字は苦しむ絵へ変わる瞬間の1回だけ。弾けた後は残り火の光を3回(揺らぎ)。
  */
 export const GLEN_TRANSFORM_EVENTS: readonly GlenTransformEvent[] = (() => {
   const ev: GlenTransformEvent[] = [];
+  ev.push({ at: GLEN_TF_SUFFER_AT_MS, kind: 'roar' });
   ev.push({ at: GLEN_TF_SUFFER_AT_MS, kind: 'growl', rate: 0.7, gain: 0.6 });
   let t = GLEN_TF_SUFFER_AT_MS;
   while (t < GLEN_TF_HUSH_AT_MS) {

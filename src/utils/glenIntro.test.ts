@@ -7,7 +7,7 @@ import {
 } from './glenIntro';
 
 describe('ステージ7の戦闘前会話', () => {
-  it('初回は咆哮の表示が終わるまでボスを出さない', () => {
+  it('会話がある出撃は咆哮の表示が終わるまでボスを出さない', () => {
     expect(isGlenBossSpawnReady({
       introSkipped: false,
       roarQueued: true,
@@ -98,7 +98,7 @@ describe('ステージ7 グレンの変身の場面(research/GLEN_TRANSFORM.md �
     expect(GLEN_TF_AFTER_BURST_MS).toBeLessThanOrEqual(1000);
   });
 
-  it('咆哮の行への反応: 現れ終わった所で一度ビクッと上へ跳ね、首が横へ引きつる(位置だけ)', () => {
+  it('寄りに気づく(発作の前触れ): 現れ終わった所で一度ビクッと上へ跳ね、首が横へ引きつる(位置だけ)', () => {
     let up = 0, side = 0;
     for (let t = GLEN_TF_APPEAR_MS; t < GLEN_TF_APPEAR_MS + 300; t++) {
       const p = glenTransformPose(t);
@@ -175,6 +175,16 @@ describe('ステージ7 グレンの変身の場面(research/GLEN_TRANSFORM.md �
     expect(s4.gain).toBeGreaterThan(s1.gain);
     const quiet = GLEN_TRANSFORM_EVENTS.filter(e => e.at >= GLEN_TF_BURST_AT_MS - GLEN_TF_SILENT_BEFORE_BURST_MS && e.at < GLEN_TF_BURST_AT_MS);
     expect(quiet.every(e => e.kind === 'beat' || e.kind === 'pulse')).toBe(true);
+  });
+
+  it('咆哮の文字は苦しむ絵へ変わる瞬間に初めて出る(現れ〜立ち姿の間は出さない)・弾けまで1回だけ', () => {
+    const roars = GLEN_TRANSFORM_EVENTS.filter(e => e.kind === 'roar');
+    expect(roars.map(e => e.at)).toEqual([GLEN_TF_SUFFER_AT_MS]);
+    expect(glenTransformPose(GLEN_TF_SUFFER_AT_MS - 1).frame).toBe('stand');
+    expect(glenTransformPose(GLEN_TF_SUFFER_AT_MS).frame).toBe('suffer'); // 文字と絵の切り替わりが同じ時刻
+    expect(GLEN_TF_SUFFER_AT_MS).toBeLessThan(GLEN_TF_BURST_AT_MS);
+    expect(glenTransformDueEvents(0, GLEN_TF_SUFFER_AT_MS - 1).due.some(e => e.kind === 'roar')).toBe(false);
+    expect(glenTransformDueEvents(0, GLEN_TF_SUFFER_AT_MS).due.some(e => e.kind === 'roar')).toBe(true);
   });
 
   it('出来事は1回ずつ撃つ(フレームが飛んでも取りこぼさない・二重に撃たない)', () => {

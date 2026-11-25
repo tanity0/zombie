@@ -382,7 +382,8 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
       && typeof window !== 'undefined'
       && new URLSearchParams(window.location.search).get('cine') === '1';
     useGameStore.getState().setPendingIndoor(!!stageForRun?.indoor);
-    useGameStore.getState().setPendingRetryRun(retry && !benchmark); // resetGameが消費(M7=ヘリ無し即ボス等)
+    // ステージ7はリトライでも普通の出撃と同じ(ヘリ→戦闘前の会話→変身の場面を毎回・社長指示2026-11-25「ステージ7の始まりは必ずそこらにして」)。
+    useGameStore.getState().setPendingRetryRun(retry && !benchmark && stageForRun?.id !== 'stage-7'); // resetGameが消費
     useGameStore.getState().setPendingStageTheme(stageForRun?.theme === 'lab' ? 'lab' : 'forest');
     useGameStore.getState().setPendingFarBackdrop(stageForRun?.farBackdrop ?? '');
     useGameStore.getState().setPendingNearHorizon(stageForRun?.nearHorizon ?? '');
@@ -437,10 +438,12 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     clearSfxThrottle(); // ラン開始でSEスロットル記録をリセット(前ランの終わり際の音が次ラン頭でブロックされるのを防ぐ)
     // 出撃ごとの会話は選択ミッションから設定。フリー(周回)/未選択/ベンチ/再訪(通信なし)は空=会話なし。
     const free = getSelectedFreeMode();
-    const selectedStage = (benchmark || free || revisitRun) ? undefined : stageForRun;
-    // M7の戦闘前会話は端末で一度だけ。既読後とリトライ(もう一度プレイ)は会話を丸ごと飛ばす。
-    const skipSeenGlenIntro = selectedStage?.id === 'stage-7' && getStoryFlags().glenIntroSeen;
-    useGameStore.getState().setIntroDialogueLines((cineTestbed || retry || skipSeenGlenIntro) ? [] : (selectedStage?.main.dialogue ?? []));
+    // ステージ7は、いつ出撃しても(既読・リトライ・フリーでも)戦闘前の会話を1行目から流し、変身の場面へ繋ぐ
+    // (社長指示2026-11-25「ステージ7の始まりは必ずそこらにして」)。省かないのは cine の実験台とベンチだけ。
+    // 既読の記録(glenIntroSeen)は書き続けるが、ここでは会話の省略に使わない。
+    const glenStage7Run = !benchmark && stageForRun?.id === 'stage-7';
+    const selectedStage = glenStage7Run ? stageForRun : (benchmark || free || revisitRun) ? undefined : stageForRun;
+    useGameStore.getState().setIntroDialogueLines((cineTestbed || (retry && !glenStage7Run)) ? [] : (selectedStage?.main.dialogue ?? []));
     setBenchmarkMode(pendingBenchmarkRef.current);
     // 出撃ローディング%のウィンドウをここでリセット(v0.25.1829): オーバーレイの初期描画が
     // 前回ウィンドウの100%を一瞬見せないように(PixiStage側のリセットより先=マウント前に0%へ)。

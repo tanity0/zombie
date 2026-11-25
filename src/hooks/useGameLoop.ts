@@ -31,7 +31,7 @@ import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLi
 import {
   GLEN_FINAL_LINE, GLEN_ROAR_LINE, isGlenBossSpawnReady, shouldPlayGlenTransform, glenTransformBossBox, glenTransformExtraHoldMs,
   glenTransformDueEvents, glenCloseRoar, GLEN_TRANSFORM_EVENTS, GLEN_TF_BURST_AT_MS, GLEN_TF_ZOOM_IN, GLEN_TF_CHEST_K, GLEN_TF_CHEST_DX,
-  GLEN_TF_AIM_K, GLEN_HUMAN_BODY_H, glenTransformPose,
+  GLEN_TF_AIM_K, GLEN_HUMAN_BODY_H, glenTransformPose, GLEN_ROAR_DIALOGUE,
 } from '../utils/glenIntro';
 import { dialogueBacklogMs, startStoryBossOutro, stepStoryBossOutro, type StoryBossOutro } from '../utils/storyBossOutro';
 import { loadSeenForGate, markTutorialSeen } from '../utils/tutorialArchive';
@@ -2266,6 +2266,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const surielChestPendingRef = useRef(false);
   const glenRoarQueuedRef = useRef(false); // M7: 咆哮を会話キューへ積んだか
   const glenRoarShownRef = useRef(false);  // M7: 咆哮が実際に表示されたか(表示終了後の出現ゲート)
+  const glenRoarHeldRef = useRef(false);   // M7: 変身の場面が咆哮の行を預かっている(苦しむ絵の瞬間に出すまで窓に出さない)
   const glenTfEventIdxRef = useRef(0);     // M7: 変身の場面(research/GLEN_TRANSFORM.md)の次に撃つ出来事の番号(utils/glenIntro.GLEN_TRANSFORM_EVENTS)
   // 洋館再訪: 開始時に洋館(保存槽)へ一度だけカメラアテンションを出したか。
   const revisitAttnShownRef = useRef(false);
@@ -3008,6 +3009,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 場面が立っている間(=弾けた後の寄りの間も)はボスの目印を出さない(pixi が glenTransform を見る)。
             useGameStore.setState({ glenTransform: null });
             glenTfEventIdxRef.current = 0;
+            if (glenRoarHeldRef.current) {
+              // 咆哮の文字を出す前に切れた: 預かっていた行を会話の先頭へ戻す(今のゲート=咆哮の表示が終わったら出現、に任せる)。
+              glenRoarHeldRef.current = false;
+              useGameStore.setState(s2 => ({ npcDialogueQueue: [{ ...GLEN_ROAR_DIALOGUE }, ...s2.npcDialogueQueue] }));
+            }
           } else if (glenTfEventIdxRef.current < GLEN_TRANSFORM_EVENTS.length) {
             const { due, next } = glenTransformDueEvents(glenTfEventIdxRef.current, el);
             glenTfEventIdxRef.current = next;
@@ -3018,7 +3024,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               return { x: gtf.footX + GLEN_HUMAN_BODY_H * (pose.dx + GLEN_TF_CHEST_DX), y: gtf.footY - lift, lift };
             };
             for (const ev of due) {
-              if (ev.kind === 'growl') playSfx('zombie-growl', ev.gain, undefined, ev.rate);
+              if (ev.kind === 'roar') {
+                // 咆哮の文字: 苦しむ絵へ変わる瞬間に初めて会話の窓へ出す(場面の始まりで預かった行)。
+                // 寄り(アテンション)の間は会話の時計が止まるので、弾け('burst' の glenCloseRoar)で閉じるまで出たまま。
+                if (glenRoarHeldRef.current) {
+                  glenRoarHeldRef.current = false;
+                  const gt = useGameStore.getState().gameTime;
+                  useGameStore.setState({ npcDialogue: { ...GLEN_ROAR_DIALOGUE, until: gt + NPC_DIALOGUE_MS } });
+                }
+              } else if (ev.kind === 'growl') playSfx('zombie-growl', ev.gain, undefined, ev.rate);
               else if (ev.kind === 'beat') playSfx('heartbeat', ev.gain, ev.capMs, ev.rate); // 胸の光の脈に合わせた鼓動(素材の頭だけ)
               else if (ev.kind === 'pulse') {
                 // 胸の赤い光(投影影を落とさない小さい光・noShadow)を1つ。強さは脈の間隔と尾の長さで出す(重ねない=白へ飛ばない)。
@@ -3934,6 +3948,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           surielChestPendingRef.current = false;
           glenRoarQueuedRef.current = false;
           glenRoarShownRef.current = false;
+          glenRoarHeldRef.current = false;
           glenTfEventIdxRef.current = 0;
           revisitAttnShownRef.current = false;
         }
@@ -4170,13 +4185,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 導入完了 = 登場演出(ヘリ=時間停止)が明けた瞬間。会話自体は通常会話キューで非停止再生する。
           const introDone = !isGameTimeStopped();
           const isM7 = getSelectedStageId() === 'stage-7';
-          // M7初回: 最終行が表示に入ったら咆哮を末尾へ積む。既読後/リトライは会話データ自体が空なので省略する。
+          // M7: 最終行が表示に入ったら咆哮を末尾へ積む。会話データが空の出撃(cine の実験台等)だけ省略=即出現。
+          // (既読・リトライでも会話は毎回流す=App.startGame。社長指示2026-11-25)
           const introSkipped = isM7 && sbs.introDialogueLines.length === 0;
           if (isM7 && !introSkipped && introDone && !glenRoarQueuedRef.current && !storyBossSpawnedRef.current
               && sbs.introDialogueShown && !sbs.npcDialogueQueue.some(l => l.text === GLEN_FINAL_LINE)) {
             glenRoarQueuedRef.current = true;
             // グレン巨大化の咆哮(確定台詞・指示書4.7)。立ち絵は変異後の頭部(社長指示v0.25.2073)。
-            useGameStore.getState().enqueueNpcDialogue([{ name: 'グレン', text: GLEN_ROAR_LINE, portrait: 'グレン(変異)' }]);
+            useGameStore.getState().enqueueNpcDialogue([{ ...GLEN_ROAR_DIALOGUE }]);
           }
           // enqueue後の最新状態を見る。咆哮が表示された瞬間に既読を保存し、表示が終わるまではボスを出さない。
           const glenDialogue = useGameStore.getState();
@@ -4184,8 +4200,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             glenRoarShownRef.current = true;
             updateStoryFlags({ glenIntroSeen: true });
             // 変身の場面(research/GLEN_TRANSFORM.md §2-2): 咆哮の行が表示に入った瞬間に時間を止めて北の一点へ寄り、
-            // 人間のグレンを出す。出す条件は今のボス出現と同じ組み合わせ(utils/glenIntro.shouldPlayGlenTransform)。
-            // 出さない時(既読・cine・nospawn・ゲート2練習)は何もしない=今までどおり咆哮の表示が終わってから出現。
+            // 人間のグレンを出す。咆哮の文字はここで一旦窓から下ろして預かり、苦しむ絵へ変わる瞬間(出来事 'roar')に出す。出す条件は今のボス出現と同じ組み合わせ(utils/glenIntro.shouldPlayGlenTransform)。
+            // 出さない時(cine・nospawn・ゲート2練習)は何もしない=今までどおり咆哮の表示が終わってから出現。
             if (introDone && !storyBossSpawnedRef.current && !glenDialogue.glenTransform && shouldPlayGlenTransform({
               isM7, introSkipped, cineSuppress: CINE_TESTBED && isM7, forceGateboss: FORCE_GATEBOSS, noSpawn,
               practiceWantsCastleBoss: practiceWantsCastleBoss(),
@@ -4198,20 +4214,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const tfAtt = useGameStore.getState().attention;
               if (tfAtt) {
                 glenTfEventIdxRef.current = 0;
-                useGameStore.setState({ glenTransform: { startedAt: tfAtt.startReal, footX: tfBox.footX, footY: tfBox.footY, bossBox: tfBox.box } });
+                glenRoarHeldRef.current = true;
+                useGameStore.setState({
+                  glenTransform: { startedAt: tfAtt.startReal, footX: tfBox.footX, footY: tfBox.footY, bossBox: tfBox.box },
+                  npcDialogue: null, // 5行目が閉じた後の空きのまま(咆哮の文字は苦しむ絵の瞬間まで出さない)
+                });
                 // グレンの足元の正面と左右の空き地(社長指示2026-11-25「木はグレンの前に生やさない」・world/glenClearing)。
                 // 手前に掛かる木・松明は当たり判定ごとここで消え、描画は場面の寄りの間にフェードアウトさせる。出撃の間ずっと残る。
                 applyGlenClearing(tfBox.footX, tfBox.footY, tfAtt.startReal);
               }
             }
           }
-          // EXは即出現。M7既読後も会話を省略して即出現。M7初回だけ咆哮の表示終了を待つ。
+          // EXは即出現。M7は咆哮の表示終了を待つ(会話が空の出撃=cine の実験台等だけ即出現)。
           const glenSpawnOk = !isM7 || isGlenBossSpawnReady({
             introSkipped,
             roarQueued: glenRoarQueuedRef.current,
             roarShown: glenRoarShownRef.current,
             currentText: glenDialogue.npcDialogue?.text ?? null,
-            roarPending: glenDialogue.npcDialogueQueue.some(line => line.text === GLEN_ROAR_LINE),
+            roarPending: glenRoarHeldRef.current || glenDialogue.npcDialogueQueue.some(line => line.text === GLEN_ROAR_LINE),
           });
           // cine実験台(?cine=1 & stage-7)ではストーリーボス(グレン)を出さない=クリーンな映像確認(社長v0.25.1879)。
           // ?nospawn=1 でもストーリーボスを出さない(=イベント不発火。社長指示v0.25.1995・QAのクリーン撮影用)。
