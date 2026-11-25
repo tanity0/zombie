@@ -318,6 +318,7 @@ import {
   pickWhipGrabTarget, whipSwingSpinDir, whipSwingAngVel, whipSwingAngle, whipSwingRadiusAt, whipSwingHitDue, boxesOverlap, whipSwingClampRadius,
   whipSwingMaxMs, whipSwingAutoThrowDue, whipSwingTangent, pickWhipAutoThrowDir, whipThrowDurationMs, whipThrowDist, whipThrowStartSpeed, whipThrowStep,
   whipSwingReleaseReason, whipThrowBlastPlan, whipSwingLaps, whipSwingLapRate, criticalSpringStep, whipDropDist,
+  isWhipTipHit, whipBossStunEnd, whipSwingBodyRadius, whipThrowSpeed, WHIP_TIP_BOSS_MULT,
   WHIP_SWING_SHRINK_LOOKAHEAD_MS, WHIP_SWING_SHRINK_LOOKAHEAD_STEPS, WHIP_DROP_MIN_SPEED, WHIP_DROP_MS,
   WHIP_SWING_RADIUS_MULT, WHIP_SWING_MIN_RADIUS_FRAC, WHIP_THROW_DIST_MULT, WHIP_THROW_DAMAGE_MULT, WHIP_THROW_HITSTOP_MS, type WhipSwingState,
 } from '../utils/whipSwing';
@@ -3087,8 +3088,19 @@ const whipLiftable = (e: Enemy): boolean =>
   && !isGuardianPhantom(e.type) && !isHiddenBoss(e.type) && !isBountyType(e.type) && !isMutantHero(e.type)
   && !isLibertyBearer(e.type) && !isHordeFollower(e) && !isLabCrawlerProxyType(e.type) && !e.labBait?.active
   && e.aiPhase !== 'jump' && e.aiPhase !== 'charge' && !e.escortToss;
-/** 絡め取れる敵か(§8-7: 上の判定を1本流用+生きている・死体でない・触れられる=掴まれている敵は誰も掴めない)。 */
-const whipGrabbable = (e: Enemy): boolean => e.health > 0 && !isCorpse(e) && !isUntouchable(e) && whipLiftable(e);
+/**
+ * ★気絶で止まっているボス区分(社長指示2026-11-25「気絶してるボスは掴める」・区分で決める=特定のボスだけにしない)。
+ * 気絶=stunUntil(クリの止め・致命の後の止め)か bossFullStunUntil(紫=体勢の崩れ)が今より後(utils/whipSwing.whipBossStunEnd)。半減の遅さ(bossSlowUntil)等の止まっていない状態は含めない。
+ * preStunEnd=打つ前に控えた気絶の終わり。終端(深奥チェイサー=浮かない区分 null)・幻影(対人の規則)・塊の代理・生け贄・兵士のトス中・跳び/突進・宙(偶像の大跳び)は掴まない。
+ */
+const whipStunnedBossGrabbable = (e: Enemy, gameTime: number, preStunEnd?: number): boolean =>
+  BRC.brawlerEnemyClass(e) === 'boss' && BRC.brawlerLiftClass(e) !== null
+  && !isGuardianPhantom(e.type) && !isLabCrawlerProxyType(e.type) && !e.labBait?.active && !e.escortToss
+  && e.aiPhase !== 'jump' && e.aiPhase !== 'charge' && e.bossState !== 'idol-leap'
+  && whipBossStunEnd(e, gameTime, preStunEnd) !== null;
+/** 絡め取れる敵か(§8-7: 上の判定を1本流用+生きている・死体でない・触れられる=掴まれている敵は誰も掴めない)。気絶しているボスも掴める。 */
+const whipGrabbable = (e: Enemy, gameTime: number, preStunEnd?: number): boolean =>
+  e.health > 0 && !isCorpse(e) && !isUntouchable(e) && (whipLiftable(e) || whipStunnedBossGrabbable(e, gameTime, preStunEnd));
 /** 振り回しの間、掴んだ敵の固まり(行動の時計・噛みつきを止める=brHoldUntil・壁時計)を毎フレーム継ぎ足す長さ(ms)。 */
 const WHIP_HOLD_REFRESH_MS = 250;
 /** 放した敵の倒れ方=爆発の浮き(その場の小さな爆発の浮きだけ・ダメージなし)の半径(px)。 */
@@ -3116,22 +3128,49 @@ const addWhipCharge = (get: () => GameState, set: WhipSet, hits: number): void =
 };
 
 /**
+ * ★先端でボスを打った時の絵と音(社長指示2026-11-25・派手さの絵=判定なし・既存の素材の組み合わせ)。先端のパチン(白い小さな閃き)より一段強く:
+ * 白い芯+金の大きな閃き(影を落とさない光)・金と白の輪を2重・振りの向きへ白金の弾け・短い止めと揺れ・重い命中音を低く。危険を伝える赤は使わない。
+ */
+const spawnWhipTipBossFx = (get: () => GameState, pts: readonly { x: number; y: number }[], ux: number, uy: number): void => {
+  const g = get();
+  for (const p of pts) {
+    g.spawnGlow(p.x, p.y, GLOW_R_L, 'rgba(255,236,170,', 260, true);
+    g.spawnGlow(p.x, p.y, GLOW_R_S, 'rgba(255,255,255,', 120, true);
+    g.spawnRing(p.x, p.y, 4, 96, 'rgba(253,224,71,0.95)', 4, 300, true);
+    g.spawnRing(p.x, p.y, 2, 54, 'rgba(255,255,255,1)', 2, 190, true);
+    g.spawnBurst(p.x, p.y, '#fef3c7', 16, ux, uy);
+    g.spawnBurst(p.x, p.y, '#ffffff', 8);
+  }
+  const p0 = pts[0];
+  g.triggerHitImpact(70, 220, 7, 0, p0.x, p0.y);
+  void import('../audio/audioManager').then(m => {
+    m.playSfx('heavy-impact', 0.85, undefined, 1.15);
+    m.playSfx('whip-hit', 1, undefined, 0.62);
+  });
+};
+
+/**
  * 絡め取る(§8-1)。掴んだ瞬間に溜めていた技と赤い予告を取り消し(格闘の掴みと同じ brawlerGrabCancelTech)、押し・浮きを止めて振り回しを始める。
  * reach=この振りの鞭の届く距離(ハンティングの伸び込み)=回す半径と投げの距離の元。ux,uy=振りの向き(回る向きを決める)。
  */
-const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux: number, uy: number, reach: number): void => {
+const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux: number, uy: number, reach: number, preStunEnd?: number): void => {
   brawlerGrabCancelTech(get, enemyId);
   const st = get();
   const e = st.enemies.find(en => en.id === enemyId);
   if (!e) return;
   const pc = whipCenter(st.player), ec = whipCenter(e);
+  // 気絶したボス: 気絶が明けたら自動で投げる(その時の気絶の終わりを控える)。大きな体はプレイヤーに重ねて回さない(回す半径の下限=体の半分+プレイヤーの半分・壁では今どおり縮める)。
+  const isBoss = BRC.brawlerEnemyClass(e) === 'boss';
+  const bossStunEndAt = isBoss ? (whipBossStunEnd(e, st.gameTime, preStunEnd) ?? undefined) : undefined;
+  const baseR = reach * WHIP_SWING_RADIUS_MULT;
+  const radius = isBoss ? Math.max(baseR, whipSwingBodyRadius(e.width, e.height, st.player.width, st.player.height)) : baseR;
   const rx = ec.x - pc.x, ry = ec.y - pc.y, r0 = Math.hypot(rx, ry);
   const nowMs = Date.now();
   const sw: WhipSwingState = {
     enemyId, phase: 'swing', startAt: st.gameTime, maxMs: whipSwingMaxMs(skillLevel(st.player, 'slasher')),
     a0: r0 > 1 ? Math.atan2(ry, rx) : Math.atan2(uy, ux), r0, dir: whipSwingSpinDir(ux, uy, rx, ry),
-    radius: reach * WHIP_SWING_RADIUS_MULT, reach, lastHits: {}, cx: ec.x, cy: ec.y, px: pc.x, py: pc.y, rNow: r0,
-    at: st.gameTime, vx: 0, vy: 0, shrink: 0, shrinkV: 0,
+    radius, reach, lastHits: {}, cx: ec.x, cy: ec.y, px: pc.x, py: pc.y, rNow: r0,
+    at: st.gameTime, vx: 0, vy: 0, shrink: 0, shrinkV: 0, ...(bossStunEndAt !== undefined ? { bossStunEndAt } : {}),
   };
   set(state => ({
     whipSwing: sw,
@@ -3233,7 +3272,10 @@ const whipLandFx = (get: () => GameState, fx: number, fy: number): void => {
  * 着弾(§8-4): 振り回しを終え、投げた敵を着弾点に置いて印を外し、爆発と絵・音。selfAlive=投げた敵が生きている(死んで着弾した時は false=爆心だけ)。
  * 戻り値=倒した数(倒した音は呼び手)。
  */
-const landWhipThrow = (get: () => GameState, set: WhipSet, x: number, y: number, selfAlive: boolean): number => {
+const landWhipThrow = (
+  get: () => GameState, set: WhipSet, x: number, y: number, selfAlive: boolean,
+  struck?: { ids: readonly string[]; vx: number; vy: number },
+): number => {
   const sw = get().whipSwing;
   if (!sw) return 0;
   const id = sw.enemyId;
@@ -3256,11 +3298,40 @@ const landWhipThrow = (get: () => GameState, set: WhipSet, x: number, y: number,
     g0.spawnMeleeBlood(x, y, Math.max(56, e0.width * 1.6));
   }
   const r = whipThrowExplode(get, x, y, selfAlive && e0 ? id : null);
+  if (struck) whipThrowPunisher(get, set, struck.ids, struck.vx, struck.vy);
   whipLandFx(get, x, y + (e0 ? e0.height / 2 - 2 : 0));
   // 技の行は、プレイヤーの入力(近接・フリック)で投げた敵が生きたまま着いた時だけ(自動の投げ・途中で死んで落ちた時は出さない)。
   if (sw.phase === 'thrown' && sw.byInput && selfAlive) notifyTechProc('whipslam'); // 通信の下に技の行
   addWhipCharge(get, set, r.hits);
   return r.killed;
+};
+/**
+ * ★投げた敵が当たった敵へのパニッシャー(社長指示2026-11-25)。パニッシャー所持時だけ。パニッシャーの「巻き込み」と同じ欄を書く=
+ * 一拍その場で止まり(PUNISHER_TWO_BEAT_MS)、二拍目に投げの勢い(vx,vy=当たった瞬間の速さ)で飛び、パニッシャーの近接ダメージを受ける(敵の更新の中の既存の発火)。
+ * 投げた敵は深度0の元=当たった敵は深度1(覚醒は深度1がもう一度元になれる=2連鎖・既存の movers のまま)。爆発の押しより後に書く(同じ勢いで飛ぶ方が勝つ)。
+ * 巻き込まない敵=パニッシャーと同じ(不倒の通常リーパー・死体・空中投げ中)+掴まれている敵。
+ */
+const whipThrowPunisher = (get: () => GameState, set: WhipSet, ids: readonly string[], vx: number, vy: number): void => {
+  const st = get();
+  if (!hasSkill(st.player, 'punisher') || ids.length === 0) return;
+  const now = Date.now();
+  const gameTime = st.gameTime;
+  const idSet = new Set(ids);
+  const contacts: { x: number; y: number }[] = [];
+  set(state => ({
+    enemies: state.enemies.map(v => {
+      if (!idSet.has(v.id) || !(v.health > 0) || isCorpse(v) || v.brThrown || v.whipHeld || (isReaperFamily(v.type) && !isTerminalReaper(v))) return v;
+      contacts.push({ x: v.x + v.width / 2, y: v.y + v.height / 2 });
+      const victimLift = punisherLiftPatch(v, BRC.brawlerLiftClass(v), now + PUNISHER_TWO_BEAT_MS, now, gameTime);
+      return {
+        ...v, ...(victimLift ?? {}),
+        punisherHopped: true, punisherHopDepth: 1,
+        punisherPendingAt: now + PUNISHER_TWO_BEAT_MS, punisherPendingVx: vx, punisherPendingVy: vy,
+        knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + PUNISHER_TWO_BEAT_MS,
+      };
+    }),
+  }));
+  for (const c of contacts) get().spawnBurst(c.x, c.y, '#fca5a5', 6); // 一拍目(接触)の小FX=パニッシャーと同じ
 };
 /** 途中で放す(§8-7・着弾なし): 印を外し、その場に落ちて爆発の浮きと同じ倒れ方(ダメージなし)。 */
 const releaseWhipSwingImpl = (get: () => GameState, set: WhipSet): void => {
@@ -3374,7 +3445,9 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
     // 鞭を外した・瞬間移動=回っていた勢いのまま滑って止まる。死んだ・操作が止まった=その場で放す(場面が切り替わる)。
     if (reason === 'weapon' || reason === 'teleport') { startWhipDrop(get, set); return get().whipSwing ? tickWhipSwingImpl(get, set) : { killed: 0 }; } // 滑りの1歩目もこのフレームで(止まりを出さない)
     if (reason) { releaseWhipSwingImpl(get, set); return { killed: 0 }; }
-    const autoThrow = whipSwingAutoThrowDue(sw, gt);
+    // 気絶したボスは気絶が明けたら投げる(掴んだ時の気絶の終わりと今の気絶の遅い方=掴んでいる間に気絶が延びれば延びる)。
+    const stunEnd = sw.bossStunEndAt !== undefined ? (whipBossStunEnd(e, gt, sw.bossStunEndAt) ?? sw.bossStunEndAt) : undefined;
+    const autoThrow = whipSwingAutoThrowDue(sw, gt, stunEnd);
     const t = gt - sw.startAt;
     const minR = sw.radius * WHIP_SWING_MIN_RADIUS_FRAC;
     const freeAt = (tt: number): { want: number; free: number; ca: number; sa: number } => {
@@ -3465,7 +3538,14 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
   const step = whipThrowStep(fromX, fromY, ux, uy, d0, d1, maxDist,
     (x, y) => { const b = { x: x - e.width / 2, y: y - e.height / 2, width: e.width, height: e.height }; return others.some(o => boxesOverlap(b, o)); },
     (x, y) => !brawlerRectFree(get, x - e.width / 2, y - e.height / 2, e.width, e.height));
-  if (step.kind) return { killed: landWhipThrow(get, set, step.x, step.y, true) };
+  if (step.kind) {
+    // ★パニッシャー(社長指示2026-11-25「パニッシャーも効かせて」): 投げた敵が当たった敵(着弾点で体の箱が重なる敵)は、爆発の後に同じ勢いで飛び近接ダメージを受ける。
+    const hitIds = step.kind === 'enemy'
+      ? others.filter(o => boxesOverlap({ x: step.x - e.width / 2, y: step.y - e.height / 2, width: e.width, height: e.height }, o)).map(o => o.id)
+      : [];
+    const spd = whipThrowSpeed(gt - (sw.throwAt ?? gt), v0, maxDist);
+    return { killed: landWhipThrow(get, set, step.x, step.y, true, hitIds.length > 0 ? { ids: hitIds, vx: ux * spd, vy: uy * spd } : undefined) };
+  }
   set(state => ({
     whipSwing: { ...sw, cx: step.x, cy: step.y, dNow: d1 },
     enemies: state.enemies.map(en => (en.id !== e.id ? en : {
@@ -11233,7 +11313,7 @@ interface GameState {
   /**
    * opts: ghostId=守護霊の鞭(主語)・dir=振りの向き(未指定=主語の lastDirection)・strikeMult=敵への打撃だけの上乗せ(未指定=本人の縮地の上乗せ/守護霊は1)。
    */
-  performWhipStrike: (targetIds: string[], opts?: { ghostId?: string; dir?: { x: number; y: number }; strikeMult?: number }) => { hit: boolean; finish: boolean; killed: number; hits: number; hitIds?: string[] };
+  performWhipStrike: (targetIds: string[], opts?: { ghostId?: string; dir?: { x: number; y: number }; strikeMult?: number; tipReach?: number }) => { hit: boolean; finish: boolean; killed: number; hits: number; hitIds?: string[] };
   /**
    * ★鞭の振り回し・投げ(research/WHIP_FOLLOWUP.md §8): 毎フレーム(敵の更新の後)。回す位置・回して当てる・自動の投げ・飛ぶ・着弾・途中で放す。
    * 振り回しが無ければ何もしない(実質ゼロコスト)。戻り値=倒した数(倒した音は呼び手)。
@@ -14356,15 +14436,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       // 通常の鞭スイープ: 進行方向の細長いカプセルに掛かる敵を選択(刀ダッシュと同じ幾何・守護霊の鞭も同じ1本)。
       const targetIds = whipSweepTargets(enemies, pcx, pcy, ux, uy, reach);
-      const res = targetIds.length > 0 ? get().performWhipStrike(targetIds, { dir: { x: ux, y: uy } }) : { hit: false, finish: false, killed: 0, hits: 0, hitIds: [] as string[] };
+      // ★気絶したボスは掴める(社長指示2026-11-25): 打つ前の気絶の終わりを控える(気絶中のボスへの一撃=5倍は気絶を解くので、打った時に気絶していれば掴める)。
+      const preStunEnd = new Map<string, number>();
+      for (const e of enemies) {
+        if (!targetIds.includes(e.id) || BRC.brawlerEnemyClass(e) !== 'boss') continue;
+        const end = whipBossStunEnd(e, gameTime);
+        if (end !== null) preStunEnd.set(e.id, end);
+      }
+      // tipReach=先端でボスを打った時の大ダメージ(プレイヤー本人の振りだけ・社長指示2026-11-25)。
+      const res = targetIds.length > 0 ? get().performWhipStrike(targetIds, { dir: { x: ux, y: uy }, tipReach: reach }) : { hit: false, finish: false, killed: 0, hits: 0, hitIds: [] as string[] };
       if (res.hits > 0) set({ whipHitFxAt: Date.now() }); // 鞭命中音SEのトリガ
-      // ★絡め取り(research/WHIP_FOLLOWUP.md §8-1・§8-7): 当たった中でプレイヤーに一番近い、生き残った掴める1体(雑魚・強個体)。ボス級・1撃目で死んだ敵は掴まない。
+      // ★絡め取り(research/WHIP_FOLLOWUP.md §8-1・§8-7): 当たった中でプレイヤーに一番近い、生き残った掴める1体(雑魚・強個体・気絶しているボス)。1撃目で死んだ敵は掴まない。
       // 既に1体掴んでいる(振り回し中・投げて飛んでいる)間は新しく掴まない。掴まなかった敵は今どおりダメージと押し。
       if (!get().whipSwing && (res.hitIds?.length ?? 0) > 0) {
         const hitSet = new Set(res.hitIds);
+        const gt1 = get().gameTime;
         const gid = pickWhipGrabTarget(get().enemies.filter(e => hitSet.has(e.id))
-          .map(e => ({ id: e.id, dist: enemyMeleeDist(pcx, pcy, e), grabbable: whipGrabbable(e), alive: e.health > 0 && !isCorpse(e) })));
-        if (gid) startWhipSwing(get, set, gid, ux, uy, reach);
+          .map(e => ({ id: e.id, dist: enemyMeleeDist(pcx, pcy, e), grabbable: whipGrabbable(e, gt1, preStunEnd.get(e.id)), alive: e.health > 0 && !isCorpse(e) })));
+        if (gid) startWhipSwing(get, set, gid, ux, uy, reach, preStunEnd.get(gid));
       }
       if (huntUse) set(state => ({ player: { ...state.player, ...HUNTING_CONSUME_PATCH } }));
       // チャージ加算(空振りは0)。閾値到達でハリケーン待機。
@@ -16391,6 +16480,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const whipBossFatalHits: { x: number; y: number; labelY: number; w: number; h: number }[] = []; // w/h=killFx流用(v0.25.3703)
     let whipEliteFatalKill = false; // ★紫中の強個体の即死=致命(v0.25.4389・通常近接の eliteFatalKill と同義)
     const whipHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): 鞭のヒット敵ID(発動判定/対象選定用)
+    // ★先端でボスを打った(社長指示2026-11-25「鞭はボスに先端を当てると大ダメージで」)。プレイヤー本人の振り(tipReach を渡した時)だけ。
+    // 先端=根元(プレイヤーの中心)から敵の当たりの箱の一番近い点までが届く距離の外側25%。絵を出す位置=先端を箱の中へ寄せた点。
+    const tipReach = !isGhost ? opts?.tipReach : undefined;
+    const tipHitAt: { x: number; y: number }[] = [];
     // research/GHOST_BOSS.md v6: 幻影に**有効打**が入った時の打刻(同時1体なので1枠でよい)。
     let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
     let hits = 0;
@@ -16483,8 +16576,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy, !isGhost);
       const whipScanMult = enemy.id === whipScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'whip') : 1;
       if (whipScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
+      // 先端でボス区分を打った=×2.5(幻影は対人の規則があるので外す)。気絶中の5倍・致命は上の枝(ここへ来ない)=重ねない。
+      const tipHit = tipReach !== undefined && BRC.brawlerEnemyClass(enemy) === 'boss' && !isGuardianPhantom(enemy.type)
+        && isWhipTipHit(enemyMeleeDist(pcx, pcy, enemy), tipReach);
       let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * whipScanMult * (isGhost ? 1 : meleeAirMult(enemy, now)) // 空中の敵への倍率(§16・守護霊は対象外=刀と同じ)
-        * whipMmVs; // 熟練度: 鞭=whip(幻影には乗せない)
+        * whipMmVs // 熟練度: 鞭=whip(幻影には乗せない)
+        * (tipHit ? WHIP_TIP_BOSS_MULT : 1);
+      if (tipHit) {
+        const rr = enemyRangeRect(enemy);
+        const tx = pcx + (ld.x / lmag) * (tipReach ?? 0), ty = pcy + (ld.y / lmag) * (tipReach ?? 0);
+        tipHitAt.push({ x: Math.max(rr.x, Math.min(tx, rr.x + rr.width)), y: Math.max(rr.y, Math.min(ty, rr.y + rr.height)) - idolAirLift(enemy) });
+      }
       // ★SAME_ARENA §9(検収監査 重大③): 鞭にも致命(×5+最大HP25%)とmelee削り(site1と同型・鞭はプレイヤー本人のみの武器)。
       let pvpMeleePatch: Partial<Enemy> = {};
       if (isGuardianPhantom(enemy.type) && !isGhost) {
@@ -16501,7 +16603,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             : { pvpPosture: ps };
         }
       }
-      damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit, hp: enemy.health, scan: whipScanMult !== 1 });
+      damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: crit || tipHit, hp: enemy.health, scan: whipScanMult !== 1 }); // 先端の数字は会心の色
       whipMasteryHits.push({ enemy, amount: dmg });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = enemyHealthAfterHit(enemy, dmg);
@@ -16593,6 +16695,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const s of slashAt) { get().spawnMeleeBlood(s.x, s.y); get().spawnMeleeHit(s.x, s.y); } // v0.25.4334: 鞭も同じ
     for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit, { scanMarked: !!c.scan });
     for (const c of critStunAt) { get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260); get().spawnCritImpact(c.x, c.y); } // 鞭クリも揺れ+光源(社長指示2026-09-13)
+    // ★先端でボスを打った(派手さの絵=判定より大きく・判定なし・赤は使わない): 先端のパチンより強い白金の閃きと輪・弾け・短い止め・重い命中音。
+    if (tipHitAt.length > 0) spawnWhipTipBossFx(get, tipHitAt, ld.x / lmag, ld.y / lmag);
     // §9.4(v0.25.2502): 鞭クリの紫完全気絶FX(ナイフ4923/刀5573の紫リング+STUN!と同じ作法)。
     for (const p of whipBossFullStunHits) {
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
@@ -24140,7 +24244,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             ? { ...cleared0, punisherHopped: false, punisherHopDepth: undefined } : cleared0;
           // KILL吹き飛び(死体・§26-1「死体自身は巻き込みの被害者にはならない」): bKbActive経由で
           // 飛行中は既に除外されるが、KB終了直後〜期限除去までの1フレームの隙間も塞ぐため明示ガード。
-          if ((isReaperFamily(cleared.type) && !isTerminalReaper(cleared)) || bKbActive || isCorpse(cleared) || cleared.brThrown) return cleared; // 空中投げで飛んでいる敵は巻き込まない(research/BRAWLER.md §34-3) // 不倒の通常リーパーは除外。深奥チェイサーは巻き込み対象(ボス級)。KB中(被弾側/連鎖元)は新規付与しない
+          if ((isReaperFamily(cleared.type) && !isTerminalReaper(cleared)) || bKbActive || isCorpse(cleared) || cleared.brThrown || cleared.whipHeld) return cleared; // 空中投げで飛んでいる敵は巻き込まない(research/BRAWLER.md §34-3) // 不倒の通常リーパーは除外。深奥チェイサーは巻き込み対象(ボス級)。KB中(被弾側/連鎖元)は新規付与しない
           for (const a of movers) {
             if (a.id === cleared.id) continue;
             // v0.25.3260 社長指示「パニッシャー時のノックバック当たり判定は広めに」: 飛んでいる敵の

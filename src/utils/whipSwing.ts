@@ -91,6 +91,8 @@ export interface WhipSwingState {
   byInput?: boolean;
   /** 回し終えた周の数(1周ごとの音を鳴らした所まで)。 */
   lap?: number;
+  /** 気絶したボスを掴んだ時だけ: 掴んだ時の気絶の終わり(gameTime)。気絶が明けたら自動で投げる。 */
+  bossStunEndAt?: number;
 }
 
 /** 掴む相手の候補(当たった敵1体ぶん)。 */
@@ -203,9 +205,32 @@ export const whipSwingClampRadius = (
 export const whipSwingMaxMs = (slasherLv: number): number =>
   WHIP_SWING_MAX_MS + WHIP_SWING_SLASHER_MS_PER_LV * Math.max(0, Math.min(3, Math.floor(slasherLv || 0)));
 
-/** 自動で投げる時刻が来たか。 */
-export const whipSwingAutoThrowDue = (s: Pick<WhipSwingState, 'startAt' | 'maxMs' | 'phase'>, now: number): boolean =>
-  s.phase === 'swing' && now - s.startAt >= s.maxMs;
+/**
+ * 自動で投げる時刻が来たか。最長の時間に届いた時と、気絶したボスを掴んでいる時はその気絶が明けた時(社長指示2026-11-25「気絶してるボスは掴める」)。
+ * stunEnd=今の気絶の終わり(掴んだ時の記録 bossStunEndAt と、今の気絶の遅い方・呼び手が渡す)。undefined=ボスではない。
+ */
+export const whipSwingAutoThrowDue = (s: Pick<WhipSwingState, 'startAt' | 'maxMs' | 'phase'>, now: number, stunEnd?: number): boolean =>
+  s.phase === 'swing' && (now - s.startAt >= s.maxMs || (stunEnd !== undefined && now >= stunEnd));
+
+// ---- ★ボスへの鞭(社長指示2026-11-25「鞭はボスに先端を当てると大ダメージで。また、気絶してるボスは掴める」) ----
+/** 先端の範囲: 根元からの距離が届く距離のこの割合以上(=外側25%)。 */
+export const WHIP_TIP_FRAC = 0.75;
+/** 先端でボス区分を打った時のダメージの倍率(叩き台)。 */
+export const WHIP_TIP_BOSS_MULT = 2.5;
+/** 先端で当たったか。dist=根元(プレイヤーの中心)から敵の当たりの箱の一番近い点までの距離・reach=この振りの届く距離。 */
+export const isWhipTipHit = (dist: number, reach: number): boolean => reach > 0 && dist >= reach * WHIP_TIP_FRAC;
+/**
+ * ボスの気絶の終わり(gameTime)。気絶=stunUntil(クリ・致命の後の止め)と bossFullStunUntil(紫=体勢の崩れ)。どちらも止まっていない(半減の遅さ等は含めない)。
+ * 今より後の遅い方。extra=打つ前に記録した気絶の終わり(打撃の5倍で気絶が解けても、打った時に気絶していれば掴める)。止まっていなければ null。
+ */
+export const whipBossStunEnd = (e: { stunUntil?: number; bossFullStunUntil?: number }, gameTime: number, extra?: number): number | null => {
+  const end = Math.max(e.stunUntil ?? -Infinity, e.bossFullStunUntil ?? -Infinity, extra ?? -Infinity);
+  return end > gameTime ? end : null;
+};
+/** 掴んだ体の大きさで回す半径の下限(px): 体の箱の長い方の半分+プレイヤーの体の半分+隙間。大きいボスをプレイヤーの上に重ねて回さない。 */
+export const WHIP_SWING_BODY_GAP_PX = 8;
+export const whipSwingBodyRadius = (w: number, h: number, pw: number, ph: number): number =>
+  Math.max(w, h) / 2 + Math.max(pw, ph) / 2 + WHIP_SWING_BODY_GAP_PX;
 
 /** 接線の向き(回る向き)。角度 a・向き dir。 */
 export const whipSwingTangent = (a: number, dir: 1 | -1): { x: number; y: number } => ({ x: -Math.sin(a) * dir, y: Math.cos(a) * dir });
