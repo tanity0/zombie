@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.5807 — 救急鞄: 空の鞄の爆発で中身を補充(条件の立ち上がりで再び払い出す)【2026-11-25 20:19】
+- 社長指示「救急鞄は爆発の後、補充される様にしよう」+裁定「条件が新しく起きた時だけ」(連発の穴=弾0のまま拾わないと0.3秒周期で払い出し→投擲が回る/Lv1守護霊の空鞄連投、への対処)。
+- firstAidKit.ts: refillFirstAidKit(owner)・createGhostFirstAidKitState、状態に armed*(条件が一度解けたら true)と anyDispensed。補充後は armed 全 false=条件が一度解けてから出す。出撃開始時は今どおり即。anyDispensed=false の空鞄は投げない(Lv1守護霊は開始時の空鞄投げも無くなった)。
+- gameStore.tickThrownBags: 爆発のフレームで持ち主(プレイヤー/ownerGhostId の守護霊)の鞄を補充。狙った敵が消えても記録地点で爆発→必ず補充。ThrownBag.ownerGhostId 追加。useGameLoop: armed の前進を書く(変化時のみ)・守護霊の投擲で id を渡す。
+- 数値・演出・爆発・ボマー散布は不変。補充の瞬間の新しいエフェクト/SEは無し。
+- テスト: firstAidKit.test.ts(立ち上がり5条件+回復/爆弾/Lv2守護霊)・firstAidKitRefill.store.test.ts(5秒回して払い出し銃種ごと1回・投擲1回/Lv1守護霊0回)。typecheck / eslint / 循環import / vitest 55件合格。
+- 自己点検: 初心者ゾーン・緩の場面に新しい発火は無い(既存サブの再使用のみ)。
+
 ## v0.25.5806 — 地面に刺さる・落ちる絵がカメラ移動でずれる(新方式)を4系統直す【2026-11-25 20:03】
 - 社長報告「宇宙飛行群の振って来る残骸が動くとズレる。他の地面に刺さる系も全部ズレるんじゃない？」。原因=絵だけ world 座標のまま置き、土・影(投影済み)と基準が違っていた。
 - 直したもの(pixiScene.ts のみ・描画のみ): syncAstroScatter(落下中/刺さった絵/根元の光と煙)、syncAstroThrowsBody(刺さった残骸とえぐれた土・旗・花束)、syncSignalBombs(落下・投影分岐が無かった)、syncSkadiHazards(刃・羽根)。判定・赤い予告・時刻・?proj=0 経路は不変。

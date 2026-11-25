@@ -317,18 +317,11 @@ import { rollBomberScatterAndNotify, notifySkillProc, spawnSkillProcFx, warlordA
 import { installScarecrowSway } from '../store/scarecrowSway';
 // 案山子(変異体対策室の練習の的)の揺れの向き・始まりを被弾の瞬間に store へ書く購読(1回だけ・練習ラン以外は1行目で抜ける)。
 installScarecrowSway();
-import { computeFirstAidKitTick, isFirstAidKitEmpty, createFirstAidKitState, type FirstAidKitAmmoType, type FirstAidKitState } from '../utils/firstAidKit';
+import { computeFirstAidKitTick, isFirstAidKitEmpty, createGhostFirstAidKitState, type FirstAidKitAmmoType, type FirstAidKitState } from '../utils/firstAidKit';
 
-// GHOST-SUBS-FINAL(v0.25.2563): 守護霊の救急鞄の初期在庫。**型はプレイヤーと同じ**FirstAidKitStateで、
-// 弾薬(除外4=守護霊は弾薬を消費しない)と爆弾(§2.11追補3=世界へアイテムを撒かない)は
-// 「最初から払い出し済み」にしてある=残る中身は自分への回復1つ(裁定「自前在庫1」)。
-const GHOST_FIRST_AID_KIT_INITIAL: FirstAidKitState = {
-  ...createFirstAidKitState(),
-  ammoHandgunDispensed: true,
-  ammoShotgunDispensed: true,
-  ammoRifleDispensed: true,
-  bombDispensed: true,
-};
+// GHOST-SUBS-FINAL(v0.25.2563): 守護霊の救急鞄の初期在庫(中身は回復1つ)。定義は utils/firstAidKit.ts
+// (爆発時の補充 refillFirstAidKit('ghost') と同じ値を1箇所で持つため)。
+const GHOST_FIRST_AID_KIT_INITIAL: FirstAidKitState = createGhostFirstAidKitState();
 import { safeThrowDirection } from '../utils/throwDir';
 import {
   createEnemyProjectile,
@@ -825,7 +818,7 @@ const TURRET_LAUNCHER_DAMAGE = 44;                      // タレットのグレ
 const TURRET_EXPLOSION_DAMAGE = 36;                     // 消滅時の小爆発・威力。TODO: 実機調整
 // 救急鞄(first-aid-kit・通常サブウェポン): 中身(既存ammo-*/health/bombピックアップ)の払い出し条件
 // 判定は純関数(src/utils/firstAidKit.ts)。ここは投擲アーク(quick-magazineと同じ流儀)の見た目のみ。
-// 使い切った鞄本体の投擲(着弾で爆発範囲攻撃・社長決定v0.25.1657)は gameStore の thrownBags/tickThrownBags が処理
+// 空になった鞄本体の投擲(着弾で爆発範囲攻撃・社長決定v0.25.1657/爆発で中身を補充・2026-11-25)は gameStore の thrownBags/tickThrownBags が処理
 // (FIRST_AID_KIT_THROW_DAMAGE/KNOCKBACK_MULTはstore側からimport=着弾処理と発生元で値を1箇所に統一)。
 const FIRST_AID_KIT_THROW_DISTANCE = 82;      // TODO(救急鞄): quick-magazineと同値。仮値
 const FIRST_AID_KIT_THROW_MS = 360;           // TODO(救急鞄): quick-magazineと同値。仮値
@@ -12498,8 +12491,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 救急鞄(first-aid-kit): レベルで開放される中身(Lv1=弾薬のみ/Lv2=+回復/Lv3=+爆弾)を、
         // 条件成立時に既存Pickup(ammo-*/health/bomb)として1回ずつ払い出す(quick-magazineと同じ
         // 短い投擲アークで足元付近に投げ、プレイヤーが拾うと既存の収集効果がそのまま適用される)。
-        // 開放中の中身を全て払い出し終えたら、空の鞄を最寄りの敵へ投げる(5ダメージ+ノックバック、
-        // 1ラン1回・使い切り)。判定(何を払い出すか/空になったか)は純関数
+        // 開放中の中身を全て払い出し終えたら、空の鞄を最寄りの敵へ投げる(5ダメージ+ノックバック)。
+        // 投げた鞄が爆発した瞬間に中身は全部補充される(gameStore.tickThrownBags→refillFirstAidKit)。判定(何を払い出すか/空になったか)は純関数
         // computeFirstAidKitTick/isFirstAidKitEmpty(src/utils/firstAidKit.ts)に閉じており、
         // ここはその結果を store(firstAidKitState)へ書き込み、addPickup/damageEnemyを呼ぶだけ。
         if (
@@ -12514,7 +12507,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               .map(w => w.ammoType as FirstAidKitAmmoType)
           ));
           const kitStateNow = useGameStore.getState().firstAidKitState;
-          // G2.6: 入口はオーナー形だが、この種はプレイヤー固定(1ラン1回の使い切り+中身の払い出し条件が
+          // G2.6: 入口はオーナー形だが、この種はプレイヤー固定(鞄の在庫+中身の払い出し条件が
           // プレイヤーの弾薬/HPに結合)。ゴースト対応は★未決の未対応リスト。なお払い出された回復(health)の
           // 拾得は collectPickup の「1つの薬棚」でゴーストにも効く。
           const pcx = ownerCenterX(playerOwner);
@@ -12544,6 +12537,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             onScreenEnemyCount,
             state: kitStateNow,
           });
+          // 払い出しが無くても、補充後の「条件が一度解けた」(立ち上がり待ちの解除)は状態を進める
+          // (社長裁定2026-11-25「条件が新しく起きた時だけ」)。変化が無ければ同一参照=書かない。
+          if (!kitResult.dispense && kitResult.nextState !== kitStateNow) {
+            useGameStore.getState().setFirstAidKitState(kitResult.nextState);
+          }
 
           if (kitResult.dispense) {
             recordSubUse('first-aid-kit'); // M35: CD無しサブの発動計測(払い出し1回=1発動・挙動不変)
@@ -12586,7 +12584,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 実際のダメージ/ノックバック/FX適用は着弾時(gameStore.tickThrownBags)。ここは投擲の
           // 発生(=飛んでいく鞄エンティティの生成)のみ。thrownはこの発生フレームで確定させる
           // (毎フレーム再トリガーしないよう、飛翔中に再度ここへ入らないようにするため)。
-          const kitStateAfterDispense = kitResult.dispense ? kitResult.nextState : kitStateNow;
+          // thrown は鞄の爆発(tickThrownBags)で補充とともに false へ戻る。
+          const kitStateAfterDispense = kitResult.nextState;
           if (!kitStateAfterDispense.thrown && isFirstAidKitEmpty(kitStateAfterDispense, level)) {
             const target = useGameStore.getState().enemies
               .filter(e => !isReaperFamily(e.type) || isTerminalReaper(e))
@@ -12814,6 +12813,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 弾薬(除外4=守護霊は弾薬を消費しない)と爆弾(§2.11追補3=世界へアイテムを撒かない)は
           // 守護霊の鞄には入っていない=**最初から払い出し済み**として初期化する(在庫1=回復のみ)。
           // 使い切ったら空鞄を最寄りの敵へ投げる=プレイヤーと同じ spawnThrownBag/同じダメージ定数。
+          // 爆発した瞬間に守護霊の初期在庫(回復1つ)へ補充される(tickThrownBags が ownerGhostId で戻す)。
           if (ghostOwnsSub('first-aid-kit') && gActor) {
             const lvl = ghostSubLevel('first-aid-kit');
             const kit = gSub.ghostFirstAidKit ?? GHOST_FIRST_AID_KIT_INITIAL;
@@ -12844,7 +12844,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             } else if (r.dispense !== null) {
               patchGhost({ ghostFirstAidKit: r.nextState }); // 到達しない想定(在庫は回復1つ)だが状態は進める
             } else {
-              const after = kit;
+              const after = r.nextState; // 払い出し無し。補充後の立ち上がり待ちが解けていれば armed* だけ進んでいる
               if (!after.thrown && isFirstAidKitEmpty(after, lvl)) {
                 const bagTarget = useGameStore.getState().enemies
                   .filter(e => !isReaperFamily(e.type) || isTerminalReaper(e))
@@ -12856,11 +12856,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     { id: bagTarget.id, x: bagTarget.x + bagTarget.width / 2, y: bagTarget.y + bagTarget.height / 2 },
                     FIRST_AID_KIT_THROW_DAMAGE,
                     guardianMasteryMult(gActor, 'first-aid-kit'), // 熟練度: 守護霊の鞄=記録の値・貯めない
+                    gSub.id, // 爆発時の補充先=この守護霊の鞄
                   );
                   patchGhost({ ghostFirstAidKit: { ...after, thrown: true } });
                 }
-              } else if (gSub.ghostFirstAidKit === undefined) {
-                patchGhost({ ghostFirstAidKit: kit }); // 初期在庫を1回だけ書き込む
+              } else if (gSub.ghostFirstAidKit === undefined || after !== kit) {
+                patchGhost({ ghostFirstAidKit: after }); // 初期在庫を1回だけ書き込む/立ち上がり待ちの解除を反映
               }
             }
           }

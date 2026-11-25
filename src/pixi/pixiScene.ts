@@ -5107,7 +5107,7 @@ export class PixiScene {
     body: Sprite; knife: Sprite; slash: Sprite; trail: Sprite;
     shadowFootY: number; shadowHeight: number; shadowAlpha: number; shadowFlip: boolean;
   }>();
-  // 救急鞄(first-aid-kit): 空鞄投擲(一過性・1ラン1回=同時に生きるのは常に0-1体)。per-id プール。
+  // 救急鞄(first-aid-kit): 空鞄投擲(一過性・持ち主ごとに同時0-1体=飛んでいる間は次を投げない)。per-id プール。
   private thrownBagViews = new Map<string, Sprite>();
   private breakableProps = new Map<string, PropView>();
   private playerView: ActorView | null = null;
@@ -26378,8 +26378,8 @@ export class PixiScene {
   // 救急鞄(first-aid-kit): 空鞄投擲(一過性)。プレイヤー(fromX/Y)→対象敵(targetEnemyIdが生存中なら
   // その現在地・消えていればtargetX/Yへのフォールバック)への直線飛行をスプライト1枚で描くだけの
   // 演出(当たり判定なし)。ダメージ適用/寿命はsim側(gameStore.tickThrownBags)が担い、ここは
-  // thrownBagsを読んで位置を補間するだけ(CLAUDE.md「PixiJSは描画のみ」)。1ラン1回の使い切りで
-  // 同時に生きるのは常に0-1体なのでper-idプールで十分軽い(強glowなし・pooled sprite 1枚)。
+  // thrownBagsを読んで位置を補間するだけ(CLAUDE.md「PixiJSは描画のみ」)。鞄は爆発で補充されて
+  // 再び投げられるが、飛んでいる間は空のまま次を投げないので持ち主ごとに同時0-1体なのでper-idプールで十分軽い(強glowなし・pooled sprite 1枚)。
   private syncThrownBags(bags: ThrownBag[], enemies: Enemy[], gameTime: number) {
     const seen = new Set<string>();
     for (const b of bags) {

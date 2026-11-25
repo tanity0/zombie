@@ -2129,7 +2129,7 @@ export interface Summon {
   // ---- GHOST-SUBS-FINAL(v0.25.2563・§2.11追補「状態は主語ごと」): 構造ズレ組サブの自前状態 ----
   // どれも**プレイヤーが持っているのと同じ型**(store側のフィールドと1対1)。ゴースト専用の別モデルは作らない。
   ghostMolotovCycle?: MolotovCycleState | null; // 火炎瓶の投下サイクル(store.molotovCycle と同型)
-  ghostFirstAidKit?: FirstAidKitState;          // 救急鞄の在庫(store.firstAidKitState と同型・1ラン使い切り)
+  ghostFirstAidKit?: FirstAidKitState;          // 救急鞄の在庫(store.firstAidKitState と同型・投げた鞄の爆発で補充)
   ghostSupportSniperCdMs?: number;              // 援護射撃の専用タイマー(store.supportSniperCdMs と同型・移動中のみ進む)
   actorCounterMasterBuffUntil?: number;         // カウンターマスター覚醒(Lv3)の+30%の締め切り(gameTime)。守護霊自身のカウンター成立で付く(player.counterMasterBuffUntil と同じ意味・utils/actorCounterMaster)
   ghostCounterMasterBlowAt?: number;            // カウンターマスターの吹き飛ばしを最後に出した gameTime(同じフレームに何度成立しても1回=プレイヤーと同じ)
@@ -2431,6 +2431,8 @@ export interface ThrownBag {
   struck: boolean;         // 着弾ダメージを適用済みか(tickThrownBagsが二重適用を防ぐためのフラグ)
   /** 守護霊が投げた鞄の熟練度の倍率(投げた時点の守護霊の `first-aid-kit`)。あれば貯めない(`none`)。本人の鞄は省く。 */
   masteryMult?: number;
+  /** 投げた守護霊の id。爆発時の補充先(省略=プレイヤーの鞄=store.firstAidKitState)。 */
+  ownerGhostId?: string;
 }
 
 // 火炎瓶(molotov)サブウェポンが足元に設置する地面の火だまり。MOLOTOV_FIRE_LIFETIME_MS(3秒)で消滅。

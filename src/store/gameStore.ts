@@ -60,7 +60,7 @@ import {
   iceShotSlowParams, ICE_SHOT_BOSS_EFFECT_MULT, // v0.25.3300 血の履帯覚醒(鈍足)=アイスLv1相当
   executionShockParams, blastKbFalloff,
 } from '../utils/skillEffectsB7';
-import { FirstAidKitState, createFirstAidKitState } from '../utils/firstAidKit';
+import { FirstAidKitState, createFirstAidKitState, refillFirstAidKit } from '../utils/firstAidKit';
 import { SensorMineState, placeSensorMine, SENSOR_MINE_CAP_BY_LEVEL, SENSOR_MINE_CHARGE_COOLDOWN_MS, sensorMineChargesReady, consumeSensorMineCharge } from '../utils/sensorMine';
 import { SupportSniperNpcState, SUPPORT_SNIPER_CD_MS_BY_LEVEL } from '../utils/supportSniper';
 import { FlareGunFlare, activeFlareTargets, FLARE_GUN_CD_MS_BY_LEVEL, FLARE_GUN_FLIGHT_MS, FLARE_GUN_DURATION_MS } from '../utils/flareGun';
@@ -10984,7 +10984,7 @@ interface GameState {
   setAcrasielSpears: (spears: AcrasielSpear[]) => void;         // §6.28-19: 槍配列を差し替え(tickAcrasielSpearsが起爆消化後に反映)
 
   // 救急鞄(first-aid-kit)サブウェポン。中身(弾薬/回復/爆弾)の払い出し済みフラグ+鞄投擲済みフラグ
-  // (1ラン限り)。判定自体は src/utils/firstAidKit.ts(純関数)、ここは状態の保持のみ。
+  // (投げた鞄の爆発で補充=tickThrownBags)。判定自体は src/utils/firstAidKit.ts(純関数)、ここは状態の保持のみ。
   firstAidKitState: FirstAidKitState;
   setFirstAidKitState: (state: FirstAidKitState) => void; // useGameLoop が computeFirstAidKitTick の結果を反映するだけ
 
@@ -10995,8 +10995,8 @@ interface GameState {
 
   // 救急鞄(first-aid-kit)の空鞄投擲。判定(誰に投げるか/ダメージ量)は useGameLoop の
   // isFirstAidKitEmpty ブロックが決め、ここは飛行中のエンティティの生成・着弾処理のみ担う。
-  spawnThrownBag: (fromX: number, fromY: number, target: { id: string; x: number; y: number }, damage: number, masteryMult?: number) => void; // masteryMult: 守護霊が投げた鞄の熟練度の倍率(本人は省く)
-  tickThrownBags: () => void; // 毎フレーム: 飛行完了フレームでダメージ+ノックバック+FX適用(必中) + 寿命切れ回収
+  spawnThrownBag: (fromX: number, fromY: number, target: { id: string; x: number; y: number }, damage: number, masteryMult?: number, ownerGhostId?: string) => void; // masteryMult: 守護霊が投げた鞄の熟練度の倍率(本人は省く) / ownerGhostId: 守護霊の鞄の補充先(本人は省く)
+  tickThrownBags: () => void; // 毎フレーム: 飛行完了フレームでダメージ+ノックバック+FX適用(必中)+持ち主の鞄を補充 + 寿命切れ回収
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
@@ -15723,7 +15723,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 救急鞄(first-aid-kit): 中身を払い出し切った後、鞄本体を最寄りの敵へ投げる一過性演出
   // (rescueAllyと同じ構造)。生成のみ(発動判定/対象選定はuseGameLoop側)。描画はpixiScene側が
   // thrownBagsを直読みして飛翔位置を補間する。
-  spawnThrownBag: (fromX, fromY, target, damage, masteryMult) => {
+  spawnThrownBag: (fromX, fromY, target, damage, masteryMult, ownerGhostId) => {
     set(state => ({
       thrownBags: [...state.thrownBags, {
         id: `thrown-bag-${thrownBagSeq++}`,
@@ -15734,6 +15734,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         spawnedAt: state.gameTime,
         struck: false,
         ...(masteryMult !== undefined ? { masteryMult } : {}),
+        ...(ownerGhostId !== undefined ? { ownerGhostId } : {}),
       }],
     }));
   },
@@ -15743,6 +15744,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   // と異なり離脱フェーズが無い一方通行の投擲なので、寿命=飛行時間そのもの。
   // 対象が既に消えていれば(着弾前に他の要因で死亡/画面外recycle等)ダメージ適用をスキップするだけ
   // (演出自体は最後まで再生=既に決めたtarget座標へ向かうだけなので違和感が無い)。
+  // 爆発は対象の生死にかかわらず必ず1回起きる(=着弾で終わる経路はこの1本だけ)ので、持ち主の鞄の
+  // 補充(社長指示2026-11-25「救急鞄は爆発の後、補充される様にしよう」)もここで必ず1回行う。
   tickThrownBags: () => {
     const { thrownBags, gameTime } = get();
     if (thrownBags.length === 0) return;
@@ -15752,6 +15755,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       set({ thrownBags: alive });
     }
     for (const b of toStrike) {
+      // 爆発=即補充(待ち時間なし)。守護霊の鞄はその守護霊の在庫へ(居なくなっていれば何もしない)。
+      if (b.ownerGhostId === undefined) {
+        set({ firstAidKitState: refillFirstAidKit('player') });
+      } else {
+        const gid = b.ownerGhostId;
+        set(st => ({
+          summons: st.summons.map(s => s.id === gid ? { ...s, ghostFirstAidKit: refillFirstAidKit('ghost') } : s),
+        }));
+      }
       const target = get().enemies.find(e => e.id === b.targetEnemyId);
       // 社長決定v0.25.1657: 空鞄=爆発範囲攻撃。着弾点中心のAoE(反射神経の反撃爆発に準拠)。
       // 対象が消えていても発生時に記録した対象足元(targetX/Y)で爆発させる(空振りにしない)。
