@@ -956,11 +956,12 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
 }
 @keyframes ds-map-next-ring-in { from { opacity: 0; transform: scale(1.7); } to { opacity: 1; transform: scale(1); } }
 .ds-map-next-lead {
-  transform-box: fill-box;
-  transform-origin: top;
-  animation: ds-map-next-lead-in 560ms cubic-bezier(0.3, 0, 0.2, 1) 420ms both;
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 0;
+  animation: ds-map-next-lead-in 620ms cubic-bezier(0.3, 0, 0.2, 1) 420ms both;
 }
-@keyframes ds-map-next-lead-in { from { opacity: 0; transform: scaleY(0); } to { opacity: 1; transform: scaleY(1); } }
+/* 線は印から出撃の帯へ、道筋に沿って伸びて止まる(折れても形を潰さない=縦の拡大ではなく描き進める)。 */
+@keyframes ds-map-next-lead-in { from { opacity: 0; stroke-dashoffset: 1; } 15% { opacity: 1; } to { opacity: 1; stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) {
   .ds-map-dest, .ds-map-next-ring, .ds-map-next-lead { animation: none; }
 }
