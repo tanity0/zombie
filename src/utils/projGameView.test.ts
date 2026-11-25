@@ -7,7 +7,7 @@ import {
 } from './perspectiveProjection';
 import {
   projFrameBase, projGameFrame, projGameViewContains, projGameViewBands, projGameViewRect, projGameEdgePoint, projGameBoxOnScreen,
-  projGameZoomPlacement, projGameVisibleRows, projGameRowSpan, projGameSpawnRect, projGameRecycleRect, projFadeInAlpha, projFadeInBrightness, PROJ_FADE_IN_DARK, PROJ_FADE_MS,
+  projAttentionCarries, projGameZoomPlacement, projGameVisibleRows, projGameRowSpan, projGameSpawnRect, projGameRecycleRect, projFadeInAlpha, projFadeInBrightness, PROJ_FADE_IN_DARK, PROJ_FADE_MS,
   PROJ_GAME_OVERSCAN, PROJ_REF_PHONE_H, PROJ_REF_PHONE_W, PROJ_SPAWN_LONG_EXTRA_PX, type ProjFrameBaseParams,
 } from './projGameView';
 import { horizonForestFootLocalY, horizonFadeAlphaAt, horizonForestHeightFor, horizonForestYFor, type HorizonForestInput } from './horizonForestLine';
@@ -313,5 +313,35 @@ describe('旗 false の枝(?proj=0)は今の関数', () => {
     const mod = await import('./projGameView');
     expect(mod.getProjGameView()).toBeNull();
     expect(isPointInZoomedViewport(10, 10, { x: 0, y: 0 }, { width: 100, height: 100 }, 1)).toBe(true);
+  });
+});
+
+describe('アテンションで基準点を運ぶ場面(projAttentionCarries・研究所の素のアテンション)', () => {
+  it('等倍に見せるアテンションは全場面・研究所は素のアテンションも運ぶ・屋外/洋館/屋内の素のアテンションは今のまま', () => {
+    for (const sc of ['outdoor', 'lab', 'corridor', 'indoor'] as const) expect(projAttentionCarries(sc, true)).toBe(true);
+    expect(projAttentionCarries('lab', false)).toBe(true);
+    expect(projAttentionCarries('outdoor', false)).toBe(false);
+    expect(projAttentionCarries('corridor', false)).toBe(false);
+    expect(projAttentionCarries('indoor', false)).toBe(false);
+    expect(projAttentionCarries(null, false)).toBe(false);
+  });
+
+  it('研究所(下げ量0)でカメラが注目点を画面の0.6の行へ置いた時: 運べば注目点が等倍・運ばないと手前で拡大される(変異塊が消えた形)', () => {
+    const sc = { W: 405, H: 720 };
+    const farH = farBackdropHeightFor(sc.H);
+    const attY = 1000;
+    const camY = attY - sc.H * 0.6; // useGameLoop のアテンションのカメラ(ATTENTION_FOCUS_Y_FRAC=0.6)
+    const params = (att: { y: number; env: number } | null): ProjFrameBaseParams => ({
+      persp: P, camX: 0, camY, screenW: sc.W, screenH: sc.H, farH, viewH: sc.H, playerH: PH,
+      playerFootY: attY + 400, camZoom: 1, camDown: 0.08, downFracAt: () => 0, zref: 2, near: true, att,
+      farStart: 1200, farEnd: 1500, overscan: PROJ_GAME_OVERSCAN,
+    });
+    const sAt = (att: { y: number; env: number } | null) => {
+      const { input } = projFrameBase(null, params(att));
+      const f = makeProjFrame({ ...input, wgScale: 1, wgX: 0, wgY: 0, shakeX: 0, shakeY: 0 });
+      return projectInto(f, 0, attY, makeProjPoint()).s;
+    };
+    expect(sAt({ y: attY, env: 1 })).toBeCloseTo(1, 3);
+    expect(sAt(null)).toBeGreaterThan(1.1);
   });
 });

@@ -18,7 +18,7 @@ import type { RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { VIEW_CORE_W } from '../utils/viewport';
 import { setViewTransform, setViewProjection, getLastCursorScreen, projAimStats } from '../utils/viewTransform';
 import { getHudAvoidRects, slideOutOfRects } from '../utils/hudAvoidRects';
-import { projFrameBase, projGroundPersp, projAimAllowed, projCamDownFracFor, type ProjScene, getProjGameView, projGameViewContains, projPropRegionRect, projFadeInBrightness, type ProjFrameBaseParams } from '../utils/projGameView';
+import { projFrameBase, projGroundPersp, projAimAllowed, projCamDownFracFor, projAttentionCarries, type ProjScene, getProjGameView, projGameViewContains, projPropRegionRect, projFadeInBrightness, type ProjFrameBaseParams } from '../utils/projGameView';
 import { projEnemyFadeAlpha, projGhostAlpha, projBulletGhostAlpha, projGhostOverflow, projGhostDrift, projRecycledNear, PROJ_GHOST_DRIFT_TAU_MS, PROJ_BULLET_GHOST_DRIFT_TAU_MS, type ProjRecycleGhost, type ProjBulletGhost } from '../utils/projSpawnFade'; // ?proj=1 段階6(★#36・★#37) // 投影の組み立て(§3-9d=ゲーム側と1本)
 import { HORIZON_FOREST_UP_BY_STAGE, HORIZON_ACTOR_HIDE_OFFSET_PX, horizonForestHeightFor, horizonForestYFor, type HorizonForestInput } from '../utils/horizonForestLine'; // 森1の配置(§3-9d=ゲーム側と1本)
 import {
@@ -10242,10 +10242,13 @@ export class PixiScene {
   /** 計器: このフレームの updateProjFrame より前に projGroundFrameNow が作り直した表と時間(updateProjFrame が数えて空にする)。 */
   private projTablePre: { ms: number; built: ProjTable | null } = { ms: 0, built: null };
 
-  /** 投影の組み立ての入力(utils/projGameView.projFrameBase・ゲーム側と同じ式)。アテンション(zoomToUnity)は今の depthRefY と同じ包絡線(§1-6)。 */
+  /**
+   * 投影の組み立ての入力(utils/projGameView.projFrameBase・ゲーム側と同じ式)。アテンション(zoomToUnity)は今の depthRefY と同じ包絡線(§1-6)。
+   * 研究所は素のアテンションも運ぶ(projAttentionCarries: 研究所の基準行と注目点の行が 0.1 画面ずれ、変異塊が手前のフェードで消えていた)。
+   */
   private projFrameBaseParams(s: ReturnType<typeof useGameStore.getState>, farH: number, realNow: number): ProjFrameBaseParams {
     let att: { y: number; env: number } | null = null;
-    if (s.attention?.zoomToUnity) {
+    if (s.attention && projAttentionCarries(this.projSceneOf(s), !!s.attention.zoomToUnity)) {
       const a = s.attention;
       const outStart = ATTENTION_IN_MS + (a.holdMs ?? ATTENTION_HOLD_MS) + (a.cutinMs ?? 0);
       att = { y: a.y, env: attentionZoomEnvelope(realNow - a.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS) };
@@ -16526,7 +16529,14 @@ export class PixiScene {
       fc.from = cur; fc.to = want; fc.at = now;
     }
     const face = this.crawlerFaceNow(now);
-    let alpha = this.projLooseFade(c.x, bf.y); // ?proj=1: 投影後の Y の地平線×手前のフェード(?proj=0 は今の式そのもの)
+    // ?proj=0 は今の式そのもの(足元の地平線×手前のフェード)。
+    // ?proj=1: 地平線フェードは足元の投影後の Y、手前のフェードは ?proj=0 と同じ world の足元で引く(濃さを ?proj=0 に揃える)。
+    // 投影は手前を拡大するので、足元(箱の下辺=判定の奥行き300の南の端)の投影後の Y は画面の下の外へ出やすく、そこで手前のフェードを
+    // 引くと、絵(背丈×s)の大半が画面に掛かっているのに体ごと消えていた(目覚めのアテンション・追ってくる間=§1-6「南の端は描く」に反する)。
+    // ?proj=0 より濃くはしない(手前で大きく写る体が主人公を覆う場面で、?proj=0 より隠さない)。
+    let alpha = this.projFrame
+      ? this.projLooseFade(c.x, bf.y, false) * this.foregroundActorAlpha(bf.y)
+      : this.projLooseFade(c.x, bf.y);
     const artW = tex.width * baseScale, artH = tex.height * baseScale;
     let sinkPx = 0;
     if (ascendLook) {

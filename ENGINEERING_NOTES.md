@@ -76,6 +76,7 @@
 
 | 症状 | 最初の1手 | 過去の実例 | 節 |
 |---|---|---|---|
+| **`?proj=1` の研究所で、アテンションの対象(変異塊など)が薄い/消える・巨大なモザイクになる** | 計器で対象の足元を `projectInto` し、`foregroundActorAlpha`(手前のフェード)と s を読む。研究所の基準行(下げ量0=0.5H)とアテンションの注目点の行(`ATTENTION_FOCUS_Y_FRAC`=0.6H)のずれを疑う。大きな物は足元の手前のフェードで体ごと消える。被写界深度(チルトシフト)は無関係だった | v0.25.5790: 塊の中心へのアテンションで足元が画面の下の外(744/720)・s=2.65・fore=0 | `utils/projGameView.projAttentionCarries`・`pixiScene.syncLabCrawler` |
 | CI だけ赤い・全体実行で時々落ちる store の統合テスト | ①Node のバージョン差(CI は Node 20=`navigator` 等が無い)②`Math.random` 依存(敵の個体ID・クリティカル・役は乱数と時刻)③**`setTreesDisabled`/`setTorchesDisabled` を `resetGame` より前に呼んでいないか**(resetGame がステージに合わせて毎回かけ直す=木が残る。準備関数やループ内の resetGame の後も同じ)の順に見る。乱数を固定して何通りか回し、落ちる種を作るのが最短。「flaky」で済ませない | 2026-11-25 batMove / zombieRedMove / actorParity2 / projAffine。同じ並びの誤りをテスト57本で直した(v0.25.5789) | — |
 | **下へ歩くと、画面の下から入ってくる大きな物(木など)が一瞬くっきり出て消える** | 新しく作った Sprite の **alpha の初期値(既定1)**を疑う。目標(手前フェードで0)へ lerp で寄せていると、作った瞬間だけ不透明に見える | v0.25.5731: 木を大きくした(v0.25.5725〜5727)直後に表に出た。`utils/obstacleAlpha.stepObstacleAlpha` の fresh=作った瞬間は目標から始める。研究所の壁・建物など `applyObstacleAlpha` を使う他の物も同じ形が残っている | — |
 | **ユニットテストは全部通るのに、実際に遊ぶと「たまに」仕組みが効かない** | そのテストが**乱数を固定していないか**(`vi.spyOn(Math, 'random')`)。会心・抽選で分かれる別の分岐(例: 気絶中の敵へのフィニッシュ)を通っていない。実際のループを実時間で回して数える(TEST_HANDOFF/HEADLESS.md §10) | 格闘のつながり: 途中の1発が会心になると次の1発がフィニッシュの分岐へ回り、固まりが書かれずコンボが切れた(強個体で12本中2本・v0.25.5466) | research/BRAWLER.md §19-7 |

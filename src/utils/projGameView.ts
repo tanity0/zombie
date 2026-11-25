@@ -35,6 +35,15 @@ export const projCamDownFracFor = (scene: ProjScene, camZ: number, outdoorBase: 
 };
 
 /**
+ * アテンションで基準点・基準行を注目点へ運ぶか(§1-6 の (W_refAtt, ℓ_refAtt))。等倍に見せるアテンション(zoomToUnity)は全場面。
+ * **研究所は素のアテンションも運ぶ**: 研究所の基準行は縦の下げ量 0(=画面の 0.5+半身)なのに、アテンションのカメラは注目点を
+ * 画面の ATTENTION_FOCUS_Y_FRAC(0.6)の行へ置く。運ばないと注目点が基準行より約 0.1 画面ぶん南(手前)に写り、手前の拡大と
+ * 手前のフェードで対象が大きく・薄く(変異塊は足元が画面の下の外へ出て消える)なる。屋外(下げ量 0.08≒0.6 の行)と洋館は今のまま。
+ * 研究所はゲームの画面(getProjGameView)が null の場面なので、描画だけが読む(湧き・回収の判定は変わらない)。
+ */
+export const projAttentionCarries = (scene: ProjScene | null, zoomToUnity: boolean): boolean => zoomToUnity || scene === 'lab';
+
+/**
  * 照準の門(段階8 U40・§3-10e): 投影の枠を照準(逆投影・吸い付き)へ渡してよい場面。
  * ★#46=A(社長 2026-11-24「はい」=研究所・洋館も照準だけ揃える): 屋外・研究所・洋館で開ける。屋内は枠を作らない。
  * 見えている・湧き・回収(★#36〜#38)は研究所・洋館では今の独自の作りのまま(ゲームの画面=getProjGameView は null のまま)。
