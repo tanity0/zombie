@@ -24,7 +24,8 @@ export const BRAWLER_TECH_NAMES: Record<TechProcKey, { name: string; dir: Brawle
   'tech:issen': { name: '一閃', dir: 'right' },
   'tech:tsubame': { name: '燕返し', dir: 'chain' },
   'tech:satsujin': { name: '殺陣', dir: 'all' },
-  // 鞭の投げつけ(research/WHIP_FOLLOWUP.md §8)。絡め取って振り回した敵が着弾した時に出る1行=続きの印(└)は付けない。
-  // 印は落ちて地面を打つ形(先に地面の線)=地割りと同じ下向きの楔。キーは旧の叩きつけのまま(whipslam)。
-  'tech:whipslam': { name: '投げつけ', dir: 'down' },
+  // 鞭の大車輪(research/WHIP_FOLLOWUP.md §8)。絡め取って振り回した敵を、プレイヤーの入力(近接・はじく)で投げて着弾した時に出る1行。
+  // 投げの向きは入れた向きの4方向に限らない=操作の向きを示す楔は使わない。向きを示さない印のうち、続きの印(└)は前の技の続きに見えるので外し、
+  // 中心から四方へ開く印(all)=振り回して全方位を薙ぐ形にする。キーは旧の叩きつけのまま(whipslam)。
+  'tech:whipslam': { name: '大車輪', dir: 'all' },
 };

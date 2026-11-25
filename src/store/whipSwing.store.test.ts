@@ -123,6 +123,31 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
     expect(st().player.counterWindowEnd).toBeGreaterThan(now);
   });
 
+  it('技の行(大車輪)はプレイヤーの入力で投げた着弾だけ。自動の投げでは出ない。投げた敵の回りは振り回しの向きを引き継ぐ', () => {
+    const techRows = () => st().skillProcFeed.filter(r => r.key === 'tech:whipslam').length;
+    const landNow = () => { for (let i = 0; i < 200 && st().whipSwing; i++) step(10); };
+    // 入力(フリック)で投げる
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')], skillProcFeed: [] });
+    swing();
+    run(200);
+    const dir = st().whipSwing!.dir;
+    expect(st().tryFlickFollowup(0, 1)).toBe(true);
+    expect(en('z').brThrowSpin?.dir).toBe(dir);
+    landNow();
+    expect(st().whipSwing).toBeNull();
+    expect(techRows()).toBe(1);
+    // 自動で投げる
+    useGameStore.setState({ enemies: [place('zombie', -100, 0, 'y')], skillProcFeed: [] });
+    run(1000);
+    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: -1, y: 0 } } }));
+    swing();
+    expect(st().whipSwing?.enemyId).toBe('y');
+    run(WHIP_SWING_MAX_MS + 50);
+    landNow();
+    expect(st().whipSwing).toBeNull();
+    expect(techRows()).toBe(0);
+  });
+
   it('掴まれている敵に弾は当たらない・毒などで死んだらその場で着弾', () => {
     useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')] });
     swing();

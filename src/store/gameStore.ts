@@ -317,7 +317,7 @@ import { meleeImpactPoint, meleeNumberPoint, bandBoxOverlap } from '../utils/mel
 import {
   pickWhipGrabTarget, whipSwingSpinDir, whipSwingAngVel, whipSwingAngle, whipSwingRadiusAt, whipSwingHitDue, boxesOverlap, whipSwingClampRadius,
   whipSwingMaxMs, whipSwingAutoThrowDue, whipSwingTangent, pickWhipAutoThrowDir, whipThrowDurationMs, whipThrowDist, whipThrowStartSpeed, whipThrowStep,
-  whipSwingReleaseReason, whipThrowBlastPlan,
+  whipSwingReleaseReason, whipThrowBlastPlan, whipSwingLaps, whipSwingLapRate,
   WHIP_SWING_RADIUS_MULT, WHIP_SWING_MIN_RADIUS_FRAC, WHIP_THROW_DIST_MULT, WHIP_THROW_DAMAGE_MULT, WHIP_THROW_HITSTOP_MS, type WhipSwingState,
 } from '../utils/whipSwing';
 import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
@@ -3212,12 +3212,13 @@ const whipThrowExplode = (get: () => GameState, cx: number, cy: number, selfId: 
 const whipLandFx = (get: () => GameState, fx: number, fy: number): void => {
   const g = get();
   g.spawnImageMark(fx, fy, 'fx/ground-crack', { scale: 1.2, scaleY: 0.5, duration: 1600, fadeFrom: 0.55, noPop: true, alpha: 0.95, ground: true });
-  g.spawnImageMark(fx, fy + 2, 'fx/dust-ring', { scale: 0.75, scaleY: 0.42, duration: 620, tint: 0x9a8b7a, alpha: 0.7, noPop: true, fadeFrom: 0.2, ground: true });
+  // 土色の輪は爆発の芯より前に出さない(見え方の監査 2026-11-25「白っぽい楕円の輪が主役」): 薄く・細く。
+  g.spawnImageMark(fx, fy + 2, 'fx/dust-ring', { scale: 0.75, scaleY: 0.42, duration: 620, tint: 0x6f604f, alpha: 0.38, noPop: true, fadeFrom: 0.2, ground: true });
   for (const side of [-1, 1]) {
     g.spawnImageMark(fx + side * 16, fy, 'fx/dust-puff', { scale: 0.5, scaleY: 0.55, duration: 900, tint: 0x9a8b7a, alpha: 0.75, moveX: side * 60, moveY: -10, fadeFrom: 0.3 });
   }
   g.spawnImageMark(fx, fy - 6, 'fx/dust-puff', { scale: 0.42, scaleY: 0.95, duration: 760, tint: 0x9a8b7a, alpha: 0.6, moveY: -40, fadeFrom: 0.3 });
-  g.spawnRing(fx, fy, 10, 110, 'rgba(214,196,160,0.85)', 5, 460, true);
+  g.spawnRing(fx, fy, 10, 110, 'rgba(150,128,100,0.4)', 2, 460, true);
   g.triggerHitImpact(WHIP_THROW_HITSTOP_MS, 320, 11, 0, fx, fy);
   void import('../audio/audioManager').then(m => {
     m.playSfx('whip-hit', 1, undefined, 0.7);
@@ -3243,9 +3244,18 @@ const landWhipThrow = (get: () => GameState, set: WhipSet, x: number, y: number,
       ...(en.brThrowSpin ? { brThrowSpin: { ...en.brThrowSpin, hitAt: nowMs, endAt: nowMs } } : {}),
     })),
   }));
+  // 着弾の最初に血(派手さの絵=判定より大きく・見え方の監査 2026-11-25): 飛んできた向きへ大きく、反対へ少し、体から周りへ。爆発の絵の前に積む。
+  if (e0) {
+    const fa = sw.phase === 'thrown' && sw.ux !== undefined && sw.uy !== undefined ? Math.atan2(sw.uy, sw.ux) : Math.random() * Math.PI * 2;
+    const g0 = get();
+    g0.spawnBlood(x, y, fa, 300);
+    g0.spawnBlood(x, y, fa + Math.PI, 150);
+    g0.spawnMeleeBlood(x, y, Math.max(56, e0.width * 1.6));
+  }
   const r = whipThrowExplode(get, x, y, selfAlive && e0 ? id : null);
   whipLandFx(get, x, y + (e0 ? e0.height / 2 - 2 : 0));
-  notifyTechProc('whipslam'); // 通信の下に技の行
+  // 技の行は、プレイヤーの入力(近接・フリック)で投げた敵が生きたまま着いた時だけ(自動の投げ・途中で死んで落ちた時は出さない)。
+  if (sw.phase === 'thrown' && sw.byInput && selfAlive) notifyTechProc('whipslam'); // 通信の下に技の行
   addWhipCharge(get, set, r.hits);
   return r.killed;
 };
@@ -3265,7 +3275,7 @@ const releaseWhipSwingImpl = (get: () => GameState, set: WhipSet): void => {
  * 投げる(§8-3): 振り回しの途中なら向き (dx,dy) へ。出だしの速さ=放した時の接線の速さ・最大距離=届く距離×2.5。飛ぶ向きへ縦に転がる(絵=格闘の投げの回りの流用)。
  * 投げたら true。
  */
-const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: number): boolean => {
+const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: number, byInput = false): boolean => {
   const st = get();
   const sw = st.whipSwing;
   if (!sw || sw.phase !== 'swing') return false;
@@ -3278,13 +3288,12 @@ const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: numb
   const flyMs = whipThrowDurationMs(v0, maxDist);
   const nowMs = Date.now();
   set(state => ({
-    whipSwing: { ...sw, phase: 'thrown', throwAt: state.gameTime, fromX: sw.cx, fromY: sw.cy, ux, uy, v0, maxDist, dNow: 0 },
-    enemies: state.enemies.map(en => (en.id !== sw.enemyId ? en : { ...en, brThrowSpin: { at: nowMs, ms: Math.max(1, Math.round(flyMs)), dir: ux >= 0 ? 1 : -1 } })),
+    whipSwing: { ...sw, phase: 'thrown', throwAt: state.gameTime, fromX: sw.cx, fromY: sw.cy, ux, uy, v0, maxDist, dNow: 0, byInput },
+    // 回りの向きは振り回しの向きを引き継ぐ(回していた勢いのまま転がる)。
+    enemies: state.enemies.map(en => (en.id !== sw.enemyId ? en : { ...en, brThrowSpin: { at: nowMs, ms: Math.max(1, Math.round(flyMs)), dir: sw.dir } })),
   }));
-  // 絵(派手さの絵・判定なし): 鞭がほどける線(手→敵)・投げた向きへ風の筋・閃き。音=風を切る鞭。
-  const pc = whipCenter(st.player);
+  // 絵(派手さの絵・判定なし): 投げた向きへ風の筋・閃き。音=風を切る鞭。線は描画が手元へ巻き戻す(syncWhipTether)=打撃の鞭の絵は出さない。
   const g = get();
-  g.spawnEffect({ kind: 'whip', id: `fx-whipthrow-${nowMs}`, fromX: pc.x, fromY: pc.y, toX: sw.cx, toY: sw.cy, halfWidth: WHIP_HIT_HALF_WIDTH, color: 'rgba(186,230,253,0.95)', createdAt: nowMs, duration: WHIP_DRAW_MS });
   const ang = Math.atan2(uy, ux);
   brawlerFx(get, sw.cx, sw.cy, 'fx/dash-wind', { scale: 0.24, scaleX: 2.2, rot: ang + Math.PI, duration: flyMs + 160, fadeFrom: 0.5, moveX: ux * maxDist * 0.7, moveY: uy * maxDist * 0.7, alpha: 0.95 });
   g.spawnGlow(sw.cx, sw.cy, GLOW_R_M, 'rgba(255,248,230,', 200, true);
@@ -3308,7 +3317,7 @@ const whipAutoThrowDir = (get: () => GameState, sw: WhipSwingState): { x: number
 const throwWhipSwingByMelee = (get: () => GameState, set: WhipSet, now: number): void => {
   const p = get().player;
   const ld = p.lastDirection ?? { x: 1, y: 0 };
-  startWhipThrow(get, set, ld.x, ld.y);
+  startWhipThrow(get, set, ld.x, ld.y, true);
   if (now < p.counterCooldownEnd) return; // 窓は待ち時間が明けている時だけ(今の近接と同じ)
   set(state => ({
     player: {
@@ -3366,8 +3375,11 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
       && !(isReaperFamily(o.type) && !isTerminalReaper(o)) && boxesOverlap(held, o) && whipSwingHitDue(sw.lastHits[o.id], gt));
     const lastHits = { ...sw.lastHits };
     for (const o of due) lastHits[o.id] = gt;
+    // 1周ごとに風を切る音(回すほど少しずつ高く)。
+    const lap = whipSwingLaps(t);
+    if (lap > (sw.lap ?? 0)) brawlerSfx('whip-swing', 0.7, whipSwingLapRate(lap), 260);
     set(state => ({
-      whipSwing: { ...sw, cx: pos.x + e.width / 2, cy: pos.y + e.height / 2, px: pc.x, py: pc.y, rNow: r, lastHits },
+      whipSwing: { ...sw, cx: pos.x + e.width / 2, cy: pos.y + e.height / 2, px: pc.x, py: pc.y, rNow: r, lastHits, lap: Math.max(lap, sw.lap ?? 0) },
       enemies: state.enemies.map(en => (en.id !== e.id ? en : {
         ...en, x: pos.x, y: pos.y, vx: 0, vy: 0, knockbackVx: 0, knockbackVy: 0, brHoldUntil: Math.max(en.brHoldUntil ?? 0, nowMs + WHIP_HOLD_REFRESH_MS),
       })),
@@ -17420,7 +17432,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   // ★鞭の振り回し中のフリック=その向きへ投げる(research/WHIP_FOLLOWUP.md §8-3・§8 末尾=この並びの中で最優先)。それ以外は刀の燕返し。
-  tryFlickFollowup: (dirX, dirY) => (get().whipSwing?.phase === 'swing' ? startWhipThrow(get, set, dirX, dirY) : get().tryTsubame(dirX, dirY)),
+  tryFlickFollowup: (dirX, dirY) => (get().whipSwing?.phase === 'swing' ? startWhipThrow(get, set, dirX, dirY, true) : get().tryTsubame(dirX, dirY)),
 
   flickFollowupOpen: () => get().whipSwing?.phase === 'swing' || isFlickFollowupOpen(get().tsubameWindow, Date.now()),
 

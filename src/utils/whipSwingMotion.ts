@@ -136,3 +136,83 @@ export const whipBodyPose = (el: number, windupMs: number, recoverMs = WHIP_ROPE
     lean: -0.2 * up + 0.24 * down,
   };
 };
+
+// ---- ★鞭の絡め取り→振り回し→投げの見た目(research/WHIP_FOLLOWUP.md §8・見え方の監査 2026-11-25)。判定は utils/whipSwing のまま=ここは絵の形だけ。 ----
+
+/**
+ * 手元→掴んだ敵へ張った縄の形(whipRopePoints にそのまま渡せる形)。両端は手と敵に留めたまま、真ん中を回転と逆向きへ弓なりに遅らせる。
+ * bow=たわみの強さ(rad・0=まっすぐ)。dir=回る向き(+1=角度が増える向き)。縄の座標は x=手→敵・y=その左手(+90°)なので、
+ * 動く向きは +dir・遅れる側は -dir。角度は cos で前半と後半が打ち消し合う=先端は必ず敵の位置に着く(長さは lenK で合わせる)。
+ */
+export const whipTetherShape = (bow: number, dir: 1 | -1, alpha = 1, segs = WHIP_ROPE_POINTS - 1): WhipRopeShape => {
+  const angles = Array.from({ length: segs }, (_, i) => -dir * bow * Math.cos(Math.PI * (i + 0.5) / segs));
+  const sumCos = angles.reduce((s, a) => s + Math.cos(a), 0);
+  return { handX: 0, handY: 0, angles, lenK: segs / Math.max(1e-6, sumCos), alpha, phase: 'crack' };
+};
+
+/** 振り回しのたわみ(rad)。回り出し(加速中)ほど遅れて大きくたわみ、最高速で張る(わずかに震える)。angVelFrac=今の角速度/最高の角速度。 */
+export const whipTetherBow = (angVelFrac: number, tMs: number): number => {
+  const slack = 1 - clamp01(angVelFrac);
+  return 0.95 * slack ** 1.3 + 0.025 * Math.sin(tMs * 0.031);
+};
+
+/** 放した後、線の先が手元へ巻き戻る長さ(ms)。 */
+export const WHIP_TETHER_RETRACT_MS = 150;
+/** 巻き戻りの進み k(0..1・ease-in=加速しながら戻る)。先端の位置 = 手 + (放した先 - 手) × (1 - k)。終わったら null。 */
+export const whipTetherRetract = (elMs: number): { k: number; bow: number; alpha: number } | null => {
+  if (!(elMs >= 0) || elMs >= WHIP_TETHER_RETRACT_MS) return null;
+  const u = elMs / WHIP_TETHER_RETRACT_MS;
+  return { k: u * u, bow: 0.45 * u, alpha: 1 - u ** 4 };
+};
+
+/** 投げた敵の高さの山(px)=体の絵の高さ × これ(上下の限り付き)。 */
+export const WHIP_FLY_LIFT_K = 0.55;
+export const WHIP_FLY_LIFT_MIN_PX = 34;
+export const WHIP_FLY_LIFT_MAX_PX = 78;
+/** 途中で当たって着いた時、宙から地面へ落ちる長さ(ms)。 */
+export const WHIP_FLY_DROP_MS = 110;
+/** 途中で当たって着いた時、絵の遅れを体へ戻す時定数(ms)。 */
+export const WHIP_FLY_CATCHUP_TAU_MS = 45;
+
+/** 投げた敵の高さの山(px)。 */
+export const whipFlyPeakPx = (bodyH: number): number =>
+  Math.max(WHIP_FLY_LIFT_MIN_PX, Math.min(WHIP_FLY_LIFT_MAX_PX, bodyH * WHIP_FLY_LIFT_K));
+
+/**
+ * 飛ぶ高さ(px・描画だけ)。放してから t ms・最大距離に着く時刻 T ms(判定の whipThrowDurationMs)で 0 に戻る放物線。
+ * 途中で当たった(landAt<T)時は、その時の高さから重さで落ちて WHIP_FLY_DROP_MS で地面へ。
+ */
+export const whipFlyLiftPx = (tMs: number, flyMs: number, peakPx: number, landAtMs?: number): number => {
+  const T = Math.max(1, flyMs);
+  const arc = (x: number): number => { const q = clamp01(x / T); return peakPx * 4 * q * (1 - q); };
+  if (landAtMs === undefined || landAtMs >= T || tMs <= landAtMs) return arc(tMs);
+  const u = (tMs - landAtMs) / WHIP_FLY_DROP_MS;
+  return u >= 1 ? 0 : arc(landAtMs) * (1 - u * u);
+};
+
+/**
+ * 絵の上の飛んだ距離(px)。判定(出だし v0 から減速して最大距離で 4 割の速さ)と違い、絵は最大距離でちょうど止まるように減速する
+ * (=最大距離で急停止せず、着地の後に地面を擦って滑って止まる)。判定より少し遅れて進む(遅れの最大は最大距離の約 1 割)。
+ */
+export const whipFlyVisualDist = (tMs: number, v0: number, maxDist: number): number => {
+  if (!(tMs > 0) || !(v0 > 0) || !(maxDist > 0)) return 0;
+  const Tv = (2 * maxDist) / v0; // s
+  const t = Math.min(Tv, tMs / 1000);
+  return Math.min(maxDist, v0 * t - (v0 * v0 / (4 * maxDist)) * t * t);
+};
+
+/**
+ * 絵のずれ(px・投げた向きに沿う・負=判定より後ろ)。logicalD=判定の距離。
+ * 最大距離で着いた('max')=絵は自分の式のまま滑って止まる。途中で当たって着いた('hit')=着いた時のずれを短く戻す(当たって止まる)。
+ */
+export const whipFlyOffset = (o: {
+  tMs: number; v0: number; maxDist: number; logicalD: number; landAtMs?: number; landKind?: 'max' | 'hit'; landD?: number;
+}): number => {
+  if (o.landAtMs === undefined || o.landKind === undefined || o.tMs <= o.landAtMs) {
+    return Math.min(0, whipFlyVisualDist(o.tMs, o.v0, o.maxDist) - o.logicalD);
+  }
+  const landD = o.landD ?? o.logicalD;
+  if (o.landKind === 'max') return Math.min(0, whipFlyVisualDist(o.tMs, o.v0, o.maxDist) - landD);
+  const off0 = Math.min(0, whipFlyVisualDist(o.landAtMs, o.v0, o.maxDist) - landD);
+  return off0 * Math.exp(-(o.tMs - o.landAtMs) / WHIP_FLY_CATCHUP_TAU_MS);
+};

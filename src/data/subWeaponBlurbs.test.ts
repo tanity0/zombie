@@ -33,13 +33,13 @@ describe('subWeaponBlurb(機器ごとの一言)', () => {
     expect(subWeaponBlurb('dog', 'mouse')).toBe(subWeaponBlurb('dog'));
     expect(subWeaponBlurb('dog', 'pad')).toBe(subWeaponBlurb('dog'));
   });
-  it('鞭(research/WHIP_FOLLOWUP.md §8): 絡め取る・振り回す・投げる・爆発・竜巻を言う。機器ごとに投げの操作の言葉を変える。数値を書かない・句点で終える', () => {
+  it('鞭(research/WHIP_FOLLOWUP.md §8): 絡め取る・振り回す・投げる・爆ぜる・竜巻を言う。機器ごとに投げの操作の言葉を変える。数値を書かない・句点で終える', () => {
     const touch = subWeaponBlurb('whip');
-    for (const w of ['絡め取', '振り回', '投げ', '爆発', '竜巻']) expect(touch).toContain(w);
-    expect(touch).toContain('指を離すと');
-    expect(subWeaponBlurb('whip', 'mouse')).toContain('右クリックでカーソルの方へ投げつけ');
+    for (const w of ['絡め取', '振り回', '投げ', '爆ぜる', '竜巻']) expect(touch).toContain(w);
+    expect(touch).toContain('指を離すか、はじいて投げれば');
+    expect(subWeaponBlurb('whip', 'mouse')).toContain('もう一度振るか右クリックで投げれば');
     expect(subWeaponBlurb('whip', 'mouse')).not.toMatch(/フリック|指|タップ/);
-    expect(subWeaponBlurb('whip', 'pad', 'xbox')).toContain('B でスティックを倒した方へ投げつけ');
+    expect(subWeaponBlurb('whip', 'pad', 'xbox')).toContain('もう一度振るか B で投げれば');
     expect(subWeaponBlurb('whip', 'pad')).not.toMatch(/クリック|ボタン|指|\{/);
     for (const d of ['touch', 'mouse', 'pad'] as const) {
       const t = subWeaponBlurb('whip', d);

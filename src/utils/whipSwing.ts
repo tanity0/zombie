@@ -71,6 +71,10 @@ export interface WhipSwingState {
   maxDist?: number;
   /** 前のフレームまでに飛んだ距離(px)。 */
   dNow?: number;
+  /** プレイヤーの入力(近接・フリック)で投げた(自動の投げは false)。技の行を出すのはこの時の着弾だけ。 */
+  byInput?: boolean;
+  /** 回し終えた周の数(1周ごとの音を鳴らした所まで)。 */
+  lap?: number;
 }
 
 /** 掴む相手の候補(当たった敵1体ぶん)。 */
@@ -123,6 +127,11 @@ export const whipSwingRadiusAt = (tMs: number, r0: number, R: number, accelMs = 
   const u = Math.max(0, Math.min(1, tMs / Math.max(1, accelMs)));
   return r0 + (R - r0) * easeOut(u);
 };
+
+/** 掴んでから t ms で回し終えた周の数(1周ごとの音)。 */
+export const whipSwingLaps = (tMs: number): number => Math.floor(whipSwingTurned(tMs) / (2 * Math.PI) + 1e-9);
+/** n 周目の音の高さ(回すほど少しずつ上がる・上限あり)。 */
+export const whipSwingLapRate = (lap: number): number => Math.min(1.45, 0.92 + 0.09 * Math.max(0, lap - 1));
 
 /** 掴んでから t ms の角度(rad)。 */
 export const whipSwingAngle = (s: Pick<WhipSwingState, 'a0' | 'dir'>, tMs: number): number => s.a0 + s.dir * whipSwingTurned(tMs);
