@@ -24,6 +24,7 @@ import { PHANTOM_BRAWLER_ICON_SPRITE } from '../utils/sortieBossRoster';
 import { spritePath } from '../utils/spriteLoader';
 import { isBountyType } from '../utils/enemyUtils';
 import type { CharacterClass } from '../types/game';
+import { BackButton } from './PageHeader';
 
 // §6.38 掲載裁定: 賞金首4種はGHOST_DOSSIER_SLOTS由来ではないので、この画面だけの区分「bounty」を
 // 追加する(ghostDossier.tsのGhostDossierCategory自体は変えない=守護霊メニュー側は無関係のまま)。
@@ -94,12 +95,8 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
     return (
       // 詳細は入れ子の層(research/MENU_NAV.md v3 A-1): 候補は詳細の中だけ。B/Esc は「← ボス一覧」「一覧」で一覧へ戻る。
       <div data-nav-screen="bossrush-detail" className="p-3 space-y-3">
-        <button
-          type="button"
-          data-nav-back
-          onClick={() => { playSfx('ui-back'); setOpenKey(null); }}
-          className="text-[11px] text-purple-200/70 active:text-white"
-        >← ボス一覧</button>
+        {/* 戻るの形は全画面で1つ(PageHeader の BackButton・research/UIUX_PROPOSAL.md P5)。音は BackButton が鳴らす。 */}
+        <BackButton onBack={() => setOpenKey(null)} label="ボス一覧" className="-ml-3" />
         {/* ↑上の戻るはスクロールで流れるので、下のstickyフッタにも「一覧」を置いた(UI監査2026-08-29 #5-2)。 */}
 
         <section className="overflow-hidden border border-purple-200/10 bg-[#090b13]/80">
@@ -189,7 +186,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
         </section>
 
         {/* ★sticky フッタ(UI監査2026-08-29 #5-1「固定するところは固定」): この画面唯一の主要動作
-            「演習する」を最下部まで送らなくても押せるようにする(missionDetailのジョブ選択と同型)。
+            「演習する」を最下部まで送らなくても押せるようにする(missionDetailのロール選択と同型)。
             左に小さく「一覧」も置く=詳細を送っても戻り導線が消えない(#5-2)。 */}
         <div className="sticky bottom-0 z-20 -mx-3 flex items-stretch gap-2 px-3 pt-3 pb-1" style={{ background: 'linear-gradient(to top, rgba(11,11,18,0.97) 72%, rgba(11,11,18,0))' }}>
           <button

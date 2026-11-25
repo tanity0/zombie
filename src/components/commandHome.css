@@ -64,8 +64,6 @@
 .command-footer a { min-height: 44px; display: inline-flex; align-items: center; color: var(--menu-accent); font: 12px system-ui; }
 .command-home button:focus-visible, .command-home a:focus-visible , .command-home button.navfocus, .command-home a.navfocus { outline: 2px solid var(--menu-accent-hi); outline-offset: -4px; }
 .command-home .command-sortie:focus-visible , .command-home .command-sortie.navfocus { outline-color: #171208; }
-.command-shell .ds-loadout-header { padding: 8px 0 14px; gap: 18px; }
-.command-shell .ds-loadout-header h1 { font-size: 24px; }
 .command-shell .ds-loadout-body > .p-3 { padding: 20px 0; }
 .command-shell .ds-loadout-body > .p-3 > div { padding: 0; border: 0; background: transparent; }
 .command-shell .ds-loadout-body .uppercase { font-size: 16px; margin-bottom: 18px; letter-spacing: .1em; }

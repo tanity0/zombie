@@ -1,0 +1,27 @@
+/* PC の作戦室の文字を一段大きく(research/UIUX_PROPOSAL.md P16)。**横長の時だけ**効く(スマホの縦持ちは1pxも動かさない)。
+   題字・英字の小注記・右の説明を約1.4倍、行の高さを約1.3倍、地図を一回り大きく。2列は .landscape:my-auto で縦の中央のまま。
+   書体の指定(font-family)はここでは触らない。 */
+@media (orientation: landscape) {
+  .ds-home:not(.command-shell) .ds-top { font-size: 14px; padding-bottom: 9px; }
+  .ds-home:not(.command-shell) .ds-top .ds-top-big { font-size: 18px; }
+  .ds-home:not(.command-shell) .ds-glabel { font-size: 12.5px; gap: 11px; margin: 15px 0 6px; }
+  .ds-home:not(.command-shell) .ds-home-rows > .ds-glabel:first-child { margin-top: 0; }
+  .ds-home:not(.command-shell) .ds-glabel.ds-glabel-sector { margin-top: 0; }
+  .ds-home:not(.command-shell) .ds-row { min-height: 57px; gap: 14px; padding: 9px 8px 9px 20px; }
+  .ds-home:not(.command-shell) .ds-row::before { width: 7px; height: 7px; }
+  .ds-home:not(.command-shell) .ds-row .ds-row-l { font-size: 19px; }
+  .ds-home:not(.command-shell) .ds-row .ds-row-en { font-size: 12.5px; margin-top: -2px; }
+  .ds-home:not(.command-shell) .ds-row .ds-row-d { font-size: 13px; }
+  .ds-home:not(.command-shell) .ds-row .ds-row-new { font-size: 11px; padding: 1px 7px; margin-left: 11px; }
+  /* 地図: 左の列を少し広げ(58:42 → 62:38)、箱を原画の比(1816:866)のまま大きくする=上下に帯が出ない。低い窓では今までどおり高さで縮む。 */
+  .ds-home:not(.command-shell) .ds-home-left { flex: 62 1 0%; }
+  .ds-home:not(.command-shell) .ds-home-rows { flex: 38 1 0%; }
+  .ds-home:not(.command-shell) .ds-map { height: auto !important; aspect-ratio: 1816 / 866; max-height: clamp(120px, calc(100svh / var(--hud-s, 1) - 300px), 330px); }
+  .ds-home:not(.command-shell) .ds-map-dest-k { font-size: 13px; }
+  .ds-home:not(.command-shell) .ds-map-dest-pl { font-size: 22px; }
+  .ds-home:not(.command-shell) .ds-map-dest-ot { font-size: 14px; }
+  .ds-home:not(.command-shell) .ds-sortie { padding: 14px 18px; margin-top: 12px; }
+  .ds-home:not(.command-shell) .ds-sortie .ds-sortie-t1 { font-size: 24px; }
+  .ds-home:not(.command-shell) .ds-sortie-dest { font-size: 17px; }
+  .ds-home:not(.command-shell) .ds-foot { font-size: 12px; }
+}

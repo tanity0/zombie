@@ -166,7 +166,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   // ★'title' と 'menu' は**子に任せる**——Reactは子のeffectが先に走るので、ここで親が
   // 上書きすると子の報告を毎回踏み潰す(実測: 更新情報モーダルが出ていても 'title' に化けた)。
   //   'title' → TitleScreen が 'updateModal' / 'title' を出し分ける
-  //   'menu'  → MissionSelect が作戦室/ステージ一覧/ブリーフィング/ジョブ選択を出し分ける
+  //   'menu'  → MissionSelect が作戦室/ステージ一覧/ブリーフィング/ロール選択を出し分ける
   // ★DOM側の同じ値(TEST_HANDOFF/REQUEST-devbridge.md §D の `data-screen`)もここから出す。
   // 子に任せる 'title' / 'menu' は null=ルートに属性を付けない(TitleScreen / MissionSelect が自分で置く)。
   // ★読み方の約束: **文書順で最初の `[data-screen]` が正**(= `document.querySelector('[data-screen]')`)。

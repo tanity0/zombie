@@ -30,6 +30,18 @@
 html {
   --uf-jp: "BIZ UDPGothic";
   --uf-head: "Shippori Mincho B1";
+  /* ===== 書体の役割(research/UIUX_PROPOSAL.md P17: 明朝 / ゴシック / 数字 + 小さな英字の飾り)。画面ごとに書体を書かず、この変数か下の .type-* を当てる ===== */
+  /* 明朝 = 世界の名(画面の題字・地名・任務名・成否の題・ランクの字)。英数字は Orbitron(数字の書体と同じ)、和文だけ明朝。 */
+  --type-world: "Orbitron", var(--uf-head), "Hiragino Mincho ProN", "Yu Mincho", serif;
+  /* ゴシック = 操作と説明・ボタン(既定の本文と同じ)。 */
+  --type-ui: var(--game-font, "Orbitron"), var(--uf-jp), sans-serif;
+  /* 数字 = Orbitron の1書体(時間・数・通貨)。 */
+  --type-num: "Orbitron", var(--uf-jp), sans-serif;
+  /* 英字の小注記 = Rajdhani。題字の下に添えるだけ(LOADOUT / ARCHIVE 等)。本文や数字には使わない。 */
+  --type-note: "Rajdhani", var(--uf-jp), sans-serif;
+  /* 小さな英字の飾り = Orbitron の小さな大文字(MAIN / GATE / KILL RECORDS / NO RECORD / NEW 等の札・見出しの飾り)。7〜10px で
+     ドット絵のように粗く見える=作品の「計器の札」の質感として残す(社長決定2026-11-25)。読ませる本文や数字には使わない。 */
+  --type-tag: "Orbitron", var(--uf-jp), sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   font-synthesis: none;
@@ -37,38 +49,37 @@ html {
 /* 全体: Orbitron の後ろの和文フォールバックを BIZ UDPGothic に(英数字は Orbitron のまま) */
 html, html body { font-family: var(--game-font, "Orbitron"), var(--uf-jp), sans-serif; }
 /* 本文はベタ組み・行間も元のまま(監査2026-09-12: UD系を選んだ根拠=余白を palt で削らない。行間の一括上書きもしない) */
-/* 作戦室ホーム(Rajdhani)とメニューのボタン(Rajdhani): 英字は Rajdhani のまま・和文だけ BIZ UDPGothic */
-html .ds-home, html .command-ui .command-button { font-family: "Rajdhani", var(--uf-jp), sans-serif; }
+/* 作戦室ホーム(Rajdhani): 英字は Rajdhani のまま・和文だけ BIZ UDPGothic(UI_OVERHAUL §3-0=Rajdhani は作戦室だけ)。
+   作戦室の外(装備=ds-home の地を借りている・メニューのボタン)は操作と説明の役割=ゴシック+数字は Orbitron(P17)。 */
+html .ds-home { font-family: "Rajdhani", var(--uf-jp), sans-serif; }
+html .ds-home.command-shell, html .command-ui .command-button { font-family: var(--type-ui); }
 /* command-ui で system-ui を直書きしている箇所(和文中心のラベル・本文): 和文を BIZ UDPGothic へ */
 html .command-ui .command-weapon-tabs button, html .command-ui .development-balance,
 html .command-ui .development-tabs button, html .command-ui .development-guide,
 html .command-ui .development-price small,
-html .command-ui .command-page-header p, html .command-ui .command-page-back,
 html .command-ui .command-section > div:first-child,
 html .command-wordmark > span, html .command-eyebrow,
 html .command-operation p, html .command-sortie small,
 html .command-action-copy strong,
 html .command-action-copy > span, html .command-inventory > span { font-family: var(--uf-jp), system-ui, sans-serif; }
-/* 見出し = 横太明朝。英字は "Orbitron" を**名指し**で先に置く(監査2026-09-12(A): var(--game-font) は FONT_STACK 全体に展開されるので
-   和文が --uf-head に届く前に BIZ で確定していた=見出しが6画面中1画面しか明朝になっていなかった)。
-   当て先は1本ずつ選ぶ(h1〜h3 一括・.gt-emboss 一括はしない): 画面題・作戦室の項目名・出撃・ステージ名・武器の枡の題・結果の題。
-   13px 級の小さい題(一時停止・更新情報・チュートリアル)はゴシックのまま=横太明朝はスマホの13pxで潰れる。
-   字間は各所の元の値に任せる(一律 0.08em で平らにしない)。palt は見出しだけ。 */
-html .ui-head-serif,
-html .command-ui .command-page-header h1,
+/* 明朝の役割(.type-world)。英字は "Orbitron" を**名指し**で先に置く(監査2026-09-12(A): var(--game-font) は FONT_STACK 全体に展開されるので
+   和文が明朝に届く前に BIZ で確定していた)。components に書体を直書きせず、このクラスを当てる(P17)。
+   13px 級の小さい題(一時停止・更新情報・チュートリアル・日付と並ぶ注記の行)はゴシックのまま=横太明朝はスマホの13pxで潰れる。
+   字間は各所の元の値に任せる(一律 0.08em で平らにしない)。palt は明朝だけ。 */
+html .type-world,
 html .command-ui .command-panel h2,
-html .command-ui .command-stage-card > span:first-of-type > span > .text-\[16px\],
 html .command-operation h1, html .command-section-title h2, html .command-sortie > span,
-html .weapon-tier-title { font-family: "Orbitron", var(--uf-head), serif !important; font-feature-settings: "palt" 1; }
-/* (2) 明朝は大小2ウェイト(監査B): 22px 級以上の大きい題は Regular で細く、20px 以下の項目名・出撃・枡の題は SemiBold で骨太に */
-html .ui-head-serif, html .command-ui .command-page-header h1,
-html .command-ui .command-stage-card > span:first-of-type > span > .text-\[16px\],
+html .weapon-tier-title { font-family: var(--type-world) !important; font-feature-settings: "palt" 1; }
+/* 明朝は大小2ウェイト(監査B): 22px 級以上の大きい題は Regular で細く、20px 以下の項目名・出撃・枡の題は SemiBold で骨太に(各所の font-weight で決める) */
 html .command-operation h1 { font-weight: 400; }
-html .ui-head-serif-sm { font-weight: 600; }
+/* 数字の役割(.type-num)と英字の小注記(.type-note)。 */
+html .type-num { font-family: var(--type-num) !important; font-variant-numeric: tabular-nums; }
+html .type-note { font-family: var(--type-note) !important; }
+html .type-ui { font-family: var(--type-ui) !important; }
+html .type-tag { font-family: var(--type-tag) !important; font-feature-settings: normal; }
 /* (3) 本文(2行以上に折れる説明・任務文・台詞・注記)の英数字だけ 110% の Orbitron。leading-relaxed / leading-snug は本文の印 */
-html .leading-relaxed, html .leading-snug, html .command-ui p, html .command-ui .development-guide,
-html .command-ui .command-page-header p { font-family: "Orbitron Prose", var(--uf-jp), sans-serif; }
-html .weapon-tier-title span { font-family: var(--game-font, "Orbitron"), var(--uf-jp), sans-serif !important; font-feature-settings: normal; }
+html .leading-relaxed, html .leading-snug, html .command-ui p, html .command-ui .development-guide { font-family: "Orbitron Prose", var(--uf-jp), sans-serif; }
+html .weapon-tier-title span { font-family: var(--type-ui) !important; font-feature-settings: normal; }
 html .ds-sortie .ds-sortie-t1, html .ds-row .ds-row-l { font-family: "Rajdhani", var(--uf-head), serif !important; font-feature-settings: "palt" 1; }
 /* 作戦室ホームの英字の副題(OPERATIONS ROOM 等)は見出しではない=Rajdhani のまま */
 html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !important; }
@@ -868,6 +879,7 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   color: var(--ds-amber);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+  letter-spacing: 0.06em; /* 数字は Orbitron(.type-num)。字幅が広いので字間は詰める */
 }
 /* 飾り計器行(読ませる情報ではなく「装置感」の演出。LAT/LON/SIGNALは固定文字列)。 */
 .ds-deco {
@@ -902,7 +914,7 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   letter-spacing: 0.3em;
   color: var(--ds-dim);
 }
-/* 地図から直接出撃(research/UIUX_PROPOSAL.md P1): 地図の下端に次の任務を重ねる帯。押せるのは「ほかの地域」だけ
+/* 地図から直接出撃(research/UIUX_PROPOSAL.md P1): 地図の下端に次の任務を重ねる帯。押せるのは「作戦地域一覧」だけ
    (帯そのものは地図の顔・NEXT の操作を通す)。開いた時に下から少し浮いて止まる(減速)。 */
 .ds-map-dest {
   position: absolute;
@@ -939,7 +951,7 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-family: var(--uf-head), serif;
+  font-family: var(--type-world);
   font-weight: 600;
   font-size: 18px;
   line-height: 1;
@@ -1043,16 +1055,16 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
 }
 .archive-film-stamp {
   position: absolute; right: 3px; bottom: 2px;
-  font-family: "Rajdhani", var(--uf-jp), sans-serif; font-weight: 600; font-size: 8px; line-height: 1; letter-spacing: 0.06em;
+  font-family: var(--type-num); font-weight: 600; font-size: 8px; line-height: 1; letter-spacing: 0.06em;
   color: rgba(255, 236, 196, 0.82); text-shadow: 0 1px 0 #000;
 }
 .archive-film-no {
   flex: none;
-  font-family: "Rajdhani", var(--uf-jp), sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 0.14em;
+  font-family: var(--type-num); font-weight: 600; font-size: 11px; letter-spacing: 0.14em;
   color: rgba(235, 232, 225, 0.42);
 }
 .archive-film-t {
-  font-family: var(--uf-head), serif;
+  font-family: var(--type-world);
   font-weight: 600;
   font-size: 16px;
   letter-spacing: 0.06em;
@@ -1338,23 +1350,6 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
 .ds-row .ds-row-d { overflow-wrap: anywhere; }
 
 /* 任意の装備プレビュー。遷移と保存処理は既存画面と共用する。 */
-.ds-loadout-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-shrink: 0;
-  padding: 8px 0 16px;
-  border-bottom: 1px solid var(--ds-line);
-}
-.ds-loadout-back {
-  min-width: 64px;
-  min-height: 44px;
-  color: var(--ds-amber);
-  font-size: 13.5px;
-}
-.ds-loadout-header h1 { font-size: 18px; font-weight: 500; }
-.ds-loadout-header h1 span { margin-left: 8px; font-size: 11px; letter-spacing: .18em; color: var(--ds-amber); }
-.ds-loadout-header p { margin-top: 4px; color: #a6adaa; font-size: 12px; }
 .ds-loadout-body .grid { grid-template-columns: minmax(0, 1fr); }
 .ds-loadout-body .ff7r-fade-right {
   min-height: 44px;

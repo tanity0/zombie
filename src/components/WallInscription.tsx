@@ -46,9 +46,8 @@ export default function WallInscription() {
         }}
       />
       <div
-        className="mt-2 text-[26px] font-bold whitespace-nowrap"
+        className="type-world mt-2 text-[26px] font-bold whitespace-nowrap"
         style={{
-          fontFamily: 'Georgia, "Hiragino Mincho ProN", serif',
           color: current.color,
           textShadow: `0 0 18px ${current.color}66, 0 2px 6px rgba(0,0,0,0.9)`,
           opacity: 0,

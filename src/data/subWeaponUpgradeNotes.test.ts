@@ -49,8 +49,8 @@ describe('SUB_WEAPON_UPGRADE_NOTES(取りこぼしゼロ)', () => {
 
 describe('subWeaponUpgradeNoteText', () => {
   it('nextLevel<=1(初回習得)は台帳を使わない専用文言', () => {
-    expect(subWeaponUpgradeNoteText('dog', 1)).toBe('装備できるようになる');
-    expect(subWeaponUpgradeNoteText('dog', 0)).toBe('装備できるようになる');
+    expect(subWeaponUpgradeNoteText('dog', 1)).toBe('装備できるようになる。');
+    expect(subWeaponUpgradeNoteText('dog', 0)).toBe('装備できるようになる。');
   });
 
   it('nextLevel=2/3は台帳のlv2/lv3をそのまま返す', () => {
@@ -59,14 +59,14 @@ describe('subWeaponUpgradeNoteText', () => {
   });
 
   it('レベルで変化しないサブウェポン(murasame/sage-stone)はその旨のフォールバック文言', () => {
-    expect(subWeaponUpgradeNoteText('murasame', 2)).toBe('このLvでは変化しない');
-    expect(subWeaponUpgradeNoteText('sage-stone', 2)).toBe('このLvでは変化しない');
+    expect(subWeaponUpgradeNoteText('murasame', 2)).toBe('このLvでは変化しない。');
+    expect(subWeaponUpgradeNoteText('sage-stone', 2)).toBe('このLvでは変化しない。');
   });
 
   // 社長裁定v0.25.3482でタレットにLv差が付いた(Lv1=10秒/Lv2=13秒/Lv3=15秒+たまに爆発)。
   // 「Lvで変化しない」枠から外れたことを固定する(元に戻すと落ちる)。
   it('タレットはLv2/Lv3で強化される(v0.25.3482)', () => {
-    expect(subWeaponUpgradeNoteText('turret', 2)).not.toBe('このLvでは変化しない');
-    expect(subWeaponUpgradeNoteText('turret', 3)).not.toBe('このLvでは変化しない');
+    expect(subWeaponUpgradeNoteText('turret', 2)).not.toBe('このLvでは変化しない。');
+    expect(subWeaponUpgradeNoteText('turret', 3)).not.toBe('このLvでは変化しない。');
   });
 });

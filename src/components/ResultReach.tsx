@@ -52,7 +52,7 @@ export const ResultReachHeadline: React.FC<Pick<ResultReachProps, 'dist' | 'rank
     : wallAchievementHeadline(zoneIdx, cur);
   return (
     <>
-      <p className="text-[15px] font-semibold tracking-tight" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
+      <p className="type-world text-[15px] font-semibold tracking-tight">
         <span className="text-white/95">{headline}</span>
       </p>
       <div

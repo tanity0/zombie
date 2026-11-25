@@ -45,13 +45,8 @@
   --command-accent: var(--menu-accent);
 }
 .command-ui .command-page-shell { background: radial-gradient(ellipse at 80% 0, var(--menu-panel), var(--menu-panel) 45%, var(--menu-bg)); }
-.command-ui .command-page { max-width: 1040px; color: var(--command-ink); font-family: 'Rajdhani', system-ui, sans-serif; scrollbar-width: thin; scrollbar-color: var(--menu-muted) transparent; }
-.command-ui .command-page-header { display: flex; align-items: center; gap: 24px; padding: 18px 20px 22px; background: var(--menu-panel); border-bottom: 1px solid var(--command-line); }
-.command-ui .command-page-header > div { min-width: 0; }
+.command-ui .command-page { max-width: 1040px; color: var(--command-ink); font-family: var(--type-ui); scrollbar-width: thin; scrollbar-color: var(--menu-muted) transparent; }
 .command-ui .command-page-kicker { color: var(--menu-accent); font-size: 10px; letter-spacing: .22em; }
-.command-ui .command-page-header h1 { margin-top: 5px; font: 500 clamp(22px, 3vw, 32px)/1.35 system-ui; letter-spacing: .08em; overflow-wrap: anywhere; }
-.command-ui .command-page-header p { margin-top: 8px; font: 12px/1.7 system-ui; color: var(--command-muted); }
-.command-ui .command-page-back { min-width: 70px; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 5px; color: var(--command-accent); font: 13px system-ui; border-right: 1px solid var(--command-line); padding-right: 12px; flex-shrink: 0; }
 .command-ui .command-section { padding: 20px; background: var(--menu-panel); border: 1px solid var(--command-line); }
 .command-ui .command-section > div:first-child { color: var(--command-accent); font: 500 14px/1.5 system-ui; letter-spacing: .1em; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--menu-line); }
 .command-ui .command-page > .p-3, .command-ui .command-page > .px-3 { padding-left: 20px; padding-right: 20px; }
@@ -100,18 +95,15 @@
 .command-ui .command-stage-card::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, #071116ed, #07111677 70%, #07111655); }
 .command-ui .command-stage-card > span:first-of-type > span > .text-\[16px\] { font: 500 23px/1.4 system-ui; margin-top: 8px; }
 @media (hover: hover) { .command-ui .command-page .command-stage-card:hover { background: var(--menu-panel); border-color: var(--command-accent); } }
-.command-ui .command-panel { background: linear-gradient(150deg, color-mix(in srgb, var(--menu-panel) 97%, transparent), color-mix(in srgb, var(--menu-bg) 97%, transparent)); border: 1px solid var(--menu-line); border-radius: 0; box-shadow: 0 24px 80px #0009; color: var(--command-ink); font-family: 'Rajdhani', system-ui, sans-serif; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.command-ui .command-panel { background: linear-gradient(150deg, color-mix(in srgb, var(--menu-panel) 97%, transparent), color-mix(in srgb, var(--menu-bg) 97%, transparent)); border: 1px solid var(--menu-line); border-radius: 0; box-shadow: 0 24px 80px #0009; color: var(--command-ink); font-family: var(--type-ui); backdrop-filter: none; -webkit-backdrop-filter: none; }
 .command-ui .command-panel h2 { font-size: 26px; letter-spacing: .08em; line-height: 1.4; }
 .command-ui .command-character button[aria-pressed] { background: color-mix(in srgb, var(--menu-panel) 91%, transparent) !important; border: 1px solid var(--menu-line) !important; border-image: none !important; }
 .command-ui .command-character button[aria-pressed='true'] { background: color-mix(in srgb, var(--menu-selected) 93%, transparent) !important; border-color: var(--command-accent) !important; }
-.command-ui .command-character > button[aria-label='戻る'] { min-height: 44px; color: var(--command-accent); border: 1px solid var(--menu-line); }
 @media (min-width: 900px) {
   .command-ui .command-page .command-growth-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
   .command-ui .command-page .command-growth-grid > * { margin-top: 0; }
 }
 @media (max-width: 480px) {
-  .command-ui .command-page-header { gap: 12px; padding: 12px 4px 18px; }
-  .command-ui .command-page-back { min-width: 57px; padding-right: 8px; }
   .command-ui .command-page > .p-3, .command-ui .command-page > .px-3 { padding-left: 0; padding-right: 0; }
   .command-ui .command-section { padding: 14px; }
   .command-ui .command-page .grid-cols-2 { grid-template-columns: minmax(0, 1fr); }
@@ -127,9 +119,6 @@
 .command-ui .command-page-shell { background:radial-gradient(140% 70% at 50% -10%,#101315 0%,var(--menu-bg) 55%); }
 .command-ui .command-page { scrollbar-width:none; }
 .command-ui .command-page::-webkit-scrollbar { display:none; }
-.command-ui .command-page-header { gap:18px; padding:12px 16px; background:var(--menu-panel); border-bottom:1px solid var(--menu-line); }
-.command-ui .command-page-header h1 { margin:0; font-size:24px; }
-.command-ui .command-page-header p { margin-top:4px; }
 .command-ui .command-section { background:transparent; border:0; padding:16px; }
 .command-ui .command-page .ff7r-fade-right:not(.command-stage-card) { border-width:0 0 1px; background:var(--menu-panel); }
 .command-ui .command-page .ff7r-fade-right.is-on { box-shadow:inset 3px 0 var(--menu-accent); background:var(--menu-selected); }

@@ -230,7 +230,7 @@ const KillerLine: React.FC<{ deathCause: string }> = ({ deathCause }) => {
           <p className="text-[16px] font-semibold leading-tight text-rose-200">
             {type ? name : deathCause}
             {type && promoted && (
-              <span className="ml-1.5 text-amber-300" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>→ 宿敵化</span>
+              <span className="type-world ml-1.5 text-amber-300">→ 宿敵化</span>
             )}
           </p>
           {type && sub && <p className="mt-0.5 text-[11px] text-rose-200/70">{sub}</p>}
@@ -437,7 +437,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const armoryPos = useGameStore(s => s.armory);
   const policePos = useGameStore(s => s.police);
   const reachPois = useMemo(() => {
-    const label: Record<string, string> = { boss: '裏ボスの巣', hospital: '廃病院', armory: '武器庫', police: '警察署', cave: '洞窟', shrine: '武将の祠' };
+    const label: Record<string, string> = { boss: '深層変異体の巣', hospital: '廃病院', armory: '武器庫', police: '警察署', cave: '洞窟', shrine: '武将の祠' };
     return getRunPois(hiddenBoss, [
       { kind: 'hospital', pos: hospitalPos },
       { kind: 'armory', pos: armoryPos },
@@ -696,7 +696,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
 
   // 結果の名(縦持ち=左の列の頭/横長=2列の上の通しの行。同じ物を2か所に置き、片方だけ見せる)。
   const resultTitle = (extra: string) => (
-    <h2 className={`text-2xl font-semibold tracking-tight gt-emboss ui-head-serif ${won || withdraw ? 'text-amber-300' : 'text-white'}${extra}`}>
+    <h2 className={`type-world text-2xl font-normal tracking-tight gt-emboss ${won || withdraw ? 'text-amber-300' : 'text-white'}${extra}`}>
       {isBenchmark ? 'ベンチ結果' : won ? '任務達成' : withdraw ? '帰還' : '任務失敗'}
     </h2>
   );
@@ -735,7 +735,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           {won && clearReportLines.length > 0 && (
             <div className="mt-3 mb-1 rounded-none bg-amber-400/5 px-3 py-2.5 text-left">
               <div className="mb-1.5 text-[10px] uppercase tracking-widest text-amber-200/70">任務報告</div>
-              <div className="space-y-1 text-[12px] leading-relaxed text-white/85" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
+              <div className="space-y-1 text-[12px] leading-relaxed text-white/85">
                 {clearReportLines.map((line, i) => <p key={i}>{line}</p>)}
               </div>
               {unlockedRecords.length > 0 && (
@@ -759,7 +759,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             <>
               {!isBenchmark && !hideDepthReview && (
                 <div className="mt-2">
-                  <p className="text-[15px] font-semibold tracking-wide" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
+                  <p className="type-world text-[15px] font-semibold tracking-wide">
                     <span className="text-white/95">{wallHeadline}</span>
                   </p>
                   <div className="mx-auto mt-0.5 h-[2px] w-24 rounded-full" style={{ background: 'linear-gradient(90deg, transparent, #ffd700, transparent)' }} />
@@ -1324,10 +1324,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             {openRecord ? (
               <div className="px-4 py-5">
                 <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">回収資料</div>
-                <h3
-                  className="mb-3 text-lg font-semibold text-amber-100"
-                  style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
-                >
+                <h3 className="type-world mb-3 text-lg font-semibold text-amber-100">
                   {openRecord.title}
                 </h3>
                 <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
@@ -1379,14 +1376,11 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
         <div data-nav-modal="kogarasu-unlock" className="fixed inset-0 z-[60] flex items-center justify-center px-3 bg-black/70">
           <div className="glass-panel command-panel w-full max-w-sm rounded-none px-5 py-6 text-center">
             <div className="text-[10px] uppercase tracking-[0.24em] text-amber-200/65">NEW WEAPON UNLOCKED</div>
-            <h3
-              className="mt-2 text-2xl font-bold text-amber-300"
-              style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
-            >
+            <h3 className="type-world mt-2 text-2xl font-bold text-amber-300">
               小烏丸 解放
             </h3>
             <p className="mt-3 text-[13px] leading-relaxed text-white/85">
-              裏ボス『トール』討伐報酬。刀をLv3(MAX)まで強化すると武器商人に小烏丸が並ぶ。
+              深層変異体『トール』討伐報酬。刀をLv3(MAX)まで強化すると武器商人に小烏丸が並ぶ。
             </p>
             <button
               type="button"

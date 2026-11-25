@@ -8,7 +8,8 @@ import { BossFaceDefs, BossHeadFace, bossFaceRimArc, BOSS_FACE_RIM, BOSS_FACE_RI
 import { spritePath } from '../utils/spriteLoader';
 import { splitBossStoryName, type BossStoryCell, type BossStoryGroupView } from '../utils/bossStoryArchive';
 
-const SERIF = 'Georgia, "Hiragino Mincho ProN", serif';
+// 明朝の役割(index.css --type-world・research/UIUX_PROPOSAL.md P17)。SVG の文字は class が効かない所があるので変数を直に引く。
+const SERIF = 'var(--type-world)';
 // 押した時(クリエイティブ監査2026-11-16 #10): 四角は光らせず、弧を濃く・顔をわずかに沈める。押す80ms/離す160ms(ease-out)。
 const PRESS_T = 'duration-[160ms] ease-out group-active:duration-[80ms]';
 
@@ -17,7 +18,7 @@ const StoryFace: React.FC<{ cell: BossStoryCell; px: number }> = ({ cell, px }) 
   const idBase = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const S = 64, c = S / 2, r = 24, rimR = 28.5;
   const patrol = cell.entry.group === '徘徊';
-  const hidden = cell.entry.group === '裏ボス'; // 裏ボスだけ刻み2本(監査 #4)
+  const hidden = cell.entry.group === '深層変異体'; // 裏ボスだけ刻み2本(監査 #4)
   const face = cell.face;
   let inner: React.ReactNode;
   if (face && cell.unlocked) {
@@ -100,7 +101,7 @@ const ShelfName: React.FC<{ name: string }> = ({ name }) => {
 export const BossStoryShelf: React.FC<{ groups: BossStoryGroupView[]; onOpen: (key: string) => void }> = ({ groups, onOpen }) => (
   <div className="space-y-3">
     {groups.map(g => {
-      const px = g.group === '裏ボス' ? 64 : 56; // 裏ボスだけ大きく(監査 #4)
+      const px = g.group === '深層変異体' ? 64 : 56; // 裏ボスだけ大きく(監査 #4)
       return (
         <div key={g.group}>
           <div className="mb-1 flex items-center gap-1.5 text-[10px] tracking-[0.08em] text-white/45">
@@ -148,7 +149,7 @@ export const BossStoryBody: React.FC<{ cell: BossStoryCell; onClose: () => void 
       <div className="shrink-0"><StoryFace cell={cell} px={72} /></div>
       <div className="min-w-0">
         <div className="mb-1 text-[10px] tracking-[0.1em] text-amber-200/70">特殊変異体・{cell.entry.group}</div>
-        <h3 className="text-lg font-semibold text-amber-100" style={{ fontFamily: SERIF }}>{cell.entry.name}</h3>
+        <h3 className="type-world text-lg font-semibold text-amber-100">{cell.entry.name}</h3>
       </div>
     </div>
     <div className="my-3 h-px bg-amber-200/15" aria-hidden="true" />

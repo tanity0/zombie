@@ -1,0 +1,36 @@
+/* 装備画面の外枠の上余白をほかの画面(12px)にそろえる=見出しの「戻る」の高さが全画面で同じ(作戦室ホームは16pxのまま)。 */
+.ds-home.command-shell { padding-top: max(env(safe-area-inset-top), 12px) !important; }
+/* 空っぽの装備画面(research/UIUX_PROPOSAL.md P9): 今の銃のカード+まだ無い枠+開発施設へ+副武装・見た目の行。 */
+.command-shell .ds-loadout-body .ff7r-fade-right.is-current { background: var(--menu-selected); border-color: var(--menu-accent); border-image: none; box-shadow: inset 4px 0 var(--menu-accent); }
+.command-shell .loadout-empty .weapon-tier:first-child { border-top: 0; padding-top: 4px; }
+.command-shell .loadout-slot-empty { display: flex; align-items: center; gap: 18px; min-height: 80px; padding: 12px 18px; border: 1px solid var(--menu-line); background: color-mix(in srgb, var(--menu-panel) 55%, transparent); color: #5d5965; font: 14px system-ui; letter-spacing: .06em; }
+.command-shell .loadout-slot-empty-art { width: 84px; height: 52px; flex-shrink: 0; background: #08070c; border: 1px solid #1c1924; box-shadow: inset 0 0 14px rgba(0, 0, 0, .6); }
+/* まだ無い枠: 見出しの Tier も枠も一段沈める(今ある銃=明るい / まだ無い=暗い)。 */
+.command-shell .loadout-empty .weapon-tier.is-vacant .weapon-tier-title { color: #55515e; }
+.command-shell .loadout-empty .weapon-tier.is-vacant + .weapon-tier.is-vacant .loadout-slot-empty { opacity: .6; }
+/* 開発施設へ: 空き枠の真下に、枠と同じ幅の1行として置く(右端に1つだけ浮かせない)。右の › は押すと先へ滑って戻る(慣性)。 */
+.command-shell .loadout-empty-go { padding-top: 12px; }
+.command-shell .loadout-empty-go button { display: flex; width: 100%; align-items: center; justify-content: space-between; min-height: 56px; padding: 0 20px 0 18px; border: 1px solid color-mix(in srgb, var(--menu-accent) 70%, transparent); color: var(--menu-accent); background: color-mix(in srgb, var(--menu-accent) 6%, transparent); font: 600 16px var(--uf-jp), system-ui, sans-serif; letter-spacing: .04em; transition: background 200ms cubic-bezier(.2,.7,.3,1), color 200ms cubic-bezier(.2,.7,.3,1); }
+.command-shell .loadout-empty-go button:hover, .command-shell .loadout-empty-go button:active { background: var(--menu-selected); color: var(--menu-accent-hi); }
+.command-shell .loadout-empty-go-chev { display: inline-flex; width: 14px; height: 14px; align-items: center; justify-content: center; transition: transform 380ms cubic-bezier(.18,.9,.24,1.45); }
+.command-shell .loadout-empty-go-chev > i { display: block; width: 8px; height: 8px; margin-right: 3px; border-right: 1.5px solid currentColor; border-top: 1.5px solid currentColor; transform: rotate(45deg); }
+.command-shell .loadout-empty-go button:active .loadout-empty-go-chev { transform: translateX(8px); transition: transform 110ms cubic-bezier(.4,0,.7,.4); }
+.command-shell .loadout-empty-go button:focus-visible, .command-shell .loadout-empty-go button.navfocus { outline: 2px solid var(--menu-accent-hi); outline-offset: 2px; }
+.command-shell .loadout-summary { margin-top: 28px; border-top: 1px solid var(--menu-line); }
+.command-shell .loadout-summary > div { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--menu-line); font: 14px system-ui; }
+.command-shell .loadout-summary dt { color: var(--menu-muted); letter-spacing: .06em; }
+.command-shell .loadout-summary dd { color: var(--menu-ink); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.command-shell .loadout-summary dd.is-none { color: #5d5965; }
+@media (max-width: 600px) {
+  .command-shell .loadout-slot-empty { min-height: 76px; gap: 12px; padding: 12px; }
+  .command-shell .loadout-slot-empty-art { width: 60px; height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .command-shell .loadout-empty-go-chev, .command-shell .loadout-empty-go button:active .loadout-empty-go-chev { transition: none; transform: none; }
+}
+/* 「装備」の札: 縦持ちはカードの右(今のまま)。横長(PC)はカードが横に長いので、銃の名前のすぐ横へ寄せる。 */
+.command-shell .weapon-on-inline { display: none; }
+@media (orientation: landscape) {
+  .command-shell .weapon-on-inline { display: inline-flex; margin-left: 6px; }
+  .command-shell .weapon-candidates .weapon-selection { display: none; }
+}

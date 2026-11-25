@@ -3,7 +3,7 @@ import { useGameStore } from '../store/gameStore';
 import { rafTimeout } from '../utils/rafTimeout';
 
 // ★B10 血の覚醒(社長指示2026-10-16「覚醒時、覚醒の英語を表示」): 覚醒に入った瞬間だけ、自機の上に英字「AWAKENING」を一拍出す。
-// 題字の運動は銘打ち(WallInscription)と同じ(字間が 0.34em→0.14em に締まる・Georgia 明朝)。色は覚醒の体と同じ朱。全長 1.8秒(消え 0.6秒)。
+// 題字の運動は銘打ち(WallInscription)と同じ(字間が 0.34em→0.14em に締まる・明朝の役割=type-world)。色は覚醒の体と同じ朱。全長 1.8秒(消え 0.6秒)。
 // 購読は bloodAwakenStartedAt(覚醒に入った時だけ変わる)と bloodAwakenUntil の有無だけ=毎フレームの再レンダ無し。
 const TOTAL_MS = 1800;
 const FADE_MS = 600;
@@ -37,9 +37,8 @@ export const BloodAwakenBanner = () => {
       }}
     >
       <div
-        className="text-[30px] font-bold whitespace-nowrap"
+        className="type-world text-[30px] font-bold whitespace-nowrap"
         style={{
-          fontFamily: 'Georgia, "Hiragino Mincho ProN", serif',
           color: COLOR,
           textShadow: `0 0 20px ${COLOR}88, 0 0 2px #2a0306, 0 2px 6px rgba(0,0,0,0.95)`,
           opacity: 0,

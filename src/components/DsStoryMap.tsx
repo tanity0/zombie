@@ -69,7 +69,7 @@ const arc = (a: readonly [number, number], b: readonly [number, number], i: numb
 
 // target=開いた時の出撃先(utils/dsHome.sortieTarget)。kind 'next'=NEXT の菱形、'last'=「前回」の字。どちらも元の場所に残す(輪とは別)。
 // pick=選択中の作戦地域(琥珀の輪・下端の札と場所名)。locked=地図に出す未解放のステージ(NEXT の1つ先・utils/opsMapSelect)。
-// onPick=場所の印かボスの顔を押した時(そのステージの id)。onOthers=地図の下端の「ほかの地域」(作戦地域の一覧)。
+// onPick=場所の印かボスの顔を押した時(そのステージの id)。onOthers=地図の下端の「作戦地域一覧」(作戦地域の一覧)。
 const LAST_LABEL = MAP_PICK_LABEL.last;
 const DsStoryMap: React.FC<{
   stages: readonly Stage[]; cleared: ReadonlySet<string>; target: SortieTarget | null; pick: MapPick | null; locked?: Stage | null;
@@ -342,8 +342,8 @@ const DsStoryMap: React.FC<{
       </svg>
       <span className="ds-map-tag">SECTOR — <SwapText value={sectorLabel} /></span>
       {/* 地図の下端に選択中の作戦地域: 札(目標/前回/再訪。未解放は札なし)+場所の名(明朝)。任務名は出撃の帯が持つ(同じ名を2度言わない)。
-          右に「ほかの地域」(作戦地域の一覧)。選択中が無い時は出さない(出撃の帯が一覧へ行く形に戻る)。
-          帯は地図の操作(顔・印)を邪魔しない=押せるのは「ほかの地域」だけ。 */}
+          右に「作戦地域一覧」(作戦地域の一覧)。選択中が無い時は出さない(出撃の帯が一覧へ行く形に戻る)。
+          帯は地図の操作(顔・印)を邪魔しない=押せるのは「作戦地域一覧」だけ。 */}
       {pick && (
         <div className={`ds-map-dest${pickLocked ? ' is-locked' : ''}`} aria-label="選択中の作戦地域">
           {/* 11: 未解放の時は札を出さない(出撃の帯だけが「未解放」と言う)。 */}
@@ -351,7 +351,7 @@ const DsStoryMap: React.FC<{
           <span className="ds-map-dest-pl"><SwapText value={pickLocked ? LOCKED_PLACE_NAME : pick.stage.locationTitle} /></span>
           {onOthers && (
             <button type="button" data-nav-id="ops-others" data-testid="ops-others" className="ds-map-dest-ot" onClick={onOthers}>
-              ほかの地域<PixelIcon name="chevron-right" size={10} />
+              作戦地域一覧<PixelIcon name="chevron-right" size={10} />
             </button>
           )}
         </div>

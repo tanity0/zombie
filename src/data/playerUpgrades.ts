@@ -39,17 +39,17 @@ export interface PlayerUpgradeDef {
 }
 
 export const PLAYER_UPGRADES: readonly PlayerUpgradeDef[] = [
-  { id: 'health', label: '体力',       perLevel: 20,   perLevelLabel: '+20',  desc: '一撃を余分にもらっても立っていられる' },
-  { id: 'attack', label: '攻撃力',     perLevel: 0.04, perLevelLabel: '+4%',  desc: '同じ弾数で、相手が早く倒れる' },
-  { id: 'ammo',   label: '弾数',       perLevel: 0.05, perLevelLabel: '+5%',  desc: '弾切れが遠くなる' },
+  { id: 'health', label: '体力',       perLevel: 20,   perLevelLabel: '+20',  desc: '一撃を余分にもらっても立っていられる。' },
+  { id: 'attack', label: '攻撃力',     perLevel: 0.04, perLevelLabel: '+4%',  desc: '同じ弾数で、相手が早く倒れる。' },
+  { id: 'ammo',   label: '弾数',       perLevel: 0.05, perLevelLabel: '+5%',  desc: '弾切れが遠くなる。' },
   // 経験値効率(社長指示v0.25.3679「強化項目に経験値効率も追加。10%ずつ」)。
-  { id: 'xp',     label: '経験値効率',   perLevel: 0.10, perLevelLabel: '+10%', desc: '出撃中のレベルが速く上がる' },
+  { id: 'xp',     label: '経験値効率',   perLevel: 0.10, perLevelLabel: '+10%', desc: '出撃中のレベルが速く上がる。' },
   // スクラップ効率(社長指示2026-10-13「強化にスクラップ効率を追加。20%から100%まで」)=1段+20%・5段で+100%。
   // 拾ったスクラップの量に掛かる(パッシブ「スクラップ獲得数アップ」の scrapMult と同じ倍率へ足す)。
-  { id: 'scrap',  label: 'スクラップ効率', perLevel: 0.20, perLevelLabel: '+20%', desc: '拾うスクラップが増える' },
+  { id: 'scrap',  label: 'スクラップ効率', perLevel: 0.20, perLevelLabel: '+20%', desc: '拾うスクラップが増える。' },
   // カウンター受付(社長指示2026-10-28「強化にいれる。0.02で」)=1段+0.02秒(受付300ms→5段で400ms)。単位は秒。
-  { id: 'counter', label: 'カウンター受付', perLevel: 0.02, perLevelLabel: '+0.02秒', desc: '少し早く振っても弾ける' },
-  { id: 'gold',   label: 'ゴールド獲得', perLevel: 0.10, perLevelLabel: '+10%', desc: '同じ戦果で持ち帰るGが増える' },
+  { id: 'counter', label: 'カウンター受付', perLevel: 0.02, perLevelLabel: '+0.02秒', desc: '少し早く振っても弾ける。' },
+  { id: 'gold',   label: 'ゴールド獲得', perLevel: 0.10, perLevelLabel: '+10%', desc: '同じ戦果で持ち帰るGが増える。' },
 ];
 
 /** 系統idの一覧(表示順=台帳順)。 */

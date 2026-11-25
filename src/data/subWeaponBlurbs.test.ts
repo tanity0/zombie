@@ -4,8 +4,8 @@ import { subWeaponBlurb, SUB_BLURB_BY_DEVICE } from './subWeaponBlurbs';
 // research/PC_SUPPORT.md §11-6: 「フリック」等のスマホの言葉を PC・パッドに出さない(チュートリアルの pcLines/padLines と同じ考え方)。
 describe('subWeaponBlurb(機器ごとの一言)', () => {
   it('スマホ(既定)の文は変えない', () => {
-    expect(subWeaponBlurb('katana')).toBe('刀で自動で斬る。銃と他のサブウェポンは使えない。フリックで無敵の突進斬り');
-    expect(subWeaponBlurb('wire-anchor', 'touch')).toBe('フリックした方向へワイヤーを撃ち、刺さった所へ無敵で飛ぶ');
+    expect(subWeaponBlurb('katana')).toBe('刀で自動的に斬りつける。銃と他のサブウェポンは使えない。フリックで無敵の突進斬り。');
+    expect(subWeaponBlurb('wire-anchor', 'touch')).toBe('フリックした方向へワイヤーを撃ち、刺さった所へ無敵で飛ぶ。');
   });
   it('PC・パッドの文にはスマホの操作の言葉が無い', () => {
     for (const k of ['katana', 'wire-anchor'] as const) {
@@ -18,9 +18,9 @@ describe('subWeaponBlurb(機器ごとの一言)', () => {
     }
   });
   it('パッドの文は系統ごとの刻印(HUD の札と同じ字)', () => {
-    expect(subWeaponBlurb('katana', 'pad', 'xbox')).toBe('刀で自動で斬る。銃と他のサブウェポンは使えない。B でスティックを倒した方へ無敵の突進斬り');
+    expect(subWeaponBlurb('katana', 'pad', 'xbox')).toBe('刀で自動的に斬りつける。銃と他のサブウェポンは使えない。B でスティックを倒した方へ無敵の突進斬り。');
     expect(subWeaponBlurb('katana', 'pad', 'ps')).toContain('○ でスティックを倒した方へ');
-    expect(subWeaponBlurb('wire-anchor', 'pad', 'nin')).toBe('A でスティックを倒した方へワイヤーを撃ち、刺さった所へ無敵で飛ぶ');
+    expect(subWeaponBlurb('wire-anchor', 'pad', 'nin')).toBe('A でスティックを倒した方へワイヤーを撃ち、刺さった所へ無敵で飛ぶ。');
   });
   it('刀とワイヤーの PC の文は同じ形(読点を挟まない)', () => {
     expect(subWeaponBlurb('katana', 'mouse')).toContain('右クリックでカーソルの方へ無敵の突進斬り');

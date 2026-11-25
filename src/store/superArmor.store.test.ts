@@ -200,9 +200,9 @@ describe('スキル台帳', () => {
     expect(SKILLS['super-armor'].name).toBe('スーパーアーマー');
     expect(SKILLS['super-armor'].rarity).toBe('normal');
     const base = '小さなダメージでは吹き飛ばず、動きが止まらない';
-    expect(skillDescForLevel('super-armor', 1)).toBe(`${base}（Lv1：ダメージ8まで）`);
-    expect(skillDescForLevel('super-armor', 2)).toBe(`${base}（Lv2：16まで）`);
-    expect(skillDescForLevel('super-armor', 3)).toBe(`${base}（Lv3：24まで。近接を振っている間は吹き飛ばない）`);
+    expect(skillDescForLevel('super-armor', 1)).toBe(`${base}（Lv1：ダメージ8まで）。`);
+    expect(skillDescForLevel('super-armor', 2)).toBe(`${base}（Lv2：16まで）。`);
+    expect(skillDescForLevel('super-armor', 3)).toBe(`${base}（Lv3：24まで。近接を振っている間は吹き飛ばない）。`);
   });
   it('ガチャの通常枠に自動で入る(眠らせない・初期所持にしない)', () => {
     expect(NEW_SLEEPING_SKILLS as SkillKey[]).not.toContain('super-armor');

@@ -261,8 +261,8 @@ const StatCell: React.FC<{ label: string; value: string }> = ({ label, value }) 
 
 const TagList: React.FC<{ label: string; items: string[] }> = ({ label, items }) => (
   <div className="flex items-start gap-2 text-[11px]">
-    <span className="w-14 shrink-0 text-white/45">{label}</span>
-    <span className="min-w-0 flex-1 text-white/80">{items.length ? items.join('・') : '—'}</span>
+    <span className="w-[4.5rem] shrink-0 text-white/45">{label}</span>
+    <span className="min-w-0 flex-1 text-white/80">{items.length ? items.join(' / ') : '—'}</span>
   </div>
 );
 
@@ -309,7 +309,7 @@ export const GhostAllyCard: React.FC<{ ally: GhostAllySnapshot; sourceLabel?: st
           <div className="mt-2 space-y-1 border-t border-white/10 pt-2">
             <TagList label="銃" items={guns} />
             <TagList label="近接" items={b.meleeKey ? [weaponDisplayName(b.meleeKey)] : []} />
-            <TagList label="サブ" items={subs} />
+            <TagList label="サブウェポン" items={subs} />
             <TagList label="スキル" items={skills} />
             <TagList label="装備" items={equips} />
           </div>

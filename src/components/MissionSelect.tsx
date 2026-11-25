@@ -2,6 +2,9 @@ import { syncFeatChronicle } from '../utils/chronicleFeatsSync';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal as createReactPortal } from 'react-dom';
 import './commandHome.css';
+import './loadoutEmpty.css'; // 空っぽの装備画面(research/UIUX_PROPOSAL.md P9)
+import './charSelectLayout.css'; // ロール選択の縦持ちの並び(research/UIUX_PROPOSAL.md P13)
+import './opsRoomPc.css'; // PC(横長)の作戦室の文字を一段大きく(research/UIUX_PROPOSAL.md P16)
 import { COMMAND_UI_ENABLED, REGION_ART, regionArtWideClass } from '../config/uiDesign';
 import { useHudPortalRoot } from './HudScale';
 
@@ -107,6 +110,8 @@ const PreClearBriefing: React.FC<{ synopsis: string[]; summary: string; resetKey
 // crosshair、開発施設=bag)——判断の根拠は最終報告に記載。
 import { PixelIcon, type PixelIconName } from './PixelIcon';
 import MuteButton from './MuteButton';
+import PageHeader from './PageHeader';
+import { PriceTag } from './PriceTag'; // 値段の札(research/UIUX_PROPOSAL.md P10)
 import { useAudioMuted } from '../hooks/useAudioMuted';
 // 作戦室DS2化(UI_OVERHAUL.md §3 バッチ①): ホームの計器化+作戦地図(v0.25.5096〜 架空列島+ストーリーの軌跡=DsStoryMap。旧=等高線の飾り)。旧ホームは?dshome=0で丸ごと復帰。
 import DsStoryMap from './DsStoryMap';
@@ -412,7 +417,7 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
   >
     {/* ページ全体(背景ごと)はスクロールさせない=ブラウザっぽさの元を排除。はみ出す時は
         枠(panel)の中だけがスクロールする(スクロールバーは全要素で非表示済み・overscroll-contain)。 */}
-    {/* fill=true(任務詳細): パネルを常に全高にする=内容が短くても最下部固定フッター(ジョブ選択)が
+    {/* fill=true(任務詳細): パネルを常に全高にする=内容が短くても最下部固定フッター(ロール選択)が
         画面下端に落ちる(社長指示v0.25.1852。max-h-fullのままだと短いページでパネルが縮み中腰になる)。 */}
     {/* overflow-x-hidden + pan-y(社長報告2026-08-29「横にずれたり」): メニューのページは縦専用。
         iOSは overflow-y:auto だけだと横も auto 扱いになり、僅かな横はみ出しで横パンできてしまう。
@@ -422,18 +427,16 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
   )
 );
 
-// 戻る/タイトルは常時表示=スクロール領域の先頭で sticky 固定(社長指示)。背景＋blur で
-// スクロールしてくる内容を隠す。sticky 自身が absolute 子(戻るボタン)の位置基準になるので relative 不要。
+// 戻る/タイトルは常時表示=スクロール領域の先頭で sticky 固定(社長指示)。
 // 戻る(Header共通)の音は1箇所に集約(監査B-3): 呼び出し側が個別にui-backを鳴らす必要はない
 // (goHomeFromArchive等、遷移そのものに副作用がある戻るはここで音だけ足し、呼び出し元はそのまま渡せる)。
-const Header: React.FC<{ title: string; subtitle?: string; onBack?: () => void }> = ({ title, subtitle, onBack }) => {
+// 見た目は全画面共通の見出しの部品(PageHeader・research/UIUX_PROPOSAL.md P5)。en=英字の小注記(作戦室の行と同じ語)。
+// subtitle は旧版(?design=0)の副題。新しい見出しでは note(その画面で知っておくべき一言)だけを出す。
+const Header: React.FC<{ title: string; en?: string; note?: string; subtitle?: string; quiet?: boolean; onBack?: () => void }> = ({ title, en, note, subtitle, quiet, onBack }) => {
   const back = onBack ? () => { playSfx('ui-back'); onBack(); } : undefined;
   return (
   COMMAND_UI_ENABLED ? (
-    <header className="command-page-header sticky top-0 z-20">
-      {back && <button type="button" onClick={back} className="command-page-back" aria-label="戻る" data-nav-back><PixelIcon name="chevron-left" size={18} /><span>戻る</span></button>}
-      <div><h1 className="gt-emboss">{title}</h1>{subtitle && <p>{subtitle}</p>}</div>
-    </header>
+    <PageHeader title={title} en={en} note={note} quiet={quiet} onBack={onBack} />
   ) : (
   <div className="sticky top-0 z-20 px-5 pt-5 pb-3 text-center bg-[rgba(11,9,16,0.94)] backdrop-blur-md" style={{ borderBottom: '1px solid rgba(168,85,247,0.45)' }}>
     {back && (
@@ -820,15 +823,15 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         {/* SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止): スキルの持ち込みは撤去。ここで選ぶのは
             サブウェポンと同行者(守護霊)のみ。ラン中のスキルは全てレベルアップの抽選で組む。 */}
         <HubButton icon={<PixelIcon name="check" size={18} />} label="装備" desc="サブウェポン1 / アバター" onClick={() => setScreen({ name: 'loadout' })} delay={50} />
-        <HubButton icon={<PixelIcon name="wrench" size={18} />} label="開発施設" desc="銃・サブウェポン・スキル解放" onClick={() => setScreen({ name: 'weaponDev' })} delay={100} />
+        <HubButton icon={<PixelIcon name="wrench" size={18} />} label="開発施設" desc="銃 / サブウェポン / スキル解放" onClick={() => setScreen({ name: 'weaponDev' })} delay={100} />
         {/* research/GROWTH.md v4(永続育成): ゴールドで4系統を段階購入。有効段数は次の出撃から反映。 */}
-        <HubButton icon={<PixelIcon name="trending-up" size={18} />} label="強化" desc="体力・攻撃力・弾数・ゴールド" onClick={() => setScreen({ name: 'growth' })} delay={125} />
-        <HubButton icon={<PixelIcon name="book" size={18} />} label="資料室" desc="記録・変異体資料" onClick={goArchive} delay={150} badge={unreadArchiveCount > 0 ? 'NEW' : undefined} />
+        <HubButton icon={<PixelIcon name="trending-up" size={18} />} label="強化" desc="体力 / 攻撃力 / 弾数 / ゴールド" onClick={() => setScreen({ name: 'growth' })} delay={125} />
+        <HubButton icon={<PixelIcon name="book" size={18} />} label="資料室" desc="記録 / 変異体資料" onClick={goArchive} delay={150} badge={unreadArchiveCount > 0 ? 'NEW' : undefined} />
         {/* BOT_AND_GHOST.md §2.14(社長裁定「独立メニュー化しよう」): 守護霊=名前の決定+討伐の保持記録。
             資料室(操作記録・物語資料)とは別物なので独立させる。名称/位置は叩き台。 */}
-        <HubButton icon={<PixelIcon name="flame" size={18} />} label="守護霊" desc="名前・討伐記録" onClick={goGhost} delay={175} />
+        <HubButton icon={<PixelIcon name="flame" size={18} />} label="守護霊" desc="名前 / 討伐記録" onClick={goGhost} delay={175} />
         {/* オプションは最下段(社長指示v0.25.1781)。 */}
-        <HubButton icon={<PixelIcon name="gear" size={18} />} label="オプション" desc="音量・各種設定" onClick={() => setScreen({ name: 'options' })} delay={200} />
+        <HubButton icon={<PixelIcon name="gear" size={18} />} label="オプション" desc="音量 / 各種設定" onClick={() => setScreen({ name: 'options' })} delay={200} />
         <p className="pt-1 text-center text-[11px] text-white/35" style={captureMode ? { visibility: 'hidden' } : undefined}>v{__APP_VERSION__}</p>
       </div>
       {renderHomeNotices()}
@@ -852,7 +855,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           <div className="glass-panel command-panel w-full max-w-sm rounded-none px-4 py-5 text-center">
             <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">お知らせ</div>
             {/* 統合正本8.1 / 指示書6.1の確定文言。 */}
-            <h3 className="mb-2 text-lg font-semibold text-amber-100" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
+            <h3 className="mb-2 text-lg font-semibold text-amber-100">
               新しい資料が資料室に追加されました
             </h3>
             <p className="mb-4 text-[12px] leading-relaxed text-white/75">
@@ -969,16 +972,16 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             縦持ちは列の箱を display:contents で消して従来の1列のまま(DOM の順=上から下)。 */}
         <div className="flex h-full w-full flex-col" style={{ padding: '10px 12px' }}>
           <div className="ds-top menu-item-in" style={{ animationDelay: '0ms' }}>
-            <span className="ds-top-big gt-emboss">OPERATIONS ROOM</span>
+            <span className="ds-top-big gt-emboss">OPERATIONS ROOM ── 作戦室</span>
             {/* 実データが引ける物だけ実値(§3-0): G=goldBalance。RANK等の嘘の数字は出さない。 */}
-            <span>G <span className="ds-top-v">{goldBalance.toLocaleString()}</span></span>
+            <span><span className="ds-top-v type-num">{goldBalance.toLocaleString()}G</span></span>
           </div>
           <div className="contents landscape:my-auto landscape:flex landscape:min-h-0 landscape:items-start landscape:gap-x-14">
-            <div className="contents landscape:flex landscape:min-w-0 landscape:flex-[58] landscape:flex-col">
+            <div className="ds-home-left contents landscape:flex landscape:min-w-0 landscape:flex-[58] landscape:flex-col">
               {/* 横長の時だけ: 地図の見出しを箱の外へ(右の列の「PREP ── 準備」と同じ書式・同じ高さ)。縦持ちは地図の中の札のまま=これは出ない。 */}
               <div className="ds-glabel ds-glabel-sector menu-item-in" style={{ animationDelay: '25ms' }}>SECTOR ── <SwapText value={sectorName} /></div>
               {showDay && <div className="ds-deco menu-item-in" style={{ animationDelay: '25ms' }}>
-                <span>DAY {nextStage.day}</span>
+                <span className="type-num">DAY {nextStage.day}</span>
               </div>}
               <div className="menu-item-in" style={{ animationDelay: '50ms' }}>
                 <DsStoryMap stages={STAGES} cleared={cleared} target={target} pick={mapPick} locked={mapLocked} sectorLabel={sectorName} bossFaces={mapFaces}
@@ -1005,12 +1008,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <NoBounceScroller nav={{ 'data-nav-group': 'rows', 'data-nav-kind': 'list', 'data-nav-scroll': '' }} className="ds-home-rows flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar landscape:max-h-full landscape:min-w-0 landscape:flex-[42]" style={{ touchAction: 'pan-y' }} moreColor="rgba(255, 179, 64, 0.85)">
               <div className="ds-glabel menu-item-in" style={{ animationDelay: '100ms' }}>PREP ── 準備</div>
               {dsRow('装備', 'LOADOUT', '銃 / サブウェポン / アバター', () => { playSfx('ui-select'); setScreen({ name: 'loadout' }); }, 125)}
-              {dsRow('強化', 'GROWTH', '体力・攻撃・弾数・G', () => { playSfx('ui-select'); setScreen({ name: 'growth' }); }, 150)}
-              {dsRow('開発施設', 'R&D', 'スキル / サブ解放', () => { playSfx('ui-select'); setScreen({ name: 'weaponDev' }); }, 175)}
+              {dsRow('強化', 'GROWTH', '体力 / 攻撃 / 弾数 / G', () => { playSfx('ui-select'); setScreen({ name: 'growth' }); }, 150)}
+              {dsRow('開発施設', 'R&D', 'スキル / サブウェポン解放', () => { playSfx('ui-select'); setScreen({ name: 'weaponDev' }); }, 175)}
               <div className="ds-glabel menu-item-in" style={{ animationDelay: '200ms' }}>RECORDS ── 記録</div>
-              {dsRow('資料室', 'ARCHIVE', '記録・変異体資料', goArchive, 225, unreadArchiveCount > 0 ? 'NEW' : undefined)}
-              {dsRow('守護霊', 'GUARDIANS', '名前・討伐記録', goGhost, 250)}
-              {dsRow('変異体対策室', 'DRILLS', 'ボス再戦・演習', goBossRush, 275)}
+              {dsRow('資料室', 'ARCHIVE', '記録 / 変異体資料', goArchive, 225, unreadArchiveCount > 0 ? 'NEW' : undefined)}
+              {dsRow('守護霊', 'GUARDIANS', '名前 / 討伐記録', goGhost, 250)}
+              {dsRow('変異体対策室', 'DRILLS', 'ボス再戦 / 演習', goBossRush, 275)}
             </NoBounceScroller>
           </div>
           <div className="ds-foot menu-item-in landscape:!mt-0" style={{ animationDelay: '300ms' }}>
@@ -1022,7 +1025,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 aria-label="オプション"
                 onClick={() => { playSfx('ui-select'); setScreen({ name: 'options' }); }}
               >
-                オプション
+                OPTIONS ── オプション
               </button>
               <MuteButton variant="ds" />
             </span>
@@ -1048,7 +1051,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     const { mains, exs } = sortieableStages(cleared);
     return (
       <>
-        <Header title="作戦地域" onBack={() => setScreen({ name: 'home' })} />
+        <Header title="作戦地域" en="SECTORS" quiet onBack={() => setScreen({ name: 'home' })} />
         <div data-nav-group="stages" data-nav-kind="list" className="p-3 space-y-4">
           {mains.map((stage, i) => <StageNode key={stage.id} stage={stage} index={i} />)}
           {exs.length > 0 && (
@@ -1089,7 +1092,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // ミッション状態行(枠なし)。バッジ+タイトル+CLEAR等のテキストのみ。
     const missionLine = (badgeCls: string, badge: string, title: string, tags: React.ReactNode) => (
       <span className="flex items-center gap-2 min-w-0">
-        <span className={`shrink-0 rounded-none px-1.5 py-0.5 text-[9px] font-bold tracking-wider ${badgeCls}`}>{badge}</span>
+        <span className={`type-tag shrink-0 rounded-none px-1.5 py-0.5 text-[9px] font-bold tracking-wider ${badgeCls}`}>{badge}</span>
         <span className="min-w-0 truncate text-[13px] font-semibold text-white/90">{title}</span>
         {tags}
       </span>
@@ -1115,7 +1118,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <span className="block text-[11px] font-semibold tracking-wide text-purple-200/70 tabular-nums">
               {stageDateLabel(stage)}
             </span>
-            <span className="block text-[16px] font-bold text-white truncate">{stage.locationTitle}</span>
+            <span className="type-world block text-[16px] font-semibold tracking-[0.08em] text-white truncate">{stage.locationTitle}</span>
           </span>
           {unlocked
             ? <PixelIcon name="chevron-right" size={16} className="shrink-0 text-white/40" />
@@ -1177,21 +1180,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     return (
       <div className="flex min-h-full flex-col">
         {/* ブリーフィング(監査B-5): 上部36vhに地域の絵(無いステージは絵を敷かず地=パネル色のまま)。
-            戻るは絵の上に浮かせる小ボタン(Headerの帯は使わない=絵を目一杯に見せる)。 */}
-        {/* 戻るは画面に固定(社長指示2026-10-24「作戦室の戻るとかボタンのUIは画面固定」): 高さ0の sticky の箱に載せ、
-            本文をスクロールしても左上に残す(絵の上に浮かせる見た目は従来どおり)。 */}
-        <div className="sticky top-0 z-30 h-0">
-          <button
-            type="button"
-            onClick={() => { playSfx('ui-back'); setScreen(from === 'home' ? { name: 'home' } : { name: 'stageSelect' }); }}
-            className="absolute flex h-9 items-center gap-1 px-2.5 text-white/85"
-            // 本文の上に重なっても読めるよう、暗い下地(絵の上でも沈む色)。
-            style={{ top: 'max(env(safe-area-inset-top), 12px)', left: 'max(env(safe-area-inset-left), 12px)', background: 'rgba(8,7,14,0.72)' }}
-            aria-label="戻る" data-nav-back
-          >
-            <PixelIcon name="chevron-left" size={16} className="gt-icon-outline" /><span className="gt-outline text-[12px]">戻る</span>
-          </button>
-        </div>
+            見出しはほかの画面と同じ部品(research/UIUX_PROPOSAL.md P5)。画面に固定(社長指示2026-10-24「作戦室の戻るとかボタンのUIは画面固定」)=sticky。 */}
+        <Header title="任務詳細" en="MISSION" quiet onBack={() => setScreen(from === 'home' ? { name: 'home' } : { name: 'stageSelect' })} />
         <div className="relative flex-1 overflow-hidden" style={{ minHeight: 'calc(36vh / var(--hud-s, 1))' }}>
           {art && (
             <img
@@ -1206,14 +1196,14 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           {/* B-24/B-25: 黒い箱を捨て、絵の上に直置き(縁=gt-outline/gt-icon-outline)。 */}
           <div className="absolute inset-x-0 bottom-0 px-4 pb-3">
             <p className="gt-outline text-[12px] font-semibold tracking-wide text-white/90">{stageDateLabel(stage)}</p>
-            <p className="gt-outline text-[20px] font-bold text-white">{stage.locationTitle}</p>
+            <p className="type-world gt-outline text-[28px] font-normal leading-tight tracking-[0.1em] text-white landscape:text-[32px]">{stage.locationTitle}</p>
           </div>
         </div>
         <div className="menu-stagger p-3 space-y-3">
           <div className="flex items-center gap-2">
-            <h2 className="min-w-0 flex-1 truncate text-[18px] font-bold tracking-wide text-white">{m.title}</h2>
-            <span className={`shrink-0 rounded-none px-1.5 py-0.5 text-[9px] font-bold tracking-wider ${objectiveTag.cls}`}>{objectiveTag.label}</span>
-            {subTagTotal > 0 && <span className={`shrink-0 rounded-none px-1.5 py-0.5 text-[9px] font-bold tracking-wider ${SUB_BADGE_CLS}`}>SUB {subTagTotal}</span>}
+            <h2 className="type-world min-w-0 flex-1 truncate text-[18px] font-semibold tracking-[0.08em] text-white">{m.title}</h2>
+            <span className={`type-tag shrink-0 rounded-none px-1.5 py-0.5 text-[9px] font-bold tracking-wider ${objectiveTag.cls}`}>{objectiveTag.label}</span>
+            {subTagTotal > 0 && <span className={`type-tag shrink-0 rounded-none px-1.5 py-0.5 text-[9px] font-bold tracking-wider ${SUB_BADGE_CLS}`}>SUB {subTagTotal}</span>}
           </div>
 
           {/* 状況説明は常時表示。クリア後は差し替えず、下に「任務後の記録(debrief)」を追加表示
@@ -1308,7 +1298,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           )}
 
         </div>
-        {/* 出撃導線=「ジョブ選択」(社長指示v0.25.1850: 旧「担当指名」から改名+最下部固定)。
+        {/* 出撃導線=「ロール選択」(社長決定2026-11-25: 旧「ジョブ選択」)(社長指示v0.25.1850: 旧「担当指名」から改名+最下部固定)。
             mt-auto=内容が短い時もパネル最下部へ(Shell fill=全高パネルとセット・v0.25.1852)。
             sticky bottom=内容が長い時はスクロール中も画面下端に常時固定し、上の内容が下をくぐる。
             グラデ下地でくぐる文字を沈める。 */}
@@ -1325,7 +1315,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             fade="both"
             paddingY="0.8rem"
           >
-            ジョブ選択
+            ロール選択
           </Ff7rButton>
         </div>
       </div>
@@ -1365,32 +1355,27 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         {/* 立ち絵の発光と同系の光の粒(足元から立ち上る) */}
         <CharSelectParticles />
 
-        {/* 戻る(左上) */}
-        <button
-          onClick={() => { playSfx('ui-back'); setGhostPickerOpen(false); setScreen({ name: 'missionDetail', stageId, mission: missionKind, from }); }}
-          className="absolute z-20 h-9 px-2.5 rounded-none bg-black/45 text-white/85 flex items-center gap-1 active:bg-black/65"
-          style={{ top: 'max(env(safe-area-inset-top), 12px)', left: 'max(env(safe-area-inset-left), 12px)' }}
-          aria-label="戻る" data-nav-back
-        >
-          <PixelIcon name="chevron-left" size={16} /><span className="text-[12px]">戻る</span>
-        </button>
+        {/* 見出し(左上の戻る+題字)。ほかの画面と同じ部品で、地だけ立ち絵へ溶かす(research/UIUX_PROPOSAL.md P5)。 */}
+        <PageHeader overlay title="ロール選択" en="ROLE" onBack={() => { setGhostPickerOpen(false); setScreen({ name: 'missionDetail', stageId, mission: missionKind, from }); }} />
 
-        {/* 下部UI: 左=情報集約 + 右=スタート、最下段=キャラ選択チップ */}
+        {/* 下部UI: 左=情報集約 + 右=スタート、最下段=キャラ選択チップ。
+            縦持ち(research/UIUX_PROPOSAL.md P13・charSelectLayout.css): 説明→ロール札→START(横いっぱい)の順に並べ、説明の下に暗い霞を敷く。横長は今のまま。 */}
         <div
-          className="absolute inset-x-0 bottom-0 z-20 flex flex-col gap-3"
+          className="char-bottom absolute inset-x-0 bottom-0 z-20 flex flex-col gap-3"
           style={{
             paddingLeft: 'max(env(safe-area-inset-left), 16px)',
             paddingRight: 'max(env(safe-area-inset-right), 16px)',
             paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 14px), 18px)',
           }}
         >
-          <div className="flex items-end justify-between gap-3">
+          <div className="char-info-haze" aria-hidden />
+          <div className="char-info-row flex items-end justify-between gap-3">
             {/* 情報パネル(左下=今ある情報を集約)。キャラ切替=key 再マウントで都度フェードイン。 */}
-            <div key={effectiveClass} className="info-rise min-w-0 max-w-[64%]">
+            <div key={effectiveClass} className="char-info info-rise min-w-0 max-w-[64%]">
               <div className="text-[22px] font-bold leading-tight text-white" style={{ textShadow: '0 2px 10px rgba(0,0,0,0.95)' }}>{c.name}</div>
               <div className="mt-2 space-y-1.5">
                 <InfoLine label="初期装備" value={c.gear} />
-                <InfoLine label="専用スキル" value={subWeaponDisplayName(c.skillKey)} sub={c.skillDesc} />
+                <InfoLine label="専用サブウェポン" value={subWeaponDisplayName(c.skillKey)} sub={c.skillDesc} />
                 <InfoLine label="固有スキル（自動）" value={c.charSkillDesc} />
               </div>
               {carriedDef && (
@@ -1407,7 +1392,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             {/* スタート(右下)=FF7R風の紫ボタン(社長指示で旧・緑PNGは破棄)。 */}
             <Ff7rButton
               onClick={() => startMission(stageId, effectiveClass, missionKind)}
-              className="shrink-0 min-w-[150px] active:scale-95 transition-transform"
+              className="char-start shrink-0 min-w-[150px] active:scale-95 transition-transform"
               ariaLabel="出撃"
               testId="charselect-start"
               emphasis
@@ -1420,7 +1405,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
           {/* キャラ選択(最下段。ドット絵チップ。タップで立ち絵＋情報が切替) */}
           {/* 横帯の作法(UI監査2026-08-29 #9): 縦はhiddenで殺し、containは横だけ。 */}
-          <div data-nav-group="chars" data-nav-kind="row" className="flex items-end gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-0.5">
+          <div data-nav-group="chars" data-nav-kind="row" className="char-chips flex items-end gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-0.5">
             {selectableClasses.map(cc => {
               const on = cc.id === selectedClass;
               return (
@@ -1611,21 +1596,19 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     };
     // 同行者(守護霊)の選択はここから撤去(社長指示2026-08-20)。キャラクター選択の右端
     // 「守護霊枠」へ移設した(renderCharacterSelect の ghostPicker)。companionSkill 自体は不変。
+    // 「装備」の札: 縦持ちはカードの右(weapon-selection)、横長(PC)は銃の名前のすぐ横(inline)。片方だけが見える(commandHome.css)。
+    const equippedBadge = <span className="inline-flex items-center gap-1 rounded-none bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-100"><PixelIcon name="check" size={12} />装備</span>;
+    const equippedBadgeInline = <span className="weapon-on-inline self-center">{equippedBadge}</span>;
     return (
       <>
-        {DS_LOADOUT_PREVIEW ? (
-          <header className="ds-loadout-header">
-            <button type="button" className="ds-loadout-back" onClick={() => { playSfx('ui-back'); setScreen({ name: 'home' }); }}>戻る</button>
-            <div><h1 className="gt-emboss">装備 <span>LOADOUT</span></h1><p>全作戦共通 · 自動保存</p></div>
-          </header>
-        ) : <Header title="装備" subtitle="全作戦共通" onBack={() => setScreen({ name: 'home' })} />}
+        <Header title="装備" en="LOADOUT" subtitle="全作戦共通" onBack={() => setScreen({ name: 'home' })} />
         <LoadoutBody>
         {/* 切り替えは画面に固定(社長指示2026-10-24「戻るとかボタンのUIは画面固定」)。装備の本文だけがスクロールする。 */}
         {COMMAND_UI_ENABLED && <nav className="development-tabs loadout-tabs sticky top-0 z-10" style={{ background: 'var(--menu-bg, #07060d)' }} aria-label="装備内容">
           {/* 英語の見出し+小さく日本語(社長指示2026-09-12「このメニュー部分は英語がいい」= 作戦室ホームの LOADOUT/GROWTH と同じ流儀) */}
           {/* 語はクリエイティブ監査(2026-09-12)で選び直し: 4タブとも「英語=種別の名詞 / 日本語=その訳語」で揃える(状態語・音写を混ぜない)。
-              FIREARMS(GUNS はこの作品の重さに軽い)・SECONDARY(1語=幅が揃う)・OUTFIT(AVATAR は汎用語。添えは見出しと同じ「見た目」)。 */}
-          {([['guns', 'FIREARMS', '銃'], ['subs', 'SECONDARY', '副武装'], ['avatar', 'OUTFIT', '見た目'], ['skills', 'SKILLS', 'スキル']] as const).map(([id, en, jp]) =>
+              FIREARMS(GUNS はこの作品の重さに軽い)・SECONDARY(1語=幅が揃う)・OUTFIT(AVATAR は汎用語)。日本語の添えは作戦室の行と同じ語(サブウェポン・アバター=社長決定2026-11-25の用語統一)。 */}
+          {([['guns', 'FIREARMS', '銃'], ['subs', 'SECONDARY', 'サブウェポン'], ['avatar', 'OUTFIT', 'アバター'], ['skills', 'SKILLS', 'スキル']] as const).map(([id, en, jp]) =>
             <button type="button" key={id} aria-pressed={loadoutSection === id}
               onClick={() => { playSfx('ui-move'); setLoadoutSection(id); }}><span className="tab-en">{en}</span><span className="tab-jp">{jp}</span></button>)}
         </nav>}
@@ -1638,8 +1621,43 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             const visibleCandidates = (cat: SlotCategory, tier: SlotTier) =>
               SLOT_CANDIDATES[cat][tier].filter(k => k === SLOT_CANDIDATES[cat][tier][0] || unlockedNow.has(k));
             const categories = SLOT_CATEGORIES.filter(cat => SLOT_TIERS.some(t => visibleCandidates(cat, t).length > 1));
-            if (categories.length === 0) return COMMAND_UI_ENABLED && loadoutSection === 'guns'
-              ? <p className="weapon-slot-guide">切り替えられる銃がまだない。開発施設で銃を開発すると、ここで選べる。</p> : null;
+            // 空っぽの装備(research/UIUX_PROPOSAL.md P9): 持ち替える銃が無くても、今の銃をカードで1枚出し、
+            // その下に Tier 2・3 の空き枠を影で並べる(=ここが埋まっていく)。開発施設へ直行できる。
+            if (categories.length === 0) {
+              if (!COMMAND_UI_ENABLED || loadoutSection !== 'guns') return null;
+              const cat = weaponCategory;
+              const curKey = slotLoadout[cat]?.[1] ?? SLOT_CANDIDATES[cat][1][0];
+              const mBadge = masteryBadgeOf(gunMasteryKeyOfWeaponKey(curKey), masterySaved);
+              const desc = weaponDescription(curKey, playDevice, padKind);
+              return (
+                <div className="loadout-empty menu-stagger">
+                  <div className="weapon-tier">
+                    <h3 className="weapon-tier-title">Tier 1<span>出撃はここから</span></h3>
+                    <div className="weapon-candidates grid grid-cols-2 gap-2">
+                      <div className="ff7r-fade-right is-current flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white">
+                        <span className="weapon-art"><img src={spritePath(weaponIconName(curKey))} alt="" draggable={false} loading="lazy" /></span>
+                        <span className="weapon-copy min-w-0">
+                          <span className="flex items-baseline gap-2"><span className="min-w-0 truncate text-[12px] font-semibold">{weaponDisplayName(curKey)}</span><MasteryTag badge={mBadge} />{equippedBadgeInline}</span>
+                          <MasteryMeter badge={mBadge} className="my-1 max-w-[9rem]" />
+                          {desc && <span className="block text-[10px] leading-snug text-white/50">{desc}</span>}
+                        </span>
+                        <span className="weapon-selection">{equippedBadge}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* まだ無い枠: 見出しも枠も沈める(今ある銃より一段暗い)。文言は最初の枠だけ=同じ言葉を繰り返さない。 */}
+                  {([2, 3] as const).map((tier, i) => (
+                    <div key={tier} className="weapon-tier is-vacant">
+                      <h3 className="weapon-tier-title">Tier {tier}</h3>
+                      <div className="loadout-slot-empty"><span className="loadout-slot-empty-art" aria-hidden />{i === 0 && <span>選べる銃はまだ無い</span>}</div>
+                    </div>
+                  ))}
+                  <div className="loadout-empty-go">
+                    <button type="button" onClick={() => { playSfx('ui-select'); setScreen({ name: 'weaponDev' }); }}><span>開発施設へ</span><span className="loadout-empty-go-chev" aria-hidden><i /></span></button>
+                  </div>
+                </div>
+              );
+            }
             const activeCategory = categories.includes(weaponCategory) ? weaponCategory : categories[0];
             return (
               <div hidden={COMMAND_UI_ENABLED && loadoutSection !== 'guns'}>
@@ -1675,7 +1693,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                                   >
                                     {COMMAND_UI_ENABLED && <span className="weapon-art"><img src={spritePath(weaponIconName(key))} alt="" draggable={false} loading="lazy" /></span>}
                                     <span className="weapon-copy min-w-0">
-                                      <span className="flex items-baseline gap-2"><span className="min-w-0 truncate text-[12px] font-semibold">{weaponDisplayName(key)}</span><MasteryTag badge={mBadge} /></span>
+                                      <span className="flex items-baseline gap-2"><span className="min-w-0 truncate text-[12px] font-semibold">{weaponDisplayName(key)}</span><MasteryTag badge={mBadge} />{COMMAND_UI_ENABLED && on && equippedBadgeInline}</span>
                                       <MasteryMeter badge={mBadge} className="my-1 max-w-[9rem]" />
                                       {/* 社長指示2026-09-05「装備欄の武器にも説明入れて。スキルとかと同じく」:
                                           開発施設のサブ解放リストと同じ見せ方(名前の下に小さい1行)。 */}
@@ -1685,7 +1703,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                                     </span>
                                     {/* クリエイティブ監査第2回・第2手 B-8: 「✓ 装備中」を琥珀の枡(PixelIcon 'check'+文字)へ。 */}
                                     {COMMAND_UI_ENABLED
-                                      ? <span className="weapon-selection">{on && <span className="inline-flex items-center gap-1 rounded-none bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-100"><PixelIcon name="check" size={12} />装備</span>}</span>
+                                      ? <span className="weapon-selection">{on && equippedBadge}</span>
                                       : on && <span className="shrink-0 flex items-center gap-1"><PixelIcon name="check" size={14} /></span>}
                                   </button>
                                 );
@@ -1744,7 +1762,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           </div>
           {/* アバター(試験・第1弾)。トグル選択式(なし/猫耳セット)。見た目は既存の装備欄に合わせる=磨き込み不要(試験機能)。 */}
           <div hidden={COMMAND_UI_ENABLED && loadoutSection !== 'avatar'}>
-            <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-sky-200/70 loadout-glabel">APPEARANCE<span>── 姿</span></div>
+            <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-sky-200/70 loadout-glabel">APPEARANCE<span>── アバター</span></div>
             <div className="menu-stagger weapon-candidates grid grid-cols-2 gap-2">
               {/* 手に入れるまで選べないアバター(斗戦勝仏セット)は、未購入のサブウェポンと同じく手に入れるまで載せない。 */}
               {([null, ...AVATAR_IDS.filter(isAvatarUnlocked)] as (AvatarId | null)[]).map(id => {
@@ -1820,10 +1838,18 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               </div>
             )}
           </div>
-          <p className="text-[11px] text-white/45 text-center">
-            サブ: {equippedSubs.length === 0 ? 'なし' : equippedSubs.map(k => subWeaponDisplayName(k)).join(' / ')}
-            {' ／ '}アバター: {avatarId ? AVATARS[avatarId].name : 'なし'}
-          </p>
+          {/* 今のサブウェポンとアバター(P9): 無い時は「なし」の行。 */}
+          {COMMAND_UI_ENABLED ? (
+            <dl className="loadout-summary">
+              <div><dt>サブウェポン</dt><dd className={equippedSubs.length === 0 ? 'is-none' : ''}>{equippedSubs.length === 0 ? 'なし' : equippedSubs.map(k => subWeaponDisplayName(k)).join(' / ')}</dd></div>
+              <div><dt>アバター</dt><dd className={avatarId ? '' : 'is-none'}>{avatarId ? AVATARS[avatarId].name : 'なし'}</dd></div>
+            </dl>
+          ) : (
+            <p className="text-[11px] text-white/45 text-center">
+              サブウェポン: {equippedSubs.length === 0 ? 'なし' : equippedSubs.map(k => subWeaponDisplayName(k)).join(' / ')}
+              {' ／ '}アバター: {avatarId ? AVATARS[avatarId].name : 'なし'}
+            </p>
+          )}
         </div>
         </LoadoutBody>
       </>
@@ -1835,7 +1861,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // ====================================================================
   const renderOptions = () => (
     <>
-      <Header title="オプション" onBack={() => setScreen({ name: 'home' })} />
+      <Header title="オプション" en="OPTIONS" onBack={() => setScreen({ name: 'home' })} />
       <div className="menu-stagger p-3 space-y-3">
         <AudioSettings />
         <GraphicsSettings />
@@ -1917,7 +1943,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     const openRecordStage = openRecord?.unlockStageId ? getStage(openRecord.unlockStageId) : undefined;
     return (
       <>
-        <Header title="資料室" subtitle="記録・変異体資料" onBack={goHomeFromArchive} />
+        <Header title="資料室" en="ARCHIVE" subtitle="記録 / 変異体資料" onBack={goHomeFromArchive} />
         <div className="menu-stagger p-3 space-y-3">
           {/* 記録映像(research/UIUX_PROPOSAL.md P7): 起動のたびには流さなくなったオープニングを、ここから見返す。
               1本しか無いので章(Section)にはせず、資料室の頭に1行の帯で置く。チュートリアルの「操作記録」とは別物
@@ -2003,10 +2029,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <NoBounceScroller className="glass-panel command-panel max-h-[calc(100svh/var(--hud-s,1)-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
               <div className="px-4 py-5">
                 <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">資料</div>
-                <h3
-                  className="mb-3 text-lg font-semibold text-amber-100"
-                  style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
-                >
+                <h3 className="type-world mb-3 text-lg font-semibold text-amber-100">
                   {openRecord.title}
                 </h3>
                 {openRecordStage && (
@@ -2052,10 +2075,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <NoBounceScroller className="glass-panel command-panel max-h-[calc(100svh/var(--hud-s,1)-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
               <div className="px-4 py-5">
                 <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">操作記録</div>
-                <h3
-                  className="mb-3 text-lg font-semibold text-amber-100"
-                  style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
-                >
+                <h3 className="mb-3 text-lg font-semibold text-amber-100">
                   {openTutorial.title}
                 </h3>
                 {openTutorial.slides?.length ? (
@@ -2125,7 +2145,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // useGameLoop のモジュールロード時定数なので React 遷移では効かない・BOSS_MAKER.md §20-7)。
   const renderBossRush = () => (
     <>
-      <Header title="変異体対策室" subtitle="演習。記録には残らない" onBack={() => setScreen({ name: 'home' })} />
+      <Header title="変異体対策室" en="DRILLS" subtitle="演習。記録には残らない" note="演習。記録には残らない" onBack={() => setScreen({ name: 'home' })} />
       <BossRush
         clearedSlotKeys={new Set(ghostAlbum.map(card => card.slotKey))}
         onStartPractice={onStartPractice}
@@ -2135,7 +2155,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
   const renderGhost = () => (
     <>
-      <Header title="守護霊" subtitle="名前・討伐記録" onBack={() => setScreen({ name: 'home' })} />
+      <Header title="守護霊" en="GUARDIANS" subtitle="名前 / 討伐記録" onBack={() => setScreen({ name: 'home' })} />
       <div className="menu-stagger p-3 space-y-3">
         <Section label="オンライン共有">
           <div className="flex items-center justify-between gap-2 text-[12px]">
@@ -2212,13 +2232,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
   // --- ルーティング ----------------------------------------------------
   // キャラ選択は全画面(立ち絵を画面いっぱい)なので Shell(中央パネル)を介さず単独描画。
-  // 音を消す/戻すボタン: ホームは下段(オプションの右隣)、それ以外の画面は右上の隅(見出しの帯の右端=空いている)。
-  const floatingMute = (screen.name === 'home' && !DS_HOME_DISABLED) ? null : (
-    <div className="pointer-events-none fixed z-[60]" style={{ top: 'max(env(safe-area-inset-top), 6px)', right: 'max(env(safe-area-inset-right), 6px)' }}>
-      <MuteButton />
-    </div>
-  );
-  if (screen.name === 'characterSelect') return <>{renderCharacterSelect(screen.stageId, screen.mission ?? 'main', screen.from)}{floatingMute}</>;
+  // 音を消す/戻すボタンは作戦室の下段(オプションの右隣)だけ。ほかの画面の右上の丸は外した(research/UIUX_PROPOSAL.md P5
+  // =見出しの右は空ける)。音はオプションの「音」と一時停止の「音」の行からも切れる(同じ1つの状態=setAudioMuted)。
+  if (screen.name === 'characterSelect') return renderCharacterSelect(screen.stageId, screen.mission ?? 'main', screen.from);
   return (
     <Shell loadout={screen.name === 'loadout'} fill={screen.name === 'missionDetail'} dsHome={(!DS_HOME_DISABLED && screen.name === 'home') || (DS_LOADOUT_PREVIEW && screen.name === 'loadout')} testScreen={testScreenIdFor(screen.name)}
       navScreen={NAV_DECLARED_SCREENS.has(screen.name) ? screen.name : undefined}>
@@ -2232,7 +2248,6 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       {screen.name === 'archive' && renderArchive()}
       {screen.name === 'ghost' && renderGhost()}
       {screen.name === 'bossRush' && renderBossRush()}
-      {floatingMute}
     </Shell>
   );
 };
@@ -2256,7 +2271,7 @@ const HubButton: React.FC<{ icon: React.ReactNode; label: string; desc: string; 
         <span className="text-[15px] font-semibold tracking-wide text-white">{label}</span>
         {/* PACING_PUZZLE.md §6.18 M41: 未読資料あり=NEWバッジ(資料室ボタンのみ想定・汎用propとして追加)。 */}
         {badge && (
-          <span className="shrink-0 rounded-full bg-amber-400/25 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-amber-100">
+          <span className="type-tag shrink-0 rounded-full bg-amber-400/25 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-amber-100">
             {badge}
           </span>
         )}
@@ -2328,7 +2343,7 @@ const AudioSettings: React.FC = () => {
       <div className="flex items-center justify-between gap-2 pt-1">
         <span className="flex items-center gap-2 text-[12px] text-white/70">
           <PixelIcon name={audioMuted ? 'volume-off' : 'volume-on'} size={15} className="text-white/55" />
-          音なし
+          ミュート
         </span>
         {/* トグルの型は画面で1つ=BLOOM と同じ ON/OFF の2枡(監査A-29) */}
         <span className="flex gap-1">
@@ -2455,7 +2470,7 @@ const PlayerNameSettings: React.FC = () => {
       <p className="text-[11px] leading-relaxed text-white/45">
         守護霊(スキル)の頭上に表示される名前。最大{PLAYER_NAME_MAX_LEN}文字。
         絵文字は使えない(記号は <span className="whitespace-nowrap">_ - . ・ ' ! ?</span> と空白のみ)。
-        空のまま確定すると「{PLAYER_NAME_WHEN_BLANK}」になる。
+        空のまま保存すると「{PLAYER_NAME_WHEN_BLANK}」になる。
       </p>
     </Section>
   );
@@ -2699,9 +2714,10 @@ const GachaRateList: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const t = window.setTimeout(() => checkMore(scrollWrap.current?.firstElementChild), 300);
     return () => window.clearTimeout(t);
   }, []);
-  const close = () => {
+  // silent: 見出しの戻る(PageHeader)は自分で ui-back を鳴らす=二重に鳴らさない。
+  const close = (silent = false) => {
     if (phase === 'closing') return;
-    playSfx('ui-back');
+    if (!silent) playSfx('ui-back');
     setPhase('closing');
     window.setTimeout(onClose, RATE_CLOSE_MS);
   };
@@ -2715,26 +2731,14 @@ const GachaRateList: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     <div
       className="fixed inset-0 z-50 flex justify-center bg-black/90 backdrop-blur-sm"
       style={{ opacity: shown ? 1 : 0, transition: dimT }}
-      onClick={close}
+      onClick={() => close()}
     >
       <div
         className="flex h-full w-full max-w-md flex-col"
         style={{ opacity: shown ? 1 : 0, transform: shown ? 'translateY(0)' : 'translateY(16px)', transition: bodyT }}
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center gap-4 border-b px-3 pb-3 pt-4" style={{ borderColor: '#26212f' }}>
-          <button
-            type="button"
-            onClick={close}
-            aria-label="戻る"
-            data-nav-back
-            className="flex min-h-[44px] shrink-0 items-center gap-1 border-r pr-3 text-[13px] active:opacity-70"
-            style={{ color: '#ffb340', borderColor: '#26212f' }}
-          >
-            <PixelIcon name="chevron-left" size={16} /><span>戻る</span>
-          </button>
-          <h2 className="text-[17px] font-semibold tracking-[0.08em] text-white">排出一覧</h2>
-        </header>
+        <PageHeader title="排出一覧" en="LINEUP" sticky={false} onBack={() => close(true)} />
         <div ref={scrollWrap} className="relative min-h-0 flex-1" onScrollCapture={(e) => checkMore(e.target as Element)}>
           <NoBounceScroller className="h-full overflow-y-auto overflow-x-hidden touch-pan-y overscroll-contain no-scrollbar px-3 pb-6 pt-3">
             <div className="flex w-full flex-col gap-3">
@@ -3142,14 +3146,8 @@ const SkillGacha: React.FC = () => {
         />
         <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/70" />
 
-        {/* 戻る(左上に小さく)。発射のタップとは区別する(stopPropagation)。 */}
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); playSfx('ui-back'); setPendingCount(null); setNoGold(false); }}
-          className="absolute left-4 top-4 z-10 rounded-none bg-black/40 px-3 py-1.5 text-[13px] font-semibold text-white/85 active:bg-black/60"
-        >
-          戻る
-        </button>
+        {/* 見出し(ほかの画面と同じ部品・地は絵へ溶かす)。発射のタップとは区別する(isolate=押しても下へ渡さない)。 */}
+        <PageHeader overlay isolate title="射撃練習場" en="RANGE" onBack={() => { setPendingCount(null); setNoGold(false); }} />
 
         {/* 的＋「撃つ」を画像中央に重ねる。クリックは下の画面全体へ通す(pointer-events-none)。 */}
         <div className="pointer-events-none relative flex flex-col items-center justify-center gap-1 px-6">
@@ -3181,7 +3179,7 @@ const SkillGacha: React.FC = () => {
       {/* 画像の上にタイトル */}
       <div className="flex items-center justify-between px-0.5 mb-2">
         <span className="text-[13px] font-bold text-fuchsia-100">スキル強化訓練</span>
-        <span className="text-[12px] text-amber-200 font-semibold">開発資金 {goldBalance.toLocaleString()} G</span>
+        <span className="text-[12px] text-amber-200 font-semibold">開発資金 <span className="type-num">{goldBalance.toLocaleString()}G</span></span>
       </div>
       {/* 射撃練習場の横長バナー */}
       <div className="relative mb-3 overflow-hidden rounded-none" style={{ aspectRatio: '16 / 7' }}>
@@ -3291,9 +3289,9 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     <>
       {/* 見出し・開発資金・部門の切り替えは画面に固定(社長指示2026-10-24「戻るとかボタンのUIは画面固定」)。 */}
       <div className="sticky top-0 z-20" style={{ background: 'var(--menu-bg, #07060d)' }}>
-      <Header title="開発施設" subtitle="銃の開発 / サブウェポン解放 / スキル強化訓練" onBack={onBack} />
+      <Header title="開発施設" en="R&D" subtitle="銃の開発 / サブウェポン解放 / スキル強化訓練" onBack={onBack} />
       {COMMAND_UI_ENABLED && <div className="development-toolbar px-3">
-        <div className="development-balance">開発資金 <strong>{goldBalance.toLocaleString()} G</strong></div>
+        <div className="development-balance">開発資金 <strong className="type-num">{goldBalance.toLocaleString()}G</strong></div>
         <nav className="development-tabs" aria-label="開発内容">{([
           ['guns', '銃の開発'], ['subs', 'サブウェポン'], ['skills', 'スキル訓練'],
         ] as const).map(([id, label]) => <button key={id} type="button" aria-pressed={department === id}
@@ -3332,9 +3330,12 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 if (cantPay) { playSfx('ui-deny'); return; }
                 if (spendGold(cost)) { playSfx('ui-select'); setPurchasedSubLevel(skillKey, Math.min(3, level + 1)); }
               }}
-              className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${maxed ? 'is-on' : ''} ${cantPay ? 'opacity-60' : ''}`}>
-              <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">{level === 0 ? subWeaponBlurb(skillKey, playDevice, padKind) : `商人にLv${Math.min(3, level + 1)}が並ぶようになる`}</span></span>
-              <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${maxed ? 'text-white/45' : cantPay ? 'text-rose-300' : 'text-amber-200'}`}>{maxed ? 'MAX' : `${cost}G`}</span>
+              className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${maxed ? 'is-on' : ''}`}>
+              <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">{level === 0 ? subWeaponBlurb(skillKey, playDevice, padKind) : `商人にLv${Math.min(3, level + 1)}が並ぶようになる。`}</span></span>
+              {/* 値段は琥珀/払えない時は沈んだ灰+あと◯G(P10・赤は使わない)。 */}
+              {maxed
+                ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-white/45">MAX</span>
+                : <PriceTag cost={cost} gold={goldBalance} className="shrink-0 text-[10px] font-semibold" />}
             </button>
           );
         })}
@@ -3366,11 +3367,12 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                       forceGunShelfRerender(t => t + 1);
                     }
                   }}
-                  className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${cantPayGun ? 'opacity-60' : ''}`}>
+                  className="ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110">
                   {COMMAND_UI_ENABLED && <span className="development-art"><img src={spritePath(weaponIconName(key))} alt="" draggable={false} loading="lazy" /></span>}
                   <span className="min-w-0"><span className="block text-[11px] text-amber-200/75 mb-2">{GUN_CATEGORY_LABEL[cat]} · Tier {tier}</span><span className="block truncate text-[13px] font-semibold">{weaponDisplayName(key)}</span><span className="block text-[12px] leading-relaxed text-white/60 mt-2">{weaponDescription(key, playDevice, padKind)}</span></span>
                   {/* クリエイティブ監査第2回・第2手 B-8: 「資金不足」小文字は消し、価格の色だけで伝える(B-6と同じ規則)。 */}
-                  <span className={`development-price shrink-0 text-[10px] font-semibold tabular-nums ${cantPayGun ? 'ui-danger-text' : 'ui-acc-text'}`}>{GUN_SLOT_PURCHASE_COST}G{COMMAND_UI_ENABLED && !cantPayGun && <small>開発する</small>}</span>
+                  {/* P10: 赤をやめ、払える=琥珀/払えない=沈んだ灰+「あと ◯G」。 */}
+                  <span className="development-price shrink-0 text-[10px] font-semibold tabular-nums"><PriceTag cost={GUN_SLOT_PURCHASE_COST} gold={goldBalance}>{COMMAND_UI_ENABLED && <small className="ui-acc-text">開発する</small>}</PriceTag></span>
                 </button>
               );
             })}
@@ -3392,16 +3394,19 @@ const PlayerGrowth: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const goldBalance = useGameStore(s => s.goldBalance);
   const buyPlayerUpgrade = useGameStore(s => s.buyPlayerUpgrade);
   const setPlayerUpgradeActive = useGameStore(s => s.setPlayerUpgradeActive);
+  // 買ったばかりの枡(P10): その1つだけ下から琥珀が積み上がって埋まる。n は同じ枡を続けて買った時に描き直すための通し番号。
+  const [justBought, setJustBought] = useState<{ id: string; idx: number; n: number } | null>(null);
   return (
     <>
-      <Header title="強化" subtitle="次の出撃から反映" onBack={onBack} />
+      <Header title="強化" en="GROWTH" subtitle="次の出撃から反映" note="次の出撃から反映" onBack={onBack} />
       {/* スコア補正の現在値(社長指示2026-08-20「マイナスになるスコアも表示」)。リザルトの
           「強化補正 ×0.xx」と同じ値=有効メーターに応じて growthScoreMult をその場で再計算。 */}
       <div className="px-3 pb-1 flex items-center justify-between text-[11px] tabular-nums">
         {(() => { const m = growthScoreMult(playerUpgrades); return (
           <span className={m < 1 ? 'text-rose-300/90' : 'text-white/40'}>スコア補正 ×{m.toFixed(2)}{m < 1 ? '（強化したぶん、スコアと獲得ゴールドが減る）' : ''}</span>
         ); })()}
-        <span className="text-amber-200/80">所持 {goldBalance}G</span>
+        {/* 所持金・開発資金・値段は同じ書体(数字の役割)と同じ琥珀でそろえる。 */}
+        <span className="text-white/45">所持 <span className="type-num ui-acc-text">{goldBalance.toLocaleString()}G</span></span>
       </div>
       {/* クリエイティブ監査第2回・第2手 B-6: 「名前/5段ピップ/現在値」の1行構成に凝縮。「+0(+20/段)」
           「0/5段」の説明文は消す(値・段数・価格の計算そのものは一切変えない=表示だけの変更)。 */}
@@ -3421,19 +3426,31 @@ const PlayerGrowth: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           return (
             <div key={def.id} className="ff7r-fade-right flex items-center gap-2 rounded-none px-3 py-2 text-white">
               <button type="button" disabled={maxed}
-                onClick={() => { if (cantPay) { playSfx('ui-deny'); return; } if (buyPlayerUpgrade(def.id)) playSfx('ui-select'); }}
+                onClick={() => {
+                  if (cantPay) { playSfx('ui-deny'); return; }
+                  if (buyPlayerUpgrade(def.id)) {
+                    playSfx('ui-select');
+                    const after = useGameStore.getState().playerUpgrades[def.id];
+                    setJustBought(prev => ({ id: def.id, idx: (after?.active ?? 1) - 1, n: (prev?.n ?? 0) + 1 }));
+                  }
+                }}
                 className="flex min-w-0 flex-1 items-center gap-2 text-left transition-[filter] active:brightness-110">
                 <span className="w-[92px] shrink-0 whitespace-nowrap text-[12px] font-semibold">{def.label}</span>
                 <span className="flex shrink-0 gap-1" aria-hidden>
                   {Array.from({ length: PLAYER_UPGRADE_MAX_LEVEL }, (_, i) => (
-                    <span key={i} className={`h-3 w-3 ${i < cur.active ? 'ui-acc-bg' : 'ui-dim-line'}`} />
+                    <span key={justBought?.id === def.id && justBought.idx === i ? `${i}-${justBought.n}` : i}
+                      className={`growth-pip h-3 w-3 ${i < cur.active ? 'ui-acc-bg' : 'ui-dim-line'}${justBought?.id === def.id && justBought.idx === i && i < cur.active ? ' is-new' : ''}`} />
                   ))}
                 </span>
                 <span className="shrink-0 text-[12px] tabular-nums text-white/70">{cumLabel}</span>
-                <span className={`ml-auto shrink-0 text-[13px] font-bold tabular-nums ${maxed ? 'text-white/45' : cantPay ? 'ui-danger-text' : 'ui-acc-text'}`}>{maxed ? 'MAX' : `${cost}G`}</span>
+                {/* P10: 値段は琥珀/払えない時は沈んだ灰+「あと ◯G」(赤は使わない)。 */}
+                {maxed
+                  ? <span className="ml-auto shrink-0 text-[13px] font-bold tabular-nums text-white/45">MAX</span>
+                  : <PriceTag cost={cost} gold={goldBalance} className="ml-auto shrink-0 text-[13px] font-bold" />}
               </button>
               {/* −/+ = 有効段数(0〜購入済み段数)の増減。28pxの角無しボタン(監査B-6)。 */}
-              {cur.bought > 0 && <span className="flex shrink-0 items-center gap-1">
+              {/* 未購入の行も同じ幅を先に空ける(買った瞬間にその行だけ値段が左へずれない=値段の縦の線がそろう)。 */}
+              {cur.bought === 0 ? <span className="shrink-0" style={{ width: 60 }} aria-hidden /> : <span className="flex shrink-0 items-center gap-1">
                 <button type="button"
                   onClick={() => { if (cur.active <= 0) { playSfx('ui-deny'); return; } setPlayerUpgradeActive(def.id, cur.active - 1); playSfx('ui-move'); }}
                   style={{ width: 28, height: 28 }}

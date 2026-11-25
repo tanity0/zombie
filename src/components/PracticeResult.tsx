@@ -56,7 +56,7 @@ export const PracticeResult: React.FC<Props> = ({ won, onRetry, onBackToList }) 
           )}
         </div>
 
-        <div className="mt-3 text-[20px] font-semibold tracking-wide text-white gt-emboss ui-head-serif ui-head-serif-sm">
+        <div className="mt-3 text-[20px] font-semibold tracking-wide text-white gt-emboss type-world">
           {won ? '討伐' : boss === 'scarecrow' ? '終了' /* 案山子は倒れない=負けでも勝ちでもない */ : '敗北'}
         </div>
         <div className="mt-0.5 text-[12px] text-white/55">{bossName}</div>

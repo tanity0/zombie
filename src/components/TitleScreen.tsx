@@ -193,7 +193,9 @@ const ChronicleTimeline: React.FC = () => {
           <li
             className="text-center text-[12.5px] leading-relaxed"
             style={{
-              fontFamily: '"Hiragino Mincho ProN", "Yu Mincho", "Songti SC", serif',
+              // 年表の行(出来事+日付・「CODE:◯◯」)は13px級の小さい字=ゴシック(P17)。英数字も和文と同じ書体で読ませる
+              // (leading-relaxed/snug が当てる本文用の英数字の書体はここでは使わない)。
+              fontFamily: 'var(--uf-jp), sans-serif',
               color: 'rgba(255,255,255,0.94)',
               letterSpacing: '0.06em',
               textShadow: '0 1px 4px rgba(0,0,0,0.95), 0 0 12px rgba(0,0,0,0.6)',
@@ -202,7 +204,7 @@ const ChronicleTimeline: React.FC = () => {
             初ミッション
             <span
               className="block leading-snug"
-              style={{ color: 'rgba(255,255,255,0.42)', fontSize: '10.5px', letterSpacing: '0.08em', marginTop: 2 }}
+              style={{ fontFamily: 'var(--uf-jp), sans-serif', color: 'rgba(255,255,255,0.42)', fontSize: '10.5px', letterSpacing: '0.08em', marginTop: 2 }}
             >
               {formatChronicleDateTime(startAt)}
             </span>
@@ -221,7 +223,7 @@ const ChronicleTimeline: React.FC = () => {
               <li
                 className="text-center text-[12.5px] leading-relaxed"
                 style={{
-                  fontFamily: '"Hiragino Mincho ProN", "Yu Mincho", "Songti SC", serif',
+                  fontFamily: 'var(--uf-jp), sans-serif', // 13px級の年表の行=ゴシック(上の初ミッション行と同じ)
                   color: 'rgba(255,255,255,0.94)',
                   letterSpacing: '0.06em',
                   textShadow: '0 1px 4px rgba(0,0,0,0.95), 0 0 12px rgba(0,0,0,0.6)',
@@ -252,7 +254,7 @@ const ChronicleTimeline: React.FC = () => {
                 {/* 開放した時の日時をグレーで(社長指示v0.25.1878。初ミッション行と同じ体裁)。at=Date.now()。 */}
                 <span
                   className="block leading-snug"
-                  style={{ color: 'rgba(255,255,255,0.42)', fontSize: '10.5px', letterSpacing: '0.08em', marginTop: 2 }}
+                  style={{ fontFamily: 'var(--uf-jp), sans-serif', color: 'rgba(255,255,255,0.42)', fontSize: '10.5px', letterSpacing: '0.08em', marginTop: 2 }}
                 >
                   {formatChronicleDateTime(e.at)}
                 </span>
@@ -263,9 +265,8 @@ const ChronicleTimeline: React.FC = () => {
               出来事どうしをつなぐ「|」は使わない=次の出来事ではなく締めの集計だと読ませる(短い細線で区切る)。 */}
           <li aria-hidden className="mt-5 mb-3 h-4 w-px" style={{ background: 'rgba(255,255,255,0.25)' }} />
           <li
-            className="flex flex-col items-center"
+            className="type-num flex flex-col items-center"
             style={{
-              fontFamily: '"Hiragino Mincho ProN", "Yu Mincho", "Songti SC", serif',
               textShadow: '0 1px 4px rgba(0,0,0,0.95), 0 0 12px rgba(0,0,0,0.6)',
             }}
           >

@@ -76,7 +76,7 @@ const bossLabel = (item: GhostDossierSlot): string => item.bossType === 'giantba
   : enemyDeathLabel(item.bossType);
 
 const BuildTags: React.FC<{ label: string; values: string[]; accent?: boolean }> = ({ label, values, accent }) => (
-  <div className="grid grid-cols-[52px_minmax(0,1fr)] gap-2 border-t border-white/[0.07] py-2 text-[10px]">
+  <div className="grid grid-cols-[64px_minmax(0,1fr)] gap-2 border-t border-white/[0.07] py-2 text-[10px]">
     <span className="text-white/35">{label}</span>
     <div className="flex min-w-0 flex-wrap gap-1">
       {values.length > 0 ? values.map((value, index) => (
@@ -126,7 +126,7 @@ const LockedDossier: React.FC<{ cleared: number; total: number }> = ({ cleared, 
   <div className="ghost-dossier-enter relative flex min-h-full flex-col items-center justify-center overflow-hidden px-5 py-12 text-center">
     <div className="pointer-events-none absolute inset-0 opacity-50" style={{ background: 'radial-gradient(circle at 50% 38%, rgba(168,85,247,0.18), transparent 42%)' }} />
     <div className="relative flex h-24 w-24 items-center justify-center border border-purple-200/15 bg-black/30 text-5xl font-black text-purple-100/30 shadow-[0_0_36px_rgba(168,85,247,0.1)]">?</div>
-    <div className="relative mt-5 text-[9px] font-semibold tracking-[0.32em] text-purple-200/40">NO RECORD</div>
+    <div className="type-tag relative mt-5 text-[9px] font-semibold tracking-[0.32em] text-purple-200/40">NO RECORD</div>
     <h3 className="relative mt-2 text-[16px] font-semibold text-white/75">未討伐のボス</h3>
     <p className="relative mt-2 max-w-[240px] text-[11px] leading-relaxed text-white/40">
       討伐すると、その時のビルドと記録がここに残る。
@@ -146,7 +146,7 @@ const FixedLeaderGrid: React.FC<{
   <div className="mt-4 border-t border-purple-200/10 pt-3">
     <div className="mb-2 flex items-center justify-between">
       <div>
-        <div className="text-[9px] font-semibold tracking-[0.18em] text-purple-200/65">TOP GUARDIANS</div>
+        <div className="type-tag text-[9px] font-semibold tracking-[0.18em] text-purple-200/65">TOP GUARDIANS</div>
         <div className="text-[10px] text-white/35">このボスを得意とする先人</div>
       </div>
       <span className="text-[9px] text-white/25"><TapWord />でビルド</span>
@@ -216,7 +216,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
     <section className="overflow-hidden border border-purple-200/10 bg-[#090b13]/80 shadow-[0_16px_50px_rgba(0,0,0,0.3)]">
       <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.025] px-3 py-2">
         <div>
-          <div className="text-[9px] font-semibold tracking-[0.24em] text-purple-200/60">KILL RECORDS</div>
+          <div className="type-tag text-[9px] font-semibold tracking-[0.24em] text-purple-200/60">KILL RECORDS</div>
           <div className="text-[10px] text-white/40">討伐記録コレクション</div>
         </div>
         <div className="text-right">
@@ -231,7 +231,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
         <InnerPane as="nav" className="ghost-boss-rail overflow-y-auto overflow-x-hidden touch-pan-y border-r border-white/[0.07] bg-black/20 px-1.5 py-2" ariaLabel="ボス討伐記録">
           {(['story', 'gate', 'hidden'] as const).map(category => (
             <div key={category} className="mb-2.5">
-              <div className="mb-1 text-center text-[7px] font-bold tracking-[0.13em] text-white/25">{GHOST_DOSSIER_CATEGORY_LABEL[category]}</div>
+              <div className="type-tag mb-1 text-center text-[7px] font-bold tracking-[0.13em] text-white/25">{GHOST_DOSSIER_CATEGORY_LABEL[category]}</div>
               <div className="space-y-1.5">
                 {GHOST_DOSSIER_SLOTS.filter(item => item.category === category).map(item => {
                   const defeated = cardMap.has(item.slotKey);
@@ -279,11 +279,11 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
 
               <div className="relative flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-[8px] font-semibold tracking-[0.22em] text-emerald-200/65">TARGET ARCHIVED</div>
+                  <div className="type-tag text-[8px] font-semibold tracking-[0.22em] text-emerald-200/65">TARGET ARCHIVED</div>
                   <h3 className="mt-1 truncate text-[17px] font-semibold tracking-wide text-white">{bossLabel(selectedItem)}</h3>
-                  <div className="text-[9px] text-white/35">{GHOST_DOSSIER_CATEGORY_LABEL[selectedItem.category]} / {selectedItem.stageId?.toUpperCase() ?? selectedItem.bossType.toUpperCase()}</div>
+                  <div className="type-tag text-[9px] text-white/35">{GHOST_DOSSIER_CATEGORY_LABEL[selectedItem.category]} / {selectedItem.stageId?.toUpperCase() ?? selectedItem.bossType.toUpperCase()}</div>
                 </div>
-                <div className="rotate-[-4deg] border border-emerald-300/35 px-2 py-1 text-center text-[8px] font-bold tracking-wider text-emerald-200/70">
+                <div className="type-tag rotate-[-4deg] border border-emerald-300/35 px-2 py-1 text-center text-[8px] font-bold tracking-wider text-emerald-200/70">
                   討伐記録<br />登録
                 </div>
               </div>
@@ -295,7 +295,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
                     : <span className="text-2xl text-white/20">◇</span>}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[8px] tracking-wider text-sky-200/45">RECORDED HUNTER</div>
+                  <div className="type-tag text-[8px] tracking-wider text-sky-200/45">RECORDED HUNTER</div>
                   <div className="truncate text-[15px] font-semibold text-white/90">{slot?.srcName ?? '無名のハンター'}</div>
                   <div className="text-[10px] text-white/45">{character?.name ?? 'クラス記録なし'} · Lv {snapshot?.level ?? '—'}</div>
                   <div className={`mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-semibold ${social?.published ? 'bg-emerald-300/10 text-emerald-100/75' : 'bg-white/5 text-white/35'}`}>
@@ -319,13 +319,13 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
               )}
 
               <div className="relative mt-4">
-                <div className="mb-1.5 text-[9px] font-semibold tracking-[0.18em] text-sky-200/55">COMBAT PROFILE</div>
+                <div className="type-tag mb-1.5 text-[9px] font-semibold tracking-[0.18em] text-sky-200/55">COMBAT PROFILE</div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 bg-white/[0.025] px-2.5 py-2 text-[10px] tabular-nums">
                   <div className="flex justify-between"><span className="text-white/35">カウンター成功</span><span className="text-white/75">{formatRatePercent(slot?.counterChance)}</span></div>
                   <div className="flex justify-between"><span className="text-white/35">反撃</span><span className="text-white/75">{formatRatePercent(retaliateRateOf(slot?.retaliate))}</span></div>
                   <div className="flex justify-between"><span className="text-white/35">被弾 / 分</span><span className="text-white/75">{formatPerMin(slot?.hitsPerMin)}</span></div>
                   <div className="flex justify-between"><span className="text-white/35">移動率</span><span className="text-white/75">{formatRatePercent(slot?.mobility)}</span></div>
-                  <div className="flex justify-between"><span className="text-white/35">サブ / 分</span><span className="text-white/75">{formatPerMin(slot?.subUsesPerMin)}</span></div>
+                  <div className="flex justify-between"><span className="text-white/35">サブウェポン / 分</span><span className="text-white/75">{formatPerMin(slot?.subUsesPerMin)}</span></div>
                   <div className="flex justify-between"><span className="text-white/35">近接傾向</span><span className="text-white/75">{formatRatePercent(slot?.meleeBias)}</span></div>
                   {/* v0.25.5043: 7項目=最終段の単独枠は得意距離(唯一の距離の単位)を置く(クリエイティブ監査#10)。 */}
                   <div className="flex justify-between"><span className="text-white/35">得意距離</span><span className="text-white/75">{slot?.preferredDist == null ? '—' : `${Math.round(slot.preferredDist)} px`}</span></div>
@@ -334,7 +334,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
 
               <div className="relative mt-4">
                 <div className="mb-1.5 flex items-center justify-between">
-                  <div className="text-[9px] font-semibold tracking-[0.18em] text-sky-200/55">RECORDED BUILD</div>
+                  <div className="type-tag text-[9px] font-semibold tracking-[0.18em] text-sky-200/55">RECORDED BUILD</div>
                   {snapshot && <div className="flex gap-2 text-[9px] tabular-nums text-white/40"><span>HP {Math.round(snapshot.maxHealth)}</span><span>SPD {snapshot.speed.toFixed(1)}</span><span>CRIT {formatRatePercent(snapshot.critChance)}</span></div>}
                 </div>
                 {build ? (
@@ -342,7 +342,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
                     <BuildTags label="銃" values={build.gunLabels} accent />
                     <BuildTags label="近接" values={snapshot?.meleeKey ? [weaponDisplayName(snapshot.meleeKey)] : []} />
                     <BuildTags label="装備" values={build.equipment} />
-                    <BuildTags label="サブ" values={build.subs} />
+                    <BuildTags label="サブウェポン" values={build.subs} />
                     <BuildTags label="スキル" values={build.skills} />
                   </div>
                 ) : (
@@ -369,7 +369,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
 
               <FixedLeaderGrid slotKey={selectedItem.slotKey} stats={fixedStats} onAllyTap={onAllyTap} />
 
-              <div className="mt-4 flex items-center justify-center gap-1 text-[8px] tracking-[0.16em] text-white/20">
+              <div className="type-tag mt-4 flex items-center justify-center gap-1 text-[8px] tracking-[0.16em] text-white/20">
                 <PixelIcon name="sparkles" size={9} /> SELECT ANOTHER TARGET FROM THE LEFT
               </div>
             </div>

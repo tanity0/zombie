@@ -26,7 +26,7 @@ export default function CommandHome(p: Props) {
   oldUrl.searchParams.set('design', '0');
   oldUrl.searchParams.delete('dsloadout');
   const actions: { title: string; en: string; detail: string; icon: PixelIconName; run: () => void }[] = [
-    { title: '装備を整える', en: 'LOADOUT', detail: '武器・サブウェポン・アバター', icon: 'swords', run: p.onLoadout },
+    { title: '装備を整える', en: 'LOADOUT', detail: '武器 / サブウェポン / アバター', icon: 'swords', run: p.onLoadout },
     { title: '能力を強化', en: 'GROWTH', detail: '体力・攻撃・弾数を強化', icon: 'trending-up', run: p.onGrowth },
     { title: '開発施設', en: 'RESEARCH', detail: 'スキルとサブウェポンの解放', icon: 'wrench', run: p.onDevelopment },
   ];
@@ -35,7 +35,7 @@ export default function CommandHome(p: Props) {
     <div className="command-home">
       <header className="command-header">
         <div className="command-wordmark">the <strong>ONE</strong><span>作戦司令室</span></div>
-        <div className="command-header-right"><span className="command-money">{p.gold.toLocaleString()} <small>G</small></span><button type="button" onClick={() => go(p.onOptions)} aria-label="オプション"><PixelIcon name="gear" size={19} /></button></div>
+        <div className="command-header-right"><span className="command-money">{p.gold.toLocaleString()}<small>G</small></span><button type="button" onClick={() => go(p.onOptions)} aria-label="オプション"><PixelIcon name="gear" size={19} /></button></div>
       </header>
       <main className="command-content">
         <section className="command-operation" aria-label="次の作戦">
@@ -53,9 +53,9 @@ export default function CommandHome(p: Props) {
         <section className="command-records" aria-label="記録と訓練">
           <div className="command-section-title"><span>02 / ARCHIVE & TRAINING</span><h2>記録と訓練</h2></div>
           <div className="command-record-grid">
-            <button type="button" onClick={() => go(p.onArchive)}><PixelIcon name="book" size={20} /><span><strong>資料室 {p.unread > 0 && <em>NEW</em>}</strong><small>記録・変異体資料</small></span><PixelIcon name="arrow-up-right" size={16} /></button>
-            <button type="button" onClick={() => go(p.onGuardians)}><PixelIcon name="flame" size={20} /><span><strong>守護霊</strong><small>名前・討伐記録</small></span><PixelIcon name="arrow-up-right" size={16} /></button>
-            <button type="button" onClick={() => go(p.onBoss)}><PixelIcon name="crosshair" size={20} /><span><strong>変異体対策室</strong><small>ボス再戦・練習</small></span><PixelIcon name="arrow-up-right" size={16} /></button>
+            <button type="button" onClick={() => go(p.onArchive)}><PixelIcon name="book" size={20} /><span><strong>資料室 {p.unread > 0 && <em>NEW</em>}</strong><small>記録 / 変異体資料</small></span><PixelIcon name="arrow-up-right" size={16} /></button>
+            <button type="button" onClick={() => go(p.onGuardians)}><PixelIcon name="flame" size={20} /><span><strong>守護霊</strong><small>名前 / 討伐記録</small></span><PixelIcon name="arrow-up-right" size={16} /></button>
+            <button type="button" onClick={() => go(p.onBoss)}><PixelIcon name="crosshair" size={20} /><span><strong>変異体対策室</strong><small>ボス再戦 / 練習</small></span><PixelIcon name="arrow-up-right" size={16} /></button>
           </div>
         </section>
       </main>

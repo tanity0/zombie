@@ -1,6 +1,6 @@
 import React from 'react';
 import { COMMAND_UI_ENABLED } from '../config/uiDesign';
-import { usePlayDevice } from '../utils/inputDevice';
+import { isTouchPrimary, usePlayDevice } from '../utils/inputDevice';
 
 // FF7リメイク風UIの共通ボタン(社長指示・カラーは紫)。斜め(skew)は使わない。
 // 背景だけでなく「枠線(上下のライン)もフェードする」よう、border ではなくグラデーションの細線を重ねる。
@@ -33,9 +33,11 @@ export const Ff7rButton: React.FC<Ff7rButtonProps> = ({
   // ★PC(マウス・キーボード)では、Enter で押せる既定ボタンにだけ小さな「Enter」の札を添える(社長裁定2026-10-16・まとめHTML C11
   //   「PCで直感的でない操作(チュートリアルのOKなど)」→「はい」)。Enter/Space/クリックで押せるのは utils/menuNav が既に担っている
   //   (navDefault)。タッチ・パッドでは出さない=スマホは1pxも動かない(research/PC_SUPPORT.md の原則)。
+  //   ※札は文字の後ろに並べる(重ねない)。以前は右端へ絶対配置していて、文字の幅次第で「ロール選択」と札が重なった。
+  //   タッチが主の端末(指で触っている間)では出さない=マウスで操作している時だけ。
   const device = usePlayDevice();
-  const enterBadge = navDefault && device === 'mouse'
-    ? <span aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-[2px] border border-white/25 px-1 text-[8px] font-semibold leading-[1.5] tracking-[0.12em] text-white/55">Enter</span>
+  const enterBadge = navDefault && device === 'mouse' && !isTouchPrimary()
+    ? <span aria-hidden="true" className="ff7r-enter-badge pointer-events-none ml-2.5 inline-block -translate-y-px rounded-[2px] border border-white/25 px-1 align-middle text-[8px] font-semibold leading-[1.5] tracking-[0.12em] text-white/55">Enter</span>
     : null;
   if (COMMAND_UI_ENABLED) return (
     <button type="button" onClick={onClick} aria-label={ariaLabel} data-testid={testId} {...nav}
@@ -62,9 +64,8 @@ export const Ff7rButton: React.FC<Ff7rButtonProps> = ({
         />
         {fade === 'right' && <span className="absolute left-0 top-0 bottom-0 w-px" style={{ background: `rgba(168,85,247,${emphasis ? 0.8 : 0.55})` }} />}
         <span className="relative z-10 block px-4 text-center text-[14px] font-bold tracking-[0.22em] text-white">
-          {children}
+          {children}{enterBadge}
         </span>
-        {enterBadge}
       </span>
     </button>
   );
