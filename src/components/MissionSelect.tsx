@@ -1408,13 +1408,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <Ff7rButton
               onClick={() => startMission(stageId, effectiveClass, missionKind)}
               className="shrink-0 min-w-[150px] active:scale-95 transition-transform"
-              ariaLabel="スタート"
+              ariaLabel="出撃"
               testId="charselect-start"
               emphasis
               fade="both"
               paddingY="0.8rem"
             >
-              START
+              出撃
             </Ff7rButton>
           </div>
 
