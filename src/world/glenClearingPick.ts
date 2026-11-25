@@ -6,19 +6,20 @@ import { torchesInRegion, torchArtRect, TORCH_CELL, type TorchInstance } from '.
 import { isObstacleDestroyed } from './destructibles';
 import { TREE_ART_MAX, TORCH_ART_MAX } from './artRects';
 import {
-  glenClearHides, glenClearProtectRect, setGlenClearing, clearGlenClearing, GLEN_CLEAR_NEAR_K, GLEN_CLEAR_BACK,
+  glenClearHides, glenClearProtectRect, setGlenClearing, clearGlenClearing, GLEN_CLEAR_NEAR_K,
 } from './glenClearing';
 
-/** グレンの足元の手前に掛かる木・松明を選ぶ(純関数・状態は変えない)。 */
+/** グレンの足元の周り(前後左右)で、絵がグレンに掛かる木・松明を選ぶ(純関数・状態は変えない)。 */
 export const pickGlenClearing = (footX: number, footY: number): { trees: TreeInstance[]; torches: TorchInstance[] } => {
   const p = glenClearProtectRect(footX, footY);
-  // 手前の物の大きめにした絵が守る矩形に届き得る範囲(左右=絵の半幅、手前=絵の高さ)。木は区画の原点で引くので1区画ぶん広げる。
+  // 大きめにした絵が守る矩形に届き得る範囲(左右=絵の幅、手前=絵の高さ、奥=守る矩形の上辺から絵の高さぶん)。
+  // 木は区画の原点で引くので1区画ぶん広げる。奥側は絵が足元より下へはみ出す分も拾えるよう絵の高さぶん余分に見る。
   const tw = TREE_ART_MAX.w * 1.25 * GLEN_CLEAR_NEAR_K, th = TREE_ART_MAX.h * 1.25 * GLEN_CLEAR_NEAR_K; // 1.25=木の個体の大きさの上限
-  const trees = treesInRegionRaw(p.x - tw - TREE_CELL, footY - GLEN_CLEAR_BACK - TREE_CELL, p.x + p.width + tw, footY + th + TREE_CELL)
+  const trees = treesInRegionRaw(p.x - tw - TREE_CELL, p.y - th - TREE_CELL, p.x + p.width + tw, footY + th + TREE_CELL)
     .filter(t => !isObstacleDestroyed(t.key) && glenClearHides(treeArtRect(t), t.footX, t.footY, footX, footY));
   const mw = TORCH_ART_MAX.w * GLEN_CLEAR_NEAR_K, mh = TORCH_ART_MAX.h * GLEN_CLEAR_NEAR_K;
   // 松明は RELAX の追加確率込みで在り得る物まで選ぶ(後から増えて手前に出ない)。
-  const torches = torchesInRegion(p.x - mw - TORCH_CELL, footY - GLEN_CLEAR_BACK - TORCH_CELL, p.x + p.width + mw, footY + mh + TORCH_CELL, 1)
+  const torches = torchesInRegion(p.x - mw - TORCH_CELL, p.y - mh - TORCH_CELL, p.x + p.width + mw, footY + mh + TORCH_CELL, 1)
     .filter(t => glenClearHides(torchArtRect(t), t.footX, t.footY, footX, footY));
   return { trees, torches };
 };

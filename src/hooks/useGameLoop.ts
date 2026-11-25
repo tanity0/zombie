@@ -4219,8 +4219,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   glenTransform: { startedAt: tfAtt.startReal, footX: tfBox.footX, footY: tfBox.footY, bossBox: tfBox.box },
                   npcDialogue: null, // 5行目が閉じた後の空きのまま(咆哮の文字は苦しむ絵の瞬間まで出さない)
                 });
-                // グレンの足元の正面と左右の空き地(社長指示2026-11-25「木はグレンの前に生やさない」・world/glenClearing)。
-                // 手前に掛かる木・松明は当たり判定ごとここで消え、描画は場面の寄りの間にフェードアウトさせる。出撃の間ずっと残る。
+                // グレンの足元の周りの空き地(社長指示2026-11-25「木はグレンの前に生やさない」「登場の時点で近くに生やさないで」・world/glenClearing)。
+                // グレンと第一形態の絵に掛かる木・松明は奥も手前も当たり判定ごとここで消え、描画は場面の寄りの間にフェードアウトさせる。出撃の間ずっと残る。
                 applyGlenClearing(tfBox.footX, tfBox.footY, tfAtt.startReal);
               }
             }

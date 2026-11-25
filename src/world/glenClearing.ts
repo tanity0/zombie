@@ -1,10 +1,11 @@
 // ステージ7 グレンの変身の場面の空き地(社長指示2026-11-25「木はグレンの前に生やさない」・research/GLEN_TRANSFORM.md)。
 //
 // 方式は poiClearings / destructibles と同じ「world 層のモジュール状態」: 咆哮の瞬間に決まるグレンの足元(=第一形態の箱の足元)の
-// **正面(+Y=カメラ側)と左右**で、絵がグレン(人間の姿・第一形態)の手前に掛かる木と松明のキーをここへ入れる。
+// **周り(前後左右)**で、絵がグレン(人間の姿・第一形態)に掛かる木と松明のキーをここへ入れる(社長指示2026-11-25
+// 「グレン、登場の時点で近くに生やさないで」=奥の木もグレンのすぐ後ろに大きく被さって見えるので、奥か手前かを問わない)。
 // treesInRegion / torchesInRegion がこのキーを欠番にする=**描画・当たり判定・湧き回避が同じ1点で同時に消える**。
 // 置き場所の計算(選び直し)には触れない=周りの木が別の位置へ生え替わらない(壊された木と同じ扱い)。
-// 奥(-Y)の木はグレンの後ろに描かれるので残す(POI の空き地と同じ考え方)。
+// 絵が守る矩形に掛からない遠い木は残す。
 //
 // 消える木・松明は、その時画面に見えていてもパッと消さない(慣性の掟): 描画が glenClearingFadeK で短くフェードアウトさせる
 // (時間停止の中なので実時間で測る)。当たり判定は空き地を作った時点で消える(時間が止まっているので誰も動かない)。
@@ -21,14 +22,15 @@ import type { Rect } from './obstacles';
  */
 export const GLEN_CLEAR_PROTECT_HALF_W = 200;
 export const GLEN_CLEAR_PROTECT_H = 330;
-/** 足元より少し奥(-Y)の木も見る深さ。足元が同じ行の木は前後の並びが揺れるので、根元がグレンの足元のすぐ奥の物までは弾く。 */
-export const GLEN_CLEAR_BACK = 24;
 /**
- * 手前の木の絵を大きめに見る倍率(足元を支点)。手前の木は遠近で奥のグレンより大きく描かれるので、
- * scale 1 の treeArtRect のままだと描かれた絵がはみ出して掛かる。描画の遠近の上限(物の手前の最大 1.7〜1.85)を見込む。
+ * 木・松明の絵を大きめに見る倍率(足元を支点)。遠近で描かれる大きさが変わるので、scale 1 の treeArtRect のままだと
+ * 描かれた絵がはみ出して掛かる。描画の遠近の上限(物の手前の最大 1.7〜1.85)を見込む(奥の物にも同じ倍率=大きめに見て弾く側へ倒す)。
  */
 export const GLEN_CLEAR_NEAR_K = 1.85;
-/** 消える木・松明のフェードの長さ(実時間 ms)。場面の寄り(アテンションの寄り 360ms+人間のグレンが現れる 450ms)の間に終わる。 */
+/**
+ * 消える木・松明のフェードの長さ(実時間 ms)。場面の開始(=人間のグレンが現れ始める時刻)から、人間のグレンが現れ切る
+ * utils/glenIntro.GLEN_TF_APPEAR_MS(450)までに消え切る=現れ切った時にはもう見えない(テストで固定)。
+ */
 export const GLEN_CLEAR_FADE_MS = 450;
 
 /** 守る絵の矩形(足元を下辺の中心に)。 */
@@ -48,11 +50,10 @@ export const scaleArtAboutFoot = (art: Rect, fx: number, fy: number, k: number):
 });
 
 /**
- * 足元 (propFootX, propFootY)・絵の矩形 art の物が、グレンの足元 (glenFootX, glenFootY) の手前に掛かるか(=空き地で弾くか)。
- * 手前(足元がグレンの足元より GLEN_CLEAR_BACK 以上奥でない)かつ、遠近を見込んで大きめにした絵が守る絵の矩形に掛かる。
+ * 足元 (propFootX, propFootY)・絵の矩形 art の物が、グレンの足元 (glenFootX, glenFootY) のグレンの絵に掛かるか(=空き地で弾くか)。
+ * 奥か手前かを問わず、遠近を見込んで大きめにした絵が守る絵の矩形に掛かれば弾く。
  */
 export const glenClearHides = (art: Rect, propFootX: number, propFootY: number, glenFootX: number, glenFootY: number): boolean => {
-  if (propFootY < glenFootY - GLEN_CLEAR_BACK) return false; // 奥の物はグレンの後ろに描かれる=残す
   const a = scaleArtAboutFoot(art, propFootX, propFootY, GLEN_CLEAR_NEAR_K);
   const p = glenClearProtectRect(glenFootX, glenFootY);
   return a.x < p.x + p.width && a.x + a.width > p.x && a.y < p.y + p.height && a.y + a.height > p.y;

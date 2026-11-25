@@ -1,24 +1,36 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   glenClearHides, glenClearFadeKAt, glenClearingFadeK, glenClearingFadingTrees, clearGlenClearing, isGlenClearedTree,
-  GLEN_CLEAR_FADE_MS, GLEN_CLEAR_BACK, GLEN_CLEAR_PROTECT_HALF_W,
+  GLEN_CLEAR_FADE_MS, GLEN_CLEAR_PROTECT_HALF_W, GLEN_CLEAR_PROTECT_H,
 } from './glenClearing';
+import { GLEN_TF_APPEAR_MS } from '../utils/glenIntro';
 import { applyGlenClearing, pickGlenClearing } from './glenClearingPick';
 import { treesInRegion, treesInRegionRaw, treeArtRect } from './trees';
 import { torchesInRegion, torchArtRect } from './torches';
 
-// 社長指示2026-11-25「木はグレンの前に生やさない」(ステージ7 グレンの変身の場面・research/GLEN_TRANSFORM.md)。
+// 社長指示2026-11-25「木はグレンの前に生やさない」→「グレン、登場の時点で近くに生やさないで」
+// (ステージ7 グレンの変身の場面・research/GLEN_TRANSFORM.md)。奥か手前かを問わず、絵がグレンに掛かる物は消す。
 describe('グレンの前の空き地', () => {
   afterEach(() => clearGlenClearing());
 
   const art = (fx: number, fy: number, w = 100, h = 200) => ({ x: fx - w / 2, y: fy - h, width: w, height: h });
 
-  it('手前で絵が掛かる物は弾き、奥の物・横に離れた物は残す', () => {
+  it('絵が掛かる物は手前でも奥でも弾き、絵が掛からない遠い物は残す', () => {
     const gx = 1000, gy = 500;
-    expect(glenClearHides(art(gx + 20, gy + 60), gx + 20, gy + 60, gx, gy)).toBe(true); // 正面の手前
-    expect(glenClearHides(art(gx + GLEN_CLEAR_PROTECT_HALF_W + 40, gy + 30), gx + GLEN_CLEAR_PROTECT_HALF_W + 40, gy + 30, gx, gy)).toBe(true); // 左右(絵が掛かる)
-    expect(glenClearHides(art(gx, gy - GLEN_CLEAR_BACK - 1), gx, gy - GLEN_CLEAR_BACK - 1, gx, gy)).toBe(false); // 奥=後ろに描かれる
-    expect(glenClearHides(art(gx + 900, gy + 60), gx + 900, gy + 60, gx, gy)).toBe(false); // 横に遠い
+    const hides = (fx: number, fy: number) => glenClearHides(art(fx, fy), fx, fy, gx, gy);
+    expect(hides(gx + 20, gy + 60)).toBe(true); // 正面の手前
+    expect(hides(gx + GLEN_CLEAR_PROTECT_HALF_W + 40, gy + 30)).toBe(true); // 左右(絵が掛かる)
+    expect(hides(gx, gy - 63)).toBe(true); // すぐ後ろの大木(撮影で根元が63px奥の木が被さって見えた)
+    expect(hides(gx - 60, gy - GLEN_CLEAR_PROTECT_H + 10)).toBe(true); // 奥でも足元が守る矩形の中なら掛かる
+    expect(hides(gx, gy - GLEN_CLEAR_PROTECT_H - 400)).toBe(false); // 奥に遠い(絵が守る矩形まで届かない)
+    expect(hides(gx + 900, gy + 60)).toBe(false); // 横に遠い
+    expect(hides(gx + 900, gy - 63)).toBe(false); // 奥の横に遠い
+  });
+
+  it('消える物のフェードは、人間のグレンが現れ切る時刻までに終わる', () => {
+    expect(GLEN_CLEAR_FADE_MS).toBeLessThanOrEqual(GLEN_TF_APPEAR_MS);
+    expect(glenClearFadeKAt(GLEN_TF_APPEAR_MS)).toBe(0);
+    expect(GLEN_CLEAR_FADE_MS).toBeGreaterThan(0); // パッと消さない
   });
 
   it('消える物のフェードは慣性つき(動き始めと止まりがゆっくり)で、長さどおりに消え切る', () => {
@@ -42,6 +54,22 @@ describe('グレンの前の空き地', () => {
     return null;
   };
 
+  it('すぐ後ろの木も欠番になる', () => {
+    let hit: { fx: number; fy: number } | null = null;
+    for (let k = 0; k < 2000 && !hit; k++) {
+      const fx = 3000 + k * 37, fy = 2000;
+      if (treesInRegion(fx - 300, fy - 300, fx + 300, fy + 300).some(t => fy - t.footY > 40 && fy - t.footY < 160 && Math.abs(t.footX - fx) < 50)) hit = { fx, fy };
+    }
+    expect(hit).not.toBeNull();
+    const { fx, fy } = hit!;
+    const n = applyGlenClearing(fx, fy, 0);
+    expect(n.trees).toBeGreaterThan(0);
+    const after = treesInRegion(fx - 1500, fy - 1500, fx + 1500, fy + 1500);
+    expect(after.some(t => fy - t.footY > 40 && fy - t.footY < 160 && Math.abs(t.footX - fx) < 50)).toBe(false);
+    expect(after.some(t => glenClearHides(treeArtRect(t), t.footX, t.footY, fx, fy))).toBe(false);
+    expect(after.length).toBeGreaterThan(0); // 遠い木は残る
+  });
+
   it('手前の木は当たり判定ごと欠番になり、周りの木は動かない。新ランで戻る', () => {
     const spot = findSpot();
     expect(spot).not.toBeNull();
@@ -51,7 +79,7 @@ describe('グレンの前の空き地', () => {
     const n = applyGlenClearing(fx, fy, 1000);
     expect(n.trees).toBeGreaterThan(0);
     const after = treesInRegion(...box);
-    // 手前で絵が掛かる木は1本も残らない
+    // 絵が掛かる木は1本も残らない
     expect(after.some(t => glenClearHides(treeArtRect(t), t.footX, t.footY, fx, fy))).toBe(false);
     // 消えたのは選ばれた木だけ・残りは同じ位置のまま(選び直しで別の場所へ生え替わらない)
     const key = (t: { key: string; footX: number; footY: number }) => `${t.key}@${t.footX},${t.footY}`;
