@@ -34,11 +34,11 @@ export const attentionZoomFor = (e: AttentionSubject | null | undefined): number
  * 出現の紹介(カットイン付きのアテンション)の注目点 (x, y) にいるボス級の敵。
  * 帯の中心と絵の中心のうち近い方で測り、半径内で一番近い1体。居なければ null。
  */
-export const findAttentionSubject = (
-  enemies: readonly Pick<Enemy, 'type' | 'x' | 'y' | 'width' | 'height' | 'health'>[],
+export const findAttentionSubject = <E extends Pick<Enemy, 'type' | 'x' | 'y' | 'width' | 'height' | 'health'>>(
+  enemies: readonly E[],
   x: number, y: number, radius: number = ATTENTION_SUBJECT_RADIUS,
-): AttentionSubject | null => {
-  let best: AttentionSubject | null = null;
+): E | null => {
+  let best: E | null = null;
   let bestD2 = radius * radius;
   for (const e of enemies) {
     if (!isBossType(e.type) || e.health <= 0) continue;

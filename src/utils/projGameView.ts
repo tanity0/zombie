@@ -62,6 +62,24 @@ export const projCamDownFracFor = (scene: ProjScene, camZ: number, outdoorBase: 
 export const projAttentionCarries = (scene: ProjScene | null, zoomToUnity: boolean): boolean => zoomToUnity || scene === 'lab';
 
 /**
+ * 描画側のアテンションの基準(§1-6)。返り値 ref=基準点・基準行を運ぶ先(null=運ばない)、farRefY=描く距離のフェードの基準の world Y。
+ * - 基準点: 研究所・等倍に見せるアテンションは今どおり注目点の行(projAttentionCarries)。それ以外(屋外の素のアテンション)は、
+ *   写す相手(ボス級)が居ればその足元へ運ぶ=相手の足元が s=1 で写る。背の高いボス(ミーミル・スカジ・トール・ヨルムンガンド)は
+ *   寄り先が絵の中心なので、運ばないと足元が基準行より手前(南)に来て s≈1.4〜2 の巨大な絵になっていた。相手が居なければ運ばない(今どおり)。
+ * - 描く距離のフェード(farRefY): 主人公の足元から測っていたため、主人公から北へ 1200px 以上離れたボス(城・巣・宿敵)へ寄ると
+ *   ボスごと消えていた(1500px で濃さ 0)。アテンションの間は基準を運んだ先(無ければ注目点)へ包絡線で寄せる。
+ * env は attentionZoomEnvelope(寄り 0→1→戻り 0)。env=0 の時は今の値と同じ(ref は運ぶが量 0・farRefY=主人公の足元)。
+ */
+export const projAttentionAnchor = (
+  scene: ProjScene | null, zoomToUnity: boolean, attY: number, env: number, subjectFootY: number | null, playerFootY: number,
+): { ref: { y: number; env: number } | null; farRefY: number } => {
+  const e = Math.max(0, Math.min(1, Number.isFinite(env) ? env : 0));
+  const refY = projAttentionCarries(scene, zoomToUnity) ? attY : subjectFootY;
+  const anchor = refY ?? attY;
+  return { ref: refY === null ? null : { y: refY, env: e }, farRefY: playerFootY + (anchor - playerFootY) * e };
+};
+
+/**
  * 照準の門(段階8 U40・§3-10e): 投影の枠を照準(逆投影・吸い付き)へ渡してよい場面。
  * ★#46=A(社長 2026-11-24「はい」=研究所・洋館も照準だけ揃える): 屋外・研究所・洋館で開ける。屋内は枠を作らない。
  * 見えている・湧き・回収(★#36〜#38): 洋館は今の独自の作りのまま(ゲームの画面=getProjGameView は null)。研究所は研究所のゲームの画面を
@@ -107,6 +125,8 @@ export interface ProjFrameBaseParams {
   near: boolean;
   /** アテンション(zoomToUnity)の注目点と包絡線。null=掛けない。 */
   att: { y: number; env: number } | null;
+  /** 描く距離のフェードの基準の world Y(省略=playerFootY)。描画のアテンションが projAttentionAnchor で運ぶ。 */
+  farRefY?: number;
   farStart: number;
   farEnd: number;
   /** 帯の敷き方の引きの余裕(ZOOM_OVERSCAN=1/ZOOM_MIN_ABS)。 */
@@ -135,7 +155,7 @@ export const projFrameBase = (prev: ProjTable | null, p: ProjFrameBaseParams): {
     input: {
       table, camX: p.camX, camY: p.camY, farH: p.farH, screenW: p.screenW, screenH: p.screenH,
       wRef, lRef, tStd: projTOfL(lRef1, band.stripH, PROJ_REF_STRIP_COUNT),
-      farRefY: p.playerFootY, farStart: p.farStart, farEnd: p.farEnd,
+      farRefY: p.farRefY ?? p.playerFootY, farStart: p.farStart, farEnd: p.farEnd,
     },
   };
 };

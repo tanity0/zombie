@@ -18,7 +18,7 @@ import type { RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { VIEW_CORE_W } from '../utils/viewport';
 import { setViewTransform, setViewProjection, getLastCursorScreen, projAimStats } from '../utils/viewTransform';
 import { getHudAvoidRects, slideOutOfRects } from '../utils/hudAvoidRects';
-import { projFrameBase, projGroundPersp, projAimAllowed, projCamDownFracFor, projAttentionCarries, LAB_FAR_BOUNDARY_YR, type ProjScene, getProjGameView, projGameViewContains, projPropRegionRect, projFadeInBrightness, type ProjFrameBaseParams } from '../utils/projGameView';
+import { projFrameBase, projGroundPersp, projAimAllowed, projCamDownFracFor, projAttentionAnchor, LAB_FAR_BOUNDARY_YR, type ProjScene, getProjGameView, projGameViewContains, projPropRegionRect, projFadeInBrightness, type ProjFrameBaseParams } from '../utils/projGameView';
 import { projEnemyFadeAlpha, projGhostAlpha, projBulletGhostAlpha, projGhostOverflow, projGhostDrift, projRecycledNear, PROJ_GHOST_DRIFT_TAU_MS, PROJ_BULLET_GHOST_DRIFT_TAU_MS, type ProjRecycleGhost, type ProjBulletGhost } from '../utils/projSpawnFade'; // ?proj=1 段階6(★#36・★#37) // 投影の組み立て(§3-9d=ゲーム側と1本)
 import { HORIZON_FOREST_UP_BY_STAGE, HORIZON_ACTOR_HIDE_OFFSET_PX, horizonForestHeightFor, horizonForestYFor, type HorizonForestInput } from '../utils/horizonForestLine'; // 森1の配置(§3-9d=ゲーム側と1本)
 import {
@@ -350,7 +350,7 @@ import {
 } from '../utils/swordSwingMotion';
 import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
-import { attentionUnityZoom, attentionZoomEnvelope } from '../utils/attentionZoom';
+import { attentionUnityZoom, attentionZoomEnvelope, findAttentionSubject } from '../utils/attentionZoom';
 import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom, runZoomTarget, RUN_ZOOM_MIN, RUN_ZOOM_OUT_S, RUN_ZOOM_IN_S, RUN_ZOOM_HOLD_S,
   BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, ZOOM_MIN_ABS,
@@ -10254,13 +10254,18 @@ export class PixiScene {
   /**
    * 投影の組み立ての入力(utils/projGameView.projFrameBase・ゲーム側と同じ式)。アテンション(zoomToUnity)は今の depthRefY と同じ包絡線(§1-6)。
    * 研究所は素のアテンションも運ぶ(projAttentionCarries: 研究所の基準行と注目点の行が 0.1 画面ずれ、変異塊が手前のフェードで消えていた)。
+   * 屋外の素のアテンションは写す相手(ボス級)の足元へ運び、描く距離のフェードの基準も運ぶ(utils/projGameView.projAttentionAnchor:
+   * 主人公から遠いボスへ寄ると距離のフェードでボスごと消えていた・背の高いボスが手前の拡大で巨大になっていた)。
    */
   private projFrameBaseParams(s: ReturnType<typeof useGameStore.getState>, farH: number, realNow: number): ProjFrameBaseParams {
     let att: { y: number; env: number } | null = null;
-    if (s.attention && projAttentionCarries(this.projSceneOf(s), !!s.attention.zoomToUnity)) {
+    let farRefY: number | undefined;
+    if (s.attention) {
       const a = s.attention;
       const outStart = ATTENTION_IN_MS + (a.holdMs ?? ATTENTION_HOLD_MS) + (a.cutinMs ?? 0);
-      att = { y: a.y, env: attentionZoomEnvelope(realNow - a.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS) };
+      const env = attentionZoomEnvelope(realNow - a.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS);
+      const an = projAttentionAnchor(this.projSceneOf(s), !!a.zoomToUnity, a.y, env, this.projAttSubjectFootY(s), s.player.y + s.player.height);
+      att = an.ref; farRefY = an.farRefY;
     }
     return {
       persp: projGroundPersp(), camX: s.camera.x, camY: s.camera.y, screenW: this.screenW, screenH: this.screenH, farH,
@@ -10269,8 +10274,22 @@ export class PixiScene {
       camZoom: getCameraZoomLink(), camDown: CAMERA_DOWN_OFFSET_FRAC, zref: PROJ_ZREF, near: PROJ_NEAR,
       // 段階8 U02: 縦の下げ量は projCamDownFracFor の1本から(研究所=字の 0・屋外=今の zoomCameraDownFrac と同じ値)。
       downFracAt: s.stageTheme === 'lab' ? this.projDownFracLab : this.projDownFracOutdoor,
-      att, farStart: PROJ_FAR_START, farEnd: PROJ_FAR_END, overscan: ZOOM_OVERSCAN,
+      att, farRefY, farStart: PROJ_FAR_START, farEnd: PROJ_FAR_END, overscan: ZOOM_OVERSCAN,
     };
+  }
+  /**
+   * アテンションの写す相手(ボス級)の足元の world Y(projAttentionAnchor の基準点)。相手=attention.target(居なければ注目点のボス級・
+   * findAttentionSubject)。足元は前のフレームの後掛けの支点 F(裏ボスは論理の接地点=絵の下端・他は描く足元)、無ければ判定の箱の下端。
+   * 倒れた相手(討伐の見届け)は null=基準点は運ばない(距離のフェードは注目点へ運ぶ)。
+   */
+  private projAttSubjectFootY(s: ReturnType<typeof useGameStore.getState>): number | null {
+    const a = s.attention;
+    if (!a) return null;
+    const e = a.target ? findAttentionTarget(s.enemies, a.target.id) : findAttentionSubject(s.enemies, a.x, a.y);
+    if (!e) return null;
+    const v = this.enemies.get(e.id);
+    const fy = v?.projFy;
+    return fy !== undefined && Number.isFinite(fy) ? fy : e.y + e.height;
   }
 
   private updateProjFrame(s: ReturnType<typeof useGameStore.getState>, shakeX: number, shakeY: number, realNow: number) {

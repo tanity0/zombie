@@ -7,7 +7,7 @@ import {
 } from './perspectiveProjection';
 import {
   projFrameBase, projGameFrame, projGameViewContains, projGameViewBands, projGameViewRect, projGameEdgePoint, projGameBoxOnScreen,
-  projAttentionCarries, projGameZoomPlacement, projGameVisibleRows, projGameRowSpan, projGameSpawnRect, projGameRecycleRect, projFadeInAlpha, projFadeInBrightness, PROJ_FADE_IN_DARK, PROJ_FADE_MS,
+  projAttentionCarries, projAttentionAnchor, projGameZoomPlacement, projGameVisibleRows, projGameRowSpan, projGameSpawnRect, projGameRecycleRect, projFadeInAlpha, projFadeInBrightness, PROJ_FADE_IN_DARK, PROJ_FADE_MS,
   PROJ_GAME_OVERSCAN, PROJ_REF_PHONE_H, PROJ_REF_PHONE_W, PROJ_SPAWN_LONG_EXTRA_PX, type ProjFrameBaseParams,
 } from './projGameView';
 import { horizonForestFootLocalY, horizonFadeAlphaAt, horizonForestHeightFor, horizonForestYFor, type HorizonForestInput } from './horizonForestLine';
@@ -361,5 +361,48 @@ describe('アテンションで基準点を運ぶ場面(projAttentionCarries・�
     };
     expect(sAt({ y: attY, env: 1 })).toBeCloseTo(1, 3);
     expect(sAt(null)).toBeGreaterThan(1.1);
+  });
+});
+
+describe('ボスへのアテンションの基準(projAttentionAnchor・描画側)', () => {
+  it('研究所・等倍に見せるアテンションは今どおり注目点へ運ぶ/屋外の素は写す相手の足元へ運ぶ/相手が居なければ運ばない', () => {
+    expect(projAttentionAnchor('lab', false, 100, 1, 300, 900).ref).toEqual({ y: 100, env: 1 });
+    expect(projAttentionAnchor('outdoor', true, 100, 0.5, 300, 900).ref).toEqual({ y: 100, env: 0.5 });
+    expect(projAttentionAnchor('outdoor', false, 100, 1, 300, 900).ref).toEqual({ y: 300, env: 1 });
+    expect(projAttentionAnchor('outdoor', false, 100, 1, null, 900).ref).toBeNull();
+  });
+
+  it('描く距離のフェードの基準は包絡線で運ぶ(env=0 は主人公の足元=今と同じ・env=1 は運んだ先、無ければ注目点)', () => {
+    expect(projAttentionAnchor('outdoor', false, -1500, 0, -1400, 0).farRefY).toBe(0);
+    expect(projAttentionAnchor('outdoor', false, -1500, 1, -1400, 0).farRefY).toBe(-1400);
+    expect(projAttentionAnchor('outdoor', false, -1500, 1, null, 0).farRefY).toBe(-1500);
+    expect(projAttentionAnchor('outdoor', false, -1500, 0.5, null, 0).farRefY).toBe(-750);
+    expect(projAttentionAnchor('outdoor', false, -1500, Number.NaN, null, 0).farRefY).toBe(0);
+  });
+
+  const sc = { W: 405, H: 720 };
+  const farH = farBackdropHeightFor(sc.H);
+  const frameFor = (attY: number, playerFootY: number, an: ReturnType<typeof projAttentionAnchor> | null) => {
+    const camY = attY - sc.H * 0.6; // useGameLoop のアテンションのカメラ(ATTENTION_FOCUS_Y_FRAC=0.6)
+    const { input } = projFrameBase(null, {
+      persp: P, camX: 0, camY, screenW: sc.W, screenH: sc.H, farH, viewH: sc.H, playerH: PH,
+      playerFootY, camZoom: 1, camDown: 0.08, zref: 2, near: true, att: an ? an.ref : null, farRefY: an?.farRefY,
+      farStart: 1200, farEnd: 1500, overscan: PROJ_GAME_OVERSCAN,
+    });
+    return makeProjFrame({ ...input, wgScale: 1, wgX: 0, wgY: 0, shakeX: 0, shakeY: 0 });
+  };
+
+  it('主人公から北へ1500px のボスへ寄り切った時: 今は距離のフェードで濃さ0・運べば1(城ボス・宿敵が消えた形)', () => {
+    const foot = -1500, attY = foot - 30;
+    expect(projectInto(frameFor(attY, 0, null), 0, foot, makeProjPoint()).alpha).toBe(0);
+    const an = projAttentionAnchor('outdoor', false, attY, 1, foot, 0);
+    expect(projectInto(frameFor(attY, 0, an), 0, foot, makeProjPoint()).alpha).toBe(1);
+  });
+
+  it('寄り先が絵の中心の背の高いボス: 今は足元が手前で拡大・運べば足元が等倍(ミーミル・スカジの巨大化の形)', () => {
+    const attY = 0, foot = 260; // 絵の中心から足元まで 260px(背の高いボス)
+    expect(projectInto(frameFor(attY, 0, null), 0, foot, makeProjPoint()).s).toBeGreaterThan(1.3);
+    const an = projAttentionAnchor('outdoor', false, attY, 1, foot, 0);
+    expect(projectInto(frameFor(attY, 0, an), 0, foot, makeProjPoint()).s).toBeCloseTo(1, 3);
   });
 });
