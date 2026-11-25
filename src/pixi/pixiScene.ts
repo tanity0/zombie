@@ -12045,40 +12045,115 @@ export class PixiScene {
       }
     }
   }
+  /** 読(足元の無い数字): 当たった敵の体が見つかれば、基準点 H を体の相似 T(H) へ平行移動(大きさは変えない=★#25=A)。無ければ false。 */
+  private projFxHudOnHitBody(c: Container, hx: number, hy: number): boolean {
+    if (!this.projFrame) return false;
+    const a = this.projFxBodyAnchorOf(c, hx, hy);
+    if (!a || !this.projFxSave(c)) return false;
+    const T = this.projFxBodyT(a, hx, hy);
+    c.position.set(c.position.x + (T.x - hx), c.position.y + (T.y - hy));
+    if (T.a !== 1) c.alpha *= T.a;
+    if (PROJ_AUDIT) { this.projS3NumPush(hx, hy, T.x, T.y, false); this.projS5HitAudit(this.projHitLiftOf(c, hx, hy), hx, hy, T.x, T.y); }
+    return true;
+  }
   /**
-   * 体の高さで出る演出(A2 被弾の光・A15 当たった所の筋)を、当たった敵の体の相似で置く(付け根=その敵の描き絵の足元 F_e・位置は
-   * P_e + k_e·(X − F_e)・大きさは s_fx)。敵=X が当たり判定の箱(+余白)に入るいちばん近い敵。見つからなければ false(呼び手が H0 方式)。
+   * 体の高さで出る演出(A2 被弾の光・A15 当たった所の筋・A7/A8 当たった所の光・A4 当たった所の絵・A17 閃光の輪の中心・A1 足元の無い数字)を、
+   * 当たった敵の体の相似で置く(付け根=その敵の描き絵の足元 F_e・位置は P_e + k_e·(X − F_e)・大きさは s_fx)。
+   * 敵=X が当たり判定の箱(+余白)に入るいちばん近い敵。**初めて描いた時に1回だけ決めて覚える**(projFxBodyAnchorOf)=
+   * 当てた敵がその後に動いても・倒れて消えても印は当たった点に残る(旧: 毎フレーム探し直し=倒した一撃は箱が無くて H0 方式へ跳んだ)。
+   * group=true は子が world の点に居る入れ物(drawSlashSprite)=子ごとに T(X) + s_fx·(子 − X) へ写す
+   * (旧: 入れ物の位置を k_e・大きさを s_fx で写していた=子の world 座標 × (s_fx − k_e) だけずれ、原点から遠いほど大きくずれた)。
+   * 見つからなければ false(呼び手が今の置き方)。
    */
-  private projFxOnHitBody(c: Container, x: number, y: number): boolean {
+  private projFxOnHitBody(c: Container, x: number, y: number, group = false): boolean {
     const f = this.projFrame;
     if (!f) return false;
-    // 段階5(Z34・★#32=A): 初めて描いた時に覚えた宙の高さ h_e。箱は上へ h_e だけ広げる(印は当たった瞬間の空中の点に残る)。
-    const hm = this.projHitLiftOf(c, x, y);
-    let best: ActorView | null = null, bd = Infinity;
-    for (const en of useGameStore.getState().enemies) {
-      if (x < en.x - 24 || x > en.x + en.width + 24 || y < en.y - 40 - hm.h || y > en.y + en.height + 24) continue;
-      const v = this.enemies.get(en.id);
-      if (!v || v.projDrawnFrame !== this.projFrameNo || v.projFx === undefined || v.projFy === undefined) continue;
-      const dd = Math.hypot(x - (en.x + en.width / 2), y - (en.y + en.height / 2));
-      if (dd < bd) { bd = dd; best = v; }
+    const a = this.projFxBodyAnchorOf(c, x, y);
+    if (!a || !this.projFxSave(c)) return false;
+    const T = this.projFxBodyT(a, x, y);
+    const kf = T.kf;
+    const tx = T.x, ty = T.y;
+    if (group) {
+      // 入れ物は原点のまま・子ごとに写す(子の位置=world の点・入れ物の拡縮は1)
+      const ox = c.position.x, oy = c.position.y;
+      const kids = c.children;
+      for (let i = 0; i < kids.length; i++) {
+        const ch = kids[i] as Container;
+        if (!this.projFxSave(ch)) continue;
+        ch.position.set(tx + kf * (ox + ch.position.x - x) - ox, ty + kf * (oy + ch.position.y - y) - oy);
+        ch.scale.set(ch.scale.x * kf, ch.scale.y * kf);
+      }
+    } else {
+      // 置く点 X を体の相似で写す(c の位置=X・動いた分は k_e)。大きさは派手さの s_fx(★#24)
+      c.position.set(tx + T.ke * (c.position.x - x), ty + T.ke * (c.position.y - y));
+      c.scale.set(c.scale.x * kf, c.scale.y * kf);
     }
-    if (!best || !this.projFxSave(c)) return false;
-    const fx = best.projFx!, fy = best.projFy!;
-    const p = projectInto(f, fx, fy, this.projFxP);
-    const d = best.projD ?? 1;
-    const ke = best.projPhill ? projPhillK(p.s, d) : projActorK(p.s, d);
-    const px = this.snapToScreenPixel(p.x, this.L.world.position.x), py = this.snapToScreenPixel(p.y, this.L.world.position.y);
-    // 置く点 X を体の相似で写す(c の位置=X)。大きさは派手さの s_fx(★#24)
-    const kf = this.projFxKOf('fx', p.s);
-    // 段階5(Z34): 覚えた h_e の敵の体なら、溶けた高さ k·h_e を σ·h_e へ割り戻す(持ち上げた体の同じ点に乗る)。
-    const hfix = hm.h > 0 && hm.v === best ? projLiftFixDy(hm.h, ke, projLiftScale(f, Math.max(0, p.l))) : 0; // proj-lift: Z34
-    c.position.set(px + ke * (c.position.x - fx), py + ke * (c.position.y - fy) + hfix);
-    c.scale.set(c.scale.x * kf, c.scale.y * kf);
-    if (p.alpha !== 1) c.alpha *= p.alpha;
-    this.projFxLastX = px + ke * (x - fx); this.projFxLastY = py + ke * (y - fy) + hfix;
-    this.projS5HitAudit(hm, x, y, this.projFxLastX, this.projFxLastY);
-    if (PROJ_AUDIT) this.projFxAnchorAudit(fx, fy);
+    if (T.a !== 1) c.alpha *= T.a;
+    this.projFxLastX = tx; this.projFxLastY = ty;
+    if (PROJ_AUDIT) {
+      const hm = this.projHitLiftOf(c, x, y);
+      this.projS5HitAudit(hm, x, y, tx, ty);
+      this.projFxAnchorAudit(a.fx, a.fy);
+    }
     return true;
+  }
+  /** 体の相似の付け根(初めて描いた時に1回だけ決める)。fx,fy=敵の描き絵の足元・d=旧い遠近の倍率の depthScaleEnemy(足元) に対する比・h=store が印の y に溶かした宙の高さ h_e。 */
+  private projFxBodyMem = new WeakMap<object, { fx: number; fy: number; d: number; phill: boolean; h: number } | null>();
+  /** 今フレームと直前のフレームに描いた敵の箱と足元(倒れて store から消えた敵を、消えたフレームにも引けるように残す)。 */
+  private projFxBodyRecs = new Map<string, { frame: number; x: number; y: number; w: number; h: number; fx: number; fy: number; d: number; phill: boolean; he: number }>();
+  private projFxBodyRecFrame = -1;
+  private projFxBodyRecsRefresh() {
+    if (this.projFxBodyRecFrame === this.projFrameNo) return;
+    this.projFxBodyRecFrame = this.projFrameNo;
+    const fno = this.projFrameNo;
+    for (const en of useGameStore.getState().enemies) {
+      const v = this.enemies.get(en.id);
+      if (!v || v.projDrawnFrame !== fno || v.projFx === undefined || v.projFy === undefined) continue;
+      let r = this.projFxBodyRecs.get(en.id);
+      if (!r) { r = { frame: 0, x: 0, y: 0, w: 0, h: 0, fx: 0, fy: 0, d: 1, phill: false, he: 0 }; this.projFxBodyRecs.set(en.id, r); }
+      r.frame = fno; r.x = en.x; r.y = en.y; r.w = en.width; r.h = en.height;
+      // d は旧い遠近の倍率=カメラに対する位置で変わる。覚えるのは足元の depthScaleEnemy に対する比(普通の敵は 1)=描くたびに今の値へ掛け直す
+      r.fx = v.projFx; r.fy = v.projFy; r.d = (v.projD ?? 1) / Math.max(1e-6, this.depthScaleEnemy(v.projFy)); r.phill = !!v.projPhill;
+      r.he = v.projHitEFrame === fno ? Math.max(0, v.projHitE ?? 0) : 0; // proj-lift: Z34
+    }
+    for (const [id, r] of this.projFxBodyRecs) if (fno - r.frame > 2) this.projFxBodyRecs.delete(id);
+  }
+  /** X=(x, y) が入る敵の体(箱を左右 24px・上へ 40px + 宙の高さ h_e・下へ 24px 広げた範囲のいちばん近い物)。爆発の絵と同じ点の物は爆発に付ける(null)。 */
+  private projFxBodyAnchorOf(c: object, x: number, y: number): { fx: number; fy: number; d: number; phill: boolean; h: number } | null {
+    if (this.projFxBodyMem.has(c)) return this.projFxBodyMem.get(c) ?? null;
+    this.projFxBodyRecsRefresh();
+    let best: { fx: number; fy: number; d: number; phill: boolean; h: number } | null = null, bd = Infinity;
+    const fno = this.projFrameNo;
+    for (const r of this.projFxBodyRecs.values()) {
+      if (fno - r.frame > 1) continue; // 今フレームか、直前のフレーム(このフレームに倒れて消えた敵)
+      const he = r.he > 0.5 ? r.he : 0;
+      if (x < r.x - 24 || x > r.x + r.w + 24 || y < r.y - 40 - he || y > r.y + r.h + 24) continue;
+      const dd = Math.hypot(x - (r.x + r.w / 2), y - (r.y + r.h / 2 - he));
+      if (dd < bd) { bd = dd; best = { fx: r.fx, fy: r.fy, d: r.d, phill: r.phill, h: he }; }
+    }
+    if (best) { // 爆心の光・輪は爆発の絵(地面の点)に揃える(同じ点の爆発が出ている間)
+      for (const ef of useGameStore.getState().effects) {
+        if (ef.kind === 'explosion' && Math.abs(ef.x - x) < 0.5 && Math.abs(ef.y - y) < 0.5) { best = null; break; }
+      }
+    }
+    this.projFxBodyMem.set(c, best);
+    return best;
+  }
+  private projFxBodyBuf = { x: 0, y: 0, ke: 1, kf: 1, a: 1 };
+  /** 体の相似で world の点 (x, y) を写した表示座標(T(X))と、体の倍率 k_e・派手さの倍率 s_fx・濃さ。 */
+  private projFxBodyT(a: { fx: number; fy: number; d: number; phill: boolean; h: number }, x: number, y: number) {
+    const f = this.projFrame!;
+    const p = projectInto(f, a.fx, a.fy, this.projFxP);
+    const d = a.phill ? 1 : a.d * this.depthScaleEnemy(a.fy); // 今フレームの旧い遠近の倍率(当てた敵の後掛けと同じ d・フィルは 1)
+    const ke = a.phill ? projPhillK(p.s, d) : projActorK(p.s, d);
+    const px = this.snapToScreenPixel(p.x, this.L.world.position.x), py = this.snapToScreenPixel(p.y, this.L.world.position.y);
+    // 段階5(Z34): 宙の体なら、溶けた高さ k·h_e を σ·h_e へ割り戻す(持ち上げた体の同じ点に乗る)。
+    const hfix = a.h > 0 ? projLiftFixDy(a.h, ke, projLiftScale(f, Math.max(0, p.l))) : 0; // proj-lift: Z34
+    if (a.h > 0) this.projLiftMark('Z34');
+    const o = this.projFxBodyBuf;
+    o.x = px + ke * (x - a.fx); o.y = py + ke * (y - a.fy) + hfix;
+    o.ke = ke; o.kf = this.projFxKOf('fx', p.s); o.a = p.alpha;
+    return o;
   }
   // ---- 段階5(Z34・★#32=A「宙の体に当たった印の高さ」・§3-8e): 印を初めて描いた時に1回だけ、印の点 X が浮いている敵の箱
   // (当たり判定の箱を左右 24px・上へ 今の高さ+24px 広げた範囲)に入るかを見て、その敵の h_e を覚えて足し戻す。store は不変。
@@ -12192,7 +12267,7 @@ export class PixiScene {
     switch (e.kind) {
       case 'damageNumber': // A1(読)。当てた敵の足元がある数字は、置く点を敵の体の相似で写す(付け根=敵の足元・§3-7e)
         if (e.footX !== undefined && e.footY !== undefined) this.projFxHudOnFoot(view, e.x, e.y, e.footX, e.footY);
-        else this.projFxHud(view, e.x, e.y, true);
+        else if (!this.projFxHudOnHitBody(view, e.x, e.y)) this.projFxHud(view, e.x, e.y, true); // 足元の無い数字(近接の当たり)も、当たった敵の体の相似で置く
         return;
       case 'multiHit': this.projFxHud(view, e.x, e.y); return; // A21(読)
       case 'meleeHit': { // A2(点・体の高さ。当たった敵が見つかればその体の相似・無ければ H0 方式)
@@ -12209,12 +12284,14 @@ export class PixiScene {
           return;
         }
         if (this.projFrame && e.ground && view instanceof Sprite) { this.projSpriteMesh(view, 'imageGround', PROJ_GRID_SOFT); this.projFxMarks.set(view, this.projFrameNo); return; } // 地面に寝かせる絵=形
+        if (this.projFxOnHitBody(view, e.x, e.y)) return; // 敵の体に当たった所の絵(格闘の閃光・筋など)=その敵の体の相似
         this.projFxOrigin(view, 'fx', e.x, e.y);
         return;
       }
       case 'dogFetch': this.projFxSelf(view); return; // A5(点)
       case 'smoke': this.projFxOrigin(view, 'fx', e.x, e.y); return; // A6(点o)
       case 'glow': { // A7・A8(点)。段階5(Z34): 宙の体に当たった光は覚えた h_e で G=(x, y + h_e)・高さ h_e×σ
+        if (this.projFxOnHitBody(view, e.x, e.y)) return; // 敵の体に当たった光(格闘の火花・会心の光など)=その敵の体の相似(被弾の光 A2 と同じ点)
         const hg = this.projHitLiftOf(view, view.position.x, view.position.y);
         if (hg.h > 0) this.projFxAt(view, view.position.x, view.position.y, 'fx', hg.h); // proj-lift: Z34
         else this.projFxSelf(view);
@@ -12242,7 +12319,7 @@ export class PixiScene {
       case 'slash': { // A15(点・H0 方式。燕返しの1本は通り道=判定の帯=k=s)
         const onPath = e.katanaPathDx !== undefined && Math.hypot(e.katanaPathDx, e.katanaPathDy ?? 0) > 1;
         if (onPath) this.projFxAt(view, e.x, e.y, 's', 0);
-        else if (!this.projFxOnHitBody(view, e.x, e.y)) this.projFxAtHit(view, e.x, e.y);
+        else if (!this.projFxOnHitBody(view, e.x, e.y, true)) this.projFxAtHit(view, e.x, e.y); // 入れ物(子が world の点)=子ごとに写す
         if (PROJ_AUDIT && !onPath) this.projS3NumPush(e.x, e.y, this.projFxLastX, this.projFxLastY, true);
         return;
       }
@@ -12264,7 +12341,7 @@ export class PixiScene {
           const wx = view.position.x, wy = view.position.y;
           const hp = this.projHitLiftOf(view, wx, wy);
           if (fl !== undefined) this.projFxFloor(view, wx, wy, fl);
-          else this.projFxOrigin(view, 'fx', undefined, undefined, hp.h); // proj-lift: Z34
+          else if (!this.projFxOnHitBody(view, wx, wy)) this.projFxOrigin(view, 'fx', undefined, undefined, hp.h); // proj-lift: Z34(敵の体から出た粒=出た点を体の相似で写す)
           if (hp.h > 0) this.projS5HitAudit(hp, wx, wy, view.position.x, view.position.y);
         }
         return;
@@ -44746,6 +44823,7 @@ export class PixiScene {
 
   private syncEffects(effects: VisualEffect[], camera: { x: number; y: number }, now: number) {
     const seen = new Set<string>();
+    if (this.projFrame) this.projFxBodyRecsRefresh(); // ?proj=1: 敵の箱と足元を毎フレーム控える(このフレームに倒れて消えた敵に当たった印も、その体の相似で置ける)
     for (const e of effects) {
       if (e.kind === 'flash') continue; // screen-space, handled separately
       seen.add(e.id);
@@ -45013,6 +45091,9 @@ export class PixiScene {
       const q0 = projectInto(pf, e.x, e.y, this.projScratch2);
       const q = projFlatInto(pf, e.x, e.y, this.projFlatBuf, Math.max(1e-6, q0.s) * mul);
       c.position.set(q.x, q.y);
+      // 敵の体に当たった所の輪(近接の会心の輪など): 中心だけ当たった敵の体の相似の点へ(形は地面に寝かせたまま)。爆心の輪は爆発の絵に揃えたまま
+      const ba = this.projFxBodyAnchorOf(c, e.x, e.y);
+      if (ba) { const T = this.projFxBodyT(ba, e.x, e.y); c.position.set(T.x, T.y); }
       c.alpha *= q.a;
       ringSp.scale.set(s * q.kx, s * q.ky);
       coreSp.scale.set(s * q.kx, s * q.ky);
