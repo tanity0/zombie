@@ -23673,6 +23673,13 @@ export class PixiScene {
           const rw = 19 * gr.scale * (1 - 0.3 * lift);
           projEllipse(this.graveBandGfx, pf, b.x, footY - 2, rw, rw, 0, { color: 0x000000, alpha: 0.34 * (1 - 0.45 * lift) * sp.alpha }); // ?proj=1: 影(判定なし)は world で丸に戻してから投影(クリエイティブ監査14)
         } else this.graveBandGfx.ellipse(b.x, footY - 2, rx, rx * 0.34).fill({ color: 0x000000, alpha: 0.34 * (1 - 0.45 * lift) * sp.alpha });
+      } else if (pf) {
+        // ?proj=1: 刃(地面の高さに並ぶ・地面に沿って飛ぶ物)は自分の点 (b.x, b.y) を投影して置く=赤い帯(投影済み)と同じ点(点+s)。
+        // world の座標のまま置くと、カメラが動くと赤い帯から刃だけがずれる。
+        const q = this.projPlace(b.x, b.y, sp);
+        sp.position.set(q.x + bOffX * q.s, q.y + bOffY * q.s); // proj-lift: exempt(not-height 刃の蹴り出し=地面の向き)
+        sp.scale.set(sp.scale.x * q.s, sp.scale.y * q.s);
+        sp.alpha *= q.alpha;
       }
       sp.visible = true;
     }
@@ -24963,9 +24970,29 @@ export class PixiScene {
         if (gameTime < fallAt) continue;
         const u = clamp01((gameTime - fallAt) / Math.max(1, p.landAt - fallAt)), k = u * u;
         const stx = p.x + (h1 < 0.5 ? -1 : 1) * (20 + 50 * h2), sty = p.y - 520;
+        if (pf) {
+          // ?proj=1(段階5・Z47=空): 落ちる絵を world で足して置くと、地面(投影)と基準が違い、カメラが動くと地面からずれる。
+          // 地面の点 G=(横の寄り stx→p.x, p.y) を投影し、高さ 520·(1−k) を G の行の σ で上へ足す(刺さる瞬間 k=1 は G そのもの=刺さった絵と同じ点)。
+          const lp = projLiftPointInto(pf, stx + (p.x - stx) * k, p.y, 520 * (1 - k), this.projSkyLift); // proj-lift: Z47
+          this.projLiftMark('Z47');
+          const kb = Math.max(0, u - 0.02) ** 2;
+          const lb = projLiftPointInto(pf, stx + (p.x - stx) * kb, p.y, 520 * (1 - kb), this.projSkyLift2); // proj-lift: Z47(向き=表示座標の差)
+          const dsP = projFxScale(lp.s), sP = 0.95 * p.scale * dsP;
+          projFlatEllipse(gu, pf, p.x, p.y, (6 + 16 * u) * sW, (6 + 16 * u) * sW, 0, { color: 0x000000, alpha: (0.12 + 0.3 * u) * hz });
+          const tlP = (30 + 50 * u) * dsP;
+          const angP = Math.hypot(lp.x - lb.x, lp.y - lb.y) > 1e-3 ? Math.atan2(lp.y - lb.y, lp.x - lb.x) : Math.atan2(p.y - sty, p.x - stx);
+          const cxP = Math.cos(angP), cyP = Math.sin(angP);
+          const nSk = projCmdCount(skg);
+          for (let k2 = 0; k2 < 3; k2++) {
+            skg.moveTo(lp.x - cxP * tlP * k2 / 3, lp.y - cyP * tlP * k2 / 3).lineTo(lp.x - cxP * tlP * (k2 + 1) / 3, lp.y - cyP * tlP * (k2 + 1) / 3)
+              .stroke({ width: (26 - 7 * k2) * sP, color: 0xf97316, alpha: 0.16 * (1 - k2 / 3) * hz });
+          }
+          projKeepFrom(skg, nSk); // 表示座標で描いた(投影済みの申告)
+          this.placeAstroArt(p.id, astroThrowArtFrame('debris', p.variant), this.L.skyFxLayer, lp.x, lp.y, p.rot + (1 - u) * 0.6 * (h0 > 0.5 ? 1 : -1), p.flip ? -sP : sP, sP, hz);
+          continue;
+        }
         const px = stx + (p.x - stx) * k, py = sty + (p.y - sty) * k;
-        if (pf) projFlatEllipse(gu, pf, p.x, p.y, (6 + 16 * u) * sW, (6 + 16 * u) * sW, 0, { color: 0x000000, alpha: (0.12 + 0.3 * u) * hz });
-        else gu.ellipse(p.x, p.y, (6 + 16 * u) * s, (2.5 + 6 * u) * s).fill({ color: 0x000000, alpha: (0.12 + 0.3 * u) * hz });
+        gu.ellipse(p.x, p.y, (6 + 16 * u) * s, (2.5 + 6 * u) * s).fill({ color: 0x000000, alpha: (0.12 + 0.3 * u) * hz });
         // 速さの筋: 根元が太く濃く、尾へ細く薄れる(1本の棒に見せない)。
         const tl = (30 + 50 * u) * ds, ang = Math.atan2(py - sty, px - stx), cx = Math.cos(ang), cy = Math.sin(ang);
         for (let k = 0; k < 3; k++) {
@@ -25009,7 +25036,11 @@ export class PixiScene {
           gu.ellipse(p.x - side * 6 * s, p.y + 1 * s, 24 * s, 7 * s).fill({ color: 0x0c0907, alpha: 0.18 * fade });
         }
       }
-      if (!this.placeAstroArt(p.id, astroThrowArtFrame('debris', p.variant), this.L.groundLayer, p.x, p.y + 2 * ds, p.rot + quiver, sx, s, fade, 0.5, 1, tint, keep)) continue;
+      // ?proj=1: 刺さった絵(立つ物)は根元の地面の点を投影して置き、大きさは s_fx(根元の土を寝かせる projFlatFrom と同じ倍率=土と絵が揃う)。
+      // 以前は world の座標のまま置いていた=土・影(投影済み)と基準が違い、カメラが動くと絵だけ地面からずれた。
+      const aq = pf ? projectInto(pf, p.x, p.y + 2 * ds, this.projFxP) : null;
+      const aK = aq ? projFxScale(aq.s) / ds : 1;
+      if (!this.placeAstroArt(p.id, astroThrowArtFrame('debris', p.variant), this.L.groundLayer, aq ? aq.x : p.x, aq ? aq.y : p.y + 2 * ds, p.rot + quiver, sx * aK, s * aK, fade, 0.5, 1, tint, keep)) continue;
       // 切り口を土で隠す: 刺さった根元に盛り上がった土と、はね上げた土くれ(まっすぐな切り口を見せない)。
       // 切り口は絵と一緒に傾いているので、土も切り口の線に沿って盛る(水平に盛ると下がった側の角がはみ出す)。
       const cr = Math.cos(p.rot), sr = Math.sin(p.rot), half = 66 * s * 0.46, by = p.y + 2 * ds;
@@ -25029,6 +25060,7 @@ export class PixiScene {
       if (pf) this.projFlatFrom(g, nSoil, p.x, by, ds); // ?proj=1(段階3・D10・★#30): 刺さった根元の土=地面に付いた物=寝かせる(付け根=根元・旧い depthScale は外して s_fx)
       if (!p.smoke) continue;
       // 根元で燻る火: 縁の立たない淡い光を置くだけ(明滅・火の粉は付けない=キラキラさせない・社長指示2026-10-29)。
+      const nGl = projCmdCount(gl), nSm = projCmdCount(a);
       for (let k = 0; k < 4; k++) {
         const r = 1 - k * 0.22;
         gl.ellipse(p.x + (h0 - 0.5) * 6 * s, p.y - 3 * s, 24 * s * r, 11 * s * r).fill({ color: k < 2 ? 0x9a3412 : 0xea580c, alpha: 0.06 * fade });
@@ -25049,6 +25081,8 @@ export class PixiScene {
         a.circle(sx0 + r * 0.55, sy0 - r * 0.25, r * 0.7).fill({ color: col, alpha: al * 0.8 });
         a.circle(sx0 - r * 0.45, sy0 + r * 0.2, r * 0.6).fill({ color: col, alpha: al * 0.6 });
       }
+      // ?proj=1: 根元の光と昇る煙は刺さった点の相似で写す(付け根=根元の地面の点・旧い depthScale は外して s_fx)。world のままだとカメラが動くと絵から離れる。
+      if (pf) { this.projPointFrom(gl, nGl, p.x, p.y, 'fx', ds); this.projPointFrom(a, nSm, p.x, p.y, 'fx', ds); }
     }
   }
 
@@ -25385,8 +25419,12 @@ export class PixiScene {
           const fall = clamp01(tk / 0.67); // 倒れ切ってから(最後の300ms)沈むように消える
           const rot = flyRot + dr * k + wob - side * 1.3 * fall * fall;
           const fade = 1 - clamp01((tk - 0.67) / 0.33);
-          gu.ellipse(c.tx, c.ty + 2, 9 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.35 * fade });
-          if (!this.placeAstroArt(t.id, astroThrowArtFrame('flag'), this.L.groundLayer, c.tx, c.ty, rot, 1.2 * ds * -side, 1.2 * ds, fade, FOOT_X, FOOT_Y, ASTRO_GROUND_TINT)) {
+          // ?proj=1: 足元の影は world の丸で投影・刺さった旗(立つ物)は刺さった点を投影して置く(大きさは s_fx)。world のままだとカメラが動くと地面からずれる。
+          if (pf) projFlatEllipse(gu, pf, c.tx, c.ty + 2, 9, 9, 0, { color: 0x000000, alpha: 0.35 * fade });
+          else gu.ellipse(c.tx, c.ty + 2, 9 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.35 * fade });
+          const fq = pf ? projectInto(pf, c.tx, c.ty, this.projFxP) : null;
+          const fK = fq ? projFxScale(fq.s) : ds;
+          if (!this.placeAstroArt(t.id, astroThrowArtFrame('flag'), this.L.groundLayer, fq ? fq.x : c.tx, fq ? fq.y : c.ty, rot, 1.2 * fK * -side, 1.2 * fK, fade * (fq ? fq.alpha : 1), FOOT_X, FOOT_Y, ASTRO_GROUND_TINT)) {
             const nKeep = projCmdCount(g); // 素材が無い時の代わりの絵(立つ絵=段階3の点)。?proj=1 では投影しない申告
             this.drawAstroFlag(g, c.tx, c.ty, flagAng + wob, ds, gameTime, fade, false);
             if (pf) this.projPointFrom(g, nKeep, c.tx, c.ty, 'fx', ds); // ?proj=1(段階3・D11): 代わりの絵=点(付け根=刺さった点)
@@ -25440,11 +25478,20 @@ export class PixiScene {
           const fade = 1 - Math.pow(sinkK, 1.6);
           const groundY = t.y;
           // えぐれた土(刺さった所の黒い傷と、跳ねた土の縁)
-          gu.ellipse(t.x, groundY, (18 + 6 * h2) * ds, (5 + 2 * h2) * ds).fill({ color: 0x1a120c, alpha: 0.55 * fade });
-          gu.ellipse(t.x + (h4 - 0.5) * 8 * ds, groundY - 1, (24 + 8 * h1) * ds, (6 + 2 * h1) * ds).stroke({ width: 2 * ds, color: 0x5a4636, alpha: 0.6 * fade });
+          if (pf) {
+            // ?proj=1: えぐれた土は地面に寝る物=world の寸法(見下ろしの潰れは丸に戻す)で頂点ごとに投影(world のままだとカメラが動くと地面からずれる)。
+            projFlatEllipse(gu, pf, t.x, groundY, 18 + 6 * h2, 18 + 6 * h2, 0, { color: 0x1a120c, alpha: 0.55 * fade });
+            projFlatEllipse(gu, pf, t.x + (h4 - 0.5) * 8, groundY - 1, 24 + 8 * h1, 24 + 8 * h1, 0, undefined, { width: 2, color: 0x5a4636, alpha: 0.6 * fade }, 'fx');
+          } else {
+            gu.ellipse(t.x, groundY, (18 + 6 * h2) * ds, (5 + 2 * h2) * ds).fill({ color: 0x1a120c, alpha: 0.55 * fade });
+            gu.ellipse(t.x + (h4 - 0.5) * 8 * ds, groundY - 1, (24 + 8 * h1) * ds, (6 + 2 * h1) * ds).stroke({ width: 2 * ds, color: 0x5a4636, alpha: 0.6 * fade });
+          }
           // 刺さった深さぶん絵の下側を切り落とし、切り口を地面に立てる。最後はさらに沈む(見えている割合を減らす)。
           const keep = Math.max(0.2, Math.round((0.88 - sinkPx / 66 - 0.25 * sinkK * sinkK) * 20) / 20);
-          if (!this.placeAstroArt(t.id, astroThrowArtFrame('debris', t.variant), this.L.groundLayer, t.x, groundY + 2 * ds, stickRot + quiver, 0.95 * ds, 0.95 * ds, fade, 0.5, 1, ASTRO_GROUND_TINT, keep)) {
+          // ?proj=1: 刺さった絵(立つ物)は根元の地面の点を投影して置く(大きさは s_fx)。
+          const dq = pf ? projectInto(pf, t.x, groundY + 2 * ds, this.projFxP) : null;
+          const dK = dq ? projFxScale(dq.s) : ds;
+          if (!this.placeAstroArt(t.id, astroThrowArtFrame('debris', t.variant), this.L.groundLayer, dq ? dq.x : t.x, dq ? dq.y : groundY + 2 * ds, stickRot + quiver, 0.95 * dK, 0.95 * dK, fade * (dq ? dq.alpha : 1), 0.5, 1, ASTRO_GROUND_TINT, keep)) {
             const nKeep = projCmdCount(g); // 素材が無い時の代わりの絵(立つ絵=段階3の点)。?proj=1 では投影しない申告
             this.drawAstroDebris(g, null, t.x, groundY - 4, stickRot + quiver, t.variant ?? 0, ds, fade, false);
             if (pf) this.projPointFrom(g, nKeep, t.x, groundY, 'fx', ds); // ?proj=1(段階3・D11): 代わりの絵=点(付け根=刺さった点)
@@ -25550,8 +25597,12 @@ export class PixiScene {
             const back = t.bounced ? dir * 46 : 0;
             const sinkK = clamp01((age - (ASTRO_BOUQUET_LIE_MS - 700)) / 700); // 最後は沈むように薄れる
             const fade = 1 - Math.pow(sinkK, 1.6);
-            gu.ellipse(t.x + back, t.y + 2, 9 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.25 * fade });
-            if (!this.placeAstroArt(t.id, astroThrowArtFrame('bouquet'), this.L.groundLayer, t.x + back, t.y + 4 * ds * sinkK * sinkK, LIE_ROT, 0.85 * ds, 0.85 * ds, fade, 0.5, ANC_Y, ASTRO_GROUND_TINT)) {
+            // ?proj=1: 足元の影は world の丸で投影・寝た花束は落ちた点を投影して置く(大きさは s_fx・沈みは表示の下へ)。
+            if (pf) projFlatEllipse(gu, pf, t.x + back, t.y + 2, 9, 9, 0, { color: 0x000000, alpha: 0.25 * fade });
+            else gu.ellipse(t.x + back, t.y + 2, 9 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.25 * fade });
+            const bq = pf ? projectInto(pf, t.x + back, t.y, this.projFxP) : null;
+            const bK = bq ? projFxScale(bq.s) : ds;
+            if (!this.placeAstroArt(t.id, astroThrowArtFrame('bouquet'), this.L.groundLayer, bq ? bq.x : t.x + back, (bq ? bq.y : t.y) + 4 * bK * sinkK * sinkK, LIE_ROT, 0.85 * bK, 0.85 * bK, fade * (bq ? bq.alpha : 1), 0.5, ANC_Y, ASTRO_GROUND_TINT)) {
               const nKeep = projCmdCount(g); // 素材が無い時の代わりの絵(立つ絵=段階3の点)。?proj=1 では投影しない申告
               this.drawAstroBouquet(g, t.x + back, t.y - 4 * ds, 1.35, ds, fade);
               if (pf) this.projPointFrom(g, nKeep, t.x + back, t.y, 'fx', ds); // ?proj=1(段階3・D11): 代わりの絵=点(付け根=落ちた点)
@@ -40956,6 +41007,20 @@ export class PixiScene {
       const progress = Math.max(0, Math.min(1, 1 - (strike.dueAt - gameTime) / SIGNAL_STRIKE_DELAY_MS));
       sprite.texture = texture;
       sprite.scale.set(96 / Math.max(1, texture.height));
+      const spf = this.projFrame;
+      if (spf) {
+        // ?proj=1(段階5・Z49=空): 着弾点 G を投影し、落ちる高さ 320·(1−p^1.5) を G の行の σ で上へ足す(大きさは s_fx)。
+        // world の座標のまま置くと地面(投影)と基準が違い、カメラが動くと着弾点から横・縦へずれる。
+        const lp = projLiftPointInto(spf, strike.x, strike.y, 320 * (1 - progress ** 1.5), this.projSkyLift); // proj-lift: Z49
+        this.projLiftMark('Z49');
+        const k = projFxScale(lp.s);
+        sprite.position.set(lp.x, lp.y);
+        sprite.scale.set(sprite.scale.x * k, sprite.scale.y * k);
+        sprite.zIndex = lp.y;
+        sprite.alpha = this.projLooseFade(strike.x, strike.y, false);
+        sprite.visible = sprite.alpha > 0;
+        continue;
+      }
       sprite.position.set(Math.round(strike.x), Math.round(strike.y - 320 * (1 - progress ** 1.5)));
       sprite.zIndex = strike.y;
       // 上空の現在Yではなく着弾点の深度を使う(地平フェードによる消失を防ぐ)。
