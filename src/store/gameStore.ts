@@ -10738,6 +10738,13 @@ interface GameState {
   junCompanionQuiet: boolean;
   /** ステージ4: ジュンが城ボスへ変身した実時間(Date.now)。0=無し。描画(聖堂を暗く・カメラの引き・雪)とバナーの遅らせが読む。 */
   junTransformRealAt: number;
+  /**
+   * ステージ7: グレンの変身の場面(research/GLEN_TRANSFORM.md §2・utils/glenIntro)。咆哮の行が表示に入った瞬間に
+   * useGameLoop が立て、弾けて消え切ったら null。startedAt=場面の開始の実時間(Date.now=寄りのアテンションの開始と同じ値)。
+   * footX/footY=場の人間のグレンの足元(world)。bossBox=第一形態を出す箱(当たり判定・行ける帯へ収めた後)。
+   * 絵だけ(当たり判定・弾の的・敵の狙いを持たない=敵配列には入れない)。pixi は読んで描くだけ。
+   */
+  glenTransform: { startedAt: number; footX: number; footY: number; bossBox: { x: number; y: number; width: number; height: number } } | null;
   // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2 §3): 専用配列。escortsに相乗りしない
   // (セリフ4関数はtutorialしか見ておらず、混ぜると名前付きNPCが喋る事故になるため)。
   endingSoldiers: EndingSoldier[];
@@ -11720,7 +11727,7 @@ interface GameState {
   updateGameStats: (stats: Partial<GameStats>) => void;
   resetGame: (characterClass: string) => void;
   setCameraPosition: (x: number, y: number) => void;
-  triggerAttention: (x: number, y: number, cutin?: AttentionCutin, extraHoldMs?: number, subject?: AttentionSubject | null, opts?: { zoomToUnity?: boolean; target?: AttentionTarget }) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)。cutin指定=§6.36ボス出現カットイン付き。extraHoldMs=ホールド延長(討伐の崩壊見届け用)
+  triggerAttention: (x: number, y: number, cutin?: AttentionCutin, extraHoldMs?: number, subject?: AttentionSubject | null, opts?: { zoomToUnity?: boolean; target?: AttentionTarget; zoomIn?: number }) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)。cutin指定=§6.36ボス出現カットイン付き。extraHoldMs=ホールド延長(討伐の崩壊見届け用)
   clearAttention: () => void;
   /**
    * ステージ4のジュンの変身(research/JUN_ESCORT.md §1): 出ている素のアテンション(ジュンへの寄り)を、その場でボスの紹介(カットイン)
@@ -11788,7 +11795,7 @@ interface GameState {
   // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。
   spawnExplosionFx: (x: number, y: number, radius: number, tint?: number) => void;
   // noShadow(§24追加・既定false=挙動不変): trueで支配光(syncShadowsV9)への参加を断つ=見た目はそのまま。
-  spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number, noShadow?: boolean) => void;
+  spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number, noShadow?: boolean, lift?: number) => void; // lift=(x, y) が地面の点 (x, y+lift) から lift だけ持ち上がった点(体の高さの光・新方式の描画が持ち上げる)
   spawnSlash: (x: number, y: number, color?: string, lengthScale?: number, faceOverride?: 1 | -1, katana?: KatanaSlashFx) => void; // faceOverride=弧の向き(省略=プレイヤーの向き。進軍NPCの近接は振った向き)
   spawnFlash: (color: string, duration?: number) => void;
   // §5.23 M22 C3: 「N HITS」バナー(頭上・bitmap-text)+小フラッシュ。registerMultiHitから相乗りで呼ぶ。
@@ -12275,6 +12282,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   junDeparture: null,
   junCompanionQuiet: false,
   junTransformRealAt: 0,
+  glenTransform: null,
   endingSoldiers: [],
   endingPhill: null,
   endingBombs: [],
@@ -29737,6 +29745,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         junDeparture: null, // ステージ4のジュンの離脱は新ランごとに無し(隊の中から始まる)
         junCompanionQuiet: false,
         junTransformRealAt: 0,
+        glenTransform: null, // ステージ7のグレンの変身の場面は新ランごとに無し
         // ★商人も護衛と同じ(社長指示2026-09-19「武器商人もウェルカムイベント終わってから出現」)。
         merchantHidden: welcomeForThisRun,
         welcomeRetired: welcomeRetiredNow,
@@ -29917,7 +29926,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 写す相手が分かっている時(遅れて出す寄り)は、注目点から探し直さずその相手を使う(寄る/寄らないの条件=カットイン付きは同じ)。
     const targetEnemy = opts?.target ? findAttentionTarget(get().enemies, opts.target.id) : null;
     const subject = subjectIn ?? (cutinIn ? (targetEnemy ?? findAttentionSubject(get().enemies, x, y)) : null);
-    const zoomIn = attentionZoomFor(subject);
+    // opts.zoomIn=呼び手が寄り倍率を直に指定(ステージ7のグレンの変身の場面・utils/glenIntro.GLEN_TF_ZOOM_IN)。無ければ従来どおり相手の型で決める。
+    const zoomIn = opts?.zoomIn ?? attentionZoomFor(subject);
     set({
       attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y, holdMs, ...(cutin ? { cutin, cutinMs } : {}), ...(zoomIn ? { zoomIn } : {}), ...(opts?.zoomToUnity ? { zoomToUnity: true } : {}), ...(opts?.target ? { target: opts.target } : {}) },
       hitstopUntil: Date.now() + ATTENTION_IN_MS + holdMs + ATTENTION_OUT_MS + cutinMs,
@@ -30652,7 +30662,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
-  spawnGlow: (x, y, radius, color, duration = 320, noShadow = false) => {
+  spawnGlow: (x, y, radius, color, duration = 320, noShadow = false, lift) => {
     { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 変異塊の代理の中心→縁(LAB_CRAWLER §4)
     const now = Date.now();
     const small = radius < STRONG_GLOW_RADIUS;
@@ -30668,6 +30678,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         createdAt: now,
         duration: tunedDuration,
         ...(noShadow ? { noShadow: true as const } : {}),
+        ...(lift !== undefined && lift > 0 ? { lift } : {}),
       }];
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };

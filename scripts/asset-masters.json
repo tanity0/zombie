@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "1134 files / 復号後 約724MB",
+ "generatedFor": "1136 files / 復号後 約724MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3529,6 +3529,18 @@
    "h": 109,
    "bytes": 2190,
    "sha": "4c20c2d280cbde83"
+  },
+  "sprites/npc/glen-human-stand.png": {
+   "w": 35,
+   "h": 64,
+   "bytes": 3215,
+   "sha": "74be32248553e450"
+  },
+  "sprites/npc/glen-human-suffer.png": {
+   "w": 51,
+   "h": 65,
+   "bytes": 5046,
+   "sha": "1fc677f35b3401b1"
   },
   "sprites/npc/glen-mutant-head-0.png": {
    "w": 240,

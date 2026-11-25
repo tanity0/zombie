@@ -28,7 +28,11 @@ import type { HitRetaliationWindow } from '../utils/hitRetaliation';
 // §6.24-UX(POI-UX): 寄り道POIの入手トースト/解放帯の文言(通信の文言は store 側が引く)。
 import { poiUnlockBandText, POI_BAND_MS, POI_SKILL_NOTE, POI_LABEL } from '../utils/detourPoiUx';
 import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_PRACTICE_COUNT, type M0Beat, type M0BeatDef } from '../utils/m0Tutorial';
-import { GLEN_FINAL_LINE, GLEN_ROAR_LINE, isGlenBossSpawnReady } from '../utils/glenIntro';
+import {
+  GLEN_FINAL_LINE, GLEN_ROAR_LINE, isGlenBossSpawnReady, shouldPlayGlenTransform, glenTransformBossBox, glenTransformExtraHoldMs,
+  glenTransformDueEvents, glenCloseRoar, GLEN_TRANSFORM_EVENTS, GLEN_TF_BURST_AT_MS, GLEN_TF_VANISH_MS, GLEN_TF_ZOOM_IN, GLEN_TF_CHEST_K,
+  GLEN_HUMAN_BODY_H,
+} from '../utils/glenIntro';
 import { dialogueBacklogMs, startStoryBossOutro, stepStoryBossOutro, type StoryBossOutro } from '../utils/storyBossOutro';
 import { loadSeenForGate, markTutorialSeen } from '../utils/tutorialArchive';
 import { getTutorial, type TutorialId } from '../data/tutorials';
@@ -2261,6 +2265,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const surielChestPendingRef = useRef(false);
   const glenRoarQueuedRef = useRef(false); // M7: 咆哮を会話キューへ積んだか
   const glenRoarShownRef = useRef(false);  // M7: 咆哮が実際に表示されたか(表示終了後の出現ゲート)
+  const glenTfEventIdxRef = useRef(0);     // M7: 変身の場面(research/GLEN_TRANSFORM.md)の次に撃つ出来事の番号(utils/glenIntro.GLEN_TRANSFORM_EVENTS)
   // 洋館再訪: 開始時に洋館(保存槽)へ一度だけカメラアテンションを出したか。
   const revisitAttnShownRef = useRef(false);
   // 拠点制圧カウントの直近値(増加検出で開放SEを鳴らす)。
@@ -2776,6 +2781,94 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       useGameStore.setState({ castleAttnDoneAt: gt });
     };
 
+    // ステージ7のグレン(第一形態)を出す(出現の演出込み)。通常の出現(咆哮の表示が終わった後・既読なら即)と、
+    // 変身の場面の弾け(research/GLEN_TRANSFORM.md §2-2)が共有する1本(中身は従来のストーリーボスの出現ブロックそのまま)。
+    // (scx, scy)=今の出現の式の点(spawnEnemyAt の左上)。opts.box=箱を直に指定(変身の場面=行ける帯へ収めた箱・足元=人間のグレンの足元)。
+    // opts.fx=輪・光・破片の中心(既定=(scx, scy))。fx.lift=光を体の高さで出す量(新方式の描画が持ち上げる)。
+    const spawnGlenStoryBoss = (
+      gt: number, scx: number, scy: number,
+      opts?: { box?: { x: number; y: number; width: number; height: number }; fx?: { x: number; y: number; lift?: number } },
+    ): Enemy => {
+      const boss = spawnEnemyAt('giantbat', scx, scy, gt);
+      // M60(PACING_PUZZLE.md §6.28-11): この個体だけがPhase3/3連携/500ms硬直床の対象になる
+      // 印(gameStore.ts側のゲート)。通常ステージ(1〜6)の城ボスはこの経路を通らないので
+      // isStoryBossが付かない=無改変(受け入れ条件13「storyBossMode/getSelectedStageId()で分岐」)。
+      const storyStageId = getSelectedStageId();
+      boss.isStoryBoss = true;
+      // ★このブロックはstoryBoss(=stage-7専用)でのみ実行される(§10-12#4)。storyStageIdは
+      // 常に'stage-7'だが、型(storyBossVariant)・下流の分岐は既存のまま変更しない(無改変)。
+      boss.storyBossVariant = storyStageId === 'stage-7' ? 'stage-7' : 'stage-ex1';
+      // ★v0.25.3164(社長決定「ボスのHPは増やす台本を適用しよう」): ストーリーボスにも
+      // ボスHPの台帳(config/bossHealth.ts)を適用する。
+      // 旧: この経路は台帳を通らず、enemyUtils の素の値(500)×ENEMY_HP_MULT(5)=**2500**で戦っていた
+      //     ——台帳には 'stage-7': 6000 と書いてあり「ラスボスへ適用する」とコメントまであるのに、
+      //     適用しているのは**城ボスの出現経路だけ**だった(:2545)。ラスボスの1形態が
+      //     ステージ1の城ボス(3500)より弱い状態。
+      // ※台帳に**行がある stage だけ**適用する(stage-ex1 は行が無く、既定へフォールバックさせると
+      //   誰も決めていない値になるので触らない=従来どおり2500)。
+      // research/STAGE_DIFFICULTY.md: 城ボスと同じくステージ係数を重ねる(stage-7 / stage-ex1 は
+      // 表未掲載=1.0なので実効は不変。適用点を城ボスと揃えて取りこぼしを作らないための配線)。
+      {
+        const sbMult = stageBossDiffMults();
+        if (STAGE_BOSS_HEALTH_BY_STAGE[storyStageId] !== undefined) {
+          boss.health = boss.maxHealth = Math.round(stageBossHealthFor(storyStageId) * sbMult.hp);
+        }
+        boss.damage = Math.round(boss.damage * sbMult.dmg);
+      }
+      // v0.25.3029(社長裁定「二体」): stage-7のグレンは形態フラグを持つ。通常は形態1から。
+      // ボスモードの「グレン 第二形態」枠は**最初から形態2の個体**をフルHPでスポーン
+      // (旧「HP60%から開始」は二体構成化で廃止)。
+      if (storyStageId === 'stage-7') {
+        boss.glenForm = practiceWantsGlenForm2() ? 2 : 1;
+        // v0.25.3700(社長裁定): 形態1は最大HP1.5倍+残り1/3で第二形態へ移行
+        // (glenChain.glenForm1TransitionReady)。削る量は従来のバー1本分のまま=
+        // 「倒し切る前に移行する」見せ方だけが変わる。形態2は従来どおり台帳そのまま。
+        if (boss.glenForm === 1) {
+          boss.health = boss.maxHealth = Math.round(boss.maxHealth * GLEN_FORM1_HP_MULT);
+        }
+      }
+      // M7(stage-7=グレン)のボスだけ当たり判定込みで2倍(社長指示v0.25.2000)。width/height=当たり判定なので
+      // 2倍で見た目(=箱にcontainスケール)も当たり判定も同時に2倍。増分の半分だけ左上へ寄せて中心を維持。
+      // EXボスは対象外(グレンのみ)。
+      if (storyStageId === 'stage-7') {
+        const owB = boss.width, ohB = boss.height;
+        boss.width = owB * 2;
+        boss.height = ohB * 2;
+        boss.x -= owB / 2;
+        boss.y -= ohB / 2;
+      }
+      // 変身の場面: 箱の下辺の中央(=人間のグレンが立っていた足元)にボスの足元を合わせる(大きさはそのまま)。
+      if (opts?.box) {
+        boss.x = opts.box.x + opts.box.width / 2 - boss.width / 2;
+        boss.y = opts.box.y + opts.box.height - boss.height;
+      }
+      boss.vx = 0;
+      boss.vy = 0; // dormantにしない=出現した瞬間から戦闘(即戦闘・統合正本10.2)
+      // v0.25.3032(社長報告「登場アテンション中にボスが技を発動しちゃってる」): 城ボスの
+      // 技抽選ゲートは aiReadyAt(gameStore 9810)で、bossNextActionAt は裏ボス用=読まれない。
+      // スポーンと同フレームに技を抽選→凍結で「予告を出したまま登場シーン」になっていた。
+      // 抽選をアテンション明け+2秒(ゲーム時間)まで封じる。
+      boss.aiReadyAt = gt + 2000;
+      addEnemy(boss);
+      const fx = opts?.fx ?? { x: scx, y: scy };
+      spawnFlash('rgba(127,29,29,0.28)', 420);
+      spawnRing(fx.x, fx.y, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
+      spawnRing(fx.x, fx.y, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
+      useGameStore.getState().spawnGlow(fx.x, fx.y, GLOW_R_XXL, 'rgba(239,68,68,', 900, false, fx.lift);
+      spawnBurst(fx.x, fx.y + 20, '#7f1d1d', 28);
+      // §6.36: グレン(stage-7)は出現カットイン付き。監査指摘1: attention生存中は保留箱へ
+      // (捨てない=「毎回出す」)。
+      {
+        const glenCutin = bossCutinPayload('giantbat', storyStageId);
+        const gAc = bossArtCenter(boss); // v0.25.3727: 寄り先=絵の中心
+        const gT: AttentionTarget = { id: boss.id, focus: 'art' };
+        if (glenCutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { target: gT, cutin: glenCutin };
+        else useGameStore.getState().triggerAttention(gAc.x, gAc.y, glenCutin, undefined, undefined, { target: gT });
+      }
+      playSfx('boss-appear');
+      return boss;
+    };
+
     const gameLoop = (timestamp: number) => {
      loopTickAtRef.current = Date.now(); // ★v0.25.4111: 生存打刻(ウォッチドッグが読む)。例外の有無に関わらず必ず打つ。
      try { // 診断+耐障害: ループ本体の例外でrAFが途切れて全停止(=移動/敵/弾が止まる)のを防ぎ、例外内容を記録。
@@ -2899,6 +2992,44 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const gs = useGameStore.getState();
           // junTransformRealAt=0 で「変身〜紹介の一続き」の終わり(HUD の暗さ・聖堂の暗さ・カメラの引きが戻る)。
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: gs.gameTime + EVENT_BANNER_MS, junTransformRealAt: 0 });
+        }
+      }
+      // ステージ7: グレンの変身の場面(research/GLEN_TRANSFORM.md §2)。アテンション(時間停止)の中で進むので実時間で測り、
+      // 停止の早期returnより前のここで毎フレーム見る。出来事(呻き・胸の光・弾け)の時刻は utils/glenIntro の表が正本。
+      {
+        const gtf = useGameStore.getState().glenTransform;
+        if (gtf) {
+          const el = nowMs - gtf.startedAt;
+          const burstDone = glenTfEventIdxRef.current >= GLEN_TRANSFORM_EVENTS.length;
+          const tfAtt = useGameStore.getState().attention;
+          if (!burstDone && (!tfAtt || tfAtt.startReal !== gtf.startedAt)) {
+            // 寄りが途中で切れた(別の寄りに奪われた等): 人間のグレンを消し、ボスは今のゲート(咆哮の表示が終わったら出る)に任せる。
+            useGameStore.setState({ glenTransform: null });
+            glenTfEventIdxRef.current = 0;
+          } else if (!burstDone) {
+            const { due, next } = glenTransformDueEvents(glenTfEventIdxRef.current, el);
+            glenTfEventIdxRef.current = next;
+            const chestLift = GLEN_HUMAN_BODY_H * GLEN_TF_CHEST_K;
+            const chestX = gtf.footX, chestY = gtf.footY - chestLift;
+            for (const ev of due) {
+              if (ev.kind === 'growl') playSfx('zombie-growl', ev.gain, undefined, ev.rate);
+              else if (ev.kind === 'pulse') {
+                // 胸の赤い光(投影影を落とさない小さい光・noShadow)。強さは重ねる数で出す(段3=2つ・段4以降=3つ)。
+                for (let i = 0; i < ev.count; i++) useGameStore.getState().spawnGlow(chestX, chestY, ev.radius, 'rgba(239,68,68,', ev.durationMs, true, chestLift);
+              } else if (ev.kind === 'burst' && !storyBossSpawnedRef.current) {
+                // 弾ける: 第一形態を箱(=人間のグレンの足元)に出す。輪・光・破片・フラッシュは胸の高さの点を中心に(中身は今の出現そのまま)。
+                // 出現の紹介(カットイン)は、この寄りの後に保留箱から続けて出る(spawnGlenStoryBoss の中・既存の保留箱)。
+                storyBossSpawnedRef.current = true;
+                const b = gtf.bossBox;
+                // 生成の点は今の出現の式の点(箱の左上+素の寸法の半分=帯で寄せていなければ今の scx/scy と同じ)。
+                spawnGlenStoryBoss(useGameStore.getState().gameTime, b.x + b.width / 4, b.y + b.height / 4, { box: b, fx: { x: chestX, y: chestY, lift: chestLift } });
+                // 咆哮の行はここで閉じる(ボスの登場に人間の台詞を重ねない)。
+                useGameStore.setState(s2 => glenCloseRoar(s2.npcDialogue, s2.npcDialogueQueue));
+              }
+            }
+          } else if (el >= GLEN_TF_BURST_AT_MS + GLEN_TF_VANISH_MS) {
+            useGameStore.setState({ glenTransform: null }); // 弾けの光の中で消え切った
+          }
         }
       }
       {
@@ -3787,6 +3918,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           surielChestPendingRef.current = false;
           glenRoarQueuedRef.current = false;
           glenRoarShownRef.current = false;
+          glenTfEventIdxRef.current = 0;
           revisitAttnShownRef.current = false;
         }
         lastSeenGameTimeRef.current = newGameTime;
@@ -4035,6 +4167,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (isM7 && glenDialogue.npcDialogue?.text === GLEN_ROAR_LINE && !glenRoarShownRef.current) {
             glenRoarShownRef.current = true;
             updateStoryFlags({ glenIntroSeen: true });
+            // 変身の場面(research/GLEN_TRANSFORM.md §2-2): 咆哮の行が表示に入った瞬間に時間を止めて北の一点へ寄り、
+            // 人間のグレンを出す。出す条件は今のボス出現と同じ組み合わせ(utils/glenIntro.shouldPlayGlenTransform)。
+            // 出さない時(既読・cine・nospawn・ゲート2練習)は何もしない=今までどおり咆哮の表示が終わってから出現。
+            if (introDone && !storyBossSpawnedRef.current && !glenDialogue.glenTransform && shouldPlayGlenTransform({
+              isM7, introSkipped, cineSuppress: CINE_TESTBED && isM7, forceGateboss: FORCE_GATEBOSS, noSpawn,
+              practiceWantsCastleBoss: practiceWantsCastleBoss(),
+            })) {
+              const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+              const tfBox = glenTransformBossBox(pcx, pcy, STORY_BOSS_SPAWN_DIST, ENEMY_STATS.giantbat.width, ENEMY_STATS.giantbat.height,
+                (x, y, w, h) => clampRectToPlayableArea(x, y, w, h, thorPlayableAreaCtx(useGameStore.getState())));
+              useGameStore.getState().triggerAttention(tfBox.footX, tfBox.footY - GLEN_HUMAN_BODY_H / 2, undefined,
+                glenTransformExtraHoldMs(ATTENTION_IN_MS, ATTENTION_HOLD_MS), null, { zoomToUnity: true, zoomIn: GLEN_TF_ZOOM_IN });
+              const tfAtt = useGameStore.getState().attention;
+              if (tfAtt) {
+                glenTfEventIdxRef.current = 0;
+                useGameStore.setState({ glenTransform: { startedAt: tfAtt.startReal, footX: tfBox.footX, footY: tfBox.footY, bossBox: tfBox.box } });
+              }
+            }
           }
           // EXは即出現。M7既読後も会話を省略して即出現。M7初回だけ咆哮の表示終了を待つ。
           const glenSpawnOk = !isM7 || isGlenBossSpawnReady({
@@ -4056,77 +4206,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             storyBossSpawnedRef.current = true;
             const scx = player.x + player.width / 2;
             const scy = player.y + player.height / 2 - STORY_BOSS_SPAWN_DIST;
-            const boss = spawnEnemyAt('giantbat', scx, scy, newGameTime);
-            // M60(PACING_PUZZLE.md §6.28-11): この個体だけがPhase3/3連携/500ms硬直床の対象になる
-            // 印(gameStore.ts側のゲート)。通常ステージ(1〜6)の城ボスはこの経路を通らないので
-            // isStoryBossが付かない=無改変(受け入れ条件13「storyBossMode/getSelectedStageId()で分岐」)。
-            const storyStageId = getSelectedStageId();
-            boss.isStoryBoss = true;
-            // ★このブロックはstoryBoss(=stage-7専用)でのみ実行される(§10-12#4)。storyStageIdは
-            // 常に'stage-7'だが、型(storyBossVariant)・下流の分岐は既存のまま変更しない(無改変)。
-            boss.storyBossVariant = storyStageId === 'stage-7' ? 'stage-7' : 'stage-ex1';
-            // ★v0.25.3164(社長決定「ボスのHPは増やす台本を適用しよう」): ストーリーボスにも
-            // ボスHPの台帳(config/bossHealth.ts)を適用する。
-            // 旧: この経路は台帳を通らず、enemyUtils の素の値(500)×ENEMY_HP_MULT(5)=**2500**で戦っていた
-            //     ——台帳には 'stage-7': 6000 と書いてあり「ラスボスへ適用する」とコメントまであるのに、
-            //     適用しているのは**城ボスの出現経路だけ**だった(:2545)。ラスボスの1形態が
-            //     ステージ1の城ボス(3500)より弱い状態。
-            // ※台帳に**行がある stage だけ**適用する(stage-ex1 は行が無く、既定へフォールバックさせると
-            //   誰も決めていない値になるので触らない=従来どおり2500)。
-            // research/STAGE_DIFFICULTY.md: 城ボスと同じくステージ係数を重ねる(stage-7 / stage-ex1 は
-            // 表未掲載=1.0なので実効は不変。適用点を城ボスと揃えて取りこぼしを作らないための配線)。
-            {
-              const sbMult = stageBossDiffMults();
-              if (STAGE_BOSS_HEALTH_BY_STAGE[storyStageId] !== undefined) {
-                boss.health = boss.maxHealth = Math.round(stageBossHealthFor(storyStageId) * sbMult.hp);
-              }
-              boss.damage = Math.round(boss.damage * sbMult.dmg);
-            }
-            // v0.25.3029(社長裁定「二体」): stage-7のグレンは形態フラグを持つ。通常は形態1から。
-            // ボスモードの「グレン 第二形態」枠は**最初から形態2の個体**をフルHPでスポーン
-            // (旧「HP60%から開始」は二体構成化で廃止)。
-            if (storyStageId === 'stage-7') {
-              boss.glenForm = practiceWantsGlenForm2() ? 2 : 1;
-              // v0.25.3700(社長裁定): 形態1は最大HP1.5倍+残り1/3で第二形態へ移行
-              // (glenChain.glenForm1TransitionReady)。削る量は従来のバー1本分のまま=
-              // 「倒し切る前に移行する」見せ方だけが変わる。形態2は従来どおり台帳そのまま。
-              if (boss.glenForm === 1) {
-                boss.health = boss.maxHealth = Math.round(boss.maxHealth * GLEN_FORM1_HP_MULT);
-              }
-            }
-            // M7(stage-7=グレン)のボスだけ当たり判定込みで2倍(社長指示v0.25.2000)。width/height=当たり判定なので
-            // 2倍で見た目(=箱にcontainスケール)も当たり判定も同時に2倍。増分の半分だけ左上へ寄せて中心を維持。
-            // EXボスは対象外(グレンのみ)。
-            if (storyStageId === 'stage-7') {
-              const owB = boss.width, ohB = boss.height;
-              boss.width = owB * 2;
-              boss.height = ohB * 2;
-              boss.x -= owB / 2;
-              boss.y -= ohB / 2;
-            }
-            boss.vx = 0;
-            boss.vy = 0; // dormantにしない=出現した瞬間から戦闘(即戦闘・統合正本10.2)
-            // v0.25.3032(社長報告「登場アテンション中にボスが技を発動しちゃってる」): 城ボスの
-            // 技抽選ゲートは aiReadyAt(gameStore 9810)で、bossNextActionAt は裏ボス用=読まれない。
-            // スポーンと同フレームに技を抽選→凍結で「予告を出したまま登場シーン」になっていた。
-            // 抽選をアテンション明け+2秒(ゲーム時間)まで封じる。
-            boss.aiReadyAt = newGameTime + 2000;
-            addEnemy(boss);
-            spawnFlash('rgba(127,29,29,0.28)', 420);
-            spawnRing(scx, scy, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
-            spawnRing(scx, scy, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
-            useGameStore.getState().spawnGlow(scx, scy, GLOW_R_XXL, 'rgba(239,68,68,', 900);
-            spawnBurst(scx, scy + 20, '#7f1d1d', 28);
-            // §6.36: グレン(stage-7)は出現カットイン付き。監査指摘1: attention生存中は保留箱へ
-            // (捨てない=「毎回出す」)。
-            {
-              const glenCutin = bossCutinPayload('giantbat', storyStageId);
-              const gAc = bossArtCenter(boss); // v0.25.3727: 寄り先=絵の中心
-              const gT: AttentionTarget = { id: boss.id, focus: 'art' };
-              if (glenCutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { target: gT, cutin: glenCutin };
-              else useGameStore.getState().triggerAttention(gAc.x, gAc.y, glenCutin, undefined, undefined, { target: gT });
-            }
-            playSfx('boss-appear');
+            spawnGlenStoryBoss(newGameTime, scx, scy);
           } else if (storyBossSpawnedRef.current && storyBossWinAtRef.current === 0) {
             // 撃破検知: 場から giantbat が消えたら終幕へ(storyBossランには他の giantbat 供給経路がない)。
             // 画面揺れ+背景で崩れる演出は triggerDramaticDeath(既存)が担う。

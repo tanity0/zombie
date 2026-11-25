@@ -3623,6 +3623,9 @@ export type VisualEffect =
       // 支配光(syncShadowsV9のglowLights=CLAUDE.md「投影影」)への参加だけを断つオプトアウト。
       // 既定undefined(=false)なので既存の呼び出しは1件も挙動が変わらない(視覚専用フラグ)。
       noShadow?: boolean;
+      // 体の高さで光る点(ステージ7のグレンの胸の光・research/GLEN_TRANSFORM.md)。(x, y) は旧方式の絵の点
+      // (=地面の点 (x, y + lift) を lift だけ上へずらした点)。新方式(proj)の描画は地面の点を投影して lift×σ 持ち上げる。
+      lift?: number;
     }
   | {
       // 銃弾ヒット時、被弾敵の背中側(=弾の出口方向)へ生やす火の破裂(2コマ flipbook の立ち絵)。

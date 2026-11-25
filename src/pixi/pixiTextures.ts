@@ -1060,6 +1060,10 @@ export const ensureTextures = (): Promise<void> => {
       // ステージ4の進軍NPCとして倒れる/起こされる時と、城ボスへの変身の前に倒れる時に使う(research/JUN_ESCORT.md)。
       // 旧3コマ(medic-fall-0..2・80×64)は読まない(原盤として public/ に残す)。切ったコマは同じ名前 npc/medic-fall-0..9 で引ける。
       { name: 'npc/medic-fall', scaleMode: 'nearest' },
+      // ステージ7: 変身の前の人間のグレン(社長支給2026-11-25・立ち姿35×64/苦しむ51×65・原寸。research/GLEN_TRANSFORM.md)。
+      // 2枚で数KBなので起動時常駐(遅延組に入れない)。
+      { name: 'npc/glen-human-stand', scaleMode: 'nearest' },
+      { name: 'npc/glen-human-suffer', scaleMode: 'nearest' },
       // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2)。フィル歩行3コマ+救護6コマ+倒れ兵士1枚
       // (受領2026-08-28。ドット等倍・下端=接地でトリム済み)。
       { name: 'npc/phill-walk-0', scaleMode: 'nearest' },

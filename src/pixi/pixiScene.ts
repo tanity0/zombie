@@ -346,6 +346,7 @@ import { SATELLITE_WEAPON_KEY } from '../utils/satelliteOrbit';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { escortPose, escortBarWant, escortDownDotAlpha, escortReviveLitTarget, ESCORT_SINK_FRAC, type EscortPose } from './escortVisual'; // 軍人の倒れる/起きる/体力の線の曲線(research/ESCORT_TARGETED.md §6・§7)
 import { JUN_ESCORT_INDEX } from '../data/junEscortLines'; // ステージ4のジュン(名簿外の印・research/JUN_ESCORT.md)
+import { glenTransformPose, GLEN_HUMAN_ART, GLEN_HUMAN_REF_TEX_H } from '../utils/glenIntro'; // ステージ7 変身の前の人間のグレン(research/GLEN_TRANSFORM.md)
 import { JUN_ESCORT_ID, junCollapseView, junVanishAlpha, junCollapseMotion, medicFallFrameAt, MEDIC_FALL_FRAMES, junTremble, junSinceLandMs, JUN_LIE_MS, junCameraZoomAt, JUN_PULL_MS } from '../utils/junEscort';
 import { escortReviveProgress, isEscortDowned, isEscortSliding, ESCORT_REVIVE_HEAL_RATIO } from '../utils/escortHealth';
 import {
@@ -5274,6 +5275,9 @@ export class PixiScene {
   private eventNpcSprite = new Sprite();
   private eventNpcGlow = new Sprite(getSoftGlowTexture());
   private eventNpcGlowBokeh = new Sprite(getBokehGlowTexture());
+  // ステージ7: 変身の前の人間のグレン(research/GLEN_TRANSFORM.md §2・store.glenTransform を読んで描くだけ)。
+  private glenHumanView = new Container();
+  private glenHumanSprite = new Sprite();
   private eventNpcGfx = new Graphics();
 
   private pickups = new Map<string, PickupView>();
@@ -5647,6 +5651,7 @@ export class PixiScene {
   // §3-9-B v9裁定A: legacyW=旧実装用の固定px(?silshadow=0)。rawW/rawH/texture=新実装用の表示実寸。
   private merchantShadow: BuildingShadowReq | null = null;
   private npcShadow: BuildingShadowReq | null = null;
+  private glenHumanShadow: BuildingShadowReq | null = null;
   private castleShadow: BuildingShadowReq | null = null;
   // 洋館再訪(the ONE): true の間、城(洋館)の画面端マーカーをボス未出現でも表示する。
   private revisitMarker = false;
@@ -7147,6 +7152,8 @@ export class PixiScene {
       g.anchor.set(0.5); g.blendMode = 'add'; g.tint = 0x60a5fa; g.eventMode = 'none';
     }
     this.eventNpcView.addChild(this.eventNpcGfx, this.eventNpcGlowBokeh, this.eventNpcGlow, this.eventNpcSprite);
+    this.glenHumanView.addChild(this.glenHumanSprite);
+    this.glenHumanView.visible = false;
 
     this.L.effectLayer.addChild(this.playerFx);
     this.L.effectLayer.addChild(this.endingShotFxGfx); // エンディング(仮組み)兵士の発砲トレイル/薬莢(§1)
@@ -7161,6 +7168,7 @@ export class PixiScene {
       this.castleView,
       this.merchantView,
       this.eventNpcView,
+      this.glenHumanView,
     );
     // 救助NPCはアクター最前(zIndex 大)に描く=常に見える(プレースホルダ)。
     this.rescueGfx.zIndex = 1_000_000;
@@ -12340,6 +12348,8 @@ export class PixiScene {
       case 'dogFetch': this.projFxSelf(view); return; // A5(点)
       case 'smoke': this.projFxOrigin(view, 'fx', e.x, e.y); return; // A6(点o)
       case 'glow': { // A7・A8(点)。段階5(Z34): 宙の体に当たった光は覚えた h_e で G=(x, y + h_e)・高さ h_e×σ
+        // 体の高さで光る点(e.lift・ステージ7のグレンの胸の光): 地面の点 (x, y + lift) を投影して lift×σ 持ち上げる(当たった敵の体は探さない)。
+        if (e.lift !== undefined && e.lift > 0) { this.projFxAt(view, e.x, e.y, 'fx', e.lift); return; } // proj-lift: Z34
         if (this.projFxOnHitBody(view, e.x, e.y)) return; // 敵の体に当たった光(格闘の火花・会心の光など)=その敵の体の相似(被弾の光 A2 と同じ点)
         const hg = this.projHitLiftOf(view, view.position.x, view.position.y);
         if (hg.h > 0) this.projFxAt(view, view.position.x, view.position.y, 'fx', hg.h); // proj-lift: Z34
@@ -14379,6 +14389,8 @@ export class PixiScene {
       this.syncCastle(s.castleEvent, now);
       this.syncEventQuestNpc(loop1DuoNpcView(s.stage1Loop, s.gameTime) ?? s.eventQuestNpc, now);
     }
+    // ステージ7の変身の場面は時間停止の中で進む=実時間で読む(凍結時計 now ではない)。
+    this.syncGlenHuman(s.glenTransform, Date.now());
     // ★ウェルカムが終わるまで商人は画面に出さない(社長指示2026-09-19。護衛NPCと同じ扱い)。
     // 店の実体は store に残っている(§17-13 が商人のyを読む)ので、**絵だけ**を止める。
     if (s.merchantHidden) { this.merchantView.visible = false; this.merchantShadow = null; }
@@ -17109,6 +17121,43 @@ export class PixiScene {
     // v2: 会話サークル・白い滞在アーク・頭上の緑リングはnearの消滅(常にfalse)に伴って描かれなくなる
     // (§2-2B受け入れ条件1b)。ここに描画は残さない(納品3秒滞在の新しいメーターは帰還サークル側=
     // §2-8・B4の範囲)。
+  }
+
+  /**
+   * ステージ7: 変身の前の人間のグレン(research/GLEN_TRANSFORM.md §2)。姿(どちらの絵・濃さ・位置のずれ)は
+   * utils/glenIntro.glenTransformPose が決める=ここは読んで置くだけ。大きさは二人組の場の絵と同じ倍率を2枚に同じく掛け
+   * (EVENT_NPC_TARGET_HEIGHT / 66)、足元の点(画素で測った足元の行の中心・下端)を足元に合わせる=絵の切り替えで体が横に跳ばない。
+   * 苦しさは位置の移動(震え・沈み・よろめき)だけ=絵の伸縮・回転はしない。遠近の縮み・新方式の写しは二人組と同じ扱い。
+   */
+  private syncGlenHuman(tf: { startedAt: number; footX: number; footY: number } | null, realNow: number) {
+    const v = this.glenHumanView;
+    if (!tf) { v.visible = false; this.glenHumanShadow = null; return; }
+    const pose = glenTransformPose(realNow - tf.startedAt);
+    const art = pose.frame ? GLEN_HUMAN_ART[pose.frame] : null;
+    const tex = art ? getTexture(art.name) : null;
+    const horizonAlpha = this.projLooseFade(tf.footX, tf.footY, false);
+    if (!art || !tex || pose.alpha <= 0 || horizonAlpha <= 0) { v.visible = false; this.glenHumanShadow = null; return; }
+    const d = this.depthScale(tf.footY);
+    const sc = EVENT_NPC_TARGET_HEIGHT * d / GLEN_HUMAN_REF_TEX_H;
+    const bodyH = GLEN_HUMAN_ART.stand.footY * sc; // ずれの単位=立ち姿の体の高さ(描く倍率込み)
+    v.visible = true;
+    v.position.set(Math.round(tf.footX), Math.round(tf.footY));
+    if (this.projFrame) { this.projLoose('glenHuman', tf.footX, tf.footY, d); this.projLooseAdd(v); }
+    v.alpha = horizonAlpha * pose.alpha;
+    v.zIndex = tf.footY;
+    const sp = this.glenHumanSprite;
+    sp.texture = tex;
+    sp.anchor.set(art.footX / art.w, art.footY / art.h);
+    sp.scale.set(sc);
+    // 体の位置のずれ(入れ物の中=体の相似で一緒に写る)。足元の点そのものは動かさない。
+    const bx = pose.dx * bodyH, by = pose.dy * bodyH;
+    sp.position.set(bx, by);
+    this.glenHumanShadow = {
+      x: tf.footX, y: tf.footY,
+      legacyW: 84 * d,
+      rawW: tex.width * sc / (this.projFrame ? d : 1), rawH: tex.height * sc / (this.projFrame ? d : 1), texture: tex,
+      alpha: horizonAlpha, shadowFade: pose.alpha, projected: this.projFrame ? true : undefined,
+    };
   }
 
   // ---- trees: Y-sorted with the actors so you stand in front / behind -------
@@ -21413,6 +21462,10 @@ export class PixiScene {
       const n = this.npcShadow;
       this.placeShadowSprite('npc', n.x, n.y, n.legacyW, n.alpha * (n.shadowFade ?? 1), seen);
     }
+    if (this.glenHumanShadow) {
+      const n = this.glenHumanShadow;
+      this.placeShadowSprite('glen-human', n.x, n.y, n.legacyW, n.alpha * (n.shadowFade ?? 1), seen);
+    }
     // 城(可視時のみ syncCastle がリクエスト)。
     if (this.castleShadow) {
       const c = this.castleShadow;
@@ -21746,6 +21799,10 @@ export class PixiScene {
     if (this.npcShadow) {
       const n = this.npcShadow;
       place({ id: 'npc', x: n.x, y: n.y, rawW: n.rawW, rawH: n.rawH, texture: n.texture, alpha: n.alpha, shadowFade: n.shadowFade, heightPx: n.heightPx, projected: n.projected, moving: n.projected });
+    }
+    if (this.glenHumanShadow) {
+      const n = this.glenHumanShadow;
+      place({ id: 'glen-human', x: n.x, y: n.y, rawW: n.rawW, rawH: n.rawH, texture: n.texture, alpha: n.alpha, shadowFade: n.shadowFade, projected: n.projected, moving: n.projected });
     }
     if (this.castleShadow) {
       const c = this.castleShadow;
@@ -52540,6 +52597,7 @@ export class PixiScene {
     this.playerView?.container.destroy({ children: true });
     this.merchantView.destroy({ children: true });
     this.eventNpcView.destroy({ children: true });
+    this.glenHumanView.destroy({ children: true });
     for (const e of this.pickups.values()) e.container.destroy({ children: true });
     for (const g of this.projectiles.values()) g.destroy();
     for (const o of this.effects.values()) o.destroy();

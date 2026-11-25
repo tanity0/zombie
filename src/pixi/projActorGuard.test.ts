@@ -91,7 +91,7 @@ describe('投影の段階2: 後掛けの役の表(番人)', () => {
   it('番人③(後掛けの形): 移行した関数は ?proj=1 の時だけ記録を始め、旧い倍率は d として記録にだけ使う(後掛けが s/d で割り戻す)', () => {
     const lines = code(src);
     const kinds = ['escort', 'survivor', 'merchant', 'pickup', 'bossCorpse', 'clone', 'rescueAlly', 'baseSoldier', 'questNpc', 'supportSniper',
-      'endingSoldier', 'endingPhill', 'endingFallen', 'turret', 'decoy', 'shield',
+      'endingSoldier', 'endingPhill', 'endingFallen', 'turret', 'decoy', 'shield', 'glenHuman',
       'lab-crawler', 'lab-crawler:absorb']; // 段階8 U14(研究所の変異塊の体と付属・取り込まれる敵)
     for (const k of kinds) {
       const idx = lines.map((l, i) => (l.includes(`this.projLoose('${k}'`) ? i : -1)).filter((i) => i >= 0);
