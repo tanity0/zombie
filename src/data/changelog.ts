@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5799', items: ['全部の任務を終えた後も、作戦室の地図に前回の任務が出て、出撃からそのまま向かえる'] },
   { version: '0.25.5798', items: ['地面と敵や物の描き方が、奥ほど細く小さく見える新しい遠近に変わった'] },
   { version: '0.25.5797', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5796', items: ['作戦室の地図の次の目的地から伸びていた線をなくした'] },

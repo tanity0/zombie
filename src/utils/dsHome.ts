@@ -35,6 +35,30 @@ export const nextOperationStage = (
 export const directSortieStage = (next: Stage | null, cleared: ReadonlySet<string>): Stage | null =>
   next && !cleared.has(next.id) ? next : null;
 
+// 作戦室の出撃先(地図の琥珀の輪・地図の下端の場所名・出撃の帯の任務名が指す任務)。
+// - 次の任務がある時はそれ(kind 'next'=NEXT の印。directSortieStage と同じ)。
+// - 次が無い(全部クリアした後など)時は、最後に出撃した任務(kind 'last'=「前回」の印)。
+//   記録は出撃時に書かれる progress の selectedStage(getSelectedStageId)をそのまま使う。
+//   記録が無い・記録のステージが存在しない・一覧に出ない(hidden / 周回用)・まだ解放されていない時は null
+//   =出撃の帯は作戦地域の一覧へ行く形のまま。EX は作戦地域の一覧と同じ門(canShowEx かつ解放済み)。
+export type SortieTarget = { stage: Stage; kind: 'next' | 'last' };
+export const sortieTarget = (
+  stages: readonly Stage[],
+  next: Stage | null,
+  cleared: Set<string>,
+  storyFlags: StoryFlags,
+  lastStageId: string | null | undefined
+): SortieTarget | null => {
+  const d = directSortieStage(next, cleared);
+  if (d) return { stage: d, kind: 'next' };
+  if (!lastStageId) return null;
+  const last = stages.find(s => s.id === lastStageId);
+  if (!last || last.hidden) return null;
+  if (last.kind === 'main') return isStageUnlocked(last, cleared) ? { stage: last, kind: 'last' } : null;
+  if (last.kind === 'ex') return canShowEx(storyFlags) && isStageUnlocked(last, cleared) ? { stage: last, kind: 'last' } : null;
+  return null;
+};
+
 // ==== 等高線マップの擬似地形(モック原典のアルゴリズム・UI_OVERHAUL.md §3-2) ====
 // バッキングは632×300固定(監査A-5: モックの定数は632×300専用。箱に合わせて定数のまま縮めると
 // 等高線が消える)。半径・しきい値・stepは原典定数のまま。丘の中心座標だけstage idハッシュでシード。

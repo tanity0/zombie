@@ -5,7 +5,7 @@ import { emptyStoryFlags } from '../data/progress';
 import {
   CONTOUR_BAND_EPS, CONTOUR_BAND_MIN_SAMPLES, CONTOUR_H, CONTOUR_HILL_INNER, CONTOUR_STEP,
   CONTOUR_THRESHOLDS, CONTOUR_W,
-  contourField, contourHills, directSortieStage, nextOperationStage,
+  contourField, contourHills, directSortieStage, nextOperationStage, sortieTarget,
 } from './dsHome';
 
 const MAIN_IDS = STAGES.filter(s => s.kind === 'main' && !s.hidden).map(s => s.id);
@@ -83,6 +83,49 @@ describe('directSortieStage(UIUX_PROPOSAL P1 地図から直接出撃)', () => {
     const cleared = new Set(MAIN_IDS);
     expect(directSortieStage(nextOperationStage(STAGES, cleared, emptyStoryFlags()), cleared)).toBeNull();
     expect(directSortieStage(null, cleared)).toBeNull();
+  });
+});
+
+describe('sortieTarget(全部クリアした後は最後に出撃した任務)', () => {
+  const flags = emptyStoryFlags();
+  const at = (cleared: Set<string>, last: string | null, f = flags) =>
+    sortieTarget(STAGES, nextOperationStage(STAGES, cleared, f), cleared, f, last);
+
+  it('次の任務がある時は次(記録より NEXT が優先)', () => {
+    const cleared = new Set(['stage-tutorial', 'stage-1']);
+    expect(at(cleared, 'stage-1')).toEqual({ stage: STAGES.find(s => s.id === 'stage-2'), kind: 'next' });
+    expect(at(new Set(), null)?.stage.id).toBe('stage-tutorial');
+  });
+
+  it('全部クリア+記録あり=最後に出撃した任務', () => {
+    const cleared = new Set(MAIN_IDS);
+    const t = at(cleared, 'stage-3');
+    expect(t?.kind).toBe('last');
+    expect(t?.stage.id).toBe('stage-3');
+    expect(at(cleared, 'stage-7')?.stage.id).toBe('stage-7');
+  });
+
+  it('全部クリア+記録なし=null(帯は一覧へ)', () => {
+    const cleared = new Set(MAIN_IDS);
+    expect(at(cleared, null)).toBeNull();
+    expect(at(cleared, '')).toBeNull();
+  });
+
+  it('記録のステージが存在しない・一覧に出ない・解放されていない時は null', () => {
+    const cleared = new Set(MAIN_IDS);
+    expect(at(cleared, 'stage-nope')).toBeNull();
+    expect(at(cleared, 'stage-ex2')).toBeNull(); // hidden
+    // EX は薬を使っていなければ一覧に出ない=null
+    expect(at(cleared, 'stage-ex1')).toBeNull();
+    // 解放されていない本編(前提が未クリア): 次の任務が無い状態は作れないので、関数へ直接渡して確かめる
+    const noneCleared = new Set<string>();
+    expect(sortieTarget(STAGES, null, noneCleared, flags, 'stage-3')).toBeNull();
+  });
+
+  it('EX は作戦地域の一覧と同じ門(薬を使用済み+解放済み)なら最後の任務になる', () => {
+    const f = { ...emptyStoryFlags(), medicineUsed: true };
+    const cleared = new Set([...MAIN_IDS, 'stage-ex1']);
+    expect(at(cleared, 'stage-ex1', f)).toEqual({ stage: STAGES.find(s => s.id === 'stage-ex1'), kind: 'last' });
   });
 });
 

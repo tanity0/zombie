@@ -16,7 +16,7 @@ import { BOSS_FACE_RIM, BOSS_FACE_RIM_PATROL, BossFaceDefs, BossHeadFace, bossFa
 import { layoutMapFaces, type MapBossFace } from '../utils/sortieMapBosses';
 import { estimateTagTextWidth, mapTagLeadLine, nextOpenMapFace, pickMapFace, placeMapSpotTag, type MapTagPlace } from '../utils/mapFaceTag';
 import type { Stage } from '../data/campaign';
-import { directSortieStage } from '../utils/dsHome';
+import type { SortieTarget } from '../utils/dsHome';
 import { PixelIcon } from './PixelIcon';
 
 const DS_MAP_DISABLED = typeof window !== 'undefined'
@@ -57,11 +57,13 @@ const arc = (a: readonly [number, number], b: readonly [number, number], i: numb
 
 // 地図から直接出撃(research/UIUX_PROPOSAL.md P1): onNext=NEXT の印を押した時(出撃の帯と同じ任務詳細へ)、
 // onOthers=地図の下端の「ほかの地域」(作戦地域の一覧)。どちらも無ければ今までどおり眺めるだけの地図。
-const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<string>; next: Stage | null; sectorLabel: string; bossFaces?: readonly MapBossFace[]; onNext?: () => void; onOthers?: () => void }> = ({ stages, cleared, next, sectorLabel, bossFaces = NO_FACES, onNext, onOthers }) => {
+// target=出撃の帯と同じ出撃先(utils/dsHome.sortieTarget・決め方は1本)。kind 'next'=次の任務(NEXT の印)、
+// kind 'last'=全部クリアした後の、最後に出撃した任務(「前回」の印・NEXT と同じ琥珀の輪)。null なら目標は描かない。
+const LAST_LABEL = '前回';
+const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<string>; target: SortieTarget | null; sectorLabel: string; bossFaces?: readonly MapBossFace[]; onNext?: () => void; onOthers?: () => void }> = ({ stages, cleared, target, sectorLabel, bossFaces = NO_FACES, onNext, onOthers }) => {
   const clipBase = useId().replace(/[^a-zA-Z0-9_-]/g, '');
-  // 次の出撃先がクリア済み(全部クリアした後に最終ステージへ戻る等)なら次の目標は描かない(検収品質監査 A1)。
-  // 決め方は出撃の帯と1本(utils/dsHome.directSortieStage)。
-  const dest = directSortieStage(next, cleared);
+  const dest = target ? target.stage : null;
+  const isLast = target?.kind === 'last';
   const nextId = dest ? dest.id : null;
   const trail = useMemo(() => storyTrail(stages, cleared, nextId), [stages, cleared, nextId]);
   const names = useMemo(() => Object.fromEntries(stages.map(s => [s.id, s.locationTitle])), [stages]);
@@ -143,6 +145,9 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
   const cur = trail.current ? P(trail.current.at) : null;
   const nxt = trail.next ? P(trail.next.at) : null;
   const sameSpot = !!(cur && nxt && cur[0] === nxt[0] && cur[1] === nxt[1]);
+  // 印を出すか: NEXT は今いる所と同じ地点なら出さない(従来どおり)。「前回」は今いる所(最後にクリアした所)と重なっても出す
+  // (全部クリアした後は最終ステージを最後に遊ぶことが多い=重なるのが普通)。重なる時は白い角を残し、菱形は描かず輪と言葉だけ。
+  const showMark = !!(nxt && dest && (isLast || !sameSpot));
   const segs = visited.length - 1;
   // 文字の縁取りは細く(字幕のような太い縁にしない・検収クリエイティブ監査 #8)。
   const textProps = { paintOrder: 'stroke' as const, stroke: 'rgba(7,6,13,0.85)', strokeWidth: 1.4 * U, strokeLinejoin: 'round' as const };
@@ -164,7 +169,7 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
             strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
         ))}
         {/* 次の出撃先へ細かい点線(方向が読める・検収クリエイティブ監査 #5)。 */}
-        {cur && nxt && !sameSpot && (
+        {cur && nxt && !sameSpot && !isLast && (
           <path d={arc(cur, nxt, segs + 1)} fill="none" stroke={AMBER} strokeOpacity={0.9} strokeWidth={1.3}
             vectorEffect="non-scaling-stroke" strokeDasharray={`${1.6 * U} ${1.4 * U}`} />
         )}
@@ -175,7 +180,8 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
         {/* 次の目標=琥珀明の中抜きの菱形(ゆっくり加減速して明滅)+小さな「NEXT」(行き先の名は左上の SECTOR にある=重ねて言わない・#1/#6)。 */}
         {/* 地図から直接出撃(P1): NEXT の印を細い光る輪で囲む(印から下へ降ろす線は出さない=社長指示2026-11-25「やめようその矢印」)。
             輪は開いた時に外から縮んで止まり(減速)、以後は菱形と同じ加減速でゆっくり息をする。 */}
-        {nxt && !sameSpot && dest && (
+        {/* 「前回」(全部クリアした後の最後の任務)も同じ輪・同じ動き。点線(今いる所からの道)は引かない=これから向かう道ではない。 */}
+        {showMark && nxt && (
           <g pointerEvents="none">
             <g className="ds-map-next-ring">
               <circle cx={nxt[0]} cy={nxt[1]} r={7.5 * U} fill="none" stroke={AMBER} strokeWidth={4} vectorEffect="non-scaling-stroke" strokeOpacity={0.12}>
@@ -187,14 +193,16 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
             </g>
           </g>
         )}
-        {nxt && !sameSpot && (
+        {showMark && nxt && (
           <g>
-            <rect x={nxt[0] - 2.8 * U} y={nxt[1] - 2.8 * U} width={5.6 * U} height={5.6 * U} fill="rgba(7,6,13,0.7)" stroke={AMBER_HI}
+            {!sameSpot && <rect x={nxt[0] - 2.8 * U} y={nxt[1] - 2.8 * U} width={5.6 * U} height={5.6 * U} fill="rgba(7,6,13,0.7)" stroke={AMBER_HI}
               strokeWidth={1.5} vectorEffect="non-scaling-stroke" transform={`rotate(45 ${nxt[0]} ${nxt[1]})`}>
               <animate attributeName="stroke-opacity" values="1;0.35;1" dur="2.6s" repeatCount="indefinite" {...ease} />
-            </rect>
-            <text x={nxt[0] + (right(nxt[0]) ? -5.5 * U : 5.5 * U)} y={nxt[1] + 1.9 * U} fontSize={9 * U} letterSpacing={2 * U}
-              fill={AMBER_HI} textAnchor={right(nxt[0]) ? 'end' : 'start'} {...textProps}>NEXT</text>
+            </rect>}
+            {/* 今いる所と重なる「前回」は、上にある場所の名と当たらないよう輪の真下へ。 */}
+            <text x={sameSpot ? nxt[0] : nxt[0] + (right(nxt[0]) ? -5.5 * U : 5.5 * U)} y={nxt[1] + (sameSpot ? 16 * U : 1.9 * U)} fontSize={9 * U}
+              letterSpacing={(isLast ? 1.2 : 2) * U}
+              fill={AMBER_HI} textAnchor={sameSpot ? 'middle' : right(nxt[0]) ? 'end' : 'start'} {...textProps}>{isLast ? LAST_LABEL : 'NEXT'}</text>
           </g>
         )}
         {/* 今いる所=白い角+場所の名(スマホで約9px=既存の札と同じ大きさ・検収品質監査 A2)。 */}
@@ -267,7 +275,7 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
         })()}
         {/* 当たり(見た目の丸より大きい・PC はマウスの指の形)。判定は onMapClick が近い方で決める=この四角は形だけ。 */}
         {/* NEXT の印を押す=出撃の帯と同じ任務詳細へ(P1)。当たりは見た目より大きく(縦横 約32px 四方)。顔の当たりと重なる所は顔が勝つ(顔の当たりを後に描く)。 */}
-        {onNext && nxt && !sameSpot && dest && (
+        {onNext && showMark && nxt && dest && (
           <rect x={nxt[0] - HIT_HALF} y={nxt[1] - HIT_HALF} width={2 * HIT_HALF} height={2 * HIT_HALF} fill="transparent" style={{ cursor: 'pointer' }}
             aria-label={`${dest.locationTitle}へ出撃`} role="button"
             onClick={e => { e.stopPropagation(); onNext(); }} />

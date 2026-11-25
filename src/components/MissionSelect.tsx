@@ -111,7 +111,7 @@ import { useAudioMuted } from '../hooks/useAudioMuted';
 // 作戦室DS2化(UI_OVERHAUL.md §3 バッチ①): ホームの計器化+作戦地図(v0.25.5096〜 架空列島+ストーリーの軌跡=DsStoryMap。旧=等高線の飾り)。旧ホームは?dshome=0で丸ごと復帰。
 import DsStoryMap from './DsStoryMap'; // 作戦室の地図=架空列島+ストーリーの軌跡(THEONE_ROUND2 §2-5)
 import NoBounceScroller from './NoBounceScroller';
-import { directSortieStage, nextOperationStage } from '../utils/dsHome';
+import { nextOperationStage, sortieTarget } from '../utils/dsHome';
 import { OPENING_HERO, OPENING_WALK_BG_BLUR } from '../data/openingWalkAssets';
 import { reportTestScreen, type TestScreenId } from '../utils/testBridge';
 import { STAGE1_FIRST_LOOP_ENABLED, stage1GuardianLockShown, stage1RunCompanion, STAGE1_GUARDIAN_LOCK_NOTE } from '../utils/stage1FirstLoop'; // STAGE1_FIRST_LOOP.md §7.8(守護霊のマスト化)
@@ -168,7 +168,7 @@ import { gachaGuaranteeRemaining } from '../utils/gachaGuarantee';
 import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
 import { useSkillIconSheet } from '../utils/useSkillIconSheet';
 import {
-  getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress,
+  getClearedStages, isStageUnlocked, getSelectedStageId, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress,
   clearWeaponUnlocks, clearWeaponBlueprints, markWeaponUnlocked, getStageHighScore,
   getStoryFlags, updateStoryFlags, setSelectedMission, getEventQuestMeta, getWallMeta, type SelectedMission,
   hasSubBlueprint, // UNIQUE_WEAPONS.md §19-6: ボス撃破解放のサブウェポン(現状=金環)の陳列ゲート
@@ -899,14 +899,18 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const renderDsHome = () => {
     // 次の作戦地域(§3-1-2b・純関数)。cleared はホーム再表示のたびに最新state、storyFlags は描画時読取
     // (renderStageSelectと同じ作法。メニュー画面のみの読取=毎フレーム再レンダなし)。
-    const nextStage = nextOperationStage(STAGES, cleared, getStoryFlags());
+    const opStage = nextOperationStage(STAGES, cleared, getStoryFlags());
+    // 地図から直接出撃(research/UIUX_PROPOSAL.md P1): 地図の NEXT の印と同じ任務(sortieTarget・決め方は1本)。
+    // 出撃の帯・NEXT の印を押すと任務詳細へ直行(作戦地域の一覧を経由しない)。次が無い(全部クリア等)時は
+    // 最後に出撃した任務(出撃時に書く selectedStage の記録)=地図は「前回」の印。記録も無ければ null
+    // =帯は今までどおり一覧へ行く(地図の下端の任務名も出ない)。
+    const target = sortieTarget(STAGES, opStage, cleared, getStoryFlags(), getSelectedStageId());
+    const sortieDest = target?.stage ?? null;
+    // SECTOR の札・DAY は出撃先と同じ場所を言う(「前回」の時に地図の下端の場所名と食い違わない)。
+    const nextStage = target?.kind === 'last' ? target.stage : opStage;
     // DAYの掟(監査A-8): 次の作戦地域が timeLabel を持つ(=日時を意図的にぼかすステージ)場合は
     // DAY項目ごと省く(数字で暴露しない)。
     const showDay = !!nextStage && !nextStage.timeLabel;
-    // 地図から直接出撃(research/UIUX_PROPOSAL.md P1): 地図の NEXT の印と同じ任務(directSortieStage)。
-    // 出撃の帯・NEXT の印を押すと任務詳細へ直行(作戦地域の一覧を経由しない)。次が無い(全部クリア等)時は null
-    // =帯は今までどおり一覧へ行く(地図の下端の任務名も出ない)。
-    const sortieDest = directSortieStage(nextStage, cleared);
     const goSortieDest = sortieDest
       ? () => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: sortieDest.id, from: 'home' }); }
       : null;
@@ -946,7 +950,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 <span>DAY {nextStage.day}</span>
               </div>}
               <div className="menu-item-in" style={{ animationDelay: '50ms' }}>
-                <DsStoryMap stages={STAGES} cleared={cleared} next={nextStage} sectorLabel={nextStage?.locationTitle ?? '—'} bossFaces={mapFaces}
+                <DsStoryMap stages={STAGES} cleared={cleared} target={target} sectorLabel={nextStage?.locationTitle ?? '—'} bossFaces={mapFaces}
                   onNext={goSortieDest ?? undefined} onOthers={goStageSelect} />
               </div>
               {/* 出撃=アンバーの主役行。次の任務があれば帯に任務名を載せ、押すと任務詳細へ直行(P1)。無ければ作戦地域の一覧(従来どおり)。
