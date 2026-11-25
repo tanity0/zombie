@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { keyIdOf } from '../hooks/useGameControls';
 import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
-import MuteButton from './MuteButton';
+import { setAudioMuted } from '../audio/audioManager';
+import { useAudioMuted } from '../hooks/useAudioMuted';
 import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
 import { CHARACTER_CLASSES, SKILLS, skillDescForLevel } from '../data/campaign';
 import { subWeaponBlurb } from '../data/subWeaponBlurbs';
@@ -65,6 +66,23 @@ const readPauseBosses = (): SortieBoss[] => {
   const s = useGameStore.getState();
   if (s.corridorMode || s.bossMaker.active || isPracticeRun() || isGauntletRun()) return [];
   return appearedOnly(sortieBossRoster(getSelectedStageId(), hasEncounteredBoss, { heroAscended: loadHeroAscended() }));
+};
+
+// 一時停止の左の列の「音」の行。押すたびに あり/なし が入れ替わる(押した音は鳴らさない=黙らせる行が鳴るのは逆・MuteButton と同じ)。
+const PauseSoundRow: React.FC = () => {
+  const muted = useAudioMuted();
+  return (
+    <button
+      type="button"
+      aria-pressed={muted}
+      aria-label={muted ? '音を戻す' : '音を消す'}
+      onClick={() => setAudioMuted(!muted)}
+      className="pause-sound-row"
+    >
+      <span>音</span>
+      <span className={muted ? 'is-off' : ''}>{muted ? 'なし' : 'あり'}</span>
+    </button>
+  );
 };
 
 interface PauseMenuProps {
@@ -160,10 +178,6 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
       onTouchMove={preventTouchEvent}
       onTouchEnd={preventTouchEvent}
     >
-      {/* 音を消す/戻すボタン(社長指示2026-11-08)。ゲーム中の HUD には常駐させず、一時停止の右上の隅に置く。 */}
-      <div className="pointer-events-none absolute z-10" style={{ top: 'max(env(safe-area-inset-top), 6px)', right: 'max(env(safe-area-inset-right), 6px)' }}>
-        <MuteButton />
-      </div>
       {/* PC の横長(research/PC_SUPPORT.md 段3): 全面のまま、左にボタンの帯を寄せ、右の戦況は幅を絞る(全幅に間延びさせない・
           中央のカードの汎用ダイアログにもしない=クリエイティブ監査 #5)。縦持ちは従来どおり。 */}
       <div className="glass-panel command-panel rounded-none w-full h-full overflow-hidden flex flex-col justify-center landscape:pl-16">
@@ -183,6 +197,9 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
             <Ff7rButton onClick={() => { playSfx('ui-select'); onQuit(); }} fade="both" paddingY="0.8rem">
               メニューに戻る
             </Ff7rButton>
+            {/* 音を消す/戻す(社長指示2026-11-08・research/UIUX_PROPOSAL.md P2): ゲーム中の HUD には常駐させず、ここに文字の行で並べる。
+                状態はオプションの「音なし」・他の画面の音のボタンと同じ1つ(setAudioMuted)。 */}
+            <PauseSoundRow />
             {resumeHint && <p className="mt-1 text-[11px] text-white/50">
               {resumeHint}
             </p>}

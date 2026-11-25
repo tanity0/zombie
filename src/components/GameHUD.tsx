@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { PixelIcon } from './PixelIcon';
 import { useGameStore, subWeaponDisplayName, isBrawlerMode } from '../store/gameStore';
 import { shallow } from 'zustand/shallow';
 import { rafTimeout } from '../utils/rafTimeout';
@@ -20,9 +19,9 @@ import ScanBeatMeter from './ScanBeatMeter'; // research/NEW_GUNS.md §4: スキ
 import { HitRetaliationCue } from './HitRetaliationCue'; // ★被弾反撃の知らせ(research/HIT_RETALIATION.md §5)
 import BrawlerPointsBadge from './BrawlerPointsBadge'; // サブウェポン「格闘」の技ポイント(research/BRAWLER.md §2-5)
 import BrawlerHitCount from './BrawlerHitCount'; // 格闘のヒット数(research/BRAWLER.md §11-4)
-import type { AmmoType } from '../types/game';
-import { setAudioMuted, playSfx } from '../audio/audioManager';
-import { useAudioMuted } from '../hooks/useAudioMuted';
+import type { AmmoType, SubWeaponKey } from '../types/game';
+import './hudPulse.css';
+import { subWeaponIconName } from '../data/subWeaponIcons'; // P15: 副武装の名前の札はレベルが上がった瞬間だけ出る
 import { comboMilestoneCrossed, comboMilestoneAmp } from '../utils/comboMilestone';
 import DirectorLine from './DirectorLine';
 import { getSelectedStageId } from '../data/progress';
@@ -92,11 +91,36 @@ const Loop1ObjectivePill: React.FC = () => {
   );
 };
 
+// 副武装の枠(research/UIUX_PROPOSAL.md P15): 武器の箱の一番上に、副武装の絵だけの小さな枠を並べる(名前は常時は出さない)。
+// レベルが上がった瞬間だけ、枠の絵が灯り、名前の札が枠の左の外へ箱に接したまま滑り出て、しばらくして引っ込む(CSS アニメ1回・hudPulse.css)。
+// チャージ(CD明け)の通知=ブーメラン型とは別物で、そちらは触らない。
+// 再描画はレベルが変わった時だけ(親の shallow 購読のまま)。前のレベルは state で持つ(描画中の調整=React の作法)。
+const SubWeaponSlot: React.FC<{ skey: SubWeaponKey; name: string; level: number; children?: React.ReactNode }> = ({ skey, name, level, children }) => {
+  const [seen, setSeen] = useState({ level, seq: 0 });
+  if (seen.level !== level) setSeen({ level, seq: level > seen.level ? seen.seq + 1 : seen.seq });
+  const icon = subWeaponIconName(skey, level);
+  const pop = seen.seq > 0;
+  return (
+    <div key={seen.seq} className={`sw-slot ${pop ? 'sw-slot--pop' : ''}`} title={name}>
+      <span className="sw-slot-icon">
+        {icon
+          ? <img src={spritePath(icon)} alt="" draggable={false} />
+          : <span className="sw-slot-glyph">{name.slice(0, 1)}</span>}
+      </span>
+      <span className="sw-tag gt-solid" aria-hidden={!pop}>
+        <span className="sw-tag-name">{name}</span>
+        <span className="sw-tag-lv tabular-nums">Lv{level}</span>
+      </span>
+      {children}
+    </div>
+  );
+};
+
 // ボタン札(research/PC_SUPPORT.md §14)の帯: 武器の箱の左の外(枠の左端から 箱の余白6px+間6px)、枠の縦の中央。
 const HUD_KEY_BAND: React.CSSProperties = { right: 'calc(100% + 12px)', top: '50%', transform: 'translateY(-50%)' };
 
 const GameHUD: React.FC = () => {
-  const hudLandscape = useHudLandscape(); // PC の横長=武器の列・音のボタンを置き直す(research/PC_SUPPORT.md 段3)
+  const hudLandscape = useHudLandscape(); // PC の横長=武器の列を置き直す(research/PC_SUPPORT.md 段3)
   // ボタン札(§14): キー/パッドで遊んでいる時だけ。スマホ=null=札も包みも描かない(DOM を1つも足さない)。購読は機器が変わった時だけ。
   const hint = useHudHintStyle(hudLandscape);
   const hasMouse = useHudHasMouse();
@@ -107,7 +131,6 @@ const GameHUD: React.FC = () => {
     document.documentElement.classList.toggle('hudhint-paused', paused);
     return () => { document.documentElement.classList.remove('hudhint-paused'); };
   }, [hint, paused]);
-  const audioMuted = useAudioMuted(); // 一時停止メニューの音のボタン・オプションの「音なし」と常に揃う
   // player 全体ではなく HUD が使うフィールドだけを shallow 購読(移動で毎フレーム再描画しないように)。
   const player = useGameStore(s => ({
     weapons: s.player.weapons,
@@ -189,14 +212,6 @@ const GameHUD: React.FC = () => {
     poiGetKind === 'poi-skill' ? 'スキルを入手！' : poiGetKind === 'poi-equip' ? '身に着けた' : 'ワクチンを入手！';
   const poiGetLabelClass =
     poiGetKind === 'poi-skill' ? 'text-sky-200/85' : poiGetKind === 'poi-equip' ? 'text-amber-100/85' : 'text-emerald-100/85';
-
-  const toggleBgm = (e?: React.PointerEvent<HTMLButtonElement>) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    const next = !audioMuted;
-    playSfx('ui-move'); // クリエイティブ監査第2回・第2手A-5: トグルは ui-move
-    setAudioMuted(next);
-  };
 
   // エンディングステージはUI系を全部出さない(社長指示2026-08-28「エンディングはUI系非表示」。
   // boolean派生の購読=再レンダー規律どおり。フック群の後の早期returnなのでReactの規則にも適合)。
@@ -423,33 +438,22 @@ const GameHUD: React.FC = () => {
               transform: 'translateY(-50%)'
             }}
           >
-            {/* 装備スキル(サブウェポン)= 装備の詳細。コンパクトに縦並び。 */}
-            {equippedSkills.length > 0 && (
-              <div className="flex flex-col items-end gap-1">
-                {equippedSkills.map(key => {
-                  const chip = (
-                    <div
-                      key={key}
-                      className="glass-pill px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1 gt-solid"
-                    >
-                      <span className="text-purple-200/90">{subWeaponDisplayName(key)}</span>
-                      <span className="text-white/45 tabular-nums">Lv{player.subWeaponLevels[key] ?? 1}</span>
-                    </div>
-                  );
-                  // 札(§14): はじく操作で出る物(一閃=刀・小烏丸 / ワイヤー)の行だけ、左の外に。
-                  const flickSkill = key === 'katana' || key === 'murasame' || key === 'wire-anchor' || key === 'brawler'; // 格闘の技もはじく(札は記号だけ・research/BRAWLER.md §8-2)
-                  return hint && flickSkill ? (
-                    <div key={key} className="relative">
-                      {chip}
-                      <HudKey key={hint} hint={hint} act="flick" glyph={hudGlyph(hint, 'flick', hasMouse)} style={{ right: 'calc(100% + 4px)', top: '50%', transform: 'translateY(-50%)' }} />
-                    </div>
-                  ) : chip;
-                })}
-              </div>
-            )}
-
             {/* 武器: アイコンのみ。銃=タップで切替(押せるボタン)/弾数のみ表示・名前なし。メレー=表示のみ。 */}
             <div className="hud-translucent rounded-none p-1.5 flex flex-col items-end gap-1.5">
+              {/* 装備スキル(サブウェポン)= 箱の一番上に絵だけの小さな枠(P15: 名前はレベルが上がった瞬間だけ、枠の左へ滑り出る)。 */}
+              {equippedSkills.length > 0 && (
+                <div className="sw-slots">
+                  {equippedSkills.map(key => {
+                    // 札(§14): はじく操作で出る物(一閃=刀・小烏丸 / ワイヤー)の行だけ、左の外(武器の札と同じ帯)に。
+                    const flickSkill = key === 'katana' || key === 'murasame' || key === 'wire-anchor' || key === 'brawler'; // 格闘の技もはじく(札は記号だけ・research/BRAWLER.md §8-2)
+                    return (
+                      <SubWeaponSlot key={key} skey={key} name={subWeaponDisplayName(key)} level={player.subWeaponLevels[key] ?? 1}>
+                        {hint && flickSkill && <HudKey key={hint} hint={hint} act="flick" glyph={hudGlyph(hint, 'flick', hasMouse)} style={HUD_KEY_BAND} />}
+                      </SubWeaponSlot>
+                    );
+                  })}
+                </div>
+              )}
               {/* メレー枠(切替なし=アイコン表示のみ)。刀/鞭装備時はそれを表示。 */}
               {melee && (() => { const meleeSlot = (
                 <div
@@ -556,24 +560,7 @@ const GameHUD: React.FC = () => {
       {/* research/NEW_GUNS.md §4: スキャンセンサーの拍(持っている時だけ・持っていなければ何も描かない)。 */}
       <ScanBeatMeter />
 
-      {/* BGM toggle: 右下・一時停止(MobileControls の "II")のすぐ上に配置。 */}
-      <button
-        type="button"
-        onPointerDown={toggleBgm}
-        className="pointer-events-auto absolute w-9 h-9 rounded-full hud-translucent flex items-center justify-center text-white/70 active:text-white"
-        style={hudLandscape ? {
-          // PC: 一時停止(II)の左隣に並べる(スマホは II の上=縦に積む)。
-          right: 16 + 40 + 10,
-          bottom: 24 + 2,
-        } : {
-          right: 'max(env(safe-area-inset-right), 16px)',
-          bottom: 'calc(max(env(safe-area-inset-bottom), 24px) + 48px)'
-        }}
-        title={audioMuted ? 'Audio on' : 'Audio off'}
-        aria-label={audioMuted ? 'Audio on' : 'Audio off'}
-      >
-        {audioMuted ? <PixelIcon name="volume-off" size={17} /> : <PixelIcon name="volume-on" size={17} />}
-      </button>
+      {/* 音のボタンは戦闘中の画面には置かない(research/UIUX_PROPOSAL.md P2)。一時停止の左の列の「音」の行(PauseMenu の PauseSoundRow)で切り替える。 */}
     </div>
   );
 };

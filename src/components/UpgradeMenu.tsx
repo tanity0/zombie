@@ -11,28 +11,74 @@ import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skill
 import { SKILLS, RARITY_LABEL, skillIcon } from '../data/campaign';
 import { runBuildCapacity, rerollPrice, MAX_BANISH_PER_RUN } from '../utils/runSkillDraft';
 import { runSkillDisplayCap, skillLevelTone } from '../utils/runSkillLevelLabel';
-import { SKILL_RARITY_RING } from './skillRarityRing';
+import { levelUpLayout, levelUpTier } from '../utils/levelUpOrder';
+import './levelUp.css';
 import type { SkillKey } from '../types/game';
 import type { UpgradeOption } from '../types/game';
 import { PixelIcon } from './PixelIcon';
 import { statBadge } from '../utils/upgradeUtils';
 
-// SKILL_BUILD_REDESIGN.md §17-1点3/§16-10 ★C: スキルカードのレア度バッジ色。
-const SKILL_RARITY_BADGE: Record<'normal' | 'rare' | 'super', string> = {
-  normal: 'bg-slate-400/30 text-slate-100',
-  rare: 'bg-purple-600/30 text-purple-100',
-  super: 'bg-amber-400/30 text-amber-100',
+// 取得済みの段のレア度の縁(P3: レアは鋼色・超レアは琥珀。紫はカウンターできない攻撃の色なので使わない)。
+const OWNED_RING: Record<'normal' | 'rare' | 'super', string> = {
+  normal: 'border-white/25',
+  rare: 'border-[#a9bccd]/80',
+  super: 'border-amber-300/80',
 };
 
-// 装備アイコン1個(画像が無ければ絵文字フォールバック=特殊は🏯/通常は🛡️)。確認ダイアログ用。
+// P3 の落ち方(ms / px)。レベルアップの窓自体は Game.tsx が 450ms 遅らせて出す。
+// - 落差はカード1枚の高さの半分以上。落ちる(加速)→床で一度沈んで戻る(慣性の受け)。
+// - 間は不均等: 1枚ごとに少しずつ間が延び、最後の1枚だけ一拍溜めてから、より高く・より長く落ちて深く沈む(重い1枚)。
+const DROP_FIRST_MS = 60;
+const DROP_GAP_MS = 130;      // 1枚目→2枚目の間。以後1枚ごとに +DROP_GAP_GROW
+const DROP_GAP_GROW = 30;
+const DROP_LAST_BEAT_MS = 260; // 最後の1枚の前の溜め
+const DROP_MS = 400;
+const DROP_LAST_MS = 560;
+const DROP_FALL_PX = 76;
+const DROP_LAST_FALL_PX = 132;
+const DROP_IMPACT = 0.7;      // 落ちる長さのうち、床に届く位置(levelUp.css の lvup-drop の 70% と同じ)
+const isLastDrop = (i: number, n: number) => n > 1 && i === n - 1;
+const dropStartMs = (i: number, n: number) => {
+  let t = DROP_FIRST_MS;
+  for (let k = 0; k < i; k++) t += DROP_GAP_MS + k * DROP_GAP_GROW;
+  return t + (isLastDrop(i, n) ? DROP_LAST_BEAT_MS : 0);
+};
+const dropLandMs = (i: number, n: number) => dropStartMs(i, n) + Math.round((isLastDrop(i, n) ? DROP_LAST_MS : DROP_MS) * DROP_IMPACT);
+
+// 超レアの着地で弾ける火の粉。並びは選択肢から決まる擬似乱数(開くたびに散り方が違う・描画は純粋なまま)。
+// x=カード幅の% / y=上辺より上は px(負)、縁からは高さの% / dx,dy=流れ / lag=弾ける遅れ / s=大きさ / dur=燃え尽きるまで。
+type Ember = { x: number; y: string; dx: number; dy: number; lag: number; s: number; dur: number };
+const makeEmbers = (seedText: string): Ember[] => {
+  let h = 2166136261;
+  for (let i = 0; i < seedText.length; i++) h = Math.imul(h ^ seedText.charCodeAt(i), 16777619);
+  const rnd = () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; };
+  const out: Ember[] = [];
+  for (let k = 0; k < 18; k++) {
+    // 多くは上辺から、いくつかは左右の縁から。左寄り(光のにじみの芯)を厚めに。
+    const edge = k < 13 ? 'top' : k < 16 ? 'left' : 'right';
+    out.push({
+      // 左右の縁から出る粉は内へ寄りながら昇る(列の外は切れて見えないため)。
+      x: edge === 'top' ? Math.pow(rnd(), 1.4) * 96 : edge === 'left' ? 1 : 97,
+      y: edge === 'top' ? `${-4 - Math.round(rnd() * 10)}px` : `${10 + Math.round(rnd() * 70)}%`,
+      dx: edge === 'left' ? 4 + rnd() * 18 : edge === 'right' ? -(4 + rnd() * 18) : (rnd() < 0.5 ? -1 : 1) * (6 + rnd() * 30),
+      dy: -(46 + rnd() * 70),
+      lag: Math.round(rnd() * 280),
+      s: 3 + Math.round(rnd() * 3),
+      dur: 1100 + Math.round(rnd() * 900),
+    });
+  }
+  return out;
+};
+
+// 装備アイコン1個(画像が無ければドット絵アイコン=特殊は sparkles/通常は shield)。確認ダイアログ用。
 const EquipIcon: React.FC<{ defId: string }> = ({ defId }) => {
   const def = equipmentById(defId);
   const img = hasEquipIcon(defId) ? spritePath(equipIconName(defId)) : null;
   return (
-    <div className="w-16 h-16 rounded-none flex items-center justify-center text-3xl overflow-hidden bg-purple-400/10">
+    <div className="w-16 h-16 rounded-none flex items-center justify-center overflow-hidden bg-white/5 text-white/70">
       {img
         ? <img src={img} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
-        : (def?.special ? '🏯' : '🛡️')}
+        : <PixelIcon name={def?.special ? 'sparkles' : 'shield'} size={30} />}
     </div>
   );
 };
@@ -58,6 +104,7 @@ const UpgradeMenu: React.FC = () => {
   const ownedRunLevels = useGameStore(s => s.runBuild.map(k => s.player.skillLevels?.[k] ?? 1), shallow);
   const ownedRunCaps = useGameStore(s => s.runBuild.map(k => runSkillDisplayCap(k, s.player.skillLevels?.[k] ?? 1, s.ownedSkillLevels)), shallow);
   const straps = useGameStore(state => state.player.straps);
+  const playerLevel = useGameStore(state => state.player.level);
   const rerollsUsedThisRun = useGameStore(state => state.rerollsUsedThisRun);
   const vanishedCount = useGameStore(state => state.vanishedSkills.length);
   const rerollUpgradeOptions = useGameStore(state => state.rerollUpgradeOptions);
@@ -93,27 +140,141 @@ const UpgradeMenu: React.FC = () => {
     commit(upgrade);
   };
 
+  // ---- P3: カードの落ち方(research/UIUX_PROPOSAL.md P3)。見せる順だけを変える(抽選の中身は levelUpOrder が触らない)。----
+  const layout = levelUpLayout(upgradeOptions);
+  const cardCount = layout.cards.length;
+  const lastLandMs = cardCount > 0 ? dropLandMs(cardCount - 1, cardCount) : 0;
+  const embers = React.useMemo(() => makeEmbers(upgradeOptions.map(o => o.id).join('|')), [upgradeOptions]);
+  // 落ち始めの時刻。選択肢が入れ替わったら(リロール)最初から落とし直す。
+  const dropStartRef = React.useRef(0);
+  const landedRef = React.useRef(false);
+  const [landed, setLanded] = useState(false);
+  React.useLayoutEffect(() => {
+    dropStartRef.current = performance.now();
+    landedRef.current = false;
+    setLanded(false);
+  }, [upgradeOptions]);
+  // 押した時点で「まだ姿を見せていなかったカード」だけは、その1回の押しを着地に使う(見えていない物を選ばせない)。
+  // 見えているカード(落ちている途中を含む)は押した瞬間に選べる=操作を待たせない。
+  const pressRef = React.useRef<{ t: number; wasLanded: boolean } | null>(null);
+  const onPressCapture = () => {
+    const t = performance.now() - dropStartRef.current;
+    pressRef.current = { t, wasLanded: landedRef.current };
+    if (!landedRef.current && t < lastLandMs) { landedRef.current = true; setLanded(true); }
+  };
+  const cardWasHidden = (i: number): boolean => {
+    const p = pressRef.current;
+    pressRef.current = null; // 1回の押しにつき1回だけ見る(キー/パッドの決定=押しの記録なし=そのまま通す)
+    return p !== null && !p.wasLanded && p.t < dropStartMs(i, cardCount);
+  };
+  const dropVars = (i: number): React.CSSProperties => {
+    const heavy = isLastDrop(i, cardCount);
+    return {
+      '--lvup-delay': `${dropStartMs(i, cardCount)}ms`, '--lvup-land': `${dropLandMs(i, cardCount)}ms`,
+      '--lvup-dur': `${heavy ? DROP_LAST_MS : DROP_MS}ms`,
+      '--lvup-fall': `${-(heavy ? DROP_LAST_FALL_PX : DROP_FALL_PX)}px`,
+      '--lvup-sink': `${heavy ? 9 : 4}px`,
+    } as React.CSSProperties;
+  };
+  // 残りの枠は少ない時(1〜2)だけ言う。
+  const slotsLeft = (n: number) => (n >= 1 && n <= 2 ? `あと${n}枠` : '');
+
+  // カード1枚の中身(スキル/消費/装備・その他)。外枠と光は下の map が付ける。
+  const renderCardBody = (upgrade: UpgradeOption, i: number): React.ReactNode => {
+    const pick = (fn: () => void) => () => { if (cardWasHidden(i)) return; fn(); };
+    // SKILL_BUILD_REDESIGN.md §12-1/§17-1点3: スキル専業レベルアップ(新規取得 or Lv+1)。レア度+残枠+除外。
+    if (upgrade.type === 'skill' && upgrade.skillKey) {
+      const rarity = upgrade.skillRarity ?? 'normal';
+      const isNew = upgrade.skillCardKind === 'new';
+      // §23-2条件1: ノーマル枠は消費中バフの占有分も差し引く(枠会計をUIにも反映)。
+      const occupiedExtra = rarity === 'normal' ? activeConsumables : 0;
+      const remaining = Math.max(0, runBuildCapacity(rarity) - runBuild.filter(k => SKILLS[k].rarity === rarity).length - occupiedExtra);
+      const skillKey = upgrade.skillKey;
+      return (
+        <>
+          <button type="button" onClick={pick(() => handleSelect(upgrade))} className="lvup-pick">
+            <span className="lvup-well"><SkillGlyph skillKey={skillKey} size={44} sheet={skillSheet} /></span>
+            <span className="lvup-body">
+              <span className="lvup-nm"><span>{upgrade.name}</span>
+                <span className="lvup-rar">{isNew ? <>NEW<b>{RARITY_LABEL[rarity]}</b></> : `Lv${upgrade.skillFromLv}→${upgrade.skillLv}`}</span>
+              </span>
+              <span className="lvup-ds block">{upgrade.description}</span>
+              <span className="lvup-foot block">{isNew ? slotsLeft(remaining) : ''}</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            disabled={!canBanish}
+            onClick={pick(() => { if (canBanish) { playSfx('ui-select'); banishSkillFromRun(skillKey); } })}
+            className="lvup-ban"
+          >
+            <span>除外</span>
+          </button>
+        </>
+      );
+    }
+    // SKILL_BUILD_REDESIGN.md §23: 消費カード(取得で即発動・60秒・ノーマル枠を1つ占有)。除外の対象外。
+    if (upgrade.type === 'consumable' && upgrade.consumableKey) {
+      const remaining = Math.max(0, runBuildCapacity('normal') - runBuild.filter(k => SKILLS[k].rarity === 'normal').length - activeConsumables);
+      return (
+        <button type="button" onClick={pick(() => handleSelect(upgrade))} className="lvup-pick">
+          <span className="lvup-well"><PixelIcon name="clock" size={26} /></span>
+          <span className="lvup-body">
+            <span className="lvup-nm"><span>{upgrade.name}</span><span className="lvup-rar">60秒</span></span>
+            <span className="lvup-ds block">{upgrade.description}</span>
+            <span className="lvup-foot block">{slotsLeft(remaining)}</span>
+          </span>
+        </button>
+      );
+    }
+    // 装備=特殊(level0)は琥珀の縁(超レアと同じ段)、通常はランク表示。
+    const isSpecial = upgrade.type === 'equipment' && upgrade.level === 0;
+    const icon = upgrade.type === 'heal' ? '❤️'
+      : upgrade.type === 'stat' ? <PixelIcon name={upgrade.statKind === 'hp' ? 'heart' : 'swords'} size={22} />
+      : upgrade.type === 'knife' ? '🔪'
+      : upgrade.type === 'equipment' ? <PixelIcon name={isSpecial ? 'sparkles' : 'shield'} size={26} />
+      : upgrade.type === 'weapon' ? '⚔️' : '🔮';
+    // 装備に専用アイコン素材があれば実画像、無ければ絵文字フォールバック。
+    const iconImg = upgrade.type === 'equipment' && hasEquipIcon(upgrade.equipDefId)
+      ? spritePath(equipIconName(upgrade.equipDefId!))
+      : null;
+    const badge = upgrade.type === 'stat' && upgrade.statKind ? statBadge(upgrade.statKind)
+      : isSpecial ? '特殊'
+      : upgrade.type === 'equipment' ? `R${upgrade.level}`
+      : upgrade.type === 'knife' ? `T${upgrade.level}`
+      : upgrade.type === 'weapon' && upgrade.level > 1 ? `Lv${upgrade.level}`
+      : null;
+    return (
+      <button type="button" onClick={pick(() => handleSelect(upgrade))} className="lvup-pick">
+        <span className="lvup-well">
+          {iconImg
+            ? <img src={iconImg} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+            : icon}
+        </span>
+        <span className="lvup-body">
+          <span className="lvup-nm"><span>{upgrade.name}</span>{badge && <span className="lvup-rar">{badge}</span>}</span>
+          <span className="lvup-ds block">{upgrade.description}</span>
+        </span>
+      </button>
+    );
+  };
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center px-6 upgrade-menu-backdrop"
-      style={{ background: 'rgba(11, 11, 18, 0.55)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
-    >
-      <div className="glass-panel command-panel rounded-none w-full max-w-md overflow-hidden upgrade-menu-panel flex flex-col max-h-[calc(88dvh/var(--hud-s,1))]">
-        <div className="px-5 pt-5 pb-3 text-center shrink-0 relative">
-          <h2 className="text-xl font-semibold tracking-tight text-white">レベルアップ</h2>
-          <p className="text-xs text-white/60 mt-1">強化を選んでください</p>
+    <div className="lvup-backdrop">
+      <div className={`lvup-col ${landed ? 'is-landed' : ''}`} onPointerDownCapture={onPressCapture}>
+        <div className="lvup-head">
+          {/* 題字の横にレベルの数字を大きく(小見出し・飾り線は置かない)。 */}
+          <h2 className="lvup-title">レベルアップ<span className="lvup-lv tabular-nums" aria-label={`レベル${playerLevel}`}>{playerLevel}</span></h2>
           {/* 所持スクラップ(社長指示v0.25.3276)。リロール代の判断材料なので常時見せる。 */}
-          <span className="absolute right-4 top-5 text-[12px] text-white/75 tabular-nums inline-flex items-center gap-1">
-            <img src={spritePath('scrap-icon')} alt="" className="w-[14px] h-[14px] object-contain shrink-0" style={{ imageRendering: 'pixelated' }} draggable={false} />
+          <span className="lvup-scrap tabular-nums">
+            <img src={spritePath('scrap-icon')} alt="" className="w-[15px] h-[15px] object-contain shrink-0" style={{ imageRendering: 'pixelated' }} draggable={false} />
             {straps}
           </span>
         </div>
-        {/* 社長指示2026-11-12: 取得済みスキル(取得順)。各アイコン+「今のLv/この出撃で届く上限」。折り返して収める。
-            左端は選択肢カードの中身(px-3 + カードの p-3 = 24px)にそろえる=px-6。サブタイトルとの間は約8px(ヘッダの pb-3 から -mt-1)。
-            上限に達したスキルは今のLvを琥珀(ui-acc-text)。 */}
+        {/* 社長指示2026-11-12: 取得済みスキル(取得順)。各アイコン+「今のLv/この出撃で届く上限」。上限に達したら今のLvを琥珀。 */}
         {isSkillDraft && runBuild.length > 0 && (
-          <div className="px-6 pb-3 -mt-1 shrink-0">
-            <p className="text-[11px] text-white/55 tracking-[0.2em] mb-1.5">取得済み</p>
+          <div className="lvup-owned">
+            <p className="lvup-owned-cap">取得済み</p>
             <div className="flex flex-row flex-wrap gap-x-3 gap-y-1.5">
               {runBuild.map((k, i) => {
                 const lv = ownedRunLevels[i] ?? 1;
@@ -121,7 +282,7 @@ const UpgradeMenu: React.FC = () => {
                 const atMax = skillLevelTone(lv, cap) === 'max';
                 return (
                   <div key={k} className="inline-flex items-center gap-1" title={SKILLS[k].name}>
-                    <span className={`w-5 h-5 shrink-0 flex items-center justify-center text-[11px] leading-none rounded-md border ${SKILL_RARITY_RING[SKILLS[k].rarity]} bg-purple-400/10 overflow-hidden`}>
+                    <span className={`w-5 h-5 shrink-0 flex items-center justify-center text-[11px] leading-none border ${OWNED_RING[SKILLS[k].rarity]} bg-white/5 overflow-hidden`}>
                       <SkillGlyph skillKey={k} size={18} sheet={skillSheet} />
                     </span>
                     <span className="text-[11px] tabular-nums leading-none">
@@ -135,149 +296,52 @@ const UpgradeMenu: React.FC = () => {
           </div>
         )}
         {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開・選択肢の見逃し対策) */}
-        <NoBounceScroller className="px-3 pb-4 flex flex-col gap-2 overflow-y-auto overflow-x-hidden min-h-0 overscroll-contain touch-pan-y no-scrollbar">
-          {upgradeOptions.map(upgrade => {
-            // SKILL_BUILD_REDESIGN.md §12-1/§17-1点3: スキル専業レベルアップ(新規取得 or Lv+1)。
-            // 既存の装備/scrap/heal/knifeカードとは別レイアウト(レア度バッジ+残枠+除外ボタン)。
-            if (upgrade.type === 'skill' && upgrade.skillKey) {
-              const rarity = upgrade.skillRarity ?? 'normal';
-              const isNew = upgrade.skillCardKind === 'new';
-              // §23-2条件1: ノーマル枠は消費中バフの占有分も差し引く(枠会計をUIにも反映)。
-              const occupiedExtra = rarity === 'normal' ? activeConsumables : 0;
-              const remaining = Math.max(0, runBuildCapacity(rarity) - runBuild.filter(k => SKILLS[k].rarity === rarity).length - occupiedExtra);
-              const skillKey = upgrade.skillKey;
+        <NoBounceScroller moreColor="rgba(235, 232, 225, 0.55)" className="min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar">
+          {/* 重い1枚の着地で、列ごと一度だけ受けて沈む(--lvup-jolt=その着地の時刻)。 */}
+          <div className={`lvup-list ${cardCount > 1 ? 'lvup-list--jolt' : ''}`} style={{ '--lvup-jolt': `${lastLandMs}ms` } as React.CSSProperties}>
+            {layout.cards.map((upgrade, i) => {
+              const tier = levelUpTier(upgrade);
+              const flash = i === layout.flashIndex ? tier : null;
               return (
-                <div
-                  key={upgrade.id}
-                  className="flex items-start gap-2 rounded-none bg-purple-400/5 p-3 upgrade-menu-option"
-                >
-                  <button
-                    type="button"
-                    onClick={() => handleSelect(upgrade)}
-                    className="flex-1 min-w-0 text-left flex items-start gap-3 active:opacity-70"
-                  >
-                    <div className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-purple-400/10 overflow-hidden">
-                      <SkillGlyph skillKey={skillKey} size={36} sheet={skillSheet} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <h3 className="text-[15px] font-semibold text-white truncate">{upgrade.name}</h3>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${SKILL_RARITY_BADGE[rarity]}`}>
-                          {isNew ? `NEW・${RARITY_LABEL[rarity]}` : `Lv${upgrade.skillFromLv}→${upgrade.skillLv}`}
-                        </span>
-                      </div>
-                      <p className="text-[12px] text-white/70 leading-snug mt-0.5">{upgrade.description}</p>
-                      {isNew && (
-                        <p className="text-[10px] text-white/40 mt-1">{RARITY_LABEL[rarity]}枠 残り{remaining}</p>
-                      )}
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!canBanish}
-                    onClick={() => { if (canBanish) { playSfx('ui-select'); banishSkillFromRun(skillKey); } }}
-                    className="shrink-0 self-start text-[10px] px-2 py-1 rounded-none bg-rose-500/15 text-rose-200/80 active:bg-rose-500/30 disabled:opacity-30"
-                  >
-                    除外
-                  </button>
+                <div key={upgrade.id} className="lvup-slot" style={dropVars(i)}>
+                  <div className={`lvup-card lvup-card--${tier} lvup-drop`}>
+                    {flash === 'super' && <>
+                      <span className="lvup-fx lvup-bloom" />
+                      <span className="lvup-fx lvup-streak" />
+                      {embers.map((e, k) => (
+                        <span key={k} className="lvup-fx lvup-ember" style={{
+                          left: `${e.x}%`, top: e.y, width: e.s, height: e.s,
+                          '--e-dx': `${e.dx}px`, '--e-dy': `${e.dy}px`, '--e-lag': `${e.lag}ms`, '--e-dur': `${e.dur}ms`,
+                        } as React.CSSProperties} />
+                      ))}
+                    </>}
+                    {flash && <span className={`lvup-fx lvup-edge lvup-edge--${flash}`} />}
+                    {renderCardBody(upgrade, i)}
+                  </div>
                 </div>
               );
-            }
-            // SKILL_BUILD_REDESIGN.md §23: 消費カード(取得で即発動・60秒・ノーマル枠を1つ占有)。
-            // バニッシュ対象外(vanishedSkillsはSkillKey専用の仕組みなので混ぜない)。
-            if (upgrade.type === 'consumable' && upgrade.consumableKey) {
-              const remaining = Math.max(0, runBuildCapacity('normal') - runBuild.filter(k => SKILLS[k].rarity === 'normal').length - activeConsumables);
-              return (
-                <button
-                  key={upgrade.id}
-                  type="button"
-                  onClick={() => handleSelect(upgrade)}
-                  className="text-left p-3 rounded-none active:bg-amber-400/10 transition-colors flex items-start gap-3 upgrade-menu-option bg-amber-400/5"
-                >
-                  <div className="w-9 h-9 shrink-0 rounded-none flex items-center justify-center text-base bg-amber-400/10">⏱️</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <h3 className="text-[15px] font-semibold text-white truncate">{upgrade.name}</h3>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/25 text-amber-100 shrink-0">
-                        60秒
-                      </span>
-                    </div>
-                    <p className="text-[12px] text-white/70 leading-snug mt-0.5">{upgrade.description}</p>
-                    <p className="text-[10px] text-white/40 mt-1">{RARITY_LABEL.normal}枠 残り{remaining}</p>
-                  </div>
-                </button>
-              );
-            }
-            // 装備=特殊(level0)は金枠、通常はランク表示。scrap/heal は専用アイコン。
-            const isSpecial = upgrade.type === 'equipment' && upgrade.level === 0;
-            const icon = upgrade.type === 'scrap' ? '🔩' // 画像は下の iconImg 側で差し替える(絵文字はフォールバック)
-              : upgrade.type === 'heal' ? '❤️'
-              : upgrade.type === 'stat' ? <PixelIcon name={upgrade.statKind === 'hp' ? 'heart' : 'swords'} size={18} />
-              : upgrade.type === 'knife' ? '🔪'
-              : upgrade.type === 'equipment' ? (isSpecial ? '🏯' : '🛡️')
-              : upgrade.type === 'weapon' ? '⚔️' : '🔮';
-            // 装備に専用アイコン素材があれば実画像、無ければ絵文字フォールバック。
-            // v0.25.3509: スクラップ報酬のカードも専用アイコン(社長支給)。
-            const iconImg = upgrade.type === 'scrap'
-              ? spritePath('scrap-icon')
-              : upgrade.type === 'equipment' && hasEquipIcon(upgrade.equipDefId)
-                ? spritePath(equipIconName(upgrade.equipDefId!))
-                : null;
-            return (
-              <button
-                key={upgrade.id}
-                type="button"
-                onClick={() => handleSelect(upgrade)}
-                className={`text-left p-3 rounded-none active:bg-purple-400/10 transition-colors flex items-start gap-3 upgrade-menu-option ${upgrade.type === 'stat' ? 'bg-white/[0.04]' : isSpecial ? 'bg-amber-400/10' : 'bg-purple-400/5'}`}
-              >
-                <div className={`w-9 h-9 rounded-none flex items-center justify-center text-base overflow-hidden ${upgrade.type === 'stat' ? 'bg-white/10' : isSpecial ? 'bg-amber-400/20' : 'bg-purple-400/10'}`}>
-                  {iconImg
-                    ? <img src={iconImg} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
-                    : icon}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-[15px] font-semibold text-white truncate">{upgrade.name}</h3>
-                    {upgrade.type === 'stat' && upgrade.statKind ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-white/80 shrink-0">
-                        {statBadge(upgrade.statKind)}
-                      </span>
-                    ) : isSpecial ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/30 text-amber-100 shrink-0">
-                        特殊
-                      </span>
-                    ) : upgrade.type === 'equipment' ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-600/30 text-purple-100 shrink-0">
-                        R{upgrade.level}
-                      </span>
-                    ) : upgrade.type === 'knife' ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-500/30 text-rose-100 shrink-0">
-                        T{upgrade.level}
-                      </span>
-                    ) : upgrade.type === 'weapon' && upgrade.level > 1 ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-600/30 text-purple-100 shrink-0">
-                        Lv{upgrade.level}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="text-[12px] text-white/70 leading-snug mt-0.5">{upgrade.description}</p>
-                </div>
-              </button>
-            );
-          })}
+            })}
+          </div>
         </NoBounceScroller>
-        {/* SKILL_BUILD_REDESIGN.md §16-10 ★C: リロール(有料・全引き直し)。スキル専業画面でのみ出す
-            (装備3択=ボスドロップ宝箱にはリロール/バニッシュを作らない=既存仕様のまま)。 */}
-        {isSkillDraft && (
-          <div className="px-3 pb-4 shrink-0">
-            <button
-              type="button"
-              disabled={!canReroll}
-              onClick={() => { if (canReroll) { playSfx('ui-select'); rerollUpgradeOptions(); } }}
-              className="w-full py-2.5 rounded-none bg-purple-400/10 text-white/85 font-semibold text-[13px] tracking-wide active:bg-purple-400/20 disabled:opacity-30"
-            >
-              リロール({rerollCost} スクラップ)
-            </button>
+        {(layout.fillers.length > 0 || isSkillDraft) && (
+          <div className="lvup-tail" style={{ '--lvup-tail': `${Math.max(0, lastLandMs - 200)}ms` } as React.CSSProperties}>
+            {layout.fillers.map(upgrade => (
+              <button key={upgrade.id} type="button" onClick={() => handleSelect(upgrade)} className="lvup-filler">
+                <img src={spritePath('scrap-icon')} alt="" draggable={false} />
+                <span>{upgrade.name}</span>
+              </button>
+            ))}
+            {/* SKILL_BUILD_REDESIGN.md §16-10 ★C: リロール(有料・全引き直し)。スキル専業画面でのみ出す。 */}
+            {isSkillDraft && (
+              <button
+                type="button"
+                disabled={!canReroll}
+                onClick={() => { if (canReroll) { playSfx('ui-select'); rerollUpgradeOptions(); } }}
+                className="lvup-reroll"
+              >
+                リロール {rerollCost} スクラップ
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -302,7 +366,7 @@ const UpgradeMenu: React.FC = () => {
               <button
                 type="button"
                 onClick={() => { playSfx('ui-select'); setConfirm(null); }}
-                className="flex-1 py-2.5 rounded-none bg-purple-400/10 text-white/90 font-bold tracking-wide active:bg-purple-400/20"
+                className="flex-1 py-2.5 rounded-none bg-white/[0.06] text-white/90 font-bold tracking-wide active:bg-white/[0.12]"
               >
                 NO
               </button>

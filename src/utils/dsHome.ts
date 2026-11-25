@@ -28,6 +28,13 @@ export const nextOperationStage = (
   return mains[mains.length - 1] ?? null;
 };
 
+// 地図から直接出撃(research/UIUX_PROPOSAL.md P1): 作戦室の地図の NEXT の印・地図の下端の任務名・出撃の帯が指す任務。
+// 決め方は地図の NEXT の印と1本(DsStoryMap も同じ関数で印を出す): 「次の作戦地域」が未クリアの時だけ、それ。
+// 全部クリアした後など、次の作戦地域がクリア済み(=地図に NEXT が出ない)時は null
+// =出撃の帯は作戦地域の一覧へ行く形に戻る(地図の下端の任務名も出さない)。
+export const directSortieStage = (next: Stage | null, cleared: ReadonlySet<string>): Stage | null =>
+  next && !cleared.has(next.id) ? next : null;
+
 // ==== 等高線マップの擬似地形(モック原典のアルゴリズム・UI_OVERHAUL.md §3-2) ====
 // バッキングは632×300固定(監査A-5: モックの定数は632×300専用。箱に合わせて定数のまま縮めると
 // 等高線が消える)。半径・しきい値・stepは原典定数のまま。丘の中心座標だけstage idハッシュでシード。

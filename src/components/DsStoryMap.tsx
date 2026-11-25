@@ -16,6 +16,8 @@ import { BOSS_FACE_RIM, BOSS_FACE_RIM_PATROL, BossFaceDefs, BossHeadFace, bossFa
 import { layoutMapFaces, type MapBossFace } from '../utils/sortieMapBosses';
 import { estimateTagTextWidth, mapTagLeadLine, nextOpenMapFace, pickMapFace, placeMapSpotTag, type MapTagPlace } from '../utils/mapFaceTag';
 import type { Stage } from '../data/campaign';
+import { directSortieStage } from '../utils/dsHome';
+import { PixelIcon } from './PixelIcon';
 
 const DS_MAP_DISABLED = typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).get('dsmap') === '0';
@@ -53,10 +55,14 @@ const arc = (a: readonly [number, number], b: readonly [number, number], i: numb
   return `M${a[0]},${a[1]} Q${mx - dy * k},${my + dx * k} ${b[0]},${b[1]}`;
 };
 
-const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<string>; next: Stage | null; sectorLabel: string; bossFaces?: readonly MapBossFace[] }> = ({ stages, cleared, next, sectorLabel, bossFaces = NO_FACES }) => {
+// 地図から直接出撃(research/UIUX_PROPOSAL.md P1): onNext=NEXT の印を押した時(出撃の帯と同じ任務詳細へ)、
+// onOthers=地図の下端の「ほかの地域」(作戦地域の一覧)。どちらも無ければ今までどおり眺めるだけの地図。
+const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<string>; next: Stage | null; sectorLabel: string; bossFaces?: readonly MapBossFace[]; onNext?: () => void; onOthers?: () => void }> = ({ stages, cleared, next, sectorLabel, bossFaces = NO_FACES, onNext, onOthers }) => {
   const clipBase = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   // 次の出撃先がクリア済み(全部クリアした後に最終ステージへ戻る等)なら次の目標は描かない(検収品質監査 A1)。
-  const nextId = next && !cleared.has(next.id) ? next.id : null;
+  // 決め方は出撃の帯と1本(utils/dsHome.directSortieStage)。
+  const dest = directSortieStage(next, cleared);
+  const nextId = dest ? dest.id : null;
   const trail = useMemo(() => storyTrail(stages, cleared, nextId), [stages, cleared, nextId]);
   const names = useMemo(() => Object.fromEntries(stages.map(s => [s.id, s.locationTitle])), [stages]);
   // ボスの顔の列: 点の下に最大4つ横一列(徘徊が先頭)+「+N」。近い地点の列・行った場所の四角・今いる所・NEXT の菱形とは重ねない(上下へ逃がす)。
@@ -167,6 +173,28 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
           ? <rect key={i} x={p[0] - 2.2 * U} y={p[1] - 2.2 * U} width={4.4 * U} height={4.4 * U} fill="rgba(7,6,13,0.6)" stroke={AMBER} strokeWidth={1.3} vectorEffect="non-scaling-stroke" />
           : <rect key={i} x={p[0] - 2.2 * U} y={p[1] - 2.2 * U} width={4.4 * U} height={4.4 * U} fill={AMBER} />))}
         {/* 次の目標=琥珀明の中抜きの菱形(ゆっくり加減速して明滅)+小さな「NEXT」(行き先の名は左上の SECTOR にある=重ねて言わない・#1/#6)。 */}
+        {/* 地図から直接出撃(P1): NEXT の印を細い光る輪で囲み、地図の下端(任務名の帯)へ細い線を降ろす。
+            輪は開いた時に外から縮んで止まり(減速)、以後は菱形と同じ加減速でゆっくり息をする。線は上から下へ伸びて止まる。 */}
+        {nxt && !sameSpot && dest && (
+          <g pointerEvents="none">
+            <defs>
+              <linearGradient id={`${clipBase}-lead`} gradientUnits="userSpaceOnUse" x1={0} y1={nxt[1]} x2={0} y2={OPS_MAP_H}>
+                <stop offset="0" stopColor={AMBER} stopOpacity={0.85} />
+                <stop offset="1" stopColor={AMBER} stopOpacity={0.08} />
+              </linearGradient>
+            </defs>
+            <line className="ds-map-next-lead" x1={nxt[0]} y1={nxt[1] + 4.4 * U} x2={nxt[0]} y2={OPS_MAP_H}
+              stroke={`url(#${clipBase}-lead)`} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+            <g className="ds-map-next-ring">
+              <circle cx={nxt[0]} cy={nxt[1]} r={7.5 * U} fill="none" stroke={AMBER} strokeWidth={4} vectorEffect="non-scaling-stroke" strokeOpacity={0.12}>
+                <animate attributeName="stroke-opacity" values="0.16;0.04;0.16" dur="2.6s" repeatCount="indefinite" {...ease} />
+              </circle>
+              <circle cx={nxt[0]} cy={nxt[1]} r={7.5 * U} fill="none" stroke={AMBER} strokeWidth={1} vectorEffect="non-scaling-stroke" strokeOpacity={0.6}>
+                <animate attributeName="stroke-opacity" values="0.7;0.3;0.7" dur="2.6s" repeatCount="indefinite" {...ease} />
+              </circle>
+            </g>
+          </g>
+        )}
         {nxt && !sameSpot && (
           <g>
             <rect x={nxt[0] - 2.8 * U} y={nxt[1] - 2.8 * U} width={5.6 * U} height={5.6 * U} fill="rgba(7,6,13,0.7)" stroke={AMBER_HI}
@@ -246,6 +274,12 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
           });
         })()}
         {/* 当たり(見た目の丸より大きい・PC はマウスの指の形)。判定は onMapClick が近い方で決める=この四角は形だけ。 */}
+        {/* NEXT の印を押す=出撃の帯と同じ任務詳細へ(P1)。当たりは見た目より大きく(縦横 約32px 四方)。顔の当たりと重なる所は顔が勝つ(顔の当たりを後に描く)。 */}
+        {onNext && nxt && !sameSpot && dest && (
+          <rect x={nxt[0] - HIT_HALF} y={nxt[1] - HIT_HALF} width={2 * HIT_HALF} height={2 * HIT_HALF} fill="transparent" style={{ cursor: 'pointer' }}
+            aria-label={`${dest.locationTitle}へ出撃`} role="button"
+            onClick={e => { e.stopPropagation(); onNext(); }} />
+        )}
         {faceHits.map(h => (
           <rect key={`hit-${h.key}`} x={h.x - HIT_HALF} y={h.y - HIT_HALF} width={2 * HIT_HALF} height={2 * HIT_HALF} fill="transparent" style={{ cursor: 'pointer' }} />
         ))}
@@ -273,6 +307,19 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
         })}
       </svg>
       <span className="ds-map-tag">SECTOR — {sectorLabel}</span>
+      {/* 地図の下端に次の行き先(P1): 場所の名(明朝)だけ。任務名は出撃の帯が持つ(同じ名を2度言わない)。右に「ほかの地域」
+          (作戦地域の一覧=別の画面へ行く言葉なので、除外の下線ではなく生成りの字+小さな山形)。次が無い時は出さない
+          (出撃の帯が一覧へ行く形に戻る)。帯は地図の操作(顔・NEXT)を邪魔しない=押せるのは「ほかの地域」だけ。 */}
+      {dest && (
+        <div className="ds-map-dest" aria-label="次の行き先">
+          <span className="ds-map-dest-pl">{dest.locationTitle}</span>
+          {onOthers && (
+            <button type="button" data-nav-id="ops-others" data-testid="ops-others" className="ds-map-dest-ot" onClick={onOthers}>
+              ほかの地域<PixelIcon name="chevron-right" size={10} />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

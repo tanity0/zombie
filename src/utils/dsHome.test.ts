@@ -5,7 +5,7 @@ import { emptyStoryFlags } from '../data/progress';
 import {
   CONTOUR_BAND_EPS, CONTOUR_BAND_MIN_SAMPLES, CONTOUR_H, CONTOUR_HILL_INNER, CONTOUR_STEP,
   CONTOUR_THRESHOLDS, CONTOUR_W,
-  contourField, contourHills, nextOperationStage,
+  contourField, contourHills, directSortieStage, nextOperationStage,
 } from './dsHome';
 
 const MAIN_IDS = STAGES.filter(s => s.kind === 'main' && !s.hidden).map(s => s.id);
@@ -56,6 +56,33 @@ describe('nextOperationStage(§3-1-2b)', () => {
         }
       }
     }
+  });
+});
+
+describe('directSortieStage(UIUX_PROPOSAL P1 地図から直接出撃)', () => {
+  it('新規プレイヤーは地図の NEXT と同じ stage-tutorial へ直行', () => {
+    const cleared = new Set<string>();
+    expect(directSortieStage(nextOperationStage(STAGES, cleared, emptyStoryFlags()), cleared)?.id).toBe('stage-tutorial');
+  });
+
+  it('途中の進行では「次の作戦地域」と常に同じ(新しい決め方を作らない)', () => {
+    for (let n = 0; n < MAIN_IDS.length; n++) {
+      const cleared = new Set(MAIN_IDS.slice(0, n));
+      const next = nextOperationStage(STAGES, cleared, emptyStoryFlags());
+      expect(directSortieStage(next, cleared)).toBe(next);
+    }
+  });
+
+  it('EX が次なら EX へ直行', () => {
+    const flags = { ...emptyStoryFlags(), medicineUsed: true };
+    const cleared = new Set(MAIN_IDS);
+    expect(directSortieStage(nextOperationStage(STAGES, cleared, flags), cleared)?.id).toBe('stage-ex1');
+  });
+
+  it('全部クリア(次の作戦地域がクリア済み)なら null=一覧へ戻す', () => {
+    const cleared = new Set(MAIN_IDS);
+    expect(directSortieStage(nextOperationStage(STAGES, cleared, emptyStoryFlags()), cleared)).toBeNull();
+    expect(directSortieStage(null, cleared)).toBeNull();
   });
 });
 

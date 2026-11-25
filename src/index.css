@@ -219,22 +219,6 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
     border-image: linear-gradient(90deg, rgba(168,85,247,0.22) 0%, transparent 70%) 1;
     opacity: 0.55;
   }
-  .upgrade-menu-backdrop {
-    animation: upgrade-backdrop-in 220ms ease-out backwards;
-  }
-  .upgrade-menu-panel {
-    transform-origin: 50% 54%;
-    animation: upgrade-panel-in 360ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
-  }
-  .upgrade-menu-option {
-    animation: upgrade-option-in 420ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
-  }
-  .upgrade-menu-option:nth-child(2) {
-    animation-delay: 35ms;
-  }
-  .upgrade-menu-option:nth-child(3) {
-    animation-delay: 70ms;
-  }
   .combo-count-pop {
     transform-origin: 50% 82%;
     animation: combo-count-pop 360ms cubic-bezier(0.16, 1.55, 0.3, 1) both;
@@ -340,35 +324,6 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
 @keyframes upgrade-backdrop-in {
   from { opacity: 0; }
   to { opacity: 1; }
-}
-
-@keyframes upgrade-panel-in {
-  0% {
-    opacity: 0;
-    transform: translateY(14px) scale(0.94);
-    filter: brightness(1.8);
-  }
-  62% {
-    opacity: 1;
-    transform: translateY(-2px) scale(1.015);
-    filter: brightness(1.16);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-    filter: brightness(1);
-  }
-}
-
-@keyframes upgrade-option-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
 }
 
 @keyframes combo-count-pop {
@@ -945,6 +900,133 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   letter-spacing: 0.3em;
   color: var(--ds-dim);
 }
+/* 地図から直接出撃(research/UIUX_PROPOSAL.md P1): 地図の下端に次の任務を重ねる帯。押せるのは「ほかの地域」だけ
+   (帯そのものは地図の顔・NEXT の操作を通す)。開いた時に下から少し浮いて止まる(減速)。 */
+.ds-map-dest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+  padding: 18px 12px 8px 14px;
+  background: linear-gradient(180deg, rgba(6, 6, 10, 0), rgba(6, 6, 10, 0.74) 52%, rgba(6, 6, 10, 0.9));
+  pointer-events: none;
+  animation: ds-map-dest-in 520ms cubic-bezier(0.2, 0.7, 0.25, 1) 380ms both;
+}
+@keyframes ds-map-dest-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.ds-map-dest-pl {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--uf-head), serif;
+  font-weight: 600;
+  font-size: 18px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  color: #f3eee4;
+  font-feature-settings: "palt" 1;
+}
+.ds-map-dest-ot {
+  flex: none;
+  margin-left: auto;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--uf-jp), sans-serif;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: rgba(233, 223, 200, 0.78); /* 生成り(除外の灰とは別の、行き先の言葉の色) */
+  padding: 12px 0 1px 12px; /* 押せる所を上と左へ広げる(見た目は文字と山形だけ) */
+  margin-top: -12px;
+  transition: color 160ms cubic-bezier(.2,.7,.3,1);
+}
+.ds-map-dest-ot svg { opacity: 0.7; transition: transform 200ms cubic-bezier(.2,.7,.3,1); }
+.ds-map-dest-ot:hover, .ds-map-dest-ot:active { color: #f3eee4; }
+.ds-map-dest-ot:hover svg, .ds-map-dest-ot:active svg { transform: translateX(2px); }
+/* NEXT の輪: 外から縮んで止まる。線: 菱形から下へ伸びて止まる。 */
+.ds-map-next-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ds-map-next-ring-in 640ms cubic-bezier(0.2, 0.7, 0.25, 1) 260ms both;
+}
+@keyframes ds-map-next-ring-in { from { opacity: 0; transform: scale(1.7); } to { opacity: 1; transform: scale(1); } }
+.ds-map-next-lead {
+  transform-box: fill-box;
+  transform-origin: top;
+  animation: ds-map-next-lead-in 560ms cubic-bezier(0.3, 0, 0.2, 1) 420ms both;
+}
+@keyframes ds-map-next-lead-in { from { opacity: 0; transform: scaleY(0); } to { opacity: 1; transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .ds-map-dest, .ds-map-next-ring, .ds-map-next-lead { animation: none; }
+}
+
+/* 資料室「記録映像」(research/UIUX_PROPOSAL.md P7): 資料室の頭の1行の帯。フィルムの1コマ+「記録 001」+題(明朝)。 */
+.archive-film {
+  padding: 8px 6px 9px 16px; /* 左は下の章の見出しと揃える */
+  border-bottom: 1px solid rgba(235, 232, 225, 0.08);
+}
+/* フィルムの1コマ: 黒い帯の上下に送り穴、中に画。 */
+.archive-film-th {
+  position: relative;
+  flex: none;
+  width: 84px;
+  height: 52px;
+  padding: 7px 0;
+  background:
+    repeating-linear-gradient(90deg, rgba(235, 232, 225, 0.32) 0 4px, transparent 4px 9px) 3px 2px / calc(100% - 6px) 3px no-repeat,
+    repeating-linear-gradient(90deg, rgba(235, 232, 225, 0.32) 0 4px, transparent 4px 9px) 3px calc(100% - 2px) / calc(100% - 6px) 3px no-repeat,
+    #050407;
+  transition: filter 200ms cubic-bezier(.2,.7,.3,1);
+  filter: brightness(0.86) sepia(0.18);
+}
+.archive-film:hover .archive-film-th, .archive-film:active .archive-film-th { filter: brightness(1.05) sepia(0.08); }
+.archive-film-frame { position: relative; display: block; width: 100%; height: 100%; overflow: hidden; background: #0b0a10; }
+.archive-film-frame img { position: absolute; image-rendering: pixelated; pointer-events: none; }
+.archive-film-bg { top: -40%; left: 50%; height: 160%; width: auto; max-width: none; transform: translateX(-46%); }
+.archive-film-hero { left: 26px; bottom: 1px; height: 32px; width: auto; }
+/* 走査線(1px おき)+周辺の落ち込み=記録映像の質感 */
+.archive-film-scan {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.34) 0 1px, transparent 1px 2px),
+    radial-gradient(ellipse 75% 80% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55));
+}
+.archive-film-stamp {
+  position: absolute; right: 3px; bottom: 2px;
+  font-family: "Rajdhani", var(--uf-jp), sans-serif; font-weight: 600; font-size: 8px; line-height: 1; letter-spacing: 0.06em;
+  color: rgba(255, 236, 196, 0.82); text-shadow: 0 1px 0 #000;
+}
+.archive-film-no {
+  flex: none;
+  font-family: "Rajdhani", var(--uf-jp), sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 0.14em;
+  color: rgba(235, 232, 225, 0.42);
+}
+.archive-film-t {
+  font-family: var(--uf-head), serif;
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: 0.06em;
+  color: rgba(243, 238, 228, 0.95);
+  font-feature-settings: "palt" 1;
+}
+
+/* 一時停止の「音 あり/なし」の行(research/UIUX_PROPOSAL.md P2): 左のメニュー列の下に、ボタンより一段軽い文字の行で並べる。 */
+.pause-sound-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 18px;
+  margin-top: 2px; padding: 10px 14px 9px;
+  font-size: 13px; letter-spacing: 0.12em; color: rgba(235, 232, 225, 0.62);
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  transition: color 160ms cubic-bezier(.2,.7,.3,1);
+}
+.pause-sound-row > span:last-child { color: rgba(243, 238, 228, 0.9); transition: color 200ms cubic-bezier(.2,.7,.3,1); }
+.pause-sound-row > span.is-off { color: rgba(235, 232, 225, 0.38); }
+.pause-sound-row:hover, .pause-sound-row:active { color: rgba(235, 232, 225, 0.85); }
+
 /* 地図のボスの顔(DsStoryMap・research/SORTIE_MAP_BOSS_ICONS.md §5): 開いた時に1回だけ、下から少し浮き上がって
    止まる(加速→減速)。常時の動きは無い。 */
 .ds-map-face {
@@ -1042,7 +1124,24 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
 .ds-sortie .ds-sortie-t1 {
   font-weight: 600;
   font-size: 19px;
-  letter-spacing: 0.42em;
+  letter-spacing: 0.2em;
+  margin-right: -0.2em; /* 字間の最後の1つぶんを戻す(仕切りとの間を字間で広げない) */
+}
+@media (orientation: landscape) { .ds-sortie .ds-sortie-t1 { letter-spacing: 0.26em; margin-right: -0.26em; } }
+/* 出撃の帯に次の任務(research/UIUX_PROPOSAL.md P1): 「出撃」の右に細い仕切り+任務名(場所の名は地図の下端)。長い名は末尾を省く。 */
+.ds-sortie-dest {
+  flex: 1;
+  min-width: 0;
+  margin: 0 10px 0 14px;
+  padding-left: 14px;
+  border-left: 1px solid rgba(42, 25, 6, 0.3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--uf-jp), sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.06em;
 }
 .ds-sortie::before {
   content: "";

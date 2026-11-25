@@ -111,7 +111,8 @@ import { useAudioMuted } from '../hooks/useAudioMuted';
 // 作戦室DS2化(UI_OVERHAUL.md §3 バッチ①): ホームの計器化+作戦地図(v0.25.5096〜 架空列島+ストーリーの軌跡=DsStoryMap。旧=等高線の飾り)。旧ホームは?dshome=0で丸ごと復帰。
 import DsStoryMap from './DsStoryMap'; // 作戦室の地図=架空列島+ストーリーの軌跡(THEONE_ROUND2 §2-5)
 import NoBounceScroller from './NoBounceScroller';
-import { nextOperationStage } from '../utils/dsHome';
+import { directSortieStage, nextOperationStage } from '../utils/dsHome';
+import { OPENING_HERO, OPENING_WALK_BG_BLUR } from '../data/openingWalkAssets';
 import { reportTestScreen, type TestScreenId } from '../utils/testBridge';
 import { STAGE1_FIRST_LOOP_ENABLED, stage1GuardianLockShown, stage1RunCompanion, STAGE1_GUARDIAN_LOCK_NOTE } from '../utils/stage1FirstLoop'; // STAGE1_FIRST_LOOP.md §7.8(守護霊のマスト化)
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
@@ -219,6 +220,8 @@ interface MissionSelectProps {
   onStartPractice: (slot: PracticeSlot, characterClass: string) => void;
   onStartGame: (characterClass: string) => void;
   onStartBenchmark: (characterClass: string) => void;
+  /** 資料室の「記録映像」からオープニングを見返す(research/UIUX_PROPOSAL.md P7)。App がオープニングを上に重ねる。 */
+  onReplayOpening?: () => void;
 }
 
 // キャラ選択チップ: 選択中のクラスだけ、ドット絵をゲーム内と同じ「5コマ×ピンポン」歩きモーションで再生
@@ -317,8 +320,9 @@ type Screen =
   | { name: 'ghost' }
   | { name: 'bossRush' }
   | { name: 'stageSelect' }
-  | { name: 'missionDetail'; stageId: string; mission?: SelectedMission }
-  | { name: 'characterSelect'; stageId: string; mission?: SelectedMission }
+  // from='home': 作戦室の地図/出撃の帯から直行した(research/UIUX_PROPOSAL.md P1)=任務詳細の「戻る」は作戦室へ(一覧を経由していない)。
+  | { name: 'missionDetail'; stageId: string; mission?: SelectedMission; from?: 'home' }
+  | { name: 'characterSelect'; stageId: string; mission?: SelectedMission; from?: 'home' }
   | { name: 'loadout' };
 
 // 作戦室DS2化(UI_OVERHAUL.md §3-1-1・監査B-5): `?dshome=0` で旧ホーム(renderHome)へ丸ごと復帰。
@@ -578,7 +582,7 @@ const sortieableStages = (cleared: Set<string>): { mains: typeof STAGES; exs: ty
 // 全ステージを出撃できる扱いにし、徘徊の枠の抽選を毎回「枠が開く」で引き直す。製品挙動は不変(パラメータ無しなら何もしない)。
 const MAP_BOSS_DEMO = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mapbossdemo') === '1';
 
-const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark, initialScreen, onStartPractice }) => {
+const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark, initialScreen, onStartPractice, onReplayOpening }) => {
   // 小窓のポータル先: PC の拡大の包みの中(包みの外=body)。fixed の基準も包み=ゲームの枠になる(段3-2 品質監査 A-2)。
   const portalRoot = useHudPortalRoot();
   const playDevice = usePlayDevice(); // 資料室の操作記録も PC は今手にある物の言葉で(§11-6)
@@ -899,6 +903,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // DAYの掟(監査A-8): 次の作戦地域が timeLabel を持つ(=日時を意図的にぼかすステージ)場合は
     // DAY項目ごと省く(数字で暴露しない)。
     const showDay = !!nextStage && !nextStage.timeLabel;
+    // 地図から直接出撃(research/UIUX_PROPOSAL.md P1): 地図の NEXT の印と同じ任務(directSortieStage)。
+    // 出撃の帯・NEXT の印を押すと任務詳細へ直行(作戦地域の一覧を経由しない)。次が無い(全部クリア等)時は null
+    // =帯は今までどおり一覧へ行く(地図の下端の任務名も出ない)。
+    const sortieDest = directSortieStage(nextStage, cleared);
+    const goSortieDest = sortieDest
+      ? () => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: sortieDest.id, from: 'home' }); }
+      : null;
     // 新しい行は自分で playSfx('ui-select') を鳴らす(監査A-2: HubButton内蔵の音が消えるため)。
     // goStageSelect / goArchive / goGhost / goBossRush は自前発音ハンドラ=ここでは鳴らさない(二重防止)。
     const dsRow = (
@@ -935,14 +946,17 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 <span>DAY {nextStage.day}</span>
               </div>}
               <div className="menu-item-in" style={{ animationDelay: '50ms' }}>
-                <DsStoryMap stages={STAGES} cleared={cleared} next={nextStage} sectorLabel={nextStage?.locationTitle ?? '—'} bossFaces={mapFaces} />
+                <DsStoryMap stages={STAGES} cleared={cleared} next={nextStage} sectorLabel={nextStage?.locationTitle ?? '—'} bossFaces={mapFaces}
+                  onNext={goSortieDest ?? undefined} onOthers={goStageSelect} />
               </div>
-              {/* 出撃=アンバーの主役行。遷移先は作戦地域の一覧(現行の「作戦準備」と同一)。
+              {/* 出撃=アンバーの主役行。次の任務があれば帯に任務名を載せ、押すと任務詳細へ直行(P1)。無ければ作戦地域の一覧(従来どおり)。
                   サブ行「作戦地域: 〇〇」は廃止(社長指示2026-08-29「いらないかも。その上の図にあるから」
                   =マップのSECTORタグが同じ情報を持つため重複)。 */}
-              <button type="button" data-testid="ops-sortie" data-nav-default data-nav-cursor="dark" className="ds-sortie menu-item-in" style={{ animationDelay: '320ms' }} onClick={goStageSelect}>
-                <span className="ds-sortie-t1 block">出 撃</span>
-                <PixelIcon name="chevron-right" size={18} />
+              <button type="button" data-testid="ops-sortie" data-nav-default data-nav-cursor="dark" className="ds-sortie menu-item-in" style={{ animationDelay: '320ms' }} onClick={goSortieDest ?? goStageSelect}>
+                <span className="ds-sortie-t1 block shrink-0">出撃</span>
+                {/* 帯は任務名だけ(場所の名は地図の下端が持つ=同じ名を2度言わない)。 */}
+                {sortieDest && <span className="ds-sortie-dest">{sortieDest.main.title}</span>}
+                <PixelIcon name="chevron-right" size={18} className="shrink-0" />
               </button>
             </div>
             {/* 行リストだけがスクロール領域(通常は全部収まる=スクロール発生なし)。縁バウンスも殺す。
@@ -1101,7 +1115,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 特殊条件(specialConditions・あれば) → 特殊支給装備(specialEquipment・あれば)。
   // 開発コード(M1等)はここでも表示しない。
   // ====================================================================
-  const renderMissionDetail = (stageId: string, missionKind: SelectedMission = 'main') => {
+  const renderMissionDetail = (stageId: string, missionKind: SelectedMission = 'main', from?: 'home') => {
     const stage = getStage(stageId);
     if (!stage) return null;
     // 洋館［SUB］再訪(統合正本9章): stage-6と同じ親ノード情報の下に REVISIT_MISSION を表示する。
@@ -1128,7 +1142,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         <div className="sticky top-0 z-30 h-0">
           <button
             type="button"
-            onClick={() => { playSfx('ui-back'); setScreen({ name: 'stageSelect' }); }}
+            onClick={() => { playSfx('ui-back'); setScreen(from === 'home' ? { name: 'home' } : { name: 'stageSelect' }); }}
             className="absolute flex h-9 items-center gap-1 px-2.5 text-white/85"
             // 本文の上に重なっても読めるよう、暗い下地(絵の上でも沈む色)。
             style={{ top: 'max(env(safe-area-inset-top), 12px)', left: 'max(env(safe-area-inset-left), 12px)', background: 'rgba(8,7,14,0.72)' }}
@@ -1237,7 +1251,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                         <div className="text-[11px] text-white/55">{REVISIT_MISSION.summary}</div>
                         {revisitState === 'available' && (
                           <Ff7rButton
-                            onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId, mission: 'revisit' }); }}
+                            onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId, mission: 'revisit', from }); }}
                             className="mt-2 w-full"
                             fade="both"
                             paddingY="0.55rem"
@@ -1263,7 +1277,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         >
           {/* primaryの幅は文字幅+余白に揃える(監査A-2の琥珀ボタンと同型)。w-fullは付けない。 */}
           <Ff7rButton
-            onClick={() => { playSfx('ui-select'); setFreeMode(false); setScreen({ name: 'characterSelect', stageId, mission: missionKind }); }}
+            onClick={() => { playSfx('ui-select'); setFreeMode(false); setScreen({ name: 'characterSelect', stageId, mission: missionKind, from }); }}
             testId="briefing-jobselect"
             navDefault
             emphasis
@@ -1281,7 +1295,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // キャラクター選択
   // ====================================================================
   // 参考レイアウト(社長提供): 全画面=選択中キャラの立ち絵 / 左下=情報集約 / 最下段=キャラ選択。
-  const renderCharacterSelect = (stageId: string, missionKind: SelectedMission = 'main') => {
+  const renderCharacterSelect = (stageId: string, missionKind: SelectedMission = 'main', from?: 'home') => {
     // 前ランからの持ち越し装備(localStorage)。ラン開始時に該当スロットへ自動装備される。
     const carriedDef = equipmentById(getCarriedEquipId());
     const carriedIcon = carriedDef && hasEquipIcon(carriedDef.id) ? spritePath(equipIconName(carriedDef.id)) : null;
@@ -1312,7 +1326,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
         {/* 戻る(左上) */}
         <button
-          onClick={() => { playSfx('ui-back'); setGhostPickerOpen(false); setScreen({ name: 'missionDetail', stageId, mission: missionKind }); }}
+          onClick={() => { playSfx('ui-back'); setGhostPickerOpen(false); setScreen({ name: 'missionDetail', stageId, mission: missionKind, from }); }}
           className="absolute z-20 h-9 px-2.5 rounded-none bg-black/45 text-white/85 flex items-center gap-1 active:bg-black/65"
           style={{ top: 'max(env(safe-area-inset-top), 12px)', left: 'max(env(safe-area-inset-left), 12px)' }}
           aria-label="戻る" data-nav-back
@@ -1864,6 +1878,22 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <>
         <Header title="資料室" subtitle="記録・変異体資料" onBack={goHomeFromArchive} />
         <div className="menu-stagger p-3 space-y-3">
+          {/* 記録映像(research/UIUX_PROPOSAL.md P7): 起動のたびには流さなくなったオープニングを、ここから見返す。
+              1本しか無いので章(Section)にはせず、資料室の頭に1行の帯で置く。チュートリアルの「操作記録」とは別物
+              (既読の記録も別=utils/openingReplay)。 */}
+          {onReplayOpening && (
+            <button
+              type="button"
+              data-testid="archive-opening"
+              onClick={() => { playSfx('ui-select'); onReplayOpening(); }}
+              className="archive-film flex w-full items-center gap-3 rounded-none text-left"
+            >
+              <OpeningThumb />
+              <span className="archive-film-no tabular-nums">記録 001</span>
+              <span className="archive-film-t min-w-0 flex-1 truncate">オープニング</span>
+              <PixelIcon name="chevron-right" size={12} className="shrink-0 text-white/40" />
+            </button>
+          )}
           {/* 操作記録(社長指示v0.25.2252): 一度見たチュートリアルを読み返す。「どう狙うんだっけ」を
               探しに来る場所なので、物語の記録より先に置く。1件も見ていない間はセクションごと出さない。 */}
           {(seenTutorials.size > 0 || TUTORIALS.some(t => t.archiveAlways)) && (
@@ -2147,13 +2177,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <MuteButton />
     </div>
   );
-  if (screen.name === 'characterSelect') return <>{renderCharacterSelect(screen.stageId, screen.mission ?? 'main')}{floatingMute}</>;
+  if (screen.name === 'characterSelect') return <>{renderCharacterSelect(screen.stageId, screen.mission ?? 'main', screen.from)}{floatingMute}</>;
   return (
     <Shell loadout={screen.name === 'loadout'} fill={screen.name === 'missionDetail'} dsHome={(!DS_HOME_DISABLED && screen.name === 'home') || (DS_LOADOUT_PREVIEW && screen.name === 'loadout')} testScreen={testScreenIdFor(screen.name)}
       navScreen={NAV_DECLARED_SCREENS.has(screen.name) ? screen.name : undefined}>
       {screen.name === 'home' && (DS_HOME_DISABLED ? renderHome() : renderDsHome())}
       {screen.name === 'stageSelect' && renderStageSelect()}
-      {screen.name === 'missionDetail' && renderMissionDetail(screen.stageId, screen.mission ?? 'main')}
+      {screen.name === 'missionDetail' && renderMissionDetail(screen.stageId, screen.mission ?? 'main', screen.from)}
       {screen.name === 'loadout' && (DS_LOADOUT_PREVIEW ? <div className="ds-loadout h-full flex flex-col">{renderLoadout()}</div> : renderLoadout())}
       {screen.name === 'options' && renderOptions()}
       {screen.name === 'weaponDev' && renderWeaponDev()}
@@ -2194,6 +2224,19 @@ const HubButton: React.FC<{ icon: React.ReactNode; label: string; desc: string; 
     </span>
     <PixelIcon name="chevron-right" size={16} className="relative z-10 text-purple-300/45" />
   </button>
+);
+
+// 資料室「記録映像」の小さな画(P7): オープニングの楽屋通路の一場面(ぼかした通路+主人公)を、フィルムの1コマとして見せる
+// (上下の送り穴・走査線・隅のコマ番号)。新しい画像は足さない(public/opening の素材をそのまま使う)。
+const OpeningThumb: React.FC = () => (
+  <span className="archive-film-th" aria-hidden="true">
+    <span className="archive-film-frame">
+      <img className="archive-film-bg" src={OPENING_WALK_BG_BLUR} alt="" loading="lazy" />
+      <img className="archive-film-hero" src={OPENING_HERO} alt="" loading="lazy" />
+      <span className="archive-film-scan" />
+      <span className="archive-film-stamp tabular-nums">00:00:14</span>
+    </span>
+  </span>
 );
 
 const Section: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (

@@ -9,6 +9,7 @@ import Game from './components/Game';
 import MissionSelect from './components/MissionSelect';
 import TitleScreen from './components/TitleScreen';
 import { titleIntroWanted } from './utils/titleIntro';
+import { loadOpeningSeen, markOpeningSeen, shouldPlayOpeningOnLaunch } from './utils/openingReplay';
 import GameOverScreen from './components/GameOverScreen';
 import EndingScreen from './components/EndingScreen';
 import ExEndingScreen from './components/ExEndingScreen';
@@ -717,7 +718,12 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
           // メニューBGMはオープニング終了後(onDone)に開始=OP中のアリーナ音源と被らない。
           // OK時にBGMを必ず停止(v0.25.2072): プレビュー(?opening=…)を一周した後はonDoneでBGMが
           // 開始済みのため、OK→オープニング再再生でBGMが鳴りっぱなしになっていた(社長報告)。
-          onNoticeOk={() => { setBgmScene('off'); unlockDanceAudio(); primeMenuBgm(); setShowOpening(true); }}
+          // ★P7(research/UIUX_PROPOSAL.md・社長承認): 一度見終えた(スキップ含む)端末では流さない=START から作戦室へ直行。
+          // その時は onStart と同じ(音声解禁+タイトル曲のまま)。初めての端末は今どおり流す。見返すのは資料室の「記録映像」。
+          onNoticeOk={() => {
+            if (!shouldPlayOpeningOnLaunch(loadOpeningSeen())) { unlockDanceAudio(); setBgmScene('menu'); return; }
+            setBgmScene('off'); unlockDanceAudio(); primeMenuBgm(); setShowOpening(true);
+          }}
           waitForAssets={ensurePreload}                                // 同意後の本物ローディング(完了待ち)
           onDone={() => setGameState('menu')}                          // 暗転し切ったらセレクトへ
           // タイトル曲は色が乗った直後から(社長指示2026-10-27)。ブラウザがタップ前の音を止めている時は、最初に触れた瞬間に鳴る
@@ -734,6 +740,8 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
           onStartPractice={startPractice}
           onStartGame={(characterClass) => startGame(characterClass, false)}
           onStartBenchmark={(characterClass) => startGame(characterClass, true)}
+          // 資料室の「記録映像」からオープニングを見返す(P7)。起動時と同じ入り方(曲を止めて音声解禁)・明けたらメニューの曲へ(下の onDone)。
+          onReplayOpening={() => { setBgmScene('off'); unlockDanceAudio(); primeMenuBgm(); setShowOpening(true); }}
         /></HudScale>
       )}
 
@@ -810,7 +818,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
           作戦室は MissionSelect、ゲーム中は一時停止メニューが自分で置く。 */}
       {!bare && muteSpot && <div className={`pointer-events-none fixed z-[9995] ${!showOpening && gameState === 'title' ? MUTE_TITLE_CLASS : ''}`} style={muteSpot}><MuteButton /></div>}
 
-      {!bare && showOpening && <HudScale z={9990} interactive><OpeningScene onDone={() => { setShowOpening(false); if (gameState !== 'title' || !titleIntroWanted()) setBgmScene('menu'); /* 描き上げが控えていれば、曲はタイトルの色が乗った瞬間に鳴る */ }} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} /></HudScale>}
+      {!bare && showOpening && <HudScale z={9990} interactive><OpeningScene onDone={() => { markOpeningSeen(); /* P7: 最後まで/スキップで既読 */ setShowOpening(false); if (gameState !== 'title' || !titleIntroWanted()) setBgmScene('menu'); /* 描き上げが控えていれば、曲はタイトルの色が乗った瞬間に鳴る */ }} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} /></HudScale>}
 
       {/* ステージ6(洋館)通路プレビュー(?corridor=1)。タイトル等の上に全画面。 */}
       {!bare && corridorPreview && <MansionCorridorPreview />}

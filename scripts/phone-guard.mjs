@@ -69,7 +69,10 @@ for (const [dev, vp] of DEVICES) {
   await shot(p, dev, 'home');
   // オープニングの後にもう1度「画面を押して進む」場面が挟まる版では、ホームがまだ出ていない(出撃の札が無い)=もう1度押して待つ(2026-11-11)。
   if (!(await p.getByTestId('ops-sortie').count())) { await p.mouse.click(vp.width / 2, vp.height * 0.5); await p.waitForTimeout(8000); await shot(p, dev, 'home'); }
-  await p.getByTestId('ops-sortie').click(); await p.waitForTimeout(3000);
+  // 作戦地域の一覧: 出撃の帯は次の任務の詳細へ直行する(research/UIUX_PROPOSAL.md P1)ので、地図の下端の「ほかの地域」から入る。
+  // 次の任務が無い(全部クリア等)時だけは帯が一覧へ行く=帯を押す。
+  const others = p.getByTestId('ops-others');
+  await ((await others.count()) ? others.first() : p.getByTestId('ops-sortie')).click(); await p.waitForTimeout(3000);
   await shot(p, dev, 'stages');
   await p.locator('.command-stage-card').nth(1).click(); await p.waitForTimeout(3000);
   await shot(p, dev, 'briefing');
