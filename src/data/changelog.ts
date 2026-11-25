@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5814', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5813', items: ['ポーズ画面の音の切り替えもミュートのONとOFFに。オプションと同じ向き', 'リザルトのお金を大文字のGで表示'] },
   { version: '0.25.5812', items: ['資料室の区分とリザルトの振り返りで、城ボスを大型変異体と呼ぶようにした'] },
   { version: '0.25.5811', items: ['ゲーム内容の変更はありません'] },

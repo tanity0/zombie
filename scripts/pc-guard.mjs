@@ -28,7 +28,10 @@ const BASE = process.env.PC_GUARD_URL ?? 'http://localhost:5199/zombie/';
 const DIR = process.env.PC_GUARD_DIR ?? '/tmp/pc-guard';
 const OUT = path.join(DIR, MODE === 'baseline' ? 'baseline' : 'current');
 const RATIO_TOL = Number(process.env.PC_GUARD_RATIO_TOL ?? 0.06);
-const PROJ = process.env.PC_GUARD_PROJ === '1'; // ?proj=1 の回(既定の回は今のまま)
+// v0.25.5814: 新方式(遠近)がゲームの既定になった(v0.25.5798)ので、比べ方も新方式の回を既定にした。
+// 旧の回(北 −120px の2体で比べる)は遠近の縮みが画面の縦横比で変わり、スマホ比 0.8 前後で必ず NG になる=測り方の誤り。
+// 旧の見え方を確かめる時だけ PC_GUARD_PROJ=0。
+const PROJ = process.env.PC_GUARD_PROJ !== '0';
 const FAR_TOL = Number(process.env.PC_GUARD_FAR_TOL ?? 0.03);
 fs.mkdirSync(OUT, { recursive: true });
 
