@@ -5869,6 +5869,11 @@ export class PixiScene {
   private retArrowGfx = new Graphics();
   private areaCrossGfx = new Graphics(); // ★B1 v3 区域の境界の線(地面に常在・世界座標・groundLayer=足の下)
   private areaTapeTexts: Text[] = [];     // 線に沿って焼き付く英字(侵入禁止テープ)。プール=最大12枚。text は輪が変わった時だけ書き換わる(Text の再描画はその時だけ)
+  /** ?proj=1: 境界テープの文字を床に寝かせて投影する格子メッシュの元(層へは付けない控えの Sprite・areaTapeTexts と同じ添字)。 */
+  private areaTapeProjSprites: Sprite[] = [];
+  /** ?proj=1: 札の文字ごとの焼き素材(区域名と KEEP OUT の数だけ=最大6枚程度・作ったら使い回す)。 */
+  private areaTapeProjTex = new Map<string, Texture>();
+  private areaTapeProjFr: ProjFrame4 = { cx: 0, cy: 0, w: 0, h: 0, rot: 0 };
   private areaTapeVis: number[] = [];     // 輪ごとの見え(0..1)。距離から目標を出し、指数追従で寄せる(慣性=パッと出ない)
   private areaTapeLastNow = 0;            // 前フレームの実時刻(見えの追従の dt 用)
   private areaFlashKey = 0;               // 今の一拍(areaCrossFx.at)
@@ -50347,7 +50352,7 @@ export class PixiScene {
     if (fx && this.areaFlashKey !== fx.at) { this.areaFlashKey = fx.at; this.areaFlashAngle = pAng; }
     const easeOut = (u: number) => 1 - (1 - u) * (1 - u) * (1 - u);
     const color = 0xffb340; // UI の琥珀(--menu-accent)
-    const tpf = this.projFrame; // ?proj=1(段階4・J11): テープの帯と線は頂点ごとに投影・地平線フェードは投影後のY(板の文字は今のまま)
+    const tpf = this.projFrame; // ?proj=1(段階4・J11): テープの帯と線は頂点ごとに投影・地平線フェードは投影後のY(板の文字も床へ寝かせて投影=projAreaTapeText)
     const hz = (r: number, ang: number) => (tpf ? this.projLooseFade(r * Math.cos(ang), r * Math.sin(ang), false) : this.horizonActorAlpha(r * Math.sin(ang)));
     const hash01 = (n: number) => { const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); }; // 板/区間ごとの決定的な擦れ
     g.clear(); g.visible = true;
@@ -50419,10 +50424,39 @@ export class PixiScene {
         t.scale.set(TAPE_TEXT_WORLD_PX / 26); // ★社長「世界固定で」: 文字は地面の物=世界で13px(引けば小さく・寄れば大きく)。旧=画面10px固定
         const wear = 0.65 + 0.27 * hash01(i * 7919 + kk); // 板ごとの擦れ(0.65〜0.92)
         t.alpha = ((kk & 1) === 0 ? wear : wear * 0.8) * (1 + 0.25 * flashAt(ang)) * vis * hk;
+        t.renderable = true;
+        // ?proj=1: 文字は床に焼き付いた物=線と同じく床へ投影して寝かせる(格子メッシュ・位置も向きも大きさも投影後の線に沿う)。
+        if (this.projFrame) this.projAreaTapeText(t, used);
         used++;
       }
     }
     for (let i = used; i < this.areaTapeTexts.length; i++) this.areaTapeTexts[i].visible = false;
+  }
+
+  /**
+   * ?proj=1: 境界テープの札(Text・world の位置/回転/大きさで置いた物)を、その world の四角のまま床へ寝かせて頂点ごとに投影する
+   * (線=projArcLine と同じ写像=文字が線から外れない)。素材は札の文字ごとに1回だけ RenderTexture へ焼く。Text 本体は描かない。
+   */
+  private projAreaTapeText(t: Text, idx: number): void {
+    if (!this.projFrame || !this.renderer) return;
+    let tex = this.areaTapeProjTex.get(t.text);
+    if (!tex) {
+      // 焼き直しの唯一の口(renderBake)で RenderTexture へ1回だけ焼く(canvasText.getTexture は描き板を使い回すため、2枚目で1枚目が上書きされる)
+      const src = new Text({ text: t.text, style: t.style, resolution: 2 });
+      const rt = RenderTexture.create({ width: Math.max(1, Math.ceil(src.width)), height: Math.max(1, Math.ceil(src.height)), resolution: 2 });
+      this.renderBake(src, rt, true);
+      src.destroy();
+      tex = rt;
+      this.areaTapeProjTex.set(t.text, tex);
+    }
+    let sp = this.areaTapeProjSprites[idx];
+    if (!sp) { sp = new Sprite(); this.areaTapeProjSprites[idx] = sp; }
+    sp.texture = tex;
+    const fr = this.areaTapeProjFr;
+    fr.cx = t.position.x; fr.cy = t.position.y;
+    fr.w = tex.width * Math.abs(t.scale.x); fr.h = tex.height * Math.abs(t.scale.y);
+    fr.rot = t.rotation;
+    if (this.projFrame && this.projSpriteMesh(sp, 'areaTapeText', PROJ_GRID_SHARP, 1, undefined, fr, t)) t.renderable = false;
   }
 
   private syncRetaliationArrow(player: Player, now: number): void {
