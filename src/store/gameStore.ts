@@ -3,7 +3,7 @@ import { projSeen, projSeenPlayer, projViewCam, projViewPlayer, projGameRowHalfW
 import { PROJ_GAME_RECYCLE, PROJ_GAME_SNAP } from '../utils/projFlag';
 import type { ProjRecycleGhost, ProjBulletGhost } from '../utils/projSpawnFade';
 import { projAimFrameFrom, projHeadScreenDist2, type ProjAimSnapInput } from '../utils/projAimSnap';
-import { queueProjBulletGhost, projFadeHidden, resetProjFadeState, projLabAimHidden, projLabAimable, projLabSpawnOutsideX } from '../utils/projSpawnFade'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
+import { queueProjBulletGhost, projFadeHidden, resetProjFadeState, projLabAimHidden, projLabAimable, projLabSpawnOutsideX, projLabCrawlerPushH } from '../utils/projSpawnFade'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import { canTogglePause } from '../utils/pauseGate';
 import type { RainArrow } from '../utils/arrowRain';
 import { tickSpawnWalk, resetSpawnWalk } from '../utils/spawnWalkBias';
@@ -536,7 +536,7 @@ import {
 } from '../world/playableArea';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { labIdolSpotForDoc, labIdolShopSpot, type LabIdolSpot } from '../world/labIdolSpot';
-import { createLabCrawler, crawlerRect, crawlerSolid, LAB_ESCAPE_BANNER_TEXT, type LabCrawler } from '../world/labCrawler'; // ステージ2の這う塊(壁のように通れない・第2版で HP あり=research/LAB_CRAWLER.md §4)
+import { createLabCrawler, crawlerPushRect, crawlerSolid, LAB_ESCAPE_BANNER_TEXT, type LabCrawler } from '../world/labCrawler'; // ステージ2の這う塊(壁のように通れない・第2版で HP あり=research/LAB_CRAWLER.md §4)
 import { crawlerDamageNumberAt, crawlerDmgNumberViewX, isCrawlerDamageNumber, crawlerCenterFxPoint } from '../utils/labCrawlerProxy'; // 変異塊のダメージの数字・手応えの絵の位置(描画だけ)
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL, HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { counterMasterRefund } from '../utils/counterMaster'; // カウンターマスター(成立時の待ち時間の前倒し)
@@ -12698,7 +12698,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ステージ2の這う塊も壁と同じく塞ぐ(すり抜けられない)。昇天中は判定なし=通れる。
           const lc = state.labCrawler;
           if (lc && crawlerSolid(lc)) {
-            const cr = crawlerRect(lc);
+            // 塞ぐ箱=押し返しの箱(?proj=1 の研究所だけ奥行きを描く大きさの頭打ちに合わせて縮める・それ以外は crawlerRect と同じ箱)。
+            const cr = crawlerPushRect(lc, projLabCrawlerPushH(projLabViewCam(), lc.x, lc.y));
             // 箱が大きい(幅約740)ので、左上ではなく箱そのものとの近さで拾う。
             if (newX < cr.x + cr.width + 200 && newX + player.width > cr.x - 200 && newY < cr.y + cr.height + 200 && newY + player.height > cr.y - 200) blockers.push(cr);
           }

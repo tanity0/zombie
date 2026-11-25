@@ -286,6 +286,16 @@ export interface LabCrawler {
 
 /** 塊の当たり判定(足元基準)。 */
 export const crawlerRect = (c: Pick<LabCrawler, 'x' | 'y'>): Rect => footRect(c.x, c.y, CRAWLER_HIT_W, CRAWLER_HIT_H);
+/**
+ * 塊がプレイヤーを押し返す・プレイヤーの移動を塞ぐ箱(足元基準)。下辺(足元)と幅は crawlerRect と同じで、奥行き(高さ)だけ pushH に縮める
+ * (`?proj=1` の研究所で、描く大きさを頭打ちした塊の絵に主人公が少し重なってから押し返されるように=utils/projSpawnFade.projLabCrawlerPushH)。
+ * pushH は 1..CRAWLER_HIT_H に収める。省略・CRAWLER_HIT_H なら crawlerRect と同じ箱。取り込み・叩きつけ・被弾の箱は crawlerRect のまま。
+ */
+export const crawlerPushRect = (c: Pick<LabCrawler, 'x' | 'y'>, pushH: number = CRAWLER_HIT_H): Rect =>
+  footRect(c.x, c.y, CRAWLER_HIT_W, crawlerPushHClamp(pushH));
+/** 押し返しの箱の奥行きを 1..CRAWLER_HIT_H に収める(NaN は CRAWLER_HIT_H)。 */
+export const crawlerPushHClamp = (pushH: number): number =>
+  Number.isFinite(pushH) ? Math.max(1, Math.min(CRAWLER_HIT_H, pushH)) : CRAWLER_HIT_H;
 /** 箱の中心。 */
 export const crawlerCenter = (c: Pick<LabCrawler, 'x' | 'y'>): { x: number; y: number } => ({ x: c.x, y: c.y - CRAWLER_HIT_H / 2 });
 /** 箱の縁からプレイヤーの箱までの隙間(重なっていれば0)。 */
@@ -466,6 +476,11 @@ export interface CrawlerStepInput {
   /** 起きるのを待たせる(別のアテンションが出ている間など)。条件を満たしたまま次のステップで起きる。 */
   wakeBlocked?: boolean;
   /**
+   * プレイヤーを押し返す箱の奥行き(crawlerPushRect)。省略=CRAWLER_HIT_H(今の箱そのまま)。`?proj=1` の研究所だけ呼び出し側が
+   * utils/projSpawnFade.projLabCrawlerPushH で縮めて渡す。塊自身の移動(帯の中に収める)・取り込み・叩きつけには使わない。
+   */
+  playerPushH?: number;
+  /**
    * 追跡中の横の最高速度(px/秒)=プレイヤーの今の移動の速さ×CRAWLER_CHASE_SPEED_MULT(呼び出し側が掛けて渡す)。
    * `c.chasing` の時だけ使う。未指定なら突進の速さ。
    */
@@ -619,10 +634,13 @@ export const stepLabCrawler = (c: LabCrawler, inp: CrawlerStepInput): CrawlerSte
     // 壁・プロップでは止まらない(肉が乗り越える)。帯の中には収める。
     const r2 = clampRectToPlayableArea(from.x + vx * dt, from.y + vy * dt, CRAWLER_HIT_W, CRAWLER_HIT_H, inp.playable);
     let moved: Rect = { ...from, x: r2.x, y: r2.y };
+    // プレイヤーとの押し合いは押し返しの箱(下辺=足元は同じ・奥行きだけ playerPushH)。省略時は moved そのもの=今のまま。
+    const trim = CRAWLER_HIT_H - crawlerPushHClamp(inp.playerPushH ?? CRAWLER_HIT_H);
+    const pushBox = (b: Rect): Rect => (trim > 0 ? { ...b, y: b.y + trim, height: b.height - trim } : b);
     // 昇天中は判定が無い=プレイヤーとは関わらない。
-    if (crawlerSolid(n) && rectsOverlap(moved, inp.player)) {
+    if (crawlerSolid(n) && rectsOverlap(pushBox(moved), inp.player)) {
       // 這ってきた塊がプレイヤーに重なった: プレイヤーを押し出す。押し先が壁・帯の外なら塊の方を止める。
-      const pushed = resolveAabb(inp.player, [moved]);
+      const pushed = resolveAabb(inp.player, [pushBox(moved)]);
       const pRect: Rect = { ...inp.player, x: pushed.x, y: pushed.y };
       const pOk = isRectInPlayableArea(pRect.x, pRect.y, pRect.width, pRect.height, inp.playable)
         && !inp.obstacles.some(o => rectsOverlap(pRect, o))
@@ -631,9 +649,9 @@ export const stepLabCrawler = (c: LabCrawler, inp: CrawlerStepInput): CrawlerSte
         playerPush = { dx: pushed.x - inp.player.x, dy: pushed.y - inp.player.y };
       } else {
         // 塊を止める: プレイヤーの箱から押し戻す。押し戻した先が壁・帯の外なら、動く前の位置に留まる。
-        const back = resolveAabb(moved, [inp.player]);
-        const backRect: Rect = { ...moved, x: back.x, y: back.y };
-        const backOk = isRectInPlayableArea(back.x, back.y, CRAWLER_HIT_W, CRAWLER_HIT_H, inp.playable);
+        const back = resolveAabb(pushBox(moved), [inp.player]);
+        const backRect: Rect = { ...moved, x: back.x, y: back.y - trim };
+        const backOk = isRectInPlayableArea(backRect.x, backRect.y, CRAWLER_HIT_W, CRAWLER_HIT_H, inp.playable);
         moved = backOk ? backRect : from;
         pressing = n.state === 'move';
       }

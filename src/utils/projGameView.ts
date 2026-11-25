@@ -425,7 +425,7 @@ export interface ProjGameViews { cam: ProjGameView; player: ProjGameView; scene:
 let current: ProjGameViews | null = null;
 /**
  * 研究所のゲームの画面は別の置き場に持つ(品質監査 D1): getProjGameView / projViewCam / projSeen 等の段階6の入口(約50か所)は
- * 研究所では今まで通り null(=無効)のまま。研究所で使うのは projLabViewCam を読む所(湧きの外側・回収・照準の門・塊/生け贄の端)だけ。
+ * 研究所では今まで通り null(=無効)のまま。研究所で使うのは projLabViewCam を読む所(湧きの外側・回収・照準の門・塊/生け贄が見えたか・塊の押し返しの高さ)だけ。
  */
 let currentLab: ProjGameViews | null = null;
 const place = (v: ProjGameViews | null): void => {
@@ -509,7 +509,7 @@ export const rebuildProjGameViews = (i: ProjGameViewsInput, farH: number): ProjG
 export const projViewCam = (): ProjGameView | null => (PROJ_GAME_VIEW && current ? current.cam : null);
 
 /**
- * 研究所だけの「見えている」の入口(研究所の湧き・回収・照準の対象選び・塊/生け贄の画面の端): 研究所のゲームの画面がある時だけ gfCam。
+ * 研究所だけの「見えている」の入口(研究所の湧き・回収・照準の対象選び・塊/生け贄が見えたか・塊の押し返しの高さ): 研究所のゲームの画面がある時だけ gfCam。
  * 屋外・`?proj=0`・場面の外は null(呼ぶ所は今の式のまま)。
  */
 export const projLabViewCam = (): ProjGameView | null => (PROJ_GAME_VIEW && currentLab ? currentLab.cam : null);
@@ -543,19 +543,6 @@ export const projGameSideEdgeX = (
     if (best === null || (side > 0 ? x > best : x < best)) best = x;
   }
   return best;
-};
-
-/**
- * 研究所の「見えている端までの距離」(塊の出てくる位置・生け贄の据え置き・隠す位置): 今の距離 legacy と、投影の画面で
- * 行 [yTop, yBot] のどこかが描かれている横の端までの距離(主人公の中心 pcx から side の向き)の遠い方。gv が無い=legacy のまま。
- */
-export const projLabEdgeDist = (
-  gv: ProjGameView | null, legacy: number, side: 1 | -1, pcx: number, yTop: number, yBot: number,
-): number => {
-  if (!gv) return legacy;
-  const e = projGameSideEdgeX(gv, side, yTop, yBot);
-  if (e === null) return legacy;
-  return Math.max(legacy, side > 0 ? e - pcx : pcx - e);
 };
 
 /**

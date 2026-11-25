@@ -4,7 +4,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
   projGameSceneFor, rebuildProjGameViews, setProjGameView, getProjGameView, projLabViewCam, projFrameBase, projGroundPersp,
   projCamDownFracFor, projGameViewContains, projGameBoxOnScreen, projGameRowOutsideFootX, projGameSideEdgeX, projGameRowAlpha,
-  projLabEdgeDist, labFarBackdropHeightFor, getProjLabGameView, LAB_FAR_BOUNDARY_YR, PROJ_GAME_OVERSCAN, PROJ_GAME_DRAWN_ALPHA,
+  labFarBackdropHeightFor, getProjLabGameView, LAB_FAR_BOUNDARY_YR, PROJ_GAME_OVERSCAN, PROJ_GAME_DRAWN_ALPHA,
   type ProjGameViewsInput, type ProjGameView,
 } from './projGameView';
 import { horizonForestFootLocalY, HORIZON_FOREST_UP_BY_STAGE } from './horizonForestLine';
@@ -167,12 +167,6 @@ describe('研究所の照準の対象・回収の止め・画面の端', () => {
     expect(projLabAimHidden(enemy(-15, 120), 0, gv)).toBe(false);
     expect(projLabAimHidden(enemy(-15, 400), 0, gv)).toBe(true);
     expect(projLabAimHidden(enemy(-15, 400), 0, null)).toBe(false);
-  });
-  it('projLabEdgeDist: 画面が無ければ今の距離・あれば今の距離以上', () => {
-    expect(projLabEdgeDist(null, 202, 1, 0, -200, 200)).toBe(202);
-    const gv = labView(PHONE, 0, 150);
-    expect(projLabEdgeDist(gv, 202, 1, 0, -200, 200)).toBeGreaterThanOrEqual(202);
-    expect(projLabEdgeDist(gv, 202, -1, 0, -200, 200)).toBeGreaterThanOrEqual(202);
   });
   it('変異塊は描画と同じ頭打ちの大きさで測る(上限前の s 倍だと、南の手前で画面に入っていない塊を「描かれている」と誤る)', () => {
     const gv = labView(PHONE, 0, -186); // 主人公が帯の北の縁・塊は南

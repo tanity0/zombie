@@ -16,10 +16,10 @@ import {
   projGhostFadeAlpha, projFadeHidden, projGameRowOutsideFootX, projLabViewCam, PROJ_GHOST_FADE_MS, PROJ_BULLET_GHOST_FADE_MS,
   type ProjGameView, type ProjGameViews,
 } from './projGameView';
-import { makeProjFrame } from './perspectiveProjection';
+import { makeProjFrame, makeProjPoint, projectInto, projWorldYOfLocal } from './perspectiveProjection';
 import { holdMinZoom, RETIRE_ZOOM_HOLD_MS, type ZoomHold } from './spawnRefill';
 import { projSpawnFadeApplies, projCrawlerScale } from './projActorPass';
-import { CRAWLER_ART_BODY_DISPLAY_W, CRAWLER_HIT_H, CRAWLER_BODY_FOOT_UP_PX } from '../world/labCrawler';
+import { CRAWLER_ART_BODY_DISPLAY_W, CRAWLER_HIT_H, CRAWLER_BODY_FOOT_UP_PX, crawlerPushHClamp } from '../world/labCrawler';
 
 // ---- フェードの判定の画面(コ1) ----
 
@@ -98,6 +98,35 @@ export const projLabSpawnOutsideX = (
  */
 export const projLabCrawlerDrawn = (gv: ProjGameView, footX: number, footY: number, minAlpha = PROJ_FADE_DRAWN_ALPHA): boolean =>
   projGameBoxOnScreen(gv, footX, footY - CRAWLER_BODY_FOOT_UP_PX, CRAWLER_ART_BODY_DISPLAY_W, CRAWLER_HIT_H, 0, minAlpha, projCrawlerScale);
+
+/**
+ * 研究所の変異塊の押し返し: 主人公の足元が「描かれた塊の絵の上端」よりどれだけ内側(手前)まで入ってから押し返されるか(表示座標の縦 px・
+ * ズーム前)。絵の上端=足元から CRAWLER_HIT_H × 描く倍率 上(projLabCrawlerDrawn と同じ背丈)。歩きのコマは上端の下に透明な行があり、
+ * 肉の山の頂は上端より約 50px 下(画で実測: スマホ 430×932)。主人公を北から歩かせて塊に当て、止まった所を撮って決めた
+ * (40=まだ山の頂の手前で止まる/80=山の頂に足が触れる程度/110=脚が肉に隠れる/95=両側の山が足の高さを越え、少し重なって止まる)。
+ */
+export const PROJ_CRAWLER_PUSH_SINK_PX = 95;
+const pushScratch = makeProjPoint();
+/**
+ * `?proj=1` の研究所: 塊がプレイヤーを押し返す・移動を塞ぐ箱の奥行き(world/labCrawler.crawlerPushRect の pushH)。
+ * 描画は塊の大きさを頭打ちしている(projCrawlerScale: 投影の s → k)ので、絵の上端が判定の上辺より手前(南)に来て、描かれた体の縁より
+ * 前で押し返されていた。頭打ちが効いている時(k < s)だけ、判定の上辺を「絵の上端から PROJ_CRAWLER_PUSH_SINK_PX だけ手前の行」まで
+ * 下げる(投影の縦の対応で world の行へ戻す=画面で測った縁に合わせる):
+ *   pushH = footY − worldY(ℓ(footY) − CRAWLER_HIT_H × k + PROJ_CRAWLER_PUSH_SINK_PX)   (1..CRAWLER_HIT_H に収める)
+ * gv が無い(`?proj=0`・屋外・洋館)・足元が定義域の外・頭打ちが効いていない(k ≥ s)は CRAWLER_HIT_H(=今の箱そのまま)。
+ * 取り込み・叩きつけ(赤い予告)・被弾の箱は変えない。
+ */
+export const projLabCrawlerPushH = (gv: ProjGameView | null, footX: number, footY: number): number => {
+  if (!gv) return CRAWLER_HIT_H;
+  const f = gv.f;
+  const p = projectInto(f, footX, footY, pushScratch);
+  if (!p.inDomain || !(p.s > 0)) return CRAWLER_HIT_H;
+  const k = projCrawlerScale(p.s);
+  if (!(k < p.s)) return CRAWLER_HIT_H;
+  const lTop = p.l - CRAWLER_HIT_H * k + PROJ_CRAWLER_PUSH_SINK_PX;
+  if (!(lTop > 0)) return CRAWLER_HIT_H; // 縁が地平線の先=押し返しは今の箱のまま
+  return crawlerPushHClamp(footY - projWorldYOfLocal(f, lTop));
+};
 
 /** 敵の絵の箱が研究所の画面に描かれているか(変異塊の代理=型 'lab-crawler' は塊の絵の箱・頭打ちの倍率で測る)。 */
 export const projLabEnemyDrawn = (gv: ProjGameView, e: Enemy): boolean =>

@@ -19,8 +19,8 @@ import {
 } from '../world/labCrawler';
 import { CRAWLER_PROXY_ID, crawlerProxyDamage, crawlerProxyWanted, syncCrawlerProxyInEnemies } from './labCrawlerProxy';
 import { zoomedViewportBounds } from './cameraZoom';
-import { projLabViewCam, projLabEdgeDist } from './projGameView';
-import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
+import { projLabViewCam } from './projGameView';
+import { projLabCrawlerPushH } from './projSpawnFade';
 import { GAME_SPEED } from '../config/gameSpeed';
 import type { LabBrokenObstacle } from '../world/labWalls';
 import type { Rect } from '../world/obstacles';
@@ -321,8 +321,7 @@ export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCraw
   if (!died && st.labEscapeAt > 0 && !c.chasing && st.attention === null) {
     const dir = c.goalX >= 0 ? 1 : -1;
     const vb = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
-    // 見えている端までの距離(ズーム込み)。?proj=1 は投影の画面で帯のどこかが描かれている横の端までの遠い方(北の行は横に広く見える)。
-    const viewEdge = projLabEdgeDist(projLabViewCam(), dir > 0 ? vb.right - pcx : pcx - vb.left, dir > 0 ? 1 : -1, pcx, -LAB_CORRIDOR_Y_LIMIT_PX, LAB_CORRIDOR_Y_LIMIT_PX);
+    const viewEdge = dir > 0 ? vb.right - pcx : pcx - vb.left; // 見えている端までの距離(ズーム込み・?proj=1 でも同じ=社長「戻して」2026-11-25)
     const nc = crawlerChaseSpawn(c, pRect, viewEdge, playable, gameTime);
     if (nc) { c = nc; chaseAt = crawlerCenter(nc); }
   }
@@ -350,6 +349,8 @@ export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCraw
     res = stepLabCrawler(c, {
       gameTime, dt: dtSec, player: pRect, targets, obstacles, playable, playerBlockers, wakeBlocked: st.attention !== null,
       chaseSpeed: crawlerChaseSpeedFor(p.walkMoveSpeed ?? p.effectiveMoveSpeed ?? p.speed),
+      // ?proj=1 の研究所だけ: 押し返しの奥行きを描く大きさの頭打ちに合わせて縮める(gv が無い=CRAWLER_HIT_H=今のまま)。
+      playerPushH: projLabCrawlerPushH(projLabViewCam(), c.x, c.y),
     });
   }
   const nc = labBaitAfterStep(res.next, gameTime, dtSec); // 叩き潰しの登場: 這い込みの位置と速さの上書き・二段目のスロー・場面の終わり
