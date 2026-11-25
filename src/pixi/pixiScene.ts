@@ -569,7 +569,8 @@ import {
   RHYTHM_JUST_BURST_MS, RHYTHM_JUST_RING_MAX_SCALE, RHYTHM_JUST_FLICK_TRAVEL,
   RHYTHM_JUST_CYCLE_COLORS,
 } from '../config/shijin';
-import { treesInRegion, TREE_CELL, treeHash, trunkRect } from '../world/trees';
+import { treesInRegion, TREE_CELL, treeHash, trunkRect, type TreeInstance } from '../world/trees';
+import { glenClearingFadeK, glenClearingFadingTrees, isGlenClearedTree, isGlenClearedTorch } from '../world/glenClearing'; // ステージ7 グレンの前の空き地(消える物のフェード)
 import { stepObstacleAlpha } from '../utils/obstacleAlpha';
 import { placementTreeSkin, artOverlapRatio } from '../world/propPlacement';
 import { TREE_VISUAL_SCALE, TREE_BOX_W, TREE_BOX_H, LEAFY_TREE_SKINS, STAGE3_TREE_SKIN, STAGE4_TREE_SKIN, leafyTreeDef, treeArtAnchor, treeArtSize, TREE_ART_MAX, TORCH_VISUAL_W, TORCH_VISUAL_H, CAMPFIRE_VISUAL_W, CAMPFIRE_VISUAL_H } from '../world/artRects';
@@ -17194,6 +17195,13 @@ export class PixiScene {
       camera.x - margin, camera.y - margin,
       camera.x + this.screenW + margin, camera.y + this.screenH + margin,
     );
+    // ステージ7 グレンの変身の場面の空き地(world/glenClearing): 消えた木は当たり判定ごと treesInRegion から欠番だが、
+    // その時見えていた木をパッと消さない(慣性の掟)=フェードの間だけ足して描き、下で alpha を落とす(実時間・時間停止中も進む)。
+    const glenK = glenClearingFadeK(Date.now());
+    if (!noTrees && glenK > 0) {
+      const fading = glenClearingFadingTrees<TreeInstance>(Date.now());
+      if (fading.length > 0) trees = trees.concat(fading);
+    }
     // 屋内(研究施設): 内部には木を出さない。壁の外側=野外マージンだけ「森」として残す(社長指示)。
     if (indoor) {
       const b = LAB_BOUNDS;
@@ -17261,14 +17269,18 @@ export class PixiScene {
         entry.sprite.visible = true;
         entry.tscale = t.scale;
         if (tex || texKey !== 'base') entry.sprite.scale.set(entry.baseScale * pp.s);
-        this.applyObstacleAlpha(entry.sprite, entry.footY, entry.texKey !== 'base', fresh, pp);
+        const gkP = isGlenClearedTree(t.key) ? glenK : 1; // 空き地で消える木=目標の alpha から始めて掛ける(前フレームの掛け算を積まない)
+        this.applyObstacleAlpha(entry.sprite, entry.footY, entry.texKey !== 'base', fresh || gkP < 1, pp);
+        if (gkP < 1) entry.sprite.alpha *= gkP;
         entry.sprite.skew.x = this.windNow * TREE_WIND_SKEW;
         continue;
       }
       // Depth scale every frame: a tree's apparent size shifts as the player
       // (the focal plane) walks past it. Anchored at the foot, stays rooted.
       if (tex || texKey !== 'base') entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
-      this.applyObstacleAlpha(entry.sprite, entry.footY, entry.texKey !== 'base', fresh);
+      const gk = isGlenClearedTree(t.key) ? glenK : 1; // 空き地で消える木(上の proj の枝と同じ)
+      this.applyObstacleAlpha(entry.sprite, entry.footY, entry.texKey !== 'base', fresh || gk < 1);
+      if (gk < 1) entry.sprite.alpha *= gk;
       // 風でしなる(v0.25.2648)。**炎・花と同じ1本の風**。
       // ★木は花よりずっと控えめ(TREE_WIND_SKEW)。幹まで大きく傾くとゴムに見えるうえ、
       //   **木は当たり判定を持つ**(`trees.ts` の幹の矩形)。判定は動かないので、
@@ -20270,14 +20282,27 @@ export class PixiScene {
     this.punchLights.length = 0;
     this.torchPoolReqs.length = 0;
     const seen = new Set<string>();
+    const glenK = glenClearingFadeK(Date.now()); // ステージ7 グレンの前の空き地で消える松明のフェード(実時間)
     for (const prop of props) {
+      // 空き地で消えた松明: store の次の作り直しまで props に残るので、フェードし切ったら描かない(光も積まない)。
+      const gk = prop.type === 'torch' && isGlenClearedTorch(prop.id) ? glenK : 1;
+      if (gk <= 0) continue; // seen に入れない=下で絵を壊す
       seen.add(prop.id);
       let view = this.breakableProps.get(prop.id);
       if (!view) {
         view = this.makeProp();
         this.breakableProps.set(prop.id, view);
       }
+      const nW = this.worldLights.length, nT = this.torchLights.length, nP = this.punchLights.length, nQ = this.torchPoolReqs.length;
       this.drawBreakableProp(view, prop, now);
+      if (gk < 1) {
+        // 絵・光・映り込みと、この松明が積んだ光源を同じ割合で落とす(慣性つきのフェード=world/glenClearing.glenClearFadeKAt)。
+        view.container.alpha *= gk; view.light.alpha *= gk; view.lightBokeh.alpha *= gk; view.reflection.alpha *= gk;
+        for (let i = nW; i < this.worldLights.length; i++) this.worldLights[i] = { ...this.worldLights[i], strength: this.worldLights[i].strength * gk };
+        for (let i = nT; i < this.torchLights.length; i++) this.torchLights[i].life *= gk;
+        for (let i = nP; i < this.punchLights.length; i++) this.punchLights[i] = { ...this.punchLights[i], strength: this.punchLights[i].strength * gk };
+        for (let i = nQ; i < this.torchPoolReqs.length; i++) this.torchPoolReqs[i].life *= gk;
+      }
     }
     for (const [id, view] of this.breakableProps) {
       if (!seen.has(id)) {

@@ -1,5 +1,6 @@
 import { Rect, footRect, resolveAabb } from './obstacles';
 import { isInPoiClearing, isClearOfHandPlaced } from './poiClearings';
+import { isGlenClearedTorch } from './glenClearing';
 import { treeFootprintsNear } from './trees';
 import { cityPropFootprintsNear } from './cityProps';
 import { torchArtSize, TORCH_ART_MAX } from './artRects';
@@ -121,7 +122,11 @@ const torchCellsInRegion = (
 export const torchesInRegion = (
   minX: number, minY: number, maxX: number, maxY: number,
   bonusChance = 0, // ★v0.25.3595: RELAX中の出現率ボーナス(TORCH_RELAX_BONUS)を呼び出し側が渡す
-): TorchInstance[] => torchCellsInRegion(minX, minY, maxX, maxY, TORCH_BASE_CHANCE + bonusChance);
+): TorchInstance[] => {
+  const all = torchCellsInRegion(minX, minY, maxX, maxY, TORCH_BASE_CHANCE + bonusChance);
+  // ステージ7 グレンの変身の場面の空き地(world/glenClearing)で消えた松明は欠番(置き場所・下の層の避け方は変えない)。
+  return all.some(t => isGlenClearedTorch(t.id)) ? all.filter(t => !isGlenClearedTorch(t.id)) : all;
+};
 
 /**
  * 絵の矩形 art に届き得る松明(**RELAX の追加確率込みの最大**で在り得る物・形つき)。下の層(花・水たまり)が避ける相手。

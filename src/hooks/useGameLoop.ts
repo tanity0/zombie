@@ -292,6 +292,7 @@ import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect, overlapsLabObstacle } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
 import { POI_TOUCH_SOUND, poiTouchPitchJitter, type PoiTouchId } from '../world/poiTouch';
+import { applyGlenClearing } from '../world/glenClearingPick';
 import { treesInRegion, trunkRect } from '../world/trees'; // resolveTreeCollisionはv0.25.2469で不使用に(霊体すり抜け)
 import { cityPropsInRegion, cityPropRect } from '../world/cityProps';
 import { markObstacleDestroyed } from '../world/destructibles';
@@ -4198,6 +4199,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (tfAtt) {
                 glenTfEventIdxRef.current = 0;
                 useGameStore.setState({ glenTransform: { startedAt: tfAtt.startReal, footX: tfBox.footX, footY: tfBox.footY, bossBox: tfBox.box } });
+                // グレンの足元の正面と左右の空き地(社長指示2026-11-25「木はグレンの前に生やさない」・world/glenClearing)。
+                // 手前に掛かる木・松明は当たり判定ごとここで消え、描画は場面の寄りの間にフェードアウトさせる。出撃の間ずっと残る。
+                applyGlenClearing(tfBox.footX, tfBox.footY, tfAtt.startReal);
               }
             }
           }

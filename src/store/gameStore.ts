@@ -407,6 +407,7 @@ import { BOSS_CUTIN_MS, shouldIgnoreAttention, isCutinRepeat, type AttentionCuti
 import { attentionZoomFor, findAttentionSubject, type AttentionSubject } from '../utils/attentionZoom'; // 小さめの相手は少し寄る(社長指示2026-11-14)
 import { findAttentionTarget, type AttentionTarget } from '../utils/attentionTarget'; // 遅れて出す寄りの「写す相手」(寄り先の追従・診断)
 import { clearDestroyedObstacles } from '../world/destructibles';
+import { clearGlenClearing } from '../world/glenClearing';
 import { resolveCityPropCollision, setCityPropsDisabled, cityPropsInRegion, cityPropRect, cityPropDef } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, touchesHospital, isApproachingHospital, hospitalRect } from '../world/hospital';
 import { detourAngleOffset } from '../world/detourPoi';
@@ -28916,6 +28917,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     resetCritDecay(); // ★§13-3e クリ減衰の台帳を新ランでクリア(前ランの敵IDの記憶を持ち越さない)
     resetHandcannonDecay(); // UNIQUE_WEAPONS.md §13-1: ハンドキャノン減衰の台帳も新ランでクリア
     clearDestroyedObstacles(); // 裏ボスに壊された木/プロップの欠番を新ランで復活させる。
+    clearGlenClearing(); // ステージ7 グレンの変身の場面の空き地(world/glenClearing)も新ランで消す。
     clearWraithGraves(); // 亡霊の近くに生えた墓石の壁も新ランで消す(research/WRAITH_MUTANT.md §9)。
     const validClass = ['warrior', 'mage', 'rogue', 'necromancer'].includes(characterClass)
       ? characterClass as CharacterClass

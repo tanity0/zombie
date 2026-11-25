@@ -10,6 +10,7 @@
 
 import { Rect, footRect, resolveAabb } from './obstacles';
 import { isObstacleDestroyed } from './destructibles';
+import { isGlenClearedTree } from './glenClearing';
 import { isInPoiClearing, isClearOfHandPlaced } from './poiClearings';
 import { treeArtSize, treeArtAnchor, TREE_ART_MAX } from './artRects';
 import {
@@ -134,7 +135,9 @@ export const treesInRegion = (
   minX: number, minY: number, maxX: number, maxY: number
 ): TreeInstance[] => {
   const all = treesInRegionRaw(minX, minY, maxX, maxY);
-  return all.some(t => isObstacleDestroyed(t.key)) ? all.filter(t => !isObstacleDestroyed(t.key)) : all;
+  // ステージ7 グレンの変身の場面の空き地(world/glenClearing・社長指示2026-11-25「木はグレンの前に生やさない」)も同じく欠番。
+  const gone = (t: TreeInstance) => isObstacleDestroyed(t.key) || isGlenClearedTree(t.key);
+  return all.some(gone) ? all.filter(t => !gone(t)) : all;
 };
 
 /**
