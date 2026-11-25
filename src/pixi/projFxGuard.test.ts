@@ -55,7 +55,7 @@ const LAYER_ADD_LEDGER: Record<string, number> = {
   drawBossGunMuzzle: 1, drawBloodPool: 1, drawRunDust: 1, drawDust: 1, drawGroundCrack: 1, drawRescueSurvivors: 1,
   syncShields: 1, syncShieldGhosts: 1, syncLab: 2, syncPickups: 1, drawParticleSprite: 1, drawRingSprite: 1,
   drawTrailSprite: 1, drawExplosionSprite: 1, drawDrainSprite: 1, syncGravityWells: 1, drawSmokeSprite: 1, drawSmallGlowSprite: 1,
-  drawStrongGlowSprite: 1, drawWhipSnareSprite: 1, drawWhipRope: 1, drawWhipSprite: 1, drawFireJetSprite: 1, drawBloodSprite: 1,
+  drawStrongGlowSprite: 1, drawWhipSnareSprite: 1, drawWhipRope: 1, drawWhipSprite: 1, syncWhipTether: 1 /* 鞭の絡め取りの線(両端を projectInto で投影済み・research/WHIP_FOLLOWUP.md §8) */, drawFireJetSprite: 1, drawBloodSprite: 1,
   drawSlashSprite: 1, drawSurielSweepStreak: 1, drawThorTsukiCharge: 1, drawThorIaiCharge: 1, drawJibrilLantern: 1, drawHoloVolleyCircle: 1,
   drawHoloMiniAt: 1, syncSheetTipGlow: 1, tickHeroLeftFog: 1, drawLibertyRaise: 1, drawScreamBuffMark: 1, drawHeroAscend: 2,
   syncWraithTelegraph: 1, shatterAlchemyRocks: 1, drawGuardianPhantom: 4, drawBountySummonCircle: 1, drawSkelClawSprite: 1, drawCoffinSlam: 1,

@@ -1724,7 +1724,7 @@ export const ghostLeashWarp = (
 // ---- ★守護霊の燕返しの頭脳(社長裁定2026-11-22「プレイヤーの受付の窓の中で、守護霊が出せる時は出す」) ----
 // 「当てた直後のフリック」の受付(utils/flickFollowup)をプレイヤーと同じ判定で読み、受付が開いていれば出す向きを返すだけ。
 // 実際に出すのは store(tryTsubame に ghostId)=プレイヤーと同じ1本。
-// (鞭のフリックの頭脳 ghostWhipFollowupDir は廃止=research/WHIP_FOLLOWUP.md §7。鞭の浮き・叩きつけ・スラッシャーの連続は store の鞭の振りの中で自動。)
+// (鞭のフリックの頭脳 ghostWhipFollowupDir は廃止。守護霊の鞭は普通の振りだけ=絡め取り→振り回し→投げはプレイヤーだけ・research/WHIP_FOLLOWUP.md §8。)
 
 /** 燕返しを出す向き(今の位置→一閃の元の位置)。受付が開いていない・その向きが受付の帯に入らない・戻る所が無い=null。 */
 export const ghostTsubameDir = (

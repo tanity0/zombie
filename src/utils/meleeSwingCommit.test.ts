@@ -48,6 +48,8 @@ const WRITE_SITES: readonly WriteSite[] = [
     field: 'counterWindowEnd', where: '対人体勢の紫入り(playerPvpChipPatch)', stamped: false,
     why: '★SAME_ARENA §9: 紫に入った瞬間、開いている窓を破棄(0へ)=閉じる側・振っていない',
   },
+  // ★鞭の振り回し中の近接=投げ+カウンター窓(research/WHIP_FOLLOWUP.md §8 末尾・throwWhipSwingByMelee)。近接の入力そのもの=打刻する。
+  { field: 'counterWindowEnd', where: '鞭の振り回し中の近接=投げ+カウンター窓(throwWhipSwingByMelee)', stamped: true },
   // ★縮地(SKILL_BUILD_REDESIGN.md §32・2026-10-01): 窓の中の振り=ワープ斬撃の受付。斬撃は直後に
   // triggerCounter(押した時刻)で解決するので、**打刻もそちらで1回だけ**(前隙の起点と同じ形)。
   // ★格闘(research/BRAWLER.md §8-5): 構え(上)はカウンター窓をこの1秒に張る。窓を張るだけで振りではない
@@ -137,7 +139,7 @@ const WRITE_SITES: readonly WriteSite[] = [
  * この3フィールドを**書かずに**打刻する経路(=振り方の目印を持たない近接)。
  * スラッシャー追撃と、鞭のスラッシャーの追加の振り(どちらも既存の近接ヒットから連鎖する追撃で、窓も演出も再度は開かない)。
  */
-const STAMPS_WITHOUT_FIELD_WRITE = ['スラッシャー追撃(applySlasherChainStrike)', '鞭のスラッシャーの追加の振り(fireWhipChainStep・research/WHIP_FOLLOWUP.md §7)'];
+const STAMPS_WITHOUT_FIELD_WRITE = ['スラッシャー追撃(applySlasherChainStrike)']; // 鞭のスラッシャーの追加の振り(fireWhipChainStep)は撤去(research/WHIP_FOLLOWUP.md §8)
 
 /** ソースから3フィールドの**書き込み**を出現順に拾う(読み取り・コメントは拾わない)。 */
 const scanWrites = (text: string): SwingField[] => {

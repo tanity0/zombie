@@ -132,6 +132,8 @@ export const checkProjectileEnemyCollisions = (
       if (enemy.aiPhase === 'jump') return;
       // 亡霊のワープ中(research/WRAITH_MUTANT.md §8 A3)も同じ=撃っても素通り。
       if (enemy.wraithPhased) return;
+      // 鞭で振り回されている・投げられて飛んでいる敵(research/WHIP_FOLLOWUP.md §8-7)も素通り。
+      if (enemy.whipHeld) return;
 
       // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): 死体は弾をすり抜けさせる(貫通弾のpierce/
       // passthroughを消費させない・死体に攻撃が吸われる事故を防ぐ)。

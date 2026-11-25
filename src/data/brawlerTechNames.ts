@@ -24,7 +24,7 @@ export const BRAWLER_TECH_NAMES: Record<TechProcKey, { name: string; dir: Brawle
   'tech:issen': { name: '一閃', dir: 'right' },
   'tech:tsubame': { name: '燕返し', dir: 'chain' },
   'tech:satsujin': { name: '殺陣', dir: 'all' },
-  // 鞭の叩きつけ(research/WHIP_FOLLOWUP.md §7)。前の技の続きではなく、浮いた敵に鞭が当たると出る1行=続きの印(└)は付けない。
-  // 印は振り下ろして地面を打つ形(先に地面の線)=地割りと同じ下向きの楔。
-  'tech:whipslam': { name: '叩きつけ', dir: 'down' },
+  // 鞭の投げつけ(research/WHIP_FOLLOWUP.md §8)。絡め取って振り回した敵が着弾した時に出る1行=続きの印(└)は付けない。
+  // 印は落ちて地面を打つ形(先に地面の線)=地割りと同じ下向きの楔。キーは旧の叩きつけのまま(whipslam)。
+  'tech:whipslam': { name: '投げつけ', dir: 'down' },
 };

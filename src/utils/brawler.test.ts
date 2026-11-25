@@ -17,12 +17,13 @@ import {
 } from './brawler';
 import { brawlerLiftArcRel, BLAST_LIFT_SHAPE, BRAWLER_LIFT_RISE_FRAC, BRAWLER_LIFT_HOVER_FRAC, BRAWLER_LIFT_HOVER_SAG, type LiftArcShape } from './brawler';
 import { brawlerFallShape } from './brawlerCombo';
-import { WHIP_LIFT_SHAPE } from './whipFollowup';
 import {
   brawlerHeelAirOf, brawlerStompAirMult, BRAWLER_STOMP_AIR_MULT_MAX,
   pickBrawlerComboTarget, brawlerComboLockId, brawlerComboTargetAfterHit, BRAWLER_HEEL_AIR_PX, BRAWLER_STOMP_FROM_AIR_FALL, BRAWLER_KICK3_CHARGE_RISE_PX, BRAWLER_KICK3_CHARGE_SINK_PX, BRAWLER_KICK3_CHARGE_MS, BRAWLER_KICK_MAX,
 } from './brawler';
 import { setBrawlerTempoAll } from './brawlerCombo';
+/** 鞭専用だった浮きの形(上り0.3秒・漂い0.3秒・落ち0.6秒)。鞭の浮きは撤去したが、式が任意の形を受けることの確かめに数字だけ残す。 */
+const WHIP_LIFT_SHAPE = { rise: 300 / 1200, hover: 300 / 1200 };
 // ★テンポ係数(§9-68): この表の時刻は係数1.0(今までの値)で書いてある。係数1.3の挙動は brawlerTempo.store.test.ts で固める。
 setBrawlerTempoAll(1.0); // 記述時(describe の中で時刻を組む所)より先に効かせる=モジュールの頭で呼ぶ
 

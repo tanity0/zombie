@@ -2910,6 +2910,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (pf) useGameStore.getState().triggerAttention(pf.x, pf.y, p.cutin, undefined, undefined, { target: p.target });
         }
         const att = useGameStore.getState().attention;
+        // ★鞭の振り回しは、カットイン(アテンション)で操作が止まったら途中で放す(research/WHIP_FOLLOWUP.md §8-7・この間はシミュが止まる)。
+        if (att && useGameStore.getState().whipSwing?.phase === 'swing') useGameStore.getState().releaseWhipSwing();
         // v0.25.2953(社長指示「ボスモードもボス消えるまでは終わらないで」): 練習ランの勝利は
         // **死亡アテンション(ストップ+崩壊)を見せ終えてから**確定する。attention が無い場合でも
         // 最低1.2秒は崩壊の絵を見せる(打刻は撃破の瞬間=gameStoreのdamage経路)。
@@ -2997,6 +2999,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // 会話が流れ切った判定式(npcDialogue===null && queue.length===0)は本流の二人組ブロックと同じ=ここで gameWon。
       // 納品ロックは gameWon で必ず終わるので、ロック中に gameTime が進んでも以降の進行に影響しない。
       if (useGameStore.getState().deliveryLocked) {
+        // ★鞭の振り回しは、会話で操作が止まったら途中で放す(research/WHIP_FOLLOWUP.md §8-7)。
+        if (useGameStore.getState().whipSwing?.phase === 'swing') useGameStore.getState().releaseWhipSwing();
         const dlSt = useGameStore.getState();
         // ステージ1の1周目の到着の会話(社長報告2026-11-20): 同じロックで世界を止めるが、ゲーム時刻は進めない
         // (会話の後もゲームが続く=タイマーを飛ばさない)。通信の時計だけを別に進める(行の尺はいつもどおり)。
@@ -13136,16 +13140,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // スラッシャー先行入力の自動発動(v0.25.3254: CD中のタップを予約→CD明けにここで発動)。
         // 予約なしなら即return=実質ゼロコスト。
         useGameStore.getState().pumpSlasherQueuedTap();
-        // ★鞭のスラッシャーの追加の振り(research/WHIP_FOLLOWUP.md §7・0.5秒ごと・最後は叩きつけ)。連続なし/時刻前なら即return。
-        // 振る音・当たる音・叩きつけの音は store(whipSwingFxAt / whipHitFxAt / 叩きつけの絵と音)が鳴らす。倒した音だけここで。
-        if (useGameStore.getState().whipChain) {
-          const wc = useGameStore.getState().tickWhipChain();
-          if (wc && wc.killed > 0) playEnemyDeath();
-        }
-
         // Update enemies
         // 敵の移動のみ MOVE_SPEED_MULT 倍速(攻撃タイマー等はtimestamp基準で影響なし)。
         updateEnemies(deltaTime * MOVE_SPEED_MULT);
+        // ★鞭の絡め取り→振り回し→投げ(research/WHIP_FOLLOWUP.md §8)。敵の更新の後に回す位置・飛ぶ位置を決める(位置は振り回しの式だけ)。
+        // 振り回しが無ければ即return。当たる音・着弾の絵と音は store が鳴らす。倒した音だけここで。
+        if (useGameStore.getState().whipSwing) {
+          const ws = useGameStore.getState().tickWhipSwing();
+          if (ws.killed > 0) playEnemyDeath();
+        }
         // ★SAME_ARENA §9(対人体勢): プレイヤー側の経過(紫明け=満タンへ/回復8秒後3%毎秒)。
         // 幻影と戦って初めて pvpPosture が生まれる=通常プレイでは undefined のまま毎フレーム no-op。
         {
@@ -14253,7 +14256,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (wGain > 0) {
                   playSfx('whip-swing', wGain);
                   if (wres.hits > 0) playSfx(wres.finish ? 'melee-finish' : 'whip-hit', wGain);
-                  if (wres.slammed > 0) { playSfx('whip-hit', wGain, undefined, 0.7); playSfx('bomb', wGain); } // 卵: 叩きつけの爆発の音だけ(卵を割る・浮かせるのは store の whipSlamExplode=playerBlast)
                 }
                 if (wres.killed > 0) playEnemyDeath();
               } else if (ghostMeleeResolvesNow
@@ -14382,7 +14384,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
               // ★当てた直後のフリックの追加攻撃(社長裁定2026-11-22「プレイヤーの受付の窓の中で、守護霊が出せる時は出す」):
               //   刀=燕返し(一閃が当たった後)。受付・向き・技はプレイヤーと同じ(ghostDriver が向きを決め、store の同じ入口へ ghostId で渡す)。
-              //   鞭=スラッシャーの追加の振り(0.5秒ごと・最後は叩きつけ=research/WHIP_FOLLOWUP.md §7)。時刻が来ていればプレイヤーと同じ1本(tickWhipChain)が出す。
+              //   鞭=守護霊は普通の振りだけ(絡め取り→振り回し→投げはプレイヤーだけ=research/WHIP_FOLLOWUP.md §8・社長指示2026-11-25)。
               {
                 const gNow = useGameStore.getState().summons.find(sm => sm.id === ghostNow.id);
                 if (gNow) {
@@ -14390,13 +14392,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const fGain = npcSfxDistGain(fcx, fcy, gfxPcx, gfxPcy, gfxCam, gfxGb);
                   const tDir = ghostKatana ? ghostTsubameDir(gNow.ghostTsubameWindow, fcx, fcy, nowMs) : null;
                   if (tDir && useGameStore.getState().tryTsubame(tDir.x, tDir.y, ghostNow.id) && fGain > 0) playSfx('katana-dash', fGain, undefined, 1.35);
-                  const wc = !ghostKatana && gNow.ghostWhipChain ? useGameStore.getState().tickWhipChain(ghostNow.id) : null;
-                  if (wc && fGain > 0) {
-                    playSfx('whip-swing', fGain);
-                    if (wc.hits > 0) playSfx(wc.finish ? 'melee-finish' : 'whip-hit', fGain);
-                    if (wc.slammed > 0) { playSfx('whip-hit', fGain, undefined, 0.7); playSfx('bomb', fGain); } // 卵: 叩きつけの爆発の音だけ(卵を割る・浮かせるのは store の whipSlamExplode=playerBlast)
-                  }
-                  if (wc && wc.killed > 0) playEnemyDeath();
                 }
                 // ★ハンティング: 一連が終わっていたら使い切る+動いている間に溜まる(プレイヤーと同じ純関数)。
                 tickGhostHunting(ghostNow.id, !kbLocked && ghostIsMovingNow(decision.moveX, decision.moveY));

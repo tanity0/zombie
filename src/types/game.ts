@@ -463,7 +463,7 @@ export interface Player extends DashLocomotionState {
   huntingChargeStartedAt: number;
   huntingCharged: boolean;
   // ★ハンティングの溜まりを使っている一連の動き(社長裁定2026-11-22「全ての武器で一連の動き中は伸ばす」・utils/huntingSequence)。
-  // 鞭=1撃目→スラッシャーの追加の振り→最後の叩きつけ / 刀=オート斬撃→一閃→燕返し。終わったら溜まりを使い切る(格闘は brawler.huntingCombo が持つ)。
+  // 鞭=一連なし(振るたびに使い切る・research/WHIP_FOLLOWUP.md §8-7) / 刀=オート斬撃→一閃→燕返し。終わったら溜まりを使い切る(格闘は brawler.huntingCombo が持つ)。
   huntingSequence?: 'whip' | 'katana';
   /** 刀: オート斬撃だけで始めた一連の締め切り(gameTime)。この時刻までに一閃が出なければ終わる。 */
   huntingSeqUntil?: number;
@@ -923,6 +923,11 @@ export interface Enemy {
   brThrow?: { fromX: number; fromY: number; toX: number; toY: number; at: number; ms: number };
   /** 投げられて飛んでいる印(当たり判定から外す=isUntouchable)。着いて爆撃した時に消す。 */
   brThrown?: boolean;
+  /**
+   * ★鞭で絡め取られている(振り回し中・投げられて飛んでいる最中・research/WHIP_FOLLOWUP.md §8)。立っている間は位置を振り回しの式だけで決め(敵の更新は動かさない)、
+   * 攻撃・接触はせず、ほかの当たり・狙いを受けない(isUntouchable)。着弾・放した時に消す。状態の本体は store の GameState.whipSwing。
+   */
+  whipHeld?: boolean;
   /** ★投げられて飛ぶ間の回り(絵だけ・監査 B15・utils/brawler の brawlerThrowSpin)。at=投げた時刻・ms=飛ぶ長さ・dir=回る向き(±1)・hitAt=ぶつかった時刻・endAt=爆撃の時刻(どれも Date.now)。 */
   brThrowSpin?: { at: number; ms: number; dir: 1 | -1; hitAt?: number; endAt?: number };
   /** ★スープレックスの投げ越し(絵だけ・相手ごとに持つ=続けて別の相手を投げても上書きされない・倒れても叩きつけた所に残る)。at=反りの始まり(gameTime)・(mx,my)=着地点までのずれ。 */
@@ -2137,8 +2142,6 @@ export interface Summon {
   knockbackMs?: number;
   /** ★燕返しの受付(プレイヤーの GameState.tsubameWindow と同じ型・守護霊自身の一閃が当たった時に開く)。 */
   ghostTsubameWindow?: import('../utils/katanaTsubame').TsubameWindow | null;
-  /** ★鞭のスラッシャーの追加の振り(プレイヤーの GameState.whipChain と同じ形・守護霊自身の鞭が当たった時に始まる・research/WHIP_FOLLOWUP.md §7)。 */
-  ghostWhipChain?: { dirX: number; dirY: number; nextAt: number; done: number; extras: number; priorityIds: string[] } | null; // = utils/whipFollowup.WhipChainState(循環を作らないよう型をここで書く)
   /** ★ハンティングの溜め(プレイヤーの huntingChargeStartedAt / huntingCharged / huntingSequence… と同じ意味・守護霊自身の動きで溜まる)。 */
   actorHuntingChargeStartedAt?: number;
   actorHuntingCharged?: boolean;

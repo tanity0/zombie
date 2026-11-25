@@ -132,7 +132,8 @@ import {
   katanaCutDeathAlpha, katanaCutLayout, katanaCutLength, katanaCutOpen, katanaCutRgb,
   katanaSlashIntScale, katanaSlashJitter, katanaSlashPose, katanaSlashVisibleMid, katanaWhiteRgba,
 } from '../utils/katanaSlashSheet'; // プレイヤーの刀の斬撃シート(社長支給2026-11-22)
-import { whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS } from '../utils/whipSwingMotion'; // ★鞭の振りの本体と体の動き // ★刀の殺陣の赤い画面の濃さ
+import { whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS } from '../utils/whipSwingMotion'; // ★鞭の振りの本体と体の動き
+import type { WhipSwingState } from '../utils/whipSwing'; // ★鞭の絡め取り→振り回し(線を張るだけ・読むだけ) // ★刀の殺陣の赤い画面の濃さ
 import { screamerMarkVisible } from '../utils/screamerGate';
 import { airChaseHeightPx } from '../utils/airChaseHeight'; // 高さに追いつく技の高さ(動ける距離の中で相手の高さへ向かう・社長指示2026-11-16)
 import { getLastAirMeleeHit, playerLaunchHeightPx, stepPlayerAir, playerKickJump, playerKickJumpShape, playerKickLandPx, playerKickLandSpeed, playerAirLaunchSpeed, PLAYER_KICK_LAND_FRAC, PLAYER_KICK_JUMP_MIN_PX, PLAYER_KICK_HOLD_MS, PLAYER_KICK_RECOIL_PX, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
@@ -14616,6 +14617,7 @@ export class PixiScene {
     this.syncEventBloom(s.effects, fxNow);
     this.fxPlayer = s.player; // 鞭の縄の絵の根元がプレイヤーを追う(読むだけ)
     this.syncEffects(s.effects, s.camera, fxNow); // v0.25.3038: 光系は停止中も進む
+    this.syncWhipTether(s.whipSwing, s.player, s.enemies); // ★鞭の絡め取り: 手から掴んだ敵へ線を張る(振り回しの間だけ)
     if (!this.projFrame) this.syncSatsujin(s.satsujin, Date.now()); // ★刀の殺陣の赤い画面(殺陣の間だけ)。?proj=1 は後掛けの後(段階3・C11)
     this.syncGravityWells(s.gravityWells, s.gameTime); // §28(B7) グラビティショットの渦(v0.25.3276)
     this.syncGroundReflections(s.pickups, s.projectiles, s.effects, s.camera, now);
@@ -31077,7 +31079,7 @@ export class PixiScene {
     // ★空中投げで飛ぶ敵の回り(research/BRAWLER.md §34-3・監査 B15): 飛ぶ向きへ縦に転がり、加速して回る。ぶつかった後の止めの間はその角度・爆撃から減速して正立で止まる。
     //   「浮いた敵は回さない」の例外=投げられた敵だけ。体の中心で回す。判定・位置・影は動かさない。
     // 飛んでいないのにぶつかった記録が無い(飛ぶ途中で投げが外れた等)時は回さない。爆撃が来ないまま長く経った時は正立へ戻す(逆さまで残さない)。
-    if (e.brThrowSpin && (e.brThrow || e.brThrowSpin.hitAt !== undefined)) {
+    if (e.brThrowSpin && (e.brThrow || e.whipHeld || e.brThrowSpin.hitAt !== undefined)) { // whipHeld=鞭で投げられて飛んでいる敵(research/WHIP_FOLLOWUP.md §8-3)も同じ回り
       const sp = e.brThrowSpin;
       const tw = Date.now(); // 浮き(brLift)と同じ壁時計。ぶつかってから爆撃までの止めの間は、式の側でぶつかった時の角度に留める
       const hitEl = sp.hitAt !== undefined ? sp.hitAt - sp.at : undefined;
@@ -45720,6 +45722,47 @@ export class PixiScene {
   }
   /** 鞭の縄の絵が読むプレイヤー(syncEffects の直前に毎フレーム入れる・読むだけ)。 */
   private fxPlayer: Player | null = null;
+  /**
+   * ★鞭の絡め取り(research/WHIP_FOLLOWUP.md §8-1・§8-2): 振り回しの間、鞭の線をプレイヤーの手から掴んだ敵まで張る(既存の鞭の絵 whip を伸ばす=新素材なし)。
+   * 張っている=まっすぐ(回して引っ張っている)。新方式の投影では両端(体の中心)を投影し、濃さは両端の地平線フェードの薄い方。判定なし・読むだけ。
+   * 負荷: Sprite 1枚の位置・回転・拡大だけ(per-frame Graphics なし)=1/10。
+   */
+  private whipTether: Sprite | null = null;
+  private whipTetherA = makeProjPoint();
+  private whipTetherB = makeProjPoint();
+  private syncWhipTether(sw: WhipSwingState | null, player: Player, enemies: readonly Enemy[]) {
+    const e = sw && sw.phase === 'swing' ? enemies.find(en => en.id === sw.enemyId) : undefined;
+    const tex = getTexture('whip');
+    if (!e || !tex) { if (this.whipTether && !this.whipTether.destroyed) this.whipTether.visible = false; return; }
+    let sp = this.whipTether;
+    if (!sp || sp.destroyed) {
+      sp = new Sprite();
+      sp.anchor.set(WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_ANCHOR_Y);
+      this.L.effectLayer.addChild(sp);
+      this.whipTether = sp;
+    }
+    if (sp.texture !== tex) sp.texture = tex;
+    let ax = player.x + player.width / 2, ay = player.y + player.height / 2;
+    let bx = e.x + e.width / 2, by = e.y + e.height / 2;
+    let alpha = 1;
+    const f = this.projFrame;
+    if (f) {
+      const pa = projectInto(f, ax, ay, this.whipTetherA);
+      const pb = projectInto(f, bx, by, this.whipTetherB);
+      ax = pa.x; ay = pa.y; bx = pb.x; by = pb.y;
+      alpha = Math.min(pa.alpha, pb.alpha);
+    }
+    const dx = bx - ax, dy = by - ay;
+    const len = Math.hypot(dx, dy);
+    if (!(len > 1) || alpha <= 0) { sp.visible = false; return; }
+    // 握り→先端の絵の幅が手→敵の長さちょうど(drawWhipSprite と同じ規約)。
+    const span = Math.max(1, tex.width * (WHIP_SPRITE_TIP_X - WHIP_SPRITE_ANCHOR_X));
+    sp.scale.set(len / span);
+    sp.position.set(ax, ay);
+    sp.rotation = Math.atan2(dy, dx);
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
   private drawWhipSprite(e: Extract<VisualEffect, { kind: 'whip' }>, now: number) {
     const t = Math.min(1, (now - e.createdAt) / e.duration);
     let sprite = this.effects.get(e.id);

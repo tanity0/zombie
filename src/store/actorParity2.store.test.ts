@@ -2,7 +2,7 @@
 //  ①幻影のカウンターマスターの吹き飛ばし(プレイヤー・守護霊・英雄を、プレイヤーの吹き飛ばしと同じ強さ・同じ関数で・同じフレームで1回)
 //  ②(拳鬼の気功の二連発は utils/phantomBrawlerTick.test.ts)
 //  ③守護霊の燕返し・一閃の浮かせ・切り傷・殺陣
-//  ④守護霊の鞭(1撃目・引き寄せ・叩きつけ・爆発)とハンティング
+//  ④守護霊の鞭(普通の振りだけ=絡め取り→振り回し→投げはプレイヤーだけ・research/WHIP_FOLLOWUP.md §8)とハンティング
 //  ⑤幻影がプレイヤーの届く距離を読む式(meleeReachOf)
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
@@ -20,7 +20,6 @@ import { isTsubameCrouching, KATANA_CUT_MAX } from '../utils/katanaTsubame';
 import { huntingChargeStep } from '../utils/huntingSequence';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { brawlerAirborne } from '../utils/brawlerCombo';
-import { WHIP_CHAIN_INTERVAL_MS } from '../utils/whipFollowup';
 import type { Enemy, PlayerBuildSnapshot, SkillKey, SubWeaponKey, Summon } from '../types/game';
 
 const GID = 'ghost-parity2';
@@ -228,26 +227,26 @@ describe('③守護霊の燕返し・一閃の浮かせ・切り傷・殺陣(プ
 });
 
 // ---------------------------------------------------------------------------------------------
-describe('④守護霊の鞭: 1撃目の浮き・浮いた敵への叩きつけ・爆発・スラッシャーの連続がプレイヤーと同じ関数(research/WHIP_FOLLOWUP.md §7)', () => {
+describe('④守護霊の鞭: 普通の振りだけ(絡め取り→振り回し→投げはプレイヤーだけ=research/WHIP_FOLLOWUP.md §8・社長指示2026-11-25)', () => {
   const setupWhip = (subs: SubWeaponKey[] = ['whip'], subLv: Partial<Record<SubWeaponKey, number>> = {}, skills: SkillKey[] = [], skillLevels: Partial<Record<SkillKey, number>> = {}) => {
     useGameStore.setState({ summons: [ghostAt(1000, 1000, snap(subs, skills, skillLevels, subLv))] });
     const z = zombieAt('z-w', 1000 + 16 + 90 - 16, 1000);
     const z2 = zombieAt('z-near', 1000 + 16 + 90 - 16 + 40, 1000 + 20);
     useGameStore.setState({ enemies: [z, z2] });
   };
-  it('1撃目: プレイヤーの鞭と同じ打撃(同じビルドなら同じダメージ)・当たった地上の敵はその場で浮く・プレイヤーの連続は始まらない', () => {
+  it('プレイヤーの鞭と同じ打撃(同じビルドなら同じダメージ)・押しは今の鞭の押し・浮かない・掴まない', () => {
     vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(20_000_000);
     vi.spyOn(Math, 'random').mockReturnValue(0.999); // クリなし
-    setupWhip();
+    setupWhip(['whip'], {}, ['slasher'], { slasher: 3 });
     const ghostActor = combatActorPlayer(GID)!;
     const hp0 = enemy('z-w').health;
     const res = swingGhostWhip(GID, 1, 0);
     expect(res.hits).toBeGreaterThan(0);
     expect(enemy('z-w').health).toBeLessThan(hp0);
-    expect(enemy('z-w').brLiftShape).toBe('whip');
-    expect(brawlerAirborne(enemy('z-w'), Date.now() + 500)).toBe(true);
-    expect(useGameStore.getState().whipChain).toBeNull();
-    expect(ghost().ghostWhipChain ?? null).toBeNull(); // スラッシャーなし=連続なし
+    expect(Math.abs(enemy('z-w').knockbackVy ?? 0)).toBeGreaterThan(0); // 振りの線に直交する押し
+    expect(brawlerAirborne(enemy('z-w'), Date.now() + 300)).toBe(false);
+    expect(enemy('z-w').whipHeld).toBeFalsy();
+    expect(useGameStore.getState().whipSwing).toBeNull();
     const ghostDmg = hp0 - enemy('z-w').health;
     // 同じビルド・同じ位置関係のプレイヤーが振る(基準)。
     useGameStore.setState({ summons: [], enemies: [zombieAt('z-w', 1000 + 16 + 90 - 16, 1000)], player: { ...ghostActor } });
@@ -256,47 +255,6 @@ describe('④守護霊の鞭: 1撃目の浮き・浮いた敵への叩きつけ�
     const playerDmg = 99999 - enemy('z-w').health;
     expect(ghostDmg).toBeCloseTo(playerDmg, 6);
     vi.restoreAllMocks();
-  });
-  it('浮いている敵へ次の振りが当たると自動で叩きつけ: 2倍+周りが爆発で削れる(フリックの頭脳は無い)', () => {
-    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(20_000_000);
-    vi.spyOn(Math, 'random').mockReturnValue(0.999);
-    setupWhip();
-    swingGhostWhip(GID, 1, 0);
-    // 浮いた敵はその場にいる(押さない)。爆発だけ当たる敵を鞭の先の奥に置けるよう、少し奥へずらす
-    expect(enemy('z-w').knockbackVx ?? 0).toBe(0);
-    useGameStore.setState(s => ({ enemies: s.enemies.map(e => (e.id === 'z-w' ? { ...e, x: e.x + 30 } : e)) }));
-    const d1 = 99999 - enemy('z-w').health;
-    vi.setSystemTime(Date.now() + 600);
-    expect(brawlerAirborne(enemy('z-w'), Date.now())).toBe(true);
-    // z-near を z-w の近く(爆発の中)・鞭の先より奥(振りには当たらない)へ
-    useGameStore.setState(s => ({ enemies: s.enemies.map(e => (e.id === 'z-near' ? { ...e, x: enemy('z-w').x + 55, y: enemy('z-w').y } : e)) }));
-    const hpW = enemy('z-w').health, hpN = enemy('z-near').health;
-    const r = swingGhostWhip(GID, 1, 0);
-    expect(r.slammed).toBe(1);
-    expect(hpW - enemy('z-w').health).toBeGreaterThanOrEqual(d1 * 2 - 1e-6);
-    expect(enemy('z-near').health).toBeLessThan(hpN); // 叩きつけの爆発(周りの敵)
-    expect(enemy('z-w').brLiftPeak).toBe(0); // 叩き落とし(押し上げ0)
-    vi.restoreAllMocks();
-  });
-  it('スラッシャー Lv3 の守護霊: 0.5秒ごとに追加3つ・浮かせ続けて最後は叩きつけ(プレイヤーと同じ tickWhipChain)', () => {
-    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(20_000_000);
-    setupWhip(['whip'], {}, ['slasher'], { slasher: 3 });
-    swingGhostWhip(GID, 1, 0);
-    expect(ghost().ghostWhipChain?.extras).toBe(3);
-    const t0 = Date.now();
-    const modes: string[] = [];
-    for (let t = 10; t <= 3 * WHIP_CHAIN_INTERVAL_MS + 20; t += 10) {
-      vi.setSystemTime(t0 + t);
-      const r = useGameStore.getState().tickWhipChain(GID);
-      if (r) {
-        modes.push(r.mode);
-        if (r.mode === 'keep') expect(brawlerAirborne(enemy('z-w'), Date.now())).toBe(true);
-        if (r.mode === 'final') expect(r.slammed).toBeGreaterThan(0);
-      }
-    }
-    expect(modes).toEqual(['keep', 'keep', 'final']);
-    expect(ghost().ghostWhipChain ?? null).toBeNull();
-    expect(useGameStore.getState().whipChain).toBeNull(); // プレイヤーの連続は動かない
   });
 });
 
@@ -308,7 +266,7 @@ describe('④守護霊のハンティング: 動いている間に溜まり、�
     expect(huntingChargeStep({ enabled: true, active: false, startedAt: 1000, charged: false, now: 1400, chargeMs: 500 })).toEqual({ startedAt: 0, charged: false });
     expect(huntingChargeStep({ enabled: true, active: false, startedAt: 1000, charged: true, now: 9000, chargeMs: 500 })).toEqual({ startedAt: 1000, charged: true });
   });
-  it('守護霊が動き続けると溜まる → 鞭の線がプレイヤーと同じだけ伸びる → 1撃目が当たるとスラッシャーの連続の間は一連(whip)・終わると使い切る', () => {
+  it('守護霊が動き続けると溜まる → 鞭の線がプレイヤーと同じだけ伸びる → 振ると使い切る', () => {
     vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(30_000_000);
     useGameStore.setState({ summons: [ghostAt(1000, 1000, snap(['whip', 'striker-hunting'], ['slasher'], { slasher: 1 }, { 'striker-hunting': 2 }))] });
     const gt0 = useGameStore.getState().gameTime;
@@ -327,13 +285,6 @@ describe('④守護霊のハンティング: 動いている間に溜まり、�
     useGameStore.setState({ enemies: [z] });
     const res = swingGhostWhip(GID, 1, 0);
     expect(res.hits).toBe(1);
-    expect(combatActorPlayer(GID)!.huntingSequence).toBe('whip');
-    tickGhostHunting(GID, false);
-    expect(combatActorPlayer(GID)!.huntingCharged).toBe(true); // 追加の振りが残っている間
-    // 追加の振り(Lv1=1つ=最後の叩きつけ)が出たら使い切る
-    vi.setSystemTime(Date.now() + WHIP_CHAIN_INTERVAL_MS + 10);
-    useGameStore.getState().tickWhipChain(GID);
-    tickGhostHunting(GID, false);
     const b = combatActorPlayer(GID)!;
     expect(b.huntingCharged).toBe(false);
     expect(b.huntingSequence).toBeUndefined();

@@ -8,7 +8,7 @@ describe('subWeaponBlurb(機器ごとの一言)', () => {
     expect(subWeaponBlurb('wire-anchor', 'touch')).toBe('フリックした方向へワイヤーを撃ち、刺さった所へ無敵で飛ぶ。');
   });
   it('PC・パッドの文にはスマホの操作の言葉が無い', () => {
-    for (const k of ['katana', 'wire-anchor'] as const) {
+    for (const k of ['katana', 'wire-anchor', 'whip'] as const) {
       for (const d of ['mouse', 'pad'] as const) {
         const t = subWeaponBlurb(k, d);
         expect(t).not.toMatch(/フリック|指|タップ/);
@@ -32,6 +32,20 @@ describe('subWeaponBlurb(機器ごとの一言)', () => {
   it('機器ごとの文が無い物は、どの機器でもスマホの文', () => {
     expect(subWeaponBlurb('dog', 'mouse')).toBe(subWeaponBlurb('dog'));
     expect(subWeaponBlurb('dog', 'pad')).toBe(subWeaponBlurb('dog'));
+  });
+  it('鞭(research/WHIP_FOLLOWUP.md §8): 絡め取る・振り回す・投げる・爆発・竜巻を言う。機器ごとに投げの操作の言葉を変える。数値を書かない・句点で終える', () => {
+    const touch = subWeaponBlurb('whip');
+    for (const w of ['絡め取', '振り回', '投げ', '爆発', '竜巻']) expect(touch).toContain(w);
+    expect(touch).toContain('指を離すと');
+    expect(subWeaponBlurb('whip', 'mouse')).toContain('右クリックでカーソルの方へ投げつけ');
+    expect(subWeaponBlurb('whip', 'mouse')).not.toMatch(/フリック|指|タップ/);
+    expect(subWeaponBlurb('whip', 'pad', 'xbox')).toContain('B でスティックを倒した方へ投げつけ');
+    expect(subWeaponBlurb('whip', 'pad')).not.toMatch(/クリック|ボタン|指|\{/);
+    for (const d of ['touch', 'mouse', 'pad'] as const) {
+      const t = subWeaponBlurb('whip', d);
+      expect(t).not.toMatch(/[0-9０-９]/);
+      expect(t.endsWith('。')).toBe(true);
+    }
   });
   it('格闘中に止まるのは銃だけ(v0.25.5428)=格闘の一言は「銃は使えない」', () => {
     expect(subWeaponBlurb('brawler')).toContain('銃は使えない');

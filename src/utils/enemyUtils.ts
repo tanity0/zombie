@@ -521,7 +521,8 @@ export const isCorpse = (e: Pick<Enemy, 'corpseUntil'>): boolean => e.corpseUnti
 // ステージ2の塊の叩き潰しの登場の生け贄(場面の最中=labBait.active)も同じ扱い: 自動の狙い・攻撃が当たらない(潰される役を最後まで務める・LAB_CRAWLER §11)。
 // 亡霊のワープ中(消えて現れるまでの500ms・research/WRAITH_MUTANT.md §8 A3)も同じ。
 // ★空中投げで投げられて飛んでいる敵(research/BRAWLER.md §34-6 #5)も、着いて爆撃するまでは何も当たらない(brThrown)。
-export const isUntouchable = (e: Pick<Enemy, 'bossState' | 'labBait' | 'wraithPhased'> & Pick<Partial<Enemy>, 'brThrown'>): boolean => e.bossState === 'hero-ascend' || !!e.labBait?.active || !!e.wraithPhased || !!e.brThrown;
+// ★鞭で絡め取られて振り回されている・投げられて飛んでいる敵(research/WHIP_FOLLOWUP.md §8-7)も同じ: 弾は素通り・狙いから外す・ほかの当たりを受けない(whipHeld)。
+export const isUntouchable = (e: Pick<Enemy, 'bossState' | 'labBait' | 'wraithPhased'> & Pick<Partial<Enemy>, 'brThrown' | 'whipHeld'>): boolean => e.bossState === 'hero-ascend' || !!e.labBait?.active || !!e.wraithPhased || !!e.brThrown || !!e.whipHeld;
 
 // UNIQUE_WEAPONS.md §19-3(監査A2・A9の是正): 銃の自動照準(weaponUtils.ts の module-local
 // `pickTarget`)と**同じ選び方**を、Player型に縛られない座標引数の形へ切り出したもの。
