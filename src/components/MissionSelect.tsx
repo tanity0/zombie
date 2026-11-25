@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal as createReactPortal } from 'react-dom';
 import './commandHome.css';
 import './loadoutEmpty.css'; // 空っぽの装備画面(research/UIUX_PROPOSAL.md P9)
-import './charSelectLayout.css'; // ロール選択の縦持ちの並び(research/UIUX_PROPOSAL.md P13)
 import './opsRoomPc.css'; // PC(横長)の作戦室の文字を一段大きく(research/UIUX_PROPOSAL.md P16)
 import { COMMAND_UI_ENABLED, REGION_ART, regionArtWideClass } from '../config/uiDesign';
 import { useHudPortalRoot } from './HudScale';
@@ -1358,20 +1357,18 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         {/* 見出し(左上の戻る+題字)。ほかの画面と同じ部品で、地だけ立ち絵へ溶かす(research/UIUX_PROPOSAL.md P5)。 */}
         <PageHeader overlay title="ロール選択" en="ROLE" onBack={() => { setGhostPickerOpen(false); setScreen({ name: 'missionDetail', stageId, mission: missionKind, from }); }} />
 
-        {/* 下部UI: 左=情報集約 + 右=スタート、最下段=キャラ選択チップ。
-            縦持ち(research/UIUX_PROPOSAL.md P13・charSelectLayout.css): 説明→ロール札→START(横いっぱい)の順に並べ、説明の下に暗い霞を敷く。横長は今のまま。 */}
+        {/* 下部UI: 左=情報集約 + 右=スタート、最下段=キャラ選択チップ */}
         <div
-          className="char-bottom absolute inset-x-0 bottom-0 z-20 flex flex-col gap-3"
+          className="absolute inset-x-0 bottom-0 z-20 flex flex-col gap-3"
           style={{
             paddingLeft: 'max(env(safe-area-inset-left), 16px)',
             paddingRight: 'max(env(safe-area-inset-right), 16px)',
             paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 14px), 18px)',
           }}
         >
-          <div className="char-info-haze" aria-hidden />
-          <div className="char-info-row flex items-end justify-between gap-3">
+          <div className="flex items-end justify-between gap-3">
             {/* 情報パネル(左下=今ある情報を集約)。キャラ切替=key 再マウントで都度フェードイン。 */}
-            <div key={effectiveClass} className="char-info info-rise min-w-0 max-w-[64%]">
+            <div key={effectiveClass} className="info-rise min-w-0 max-w-[64%]">
               <div className="text-[22px] font-bold leading-tight text-white" style={{ textShadow: '0 2px 10px rgba(0,0,0,0.95)' }}>{c.name}</div>
               <div className="mt-2 space-y-1.5">
                 <InfoLine label="初期装備" value={c.gear} />
@@ -1392,7 +1389,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             {/* スタート(右下)=FF7R風の紫ボタン(社長指示で旧・緑PNGは破棄)。 */}
             <Ff7rButton
               onClick={() => startMission(stageId, effectiveClass, missionKind)}
-              className="char-start shrink-0 min-w-[150px] active:scale-95 transition-transform"
+              className="shrink-0 min-w-[150px] active:scale-95 transition-transform"
               ariaLabel="出撃"
               testId="charselect-start"
               emphasis
@@ -1405,7 +1402,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
           {/* キャラ選択(最下段。ドット絵チップ。タップで立ち絵＋情報が切替) */}
           {/* 横帯の作法(UI監査2026-08-29 #9): 縦はhiddenで殺し、containは横だけ。 */}
-          <div data-nav-group="chars" data-nav-kind="row" className="char-chips flex items-end gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-0.5">
+          <div data-nav-group="chars" data-nav-kind="row" className="flex items-end gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-0.5">
             {selectableClasses.map(cc => {
               const on = cc.id === selectedClass;
               return (

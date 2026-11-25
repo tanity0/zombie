@@ -529,6 +529,17 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   .char-select .char-scrim-bottom { right: auto; width: 46%; -webkit-mask-image: linear-gradient(90deg, #000 70%, transparent); mask-image: linear-gradient(90deg, #000 70%, transparent); }
   .char-select .char-particles { left: calc(50% + 90px - 260px); right: auto; width: 520px; }
 }
+/* 縦持ちのキャラ選択: 立ち絵を見出しの帯(PageHeader overlay・pageHeader.css の min-height 104px=安全域12px+92px)の下から始める
+   =題字が頭・顔に被らない。大きさは変えず下へずらすだけ(足元は下の情報帯の後ろへ沈む=画面外は .char-select の overflow で切れる)。
+   上端は帯の暗さへ溶かす(絵の地と黒の境に線を出さない)。 */
+@media (orientation: portrait) {
+  .char-select .char-portrait {
+    top: calc(max(env(safe-area-inset-top), 12px) + 92px);
+    bottom: auto;
+    -webkit-mask-image: linear-gradient(180deg, transparent, #000 40px);
+    mask-image: linear-gradient(180deg, transparent, #000 40px);
+  }
+}
 
 /* タイトルの描き上げ: 色が来る瞬間に頭上の光の柱が灯って減衰する(TitleScreen・120msで灯り500msで消える) */
 @keyframes title-pillar {
