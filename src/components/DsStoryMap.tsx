@@ -8,7 +8,7 @@
 // - `?dsmap=0` で地図を出さない(切り分け用・旧地図と同じスイッチ)。
 // - 出会った・まだ倒していないボスの顔(頭だけ丸く切り抜いた小さな絵)を場所の点の下に出す(research/SORTIE_MAP_BOSS_ICONS.md §5)。
 //   何を出すかは MissionSelect が決めて props で渡す(ここは描くだけ)。開いた時に慣性つきでふわっと出る(常時の動きは無い)。
-import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { assetUrl } from '../config/assetUrl';
 import { OPS_MAP_H, OPS_MAP_IMAGE, OPS_MAP_PLACES, OPS_MAP_W, storyTrail } from '../data/opsMapPlaces';
 import { BOSS_HEAD_CROPS } from '../data/bossHeadCrops';
@@ -17,7 +17,6 @@ import { layoutMapFaces, type MapBossFace } from '../utils/sortieMapBosses';
 import { estimateTagTextWidth, mapTagLeadLine, nextOpenMapFace, pickMapFace, placeMapSpotTag, type MapTagPlace } from '../utils/mapFaceTag';
 import type { Stage } from '../data/campaign';
 import { directSortieStage } from '../utils/dsHome';
-import { nextLeadRoute } from '../utils/mapNextLead';
 import { PixelIcon } from './PixelIcon';
 
 const DS_MAP_DISABLED = typeof window !== 'undefined'
@@ -56,17 +55,9 @@ const arc = (a: readonly [number, number], b: readonly [number, number], i: numb
   return `M${a[0]},${a[1]} Q${mx - dy * k},${my + dx * k} ${b[0]},${b[1]}`;
 };
 
-// 要素の位置(変形を含まない組みの位置=入りのアニメーションや PC の拡大に左右されない)。offsetParent をたどって足す。
-const layoutPos = (el: HTMLElement): { x: number; y: number } => {
-  let x = 0, y = 0;
-  for (let e: HTMLElement | null = el; e; e = e.offsetParent as HTMLElement | null) { x += e.offsetLeft; y += e.offsetTop; }
-  return { x, y };
-};
-
 // 地図から直接出撃(research/UIUX_PROPOSAL.md P1): onNext=NEXT の印を押した時(出撃の帯と同じ任務詳細へ)、
 // onOthers=地図の下端の「ほかの地域」(作戦地域の一覧)。どちらも無ければ今までどおり眺めるだけの地図。
-// leadTo=NEXT の印から降ろす細い線の行き先(出撃の帯)。無ければ線は地図の下端で止まる。
-const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<string>; next: Stage | null; sectorLabel: string; bossFaces?: readonly MapBossFace[]; onNext?: () => void; onOthers?: () => void; leadTo?: React.RefObject<HTMLElement | null> }> = ({ stages, cleared, next, sectorLabel, bossFaces = NO_FACES, onNext, onOthers, leadTo }) => {
+const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<string>; next: Stage | null; sectorLabel: string; bossFaces?: readonly MapBossFace[]; onNext?: () => void; onOthers?: () => void }> = ({ stages, cleared, next, sectorLabel, bossFaces = NO_FACES, onNext, onOthers }) => {
   const clipBase = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   // 次の出撃先がクリア済み(全部クリアした後に最終ステージへ戻る等)なら次の目標は描かない(検収品質監査 A1)。
   // 決め方は出撃の帯と1本(utils/dsHome.directSortieStage)。
@@ -146,48 +137,6 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
     const k = pickMapFace(faceHits, pt.x, pt.y, HIT_HALF);
     setHoverKey(prev => (prev === k ? prev : k));
   }, [faceHits]);
-  // ---- NEXT の印から出撃の帯へ降ろす細い線(P1)。地図の箱の外(地図と帯の間)も通るので、箱の外に重ねた SVG に描く。
-  // 印の真下に地図の下端の文字(場所の名・ほかの地域)があれば、文字の手前でなだらかに横へ寄って文字の外側を降りる(utils/mapNextLead)。
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<HTMLDivElement>(null);
-  const plRef = useRef<HTMLSpanElement>(null);
-  const otRef = useRef<HTMLButtonElement>(null);
-  const [lead, setLead] = useState<{ d: string; y0: number; y1: number } | null>(null);
-  const leadAt = trail.next && dest && !(trail.current && trail.current.at[0] === trail.next.at[0] && trail.current.at[1] === trail.next.at[1]) ? trail.next.at : null;
-  const leadAtX = leadAt ? leadAt[0] : -1, leadAtY = leadAt ? leadAt[1] : -1;
-  useLayoutEffect(() => {
-    const wrap = wrapRef.current, map = mapRef.current;
-    if (leadAtX < 0 || !wrap || !map) { setLead(null); return; }
-    const measure = () => {
-      const o = layoutPos(wrap);
-      const rel = (el: HTMLElement) => { const p = layoutPos(el); return { x: p.x - o.x, y: p.y - o.y, w: el.offsetWidth, h: el.offsetHeight }; };
-      const m = rel(map);
-      const ix = m.x + map.clientLeft, iy = m.y + map.clientTop, cw = map.clientWidth, ch = map.clientHeight;
-      if (cw <= 0 || ch <= 0) return;
-      // SVG の viewBox(preserveAspectRatio xMidYMax meet)と同じ写し方。
-      const k = Math.min(cw / OPS_MAP_W, ch / OPS_MAP_H);
-      const x = ix + (cw - OPS_MAP_W * k) / 2 + leadAtX * OPS_MAP_W * k;
-      const y0 = iy + (ch - OPS_MAP_H * k) + leadAtY * OPS_MAP_H * k + 4.4 * U * k;
-      const target = leadTo?.current;
-      const y1 = target ? rel(target).y : iy + ch;
-      if (y1 <= y0) { setLead(null); return; }
-      const avoid = [plRef.current, otRef.current].flatMap(el => {
-        if (!el || el.offsetWidth === 0) return [];
-        const r = rel(el);
-        return [{ l: r.x, r: r.x + r.w, t: r.y, b: r.y + r.h }];
-      });
-      const { d } = nextLeadRoute({ x, y0, y1, avoid, pad: 9, above: 7, minX: ix + 5, maxX: ix + cw - 5 });
-      setLead(prev => (prev && prev.d === d && prev.y0 === y0 && prev.y1 === y1 ? prev : { d, y0, y1 }));
-    };
-    measure();
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
-    const target = leadTo?.current;
-    for (const el of [wrap, map, plRef.current, target, target?.parentElement]) if (el && ro) ro.observe(el);
-    window.addEventListener('resize', measure);
-    let alive = true;
-    document.fonts?.ready.then(() => { if (alive) measure(); }).catch(() => {});
-    return () => { alive = false; ro?.disconnect(); window.removeEventListener('resize', measure); };
-  }, [leadAtX, leadAtY, leadTo, dest]);
   if (DS_MAP_DISABLED) return null;
   const P = (at: readonly [number, number]) => [at[0] * OPS_MAP_W, at[1] * OPS_MAP_H] as const;
   const visited = trail.visited.map(v => P(v.at));
@@ -203,9 +152,7 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
     // PC の横長: 箱が原画とほぼ同じ比になり、縦の余白(=札の帯)が無くなって SECTOR の札が絵に重なる。
     // 横長の時は中の札を出さず(index.css の .ds-home .ds-map-tag)、箱の外の上に右の列の「PREP ── 準備」と同じ書式の見出しを出す
     // (MissionSelect の .ds-glabel-sector)。縦持ちは今どおり(中の札・箱 210px)。
-    // 箱の外の包み=NEXT の線を地図の箱(はみ出しを切る)の外まで描くための土台。組みは変えない(余白・高さは .ds-map のまま)。
-    <div ref={wrapRef} style={{ position: 'relative' }}>
-    <div ref={mapRef} className="ds-map landscape:!h-[clamp(120px,calc(100svh/var(--hud-s,1)_-_250px),275px)]" style={{ height: 210, background: '#0d0e13' }}>{/* 原画の縁の色=幅に合わせた時の余白が帯に見えない */}
+    <div className="ds-map landscape:!h-[clamp(120px,calc(100svh/var(--hud-s,1)_-_250px),275px)]" style={{ height: 210, background: '#0d0e13' }}>{/* 原画の縁の色=幅に合わせた時の余白が帯に見えない */}
       {/* 地図は下端に揃える=余白は上の SECTOR の札の帯に寄る(検収クリエイティブ監査 #7)。 */}
       <svg viewBox={`0 0 ${OPS_MAP_W} ${OPS_MAP_H}`} preserveAspectRatio="xMidYMax meet" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} aria-label="作戦地図"
         ref={svgRef} onClick={faceHits.length > 0 || openKey ? onMapClick : undefined}
@@ -226,7 +173,7 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
           ? <rect key={i} x={p[0] - 2.2 * U} y={p[1] - 2.2 * U} width={4.4 * U} height={4.4 * U} fill="rgba(7,6,13,0.6)" stroke={AMBER} strokeWidth={1.3} vectorEffect="non-scaling-stroke" />
           : <rect key={i} x={p[0] - 2.2 * U} y={p[1] - 2.2 * U} width={4.4 * U} height={4.4 * U} fill={AMBER} />))}
         {/* 次の目標=琥珀明の中抜きの菱形(ゆっくり加減速して明滅)+小さな「NEXT」(行き先の名は左上の SECTOR にある=重ねて言わない・#1/#6)。 */}
-        {/* 地図から直接出撃(P1): NEXT の印を細い光る輪で囲む(出撃の帯へ降ろす細い線は箱の外の重ね=下の ds-map-lead)。
+        {/* 地図から直接出撃(P1): NEXT の印を細い光る輪で囲む(印から下へ降ろす線は出さない=社長指示2026-11-25「やめようその矢印」)。
             輪は開いた時に外から縮んで止まり(減速)、以後は菱形と同じ加減速でゆっくり息をする。 */}
         {nxt && !sameSpot && dest && (
           <g pointerEvents="none">
@@ -357,28 +304,13 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
           (出撃の帯が一覧へ行く形に戻る)。帯は地図の操作(顔・NEXT)を邪魔しない=押せるのは「ほかの地域」だけ。 */}
       {dest && (
         <div className="ds-map-dest" aria-label="次の行き先">
-          <span ref={plRef} className="ds-map-dest-pl">{dest.locationTitle}</span>
+          <span className="ds-map-dest-pl">{dest.locationTitle}</span>
           {onOthers && (
-            <button ref={otRef} type="button" data-nav-id="ops-others" data-testid="ops-others" className="ds-map-dest-ot" onClick={onOthers}>
+            <button type="button" data-nav-id="ops-others" data-testid="ops-others" className="ds-map-dest-ot" onClick={onOthers}>
               ほかの地域<PixelIcon name="chevron-right" size={10} />
             </button>
           )}
         </div>
-      )}
-    </div>
-      {/* NEXT の印→出撃の帯の上の縁へ降ろす細い琥珀の線(P1)。印から道筋に沿って伸びて止まる(index.css .ds-map-next-lead・reduced-motion は止める)。押す操作は通す(pointer-events: none)。
-          地図の上は濃く、帯に近づくほど少し落ち着く(帯に着く所でも消えない=印と帯が1本につながって見える)。 */}
-      {lead && (
-        <svg className="ds-map-lead" aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: lead.y1 + 1, overflow: 'visible', pointerEvents: 'none' }}>
-          <defs>
-            <linearGradient id={`${clipBase}-lead`} gradientUnits="userSpaceOnUse" x1={0} y1={lead.y0} x2={0} y2={lead.y1}>
-              <stop offset="0" stopColor={AMBER} stopOpacity={0.85} />
-              <stop offset="0.7" stopColor={AMBER} stopOpacity={0.5} />
-              <stop offset="1" stopColor={AMBER} stopOpacity={0.62} />
-            </linearGradient>
-          </defs>
-          <path className="ds-map-next-lead" d={lead.d} pathLength={1} fill="none" stroke={`url(#${clipBase}-lead)`} strokeWidth={1} strokeLinejoin="round" />
-        </svg>
       )}
     </div>
   );

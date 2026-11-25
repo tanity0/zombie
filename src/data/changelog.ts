@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5796', items: ['作戦室の地図の次の目的地から伸びていた線をなくした'] },
   { version: '0.25.5795', items: ['作戦室の地図の次の目的地から、出撃のボタンまで一本の線でつながった'] },
   { version: '0.25.5794', items: ['レベルアップで超レアが出た時だけ、その1枚が最後に落ちてくる。それ以外は出た順のまま並ぶ'] },
   { version: '0.25.5793', items: ['ゲーム内容の変更はありません'] },

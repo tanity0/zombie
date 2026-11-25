@@ -948,22 +948,15 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
 .ds-map-dest-ot svg { opacity: 0.7; transition: transform 200ms cubic-bezier(.2,.7,.3,1); }
 .ds-map-dest-ot:hover, .ds-map-dest-ot:active { color: #f3eee4; }
 .ds-map-dest-ot:hover svg, .ds-map-dest-ot:active svg { transform: translateX(2px); }
-/* NEXT の輪: 外から縮んで止まる。線: 菱形から下へ伸びて止まる。 */
+/* NEXT の輪: 外から縮んで止まる。 */
 .ds-map-next-ring {
   transform-box: fill-box;
   transform-origin: center;
   animation: ds-map-next-ring-in 640ms cubic-bezier(0.2, 0.7, 0.25, 1) 260ms both;
 }
 @keyframes ds-map-next-ring-in { from { opacity: 0; transform: scale(1.7); } to { opacity: 1; transform: scale(1); } }
-.ds-map-next-lead {
-  stroke-dasharray: 1 1;
-  stroke-dashoffset: 0;
-  animation: ds-map-next-lead-in 620ms cubic-bezier(0.3, 0, 0.2, 1) 420ms both;
-}
-/* 線は印から出撃の帯へ、道筋に沿って伸びて止まる(折れても形を潰さない=縦の拡大ではなく描き進める)。 */
-@keyframes ds-map-next-lead-in { from { opacity: 0; stroke-dashoffset: 1; } 15% { opacity: 1; } to { opacity: 1; stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .ds-map-dest, .ds-map-next-ring, .ds-map-next-lead { animation: none; }
+  .ds-map-dest, .ds-map-next-ring { animation: none; }
 }
 
 /* 資料室「記録映像」(research/UIUX_PROPOSAL.md P7): 資料室の頭の1行の帯。フィルムの1コマ+「記録 001」+題(明朝)。 */

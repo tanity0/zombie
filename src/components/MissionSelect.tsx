@@ -588,7 +588,6 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const playDevice = usePlayDevice(); // 資料室の操作記録も PC は今手にある物の言葉で(§11-6)
   const padKind = usePadKindActive() || 'xbox'; // パッドの説明文に差し込む刻印の系統(系統が変わった時も描き直す)
   const captureMode = useCaptureMode(); // オプション「撮影モード」: 版数を隠す
-  const sortieRef = useRef<HTMLButtonElement | null>(null); // 作戦室の出撃の帯=地図の NEXT の印から降りる細い線の行き先(P1)
   const [screen, setScreen] = useState<Screen>(initialScreen === 'bossrush' ? { name: 'bossRush' } : { name: 'home' });
   // 年表の実績(社長指示2026-10-14): 拠点で画面が変わるたびに達成を見る(強化・購入・ガチャの直後を拾う。初回だけ書く=軽い)。
   useEffect(() => { syncFeatChronicle(); }, [screen.name]);
@@ -948,12 +947,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               </div>}
               <div className="menu-item-in" style={{ animationDelay: '50ms' }}>
                 <DsStoryMap stages={STAGES} cleared={cleared} next={nextStage} sectorLabel={nextStage?.locationTitle ?? '—'} bossFaces={mapFaces}
-                  onNext={goSortieDest ?? undefined} onOthers={goStageSelect} leadTo={sortieRef} />
+                  onNext={goSortieDest ?? undefined} onOthers={goStageSelect} />
               </div>
               {/* 出撃=アンバーの主役行。次の任務があれば帯に任務名を載せ、押すと任務詳細へ直行(P1)。無ければ作戦地域の一覧(従来どおり)。
                   サブ行「作戦地域: 〇〇」は廃止(社長指示2026-08-29「いらないかも。その上の図にあるから」
                   =マップのSECTORタグが同じ情報を持つため重複)。 */}
-              <button ref={sortieRef} type="button" data-testid="ops-sortie" data-nav-default data-nav-cursor="dark" className="ds-sortie menu-item-in" style={{ animationDelay: '320ms' }} onClick={goSortieDest ?? goStageSelect}>
+              <button type="button" data-testid="ops-sortie" data-nav-default data-nav-cursor="dark" className="ds-sortie menu-item-in" style={{ animationDelay: '320ms' }} onClick={goSortieDest ?? goStageSelect}>
                 <span className="ds-sortie-t1 block shrink-0">出撃</span>
                 {/* 帯は任務名だけ(場所の名は地図の下端が持つ=同じ名を2度言わない)。 */}
                 {sortieDest && <span className="ds-sortie-dest">{sortieDest.main.title}</span>}
