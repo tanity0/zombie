@@ -18,14 +18,14 @@ const heights = (e: BrawlerJuggleFields, from: number, to: number, stepMs = 5) =
   return out;
 };
 
-describe('鞭の浮きの形(1秒かけて頂点へ・加速→減速・頂点で漂って落ちる)', () => {
+describe('鞭の浮きの形(0.6秒かけて頂点へ・加速→減速・頂点で漂って落ちる)', () => {
   const lifted = { ...whipLiftPatch({}, 'mob', T0) } as BrawlerJuggleFields;
-  it('地上から浮かせると鞭の弧(1秒で頂点・頂点は格闘の4段目の打ち上げの2倍・区分の重さ)', () => {
+  it('地上から浮かせると鞭の弧(0.6秒で頂点・頂点は格闘の4段目の打ち上げの2倍・区分の重さ)', () => {
     expect(lifted.brLiftShape).toBe('whip');
     expect(lifted.brLiftMs).toBe(WHIP_LIFT_MS);
     expect(WHIP_LIFT_MS).toBe(WHIP_LIFT_RISE_MS + WHIP_LIFT_HOVER_MS + WHIP_LIFT_FALL_MS);
     expect(whipLiftApexAt(lifted)).toBe(T0 + WHIP_LIFT_RISE_MS);
-    expect(WHIP_LIFT_RISE_MS).toBe(1000);
+    expect(WHIP_LIFT_RISE_MS).toBe(600); // 社長指示2026-11-25「1秒から0.6秒に短縮」
     expect(whipLiftTop('mob')).toBe(WHIP_LIFT_HEIGHT_MULT * BRAWLER_JUGGLE_WEIGHT.mob);
     expect(whipLiftTop('strong')).toBe(WHIP_LIFT_HEIGHT_MULT * BRAWLER_JUGGLE_WEIGHT.strong);
     // 格闘の4段目(地上の打ち上げ)の頂点の2倍
