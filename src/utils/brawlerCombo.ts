@@ -606,7 +606,7 @@ export const brawlerFallShape = (k: number, shape?: LiftArcShape): LiftArcShape 
   if (k === 1) return shape;
   const R = shape?.rise ?? BRAWLER_LIFT_RISE_FRAC, H = shape?.hover ?? BRAWLER_LIFT_HOVER_FRAC, F = 1 - R - H;
   const tot = R + H + F * k;
-  return { rise: R / tot, hover: H / tot, ...(shape?.riseEase ? { riseEase: shape.riseEase } : {}) };
+  return { rise: R / tot, hover: H / tot };
 };
 /** その敵の今の弧の配分(爆発=BLAST_LIFT_SHAPE / 鞭=敵ごとの brLiftArc / それ以外=格闘の弧=undefined)。 */
 export const brawlerArcShapeOf = (e: Pick<BrawlerJuggleFields, 'brLiftShape' | 'brLiftArc'>): LiftArcShape | undefined =>

@@ -18,14 +18,14 @@ const heights = (e: BrawlerJuggleFields, from: number, to: number, stepMs = 5) =
   return out;
 };
 
-describe('鞭の浮きの形(0.4秒かけて頂点へ・加速→減速・頂点で漂って落ちる)', () => {
+describe('鞭の浮きの形(0.3秒かけて頂点へ・立ち上がりが一番速い・頂点で漂って落ちる)', () => {
   const lifted = { ...whipLiftPatch({}, 'mob', T0) } as BrawlerJuggleFields;
-  it('地上から浮かせると鞭の弧(0.4秒で頂点・頂点は格闘の4段目の打ち上げの2倍・区分の重さ)', () => {
+  it('地上から浮かせると鞭の弧(0.3秒で頂点・頂点は格闘の4段目の打ち上げの2倍・区分の重さ)', () => {
     expect(lifted.brLiftShape).toBe('whip');
     expect(lifted.brLiftMs).toBe(WHIP_LIFT_MS);
     expect(WHIP_LIFT_MS).toBe(WHIP_LIFT_RISE_MS + WHIP_LIFT_HOVER_MS + WHIP_LIFT_FALL_MS);
     expect(whipLiftApexAt(lifted)).toBe(T0 + WHIP_LIFT_RISE_MS);
-    expect(WHIP_LIFT_RISE_MS).toBe(400); // 社長指示2026-11-25「0.4秒に変更」
+    expect(WHIP_LIFT_RISE_MS).toBe(300); // 社長指示2026-11-25「0.4秒に変更」→「0.3秒に変更」
     expect(whipLiftTop('mob')).toBe(WHIP_LIFT_HEIGHT_MULT * BRAWLER_JUGGLE_WEIGHT.mob);
     expect(whipLiftTop('strong')).toBe(WHIP_LIFT_HEIGHT_MULT * BRAWLER_JUGGLE_WEIGHT.strong);
     // 格闘の4段目(地上の打ち上げ)の頂点の2倍
@@ -33,15 +33,12 @@ describe('鞭の浮きの形(0.4秒かけて頂点へ・加速→減速・頂点
     expect(lifted.brLiftPeak).toBeCloseTo(WHIP_LIFT_HEIGHT_MULT * (s4?.brLiftPeak ?? 0));
     expect(brawlerJuggleHeightRel(lifted, T0 + WHIP_LIFT_RISE_MS)).toBeCloseTo(whipLiftTop('mob'), 6);
   });
-  it('上りは速さ0から加速し、頂点の手前で減速して速さ0で着く(パッと動かない・パッと止まらない)', () => {
-    const h = heights(lifted, T0, T0 + WHIP_LIFT_RISE_MS, WHIP_LIFT_RISE_MS / 200); // 上りの尺に比例した刻み(0.4秒へ縮めた時に刻みが粗くならないよう)
+  it('上りは打たれた瞬間が一番速く、頂点の手前で減速して速さ0で着く(社長指示2026-11-25「立ち上がりは早く」・パッと止まらない)', () => {
+    const h = heights(lifted, T0, T0 + WHIP_LIFT_RISE_MS, WHIP_LIFT_RISE_MS / 200); // 上りの尺に比例した刻み
     const v = h.slice(1).map((x, i) => x - h[i]);
     expect(v.every(d => d >= -1e-12)).toBe(true); // 上りの間は下がらない
-    const peakI = v.indexOf(Math.max(...v));
-    expect(peakI).toBeGreaterThan(5); // 出だしが一番速くない(加速がある)
-    expect(peakI).toBeLessThan(v.length - 5); // 着く手前が一番速くない(減速がある)
-    expect(v[0]).toBeLessThan(Math.max(...v) * 0.1);
-    expect(v[v.length - 1]).toBeLessThan(Math.max(...v) * 0.1);
+    expect(v[0]).toBe(Math.max(...v)); // 出だしが一番速い
+    expect(v[v.length - 1]).toBeLessThan(v[0] * 0.01); // 頂点の手前はほぼ止まる
   });
   it('頂点で少し漂い、落ちて地面で終わる。高さは跳ばない(つなぎ目で連続)', () => {
     const h = heights(lifted, T0, T0 + WHIP_LIFT_MS, 1);

@@ -15,8 +15,8 @@ export const WHIP_SLAM_DAMAGE_MULT = 2;
 export const WHIP_SLAM_HITSTOP_MS = 120;
 
 // ---- 鞭の浮き(格闘の浮きの式 utils/brawler の brawlerLiftArcRel に、鞭専用の形と尺を渡す) ----
-/** 地上から頂点まで(ms)=0.4秒かけて頂点へ(加速→減速)。 */
-export const WHIP_LIFT_RISE_MS = 400; // 社長指示2026-11-25「1秒から0.6秒」→「0.4秒に変更」(旧 1000→600)
+/** 地上から頂点まで(ms)=0.3秒かけて頂点へ(打たれた瞬間が一番速く、頂点へ減速して着く)。 */
+export const WHIP_LIFT_RISE_MS = 300; // 社長指示2026-11-25「1秒から0.6秒」→「0.4秒に変更」→「0.3秒に変更」(旧 1000→600→400)
 /** 頂点で漂う長さ(ms)。 */
 export const WHIP_LIFT_HOVER_MS = 300;
 /** 漂いの終わりから地面まで(ms・漂いの沈みの速さを引き継いで加速して落ちる)。 */
@@ -29,12 +29,12 @@ export const WHIP_KEEP_MARGIN_MS = 150;
 export const WHIP_RELIFT_MIN_RISE = 0.08;
 
 /** 上り・漂い・落ちの長さ(ms)から弧の配分を作る。 */
-export const whipLiftArcShape = (riseMs: number, hoverMs: number, fallMs: number, riseEase: 'out' | 'inOut'): LiftArcShape => {
+export const whipLiftArcShape = (riseMs: number, hoverMs: number, fallMs: number): LiftArcShape => {
   const tot = Math.max(1, riseMs + hoverMs + fallMs);
-  return { rise: riseMs / tot, hover: hoverMs / tot, riseEase };
+  return { rise: riseMs / tot, hover: hoverMs / tot };
 };
-/** 地上から浮かせた1回目の弧の配分(1秒で頂点・加速→減速)。 */
-export const WHIP_LIFT_SHAPE: LiftArcShape = whipLiftArcShape(WHIP_LIFT_RISE_MS, WHIP_LIFT_HOVER_MS, WHIP_LIFT_FALL_MS, 'inOut');
+/** 地上から浮かせた1回目の弧の配分(0.3秒で頂点・立ち上がりが一番速い ease-out=社長指示2026-11-25「立ち上がりは早く」・旧は加速→減速)。 */
+export const WHIP_LIFT_SHAPE: LiftArcShape = whipLiftArcShape(WHIP_LIFT_RISE_MS, WHIP_LIFT_HOVER_MS, WHIP_LIFT_FALL_MS);
 /** 地上から浮かせた1回目の弧の長さ(ms)。 */
 export const WHIP_LIFT_MS = WHIP_LIFT_RISE_MS + WHIP_LIFT_HOVER_MS + WHIP_LIFT_FALL_MS;
 
@@ -56,7 +56,7 @@ export type WhipLiftPatch = Partial<BrawlerJuggleFields> & { liftUntil: number }
 
 /**
  * 鞭の当たり1回ぶんの浮き。cls=区分(ボス級は浮かないので呼び手が外す)。
- *  - 地上の敵: その場で浮かせる(1秒で頂点へ加速→減速・頂点で漂う・落ちる)。高さ=whipLiftTop。
+ *  - 地上の敵: その場で浮かせる(0.3秒で頂点へ・立ち上がりが一番速い・頂点で漂う・落ちる)。高さ=whipLiftTop。
  *  - 浮いている敵(追加の振り=浮かせ続ける):
  *     ・鞭の浮きの上りの途中なら、弧はそのまま(高さが跳ばない)で漂いだけ継ぎ足す(次の追加の振りが漂いの中で当たる長さまで)。
  *     ・頂点を過ぎた(漂い・落ち)/鞭以外の浮きなら、今の高さから打ち上げ直す(打たれた瞬間が一番速い・頂点は鞭の頂点か今より少し上)。
@@ -84,7 +84,7 @@ export const whipLiftPatch = (
     const ms = riseMs + hoverMs + WHIP_LIFT_FALL_MS;
     return {
       brLiftMs: ms, brLiftUntil: e.brawlerLiftAt + ms, liftUntil: e.brawlerLiftAt + ms,
-      brLiftArc: whipLiftArcShape(riseMs, hoverMs, WHIP_LIFT_FALL_MS, e.brLiftArc?.riseEase ?? 'inOut'),
+      brLiftArc: whipLiftArcShape(riseMs, hoverMs, WHIP_LIFT_FALL_MS),
     };
   }
   // 頂点の後(または鞭以外の浮き・叩き落としの最中): 今の高さから打ち上げ直す。
@@ -95,7 +95,7 @@ export const whipLiftPatch = (
   const ms = WHIP_RELIFT_RISE_MS + hoverMs + WHIP_LIFT_FALL_MS;
   return {
     brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: peak, brLiftFrom: h, brLiftN: (e.brLiftN ?? 0) + 1, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true,
-    brLiftShape: 'whip', brLiftArc: whipLiftArcShape(WHIP_RELIFT_RISE_MS, hoverMs, WHIP_LIFT_FALL_MS, 'out'), brLiftFallK: 1, brLiftDown: false, brLiftDropMs: 0,
+    brLiftShape: 'whip', brLiftArc: whipLiftArcShape(WHIP_RELIFT_RISE_MS, hoverMs, WHIP_LIFT_FALL_MS), brLiftFallK: 1, brLiftDown: false, brLiftDropMs: 0,
   };
 };
 /** 今の高さ h から頂点 want へ上がり直す押し上げ量(格闘の浮き直しの頂点の式 brawlerJuggleTop の逆)。 */

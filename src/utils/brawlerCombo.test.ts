@@ -332,7 +332,7 @@ describe('★落ちる速さの重さの増え方(社長裁定2026-11-13「格�
       const end = e.brawlerLiftAt! + e.brLiftMs!;
       expect(e.brLiftUntil).toBe(end);
       expect(brawlerJuggleHeightRel(e, end - 1)).toBeGreaterThan(0);
-      expect(brawlerJuggleHeightRel(e, end - 1)).toBeLessThan(0.02);
+      expect(brawlerJuggleHeightRel(e, end - 1)).toBeLessThan(0.05); // 着地の直前が一番速い落ち(社長指示2026-11-25)=1ms前でも頂点の数%以内
       expect(brawlerJuggleHeightRel(e, end)).toBe(0);
       expect(brawlerJuggleLanded(e, end - 1)).toBe(false);
       expect(brawlerJuggleLanded(e, end)).toBe(true);

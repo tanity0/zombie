@@ -15,6 +15,9 @@ import {
   BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT, brawlerKickMult,
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerAfterJustGuardPoints, BRAWLER_JUST_GUARD_POINTS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS,
 } from './brawler';
+import { brawlerLiftArcRel, BLAST_LIFT_SHAPE, BRAWLER_LIFT_RISE_FRAC, BRAWLER_LIFT_HOVER_FRAC, BRAWLER_LIFT_HOVER_SAG, type LiftArcShape } from './brawler';
+import { brawlerFallShape } from './brawlerCombo';
+import { WHIP_LIFT_SHAPE } from './whipFollowup';
 import {
   brawlerHeelAirOf, brawlerStompAirMult, BRAWLER_STOMP_AIR_MULT_MAX,
   pickBrawlerComboTarget, brawlerComboLockId, brawlerComboTargetAfterHit, BRAWLER_HEEL_AIR_PX, BRAWLER_STOMP_FROM_AIR_FALL, BRAWLER_KICK3_CHARGE_RISE_PX, BRAWLER_KICK3_CHARGE_SINK_PX, BRAWLER_KICK3_CHARGE_MS, BRAWLER_KICK_MAX,
@@ -912,4 +915,41 @@ describe('ジャスト構えの技ポイント(社長指示2026-11-12「ジャ�
     const s = g(0, undefined);
     expect(brawlerAfterJustGuardPoints(s, 20, true, 1)).toBe(s);
   });
+});
+
+describe('浮きの弧の形(社長指示2026-11-25「立ち上がりは早く、頂点がゆっくりで、着地付近はまた早いはず。自然な慣性で」)', () => {
+  // 格闘の弧(既定)・爆発の弧・鞭の弧・格闘の1回目(落ちる部分を 1.25 倍に伸ばした配分)。3つ目の値=着地の速さが上りの初速の何割以上か。
+  const arcs: Array<[string, LiftArcShape | undefined, number]> = [
+    ['格闘', undefined, 0.4], ['爆発', BLAST_LIFT_SHAPE, 0.2], ['鞭', WHIP_LIFT_SHAPE, 0.6], ['格闘の1回目(落ち1.25倍)', brawlerFallShape(1.25), 0.3],
+  ];
+  const d = 1e-6;
+  const speed = (u: number, sh?: LiftArcShape) => Math.abs(brawlerLiftArcRel(u + d, 0, 1, sh) - brawlerLiftArcRel(u, 0, 1, sh)) / d;
+  /** 旧の落ち(二次)の着地の速さ(比べる用)。 */
+  const oldLand = (sh?: LiftArcShape) => {
+    const R = sh?.rise ?? BRAWLER_LIFT_RISE_FRAC, H = sh?.hover ?? BRAWLER_LIFT_HOVER_FRAC, F = 1 - R - H, S = BRAWLER_LIFT_HOVER_SAG;
+    const v0 = 2 * S * F / H; return (v0 + 2 * (1 - S - v0)) / F;
+  };
+  for (const [name, sh, minRatio] of arcs) {
+    const R = sh?.rise ?? BRAWLER_LIFT_RISE_FRAC, H = sh?.hover ?? BRAWLER_LIFT_HOVER_FRAC;
+    it(`${name}: 立ち上がりが速く、頂点の近くが一番ゆっくり、着地の直前がまた速い`, () => {
+      const rise = speed(0, sh), apex = speed(R + H / 2, sh), land = speed(1 - 2 * d, sh);
+      expect(rise).toBeGreaterThan(apex * 10);
+      expect(land).toBeGreaterThan(apex * 10);
+      expect(land / rise).toBeGreaterThanOrEqual(minRatio); // 着地の速さ ≥ 上りの初速の◯割
+      expect(land).toBeGreaterThan(oldLand(sh) * 2); // 旧の二次の落ちの2倍以上
+      // 落ちの区間は、進むほど速くなる(頂点の側がゆっくり・着地の側が速い)
+      let prev = 0;
+      for (let k = 0; k <= 20; k++) { const v = speed(R + H + (1 - R - H) * (k / 20) * 0.999, sh); expect(v).toBeGreaterThanOrEqual(prev - 1e-6); prev = v; }
+    });
+    it(`${name}: つなぎ目(上り→漂い→落ち)で高さも速さも跳ばない・u=1 で地面(着地の時刻は配分どおり)`, () => {
+      for (const j of [R, R + H]) {
+        expect(Math.abs(brawlerLiftArcRel(j - d, 0, 1, sh) - brawlerLiftArcRel(j + d, 0, 1, sh))).toBeLessThan(1e-4);
+        expect(Math.abs(speed(j - 3 * d, sh) - speed(j + d, sh))).toBeLessThan(0.05);
+      }
+      expect(brawlerLiftArcRel(R, 0, 1, sh)).toBeCloseTo(1, 9); // 頂点の高さは変わらない
+      expect(speed(R - 2 * d, sh)).toBeLessThan(0.01); // 頂点へは速さ0で着く
+      expect(brawlerLiftArcRel(1 - 1e-6, 0, 1, sh)).toBeGreaterThan(0);
+      expect(brawlerLiftArcRel(1, 0, 1, sh)).toBe(0);
+    });
+  }
 });

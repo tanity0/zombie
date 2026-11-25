@@ -1555,7 +1555,7 @@ export const brawlerStompShake = (el: number, windupMs: number): { x: number; y:
 };
 /**
  * 浮かせの弧の配分(research/BRAWLER.md §12-1・社長承認2026-11-08「格闘ゲームの空中コンボの手触り」)。
- * 打ち上がり 18%(速く上がって頂点で速さ0)→ 頂点の漂い 27%(わずかに沈み始める)→ 落下 55%(ゆっくり加速して落ちる)。
+ * 打ち上がり 18%(速く上がって頂点で速さ0)→ 頂点の漂い 27%(わずかに沈み始める)→ 落下 55%(ゆっくり落ち始め、着地の直前が一番速い)。
  * ★社長指示2026-11-13「浮の上がるまでのスピードをもう少し早めたい。その分、慣性も少し強めたい」: 上り 25%→18%・漂い 20%→27%
  *   (落下の割合と全体の時間は据え置き=コンボのつながりは変えない)。上りの減速は二次→三次(liftRiseEase)=頂点への寄り付きが強い。
  */
@@ -1565,16 +1565,20 @@ export const BRAWLER_LIFT_HOVER_FRAC = 0.27;
 export const BRAWLER_LIFT_HOVER_SAG = 0.06;
 /**
  * 浮かせの弧(高さの倍率)。u=0..1。start=始まりの高さ・top=頂点の高さ(同じ単位)。
- *  - 上り: start→top を三次の ease-out(頂点で速さ0・社長指示2026-11-13で二次→三次=頂点への減速が強い)。
- *  - 漂い: top から SAG だけ二次で沈む(速さ0から)。
- *  - 落下: 漂いの終わりの速さを引き継いで、二次で加速して 0 へ(つなぎ目で速さが跳ばない)。
+ * ★社長指示2026-11-25「立ち上がりは早く、頂点がゆっくりで、着地付近はまた早いはず。自然な慣性で」:
+ *  - 上り: start→top を三次の ease-out(打たれた瞬間が一番速く、頂点で速さ0・社長指示2026-11-13で二次→三次)。全部の浮きで同じ。
+ *  - 漂い: top から SAG だけ二次で沈む(速さ0から)。頂点の近くが一番ゆっくり。
+ *  - 落下: 漂いの終わりの高さと速さを引き継いで、BRAWLER_LIFT_FALL_POW 乗(五次)で強く加速して 0 へ。
+ *    落ち始めはゆっくり、着地の直前が一番速い(旧: 二次=着地の速さが上りの初速の2割弱しか無く、着地の手前がふわっと遅かった)。
+ *    つなぎ目で高さも速さも跳ばない(五次の項は落ち始めで速さ0)。上り・漂い・落ちの配分と全体の時間(着地の時刻)は変えていない。
  * 追撃の浮き直しも同じ形(start=押し上げた瞬間の高さ=つなぎ目で高さが跳ばない)。
  */
 /**
  * 浮きの弧の配分(上り・漂いの割合)。省略=格闘の弧(18%・27%)。
- * riseEase=上りの動き方。省略/'out'=三次の ease-out(打たれた瞬間が一番速い)。'inOut'=加速してから減速(鞭の浮き=1秒かけて頂点へ・research/WHIP_FOLLOWUP.md §7)。
+ * 上りは全部の浮きで三次の ease-out(打たれた瞬間が一番速い)。★鞭の浮きの「加速してから減速」(旧 riseEase:'inOut')は
+ *   社長指示2026-11-25「立ち上がりは早く」で廃止(立ち上がりが遅かった)。
  */
-export interface LiftArcShape { rise: number; hover: number; riseEase?: 'out' | 'inOut' }
+export interface LiftArcShape { rise: number; hover: number }
 /**
  * ★爆発で浮いた弧(research/BRAWLER.md §14・社長「落ちてくるのを爆発のは少しゆっくりに」): 上り15%・漂い20%・落ち65%。
  * ★社長指示2026-11-13(上りを速く・その分の慣性を強く): 上り 20%→15%・漂い 15%→20%(落ちの65%は据え置き)。
@@ -1588,20 +1592,20 @@ export const WHIP_LIFT_HEIGHT_MULT = 2;
 /** 浮きの上り専用の ease-out(三次=頂点への減速が二次より強い・社長指示2026-11-13)。他の easeOut は二次のまま。 */
 const liftRiseEase = (x: number): number => 1 - (1 - x) * (1 - x) * (1 - x);
 /**
- * 鞭の浮きの上り(加速→減速)。出だしは速さ0から加速し、速さの山は前寄り(約4割)・頂点へは長く減速して寄り付く(三次)。
- * 端の速さはどちらも0=パッと動き出さず、パッと止まらない。
+ * 落下の加速の強さ(落ちの区間の時間の何乗で落ちるか)。2=一定の重力(旧)。大きいほど落ち始めがゆっくりで、着地の直前が速い。
+ * 5 で着地の直前の速さ=上りの初速の約4割(格闘の弧)・約6割(鞭の弧)。旧の二次は約2割・約3割(社長指示2026-11-25「着地付近はまた早いはず」)。
  */
-const liftRiseEaseInOut = (x: number): number => 1 - (1 - x ** 1.6) ** 3;
+export const BRAWLER_LIFT_FALL_POW = 5;
 export const brawlerLiftArcRel = (u: number, start: number, top: number, shape?: LiftArcShape): number => {
   if (u <= 0) return start;
   if (u >= 1) return 0;
   const R = shape?.rise ?? BRAWLER_LIFT_RISE_FRAC, H = shape?.hover ?? BRAWLER_LIFT_HOVER_FRAC, F = 1 - R - H, S = BRAWLER_LIFT_HOVER_SAG;
-  if (u < R) return start + (top - start) * (shape?.riseEase === 'inOut' ? liftRiseEaseInOut(u / R) : liftRiseEase(u / R));
+  if (u < R) return start + (top - start) * liftRiseEase(u / R);
   if (u < R + H) { const t = (u - R) / H; return top * (1 - S * t * t); }
   const t = (u - R - H) / F;
-  const v0 = 2 * S * F / H;           // 漂いの終わりの沈む速さ(落下の区間の単位へ換算)
-  const a = 1 - S - v0;               // 残りを加速で落とす(>0)
-  return top * ((1 - S) - v0 * t - a * t * t);
+  const v0 = 2 * S * F / H;           // 漂いの終わりの沈む速さ(落下の区間の単位へ換算)=つなぎ目で速さが跳ばない
+  const a = 1 - S - v0;               // 残りを強い加速で落とす(>0・t^POW は落ち始めで速さ0)
+  return top * ((1 - S) - v0 * t - a * t ** BRAWLER_LIFT_FALL_POW);
 };
 /** 浮かせの絵の高さ(地面から・px)。u=0..1。 */
 export const brawlerLiftHeight = (u: number): number => BRAWLER_LIFT_VIS_PX * brawlerLiftArcRel(u, 0, 1);

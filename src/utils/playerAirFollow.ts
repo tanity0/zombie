@@ -270,7 +270,7 @@ let playerLaunchedAt = Number.NEGATIVE_INFINITY;
 let playerLaunchMs = 585;
 /** 打ち上げられた瞬間(Date.now)と、浮きの長さ(格闘の浮きの尺=BRAWLER_LIFT_MS)。当たりの瞬間にだけ書く。 */
 export const notePlayerLaunched = (now: number, ms: number): void => { playerLaunchedAt = now; playerLaunchMs = Math.max(1, ms); };
-/** いまの見た目の浮きの高さ(px)。弧は格闘の浮きと同じ形(速く上がり・頂点で漂い・ゆっくり落ちる)。 */
+/** いまの見た目の浮きの高さ(px)。弧は格闘の浮きと同じ形(速く上がり・頂点で漂い・落ち始めはゆっくりで着地の直前が一番速い)。 */
 export const playerLaunchHeightPx = (now: number, bodyH: number): number => {
   const u = (now - playerLaunchedAt) / playerLaunchMs;
   if (!(u >= 0 && u < 1)) return 0;

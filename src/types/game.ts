@@ -956,7 +956,7 @@ export interface Enemy {
   /** ★浮きの弧の形(research/BRAWLER.md §14・社長「浮き入れよう。落ちてくるのを爆発のは少しゆっくりに」)。'blast'=爆発で浮いた弧(上り15%・漂い20%・落ち65%)。無し=格闘の弧。 */
   brLiftShape?: 'blast' | 'throw' | 'whip';
   /** ★鞭の浮きの弧の配分(brLiftShape='whip' の時だけ・research/WHIP_FOLLOWUP.md §7)。上り・漂いの割合と上りの動き方(継ぎ足しで漂いが伸びる)。 */
-  brLiftArc?: { rise: number; hover: number; riseEase?: 'out' | 'inOut' };
+  brLiftArc?: { rise: number; hover: number };
   /** ★落ちる部分の時間の倍率(utils/brawlerCombo の brawlerFallK・社長裁定2026-11-13)。地上から打ち上げた1回目は遅く、空中で拾うたびに速く。無し=1。 */
   brLiftFallK?: number;
   /** ★爆発の浮き(§14): 今の空中が始まった時刻・爆発では浮かない窓の終わり(着地から、浮いていた時間と同じ長さ)。Date.now。 */
