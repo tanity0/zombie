@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5791', items: ['PCとタブレットの横持ちで、ステージ1の遠くの空に月と雪山と城が見えるようになった'] },
   { version: '0.25.5790', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5789', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5788', items: ['ゲーム内容の変更はありません'] },

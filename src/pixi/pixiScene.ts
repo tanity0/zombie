@@ -619,6 +619,7 @@ import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // 対人トラップ�
 import { groundFeelAtFoot, groundRowTileScaleX, groundRowTileScaleY, GroundScrollAccumulator, GROUND_SCROLL_LEGACY_FEEL_X, GROUND_SCROLL_LEGACY_FEEL_Y, type GroundPerspectiveParams } from '../utils/groundScroll'; // 地面の流れる速さ(足元の行=等倍)
 import { groundMatchedDepthScale } from '../utils/groundDepthScale'; // ?objdepth= 物の遠近を地面の倒れ具合に合わせる試作
 import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相の実効長(窓を追尾→溜めで通すため)
+import { stage1CastleLayout } from '../utils/stage1CastleLayout'; // M1遠景の城/山の縦の置き方(横長だけ城を帯の上下中央へ)
 
 /**
  * ★焼いた RenderTexture を作る唯一の入口(v0.25.4375)。
@@ -7606,8 +7607,11 @@ export class PixiScene {
       this.stage1Castle.tileScale.set(s);
       this.stage1Castle.anchor.set(0.5, 1);                      // 底基準
       this.stage1Castle.width = w;                               // 窓=画面幅(Aひとつ分)
-      this.stage1Castle.height = texH * s;                       // 縦は1タイル分だけ(縦リピート無し)
-      this.stage1Castle.position.set(w * 0.5, farH + STAGE1_CASTLE_Y); // s1casty=px
+      // 縦は1タイル分まで(縦リピート無し)。横長(PC)だけ、底は今の位置のまま窓を縦に短くして城を帯の上下中央へ下ろす
+      // (絵の下の端が切れる=手前の森/地面の所)。縦長(スマホ)は height=texH*s・底=farH+s1casty のまま(utils/stage1CastleLayout)。
+      const lay = stage1CastleLayout({ screenW: w, screenH: this.screenH, farH, drawnH: texH * s, castleY: STAGE1_CASTLE_Y });
+      this.stage1Castle.height = lay.height;
+      this.stage1Castle.position.set(w * 0.5, lay.bottomY);       // s1casty=px
       // 横パララックス: プレイヤー(camera.x)連動で流す。一番遠い風景=一番遅い(森1より小さい係数)。ミラー二連でシームレス。
       const period = texW * s;                                  // [A|反転A]一巡の表示幅=シームレス周期
       this.stage1Castle.tilePosition.x = -(((cameraX * STAGE1_CASTLE_PARALLAX_X) % period) + period) % period;
