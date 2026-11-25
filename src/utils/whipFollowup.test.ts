@@ -18,14 +18,14 @@ const heights = (e: BrawlerJuggleFields, from: number, to: number, stepMs = 5) =
   return out;
 };
 
-describe('鞭の浮きの形(0.6秒かけて頂点へ・加速→減速・頂点で漂って落ちる)', () => {
+describe('鞭の浮きの形(0.4秒かけて頂点へ・加速→減速・頂点で漂って落ちる)', () => {
   const lifted = { ...whipLiftPatch({}, 'mob', T0) } as BrawlerJuggleFields;
-  it('地上から浮かせると鞭の弧(0.6秒で頂点・頂点は格闘の4段目の打ち上げの2倍・区分の重さ)', () => {
+  it('地上から浮かせると鞭の弧(0.4秒で頂点・頂点は格闘の4段目の打ち上げの2倍・区分の重さ)', () => {
     expect(lifted.brLiftShape).toBe('whip');
     expect(lifted.brLiftMs).toBe(WHIP_LIFT_MS);
     expect(WHIP_LIFT_MS).toBe(WHIP_LIFT_RISE_MS + WHIP_LIFT_HOVER_MS + WHIP_LIFT_FALL_MS);
     expect(whipLiftApexAt(lifted)).toBe(T0 + WHIP_LIFT_RISE_MS);
-    expect(WHIP_LIFT_RISE_MS).toBe(600); // 社長指示2026-11-25「1秒から0.6秒に短縮」
+    expect(WHIP_LIFT_RISE_MS).toBe(400); // 社長指示2026-11-25「0.4秒に変更」
     expect(whipLiftTop('mob')).toBe(WHIP_LIFT_HEIGHT_MULT * BRAWLER_JUGGLE_WEIGHT.mob);
     expect(whipLiftTop('strong')).toBe(WHIP_LIFT_HEIGHT_MULT * BRAWLER_JUGGLE_WEIGHT.strong);
     // 格闘の4段目(地上の打ち上げ)の頂点の2倍
@@ -34,7 +34,7 @@ describe('鞭の浮きの形(0.6秒かけて頂点へ・加速→減速・頂点
     expect(brawlerJuggleHeightRel(lifted, T0 + WHIP_LIFT_RISE_MS)).toBeCloseTo(whipLiftTop('mob'), 6);
   });
   it('上りは速さ0から加速し、頂点の手前で減速して速さ0で着く(パッと動かない・パッと止まらない)', () => {
-    const h = heights(lifted, T0, T0 + WHIP_LIFT_RISE_MS, 5);
+    const h = heights(lifted, T0, T0 + WHIP_LIFT_RISE_MS, WHIP_LIFT_RISE_MS / 200); // 上りの尺に比例した刻み(0.4秒へ縮めた時に刻みが粗くならないよう)
     const v = h.slice(1).map((x, i) => x - h[i]);
     expect(v.every(d => d >= -1e-12)).toBe(true); // 上りの間は下がらない
     const peakI = v.indexOf(Math.max(...v));
@@ -74,7 +74,7 @@ describe('鞭の浮きの形(0.6秒かけて頂点へ・加速→減速・頂点
 describe('浮かせ続ける(スラッシャーの追加の振り)', () => {
   const lifted = { ...whipLiftPatch({}, 'mob', T0) } as BrawlerJuggleFields;
   it('上りの途中で当たった: 上りの高さはそのまま(跳ばない)で、漂いが次の振りの後まで伸びる', () => {
-    const at = T0 + WHIP_CHAIN_INTERVAL_MS;
+    const at = T0 + Math.round(WHIP_LIFT_RISE_MS / 2); // 上りの途中(上りが追加の振りの間隔より短くなったので、上りの半ばで当てる)
     const kept = { ...lifted, ...whipLiftPatch(lifted, 'mob', at, WHIP_CHAIN_INTERVAL_MS) } as BrawlerJuggleFields;
     for (let t = T0; t <= T0 + WHIP_LIFT_RISE_MS; t += 25) expect(brawlerJuggleHeightRel(kept, t)).toBeCloseTo(brawlerJuggleHeightRel(lifted, t), 9);
     expect(whipLiftApexAt(kept)).toBe(whipLiftApexAt(lifted));

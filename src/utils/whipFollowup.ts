@@ -15,8 +15,8 @@ export const WHIP_SLAM_DAMAGE_MULT = 2;
 export const WHIP_SLAM_HITSTOP_MS = 120;
 
 // ---- 鞭の浮き(格闘の浮きの式 utils/brawler の brawlerLiftArcRel に、鞭専用の形と尺を渡す) ----
-/** 地上から頂点まで(ms)=0.6秒かけて頂点へ(加速→減速)。 */
-export const WHIP_LIFT_RISE_MS = 600; // 社長指示2026-11-25「1秒から0.6秒に短縮」(旧 1000)
+/** 地上から頂点まで(ms)=0.4秒かけて頂点へ(加速→減速)。 */
+export const WHIP_LIFT_RISE_MS = 400; // 社長指示2026-11-25「1秒から0.6秒」→「0.4秒に変更」(旧 1000→600)
 /** 頂点で漂う長さ(ms)。 */
 export const WHIP_LIFT_HOVER_MS = 300;
 /** 漂いの終わりから地面まで(ms・漂いの沈みの速さを引き継いで加速して落ちる)。 */
