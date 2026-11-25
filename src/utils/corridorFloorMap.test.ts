@@ -2,6 +2,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   corridorFloorFrame, corridorFloorTravel, corridorFloorU0, corridorFloorUAtLocal, corridorDarkMul,
+  corridorHazeAmount, corridorLampLight, corridorHazeEase, corridorHazeColor, CORRIDOR_HAZE_MAX, CORRIDOR_LAMP_REACH,
+  CORRIDOR_HAZE_NEAR, CORRIDOR_HAZE_FAR,
   CORRIDOR_FLOOR_CFG, CORRIDOR_FLOOR_REPEAT, CORRIDOR_GOAL_TILE_START, CORRIDOR_PILLAR_WORLD_X, type CorridorFloorFrameInput,
 } from './corridorFloorMap';
 import {
@@ -168,5 +170,50 @@ describe('研究所の枠(ground・farH 0.30H のまま・下げ量 0)', () => {
     const foot = camY + H / 2 + PH / 2;
     expect(projectInto(f, 0, foot, p).s).toBeCloseTo(1, 9);
     expect(projectInto(f, 0, foot, p).y - f.camY).toBeCloseTo(H / 2 + PH / 2, 9);
+  });
+});
+
+describe('★#47 の試し(?corrdark=1): 霞の色へ寄せる量', () => {
+  it('主人公の行では寄せない・奥ほど緩やかに増える・フェードの線の行でもまだ上限に張り付かない', () => {
+    for (const [W, H] of SCREENS) {
+      const f = corridorFloorFrame(inputFor(W, H, 0));
+      expect(corridorHazeAmount(corridorDarkMul(f, f.lRef), 0)).toBeCloseTo(0, 12);
+      expect(corridorHazeAmount(corridorDarkMul(f, f.lRef * 2), 0)).toBe(0); // 主人公より手前は沈めない
+      const lFade = projLocalYOfWorld(f, f.camY + H * 0.14 + 80);
+      // 行を刻んで: 単調に増え、1行あたりの増え方に段差が無い(隣り合う刻みの差が上限の 1/8 以下)
+      let prev = 0;
+      for (let i = 1; i <= 24; i++) {
+        const l = f.lRef + (lFade - f.lRef) * (i / 24);
+        const a = corridorHazeAmount(corridorDarkMul(f, l), 0);
+        expect(a).toBeGreaterThanOrEqual(prev - 1e-12);
+        expect(a - prev).toBeLessThan(CORRIDOR_HAZE_MAX / 8);
+        prev = a;
+      }
+      expect(prev).toBeGreaterThan(0.3);
+      expect(prev).toBeLessThan(CORRIDOR_HAZE_MAX * 0.95);
+    }
+    expect(corridorHazeAmount(0, 0)).toBeCloseTo(CORRIDOR_HAZE_MAX, 12);
+  });
+  it('燭台の光の届く所では戻る(芯で戻し切りに近い・届く距離の外では戻さない)', () => {
+    expect(corridorLampLight(0, 50, 1)).toBe(1);
+    expect(corridorLampLight(50 * CORRIDOR_LAMP_REACH + 1, 50, 1)).toBe(0);
+    const near = corridorLampLight(60, 50, 1), far = corridorLampLight(110, 50, 1);
+    expect(near).toBeGreaterThan(far);
+    expect(corridorLampLight(60, 50, 0.5)).toBeCloseTo(near * 0.5, 12);
+    expect(corridorHazeAmount(0, 1)).toBeLessThan(CORRIDOR_HAZE_MAX * 0.1);
+  });
+  it('霞の色: 手前=赤みの闇・奥=青みの闇・その間は混ぜる', () => {
+    expect(corridorHazeColor(0)).toBe(CORRIDOR_HAZE_NEAR);
+    expect(corridorHazeColor(1)).toBe(CORRIDOR_HAZE_FAR);
+    const m = corridorHazeColor(0.5);
+    expect((m >> 16) & 255).toBeGreaterThanOrEqual(Math.min((CORRIDOR_HAZE_NEAR >> 16) & 255, (CORRIDOR_HAZE_FAR >> 16) & 255));
+  });
+  it('慣性: 一度に飛ばず、dt の刻み方によらず同じ所へ寄る', () => {
+    const a = corridorHazeEase(0, 1, 16);
+    expect(a).toBeGreaterThan(0);
+    expect(a).toBeLessThan(0.1);
+    let b = 0;
+    for (let i = 0; i < 10; i++) b = corridorHazeEase(b, 1, 16);
+    expect(corridorHazeEase(0, 1, 160)).toBeCloseTo(b, 9);
   });
 });

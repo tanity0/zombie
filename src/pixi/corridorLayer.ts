@@ -338,6 +338,24 @@ export class CorridorLayer {
     mkPool(this.glowFloor, [0.5, 0.5], true, this.glowTex ?? undefined);
   }
 
+  /**
+   * 今フレームに灯っている壁灯を1つずつ渡す(読むだけ・?proj=1&corrdark=1 の試しが燭台の近くを照らすのに使う)。
+   * depth=燭台の床の奥行き d(床の模様の行 u = d + travel の d)・side=左右(−1/+1)・inset=柱の列に対する横の寄せ率・
+   * a=光の濃さ(0..1・奥壁手前の打ち切りと距離のフェードと炎の揺らぎ込み)。燭台の並びは updateWallLamps と同じ式で取り直す。
+   */
+  forEachLampGlow(cb: (depth: number, side: number, inset: number, a: number) => void): void {
+    if (!this.container.visible || !(this.lastW > 0)) return;
+    const lamps = projectCorridorPillars(this.lastTravel + CFG.spacing / 2, this.lastW, this.lastH, CFG);
+    for (let i = 0; i < this.glowMain.length; i++) {
+      const gm = this.glowMain[i], m = lamps[i];
+      if (!m || !gm.visible || gm.alpha <= 0.004) continue;
+      cb(m.depth, m.side, LAMP_INSET, Math.min(1, gm.alpha / 0.85));
+    }
+  }
+  private lastTravel = 0;
+  private lastW = 0;
+  private lastH = 0;
+
   resize(_W: number, _H: number): void {
     // メッシュ/スプライトの寸法は update で毎フレーム画面サイズから再計算するので、ここは何もしない
     // (寸法は W/H を直接引数で受ける)。
@@ -345,6 +363,7 @@ export class CorridorLayer {
 
   update(travel: number, W: number, H: number, now: number, opts?: CorridorLayerFrameOpts): void {
     this.ensureLoaded();
+    this.lastTravel = travel; this.lastW = W; this.lastH = H; // forEachLampGlow が燭台の並びを取り直す材料
     // 背景は常に全画面+横オーバースキャン(v0.25.2113: 横移動でcontainerごと逆シフトするため、
     // シフトしても黒背景の切れ目が出ないよう左右に余白を持たせる)。
     // ★社長報告2026-08-22「上に行かなくても、距離が離れるだけで出てくる。つまりズームアウトで

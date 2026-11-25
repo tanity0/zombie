@@ -138,3 +138,56 @@ export const corridorDarkMul = (f: ProjFrame, lObj: number): number => {
   if (!(base > 1e-6)) return 1;
   return Math.max(0, Math.min(1, (1 - aAt(lObj)) / base));
 };
+
+// ---- ★#47 の試し(`?proj=1&corrdark=1` の時だけ pixiScene が読む): 奥の物を通路の霞へ混ぜて沈める ----
+// 体の色を黒へ掛ける(乗算)のではなく、その行の背景の色へ寄せる(混ぜる)。寄せる量 = 奥の暗さから緩やかな曲線で、燭台の光で戻す。
+
+/** 奥の暗さ(1 − corridorDarkMul)がこの値で寄せる量が上限に届く(叩き台)。物が消えるフェードの線の行(暗さ約 0.44〜0.47)より奥。 */
+export const CORRIDOR_HAZE_FULL_DARK = 0.66;
+/** 霞へ寄せる量の上限(叩き台。1 にすると体の絵が霞の色の切り絵になる=形だけは残す)。 */
+export const CORRIDOR_HAZE_MAX = 0.95;
+/** 燭台の光が物に届く床の上の半径(world px・叩き台)。届く距離 = これ × CORRIDOR_LAMP_REACH。 */
+export const CORRIDOR_LAMP_FLOOR_R = 65;
+/** 燭台の光が物に届く距離 = 半径 × これ(叩き台)。 */
+export const CORRIDOR_LAMP_REACH = 2.6;
+/** 届く距離のうち、この割合の内側は戻し切る(光の芯)。 */
+export const CORRIDOR_LAMP_CORE = 0.4;
+/** 燭台の光が霞を戻す強さ(1=光の芯では霞が無くなる)。 */
+export const CORRIDOR_LAMP_RESTORE = 0.95;
+/** 沈み・戻りの慣性(時定数 ms)。物が燭台の前を通る時・奥へ歩く時に急に切り替わらない。 */
+export const CORRIDOR_HAZE_TAU_MS = 260;
+
+/** 燭台1つの光が物に届く量(0..1)。dist=燭台の根元から物の足元までの床の上の距離・r=光の半径(同じ単位)・a=光の濃さ(0..1)。 */
+export const corridorLampLight = (dist: number, r: number, a: number): number => {
+  const reach = Math.max(1e-6, r * CORRIDOR_LAMP_REACH);
+  const t = Math.max(0, Math.min(1, (dist / reach - CORRIDOR_LAMP_CORE) / (1 - CORRIDOR_LAMP_CORE)));
+  const fall = 1 - t * t * (3 - 2 * t); // 芯の内側で 1 → 届く距離で 0(なめらか)
+  return Math.max(0, Math.min(1, a)) * fall;
+};
+
+/** 奥の深さの割合(0=主人公の行・1=上限に届く行)。darkMul=corridorDarkMul(物の行)。 */
+export const corridorHazeDepthT = (darkMul: number): number =>
+  Math.max(0, Math.min(1, (1 - Math.max(0, Math.min(1, darkMul))) / CORRIDOR_HAZE_FULL_DARK));
+
+/** 霞へ寄せる量(0..CORRIDOR_HAZE_MAX)。奥の深さを smoothstep で緩やかに寄せ、燭台の光 lamp(0..1)で戻す。 */
+export const corridorHazeAmount = (darkMul: number, lamp: number): number => {
+  const t = corridorHazeDepthT(darkMul);
+  const depth = CORRIDOR_HAZE_MAX * t * t * (3 - 2 * t);
+  return depth * (1 - CORRIDOR_LAMP_RESTORE * Math.max(0, Math.min(1, lamp)));
+};
+
+/**
+ * 霞の色(その行の床の背景の色・0xRRGGBB)。主人公の行あたり(赤みのある闇)→ 奥(消失点の下の青みの闇)へ、奥の深さ t で寄せる。
+ * 値は縦持ち 430×932 の `?proj=1` の画面(敵なし)の床を、行ごとに測った色(叩き台)。
+ */
+export const CORRIDOR_HAZE_NEAR = 0x18121a;
+export const CORRIDOR_HAZE_FAR = 0x17181f;
+export const corridorHazeColor = (t: number): number => {
+  const k = Math.max(0, Math.min(1, t));
+  const ch = (sh: number) => Math.round(((CORRIDOR_HAZE_NEAR >> sh) & 255) * (1 - k) + ((CORRIDOR_HAZE_FAR >> sh) & 255) * k);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+};
+
+/** 慣性: 今の量 cur を目標 target へ寄せる(指数の寄せ・dtMs の長さによらず同じ速さ)。 */
+export const corridorHazeEase = (cur: number, target: number, dtMs: number, tauMs = CORRIDOR_HAZE_TAU_MS): number =>
+  cur + (target - cur) * (1 - Math.exp(-Math.max(0, dtMs) / Math.max(1, tauMs)));

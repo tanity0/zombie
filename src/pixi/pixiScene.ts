@@ -492,7 +492,7 @@ import {
 } from '../world/playableArea';
 // PACING_PUZZLE.md §10-20(EX舞台の洋館通路化): EX専用の広間定数(描画は読むだけ・書かない)。
 import { isExStageRun } from '../utils/exStage';
-import { corridorFloorFrame, corridorFloorTravel, corridorDarkMul, corridorFloorU0, corridorFloorUAtLocal, type CorridorFloorFrameInput } from '../utils/corridorFloorMap';
+import { corridorFloorFrame, corridorFloorTravel, corridorDarkMul, corridorFloorU0, corridorFloorUAtLocal, corridorHazeAmount, corridorLampLight, corridorHazeEase, corridorHazeDepthT, corridorHazeColor, CORRIDOR_LAMP_FLOOR_R, type CorridorFloorFrameInput } from '../utils/corridorFloorMap';
 import { EX_HALL_SCALE, EX_HALL_LATERAL_CLAMP, exHallScaleT, exHallTravel, EX_BACK_WORLD_Y } from '../world/exHall';
 import {
   bossEngagementDistancePx, isEngageableBoss, isBossCameraSubject,
@@ -1746,6 +1746,40 @@ const ASH_BLUR_N = 5;                      // 手前のぼけた塊の数(少数
 const ASH_DARK = 0.35;                     // 闇の中の明るさ
 const ASH_LIT = 1.4;                       // 光の中の明るさ
 const ASH_BLUR_DARK = 0.7;                 // 手前のぼけた塊の闇の中の明るさ
+// 火の粉(社長承認2026-11-24・見た目の監査で作り直し): 灰に、自分で光る小さな火の粉を常時1〜3粒だけ混ぜる。同じ風に乗って灰より少し速く昇り、
+// またたきながら冷めて(白黄→橙→暗い赤)最後は灰の1粒として風に残る。画面の中で湧く時は灰の1粒が赤熱し始めて火の粉になる。
+// 光は加算(研究所の闇の明るさ係数は掛けない)。赤い二重丸の弾(全ボス共通)と混ざらないよう、外輪は持たせず橙〜黄の芯+進む向きの短い尾で見せる。
+// 固定プール(1粒=光の輪・尾・芯・燃え殻の Sprite 4枚)。?ashembers=0 で無し。
+const ASH_EMBER_SLOTS = Math.max(0, Math.min(6, Math.round(tsNum('ashembers', 3))));
+// 爆発の時だけ吹き上げる別枠の火の粉(社長承認2026-11-24)。固定プールの上限=この数(?ashburst=0 で無し)。1回の爆発で4〜8粒(爆発の大きさで変わる)。
+const ASH_EMBER_BURST_MAX = Math.max(0, Math.min(24, Math.round(tsNum('ashburst', 12))));
+const ASH_EMBER_CORE_PX = 3;               // 芯の大きさ(画面px・少し歪んだ点)
+const ASH_EMBER_HALO_PX = 16;              // 光の輪(小さく薄く=芯の色が主役)
+const ASH_EMBER_TAIL_MAX = 18;             // 尾の長さの上限(画面px・速さに比例)
+/** 熱(0=冷えた〜1=白熱)→ 芯の色。暗い赤→赤橙→橙→白黄。 */
+const ASH_EMBER_HEAT_STOPS: readonly (readonly [number, number, number, number])[] = [
+  [0, 0x4a, 0x14, 0x08], [0.3, 0xa8, 0x2c, 0x0a], [0.55, 0xff, 0x7a, 0x1e], [0.8, 0xff, 0xbc, 0x52], [1, 0xff, 0xf0, 0xc4],
+];
+function ashEmberHeatColor(h: number): number {
+  const S = ASH_EMBER_HEAT_STOPS;
+  const x = Math.max(0, Math.min(1, h));
+  let i = 1;
+  while (i < S.length - 1 && x > S[i][0]) i++;
+  const a = S[i - 1], b = S[i];
+  const t = (x - a[0]) / Math.max(1e-6, b[0] - a[0]);
+  const r = Math.round(a[1] + (b[1] - a[1]) * t), g = Math.round(a[2] + (b[2] - a[2]) * t), bl = Math.round(a[3] + (b[3] - a[3]) * t);
+  return (r << 16) | (g << 8) | bl;
+}
+// 爆風(社長承認2026-11-24): 爆発(store の effects の 'explosion')の周りの灰と火の粉を爆心から外へ煽り、渦を巻きながら風の流れへ慣性で戻す(描画だけ・store へは書かない)。
+const ASH_BLAST_V = 560 * Math.max(0, tsNum('ashblast', 1)); // 押す強さの目安(px/s)。?ashblast= で倍率
+const ASH_BLAST_DUR = 0.26;                // 押す力が掛かる時間(秒)。力は sin の山=押し始めと押し終わりに加減速
+const ASH_BLAST_REACH_K = 4.6;             // 届く距離=爆発の判定半径(画面px)×これ(広げすぎると画面の灰が全部飛んで空になる)
+const ASH_BLAST_REACH_MIN = 260;           // 届く距離の下限(画面px・小さい爆発・引いた画面でも散って見える)
+const ASH_BLAST_FALLOFF = 1.15;            // 距離での落ち方の指数(1=まっすぐ。大きいほど爆心に寄る)
+const ASH_BLAST_CORE_FRAC = 0.22;          // 爆心から届く距離のこの割合の内側の粒は大きく飛ぶ(最大 ×2.4)
+const ASH_BLAST_SWIRL = 0.42;              // 押したあと渦を巻いて戻る横向きの力(押す力に対する比)
+const ASH_BLAST_SWIRL_S = 1.1;             // 渦の力が掛かる時間(秒)
+const ASH_BLAST_LIGHT_S = 1.1;             // 爆発の光で灰が浮かぶ時間(秒)。前半は白、後半は赤へ冷める
 
 // Enemy ground lights: subtle self-emission plus a short brighter pulse when
 // hit. These sit under actors so sprites never get washed out.
@@ -3274,6 +3308,16 @@ const PROJ_AUDIT = PROJ_ON && DEV_TOOLS_ENABLED && tsBool('projaudit', false); /
  * 新しい見え方なので既定 OFF のツマミの中だけ(`?corrdark=1`)。明るさ = (1 − 暗幕の α(物の行)) ÷ (1 − 暗幕の α(主人公の行))・上限1。
  */
 const PROJ_CORR_DARK = PROJ_ON && tsBool('corrdark', false);
+/** ?corrdark=1 の霞の幕の縦の濃さの勾配: 1=足元を濃く頭を薄く(闇から滲み出る・既定)/−1=頭を濃く/0=一様(見比べ用のツマミ)。 */
+const CORR_DARK_GRAD = PROJ_CORR_DARK ? tsNum('corrdarkgrad', 1) : 0;
+/** 勾配の薄い側の濃さ(濃い側=1 に対する割合・叩き台)。 */
+const CORR_DARK_GRAD_LOW = 0.4;
+/** 霞の幕の輪郭のぼかし(焼いた絵の px=画面の px・叩き台)。 */
+const CORR_DARK_BLUR_PX = 1.6;
+/** 燭台の照り: 色(蝋燭の暖色)・全身の薄い照りの濃さ・燭台側の縁の濃さ(叩き台)。 */
+const CORR_LAMP_WARM_TINT = 0xffa24c;
+const CORR_LAMP_WASH = 0.2;
+const CORR_LAMP_RIM = 1.25;
 const DEPTH_POS_MAP = PROJ_ON ? true : tsBool('depthmap', true);
 const DEPTH_MAP_CURVE = Math.max(0.2, tsNum('dmapcurve', 1.0)); // 1=線形 / >1=プレイヤー付近ゆっくり・端で速い
 const DEPTH_EDGE_MARGIN = Math.max(0, tsNum('depthedge', 500)); // 画面端の外側マージン(背の高い物の頭ぶん)px。社長確定値。
@@ -4531,6 +4575,13 @@ interface ActorView {
   reticle: Graphics; // below the sprite (stun reticle / tint)
   sprite: Sprite;
   hitFlash: Sprite;  // 被弾時、本体スプライトと同形を白で加算オーバーレイして「絵」を一瞬光らせる(丸光は廃止)
+  /**
+   * ?proj=1&corrdark=1 の時だけ作る(既定は作らない): 洋館の奥で体を霞へ混ぜる幕(本体と同形・縦に濃さの勾配・輪郭をぼかした焼き)、
+   * 燭台の暖色の照り(全身の薄い照り wash・燭台側の縁 warm)。
+   */
+  hazeVeil?: Sprite;
+  hazeWash?: Sprite;
+  hazeWarm?: Sprite;
   // 攻撃予告(赤い線/帯/円/扇)専用のレイヤー。**overlay とは別の Graphics に分けてある**理由は alpha:
   // 予告は「アクターの位置」ではなく「予告図形自身の位置」で地平線/手前フェードを引く(TELEGRAPH_OWN_FADE)。
   // 同じ Graphics に体力バーを混ぜると分けられないので、描画順(スプライトの上・体力バーの下)はそのままに
@@ -4772,6 +4823,10 @@ interface Firefly {
   ash?: {
     kind: 0 | 1 | 2; z: number; size: number; aspect: number; alpha: number; r: number; g: number; b: number;
     rise: number; drift: number; spin: number; flip: number; th: number; flutter: number; age: number; fadeIn: number; par: number;
+    /** 爆風の受け方: 飛びやすさの倍率・向きの乱れ(rad)。 */
+    bk: number; bj: number;
+    /** 爆発の光を受けた量(粒に残り、飛びながら冷める)と、その色の進み(0=白〜1=赤)。 */
+    lit: number; hue: number;
   };
   /** ステージ1の森の蛍だけ(syncFireflies の magic 分岐で初めて作る): 光の輪・色・灯る周期・位相・漂い・散る勢い・出ている量・並び順。 */
   halo?: Sprite;
@@ -4794,6 +4849,26 @@ interface ProjSnowMote { sprite: Sprite; x: number; y: number; size: number; fal
 /** ?proj=1(★#31): 雪の粒の絵=柔らかい丸(芯は平らに明るく・縁だけぼかす)と、手前の層の強くぼけた丸。線形補間で焼く(四角く見せない)。 */
 let projSnowFlakeTex: Texture | null = null;
 let projSnowBlurTex: Texture | null = null;
+/** ステージ2の火の粉の尾(右端=芯の側が濃く、後ろへ細く薄れる)と、小さな光の輪(芯の周りだけ明るい)。 */
+let ashEmberTailTex: Texture | null = null;
+let ashEmberHaloTex: Texture | null = null;
+const getAshEmberTailTex = (): Texture => {
+  if (ashEmberTailTex) return ashEmberTailTex;
+  const w = 64, h = 8;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  const gx = ctx.createLinearGradient(0, 0, w, 0);
+  gx.addColorStop(0, 'rgba(255,255,255,0)'); gx.addColorStop(0.55, 'rgba(255,255,255,0.35)'); gx.addColorStop(1, 'rgba(255,255,255,1)');
+  ctx.fillStyle = gx; ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = 'destination-in';
+  const gy = ctx.createLinearGradient(0, 0, 0, h);
+  gy.addColorStop(0, 'rgba(255,255,255,0)'); gy.addColorStop(0.5, 'rgba(255,255,255,1)'); gy.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gy; ctx.fillRect(0, 0, w, h);
+  ashEmberTailTex = Texture.from(canvas);
+  ashEmberTailTex.source.scaleMode = 'linear';
+  return ashEmberTailTex;
+};
 const makeProjSnowTex = (stops: readonly (readonly [number, number])[]): Texture => {
   const size = 64;
   const canvas = document.createElement('canvas');
@@ -4812,6 +4887,8 @@ const getProjSnowFlakeTex = (): Texture =>
   (projSnowFlakeTex ??= makeProjSnowTex([[0, 1], [0.42, 0.92], [0.72, 0.38], [1, 0]]));
 const getProjSnowBlurTex = (): Texture =>
   (projSnowBlurTex ??= makeProjSnowTex([[0, 0.7], [0.25, 0.55], [0.55, 0.22], [0.8, 0.06], [1, 0]]));
+const getAshEmberHaloTex = (): Texture =>
+  (ashEmberHaloTex ??= makeProjSnowTex([[0, 1], [0.18, 0.7], [0.45, 0.22], [0.75, 0.05], [1, 0]]));
 
 // 診断用: URLに ?dancevfx=0 を付けるとダンスのPixi描画(ミラーボール/サークル/矢印/暗転/発光)を一切出さない。
 const RHYTHM_VFX_OFF = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dancevfx') === '0';
@@ -8855,9 +8932,17 @@ export class PixiScene {
     const tele = new Graphics();
     const overlay = new Graphics();
     const overlayTop = new Graphics();
-    container.addChild(reticle, sprite, hitFlash, tele, overlay, overlayTop);
+    // ?proj=1&corrdark=1(段階8 U34 の試し)の時だけ、被弾の光のすぐ上・予告の下に霞の幕を1枚(既定=作らない=今の子の並びのまま)。
+    let haze: Pick<ActorView, 'hazeVeil' | 'hazeWash' | 'hazeWarm'> = {};
+    if (PROJ_CORR_DARK) {
+      const mk = (label: string, add: boolean) => {
+        const h = new Sprite(); h.visible = false; h.label = label; if (add) h.blendMode = 'add'; return h;
+      };
+      haze = { hazeVeil: mk('corrHazeVeil', false), hazeWash: mk('corrHazeWash', true), hazeWarm: mk('corrHazeWarm', true) };
+      container.addChild(reticle, sprite, hitFlash, haze.hazeVeil!, haze.hazeWash!, haze.hazeWarm!, tele, overlay, overlayTop);
+    } else container.addChild(reticle, sprite, hitFlash, tele, overlay, overlayTop);
     this.L.actorLayer.addChild(container);
-    return { container, light, reticle, sprite, hitFlash, tele, overlay, overlayTop };
+    return { container, light, reticle, sprite, hitFlash, tele, overlay, overlayTop, ...haze };
   }
 
   private makeProp(): PropView {
@@ -11378,7 +11463,7 @@ export class PixiScene {
     if (t) return t;
     let k: ProjActorPartKey | null = null;
     if (c === view.sprite) k = 'sprite';
-    else if (c === view.hitFlash) k = 'hitFlash';
+    else if (c === view.hitFlash || (view.hazeVeil !== undefined && (c === view.hazeVeil || c === view.hazeWash || c === view.hazeWarm))) k = 'hitFlash';
     else if (c === view.reticle) k = 'reticle';
     else if (c === view.tele) k = 'tele';
     else if (c === view.overlay) k = 'overlay';
@@ -12284,40 +12369,218 @@ export class PixiScene {
   }
 
   /** 後掛けの窓口(§3-5k 作る物1): 全部の描画の後・projAuditEndFrame の前に1回(=syncZoomWarp の counterWarpActors より前)。 */
-  // ---- 段階8 U34(★#47・?proj=1&corrdark=1 の時だけ): 洋館の奥の闇を物(敵・召喚)の体の絵に掛ける ----
-  private projDarkSaved: { sp: Sprite; tint: number }[] = [];
+  // ---- 段階8 U34(★#47・?proj=1&corrdark=1 の時だけ): 洋館の奥の物(敵・召喚物)を、その行の背景の霞へ混ぜて沈める ----
+  // 体の色を黒へ掛ける(乗算 tint)と黒い穴に見えるので、混ぜる: 本体の上に同形の幕(hazeVeil)を、その行の床の色で通常合成する。
+  // 幕は「白シルエット × 縦の勾配(足元を濃く)× 輪郭のぼかし」を画面の大きさで焼いた物=一枚の切り絵にならない。体に付く物
+  // (体の光・影・体力バー・手の武器・ランタン等の登録物)は同じ量で α を下げて背景へ溶かす。予告(役「予告」)は沈めない。
+  // 寄せる量は床の写像の奥行き(足元の行の床の暗幕の濃さ=corridorDarkMul)から緩やかな曲線で。燭台に近い(床の上の距離)ほど戻し、
+  // 燭台の側を暖色で照らす(全身の薄い照り+燭台側の縁)。量・照りには慣性を付ける。
+  // 後掛け(projPostView)の後に掛け、次のフレームの頭で戻す(restoreProjActors の中で後掛けの戻しより先=後に掛けた方を先に戻す)。
+  private projDarkSaved: { o: Container; a: number }[] = [];
   private projDarkN = 0;
+  private projDarkVeils: Sprite[] = [];
+  private projDarkVeilN = 0;
+  private projDarkMark = new WeakMap<Container, number>();
+  private projDarkAmt = new Map<string, { v: number; w: number; frame: number }>();
+  private projDarkAt = 0;
+  private projDarkLamps: number[] = [];
+  private hazeSilCache = new Map<Texture, Map<number, { tex: RenderTexture; f: number; usedAt: number; bytes: number }>>();
+  private hazeSilBytes = 0;
+  private hazeSilBakesNow = 0;
   private projCorrDarkPass() {
     const f = this.projFrame;
     if (!PROJ_CORR_DARK || !f || f.kind !== 'corridor') return;
-    const one = (v: ActorView, fy: number, fx: number) => {
-      const sp = v.sprite;
-      if (!sp || sp.destroyed || !sp.visible) return;
+    const nowMs = performance.now();
+    const dt = this.projDarkAt > 0 ? Math.min(100, nowMs - this.projDarkAt) : 0;
+    this.projDarkAt = nowMs;
+    this.hazeSilBakesNow = 0;
+    // 燭台の根元(床の上の world の点: 横=柱の列×寄せ率・縦=床の模様の行 u = d + travel が world の点ごとに U0 − y)
+    const L = this.projDarkLamps;
+    let ln = 0;
+    const cb = this.corridorBackdrop, trav = this.projCorridorTravel, m7 = f.m7;
+    if (cb && m7 && Number.isFinite(trav)) {
+      const u0 = corridorFloorU0(CORRIDOR_GOAL_Y);
+      cb.forEachLampGlow((depth, side, inset, a) => { L[ln++] = side * m7.pillarX * inset; L[ln++] = u0 - depth - trav; L[ln++] = a; });
+    }
+    const frame = this.projFrameNo;
+    const one = (key: string, id: string, v: ActorView | undefined, fx: number, fy: number) => {
+      if (!v || v.container.destroyed || !v.container.visible) return;
       const p = projectInto(f, fx, fy, this.projScratch2);
-      const m = corridorDarkMul(f, p.l);
-      if (m >= 0.999) return;
-      let r = this.projDarkSaved[this.projDarkN];
-      if (!r) { r = { sp, tint: 0 }; this.projDarkSaved[this.projDarkN] = r; }
-      r.sp = sp; r.tint = sp.tint as number;
-      this.projDarkN++;
-      const t = r.tint, k = Math.max(0, Math.min(1, m));
-      sp.tint = (Math.round(((t >> 16) & 255) * k) << 16) | (Math.round(((t >> 8) & 255) * k) << 8) | Math.round((t & 255) * k);
+      let lamp = 0, ldx = 0, ldy = 0;
+      for (let i = 0; i < ln; i += 3) {
+        const dx = L[i] - fx, dy = L[i + 1] - fy;
+        const li = corridorLampLight(Math.hypot(dx, dy), CORRIDOR_LAMP_FLOOR_R, L[i + 2]);
+        if (li > lamp) { lamp = li; ldx = dx; ldy = dy; }
+      }
+      const dm = corridorDarkMul(f, p.l);
+      const target = corridorHazeAmount(dm, lamp);
+      const rec = this.projDarkAmt.get(key);
+      const amt = rec ? corridorHazeEase(rec.v, target, dt) : target;
+      const warm = rec ? corridorHazeEase(rec.w, lamp, dt) : lamp;
+      if (rec) { rec.v = amt; rec.w = warm; rec.frame = frame; } else this.projDarkAmt.set(key, { v: amt, w: warm, frame });
+      this.projSinkView(v, id, amt, warm, corridorHazeColor(corridorHazeDepthT(dm)), ldx, ldy);
     };
     const s = useGameStore.getState();
-    for (const e of s.enemies) { const v = this.enemies.get(e.id); if (v) one(v, e.y + e.height, e.x + e.width / 2); }
+    for (const e of s.enemies) one(e.id, e.id, this.enemies.get(e.id), e.x + e.width / 2, e.y + e.height);
+    for (const sm of s.summons) one('s:' + sm.id, sm.id, this.summonViews.get(sm.id), sm.x + sm.width / 2, sm.y + sm.height);
+    for (const [k, r] of this.projDarkAmt) if (r.frame !== frame) this.projDarkAmt.delete(k);
+  }
+  /** 1体を霞へ沈める(本体=霞の幕・付く物=α)・燭台の照り。 */
+  private projSinkView(v: ActorView, id: string, amt: number, warm: number, haze: number, ldx: number, ldy: number) {
+    const sp = v.sprite;
+    const texOk = sp.visible && !!sp.texture && sp.texture.width > 1 && sp.renderable;
+    const zoom = this.L.worldGroup.scale.x || 1;
+    const shown = Math.abs(sp.scale.y) * zoom; // 元の絵の 1px が画面で何 px か(振り向きで scale.x は 0 付近を通るので y で測る)
+    const put = (h: Sprite | undefined, tex: Texture | null, fz: number, tint: number, alpha: number) => {
+      if (!h || h.destroyed || !tex || alpha <= 0.004) return;
+      h.texture = tex;
+      h.anchor.set(sp.anchor.x, sp.anchor.y);
+      h.position.set(sp.position.x, sp.position.y);
+      h.scale.set(sp.scale.x / fz, sp.scale.y / fz);
+      h.skew.set(sp.skew.x, sp.skew.y);
+      h.rotation = sp.rotation;
+      h.tint = tint;
+      h.alpha = Math.min(1, alpha * sp.alpha);
+      h.visible = true;
+      this.projDarkVeils[this.projDarkVeilN++] = h;
+    };
+    if (texOk && shown > 0.02) {
+      if (amt > 0.004) {
+        const hs = this.hazeSilhouette(sp.texture, shown);
+        if (hs) put(v.hazeVeil, hs.tex, hs.f, haze, amt);
+      }
+      if (warm > 0.004) {
+        put(v.hazeWash, this.whiteSilhouette(sp.texture), 1, CORR_LAMP_WARM_TINT, warm * CORR_LAMP_WASH);
+        // 燭台側の縁: 横は燭台の左右・縦は炎が頭より上にあるので上寄り(反転している絵は焼く向きを鏡に映す)
+        const len = Math.hypot(ldx, ldy) || 1;
+        const dx = ldx / len, dy = (ldy / len) * 0.5 - 0.8;
+        const b = rimBuckets(sp.scale.x < 0 ? -dx : dx, dy).a;
+        const rb = this.rimTexture(sp.texture, b, shown);
+        if (rb) put(v.hazeWarm, rb.tex, rb.f, CORR_LAMP_WARM_TINT, warm * CORR_LAMP_RIM);
+      }
+    }
+    if (amt <= 0.004) return;
+    const k = 1 - amt;
+    const kids = v.container.children;
+    for (let i = 0; i < kids.length; i++) {
+      const c = kids[i] as Container;
+      if (c === sp || c === v.hitFlash || (v.hazeVeil && (c === v.hazeVeil || c === v.hazeWash || c === v.hazeWarm))) continue;
+      const key = this.projChildKey(v, c);
+      if (key && projActorRole(key) === 'telegraph') continue; // 予告・ゲージは沈めない
+      this.projDarkSink(c, k);
+    }
+    this.projDarkSink(v.light, k);
+    this.projDarkSink(v.airRing, k);
+    this.projDarkSink(v.airGroundShadow, k);
+    const att = v.projAttached;
+    if (att) for (const c of att) {
+      const key = this.projTags.get(c);
+      if (key && projActorRole(key) === 'telegraph') continue;
+      this.projDarkSink(c, k);
+    }
+    // 足元の影(新シルエット影の枠: 芯・外周・光ごとのメッシュ)
+    const sh = this.shadowPoolV9.get(id);
+    if (sh) {
+      this.projDarkSink(sh.core, k);
+      this.projDarkSink(sh.outer, k);
+      for (const sl of sh.slots) this.projDarkSink(sl.mesh, k);
+    }
+    this.projDarkSink(this.shadowPool.get(id), k); // 旧い足影(?silshadow=0)
+  }
+  /**
+   * 霞の幕の焼き(?corrdark=1 だけ): 白シルエットに縦の濃さの勾配(CORR_DARK_GRAD)を掛け、輪郭を少しぼかした物を、画面に出る大きさで
+   * 焼く(縁の焼き rimTexture と同じ段の丸め)。勾配は絵を横の帯に割って帯ごとの濃さで描く(マスク・erase を使わない=通常合成だけ)。
+   * 1フレームの焼きは4枚まで・天井 8MB(使っていない物から捨てる)。焼けない時は白シルエット(勾配・ぼかし無し)で代える。
+   */
+  private hazeSilhouette(src: Texture, shown: number): { tex: Texture; f: number } | null {
+    if (!this.renderer || src.width <= 1) return null;
+    const plain = () => { const w = this.whiteSilhouette(src); return w ? { tex: w as Texture, f: 1 } : null; };
+    if (src.rotate || src.trim) return plain();
+    const e = Math.round(Math.log2(Math.max(1e-3, shown)) * 2);
+    const fz = Math.min(1, 2 ** (e / 2));
+    const bw = Math.max(4, Math.round(src.width * fz)), bh = Math.max(4, Math.round(src.height * fz));
+    let m = this.hazeSilCache.get(src);
+    const hit = m?.get(e);
+    const now = Date.now();
+    if (hit) { hit.usedAt = now; return { tex: hit.tex, f: hit.f }; }
+    if (this.hazeSilBakesNow >= 4) return plain();
+    const add = bw * bh * 4, limit = 8 * 1024 * 1024;
+    if (this.hazeSilBytes + add > limit) {
+      for (const [k, mm] of this.hazeSilCache) {
+        for (const [kk, ent] of mm) {
+          if (this.hazeSilBytes + add <= limit) break;
+          if (now - ent.usedAt < RIM_BAKE_KEEP_MS) continue;
+          releaseBakedTexture('silhouette', ent.tex); this.hazeSilBytes -= ent.bytes; mm.delete(kk);
+        }
+        if (mm.size === 0) this.hazeSilCache.delete(k);
+      }
+      if (this.hazeSilBytes + add > limit) return plain();
+    }
+    this.hazeSilBakesNow++;
+    const strips: Texture[] = [];
+    try {
+      const wrap = new Container();
+      const lit = new Container();
+      const fr = src.frame, N = 12;
+      for (let i = 0; i < N; i++) {
+        const y0 = Math.floor((fr.height * i) / N), y1 = Math.floor((fr.height * (i + 1)) / N);
+        if (y1 <= y0) continue;
+        const t = new Texture({ source: src.source, frame: new Rectangle(fr.x, fr.y + y0, fr.width, y1 - y0) });
+        strips.push(t);
+        const sp = new Sprite(t);
+        sp.position.set(0, y0);
+        const vv = (i + 0.5) / N; // 0=頭の側 → 1=足元
+        sp.alpha = CORR_DARK_GRAD > 0 ? CORR_DARK_GRAD_LOW + (1 - CORR_DARK_GRAD_LOW) * vv
+          : CORR_DARK_GRAD < 0 ? CORR_DARK_GRAD_LOW + (1 - CORR_DARK_GRAD_LOW) * (1 - vv) : 1;
+        lit.addChild(sp);
+      }
+      const white = new ColorMatrixFilter();
+      white.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0]; // RGB→白・α保持
+      lit.filters = [white, new BlurFilter({ strength: CORR_DARK_BLUR_PX, quality: 2 })];
+      wrap.addChild(lit);
+      wrap.scale.set(fz);
+      const rt = bakeRenderTexture('silhouette', { width: bw, height: bh });
+      this.renderBake(wrap, rt, true);
+      wrap.destroy({ children: true });
+      const bytes = (rt.source.pixelWidth || 0) * (rt.source.pixelHeight || 0) * 4;
+      if (!m) { m = new Map(); this.hazeSilCache.set(src, m); }
+      m.set(e, { tex: rt, f: fz, usedAt: now, bytes });
+      this.hazeSilBytes += bytes;
+      return { tex: rt, f: fz };
+    } catch (err) {
+      reportSuppressedError('corrdark-bake', err);
+      return plain();
+    } finally {
+      for (const t of strips) t.destroy(false);
+    }
+  }
+  private projDarkSink(o: Container | null | undefined, k: number) {
+    if (!o || o.destroyed || !o.visible || o.alpha <= 0) return;
+    if (this.projDarkMark.get(o) === this.projFrameNo) return;
+    this.projDarkMark.set(o, this.projFrameNo);
+    let r = this.projDarkSaved[this.projDarkN];
+    if (!r) { r = { o, a: 0 }; this.projDarkSaved[this.projDarkN] = r; }
+    r.o = o; r.a = o.alpha;
+    this.projDarkN++;
+    o.alpha = r.a * k;
   }
   private restoreProjCorrDark() {
     for (let i = 0; i < this.projDarkN; i++) {
       const r = this.projDarkSaved[i];
-      if (!r.sp.destroyed) r.sp.tint = r.tint;
-      r.sp = null as unknown as Sprite;
+      if (!r.o.destroyed) r.o.alpha = r.a;
+      r.o = null as unknown as Container;
     }
     this.projDarkN = 0;
+    for (let i = 0; i < this.projDarkVeilN; i++) {
+      const vl = this.projDarkVeils[i];
+      if (!vl.destroyed) vl.visible = false;
+      this.projDarkVeils[i] = null as unknown as Sprite;
+    }
+    this.projDarkVeilN = 0;
   }
 
   private projActorPostPass() {
     if (!this.projFrame) { this.projLooseN = 0; return; }
-    this.projCorrDarkPass();
     if (PROJ_AUDIT) { this.projActorAudit.unclassifiedNow = 0; this.projUncNow.clear(); }
     if (this.playerView) this.projPostView(this.playerView, 'player');
     for (const v of this.enemies.values()) this.projPostView(v, 'enemy');
@@ -12345,6 +12608,7 @@ export class PixiScene {
     }
     if (PROJ_AUDIT) for (const [k, n] of this.projUncNow) this.projActorAudit.unclassified.set(k, Math.max(this.projActorAudit.unclassified.get(k) ?? 0, n));
     this.projRimFollow(); // 監査2巡目 A-3: 縁の光を本体の最終の写し(後掛けの後)に合わせ直す
+    this.projCorrDarkPass(); // 段階8 U34(?proj=1&corrdark=1 の時だけ): 後掛けの後の最終の絵・濃さに霞を掛ける
     // 主人公の大きさ(★#21 の確認用): 今フレームの s と1フレームの変化の最大。
     const pv = this.playerView;
     if (PROJ_AUDIT && pv && pv.projPostFrame === this.projFrameNo && pv.projS !== undefined) {
@@ -12358,7 +12622,7 @@ export class PixiScene {
   /** 前フレームに掛けた後掛けを戻す(sync の先頭・restoreZwarpActors の直後=後に掛けた方を先に戻す)。 */
   private restoreProjActors() {
     if (this.projFxRotN > 0) this.restoreProjFxRot(); // 段階3: 回転を入れ直した演出(向・両)の回転を戻す
-    if (this.projDarkN > 0) this.restoreProjCorrDark(); // 段階8 U34(?corrdark=1 の時だけ積まれる)
+    if (this.projDarkN > 0 || this.projDarkVeilN > 0) this.restoreProjCorrDark(); // 段階8 U34(?corrdark=1 の時だけ積まれる)
     const pool = this.projSaved;
     if (pool.length === 0) return;
     try {
@@ -14998,6 +15262,20 @@ export class PixiScene {
   private ashCamX = NaN;
   private ashCamY = NaN;
   /**
+   * 火の粉の固定プール。1粒=光の輪(halo)・尾(tail)・芯(core)・燃え殻(cinder=冷めたあと風に残る灰の1粒)。
+   * 段: pre(画面内で湧く時だけ=灰の1粒として漂う)→ heat(赤熱し始める)→ hot → cool(冷めて暗い赤へ)→ ash(灰として風に残る)→ 休み(wait)。
+   * burst=爆発の時だけ吹き上げる別枠(自分では湧き直さない)。
+   */
+  private ashEmbers: {
+    burst: boolean; core: Sprite; halo: Sprite; tail: Sprite; cinder: Sprite; x: number; y: number; vx: number; vy: number;
+    on: boolean; age: number; pre: number; heatIn: number; hot: number; cool: number; ashT: number; wait: number;
+    rise: number; flare: number; size: number; aspect: number; f1: number; f2: number; ph: number; ph2: number;
+    twAt: number; twT0: number; twAmp: number; lastAmp: number; kickAt: number; kickT0: number; kvx: number; kvy: number;
+  }[] = [];
+  /** 爆風(uiLayer の座標・届く距離・始まった灰の時計・渦の向き)。見た爆発の id は二重に煽らないため覚える。 */
+  private ashBlasts: { x: number; y: number; reach: number; t0: number; spin: number }[] = [];
+  private ashBlastSeen = new Set<string>();
+  /**
    * 灰の1粒の見た目と動きを決め直す(湧く時)。大きさ・速さ・濃さ・明るさ・カメラへの追従は奥行き z の1本から一緒に決める(大きいほど速く濃い)。
    * 手前のぼけた塊(先頭の ASH_BLUR_N 粒)は画面の端寄りを通る。他は7〜8割を画面の下端の外で湧かせ、2〜3割だけ画面の中で湧く。
    */
@@ -15014,10 +15292,14 @@ export class PixiScene {
     else if (c < 0.34) { g = 160 + R() * 40; r = g + 3; b = g - 3; }
     else { g = 80 + R() * 60; r = g + 2; b = g - 2; }
     const a = f.ash ?? {
-      kind, z, size: 0, aspect: 1, alpha: 0, r, g, b, rise: 0, drift: 0, spin: 0, flip: 0, th: 0, flutter: 0, age: 0, fadeIn: 1000, par: 1,
+      kind, z, size: 0, aspect: 1, alpha: 0, r, g, b, rise: 0, drift: 0, spin: 0, flip: 0, th: 0, flutter: 0, age: 0, fadeIn: 1000, par: 1, bk: 1, bj: 0, lit: 0, hue: 0,
     };
     a.kind = kind; a.z = z; a.r = r; a.g = g; a.b = b;
     a.par = 0.7 + 0.6 * z; // 奥×0.7 〜 手前のぼけ×1.3
+    // 爆風の受け方: 軽い薄片ほど遠く・手前のぼけた塊は鈍い。粒ごとに飛び方と向きを少し乱す
+    a.bk = (kind === 1 ? 1.45 : kind === 2 ? 0.4 : 1) * (0.7 + R() * 0.6);
+    a.bj = (R() - 0.5) * 0.7;
+    a.lit = 0; a.hue = 0;
     a.size = kind === 2 ? 30 + R() * 30 : kind === 1 ? 3 + z * 6.5 : 1.6 + z * 4.2;
     a.aspect = kind === 1 ? 0.3 + R() * 0.3 : 1;
     a.alpha = kind === 2 ? 0.3 + R() * 0.15 : Math.max(0.2, 0.32 + z * 0.5 + (R() - 0.5) * 0.12);
@@ -15121,7 +15403,10 @@ export class PixiScene {
       this.ashActive = true;
       for (let i = 0; i < ffs.length; i++) this.ashRespawn(ffs[i], i, true);
       this.ashCamX = NaN; this.ashCamY = NaN;
+      this.ashBlasts.length = 0;
+      this.ashEnsureEmbers(ffs[ffs.length - 1]?.sprite);
     }
+    this.ashScanBlasts(c);
     // カメラが動いた分(画面の px)。大きく飛んだフレーム(開始の演出・場面の切り替え)は流さない
     const sc = this.worldUiScale();
     let dcx = Number.isFinite(this.ashCamX) ? (camera.x - this.ashCamX) * sc : 0;
@@ -15147,6 +15432,14 @@ export class PixiScene {
       const tvy = -rise * (1 + 0.18 * Math.sin(now * a.flutter * 0.7 + f.phase * 1.7));
       f.vx += (tvx - f.vx) * k;
       f.vy += (tvy - f.vy) * k;
+      if (this.ashBlasts.length) {
+        // 爆風: 外へ押す力(押す時間の間)と、そのあと渦を巻く横向きの力。押された速さは上の追従で風の流れへ慣性で戻る。
+        // 飛びやすさ(bk: 薄片ほど遠く・塊は鈍い)と向きの乱れ(bj)は粒ごと
+        this.ashBlastAt(f.x, f.y, c, a.bj);
+        const bk = a.bk * sec;
+        f.vx += this.ashBlastAx * bk;
+        f.vy += this.ashBlastAy * bk;
+      }
       f.x += f.vx * sec - dcx * a.par;
       f.y += f.vy * sec - dcy * a.par; // -y=上へ昇る // proj-lift: exempt(not-height 天気の粒の動き)
       const m = M + (a.kind === 2 ? a.size * 0.5 : 0);
@@ -15171,16 +15464,26 @@ export class PixiScene {
       sp.position.set(f.x, f.y);
       sp.alpha = alpha;
       // 明るさ: 光の中は明るく少し緑へ・闇では沈む(闇が引いている間は一様)。奥ほど少し暗い
-      const L = pitch > 0 ? this.ashLightAt(f.x, f.y) : 0;
+      // 爆発の光: 受けた光は粒に残り、飛んでいく間に白→赤へ冷めながら薄れる(爆心から離れても散った粒が光って見える)
+      const Lnow = this.ashBlasts.length ? this.ashBlastLight : 0;
+      a.lit = Math.max(0, a.lit - sec * 1.1);
+      if (Lnow > 0 && Lnow >= a.lit) { a.lit = Lnow; a.hue = this.ashBlastHue; }
+      else a.hue = Math.min(1, a.hue + sec / ASH_BLAST_LIGHT_S);
+      const Lb = a.lit;
+      const Lh = a.hue; // 0=光の前半(白)〜1=後半(赤へ冷める)
+      const L = pitch > 0 ? Math.max(this.ashLightAt(f.x, f.y), Lb) : 0;
       // 手前のぼけた塊は闇でも沈み切らない(画面の端寄りを通る=闇の中が多い・見えないと居ないのと同じ)
       const dark = a.kind === 2 ? ASH_BLUR_DARK : ASH_DARK;
       const bright = (1 - pitch) + pitch * (dark + (ASH_LIT - dark) * L);
-      const lum = bright * (0.82 + 0.3 * a.z);
-      const gs = L * pitch;
-      const cr = Math.min(255, Math.round(a.r * lum * (1 - 0.08 * gs)));
-      const cg = Math.min(255, Math.round(a.g * lum * (1 + 0.1 * gs)));
-      const cb = Math.min(255, Math.round(a.b * lum));
+      // 爆発の光を受けた粒は照らされて浮かぶ: 前半は白く強く、後半は赤へ冷める(煽られて飛ぶ間に冷める=派手さの絵)
+      const lum = bright * (0.82 + 0.3 * a.z) * (1 + Lb * (2.6 - 1.4 * Lh));
+      const gs = L * pitch * (1 - Lb);
+      const red = Lb * Lh;
+      const cr = Math.min(255, Math.round(a.r * lum * (1 - 0.08 * gs) * (1 + 0.6 * red)));
+      const cg = Math.min(255, Math.round(a.g * lum * (1 + 0.1 * gs) * (1 - 0.35 * red)));
+      const cb = Math.min(255, Math.round(a.b * lum * (1 - 0.65 * red)));
       sp.tint = (cr << 16) | (cg << 8) | cb;
+      if (Lb > 0) sp.alpha = Math.min(1, alpha * (1 + 0.9 * Lb));
       if (a.kind === 1) {
         // 薄片: 平らに見えている時間が長く、ぱたっと返る。返る/回る速さは 0.3〜1.5倍でゆっくり揺れる
         const rate = Math.max(0.3, Math.min(1.5, 0.9 + 0.7 * Math.sin(c * 0.37 + f.phase)));
@@ -15190,13 +15493,286 @@ export class PixiScene {
         sp.width = a.size;
         sp.height = a.size * a.aspect * Math.max(0.12, thick);
       } else {
-        sp.width = sp.height = a.size;
+        // 速く飛んでいる間(爆風)は進む向きへ伸びる=止めた画でも散る筋に見える。風の速さでは伸びない
+        const spd = Math.hypot(f.vx, f.vy);
+        const st = a.kind === 0 ? Math.max(0, spd - 110) * 0.012 : 0;
+        if (st > 0.02) {
+          sp.rotation = Math.atan2(f.vy, f.vx);
+          sp.width = a.size * (1 + Math.min(4, st));
+          sp.height = a.size * Math.max(0.55, 1 - 0.1 * st);
+        } else {
+          sp.width = sp.height = a.size;
+        }
       }
     }
+    this.syncAshEmbers(sec, c, wind, gust, k, dcx, dcy, pitch);
+    if (this.ashBlasts.length && c - this.ashBlasts[0].t0 > Math.max(ASH_BLAST_DUR + ASH_BLAST_SWIRL_S, ASH_BLAST_LIGHT_S)) this.ashBlasts.shift();
+  }
+  /** 火の粉のプールを作る(1回)/灰の並びのすぐ後ろ(=灰の上)へ置き直す(研究所へ入る度。蛍の層の置き直しで灰が後ろへ回るため)。 */
+  private ashEnsureEmbers(after: Sprite | undefined) {
+    const parent = after?.parent;
+    if (!parent) return;
+    while (this.ashEmbers.length < ASH_EMBER_SLOTS + ASH_EMBER_BURST_MAX) {
+      const halo = new Sprite(getAshEmberHaloTex());
+      const tail = new Sprite(getAshEmberTailTex());
+      const core = new Sprite(getCircleTexture());
+      const cinder = new Sprite(getCircleTexture());
+      for (const sp of [halo, tail, core, cinder]) { sp.anchor.set(0.5); sp.eventMode = 'none'; sp.blendMode = 'add'; sp.visible = false; }
+      cinder.blendMode = 'normal'; // 冷めたあとは灰(光らない)
+      tail.anchor.set(1, 0.5);     // 尾は芯から後ろへ伸びる
+      const i = this.ashEmbers.length;
+      const burst = i >= ASH_EMBER_SLOTS;
+      this.ashEmbers.push({
+        burst, core, halo, tail, cinder, x: 0, y: 0, vx: 0, vy: 0, on: false, age: 0, pre: 0, heatIn: 0, hot: 0, cool: 0, ashT: 0,
+        wait: burst ? Infinity : i * (1.2 + Math.random() * 1.5), // 最初は時間差で湧かせる(全部が同時に湧いて同時に燃え尽きない)
+        rise: 0, flare: 0, size: 1, aspect: 1, f1: 0, f2: 0, ph: 0, ph2: 0, twAt: 0, twT0: -9, twAmp: 0, lastAmp: 0, kickAt: 0, kickT0: -9, kvx: 0, kvy: 0,
+      });
+    }
+    let at = parent.getChildIndex(after!) + 1;
+    for (const e of this.ashEmbers) {
+      for (const sp of [e.cinder, e.halo, e.tail, e.core]) parent.addChildAt(sp, Math.min(at++, parent.children.length));
+    }
+  }
+  /** 火の粉1粒の性格(明滅・またたき・蹴り・最後の強まり・大きさ)を決め直す。湧き方は呼ぶ側。 */
+  private ashEmberTraits(e: (typeof this.ashEmbers)[number]) {
+    const R = Math.random;
+    e.on = true; e.age = 0; e.wait = 0; e.flare = 0;
+    e.size = 0.85 + R() * 0.4;
+    e.aspect = 0.7 + R() * 0.25; // 少し歪んだ点
+    e.f1 = 6 + R() * 7; e.f2 = 15 + R() * 14; // 明滅の周波数は粒ごと
+    e.ph = R() * Math.PI * 2; e.ph2 = R() * Math.PI * 2;
+    e.twAt = 0.3 + R() * 1.5; e.twT0 = -9; e.twAmp = 0;
+    e.lastAmp = R() < 0.35 ? 0 : 0.15 + R() * 0.55; // 冷める直前の強まり: 無い粒も・強さも粒ごと
+    e.kickAt = 0.4 + R() * 1.4; e.kickT0 = -9; e.kvx = 0; e.kvy = 0;
+  }
+  private ashEmberSpawn(e: (typeof this.ashEmbers)[number]) {
+    const W = this.screenW, H = this.screenH, R = Math.random;
+    this.ashEmberTraits(e);
+    // 4割は画面の下半分の中で湧く=灰の1粒が赤熱し始めて火の粉になる(何も無い所から現れない)。残りは下端の外から白熱のまま昇ってくる
+    const inScreen = R() < 0.4;
+    e.pre = inScreen ? 0.7 + R() * 0.6 : 0;
+    e.heatIn = inScreen ? 0.8 + R() * 0.5 : 0.35;
+    e.hot = 1.4 + R() * 1.6;
+    e.cool = 1.6 + R() * 1.2;
+    e.ashT = 2.2 + R() * 1.8;
+    e.rise = 62 + R() * 26;      // 灰(22〜70)より少し速い
+    e.y = inScreen ? H * (0.55 + R() * 0.38) : H + 8 + R() * 30;
+    e.x = R() < 0.6 ? this.ashPlumes[Math.floor(R() * this.ashPlumes.length)] + (R() - 0.5) * 0.3 * W : -0.15 * W + R() * 1.1 * W;
+    e.x = Math.max(-0.1 * W, Math.min(W * 1.02, e.x));
+    e.vx = 0; e.vy = inScreen ? -18 : -e.rise * 0.3; // 湧いた直後は遅く、昇りながら速さに乗る(慣性)
+  }
+  /** 爆発の時だけ: 爆心から火の粉を数粒吹き上げる(別枠の固定プール。空きが無ければ燃え尽きに近い粒から使い回す)。 */
+  private ashEmberBurst(x: number, y: number, rUi: number) {
+    const R = Math.random;
+    const pool = this.ashEmbers.filter(e => e.burst);
+    if (!pool.length) return;
+    const n = Math.max(4, Math.min(8, Math.round(3 + rUi / 18 + R() * 1.5)));
+    for (let k = 0; k < n; k++) {
+      let e = pool.find(q => !q.on);
+      if (!e) { e = pool.reduce((m, q) => (q.age - (q.pre + q.heatIn + q.hot) > m.age - (m.pre + m.heatIn + m.hot) ? q : m)); }
+      this.ashEmberTraits(e);
+      e.pre = 0; e.heatIn = 0.06;            // 白熱のまま飛び出す
+      e.hot = 0.35 + R() * 0.45;             // 短く燃えて
+      e.cool = 0.8 + R() * 0.5;              // 冷めて
+      e.ashT = 1.2 + R() * 1.2;              // 灰の1粒として少し漂って消える
+      e.rise = 40 + R() * 30;
+      e.kickAt = 0.5 + R();
+      e.lastAmp *= 0.6;
+      e.x = x + (R() - 0.5) * rUi * 0.5;
+      e.y = y - R() * rUi * 0.3;
+      // 勢いよく上へ散る(上向き±50°)。そのあとは風の速さへ近づく追従で減速して漂う(慣性)
+      const ang = -Math.PI / 2 + (R() - 0.5) * 1.75;
+      const v = 230 + R() * 260;
+      e.vx = Math.cos(ang) * v; e.vy = Math.sin(ang) * v;
+      e.size *= 0.95 + R() * 0.25;
+    }
+  }
+  /**
+   * 火の粉: 灰と同じ風(突風込み)に乗って昇る。熱(heat)の1本で色・明るさ・尾・昇る速さが一緒に変わる
+   * (熱いほど白く明るく速い・冷めると暗い赤で遅くなり、最後は灰の1粒として風に残る)。爆風で煽られ一瞬白く明るくなる。
+   */
+  private syncAshEmbers(sec: number, c: number, wind: number, gust: number, k: number, dcx: number, dcy: number, pitch: number) {
+    const W = this.screenW, H = this.screenH, R = Math.random;
+    const list = this.ashEmbers;
+    let lit = 0; // 普段の枠で光っている(=灰に戻る前の)粒の数
+    for (const e of list) if (!e.burst && e.on && e.age < e.pre + e.heatIn + e.hot + e.cool) lit++;
+    for (const e of list) {
+      if (!e.on) {
+        e.core.visible = e.halo.visible = e.tail.visible = e.cinder.visible = false;
+        if (e.burst) continue; // 別枠は爆発の時だけ湧く
+        // 休み: 光っている粒が1つも無い時はすぐ湧く(常に1粒は居る)
+        e.wait -= sec;
+        if (e.wait <= 0 || lit === 0) { this.ashEmberSpawn(e); lit++; } else continue;
+      }
+      e.age += sec;
+      const t = e.age;
+      const tHeat = e.pre, tHot = tHeat + e.heatIn, tCool = tHot + e.hot, tAsh = tCool + e.cool, tEnd = tAsh + e.ashT;
+      if (t >= tEnd || e.y < -40 || e.x < -0.5 * W || e.x > 1.5 * W || e.y > H + 120) {
+        // 灰としても消えた: 次に湧くまで休む(0.3〜2.8秒)。別枠は次の爆発まで
+        e.on = false; e.wait = e.burst ? Infinity : 0.3 + R() * 2.5;
+        e.core.visible = e.halo.visible = e.tail.visible = e.cinder.visible = false;
+        continue;
+      }
+      // 熱: pre=0(灰の1粒)→ heat で 0→1(赤熱し始める・ease-in-out)→ hot=1 → cool で 1→0(cos)→ ash=0
+      let heat: number;
+      if (t < tHeat) heat = 0;
+      else if (t < tHot) { const u = (t - tHeat) / e.heatIn; heat = u * u * (3 - 2 * u); }
+      else if (t < tCool) heat = 1;
+      else if (t < tAsh) { const u = (t - tCool) / e.cool; heat = 0.5 + 0.5 * Math.cos(Math.PI * u); }
+      else heat = 0;
+      const glowing = t >= tHeat && t < tAsh;
+      // 冷める直前の強まり(粒ごとに有無・強さ)
+      let last = 0;
+      if (t >= tCool && t < tAsh && e.lastAmp > 0) { const u = (t - tCool) / e.cool; if (u < 0.3) last = e.lastAmp * Math.sin(Math.PI * u / 0.3); }
+      // 動き: 灰と同じ風・突風。熱いほど速く昇る(冷めると灰の速さへ)。熱で揺れる漂い+時々ランダムに向きを蹴る(力の山=慣性つき)
+      const riseNow = e.rise * (0.45 + 0.55 * heat);
+      const sway = Math.sin(c * 2.3 + e.ph) * 12 + Math.sin(c * 5.1 + e.ph2) * 5;
+      const tvx = riseNow * wind * gust * 1.05 + sway * (0.4 + 0.6 * heat);
+      const tvy = -riseNow * (1 + 0.12 * (gust - 1)) * (1 + 0.15 * Math.sin(c * 1.7 + e.ph2));
+      const kk = e.burst ? Math.min(1, k * 1.6) : k; // 吹き上げた粒は空気に負けて早めに減速する
+      e.vx += (tvx - e.vx) * kk;
+      e.vy += (tvy - e.vy) * kk;
+      if (t >= e.kickAt) {
+        e.kickT0 = t; e.kickAt = t + 0.5 + R() * 1.6;
+        const ang = (R() < 0.5 ? Math.PI : 0) + (R() - 0.5) * 1.6; // 主に横へ・少し上下
+        const mag = (22 + R() * 38) * (0.5 + 0.5 * heat);
+        e.kvx = Math.cos(ang) * mag; e.kvy = Math.sin(ang) * mag * 0.6;
+      }
+      const ku = t - e.kickT0;
+      if (ku < 0.22) { const f = Math.PI / (2 * 0.22) * Math.sin(Math.PI * ku / 0.22) * sec; e.vx += e.kvx * f; e.vy += e.kvy * f; }
+      if (this.ashBlasts.length && !(e.burst && t < 0.3)) { // 吹き上げた直後の粒は自分の爆風では押さない(上へ散る形を保つ)
+        this.ashBlastAt(e.x, e.y, c, (e.ph - Math.PI) * 0.1);
+        e.vx += this.ashBlastAx * 1.2 * sec;
+        e.vy += this.ashBlastAy * 1.2 * sec;
+        if (this.ashBlastLight > e.flare) e.flare = this.ashBlastLight; // 爆風で一瞬白く明るく(下で減衰)
+      }
+      e.flare = Math.max(0, e.flare - sec * 2);
+      e.x += e.vx * sec - dcx * 1.05;
+      e.y += e.vy * sec - dcy * 1.05; // proj-lift: exempt(not-height 天気の粒の動き)
+      const onScreen = e.x > -60 && e.x < W + 60 && e.y > -60 && e.y < H + 60;
+      // 燃え殻(灰の1粒): 湧く前(pre)と冷めたあと(ash)に見える。熱が上がると消え、冷めると現れる。闇の明るさは灰と同じに掛ける
+      const ashIn = t < tHeat ? Math.min(1, t / 0.5) : 1;
+      const ashOut = t >= tAsh ? 1 - Math.pow(Math.min(1, (t - tAsh) / e.ashT), 2) : 1;
+      const cinA = 0.55 * Math.max(0, 1 - heat / 0.35) * ashIn * ashOut;
+      const cs = e.cinder;
+      cs.visible = onScreen && cinA > 0.01;
+      if (cs.visible) {
+        cs.position.set(e.x, e.y);
+        cs.alpha = cinA;
+        cs.width = 2.6 * e.size; cs.height = 2.6 * e.size * e.aspect;
+        cs.rotation = Math.atan2(e.vy, e.vx);
+        const L = pitch > 0 ? this.ashLightAt(e.x, e.y) : 0;
+        const g = Math.round(Math.min(255, 118 * ((1 - pitch) + pitch * (ASH_DARK + (ASH_LIT - ASH_DARK) * L))));
+        cs.tint = (Math.min(255, g + 6) << 16) | (g << 8) | Math.max(0, g - 6);
+      }
+      // 光: またたきは乱数の間隔(粒ごとの周波数の揺れ+たまの強いまたたき)
+      if (t >= e.twAt) { e.twT0 = t; e.twAmp = 0.25 + R() * 0.6; e.twAt = t + 0.35 + R() * 2; }
+      const tu = t - e.twT0;
+      const tw = 0.7 + 0.17 * Math.sin(t * e.f1 + e.ph) + 0.1 * Math.sin(t * e.f2 + e.ph2) + (tu < 0.16 ? e.twAmp * Math.sin(Math.PI * tu / 0.16) : 0);
+      const fl = e.flare;
+      const hEff = Math.min(1, heat * (1 + 0.25 * last) + 0.6 * fl); // 爆風・最後の強まりは白い側へ
+      const I = (glowing ? Math.pow(heat, 0.7) : 0) * tw * (1 + last) * (1 + 1.2 * fl);
+      const vis = onScreen && I > 0.012;
+      e.core.visible = e.halo.visible = e.tail.visible = vis;
+      if (!vis) continue;
+      const col = ashEmberHeatColor(hEff);
+      const sz = e.size * (0.6 + 0.4 * heat) * (1 + 0.4 * fl);
+      const ang = Math.atan2(e.vy, e.vx);
+      const sp = e.core;
+      sp.position.set(e.x, e.y);
+      sp.tint = col;
+      sp.alpha = Math.min(1, 0.95 * I);
+      sp.width = ASH_EMBER_CORE_PX * sz; sp.height = ASH_EMBER_CORE_PX * sz * e.aspect;
+      sp.rotation = ang;
+      // 尾: 進む向きの後ろへ、速さに合わせて短く(熱いほど長く明るい)
+      const spd = Math.hypot(e.vx, e.vy);
+      const tl = e.tail;
+      tl.position.set(e.x, e.y);
+      tl.rotation = ang;
+      tl.tint = ashEmberHeatColor(hEff * 0.8);
+      tl.width = Math.min(ASH_EMBER_TAIL_MAX * (1 + fl), 3 + spd * 0.11) * (0.5 + 0.5 * heat);
+      tl.height = 2.4 * sz; // 芯の側が濃く後ろへ薄れる筋
+      tl.alpha = Math.min(1, 0.9 * I);
+      // 光の輪: 小さく薄く(芯の色が主役)。色は芯より少し深い橙
+      const hl = e.halo;
+      hl.position.set(e.x, e.y);
+      hl.tint = ashEmberHeatColor(hEff * 0.75);
+      hl.alpha = Math.min(1, 0.45 * I);
+      hl.width = hl.height = ASH_EMBER_HALO_PX * sz * (1 + 0.5 * fl);
+    }
+  }
+  private ashBlastAx = 0;
+  private ashBlastAy = 0;
+  private ashBlastLight = 0;
+  /** 0=光の前半(白)〜1=後半(赤へ冷める)。いちばん強く照らしている爆発の進み具合。 */
+  private ashBlastHue = 0;
+  /** 新しい爆発(store の effects の 'explosion')を見つけたら爆風を1つ足し、火の粉を吹き上げる。読むだけ。 */
+  private ashScanBlasts(c: number) {
+    const effects = useGameStore.getState().effects;
+    const wall = Date.now();
+    const sc = this.worldUiScale();
+    let found = 0;
+    for (const e of effects) {
+      if (e.kind !== 'explosion') continue;
+      found++;
+      if (this.ashBlastSeen.has(e.id)) continue;
+      this.ashBlastSeen.add(e.id);
+      if (wall - e.createdAt > 500) continue; // 出てから時間の経った爆発(読み込み直後など)は煽らない
+      const p = this.projWorldToUi(e.x, e.y);
+      const r = Math.max(0, e.radius) * sc * p.s;
+      this.ashBlasts.push({ x: p.x, y: p.y, reach: Math.max(ASH_BLAST_REACH_MIN, r * ASH_BLAST_REACH_K), t0: c, spin: Math.random() < 0.5 ? -1 : 1 });
+      if (this.ashBlasts.length > 6) this.ashBlasts.shift();
+      this.ashEmberBurst(p.x, p.y, r);
+    }
+    if (this.ashBlastSeen.size > 48 && found < 24) {
+      this.ashBlastSeen.clear();
+      for (const e of effects) if (e.kind === 'explosion') this.ashBlastSeen.add(e.id);
+    }
+  }
+  /**
+   * (x,y) が受ける爆風の力(ashBlastAx/Ay・px/s²)と爆発の光(ashBlastLight 0〜1・ashBlastHue)。
+   * 押す力: 距離でほぼ1乗に落ちる・爆心の近くは大きく飛ぶ・向きは粒ごとに jit(rad)だけ乱れる・力は sin の山。
+   * 押したあとは横向き(爆発ごとに右/左回り)の力が sin の山で掛かり、渦を巻きながら風の流れへ戻る。
+   */
+  private ashBlastAt(x: number, y: number, c: number, jit: number) {
+    let ax = 0, ay = 0, li = 0, hue = 0;
+    const A = ASH_BLAST_V * Math.PI / (2 * ASH_BLAST_DUR); // 押す時間の積分で Δv=ASH_BLAST_V になる力の山の高さ
+    const As = ASH_BLAST_V * ASH_BLAST_SWIRL * Math.PI / (2 * ASH_BLAST_SWIRL_S);
+    for (const b of this.ashBlasts) {
+      const dx = x - b.x, dy = y - b.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= b.reach * b.reach) continue;
+      const d = Math.sqrt(d2);
+      const w0 = 1 - d / b.reach;
+      const coreK = 1 + 1.4 * Math.max(0, 1 - d / (b.reach * ASH_BLAST_CORE_FRAC)); // 爆心の近くの数粒は大きく飛ぶ
+      const w = Math.pow(w0, ASH_BLAST_FALLOFF) * coreK;
+      const u = c - b.t0;
+      let ux = d > 0.5 ? dx / d : 0, uy = d > 0.5 ? dy / d : -1;
+      if (jit) { const cj = Math.cos(jit), sj = Math.sin(jit); const rx = ux * cj - uy * sj; uy = ux * sj + uy * cj; ux = rx; }
+      if (u < ASH_BLAST_DUR) {
+        const f = A * w * Math.sin(Math.PI * Math.max(0, u) / ASH_BLAST_DUR);
+        ax += ux * f;
+        ay += uy * f - f * 0.2; // 熱い空気=少し上へ
+      }
+      const us = u - ASH_BLAST_DUR * 0.6;
+      if (us > 0 && us < ASH_BLAST_SWIRL_S) {
+        const f = As * w0 * Math.sin(Math.PI * us / ASH_BLAST_SWIRL_S) * b.spin;
+        ax += -uy * f;
+        ay += ux * f;
+      }
+      if (u < ASH_BLAST_LIGHT_S) {
+        const lu = Math.max(0, u) / ASH_BLAST_LIGHT_S;
+        const l = Math.min(1, w0 * 1.3) * (1 - lu) * (1 - lu * 0.4) * Math.min(1, Math.max(0, u) / 0.05 + 0.4);
+        if (l > li) { li = l; hue = lu; }
+      }
+    }
+    this.ashBlastAx = ax; this.ashBlastAy = ay; this.ashBlastLight = Math.min(1, li); this.ashBlastHue = hue;
   }
   /** 研究所を出た時だけ(1回): 灰の見た目を蛍プールの既定(加算・柔らかい丸)へ戻す。 */
   private leaveLabAsh() {
     this.ashActive = false;
+    this.ashBlasts.length = 0;
+    for (const e of this.ashEmbers) { e.core.visible = e.halo.visible = e.tail.visible = e.cinder.visible = false; e.on = false; }
     const tex = getSoftGlowTexture();
     for (const f of this.fireflies) {
       f.sprite.texture = tex;
@@ -39389,8 +39965,10 @@ export class PixiScene {
       const fa = !this.isLabStage ? 1 : !q.inDomain ? 0
         : q.alpha * Math.max(0, Math.min(1, (q.l * pf.wgScale) / Math.max(1, this.horizonActorFadePx)));
       if (fa <= 0.01) return;
-      projFlatCircle(g, pf, x, y, AR, undefined, { width: 2, color: 0xfbbf24, alpha: (0.45 + 0.3 * pulse) * fa });
-      projFlatCircle(g, pf, x, y, AR - 3, { color: 0xfbbf24, alpha: (0.05 + 0.05 * pulse) * fa });
+      // 円の裁定(v0.25.5782): この輪は判定の円(半径 AR = store の ARMORY_RADIUS=主人公の中心がこの内で指を離すと遠隔ショップが開く
+      // `openArmoryShopIfInside`)=頂点ごとの厳密な投影(projCircle)。研究所・拠点・出張武器商人の3か所とも同じ扱い。
+      projCircle(g, pf, x, y, AR, undefined, { width: 2, color: 0xfbbf24, alpha: (0.45 + 0.3 * pulse) * fa });
+      projCircle(g, pf, x, y, AR - 3, { color: 0xfbbf24, alpha: (0.05 + 0.05 * pulse) * fa });
       const n0 = projCmdCount(g);
       PixiScene.drawArmoryBox(g, q.x, q.y, pulse, q.s, fa);
       projKeepFrom(g, n0);
@@ -51456,6 +52034,8 @@ export class PixiScene {
     this.playerLight.destroy();
     this.vignette.destroy();
     for (const f of this.fireflies) { f.sprite.destroy(); f.halo?.destroy(); }
+    for (const e of this.ashEmbers) { e.core.destroy(); e.halo.destroy(); e.tail.destroy(); e.cinder.destroy(); }
+    this.ashEmbers = [];
     this.weatherWet?.destroy(); this.weatherWet = null;
     this.stage1Night?.destroy(); this.stage1Night = null;
     this.stage5Battle?.destroy(); this.stage5Battle = null;
