@@ -827,8 +827,10 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   /* PC の拡大(--hud-s=1.25/1.5)の中でも端末px で4px周期を保つ(割らないと 5/6px 周期でモアレ=クリエイティブ監査 #7)。スマホは未定義=1。 */
   background: repeating-linear-gradient(0deg, transparent 0 calc(3px / var(--hud-s, 1)), rgba(255, 255, 255, 0.012) calc(3px / var(--hud-s, 1)) calc(4px / var(--hud-s, 1)));
 }
-/* 作戦室の地図の外の見出し(横長の時だけ出す。縦持ちは地図の中の札が同じことを言う=出さない)。 */
+/* 作戦室の地図の外の見出し(横長の時だけ出す)。縦持ちは地図の中の SECTOR の札も出さない=場所名は地図の下端だけ
+   (社長 2026-11-25「場所名は地図の下端だけにする(PC は今のまま)」)。 */
 .ds-glabel.ds-glabel-sector { display: none; }
+@media (orientation: portrait) { .ds-home .ds-map .ds-map-tag { display: none; } }
 /* PC横長のホーム(段3-2): 2列の上辺を揃える(右列の最初の見出しの上余白を消してマップの上端に合わせる)/
    入りの順は左列と右列を並走(出撃が右列の後に来て目が左右を往復しない=クリエイティブ監査 #2/#11)/ マウスの反応(#12)。 */
 @media (orientation: landscape) {
@@ -840,8 +842,8 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   .ds-home .ds-glabel.ds-glabel-sector { display: flex; margin-top: 0; }
   .ds-home .ds-sortie.menu-item-in { animation-delay: 100ms !important; }
 }
-.ds-sortie { transition: filter 160ms cubic-bezier(.2,.7,.3,1), box-shadow 160ms cubic-bezier(.2,.7,.3,1); }
-.ds-sortie:hover { filter: brightness(1.08); box-shadow: inset 0 1px 0 rgba(255,244,214,.75), inset 0 -2px 0 rgba(80,45,8,.35), 0 0 18px rgba(255,179,64,.18); }
+.ds-sortie { transition: filter 160ms cubic-bezier(.2,.7,.3,1), box-shadow 200ms cubic-bezier(.2,.7,.3,1), color 200ms cubic-bezier(.2,.7,.3,1); }
+.ds-sortie:not(.is-locked):hover { filter: brightness(1.08); box-shadow: inset 0 1px 0 rgba(255,244,214,.75), inset 0 -2px 0 rgba(80,45,8,.35), 0 0 18px rgba(255,179,64,.18); }
 .ds-foot-options { transition: color 160ms ease-out; }
 .ds-foot-options:hover { color: var(--ds-ink); }
 
@@ -916,6 +918,22 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   animation: ds-map-dest-in 520ms cubic-bezier(0.2, 0.7, 0.25, 1) 380ms both;
 }
 @keyframes ds-map-dest-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+/* 選択中の札(場所の名の左): NEXT/前回=琥珀明、再訪=生成り、未解放=灰。英字は字間を広く。 */
+.ds-map-dest-k {
+  flex: none;
+  align-self: flex-end;
+  margin-bottom: 2px;
+  font-family: "Rajdhani", var(--uf-jp), sans-serif;
+  font-weight: 600;
+  font-size: 10.5px;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  color: rgba(233, 223, 200, 0.78);
+}
+.ds-map-dest-k.is-next { color: #ffd28a; }
+.ds-map-dest-k.is-last { color: #ffd28a; }
+.ds-map-dest-k.is-locked { color: rgba(221, 210, 184, 0.6); }
+.ds-map-dest.is-locked .ds-map-dest-pl { color: rgba(221, 210, 184, 0.62); font-weight: 400; }
 .ds-map-dest-pl {
   min-width: 0;
   overflow: hidden;
@@ -955,8 +973,41 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   animation: ds-map-next-ring-in 640ms cubic-bezier(0.2, 0.7, 0.25, 1) 260ms both;
 }
 @keyframes ds-map-next-ring-in { from { opacity: 0; transform: scale(1.7); } to { opacity: 1; transform: scale(1); } }
+/* 選び直した時: 前の輪は減速しながら薄れて広がって消え(300ms)、新しい輪はその半ばから外から縮んで入る。 */
+.ds-map-next-ring.is-in { animation: ds-map-next-ring-in 460ms cubic-bezier(0.2, 0.7, 0.25, 1) 150ms both; }
+.ds-map-next-ring.is-out { animation: ds-map-next-ring-out 300ms cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+@keyframes ds-map-next-ring-out { 0% { opacity: 1; transform: scale(1); } 45% { opacity: 0.6; transform: scale(1.32); } 100% { opacity: 0; transform: scale(1.45); } }
+/* 選択中をもう一度押した時: 輪が一度縮んで(溜め)、弾けて広がりながら消えてから進む。 */
+.ds-map-next-ring.is-go { animation: ds-map-next-ring-go 300ms cubic-bezier(0.5, 0, 0.3, 1) both; }
+@keyframes ds-map-next-ring-go {
+  0% { opacity: 1; transform: scale(1); }
+  38% { opacity: 1; transform: scale(0.74); animation-timing-function: cubic-bezier(0.1, 0.7, 0.3, 1); }
+  100% { opacity: 0; transform: scale(1.9); }
+}
+/* 目標の印(NEXT の菱形/前回の字): 選択が離れている間は一段落とす。字は輪が重なる時に横へ逃げる。 */
+.ds-map-target-mark { transition: opacity 320ms cubic-bezier(0.2, 0.7, 0.3, 1); }
+.ds-map-target-word { transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1); }
+/* 未解放を選んでいる間: 目標の印が一度だけ強く光る(灯って膨らみ、減速しながら薄れる)=「ここを越えた先」。 */
+.ds-map-target-flash {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ds-map-target-flash 900ms cubic-bezier(0.2, 0.7, 0.3, 1) 120ms both;
+}
+@keyframes ds-map-target-flash {
+  0% { opacity: 0; transform: scale(0.7); }
+  22% { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 0; transform: scale(2.1); }
+}
+/* 字の入れ替え(SwapText): 前の字は少し上へずれて薄れ、新しい字は下から少しずれて入る。同じ升目に重ねる=幅が跳ねない。 */
+.ds-swap { display: inline-grid; min-width: 0; max-width: 100%; vertical-align: bottom; }
+.ds-swap-i { grid-area: 1 / 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ds-swap-i.is-in { animation: ds-swap-in 260ms cubic-bezier(0.2, 0.7, 0.3, 1) 90ms both; }
+.ds-swap-i.is-out { animation: ds-swap-out 160ms cubic-bezier(0.4, 0, 1, 1) both; }
+@keyframes ds-swap-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ds-swap-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-3px); } }
 @media (prefers-reduced-motion: reduce) {
-  .ds-map-dest, .ds-map-next-ring { animation: none; }
+  .ds-map-dest, .ds-map-next-ring, .ds-map-next-ring.is-in, .ds-map-next-ring.is-go, .ds-map-target-flash, .ds-swap-i.is-in { animation: none; }
+  .ds-map-next-ring.is-out, .ds-swap-i.is-out { animation: none; opacity: 0; }
 }
 
 /* 資料室「記録映像」(research/UIUX_PROPOSAL.md P7): 資料室の頭の1行の帯。フィルムの1コマ+「記録 001」+題(明朝)。 */
@@ -1041,36 +1092,26 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   from { opacity: 0; }
   to { opacity: 1; }
 }
-/* 開いた顔: 中心から少し大きく(行き過ぎて戻る 180ms)。開いている間ほかの顔は沈める(減速して沈み、閉じたら減速して戻る)。 */
+/* 選んだ作戦地域の顔(DsStoryMap・社長 2026-11-25「ボスアイコンはステージにぶら下がっているイメージ」): 減速しながら少し浮いて 1.14倍・明るく・
+   落ちる影。ほかの顔は沈む(薄く・彩度を下げる)。浮きも沈みも同じ減速の曲線で、選び直すと前の顔は減速しながら列へ戻る。 */
 .ds-map-face-pop {
   transform-box: view-box;
-  transition: transform 180ms cubic-bezier(0.34, 1.7, 0.64, 1), opacity 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+  transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1), opacity 360ms cubic-bezier(0.2, 0.7, 0.3, 1), filter 360ms cubic-bezier(0.2, 0.7, 0.3, 1);
 }
-.ds-map-face-pop.is-open { transform: scale(1.3); } /* 社長指示2026-11-20「もう少しだけ大きく」: 1.15→1.3 */
-.ds-map-face-pop.is-dim { opacity: 0.55; }
-/* 顔をタップした時の札(どのステージか): 入り 240ms=引き線が先に伸び(0〜120ms)、字が後から追う(120〜240ms)。場所の点は一度だけ明るく
-   (200ms 0.6→1→0.8)。消える時は 140ms で薄れるだけ(滑りはわずか)。 */
-.ds-map-ftag-lead {
-  transform-box: view-box;
-  animation: ds-map-ftag-lead 120ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+/* 選んだ顔: 速く持ち上がって軽く行き過ぎて戻る(260ms)。浮く向きは場所の印から離れる側(--lift・DsStoryMap)。 */
+.ds-map-face-pop.is-sel {
+  transform: translateY(var(--lift, -12px)) scale(1.14);
+  filter: brightness(1.18) drop-shadow(0px 14px 8px rgba(0, 0, 0, 0.75));
+  transition: transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 200ms cubic-bezier(0.2, 0.7, 0.3, 1), filter 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
 }
-@keyframes ds-map-ftag-lead { from { transform: scale(0); } to { transform: scale(1); } }
-.ds-map-ftag-body { transform-box: fill-box; }
-.ds-map-ftag.is-above .ds-map-ftag-body { animation: ds-map-ftag-body-up 120ms cubic-bezier(0.2, 0.7, 0.3, 1) 120ms both; }
-.ds-map-ftag.is-below .ds-map-ftag-body { animation: ds-map-ftag-body-down 120ms cubic-bezier(0.2, 0.7, 0.3, 1) 120ms both; }
-@keyframes ds-map-ftag-body-up { from { opacity: 0; transform: translateY(25%); } to { opacity: 1; transform: translateY(0); } }
-@keyframes ds-map-ftag-body-down { from { opacity: 0; transform: translateY(-25%); } to { opacity: 1; transform: translateY(0); } }
-.ds-map-ftag-mark { animation: ds-map-ftag-mark 200ms cubic-bezier(0.3, 0, 0.3, 1) both; }
-@keyframes ds-map-ftag-mark { 0% { opacity: 0.6; } 45% { opacity: 1; } 100% { opacity: 0.8; } }
-.ds-map-ftag { transform-box: fill-box; }
-.ds-map-ftag.is-out { animation: ds-map-ftag-out 140ms cubic-bezier(0.4, 0, 1, 1) both; }
-.ds-map-ftag.is-above.is-out { --ftag-out-dy: 6%; }
-.ds-map-ftag.is-below.is-out { --ftag-out-dy: -6%; }
-@keyframes ds-map-ftag-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(var(--ftag-out-dy, 0)); } }
+/* 沈む顔: 少し遅れて、ゆっくり重く沈む。 */
+.ds-map-face-pop.is-sink {
+  opacity: 0.68;
+  filter: saturate(0.45) brightness(0.86);
+  transition: transform 560ms cubic-bezier(0.55, 0, 0.35, 1) 90ms, opacity 560ms cubic-bezier(0.55, 0, 0.35, 1) 90ms, filter 560ms cubic-bezier(0.55, 0, 0.35, 1) 90ms;
+}
 @media (prefers-reduced-motion: reduce) {
   .ds-map-face-pop { transition: none; }
-  .ds-map-ftag-lead, .ds-map-ftag-mark, .ds-map-ftag.is-above .ds-map-ftag-body, .ds-map-ftag.is-below .ds-map-ftag-body { animation: none; }
-  .ds-map-ftag.is-out { animation: none; opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ds-map-face, .ds-map-face-fade { animation: none; }
@@ -1122,6 +1163,30 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   margin-right: -0.2em; /* 字間の最後の1つぶんを戻す(仕切りとの間を字間で広げない) */
 }
 @media (orientation: landscape) { .ds-sortie .ds-sortie-t1 { letter-spacing: 0.26em; margin-right: -0.26em; } }
+/* 未解放の作戦地域を選んだ時の帯: 灰色で「未解放」+開く条件だけ(右の矢印なし・押しても重く沈んで戻るだけ)。
+   琥珀の上に灰の面(::after)を重ねて、光が抜ける(約200ms・減速)/灯る(少し速く)で切り替える。 */
+.ds-sortie > * { position: relative; z-index: 1; }
+.ds-sortie::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #17161c, #101015);
+  box-shadow: inset 0 0 0 1px rgba(221, 210, 184, 0.16);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms cubic-bezier(0.4, 0, 0.6, 1);
+}
+.ds-sortie.is-locked::after { opacity: 1; transition: opacity 220ms cubic-bezier(0.2, 0.7, 0.3, 1); }
+.ds-sortie.is-locked { cursor: default; box-shadow: none; color: rgba(221, 210, 184, 0.5); }
+.ds-sortie .ds-sortie-chev { transition: opacity 160ms cubic-bezier(0.2, 0.7, 0.3, 1); }
+.ds-sortie.is-locked .ds-sortie-chev { opacity: 0; }
+.ds-sortie-dest { transition: color 200ms cubic-bezier(.2,.7,.3,1), border-color 200ms cubic-bezier(.2,.7,.3,1); }
+.ds-sortie.is-locked .ds-sortie-dest {
+  border-left-color: rgba(221, 210, 184, 0.18);
+  font-weight: 400;
+  font-size: 13px;
+  color: rgba(221, 210, 184, 0.72);
+}
 /* 出撃の帯に次の任務(research/UIUX_PROPOSAL.md P1): 「出撃」の右に細い仕切り+任務名(場所の名は地図の下端)。長い名は末尾を省く。 */
 .ds-sortie-dest {
   flex: 1;

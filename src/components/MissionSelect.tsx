@@ -109,9 +109,11 @@ import { PixelIcon, type PixelIconName } from './PixelIcon';
 import MuteButton from './MuteButton';
 import { useAudioMuted } from '../hooks/useAudioMuted';
 // 作戦室DS2化(UI_OVERHAUL.md §3 バッチ①): ホームの計器化+作戦地図(v0.25.5096〜 架空列島+ストーリーの軌跡=DsStoryMap。旧=等高線の飾り)。旧ホームは?dshome=0で丸ごと復帰。
-import DsStoryMap from './DsStoryMap'; // 作戦室の地図=架空列島+ストーリーの軌跡(THEONE_ROUND2 §2-5)
+import DsStoryMap from './DsStoryMap';
+import { SwapText } from './SwapText'; // 作戦室の地図=架空列島+ストーリーの軌跡(THEONE_ROUND2 §2-5)
 import NoBounceScroller from './NoBounceScroller';
 import { nextOperationStage, sortieTarget } from '../utils/dsHome';
+import { currentMapPick, lockedPreviewStage, lockedSortieHint, LOCKED_PLACE_NAME } from '../utils/opsMapSelect';
 import { OPENING_HERO, OPENING_WALK_BG_BLUR } from '../data/openingWalkAssets';
 import { reportTestScreen, type TestScreenId } from '../utils/testBridge';
 import { STAGE1_FIRST_LOOP_ENABLED, stage1GuardianLockShown, stage1RunCompanion, STAGE1_GUARDIAN_LOCK_NOTE } from '../utils/stage1FirstLoop'; // STAGE1_FIRST_LOOP.md §7.8(守護霊のマスト化)
@@ -658,6 +660,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       kenkiLevel: loadKenkiLevel(),
     });
   }, [homeShown, sortieableIds, patrolPlan]);
+  // 作戦室の地図で選んだ作戦地域(社長 2026-11-25「ボスアイコンで、ステージカテゴリが選択される」)。null=開いた時の出撃先(NEXT/前回)。
+  // 押した時だけ変わる React の state(毎フレーム再描画しない)。この画面を開き直すと(部品が作り直されると)開いた時の形に戻る。
+  const [mapPickId, setMapPickId] = useState<string | null>(null);
 
   // PACING_PUZZLE.md §6.18 バッチM41: 資料室(未読バッジ+閲覧)+「資料が追加されました」ポップアップ。
   // storyArchive は heartbeat/chronicle と同じ「必要時に1回読む」方針(store購読なし・React再描画規律)。
@@ -905,15 +910,41 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // 最後に出撃した任務(出撃時に書く selectedStage の記録)=地図は「前回」の印。記録も無ければ null
     // =帯は今までどおり一覧へ行く(地図の下端の任務名も出ない)。
     const target = sortieTarget(STAGES, opStage, cleared, getStoryFlags(), getSelectedStageId());
-    const sortieDest = target?.stage ?? null;
-    // SECTOR の札・DAY は出撃先と同じ場所を言う(「前回」の時に地図の下端の場所名と食い違わない)。
+    // 地図で選んだ作戦地域(utils/opsMapSelect)。選べるのは地図の印かボスの顔があるステージ+NEXT の1つ先の未解放だけ。
+    // 出撃の帯・地図の下端の札と場所名・SECTOR の札は選択中を言う(開いた時は NEXT / 前回=target)。
+    const mapLocked = lockedPreviewStage(STAGES, target);
+    const mapPick = currentMapPick(mapPickId, { stages: STAGES, cleared, target, sortieableIds, locked: mapLocked });
+    const pickLocked = mapPick?.kind === 'locked';
+    const sortieDest = mapPick && !pickLocked ? mapPick.stage : null;
+    // DAY は開いた時の出撃先のまま(選び直しで変えない)。
     const nextStage = target?.kind === 'last' ? target.stage : opStage;
+    const sectorName = mapPick ? (pickLocked ? LOCKED_PLACE_NAME : mapPick.stage.locationTitle) : nextStage?.locationTitle ?? '—';
     // DAYの掟(監査A-8): 次の作戦地域が timeLabel を持つ(=日時を意図的にぼかすステージ)場合は
     // DAY項目ごと省く(数字で暴露しない)。
     const showDay = !!nextStage && !nextStage.timeLabel;
     const goSortieDest = sortieDest
       ? () => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: sortieDest.id, from: 'home' }); }
       : null;
+    // 地図の印・顔を押した時: 選択中を移すだけ(画面は移らない)。選択中のステージをもう一度押すと出撃の帯と同じ任務詳細へ
+    // (地図の輪が縮んで弾けてから呼ばれる=DsStoryMap)。未解放を選んだ時・未解放をもう一度押した時は鈍い音(行けない)。
+    const onMapPick = (stageId: string) => {
+      if (mapPick && mapPick.stage.id === stageId) {
+        if (goSortieDest) goSortieDest(); else if (pickLocked) playSfx('ui-deny');
+        return;
+      }
+      const lockedPick = !!mapLocked && mapLocked.id === stageId;
+      playSfx(lockedPick ? 'ui-deny' : 'ui-select');
+      setMapPickId(stageId);
+    };
+    // 灰の帯(未解放)を押した時: 重く小さく沈んで戻る(押したが開かない手応え)+鈍い音。
+    const bumpLockedBand = (el: HTMLElement) => {
+      playSfx('ui-deny');
+      el.animate?.([
+        { transform: 'translateY(0) scale(1)' },
+        { transform: 'translateY(2px) scale(0.985)', offset: 0.35, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' },
+        { transform: 'translateY(0) scale(1)' },
+      ], { duration: 280, easing: 'cubic-bezier(0.4, 0, 0.6, 1)' });
+    };
     // 新しい行は自分で playSfx('ui-select') を鳴らす(監査A-2: HubButton内蔵の音が消えるため)。
     // goStageSelect / goArchive / goGhost / goBossRush は自前発音ハンドラ=ここでは鳴らさない(二重防止)。
     const dsRow = (
@@ -945,22 +976,28 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           <div className="contents landscape:my-auto landscape:flex landscape:min-h-0 landscape:items-start landscape:gap-x-14">
             <div className="contents landscape:flex landscape:min-w-0 landscape:flex-[58] landscape:flex-col">
               {/* 横長の時だけ: 地図の見出しを箱の外へ(右の列の「PREP ── 準備」と同じ書式・同じ高さ)。縦持ちは地図の中の札のまま=これは出ない。 */}
-              <div className="ds-glabel ds-glabel-sector menu-item-in" style={{ animationDelay: '25ms' }}>SECTOR ── {nextStage?.locationTitle ?? '—'}</div>
+              <div className="ds-glabel ds-glabel-sector menu-item-in" style={{ animationDelay: '25ms' }}>SECTOR ── <SwapText value={sectorName} /></div>
               {showDay && <div className="ds-deco menu-item-in" style={{ animationDelay: '25ms' }}>
                 <span>DAY {nextStage.day}</span>
               </div>}
               <div className="menu-item-in" style={{ animationDelay: '50ms' }}>
-                <DsStoryMap stages={STAGES} cleared={cleared} target={target} sectorLabel={nextStage?.locationTitle ?? '—'} bossFaces={mapFaces}
-                  onNext={goSortieDest ?? undefined} onOthers={goStageSelect} />
+                <DsStoryMap stages={STAGES} cleared={cleared} target={target} pick={mapPick} locked={mapLocked} sectorLabel={sectorName} bossFaces={mapFaces}
+                  onPick={onMapPick} onOthers={goStageSelect} />
               </div>
               {/* 出撃=アンバーの主役行。次の任務があれば帯に任務名を載せ、押すと任務詳細へ直行(P1)。無ければ作戦地域の一覧(従来どおり)。
                   サブ行「作戦地域: 〇〇」は廃止(社長指示2026-08-29「いらないかも。その上の図にあるから」
                   =マップのSECTORタグが同じ情報を持つため重複)。 */}
-              <button type="button" data-testid="ops-sortie" data-nav-default data-nav-cursor="dark" className="ds-sortie menu-item-in" style={{ animationDelay: '320ms' }} onClick={goSortieDest ?? goStageSelect}>
-                <span className="ds-sortie-t1 block shrink-0">出撃</span>
+              {/* 未解放を選んだ時は灰色の帯で「未解放」+開く条件だけ(任務名は出さない・右の矢印なし・押しても何もしない)。 */}
+              {/* 帯は1本のまま琥珀⇄灰を切り替える(光が抜ける/灯る=index.css .ds-sortie.is-locked)。字は地図の下端の場所名より少し遅れて入れ替わる。 */}
+              <button type="button" data-testid="ops-sortie" data-nav-default data-nav-cursor="dark" className={`ds-sortie menu-item-in${pickLocked ? ' is-locked' : ''}`} style={{ animationDelay: '320ms' }}
+                aria-disabled={pickLocked || undefined}
+                onClick={pickLocked ? e => bumpLockedBand(e.currentTarget) : (goSortieDest ?? goStageSelect)}>
+                <span className="ds-sortie-t1 block shrink-0"><SwapText value={pickLocked ? '未解放' : '出撃'} delayMs={70} /></span>
                 {/* 帯は任務名だけ(場所の名は地図の下端が持つ=同じ名を2度言わない)。 */}
-                {sortieDest && <span className="ds-sortie-dest">{sortieDest.main.title}</span>}
-                <PixelIcon name="chevron-right" size={18} className="shrink-0" />
+                {(sortieDest || pickLocked) && (
+                  <span className="ds-sortie-dest"><SwapText value={pickLocked ? lockedSortieHint(mapPick?.after) : sortieDest?.main.title ?? ''} delayMs={70} /></span>
+                )}
+                <PixelIcon name="chevron-right" size={18} className="ds-sortie-chev shrink-0" />
               </button>
             </div>
             {/* 行リストだけがスクロール領域(通常は全部収まる=スクロール発生なし)。縁バウンスも殺す。
