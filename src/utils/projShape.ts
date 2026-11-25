@@ -1065,9 +1065,12 @@ export const projTeleFadeY = (
 
 /**
  * 間引き(3-6b): 形(中心 cx,cy・半径 r)の東西南北の端と中心を投影した箱が、画面(ズーム後の画面px+marginPx)に掛からないなら true。
- * 地平線より北は ℓ=0 に寄せた点で測る(地平線の線に潰れて残る=描く側は頂点の寄せで正しく描く)。
+ * 地平線より北は ℓ=0 に寄せた点で測る(一部が地平線より南に掛かる形は、北の部分が地平線の線に潰れて残る=描く側は頂点の寄せで正しく描く)。
+ * ただし**形の南の端(cy+r)まで地平線より北**=形が丸ごと地平線より奥なら「画面に写っていない」として true(全頂点が地平線の行に潰れ、
+ * 地平線に貼り付いた横長の帯になる=v0.25.5800 社長報告「北の方が光ってる」。`?proj=0` では地平線より奥は覆いで隠れていて見えない)。
  */
 export const projShapeOutside = (f: ProjFrame, cx: number, cy: number, r: number, marginPx: number): boolean => {
+  if (projShapeBeyondHorizon(f, cy, r)) return true;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   const take = (x: number, y: number) => {
     projVertexInto(f, x, y, GP);
@@ -1089,6 +1092,24 @@ export const projShapeOutside = (f: ProjFrame, cx: number, cy: number, r: number
   }
   const m = Math.max(0, marginPx);
   return maxX < -m || minX > f.screenW + m || maxY < -m || minY > f.screenH + m;
+};
+
+/**
+ * 形(中心の world Y が cy・半径 r)が丸ごと地平線より奥(定義域の外・ℓ<0)か。南の端(cy+r)の行で測る
+ * (地面の形で一番南=一番手前の点が地平線より北なら、全部の頂点が地平線の行に寄せられる)。
+ */
+export const projShapeBeyondHorizon = (f: ProjFrame, cy: number, r: number): boolean =>
+  !(projLocalYOfWorld(f, cy + Math.max(0, r)) >= 0);
+
+/**
+ * 地面に置く印(拠点の円・武器箱など)の地平線の濃さ(0..1): 地平線の行(ℓ=0)で 0・そこから fadePx(画面px)の帯で 1。
+ * 定義域の外(地平線より北)は 0。描く距離のフェード(★#4)も掛ける。研究所の武器箱(v0.25.5786)の式を1本にしたもの。
+ */
+export const projHorizonRowFade = (f: ProjFrame, wx: number, wy: number, fadePx: number): number => {
+  projVertexInto(f, wx, wy, GP);
+  const l = GP.l ?? -1;
+  if (!(l >= 0)) return 0;
+  return GP.a * Math.max(0, Math.min(1, (l * f.wgScale) / Math.max(1, fadePx)));
 };
 
 // ---------------------------------------------------------------------------------------------

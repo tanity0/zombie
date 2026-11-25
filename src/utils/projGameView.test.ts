@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   makeProjFrame, makeProjPoint, makeProjUnprojectOut, projectInto, projDisplayToScreen, projLocalYOfWorld, projUnprojectInto,
-  projUnprojectLMin, unproject, projArrowTargetInto, projWorldYOfLocal, projWorldToScreenInto, type GroundPerspectiveParams,
+  projUnprojectLMin, unproject, projArrowTargetInto, projArrowNearDistPx, projWorldYOfLocal, projWorldToScreenInto, type GroundPerspectiveParams,
 } from './perspectiveProjection';
 import {
   projFrameBase, projGameFrame, projGameViewContains, projGameViewBands, projGameViewRect, projGameEdgePoint, projGameBoxOnScreen,
@@ -217,6 +217,24 @@ describe('作る物6: 地平線より北の矢印の先(★#42 A)', () => {
     expect(o.x).toBeCloseTo(want.x, 6);
     expect(o.y).toBeCloseTo(want.y, 6);
     expect(projArrowTargetInto(f, px, py, px + 50, py + 100, lMin, pp, o)).toBe(false);
+  });
+});
+
+describe('画面外の矢印の「近く」の足切り(v0.25.5800 社長報告「ずっと北の拠点のマークだけ出てる」)', () => {
+  it('?proj=1: 地平線より奥の物は、矢印の点の画面の距離が近くても world の距離 × ズームで遠い=足切りされる', () => {
+    const f = view(SCENES[0], 0, 0, 1).f;
+    const lMin = projUnprojectLMin(f);
+    const pp = makeProjPoint();
+    const o = { x: 0, y: 0 }, c = { x: 0, y: 0 };
+    const px = f.cxw, py = f.farRefY;
+    // 4800 北の拠点: 矢印の点(ℓ_min の行で切った点)は主人公から画面で 500px 以内に来る=画面の距離で測ると「近く」に化ける
+    projArrowTargetInto(f, px, py, px, py - 4800, lMin, pp, o);
+    projWorldToScreenInto(f, px, py, pp, c);
+    expect(Math.hypot(o.x - c.x, o.y - c.y)).toBeLessThan(500);
+    expect(projArrowNearDistPx(px, py - 4800, px, py, 1)).toBeGreaterThan(500);
+    // 旧い写像と同じ意味(world の距離 × ズーム)
+    expect(projArrowNearDistPx(px + 300, py - 400, px, py, 0.8)).toBeCloseTo(400, 9);
+    expect(projArrowNearDistPx(px + 300, py - 400, px, py, 0)).toBeCloseTo(500, 9);
   });
 });
 

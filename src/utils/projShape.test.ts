@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildProjTable, makeProjFrame, projRefLocalY, projTOfL, projectInto, makeProjPoint, projLocalYOfWorld,
+  buildProjTable, makeProjFrame, projRefLocalY, projTOfL, projectInto, makeProjPoint, projLocalYOfWorld, projWorldYOfLocal,
   type GroundPerspectiveParams, type ProjFrame,
 } from './perspectiveProjection';
 import { zoomCameraDownFrac } from './cameraZoom';
@@ -10,7 +10,7 @@ import {
   projGridIndices, projLiftInto, projTeleFadeY, projShapeOutside, projTeleLineScale, projVertexInto, projPointInPath,
   projDistToSeg, projCircleBaseEdges, PROJ_GRID_VERTS, PROJ_TELE_LINE_MODE, PROJ_TELE_LINE_MIN_PX,
   projStrokeStripInto, projStrokeHalfWidth, projLineScaleCap, projStrokeAlpha, projTeleLineAlpha, projTeleAlphaBucket,
-  projGlyphMinSize, projGlyphStrokeLook, PROJ_TELE_LINE_MIN_ALPHA,
+  projGlyphMinSize, projGlyphStrokeLook, PROJ_TELE_LINE_MIN_ALPHA, projShapeBeyondHorizon, projHorizonRowFade,
 } from './projShape';
 
 // research/PERSPECTIVE_PROJECTION.md §3-6k 受け入れ条件2・3(純関数の分): 投影後の予告の形と、投影した判定の形が一致する。
@@ -514,6 +514,30 @@ describe('projShape: 線の太さ・高さ・濃さ・間引き', () => {
     expect(projShapeOutside(f, f.cxw, f.wRef - 500, 60, 40)).toBe(false);
     expect(projShapeOutside(f, f.cxw + 9000, f.wRef, 60, 40)).toBe(true);
     expect(projShapeOutside(f, f.cxw, f.wRef + 4000, 60, 40)).toBe(true);
+  });
+
+  it('間引き: 丸ごと地平線より奥の形は画面に写っていない(地平線に貼り付いた帯にしない・v0.25.5800)', () => {
+    const f = frameAt(SCREENS[0], 1, 0, 0);
+    // 地平線(ℓ=0)の world Y
+    const hz = projWorldYOfLocal(f, 0);
+    // 4800 北の拠点(半径 130+余白 60): 全頂点が地平線の行に寄る=描かない
+    expect(projShapeBeyondHorizon(f, f.wRef - 4800, 190)).toBe(true);
+    expect(projShapeOutside(f, f.cxw, f.wRef - 4800, 190, 0)).toBe(true);
+    // 南の端が地平線より手前に掛かる形は描く(北の部分は地平線の線に潰れて残る=今のまま)
+    expect(projShapeBeyondHorizon(f, hz - 100, 130)).toBe(false);
+    expect(projShapeOutside(f, f.cxw, hz - 100, 130, 0)).toBe(false);
+    expect(projShapeBeyondHorizon(f, hz - 140, 130)).toBe(true);
+  });
+
+  it('地面の印の地平線の濃さ: 地平線より奥 0・地平線の行で 0・帯の幅で 1(研究所の武器箱の式)', () => {
+    const f = frameAt(SCREENS[0], 1, 0, 0);
+    const hz = projWorldYOfLocal(f, 0);
+    expect(projHorizonRowFade(f, f.cxw, f.wRef - 4800, 60)).toBe(0);
+    expect(projHorizonRowFade(f, f.cxw, hz - 1, 60)).toBe(0);
+    expect(projHorizonRowFade(f, f.cxw, hz, 60)).toBe(0);
+    expect(projHorizonRowFade(f, f.cxw, f.wRef, 60)).toBeCloseTo(1, 9);
+    const p = projectInto(f, f.cxw, hz + 20, makeProjPoint());
+    expect(projHorizonRowFade(f, f.cxw, hz + 20, 60)).toBeCloseTo(p.alpha * Math.min(1, (p.l * f.wgScale) / 60), 9);
   });
 });
 

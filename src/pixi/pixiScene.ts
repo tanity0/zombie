@@ -369,11 +369,11 @@ import {
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { getCameraZoomLink } from '../utils/cameraZoomLink';
 import {
-  makeProjFrame, projectInto, makeProjPoint, visibleWorldBands, projScreenRowsL, projBoxOnScreen, projScreenOutside, projDisplayToScreenInto, projTOfL, projWorldToScreenInto, projArrowTargetInto, projUnprojectLMin, visibleWorldQuad,
+  makeProjFrame, projectInto, makeProjPoint, visibleWorldBands, projScreenRowsL, projBoxOnScreen, projScreenOutside, projDisplayToScreenInto, projTOfL, projWorldToScreenInto, projArrowTargetInto, projArrowNearDistPx, projUnprojectLMin, visibleWorldQuad,
   groundStripTile, groundVsObjectDiff, groundSlipBound, projLocalYOfWorld, projWorldYOfLocal, projScaleAtLocal, projRowKx, southCullWorldY,
   type ProjFrame, type ProjTable, type ProjPoint,
 } from '../utils/perspectiveProjection'; // 投影(?proj=1・research/PERSPECTIVE_PROJECTION.md 段階1)
-import { projTeleFadeY, projShapeOutside, PROJ_GRID_MAX, type ProjFrame4 } from '../utils/projShape'; // 投影の段階4「形を持つもの」(§3-6)
+import { projTeleFadeY, projShapeOutside, projHorizonRowFade, PROJ_GRID_MAX, type ProjFrame4 } from '../utils/projShape'; // 投影の段階4「形を持つもの」(§3-6)
 import {
   projLiftScale, projLiftTermsFixDy, projLiftPartMul, projGroundOffsetFix, projSkyTopY, projSkyStartH, projLiftOutside,
   projHelperAnchor, projIntroHeliPoint, projLiftPointInto, makeProjLiftPoint, projLiftCapStat, projLiftFixDy, type ProjLiftKind, type ProjLiftRowKey,
@@ -10808,6 +10808,20 @@ export class PixiScene {
   private projBaseAlpha(p: ProjPoint): number {
     if (p.alpha <= 0) return 0;
     return p.alpha * this.horizonActorAlpha(p.y) * this.foregroundActorAlpha(p.y);
+  }
+
+  /**
+   * ?proj=1 の床の印(拠点・武器箱・囲い・待機の円・帰還の円)の地平線の濃さ(0..1・中心で測る)。地平線より奥は 0=描かない。
+   * 地平線より奥の点は地平線の行へ寄せられるので、そのまま描くと地平線に貼り付いた横長の光の帯になる(v0.25.5800 社長報告
+   * 「北の方が光ってる」)。濃さは立つ物と同じ地平線フェード(定義域・描く距離・horizonActorAlpha)=画面の外の矢印の
+   * 「見えていない(0.5 未満)」と同じ物差し(印が薄い間だけ縁の矢印が出る・濃く写っていれば矢印は出ない)。
+   * ?proj=0・枠なし・洋館の枠(地平線フェードを持たない)は 1=今のまま。
+   */
+  private projGroundMarkFade(wx: number, wy: number): number {
+    const pf = this.projFrame;
+    if (!pf || pf.kind === 'corridor') return 1;
+    const p = this.projPlace(wx, wy);
+    return p.inDomain && p.alpha > 0 ? p.alpha * this.horizonActorAlpha(p.y) : 0;
   }
 
   // ---- 段階2「動くもの」(research/PERSPECTIVE_PROJECTION.md §3-5) ----
@@ -39215,16 +39229,19 @@ export class PixiScene {
     const g = this.arenaGfx;
     g.clear();
     if (!ae) return;
+    // ?proj=1: 地平線の濃さ(地平線より奥の囲いは描かない=地平線に貼り付いた帯にしない・v0.25.5800)。?proj=0 は 1。
+    const hf = this.projGroundMarkFade(ae.x, ae.y);
+    if (hf <= 0.01) return;
     const pulse = 0.5 + 0.5 * Math.sin(now / 260);
     const a = 0.30 + 0.18 * pulse;
     // rescue=緑(ホールド帯) / boss=赤 / horde=青
     const color = ae.kind === 'boss' ? 0xef4444 : ae.kind === 'rescue' ? 0x4ade80 : 0x38bdf8;
     // 内側の淡い塗り(囲われている感)+ 二重リング(太い半透明の外周 / 細く明るい内周)。
-    if (pf) projCircle(g, pf, ae.x, ae.y, ae.radius - 4, { color, alpha: 0.05 + 0.04 * pulse });
+    if (pf) projCircle(g, pf, ae.x, ae.y, ae.radius - 4, { color, alpha: (0.05 + 0.04 * pulse) * hf });
     else g.circle(ae.x, ae.y, ae.radius - 4).fill({ color, alpha: 0.05 + 0.04 * pulse });
-    if (pf) projCircle(g, pf, ae.x, ae.y, ae.radius, undefined, { width: 6, color, alpha: a * 0.6 });
+    if (pf) projCircle(g, pf, ae.x, ae.y, ae.radius, undefined, { width: 6, color, alpha: a * 0.6 * hf });
     else g.circle(ae.x, ae.y, ae.radius).stroke({ width: 6, color, alpha: a * 0.6 });
-    if (pf) projCircle(g, pf, ae.x, ae.y, ae.radius - 3, undefined, { width: 2, color, alpha: a });
+    if (pf) projCircle(g, pf, ae.x, ae.y, ae.radius - 3, undefined, { width: 2, color, alpha: a * hf });
     else g.circle(ae.x, ae.y, ae.radius - 3).stroke({ width: 2, color, alpha: a });
     // rescue: ホールド進捗を外周の円弧で表示(上端始点・時計回り)。
     // ※ arc の前に開始点へ moveTo しないと、直前に描いた円の終点から弧開始点まで
@@ -39234,7 +39251,7 @@ export class PixiScene {
       if (frac > 0) {
         const start = -Math.PI / 2;
         const rr = ae.radius + 5;
-        if (pf) projArcLine(g, pf, ae.x, ae.y, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xbbf7d0, alpha: 0.95 });
+        if (pf) projArcLine(g, pf, ae.x, ae.y, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xbbf7d0, alpha: 0.95 * hf });
         else g.moveTo(ae.x + Math.cos(start) * rr, ae.y + Math.sin(start) * rr)
           .arc(ae.x, ae.y, rr, start, start + Math.PI * 2 * frac)
           .stroke({ width: 4, color: 0xbbf7d0, alpha: 0.95 });
@@ -39258,7 +39275,8 @@ export class PixiScene {
       const t = Math.max(0, Math.min(1, (gameTime - npc.moveStartedAt) / RESCUE_ALLY_FLYOUT_MS));
       alpha = 1 - t;
     }
-    if (alpha <= 0) return;
+    alpha *= this.projGroundMarkFade(npc.x, npc.y); // ?proj=1: 地平線の濃さ(地平線より奥は描かない・v0.25.5800)。?proj=0 は 1
+    if (alpha <= 0.01) return;
     const pulse = 0.5 + 0.5 * Math.sin(now / 260);
     const a = (0.30 + 0.18 * pulse) * alpha;
     const color = 0x38bdf8; // hordeと同じ青(叩き台)
@@ -39300,14 +39318,17 @@ export class PixiScene {
     const cx = corrSquash ? 0 : rc.x, cy = corrSquash ? 0 : rc.y;
     if (corrSquash) { g.position.set(rc.x, rc.y); g.scale.set(1, CORRIDOR_RETURN_SQUASH); }
     else { g.position.set(0, 0); g.scale.set(1, 1); }
+    // ?proj=1: 地平線の濃さ(地平線より奥の帰還の円は描かない=地平線に貼り付いた帯にしない・v0.25.5800)。?proj=0・洋館の枠は 1。
+    const hf = this.projGroundMarkFade(rc.x, rc.y);
+    if (hf <= 0.01) return;
     const pulse = 0.5 + 0.5 * Math.sin(now / 240);
     const a = 0.34 + 0.2 * pulse;
     const color = 0x86efac; // 帰還=緑(安全・脱出)
-    if (pf) projCircle(g, pf, cx, cy, rc.radius - 4, { color, alpha: 0.06 + 0.05 * pulse });
+    if (pf) projCircle(g, pf, cx, cy, rc.radius - 4, { color, alpha: (0.06 + 0.05 * pulse) * hf });
     else g.circle(cx, cy, rc.radius - 4).fill({ color, alpha: 0.06 + 0.05 * pulse });
-    if (pf) projCircle(g, pf, cx, cy, rc.radius, undefined, { width: 6, color, alpha: a * 0.6 });
+    if (pf) projCircle(g, pf, cx, cy, rc.radius, undefined, { width: 6, color, alpha: a * 0.6 * hf });
     else g.circle(cx, cy, rc.radius).stroke({ width: 6, color, alpha: a * 0.6 });
-    if (pf) projCircle(g, pf, cx, cy, rc.radius - 3, undefined, { width: 2, color, alpha: a });
+    if (pf) projCircle(g, pf, cx, cy, rc.radius - 3, undefined, { width: 2, color, alpha: a * hf });
     else g.circle(cx, cy, rc.radius - 3).stroke({ width: 2, color, alpha: a });
     // 滞在進捗を外周の円弧で表示(上端始点・時計回り)。arc 前に moveTo して地面を横切る線を防ぐ。
     // 洋館通路のゴールは5秒ホールド(v0.25.2132)=分母をモードで切替(判定側updateReturnPhaseと同じ)。
@@ -39323,7 +39344,7 @@ export class PixiScene {
     if (frac > 0) {
       const start = -Math.PI / 2;
       const rr = rc.radius + 5;
-      if (pf) projArcLine(g, pf, cx, cy, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xdcfce7, alpha: 0.95 });
+      if (pf) projArcLine(g, pf, cx, cy, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xdcfce7, alpha: 0.95 * hf });
       else g.moveTo(cx + Math.cos(start) * rr, cy + Math.sin(start) * rr)
         .arc(cx, cy, rr, start, start + Math.PI * 2 * frac)
         .stroke({ width: 4, color: 0xdcfce7, alpha: 0.95 });
@@ -39980,11 +40001,12 @@ export class PixiScene {
       // ?proj=1(段階4・J06): 円は頂点ごとに投影。武器箱(立つ絵)は中心を写し、箱の倍率 k に s(点+s・混在の表=投影しない申告)
       // 段階8(品質A-2・研究所だけ): 今の武器箱は地平線フェードを持たない(?proj=0 でも奥の壁の上に描かれていた)。投影では地平線の行
       // (奥の壁の足元)へ寄るので、地平線の行で 0・そこから地平線フェードの帯の幅(画面px)で 1 になるように薄める=壁の手前で消え、
-      // 地平線で欠けた輪を出さない。主人公の近くでは今と同じ濃さ(1)。屋外(拠点の武器庫)は今のまま(fa=1)。
-      const q = this.projPlace(x, y);
-      const fa = !this.isLabStage ? 1 : !q.inDomain ? 0
-        : q.alpha * Math.max(0, Math.min(1, (q.l * pf.wgScale) / Math.max(1, this.horizonActorFadePx)));
+      // 地平線で欠けた輪を出さない。主人公の近くでは今と同じ濃さ(1)。
+      // 屋外(拠点の武器庫・出張武器商人)は床の印と同じ地平線フェード(projGroundMarkFade・v0.25.5800 社長報告「北の方が光ってる」: 地平線より奥の拠点の輪と箱が地平線の行へ寄せられ、
+      // 横に潰れた光の帯になっていた。?proj=0 では地平線より奥は覆いで隠れて見えない)。
+      const fa = this.isLabStage ? projHorizonRowFade(pf, x, y, this.horizonActorFadePx) : this.projGroundMarkFade(x, y);
       if (fa <= 0.01) return;
+      const q = this.projPlace(x, y);
       // 円の裁定(v0.25.5782): この輪は判定の円(半径 AR = store の ARMORY_RADIUS=主人公の中心がこの内で指を離すと遠隔ショップが開く
       // `openArmoryShopIfInside`)=頂点ごとの厳密な投影(projCircle)。研究所・拠点・出張武器商人の3か所とも同じ扱い。
       projCircle(g, pf, x, y, AR, undefined, { width: 2, color: 0xfbbf24, alpha: (0.45 + 0.3 * pulse) * fa });
@@ -40046,9 +40068,13 @@ export class PixiScene {
       const color = safe ? 0x60a5fa : captured ? 0x34d399 : 0xfbbf24; // 安全=青/制圧=緑/未制圧=琥珀
       const a = 0.22 + 0.14 * pulse;
       if (pf) {
-        projCircle(g, pf, s.x, s.y, R - 4, { color, alpha: 0.04 + 0.04 * pulse });
-        projCircle(g, pf, s.x, s.y, R, undefined, { width: 5, color, alpha: a * 0.6 });
-        projCircle(g, pf, s.x, s.y, R - 3, undefined, { width: 2, color, alpha: a });
+        // 地平線の濃さ(武器箱と同じ式): 地平線の行で 0・帯の幅で 1。地平線より奥の拠点は描かない(上の間引きでも落ちる)。
+        // 輪の北の縁が地平線に掛かる間も、地平線に貼り付いた帯が濃く出ない(v0.25.5800 社長報告「北の方が光ってる」)。
+        const hf = this.projGroundMarkFade(s.x, s.y);
+        if (hf <= 0.01) continue;
+        projCircle(g, pf, s.x, s.y, R - 4, { color, alpha: (0.04 + 0.04 * pulse) * hf });
+        projCircle(g, pf, s.x, s.y, R, undefined, { width: 5, color, alpha: a * 0.6 * hf });
+        projCircle(g, pf, s.x, s.y, R - 3, undefined, { width: 2, color, alpha: a * hf });
       } else {
         g.circle(s.x, s.y, R - 4).fill({ color, alpha: 0.04 + 0.04 * pulse });
         g.circle(s.x, s.y, R).stroke({ width: 5, color, alpha: a * 0.6 });
@@ -40059,7 +40085,7 @@ export class PixiScene {
         const frac = Math.max(0, Math.min(1, s.dwellMs / BASE_CAPTURE_HOLD_MS));
         if (frac > 0) {
           const start = -Math.PI / 2, rr = R + 5;
-          if (pf) projArcLine(g, pf, s.x, s.y, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xfff7cc, alpha: 0.95 });
+          if (pf) projArcLine(g, pf, s.x, s.y, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xfff7cc, alpha: 0.95 * this.projGroundMarkFade(s.x, s.y) });
           else g.moveTo(s.x + Math.cos(start) * rr, s.y + Math.sin(start) * rr)
             .arc(s.x, s.y, rr, start, start + Math.PI * 2 * frac)
             .stroke({ width: 4, color: 0xfff7cc, alpha: 0.95 });
@@ -51114,6 +51140,12 @@ export class PixiScene {
     const toScreenX = (x: number) => originX + x * wz; // ワールドX→実画面X(?proj=0 の写像・下の toScr の控え)
     void toScreenX;
     const ARROW_NEAR_RADIUS = 500; // 「近く」の方向矢印を出す半径(弾/拠点。社長指示)
+    // 「近く」の距離(画面px)。?proj=0 は今の画面の距離のまま。?proj=1 は旧い写像と同じ意味=world の距離 × ズーム
+    // (地平線より奥の物は toScr が縁の外へ押し出した点になるので、その画面の距離で測ると遠くの物まで「近く」になる=
+    // v0.25.5800 社長報告「ずっと北の拠点のマークだけ出てる」)。
+    const nearDist = (wx: number, wy: number, tx: number, ty: number): number => (pfA
+      ? projArrowNearDistPx(wx, wy, pFootX, pFootY - stA.player.height / 2, wz)
+      : Math.hypot(tx - cxC, ty - cyC));
     const marginX = 26;
     // Keep upward arrows below the iOS status bar and the top HUD. The icon
     // itself plus the arrowhead extends ~20px above its anchor, so the clamp
@@ -51159,7 +51191,7 @@ export class PixiScene {
       const tx = toScr(p.x + 8, p.y + 8).x; // 監査v0.25.3008(A-1): post-zoom実画面座標
       const ty = toScr(p.x + 8, p.y + 8).y;
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue;
-      if (!isStartChest && Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue; // 弾は近く(500px以内)のものだけ矢印表示(社長指示)
+      if (!isStartChest && nearDist(p.x + 8, p.y + 8, tx, ty) > ARROW_NEAR_RADIUS) continue; // 弾は近く(500px以内)のものだけ矢印表示(社長指示)
       const angle = Math.atan2(ty - cyC, tx - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
       let tdist = Infinity;
@@ -51721,7 +51753,7 @@ export class PixiScene {
       const bKey = b.id ?? `${b.x},${b.y}`;
       const tx = toScr(b.x, b.y).x, ty = toScr(b.x, b.y).y; // 監査v0.25.3008(A-1): post-zoom実画面座標
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内は地面サークルで見える
-      if (b.id !== this.arrowFarBaseId && Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue;
+      if (b.id !== this.arrowFarBaseId && nearDist(b.x, b.y, tx, ty) > ARROW_NEAR_RADIUS) continue;
       const angle = Math.atan2(ty - cyC, tx - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
       let tdist = Infinity;
@@ -51760,7 +51792,7 @@ export class PixiScene {
     for (const qt of questTargets) {
       const tx = toScr(qt.x, qt.y).x, ty = toScr(qt.x, qt.y).y; // 監査v0.25.3008(A-1): post-zoom実画面座標
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue;
-      if (Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue;
+      if (nearDist(qt.x, qt.y, tx, ty) > ARROW_NEAR_RADIUS) continue;
       const angle = Math.atan2(ty - cyC, tx - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
       let tdist = Infinity;

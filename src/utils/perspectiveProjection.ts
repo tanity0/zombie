@@ -723,6 +723,15 @@ export const projWorldToScreenInto = (
 };
 
 /**
+ * 画面外の矢印の「近く(画面px で N 以内)」の足切りに使う距離(画面px)。`?proj=1` では旧い1次の写像と同じ意味=
+ * 主人公の中心 (pcx, pcy) → 対象 (wx, wy) の world の距離 × ズーム(zoom)。
+ * 地平線より奥の物は矢印の点が地平線の行で切った点/画面の縁の外へ押し出した点になる(projArrowTargetInto・薄い物の押し出し)ので、
+ * その画面の距離で測ると何千px 先の物まで「近く」になる(v0.25.5800 社長報告「ずっと北の拠点のマークだけ出てる」)。
+ */
+export const projArrowNearDistPx = (wx: number, wy: number, pcx: number, pcy: number, zoom: number): number =>
+  Math.hypot(wx - pcx, wy - pcy) * (zoom > 0 ? zoom : 1);
+
+/**
  * 画面外の矢印の向きの先の点(★#42 の A・作る物6): 対象 (tx, ty) が行 lMin より北(地平線より北・描く距離の先)なら、
  * 主人公 (px, py) → 対象の world の線を lMin の行で切った点を投影した画面点を out へ書く。lMin より南なら対象そのものの画面点。
  * 主人公自身が lMin より北(線が行と交わらない)時は対象の world の向きをその行の点として使う。返り値: 切ったか。
