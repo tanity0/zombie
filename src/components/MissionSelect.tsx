@@ -2540,6 +2540,9 @@ const DevTools: React.FC<{
   // 武器解放(テスト用・社長指示2026-09-05): ユニーク武器の候補を全部解放済み扱いにする。
   // 端末に残る(localStorage)ので `?unlockall=1` を毎回付けなくてよい。BOSS_UNLOCK が空の間の確認手段。
   const [weaponUnlockAll, setWeaponUnlockAllState] = useState(() => isTestWeaponUnlockAll());
+  // 1000スクラップ開始(テスト用): 公開版の世界観を保つため開発施設からここへ移した(社長指示2026-11-25)。
+  const startWithTestStraps = useGameStore(s => s.startWithTestStraps);
+  const setStartWithTestStraps = useGameStore(s => s.setStartWithTestStraps);
 
   // 自動回収量を調整できるのは handgun/shotgun/rifle のみ(phill は手動射撃で対象外)。
   const [ammoInputs, setAmmoInputs] = useState<Record<'handgun' | 'shotgun' | 'rifle', string>>({
@@ -2585,6 +2588,17 @@ const DevTools: React.FC<{
       >
         <span><span className="block text-[13px] font-semibold">武器解放</span><span className="block text-[11px] text-white/50">{weaponUnlockAll ? 'ユニーク武器を全解放(開発施設の棚にも全部並び、装備設定でも選べる)' : '設計図/購入したものだけ'}</span></span>
         <span className="text-[11px] font-semibold shrink-0">{weaponUnlockAll ? 'ON' : 'OFF'}</span>
+      </button>
+
+      {/* 1000スクラップ開始: 次の出撃を1000スクラップ所持で始める(store の startWithTestStraps)。 */}
+      <button
+        type="button"
+        onClick={() => setStartWithTestStraps(!startWithTestStraps)}
+        className={`w-full flex items-center justify-between gap-3 rounded-none border px-3 py-2.5 text-left ${startWithTestStraps ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-purple-400/10 bg-purple-400/5 text-white/80 active:bg-purple-400/10'}`}
+        aria-pressed={startWithTestStraps}
+      >
+        <span><span className="block text-[13px] font-semibold">1000スクラップ開始</span><span className="block text-[11px] text-white/50">{startWithTestStraps ? '次の開始時に1000s所持' : '通常の所持で開始'}</span></span>
+        <span className="text-[11px] font-semibold shrink-0">{startWithTestStraps ? 'ON' : 'OFF'}</span>
       </button>
 
       {/* 武器解放リセット(社長指示2026-09-05「あ、リセットもね」): 恒久解放の台帳(設計図/購入の記録)を
@@ -3275,8 +3289,6 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const setPurchasedSubLevel = useGameStore(s => s.setPurchasedSubLevel);
   const goldBalance = useGameStore(s => s.goldBalance);
   const spendGold = useGameStore(s => s.spendGold);
-  const startWithTestStraps = useGameStore(s => s.startWithTestStraps);
-  const setStartWithTestStraps = useGameStore(s => s.setStartWithTestStraps);
   // ユニーク武器の棚(UNIQUE_WEAPONS.md §11-6): shelfWeaponKeys() は localStorage 直読みで
   // zustand を経由しないため、購入のたびに再レンダーを起こして棚を再計算させる(値そのものは使わない)。
   const [, forceGunShelfRerender] = useState(0);
@@ -3303,13 +3315,8 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       </div>
       <div hidden={COMMAND_UI_ENABLED && department !== 'subs'}>
       {COMMAND_UI_ENABLED && <p className="development-guide px-3">Lv1で装備できる。Lv2・3にすると、商人でそのLvまで強化できる。</p>}
-      {/* 解放(購入)リスト: 2列表示(社長指示v0.25.2147)。テスト用トグルだけ全幅。 */}
+      {/* 解放(購入)リスト: 2列表示(社長指示v0.25.2147)。1000スクラップ開始のテスト用トグルはオプションのテスト開発用欄へ移した(社長指示2026-11-25)。 */}
       <div className="development-subs menu-stagger px-3 pb-3 grid grid-cols-2 gap-2">
-        <button type="button" onClick={() => { playSfx('ui-move'); setStartWithTestStraps(!startWithTestStraps); }}
-          className={`ff7r-fade-right col-span-2 flex items-center justify-between gap-3 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${startWithTestStraps ? 'is-on' : ''}`}>
-          <span><span className="block text-[13px] font-semibold">1000スクラップ開始</span><span className="block text-[11px] text-white/50">{startWithTestStraps ? '次の開始時に1000s所持' : 'テスト用。無料'}</span></span>
-          <span className="text-[10px] text-white/45">{startWithTestStraps ? 'ON' : 'OFF'}</span>
-        </button>
         {/* 社長指示v0.25.3323: 固定(クラス固有)サブは自クラス専用+最初から上限解放(v0.25.3322)のため
             陳列解放リストから除外(買っても意味のないG消費を並べない)。
             UNIQUE_WEAPONS.md §19-6項目4: ボス撃破解放のサブ(SUB_BOSS_UNLOCKの値=現状は金環・矢の雨。矢の雨は入手と同時にLv1)は、
