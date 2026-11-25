@@ -1,8 +1,10 @@
 // `?proj=1`(投影)の旗と、投影の式が読む定数・ツマミの正本(純関数側・PixiJS を読まない)。
 // 設計書: research/PERSPECTIVE_PROJECTION.md §3-9d「utils へ移す物」・§3-9o カ・ケ9。
 //
-// pixiScene もここを読む(値は1本)。既定(`?proj` 省略=0)では PROJ_ON=false で、ゲーム側の旗も全部 false
-// =ゲームの判定は1行も変わらない。
+// pixiScene もここを読む(値は1本)。★既定(`?proj` 省略)はブラウザでは PROJ_ON=true(新方式・社長承認2026-11-25
+// 「旧版はもう残さなくていいよ」の段1)。`?proj=0` で旧方式に戻せる(段2で旧方式のコードを消すまでの控え)。
+// ★ユニットテスト(window が無い環境)では今まで通り false=旧方式。テストの前提を一斉に変えないための決まり
+// (新方式を試すテストは今まで通り自分で旗を立てる)。
 import { parseObjDepthMode, OBJ_DEPTH_TILT_TRAP_FAR, OBJ_DEPTH_TILT_GFAR } from './groundDepthScale';
 
 const urlParam = (key: string): string | null =>
@@ -21,8 +23,15 @@ export const projTsBool = (key: string, def: boolean): boolean => {
   return v == null ? def : (v === '1' || v === 'true');
 };
 
-/** 投影(`?proj=1`)。既定 OFF。 */
-export const PROJ_ON = projTsBool('proj', false);
+/**
+ * 既定の投影。ブラウザ=true。ユニットテスト=false(window が無い、または vitest の MODE='test'。
+ * window を stubGlobal してから読み込むテストでも旧方式のまま=テストの前提を変えない)。
+ */
+const PROJ_DEFAULT_ON = typeof window !== 'undefined' && import.meta.env?.MODE !== 'test';
+/**
+ * 投影(新方式)。★ブラウザの既定は ON(`?proj=0` で旧方式)。★ユニットテスト(window が無い)では既定 OFF のまま。
+ */
+export const PROJ_ON = projTsBool('proj', PROJ_DEFAULT_ON);
 /** 手前の地面の伸びを抑える(基準行より南だけ「縦の伸び ≤ 横の倍率」)。社長裁定2026-11-23「抑えた案で」=既定ON。`?projnear=0` で旧い伸び方(比較用)。 */
 export const PROJ_NEAR = PROJ_ON && projTsBool('projnear', true);
 /** ★#20 裁定②=2(既定)。1=比べるための控え(ℓ_ref をズーム1の値の定数のまま)。 */
