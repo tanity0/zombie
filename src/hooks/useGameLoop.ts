@@ -30,8 +30,8 @@ import { poiUnlockBandText, POI_BAND_MS, POI_SKILL_NOTE, POI_LABEL } from '../ut
 import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLimit, M0_PRACTICE_COUNT, type M0Beat, type M0BeatDef } from '../utils/m0Tutorial';
 import {
   GLEN_FINAL_LINE, GLEN_ROAR_LINE, isGlenBossSpawnReady, shouldPlayGlenTransform, glenTransformBossBox, glenTransformExtraHoldMs,
-  glenTransformDueEvents, glenCloseRoar, GLEN_TRANSFORM_EVENTS, GLEN_TF_BURST_AT_MS, GLEN_TF_VANISH_MS, GLEN_TF_ZOOM_IN, GLEN_TF_CHEST_K,
-  GLEN_HUMAN_BODY_H,
+  glenTransformDueEvents, glenCloseRoar, GLEN_TRANSFORM_EVENTS, GLEN_TF_BURST_AT_MS, GLEN_TF_ZOOM_IN, GLEN_TF_CHEST_K, GLEN_TF_CHEST_DX,
+  GLEN_TF_AIM_K, GLEN_HUMAN_BODY_H, glenTransformPose,
 } from '../utils/glenIntro';
 import { dialogueBacklogMs, startStoryBossOutro, stepStoryBossOutro, type StoryBossOutro } from '../utils/storyBossOutro';
 import { loadSeenForGate, markTutorialSeen } from '../utils/tutorialArchive';
@@ -3000,35 +3000,50 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const gtf = useGameStore.getState().glenTransform;
         if (gtf) {
           const el = nowMs - gtf.startedAt;
-          const burstDone = glenTfEventIdxRef.current >= GLEN_TRANSFORM_EVENTS.length;
           const tfAtt = useGameStore.getState().attention;
-          if (!burstDone && (!tfAtt || tfAtt.startReal !== gtf.startedAt)) {
-            // 寄りが途中で切れた(別の寄りに奪われた等): 人間のグレンを消し、ボスは今のゲート(咆哮の表示が終わったら出る)に任せる。
+          if (!tfAtt || tfAtt.startReal !== gtf.startedAt) {
+            // 場面の寄りが終わった(弾けた後の寄りを見せ切った=普通の終わり)か、途中で切れた(別の寄りに奪われた等)。
+            // どちらも人間のグレンの場面を畳む。弾ける前に切れた時は、ボスは今のゲート(咆哮の表示が終わったら出る)に任せる。
+            // 場面が立っている間(=弾けた後の寄りの間も)はボスの目印を出さない(pixi が glenTransform を見る)。
             useGameStore.setState({ glenTransform: null });
             glenTfEventIdxRef.current = 0;
-          } else if (!burstDone) {
+          } else if (glenTfEventIdxRef.current < GLEN_TRANSFORM_EVENTS.length) {
             const { due, next } = glenTransformDueEvents(glenTfEventIdxRef.current, el);
             glenTfEventIdxRef.current = next;
-            const chestLift = GLEN_HUMAN_BODY_H * GLEN_TF_CHEST_K;
-            const chestX = gtf.footX, chestY = gtf.footY - chestLift;
+            // 胸の点: 足元から体の高さの GLEN_TF_CHEST_K 上・胴の側へ GLEN_TF_CHEST_DX。撃つ瞬間の体のずれ(震え・よろめき・沈み)に乗せる。
+            const chestAt = (at: number) => {
+              const pose = glenTransformPose(at);
+              const lift = GLEN_HUMAN_BODY_H * (GLEN_TF_CHEST_K - pose.dy);
+              return { x: gtf.footX + GLEN_HUMAN_BODY_H * (pose.dx + GLEN_TF_CHEST_DX), y: gtf.footY - lift, lift };
+            };
             for (const ev of due) {
               if (ev.kind === 'growl') playSfx('zombie-growl', ev.gain, undefined, ev.rate);
+              else if (ev.kind === 'beat') playSfx('heartbeat', ev.gain, ev.capMs, ev.rate); // 胸の光の脈に合わせた鼓動(素材の頭だけ)
               else if (ev.kind === 'pulse') {
-                // 胸の赤い光(投影影を落とさない小さい光・noShadow)。強さは重ねる数で出す(段3=2つ・段4以降=3つ)。
-                for (let i = 0; i < ev.count; i++) useGameStore.getState().spawnGlow(chestX, chestY, ev.radius, 'rgba(239,68,68,', ev.durationMs, true, chestLift);
+                // 胸の赤い光(投影影を落とさない小さい光・noShadow)を1つ。強さは脈の間隔と尾の長さで出す(重ねない=白へ飛ばない)。
+                const c = chestAt(ev.at);
+                useGameStore.getState().spawnGlow(c.x, c.y, ev.radius, ev.color, ev.durationMs, true, c.lift);
               } else if (ev.kind === 'burst' && !storyBossSpawnedRef.current) {
                 // 弾ける: 第一形態を箱(=人間のグレンの足元)に出す。輪・光・破片・フラッシュは胸の高さの点を中心に(中身は今の出現そのまま)。
                 // 出現の紹介(カットイン)は、この寄りの後に保留箱から続けて出る(spawnGlenStoryBoss の中・既存の保留箱)。
                 storyBossSpawnedRef.current = true;
                 const b = gtf.bossBox;
+                const c = chestAt(ev.at);
                 // 生成の点は今の出現の式の点(箱の左上+素の寸法の半分=帯で寄せていなければ今の scx/scy と同じ)。
-                spawnGlenStoryBoss(useGameStore.getState().gameTime, b.x + b.width / 4, b.y + b.height / 4, { box: b, fx: { x: chestX, y: chestY, lift: chestLift } });
+                spawnGlenStoryBoss(useGameStore.getState().gameTime, b.x + b.width / 4, b.y + b.height / 4, { box: b, fx: c });
+                // 既存の暗い赤のフラッシュの上に、明るい赤白の閃光を一瞬だけ重ねる(後に積んだ方が上に塗られる)。
+                // 人間のグレンが消えて怪物が出る入れ替えをこの光で隠す。光源ではない(投影影なし)。
+                spawnFlash('rgba(255,220,205,0.68)', 160);
                 // 咆哮の行はここで閉じる(ボスの登場に人間の台詞を重ねない)。
                 useGameStore.setState(s2 => glenCloseRoar(s2.npcDialogue, s2.npcDialogueQueue));
+              } else if (ev.kind === 'ember') {
+                // 弾けた後の残り火: 生まれた第一形態を足元(と体の後ろ)から赤く照らす(noShadow=投影影なし)。3回で揺らぐ。
+                const b = gtf.bossBox;
+                const bx = b.x + b.width / 2, by = b.y + b.height;
+                const lift = ev.at > GLEN_TF_BURST_AT_MS && ev.at < GLEN_TF_BURST_AT_MS + 500 ? b.height * 0.45 : 2;
+                useGameStore.getState().spawnGlow(bx, by - lift, ev.radius, 'rgba(185,28,28,', ev.durationMs, true, lift);
               }
             }
-          } else if (el >= GLEN_TF_BURST_AT_MS + GLEN_TF_VANISH_MS) {
-            useGameStore.setState({ glenTransform: null }); // 弾けの光の中で消え切った
           }
         }
       }
@@ -4177,7 +4192,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
               const tfBox = glenTransformBossBox(pcx, pcy, STORY_BOSS_SPAWN_DIST, ENEMY_STATS.giantbat.width, ENEMY_STATS.giantbat.height,
                 (x, y, w, h) => clampRectToPlayableArea(x, y, w, h, thorPlayableAreaCtx(useGameStore.getState())));
-              useGameStore.getState().triggerAttention(tfBox.footX, tfBox.footY - GLEN_HUMAN_BODY_H / 2, undefined,
+              useGameStore.getState().triggerAttention(tfBox.footX, tfBox.footY - GLEN_HUMAN_BODY_H * GLEN_TF_AIM_K, undefined,
                 glenTransformExtraHoldMs(ATTENTION_IN_MS, ATTENTION_HOLD_MS), null, { zoomToUnity: true, zoomIn: GLEN_TF_ZOOM_IN });
               const tfAtt = useGameStore.getState().attention;
               if (tfAtt) {

@@ -5278,6 +5278,7 @@ export class PixiScene {
   // ステージ7: 変身の前の人間のグレン(research/GLEN_TRANSFORM.md §2・store.glenTransform を読んで描くだけ)。
   private glenHumanView = new Container();
   private glenHumanSprite = new Sprite();
+  private glenSceneOn = false; // store.glenTransform が立っている(場面の間・弾けた後の寄りの間)=ボスの目印を出さない
   private eventNpcGfx = new Graphics();
 
   private pickups = new Map<string, PickupView>();
@@ -13197,6 +13198,7 @@ export class PixiScene {
     this.restoreZwarpActors(); // 前フレームの逆変形(ズーム時の遠近)を戻してから描く
     this.restoreProjActors(); // ?proj=1 の段階2の後掛けを戻す(寄りの遠近の後=後に掛けた方を先に戻す)。?proj=0 では空=何もしない
     const s0 = useGameStore.getState();
+    this.glenSceneOn = !!s0.glenTransform; // ステージ7の変身の場面の間はボスの頭上の目印を出さない(drawEnemy が読む)
     // ステージ2の変異塊の代理(攻撃を受ける窓口だけの Enemy・research/LAB_CRAWLER.md §4)は描かない:
     // 敵の絵・影・体力バー・照準・方角マーカーなど、敵配列を読む描画の全部から最初に1回だけ外す(塊の絵は syncLabCrawler)。
     const crawlerProxy = s0.labCrawler ? s0.enemies.find(e => isLabCrawlerProxyType(e.type)) : undefined;
@@ -14762,7 +14764,9 @@ export class PixiScene {
     // 1周目(STAGE1_FIRST_LOOP.md §4-1): 西の拠点は確保するまで、遠くからでも画面端の印を出す(近くの足切りを外す)。
     this.arrowFarBaseId = s.stage1Loop?.phase === 'base' ? LOOP1_BASE_ID : null;
     this.syncArrows(s.pickups, s.castleEvent, (facHidden || s.merchantHidden || s.stageTheme === 'lab') ? { ...s.weaponMerchant, radius: 0 } : s.weaponMerchant, s.camera, !s.indoorMode && this.castleOnRun(s) && !facHidden, s.activeEvent, facHidden ? [] : revealedPois, facHidden ? [] : basesDrawn, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, rescuePoints, {
-      targets: markedBosses,
+      // ステージ7のグレンの変身の場面(弾けた後の寄りの間も)と、続けて出る第一形態の紹介の寄りの間は、ボスの目印を出さない
+      // (カメラがそのボスを写している間=寄りが明けて戦闘に戻ったら出る)。
+      targets: (s.glenTransform || (s.attention?.target && markedBosses.some(b => b.isStoryBoss && b.id === s.attention?.target?.id))) ? [] : markedBosses,
       // 距離は**ボスメーカーの部屋の中だけ常時**表示(社長指示v0.25.2657)。本編は数字を出さない=
       // マーク(方角)だけ。道具としての計測値をゲーム画面へ持ち込まない。
       showDistance: s.bossMaker.active,
@@ -37038,7 +37042,7 @@ export class PixiScene {
       ov.circle(hx, my, 1.4).fill({ color: 0x7dd3fc, alpha: pulse });
     }
     // PACING_PUZZLE.md §9-7#1(pixiSceneのボスマーカー): driller はpumpkinと同格。
-    if (isPumpkinTier(e.type) || e.type === 'giantbat' || isReaperFamily(e.type)) {
+    if (isPumpkinTier(e.type) || (e.type === 'giantbat' && !this.glenSceneOn) || isReaperFamily(e.type)) {
       this.drawBossMarker(ov, hx, e.y - 6, isReaperFamily(e.type) ? 0xef4444 : 0xfde68a, now);
     }
     // 拠点/レスキューの「専用敵」(fromEvent)は通常湧きと区別(社長指示・軽量マーク): 頭上に橙の下向き三角(脈動)。

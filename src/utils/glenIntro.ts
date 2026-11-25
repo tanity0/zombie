@@ -27,26 +27,45 @@ export const isGlenBossSpawnReady = (gate: GlenIntroSpawnGate): boolean => {
 
 /** 立ち姿で現れる尺(下から上がりながらフェードイン・ease-out)。 */
 export const GLEN_TF_APPEAR_MS = 450;
-/** 苦しむ絵へ切り替わり、膝が落ちる時刻。 */
-export const GLEN_TF_SUFFER_AT_MS = 700;
+/** 現れ終わった所で体がビクッと跳ねる(咆哮の行への反応・位置だけ)。始まりと尺。 */
+export const GLEN_TF_JOLT_AT_MS = GLEN_TF_APPEAR_MS;
+export const GLEN_TF_JOLT_MS = 300;
+/** 苦しげな深い息を1回: ゆっくり吸い上げ(肩が上がる)→止まる→吐き落ちて苦しむ絵へ。 */
+export const GLEN_TF_BREATH_IN_AT_MS = 760;
+export const GLEN_TF_BREATH_TOP_AT_MS = 1160;
+export const GLEN_TF_BREATH_RELEASE_AT_MS = 1240;
+/** 吸い上げた時の肩の上がり(体の高さ比)。 */
+export const GLEN_TF_BREATH_RISE = 0.045;
+/** 苦しむ絵へ切り替わり、膝が落ちる時刻(カメラの寄りが止まる 360ms から約0.9秒、人間の立ち姿を見せる)。 */
+export const GLEN_TF_SUFFER_AT_MS = 1300;
 /** 苦しみの1段の長さ(4段)。 */
 export const GLEN_TF_STAGE_MS = 400;
 /** 苦しみの段の数。 */
 export const GLEN_TF_STAGES = 4;
 /** 震え最大のまま光が速く脈打つ区間の始まり(= 苦しみの4段の終わり)。 */
-export const GLEN_TF_PEAK_AT_MS = GLEN_TF_SUFFER_AT_MS + GLEN_TF_STAGE_MS * GLEN_TF_STAGES; // 2300
+export const GLEN_TF_PEAK_AT_MS = GLEN_TF_SUFFER_AT_MS + GLEN_TF_STAGE_MS * GLEN_TF_STAGES; // 2900
+/** 弾ける直前の溜め: 震えも光も止まる(鳴るのは最後の大きな鼓動だけ)。 */
+export const GLEN_TF_HUSH_AT_MS = 3200;
 /** 弾ける時刻(第一形態が出る)。 */
-export const GLEN_TF_BURST_AT_MS = 2600;
+export const GLEN_TF_BURST_AT_MS = 3400;
+/** 弾ける直前のこの長さは、鼓動以外の音を鳴らさない(場面が新しく鳴らす音だけの決まり)。 */
+export const GLEN_TF_SILENT_BEFORE_BURST_MS = 300;
+/** 溜めで震えが止まり切るまでの尺(慣性)。 */
+const HUSH_SETTLE_MS = 80;
 /** 弾けの光の中で人間のグレンが消える尺(ease-in)。 */
 export const GLEN_TF_VANISH_MS = 120;
-/** 弾けてから寄りを保つ長さ(現れた第一形態と弾けの光を見せてから戻る)。 */
-export const GLEN_TF_AFTER_BURST_MS = 500;
+/** 弾けてから寄りを保つ長さ(生まれた第一形態を残り火の光の中で見せてから戻る)。 */
+export const GLEN_TF_AFTER_BURST_MS = 900;
 /** 場面の寄り(アテンション)の倍率。 */
 export const GLEN_TF_ZOOM_IN = 1.6;
-/** 胸の赤い光を置く高さ(足元から体の高さの何割上か)。 */
-export const GLEN_TF_CHEST_K = 0.55;
-/** 胸の赤い光の半径(強glow=44 未満で一番大きく=投影影を落とさない小さい光の経路。さらに noShadow で出す)。 */
-export const GLEN_TF_PULSE_GLOW_R = 43;
+/** 寄り先の高さ(足元から体の高さの何割上か)。体の中心(0.5)より下げて、足元を画面下の霧の帯より上に置く。 */
+export const GLEN_TF_AIM_K = 0.25;
+/** 胸の赤い光を置く高さ(足元から体の高さの何割上か)。苦しむ絵の折れた上体の胸〜腹=頭(左上)は光の外。 */
+export const GLEN_TF_CHEST_K = 0.4;
+/** 胸の赤い光の横のずれ(体の高さ比・右が正)。苦しむ絵は頭が左へ垂れるので、胴の側(右)へ少し寄せる。 */
+export const GLEN_TF_CHEST_DX = 0.08;
+/** 胸の赤い光の半径(強glow=44 未満=投影影を落とさない小さい光の経路。さらに noShadow で出す)。段2以降。 */
+export const GLEN_TF_PULSE_GLOW_R = 36;
 /** 1段目の「控えめ」の光の半径。 */
 export const GLEN_TF_PULSE_GLOW_R_SOFT = 30;
 
@@ -139,13 +158,14 @@ const tremblePhase = (t: number): number => {
   return ph;
 };
 
-/** 震えの強さ(段の頭で前の段から TREMBLE_RAMP_MS かけて寄る)。 */
+/** 震えの強さ(段の頭で前の段から TREMBLE_RAMP_MS かけて寄る・溜めで HUSH_SETTLE_MS かけて止まる)。 */
 const trembleAmp = (t: number): number => {
   const st = glenTransformStageAt(t);
   if (st === 0) return 0;
   const head = st <= GLEN_TF_STAGES ? GLEN_TF_SUFFER_AT_MS + (st - 1) * GLEN_TF_STAGE_MS : GLEN_TF_PEAK_AT_MS;
   const prev = TREMBLE_AMP[st - 1];
-  return prev + (TREMBLE_AMP[st] - prev) * smooth((t - head) / TREMBLE_RAMP_MS);
+  const a = prev + (TREMBLE_AMP[st] - prev) * smooth((t - head) / TREMBLE_RAMP_MS);
+  return t > GLEN_TF_HUSH_AT_MS ? a * (1 - smooth((t - GLEN_TF_HUSH_AT_MS) / HUSH_SETTLE_MS)) : a;
 };
 
 /**
@@ -188,6 +208,33 @@ const kneeSink = (t: number): number => {
   return y;
 };
 
+/**
+ * 咆哮の行への反応(現れ終わった所で一度ビクッ)。位置だけ=上へ短く跳ねて落ちる+首が横へ引きつって戻る(減衰)。
+ * 戻り値は体の高さ比 [dx, dy]。
+ */
+const joltAt = (t: number): [number, number] => {
+  const u = t - GLEN_TF_JOLT_AT_MS;
+  if (u <= 0 || u >= GLEN_TF_JOLT_MS) return [0, 0];
+  // 上へ: 60ms で一気に(ease-out)跳ね、180ms かけて落ちて戻る(加速→減速)。
+  const up = u < 60 ? easeOutCubic(u / 60) : 1 - smooth((u - 60) / 180);
+  // 横: 右へ引きつる → 左へ半分振り返す → 戻る(減衰)。
+  const side = u < 50 ? easeOutCubic(u / 50)
+    : u < 140 ? 1 - 1.5 * smooth((u - 50) / 90)
+      : -0.5 * (1 - smooth((u - 140) / 160));
+  return [0.03 * side, -0.04 * up];
+};
+
+/** 深い息の肩の上がり(上が負・体の高さ比)。ゆっくり吸い上げて止まり、最後は吐き落ちて(ease-in)苦しむ絵の膝落ちへ繋ぐ。 */
+const breathY = (t: number): number => {
+  if (t <= GLEN_TF_BREATH_IN_AT_MS || t >= GLEN_TF_SUFFER_AT_MS) return 0;
+  if (t < GLEN_TF_BREATH_TOP_AT_MS) {
+    return -GLEN_TF_BREATH_RISE * smooth((t - GLEN_TF_BREATH_IN_AT_MS) / (GLEN_TF_BREATH_TOP_AT_MS - GLEN_TF_BREATH_IN_AT_MS));
+  }
+  if (t < GLEN_TF_BREATH_RELEASE_AT_MS) return -GLEN_TF_BREATH_RISE;
+  const u = (t - GLEN_TF_BREATH_RELEASE_AT_MS) / (GLEN_TF_SUFFER_AT_MS - GLEN_TF_BREATH_RELEASE_AT_MS);
+  return -GLEN_TF_BREATH_RISE * (1 - u * u);
+};
+
 export interface GlenTransformPose {
   /** どちらの絵(null=もう描かない)。 */
   frame: 'stand' | 'suffer' | null;
@@ -211,46 +258,63 @@ export const glenTransformPose = (t: number): GlenTransformPose => {
     return { frame: 'stand', alpha: easeOutCubic(u * 1.25), dx: 0, dy: 0.08 * (1 - easeOutCubic(u)), stage };
   }
   if (t < GLEN_TF_SUFFER_AT_MS) {
-    // 立ち姿で止まる: ごく小さく肩の上下(1回吸って戻る・位置だけ)。
-    const u = (t - GLEN_TF_APPEAR_MS) / (GLEN_TF_SUFFER_AT_MS - GLEN_TF_APPEAR_MS);
-    return { frame: 'stand', alpha: 1, dx: 0, dy: -0.015 * Math.sin(Math.PI * smooth(u)), stage };
+    // 立ち姿: ビクッと跳ねて → 苦しげな深い息を1回(肩の上下=位置だけ)。
+    const [jx, jy] = joltAt(t);
+    return { frame: 'stand', alpha: 1, dx: jx, dy: jy + breathY(t), stage };
   }
   const vanish = t >= GLEN_TF_BURST_AT_MS ? clamp01((t - GLEN_TF_BURST_AT_MS) / GLEN_TF_VANISH_MS) : 0;
   if (vanish >= 1) return { frame: null, alpha: 0, dx: 0, dy: 0, stage };
-  // 消える=ease-in(初めはゆっくり、光の中で一気に)。揺れは止めずにそのまま消える。
+  // 消える=ease-in(初めはゆっくり、光の中で一気に)。
   return { frame: 'suffer', alpha: 1 - vanish * vanish, dx: trembleX(t) + staggerX(t), dy: kneeSink(t), stage };
 };
 
 /** 場面の出来事(useGameLoop が時刻順に1回ずつ撃つ)。 */
 export type GlenTransformEvent =
   | { at: number; kind: 'growl'; rate: number; gain: number }
-  | { at: number; kind: 'pulse'; radius: number; count: number; durationMs: number }
-  | { at: number; kind: 'burst' };
+  /** 胸の赤い光(1つ・noShadow)。強さは脈の間隔と尾の長さ(durationMs)で出す(重ねない・白へ飛ばさない)。 */
+  | { at: number; kind: 'pulse'; radius: number; durationMs: number; color: string }
+  /** 鼓動(既存の heartbeat の頭だけを切って鳴らす)。capMs=素材の何msまで鳴らすか。 */
+  | { at: number; kind: 'beat'; rate: number; gain: number; capMs: number }
+  | { at: number; kind: 'burst' }
+  /** 弾けた後の残り火(第一形態の足元を照らす赤い光・noShadow)。 */
+  | { at: number; kind: 'ember'; radius: number; durationMs: number };
 
-const PULSE_INTERVAL = [0, 600, 450, 300, 180, 80];
+const PULSE_INTERVAL = [0, 600, 450, 300, 180, 110];
+/** 光の尾(段が上がるほど長く残る=強い)。間隔が詰まる段4以降は重なりが2枚程度で済む長さ。 */
+const PULSE_TAIL = [0, 300, 400, 460, 380, 260];
+/** 色: 段1〜2は今までの赤、段3以降は深い赤(重なっても白へ飛ばない)。 */
+const PULSE_COLOR = ['', 'rgba(239,68,68,', 'rgba(239,68,68,', 'rgba(220,38,38,', 'rgba(205,28,32,', 'rgba(205,28,32,'];
+/** 鼓動: 段が上がるほど速く・大きく・短く(段3以降は「ドッ」だけ)。 */
+const BEAT_RATE = [0, 1.0, 1.1, 1.25, 1.4, 1.55];
+const BEAT_GAIN = [0, 0.45, 0.55, 0.65, 0.75, 0.85];
+const BEAT_CAP = [0, 600, 450, 300, 200, 180];
 
 /**
  * 出来事の並び(時刻順)。胸の赤い光は、各段の頭で必ず1回撃ち、その段の間隔で続ける(次の段の頭が先に来たらそこで撃つ)。
- * 強さ: 段1=控えめ(小さい光1つ)/段2=光1つ/段3=明るく(2つ重ね)/段4・最大=最も明るい(3つ重ね)。
- * 呻き: 苦しむ絵へ変わる瞬間(音程0.7)・段2の頭(0.65)・段4の頭(0.6)=音程を下げていく。
+ * 溜め(GLEN_TF_HUSH_AT_MS〜弾け)は光を撃たない。鼓動は光の脈に合わせて鳴らし(最大の段は詰まりすぎないよう溜めの少し前まで)、
+ * 溜めの頭で最後に大きく1回。呻きは苦しむ絵へ変わる瞬間の1回だけ。弾けた後は残り火の光を3回(揺らぎ)。
  */
 export const GLEN_TRANSFORM_EVENTS: readonly GlenTransformEvent[] = (() => {
   const ev: GlenTransformEvent[] = [];
-  ev.push({ at: GLEN_TF_SUFFER_AT_MS, kind: 'growl', rate: 0.7, gain: 0.55 });
-  ev.push({ at: GLEN_TF_SUFFER_AT_MS + GLEN_TF_STAGE_MS, kind: 'growl', rate: 0.65, gain: 0.6 });
-  ev.push({ at: GLEN_TF_SUFFER_AT_MS + GLEN_TF_STAGE_MS * 3, kind: 'growl', rate: 0.6, gain: 0.66 });
+  ev.push({ at: GLEN_TF_SUFFER_AT_MS, kind: 'growl', rate: 0.7, gain: 0.6 });
   let t = GLEN_TF_SUFFER_AT_MS;
-  while (t < GLEN_TF_BURST_AT_MS) {
+  while (t < GLEN_TF_HUSH_AT_MS) {
     const st = glenTransformStageAt(t);
-    const interval = PULSE_INTERVAL[st];
     const radius = st === 1 ? GLEN_TF_PULSE_GLOW_R_SOFT : GLEN_TF_PULSE_GLOW_R;
-    const count = st <= 2 ? 1 : st === 3 ? 2 : 3;
-    // 光の尾: 次の脈まで少し残る(間隔の1.3倍・最大 520ms)。
-    ev.push({ at: t, kind: 'pulse', radius, count, durationMs: Math.min(520, Math.round(interval * 1.3)) });
+    ev.push({ at: t, kind: 'pulse', radius, durationMs: PULSE_TAIL[st], color: PULSE_COLOR[st] });
+    if (st <= GLEN_TF_STAGES || t <= GLEN_TF_HUSH_AT_MS - 150) {
+      ev.push({ at: t, kind: 'beat', rate: BEAT_RATE[st], gain: BEAT_GAIN[st], capMs: BEAT_CAP[st] });
+    }
     const nextHead = st <= GLEN_TF_STAGES ? GLEN_TF_SUFFER_AT_MS + st * GLEN_TF_STAGE_MS : Infinity;
-    t = Math.min(t + interval, nextHead);
+    t = Math.min(t + PULSE_INTERVAL[st], nextHead);
   }
+  // 溜めの頭: 光も震えも止まり、大きな鼓動が1回だけ鳴る → 静けさ → 弾け。
+  ev.push({ at: GLEN_TF_HUSH_AT_MS, kind: 'beat', rate: 0.95, gain: 1, capMs: 280 });
   ev.push({ at: GLEN_TF_BURST_AT_MS, kind: 'burst' });
+  ev.push({ at: GLEN_TF_BURST_AT_MS, kind: 'ember', radius: 130, durationMs: 760 });
+  ev.push({ at: GLEN_TF_BURST_AT_MS + 300, kind: 'ember', radius: 105, durationMs: 700 });
+  ev.push({ at: GLEN_TF_BURST_AT_MS + 600, kind: 'ember', radius: 120, durationMs: 760 });
+  // 同じ時刻は書いた順(burst → ember)を保つ(安定ソート)。
   return ev.sort((a, b) => a.at - b.at);
 })();
 
