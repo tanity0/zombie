@@ -5900,7 +5900,7 @@ export class PixiScene {
   private killFxSlashShadow: Sprite | null = null; // 刀の致命の斬撃の真下に敷く暗い写し  // 喉搔きの斬撃(slash-streak素材を横一文字に・FB8)
   private killFxBloodPool: Sprite[] = [];       // 血粒のスプライトプール(Texture.WHITE・使い回し)
   private kamitsukiProjAnchor: { sx: number; sy: number; fx: number; fy: number; fd: number } | null = null;
-  private killFxBlood: { x: number; y: number; vx: number; vy: number; size: number; born: number; life: number; tint: number; fx?: number; fy?: number; flat?: boolean }[] = [];
+  private killFxBlood: { x: number; y: number; vx: number; vy: number; size: number; born: number; life: number; tint: number; fx?: number; fy?: number }[] = [];
   private killFxBloodPrevStep = 0;              // 実時間積分の前回時刻(タブ復帰の飛びはクランプ)
   private killFxVisPos: { x: number; y: number } | null = null; // 演出中のプレイヤー見た目位置(ズーム追尾用・FB4)
   private killFxVisH = 0; // ?proj=1(§3-9o ケ15): killFxVisPos の足元からの高さ(足元=y+この値を地面の点として投影し、高さ×s を上に足す)
@@ -16796,7 +16796,7 @@ export class PixiScene {
     // 半径 merchant.radius)で、入れ物の外の projShapeGfx(groundLayer)へ頂点ごとに投影して描く。頭上の点は入れ物に残す(体として後掛けで動く)。
     const pf = this.projFrame;
     if (near && !boxLook) {
-      if (pf) projFlatCircle(this.projShapeGfx('ground'), pf, merchant.x, merchant.y - 8, merchant.radius, undefined,
+      if (pf) projCircle(this.projShapeGfx('ground'), pf, merchant.x, merchant.y - 8, merchant.radius, undefined,
         { width: 2, color: 0xfbbf24, alpha: (0.38 + pulse * 0.22) * horizonAlpha });
       else g.circle(0, -8 * d, merchant.radius * d)
         .stroke({ width: 2 * d, color: 0xfbbf24, alpha: 0.38 + pulse * 0.22 });
@@ -16815,7 +16815,7 @@ export class PixiScene {
       const cyw = boxLook ? 0 : -8 * d;
       if (pf) {
         const rw = boxLook ? 55 : merchant.radius + 6, cw = boxLook ? 0 : -8;
-        projFlatArcLine(this.projShapeGfx('ground'), pf, merchant.x, merchant.y + cw, rw, start, start + Math.PI * 2 * frac,
+        projArcLine(this.projShapeGfx('ground'), pf, merchant.x, merchant.y + cw, rw, start, start + Math.PI * 2 * frac,
           { width: 4, color: 0xfff7cc, alpha: 0.95 * horizonAlpha });
       } else g.moveTo(Math.cos(start) * rr, cyw + Math.sin(start) * rr)
         .arc(0, cyw, rr, start, start + Math.PI * 2 * frac)
@@ -27741,7 +27741,7 @@ export class PixiScene {
         size: 3 + Math.random() * 5,
         born, life: 380 + Math.random() * 220,
         tint: 0x9ca3af,
-        fx: x, fy: y, flat: true, // ?proj=1(段階3・★#30・監査2巡目 A-6): 着地の土煙=地面に付いた物=着地点で寝かせる
+        fx: x, fy: y, // ?proj=1(段階3・C10.puff): 着地の土煙=舞い上がる粒=点o(付け根=着地点)
       });
     }
   }
@@ -27911,10 +27911,8 @@ export class PixiScene {
       sp.position.set(b.x, b.y);
       sp.visible = true;
       // ?proj=1(段階3・C10): 血=点o(付け根=噴き出した相手の足元・飛んだ分は s 倍・大きさは s_fx)。
-      // 帰還着地の土煙(flat)=地面に付いた物=着地点で寝かせる(★#30・監査2巡目 A-6)
-      if (this.projFrame && b.fx !== undefined && b.fy !== undefined) {
-        if (b.flat) this.projFxFlatAt(sp, b.fx, b.fy); else this.projFxOriginAt(sp, b.fx, b.fy);
-      }
+      // 帰還着地の土煙も同じ点o(舞い上がる粒=立つ物・社長 2026-11-25 で ★#30 の寝かせるから外した)
+      if (this.projFrame && b.fx !== undefined && b.fy !== undefined) this.projFxOriginAt(sp, b.fx, b.fy);
     }
     for (let i = write; i < this.killFxBloodPool.length; i++) this.killFxBloodPool[i].visible = false;
   }
@@ -39200,11 +39198,11 @@ export class PixiScene {
     // rescue=緑(ホールド帯) / boss=赤 / horde=青
     const color = ae.kind === 'boss' ? 0xef4444 : ae.kind === 'rescue' ? 0x4ade80 : 0x38bdf8;
     // 内側の淡い塗り(囲われている感)+ 二重リング(太い半透明の外周 / 細く明るい内周)。
-    if (pf) projFlatCircle(g, pf, ae.x, ae.y, ae.radius - 4, { color, alpha: 0.05 + 0.04 * pulse });
+    if (pf) projCircle(g, pf, ae.x, ae.y, ae.radius - 4, { color, alpha: 0.05 + 0.04 * pulse });
     else g.circle(ae.x, ae.y, ae.radius - 4).fill({ color, alpha: 0.05 + 0.04 * pulse });
-    if (pf) projFlatCircle(g, pf, ae.x, ae.y, ae.radius, undefined, { width: 6, color, alpha: a * 0.6 });
+    if (pf) projCircle(g, pf, ae.x, ae.y, ae.radius, undefined, { width: 6, color, alpha: a * 0.6 });
     else g.circle(ae.x, ae.y, ae.radius).stroke({ width: 6, color, alpha: a * 0.6 });
-    if (pf) projFlatCircle(g, pf, ae.x, ae.y, ae.radius - 3, undefined, { width: 2, color, alpha: a });
+    if (pf) projCircle(g, pf, ae.x, ae.y, ae.radius - 3, undefined, { width: 2, color, alpha: a });
     else g.circle(ae.x, ae.y, ae.radius - 3).stroke({ width: 2, color, alpha: a });
     // rescue: ホールド進捗を外周の円弧で表示(上端始点・時計回り)。
     // ※ arc の前に開始点へ moveTo しないと、直前に描いた円の終点から弧開始点まで
@@ -39214,7 +39212,7 @@ export class PixiScene {
       if (frac > 0) {
         const start = -Math.PI / 2;
         const rr = ae.radius + 5;
-        if (pf) projFlatArcLine(g, pf, ae.x, ae.y, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xbbf7d0, alpha: 0.95 });
+        if (pf) projArcLine(g, pf, ae.x, ae.y, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xbbf7d0, alpha: 0.95 });
         else g.moveTo(ae.x + Math.cos(start) * rr, ae.y + Math.sin(start) * rr)
           .arc(ae.x, ae.y, rr, start, start + Math.PI * 2 * frac)
           .stroke({ width: 4, color: 0xbbf7d0, alpha: 0.95 });
@@ -39243,11 +39241,11 @@ export class PixiScene {
     const a = (0.30 + 0.18 * pulse) * alpha;
     const color = 0x38bdf8; // hordeと同じ青(叩き台)
     const r = npc.triggerRadius;
-    if (pf) projFlatCircle(g, pf, npc.x, npc.y, r - 4, { color, alpha: (0.05 + 0.04 * pulse) * alpha });
+    if (pf) projCircle(g, pf, npc.x, npc.y, r - 4, { color, alpha: (0.05 + 0.04 * pulse) * alpha });
     else g.circle(npc.x, npc.y, r - 4).fill({ color, alpha: (0.05 + 0.04 * pulse) * alpha });
-    if (pf) projFlatCircle(g, pf, npc.x, npc.y, r, undefined, { width: 6, color, alpha: a * 0.6 });
+    if (pf) projCircle(g, pf, npc.x, npc.y, r, undefined, { width: 6, color, alpha: a * 0.6 });
     else g.circle(npc.x, npc.y, r).stroke({ width: 6, color, alpha: a * 0.6 });
-    if (pf) projFlatCircle(g, pf, npc.x, npc.y, r - 3, undefined, { width: 2, color, alpha: a });
+    if (pf) projCircle(g, pf, npc.x, npc.y, r - 3, undefined, { width: 2, color, alpha: a });
     else g.circle(npc.x, npc.y, r - 3).stroke({ width: 2, color, alpha: a });
   }
 
@@ -39283,11 +39281,11 @@ export class PixiScene {
     const pulse = 0.5 + 0.5 * Math.sin(now / 240);
     const a = 0.34 + 0.2 * pulse;
     const color = 0x86efac; // 帰還=緑(安全・脱出)
-    if (pf) projFlatCircle(g, pf, cx, cy, rc.radius - 4, { color, alpha: 0.06 + 0.05 * pulse });
+    if (pf) projCircle(g, pf, cx, cy, rc.radius - 4, { color, alpha: 0.06 + 0.05 * pulse });
     else g.circle(cx, cy, rc.radius - 4).fill({ color, alpha: 0.06 + 0.05 * pulse });
-    if (pf) projFlatCircle(g, pf, cx, cy, rc.radius, undefined, { width: 6, color, alpha: a * 0.6 });
+    if (pf) projCircle(g, pf, cx, cy, rc.radius, undefined, { width: 6, color, alpha: a * 0.6 });
     else g.circle(cx, cy, rc.radius).stroke({ width: 6, color, alpha: a * 0.6 });
-    if (pf) projFlatCircle(g, pf, cx, cy, rc.radius - 3, undefined, { width: 2, color, alpha: a });
+    if (pf) projCircle(g, pf, cx, cy, rc.radius - 3, undefined, { width: 2, color, alpha: a });
     else g.circle(cx, cy, rc.radius - 3).stroke({ width: 2, color, alpha: a });
     // 滞在進捗を外周の円弧で表示(上端始点・時計回り)。arc 前に moveTo して地面を横切る線を防ぐ。
     // 洋館通路のゴールは5秒ホールド(v0.25.2132)=分母をモードで切替(判定側updateReturnPhaseと同じ)。
@@ -39303,7 +39301,7 @@ export class PixiScene {
     if (frac > 0) {
       const start = -Math.PI / 2;
       const rr = rc.radius + 5;
-      if (pf) projFlatArcLine(g, pf, cx, cy, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xdcfce7, alpha: 0.95 });
+      if (pf) projArcLine(g, pf, cx, cy, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xdcfce7, alpha: 0.95 });
       else g.moveTo(cx + Math.cos(start) * rr, cy + Math.sin(start) * rr)
         .arc(cx, cy, rr, start, start + Math.PI * 2 * frac)
         .stroke({ width: 4, color: 0xdcfce7, alpha: 0.95 });
@@ -39928,9 +39926,9 @@ export class PixiScene {
       const R0 = SHRINE_CIRCLE_RADIUS + 10 * swell;
       const pf = this.projFrame; // ?proj=1(段階4・J07): 祠の3秒サークルと溜めの弧は頂点ごとに投影
       if (pf) {
-        projFlatCircle(g, pf, c.x, c.y, R0 - 4, { color, alpha: (0.06 + 0.05 * pulse + 0.08 * frac) * near });
-        projFlatCircle(g, pf, c.x, c.y, R0, undefined, { width: 6, color, alpha: Math.min(1, a) * 0.6 });
-        projFlatCircle(g, pf, c.x, c.y, R0 - 3, undefined, { width: 2, color, alpha: Math.min(1, a) });
+        projCircle(g, pf, c.x, c.y, R0 - 4, { color, alpha: (0.06 + 0.05 * pulse + 0.08 * frac) * near });
+        projCircle(g, pf, c.x, c.y, R0, undefined, { width: 6, color, alpha: Math.min(1, a) * 0.6 });
+        projCircle(g, pf, c.x, c.y, R0 - 3, undefined, { width: 2, color, alpha: Math.min(1, a) });
       } else {
         g.circle(c.x, c.y, R0 - 4).fill({ color, alpha: (0.06 + 0.05 * pulse + 0.08 * frac) * near });
         g.circle(c.x, c.y, R0).stroke({ width: 6, color, alpha: Math.min(1, a) * 0.6 });
@@ -39939,7 +39937,7 @@ export class PixiScene {
       if (frac > 0.002) {
         const start = -Math.PI / 2;
         const rr = SHRINE_CIRCLE_RADIUS + 5;
-        if (pf) projFlatArcLine(g, pf, c.x, c.y, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xfdf4ff, alpha: 0.95 * (inside ? 1 : 0.6) });
+        if (pf) projArcLine(g, pf, c.x, c.y, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xfdf4ff, alpha: 0.95 * (inside ? 1 : 0.6) });
         else g.moveTo(c.x + Math.cos(start) * rr, c.y + Math.sin(start) * rr)
           .arc(c.x, c.y, rr, start, start + Math.PI * 2 * frac)
           .stroke({ width: 4, color: 0xfdf4ff, alpha: 0.95 * (inside ? 1 : 0.6) });
@@ -40026,9 +40024,9 @@ export class PixiScene {
       const color = safe ? 0x60a5fa : captured ? 0x34d399 : 0xfbbf24; // 安全=青/制圧=緑/未制圧=琥珀
       const a = 0.22 + 0.14 * pulse;
       if (pf) {
-        projFlatCircle(g, pf, s.x, s.y, R - 4, { color, alpha: 0.04 + 0.04 * pulse });
-        projFlatCircle(g, pf, s.x, s.y, R, undefined, { width: 5, color, alpha: a * 0.6 });
-        projFlatCircle(g, pf, s.x, s.y, R - 3, undefined, { width: 2, color, alpha: a });
+        projCircle(g, pf, s.x, s.y, R - 4, { color, alpha: 0.04 + 0.04 * pulse });
+        projCircle(g, pf, s.x, s.y, R, undefined, { width: 5, color, alpha: a * 0.6 });
+        projCircle(g, pf, s.x, s.y, R - 3, undefined, { width: 2, color, alpha: a });
       } else {
         g.circle(s.x, s.y, R - 4).fill({ color, alpha: 0.04 + 0.04 * pulse });
         g.circle(s.x, s.y, R).stroke({ width: 5, color, alpha: a * 0.6 });
@@ -40039,7 +40037,7 @@ export class PixiScene {
         const frac = Math.max(0, Math.min(1, s.dwellMs / BASE_CAPTURE_HOLD_MS));
         if (frac > 0) {
           const start = -Math.PI / 2, rr = R + 5;
-          if (pf) projFlatArcLine(g, pf, s.x, s.y, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xfff7cc, alpha: 0.95 });
+          if (pf) projArcLine(g, pf, s.x, s.y, rr, start, start + Math.PI * 2 * frac, { width: 4, color: 0xfff7cc, alpha: 0.95 });
           else g.moveTo(s.x + Math.cos(start) * rr, s.y + Math.sin(start) * rr)
             .arc(s.x, s.y, rr, start, start + Math.PI * 2 * frac)
             .stroke({ width: 4, color: 0xfff7cc, alpha: 0.95 });
@@ -42639,8 +42637,9 @@ export class PixiScene {
     sp.tint = tint;
     sp.alpha = alpha;
     sp.visible = true;
-    // ?proj=1(段階3・E2・★#30): 地面に付いた粉塵=寝かせる(付け根=足元の点・呼ぶ側の dsc=旧い遠近は外して s_fx・舞い上がる高さは横の倍率)
-    if (this.projFrame) this.projFxFlatAt(sp, x, y, dsc, lift);
+    // ?proj=1(段階3・E2): 砂塵=立ち昇る物=立つ(社長 2026-11-25「歩きで出る砂塵まで寝ちゃってる」で ★#30 の寝かせるから外した)。
+    // 足元の点だけ投影し、形は画面に正対・大きさは s_fx(呼ぶ側の dsc=旧い遠近は外す・舞い上がる高さと足元からのずれも同じ倍率)
+    if (this.projFrame) this.projFxAt(sp, x, y, 'fx', 0, dsc);
   }
   private drawDust(x: number, y: number, radius: number, prog: number, tint: number, alpha: number, seed?: number): void {
     if (!FX_RING_ENABLED || alpha <= 0.01) return;
@@ -42699,7 +42698,7 @@ export class PixiScene {
     sp.alpha = alpha;
     sp.blendMode = 'normal'; // プールを走り/滑りの砂煙と共用(あちらは雪原・昼で screen を使う)
     sp.visible = true;
-    if (this.projFrame) this.projFxFlatAt(sp, x, y); // ?proj=1(段階3・E1・★#30): ヘルパの中で分岐(呼ぶ側は触らない)・付け根=砂埃の中心の地面の点・地面に付いた粉塵=寝かせる
+    if (this.projFrame) this.projFxAt(sp, x, y, 'fx'); // ?proj=1(段階3・E1): ヘルパの中で分岐(呼ぶ側は触らない)・付け根=砂埃の中心の地面の点・砂埃=立ち昇る物=立つ(社長 2026-11-25)
   }
 
   // ════ バッチ FX-V3V4(research/FX_GAP_LEDGER.md): 受領素材の描画部品 ════════════

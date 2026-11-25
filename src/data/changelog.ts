@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5788', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5787', items: ['ステージ2の灰に、赤熱して昇り、冷めて灰に戻る火の粉が混ざるようになった', '爆発すると周りの灰が渦を巻いて吹き散り、火の粉が噴き上がる'] },
   { version: '0.25.5786', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5785', items: ['ステージ2の蛍が火山灰に変わった。下から斜め上へ、風に揺られてゆっくり昇っていく。明かりの中ほど灰がよく見える'] },

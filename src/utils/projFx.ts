@@ -145,8 +145,9 @@ export const PROJ_FX_ROWS = {
   'B8': { type: 'point', k: 'bullet', what: 'syncDroneBoomerangs' },
   'B9': { type: 'done', k: 'none', what: 'syncDecoys' },
   'B10.bullet': { type: 'point', k: 'bullet', what: 'NewGunsFx(satellite orb/released shot/blob shot)' },
-  'B10.fx': { type: 'point', k: 'fx', what: 'NewGunsFx(steam/sparks/fire smoke/release lines/marks)' },
-  'B10.ground': { type: 'shape', k: 'fxFlat', what: 'NewGunsFx(scorch/blob shadow/drag dust/stop dust)' },
+  // 引きずり・止まった時の土埃は立ち昇る物=点(社長 2026-11-25「歩きで出る砂塵まで寝ちゃってる」→ 立つ物は寝かせない)
+  'B10.fx': { type: 'point', k: 'fx', what: 'NewGunsFx(steam/sparks/fire smoke/release lines/marks/drag dust/stop dust)' },
+  'B10.ground': { type: 'shape', k: 'fxFlat', what: 'NewGunsFx(scorch/blob shadow)' },
   'B10.fan': { type: 'shape', k: 'none', what: 'NewGunsFx(scanFan)' },
   'B11': { type: 'seg', k: 's', what: 'PileDriverFx(pile)' },
   // 蒸気の噴き・蒸気の粒=主人公の体の相似(筒から出て近くを漂う=付け根≒主人公の足元・実装に合わせた・監査 C-3)。火花・閃光=刺さった所の点
@@ -170,7 +171,7 @@ export const PROJ_FX_ROWS = {
   'C10.slash': { type: 'point', k: 'fx', what: 'killFxSlash' },
   'C10.text': { type: 'hud', k: 'hud', what: 'killFxText' },
   'C10.blood': { type: 'origin', k: 'fx', what: 'kamitsuki/killFxBlood' },
-  'C10.puff': { type: 'shape', k: 'fxFlat', what: 'killFx return landing dust puff (on the ground)' }, // 監査2巡目 A-6
+  'C10.puff': { type: 'origin', k: 'fx', what: 'killFx return landing dust puff (rising grains)' }, // 社長 2026-11-25: 舞い上がる粒=立つ物(寝かせない)
   // 白い筋は赤い幕と同じ画面の絵(大きさ・向きは今のまま)・X の交点だけ相手の体の中心の写りへ平行移動(CR-8)
   'C11.strike': { type: 'hud', k: 'hud', what: 'satsujin(strikes)' },
   'C11.shadow': { type: 'body', k: 'body', what: 'satsujin(shadow)' },
@@ -198,9 +199,10 @@ export const PROJ_FX_ROWS = {
   'D9.ground': { type: 'shape', k: 'fxFlat', what: 'bossFire outer glow (on the ground)' },
   'D10': { type: 'shape', k: 'fxFlat', what: 'arrow rain soil' },
   'D11': { type: 'point', k: 'fx', what: 'fallback art' },
-  // E. 地面の粉・粒
-  'E1': { type: 'shape', k: 'fxFlat', what: 'drawDust' },
-  'E2': { type: 'shape', k: 'fxFlat', what: 'drawRunDust' },
+  // E. 地面の粉・粒(砂塵=立ち昇る物=立つ。社長 2026-11-25「歩きで出る砂塵まで寝ちゃってる」で ★#30 の寝かせるから外した。
+  //    足元の点だけ投影し、形は画面に正対・大きさは s_fx)
+  'E1': { type: 'point', k: 'fx', what: 'drawDust' },
+  'E2': { type: 'point', k: 'fx', what: 'drawRunDust' },
   // F. 光
   'F1': { type: 'point', k: 'fx', what: 'strong glow art' },
   'F2': { type: 'point', k: 'fx', what: 'small glow art' },

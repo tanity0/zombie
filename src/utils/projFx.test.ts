@@ -284,11 +284,12 @@ describe('projFx: 台帳', () => {
     expect(PROJ_FX_ROWS['B10.fx'].k).toBe('fx');
   });
   it('★#30: 地面に接する物は形(寝かせる)・宙にある物は点のまま', () => {
-    for (const id of ['A14.stain', 'A16.floor', 'B10.ground', 'D9.ground', 'D10', 'E1', 'E2', 'G5.ripple', 'D2.land', 'D2.frost', 'F2.foot', 'F2.refl', 'C10.puff'] as const) {
+    for (const id of ['A14.stain', 'A16.floor', 'B10.ground', 'D9.ground', 'D10', 'G5.ripple', 'D2.land', 'D2.frost', 'F2.foot', 'F2.refl'] as const) {
       expect(PROJ_FX_ROWS[id].type, id).toBe('shape');
       expect(PROJ_FX_ROWS[id].k, id).toBe('fxFlat');
     }
-    for (const id of ['A14.drop', 'A13', 'A16', 'G2'] as const) expect(PROJ_FX_ROWS[id].type, id).not.toBe('shape');
+    // 立ち昇る物(砂塵・土煙)は地面から出ても寝かせない(社長 2026-11-25)
+    for (const id of ['A14.drop', 'A13', 'A16', 'G2', 'E1', 'E2', 'C10.puff', 'B10.fx'] as const) expect(PROJ_FX_ROWS[id].type, id).not.toBe('shape');
   });
   it('弾の形は弾の種類の表で決める(監査 A-4・3-7d)', () => {
     expect(projBulletForm({ weaponType: 'enemy_bolt', rocketArt: false, arrowArt: false })).toBe('round');

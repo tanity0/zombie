@@ -227,9 +227,10 @@ const paint = (g: Graphics, out: ProjPathOut, fill: FillInput | undefined, strok
 
 // 円の形の部品は2組(社長 2026-11-24 裁定=案A「判定のある円だけ今の形のまま、判定の無い円を真円を倒した楕円にする」):
 // - projCircle/projEllipse/projArcLine/projSector/projAnnulus/projRingsBegin+projRing/projCircleLifted = **厳密**(頂点ごとに投影)。
-//   判定の半径そのものを描く円(赤い予告・紫の範囲・カウンターの届く距離・判定を持つ床 等=危険を伝える絵)はこちら。
+//   判定の半径そのものを描く円(赤い予告・紫の範囲・カウンターの届く距離・判定を持つ床 等=危険を伝える絵)と、入ると何かが起きる/中に居る間
+//   進む範囲の円(囲い・二人組の待機の円・帰還・祠・拠点・商人の円と、その滞在の弧=store の距離の判定と同じ半径)はこちら。
 // - projFlatCircle/projFlatEllipse/projFlatArcLine = **真円を倒した楕円**(中心を投影し、中心の s と中心の行の縦の詰めで一様に潰す)。
-//   判定の無い円(商人・拠点・祠の円、影・煙・派手さの輪 等)はこちら。呼び出し元で選ぶ。
+//   判定の無い円(影・地面の跡・派手さの輪・満ちた後に広がる輪 等)はこちら。呼び出し元で選ぶ。
 
 /** 円(縁は projCircleInto の頂点列=厳密)。 */
 export const projCircle = (g: Graphics, f: ProjFrame, wx: number, wy: number, r: number, fill?: FillInput, stroke?: StrokeStyle, look: ProjLineLook = 'tele'): void => {

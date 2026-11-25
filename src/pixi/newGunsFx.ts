@@ -146,7 +146,7 @@ export class NewGunsFx {
   }
   /**
    * ?proj=1(段階3・B10.ground・★#30「地面に付いた物の型」): 命令 n0 から今までを、地面の中心 (ax, ay) で寝かせる
-   * (横=s_fx・縦=横×中心の縦の詰め/s・縦は横を超えない=閃光の輪と同じ潰し方)。焦げ跡・足元の影・土埃。
+   * (横=s_fx・縦=横×中心の縦の詰め/s・縦は横を超えない=閃光の輪と同じ潰し方)。焦げ跡・足元の影(土埃は立ち昇る物=点の pt)。
    */
   private ptFlat(gfx: Graphics, n0: number, ax: number, ay: number): void {
     const pf = this.pf;
@@ -515,13 +515,13 @@ export class NewGunsFx {
       const p = pushed[pi];
       const l = Math.hypot(p.dx, p.dy) || 1;
       const bx = -p.dx / l, by = -p.dy / l;
-      const n0 = this.n(g); // ?proj=1(段階3・B10.ground・★#30): 引きずりの土埃=地面に付いた粉塵=寝かせる(付け根=押された敵の足元)
+      const n0 = this.n(g); // ?proj=1(段階3・B10.fx): 引きずりの土埃=立ち昇る物=点(付け根=押された敵の足元・社長 2026-11-25 で寝かせるから外した)
       for (let k = 0; k < 3; k++) {
         const ph = frac(gameTime / 420 + k / 3 + pi * 0.21);
         const d = 4 + k * 7 + ph * 6;
         g.circle(p.x + bx * d, p.y + by * d - ph * 4, 3 + k * 2 + ph * 3).fill({ color: VOID_DUST, alpha: 0.22 * (1 - ph) });
       }
-      this.ptFlat(g, n0, p.x, p.y);
+      this.pt(g, n0, p.x, p.y);
     }
   }
 
@@ -529,11 +529,11 @@ export class NewGunsFx {
   private drawEvent(gameTime: number, g: Graphics, f: Graphics, ev: NewGunsEvent): void {
     const age = gameTime - ev.at;
     if (age < 0) return;
-    // ?proj=1(段階3・B10): 発射の煙・放つ線=点(付け根=出来事の点)。止まった時の土埃=地面に付いた粉塵(B10.ground・★#30)=寝かせる
+    // ?proj=1(段階3・B10): 発射の煙・放つ線・止まった時の土埃(立ち昇る物・社長 2026-11-25 で寝かせるから外した)=点(付け根=出来事の点)。
+    // 止まった時の地面のひび(g)は drawEventBody の中で頂点ごとに投影済み
     const nF = this.n(f);
     this.drawEventBody(gameTime, age, g, f, ev);
-    if (ev.kind === 'blob-stop') this.ptFlat(f, nF, ev.x, ev.y);
-    else this.pt(f, nF, ev.x, ev.y);
+    this.pt(f, nF, ev.x, ev.y);
   }
   private drawEventBody(gameTime: number, age: number, g: Graphics, f: Graphics, ev: NewGunsEvent): void {
     void gameTime;
