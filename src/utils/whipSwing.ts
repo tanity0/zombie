@@ -33,11 +33,16 @@ export const WHIP_SWING_SHRINK_STEP_PX = 6;
 export const WHIP_SWING_MIN_RADIUS_FRAC = 0.2;
 /** 投げて飛ぶ間の当たりの見る刻み(px・壁を飛び越さない)。 */
 export const WHIP_THROW_SUBSTEP_PX = 12;
+/** 途中で放した後に滑る長さ(ms)。回っていた勢いから一定の減速で止まる(瞬間停止しない)。 */
+export const WHIP_DROP_MS = 140;
+/** これより遅ければ滑らせずにその場で放す(px/s)。 */
+export const WHIP_DROP_MIN_SPEED = 60;
 
 /** 振り回しの状態(プレイヤーに1つ・store の GameState.whipSwing)。時計は gameTime。 */
 export interface WhipSwingState {
   enemyId: string;
-  phase: 'swing' | 'thrown';
+  /** swing=回している / thrown=投げて飛んでいる / drop=途中で放した後、回っていた勢いのまま短く滑って止まる(着弾なし・止まった所で倒れる)。 */
+  phase: 'swing' | 'thrown' | 'drop';
   /** 掴んだ時刻。 */
   startAt: number;
   /** 振り回しの最長(ms)。 */
@@ -61,6 +66,14 @@ export interface WhipSwingState {
   py: number;
   /** 今の実際の半径(壁で縮めた後)。 */
   rNow: number;
+  /** cx,cy を決めた gameTime(投げ・放すの起点=最後に動かしたフレーム。投げた直後の1フレームの止まりを出さない)。 */
+  at?: number;
+  /** 掴んだ敵の今の速さ(world px/s・前のフレームとの差)。放した時に勢いを持ち越す元。 */
+  vx?: number;
+  vy?: number;
+  /** 壁・帯の縁で半径を縮めている量(px)と、その変わる速さ(px/s)。目標へ臨界減衰のばねで寄る(半径が1フレームで跳ばない)。 */
+  shrink?: number;
+  shrinkV?: number;
   /** 投げ(phase='thrown' の時だけ)。fromX/fromY=放した時の敵の中心・ux/uy=向き・v0=出だしの速さ(px/s)・maxDist=最大距離。 */
   throwAt?: number;
   fromX?: number;
@@ -71,6 +84,9 @@ export interface WhipSwingState {
   maxDist?: number;
   /** 前のフレームまでに飛んだ距離(px)。 */
   dNow?: number;
+  /** 放した瞬間の速さ(回っていた勢い)と、投げの直進の速さの差(world px/s)。描画が出だしの曲がりに使う(判定は直進のまま)。 */
+  rvx?: number;
+  rvy?: number;
   /** プレイヤーの入力(近接・フリック)で投げた(自動の投げは false)。技の行を出すのはこの時の着弾だけ。 */
   byInput?: boolean;
   /** 回し終えた周の数(1周ごとの音を鳴らした所まで)。 */
@@ -122,10 +138,36 @@ export const whipSwingTurned = (tMs: number, accelMs = WHIP_SWING_ACCEL_MS, peri
   return w * A * G(1) + w * (t - A);
 };
 
-/** 掴んでから t ms の半径の目標(掴んだ位置の距離 r0 から回す半径 R へ、加速と同じ尺で寄る)。 */
+/**
+ * 0→1 の寄り方: 出だしの速さ0(止まっている所から動き出す)・前寄りに速く・着く時も速さ0。速さ = 12u(1-u)^2(u=1/3 で最大)。
+ * 半径の寄りと、掴んだ瞬間の縄の巻き付きが使う(ease-out だと出だしの速さが最大=掴んだ瞬間に速さが跳ぶ)。
+ */
+export const easeStartStop = (u: number): number => {
+  const q = Math.max(0, Math.min(1, u));
+  return q * q * (6 - 8 * q + 3 * q * q);
+};
+/** 掴んでから t ms の半径の目標(掴んだ位置の距離 r0 から回す半径 R へ、加速と同じ尺で寄る・寄り始めと着きの速さ0)。 */
 export const whipSwingRadiusAt = (tMs: number, r0: number, R: number, accelMs = WHIP_SWING_ACCEL_MS): number => {
   const u = Math.max(0, Math.min(1, tMs / Math.max(1, accelMs)));
-  return r0 + (R - r0) * easeOut(u);
+  return r0 + (R - r0) * easeStartStop(u);
+};
+
+/** 壁で半径を縮める量が目標へ寄る速さの時定数(ms・臨界減衰)。 */
+export const WHIP_SWING_SHRINK_TAU_MS = 28;
+/** 壁を先読みする時間(ms)と刻みの数(回る先の壁に、着く前から縮み始める)。 */
+export const WHIP_SWING_SHRINK_LOOKAHEAD_MS = 120;
+export const WHIP_SWING_SHRINK_LOOKAHEAD_STEPS = 4;
+/**
+ * 臨界減衰のばね(1次元)の dt ms 後。x=今の値・v=今の速さ(/s)・target=目標。速さを持ち越したまま目標へ寄り、行き過ぎない。
+ * (壁で半径を縮める量に使う=縮み始め・戻り始めに速さが跳ばない。)
+ */
+export const criticalSpringStep = (x: number, v: number, target: number, dtMs: number, tauMs = WHIP_SWING_SHRINK_TAU_MS): { x: number; v: number } => {
+  const t = Math.max(0, dtMs) / 1000;
+  const w = 1000 / Math.max(1, tauMs);
+  const x0 = x - target;
+  const e = Math.exp(-w * t);
+  const c = v + w * x0;
+  return { x: target + (x0 + c * t) * e, v: (v - w * c * t) * e };
 };
 
 /** 掴んでから t ms で回し終えた周の数(1周ごとの音)。 */
@@ -212,6 +254,12 @@ export const whipThrowSpeed = (tMs: number, v0: number, maxDist: number, endFrac
 /** 投げの出だしの速さ=放した時の接線の速さ(角速度×半径)・下限あり。 */
 export const whipThrowStartSpeed = (angVel: number, radius: number): number =>
   Math.max(WHIP_THROW_MIN_SPEED, Math.abs(angVel) * Math.max(0, radius));
+/** 途中で放した後、t ms で滑った距離(px)。出だし v0(回っていた速さ)から一定の減速で WHIP_DROP_MS に止まる。 */
+export const whipDropDist = (tMs: number, v0: number, dropMs = WHIP_DROP_MS): number => {
+  const T = Math.max(1, dropMs) / 1000;
+  const t = Math.max(0, Math.min(T, tMs / 1000));
+  return Math.max(0, v0) * (t - (t * t) / (2 * T));
+};
 
 /**
  * 投げて飛ぶ1フレームの当たり。前の距離 d0 から今の距離 d1 まで、刻みで進めて最初に止まる所を返す。

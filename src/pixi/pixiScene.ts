@@ -134,8 +134,8 @@ import {
 } from '../utils/katanaSlashSheet'; // プレイヤーの刀の斬撃シート(社長支給2026-11-22)
 import {
   whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
-  whipTetherShape, whipTetherBow, whipTetherRetract, whipFlyOffset, whipFlyLiftPx, whipFlyPeakPx, type WhipRopeShape,
-  whipTetherEntry, whipTetherGlowK, whipThrowStreak, whipFlyVisualTimeAt,
+  whipTetherShape, whipTetherBow, whipTetherRetract, whipFlyLiftPx, whipFlyPeakPx, type WhipRopeShape,
+  whipTetherEntry, whipTetherGlowK, whipThrowStreak, whipFlyVisualTimeAt, whipFlyViewOffset, whipFlyReleaseBlend, whipTetherRetractTip, whipTrailFade,
 } from '../utils/whipSwingMotion'; // ★鞭の振りの本体と体の動き・絡め取りの線・投げた敵の飛び方
 import { whipSwingAngVel, whipSwingMaxAngVel, whipThrowDurationMs, type WhipSwingState } from '../utils/whipSwing'; // ★鞭の絡め取り→振り回し→投げ(読むだけ) // ★刀の殺陣の赤い画面の濃さ
 import { screamerMarkVisible } from '../utils/screamerGate';
@@ -45789,8 +45789,18 @@ export class PixiScene {
   private whipTetherPts = new WeakMap<MeshRope, Point[]>();
   private whipTetherScratch = makeProjLiftPoint();
   /** 前のフレームに張っていた線(放した瞬間の先端=地面の点と高さ・回る向き・太さの元・たわみ・光の縁の濃さ)。 */
-  private whipTetherLast: { tipX: number; tipY: number; tipH: number; dir: 1 | -1; reach: number; bow: number; glowK: number } | null = null;
-  private whipTetherRelease: { at: number; tipX: number; tipY: number; tipH: number; dir: 1 | -1; reach: number; bow: number; glowK: number } | null = null;
+  /** relX/relY=手元→先・vRelX/vRelY=その速さ(手元に対する・px/ms・前のフレームとの差)・gt=その gameTime・drawnAt=描いた壁時計(巻き戻りの起点)。 */
+  private whipTetherLast: {
+    tipX: number; tipY: number; tipH: number; dir: 1 | -1; reach: number; bow: number; glowK: number;
+    relX: number; relY: number; vRelX: number; vRelY: number; gt: number; drawnAt: number;
+  } | null = null;
+  private whipTetherRelease: {
+    at: number; tipX: number; tipY: number; tipH: number; dir: 1 | -1; reach: number; bow: number; glowK: number;
+    relX: number; relY: number; vRelX: number; vRelY: number; gt: number; drawnAt: number;
+  } | null = null;
+  /** 放した瞬間の軌跡(回った円に沿った弧)。尾から縮みながら薄れて消える(whipTrailFade)。 */
+  private whipTrailRelease: { at: number; ax: number; ay: number; rad: number; a: number; dir: 1 | -1; spanA: number; footOff: number; bh: number; width: number; alpha: number } | null = null;
+  private whipTrailLast: PixiScene['whipTrailRelease'] = null;
   /** 線・軌跡・筋の点(world の地面の点 x,y と、そこからの高さ h)。 */
   private whipTetherWorld: { x: number; y: number; h: number }[] = [];
   private whipTrailWorld: { x: number; y: number; h: number }[] = [];
@@ -45913,7 +45923,13 @@ export class PixiScene {
       const bow = whipTetherBow(frac, t) * ent;
       const glowK = whipTetherGlowK(frac);
       this.whipTetherRelease = null;
-      this.whipTetherLast = { tipX: tx, tipY: ty, tipH: th, dir: sw.dir, reach: sw.reach, bow, glowK };
+      // 先の速さ(手元に対する・px/ms): 放した瞬間に先がその勢いのまま進み出すための元(前のフレームの手元→先との差)。
+      const relX = tx - ax, relY = ty - ay;
+      const prev = this.whipTetherLast;
+      const dg = prev ? gameTime - prev.gt : 0;
+      const vRelX = prev && dg > 0 ? (relX - prev.relX) / dg : prev?.vRelX ?? 0;
+      const vRelY = prev && dg > 0 ? (relY - prev.relY) / dg : prev?.vRelY ?? 0;
+      this.whipTetherLast = { tipX: tx, tipY: ty, tipH: th, dir: sw.dir, reach: sw.reach, bow, glowK, relX, relY, vRelX, vRelY, gt: gameTime, drawnAt: Date.now() };
       this.drawWhipTetherLine(ax, ay, tx, ty, th, whipTetherShape(bow, sw.dir, 0.4 + 0.6 * ent), sw.reach, tex, glowK);
       // 軌跡: 掴んだ敵の後ろへ、回った円に沿った細い弧(尾が透明・先=敵の体の中心)。
       const arc = getWhipArcTex();
@@ -45926,29 +45942,45 @@ export class PixiScene {
       const rx = ecx - ax, ry = ecy - ay;
       const rad = Math.hypot(rx, ry);
       const spanA = 0.95 * frac;
+      this.whipTrailRelease = null;
       if (rad > 8 && spanA > 0.05) {
         const a = Math.atan2(ry, rx);
-        const n = PixiScene.WHIP_TRAIL_POINTS;
         const footOff = efb.footY - ecy; // 判定の中心 → 足元(地面の点)
-        const world = this.whipTrailWorld;
-        for (let i = 0; i < n; i++) {
-          const ai = a - sw.dir * spanA * (1 - i / (n - 1));
-          const w = world[i] ?? (world[i] = { x: 0, y: 0, h: 0 });
-          w.x = ax + Math.cos(ai) * rad; w.y = ay + Math.sin(ai) * rad + footOff; w.h = bh;
-        }
-        world.length = n;
-        this.placeWhipRope(tr, world, 0, (efb.boxH * 0.22 * depthK) / arc.height, 0.5 * frac * frac);
-      } else tr.visible = false;
+        const width = (efb.boxH * 0.22 * depthK) / arc.height, alpha = 0.5 * frac * frac;
+        this.whipTrailLast = { at: Date.now(), ax, ay, rad, a, dir: sw.dir, spanA, footOff, bh, width, alpha };
+        this.placeWhipTrail(tr, this.whipTrailLast, 1, 1);
+      } else { tr.visible = false; this.whipTrailLast = null; }
       return;
     }
-    if (ropes.trail) ropes.trail.visible = false;
-    // 放した(投げた・落とした): 線の先が加速しながら手元へ巻き戻って消える。
-    if (this.whipTetherLast) { this.whipTetherRelease = { at: Date.now(), ...this.whipTetherLast }; this.whipTetherLast = null; }
+    // 放した(投げた・落とした): 軌跡は放した所に残したまま、尾から縮みながら薄れて消える(1フレームで消さない)。
+    if (this.whipTrailLast) { this.whipTrailRelease = this.whipTrailLast; this.whipTrailLast = null; }
+    const trel = this.whipTrailRelease;
+    const tf = trel && ropes.trail ? whipTrailFade(Date.now() - trel.at) : null;
+    if (trel && tf && ropes.trail) this.placeWhipTrail(ropes.trail, trel, tf.spanK, tf.alphaK);
+    else { this.whipTrailRelease = null; if (ropes.trail) ropes.trail.visible = false; }
+    // 放した(投げた・落とした): 線の先は回っていた勢いのまま進み出し、加速しながら手元へ巻き戻って消える。
+    // 起点=最後に張った線を描いた時刻(放した後の最初のフレームで先が止まって見えない)。
+    if (this.whipTetherLast) { this.whipTetherRelease = { ...this.whipTetherLast, at: this.whipTetherLast.drawnAt }; this.whipTetherLast = null; }
     const rel = this.whipTetherRelease;
-    const rt = rel ? whipTetherRetract(Date.now() - rel.at, rel.bow) : null;
-    if (!rel || !rt) { this.whipTetherRelease = null; this.hideWhipTether(); return; }
-    const bx = ax + (rel.tipX - ax) * (1 - rt.k), by = ay + (rel.tipY - ay) * (1 - rt.k);
+    const el = rel ? Date.now() - rel.at : 0;
+    const rt = rel ? whipTetherRetract(el, rel.bow) : null;
+    const tip = rel ? whipTetherRetractTip(el, rel.relX, rel.relY, rel.vRelX, rel.vRelY) : null;
+    if (!rel || !rt || !tip) { this.whipTetherRelease = null; this.hideWhipTether(); return; }
+    const bx = ax + tip.x, by = ay + tip.y;
     this.drawWhipTetherLine(ax, ay, bx, by, rel.tipH * (1 - rt.k), whipTetherShape(rt.bow, rel.dir, rt.alpha), rel.reach, tex, rel.glowK * (1 - rt.k), rt.thick);
+  }
+  /** 回った円に沿った軌跡を置く(spanK=長さの掛け・尾の側から縮む/alphaK=濃さの掛け)。点は地面の点+高さ。 */
+  private placeWhipTrail(tr: MeshRope, p: NonNullable<PixiScene['whipTrailRelease']>, spanK: number, alphaK: number): void {
+    const n = PixiScene.WHIP_TRAIL_POINTS;
+    const world = this.whipTrailWorld;
+    const span = p.spanA * spanK;
+    for (let i = 0; i < n; i++) {
+      const ai = p.a - p.dir * span * (1 - i / (n - 1));
+      const w = world[i] ?? (world[i] = { x: 0, y: 0, h: 0 });
+      w.x = p.ax + Math.cos(ai) * p.rad; w.y = p.ay + Math.sin(ai) * p.rad + p.footOff; w.h = p.bh;
+    }
+    world.length = n;
+    this.placeWhipRope(tr, world, 0, p.width, p.alpha * alphaK);
   }
   /**
    * ★投げた敵の後ろの風の筋(見え方の監査2巡目・派手さの絵=判定なし)。飛ぶ敵の絵(判定より少し遅れる位置+飛ぶ高さ)に毎フレーム付け、
@@ -45983,8 +46015,12 @@ export class PixiScene {
     for (let i = 0; i < n; i++) {
       const d = st.tailD + (st.headD - st.tailD) * (i / (n - 1));
       const w = world[i] ?? (world[i] = { x: 0, y: 0, h: 0 });
-      w.x = f.fromX + f.ux * d; w.y = f.fromY + f.uy * d + footOff;
-      const lift = i === n - 1 ? view.lift : whipFlyLiftPx(whipFlyVisualTimeAt(d, f.v0, f.maxDist), f.flyMs, peak, f.landAt);
+      // 放した瞬間の曲がり(回っていた勢い→直進)の横のずれも、その距離を通った時刻のぶんだけ乗せる=筋が体の通った跡をなぞる。
+      const ti = i === n - 1 ? t : whipFlyVisualTimeAt(d, f.v0, f.maxDist);
+      const b = whipFlyReleaseBlend(ti, f.rvx ?? 0, f.rvy ?? 0);
+      const along = b.x * f.ux + b.y * f.uy;
+      w.x = f.fromX + f.ux * d + (b.x - f.ux * along); w.y = f.fromY + f.uy * d + footOff + (b.y - f.uy * along);
+      const lift = i === n - 1 ? view.lift : whipFlyLiftPx(ti, f.flyMs, peak, f.landAt);
       w.h = lift + bodyH;
     }
     world.length = n;
@@ -45997,7 +46033,7 @@ export class PixiScene {
    */
   private whipFly: {
     enemyId: string; throwAt: number; v0: number; maxDist: number; flyMs: number; ux: number; uy: number; fromX: number; fromY: number;
-    logicalD: number; landAt?: number; landKind?: 'max' | 'hit'; landD?: number;
+    logicalD: number; landAt?: number; landKind?: 'max' | 'hit'; landD?: number; rvx?: number; rvy?: number;
   } | null = null;
   private updateWhipFly(sw: WhipSwingState | null, enemies: readonly Enemy[], gameTime: number): void {
     if (sw && sw.phase === 'thrown' && sw.throwAt !== undefined && sw.v0 !== undefined && sw.maxDist !== undefined) {
@@ -46005,7 +46041,7 @@ export class PixiScene {
       if (!f || f.enemyId !== sw.enemyId || f.throwAt !== sw.throwAt) {
         f = this.whipFly = {
           enemyId: sw.enemyId, throwAt: sw.throwAt, v0: sw.v0, maxDist: sw.maxDist, flyMs: whipThrowDurationMs(sw.v0, sw.maxDist),
-          ux: sw.ux ?? 1, uy: sw.uy ?? 0, fromX: sw.fromX ?? sw.cx, fromY: sw.fromY ?? sw.cy, logicalD: 0,
+          ux: sw.ux ?? 1, uy: sw.uy ?? 0, fromX: sw.fromX ?? sw.cx, fromY: sw.fromY ?? sw.cy, logicalD: 0, rvx: sw.rvx, rvy: sw.rvy,
         };
       }
       f.logicalD = sw.dNow ?? 0;
@@ -46030,9 +46066,7 @@ export class PixiScene {
   private whipFlyView(id: string, gameTime: number, bodyH: number): { dx: number; dy: number; lift: number } | null {
     const f = this.whipFly;
     if (!f || f.enemyId !== id) return null;
-    const t = gameTime - f.throwAt;
-    const off = whipFlyOffset({ tMs: t, v0: f.v0, maxDist: f.maxDist, logicalD: f.logicalD, landAtMs: f.landAt, landKind: f.landKind, landD: f.landD });
-    return { dx: f.ux * off, dy: f.uy * off, lift: whipFlyLiftPx(t, f.flyMs, whipFlyPeakPx(bodyH), f.landAt) };
+    return whipFlyViewOffset({ ...f, tMs: gameTime - f.throwAt }, bodyH);
   }
   private drawWhipSprite(e: Extract<VisualEffect, { kind: 'whip' }>, now: number) {
     const t = Math.min(1, (now - e.createdAt) / e.duration);

@@ -2911,7 +2911,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         const att = useGameStore.getState().attention;
         // ★鞭の振り回しは、カットイン(アテンション)で操作が止まったら途中で放す(research/WHIP_FOLLOWUP.md §8-7・この間はシミュが止まる)。
-        if (att && useGameStore.getState().whipSwing?.phase === 'swing') useGameStore.getState().releaseWhipSwing();
+        if (att && (useGameStore.getState().whipSwing?.phase ?? 'thrown') !== 'thrown') useGameStore.getState().releaseWhipSwing(); // 放した後に滑っている間(drop)も
         // v0.25.2953(社長指示「ボスモードもボス消えるまでは終わらないで」): 練習ランの勝利は
         // **死亡アテンション(ストップ+崩壊)を見せ終えてから**確定する。attention が無い場合でも
         // 最低1.2秒は崩壊の絵を見せる(打刻は撃破の瞬間=gameStoreのdamage経路)。
@@ -3000,7 +3000,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // 納品ロックは gameWon で必ず終わるので、ロック中に gameTime が進んでも以降の進行に影響しない。
       if (useGameStore.getState().deliveryLocked) {
         // ★鞭の振り回しは、会話で操作が止まったら途中で放す(research/WHIP_FOLLOWUP.md §8-7)。
-        if (useGameStore.getState().whipSwing?.phase === 'swing') useGameStore.getState().releaseWhipSwing();
+        if ((useGameStore.getState().whipSwing?.phase ?? 'thrown') !== 'thrown') useGameStore.getState().releaseWhipSwing(); // 放した後に滑っている間(drop)も
         const dlSt = useGameStore.getState();
         // ステージ1の1周目の到着の会話(社長報告2026-11-20): 同じロックで世界を止めるが、ゲーム時刻は進めない
         // (会話の後もゲームが続く=タイマーを飛ばさない)。通信の時計だけを別に進める(行の尺はいつもどおり)。

@@ -164,3 +164,58 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
     expect(en('n').health).toBeLessThan(hpN); // その場の爆発
   });
 });
+
+// ★慣性(社長「鞭は動きがギクシャクしない様に慣性に従って自然に動く様に注意してね」): 1フレームごとの位置が跳ばない・止まらない。
+describe('振り回し→投げ→放すの継ぎ目(1フレームごとの位置)', () => {
+  const F = 1000 / 60;
+  const track = (frames: number, act: (f: number) => void = () => {}) => {
+    const out: { x: number; y: number; phase: string }[] = [];
+    for (let f = 0; f < frames; f++) {
+      act(f);
+      step(F);
+      const e = st().enemies.find(x => x.id === 'z');
+      if (!e) break;
+      out.push({ x: e.x + e.width / 2, y: e.y + e.height / 2, phase: st().whipSwing?.phase ?? 'none' });
+    }
+    return out;
+  };
+  const steps = (p: { x: number; y: number }[]) => p.slice(1).map((q, i) => Math.hypot(q.x - p[i].x, q.y - p[i].y));
+  it('投げたフレームで止まらない(入力でも自動でも、放した次のフレームから直進の速さで進む)', () => {
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')] });
+    swing();
+    const p = track(40, f => { if (f === 24) st().tryFlickFollowup(1, 0); });
+    const s = steps(p);
+    const i = p.findIndex(q => q.phase === 'thrown');
+    expect(i).toBeGreaterThan(0);
+    expect(s[i - 1]).toBeGreaterThan(0.7 * s[i - 2]); // 放したフレームの1歩が0にならない
+    // 自動の投げ
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')], whipSwing: null });
+    swing();
+    const p2 = track(Math.ceil(WHIP_SWING_MAX_MS / F) + 10);
+    const s2 = steps(p2);
+    const j = p2.findIndex(q => q.phase === 'thrown');
+    expect(j).toBeGreaterThan(0);
+    expect(Math.min(s2[j - 1], s2[j])).toBeGreaterThan(0.7 * s2[j - 2]);
+  });
+  it('鞭を外して途中で放す: 回っていた勢いのまま滑って止まる(瞬間停止しない)・止まったら掴みを外す', () => {
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')] });
+    swing();
+    const p = track(40, f => { if (f === 25) useGameStore.setState(s => ({ player: { ...s.player, subWeapons: [] } })); });
+    const s = steps(p);
+    const i = p.findIndex(q => q.phase === 'drop');
+    expect(i).toBeGreaterThan(0);
+    expect(s[i - 1]).toBeGreaterThan(0.7 * s[i - 2]);
+    const k = p.findIndex(q => q.phase === 'none');
+    expect(k).toBeGreaterThan(i + 3);
+    for (let n = i; n < k; n++) expect(s[n]).toBeLessThanOrEqual(s[n - 1] + 0.5); // 減速だけ
+    expect(en('z').whipHeld).toBeFalsy();
+  });
+  it('帯の縁で回す: 半径を縮める時も1フレームで跳ばない', () => {
+    useGameStore.setState(s => ({ stageTheme: 'lab' as never, player: { ...s.player, y: -200 + 60 - s.player.height / 2 } }));
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')] });
+    swing();
+    const p = track(80);
+    const s = steps(p);
+    for (let n = 1; n < s.length; n++) if (p[n + 1]?.phase === 'swing' && p[n].phase === 'swing') expect(Math.abs(s[n] - s[n - 1])).toBeLessThan(4);
+  });
+});

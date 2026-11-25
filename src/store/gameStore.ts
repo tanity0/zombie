@@ -317,7 +317,8 @@ import { meleeImpactPoint, meleeNumberPoint, bandBoxOverlap } from '../utils/mel
 import {
   pickWhipGrabTarget, whipSwingSpinDir, whipSwingAngVel, whipSwingAngle, whipSwingRadiusAt, whipSwingHitDue, boxesOverlap, whipSwingClampRadius,
   whipSwingMaxMs, whipSwingAutoThrowDue, whipSwingTangent, pickWhipAutoThrowDir, whipThrowDurationMs, whipThrowDist, whipThrowStartSpeed, whipThrowStep,
-  whipSwingReleaseReason, whipThrowBlastPlan, whipSwingLaps, whipSwingLapRate,
+  whipSwingReleaseReason, whipThrowBlastPlan, whipSwingLaps, whipSwingLapRate, criticalSpringStep, whipDropDist,
+  WHIP_SWING_SHRINK_LOOKAHEAD_MS, WHIP_SWING_SHRINK_LOOKAHEAD_STEPS, WHIP_DROP_MIN_SPEED, WHIP_DROP_MS,
   WHIP_SWING_RADIUS_MULT, WHIP_SWING_MIN_RADIUS_FRAC, WHIP_THROW_DIST_MULT, WHIP_THROW_DAMAGE_MULT, WHIP_THROW_HITSTOP_MS, type WhipSwingState,
 } from '../utils/whipSwing';
 import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
@@ -3129,6 +3130,7 @@ const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux:
     enemyId, phase: 'swing', startAt: st.gameTime, maxMs: whipSwingMaxMs(skillLevel(st.player, 'slasher')),
     a0: r0 > 1 ? Math.atan2(ry, rx) : Math.atan2(uy, ux), r0, dir: whipSwingSpinDir(ux, uy, rx, ry),
     radius: reach * WHIP_SWING_RADIUS_MULT, reach, lastHits: {}, cx: ec.x, cy: ec.y, px: pc.x, py: pc.y, rNow: r0,
+    at: st.gameTime, vx: 0, vy: 0, shrink: 0, shrinkV: 0,
   };
   set(state => ({
     whipSwing: sw,
@@ -3263,6 +3265,9 @@ const landWhipThrow = (get: () => GameState, set: WhipSet, x: number, y: number,
 const releaseWhipSwingImpl = (get: () => GameState, set: WhipSet): void => {
   const sw = get().whipSwing;
   if (!sw) return;
+  releaseWhipHeld(get, set, sw);
+};
+const releaseWhipHeld = (get: () => GameState, set: WhipSet, sw: WhipSwingState): void => {
   const id = sw.enemyId;
   set(state => ({
     whipSwing: null,
@@ -3270,6 +3275,20 @@ const releaseWhipSwingImpl = (get: () => GameState, set: WhipSet): void => {
   }));
   const e = get().enemies.find(en => en.id === id);
   if (e && e.health > 0 && !isCorpse(e)) { const c = whipCenter(e); get().queueBlastLift(c.x, c.y, WHIP_RELEASE_LIFT_R, [id]); }
+};
+/**
+ * 途中で放す(鞭を外した・瞬間移動で手が離れた)時は、回っていた勢いのまま短く滑って止まり、止まった所で倒れる(慣性・瞬間停止しない)。
+ * 滑る間は掴んだ印のまま(攻撃しない・当たりを受けない)。速さが小さい時はその場で放す。
+ */
+const startWhipDrop = (get: () => GameState, set: WhipSet): void => {
+  const sw = get().whipSwing;
+  if (!sw || sw.phase !== 'swing') return;
+  const vx = sw.vx ?? 0, vy = sw.vy ?? 0, v = Math.hypot(vx, vy);
+  if (!(v >= WHIP_DROP_MIN_SPEED)) { releaseWhipSwingImpl(get, set); return; }
+  const gt = get().gameTime;
+  set(() => ({
+    whipSwing: { ...sw, phase: 'drop', throwAt: sw.at ?? gt, fromX: sw.cx, fromY: sw.cy, ux: vx / v, uy: vy / v, v0: v, maxDist: whipDropDist(WHIP_DROP_MS, v), dNow: 0 },
+  }));
 };
 /**
  * 投げる(§8-3): 振り回しの途中なら向き (dx,dy) へ。出だしの速さ=放した時の接線の速さ・最大距離=届く距離×2.5。飛ぶ向きへ縦に転がる(絵=格闘の投げの回りの流用)。
@@ -3287,8 +3306,11 @@ const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: numb
   const maxDist = sw.reach * WHIP_THROW_DIST_MULT;
   const flyMs = whipThrowDurationMs(v0, maxDist);
   const nowMs = Date.now();
+  // 飛ぶ時計は「最後に回す位置を決めたフレーム」から(放した点=その位置)。入力の時刻から数えると、次のフレームで0しか進まず1フレーム止まって見える。
+  // 回っていた勢い(vx,vy)と直進の速さの差は描画が出だしの曲がりに使う(判定は直進のまま)。
+  const rvx = (sw.vx ?? 0) - v0 * ux, rvy = (sw.vy ?? 0) - v0 * uy;
   set(state => ({
-    whipSwing: { ...sw, phase: 'thrown', throwAt: state.gameTime, fromX: sw.cx, fromY: sw.cy, ux, uy, v0, maxDist, dNow: 0, byInput },
+    whipSwing: { ...sw, phase: 'thrown', throwAt: sw.at ?? state.gameTime, fromX: sw.cx, fromY: sw.cy, ux, uy, v0, maxDist, dNow: 0, byInput, rvx, rvy },
     // 回りの向きは振り回しの向きを引き継ぐ(回していた勢いのまま転がる)。
     enemies: state.enemies.map(en => (en.id !== sw.enemyId ? en : { ...en, brThrowSpin: { at: nowMs, ms: Math.max(1, Math.round(flyMs)), dir: sw.dir } })),
   }));
@@ -3348,18 +3370,34 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
   if (sw.phase === 'swing') {
     const locked = isGameTimeStopped() || st.attention !== null || st.deliveryLocked || st.corridorRunInActive || st.farBackdrop === 'ending' || st.gameWon;
     const reason = whipSwingReleaseReason({ playerAlive: p.health > 0, locked, whipEquipped: isWhipMode(p), movedPx: Math.hypot(pc.x - sw.px, pc.y - sw.py) });
+    // 鞭を外した・瞬間移動=回っていた勢いのまま滑って止まる。死んだ・操作が止まった=その場で放す(場面が切り替わる)。
+    if (reason === 'weapon' || reason === 'teleport') { startWhipDrop(get, set); return get().whipSwing ? tickWhipSwingImpl(get, set) : { killed: 0 }; } // 滑りの1歩目もこのフレームで(止まりを出さない)
     if (reason) { releaseWhipSwingImpl(get, set); return { killed: 0 }; }
-    if (whipSwingAutoThrowDue(sw, gt)) {
-      const d = whipAutoThrowDir(get, sw);
-      startWhipThrow(get, set, d.x, d.y);
-      return { killed: 0 };
-    }
+    const autoThrow = whipSwingAutoThrowDue(sw, gt);
     const t = gt - sw.startAt;
-    const ang = whipSwingAngle(sw, t);
-    const ca = Math.cos(ang), sa = Math.sin(ang);
-    const want = whipSwingRadiusAt(t, sw.r0, sw.radius);
+    const minR = sw.radius * WHIP_SWING_MIN_RADIUS_FRAC;
+    const freeAt = (tt: number): { want: number; free: number; ca: number; sa: number } => {
+      const a = whipSwingAngle(sw, tt), ca = Math.cos(a), sa = Math.sin(a);
+      const want = whipSwingRadiusAt(tt, sw.r0, sw.radius);
+      const ok = (rr: number) => brawlerRectFree(get, pc.x + ca * rr - e.width / 2, pc.y + sa * rr - e.height / 2, e.width, e.height);
+      return { want, free: ok(want) ? want : whipSwingClampRadius(want, ok, minR), ca, sa };
+    };
+    const cur = freeAt(t);
+    const { want, ca, sa } = cur;
     const rectAt = (r: number) => ({ x: pc.x + ca * r - e.width / 2, y: pc.y + sa * r - e.height / 2 });
-    const r = whipSwingClampRadius(want, rr => { const q = rectAt(rr); return brawlerRectFree(get, q.x, q.y, e.width, e.height); }, sw.radius * WHIP_SWING_MIN_RADIUS_FRAC);
+    // 壁・帯の縁で縮める量は、回る先の壁を先読みした目標へ臨界減衰のばねで寄る(1フレームで半径が跳ばない・縮み始め/戻り始めの速さも跳ばない)。
+    // ただし今の位置が壁に入る分は必ず縮める(下限)。
+    let need = want - cur.free;
+    for (let k = 1; k <= WHIP_SWING_SHRINK_LOOKAHEAD_STEPS; k++) {
+      const f = freeAt(t + (WHIP_SWING_SHRINK_LOOKAHEAD_MS * k) / WHIP_SWING_SHRINK_LOOKAHEAD_STEPS);
+      need = Math.max(need, f.want - f.free);
+    }
+    const dtMs = Math.max(0, gt - (sw.at ?? gt));
+    const spr = criticalSpringStep(sw.shrink ?? 0, sw.shrinkV ?? 0, need, dtMs);
+    let shrink = spr.x, shrinkV = spr.v;
+    if (shrink < want - cur.free) { shrink = want - cur.free; shrinkV = Math.max(0, shrinkV); }
+    if (shrink < 0) { shrink = 0; shrinkV = Math.max(0, shrinkV); }
+    const r = Math.max(Math.min(want, minR), want - shrink);
     let pos = rectAt(r);
     if (!brawlerRectFree(get, pos.x, pos.y, e.width, e.height)) {
       // 下限まで縮めても居られない=行ける帯へ寄せる(帯の外へ出さない)。
@@ -3377,8 +3415,10 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
     // 1周ごとに風を切る音(回すほど少しずつ高く)。
     const lap = whipSwingLaps(t);
     if (lap > (sw.lap ?? 0)) brawlerSfx('whip-swing', 0.7, whipSwingLapRate(lap), 260);
+    const ncx = pos.x + e.width / 2, ncy = pos.y + e.height / 2;
+    const vx = dtMs > 0 ? ((ncx - sw.cx) / dtMs) * 1000 : (sw.vx ?? 0), vy = dtMs > 0 ? ((ncy - sw.cy) / dtMs) * 1000 : (sw.vy ?? 0);
     set(state => ({
-      whipSwing: { ...sw, cx: pos.x + e.width / 2, cy: pos.y + e.height / 2, px: pc.x, py: pc.y, rNow: r, lastHits, lap: Math.max(lap, sw.lap ?? 0) },
+      whipSwing: { ...sw, cx: ncx, cy: ncy, px: pc.x, py: pc.y, rNow: r, lastHits, lap: Math.max(lap, sw.lap ?? 0), at: gt, vx, vy, shrink, shrinkV },
       enemies: state.enemies.map(en => (en.id !== e.id ? en : {
         ...en, x: pos.x, y: pos.y, vx: 0, vy: 0, knockbackVx: 0, knockbackVy: 0, brHoldUntil: Math.max(en.brHoldUntil ?? 0, nowMs + WHIP_HOLD_REFRESH_MS),
       })),
@@ -3392,7 +3432,28 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
       hits += res.hits; killed += res.killed;
     }
     if (hits > 0) { set(() => ({ whipHitFxAt: Date.now() })); addWhipCharge(get, set, hits); }
+    // 最長で自動で投げる: このフレームの回す位置を決めてから放す(放した点=今の位置・次のフレームから直進=1フレーム止まらない)。
+    if (autoThrow && get().whipSwing?.phase === 'swing') {
+      const d = whipAutoThrowDir(get, get().whipSwing!);
+      startWhipThrow(get, set, d.x, d.y);
+    }
     return { killed };
+  }
+  if (sw.phase === 'drop') {
+    // 途中で放した後: 回っていた勢いのまま一定の減速で滑り、止まる(壁では手前で止まる)。止まった所で印を外して倒れる。
+    const fx = sw.fromX ?? sw.cx, fy = sw.fromY ?? sw.cy, dux = sw.ux ?? 1, duy = sw.uy ?? 0;
+    const el = gt - (sw.throwAt ?? gt);
+    const d0 = sw.dNow ?? 0, d1 = whipDropDist(el, sw.v0 ?? 0);
+    const stp = whipThrowStep(fx, fy, dux, duy, d0, d1, Infinity, () => false,
+      (x, y) => !brawlerRectFree(get, x - e.width / 2, y - e.height / 2, e.width, e.height));
+    set(state => ({
+      whipSwing: { ...sw, cx: stp.x, cy: stp.y, dNow: d1 },
+      enemies: state.enemies.map(en => (en.id !== e.id ? en : {
+        ...en, x: stp.x - e.width / 2, y: stp.y - e.height / 2, vx: 0, vy: 0, knockbackVx: 0, knockbackVy: 0, brHoldUntil: Math.max(en.brHoldUntil ?? 0, nowMs + WHIP_HOLD_REFRESH_MS),
+      })),
+    }));
+    if (stp.kind === 'wall' || el >= WHIP_DROP_MS) releaseWhipSwingImpl(get, set);
+    return { killed: 0 };
   }
   // 投げて飛んでいる(§8-3・§8-4)。投げて飛んでいる間は放す条件を見ない(手を離れている)。
   const fromX = sw.fromX ?? sw.cx, fromY = sw.fromY ?? sw.cy, ux = sw.ux ?? 1, uy = sw.uy ?? 0;

@@ -4,7 +4,7 @@ import {
   pickWhipGrabTarget, whipSwingSpinDir, whipSwingMaxAngVel, whipSwingAngVel, whipSwingTurned, whipSwingRadiusAt, whipSwingHitDue,
   boxesOverlap, whipSwingClampRadius, whipSwingMaxMs, whipSwingAutoThrowDue, whipSwingTangent, pickWhipAutoThrowDir,
   whipThrowDecel, whipThrowDurationMs, whipThrowDist, whipThrowSpeed, whipThrowStartSpeed, whipThrowStep, whipSwingReleaseReason,
-  whipBlastFalloff, whipThrowBlastPlan,
+  whipBlastFalloff, whipThrowBlastPlan, easeStartStop, criticalSpringStep, whipDropDist, WHIP_DROP_MS,
   WHIP_SWING_ACCEL_MS, WHIP_SWING_PERIOD_MS, WHIP_SWING_MAX_MS, WHIP_SWING_SLASHER_MS_PER_LV, WHIP_THROW_MIN_SPEED, WHIP_THROW_END_SPEED_FRAC, WHIP_SWING_TELEPORT_PX,
 } from './whipSwing';
 
@@ -188,5 +188,36 @@ describe('着弾の爆発(§6 の規約・投げた本人も満額)', () => {
     ]);
     // 本人が死んで着弾(selfId=null)=爆心だけ
     expect(whipThrowBlastPlan(0, 0, null, [pt('self', 0, 0)], 66)).toEqual([{ targetId: 'self', dist: 0, scale: 1 }]);
+  });
+});
+
+// ★慣性(社長「鞭は動きがギクシャクしない様に慣性に従って自然に動く様に注意してね」)。
+describe('振り回しの継ぎ目の慣性', () => {
+  const vel = (f: (t: number) => number, t: number) => f(t + 0.5) - f(t - 0.5);
+  it('半径の寄り: 掴んだ瞬間と寄り終わりの速さ0(掴んだ瞬間に引き寄せの速さが跳ばない)', () => {
+    expect(easeStartStop(0)).toBe(0); expect(easeStartStop(1)).toBe(1);
+    const r = (t: number) => whipSwingRadiusAt(t, 140, 90);
+    expect(Math.abs(vel(r, 0.5))).toBeLessThan(0.01);
+    expect(Math.abs(vel(r, WHIP_SWING_ACCEL_MS - 0.5))).toBeLessThan(0.01);
+  });
+  it('壁で縮めるばね: 目標へ行き過ぎずに寄り、速さは続く', () => {
+    let x = 0, v = 0, maxX = 0;
+    const xs: number[] = [];
+    for (let i = 0; i < 30; i++) { const s = criticalSpringStep(x, v, 40, 1000 / 60); x = s.x; v = s.v; maxX = Math.max(maxX, x); xs.push(x); }
+    expect(maxX).toBeLessThanOrEqual(40 + 1e-9);
+    expect(x).toBeGreaterThan(39.5);
+    // 1フレームごとの増え方は前のフレームから大きく変わらない(跳ばない)
+    for (let i = 2; i < xs.length; i++) expect(Math.abs((xs[i] - xs[i - 1]) - (xs[i - 1] - xs[i - 2]))).toBeLessThan(12);
+    // 刻みを変えても同じ所へ着く(フレームの長さに依らない)
+    let a = { x: 0, v: 0 }; for (let i = 0; i < 6; i++) a = criticalSpringStep(a.x, a.v, 40, 10);
+    const b = criticalSpringStep(0, 0, 40, 60);
+    expect(a.x).toBeCloseTo(b.x, 6);
+  });
+  it('途中で放した後の滑り: 出だしの速さ=回っていた速さ・一定の減速で止まる', () => {
+    const v0 = 1257;
+    const d = (t: number) => whipDropDist(t, v0);
+    expect(vel(d, 0.5) * 1000).toBeCloseTo(v0, -1);
+    expect(vel(d, WHIP_DROP_MS - 0.5) * 1000).toBeLessThan(20);
+    expect(d(WHIP_DROP_MS + 100)).toBeCloseTo(d(WHIP_DROP_MS), 9);
   });
 });
