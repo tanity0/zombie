@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5805', items: ['パニッシャーの説明を「巻き込まれた敵も同じ勢いで飛ぶ」に言い直した'] },
   { version: '0.25.5804', items: ['鞭で浮かせた敵が、さらに素早く頂点まで跳ね上がるようになった'] },
   { version: '0.25.5803', items: ['鞭で浮かせた敵が、より素早く頂点まで上がるようになった'] },
   { version: '0.25.5802', items: ['遠く北にある拠点の目印が出続け、地平線が細く光っていたのが直った'] },
