@@ -16,8 +16,8 @@ const shield = (patch: Partial<Projectile> = {}): Projectile => ({
 const rect = { x: 100, y: 100, width: 58, height: 16 };
 
 beforeEach(() => {
-  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.getState().resetGame('assault');
+  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.setState({ enemies: [], projectiles: [], shieldGuardFx: [] });
   beginMasteryRun({ ignored: false });
 });

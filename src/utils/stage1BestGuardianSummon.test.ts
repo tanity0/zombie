@@ -41,9 +41,9 @@ const engage = (type: EnemyType) => {
 
 describe('ステージ1の最初の守護霊=猛者のボス別1位(召喚の配線)', () => {
   beforeEach(() => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().setStage1GuardianLock(true);
     useGameStore.getState().resetGame('assault');
+    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.setState({ enemies: [], summons: [], stage1GuardianLock: true, stage1Loop: null });
     bestRef.candidate = null;
     step();

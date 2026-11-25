@@ -10,7 +10,6 @@ import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 import type { Projectile, Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
-setTreesDisabled(true); setTorchesDisabled(true);
 
 const pile = (over: Partial<Projectile> = {}): Projectile => {
   const pl = useGameStore.getState().player;
@@ -44,7 +43,7 @@ const reachesEnemyAt = (dx: number) => {
 };
 
 describe('パイルドライバーの弾は杭の射程で消える(社長裁定2026-11-13「はい」)', () => {
-  beforeEach(() => { useGameStore.getState().resetGame('warrior'); useGameStore.setState({ enemies: [] }); });
+  beforeEach(() => { useGameStore.getState().resetGame('warrior'); setTreesDisabled(true); setTorchesDisabled(true); useGameStore.setState({ enemies: [] }); });
 
   it('射程の端より先へは進まず、端に着いた次の tick で消える', () => {
     const p = pile();
@@ -96,7 +95,7 @@ describe('杭が刺さった瞬間に刺さった敵だけを止める(社長指
     useGameStore.setState(st => ({ enemies: [...st.enemies, e] }));
   };
   const en = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
-  beforeEach(() => { useGameStore.getState().resetGame('warrior'); useGameStore.setState({ hitstopUntil: 0, enemies: [] }); });
+  beforeEach(() => { useGameStore.getState().resetGame('warrior'); setTreesDisabled(true); setTorchesDisabled(true); useGameStore.setState({ hitstopUntil: 0, enemies: [] }); });
 
   it('自分の弾が刺さると、その敵の hitStunUntil だけが立つ(画面全体の止めは立たない・ほかの敵は止まらない)', () => {
     put('zombie', 'z1'); put('zombie', 'z2');

@@ -45,8 +45,12 @@ const tick = (gt: number, dt = 1 / 60) => {
 const first = (): Enemy => useGameStore.getState().enemies[0];
 
 beforeEach(() => {
-  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.getState().resetGame('assault');
+  // ★木・松明を切るのは resetGame の**後**。resetGame はステージに合わせて setTreesDisabled/setTorchesDisabled を
+  // 毎回かけ直す(通常ステージ=false)ので、前に切っても戻されて木が残る。木の幹は場所で決まり、コウモリの
+  // 回る向き・尺は個体ID(乱数+時刻)で決まるため、回る向き次第で幹に当たって半径の内側へ滑り、踏み込みへ移っていた
+  // (CI の「中心間距離 72.47 > 74」・乱数の約2割で落ちる)。
+  setTreesDisabled(true); setTorchesDisabled(true);
 });
 
 describe('構え前(aiPhase未設定=b-approach) → 円(b-orbit)', () => {

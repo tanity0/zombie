@@ -22,7 +22,7 @@ const WATCH = () => seq(0.8, 0.5);
 const BACKSTEP = () => seq(0.95, 1, 1);
 
 const setup = () => {
-  useGameStore.getState().resetGame('assault');
+  useGameStore.getState().resetGame('assault'); setTreesDisabled(true); setTorchesDisabled(true);
   gt = GT;
   useGameStore.setState(s => ({
     gameTime: gt, enemies: [], projectiles: [], pumpkinBlasts: [],
@@ -49,7 +49,6 @@ const tick = () => {
 const center = (e: Enemy) => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 });
 
 beforeEach(() => {
-  setTreesDisabled(true); setTorchesDisabled(true);
   vi.spyOn(Date, 'now').mockImplementation(() => now);
   vi.spyOn(Math, 'random').mockReturnValue(0.5);
   setup();

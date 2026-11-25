@@ -40,8 +40,8 @@ describe('拳鬼の台本は道の表の上(§19-1)', () => {
 
 describe('拳鬼の台本が新しい規則の下で最後まで出る(結合・§19-4-7)', () => {
   beforeEach(() => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('rogue');
+    setTreesDisabled(true); setTorchesDisabled(true);
     const k = uniquePhantomSpec('brawler');
     setPhantomIdentity({ name: k.name, profile: k.profile, source: 'unique' });
   });

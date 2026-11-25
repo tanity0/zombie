@@ -13,8 +13,8 @@ import { setTorchesDisabled } from '../world/torches';
 const enemy = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
 let px = 0, py = 0;
 const setup = () => {
-  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.getState().resetGame('warrior');
+  setTreesDisabled(true); setTorchesDisabled(true);
   const st = useGameStore.getState();
   px = st.player.x + st.player.width / 2;
   py = st.player.y + st.player.height / 2;
@@ -165,7 +165,7 @@ describe('兵士の蹴り飛ばし v3.1', () => {
     step(16);
     expect(useGameStore.getState().escortKick).not.toBeNull();
     // 残りが足りない・すぐそば
-    useGameStore.getState().resetGame('warrior');
+    useGameStore.getState().resetGame('warrior'); setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.setState(s => ({ enemies: [], gameTime: 100_000, activeEvent: null, camera: { x: px - 400, y: py - 300 }, viewZoom: 1, player: { ...s.player } }));
     put(300, -40, 700);
     put(100, 0);

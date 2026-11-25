@@ -20,8 +20,8 @@ let now = 7_000_000;
 const seen = new Set<string>();
 
 const setup = (cmLv = 1) => {
-  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.getState().resetGame('warrior');
+  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.setState(st => ({
     m0Unlocked: { ...st.m0Unlocked, melee: true, crit: true },
     enemies: [], projectiles: [], pumpkinBlasts: [], brawlerKiko: [],

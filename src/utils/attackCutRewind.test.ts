@@ -71,15 +71,15 @@ describe('attackFrameAfterLive(純関数)', () => {
 
 describe('★中断の道ごと(判定が実際に書く Enemy から): 巻き戻しで戻る', () => {
   beforeEach(() => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('assault');
+    setTreesDisabled(true); setTorchesDisabled(true);
   });
   const GT = 10_000_000;
 
   for (const type of ['bat', 'skeleton', 'zombie'] as const) {
     it(`${type}: 気絶・拘束・持ち上げで combatTick が噛みを消すと、余韻ではなく巻き戻しになる`, () => {
       for (const stop of [{ stunUntil: GT + 1000 }, { rootUntil: GT + 1000 }, { liftUntil: Date.now() + 1000 }] as Partial<Enemy>[]) {
-        useGameStore.getState().resetGame('assault');
+        useGameStore.getState().resetGame('assault'); setTreesDisabled(true); setTorchesDisabled(true);
         const spec = biteSpecFor(type, undefined, type === 'zombie' ? 'zrush' : undefined);
         const e0: Enemy = { ...spawnEnemyAt(type, 50_000, 50_000, GT), biteAt: GT - spec.windupMs + 1, biteDirX: 1, biteDirY: 0,
           ...(type === 'zombie' ? { aiPhase: 'zrush' as const } : {}) };

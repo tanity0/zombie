@@ -19,8 +19,8 @@ const step = () => {
 
 describe('守護霊召喚のエッジ食い潰し対策(ghostSummonedOnce+毎tick再試行)', () => {
   beforeEach(() => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('assault');
+    setTreesDisabled(true); setTorchesDisabled(true);
     // モジュール状態(ghostBossEngagePrev)を敵ゼロの1stepで false へ収束させる。
     useGameStore.setState({ enemies: [], summons: [] });
     step();

@@ -40,8 +40,8 @@ afterEach(() => { vi.restoreAllMocks(); setTreesDisabled(false); setTorchesDisab
 // ---------------------------------------------------------------------------------------------
 describe('プレイヤー: 拳鬼の秘奥義(1)と、床・置かれた火(4)', () => {
   const setup = () => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('warrior');
+    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.setState(st => ({
       m0Unlocked: { ...st.m0Unlocked, melee: true, crit: true },
       enemies: [], projectiles: [], pumpkinBlasts: [], bossFires: [], swipeDirection: null,
@@ -164,8 +164,8 @@ const ORIGIN = 50_000;
 const K = 'kenki';
 /** 拳鬼を置く(プレイヤーは拳鬼の右 dx)。 */
 const setupKenki = (dx: number, over: Partial<Enemy> = {}, playerBrawler = false) => {
-  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.getState().resetGame('warrior');
+  setTreesDisabled(true); setTorchesDisabled(true);
   const k = uniquePhantomSpec('brawler');
   setPhantomIdentity({ name: k.name, profile: k.profile, source: 'unique' });
   const e = spawnEnemyAt('guardian-phantom', ORIGIN, ORIGIN, START_GT);

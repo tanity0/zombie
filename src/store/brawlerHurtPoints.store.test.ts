@@ -17,8 +17,8 @@ const arm = (o: { brawler: boolean; points?: number }) => useGameStore.setState(
 
 describe('格闘: 食らっても技ポイントが貯まる', () => {
   beforeEach(() => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('rogue');
+    setTreesDisabled(true); setTorchesDisabled(true);
   });
   it('体力が減る被弾で+1', () => {
     arm({ brawler: true });

@@ -41,9 +41,9 @@ const setup = (practice: boolean) => {
 
 describe('英雄の昇天: 対策室と本編', () => {
   beforeEach(() => {
+    useGameStore.getState().resetGame('assault');
     setTreesDisabled(true);
     setTorchesDisabled(true);
-    useGameStore.getState().resetGame('assault');
   });
 
   it('対策室: 昇天し切ったら練習の決着が打刻され、スキルも入手表示も出ない', () => {

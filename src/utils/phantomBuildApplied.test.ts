@@ -49,7 +49,7 @@ const onlineProfile = (): PlayerProfile => {
 };
 
 describe('幻影の装備・スキルが効く(実行時の値)', () => {
-  beforeEach(() => { setTreesDisabled(true); setTorchesDisabled(true); useGameStore.getState().resetGame('warrior'); });
+  beforeEach(() => { useGameStore.getState().resetGame('warrior'); setTreesDisabled(true); setTorchesDisabled(true); });
   afterEach(() => { vi.restoreAllMocks(); });
 
   it('体力: 記録の体力(クラス+装備)を使う=プレイヤーの体力に引きずられない', () => {

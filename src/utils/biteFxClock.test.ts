@@ -74,8 +74,8 @@ describe('stepBiteFxClock(純関数)', () => {
 
 describe('★中断の道ごと: 判定が書いた Enemy を通すと、攻撃の絵(炸裂)が出なくなる', () => {
   beforeEach(() => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('assault');
+    setTreesDisabled(true); setTorchesDisabled(true);
   });
   const GT = 10_000_000;
   const bat = (): Enemy => ({ ...spawnEnemyAt('bat', 50_000, 50_000, GT), biteAt: GT - 100, biteDirX: 1, biteDirY: 0 });

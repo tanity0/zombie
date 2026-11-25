@@ -16,7 +16,6 @@ beforeEach(() => {
   now = 7_000_000;
   vi.spyOn(Date, 'now').mockImplementation(() => now);
   vi.spyOn(Math, 'random').mockReturnValue(0.99);
-  setTreesDisabled(true); setTorchesDisabled(true);
 });
 afterEach(() => { vi.restoreAllMocks(); });
 
@@ -34,7 +33,7 @@ const countingFx = () => {
 
 /** プレイヤーを敵に重ねて、16msずつ ms だけ接触の解決を回す。 */
 const overlapFor = (type: EnemyType, ms: number, patch: Record<string, unknown> = {}) => {
-  useGameStore.getState().resetGame('assault');
+  useGameStore.getState().resetGame('assault'); setTreesDisabled(true); setTorchesDisabled(true);
   const e = { ...spawnEnemyAt(type, 0, 0, START_GT), ...patch } as ReturnType<typeof spawnEnemyAt>;
   e.x = ORIGIN - e.width / 2; e.y = ORIGIN - e.height / 2;
   useGameStore.setState(s => ({

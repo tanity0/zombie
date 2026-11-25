@@ -1,7 +1,7 @@
 // research/ESCORT_FOLLOW.md(拠点を開けた軍人が、その担当区域の中だけついてくる)の配線テスト。
 // 純関数の値そのもの=utils/escortFollow.test.ts。ここは gameStore の護衛ブロックを実際に回して、
 // 状態の優先順位・画面の内外で同じ動き・区域を出た時の見送りと帰り・倒れ中の除外・未解放の軍人の不変を確かめる。
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { useGameStore } from './gameStore';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
@@ -28,7 +28,7 @@ const putPlayer = (x: number, y: number, cam = true) => useGameStore.setState(s 
 /** base-0(東・原点から4800px)を解放済み/未解放にし、軍人0を (ex,ey) に置く。プレイヤーは (px,py)。残り3人は遠くへ。 */
 const setup = (o: { captured: boolean; ex: number; ey: number; px: number; py: number; over?: Partial<EscortSoldier>; cam?: boolean }) => {
   gt = GT;
-  useGameStore.getState().resetGame('assault');
+  useGameStore.getState().resetGame('assault'); setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.setState(s => ({
     escortFollowEnabled: true, // §1〜8 の追従の配線を見るテスト=オン(既定はオン・§9=2026-11-18〜)
     gameTime: GT, gameBounds: { width: 430, height: 932 }, viewZoom: 1,
@@ -42,8 +42,6 @@ const setup = (o: { captured: boolean; ex: number; ey: number; px: number; py: n
   }));
   putPlayer(o.px, o.py, o.cam ?? true);
 };
-
-beforeEach(() => { setTreesDisabled(true); setTorchesDisabled(true); });
 
 describe('ついてくる(受け入れ条件1・8・11)', () => {
   it('東の拠点を解放済みで、プレイヤーが東の区域に居ると、軍人はついてきて後ろ斜めで止まる(止まったら止めコマ)', () => {

@@ -49,8 +49,8 @@ const placePlayer = () => {
 
 describe('★B6 盾押し(movePlayerの配線)', () => {
   beforeEach(() => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('assault');
+    setTreesDisabled(true); setTorchesDisabled(true);
     placePlayer();
   });
 
@@ -156,8 +156,8 @@ describe('★B6-EX 盾押しのexStage伝播(検収監査・重大1: EX広間で
 
   beforeEach(() => {
     installLocalStorage();
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('assault');
+    setTreesDisabled(true); setTorchesDisabled(true);
     placePlayer();
   });
 

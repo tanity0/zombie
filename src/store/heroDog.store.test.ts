@@ -12,7 +12,7 @@ const giveHero = (full = true) => {
 const dog = () => useGameStore.getState().summons.find(isHeroDog);
 
 describe('英雄の犬(store)', () => {
-  beforeEach(() => { setTreesDisabled(true); useGameStore.getState().resetGame('warrior'); });
+  beforeEach(() => { useGameStore.getState().resetGame('warrior'); setTreesDisabled(true); });
 
   it('スキル「英雄」で現れ、HPは100固定', () => {
     useGameStore.getState().updateHeroDog();
@@ -126,7 +126,7 @@ describe('英雄の犬(store)', () => {
 });
 
 describe('英雄の犬: 社長指示2026-10-15(噛みのKB・撃破を段へ・ボスのヘイト)', () => {
-  beforeEach(() => { setTreesDisabled(true); useGameStore.getState().resetGame('warrior'); });
+  beforeEach(() => { useGameStore.getState().resetGame('warrior'); setTreesDisabled(true); });
   const settle = () => {
     giveHero(true); useGameStore.getState().updateHeroDog();
     const d0 = dog()!;

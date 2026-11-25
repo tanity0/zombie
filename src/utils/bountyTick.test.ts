@@ -213,9 +213,9 @@ describe('pickActiveBounty — 起きている個体を最優先(pickActiveIdol�
 // ─────────────────────────────────────────────────────────────────────────
 describe('runBountyTick — 状態機械(§6.38 B1.5-6)', () => {
   beforeEach(() => {
+    useGameStore.getState().resetGame('assault');
     setTreesDisabled(true);
     setTorchesDisabled(true);
-    useGameStore.getState().resetGame('assault');
   });
 
   // gameTimeの起点を0にしない: bounty.lastHitの既定値(0)から見て「直近3秒以内の被弾」に
@@ -410,9 +410,9 @@ afterEach(() => { vi.restoreAllMocks(); });
 // =================================================================================================
 describe('runBountyTick — B2a 技の状態機械', () => {
   beforeEach(() => {
+    useGameStore.getState().resetGame('assault');
     setTreesDisabled(true);
     setTorchesDisabled(true);
-    useGameStore.getState().resetGame('assault');
   });
 
   const START_GT = 10_000_000;
@@ -1511,9 +1511,9 @@ describe('★イベント抑止の原則(社長仕分け2026-08-22)= 時限の�
 // 「要求箱に入れた技のwindupへ入るか」「再生の立ち下がり(=停止トグルが二度と効かなくなる事故の芽)」だけ。
 describe('runBountyTick — ボスメーカーの個別再生(▸)', () => {
   beforeEach(() => {
+    useGameStore.getState().resetGame('assault');
     setTreesDisabled(true);
     setTorchesDisabled(true);
-    useGameStore.getState().resetGame('assault');
     clearBountyPlayback(); // ★毎回まっさらから(モジュール変数の要求箱はテスト間で持ち越される)
   });
 
@@ -1579,7 +1579,7 @@ describe('runBountyTick — ボスメーカーの個別再生(▸)', () => {
     for (const [type, moves] of Object.entries(BOUNTY_MOVES_BY_TYPE)) {
       for (const m of moves) {
         clearBountyPlayback();
-        useGameStore.getState().resetGame('assault');
+        useGameStore.getState().resetGame('assault'); setTreesDisabled(true); setTorchesDisabled(true);
         const { step, stateOf } = setupPlay(type as EnemyType, { x: 60, y: 0 });
         requestBountyMovePlay(m, { solo: true, loop: false });
         step(16);
@@ -1638,9 +1638,9 @@ describe('runBountyTick — ボスメーカーの個別再生(▸)', () => {
 // **成立しない(溜めは続く・反撃も入らない)**ことを固める=windup成立を再導入したら落ちる網。
 describe('runBountyTick — 憲法: 溜め中は赤い図形の中でもカウンター不成立(v0.25.3947)', () => {
   beforeEach(() => {
+    useGameStore.getState().resetGame('assault');
     setTreesDisabled(true);
     setTorchesDisabled(true);
-    useGameStore.getState().resetGame('assault');
     clearBountyPlayback();
   });
   afterEach(() => { vi.restoreAllMocks(); });

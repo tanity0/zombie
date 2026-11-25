@@ -1,4 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+// pixi.js は読み込んだ瞬間に BrowserAdapter が `navigator` を読む(isSafari)。Node 21+ には `navigator` が
+// 生えているので手元では通るが、CI の Node 20 には無く import の時点で ReferenceError になる。
+// このテストが見るのは Graphics の命令列(描画はしない)なので、無い時だけ最小の navigator を先に置く
+// (vi.hoisted = 下の import より前に走る)。Node 21+ では何もしない=手元の挙動は変わらない。
+vi.hoisted(() => {
+  if (typeof globalThis.navigator === 'undefined') {
+    Object.defineProperty(globalThis, 'navigator', { value: { userAgent: 'node' }, configurable: true, writable: true });
+  }
+});
 import { Graphics, Texture, GraphicsPath as GraphicsPathCtor, type GraphicsPath } from 'pixi.js';
 import { projAffineFrom, projSimFrom, projDrawStat, PROJ_AFFINE_ALLOWED, PROJ_AFFINE_SKIPPED } from './projDraw';
 

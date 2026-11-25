@@ -28,7 +28,7 @@ const place = (type: EnemyType, over: Partial<Enemy>): void => {
 const tick = (gt: number) => { useGameStore.getState().setGameTime(gt); useGameStore.getState().updateEnemies(1 / 60); };
 const first = (): Enemy => useGameStore.getState().enemies[0];
 
-beforeEach(() => { setTreesDisabled(true); setTorchesDisabled(true); useGameStore.getState().resetGame('assault'); });
+beforeEach(() => { useGameStore.getState().resetGame('assault'); setTreesDisabled(true); setTorchesDisabled(true); });
 
 describe('§16-H #H-6: 硬直が明けたら噛みつきにも間を与える(4型で同じ値)', () => {
   it('値の出どころは1つ(新しい数字を作っていない)', () => {

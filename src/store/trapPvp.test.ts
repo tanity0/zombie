@@ -32,8 +32,8 @@ const placePlayer = (patch: Record<string, unknown> = {}) => {
 
 describe('★対人トラップ(SAME_ARENA.md §3-g)', () => {
   beforeEach(() => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('assault');
+    setTreesDisabled(true); setTorchesDisabled(true);
   });
 
   // ★v0.25.4967 で仕様が「等倍で頭打ち」→「7割」に変わった(社長指示2026-10-10)。このテストは旧仕様のまま残っていた=CI が赤だった(v0.25.4979 で追従)。

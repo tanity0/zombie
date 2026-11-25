@@ -50,9 +50,9 @@ const untilThrow = (t: ReturnType<typeof setup>, limitMs = 20000): number => {
 
 describe('宇宙飛行群: 制御の流れ', () => {
   beforeEach(() => {
+    useGameStore.getState().resetGame('assault');
     setTreesDisabled(true);
     setTorchesDisabled(true);
-    useGameStore.getState().resetGame('assault');
   });
 
   it('見つけたら間隔の後に着地して投げる。予告は投げ始めに全部積まれ、命中の時刻は設計どおり', () => {
@@ -111,9 +111,9 @@ describe('宇宙飛行群: 制御の流れ', () => {
 
 describe('宇宙飛行群: 台帳の解決', () => {
   beforeEach(() => {
+    useGameStore.getState().resetGame('assault');
     setTreesDisabled(true);
     setTorchesDisabled(true);
-    useGameStore.getState().resetGame('assault');
   });
 
   const entry = (over: Partial<AstroThrowEntry>): AstroThrowEntry => ({

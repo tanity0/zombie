@@ -11,8 +11,8 @@ const breakState = (gameTime: number) => ({
 
 describe('対人体勢: プレイヤーの紫(行動不能)ゲート', () => {
   beforeEach(() => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('assault');
+    setTreesDisabled(true); setTorchesDisabled(true);
   });
 
   it('紫中は近接を振れない(窓も開かない)・明ければ振れる', () => {

@@ -33,9 +33,9 @@ const setup = (swingAgoMs: number | null): Enemy => {
 };
 
 beforeEach(() => {
+  useGameStore.getState().resetGame('assault');
   setTreesDisabled(true);
   setTorchesDisabled(true);
-  useGameStore.getState().resetGame('assault');
 });
 afterEach(() => { vi.restoreAllMocks(); });
 
@@ -52,7 +52,7 @@ describe('診断: 通常斬り(triggerCounter)で幻影のパリィが発火す�
 
   it('窓の外(スイングの隙/一度も振っていない)なら素通りしてダメージが通る', () => {
     for (const swingAgo of [COUNTER_ACCEPT_MS, null]) {
-      useGameStore.getState().resetGame('assault');
+      useGameStore.getState().resetGame('assault'); setTreesDisabled(true); setTorchesDisabled(true);
       const e = setup(swingAgo);
       const hp0 = e.health;
       // 抽選が生きていたら弾かれる乱数を、あえて固定する(近接は乱数を読まない=v9)。

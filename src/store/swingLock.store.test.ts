@@ -9,8 +9,8 @@ const RIGHT = { up: false, down: false, left: false, right: true } as never;
 const LEFT = { up: false, down: false, left: true, right: false } as never;
 
 beforeEach(() => {
-  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.getState().resetGame('warrior');
+  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.setState(s => ({ player: { ...s.player, vx: 0, vy: 0, lastDirection: { x: 1, y: 0 }, lungeUntil: 0, knockbackUntil: undefined } }));
 });
 

@@ -32,8 +32,8 @@ const setup = (): { id: string } => {
 
 describe('★近接の前隙(SAME_ARENA.md §7)', () => {
   beforeEach(() => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('assault');
+    setTreesDisabled(true); setTorchesDisabled(true);
   });
 
   it('①②: 指を離した瞬間に窓とCDが開き、判定はまだ出ない', () => {

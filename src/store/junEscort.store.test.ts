@@ -160,7 +160,7 @@ const jun = (): EscortSoldier => useGameStore.getState().escorts.find(isJunEscor
 const setupStage4 = (o: { jx: number; jy: number; px: number; py: number; sq?: (e: EscortSoldier, i: number) => Partial<EscortSoldier>; withJun?: boolean }) => {
   sgt = GT;
   setStage('stage-4');
-  useGameStore.getState().resetGame('assault');
+  useGameStore.getState().resetGame('assault'); setTreesDisabled(true); setTorchesDisabled(true);
   deploy();
   useGameStore.setState(s => ({
     gameTime: GT, gameBounds: { width: 430, height: 932 }, viewZoom: 1,
@@ -174,10 +174,9 @@ const setupStage4 = (o: { jx: number; jy: number; px: number; py: number; sq?: (
 };
 
 describe('ジュンは最初からプレイヤーについてくる(拠点解放には行かない)', () => {
-  beforeEach(() => { setTreesDisabled(true); setTorchesDisabled(true); });
   it('出撃の位置はプレイヤーのそば', () => {
     setStage('stage-4');
-    useGameStore.getState().resetGame('assault');
+    useGameStore.getState().resetGame('assault'); setTreesDisabled(true); setTorchesDisabled(true);
     const s = useGameStore.getState();
     const j = roster().find(isJunEscort)!;
     const p = s.player;

@@ -33,8 +33,8 @@ const resolveBlast = () => applyPumpkinBlastDamage(NOOP_COMBAT_EFFECTS, { thorOr
 const guardFx = () => useGameStore.getState().shieldGuardFx;
 
 beforeEach(() => {
-  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.getState().resetGame('assault');
+  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.setState(s => ({
     gameTime: START_GT,
     player: {

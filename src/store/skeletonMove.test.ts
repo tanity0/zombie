@@ -41,8 +41,8 @@ const tick = (gt: number, dt = 1 / 60) => {
 const first = (): Enemy => useGameStore.getState().enemies[0];
 
 beforeEach(() => {
-  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.getState().resetGame('assault');
+  setTreesDisabled(true); setTorchesDisabled(true);
 });
 
 describe('構え前(aiPhase未設定) → s-crouch(しゃがみ・合図)', () => {

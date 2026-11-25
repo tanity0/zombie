@@ -49,9 +49,9 @@ const setup = (bossState: Enemy['bossState']): Enemy => {
 };
 
 beforeEach(() => {
+  useGameStore.getState().resetGame('assault');
   setTreesDisabled(true);
   setTorchesDisabled(true);
-  useGameStore.getState().resetGame('assault');
 });
 
 describe('ボス接触受け流し: トールの突進の走行中(thor-dash-move)だけは横取りさせない(§5-2 やること④)', () => {

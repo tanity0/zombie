@@ -49,8 +49,9 @@ const tick = (gt: number, dt = 1 / 60) => {
 const first = (): Enemy => useGameStore.getState().enemies[0];
 
 beforeEach(() => {
-  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.getState().resetGame('assault');
+  // ★木・松明を切るのは resetGame の**後**(resetGame がステージに合わせて毎回かけ直し、前に切っても木が戻る)。
+  setTreesDisabled(true); setTorchesDisabled(true);
 });
 
 describe('帯(200〜100px)への進入 → z-wait', () => {
@@ -227,9 +228,12 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     //   (出足のeaseは z-lunge-in 開始から800ms経過の想定=満速)。
     const w0 = place(ZOMBIE_BAND_OUTER_PX + 200, {});
     tick(START_GT);
-    const walkDx = w0.x - first().x;
-    expect(walkDx).toBeGreaterThan(0);
-    expect(e0.x - e.x).toBeGreaterThan(walkDx * 2);
+    // 歩きの移動量は x だけでなく**移動の大きさ**で測る。歩きのゾンビは個体ID(乱数+時刻)で決まる「回り込み」役だと
+    // 遠いほど横へ最大約70°振れ、さらにフラフラ(横揺れ)が乗るので、その瞬間は真横〜わずかに離れる向きに歩くことがある
+    // (=x の移動量が 0 以下になる。乱数300通りの実測で5回落ちた)。比べたいのは「走り>歩き」の速さなので大きさで比べる。
+    const walkDist = Math.hypot(w0.x - first().x, w0.y - first().y);
+    expect(walkDist).toBeGreaterThan(0);
+    expect(e0.x - e.x).toBeGreaterThan(walkDist * 2);
   });
 
   it('1発目が解決(biteAt=0)したらz-stagger(一拍で狙い直す・構え/点滅なし・その場)へ', () => {

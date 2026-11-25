@@ -144,7 +144,14 @@ describe('⑤幻影がプレイヤーの届く距離を読む式=プレイヤー
 
 // ---------------------------------------------------------------------------------------------
 describe('③守護霊の燕返し・一閃の浮かせ・切り傷・殺陣(プレイヤーと同じ純関数・同じ一閃)', () => {
-  beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] }); vi.setSystemTime(10_000_000); });
+  // ★クリティカルを出さない(Math.random を固定)。一閃がクリティカルだと当たった敵が気絶し、続く燕返しは
+  // 「気絶した敵への一閃=処刑」になって敵が死ぬ=切り傷が刻まれない(1のまま)。ここで確かめたいのは切り傷・浮き・受付の配線なので、
+  // 乱数次第で CI が「expected 1 to be 2」で落ちていた。乱数に左右されないよう固定する。処刑はこの節の対象外。
+  beforeEach(() => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] }); vi.setSystemTime(10_000_000);
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
   const setupGhostKatana = () => {
     useGameStore.setState({ summons: [ghostAt(1000, 1000, snap(['katana']))] });
     const z = zombieAt('z-k', 1000 + 16 + 70 - 16, 1000);

@@ -2,7 +2,7 @@
 // 純関数の値そのもの(escortHealth/escortAggro/bossHate)は src/utils/*.test.ts。ここは「実装精度の規律4」どおり、
 // gameStore の配線(resetGame の体力打刻・updateSuppression の倒れる/起こす・damageEscort・updateEnemies の狙い・
 // combatTick/heroBlast の被弾入口)を実際に回して確かめる。
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { useGameStore, PLAYER_KNOCKBACK_SPEED } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, applyPumpkinBlastDamage, applyEnemyProjectileHits, applyEnemyFire, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
@@ -25,7 +25,7 @@ const setEsc = (id: string, patch: Partial<EscortSoldier>) =>
 
 /** 軍人0を (dx,dy) に置き、残り3人は遠くへ。プレイヤーは原点・カメラは原点中心・ズーム1。 */
 const setup = (dx = 100, dy = 40, over: Partial<EscortSoldier> = {}) => {
-  useGameStore.getState().resetGame('assault');
+  useGameStore.getState().resetGame('assault'); setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.setState(s => ({
     gameTime: GT,
     camera: { ...CAM }, gameBounds: { width: 430, height: 932 }, viewZoom: 1,
@@ -56,11 +56,9 @@ const put = (type: Parameters<typeof spawnEnemyAt>[0], x: number, y: number, ove
 };
 const enemy = (id: string): Enemy => useGameStore.getState().enemies.find(e => e.id === id)!;
 
-beforeEach(() => { setTreesDisabled(true); setTorchesDisabled(true); });
-
 describe('出撃時の体力(§3)', () => {
   it('通常出撃: 4人の体力=出撃時のプレイヤー最大体力×0.6(全員同じ・満タン)', () => {
-    useGameStore.getState().resetGame('assault');
+    useGameStore.getState().resetGame('assault'); setTreesDisabled(true); setTorchesDisabled(true);
     const s = useGameStore.getState();
     const expected = escortMaxHealthFor(s.player.maxHealth);
     expect(s.escorts.length).toBe(4);
@@ -73,7 +71,7 @@ describe('出撃時の体力(§3)', () => {
   it('M0(訓練)の随行2人(軍人+衛生兵)は体力を持たない(対象外)', () => {
     useGameStore.setState({ pendingFarBackdrop: 'tutorial' });
     try {
-      useGameStore.getState().resetGame('assault');
+      useGameStore.getState().resetGame('assault'); setTreesDisabled(true); setTorchesDisabled(true);
       const s = useGameStore.getState();
       expect(s.farBackdrop).toBe('tutorial');
       expect(s.escorts.length).toBe(2);

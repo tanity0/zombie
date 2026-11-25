@@ -67,7 +67,7 @@ describe('召喚の攻撃モーションの時計', () => {
 });
 
 describe('召喚が間合いの敵を攻撃したら打刻する(store)', () => {
-  beforeEach(() => { setTreesDisabled(true); useGameStore.getState().resetGame('warrior'); });
+  beforeEach(() => { useGameStore.getState().resetGame('warrior'); setTreesDisabled(true); });
   for (const lvl of [1, 2, 3]) {
     it(`Lv${lvl}: 間合いの敵へ当てると lastContactAt と向きを残す / 間合いの外なら残さない`, () => {
       const p = useGameStore.getState().player;

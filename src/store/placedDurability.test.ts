@@ -29,8 +29,8 @@ const alive = (id: string) => useGameStore.getState().projectiles.some(p => p.id
 
 describe('★設置物の耐久(社長指示2026-08-24)', () => {
   beforeEach(() => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('assault');
+    setTreesDisabled(true); setTorchesDisabled(true);
   });
 
   it('①自分の設置物は壊れない(hostile でない物は対象外)', () => {

@@ -5,7 +5,7 @@ import { buildSummon } from './summonUtils';
 import { spawnEnemyAt } from './enemyUtils';
 import { setTreesDisabled } from '../world/trees';
 
-beforeEach(() => { setTreesDisabled(true); useGameStore.getState().resetGame('warrior'); });
+beforeEach(() => { useGameStore.getState().resetGame('warrior'); setTreesDisabled(true); });
 
 describe('召喚の噛む向き', () => {
   it('噛んだ敵の中心xを覚える(左の敵を噛めば左)', () => {

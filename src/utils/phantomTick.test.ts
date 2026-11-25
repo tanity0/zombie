@@ -81,9 +81,9 @@ const armSwing = (id: string): void => {
 };
 
 beforeEach(() => {
+  useGameStore.getState().resetGame('assault');
   setTreesDisabled(true);
   setTorchesDisabled(true);
-  useGameStore.getState().resetGame('assault');
 });
 afterEach(() => { vi.restoreAllMocks(); });
 

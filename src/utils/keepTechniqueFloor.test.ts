@@ -23,7 +23,7 @@ const LANDING_DIST_PX = 18;
 const TYPES: EnemyType[] = ['pumpkin', 'bat', 'skeleton', 'werewolf'];
 
 describe('★#K-1 技を出せない「密着」の線', () => {
-  beforeEach(() => { setTreesDisabled(true); setTorchesDisabled(true); useGameStore.getState().resetGame('assault'); });
+  beforeEach(() => { useGameStore.getState().resetGame('assault'); setTreesDisabled(true); setTorchesDisabled(true); });
   afterEach(() => { setTreesDisabled(false); setTorchesDisabled(false); });
 
   it('②元の事故を止められる: 着地直後(18px)からは技を出せない', () => {

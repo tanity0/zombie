@@ -32,8 +32,8 @@ const NO_INPUT = { up: false, down: false, left: false, right: false } as never;
 let now = 7_000_000;
 
 const setup = (opts: { trees?: boolean; brawler?: boolean } = {}) => {
-  setTreesDisabled(!opts.trees); setTorchesDisabled(true);
   useGameStore.getState().resetGame('warrior');
+  setTreesDisabled(!opts.trees); setTorchesDisabled(true);
   useGameStore.setState(st => ({
     m0Unlocked: { ...st.m0Unlocked, melee: true, crit: true },
     enemies: [], projectiles: [], pumpkinBlasts: [], swipeDirection: null,
@@ -631,8 +631,8 @@ describe('③打ち上げの技をガードすると浮かない(拳鬼の3・4�
   const START_GT = 10_000_000;
   const ORIGIN = 50_000;
   const kenki = (offsetX: number, lever: boolean) => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('rogue');
+    setTreesDisabled(true); setTorchesDisabled(true);
     const k = uniquePhantomSpec('brawler');
     setPhantomIdentity({ name: k.name, profile: k.profile, source: 'unique' });
     const e = spawnEnemyAt('guardian-phantom', ORIGIN, ORIGIN, START_GT);

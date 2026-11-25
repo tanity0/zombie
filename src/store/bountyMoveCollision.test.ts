@@ -10,9 +10,9 @@ import { setTorchesDisabled } from '../world/torches';
 
 describe('resolveBountyMove — 障害物衝突を通す(§6.38 B1.5-4)', () => {
   it('建物(病院)の中へ向かう移動は壁でブロックされる', () => {
+    useGameStore.getState().resetGame('warrior');
     setTreesDisabled(true);
     setTorchesDisabled(true);
-    useGameStore.getState().resetGame('warrior');
     // 病院を原点に固定配置(ランダム配置に依存しない)。
     useGameStore.setState({ hospital: { x: 0, y: 0 }, hospitalTaken: false });
     const box = { width: 40, height: 40 };
@@ -23,9 +23,9 @@ describe('resolveBountyMove — 障害物衝突を通す(§6.38 B1.5-4)', () => 
   });
 
   it('遮蔽物の無い場所への移動はそのまま通る(希望座標=解決座標)', () => {
+    useGameStore.getState().resetGame('warrior');
     setTreesDisabled(true);
     setTorchesDisabled(true);
-    useGameStore.getState().resetGame('warrior');
     useGameStore.setState({ hospital: null });
     const box = { width: 40, height: 40 };
     const resolved = resolveBountyMove(123456, 654321, box);

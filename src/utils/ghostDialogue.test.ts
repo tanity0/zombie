@@ -19,8 +19,8 @@ const step = () => {
 
 describe('守護霊のセリフ×通信(アテンション凍結・v0.25.3989)', () => {
   beforeEach(() => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('assault');
+    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.setState({ enemies: [], summons: [], npcDialogueQueue: [], npcDialogue: null, npcDialogueNextAt: 0, attention: null });
     step();
   });

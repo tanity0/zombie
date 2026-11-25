@@ -16,9 +16,9 @@ const START_GT = 10_000_000;
 
 describe('賞金首×守護霊: 判定時置換ミラー(成立域×窓・プレイヤー優先)', () => {
   beforeEach(() => {
+    useGameStore.getState().resetGame('assault');
     setTreesDisabled(true);
     setTorchesDisabled(true);
-    useGameStore.getState().resetGame('assault');
     clearGhostCounterClaim();
   });
 

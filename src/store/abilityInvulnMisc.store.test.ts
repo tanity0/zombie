@@ -19,7 +19,6 @@ beforeEach(() => {
   now = 7_000_000;
   vi.spyOn(Date, 'now').mockImplementation(() => now);
   vi.spyOn(Math, 'random').mockReturnValue(0.99);
-  setTreesDisabled(true); setTorchesDisabled(true);
 });
 afterEach(() => { vi.restoreAllMocks(); });
 
@@ -35,7 +34,7 @@ const bite = (): number => {
 
 describe('技の無敵: カウンター成立・リズム・秘奥義の出始め', () => {
   it('カウンター成立(噛みつきを赤カウンター)の1秒は sourceId 付きで0ダメージ・明けたら当たる', () => {
-    useGameStore.getState().resetGame('assault');
+    useGameStore.getState().resetGame('assault'); setTreesDisabled(true); setTorchesDisabled(true);
     const e = { ...spawnEnemyAt('bat', 0, 0, START_GT), aiPhase: 'b-grab', chaffMove: 'bat-grab' } as ReturnType<typeof spawnEnemyAt>;
     e.x = ORIGIN - e.width / 2; e.y = ORIGIN - e.height / 2;
     const spec = biteSpecFor('bat', 'bat-grab');
@@ -57,7 +56,7 @@ describe('技の無敵: カウンター成立・リズム・秘奥義の出始�
     expect(bite()).toBeGreaterThan(0);
   });
   it('リズムの開始の無敵(INVULN_MS)', () => {
-    useGameStore.getState().resetGame('warrior');
+    useGameStore.getState().resetGame('warrior'); setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.setState(s => ({ player: { ...s.player, health: 100, maxHealth: 100, invulnerable: false, invulnerableTime: 0 } }));
     useGameStore.getState().setRhythmActive(true);
     expect(useGameStore.getState().player.abilityInvulnUntil).toBe(now + INVULN_MS);
@@ -67,7 +66,7 @@ describe('技の無敵: カウンター成立・リズム・秘奥義の出始�
     expect(bite()).toBeGreaterThan(0);
   });
   it('秘奥義の出始め(起動の間)の無敵', () => {
-    useGameStore.getState().resetGame('warrior');
+    useGameStore.getState().resetGame('warrior'); setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.setState(s => ({
       enemies: [], m0Unlocked: { ...s.m0Unlocked, melee: true, crit: true },
       player: { ...s.player, health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0, subWeapons: ['brawler'], subWeaponLevels: { brawler: 3 }, lastDirection: { x: 1, y: 0 } },

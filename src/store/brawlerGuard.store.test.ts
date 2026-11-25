@@ -24,8 +24,8 @@ const NO_INPUT = { up: false, down: false, left: false, right: false } as never;
 let now = 7_000_000;
 
 const setup = (opts: { trees?: boolean } = {}) => {
-  setTreesDisabled(!opts.trees); setTorchesDisabled(true);
   useGameStore.getState().resetGame('warrior');
+  setTreesDisabled(!opts.trees); setTorchesDisabled(true);
   useGameStore.setState(st => ({
     m0Unlocked: { ...st.m0Unlocked, melee: true, crit: true },
     enemies: [], projectiles: [], pumpkinBlasts: [],

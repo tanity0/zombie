@@ -43,8 +43,8 @@ describe('相の登録(区分どおり)', () => {
 
 describe('拳鬼が格闘で戦う(結合)', () => {
   beforeEach(() => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('rogue');
+    setTreesDisabled(true); setTorchesDisabled(true);
     const k = uniquePhantomSpec('brawler');
     setPhantomIdentity({ name: k.name, profile: k.profile, source: 'unique' });
   });

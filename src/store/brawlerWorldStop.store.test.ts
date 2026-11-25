@@ -181,8 +181,8 @@ describe('格闘の当たりは自分と相手だけを旧の画面全体の止�
 
 describe('孫悟空(格闘の幻影)の当たりでは画面全体を止めない(今どおり)', () => {
   it('拳鬼がプレイヤーを殴っても格闘の画面全体の止め(triggerHitstop)は呼ばれない(被弾のストップは今どおり別の仕組み)', () => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('warrior');
+    setTreesDisabled(true); setTorchesDisabled(true);
     const k = uniquePhantomSpec('brawler');
     setPhantomIdentity({ name: k.name, profile: k.profile, source: 'unique' });
     const START = 10_000_000, O = 50_000;

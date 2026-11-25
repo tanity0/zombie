@@ -8,8 +8,8 @@ const center = () => { const p = useGameStore.getState().player; return { x: p.x
 const put = (x: number, y: number) => useGameStore.setState(s => ({ player: { ...s.player, x: x - s.player.width / 2, y: y - s.player.height / 2 } }));
 
 beforeEach(() => {
-  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.getState().resetGame('assault');
+  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.setState(s => ({
     merchantHidden: false, enemies: [],
     baseSites: s.baseSites.map(b => (b.id === 'base-0' || b.id === 'base-2' ? { ...b, status: 'captured' } : b)),

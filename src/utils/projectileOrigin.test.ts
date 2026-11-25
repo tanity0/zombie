@@ -13,9 +13,9 @@ import { spawnEnemyAt } from './enemyUtils';
 import type { Projectile } from '../types/game';
 
 beforeEach(() => {
+  useGameStore.getState().resetGame('assault');
   setTreesDisabled(true);
   setTorchesDisabled(true);
-  useGameStore.getState().resetGame('assault');
 });
 
 /** プレイヤーの直接銃弾を実際の生成経路(fireWeapon)で作る。射程ゲートがあるので的を1体置く。 */

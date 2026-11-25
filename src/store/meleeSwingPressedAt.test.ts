@@ -13,8 +13,8 @@ import { setTorchesDisabled } from '../world/torches';
 
 describe('meleeSwingPressedAt(§8裁定済み#16): 打刻を押下基準へ正規化', () => {
   beforeEach(() => {
-    setTreesDisabled(true); setTorchesDisabled(true);
     useGameStore.getState().resetGame('assault');
+    setTreesDisabled(true); setTorchesDisabled(true);
   });
   afterEach(() => {
     vi.restoreAllMocks();

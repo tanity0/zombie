@@ -43,8 +43,8 @@ const aim = { x: ORIGIN, y: ORIGIN };
 const meteorOf = (e: Enemy, gt: number): BiteTelegraphLine | null => biteTelegraphLine(e, gt) ?? preBiteTelegraphLine(e, gt, aim);
 
 beforeEach(() => {
-  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.getState().resetGame('assault');
+  setTreesDisabled(true); setTorchesDisabled(true);
 });
 
 /**

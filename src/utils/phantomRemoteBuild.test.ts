@@ -67,8 +67,8 @@ const place = (snapshot: PlayerBuildSnapshot, healthFrac = 1): Enemy => {
 
 beforeEach(() => {
   remoteRef.profile = null; clearPhantomIdentity(); clearGhostBuildCache();
-  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.getState().resetGame('warrior');
+  setTreesDisabled(true); setTorchesDisabled(true);
 });
 afterEach(() => { vi.restoreAllMocks(); clearPhantomIdentity(); });
 

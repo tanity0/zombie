@@ -28,8 +28,8 @@ const K = 'kenki';
 
 /** 拳鬼を置く(プレイヤーは拳鬼の右 dx の所)。制御は回さない=書いた欄がそのまま残る。 */
 const setup = (dx = 60, over: Partial<Enemy> = {}) => {
-  setTreesDisabled(true); setTorchesDisabled(true);
   useGameStore.getState().resetGame('warrior');
+  setTreesDisabled(true); setTorchesDisabled(true);
   const k = uniquePhantomSpec('brawler');
   setPhantomIdentity({ name: k.name, profile: k.profile, source: 'unique' });
   const e = spawnEnemyAt('guardian-phantom', ORIGIN, ORIGIN, START_GT);
