@@ -79,8 +79,8 @@ const PauseSoundRow: React.FC = () => {
       onClick={() => setAudioMuted(!muted)}
       className="pause-sound-row"
     >
-      <span>音</span>
-      <span className={muted ? 'is-off' : ''}>{muted ? 'なし' : 'あり'}</span>
+      <span>ミュート</span>
+      <span className={muted ? '' : 'is-off'}>{muted ? 'ON' : 'OFF'}</span>
     </button>
   );
 };
@@ -198,7 +198,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
               メニューに戻る
             </Ff7rButton>
             {/* 音を消す/戻す(社長指示2026-11-08・research/UIUX_PROPOSAL.md P2): ゲーム中の HUD には常駐させず、ここに文字の行で並べる。
-                状態はオプションの「音なし」・他の画面の音のボタンと同じ1つ(setAudioMuted)。 */}
+                状態はオプションの「ミュート」・他の画面の音のボタンと同じ1つ(setAudioMuted)。 */}
             <PauseSoundRow />
             {resumeHint && <p className="mt-1 text-[11px] text-white/50">
               {resumeHint}

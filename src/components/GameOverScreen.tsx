@@ -1135,8 +1135,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   死亡+装備ロストがある時は換金額と同居(下のロスト装備ボックス)。それ以外はここで単独表示。 */}
               {!isBenchmark && !showLostEquipmentBox && (
                 <div className="mb-3 rounded-none bg-black/20 px-3 py-2 flex items-center justify-between gap-2 text-[11px] text-white/60">
-                  <span>獲得 <span className="font-semibold text-amber-200 tabular-nums">+{goldEarned}g</span></span>
-                  <span>所持 <span className="font-semibold text-white tabular-nums">{goldBalance}g</span></span>
+                  <span>獲得 <span className="font-semibold text-amber-200 tabular-nums">+{goldEarned}G</span></span>
+                  <span>所持 <span className="font-semibold text-white tabular-nums">{goldBalance}G</span></span>
                 </div>
               )}
               {/* サブクエスト(research/SUBQUESTS.md 中10): ラン中に達成した件数と報酬額。
@@ -1155,7 +1155,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               {!isBenchmark && subquestCleared > 0 && (
                 <div className="mb-3 rounded-none bg-black/20 px-3 py-2 flex items-center justify-between gap-2 text-[11px] text-white/60">
                   <span>サブクエスト達成 <span className="font-semibold text-white tabular-nums">{subquestCleared}件</span></span>
-                  <span className="font-semibold text-amber-200 tabular-nums">+{subquestGold}g<span className="text-white/40 font-normal">(獲得済み)</span></span>
+                  <span className="font-semibold text-amber-200 tabular-nums">+{subquestGold}G<span className="text-white/40 font-normal">(獲得済み)</span></span>
                 </div>
               )}
             </>
@@ -1169,13 +1169,13 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 <span className="text-[11px] font-semibold text-rose-200">失った装備</span>
                 {resultClassicMode ? (
                   equipmentGold > 0 && (
-                    <span className="text-[11px] font-semibold text-amber-200 tabular-nums">換金 +{equipmentGold}g</span>
+                    <span className="text-[11px] font-semibold text-amber-200 tabular-nums">換金 +{equipmentGold}G</span>
                   )
                 ) : (
                   <span className="text-[10px] text-white/60 tabular-nums truncate">
-                    獲得 <span className="font-semibold text-amber-200">+{goldEarned}g</span>
-                    {equipmentGold > 0 && <> / 換金 <span className="font-semibold text-amber-200">+{equipmentGold}g</span></>}
-                    {' '}/ 所持 <span className="font-semibold text-white">{goldBalance}g</span>
+                    獲得 <span className="font-semibold text-amber-200">+{goldEarned}G</span>
+                    {equipmentGold > 0 && <> / 換金 <span className="font-semibold text-amber-200">+{equipmentGold}G</span></>}
+                    {' '}/ 所持 <span className="font-semibold text-white">{goldBalance}G</span>
                   </span>
                 )}
               </div>
@@ -1206,7 +1206,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                         </div>
                         <div className="text-[10px] text-white/55 leading-snug truncate">{equipmentDescription(def)}</div>
                       </div>
-                      <span className="text-[11px] font-semibold text-amber-200 tabular-nums shrink-0">+{equipScrapGold(def)}g</span>
+                      <span className="text-[11px] font-semibold text-amber-200 tabular-nums shrink-0">+{equipScrapGold(def)}G</span>
                     </div>
                   );
                 })}

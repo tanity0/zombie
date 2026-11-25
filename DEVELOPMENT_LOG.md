@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5813 — ポーズの音の行を「ミュート ON/OFF」へ・リザルトのお金を G へ【2026-11-25 20:39】
+- 外部レビュー由来の社長指示: オプション(ミュート ON/OFF)とポーズ(音 あり/なし)の向きの逆転を「ミュート」に統一(推薦=見出し「サウンド」と重ならない・BLOOM等の ON/OFF と揃う)。PauseSoundRow の表示をミュート/ON・OFF、暗くするのは OFF 側(=ミュートが掛かっている時が目立つ)。aria-label は従来どおり。
+- リザルト(GameOverScreen)の通貨 g→G を8箇所(獲得・所持・換金・獲得済み・装備の換金)。他画面に小文字 g は無し。
+- 確認: typecheck / lint。
+
 ## v0.25.5812 — 用語統一「城ボス」→「大型変異体」(プレイヤーに見える所)【2026-11-25 20:35】
 - 社長指示「城ボス は 大型変異体 に統一」。見える所は2箇所: 資料室の区分名(BossStoryGroup の値そのもの・bossStories 6件+並び順)と、リザルトの AI ディレクター振り返りの凡例(DirectorResult)。changelog の過去分・コード内コメント・テスト名・開発用のボスメーカー(BossTestMenu)は対象外。
 - 確認: typecheck / lint / vitest src/data src/utils/bossStory*。
