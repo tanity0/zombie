@@ -9,9 +9,9 @@
 // レンダラーに依存しない(PixiJSをimportしない)。store(useGameStore)・audioManager(playSfx)への
 // 呼び出しは、他の src/utils/*.ts (例: inputActions.ts, weaponUtils.ts)と同じ既存パターンに倣う。
 
-import { projViewCam, projCountVisible, getProjGameView, projGameRecycleRect, projGameBoxOnScreen, PROJ_GAME_VISIBLE_ALPHA } from './projGameView'; // ★#38=A: ?proj=1 の画面内の数(§3-9d)
+import { projViewCam, projCountVisible, getProjGameView, projGameRecycleRect, projGameBoxOnScreen, projLabViewCam, PROJ_GAME_VISIBLE_ALPHA } from './projGameView'; // ★#38=A: ?proj=1 の画面内の数(§3-9d)
 import { PROJ_GAME_RECYCLE } from './projFlag';
-import { projMarkFadeIn, queueProjRecycleGhost, projViewAtZoom, projEnemyArtOnScreen, projFadeHidden } from './projSpawnFade'; // ?proj=1 段階6(★#36・★#37)
+import { projMarkFadeIn, queueProjRecycleGhost, projViewAtZoom, projEnemyArtOnScreen, projFadeHidden, projLabRecycleHold, projLabSpawnOutsideX } from './projSpawnFade'; // ?proj=1 段階6(★#36・★#37)
 import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED, SPAWN_CLAMP_ENABLED, RESCUE_ALLY_SPAWN_DIST, huntingMeleeRadius } from '../store/gameStore';
 import { isScarecrow } from './scarecrow';
 import { placeLabSpawn } from './labSpawn';
@@ -1248,8 +1248,11 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
   let recycleHalfW = (gameBounds.width / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
   let recycleHalfH = (gameBounds.height / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
   // ?proj=1 段階6(★#37・§3-9o ウ): 縦持ち=今の矩形+上下 E/横長=基準のスマホを倒した矩形(左右 +E)。式はこの1本(倍率を2回掛けない)。
-  // 投影の場面(ゲームの画面が組めている時)だけ。?proj=0・屋内・研究所・洋館・M0 は今の式のまま。
+  // 屋外の投影の場面(getProjGameView が組めている時)だけ。?proj=0・屋内・研究所・洋館・M0 は今の式のまま。
+  // 研究所の ?proj=1 は別の門(labGvRecycle=projLabViewCam): 矩形は今のまま・描かれている敵は回収しない・置き直しは行ごとの見える端の外へ。
   const projRecycleOn = PROJ_GAME_RECYCLE && !labTheme && !indoor && getProjGameView() !== null;
+  // ?proj=1 研究所: 研究所のゲームの画面(回収を描かれている敵で止める・置き直しを行ごとの見える端の外へ)。?proj=0・屋外は null。
+  const labGvRecycle = labTheme && PROJ_GAME_RECYCLE ? projLabViewCam() : null;
   if (projRecycleOn) {
     const rr = projGameRecycleRect(gameBounds.width, gameBounds.height, playerCenterX, playerCenterY - spawnViewOffsetY, OFFSCREEN_RECYCLE_MARGIN);
     recycleHalfW = (rr.right - rr.left) / 2;
@@ -1519,6 +1522,9 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
       }
     }
     if ((!offRect && !(areaInvalid && outsideView)) || waveProtected) return enemy;
+    // ?proj=1 研究所: 回収の矩形の外でも、投影の画面に描かれている敵(北の行は横に広く見える)は回収しない=目の前で消えない。
+    // 研究所でない・?proj=0 は常に false(今のまま)。
+    if (labTheme && projLabRecycleHold(enemy, labGvRecycle)) return enemy;
     if (projRecycleOn) queueProjRecycleGhost(enemy, gameTime); // ?proj=1 段階6(イ): V25・V25b の回収の瞬間の残像
     // 研究所スキンはリサイクル先もラボ用ゾンビに固定(森敵を出さない)。
     const recycleType = preserveEnemyState ? enemy.type : (labTheme ? selectLabEnemyType(gameTime) : undefined);
@@ -1546,6 +1552,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
         replacement.width, replacement.height, LAB_CORRIDOR_Y_LIMIT_PX,
         labVisited ?? null, visionCircles, Math.random, useGameStore.getState().labIdolSide, // アイドル側には置き直さない
         (bx, by, bw, bh) => overlapsLabObstacle({ x: bx, y: by, width: bw, height: bh }), // 壁・プロップの中に置き直さない
+        labGvRecycle ? projLabSpawnOutsideX(labGvRecycle, replacement) : null, // ?proj=1: 行ごとの横の見える端の外へ(新規の湧きと同じ)
       );
       // 通った道しか置き場が無い場合は再配置せず、その個体をそのまま消す(=画面外で静かに退場)。
       if (!placed) { ENEMY_REMOVE_CAUSE.set(enemy.id, 'labNoPlace'); return null; } // 消失ログ用(v0.25.3958)

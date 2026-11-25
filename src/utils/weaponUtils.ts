@@ -13,6 +13,8 @@ import { playEnemyDeath, playSfx } from '../audio/audioManager';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { blastAnchorOf, aimEnemyDist2, pickNearestTarget, isCorpse, isLabCrawlerProxyType } from './enemyUtils';
 import { CRAWLER_GUN_RANGE_BONUS_PX } from './labCrawlerProxy';
+import { projLabAimHidden } from './projSpawnFade';
+import { projLabViewCam } from './projGameView';
 import { segmentBlocked } from '../world/obstacles';
 import { zoomCompensatedWorldDistance } from './cameraZoom';
 import { isTrapDebuffed, TRAP_PVP_RELOAD_MULT } from './trapDebuff';
@@ -1061,12 +1063,15 @@ const pickTarget = (player: Player, enemies: Enemy[]): Enemy | null => {
   const gun = getActiveGun(player);
   const nearPx = gun ? gunEffectiveRangePx(gun) : Infinity;
   const near2 = nearPx * nearPx;
-  if (walls.length === 0) return pickNearestTarget(pcx, pcy, enemies, st.gameTime, Infinity, undefined, near2);
+  // ?proj=1 研究所: 投影の画面に描かれていない敵(南の見えない帯・地平線の際)は狙わない=画面の外の敵を撃たない。屋外・?proj=0 は null=今のまま。
+  const labGv = projLabViewCam();
+  const unseen = labGv ? (e: Enemy) => projLabAimHidden(e, st.gameTime, labGv) : null;
+  if (walls.length === 0) return pickNearestTarget(pcx, pcy, enemies, st.gameTime, Infinity, unseen ?? undefined, near2);
   // 遮りは「狙う点」まで(ふつうは中心。変異塊の代理=742×300 の箱は、プレイヤーにいちばん近い縁=blastAnchorOf)。
   // ★社長報告2026-11-02「塊に向けて銃が撃たれない」: 中心で見ると廊下では中心への線がほぼ必ず壁を横切り、
   // 「壁の向こうの敵」扱いで自動射撃の候補から外れていた。
   return pickNearestTarget(pcx, pcy, enemies, st.gameTime, Infinity,
-    e => { const a = blastAnchorOf(e, pcx, pcy); return segmentBlocked(pcx, pcy, a.x, a.y, walls); }, near2);
+    e => { if (unseen && unseen(e)) return true; const a = blastAnchorOf(e, pcx, pcy); return segmentBlocked(pcx, pcy, a.x, a.y, walls); }, near2);
 };
 
 // Distance from the player center to the gun's chosen target, or Infinity when

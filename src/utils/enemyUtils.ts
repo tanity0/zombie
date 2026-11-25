@@ -1180,7 +1180,8 @@ export const generateEnemy = (
   const vy0 = player.y - viewOffsetY; // 可視縦バンドの中心(world Y 近似)
   const margin = OFFSCREEN_SPAWN_MARGIN; // 固定ビュー矩形の外側この距離(全辺一律・社長指示B)
   // ?proj=1 段階6(★#36=§3-9o ア・ケ6): 縦持ち=今の矩形の上下の辺の y だけ E 遠く/横長=基準のスマホを倒した矩形の左右の辺の x だけ E 遠く。
-  // 投影の場面(ゲームの画面が組めている時)だけ。?proj=0・屋内・洋館・研究所・M0 は今の式のまま(乱数の引き方・回数も同じ)。
+  // 屋外の投影の場面(getProjGameView が組めている時)だけ。?proj=0・屋内・洋館・研究所・M0 はこの矩形は今の式のまま(乱数の引き方・回数も同じ)。
+  // 研究所の湧きは呼んだ側(placeLabSpawn)が x/y を置き直す=?proj=1 は行ごとの見える端の外へ(outsideX・projLabSpawnOutsideX)。
   let padX = 0, padY = 0;
   let sideW = viewportWidth, sideH = viewportHeight;
   if (PROJ_GAME_SPAWN && getProjGameView()) {

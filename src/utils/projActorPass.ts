@@ -151,6 +151,35 @@ export const PROJ_PHILL_SIZE_MODE: 'A' | 'B' = 'A';
 export const projPhillK = (s: number, d: number, mode: 'A' | 'B' = PROJ_PHILL_SIZE_MODE): number =>
   mode === 'A' ? projActorK(s, d) : projActorK(1, d);
 
+// ---- 研究所の変異塊の大きさの頭打ち(描画だけ・判定=当たり・取り込みは world のまま) ----
+
+/** 変異塊の描く倍率がここまでは投影の s そのまま(主人公の近く・北の奥=今のまま)。 */
+export const PROJ_CRAWLER_SCALE_KNEE = 1.3;
+/** 変異塊の描く倍率の上限(南の手前で s が 3〜4 に伸びても、ここへ漸近して止まる)。 */
+export const PROJ_CRAWLER_SCALE_CAP = 2.0;
+
+/**
+ * 倍率の頭打ち(滑らかに): s ≤ knee はそのまま、knee を越えると cap へ指数で漸近する(knee で値も傾きも連続=急に大きさが変わらない・
+ * 単調に増え cap を越えない)。cap ≤ knee なら min(s, cap)。
+ */
+export const projSoftCapScale = (s: number, knee: number, cap: number): number => {
+  if (!(s > knee)) return s;
+  const room = cap - knee;
+  if (!(room > 0)) return Math.min(s, cap);
+  return cap - room * Math.exp(-(s - knee) / room);
+};
+
+/** 変異塊の描く倍率(投影の s → 頭打ちした倍率)。 */
+export const projCrawlerScale = (s: number): number => projSoftCapScale(s, PROJ_CRAWLER_SCALE_KNEE, PROJ_CRAWLER_SCALE_CAP);
+
+/**
+ * 後掛けに渡す旧い倍率 d(k = s/d が頭打ちした倍率になる d)。足元の位置は投影のまま(床に立つ)で、大きさだけ頭打ちする。
+ */
+export const projCrawlerLooseD = (s: number): number => {
+  const k = projCrawlerScale(s);
+  return k > 1e-9 ? s / k : 1;
+};
+
 // ---- フェードの例外(§3-5i の1・本体と影で同じ表) ----
 
 export interface ProjFadeTypeFlags { phill: boolean; hangedman: boolean; hiddenBoss: boolean }

@@ -16,6 +16,8 @@ import {
 import { labWallsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { zoomedViewportBounds } from './cameraZoom';
+import { projLabViewCam, projLabEdgeDist } from './projGameView';
+import { projLabEnemyDrawn, projLabCrawlerDrawn } from './projSpawnFade';
 import { LAB_VISION_RANGE } from './labStealth';
 import { GAME_SPEED } from '../config/gameSpeed';
 import type { Enemy } from '../types/game';
@@ -130,8 +132,14 @@ export const labBaitBeforeStep = (c: LabCrawler | null, gameTime: number, dtSec:
   const playable = playableCtx(st.farBackdrop);
   const goalX = st.returnCircle ? st.returnCircle.x : 0;
   const goalDir = c ? crawlerGoalDir(c) : (Math.sign(goalX - pcx) || 1);
-  const aheadEdge = goalDir > 0 ? v.right - pcx : pcx - v.left;
-  const behindEdge = goalDir > 0 ? pcx - v.left : v.right - pcx;
+  // ?proj=1 研究所: 見えている端までの距離は投影の画面で帯のどこかが描かれている横の端までの遠い方・見えたかは投影した箱(gv が無い=今の矩形)。
+  const gvL = projLabViewCam();
+  const gd: 1 | -1 = goalDir > 0 ? 1 : -1;
+  const aheadEdge = projLabEdgeDist(gvL, goalDir > 0 ? v.right - pcx : pcx - v.left, gd, pcx, -LAB_CORRIDOR_Y_LIMIT_PX, LAB_CORRIDOR_Y_LIMIT_PX);
+  const behindEdge = projLabEdgeDist(gvL, goalDir > 0 ? pcx - v.left : v.right - pcx, gd > 0 ? -1 : 1, pcx, -LAB_CORRIDOR_Y_LIMIT_PX, LAB_CORRIDOR_Y_LIMIT_PX);
+  // 見えたか: 研究所のゲームの画面がある時は絵の箱(生け贄=敵の絵の箱・塊=頭打ちした塊の絵の箱=描画と同じ大きさ)・無い時は今の矩形。
+  const baitInView = (e: Enemy): boolean => (gvL ? projLabEnemyDrawn(gvL, e) : rectInView(baitRect(e), v));
+  const crawlerInView = (k: LabCrawler): boolean => (gvL ? projLabCrawlerDrawn(gvL, k.x, k.y) : rectInView(crawlerRect(k), v));
   const sc = st.labBaitScene;
 
   // ---- 発火を待っている生け贄 ----
@@ -143,7 +151,7 @@ export const labBaitBeforeStep = (c: LabCrawler | null, gameTime: number, dtSec:
     const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
     if (!crawlerAlive(c) || labBaitPassed(ecx, pcx, goalDir) || Math.abs(ecx - goalX) < BAIT_GOAL_GIVE_UP_PX) { releaseBait(e.id); continue; }
     if (!labBaitShouldFire(ecx, pcx, goalDir, aheadEdge)) continue;
-    if (rectInView(baitRect(e), v)) { releaseBait(e.id); continue; } // 据え置きが間に合わず見えた(ズームの変化等)
+    if (baitInView(e)) { releaseBait(e.id); continue; } // 据え置きが間に合わず見えた(ズームの変化等)
     const holdAhead = () => {
       // 画面の外の前方へ据え置く(見えている端+マージン+体の幅)。
       const hx = pcx + goalDir * (aheadEdge + LAB_BAIT_FIRE_MARGIN_PX + e.width);
@@ -236,7 +244,7 @@ export const labBaitBeforeStep = (c: LabCrawler | null, gameTime: number, dtSec:
     next.passed = true;
     sfx?.('zombie-growl', PASS_GROWL_GAIN); // すれ違いざまに吠える
     // 塊が画面の外なら、この先の引き(ズーム)と後ろへの寄せでも見えない所へ隠す(ワープ・演出なし)。見えていれば隠さない。
-    if (!rectInView(crawlerRect(cc), v)) {
+    if (!crawlerInView(cc)) {
       const halfViewOut = st.gameBounds.width / Math.min(1, LAB_BAIT_ZOOM) / 2;
       const futureBehind = Math.max(behindEdge, halfViewOut + st.gameBounds.width * LAB_BAIT_CAM_MAX_FRAC);
       next.hideX = labBaitWarpX(pcx, sc0.dir, futureBehind);

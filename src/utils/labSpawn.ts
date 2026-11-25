@@ -63,6 +63,10 @@ export const placeLabSpawn = (
   // ★壁・プロップに重なるか(左上x,y・w×h)。null=見ない(従来どおり)。重なる y は避ける
   //   (社長報告2026-11-19「オブジェに食い込んで沸いてる敵がいる(倒せない 動かない)」。world/labWalls.overlapsLabObstacle を渡す)。
   blocked: ((x: number, y: number, w: number, h: number) => boolean) | null = null,
+  // ★?proj=1(研究所のゲームの画面): 行ごとの「画面の外へ出切る」左上 x(side=+1 右・−1 左・y=左上 y)。null=その行は投影の物差しが要らない。
+  //   投影では北の行ほど横に広く見えるので、今の x(主人公 ± 半画面 ± 余白)のままだと北寄りの湧きが画面の端に描かれる。
+  //   x は「今の x」と「投影の画面の外+余白」の遠い方(=今より近くには湧かない・南の行は今のまま)。省略(?proj=0)=今の式そのもの。
+  outsideX: ((side: 1 | -1, y: number) => number | null) | null = null,
 ): LabSpawnPlacement | null => {
   const rightX = playerX + halfViewW + margin;
   const leftX = playerX - halfViewW - margin - enemyW;
@@ -95,10 +99,26 @@ export const placeLabSpawn = (
   const xs: number[] = [];
   if (preferRight) { if (rightOk) xs.push(rightX); if (leftOk) xs.push(leftX); }
   else { if (leftOk) xs.push(leftX); if (rightOk) xs.push(rightX); }
-  for (const x of xs) {
+  // 投影の行ごとの外の x(今の x より遠い時だけ使う)。
+  const farX = (x0: number, y: number): number => {
+    if (!outsideX) return x0;
+    const side: 1 | -1 = x0 === rightX ? 1 : -1;
+    const ox = outsideX(side, y);
+    if (ox === null || !Number.isFinite(ox)) return x0;
+    return side > 0 ? Math.max(x0, ox + margin) : Math.min(x0, ox - margin);
+  };
+  for (const x0 of xs) {
     for (let i = 0; i < VISION_AVOID_TRIES; i++) {
-      const y = clearY(x, pickY());
+      const y0 = pickY();
+      let x = farX(x0, y0);
+      const y = clearY(x, y0);
       if (y === null) continue;
+      if (y !== y0 && outsideX) {
+        // 壁・プロップを避けて行が変わったら、その行で測り直す(x が変わった時は、その列も塞がっていないか確かめる)。
+        const x2 = farX(x0, y);
+        if (x2 !== x) { x = x2; if (blocked && blocked(x, y, enemyW, enemyH)) continue; }
+      }
+      if (x !== x0 && isLabIdolSide(x + enemyW / 2, idolSide)) continue; // 遠くへずらしてアイドル側へ入ったら外れ
       if (!insideAnyVision(x + enemyW / 2, y + enemyH / 2, others)) return { x, y };
     }
   }
@@ -127,4 +147,21 @@ export const labEscapeRouteSlots = (
     out.push({ cx, cy: (k % 2 === 1 ? -1 : 1) * edge });
   }
   return out;
+};
+
+/**
+ * ★?proj=1(研究所のゲームの画面): 逃走経路の雑魚(labEscapeRouteSlots)の中心 x を、その行で絵が画面の外へ出切る所まで押し出す
+ * (主人公から見て置いた側=今より遠くへだけ・品質監査 D2)。outsideX は placeLabSpawn と同じ「左上 x」の関数(null=今のまま)。
+ * 押し出しは置いた側の外向き=原点(帰り道)の向きなので、1画面1体の並びの順は崩れない(次の枠は1画面さらに先)。
+ */
+export const labEscapePushOut = (
+  cx: number, cy: number, w: number, h: number, playerCx: number,
+  outsideX: ((side: 1 | -1, y: number) => number | null) | null,
+): number => {
+  if (!outsideX) return cx;
+  const side: 1 | -1 = cx >= playerCx ? 1 : -1;
+  const ox = outsideX(side, cy - h / 2);
+  if (ox === null || !Number.isFinite(ox)) return cx;
+  const need = ox + w / 2; // 左上 x → 中心 x
+  return side > 0 ? Math.max(cx, need) : Math.min(cx, need);
 };

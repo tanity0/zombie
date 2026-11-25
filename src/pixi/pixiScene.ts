@@ -18,7 +18,7 @@ import type { RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { VIEW_CORE_W } from '../utils/viewport';
 import { setViewTransform, setViewProjection, getLastCursorScreen, projAimStats } from '../utils/viewTransform';
 import { getHudAvoidRects, slideOutOfRects } from '../utils/hudAvoidRects';
-import { projFrameBase, projGroundPersp, projAimAllowed, projCamDownFracFor, projAttentionCarries, type ProjScene, getProjGameView, projGameViewContains, projPropRegionRect, projFadeInBrightness, type ProjFrameBaseParams } from '../utils/projGameView';
+import { projFrameBase, projGroundPersp, projAimAllowed, projCamDownFracFor, projAttentionCarries, LAB_FAR_BOUNDARY_YR, type ProjScene, getProjGameView, projGameViewContains, projPropRegionRect, projFadeInBrightness, type ProjFrameBaseParams } from '../utils/projGameView';
 import { projEnemyFadeAlpha, projGhostAlpha, projBulletGhostAlpha, projGhostOverflow, projGhostDrift, projRecycledNear, PROJ_GHOST_DRIFT_TAU_MS, PROJ_BULLET_GHOST_DRIFT_TAU_MS, type ProjRecycleGhost, type ProjBulletGhost } from '../utils/projSpawnFade'; // ?proj=1 段階6(★#36・★#37) // 投影の組み立て(§3-9d=ゲーム側と1本)
 import { HORIZON_FOREST_UP_BY_STAGE, HORIZON_ACTOR_HIDE_OFFSET_PX, horizonForestHeightFor, horizonForestYFor, type HorizonForestInput } from '../utils/horizonForestLine'; // 森1の配置(§3-9d=ゲーム側と1本)
 import {
@@ -364,7 +364,7 @@ import { playerCenteredRegion, regionEdgeFade, type RegionRect } from '../utils/
 import { stepStaticShadowCap, staticShadowLowAlphaMult, STATIC_SHADOW_CAP, isStaticProjectedShadow, type StaticShadowCand } from '../utils/staticShadowCap'; // ?proj=1 の止まっている物の影の上限
 import {
   ProjSavePool, PROJ_ACTOR_ROLES, projActorK, projPhillK, projChildAlphaMul, projActorRole, projRoleMove, projActorPosFade, projSpawnEdgeAlpha, projSpawnFadeApplies,
-  projSeeThroughBox, projSimilarInverseInto, projHudDeltaInto, projFadeTermsInto, projActorLift, type ProjActorPartKey, type ProjMove,
+  projSeeThroughBox, projSimilarInverseInto, projHudDeltaInto, projFadeTermsInto, projActorLift, projCrawlerLooseD, type ProjActorPartKey, type ProjMove,
 } from '../utils/projActorPass'; // 投影の段階2「動くもの」(?proj=1・research/PERSPECTIVE_PROJECTION.md §3-5)
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { getCameraZoomLink } from '../utils/cameraZoomLink';
@@ -777,7 +777,7 @@ const TUTORIAL_FAR_HEIGHT_RATIO = 0.415;
 // 「画面上端〜境界線」にスケールで貼る(M7と同じ高さフィット・絵の縦全体が見える・横はループ)。
 // 境界線=このつまみ1つ(画面高比)。床上端も同じ値に追従(updatePerspectiveGround)。
 // 0.30=旧実装(0.415比-100px)のスマホ縦での見た目を概ね維持する値。
-const LAB_FAR_BOUNDARY_YR = 0.30;
+// 値は utils/projGameView.LAB_FAR_BOUNDARY_YR の1本(ゲーム側の「ゲームの画面」=研究所の枠も同じ値を読む)。
 // 川の流れ(オクトラ風・社長相談2026-07-17): 遠景と同ジオメトリのハイライト筋レイヤー2枚を
 // 速度差でスクロール(1枚目=速い/2枚目=遅い)。明部は既存bloomが拾って光る。数値は全て叩き台。
 const RIVER_FLOW_SPEED_PX_S = [18, 10];   // tilePositionの流速(表示px/秒)
@@ -16541,6 +16541,9 @@ export class PixiScene {
     let alpha = this.projFrame
       ? this.projLooseFade(c.x, bf.y, false) * this.foregroundActorAlpha(bf.y)
       : this.projLooseFade(c.x, bf.y);
+    // ?proj=1(研究所の変異塊の大きさの頭打ち): 足元の s を utils/projActorPass.projCrawlerScale で滑らかに頭打ちし、後掛けの d(k = s/d)へ渡す。
+    // 足元の位置は投影のまま(床に立つ)・大きさだけ止める。影も同じ比で縮める。判定(当たり・取り込み)は world のまま。?proj=0 は 1。
+    const crawlerProjD = this.projFrame ? projCrawlerLooseD(projectInto(this.projFrame, c.x, bf.y, this.projScratch2).s) : 1;
     const artW = tex.width * baseScale, artH = tex.height * baseScale;
     let sinkPx = 0;
     if (ascendLook) {
@@ -16654,8 +16657,8 @@ export class PixiScene {
       const shrink = 1 - 0.55 * sinkK;
       this.crawlerShadow = {
         x: c.x + lungeX + slideX + rparts.bodyX, y: bf.y + rparts.bodyY, // 体ごと下がる分(遅いばね)だけ影も滑る。速い身震い・怯みは影に入れない
-        legacyW: artW * 0.85 * shrink,
-        rawW: artW * shrink, rawH: artH * shrink, texture: tex,
+        legacyW: artW * 0.85 * shrink / crawlerProjD,
+        rawW: artW * shrink / crawlerProjD, rawH: artH * shrink / crawlerProjD, texture: tex,
         alpha: alpha * (1 - 0.8 * sinkK),
         projected: !!this.projFrame || undefined, // ?proj=1 段階8 U14: x/y/rawW/rawH は world(s=1・遠近を掛けない絵)=4隅を投影
       };
@@ -16707,7 +16710,7 @@ export class PixiScene {
     // ?proj=1 段階8 U14・U16(§3-10e): 体と付属(ランタン・魂・光・土埃・型)は足元1点+s の後掛け(型②)。遠近は掛けていない絵=d=1。
     // 死の光の柱は付け根だけ投影し、長さは今の画面基準のまま(画面いっぱいの光の柱=画面固定の性格)=平行移動。
     if (this.projFrame) {
-      this.projLoose('lab-crawler', c.x, bf.y, 1);
+      this.projLoose('lab-crawler', c.x, bf.y, crawlerProjD); // 頭打ち(crawlerProjD=s/頭打ちした倍率・頭打ちの前は 1)
       this.projLooseAdd(sp); this.projLooseAdd(this.crawlerBody); this.projLooseAdd(this.crawlerFlash);
       this.projLooseAdd(this.crawlerGlow); this.projLooseAdd(this.crawlerBodyMask);
       for (const o of this.crawlerSouls) this.projLooseAdd(o);

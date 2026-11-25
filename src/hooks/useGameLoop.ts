@@ -5,9 +5,9 @@ import { isUntouchable } from '../utils/enemyUtils';
 import { setCameraZoomLink } from '../utils/cameraZoomLink';
 // ?proj=1(段階6・research/PERSPECTIVE_PROJECTION.md §3-9d): ゲーム側の「ゲームの画面」をカメラと同じフレームで作り直す。
 import { PROJ_GAME_VIEW, PROJ_GAME_SPAWN, PROJ_GAME_RECYCLE, PROJ_ZREF, PROJ_NEAR, PROJ_FAR_START, PROJ_FAR_END } from '../utils/projFlag';
-import { noteProjFadeZoom, projFadeInNewEnemies, flushProjGhosts, projFadeHidden } from '../utils/projSpawnFade'; // ?proj=1 段階6(★#36・★#37)
+import { noteProjFadeZoom, projFadeInNewEnemies, flushProjGhosts, projFadeHidden, projLabSpawnOutsideX, projLabAimable } from '../utils/projSpawnFade'; // ?proj=1 段階6(★#36・★#37)
 import type { SpawnBoundsProj } from '../utils/enemyUtils';
-import { rebuildProjGameViews, setProjGameView } from '../utils/projGameView';
+import { rebuildProjGameViews, setProjGameView, projGameSceneFor, projAttentionCarries, labFarBackdropHeightFor, projLabViewCam } from '../utils/projGameView';
 import { horizonForestFootLocalY, HORIZON_FOREST_UP_BY_STAGE } from '../utils/horizonForestLine';
 import { farBackdropHeightFor } from '../utils/spawnRefill';
 import { attentionZoomEnvelope } from '../utils/attentionZoom';
@@ -11158,15 +11158,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         setCameraZoomLink(camBossZoomRef.current.z); // ?proj=1 の基準行(★#20 裁定②)が同じフレームのカメラのズームを読む(描画用・store を通さない)
         // ?proj=1(段階6・§3-9d「置き場所と作り直す時刻」): ゲームの画面(gfCam=store のカメラ・gfPlayer=主人公中心の基準)を
         // このフレームの値で作り直す。tick の途中では作り直さない(1フレームの中で判定の物差しが揺れない)。
-        // 屋内・洋館・研究所・M0(チュートリアル)は場面の外=null(呼ぶ所は今の関数へ落ちる)。?proj=0 では1行も通らない。
+        // 屋内・洋館・M0(チュートリアル)は場面の外=null(呼ぶ所は今の関数へ落ちる)。?proj=0 では1行も通らない。
+        // 研究所(ステージ2)も屋外と同じ作りで立てる(pixiScene の研究所の枠と同じ式: 遠景の帯 0.30H・縦の下げ量 字の 0・素のアテンションも運ぶ)。
         if (PROJ_GAME_VIEW) {
           const gsv = useGameStore.getState();
-          if (indoor || gsv.corridorMode || labTheme || tutorialStage) setProjGameView(null);
+          const gScene = projGameSceneFor({ indoor, corridor: gsv.corridorMode, lab: labTheme, tutorial: tutorialStage });
+          if (gScene === null) setProjGameView(null);
           else {
-            const farHv = farBackdropHeightFor(gameBounds.height);
+            const labView = gScene === 'lab';
+            const farHv = labView ? labFarBackdropHeightFor(gameBounds.height) : farBackdropHeightFor(gameBounds.height);
             const at = gsv.attention;
             let attv: { y: number; env: number } | null = null;
-            if (at?.zoomToUnity) {
+            if (at && projAttentionCarries(gScene, !!at.zoomToUnity)) {
               const outStart = ATTENTION_IN_MS + (at.holdMs ?? ATTENTION_HOLD_MS) + (at.cutinMs ?? 0);
               attv = { y: at.y, env: attentionZoomEnvelope(Date.now() - at.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS) };
             }
@@ -11177,10 +11180,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               camZoom: camBossZoomRef.current.z, camDown: CAMERA_DOWN_OFFSET_FRAC, zref: PROJ_ZREF, near: PROJ_NEAR,
               farStart: PROJ_FAR_START, farEnd: PROJ_FAR_END, att: attv,
               horizonLocal: horizonForestFootLocalY({
-                screenH: gameBounds.height, farH: farHv, farKey: fk, stage5: fk === 'stage5', lab: false,
+                screenH: gameBounds.height, farH: farHv, farKey: labView ? 'lab' : fk, stage5: !labView && fk === 'stage5', lab: labView,
                 upPx: HORIZON_FOREST_UP_BY_STAGE[getSelectedStageId()] ?? 0,
               }),
               fadePx: horizonActorFadePx(gameBounds.height, gameBounds.width),
+              ...(labView ? { scene: 'lab' as const } : {}),
             }, farHv);
           }
         }
@@ -11346,7 +11350,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 守護霊のオート斬撃も**同じ関数**を通る(裁定2=共有方式)。
             const targetId = pickKatanaSlashTarget(
               kp.x + kp.width / 2, kp.y + kp.height / 2, katanaReach(kp), // ハンティングが溜まっていれば届く距離が伸びる
-              useGameStore.getState().enemies, gameTime, enemyMeleeDist,
+              projLabAimable(useGameStore.getState().enemies), gameTime, enemyMeleeDist, // ?proj=1 研究所: 描かれていない敵は狙わない
             );
             if (targetId) {
               lastKatanaSlashRef.current = gameTime;
@@ -11496,7 +11500,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const hgAimTo = hostileOwned
             ? { x: player.x + player.width / 2, y: player.y + player.height / 2 }
             : (() => {
-              const t = pickSubAimTarget(hgOwner, ghostSubBossId, useGameStore.getState().enemies);
+              const t = pickSubAimTarget(hgOwner, ghostSubBossId, projLabAimable(useGameStore.getState().enemies)); // ?proj=1 研究所: 描かれていない敵は狙わない
               return t ? { x: t.x + t.width / 2, y: t.y + t.height / 2 } : null;
             })();
           const aimX = hgAimTo ? hgAimTo.x - pcx : hgOwner.facing?.x ?? 1;
@@ -12616,7 +12620,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const fkHostile = isHostileOwner(fkOwner);
           const target = fkHostile
             ? { x: player.x, y: player.y, width: player.width, height: player.height }
-            : pickSubAimTarget(fkOwner, ghostSubBossId, useGameStore.getState().enemies);
+            : pickSubAimTarget(fkOwner, ghostSubBossId, projLabAimable(useGameStore.getState().enemies)); // ?proj=1 研究所: 描かれていない敵は狙わない
           if (target) {
             const aimX = target.x + target.width / 2 - pcx;
             const aimY = target.y + target.height / 2 - pcy;
@@ -12681,7 +12685,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 maxLocks: HOMING_MAX_LOCKS_BY_LEVEL[level],
                 ownerCx: ownerCenterX(playerOwner),
                 ownerCy: ownerCenterY(playerOwner),
-                enemies: useGameStore.getState().enemies,
+                enemies: projLabAimable(useGameStore.getState().enemies), // ?proj=1 研究所: 描かれていない敵はロックしない
               });
               // 1段階目(白)/2段階目(赤)でSEを鳴らし分ける。
               if (step.added) playSfx(step.added === 'first' ? 'homing-lock' : 'homing-lock2');
@@ -12762,7 +12766,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const lvl = ghostSubLevel('support-sniper');
             const cdMs = SUPPORT_SNIPER_CD_MS_BY_LEVEL[lvl];
             const ssState = useGameStore.getState();
-            const target = pickSubAimTarget(gOwner, ghostSubBossId, ssState.enemies);
+            const target = pickSubAimTarget(gOwner, ghostSubBossId, projLabAimable(ssState.enemies)); // ?proj=1 研究所: 描かれていない敵は狙わない
             const tick = computeSupportSniperTick({
               deltaMs: deltaTime * 1000,
               isMoving: gSub.ghostIsMoving ?? false,
@@ -14355,7 +14359,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const kcx = resolved.x + ghostNow.width / 2, kcy = resolved.y + ghostNow.height / 2;
                   const kTargetId = pickKatanaSlashTarget(
                     kcx, kcy, katanaReach(ghostOwner), // ハンティングが溜まっていれば届く距離が伸びる(プレイヤーと同じ)
-                    useGameStore.getState().enemies, gameTime, enemyMeleeDist,
+                    projLabAimable(useGameStore.getState().enemies), gameTime, enemyMeleeDist, // ?proj=1 研究所
                   );
                   if (kTargetId) {
                     gks.at = gameTime;
@@ -15643,7 +15647,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (grState.player.health <= 0 || grState.gameWon) {
               grState.setGoldRings([]);
             } else {
-              const aimableEnemies = grState.enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e));
+              const aimableEnemies = projLabAimable(grState.enemies).filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e)); // ?proj=1 研究所: 描かれていない敵は狙わない
               // レーザーが通れる壁を探す範囲(展開点±(レーザー長+マージン))。padはbeamWalls
               // (共通ヘルパ)呼び出し側で持つ(indoor/研究所スキン/屋外の3分岐は共通化済み)。
               const grPad = GOLD_RING_LASER_LEN + 40;
@@ -15786,7 +15790,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const rkLaunchPlayer = useGameStore.getState().player;
           const rkLaunchPcx = rkLaunchPlayer.x + rkLaunchPlayer.width / 2;
           const rkLaunchPcy = rkLaunchPlayer.y + rkLaunchPlayer.height / 2;
-          const rkLaunchTarget = pickNearestTarget(rkLaunchPcx, rkLaunchPcy, useGameStore.getState().enemies, gameTime);
+          const rkLaunchTarget = pickNearestTarget(rkLaunchPcx, rkLaunchPcy, projLabAimable(useGameStore.getState().enemies), gameTime); // ?proj=1 研究所: 描かれていない敵は狙わない
           let rkDirX: number, rkDirY: number;
           if (rkLaunchTarget) {
             const rtdx = rkLaunchTarget.x + rkLaunchTarget.width / 2 - rkLaunchPcx;
@@ -15947,7 +15951,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (!elLocked && !isReloading(elPlayer, elGun.id)) {
                 const elPcx = elPlayer.x + elPlayer.width / 2;
                 const elPcy = elPlayer.y + elPlayer.height / 2;
-                const elAimable = elState.enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e));
+                const elAimable = projLabAimable(elState.enemies).filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e)); // ?proj=1 研究所: 描かれていない敵は狙わない
                 if (elGun.eyeLaserPhase === undefined) {
                   if ((elGun.magazine ?? 0) > 0) {
                     // アイドル: 射程内に敵が入ったら溜め開始(通常銃の射程ゲートと同じ関数)。
@@ -16141,7 +16145,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (!flLocked) {
               const flPcx = flPlayer.x + flPlayer.width / 2;
               const flPcy = flPlayer.y + flPlayer.height / 2;
-              const flAimable = flState.enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e));
+              const flAimable = projLabAimable(flState.enemies).filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e)); // ?proj=1 研究所: 描かれていない敵は狙わない
               const flRange = gunEffectiveRangePx(flGun);
               const flWalls = beamWalls(flPcx, flPcy, FLAMER_RANGE_PX + 40);
               // ★検収監査B-2是正: 対象選択(pickNearestTarget)も命中判定(pickFanHits+segmentBlocked)
@@ -18824,11 +18828,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const labVisionCircles = useGameStore.getState().enemies
                 .filter(e => e.aggroRange !== undefined)
                 .map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2, r: e.aggroRange as number }));
+              const labGv = projLabViewCam(); // ?proj=1: 研究所のゲームの画面(行ごとの横の見える端の外へ)。?proj=0 は null=今の式
               const placed = placeLabSpawn(
                 player.x, spawnBounds.width / 2, OFFSCREEN_SPAWN_MARGIN,
                 labEnemy.width, labEnemy.height, LAB_CORRIDOR_Y_LIMIT_PX,
                 labVisitedRef.current, labVisionCircles, Math.random, useGameStore.getState().labIdolSide, // アイドル側には湧かせない
                 (bx, by, bw, bh) => overlapsLabObstacle({ x: bx, y: by, width: bw, height: bh }), // 壁・プロップの中に湧かせない
+                labGv ? projLabSpawnOutsideX(labGv, labEnemy) : null,
               );
               if (!placed) continue; // 両側とも通った道=湧かせない(社長指示v0.25.2244)
               labEnemy.x = placed.x;

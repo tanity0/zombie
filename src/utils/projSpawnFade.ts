@@ -13,12 +13,13 @@ import { enemyFootBox } from '../pixi/renderSpec';
 import { PROJ_GAME_SPAWN, PROJ_GAME_RECYCLE } from './projFlag';
 import {
   getProjGameView, projFadeInAlpha, projGameBoxOnScreen, projGameViewContains, projGameZoomPlacement,
-  projGhostFadeAlpha, projFadeHidden, PROJ_GHOST_FADE_MS, PROJ_BULLET_GHOST_FADE_MS,
+  projGhostFadeAlpha, projFadeHidden, projGameRowOutsideFootX, projLabViewCam, PROJ_GHOST_FADE_MS, PROJ_BULLET_GHOST_FADE_MS,
   type ProjGameView, type ProjGameViews,
 } from './projGameView';
 import { makeProjFrame } from './perspectiveProjection';
 import { holdMinZoom, RETIRE_ZOOM_HOLD_MS, type ZoomHold } from './spawnRefill';
-import { projSpawnFadeApplies } from './projActorPass';
+import { projSpawnFadeApplies, projCrawlerScale } from './projActorPass';
+import { CRAWLER_ART_BODY_DISPLAY_W, CRAWLER_HIT_H, CRAWLER_BODY_FOOT_UP_PX } from '../world/labCrawler';
 
 // ---- フェードの判定の画面(コ1) ----
 
@@ -74,6 +75,55 @@ export const projEnemyArtOnScreen = (
   const fb = enemyFootBox(e as Enemy);
   return projGameBoxOnScreen(gv, fb.footX, fb.footY, fb.boxW, fb.boxH, 0, minAlpha);
 };
+
+// ---- 研究所(ステージ2)のゲームの画面(湧き・回収・照準の対象選び) ----
+// 研究所の「見えている」の物差しは1本: 絵の箱(描画と同じ大きさ)が濃さ PROJ_FADE_DRAWN_ALPHA(0.05)以上で画面に掛かるか=「描かれているか」。
+// ★#38 の 0.5 は使わない(研究所は主人公のすぐ北から地平線フェードが掛かる=主人公の行で濃さ約 0.74・北 40px で 0.45)。
+
+/**
+ * 研究所の湧きの行ごとの外の x(labSpawn.placeLabSpawn の outsideX): 型と大きさが e の敵を左上 y に置いた時、
+ * 絵の箱(enemyFootBox)が画面の横の端(side)の外へちょうど出切る左上 x。行が描かれていなければ null。
+ */
+export const projLabSpawnOutsideX = (
+  gv: ProjGameView, e: Pick<Enemy, 'width' | 'height' | 'type'>,
+): ((side: 1 | -1, y: number) => number | null) => (side, y) => {
+  const fb = enemyFootBox({ ...(e as Enemy), x: 0, y });
+  const fx = projGameRowOutsideFootX(gv, side, fb.footY, fb.boxW);
+  return fx === null ? null : fx - e.width / 2; // 足元の中心 x → 左上 x
+};
+
+/**
+ * 変異塊の絵の箱(描画 pixiScene.syncLabCrawler と同じ大きさの目安): 足元=crawlerBodyFoot(箱の下辺の中心)・幅=絵の胴の表示幅・
+ * 背丈=判定の奥行き(絵の背丈≈箱の奥行き・labCrawler.ts の CRAWLER_BODY_FOOT_UP_PX の注)。倍率は描画と同じ頭打ち(projCrawlerScale)。
+ */
+export const projLabCrawlerDrawn = (gv: ProjGameView, footX: number, footY: number, minAlpha = PROJ_FADE_DRAWN_ALPHA): boolean =>
+  projGameBoxOnScreen(gv, footX, footY - CRAWLER_BODY_FOOT_UP_PX, CRAWLER_ART_BODY_DISPLAY_W, CRAWLER_HIT_H, 0, minAlpha, projCrawlerScale);
+
+/** 敵の絵の箱が研究所の画面に描かれているか(変異塊の代理=型 'lab-crawler' は塊の絵の箱・頭打ちの倍率で測る)。 */
+export const projLabEnemyDrawn = (gv: ProjGameView, e: Enemy): boolean =>
+  e.type === 'lab-crawler'
+    ? projLabCrawlerDrawn(gv, e.x + e.width / 2, e.y + e.height)
+    : projEnemyArtOnScreen(gv, e, PROJ_FADE_DRAWN_ALPHA);
+
+/**
+ * 研究所の照準の対象から外すか(武器・サブウェポンの狙いの入口すべて=projLabAimable): 研究所のゲームの画面がある時だけ、
+ * 絵の箱が画面に1つも描かれていない(画面の外・地平線の先)敵は外す。研究所でない・`?proj=0` は常に false。
+ */
+export const projLabAimHidden = (e: Enemy, _gameTime: number, gv: ProjGameView | null = projLabViewCam()): boolean =>
+  gv !== null && !projLabEnemyDrawn(gv, e);
+
+/**
+ * 研究所の狙いの候補(武器・サブウェポンの狙いの入口が敵の列を渡す前に通す門)。研究所のゲームの画面が無い時(屋外・`?proj=0`)は
+ * 同じ配列をそのまま返す(=1ビットも変わらない)。
+ */
+export const projLabAimable = <T extends Enemy>(enemies: readonly T[]): T[] => {
+  const gv = projLabViewCam();
+  return gv ? enemies.filter(e => projLabEnemyDrawn(gv, e)) : (enemies as T[]);
+};
+
+/** 研究所の回収で「描かれているので今は回収しない」か。研究所でない・`?proj=0` は常に false。 */
+export const projLabRecycleHold = (e: Enemy, gv: ProjGameView | null = projLabViewCam()): boolean =>
+  gv !== null && projLabEnemyDrawn(gv, e);
 
 // ---- フェードイン(イ・ケ1・コ2) ----
 

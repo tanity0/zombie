@@ -1,9 +1,9 @@
 import { MAGNET_PULL_RADIUS_BY_LEVEL } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ半径(社長裁定2026-09-13)
-import { projSeen, projSeenPlayer, projViewCam, projViewPlayer, projGameRowHalfW, projGameBandPick, projGameViewContains, projGameScreenCenter, getProjGameView, projGameRecycleRect, projPropRegionRect, projEndingReentryHalfW, projBulletCullRadius } from '../utils/projGameView';
+import { projSeen, projSeenPlayer, projViewCam, projViewPlayer, projGameRowHalfW, projGameBandPick, projGameViewContains, projGameScreenCenter, getProjGameView, projGameRecycleRect, projPropRegionRect, projEndingReentryHalfW, projBulletCullRadius, projLabViewCam } from '../utils/projGameView';
 import { PROJ_GAME_RECYCLE, PROJ_GAME_SNAP } from '../utils/projFlag';
 import type { ProjRecycleGhost, ProjBulletGhost } from '../utils/projSpawnFade';
 import { projAimFrameFrom, projHeadScreenDist2, type ProjAimSnapInput } from '../utils/projAimSnap';
-import { queueProjBulletGhost, projFadeHidden, resetProjFadeState } from '../utils/projSpawnFade'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
+import { queueProjBulletGhost, projFadeHidden, resetProjFadeState, projLabAimHidden, projLabAimable, projLabSpawnOutsideX } from '../utils/projSpawnFade'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import { canTogglePause } from '../utils/pauseGate';
 import type { RainArrow } from '../utils/arrowRain';
 import { tickSpawnWalk, resetSpawnWalk } from '../utils/spawnWalkBias';
@@ -196,7 +196,7 @@ import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
 import { evaluateLabLoseSight, LAB_VISION_RANGE, noticeOnHitPatch, HIT_NOTICE_MS, spottedSfxOnWake } from '../utils/labStealth';
 import { labBaitSlots, type LabBaitScene } from '../world/labBait';
-import { labEscapeRouteSlots } from '../utils/labSpawn'; // ステージ2: 資料の後の逃走経路の雑魚
+import { labEscapeRouteSlots, labEscapePushOut } from '../utils/labSpawn'; // ステージ2: 資料の後の逃走経路の雑魚
 // distToSegment: M66(§6.26-11)の掃射/三連突進の吐息(回転帯)が毎フレーム自己検出するために使う純関数。
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
@@ -5614,7 +5614,7 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
   const radius = huntingMeleeRadius(p);
   const walls = meleeWallsAround(get, c.x, c.y, radius);
   // ★コンボ中は最初に当てた敵を狙い続ける(社長指示2026-11-12・届く範囲は今のまま・utils/brawler の pickBrawlerComboTarget)。
-  const target = BR.pickBrawlerComboTarget(st.enemies, c.x, c.y, radius, walls, BR.brawlerComboLockId(s0));
+  const target = BR.pickBrawlerComboTarget(projLabAimable(st.enemies), c.x, c.y, radius, walls, BR.brawlerComboLockId(s0)); // ?proj=1 研究所: 描かれていない敵は狙わない
   const dir = BR.brawlerAimDir(c.x, c.y, target, p.lastDirection);
   const quick = s0.quickUntil > t;
   const s = { ...BR.brawlerStartAttack(s0, stage, t, quick), targetId: target?.id, dirX: dir.x, dirY: dir.y, pressAt: now, ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
@@ -5814,7 +5814,7 @@ const startBrawlerTech = (
   if (kind === 'kick' || kind === 'kiko') {
     const range = (kind === 'kick' ? BR.BRAWLER_KICK_RANGE : BR.BRAWLER_KIKO_RANGE) + brawlerReachExtra(p); // ハンティングが溜まっていれば広がる(§16)
     const walls = kind === 'kick' ? meleeWallsAround(get, c.x, c.y, range) : [];
-    const target = BR.pickBrawlerComboTarget(st.enemies, c.x, c.y, range, walls, BR.brawlerComboLockId(s0)); // ★コンボの狙いを優先(社長指示2026-11-12)
+    const target = BR.pickBrawlerComboTarget(projLabAimable(st.enemies), c.x, c.y, range, walls, BR.brawlerComboLockId(s0)); // ★コンボの狙いを優先(社長指示2026-11-12)・?proj=1 研究所の門
     const dir = BR.brawlerAimDir(c.x, c.y, target, p.lastDirection);
     s = { ...s, targetId: target?.id, dirX: dir.x, dirY: dir.y };
     extra = { ...extra, lastDirection: { x: dir.x, y: dir.y } };
@@ -6241,7 +6241,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   if (s.phase === 'attack') {
     const spec = BR.brawlerStageSpec(s.stage);
     // 相手が倒れていたら、いま一番近い敵へ(§7-9)。
-    if (!target && (spec.shape === 'single' || spec.shape === 'fist')) target = BR.pickBrawlerComboTarget(st.enemies, c.x, c.y, radius, walls, BR.brawlerComboLockId(s));
+    if (!target && (spec.shape === 'single' || spec.shape === 'fist')) target = BR.pickBrawlerComboTarget(projLabAimable(st.enemies), c.x, c.y, radius, walls, BR.brawlerComboLockId(s)); // ?proj=1 研究所の門
     let ids: string[] = [];
     if (spec.shape === 'single') {
       ids = target && BR.brawlerDistTo(c.x, c.y, target) <= radius ? [target.id] : [];
@@ -6344,7 +6344,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   }
   if (s.tech === 'kiko') {
     // 撃った時の方向へまっすぐ(曲がらない)。届く距離の中で一番近い敵へ(§7-9)。
-    const aim = BR.pickBrawlerComboTarget(st.enemies, c.x, c.y, BR.BRAWLER_KIKO_RANGE + brawlerReachExtra(p), [], BR.brawlerComboLockId(s)); // ★コンボの狙いを優先
+    const aim = BR.pickBrawlerComboTarget(projLabAimable(st.enemies), c.x, c.y, BR.BRAWLER_KIKO_RANGE + brawlerReachExtra(p), [], BR.brawlerComboLockId(s)); // ★コンボの狙いを優先・?proj=1 研究所の門
     const d = BR.brawlerAimDir(c.x, c.y, aim, { x: s.dirX, y: s.dirY });
     const sx = c.x + d.x * 18, sy = c.y - 4 + d.y * 18;
     set(state => ({
@@ -6584,7 +6584,7 @@ const releaseBrawlerGrab = (get: () => GameState, set: (fn: (s: GameState) => Pa
   const e = st.enemies.find(en => en.id === grab.enemyId);
   if (!e || !(e.health > 0) || isCorpse(e) || !isBrawlerMode(st.player)) return;
   const gx = e.x + e.width / 2, gy = e.y + e.height / 2;
-  const tgt = BR.pickBrawlerTarget(st.enemies.filter(en => en.id !== e.id && !en.brThrown), gx, gy, BR.BRAWLER_THROW_RANGE);
+  const tgt = BR.pickBrawlerTarget(projLabAimable(st.enemies).filter(en => en.id !== e.id && !en.brThrown), gx, gy, BR.BRAWLER_THROW_RANGE); // ?proj=1 研究所の門
   if (BRS.brawlerAirThrowMove(tgt?.id ?? null) === 'airthrow' && tgt) { startBrawlerThrow(get, set, e, tgt); return; }
   // スープレックス: 放した瞬間から一緒に少し上がり(§34-11・BRAWLER_AIR_SUPLEX_RISE_MS・絵だけ)、頂点から持ち上げて反り、
   //   反りの頂点(さらに BRAWLER_SUPLEX_RISE_MS 後)で叩きつける(当たりは tickBrawler・クリエイティブ監査 #3)。
@@ -9264,7 +9264,7 @@ const fireGoldRingOnSwing = (
   const ocy = ownerCenterY(owner);
   // 死神系(横切り演出の無敵ゴースト)を狙っても絶対に当てられない(§19-2b「除外」と同じ述語)ので、
   // 「最初のターゲット」の取得段階から除く(倒せない相手へ2本とも空撃ちするのを避ける)。
-  const aimable = get().enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)));
+  const aimable = projLabAimable(get().enemies).filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e))); // ?proj=1 研究所: 描かれていない敵は狙わない
   const firstTarget = pickNearestTarget(ocx, ocy, aimable, gameTime, GOLD_RING_MAX_AIM_DIST * GOLD_RING_MAX_AIM_DIST);
   if (!firstTarget) return false; // §19-2b「対象が居ない時: 発動しない・CDも消費しない」
   const tcx = firstTarget.x + firstTarget.width / 2;
@@ -9570,7 +9570,7 @@ const findShukuchiTarget = (get: () => GameState, p: Player): Enemy | null => {
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
   const walls = meleeWallsAround(get, pcx, pcy, rangePx);
   const cands: { id: string; dist: number; blocked: boolean; e: Enemy }[] = [];
-  for (const e of get().enemies) {
+  for (const e of projLabAimable(get().enemies)) { // ?proj=1 研究所: 描かれていない敵へは飛ばない
     if (e.health <= 0 || isCorpse(e) || e.dormant === true) continue;
     if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
     if (e.aiPhase === 'jump' || isUntouchable(e)) continue;
@@ -12873,9 +12873,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           const msnap = PROJ_GAME_SNAP && mouseWorld ? state.mouseSnap : null;
           const mf = msnap ? projAimFrameFrom(msnap.frame, state.camera.x, state.camera.y) : null; // カメラは今の値(マウスを止めて歩いてもずれない・A1)
           if (msnap && mf) { const rr = PHILL_SNAP_RADIUS * (mf.wgScale || 1); bestD2 = rr * rr; }
+          const labAimGv = projLabViewCam(); // ?proj=1 研究所: 投影の画面に描かれていない敵には吸い付かない(屋外・?proj=0 は null=今のまま)
           for (const e of state.enemies) {
             if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
             if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): PHILL手動照準のスナップ対象から除外
+            if (labAimGv && projLabAimHidden(e, state.gameTime, labAimGv)) continue;
             const fb = enemyFootBox(e);
             const hx = fb.footX;
             const hy = enemyHeadY(e, stage3); // 実描画の縦範囲に基づく頭付近(横長素材でも頭に乗る)
@@ -26839,11 +26841,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 休眠(近づくと起きる)は普段の湧きと同じ。壁・プロップに重なる所は近くの空きへ寄せる。
       const pcx = state.player.x + state.player.width / 2;
       const proto = spawnEnemyAt('lab-zombie-1', 0, 0, state.gameTime);
+      // ?proj=1 研究所: その行で画面に描かれる所には置かない(絵が画面の外へ出切る所まで外へ押す・押した後に壁を避けて描かれる所へ戻ったら置かない)。
+      const escGv = projLabViewCam();
+      const escOut = escGv ? projLabSpawnOutsideX(escGv, proto) : null;
       const escapeEnemies = labEscapeRouteSlots(pcx, state.gameBounds.width, LAB_CORRIDOR_Y_LIMIT_PX, proto.height, LAB_START_SAFE_RADIUS)
-        .map(sl => {
-          const c = nudgeToClearLabSpot(sl.cx, sl.cy, proto.width, proto.height);
+        .flatMap(sl => {
+          let c = nudgeToClearLabSpot(sl.cx, sl.cy, proto.width, proto.height);
+          if (escOut) {
+            const px = labEscapePushOut(c.x, c.y, proto.width, proto.height, pcx, escOut);
+            if (px !== c.x) c = nudgeToClearLabSpot(px, c.y, proto.width, proto.height);
+            if (labEscapePushOut(c.x, c.y, proto.width, proto.height, pcx, escOut) !== c.x) return [];
+          }
           const e = spawnEnemyAt('lab-zombie-1', c.x - proto.width / 2, c.y - proto.height / 2, state.gameTime);
-          return { ...e, escapeRoute: true, dormant: true, aggroRange: LAB_VISION_RANGE, vx: 0, vy: 0 };
+          return [{ ...e, escapeRoute: true, dormant: true, aggroRange: LAB_VISION_RANGE, vx: 0, vy: 0 }];
         });
       // 塊の叩き潰しの登場の生け贄(社長 2026-10-24・research/LAB_CRAWLER.md §11): 資料→ゴールを4等分した3点にレベル2を1体ずつ。
       // 視界0の休眠(台本で動かす)。塊が居る出撃だけ。

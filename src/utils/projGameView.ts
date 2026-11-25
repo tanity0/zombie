@@ -6,7 +6,8 @@
 // ゲームの画面はズーム=viewZoom だけ(走りの引き・寄せ・パンチ・揺れは入れない)・ズームの写しは描画と同じ形
 // (横=画面中央・縦=引きは farH・寄りは中央を支点)。判定点は今と同じ world 点を**地面の点**として投影する(§3-8h の4)。
 //
-// 既定(`?proj=0`)・屋内・洋館・研究所・M0 では getProjGameView() が null を返し、呼ぶ所は今の関数へ落ちる。
+// 既定(`?proj=0`)・屋内・洋館・M0 では getProjGameView() が null を返し、呼ぶ所は今の関数へ落ちる。
+// 研究所(ステージ2)も屋外と同じ作りでゲームの画面を立てる(遠景の帯 0.30H・縦の下げ量 字の 0・素のアテンションも運ぶ=pixiScene の研究所の枠と同じ式)。
 import {
   makeProjFrame, makeProjPoint, makeProjUnprojectOut, projUnprojectInto, projUnprojectLMin, projAttentionRef, projectInto, projDisplayToScreenInto, projLocalYOfWorld, projRefLocalY,
   projScaleAtLocal, projRowKx, projTOfL, projWorldYOfLocal, updateProjTable, visibleWorldBands, visibleWorldQuad,
@@ -25,6 +26,23 @@ import {
 /** 投影の枠の場面(段階8・§3-10c)。 */
 export type ProjScene = 'outdoor' | 'lab' | 'indoor' | 'corridor';
 
+/** ゲームの画面(湧き・回収・見えている・照準)を立てる場面。洋館・屋内・M0 は立てない(null)。 */
+export type ProjGameScene = 'outdoor' | 'lab';
+
+/**
+ * ゲームの画面を立てる場面(useGameLoop が毎フレーム1回)。屋内・洋館の通路・チュートリアル(M0)=null(今の物差しのまま)/
+ * 研究所テーマ=lab(屋外と同じ作り・研究所の遠景の帯と下げ量 0)/ほか=outdoor。
+ */
+export const projGameSceneFor = (f: { indoor: boolean; corridor: boolean; lab: boolean; tutorial: boolean }): ProjGameScene | null => {
+  if (f.indoor || f.corridor || f.tutorial) return null;
+  return f.lab ? 'lab' : 'outdoor';
+};
+
+/** 研究所(ステージ2)の遠景の帯の高さの比(pixiScene.farBackdropHeight の研究所の枝もこの値を読む=値は1本)。 */
+export const LAB_FAR_BOUNDARY_YR = 0.30;
+/** 研究所の遠景の帯の高さ(画面px・pixiScene.farBackdropHeight の `currentFarKey === 'lab'` の枝と同じ式)。 */
+export const labFarBackdropHeightFor = (screenH: number): number => screenH * LAB_FAR_BOUNDARY_YR;
+
 /**
  * 縦の下げ量の1本(段階8 §3-10i の3): 研究所・屋内=字の 0(useGameLoop のカメラと同じ)・洋館=zoomCameraDownFrac(洋館の基準, camZ)・
  * ほか=zoomCameraDownFrac(屋外の基準, camZ)。基準の値は store の CAMERA_DOWN_OFFSET_FRAC / CORRIDOR_CAMERA_DOWN_FRAC を呼び手が渡す。
@@ -39,14 +57,15 @@ export const projCamDownFracFor = (scene: ProjScene, camZ: number, outdoorBase: 
  * **研究所は素のアテンションも運ぶ**: 研究所の基準行は縦の下げ量 0(=画面の 0.5+半身)なのに、アテンションのカメラは注目点を
  * 画面の ATTENTION_FOCUS_Y_FRAC(0.6)の行へ置く。運ばないと注目点が基準行より約 0.1 画面ぶん南(手前)に写り、手前の拡大と
  * 手前のフェードで対象が大きく・薄く(変異塊は足元が画面の下の外へ出て消える)なる。屋外(下げ量 0.08≒0.6 の行)と洋館は今のまま。
- * 研究所はゲームの画面(getProjGameView)が null の場面なので、描画だけが読む(湧き・回収の判定は変わらない)。
+ * 研究所のゲームの画面(rebuildProjGameViews の scene='lab')も同じ規則で運ぶ(useGameLoop が同じ関数を呼ぶ=描画と判定の基準行が揃う)。
  */
 export const projAttentionCarries = (scene: ProjScene | null, zoomToUnity: boolean): boolean => zoomToUnity || scene === 'lab';
 
 /**
  * 照準の門(段階8 U40・§3-10e): 投影の枠を照準(逆投影・吸い付き)へ渡してよい場面。
  * ★#46=A(社長 2026-11-24「はい」=研究所・洋館も照準だけ揃える): 屋外・研究所・洋館で開ける。屋内は枠を作らない。
- * 見えている・湧き・回収(★#36〜#38)は研究所・洋館では今の独自の作りのまま(ゲームの画面=getProjGameView は null のまま)。
+ * 見えている・湧き・回収(★#36〜#38): 洋館は今の独自の作りのまま(ゲームの画面=getProjGameView は null)。研究所は研究所のゲームの画面を
+ * 別の置き場に立てる(getProjGameView は研究所でも null=段階6の入口は今まで通り無効・研究所の湧き/回収/照準の対象選びだけが projLabViewCam を読む)。
  */
 export const PROJ_AIM_SCENE_OK: Readonly<Record<ProjScene, boolean>> = { outdoor: true, lab: true, corridor: true, indoor: false };
 export const projAimAllowed = (scene: ProjScene | null): boolean => scene !== null && PROJ_AIM_SCENE_OK[scene];
@@ -177,6 +196,7 @@ export const projGameViewContains = (gv: ProjGameView, x: number, y: number, mar
  */
 export const projGameBoxOnScreen = (
   gv: ProjGameView, footX: number, footY: number, artW: number, artH: number, marginPx = 0, minAlpha = PROJ_GAME_VISIBLE_ALPHA,
+  scaleOf?: (s: number) => number, // 描画の倍率が s と違う物(研究所の変異塊=頭打ち)。省略=s
 ): boolean => {
   const f = gv.f;
   const p = projectInto(f, footX, footY, scratchP);
@@ -184,7 +204,8 @@ export const projGameBoxOnScreen = (
   if (horizonFadeAlphaAt(p.y - f.camY, gv.horizonLocal, f.wgScale, gv.fadePx) < minAlpha) return false;
   projDisplayToScreenInto(f, p.x, p.y, scratchS);
   const z = f.wgScale;
-  const w = Math.max(0, artW) * p.s * z, h = Math.max(0, artH) * p.s * z;
+  const k = scaleOf ? scaleOf(p.s) : p.s;
+  const w = Math.max(0, artW) * k * z, h = Math.max(0, artH) * k * z;
   return scratchS.x + w / 2 >= -marginPx && scratchS.x - w / 2 <= f.screenW + marginPx
     && scratchS.y >= -marginPx && scratchS.y - h <= f.screenH + marginPx;
 };
@@ -398,16 +419,27 @@ export const projFadeHidden = (e: { projFadeInAt?: number }, gameTime: number): 
 
 // ---- モジュールに1つ(cameraZoomLink と同じ形・§3-9d「置き場所と作り直す時刻」) ----
 
-/** このフレームのゲームの画面(cam=store のカメラ・アテンションあり/player=主人公中心の基準・アテンションなし)。 */
-export interface ProjGameViews { cam: ProjGameView; player: ProjGameView }
+/** このフレームのゲームの画面(cam=store のカメラ・アテンションあり/player=主人公中心の基準・アテンションなし)。scene=組んだ場面。 */
+export interface ProjGameViews { cam: ProjGameView; player: ProjGameView; scene: ProjGameScene }
 
 let current: ProjGameViews | null = null;
+/**
+ * 研究所のゲームの画面は別の置き場に持つ(品質監査 D1): getProjGameView / projViewCam / projSeen 等の段階6の入口(約50か所)は
+ * 研究所では今まで通り null(=無効)のまま。研究所で使うのは projLabViewCam を読む所(湧きの外側・回収・照準の門・塊/生け贄の端)だけ。
+ */
+let currentLab: ProjGameViews | null = null;
+const place = (v: ProjGameViews | null): void => {
+  if (v && v.scene === 'lab') { currentLab = v; current = null; } else { current = v; currentLab = null; }
+};
 
 /** useGameLoop がカメラを書いた直後に毎フレーム1回(null=`?proj=0`・場面の外)。tick の途中で作り直さない。 */
-export const setProjGameView = (v: ProjGameViews | null): void => { current = v; };
+export const setProjGameView = (v: ProjGameViews | null): void => { place(v); };
 
-/** このフレームのゲームの画面。null の時、呼ぶ所は今の関数へ落ちる。 */
+/** このフレームのゲームの画面(屋外だけ)。null の時(研究所を含む)、呼ぶ所は今の関数へ落ちる。 */
 export const getProjGameView = (): ProjGameViews | null => current;
+
+/** このフレームの研究所のゲームの画面(研究所の外・置いていない時は null)。PROJ_GAME_VIEW は見ない(テスト・計器用)。 */
+export const getProjLabGameView = (): ProjGameViews | null => currentLab;
 
 /** 引き(ZOOM_OVERSCAN)の既定。 */
 export const PROJ_GAME_OVERSCAN = 1 / ZOOM_MIN_ABS;
@@ -436,7 +468,11 @@ export interface ProjGameViewsInput {
   /** 森の足元の行(utils/horizonForestLine.horizonForestFootLocalY)と地平線フェードの帯の幅。 */
   horizonLocal: number;
   fadePx: number;
+  /** 場面(省略=屋外)。研究所は縦の下げ量を字の 0 で組む(projCamDownFracFor('lab')=pixiScene の研究所の枠と同じ)。 */
+  scene?: ProjGameScene;
 }
+
+const labDownFrac = (): number => 0;
 
 let tableCam: ProjTable | null = null;
 let tablePlayer: ProjTable | null = null;
@@ -446,9 +482,11 @@ let tablePlayer: ProjTable | null = null;
  * 画面の大きさは store の gameBounds(=ゲームの論理寸法)。遠景の帯は屋外の式(farBackdropHeightFor・M0 は場面の外)。
  */
 export const rebuildProjGameViews = (i: ProjGameViewsInput, farH: number): ProjGameViews => {
+  const scene: ProjGameScene = i.scene ?? 'outdoor';
   const common = {
     persp: projGroundPersp(), screenW: i.viewW, screenH: i.viewH, farH, viewH: i.viewH, playerH: i.playerH, playerFootY: i.playerFootY,
     camZoom: i.camZoom, camDown: i.camDown, zref: i.zref, near: i.near, farStart: i.farStart, farEnd: i.farEnd, overscan: PROJ_GAME_OVERSCAN,
+    ...(scene === 'lab' ? { downFracAt: labDownFrac } : {}), // 研究所=字の 0(屋外は省略=今の式・1ビットも同じ)
   };
   const bc = projFrameBase(tableCam, { ...common, camX: i.camX, camY: i.camY, att: i.att });
   tableCam = bc.table;
@@ -458,8 +496,9 @@ export const rebuildProjGameViews = (i: ProjGameViewsInput, farH: number): ProjG
   const v: ProjGameViews = {
     cam: { f: makeProjFrame({ ...bc.input, ...wg, shakeX: 0, shakeY: 0 }), horizonLocal: i.horizonLocal, fadePx: i.fadePx },
     player: { f: makeProjFrame({ ...bp.input, ...wg, shakeX: 0, shakeY: 0 }), horizonLocal: i.horizonLocal, fadePx: i.fadePx },
+    scene,
   };
-  current = v;
+  place(v);
   return v;
 };
 
@@ -468,6 +507,70 @@ export const rebuildProjGameViews = (i: ProjGameViewsInput, farH: number): ProjG
  * null の時(`?proj=0`・場面の外・store だけのテスト)、呼ぶ所は今の関数(isPointInZoomedViewport 等)のまま。
  */
 export const projViewCam = (): ProjGameView | null => (PROJ_GAME_VIEW && current ? current.cam : null);
+
+/**
+ * 研究所だけの「見えている」の入口(研究所の湧き・回収・照準の対象選び・塊/生け贄の画面の端): 研究所のゲームの画面がある時だけ gfCam。
+ * 屋外・`?proj=0`・場面の外は null(呼ぶ所は今の式のまま)。
+ */
+export const projLabViewCam = (): ProjGameView | null => (PROJ_GAME_VIEW && currentLab ? currentLab.cam : null);
+
+/** 行の横の端を測る時に「描かれている」とみなす濃さ(projSpawnFade.PROJ_FADE_DRAWN_ALPHA と同じ値=循環しない置き場)。 */
+export const PROJ_GAME_DRAWN_ALPHA = 0.05;
+/** 行の横の端を測る本数(上下の端を含む)。 */
+export const PROJ_SIDE_EDGE_ROWS = 9;
+
+/**
+ * world の行 y(地面の点)が描かれる濃さ(定義域・描く距離のフェード × 地平線フェード)。定義域の外=0。
+ */
+export const projGameRowAlpha = (gv: ProjGameView, worldY: number): number =>
+  projGameAlphaAt(gv, projectInto(gv.f, gv.f.cxw, worldY, scratchP));
+
+/**
+ * world の行 [yTop, yBot] のうち、描かれている行(濃さ minAlpha 以上)の見える横の端の一番外(side=+1 は右端の最大・−1 は左端の最小・world)。
+ * 描かれている行が1本も無ければ null。行は PROJ_SIDE_EDGE_ROWS 本の等間隔(端の行を含む)で測る(帯は狭いので本数は少なくてよい)。
+ */
+export const projGameSideEdgeX = (
+  gv: ProjGameView, side: 1 | -1, yTop: number, yBot: number, minAlpha = PROJ_GAME_DRAWN_ALPHA,
+): number | null => {
+  const n = PROJ_SIDE_EDGE_ROWS;
+  let best: number | null = null;
+  for (let k = 0; k < n; k++) {
+    const y = yTop + (yBot - yTop) * (n > 1 ? k / (n - 1) : 0);
+    const p = projectInto(gv.f, gv.f.cxw, y, scratchP);
+    if (!p.inDomain || projGameAlphaAt(gv, p) < minAlpha) continue;
+    const r = projGameRowSpan(gv, p.l);
+    const x = side > 0 ? r.right : r.left;
+    if (best === null || (side > 0 ? x > best : x < best)) best = x;
+  }
+  return best;
+};
+
+/**
+ * 研究所の「見えている端までの距離」(塊の出てくる位置・生け贄の据え置き・隠す位置): 今の距離 legacy と、投影の画面で
+ * 行 [yTop, yBot] のどこかが描かれている横の端までの距離(主人公の中心 pcx から side の向き)の遠い方。gv が無い=legacy のまま。
+ */
+export const projLabEdgeDist = (
+  gv: ProjGameView | null, legacy: number, side: 1 | -1, pcx: number, yTop: number, yBot: number,
+): number => {
+  if (!gv) return legacy;
+  const e = projGameSideEdgeX(gv, side, yTop, yBot);
+  if (e === null) return legacy;
+  return Math.max(legacy, side > 0 ? e - pcx : pcx - e);
+};
+
+/**
+ * 足元の行 footY に立つ絵(s=1 の幅 artW)が、画面の横の端(side=+1 右・−1 左)の外へちょうど出切る足元の x(world・絵の中心)。
+ * 行が描かれていない(定義域の外・濃さ minAlpha 未満)なら null(=その行では投影の物差しは要らない)。
+ * 絵の幅は投影でその行の s 倍・行の world→画面の横の倍率も s 倍なので、world では「見える端 ± artW/2」(s が打ち消し合う)。
+ */
+export const projGameRowOutsideFootX = (
+  gv: ProjGameView, side: 1 | -1, footY: number, artW: number, minAlpha = PROJ_GAME_DRAWN_ALPHA,
+): number | null => {
+  const p = projectInto(gv.f, gv.f.cxw, footY, scratchP);
+  if (!p.inDomain || projGameAlphaAt(gv, p) < minAlpha) return null;
+  const r = projGameRowSpan(gv, p.l);
+  return side > 0 ? r.right + Math.max(0, artW) / 2 : r.left - Math.max(0, artW) / 2;
+};
 
 /**
  * ★#38=A(V29〜V51 の「見えているか」): `?proj=1` でゲームの画面がある時は、world 点(地面の点として)がゲームの画面(gfCam)の中か。

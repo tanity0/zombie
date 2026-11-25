@@ -19,6 +19,8 @@ import {
 } from '../world/labCrawler';
 import { CRAWLER_PROXY_ID, crawlerProxyDamage, crawlerProxyWanted, syncCrawlerProxyInEnemies } from './labCrawlerProxy';
 import { zoomedViewportBounds } from './cameraZoom';
+import { projLabViewCam, projLabEdgeDist } from './projGameView';
+import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import { GAME_SPEED } from '../config/gameSpeed';
 import type { LabBrokenObstacle } from '../world/labWalls';
 import type { Rect } from '../world/obstacles';
@@ -319,7 +321,8 @@ export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCraw
   if (!died && st.labEscapeAt > 0 && !c.chasing && st.attention === null) {
     const dir = c.goalX >= 0 ? 1 : -1;
     const vb = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
-    const viewEdge = dir > 0 ? vb.right - pcx : pcx - vb.left; // 見えている端までの距離(ズーム込み)
+    // 見えている端までの距離(ズーム込み)。?proj=1 は投影の画面で帯のどこかが描かれている横の端までの遠い方(北の行は横に広く見える)。
+    const viewEdge = projLabEdgeDist(projLabViewCam(), dir > 0 ? vb.right - pcx : pcx - vb.left, dir > 0 ? 1 : -1, pcx, -LAB_CORRIDOR_Y_LIMIT_PX, LAB_CORRIDOR_Y_LIMIT_PX);
     const nc = crawlerChaseSpawn(c, pRect, viewEdge, playable, gameTime);
     if (nc) { c = nc; chaseAt = crawlerCenter(nc); }
   }

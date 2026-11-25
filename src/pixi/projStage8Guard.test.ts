@@ -206,9 +206,10 @@ describe('⑦ 窓口の外で f.cxw を読む所は一覧と同じ(横は projRo
 });
 /**
  * 段階8の着手後に数えた、窓口の外で f.cxw を読む行の数: pixiScene 8(段階1の滑りの計器 3・s8 lab の計器 1・projSnowVanish の消失点の列 1・
- * 非常灯の列の範囲 1(kx で戻す)・帯の外の影の縁 2)・projGameView 2(projRowKx)・projShape 5(kx)・projFx 1(中心の点)。
+ * 非常灯の列の範囲 1(kx で戻す)・帯の外の影の縁 2)・projGameView 5(projRowKx 2+研究所のゲームの画面の行の濃さ・横の端・外の足元 3=
+ * どれも中心の列で行 ℓ を出すだけ・横は projGameRowSpan=projRowKx)・projShape 5(kx)・projFx 1(中心の点)。
  */
-const KNOWN_CXW_READERS = 16;
+const KNOWN_CXW_READERS = 19;
 
 describe('⑧ 地面の帯の模様と計器は ground の枠だけ', () => {
   it('groundStripTile・groundVsObjectDiff を呼ぶ所の手前に kind の枝', () => {

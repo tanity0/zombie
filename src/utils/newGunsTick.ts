@@ -28,6 +28,7 @@ import {
   gunShotBaseDamage, gunShotCritChance, gunFireSfxKey,
 } from './weaponUtils';
 import { pickNearestTarget, isCorpse, resistsChipKnockback, isBossType, isHangedman } from './enemyUtils';
+import { projLabAimable } from './projSpawnFade';
 import { isAimableEnemy } from './brawler'; // 狙える敵の式(格闘と共有・research/BRAWLER.md §8-5)
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { circleHitsEgg } from '../world/mines';
@@ -315,7 +316,7 @@ const tryFireBlob = (gameTime: number): void => {
   if (now - gun.lastFired < effectiveFireCooldown(gun, p)) return;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
   const range = gunEffectiveRangePx(gun);
-  const target = pickNearestTarget(pcx, pcy, aimableEnemies(st.enemies), gameTime, range * range);
+  const target = pickNearestTarget(pcx, pcy, projLabAimable(aimableEnemies(st.enemies)), gameTime, range * range); // ?proj=1 研究所の門
   if (!target) return;
   const dx = target.x + target.width / 2 - pcx, dy = target.y + target.height / 2 - pcy;
   const dl = Math.max(0.001, Math.hypot(dx, dy));
@@ -409,7 +410,7 @@ const releaseSatellites = (poses: SatelliteBulletPose[], angVel: number, gameTim
   if (!gun) return;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height; // 軌道の根元(足元)。散る先の方位もここから測る
   const reach = SAT_SHOT_RANGE_PX + SAT_ORBIT_RADIUS_PX;
-  const near = aimableEnemies(st.enemies)
+  const near = projLabAimable(aimableEnemies(st.enemies)) // ?proj=1 研究所の門
     .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height - pcy) })) // 足元どうし
     .filter(x => x.d <= reach)
     .sort((a, b) => a.d - b.d)
@@ -472,7 +473,7 @@ const tickScan = (gameTime: number, holding: boolean, locked: boolean): void => 
     if (holding && !locked) {
       // ★届く範囲で一番近い敵へ自動で向ける(社長指示2026-11-07)。居なければ向いている方(照準の慣性ベクトル→無ければ最後の向き)。
       // 候補は掃き終わりの判定と同じ(狙える敵・クリティカル状態は除く=印が入らない敵へ向けない)。
-      const auto = pickScanAutoAimDir(p.x + p.width / 2, p.y + p.height, aimableEnemies(st.enemies).filter(e => !isScanCrit(e, gameTime)));
+      const auto = pickScanAutoAimDir(p.x + p.width / 2, p.y + p.height, projLabAimable(aimableEnemies(st.enemies)).filter(e => !isScanCrit(e, gameTime))); // ?proj=1 研究所の門
       let dx = auto?.dirX ?? p.aimX, dy = auto?.dirY ?? p.aimY;
       if (Math.hypot(dx, dy) < 0.001) { dx = p.lastDirection?.x ?? 1; dy = p.lastDirection?.y ?? 0; }
       const dl = Math.hypot(dx, dy) || 1;
