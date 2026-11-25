@@ -22,8 +22,8 @@ export const WHIP_THROW_DIST_MULT = 2.5;
 export const WHIP_THROW_MIN_SPEED = 900;
 /** 最大距離に着いた時の速さ(出だしの速さに対する割合=少しずつ減速)。 */
 export const WHIP_THROW_END_SPEED_FRAC = 0.4;
-/** 着弾の爆発の威力=鞭の1撃目 × これ(§6 と同じ)。 */
-export const WHIP_THROW_DAMAGE_MULT = 2;
+/** 着弾の爆発の威力=鞭の1撃目 × これ(社長指示2026-11-25「着弾4倍」・旧2)。 */
+export const WHIP_THROW_DAMAGE_MULT = 4;
 /** 着弾のヒットストップ(ms・今の叩きつけと同じ)。 */
 export const WHIP_THROW_HITSTOP_MS = 120;
 /** 1フレームでプレイヤーがこれより大きく動いたら瞬間移動(一閃・ワイヤー等)とみなして放す(px)。 */
@@ -215,8 +215,8 @@ export const whipSwingAutoThrowDue = (s: Pick<WhipSwingState, 'startAt' | 'maxMs
 // ---- ★ボスへの鞭(社長指示2026-11-25「鞭はボスに先端を当てると大ダメージで。また、気絶してるボスは掴める」) ----
 /** 先端の範囲: 根元からの距離が届く距離のこの割合以上(=外側25%)。 */
 export const WHIP_TIP_FRAC = 0.75;
-/** 先端でボス区分を打った時のダメージの倍率(叩き台)。 */
-export const WHIP_TIP_BOSS_MULT = 2.5;
+/** 先端でボス区分を打った時のダメージの倍率(社長指示2026-11-25「先端5倍」・旧2.5)。 */
+export const WHIP_TIP_BOSS_MULT = 5;
 /** 先端で当たったか。dist=根元(プレイヤーの中心)から敵の当たりの箱の一番近い点までの距離・reach=この振りの届く距離。 */
 export const isWhipTipHit = (dist: number, reach: number): boolean => reach > 0 && dist >= reach * WHIP_TIP_FRAC;
 /**

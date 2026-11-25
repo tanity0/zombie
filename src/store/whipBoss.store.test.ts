@@ -1,5 +1,5 @@
 // 鞭とボス・パニッシャー(社長指示2026-11-25「鞭はボスに先端を当てると大ダメージで。また、気絶してるボスは掴める。パニッシャーも効かせてる？効かせて」)。
-// ①先端(届く距離の外側25%)でボス区分を打つと×2.5・根元寄りは等倍 ②気絶で止まっているボスは掴める・明けたら自動で投げる ③パニッシャーが鞭の3つの飛び方で巻き込む。
+// ①先端(届く距離の外側25%)でボス区分を打つと×WHIP_TIP_BOSS_MULT・根元寄りは等倍 ②気絶で止まっているボスは掴める・明けたら自動で投げる ③パニッシャーが鞭の3つの飛び方で巻き込む。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, enemyMeleeDist, whipSwingReach } from './gameStore';
 import type { Enemy, EnemyType } from '../types/game';
@@ -61,7 +61,7 @@ describe('①先端でボスを打つと大ダメージ', () => {
     swing();
     return 99999 - en('b').health;
   };
-  it('ボス区分: 外側25%で×2.5・根元寄りは等倍', () => {
+  it('ボス区分: 外側25%で×WHIP_TIP_BOSS_MULT・根元寄りは等倍', () => {
     const reach = whipSwingReach(st().player);
     const near = dmgAt('hunter', reach * 0.4);
     st().resetGame('warrior');

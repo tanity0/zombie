@@ -3187,7 +3187,7 @@ const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux:
   void import('../audio/audioManager').then(m => m.playSfx('whip-hit', 0.8, undefined, 0.8));
 };
 
-/** 着弾の爆発の威力(距離0の満額)=鞭の1撃目の2倍(1撃目と同じ掛け算・§6)。クリ・処刑・スキャンの印は掛けない(爆発の規約)。 */
+/** 着弾の爆発の威力(距離0の満額)=鞭の1撃目の WHIP_THROW_DAMAGE_MULT 倍(1撃目と同じ掛け算・§6)。クリ・処刑・スキャンの印は掛けない(爆発の規約)。 */
 const whipThrowBlastBase = (st: GameState, cx: number, cy: number): number => {
   const p = st.player;
   const melee = p.weapons.find(w => w.isMelee);
