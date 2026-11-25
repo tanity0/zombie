@@ -18,7 +18,7 @@ const GATE_BAND_COLOR: Partial<Record<DirectorPhaseKind, string>> = { gate: '#fb
 const EVENT_META_CORE: { bit: number; label: string; color: string }[] = [
   { bit: DIRECTOR_EVENT_BIT.hunter, label: '監視者', color: '#f472b6' },
   { bit: DIRECTOR_EVENT_BIT.redNight, label: '紅き月', color: '#ef4444' },
-  { bit: DIRECTOR_EVENT_BIT.castleBoss, label: '城ボス', color: '#22d3ee' },
+  { bit: DIRECTOR_EVENT_BIT.castleBoss, label: '大型変異体', color: '#22d3ee' },
   { bit: DIRECTOR_EVENT_BIT.named, label: '宿敵', color: '#ffd700' }, // PACING_PUZZLE.md §5.14 M13
 ];
 const EVENT_META_EXTRA: { bit: number; label: string; color: string }[] = [
