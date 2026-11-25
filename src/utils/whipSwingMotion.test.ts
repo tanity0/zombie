@@ -4,6 +4,7 @@ import {
   whipRopeShape, whipRopePoints, whipBodyPose, whipRopeTotalMs, WHIP_ROPE_CRACK_HOLD_MS, WHIP_ROPE_RETRACT_MS,
   whipTetherShape, whipTetherBow, whipTetherRetract, WHIP_TETHER_RETRACT_MS, whipFlyLiftPx, whipFlyPeakPx, whipFlyVisualDist, whipFlyOffset,
   WHIP_FLY_DROP_MS, WHIP_FLY_LIFT_MIN_PX, WHIP_FLY_LIFT_MAX_PX,
+  whipTetherEntry, WHIP_TETHER_ENTRY_MS, whipTetherGlowK, whipFlyVisualTimeAt, whipThrowStreak, WHIP_THROW_STREAK_OUT_MS,
 } from './whipSwingMotion';
 import { whipThrowDurationMs, whipThrowDist } from './whipSwing';
 
@@ -91,6 +92,23 @@ describe('鞭の絡め取り→振り回し→投げの見た目(research/WHIP_F
     expect(WHIP_TETHER_RETRACT_MS).toBeGreaterThanOrEqual(120);
     expect(WHIP_TETHER_RETRACT_MS).toBeLessThanOrEqual(180);
   });
+  it('巻き戻り: たわみは放した瞬間が一番大きく、戻るほど張る(まっすぐへ)。細くなりながら消える', () => {
+    const at = (f: number) => whipTetherRetract(WHIP_TETHER_RETRACT_MS * f, 0.02)!;
+    expect(at(0).bow).toBeGreaterThan(at(0.4).bow);
+    expect(at(0.4).bow).toBeGreaterThan(at(0.8).bow);
+    expect(at(0.99).bow).toBeLessThan(0.01);
+    expect(at(0.9).thick).toBeLessThan(at(0.1).thick);
+    expect(at(0).alpha).toBe(1);
+    expect(at(0.99).alpha).toBeLessThan(0.05);
+  });
+  it('掴んだ瞬間の引き継ぎ: 0 から減速して 1 へ。光の縁は最高速の近くだけ', () => {
+    expect(whipTetherEntry(0)).toBe(0);
+    expect(whipTetherEntry(WHIP_TETHER_ENTRY_MS)).toBe(1);
+    expect(whipTetherEntry(WHIP_TETHER_ENTRY_MS * 0.5)).toBeGreaterThan(0.5); // 減速して着く
+    expect(whipTetherGlowK(0)).toBe(0);
+    expect(whipTetherGlowK(0.7)).toBe(0);
+    expect(whipTetherGlowK(1)).toBeCloseTo(1, 9);
+  });
   it('飛ぶ高さ: 放した時と最大距離に着く時刻で地面(0)・途中は浮く。途中で当たったら短く落ちて地面へ', () => {
     expect(whipFlyLiftPx(0, 600, 50)).toBe(0);
     expect(whipFlyLiftPx(300, 600, 50)).toBeCloseTo(50, 6);
@@ -123,5 +141,27 @@ describe('鞭の絡め取り→振り回し→投げの見た目(research/WHIP_F
     const hit = (t: number) => whipFlyOffset({ tMs: t, v0, maxDist: D, logicalD: 200, landAtMs: 200, landKind: 'hit', landD: 200 });
     expect(hit(200)).toBeLessThan(0);
     expect(Math.abs(hit(600))).toBeLessThan(0.05);
+  });
+  it('投げの風の筋: 尾は放した点より後ろへ出ず、先は敵の体。着弾したら先から尾へ縮んで消える', () => {
+    const v0 = 1200, D = 375;
+    for (const d of [0, 50, 200, 370]) expect(whipFlyVisualDist(whipFlyVisualTimeAt(d, v0, D), v0, D)).toBeCloseTo(d, 6);
+    for (const t of [0, 40, 120, 250]) {
+      const head = whipFlyVisualDist(t, v0, D);
+      const s = whipThrowStreak({ tMs: t, v0, maxDist: D, headNow: head })!;
+      expect(s.headD).toBeCloseTo(head, 9);
+      expect(s.tailD).toBeGreaterThanOrEqual(0);
+      expect(s.tailD).toBeLessThanOrEqual(s.headD);
+    }
+    // 速いほど長い(減速で縮む)。
+    const len = (t: number) => { const s = whipThrowStreak({ tMs: t, v0, maxDist: D, headNow: whipFlyVisualDist(t, v0, D) })!; return s.headD - s.tailD; };
+    expect(len(150)).toBeGreaterThan(len(400));
+    // 途中で当たって着いた: 尾は動かず、先が加速しながら尾へ縮み、消える。
+    const land = 150, landD = whipFlyVisualDist(land, v0, D);
+    const after = (dt: number) => whipThrowStreak({ tMs: land + dt, v0, maxDist: D, headNow: landD, landAtMs: land, landD });
+    const a0 = after(0.001)!, a1 = after(WHIP_THROW_STREAK_OUT_MS * 0.3)!, a2 = after(WHIP_THROW_STREAK_OUT_MS * 0.6)!, a3 = after(WHIP_THROW_STREAK_OUT_MS * 0.9)!;
+    expect(a1.tailD).toBeCloseTo(a0.tailD, 9);
+    expect(a0.headD - a1.headD).toBeLessThan(a2.headD - a3.headD); // 加速して縮む
+    expect(a3.headD - a3.tailD).toBeLessThan(0.25 * (a0.headD - a0.tailD));
+    expect(after(WHIP_THROW_STREAK_OUT_MS)).toBeNull();
   });
 });

@@ -135,6 +135,7 @@ import {
 import {
   whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
   whipTetherShape, whipTetherBow, whipTetherRetract, whipFlyOffset, whipFlyLiftPx, whipFlyPeakPx, type WhipRopeShape,
+  whipTetherEntry, whipTetherGlowK, whipThrowStreak, whipFlyVisualTimeAt,
 } from '../utils/whipSwingMotion'; // ★鞭の振りの本体と体の動き・絡め取りの線・投げた敵の飛び方
 import { whipSwingAngVel, whipSwingMaxAngVel, whipThrowDurationMs, type WhipSwingState } from '../utils/whipSwing'; // ★鞭の絡め取り→振り回し→投げ(読むだけ) // ★刀の殺陣の赤い画面の濃さ
 import { screamerMarkVisible } from '../utils/screamerGate';
@@ -4889,6 +4890,31 @@ const getWhipTetherStripTex = (): Texture => {
   whipTetherStripTex = Texture.from(canvas);
   whipTetherStripTex.source.scaleMode = 'linear';
   return whipTetherStripTex;
+};
+/**
+ * ★鞭の振り回しの軌跡と投げの風の筋(横=左の尾が透明→右の先が濃い・縦=真ん中が濃く上下へぼける白い帯。色は tint で付ける)。
+ * MeshRope の点は尾→先の順に並べる。
+ */
+let whipArcTex: Texture | null = null;
+const getWhipArcTex = (): Texture => {
+  if (whipArcTex) return whipArcTex;
+  const w = 64, h = 16;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  const gy = ctx.createLinearGradient(0, 0, 0, h);
+  gy.addColorStop(0, 'rgba(255,255,255,0)'); gy.addColorStop(0.3, 'rgba(255,255,255,0.35)'); gy.addColorStop(0.5, 'rgba(255,255,255,1)');
+  gy.addColorStop(0.7, 'rgba(255,255,255,0.35)'); gy.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gy; ctx.fillRect(0, 0, w, h);
+  // 尾を透明に(先へ向けて加速して濃くなる=弧の頭が敵)。
+  ctx.globalCompositeOperation = 'destination-in';
+  const gx = ctx.createLinearGradient(0, 0, w, 0);
+  gx.addColorStop(0, 'rgba(255,255,255,0)'); gx.addColorStop(0.35, 'rgba(255,255,255,0.45)'); gx.addColorStop(0.75, 'rgba(255,255,255,0.88)');
+  gx.addColorStop(1, 'rgba(255,255,255,1)');
+  ctx.fillStyle = gx; ctx.fillRect(0, 0, w, h);
+  whipArcTex = Texture.from(canvas);
+  whipArcTex.source.scaleMode = 'linear';
+  return whipArcTex;
 };
 const makeProjSnowTex = (stops: readonly (readonly [number, number])[]): Texture => {
   const size = 64;
@@ -14638,6 +14664,7 @@ export class PixiScene {
     this.fxPlayer = s.player; // 鞭の縄の絵の根元がプレイヤーを追う(読むだけ)
     this.syncEffects(s.effects, s.camera, fxNow); // v0.25.3038: 光系は停止中も進む
     this.syncWhipTether(s.whipSwing, s.player, s.enemies, s.gameTime); // ★鞭の絡め取り: 手から掴んだ敵へ線を張る(振り回しの間だけ)
+    this.syncWhipThrowStreak(s.enemies, s.gameTime); // ★鞭で投げた敵の後ろの風の筋(飛ぶ敵の絵に付く・着弾で先から消える)
     if (!this.projFrame) this.syncSatsujin(s.satsujin, Date.now()); // ★刀の殺陣の赤い画面(殺陣の間だけ)。?proj=1 は後掛けの後(段階3・C11)
     this.syncGravityWells(s.gravityWells, s.gameTime); // §28(B7) グラビティショットの渦(v0.25.3276)
     this.syncGroundReflections(s.pickups, s.projectiles, s.effects, s.camera, now);
@@ -45747,26 +45774,32 @@ export class PixiScene {
   /** 鞭の縄の絵が読むプレイヤー(syncEffects の直前に毎フレーム入れる・読むだけ)。 */
   private fxPlayer: Player | null = null;
   /**
-   * ★鞭の絡め取り→振り回し→投げの見た目(research/WHIP_FOLLOWUP.md §8・見え方の監査 2026-11-25)。判定なし・読むだけ。
-   *  - 線: 根元(普通の鞭の振りと同じ=体の中心の手元)から掴んだ敵へ、鞭の絵を MeshRope で張る。太さ(縦の倍率)は掴んだ時の届く距離で
-   *    固定し(普通の振りと同じ太さ)、長さの方向だけ伸ばす。下に水色の淡い光の縁(加算)、上に細い水色の芯(普通の振りの色)を重ねる。
+   * ★鞭の絡め取り→振り回し→投げの見た目(research/WHIP_FOLLOWUP.md §8・見え方の監査 2026-11-25 / 2巡目)。判定なし・読むだけ。
+   *  - 線: 手元(普通の鞭の振りと同じ=体の中心)から掴んだ敵へ、鞭の絵を MeshRope で張る。柄の端(点0)を手に留め、絵の柄→先端を手→敵の長さへ
+   *    合わせる(短くなっても柄が手から離れない)。太さ(縦の倍率)は掴んだ時の届く距離で固定(普通の振りと同じ太さ)。黒い縄が主:
+   *    上に細く薄い艶(芯)、下に水色の光の縁(加算)は回る速さが最高速に近い時だけ出る。
    *    回り出し(加速中)は回る向きと逆へ遅れてたわみ、最高速で張る(utils/whipSwingMotion の whipTetherShape / whipTetherBow)。
-   *  - 軌跡: 掴んだ敵の後ろへ、円に沿った薄い風の筋(既存の fx/dash-wind を MeshRope で曲げる)。回る速さで長さと濃さが増える。
-   *  - 放した後: 線の先が加速しながら手元へ巻き戻って消える(WHIP_TETHER_RETRACT_MS・ease-in)。
-   * 負荷: MeshRope 4本(点18・16・16・10)の点の書き換えだけ・per-frame Graphics なし・光源なし=1/10。
+   *  - 掴んだ瞬間: 振りの鞭の伸び切った形(届く距離・地面の高さ・まっすぐ)から引き継ぎ、先が敵の体まで縮んで巻き付き、たわみが入る(whipTetherEntry)。
+   *  - 軌跡: 掴んだ敵の後ろへ、回った円に沿った細い弧(尾が透明)。点は縄の先と同じ「体の中心」(地面の点+高さ)を投影する。回る速さで長さと濃さが増える。
+   *  - 放した後: 線の先が加速しながら手元へ巻き戻って消える(WHIP_TETHER_RETRACT_MS・ease-in)。たわみは戻るほど張り、細くなりながら消える。
+   *  - 投げた後: 飛ぶ敵の後ろへ風の筋(syncWhipThrowStreak)。
+   * 負荷: MeshRope 5本(点18・16・16・10・8)の点の書き換えだけ・per-frame Graphics なし・光源なし=1/10。
    */
-  private whipTetherRopes: { glow: MeshRope; whip: MeshRope; core: MeshRope; trail: MeshRope | null } | null = null;
+  private whipTetherRopes: { glow: MeshRope; whip: MeshRope; core: MeshRope; trail: MeshRope | null; streak: MeshRope | null } | null = null;
   private whipTetherPts = new WeakMap<MeshRope, Point[]>();
   private whipTetherScratch = makeProjLiftPoint();
-  /** 前のフレームに張っていた線(放した瞬間の先端=地面の点と高さ・回る向き・太さの元)。 */
-  private whipTetherLast: { tipX: number; tipY: number; tipH: number; dir: 1 | -1; reach: number } | null = null;
-  private whipTetherRelease: { at: number; tipX: number; tipY: number; tipH: number; dir: 1 | -1; reach: number } | null = null;
-  /** 線・軌跡の点(world の地面の点 x,y と、そこからの高さ h)。 */
+  /** 前のフレームに張っていた線(放した瞬間の先端=地面の点と高さ・回る向き・太さの元・たわみ・光の縁の濃さ)。 */
+  private whipTetherLast: { tipX: number; tipY: number; tipH: number; dir: 1 | -1; reach: number; bow: number; glowK: number } | null = null;
+  private whipTetherRelease: { at: number; tipX: number; tipY: number; tipH: number; dir: 1 | -1; reach: number; bow: number; glowK: number } | null = null;
+  /** 線・軌跡・筋の点(world の地面の点 x,y と、そこからの高さ h)。 */
   private whipTetherWorld: { x: number; y: number; h: number }[] = [];
   private whipTrailWorld: { x: number; y: number; h: number }[] = [];
-  private static readonly WHIP_TETHER_GLOW_PX = 20;  // 光の縁の太さ(world px)
-  private static readonly WHIP_TETHER_CORE_PX = 4.5; // 水色の芯の太さ(world px)
+  private whipStreakWorld: { x: number; y: number; h: number }[] = [];
+  private static readonly WHIP_TETHER_GLOW_PX = 20;  // 光の縁の太さ(world px・最高速の時だけ)
+  private static readonly WHIP_TETHER_CORE_PX = 1.6; // 縄の上の艶の太さ(world px)
+  private static readonly WHIP_TETHER_CORE_ALPHA = 0.32;
   private static readonly WHIP_TRAIL_POINTS = 10;
+  private static readonly WHIP_STREAK_POINTS = 8;
   private makeWhipRope(tex: Texture, n: number): MeshRope {
     const pts: Point[] = [];
     for (let i = 0; i < n; i++) pts.push(new Point(i, 0));
@@ -45805,91 +45838,157 @@ export class PixiScene {
     r.glow.visible = false; r.whip.visible = false; r.core.visible = false;
     if (r.trail) r.trail.visible = false;
   }
-  /** 手元 (ax,ay・高さ0) → 先 (bx,by・高さ bh) の線を、形 shape で張る(たわみは地面の上で付け、高さは手元→先へ線形)。reach=太さの元(掴んだ時の届く距離)。 */
-  private drawWhipTetherLine(ax: number, ay: number, bx: number, by: number, bh: number, shape: WhipRopeShape, reach: number, tex: Texture): void {
+  /**
+   * 手元 (ax,ay・高さ0) → 先 (bx,by・高さ bh) の線を、形 shape で張る(たわみは地面の上で付け、高さは手元→先へ線形)。reach=太さの元(掴んだ時の届く距離)。
+   * 柄の端(点0)を手元に留め、絵の柄の端→先端が手元→先にちょうど収まるよう点の並びを縮める(長さが変わっても柄が手から離れない)。
+   * glowK=光の縁の濃さ(0..1)・thick=縄の太さの掛け。
+   */
+  private drawWhipTetherLine(
+    ax: number, ay: number, bx: number, by: number, bh: number, shape: WhipRopeShape, reach: number, tex: Texture, glowK: number, thick = 1,
+  ): void {
     const r = this.whipTetherRopes!;
     const dx = bx - ax, dy = by - ay;
     const len = Math.hypot(dx, dy);
     if (!(len > 4) || shape.alpha <= 0.01) { r.glow.visible = false; r.whip.visible = false; r.core.visible = false; return; }
     const local = whipRopePoints(shape, len, WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_TIP_X);
+    // 柄の端(点0)→先端(点 n-2)を、手元→先(len, 0)へ写す(回して縮める)。
+    const x0 = local[0].x, y0 = local[0].y;
+    const tip = local[Math.max(1, local.length - 2)];
+    const vx = tip.x - x0, vy = tip.y - y0, vm = Math.hypot(vx, vy) || 1;
+    const rc = vx / vm, rs = vy / vm, rk = len / vm;
     const ang = Math.atan2(dy, dx), ca = Math.cos(ang), sa = Math.sin(ang);
     const world = this.whipTetherWorld;
     for (let i = 0; i < local.length; i++) {
+      const lx0 = local[i].x - x0, ly0 = local[i].y - y0;
+      const lx = (lx0 * rc + ly0 * rs) * rk, ly = (-lx0 * rs + ly0 * rc) * rk;
       const w = world[i] ?? (world[i] = { x: 0, y: 0, h: 0 });
-      w.x = ax + local[i].x * ca - local[i].y * sa;
-      w.y = ay + local[i].x * sa + local[i].y * ca;
-      w.h = bh * Math.max(0, Math.min(1, local[i].x / len));
+      w.x = ax + lx * ca - ly * sa;
+      w.y = ay + lx * sa + ly * ca;
+      w.h = bh * Math.max(0, Math.min(1, lx / len));
     }
     world.length = local.length;
     // 鞭の絵の太さ=普通の振りと同じ(握り→先端の絵の幅が届く距離ちょうどの倍率)。長さは点の並びで伸びる(縦は固定)。
-    const kWhip = Math.max(0.05, reach) / Math.max(1, tex.width * (WHIP_SPRITE_TIP_X - WHIP_SPRITE_ANCHOR_X));
+    const kWhip = (Math.max(0.05, reach) / Math.max(1, tex.width * (WHIP_SPRITE_TIP_X - WHIP_SPRITE_ANCHOR_X))) * thick;
     const strip = getWhipTetherStripTex();
-    // 光の縁と芯は手元(点1)から先端(点 n-2)まで=柄の後ろへは出さない。
-    this.placeWhipRope(r.glow, world, 1, PixiScene.WHIP_TETHER_GLOW_PX / strip.height, shape.alpha * 0.5);
+    // 光の縁と艶は柄の先(点1)から先端まで=柄には乗せない。
+    this.placeWhipRope(r.glow, world, 1, PixiScene.WHIP_TETHER_GLOW_PX / strip.height, shape.alpha * 0.3 * glowK);
     this.placeWhipRope(r.whip, world, 0, kWhip, shape.alpha);
-    this.placeWhipRope(r.core, world, 1, PixiScene.WHIP_TETHER_CORE_PX / strip.height, shape.alpha * 0.9);
+    this.placeWhipRope(r.core, world, 1, (PixiScene.WHIP_TETHER_CORE_PX * thick) / strip.height, shape.alpha * PixiScene.WHIP_TETHER_CORE_ALPHA);
   }
-  private syncWhipTether(sw: WhipSwingState | null, player: Player, enemies: readonly Enemy[], gameTime: number) {
-    const tex = getTexture('whip');
-    const e = sw && sw.phase === 'swing' ? enemies.find(en => en.id === sw.enemyId) : undefined;
-    if (!tex) { this.hideWhipTether(); this.whipTetherLast = null; this.whipTetherRelease = null; return; }
+  private ensureWhipTetherRopes(tex: Texture): NonNullable<PixiScene['whipTetherRopes']> {
     if (!this.whipTetherRopes) {
       const strip = getWhipTetherStripTex();
       const glow = this.makeWhipRope(strip, WHIP_ROPE_POINTS);
       glow.blendMode = 'add'; glow.tint = 0x7dd3fc;
       const whip = this.makeWhipRope(tex, WHIP_ROPE_POINTS + 2);
       const core = this.makeWhipRope(strip, WHIP_ROPE_POINTS);
-      core.tint = 0xbae6fd; // rgba(186,230,253)=普通の鞭の振りの水色
-      this.whipTetherRopes = { glow, whip, core, trail: null };
+      core.tint = 0xe0f2fe; // 黒い縄の上の艶(細く薄く)
+      this.whipTetherRopes = { glow, whip, core, trail: null, streak: null };
       this.hideWhipTether();
     }
-    const ropes = this.whipTetherRopes;
+    return this.whipTetherRopes;
+  }
+  private syncWhipTether(sw: WhipSwingState | null, player: Player, enemies: readonly Enemy[], gameTime: number) {
+    const tex = getTexture('whip');
+    const e = sw && sw.phase === 'swing' ? enemies.find(en => en.id === sw.enemyId) : undefined;
+    if (!tex) { this.hideWhipTether(); this.whipTetherLast = null; this.whipTetherRelease = null; return; }
+    const ropes = this.ensureWhipTetherRopes(tex);
     const ax = player.x + player.width / 2, ay = player.y + player.height / 2;
     if (e && sw) {
       // 先=掴んだ敵の体の真ん中(足元の地面の点+体の絵の高さの約半分)。手元は普通の振りと同じ根元(体の中心)。
       const efb = enemyFootBox(e);
-      const bx = efb.footX, by = efb.footY;
-      const bh = efb.boxH * 0.45 * (this.projFrame ? 1 : this.depthScaleEnemy(efb.footY));
+      const depthK = this.projFrame ? 1 : this.depthScaleEnemy(efb.footY);
+      const bh = efb.boxH * 0.45 * depthK;
       const t = Math.max(0, gameTime - sw.startAt);
       const frac = whipSwingAngVel(t) / whipSwingMaxAngVel();
+      // 掴んだ瞬間の引き継ぎ: 振りの鞭の伸び切った形(敵の向きへ届く距離・地面の高さ・まっすぐ)→ 先が敵の体まで縮んで巻き付く。
+      const ent = whipTetherEntry(t);
+      let tx = efb.footX, ty = efb.footY;
+      const dE = Math.hypot(tx - ax, ty - ay);
+      if (ent < 1 && dE > 1e-3) {
+        const L = dE + Math.max(0, sw.reach - dE) * (1 - ent);
+        tx = ax + ((tx - ax) / dE) * L; ty = ay + ((ty - ay) / dE) * L;
+      }
+      const th = bh * ent;
+      const bow = whipTetherBow(frac, t) * ent;
+      const glowK = whipTetherGlowK(frac);
       this.whipTetherRelease = null;
-      this.whipTetherLast = { tipX: bx, tipY: by, tipH: bh, dir: sw.dir, reach: sw.reach };
-      this.drawWhipTetherLine(ax, ay, bx, by, bh, whipTetherShape(whipTetherBow(frac, t), sw.dir), sw.reach, tex);
-      // 軌跡: 掴んだ敵の後ろへ、回った円に沿って(回る速さで長く濃く)。素材の右端(太い側)が敵。
-      const wind = getTexture('fx/dash-wind');
-      if (wind && !ropes.trail) {
-        ropes.trail = this.makeWhipRope(wind, PixiScene.WHIP_TRAIL_POINTS);
+      this.whipTetherLast = { tipX: tx, tipY: ty, tipH: th, dir: sw.dir, reach: sw.reach, bow, glowK };
+      this.drawWhipTetherLine(ax, ay, tx, ty, th, whipTetherShape(bow, sw.dir, 0.4 + 0.6 * ent), sw.reach, tex, glowK);
+      // 軌跡: 掴んだ敵の後ろへ、回った円に沿った細い弧(尾が透明・先=敵の体の中心)。
+      const arc = getWhipArcTex();
+      if (!ropes.trail) {
+        ropes.trail = this.makeWhipRope(arc, PixiScene.WHIP_TRAIL_POINTS);
         ropes.trail.blendMode = 'add'; ropes.trail.tint = 0xe0f2fe;
       }
       const tr = ropes.trail;
-      if (tr) {
-        const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2; // 回る円は判定の中心で回っている
-        const rx = ecx - ax, ry = ecy - ay;
-        const rad = Math.hypot(rx, ry);
-        const spanA = 1.15 * frac;
-        if (rad > 8 && spanA > 0.05 && wind) {
-          const a = Math.atan2(ry, rx);
-          const n = PixiScene.WHIP_TRAIL_POINTS;
-          const world = this.whipTrailWorld;
-          for (let i = 0; i < n; i++) {
-            const ai = a - sw.dir * spanA * (1 - i / (n - 1));
-            const w = world[i] ?? (world[i] = { x: 0, y: 0, h: 0 });
-            w.x = ax + Math.cos(ai) * rad; w.y = ay + Math.sin(ai) * rad + (by - ecy); w.h = bh;
-          }
-          world.length = n;
-          this.placeWhipRope(tr, world, 0, (efb.boxH * 0.5 * (this.projFrame ? 1 : this.depthScaleEnemy(efb.footY))) / Math.max(1, wind.height), 0.42 * frac);
-        } else tr.visible = false;
-      }
+      const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2; // 回る円は判定の中心で回っている
+      const rx = ecx - ax, ry = ecy - ay;
+      const rad = Math.hypot(rx, ry);
+      const spanA = 0.95 * frac;
+      if (rad > 8 && spanA > 0.05) {
+        const a = Math.atan2(ry, rx);
+        const n = PixiScene.WHIP_TRAIL_POINTS;
+        const footOff = efb.footY - ecy; // 判定の中心 → 足元(地面の点)
+        const world = this.whipTrailWorld;
+        for (let i = 0; i < n; i++) {
+          const ai = a - sw.dir * spanA * (1 - i / (n - 1));
+          const w = world[i] ?? (world[i] = { x: 0, y: 0, h: 0 });
+          w.x = ax + Math.cos(ai) * rad; w.y = ay + Math.sin(ai) * rad + footOff; w.h = bh;
+        }
+        world.length = n;
+        this.placeWhipRope(tr, world, 0, (efb.boxH * 0.22 * depthK) / arc.height, 0.5 * frac * frac);
+      } else tr.visible = false;
       return;
     }
     if (ropes.trail) ropes.trail.visible = false;
     // 放した(投げた・落とした): 線の先が加速しながら手元へ巻き戻って消える。
     if (this.whipTetherLast) { this.whipTetherRelease = { at: Date.now(), ...this.whipTetherLast }; this.whipTetherLast = null; }
     const rel = this.whipTetherRelease;
-    const rt = rel ? whipTetherRetract(Date.now() - rel.at) : null;
+    const rt = rel ? whipTetherRetract(Date.now() - rel.at, rel.bow) : null;
     if (!rel || !rt) { this.whipTetherRelease = null; this.hideWhipTether(); return; }
     const bx = ax + (rel.tipX - ax) * (1 - rt.k), by = ay + (rel.tipY - ay) * (1 - rt.k);
-    this.drawWhipTetherLine(ax, ay, bx, by, rel.tipH * (1 - rt.k), whipTetherShape(rt.bow, rel.dir, rt.alpha), rel.reach, tex);
+    this.drawWhipTetherLine(ax, ay, bx, by, rel.tipH * (1 - rt.k), whipTetherShape(rt.bow, rel.dir, rt.alpha), rel.reach, tex, rel.glowK * (1 - rt.k), rt.thick);
+  }
+  /**
+   * ★投げた敵の後ろの風の筋(見え方の監査2巡目・派手さの絵=判定なし)。飛ぶ敵の絵(判定より少し遅れる位置+飛ぶ高さ)に毎フレーム付け、
+   * 投げた向きの後ろへだけ伸ばす(長さ=絵の上の今の速さ・放した点より後ろへは出さない)。点は飛んだ跡の高さの弧に沿う。
+   * 着弾の瞬間から、先(敵の側)が加速しながら尾へ縮んで消える(utils/whipSwingMotion の whipThrowStreak)。水色の加算・濃さは控えめ。
+   */
+  private syncWhipThrowStreak(enemies: readonly Enemy[], gameTime: number): void {
+    const ropes = this.whipTetherRopes;
+    const f = this.whipFly;
+    const e = f ? enemies.find(en => en.id === f.enemyId) : undefined;
+    if (!f || !e || !ropes) { if (ropes?.streak) ropes.streak.visible = false; return; }
+    const arc = getWhipArcTex();
+    if (!ropes.streak) {
+      ropes.streak = this.makeWhipRope(arc, PixiScene.WHIP_STREAK_POINTS);
+      ropes.streak.blendMode = 'add'; ropes.streak.tint = 0x7dd3fc;
+    }
+    const sk = ropes.streak;
+    const t = gameTime - f.throwAt;
+    const fb = enemyFootBox(e);
+    const view = this.whipFlyView(e.id, gameTime, fb.boxH);
+    if (!view) { sk.visible = false; return; }
+    const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+    const headNow = (ecx - f.fromX) * f.ux + (ecy - f.fromY) * f.uy + (view.dx * f.ux + view.dy * f.uy);
+    const st = whipThrowStreak({ tMs: t, v0: f.v0, maxDist: f.maxDist, headNow, landAtMs: f.landAt, landD: f.landD });
+    if (!st || st.headD - st.tailD < 3) { sk.visible = false; return; }
+    const depthK = this.projFrame ? 1 : this.depthScaleEnemy(fb.footY);
+    const bodyH = fb.boxH * 0.45 * depthK;
+    const peak = whipFlyPeakPx(fb.boxH);
+    const footOff = e.height / 2; // 判定の中心 → 足元(地面の点)
+    const n = PixiScene.WHIP_STREAK_POINTS;
+    const world = this.whipStreakWorld;
+    for (let i = 0; i < n; i++) {
+      const d = st.tailD + (st.headD - st.tailD) * (i / (n - 1));
+      const w = world[i] ?? (world[i] = { x: 0, y: 0, h: 0 });
+      w.x = f.fromX + f.ux * d; w.y = f.fromY + f.uy * d + footOff;
+      const lift = i === n - 1 ? view.lift : whipFlyLiftPx(whipFlyVisualTimeAt(d, f.v0, f.maxDist), f.flyMs, peak, f.landAt);
+      w.h = lift + bodyH;
+    }
+    world.length = n;
+    this.placeWhipRope(sk, world, 0, (Math.max(14, fb.boxH * 0.24) * depthK) / arc.height, 0.6 * st.alpha);
   }
   /**
    * ★鞭で投げた敵の飛び方の絵(research/WHIP_FOLLOWUP.md §8-3・見え方の監査 2026-11-25)。判定・位置は store のまま(地面の高さ)。

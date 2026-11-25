@@ -3292,10 +3292,9 @@ const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: numb
     // 回りの向きは振り回しの向きを引き継ぐ(回していた勢いのまま転がる)。
     enemies: state.enemies.map(en => (en.id !== sw.enemyId ? en : { ...en, brThrowSpin: { at: nowMs, ms: Math.max(1, Math.round(flyMs)), dir: sw.dir } })),
   }));
-  // 絵(派手さの絵・判定なし): 投げた向きへ風の筋・閃き。音=風を切る鞭。線は描画が手元へ巻き戻す(syncWhipTether)=打撃の鞭の絵は出さない。
+  // 絵(派手さの絵・判定なし): 閃き・揺れ。音=風を切る鞭。線は描画が手元へ巻き戻す(syncWhipTether)=打撃の鞭の絵は出さない。
+  // 風の筋は描画が飛ぶ敵の絵に毎フレーム付けて後ろへ伸ばし、着弾で先から消す(pixiScene.syncWhipThrowStreak・見え方の監査2巡目)。
   const g = get();
-  const ang = Math.atan2(uy, ux);
-  brawlerFx(get, sw.cx, sw.cy, 'fx/dash-wind', { scale: 0.24, scaleX: 2.2, rot: ang + Math.PI, duration: flyMs + 160, fadeFrom: 0.5, moveX: ux * maxDist * 0.7, moveY: uy * maxDist * 0.7, alpha: 0.95 });
   g.spawnGlow(sw.cx, sw.cy, GLOW_R_M, 'rgba(255,248,230,', 200, true);
   g.triggerShake(140, 7, ux, uy);
   brawlerSfx('whip-swing', 0.9, 0.7, 200);

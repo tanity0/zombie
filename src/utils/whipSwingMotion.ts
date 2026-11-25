@@ -158,11 +158,35 @@ export const whipTetherBow = (angVelFrac: number, tMs: number): number => {
 
 /** 放した後、線の先が手元へ巻き戻る長さ(ms)。 */
 export const WHIP_TETHER_RETRACT_MS = 150;
-/** 巻き戻りの進み k(0..1・ease-in=加速しながら戻る)。先端の位置 = 手 + (放した先 - 手) × (1 - k)。終わったら null。 */
-export const whipTetherRetract = (elMs: number): { k: number; bow: number; alpha: number } | null => {
+/** 放した瞬間のたるみの下限(rad・張っていた縄が手を離れて緩む)。 */
+export const WHIP_TETHER_RELEASE_SLACK = 0.28;
+/**
+ * 巻き戻りの進み k(0..1・ease-in=加速しながら戻る)。先端の位置 = 手 + (放した先 - 手) × (1 - k)。終わったら null。
+ * たわみは放した瞬間が一番大きく(張っていた縄が緩む=bow0 と下限の大きい方)、戻るほど張る(手元へ引き込まれてまっすぐになる)。
+ * thick=縄の太さの掛け(短くなるほど細く=素材を短い長さへ押し込んで塊に見せない)。
+ */
+export const whipTetherRetract = (elMs: number, bow0 = 0): { k: number; bow: number; alpha: number; thick: number } | null => {
   if (!(elMs >= 0) || elMs >= WHIP_TETHER_RETRACT_MS) return null;
   const u = elMs / WHIP_TETHER_RETRACT_MS;
-  return { k: u * u, bow: 0.45 * u, alpha: 1 - u ** 4 };
+  const k = u * u;
+  return { k, bow: Math.max(Math.abs(bow0), WHIP_TETHER_RELEASE_SLACK) * (1 - u) ** 1.5, alpha: 1 - u ** 3, thick: 0.55 + 0.45 * (1 - k) };
+};
+
+/** 掴んだ瞬間、振りの鞭(まっすぐ伸び切った形)から縄へ引き継ぐ長さ(ms)。 */
+export const WHIP_TETHER_ENTRY_MS = 140;
+/**
+ * 掴んだ直後の引き継ぎ(0..1・減速して着く)。0=振りの鞭の伸び切った形(届く距離ぶん・地面の高さ・まっすぐ)/1=手→掴んだ敵の体へ張った縄。
+ * 先端は敵の向きのまま届く距離から敵の体まで縮み(巻き付く)、たわみ・高さも同じ割合で入る。
+ */
+export const whipTetherEntry = (tMs: number): number => {
+  const u = clamp01(tMs / WHIP_TETHER_ENTRY_MS);
+  return 1 - (1 - u) ** 3;
+};
+
+/** 光の縁の濃さ(0..1)。回る速さの割合が最高速に近い時だけ出る(回り出し・掴んだ瞬間は出ない)。 */
+export const whipTetherGlowK = (angVelFrac: number): number => {
+  const q = clamp01((angVelFrac - 0.8) / 0.2);
+  return q * q;
 };
 
 /** 投げた敵の高さの山(px)=体の絵の高さ × これ(上下の限り付き)。 */
@@ -215,4 +239,43 @@ export const whipFlyOffset = (o: {
   if (o.landKind === 'max') return Math.min(0, whipFlyVisualDist(o.tMs, o.v0, o.maxDist) - landD);
   const off0 = Math.min(0, whipFlyVisualDist(o.landAtMs, o.v0, o.maxDist) - landD);
   return off0 * Math.exp(-(o.tMs - o.landAtMs) / WHIP_FLY_CATCHUP_TAU_MS);
+};
+
+/** 投げた敵の後ろへ伸ばす風の筋の長さ=絵の上の今の速さ × これ(秒)。速いほど長く、減速で縮む。 */
+export const WHIP_THROW_STREAK_LEN_S = 0.11;
+/** 着弾の瞬間から、筋が先(敵の側)から尾へ向けて消えきるまで(ms)。 */
+export const WHIP_THROW_STREAK_OUT_MS = 170;
+
+/** 絵の上の飛んだ距離が d になる時刻(ms・whipFlyVisualDist の逆)。 */
+export const whipFlyVisualTimeAt = (d: number, v0: number, maxDist: number): number => {
+  if (!(d > 0) || !(v0 > 0) || !(maxDist > 0)) return 0;
+  const q = Math.min(1, d / maxDist);
+  return ((2 * maxDist) / v0) * (1 - Math.sqrt(1 - q)) * 1000;
+};
+/** 絵の上の今の速さ(px/s)。最大距離でちょうど 0。 */
+export const whipFlyVisualSpeed = (tMs: number, v0: number, maxDist: number): number => {
+  if (!(v0 > 0) || !(maxDist > 0)) return 0;
+  const Tv = (2 * maxDist) / v0;
+  return Math.max(0, v0 * (1 - Math.max(0, tMs) / 1000 / Tv));
+};
+
+/**
+ * 投げた敵の後ろの風の筋(派手さの絵・判定なし)。投げた向きに沿う距離(放した点から・px)で、尾 tailD と先 headD・濃さの掛け alpha を返す。
+ * 先=敵の体の今の位置(headNow・絵の上)。飛んでいる間は尾が速さぶん後ろ(放した点より後ろへは出さない=手元にかぶらない)。
+ * 着弾(landAtMs)の後は尾をその場に残し、先が加速しながら尾へ縮んで消える(WHIP_THROW_STREAK_OUT_MS)。消えたら null。
+ */
+export const whipThrowStreak = (o: {
+  tMs: number; v0: number; maxDist: number; headNow: number; landAtMs?: number; landD?: number;
+}): { tailD: number; headD: number; alpha: number } | null => {
+  const lenAt = (t: number, head: number): number => Math.max(0, Math.min(head, whipFlyVisualSpeed(t, o.v0, o.maxDist) * WHIP_THROW_STREAK_LEN_S));
+  if (o.landAtMs === undefined || o.tMs <= o.landAtMs) {
+    const head = Math.max(0, o.headNow);
+    return { tailD: head - lenAt(o.tMs, head), headD: head, alpha: 1 };
+  }
+  const u = (o.tMs - o.landAtMs) / WHIP_THROW_STREAK_OUT_MS;
+  if (u >= 1) return null;
+  const headLand = Math.max(0, Math.min(whipFlyVisualDist(o.landAtMs, o.v0, o.maxDist), o.landD ?? Infinity));
+  const tail = headLand - lenAt(o.landAtMs, headLand);
+  const head = Math.max(tail, o.headNow);
+  return { tailD: tail, headD: tail + (head - tail) * (1 - u * u), alpha: 1 - 0.5 * u };
 };

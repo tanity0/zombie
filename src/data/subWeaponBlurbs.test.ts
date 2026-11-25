@@ -33,9 +33,9 @@ describe('subWeaponBlurb(機器ごとの一言)', () => {
     expect(subWeaponBlurb('dog', 'mouse')).toBe(subWeaponBlurb('dog'));
     expect(subWeaponBlurb('dog', 'pad')).toBe(subWeaponBlurb('dog'));
   });
-  it('鞭(research/WHIP_FOLLOWUP.md §8): 絡め取る・振り回す・投げる・爆ぜる・竜巻を言う。機器ごとに投げの操作の言葉を変える。数値を書かない・句点で終える', () => {
+  it('鞭(research/WHIP_FOLLOWUP.md §8): 絡め取る・振り回す・投げる・ぶつかった所で爆発する・竜巻を言う。機器ごとに投げの操作の言葉を変える。数値を書かない・句点で終える', () => {
     const touch = subWeaponBlurb('whip');
-    for (const w of ['絡め取', '振り回', '投げ', '爆ぜる', '竜巻']) expect(touch).toContain(w);
+    for (const w of ['絡め取', '振り回', '投げ', 'ぶつかった所で爆発する', '竜巻']) expect(touch).toContain(w);
     expect(touch).toContain('指を離すか、はじいて投げれば');
     expect(subWeaponBlurb('whip', 'mouse')).toContain('もう一度振るか右クリックで投げれば');
     expect(subWeaponBlurb('whip', 'mouse')).not.toMatch(/フリック|指|タップ/);
