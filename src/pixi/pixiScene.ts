@@ -133,6 +133,7 @@ import {
   katanaSlashIntScale, katanaSlashJitter, katanaSlashPose, katanaSlashVisibleMid, katanaWhiteRgba,
 } from '../utils/katanaSlashSheet'; // プレイヤーの刀の斬撃シート(社長支給2026-11-22)
 import { whipComboBodyRecover } from '../utils/whipCombo'; // 鞭の3段目の後の隙の姿勢
+import { counterReadyAt, counterRingFade } from '../utils/counterReadyAt'; // カウンターのクールダウンの輪(鞭・ナイフの3連撃は連撃の終わり+CDまで)
 import { knifeComboBodyT, knifeComboSwingDir } from '../utils/knifeCombo'; // ナイフの3連撃の段の向き・3段目の後の隙の姿勢
 import {
   whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
@@ -51965,6 +51966,8 @@ export class PixiScene {
     // 消え切り、判定(押して200ms後)の前に居なくなっていた。窓が開いている間(前隙中)は他の輪を出さないのは従来どおり。
     const reachRingAt = player.meleeSwingCommitAt || 0;
     const reachRingOn = reachRingAt > 0 && now >= reachRingAt && now - reachRingAt < 140;
+    // カウンターが次に使える時刻(下のクールダウンの輪が消える時刻)。鞭・ナイフの3連撃は段の間隔ではなく連撃の終わり+クールダウン。
+    const cdReadyAt = counterReadyAt(player, isWhipMode(player) ? 'whip' : isKnifeComboMode(player) ? 'knife' : 'other');
     if ((now <= player.counterWindowEnd || reachRingOn) && counterFxVisible && !this.killFxActive()) {
       // 元の黄色い攻撃範囲テレグラフ(社長指示で復活)。細いリーチリング + さっと出て
       // 速く消える静止クレセント。クレセントは狙い方向を向き、腹が太く先端が細い。
@@ -52046,9 +52049,11 @@ export class PixiScene {
       g.circle(cx, cy, hr - 3)
         .stroke({ width: 0.8, color: 0xffffff, alpha: 0.12 + 0.04 * pulse });
       }
-    } else if (!katana && now < player.counterCooldownEnd) {
-      if (pf) projCircle(g, pf, cx, cy, r, undefined, { width: 1.5, color: 0x94a3b8, alpha: 0.2 }, 's'); // C6②(TI:I14)・縁=段階3の線の規則
-      else g.circle(cx, cy, r).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });
+    } else if (!katana && now < cdReadyAt) {
+      // カウンターのクールダウン中の印。鞭・ナイフの3連撃は連撃の終わり+クールダウンまで(utils/counterReadyAt)・消える前に短くフェード。
+      const cdA = 0.2 * counterRingFade(cdReadyAt, now);
+      if (pf) projCircle(g, pf, cx, cy, r, undefined, { width: 1.5, color: 0x94a3b8, alpha: cdA }, 's'); // C6②(TI:I14)・縁=段階3の線の規則
+      else g.circle(cx, cy, r).stroke({ width: 1.5, color: 0x94a3b8, alpha: cdA });
     }
 
     // 刀: 一閃ダッシュのクールダウン表示。既存の近接クールダウンサークルと
