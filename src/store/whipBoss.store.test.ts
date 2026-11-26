@@ -52,6 +52,9 @@ beforeEach(() => {
     m0Unlocked: { ...s.m0Unlocked, melee: true, crit: false }, breakableProps: [],
     player: { ...s.player, subWeapons: ['whip'], skills: [], skillLevels: {}, whipCharged: false, whipHitCount: 0, counterCooldownEnd: 0, pendingSwingAt: 0, lastDirection: { x: 1, y: 0 }, health: 9999, maxHealth: 9999 },
   }));
+  // カメラはプレイヤーを画面の真ん中に(ゲームではカメラが追う。叩きつけの着地点は可視域の中に収める)。
+  const c = center();
+  useGameStore.setState(s => ({ camera: { x: c.x - s.gameBounds.width / 2, y: c.y - s.gameBounds.height / 2 }, viewZoom: 1 }));
 });
 afterEach(() => { vi.restoreAllMocks(); });
 
@@ -143,6 +146,28 @@ describe('②気絶しているボスは掴める=頭上を越えて反対側へ
       expect(Math.abs(cl.x - e.x) + Math.abs(cl.y - e.y)).toBeLessThan(1);
     }
     expect(st().whipSwing).toBeNull();
+  });
+  it('着地点は今のズームの可視域の中(体ごと)・画面の端で反対側が切れる時は手前か斜めへ寄せる(反対側の意図は保つ)', () => {
+    const c = center();
+    // プレイヤーを画面の左の端の近くに置く(反対側=左はすぐ画面の外)。
+    useGameStore.setState(s => ({ camera: { x: c.x - 90, y: c.y - s.gameBounds.height / 2 } }));
+    useGameStore.setState({ enemies: [place('hunter', 110, 0, 'h', { stunUntil: st().gameTime + 2000 })] });
+    swing();
+    const sw = st().whipSwing!;
+    expect(sw.phase).toBe('overhead');
+    const e = en('h'), s = st();
+    const vb = { left: s.camera.x, right: s.camera.x + s.gameBounds.width, top: s.camera.y, bottom: s.camera.y + s.gameBounds.height };
+    expect((sw.toX ?? 0) - e.width / 2).toBeGreaterThanOrEqual(vb.left);
+    expect((sw.toY ?? 0) - e.height / 2).toBeGreaterThanOrEqual(vb.top);
+    expect((sw.toY ?? 0) + e.height / 2).toBeLessThanOrEqual(vb.bottom);
+    expect((sw.toX ?? 0)).toBeLessThan(c.x); // 反対側(左)のまま
+  });
+  it('掴んだら3連撃の段は0へ戻る(次の振りは1段目)', () => {
+    useGameStore.setState(s => ({ player: { ...s.player, whipComboStage: 1, whipComboAt: now } }));
+    useGameStore.setState({ enemies: [place('hunter', 100, 0, 'h', { stunUntil: st().gameTime + 2000 })] });
+    swing();
+    expect(st().whipSwing?.enemyId).toBe('h');
+    expect(st().player.whipComboStage).toBe(0);
   });
   it('掴んだ瞬間に溜めていた技は取り消される(雑魚の掴みと同じ)', () => {
     const until = st().gameTime + 1000;

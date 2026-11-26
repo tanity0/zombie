@@ -409,9 +409,14 @@ export const whipThrowBlastPlan = (
 // 高さは描画だけ(utils/whipSwingMotion の whipOverheadLiftPx)。進み s(0..1)=弧の角度/π(0=掴んだ点・0.5=頭上・1=叩きつけ)。数値は叩き台。
 /** 弧の長さ(ms)。 */
 export const WHIP_OVERHEAD_MS = 720;
-/** 持ち上げの割合(この時刻で頭上=s 0.5・速さ0へ減速して着く)。残りが振り下ろし。 */
-export const WHIP_OVERHEAD_RISE_FRAC = 0.58;
-/** 振り下ろしの加速の強さ(頂点の速さ0から x^POW で加速し、叩きつける瞬間が一番速い=頂点で一瞬ためる)。 */
+/** 持ち上げの割合(この時刻で頭上=s 0.5)。残りが振り下ろし(見え方の監査 A3: 頂点の停滞を縮め、振り下ろしを速く短く)。 */
+export const WHIP_OVERHEAD_RISE_FRAC = 0.75;
+/**
+ * 頂点を通る速さ(持ち上げの平均の速さに対する割合)。0=頂点で止まる(旧)。持ち上げは頂点の手前で速さを残して越え、
+ * 振り下ろしは同じ速さから加速する(頂点で速さが途切れない)。頂点の前後(弧の ±18°)に居る時間は約110ms(旧 約300ms)。
+ */
+export const WHIP_OVERHEAD_APEX_SLOPE = 1.9;
+/** 振り下ろしの加速の強さ(頂点の速さから x^POW の項で加速し、叩きつける瞬間が一番速い)。 */
 export const WHIP_OVERHEAD_SLAM_POW = 3;
 /** 着地点を手前へ寄せて探す刻み(px)。 */
 export const WHIP_OVERHEAD_LAND_STEP_PX = 8;
@@ -420,26 +425,29 @@ export const WHIP_OVERHEAD_HITSTOP_MS = 170;
 export const WHIP_OVERHEAD_SHAKE_MS = 440;
 export const WHIP_OVERHEAD_SHAKE_MAG = 16;
 
+/** 振り下ろしの1次の項の重み(頂点の速さが持ち上げと振り下ろしで揃う値)。 */
+const ohSlamLin = (): number => Math.min(1, WHIP_OVERHEAD_APEX_SLOPE * (1 - WHIP_OVERHEAD_RISE_FRAC) / WHIP_OVERHEAD_RISE_FRAC);
 /**
- * 弧の進み s(0..1)。tMs=掴んでから・ms=弧の長さ。持ち上げ=減速して頂点で速さ0(1-cos の半分)、振り下ろし=頂点の速さ0から加速(x^POW)。
- * 速さは頂点で両側とも0=途切れない。叩きつける瞬間が一番速い。
+ * 弧の進み s(0..1)。tMs=掴んでから・ms=弧の長さ。持ち上げ=止まった所から加速し、頂点の手前で速さを残したまま頭上(s 0.5)へ
+ * (3次のエルミート・終わりの傾き APEX_SLOPE)、振り下ろし=頂点と同じ速さから加速(c·y + (1-c)·y^POW)。叩きつける瞬間が一番速い。
  */
 export const whipOverheadProgress = (tMs: number, ms = WHIP_OVERHEAD_MS): number => {
   const T = Math.max(1, ms);
   const u = Math.max(0, Math.min(1, tMs / T));
-  const a = WHIP_OVERHEAD_RISE_FRAC;
-  if (u < a) return 0.25 * (1 - Math.cos(Math.PI * (u / a)));
-  return 0.5 + 0.5 * ((u - a) / (1 - a)) ** WHIP_OVERHEAD_SLAM_POW;
+  const a = WHIP_OVERHEAD_RISE_FRAC, m = WHIP_OVERHEAD_APEX_SLOPE;
+  if (u < a) { const x = u / a; return 0.5 * (3 * x * x - 2 * x ** 3 + m * (x ** 3 - x * x)); }
+  const c = ohSlamLin(), y = (u - a) / (1 - a);
+  return 0.5 + 0.5 * (c * y + (1 - c) * y ** WHIP_OVERHEAD_SLAM_POW);
 };
 /** 弧の進みの速さ(1/ms)。 */
 export const whipOverheadProgressVel = (tMs: number, ms = WHIP_OVERHEAD_MS): number => {
   const T = Math.max(1, ms);
   const u = tMs / T;
   if (!(u > 0) || u > 1) return 0;
-  const a = WHIP_OVERHEAD_RISE_FRAC;
-  if (u < a) return (0.25 * Math.PI / a) * Math.sin(Math.PI * (u / a)) / T;
-  const x = (u - a) / (1 - a);
-  return (0.5 * WHIP_OVERHEAD_SLAM_POW * x ** (WHIP_OVERHEAD_SLAM_POW - 1)) / (1 - a) / T;
+  const a = WHIP_OVERHEAD_RISE_FRAC, m = WHIP_OVERHEAD_APEX_SLOPE;
+  if (u < a) { const x = u / a; return (0.5 * (6 * x - 6 * x * x + m * (3 * x * x - 2 * x))) / a / T; }
+  const c = ohSlamLin(), y = (u - a) / (1 - a), P = WHIP_OVERHEAD_SLAM_POW;
+  return (0.5 * (c + (1 - c) * P * y ** (P - 1))) / (1 - a) / T;
 };
 /**
  * 弧の地面の上の位置。s=進み・(pivX,pivY)=弧の中心(頭上=s 0.5 でここの真上)・(fromX,fromY)=掴んだ点・(toX,toY)=着地点。
@@ -453,16 +461,19 @@ export const whipOverheadGround = (
     ? { x: pivX + (fromX - pivX) * c, y: pivY + (fromY - pivY) * c }
     : { x: pivX + (toX - pivX) * -c, y: pivY + (toY - pivY) * -c };
 };
+/** 反対側に置けない時に試す、反対の向きからのずらし(rad・この順)。±90°未満=反対側の意図は保つ(見え方の監査 A4)。 */
+export const WHIP_OVERHEAD_LAND_TURNS: readonly number[] = [0, Math.PI / 9, (2 * Math.PI) / 9, Math.PI / 3, (4 * Math.PI) / 9];
 /**
  * 叩きつけの着地点。掴んだ点 (ex,ey) をプレイヤーの中心 (px,py) について反対側へ写した点(距離は掴んだ時と同じ・minDist より近ければ minDist)。
- * free(x,y)=その中心に体を置けるか(行ける帯・壁)。置けなければ手前(プレイヤー寄り・minDist まで)へ刻みで寄せる。
- * それでも置けなければ掴んだ点へ(その場で持ち上げて叩きつける=kind 'start'・弧の中心も掴んだ点)。
- * fallback=プレイヤーと重なっている時の「反対」の向き(振りの向き)。
+ * free(x,y)=その中心に体を置けるか(行ける帯・壁・可視域)。置けなければ手前(プレイヤー寄り・minDist まで)へ刻みで寄せる。
+ * それでも置けなければ、反対の向きを turns の角度だけ左右へずらして同じく探す(画面の手前=下へ寄る側を先に)。
+ * それでも置けなければ looseFree(緩い条件・例: 体の真ん中だけ可視域)で反対の向きを探し、それも無理なら掴んだ点へ
+ * (その場で持ち上げて叩きつける=kind 'start'・弧の中心も掴んだ点)。fallback=プレイヤーと重なっている時の「反対」の向き(振りの向き)。
  */
 export const whipOverheadLanding = (o: {
   px: number; py: number; ex: number; ey: number; minDist: number; fallbackUx: number; fallbackUy: number;
-  free: (x: number, y: number) => boolean; stepPx?: number;
-}): { x: number; y: number; kind: 'mirror' | 'near' | 'start' } => {
+  free: (x: number, y: number) => boolean; stepPx?: number; turns?: readonly number[]; looseFree?: (x: number, y: number) => boolean;
+}): { x: number; y: number; kind: 'mirror' | 'near' | 'turn' | 'start' } => {
   const rx = o.ex - o.px, ry = o.ey - o.py, d0 = Math.hypot(rx, ry);
   let ux: number, uy: number;
   if (d0 > 1) { ux = -rx / d0; uy = -ry / d0; } else {
@@ -472,9 +483,23 @@ export const whipOverheadLanding = (o: {
   const minD = Math.max(0, o.minDist);
   const want = Math.max(d0, minD);
   const step = Math.max(1, o.stepPx ?? WHIP_OVERHEAD_LAND_STEP_PX);
-  for (let d = want; d >= minD - 1e-6; d -= step) {
-    const x = o.px + ux * d, y = o.py + uy * d;
-    if (o.free(x, y)) return { x, y, kind: d === want ? 'mirror' : 'near' };
+  const scan = (vx: number, vy: number, free: (x: number, y: number) => boolean): { x: number; y: number; full: boolean } | null => {
+    for (let d = want; d >= minD - 1e-6; d -= step) {
+      const x = o.px + vx * d, y = o.py + vy * d;
+      if (free(x, y)) return { x, y, full: d === want };
+    }
+    return null;
+  };
+  for (const th of o.turns ?? [0]) {
+    const cands: [number, number][] = th === 0 ? [[ux, uy]] : [1, -1].map(sg => {
+      const c = Math.cos(th * sg), sn = Math.sin(th * sg);
+      return [ux * c - uy * sn, ux * sn + uy * c] as [number, number];
+    }).sort((a, b) => b[1] - a[1]); // 画面の手前(下)へ寄る側を先に
+    for (const [vx, vy] of cands) {
+      const r = scan(vx, vy, o.free);
+      if (r) return { x: r.x, y: r.y, kind: th !== 0 ? 'turn' : r.full ? 'mirror' : 'near' };
+    }
   }
+  if (o.looseFree) { const r = scan(ux, uy, o.looseFree); if (r) return { x: r.x, y: r.y, kind: r.full ? 'mirror' : 'near' }; }
   return { x: o.ex, y: o.ey, kind: 'start' };
 };

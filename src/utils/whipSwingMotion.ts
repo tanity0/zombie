@@ -5,7 +5,7 @@
 //    ③打ち出し=手元から先端へほどけて加速 ④パチン=前隙の終わり(=当たる瞬間)にまっすぐ伸び切って一拍止まる ⑤戻り=たるんで縮み消える。
 //  - 体: ナイフ(しゃがみ→立ち上がって振る)の逆=振り上げ(伸び上がり・後ろへ反る)→パチンの瞬間にしゃがみの底。
 // 数値は叩き台(実機で詰める)。
-import { whipOverheadProgress, whipOverheadProgressVel, criticalSpringStep, WHIP_OVERHEAD_MS } from './whipSwing'; // ボスの叩きつけの進み(判定と同じ1本)
+import { whipOverheadProgress, whipOverheadProgressVel, criticalSpringStep, WHIP_OVERHEAD_MS, WHIP_OVERHEAD_RISE_FRAC } from './whipSwing'; // ボスの叩きつけの進み(判定と同じ1本)
 
 /** パチンの後、まっすぐ伸び切って止まる長さ(ms)。 */
 export const WHIP_ROPE_CRACK_HOLD_MS = 90;
@@ -28,6 +28,18 @@ const easeInOut = (t: number): number => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2)
 /** 手元からの割合 u(0..1)の所の向き(rad・振りの向き=0・+は「下」側)。止まっている時の垂れ・後ろへ引いた形。 */
 const restAngle = (u: number): number => 0.5 + 0.6 * u;                       // 前へ下がって垂れている
 const backAngle = (u: number): number => -(Math.PI - 0.45) - 1.0 * u ** 1.4;  // 体の後ろ・手元は少し上、先へ行くほど垂れる
+/** 3段目の振りかぶり: 頭の上を越えて真後ろへまっすぐ伸ばし、先だけ少し巻く(S字にしない)。 */
+const backFinishAngle = (u: number): number => -(Math.PI - 0.1) - 0.42 * u ** 1.6;
+/**
+ * ★3連撃の3段目の引きの量(見え方の監査 A7「3段目が正面に見えない」)。1=普通の引き。これより大きいほど手元を大きく後ろ上へ引き、
+ * 鞭を頭上の後ろへまっすぐ振りかぶる(パチンの時刻は変えない)。
+ */
+export const WHIP_ROPE_FINISH_PULL = 1.45;
+/** 引きの量 pull の時の、後ろへ引いた形(u=手元からの割合)。pull=1 で普通の S 字・WHIP_ROPE_FINISH_PULL で真後ろへの振りかぶり。 */
+const backAngleFor = (u: number, pull: number): number => {
+  const w = clamp01((pull - 1) / (WHIP_ROPE_FINISH_PULL - 1));
+  return w <= 0 ? backAngle(u) : backAngle(u) * (1 - w) + backFinishAngle(u) * w;
+};
 
 export interface WhipRopeShape {
   /** 手元(柄の握り)の位置のずれ(px・振りの向きの座標=x 前・y 下)。 */
@@ -46,19 +58,22 @@ export interface WhipRopeShape {
  * 経過 el(ms・指を離した瞬間から)の鞭の形。windupMs=前隙(=パチンの時刻=判定の時刻)。
  * 前隙の終わり(el=windupMs)で必ずまっすぐ(全区間の向き0・長さ1・手元のずれ0)=判定の帯と鞭の本体と赤いしなりの伸び切りが重なる。
  */
-export const whipRopeShape = (el: number, windupMs: number, segs = WHIP_ROPE_POINTS - 1): WhipRopeShape => {
+export const whipRopeShape = (el: number, windupMs: number, segs = WHIP_ROPE_POINTS - 1, pull = 1): WhipRopeShape => {
   const W = Math.max(1, windupMs);
+  const pk = Math.max(1, pull);
+  const hX = -10 * pk, hY = -12 * pk; // 引いた手元(後ろ・上)
+  const backA = (u: number): number => backAngleFor(u, pk);
   const us = Array.from({ length: segs }, (_, i) => (i + 0.5) / segs);
   if (el >= whipRopeTotalMs(W)) return { handX: 0, handY: 0, angles: us.map(() => 0), lenK: 0.65, alpha: 0, phase: 'done' };
   if (el < W * WHIP_ROPE_PULL_END) {
     // ①引く: 前に垂れていた鞭を頭の上を通して体の後ろへ(減速して止まる)。手元も後ろ上へ。
     const p = easeOutCubic(clamp01(el / (W * WHIP_ROPE_PULL_END)));
-    return { handX: -10 * p, handY: -12 * p, angles: us.map(u => restAngle(u) + (backAngle(u) - restAngle(u)) * p), lenK: 1, alpha: 1, phase: 'pull' };
+    return { handX: hX * p, handY: hY * p, angles: us.map(u => restAngle(u) + (backA(u) - restAngle(u)) * p), lenK: 1, alpha: 1, phase: 'pull' };
   }
   if (el < W * WHIP_ROPE_HOLD_END) {
     // ②溜め: 後ろで垂れて止まる(先だけわずかに揺れる)。
     const h = (el - W * WHIP_ROPE_PULL_END) / (W * (WHIP_ROPE_HOLD_END - WHIP_ROPE_PULL_END));
-    return { handX: -10, handY: -12, angles: us.map(u => backAngle(u) + 0.1 * u * u * Math.sin(h * Math.PI)), lenK: 1, alpha: 1, phase: 'hold' };
+    return { handX: hX, handY: hY, angles: us.map(u => backA(u) + 0.1 * u * u * Math.sin(h * Math.PI)), lenK: 1, alpha: 1, phase: 'hold' };
   }
   if (el < W) {
     // ③打ち出し: 加速しながら、手元から先端へほどけてまっすぐになる(先端が最後=パチン)。
@@ -66,10 +81,10 @@ export const whipRopeShape = (el: number, windupMs: number, segs = WHIP_ROPE_POI
     const P = q * q;
     const hk = 1 - smooth(q);
     return {
-      handX: -10 * hk, handY: -12 * hk,
+      handX: hX * hk, handY: hY * hk,
       angles: us.map(u => {
         const qa = smooth(clamp01((P - 0.6 * u) / (1 - 0.6 * u)));
-        return backAngle(u) * (1 - qa);
+        return backA(u) * (1 - qa);
       }),
       lenK: 1, alpha: 1, phase: 'lash',
     };
@@ -123,6 +138,26 @@ export const whipRopeSweepOffset = (el: number, windupMs: number, sweep: number)
   const tau = lash * WHIP_ROPE_SWEEP_FOLLOW_K;
   const v = (2 * sweep) / lash; // パチンの瞬間の回る速さ(rad/ms)
   return v * tau * (1 - Math.exp(-(el - W) / tau));
+};
+
+/** 3段目のしなり(赤い軌跡)が振りかぶりで回り込む量(rad・狙いの向きから頭上の後ろへ)。 */
+export const WHIP_FINISH_BACK_RAD = 2.3;
+/** 3段目のパチンの後、勢いで行き過ぎてから狙いの向きへ戻る時定数(ms)。行き過ぎの量 = 回る速さ × これ / e。 */
+export const WHIP_FINISH_FOLLOW_TAU_MS = 12;
+/**
+ * ★3連撃の3段目の振りかぶり(見え方の監査 A7「3段目が正面に見えない(溜めが1段目と同じS字)」)。しなり全体の向きのずれ(rad)。
+ * sign=頭上へ回る向き(+1/-1・画面の上を通る側)。引く間に頭上の後ろ(WHIP_FINISH_BACK_RAD)へ回り込んで止まる(減速)→ 溜めはそのまま →
+ * 打ち出しで加速しながら頭上を越えて振り下ろし、パチン(el=windupMs)でちょうど 0(=判定の帯の向き)→ 勢いで少し行き過ぎて戻る(慣性・瞬間停止しない)。
+ */
+export const whipFinishSweepOffset = (el: number, windupMs: number, sign: number): number => {
+  if (!sign) return 0;
+  const W = Math.max(1, windupMs), B = WHIP_FINISH_BACK_RAD * Math.sign(sign);
+  if (el < W * WHIP_ROPE_PULL_END) return -B * easeOutCubic(clamp01(el / (W * WHIP_ROPE_PULL_END)));
+  if (el < W * WHIP_ROPE_HOLD_END) return -B;
+  const lash = W * (1 - WHIP_ROPE_HOLD_END);
+  if (el < W) { const q = clamp01((el - W * WHIP_ROPE_HOLD_END) / lash); return -B * (1 - q * q); }
+  const v = (2 * B) / lash, t = el - W;
+  return v * t * Math.exp(-t / WHIP_FINISH_FOLLOW_TAU_MS);
 };
 
 export interface WhipBodyPose {
@@ -379,37 +414,80 @@ export const whipThrowStreak = (o: {
 };
 
 // ---- ★ボスの叩きつけの見た目(社長指示2026-11-26「ボスは振り回しではなく、反対側に頭上を弧を描いて叩きつけ」)。判定=地面の上の位置は store(utils/whipSwing)。 ----
-// ここは描画だけの高さと体の回り。高さ = 山 × sin(π s)(s=弧の進み・頭上で山)・回り = 進む向きへ半回転(頭上で横倒し・叩きつけで逆さま)。
-// 叩きつけた後は逆さまのまま一拍(止め)→ 同じ向きへ回って起き上がる(スープレックスの投げ越しと同じ型・絵の伸縮はしない)。
-/** 弧の山=プレイヤーの体の絵の高さ × これ(足がプレイヤーの頭の上を越える)。 */
-export const WHIP_OVERHEAD_PEAK_K = 1.4;
-/** 叩きつけた後、逆さまのまま留まる(ms)と、起き上がる長さ(ms)。 */
-export const WHIP_OVERHEAD_LAND_HOLD_MS = 90;
-export const WHIP_OVERHEAD_STANDUP_MS = 360;
+// ここは描画だけの高さと体の回り・プレイヤーの体の動き。高さ = 山 × sin(π s)(s=弧の進み・頭上で山)。
+// 回り = 進む向きへ横倒しまで(±90°未満・大きい体ほど小さく)。叩きつけた後は横倒しのまま一拍 → 短い方へ戻りながら少し跳ねて起き上がる
+// (見え方の監査 A5「丸1回転はコミカルで重さを打ち消す」)。絵の伸縮はしない。
+/** 山の下限(px)。 */
+export const WHIP_OVERHEAD_PEAK_MIN_PX = 40;
+/** 頭上を越える時、ボスの絵の一番下とプレイヤーの頭の間に空ける量(px)。 */
+export const WHIP_OVERHEAD_CLEAR_PX = 14;
+/** 叩きつけた後、横倒しのまま留まる(ms)と、起き上がる長さ(ms)。 */
+export const WHIP_OVERHEAD_LAND_HOLD_MS = 150;
+export const WHIP_OVERHEAD_STANDUP_MS = 420;
+/** 起き上がる時の跳ね(ボスの絵の高さ × これ・px の下限と上限)。 */
+export const WHIP_OVERHEAD_STANDUP_HOP_K = 0.07;
+export const WHIP_OVERHEAD_STANDUP_HOP_MIN_PX = 6;
+export const WHIP_OVERHEAD_STANDUP_HOP_MAX_PX = 22;
+/** 回りの上限(rad): 絵の高さ ROT_SMALL_H 以下で ROT_SMALL・ROT_BIG_H 以上で ROT_BIG(その間は直線)。 */
+export const WHIP_OVERHEAD_ROT_SMALL = 1.4;
+export const WHIP_OVERHEAD_ROT_BIG = 0.7;
+export const WHIP_OVERHEAD_ROT_SMALL_H = 140;
+export const WHIP_OVERHEAD_ROT_BIG_H = 360;
+/** 弧の間、プレイヤーや周りを隠さないよう透かす量(頭上で 1-これ・掴んだ時と叩きつけで不透明)。 */
+export const WHIP_OVERHEAD_SEE_THROUGH = 0.42;
 /** 途中で放した時、回りが正立へ戻る時定数(ms・臨界減衰=回っていた勢いのまま寄って止まる)。 */
 export const WHIP_OVERHEAD_RELEASE_ROT_TAU_MS = 70;
 
-/** 弧の山(px)。 */
-export const whipOverheadPeakPx = (playerBodyH: number): number => Math.max(40, playerBodyH * WHIP_OVERHEAD_PEAK_K);
+/** 回りの上限(rad・正)。bossH=ボスの絵の高さ(px)。 */
+export const whipOverheadRotMax = (bossH: number): number => {
+  const k = clamp01((bossH - WHIP_OVERHEAD_ROT_SMALL_H) / (WHIP_OVERHEAD_ROT_BIG_H - WHIP_OVERHEAD_ROT_SMALL_H));
+  return WHIP_OVERHEAD_ROT_SMALL + (WHIP_OVERHEAD_ROT_BIG - WHIP_OVERHEAD_ROT_SMALL) * k;
+};
+/**
+ * 弧の山(px)。頭上(s=0.5・回り=上限の半分)でボスの絵の一番下がプレイヤーの頭(playerH)を CLEAR_PX 越える高さ。
+ * 体の中心で回すので、回った絵の一番下は中心から hh|cos r| + hw|sin r| 下(hh,hw=絵の高さ・幅の半分)。
+ * centerAbove=絵の中心が足元(地面の点)からどれだけ上か(足元が絵の下端なら hh・裏ボスのように絵の中ほどが足元なら小さい)。
+ * capPx=上限(可視域の上端から決める・無ければ Infinity)。上限が下限より低ければ下限。
+ */
+export const whipOverheadPeakPx = (playerH: number, bossH: number, bossW: number, rotMax: number, capPx = Infinity, centerAbove = bossH / 2): number => {
+  const hh = Math.max(0, bossH) / 2, hw = Math.max(0, bossW) / 2, r = rotMax / 2;
+  const below = hh * Math.abs(Math.cos(r)) + hw * Math.abs(Math.sin(r)) - centerAbove; // 頭上で絵の一番下が足元(地面の点+山)より下へ出る量
+  const need = Math.max(WHIP_OVERHEAD_PEAK_MIN_PX, playerH + WHIP_OVERHEAD_CLEAR_PX + below);
+  return Math.max(WHIP_OVERHEAD_PEAK_MIN_PX, Math.min(need, capPx));
+};
 /** 弧の高さ(px・描画だけ)。掴んだ時と叩きつけた時は0・頭上で山。 */
 export const whipOverheadLiftPx = (tMs: number, peakPx: number, ms = WHIP_OVERHEAD_MS): number =>
   peakPx * Math.sin(Math.PI * whipOverheadProgress(tMs, ms));
 /** 弧の高さの速さ(px/ms・上が正)。 */
 export const whipOverheadLiftVel = (tMs: number, peakPx: number, ms = WHIP_OVERHEAD_MS): number =>
   peakPx * Math.PI * Math.cos(Math.PI * whipOverheadProgress(tMs, ms)) * whipOverheadProgressVel(tMs, ms);
-/** 弧の間の体の回り(rad)。side=+1 で時計回り(画面で右へ運ぶ向き)。叩きつけで逆さま(π)。 */
-export const whipOverheadRot = (tMs: number, side: 1 | -1, ms = WHIP_OVERHEAD_MS): number => side * Math.PI * whipOverheadProgress(tMs, ms);
+/** 弧の間の体の回り(rad)。side=+1 で時計回り(画面で右へ運ぶ向き)。弧の進みに比例して上限(横倒し)まで=叩きつける瞬間が一番速く回る。 */
+export const whipOverheadRot = (tMs: number, side: 1 | -1, rotMax: number, ms = WHIP_OVERHEAD_MS): number =>
+  side * rotMax * whipOverheadProgress(tMs, ms);
+/** 弧の間の回る速さ(rad/ms)。 */
+export const whipOverheadRotVel = (tMs: number, side: 1 | -1, rotMax: number, ms = WHIP_OVERHEAD_MS): number =>
+  side * rotMax * whipOverheadProgressVel(tMs, ms);
+/** 弧の間の濃さ(掴んだ時と叩きつけで1・頭上で 1-SEE_THROUGH)。 */
+export const whipOverheadAlpha = (tMs: number, ms = WHIP_OVERHEAD_MS): number =>
+  1 - WHIP_OVERHEAD_SEE_THROUGH * Math.sin(Math.PI * whipOverheadProgress(tMs, ms));
 /** 回る向き: 画面で右へ運ぶなら +1(時計回り)・左へなら -1。ほぼ真上下へ運ぶ時は face(今向いている向き)。 */
 export const whipOverheadSide = (fromX: number, toX: number, face: number): 1 | -1 =>
   Math.abs(toX - fromX) > 6 ? (toX > fromX ? 1 : -1) : face >= 0 ? 1 : -1;
-/** 叩きつけてから el ms の回り(rad)。逆さまで一拍 → 同じ向きへ回って起き上がる(2π=正立)→ 0。 */
-export const whipOverheadAfterSlamRot = (elMs: number, side: 1 | -1): number => {
-  if (!(elMs >= 0)) return side * Math.PI;
-  if (elMs < WHIP_OVERHEAD_LAND_HOLD_MS) return side * Math.PI;
+/** 起き上がりの跳ね(px)。 */
+export const whipOverheadHopPx = (bossH: number): number =>
+  Math.max(WHIP_OVERHEAD_STANDUP_HOP_MIN_PX, Math.min(WHIP_OVERHEAD_STANDUP_HOP_MAX_PX, bossH * WHIP_OVERHEAD_STANDUP_HOP_K));
+/**
+ * 叩きつけてから el ms の回り(rad)と高さ(px)。横倒し(side×rotMax)のまま一拍 → 短い方(来た向きの逆)へ戻りながら少し跳ねて起き上がる。
+ * 戻りは加速→減速(速さは両端で0)・跳ねは戻りの間の1山。終わったら正立・地面。
+ */
+export const whipOverheadAfterSlam = (elMs: number, side: 1 | -1, rotMax: number, hopPx: number): { rot: number; lift: number } => {
+  if (!(elMs >= 0) || elMs < WHIP_OVERHEAD_LAND_HOLD_MS) return { rot: side * rotMax, lift: 0 };
   const k = (elMs - WHIP_OVERHEAD_LAND_HOLD_MS) / WHIP_OVERHEAD_STANDUP_MS;
-  if (k >= 1) return 0;
-  return side * Math.PI * (1 + k * k * (3 - 2 * k));
+  if (k >= 1) return { rot: 0, lift: 0 };
+  return { rot: side * rotMax * (1 - smooth(k)), lift: hopPx * Math.sin(Math.PI * Math.min(1, k * 1.15)) };
 };
+/** 叩きつけの絵が終わるまで(ms)。 */
+export const whipOverheadAfterSlamMs = (): number => WHIP_OVERHEAD_LAND_HOLD_MS + WHIP_OVERHEAD_STANDUP_MS;
 /**
  * 途中で放した(死亡・会話・カットイン・鞭を外した・瞬間移動)時の el ms 後。高さは放した時の高さと上下の速さを持ち越して重さで地面へ、
  * 回りは放した時の角度と回る速さから一番近い正立へ臨界減衰で寄る(瞬間に地面へ落ちたり正立へ跳んだりしない)。
@@ -421,4 +499,35 @@ export const whipOverheadAfterDrop = (elMs: number, h0: number, vh: number, r0: 
   const target = Math.round(r0 / (2 * Math.PI)) * 2 * Math.PI;
   const sp = criticalSpringStep(r0, w0 * 1000, target, Math.max(0, elMs), WHIP_OVERHEAD_RELEASE_ROT_TAU_MS);
   return { lift, rot: sp.x - target };
+};
+
+/** 叩きつけた後、しゃがみの底から立ち姿へ戻る長さ(ms)。 */
+export const WHIP_OVERHEAD_BODY_RECOVER_MS = 420;
+/**
+ * ★叩きつけの間のプレイヤーの体(見え方の監査 A1「体が静止して念動力に見える」)。普通の振りの体(whipBodyPose)と同じ絵と型:
+ * 持ち上げ=振り上げの絵('swing')で伸び上がって後ろへ反る(減速して止まる)→ 振り下ろし=加速して沈む → 叩きつけの瞬間にしゃがみの底('ready')
+ * → 慣性つきで立ち姿へ。tMs=掴んでから・slamElMs=叩きつけてから(まだなら null)。
+ */
+export const whipOverheadBodyPose = (tMs: number, ms = WHIP_OVERHEAD_MS, slamElMs: number | null = null): WhipBodyPose => {
+  const T = Math.max(1, ms);
+  let up = 0, down = 0, pose: WhipBodyPose['pose'];
+  if (slamElMs !== null) {
+    if (!(slamElMs >= 0) || slamElMs >= WHIP_OVERHEAD_BODY_RECOVER_MS) return { pose: null, sqX: 1, sqY: 1, lean: 0 };
+    down = 1 - easeOutCubic(slamElMs / WHIP_OVERHEAD_BODY_RECOVER_MS);
+    pose = 'ready';
+  } else {
+    const a = T * WHIP_OVERHEAD_RISE_FRAC;
+    if (tMs < a) up = easeOutCubic(clamp01(tMs / (a * 0.6)));
+    else { const q = clamp01((tMs - a) / (T - a)); const qq = q * q; up = 1 - qq; down = qq; }
+    pose = 'swing';
+  }
+  return { pose, sqX: 1 - 0.08 * up + 0.14 * down, sqY: 1 + 0.14 * up - 0.2 * down, lean: -0.26 * up + 0.3 * down };
+};
+/**
+ * 叩きつけの間のプレイヤーの向き(+1=右・-1=左)。頭上を越えるまでは掴んだ側を向いて担ぎ上げ、越えたら着地点の側へ向き直って叩きつける。
+ * 叩きつけた後も着地点の側。ほぼ真上下へ運ぶ時は face のまま。
+ */
+export const whipOverheadFace = (s: number, pivX: number, fromX: number, toX: number, face: 1 | -1): 1 | -1 => {
+  const x = s < 0.5 ? fromX : toX;
+  return Math.abs(x - pivX) > 6 ? (x > pivX ? 1 : -1) : face;
 };

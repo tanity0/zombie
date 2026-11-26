@@ -3561,6 +3561,8 @@ export type VisualEffect =
       duration: number;
       /** ★3連撃の払い(rad・符号つき・0/未定義=まっすぐ)。鞭の本体(whiprope)と同じ回り方(utils/whipSwingMotion.whipRopeSweepOffset)。 */
       sweep?: number;
+      /** ★3連撃の3段目(1/未定義=普通)。1より大きい時はしなりを頭上の後ろへ回り込ませてから振り下ろす(utils/whipSwingMotion.whipFinishSweepOffset)。 */
+      pull?: number;
     }
   | {
       /**
@@ -3580,6 +3582,8 @@ export type VisualEffect =
       duration: number;
       /** ★3連撃の払い(rad・符号つき・0/未定義=正面へまっすぐ)。横から入り、パチンの瞬間に angle でまっすぐ・その後は勢いで少し流れる(utils/whipSwingMotion.whipRopeSweepOffset)。 */
       sweep?: number;
+      /** ★3連撃の3段目の引きの量(1/未定義=普通・utils/whipSwingMotion.WHIP_ROPE_FINISH_PULL=頭上の後ろへ大きく振りかぶる)。パチンの時刻は変えない。 */
+      pull?: number;
     }
   | {
       // 鞭: 全長を即表示してフェードする太い帯(=当たり範囲)+ 明るい芯。

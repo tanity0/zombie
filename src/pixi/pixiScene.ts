@@ -136,10 +136,10 @@ import {
   whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
   whipTetherShape, whipTetherBow, whipTetherRetract, whipFlyLiftPx, whipFlyPeakPx, type WhipRopeShape,
   whipTetherEntry, whipTetherGlowK, whipThrowStreak, whipFlyVisualTimeAt, whipFlyViewOffset, whipFlyReleaseBlend, whipTetherRetractTip, whipTrailFade,
-  whipRopeSweepOffset, whipOverheadPeakPx, whipOverheadLiftPx, whipOverheadLiftVel, whipOverheadRot, whipOverheadSide, whipOverheadAfterSlamRot, whipOverheadAfterDrop,
-  WHIP_OVERHEAD_LAND_HOLD_MS, WHIP_OVERHEAD_STANDUP_MS,
+  whipRopeSweepOffset, whipFinishSweepOffset, whipOverheadPeakPx, whipOverheadLiftPx, whipOverheadLiftVel, whipOverheadRot, whipOverheadRotVel, whipOverheadSide, whipOverheadAfterSlam, whipOverheadAfterDrop,
+  whipOverheadRotMax, whipOverheadHopPx, WHIP_OVERHEAD_PEAK_MIN_PX, whipOverheadAlpha, whipOverheadAfterSlamMs, whipOverheadBodyPose, whipOverheadFace, WHIP_OVERHEAD_BODY_RECOVER_MS,
 } from '../utils/whipSwingMotion'; // ★鞭の振りの本体と体の動き・絡め取りの線・投げた敵の飛び方・ボスの叩きつけ
-import { whipSwingSpinAt, whipSwingMaxAngVel, whipThrowDurationMs, whipOverheadProgressVel, WHIP_OVERHEAD_MS, type WhipSwingState } from '../utils/whipSwing'; // ★鞭の絡め取り→振り回し→投げ(読むだけ) // ★刀の殺陣の赤い画面の濃さ
+import { whipSwingSpinAt, whipSwingMaxAngVel, whipThrowDurationMs, whipOverheadProgress, whipOverheadProgressVel, WHIP_OVERHEAD_MS, type WhipSwingState } from '../utils/whipSwing'; // ★鞭の絡め取り→振り回し→投げ(読むだけ) // ★刀の殺陣の赤い画面の濃さ
 import { screamerMarkVisible } from '../utils/screamerGate';
 import { airChaseHeightPx } from '../utils/airChaseHeight'; // 高さに追いつく技の高さ(動ける距離の中で相手の高さへ向かう・社長指示2026-11-16)
 import { getLastAirMeleeHit, playerLaunchHeightPx, stepPlayerAir, playerKickJump, playerKickJumpShape, playerKickLandPx, playerKickLandSpeed, playerAirLaunchSpeed, PLAYER_KICK_LAND_FRAC, PLAYER_KICK_JUMP_MIN_PX, PLAYER_KICK_HOLD_MS, PLAYER_KICK_RECOIL_PX, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
@@ -562,7 +562,7 @@ import {
   enemyFootBox, enemyHitStrip, ENEMY_STRIP_HEIGHT_FRAC, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE, horizonActorFadePx, HORIZON_ACTOR_FADE_PX, bossBehindFadeApplies,
   postZoomScreenY, postZoomLocalY, postZoomFadeAlpha, computeGroundBandLayout, groundStripT, GROUND_STRIP_REF_COUNT,
   worldGapBandHeight,
-  BOSS_SPRITE_FIT, BOSS_FIT_DEFAULT, // v0.25.3727: renderSpecへ移設(カメラの寄り先bossArtCenterと表を共有)
+  BOSS_SPRITE_FIT, BOSS_FIT_DEFAULT, bossArtCenter, // v0.25.3727: renderSpecへ移設(カメラの寄り先bossArtCenterと表を共有)
 } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
@@ -1081,6 +1081,7 @@ const WHIP_HURRICANE_TINT = 0x3c4248;
 const WHIP_SPRITE_ANCHOR_X = 0.10;  // テクスチャ内の手元(グリップ)= プレイヤー位置のピボット
 const WHIP_SPRITE_ANCHOR_Y = 0.676; // 手元の縦位置
 const WHIP_SPRITE_TIP_X = 0.99;     // テクスチャ内の鞭先端位置
+const WHIP_OVERHEAD_TOP_MARGIN_PX = 24; // ★ボスの叩きつけ: 頭上でボスの体の真ん中を可視域の上端からこれだけ内側に残す(山の高さの上限・見え方の監査 A2)
 
 // Tilt-shift depth-of-field: keeps a horizontal band sharp and blurs the far
 // (top) and near (bottom) edges for the HD-2D miniature feel. The sharp band is
@@ -28397,7 +28398,9 @@ export class PixiScene {
     const sinceFirstAid = now - (p.firstAidPoseAt || 0);
     const firstAidActive = p.firstAidPoseAt > 0 && sinceFirstAid >= 0 && sinceFirstAid < PLAYER_FIRSTAID_POSE_MS;
     // ★鞭の振りはナイフの逆=振り上げ(-swing)→パチンの瞬間にしゃがみ(-ready)(社長「鞭振るときのプレイヤーの動きはナイフの逆で、振り上げから しゃがみ へ」)。
-    const whipSwingPose = isWhipMode(p) ? whipBodyPose(sinceSwing, MELEE_WINDUP_MS) : null;
+    // ★ボスの叩きつけの間(見え方の監査 A1「体が静止して念動力に見える」): 担ぎ上げ=振り上げの絵・叩きつけの瞬間=しゃがみの底。普通の振りより優先。
+    const ohPose = isWhipMode(p) ? this.whipOverheadPlayerPose(useGameStore.getState().gameTime, face) : null;
+    const whipSwingPose = ohPose ? ohPose.pose : isWhipMode(p) ? whipBodyPose(sinceSwing, MELEE_WINDUP_MS) : null;
     if (meleePosePrefix && !warlordFull && !killFxSwallowsSwing && whipSwingPose?.pose) {
       const poseTex = getTexture(`${meleePosePrefix}-${whipSwingPose.pose}`);
       if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}-${whipSwingPose.pose}`; }
@@ -28469,7 +28472,7 @@ export class PixiScene {
     }
     if (PLAYER_MOTION_FX && !pvpStunned && !killFxSwallowsSwing && whipSwingPose?.pose) {
       // 鞭: 振り上げで縦に伸びて後ろへ反る→加速して沈み、パチンの瞬間にしゃがみの底(前へ傾く)→慣性つきで立ち姿へ。
-      actLean += face * whipSwingPose.lean;
+      actLean += (ohPose ? ohPose.face : face) * whipSwingPose.lean; // 叩きつけの間は向き直った側へ反る・沈む
       actSqX *= whipSwingPose.sqX;
       actSqY *= whipSwingPose.sqY;
     } else if (PLAYER_MOTION_FX && !pvpStunned && !killFxSwallowsSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
@@ -28896,6 +28899,7 @@ export class PixiScene {
       // ★KILL処刑演出v2中は跳びつく相手の方を向く(帰還中も相手を見たまま後ろへ跳ぶ)。
       const flip = killPose
         ? killPose.faceLeft
+        : ohPose ? ohPose.face < 0 // ★ボスの叩きつけ: 越えるまで掴んだ側・越えたら着地点の側を向く(描画だけ)
         : (p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0));
       const wantFace: -1 | 1 = flip ? -1 : 1;
       const faceMul: number = wantFace * (brPose?.flip ? -1 : 1); // 格闘の2段目は絵を反転して逆の手を形で見せる(クリエイティブ監査 #5)
@@ -31715,6 +31719,8 @@ export class PixiScene {
     // (下から持ち上がる ease-out+フェードイン=慣性MUST「パッと出ない」)。描くだけ・判定は store のまま。
     // §16: 亡霊の指差しで浮いて飛ぶ間は、霊に掴まれて半ば透ける(木や建物を抜ける理由を絵で見せる・クリエイティブ監査#2)。浮きに合わせて慣性つきで薄く→戻る。
     if (e.escortToss?.free) view.sprite.alpha *= 1 - 0.35 * (wraithFlingLiftPx(gameTime, e.escortToss.startAt, e.escortToss.endAt) / WRAITH_FLING_LIFT_PX);
+    // ★ボスの叩きつけ(見え方の監査 A2): 頭上を越える弧の間は少し透かす(プレイヤーや周りを隠さない・掴んだ時と叩きつけは不透明)。
+    if (ohV && ohV.alpha < 1) view.sprite.alpha *= ohV.alpha;
     // research/WRAITH_MUTANT.md §15-1: 亡霊に呼ばれたコウモリも同じ這い上がり(置き場所の地面から・ずれた時刻で)。始まる前は見せない。
     if ((e.hordeRefill || e.wraithSummoned) && e.spawnedAt !== undefined) {
       const t = (gameTime - e.spawnedAt) / HORDE_REFILL_RISE_MS;
@@ -45626,7 +45632,9 @@ export class PixiScene {
     //   伸び切り(パチンの瞬間)は柄=プレイヤーの中心・向き=振りの向き・長さ=射程ちょうど=鞭本体と判定の帯に重なる。
     const fr = PixiScene.PLAYER_SMEAR_FRAMES[f];
     sp.anchor.set(fr.gx, fr.gy);
-    sp.rotation = e.angle + whipRopeSweepOffset(el, e.windupMs, e.sweep ?? 0) - fr.ang; // 3連撃の払い(鞭の本体と同じ回り・パチンでまっすぐ)
+    // 3段目(pull>1)は頭上の後ろへ回り込んでから振り下ろす(画面の上を通る側へ回る)。
+    const finSign = (e.pull ?? 1) > 1 ? (Math.cos(e.angle) >= 0 ? 1 : -1) : 0;
+    sp.rotation = e.angle + whipRopeSweepOffset(el, e.windupMs, e.sweep ?? 0) + whipFinishSweepOffset(el, e.windupMs, finSign) - fr.ang; // 3連撃の払い(鞭の本体と同じ回り・パチンでまっすぐ)
     sp.scale.set(drawLen / Math.max(1, fr.len * Math.max(1, tex.width) / PixiScene.PLAYER_SMEAR_TEX_W));
     sp.position.set(e.fromX, e.fromY); // ★焼いた位置=本体が動いても置き去りになる
     // 前隙中は濃く見せる(しなりを見せるのが目的)。伸び切ってからフェード。
@@ -45840,7 +45848,7 @@ export class PixiScene {
     const rope = view as MeshRope;
     const pts = this.whipRopePts.get(rope);
     if (!tex || !pts) { rope.visible = false; return; }
-    const shape = whipRopeShape(now - e.createdAt, e.windupMs, WHIP_ROPE_POINTS - 1);
+    const shape = whipRopeShape(now - e.createdAt, e.windupMs, WHIP_ROPE_POINTS - 1, e.pull ?? 1); // 3段目は頭上の後ろへ大きく振りかぶる
     if (shape.alpha <= 0) { rope.visible = false; return; }
     const local = whipRopePoints(shape, e.len, WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_TIP_X);
     // 表示のスケール: 絵の握り→先端(素材の画素)が射程ちょうど(drawWhipSprite と同じ規約)。点は素材の画素の単位で置き、rope を k 倍する。
@@ -46176,21 +46184,24 @@ export class PixiScene {
    */
   private whipOh: {
     enemyId: string; startAt: number; ms: number; side: 1 | -1; peak: number; bodyH: number; toX: number; toY: number; lastT: number;
+    fromX: number; pivX: number; rotMax: number; hop: number; geomOk: boolean;
     endAt?: number; endKind?: 'slam' | 'drop'; h0?: number; vh?: number; r0?: number; w0?: number;
   } | null = null;
   private updateWhipOverhead(sw: WhipSwingState | null, player: Player, enemies: readonly Enemy[], gameTime: number): void {
     if (sw && sw.phase === 'overhead') {
       let o = this.whipOh;
       if (!o || o.enemyId !== sw.enemyId || o.startAt !== sw.startAt) {
-        const bodyH = playerFootBox(player).boxH;
         const face = player.lastDirection && player.lastDirection.x < 0 ? -1 : 1;
+        const fromX = sw.fromX ?? sw.cx, toX = sw.toX ?? sw.cx;
         o = this.whipOh = {
-          enemyId: sw.enemyId, startAt: sw.startAt, ms: sw.ohMs ?? WHIP_OVERHEAD_MS,
-          side: whipOverheadSide(sw.fromX ?? sw.cx, sw.toX ?? sw.cx, face), peak: whipOverheadPeakPx(bodyH), bodyH,
-          toX: sw.toX ?? sw.cx, toY: sw.toY ?? sw.cy, lastT: 0,
+          enemyId: sw.enemyId, startAt: sw.startAt, ms: sw.ohMs ?? WHIP_OVERHEAD_MS, side: whipOverheadSide(fromX, toX, face),
+          peak: WHIP_OVERHEAD_PEAK_MIN_PX, bodyH: playerFootBox(player).boxH, toX, toY: sw.toY ?? sw.cy, lastT: 0,
+          fromX, pivX: sw.pivX ?? sw.cx, rotMax: whipOverheadRotMax(0), hop: whipOverheadHopPx(0), geomOk: false,
         };
       }
       o.lastT = Math.max(0, gameTime - sw.startAt);
+      // 山の高さ・回りの上限(見え方の監査 A2・A5): ボスの絵の寸法と、足元から絵の中心までの高さで決める(掴んだ最初のフレームに1回)。
+      if (!o.geomOk) this.measureWhipOverhead(o, sw, player, enemies);
       return;
     }
     const o = this.whipOh;
@@ -46204,26 +46215,63 @@ export class PixiScene {
       o.endAt = gameTime; o.endKind = slam ? 'slam' : 'drop';
       if (!slam) {
         o.h0 = whipOverheadLiftPx(o.lastT, o.peak, o.ms); o.vh = whipOverheadLiftVel(o.lastT, o.peak, o.ms);
-        o.r0 = whipOverheadRot(o.lastT, o.side, o.ms); o.w0 = o.side * Math.PI * whipOverheadProgressVel(o.lastT, o.ms);
+        o.r0 = whipOverheadRot(o.lastT, o.side, o.rotMax, o.ms); o.w0 = whipOverheadRotVel(o.lastT, o.side, o.rotMax, o.ms);
       }
     }
     const el = gameTime - o.endAt;
-    const endMs = o.endKind === 'slam' ? WHIP_OVERHEAD_LAND_HOLD_MS + WHIP_OVERHEAD_STANDUP_MS + 40 : 700;
+    const endMs = o.endKind === 'slam' ? Math.max(whipOverheadAfterSlamMs(), WHIP_OVERHEAD_BODY_RECOVER_MS) + 40 : 700;
     if (el > endMs) this.whipOh = null;
   }
-  /** drawEnemy・縄が読む: 叩きつけの高さ(px)・回り(rad)・プレイヤーより手前に描くか。 */
-  private whipOverheadView(gameTime: number): { lift: number; rot: number; front: boolean } | null {
+  /**
+   * 叩きつけの山の高さ・回りの上限・跳ねを、ボスの絵の寸法から決める。山=プレイヤーの絵の高さ+回った絵の一番下までの分
+   * (ボスの足がプレイヤーの頭を越える)。上限=頭上でボスの絵の中心が今の可視域の上端より内側に残る高さ(巨体は頭が少し画面の上へ出てよい)。
+   */
+  private measureWhipOverhead(o: NonNullable<PixiScene['whipOh']>, sw: WhipSwingState, player: Player, enemies: readonly Enemy[]): void {
+    o.bodyH = playerFootBox(player).boxH;
+    const e0 = enemies.find(en => en.id === sw.enemyId);
+    if (!e0) return;
+    // 絵の寸法=体の絵の箱(enemyFootBox・表示の高さと幅)。足元から絵の中心までの高さ=足元が絵の下端なら半分、
+    // 裏ボス(絵の中ほどに判定の帯がある)は絵の中心の表(bossArtCenter)から。
+    const efb = enemyFootBox(e0);
+    const bossH = efb.boxH, bossW = efb.boxW;
+    const centerAbove = isHiddenBoss(e0.type) ? Math.max(0, e0.y + e0.height - bossArtCenter(e0).y) : bossH / 2;
+    o.rotMax = whipOverheadRotMax(bossH);
+    o.hop = whipOverheadHopPx(bossH);
+    const apexFootY = (sw.pivY ?? sw.cy) + e0.height / 2;
+    const vTop = (this.projFrame ? this.projAmbientRect() : this.visibleWorldRect()).top; // ?proj=1: 見える world(台形の外接矩形)
+    const cap = apexFootY - vTop - WHIP_OVERHEAD_TOP_MARGIN_PX - centerAbove;
+    o.peak = whipOverheadPeakPx(o.bodyH, bossH, bossW, o.rotMax, cap, centerAbove);
+    o.geomOk = true;
+  }
+  /** drawEnemy・縄が読む: 叩きつけの高さ(px)・回り(rad)・プレイヤーより手前に描くか・濃さ(弧の間はプレイヤーや周りを隠さないよう透かす)。 */
+  private whipOverheadView(gameTime: number): { lift: number; rot: number; front: boolean; alpha: number } | null {
     const o = this.whipOh;
     if (!o) return null;
     if (o.endAt === undefined) {
       const t = Math.max(0, gameTime - o.startAt);
       const lift = whipOverheadLiftPx(t, o.peak, o.ms);
-      return { lift, rot: whipOverheadRot(t, o.side, o.ms), front: lift >= o.bodyH };
+      return { lift, rot: whipOverheadRot(t, o.side, o.rotMax, o.ms), front: lift >= o.bodyH * 0.5, alpha: whipOverheadAlpha(t, o.ms) };
     }
     const el = Math.max(0, gameTime - o.endAt);
-    if (o.endKind === 'slam') return { lift: 0, rot: whipOverheadAfterSlamRot(el, o.side), front: false };
+    if (o.endKind === 'slam') { const a = whipOverheadAfterSlam(el, o.side, o.rotMax, o.hop); return { lift: a.lift, rot: a.rot, front: false, alpha: 1 }; }
     const d = whipOverheadAfterDrop(el, o.h0 ?? 0, o.vh ?? 0, o.r0 ?? 0, o.w0 ?? 0);
-    return { lift: d.lift, rot: d.rot, front: d.lift >= o.bodyH };
+    return { lift: d.lift, rot: d.rot, front: d.lift >= o.bodyH * 0.5, alpha: 1 };
+  }
+  /**
+   * ★叩きつけの間のプレイヤーの体(見え方の監査 A1): 担ぎ上げ=振り上げの絵で伸び上がって反る → 叩きつけの瞬間にしゃがみの底 → 立ち姿へ。
+   * 向きは頭上を越えるまで掴んだ側・越えたら着地点の側。drawPlayer が読む(描画だけ)。無ければ null。
+   */
+  private whipOverheadPlayerPose(gameTime: number, face: 1 | -1): { pose: ReturnType<typeof whipOverheadBodyPose>; face: 1 | -1 } | null {
+    const o = this.whipOh;
+    if (!o) return null;
+    if (o.endAt === undefined) {
+      const t = Math.max(0, gameTime - o.startAt);
+      return { pose: whipOverheadBodyPose(t, o.ms, null), face: whipOverheadFace(whipOverheadProgress(t, o.ms), o.pivX, o.fromX, o.toX, face) };
+    }
+    if (o.endKind !== 'slam') return null;
+    const el = Math.max(0, gameTime - o.endAt);
+    const pose = whipOverheadBodyPose(o.ms, o.ms, el);
+    return pose.pose ? { pose, face: whipOverheadFace(1, o.pivX, o.fromX, o.toX, face) } : null;
   }
   private whipFly: {
     enemyId: string; throwAt: number; v0: number; maxDist: number; flyMs: number; ux: number; uy: number; fromX: number; fromY: number;

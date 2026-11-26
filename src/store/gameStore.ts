@@ -319,7 +319,7 @@ import {
   whipSwingMaxMs, whipSwingAutoThrowDue, whipSwingTangent, pickWhipAutoThrowDir, whipThrowDurationMs, whipThrowDist, whipThrowStartSpeed, whipThrowStep,
   whipSwingReleaseReason, whipThrowBlastPlan, whipSwingLaps, whipSwingLapRate, criticalSpringStep, whipDropDist,
   isWhipTipHit, whipBossStunEnd, whipSwingBodyRadius, whipThrowSpeed, WHIP_TIP_BOSS_MULT,
-  whipOverheadProgress, whipOverheadGround, whipOverheadLanding, WHIP_OVERHEAD_MS, WHIP_OVERHEAD_RISE_FRAC, WHIP_THROW_MIN_SPEED,
+  whipOverheadProgress, whipOverheadGround, whipOverheadLanding, WHIP_OVERHEAD_LAND_TURNS, WHIP_OVERHEAD_MS, WHIP_OVERHEAD_RISE_FRAC, WHIP_THROW_MIN_SPEED,
   WHIP_OVERHEAD_HITSTOP_MS, WHIP_OVERHEAD_SHAKE_MS, WHIP_OVERHEAD_SHAKE_MAG,
   WHIP_SWING_SHRINK_LOOKAHEAD_MS, WHIP_SWING_SHRINK_LOOKAHEAD_STEPS, WHIP_DROP_MIN_SPEED, WHIP_DROP_MS,
   WHIP_SWING_RADIUS_MULT, WHIP_SWING_MIN_RADIUS_FRAC, WHIP_THROW_DIST_MULT, WHIP_THROW_DAMAGE_MULT, WHIP_THROW_HITSTOP_MS, type WhipSwingState,
@@ -328,7 +328,7 @@ import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
 import { planHomingVolley, splitDueHomingShots, homingLiftAllowed, type HomingPendingShot } from '../utils/homingVolley';
 import { isFlickFollowupOpen } from '../utils/flickFollowup';
 import { huntingSequenceAlive, huntingChargeStep } from '../utils/huntingSequence';
-import { whipRopeTotalMs } from '../utils/whipSwingMotion';
+import { whipRopeTotalMs, WHIP_ROPE_FINISH_PULL } from '../utils/whipSwingMotion';
 import {
   whipComboNextStage, whipComboCritBonus, whipComboLight, whipComboSweepSign, whipComboTapAction, whipComboQueuedAction,
   whipComboFeel, whipComboPitch, WHIP_COMBO_INTERVAL_MS, WHIP_COMBO_SWEEP_RAD,
@@ -3113,6 +3113,12 @@ const whipStunnedBossGrabbable = (e: Enemy, gameTime: number): boolean =>
 const whipGrabbable = (e: Enemy, gameTime: number): boolean =>
   e.health > 0 && !isCorpse(e) && !isUntouchable(e) && whipBossStunEnd(e, gameTime) !== null
   && (whipLiftable(e) || whipStunnedBossGrabbable(e, gameTime));
+/** ★叩きつけの着地点は、今のズームの可視域の縁からこれだけ内側に体ごと収める(画面のpx)。 */
+const WHIP_OVERHEAD_VIEW_INSET_PX = 16;
+/** ★掴んだ瞬間の止め(ms)と揺れ(長さ ms・強さ)(見え方の監査 B2「掴む瞬間に手応えが無い」)。 */
+const WHIP_GRAB_HITSTOP_MS = 70;
+const WHIP_GRAB_SHAKE_MS = 140;
+const WHIP_GRAB_SHAKE_MAG = 5;
 /** 振り回しの間、掴んだ敵の固まり(行動の時計・噛みつきを止める=brHoldUntil・壁時計)を毎フレーム継ぎ足す長さ(ms)。 */
 const WHIP_HOLD_REFRESH_MS = 250;
 /** 放した敵の倒れ方=爆発の浮き(その場の小さな爆発の浮きだけ・ダメージなし)の半径(px)。 */
@@ -3165,20 +3171,42 @@ const spawnWhipTipBossFx = (get: () => GameState, pts: readonly { x: number; y: 
  * ★鞭の3連撃の段ごとの手応え(社長指示2026-11-26「打撃感が気持ち良くなる様にして」・派手さの絵=判定なし・既存の素材の組み合わせ)。
  * 1段目=軽く速い・2段目=少し重い・3段目=一番重い(utils/whipCombo の WHIP_COMBO_FEEL)。止めは当たった敵だけ(全体は止めない=近接の止めの規約)。
  * 会心が出た段は、止め・揺れを一段上乗せし、金の光と輪を足す。音は鞭の命中音の高さを段で変え(連打で同じにならないよう少し揺らす)、2・3段目は重い命中音を重ねる。
- * ids=当たった敵(生き残った敵の止めに使う)・pts=当たった位置・ux,uy=狙いの向き(弾けと揺れの向き)。
+ * ids=当たった敵(生き残った敵の止めに使う)・pts=当たった位置(fy=足元)・ux,uy=狙いの向き(揺れの向き)。sweep=払いの向き(+1=時計回り・0=まっすぐ)。
+ * 1・2段目の弾けと筋は鞭の進む向き(払いの向き=狙いに直交)へ、3段目は狙いの向きへ。3段目は足元の砂埃と踏み込みの粒で締める(見え方の監査 A6)。
  */
 const spawnWhipComboHitFx = (
-  get: () => GameState, set: WhipSet, stage: number, ids: readonly string[], pts: readonly { x: number; y: number }[], crit: boolean, ux: number, uy: number,
+  get: () => GameState, set: WhipSet, stage: number, ids: readonly string[], pts: readonly { x: number; y: number; fy: number }[], crit: boolean, ux: number, uy: number, sweep: number,
 ): void => {
   if (pts.length === 0) return;
   const f = whipComboFeel(stage);
+  // 鞭の進む向き: 払いは角度が sweep の符号へ回る=先端は (-uy, ux)×符号へ動く。まっすぐ(3段目)は狙いの向き。
+  const tx = sweep ? -uy * sweep : ux, ty = sweep ? ux * sweep : uy;
   const now = Date.now();
   const stopMs = f.stopMs + (crit ? WHIP_COMBO_CRIT_STOP_MS : 0);
   const idSet = new Set(ids);
   set(state => ({ enemies: state.enemies.map(e => (idSet.has(e.id) && e.health > 0 && !isCorpse(e) ? { ...e, ...impactHitStunPatch(e, now, stopMs) } : e)) }));
   const g = get();
   for (const p of pts) {
-    g.spawnBurst(p.x, p.y, '#ffffff', f.burst, ux, uy);
+    g.spawnBurst(p.x, p.y, '#ffffff', f.burst, tx, ty);
+    if (f.streak > 0) {
+      // 細い筋(既存の dash-wind・素材の先は -x 側): 1段目=細く長く速い2本・2段目=太く短い1本。
+      const ang = Math.atan2(ty, tx);
+      const n = f.streak === 1 ? 2 : 1;
+      for (let i = 0; i < n; i++) {
+        const off = (i - (n - 1) / 2) * 7;
+        g.spawnImageMark(p.x - ty * off, p.y + tx * off, 'fx/dash-wind', f.streak === 1
+          ? { scale: 0.12, scaleX: 3.4, rot: ang + Math.PI, duration: 140 + i * 30, fadeFrom: 0.1, moveX: tx * 170, moveY: ty * 170, alpha: 0.95, additive: true, noPop: true, tint: 0xffffff }
+          : { scale: 0.36, scaleX: 1.35, rot: ang + Math.PI, duration: 220, fadeFrom: 0.2, moveX: tx * 80, moveY: ty * 80, alpha: 0.95, additive: true, noPop: true, tint: 0xe2e8f0 });
+      }
+    }
+    if (f.finish) {
+      // 締め: 足元の砂埃の輪(地面)と左右へ這う砂埃・踏み込みの粒(既存素材)。
+      g.spawnImageMark(p.x, p.fy, 'fx/dust-ring', { scale: 0.95, scaleY: 0.42, duration: 560, tint: 0x8a7a68, alpha: 0.55, noPop: true, fadeFrom: 0.15, ground: true, growFrom: 0.35, growPow: 0.6 });
+      for (const side of [-1, 1]) {
+        g.spawnImageMark(p.x + side * 14, p.fy - 4, 'fx/dust-puff', { scale: 0.42, scaleY: 0.5, duration: 620, tint: 0x9a8b7a, alpha: 0.7, moveX: side * 70 + ux * 30, moveY: -8 + uy * 20, fadeFrom: 0.3 });
+      }
+      g.spawnRubble(p.x, p.fy - 2, 7, 60, ['#8a7a68', '#6f604f']);
+    }
     if (f.ringR > 0) g.spawnRing(p.x, p.y, 4, f.ringR, 'rgba(226,232,240,0.9)', stage === 3 ? 3 : 2, stage === 3 ? 300 : 200, true);
     if (f.glow >= 1) g.spawnGlow(p.x, p.y, f.glow === 2 ? GLOW_R_M : GLOW_R_S, 'rgba(240,249,255,', f.glow === 2 ? 220 : 140, true);
     if (stage === 3) g.spawnBurst(p.x, p.y, '#cbd5e1', 8); // 一番重い段は周りへも散らす
@@ -3225,12 +3253,18 @@ const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux:
     at: st.gameTime, vx: 0, vy: 0, shrink: 0, shrinkV: 0,
   };
   // ★ボス区分(気絶中)は振り回さず、掴んだ瞬間から頭上を越える弧で反対側へ叩きつける(社長指示2026-11-26「ぐるぐる回ってると絵面がよくないので」)。
-  //   着地点=掴んだ点をプレイヤーの中心について反対側へ(距離は同じ・体の大きさの下限)。帯の外・壁なら手前へ寄せ、置けなければ掴んだ点(その場で叩きつけ)。
+  //   着地点=掴んだ点をプレイヤーの中心について反対側へ(距離は同じ・体の大きさの下限)。帯の外・壁・今のズームの可視域の外なら手前へ寄せ、
+  //   置けなければ掴んだ点(その場で叩きつけ)。可視域=gameBounds×ズーム(見え方の監査 A4「着地点が画面の外へ出て見せ場が切れる」)。
   const sw: WhipSwingState = BRC.brawlerEnemyClass(e) !== 'boss' ? base : (() => {
+    const vb = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom, -WHIP_OVERHEAD_VIEW_INSET_PX);
     const land = whipOverheadLanding({
       px: pc.x, py: pc.y, ex: ec.x, ey: ec.y,
       minDist: whipSwingBodyRadius(e.width, e.height, st.player.width, st.player.height), fallbackUx: ux, fallbackUy: uy,
-      free: (x, y) => brawlerRectFree(get, x - e.width / 2, y - e.height / 2, e.width, e.height),
+      free: (x, y) => x - e.width / 2 >= vb.left && x + e.width / 2 <= vb.right && y - e.height / 2 >= vb.top && y + e.height / 2 <= vb.bottom
+        && brawlerRectFree(get, x - e.width / 2, y - e.height / 2, e.width, e.height),
+      // 反対側の真横に体ごと収まらない(画面の幅に対して大きい体)時は、反対側のまま斜め(±80°未満)へずらして探す。それも無ければ体の真ん中だけ可視域に。
+      turns: WHIP_OVERHEAD_LAND_TURNS,
+      looseFree: (x, y) => x >= vb.left && x <= vb.right && y >= vb.top && y <= vb.bottom && brawlerRectFree(get, x - e.width / 2, y - e.height / 2, e.width, e.height),
     });
     const dx = land.x - ec.x, dy = land.y - ec.y, dl = Math.hypot(dx, dy);
     return {
@@ -3249,8 +3283,14 @@ const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux:
     })),
   }));
   // 掴んだ手応え(派手さの絵=判定なし): 敵の所で白い弾けと細い輪・低いパチン。
-  get().spawnBurst(ec.x, ec.y, '#e0f2fe', 9);
+  // ★掴んだ瞬間の手応え(見え方の監査 B2): 短い止めと揺れ・パチンの光(既存の光と輪を一段大きく)。
+  // 段の数は掴み・投げをまたがない(次の振りは1段目から・見え方の監査 B8)。
+  set(state => ({ player: { ...state.player, whipComboStage: 0, whipComboAt: 0 } }));
+  get().spawnBurst(ec.x, ec.y, '#e0f2fe', 12);
   get().spawnRing(ec.x, ec.y, 4, 34, 'rgba(186,230,253,0.95)', 2, 200, true);
+  get().spawnRing(ec.x, ec.y, 8, 62, 'rgba(240,249,255,0.9)', 3, 240, true);
+  get().spawnGlow(ec.x, ec.y, GLOW_R_M, 'rgba(240,249,255,', 170, true);
+  get().triggerHitImpact(WHIP_GRAB_HITSTOP_MS, WHIP_GRAB_SHAKE_MS, WHIP_GRAB_SHAKE_MAG, 0, ec.x, ec.y);
   void import('../audio/audioManager').then(m => m.playSfx('whip-hit', 0.8, undefined, 0.8));
 };
 
@@ -3324,17 +3364,34 @@ const whipThrowExplode = (get: () => GameState, cx: number, cy: number, selfId: 
   brawlerSfx('bomb');
   return { hits, killed };
 };
-/** 着弾の絵と音(今の叩きつけの組): 足元の地割れ・砂埃・輪・ヒットストップ・揺れ・重い音(派手さの絵=判定より大きく)。 */
-const whipLandFx = (get: () => GameState, fx: number, fy: number, heavy = false): void => {
+/** ★着弾の絵の大きさの基準になる体の幅(px)。これより広い体ほど砂埃・輪・破片を大きく多く(見え方の監査 A8)。上限の倍率。 */
+const WHIP_LAND_FX_REF_W = 48;
+const WHIP_LAND_FX_MAX_K = 3.2;
+/**
+ * 着弾の絵と音(今の叩きつけの組): 足元の地割れ・砂埃・輪・ヒットストップ・揺れ・重い音(派手さの絵=判定より大きく)。
+ * bodyW=投げた/叩きつけた体の幅(px)。基準より広い体ほど砂埃・輪・破片の大きさと数を増やす(爆発の判定の範囲は変えない)。
+ */
+const whipLandFx = (get: () => GameState, fx: number, fy: number, heavy = false, bodyW = WHIP_LAND_FX_REF_W): void => {
   const g = get();
-  g.spawnImageMark(fx, fy, 'fx/ground-crack', { scale: 1.2, scaleY: 0.5, duration: 1600, fadeFrom: 0.55, noPop: true, alpha: 0.95, ground: true });
+  const k = Math.max(1, Math.min(WHIP_LAND_FX_MAX_K, bodyW / WHIP_LAND_FX_REF_W));
+  g.spawnImageMark(fx, fy, 'fx/ground-crack', { scale: 1.2 * k ** 0.8, scaleY: 0.5, duration: 1600, fadeFrom: 0.55, noPop: true, alpha: 0.95, ground: true });
   // 土色の輪は爆発の芯より前に出さない(見え方の監査 2026-11-25「白っぽい楕円の輪が主役」): 薄く・細く。
-  g.spawnImageMark(fx, fy + 2, 'fx/dust-ring', { scale: 0.75, scaleY: 0.42, duration: 620, tint: 0x6f604f, alpha: 0.38, noPop: true, fadeFrom: 0.2, ground: true });
+  g.spawnImageMark(fx, fy + 2, 'fx/dust-ring', { scale: 0.75 * k, scaleY: 0.42, duration: 620 + 120 * (k - 1), tint: 0x6f604f, alpha: 0.38, noPop: true, fadeFrom: 0.2, ground: true });
+  // 横へ這う砂埃: 体が広いほど数を増やし、縁から外へ(左右に2つずつ増える)。
+  const puffN = Math.round(k);
   for (const side of [-1, 1]) {
-    g.spawnImageMark(fx + side * 16, fy, 'fx/dust-puff', { scale: 0.5, scaleY: 0.55, duration: 900, tint: 0x9a8b7a, alpha: 0.75, moveX: side * 60, moveY: -10, fadeFrom: 0.3 });
+    for (let i = 0; i < puffN; i++) {
+      const spread = puffN > 1 ? i / (puffN - 1) : 0;
+      g.spawnImageMark(fx + side * (16 + bodyW * 0.35 * spread), fy - 2 * i, 'fx/dust-puff', {
+        scale: 0.5 * k ** 0.6, scaleY: 0.55, duration: 900 + 80 * i, tint: 0x9a8b7a, alpha: 0.75 - 0.08 * i, moveX: side * (60 + 40 * spread) * k ** 0.7, moveY: -10 - 6 * i, fadeFrom: 0.3,
+      });
+    }
   }
-  g.spawnImageMark(fx, fy - 6, 'fx/dust-puff', { scale: 0.42, scaleY: 0.95, duration: 760, tint: 0x9a8b7a, alpha: 0.6, moveY: -40, fadeFrom: 0.3 });
-  g.spawnRing(fx, fy, 10, 110, 'rgba(150,128,100,0.4)', 2, 460, true);
+  g.spawnImageMark(fx, fy - 6, 'fx/dust-puff', { scale: 0.42 * k ** 0.7, scaleY: 0.95, duration: 760, tint: 0x9a8b7a, alpha: 0.6, moveY: -40 * k ** 0.6, fadeFrom: 0.3 });
+  g.spawnRing(fx, fy, 10, 110 * k, 'rgba(150,128,100,0.4)', 2 + (k > 1.8 ? 1 : 0), 460 + 100 * (k - 1), true);
+  // 体が広い時だけ破片を跳ね上げる(普通の大きさの敵は今のまま)。
+  const rubbleN = Math.round(7 * (k - 1));
+  if (rubbleN > 0) g.spawnRubble(fx, fy - 4, rubbleN, 60 * k, ['#8a7a68', '#6f604f', '#4a4038']);
   // ボスの叩きつけは止めと揺れを一段重く(派手さの絵)。
   if (heavy) g.triggerHitImpact(WHIP_OVERHEAD_HITSTOP_MS, WHIP_OVERHEAD_SHAKE_MS, WHIP_OVERHEAD_SHAKE_MAG, 0, fx, fy);
   else g.triggerHitImpact(WHIP_THROW_HITSTOP_MS, 320, 11, 0, fx, fy);
@@ -3376,7 +3433,7 @@ const landWhipThrow = (
   }
   const r = whipThrowExplode(get, x, y, selfAlive && e0 ? id : null);
   if (struck) whipThrowPunisher(get, set, struck.ids, struck.vx, struck.vy);
-  whipLandFx(get, x, y + (e0 ? e0.height / 2 - 2 : 0), sw.phase === 'overhead');
+  whipLandFx(get, x, y + (e0 ? e0.height / 2 - 2 : 0), sw.phase === 'overhead', e0 ? e0.width : undefined);
   // 技の行は、プレイヤーの入力(近接・フリック)で投げた敵が生きたまま着いた時だけ(自動の投げ・途中で死んで落ちた時は出さない)。
   // ボスの叩きつけ(overhead)はプレイヤーの振りで掴んだ瞬間に始まる一続きの技=入力の投げと同じ扱い(byInput)。
   if (flew && sw.byInput && selfAlive) notifyTechProc('whipslam'); // 通信の下に技の行
@@ -3539,7 +3596,7 @@ const tickWhipOverhead = (get: () => GameState, set: WhipSet, sw: WhipSwingState
   const dtMs = Math.max(0, gt - (sw.at ?? gt));
   const vx = dtMs > 0 ? ((g.x - sw.cx) / dtMs) * 1000 : (sw.vx ?? 0), vy = dtMs > 0 ? ((g.y - sw.cy) / dtMs) * 1000 : (sw.vy ?? 0);
   // 頂点の溜めが明けて振り下ろしへ入る所で風を切る音(1回)。
-  const whoosh = !sw.ohWhoosh && t >= ms * (WHIP_OVERHEAD_RISE_FRAC + (1 - WHIP_OVERHEAD_RISE_FRAC) * 0.3);
+  const whoosh = !sw.ohWhoosh && t >= ms * WHIP_OVERHEAD_RISE_FRAC; // 振り下ろしが短く速くなったので頂点で鳴らす(叩きつけの前に風を切り終える)
   if (whoosh) brawlerSfx('whip-swing', 0.95, 0.62, 220);
   set(state => ({
     whipSwing: { ...sw, cx: g.x, cy: g.y, px: pc.x, py: pc.y, at: gt, vx, vy, ohWhoosh: sw.ohWhoosh || whoosh },
@@ -14236,6 +14293,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         fromX: p.x + p.width / 2, fromY: p.y + p.height / 2,
         angle: aim0,
         sweep: whipComboSweepSign(get().player.whipComboStage ?? 3, aim0) * WHIP_COMBO_SWEEP_RAD,
+        ...((get().player.whipComboStage ?? 0) === 3 ? { pull: WHIP_ROPE_FINISH_PULL } : {}), // 3段目=しなりも頭上の後ろから振り下ろす(見え方の監査 A7)
         len: whipSwingReach(p),
         createdAt: now,
         windupMs: meleeWindupMs(p),
@@ -14249,6 +14307,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         id: `fx-whiprope-${now}`,
         angle: aimA,
         sweep: whipComboSweepSign(get().player.whipComboStage ?? 3, aimA) * WHIP_COMBO_SWEEP_RAD,
+        ...((get().player.whipComboStage ?? 0) === 3 ? { pull: WHIP_ROPE_FINISH_PULL } : {}), // 3段目=頭上の後ろへ大きく振りかぶる(見え方の監査 A7)
         len: whipSwingReach(p),
         createdAt: now,
         windupMs: meleeWindupMs(p),
@@ -14599,8 +14658,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 命中の音と手応えは段ごと(spawnWhipComboHitFx が鳴らす=共通の命中音 whipHitFxAt は使わない)。掴んだだけの時は掴みの音(startWhipSwing)。
       if (res.hits > 0) {
         const hitIds = res.hitIds ?? [];
-        const pts = get().enemies.filter(e => hitIds.includes(e.id)).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
-        spawnWhipComboHitFx(get, set, comboStage, hitIds, pts, !!res.crit, ux, uy);
+        const pts = get().enemies.filter(e => hitIds.includes(e.id)).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2, fy: e.y + e.height }));
+        spawnWhipComboHitFx(get, set, comboStage, hitIds, pts, !!res.crit, ux, uy, whipComboSweepSign(comboStage, Math.atan2(uy, ux)));
       }
       if (gid) startWhipSwing(get, set, gid, ux, uy, reach);
       if (huntUse) set(state => ({ player: { ...state.player, ...HUNTING_CONSUME_PATCH } }));

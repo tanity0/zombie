@@ -51,16 +51,19 @@ export const whipComboQueuedAction = (now: number, queuedAt: number, cdEnd: numb
 /**
  * ★段ごとの打撃の手応え(社長指示2026-11-26「打撃感が気持ち良くなる様にして」)。全部同じ強さにしない: 1段目=軽く速い・2段目=少し重い・3段目=一番重い。
  * stopMs=当たった敵だけの止め(上乗せ・ms)・shakeMs/shakeMag=画面の揺れ(0=揺らさない)・burst=弾けの粒の数・ringR=輪の半径(0=無し)・glow=光の大きさの段(0..2)。
+ * streak=鞭の進む向き(払いの向き)へ走る細い筋の段(0=無し・1=細く長く速い・2=太く短い)・finish=足元の砂埃と踏み込みの粒で締める(3段目)。
  * 音: hitRate/hitVol=鞭の命中音の高さと大きさ・heavyVol=重い命中音を重ねる大きさ(0=重ねない)・heavyRate=その高さ。会心は CRIT の分だけ上乗せ。
+ * (見え方の監査 A6「3段の差が既存の白い命中の光に埋もれる」: 白い光は残し、差を足す側で大きくする。)
  */
 export interface WhipComboFeel {
   stopMs: number; shakeMs: number; shakeMag: number; burst: number; ringR: number; glow: 0 | 1 | 2;
+  streak: 0 | 1 | 2; finish: boolean;
   hitRate: number; hitVol: number; heavyVol: number; heavyRate: number;
 }
 export const WHIP_COMBO_FEEL: Readonly<Record<WhipComboStage, WhipComboFeel>> = {
-  1: { stopMs: 35, shakeMs: 0, shakeMag: 0, burst: 6, ringR: 0, glow: 0, hitRate: 1.22, hitVol: 0.7, heavyVol: 0, heavyRate: 1 },
-  2: { stopMs: 60, shakeMs: 90, shakeMag: 3, burst: 10, ringR: 40, glow: 1, hitRate: 1.04, hitVol: 0.85, heavyVol: 0.35, heavyRate: 1.25 },
-  3: { stopMs: 110, shakeMs: 200, shakeMag: 8, burst: 18, ringR: 78, glow: 2, hitRate: 0.82, hitVol: 1, heavyVol: 0.85, heavyRate: 0.88 },
+  1: { stopMs: 55, shakeMs: 0, shakeMag: 0, burst: 7, ringR: 0, glow: 0, streak: 1, finish: false, hitRate: 1.22, hitVol: 0.7, heavyVol: 0, heavyRate: 1 },
+  2: { stopMs: 70, shakeMs: 110, shakeMag: 4, burst: 10, ringR: 46, glow: 1, streak: 2, finish: false, hitRate: 1.04, hitVol: 0.85, heavyVol: 0.35, heavyRate: 1.25 },
+  3: { stopMs: 150, shakeMs: 280, shakeMag: 12, burst: 24, ringR: 120, glow: 2, streak: 0, finish: true, hitRate: 0.82, hitVol: 1, heavyVol: 0.95, heavyRate: 0.84 },
 };
 /** 会心の上乗せ: 止め +ms・揺れ +ms/+強さ・金の光と輪。 */
 export const WHIP_COMBO_CRIT_STOP_MS = 45;
