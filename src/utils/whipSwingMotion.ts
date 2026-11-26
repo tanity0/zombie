@@ -5,6 +5,7 @@
 //    ③打ち出し=手元から先端へほどけて加速 ④パチン=前隙の終わり(=当たる瞬間)にまっすぐ伸び切って一拍止まる ⑤戻り=たるんで縮み消える。
 //  - 体: ナイフ(しゃがみ→立ち上がって振る)の逆=振り上げ(伸び上がり・後ろへ反る)→パチンの瞬間にしゃがみの底。
 // 数値は叩き台(実機で詰める)。
+import { whipOverheadProgress, whipOverheadProgressVel, criticalSpringStep, WHIP_OVERHEAD_MS } from './whipSwing'; // ボスの叩きつけの進み(判定と同じ1本)
 
 /** パチンの後、まっすぐ伸び切って止まる長さ(ms)。 */
 export const WHIP_ROPE_CRACK_HOLD_MS = 90;
@@ -103,6 +104,25 @@ export const whipRopePoints = (
   for (const a of shape.angles) { x += Math.cos(a) * seg; y += Math.sin(a) * seg; pts.push({ x, y }); }
   pts.push({ x: x + Math.cos(aN) * tail, y: y + Math.sin(aN) * tail });
   return pts;
+};
+
+/** 払いの振り抜け(パチンの後に勢いで流れる量)の、打ち出しの尺に対する時定数の割合。流れる量 = 振れ幅 × 0.45。 */
+export const WHIP_ROPE_SWEEP_FOLLOW_K = 0.225;
+/**
+ * ★3連撃の払い(社長指示2026-11-26「絵は左右に振りつつ正面を」)。鞭全体の向きのずれ(rad)。sweep=振れ幅(符号つき・0=正面へまっすぐ)。
+ * 引く間に払いの始まりの側へ回り込み(減速して止まる)→ 溜めはそのまま → 打ち出しで加速しながら払い、パチン(el=windupMs)でちょうど 0
+ * (=判定の帯の向きでまっすぐ)→ その時の速さのまま振り抜け、減速して止まる(慣性・瞬間停止しない)。
+ */
+export const whipRopeSweepOffset = (el: number, windupMs: number, sweep: number): number => {
+  if (!sweep) return 0;
+  const W = Math.max(1, windupMs);
+  if (el < W * WHIP_ROPE_PULL_END) return -sweep * easeOutCubic(clamp01(el / (W * WHIP_ROPE_PULL_END)));
+  if (el < W * WHIP_ROPE_HOLD_END) return -sweep;
+  const lash = W * (1 - WHIP_ROPE_HOLD_END);
+  if (el < W) { const q = clamp01((el - W * WHIP_ROPE_HOLD_END) / lash); return -sweep * (1 - q * q); }
+  const tau = lash * WHIP_ROPE_SWEEP_FOLLOW_K;
+  const v = (2 * sweep) / lash; // パチンの瞬間の回る速さ(rad/ms)
+  return v * tau * (1 - Math.exp(-(el - W) / tau));
 };
 
 export interface WhipBodyPose {
@@ -247,10 +267,16 @@ export const whipFlyLiftPx = (tMs: number, flyMs: number, peakPx: number, landAt
   // 途中で当たった: 着いた時の高さと上下の速さを持ち越し、重さで WHIP_FLY_DROP_MS に地面へ(上っていた最中なら、少し上ってから落ちる)。
   const h0 = arc(landAtMs);
   const vh = arc(landAtMs + 0.5) - arc(landAtMs - 0.5); // px/ms
-  const D = WHIP_FLY_DROP_MS;
-  const s = tMs - landAtMs;
+  return whipLiftFallPx(tMs - landAtMs, h0, vh, WHIP_FLY_DROP_MS);
+};
+/**
+ * 宙から地面へ落ちる高さ(px)。高さ h0・上下の速さ vh(px/ms・上が正)を持ち越し、重さで D ms に地面へ(上っていた最中なら、少し上ってから落ちる)。
+ * 下りが速く、重さ無しでも D より前に地面へ着く時は、そのままの速さで地面へ。
+ */
+export const whipLiftFallPx = (sMs: number, h0: number, vh: number, D: number): number => {
+  const s = sMs;
   const g = (2 * (h0 + vh * D)) / (D * D); // D で地面に着く重さ(px/ms²)
-  if (g <= 0) { // 下りが速く、重さ無しでも D より前に地面へ着く=そのままの速さで地面へ
+  if (g <= 0) {
     const end = vh < 0 ? h0 / -vh : 0;
     return s >= end ? 0 : Math.max(0, h0 + vh * s);
   }
@@ -350,4 +376,49 @@ export const whipThrowStreak = (o: {
   const tail = headLand - lenAt(o.landAtMs, headLand);
   const head = Math.max(tail, o.headNow);
   return { tailD: tail, headD: tail + (head - tail) * (1 - u * u), alpha: 1 - 0.5 * u };
+};
+
+// ---- ★ボスの叩きつけの見た目(社長指示2026-11-26「ボスは振り回しではなく、反対側に頭上を弧を描いて叩きつけ」)。判定=地面の上の位置は store(utils/whipSwing)。 ----
+// ここは描画だけの高さと体の回り。高さ = 山 × sin(π s)(s=弧の進み・頭上で山)・回り = 進む向きへ半回転(頭上で横倒し・叩きつけで逆さま)。
+// 叩きつけた後は逆さまのまま一拍(止め)→ 同じ向きへ回って起き上がる(スープレックスの投げ越しと同じ型・絵の伸縮はしない)。
+/** 弧の山=プレイヤーの体の絵の高さ × これ(足がプレイヤーの頭の上を越える)。 */
+export const WHIP_OVERHEAD_PEAK_K = 1.4;
+/** 叩きつけた後、逆さまのまま留まる(ms)と、起き上がる長さ(ms)。 */
+export const WHIP_OVERHEAD_LAND_HOLD_MS = 90;
+export const WHIP_OVERHEAD_STANDUP_MS = 360;
+/** 途中で放した時、回りが正立へ戻る時定数(ms・臨界減衰=回っていた勢いのまま寄って止まる)。 */
+export const WHIP_OVERHEAD_RELEASE_ROT_TAU_MS = 70;
+
+/** 弧の山(px)。 */
+export const whipOverheadPeakPx = (playerBodyH: number): number => Math.max(40, playerBodyH * WHIP_OVERHEAD_PEAK_K);
+/** 弧の高さ(px・描画だけ)。掴んだ時と叩きつけた時は0・頭上で山。 */
+export const whipOverheadLiftPx = (tMs: number, peakPx: number, ms = WHIP_OVERHEAD_MS): number =>
+  peakPx * Math.sin(Math.PI * whipOverheadProgress(tMs, ms));
+/** 弧の高さの速さ(px/ms・上が正)。 */
+export const whipOverheadLiftVel = (tMs: number, peakPx: number, ms = WHIP_OVERHEAD_MS): number =>
+  peakPx * Math.PI * Math.cos(Math.PI * whipOverheadProgress(tMs, ms)) * whipOverheadProgressVel(tMs, ms);
+/** 弧の間の体の回り(rad)。side=+1 で時計回り(画面で右へ運ぶ向き)。叩きつけで逆さま(π)。 */
+export const whipOverheadRot = (tMs: number, side: 1 | -1, ms = WHIP_OVERHEAD_MS): number => side * Math.PI * whipOverheadProgress(tMs, ms);
+/** 回る向き: 画面で右へ運ぶなら +1(時計回り)・左へなら -1。ほぼ真上下へ運ぶ時は face(今向いている向き)。 */
+export const whipOverheadSide = (fromX: number, toX: number, face: number): 1 | -1 =>
+  Math.abs(toX - fromX) > 6 ? (toX > fromX ? 1 : -1) : face >= 0 ? 1 : -1;
+/** 叩きつけてから el ms の回り(rad)。逆さまで一拍 → 同じ向きへ回って起き上がる(2π=正立)→ 0。 */
+export const whipOverheadAfterSlamRot = (elMs: number, side: 1 | -1): number => {
+  if (!(elMs >= 0)) return side * Math.PI;
+  if (elMs < WHIP_OVERHEAD_LAND_HOLD_MS) return side * Math.PI;
+  const k = (elMs - WHIP_OVERHEAD_LAND_HOLD_MS) / WHIP_OVERHEAD_STANDUP_MS;
+  if (k >= 1) return 0;
+  return side * Math.PI * (1 + k * k * (3 - 2 * k));
+};
+/**
+ * 途中で放した(死亡・会話・カットイン・鞭を外した・瞬間移動)時の el ms 後。高さは放した時の高さと上下の速さを持ち越して重さで地面へ、
+ * 回りは放した時の角度と回る速さから一番近い正立へ臨界減衰で寄る(瞬間に地面へ落ちたり正立へ跳んだりしない)。
+ * h0=高さ(px)・vh=上下の速さ(px/ms)・r0=回り(rad)・w0=回る速さ(rad/ms)。
+ */
+export const whipOverheadAfterDrop = (elMs: number, h0: number, vh: number, r0: number, w0: number): { lift: number; rot: number } => {
+  const D = WHIP_FLY_DROP_MS * Math.sqrt(Math.max(1, h0 / 40));
+  const lift = whipLiftFallPx(Math.max(0, elMs), Math.max(0, h0), vh, D);
+  const target = Math.round(r0 / (2 * Math.PI)) * 2 * Math.PI;
+  const sp = criticalSpringStep(r0, w0 * 1000, target, Math.max(0, elMs), WHIP_OVERHEAD_RELEASE_ROT_TAU_MS);
+  return { lift, rot: sp.x - target };
 };

@@ -8,10 +8,18 @@ import { pickArrowRainCenter } from './arrowRain';
 
 /** 回す半径=鞭の届く距離 × これ。 */
 export const WHIP_SWING_RADIUS_MULT = 0.6;
-/** 最高の回転の1周の長さ(ms)。 */
-export const WHIP_SWING_PERIOD_MS = 450;
-/** 掴んでから最高の回転に届くまで(ms)。半径もこの間に掴んだ位置から回す半径へ寄る。 */
-export const WHIP_SWING_ACCEL_MS = 250;
+/** 最高の回転(揺れの真ん中)の1周の長さ(ms)。社長指示2026-11-26「振り回し回数減ってもいいので、もう少し振り回しに慣性入れて」で 450→650。 */
+export const WHIP_SWING_PERIOD_MS = 650;
+/** 掴んでから最高の回転に届くまで(ms・重さに引かれてゆっくり回り出す=加速の出だしも0)。半径もこの間に掴んだ位置から回す半径へ寄る。旧 250。 */
+export const WHIP_SWING_ACCEL_MS = 600;
+/** 重さで速さが揺れる幅(割合)。敵がプレイヤーの手前(画面の下)を通る時に速く、奥(上)を通る時に遅い=振り下ろして振り上げる感じ。 */
+export const WHIP_SWING_SWAY = 0.3;
+/** 自動で投げる前の溜め: 最長の手前これだけ(ms)の間に、速さが一段(SURGE 倍)上がる。上がり切るのに SURGE_RAMP_MS。 */
+export const WHIP_SWING_SURGE_LEAD_MS = 450;
+export const WHIP_SWING_SURGE_RAMP_MS = 300;
+export const WHIP_SWING_SURGE = 1.4;
+/** 回る角度を数える刻み(ms・数値の積分)。 */
+export const WHIP_SWING_INTEGRATE_MS = 2;
 /** 振り回しの最長(ms)。過ぎたら自動で投げる。 */
 export const WHIP_SWING_MAX_MS = 1500;
 /** スラッシャー1Lvごとの最長の上乗せ(ms)。 */
@@ -41,8 +49,11 @@ export const WHIP_DROP_MIN_SPEED = 60;
 /** 振り回しの状態(プレイヤーに1つ・store の GameState.whipSwing)。時計は gameTime。 */
 export interface WhipSwingState {
   enemyId: string;
-  /** swing=回している / thrown=投げて飛んでいる / drop=途中で放した後、回っていた勢いのまま短く滑って止まる(着弾なし・止まった所で倒れる)。 */
-  phase: 'swing' | 'thrown' | 'drop';
+  /**
+   * swing=回している / thrown=投げて飛んでいる / drop=途中で放した後、回っていた勢いのまま短く滑って止まる(着弾なし・止まった所で倒れる)。
+   * overhead=ボス区分だけ: 掴んだ瞬間からプレイヤーの頭上を越える弧で反対側へ叩きつける(社長指示2026-11-26)。
+   */
+  phase: 'swing' | 'thrown' | 'drop' | 'overhead';
   /** 掴んだ時刻。 */
   startAt: number;
   /** 振り回しの最長(ms)。 */
@@ -91,8 +102,14 @@ export interface WhipSwingState {
   byInput?: boolean;
   /** 回し終えた周の数(1周ごとの音を鳴らした所まで)。 */
   lap?: number;
-  /** 気絶したボスを掴んだ時だけ: 掴んだ時の気絶の終わり(gameTime)。気絶が明けたら自動で投げる。 */
-  bossStunEndAt?: number;
+  /** 叩きつけ(phase='overhead' の時だけ)。弧の長さ(ms)・着地点(toX,toY)・弧の中心(pivX,pivY=掴んだ時のプレイヤーの中心。反対側へ置けない時は掴んだ点)。始まり=fromX,fromY・向き=ux,uy。 */
+  ohMs?: number;
+  toX?: number;
+  toY?: number;
+  pivX?: number;
+  pivY?: number;
+  /** 振り下ろしの風切りの音を鳴らした。 */
+  ohWhoosh?: boolean;
 }
 
 /** 掴む相手の候補(当たった敵1体ぶん)。 */
@@ -118,26 +135,66 @@ export const whipSwingSpinDir = (ux: number, uy: number, rx: number, ry: number)
 /** 最高の角速度(rad/s)。 */
 export const whipSwingMaxAngVel = (periodMs = WHIP_SWING_PERIOD_MS): number => (2 * Math.PI) / (Math.max(1, periodMs) / 1000);
 
-const easeOut = (u: number): number => 1 - (1 - u) * (1 - u);
+const smooth3 = (u: number): number => u * u * (3 - 2 * u);
 
-/** 掴んでから t ms の角速度(rad/s・向きなし)。0 から加速し、加速の終わりで滑らかに一定へ(加速→一定)。 */
+/**
+ * 掴んでから t ms の角速度の包絡(rad/s・向きなし・揺れと溜めを掛ける前)。0 から加速の出だしも0で(重さに引かれて)ゆっくり回り出し、
+ * 加速の終わりで滑らかに一定へ。
+ */
 export const whipSwingAngVel = (tMs: number, accelMs = WHIP_SWING_ACCEL_MS, periodMs = WHIP_SWING_PERIOD_MS): number => {
   const w = whipSwingMaxAngVel(periodMs);
   if (!(tMs > 0)) return 0;
   if (tMs >= accelMs) return w;
-  return w * easeOut(tMs / Math.max(1, accelMs));
+  return w * smooth3(tMs / Math.max(1, accelMs));
 };
 
-/** 掴んでから t ms で回った角度(rad・向きなし・whipSwingAngVel の積分)。 */
+/** 包絡だけで回った角度(rad・whipSwingAngVel の積分)。 */
 export const whipSwingTurned = (tMs: number, accelMs = WHIP_SWING_ACCEL_MS, periodMs = WHIP_SWING_PERIOD_MS): number => {
   const w = whipSwingMaxAngVel(periodMs);
   if (!(tMs > 0)) return 0;
   const A = Math.max(1, accelMs) / 1000;
   const t = tMs / 1000;
-  // ∫0^u (1-(1-s)^2) ds = u - (1-(1-u)^3)/3
-  const G = (u: number): number => u - (1 - (1 - u) ** 3) / 3;
+  // ∫0^u (3s^2-2s^3) ds = u^3 - u^4/2
+  const G = (u: number): number => u * u * u - (u * u * u * u) / 2;
   if (t <= A) return w * A * G(t / A);
   return w * A * G(1) + w * (t - A);
+};
+
+/** 溜めの掛け(1..SURGE)。最長 maxMs の手前 LEAD から上がり始め、RAMP で上がり切る(出だし・上がり切りの変わり方は滑らか)。 */
+export const whipSwingSurge = (tMs: number, maxMs: number): number => {
+  const u = Math.max(0, Math.min(1, (tMs - (maxMs - WHIP_SWING_SURGE_LEAD_MS)) / WHIP_SWING_SURGE_RAMP_MS));
+  return 1 + (WHIP_SWING_SURGE - 1) * smooth3(u);
+};
+/** 重さの揺れの掛け。角度 th(プレイヤーから敵・rad・画面の y は下が正)で、手前(sin>0)を通る時に速い。 */
+export const whipSwingSway = (th: number): number => 1 + WHIP_SWING_SWAY * Math.sin(th);
+
+/** 振り回しの回り方の元(掴んだ角度・向き・最長)。 */
+export interface WhipSwingSpin { a0: number; dir: 1 | -1; maxMs: number }
+// 数値の積分の作り置き(同じ掴みの間は前の刻みを使い回す=毎フレームの呼び出しが軽い)。
+let spinCache: { key: string; th: number[] } | null = null;
+/**
+ * 掴んでから t ms の角度(rad・向きつき)と角速度(rad/s・向きなし)。角速度 = 包絡 × 重さの揺れ(角度で決まる) × 溜め(最長の手前)。
+ * 角度で速さが変わるので数値で積分する(刻み WHIP_SWING_INTEGRATE_MS・中点法)。
+ */
+export const whipSwingSpinAt = (tMs: number, spin: WhipSwingSpin): { th: number; w: number } => {
+  const { a0, dir, maxMs } = spin;
+  const omega = (t: number, th: number): number => whipSwingAngVel(t) * whipSwingSway(th) * whipSwingSurge(t, maxMs);
+  if (!(tMs > 0)) return { th: a0, w: 0 };
+  const key = `${a0}|${dir}|${maxMs}`;
+  if (!spinCache || spinCache.key !== key) spinCache = { key, th: [a0] };
+  const arr = spinCache.th;
+  const h = WHIP_SWING_INTEGRATE_MS;
+  const n = Math.floor(tMs / h);
+  while (arr.length <= n) {
+    const i = arr.length - 1;
+    const t0 = i * h, th0 = arr[i];
+    const wMid = omega(t0 + h / 2, th0 + dir * omega(t0, th0) * (h / 2000));
+    arr.push(th0 + dir * wMid * (h / 1000));
+  }
+  const rem = tMs - n * h;
+  const thN = arr[n];
+  const th = rem > 0 ? thN + dir * omega(n * h + rem / 2, thN) * (rem / 1000) : thN;
+  return { th, w: omega(tMs, th) };
 };
 
 /**
@@ -173,12 +230,13 @@ export const criticalSpringStep = (x: number, v: number, target: number, dtMs: n
 };
 
 /** 掴んでから t ms で回し終えた周の数(1周ごとの音)。 */
-export const whipSwingLaps = (tMs: number): number => Math.floor(whipSwingTurned(tMs) / (2 * Math.PI) + 1e-9);
+export const whipSwingLaps = (tMs: number, spin: WhipSwingSpin): number =>
+  Math.floor(Math.abs(whipSwingSpinAt(tMs, spin).th - spin.a0) / (2 * Math.PI) + 1e-9);
 /** n 周目の音の高さ(回すほど少しずつ上がる・上限あり)。 */
 export const whipSwingLapRate = (lap: number): number => Math.min(1.45, 0.92 + 0.09 * Math.max(0, lap - 1));
 
 /** 掴んでから t ms の角度(rad)。 */
-export const whipSwingAngle = (s: Pick<WhipSwingState, 'a0' | 'dir'>, tMs: number): number => s.a0 + s.dir * whipSwingTurned(tMs);
+export const whipSwingAngle = (s: WhipSwingSpin, tMs: number): number => whipSwingSpinAt(tMs, s).th;
 
 /** 回して当てる: 同じ敵へは1周ぶんの時間ごとに1回。 */
 export const whipSwingHitDue = (lastAt: number | undefined, now: number, periodMs = WHIP_SWING_PERIOD_MS): boolean =>
@@ -205,12 +263,9 @@ export const whipSwingClampRadius = (
 export const whipSwingMaxMs = (slasherLv: number): number =>
   WHIP_SWING_MAX_MS + WHIP_SWING_SLASHER_MS_PER_LV * Math.max(0, Math.min(3, Math.floor(slasherLv || 0)));
 
-/**
- * 自動で投げる時刻が来たか。最長の時間に届いた時と、気絶したボスを掴んでいる時はその気絶が明けた時(社長指示2026-11-25「気絶してるボスは掴める」)。
- * stunEnd=今の気絶の終わり(掴んだ時の記録 bossStunEndAt と、今の気絶の遅い方・呼び手が渡す)。undefined=ボスではない。
- */
-export const whipSwingAutoThrowDue = (s: Pick<WhipSwingState, 'startAt' | 'maxMs' | 'phase'>, now: number, stunEnd?: number): boolean =>
-  s.phase === 'swing' && (now - s.startAt >= s.maxMs || (stunEnd !== undefined && now >= stunEnd));
+/** 自動で投げる時刻が来たか(最長の時間に届いた時)。ボスは振り回さない(叩きつけ=overhead)ので、気絶明けの投げは無い。 */
+export const whipSwingAutoThrowDue = (s: Pick<WhipSwingState, 'startAt' | 'maxMs' | 'phase'>, now: number): boolean =>
+  s.phase === 'swing' && now - s.startAt >= s.maxMs;
 
 // ---- ★ボスへの鞭(社長指示2026-11-25「鞭はボスに先端を当てると大ダメージで。また、気絶してるボスは掴める」) ----
 /** 先端の範囲: 根元からの距離が届く距離のこの割合以上(=外側25%)。 */
@@ -227,7 +282,7 @@ export const whipBossStunEnd = (e: { stunUntil?: number; bossFullStunUntil?: num
   const end = Math.max(e.stunUntil ?? -Infinity, e.bossFullStunUntil ?? -Infinity, extra ?? -Infinity);
   return end > gameTime ? end : null;
 };
-/** 掴んだ体の大きさで回す半径の下限(px): 体の箱の長い方の半分+プレイヤーの体の半分+隙間。大きいボスをプレイヤーの上に重ねて回さない。 */
+/** 掴んだ体の大きさで離す距離の下限(px): 体の箱の長い方の半分+プレイヤーの体の半分+隙間。ボスの叩きつけの着地点をプレイヤーに重ねない。 */
 export const WHIP_SWING_BODY_GAP_PX = 8;
 export const whipSwingBodyRadius = (w: number, h: number, pw: number, ph: number): number =>
   Math.max(w, h) / 2 + Math.max(pw, ph) / 2 + WHIP_SWING_BODY_GAP_PX;
@@ -347,4 +402,79 @@ export const whipThrowBlastPlan = (
     out.push({ targetId: t.id, dist: d, scale: whipBlastFalloff(d, radius) });
   }
   return out;
+};
+
+// ---- ★ボスの叩きつけ(社長指示2026-11-26「ボスは振り回しではなく、反対側に頭上を弧を描いて叩きつけ(効果は同じ)にする。ぐるぐる回ってると絵面がよくないので」) ----
+// 掴んだ瞬間から、ボスをプレイヤーの頭上を越える弧で反対側へ運んで叩きつける。地面の上の位置は store が毎フレーム書く(判定の位置)。
+// 高さは描画だけ(utils/whipSwingMotion の whipOverheadLiftPx)。進み s(0..1)=弧の角度/π(0=掴んだ点・0.5=頭上・1=叩きつけ)。数値は叩き台。
+/** 弧の長さ(ms)。 */
+export const WHIP_OVERHEAD_MS = 720;
+/** 持ち上げの割合(この時刻で頭上=s 0.5・速さ0へ減速して着く)。残りが振り下ろし。 */
+export const WHIP_OVERHEAD_RISE_FRAC = 0.58;
+/** 振り下ろしの加速の強さ(頂点の速さ0から x^POW で加速し、叩きつける瞬間が一番速い=頂点で一瞬ためる)。 */
+export const WHIP_OVERHEAD_SLAM_POW = 3;
+/** 着地点を手前へ寄せて探す刻み(px)。 */
+export const WHIP_OVERHEAD_LAND_STEP_PX = 8;
+/** 叩きつけの止め(ms・今の着弾 WHIP_THROW_HITSTOP_MS より重く)と揺れ(長さ ms・強さ)。 */
+export const WHIP_OVERHEAD_HITSTOP_MS = 170;
+export const WHIP_OVERHEAD_SHAKE_MS = 440;
+export const WHIP_OVERHEAD_SHAKE_MAG = 16;
+
+/**
+ * 弧の進み s(0..1)。tMs=掴んでから・ms=弧の長さ。持ち上げ=減速して頂点で速さ0(1-cos の半分)、振り下ろし=頂点の速さ0から加速(x^POW)。
+ * 速さは頂点で両側とも0=途切れない。叩きつける瞬間が一番速い。
+ */
+export const whipOverheadProgress = (tMs: number, ms = WHIP_OVERHEAD_MS): number => {
+  const T = Math.max(1, ms);
+  const u = Math.max(0, Math.min(1, tMs / T));
+  const a = WHIP_OVERHEAD_RISE_FRAC;
+  if (u < a) return 0.25 * (1 - Math.cos(Math.PI * (u / a)));
+  return 0.5 + 0.5 * ((u - a) / (1 - a)) ** WHIP_OVERHEAD_SLAM_POW;
+};
+/** 弧の進みの速さ(1/ms)。 */
+export const whipOverheadProgressVel = (tMs: number, ms = WHIP_OVERHEAD_MS): number => {
+  const T = Math.max(1, ms);
+  const u = tMs / T;
+  if (!(u > 0) || u > 1) return 0;
+  const a = WHIP_OVERHEAD_RISE_FRAC;
+  if (u < a) return (0.25 * Math.PI / a) * Math.sin(Math.PI * (u / a)) / T;
+  const x = (u - a) / (1 - a);
+  return (0.5 * WHIP_OVERHEAD_SLAM_POW * x ** (WHIP_OVERHEAD_SLAM_POW - 1)) / (1 - a) / T;
+};
+/**
+ * 弧の地面の上の位置。s=進み・(pivX,pivY)=弧の中心(頭上=s 0.5 でここの真上)・(fromX,fromY)=掴んだ点・(toX,toY)=着地点。
+ * 角度 θ=π s の cos で、前半は掴んだ点→中心、後半は中心→着地点(着地点が手前へ寄っても s=1 でちょうど着く)。
+ */
+export const whipOverheadGround = (
+  s: number, pivX: number, pivY: number, fromX: number, fromY: number, toX: number, toY: number,
+): { x: number; y: number } => {
+  const c = Math.cos(Math.PI * Math.max(0, Math.min(1, s)));
+  return c >= 0
+    ? { x: pivX + (fromX - pivX) * c, y: pivY + (fromY - pivY) * c }
+    : { x: pivX + (toX - pivX) * -c, y: pivY + (toY - pivY) * -c };
+};
+/**
+ * 叩きつけの着地点。掴んだ点 (ex,ey) をプレイヤーの中心 (px,py) について反対側へ写した点(距離は掴んだ時と同じ・minDist より近ければ minDist)。
+ * free(x,y)=その中心に体を置けるか(行ける帯・壁)。置けなければ手前(プレイヤー寄り・minDist まで)へ刻みで寄せる。
+ * それでも置けなければ掴んだ点へ(その場で持ち上げて叩きつける=kind 'start'・弧の中心も掴んだ点)。
+ * fallback=プレイヤーと重なっている時の「反対」の向き(振りの向き)。
+ */
+export const whipOverheadLanding = (o: {
+  px: number; py: number; ex: number; ey: number; minDist: number; fallbackUx: number; fallbackUy: number;
+  free: (x: number, y: number) => boolean; stepPx?: number;
+}): { x: number; y: number; kind: 'mirror' | 'near' | 'start' } => {
+  const rx = o.ex - o.px, ry = o.ey - o.py, d0 = Math.hypot(rx, ry);
+  let ux: number, uy: number;
+  if (d0 > 1) { ux = -rx / d0; uy = -ry / d0; } else {
+    const fl = Math.hypot(o.fallbackUx, o.fallbackUy) || 1;
+    ux = o.fallbackUx / fl; uy = o.fallbackUy / fl;
+  }
+  const minD = Math.max(0, o.minDist);
+  const want = Math.max(d0, minD);
+  const step = Math.max(1, o.stepPx ?? WHIP_OVERHEAD_LAND_STEP_PX);
+  for (let d = want; d >= minD - 1e-6; d -= step) {
+    const x = o.px + ux * d, y = o.py + uy * d;
+    if (o.free(x, y)) return { x, y, kind: d === want ? 'mirror' : 'near' };
+  }
+  return { x: o.ex, y: o.ey, kind: 'start' };
 };

@@ -412,6 +412,10 @@ export interface Player extends DashLocomotionState {
   slasherStrikeStep: number;   // スラッシャー: 既に出した追撃回数(0..2)
   slasherReach: number;        // スラッシャー: 追撃に使う近接射程(初撃時の射程を記録=溜め延長が消費されても追撃は伸びたまま。0=未設定)
   slasherQueuedTap: boolean;   // スラッシャー: チェーンCD中の先行入力予約(CD明けに自動発動・v0.25.3254)
+  /** ★鞭の3連撃(社長指示2026-11-26・utils/whipCombo): 最後に振った段(1..3)と時刻(Date.now)・先行入力の予約の時刻(Date.now・0/未定義=予約なし)。 */
+  whipComboStage?: number;
+  whipComboAt?: number;
+  whipQueuedAt?: number;
   benkeiBuffUntil: number;     // 弁慶: crit率バフ終了(gameTime)
   benkeiCdUntil: number;       // 弁慶: 再発動CD(gameTime)
   // 社長指示v0.25.3303 カウンターマスター覚醒(Lv3): カウンター成立後3秒の全攻撃+30%バフ終了(gameTime)。
@@ -3555,6 +3559,8 @@ export type VisualEffect =
       /** この時間までが前隙(=しなっている間)。経過後は伸び切った③コマになる。 */
       windupMs: number;
       duration: number;
+      /** ★3連撃の払い(rad・符号つき・0/未定義=まっすぐ)。鞭の本体(whiprope)と同じ回り方(utils/whipSwingMotion.whipRopeSweepOffset)。 */
+      sweep?: number;
     }
   | {
       /**
@@ -3572,6 +3578,8 @@ export type VisualEffect =
       /** 前隙(=パチンの時刻)。 */
       windupMs: number;
       duration: number;
+      /** ★3連撃の払い(rad・符号つき・0/未定義=正面へまっすぐ)。横から入り、パチンの瞬間に angle でまっすぐ・その後は勢いで少し流れる(utils/whipSwingMotion.whipRopeSweepOffset)。 */
+      sweep?: number;
     }
   | {
       // 鞭: 全長を即表示してフェードする太い帯(=当たり範囲)+ 明るい芯。

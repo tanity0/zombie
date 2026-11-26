@@ -136,8 +136,10 @@ import {
   whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
   whipTetherShape, whipTetherBow, whipTetherRetract, whipFlyLiftPx, whipFlyPeakPx, type WhipRopeShape,
   whipTetherEntry, whipTetherGlowK, whipThrowStreak, whipFlyVisualTimeAt, whipFlyViewOffset, whipFlyReleaseBlend, whipTetherRetractTip, whipTrailFade,
-} from '../utils/whipSwingMotion'; // ★鞭の振りの本体と体の動き・絡め取りの線・投げた敵の飛び方
-import { whipSwingAngVel, whipSwingMaxAngVel, whipThrowDurationMs, type WhipSwingState } from '../utils/whipSwing'; // ★鞭の絡め取り→振り回し→投げ(読むだけ) // ★刀の殺陣の赤い画面の濃さ
+  whipRopeSweepOffset, whipOverheadPeakPx, whipOverheadLiftPx, whipOverheadLiftVel, whipOverheadRot, whipOverheadSide, whipOverheadAfterSlamRot, whipOverheadAfterDrop,
+  WHIP_OVERHEAD_LAND_HOLD_MS, WHIP_OVERHEAD_STANDUP_MS,
+} from '../utils/whipSwingMotion'; // ★鞭の振りの本体と体の動き・絡め取りの線・投げた敵の飛び方・ボスの叩きつけ
+import { whipSwingSpinAt, whipSwingMaxAngVel, whipThrowDurationMs, whipOverheadProgressVel, WHIP_OVERHEAD_MS, type WhipSwingState } from '../utils/whipSwing'; // ★鞭の絡め取り→振り回し→投げ(読むだけ) // ★刀の殺陣の赤い画面の濃さ
 import { screamerMarkVisible } from '../utils/screamerGate';
 import { airChaseHeightPx } from '../utils/airChaseHeight'; // 高さに追いつく技の高さ(動ける距離の中で相手の高さへ向かう・社長指示2026-11-16)
 import { getLastAirMeleeHit, playerLaunchHeightPx, stepPlayerAir, playerKickJump, playerKickJumpShape, playerKickLandPx, playerKickLandSpeed, playerAirLaunchSpeed, PLAYER_KICK_LAND_FRAC, PLAYER_KICK_JUMP_MIN_PX, PLAYER_KICK_HOLD_MS, PLAYER_KICK_RECOIL_PX, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
@@ -14442,6 +14444,7 @@ export class PixiScene {
       prewarmEnemySheetsGpu(this.enemyTexKey('giantbat', ''), tex => { try { r.texture.initSource(tex.source); } catch { /* 転送に失敗しても初めて描く時に従来どおり転送される */ } });
     }
     this.updateWhipFly(s.whipSwing, s.enemies, s.gameTime); // ★鞭で投げた敵の飛び方の絵(drawEnemy が読む)
+    this.updateWhipOverhead(s.whipSwing, s.player, s.enemies, s.gameTime); // ★ボスの叩きつけの高さと回り(drawEnemy が読む)
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     // §6.38 B2b: 舞妓の花びらpool更新(全体で1回・enemyループの外)。
     const petalDtSec = this.lastPetalStepAt === null ? 0 : Math.min(0.1, Math.max(0, (now - this.lastPetalStepAt) / 1000));
@@ -30164,7 +30167,9 @@ export class PixiScene {
     // ★鞭で投げた敵(research/WHIP_FOLLOWUP.md §8-3): 絵だけ判定より少し後ろを減速して進み、最大距離で滑って止まる(足元ごと=影も一緒)。高さは下の liftHop。
     const whipFlyV = this.whipFly?.enemyId === e.id ? this.whipFlyView(e.id, gameTime, fb.boxH) : null;
     if (whipFlyV) { fb.footX += whipFlyV.dx; fb.footY += whipFlyV.dy; }
-    const whipFlyLift = whipFlyV?.lift ?? 0;
+    // ★ボスの叩きつけ(社長指示2026-11-26): 頭上を越える弧の高さ(絵だけ・判定の位置は地面のまま=影も地面)と体の回り。
+    const ohV = this.whipOh?.enemyId === e.id ? this.whipOverheadView(gameTime) : null;
+    const whipFlyLift = (whipFlyV?.lift ?? 0) + (ohV?.lift ?? 0);
     // 格闘の浮きの輪・筋(§9-76)は、このフレームで drawBrawlerAir を通った時だけ出す(途中で抜ける経路で残らない)。
     if (view.airRing) view.airRing.visible = false;
     if (view.airStreaks) for (const sp of view.airStreaks) sp.visible = false;
@@ -30905,6 +30910,8 @@ export class PixiScene {
       //   ラフィの待機/歩きのシート 2026-09-29)。汎用の経路(`aiSqXDraw`)と同じ扱い。被弾のしなり(flinch)はそのまま。
       const bossSqX = phillSheet || bossStopped ? 1 : aiSqX, bossSqY = phillSheet || bossStopped ? 1 : aiSqY;
       view.sprite.scale.set(bossM * idolMirror * scale * breath.x * lungeSqX * flinchSqX * bossSqX * airScale, scale * breath.y * flinchSqY * bossSqY * airScale);
+      // ★ボスの叩きつけの回り(裏ボスは真ん中が支点=そのまま回す)と、頭の上を越える間はプレイヤーより手前に描く。
+      if (ohV) { view.sprite.rotation += ohV.rot; if (ohV.front) view.container.zIndex = fb.footY + 2000; }
       // 裏ボスは真ん中が支点(0.5,0.5)なので、拡大で足が地面へ沈まないよう、増えた高さの半分だけ上へ(§9-76)。
       if (airScale !== 1) view.sprite.y -= Math.round((airScale - 1) * tex.height * scale / 2);
       view.shadowAirK = brAirK; view.airScale = airScale;
@@ -31216,6 +31223,16 @@ export class PixiScene {
     // ★空中投げで飛ぶ敵の回り(research/BRAWLER.md §34-3・監査 B15): 飛ぶ向きへ縦に転がり、加速して回る。ぶつかった後の止めの間はその角度・爆撃から減速して正立で止まる。
     //   「浮いた敵は回さない」の例外=投げられた敵だけ。体の中心で回す。判定・位置・影は動かさない。
     // 飛んでいないのにぶつかった記録が無い(飛ぶ途中で投げが外れた等)時は回さない。爆撃が来ないまま長く経った時は正立へ戻す(逆さまで残さない)。
+    // ★ボスの叩きつけの回り(体の中心で回す=足元の anchor から中心へ補う・絵の伸縮はしない)と、頭の上を越える間の前後。
+    if (ohV) {
+      if (ohV.rot !== 0) {
+        const hh = Math.abs(view.sprite.height) * 0.5;
+        view.sprite.position.x += Math.round(-hh * Math.sin(ohV.rot));
+        view.sprite.position.y += Math.round(hh * (Math.cos(ohV.rot) - 1));
+        view.sprite.rotation += ohV.rot;
+      }
+      if (ohV.front) view.container.zIndex = fb.footY + 2000;
+    }
     if (e.brThrowSpin && (e.brThrow || e.whipHeld || e.brThrowSpin.hitAt !== undefined)) { // whipHeld=鞭で投げられて飛んでいる敵(research/WHIP_FOLLOWUP.md §8-3)も同じ回り
       const sp = e.brThrowSpin;
       const tw = Date.now(); // 浮き(brLift)と同じ壁時計。ぶつかってから爆撃までの止めの間は、式の側でぶつかった時の角度に留める
@@ -45609,7 +45626,7 @@ export class PixiScene {
     //   伸び切り(パチンの瞬間)は柄=プレイヤーの中心・向き=振りの向き・長さ=射程ちょうど=鞭本体と判定の帯に重なる。
     const fr = PixiScene.PLAYER_SMEAR_FRAMES[f];
     sp.anchor.set(fr.gx, fr.gy);
-    sp.rotation = e.angle - fr.ang;
+    sp.rotation = e.angle + whipRopeSweepOffset(el, e.windupMs, e.sweep ?? 0) - fr.ang; // 3連撃の払い(鞭の本体と同じ回り・パチンでまっすぐ)
     sp.scale.set(drawLen / Math.max(1, fr.len * Math.max(1, tex.width) / PixiScene.PLAYER_SMEAR_TEX_W));
     sp.position.set(e.fromX, e.fromY); // ★焼いた位置=本体が動いても置き去りになる
     // 前隙中は濃く見せる(しなりを見せるのが目的)。伸び切ってからフェード。
@@ -45829,8 +45846,10 @@ export class PixiScene {
     // 表示のスケール: 絵の握り→先端(素材の画素)が射程ちょうど(drawWhipSprite と同じ規約)。点は素材の画素の単位で置き、rope を k 倍する。
     const span = Math.max(1, tex.width * (WHIP_SPRITE_TIP_X - WHIP_SPRITE_ANCHOR_X));
     const k = e.len / span;
-    const ca = Math.cos(e.angle), sa = Math.sin(e.angle);
-    const side = ca >= 0 ? 1 : -1; // 「上へ引く」側を画面の上に揃える
+    // ★3連撃の払い(1段目=左→右・2段目=右→左・3段目=0): パチンの瞬間は e.angle(判定の帯)でまっすぐ。
+    const ang = e.angle + whipRopeSweepOffset(now - e.createdAt, e.windupMs, e.sweep ?? 0);
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    const side = Math.cos(e.angle) >= 0 ? 1 : -1; // 「上へ引く」側を画面の上に揃える(払いの途中で裏返さない=狙いの向きで決める)
     for (let i = 0; i < pts.length && i < local.length; i++) {
       const lx = local[i].x, ly = local[i].y * side;
       pts[i].set((lx * ca - ly * sa) / k, (lx * sa + ly * ca) / k);
@@ -45986,17 +46005,49 @@ export class PixiScene {
   }
   private syncWhipTether(sw: WhipSwingState | null, player: Player, enemies: readonly Enemy[], gameTime: number) {
     const tex = getTexture('whip');
-    const e = sw && sw.phase === 'swing' ? enemies.find(en => en.id === sw.enemyId) : undefined;
+    const e = sw && (sw.phase === 'swing' || sw.phase === 'overhead') ? enemies.find(en => en.id === sw.enemyId) : undefined;
     if (!tex) { this.hideWhipTether(); this.whipTetherLast = null; this.whipTetherRelease = null; return; }
     const ropes = this.ensureWhipTetherRopes(tex);
     const ax = player.x + player.width / 2, ay = player.y + player.height / 2;
+    if (e && sw && sw.phase === 'overhead') {
+      // ★ボスの叩きつけ: 縄は手元から、弧を描くボスの体の真ん中(地面の点+弧の高さ+体の半分)へ張る。掴んだ瞬間は振りの鞭の伸び切りから引き継ぐ。
+      //   振り下ろしが速いほど張って光る(回る速さの代わりに弧の進みの速さ)。弧の軌跡は描かない。
+      const efb = enemyFootBox(e);
+      const depthK = this.projFrame ? 1 : this.depthScaleEnemy(efb.footY);
+      const t = Math.max(0, gameTime - sw.startAt);
+      const ms = sw.ohMs ?? WHIP_OVERHEAD_MS;
+      const ent = whipTetherEntry(t);
+      let tx = efb.footX, ty = efb.footY;
+      const dE = Math.hypot(tx - ax, ty - ay);
+      if (ent < 1 && dE > 1e-3) {
+        const L = dE + Math.max(0, sw.reach - dE) * (1 - ent);
+        tx = ax + ((tx - ax) / dE) * L; ty = ay + ((ty - ay) / dE) * L;
+      }
+      const lift = this.whipOh?.enemyId === e.id ? (this.whipOverheadView(gameTime)?.lift ?? 0) : 0;
+      const th = (efb.boxH * 0.45 * depthK + lift) * ent;
+      const vFrac = whipOverheadProgressVel(t, ms) / Math.max(1e-9, whipOverheadProgressVel(ms - 1e-3, ms));
+      const side = this.whipOh?.side ?? sw.dir;
+      const bow = (0.22 * (1 - vFrac) + 0.04) * ent;
+      const glowK = whipTetherGlowK(vFrac);
+      this.whipTetherRelease = null;
+      const relX = tx - ax, relY = ty - ay;
+      const prev = this.whipTetherLast;
+      const dg = prev ? gameTime - prev.gt : 0;
+      const vRelX = prev && dg > 0 ? (relX - prev.relX) / dg : prev?.vRelX ?? 0;
+      const vRelY = prev && dg > 0 ? (relY - prev.relY) / dg : prev?.vRelY ?? 0;
+      this.whipTetherLast = { tipX: tx, tipY: ty, tipH: th, dir: side, reach: sw.reach, bow, glowK, relX, relY, vRelX, vRelY, gt: gameTime, drawnAt: Date.now() };
+      this.drawWhipTetherLine(ax, ay, tx, ty, th, whipTetherShape(bow, side, 0.4 + 0.6 * ent), sw.reach, tex, glowK);
+      if (ropes.trail) ropes.trail.visible = false;
+      this.whipTrailLast = null; this.whipTrailRelease = null;
+      return;
+    }
     if (e && sw) {
       // 先=掴んだ敵の体の真ん中(足元の地面の点+体の絵の高さの約半分)。手元は普通の振りと同じ根元(体の中心)。
       const efb = enemyFootBox(e);
       const depthK = this.projFrame ? 1 : this.depthScaleEnemy(efb.footY);
       const bh = efb.boxH * 0.45 * depthK;
       const t = Math.max(0, gameTime - sw.startAt);
-      const frac = whipSwingAngVel(t) / whipSwingMaxAngVel();
+      const frac = whipSwingSpinAt(t, sw).w / whipSwingMaxAngVel();
       // 掴んだ瞬間の引き継ぎ: 振りの鞭の伸び切った形(敵の向きへ届く距離・地面の高さ・まっすぐ)→ 先が敵の体まで縮んで巻き付く。
       const ent = whipTetherEntry(t);
       let tx = efb.footX, ty = efb.footY;
@@ -46117,6 +46168,63 @@ export class PixiScene {
    * 高さの放物線(最大距離に着く時刻で地面)と、絵の上の減速(最大距離でちょうど止まる=着いた後に地面を擦って滑る)。
    * store の whipSwing(thrown)を毎フレーム写し、着いた後も短く覚える。drawEnemy が読む。
    */
+  /**
+   * ★ボスの叩きつけ(社長指示2026-11-26「ボスは振り回しではなく、反対側に頭上を弧を描いて叩きつけ」)の絵の覚え。判定・地面の位置は store(whipSwing.phase='overhead')。
+   * 高さ=山×sin(π s)(山=プレイヤーの体の絵の高さ×1.4)・回り=進む向きへ半回転(叩きつけで逆さま)。叩きつけた後は逆さまで一拍→起き上がる。
+   * 途中で放した時は、その時の高さと速さのまま重さで地面へ落ち、回りは正立へ寄る(瞬間に地面へ戻らない)。
+   * 負荷: 1体ぶんの数の計算だけ(新しい図形・光源なし)=1/10。
+   */
+  private whipOh: {
+    enemyId: string; startAt: number; ms: number; side: 1 | -1; peak: number; bodyH: number; toX: number; toY: number; lastT: number;
+    endAt?: number; endKind?: 'slam' | 'drop'; h0?: number; vh?: number; r0?: number; w0?: number;
+  } | null = null;
+  private updateWhipOverhead(sw: WhipSwingState | null, player: Player, enemies: readonly Enemy[], gameTime: number): void {
+    if (sw && sw.phase === 'overhead') {
+      let o = this.whipOh;
+      if (!o || o.enemyId !== sw.enemyId || o.startAt !== sw.startAt) {
+        const bodyH = playerFootBox(player).boxH;
+        const face = player.lastDirection && player.lastDirection.x < 0 ? -1 : 1;
+        o = this.whipOh = {
+          enemyId: sw.enemyId, startAt: sw.startAt, ms: sw.ohMs ?? WHIP_OVERHEAD_MS,
+          side: whipOverheadSide(sw.fromX ?? sw.cx, sw.toX ?? sw.cx, face), peak: whipOverheadPeakPx(bodyH), bodyH,
+          toX: sw.toX ?? sw.cx, toY: sw.toY ?? sw.cy, lastT: 0,
+        };
+      }
+      o.lastT = Math.max(0, gameTime - sw.startAt);
+      return;
+    }
+    const o = this.whipOh;
+    if (!o) return;
+    const e = enemies.find(en => en.id === o.enemyId);
+    if (!e) { this.whipOh = null; return; }
+    if (o.endAt === undefined) {
+      // 終わった: 着地点に置かれて弧の終わり近くまで来ていたら叩きつけ、そうでなければ途中で放した。
+      const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
+      const slam = Math.hypot(cx - o.toX, cy - o.toY) < 2 && o.lastT >= o.ms * 0.75;
+      o.endAt = gameTime; o.endKind = slam ? 'slam' : 'drop';
+      if (!slam) {
+        o.h0 = whipOverheadLiftPx(o.lastT, o.peak, o.ms); o.vh = whipOverheadLiftVel(o.lastT, o.peak, o.ms);
+        o.r0 = whipOverheadRot(o.lastT, o.side, o.ms); o.w0 = o.side * Math.PI * whipOverheadProgressVel(o.lastT, o.ms);
+      }
+    }
+    const el = gameTime - o.endAt;
+    const endMs = o.endKind === 'slam' ? WHIP_OVERHEAD_LAND_HOLD_MS + WHIP_OVERHEAD_STANDUP_MS + 40 : 700;
+    if (el > endMs) this.whipOh = null;
+  }
+  /** drawEnemy・縄が読む: 叩きつけの高さ(px)・回り(rad)・プレイヤーより手前に描くか。 */
+  private whipOverheadView(gameTime: number): { lift: number; rot: number; front: boolean } | null {
+    const o = this.whipOh;
+    if (!o) return null;
+    if (o.endAt === undefined) {
+      const t = Math.max(0, gameTime - o.startAt);
+      const lift = whipOverheadLiftPx(t, o.peak, o.ms);
+      return { lift, rot: whipOverheadRot(t, o.side, o.ms), front: lift >= o.bodyH };
+    }
+    const el = Math.max(0, gameTime - o.endAt);
+    if (o.endKind === 'slam') return { lift: 0, rot: whipOverheadAfterSlamRot(el, o.side), front: false };
+    const d = whipOverheadAfterDrop(el, o.h0 ?? 0, o.vh ?? 0, o.r0 ?? 0, o.w0 ?? 0);
+    return { lift: d.lift, rot: d.rot, front: d.lift >= o.bodyH };
+  }
   private whipFly: {
     enemyId: string; throwAt: number; v0: number; maxDist: number; flyMs: number; ux: number; uy: number; fromX: number; fromY: number;
     logicalD: number; landAt?: number; landKind?: 'max' | 'hit'; landD?: number; rvx?: number; rvy?: number;

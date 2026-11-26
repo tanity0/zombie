@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, enemyMeleeDist, whipSwingReach } from './gameStore';
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
-import { WHIP_TIP_BOSS_MULT, WHIP_TIP_FRAC, WHIP_SWING_MAX_MS, whipSwingBodyRadius } from '../utils/whipSwing';
+import { WHIP_TIP_BOSS_MULT, WHIP_TIP_FRAC, WHIP_SWING_ACCEL_MS, WHIP_OVERHEAD_MS, WHIP_OVERHEAD_RISE_FRAC, whipSwingBodyRadius } from '../utils/whipSwing';
 import { clampRectToPlayableArea } from '../world/playableArea';
 
 let now = 15_000_000;
@@ -89,52 +89,60 @@ describe('①先端でボスを打つと大ダメージ', () => {
   });
 });
 
-describe('②気絶しているボスは掴める', () => {
+describe('②気絶しているボスは掴める=頭上を越えて反対側へ叩きつける(社長指示2026-11-26)', () => {
   it('気絶していないボスは掴まない・半減の遅さだけでも掴まない', () => {
     useGameStore.setState({ enemies: [place('hunter', 100, 0, 'h', { bossSlowUntil: st().gameTime + 5000 })] });
     swing();
     expect(st().whipSwing).toBeNull();
   });
-  it('気絶(stunUntil)中のボスを掴み、気絶が明けた時に自動で投げる', () => {
-    const until = st().gameTime + 600;
+  it('気絶中のボスを掴むと振り回さず弧に入り、反対側へ叩きつけ、爆発は本人に満額で非致死', () => {
+    const until = st().gameTime + 200; // 弧の途中で気絶が明けても最後まで行く
     useGameStore.setState({ enemies: [place('hunter', 100, 0, 'h', { stunUntil: until })] });
+    const c0 = center();
     swing();
     const sw = st().whipSwing!;
     expect(sw.enemyId).toBe('h');
+    expect(sw.phase).toBe('overhead');
     expect(en('h').whipHeld).toBe(true);
-    expect(sw.bossStunEndAt).toBe(until);
-    run(until - st().gameTime - 30);
-    expect(st().whipSwing?.phase).toBe('swing'); // 明けるまでは回す
-    run(60);
-    const sw2 = st().whipSwing;
-    expect(sw2 === null || sw2.phase === 'thrown').toBe(true); // 明けたら投げる
+    expect(en('h').health).toBe(99999); // 掴みに置き換える(5倍の枝は通らない)
+    expect((sw.toX ?? 0) - c0.x).toBeLessThan(-60); // 反対側(左)
+    // 入力の投げは弧の間は効かない
+    expect(st().tryFlickFollowup(1, 0)).toBe(false);
+    useGameStore.setState(s => ({ player: { ...s.player, counterCooldownEnd: 0 } }));
+    st().triggerCounter();
+    expect(st().whipSwing?.phase).toBe('overhead');
+    // 途中: 頭上(プレイヤーの中心の近く)を通る
+    run(Math.round(WHIP_OVERHEAD_MS * WHIP_OVERHEAD_RISE_FRAC));
+    expect(Math.abs(ecOf('h').x - c0.x)).toBeLessThan(12);
+    expect(st().whipSwing?.phase).toBe('overhead');
     for (let i = 0; i < 200 && st().whipSwing; i++) step(10);
+    expect(st().whipSwing).toBeNull();
     expect(en('h').whipHeld).toBeFalsy();
-    expect(en('h').health).toBeGreaterThan(0); // 着弾の爆発はボスには非致死
+    expect(ecOf('h').x).toBeCloseTo(sw.toX ?? 0, 0);
+    expect(en('h').health).toBeLessThan(99999); // 爆発を満額で受ける
+    expect(en('h').health).toBeGreaterThan(0); // ボスは非致死
   });
-  it('紫(体勢の崩れ)中のボスも掴める。最長の時間で投げる(気絶の方が長くても)', () => {
+  it('紫(体勢の崩れ)中のボスも掴んで叩きつける', () => {
     const until = st().gameTime + 5000;
     useGameStore.setState({ enemies: [place('hunter', 100, 0, 'h', { bossFullStunUntil: until, stunUntil: until, bossPosture: 0 })] });
     swing();
-    expect(st().whipSwing?.enemyId).toBe('h');
-    run(WHIP_SWING_MAX_MS + 30);
-    const sw = st().whipSwing;
-    expect(sw === null || sw.phase === 'thrown').toBe(true);
+    expect(st().whipSwing?.phase).toBe('overhead');
   });
-  it('大きなボスは体の分だけ外を回し、行ける帯の外へ出さない', () => {
+  it('大きなボスは体の大きさ以上離して置き、行ける帯の外へ出さない(弧の間も)', () => {
     const until = st().gameTime + 1400;
     useGameStore.setState({ enemies: [place('mimir', 160, 0, 'm', { stunUntil: until })] });
     swing();
     const sw = st().whipSwing!;
-    expect(sw.enemyId).toBe('m');
-    const e0 = en('m'), p = st().player;
-    expect(sw.radius).toBeGreaterThanOrEqual(whipSwingBodyRadius(e0.width, e0.height, p.width, p.height) - 1e-6);
-    for (let i = 0; i < 100 && st().whipSwing?.phase === 'swing'; i++) {
+    expect(sw.phase).toBe('overhead');
+    const e0 = en('m'), p = st().player, c = center();
+    expect(Math.hypot((sw.toX ?? 0) - c.x, (sw.toY ?? 0) - c.y)).toBeGreaterThanOrEqual(whipSwingBodyRadius(e0.width, e0.height, p.width, p.height) - 1e-6);
+    for (let i = 0; i < 100 && st().whipSwing; i++) {
       step(10);
       const e = en('m'), s = st();
-      const c = clampRectToPlayableArea(e.x, e.y, e.width, e.height, { farBackdrop: s.farBackdrop, labTheme: s.stageTheme === 'lab', corridorMode: s.corridorMode, m0AdvanceLimitX: s.m0AdvanceLimitX, corridorRunInActive: s.corridorRunInActive, exPlayerBarrier: s.exBarrier }, e.x);
-      expect(Math.abs(c.x - e.x) + Math.abs(c.y - e.y)).toBeLessThan(1);
+      const cl = clampRectToPlayableArea(e.x, e.y, e.width, e.height, { farBackdrop: s.farBackdrop, labTheme: s.stageTheme === 'lab', corridorMode: s.corridorMode, m0AdvanceLimitX: s.m0AdvanceLimitX, corridorRunInActive: s.corridorRunInActive, exPlayerBarrier: s.exBarrier }, e.x);
+      expect(Math.abs(cl.x - e.x) + Math.abs(cl.y - e.y)).toBeLessThan(1);
     }
+    expect(st().whipSwing).toBeNull();
   });
   it('掴んだ瞬間に溜めていた技は取り消される(雑魚の掴みと同じ)', () => {
     const until = st().gameTime + 1000;
@@ -143,13 +151,23 @@ describe('②気絶しているボスは掴める', () => {
     expect(st().whipSwing?.enemyId).toBe('h');
     expect(en('h').aiPhase === undefined || en('h').aiPhase !== 'windup').toBe(true);
   });
+  it('弧の途中でプレイヤーが死んだら放す(爆発なし)', () => {
+    useGameStore.setState({ enemies: [place('hunter', 100, 0, 'h', { stunUntil: st().gameTime + 3000 })] });
+    swing();
+    run(200);
+    useGameStore.setState(s => ({ player: { ...s.player, health: 0 } }));
+    step(10);
+    expect(st().whipSwing).toBeNull();
+    expect(en('h').whipHeld).toBeFalsy();
+    expect(en('h').health).toBe(99999);
+  });
 });
 
 describe('③パニッシャーを鞭に効かせる', () => {
   // 振り回しで弾いた敵 o の外側に v を置く。o が飛んで v に当たるか。
   const caseSwingHit = (lv: number): boolean => {
     setSkills(lv);
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')] });
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', { stunUntil: 1e12 })] });
     swing();
     run(260);
     const sw = st().whipSwing!;
@@ -173,9 +191,9 @@ describe('③パニッシャーを鞭に効かせる', () => {
   // 投げた敵を t に当てる。t が投げの向きへ飛び、パニッシャーのダメージを受けるか。
   const caseThrow = (lv: number) => {
     setSkills(lv);
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')] });
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', { stunUntil: 1e12 })] });
     swing();
-    run(200);
+    run(WHIP_SWING_ACCEL_MS + 100); // 最高の回転まで回してから投げる(回り出しは重い)
     st().tryFlickFollowup(1, 0);
     const sw = st().whipSwing!;
     const tx = (sw.fromX ?? 0) + 150 - center().x, ty = (sw.fromY ?? 0) - center().y;
@@ -207,7 +225,7 @@ describe('③パニッシャーを鞭に効かせる', () => {
   it('③着弾の爆発で飛んだ敵が別の敵にぶつかると巻き込む(所持時だけ)', () => {
     const caseBlast = (lv: number): boolean => {
       setSkills(lv);
-      useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')] });
+      useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', { stunUntil: 1e12 })] });
       swing();
       run(200);
       st().tryFlickFollowup(0, 1); // 下へ投げ、最大距離で着弾させる(敵には当てない)

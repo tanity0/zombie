@@ -112,7 +112,8 @@ describe('鞭: 振るたびに使い切る。絡め取った時は伸びが回�
   const farDx = () => WHIP_LENGTH_BY_LEVEL[1] + zombieWidth() / 2 + LV3 / 2;
   const swingAt = (charged: boolean) => {
     setup(['whip', 'striker-hunting'], { whip: 1, 'striker-hunting': 3 }, charged);
-    useGameStore.setState({ enemies: [zombieAt(farDx(), 'z')] });
+    // 掴むのは気絶している敵だけ(社長指示2026-11-26)。溜まっていない時は届かない=当たらない。
+    useGameStore.setState(s => ({ enemies: [{ ...zombieAt(farDx(), 'z'), stunUntil: s.gameTime + 1e9 }] }));
     st().triggerCounter();
   };
   it('溜まっていなければ届かない', () => {
@@ -122,7 +123,7 @@ describe('鞭: 振るたびに使い切る。絡め取った時は伸びが回�
   });
   it('溜まっていれば伸びた先の敵に当たって絡め取る。溜まりはその振りで消え、回す半径と投げの距離は伸びた長さから', () => {
     swingAt(true);
-    expect(hpOf('z')).toBeLessThan(99999);
+    expect(hpOf('z')).toBe(99999); // 掴んだ敵には打撃(気絶中の処刑)を通さない=掴みに置き換える
     const sw = st().whipSwing!;
     expect(sw.enemyId).toBe('z');
     expect(sw.reach).toBe(WHIP_LENGTH_BY_LEVEL[1] + LV3);

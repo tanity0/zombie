@@ -15,6 +15,8 @@ const place = (type: EnemyType, dx: number, dy: number, id: string, extra: Parti
   return { ...e, x: c.x + dx - e.width / 2, y: c.y + dy - e.height / 2, id, health: 99999, maxHealth: 99999, dormant: false, ...extra } as Enemy;
 };
 const en = (id: string) => st().enemies.find(e => e.id === id)!;
+/** 掴めるのは気絶している敵だけ(社長指示2026-11-26「気絶の敵を攻撃すると掴めて、爆撃と共にKILL」)。 */
+const STUN = { stunUntil: 1e12 } as Partial<Enemy>;
 const ecOf = (id: string) => { const e = en(id); return { x: e.x + e.width / 2, y: e.y + e.height / 2 }; };
 const step = (ms = 10) => {
   now += ms;
@@ -43,14 +45,15 @@ afterEach(() => { vi.restoreAllMocks(); });
 
 describe('当てる→掴む→回す→投げる→爆発', () => {
   it('雑魚に当てると一番近い1体を掴み、加速しながらプレイヤーの周りを回り、触れた敵を1周1回弾き、投げると着弾で爆発する', () => {
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z'), place('zombie', 140, 0, 'z2')] });
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN), place('zombie', 140, 0, 'z2', STUN)] });
     swing();
     const sw0 = st().whipSwing!;
     expect(sw0.enemyId).toBe('z'); // 近い方
     expect(sw0.phase).toBe('swing');
     expect(en('z').whipHeld).toBe(true);
-    expect(en('z').health).toBeLessThan(99999); // 1撃目のダメージは今のまま
-    expect(en('z2').whipHeld).toBeFalsy();
+    expect(en('z').health).toBe(99999); // 掴んだ敵には打撃を通さない(掴みに置き換える)
+    expect(st().enemies.find(e => e.id === 'z2')?.whipHeld).toBeFalsy(); // 掴まなかった気絶の敵は今どおり打撃(処刑)
+    useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.id !== 'z2') }));
     // 回り出し: 掴んだ直後は遅く、加速の後は一定の速さで回る(半径=届く距離×0.6 へ寄る)
     const c = center();
     const angAt = () => { const p = ecOf('z'); return Math.atan2(p.y - c.y, p.x - c.x); };
@@ -87,10 +90,10 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
     let landed = false;
     for (let i = 0; i < 100 && !landed; i++) { step(10); landed = st().whipSwing === null; }
     expect(landed).toBe(true);
-    expect(en('z').whipHeld).toBeFalsy();
-    expect(en('z').health).toBeLessThan(hpZ); // 投げた本人も爆発を受ける
+    const z = st().enemies.find(e => e.id === 'z');
+    expect(!z || z.health <= 0 || z.health < hpZ).toBe(true);
+    expect(!z || z.health <= 0).toBe(true); // 掴んだ雑魚は着弾の爆発で必ず死ぬ(KILL)
     expect(en('t').health).toBeLessThan(hpT); // 当たった敵も
-    expect(ecOf('z').x - (sw1.fromX ?? 0)).toBeGreaterThan(60); // 投げた向きへ飛んだ
   });
 
   it('ボス級は掴まない(打撃と押しは今のまま)', () => {
@@ -102,7 +105,7 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
   });
 
   it('フリックしないと最長の時間で自動で投げる', () => {
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')] });
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)] });
     swing();
     run(WHIP_SWING_MAX_MS - 50);
     expect(st().whipSwing?.phase).toBe('swing');
@@ -112,7 +115,7 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
   });
 
   it('振り回し中の近接=今の向きへ投げ+カウンター窓', () => {
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')] });
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)] });
     swing();
     run(200);
     useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 0, y: 1 }, counterCooldownEnd: 0, counterWindowEnd: 0 } }));
@@ -127,7 +130,7 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
     const techRows = () => st().skillProcFeed.filter(r => r.key === 'tech:whipslam').length;
     const landNow = () => { for (let i = 0; i < 200 && st().whipSwing; i++) step(10); };
     // 入力(フリック)で投げる
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')], skillProcFeed: [] });
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)], skillProcFeed: [] });
     swing();
     run(200);
     const dir = st().whipSwing!.dir;
@@ -137,7 +140,7 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
     expect(st().whipSwing).toBeNull();
     expect(techRows()).toBe(1);
     // 自動で投げる
-    useGameStore.setState({ enemies: [place('zombie', -100, 0, 'y')], skillProcFeed: [] });
+    useGameStore.setState({ enemies: [place('zombie', -100, 0, 'y', STUN)], skillProcFeed: [] });
     run(1000);
     useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: -1, y: 0 } } }));
     swing();
@@ -149,7 +152,7 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
   });
 
   it('掴まれている敵に弾は当たらない・毒などで死んだらその場で着弾', () => {
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')] });
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)] });
     swing();
     run(100);
     const hp = en('z').health;
@@ -181,7 +184,7 @@ describe('振り回し→投げ→放すの継ぎ目(1フレームごとの位�
   };
   const steps = (p: { x: number; y: number }[]) => p.slice(1).map((q, i) => Math.hypot(q.x - p[i].x, q.y - p[i].y));
   it('投げたフレームで止まらない(入力でも自動でも、放した次のフレームから直進の速さで進む)', () => {
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')] });
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)] });
     swing();
     const p = track(40, f => { if (f === 24) st().tryFlickFollowup(1, 0); });
     const s = steps(p);
@@ -189,7 +192,7 @@ describe('振り回し→投げ→放すの継ぎ目(1フレームごとの位�
     expect(i).toBeGreaterThan(0);
     expect(s[i - 1]).toBeGreaterThan(0.7 * s[i - 2]); // 放したフレームの1歩が0にならない
     // 自動の投げ
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')], whipSwing: null });
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)], whipSwing: null });
     swing();
     const p2 = track(Math.ceil(WHIP_SWING_MAX_MS / F) + 10);
     const s2 = steps(p2);
@@ -198,7 +201,7 @@ describe('振り回し→投げ→放すの継ぎ目(1フレームごとの位�
     expect(Math.min(s2[j - 1], s2[j])).toBeGreaterThan(0.7 * s2[j - 2]);
   });
   it('鞭を外して途中で放す: 回っていた勢いのまま滑って止まる(瞬間停止しない)・止まったら掴みを外す', () => {
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')] });
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)] });
     swing();
     const p = track(40, f => { if (f === 25) useGameStore.setState(s => ({ player: { ...s.player, subWeapons: [] } })); });
     const s = steps(p);
@@ -212,7 +215,7 @@ describe('振り回し→投げ→放すの継ぎ目(1フレームごとの位�
   });
   it('帯の縁で回す: 半径を縮める時も1フレームで跳ばない', () => {
     useGameStore.setState(s => ({ stageTheme: 'lab' as never, player: { ...s.player, y: -200 + 60 - s.player.height / 2 } }));
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z')] });
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)] });
     swing();
     const p = track(80);
     const s = steps(p);
