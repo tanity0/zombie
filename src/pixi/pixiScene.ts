@@ -51195,8 +51195,9 @@ export class PixiScene {
     const left = ux < -0.05 || (Math.abs(ux) <= 0.05 && (p.lastDirection?.x ?? 1) < 0);
     // ★構えの影(カウンターの構え)はフリックの角度で回さない・前へもずらさない=左右の向き(反転)だけ(社長指示2026-11-26
     // 「構えの絵が出る時斜めになってる。上フリックなのでおそらく毎回上を意識して斜めになっちゃってる。左右だけでよいかと」)。
-    // 絵だけ=判定・受けの向き(s.dirX/dirY)は変えない。レバーガードの腕(受けた相手の方を向く)は今のまま。
-    if (f.kind === 'guard' && !f.lever) { ux = left ? -1 : 1; uy = 0; }
+    // 絵だけ=判定・受けの向き(s.dirX/dirY)は変えない。
+    // ★レバーガードの腕の影も同じ=受けた相手の角度で回さず・上下へずらさず、相手のいる側(左右)の反転だけ(社長指示2026-11-26)。
+    if (f.kind === 'guard') ({ ux, uy } = BRW.brawlerStandSideFacing(sdx, sdy, p.lastDirection?.x));
     // 見た目の体の中心(跳びの高さも入る)。
     const bodyH = Math.abs(body.height);
     const bx = body.position.x, by = body.position.y - bodyH * 0.5;

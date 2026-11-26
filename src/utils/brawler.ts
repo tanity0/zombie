@@ -1708,6 +1708,18 @@ export interface BrawlerStandFrame {
   lift?: number;
 }
 /**
+ * ★構えの影・レバーガードの腕の影の向き(絵だけ・判定は持たない)。回さず・上下へずらさず、左右の反転だけで出す
+ * (社長指示2026-11-26「構えの影は左右だけでよい」→ レバーガードの腕の影もそろえる)。
+ * 左右は dx(構え=フリックの向き・腕=受けた相手の方)の符号で決め、ほぼ真上/真下(|単位ベクトルのx|≦0.05)なら本人の向き(lastDirX)。
+ * 返り値の ux は ±1・uy は 0(=傾き・上下のずれが出ない)。
+ */
+export const brawlerStandSideFacing = (dx: number, dy: number, lastDirX: number | undefined): { ux: number; uy: number; left: boolean } => {
+  const m = Math.hypot(dx, dy) || 1;
+  const nx = dx / m;
+  const left = nx < -0.05 || (Math.abs(nx) <= 0.05 && (lastDirX ?? 1) < 0);
+  return { ux: left ? -1 : 1, uy: 0, left };
+};
+/**
  * いまの影の形(判定は持たない・pixi が読む)。慣性: 前隙で体から前へにじみ出る(加速)→ 当たる瞬間に当たりの所まで伸び切る
  * (止めの間は段の時計が止まる=そこで止まる)→ 戻りで前へ抜けながら減速して消える。構えは出ている間うっすら脈打つ。
  */

@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5856 — レバーガードの腕の影も左右だけに【2026-11-27 02:47】
+- 社長「はい」(構えの影と同じく、腕で受けた時の影も左右だけに)。
+- `brawler.ts` に純関数 `brawlerStandSideFacing(dx, dy, lastDirX)`(x の符号で左右・ほぼ真上/真下は本人の向き・無ければ右)。pixiScene `drawBrawlerStand` で構えの影(腕を含む)をこれで左右だけに(回転なし・押し込みも横だけ)。判定・受けの向き・他の技の影は不変。もとからの約1.7度の前のめりは構えと同じく残す。
+- 画: 相手が右上/左上/右下/左下/真上(右向き・左向き)で撮って目視=斜めにならない。テスト3本。
+- 確認: typecheck・eslint・循環・brawler/brawlerLeverGuard の vitest 通過。
+- 自己点検: 憲法第4条・第5条=絵のみで抵触なし。
+
 ## v0.25.5855 — 格闘の技の影を小さいドット絵へ差し替え・構えの影は左右だけ【2026-11-27 02:35】
 - 社長「でかいね。ドット絵出し直すわ」→ 支給の横並び1枚(7体)。「構えの絵が出る時斜めになってる…左右だけでよいかと」。
 - 新規 `public/sprites/fx/brawler-stand2-{kick,punch,palm,slam,guard,hadou,heavy}.png`(社長の画素そのまま・不透明範囲で切り出し+1px余白・53〜87×56〜66)。旧 `brawler-stand-*.png`(原盤)は残す。台帳更新・assets:check OK。

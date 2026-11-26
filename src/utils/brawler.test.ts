@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { Enemy } from '../types/game';
 import {
   BRAWLER_STAGES, BRAWLER_TECHS, brawlerPointCap, brawlerAfterAmmoPickup, BRAWLER_AMMO_PICKUP_POINTS, brawlerEndGuardForStomp, BRAWLER_GUARD_QUICK_MS, brawlerTechCost,
-  brawlerPalmDashDue, isBrawlerPalmDashing, brawlerKickFlightMs, BRAWLER_KICK_RANGE, BRAWLER_KICK_NO_TARGET_PX, brawlerPassKbDir, BRAWLER_PALM_DASH_MS, sweepResolve, brawlerStandAt, BRAWLER_STAND_STAGE2_KIND, brawlerSecretStep, brawlerSecretDue, brawlerSecretPickMove, brawlerSecretPickTarget, brawlerSecretStart, brawlerSecretEnd, BRAWLER_SECRET_GAP_MS, BRAWLER_SECRET_STRIKES, BRAWLER_SECRET_MOVES, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
+  brawlerPalmDashDue, isBrawlerPalmDashing, brawlerKickFlightMs, BRAWLER_KICK_RANGE, BRAWLER_KICK_NO_TARGET_PX, brawlerPassKbDir, BRAWLER_PALM_DASH_MS, sweepResolve, brawlerStandAt, BRAWLER_STAND_STAGE2_KIND, brawlerSecretStep, brawlerSecretDue, brawlerSecretPickMove, brawlerSecretPickTarget, brawlerSecretStart, brawlerSecretEnd, BRAWLER_SECRET_GAP_MS, BRAWLER_SECRET_STRIKES, BRAWLER_SECRET_MOVES, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop, brawlerStandSideFacing,
   BRAWLER_TEMPO, BRAWLER_TEMPO_DEFAULT, setBrawlerTempo, BRAWLER_HEEL_BODY_ROT_K, brawlerHeelStandAt,
   brawlerStartAttack, brawlerStartTech, brawlerPressDecision, brawlerAfterResolve, brawlerDueEvent, brawlerFinish,
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
@@ -997,4 +997,23 @@ describe('浮きの弧の形(社長指示2026-11-25「立ち上がりは早く�
       expect(brawlerLiftArcRel(1, 0, 1, sh)).toBe(0);
     });
   }
+});
+
+describe('brawlerStandSideFacing(構え・レバーガードの腕の影は左右だけ)', () => {
+  it('相手が右上なら右・左下なら左・回さない(uy=0)', () => {
+    expect(brawlerStandSideFacing(0.7, -0.7, -1)).toEqual({ ux: 1, uy: 0, left: false });
+    expect(brawlerStandSideFacing(-0.6, 0.8, 1)).toEqual({ ux: -1, uy: 0, left: true });
+  });
+  it('ほぼ真上/真下は本人の向き', () => {
+    expect(brawlerStandSideFacing(0, -1, -1).left).toBe(true);
+    expect(brawlerStandSideFacing(0.01, 1, 1).left).toBe(false);
+    expect(brawlerStandSideFacing(0, -1, undefined).left).toBe(false);
+  });
+  it('傾き(atan2(uy,|ux|))は常に0', () => {
+    for (const [dx, dy] of [[1, -3], [-2, 5], [0, -1], [3, 0.2]]) {
+      const r = brawlerStandSideFacing(dx, dy, 1);
+      expect(Math.atan2(r.uy, Math.abs(r.ux))).toBe(0);
+      expect(Math.abs(r.ux)).toBe(1);
+    }
+  });
 });
