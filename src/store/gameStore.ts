@@ -1,4 +1,5 @@
 import { MAGNET_PULL_RADIUS_BY_LEVEL } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ半径(社長裁定2026-09-13)
+import { canAdvanceNpcLine, advanceNpcDialogueState } from '../utils/npcDialogueAdvance'; // 会話の窓のタップで一言ずつ送る
 import { projSeen, projSeenPlayer, projViewCam, projViewPlayer, projGameRowHalfW, projGameBandPick, projGameViewContains, projGameScreenCenter, getProjGameView, projGameRecycleRect, projPropRegionRect, projEndingReentryHalfW, projBulletCullRadius, projLabViewCam } from '../utils/projGameView';
 import { PROJ_GAME_RECYCLE, PROJ_GAME_SNAP } from '../utils/projFlag';
 import type { ProjRecycleGhost, ProjBulletGhost } from '../utils/projSpawnFade';
@@ -1330,6 +1331,9 @@ export const NPC_DIALOGUE_SLOW_EXTRA_MS = 1200;
 // ★v0.25.3989: アテンション(ボス出現カットイン)で通信を凍結した印。明けたエッジで表示中の行の
 // 尺を張り直すための1bit(モジュール変数=保存不要の揮発でよい)。
 let npcDialogueFrozeByAttention = false;
+// 会話の時計とゲーム時刻の差(最後の updateNpcDialogue の時点)。ステージ1の到着の会話はゲーム時刻を止めて会話の時計だけ進める
+// (useGameLoop の commClock)ので、窓のタップで送った行の尺は同じ時計で張る(advanceNpcDialogue)。
+let npcDialogueClockOffset = 0;
 const NPC_SAME_NPC_CD_MS = 10000; // 同一NPCの連続発話を抑制(管理表 8〜12秒)
 const ESCORT_TARGETED_CAT_CD_MS = 20000; // 「ボスの赤い予告が自分に掛かった」場面の再発話CD(叩き台。ボスは技のたびに狙いを替えるので間引く)
 // 「敵に囲まれた時」検知/抑制(社長指示・管理表 High=危機/カテゴリCD必須)。
@@ -11622,6 +11626,8 @@ interface GameState {
   // NPCセリフ: キューに追加 / 毎フレームの表示進行(useGameLoopから呼ぶ)。
   enqueueNpcDialogue: (lines: { name: string; text: string; portrait?: string; slow?: boolean }[]) => void;
   updateNpcDialogue: (gameTime: number) => void;
+  /** 会話の窓のタップ: 今の一言を閉じて次の行をすぐ出す(送れない行・場面の間は何もしない=utils/npcDialogueAdvance)。 */
+  advanceNpcDialogue: () => void;
   // 状況反応セリフをCD(同一NPC/同一カテゴリ)を守って投入。通れば true。
   // escortId: 進軍NPC起点の呼び出しは軍人の id を渡す(その軍人が倒れている間は黙る・同名の別人=駐留兵の台詞は落とさない)。
   tryNpcLine: (name: string, category: string, text: string, categoryCdMs: number, escortId?: string) => boolean;
@@ -20501,6 +20507,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 表示中が寿命切れなら消し、空いていてキューがあれば次を出す(時間停止なし)。変化があった時だけ set。
   updateNpcDialogue: (gameTime) => {
     const s = get();
+    npcDialogueClockOffset = Math.max(0, gameTime - s.gameTime);
     // ★v0.25.3989(社長報告「守護霊登場時のセリフと退場時のセリフが通信に出てこない」・実測で確定):
     // アテンション/カットイン(ボス出現演出)中は通信の時計を丸ごと凍結する。守護霊の登場セリフは
     // ボス交戦の立ち上がり=カットインと**同じ瞬間**に積まれ、表示2.8秒(NPC_DIALOGUE_MS)が
@@ -20524,6 +20531,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       changed = true;
     }
     if (changed) set({ npcDialogue: cur, npcDialogueQueue: queue, npcDialogueNextAt: nextAt });
+  },
+  advanceNpcDialogue: () => {
+    const s = get();
+    if (!canAdvanceNpcLine(s.npcDialogue, { attention: s.attention !== null, glenTransform: !!s.glenTransform })) return;
+    set(advanceNpcDialogueState(s.npcDialogueQueue, s.gameTime + npcDialogueClockOffset,
+      { lineMs: NPC_DIALOGUE_MS, gapMs: NPC_DIALOGUE_GAP_MS, slowExtraMs: NPC_DIALOGUE_SLOW_EXTRA_MS }));
   },
   npcKillReact: (x, y) => {
     const s = get();

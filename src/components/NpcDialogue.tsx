@@ -19,6 +19,7 @@ import {
 import { playCommsEntrance, playCommsExit } from './commsMotionAnim';
 import { PROJ_ON } from '../utils/projFlag';
 import { setHudAvoidRect } from '../utils/hudAvoidRects';
+import { canAdvanceNpcLine } from '../utils/npcDialogueAdvance';
 import { computeViewport } from '../utils/viewport';
 
 // 話者名 → 立ち絵のベースパス(spritePathの`${base}-0`)+枠幅。セリフ表示時に上半身(バスト)を出す。
@@ -364,13 +365,15 @@ const COMMS_ACCENT_AMBER = 'rgb(252, 211, 77)';
 /** 前の行が消えた時刻と、その行の話者(続きの行かどうかの判定に使う)。 */
 type CommsPrev = { hiddenAt: number; speaker: string | null };
 
-const CommsBox = ({ line, leaving, landscape, prevRef, companionRef, onGone, children }: {
+const CommsBox = ({ line, leaving, landscape, prevRef, companionRef, onGone, onAdvance, children }: {
   line: NpcLine;
   leaving: boolean;
   landscape: boolean;
   prevRef: React.RefObject<CommsPrev>;
   companionRef: React.RefObject<HTMLDivElement | null>;
   onGone: () => void;
+  /** 窓のタップで今の一言を送る(送れる行の間だけ渡す)。渡されている間だけ窓が押下を受ける=それ以外は今どおり素通し。 */
+  onAdvance?: () => void;
   children: React.ReactNode;
 }) => {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -432,8 +435,29 @@ const CommsBox = ({ line, leaving, landscape, prevRef, companionRef, onGone, chi
     return () => { a.onfinish = null; a.cancel(); };
   }, [leaving]);
   return (
-    <div ref={ref} data-comms-entrance style={{ position: 'relative' }}>
+    <div
+      ref={ref}
+      data-comms-entrance
+      style={onAdvance ? { position: 'relative', pointerEvents: 'auto', touchAction: 'none', cursor: 'pointer' } : { position: 'relative' }}
+      // 窓の上の押下はここで受けて止める(攻撃・移動の層=VirtualJoystick / MouseControls は兄弟の層なので届かない。
+      // 窓の外の押下は奪わない)。マウスは左ボタンだけ送る(右は何もしない)。
+      onPointerDown={onAdvance ? e => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        onAdvance();
+      } : undefined}
+      onContextMenu={onAdvance ? e => e.preventDefault() : undefined}
+    >
       {children}
+      {/* 送れる印: 窓の右下に小さな下向きの三角。ゆっくり上下に揺れる(加減速つき)。 */}
+      {onAdvance && (
+        <span
+          aria-hidden
+          className="npc-dialogue-advance-mark"
+          style={{ position: 'absolute', right: 30, bottom: 5, pointerEvents: 'none' }}
+        />
+      )}
       {landscape && (
         <span
           ref={accentRef}
@@ -475,6 +499,9 @@ export const NpcDialogue = () => {
     return () => { window.clearInterval(id); setHudAvoidRect('npcDialogue', null); };
   }, []);
   const hasProc = useGameStore(s => s.skillProcFeed.length > 0); // 会話が無くてもスキル発動は同じ位置に出す
+  // 窓のタップで送れるか(真偽だけ購読=行が替わる時・場面の出入りの時だけ描き直す)。
+  const canAdvance = useGameStore(s => canAdvanceNpcLine(s.npcDialogue, { attention: s.attention !== null, glenTransform: !!s.glenTransform }));
+  const advanceNpcDialogue = useGameStore(s => s.advanceNpcDialogue);
   // 入りの回数(社長指示2026-11-17)。板が消えている所から現れた時だけ増える=出たまま次の行へ替わる時は飛ばし直さず文字だけ替える。
   // 前回の描画の値から決める(React の「前の描画の情報を保つ」型=effect を挟まず、同じ描画で入りが始まる)。
   const shown = !!npc;
@@ -538,6 +565,7 @@ export const NpcDialogue = () => {
           prevRef={prevRef}
           companionRef={procWrapRef}
           onGone={() => setHeld(null)}
+          onAdvance={npc && canAdvance ? advanceNpcDialogue : undefined}
         >
           <NpcLinePill npc={line} />
         </CommsBox>
