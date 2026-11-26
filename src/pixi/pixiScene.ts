@@ -134,7 +134,7 @@ import {
 } from '../utils/katanaSlashSheet'; // プレイヤーの刀の斬撃シート(社長支給2026-11-22)
 import { whipComboBodyRecover } from '../utils/whipCombo'; // 鞭の3段目の後の隙の姿勢
 import { counterReadyAt, counterRingFade } from '../utils/counterReadyAt'; // カウンターのクールダウンの輪(鞭・ナイフの3連撃は連撃の終わり+CDまで)
-import { knifeComboBodyT, knifeComboSwingDir } from '../utils/knifeCombo'; // ナイフの3連撃の段の向き・3段目の後の隙の姿勢
+import { knifeComboBodyT, knifeComboSwingDir, knifeComboWpnAlpha } from '../utils/knifeCombo'; // ナイフの3連撃の段の向き・3段目の後の隙の姿勢
 import {
   whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
   whipGrabZoomAt, WHIP_GRAB_ZOOM_MAG, WHIP_GRAB_ZOOM_AIM_FRAC, WHIP_GRAB_ZOOM_TOTAL_MS,
@@ -29439,10 +29439,16 @@ export class PixiScene {
       const echoSince = now - (p.slasherEchoAt ?? 0);
       const mainSwingOn = p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs;
       const echoOn = !mainSwingOn && knifeStageNow > 0 && (p.slasherEchoAt ?? 0) > 0 && echoSince >= 0 && echoSince < SLASHER_ECHO_MS;
-      if (!p.skaterRiding && !killFxSwallowsSwing && (mainSwingOn || echoOn)) {
+      // ★手のナイフは体の振りの姿勢が続く間ずっと出す(社長指示2026-11-26「ナイフは最後まで表示しといて欲しい」・utils/knifeCombo knifeComboWpnAlpha)。
+      //   旧: 弧の残光と一緒に振りの表示の終わり(368ms)より前に引いていた=3段目の後の隙(体は振り上げた姿勢のまま1.0秒)では手が空になっていた。
+      //   振りの表示が終わった後(3段目の隙)は、弧・残光は出さず(斬撃の絵は今のまま)、刃だけを振り上げた拳に残す。終わり際は加減速つきで引く。
+      const knifeWpnA = knifeStageNow > 0 && p.meleeSwingAt > 0 ? knifeComboWpnAlpha(sinceSwing, swingWindowMs, knifeStageNow) : 0;
+      const knifeHoldOn = !mainSwingOn && !echoOn && knifeWpnA > 0;
+      if (!p.skaterRiding && !killFxSwallowsSwing && (mainSwingOn || echoOn || knifeHoldOn)) {
         const kt = mainSwingOn
           ? meleeSwingEase(sinceSwing / swingWindowMs) // ゆっくり→速く→ゆっくり(§5.22-追補でスロー中は伸長)
-          : KNIFE_SWING_SWITCH + (1 - KNIFE_SWING_SWITCH) * meleeSwingEase(echoSince / SLASHER_ECHO_MS);
+          : echoOn ? KNIFE_SWING_SWITCH + (1 - KNIFE_SWING_SWITCH) * meleeSwingEase(echoSince / SLASHER_ECHO_MS)
+          : 1; // 3段目の後の隙: 振り抜いた所(弧は出し切った後=残光も消えている)
         // 段の向き: 2段目=振り下ろし。追い打ちは1回ごとに向きを返す(振り上げ⇄振り下ろしの往復=2段目の後は振り上げから)。
         // 振り下ろしは、弧・残光・刃の絵を「弧の両端を入れ替える鏡」(meleeArcDownMirror)に映す=頭上から前を通って低い前へ。
         // 拳に沿って回るナイフの実絵は鏡に映さず、円を逆向き(振り上げた拳→構えの拳)に進める=体の絵(振り上げ→しゃがみ)と同じ順。
@@ -29497,11 +29503,11 @@ export class PixiScene {
           wpn.visible = wpn.alpha > 0.01;
         };
         // 弧に追従する武器の実絵(柄側の端へ置き、コマと一緒に前へ出る)。絵が無ければ従来の位置へ。
-        const placeMeleeArcWpn = (arcKt: number, fallbackAl: number) => {
+        const placeMeleeArcWpn = (arcKt: number, fallbackAl: number, al?: number) => {
           const arcCfg = meleeArcCfg(slash, arcKt);
-          if (!arcCfg) { placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, fallbackAl); return; }
+          if (!arcCfg) { placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, al ?? fallbackAl); return; }
           const wp = meleeArcWpnPos(arcCfg);
-          placeWpn(wp.ox, wp.oy, MELEE_ARC_WPN_ROT, MELEE_WPN_F2.len, meleeArcWpnAlpha(arcKt));
+          placeWpn(wp.ox, wp.oy, MELEE_ARC_WPN_ROT, MELEE_WPN_F2.len, al ?? meleeArcWpnAlpha(arcKt));
         };
         // f2の武器位置: 弧テクスチャ内の割合(fx,fy)を弧の配置(KNIFE_F2)へ写像。
         const arcAspect = 0.577; // 旧弧(knife-swing-2)の縦横比で固定。弧が7コマになっても武器絵の位置は動かさない
@@ -29538,7 +29544,9 @@ export class PixiScene {
           const a3 = 1 - t3;
           place(knife, KNIFE_F1, false, 0);
           place(slash, KNIFE_F2, false, 0);
-          if (!placeKnifeCircle(meleeArcT(kt), meleeArcWpnAlpha(kt))) placeMeleeArcWpn(kt, 0); // 到着(振り上げた拳)で止まり、弧の残光と一緒に引く
+          // 到着(振り上げた拳)で止まる。ナイフの3連撃=体の姿勢が立ち姿へ戻るまで残す(knifeWpnA)。追い打ち・ナイフ以外=弧の残光と一緒に引く(今まで通り)。
+          const wa = knifeStageNow > 0 && !echoOn ? knifeWpnA : meleeArcWpnAlpha(kt);
+          if (!placeKnifeCircle(meleeArcT(kt), wa)) placeMeleeArcWpn(kt, 0, knifeStageNow > 0 && !echoOn ? knifeWpnA : undefined);
           placeMeleeArc(trail, kt, a3);
         }
       } else {

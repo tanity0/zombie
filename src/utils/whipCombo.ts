@@ -45,25 +45,22 @@ export const whipComboSweepSign = (stage: number, aimAngle: number): 1 | -1 | 0 
  * 段の間隔(WHIP_COMBO_INTERVAL_MS)と同じく振った時刻から数える・近接CDの短縮は掛かる。この間のタップは予約しない(捨てる)。
  */
 export const WHIP_COMBO_FINISH_RECOVERY_MS = 1000;
-/** ★3段目の後の隙の前半: 3段目を振った時刻からこの間、歩く速さを落とす(ms・社長承認2026-11-26)。 */
-export const WHIP_COMBO_FINISH_SLOW_MS = 400;
-/** その間の歩く速さの倍率(振った直後の値)。 */
-export const WHIP_COMBO_FINISH_SLOW_MULT = 0.5;
+/** ★3段目の後の隙の前半(社長指示2026-11-26「隙の半分は立ち止まっててほしい」): 3段目を振った時刻からこの間、歩く速さ 0(完全に止まる・ms=隙の半分)。 */
+export const WHIP_COMBO_FINISH_STOP_MS = WHIP_COMBO_FINISH_RECOVERY_MS / 2;
 /**
  * 3段目の後の歩く速さの倍率(1=いつもどおり)。sinceMs=3段目を振ってからの ms。
- * 前半(SLOW_MS の半分)は SLOW_MULT のまま、後半で加減速つき(smoothstep)に 1 へ戻す=0.4秒の終わりでパッと戻らない(慣性)。
+ * stopMs までは 0(立ち止まる)、そこから endMs(隙の終わり)までに加減速つき(smoothstep)で 1 へ戻す=パッと動き出さない(慣性)。
  * ダッシュ系・スライドには掛からない(utils/playerMoveSpeed の meleeRecoverMult と同じ枝に乗る)。
  */
-export const comboFinishMoveMult = (sinceMs: number, slowMs: number, mult: number): number => {
-  if (!(sinceMs >= 0) || sinceMs >= slowMs) return 1;
-  const half = slowMs / 2;
-  if (sinceMs <= half) return mult;
-  const u = (sinceMs - half) / half;
-  return mult + (1 - mult) * u * u * (3 - 2 * u);
+export const comboFinishMoveMult = (sinceMs: number, stopMs: number, endMs: number): number => {
+  if (!(sinceMs >= 0) || sinceMs >= endMs) return 1;
+  if (sinceMs <= stopMs) return 0;
+  const u = (sinceMs - stopMs) / Math.max(1, endMs - stopMs);
+  return u * u * (3 - 2 * u);
 };
 /** 鞭: 最後に振った段・時刻から、今の歩く速さの倍率。3段目以外は 1。 */
 export const whipComboFinishMoveMult = (stage: number | undefined, comboAt: number | undefined, nowMs: number): number =>
-  stage === 3 && (comboAt ?? 0) > 0 ? comboFinishMoveMult(nowMs - (comboAt as number), WHIP_COMBO_FINISH_SLOW_MS, WHIP_COMBO_FINISH_SLOW_MULT) : 1;
+  stage === 3 && (comboAt ?? 0) > 0 ? comboFinishMoveMult(nowMs - (comboAt as number), WHIP_COMBO_FINISH_STOP_MS, WHIP_COMBO_FINISH_RECOVERY_MS) : 1;
 /** この段を振った後、次の振りが出せるまで(ms・近接CDの短縮を掛ける前)。3段目=隙・1/2段目=段の間隔。 */
 export const whipComboGapMs = (stage: number): number => (stage === 3 ? WHIP_COMBO_FINISH_RECOVERY_MS : WHIP_COMBO_INTERVAL_MS);
 /** 3段目の後の隙の体の姿勢: 振り抜いた底で粘る長さ(ms・隙 1.0秒に合わせて 120→200)。残りの隙(隙−前隙−粘り)でゆっくり立ち姿へ戻る。 */

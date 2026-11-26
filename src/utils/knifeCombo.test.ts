@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
+  knifeComboWpnAlpha, knifeComboBodyEndMs,
   knifeComboNextStage, knifeComboGapMs, knifeComboTapAction, knifeComboQueuedAction, knifeComboCounterPlan, knifeComboSwingDir,
   knifeComboStepPx, knifeComboBodyT,
   KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_RESET_MS, KNIFE_COMBO_FINISH_RECOVERY_MS, KNIFE_COMBO_QUEUE_MAX_MS, KNIFE_COMBO_STEP_FRAC,
-  knifeComboFinishMoveMult, KNIFE_COMBO_FINISH_SLOW_MS, KNIFE_COMBO_FINISH_SLOW_MULT,
+  knifeComboFinishMoveMult, KNIFE_COMBO_FINISH_STOP_MS,
 } from './knifeCombo';
 
 describe('ナイフの3連撃(純関数)', () => {
@@ -22,18 +23,17 @@ describe('ナイフの3連撃(純関数)', () => {
     expect(KNIFE_COMBO_FINISH_RECOVERY_MS).toBeGreaterThan(KNIFE_COMBO_RESET_MS);
     expect(knifeComboNextStage(3, 0, KNIFE_COMBO_FINISH_RECOVERY_MS)).toBe(1);
   });
-  it('3段目の後の歩く速さ: 振った直後 0.5・前半は 0.5 のまま・0.4秒で 1 へ(途中は単調に上がる・パッと戻らない)。3段目以外は 1', () => {
-    expect(KNIFE_COMBO_FINISH_SLOW_MS).toBe(400);
-    expect(KNIFE_COMBO_FINISH_SLOW_MULT).toBe(0.5);
+  it('3段目の後の歩く速さ(社長指示2026-11-26「隙の半分は立ち止まっててほしい」): 隙の半分は 0・隙の終わりまでに慣性つきで 1(パッと動き出さない)。3段目以外は 1', () => {
+    expect(KNIFE_COMBO_FINISH_STOP_MS).toBe(KNIFE_COMBO_FINISH_RECOVERY_MS / 2);
     const m = (since: number) => knifeComboFinishMoveMult(3, 10_000, 10_000 + since);
-    expect(m(0)).toBe(0.5);
-    expect(m(200)).toBe(0.5);
-    expect(m(400)).toBe(1);
+    expect(m(0)).toBe(0);
+    expect(m(500)).toBe(0);
     expect(m(1000)).toBe(1);
-    let prev = 0.5;
-    for (let t = 210; t < 400; t += 10) { const v = m(t); expect(v).toBeGreaterThanOrEqual(prev); expect(v).toBeLessThan(1); prev = v; }
-    expect(m(390)).toBeGreaterThan(0.99); // 終わり際はほぼ戻っている(段差にならない)
-    expect(m(210) - 0.5).toBeLessThan(0.01); // 戻り始めも緩やか
+    expect(m(1500)).toBe(1);
+    let prev = 0;
+    for (let t = 510; t < 1000; t += 10) { const v = m(t); expect(v).toBeGreaterThanOrEqual(prev); expect(v).toBeLessThan(1); prev = v; }
+    expect(m(990)).toBeGreaterThan(0.99);
+    expect(m(510)).toBeLessThan(0.01);
     expect(knifeComboFinishMoveMult(1, 10_000, 10_100)).toBe(1);
     expect(knifeComboFinishMoveMult(2, 10_000, 10_100)).toBe(1);
     expect(knifeComboFinishMoveMult(3, 0, 100)).toBe(1); // まだ振っていない
@@ -78,5 +78,25 @@ describe('ナイフの3連撃(純関数)', () => {
     expect(a.active && b.active).toBe(true);
     expect(b.t).toBeGreaterThan(a.t);
     expect(knifeComboBodyT(KNIFE_COMBO_FINISH_RECOVERY_MS, 280, 3).active).toBe(false);
+  });
+});
+
+describe('手のナイフの絵(社長指示2026-11-26「ナイフは最後まで表示しといて欲しい」)', () => {
+  const W = 368;
+  it('体の振りの姿勢が続く間は出ている(3段目=隙が明けて立ち姿に戻るまで・1/2段目=振りの表示の終わりまで)', () => {
+    expect(knifeComboBodyEndMs(W, 3)).toBe(KNIFE_COMBO_FINISH_RECOVERY_MS);
+    expect(knifeComboBodyEndMs(W, 1)).toBe(W);
+    for (const st of [1, 2, 3]) {
+      const end = knifeComboBodyEndMs(W, st);
+      // 体の姿勢が切れる所と一致する
+      expect(knifeComboBodyT(end - 1, W, st).active).toBe(true);
+      expect(knifeComboBodyT(end, W, st).active).toBe(false);
+      for (let t = 0; t < end - 80; t += 20) expect(knifeComboWpnAlpha(t, W, st)).toBe(1);
+      expect(knifeComboWpnAlpha(end, W, st)).toBe(0);
+      // 引きは単調に減り、パッと消えない
+      let prev = 1;
+      for (let t = end - 80; t < end; t += 5) { const a = knifeComboWpnAlpha(t, W, st); expect(a).toBeLessThanOrEqual(prev); expect(a).toBeGreaterThan(0); prev = a; }
+      expect(knifeComboWpnAlpha(end - 2, W, st)).toBeLessThan(0.01);
+    }
   });
 });

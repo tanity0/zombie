@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   whipComboCounterPlan, whipComboCounterCut, whipComboEndAt, WHIP_COMBO_RESET_MS, WHIP_COMBO_INTERVAL_MS, WHIP_COMBO_QUEUE_MAX_MS,
-  WHIP_COMBO_FINISH_RECOVERY_MS, WHIP_COMBO_FINISH_SLOW_MS, WHIP_COMBO_FINISH_SLOW_MULT, whipComboFinishMoveMult, whipComboGapMs,
+  WHIP_COMBO_FINISH_RECOVERY_MS, WHIP_COMBO_FINISH_STOP_MS, whipComboFinishMoveMult, whipComboGapMs,
   whipComboNextStage, whipComboBodyRecover,
 } from './whipCombo';
 import { computeEffectiveMoveSpeed } from './playerMoveSpeed';
@@ -59,20 +59,22 @@ describe('3段目の後の隙(社長承認2026-11-26「隙を1.0秒・前半0.4�
     expect(WHIP_COMBO_FINISH_RECOVERY_MS).toBeGreaterThan(WHIP_COMBO_RESET_MS);
     expect(whipComboNextStage(3, 0, WHIP_COMBO_FINISH_RECOVERY_MS)).toBe(1);
   });
-  it('歩く速さ: 0.5 から始まり 0.4秒で 1(後半で加減速つきに戻る)。3段目以外は 1', () => {
-    expect(WHIP_COMBO_FINISH_SLOW_MS).toBe(400);
-    expect(WHIP_COMBO_FINISH_SLOW_MULT).toBe(0.5);
+  it('歩く速さ(社長指示2026-11-26「隙の半分は立ち止まっててほしい」): 隙の半分(0.5秒)は 0、隙の終わり(1.0秒)までに加減速つきで 1。3段目以外は 1', () => {
+    expect(WHIP_COMBO_FINISH_STOP_MS).toBe(WHIP_COMBO_FINISH_RECOVERY_MS / 2);
     const m = (since: number) => whipComboFinishMoveMult(3, 5_000, 5_000 + since);
-    expect(m(0)).toBe(0.5);
-    expect(m(150)).toBe(0.5);
-    expect(m(300)).toBeCloseTo(0.75);
-    expect(m(400)).toBe(1);
+    for (let t = 0; t <= 500; t += 50) expect(m(t)).toBe(0);
+    expect(m(750)).toBeCloseTo(0.5);
+    expect(m(1000)).toBe(1);
+    let prev = 0;
+    for (let t = 510; t < 1000; t += 10) { const v = m(t); expect(v).toBeGreaterThanOrEqual(prev); expect(v).toBeLessThan(1); prev = v; }
+    expect(m(510)).toBeLessThan(0.01); // 動き出しは緩やか(慣性)
+    expect(m(990)).toBeGreaterThan(0.99); // 終わり際も段差にならない
     expect(whipComboFinishMoveMult(2, 5_000, 5_100)).toBe(1);
     expect(whipComboFinishMoveMult(undefined, undefined, 5_100)).toBe(1);
   });
   it('回避(ダッシュ系・スライド)には掛からない。歩き(走りの段を含む)には掛かる', () => {
     const base = { reloading: false, reloadMoveSpeedMult: 0.5, playerSpeed: 100, skaterActive: false, bonusMult: 1.3, rampFrac: 1, trapDebuffed: false, pvpMult: 1, meleeRecoverMult: whipComboFinishMoveMult(3, 1000, 1100) };
-    expect(computeEffectiveMoveSpeed({ ...base, dashOverrideSpeed: null, slidingSpeed: null })).toBeCloseTo(65);
+    expect(computeEffectiveMoveSpeed({ ...base, dashOverrideSpeed: null, slidingSpeed: null })).toBe(0);
     expect(computeEffectiveMoveSpeed({ ...base, dashOverrideSpeed: 600, slidingSpeed: null })).toBe(600);
     expect(computeEffectiveMoveSpeed({ ...base, dashOverrideSpeed: null, slidingSpeed: 400 })).toBe(400);
   });

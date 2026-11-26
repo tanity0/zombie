@@ -12934,7 +12934,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★近接を振った**あと**の硬直(社長指示2026-09-16「振った直後にディレイが入るのはいい」)。
         // 振り**中**は掛からない=踏み込み斬りの「回避としての使い方」を殺さない、が社長の前提。
         // 開くのは振りの絵が終わる瞬間(=その場で動けない時間が明ける)・明けるのは従来どおり(v0.25.4998・隙間を詰めた)。
-        // ★鞭・ナイフの3段目の後の隙の前半(社長承認2026-11-26): 3段目を振ってから 0.4秒は歩く速さ 0.5 → 慣性つきで 1 へ(utils/whipCombo comboFinishMoveMult)。
+        // ★鞭・ナイフの3段目の後の隙の前半(社長承認2026-11-26): 3段目を振ってから隙の半分(0.5秒)は歩く速さ 0(立ち止まる)→ 隙の終わり(1.0秒)までに慣性つきで 1 へ(utils/whipCombo comboFinishMoveMult)。
         //   同じ硬直の枝に乗せる=ダッシュ系・スライドには掛からない(回避の逃げ道は塞がない)。重なる所は遅い方(二重に掛けない)。
         meleeRecoverMult: Math.min(
           meleeRecoverSpeedMult(player.meleeSwingAt, nowMs, PLAYER_MELEE_SWING_MS, COUNTER_WINDOW + MELEE_RECOVER_MS),

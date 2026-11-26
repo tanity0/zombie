@@ -16,10 +16,8 @@ export const KNIFE_COMBO_QUEUE_MAX_MS = 600;
 export const KNIFE_COMBO_FINISH_RECOVERY_MS = 1000;
 /** 3段目の後の隙の体の姿勢: 振り抜いた所で粘る長さ(ms・隙 1.0秒に合わせて 120→200)。 */
 export const KNIFE_COMBO_FINISH_HOLD_MS = 200;
-/** ★3段目の後の隙の前半: 3段目を振った時刻からこの間、歩く速さを落とす(ms・鞭と共通)。 */
-export const KNIFE_COMBO_FINISH_SLOW_MS = 400;
-/** その間の歩く速さの倍率(振った直後の値)。 */
-export const KNIFE_COMBO_FINISH_SLOW_MULT = 0.5;
+/** ★3段目の後の隙の前半(社長指示2026-11-26「隙の半分は立ち止まっててほしい」): 3段目を振った時刻からこの間、歩く速さ 0(ms=隙の半分・鞭と共通)。そこから隙の終わりまでに慣性つきで戻る。 */
+export const KNIFE_COMBO_FINISH_STOP_MS = KNIFE_COMBO_FINISH_RECOVERY_MS / 2;
 /** 段ごとの踏み込み(体の幅に対する割合)。立ち・歩きの振りでも少し前へ出る(走りの踏み込みの方が大きければそちら)。 */
 export const KNIFE_COMBO_STEP_FRAC = 0.3;
 
@@ -27,7 +25,7 @@ export type KnifeComboStage = 1 | 2 | 3;
 
 /** ナイフ: 最後に振った段・時刻から、今の歩く速さの倍率(鞭の whipComboFinishMoveMult と同じ形)。3段目以外は 1。 */
 export const knifeComboFinishMoveMult = (stage: number | undefined, comboAt: number | undefined, nowMs: number): number =>
-  stage === 3 && (comboAt ?? 0) > 0 ? comboFinishMoveMult(nowMs - (comboAt as number), KNIFE_COMBO_FINISH_SLOW_MS, KNIFE_COMBO_FINISH_SLOW_MULT) : 1;
+  stage === 3 && (comboAt ?? 0) > 0 ? comboFinishMoveMult(nowMs - (comboAt as number), KNIFE_COMBO_FINISH_STOP_MS, KNIFE_COMBO_FINISH_RECOVERY_MS) : 1;
 
 /** 次の段。prev=前の段(0=まだ振っていない)・lastAt=前の振りの時刻・now=今(同じ時計)。 */
 export const knifeComboNextStage = (prev: number, lastAt: number, now: number): KnifeComboStage => {
@@ -79,4 +77,23 @@ export const knifeComboBodyT = (since: number, windowMs: number, stage: number):
   if (u >= 1) return { t: 1, active: false };
   const e = 1 - (1 - u) * (1 - u); // 減速して戻る(慣性)
   return { t: 0.5 + 0.5 * e, active: true };
+};
+
+/** 体の振りの姿勢が立ち姿へ戻る時刻(振り始めからの ms・knifeComboBodyT の active が切れる所)。3段目=隙が明けるまで・1/2段目=いつもの振りの表示の長さ。 */
+export const knifeComboBodyEndMs = (windowMs: number, stage: number): number =>
+  stage === 3 ? Math.max(windowMs, KNIFE_COMBO_FINISH_RECOVERY_MS) : windowMs;
+/** 手のナイフの絵が引く長さ(ms)。体が立ち姿へ戻り切る時刻に消え切る。 */
+export const KNIFE_COMBO_WPN_FADE_MS = 80;
+/**
+ * ★手のナイフの絵の濃さ(社長指示2026-11-26「ナイフは最後まで表示しといて欲しい」・描画だけ)。
+ * 体の振りの姿勢が続く間(1/2段目=振りの表示の終わり・3段目=隙が明けて立ち姿に戻るまで)は 1。終わり際の FADE_MS で加減速つきに 0 へ(パッと消さない)。
+ */
+export const knifeComboWpnAlpha = (since: number, windowMs: number, stage: number): number => {
+  if (!(since >= 0)) return 0;
+  const end = knifeComboBodyEndMs(windowMs, stage);
+  if (since >= end) return 0;
+  const fade = Math.min(KNIFE_COMBO_WPN_FADE_MS, end / 2);
+  if (since <= end - fade) return 1;
+  const f = (since - (end - fade)) / fade;
+  return 1 - f * f * (3 - 2 * f);
 };
