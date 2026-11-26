@@ -55,25 +55,65 @@ export interface WhipRopeShape {
 }
 
 /**
+ * ★しなり(社長指示2026-11-26「絵はもっと鞭を曲げてしならせてから伸ばして」)。縄の点列の曲がりだけで作る(絵の伸び縮みはしない)。
+ *  - 打ち出し: 手元から先端へほどける時、ほどけている途中の区間を動く向きと逆へ大きく巻き込ませる(根元から先端へ曲がりの山が伝わる=C字→S字)。
+ *    その上に払いの遅れ(先端ほど払う向きと逆へ遅れる)を重ねる。どちらもパチン(前隙の終わり)でちょうど 0=まっすぐ伸び切る。
+ *  - 引き: 後ろへ持ち上げる間、先端が引く向きと逆へ遅れてから追いつく(引き終わりで 0)。払いの回り込みにも先端が遅れる。
+ *  - 振り抜け(戻りの前半): 払いの勢いで先端が前へ流れてから垂れる。
+ * 値は rad(叩き台)。
+ */
+export const WHIP_ROPE_LASH_CURL = 2.2;
+/** 打ち出しの払いの遅れ(rad・先端)。 */
+export const WHIP_ROPE_SWEEP_LAG = 1.6;
+/** 引きの間の先端の遅れ(rad・先端)。 */
+export const WHIP_ROPE_PULL_LAG = 1.2;
+/** 溜めの形の巻き込み(rad・先端・正面の段)。引き終わりから打ち出しまで、先ほど深く巻いた形で溜める。 */
+export const WHIP_ROPE_HOLD_COIL = 0.6;
+/** 溜めの形の巻き込み(rad・先端・払う段)。払う向きと逆へ先を残して溜める。 */
+export const WHIP_ROPE_HOLD_SWEEP_LAG = 0.85;
+/** 払いの遅れが元の後ろの形の巻きと逆向きの時に、その巻きを打ち消す量(rad・先端=元の巻きの量)。 */
+export const WHIP_ROPE_HOLD_UNCURL = 1.0;
+/** 振り抜けで先端が前へ流れる量(rad・先端)。 */
+export const WHIP_ROPE_FOLLOW_FLOW = 0.6;
+
+/**
  * 経過 el(ms・指を離した瞬間から)の鞭の形。windupMs=前隙(=パチンの時刻=判定の時刻)。
  * 前隙の終わり(el=windupMs)で必ずまっすぐ(全区間の向き0・長さ1・手元のずれ0)=判定の帯と鞭の本体と赤いしなりの伸び切りが重なる。
+ * lag=払いの遅れの向き(この形の座標=振りの向きの座標での符号・+1/-1・0=払わない)。描く側が払いの向きと上下の揃えから決める
+ * (払う向きと逆へ先端が遅れる)。
  */
-export const whipRopeShape = (el: number, windupMs: number, segs = WHIP_ROPE_POINTS - 1, pull = 1): WhipRopeShape => {
+export const whipRopeShape = (el: number, windupMs: number, segs = WHIP_ROPE_POINTS - 1, pull = 1, lag = 0): WhipRopeShape => {
   const W = Math.max(1, windupMs);
   const pk = Math.max(1, pull);
   const hX = -10 * pk, hY = -12 * pk; // 引いた手元(後ろ・上)
-  const backA = (u: number): number => backAngleFor(u, pk);
+  // 後ろへ引いた形に、溜めの巻き(先ほど深く巻き込む)を足す=しならせた形で溜める。払う段は払う向きと逆へ巻く(先を残す)・正面の段は打ち出しと逆へ巻く。
+  // 打ち出しは backA×(1-ほどけ) なので、パチンで 0(まっすぐ)。
+  // 払いの遅れが元の後ろの形の巻き(先が -側へ垂れる)と逆向き(lag>0)の時は、その巻きを打ち消してから巻く(打ち消し合ってまっすぐにしない)。
+  const coil = lag ? lag * WHIP_ROPE_HOLD_SWEEP_LAG + Math.max(0, lag) * WHIP_ROPE_HOLD_UNCURL : -WHIP_ROPE_HOLD_COIL;
+  const backA = (u: number): number => backAngleFor(u, pk) + coil * u ** 1.5;
   const us = Array.from({ length: segs }, (_, i) => (i + 0.5) / segs);
   if (el >= whipRopeTotalMs(W)) return { handX: 0, handY: 0, angles: us.map(() => 0), lenK: 0.65, alpha: 0, phase: 'done' };
   if (el < W * WHIP_ROPE_PULL_END) {
     // ①引く: 前に垂れていた鞭を頭の上を通して体の後ろへ(減速して止まる)。手元も後ろ上へ。
-    const p = easeOutCubic(clamp01(el / (W * WHIP_ROPE_PULL_END)));
-    return { handX: hX * p, handY: hY * p, angles: us.map(u => restAngle(u) + (backA(u) - restAngle(u)) * p), lenK: 1, alpha: 1, phase: 'pull' };
+    const t = clamp01(el / (W * WHIP_ROPE_PULL_END));
+    const p = easeOutCubic(t);
+    // 先端の遅れ: 引く向き(角度が減る向き)と逆=+側へ。動き出しで一番遅れ、引き終わりで追いつく(0)。払いの回り込みにも遅れる(-lag 側)。
+    const env = Math.sin(Math.PI * Math.min(1, t * 1.15)) * (1 - 0.35 * t);
+    return {
+      handX: hX * p, handY: hY * p,
+      angles: us.map(u => restAngle(u) + (backA(u) - restAngle(u)) * p + env * u ** 1.4 * (WHIP_ROPE_PULL_LAG - 0.6 * lag)),
+      lenK: 1, alpha: 1, phase: 'pull',
+    };
   }
   if (el < W * WHIP_ROPE_HOLD_END) {
     // ②溜め: 後ろで垂れて止まる(先だけわずかに揺れる)。
     const h = (el - W * WHIP_ROPE_PULL_END) / (W * (WHIP_ROPE_HOLD_END - WHIP_ROPE_PULL_END));
-    return { handX: hX, handY: hY, angles: us.map(u => backA(u) + 0.1 * u * u * Math.sin(h * Math.PI)), lenK: 1, alpha: 1, phase: 'hold' };
+    // 溜め: 後ろで先がまだ揺れている(根元から先へ波が流れる・溜めの終わりへ向けて少しずつ収まる)。
+    return {
+      handX: hX, handY: hY,
+      angles: us.map(u => backA(u) + 0.45 * u * u * Math.sin(h * Math.PI) * Math.cos(Math.PI * (u - h))),
+      lenK: 1, alpha: 1, phase: 'hold',
+    };
   }
   if (el < W) {
     // ③打ち出し: 加速しながら、手元から先端へほどけてまっすぐになる(先端が最後=パチン)。
@@ -84,7 +124,11 @@ export const whipRopeShape = (el: number, windupMs: number, segs = WHIP_ROPE_POI
       handX: hX * hk, handY: hY * hk,
       angles: us.map(u => {
         const qa = smooth(clamp01((P - 0.6 * u) / (1 - 0.6 * u)));
-        return backA(u) * (1 - qa);
+        // ほどけている途中の区間を、動く向き(+)と逆へ巻き込む(sin(π qa)=ほどけ始め0・ほどけ切り0=山が根元→先端へ流れる)。
+        const curl = -WHIP_ROPE_LASH_CURL * (0.35 + 0.65 * u) * Math.sin(Math.PI * qa);
+        // 払いの遅れ: 先端ほど払う向きと逆へ。払いが加速するほど大きく、パチンで 0。
+        const sweepLag = lag * WHIP_ROPE_SWEEP_LAG * u ** 1.3 * Math.sin(Math.PI * q) * (0.5 + 0.5 * q);
+        return backA(u) * (1 - qa) + curl + sweepLag;
       }),
       lenK: 1, alpha: 1, phase: 'lash',
     };
@@ -96,8 +140,11 @@ export const whipRopeShape = (el: number, windupMs: number, segs = WHIP_ROPE_POI
     return { handX: 0, handY: 0, angles: us.map(u => (el === W ? 0 : snap * u ** 3)), lenK: 1, alpha: 1, phase: 'crack' };
   }
   // ⑤戻り: たるんで(下へ垂れて)縮み、消える。
-  const r = easeInOut(clamp01((el - W - WHIP_ROPE_CRACK_HOLD_MS) / WHIP_ROPE_RETRACT_MS));
-  return { handX: 0, handY: 0, angles: us.map(u => r * (0.35 + 1.2 * u ** 1.5)), lenK: 1 - 0.35 * r, alpha: 1 - r ** 1.5, phase: 'retract' };
+  const rt = clamp01((el - W - WHIP_ROPE_CRACK_HOLD_MS) / WHIP_ROPE_RETRACT_MS);
+  const r = easeInOut(rt);
+  // 振り抜け: 払った勢いで先端が前(払う向き=-lag)へ流れてから垂れる。
+  const flow = -lag * WHIP_ROPE_FOLLOW_FLOW * Math.sin(Math.PI * Math.min(1, rt * 1.4));
+  return { handX: 0, handY: 0, angles: us.map(u => r * (0.35 + 1.2 * u ** 1.5) + flow * u ** 1.6), lenK: 1 - 0.35 * r, alpha: 1 - r ** 1.5, phase: 'retract' };
 };
 
 /**
@@ -534,3 +581,33 @@ export const whipOverheadFace = (s: number, pivX: number, fromX: number, toX: nu
   const x = s < 0.5 ? fromX : toX;
   return Math.abs(x - pivX) > 6 ? (x > pivX ? 1 : -1) : face;
 };
+
+// ---- ★掴んだ瞬間の「掴んだ！」の寄り(社長指示2026-11-26「掴んだ時、少し長めにストップして、その敵に一瞬少し寄りズーム 掴んだ！って感じにしたい」)。描画だけ。 ----
+/** 寄る量(倍率の上乗せ・0.2=1.2倍)。 */
+export const WHIP_GRAB_ZOOM_MAG = 0.2;
+/** 寄り切るまで(ms・加速→減速)。 */
+export const WHIP_GRAB_ZOOM_IN_MS = 110;
+/** 寄り切ったまま止める長さ(ms)。寄り+止め=掴んだ瞬間の止め(store の WHIP_GRAB_HITSTOP_MS)と同じ頃。 */
+export const WHIP_GRAB_ZOOM_HOLD_MS = 90;
+/** 戻り(ms・加速→減速)。合計 = 寄り+止め+戻り。 */
+export const WHIP_GRAB_ZOOM_OUT_MS = 320;
+/** 寄りの間、掴んだ敵を画面の中央へ寄せる割合(1=真ん中まで)。寄りの量に比例して出入りする。 */
+export const WHIP_GRAB_ZOOM_AIM_FRAC = 0.6;
+/** 寄りの全体の長さ(ms)。 */
+export const WHIP_GRAB_ZOOM_TOTAL_MS = WHIP_GRAB_ZOOM_IN_MS + WHIP_GRAB_ZOOM_HOLD_MS + WHIP_GRAB_ZOOM_OUT_MS;
+/** 掴んでからの壁時計 tMs の寄りの割合(0..1)。0 より前・終わった後は 0。倍率の上乗せ = これ × WHIP_GRAB_ZOOM_MAG。 */
+export const whipGrabZoomAt = (tMs: number): number => {
+  if (!(tMs >= 0)) return 0;
+  if (tMs < WHIP_GRAB_ZOOM_IN_MS) return smooth(tMs / WHIP_GRAB_ZOOM_IN_MS);
+  const o = tMs - WHIP_GRAB_ZOOM_IN_MS - WHIP_GRAB_ZOOM_HOLD_MS;
+  if (o < 0) return 1;
+  if (o >= WHIP_GRAB_ZOOM_OUT_MS) return 0;
+  return 1 - smooth(o / WHIP_GRAB_ZOOM_OUT_MS);
+};
+
+/**
+ * ★鞭の振りの赤いしなり(whipsnare・素材 fx/whip-smear-0..2)を出すか(社長指示2026-11-26「赤い斬撃は一旦削除 合ってない」)。
+ * 一旦止める=false。戻す時は true にするだけ(出す所=store の beginMeleeSwing・描く所=pixiScene.drawWhipSnareSprite はそのまま)。
+ * しなりは鞭の本体(縄 whiprope)の曲がりで見せる(whipRopeShape)。馬乗りの鞭の振り(別の絵)は対象外。
+ */
+export const WHIP_SNARE_FX_ENABLED: boolean = false;

@@ -47,8 +47,8 @@ beforeEach(() => {
 });
 afterEach(() => { vi.restoreAllMocks(); });
 
-describe('3連撃: 段が進む・0.3秒の間隔・戻る', () => {
-  it('タップごとに 1→2→3→1。間隔は0.3秒(早いタップは1つ予約して明けたら出す)。0.9秒タップが無ければ1段目へ', () => {
+describe('3連撃: 段が進む・0.5秒の間隔・戻る', () => {
+  it('タップごとに 1→2→3→1。間隔は0.5秒(早いタップは1つ予約して明けたら出す)。0.9秒タップが無ければ1段目へ', () => {
     resetZ();
     tap();
     expect(st().player.whipComboStage).toBe(1);
@@ -146,9 +146,7 @@ describe('掴む条件: 気絶している敵だけ', () => {
     expect(st().whipSwing?.enemyId).toBe('z');
     expect(st().whipSwing?.phase).toBe('swing');
     expect(en('z')!.health).toBe(99999); // 処刑の枝は通らない(掴みに置き換える)
-    run(400);
-    expect(st().tryFlickFollowup(0, 1)).toBe(true);
-    for (let i = 0; i < 300 && st().whipSwing; i++) step(10);
+    for (let i = 0; i < 600 && st().whipSwing; i++) step(10); // 最長で自動で投げる
     expect(st().whipSwing).toBeNull();
     const z = en('z');
     expect(!z || z.health <= 0).toBe(true);

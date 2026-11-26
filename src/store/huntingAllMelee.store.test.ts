@@ -129,7 +129,7 @@ describe('鞭: 振るたびに使い切る。絡め取った時は伸びが回�
     expect(sw.reach).toBe(WHIP_LENGTH_BY_LEVEL[1] + LV3);
     expect(sw.radius).toBeCloseTo((WHIP_LENGTH_BY_LEVEL[1] + LV3) * WHIP_SWING_RADIUS_MULT, 6);
     expect(pl().huntingCharged).toBe(false);
-    st().tryFlickFollowup(1, 0);
+    for (let i = 0; i < 400 && st().whipSwing?.phase === 'swing'; i++) step(10); // 投げは最長で自動の投げだけ(社長指示2026-11-26)
     expect(st().whipSwing?.maxDist).toBeCloseTo((WHIP_LENGTH_BY_LEVEL[1] + LV3) * WHIP_THROW_DIST_MULT, 6);
   });
   it('空振りでもその振りで消える', () => {

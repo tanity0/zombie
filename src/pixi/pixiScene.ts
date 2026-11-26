@@ -135,6 +135,7 @@ import {
 import { whipComboBodyRecover } from '../utils/whipCombo'; // 鞭の3段目の後の隙の姿勢
 import {
   whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
+  whipGrabZoomAt, WHIP_GRAB_ZOOM_MAG, WHIP_GRAB_ZOOM_AIM_FRAC, WHIP_GRAB_ZOOM_TOTAL_MS,
   whipTetherShape, whipTetherBow, whipTetherRetract, whipFlyLiftPx, whipFlyPeakPx, type WhipRopeShape,
   whipTetherEntry, whipTetherGlowK, whipThrowStreak, whipFlyVisualTimeAt, whipFlyViewOffset, whipFlyReleaseBlend, whipTetherRetractTip, whipTrailFade,
   whipRopeSweepOffset, whipFinishSweepOffset, whipOverheadPeakPx, whipOverheadLiftPx, whipOverheadLiftVel, whipOverheadRot, whipOverheadRotVel, whipOverheadSide, whipOverheadAfterSlam, whipOverheadAfterDrop,
@@ -13456,7 +13457,9 @@ export class PixiScene {
     const zoomDecayCine = cam ? Math.pow(zoomDecay, cam.outPow) : zoomDecay;
     // ★空中投げの掴み(§34-3・クリエイティブ監査 #7): 掴みの間はゆっくり寄り、放したら戻す(壁時計=時間停止の間も動く)。
     const grabZoom = this.brawlerGrabZoomNow(s.player.brawler?.grab);
-    const punch = (1 + s.zoomMag * zoomDecayCine * (cam ? cam.zoomFrac : 1)) * (1 + grabZoom);
+    // ★鞭で掴んだ瞬間の「掴んだ！」の寄り(社長指示2026-11-26・utils/whipSwingMotion.whipGrabZoomAt): 掴んだ敵へ一瞬少し寄って戻る(壁時計=止めの間も動く)。
+    const whipGrab = this.whipGrabZoomNow(s.whipSwing);
+    const punch = (1 + s.zoomMag * zoomDecayCine * (cam ? cam.zoomFrac : 1)) * (1 + grabZoom) * (1 + WHIP_GRAB_ZOOM_MAG * whipGrab.k);
     // ズーム時の遠近(既定ON・?zwarp=0 で切る)へ: イベントの包絡線・寄り量と、イベント開始時に決める奥の側(左右)。
     this.zwarpEventDecay = zoomDecay;
     this.zwarpEventMag = s.zoomMag;
@@ -13642,9 +13645,17 @@ export class PixiScene {
     // 合計で守ったまま、横滑りは必ず出し切る。
     const orbitClamped = Math.max(-panLimitX, Math.min(panLimitX, orbitPx));
     const centerRoom = Math.max(0, panLimitX - Math.abs(orbitClamped));
-    const centerRawX = zoomAimsTarget ? (targetScreenX - centerX) * zoom * zoomDecayCine * ZOOM_TARGET_CENTER_FRAC : 0;
+    // 鞭の掴みの寄り先(掴んだ敵)を中央へ寄せる量(寄りの割合に比例)。安全上限(panLimit)は下で合計に掛かる。
+    let wgX = 0, wgY = 0;
+    if (whipGrab.k > 0) {
+      let gx = whipGrab.x, gy = whipGrab.y;
+      if (pfG) { const gp = projectInto(pfG, gx, gy, this.projScratch); gx = gp.x; gy = gp.y; }
+      wgX = (this.L.world.position.x + gx - centerX) * zoom * whipGrab.k * WHIP_GRAB_ZOOM_AIM_FRAC;
+      wgY = (this.L.world.position.y + gy - centerY) * zoom * whipGrab.k * WHIP_GRAB_ZOOM_AIM_FRAC;
+    }
+    const centerRawX = (zoomAimsTarget ? (targetScreenX - centerX) * zoom * zoomDecayCine * ZOOM_TARGET_CENTER_FRAC : 0) + wgX;
     const panRawX = Math.max(-centerRoom, Math.min(centerRoom, centerRawX)) + orbitClamped;
-    const panRawY = zoomAimsTarget ? (targetScreenY - centerY) * zoom * zoomDecayCine * ZOOM_TARGET_CENTER_FRAC : 0;
+    const panRawY = (zoomAimsTarget ? (targetScreenY - centerY) * zoom * zoomDecayCine * ZOOM_TARGET_CENTER_FRAC : 0) + wgY;
     this.cineAimY = zoomAimsTarget ? aimW.y : null; // ピント帯(tilt-shift)が同じ寄り先を見る
     this.cineAimDispY = zoomAimsTarget ? aimDY : null; // ?proj=1: 同じ寄り先の表示Y(ピント帯・V55)
     const panX = Math.max(-panLimitX, Math.min(panLimitX, panRawX));
@@ -45851,7 +45862,10 @@ export class PixiScene {
     const rope = view as MeshRope;
     const pts = this.whipRopePts.get(rope);
     if (!tex || !pts) { rope.visible = false; return; }
-    const shape = whipRopeShape(now - e.createdAt, e.windupMs, WHIP_ROPE_POINTS - 1, e.pull ?? 1); // 3段目は頭上の後ろへ大きく振りかぶる
+    const side = Math.cos(e.angle) >= 0 ? 1 : -1; // 「上へ引く」側を画面の上に揃える(払いの途中で裏返さない=狙いの向きで決める)
+    // ★しなり(社長指示2026-11-26「もっと鞭を曲げてしならせてから伸ばして」): 払いの向きと逆へ先端が遅れる。形の座標(y は side で上下を揃える)での符号。
+    const lag = e.sweep ? side * -Math.sign(e.sweep) : 0;
+    const shape = whipRopeShape(now - e.createdAt, e.windupMs, WHIP_ROPE_POINTS - 1, e.pull ?? 1, lag); // 3段目は頭上の後ろへ大きく振りかぶる
     if (shape.alpha <= 0) { rope.visible = false; return; }
     const local = whipRopePoints(shape, e.len, WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_TIP_X);
     // 表示のスケール: 絵の握り→先端(素材の画素)が射程ちょうど(drawWhipSprite と同じ規約)。点は素材の画素の単位で置き、rope を k 倍する。
@@ -45860,7 +45874,6 @@ export class PixiScene {
     // ★3連撃の払い(1段目=左→右・2段目=右→左・3段目=0): パチンの瞬間は e.angle(判定の帯)でまっすぐ。
     const ang = e.angle + whipRopeSweepOffset(now - e.createdAt, e.windupMs, e.sweep ?? 0);
     const ca = Math.cos(ang), sa = Math.sin(ang);
-    const side = Math.cos(e.angle) >= 0 ? 1 : -1; // 「上へ引く」側を画面の上に揃える(払いの途中で裏返さない=狙いの向きで決める)
     for (let i = 0; i < pts.length && i < local.length; i++) {
       const lx = local[i].x, ly = local[i].y * side;
       pts[i].set((lx * ca - ly * sa) / k, (lx * sa + ly * ca) / k);
@@ -50793,6 +50806,18 @@ export class PixiScene {
     aura.tint = BRW.BRAWLER_COLOR_HEX;
     aura.alpha = Math.min(1, 0.15 + 0.7 * remain + 0.4 * hitPop);
     aura.visible = true;
+  }
+  /** 鞭で掴んだ瞬間の寄り(描画だけの状態): 掴んだ時刻(壁時計)と寄り先。掴みが終わっても寄りの尺は走り切る。 */
+  private whipGrabZoom: { at: number; x: number; y: number } | null = null;
+  private whipGrabZoomNow(sw: { grabAt?: number; grabX?: number; grabY?: number } | null): { k: number; x: number; y: number } {
+    if (sw?.grabAt !== undefined && sw.grabX !== undefined && sw.grabY !== undefined && sw.grabAt !== this.whipGrabZoom?.at) {
+      this.whipGrabZoom = { at: sw.grabAt, x: sw.grabX, y: sw.grabY };
+    }
+    const g = this.whipGrabZoom;
+    if (!g) return { k: 0, x: 0, y: 0 };
+    const t = Date.now() - g.at;
+    if (t >= WHIP_GRAB_ZOOM_TOTAL_MS) return { k: 0, x: g.x, y: g.y };
+    return { k: whipGrabZoomAt(t), x: g.x, y: g.y };
   }
   private grabZoomAt: number | null = null;
   private grabZoomReleasedAt: number | null = null;

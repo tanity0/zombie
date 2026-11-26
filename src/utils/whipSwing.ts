@@ -98,6 +98,10 @@ export interface WhipSwingState {
   /** 放した瞬間の速さ(回っていた勢い)と、投げの直進の速さの差(world px/s)。描画が出だしの曲がりに使う(判定は直進のまま)。 */
   rvx?: number;
   rvy?: number;
+  /** 掴んだ瞬間の壁時計(Date.now)と掴んだ敵の中心(world)。描画の「掴んだ！」の寄り(utils/whipSwingMotion.whipGrabZoomAt)が読むだけ。 */
+  grabAt?: number;
+  grabX?: number;
+  grabY?: number;
   /** プレイヤーの入力(近接・フリック)で投げた(自動の投げは false)。技の行を出すのはこの時の着弾だけ。 */
   byInput?: boolean;
   /** 回し終えた周の数(1周ごとの音を鳴らした所まで)。 */

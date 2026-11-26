@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, enemyMeleeDist, whipSwingReach } from './gameStore';
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
-import { WHIP_TIP_BOSS_MULT, WHIP_TIP_FRAC, WHIP_SWING_ACCEL_MS, WHIP_OVERHEAD_MS, WHIP_OVERHEAD_RISE_FRAC, whipSwingBodyRadius } from '../utils/whipSwing';
+import { WHIP_TIP_BOSS_MULT, WHIP_TIP_FRAC, WHIP_OVERHEAD_MS, WHIP_OVERHEAD_RISE_FRAC, whipSwingBodyRadius } from '../utils/whipSwing';
 import { clampRectToPlayableArea } from '../world/playableArea';
 
 let now = 15_000_000;
@@ -222,11 +222,12 @@ describe('③パニッシャーを鞭に効かせる', () => {
     setSkills(lv);
     useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', { stunUntil: 1e12 })] });
     swing();
-    run(WHIP_SWING_ACCEL_MS + 100); // 最高の回転まで回してから投げる(回り出しは重い)
-    st().tryFlickFollowup(1, 0);
+    // 投げは最長で自動の投げだけ(社長指示2026-11-26「掴んだ時、任意に投げれるのはやめて」)。投げた向きの先に t・その先に u を置く。
+    for (let i = 0; i < 400 && st().whipSwing?.phase === 'swing'; i++) step(10);
     const sw = st().whipSwing!;
-    const tx = (sw.fromX ?? 0) + 150 - center().x, ty = (sw.fromY ?? 0) - center().y;
-    useGameStore.setState(s => ({ enemies: [...s.enemies, place('zombie', tx, ty, 't'), place('zombie', tx + 60, ty, 'u')] }));
+    const ux = sw.ux ?? 1, uy = sw.uy ?? 0;
+    const tx = (sw.fromX ?? 0) + ux * 150 - center().x, ty = (sw.fromY ?? 0) + uy * 150 - center().y;
+    useGameStore.setState(s => ({ enemies: [...s.enemies, place('zombie', tx, ty, 't'), place('zombie', tx + ux * 60, ty + uy * 60, 'u')] }));
     for (let i = 0; i < 100 && st().whipSwing; i++) step(10);
     const landed = { ...ecOf('t') };
     const tpend = en('t').punisherPendingAt;
@@ -256,17 +257,18 @@ describe('③パニッシャーを鞭に効かせる', () => {
       setSkills(lv);
       useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', { stunUntil: 1e12 })] });
       swing();
-      run(200);
-      st().tryFlickFollowup(0, 1); // 下へ投げ、最大距離で着弾させる(敵には当てない)
+      // 最長で自動で投げ(社長指示2026-11-26)、最大距離で着弾させる(周りに敵が居ないので当てない)
+      for (let i = 0; i < 400 && st().whipSwing?.phase === 'swing'; i++) step(10);
       let land: { x: number; y: number } | null = null;
       for (let i = 0; i < 200 && st().whipSwing; i++) {
         const sw = st().whipSwing!;
         if (!land && sw.phase === 'thrown') {
-          // 着く所の右に b、その右に w を置く(爆発で b が右へ飛び w に当たる)
+          // 着く所の横(投げの向きに直交=飛ぶ敵の通り道の外)に b、その先に w を置く(爆発で b が外へ飛び w に当たる)
           const ex = (sw.fromX ?? 0) + (sw.ux ?? 0) * (sw.maxDist ?? 0), ey = (sw.fromY ?? 0) + (sw.uy ?? 0) * (sw.maxDist ?? 0);
           land = { x: ex, y: ey };
           const c = center();
-          useGameStore.setState(s => ({ enemies: [...s.enemies, place('zombie', ex - c.x + 46, ey - c.y, 'b'), place('zombie', ex - c.x + 96, ey - c.y, 'w')] }));
+          const nx = -(sw.uy ?? 0), ny = sw.ux ?? 1;
+          useGameStore.setState(s => ({ enemies: [...s.enemies, place('zombie', ex - c.x + nx * 46, ey - c.y + ny * 46, 'b'), place('zombie', ex - c.x + nx * 96, ey - c.y + ny * 96, 'w')] }));
         }
         step(10);
       }

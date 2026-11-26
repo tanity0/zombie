@@ -48,8 +48,8 @@ const WRITE_SITES: readonly WriteSite[] = [
     field: 'counterWindowEnd', where: '対人体勢の紫入り(playerPvpChipPatch)', stamped: false,
     why: '★SAME_ARENA §9: 紫に入った瞬間、開いている窓を破棄(0へ)=閉じる側・振っていない',
   },
-  // ★鞭の振り回し中の近接=投げ+カウンター窓(research/WHIP_FOLLOWUP.md §8 末尾・throwWhipSwingByMelee)。近接の入力そのもの=打刻する。
-  { field: 'counterWindowEnd', where: '鞭の振り回し中の近接=投げ+カウンター窓(throwWhipSwingByMelee)', stamped: true },
+  // (旧: 鞭の振り回し中の近接=投げ+カウンター窓(throwWhipSwingByMelee)。社長指示2026-11-26「掴んだ時、任意に投げれるのはやめて」で
+  //  振り回し中の近接は何もしない=フィールドを書く場所が無くなったので台帳から外した。)
   // ★縮地(SKILL_BUILD_REDESIGN.md §32・2026-10-01): 窓の中の振り=ワープ斬撃の受付。斬撃は直後に
   // triggerCounter(押した時刻)で解決するので、**打刻もそちらで1回だけ**(前隙の起点と同じ形)。
   // ★格闘(research/BRAWLER.md §8-5): 構え(上)はカウンター窓をこの1秒に張る。窓を張るだけで振りではない

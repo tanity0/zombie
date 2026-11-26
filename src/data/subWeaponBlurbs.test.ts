@@ -8,7 +8,7 @@ describe('subWeaponBlurb(機器ごとの一言)', () => {
     expect(subWeaponBlurb('wire-anchor', 'touch')).toBe('フリックした方向へワイヤーを撃ち、刺さった所へ無敵で飛ぶ。');
   });
   it('PC・パッドの文にはスマホの操作の言葉が無い', () => {
-    for (const k of ['katana', 'wire-anchor', 'whip'] as const) {
+    for (const k of ['katana', 'wire-anchor'] as const) { // 鞭は投げの操作を書かない=どの機器でも同じ文(下の鞭のテスト)
       for (const d of ['mouse', 'pad'] as const) {
         const t = subWeaponBlurb(k, d);
         expect(t).not.toMatch(/フリック|指|タップ/);
@@ -33,14 +33,13 @@ describe('subWeaponBlurb(機器ごとの一言)', () => {
     expect(subWeaponBlurb('dog', 'mouse')).toBe(subWeaponBlurb('dog'));
     expect(subWeaponBlurb('dog', 'pad')).toBe(subWeaponBlurb('dog'));
   });
-  it('鞭(research/WHIP_FOLLOWUP.md §8): 絡め取る・振り回す・投げる・ぶつかった所で爆発する・竜巻を言う。機器ごとに投げの操作の言葉を変える。数値を書かない・句点で終える', () => {
+  it('鞭(research/WHIP_FOLLOWUP.md §8): 気絶・絡め取る・振り回す・投げつける・ぶつかった所で爆発する・竜巻を言う。投げは自動だけ=投げの操作を書かない・どの機器でも同じ文。数値を書かない・句点で終える', () => {
     const touch = subWeaponBlurb('whip');
-    for (const w of ['絡め取', '振り回', '投げ', 'ぶつかった所で爆発する', '竜巻']) expect(touch).toContain(w);
-    expect(touch).toContain('指を離すか、はじいて投げれば');
-    expect(subWeaponBlurb('whip', 'mouse')).toContain('もう一度振るか右クリックで投げれば');
-    expect(subWeaponBlurb('whip', 'mouse')).not.toMatch(/フリック|指|タップ/);
-    expect(subWeaponBlurb('whip', 'pad', 'xbox')).toContain('もう一度振るか B で投げれば');
-    expect(subWeaponBlurb('whip', 'pad')).not.toMatch(/クリック|ボタン|指|\{/);
+    for (const w of ['気絶', '絡め取', '振り回', '投げつけ', 'ぶつかった所で爆発する', '竜巻']) expect(touch).toContain(w);
+    // 社長指示2026-11-26「掴んだ時、任意に投げれるのはやめて」: 任意の投げの操作(指を離す・はじく・もう一度振る・右クリック・ボタン)を書かない。
+    expect(touch).not.toMatch(/投げれば|指を離|はじ|もう一度振|クリック|\{/);
+    expect(subWeaponBlurb('whip', 'mouse')).toBe(touch);
+    expect(subWeaponBlurb('whip', 'pad', 'xbox')).toBe(touch);
     for (const d of ['touch', 'mouse', 'pad'] as const) {
       const t = subWeaponBlurb('whip', d);
       expect(t).not.toMatch(/[0-9０-９]/);

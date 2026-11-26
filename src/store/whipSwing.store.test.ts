@@ -1,6 +1,6 @@
 // 鞭の作り直し(research/WHIP_FOLLOWUP.md §8): 当てる→絡め取る→回す→投げる→着弾の爆発、をストアを動かして固める。ボス級は掴まない。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useGameStore } from './gameStore';
+import { useGameStore, WHIP_GRAB_HITSTOP_MS } from './gameStore';
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { WHIP_SWING_ACCEL_MS, WHIP_SWING_MAX_MS, WHIP_SWING_PERIOD_MS } from '../utils/whipSwing';
@@ -78,13 +78,15 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
     useGameStore.setState(s => ({ enemies: s.enemies.map(e => (e.id === 'o' ? { ...e, x: c.x + Math.cos(angAt()) * sw0.radius - e.width / 2, y: c.y + Math.sin(angAt()) * sw0.radius - e.height / 2, knockbackVx: 0, knockbackVy: 0, knockbackUntil: now } : e)) }));
     step(10);
     expect(en('o').health).toBe(hpO1);
-    // 振り回し中は鞭の通常の振りは出ない(フリック=その向きへ投げる)
+    // 振り回し中のフリックは受け取って何もしない(社長指示2026-11-26「掴んだ時、任意に投げれるのはやめて」)。投げは最長で自動の投げだけ。
     useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.id !== 'o') }));
     expect(st().tryFlickFollowup(1, 0)).toBe(true);
+    expect(st().whipSwing!.phase).toBe('swing');
+    for (let i = 0; i < 400 && st().whipSwing?.phase === 'swing'; i++) step(10);
     const sw1 = st().whipSwing!;
     expect(sw1.phase).toBe('thrown');
     // 飛ぶ先に敵を置く(投げた敵が触れたら着弾)
-    const tx = (sw1.fromX ?? 0) + 160 - center().x, ty = (sw1.fromY ?? 0) - center().y;
+    const tx = (sw1.fromX ?? 0) + (sw1.ux ?? 1) * 160 - center().x, ty = (sw1.fromY ?? 0) + (sw1.uy ?? 0) * 160 - center().y;
     useGameStore.setState(s => ({ enemies: [...s.enemies, place('zombie', tx, ty, 't')] }));
     const hpZ = en('z').health, hpT = en('t').health;
     let landed = false;
@@ -114,48 +116,47 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
     expect(sw === null || sw.phase === 'thrown').toBe(true);
   });
 
-  it('振り回し中の近接=今の向きへ投げ+カウンター窓', () => {
+  it('振り回し中の近接は何もしない(投げない・カウンター窓も開かない・通常の振りも出ない)=社長指示2026-11-26「掴んだ時、任意に投げれるのはやめて」', () => {
     useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)] });
     swing();
     run(200);
-    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 0, y: 1 }, counterCooldownEnd: 0, whipCounterReadyAt: 0, counterWindowEnd: 0 } }));
-    st().triggerCounter();
-    const sw = st().whipSwing!;
-    expect(sw.phase).toBe('thrown');
-    expect(sw.uy).toBeCloseTo(1);
-    expect(st().player.counterWindowEnd).toBeGreaterThan(now);
-  });
-
-  it('振り回し中の近接: 鞭のカウンターのクールダウン中は投げるだけ(窓は開かない)', () => {
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)] });
-    swing();
-    run(200);
-    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 0, y: 1 }, counterCooldownEnd: 0, whipCounterReadyAt: now + 500, counterWindowEnd: 0 } }));
-    st().triggerCounter();
-    expect(st().whipSwing!.phase).toBe('thrown');
+    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 0, y: 1 }, counterCooldownEnd: 0, whipCounterReadyAt: 0, counterWindowEnd: 0, pendingSwingAt: 0 } }));
+    expect(st().triggerCounter().swung).toBe(false); // PC/ボットの直呼び
+    expect(st().whipSwing!.phase).toBe('swing');
+    expect(st().beginMeleeSwing()).toBe(false); // タッチ(指を離す)
+    expect(st().whipSwing!.phase).toBe('swing');
     expect(st().player.counterWindowEnd).toBe(0);
+    expect(st().player.pendingSwingAt).toBe(0);
+    // 最長で自動で投げる
+    run(WHIP_SWING_MAX_MS);
+    const sw = st().whipSwing;
+    expect(sw === null || sw.phase === 'thrown').toBe(true);
   });
 
-  it('技の行(大車輪)はプレイヤーの入力で投げた着弾だけ。自動の投げでは出ない。投げた敵の回りは振り回しの向きを引き継ぐ', () => {
+  it('掴んだ瞬間は少し長めに止める(止め=WHIP_GRAB_HITSTOP_MS)・寄りの起点(壁時計)と寄り先を持つ', () => {
+    expect(WHIP_GRAB_HITSTOP_MS).toBeGreaterThanOrEqual(180);
+    expect(WHIP_GRAB_HITSTOP_MS).toBeLessThanOrEqual(220);
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)], hitstopUntil: 0 });
+    const ec = ecOf('z');
+    swing();
+    expect(st().whipSwing?.phase).toBe('swing');
+    expect(st().hitstopUntil - now).toBe(WHIP_GRAB_HITSTOP_MS);
+    expect(st().whipSwing!.grabAt).toBe(now);
+    expect(st().whipSwing!.grabX).toBeCloseTo(ec.x);
+    expect(st().whipSwing!.grabY).toBeCloseTo(ec.y);
+  });
+
+  it('技の行(大車輪)は自動の投げでは出ない。投げた敵の回りは振り回しの向きを引き継ぐ', () => {
     const techRows = () => st().skillProcFeed.filter(r => r.key === 'tech:whipslam').length;
     const landNow = () => { for (let i = 0; i < 200 && st().whipSwing; i++) step(10); };
-    // 入力(フリック)で投げる
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)], skillProcFeed: [] });
-    swing();
-    run(200);
-    const dir = st().whipSwing!.dir;
-    expect(st().tryFlickFollowup(0, 1)).toBe(true);
-    expect(en('z').brThrowSpin?.dir).toBe(dir);
-    landNow();
-    expect(st().whipSwing).toBeNull();
-    expect(techRows()).toBe(1);
-    // 自動で投げる
     useGameStore.setState({ enemies: [place('zombie', -100, 0, 'y', STUN)], skillProcFeed: [] });
-    run(1000);
     useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: -1, y: 0 } } }));
     swing();
     expect(st().whipSwing?.enemyId).toBe('y');
-    run(WHIP_SWING_MAX_MS + 50);
+    const dir = st().whipSwing!.dir;
+    for (let i = 0; i < 400 && st().whipSwing?.phase === 'swing'; i++) step(10);
+    expect(st().whipSwing?.phase).toBe('thrown');
+    expect(en('y').brThrowSpin?.dir).toBe(dir);
     landNow();
     expect(st().whipSwing).toBeNull();
     expect(techRows()).toBe(0);
@@ -193,16 +194,8 @@ describe('振り回し→投げ→放すの継ぎ目(1フレームごとの位�
     return out;
   };
   const steps = (p: { x: number; y: number }[]) => p.slice(1).map((q, i) => Math.hypot(q.x - p[i].x, q.y - p[i].y));
-  it('投げたフレームで止まらない(入力でも自動でも、放した次のフレームから直進の速さで進む)', () => {
+  it('投げたフレームで止まらない(自動の投げで、放した次のフレームから直進の速さで進む)', () => {
     useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)] });
-    swing();
-    const p = track(40, f => { if (f === 24) st().tryFlickFollowup(1, 0); });
-    const s = steps(p);
-    const i = p.findIndex(q => q.phase === 'thrown');
-    expect(i).toBeGreaterThan(0);
-    expect(s[i - 1]).toBeGreaterThan(0.7 * s[i - 2]); // 放したフレームの1歩が0にならない
-    // 自動の投げ
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)], whipSwing: null });
     swing();
     const p2 = track(Math.ceil(WHIP_SWING_MAX_MS / F) + 10);
     const s2 = steps(p2);

@@ -6,6 +6,7 @@ import {
   WHIP_FLY_DROP_MS, WHIP_FLY_LIFT_MIN_PX, WHIP_FLY_LIFT_MAX_PX,
   whipTetherEntry, WHIP_TETHER_ENTRY_MS, whipTetherGlowK, whipFlyVisualTimeAt, whipThrowStreak, WHIP_THROW_STREAK_OUT_MS,
   whipFlyVisualSpeed, whipFlyReleaseBlend, whipFlyViewOffset, whipTetherRetractTip, whipTrailFade, WHIP_TRAIL_FADE_MS, WHIP_FLY_BLEND_TAU_MS,
+  whipGrabZoomAt, WHIP_GRAB_ZOOM_MAG, WHIP_GRAB_ZOOM_IN_MS, WHIP_GRAB_ZOOM_HOLD_MS, WHIP_GRAB_ZOOM_TOTAL_MS, WHIP_SNARE_FX_ENABLED,
 } from './whipSwingMotion';
 import { whipThrowDurationMs, whipThrowDist } from './whipSwing';
 
@@ -232,4 +233,48 @@ describe('鞭の継ぎ目の慣性(位置と速さが続く)', () => {
     expect(whipTrailFade(WHIP_TRAIL_FADE_MS)).toBeNull();
     expect(WHIP_TRAIL_FADE_MS).toBeGreaterThanOrEqual(80);
   });
+});
+
+// ★社長指示2026-11-26「絵はもっと鞭を曲げてしならせてから伸ばして」: 曲がり(隣り合う区間の向きの差の合計)が溜め〜打ち出しで大きく、パチンで0。
+describe('しなり(曲げてから伸ばす)', () => {
+  const bend = (a: number[]) => a.slice(1).reduce((m, x, i) => m + Math.abs(x - a[i]), 0);
+  for (const lag of [-1, 0, 1]) {
+    it(`lag=${lag}: 溜めと打ち出しの途中は大きく曲がり、パチン(前隙の終わり)でまっすぐ・前後で跳ばない`, () => {
+      expect(bend(whipRopeShape(W * 0.5, W, undefined, 1, lag).angles)).toBeGreaterThan(0.8);
+      expect(bend(whipRopeShape(W * 0.9, W, undefined, 1, lag).angles)).toBeGreaterThan(1.2);
+      const crack = whipRopeShape(W, W, undefined, 1, lag);
+      expect(crack.angles.every(a => a === 0)).toBe(true);
+      // 段の継ぎ目で形が跳ばない(1ms 前後の向きの差が小さい)
+      for (const t of [W * 0.35, W * 0.6, W, W + 90]) {
+        const a = whipRopeShape(t - 0.5, W, undefined, 1, lag).angles, b = whipRopeShape(t + 0.5, W, undefined, 1, lag).angles;
+        expect(Math.max(...a.map((x, i) => Math.abs(x - b[i])))).toBeLessThan(0.15);
+      }
+    });
+  }
+  it('払う段: 打ち出しの途中、先端は払う向きと逆(lag の側)へ遅れる', () => {
+    const a = whipRopeShape(W * 0.95, W, undefined, 1, 1).angles, b = whipRopeShape(W * 0.95, W, undefined, 1, -1).angles;
+    expect(a[a.length - 1]).toBeGreaterThan(b[b.length - 1]);
+  });
+});
+
+describe('掴んだ瞬間の寄り(社長指示2026-11-26「その敵に一瞬少し寄りズーム」)', () => {
+  it('寄る量は1.15〜1.25倍・寄り→止め→戻りの合計0.4〜0.6秒・終わったら0', () => {
+    expect(1 + WHIP_GRAB_ZOOM_MAG).toBeGreaterThanOrEqual(1.15);
+    expect(1 + WHIP_GRAB_ZOOM_MAG).toBeLessThanOrEqual(1.25);
+    expect(WHIP_GRAB_ZOOM_TOTAL_MS).toBeGreaterThanOrEqual(400);
+    expect(WHIP_GRAB_ZOOM_TOTAL_MS).toBeLessThanOrEqual(600);
+    expect(whipGrabZoomAt(-1)).toBe(0);
+    expect(whipGrabZoomAt(0)).toBe(0);
+    expect(whipGrabZoomAt(WHIP_GRAB_ZOOM_IN_MS + WHIP_GRAB_ZOOM_HOLD_MS / 2)).toBe(1);
+    expect(whipGrabZoomAt(WHIP_GRAB_ZOOM_TOTAL_MS)).toBe(0);
+  });
+  it('慣性: 寄り始め・寄り切り・戻り始め・戻り終わりで速さが0に近く、1ms で跳ばない', () => {
+    const v = (t: number) => whipGrabZoomAt(t + 0.5) - whipGrabZoomAt(t - 0.5);
+    for (const t of [0.5, WHIP_GRAB_ZOOM_IN_MS, WHIP_GRAB_ZOOM_IN_MS + WHIP_GRAB_ZOOM_HOLD_MS, WHIP_GRAB_ZOOM_TOTAL_MS - 0.5]) expect(Math.abs(v(t))).toBeLessThan(0.002);
+    for (let t = 1; t < WHIP_GRAB_ZOOM_TOTAL_MS; t += 7) expect(Math.abs(v(t))).toBeLessThan(0.03);
+  });
+});
+
+describe('赤いしなりは一旦出さない(社長指示2026-11-26「赤い斬撃は一旦削除　合ってない」)', () => {
+  it('旗が false', () => { expect(WHIP_SNARE_FX_ENABLED).toBe(false); });
 });

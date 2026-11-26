@@ -330,7 +330,7 @@ import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
 import { planHomingVolley, splitDueHomingShots, homingLiftAllowed, type HomingPendingShot } from '../utils/homingVolley';
 import { isFlickFollowupOpen } from '../utils/flickFollowup';
 import { huntingSequenceAlive, huntingChargeStep } from '../utils/huntingSequence';
-import { whipRopeTotalMs, WHIP_ROPE_FINISH_PULL } from '../utils/whipSwingMotion';
+import { whipRopeTotalMs, WHIP_ROPE_FINISH_PULL, WHIP_SNARE_FX_ENABLED } from '../utils/whipSwingMotion';
 import {
   whipComboNextStage, whipComboCritBonus, whipComboLight, whipComboSweepSign, whipComboTapAction, whipComboQueuedAction,
   whipComboFeel, whipComboPitch, whipComboGapMs, WHIP_COMBO_SWEEP_RAD, whipComboCounterPlan, whipComboCounterCut,
@@ -3120,8 +3120,12 @@ const whipGrabbable = (e: Enemy, gameTime: number): boolean =>
   && (whipLiftable(e) || whipStunnedBossGrabbable(e, gameTime));
 /** ★叩きつけの着地点は、今のズームの可視域の縁からこれだけ内側に体ごと収める(画面のpx)。 */
 const WHIP_OVERHEAD_VIEW_INSET_PX = 16;
-/** ★掴んだ瞬間の止め(ms)と揺れ(長さ ms・強さ)(見え方の監査 B2「掴む瞬間に手応えが無い」)。 */
-const WHIP_GRAB_HITSTOP_MS = 70;
+/**
+ * ★掴んだ瞬間の止め(ms)と揺れ(長さ ms・強さ)(見え方の監査 B2「掴む瞬間に手応えが無い」)。
+ * 止めは社長指示2026-11-26「掴んだ時、少し長めにストップして、その敵に一瞬少し寄りズーム 掴んだ！って感じにしたい」で 70→200(叩き台)。
+ * 寄りは描画だけ(utils/whipSwingMotion の whipGrabZoomAt・掴んだ敵へ寄る=pixiScene)。起点=WhipSwingState.grabAt。
+ */
+export const WHIP_GRAB_HITSTOP_MS = 200;
 const WHIP_GRAB_SHAKE_MS = 140;
 const WHIP_GRAB_SHAKE_MAG = 5;
 /** 振り回しの間、掴んだ敵の固まり(行動の時計・噛みつきを止める=brHoldUntil・壁時計)を毎フレーム継ぎ足す長さ(ms)。 */
@@ -3256,6 +3260,7 @@ const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux:
     a0: r0 > 1 ? Math.atan2(ry, rx) : Math.atan2(uy, ux), r0, dir: whipSwingSpinDir(ux, uy, rx, ry),
     radius, reach, lastHits: {}, cx: ec.x, cy: ec.y, px: pc.x, py: pc.y, rNow: r0,
     at: st.gameTime, vx: 0, vy: 0, shrink: 0, shrinkV: 0,
+    grabAt: nowMs, grabX: ec.x, grabY: ec.y, // 掴んだ瞬間の寄り(描画だけ)の起点と寄り先
   };
   // ★ボス区分(気絶中)は振り回さず、掴んだ瞬間から頭上を越える弧で反対側へ叩きつける(社長指示2026-11-26「ぐるぐる回ってると絵面がよくないので」)。
   //   着地点=掴んだ点をプレイヤーの中心について反対側へ(距離は同じ・体の大きさの下限)。帯の外・壁・今のズームの可視域の外なら手前へ寄せ、
@@ -3556,24 +3561,6 @@ const whipAutoThrowDir = (get: () => GameState, sw: WhipSwingState): { x: number
  */
 export const WHIP_COUNTER_COOLDOWN_MS = COUNTER_WINDOW + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS;
 const whipCounterCooldownMs = (p: Player): number => WHIP_COUNTER_COOLDOWN_MS * meleeCooldownMult(p);
-/** 振り回し中の近接入力=投げ+カウンター(§8 末尾・社長裁定2026-11-25): lastDirection へ投げ、鞭のカウンターのクールダウンが明けていればカウンター窓を開く(投げ=1回で終わる連撃=投げた時点からクールダウン)。 */
-const throwWhipSwingByMelee = (get: () => GameState, set: WhipSet, now: number): void => {
-  const p = get().player;
-  const ld = p.lastDirection ?? { x: 1, y: 0 };
-  startWhipThrow(get, set, ld.x, ld.y, true);
-  if (now < (p.whipCounterReadyAt ?? 0)) return; // 窓は鞭のカウンターのクールダウンが明けている時だけ
-  set(state => ({
-    player: {
-      ...state.player,
-      counterWindowStart: now,
-      counterWindowEnd: now + counterAcceptMsOf(state.player),
-      whipCounterReadyAt: now + whipCounterCooldownMs(state.player),
-      whipComboCounter: false,
-    },
-  }));
-  get().commitMeleeSwing();
-  get().noteMeleeSwingPressedAt(now);
-};
 /**
  * ★振り回している敵(盾)の体に触れた敵の弾をかき消す(社長指示2026-11-26「振り回してる敵で弾をかき消せる様にして(簡単なら、その弾でダメージ与えれるといい)」)。
  * 判定=utils/whipSwing の whipShieldBlocksShot(弾の中心が体の箱の中・紫は消さない)。消した所に小さな弾け・1フレーム1回の小さな音。
@@ -14265,8 +14252,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★格闘(research/BRAWLER.md §2): 指離し=通常攻撃の5段コンボ。カウンター窓・CD・前隙・踏み込み・鞭のしなりは出さない。
     // 縮地・スラッシャーは格闘中は効かない(近接の入力を横取りしてコンボと衝突するため・§7-2)=この手前で抜ける。
     if (isBrawlerMode(p)) return get().brawlerPress();
-    // ★鞭の振り回し中の近接=今の向きへ投げ+カウンター窓(research/WHIP_FOLLOWUP.md §8 末尾・社長裁定2026-11-25)。鞭の通常の振りは出ない(手が塞がっている)。
-    if (get().whipSwing?.phase === 'swing') { throwWhipSwingByMelee(get, set, now); return true; }
+    // ★鞭の振り回し中の近接は何もしない(社長指示2026-11-26「掴んだ時、任意に投げれるのはやめて」=投げは最長で自動の投げだけ)。
+    //   鞭の通常の振りも出ない(手が塞がっている)・カウンター窓も開かない。旧(社長裁定2026-11-25)=今の向きへ投げ+カウンター窓。
+    if (get().whipSwing?.phase === 'swing') return false;
     if (get().whipSwing?.phase === 'overhead') return false; // ★ボスの叩きつけの弧の間は手が塞がっている(投げも通常の振りも出ない・弧が終わるまで待つ)
     // ★縮地(SKILL_BUILD_REDESIGN.md §32): 窓の中の振りはワープ斬撃の予約へ(飛べる相手が居なければ下の通常経路)。
     // スラッシャーの追撃より**先**に見る(ワープを優先し、チェーンは破棄)。
@@ -14349,7 +14337,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const ld = p.lastDirection ?? { x: 1, y: 0 }; // 未設定=右向き(他の鞭経路と同じ既定)
       const lmag = Math.max(0.001, Math.hypot(ld.x, ld.y));
       const aim0 = Math.atan2(ld.y / lmag, ld.x / lmag);
-      get().spawnEffect({
+      // ★赤いしなりは一旦出さない(社長指示2026-11-26「赤い斬撃は一旦削除 合ってない」・戻す=WHIP_SNARE_FX_ENABLED を true)。
+      if (WHIP_SNARE_FX_ENABLED) get().spawnEffect({
         kind: 'whipsnare',
         id: `fx-whipsnare-${now}`,
         fromX: p.x + p.width / 2, fromY: p.y + p.height / 2,
@@ -14431,11 +14420,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       brawlerNoteFlowHits(set, r0.hits ?? 0); // 被弾反撃の当たりも「N HIT」へ(倒した1発の数を持ち越さない・§23)
       return r0;
     }
-    // ★鞭の振り回し中の近接(PC/ボットの直呼び)=今の向きへ投げ+カウンター窓(research/WHIP_FOLLOWUP.md §8 末尾)。タッチは beginMeleeSwing が同じ1本を通る。
-    if (!ret && swingStartAt === undefined && get().whipSwing?.phase === 'swing') {
-      throwWhipSwingByMelee(get, set, now);
-      return { swung: true, hit: false, finish: false, killed: 0 };
-    }
+    // ★鞭の振り回し中の近接(PC/ボットの直呼び)も何もしない(社長指示2026-11-26「掴んだ時、任意に投げれるのはやめて」・タッチは beginMeleeSwing が同じ所で止める)。
+    if (!ret && swingStartAt === undefined && get().whipSwing?.phase === 'swing') return { swung: false, hit: false, finish: false, killed: 0 };
     // ★ボスの叩きつけの弧の間(PC/ボットの直呼び)も何も出さない(タッチは beginMeleeSwing が同じ所で止める)。
     if (!ret && swingStartAt === undefined && get().whipSwing?.phase === 'overhead') return { swung: false, hit: false, finish: false, killed: 0 };
     // ★縮地(§32): PC/ボットの直呼び(前隙なし)もタッチと同じくワープ斬撃の予約へ。斬撃と音は
@@ -17895,7 +17881,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   // ★鞭の振り回し中のフリック=その向きへ投げる(research/WHIP_FOLLOWUP.md §8-3・§8 末尾=この並びの中で最優先)。それ以外は刀の燕返し。
-  tryFlickFollowup: (dirX, dirY) => (get().whipSwing?.phase === 'swing' ? startWhipThrow(get, set, dirX, dirY, true) : get().tryTsubame(dirX, dirY)),
+  // ★鞭の振り回し中のフリックは受け取って何もしない(社長指示2026-11-26「掴んだ時、任意に投げれるのはやめて」=投げは最長で自動の投げだけ)。
+  //   受け取る(true)=ほかのフリック(ワイヤー・一閃)へ流さない(手が塞がっている間は近接の入力と同じく何も出ない)。旧=その向きへ投げる。
+  tryFlickFollowup: (dirX, dirY) => (get().whipSwing?.phase === 'swing' ? true : get().tryTsubame(dirX, dirY)),
 
   flickFollowupOpen: () => get().whipSwing?.phase === 'swing' || isFlickFollowupOpen(get().tsubameWindow, Date.now()),
 

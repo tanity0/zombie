@@ -1,6 +1,6 @@
 // 鞭の3連撃のカウンター: 1段目だけ・クールダウンは連撃の終わりから(社長指示2026-11-26「カウンターは一撃目のみで、クールダウンは連撃終わりからです」)。
 import { describe, it, expect } from 'vitest';
-import { whipComboCounterPlan, whipComboCounterCut, whipComboEndAt, WHIP_COMBO_RESET_MS, WHIP_COMBO_INTERVAL_MS } from './whipCombo';
+import { whipComboCounterPlan, whipComboCounterCut, whipComboEndAt, WHIP_COMBO_RESET_MS, WHIP_COMBO_INTERVAL_MS, WHIP_COMBO_QUEUE_MAX_MS } from './whipCombo';
 
 const CD = 1040;
 const I = WHIP_COMBO_INTERVAL_MS;
@@ -35,5 +35,13 @@ describe('whipComboCounterPlan', () => {
   it('連撃が切れた(掴んだ等)時は、その時点から(窓を開いた連撃だけ)', () => {
     expect(whipComboCounterCut(5000, 9999, true, CD)).toEqual({ comboCounter: false, readyAt: 5000 + CD });
     expect(whipComboCounterCut(5000, 1234, false, CD)).toEqual({ comboCounter: false, readyAt: 1234 });
+  });
+});
+
+describe('段の間隔(社長指示2026-11-26「鞭の連撃、0.5秒間隔にして」)', () => {
+  it('間隔は0.5秒。1段目へ戻る時間・予約の寿命は間隔より長い(間隔どおりに押せば次の段が出る)', () => {
+    expect(WHIP_COMBO_INTERVAL_MS).toBe(500);
+    expect(WHIP_COMBO_RESET_MS).toBeGreaterThan(WHIP_COMBO_INTERVAL_MS);
+    expect(WHIP_COMBO_QUEUE_MAX_MS).toBeGreaterThan(WHIP_COMBO_INTERVAL_MS);
   });
 });
