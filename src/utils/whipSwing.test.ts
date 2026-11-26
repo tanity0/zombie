@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   pickWhipGrabTarget, whipSwingSpinDir, whipSwingMaxAngVel, whipSwingAngVel, whipSwingTurned, whipSwingRadiusAt, whipSwingHitDue,
-  boxesOverlap, whipSwingClampRadius, whipSwingMaxMs, whipSwingAutoThrowDue, whipSwingTangent, pickWhipAutoThrowDir,
+  boxesOverlap, whipShieldBlocksShot, whipSwingClampRadius, whipSwingMaxMs, whipSwingAutoThrowDue, whipSwingTangent, pickWhipAutoThrowDir,
   whipThrowDecel, whipThrowDurationMs, whipThrowDist, whipThrowSpeed, whipThrowStartSpeed, whipThrowStep, whipSwingReleaseReason,
   whipBlastFalloff, whipThrowBlastPlan, easeStartStop, criticalSpringStep, whipDropDist, WHIP_DROP_MS,
   WHIP_SWING_ACCEL_MS, WHIP_SWING_PERIOD_MS, WHIP_SWING_MAX_MS, WHIP_SWING_SLASHER_MS_PER_LV, WHIP_THROW_MIN_SPEED, WHIP_THROW_END_SPEED_FRAC, WHIP_SWING_TELEPORT_PX,
@@ -219,5 +219,21 @@ describe('振り回しの継ぎ目の慣性', () => {
     expect(vel(d, 0.5) * 1000).toBeCloseTo(v0, -1);
     expect(vel(d, WHIP_DROP_MS - 0.5) * 1000).toBeLessThan(20);
     expect(d(WHIP_DROP_MS + 100)).toBeCloseTo(d(WHIP_DROP_MS), 9);
+  });
+});
+
+describe('振り回している敵を盾に敵の弾をかき消す', () => {
+  const body = { x: 100, y: 100, width: 40, height: 50 };
+  const shot = (cx: number, cy: number, extra: Record<string, unknown> = {}) => ({ x: cx - 4, y: cy - 4, width: 8, height: 8, hostile: true, ...extra });
+  it('弾の中心が体の箱の中なら消す・外なら消さない', () => {
+    expect(whipShieldBlocksShot(shot(120, 120), body)).toBe(true);
+    expect(whipShieldBlocksShot(shot(100, 150), body)).toBe(true); // 縁
+    expect(whipShieldBlocksShot(shot(98, 120), body)).toBe(false); // 箱には掛かるが中心が外
+    expect(whipShieldBlocksShot(shot(200, 120), body)).toBe(false);
+  });
+  it('紫(カウンターできない弾)・プレイヤー側の弾・敵の手榴弾は消さない', () => {
+    expect(whipShieldBlocksShot(shot(120, 120, { noCounter: true }), body)).toBe(false);
+    expect(whipShieldBlocksShot(shot(120, 120, { hostile: false }), body)).toBe(false);
+    expect(whipShieldBlocksShot(shot(120, 120, { weaponType: 'grenade' }), body)).toBe(false);
   });
 });

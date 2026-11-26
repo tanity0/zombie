@@ -322,7 +322,7 @@ import {
   whipOverheadProgress, whipOverheadGround, whipOverheadLanding, WHIP_OVERHEAD_LAND_TURNS, WHIP_OVERHEAD_MS, WHIP_OVERHEAD_RISE_FRAC, WHIP_THROW_MIN_SPEED,
   WHIP_OVERHEAD_HITSTOP_MS, WHIP_OVERHEAD_SHAKE_MS, WHIP_OVERHEAD_SHAKE_MAG,
   WHIP_SWING_SHRINK_LOOKAHEAD_MS, WHIP_SWING_SHRINK_LOOKAHEAD_STEPS, WHIP_DROP_MIN_SPEED, WHIP_DROP_MS,
-  WHIP_SWING_RADIUS_MULT, WHIP_SWING_MIN_RADIUS_FRAC, WHIP_THROW_DIST_MULT, WHIP_THROW_DAMAGE_MULT, WHIP_THROW_HITSTOP_MS, type WhipSwingState,
+  WHIP_SWING_RADIUS_MULT, WHIP_SWING_MIN_RADIUS_FRAC, WHIP_THROW_DIST_MULT, WHIP_THROW_DAMAGE_MULT, WHIP_THROW_HITSTOP_MS, type WhipSwingState, whipShieldBlocksShot, type Box as WhipBox,
 } from '../utils/whipSwing';
 import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
 import { planHomingVolley, splitDueHomingShots, homingLiftAllowed, type HomingPendingShot } from '../utils/homingVolley';
@@ -331,7 +331,7 @@ import { huntingSequenceAlive, huntingChargeStep } from '../utils/huntingSequenc
 import { whipRopeTotalMs, WHIP_ROPE_FINISH_PULL } from '../utils/whipSwingMotion';
 import {
   whipComboNextStage, whipComboCritBonus, whipComboLight, whipComboSweepSign, whipComboTapAction, whipComboQueuedAction,
-  whipComboFeel, whipComboPitch, WHIP_COMBO_INTERVAL_MS, WHIP_COMBO_SWEEP_RAD,
+  whipComboFeel, whipComboPitch, WHIP_COMBO_INTERVAL_MS, WHIP_COMBO_SWEEP_RAD, whipComboCounterPlan, whipComboCounterCut,
   WHIP_COMBO_CRIT_STOP_MS, WHIP_COMBO_CRIT_SHAKE_MS, WHIP_COMBO_CRIT_SHAKE_MAG,
 } from '../utils/whipCombo';
 import {
@@ -3285,7 +3285,9 @@ const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux:
   // 掴んだ手応え(派手さの絵=判定なし): 敵の所で白い弾けと細い輪・低いパチン。
   // ★掴んだ瞬間の手応え(見え方の監査 B2): 短い止めと揺れ・パチンの光(既存の光と輪を一段大きく)。
   // 段の数は掴み・投げをまたがない(次の振りは1段目から・見え方の監査 B8)。
-  set(state => ({ player: { ...state.player, whipComboStage: 0, whipComboAt: 0 } }));
+  // 連撃もここで終わる=1段目でカウンター窓を開いた連撃なら、掴んだ振りの時点からカウンターのクールダウン。
+  set(state => ({ player: { ...state.player, whipComboStage: 0, whipComboAt: 0,
+    ...whipComboCounterCut(state.player.whipComboAt || nowMs, state.player.whipCounterReadyAt ?? 0, !!state.player.whipComboCounter, whipCounterCooldownMs(state.player)) } }));
   get().spawnBurst(ec.x, ec.y, '#e0f2fe', 12);
   get().spawnRing(ec.x, ec.y, 4, 34, 'rgba(186,230,253,0.95)', 2, 200, true);
   get().spawnRing(ec.x, ec.y, 8, 62, 'rgba(240,249,255,0.9)', 3, 240, true);
@@ -3541,22 +3543,43 @@ const whipAutoThrowDir = (get: () => GameState, sw: WhipSwingState): { x: number
   return pickWhipAutoThrowDir(sw.cx, sw.cy, targets, sw.enemyId, maxDist,
     (x, y) => walls.length === 0 || !segmentBlocked(sw.cx, sw.cy, x, y, walls), whipSwingTangent(ang, sw.dir));
 };
-/** 振り回し中の近接入力=投げ+カウンター(§8 末尾・社長裁定2026-11-25): lastDirection へ投げ、近接の待ち時間が明けていれば今どおりカウンター窓を開く。 */
+/**
+ * ★鞭のカウンターのクールダウン(ms・近接CDの短縮を掛ける前)。旧(3連撃の前)の鞭の1振りの周期=窓+CD+描画の増分(約1.04秒)と同じ長さ。
+ * 起点は連撃の終わり(utils/whipCombo の whipComboCounterPlan・社長指示2026-11-26「カウンターは一撃目のみで、クールダウンは連撃終わりからです」)。
+ */
+export const WHIP_COUNTER_COOLDOWN_MS = COUNTER_WINDOW + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS;
+const whipCounterCooldownMs = (p: Player): number => WHIP_COUNTER_COOLDOWN_MS * meleeCooldownMult(p);
+/** 振り回し中の近接入力=投げ+カウンター(§8 末尾・社長裁定2026-11-25): lastDirection へ投げ、鞭のカウンターのクールダウンが明けていればカウンター窓を開く(投げ=1回で終わる連撃=投げた時点からクールダウン)。 */
 const throwWhipSwingByMelee = (get: () => GameState, set: WhipSet, now: number): void => {
   const p = get().player;
   const ld = p.lastDirection ?? { x: 1, y: 0 };
   startWhipThrow(get, set, ld.x, ld.y, true);
-  if (now < p.counterCooldownEnd) return; // 窓は待ち時間が明けている時だけ(今の近接と同じ)
+  if (now < (p.whipCounterReadyAt ?? 0)) return; // 窓は鞭のカウンターのクールダウンが明けている時だけ
   set(state => ({
     player: {
       ...state.player,
       counterWindowStart: now,
       counterWindowEnd: now + counterAcceptMsOf(state.player),
-      counterCooldownEnd: now + (COUNTER_WINDOW + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS) * meleeCooldownMult(state.player),
+      whipCounterReadyAt: now + whipCounterCooldownMs(state.player),
+      whipComboCounter: false,
     },
   }));
   get().commitMeleeSwing();
   get().noteMeleeSwingPressedAt(now);
+};
+/**
+ * ★振り回している敵(盾)の体に触れた敵の弾をかき消す(社長指示2026-11-26「振り回してる敵で弾をかき消せる様にして(簡単なら、その弾でダメージ与えれるといい)」)。
+ * 判定=utils/whipSwing の whipShieldBlocksShot(弾の中心が体の箱の中・紫は消さない)。消した所に小さな弾け・1フレーム1回の小さな音。
+ * 盾の敵へのダメージは入れない: 掴まれている敵は継続(dot)以外の当たりを素通りする作り(§8-7「着弾の爆発で受ける」=damageEnemy の whipHeld の門)。
+ * 負荷=振り回し/叩きつけの間だけ、弾の配列を1回なめる。
+ */
+const whipShieldEraseShots = (get: () => GameState, set: WhipSet, body: WhipBox): void => {
+  const gone = get().projectiles.filter(pr => whipShieldBlocksShot(pr, body));
+  if (gone.length === 0) return;
+  const ids = new Set(gone.map(pr => pr.id));
+  set(state => ({ projectiles: state.projectiles.filter(pr => !ids.has(pr.id)) }));
+  for (const pr of gone) get().spawnBurst(pr.x + pr.width / 2, pr.y + pr.height / 2, '#e0f2fe', 5);
+  brawlerSfx('whip-hit', 0.4, 1.55, 90);
 };
 /**
  * ★ボスの叩きつけ(overhead)の1フレーム(社長指示2026-11-26)。地面の上の位置=弧の式(whipOverheadGround)・高さは描画だけ(地面の y のまま=地平線フェード・減光・遠近・帯の事故を起こさない)。
@@ -3604,6 +3627,8 @@ const tickWhipOverhead = (get: () => GameState, set: WhipSet, sw: WhipSwingState
       ...en, x: g.x - e.width / 2, y: g.y - e.height / 2, vx: 0, vy: 0, knockbackVx: 0, knockbackVy: 0, brHoldUntil: Math.max(en.brHoldUntil ?? 0, nowMs + WHIP_HOLD_REFRESH_MS),
     })),
   }));
+  // 弧の間に体が通る所の敵の弾をかき消す(振り回しと同じ1本)。
+  whipShieldEraseShots(get, set, { x: g.x - e.width / 2, y: g.y - e.height / 2, width: e.width, height: e.height });
   return { killed: 0 };
 };
 /**
@@ -3679,6 +3704,8 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
         ...en, x: pos.x, y: pos.y, vx: 0, vy: 0, knockbackVx: 0, knockbackVy: 0, brHoldUntil: Math.max(en.brHoldUntil ?? 0, nowMs + WHIP_HOLD_REFRESH_MS),
       })),
     }));
+    // 盾: 振り回している敵の体に触れた敵の弾をかき消す。
+    whipShieldEraseShots(get, set, { x: pos.x, y: pos.y, width: e.width, height: e.height });
     let hits = 0, killed = 0;
     for (const o of due) {
       // 押しの向き: 回る円の外向き(performWhipStrike は振りの線に直交=敵がいる側へ押すので、プレイヤーから見た接線を振りの向きに渡す)。
@@ -14245,15 +14272,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (p.pendingSwingAt > 0) return false; // 既に前隙中(二重に振らない)
     // 鞭の段: タップごとに 1→2→3→1…(最後の振りから戻る時間を過ぎたら1段目)。間隔=WHIP_COMBO_INTERVAL_MS(近接CDの短縮は掛かる)。
     const whipStage = whipNow ? whipComboNextStage(p.whipComboStage ?? 0, p.whipComboAt ?? -Infinity, now) : 0;
+    // ★鞭のカウンターは1段目だけ・クールダウンは連撃の終わりから(社長指示2026-11-26)。鞭以外は今まで通り毎振り開く。
+    const whipPlan = whipNow ? whipComboCounterPlan(whipStage, now, p.whipCounterReadyAt ?? 0, !!p.whipComboCounter, whipCounterCooldownMs(p)) : null;
     set(state => ({
       player: {
         ...state.player,
         pendingSwingAt: now,
         meleeSwingAt: now,
-        counterWindowStart: now, // 隻狼型(v0.25.3943): 受付は押した瞬間から
-        counterWindowEnd: now + counterAcceptMsOf(state.player), // 強化で延びる(社長指示2026-10-28)
+        ...(!whipPlan || whipPlan.open ? {
+          counterWindowStart: now, // 隻狼型(v0.25.3943): 受付は押した瞬間から
+          counterWindowEnd: now + counterAcceptMsOf(state.player), // 強化で延びる(社長指示2026-10-28)
+        } : {}),
         counterCooldownEnd: now + (whipNow ? WHIP_COMBO_INTERVAL_MS : COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
-        ...(whipNow ? { whipComboStage: whipStage, whipComboAt: now, whipQueuedAt: 0 } : {}),
+        ...(whipPlan ? { whipComboStage: whipStage, whipComboAt: now, whipQueuedAt: 0, whipComboCounter: whipPlan.comboCounter, whipCounterReadyAt: whipPlan.readyAt } : {}),
       },
     }));
     // ★踏み込み(社長裁定2026-08-24)。前隙の頭で `lastDirection` へ短く鋭く滑る。
@@ -14593,13 +14624,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         : whipComboNextStage(player.whipComboStage ?? 0, player.whipComboAt ?? -Infinity, now);
       const tipX = pcx + ux * reach; // 鞭先端 = ハリケーンの根元
       const tipY = pcy + uy * reach;
-      // カウンター窓+クールダウンを通常どおり開く(反射はループ側)。
-      // クールダウンは3連撃の段の間隔(WHIP_COMBO_INTERVAL_MS)。
+      // カウンター窓(反射はループ側)は3連撃の1段目だけ・カウンターのクールダウンは連撃の終わりから(社長指示2026-11-26「カウンターは一撃目のみで、クールダウンは連撃終わりからです」)。
+      // 前隙つき(タッチ)は指を離した時に beginMeleeSwing が決めて開いてある(窓の起点=同じ swingAt)=ここでは同じ窓を張り直すだけ。直呼び(PC/ボット)はここで決める。
+      // 振りの間隔は3連撃の段の間隔(WHIP_COMBO_INTERVAL_MS)。
+      const viaPress = swingStartAt !== undefined && (player.whipComboStage ?? 0) >= 1;
+      const whipPlan = viaPress
+        ? { open: player.counterWindowStart === swingAt, comboCounter: !!player.whipComboCounter, readyAt: player.whipCounterReadyAt ?? 0 }
+        : whipComboCounterPlan(comboStage, swingAt, player.whipCounterReadyAt ?? 0, !!player.whipComboCounter, whipCounterCooldownMs(player));
       set(state => ({
         player: {
           ...state.player,
-          counterWindowStart: swingAt, // 隻狼型(v0.25.3943)
-          counterWindowEnd: swingAt + counterAcceptMsOf(state.player),
+          ...(whipPlan.open ? {
+            counterWindowStart: swingAt, // 隻狼型(v0.25.3943)
+            counterWindowEnd: swingAt + counterAcceptMsOf(state.player),
+          } : {}),
+          whipComboCounter: whipPlan.comboCounter, whipCounterReadyAt: whipPlan.readyAt,
           // ★3連撃の間隔(社長指示2026-11-26「0.3秒間隔」・旧は窓+CD+描画の増分=約1.04秒)。タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
           counterCooldownEnd: swingAt + WHIP_COMBO_INTERVAL_MS * meleeCooldownMult(player),
           whipComboStage: comboStage, whipComboAt: swingAt, whipQueuedAt: 0,

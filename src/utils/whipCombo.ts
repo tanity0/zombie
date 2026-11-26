@@ -74,3 +74,33 @@ export const WHIP_COMBO_PITCH_JITTER = 0.05;
 export const whipComboPitch = (base: number, r: number): number => base * (1 + WHIP_COMBO_PITCH_JITTER * (2 * r - 1));
 /** 段の手応え。 */
 export const whipComboFeel = (stage: number): WhipComboFeel => WHIP_COMBO_FEEL[(stage === 2 || stage === 3 ? stage : 1) as WhipComboStage];
+
+/**
+ * ★カウンターは3連撃の1段目だけ・クールダウンは連撃の終わりから(社長指示2026-11-26「カウンターは一撃目のみで、クールダウンは連撃終わりからです」)。
+ *  - カウンター窓(弾の打ち返し・カウンターの判定)を開くのは1段目の振りだけ。2・3段目の振りでは開かない(鞭の打撃は出る)。
+ *  - 1段目で窓を開いた連撃は、終わった時点から cdMs のクールダウン(readyAt=次の1段目で窓を開ける時刻)。
+ *    「連撃の終わり」=3段目の振り、または途中で止めて1段目へ戻る時(最後の振りから WHIP_COMBO_RESET_MS)。
+ *    連撃が続く間は振るたびに終わりを打ち直す(続けば後ろへ・3段目で確定)。
+ *  - 窓を開けなかった連撃(クールダウン中に始めた連撃)は readyAt を動かさない。
+ *  - 段の間隔・予約・戻る時間(振りそのものの速さ)はここでは扱わない(counterCooldownEnd=段の間隔のまま)。
+ */
+export interface WhipComboCounterPlan {
+  /** この振りでカウンター窓を開くか。 */
+  open: boolean;
+  /** 今の連撃が1段目で窓を開いたか(2・3段目へ持ち越す)。 */
+  comboCounter: boolean;
+  /** 次の1段目で窓を開ける時刻(同じ時計)。 */
+  readyAt: number;
+}
+/** 連撃が終わる時刻(この段を最後に止まった場合)。3段目=その振り・1/2段目=戻る時間の後。 */
+export const whipComboEndAt = (stage: number, swingAt: number): number =>
+  stage === 3 ? swingAt : swingAt + WHIP_COMBO_RESET_MS;
+/** 振りごとのカウンターの可否とクールダウン。stage=この振りの段・readyAt/comboCounter=振る前の値・cdMs=クールダウンの長さ(近接CDの短縮を掛けた後)。 */
+export const whipComboCounterPlan = (stage: number, swingAt: number, readyAt: number, comboCounter: boolean, cdMs: number): WhipComboCounterPlan => {
+  const open = stage === 1 && swingAt >= readyAt;
+  const inCombo = stage === 1 ? open : comboCounter;
+  return { open, comboCounter: inCombo, readyAt: inCombo ? whipComboEndAt(stage, swingAt) + cdMs : readyAt };
+};
+/** 連撃が途中で切れた(掴んだ等で段が1段目へ戻された)時: 窓を開いた連撃なら、今(endAt)から cdMs。 */
+export const whipComboCounterCut = (endAt: number, readyAt: number, comboCounter: boolean, cdMs: number): { comboCounter: false; readyAt: number } =>
+  ({ comboCounter: false, readyAt: comboCounter ? endAt + cdMs : readyAt });

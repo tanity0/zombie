@@ -2,7 +2,8 @@
 // 気絶の敵を攻撃すると掴めて、爆撃と共にKILL。(ボスはさっきの叩きつけ)」)をストアを動かして固める。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore } from './gameStore';
-import type { Enemy, EnemyType } from '../types/game';
+import { WHIP_COUNTER_COOLDOWN_MS } from './gameStore';
+import type { Enemy, EnemyType, Projectile } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { WHIP_COMBO_INTERVAL_MS, WHIP_COMBO_RESET_MS, WHIP_COMBO_CRIT_BONUS } from '../utils/whipCombo';
 
@@ -158,4 +159,85 @@ describe('掴む条件: 気絶している敵だけ', () => {
     tap();
     expect(st().whipSwing?.phase).toBe('overhead');
   });
+});
+
+describe('カウンターは1段目だけ・クールダウンは連撃の終わりから', () => {
+  const opened = (at: number) => st().player.counterWindowStart === at && st().player.counterWindowEnd > at;
+  it('1段目で窓が開き、2・3段目では開かない。3段目の後はクールダウン明けまで次の1段目でも開かない', () => {
+    resetZ();
+    const t1 = now; tap();
+    expect(st().player.whipComboStage).toBe(1);
+    expect(opened(t1)).toBe(true);
+    run(WHIP_COMBO_INTERVAL_MS);
+    const t2 = now; tap();
+    expect(st().player.whipComboStage).toBe(2);
+    expect(opened(t2)).toBe(false);
+    run(WHIP_COMBO_INTERVAL_MS);
+    const t3 = now; tap();
+    expect(st().player.whipComboStage).toBe(3);
+    expect(opened(t3)).toBe(false);
+    expect(st().player.whipCounterReadyAt).toBe(t3 + WHIP_COUNTER_COOLDOWN_MS);
+    // 振りそのものはすぐ出る(次の1段目)が、窓はクールダウン中なので開かない
+    run(WHIP_COMBO_INTERVAL_MS);
+    const t4 = now; expect(tap().swung).toBe(true);
+    expect(st().player.whipComboStage).toBe(1);
+    expect(opened(t4)).toBe(false);
+    // 連撃を止めてクールダウンが明けたら、次の1段目で開く
+    run(WHIP_COUNTER_COOLDOWN_MS + WHIP_COMBO_RESET_MS);
+    const t5 = now; tap();
+    expect(st().player.whipComboStage).toBe(1);
+    expect(opened(t5)).toBe(true);
+  });
+  it('途中で止めた時は、1段目へ戻った時点からクールダウン', () => {
+    resetZ();
+    tap();
+    run(WHIP_COMBO_INTERVAL_MS);
+    const t2 = now; tap();
+    expect(st().player.whipComboStage).toBe(2);
+    expect(st().player.whipCounterReadyAt).toBe(t2 + WHIP_COMBO_RESET_MS + WHIP_COUNTER_COOLDOWN_MS);
+    // 戻った直後(クールダウン中)は開かない
+    run(WHIP_COMBO_RESET_MS + 50);
+    const t3 = now; tap();
+    expect(st().player.whipComboStage).toBe(1);
+    expect(opened(t3)).toBe(false);
+    // 戻った時点+クールダウンを過ぎてから(連撃を止めて)振ると開く
+    run(t2 + WHIP_COMBO_RESET_MS + WHIP_COUNTER_COOLDOWN_MS - now + WHIP_COMBO_RESET_MS);
+    const t4 = now; tap();
+    expect(st().player.whipComboStage).toBe(1);
+    expect(opened(t4)).toBe(true);
+  });
+  it('タッチ(前隙つき)も1段目だけ開く', () => {
+    resetZ();
+    const t1 = now;
+    expect(st().beginMeleeSwing()).toBe(true);
+    expect(opened(t1)).toBe(true);
+    run(WHIP_COMBO_INTERVAL_MS + 10);
+    const t2 = now;
+    expect(st().beginMeleeSwing()).toBe(true);
+    expect(st().player.whipComboStage).toBe(2);
+    run(300); // 前隙の解決(triggerCounter)を通っても開かない
+    expect(st().player.counterWindowStart).not.toBe(t2);
+    expect(st().player.counterWindowStart).toBe(t1);
+  });
+});
+
+describe('振り回している敵を盾に敵の弾をかき消す', () => {
+  const shotAt = (id: string, cx: number, cy: number, extra: Partial<Projectile> = {}): Projectile => ({
+    id, x: cx - 4, y: cy - 4, width: 8, height: 8, speed: 0, damage: 37, direction: { x: -1, y: 0 }, weaponType: 'enemy_bolt',
+    duration: 60_000, createdAt: now, passthrough: false, hitEnemies: [], hostile: true, ...extra,
+  } as Projectile);
+  it('振り回し中は体に触れた敵の弾が消える。紫の弾・離れた弾は消えない(盾の敵へのダメージは入れない=掴まれている間は素通りの作り)', () => {
+    resetZ({ stunUntil: st().gameTime + 5000 });
+    tap();
+    expect(st().whipSwing?.phase).toBe('swing');
+    step(10);
+    const sw = st().whipSwing!;
+    const hp0 = en('z')!.health;
+    useGameStore.setState({ projectiles: [shotAt('b1', sw.cx, sw.cy), shotAt('purple', sw.cx, sw.cy, { noCounter: true }), shotAt('far', sw.cx + 400, sw.cy)] });
+    step(10);
+    const ids = st().projectiles.map(p => p.id);
+    expect(ids).not.toContain('b1');
+    expect(ids).toContain('purple');
+    expect(ids).toContain('far');
+    expect(en('z')!.health).toBe(hp0);  });
 });

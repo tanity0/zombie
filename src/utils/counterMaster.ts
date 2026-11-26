@@ -117,7 +117,7 @@ export const refundAlchemyChannel = (
 };
 
 type RefundPlayerFields = Pick<Player,
-  | 'counterCooldownEnd' | 'subWeapons' | 'subWeaponCooldowns'
+  | 'counterCooldownEnd' | 'whipCounterReadyAt' | 'subWeapons' | 'subWeaponCooldowns'
   | 'reloadEndsAt' | 'reloadingWeaponId'
   | 'katanaDashCooldownEnd' | 'katanaDashUntil'
   | 'huntingChargeStartedAt' | 'huntingCharged'
@@ -162,6 +162,11 @@ export const counterMasterRefund = (inp: CounterMasterRefundInput): CounterMaste
   // ①近接/カウンター共用CD
   const cce = shortenRemaining(p.counterCooldownEnd, nowMs, frac);
   if (cce !== p.counterCooldownEnd) out.player.counterCooldownEnd = cce;
+  // 鞭のカウンターのクールダウン(連撃の終わりから・utils/whipCombo)も同じ割合で前倒し(鞭では近接の間隔とカウンターの待ちが別の欄)。
+  if (p.whipCounterReadyAt !== undefined) {
+    const wcr = shortenRemaining(p.whipCounterReadyAt, nowMs, frac);
+    if (wcr !== p.whipCounterReadyAt) out.player.whipCounterReadyAt = wcr;
+  }
 
   // ②サブウェポン
   const swc = refundSubWeaponCooldownMap(p.subWeaponCooldowns, p.subWeapons, gameTime, frac);

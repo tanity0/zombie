@@ -118,12 +118,22 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
     useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)] });
     swing();
     run(200);
-    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 0, y: 1 }, counterCooldownEnd: 0, counterWindowEnd: 0 } }));
+    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 0, y: 1 }, counterCooldownEnd: 0, whipCounterReadyAt: 0, counterWindowEnd: 0 } }));
     st().triggerCounter();
     const sw = st().whipSwing!;
     expect(sw.phase).toBe('thrown');
     expect(sw.uy).toBeCloseTo(1);
     expect(st().player.counterWindowEnd).toBeGreaterThan(now);
+  });
+
+  it('振り回し中の近接: 鞭のカウンターのクールダウン中は投げるだけ(窓は開かない)', () => {
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)] });
+    swing();
+    run(200);
+    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 0, y: 1 }, counterCooldownEnd: 0, whipCounterReadyAt: now + 500, counterWindowEnd: 0 } }));
+    st().triggerCounter();
+    expect(st().whipSwing!.phase).toBe('thrown');
+    expect(st().player.counterWindowEnd).toBe(0);
   });
 
   it('技の行(大車輪)はプレイヤーの入力で投げた着弾だけ。自動の投げでは出ない。投げた敵の回りは振り回しの向きを引き継ぐ', () => {

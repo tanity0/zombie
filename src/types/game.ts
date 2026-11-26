@@ -416,6 +416,9 @@ export interface Player extends DashLocomotionState {
   whipComboStage?: number;
   whipComboAt?: number;
   whipQueuedAt?: number;
+  /** ★鞭のカウンターは1段目だけ・クールダウンは連撃の終わりから(utils/whipCombo の whipComboCounterPlan): 次の1段目で窓を開ける時刻(Date.now)・今の連撃が1段目で窓を開いたか。 */
+  whipCounterReadyAt?: number;
+  whipComboCounter?: boolean;
   benkeiBuffUntil: number;     // 弁慶: crit率バフ終了(gameTime)
   benkeiCdUntil: number;       // 弁慶: 再発動CD(gameTime)
   // 社長指示v0.25.3303 カウンターマスター覚醒(Lv3): カウンター成立後3秒の全攻撃+30%バフ終了(gameTime)。

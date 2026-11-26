@@ -248,6 +248,18 @@ export const boxesOverlap = (a: Box, b: Box): boolean =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
 /**
+ * ★振り回している敵を盾にして敵の弾をかき消す(社長指示2026-11-26「振り回してる敵で弾をかき消せる様にして(簡単なら、その弾でダメージ与えれるといい)」)。
+ * 弾の中心の点が、振り回している敵の体の箱に入っていれば消す。対象=プレイヤーへ向かう敵の弾(hostile)。
+ * 紫=カウンターできない弾(noCounter)は消さない(色と形の文法)。敵の手榴弾は信管で爆発する物=消さない(プレイヤーへの接触と同じ扱い)。
+ */
+export interface WhipShieldShot { x: number; y: number; width: number; height: number; hostile: boolean; weaponType?: string; noCounter?: boolean }
+export const whipShieldBlocksShot = (shot: WhipShieldShot, body: Box): boolean => {
+  if (!shot.hostile || shot.noCounter || shot.weaponType === 'grenade') return false;
+  const cx = shot.x + shot.width / 2, cy = shot.y + shot.height / 2;
+  return cx >= body.x && cx <= body.x + body.width && cy >= body.y && cy <= body.y + body.height;
+};
+
+/**
  * 壁・木・建物・帯の縁で、回す半径を縮めて手前に留める。want=目標の半径・free(r)=その半径の位置に居られるか。
  * 目標から刻みで縮め、最初に居られる半径を返す。下限まで縮めても居られなければ下限(呼び手が行ける帯へ寄せる)。
  */
