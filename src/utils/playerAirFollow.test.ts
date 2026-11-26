@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   stepPlayerAir, playerAirTargetPx, playerAirLaunchSpeed, playerAirPhase, playerAirBumpPx, playerAirPoseTarget,
   playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink,
-  noteAirMeleeHit, getLastAirMeleeHit, resetAirMeleeHit, playerKickJump, playerKickJumpShape, PLAYER_KICK_HOLD_MS, PLAYER_KICK_RECOIL_PX, playerKickLandPx, playerKickLandSpeed, PLAYER_KICK_LAND_FRAC,
+  noteAirMeleeHit, getLastAirMeleeHit, resetAirMeleeHit, meleeHitLiftsPlayer, playerKickJump, playerKickJumpShape, PLAYER_KICK_HOLD_MS, PLAYER_KICK_RECOIL_PX, playerKickLandPx, playerKickLandSpeed, PLAYER_KICK_LAND_FRAC,
   PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_FOLLOW_K, PLAYER_AIR_BODY_CAP, PLAYER_AIR_CROUCH_MS, PLAYER_AIR_GRAVITY,
   playerAirShiftTarget, playerAirShiftStep, groundDustGate, PLAYER_AIR_SHIFT_BODY_W, PLAYER_AIR_DUST_HOLD_PX, PLAYER_AIR_DUST_PENDING_MAX_MS, type GroundDustGate,
   PLAYER_AIR_BUMP_PX, PLAYER_AIR_LAND_SQUASH_MIN, PLAYER_AIR_LAND_SQUASH_MAX, PLAYER_AIR_HOVER_SINK, PLAYER_AIR_POSE, type PlayerAirState,
@@ -219,6 +219,16 @@ describe('最後に空中の敵へ当てた記録', () => {
     expect(getLastAirMeleeHit()?.enemyId).toBe('a');
     expect(getLastAirMeleeHit()?.at).toBe(1000);
     expect(getLastAirMeleeHit()!.rel).toBeGreaterThan(0);
+  });
+});
+
+describe('空中の敵に当てた時に自分も浮いて追う武器', () => {
+  it('格闘・気功だけ浮く。ナイフ・鞭・刀は浮かない(社長「敵を追いかけてジャンプしてるのが変」「鞭もね」「刀もね」)', () => {
+    expect(meleeHitLiftsPlayer('brawler')).toBe(true);
+    expect(meleeHitLiftsPlayer('kiko')).toBe(true);
+    expect(meleeHitLiftsPlayer('knife')).toBe(false);
+    expect(meleeHitLiftsPlayer('whip')).toBe(false);
+    expect(meleeHitLiftsPlayer('katana')).toBe(false);
   });
 });
 

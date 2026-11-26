@@ -421,6 +421,9 @@ export interface Player extends DashLocomotionState {
   /** ★ナイフのカウンターは1段目だけ・クールダウンは連撃の終わりから(utils/knifeCombo の knifeComboCounterPlan)。 */
   knifeCounterReadyAt?: number;
   knifeComboCounter?: boolean;
+  /** ★ナイフの3連撃の自分の振りの止め(描画だけ・utils/knifeCombo knifeSwingDrawSince): 当たった時刻(Date.now)と止める長さ(ms)。判定・移動・段の間隔は読まない。 */
+  knifeHitstopAt?: number;
+  knifeHitstopMs?: number;
   /** ★スラッシャーの追い打ちの絵(描画だけ・utils/slasherFollowup): 最後に出た追い打ちの時刻(Date.now)と何回目か(1始まり)。 */
   slasherEchoAt?: number;
   slasherEchoK?: number;

@@ -354,6 +354,7 @@ import {
   pickNearestTarget, // UNIQUE_WEAPONS.md §19-3: 金環の対象取得(各金環が独立に最寄りの敵を取る)
   countsTowardEnemyCap, blastAnchorOf, isLabCrawlerProxyType, bandHitsBox, // blastAnchorOf=変異塊の代理の爆発・手応えの点(LAB_CRAWLER §4) / research/MUTANT_HERO.md §2-1: 英雄は湧き上限に数えない
 } from '../utils/enemyUtils';
+import { knifeComboSfxLayers } from '../utils/knifeCombo'; // ナイフの3連撃の命中音の高さ(段ごと)
 import { killChainSfxRate, meleeHitSfxLayers, recoilSpecForWeapon, casingSpecFor , GUN_STOP_BASE_MS, GUN_STOP_MAX_MULT, GUN_STOP_AWAKEN_MULT, GUN_STOP_DUTY } from '../utils/combatFeel';
 import { comboMilestoneCrossed, milestoneSfxRate } from '../utils/comboMilestone';
 // 戦闘の手触り②: 撃破SEのピッチはstoreの段(killChainTier)から。audioManagerはstoreをimportできないので登録式。
@@ -9790,7 +9791,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if ((counter.swung || counter.katanaSwing) && !isWhip && !killFxJustFired && swingSfxPlayedForRef.current !== pendAt) playSfx('melee');
             if (counter.finish && !killFxJustFired) playSfx('melee-finish');
             // 命中音: 毎回わずかに音程を揺らし、同時に切った数だけ(3層まで)重ねる(combatFeel.meleeHitSfxLayers)。
-            else if (counter.hit && !isWhip && !killFxJustFired) playSfxLayers('slash-damage', meleeHitSfxLayers(counter.hits ?? 1));
+            else if (counter.hit && !isWhip && !killFxJustFired) playSfxLayers('slash-damage', knifeComboSfxLayers(meleeHitSfxLayers(counter.hits ?? 1), counter.knifeStage, Math.random())); // ナイフの3連撃は段で高さを変える
             if (counter.killed > 0) playEnemyDeath();
           }
         }
@@ -10809,7 +10810,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const killFxSk = !!kfxSk && Date.now() - kfxSk.startAt < KILLFX_TOTAL_MS;
             if (sk.swung && !isWhipSk && !killFxSk) playSfx('melee');
             if (sk.finish && !killFxSk) playSfx('melee-finish');
-            else if (sk.hit && !isWhipSk && !killFxSk) playSfxLayers('slash-damage', meleeHitSfxLayers(sk.hits ?? 1));
+            else if (sk.hit && !isWhipSk && !killFxSk) playSfxLayers('slash-damage', knifeComboSfxLayers(meleeHitSfxLayers(sk.hits ?? 1), sk.knifeStage, Math.random()));
             if (sk.killed > 0) playEnemyDeath();
           }
         }

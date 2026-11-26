@@ -97,3 +97,54 @@ export const knifeComboWpnAlpha = (since: number, windowMs: number, stage: numbe
   const f = (since - (end - fade)) / fade;
   return 1 - f * f * (3 - 2 * f);
 };
+
+/**
+ * ★段ごとの命中の手応え(社長「ナイフ攻撃のあたり感が弱い。ヒットストップかな」・鞭の WHIP_COMBO_FEEL と同じ作り・数値は叩き台)。
+ * 全部同じ強さにしない: 1段目=軽く鋭い・2段目=少し重い・3段目=一番重い。プレイヤー本人のナイフ3連撃の命中だけ(isKnifeComboMode)。
+ * stopMs=当たった敵だけの止め(上乗せ・ms)・selfStopMs=自分の振りの絵(体の姿勢・手のナイフ・手元の弧)を止める長さ(ms・描画だけ=判定・移動・段の間隔・窓・隙は変えない)。
+ * shakeMs/shakeMag=画面の揺れ(0=足さない・今の近接の揺れはそのまま)・burst=刃の向きへ散る粒の数・ringR=輪の半径(0=無し)・glow=白い光の段(0..2)。
+ * 音: hitRate=今の命中音(slash-damage)の高さの倍率・heavyVol=重い命中音(heavy-impact)を重ねる大きさ(0=重ねない)・heavyRate=その高さ。
+ */
+export interface KnifeComboFeel {
+  stopMs: number; selfStopMs: number; shakeMs: number; shakeMag: number; burst: number; ringR: number; glow: 0 | 1 | 2;
+  hitRate: number; heavyVol: number; heavyRate: number;
+}
+export const KNIFE_COMBO_FEEL: Readonly<Record<KnifeComboStage, KnifeComboFeel>> = {
+  1: { stopMs: 60, selfStopMs: 45, shakeMs: 0, shakeMag: 0, burst: 6, ringR: 0, glow: 0, hitRate: 1.14, heavyVol: 0, heavyRate: 1 },
+  2: { stopMs: 75, selfStopMs: 60, shakeMs: 90, shakeMag: 3, burst: 9, ringR: 38, glow: 1, hitRate: 1.0, heavyVol: 0, heavyRate: 1 },
+  3: { stopMs: 140, selfStopMs: 110, shakeMs: 230, shakeMag: 9, burst: 20, ringR: 100, glow: 2, hitRate: 0.86, heavyVol: 0.85, heavyRate: 0.9 },
+};
+/** 会心の上乗せ: 敵の止め +ms・自分の振りの止め +ms・揺れ +ms/+強さ(金の光と輪を足す)。 */
+export const KNIFE_COMBO_CRIT_STOP_MS = 40;
+export const KNIFE_COMBO_CRIT_SELF_STOP_MS = 30;
+export const KNIFE_COMBO_CRIT_SHAKE_MS = 70;
+export const KNIFE_COMBO_CRIT_SHAKE_MAG = 3;
+/** 段の手応え(段の外は1段目)。 */
+export const knifeComboFeel = (stage: number): KnifeComboFeel => KNIFE_COMBO_FEEL[(stage === 2 || stage === 3 ? stage : 1) as KnifeComboStage];
+/** 当たった敵の止め(ms)・自分の振りの止め(ms)・揺れ(ms/強さ)。会心の上乗せ込み。 */
+export const knifeComboHitStop = (stage: number, crit: boolean): { enemyMs: number; selfMs: number; shakeMs: number; shakeMag: number } => {
+  const f = knifeComboFeel(stage);
+  const shakeMs = f.shakeMs + (crit ? KNIFE_COMBO_CRIT_SHAKE_MS : 0), shakeMag = f.shakeMag + (crit ? KNIFE_COMBO_CRIT_SHAKE_MAG : 0);
+  return { enemyMs: f.stopMs + (crit ? KNIFE_COMBO_CRIT_STOP_MS : 0), selfMs: f.selfStopMs + (crit ? KNIFE_COMBO_CRIT_SELF_STOP_MS : 0), shakeMs, shakeMag };
+};
+/** 連打で同じ音が機械的に並ばないよう高さを揺らす幅(±割合)。 */
+export const KNIFE_COMBO_PITCH_JITTER = 0.04;
+/** 段の命中音の重ね(meleeHitSfxLayers の出力)の高さを段で変える。stage=0/未定義(ナイフの3連撃以外)はそのまま返す。r=0..1 の乱数。 */
+export const knifeComboSfxLayers = <T extends { rate: number }>(layers: readonly T[], stage: number | undefined, r: number): T[] => {
+  if (!(stage === 1 || stage === 2 || stage === 3)) return layers.slice();
+  const k = knifeComboFeel(stage).hitRate * (1 + KNIFE_COMBO_PITCH_JITTER * (2 * r - 1));
+  return layers.map(l => ({ ...l, rate: l.rate * k }));
+};
+
+/**
+ * ★自分の振りの止め(ヒットストップの本体・描画だけ)。振りの絵の時計(振り始めからの ms)を、当たった所で selfMs だけ止める。
+ * rawSince=振り始めからの実の経過・hitSince=当たった瞬間の経過(振り始め→命中・負=この振りの命中ではない)・selfMs=止める長さ・
+ * minAt=止め始める経過の下限(前隙の絵が振り抜きに届く所。前隙なしの直呼びで振り始めと同時に当たった時も、刃が出た所で止める)。
+ * 止めの入り・明けで値は連続(時計を止めるだけ)=絵は瞬間移動しない。止めた分だけ、それより後の振りの絵(戻り・隙の姿勢)も後ろへずれる。
+ */
+export const knifeSwingDrawSince = (rawSince: number, hitSince: number, selfMs: number, minAt = 0): number => {
+  if (!(hitSince >= 0) || !(selfMs > 0) || !(rawSince >= 0)) return rawSince;
+  const at = Math.max(hitSince, minAt);
+  if (rawSince <= at) return rawSince;
+  return rawSince - Math.min(rawSince - at, selfMs);
+};

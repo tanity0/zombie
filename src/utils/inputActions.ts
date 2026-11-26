@@ -2,6 +2,7 @@
 // タッチ(VirtualJoystick)は独自に同等処理を持つ(指離し/フリックの判定が絡むため別管理)。
 import { playSfx, playSfxLayers, playEnemyDeath } from '../audio/audioManager';
 import { meleeHitSfxLayers } from './combatFeel';
+import { knifeComboSfxLayers } from './knifeCombo';
 import { useGameStore, isBrawlerMode } from '../store/gameStore';
 
 // タップ/離す相当: カウンター窓を開き、近接スイング。PHILL銃なら狙い方向へ1発(立ち止まり/スナップ条件は store 側)。
@@ -28,7 +29,7 @@ export const performTapAction = () => {
   const isWhip = useGameStore.getState().player.subWeapons.includes('whip');
   if ((counter.swung || counter.katanaSwing) && !isWhip) playSfx('melee'); // 刀を持っている時の振りも振りの音(社長報告2026-11-02)
   if (counter.finish) playSfx('melee-finish');
-  else if (counter.hit && !isWhip) playSfxLayers('slash-damage', meleeHitSfxLayers(counter.hits ?? 1));
+  else if (counter.hit && !isWhip) playSfxLayers('slash-damage', knifeComboSfxLayers(meleeHitSfxLayers(counter.hits ?? 1), counter.knifeStage, Math.random())); // ナイフの3連撃は段で高さを変える
   if (counter.killed > 0) playEnemyDeath(); // slain enemies grunt
 };
 

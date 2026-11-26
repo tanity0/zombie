@@ -134,7 +134,7 @@ import {
 } from '../utils/katanaSlashSheet'; // プレイヤーの刀の斬撃シート(社長支給2026-11-22)
 import { whipComboBodyRecover } from '../utils/whipCombo'; // 鞭の3段目の後の隙の姿勢
 import { counterReadyAt, counterRingFade } from '../utils/counterReadyAt'; // カウンターのクールダウンの輪(鞭・ナイフの3連撃は連撃の終わり+CDまで)
-import { knifeComboBodyT, knifeComboSwingDir, knifeComboWpnAlpha } from '../utils/knifeCombo'; // ナイフの3連撃の段の向き・3段目の後の隙の姿勢
+import { knifeComboBodyT, knifeComboSwingDir, knifeComboWpnAlpha, knifeSwingDrawSince } from '../utils/knifeCombo'; // ナイフの3連撃の段の向き・3段目の後の隙の姿勢
 import {
   whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
   whipGrabZoomAt, WHIP_GRAB_ZOOM_MAG, WHIP_GRAB_ZOOM_AIM_FRAC, WHIP_GRAB_ZOOM_TOTAL_MS,
@@ -28647,7 +28647,13 @@ export class PixiScene {
       : PLAYER_MELEE_SWING_MS;
     // ★格闘中はナイフの振りの絵(ポーズ・踏み込み・構え武器)を出さない(ナイフを持っていない=research/BRAWLER.md §7-6)。
     // カウンター成立の演出(markMeleeSwingFx)が meleeSwingAt を書いても、ここで素振りの絵を止める。
-    const sinceSwing = isBrawlerMode(p) ? Infinity : now - (p.meleeSwingAt || 0);
+    // ★ナイフの3連撃の自分の振りの止め(ヒットストップの本体・utils/knifeCombo knifeSwingDrawSince): 当たった所で振りの時計を止める。
+    // 体の姿勢・踏み込み・手のナイフ・手元の弧はすべてこの sinceSwing で進む=同じ時計で止まる。描画だけ(判定・移動・段の間隔・窓・隙は store のまま)。
+    const sinceSwingRaw = isBrawlerMode(p) ? Infinity : now - (p.meleeSwingAt || 0);
+    const knifeHsAt = p.knifeHitstopAt ?? 0;
+    const sinceSwing = isKnifeComboMode(p) && knifeHsAt > 0 && p.meleeSwingAt > 0 && knifeHsAt >= p.meleeSwingAt
+      ? knifeSwingDrawSince(sinceSwingRaw, knifeHsAt - p.meleeSwingAt, p.knifeHitstopMs ?? 0, MELEE_WINDUP_MS)
+      : sinceSwingRaw;
     // ★実機FB3(社長指示v0.25.3609「近接攻撃モーションをキャンセルしてKILL演出だけにしてほしい」):
     // KILL処刑演出中は通常の近接モーション(専用ポーズ差し替え・踏み込み振り抜き)を出さない。
     // 判定・攻撃レートは不変(描画のみ)。斬撃エフェクト(kind='slash')は流し切る(v0.25.3608)。

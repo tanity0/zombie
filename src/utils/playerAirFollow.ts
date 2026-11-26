@@ -258,6 +258,13 @@ export const noteAirMeleeHit = (e: Parameters<typeof brawlerJuggleHeightRel>[0] 
   lastAirMeleeHit = { at: now, enemyId: e.id, rel: brawlerJuggleHeightRel(e, now) };
 };
 export const getLastAirMeleeHit = (): AirMeleeHit | null => lastAirMeleeHit;
+/**
+ * ★この当たりでプレイヤーの絵も空中の敵の高さへ追いかけて浮くか(社長「敵を追いかけてジャンプしてるのが変」+「鞭もね」)。
+ * ナイフ(近接の3連撃・スラッシャーの追い打ちも)・鞭(振り・連撃・追い打ち・振り回しの当たり)・刀(一閃・燕返し・振り・自動の斬り)では浮かない(社長「刀もね」)。格闘・気功だけ今まで通り浮く。
+ * 浮きの記録(noteAirMeleeHit)を呼ぶかだけを決める=敵が浮くこと・空中の敵への倍率・判定は変えない。
+ */
+export type AirFollowWeapon = 'knife' | 'whip' | 'katana' | 'brawler' | 'kiko';
+export const meleeHitLiftsPlayer = (weapon: AirFollowWeapon): boolean => weapon === 'brawler' || weapon === 'kiko';
 export const resetAirMeleeHit = (): void => { lastAirMeleeHit = null; };
 
 // ---------------------------------------------------------------------------------------------

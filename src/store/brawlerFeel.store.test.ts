@@ -259,7 +259,7 @@ describe('血の覚醒(社長承認2026-11-09)', () => {
 });
 
 describe('空中の敵を近接で殴るとプレイヤーも浮く描画の記録(§18)', () => {
-  it('ナイフ・格闘の段は空中の敵への当たりを記録し、地上の敵・銃は記録しない', () => {
+  it('地上の敵・銃は記録しない。ナイフの当たりも記録しない(社長「敵を追いかけてジャンプしてるのが変」=自分は浮かない・格闘と気功だけ浮く)', () => {
     setup({ subs: [] });
     resetAirMeleeHit();
     useGameStore.setState({ enemies: [zombieAt(40, 0, 'z', 99999)] });
@@ -270,6 +270,7 @@ describe('空中の敵を近接で殴るとプレイヤーも浮く描画の記�
     expect(getLastAirMeleeHit()).toBeNull(); // 銃は対象外
     useGameStore.setState(st => ({ player: { ...st.player, counterCooldownEnd: 0 } }));
     useGameStore.getState().triggerCounter();
-    expect(getLastAirMeleeHit()?.enemyId).toBe('z');
+    expect(getLastAirMeleeHit()).toBeNull(); // ナイフ(空中の敵に当たっても自分は浮かない)
+    expect(hpOf('z')).toBeLessThan(99999 - 5); // 当たってはいる(判定・ダメージは今まで通り)
   });
 });

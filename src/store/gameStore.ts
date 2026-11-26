@@ -151,7 +151,7 @@ import * as BLG from '../utils/brawlerLeverGuard'; // 格闘のレバーガー�
 import { noteLeverGuardFull, clearLeverGuardFull, leverGuardHurtMuted, isPlayerHurtFlashColor, isPlayerHurtBurstColor, LEVER_GUARD_BURST_NEAR_PX } from '../utils/leverGuardStamp'; // 受け切った直後は被弾の演出を出さない
 import * as BRCM from '../utils/brawlerCounterMaster'; // 格闘のときのカウンターマスター(受けた直後の自動の反撃・前倒し/吹き飛ばしを付けない)
 import * as BRG from '../utils/brawlerGuard'; // 格闘の構えの成立の効果(雑魚=潰し/雑魚より上=自分がノックバック/光線の中断・research/BRAWLER.md §12-3d)
-import { noteAirMeleeHit, resetAirMeleeHit, playerAirTargetPx } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18)
+import { noteAirMeleeHit, resetAirMeleeHit, playerAirTargetPx, meleeHitLiftsPlayer, type AirFollowWeapon } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18)
 import { airChaseHeightPx } from '../utils/airChaseHeight'; // 高さに追いつく技の高さ(社長指示2026-11-16)
 import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodDrip';
 import { nextHitStunUntil, GUN_HIT_STOP_MULT, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
@@ -222,7 +222,7 @@ import {
 } from '../utils/slasherFollowup';
 import {
   knifeComboNextStage, knifeComboGapMs, knifeComboTapAction, knifeComboQueuedAction, knifeComboCounterPlan, knifeComboStepPx,
-  knifeComboFinishMoveMult, knifeComboSwingDir,
+  knifeComboFinishMoveMult, knifeComboSwingDir, knifeComboFeel, knifeComboHitStop,
 } from '../utils/knifeCombo';
 import type { AstroThrowEntry, AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import type { WraithGrowth } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md §9
@@ -814,7 +814,7 @@ const SMALL_GLOW_MIN_DURATION_MS = 80;
 // katanaSwing: 刀を持っている時の振り(攻撃はしない=swung は false のまま・振りの音だけ鳴らす。社長報告2026-11-02「刀装備時にナイフ振るとSEが鳴らない」)。
 // hits: この振りで切った敵の数(命中音の重ねに使う・2026-11-06)。返さない経路は「当たったら1」。
 // landed: 格闘の「当たった」数(相手の体力を削った当たり。拳鬼にレバーガードで防がれた当たりを除く・research/BRAWLER.md §19-1)。格闘の指定打撃だけ返す。
-export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boolean; killed: number; katanaSwing?: boolean; hits?: number; landed?: number; hitAt?: { x: number; y: number; id: string }[] };
+export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boolean; killed: number; katanaSwing?: boolean; hits?: number; landed?: number; hitAt?: { x: number; y: number; id: string }[]; knifeStage?: number };
 /**
  * ★指定打撃(research/BRAWLER.md §7-1・§8-1)。`triggerCounter` の第2引数を一般化したもの。
  * 当たる/当たらないは呼び手(utils/brawler.ts の形と壁)が決めて `targetIds` で渡す=命中ループの距離の門と falloff は使わない。
@@ -3241,6 +3241,58 @@ const spawnWhipComboHitFx = (
     if (f.heavyVol > 0) m.playSfx('heavy-impact', f.heavyVol, undefined, whipComboPitch(f.heavyRate, r2));
     if (crit) m.playSfx('whip-hit', 0.6, undefined, whipComboPitch(1.5, r2));
   });
+};
+
+/**
+ * ★ナイフの3連撃の段ごとの手応え(社長「ナイフ攻撃のあたり感が弱い。ヒットストップかな」・派手さの絵=判定なし・既存の素材の組み合わせ)。
+ * 1段目=軽く鋭い・2段目=少し重い・3段目=一番重い(utils/knifeCombo の KNIFE_COMBO_FEEL)。今の命中の絵(斬撃・血・炸裂)と揺れはそのまま=ここは足すだけ。
+ *  - 当たった敵だけの止め(上乗せ・全体は止めない=近接の止めの規約)と、自分の振りの絵の止め(knifeHitstopAt/Ms・描画だけ=pixi が振りの時計から差し引く)。
+ *  - 粒は刃の向き(自分→当たった所)へ散らす。2段目から輪と白い光・3段目は輪と粒を多めにして周りへも散らす。会心は金の光と輪。
+ *  - 音: 今の命中音(呼び出し側の slash-damage)は段で高さを変える(knifeComboSfxLayers)。3段目はここで重い命中音を重ねる(処刑の回は処刑の音に任せる)。
+ * ids=当たった敵・pts=当たった位置・pcx,pcy=自分の中心・fallback=狙いの向き(当たった所が自分と重なる時)。
+ */
+const spawnKnifeComboHitFx = (
+  get: () => GameState, set: WhipSet, stage: number, ids: readonly string[], pts: readonly { x: number; y: number }[], crit: boolean,
+  pcx: number, pcy: number, fallback: { x: number; y: number }, finishing: boolean,
+): void => {
+  if (pts.length === 0) return;
+  const f = knifeComboFeel(stage);
+  const hs = knifeComboHitStop(stage, crit);
+  const now = Date.now();
+  const idSet = new Set(ids);
+  set(state => ({
+    enemies: state.enemies.map(e => (idSet.has(e.id) && e.health > 0 && !isCorpse(e) ? { ...e, ...impactHitStunPatch(e, now, hs.enemyMs) } : e)),
+    player: { ...state.player, knifeHitstopAt: now, knifeHitstopMs: hs.selfMs },
+  }));
+  const g = get();
+  const fl = Math.hypot(fallback.x, fallback.y) || 1;
+  let sx = 0, sy = 0;
+  for (const p of pts) {
+    const dx = p.x - pcx, dy = p.y - pcy, dl = Math.hypot(dx, dy);
+    const ux = dl > 4 ? dx / dl : fallback.x / fl, uy = dl > 4 ? dy / dl : fallback.y / fl;
+    sx += ux; sy += uy;
+    g.spawnBurst(p.x, p.y, '#ffffff', f.burst, ux, uy);
+    if (f.ringR > 0) g.spawnRing(p.x, p.y, 3, f.ringR, 'rgba(226,232,240,0.9)', stage === 3 ? 3 : 2, stage === 3 ? 280 : 180, true);
+    if (f.glow >= 1) g.spawnGlow(p.x, p.y, f.glow === 2 ? GLOW_R_M : GLOW_R_S, 'rgba(240,249,255,', f.glow === 2 ? 200 : 120, true);
+    if (stage === 3) {
+      // 一番重い段: 刃の向きへ細い筋を走らせ(既存の dash-wind・素材の先は -x 側)、外側の輪と周りへの粒を足す。
+      g.spawnImageMark(p.x, p.y, 'fx/dash-wind', { scale: 0.3, scaleX: 1.6, rot: Math.atan2(uy, ux) + Math.PI, duration: 200, fadeFrom: 0.15, moveX: ux * 110, moveY: uy * 110, alpha: 0.95, additive: true, noPop: true, tint: 0xffffff });
+      g.spawnRing(p.x, p.y, 8, f.ringR + 40, 'rgba(203,213,225,0.7)', 2, 360, true);
+      g.spawnBurst(p.x, p.y, '#cbd5e1', 10);
+    }
+    if (crit) {
+      g.spawnGlow(p.x, p.y, GLOW_R_L, 'rgba(253,224,71,', 230, true);
+      g.spawnRing(p.x, p.y, 5, (f.ringR || 40) + 36, 'rgba(250,204,21,0.95)', 3, 250, true);
+    }
+  }
+  if (hs.shakeMs > 0 && hs.shakeMag > 0) {
+    const sl = Math.hypot(sx, sy) || 1;
+    g.triggerShake(hs.shakeMs, hs.shakeMag, sx / sl, sy / sl);
+  }
+  if (f.heavyVol > 0 && !finishing) {
+    const r = Math.random();
+    void import('../audio/audioManager').then(m => m.playSfx('heavy-impact', f.heavyVol, undefined, f.heavyRate * (0.97 + 0.06 * r)));
+  }
 };
 
 /**
@@ -7861,8 +7913,8 @@ export const takeAirNumberMult = (id: string, now: number = Date.now()): number 
   return now - r.at <= AIR_NUMBER_MULT_WINDOW_MS ? r.m : 1;
 };
 /** プレイヤー本人の近接の当たり: 空中の敵への倍率(§16)と、プレイヤーも浮く描画の記録(§18・描画だけ)。 */
-const meleeAirMult = (enemy: Enemy, now: number): number => {
-  noteAirMeleeHit(enemy, now);
+const meleeAirMult = (enemy: Enemy, now: number, weapon: AirFollowWeapon = 'brawler'): number => {
+  if (meleeHitLiftsPlayer(weapon)) noteAirMeleeHit(enemy, now); // ナイフ・鞭の当たりでは自分は浮かない(倍率は同じ)
   return BRC.airHitMultFor(enemy, now);
 };
 /**
@@ -14447,6 +14499,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // これをしないと窓が200ms後ろへずれ、CDも1周期あたり200ms伸びてしまう(実質の弱体化)。
     // 演出の時刻(エフェクトのcreatedAt等)は従来どおり `now` のまま=絵は今この瞬間に出る。
     const swingAt = swingStartAt ?? now;
+    // ★空中の敵に当てた時に自分の絵も浮いて追うか(utils/playerAirFollow meleeHitLiftsPlayer): 格闘の指定打撃=浮く・それ以外のこの振り(ナイフ)=浮かない。
+    const airFollowWeapon: AirFollowWeapon = bs ? 'brawler' : isWhipMode(player) ? 'whip' : isKatanaMode(player) ? 'katana' : 'knife';
     // ★移動近接=走りで踏み込んだ振りの解決(被弾反撃などの別経路は対象外)。ノックバックを MOVING_MELEE_KB_MULT 倍。
     const movingSwing = !ret && swingStartAt !== undefined && swingStartAt === runningSwingAt;
 
@@ -14928,7 +14982,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const bashScanMult = enemy.id === scanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'melee') : 1;
         if (bashScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
         const bashBase = meleeDamage * SHIELD_BASH_DAMAGE_MULT * gpDmgScale * masteryMultVs(enemy, masteryMultOf(player, 'shield')); // 熟練度: シールドバッシュ=shield(v2.2)。幻影には乗せない
-        let dmg = bashBase * bashScanMult * meleeAirMult(enemy, now); // 空中の敵への倍率(§16)
+        let dmg = bashBase * bashScanMult * meleeAirMult(enemy, now, airFollowWeapon); // 空中の敵への倍率(§16)
         let bashScanShown = bashScanMult !== 1;
         // ★SAME_ARENA §9(検収監査 重大③): バッシュも近接=致命+melee削りの対象(site1と同型)。
         let bashPvpPatch: Partial<Enemy> = {};
@@ -14991,7 +15045,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (heavyScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
         // ★格闘(research/BRAWLER.md §15・社長承認2026-11-09): 段の倍率は5倍(強個体3倍)の部分だけに掛け、紫の報酬予算(最大HPの25%の残り)には掛けない
         // =どの段で決めても紫は満額報われ、締めで決めると少し多い。格闘以外(被弾反撃の×2も)は今までどおり報酬ごと掛ける。
-        const stunAirMult = bs ? meleeAirMult(enemy, now) : (noteAirMeleeHit(enemy, now), 1);
+        const stunAirMult = bs ? meleeAirMult(enemy, now) : (meleeHitLiftsPlayer(airFollowWeapon) && noteAirMeleeHit(enemy, now), 1);
         const dmg = bs
           ? BRS.stunnedFinishDamage(
             (fatal ? meleeExecBaseVs * gpDmgScale * 5 : stunnedHit.dmg) * stunAirMult, // 5倍(3倍)の部分だけ空中の倍率。足の速さは meleeExecBase に入っている(§16)
@@ -15053,7 +15107,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (scanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
       // ★格闘のダメージ補正(research/BRAWLER.md §13-2): 同じ流れの10ヒット目以降 −5%/発(下限50%)。秘奥義は補正しない。
       const brProration = bs?.combo && bs.combo.move !== 'secret' && bs.combo.move !== 'secret-land' ? BRC.brawlerProrationFor(enemy, now) : 1;
-      const airMk = meleeAirMult(enemy, now); // 空中の敵への倍率(§16・格闘の長いコンボの補正と同じ並び)
+      const airMk = meleeAirMult(enemy, now, airFollowWeapon); // 空中の敵への倍率(§16・格闘の長いコンボの補正と同じ並び)
       let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult * scanMult * brProration * airMk
         * swingMmVs; // 熟練度: 通常の振り(格闘=brawler・それ以外=melee)。幻影には乗せない
       // スラッシャーの種: 空中(追い打ちの当たりで掛け直す)・印(自動の斬りには乗らない)・対人の縮み(関所が掛け直す)を外し、幻影へ外した熟練度を戻す。
@@ -15343,6 +15397,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnMeleeBlood(s.x, s.y); // 近接の血飛沫(社長指摘v0.25.2060: メイン近接3経路に未配線だった)
       if (!bs) get().spawnMeleeHit(s.x, s.y);   // v0.25.4334: 近接ヒットの炸裂(社長支給VFXの試し)
     }
+    // ★ナイフの3連撃の段ごとの手応え(spawnKnifeComboHitFx・今の命中の絵は上のまま=足すだけ)。プレイヤー本人のナイフ3連撃の命中だけ。
+    const knifeCrit = knifeNow && meleeDamageNumbers.some(n => n.crit);
+    if (knifeNow && knifeStage >= 1 && slashAt.length > 0) {
+      spawnKnifeComboHitFx(get, set, knifeStage, meleeHitEnemyIds, slashAt, knifeCrit, pcx, pcy, player.lastDirection ?? { x: 1, y: 0 }, finisherHit || bossFinishHit);
+    }
 
     // Damage numbers for every non-execute melee hit; crits/boss-stun hits pop gold.
     for (const c of meleeDamageNumbers) {
@@ -15485,6 +15544,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       killed: killed.length,
       hits: slashAt.length,
       ...(bs ? { hitAt: brHitAt, landed: Math.max(0, slashAt.length - brGuardedHits) } : {}),
+      ...(knifeNow && knifeStage >= 1 && slashAt.length > 0 ? { knifeStage } : {}), // 命中音の高さを段で変える(呼び出し側・knifeComboSfxLayers)
     };
   },
 
@@ -16412,7 +16472,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const katanaScanMult = enemy.id === katanaScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'katana') : 1;
       if (katanaScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 一閃は手動の近接=起爆
-      const katanaAirMk = isGhost ? 1 : meleeAirMult(enemy, now); // 空中の敵への倍率(§16・守護霊は対象外)
+      const katanaAirMk = isGhost ? 1 : meleeAirMult(enemy, now, 'katana'); // 空中の敵への倍率(§16・守護霊は対象外)
       let dmg = baseDamage * damageMult * strikeMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * katanaScanMult * katanaAirMk
         * katanaMmVs; // 熟練度: 刀=katana(幻影には乗せない)
       // スラッシャーの種(一閃・燕返しの時だけ受け皿が立つ): 空中・印・対人の縮みを外し、幻影へ外した熟練度を戻す。紫の幻影への致命は積まない。
@@ -16810,7 +16870,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 先端でボス区分を打った=×2.5(幻影は対人の規則があるので外す)。気絶中の5倍・致命は上の枝(ここへ来ない)=重ねない。
       const tipHit = tipReach !== undefined && BRC.brawlerEnemyClass(enemy) === 'boss' && !isGuardianPhantom(enemy.type)
         && isWhipTipHit(enemyMeleeDist(pcx, pcy, enemy), tipReach);
-      const whipAirMk = isGhost ? 1 : meleeAirMult(enemy, now); // 空中の敵への倍率(§16・守護霊は対象外=刀と同じ)
+      const whipAirMk = isGhost ? 1 : meleeAirMult(enemy, now, 'whip'); // 空中の敵への倍率(§16・守護霊は対象外=刀と同じ)
       let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * whipScanMult * whipAirMk
         * whipMmVs // 熟練度: 鞭=whip(幻影には乗せない)
         * (tipHit ? WHIP_TIP_BOSS_MULT : 1);

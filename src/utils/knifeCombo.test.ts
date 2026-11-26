@@ -5,7 +5,9 @@ import {
   knifeComboStepPx, knifeComboBodyT,
   KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_RESET_MS, KNIFE_COMBO_FINISH_RECOVERY_MS, KNIFE_COMBO_QUEUE_MAX_MS, KNIFE_COMBO_STEP_FRAC,
   knifeComboFinishMoveMult, KNIFE_COMBO_FINISH_STOP_MS,
+  KNIFE_COMBO_FEEL, knifeComboFeel, knifeComboHitStop, knifeComboSfxLayers, knifeSwingDrawSince,
 } from './knifeCombo';
+import { WHIP_COMBO_FEEL } from './whipCombo';
 
 describe('ナイフの3連撃(純関数)', () => {
   it('段は 1→2→3→1・最後の振りから0.9秒で1段目へ', () => {
@@ -98,5 +100,72 @@ describe('手のナイフの絵(社長指示2026-11-26「ナイフは最後ま�
       for (let t = end - 80; t < end; t += 5) { const a = knifeComboWpnAlpha(t, W, st); expect(a).toBeLessThanOrEqual(prev); expect(a).toBeGreaterThan(0); prev = a; }
       expect(knifeComboWpnAlpha(end - 2, W, st)).toBeLessThan(0.01);
     }
+  });
+});
+
+describe('ナイフの3連撃の命中の手応え(段ごと)', () => {
+  it('全部同じ強さにしない: 止め・自分の止め・揺れ・粒は 1<2<3', () => {
+    const [a, b, c] = [knifeComboFeel(1), knifeComboFeel(2), knifeComboFeel(3)];
+    expect(a.stopMs).toBe(60); expect(b.stopMs).toBe(75); expect(c.stopMs).toBe(140);
+    expect(a.selfStopMs).toBe(45); expect(b.selfStopMs).toBe(60); expect(c.selfStopMs).toBe(110);
+    expect(a.shakeMs).toBe(0); // 1段目は揺れを足さない
+    expect(b.shakeMag).toBeLessThan(c.shakeMag);
+    expect(a.burst).toBeLessThan(b.burst); expect(b.burst).toBeLessThan(c.burst);
+    expect(a.ringR).toBeLessThan(c.ringR);
+    expect(c.heavyVol).toBeGreaterThan(0); expect(a.heavyVol).toBe(0);
+    expect(a.hitRate).toBeGreaterThan(b.hitRate); expect(b.hitRate).toBeGreaterThan(c.hitRate); // 段で音の高さが変わる
+    expect(KNIFE_COMBO_FEEL[3]).toBe(c);
+  });
+  it('3段目の揺れは鞭の3段目より少し弱い', () => {
+    expect(knifeComboFeel(3).shakeMag).toBeLessThan(WHIP_COMBO_FEEL[3].shakeMag);
+    expect(knifeComboFeel(3).shakeMs).toBeLessThan(WHIP_COMBO_FEEL[3].shakeMs);
+  });
+  it('会心は止めと揺れを上乗せ(敵 +40・自分 +30)', () => {
+    const n = knifeComboHitStop(1, false), k = knifeComboHitStop(1, true);
+    expect(k.enemyMs - n.enemyMs).toBe(40);
+    expect(k.selfMs - n.selfMs).toBe(30);
+    expect(k.shakeMs).toBeGreaterThan(0); expect(k.shakeMag).toBeGreaterThan(0);
+    expect(knifeComboHitStop(3, true).selfMs).toBe(140);
+  });
+  it('段の外は1段目', () => {
+    expect(knifeComboFeel(0)).toBe(KNIFE_COMBO_FEEL[1]);
+  });
+  it('命中音の重ねは段の高さを掛ける(揺らぎ ±4%)・段なしはそのまま', () => {
+    const base = [{ delayMs: 0, rate: 1, gain: 1 }, { delayMs: 30, rate: 0.86, gain: 0.5 }];
+    expect(knifeComboSfxLayers(base, undefined, 0.3)).toEqual(base);
+    const mid = knifeComboSfxLayers(base, 3, 0.5);
+    expect(mid[0].rate).toBeCloseTo(knifeComboFeel(3).hitRate);
+    expect(mid[1].rate).toBeCloseTo(0.86 * knifeComboFeel(3).hitRate);
+    const lo = knifeComboSfxLayers(base, 1, 0)[0].rate, hi = knifeComboSfxLayers(base, 1, 1)[0].rate;
+    expect(hi / lo).toBeCloseTo(1.04 / 0.96);
+    expect(base[0].rate).toBe(1); // 元を書き換えない
+  });
+});
+
+describe('自分の振りの止め(描画だけ・knifeSwingDrawSince)', () => {
+  it('当たるまではそのまま・当たった所で selfMs だけ止まり・明けたら同じ速さで進む', () => {
+    expect(knifeSwingDrawSince(150, 200, 110, 200)).toBe(150);
+    expect(knifeSwingDrawSince(200, 200, 110, 200)).toBe(200);
+    expect(knifeSwingDrawSince(260, 200, 110, 200)).toBe(200);
+    expect(knifeSwingDrawSince(310, 200, 110, 200)).toBe(200);
+    expect(knifeSwingDrawSince(320, 200, 110, 200)).toBe(210);
+  });
+  it('入りと明けで値が跳ばない(瞬間移動しない)', () => {
+    let prev = knifeSwingDrawSince(0, 205, 60, 200);
+    for (let t = 1; t <= 600; t++) {
+      const v = knifeSwingDrawSince(t, 205, 60, 200);
+      expect(v - prev).toBeGreaterThanOrEqual(0);
+      expect(v - prev).toBeLessThanOrEqual(1 + 1e-9);
+      prev = v;
+    }
+  });
+  it('前隙なしで振り始めと同時に当たった時も、刃が出た所(minAt)で止める', () => {
+    expect(knifeSwingDrawSince(100, 0, 45, 200)).toBe(100);
+    expect(knifeSwingDrawSince(230, 0, 45, 200)).toBe(200);
+    expect(knifeSwingDrawSince(260, 0, 45, 200)).toBe(215);
+  });
+  it('この振りの命中でない(負)・止め0 はそのまま', () => {
+    expect(knifeSwingDrawSince(300, -50, 110, 200)).toBe(300);
+    expect(knifeSwingDrawSince(300, 200, 0, 200)).toBe(300);
   });
 });
