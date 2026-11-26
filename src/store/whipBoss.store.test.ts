@@ -129,6 +129,24 @@ describe('②気絶しているボスは掴める=頭上を越えて反対側へ
     expect(keys).toContain('tech:whipoverhead');
     expect(keys).not.toContain('tech:whipslam');
   });
+  it('叩きつけの着弾で気絶(黄の気絶・紫・黄色クリの窓)を解く=もう一度当てても掴まない(社長指示2026-11-26「一度回したらクリティカル解除して」)', () => {
+    const until = st().gameTime + 20000; // 着弾の後もまだ残る長さ
+    useGameStore.setState({ enemies: [place('hunter', 100, 0, 'h', { stunUntil: until, bossFullStunUntil: until, bossPosture: 0, bossSlowUntil: until })] });
+    swing();
+    expect(st().whipSwing?.phase).toBe('overhead');
+    for (let i = 0; i < 300 && st().whipSwing; i++) step(10);
+    expect(st().whipSwing).toBeNull();
+    const h = en('h');
+    expect(h.health).toBeGreaterThan(0);
+    const gt = st().gameTime;
+    expect(h.stunUntil === undefined || h.stunUntil <= gt).toBe(true);
+    expect(h.bossFullStunUntil === undefined || h.bossFullStunUntil <= gt).toBe(true);
+    expect(h.bossSlowUntil === undefined || h.bossSlowUntil <= gt).toBe(true);
+    // もう一度当てても掴まない
+    useGameStore.setState(s => ({ enemies: s.enemies.map(e => (e.id === 'h' ? { ...e, x: center().x + 100 - e.width / 2, y: center().y - e.height / 2 } : e)) }));
+    swing();
+    expect(st().whipSwing).toBeNull();
+  });
   it('紫(体勢の崩れ)中のボスも掴んで叩きつける', () => {
     const until = st().gameTime + 5000;
     useGameStore.setState({ enemies: [place('hunter', 100, 0, 'h', { bossFullStunUntil: until, stunUntil: until, bossPosture: 0 })] });
@@ -269,7 +287,9 @@ describe('③パニッシャーを鞭に効かせる', () => {
           const ex = (sw.fromX ?? 0) + (sw.ux ?? 0) * (sw.maxDist ?? 0), ey = (sw.fromY ?? 0) + (sw.uy ?? 0) * (sw.maxDist ?? 0);
           land = { x: ex, y: ey };
           const c = center();
-          const nx = -(sw.uy ?? 0), ny = sw.ux ?? 1;
+          // 直交の向きはプレイヤーから遠い側(近い側だとゾンビが噛みつきの待ち=攻撃中のアーマーに入り、爆発で押されない)。
+          const side = (-(sw.uy ?? 0)) * (ex - c.x) + (sw.ux ?? 1) * (ey - c.y) >= 0 ? 1 : -1;
+          const nx = -(sw.uy ?? 0) * side, ny = (sw.ux ?? 1) * side;
           useGameStore.setState(s => ({ enemies: [...s.enemies, place('zombie', ex - c.x + nx * 46, ey - c.y + ny * 46, 'b'), place('zombie', ex - c.x + nx * 96, ey - c.y + ny * 96, 'w')] }));
         }
         step(10);

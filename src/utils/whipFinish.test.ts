@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   whipComboTapAction, whipComboGapMs, whipComboBodyRecover, WHIP_COMBO_INTERVAL_MS, WHIP_COMBO_FINISH_RECOVERY_MS, WHIP_COMBO_FINISH_HOLD_MS,
 } from './whipCombo';
-import { whipShieldHitDamage, whipShieldHealthFloor, whipThrowExecutesSelf, whipLandTechKind } from './whipSwing';
+import { whipShieldHitDamage, whipShieldHealthFloor, whipThrowExecutesSelf, whipLandTechKind, whipLandStunClearPatch } from './whipSwing';
 import { whipBodyPose } from './whipSwingMotion';
 import { BRAWLER_TECH_NAMES } from '../data/brawlerTechNames';
 
@@ -78,5 +78,18 @@ describe('技名の出し分け', () => {
     expect(whipLandTechKind('thrown')).toBe('whipslam');
     expect(BRAWLER_TECH_NAMES['tech:whipoverhead']).toEqual({ name: '叩きつけ', dir: 'down' });
     expect(BRAWLER_TECH_NAMES['tech:whipslam'].name).toBe('大車輪');
+  });
+});
+
+// ★着弾で気絶(クリティカル)を解く(社長指示2026-11-26「一度回したらクリティカル解除して」)。
+describe('whipLandStunClearPatch', () => {
+  it('黄の気絶は消す・紫は今の時刻で終わらせる・黄色クリの窓は消す', () => {
+    expect(whipLandStunClearPatch({ stunUntil: 2000, bossFullStunUntil: 3000, bossSlowUntil: 1500 }, 1000))
+      .toEqual({ stunUntil: undefined, bossFullStunUntil: 1000, bossSlowUntil: undefined });
+  });
+  it('立っていない(終わった)物は書かない・全部無ければ null', () => {
+    expect(whipLandStunClearPatch({ stunUntil: 500, bossFullStunUntil: 900 }, 1000)).toBeNull();
+    expect(whipLandStunClearPatch({}, 1000)).toBeNull();
+    expect(whipLandStunClearPatch({ stunUntil: 2000 }, 1000)).toEqual({ stunUntil: undefined });
   });
 });

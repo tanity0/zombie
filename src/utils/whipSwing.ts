@@ -7,8 +7,9 @@
 
 /** 回す半径=鞭の届く距離 × これ。 */
 export const WHIP_SWING_RADIUS_MULT = 0.6;
-/** 最高の回転(揺れの真ん中)の1周の長さ(ms)。社長指示2026-11-26「振り回し回数減ってもいいので、もう少し振り回しに慣性入れて」で 450→650。 */
-export const WHIP_SWING_PERIOD_MS = 650;
+/** 最高の回転(揺れの真ん中)の1周の長さ(ms)。社長指示2026-11-26「振り回し回数減ってもいいので、もう少し振り回しに慣性入れて」で 450→650、
+ * 「大車輪もう少し早く回して」で 650→500(叩き台・加速の尺・揺れ・溜め・最長は今のまま)。 */
+export const WHIP_SWING_PERIOD_MS = 500;
 /** 掴んでから最高の回転に届くまで(ms・重さに引かれてゆっくり回り出す=加速の出だしも0)。半径もこの間に掴んだ位置から回す半径へ寄る。旧 250。 */
 export const WHIP_SWING_ACCEL_MS = 600;
 /** 重さで速さが揺れる幅(割合)。敵がプレイヤーの手前(画面の下)を通る時に速く、奥(上)を通る時に遅い=振り下ろして振り上げる感じ。 */
@@ -101,8 +102,6 @@ export interface WhipSwingState {
   grabAt?: number;
   grabX?: number;
   grabY?: number;
-  /** プレイヤーの入力(近接・フリック)で投げた(自動の投げは false)。技の行を出すのはこの時の着弾だけ。 */
-  byInput?: boolean;
   /** 回し終えた周の数(1周ごとの音を鳴らした所まで)。 */
   lap?: number;
   /** 叩きつけ(phase='overhead' の時だけ)。弧の長さ(ms)・着地点(toX,toY)・弧の中心(pivX,pivY=掴んだ時のプレイヤーの中心。反対側へ置けない時は掴んだ点)。始まり=fromX,fromY・向き=ux,uy。 */
@@ -314,6 +313,24 @@ export const isWhipTipHit = (dist: number, reach: number): boolean => reach > 0 
 export const whipBossStunEnd = (e: { stunUntil?: number; bossFullStunUntil?: number }, gameTime: number, extra?: number): number | null => {
   const end = Math.max(e.stunUntil ?? -Infinity, e.bossFullStunUntil ?? -Infinity, extra ?? -Infinity);
   return end > gameTime ? end : null;
+};
+/**
+ * ★掴んで投げた/叩きつけた敵の気絶(クリティカル)を着弾の瞬間に解く(社長指示2026-11-26「一度回したらクリティカル解除して」)。
+ * 生き残った強個体・ボスがもう一度掴まれる/気絶のまま殴られる、を無くす。解く物=気絶を表す状態:
+ *  - stunUntil(黄の気絶・クリの止め・致命の後の止め)→ 消す
+ *  - bossFullStunUntil(紫=体勢の崩れ)→ 今の時刻で終わらせる(次の体勢の更新=tickBossPosture が自然に終わった時と同じ後片付け=体勢を満タンへ・報酬の残りを消す)
+ *  - bossSlowUntil(ボスの黄色クリの窓=移動半減と黄色の輪)→ 消す
+ * どれも立っていなければ null(書かない)。
+ */
+export const whipLandStunClearPatch = (
+  e: { stunUntil?: number; bossFullStunUntil?: number; bossSlowUntil?: number }, gameTime: number,
+): { stunUntil?: undefined; bossFullStunUntil?: number; bossSlowUntil?: undefined } | null => {
+  const patch: { stunUntil?: undefined; bossFullStunUntil?: number; bossSlowUntil?: undefined } = {};
+  let any = false;
+  if (e.stunUntil !== undefined && e.stunUntil > gameTime) { patch.stunUntil = undefined; any = true; }
+  if (e.bossFullStunUntil !== undefined && e.bossFullStunUntil > gameTime) { patch.bossFullStunUntil = gameTime; any = true; }
+  if (e.bossSlowUntil !== undefined && e.bossSlowUntil > gameTime) { patch.bossSlowUntil = undefined; any = true; }
+  return any ? patch : null;
 };
 /** 掴んだ体の大きさで離す距離の下限(px): 体の箱の長い方の半分+プレイヤーの体の半分+隙間。ボスの叩きつけの着地点をプレイヤーに重ねない。 */
 export const WHIP_SWING_BODY_GAP_PX = 8;

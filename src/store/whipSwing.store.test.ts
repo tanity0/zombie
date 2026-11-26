@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, WHIP_GRAB_HITSTOP_MS } from './gameStore';
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
+import * as BRC from '../utils/brawlerCombo';
 import { WHIP_SWING_ACCEL_MS, WHIP_SWING_MAX_MS, WHIP_SWING_PERIOD_MS } from '../utils/whipSwing';
 
 let now = 15_000_000;
@@ -146,7 +147,7 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
     expect(st().whipSwing!.grabY).toBeCloseTo(ec.y);
   });
 
-  it('技の行(大車輪)は自動の投げでは出ない。投げた敵の回りは振り回しの向きを引き継ぐ', () => {
+  it('技の行(大車輪)は自動の投げの着弾でも1回出る(社長指示2026-11-26)。投げた敵の回りは振り回しの向きを引き継ぐ', () => {
     const techRows = () => st().skillProcFeed.filter(r => r.key === 'tech:whipslam').length;
     const landNow = () => { for (let i = 0; i < 200 && st().whipSwing; i++) step(10); };
     useGameStore.setState({ enemies: [place('zombie', -100, 0, 'y', STUN)], skillProcFeed: [] });
@@ -157,13 +158,30 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
     for (let i = 0; i < 400 && st().whipSwing?.phase === 'swing'; i++) step(10);
     expect(st().whipSwing?.phase).toBe('thrown');
     expect(en('y').brThrowSpin?.dir).toBe(dir);
+    expect(techRows()).toBe(0); // 投げた瞬間はまだ出ない(着弾で出す)
     landNow();
     expect(st().whipSwing).toBeNull();
-    expect(techRows()).toBe(0);
+    expect(techRows()).toBe(1);
   });
 
-  it('掴まれている敵に弾は当たらない・毒などで死んだらその場で着弾', () => {
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)] });
+  it('生き残った強個体は着弾で気絶が解ける=もう一度当てても掴まない(社長指示2026-11-26「一度回したらクリティカル解除して」)', () => {
+    const strong = place('zombie', 100, 0, 's', { stunUntil: 1e12, colorTier: 'red' } as Partial<Enemy>);
+    expect(BRC.brawlerEnemyClass(strong)).toBe('strong');
+    useGameStore.setState({ enemies: [strong] });
+    swing();
+    expect(st().whipSwing?.enemyId).toBe('s');
+    for (let i = 0; i < 600 && st().whipSwing; i++) step(10);
+    expect(st().whipSwing).toBeNull();
+    const s1 = en('s');
+    expect(s1.health).toBeGreaterThan(0); // 強個体は爆発のダメージだけ(処刑しない)
+    expect(s1.stunUntil === undefined || s1.stunUntil <= st().gameTime).toBe(true);
+    useGameStore.setState(s => ({ enemies: s.enemies.map(e => (e.id === 's' ? { ...e, x: center().x + 100 - e.width / 2, y: center().y - e.height / 2 } : e)) }));
+    swing();
+    expect(st().whipSwing).toBeNull();
+  });
+
+  it('掴まれている敵に弾は当たらない・毒などで死んだらその場で着弾(技の行は出さない)', () => {
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)], skillProcFeed: [] });
     swing();
     run(100);
     const hp = en('z').health;
@@ -176,6 +194,7 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
     step(10);
     expect(st().whipSwing).toBeNull();
     expect(en('n').health).toBeLessThan(hpN); // その場の爆発
+    expect(st().skillProcFeed.filter(r => r.key === 'tech:whipslam').length).toBe(0); // 途中で死んだ着弾は大車輪を出さない
   });
 });
 
@@ -203,8 +222,8 @@ describe('振り回し→投げ→放すの継ぎ目(1フレームごとの位�
     expect(j).toBeGreaterThan(0);
     expect(Math.min(s2[j - 1], s2[j])).toBeGreaterThan(0.7 * s2[j - 2]);
   });
-  it('鞭を外して途中で放す: 回っていた勢いのまま滑って止まる(瞬間停止しない)・止まったら掴みを外す', () => {
-    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)] });
+  it('鞭を外して途中で放す: 回っていた勢いのまま滑って止まる(瞬間停止しない)・止まったら掴みを外す(技の行は出さない)', () => {
+    useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)], skillProcFeed: [] });
     swing();
     const p = track(40, f => { if (f === 25) useGameStore.setState(s => ({ player: { ...s.player, subWeapons: [] } })); });
     const s = steps(p);
@@ -215,6 +234,7 @@ describe('振り回し→投げ→放すの継ぎ目(1フレームごとの位�
     expect(k).toBeGreaterThan(i + 3);
     for (let n = i; n < k; n++) expect(s[n]).toBeLessThanOrEqual(s[n - 1] + 0.5); // 減速だけ
     expect(en('z').whipHeld).toBeFalsy();
+    expect(st().skillProcFeed.filter(r => r.key === 'tech:whipslam').length).toBe(0); // 放した(着弾しない)=大車輪を出さない
   });
   it('帯の縁で回す: 半径を縮める時も1フレームで跳ばない', () => {
     useGameStore.setState(s => ({ stageTheme: 'lab' as never, player: { ...s.player, y: -200 + 60 - s.player.height / 2 } }));

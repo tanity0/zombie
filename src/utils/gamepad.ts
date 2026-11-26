@@ -1,6 +1,6 @@
 // ゲームパッド(標準配置・Gamepad API)(research/PC_SUPPORT.md §11-4)。
 // ゲーム中: 左スティック=移動(タッチのスティックと同じ「方向+強さ」)/ 十字キー=移動(全速)/ A=指(押す/離す=utils/pcPress)/
-//          B・RB=フリック(スティックの向き、倒していなければ向いている向き)/ Y=次の銃・LB=前の銃(utils/weaponCycle)/ Start・Back=一時停止(Esc と同じ)。
+//          B・RB=フリック(スティックの向き、倒していなければ向いている向き)/ Y=次の銃・LB=前の銃(utils/weaponCycle)/ X=会話の窓を一言送る(窓のタップと同じ)/ Start・Back=一時停止(Esc と同じ)。
 // メニュー(utils/menuNav の isMenuContext): 十字キー・左スティック=ボタン間の移動 / A=押す / B=戻る(ゲームの一時停止中は再開)/
 //          ※任天堂系(Pro Controller・Joy-Con)だけ決定/戻るを入れ替える=右の A で押す・下の B で戻る(刻印どおり・2026-10-10)。
 //          LB・RB=タブ(タブのある画面だけ)/ 右スティック=長文のスクロール(標準配置のみ)。
@@ -14,13 +14,14 @@ import { padFamilyOf } from './navMap';
 import { noteHudActivity, setHudActionDown, type HudAction } from './hudHints'; // ゲーム中のボタン札(research/PC_SUPPORT.md §14)
 import { isRetaliationWindowOpen, createPadNeutralTracker, stepPadNeutral } from './hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
 import { pcCycleGun } from './weaponCycle';
+import { isFollowToggleLineText } from '../data/npcLines';
 import { isMenuContext, isGameplayMounted, navHold, navActivate, navBack, navEnter, navTab, navScrollStick, noteNavInput, noteConfirmHeld, syncNavContext, pressVisibleSkip, resetNavRepeat, type NavDir } from './menuNav';
 
 export const PAD_DEAD_ZONE = 0.2;
 const MENU_STICK_ON = 0.6;
 const MENU_SCROLL_DEAD = 0.3; // 右スティックのスクロールのデッドゾーン(標準配置の axes[2]/[3] だけ読む)
 // 押しっぱなしの繰り返し間隔(初回320ms・以後110ms)は utils/menuNav が持つ。ここは「いま押されている向き」を毎フレーム渡すだけ。
-const B = { A: 0, B: 1, Y: 3, LB: 4, RB: 5, BACK: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 } as const;
+const B = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, BACK: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 } as const;
 // ゲーム中のボタン札(§14-3): 押している間だけ札が沈む。ボタン → 札の操作。
 const HUD_PAD_ACTIONS: readonly (readonly [number, HudAction])[] = [[B.A, 'press'], [B.B, 'flick'], [B.RB, 'flick'], [B.Y, 'gunNext'], [B.LB, 'gunPrev'], [B.START, 'pause'], [B.BACK, 'pause']];
 const syncHudPadKeys = (btn: readonly boolean[]): void => { for (const [i, a] of HUD_PAD_ACTIONS) setHudActionDown(a, `p${i}`, !!btn[i]); };
@@ -85,6 +86,21 @@ export const normalizePadButtons = (mapping: string, id: string | undefined, raw
   const out: boolean[] = new Array(16).fill(false);
   for (const [std, src] of ANDROID_TO_STD) out[std] = !!raw[src];
   return out;
+};
+
+/**
+ * X=会話の窓を一言送る(社長「はい」2026-11-26・窓のタップと同じ=store の advanceNpcDialogue)。押した瞬間だけ1回(押しっぱなしで続けて送らない)。
+ * 送れない行(アテンション中・グレンの変身の場面・咆哮の行)は advanceNpcDialogue が止める。窓が出ていない時は何もしない。
+ * 店の窓が開いている間の「ついて来て/待って」の行は窓に出ていない(NpcDialogue が隠す)ので送らない。戻り値=送ったか。
+ */
+export const padAdvanceNpcDialogue = (xNow: boolean, xPrev: boolean): boolean => {
+  if (!xNow || xPrev) return false;
+  const s = useGameStore.getState();
+  const line = s.npcDialogue;
+  if (!line || (s.showShopMenu && isFollowToggleLineText(line.text))) return false;
+  const before = s.npcDialogue;
+  s.advanceNpcDialogue();
+  return useGameStore.getState().npcDialogue !== before;
 };
 
 const escapeKey = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
@@ -239,6 +255,8 @@ export const installGamepad = (): (() => void) => {
     // Y=次の銃 / LB=前の銃
     if (down(B.Y)) pcCycleGun(1);
     if (down(B.LB)) pcCycleGun(-1);
+    // X=会話の窓を一言送る(押した瞬間だけ)
+    padAdvanceNpcDialogue(!!btn[B.X], !!prev[B.X]);
     if (down(B.START) || down(B.BACK)) escapeKey();
     prev = btn;
   };

@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { padStickToSwipe, PAD_DEAD_ZONE, readDpad, padTakesAim, normalizePadButtons, isAndroidLayoutPad } from './gamepad';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { padStickToSwipe, PAD_DEAD_ZONE, readDpad, padTakesAim, normalizePadButtons, isAndroidLayoutPad, padAdvanceNpcDialogue } from './gamepad';
+import { useGameStore } from '../store/gameStore';
+import { GLEN_ROAR_LINE } from './glenIntro';
 
 describe('パッドの左スティック → 移動(タッチのスティックと同じ「方向+強さ」)', () => {
   it('デッドゾーンの中は動かない', () => {
@@ -72,5 +74,38 @@ describe('Android 配置のパッド(GameSir・8BitDo)を標準の並びへ(2026
     expect(normalizePadButtons('', 'USB Gamepad (Vendor: 0079 Product: 0006)', press(9))[9]).toBe(true);
     expect(isAndroidLayoutPad('', '8BitDo Pro 2 (Vendor: 2dc8 Product: 6003)')).toBe(true);
     expect(isAndroidLayoutPad('', '3537-1012-Gamesir-T4 Pro')).toBe(true);
+  });
+});
+
+// ★X=会話の窓を一言送る(社長「はい」2026-11-26・窓のタップと同じ advanceNpcDialogue)。
+describe('パッドの X で会話を一言送る', () => {
+  const line = (text: string) => ({ text, speaker: 'テスト', until: useGameStore.getState().gameTime + 99999 }) as never;
+  beforeEach(() => {
+    useGameStore.getState().resetGame('warrior');
+    useGameStore.setState({ npcDialogue: line('一行目'), npcDialogueQueue: [line('二行目'), line('三行目')] as never, attention: null, glenTransform: null as never, showShopMenu: false });
+  });
+  it('押した瞬間に1回だけ送る(押しっぱなしで続けて送らない)', () => {
+    expect(padAdvanceNpcDialogue(true, false)).toBe(true);
+    expect(useGameStore.getState().npcDialogue?.text).toBe('二行目');
+    for (let i = 0; i < 10; i++) expect(padAdvanceNpcDialogue(true, true)).toBe(false); // 押しっぱなし
+    expect(useGameStore.getState().npcDialogue?.text).toBe('二行目');
+    expect(padAdvanceNpcDialogue(false, true)).toBe(false); // 離した
+    expect(padAdvanceNpcDialogue(true, false)).toBe(true); // もう一度押した
+    expect(useGameStore.getState().npcDialogue?.text).toBe('三行目');
+  });
+  it('窓が無い時は何もしない', () => {
+    useGameStore.setState({ npcDialogue: null, npcDialogueQueue: [] });
+    expect(padAdvanceNpcDialogue(true, false)).toBe(false);
+    expect(useGameStore.getState().npcDialogue).toBeNull();
+  });
+  it('送れない行(アテンション中・グレンの変身の場面・咆哮の行)は X でも送らない', () => {
+    useGameStore.setState({ attention: { x: 0, y: 0 } as never });
+    expect(padAdvanceNpcDialogue(true, false)).toBe(false);
+    expect(useGameStore.getState().npcDialogue?.text).toBe('一行目');
+    useGameStore.setState({ attention: null, glenTransform: {} as never });
+    expect(padAdvanceNpcDialogue(true, false)).toBe(false);
+    useGameStore.setState({ glenTransform: null as never, npcDialogue: line(GLEN_ROAR_LINE) });
+    expect(padAdvanceNpcDialogue(true, false)).toBe(false);
+    expect(useGameStore.getState().npcDialogue?.text).toBe(GLEN_ROAR_LINE);
   });
 });

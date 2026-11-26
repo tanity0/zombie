@@ -324,7 +324,7 @@ import {
   WHIP_OVERHEAD_HITSTOP_MS, WHIP_OVERHEAD_SHAKE_MS, WHIP_OVERHEAD_SHAKE_MAG,
   WHIP_SWING_SHRINK_LOOKAHEAD_MS, WHIP_SWING_SHRINK_LOOKAHEAD_STEPS, WHIP_DROP_MIN_SPEED, WHIP_DROP_MS,
   WHIP_SWING_RADIUS_MULT, WHIP_SWING_MIN_RADIUS_FRAC, WHIP_THROW_DIST_MULT, WHIP_THROW_DAMAGE_MULT, WHIP_THROW_HITSTOP_MS, type WhipSwingState, whipShieldBlocksShot, type Box as WhipBox,
-  whipShieldHitDamage, whipShieldHealthFloor, whipThrowExecutesSelf, whipLandTechKind,
+  whipShieldHitDamage, whipShieldHealthFloor, whipThrowExecutesSelf, whipLandTechKind, whipLandStunClearPatch,
 } from '../utils/whipSwing';
 import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
 import { planHomingVolley, splitDueHomingShots, homingLiftAllowed, type HomingPendingShot } from '../utils/homingVolley';
@@ -3280,7 +3280,7 @@ const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux:
     return {
       ...base, phase: 'overhead' as const, ohMs: WHIP_OVERHEAD_MS, fromX: ec.x, fromY: ec.y, toX: land.x, toY: land.y,
       pivX: land.kind === 'start' ? ec.x : pc.x, pivY: land.kind === 'start' ? ec.y : pc.y,
-      ux: dl > 1e-6 ? dx / dl : ux, uy: dl > 1e-6 ? dy / dl : uy, byInput: true,
+      ux: dl > 1e-6 ? dx / dl : ux, uy: dl > 1e-6 ? dy / dl : uy,
     };
   })();
   set(state => ({
@@ -3445,12 +3445,24 @@ const landWhipThrow = (
     g0.spawnMeleeBlood(x, y, Math.max(56, e0.width * 1.6));
   }
   const r = whipThrowExplode(get, x, y, selfAlive && e0 ? id : null);
+  // ★着弾で気絶(クリティカル)を解く(社長指示2026-11-26「一度回したらクリティカル解除して」): 生き残った強個体・ボスを続けて掴ませない・気絶のまま殴らせない。
+  // 爆発のダメージの後に書く(爆発の威力は気絶の有無で変えない)。爆発は気絶を新しく立てない(会心でない・体勢の削りなし)。
+  if (flew && selfAlive) {
+    const gt = get().gameTime;
+    set(state => ({
+      enemies: state.enemies.map(en => {
+        if (en.id !== id || !(en.health > 0)) return en;
+        const clear = whipLandStunClearPatch(en, gt);
+        return clear ? { ...en, ...clear } : en;
+      }),
+    }));
+  }
   if (struck) whipThrowPunisher(get, set, struck.ids, struck.vx, struck.vy);
   whipLandFx(get, x, y + (e0 ? e0.height / 2 - 2 : 0), sw.phase === 'overhead', e0 ? e0.width : undefined);
-  // 技の行は、プレイヤーの入力(近接・フリック)で投げた敵が生きたまま着いた時だけ(自動の投げ・途中で死んで落ちた時は出さない)。
-  // ボスの叩きつけ(overhead)はプレイヤーの振りで掴んだ瞬間に始まる一続きの技=入力の投げと同じ扱い(byInput)。
+  // 技の行は、プレイヤーの鞭で掴んだ敵を投げた/叩きつけた敵が生きたまま着いた時(自動の投げも含む・社長指示2026-11-26)。
+  // 途中で死んでその場に落ちた時(selfAlive=false)・鞭を外して放した時(drop=着弾しない)は出さない。
   // ★ボスの叩きつけ=「叩きつけ」・雑魚/強個体の投げ=「大車輪」(社長指示2026-11-26「ボスは叩きつけ で」)。
-  if (flew && sw.byInput && selfAlive) notifyTechProc(whipLandTechKind(sw.phase)); // 通信の下に技の行
+  if (flew && selfAlive) notifyTechProc(whipLandTechKind(sw.phase)); // 通信の下に技の行
   addWhipCharge(get, set, r.hits);
   return r.killed;
 };
@@ -3515,7 +3527,7 @@ const startWhipDrop = (get: () => GameState, set: WhipSet): void => {
  * 投げる(§8-3): 振り回しの途中なら向き (dx,dy) へ。出だしの速さ=放した時の接線の速さ・最大距離=届く距離×WHIP_THROW_DIST_MULT。飛ぶ向きへ縦に転がる(絵=格闘の投げの回りの流用)。
  * 投げたら true。
  */
-const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: number, byInput = false): boolean => {
+const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: number): boolean => {
   const st = get();
   const sw = st.whipSwing;
   if (!sw || sw.phase !== 'swing') return false;
@@ -3531,7 +3543,7 @@ const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: numb
   // 回っていた勢い(vx,vy)と直進の速さの差は描画が出だしの曲がりに使う(判定は直進のまま)。
   const rvx = (sw.vx ?? 0) - v0 * ux, rvy = (sw.vy ?? 0) - v0 * uy;
   set(state => ({
-    whipSwing: { ...sw, phase: 'thrown', throwAt: sw.at ?? state.gameTime, fromX: sw.cx, fromY: sw.cy, ux, uy, v0, maxDist, dNow: 0, byInput, rvx, rvy },
+    whipSwing: { ...sw, phase: 'thrown', throwAt: sw.at ?? state.gameTime, fromX: sw.cx, fromY: sw.cy, ux, uy, v0, maxDist, dNow: 0, rvx, rvy },
     // 回りの向きは振り回しの向きを引き継ぐ(回していた勢いのまま転がる)。
     enemies: state.enemies.map(en => (en.id !== sw.enemyId ? en : { ...en, brThrowSpin: { at: nowMs, ms: Math.max(1, Math.round(flyMs)), dir: sw.dir } })),
   }));
