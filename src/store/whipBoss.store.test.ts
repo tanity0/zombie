@@ -124,6 +124,10 @@ describe('②気絶しているボスは掴める=頭上を越えて反対側へ
     expect(ecOf('h').x).toBeCloseTo(sw.toX ?? 0, 0);
     expect(en('h').health).toBeLessThan(99999); // 爆発を満額で受ける
     expect(en('h').health).toBeGreaterThan(0); // ボスは非致死
+    // 技の行はボスの叩きつけ=「叩きつけ」(大車輪ではない)
+    const keys = st().skillProcFeed.map(r => r.key);
+    expect(keys).toContain('tech:whipoverhead');
+    expect(keys).not.toContain('tech:whipslam');
   });
   it('紫(体勢の崩れ)中のボスも掴んで叩きつける', () => {
     const until = st().gameTime + 5000;

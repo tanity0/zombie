@@ -132,6 +132,7 @@ import {
   katanaCutDeathAlpha, katanaCutLayout, katanaCutLength, katanaCutOpen, katanaCutRgb,
   katanaSlashIntScale, katanaSlashJitter, katanaSlashPose, katanaSlashVisibleMid, katanaWhiteRgba,
 } from '../utils/katanaSlashSheet'; // プレイヤーの刀の斬撃シート(社長支給2026-11-22)
+import { whipComboBodyRecover } from '../utils/whipCombo'; // 鞭の3段目の後の隙の姿勢
 import {
   whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
   whipTetherShape, whipTetherBow, whipTetherRetract, whipFlyLiftPx, whipFlyPeakPx, type WhipRopeShape,
@@ -28400,7 +28401,9 @@ export class PixiScene {
     // ★鞭の振りはナイフの逆=振り上げ(-swing)→パチンの瞬間にしゃがみ(-ready)(社長「鞭振るときのプレイヤーの動きはナイフの逆で、振り上げから しゃがみ へ」)。
     // ★ボスの叩きつけの間(見え方の監査 A1「体が静止して念動力に見える」): 担ぎ上げ=振り上げの絵・叩きつけの瞬間=しゃがみの底。普通の振りより優先。
     const ohPose = isWhipMode(p) ? this.whipOverheadPlayerPose(useGameStore.getState().gameTime, face) : null;
-    const whipSwingPose = ohPose ? ohPose.pose : isWhipMode(p) ? whipBodyPose(sinceSwing, MELEE_WINDUP_MS) : null;
+    // 3段目の後の隙(utils/whipCombo): 振り抜いた底で粘ってからゆっくり立ち上がる(隙が目で分かる)。1・2段目は今の戻り。
+    const whipRecover = isWhipMode(p) ? whipComboBodyRecover(p.whipComboStage ?? 0, MELEE_WINDUP_MS) : null;
+    const whipSwingPose = ohPose ? ohPose.pose : isWhipMode(p) ? whipBodyPose(sinceSwing, MELEE_WINDUP_MS, whipRecover?.recoverMs, whipRecover?.holdMs) : null;
     if (meleePosePrefix && !warlordFull && !killFxSwallowsSwing && whipSwingPose?.pose) {
       const poseTex = getTexture(`${meleePosePrefix}-${whipSwingPose.pose}`);
       if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}-${whipSwingPose.pose}`; }

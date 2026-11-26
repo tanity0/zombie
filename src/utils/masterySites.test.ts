@@ -19,7 +19,7 @@ const SOURCES = import.meta.glob<string>(
 );
 
 /** `damageEnemy(` の呼び出しの総数(包んだ数+印で済ませた数)。呼び口を足したら、包んでからこの数を直す。 */
-const EXPECTED_CALLS = 67; // +1: 鞭で掴んだ雑魚・強個体を着弾の爆発で必ず倒す時の残りの1発(社長指示2026-11-26「爆撃と共にKILL」・withMastery('whip')) / +1: 鞭の投げの着弾の爆発(research/WHIP_FOLLOWUP.md §8-4・withMastery('whip')。旧の叩きつけの爆発の置き換え) / +1: 格闘のスープレックスの叩きつけの小爆発(research/BRAWLER.md §34-9・withMastery('brawler')) / +1: 格闘の空中投げの爆撃(research/BRAWLER.md §34-3・withMastery('brawler')) / +1: 爆弾の拾い物が案山子に当てる1発(withMastery('none')) / (−1: 鞭の叩きつけの爆発の守護霊の枝は撤去=守護霊の鞭は普通の振りだけ・research/WHIP_FOLLOWUP.md §8)
+const EXPECTED_CALLS = 68; // +1: 鞭で振り回している敵(盾)が消した弾のダメージを受ける1発(社長指示2026-11-26「弾のダメージリアルタイムに食らうで」・withMastery('whip')) / +1: 鞭で掴んだ雑魚・強個体を着弾の爆発で必ず倒す時の残りの1発(社長指示2026-11-26「爆撃と共にKILL」・withMastery('whip')) / +1: 鞭の投げの着弾の爆発(research/WHIP_FOLLOWUP.md §8-4・withMastery('whip')。旧の叩きつけの爆発の置き換え) / +1: 格闘のスープレックスの叩きつけの小爆発(research/BRAWLER.md §34-9・withMastery('brawler')) / +1: 格闘の空中投げの爆撃(research/BRAWLER.md §34-3・withMastery('brawler')) / +1: 爆弾の拾い物が案山子に当てる1発(withMastery('none')) / (−1: 鞭の叩きつけの爆発の守護霊の枝は撤去=守護霊の鞭は普通の振りだけ・research/WHIP_FOLLOWUP.md §8)
 
 const VALID_KEYS = new Set<string>([...GROWING_MASTERY_KEYS, 'loadout', 'none', 'max']);
 

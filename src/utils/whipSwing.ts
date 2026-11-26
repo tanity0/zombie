@@ -258,6 +258,24 @@ export const whipShieldBlocksShot = (shot: WhipShieldShot, body: Box): boolean =
   const cx = shot.x + shot.width / 2, cy = shot.y + shot.height / 2;
   return cx >= body.x && cx <= body.x + body.width && cy >= body.y && cy <= body.y + body.height;
 };
+/**
+ * ★盾で消した弾のダメージを盾の敵がその場で受ける(社長指示2026-11-26「ボスも雑魚も同じ経路で、弾のダメージリアルタイムに食らうで」)。
+ * 威力=その弾の damage(プレイヤーに当たった時の素の値)。1未満・壊れた値は1。
+ */
+export const whipShieldHitDamage = (shotDamage: number): number => (Number.isFinite(shotDamage) && shotDamage > 1 ? shotDamage : 1);
+/**
+ * 盾のダメージで残す体力の下限。ボス=叩きつけの弧の途中で死なない(体力1で止める・致命にしない)。
+ * 雑魚・強個体=0(死んだらその場で着弾=途中で死んだ時の今の処理)。cls=格闘の区分(brawlerEnemyClass)・health=今の体力。
+ */
+export const whipShieldHealthFloor = (cls: 'mob' | 'strong' | 'boss', health: number): number =>
+  cls === 'boss' ? Math.max(0, Math.min(1, health)) : 0;
+/**
+ * 着弾の爆発で投げた本人を必ず倒すか(処刑扱い)。雑魚だけ(社長指示2026-11-26「強個体はクリティカルだけでは死なないでしょ？」)。
+ * 強個体・ボスは爆発のダメージを受けるだけ(足りなければ生き残る)。cls=格闘の区分(brawlerEnemyClass)。
+ */
+export const whipThrowExecutesSelf = (cls: 'mob' | 'strong' | 'boss'): boolean => cls === 'mob';
+/** 着弾で出す技の行。ボスの叩きつけ(overhead)=「叩きつけ」・雑魚/強個体の投げ=「大車輪」。 */
+export const whipLandTechKind = (phase: string): 'whipoverhead' | 'whipslam' => (phase === 'overhead' ? 'whipoverhead' : 'whipslam');
 
 /**
  * 壁・木・建物・帯の縁で、回す半径を縮めて手前に留める。want=目標の半径・free(r)=その半径の位置に居られるか。

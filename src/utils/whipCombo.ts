@@ -39,9 +39,33 @@ export const whipComboSweepSign = (stage: number, aimAngle: number): 1 | -1 | 0 
   const first: 1 | -1 = sn > 0.35 ? -1 : sn < -0.35 ? 1 : cs >= 0 ? 1 : -1;
   return stage === 1 ? first : (first === 1 ? -1 : 1);
 };
-/** タップを今すぐ振れるか、予約するか。cdEnd=段の間隔が明ける時刻・pending=前隙中か。 */
-export const whipComboTapAction = (now: number, cdEnd: number, pending: boolean): 'swing' | 'queue' =>
-  !pending && now >= cdEnd ? 'swing' : 'queue';
+/**
+ * ★3段目の後の隙(社長指示2026-11-26「3連撃の最後はきちんと隙つくって」)。3段目を振ってから次の振り(1段目)が出せるまで(ms・叩き台)。
+ * 段の間隔(WHIP_COMBO_INTERVAL_MS)と同じく振った時刻から数える・近接CDの短縮は掛かる。この間のタップは予約しない(捨てる)。
+ */
+export const WHIP_COMBO_FINISH_RECOVERY_MS = 600;
+/** この段を振った後、次の振りが出せるまで(ms・近接CDの短縮を掛ける前)。3段目=隙・1/2段目=段の間隔。 */
+export const whipComboGapMs = (stage: number): number => (stage === 3 ? WHIP_COMBO_FINISH_RECOVERY_MS : WHIP_COMBO_INTERVAL_MS);
+/** 3段目の後の隙の体の姿勢: 振り抜いた底で粘る長さ(ms)。残りの隙(隙−前隙−粘り)でゆっくり立ち姿へ戻る。 */
+export const WHIP_COMBO_FINISH_HOLD_MS = 120;
+/**
+ * 体の姿勢の戻り(utils/whipSwingMotion の whipBodyPose に渡す recoverMs/holdMs)。null=今の戻りのまま(1・2段目)。
+ * 3段目=隙が明けるまでに立ち姿へ戻り切る(粘り WHIP_COMBO_FINISH_HOLD_MS+戻り=隙−前隙)。
+ */
+export const whipComboBodyRecover = (stage: number, windupMs: number): { recoverMs: number; holdMs: number } | null => {
+  if (stage !== 3) return null;
+  const rest = Math.max(0, WHIP_COMBO_FINISH_RECOVERY_MS - Math.max(0, windupMs));
+  const holdMs = Math.min(WHIP_COMBO_FINISH_HOLD_MS, rest / 2);
+  return { recoverMs: Math.max(1, rest - holdMs), holdMs };
+};
+/**
+ * タップを今すぐ振れるか、予約するか、捨てるか。cdEnd=次の振りが出せる時刻・pending=前隙中か・prevStage=最後に振った段。
+ * 3段目の前隙中と3段目の後の隙の間は捨てる(予約して隙明けに出すと隙にならない)。
+ */
+export const whipComboTapAction = (now: number, cdEnd: number, pending: boolean, prevStage = 0): 'swing' | 'queue' | 'drop' => {
+  if (!pending && now >= cdEnd) return 'swing';
+  return prevStage === 3 ? 'drop' : 'queue';
+};
 /** 予約を出すか(間隔が明けて前隙中でない・予約が古すぎない)。古すぎれば 'drop'。 */
 export const whipComboQueuedAction = (now: number, queuedAt: number, cdEnd: number, pending: boolean): 'fire' | 'wait' | 'drop' => {
   if (now - queuedAt > WHIP_COMBO_QUEUE_MAX_MS) return 'drop';

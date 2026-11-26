@@ -28,4 +28,6 @@ export const BRAWLER_TECH_NAMES: Record<TechProcKey, { name: string; dir: Brawle
   // 投げの向きは入れた向きの4方向に限らない=操作の向きを示す楔は使わない。向きを示さない印のうち、続きの印(└)は前の技の続きに見えるので外し、
   // 中心から四方へ開く印(all)=振り回して全方位を薙ぐ形にする。キーは旧の叩きつけのまま(whipslam)。
   'tech:whipslam': { name: '大車輪', dir: 'all' },
+  // ★ボスを頭上越しに叩きつけた時は「叩きつけ」(社長指示2026-11-26「ボスは叩きつけ で」)。上から下へ打ち下ろす技=下向きの楔。出る条件は大車輪と同じ(入力の振りで掴んで生きたまま着いた時)。
+  'tech:whipoverhead': { name: '叩きつけ', dir: 'down' },
 };

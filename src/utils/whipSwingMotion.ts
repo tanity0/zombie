@@ -173,9 +173,9 @@ export interface WhipBodyPose {
  * 体の動き(ナイフの逆=振り上げ→しゃがみ)。el=指を離してから(ms)。前隙の終わり(=パチン=当たる瞬間)がしゃがみの底。
  * 振り上げは伸び上がって後ろへ反る(減速して止まる)→打ち出しで加速して沈み、パチンで底→戻りは慣性つきで立ち姿へ。
  */
-export const whipBodyPose = (el: number, windupMs: number, recoverMs = WHIP_ROPE_CRACK_HOLD_MS + WHIP_ROPE_RETRACT_MS): WhipBodyPose => {
+export const whipBodyPose = (el: number, windupMs: number, recoverMs = WHIP_ROPE_CRACK_HOLD_MS + WHIP_ROPE_RETRACT_MS, holdMs = 0): WhipBodyPose => {
   const W = Math.max(1, windupMs);
-  if (el < 0 || el >= W + recoverMs) return { pose: null, sqX: 1, sqY: 1, lean: 0 };
+  if (el < 0 || el >= W + holdMs + recoverMs) return { pose: null, sqX: 1, sqY: 1, lean: 0 };
   // 伸び上がり(up=1)としゃがみ(down=1)の量。
   let up = 0, down = 0;
   if (el < W * WHIP_ROPE_HOLD_END) up = easeOutCubic(clamp01(el / (W * WHIP_ROPE_PULL_END)));
@@ -183,6 +183,9 @@ export const whipBodyPose = (el: number, windupMs: number, recoverMs = WHIP_ROPE
     const q = clamp01((el - W * WHIP_ROPE_HOLD_END) / (W * (1 - WHIP_ROPE_HOLD_END)));
     const qq = q * q; // 加速して沈む
     up = 1 - qq; down = qq;
+  } else if (holdMs > 0) {
+    // ★3段目の後の隙(utils/whipCombo の whipComboBodyRecover): 振り抜いた底で粘り、重さを持ってゆっくり立ち上がる(動き始めも終わりも加減速)。
+    down = el < W + holdMs ? 1 : 1 - easeInOut(clamp01((el - W - holdMs) / Math.max(1, recoverMs)));
   } else down = 1 - easeOutCubic(clamp01((el - W) / recoverMs));
   return {
     pose: el < W ? 'swing' : 'ready',
