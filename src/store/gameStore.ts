@@ -13942,7 +13942,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★§19-1・§19-2: 道に無い技・当たっていない行動からの技・取り消しの受付の外の技は、何も出ない(後隙をそのまま晒す)。
     //   拒否の音と数字が沈む表示は出さない(あれは「技ポイントが足りない/方向が決まらない」の合図=道の外の入力に鳴らすと意味が混ざる・
     //   見た目と音は足さない)。旧はここへ来る入力がほぼ無かった(通常攻撃からはいつでも出せ、技の最中は覚えていた)。
-    if (!BR.brawlerTechAllowed(s, kind, t) && !BR.brawlerGuardCancelOk(s, kind, t)) return false;
+    // ★通常の段(1〜5段目)の後隙は、当たっても空振りでも構えで取り消せる(社長指示2026-11-26・BR.brawlerStageGuardCancelOk=プレイヤーだけ)。
+    if (!BR.brawlerTechAllowed(s, kind, t) && !BR.brawlerGuardCancelOk(s, kind, t) && !BR.brawlerStageGuardCancelOk(s, kind, t)) return false;
     // 血の覚醒中は技ポイントを無視して使い放題(社長指示2026-11-08・値段0=減らさない)。
     const awakened = isBloodAwakening(p, t);
     // ★構えは払えなくても出る(社長指示2026-11-12「カウンターはポイントが無くても発動。ただし、3未満の時はダメージ防いで弾き飛ばされるのみ」)=

@@ -11,7 +11,7 @@ import {
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
   brawlerFistTargets, brawlerApproach, accelLungeSpeed, accelLungeFactor, BRAWLER_ACCEL_FRAC, brawlerJumpHeight,
   brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_KICK3_RECOVERY_MULT, BRAWLER_KICK_CROUCH_AT, BRAWLER_HIT_PITCH, brawlerStageHitSfx, brawlerKickHitSfx, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
-  brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech, brawlerLateCarry, brawlerTechBufferDecision, BRAWLER_CANCEL_WINDOW_MS,
+  brawlerTechCancelOk, brawlerStageGuardCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech, brawlerLateCarry, brawlerTechBufferDecision, BRAWLER_CANCEL_WINDOW_MS,
   BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT, brawlerKickMult,
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerAfterJustGuardPoints, BRAWLER_JUST_GUARD_POINTS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS,
 } from './brawler';
@@ -614,6 +614,50 @@ describe('取り消し(research/BRAWLER.md §19-1・§19-2・旧 §11-4 の技�
   });
 });
 
+// ★社長指示2026-11-26「格闘は通常技からは、構え をキャンセルで出せる」で、旧「構えは待機からだけ(殴っている間は守れない)」を通常の段について置き換えた。
+describe('段の後隙の構え(通常の1〜5段目から構えへの取り消し・プレイヤーだけ)', () => {
+  const stageResolved = (stage: number, hits: number, hitstopMs: number) => {
+    const s = brawlerStartAttack(initialBrawlerState(), stage, 0, false);
+    const at = s.windupMs;
+    return { pre: s, s: brawlerAfterResolve(s, at, hits, { pointCap: 20, countPoint: false, hitstopMs }), at };
+  };
+  it('1〜5段目のどの段でも、空振りの後隙から構えへ取り消せる(受付の150msに縛られず後隙の終わりまで)。溜めの間は出せず覚えもしない', () => {
+    for (const stage of [1, 2, 3, 4, 5]) {
+      const { pre, s, at } = stageResolved(stage, 0, 0);
+      expect(brawlerStageGuardCancelOk(pre, 'guard', 1), `溜め s${stage}`).toBe(false);
+      expect(brawlerShouldBufferTech(pre, 'guard', 1), `溜めで覚えない s${stage}`).toBe(false);
+      expect(brawlerStageGuardCancelOk(s, 'guard', at), `直後 s${stage}`).toBe(true);
+      expect(brawlerStageGuardCancelOk(s, 'guard', at + s.recoveryMs - 1), `後隙の終わり際 s${stage}`).toBe(true);
+      expect(brawlerStageGuardCancelOk(s, 'guard', at + s.recoveryMs), `行動の終わり s${stage}`).toBe(false);
+      expect(brawlerShouldBufferTech(s, 'guard', at + 1)).toBe(false);     // 即座に出る=覚えない
+      expect(brawlerLateCarry(s, 'guard', at + Math.min(BRAWLER_CANCEL_WINDOW_MS + 10, s.recoveryMs - 1))).toBe(false); // 後隙の終わりまで待たない
+      for (const k of ['kick', 'stomp', 'kiko'] as const) expect(brawlerStageGuardCancelOk(s, k, at + 1)).toBe(false); // 構えだけ
+    }
+  });
+  it('当たった段: 当たりの止めの最中は出さずに覚え、止めが明けた瞬間に出す(他の取り消しと同じ作法)', () => {
+    const { s, at } = stageResolved(2, 1, 80);
+    expect(brawlerStageGuardCancelOk(s, 'guard', at + 40)).toBe(false);
+    expect(brawlerShouldBufferTech(s, 'guard', at + 40)).toBe(true);
+    expect(brawlerLateCarry(s, 'guard', at + 40)).toBe(false);
+    const held = { ...s, techBuffer: 'guard' as const };
+    expect(brawlerTechBufferDecision(held, at + 40)).toBe('wait');
+    expect(brawlerTechBufferDecision(held, at + 80)).toBe('fire');
+    expect(brawlerStageGuardCancelOk(s, 'guard', at + 80)).toBe(true);
+  });
+  it('構えへ移れば段は終わる(その段で1回)。技・構え自身・秘奥義の連撃・ステップの最中からは増やさない。拳鬼の道(brawlerTechAllowed)は今のまま', () => {
+    const { s, at } = stageResolved(3, 0, 0);
+    const g = brawlerStartTech(s, 'guard', at + 10);
+    expect(g.phase).toBe('tech');
+    expect(g.guardSince).toBe(at + 10); // ジャスト構えの窓は取り消した構えでも同じく構えの頭から
+    expect(brawlerStageGuardCancelOk(g, 'guard', at + 20)).toBe(false);
+    expect(brawlerTechAllowed(s, 'guard', at + 10)).toBe(false); // 拳鬼が読む道の判定は変えない
+    const st = brawlerAfterResolve(brawlerStartTech(initialBrawlerState(), 'stomp', 0), 300, 0, { pointCap: 20, countPoint: false, hitstopMs: 0 });
+    expect(brawlerStageGuardCancelOk(st, 'guard', 310)).toBe(false);
+    expect(brawlerStageGuardCancelOk({ ...s, secret: {} as NonNullable<typeof s.secret> }, 'guard', at + 10)).toBe(false);
+    expect(brawlerStageGuardCancelOk({ ...s, stepUntil: at + 100 }, 'guard', at + 10)).toBe(false);
+  });
+});
+
 describe('流れの当たりの数(拳鬼のダメージ補正が読む。プレイヤーの「N HIT」は brawlerCombo の brawlerLinkDisplay=§23)', () => {
   it('当たりを足す・流れが切れていたら数え直す', () => {
     let s = brawlerFlowOnHit(initialBrawlerState(), 1);
@@ -652,7 +696,7 @@ describe('技の先行入力(社長指示2026-11-08「技の先行入力だけ�
     const a1 = brawlerStartAttack(initialBrawlerState(), 1, 0, false);
     expect(brawlerShouldBufferTech(a1, 'kick', 30)).toBe(true);
     expect(brawlerShouldBufferTech(a1, 'stomp', 30)).toBe(true);          // §20-3: 通常の段からは 飛び蹴り・大踏み潰し・気功
-    expect(brawlerShouldBufferTech(a1, 'guard', 30)).toBe(false);         // 構えは待機からだけ
+    expect(brawlerShouldBufferTech(a1, 'guard', 30)).toBe(false);         // 構えは段の溜め(前隙)からは出ない・覚えない(後隙からは取り消せる=下の「段の後隙の構え」)
     expect(brawlerTechAllowed(a1, 'kick', 30)).toBe(false);
     // 飛び蹴りの連続: 判定の前に入れた次の蹴りは覚える(今どおり)
     const k1 = brawlerStartTech(initialBrawlerState(), 'kick', 0, 1);

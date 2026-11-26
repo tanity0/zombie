@@ -815,13 +815,17 @@ export const brawlerShouldBufferTech = (s: BrawlerState, kind: BrawlerTechKind, 
  * 判定の前(出だし)に押して当たらなかった技は、今どおり捨てる(下の brawlerTechBufferDecision)。
  */
 export const brawlerLateCarry = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean =>
-  brawlerActing(s) && s.resolved && !isBrawlerGuardingAt(s, t) && !(s.phase === 'tech' && s.tech === 'guard') && !brawlerTechAllowed(s, kind, t);
+  brawlerActing(s) && s.resolved && !isBrawlerGuardingAt(s, t) && !(s.phase === 'tech' && s.tech === 'guard') && !brawlerTechAllowed(s, kind, t)
+  // 通常の段の後隙の構えは、後隙の終わりまで待たずに取り消して出る(止めの最中だけ覚える=下の brawlerShouldBufferTechEarly)。
+  && !(kind === 'guard' && brawlerStageGuardSlot(s, t));
 /** 出だし・当たりの止めの間の先行入力(旧来の規則)。 */
 const brawlerShouldBufferTechEarly = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean => {
   // ステップの最中に押した技は覚える(§20-8=ステップが終わった瞬間に、待機から出す)。
   if (!brawlerActing(s) && brawlerStepping(s, t) && !isBrawlerGuardingAt(s, t)) return true;
   if (!brawlerActing(s) || isBrawlerGuardingAt(s, t) || (s.phase === 'tech' && s.tech === 'guard')) return false;
   if (brawlerTechAllowed(s, kind, t)) return false;
+  // ★通常の段の後隙の構え(brawlerStageGuardCancelOk): 当たりの止めの最中に入れたら覚えて、止めが明けた瞬間に出す。止めの外なら即座に出る(覚えない)。
+  if (kind === 'guard' && brawlerStageGuardSlot(s, t)) return brawlerInHitstop(s, t);
   const from = brawlerRouteNodeOf(s);
   // ★旧「画面全体の止め」を写した止めの最中に押した次の蹴りは覚えて、止めが明けてから出す(旧の止めの間と同じ・社長指示2026-11-14)。
   if (s.phase === 'tech' && s.tech === 'kick' && kind === 'kick') return (!s.resolved || brawlerInFreezeStop(s, t)) && s.kickN < BRAWLER_KICK_MAX && !s.kickThrow;
@@ -846,7 +850,7 @@ export const brawlerTechBufferDecision = (s: BrawlerState, t: number): 'fire' | 
   if (s.guardCancelHeld) return brawlerGuardCancelOk(s, k, t) ? 'fire' : 'drop';
   // 待機: ステップの最中に覚えた技(stepHeld)は、ステップが終わった瞬間に出す(§20-8)。それ以外は捨てる。
   if (!brawlerActing(s)) return s.stepHeld ? (brawlerStepping(s, t) ? 'wait' : 'fire') : 'drop';
-  if (brawlerTechAllowed(s, k, t)) return 'fire';
+  if (brawlerTechAllowed(s, k, t) || brawlerStageGuardCancelOk(s, k, t)) return 'fire';
   if (s.lateHeld) return 'wait'; // 判定の後に押した技(§25): 行動の終わりまで残り、呼び手が待機へ戻った瞬間に出す
   return brawlerShouldBufferTechEarly(s, k, t) ? 'wait' : 'drop';
 };
@@ -1085,6 +1089,19 @@ export const BRAWLER_KICKUP_MULT = BRAWLER_HEEL_MULT;
  */
 export const brawlerGuardCancelOk = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean =>
   kind !== 'guard' && !s.secret && s.phase === 'tech' && s.tech === 'guard' && isBrawlerGuardingAt(s, t);
+/** 通常の段(1〜5段目)の後隙か(判定を解いた後・行動の終わりの前。当たりの止めの最中も含む)。秘奥義の連撃・ステップ・構えの最中は外す。 */
+const brawlerStageGuardSlot = (s: BrawlerState, t: number): boolean =>
+  !s.secret && s.phase === 'attack' && s.stage >= 1 && s.stage <= 5 && s.resolved
+  && !isBrawlerGuardingAt(s, t) && !brawlerStepping(s, t) && brawlerElapsed(s, t) < brawlerTotalMs(s);
+/**
+ * ★通常の段の後隙を構えで取り消す(社長指示2026-11-26「格闘は通常技からは、構え をキャンセルで出せる」)。
+ * 1〜5段目の判定を解いた後(後隙)なら、当たっても空振りでも構え(↑)へ取り消せる。溜め(前隙)の間は出せない(押しても捨てる)。
+ * 当たりの止めの最中は出さない=覚えて、止めが明けた瞬間に出す(brawlerShouldBufferTech / brawlerTechBufferDecision・他の取り消しと同じ作法)。
+ * 構えへ移れば段は終わる=その段で1回。取り消しの受付(BRAWLER_CANCEL_WINDOW_MS)は掛けない(後隙の終わりまで)。払える/払えないは呼び手が見る。
+ * 通常の段以外(技・構え自身)からの構えは今のまま(道の表 brawlerRouteAllows)。プレイヤーだけが使う(拳鬼の道=brawlerTechAllowed は変えない)。
+ */
+export const brawlerStageGuardCancelOk = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean =>
+  kind === 'guard' && brawlerStageGuardSlot(s, t) && !brawlerInHitstop(s, t);
 /**
  * 構えを取り消した状態(§34-2): 構えの効果(被害の無効・弾の打ち返し・レーザーの盾・受けの窓=どれも guardUntil を読む)を全部切る。
  * まだ撃っていない反撃の気功(§32)は出さない(§34-6 #8)。受けた直後の前隙なし(quickUntil)は触らない。
