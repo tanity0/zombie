@@ -6,9 +6,9 @@ import {
   WHIP_FLY_DROP_MS, WHIP_FLY_LIFT_MIN_PX, WHIP_FLY_LIFT_MAX_PX,
   whipTetherEntry, WHIP_TETHER_ENTRY_MS, whipTetherGlowK, whipFlyVisualTimeAt, whipThrowStreak, WHIP_THROW_STREAK_OUT_MS,
   whipFlyVisualSpeed, whipFlyReleaseBlend, whipFlyViewOffset, whipTetherRetractTip, whipTrailFade, WHIP_TRAIL_FADE_MS, WHIP_FLY_BLEND_TAU_MS,
-  whipGrabZoomAt, WHIP_GRAB_ZOOM_MAG, WHIP_GRAB_ZOOM_IN_MS, WHIP_GRAB_ZOOM_HOLD_MS, WHIP_GRAB_ZOOM_TOTAL_MS, WHIP_SNARE_FX_ENABLED,
+  WHIP_ROPE_FINISH_PULL, whipGrabZoomAt, WHIP_GRAB_ZOOM_MAG, WHIP_GRAB_ZOOM_IN_MS, WHIP_GRAB_ZOOM_HOLD_MS, WHIP_GRAB_ZOOM_TOTAL_MS, WHIP_SNARE_FX_ENABLED,
 } from './whipSwingMotion';
-import { whipThrowDurationMs, whipThrowDist } from './whipSwing';
+import { whipThrowDurationMs, whipThrowDist, WHIP_THROW_DIST_MULT } from './whipSwing';
 
 const W = 200;
 
@@ -43,6 +43,29 @@ describe('鞭の形', () => {
   it('打ち出しは手元から先にほどける(手元の区間の方が先にまっすぐ)', () => {
     const s = whipRopeShape(185, W);
     expect(Math.abs(s.angles[0])).toBeLessThan(Math.abs(s.angles[s.angles.length - 1]));
+  });
+  it('しなり(社長指示2026-11-26「鞭はもっとしならせて」): 打ち出しの曲がりが大きい・どの段でも縄が自分に交差しない・パチンでまっすぐ', () => {
+    const cross = (p: { x: number; y: number }[]): boolean => {
+      const o = (a: typeof p[0], b: typeof p[0], c: typeof p[0]) => Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+      for (let i = 0; i + 1 < p.length; i++) for (let j = i + 2; j + 1 < p.length; j++) {
+        if (o(p[i], p[i + 1], p[j]) * o(p[i], p[i + 1], p[j + 1]) < 0 && o(p[j], p[j + 1], p[i]) * o(p[j], p[j + 1], p[i + 1]) < 0) return true;
+      }
+      return false;
+    };
+    let maxCurl = 0;
+    for (const pull of [1, WHIP_ROPE_FINISH_PULL]) for (const lag of [-1, 0, 1]) {
+      for (let el = 0; el < whipRopeTotalMs(W); el += 1) {
+        const sh = whipRopeShape(el, W, undefined, pull, lag);
+        expect(cross(whipRopePoints(sh, 150, 0.1, 0.99))).toBe(false);
+        if (sh.phase === 'lash') {
+          let c = 0;
+          for (let i = 1; i < sh.angles.length; i++) c += Math.abs(sh.angles[i] - sh.angles[i - 1]);
+          maxCurl = Math.max(maxCurl, c);
+        }
+      }
+      expect(whipRopeShape(W, W, undefined, pull, lag).angles.every(a => a === 0)).toBe(true);
+    }
+    expect(maxCurl).toBeGreaterThan(5); // 旧(巻き込み 2.2・払い 1.6)は約 4.5・今は約 5.45
   });
   it('戻りは縮んで薄くなる', () => {
     const s = whipRopeShape(W + WHIP_ROPE_CRACK_HOLD_MS + WHIP_ROPE_RETRACT_MS * 0.8, W);
@@ -272,6 +295,17 @@ describe('掴んだ瞬間の寄り(社長指示2026-11-26「その敵に一瞬�
     const v = (t: number) => whipGrabZoomAt(t + 0.5) - whipGrabZoomAt(t - 0.5);
     for (const t of [0.5, WHIP_GRAB_ZOOM_IN_MS, WHIP_GRAB_ZOOM_IN_MS + WHIP_GRAB_ZOOM_HOLD_MS, WHIP_GRAB_ZOOM_TOTAL_MS - 0.5]) expect(Math.abs(v(t))).toBeLessThan(0.002);
     for (let t = 1; t < WHIP_GRAB_ZOOM_TOTAL_MS; t += 7) expect(Math.abs(v(t))).toBeLessThan(0.03);
+  });
+});
+
+describe('投げの距離を縮めても、判定が着く時刻に絵が地面へ戻り・絵は最大距離で止まる(社長指示2026-11-26 2.5→1.75)', () => {
+  it('届く距離 150 の時', () => {
+    const D = 150 * WHIP_THROW_DIST_MULT, v0 = 1200;
+    const T = whipThrowDurationMs(v0, D);
+    expect(whipThrowDist(T, v0, D)).toBeCloseTo(D, 6);
+    expect(whipFlyLiftPx(T, T, whipFlyPeakPx(60))).toBe(0);
+    expect(whipFlyLiftPx(T / 2, T, whipFlyPeakPx(60))).toBeGreaterThan(20);
+    expect(whipFlyVisualDist((2 * D / v0) * 1000, v0, D)).toBeCloseTo(D, 6);
   });
 });
 

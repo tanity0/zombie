@@ -222,6 +222,8 @@ describe('③パニッシャーを鞭に効かせる', () => {
     setSkills(lv);
     useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', { stunUntil: 1e12 })] });
     swing();
+    // 周りに敵が居ない=プレイヤーの進行方向へ投げる(社長指示2026-11-26)。体の箱は縦長なので、縦へ投げて t・u を縦に並べる(横だと着弾の爆発が u まで届いて連鎖の前に u が飛ぶ)。
+    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 0, y: 1 } } }));
     // 投げは最長で自動の投げだけ(社長指示2026-11-26「掴んだ時、任意に投げれるのはやめて」)。投げた向きの先に t・その先に u を置く。
     for (let i = 0; i < 400 && st().whipSwing?.phase === 'swing'; i++) step(10);
     const sw = st().whipSwing!;
@@ -233,7 +235,7 @@ describe('③パニッシャーを鞭に効かせる', () => {
     const tpend = en('t').punisherPendingAt;
     const hpAfterBlast = en('t').health;
     run(300);
-    return { tpend, hpDrop: hpAfterBlast - en('t').health, moved: ecOf('t').x - landed.x, uHopped: en('u').punisherHopDepth };
+    return { tpend, hpDrop: hpAfterBlast - en('t').health, moved: (ecOf('t').x - landed.x) * ux + (ecOf('t').y - landed.y) * uy, uHopped: en('u').punisherHopDepth };
   };
   it('②投げた敵が当たった敵は同じ勢い(投げの向き)で飛び、パニッシャーのダメージを受ける(所持時だけ)', () => {
     const on = caseThrow(1);

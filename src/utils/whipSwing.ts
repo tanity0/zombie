@@ -4,7 +4,6 @@
 //  - 振り回し: プレイヤーを中心に円を描いて回す。掴んだ位置から回り出し、加速して一定の速さへ(慣性)。触れた別の敵へ1周に1回の当たり。
 //    壁・木・建物・帯の縁では着弾せず、回す半径を縮めて手前に留める。
 //  - 投げつけ: 出だしが一番速く、少しずつ減速して直進。敵・壁・最大距離で着弾=爆発(§6 の爆発の規約)。
-import { pickArrowRainCenter } from './arrowRain';
 
 /** 回す半径=鞭の届く距離 × これ。 */
 export const WHIP_SWING_RADIUS_MULT = 0.6;
@@ -24,8 +23,8 @@ export const WHIP_SWING_INTEGRATE_MS = 2;
 export const WHIP_SWING_MAX_MS = 1500;
 /** スラッシャー1Lvごとの最長の上乗せ(ms)。 */
 export const WHIP_SWING_SLASHER_MS_PER_LV = 500;
-/** 投げの最大距離=鞭の届く距離 × これ。 */
-export const WHIP_THROW_DIST_MULT = 2.5;
+/** 投げの最大距離=鞭の届く距離 × これ(社長指示2026-11-26「投げる距離、もう少し短くして」で 2.5→1.75)。 */
+export const WHIP_THROW_DIST_MULT = 1.75;
 /** 投げの速さの下限(px/s・回り出してすぐ投げた時でも飛んで見える)。 */
 export const WHIP_THROW_MIN_SPEED = 900;
 /** 最大距離に着いた時の速さ(出だしの速さに対する割合=少しずつ減速)。 */
@@ -325,19 +324,26 @@ export const whipSwingBodyRadius = (w: number, h: number, pw: number, ph: number
 export const whipSwingTangent = (a: number, dir: 1 | -1): { x: number; y: number } => ({ x: -Math.sin(a) * dir, y: Math.cos(a) * dir });
 
 /**
- * 自動で投げる向き: 掴んでいる本人の位置から、最大距離の内側・見通しが通る敵の中で「最も固まっている場所」(矢の雨の狙いと同じ物差し)。
- * 掴んでいる本人は外す。候補が無ければ接線の向き。
+ * 自動で投げる向き(社長指示2026-11-26「投げる方向は一番近くの敵、居なければ進行方向」)。
+ * 一番近くの敵=プレイヤーの中心 (px,py) から一番近い候補(掴んでいる本人は外す)。向きは掴んでいる敵の位置 (ox,oy) からその敵へ。
+ * 見通し visible(x,y)=掴んでいる敵の位置からその敵への線が壁に遮られないか(遮られた敵は飛ばして次に近い敵)。
+ * 候補(死体・触れられない敵・画面外の敵を除いたもの)は呼ぶ側が渡す。居なければ進行方向 moveDir(プレイヤーの最後の向き)・それも無ければ接線。
  */
 export const pickWhipAutoThrowDir = (
-  ox: number, oy: number, targets: readonly { id: string; x: number; y: number }[], heldId: string, maxDist: number,
-  visible: (x: number, y: number) => boolean, tangent: { x: number; y: number },
+  ox: number, oy: number, px: number, py: number, targets: readonly { id: string; x: number; y: number }[], heldId: string,
+  visible: (x: number, y: number) => boolean, moveDir: { x: number; y: number } | null, tangent: { x: number; y: number },
 ): { x: number; y: number } => {
-  const near = targets.filter(t => t.id !== heldId && Math.hypot(t.x - ox, t.y - oy) <= maxDist && Math.hypot(t.x - ox, t.y - oy) > 1e-6 && visible(t.x, t.y));
-  const c = pickArrowRainCenter(ox, oy, near);
-  if (c) {
-    const d = Math.hypot(c.x - ox, c.y - oy);
-    if (d > 1e-6) return { x: (c.x - ox) / d, y: (c.y - oy) / d };
+  const near = targets
+    .filter(t => t.id !== heldId && Math.hypot(t.x - ox, t.y - oy) > 1e-6)
+    .map(t => ({ t, d: Math.hypot(t.x - px, t.y - py) }))
+    .sort((a, b) => a.d - b.d);
+  for (const { t } of near) {
+    if (!visible(t.x, t.y)) continue;
+    const d = Math.hypot(t.x - ox, t.y - oy);
+    return { x: (t.x - ox) / d, y: (t.y - oy) / d };
   }
+  const ml = moveDir ? Math.hypot(moveDir.x, moveDir.y) : 0;
+  if (moveDir && ml > 1e-6) return { x: moveDir.x / ml, y: moveDir.y / ml };
   const tl = Math.hypot(tangent.x, tangent.y) || 1;
   return { x: tangent.x / tl, y: tangent.y / tl };
 };

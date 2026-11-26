@@ -62,11 +62,11 @@ export interface WhipRopeShape {
  *  - 振り抜け(戻りの前半): 払いの勢いで先端が前へ流れてから垂れる。
  * 値は rad(叩き台)。
  */
-export const WHIP_ROPE_LASH_CURL = 2.2;
+export const WHIP_ROPE_LASH_CURL = 3.1; // 社長指示2026-11-26「鞭はもっとしならせて」で 2.2→3.1(約1.4倍・3.3 だと払いの段で先が一瞬自分に交差した)。下の3つは1.5倍
 /** 打ち出しの払いの遅れ(rad・先端)。 */
-export const WHIP_ROPE_SWEEP_LAG = 1.6;
+export const WHIP_ROPE_SWEEP_LAG = 2.4; // 旧 1.6
 /** 引きの間の先端の遅れ(rad・先端)。 */
-export const WHIP_ROPE_PULL_LAG = 1.2;
+export const WHIP_ROPE_PULL_LAG = 1.8; // 旧 1.2
 /** 溜めの形の巻き込み(rad・先端・正面の段)。引き終わりから打ち出しまで、先ほど深く巻いた形で溜める。 */
 export const WHIP_ROPE_HOLD_COIL = 0.6;
 /** 溜めの形の巻き込み(rad・先端・払う段)。払う向きと逆へ先を残して溜める。 */
@@ -74,7 +74,7 @@ export const WHIP_ROPE_HOLD_SWEEP_LAG = 0.85;
 /** 払いの遅れが元の後ろの形の巻きと逆向きの時に、その巻きを打ち消す量(rad・先端=元の巻きの量)。 */
 export const WHIP_ROPE_HOLD_UNCURL = 1.0;
 /** 振り抜けで先端が前へ流れる量(rad・先端)。 */
-export const WHIP_ROPE_FOLLOW_FLOW = 0.6;
+export const WHIP_ROPE_FOLLOW_FLOW = 0.9; // 旧 0.6
 
 /**
  * 経過 el(ms・指を離した瞬間から)の鞭の形。windupMs=前隙(=パチンの時刻=判定の時刻)。
@@ -101,7 +101,7 @@ export const whipRopeShape = (el: number, windupMs: number, segs = WHIP_ROPE_POI
     const env = Math.sin(Math.PI * Math.min(1, t * 1.15)) * (1 - 0.35 * t);
     return {
       handX: hX * p, handY: hY * p,
-      angles: us.map(u => restAngle(u) + (backA(u) - restAngle(u)) * p + env * u ** 1.4 * (WHIP_ROPE_PULL_LAG - 0.6 * lag)),
+      angles: us.map(u => restAngle(u) + (backA(u) - restAngle(u)) * p + env * u ** 1.4 * WHIP_ROPE_PULL_LAG * (1 - 0.5 * lag)),
       lenK: 1, alpha: 1, phase: 'pull',
     };
   }

@@ -3512,7 +3512,7 @@ const startWhipDrop = (get: () => GameState, set: WhipSet): void => {
   }));
 };
 /**
- * 投げる(§8-3): 振り回しの途中なら向き (dx,dy) へ。出だしの速さ=放した時の接線の速さ・最大距離=届く距離×2.5。飛ぶ向きへ縦に転がる(絵=格闘の投げの回りの流用)。
+ * 投げる(§8-3): 振り回しの途中なら向き (dx,dy) へ。出だしの速さ=放した時の接線の速さ・最大距離=届く距離×WHIP_THROW_DIST_MULT。飛ぶ向きへ縦に転がる(絵=格闘の投げの回りの流用)。
  * 投げたら true。
  */
 const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: number, byInput = false): boolean => {
@@ -3543,17 +3543,23 @@ const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: numb
   brawlerSfx('whip-swing', 0.9, 0.7, 200);
   return true;
 };
-/** 自動で投げる向き(§8-3・§8-7): 掴んだ敵の位置から最大距離の内側・見通しが通る「最も固まっている場所」(掴んでいる本人は外す)。無ければ接線。 */
+/**
+ * 自動で投げる向き(§8-3・§8-7・社長指示2026-11-26「投げる方向は一番近くの敵、居なければ進行方向」): プレイヤーに一番近い敵の方へ
+ * (掴んでいる本人・死体・触れられない敵・画面外の敵は外す。見通し=掴んだ敵の位置からその敵への線が壁に遮られないか)。居なければプレイヤーの最後の向き。
+ */
 const whipAutoThrowDir = (get: () => GameState, sw: WhipSwingState): { x: number; y: number } => {
   const st = get();
-  const maxDist = sw.reach * WHIP_THROW_DIST_MULT;
-  const walls = meleeWallsAround(get, sw.cx, sw.cy, maxDist);
+  const pc = whipCenter(st.player);
   const targets = st.enemies
     .filter(e => e.id !== sw.enemyId && e.health > 0 && !isCorpse(e) && !isUntouchable(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e)))
-    .map(e => ({ id: e.id, ...whipCenter(e) }));
+    .map(e => ({ e, c: whipCenter(e) }))
+    .filter(({ e, c }) => !projFadeHidden(e, st.gameTime) && projSeen(c.x, c.y, 0, isPointInZoomedViewport(c.x, c.y, st.camera, st.gameBounds, st.viewZoom, 0)))
+    .map(({ e, c }) => ({ id: e.id, ...c }));
+  const far = targets.reduce((m, t) => Math.max(m, Math.hypot(t.x - sw.cx, t.y - sw.cy)), 0);
+  const walls = targets.length > 0 ? meleeWallsAround(get, sw.cx, sw.cy, far) : [];
   const ang = whipSwingAngle(sw, st.gameTime - sw.startAt);
-  return pickWhipAutoThrowDir(sw.cx, sw.cy, targets, sw.enemyId, maxDist,
-    (x, y) => walls.length === 0 || !segmentBlocked(sw.cx, sw.cy, x, y, walls), whipSwingTangent(ang, sw.dir));
+  return pickWhipAutoThrowDir(sw.cx, sw.cy, pc.x, pc.y, targets, sw.enemyId,
+    (x, y) => walls.length === 0 || !segmentBlocked(sw.cx, sw.cy, x, y, walls), st.player.lastDirection, whipSwingTangent(ang, sw.dir));
 };
 /**
  * ★鞭のカウンターのクールダウン(ms・近接CDの短縮を掛ける前)。旧(3連撃の前)の鞭の1振りの周期=窓+CD+描画の増分(約1.04秒)と同じ長さ。

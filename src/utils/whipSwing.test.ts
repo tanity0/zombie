@@ -6,6 +6,7 @@ import {
   whipThrowDecel, whipThrowDurationMs, whipThrowDist, whipThrowSpeed, whipThrowStartSpeed, whipThrowStep, whipSwingReleaseReason,
   whipBlastFalloff, whipThrowBlastPlan, easeStartStop, criticalSpringStep, whipDropDist, WHIP_DROP_MS,
   WHIP_SWING_ACCEL_MS, WHIP_SWING_PERIOD_MS, WHIP_SWING_MAX_MS, WHIP_SWING_SLASHER_MS_PER_LV, WHIP_THROW_MIN_SPEED, WHIP_THROW_END_SPEED_FRAC, WHIP_SWING_TELEPORT_PX,
+  WHIP_THROW_DIST_MULT,
 } from './whipSwing';
 
 describe('掴む相手の選び方(§8-1・§8-7)', () => {
@@ -110,21 +111,32 @@ describe('最長と自動の投げ', () => {
     expect(whipSwingAutoThrowDue(s, 2500)).toBe(true);
     expect(whipSwingAutoThrowDue({ ...s, phase: 'thrown' }, 9999)).toBe(false);
   });
-  it('自動の投げの向き=最も固まっている所(本人は外す・最大距離の内側・見通しが通る所だけ)。無ければ接線', () => {
+  it('自動の投げの向き=プレイヤーに一番近い敵(本人は外す・見通しが通る敵だけ)。居なければ進行方向、それも無ければ接線', () => {
+    // プレイヤー (0,0)・掴んでいる敵 (100,0)。
     const ts = [
-      { id: 'self', x: 0, y: 0 },
-      { id: 'a', x: 0, y: 200 }, { id: 'b', x: 10, y: 210 }, { id: 'c', x: -10, y: 205 }, // 固まり(下)
-      { id: 'lone', x: 150, y: 0 },
-      { id: 'far1', x: -900, y: 0 }, { id: 'far2', x: -905, y: 5 }, { id: 'far3', x: -910, y: 0 }, { id: 'far4', x: -900, y: 8 }, // 最大距離の外
+      { id: 'self', x: 100, y: 0 },
+      { id: 'near', x: -60, y: -80 },                                                       // プレイヤーから 100(一番近い)
+      { id: 'a', x: 100, y: 200 }, { id: 'b', x: 110, y: 210 }, { id: 'c', x: 90, y: 205 }, // 固まり(遠い)=選ばない
     ];
-    const d = pickWhipAutoThrowDir(0, 0, ts, 'self', 375, () => true, { x: 1, y: 0 });
-    expect(d.y).toBeGreaterThan(0.9);
-    // 下の固まりが壁の向こう=見通しの通る一体へ
-    const d2 = pickWhipAutoThrowDir(0, 0, ts, 'self', 375, (_x, y) => y < 100, { x: 1, y: 0 });
-    expect(d2.x).toBeCloseTo(1); expect(d2.y).toBeCloseTo(0);
-    // 誰も居ない=接線
-    const d3 = pickWhipAutoThrowDir(0, 0, [{ id: 'self', x: 0, y: 0 }], 'self', 375, () => true, { x: 0, y: -2 });
-    expect(d3).toEqual({ x: 0, y: -1 });
+    const d = pickWhipAutoThrowDir(100, 0, 0, 0, ts, 'self', () => true, { x: 1, y: 0 }, { x: 0, y: 1 });
+    // 向きは掴んでいる敵の位置から一番近い敵へ
+    const L = Math.hypot(-160, -80);
+    expect(d.x).toBeCloseTo(-160 / L); expect(d.y).toBeCloseTo(-80 / L);
+    // 掴んでいる本人がプレイヤーに一番近くても選ばない(本人だけ=進行方向)
+    const d0 = pickWhipAutoThrowDir(100, 0, 0, 0, [{ id: 'self', x: 100, y: 0 }], 'self', () => true, { x: 0, y: -3 }, { x: 1, y: 0 });
+    expect(d0).toEqual({ x: 0, y: -1 });
+    // 一番近い敵が壁の向こう=次に近い見通しの通る敵へ
+    const d2 = pickWhipAutoThrowDir(100, 0, 0, 0, ts, 'self', (_x, y) => y > 0, { x: 1, y: 0 }, { x: 0, y: 1 });
+    expect(d2.y).toBeGreaterThan(0.99);
+    // 誰も居ない=進行方向(長さは1へ揃える)
+    expect(pickWhipAutoThrowDir(100, 0, 0, 0, [], 'self', () => true, { x: -2, y: 0 }, { x: 0, y: 1 })).toEqual({ x: -1, y: 0 });
+    // 全員見通しが通らない=進行方向
+    expect(pickWhipAutoThrowDir(100, 0, 0, 0, ts, 'self', () => false, { x: 0, y: 1 }, { x: 1, y: 0 })).toEqual({ x: 0, y: 1 });
+    // 進行方向も無い=接線
+    expect(pickWhipAutoThrowDir(100, 0, 0, 0, [], 'self', () => true, null, { x: 0, y: -2 })).toEqual({ x: 0, y: -1 });
+  });
+  it('投げの最大距離=届く距離の1.75倍(社長指示2026-11-26 2.5→1.75)', () => {
+    expect(WHIP_THROW_DIST_MULT).toBe(1.75);
   });
 });
 
