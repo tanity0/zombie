@@ -44,6 +44,8 @@ export const pcPressDown = (src: PressSource): void => {
     && !isRetaliationWindowOpen(gs.hitRetaliation, Date.now())
     && !isBrawlerMode(gs.player)) gs.mountSkater(); // 格闘中は2度押しで乗らない(research/BRAWLER.md §7-2)
   downAt = now;
+  // ★抉り打ち(research/BRAWLER.md §37): 押した瞬間に溜めを始める(格闘で、移動の入力が無い溜められる体の時だけ・store が判断)。
+  if (isBrawlerMode(gs.player)) gs.brawlerGougePress();
 };
 
 /**
@@ -81,7 +83,8 @@ export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
       if (!flickedThisPress) gs.rhythmInput('tap');
     } else if (isBrawlerMode(gs.player)) {
       // ★格闘(research/BRAWLER.md §2-1): 今の近接ボタン=通常攻撃(銃・他のサブは使えない)。技は方向+技ボタン(performFlickAction)。
-      gs.beginMeleeSwing();
+      // ★抉り打ち(§37): 0.5秒溜めて離した=抉り打ち(溜めの途中で被弾した押下は何も出さない)。それ以外は今までどおり通常攻撃。
+      if (gs.brawlerGougeRelease() === 'normal') gs.beginMeleeSwing();
     } else {
       const gun = gs.player.weapons.find(w => w.id === gs.player.activeWeaponId);
       if (gun?.key === 'phill-revolver') {
@@ -111,6 +114,7 @@ export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
     }
     gs.dismountSkater();
   }
+  useGameStore.getState().brawlerGougeClear(); // 撃たずに離した・別の入力に食われた離しも溜めを消す(出した時は上で消えている)
   useGameStore.getState().setTouchActive(false);
 };
 

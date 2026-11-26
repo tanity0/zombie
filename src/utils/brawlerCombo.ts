@@ -20,7 +20,7 @@ import {
   BRAWLER_LIFT_MS, BRAWLER_TEMPO, BRAWLER_CANCEL_WINDOW_MS, brawlerLiftArcRel, brawlerTempoMs, setBrawlerTempo, brawlerStageSpec, BLAST_LIFT_SHAPE,
   BRAWLER_LIFT_RISE_FRAC, BRAWLER_LIFT_HOVER_FRAC, type LiftArcShape, WHIP_LIFT_HEIGHT_MULT, BRAWLER_LIFT_VIS_BODY_K, BRAWLER_LIFT_VIS_MAX_VIEW_FRAC,
   BRAWLER_HOLD_MS, BRAWLER_TECHS, BRAWLER_KICK3_CHARGE_MS, BRAWLER_KICK_HITSTOP_MS, BRAWLER_STOMP_HITSTOP_MS, BRAWLER_KIKO_SPEED, BRAWLER_KIKO_HIT_PAD,
-  brawlerRouteAllows,
+  brawlerRouteAllows, BRAWLER_HITSTOP,
 } from './brawler';
 
 /**
@@ -248,7 +248,8 @@ export const brawlerKikoTravelMs = (dist: number, speed: number): number =>
 export const brawlerMoveStopMs = (move: BrawlerMoveKey): number =>
   move === 's1' || move === 's2' || move === 's3' || move === 's4' || move === 's5' ? brawlerStageSpec(Number(move[1])).hitstopMs
     : move === 'kick1' ? BRAWLER_KICK_HITSTOP_MS[1] : move === 'kick2' ? BRAWLER_KICK_HITSTOP_MS[2] : move === 'kick3' || move === 'heel' || move === 'kickup' || move === 'suplex' ? BRAWLER_KICK_HITSTOP_MS[3]
-      : move === 'stomp' || move === 'mogura' ? BRAWLER_STOMP_HITSTOP_MS : 0;
+      : move === 'stomp' || move === 'mogura' ? BRAWLER_STOMP_HITSTOP_MS
+        : move === 'gouge' ? BRAWLER_HITSTOP.strong : 0; // 抉り打ち(§37)=3段目と同じ強い当たり
 /** 気功が撃った所から相手に届くまでの時間(ms)。distPx=プレイヤーの中心から相手までの距離(気功の弾の出る位置と当たりの余白を引く: −18 −当たりの余白)。 */
 export const brawlerKikoTravelForDistMs = (distPx: number): number => brawlerKikoTravelMs(distPx - 18 - BRAWLER_KIKO_HIT_PAD, BRAWLER_KIKO_SPEED);
 /** 技を出してから当たる(判定を解く)までの時間(ms)。飛び蹴り=出だし(溜め)+飛ぶ時間(flightMs・近いと 156〜遠いと 195)/ 気功=出だし+弾の飛ぶ時間(kikoDistPx から)。 */
@@ -258,6 +259,7 @@ const brawlerMoveWindupMs = (move: BrawlerMoveKey, o: { kickFlightMs?: number; k
     case 'kick1': case 'kick2': case 'kick3': return o.kickFlightMs ?? BRAWLER_TECHS.kick.windupMs; // 蹴り飛ばしは溜め無し(research/BRAWLER.md §33-2)
     case 'heel': case 'kickup': return BRAWLER_KICK3_CHARGE_MS + (o.kickFlightMs ?? BRAWLER_TECHS.kick.windupMs); // 蹴り上げも踵落としと同じ溜め(§34-1)
     case 'stomp': case 'mogura': return BRAWLER_TECHS.stomp.windupMs;
+    case 'gouge': return BRAWLER_TECHS.gouge.windupMs;
     case 'kiko': return BRAWLER_TECHS.kiko.windupMs + brawlerKikoTravelForDistMs(o.kikoDistPx ?? 0);
     default: return 0;
   }
@@ -265,7 +267,7 @@ const brawlerMoveWindupMs = (move: BrawlerMoveKey, o: { kickFlightMs?: number; k
 /** 当たりの後の後隙(ms)。 */
 const brawlerMoveRecoveryMs = (move: BrawlerMoveKey): number =>
   move === 's1' || move === 's2' || move === 's3' || move === 's4' || move === 's5' ? brawlerStageSpec(Number(move[1])).recoveryMs
-    : move === 'stomp' || move === 'mogura' ? BRAWLER_TECHS.stomp.recoveryMs : move === 'kiko' ? BRAWLER_TECHS.kiko.recoveryMs : BRAWLER_TECHS.kick.recoveryMs;
+    : move === 'stomp' || move === 'mogura' ? BRAWLER_TECHS.stomp.recoveryMs : move === 'kiko' ? BRAWLER_TECHS.kiko.recoveryMs : move === 'gouge' ? BRAWLER_TECHS.gouge.recoveryMs : BRAWLER_TECHS.kick.recoveryMs;
 /** 続きの出し方: 'recovery-end'=後隙が終わってから待機で出す / 'cancel-now'=止めが明けてすぐ取り消して出す / 'cancel-late'=受付の終わり際(止めの後 BRAWLER_CANCEL_WINDOW_MS)に取り消して出す。 */
 export type BrawlerLinkHow = 'recovery-end' | 'cancel-now' | 'cancel-late';
 export interface BrawlerLinkTiming {
@@ -498,7 +500,7 @@ export const brawlerComboOnHit = (
  */
 export const BRAWLER_JUGGLE_BUDGET: Readonly<Record<'mob' | 'strong' | 'boss', number>> = { mob: 6, strong: 5, boss: 4 };
 export const BRAWLER_JUGGLE_COST: Readonly<Record<BrawlerMoveKey, number>> = {
-  s1: 1, s2: 1, s3: 2, s4: 1, s5: 2, kick1: 2, kick2: 2, kick3: 2, heel: 2, kickup: 2, suplex: 2, mogura: 2, stomp: 0, kiko: 1, secret: 2, 'secret-land': 2, // 蹴り上げ・スープレックス=強い当たり(§34-1・§34-6 #10)
+  s1: 1, s2: 1, s3: 2, s4: 1, s5: 2, kick1: 2, kick2: 2, kick3: 2, heel: 2, kickup: 2, suplex: 2, mogura: 2, gouge: 2, stomp: 0, kiko: 1, secret: 2, 'secret-land': 2, // 蹴り上げ・スープレックス=強い当たり(§34-1・§34-6 #10)
 };
 /** 地面バウンド(§13-2・1コンボに1回)の跳ね返りの高さ(重さの前の倍率)。 */
 export const BRAWLER_BOUNCE_F = 0.45;
@@ -523,6 +525,7 @@ export const BRAWLER_JUGGLE_PUSH: Readonly<Record<BrawlerMoveKey, number>> = {
   suplex: 0, // スープレックス(§34-3)=押し上げではなく地面バウンド(brawlerJugglePush の専用の枝)
   stomp: 0, kiko: 0.5, secret: 0.75, 'secret-land': 0,
   mogura: 0.75 * BRAWLER_KICKUP_LIFT_K, // ★土竜(§35): 空中の敵は蹴り上げと同じだけ浮き直す(地面バウンドではない)
+  gouge: 0.75 * BRAWLER_KICKUP_LIFT_K, // ★抉り打ち(§37-4): 空中の敵は蹴り上げと同じだけ浮き直す
 };
 /**
  * ★地上の敵を浮かせる当たり(ランチャー)と、その高さ(4段目=1)。ここに無い当たりは地上からは浮かせない。
@@ -532,7 +535,7 @@ export const BRAWLER_JUGGLE_PUSH: Readonly<Record<BrawlerMoveKey, number>> = {
  * ★大踏み潰しも地上から浮かせる(社長裁定2026-11-11「浮かせながら吹き飛ばす(つまり浮きだけ追加)」)。吹き飛ばし(大きい押し)は今どおり=浮きだけを足した。
  *   高さは3段目と同じ 0.75(叩き台)。空中の敵への大踏み潰し(地面バウンド・1コンボ1回)は今どおり。
  */
-export const BRAWLER_GROUND_LAUNCH: Readonly<Partial<Record<BrawlerMoveKey, number>>> = { s3: 0.75, s4: 1, kick2: 0.7, stomp: 0.75, kickup: 0.7 * BRAWLER_KICKUP_LIFT_K, mogura: 0.7 * BRAWLER_KICKUP_LIFT_K }; // 土竜(§35)=蹴り上げと同じ打ち上げ
+export const BRAWLER_GROUND_LAUNCH: Readonly<Partial<Record<BrawlerMoveKey, number>>> = { s3: 0.75, s4: 1, kick2: 0.7, stomp: 0.75, kickup: 0.7 * BRAWLER_KICKUP_LIFT_K, mogura: 0.7 * BRAWLER_KICKUP_LIFT_K, gouge: 0.7 * BRAWLER_KICKUP_LIFT_K }; // 抉り打ち(§37-4)=蹴り上げと同じ打ち上げ // 土竜(§35)=蹴り上げと同じ打ち上げ
 /** これより軽い押し上げはもう浮かない(=落ちる)。いずれ必ず落ちる=永久には浮かせられない。 */
 export const BRAWLER_JUGGLE_MIN_F = 0.12;
 /** 1回の押し上げの浮く時間の下限(ms・短すぎる跳ねは絵がちらつく)。 */

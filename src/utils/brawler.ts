@@ -133,6 +133,8 @@ export const BRAWLER_TECHS_BASE: Readonly<Record<BrawlerTechKind, BrawlerTechSpe
   stomp: { kind: 'stomp', cost: 5, windupMs: 200, recoveryMs: 462 }, // 社長指示2026-11-11「大踏み潰し2.5倍にして、後隙を600に」=係数1.3で 601ms(旧 400→520ms)
   kiko: { kind: 'kiko', cost: 2, windupMs: 120, recoveryMs: 330 },
   kick: { kind: 'kick', cost: 1, windupMs: 132, recoveryMs: 165 }, // 社長指示2026-11-11『飛び蹴りからの3段、ほんの少しだけゆっくりに』で ×1.1(旧 windupMs 120 / recoveryMs 150)
+  // ★抉り打ち(research/BRAWLER.md §37-3・叩き台): 前隙=小ジャンプ 160 + 着地〜当たる 80 / 後隙 260(全体 約500)。技ポイントは使わない(cost 0=呼び手が払わない・タイムキーパーの割引の外)。
+  gouge: { kind: 'gouge', cost: 0, windupMs: 240, recoveryMs: 260 },
 };
 /** 技の表(係数を掛けた出だし・戻り)。 */
 export let BRAWLER_TECHS: Readonly<Record<BrawlerTechKind, BrawlerTechSpec>> = BRAWLER_TECHS_BASE;
@@ -154,6 +156,7 @@ export const BRAWLER_HOLD_BASE_MS: Readonly<Record<BrawlerHoldKey, number>> = {
   suplex: 0, // スープレックス(§34-3): 締め=固めない
   stomp: 230, kiko: 0,
   mogura: 310, // 土竜(§35): 浮かせた相手=蹴り上げと同じ(空中追撃=飛び蹴り・気功へ取り消せる・叩き台)
+  gouge: 310, // 抉り打ち(§37): 打ち上げた相手=蹴り上げと同じ(空中追撃=飛び蹴り・気功へ取り消せる・叩き台)
 };
 /** 固まりの表(係数を掛けた実ms)。setBrawlerTempo が書き直す。 */
 export let BRAWLER_HOLD_MS: Readonly<Record<BrawlerHoldKey, number>> = BRAWLER_HOLD_BASE_MS;
@@ -244,6 +247,43 @@ export const BRAWLER_KICK_MAX = 3;
  *  幻影(孫悟空)の3発目は今どおりこの溜めを使う(utils/phantomBrawlerTick・敵の側は変えない)。
  */
 export let BRAWLER_KICK3_CHARGE_MS = 127; // ×BRAWLER_TEMPO(係数1.0の値)・社長指示2026-11-11『飛び蹴りからの3段、ほんの少しだけゆっくりに』で ×1.1(旧115)
+/**
+ * ★抉り打ち(research/BRAWLER.md §37-3・§37-4・叩き台)。1コマ目=小ジャンプで詰める(前隙の頭 BRAWLER_GOUGE_JUMP_MS)→ 2コマ目=着地〜当たる手前 → 3コマ目=当たり。
+ * 詰め=出した瞬間の近接の届く範囲の一番近い敵へ最大 JUMP_PX(相手の縁の手前で止まる)・相手が居なければ向いている方へ NO_TARGET_PX。
+ * 見た目の跳ぶ高さ=4段目(BRAWLER_JUMP_VIS_PX)の半分・判定は地面のまま。当たり=拳の前の円(半径 FIST_RADIUS)+狙った1体。
+ */
+export let BRAWLER_GOUGE_JUMP_MS = 160; // ×BRAWLER_TEMPO(係数1.0の値)
+export const BRAWLER_GOUGE_JUMP_PX = 50;
+export const BRAWLER_GOUGE_NO_TARGET_PX = 30;
+export const BRAWLER_GOUGE_JUMP_VIS_PX = 24;
+export const BRAWLER_GOUGE_MULT = 1.4;
+export const BRAWLER_GOUGE_FIST_RADIUS = 34;
+/** ★抉り打ちの溜めの光と構えの絵を出し始めるまでの長さ(ms・実時間)。これより短い押下(タップ・連打)では光も構えも一切出ない(§37-2)。 */
+export const BRAWLER_GOUGE_GLOW_DELAY_MS = 150;
+/** 溜めの構えの入り・抜けの長さ(ms・実時間)と、位置で沈める量(px・絵だけ)。 */
+export const BRAWLER_GOUGE_STANCE_EASE_MS = 140;
+export const BRAWLER_GOUGE_STANCE_SINK_PX = 3;
+/** 抉り打ちの影の3コマ目(下から突き上げ)の上への突き上げ(px・絵だけ)と、その長さ(ms・速く出て減速)。 */
+export const BRAWLER_GOUGE_STAND_RISE_PX = 12;
+export const BRAWLER_GOUGE_STAND_RISE_MS = 110;
+const easeInOutG = (x: number): number => (x < 0.5 ? 2 * x * x : 1 - 2 * (1 - x) * (1 - x));
+/**
+ * ★抉り打ちの溜めの構えの深さ(0..1・絵だけ)。押してから BRAWLER_GOUGE_GLOW_DELAY_MS を超えたら加減速つきで構えに入り、
+ * 溜めが消えた(離した・移動した)時は、その時の深さから加減速つきで戻す(gougeEndAt)。now=Date.now。
+ */
+export const brawlerGougeChargeSink = (s: BrawlerState, now: number): number => {
+  if (s.gougePressAt !== undefined && !s.gougeDead && !s.gougeWait && s.gougeChargeAt !== undefined) {
+    const el = now - s.gougeChargeAt - BRAWLER_GOUGE_GLOW_DELAY_MS;
+    return el <= 0 ? 0 : easeInOutG(Math.min(1, el / BRAWLER_GOUGE_STANCE_EASE_MS));
+  }
+  if (s.gougeEndAt !== undefined && (s.gougeEndSink ?? 0) > 0) {
+    const q = (now - s.gougeEndAt) / BRAWLER_GOUGE_STANCE_EASE_MS;
+    if (q >= 0 && q < 1) return (s.gougeEndSink ?? 0) * (1 - easeInOutG(q));
+  }
+  return 0;
+};
+/** 抉り打ちの前隙のうち小ジャンプの長さ(ms・前隙を越えない)。 */
+export const brawlerGougeJumpMs = (s: Pick<BrawlerState, 'windupMs'>): number => Math.max(0, Math.min(s.windupMs, BRAWLER_GOUGE_JUMP_MS));
 /** 溜めの見た目: 跳び上がる高さ・沈む量(px・絵だけ)。 */
 export const BRAWLER_KICK3_CHARGE_RISE_PX = 24;
 export const BRAWLER_KICK3_CHARGE_SINK_PX = 7;
@@ -310,6 +350,10 @@ export const BRAWLER_SPARK = {
 export const BRAWLER_COLOR = '#f1e6c8';
 export const BRAWLER_COLOR_HEX = 0xf1e6c8;
 export const BRAWLER_RGBA = (a: number): string => `rgba(241,230,200,${a})`;
+/** ★抉り打ちの溜めの光・溜まった瞬間の閃きの色(影の絵の水色の輪郭に揃えた青白=§37-2)。芯は白寄り。 */
+export const BRAWLER_GOUGE_GLOW_HEX = 0xbff4ff;
+export const BRAWLER_GOUGE_CORE_HEX = 0xeefcff;
+export const BRAWLER_GOUGE_GLOW_RGB = 'rgba(191,244,255,';
 
 /** 係数を掛けた時間の一式(純関数)。係数1.0なら今までの値と一致する。 */
 export const brawlerTimesAt = (tempo: number) => ({
@@ -336,6 +380,7 @@ export const brawlerTimesAt = (tempo: number) => ({
     BRAWLER_SECRET_LAND_MS: brawlerTempoMs(520, tempo),
     BRAWLER_STEP_MS: brawlerTempoMs(180, tempo),
     BRAWLER_KICK3_CHARGE_MS: brawlerTempoMs(127, tempo), // 社長指示2026-11-11『飛び蹴りからの3段、ほんの少しだけゆっくりに』で ×1.1(旧115)
+    BRAWLER_GOUGE_JUMP_MS: brawlerTempoMs(160, tempo), // 抉り打ちの小ジャンプ(§37-3)
 });
 /**
  * テンポ係数を差し替える(格闘の時間の欄を全部書き直す)。起動時に `?brtempo=`(既定 1.3)で1回呼ぶ。
@@ -366,6 +411,7 @@ export const setBrawlerTempo = (tempo: number): void => {
   BRAWLER_SECRET_LAND_MS = v.BRAWLER_SECRET_LAND_MS;
   BRAWLER_STEP_MS = v.BRAWLER_STEP_MS;
   BRAWLER_KICK3_CHARGE_MS = v.BRAWLER_KICK3_CHARGE_MS;
+  BRAWLER_GOUGE_JUMP_MS = v.BRAWLER_GOUGE_JUMP_MS;
   BRAWLER_FLOW_GRACE_MS = BRAWLER_CHAIN_RESET_MS;
 };
 
@@ -709,6 +755,7 @@ export const BRAWLER_CANCELABLE: Readonly<Record<BrawlerRouteNode, boolean>> = {
   kickup: true, // 蹴り上げ(§34-1・§34-8)は気功だけ(下の buildBrawlerRoutes)
   stomp: true, kiko: false,
   mogura: true, // 土竜(§35): 地割りと同じ=飛び蹴り・気功へ取り消せる
+  gouge: true, // 抉り打ち(§37-7): 当てた時だけ飛び蹴り・気功へ(地割りへは行かない=下の buildBrawlerRoutes)
 };
 /** 取り消しで出せる技(通常の段は含めない=段へは段のつなぎだけ)。 */
 const BRAWLER_CANCEL_TARGETS: readonly BrawlerRouteNode[] = ['kick1', 'stomp', 'kiko'];
@@ -718,7 +765,9 @@ const routeKindOf = (n: BrawlerRouteNode): string => (n === 'kick1' || n === 'ki
 const BRAWLER_NEXT_LINK: Readonly<Partial<Record<BrawlerRouteNode, BrawlerRouteNode>>> = { s1: 's2', s2: 's3', s3: 's4', s4: 's5', kick1: 'kick2', kick2: 'kick3' };
 /** 飛び蹴りの1発目の続き(↑蹴り上げ)と、2発目の続き(→蹴り飛ばし / ↓踵落とし / ↑蹴り上げ)。 */
 const BRAWLER_EXTRA_LINK: Readonly<Partial<Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>>> = { kick2: ['heel', 'kickup'] }; // 蹴り上げは2発目の続きだけ(§34-8)
-const BRAWLER_ALL_NODES: readonly BrawlerRouteNode[] = ['idle', 's1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'heel', 'kickup', 'stomp', 'mogura', 'kiko', 'guard'];
+const BRAWLER_ALL_NODES: readonly BrawlerRouteNode[] = ['idle', 's1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'heel', 'kickup', 'stomp', 'mogura', 'kiko', 'guard', 'gouge'];
+/** ★抉り打ち(research/BRAWLER.md §37-7)へ段のつなぎで行ける段(1〜4段目=次の段の代わり。5段目=締めの後は出ない)。 */
+const BRAWLER_GOUGE_FROM: readonly BrawlerRouteNode[] = ['s1', 's2', 's3', 's4'];
 /** 印から作った表(手書きの組は持たない)。 */
 const buildBrawlerRoutes = (): Readonly<Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>> => {
   const out = {} as Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>;
@@ -730,11 +779,13 @@ const buildBrawlerRoutes = (): Readonly<Record<BrawlerRouteNode, readonly Brawle
     // ★§34-8: 蹴り上げは常に3発目の位置=蹴りの連続はここで終わり、取り消せるのは気功だけ。
     if (from === 'kickup') { out[from] = ['kiko']; continue; }
     if (from === 'guard') { out[from] = ['guard']; continue; }                                 // 構えの延長だけ
+    if (from === 'gouge') { out[from] = ['kick1', 'kiko']; continue; }                        // ★抉り打ち(§37-7): 飛び蹴り・気功だけ(行き先を手で決める=地割りへは行かない)
     const to: BrawlerRouteNode[] = [];
     if (BRAWLER_CANCELABLE[from]) to.push(...BRAWLER_CANCEL_TARGETS.filter(n => routeKindOf(n) !== routeKindOf(from)));
     const next = BRAWLER_NEXT_LINK[from];
     if (next && !to.includes(next)) to.push(next);
     for (const extra of BRAWLER_EXTRA_LINK[from] ?? []) if (!to.includes(extra)) to.push(extra);
+    if (BRAWLER_GOUGE_FROM.includes(from)) to.push('gouge'); // 段の受付の内で溜めて離した=次の段の代わりに抉り打ち(§37-7)
     out[from] = to; // 気功→構えは secretClose の時だけ(brawlerRouteAllows)
   }
   return out;
@@ -859,7 +910,8 @@ export const brawlerTechBufferDecision = (s: BrawlerState, t: number): 'fire' | 
 /** 技の値段。血の覚醒中は0=技ポイントを無視して使い放題(社長指示2026-11-08「覚醒中は技ポイント無視して使い放題」)。 */
 /** discount=タイムキーパーの割引(utils/brawlerSkills.brawlerTimeKeeperDiscount・§15)。値段は1未満にしない(覚醒中は0=今どおり)。 */
 export const brawlerTechCost = (kind: BrawlerTechKind, awakened = false, discount = 0): number =>
-  (awakened ? 0 : Math.max(1, BRAWLER_TECHS[kind].cost - Math.max(0, discount)));
+  // 値段0の技(抉り打ち=§37・技ポイントを使わない)は0のまま(下限1を掛けない)。
+  (awakened || BRAWLER_TECHS[kind].cost <= 0 ? 0 : Math.max(1, BRAWLER_TECHS[kind].cost - Math.max(0, discount)));
 export const brawlerCanPay = (s: BrawlerState, kind: BrawlerTechKind, awakened = false, discount = 0): boolean =>
   s.points >= brawlerTechCost(kind, awakened, discount);
 
@@ -1091,7 +1143,8 @@ export const brawlerGuardCancelOk = (s: BrawlerState, kind: BrawlerTechKind, t: 
   kind !== 'guard' && !s.secret && s.phase === 'tech' && s.tech === 'guard' && isBrawlerGuardingAt(s, t);
 /** 通常の段(1〜5段目)の後隙か(判定を解いた後・行動の終わりの前。当たりの止めの最中も含む)。秘奥義の連撃・ステップ・構えの最中は外す。 */
 const brawlerStageGuardSlot = (s: BrawlerState, t: number): boolean =>
-  !s.secret && s.phase === 'attack' && s.stage >= 1 && s.stage <= 5 && s.resolved
+  // ★抉り打ち(§37-7)の後隙も段と同じ扱い=構えへ取り消せる。
+  !s.secret && ((s.phase === 'attack' && s.stage >= 1 && s.stage <= 5) || (s.phase === 'tech' && s.tech === 'gouge')) && s.resolved
   && !isBrawlerGuardingAt(s, t) && !brawlerStepping(s, t) && brawlerElapsed(s, t) < brawlerTotalMs(s);
 /**
  * ★通常の段の後隙を構えで取り消す(社長指示2026-11-26「格闘は通常技からは、構え をキャンセルで出せる」)。
@@ -1416,13 +1469,15 @@ export const brawlerFistPoint = (px: number, py: number, dirX: number, dirY: num
 export const brawlerFistTargets = (
   enemies: readonly Enemy[], px: number, py: number, dirX: number, dirY: number, target: Enemy | null,
   reach: number, walls: readonly Rect[] = [],
+  /** 拳の周りの円の半径(既定=3段目の BRAWLER_FIST_RADIUS・抉り打ちは BRAWLER_GOUGE_FIST_RADIUS)。 */
+  fistRadius: number = BRAWLER_FIST_RADIUS,
 ): string[] => {
   const out: string[] = [];
   if (target && isBrawlerTargetable(target) && brawlerDistTo(px, py, target) <= reach && !blocked(px, py, target, walls)) out.push(target.id);
   const f = brawlerFistPoint(px, py, dirX, dirY, target);
   for (const e of enemies) {
     if (out.includes(e.id) || !isBrawlerTargetable(e)) continue;
-    if (brawlerDistTo(f.x, f.y, e) > BRAWLER_FIST_RADIUS) continue;
+    if (brawlerDistTo(f.x, f.y, e) > fistRadius) continue;
     if (blocked(px, py, e, walls)) continue;
     out.push(e.id);
   }
@@ -1563,6 +1618,8 @@ export interface BrawlerPose {
   /** 体の震え(px・横/縦)。大踏み潰しの溜め(力を溜める小刻みな震え)。影も体に重ねて描くので一緒に震える。 */
   shakeX?: number;
   shakeY?: number;
+  /** 位置で下へ沈める量(px・伸縮しない)。抉り打ちの溜めの構え・着地(§37)。 */
+  sink?: number;
 }
 const easeOut = (x: number): number => 1 - (1 - x) * (1 - x);
 const easeIn = (x: number): number => x * x;
@@ -1651,7 +1708,7 @@ export const brawlerLiftHeight = (u: number): number => BRAWLER_LIFT_VIS_PX * br
 // 絵は右向き(社長の小さいドット絵・高さ56〜66ドット=表示とほぼ1:1・2026-11-26 差し替え。tip/body は新しい絵の画素から測った)。
 // tipU/tipV = 打つ手足の先(絵の中の割合)。ここを当たりの所へ合わせて置く(pixi)。heightPx = 表示の高さ(world px)。
 // ---------------------------------------------------------------------------------------------
-export type BrawlerStandKind = 'punch' | 'heavy' | 'slam' | 'palm' | 'guard' | 'hadou' | 'kick';
+export type BrawlerStandKind = 'punch' | 'heavy' | 'slam' | 'palm' | 'guard' | 'hadou' | 'kick' | 'gouge1' | 'gouge2' | 'gouge3';
 export interface BrawlerStandSpec {
   tex: string;
   /** 打つ手足の先(絵の中の割合)。 */
@@ -1670,7 +1727,17 @@ export const BRAWLER_STAND: Readonly<Record<BrawlerStandKind, BrawlerStandSpec>>
   guard: { tex: 'fx/brawler-stand2-guard', tipU: 0.62, tipV: 0.34, bodyU: 0.5, bodyV: 0.5, heightPx: 84 * BRAWLER_STAND_SCALE },
   hadou: { tex: 'fx/brawler-stand2-hadou', tipU: 0.93, tipV: 0.3, bodyU: 0.42, bodyV: 0.5, heightPx: 88 * BRAWLER_STAND_SCALE },
   kick: { tex: 'fx/brawler-stand2-kick', tipU: 0.96, tipV: 0.36, bodyU: 0.36, bodyV: 0.45, heightPx: 92 * BRAWLER_STAND_SCALE },
+  // ★抉り打ち(research/BRAWLER.md §37-5): 社長支給の3コマ(186×66 の横並びを透明な列で切った物・画素そのまま)。コマごとに寸法が違うので、
+  //   元の 66 ドットの行の「体の中心」(33行目)が同じ所に来るよう bodyV をコマごとに合わせ、高さは同じドットの大きさ(66 ドット=92×STAND_SCALE)で出す。
+  //   影は体に重ねたまま切り替えるだけ(手足の先で前へ伸ばさない=tip は体の中心と同じ)。
+  gouge1: { tex: 'fx/brawler-gouge-1', tipU: 0.5, tipV: 21 / 54, bodyU: 0.5, bodyV: 21 / 54, heightPx: 92 * BRAWLER_STAND_SCALE * 54 / 66 },
+  gouge2: { tex: 'fx/brawler-gouge-2', tipU: 0.5, tipV: 32 / 65, bodyU: 0.5, bodyV: 32 / 65, heightPx: 92 * BRAWLER_STAND_SCALE * 65 / 66 },
+  gouge3: { tex: 'fx/brawler-gouge-3', tipU: 0.5, tipV: 23 / 56, bodyU: 0.5, bodyV: 23 / 56, heightPx: 92 * BRAWLER_STAND_SCALE * 56 / 66 },
 };
+/** 抉り打ちの影のコマか(描画が向きを左右だけにする・回さない)。 */
+export const isBrawlerGougeStand = (k: BrawlerStandKind): boolean => k === 'gouge1' || k === 'gouge2' || k === 'gouge3';
+/** 抉り打ちの影の、体の中心から前へのずれ(px・左右の向きだけ)。 */
+export const BRAWLER_GOUGE_STAND_REACH_PX = 8;
 /**
  * 構えの影の絵(fx/brawler-stand2-guard・右向き)の中の「腕」の範囲(絵の中の割合)。レバーガード(§12-1c)の腕で受ける影は、この範囲だけを
  * 白金で出す(全身の構えの影=カウンターと読み違えない)。上げた両の拳と前腕が入る(腕だけの素材は無いので、構えの絵から切り出す)。
@@ -1741,6 +1808,22 @@ export const brawlerStandAt = (s: BrawlerState | undefined, t: number): BrawlerS
     const el = s.leverGuardAt !== undefined ? t - s.leverGuardAt : -1;
     const a = leverGuardStandAlpha(el);
     return a > 0 ? { kind: 'guard', ext: 1, alpha: a, light: false, big: false, lever: true, armPush: leverGuardArmOffset(el) } : null;
+  }
+  // ★抉り打ち(§37-5): 3コマを時刻で切り替える(1コマ目=跳び出しから着地まで・2コマ目=着地〜当たる手前・3コマ目=当たりから後隙の頭)。
+  //   位置と切り替えだけ(回さない・伸ばさない)。出始めは減速して濃くなり、3コマ目は後隙の前半で加速して消える(慣性)。
+  if (s.phase === 'tech' && s.tech === 'gouge') {
+    const el = Math.max(0, brawlerElapsed(s, t));
+    const jump = brawlerGougeJumpMs(s);
+    const kind: BrawlerStandKind = el < jump ? 'gouge1' : el < s.windupMs ? 'gouge2' : 'gouge3';
+    if (el < s.windupMs) {
+      const appear = easeOut(Math.min(1, el / Math.max(1, Math.min(90, jump || 90))));
+      return { kind, ext: 1, alpha: 0.9 * appear, light: false, big: false };
+    }
+    const post = Math.min(1, (el - s.windupMs) / Math.max(1, s.recoveryMs * 0.55));
+    if (post >= 1) return null;
+    // 3コマ目=下から突き上げ: 当たりの瞬間から上へ速く出て減速する(位置だけ・判定は不変)。
+    const rise = BRAWLER_GOUGE_STAND_RISE_PX * easeOut(Math.min(1, (el - s.windupMs) / BRAWLER_GOUGE_STAND_RISE_MS));
+    return { kind, ext: 1 + 0.25 * easeOut(post), alpha: 0.95 * (1 - easeIn(post)), light: false, big: false, lift: rise };
   }
   let kind: BrawlerStandKind;
   if (s.phase === 'attack') {
@@ -2046,6 +2129,15 @@ const brawlerPoseAtRaw = (s: BrawlerState | undefined, t: number, nowMs?: number
   if (s.phase === 'idle') {
     // ★スープレックスの反りが後隙より長く残った時は、待機に戻っても反りを戻し切るまで描く(絵だけ・後隙=操作の時間は変えない)。
     if (s.suplexAt !== undefined && t >= s.suplexAt && brawlerSuplexArch(t - s.suplexAt) > 0) return suplexPose(base, t - s.suplexAt, 0);
+    // ★抉り打ちの溜め(§37-2): 押してから少し経ったら構え(しゃがみの絵)に入り、位置で少し沈めて後ろへ引く(伸縮しない)。
+    //   溜めが消えた時は、沈みだけを加減速つきで戻す(絵は今の姿へ)。タップ・連打の短い押下では出ない。
+    if (nowMs !== undefined) {
+      const gk = brawlerGougeChargeSink(s, nowMs);
+      if (gk > 0.001) {
+        const charging = s.gougePressAt !== undefined && !s.gougeDead && !s.gougeWait;
+        return { ...base, tex: charging ? 'ready' : (s.nextStage > 1 && t <= s.chainUntil ? 'ready' : null), sink: BRAWLER_GOUGE_STANCE_SINK_PX * gk, push: -2 * gk };
+      }
+    }
     // つながりの受付が残っている間はしゃがみ(構え)で待つ。
     if (s.nextStage > 1 && t <= s.chainUntil) return { ...base, tex: 'ready', lean: 0.05 };
     if (s.tech === null && s.kickChainUntil > t) return { ...base, tex: 'ready', lean: 0.06 };
@@ -2098,6 +2190,24 @@ const brawlerPoseAtRaw = (s: BrawlerState | undefined, t: number, nowMs?: number
     }
   }
   switch (s.tech) {
+    case 'gouge': {
+      // ★抉り打ち(§37-5): 影の3コマ(前のめりの跳び → 低く沈む → 下から突き上げ)と体の絵をコマごとに揃える。
+      //   跳び=しゃがみの絵で前へ傾いて小さく跳んで詰める → 着地=しゃがみの絵のまま低く沈む(後ろへ引かない・勢いのまま少し前)
+      //   → 当たり=振り上げ(アッパーの絵)。伸縮は使わない(位置と絵の切り替え・前傾だけ)。跳びの高さは4段目と同じ曲線の半分(慣性)。
+      const jumpMs = brawlerGougeJumpMs(s);
+      if (!hit && el < jumpMs) {
+        const q = jumpMs > 0 ? el / jumpMs : 1;
+        return { ...base, tex: 'ready', lean: 0.16 * easeOut(Math.min(1, q * 2)), push: 2 * q, jump: brawlerJumpHeight(q) * (BRAWLER_GOUGE_JUMP_VIS_PX / BRAWLER_JUMP_VIS_PX) };
+      }
+      if (!hit) {
+        const k = easeOut(Math.min(1, (el - jumpMs) / Math.max(1, s.windupMs - jumpMs)));
+        return { ...base, tex: 'ready', lean: 0.16 - 0.08 * k, push: 2 + 2 * k, sink: BRAWLER_GOUGE_STANCE_SINK_PX * k };
+      }
+      // 当たり: 沈みから一気に伸び上がって前へ(速く出て減速)、後隙で戻る。
+      const rise = easeOut(Math.min(1, (el - s.windupMs) / 70));
+      const fade = 1 - easeIn(post);
+      return { ...base, tex: post < 0.7 ? 'swing' : 'ready', lean: -0.05 * rise * fade, push: (4 + 8 * rise) * fade, sink: BRAWLER_GOUGE_STANCE_SINK_PX * (1 - rise) };
+    }
     case 'guard': {
       const breath = Math.sin(el / 90) * 0.012;
       return { ...base, tex: 'ready', sqY: 0.94 + breath, sqX: 1.04 - breath };

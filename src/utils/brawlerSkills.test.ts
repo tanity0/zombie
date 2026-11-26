@@ -49,7 +49,7 @@ describe('3. 当たるたびの回復: 秘奥義の中だけ1回', () => {
 });
 
 describe('5. タイムキーパー/オーバークロック', () => {
-  const costs = (lv: number): Record<BrawlerTechKind, number> => ({
+  const costs = (lv: number): Record<Exclude<BrawlerTechKind, 'gouge'>, number> => ({ // 抉り打ち(§37)は技ポイントを使わない=割引の外
     guard: brawlerTechCost('guard', false, brawlerTimeKeeperDiscount('guard', lv)),
     stomp: brawlerTechCost('stomp', false, brawlerTimeKeeperDiscount('stomp', lv)),
     kiko: brawlerTechCost('kiko', false, brawlerTimeKeeperDiscount('kiko', lv)),

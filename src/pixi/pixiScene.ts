@@ -124,6 +124,7 @@ import {
 } from '../store/gameStore';
 import { kenkiLevelLook } from '../utils/kenkiLevel'; // 孫悟空のレベルの色(research/BRAWLER.md §36-1)
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
+import * as BRGO from '../utils/brawlerGouge'; // 抉り打ちの溜めの光(状態から描くだけ・research/BRAWLER.md §37)
 import { BRAWLER_WEAK_GUARD_ALPHA } from '../utils/brawlerGuard'; // 弱い構え(払えずに出た構え)の光の薄さ
 import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne, brawlerLiftVisBasePx } from '../utils/brawlerCombo';
 import { satsujinCoverAlpha, SATSUJIN_HITS, isTsubameCrouching } from '../utils/katanaTsubame';
@@ -28790,6 +28791,7 @@ export class PixiScene {
       actSqX *= brPose.sqX;
       actSqY *= brPose.sqY;
       brawlerJumpPx = brPose.jump * dsc;
+      if (brPose.sink) actOffY += brPose.sink * dsc; // 抉り打ちの溜めの構え・着地の沈み(位置だけ・伸縮しない)
       // 大踏み潰しの溜めの震え(体の位置だけ・影は体に重ねて描くので一緒に震える)。
       if (brPose.shakeX) actOffX += brPose.shakeX * dsc;
       if (brPose.shakeY) actOffY += brPose.shakeY * dsc;
@@ -51198,6 +51200,9 @@ export class PixiScene {
     // 絵だけ=判定・受けの向き(s.dirX/dirY)は変えない。
     // ★レバーガードの腕の影も同じ=受けた相手の角度で回さず・上下へずらさず、相手のいる側(左右)の反転だけ(社長指示2026-11-26)。
     if (f.kind === 'guard') ({ ux, uy } = BRW.brawlerStandSideFacing(sdx, sdy, p.lastDirection?.x));
+    // ★抉り打ちの3コマ(research/BRAWLER.md §37-5)も左右の反転だけ(斜めにしない・回さない)。
+    const gougeStand = BRW.isBrawlerGougeStand(f.kind);
+    if (gougeStand) { ux = left ? -1 : 1; uy = 0; }
     // 見た目の体の中心(跳びの高さも入る)。
     const bodyH = Math.abs(body.height);
     const bx = body.position.x, by = body.position.y - bodyH * 0.5;
@@ -51211,6 +51216,7 @@ export class PixiScene {
     } else {
       reach = f.kind === 'guard' ? 14 : f.kind === 'palm' ? 46 : f.kind === 'slam' ? 0 : 32;
     }
+    if (gougeStand) reach = BRW.BRAWLER_GOUGE_STAND_REACH_PX; // 抉り打ち: 体に重ねたまま少しだけ前(位置と切り替えだけ)
     const h = spec.heightPx * (f.big ? BRW.BRAWLER_STAND_STOMP_MULT : 1) * (f.light ? BRW.BRAWLER_STAND_LIGHT_SCALE : 1) * dsc * (which === 'player' ? this.playerAirScale : 1);
     const k = h / tex.height;
     const w = tex.width * k;
@@ -51252,8 +51258,70 @@ export class PixiScene {
     sp.scale.set(left ? -kk : kk, kk);
     const ar = a + (f.rot ?? 0); // 踵落とし(§29): 振り上げた向きから振り下ろした向きへ回す
     sp.rotation = f.kind === 'slam' ? (left ? -lean : lean) : (left ? -ar : ar);
+    if (gougeStand) sp.rotation = 0; // 抉り打ち: 回さない(上の向きの傾き・前のめりも掛けない)
     sp.position.set(tx, ty);
     sp.visible = true;
+  }
+  /**
+   * ★抉り打ちの溜めの光(research/BRAWLER.md §37-2・絵だけ)。押してから BRAWLER_GOUGE_GLOW_DELAY_MS を超えたら、構えの拳(しゃがみの絵の前の拳)に
+   * 光が集まり始める: 周りから粒が加速しながら拳へ吸い込まれ、芯が直線で育つ(外の淡い光は縮みながら集まる)。溜まった後は溜めの終わりの強さ以上で脈打つ。
+   * 溜まった瞬間の閃き(小さな光・輪)は store が1度だけ出す。加算のスプライト(芯・外の光・粒)=投影影は落とさない。入れ物が違う時だけ付け直す。
+   */
+  private brawlerGougeCore: Sprite | null = null;
+  private brawlerGougeHalo: Sprite | null = null;
+  private brawlerGougeMotes: Sprite[] = [];
+  private hideBrawlerGougeCharge(): void {
+    if (this.brawlerGougeCore) this.brawlerGougeCore.visible = false;
+    if (this.brawlerGougeHalo) this.brawlerGougeHalo.visible = false;
+    for (const m of this.brawlerGougeMotes) m.visible = false;
+  }
+  private drawBrawlerGougeCharge(p: Player, s: BRW.BrawlerState, dsc: number, body: Sprite): void {
+    const now = Date.now();
+    const gl = BRGO.brawlerGougeGlow(s, now);
+    if (gl.level <= 0.001 || s.gougeChargeAt === undefined) { this.hideBrawlerGougeCharge(); return; }
+    if (!this.brawlerGougeCore) { const sp = new Sprite(getSoftGlowTexture()); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add'; this.brawlerGougeCore = sp; }
+    if (!this.brawlerGougeHalo) { const sp = new Sprite(getSoftGlowTexture()); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add'; this.brawlerGougeHalo = sp; }
+    while (this.brawlerGougeMotes.length < BRGO.BRAWLER_GOUGE_MOTES) { const sp = new Sprite(getCircleTexture()); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add'; this.brawlerGougeMotes.push(sp); }
+    const core = this.brawlerGougeCore, halo = this.brawlerGougeHalo;
+    const parent = body.parent;
+    for (const sp of [halo, ...this.brawlerGougeMotes, core]) {
+      if (parent && sp.parent !== parent) parent.addChild(sp); // 入れ物が違う時だけ付け直す(毎フレーム付け直さない)
+      this.projTag(sp, 'brawlerAura');
+    }
+    // 拳の所=構え(しゃがみの絵)の前の拳。絵の拳の位置(PLAYER_MELEE_FISTS の low)を体の倍率で世界へ。絵が無い装いは体の中心の少し前。
+    const face = (p.lastDirection?.x ?? 1) < 0 ? -1 : 1;
+    const fist = PLAYER_MELEE_FISTS[MELEE_POSE_PREFIX[p.characterClass] ?? ''];
+    const sy = Math.abs(body.scale.y), sx = Math.abs(body.scale.x);
+    const fx = body.position.x + face * (fist ? fist.low.dx * sx : 10 * dsc);
+    const fy = body.position.y - (fist ? fist.low.up * sy : Math.abs(body.height) * 0.4);
+    const texH = Math.max(1, core.texture.height);
+    const lv = gl.level;
+    // 溜めの間: 外の光は大きく淡い所から縮んで集まり、芯は小さい所から育つ。溜まった後: lv は 1 以上(しぼまない)で脈打つ。
+    const haloPx = (gl.ready ? 30 * lv : 76 - 46 * lv) * dsc;
+    const corePx = (gl.ready ? 20 * lv : 5 + 15 * lv) * dsc;
+    halo.scale.set(haloPx / texH);
+    halo.alpha = Math.min(0.6, gl.ready ? 0.4 * lv : 0.12 + 0.28 * lv);
+    halo.tint = BRW.BRAWLER_GOUGE_GLOW_HEX;
+    halo.position.set(fx, fy);
+    halo.visible = true;
+    core.scale.set(corePx / texH);
+    core.alpha = Math.min(1, gl.ready ? 0.9 + 0.1 * (lv - 1) / 0.15 : 0.25 + 0.65 * lv);
+    core.tint = BRW.BRAWLER_GOUGE_CORE_HEX;
+    core.position.set(fx, fy);
+    core.visible = true;
+    // 粒: 周りから拳へ吸い込まれる(加速して入る=慣性)。溜めの間だけ。周期をずらして途切れずに入れ替わる。
+    const el = now - s.gougeChargeAt - BRW.BRAWLER_GOUGE_GLOW_DELAY_MS;
+    const circTexH = Math.max(1, this.brawlerGougeMotes[0].texture.height);
+    for (let i = 0; i < this.brawlerGougeMotes.length; i++) {
+      const m = this.brawlerGougeMotes[i];
+      const mo = BRGO.brawlerGougeMote(i, el, gl.ready);
+      if (!mo) { m.visible = false; continue; }
+      m.position.set(fx + mo.dx * dsc * face, fy + mo.dy * dsc);
+      m.scale.set((mo.size * dsc) / circTexH);
+      m.alpha = mo.alpha;
+      m.tint = BRW.BRAWLER_GOUGE_GLOW_HEX;
+      m.visible = true;
+    }
   }
   /** research/BRAWLER_PHANTOM.md §8: 格闘の幻影の動きの影と体の光(構え=1秒かけて絞る・秘奥義=脈打つ)。 */
   private drawPhantomBrawlerFx(e: Enemy, s: BRW.BrawlerState, gt: number, now: number, dsc: number, body: Sprite): void {
@@ -51313,9 +51381,10 @@ export class PixiScene {
     // research/BRAWLER_PHANTOM.md: 格闘の幻影の気功も同じ絵(1本の絵の台帳で描く=プレイヤーの気功と取り合わない)。
     const gpKikos = st.enemies.flatMap(e => (e.gpKiko || e.gpKiko2 ? [e.gpKiko, e.gpKiko2].filter((k): k is NonNullable<typeof k> => k !== undefined) : [])); // 2発目=カウンターマスターの気功の二連発
     this.drawBrawlerKiko(gpKikos.length > 0 ? [...st.brawlerKiko, ...gpKikos] : st.brawlerKiko, now);
-    if (!s || !isBrawlerMode(p)) { this.brawlerDustGates.clear(); this.hideBrawlerGhosts(); if (this.brawlerAura) this.brawlerAura.visible = false; if (this.brawlerStand) this.brawlerStand.visible = false; return; }
+    if (!s || !isBrawlerMode(p)) { this.brawlerDustGates.clear(); this.hideBrawlerGhosts(); if (this.brawlerAura) this.brawlerAura.visible = false; if (this.brawlerStand) this.brawlerStand.visible = false; this.hideBrawlerGougeCharge(); return; }
     const gt = st.gameTime;
     this.drawBrawlerStand(p, s, gt, dsc, body);
+    this.drawBrawlerGougeCharge(p, s, dsc, body); // ★抉り打ちの溜めの光(§37-2)
     const el = BRW.brawlerElapsed(s, gt);
     const tint = this.dustTintForStage();
     // 構えの体の光(加算=沈まない)。1秒かけて絞っていく=窓の残りが見える(§3-2)。受けた瞬間は一度膨らむ。

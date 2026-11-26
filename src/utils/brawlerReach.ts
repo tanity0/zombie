@@ -3,7 +3,7 @@
 // 当て、相手が A の押しで下がった所から B を出した時に、B の踏み込み+届く範囲で当たるかを返す純関数。
 // 押しの距離は雑魚(一番よく下がる区分)の実測(store/brawlerReach.store.test.ts が実際の押しと突き合わせる)。描画・store は読まない。
 import {
-  BRAWLER_LUNGE_PX, BRAWLER_STANDOFF_PX, BRAWLER_KICK_RANGE, BRAWLER_LANDING_RADIUS, BRAWLER_PALM_PASS_PX, BRAWLER_STOMP_RADIUS, BRAWLER_KIKO_RANGE,
+  BRAWLER_LUNGE_PX, BRAWLER_STANDOFF_PX, BRAWLER_KICK_RANGE, BRAWLER_LANDING_RADIUS, BRAWLER_PALM_PASS_PX, BRAWLER_STOMP_RADIUS, BRAWLER_KIKO_RANGE, BRAWLER_GOUGE_JUMP_PX,
 } from './brawler';
 import type { BrawlerRouteNode } from './brawlerTypes';
 
@@ -17,7 +17,7 @@ export const BRAWLER_CHAIN_MARGIN_PX = 8;
  */
 // 実機の順で測った値(2026-11-14)。
 export const BRAWLER_PUSH_ZOMBIE_PX: Readonly<Partial<Record<BrawlerRouteNode, number>>> = {
-  s1: 4, s2: 4, s3: 41, s4: 9, kick1: 41, kick2: 9, heel: 0, kickup: 0, stomp: 72, // 蹴り上げ(§34-1)=押さない(上へ打ち上げる)
+  s1: 4, s2: 4, s3: 41, s4: 9, kick1: 41, kick2: 9, heel: 0, kickup: 0, stomp: 72, gouge: 0, // 蹴り上げ(§34-1)・抉り打ち(§37-4)=押さない(上へ打ち上げる)
 };
 
 /** 続きの技 B の届き方。lungePx=体が進む最大(相手の手前で止まる)・targetPx=狙える距離(この外なら進まない)・hitPx=当たる距離。どれも相手の帯の縁までの距離。 */
@@ -38,6 +38,7 @@ export const brawlerReachOf = (b: BrawlerRouteNode, meleeRadius: number): Brawle
     case 'kick1': case 'kick2': case 'kick3': case 'heel': case 'kickup': return { lungePx: BRAWLER_KICK_RANGE, targetPx: BRAWLER_KICK_RANGE, hitPx: meleeRadius };
     case 'stomp': return { lungePx: 0, targetPx: Infinity, hitPx: BRAWLER_STOMP_RADIUS };
     case 'kiko': return { lungePx: 0, targetPx: BRAWLER_KIKO_RANGE, hitPx: BRAWLER_KIKO_RANGE };
+    case 'gouge': return { lungePx: BRAWLER_GOUGE_JUMP_PX, targetPx: meleeRadius, hitPx: meleeRadius }; // 抉り打ち(§37-3): 小ジャンプで詰める(最大 BRAWLER_GOUGE_JUMP_PX)
     default: return { lungePx: 0, targetPx: 0, hitPx: 0 };
   }
 };

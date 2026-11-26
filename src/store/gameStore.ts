@@ -151,6 +151,7 @@ import * as BRS from '../utils/brawlerSkills'; // 格闘×スキルの純関数(
 import * as BLG from '../utils/brawlerLeverGuard'; // 格闘のレバーガード(成立・半減・小さい押し・research/BRAWLER.md §12-1c)
 import { noteLeverGuardFull, clearLeverGuardFull, leverGuardHurtMuted, isPlayerHurtFlashColor, isPlayerHurtBurstColor, LEVER_GUARD_BURST_NEAR_PX } from '../utils/leverGuardStamp'; // 受け切った直後は被弾の演出を出さない
 import * as BRCM from '../utils/brawlerCounterMaster'; // 格闘のときのカウンターマスター(受けた直後の自動の反撃・前倒し/吹き飛ばしを付けない)
+import * as BRGO from '../utils/brawlerGouge'; // ★格闘の抉り打ち(溜めて離す・research/BRAWLER.md §37)
 import * as BRG from '../utils/brawlerGuard'; // 格闘の構えの成立の効果(雑魚=潰し/雑魚より上=自分がノックバック/光線の中断・research/BRAWLER.md §12-3d)
 import { noteAirMeleeHit, resetAirMeleeHit, playerAirTargetPx, meleeHitLiftsPlayer, type AirFollowWeapon } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18)
 import { airChaseHeightPx } from '../utils/airChaseHeight'; // 高さに追いつく技の高さ(社長指示2026-11-16)
@@ -856,8 +857,11 @@ export interface BrawlerStrikeOpts {
   /**
    * 食らいの固まり・減衰・反撃の名札(research/BRAWLER.md §11)。無ければ流れに数えない(固めない)。
    */
-  combo?: { move: BRC.BrawlerMoveKey };
+  combo?: { move: BRC.BrawlerMoveKey; linkCarry?: number };
 }
+/** 当たり1回の「N HIT」の数(その敵の続き+1。段のつなぎとして出た抉り打ちは、持ち越した数の続きより小さくしない=§37-7)。 */
+const brawlerLinkOnHitBs = (enemy: Enemy, bs: Pick<BrawlerStrikeOpts, 'combo'>, gameTime: number, now: number): number =>
+  BRGO.brawlerLinkWithCarry(BRC.brawlerLinkOnHit(enemy, gameTime, now), bs.combo?.linkCarry);
 /** 格闘の気功の弾(store が進める・pixi は描くだけ)。 */
 export interface BrawlerKiko {
   id: string;
@@ -6151,7 +6155,7 @@ const brawlerHitPatch = (
   //   それまでの固まりを止めの終わりまで切る。⑤ 固まらない時間の間は何も書かない(brawlerLockOnHit が先に見る)。
   if (bs.combo) {
     const move = bs.combo.move;
-    out.brComboHits = BRC.brawlerLinkOnHit(enemy, gameTime, now); // つながっているコンボの数(表示だけ・§23)
+    out.brComboHits = brawlerLinkOnHitBs(enemy, bs, gameTime, now); // つながっているコンボの数(表示だけ・§23)
     const canHold = pk !== 'active' && !downNow;
     // 溜めの間は、雑魚の止め(hitStunUntil)が「攻撃中」で効かないので、止めも固まりの側で掛ける。
     const stopForHold = bossLike ? bossStopMs : pk === 'windup' && bs.kb.kind !== 'big' ? hitStopMs : stopMs;
@@ -6229,7 +6233,7 @@ const brawlerHoldFrom = (now: number, stopMs: number, kbUntil: number | undefine
 const brawlerFinishLockPatch = (enemy: Enemy, bs: BrawlerStrikeOpts, gameTime: number, now: number): Partial<Enemy> => {
   const move = bs.combo?.move;
   if (!move) return {};
-  const link = { brComboHits: BRC.brawlerLinkOnHit(enemy, gameTime, now) }; // つながっているコンボの数(表示だけ・§23)。フィニッシュも1発
+  const link = { brComboHits: brawlerLinkOnHitBs(enemy, bs, gameTime, now) }; // つながっているコンボの数(表示だけ・§23)。フィニッシュも1発
   if (move === 'secret' || move === 'secret-land') return link;
   const stop = Math.max(0, bs.lockStopMs ?? bs.stunMs);
   const bossBig = BRC.brawlerEnemyClass(enemy) === 'boss' && bs.kb.kind === 'big';
@@ -6308,8 +6312,8 @@ const brawlerMultiHitFx = (get: () => GameState, set: WhipSet, r: CounterTrigger
 };
 /** 倒した1発ぶんの数(その当たりで何発目だったか)。倒れた敵は数から外れるので、当たりの直後の合わせ直しでだけ使う。 */
 let brawlerKillLinkPeak = 0;
-const noteBrawlerKillLink = (enemy: Enemy, gameTime: number, now: number): void => {
-  brawlerKillLinkPeak = Math.max(brawlerKillLinkPeak, BRC.brawlerLinkOnHit(enemy, gameTime, now));
+const noteBrawlerKillLink = (enemy: Enemy, gameTime: number, now: number, bs?: Pick<BrawlerStrikeOpts, 'combo'>): void => {
+  brawlerKillLinkPeak = Math.max(brawlerKillLinkPeak, bs ? brawlerLinkOnHitBs(enemy, bs, gameTime, now) : BRC.brawlerLinkOnHit(enemy, gameTime, now));
 };
 /**
  * 近接枠の左の「N HIT」を、いまのつながっているコンボの数に合わせる(research/BRAWLER.md §23)。変えたら true。
@@ -6324,7 +6328,10 @@ const syncBrawlerLinkCount = (
   const b = st.player.brawler;
   if (!b) return false;
   // 倒した1発も数に入れる(その数を出してから、次のフレームで切れて沈む)。何も変わらない時は store を書かない。
-  const next = BRC.brawlerLinkDisplay(b, Math.max(peak, BRC.brawlerLinkMax(st.enemies, st.gameTime, Date.now())), st.gameTime);
+  // ★抉り打ち(§37-7): 段のつなぎの溜めの間・つなぎで出た抉り打ちが当たるまでは、持ち越した数を出し続ける(溜めの間に数が切れて見えない)。
+  const carry = b.gougeLink && b.gougePressAt !== undefined && !b.gougeDead ? (b.gougeLinkHits ?? 0)
+    : b.phase === 'tech' && b.tech === 'gouge' && !b.resolved ? (b.gougeCarryHits ?? 0) : 0;
+  const next = BRC.brawlerLinkDisplay(b, Math.max(peak, carry, BRC.brawlerLinkMax(st.enemies, st.gameTime, Date.now())), st.gameTime);
   if (!next) return false;
   set(state => (state.player.brawler ? { player: { ...state.player, brawler: { ...state.player.brawler, ...next } } } : {}));
   return true;
@@ -6396,6 +6403,72 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
   // 振りの音(空振りの連打も無音にしない・段ごとに個別の音程=等間隔に下げない)。
   brawlerSfx('whip-swing', stage >= 4 ? 0.55 : 0.4, BR.BRAWLER_SWING_PITCH[spec.stage] * brJitter(), 140);
   // 詰めの出発点に砂埃(pixi が brawler の状態から描く)。
+};
+
+/** ★抉り打ち(research/BRAWLER.md §37)の溜めの判断に渡す、状態の外の事情(関所・浮き・移動の入力)。 */
+const brawlerGougeCtxOf = (get: () => GameState): BRGO.BrawlerGougeCtx => {
+  const st = get();
+  const i = st.inputState;
+  return {
+    gateOk: brawlerGateOk(get),
+    airLocked: playerAirLocked(st.player, Date.now()),
+    // 移動の入力=タッチの指が遊びの外(swipeDirection)・パッドのスティック(同じ欄)・PC の移動キー(inputState)。速度では測らない(§37-7)。
+    moveInput: st.swipeDirection !== null || i.up || i.down || i.left || i.right,
+  };
+};
+/**
+ * ★抉り打ちを出す(research/BRAWLER.md §37-3・§37-7)。技ポイントは使わない・秘奥義の順番は数えない(素通り)。
+ * 1コマ目=近接の届く範囲で一番近い敵(コンボの狙いを優先=段と同じ選び方)へ最大 BRAWLER_GOUGE_JUMP_PX 跳んで詰める(相手が居なければ向いている方へ
+ * BRAWLER_GOUGE_NO_TARGET_PX)。詰めは4段目と同じ踏み込みの器(加速して詰める)・見た目の跳びは姿勢の jump(判定は地面のまま)。
+ * linked=段の受付の内で押し始めた溜め(段のつなぎとして数える=取り消しの印 linked)。carryHits=溜めの間に覚えた HIT の数(当たりはこの続き)。
+ * s0 の溜めの欄は呼び手が消してある。
+ */
+const startBrawlerGouge = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s0: BR.BrawlerState, linked: boolean, carryHits = 0): void => {
+  const st = get();
+  const p = st.player;
+  const t = st.gameTime;
+  const now = Date.now();
+  const c = brawlerCenter(p);
+  const radius = huntingMeleeRadius(p);
+  const walls = meleeWallsAround(get, c.x, c.y, radius);
+  const target = BR.pickBrawlerComboTarget(projLabAimable(st.enemies), c.x, c.y, radius, walls, BR.brawlerComboLockId(s0));
+  const dir = BR.brawlerAimDir(c.x, c.y, target, p.lastDirection);
+  const ap = target
+    ? BR.brawlerApproach(c.x, c.y, target, BR.BRAWLER_GOUGE_JUMP_PX)
+    : { dx: dir.x * BR.BRAWLER_GOUGE_NO_TARGET_PX, dy: dir.y * BR.BRAWLER_GOUGE_NO_TARGET_PX, dist: BR.BRAWLER_GOUGE_NO_TARGET_PX };
+  const s: BR.BrawlerState = {
+    ...BR.brawlerStartTech(s0, 'gouge', t, 0, false),
+    targetId: target?.id, dirX: dir.x, dirY: dir.y, pressAt: now, linked, gougeLandFx: false,
+    gougeCarryHits: linked && carryHits > 0 ? carryHits : undefined, // 段のつなぎ=当たりは HIT の続きとして数える(§37-7)
+    ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged),
+  };
+  const jumpMs = BR.brawlerGougeJumpMs(s);
+  // 画面全体の止めの最中に出した時は、詰め(壁時計)を止めが明けた時刻から始める(段・蹴りと同じ)。
+  setBrawler(set, s, { lastDirection: { x: dir.x, y: dir.y }, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, jumpMs, Math.max(now, get().hitstopUntil)) });
+  notifyTechProc('gouge'); // 技の名前の行(印は「つなぎ」=§37-7)
+  // 踏み切り: 足元の砂埃(跳ぶ向きの逆へ流す)と短い風切り。判定なし=派手さの絵。
+  const footY = c.y + p.height / 2 - 10;
+  // 踏み切りの砂埃は大きく(派手さの絵): 蹴った足元から後ろへ広がって流れる。
+  get().spawnImageMark(c.x - dir.x * 8, footY, 'fx/dust-puff', { scale: 0.44, scaleY: 0.6, duration: 560, tint: 0x8a857e, alpha: 0.38, moveX: -dir.x * 40, moveY: -dir.y * 16 - 6, fadeFrom: 0.25, growFrom: 0.5, growPow: 2 });
+  get().spawnImageMark(c.x - dir.x * 2 + dir.y * 12, footY + 2, 'fx/dust-puff', { scale: 0.3, scaleY: 0.55, duration: 460, tint: 0x7f7a73, alpha: 0.32, moveX: -dir.x * 26 + dir.y * 14, moveY: -dir.y * 8 - 4, fadeFrom: 0.25, growFrom: 0.5, growPow: 2 });
+  brawlerSfx('whip-swing', 0.5, 0.86 * brJitter(), 150);
+};
+/**
+ * ★抉り打ちが溜まった瞬間の合図(§37-2): 構えの拳の一点で小さく鋭く閃き(青白=影の色)、小さな輪が一度だけ広がる。短く硬い「カチッ」。
+ * 光は小さい(GLOW_R_XS)・投影影は落とさない(noShadow)。判定なし=派手さの絵。音は構え(受け)の音・サブウェポンのチャージ完了(reload)とは別の音。
+ */
+const brawlerGougeReadyFx = (get: () => GameState): void => {
+  const g = get();
+  const p = g.player;
+  const c = brawlerCenter(p);
+  const face = (p.lastDirection?.x ?? 1) < 0 ? -1 : 1;
+  // 構えの拳(しゃがみの絵の前の拳)の高さ: 足元(箱の下端)から上へ。絵の拳は足元から約 22px・前へ約 8px(描画の溜めの光と同じ所)。
+  const fx = c.x + face * 8, fy = c.y + p.height / 2 - 22;
+  g.spawnGlow(fx, fy, GLOW_R_XS, BR.BRAWLER_GOUGE_GLOW_RGB, 120, true);
+  g.spawnRing(fx, fy, 2, 17, 'rgba(210,248,255,0.9)', 1.5, 150, true);
+  brawlerFx(get, fx, fy, 'vfx/spark_04', { scale: 0.32, rot: Math.random() * Math.PI * 2, duration: 110, fadeFrom: 0.25, alpha: 1, tint: BR.BRAWLER_GOUGE_CORE_HEX });
+  // 音: 金属が噛み合うような短く硬い音(刺さる音 anchor-plant を高く・短く切る)。
+  brawlerSfx('anchor-plant', 0.55, 1.6, 90);
 };
 
 /**
@@ -7072,6 +7145,48 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   }
 
   // 技
+  if (s.tech === 'gouge') {
+    // ★抉り打ち(research/BRAWLER.md §37-4): 拳の前の円(半径 BRAWLER_GOUGE_FIST_RADIUS)+狙った1体。近接の基準×1.4・押さずに高く打ち上げる
+    //   (蹴り上げと同じ打ち上げ=combo の 'gouge'・空中の敵は浮き直す・攻撃中の雑魚・強個体は浮きの側で技を取り消す)。止めは3段目と同じ強い当たり。
+    //   技ポイントは使わない・当てた時の増え方は通常攻撃の段と同じ(countPoint)。
+    if (!target) target = BR.pickBrawlerComboTarget(projLabAimable(st.enemies), c.x, c.y, radius, walls, BR.brawlerComboLockId(s));
+    const gdir = target ? BR.brawlerAimDir(c.x, c.y, target, p.lastDirection) : dir;
+    const ids = BR.brawlerFistTargets(st.enemies, c.x, c.y, gdir.x, gdir.y, target, radius, walls, BR.BRAWLER_GOUGE_FIST_RADIUS);
+    const plan0 = brawlerStopPlan(get, BR.BRAWLER_HITSTOP.strong);
+    const r = strike(ids, {
+      mult: BR.BRAWLER_GOUGE_MULT, stunMs: plan0.stun, ...plan0.lock, postureMult: BR.BRAWLER_GOUGE_MULT,
+      kb: { kind: 'none' },
+      combo: { move: 'gouge', linkCarry: s.gougeCarryHits }, // 段のつなぎとして出た時は HIT の続き(§37-7)
+    });
+    const hits = r.hits ?? 0;
+    brawlerKillSfx(r);
+    brawlerApplyWorldStop(get, plan0, hits);
+    const plan = brawlerPlanMultiHit(plan0, hits);
+    const next0 = BR.brawlerAfterResolve({ ...s, dirX: gdir.x, dirY: gdir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: plan.self, landed: r.landed ?? hits });
+    setBrawler(set, { ...next0, ...brawlerFreezeMark(next0, plan, hits), ...brawlerComboLockPatch(s, r, target?.id, c) }, {
+      lastDirection: { x: gdir.x, y: gdir.y },
+      ...(hits > 0 ? brawlerRecoilAt(gdir.x, gdir.y, plan, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
+    });
+    brawlerNoteFlowHits(set, hits);
+    // 絵と音: 3段目(強パンチ)の当たり(拳の残像・突き上げの弧・火花・重い当たりの音)+打ち上げ(上へ抜ける閃き・浮いていく敵の足元の砂埃)。
+    brawlerStageFx(get, 3, c, gdir, r, target);
+    let i = 0;
+    for (const h of r.hitAt ?? []) {
+      const e = get().enemies.find(en => en.id === h.id);
+      const hx = e ? e.x + e.width / 2 : h.x, hy = e ? Math.max(h.y, e.y + e.height * 0.62) : h.y + 12;
+      // 上へ抜ける閃き: 影の3コマ目(下から突き上げ)を当たりの瞬間に隠さないよう、小さい所から伸びて(growFrom)上へ抜ける。
+      brawlerFx(get, hx, hy - 8, 'vfx/flare_01', { scale: 0.55, scaleY: 1.15, duration: 240, fadeFrom: 0.2, moveY: -40, alpha: 0.8, growFrom: 0.25, growPow: 2 });
+      if (!e || !BRC.brawlerAirborne(e, now)) continue;
+      // 打ち上げの足元: 薄く大きく、上へ散って消える煙(かたまりにしない)。
+      const fx = e.x + e.width / 2, fy = e.y + e.height - 4, k = 1 - 0.12 * (i++ % 3);
+      g.spawnImageMark(fx, fy - 4, 'fx/dust-puff', { scale: 0.5 * k, scaleY: 0.9, duration: 820, tint: 0x8a857e, alpha: 0.32, moveX: (i % 2 ? 6 : -6), moveY: -64, fadeFrom: 0.1, growFrom: 0.45, growPow: 2 });
+      g.spawnImageMark(fx - 12 * k, fy, 'fx/dust-puff', { scale: 0.34 * k, scaleY: 0.8, duration: 700, tint: 0x7f7a73, alpha: 0.26, moveX: -16, moveY: -44, fadeFrom: 0.1, growFrom: 0.45, growPow: 2 });
+      g.spawnImageMark(fx + 12 * k, fy + 2, 'fx/dust-puff', { scale: 0.3 * k, scaleY: 0.8, duration: 640, tint: 0x7f7a73, alpha: 0.24, moveX: 16, moveY: -36, fadeFrom: 0.1, growFrom: 0.45, growPow: 2 });
+    }
+    if (hits > 0) g.triggerShake(150, 9, 0, -1); // 下から突き上げた=短い上向きの揺れ(蹴り上げと同じ作法)
+    brawlerMultiHitFx(get, set, r, gdir);
+    return;
+  }
   if (s.tech === 'guard') {
     setBrawler(set, { ...s, resolved: true });
     return;
@@ -11753,6 +11868,17 @@ interface GameState {
   brawlerTech: (dirX: number, dirY: number, neutral?: boolean) => boolean;
   /** 格闘のステップ(research/BRAWLER.md §12-3・§12-3b)。向きへ短く踏み込む(加速→減速・出始めだけ無敵=BRAWLER_STEP_IFRAME_MS)。出た、または受け付けない時間で覚えた(200ms 以内に出す)ら true。 */
   brawlerStep: (dirX: number, dirY: number) => boolean;
+  /**
+   * ★抉り打ち(research/BRAWLER.md §37): 指を置いた/近接ボタンを押した瞬間(タッチ・PC・パッド)。溜められる体なら溜めを始める。格闘でなければ何もしない。
+   */
+  brawlerGougePress: () => void;
+  /**
+   * ★抉り打ち: 指を離した/ボタンを離した瞬間(格闘の通常攻撃の入口の代わりに呼ぶ)。'gouge'=抉り打ちを出した / 'none'=何も出さない /
+   * 'normal'=今までどおり(呼び手が beginMeleeSwing を呼ぶ)。溜めの欄はここで消える。
+   */
+  brawlerGougeRelease: () => 'gouge' | 'none' | 'normal';
+  /** ★抉り打ち: 撃たずに離した(blur・pointercancel・別の入力に食われた離し)。溜めを消すだけ(何も出さない)。 */
+  brawlerGougeClear: () => void;
   /** ★浮かせる攻撃でプレイヤーが浮く(research/BRAWLER.md §36-0)。move=当たった技・dmg=その当たりの量(スーパーアーマーの判定)。浮いたら true。 */
   launchPlayer: (move: BR.BrawlerMoveKey, dmg: number) => boolean;
   // 毎フレーム(useGameLoop)。格闘を持たない時は即 return。
@@ -13883,6 +14009,53 @@ export const useGameStore = create<GameState>((set, get) => ({
     startBrawlerStep(get, set, s, ux, uy);
     return true;
   },
+  // ★抉り打ち(research/BRAWLER.md §37・§37-7)。溜めの判断は utils/brawlerGouge の純関数。押した=溜めを始める(溜められる体の時だけ)。
+  brawlerGougePress: () => {
+    const st = get();
+    const p = st.player;
+    if (!isBrawlerMode(p) || !p.brawler) return;
+    const s = p.brawler;
+    const now = Date.now();
+    let next = BRGO.brawlerGougePress(s, st.gameTime, now, brawlerGougeCtxOf(get));
+    // 段のつなぎの溜め(§37-7): いまの HIT の数を覚える(敵の固まりがもう切れて画面の数が沈み始めていても、この段の当たりの数なら続きにする)。
+    if (next.gougeLink) {
+      const shown = (s.flowHits ?? 0) > 0 && (!((s.flowBrokenAt ?? 0) > 0) || (s.flowBrokenAt ?? 0) >= s.startAt) ? (s.flowHits ?? 0) : 0;
+      next = BRGO.brawlerGougeNoteLinkHits(next, Math.max(shown, BRC.brawlerLinkMax(st.enemies, st.gameTime, now)));
+    }
+    if (next !== s) setBrawler(set, next);
+  },
+  brawlerGougeRelease: () => {
+    const st = get();
+    const p = st.player;
+    const s = p.brawler;
+    if (!s || s.gougePressAt === undefined) return 'normal';
+    const now = Date.now();
+    const kind = BRGO.brawlerGougeReleaseKind(s, now);
+    // 溜めの欄を消す(溜めのために延ばした段のつながりは元へ戻る=0.5秒未満の押下は今と同じ)。
+    const cleared = BRGO.brawlerGougeClear(s, now);
+    // 抉り打ちを出さない離し: 延ばしていたつながりを戻した結果、連撃がもう途切れていたら、ハンティングの溜まりを今どおりここで消費する
+    // (延ばさなかったら、押している間に毎フレームの時計が消費していた=0.5秒未満の押下の後の通常攻撃は今と同じ広さ)。
+    const settle = (k: 'none' | 'normal'): 'none' | 'normal' => {
+      if (cleared.huntingCombo && s.gougeChainOrig !== undefined && BRS.brawlerComboEnded(cleared, st.gameTime)) {
+        set(state => ({ player: { ...state.player, huntingCharged: false, huntingChargeStartedAt: 0, brawler: { ...cleared, huntingCombo: false } } }));
+      } else setBrawler(set, cleared);
+      return k;
+    };
+    if (kind !== 'gouge') return settle(kind);
+    // 溜まっていても、出せない体(格闘でない・関所・浮いている・移動の入力)なら何も出さない(溜めは毎フレーム消えるので、ここへ来るのは同じフレームの間だけ)。
+    const body = BRGO.brawlerGougeBody(s, st.gameTime, brawlerGougeCtxOf(get));
+    const from = BRGO.brawlerGougeFireFrom(s);
+    if (!isBrawlerMode(p) || body !== 'charge') return settle('none');
+    // 段の前隙の間(先に覚えていた段がまだ当たる前)は抉り打ちにしない=今までどおりの押下として扱う(段の後隙からだけ取り消せる)。
+    if (from === null) return settle('normal');
+    startBrawlerGouge(get, set, cleared, s.gougeLink === true, s.gougeLinkHits ?? 0);
+    return 'gouge';
+  },
+  brawlerGougeClear: () => {
+    const s = get().player.brawler;
+    if (!s || s.gougePressAt === undefined) return;
+    setBrawler(set, BRGO.brawlerGougeClear(s, Date.now()));
+  },
   brawlerTech: (dirX, dirY, neutral = false) => {
     if (playerAirLocked(get().player, Date.now())) return false; // ★浮いている間は攻撃できない(research/BRAWLER.md §36-0)
     const st = get();
@@ -14025,6 +14198,32 @@ export const useGameStore = create<GameState>((set, get) => ({
       settleThrowBlasts(get, set);
       stepBrawlerThrows(get, set);
       settlePendingSuplex(get, set);
+    }
+    // ★抉り打ち(research/BRAWLER.md §37): 溜め(押している間)の時計と、小ジャンプの着地の砂埃。下で状態を読む前に済ませる(下は読んだ状態から書き戻すため)。
+    {
+      const pg = get().player;
+      const sg = pg.brawler;
+      if (sg && isBrawlerMode(pg)) {
+        const nowG = Date.now();
+        const tg = get().gameTime;
+        if (sg.gougePressAt !== undefined) {
+          const r = BRGO.brawlerGougeTick(sg, tg, nowG, brawlerGougeCtxOf(get));
+          // 段のつなぎの溜めの間: つながっている HIT の数を覚え続ける(押している間に段が当たった分も入る・§37-7)。
+          const st2 = r.state.gougeLink ? BRGO.brawlerGougeNoteLinkHits(r.state, BRC.brawlerLinkMax(get().enemies, tg, nowG)) : r.state;
+          if (st2 !== sg) setBrawler(set, st2);
+          if (r.ready) brawlerGougeReadyFx(get);
+        }
+        const sl = get().player.brawler;
+        if (sl && sl.phase === 'tech' && sl.tech === 'gouge' && !sl.gougeLandFx && BR.brawlerElapsed(sl, tg) >= BR.brawlerGougeJumpMs(sl)) {
+          setBrawler(set, { ...sl, gougeLandFx: true });
+          // 着地: 足元に大きめの砂埃(左右へ低く広がる)と軽い着地の音。判定なし。
+          const c = brawlerCenter(pg);
+          const footY = c.y + pg.height / 2 - 10;
+          get().spawnImageMark(c.x - 10, footY, 'fx/dust-puff', { scale: 0.4, scaleY: 0.5, duration: 520, tint: 0x8a857e, alpha: 0.38, moveX: -34, moveY: -4, fadeFrom: 0.25, growFrom: 0.5, growPow: 2 });
+          get().spawnImageMark(c.x + 11, footY + 1, 'fx/dust-puff', { scale: 0.36, scaleY: 0.5, duration: 480, tint: 0x7f7a73, alpha: 0.34, moveX: 32, moveY: -3, fadeFrom: 0.25, growFrom: 0.5, growPow: 2 });
+          brawlerSfx('brawler-stomp', 0.3, 1.45, 120);
+        }
+      }
     }
     const p = get().player;
     const s0 = p.brawler;
@@ -15278,7 +15477,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const stunnedHit = resolveStunnedMeleeHit(enemy, meleeExecBaseVs * gpDmgScale, gameTime, BOSS_MELEE_STUN_MULT);
       if (stunnedHit) {
         if (stunnedHit.kind === 'execute') {
-          if (bs?.combo) noteBrawlerKillLink(enemy, gameTime, now); // 処刑の1発も「N HIT」に数える(§23)
+          if (bs?.combo) noteBrawlerKillLink(enemy, gameTime, now, bs); // 処刑の1発も「N HIT」に数える(§23)
           killed.push({ enemy, finisher: true }); // normal instant execute
           swingMasteryHits.push({ enemy, amount: Math.max(0, enemy.health), key: swingMk, execute: true }); // 熟練度: 処刑=直前の残り体力(割り戻さない)
           // ★紫中の強個体の即死=「致命の一撃」。ボスと同じくCDを無視して必ずフル演出にする(v0.25.4389)。
@@ -15317,7 +15516,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // そのもの(finisher:trueの即時処刑に相当)。
         const newHealth = enemyHealthAfterHit(enemy, dmg);
         if (newHealth <= 0) {
-          if (bs?.combo) noteBrawlerKillLink(enemy, gameTime, now); // 倒した1発も「N HIT」に数える(§23)
+          if (bs?.combo) noteBrawlerKillLink(enemy, gameTime, now, bs); // 倒した1発も「N HIT」に数える(§23)
           killed.push({ enemy, finisher: false });
         } else {
           survivors.push({
@@ -15382,7 +15581,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = enemyHealthAfterHit(enemy, dmg);
       if (newHealth <= 0) {
-        if (bs?.combo) noteBrawlerKillLink(enemy, gameTime, now); // 倒した1発も「N HIT」に数える(§23)
+        if (bs?.combo) noteBrawlerKillLink(enemy, gameTime, now, bs); // 倒した1発も「N HIT」に数える(§23)
         killed.push({ enemy, finisher: false });
         continue;
       }
@@ -18720,8 +18919,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           //   ★レバーガード(§12-1c)で受けた被弾も同じ(段のつながりは切れ・体力が減るので+1は入る)。受けた時刻・回数・相手の向きを記す(腕で受ける影と、呼び手の見分け)。
           ...(amount > 0 && !dot && (state.player.brawler || lgAny) ? {
             brawler: {
-              ...BR.brawlerAfterHurtPoints(BR.brawlerOnHurt(state.player.brawler ?? BR.initialBrawlerState()), BR.brawlerPointCap(brawlerLevel(state.player)),
-                hasBrawler(state.player) && newHealth < state.player.health, Date.now()),
+              // ★抉り打ちの溜め(§37-7): 怯む被弾(しゃがみの絵になる被弾=下の lastHurtAt と同じ条件)で溜めは消え、その押下の離しは何も出さない。
+              //   レバーガードで受け切った被弾・スーパーアーマー中の被弾では消えない。
+              ...BRGO.brawlerGougeAfterHurt(BR.brawlerAfterHurtPoints(BR.brawlerOnHurt(state.player.brawler ?? BR.initialBrawlerState()), BR.brawlerPointCap(brawlerLevel(state.player)),
+                hasBrawler(state.player) && newHealth < state.player.health, Date.now()), !armored && !lgFull),
               ...(lgAny && leverGuard ? {
                 leverGuardAt: state.gameTime, leverGuardN: (state.player.brawler?.leverGuardN ?? 0) + 1,
                 leverGuardDirX: -leverGuard.dirX, leverGuardDirY: -leverGuard.dirY,

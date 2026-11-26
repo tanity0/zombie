@@ -59,7 +59,7 @@ describe('テンポ係数の表(純関数)', () => {
   it('係数1.0 = 今までの値(段・技・つながり・先行入力・5段目・蹴り・秘奥義・ステップ・固まり)', () => {
     const v = brawlerTimesAt(1.0);
     expect(v.stages.map(s => [s.windupMs, s.recoveryMs])).toEqual([[60, 140], [60, 140], [120, 230], [250, 200], [230, 320]]);
-    expect(Object.values(v.techs).map(t => [t.windupMs, t.recoveryMs])).toEqual([[0, 1000], [200, 462], [120, 330], [132, 165]]); // 飛び蹴り 120/150→132/165(社長指示2026-11-11「飛び蹴りからの3段、ほんの少しだけゆっくりに」で ×1.1)
+    expect(Object.values(v.techs).map(t => [t.windupMs, t.recoveryMs])).toEqual([[0, 1000], [200, 462], [120, 330], [132, 165], [240, 260]]); // 抉り打ち(§37)=240/260 // 飛び蹴り 120/150→132/165(社長指示2026-11-11「飛び蹴りからの3段、ほんの少しだけゆっくりに」で ×1.1)
     expect([v.BRAWLER_CHAIN_RESET_MS, v.BRAWLER_WHIFF_BUFFER_MS, v.BRAWLER_PALM_DASH_MS, v.BRAWLER_PALM_SETTLE_MS, v.BRAWLER_LIFT_MS,
       v.BRAWLER_KICK_FLIGHT_MAX_MS, v.BRAWLER_KICK_CHAIN_MS, v.BRAWLER_GUARD_MS, v.BRAWLER_GUARD_QUICK_MS, v.BRAWLER_SUPER_FLASH_MS,
       v.BRAWLER_SECRET_GAP_MS, v.BRAWLER_SECRET_IGNITE_MS, v.BRAWLER_SECRET_STRIKE_MS, v.BRAWLER_SECRET_FALL_MS, v.BRAWLER_SECRET_LAND_MS, v.BRAWLER_STEP_MS])
@@ -69,7 +69,7 @@ describe('テンポ係数の表(純関数)', () => {
     // ★§19: 固まりの基本の長さの表・減衰の時計・同じ技の罰は撤去 / ★§20: 余白の定数も撤去(固まりの長さ=止め+技ごとの固まりの表 v.holds)。
     expect([c.BRAWLER_COMBO_GAP_MS, c.BRAWLER_SECRET_HOLD_MS, c.BRAWLER_JUGGLE_MIN_MS, c.BRAWLER_JUGGLE_DROP_MS])
       .toEqual([700, 300, 140, 200]); // 流れの切れは社長承認2026-11-09 で 600→700
-    expect(v.holds).toEqual({ s1: 300, s2: 300, s3: 520, s4: 470, s5: 0, kick1: 265, kick2: 310, kick3: 0, heel: 300, kickup: 310, suplex: 0, stomp: 230, kiko: 0, mogura: 310 }); // §20-2(係数1.0の値)
+    expect(v.holds).toEqual({ s1: 300, s2: 300, s3: 520, s4: 470, s5: 0, kick1: 265, kick2: 310, kick3: 0, heel: 300, kickup: 310, suplex: 0, stomp: 230, kiko: 0, mogura: 310, gouge: 310 }); // §20-2(係数1.0の値)・抉り打ち(§37)=蹴り上げと同じ
   });
   it('係数1.3 = 各時間の1.3倍(四捨五入)。距離・倍率・ポイントは変えない', () => {
     const v = brawlerTimesAt(1.3);
@@ -90,7 +90,7 @@ describe('テンポ係数の表(純関数)', () => {
     const c = brawlerComboTimesAt(1.3);
     expect(v.BRAWLER_CANCEL_WINDOW_MS).toBe(195);
     expect(c.BRAWLER_SECRET_HOLD_MS).toBe(390);
-    expect(v.holds).toEqual({ s1: 390, s2: 390, s3: 676, s4: 611, s5: 0, kick1: 345, kick2: 403, kick3: 0, heel: 390, kickup: 403, suplex: 0, stomp: 299, kiko: 0, mogura: 403 }); // 係数1.3(四捨五入)
+    expect(v.holds).toEqual({ s1: 390, s2: 390, s3: 676, s4: 611, s5: 0, kick1: 345, kick2: 403, kick3: 0, heel: 390, kickup: 403, suplex: 0, stomp: 299, kiko: 0, mogura: 403, gouge: 403 }); // 係数1.3(四捨五入)
     expect(brawlerTempoMs(585, 1.3)).toBe(761);
   });
   it('当てた瞬間の止めは係数を掛けない別の表: 弱90 / 強・技150 / 締め220', () => {

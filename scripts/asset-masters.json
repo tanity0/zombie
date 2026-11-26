@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "1143 files / 復号後 約724MB",
+ "generatedFor": "1147 files / 復号後 約724MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -1543,6 +1543,30 @@
    "h": 29,
    "bytes": 3987,
    "sha": "789108c192c24b7a"
+  },
+  "sprites/fx/brawler-gouge-1.png": {
+   "w": 60,
+   "h": 54,
+   "bytes": 2729,
+   "sha": "02fd806d2330e0fe"
+  },
+  "sprites/fx/brawler-gouge-2.png": {
+   "w": 44,
+   "h": 65,
+   "bytes": 2418,
+   "sha": "49d064fcd0247c4e"
+  },
+  "sprites/fx/brawler-gouge-3.png": {
+   "w": 46,
+   "h": 56,
+   "bytes": 2491,
+   "sha": "ec0fd956a637944c"
+  },
+  "sprites/fx/brawler-gouge.png": {
+   "w": 186,
+   "h": 66,
+   "bytes": 6335,
+   "sha": "59bd8c0f4b53bfdc"
   },
   "sprites/fx/brawler-secret-title.png": {
    "w": 128,

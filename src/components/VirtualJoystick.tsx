@@ -178,7 +178,8 @@ const VirtualJoystick: React.FC = () => {
         const flick = flickFiredRef.current || rev ? null : detectFlick();
         if (rev) { flickFiredRef.current = true; useGameStore.getState().brawlerStep(rev.x, rev.y); }
         else if (flick) { flickFiredRef.current = true; useGameStore.getState().brawlerTech(flick.x, flick.y); }
-        else beginMeleeSwing();
+        // ★抉り打ち(research/BRAWLER.md §37): 0.5秒溜めた指離しは抉り打ち(溜めの途中で被弾した押下は何も出さない)。それ以外は今までどおり通常攻撃。
+        else if (useGameStore.getState().brawlerGougeRelease() === 'normal') beginMeleeSwing();
       } else {
         // PHILL銃(研究所): 立ち止まってタップ(=移動せず指を離す)で狙いサークル方向へ1発。
         // 移動中(ドラッグ)に離した時は store 側の isMoving ガードで発砲しない。撃てたら発砲SE。
@@ -234,6 +235,8 @@ const VirtualJoystick: React.FC = () => {
       dismountSkater();
     }
     flickSamplesRef.current = [];
+    // ★抉り打ち: 離した(撃たずに離した・別の入力に食われた離しも)=溜めを消す(出した時は上で消えている=何もしない)。
+    if (pointerId !== null) useGameStore.getState().brawlerGougeClear();
     if (pointerId !== null && zoneRef.current?.hasPointerCapture(pointerId)) {
       zoneRef.current.releasePointerCapture(pointerId);
     }
@@ -268,6 +271,8 @@ const VirtualJoystick: React.FC = () => {
     const o = { x: e.clientX, y: e.clientY };
     originRef.current = o;
     flickSamplesRef.current = [{ x: e.clientX, y: e.clientY, t: nowT }];
+    // ★抉り打ち(research/BRAWLER.md §37): 指を置いた瞬間に溜めを始める(格闘で、溜められる体の時だけ・store が判断)。押した時の攻撃は今までどおり何も出さない。
+    if (isBrawlerMode(useGameStore.getState().player)) useGameStore.getState().brawlerGougePress();
     setOrigin(o);
     applyDelta({ x: 0, y: 0 });
     zoneRef.current?.setPointerCapture(e.pointerId);

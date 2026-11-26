@@ -26,7 +26,7 @@ export const isSkillProcShown = (key: SkillKey): boolean => SKILL_PROC_CHANCE_KE
  * 格闘の技の行(社長指示2026-11-11「技を出したら、通信の下に出す。スキルと同じ線」)。スキルと同じ並びに積む。
  * 鍵は 'tech:' で始まる=スキルの鍵と混ざらない。名前と入力の向きは data/brawlerTechNames。
  */
-export type TechProcKey = 'tech:guard' | 'tech:stomp' | 'tech:kiko' | 'tech:kick' | 'tech:kick2' | 'tech:kick3' | 'tech:heel' | 'tech:kickup' | 'tech:airthrow' | 'tech:suplex' | 'tech:suplexchain' | 'tech:flipkick' | 'tech:mogura' | 'tech:secret' | 'tech:issen' | 'tech:tsubame' | 'tech:satsujin' | 'tech:whipslam' | 'tech:whipoverhead'; // whipoverhead=鞭でボスを頭上越しに叩きつけ / issen/tsubame/satsujin=刀(research/KATANA_TSUBAME.md §2・§4) / whipslam=鞭の叩きつけ(research/WHIP_FOLLOWUP.md §7)
+export type TechProcKey = 'tech:guard' | 'tech:stomp' | 'tech:kiko' | 'tech:kick' | 'tech:kick2' | 'tech:kick3' | 'tech:heel' | 'tech:kickup' | 'tech:airthrow' | 'tech:suplex' | 'tech:suplexchain' | 'tech:flipkick' | 'tech:mogura' | 'tech:gouge' | 'tech:secret' | 'tech:issen' | 'tech:tsubame' | 'tech:satsujin' | 'tech:whipslam' | 'tech:whipoverhead'; // whipoverhead=鞭でボスを頭上越しに叩きつけ / issen/tsubame/satsujin=刀(research/KATANA_TSUBAME.md §2・§4) / whipslam=鞭の叩きつけ(research/WHIP_FOLLOWUP.md §7)
 export type SkillProcKey = SkillKey | TechProcKey;
 export const isTechProcKey = (key: SkillProcKey): key is TechProcKey => key.startsWith('tech:');
 /** 秘奥義の行が出ている長さ(ms)。滅多に出ない物なので、他の行より長く残す。 */

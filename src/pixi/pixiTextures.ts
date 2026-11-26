@@ -944,6 +944,11 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/brawler-stand2-guard', scaleMode: 'nearest' },
       { name: 'fx/brawler-stand2-hadou', scaleMode: 'nearest' },
       { name: 'fx/brawler-stand2-kick', scaleMode: 'nearest' },
+      // 抉り打ちの影の3コマ(社長支給2026-11-26・research/BRAWLER.md §37-5)。原盤 fx/brawler-gouge(186×66)を透明な列で切った物(画素そのまま)。
+      // 格闘はどのステージでも持てるので起動マニフェスト(3枚で常駐 約0.03MB)。ドット絵=nearest。
+      { name: 'fx/brawler-gouge-1', scaleMode: 'nearest' },
+      { name: 'fx/brawler-gouge-2', scaleMode: 'nearest' },
+      { name: 'fx/brawler-gouge-3', scaleMode: 'nearest' },
       // 秘奥義の題字(社長支給2026-11-08・128×44・黒い筆文字に白い縁)。ドット絵=nearest で整数倍に拡大する。
       { name: 'fx/brawler-secret-title', scaleMode: 'nearest' },
       // カウンター成立のガラスの砕け(社長支給2026-10-01)。15コマの横並び(4080×149・1コマ272×149)・透過あり。

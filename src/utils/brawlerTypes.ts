@@ -1,5 +1,8 @@
 // サブウェポン「格闘」の状態の型だけ(research/BRAWLER.md)。依存ゼロの葉モジュール=types/game.ts から読んでも循環しない。
-export type BrawlerTechKind = 'guard' | 'stomp' | 'kiko' | 'kick';
+/**
+ * 技の種類。'gouge'=抉り打ち(research/BRAWLER.md §37・溜めて離す)は**プレイヤーだけ**の技(フリックの向きには割り当てない・幻影/孫悟空/守護霊/拳鬼の台本には無い)。
+ */
+export type BrawlerTechKind = 'guard' | 'stomp' | 'kiko' | 'kick' | 'gouge';
 export type BrawlerPhase = 'idle' | 'attack' | 'tech';
 /**
  * 当たりの名札(固まりの表・浮きの表・道の表の引き先)。段は s1..s5、飛び蹴りは何発目か、秘奥義の9連撃は1本。
@@ -12,9 +15,11 @@ export type BrawlerMoveKey =
   | 'kickup' | 'suplex'
   /** 土竜(research/BRAWLER.md §35=地割りの派生・当たった敵を押さずに宙へ浮かせる)。 */
   | 'mogura'
+  /** 抉り打ち(research/BRAWLER.md §37=溜めて離す・下から腹を抉って浮かせる・プレイヤーだけ)。 */
+  | 'gouge'
   | 'stomp' | 'kiko' | 'secret' | 'secret-land';
 /** 道の表(research/BRAWLER.md §19-1)の節。待機・通常の段・飛び蹴りの何発目か・技。 */
-export type BrawlerRouteNode = 'idle' | 's1' | 's2' | 's3' | 's4' | 's5' | 'kick1' | 'kick2' | 'kick3' | 'heel' | 'kickup' | 'stomp' | 'mogura' | 'kiko' | 'guard';
+export type BrawlerRouteNode = 'idle' | 's1' | 's2' | 's3' | 's4' | 's5' | 'kick1' | 'kick2' | 'kick3' | 'heel' | 'kickup' | 'stomp' | 'mogura' | 'kiko' | 'guard' | 'gouge';
 /** 拳鬼の技の予備動作のコマ(research/BRAWLER_PHANTOM.md §16-5): ready=しゃがみ / swing=腕上げ。 */
 export type KenkiPrepTex = 'ready' | 'swing';
 /** 秘奥義の9連撃で出す技(通常攻撃の段 1..5 か技)。research/BRAWLER.md §10。 */
@@ -249,5 +254,30 @@ export interface BrawlerState {
    * fromPx=断ち切られた瞬間の体の高さ(姿勢の jump)・at=その gameTime。空中で返されたら、その高さから加速して落ちる(慣性・瞬間に地面へ戻さない)。
    */
   counterFall?: { fromPx: number; at: number };
+  /**
+   * ★抉り打ちの溜め(research/BRAWLER.md §37-2・§37-7)。時刻は全部 Date.now(実時間・テンポ係数は掛けない)。プレイヤーだけが書く。
+   * gougePressAt=この押下を押した時刻(押下の記録。無し=溜めていない押下/溜めが消えた=離せば今どおり)。
+   * gougeChargeAt=溜めを数え始めた時刻(技・構え・ステップの最中に押した時は、それが終わった時刻)。
+   * gougeReadyAt=溜まった時刻(0.5秒)。gougeWait=技・構え・ステップの最中に押した(終わるまで数えない)。
+   * gougeLink=押し始めた時刻が「次の段へつながる受付」の内だった(離して出た抉り打ちを段のつなぎとして数える)。
+   * gougeDead=溜めの途中で被弾して溜めが消えた(この押下の離しは何も出さない)。
+   */
+  gougePressAt?: number;
+  gougeChargeAt?: number;
+  gougeReadyAt?: number;
+  gougeWait?: boolean;
+  gougeLink?: boolean;
+  gougeDead?: boolean;
+  /** 抉り打ちの小ジャンプの着地の砂埃を出したか(1回の技で1度だけ・絵だけ)。 */
+  gougeLandFx?: boolean;
+  /** 溜めのために延ばす前の段のつながり(chainUntil・gameTime)。溜めが消えた時はこの値へ戻す(0.5秒未満の押下は今と同じ)。 */
+  gougeChainOrig?: number;
+  /** 段のつなぎの溜めの間に覚えた、つながっているコンボの数(HIT)。離して出た抉り打ちの当たりはこの続きとして数える(§37-7)。 */
+  gougeLinkHits?: number;
+  /** 段のつなぎとして出た抉り打ちが持ち越した HIT の数(技の最中だけ・当たりはこの続きとして数える)。 */
+  gougeCarryHits?: number;
+  /** 溜めの構え(しゃがみ・沈み)が消えた時刻(Date.now)と、その時の沈み(0..1)。描画が加減速つきで戻す(絵だけ)。 */
+  gougeEndAt?: number;
+  gougeEndSink?: number;
 }
 
