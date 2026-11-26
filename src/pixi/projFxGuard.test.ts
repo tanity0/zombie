@@ -152,6 +152,31 @@ describe('投影の段階3: 点で出る演出(番人)', () => {
     expect(bodyOf(pdf, '  private projStake(')).toContain('projAffineFrom(pen.body');
   });
 
+  it('⑥ 層へ足すだけの台帳(②)では見えない通し漏れ(v0.25.5836 組1): 下の関数は ?proj=1 の分岐で写す型を通る', () => {
+    // ②は addChild の数しか見ないので、数が合ったまま投影を通っていない物が残っていた(金環の光線・渦の粒・盾の残骸・倒れ絵・
+    // 去った英雄の霧・エンディングの銃口と弾の筋・リズムの輪と頭上の物)。写す型の呼び出しが消えたら落とす。
+    const want: [string, string[]][] = [
+      ['  private syncGoldRings(', ['this.projFxSeg(v.beamCore,', 'this.projFxSeg(v.beamHalo,', "for (const sp of v.tip.parts) if (sp.visible) this.projFxSelf(sp, 's');"]],
+      ['  private syncGravityWells(', ['const q = this.projPlace(w.x + Math.cos(th) * rr, w.y + Math.sin(th) * rr, sp);']],
+      ['  private syncShieldGhosts(', ["this.projLoose('shieldGhost', gx, gy, depth); this.projLooseAdd(v.container);"]],
+      ['  private syncGhostDeathPose(', ["this.projLoose('ghostDeath', footX, footY, this.depthScale(footY)); this.projLooseAdd(spr);"]],
+      ['  private syncHeroDogDeathPose(', ["this.projLoose('heroDogDeath', fb.footX, fb.footY, this.depthScaleEnemy(fb.footY)); this.projLooseAdd(spr);"]],
+      ['  private projHeroLeftFog(', ["this.projFxAt(left.sp, left.fx, left.fy, 's', 0, left.d);"]],
+      ['  private updateEndingShotFx(', ['this.projFxXf(msp,', "this.projPointFrom(g, n0, f.fx, f.fy, 's', f.d);", "this.projPointFrom(g, n0, sh.fx, sh.fy, 's', sh.d);"]],
+      ['  private syncRhythmOverlay(', ['this.projFlatFrom(g, nHead, footCx, footCy, 1, nFoot);', 'this.projFxHudAt(ball,', 'this.projFxHudAt(ag,', 'this.projFxHudAt(this.rhythmGodText,']],
+    ];
+    for (const [sig, calls] of want) {
+      const b = bodyOf(src, sig);
+      expect(b.length, sig).toBeGreaterThan(50);
+      for (const c of calls) expect(b.includes(c), `${sig.trim()} ${c}`).toBe(true);
+    }
+    // 去った英雄の霧は投影の枠を作った後に写す(tickHeroLeftFog は枠の前に呼ばれる)
+    const sync = bodyOf(src, '  sync(');
+    const a = sync.indexOf('this.updateProjFrame('), h = sync.indexOf('this.projHeroLeftFog();');
+    expect(a).toBeGreaterThan(0);
+    expect(h).toBeGreaterThan(a);
+  });
+
   it('⑤ drawPlantSeed は drawProjectile と projBullet の後に位置を写す', () => {
     const sp = bodyOf(src, '  private syncProjectiles(');
     const a = sp.indexOf('this.drawProjectile(g, p);'), b = sp.indexOf('this.projBullet(g, p);'), c = sp.indexOf('this.drawPlantSeed(g, p);');

@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.5839 — 張り付き漏れの一掃 組1: 金環・グラビティ・盾の残骸・倒れ絵・英雄の霧・エンディングの銃口・リズム(一掃の完了)【2026-11-26 19:00】
+- 台帳の組1=#1・#11〜#17。金環の光線=`projFxSeg`/`projFxSelf`/グラビティの渦の粒=1粒ずつ `projPlace`/盾の残骸=`projLoose('shieldGhost')`+浮き `projLooseLift(Z52 を流用)`/守護霊・英雄の犬の倒れ絵=`projLoose('ghostDeath'/'heroDogDeath')`/去った英雄の霧=新 `projHeroLeftFog()`(updateProjFrame の後)/エンディングの銃口=兵士は ActorView を持たない→閃光は足元の相似・弾の筋と薬莢は撃った瞬間の足元で `projPointFrom`/リズム=足元の輪 `projFlatFrom`・頭上は平行移動・`projFxHudAt`。番人: projFxGuard ⑥(8関数が写しの型を呼ぶ・projHeroLeftFog の位置)・projActorGuard ③ に3種。
+- 前後(北250/南250): 直す前 最大 (−129,−141)・光線の先端が狙いの線から 242px → 0〜1.6px。倒れ絵・霧は寿命が短く片側だけ測定。
+- これで調査の台帳の18件(組1〜3)を全部直した。ENGINEERING_NOTES §0 に1行(一掃の手順を含む)。
+- 画: 金環の光線が輪から出る・渦の粒が輪に乗る・盾の残骸が正しい場所に見える を前後で目視(倒れ絵・霧は半透明で読めず数値で確認)。
+- 確認: typecheck・eslint・循環・vitest src/pixi src/utils/proj 通過。負荷 1/10。
+- 自己点検: 憲法第4条・第5条=描画の位置のみで抵触なし。
+
 ## v0.25.5838 — 張り付き漏れの一掃 組2: 突きの風圧・刀の振り・光輪投げ・スリィエルの環・撒き羽根・トールの無の境地【2026-11-26 18:45】
 - 台帳の組2=#3・#7・#8・#9・#10・#18。
 - 仕組み: 描く関数は world で描き記録だけ残す `projGroundLate` → `projGroundLatePass`(`projActorPostPass` の中・`projFxLateSprites` の直後)が入れ物に実際に掛かった変換を祖先から読み、地面の点で写した位置・大きさ・回転をその逆で入れ直す(seg/mid/pt/arc・高さは projLiftPointInto に分ける・?proj=0 では未使用)。

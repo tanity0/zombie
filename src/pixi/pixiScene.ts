@@ -5853,8 +5853,8 @@ export class PixiScene {
   // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2): 兵士(§1/§9)・フィル(§2/§4)・倒れ兵士(§8)の描画専用プール。
   private endingSoldierSprites = new Map<string, Sprite>(); // 兵士立ち絵(rescue/shooter 流用・2コマ歩行)
   private endingSoldierShotSeen = new Map<string, number>(); // id→前フレームで見た lastShotAt(発砲の edge 検知用)
-  private endingMuzzleFx: { x: number; y: number; bornAt: number }[] = []; // トレイル+薬莢の元になる短命リスト(プールで上限)
-  private endingShellFx: { x: number; y: number; vx: number; vy: number; bornAt: number }[] = [];
+  private endingMuzzleFx: { x: number; y: number; bornAt: number; fx: number; fy: number; d: number }[] = []; // トレイル+薬莢の元になる短命リスト(プールで上限)
+  private endingShellFx: { x: number; y: number; vx: number; vy: number; bornAt: number; fx: number; fy: number; d: number }[] = [];
   private endingShotFxGfx = new Graphics(); // トレイル/薬莢の共有描画(毎フレームclear+fill・pooled sprite方針と同型)
   private endingPhillSprite: Sprite | null = null; // フィル専用スプライト(=プレイヤー実体の位置に描く)
   private endingPhillScale: number | null = null; // walk-0基準の1系列1スケール(監査A-2・コマごとに正規化しない)
@@ -14322,6 +14322,7 @@ export class PixiScene {
     if (s.gameTime < this.groundScrollLastGameTime) this.groundScrollRunEpoch++;
     this.groundScrollLastGameTime = s.gameTime;
     this.updateProjFrame(s, sx, sy, realNow); // ?proj=1 の時だけ投影の状態を作る(地面と置き物で同じ関数・同じ基準行)
+    this.projHeroLeftFog(); // ?proj=1: 去った英雄の霧(tickHeroLeftFog は枠を作る前に呼ばれる=写すのはここ)
     // ?proj=1: PC のマウスの照準を逆投影で戻す(§3-9b・作る物2)。?proj=0・場面の外は null=今の式。
     // 段階8 U40: 門 aimOK(★#46=A=研究所・洋館も照準だけ揃える=門を開ける)。
     const aimOK = this.projFrame !== null && projAimAllowed(this.projSceneOf(s));
@@ -15128,6 +15129,7 @@ export class PixiScene {
       g.circle(cx, cy, r * pulse).stroke({ color: 0x0b1020, width: 1.5, alpha: 0.8 });
     }
     // ミラーボールは空中に吊られている演出なので地面影は描かない(影は不自然)。
+    const nHead = projCmdCount(g); // ?proj=1: ここまで=頭上の物(下で平行移動)・ここから=足元の輪(下で地面に寝かせる)
 
     // 左右の輪っか: プレイヤーの「足元」めがけて左右から流れ込み、足元のど真ん中(footX,footY)で
     // 重なり合う(=ジャスト)。地面に置いた輪に見えるよう縦をつぶした楕円で描く。
@@ -15189,6 +15191,7 @@ export class PixiScene {
       }
     }
 
+    const nFoot = projCmdCount(g); // ?proj=1: ここから=頭上の判定フラッシュ
     // 判定フラッシュ(hit/miss/fire を一瞬の色リングで)。lastJudgeAt は gameTime 基準。
     const sinceJudge = gameTime - rhythm.lastJudgeAt;
     if (sinceJudge >= 0 && sinceJudge < 220) {
@@ -15238,6 +15241,19 @@ export class PixiScene {
     if (this.rhythmGodLast !== godJp) { this.rhythmGodText.text = godJp; this.rhythmGodLast = godJp; }
     this.rhythmGodText.position.set(cx + cstartX + (prompt.length - 1) * cgap + cgap * 0.6, cy + cmdY);
     this.rhythmGodText.visible = true;
+    const pf = this.projFrame;
+    if (pf) {
+      // ?proj=1: 足元の輪は主人公の足元の点で地面に寝かせ、頭上の物(ボール・矢印・四神名・ハロー・判定の輪)は頭上の読ませる物の型
+      // (H → P + s·(H − F)・大きさは変えない)で平行移動する。旧: world の点のまま=カメラの追い遅れの分だけ主人公から外れていた
+      const p = projectInto(pf, fb.footX, fb.footY, this.projScratch2);
+      const hx = p.x + p.s * (cx - fb.footX), hy = p.y + p.s * (cy - fb.footY);
+      projSimFrom(g, 0, cx, cy, hx, hy, 1, 1, 1, nHead);
+      this.projFlatFrom(g, nHead, footCx, footCy, 1, nFoot);
+      projSimFrom(g, nFoot, cx, cy, hx, hy, 1, 1, 1);
+      this.projFxHudAt(ball, fb.footX, fb.footY);
+      this.projFxHudAt(ag, fb.footX, fb.footY);
+      this.projFxHudAt(this.rhythmGodText, fb.footX, fb.footY);
+    }
   }
 
   // リズムゲーム風の太いドット絵矢印を描く(7x7のドット行列。暗い縁取り付き)。
@@ -24283,6 +24299,16 @@ export class PixiScene {
         v.beamHalo.visible = visible;
         // 芯の色の粒は帯の外へ出るので、帯寄りの淡い金にする(白い紙片に見せない)。
         this.drawBeamTip(v.tip, visible ? { input: tipIn, layout: tip } : null, beam.ax, beam.ay, ang, v.beamCore, 0xfacc15, 0xfff7cc, 0xfff2a8);
+        if (this.projFrame && visible) {
+          // ?proj=1: 金環の光線=目の光線(syncEyeLaser)と同じ型。芯と帯は両端を投影(分類1=k=s)・先端の段と粒は1つずつ地面の点として投影
+          // (旧: 輪だけ格子メッシュで投影され、光線と先端は world の点のまま=北/南へ撃つと輪から光線の根元が外れていた)
+          const ca = Math.cos(ang), sa = Math.sin(ang);
+          this.projFxSeg(v.beamCore, beam.ax, beam.ay, beam.ax + ca * v.beamCore.width, beam.ay + sa * v.beamCore.width, 's');
+          this.projFxSeg(v.beamHalo, beam.ax, beam.ay, beam.ax + ca * v.beamHalo.width, beam.ay + sa * v.beamHalo.width, 's');
+          for (const sp of v.tip.halo) if (sp.visible) this.projFxSelf(sp, 's');
+          for (const sp of v.tip.core) if (sp.visible) this.projFxSelf(sp, 's');
+          for (const sp of v.tip.parts) if (sp.visible) this.projFxSelf(sp, 's');
+        }
       } else {
         v.beamCore.visible = false;
         v.beamHalo.visible = false;
@@ -26935,6 +26961,8 @@ export class PixiScene {
     spr.zIndex = footY; // 足元Yソート(生きている時と同じ基準)
     spr.alpha = GHOST_ALLY_ALPHA * fade;
     spr.visible = true;
+    // ?proj=1: 生きている守護霊(後掛け)と同じく足元を投影して置く(大きさ=基準×s)。旧: world のまま=死んだ瞬間に跳んでいた
+    if (this.projFrame) { this.projLoose('ghostDeath', footX, footY, this.depthScale(footY)); this.projLooseAdd(spr); }
   }
 
   private drawSummon(view: ActorView, s: Summon, now: number) {
@@ -27173,6 +27201,8 @@ export class PixiScene {
     spr.alpha = fade;
     spr.tint = 0xffffff; // 色は素のまま(「死=灰色」にしない)
     spr.visible = true;
+    // ?proj=1: 生きている犬(後掛け)と同じく足元を投影して置く(回転は相似のまま)。旧: world のまま=倒れた瞬間に跳んでいた
+    if (this.projFrame) { this.projLoose('heroDogDeath', fb.footX, fb.footY, this.depthScaleEnemy(fb.footY)); this.projLooseAdd(spr); }
   }
 
   /**
@@ -41396,6 +41426,15 @@ export class PixiScene {
       // ※fire→accel遷移後の残光(連射最終弾)は従来どおり出す(消すのは転倒だけ)。
       if (!isEndingSoldierTumbling(s) && sinceFire >= 0 && sinceFire < ENDING_MUZZLE_FLASH_MS) {
         this.drawBossGunMuzzle(key, mx, my, Math.PI, 1 - sinceFire / ENDING_MUZZLE_FLASH_MS, ENDING_MUZZLE_SIZE_PX); // 左向き=角度π
+        const pf = this.projFrame;
+        const msp = pf ? this.bossGunMuzzleSprites.get(key) : undefined;
+        if (pf && msp && this.projFxSave(msp)) {
+          // ?proj=1: 銃口の閃光=兵士の体の相似(drawEndingSoldiers の後掛けと同じ足元・k=s/d)で置き、大きさは派手さの k。
+          // 旧: 兵士は ActorView を持たない=drawBossGunMuzzle の持ち主への登録が効かず world の点のまま
+          const d = this.depthScale(s.y);
+          const p = projectInto(pf, s.x, s.y, this.projFxP);
+          this.projFxXf(msp, s.x, s.y, p.x, p.y, projActorK(p.s, d), this.projFxKOf('fx', p.s), p.alpha);
+        }
       } else {
         this.hideBossGunMuzzle(key);
       }
@@ -41404,14 +41443,15 @@ export class PixiScene {
       if (s.lastShotAt > 0 && s.lastShotAt !== seenAt) {
         this.endingSoldierShotSeen.set(s.id, s.lastShotAt);
         if (this.endingMuzzleFx.length >= ENDING_SHOT_FX_CAP) this.endingMuzzleFx.shift();
-        this.endingMuzzleFx.push({ x: mx, y: my, bornAt: now });
+        const fd = this.depthScale(s.y); // 弾の筋・薬莢は撃った瞬間の兵士の足元の相似で写す(?proj=1)
+        this.endingMuzzleFx.push({ x: mx, y: my, bornAt: now, fx: s.x, fy: s.y, d: fd });
         const shellCount = 2 + Math.floor(Math.random() * 2); // §1「2〜3px」の白点を2〜3発
         for (let i = 0; i < shellCount; i++) {
           if (this.endingShellFx.length >= ENDING_SHOT_FX_CAP) this.endingShellFx.shift();
           this.endingShellFx.push({
             x: mx + w * 0.15, y: my,
             vx: 30 + Math.random() * 40, vy: -50 - Math.random() * 30, // 後方(=右)+上への小放物線
-            bornAt: now,
+            bornAt: now, fx: s.x, fy: s.y, d: fd,
           });
         }
       }
@@ -41424,7 +41464,9 @@ export class PixiScene {
       const age = now - f.bornAt;
       if (age > ENDING_TRACER_MS) { this.endingMuzzleFx.splice(i, 1); continue; }
       const a = 1 - age / ENDING_TRACER_MS;
+      const n0 = projCmdCount(g);
       g.moveTo(f.x, f.y).lineTo(f.x - ENDING_TRACER_LEN_PX * a, f.y).stroke({ width: 2, color: 0xfff2a8, alpha: a * 0.9 });
+      if (this.projFrame) this.projPointFrom(g, n0, f.fx, f.fy, 's', f.d); // ?proj=1: 撃った兵士の足元の相似(k=s/d)
     }
     for (let i = this.endingShellFx.length - 1; i >= 0; i--) {
       const sh = this.endingShellFx[i];
@@ -41433,7 +41475,9 @@ export class PixiScene {
       const x = sh.x + sh.vx * age;
       const y = sh.y + sh.vy * age + 420 * age * age; // 重力で落ちる小放物線
       const a = 1 - age / ENDING_SHELL_LIFE_S;
+      const n0 = projCmdCount(g);
       g.rect(x - 1, y - 1, 2, 2).fill({ color: 0xf3e6a0, alpha: a });
+      if (this.projFrame) this.projPointFrom(g, n0, sh.fx, sh.fy, 's', sh.d); // ?proj=1: 撃った兵士の足元の相似(k=s/d)
     }
   }
 
@@ -44064,16 +44108,21 @@ export class PixiScene {
       // 割れた瞬間(ヒットストップ中)は位置で止まって細かく震える。明けたら攻撃の向きへ(縦は遠近で小さく)・少し浮いて回る。
       const rattle = t < 0 ? Math.sin(now / 9) * 1.6 : 0;
       const spin = (g.dx >= 0 ? 1 : -1) * pose.rot;
-      v.container.position.set(footX + g.dx * pose.dist + rattle, footY + g.dy * pose.dist * 0.6 - pose.dist * 0.18);
+      // 地面の上の飛ぶ先 (gx, gy) と、浮き(gLift)を分けて持つ(?proj=1 で地面の点を投影し、浮きは σ で写すため)。?proj=0 の位置は今と同じ。
+      const gx = footX + g.dx * pose.dist + rattle, gy = footY + g.dy * pose.dist * 0.6, gLift = pose.dist * 0.18;
+      v.container.position.set(gx, gy - gLift); // proj-lift: Z52(盾の残骸の浮き δ=1・下の projLooseLift)
       v.container.zIndex = footY;
       v.container.rotation = spin;
       v.sprite.scale.set(base * depth);
-      v.sprite.alpha = pose.alpha * (g.ownerGhost ? GHOST_ALLY_ALPHA : 1) * this.horizonActorAlpha(footY);
+      v.sprite.alpha = pose.alpha * (g.ownerGhost ? GHOST_ALLY_ALPHA : 1) * this.projLooseFade(footX, footY, false); // ?proj=0 は horizonActorAlpha(footY) と同じ
       v.sprite.tint = 0xb8bfca; // 壊れて沈んだ色
       v.flash.texture = v.sprite.texture;
       v.flash.scale.set(base * depth);
       v.flash.alpha = t < 0 ? 0.7 : Math.max(0, 0.7 * (1 - t / 140)) * v.sprite.alpha;
       v.flash.visible = v.flash.alpha > 0.01;
+      // ?proj=1: 本体の盾(drawShield)と同じ型=飛ぶ先の地面の点を足元として後掛け(大きさ=基準×s)・浮きは高さの割り戻し。
+      // 旧: 投影なし=割れた瞬間に盾の位置から跳んでいた
+      if (this.projFrame) { this.projLoose('shieldGhost', gx, gy, depth); this.projLooseAdd(v.container); this.projLooseLift(gLift, 1, 'Z52'); } // proj-lift: Z52
     }
     for (const [id, v] of this.shieldGhostViews) {
       if (!seen.has(id)) {
@@ -45755,6 +45804,15 @@ export class PixiScene {
         const sz = 9 - 4 * t;
         sp.width = sz; sp.height = sz;
         sp.alpha = 0.85 * fade;
+        if (this.projFrame) {
+          // ?proj=1: 地面の上を回る粒=1粒ずつ地面の点を投影して置く(入れ物 c は world の井戸の中心・拡縮なし=子の座標は world − 中心)。
+          // 大きさは派手さの k(s_fx)。旧: 闇と輪だけ投影され、粒の渦は world の点のまま=渦の中心が闇と輪から外れていた
+          const q = this.projPlace(w.x + Math.cos(th) * rr, w.y + Math.sin(th) * rr, sp);
+          sp.position.set(q.x - c.position.x, q.y - c.position.y);
+          const k = this.projFxKOf('fx', q.s);
+          sp.width = sz * k; sp.height = sz * k;
+          sp.alpha *= q.alpha;
+        }
       }
     }
     for (const [id, c] of this.gravityWellViews) {
@@ -47841,8 +47899,9 @@ export class PixiScene {
   /** 英雄の足元の霧(本体の container の一番下に置く=本体と一緒に消える)と黒い粒。 */
   private heroFogNodes = new Map<string, { fog: Sprite; fog2: Sprite; trail: Sprite; motes: Graphics; drift: number; trailAt: number; trailX: number; trailY: number; landSwellAt: number; wasAir: boolean; roarSwelled: boolean }>();
   /** 去った英雄の霧を3秒その場に残すための最後の位置(描画だけ)。 */
-  private heroFogLast: { at: number; x: number; y: number; w: number; h: number; depart: boolean; tex: Texture } | null = null;
-  private heroFogLeft: { sp: Sprite; at: number } | null = null;
+  // fx/fy/d=英雄の足元と旧い遠近の倍率(?proj=1 で生きている間の霧=体の相似と同じ写し方を続けるため)。
+  private heroFogLast: { at: number; x: number; y: number; w: number; h: number; depart: boolean; tex: Texture; fx: number; fy: number; d: number } | null = null;
+  private heroFogLeft: { sp: Sprite; at: number; fx: number; fy: number; d: number } | null = null;
 
   /** 去った英雄の霧だけを、居た場所に3秒残して薄れさせる(本体の container と一緒に消えないように別の絵で)。毎フレーム呼ぶ。 */
   private tickHeroLeftFog(now: number): void {
@@ -47854,7 +47913,7 @@ export class PixiScene {
       sp.scale.set(last.w / Math.max(1, last.tex.width), last.h / Math.max(1, last.tex.height));
       sp.zIndex = last.y - 1;
       this.L.actorLayer.addChild(sp);
-      this.heroFogLeft = { sp, at: now };
+      this.heroFogLeft = { sp, at: now, fx: last.fx, fy: last.fy, d: last.d };
       this.heroFogLast = null;
     }
     const left = this.heroFogLeft;
@@ -47863,6 +47922,15 @@ export class PixiScene {
       if (u >= 1) { left.sp.destroy(); this.heroFogLeft = null; }
       else { left.sp.alpha = HERO_FOG_ALPHA * (1 - u) * (1 - u); left.sp.scale.x *= 1.0006; }
     }
+  }
+  /**
+   * ?proj=1: 去った英雄の霧を、居た時の英雄の足元の相似(位置 P + k·(今 − F)・大きさ k=s/d)で置く=生きている間の霧(体の後掛け)と同じ写し方。
+   * 投影の枠ができた後(updateProjFrame の後)に毎フレーム呼ぶ。旧: world の点のまま=去った瞬間に跳び、以後カメラと一緒に滑っていた。
+   */
+  private projHeroLeftFog(): void {
+    const left = this.heroFogLeft;
+    if (!this.projFrame || !left || left.sp.destroyed) return;
+    this.projFxAt(left.sp, left.fx, left.fy, 's', 0, left.d);
   }
 
   /**
@@ -47909,7 +47977,7 @@ export class PixiScene {
     const roarLand = e.bossState === 'hero-roar' && gameTime - (e.heroStateAt ?? gameTime) >= HERO_ROAR_RISE_MS + HERO_ROAR_HOLD_MS + 300;
     if (roarLand && !n.roarSwelled) { n.landSwellAt = now; n.roarSwelled = true; }
     if (e.bossState !== 'hero-roar') n.roarSwelled = false;
-    this.heroFogLast = { at: now, x: footX + n.drift, y: footY + 2, w: w0, h: h0, depart: e.heroDepartAt !== undefined, tex };
+    this.heroFogLast = { at: now, x: footX + n.drift, y: footY + 2, w: w0, h: h0, depart: e.heroDepartAt !== undefined, tex, fx: footX, fy: footY, d: depth };
     // 着地の膨らみ ×1.4 → 1.0(400ms・ease-out)。
     const sw = Math.max(0, Math.min(1, (now - n.landSwellAt) / 400));
     const swell = 1 + 0.4 * (1 - sw) * (1 - sw);

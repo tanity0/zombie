@@ -92,7 +92,8 @@ describe('投影の段階2: 後掛けの役の表(番人)', () => {
     const lines = code(src);
     const kinds = ['escort', 'survivor', 'merchant', 'pickup', 'bossCorpse', 'clone', 'rescueAlly', 'baseSoldier', 'questNpc', 'supportSniper',
       'endingSoldier', 'endingPhill', 'endingFallen', 'turret', 'decoy', 'shield', 'glenHuman',
-      'lab-crawler', 'lab-crawler:absorb']; // 段階8 U14(研究所の変異塊の体と付属・取り込まれる敵)
+      'lab-crawler', 'lab-crawler:absorb', // 段階8 U14(研究所の変異塊の体と付属・取り込まれる敵)
+      'shieldGhost', 'ghostDeath', 'heroDogDeath']; // v0.25.5836(通し漏れの一掃・組1): 盾の残骸・守護霊と英雄の犬の倒れ絵
     for (const k of kinds) {
       const idx = lines.map((l, i) => (l.includes(`this.projLoose('${k}'`) ? i : -1)).filter((i) => i >= 0);
       expect(idx.length, k).toBe(1);
