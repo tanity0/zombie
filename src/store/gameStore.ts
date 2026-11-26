@@ -222,7 +222,7 @@ import {
 } from '../utils/slasherFollowup';
 import {
   knifeComboNextStage, knifeComboGapMs, knifeComboTapAction, knifeComboQueuedAction, knifeComboCounterPlan, knifeComboStepPx,
-  knifeComboFinishMoveMult,
+  knifeComboFinishMoveMult, knifeComboSwingDir,
 } from '../utils/knifeCombo';
 import type { AstroThrowEntry, AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import type { WraithGrowth } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md §9
@@ -12094,7 +12094,7 @@ interface GameState {
   spawnExplosionFx: (x: number, y: number, radius: number, tint?: number) => void;
   // noShadow(§24追加・既定false=挙動不変): trueで支配光(syncShadowsV9)への参加を断つ=見た目はそのまま。
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number, noShadow?: boolean, lift?: number) => void; // lift=(x, y) が地面の点 (x, y+lift) から lift だけ持ち上がった点(体の高さの光・新方式の描画が持ち上げる)
-  spawnSlash: (x: number, y: number, color?: string, lengthScale?: number, faceOverride?: 1 | -1, katana?: KatanaSlashFx) => void; // faceOverride=弧の向き(省略=プレイヤーの向き。進軍NPCの近接は振った向き)
+  spawnSlash: (x: number, y: number, color?: string, lengthScale?: number, faceOverride?: 1 | -1, katana?: KatanaSlashFx, down?: boolean) => void; // faceOverride=弧の向き(省略=プレイヤーの向き。進軍NPCの近接は振った向き)・down=切り下ろし(上下の反転・描画だけ)
   spawnFlash: (color: string, duration?: number) => void;
   // §5.23 M22 C3: 「N HITS」バナー(頭上・bitmap-text)+小フラッシュ。registerMultiHitから相乗りで呼ぶ。
   spawnMultiHitFx: (x: number, y: number, count: number, opts?: { label?: string; milestoneTier?: number; duration?: number }) => void;
@@ -15338,7 +15338,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Slash streaks on every enemy that was cut.
     for (const s of slashAt) {
       // 格闘(§8-1): 既定の当たりの絵(斬撃・炸裂)は出さない(格闘の側が固有色で出す)。血は残す。
-      if (!bs) get().spawnSlash(s.x, s.y);
+      // ナイフの2段目(振り下ろし)は刃の筋も上から下へ(utils/knifeCombo knifeComboSwingDir・描画だけ)。
+      if (!bs) get().spawnSlash(s.x, s.y, undefined, undefined, undefined, undefined, knifeComboSwingDir(knifeStage) < 0);
       get().spawnMeleeBlood(s.x, s.y); // 近接の血飛沫(社長指摘v0.25.2060: メイン近接3経路に未配線だった)
       if (!bs) get().spawnMeleeHit(s.x, s.y);   // v0.25.4334: 近接ヒットの炸裂(社長支給VFXの試し)
     }
@@ -31073,7 +31074,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  spawnSlash: (x, y, color = 'rgba(255,255,255,0.95)', lengthScale = 1, faceOverride, katana) => {
+  spawnSlash: (x, y, color = 'rgba(255,255,255,0.95)', lengthScale = 1, faceOverride, katana, down) => {
     { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 変異塊の代理の中心→縁(LAB_CRAWLER §4)
     const now = Date.now();
     // 斬撃の向き=プレイヤーの向き(右=左下→右上 / 左=反転)。レンダラの facingLeft 判定と同じ規則。
@@ -31095,6 +31096,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         createdAt: now,
         duration: 260, // 少し長く残す(旧 200)
         face,
+        ...(down ? { down: true } : {}),
         ...(katana ? { katana: true, katanaMove: katana.move, ...(katana.flip ? { katanaFlip: true } : {}), ...(path ? { katanaPathDx: path.dx, katanaPathDy: path.dy } : {}) } : {}), // プレイヤーの刀=刀用の斬撃シート(描画だけ・判定なし)
       }];
       if (next.length > 400) next.splice(0, next.length - 400);

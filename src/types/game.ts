@@ -3691,6 +3691,7 @@ export type VisualEffect =
       katana?: boolean;       // プレイヤーの刀(刀/小烏丸)の斬撃=刀用の斬撃シート(fx/katana-slash-sheet)で描く。未指定=従来の slash-streak。
       katanaMove?: 'swing' | 'issen' | 'tsubame' | 'satsujin' | 'kill'; // 刀の技の種類(尺の割合)。描画だけ。
       katanaFlip?: boolean;   // 上下の反転(切り下ろし)。連撃の偶数発・燕返し。描画だけ。
+      down?: boolean;         // 従来の slash-streak の上下の反転=切り下ろし(左上→右下へ流れる)。ナイフの2段目(振り下ろし)の当たり。描画だけ。
       // 燕返しの1本の大きな斬撃(社長指示2026-11-22「燕返しの斬撃、一閃の範囲に刀斬撃の絵に変更」): 通り道の始点→終点のベクトル(px)。
       // あれば刃筋をこの向き・この長さに合わせる(x,y=通り道の真ん中)。描画だけ。
       katanaPathDx?: number;

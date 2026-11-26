@@ -1918,8 +1918,9 @@ const knifeSwingCircle = (sx: number, sy: number, ex: number, ey: number): { cy:
 // ★出始めを後ろへ(社長指示2026-10-12「ナイフの出始めはもう少し後ろからにして」): 円を構えの拳より 50° 手前(後ろ下)から始め、
 // 振りの間に構えの拳を通って振り上げた拳へ着く(到着は不変)。
 const KNIFE_SWING_START_BACK_RAD = 50 * Math.PI / 180;
-const knifeOnCircle = (c: { cy: number; r: number; a0: number; sweep: number }, u: number): { ox: number; oy: number; rot: number } => {
-  const ang = c.a0 + KNIFE_SWING_START_BACK_RAD + (c.sweep - KNIFE_SWING_START_BACK_RAD) * u;
+// startBack=出始めを構えの拳より手前へ取る角度(振り下ろしは 0=構えの拳で止まる=しゃがみの絵の拳に着く)。
+const knifeOnCircle = (c: { cy: number; r: number; a0: number; sweep: number }, u: number, startBack = KNIFE_SWING_START_BACK_RAD): { ox: number; oy: number; rot: number } => {
+  const ang = c.a0 + startBack + (c.sweep - startBack) * u;
   const hx = Math.cos(ang) * c.r, hy = c.cy + Math.sin(ang) * c.r; // 拳(柄)の位置
   const g = ESCORT_KNIFE_SWING_LEN * WEAPON_ICON_GRIP_FRAC;
   return { ox: hx + Math.cos(ang) * g, oy: hy + Math.sin(ang) * g, rot: ang - WEAPON_ICON_BLADE_DEG * Math.PI / 180 };
@@ -2001,6 +2002,33 @@ const meleeArcCfg = (spr: Sprite, kt: number): MeleeArcCfg | null => {
     idx,
     aspect: tex.height / tex.width,
   };
+};
+/**
+ * ★振り下ろし(ナイフの2段目・社長報告2026-11-26「ナイフの振り2撃目、斬撃のエフェクトが合ってない」)の斬撃の鏡。
+ * 振り上げの弧(柄側の起点A=足元寄りの前 → 刃先の到着B=頭上)を、**AとBを結ぶ線分の垂直二等分線**で鏡映する。
+ * A⇄B が入れ替わる=同じ三日月を「頭上(振り上げた構え)から前を通って低い前へ」逆向きに描く。膨らみ(前側)の側は変わらない
+ * (胸の高さで上下に返すだけだと、始まりが前の上・終わりが後ろの下になり、体の振り下ろしと逆を向いていた)。
+ * 線は弧の最後のコマの両端から決める(全コマ共通の固定の鏡=コマが進むほど頭上から前下へ伸びる)。座標は unit 比・胸=原点・右向き・下が正。
+ * 返り値: 線上の点(px,py)と鏡の行列 [[c, s],[s, -c]](c=cos2φ・s=sin2φ・φ=線の向き)。描画だけ。
+ */
+interface SwingMirror { px: number; py: number; c: number; s: number }
+const MELEE_ARC_LAST_ASPECT_FALLBACK = 388 / 476; // 最後のコマ(fx/melee-arc-6)の縦横比。絵が読めない時だけ使う
+const meleeArcDownMirror = (): SwingMirror => {
+  const last = MELEE_ARC_FRAMES - 1;
+  const tex = getTexture(`fx/melee-arc-${last}`);
+  const aspect = tex && tex.width > 0 ? tex.height / tex.width : MELEE_ARC_LAST_ASPECT_FALLBACK;
+  const sc = MELEE_ARC_SCALE * (tex && tex.width > 0 ? tex.width / MELEE_ARC_REF_W : 1);
+  const tip = MELEE_ARC_TIP[last];
+  const ax = MELEE_ARC_TIP_OX, ay = MELEE_ARC_OY;                                   // A: 柄側の起点(最後のコマ・押し出し0)
+  const bx = ax + (tip.tx - tip.bx) * sc, by = ay - (1 - tip.ty) * sc * aspect;      // B: 刃先の到着
+  const phi = Math.atan2(by - ay, bx - ax) + Math.PI / 2;                            // 垂直二等分線の向き
+  return { px: (ax + bx) / 2, py: (ay + by) / 2, c: Math.cos(2 * phi), s: Math.sin(2 * phi) };
+};
+/** 点(unit 比)を鏡に映す。m=null はそのまま。 */
+const swingMirrorPt = (m: SwingMirror | null, ox: number, oy: number): { ox: number; oy: number } => {
+  if (!m) return { ox, oy };
+  const dx = ox - m.px, dy = oy - m.py;
+  return { ox: m.px + m.c * dx + m.s * dy, oy: m.py + m.s * dx - m.c * dy };
 };
 // 装備中の近接武器の実絵をスイングに重ねる(v0.25.1456 社長指示)。武器アイコン5種は同スタイル
 // (刃先が右上≈-46°)なので共通の回転定数で合う。値は焼き込みダガーのPCA計測から:
@@ -29415,10 +29443,13 @@ export class PixiScene {
         const kt = mainSwingOn
           ? meleeSwingEase(sinceSwing / swingWindowMs) // ゆっくり→速く→ゆっくり(§5.22-追補でスロー中は伸長)
           : KNIFE_SWING_SWITCH + (1 - KNIFE_SWING_SWITCH) * meleeSwingEase(echoSince / SLASHER_ECHO_MS);
-        // 段の向き: 2段目=振り下ろし=絵を胸の高さで上下に返す。追い打ちは1回ごとに向きを返す(振り上げ⇄振り下ろしの往復)。
-        const vflip = knifeStageNow > 0
-          ? knifeComboSwingDir(knifeStageNow) * (echoOn && (p.slasherEchoK ?? 1) % 2 === 1 ? -1 : 1)
-          : 1;
+        // 段の向き: 2段目=振り下ろし。追い打ちは1回ごとに向きを返す(振り上げ⇄振り下ろしの往復=2段目の後は振り上げから)。
+        // 振り下ろしは、弧・残光・刃の絵を「弧の両端を入れ替える鏡」(meleeArcDownMirror)に映す=頭上から前を通って低い前へ。
+        // 拳に沿って回るナイフの実絵は鏡に映さず、円を逆向き(振り上げた拳→構えの拳)に進める=体の絵(振り上げ→しゃがみ)と同じ順。
+        const swingDown = knifeStageNow > 0
+          && knifeComboSwingDir(knifeStageNow) * (echoOn && (p.slasherEchoK ?? 1) % 2 === 1 ? -1 : 1) < 0;
+        const mr = swingDown ? meleeArcDownMirror() : null;
+        const mrRot = mr ? Math.atan2(mr.s, mr.c) : 0; // 鏡の 2φ(絵の回転)
         // 右/左だけ(上下に撃っても水平成分で決定)。pure縦は直近の向き(face)。
         let kax = aimx, kay = aimy;
         if (kax === 0 && kay === 0) { kax = face; kay = 0; }
@@ -29436,8 +29467,10 @@ export class PixiScene {
         ) => {
           if (!vis || !spr.texture || spr.texture.width === 0) { spr.visible = false; return; }
           const sc = (unit * cfg.scale) / spr.texture.width;
-          spr.scale.set(mir * sc, vflip * sc);                         // 左向き=水平ミラー(回転なし)・振り下ろし=上下に返す
-          spr.position.set(baseX + mir * cfg.ox * unit, baseY + vflip * cfg.oy * unit);
+          const q = swingMirrorPt(mr, cfg.ox, cfg.oy);
+          spr.scale.set(mir * sc, (mr ? -1 : 1) * sc);                 // 左向き=水平ミラー・振り下ろし=鏡(上下を返して 2φ 回す)
+          spr.rotation = mir * mrRot;
+          spr.position.set(baseX + mir * q.ox * unit, baseY + q.oy * unit);
           spr.alpha = alpha * view.sprite.alpha;
           spr.visible = spr.alpha > 0.01;
         };
@@ -29451,13 +29484,15 @@ export class PixiScene {
           place(arcSpr, arcCfg ?? KNIFE_F2, true, arcCfg ? meleeArcAlpha(arcKt) : arcAl);
         };
         // 装備近接の実絵を置く: 対角線長=unit×lenFrac、回転は左向きミラー時に反転(ミラー合成)。
-        const placeWpn = (ox: number, oy: number, rot: number, lenFrac: number, alpha: number) => {
+        const placeWpn = (ox: number, oy: number, rot: number, lenFrac: number, alpha: number, useMirror = true) => {
           if (!wtex) { wpn.visible = false; return; }
           if (wpn.texture !== wtex) wpn.texture = wtex;
           const sc2 = (unit * lenFrac) / Math.max(1, Math.hypot(wtex.width, wtex.height));
-          wpn.scale.set(mir * sc2, vflip * sc2);
-          wpn.rotation = vflip * mir * rot; // 上下に返す時は回転も返す(鏡映)
-          wpn.position.set(baseX + mir * ox * unit, baseY + vflip * oy * unit);
+          const m = useMirror ? mr : null;
+          const q = swingMirrorPt(m, ox, oy);
+          wpn.scale.set(mir * sc2, (m ? -1 : 1) * sc2);
+          wpn.rotation = mir * (m ? mrRot - rot : rot); // 鏡に映す時は回転も映す(2φ − rot)
+          wpn.position.set(baseX + mir * q.ox * unit, baseY + q.oy * unit);
           wpn.alpha = alpha * view.sprite.alpha;
           wpn.visible = wpn.alpha > 0.01;
         };
@@ -29475,14 +29510,15 @@ export class PixiScene {
         // ★ナイフの実絵の円の動き(軍人と同じ・社長指示2026-10-12)。拳の位置は近接専用ポーズの実測(PLAYER_MELEE_FISTS)。
         // 絵のpx → unit は本体の実際の縦の倍率(|scale.y|)で割り戻す=体の絵とずれない。ポーズが無い時は従来の置き方。
         const circ = wtex ? knifeCircleForPose(meleePosePrefix && !warlordFull ? meleePosePrefix : undefined, view.sprite.scale.y, unit) : null;
+        // 振り下ろしは円を逆に進める(振り上げた拳 → 前を通って構えの拳=しゃがみの絵の拳へ)。鏡には映さない(拳の位置は体の絵の実測)。
         const placeKnifeCircle = (u: number, a: number): boolean => {
           if (!circ) return false;
-          const k = knifeOnCircle(circ, u);
-          placeWpn(k.ox, k.oy, k.rot, ESCORT_KNIFE_SWING_LEN, a);
+          const k = swingDown ? knifeOnCircle(circ, 1 - u, 0) : knifeOnCircle(circ, u);
+          placeWpn(k.ox, k.oy, k.rot, ESCORT_KNIFE_SWING_LEN, a, false);
           return true;
         };
         if (kt < KNIFE_SWING_SWITCH) {
-          // 1枚目(振りかぶり): 装備ナイフをさっと出す(絵が無ければ旧焼き込みダガー)。
+          // 1枚目(振りかぶり): 装備ナイフをさっと出す(絵が無ければ旧焼き込みダガー)。振り下ろしは振り上げた拳から。
           const a1 = Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5));
           place(knife, KNIFE_F1, !wtex, a1);
           if (!placeKnifeCircle(0, a1)) placeWpn(KNIFE_F1.ox, KNIFE_F1.oy, MELEE_WPN_F1.rot, MELEE_WPN_F1.len, a1);
@@ -46966,6 +47002,8 @@ export class PixiScene {
     // streak: 最大コマ基準で e.length にスケール。小コマは自然に小さく描かれる(=段々大きく)。
     // 向き: 右(face=1)は「左下→右上」に流れる。左(face=-1)は水平反転(scale.x<0)で「右下→左上」。
     const sign = (e.face ?? 1) < 0 ? -1 : 1;
+    // down=切り下ろし(ナイフの2段目): 上下に返す=「左上→右下」へ流れる(右向き)。伸びる端・縮む先も上下を入れ替える。
+    const vs = e.down ? -1 : 1;
     const sc = e.length / Math.max(1, ref.width);
     const halfW = (ref.width * sc) / 2, halfH = (ref.height * sc) / 2;
     // ※v0.25.3456で「育ち→縮み」をやめる変更を入れたが、社長の指摘は**トール戦の絵**の話で
@@ -46975,15 +47013,15 @@ export class PixiScene {
     if (t < 0.5) {
       idx = Math.min(4, Math.floor((t / 0.5) * 5));      // 0→4 グロー(下の端から伸びる)
       streak.anchor.set(0, 1);                            // 左下の端(bottom-left tip)を固定
-      streak.position.set(e.x - halfW * sign, e.y + halfH);
+      streak.position.set(e.x - halfW * sign, e.y + halfH * vs);
     } else {
       idx = Math.max(0, 4 - Math.floor(((t - 0.5) / 0.5) * 5)); // 4→0 シュリンク(上の端へ収束)
       streak.anchor.set(1, 0);                            // 右上の端(top-right tip)を固定
-      streak.position.set(e.x + halfW * sign, e.y - halfH);
+      streak.position.set(e.x + halfW * sign, e.y - halfH * vs);
     }
     const stex = getTexture(`fx/slash-streak-${idx}`) ?? ref;
     if (streak.texture !== stex) streak.texture = stex;
-    streak.scale.set(sc * sign, sc);                     // face=-1 で水平反転
+    streak.scale.set(sc * sign, sc * vs);                // face=-1 で水平反転・down で上下反転
     streak.alpha = 1 - Math.max(0, (t - 0.75) / 0.25);   // 終盤フェード
     // burst: 斬撃中央で 0→4 にポップ→フェード。
     const bidx = Math.min(4, Math.floor(t * 6));
