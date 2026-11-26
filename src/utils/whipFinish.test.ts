@@ -8,8 +8,8 @@ import { whipBodyPose } from './whipSwingMotion';
 import { BRAWLER_TECH_NAMES } from '../data/brawlerTechNames';
 
 describe('3段目の後の隙', () => {
-  it('3段目の後は0.6秒(段の間隔0.3秒より長い)・1/2段目は段の間隔のまま', () => {
-    expect(WHIP_COMBO_FINISH_RECOVERY_MS).toBe(600);
+  it('3段目の後は1.0秒(段の間隔0.5秒の倍)・1/2段目は段の間隔のまま', () => {
+    expect(WHIP_COMBO_FINISH_RECOVERY_MS).toBe(1000);
     expect(whipComboGapMs(3)).toBe(WHIP_COMBO_FINISH_RECOVERY_MS);
     expect(whipComboGapMs(1)).toBe(WHIP_COMBO_INTERVAL_MS);
     expect(whipComboGapMs(2)).toBe(WHIP_COMBO_INTERVAL_MS);

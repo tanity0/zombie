@@ -64,7 +64,8 @@ describe('3連撃: 段が進む・0.5秒の間隔・戻る', () => {
     run(WHIP_COMBO_INTERVAL_MS);
     tap();
     expect(st().player.whipComboStage).toBe(3);
-    // 3段目の後は隙(0.6秒): 段の間隔が過ぎても振れず、予約もしない(捨てる)
+    // 3段目の後は隙(1.0秒): 段の間隔が過ぎても振れず、予約もしない(捨てる)
+    expect(WHIP_COMBO_FINISH_RECOVERY_MS).toBe(1000);
     expect(st().player.counterCooldownEnd - now).toBe(WHIP_COMBO_FINISH_RECOVERY_MS);
     run(WHIP_COMBO_INTERVAL_MS);
     expect(tap().swung).toBe(false);

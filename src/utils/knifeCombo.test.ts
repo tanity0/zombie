@@ -3,6 +3,7 @@ import {
   knifeComboNextStage, knifeComboGapMs, knifeComboTapAction, knifeComboQueuedAction, knifeComboCounterPlan, knifeComboSwingDir,
   knifeComboStepPx, knifeComboBodyT,
   KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_RESET_MS, KNIFE_COMBO_FINISH_RECOVERY_MS, KNIFE_COMBO_QUEUE_MAX_MS, KNIFE_COMBO_STEP_FRAC,
+  knifeComboFinishMoveMult, KNIFE_COMBO_FINISH_SLOW_MS, KNIFE_COMBO_FINISH_SLOW_MULT,
 } from './knifeCombo';
 
 describe('ナイフの3連撃(純関数)', () => {
@@ -14,10 +15,28 @@ describe('ナイフの3連撃(純関数)', () => {
     expect(knifeComboNextStage(1, 0, KNIFE_COMBO_RESET_MS + 1)).toBe(1);
     expect(KNIFE_COMBO_RESET_MS).toBe(900);
   });
-  it('間隔は0.5秒・3段目の後の隙は0.6秒', () => {
+  it('間隔は0.5秒・3段目の後の隙は1.0秒(段の間の倍)・隙が明けた時には1段目に戻っている', () => {
     expect(KNIFE_COMBO_INTERVAL_MS).toBe(500);
     expect([1, 2, 3].map(knifeComboGapMs)).toEqual([500, 500, KNIFE_COMBO_FINISH_RECOVERY_MS]);
-    expect(KNIFE_COMBO_FINISH_RECOVERY_MS).toBe(600);
+    expect(KNIFE_COMBO_FINISH_RECOVERY_MS).toBe(1000);
+    expect(KNIFE_COMBO_FINISH_RECOVERY_MS).toBeGreaterThan(KNIFE_COMBO_RESET_MS);
+    expect(knifeComboNextStage(3, 0, KNIFE_COMBO_FINISH_RECOVERY_MS)).toBe(1);
+  });
+  it('3段目の後の歩く速さ: 振った直後 0.5・前半は 0.5 のまま・0.4秒で 1 へ(途中は単調に上がる・パッと戻らない)。3段目以外は 1', () => {
+    expect(KNIFE_COMBO_FINISH_SLOW_MS).toBe(400);
+    expect(KNIFE_COMBO_FINISH_SLOW_MULT).toBe(0.5);
+    const m = (since: number) => knifeComboFinishMoveMult(3, 10_000, 10_000 + since);
+    expect(m(0)).toBe(0.5);
+    expect(m(200)).toBe(0.5);
+    expect(m(400)).toBe(1);
+    expect(m(1000)).toBe(1);
+    let prev = 0.5;
+    for (let t = 210; t < 400; t += 10) { const v = m(t); expect(v).toBeGreaterThanOrEqual(prev); expect(v).toBeLessThan(1); prev = v; }
+    expect(m(390)).toBeGreaterThan(0.99); // 終わり際はほぼ戻っている(段差にならない)
+    expect(m(210) - 0.5).toBeLessThan(0.01); // 戻り始めも緩やか
+    expect(knifeComboFinishMoveMult(1, 10_000, 10_100)).toBe(1);
+    expect(knifeComboFinishMoveMult(2, 10_000, 10_100)).toBe(1);
+    expect(knifeComboFinishMoveMult(3, 0, 100)).toBe(1); // まだ振っていない
   });
   it('早いタップは予約・3段目の後(と3段目の前隙中)は捨てる・予約は古すぎたら捨てる', () => {
     expect(knifeComboTapAction(1000, 900, false, 1)).toBe('swing');

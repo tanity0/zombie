@@ -222,6 +222,7 @@ import {
 } from '../utils/slasherFollowup';
 import {
   knifeComboNextStage, knifeComboGapMs, knifeComboTapAction, knifeComboQueuedAction, knifeComboCounterPlan, knifeComboStepPx,
+  knifeComboFinishMoveMult,
 } from '../utils/knifeCombo';
 import type { AstroThrowEntry, AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import type { WraithGrowth } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md §9
@@ -341,7 +342,7 @@ import { whipRopeTotalMs, WHIP_ROPE_FINISH_PULL, WHIP_SNARE_FX_ENABLED } from '.
 import {
   whipComboNextStage, whipComboCritBonus, whipComboLight, whipComboSweepSign, whipComboTapAction, whipComboQueuedAction,
   whipComboFeel, whipComboPitch, whipComboGapMs, WHIP_COMBO_SWEEP_RAD, whipComboCounterPlan, whipComboCounterCut,
-  WHIP_COMBO_CRIT_STOP_MS, WHIP_COMBO_CRIT_SHAKE_MS, WHIP_COMBO_CRIT_SHAKE_MAG,
+  WHIP_COMBO_CRIT_STOP_MS, WHIP_COMBO_CRIT_SHAKE_MS, WHIP_COMBO_CRIT_SHAKE_MAG, whipComboFinishMoveMult,
 } from '../utils/whipCombo';
 import {
   tsubameAccepts, tsubamePath, isTsubameCrouching, katanaStrikeTravel, nextKatanaCuts, triggersSatsujin, satsujinAngles, type TsubameWindow,
@@ -12933,7 +12934,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★近接を振った**あと**の硬直(社長指示2026-09-16「振った直後にディレイが入るのはいい」)。
         // 振り**中**は掛からない=踏み込み斬りの「回避としての使い方」を殺さない、が社長の前提。
         // 開くのは振りの絵が終わる瞬間(=その場で動けない時間が明ける)・明けるのは従来どおり(v0.25.4998・隙間を詰めた)。
-        meleeRecoverMult: meleeRecoverSpeedMult(player.meleeSwingAt, nowMs, PLAYER_MELEE_SWING_MS, COUNTER_WINDOW + MELEE_RECOVER_MS),
+        // ★鞭・ナイフの3段目の後の隙の前半(社長承認2026-11-26): 3段目を振ってから 0.4秒は歩く速さ 0.5 → 慣性つきで 1 へ(utils/whipCombo comboFinishMoveMult)。
+        //   同じ硬直の枝に乗せる=ダッシュ系・スライドには掛からない(回避の逃げ道は塞がない)。重なる所は遅い方(二重に掛けない)。
+        meleeRecoverMult: Math.min(
+          meleeRecoverSpeedMult(player.meleeSwingAt, nowMs, PLAYER_MELEE_SWING_MS, COUNTER_WINDOW + MELEE_RECOVER_MS),
+          whipComboFinishMoveMult(player.whipComboStage, player.whipComboAt, nowMs),
+          knifeComboFinishMoveMult(player.knifeComboStage, player.knifeComboAt, nowMs),
+        ),
         // B10 血の覚醒(THEONE_ROUND2 §3-1): 移動速度 ×1.5。ランプの外・dash/スライド/スケーターには掛けない(関数側)。
         awakenSpeedMult: bloodAwakenMult(player, state.gameTime).boost,
       };

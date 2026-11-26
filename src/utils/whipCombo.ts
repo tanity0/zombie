@@ -40,14 +40,34 @@ export const whipComboSweepSign = (stage: number, aimAngle: number): 1 | -1 | 0 
   return stage === 1 ? first : (first === 1 ? -1 : 1);
 };
 /**
- * ★3段目の後の隙(社長指示2026-11-26「3連撃の最後はきちんと隙つくって」)。3段目を振ってから次の振り(1段目)が出せるまで(ms・叩き台)。
+ * ★3段目の後の隙(社長指示2026-11-26「3連撃の最後はきちんと隙つくって」)。3段目を振ってから次の振り(1段目)が出せるまで(ms)。
+ * ★1.0秒=普通の段の間の倍(社長承認2026-11-26・旧 600)。1段目へ戻る時間(WHIP_COMBO_RESET_MS=0.9秒)より長い=隙が明けた時には1段目に戻っている。
  * 段の間隔(WHIP_COMBO_INTERVAL_MS)と同じく振った時刻から数える・近接CDの短縮は掛かる。この間のタップは予約しない(捨てる)。
  */
-export const WHIP_COMBO_FINISH_RECOVERY_MS = 600;
+export const WHIP_COMBO_FINISH_RECOVERY_MS = 1000;
+/** ★3段目の後の隙の前半: 3段目を振った時刻からこの間、歩く速さを落とす(ms・社長承認2026-11-26)。 */
+export const WHIP_COMBO_FINISH_SLOW_MS = 400;
+/** その間の歩く速さの倍率(振った直後の値)。 */
+export const WHIP_COMBO_FINISH_SLOW_MULT = 0.5;
+/**
+ * 3段目の後の歩く速さの倍率(1=いつもどおり)。sinceMs=3段目を振ってからの ms。
+ * 前半(SLOW_MS の半分)は SLOW_MULT のまま、後半で加減速つき(smoothstep)に 1 へ戻す=0.4秒の終わりでパッと戻らない(慣性)。
+ * ダッシュ系・スライドには掛からない(utils/playerMoveSpeed の meleeRecoverMult と同じ枝に乗る)。
+ */
+export const comboFinishMoveMult = (sinceMs: number, slowMs: number, mult: number): number => {
+  if (!(sinceMs >= 0) || sinceMs >= slowMs) return 1;
+  const half = slowMs / 2;
+  if (sinceMs <= half) return mult;
+  const u = (sinceMs - half) / half;
+  return mult + (1 - mult) * u * u * (3 - 2 * u);
+};
+/** 鞭: 最後に振った段・時刻から、今の歩く速さの倍率。3段目以外は 1。 */
+export const whipComboFinishMoveMult = (stage: number | undefined, comboAt: number | undefined, nowMs: number): number =>
+  stage === 3 && (comboAt ?? 0) > 0 ? comboFinishMoveMult(nowMs - (comboAt as number), WHIP_COMBO_FINISH_SLOW_MS, WHIP_COMBO_FINISH_SLOW_MULT) : 1;
 /** この段を振った後、次の振りが出せるまで(ms・近接CDの短縮を掛ける前)。3段目=隙・1/2段目=段の間隔。 */
 export const whipComboGapMs = (stage: number): number => (stage === 3 ? WHIP_COMBO_FINISH_RECOVERY_MS : WHIP_COMBO_INTERVAL_MS);
-/** 3段目の後の隙の体の姿勢: 振り抜いた底で粘る長さ(ms)。残りの隙(隙−前隙−粘り)でゆっくり立ち姿へ戻る。 */
-export const WHIP_COMBO_FINISH_HOLD_MS = 120;
+/** 3段目の後の隙の体の姿勢: 振り抜いた底で粘る長さ(ms・隙 1.0秒に合わせて 120→200)。残りの隙(隙−前隙−粘り)でゆっくり立ち姿へ戻る。 */
+export const WHIP_COMBO_FINISH_HOLD_MS = 200;
 /**
  * 体の姿勢の戻り(utils/whipSwingMotion の whipBodyPose に渡す recoverMs/holdMs)。null=今の戻りのまま(1・2段目)。
  * 3段目=隙が明けるまでに立ち姿へ戻り切る(粘り WHIP_COMBO_FINISH_HOLD_MS+戻り=隙−前隙)。

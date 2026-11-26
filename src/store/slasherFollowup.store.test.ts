@@ -177,8 +177,9 @@ describe('ナイフの3連撃(配線)', () => {
     }
     expect(stages).toEqual([1, 2, 3, 1]);
     expect(gaps).toEqual([KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_FINISH_RECOVERY_MS, KNIFE_COMBO_INTERVAL_MS]);
-    // 4回目の1段目は連撃の終わり(3段目)からカウンターのクールダウンが明けていないので開かない
-    expect(windows).toEqual([true, false, false, false]);
+    // 4回目の1段目: カウンターのクールダウンは連撃の終わり(3段目)から。3段目の後の隙(1.0秒)がナイフのクールダウン(COUNTER_WINDOW+COUNTER_COOLDOWN)より長いので、隙明けの1段目は開く。
+    expect(KNIFE_COMBO_FINISH_RECOVERY_MS).toBeGreaterThanOrEqual(COUNTER_WINDOW + COUNTER_COOLDOWN);
+    expect(windows).toEqual([true, false, false, true]);
     expect(st().player.knifeCounterReadyAt).toBeGreaterThan(0);
   });
   it('最後の振りから0.9秒タップが無ければ1段目へ戻る・カウンターのクールダウンは連撃の終わりから', () => {

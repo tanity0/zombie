@@ -1,6 +1,12 @@
 // 鞭の3連撃のカウンター: 1段目だけ・クールダウンは連撃の終わりから(社長指示2026-11-26「カウンターは一撃目のみで、クールダウンは連撃終わりからです」)。
 import { describe, it, expect } from 'vitest';
-import { whipComboCounterPlan, whipComboCounterCut, whipComboEndAt, WHIP_COMBO_RESET_MS, WHIP_COMBO_INTERVAL_MS, WHIP_COMBO_QUEUE_MAX_MS } from './whipCombo';
+import {
+  whipComboCounterPlan, whipComboCounterCut, whipComboEndAt, WHIP_COMBO_RESET_MS, WHIP_COMBO_INTERVAL_MS, WHIP_COMBO_QUEUE_MAX_MS,
+  WHIP_COMBO_FINISH_RECOVERY_MS, WHIP_COMBO_FINISH_SLOW_MS, WHIP_COMBO_FINISH_SLOW_MULT, whipComboFinishMoveMult, whipComboGapMs,
+  whipComboNextStage, whipComboBodyRecover,
+} from './whipCombo';
+import { computeEffectiveMoveSpeed } from './playerMoveSpeed';
+import { whipBodyPose } from './whipSwingMotion';
 
 const CD = 1040;
 const I = WHIP_COMBO_INTERVAL_MS;
@@ -43,5 +49,39 @@ describe('段の間隔(社長指示2026-11-26「鞭の連撃、0.5秒間隔に�
     expect(WHIP_COMBO_INTERVAL_MS).toBe(500);
     expect(WHIP_COMBO_RESET_MS).toBeGreaterThan(WHIP_COMBO_INTERVAL_MS);
     expect(WHIP_COMBO_QUEUE_MAX_MS).toBeGreaterThan(WHIP_COMBO_INTERVAL_MS);
+  });
+});
+
+describe('3段目の後の隙(社長承認2026-11-26「隙を1.0秒・前半0.4秒は歩く速さを半分」)', () => {
+  it('隙は1.0秒(段の間の倍)・明けた時には1段目に戻っている', () => {
+    expect(WHIP_COMBO_FINISH_RECOVERY_MS).toBe(1000);
+    expect(whipComboGapMs(3)).toBe(2 * WHIP_COMBO_INTERVAL_MS);
+    expect(WHIP_COMBO_FINISH_RECOVERY_MS).toBeGreaterThan(WHIP_COMBO_RESET_MS);
+    expect(whipComboNextStage(3, 0, WHIP_COMBO_FINISH_RECOVERY_MS)).toBe(1);
+  });
+  it('歩く速さ: 0.5 から始まり 0.4秒で 1(後半で加減速つきに戻る)。3段目以外は 1', () => {
+    expect(WHIP_COMBO_FINISH_SLOW_MS).toBe(400);
+    expect(WHIP_COMBO_FINISH_SLOW_MULT).toBe(0.5);
+    const m = (since: number) => whipComboFinishMoveMult(3, 5_000, 5_000 + since);
+    expect(m(0)).toBe(0.5);
+    expect(m(150)).toBe(0.5);
+    expect(m(300)).toBeCloseTo(0.75);
+    expect(m(400)).toBe(1);
+    expect(whipComboFinishMoveMult(2, 5_000, 5_100)).toBe(1);
+    expect(whipComboFinishMoveMult(undefined, undefined, 5_100)).toBe(1);
+  });
+  it('回避(ダッシュ系・スライド)には掛からない。歩き(走りの段を含む)には掛かる', () => {
+    const base = { reloading: false, reloadMoveSpeedMult: 0.5, playerSpeed: 100, skaterActive: false, bonusMult: 1.3, rampFrac: 1, trapDebuffed: false, pvpMult: 1, meleeRecoverMult: whipComboFinishMoveMult(3, 1000, 1100) };
+    expect(computeEffectiveMoveSpeed({ ...base, dashOverrideSpeed: null, slidingSpeed: null })).toBeCloseTo(65);
+    expect(computeEffectiveMoveSpeed({ ...base, dashOverrideSpeed: 600, slidingSpeed: null })).toBe(600);
+    expect(computeEffectiveMoveSpeed({ ...base, dashOverrideSpeed: null, slidingSpeed: 400 })).toBe(400);
+  });
+  it('体の姿勢: 振り抜いた底で粘ってから、隙の終わり(1.0秒)で立ち姿へ戻り切る', () => {
+    const W = 200;
+    const r = whipComboBodyRecover(3, W)!;
+    expect(W + r.holdMs + r.recoverMs).toBe(WHIP_COMBO_FINISH_RECOVERY_MS);
+    expect(whipBodyPose(W + r.holdMs - 1, W, r.recoverMs, r.holdMs).pose).toBe('ready');
+    expect(whipBodyPose(WHIP_COMBO_FINISH_RECOVERY_MS - 20, W, r.recoverMs, r.holdMs).pose).toBe('ready');
+    expect(whipBodyPose(WHIP_COMBO_FINISH_RECOVERY_MS, W, r.recoverMs, r.holdMs).pose).toBe(null);
   });
 });
