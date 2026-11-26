@@ -139,7 +139,8 @@ const WRITE_SITES: readonly WriteSite[] = [
  * この3フィールドを**書かずに**打刻する経路(=振り方の目印を持たない近接)。
  * スラッシャー追撃と、鞭のスラッシャーの追加の振り(どちらも既存の近接ヒットから連鎖する追撃で、窓も演出も再度は開かない)。
  */
-const STAMPS_WITHOUT_FIELD_WRITE = ['スラッシャー追撃(applySlasherChainStrike)']; // 鞭のスラッシャーの追加の振り(fireWhipChainStep)は撤去(research/WHIP_FOLLOWUP.md §8)
+// スラッシャー追撃(applySlasherChainStrike)は撤去(2026-11-26・自動の追い打ち utils/slasherFollowup へ置き換え=振りではないので打刻しない)。鞭の追加の振り(fireWhipChainStep)も撤去済み(research/WHIP_FOLLOWUP.md §8)。
+const STAMPS_WITHOUT_FIELD_WRITE: string[] = [];
 
 /** ソースから3フィールドの**書き込み**を出現順に拾う(読み取り・コメントは拾わない)。 */
 const scanWrites = (text: string): SwingField[] => {

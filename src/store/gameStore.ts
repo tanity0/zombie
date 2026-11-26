@@ -216,7 +216,13 @@ import {
 } from '../utils/eventQuest';
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
-import { slasherLungePx } from '../utils/slasherLunge';
+import {
+  planSlasherFollowups, takeDueSlasherFollowups, slasherFollowupMult, slasherFollowupKbPx, slasherFollowupIsFinal,
+  SLASHER_FORCE_KB_PX, SLASHER_FINAL_KB_MULT, SLASHER_FOLLOWUP_STALE_MS, type SlasherFollowup, type SlasherFollowupHit, type SlasherWeapon,
+} from '../utils/slasherFollowup';
+import {
+  knifeComboNextStage, knifeComboGapMs, knifeComboTapAction, knifeComboQueuedAction, knifeComboCounterPlan, knifeComboStepPx,
+} from '../utils/knifeCombo';
 import type { AstroThrowEntry, AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import type { WraithGrowth } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md §9
 import { isWraithForced } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md §17
@@ -346,7 +352,7 @@ import type { KatanaSlashMove } from '../utils/katanaSlashSheet';
 type KatanaSlashFx = { move: KatanaSlashMove; flip?: boolean; path?: { dx: number; dy: number } }; // path=燕返しの通り道(始点→終点・x,y は真ん中)
 let katanaSlashSeq = 0;
 import { screamerStartGate } from '../utils/screamerGate';
-import { blastLiftPatch, slasherLiftMove, blastLiftCloseness, slasherLaunchMinMs, COUNTER_LIFT_MOVE, counterLiftApplies, retaliateLiftPlan, KNIFE_HOLD_MOVE, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil } from '../utils/airLift';
+import { blastLiftPatch, blastLiftCloseness, COUNTER_LIFT_MOVE, counterLiftApplies, retaliateLiftPlan, KNIFE_HOLD_MOVE, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil } from '../utils/airLift';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
   getSelectedStageId, getWallMeta, recordChronicle, recordChronicleGlobalFirst,
@@ -2221,15 +2227,12 @@ export const runnerAwakenDamageMult = (player: Player): number =>
 // エクスプローダー覚醒(Lv3)の爆発KB距離倍率(主語=その爆発の持ち主)。全爆発KB地点がこれを乗算する。
 export const skillExplosionKbMult = (player: Player): number =>
   skillLevel(player, 'exploder') >= 3 ? EXPLODER_AWAKEN_KB_MULT : 1;
-// スラッシャーのチェーン攻撃時の踏み込み。
-// v0.25.3258「連続攻撃は20px前進(慣性入れて)」の固定20pxは、★v0.25.3540 社長発案の**自動追尾**へ
-// 置き換えた。距離の式と上限は `src/utils/slasherLunge.ts`(純関数+テスト)に置いてある。
 // パニッシャーの巻き込み判定の拡張幅(社長指示v0.25.3260「広めに」・叩き台)。
 export const PUNISHER_HIT_PAD_PX = 16;
 // パニッシャー巻き込み成立時の画面シェイク(社長指示v0.25.3265・描画のみ・叩き台)。
 export const PUNISHER_TWO_BEAT_MS = 150; // 社長指示v0.25.3299「ダン!ダン!と二段当たってるのがわかる遅延」: 接触→パニッシャー発火までの一拍
 // (PUNISHER_SHAKE_* は v0.25.4284 で撤去=巻き込みダメージが damageEnemy 経由で impactShakeFor に乗る)
-export const SLASHER_LUNGE_MS = 160;
+export { SLASHER_FORCE_KB_PX, SLASHER_FINAL_KB_MULT };
 // ジャンプ/ダッシュ攻撃をカウンターした時の「弾き飛ばし」。速度ノックバックは updateEnemies が
 // 翌フレーム以降に適用するため、着地で付与される stun/lift に上書きされ「その場で痺れる」だけに
 // なっていた。→ パリィ成立の瞬間に即時で位置を飛ばす(LAUNCH)+その後も速く滑らせる(SPEED)。
@@ -2527,6 +2530,10 @@ export const SHOP_SAGE_STONE_COST = 100;                         // 賢者の石
 export const hasWhip = (player: Player): boolean => player.subWeapons.includes('whip');
 // 鞭モード = 鞭所持 かつ 刀モードでない(刀優先)。取得段階で排他だが二重防御。
 export const isWhipMode = (player: Player): boolean => hasWhip(player) && !isMeleeOnlyMode(player); // 格闘中も鞭は動かない(research/BRAWLER.md §7-2)
+/** ★ナイフ(近接)の3連撃を使う振りか(utils/knifeCombo)。刀・鞭・格闘はそれぞれの振り=対象外。 */
+export const isKnifeComboMode = (player: Player): boolean => !isKatanaMode(player) && !isWhipMode(player) && !isBrawlerMode(player);
+/** ★ナイフのカウンターのクールダウン(ms・近接CDの短縮を掛ける前)。旧(3連撃の前)のナイフの1振りの周期(窓+CD)と同じ長さ。起点は連撃の終わり。 */
+export const KNIFE_COUNTER_COOLDOWN_MS = COUNTER_WINDOW + COUNTER_COOLDOWN;
 export const whipLevel = (player: Player): number =>
   Math.max(1, Math.min(3, player.subWeaponLevels['whip'] ?? 1));
 /** 鞭の届く長さ(振りの線の長さ)。ハンティングが溜まっていれば同じ量だけ伸びる(huntingReachBonus)。幅(WHIP_HIT_HALF_WIDTH)は変えない。 */
@@ -3586,6 +3593,7 @@ const whipAutoThrowDir = (get: () => GameState, sw: WhipSwingState): { x: number
  */
 export const WHIP_COUNTER_COOLDOWN_MS = COUNTER_WINDOW + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS;
 const whipCounterCooldownMs = (p: Player): number => WHIP_COUNTER_COOLDOWN_MS * meleeCooldownMult(p);
+const knifeCounterCooldownMs = (p: Player): number => KNIFE_COUNTER_COOLDOWN_MS * meleeCooldownMult(p);
 /**
  * ★振り回している敵(盾)の体に触れた敵の弾をかき消す(社長指示2026-11-26「振り回してる敵で弾をかき消せる様にして(簡単なら、その弾でダメージ与えれるといい)」)。
  * 判定=utils/whipSwing の whipShieldBlocksShot(弾の中心が体の箱の中・紫は消さない)。消した所に小さな弾け・1フレーム1回の小さな音。
@@ -10001,23 +10009,6 @@ const placeSensorMineOnSwing = (
   return true;
 };
 
-// スキル: スラッシャー = 近接命中後、チェーン間CD0.5秒で連続して振れる(社長指示2026-08-13・
-// SKILL_BUILD_REDESIGN.md §25。旧・タイミングリングのジャストタップ追撃は廃止)。
-// 連数はレベル依存: Lv1=2回/Lv2=3回/Lv3=4回(初撃+追撃)。使い切ったら通常の近接CDへ戻る。
-// ダメージは追撃ごとに ×2/3 減衰(1.0 / 0.667 / 0.444・旧仕様のまま維持)。
-// Lv3の最終段(4段目)のみノックバック大(叩き台2倍)。それ以外の追撃は通常ノックバック。
-export const SLASHER_CHAIN_CD_MS = 300; // チェーン攻撃間のクールダウン(社長指示v0.25.3254「0.3秒で」)
-// ★v0.25.3616(実機FB「2撃目の配線が残って、1撃目のはずなのに2撃目が発動するときがある」):
-// 旧2000ms(叩き台)は「別の敵へ移った後のタップ」まで追撃にしてしまう広さだった。チェーンは
-// リズム良く繋いだ時だけ=CD明けから800msへ短縮(タップ間隔にして最大1.1秒)。
-export const SLASHER_CHAIN_TIMEOUT_MS = 800;
-export const SLASHER_MAX_HITS = 3;      // 追撃の最大連数(初撃を除く。Lvでmin適用)
-export const SLASHER_MULTS = [1, 2 / 3, (2 / 3) * (2 / 3)]; // 各追撃のダメージ倍率
-export const SLASHER_FINAL_KB_MULT = 2; // Lv3最終段のみ適用するノックバック倍率(叩き台)
-export const SLASHER_FORCE_KB_PX = 25;  // 社長指示v0.25.3297: スラッシャーの強制ノックバック実距離(免疫CD無視)
-// 返り値 null = 射程内に敵が居なかった(★v0.25.3616): チェーンを破棄し、呼び出し側は**通常経路へ
-// 落とす**(このタップは追撃ではなく新しい初撃の候補になる。旧: 空振りでも連数を消費して
-// チェーン演出だけ出ていた=「1撃目のはずなのに2撃目が発動」の一因)。
 /**
  * ★縮地(SKILL_BUILD_REDESIGN.md §32): 追撃の窓を開く(プレイヤー本人の近接での撃破の後に呼ぶ)。
  * ワープ斬撃の解決中(`shukuchiStriking`)の撃破なら連鎖を+1、それ以外の撃破は窓が開いていれば連鎖を残し
@@ -10083,7 +10074,6 @@ const reserveShukuchiWarp = (get: () => GameState, now: number): boolean => {
   const ecx = target.x + target.width / 2, ecy = target.y + target.height / 2;
   const dl = Math.hypot(ecx - land.x, ecy - land.y) || 1;
   const chainIndex = (p.shukuchiChain ?? 0) + 1; // この一撃が何発目か(1始まり)
-  if (hasSkill(p, 'slasher') && p.slasherChainReadyAt > 0) get().setSlasherCombo(0, 0);
   useGameStore.setState(state => ({
     player: {
       ...state.player,
@@ -10106,168 +10096,113 @@ const reserveShukuchiWarp = (get: () => GameState, now: number): boolean => {
   return true;
 };
 
-// ★タッチのスラッシャー連撃の音(クリエイティブ監査2026-11-06で発見): タッチの連撃(beginMeleeSwing / 先行入力の
-// pumpSlasherQueuedTap)は結果を捨てていて、素振り音も命中音も**どこからも鳴っていなかった**。結果を捨てる2か所から鳴らす。
-// (PC/ボットの triggerCounter 経由は呼び手が結果で鳴らすので、ここは通さない=二重に鳴らさない)。
-const playSlasherChainSfx = (get: () => GameState, r: CounterTriggerResult | null) => {
-  if (!r || !r.swung || get().player.subWeapons.includes('whip')) return;
-  void import('../audio/audioManager').then(m => {
-    m.playSfx('melee');
-    if (r.hit) m.playSfxLayers('slash-damage', meleeHitSfxLayers(r.hits ?? 1));
-    if (r.killed > 0) m.playEnemyDeath();
-  });
+// ---- ★スラッシャーの追い打ち(社長指示2026-11-26「どれも入力は増えないイメージ」・判定は utils/slasherFollowup の純関数) ----
+// 近接の一撃(ナイフの各段・刀の一閃/燕返し・格闘の各段・鞭の各段)が当たった敵へ、追い打ちが 0.1秒おきに自動で入る(Lv1/2/3=1/2/3回)。
+// 元の一撃の打ち手(triggerCounter のナイフ/格闘の当たり・performKatanaStrike・performWhipStrike)が、通常の当たり(気絶の処刑・5倍・3倍・バッシュ以外)の
+// 「その敵に与えた値」を種として積む(noteSlasherSeed)。種からは追い打ちへ引き継がない倍率(空中=追い打ち側で damageEnemy が掛け直す・印=自動の斬りには乗らない・
+// 対人の縮み=damageEnemy の関所が掛け直す)を外してある。追い打ちは damageEnemy を通る(倒す・幻影の関所・空中の倍率・記録は中央の口のまま)。
+/** 種の受け皿(元の一撃を解く間だけ立つ)。null=積まない(守護霊・自動の斬り・被弾反撃・殺陣など)。 */
+let slasherSeedSink: SlasherFollowupHit[] | null = null;
+/** 種を積む(受け皿が無ければ何もしない)。seed=その敵に与えた値から引き継がない倍率を外した値。 */
+const noteSlasherSeed = (id: string, seed: number): void => {
+  if (slasherSeedSink && seed > 0 && Number.isFinite(seed)) slasherSeedSink.push({ id, seed });
 };
-const applySlasherChainStrike = (
-  get: () => GameState,
-  player: Player,
-  gameTime: number,
-  realGameTime: number,
-): CounterTriggerResult | null => {
-  const step = player.slasherStrikeStep;
-  // 連数の上限はレベル依存: Lv1 1連(追撃) / Lv2 2連 / Lv3 3連(=初撃と合わせて2/3/4回)。
-  const slLv = skillLevel(player, 'slasher');
-  const maxHits = slLv ? Math.min(SLASHER_MAX_HITS, slLv) : SLASHER_MAX_HITS;
-  // 連数を使い切っていたら追撃なし(ここに来るのはチェーンCD明けのタップのみ=下のゲートで保証済みだが安全側)。
-  if (step >= maxHits) {
-    get().setSlasherCombo(0, 0);
-    return { swung: false, hit: false, finish: false, killed: 0 };
+/** fn を解く間だけ種を集める(入れ子は内側の受け皿が勝つ)。 */
+const collectSlasherSeeds = <T,>(fn: () => T): { result: T; seeds: SlasherFollowupHit[] } => {
+  const prev = slasherSeedSink;
+  const seeds: SlasherFollowupHit[] = [];
+  slasherSeedSink = seeds;
+  try {
+    return { result: fn(), seeds };
+  } finally {
+    slasherSeedSink = prev;
   }
-  get().markMeleeSwingFx(); // 追撃も近接スイングの二次モーション(踏み込み)を出す(描画のみ)
-  get().commitMeleeSwing(); // ★近接スイング確定の打刻(5経路の1つ=スラッシャー追撃・§1-3)
-  // §8裁定済み#16: 前隙が無い経路=打刻の呼び出し時刻がそのまま「押した瞬間」。
-  get().noteMeleeSwingPressedAt(Date.now());
-  const pcx = player.x + player.width / 2;
-  const pcy = player.y + player.height / 2;
-  // 追撃の射程は初撃時に記録した slasherReach を使う(ストライカーの溜めで伸びた射程が初撃で消費されても、
-  // 追撃は伸びたまま=社長指示)。未記録(0)なら従来どおり現在の射程にフォールバック。
-  const meleeRange = player.slasherReach > 0 ? player.slasherReach : huntingMeleeRadius(player);
-  const melee = player.weapons.find(w => w.isMelee);
-  const meleeDamage = meleeSwingBaseDamage(melee, player);
-  const comboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
-  const dmg = meleeDamage * SLASHER_MULTS[step] * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * comboMult
-    * masteryMultOf(player, meleeMasteryKeyOf(player)); // 熟練度: スラッシャーの追撃=装備している近接武器(research/MASTERY.md v2 §4-2 #10・ナイフ毎の括り)
-  const nextStep = step + 1;
-  // Lv3(maxHits=3)の最終段(nextStep===maxHits=この一撃で使い切る)のみノックバック大。
-  const isFinalBigKbStep = slLv === 3 && nextStep === maxHits;
-  // 社長指示v0.25.3297「スラッシャーの時だけ25px強制ノックバック(CD無視)」: 実距離25px固定
-  // (最終段はSLASHER_FINAL_KB_MULT倍=50px)。knockbackEnemyは免疫CDを見ない=連撃中も毎段飛ぶ。
-  const kbMult = (knockbackSpeedFor(SLASHER_FORCE_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED) * (isFinalBigKbStep ? SLASHER_FINAL_KB_MULT : 1);
-  // ★v0.25.3399 社長指示「移動後に判定しないと絶対当たらない。敵は25動いてるのに」:
-  // ★v0.25.3540 社長指示「追撃の範囲は、自分がいま立ってるところからの近接攻撃射程内。
-  // じゃないと射程が嘘になるので」: **判定はいま立っている位置(pcx,pcy)から測る。**
-  // これは v0.25.3399「移動後に判定しないと絶対当たらない。敵は25動いてるのに」の撤回
-  // (事実として: v3399は判定基準を踏み込み後の位置=20px先へ動かしていた。結果、実効射程が
-  //  踏み込みぶん伸びて**表示・体感の射程より遠くへ届く**=「射程が嘘」になっていた)。
-  // v3399が解こうとしていた「押した敵に届かない」は、下の**自動追尾の踏み込み**が引き受ける
-  // ——押した量ぶんだけ詰め直すので、次の一撃は再び「立っている位置の射程内」に敵が居る。
+};
+/** 元の一撃の種から追い打ちを予約する(スラッシャーを持っていて、生き残った敵に当たった時だけ)。時計=realGameTime(ポーズで止まる・スローに依らない)。 */
+const scheduleSlasherFollowups = (get: () => GameState, weapon: SlasherWeapon, dirX: number, dirY: number, seeds: readonly SlasherFollowupHit[]): void => {
+  if (seeds.length === 0) return;
+  const st = get();
+  const lv = skillLevel(st.player, 'slasher');
+  if (lv <= 0) return;
+  // 同じ敵が1振りで2回積まれた時は大きい方だけ(1体に1本)。
+  const byId = new Map<string, number>();
+  for (const h of seeds) byId.set(h.id, Math.max(byId.get(h.id) ?? 0, h.seed));
+  const plan = planSlasherFollowups(st.realGameTime, lv, weapon, dirX, dirY, [...byId].map(([id, seed]) => ({ id, seed })));
+  if (plan.length === 0) return;
+  useGameStore.setState(s => ({ slasherFollowups: [...s.slasherFollowups, ...plan] }));
+};
+/** 追い打ちの熟練度のキー(元の一撃と同じ)。 */
+const slasherFollowupMasteryKey = (p: Player, weapon: SlasherWeapon): MasteryKey =>
+  weapon === 'katana' ? 'katana' : weapon === 'whip' ? 'whip' : weapon === 'brawler' ? 'brawler' : meleeMasteryKeyOf(p);
+/** 追い打ち1回ぶんを出す(当たり・数字・絵・音・最後の吹き飛ばし)。 */
+const runSlasherFollowup = (get: () => GameState, f: SlasherFollowup): void => {
+  const st = get();
+  const p = st.player;
+  const now = Date.now();
+  const gameTime = st.gameTime;
+  const mult = slasherFollowupMult(f.k);
+  const kbPx = slasherFollowupKbPx(f.lv, f.k, f.count);
+  const isFinal = slasherFollowupIsFinal(f.k, f.count);
+  const mk = slasherFollowupMasteryKey(p, f.weapon);
+  const mm = masteryMultOf(p, mk);
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  const face: 1 | -1 = f.dirX < 0 ? -1 : 1;
+  let hits = 0;
   let killed = 0;
-  let hit = false;
-  const hitIds: string[] = [];
-  // 踏み込みの目標: 実際にノックバックした敵のうち**最寄り**(=いま切り結んでいる相手)。
-  // 死んだ敵・押せなかった敵(ボス級)は目標にしない=v0.25.3400「KBしなかったら前進しない」を維持。
-  let lungeTo: { dirX: number; dirY: number; dist: number } | null = null;
-  // ★v0.25.3934(社長報告2026-08-26「スラッシャー、まだ2段目以降空振りできない時がある? cd?」):
-  // 旧実装(v0.25.3616)は**射程内に誰も居なければ追撃そのものを出さず、チェーンを破棄して null**
-  // を返していた。**原因はCDではなくこの門**——2段目以降だけ「空振りできない」状態だった。
-  // v0.25.3931 で初撃の「命中しないとチェーンが始まらない」を外したので、**追撃側も揃える**:
-  // 誰も居なくても**振る**(段を消費してチェーンは進む)。前隙200msが入った今、
-  // 連撃の途中で相手が射程外へ出るのは普通に起きるため、そこで手が止まるのは操作として不自然。
-  // research/NEW_GUNS.md §4-2: 追撃は自動で斬る系=スキャンの倍率は乗らない。
-  for (const e of get().enemies) {
-    if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
-    if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は追撃対象から除外
-    const ecx = e.x + e.width / 2;
-    const ecy = e.y + e.height / 2;
-    const dx = ecx - pcx, dy = ecy - pcy;
-    // ★距離は初撃と同じ enemyMeleeDist(判定帯の最近点)で測る(v0.25.3398バグ修正)。
-    // 旧: 中心距離のまま v0.25.3170 の一本化から取り残され、「初撃は届くのに追撃は身体の
-    // 厚みぶん届かない」帯域が生まれていた=2撃目以降が系統的に空振り。
-    const eDist = enemyMeleeDist(pcx, pcy, e);
-    if (eDist > meleeRange) continue;
-    hit = true;
-    hitIds.push(e.id);
-    // ★v0.25.3640(成果物監査A): スラッシャー追撃は**近接**なので、幻影ゲートへ 'melee' で通す
-    // (パリィ抽選の対象になる)。無効化(無敵/パリィ)されたら数字・斬撃・血飛沫・KBを出さない
-    // (「数字は出るのにHPが減らない」偽演出の禁止=監査Q1-1と同型)。幻影以外には従来と1bitも変わらない。
-    const eDmg = dmg;
-    const k = withMastery(meleeMasteryKeyOf(player), () => get().damageEnemy(e.id, eDmg, false, false, false, 'other', 'player', null, 1, 'melee')); // 熟練度: 装備している近接武器
+  for (const h of f.hits) {
+    const e = get().enemies.find(x => x.id === h.id);
+    // 倒れた・死体・何も通らない間・鞭で掴んでいる敵には入れない(追い打ちは打撃だけ=掴まない)。
+    if (!e || e.health <= 0 || isCorpse(e) || isUntouchable(e) || e.whipHeld) continue;
+    const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+    const dmg = h.seed * mult;
+    const k = withMastery(mk, () => get().damageEnemy(e.id, dmg, false, false, false, 'other', 'player', null, 1, 'melee'), { mult: mm });
     const eAfter = get().enemies.find(x => x.id === e.id);
-    const gpDeflected = isGuardianPhantom(e.type)
-      && !!eAfter && (eAfter.gpBlockedAt === gameTime || eAfter.gpParriedAt === gameTime);
-    if (gpDeflected) continue; // hit/hitIds は積み済み=チェーンの進行は従来どおり(空振り扱いにしない)
-    // PACING_PUZZLE.md §9-4/§9-7#6(削岩型・近接被弾での離脱): スラッシャー追撃も近接武器の打撃。
+    // 幻影に防がれた・受け流された当たりは数字も絵も出さない(偽の演出の禁止・旧スラッシャーの追撃と同じ)。
+    if (isGuardianPhantom(e.type) && !!eAfter && (eAfter.gpBlockedAt === gameTime || eAfter.gpParriedAt === gameTime)) continue;
+    hits++;
     if (!k) get().applyDrillerRetreat(e.id);
-    get().spawnDamageNumber(ecx, e.y, eDmg, false, { enemyId: e.id }); // 名指し=damageEnemy の中の空中の倍率を数字にも(案A)
-    get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.95)');
-    get().spawnMeleeBlood(ecx, ecy - idolAirLift(e), e.width); // 近接の血飛沫(v0.25.2026)
-    if (k) {
-      killed += 1;
-      openShukuchiWindow(get); // 縮地: スラッシャーの追撃(プレイヤー本人の近接)での撃破も窓を開く(§32-3)
-      get().spawnBurst(ecx, ecy, '#bef264', 10);
+    const ey = ecy - idolAirLift(e);
+    get().spawnDamageNumber(ecx, e.y - idolAirLift(e), dmg, false, { enemyId: e.id });
+    // 絵: 元の武器の振りを短い尺で繰り返す(既存の素材)+小さな当たりの手応え。向きは1回ごとに返す(振り上げ・振り下ろしの往復)。
+    const alt: 1 | -1 = f.k % 2 === 1 ? (face === 1 ? -1 : 1) : face;
+    if (f.weapon === 'katana') {
+      get().spawnSlash(ecx, ey, 'rgba(221,238,255,0.95)', 0.85, alt, { move: 'issen', flip: f.k % 2 === 1 });
+      get().spawnMeleeHit(ecx, ey, MELEE_HIT_SIZE * 0.6);
+    } else if (f.weapon === 'whip') {
+      const dx = ecx - pcx, dy = ecy - pcy, dl = Math.hypot(dx, dy) || 1;
+      spawnWhipSwingFx(get, pcx, pcy, ecx, ecy, dx / dl, dy / dl, now, false, `sl${f.k}-${e.id}-`);
+    } else if (f.weapon === 'brawler') {
+      const dx = ecx - pcx, dy = ecy - pcy, dl = Math.hypot(dx, dy) || 1;
+      const ux = dx / dl, uy = dy / dl, side = f.k % 2 === 1 ? -1 : 1;
+      get().spawnImageMark(pcx + ux * 18 - uy * side * 6, pcy - 8 + uy * 14 + ux * side * 3, 'fx/idol-fist', {
+        scale: 0.17, duration: 150, additive: false, tint: 0xfffaf0, rot: Math.atan2(uy, ux) - Math.PI / 2, noPop: true, fadeFrom: 0.4,
+        moveX: ux * 16, moveY: uy * 16, alpha: 0.95,
+      });
+      brawlerSpark(get, { x: ecx, y: ey, id: e.id }, { x: pcx, y: pcy }, BR.BRAWLER_SPARK.weak);
     } else {
-      const d = Math.max(0.001, Math.hypot(dx, dy));
-      // ★社長指示v0.25.3496「スラッシャーではボスはノックバックしないで」: 追撃のKBも通常敵限定。
-      // (ボスへ効くと、下の「KBした時だけ踏み込む」判定も真になって前進してしまう=v0.25.3400の
-      //  「KB無効の相手には前進しない」意図とも噛み合わない。)
-      if (!resistsChipKnockback(e.type)) {
-        get().knockbackEnemy(e.id, dx / d, dy / d, kbMult, kbMult); // 追撃が当たった敵のみノックバック(Lv3最終段のみ大)。maxStrengthも渡す(既定cap=3で頭打ちになる罠・v0.25.3257)
-        if (lungeTo === null || eDist < lungeTo.dist) lungeTo = { dirX: dx / d, dirY: dy / d, dist: eDist };
-      }
-      // ★浮き(research/BRAWLER.md §14・社長「浮き入れよう」): 1回目の追撃=格闘の3段目と同じ打ち上げ。2回目以降は空中の敵を拾う
-      // (Lv3 の最後の大きな押しは空中から叩き落とす)。区分(重さ・ボスの止めの減衰)・予算・技の最中は浮かないは格闘と同じ。
-      {
-        const nowL = Date.now();
-        const live = get().enemies.find(x => x.id === e.id);
-        const mv = live ? slasherLiftMove(step, isFinalBigKbStep, BRC.brawlerAirborne(live, nowL)) : null;
-        // 拳鬼がこの追撃をレバーガードで受けた(§16-10)なら浮かせない。
-        if (live && mv && !BRC.isBrawlerTechBusy(live, gameTime) && !(live.gpLeverGuardAt !== undefined && live.gpLeverGuardAt === get().gameTime)) {
-          // ★スラッシャーの追撃(自動で決まった間隔)の弧には、落ちる速さの重さの増え方を当てない(k=1・社長裁定2026-11-13)。
-          let jp = brawlerJugglePatch(live, BRC.brawlerEnemyClass(live), mv, nowL, false);
-          // ★1回目の打ち上げは追撃の窓(CD+前隙+余裕)より短くしない=強個体・ボス級(重さ・止めの減衰)でも2回目が空中に間に合う(§14)。
-          if (jp && step <= 0 && jp.brLiftUntil !== undefined && jp.brawlerLiftAt !== undefined) {
-            const minMs = slasherLaunchMinMs(SLASHER_CHAIN_CD_MS, MELEE_WINDUP_MS);
-            if ((jp.brLiftMs ?? 0) < minMs) jp = { ...jp, brLiftMs: minMs, brLiftUntil: nowL + minMs, liftUntil: nowL + minMs };
-          }
-          if (jp) { const jpp = jp; useGameStore.setState(state => ({ enemies: state.enemies.map(x => (x.id === e.id ? { ...x, ...jpp } : x)) })); }
-        }
-      }
+      get().spawnSlash(ecx, ey, 'rgba(255,255,255,0.95)', 0.75, alt);
+      get().spawnMeleeHit(ecx, ey, MELEE_HIT_SIZE * 0.6);
+    }
+    get().spawnMeleeBlood(ecx, ey, e.width);
+    if (k) {
+      killed++;
+      openShukuchiWindow(get); // 縮地: 追い打ち(プレイヤー本人の近接)での撃破も窓を開く(旧スラッシャーの追撃と同じ・§32-3)
+      get().spawnBurst(ecx, ecy, '#bef264', 10);
+      continue;
+    }
+    // 最後の追い打ちだけ吹き飛ばす(実距離 kbPx・Lv3 は大きめ)。ボス級は押さない(旧スラッシャーと同じ)。浮いている敵も押す(空中のまま横へ飛ぶ)。
+    if (isFinal && kbPx > 0 && !resistsChipKnockback(e.type)) {
+      const dx = ecx - pcx, dy = ecy - pcy, dl = Math.hypot(dx, dy);
+      const ux = dl > 0.5 ? dx / dl : f.dirX, uy = dl > 0.5 ? dy / dl : f.dirY;
+      const kbMult = knockbackSpeedFor(kbPx, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED;
+      get().knockbackEnemy(e.id, ux, uy, kbMult, kbMult); // maxStrength も渡す(既定 cap=3 で頭打ちになる罠・v0.25.3257)
     }
   }
-  // 一閃の絵は**判定と同じ円**(いま立っている位置・半径=meleeRange)に揃える。
-  get().spawnRing(pcx, pcy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200, false, true);
-  // ★v0.25.3540 社長発案「スラッシャーは射程内であれば、その敵から規定の距離(近接入る距離)まで
-  // 自動追尾 であれば事故が減りそう」: 踏み込みを**定数(旧20px)から自動追尾へ**作り替える。
-  //
-  // なぜ: 旧実装は踏み込み20px固定なのに強制KBは25px(Lv3最終段50px)で、**数字が2本あった**。
-  // 押し量を変えるたびにズレが再発する構造で、実際に毎撃5pxずつ相手が逃げていた(v0.25.3538の洗い出し)。
-  // ⇒ 踏み込み距離を `いま押した後の距離 − 近接が入る距離` で毎回**算出**する。押し量がいくつでも
-  //   (将来ノックバック減衰が入って変わっても)**常に近接が入る位置に着地する**=この事故の型が消える。
-  // 「いま押した後の距離」は、この一撃で自分が与えた押し量が分かっているので予測できる
-  //  (ノックバックは速度で280msかけて効くため、この瞬間の敵はまだ動いていない=実測では取れない)。
-  // 慣性は従来どおり: 速度を与えて SLASHER_LUNGE_MS かけて減衰スライドする(瞬間移動しない)。
-  // チェーンCD(300ms)>踏み込み(160ms)なので、次の一撃までに踏み込みは必ず終わる。
-  {
-    const nowMs = Date.now();
-    if (lungeTo !== null) {
-      // 押した量(実距離px)。Lv3最終段のみ SLASHER_FINAL_KB_MULT 倍。
-      const pushedPx = SLASHER_FORCE_KB_PX * (isFinalBigKbStep ? SLASHER_FINAL_KB_MULT : 1);
-      const lungePx = slasherLungePx(lungeTo.dist, pushedPx, meleeRange);
-      const lx = lungeTo.dirX, ly = lungeTo.dirY;
-      if (lungePx > 0.5) {
-        const lungeSpeed = knockbackSpeedFor(lungePx, SLASHER_LUNGE_MS);
-        useGameStore.setState(state => ({
-          player: {
-            ...state.player,
-            knockbackVx: lx * lungeSpeed, knockbackVy: ly * lungeSpeed,
-            knockbackUntil: nowMs + SLASHER_LUNGE_MS, knockbackMs: SLASHER_LUNGE_MS,
-          },
-        }));
-      }
-    }
-  }
-  // スキル: ナイフマスターのコンボ加算(§6.10 M33⑧: スラッシャー追撃のヒットでも貯める。倍率は既に乗っている)。
-  // 2026-08-29一本化: 表示コンボ(meleeFinishCombo)へ直接加算(専用台帳knifeCombo*は廃止)。
-  if (knifeMasterHitComboGain(player, hit, 0) > 0) {
+  if (hits === 0) return;
+  // 体の絵の追い打ち(描画だけ・ナイフの絵を短い尺で振り直す)。
+  if (f.weapon === 'knife') useGameStore.setState(s => ({ player: { ...s.player, slasherEchoAt: now, slasherEchoK: f.k } }));
+  // ナイフマスターのコンボ加算(旧スラッシャーの追撃と同じく、追い打ちの当たりでも貯める)。
+  if (knifeMasterHitComboGain(p, true, 0) > 0) {
     useGameStore.setState(state => {
       const next = state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + 1 : 1;
       return {
@@ -10277,19 +10212,22 @@ const applySlasherChainStrike = (
       };
     });
   }
-  if (nextStep < maxHits) {
-    get().setSlasherCombo(realGameTime + SLASHER_CHAIN_CD_MS, nextStep); // 次のチェーンCDを開始
-  } else {
-    // 連数使い切り → この瞬間から通常の近接CD(COUNTER_WINDOW+COUNTER_COOLDOWN)へ復帰。
-    useGameStore.setState(state => ({
-      // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
-      player: { ...state.player, counterCooldownEnd: Date.now() + (COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player) },
-    }));
-    get().setSlasherCombo(0, 0);
+  get().registerMeleeHits(hits);
+  // 音: 元の武器の命中音を少しずつ高く(連打で同じ音が並ばない)。最後は重い音を重ねる。
+  const rate = 1 + 0.06 * f.k;
+  if (f.weapon === 'brawler') {
+    const cue = BR.brawlerStageHitSfx(isFinal ? 3 : 1, brJitter() * rate, 0.8);
+    brawlerSfx(cue.key, cue.gain, cue.rate);
+    if (killed > 0) brawlerSfx(BRAWLER_SFX_DEATH);
+    return;
   }
-  return { swung: true, hit, finish: false, killed };
+  void import('../audio/audioManager').then(m => {
+    if (f.weapon === 'whip') m.playSfx('whip-hit', 0.6, undefined, rate);
+    else m.playSfxLayers('slash-damage', meleeHitSfxLayers(hits));
+    if (isFinal) m.playSfx('heavy-impact', 0.45, undefined, 1.2);
+    if (killed > 0) m.playEnemyDeath();
+  });
 };
-
 // 排他スキルのグループ(同グループ内は共存OK。例: 刀↔村雨)。それ以外のスキルとは共存不可。
 const EXCLUSIVE_SUBWEAPON_GROUPS: SubWeaponKey[][] = [['katana', 'murasame'], ['shijin'], ['alchemy', 'sage-stone']];
 /**
@@ -10917,6 +10855,8 @@ interface GameState {
   whipSwing: WhipSwingState | null;
   // ★燕返しの受付(research/KATANA_TSUBAME.md §1)。プレイヤーの一閃が1体以上に当たった瞬間に開く(実時間300ms・1回の一閃に1回だけ)。
   tsubameWindow: TsubameWindow | null;
+  /** ★スラッシャーの追い打ちの予約(utils/slasherFollowup・時刻=realGameTime)。pumpSlasherFollowups が時刻の来た分を出す。 */
+  slasherFollowups: readonly SlasherFollowup[];
   // ★殺陣(research/KATANA_TSUBAME.md §4)。発動中だけ在る(Date.now)。描画は赤い画面・黒い影・白い筋をこれから読む(store が時刻の持ち主)。
   satsujin: SatsujinState | null;
   anchorPlantFxAt: number;    // ワイヤーアンカーを(地面に)打ち込んだ時刻(Date.now)。打ち込み音SEのトリガ
@@ -11683,8 +11623,8 @@ interface GameState {
   // driller/logger以外は無害(no-op)。
   applyDrillerRetreat: (id: string) => void;
   openCounterWindow: () => void;
-  setSlasherCombo: (readyAt: number, step: number) => void;
-  pumpSlasherQueuedTap: () => void; // スラッシャー先行入力の自動発動(毎フレーム・useGameLoopから)
+  pumpSlasherFollowups: () => void; // スラッシャーの追い打ち(0.1秒おきの自動の当たり・utils/slasherFollowup)を時刻が来た分だけ出す(毎フレーム・useGameLoopから)
+  pumpKnifeQueuedTap: () => void; // ナイフの3連撃の先行入力の自動発動(毎フレーム・useGameLoopから)
   pumpWhipQueuedTap: () => void; // 鞭の3連撃の先行入力の自動発動(毎フレーム・useGameLoopから)
   markMeleeSwingFx: () => void; // 近接スイング演出の起点を更新(描画のみ)。追撃など別経路から呼ぶ。
   // ★近接スイング確定の専用打刻(player.meleeSwingCommitAt)。**近接を振った箇所だけ**が呼ぶ
@@ -12474,7 +12414,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     subWeaponCooldowns: {},
     skills: [],
     skillLevels: {},
-    fireShooterCdUntil: 0, reflexCdUntil: 0, slasherChainReadyAt: 0, slasherStrikeStep: 0, slasherReach: 0, slasherQueuedTap: false,
+    fireShooterCdUntil: 0, reflexCdUntil: 0, 
     bloodTreadNextAt: 0, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の次の棘設置可能gameTime
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0, heavySniperStillMs: 0,
     speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,
@@ -12539,6 +12479,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   whipSwingFxAt: 0,
   whipSwing: null,
   tsubameWindow: null,
+  slasherFollowups: [],
   satsujin: null,
   anchorPlantFxAt: 0,
   anchorEnemyHitFxAt: 0,
@@ -13456,8 +13397,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       const k = get().performKatanaStrike([target.id], KATANA_DASH_DAMAGE_MULT, true, undefined, (p0.shukuchiStrikeMult ?? 1) * warlordIssenMult(get().player));
       swung = true; hit = hit || k.hit; finish = finish || k.finish; killed += k.killed;
     }
-    // スラッシャーのジャストリング(追撃の受付)はワープ斬撃では出さない(社長指定)。
-    if (get().player.slasherChainReadyAt > 0) get().setSlasherCombo(0, 0);
     set(state => ({ player: {
       ...state.player, shukuchiStriking: false, shukuchiStrikeMult: undefined, shukuchiTargetId: undefined,
       // 倒せなかった(ボスを斬っただけも含む)=窓を閉じて連鎖も0。倒せていれば撃破の側(openShukuchiWindow)が開き直し済み。
@@ -14309,27 +14248,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (get().whipSwing?.phase === 'swing') return false;
     if (get().whipSwing?.phase === 'overhead') return false; // ★ボスの叩きつけの弧の間は手が塞がっている(投げも通常の振りも出ない・弧が終わるまで待つ)
     // ★縮地(SKILL_BUILD_REDESIGN.md §32): 窓の中の振りはワープ斬撃の予約へ(飛べる相手が居なければ下の通常経路)。
-    // スラッシャーの追撃より**先**に見る(ワープを優先し、チェーンは破棄)。
     if (reserveShukuchiWarp(get, now)) return true;
-    // ★v0.25.4003(社長報告2026-08-28「スラッシャーが連撃うまくできない」): チェーン受付は
-    // triggerCounter側(PC直呼び)にしか無く、タッチのタップは下の通常CD門(820ms)が先に飲むため、
-    // チェーンCD(300ms)のリズムのタップが**予約もされずに捨てられていた**=タッチだけ連撃が
-    // 構造的に一度も出ない(前隙リワーク2026-08-24以降の退行)。PCと同じ受付をここに移植する:
-    // CD中=先行入力の予約(v3254) / 明けていれば即・追撃(前隙なし=PCと同じ) / 時間切れ=破棄して通常へ。
-    if (hasSkill(p, 'slasher') && p.slasherChainReadyAt > 0) {
-      const rgt = get().realGameTime;
-      if (rgt >= p.slasherChainReadyAt + SLASHER_CHAIN_TIMEOUT_MS) {
-        get().setSlasherCombo(0, 0); // 時間切れ=破棄して下の通常経路へ(このタップは新しい初撃の候補)
-      } else if (rgt < p.slasherChainReadyAt) {
-        set(state => ({ player: { ...state.player, slasherQueuedTap: true } }));
-        return false; // チェーンCD中=予約のみ(発動はuseGameLoopのpumpSlasherQueuedTap)
-      } else {
-        const chained = applySlasherChainStrike(get, p, get().gameTime, rgt);
-        playSlasherChainSfx(get, chained);
-        if (chained) return true; // 追撃成立(空振りでも成立=v3934。窓・通常CD・前隙は開かない=PCのチェーン経路と同じ)
-        // null=不発条件(紫中等)→下の通常経路へ落とす
-      }
-    }
     // ★鞭の3連撃(社長指示2026-11-26「タップで0.3秒間隔で3連撃」): 間隔の前・前隙中のタップは1つだけ予約し、明けたら出す(pumpWhipQueuedTap)。
     const whipNow = isWhipMode(p);
     // ★3段目の前隙と3段目の後の隙(WHIP_COMBO_FINISH_RECOVERY_MS)の間のタップは予約しない=捨てる(社長指示2026-11-26「3連撃の最後はきちんと隙つくって」)。
@@ -14339,23 +14258,35 @@ export const useGameStore = create<GameState>((set, get) => ({
       set(state => ({ player: { ...state.player, whipQueuedAt: now } }));
       return false;
     }
+    // ★ナイフの3連撃(社長指示2026-11-26「ナイフは標準で3回振りにする。0.5秒」): 鞭と同じ作り(間隔の前・前隙中のタップは1つだけ予約・3段目の後の隙の間は捨てる)。
+    const knifeNow = isKnifeComboMode(p);
+    const knifeTap = knifeNow ? knifeComboTapAction(now, p.counterCooldownEnd, p.pendingSwingAt > 0, p.knifeComboStage ?? 0) : 'swing';
+    if (knifeTap === 'drop') return false;
+    if (knifeTap === 'queue') {
+      set(state => ({ player: { ...state.player, knifeQueuedAt: now } }));
+      return false;
+    }
     if (now < p.counterCooldownEnd) return false;
     if (p.pendingSwingAt > 0) return false; // 既に前隙中(二重に振らない)
     // 鞭の段: タップごとに 1→2→3→1…(最後の振りから戻る時間を過ぎたら1段目)。間隔=WHIP_COMBO_INTERVAL_MS(近接CDの短縮は掛かる)。
     const whipStage = whipNow ? whipComboNextStage(p.whipComboStage ?? 0, p.whipComboAt ?? -Infinity, now) : 0;
     // ★鞭のカウンターは1段目だけ・クールダウンは連撃の終わりから(社長指示2026-11-26)。鞭以外は今まで通り毎振り開く。
     const whipPlan = whipNow ? whipComboCounterPlan(whipStage, now, p.whipCounterReadyAt ?? 0, !!p.whipComboCounter, whipCounterCooldownMs(p)) : null;
+    // ナイフの段: タップごとに 1→2→3→1…(最後の振りから戻る時間を過ぎたら1段目)。カウンターは1段目だけ・クールダウンは連撃の終わりから(鞭と同じ規則)。
+    const knifeStage = knifeNow ? knifeComboNextStage(p.knifeComboStage ?? 0, p.knifeComboAt ?? -Infinity, now) : 0;
+    const knifePlan = knifeNow ? knifeComboCounterPlan(knifeStage, now, p.knifeCounterReadyAt ?? 0, !!p.knifeComboCounter, knifeCounterCooldownMs(p)) : null;
     set(state => ({
       player: {
         ...state.player,
         pendingSwingAt: now,
         meleeSwingAt: now,
-        ...(!whipPlan || whipPlan.open ? {
+        ...((!whipPlan || whipPlan.open) && (!knifePlan || knifePlan.open) ? {
           counterWindowStart: now, // 隻狼型(v0.25.3943): 受付は押した瞬間から
           counterWindowEnd: now + counterAcceptMsOf(state.player), // 強化で延びる(社長指示2026-10-28)
         } : {}),
-        counterCooldownEnd: now + (whipNow ? whipComboGapMs(whipStage) : COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player), // 鞭: 3段目の後は隙(0.6秒)
+        counterCooldownEnd: now + (whipNow ? whipComboGapMs(whipStage) : knifeNow ? knifeComboGapMs(knifeStage) : COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player), // 鞭・ナイフ: 段の間隔(3段目の後は隙)
         ...(whipPlan ? { whipComboStage: whipStage, whipComboAt: now, whipQueuedAt: 0, whipComboCounter: whipPlan.comboCounter, whipCounterReadyAt: whipPlan.readyAt } : {}),
+        ...(knifePlan ? { knifeComboStage: knifeStage, knifeComboAt: now, knifeQueuedAt: 0, knifeComboCounter: knifePlan.comboCounter, knifeCounterReadyAt: knifePlan.readyAt } : {}),
       },
     }));
     // ★踏み込み(社長裁定2026-08-24)。前隙の頭で `lastDirection` へ短く鋭く滑る。
@@ -14370,7 +14301,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         // swipeDirection/swipeStrength は release() が状態を消す**前**にここへ来る(VirtualJoystickの順序)。
         const runningNow = isRunningForMeleeLunge(p, get().swipeDirection, get().swipeStrength);
         runningSwingAt = runningNow ? now : 0; // 移動近接の印(判定時にノックバックを伸ばす)
-        const spd = knockbackSpeedFor(meleeLungePx(p, runningNow), MELEE_LUNGE_MS); // 武器別(走り: 鞭=20px/ナイフ=30px、立ち/歩き=0=その場で振る)
+        // ★ナイフの3連撃はどの段も少し踏み込む(社長指示2026-11-26「どれも少し踏み込み」・体の幅×KNIFE_COMBO_STEP_FRAC。走りの踏み込みの方が大きければそちら)。
+        // 体ごと動く=前隙の明けの判定(triggerCounter)は踏み込んだ位置から測る=判定が絵とずれない。
+        const lungePx = knifeNow ? knifeComboStepPx(p.width, meleeLungePx(p, runningNow)) : meleeLungePx(p, runningNow);
+        const spd = knockbackSpeedFor(lungePx, MELEE_LUNGE_MS); // 武器別(走り: 鞭=20px/ナイフ=30px、立ち/歩き=0=その場で振る・ナイフは段の踏み込み)
         set(state => ({ player: {
           ...state.player,
           lungeVx: (ld.x / lm) * spd,
@@ -14433,7 +14367,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const retIds = ret ? new Set(ret.targetIds) : null;
     const retMult = ret?.mult ?? 1;
     const {
-      player, gameTime, realGameTime, enemies, projectiles,
+      player, gameTime, enemies, projectiles,
     } = get();
     // 帰還サークル内の攻撃停止は撤廃(社長指示v0.25.3318: 指離せば即ゴールなので不要)。
     // MOVEMENT_REWORK.md 仕様2(社長確定v0.25.2442): スケーター乗車中は攻撃封印(例外なし)。
@@ -14479,29 +14413,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★縮地(§32): PC/ボットの直呼び(前隙なし)もタッチと同じくワープ斬撃の予約へ。斬撃と音は
     // useGameLoop の resolveShukuchiStrike が出すので、ここでは振っていない扱いで返す。
     if (!ret && swingStartAt === undefined && reserveShukuchiWarp(get, now)) return { swung: false, hit: false, finish: false, killed: 0 };
-    // スキル スラッシャー: 使い切っていないチェーンが有効な間は、タップをチェーン継続へ回す
-    // (通常CDより短い専用CD=SLASHER_CHAIN_CD_MSだけで消化。タイミング精度は問わない=CD明けなら即成立)。
-    // チェーンCD中のタップは通常の近接CDと同じ「不発」扱い(連数は減らない・コンボは終わらない)。
-    // ※被弾反撃(ret)はチェーンの受付ではない=ここを通さない(チェーンの状態も動かさない)。
-    if (!ret && hasSkill(player, 'slasher') && player.slasherChainReadyAt > 0) {
-      // 時間切れ(検収時追加・叩き台2秒): チェーンを放置したら破棄して通常の初撃に戻す。
-      // これが無いと、初撃の数十秒後の次の一振りまで「2撃目」扱い=2/3減衰のままになってしまう
-      // (旧リングの寿命~550msに相当する脱出口)。
-      if (realGameTime >= player.slasherChainReadyAt + SLASHER_CHAIN_TIMEOUT_MS) {
-        get().setSlasherCombo(0, 0); // 破棄して下の通常経路へ(通常CDは自然に明けている時間帯)
-        set(state => ({ player: { ...state.player, slasherQueuedTap: false } }));
-      } else if (realGameTime < player.slasherChainReadyAt) {
-        // 先行入力バッファ(社長指示v0.25.3254): CD中のタップは捨てずに予約し、CD明けに自動発動する
-        // (発動はuseGameLoopのpumpSlasherQueuedTap)。連数は減らない。
-        set(state => ({ player: { ...state.player, slasherQueuedTap: true } }));
-        return { swung: false, hit: false, finish: false, killed: 0 }; // チェーンCD中(予約済み)
-      } else {
-        const chained = applySlasherChainStrike(get, player, gameTime, realGameTime);
-        // ★v0.25.3616: null=射程内に敵が居ない追撃(チェーンは破棄済み)。returnせず下の通常経路へ
-        // 落とす=このタップは新しい初撃の候補になる(通常CDが明けていなければ従来どおり不発)。
-        if (chained) return chained;
-      }
-    }
     // Respect cooldown — no swing, no knockback, no window.
     // ★前隙の解決(swingStartAt 指定)は**この門を通さない**: CDは `beginMeleeSwing` が
     // 指を離した瞬間に検査して張ってある。ここで再検査すると自分が張ったCDに引っかかって
@@ -14511,6 +14422,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 3段目の後の隙(と3段目の前隙)の間は予約しない=捨てる。
       if (isWhipMode(player) && !get().whipSwing && whipComboTapAction(now, player.counterCooldownEnd, player.pendingSwingAt > 0, player.whipComboStage ?? 0) === 'queue') {
         set(state => ({ player: { ...state.player, whipQueuedAt: now } }));
+      }
+      // ★ナイフの3連撃も同じ(間隔の前のタップは1つだけ予約・3段目の後の隙の間は捨てる)。
+      if (isKnifeComboMode(player) && knifeComboTapAction(now, player.counterCooldownEnd, player.pendingSwingAt > 0, player.knifeComboStage ?? 0) === 'queue') {
+        set(state => ({ player: { ...state.player, knifeQueuedAt: now } }));
       }
       return { swung: false, hit: false, finish: false, killed: 0 };
     }
@@ -14763,9 +14678,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         .map(e => ({ id: e.id, dist: enemyMeleeDist(pcx, pcy, e), grabbable: whipGrabbable(e, gameTime), alive: e.health > 0 && !isCorpse(e) })));
       const strikeIds = gid ? targetIds.filter(id => id !== gid) : targetIds;
       // tipReach=先端でボスを打った時の大ダメージ(プレイヤー本人の振りだけ・社長指示2026-11-25)。段(3連撃)の会心の上乗せと押しの有無。
-      const res = strikeIds.length > 0
+      // ★スラッシャーの追い打ち(utils/slasherFollowup): 各段の当たりの種を集め、0.1秒おきの追い打ちとして予約する(追い打ちは打撃だけ=掴まない)。
+      const whipCollected = collectSlasherSeeds(() => (strikeIds.length > 0
         ? get().performWhipStrike(strikeIds, { dir: { x: ux, y: uy }, tipReach: reach, critBonus: whipComboCritBonus(comboStage), light: whipComboLight(comboStage) })
-        : { hit: false, finish: false, killed: 0, hits: 0, hitIds: [] as string[] };
+        : { hit: false, finish: false, killed: 0, hits: 0, hitIds: [] as string[] }));
+      const res = whipCollected.result;
+      scheduleSlasherFollowups(get, 'whip', ux, uy, whipCollected.seeds);
       // 命中の音と手応えは段ごと(spawnWhipComboHitFx が鳴らす=共通の命中音 whipHitFxAt は使わない)。掴んだだけの時は掴みの音(startWhipSwing)。
       if (res.hits > 0) {
         const hitIds = res.hitIds ?? [];
@@ -14804,10 +14722,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     let brGuardedHits = 0; // 格闘: 拳鬼にレバーガードで防がれた当たりの数(「当たっていない」扱い=取り消しの条件に数えない・§19-1)
     const meleeHitEnemyIds: string[] = []; // スキル 救難信号: このスイングでヒットした敵ID(発動判定/対象選定用)
     const bashBloodExcludeIds = new Set<string>(); // B10: シールドバッシュで当てた敵(血を浴びない・THEONE_ROUND2 §3-1)
-    // ★スラッシャー実機FB(v0.25.3616「敵を2撃目追いかけてない」): 初撃も追撃と同じ自動追尾を持つ。
-    // 初撃の強制KB(25px)で敵が射程の外縁へ出ると、2撃目が空振り→空振りでは追尾も発火しない=
-    // チェーンが最初の一押しで死んでいた。押した敵(最寄り・非ボス)へ lunge する(追撃側v0.25.3540と同式)。
-    let slasherLungeTo: { dirX: number; dirY: number; dist: number } | null = null;
+    // ★スラッシャーの追い打ち(utils/slasherFollowup): このスイングの通常の当たりの種(敵ごとの値)。ナイフの振りと格闘の各段(s1〜s5)だけ。
+    // 被弾反撃・格闘の技/秘奥義は積まない。積んだ種は関数の末尾で 0.1秒おきの追い打ちとして予約する(入力は増えない)。
+    const slasherSeedOn = hasSkill(player, 'slasher') && !retaliateOne
+      && (!bs || (bs.combo !== undefined && /^s[1-5]$/.test(bs.combo.move)));
+    const slasherSeeds: SlasherFollowupHit[] = [];
     const meleeCritChance = melee?.critChance ?? 0;
     // 訓練(M0)の封印と台本(社長指示v0.25.2293)。**このスイング開始時点で固定**する
     // (敵ごとのループの中で判定すると、1スイングで複数体に当たった時に「3発目」が壊れる)。
@@ -15127,8 +15046,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (scanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
       // ★格闘のダメージ補正(research/BRAWLER.md §13-2): 同じ流れの10ヒット目以降 −5%/発(下限50%)。秘奥義は補正しない。
       const brProration = bs?.combo && bs.combo.move !== 'secret' && bs.combo.move !== 'secret-land' ? BRC.brawlerProrationFor(enemy, now) : 1;
-      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult * scanMult * brProration * meleeAirMult(enemy, now) // 空中の敵への倍率(§16・格闘の長いコンボの補正と同じ並び)
+      const airMk = meleeAirMult(enemy, now); // 空中の敵への倍率(§16・格闘の長いコンボの補正と同じ並び)
+      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult * scanMult * brProration * airMk
         * swingMmVs; // 熟練度: 通常の振り(格闘=brawler・それ以外=melee)。幻影には乗せない
+      // スラッシャーの種: 空中(追い打ちの当たりで掛け直す)・印(自動の斬りには乗らない)・対人の縮み(関所が掛け直す)を外し、幻影へ外した熟練度を戻す。
+      const slasherSeed = dmg / Math.max(1e-6, airMk * gpDmgScale * scanMult) * (swingMm / Math.max(1e-6, swingMmVs));
       // ★SAME_ARENA §9(対人体勢): 紫中の幻影への近接=致命の一撃(×5+最大HP25%・裁定②)。
       // 紫でなければ melee(0.04)の削り+クリなら2/3減速。
       let pvpMeleePatch: Partial<Enemy> = {};
@@ -15155,6 +15077,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         killed.push({ enemy, finisher: false });
         continue;
       }
+      // 生き残った敵だけ追い打ちの種を積む(紫の幻影への致命・拳鬼のレバーガードで受けた当たりは積まない)。
+      if (slasherSeedOn && !gpLeverGuarded && !(isGuardianPhantom(enemy.type) && isPvpFatalTarget(enemy.pvpPosture, gameTime))) {
+        slasherSeeds.push({ id: enemy.id, seed: slasherSeed });
+      }
       // GAME_AUDIT #17(社長承認): プレイヤーが直接出したクリはすべて裏ボスの完全気絶カウントに
       // 乗せる(銃と同じbumpBossCrit=挙動統一)。裏ボス以外はnullで素通り。
       // research/NEW_GUNS.md §4: 印付きのボスへの近接の当たりは 'melee' の削りを 0.04→0.09 相当(impactMult)。別の呼び出しにしない。
@@ -15176,17 +15102,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         : enemy.stunUntil;
       // Knockback, unless this enemy was shoved recently (debounce to avoid
       // locking it in an infinite stagger). Damage still landed above.
-      // 社長指示v0.25.3297「スラッシャーの時だけ25px強制ノックバック(CD無視)」: スラッシャー所持中の
-      // 近接は免疫CD(1.75s)を無視して毎回、実距離25px固定で飛ばす(連撃の各段と初撃で手応えを揃える)。
-      // ★社長指示v0.25.3496「スラッシャーではボスはノックバックしないで」: 強制KB(免疫CD無視)は
-      // **通常敵限定**にする。ボス級に効いていると、免疫CDを無視して毎撃 knockbackUntil が立ち、
-      // ボスの技が永久に中断される(=はめ)。ボスは従来の免疫CD付きルールへ落ちる。
-      const slasherForce = !bs && skillLevel(player, 'slasher') > 0 && !resistsChipKnockback(enemy.type); // 格闘中はスラッシャーは効かない(§7-2)
-      // ★v0.25.3616: 初撃の自動追尾の目標(押した敵のうち最寄り。追撃側の lungeTo と同じ選び方)。
-      if (slasherForce && (slasherLungeTo === null || dist < slasherLungeTo.dist)) {
-        const dn = Math.max(0.001, Math.hypot(dx, dy));
-        slasherLungeTo = { dirX: dx / dn, dirY: dy / dn, dist };
-      }
+      // (旧: スラッシャー所持中は初撃も25pxの強制ノックバック+踏み込みで、入力の連撃が届くよう詰めていた。追い打ちが自動で入る作り
+      //  (utils/slasherFollowup・社長指示2026-11-26)へ置き換えたので、初撃はナイフの通常の押し。吹き飛ばしは最後の追い打ちが出す。)
       if (gpLeverGuarded) {
         // ★拳鬼がレバーガードで受けた(research/BRAWLER_PHANTOM.md §16-10): ダメージは半減済み(gpDmgScale)。浮かせ・押し・食らいの固まり・
         //   止めは書かない(小さい押しは拳鬼の制御が次の tick に出す)。体勢の削り・クリの足止めは今どおり。
@@ -15210,7 +15127,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...(laserBreak?.patch ?? {}),
           ...pvpMeleePatch,
         });
-      } else if (slasherForce || !isBossType(enemy.type) || knockbackCdReady(enemy, now)) {
+      } else if (!isBossType(enemy.type) || knockbackCdReady(enemy, now)) {
         // ★社長指示2026-11-13「近接は毎回押す」(「近接だけなら押され続ける事がないため」「ボスは変えなくていい」):
         //   ナイフの通常の振りは、ボス級でない敵(雑魚・強個体)へは押しの免疫を見ずに毎回押す。免疫は今どおり書く(他の押し手段の免疫は不変)。
         //   被弾反撃(retaliateOne)も同じく毎回押す(社長「はい」2026-11-13)。ボス級は従来どおり免疫を見る。
@@ -15224,7 +15141,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const norm = Math.max(0.001, Math.hypot(dx, dy));
         const falloff = 1 - dist / meleeRange;
         // v0.25.3260: 50px化(3257)を社長指示で撤回=従来値へ。2026-11-07: 移動近接は ×MOVING_MELEE_KB_MULT。
-        const speed = meleeKnockbackSpeed(falloff, slasherForce, movingSwing);
+        const speed = meleeKnockbackSpeed(falloff, false, movingSwing);
         survivors.push({
           ...enemy,
           health: newHealth,
@@ -15278,6 +15195,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     recordDamageDealt('melee', meleeSwingDamage);
     for (const h of swingMasteryHits) noteMasteryDirectHits(player, h.key, [h]); // 熟練度(v2.1 A-9): 当たりごとのキーで貯める
     recordMeleeSwing(slashAt.length);
+    // ★ナイフの3連撃(utils/knifeCombo): 前隙つき(タッチ)は指を離した時に beginMeleeSwing が進めた段・決めたカウンターの可否。直呼び(PC/ボット)はここで決める。
+    // カウンター窓は1段目だけ・カウンターのクールダウンは連撃の終わりから・次の振りまでは段の間隔(3段目の後は隙)。被弾反撃・格闘は対象外(今のまま)。
+    const knifeNow = !ret && isKnifeComboMode(player);
+    const knifeViaPress = knifeNow && swingStartAt !== undefined && (player.knifeComboStage ?? 0) >= 1;
+    const knifeStage = !knifeNow ? 0 : knifeViaPress
+      ? (player.knifeComboStage as number)
+      : knifeComboNextStage(player.knifeComboStage ?? 0, player.knifeComboAt ?? -Infinity, now);
+    const knifePlan = !knifeNow ? null : knifeViaPress
+      ? { open: player.counterWindowStart === swingAt, comboCounter: !!player.knifeComboCounter, readyAt: player.knifeCounterReadyAt ?? 0 }
+      : knifeComboCounterPlan(knifeStage, swingAt, player.knifeCounterReadyAt ?? 0, !!player.knifeComboCounter, knifeCounterCooldownMs(player));
+    const knifeWindowOpen = !knifePlan || knifePlan.open;
     set(state => ({
       // このスイングで近接ダメージを受けた敵(lastHit===now)に meleeAggro を付与(救助で以後プレイヤー狙い)。
       // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
@@ -15314,41 +15242,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       meleeFinishComboUntil: comboGain > 0
         ? gameTime + finishWindowMs
         : state.meleeFinishComboUntil,
-      // フィニッシュで全停止ヒットストップ。スラッシャーリング始動時は新規追加を省くだけでなく、
-      // 他の攻撃(ドローン/刀/鞭フィニッシュ等)が残した既存ヒットストップも解除する。
-      // 既存ヒットストップが生きていると gameTime が凍結されたままリングが始動し、
-      // ① 1発目サークルが動かない ② Hitstop 中タップで elapsed=0→JUST 窓外→コンボ消滅 の2バグを招く。
-      hitstopUntil: !bs && hasSkill(state.player, 'slasher') && slashAt.length > 0
-        ? 0  // スラッシャーリング始動: 既存ヒットストップも即解除してリングをすぐ動かす
-        // ★社長指示2026-11-14「近接、銃、格闘のヒットストップについて、全体で止めるのではなく、個体の方に変更」:
-        // フィニッシュでも画面全体は止めない(当たった敵の止め=meleeHitStunPatch の hitStunUntil だけ)。
-        : state.hitstopUntil,
+      // ★社長指示2026-11-14「近接、銃、格闘のヒットストップについて、全体で止めるのではなく、個体の方に変更」:
+      // フィニッシュでも画面全体は止めない(当たった敵の止め=meleeHitStunPatch の hitStunUntil だけ)。
+      // (旧: スラッシャーのジャストリングの名残で、スラッシャー所持中は既存の全体の止めを解除していた。追い打ちは実時間で入るので要らない。)
+      hitstopUntil: state.hitstopUntil,
       player: {
         ...state.player,
         meleeSwingAt: bs ? state.player.meleeSwingAt : swingAt, // 格闘はナイフの絵を出さない(§7-6)。近接スイング演出の起点(描画のみ)。★前隙の起点=指を離した時刻に揃える(200ms後に絵を出し直さない)。
         // ★SAME_ARENA §9(検収監査 重大②): この振りの最中に紫へ入った(幻影のパリィ等)なら、
         // 破棄した窓をここで開き直さない(旧: 無条件書き=紫入り直後300ms弾パリィが生きていた)。
         // ★被弾反撃(ret)は窓もCDも張らない・開き直さない(近接/カウンターの待ち時間は変えない=CDの影響を受けず、CDも進めない)。
-        counterWindowStart: ret ? state.player.counterWindowStart : isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt, // 隻狼型(v0.25.3943)
-        counterWindowEnd: ret ? state.player.counterWindowEnd : isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt + counterAcceptMsOf(state.player),
-        // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
-        counterCooldownEnd: ret ? state.player.counterCooldownEnd : swingAt + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
+        // ★ナイフの3連撃の2・3段目は窓を開かない(1段目の窓のまま=開き直さない)。
+        counterWindowStart: ret || !knifeWindowOpen ? state.player.counterWindowStart : isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt, // 隻狼型(v0.25.3943)
+        counterWindowEnd: ret || !knifeWindowOpen ? state.player.counterWindowEnd : isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt + counterAcceptMsOf(state.player),
+        // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。ナイフ=段の間隔(3段目の後は隙)。
+        counterCooldownEnd: ret ? state.player.counterCooldownEnd : swingAt + (knifeNow ? knifeComboGapMs(knifeStage) : counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
+        ...(knifePlan ? { knifeComboStage: knifeStage, knifeComboAt: swingAt, knifeQueuedAt: 0, knifeComboCounter: knifePlan.comboCounter, knifeCounterReadyAt: knifePlan.readyAt } : {}),
         // 格闘の段・技の当たりでは溜まりを消費しない(コンボが途切れた時に tickBrawler が消費する・§16)。ナイフは今までどおり振るたび消費。
         huntingCharged: bs ? state.player.huntingCharged : false,
         huntingChargeStartedAt: bs ? state.player.huntingChargeStartedAt : 0,
-        // スキル スラッシャー: この近接が命中(slashAt有)したらチェーンを開始(step=0・0.5秒後にチェーンCD明け)。
-        // 命中しなければ非アクティブ(チェーン無し)。以後の追撃はチェーンCD明けのタップで出す。
-        // ★v0.25.3931(社長指示2026-08-26「スラッシャーを空振りでも2発目以降振れるようにして」):
-        // 旧実装は **命中(slashAt有)した時だけ**チェーンを開いていた=空振りすると2発目が出せなかった。
-        // 前隙200msが入って「振ってから当たるまで」に間ができた今、初撃が外れるのは普通に起きるので、
-        // **命中を条件にしない**(スキルを持っていて振ったなら連撃に入れる)。
-        // ※被弾反撃(ret)はチェーンを始めない・動かさない。
-        slasherChainReadyAt: ret ? state.player.slasherChainReadyAt : hasSkill(state.player, 'slasher')
-          ? state.realGameTime + SLASHER_CHAIN_CD_MS
-          : 0,
-        slasherStrikeStep: ret ? state.player.slasherStrikeStep : 0,
-        // 追撃用に「初撃時点の射程」を記録(state.player は更新前=huntingCharged がまだ true なので溜め延長を含む)。
-        slasherReach: ret ? state.player.slasherReach : hasSkill(state.player, 'slasher') ? huntingMeleeRadius(state.player) : 0,
       },
       projectiles: grenadesToDetonate.length > 0 || trapShoves.length > 0 || hasShieldShove
         ? state.projectiles.map(p => {
@@ -15532,26 +15444,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     get().registerMultiHit(slashAt.length); // キャラ固有 ヘビーガンナー: 近接が2体以上に当たれば爆発範囲バフ
     // (カウンターマスターの吹き飛ばしは近接ヒットではなくカウンター成立時へ移した=counterMasterOnCounterSuccess・社長指示2026-11-22)
-    // スキル スラッシャーのチェーン開始はこの近接スイングの set()(player.slasherChainReadyAt)で行う。
-    // 追撃自体は「チェーンCD明けのタップ」で applySlasherChainStrike が出す(自動ではない)。
-    // ★v0.25.3616(実機FB「敵を2撃目追いかけてない」): 初撃にも追撃と同じ自動追尾(v0.25.3540)を付ける。
-    // 初撃の強制KB(25px)で敵が射程外縁へ出る→2撃目空振り→空振りでは追尾が発火しない、の悪循環を
-    // 初撃側の踏み込みで断つ(押した量ぶん詰め直す=次のタップは必ず射程内)。
-    if (hasSkill(player, 'slasher') && slashAt.length > 0 && slasherLungeTo !== null) {
-      const lungePx = slasherLungePx(slasherLungeTo.dist, SLASHER_FORCE_KB_PX, meleeRange);
-      if (lungePx > 0.5) {
-        const lungeSpeed = knockbackSpeedFor(lungePx, SLASHER_LUNGE_MS);
-        const lTo = slasherLungeTo;
-        set(state => ({
-          player: {
-            ...state.player,
-            knockbackVx: lTo.dirX * lungeSpeed,
-            knockbackVy: lTo.dirY * lungeSpeed,
-            knockbackUntil: now + SLASHER_LUNGE_MS,
-            knockbackMs: SLASHER_LUNGE_MS,
-          },
-        }));
-      }
+    // ★スラッシャーの追い打ち(utils/slasherFollowup): このスイングで生き残った敵へ 0.1秒おきに自動で入れる(入力は増えない)。
+    if (slasherSeeds.length > 0) {
+      const ld = bs && bs.kb.dirX !== undefined && bs.kb.dirY !== undefined ? { x: bs.kb.dirX, y: bs.kb.dirY } : (player.lastDirection ?? { x: 1, y: 0 });
+      scheduleSlasherFollowups(get, bs ? 'brawler' : 'knife', ld.x, ld.y, slasherSeeds);
     }
 
     // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。
@@ -16508,8 +16404,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const katanaScanMult = enemy.id === katanaScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'katana') : 1;
       if (katanaScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 一閃は手動の近接=起爆
-      let dmg = baseDamage * damageMult * strikeMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * katanaScanMult * (isGhost ? 1 : meleeAirMult(enemy, now)) // 空中の敵への倍率(§16・守護霊は対象外)
+      const katanaAirMk = isGhost ? 1 : meleeAirMult(enemy, now); // 空中の敵への倍率(§16・守護霊は対象外)
+      let dmg = baseDamage * damageMult * strikeMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * katanaScanMult * katanaAirMk
         * katanaMmVs; // 熟練度: 刀=katana(幻影には乗せない)
+      // スラッシャーの種(一閃・燕返しの時だけ受け皿が立つ): 空中・印・対人の縮みを外し、幻影へ外した熟練度を戻す。紫の幻影への致命は積まない。
+      const katanaSlasherSeed = isGuardianPhantom(enemy.type) && isPvpFatalTarget(enemy.pvpPosture, gameTime) ? 0
+        : dmg / Math.max(1e-6, katanaAirMk * gpDmgScale * katanaScanMult) * (katanaMm / Math.max(1e-6, katanaMmVs));
       // ★SAME_ARENA §9(検収監査 重大③): 刀にも致命(×5+最大HP25%)とmelee削り(site1と同型)。
       // 本人由来のみ=守護霊の刀(isGhost)は削らない・致命も出さない。
       let pvpMeleePatch: Partial<Enemy> = {};
@@ -16535,6 +16435,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         killed.push({ enemy, finisher: false });
         continue;
       }
+      if (!isGhost) noteSlasherSeed(enemy.id, katanaSlasherSeed); // 受け皿は一閃・燕返しの解決だけが立てる(自動の斬り・殺陣・被弾反撃は積まない)
       // 銃のクリと同じ挙動: 倒しきれなかったクリは敵をスタンさせ、黄色いリングで
       // 知らせる。これで刀でも「クリが出た」のが分かり、スタン中の敵を一閃の近接
       // フィニッシュで処刑できる(刀=銃の代替としての一貫挙動)。
@@ -16901,9 +16802,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 先端でボス区分を打った=×2.5(幻影は対人の規則があるので外す)。気絶中の5倍・致命は上の枝(ここへ来ない)=重ねない。
       const tipHit = tipReach !== undefined && BRC.brawlerEnemyClass(enemy) === 'boss' && !isGuardianPhantom(enemy.type)
         && isWhipTipHit(enemyMeleeDist(pcx, pcy, enemy), tipReach);
-      let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * whipScanMult * (isGhost ? 1 : meleeAirMult(enemy, now)) // 空中の敵への倍率(§16・守護霊は対象外=刀と同じ)
+      const whipAirMk = isGhost ? 1 : meleeAirMult(enemy, now); // 空中の敵への倍率(§16・守護霊は対象外=刀と同じ)
+      let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * whipScanMult * whipAirMk
         * whipMmVs // 熟練度: 鞭=whip(幻影には乗せない)
         * (tipHit ? WHIP_TIP_BOSS_MULT : 1);
+      // スラッシャーの種(プレイヤーの鞭の振りの時だけ受け皿が立つ): 段の会心・先端・大車輪・巻き込みはそのまま引き継ぐ。空中・印・対人の縮みは外す。紫の幻影への致命は積まない。
+      const whipSlasherSeed = isGuardianPhantom(enemy.type) && isPvpFatalTarget(enemy.pvpPosture, gameTime) ? 0
+        : dmg / Math.max(1e-6, whipAirMk * gpDmgScale * whipScanMult) * (whipMm / Math.max(1e-6, whipMmVs));
       if (tipHit) {
         const rr = enemyRangeRect(enemy);
         const tx = pcx + (ld.x / lmag) * (tipReach ?? 0), ty = pcy + (ld.y / lmag) * (tipReach ?? 0);
@@ -16930,6 +16835,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = enemyHealthAfterHit(enemy, dmg);
       if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
+      if (!isGhost) noteSlasherSeed(enemy.id, whipSlasherSeed); // 受け皿はプレイヤーの鞭の振り(3連撃の各段)だけが立てる(振り回しのぶつかり・被弾反撃は積まない)
       if (crit) critStunAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
       // §9.4(v0.25.2502・CRIT-UNIFY★未決2の解消): 鞭のクリも紫カウントへ(発生枠=近接系共通。
       // ナイフ4737/刀5479/分身5076と同じ作法=GAME_AUDIT #17「プレイヤーが直接出したクリは全部乗せる」)。
@@ -17863,10 +17769,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 「斬」を出す位置 = **実際に通った軌道**の真ん中。
         const zanX = pcx + ux * travel / 2;
         const zanY = pcy + uy * travel / 2;
-        const result: { finish: boolean; hitIds?: string[] } = strikeIds.length > 0
+        // ★スラッシャーの追い打ち(utils/slasherFollowup): プレイヤーの一閃・燕返しの当たりの種を集め、0.1秒おきの追い打ちとして予約する(守護霊は積まない)。
+        const katanaCollected = collectSlasherSeeds(() => (strikeIds.length > 0
           ? get().performKatanaStrike(strikeIds, KATANA_DASH_DAMAGE_MULT, true, ghostId, ghostId ? 1 : warlordIssenMult(striker), tb ? 'tsubame' : 'issen',
             tb ? { x: pcx + ux * travel, y: pcy + uy * travel } : undefined) // 燕返し: 斬撃の絵は仮定の通り道の終点(一閃で体が着く所に当たる)から
-          : { finish: false };
+          : { finish: false }));
+        const result: { finish: boolean; hitIds?: string[] } = katanaCollected.result;
+        if (ghostId === undefined) scheduleSlasherFollowups(get, 'katana', ux, uy, katanaCollected.seeds); // 向き=走った(燕返しは仮定して走った)向き
         {
           // 守護霊も同じ(社長裁定2026-11-22「守護霊にも燕返し・一閃の浮かせ・切り傷・殺陣」)。宛先だけ主語ごと(受付=GameState / Summon)。
           const hitIds = result.hitIds ?? [];
@@ -25143,7 +25052,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
-  // スキル: スラッシャーのチェーン状態を設定(readyAt=0 でチェーン終了=通常CDへ復帰)。
   pumpWhipQueuedTap: () => {
     // ★鞭の3連撃の先行入力(社長指示2026-11-26「0.3秒間隔」)。予約が無ければ即return=実質ゼロコスト。
     const p = get().player;
@@ -25156,24 +25064,29 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({ player: { ...state.player, whipQueuedAt: 0 } }));
     if (act === 'fire') get().beginMeleeSwing();
   },
-  pumpSlasherQueuedTap: () => {
-    // 先行入力の自動発動(社長指示v0.25.3254「0.3以内に次がタップされてれば自動発動」)。
-    // useGameLoopが毎フレーム呼ぶ。予約なし/チェーン無し/CD中は即return=実質ゼロコスト。
-    const s0 = get();
-    const p = s0.player;
-    if (isPvpIncapacitated(p.pvpPosture, s0.gameTime)) return; // ★SAME_ARENA §9(検収監査 重大①): 紫/daze中は先行入力の自動追撃も出ない(予約は保持=明けたら従来判定)
-    if (!p.slasherQueuedTap || p.slasherChainReadyAt <= 0) return;
-    if (s0.realGameTime < p.slasherChainReadyAt) return;
-    set(state => ({ player: { ...state.player, slasherQueuedTap: false } }));
-    if (s0.realGameTime >= p.slasherChainReadyAt + SLASHER_CHAIN_TIMEOUT_MS) {
-      get().setSlasherCombo(0, 0); // 予約したまま長時間止まっていた(ポーズ等)場合は破棄
-      return;
-    }
-    playSlasherChainSfx(get, applySlasherChainStrike(get, get().player, s0.gameTime, s0.realGameTime));
+  pumpKnifeQueuedTap: () => {
+    // ★ナイフの3連撃の先行入力(utils/knifeCombo・鞭の pumpWhipQueuedTap と同じ)。予約が無ければ即return=実質ゼロコスト。
+    const p = get().player;
+    const q = p.knifeQueuedAt ?? 0;
+    if (!(q > 0)) return;
+    const now = Date.now();
+    if (!isKnifeComboMode(p)) { set(state => ({ player: { ...state.player, knifeQueuedAt: 0 } })); return; }
+    const act = knifeComboQueuedAction(now, q, p.counterCooldownEnd, p.pendingSwingAt > 0);
+    if (act === 'wait') return;
+    set(state => ({ player: { ...state.player, knifeQueuedAt: 0 } }));
+    if (act === 'fire') get().beginMeleeSwing();
   },
-  setSlasherCombo: (readyAt, step) => {
-    // readyAt=0(チェーン終了/破棄)の時は先行入力の予約も一緒に破棄する(持ち越さない)。
-    set(state => ({ player: { ...state.player, slasherChainReadyAt: readyAt, slasherStrikeStep: step, ...(readyAt === 0 ? { slasherQueuedTap: false } : {}) } }));
+  pumpSlasherFollowups: () => {
+    // ★スラッシャーの追い打ち(utils/slasherFollowup)。予約が無ければ即return=実質ゼロコスト。時計=realGameTime(ポーズで止まる)。
+    const s0 = get();
+    if (s0.slasherFollowups.length === 0) return;
+    const { due, rest } = takeDueSlasherFollowups(s0.slasherFollowups, s0.realGameTime);
+    if (due.length === 0) return;
+    set({ slasherFollowups: rest });
+    for (const f of due) {
+      if (s0.realGameTime - f.at > SLASHER_FOLLOWUP_STALE_MS) continue; // 長く止まっていた予約は出さない(時計の巻き戻り・飛び)
+      runSlasherFollowup(get, f);
+    }
   },
 
   markMeleeSwingFx: () => {
@@ -29895,6 +29808,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         whipSwingFxAt: 0,
         whipSwing: null,
         tsubameWindow: null,
+        slasherFollowups: [],
         satsujin: null,
         anchorPlantFxAt: 0,
         anchorEnemyHitFxAt: 0,
@@ -29979,7 +29893,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           startingSubWeapons: [...runSubs], // 出撃時のサブ(刀でも止めない側・subWeaponBlockedByKatana)
           skills: runSkills,
           skillLevels: runSkillLevels,
-          fireShooterCdUntil: 0, reflexCdUntil: 0, slasherChainReadyAt: 0, slasherStrikeStep: 0, slasherReach: 0, slasherQueuedTap: false,
+          fireShooterCdUntil: 0, reflexCdUntil: 0, 
     bloodTreadNextAt: 0, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の次の棘設置可能gameTime
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0, heavySniperStillMs: 0,
     speedRampSustainMs: 0, speedRampDirX: 0, speedRampDirY: 0,

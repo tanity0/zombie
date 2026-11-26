@@ -7,10 +7,11 @@
 //  ④ 窓とCDの終了時刻は**指を離した時刻**が基準(解決時刻を基準にすると1周期200ms伸びる=弱体化)。
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  useGameStore, MELEE_WINDUP_MS, meleeWindupMs, COUNTER_WINDOW, COUNTER_ACCEPT_MS, isCounterActive, meleeLungePx, isRunningForMeleeLunge, COUNTER_COOLDOWN,
+  useGameStore, MELEE_WINDUP_MS, meleeWindupMs, COUNTER_ACCEPT_MS, isCounterActive, meleeLungePx, isRunningForMeleeLunge,
   MELEE_LUNGE_PX, MELEE_LUNGE_MS, WHIP_LUNGE_PX, knockbackSpeedFor, PLAYER_BASE_SPEED, KNOCKBACK_SPEED,
 } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
+import { knifeComboGapMs, knifeComboStepPx } from '../utils/knifeCombo';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 
@@ -78,7 +79,8 @@ describe('★近接の前隙(SAME_ARENA.md §7)', () => {
     // 隻狼型(v0.25.3943): 受付窓は [押した瞬間, +COUNTER_ACCEPT_MS]。CDのサイクル(COUNTER_WINDOW基準)は不変。
     expect(p.counterWindowStart).toBe(pendAt);
     expect(p.counterWindowEnd).toBe(pendAt + COUNTER_ACCEPT_MS);
-    expect(p.counterCooldownEnd).toBe(pendAt + COUNTER_WINDOW + COUNTER_COOLDOWN);
+    // ★ナイフの3連撃(2026-11-26・utils/knifeCombo): 次の振りまで=段の間隔(1段目=0.5秒)。旧=窓+CD(COUNTER_WINDOW+COUNTER_COOLDOWN)。
+    expect(p.counterCooldownEnd).toBe(pendAt + knifeComboGapMs(1));
     // 絵の起点も前隙の起点に揃っている(200ms後に振り直さない)。
     expect(p.meleeSwingAt).toBe(pendAt);
   });
@@ -142,13 +144,19 @@ describe('★近接の前隙(SAME_ARENA.md §7)', () => {
     expect(Math.abs(p.lungeVx)).toBeCloseTo(knockbackSpeedFor(MELEE_LUNGE_PX, MELEE_LUNGE_MS), 3);
   });
 
-  it('★二値化(社長指示2026-08-28): 立ち/歩きで振ると踏み込み0=その場で振る', () => {
+  it('★二値化(社長指示2026-08-28): 立ち/歩きで振ると走りの踏み込みは出ない(ナイフは3連撃の段の小さな踏み込みだけ・鞭は0=その場で振る)', () => {
     setup();
     useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 1, y: 0 }, vx: 0, vy: 0, counterCooldownEnd: 0, pendingSwingAt: 0 } }));
     useGameStore.getState().beginMeleeSwing();
     const p = useGameStore.getState().player;
-    expect(p.lungeVx).toBe(0);
+    // ★ナイフの3連撃(社長指示2026-11-26「どれも少し踏み込み」): 立ちでも段の踏み込み(体の幅×KNIFE_COMBO_STEP_FRAC)だけ前へ。
+    expect(p.lungeVx).toBeCloseTo(knockbackSpeedFor(knifeComboStepPx(p.width, 0), MELEE_LUNGE_MS), 6);
     expect(p.lungeVy).toBe(0);
+    expect(knifeComboStepPx(p.width, 0)).toBeLessThan(MELEE_LUNGE_PX); // 走りの踏み込みより小さい
+    // 鞭は今までどおり立ちでは踏み込まない
+    useGameStore.setState(s => ({ player: { ...s.player, subWeapons: ['whip'], lungeVx: 0, lungeVy: 0, lungeUntil: 0, vx: 0, vy: 0, counterCooldownEnd: 0, pendingSwingAt: 0 } }));
+    useGameStore.getState().beginMeleeSwing();
+    expect(useGameStore.getState().player.lungeVx).toBe(0);
   });
 
   // ★社長指示2026-08-24「鞭は踏み込み20で」。武器ごとの値は meleeLungePx に集約する

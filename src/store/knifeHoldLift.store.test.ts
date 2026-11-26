@@ -1,7 +1,8 @@
 // ★ナイフの当たりの固まりと浮き(社長指示2026-11-12「あと近接でも敵の攻撃が止まる&浮くようにして」・裁定「近接は止めるだけ」)。
 // 中身は格闘と同じ(固まり=1段目・浮き=地上は3段目の打ち上げ/空中は2段目の拾い)。実際のストア(triggerCounter → updateEnemies=行動の時計の凍結)で通す。
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
-import { useGameStore, SLASHER_CHAIN_CD_MS } from './gameStore';
+import { useGameStore } from './gameStore';
+import { SLASHER_FOLLOWUP_INTERVAL_MS } from '../utils/slasherFollowup';
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll, brawlerAirborne, brawlerHeldNow, BRAWLER_JUGGLE_BUDGET, BRAWLER_GROUND_LAUNCH, BRAWLER_JUGGLE_PUSH } from '../utils/brawlerCombo';
@@ -179,37 +180,22 @@ describe('ナイフの当たり: 固まりと浮き', () => {
     swing();
     expect(brawlerAirborne(en('z2'), now)).toBe(true);
   });
-  it('スラッシャー Lv3: 1撃目で浮く→追撃は空中の敵に当たって拾う(最後の大きな押しの前にダウンしない)', () => {
+  it('スラッシャー Lv3: 1撃目で浮く→追い打ち(入力なし・0.1秒おき)は空中の敵に当たる・数字は実際に減った量', () => {
     useGameStore.setState({ enemies: [place('zombie', 40, 0, 'z')] });
     withSlasher(3);
     expect(swing().hit).toBe(true);
     expect(brawlerAirborne(en('z'), now)).toBe(true);
-    const budgets: number[] = [en('z').brLiftBudget!];
-    const c = center();
     for (let k = 0; k < 3; k++) {
-      const ready = useGameStore.getState().player.slasherChainReadyAt;
-      expect(ready).toBeGreaterThan(0);
-      step(SLASHER_CHAIN_CD_MS + 20);
-      // 押しで離れた分は戻す(距離ではなく浮きだけを見る)
-      useGameStore.setState(st => ({
-        realGameTime: Math.max(st.realGameTime, ready + 10),
-        enemies: st.enemies.map(x => (x.id === 'z' ? { ...x, x: c.x + 40 - x.width / 2, y: c.y - x.height / 2, knockbackVx: 0, knockbackVy: 0, knockbackUntil: 0 } : x)),
-        player: { ...st.player, pendingSwingAt: 0 },
-      }));
       const hp = en('z').health;
-      useGameStore.getState().triggerCounter();
+      step(SLASHER_FOLLOWUP_INTERVAL_MS);
+      useGameStore.setState(st => ({ realGameTime: st.realGameTime + SLASHER_FOLLOWUP_INTERVAL_MS }));
+      useGameStore.getState().pumpSlasherFollowups();
       const z = en('z');
-      expect(z.health).toBeLessThan(hp); // 追撃が当たった
-      // 追撃の数字は空中の倍率の後の値(=実際に減った量・案A)
+      expect(z.health).toBeLessThan(hp); // 追い打ちが当たった
       const nums = useGameStore.getState().effects.filter(x => x.kind === 'damageNumber');
       expect(nums[nums.length - 1].value).toBe(Math.max(1, Math.ceil(hp - z.health)));
-      expect(brawlerAirborne(z, now)).toBe(true); // 空中のまま(拾い・最後は叩き落としで落ちている途中)
-      if (k < 2) expect(z.brLiftDown).toBe(false); // 最後の大きな押し(5段目)の前にダウンしない
-      budgets.push(z.brLiftBudget!);
     }
-    // 1撃目(地上の打ち上げ=予算満タン)→ 追撃1回目(空中の3段目=2)→ 2回目(2段目=1)→ 3回目(5段目=叩き落とし)
-    expect(budgets.slice(0, 3)).toEqual([BRAWLER_JUGGLE_BUDGET.mob, BRAWLER_JUGGLE_BUDGET.mob - 2, BRAWLER_JUGGLE_BUDGET.mob - 3]);
-    expect(en('z').brLiftDown).toBe(true);
+    expect(useGameStore.getState().slasherFollowups).toHaveLength(0);
   });
   it('気絶した強個体へのとどめは今までどおり(跳ねだけ・格闘の浮き/固まりは書かない)', () => {
     useGameStore.setState({ enemies: [place('driller', 50, 0, 'd', { stunUntil: gt() + 3000 })] });

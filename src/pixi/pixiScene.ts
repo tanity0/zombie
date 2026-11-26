@@ -119,7 +119,7 @@ import {
   SCREAMER_BUFF_MS,
   PLAYER_KNOCKBACK_MS,
   retaliationReadyTarget, // ★被弾反撃の「いま出せるか」(入力と同じ1本・HIT_RETALIATION.md §7)
-  isBrawlerGuarding, brawlerGuardBodyRect, isBrawlerMode, isWhipMode, katanaReach, whipReach, // ★サブウェポン「格闘」(research/BRAWLER.md)
+  isBrawlerGuarding, brawlerGuardBodyRect, isBrawlerMode, isWhipMode, isKnifeComboMode, katanaReach, whipReach, // ★サブウェポン「格闘」(research/BRAWLER.md)
   type SkadiBlade, type SkadiBladeVisual, // 氷刃の列を共用する飛ぶ物(亡霊の呪いの墓石=visual:'grave'・WRAITH_MUTANT.md §11)
 } from '../store/gameStore';
 import { kenkiLevelLook } from '../utils/kenkiLevel'; // 孫悟空のレベルの色(research/BRAWLER.md §36-1)
@@ -133,6 +133,7 @@ import {
   katanaSlashIntScale, katanaSlashJitter, katanaSlashPose, katanaSlashVisibleMid, katanaWhiteRgba,
 } from '../utils/katanaSlashSheet'; // プレイヤーの刀の斬撃シート(社長支給2026-11-22)
 import { whipComboBodyRecover } from '../utils/whipCombo'; // 鞭の3段目の後の隙の姿勢
+import { knifeComboBodyT, knifeComboSwingDir } from '../utils/knifeCombo'; // ナイフの3連撃の段の向き・3段目の後の隙の姿勢
 import {
   whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
   whipGrabZoomAt, WHIP_GRAB_ZOOM_MAG, WHIP_GRAB_ZOOM_AIM_FRAC, WHIP_GRAB_ZOOM_TOTAL_MS,
@@ -1847,6 +1848,8 @@ const KATANA_PATH_BURST_LEN = 80;
 // オフセット単位 = キャラ箱高×奥行スケール(unit)。右向き時の値(左向きは ox を反転+画像xミラー)。
 // scale = スプライト幅 / unit。実機で微調整可。
 const KNIFE_SWING_SWITCH = 0.30;                        // frame1→frame2 切替(kt 0..1)
+/** ★スラッシャーの追い打ち(ナイフ)の振り直しの尺(ms・描画だけ)。追い打ちの間隔(0.1秒)より少し短く=1回ごとに振り切って次へ。 */
+const SLASHER_ECHO_MS = 90;
 const KNIFE_SWING_SWITCH2 = 0.62;                       // frame2→frame3 切替(社長提供の3コマ化 v0.25.1444)
 const KNIFE_F1 = { scale: 0.95, ox: -0.30, oy: 0.12 };  // 1枚目: キャラ左下のダガー(少し上げた)
 const KNIFE_F2 = { scale: 1.80, ox: 0.22, oy: -0.12 };  // 2枚目: 被せ+スラッシュ右へ(少し上げた・少し大きく)
@@ -28643,11 +28646,18 @@ export class PixiScene {
     // 3段目の後の隙(utils/whipCombo): 振り抜いた底で粘ってからゆっくり立ち上がる(隙が目で分かる)。1・2段目は今の戻り。
     const whipRecover = isWhipMode(p) ? whipComboBodyRecover(p.whipComboStage ?? 0, MELEE_WINDUP_MS) : null;
     const whipSwingPose = ohPose ? ohPose.pose : isWhipMode(p) ? whipBodyPose(sinceSwing, MELEE_WINDUP_MS, whipRecover?.recoverMs, whipRecover?.holdMs) : null;
+    // ★ナイフの3連撃(utils/knifeCombo): 1・3段目=振り上げ(しゃがみ→振り上げ)・2段目=振り上げた所からの振り下ろし(振り上げ→しゃがみ)。
+    // 3段目の後の隙は踏み込みの頂点で粘ってから減速してゆっくり戻る。体の動き(踏み込み・傾き)は bodyT で進める。描画だけ。
+    const knifeStageNow = isKnifeComboMode(p) ? Math.max(1, Math.min(3, p.knifeComboStage ?? 1)) : 0;
+    const knifeBody = knifeStageNow > 0 && p.meleeSwingAt > 0 ? knifeComboBodyT(sinceSwing, swingWindowMs, knifeStageNow) : null;
+    const bodySwingOn = p.meleeSwingAt > 0 && sinceSwing >= 0 && (knifeBody ? knifeBody.active : sinceSwing < swingWindowMs);
+    const bodySwingT = knifeBody ? knifeBody.t : sinceSwing / swingWindowMs;
     if (meleePosePrefix && !warlordFull && !killFxSwallowsSwing && whipSwingPose?.pose) {
       const poseTex = getTexture(`${meleePosePrefix}-${whipSwingPose.pose}`);
       if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}-${whipSwingPose.pose}`; }
-    } else if (meleePosePrefix && !warlordFull && !killFxSwallowsSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
-      const poseSuffix = (sinceSwing / swingWindowMs) < MELEE_POSE_READY_FRAC ? '-ready' : '-swing';
+    } else if (meleePosePrefix && !warlordFull && !killFxSwallowsSwing && bodySwingOn) {
+      const early = bodySwingT < MELEE_POSE_READY_FRAC;
+      const poseSuffix = knifeStageNow === 2 ? (early ? '-swing' : '-ready') : (early ? '-ready' : '-swing');
       const poseTex = getTexture(`${meleePosePrefix}${poseSuffix}`);
       if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}${poseSuffix}`; }
     } else if (meleePosePrefix && !warlordFull && hurtPoseActive) {
@@ -28717,8 +28727,8 @@ export class PixiScene {
       actLean += (ohPose ? ohPose.face : face) * whipSwingPose.lean; // 叩きつけの間は向き直った側へ反る・沈む
       actSqX *= whipSwingPose.sqX;
       actSqY *= whipSwingPose.sqY;
-    } else if (PLAYER_MOTION_FX && !pvpStunned && !killFxSwallowsSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
-      const t = sinceSwing / swingWindowMs;
+    } else if (PLAYER_MOTION_FX && !pvpStunned && !killFxSwallowsSwing && bodySwingOn) {
+      const t = bodySwingT;
       const arc = Math.sin(t * Math.PI); // 0→1→0(踏み込みのピークは中盤)
       const whip = 1 - t;                // 開始が一番強い→復帰
       actOffX += aimx * PLAYER_MELEE_LUNGE_PX * arc * dsc;
@@ -29396,8 +29406,18 @@ export class PixiScene {
       // meleeSwingAtは基本更新されないが、乗車直前の残りスイングも含めて構え武器を出さない。
       // ★実機FB9(v0.25.3616「まだ近接の斬撃の弧が止まって残ってる」): この弧(ナイフ振り3コマ+
       // 武器絵)が通常近接演出の最後の取りこぼしだった。KILL処刑演出中は出さない(下のelseで消える)。
-      if (!p.skaterRiding && !killFxSwallowsSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
-        const kt = meleeSwingEase(sinceSwing / swingWindowMs); // ゆっくり→速く→ゆっくり(§5.22-追補でスロー中は伸長)
+      // ★スラッシャーの追い打ち(ナイフ): 振りの表示の外で、追い打ちのたびにナイフの振りの後半(弧+刃)を短い尺で振り直す(描画だけ・既存の絵)。
+      const echoSince = now - (p.slasherEchoAt ?? 0);
+      const mainSwingOn = p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs;
+      const echoOn = !mainSwingOn && knifeStageNow > 0 && (p.slasherEchoAt ?? 0) > 0 && echoSince >= 0 && echoSince < SLASHER_ECHO_MS;
+      if (!p.skaterRiding && !killFxSwallowsSwing && (mainSwingOn || echoOn)) {
+        const kt = mainSwingOn
+          ? meleeSwingEase(sinceSwing / swingWindowMs) // ゆっくり→速く→ゆっくり(§5.22-追補でスロー中は伸長)
+          : KNIFE_SWING_SWITCH + (1 - KNIFE_SWING_SWITCH) * meleeSwingEase(echoSince / SLASHER_ECHO_MS);
+        // 段の向き: 2段目=振り下ろし=絵を胸の高さで上下に返す。追い打ちは1回ごとに向きを返す(振り上げ⇄振り下ろしの往復)。
+        const vflip = knifeStageNow > 0
+          ? knifeComboSwingDir(knifeStageNow) * (echoOn && (p.slasherEchoK ?? 1) % 2 === 1 ? -1 : 1)
+          : 1;
         // 右/左だけ(上下に撃っても水平成分で決定)。pure縦は直近の向き(face)。
         let kax = aimx, kay = aimy;
         if (kax === 0 && kay === 0) { kax = face; kay = 0; }
@@ -29415,8 +29435,8 @@ export class PixiScene {
         ) => {
           if (!vis || !spr.texture || spr.texture.width === 0) { spr.visible = false; return; }
           const sc = (unit * cfg.scale) / spr.texture.width;
-          spr.scale.set(mir * sc, sc);                                 // 左向き=水平ミラー(回転なし)
-          spr.position.set(baseX + mir * cfg.ox * unit, baseY + cfg.oy * unit);
+          spr.scale.set(mir * sc, vflip * sc);                         // 左向き=水平ミラー(回転なし)・振り下ろし=上下に返す
+          spr.position.set(baseX + mir * cfg.ox * unit, baseY + vflip * cfg.oy * unit);
           spr.alpha = alpha * view.sprite.alpha;
           spr.visible = spr.alpha > 0.01;
         };
@@ -29434,9 +29454,9 @@ export class PixiScene {
           if (!wtex) { wpn.visible = false; return; }
           if (wpn.texture !== wtex) wpn.texture = wtex;
           const sc2 = (unit * lenFrac) / Math.max(1, Math.hypot(wtex.width, wtex.height));
-          wpn.scale.set(mir * sc2, sc2);
-          wpn.rotation = mir * rot;
-          wpn.position.set(baseX + mir * ox * unit, baseY + oy * unit);
+          wpn.scale.set(mir * sc2, vflip * sc2);
+          wpn.rotation = vflip * mir * rot; // 上下に返す時は回転も返す(鏡映)
+          wpn.position.set(baseX + mir * ox * unit, baseY + vflip * oy * unit);
           wpn.alpha = alpha * view.sprite.alpha;
           wpn.visible = wpn.alpha > 0.01;
         };

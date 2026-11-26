@@ -2,7 +2,7 @@
 // slasher follow-up decay). Pure functions/constants from the store — see
 // CLAUDE.md Testing policy (test the changed logic in the same commit).
 import { describe, it, expect } from 'vitest';
-import { skillMeleeComboMult, SLASHER_MULTS, SLASHER_MAX_HITS,
+import { skillMeleeComboMult,
   skillAttackShooterGunMult, skillRunnerSpeedMult, skillSeekerProcChance, isSeekerActive,
   skillMagnetPullRadius, skillOverclockChance, skillLastMagazineMult,
   // v0.25.3300 覚醒(Lv3)効果の純関数
@@ -632,15 +632,6 @@ describe('skillDescForLevel (keeps common text + level-specific value)', () => {
   it('clamps out-of-range / missing level to a valid bucket', () => {
     expect(skillDescForLevel('runner', 0)).toContain('+10%'); // 0 → Lv1
     expect(skillDescForLevel('runner', 9)).toContain('+20%'); // 9 → Lv3
-  });
-});
-
-describe('slasher follow-up multipliers', () => {
-  it('is a 3-hit ladder decaying ×2/3 each (1.0 / 0.667 / 0.444)', () => {
-    expect(SLASHER_MULTS).toHaveLength(SLASHER_MAX_HITS);
-    expect(SLASHER_MULTS[0]).toBeCloseTo(1.0);
-    expect(SLASHER_MULTS[1]).toBeCloseTo(0.6667, 3);
-    expect(SLASHER_MULTS[2]).toBeCloseTo(0.4444, 3);
   });
 });
 

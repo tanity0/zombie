@@ -276,7 +276,7 @@ describe('格闘: 指定打撃の分岐(§8-1 の止めるもの/残すもの)',
     expect(s.player.counterWindowEnd).toBe(p0.counterWindowEnd);
     expect(s.player.counterCooldownEnd).toBe(p0.counterCooldownEnd);
     expect(s.player.meleeSwingAt).toBe(p0.meleeSwingAt);
-    expect(s.player.slasherChainReadyAt).toBe(p0.slasherChainReadyAt); // スラッシャーは効かない
+    expect(s.slasherFollowups.map(f => f.weapon)).toEqual(['brawler']); // 格闘の段にもスラッシャーの追い打ちが入る(社長指示2026-11-26・旧: 格闘中は効かない)
     expect(s.player.meleeSwingPressedAt).toBe(pressAt);
     expect(s.player.meleeSwingCommitAt).toBeGreaterThan(0);
     expect(s.meleeHitComboCount).toBeGreaterThan(0);

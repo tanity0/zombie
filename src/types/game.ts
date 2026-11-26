@@ -404,7 +404,6 @@ export interface Player extends DashLocomotionState {
   // 装備スキルの状態フィールド(状態を持つスキルのみ。全て number・既定0。resetGame で初期化)。
   fireShooterCdUntil: number;  // ファイアシューター: 爆発弾化の裏CD(gameTime)
   reflexCdUntil: number;       // 反射神経: 反撃CD(gameTime)
-  slasherChainReadyAt: number; // スラッシャー: 次のチェーン攻撃が撃てる realGameTime(slow-mo非依存。0=非アクティブ)
   // 縮地(SKILL_BUILD_REDESIGN.md §32): 追撃の窓の締め切り(gameTime・0=閉)と、いまの連鎖数(ワープ斬撃の何発目まで出たか)。
   shukuchiWindowUntil?: number;
   shukuchiChain?: number;
@@ -415,9 +414,16 @@ export interface Player extends DashLocomotionState {
   shukuchiTargetId?: string;
   shukuchiStrikeMult?: number;    // この一撃のダメージ倍率(連鎖の上乗せ)
   shukuchiStriking?: boolean;
-  slasherStrikeStep: number;   // スラッシャー: 既に出した追撃回数(0..2)
-  slasherReach: number;        // スラッシャー: 追撃に使う近接射程(初撃時の射程を記録=溜め延長が消費されても追撃は伸びたまま。0=未設定)
-  slasherQueuedTap: boolean;   // スラッシャー: チェーンCD中の先行入力予約(CD明けに自動発動・v0.25.3254)
+  /** ★ナイフ(近接)の3連撃(社長指示2026-11-26・utils/knifeCombo): 最後に振った段(1..3)と時刻(Date.now)・先行入力の予約の時刻(Date.now・0/未定義=予約なし)。 */
+  knifeComboStage?: number;
+  knifeComboAt?: number;
+  knifeQueuedAt?: number;
+  /** ★ナイフのカウンターは1段目だけ・クールダウンは連撃の終わりから(utils/knifeCombo の knifeComboCounterPlan)。 */
+  knifeCounterReadyAt?: number;
+  knifeComboCounter?: boolean;
+  /** ★スラッシャーの追い打ちの絵(描画だけ・utils/slasherFollowup): 最後に出た追い打ちの時刻(Date.now)と何回目か(1始まり)。 */
+  slasherEchoAt?: number;
+  slasherEchoK?: number;
   /** ★鞭の3連撃(社長指示2026-11-26・utils/whipCombo): 最後に振った段(1..3)と時刻(Date.now)・先行入力の予約の時刻(Date.now・0/未定義=予約なし)。 */
   whipComboStage?: number;
   whipComboAt?: number;

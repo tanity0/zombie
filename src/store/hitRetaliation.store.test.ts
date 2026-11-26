@@ -291,7 +291,7 @@ describe('被弾反撃: 着地の命中(resolveRetaliateStrike)', () => {
     expect(after.counterCooldownEnd).toBe(before.counterCooldownEnd);
     expect(after.counterWindowEnd).toBe(before.counterWindowEnd);
     expect(after.counterWindowStart).toBe(before.counterWindowStart);
-    expect(after.slasherChainReadyAt).toBe(before.slasherChainReadyAt);
+    expect(after.knifeComboStage).toBe(before.knifeComboStage); // ナイフの3連撃の段も進めない
   });
   it('振った時のサブウェポン入口(ここではタレット切替)を出さない', () => {
     setup();

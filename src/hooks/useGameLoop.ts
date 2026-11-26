@@ -13279,9 +13279,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // スラッシャー先行入力の自動発動(v0.25.3254: CD中のタップを予約→CD明けにここで発動)。
-        // 予約なしなら即return=実質ゼロコスト。
-        useGameStore.getState().pumpSlasherQueuedTap();
+        // ★スラッシャーの追い打ち(0.1秒おきの自動の当たり・utils/slasherFollowup)。予約なしなら即return=実質ゼロコスト。
+        useGameStore.getState().pumpSlasherFollowups();
+        useGameStore.getState().pumpKnifeQueuedTap(); // ★ナイフの3連撃の先行入力(0.5秒の間隔が明けたら出す)。予約なしなら即return。
         useGameStore.getState().pumpWhipQueuedTap(); // ★鞭の3連撃の先行入力(0.3秒の間隔が明けたら出す)。予約なしなら即return。
         // Update enemies
         // 敵の移動のみ MOVE_SPEED_MULT 倍速(攻撃タイマー等はtimestamp基準で影響なし)。

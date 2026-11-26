@@ -5,8 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vites
 import { useGameStore } from './gameStore';
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
-import { setBrawlerTempoAll, brawlerAirborne, brawlerLiftHoldNow, BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_WEIGHT, BRAWLER_GROUND_LAUNCH } from '../utils/brawlerCombo';
-import { slasherLiftMove } from '../utils/airLift';
+import { setBrawlerTempoAll, brawlerAirborne, brawlerLiftHoldNow, BRAWLER_JUGGLE_BUDGET } from '../utils/brawlerCombo';
 import { BRAWLER_TEMPO_DEFAULT } from '../utils/brawler';
 
 let now = 11_000_000;
@@ -114,80 +113,5 @@ describe('爆発で浮く(playerBlast)', () => {
     expect(Math.hypot(en('z').x - x0, en('z').y - y0)).toBeLessThan(0.01);
     for (let i = 0; i < 120; i++) step(16);
     expect(Math.hypot(en('z').x - x0, en('z').y - y0)).toBeGreaterThan(1); // 着地の後はプレイヤーへ向かって動く
-  });
-});
-
-describe('スラッシャーの追撃で打ち上げる', () => {
-  const arm = (step0: number) => useGameStore.setState(state => ({
-    realGameTime: 4100,
-    player: {
-      ...state.player,
-      skills: state.player.skills.includes('slasher') ? state.player.skills : [...state.player.skills, 'slasher'],
-      skillLevels: { ...state.player.skillLevels, slasher: 3 },
-      slasherChainReadyAt: 4000, slasherStrikeStep: step0, slasherReach: 74, slasherQueuedTap: false, pendingSwingAt: 0,
-      counterCooldownEnd: Date.now() + 700,
-    },
-  }));
-  it('1回目の追撃=3段目と同じ打ち上げ・2回目の追撃は空中の敵に当たって拾う', () => {
-    useGameStore.setState({ enemies: [place('zombie', 40, 0, 'z')] });
-    arm(0);
-    expect(useGameStore.getState().beginMeleeSwing()).toBe(true);
-    const z1 = en('z');
-    expect(z1.health).toBeLessThan(99999);
-    expect(brawlerAirborne(z1, now)).toBe(true);
-    expect(z1.brLiftShape).toBeUndefined(); // 格闘の弧
-    expect(z1.brLiftBudget).toBe(BRAWLER_JUGGLE_BUDGET.mob);
-    const hp1 = z1.health;
-    step(80);
-    // 2回目の追撃(空中の敵)
-    useGameStore.setState(state => ({ realGameTime: 6000, player: { ...state.player, slasherChainReadyAt: 5500, counterCooldownEnd: Date.now() + 700, pendingSwingAt: 0 } }));
-    expect(useGameStore.getState().beginMeleeSwing()).toBe(true);
-    const z2 = en('z');
-    expect(z2.health).toBeLessThan(hp1);
-    expect(brawlerAirborne(z2, now)).toBe(true);
-    expect(z2.brLiftBudget).toBe(BRAWLER_JUGGLE_BUDGET.mob - 1); // 2段目の拾い=1
-  });
-  // 社長裁定2026-11-11「普段は少し重く、気絶中からのコンボは軽く」(v0.25.5480): ボス級は普段 BRAWLER_JUGGLE_WEIGHT.boss
-  // (気絶・紫の間に地上から浮かせた時だけ BRAWLER_JUGGLE_WEIGHT_STUN_BOSS)。期待値は定数から作る(数字が変わっても追従する)。
-  it('ボス級も格闘と同じ区分の重さで浮く(普段=ボス級の重さぶん雑魚より低い)', () => {
-    useGameStore.setState({ enemies: [place('hunter', 50, 0, 'h')] });
-    arm(0);
-    useGameStore.getState().beginMeleeSwing();
-    const h = en('h');
-    expect(brawlerAirborne(h, now)).toBe(true);
-    const launch = BRAWLER_GROUND_LAUNCH[slasherLiftMove(0, false, false)!]!; // 1回目の追撃=3段目の打ち上げ
-    expect(h.brLiftPeak!).toBeCloseTo(launch * BRAWLER_JUGGLE_WEIGHT.boss, 5);
-    if (BRAWLER_JUGGLE_WEIGHT.boss < BRAWLER_JUGGLE_WEIGHT.mob) expect(h.brLiftPeak!).toBeLessThan(launch * BRAWLER_JUGGLE_WEIGHT.mob);
-  });
-});
-
-describe('スラッシャー: 区分の扱い(品質監査の反映)', () => {
-  const arm = (step0: number, rgt: number, ready: number) => useGameStore.setState(state => ({
-    realGameTime: rgt,
-    player: {
-      ...state.player,
-      skills: state.player.skills.includes('slasher') ? state.player.skills : [...state.player.skills, 'slasher'],
-      skillLevels: { ...state.player.skillLevels, slasher: 3 },
-      slasherChainReadyAt: ready, slasherStrikeStep: step0, slasherReach: 74, slasherQueuedTap: false, pendingSwingAt: 0,
-      counterCooldownEnd: Date.now() + 700,
-    },
-  }));
-  for (const type of ['driller', 'hunter'] as EnemyType[]) {
-    it(`${type}: 1回目の打ち上げは追撃の窓(650ms)より短くない=2回目の追撃が空中に間に合う`, () => {
-      useGameStore.setState({ enemies: [place(type, 50, 0, 'x')] });
-      arm(0, 4100, 4000);
-      useGameStore.getState().beginMeleeSwing();
-      expect(en('x').brLiftMs!).toBeGreaterThanOrEqual(650);
-      for (let i = 0; i < 30; i++) step(16); // チェーンの CD(300ms)+前隙(200ms)近く待って2回目
-      arm(1, 6000, 5500);
-      useGameStore.getState().beginMeleeSwing();
-      expect(brawlerAirborne(en('x'), now)).toBe(true);
-    });
-  }
-  it('終端の死神(深奥チェイサー)は打ち上がらない', () => {
-    useGameStore.setState({ enemies: [{ ...place('reaper', 50, 0, 'rp'), reaperChaser: true } as Enemy] });
-    arm(0, 4100, 4000);
-    useGameStore.getState().beginMeleeSwing();
-    expect(en('rp').brawlerLiftAt).toBeUndefined();
   });
 });
