@@ -18,6 +18,7 @@ import { uniquePhantomSpec } from '../data/uniquePhantoms';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 import type { Enemy, EnemyType } from '../types/game';
+import { multiHitFeel } from '../utils/multiHitFeel';
 
 setBrawlerTempoAll(1.0);
 let now = 7_000_000;
@@ -118,7 +119,8 @@ describe('格闘の当たりは自分と相手だけを旧の画面全体の止�
     expect(br().connected).toBe(true);
     expect(h.until - h.at).toBe(BRAWLER_WORLD_STOP.closer);
   });
-  it('大踏み潰し: 何体に当たっても画面全体は止めず、当たった相手それぞれが締めの長さだけ止まる', () => {
+  // ★まとめて当てた時(utils/multiHitFeel)は、締めの長さに「当たった数の上乗せ」を足す(相手の止め・自分の止めとも同じだけ)。
+  it('大踏み潰し: 何体に当たっても画面全体は止めず、当たった相手それぞれが締めの長さ(+まとめて当てた上乗せ)だけ止まる', () => {
     setup();
     const orig = useGameStore.getState().triggerHitstop;
     const calls: number[] = [];
@@ -127,12 +129,14 @@ describe('格闘の当たりは自分と相手だけを旧の画面全体の止�
     expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);
     const r = untilResolved('a');
     expect(br().connected).toBe(true);
-    expect(r.until - r.at).toBe(BRAWLER_WORLD_STOP.closer);
+    const extra3 = multiHitFeel(3).extraStopMs;
+    expect(extra3).toBeGreaterThan(0);
+    expect(r.until - r.at).toBe(BRAWLER_WORLD_STOP.closer + extra3);
     expect(calls).toEqual([]); // 画面全体は止めない
-    expect(r.selfStop).toBe(BRAWLER_WORLD_STOP.closer + BRAWLER_WORLD_STOP_SELF_MS);
+    expect(r.selfStop).toBe(BRAWLER_WORLD_STOP.closer + BRAWLER_WORLD_STOP_SELF_MS + extra3);
     for (const e of useGameStore.getState().enemies) expect(e.hitStunUntil, e.id).toBe(r.until);
   });
-  it('秘奥義の締め(着地): 画面全体は止めず、当たった相手が締めの長さだけ止まる', () => {
+  it('秘奥義の締め(着地): 画面全体は止めず、当たった相手が締めの長さ(+まとめて当てた上乗せ)だけ止まる', () => {
     setup();
     useGameStore.setState({ enemies: [zombieAt(120, 0, 'a'), zombieAt(-90, 30, 'b')], viewZoom: 1 });
     useGameStore.setState(st => ({ camera: { x: st.player.x + st.player.width / 2 - st.gameBounds.width / 2, y: st.player.y + st.player.height / 2 - st.gameBounds.height / 2 } }));
@@ -145,7 +149,7 @@ describe('格闘の当たりは自分と相手だけを旧の画面全体の止�
     }
     expect(landAt).toBeGreaterThan(0);
     expect(hs()).toBeLessThanOrEqual(landAt);
-    expect(landUntil - landAt).toBe(BRAWLER_WORLD_STOP.closer);
+    expect(landUntil - landAt).toBe(BRAWLER_WORLD_STOP.closer + multiHitFeel(2).extraStopMs); // 2体に当たる
   });
   it('外れた時は止まらない(段・飛び蹴り・大踏み潰し)', () => {
     setup();

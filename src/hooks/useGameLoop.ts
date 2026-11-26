@@ -9802,6 +9802,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const brSfx = drainBrawlerSfx();
           for (const b of brSfx) {
             if (b.key === BRAWLER_SFX_DEATH) { playEnemyDeath(); continue; }
+            if (b.layers) { playSfxLayers(b.key as SfxKey, b.layers, { ignoreInterval: true }); continue; } // まとめて当てた時のずらした命中音(utils/multiHitFeel)
             if (b.delayMs && b.delayMs > 0) {
               const k = b.key as SfxKey, g0 = b.gain, ms0 = b.ms, r0 = b.rate;
               playSfxLayers(k, [{ delayMs: b.delayMs, rate: r0, gain: g0, ...(ms0 !== undefined ? { maxMs: ms0 } : {}) }]);

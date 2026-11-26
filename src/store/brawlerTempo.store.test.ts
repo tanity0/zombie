@@ -185,12 +185,13 @@ describe('係数1.3でも秘奥義が成立する(→↓←↑ の先行入力�
     return secret;
   };
   // 実測の境目: 290ms では成立せず 295ms から成立(2026-11-12 に 260/270→290/295: 画面全体の止め(110/180/260)の間もプレイヤーの時間は流れるため、壁時計の間隔が延びた(技の時計の上では同じ))。
-  it('間 290ms では成立しない(境目の記録)', () => {
+  // 2026-11-26 に 290/295→300/305: まとめて当てた時の自分の止めの上乗せ(utils/multiHitFeel・大踏み潰しが2体に当たって +20ms)。
+  it('間 300ms では成立しない(境目の記録)', () => {
     setBrawlerTempoAll(1.3);
     prep();
-    expect(flickAll(290)).toBe(false);
+    expect(flickAll(300)).toBe(false);
   });
-  it.each([295, 300, 400, 600])('間 %ims で成立', (gap) => {
+  it.each([305, 310, 400, 600])('間 %ims で成立', (gap) => {
     setBrawlerTempoAll(1.3);
     prep();
     expect(flickAll(gap)).toBe(true);

@@ -2033,14 +2033,19 @@ export const playSfx = (key: SfxKey, gainMult = 1, durationMsOverride?: number, 
 
 // 同じSEを、遅らせ・音程・音量を変えて重ねて鳴らす(社長指示2026-11-06 近接の命中音)。
 // 間引き(minIntervalMs)は**束ごと**に1回だけ見る=重ねの2層目以降が自分の間引きで消えない。
-export const playSfxLayers = (key: SfxKey, layers: readonly { delayMs: number; rate: number; gain: number; maxMs?: number }[]) => {
+export const playSfxLayers = (
+  key: SfxKey, layers: readonly { delayMs: number; rate: number; gain: number; maxMs?: number }[],
+  // ignoreInterval: 同じ音の間引き(minIntervalMs)を見ない。同じ当たりの1発目を鳴らした直後に、ずらした続きの層を予約する時だけ
+  // (まとめて当てた時の命中音・utils/multiHitFeel)。層の数は呼び手が上限で切る。
+  opts?: { ignoreInterval?: boolean },
+) => {
   if (muted || layers.length === 0) return;
   if (danceActive && DANCE_MUTED_SFX.has(key)) return;
   const config = SFX_SOURCES[key];
   if (!config) return;
   const now = typeof window === 'undefined' ? Date.now() : (window.performance?.now() ?? Date.now());
   const lastPlayedAt = sfxLastPlayedAt.get(key) ?? 0;
-  if (config.minIntervalMs && now - lastPlayedAt < config.minIntervalMs) return;
+  if (!opts?.ignoreInterval && config.minIntervalMs && now - lastPlayedAt < config.minIntervalMs) return;
   const context = ensureSfxContext();
   if (!context) return;
   resumeSfxContext();

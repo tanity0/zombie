@@ -224,6 +224,7 @@ import {
   knifeComboNextStage, knifeComboGapMs, knifeComboTapAction, knifeComboQueuedAction, knifeComboCounterPlan, knifeComboStepPx,
   knifeComboFinishMoveMult, knifeComboSwingDir, knifeComboFeel, knifeComboHitStop,
 } from '../utils/knifeCombo';
+import { multiHitFeel, multiHitStopExtendPatch, multiHitFxSpot, multiHitStagger, multiHitSfxLayers, multiHitReleaseDelay, multiHitBurstRings, multiHitLinePath, multiHitArcPath } from '../utils/multiHitFeel'; // まとめて当てた時の手応え(止め・揺れ・大きめの輪と光・重ねる命中音)
 import type { AstroThrowEntry, AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import type { WraithGrowth } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md §9
 import { isWraithForced } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md §17
@@ -3258,11 +3259,12 @@ const spawnKnifeComboHitFx = (
   if (pts.length === 0) return;
   const f = knifeComboFeel(stage);
   const hs = knifeComboHitStop(stage, crit);
+  const mh = multiHitFeel(pts.length); // まとめて当てた時は自分の振りの止めも延ばす(当たった敵の止め・揺れ・絵・音は末尾の applyMultiHitFeel)
   const now = Date.now();
   const idSet = new Set(ids);
   set(state => ({
     enemies: state.enemies.map(e => (idSet.has(e.id) && e.health > 0 && !isCorpse(e) ? { ...e, ...impactHitStunPatch(e, now, hs.enemyMs) } : e)),
-    player: { ...state.player, knifeHitstopAt: now, knifeHitstopMs: hs.selfMs },
+    player: { ...state.player, knifeHitstopAt: now, knifeHitstopMs: hs.selfMs + mh.extraStopMs },
   }));
   const g = get();
   const fl = Math.hypot(fallback.x, fallback.y) || 1;
@@ -3293,7 +3295,214 @@ const spawnKnifeComboHitFx = (
     const r = Math.random();
     void import('../audio/audioManager').then(m => m.playSfx('heavy-impact', f.heavyVol, undefined, f.heavyRate * (0.97 + 0.06 * r)));
   }
+  applyMultiHitFeel(get, set, ids, pts, { x: sx, y: sy }, { ...MULTI_HIT_OPTS.knife, sfxRate: f.hitRate });
 };
+
+/**
+ * ★まとめて当てた時の手応え(utils/multiHitFeel・社長「複数の敵に一括で当たった時に画面揺れとかストップの長さとかを強めて複数に当たった感を強める」)。
+ * プレイヤー本人の近接の1回の振り(1つの段・1つの技の1回の当たり判定)の当たりの後に、段の手応え(絵・揺れ)を出し終えてから呼ぶ。足すだけ(今の絵・音は消さない)。
+ *  - 当たった敵の止め: 今かかっている止めを延ばす(押しの残りも同じだけ後ろへ=押しの距離は変えない)。ボス級(止めを持たない区分)は延ばさない。画面全体は止めない。
+ *    自分の振りの止め(ナイフ・格闘)は呼び手が足す(この関数は書かない)。
+ *  - 揺れ: 段の揺れが出ている時は上乗せ(強さを足し、残りの長さに足す)・出ていなければ新しく揺らす。
+ *  - 絵と音(クリエイティブ監査「何体に当たったかが伝わらない」の作り直し・判定なしの派手さの絵・赤は使わない):
+ *    n>=2: 1体ごとの白い閃き+粒を、プレイヤーに近い順に 20ms ずつずらして出す(予約の列 multiHitFxPending に積み、updateEffects が時刻で出す)。
+ *          命中音も当たった数だけ(上限5)同じ間隔でずらして鳴らす(1発目は武器の今の命中音・2発目から)。
+ *    n>=3: 上乗せした止めが明ける時刻に弾ける(shape: ring=当たりの重心に太い輪→細く薄い輪 / arc=鞭・当たった弧に沿った白い筋の粒 / line=刀・当たりを結ぶ白い筋)。光は noShadow。
+ *    n>=5: もう1本の輪(鞭は弧の粒・刀は筋)をさらに遅らせて外へ・光をもう1つ・低い支えの音(heavy-impact)。
+ * n = ids の数(倒した敵も数える)。pts=当たった位置・dir=揺れの向き(0 なら向きなし・刀の筋の向き)。戻り値=使った上乗せ(呼び手が自分の止めに足す時に使う)。
+ */
+type MultiHitShape = 'ring' | 'arc' | 'line';
+/**
+ * 予約した絵(まとめて当てた時の1体ごとの閃き・止めの明けに弾ける輪など)。effects へは出る時刻になってから入れる
+ * (effects を読む光・影・映り込みの各所が「未来の createdAt」を想定していないため)。updateEffects が毎フレーム出す=
+ * ゲームのループの時計に従う(ポーズ中は出ない・止めの間も effects と同じく実時間で進む)。
+ */
+let multiHitFxPending: VisualEffect[] = [];
+const MULTI_HIT_PENDING_CAP = 240;
+/** 出る時刻になった予約を live へ移す。少し遅れて拾った時はその時刻のまま(位相を保つ)・大きく遅れた時(ポーズ明け等)は今から出す。 */
+const releaseMultiHitFx = (now: number, live: VisualEffect[]): void => {
+  const keep: VisualEffect[] = [];
+  for (const e of multiHitFxPending) {
+    if (e.createdAt > now) { keep.push(e); continue; }
+    live.push(now - e.createdAt <= 50 ? e : { ...e, createdAt: now });
+  }
+  multiHitFxPending = keep;
+  if (live.length > 400) live.splice(0, live.length - 400);
+};
+const MULTI_HIT_FLASH_COLOR = 'rgba(255,255,255,';
+const MULTI_HIT_SPARK_COLORS = ['#ffffff', '#f4f1ea', '#e8eef6'];
+const applyMultiHitFeel = (
+  get: () => GameState, set: WhipSet, ids: readonly string[], pts: readonly { x: number; y: number }[], dir: { x: number; y: number },
+  o: { sfx?: SfxKey; sfxVol?: number; sfxRate?: number; glowColor?: string; brawler?: boolean; shape?: MultiHitShape; ringScale?: number; ringDelayMs?: number } = {},
+): ReturnType<typeof multiHitFeel> => {
+  const mh = multiHitFeel(ids.length);
+  if (mh.extraStopMs <= 0 && mh.shakeMs <= 0 && !mh.staggerFx) return mh;
+  const now = Date.now();
+  const idSet = new Set(ids);
+  if (mh.extraStopMs > 0) {
+    set(state => ({
+      enemies: state.enemies.map(e => {
+        if (!idSet.has(e.id) || !(e.health > 0) || isCorpse(e) || hitStunMsFor(e.type) <= 0) return e;
+        const pt = multiHitStopExtendPatch(e, now, mh.extraStopMs);
+        return pt ? { ...e, ...pt } : e;
+      }),
+    }));
+  }
+  const g = get();
+  if (mh.shakeMs > 0 && mh.shakeMag > 0) {
+    const dl = Math.hypot(dir.x, dir.y);
+    const dx = dl > 1e-6 ? dir.x / dl : 0, dy = dl > 1e-6 ? dir.y / dl : 0;
+    if (now < g.shakeUntil) {
+      // 段の揺れの上乗せ(向きは段の揺れのまま)。
+      const dur = g.shakeUntil - now + mh.shakeMs;
+      set(() => ({ shakeUntil: now + dur, shakeMag: g.shakeMag + mh.shakeMag, shakeDur: dur }));
+    } else {
+      g.triggerShake(mh.shakeMs, mh.shakeMag, dx, dy);
+    }
+  }
+  if (!mh.staggerFx || pts.length === 0) return mh;
+  const pl = g.player;
+  const from = { x: pl.x + pl.width / 2, y: pl.y + pl.height / 2 };
+  const fresh: VisualEffect[] = [];
+  const tag = Math.random().toString(36).slice(2, 7);
+  const at = (x: number, y: number) => crawlerFxAt(x, y) ?? { x, y };
+  // 小さい光=spawnGlow の小glowと同じ詰め(半径×0.9・尺×0.82)。投影影は落とさない。
+  const glowFx = (x: number, y: number, radius: number, color: string, duration: number, delay: number, k: string): VisualEffect => {
+    const q = at(x, y);
+    const small = radius < STRONG_GLOW_RADIUS;
+    return {
+      kind: 'glow', id: `fx-mh-glow-${now}-${tag}-${k}`, x: q.x, y: q.y,
+      radius: small ? radius * SMALL_GLOW_RADIUS_SCALE : radius, color,
+      createdAt: now + delay,
+      duration: small ? Math.max(SMALL_GLOW_MIN_DURATION_MS, Math.round(duration * SMALL_GLOW_DURATION_SCALE)) : duration,
+      noShadow: true,
+    };
+  };
+  // n>=2: 1体ごとの閃き(近い順に 20ms ずつ)+粒(プレイヤーから外へ散る)。
+  for (const { p, delayMs, i } of multiHitStagger(pts, from)) {
+    fresh.push(glowFx(p.x, p.y, 34, MULTI_HIT_FLASH_COLOR, 170, delayMs, `f${i}`));
+    const q = at(p.x, p.y);
+    const base = Math.atan2(q.y - from.y, q.x - from.x);
+    for (let j = 0; j < 4; j++) {
+      const ang = base + (Math.random() - 0.5) * 1.9;
+      const sp = 170 + Math.random() * 170;
+      fresh.push({
+        kind: 'particle', id: `fx-mh-spark-${now}-${tag}-${i}-${j}`, x: q.x, y: q.y,
+        vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, drag: 7,
+        color: MULTI_HIT_SPARK_COLORS[j % MULTI_HIT_SPARK_COLORS.length], size: 1.5 + Math.random() * 1.3,
+        createdAt: now + delayMs, duration: 180 + Math.random() * 90,
+      });
+    }
+  }
+  // n>=3: 上乗せした止めが明ける時刻に弾ける(溜め→解放)。
+  if (mh.bigFx) {
+    const release = multiHitReleaseDelay(
+      g.enemies.filter(e => idSet.has(e.id) && e.health > 0 && !isCorpse(e) && hitStunMsFor(e.type) > 0).map(e => e.hitStunUntil), now, mh.extraStopMs,
+    ) + (o.ringDelayMs ?? 0);
+    const shape = o.shape ?? 'ring';
+    const spot = multiHitFxSpot(pts);
+    if (spot) {
+      if (shape === 'arc') {
+        // 鞭(弧の技): 丸い輪は出さず、当たった弧に沿って白い筋の粒を外へ弾く(弧をなぞる順に少しずつ遅れて=振りの向き)。
+        const waves = mh.hugeFx ? [{ k: 1, d: 0 }, { k: 1.18, d: 100 }] : [{ k: 1, d: 0 }];
+        for (const wv of waves) {
+          const arc = multiHitArcPath(pts, from, Math.min(18, 6 + 2 * pts.length));
+          arc.forEach((a, j) => {
+            const ax = from.x + (a.x - from.x) * wv.k, ay = from.y + (a.y - from.y) * wv.k;
+            const q = at(ax, ay);
+            // 弧をなぞる光の跡(小さい光=投影影なし)。1点おき。
+            if (j % 2 === 0) fresh.push(glowFx(ax, ay, 30, MULTI_HIT_FLASH_COLOR, 200, release + wv.d + a.delayMs, `a${wv.d}-${j}`));
+            for (let m = 0; m < 3; m++) {
+              const ang = a.ang + (Math.random() - 0.5) * 0.6;
+              const sp = 300 + Math.random() * 170;
+              fresh.push({
+                kind: 'particle', id: `fx-mh-arc-${now}-${tag}-${wv.d}-${j}-${m}`, x: q.x, y: q.y,
+                vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, drag: 4.5, stretch: true,
+                color: MULTI_HIT_SPARK_COLORS[(j + m) % MULTI_HIT_SPARK_COLORS.length], size: 2.8 + Math.random() * 1.6,
+                createdAt: now + release + wv.d + a.delayMs, duration: 260 + Math.random() * 90,
+              });
+            }
+          });
+        }
+      } else if (shape === 'line') {
+        // 刀(線の技): 丸い輪は出さない。当たりを結ぶ線に沿って白い筋(fx/dash-wind)を走らせる。素材は尖った先が -x=走る向きへ回す。
+        const path = multiHitLinePath(pts, dir.x, dir.y);
+        if (path) {
+          const pdx = path.x1 - path.x0, pdy = path.y1 - path.y0, plen = Math.hypot(pdx, pdy) || 1;
+          const ux = pdx / plen, uy = pdy / plen, rot = Math.atan2(uy, ux) + Math.PI;
+          const streak = (len: number, off: number, delay: number, alpha: number, dur: number, k: string): VisualEffect => {
+            const sx0 = path.x0 + ux * len * 0.2 - uy * off, sy0 = path.y0 + uy * len * 0.2 + ux * off;
+            const run = Math.max(60, plen - len * 0.4);
+            return {
+              kind: 'image', id: `fx-mh-streak-${now}-${tag}-${k}`, x: sx0, y: sy0, texture: 'fx/dash-wind',
+              scale: (len * DASH_WIND_TEX_H) / (DASH_WIND_TEX_W * 130), rot, additive: true, noPop: true, fadeFrom: 0.3,
+              moveX: ux * run, moveY: uy * run, alpha, createdAt: now + release + delay, duration: dur,
+            };
+          };
+          const L = Math.max(170, plen * 0.75);
+          fresh.push(streak(L, 0, 0, 1, 260, 's0'));
+          if (mh.hugeFx) fresh.push(streak(L * 1.35, 10, 80, 0.75, 320, 's1'));
+        }
+      } else {
+        const rs = multiHitBurstRings(spot.r, mh.hugeFx, o.ringScale ?? 1);
+        rs.forEach((r, k) => {
+          // 2本目以降は外へ少しずらして真円の重なりを崩す(当たりの向き=プレイヤーから外へ)。
+          const ox = k === 0 ? 0 : Math.cos(Math.atan2(spot.y - from.y, spot.x - from.x)) * 6 * k;
+          const oy = k === 0 ? 0 : Math.sin(Math.atan2(spot.y - from.y, spot.x - from.x)) * 6 * k;
+          const q = at(spot.x + ox, spot.y + oy);
+          fresh.push({
+            kind: 'ring', id: `fx-mh-ring-${now}-${tag}-${k}`, x: q.x, y: q.y, startRadius: r.start, endRadius: r.end,
+            color: `rgba(255,255,255,${r.alpha})`, width: 5, createdAt: now + release + r.delayMs, duration: r.durationMs, easeOut: true, weight: r.weight,
+          });
+        });
+      }
+      // 足し算の光=暗めの色で白飛びさせない(重なった命中の光の上に乗る)。
+      const gc = o.glowColor ?? 'rgba(112,102,84,';
+      // 半径は輪より小さめ(強glowは世界の光にも足される=大きいと画面全体が白く洗われる)。
+      fresh.push(glowFx(spot.x, spot.y, spot.r * 0.6, gc, 240, release, 'b0'));
+      if (mh.hugeFx) fresh.push(glowFx(spot.x, spot.y, spot.r * 0.45, gc, 300, release + 90, 'b1'));
+    }
+    if (mh.hugeFx) {
+      // 5体以上: 低い支えの音を1つ(止めの明けに)。
+      if (o.brawler) brawlerSfxLayers('heavy-impact', [{ delayMs: release, gain: 0.8, rate: 0.62 }]);
+      else void import('../audio/audioManager').then(m => m.playSfxLayers('heavy-impact', [{ delayMs: release, gain: 0.8, rate: 0.62 }], { ignoreInterval: true }));
+    }
+  }
+  const nowFx = fresh.filter(e => e.createdAt <= now);
+  for (const e of fresh) if (e.createdAt > now && multiHitFxPending.length < MULTI_HIT_PENDING_CAP) multiHitFxPending.push(e);
+  if (nowFx.length > 0) {
+    set(state => {
+      const next = [...state.effects, ...nowFx];
+      if (next.length > 400) next.splice(0, next.length - 400);
+      return { effects: next };
+    });
+  }
+  // n>=2: 命中音を当たった数だけ(上限5)ずらして鳴らす(1発目=武器の今の命中音・後ろほど少し小さく少し高く)。
+  if (o.sfx) {
+    const layers = multiHitSfxLayers(ids.length, o.sfxVol ?? 0.9, (o.sfxRate ?? 1) * (0.97 + 0.06 * Math.random()));
+    if (layers.length > 0) {
+      const key = o.sfx;
+      if (o.brawler) brawlerSfxLayers(key, layers);
+      else void import('../audio/audioManager').then(m => m.playSfxLayers(key, layers, { ignoreInterval: true }));
+    }
+  }
+  return mh;
+};
+/** 武器ごとの置き方(呼び手と開発用の撮影窓口が同じ表を引く)。 */
+type MultiHitOpts = NonNullable<Parameters<typeof applyMultiHitFeel>[5]>;
+const MULTI_HIT_OPTS = {
+  knife: { sfx: 'slash-damage' },
+  brawler: { sfx: 'brawler-hit', sfxVol: 1.0, brawler: true, ringScale: 1.35, ringDelayMs: 40 }, // 段の輪と見分ける=白・少し遅れて外へ大きく
+  whip: { sfx: 'whip-hit', sfxVol: 0.85, shape: 'arc' }, // 鞭=丸い輪は出さず、当たった弧に沿った粒(画面の外へはみ出しにくい)
+  katana: { sfx: 'slash-damage', glowColor: 'rgba(92,104,122,', shape: 'line' }, // 刀=丸い輪は出さず、当たりを結ぶ白い筋
+} as const satisfies Record<string, MultiHitOpts>;
+/** 開発用(ヘッドレスの撮影): まとめて当てた時の手応えを、指定した敵・位置で直接出す。ゲームからは呼ばない。 */
+export const devApplyMultiHitFeel = (
+  weapon: keyof typeof MULTI_HIT_OPTS, ids: readonly string[], pts: readonly { x: number; y: number }[], dir: { x: number; y: number },
+): void => { applyMultiHitFeel(useGameStore.getState, useGameStore.setState as WhipSet, ids, pts, dir, MULTI_HIT_OPTS[weapon]); };
+/** fx/dash-wind の素材の寸法(233×64)。刀の筋の長さを画像の表示高さ(130×scale)から逆算する。 */
+const DASH_WIND_TEX_W = 233;
+const DASH_WIND_TEX_H = 64;
 
 /**
  * 絡め取る(§8-1)。掴んだ瞬間に溜めていた技と赤い予告を取り消し(格闘の掴みと同じ brawlerGrabCancelTech)、押し・浮きを止めて振り回しを始める。
@@ -5622,10 +5831,15 @@ const meleeWallsAround = (get: () => GameState, cx: number, cy: number, range: n
 // ★サブウェポン「格闘」(research/BRAWLER.md)。判定・時計は utils/brawler.ts の純関数。ここは store へ載せる配線だけ。
 // 音は store から鳴らせないので、積んでおいて useGameLoop が毎フレーム消化する(drainBrawlerSfx)。
 // ---------------------------------------------------------------------------------------------
-export interface BrawlerSfx { key: string; gain: number; rate: number; ms?: number; delayMs?: number }
+// layers=ずらして重ねる層(まとめて当てた時の命中音・utils/multiHitFeel)。あれば gain/rate/delayMs は使わず、層を同じ音の間引きを見ずに予約する。
+export interface BrawlerSfx { key: string; gain: number; rate: number; ms?: number; delayMs?: number; layers?: { delayMs: number; gain: number; rate: number }[] }
 let brawlerSfxQueue: BrawlerSfx[] = [];
 const brawlerSfx = (key: string, gain = 1, rate = 1, ms?: number, delayMs?: number): void => {
   if (brawlerSfxQueue.length < 24) brawlerSfxQueue.push({ key, gain, rate, ...(ms !== undefined ? { ms } : {}), ...(delayMs !== undefined ? { delayMs } : {}) });
+};
+/** ずらして重ねる層を列へ積む(まとめて当てた時の命中音)。 */
+const brawlerSfxLayers = (key: string, layers: { delayMs: number; gain: number; rate: number }[]): void => {
+  if (layers.length > 0 && brawlerSfxQueue.length < 24) brawlerSfxQueue.push({ key, gain: 1, rate: 1, layers });
 };
 /** 格闘の音を列へ積む(幻影の格闘=拳鬼の縮地も同じ音の列で鳴らす・research/BRAWLER_PHANTOM.md §14)。 */
 export const enqueueBrawlerSfx = brawlerSfx;
@@ -6076,6 +6290,20 @@ const brawlerComboLockPatch = (
 /** 当たった時だけ画面全体を止める(1回の技で何体に当たっても1回=長い方を採る triggerHitstop)。 */
 const brawlerApplyWorldStop = (get: () => GameState, plan: { world: number }, hits: number): void => {
   if (plan.world > 0 && hits > 0) get().triggerHitstop(plan.world);
+};
+/**
+ * ★まとめて当てた時の自分の止めの上乗せ(utils/multiHitFeel)。当たりの後の止めの組に、自分の止め(self)と、自分の止めの明けで始まる反動・抑え(freeze/stun)を同じだけ足す
+ * (反動の距離は変えない・始まりが遅れるだけ)。敵に書く止めは applyMultiHitFeel が延ばす。n<=1 はそのまま。
+ */
+const brawlerPlanMultiHit = <P extends { self: number; stun: number; freeze: number }>(plan: P, hits: number): P => {
+  const x = multiHitFeel(hits).extraStopMs;
+  return x > 0 ? { ...plan, self: plan.self + x, stun: plan.stun + x, freeze: plan.freeze > 0 ? plan.freeze + x : 0 } : plan;
+};
+/** 格闘の段・技のまとめて当てた時の手応え(敵の止め・揺れ・大きめの輪と光・重ねる命中音)。段の絵を出し終えてから呼ぶ。 */
+const brawlerMultiHitFx = (get: () => GameState, set: WhipSet, r: CounterTriggerResult, dir: { x: number; y: number }): void => {
+  const hitAt = r.hitAt ?? [];
+  if (hitAt.length < 2) return;
+  applyMultiHitFeel(get, set, hitAt.map(h => h.id), hitAt, dir, MULTI_HIT_OPTS.brawler);
 };
 /** 倒した1発ぶんの数(その当たりで何発目だったか)。倒れた敵は数から外れるので、当たりの直後の合わせ直しでだけ使う。 */
 let brawlerKillLinkPeak = 0;
@@ -6716,10 +6944,11 @@ const brawlerSecretLand = (get: () => GameState, set: (fn: (s: GameState) => Par
     combo: { move: 'secret-land' },
   });
   brawlerApplyWorldStop(get, plan, res.hits ?? 0);
+  const planM = brawlerPlanMultiHit(plan, res.hits ?? 0); // まとめて当てた時は自分の止め(締めの拍)も延ばす
   // ★旧の全体の止め(gameTime が止まる)を写す: 締めの着地の拍(gameTime)を止めの分だけ延ばす=明けまでの壁時計が旧と同じ(社長指示2026-11-14)。
-  if (plan.freeze > 0 && (res.hits ?? 0) > 0) {
+  if (planM.freeze > 0 && (res.hits ?? 0) > 0) {
     const cur = get().player.brawler;
-    if (cur?.secret?.phase === 'land') setBrawler(set, { ...cur, secret: { ...cur.secret, nextAt: cur.secret.nextAt + plan.freeze } });
+    if (cur?.secret?.phase === 'land') setBrawler(set, { ...cur, secret: { ...cur.secret, nextAt: cur.secret.nextAt + planM.freeze } });
   }
   brawlerNoteFlowHits(set, res.hits ?? 0);
   brawlerKillSfx(res);
@@ -6741,6 +6970,7 @@ const brawlerSecretLand = (get: () => GameState, set: (fn: (s: GameState) => Par
   brawlerSfx('brawler-stomp', 1.0, 0.7);
   brawlerSfx('heavy-impact', 1.0, 0.55, undefined, 16);
   brawlerSfx('bomb', 0.9, 0.7, undefined, 30); // 浮き: 秘奥義の締めの音(格闘の当たりとして浮く)
+  brawlerMultiHitFx(get, set, res, { x: 0, y: 1 }); // まとめて当てた時の手応え(足すだけ)
 };
 /** 秘奥義の1フレーム(tickBrawler から)。掴み・紫・死亡で中断。 */
 const tickBrawlerSecret = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
@@ -6806,9 +7036,9 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       const pw = meleeWallsAround(get, palm.x0, palm.y0, palm.travel + 60);
       ids = BR.brawlerBandTargets(st.enemies, palm.x0, palm.y0, palm.ux, palm.uy, pw, palm.travel);
     }
-    const plan = brawlerStopPlan(get, spec.hitstopMs); // ★当たりの止め=自分と相手だけ(社長指示2026-11-14・画面全体は止めない)
+    const plan0 = brawlerStopPlan(get, spec.hitstopMs); // ★当たりの止め=自分と相手だけ(社長指示2026-11-14・画面全体は止めない)
     const r = strike(ids, {
-      mult: spec.mult, stunMs: plan.stun, ...plan.lock, postureMult: spec.mult,
+      mult: spec.mult, stunMs: plan0.stun, ...plan0.lock, postureMult: spec.mult,
       kb: spec.kb === 'big'
         ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true, ...(spec.kbMult !== undefined ? { power: spec.kbMult } : {}), ...(palm ? { passLine: { x0: palm.x0, y0: palm.y0, ux: palm.ux, uy: palm.uy } } : {}) }
         : { kind: spec.kb },
@@ -6820,7 +7050,8 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
     const fdir = palm ? { x: palm.ux, y: palm.uy } : dir;
-    brawlerApplyWorldStop(get, plan, hits);
+    brawlerApplyWorldStop(get, plan0, hits);
+    const plan = brawlerPlanMultiHit(plan0, hits); // まとめて当てた時は自分の止めも延ばす(敵の止め・揺れ・絵は brawlerMultiHitFx)
     const next0 = BR.brawlerAfterResolve({ ...s, dirX: fdir.x, dirY: fdir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: plan.self, landed: r.landed ?? hits });
     const next = { ...next0, ...brawlerFreezeMark(next0, plan, hits), ...brawlerComboLockPatch(s, r, target?.id, c) };
     setBrawler(set, next, {
@@ -6835,6 +7066,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     });
     brawlerNoteFlowHits(set, hits);
     brawlerStageFx(get, s.stage, c, fdir, r, target, palm);
+    brawlerMultiHitFx(get, set, r, fdir); // まとめて当てた時の手応え(足すだけ)
     return;
   }
 
@@ -6846,17 +7078,18 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   if (s.tech === 'stomp') {
     const foot = { x: c.x, y: c.y + p.height / 2 - 6 };
     const ids = BR.brawlerCircleTargets(st.enemies, foot.x, foot.y, stompR, walls);
-    const plan = brawlerStopPlan(get, BR.BRAWLER_STOMP_HITSTOP_MS); // ★当たりの止め=自分と相手だけ(社長指示2026-11-14)
+    const plan0 = brawlerStopPlan(get, BR.BRAWLER_STOMP_HITSTOP_MS); // ★当たりの止め=自分と相手だけ(社長指示2026-11-14)
     const r = strike(ids, {
       // ★出した高さで威力が上がる(社長指示2026-11-16・stompFromPx=踵落としから取り消した出だしの高さ=絵と同じ純関数の値)。地上は ×1。
-      mult: BR.BRAWLER_STOMP_MULT * BR.brawlerStompAirMult(s.stompFromPx), stunMs: plan.stun, ...plan.lock, postureMult: BR.BRAWLER_STOMP_MULT,
+      mult: BR.BRAWLER_STOMP_MULT * BR.brawlerStompAirMult(s.stompFromPx), stunMs: plan0.stun, ...plan0.lock, postureMult: BR.BRAWLER_STOMP_MULT,
       // ★土竜(§35): 押さずに宙へ浮かせる(地上=蹴り上げと同じ打ち上げ・空中=浮き直し・予算2)。攻撃中の雑魚・強個体は浮きの側で技を取り消す。
       kb: s.mogura ? { kind: 'none' } : { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
       combo: { move: s.mogura ? 'mogura' : 'stomp' },
     });
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
-    brawlerApplyWorldStop(get, plan, hits);
+    brawlerApplyWorldStop(get, plan0, hits);
+    const plan = brawlerPlanMultiHit(plan0, hits); // まとめて当てた時は自分の止めも延ばす
     const stompNext = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: plan.self, landed: r.landed ?? hits });
     setBrawler(set, { ...stompNext, ...brawlerFreezeMark(stompNext, plan, hits), ...brawlerComboLockPatch(s, r, undefined, foot) },
       hits > 0 ? { lungeHoldUntil: now + plan.stun } : {});
@@ -6883,6 +7116,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     brawlerSfx('brawler-stomp', 1.0, 0.92);
     brawlerSfx('heavy-impact', 0.9, 0.7, undefined, 20);
     if (hits > 0) brawlerSfx('brawler-hit', 1.0, 0.62 * brJitter(), 260);
+    brawlerMultiHitFx(get, set, r, { x: 0, y: 1 }); // まとめて当てた時の手応え(足すだけ)
     return;
   }
   if (s.tech === 'kiko') {
@@ -14750,6 +14984,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         const hitIds = res.hitIds ?? [];
         const pts = get().enemies.filter(e => hitIds.includes(e.id)).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2, fy: e.y + e.height }));
         spawnWhipComboHitFx(get, set, comboStage, hitIds, pts, !!res.crit, ux, uy, whipComboSweepSign(comboStage, Math.atan2(uy, ux)));
+        // ★まとめて当てた時の手応え(utils/multiHitFeel)。鞭は自分の振りの止めが無い=敵の止め・揺れ・絵・音だけ。
+        applyMultiHitFeel(get, set, hitIds, pts, { x: ux, y: uy }, MULTI_HIT_OPTS.whip);
       }
       if (gid) startWhipSwing(get, set, gid, ux, uy, reach);
       if (huntUse) set(state => ({ player: { ...state.player, ...HUNTING_CONSUME_PATCH } }));
@@ -17849,6 +18085,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           const hitIds = result.hitIds ?? [];
           // 一閃=浮かせる / 燕返し=止めの後に走った向きへ吹き飛ばす(血を吹きながら)。どちらも切り傷を1本刻む。
           if (hitIds.length > 0) applyIssenHitPatch(get, set, hitIds, preStrike, tb ? { ux, uy } : null);
+          // ★まとめて当てた時の手応え(utils/multiHitFeel・プレイヤー本人の一閃・燕返しだけ=守護霊は外す)。刀は自分の振りの止めが無い=敵の止め・揺れ・絵・音だけ。
+          if (ghostId === undefined && hitIds.length >= 2) {
+            const mpts = hitIds.map(id => get().enemies.find(e => e.id === id) ?? preStrike.get(id)).filter((e): e is Enemy => !!e)
+              .map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
+            applyMultiHitFeel(get, set, hitIds, mpts, { x: ux, y: uy }, MULTI_HIT_OPTS.katana);
+          }
           // 燕返しの受付(§1): 一閃が1体以上に当たった瞬間から。燕返しの後・殺陣の後は開かない(1回まで・連鎖しない)。
           setActorTsubameWindow(ghostId, !tb && !satsujinTarget && hitIds.length > 0
             ? { hitAt: Date.now(), dirX: ux, dirY: uy, hitIds, used: false, originX: pcx, originY: pcy } : null);
@@ -29260,6 +29502,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     brawlerBeamCuts.clear(); // 構えで中断させた光線の合図(research/BRAWLER.md §12-3d)も前ランへ持ち越さない
     brawlerVampireHealLastAt = null; // 格闘の拳の吸血覚醒回復の間隔(500ms)も前ランへ持ち越さない
     impactQueue = []; impactLastFiredAt.clear(); // 揺れの整理: 前ランの未解決の命中・間隔を持ち越さない
+    multiHitFxPending = []; // まとめて当てた時の予約した絵を前ランへ持ち越さない
     cutinShownThisRun.clear(); // 紹介カットインの既出はランごと(v0.25.4302)
     practiceAmmoLatch.clear(); practiceAmmoRecheckAt = 0; // 変異体対策室の弾の補給の確かめ済みも前ランへ持ち越さない
     resetMapSightings(); // 一時停止の地図の「出会った敵」は出撃ごと(THEONE_ROUND2 §2-3)
@@ -31226,6 +31469,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           live.push(e);
         }
       }
+      if (multiHitFxPending.length > 0) releaseMultiHitFx(now, live);
       return { effects: live };
     });
   },

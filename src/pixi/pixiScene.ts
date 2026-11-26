@@ -45658,8 +45658,12 @@ export class PixiScene {
       if (view) view.destroy({ children: true });
       const c = new Container();
       (c as { __ringFx?: boolean; __ringBase?: number }).__ringFx = true;
-      let base = RING_TEX_BASES[RING_TEX_BASES.length - 1];
-      for (const b of RING_TEX_BASES) { if (e.endRadius <= b * 1.42) { base = b; break; } }
+      let bi = RING_TEX_BASES.length - 1;
+      for (let i = 0; i < RING_TEX_BASES.length; i++) { if (e.endRadius <= RING_TEX_BASES[i] * 1.42) { bi = i; break; } }
+      // weight(描画だけ): 焼いた輪の線の太さは基準の大きさで決まる=1段小さい基準を拡大すると太く・1段大きい基準を縮めると細く。
+      if (e.weight === 'thick') bi = Math.max(0, bi - 1);
+      else if (e.weight === 'thin') bi = Math.min(RING_TEX_BASES.length - 1, bi + 1);
+      const base = RING_TEX_BASES[bi];
       (c as { __ringBase?: number }).__ringBase = base;
       const ringSp = new Sprite(getRingTexture(base)); ringSp.anchor.set(0.5); ringSp.blendMode = 'add';
       ringSp.tint = this.glowTint(e.color);

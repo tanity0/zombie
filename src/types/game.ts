@@ -3482,6 +3482,11 @@ export type VisualEffect =
        * 印の無い輪は閃光の輪=半径を s_fx/s 倍)。判定・挙動には使わない。research/PERSPECTIVE_PROJECTION.md §3-7g2。
        */
       judge?: boolean;
+      /**
+       * 線の太さの段(描画だけ)。'thick'=焼いた輪を1段小さい基準から拡大(線が約2倍太い)/'thin'=1段大きい基準から縮小(約半分)。
+       * 未指定=従来どおり(既存の全用途は不変)。まとめて当てた時の弾ける輪(太く始まり外ほど細く)で使う。
+       */
+      weight?: 'thick' | 'thin';
     }
   | {
       // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。
