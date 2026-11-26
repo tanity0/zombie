@@ -124,18 +124,19 @@ describe('cameraZoom — context zoom target', () => {
 
 // v0.25.2954: フレーミング項(社長指示「早めに引き判定に入り、できるだけ被写体を捉え続ける」)。
 import {
-  bossFramingZoom, bossVisibilityZoomX, BOSS_FRAME_EDGE_MARGIN_PX, BOSS_ZOOM_PROFILES as PROFILES2,
+  bossFramingZoom, bossVisibilityZoomX, BOSS_FRAME_EDGE_MARGIN_PX, BOSS_FRAME_EDGE_MARGIN_X_PX, BOSS_FRAME_BAND_H_FRAC,
+  BOSS_FRAME_FAR_HALF_FRAC, BOSS_FRAME_FULL_HALF_PX, bossFramedHalfW, BOSS_FRAMING_TUNING, BOSS_LEGACY_FRAMING_TUNING, BOSS_ZOOM_PROFILES as PROFILES2,
 } from './cameraZoom';
 
 describe('bossFramingZoom (被写体を画面内に保つ要求ズーム)', () => {
   const vp = { width: 800, height: 600 };
   it('縦=帯基準で全量/横=先読み予算込みの要求(v0.25.3066・社長報告「横が画面外」対応)', () => {
     // 縦は「見える帯(画面高×0.45)」の半径で全量を測る=上下に逃げられたら素直に引く
-    const bandHalf = (vp.height * 0.45) / 2;
+    const bandHalf = (vp.height * BOSS_FRAME_BAND_H_FRAC) / 2;
     expect(bossFramingZoom(0, 500, vp)).toBeCloseTo((bandHalf - BOSS_FRAME_EDGE_MARGIN_PX) / 500, 6);
     // 横は可視条件 |dx|·z ≤ (1−PLAYER_EDGE)·W − margin をそのまま要求にする。
     // 旧「半分+MID床」は退役済みパン(bossViewBiasX)前提で、横に離れるとボスが画面外に残った。
-    const xBudget = (1 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * vp.width - BOSS_FRAME_EDGE_MARGIN_PX;
+    const xBudget = (1 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * vp.width - BOSS_FRAME_EDGE_MARGIN_X_PX;
     expect(bossFramingZoom(2000, 0, vp)).toBeCloseTo(xBudget / 2000, 6);
     // 横500pxなら引き不要(寄せ(bossCameraLeadX)が担う)
     expect(bossFramingZoom(500, 0, vp)).toBeGreaterThan(1);
@@ -150,7 +151,7 @@ describe('bossFramingZoom (被写体を画面内に保つ要求ズーム)', () =
     // ★不変条件: この目標ズームでボスの中心が画面内(右余白の内側)に居る。
     // ボス画面X = プレイヤー位置(0.28W) + dx·z ≤ W − 余白。
     const bossScreenX = BOSS_LEAD_X_PLAYER_EDGE_FRAC * phone.width + 400 * z;
-    expect(bossScreenX).toBeLessThanOrEqual(phone.width - BOSS_FRAME_EDGE_MARGIN_PX + 1e-6);
+    expect(bossScreenX).toBeLessThanOrEqual(phone.width - BOSS_FRAME_EDGE_MARGIN_X_PX + 1e-6);
   });
   it('横の硬い上限はNEAR境界をまたいでも段差にならない(|dx|の連続関数)', () => {
     // NEAR帯にも同じ上限を掛けるので、境界の内外で目標が飛ばない(=ズームのポンピングが出ない)。
@@ -178,7 +179,7 @@ describe('bossFramingZoom (被写体を画面内に保つ要求ズーム)', () =
     const far = PROFILES2.giant.far;
     // 縦600離れ(gap500相当・w=1): 帯基準の全量要求((135-40)/600? → (270-40)/600=0.383)が
     // アンカー(mid=0.588)より強い→そちら(床farでクランプ)
-    const bandHalf2 = (vp.height * 0.45) / 2;
+    const bandHalf2 = (vp.height * BOSS_FRAME_BAND_H_FRAC) / 2;
     const pulled = bossDistanceZoomTarget('mimir', 500, false, { dxCenter: 0, dyCenter: 600, viewport: vp });
     expect(pulled).toBeCloseTo(Math.max(far, (bandHalf2 - BOSS_FRAME_EDGE_MARGIN_PX) / 600), 6);
     // 横600離れ: 横の要求(予算536/600≈0.89)はアンカーより弱い→アンカー(直線カーブ・v0.25.3013)のまま
@@ -429,5 +430,47 @@ describe('★B9 走りのズーム引き runZoomTarget(社長裁定2026-10-16「
   it('引きは群衆ズームの最大(0.8)より浅い=走りの引きが「敵が多い時の引き」を越えない', () => {
     expect(RUN_ZOOM_MIN).toBeGreaterThan(CONTEXT_ZOOM_MIN);
     expect(RUN_ZOOM_MIN).toBeGreaterThan(ZOOM_MIN_ABS);
+  });
+});
+
+// 2026-11-26(社長指示「ボス戦のカメラに余裕があり過ぎる。プレイヤーとボスが大きく表示される目一杯の画角に」)。
+describe('★ボス戦の画角を詰める(2026-11-26)', () => {
+  const phone = { width: 405, height: 878 };
+  it('横の引きの要求と横の先読みが同じ範囲(絵の中心+半幅×割合)を収める=要求どおり引いた時、その範囲の端が右余白の内側に来る', () => {
+    const dx = 300, halfW = 203; // ミーミル(絵の幅405)
+    const z = bossDistanceZoomTarget('mimir', 200, false, { dxCenter: dx, dyCenter: 0, viewport: phone, halfW });
+    const framed = bossFramedHalfW({ halfW });
+    expect(framed).toBeCloseTo(BOSS_FRAME_FAR_HALF_FRAC * halfW, 9); // 大きいボスは半幅×割合
+    const shift = bossCameraLeadX(dx, phone.width, z, framed);
+    const farEdgeScreenX = 0.5 * phone.width + (dx - shift) * z + framed * z;
+    expect(farEdgeScreenX).toBeLessThanOrEqual(phone.width - BOSS_FRAME_EDGE_MARGIN_X_PX + 1e-6);
+    // プレイヤー(画面X=0.5W−shift·z)は端から BOSS_LEAD_X_PLAYER_EDGE_FRAC より内側
+    expect(0.5 * phone.width - shift * z).toBeGreaterThanOrEqual(BOSS_LEAD_X_PLAYER_EDGE_FRAC * phone.width - 1e-6);
+  });
+  it('スマホで真横300pxのミーミルは、旧(絵の端まで全部=約0.50)より寄る(0.7以上)', () => {
+    expect(bossDistanceZoomTarget('mimir', 200, false, { dxCenter: 300, dyCenter: 0, viewport: phone, halfW: 203 })).toBeGreaterThan(0.7);
+  });
+  it('つまみ一式の横の端は先読みの定数と同じ値(片方だけ変えると引きと寄せが食い違う)', () => {
+    expect(BOSS_FRAMING_TUNING.edgeFrac).toBe(BOSS_LEAD_X_PLAYER_EDGE_FRAC);
+  });
+  it('離脱判定のつまみは詰める前の式のまま(画角の調整で逃げ切れる距離を動かさない)', () => {
+    // 詰める前の式(2026-11-26 以前)を手で書き下して突き合わせる: PC・真横600px・トール(絵の半幅140)
+    const pc = { width: 960, height: 540 };
+    const gap = 600 - (140 + 28) / 2;
+    const anchor = 1 + (0.44 - 1) * ((gap - 180) / (1200 - 180));
+    const hardX = (0.72 * 960 - 40) / (600 + 140);
+    const old = Math.max(0.44, Math.min(anchor, hardX)); // 縦0=needY は効かない
+    expect(bossDistanceZoomTarget('thor', gap, false, { dxCenter: 600, dyCenter: 0, viewport: pc, halfW: 140 }, BOSS_LEGACY_FRAMING_TUNING)).toBeCloseTo(old, 9);
+    // 今の画角(カメラ)はそれより寄る
+    expect(bossDistanceZoomTarget('thor', gap, false, { dxCenter: 600, dyCenter: 0, viewport: pc, halfW: 140 })).toBeGreaterThan(old);
+  });
+  it('小さいボスは全身(半幅まで)・絵の表に無い型は描画の枠の半幅で測る・離脱判定の式は当たり判定の半幅のまま', () => {
+    expect(bossFramedHalfW({ halfW: 30, artHalfW: 69 })).toBe(69);           // 城ボス: 絵の枠の半幅を全部
+    expect(bossFramedHalfW({ halfW: 140, artHalfW: 140 })).toBe(BOSS_FRAME_FULL_HALF_PX); // トール: 下限80
+    expect(bossFramedHalfW({ halfW: 30, artHalfW: 69 }, BOSS_LEGACY_FRAMING_TUNING)).toBe(30);
+    expect(bossFramedHalfW({ halfW: 203 }, BOSS_LEGACY_FRAMING_TUNING)).toBe(203);
+  });
+  it('寄りの上限は等倍のまま(足元=等倍・1を超えて寄らない)', () => {
+    expect(bossDistanceZoomTarget('thor', 100, false, { dxCenter: 60, dyCenter: 0, viewport: phone, halfW: 140 })).toBe(1);
   });
 });

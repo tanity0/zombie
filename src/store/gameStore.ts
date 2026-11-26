@@ -11335,6 +11335,10 @@ interface GameState {
   // 用途は「画面上の距離で決まっている値」をワールド距離へ戻すこと(v0.25.3170: 銃の射程ゲート)。
   // 判定に使うので**シミュレーション側が持つのが正**(PixiJSのworldGroup.scaleを読みに行かない)。
   viewZoom: number;
+  // ★銃の射程を決める画角(2026-11-26・ボス戦の画角を詰めた回)。ボス交戦中だけ、**詰める前の画角の式**
+  // (cameraZoom.BOSS_LEGACY_FRAMING_TUNING)で useGameLoop が推定した値を入れる(カメラが寄っても射程を縮めない)。
+  // null=ボス交戦外=射程は viewZoom そのまま。書き込みは viewZoom と同じく 0.005 未満の変化では書かない。
+  gunRangeZoom: number | null;
   // Whip hurricane: a fixed suction point at the whip tip. While active, nearby
   // enemies are pulled toward (rootX,rootY) each tick. null when inactive.
   hurricane: {
@@ -12860,6 +12864,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   zoomTargetY: 0,
   lastKillZoomAt: 0,
   viewZoom: 1,
+  gunRangeZoom: null,
   danceTapLog: [],
   hurricane: null,
   summons: [],
@@ -30335,6 +30340,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         zoomTargetY: 0,
         lastKillZoomAt: 0,
         viewZoom: 1,
+        gunRangeZoom: null,
         hurricane: null,
         summons: [],
         heroDogRespawnAt: undefined,

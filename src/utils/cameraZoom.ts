@@ -31,7 +31,11 @@ export const BOSS_ZOOM_MIN = BOSS_ZOOM_OVERRIDE ?? 0.7;
 // so a very wide boss does not zoom out merely because its centre is far away.
 export const BOSS_DISTANCE_ZOOM_NEAR_PX = 180;   // ここまで=足元(等倍)
 export const BOSS_DISTANCE_ZOOM_MID_PX = 500;    // 中距離アンカー(旧FAR)
-export const BOSS_DISTANCE_ZOOM_FAR_PX = 1200;   // 遠距離アンカー(以遠は張り付き。離脱判定は画面px基準で別途換算)
+// ★2026-11-26(社長指示「ボス戦のズーム引きやカメラ位置が余裕があり過ぎる。プレイヤーとボスが大きく表示される目一杯の画角に」):
+// 1200→1800。距離アンカーは「収まるかどうか」と無関係に距離だけで引く項なので、余白の出どころの1つだった
+// (例: PC で真横600pxのボス=横は等倍でも収まるのに0.82まで引いていた)。傾きを2/3に寝かせ、引きは
+// 主にフレーミング項(収まらない時だけ引く)に任せる。足元=等倍(NEAR)と床(profile.far)は不変。
+export const BOSS_DISTANCE_ZOOM_FAR_PX = 1800;   // 遠距離アンカー(以遠は張り付き。離脱判定は画面px基準で別途換算)
 export const BOSS_ZOOM_NEAR = 1.0;               // 足元=等倍(社長指示)
 export const BOSS_ZOOM_MID = 1 / 1.7;            // ≈0.588=「中距離で1.7倍引き」
 export const BOSS_DISTANCE_ZOOM_MIN = BOSS_ZOOM_OVERRIDE ?? 0.40;
@@ -112,25 +116,84 @@ const smooth01 = (raw: number): number => {
 //    そのまま使える(床を下げると全レイヤー再監査=CLAUDE.mdズーム掟)。
 //  - 床0.40で縦に捉えられる限界=中心距離 (H/2−マージン)/0.40(800×600なら約610wpx)。横は約860wpx。
 //    それより遠い被写体は物理的に映せない(=そこは交戦域の広さ側で扱う)。
-export const BOSS_FRAME_EDGE_MARGIN_PX = 40; // 被写体中心を可視窓の端からこの画面px内側に保つ
+export const BOSS_FRAME_EDGE_MARGIN_PX = 40; // 縦: 被写体中心を可視窓(帯)の端からこの画面px内側に保つ
+// ★2026-11-26(社長指示「目一杯の画角」): 横の端の余白は縦と分けて 40→24。横は絵の端(下の BOSS_FRAME_FAR_HALF_FRAC)で
+// 測るので、端に残す余白は少しでよい。縦(帯・地平線・霧の都合)は従来の40のまま。
+export const BOSS_FRAME_EDGE_MARGIN_X_PX = 24;
+// ★2026-11-26(社長指示「ボスをある程度捉えつつ、プレイヤーの周辺は少し捉えてるくらい」): 横で画面に収める絵の範囲。
+// 中心からプレイヤーと反対側へ「半幅×この割合」まで(1=絵の遠い端まで全部=2026-10-01「ボスが見切れてる。できるだけ収めたい」の値)。
+// 0.5=プレイヤー側の半身+反対側の半分=絵の幅の約3/4。巨大ボス(ミーミル=絵の幅405px≒スマホの画面幅)を
+// 端まで入れようとして2倍引き(0.50)まで引いていたのが、余白の一番大きな出どころだった。予告はプレイヤーへ向かって出るので、
+// 切れるのはプレイヤーから一番遠い側の端だけ。
+export const BOSS_FRAME_FAR_HALF_FRAC = 0.5;
+// ただし小さいボス(絵の半幅がこれ以下)は全身を収める=割合で切るのは大きいボスだけ(world px)。
+// 例: 城ボス(絵の半幅≈69)=全身 / トール(140)=80 / ミーミル(203)=101。
+export const BOSS_FRAME_FULL_HALF_PX = 80;
 // v0.25.2969(Sonnetのヘッドレス実写で確定): 実機は**縦持ち(例390×844)**で、アクターが実際に見えるのは
 // 画面全体ではなく**中央の帯**(上≈1/3は遠景アート・下≈1/4は前景の霧)。フレーミングの縦基準を
 // 画面全高にすると「縦は余裕」と誤認して引かず(社長報告「上下がボス見えない」)、横は幅が狭いので
 // 過剰に引く(「豆粒」)。縦の基準は**帯の高さ=画面高×この係数**で測る。
-export const BOSS_FRAME_BAND_H_FRAC = 0.45;
+// ★2026-11-26(社長指示「目一杯の画角」): 0.45→0.55。PC(論理 960×540)では帯の半径が81px しかなく、斜め上の城ボスで0.54まで
+// 引いていた。投影(遠近)で北の距離は画面上で縮む(実測 約13%)ので、帯を広げても北のボスは上の目標ライン(0.50H)付近に残る。
+export const BOSS_FRAME_BAND_H_FRAC = 0.55;
+
+/**
+ * 画角の詰め具合のつまみ一式(2026-11-26)。カメラ(描画 pixiScene・カメラの推定 useGameLoop)は `BOSS_FRAMING_TUNING`(今の値)を使う。
+ * **ボスの帰巣(離脱)判定だけは `BOSS_LEGACY_FRAMING_TUNING`(詰める前の値)で固定**する: 帰巣の圏内半径
+ * (bossEngagement.bossRetreatKeepRadiusPx)は目標ズームで 1/z に広がるので、画角を詰めると判定まで縮む
+ * (試算: PC の真横で、帰巣が始まる距離が 1365→710px に半減。スマホは変わらない)。画角の調整で
+ * 「逃げ切れる距離」というゲームの判定を動かさないため、判定は旧の式のまま読む。
+ * **銃の射程(weaponUtils.zoomedGunRange)も同じ**: 射程は「画面上で一定」の作りなので、カメラが寄ると
+ * ワールド距離で縮む(試算: スマホ・真横300pxのミーミルでハンドガン 約355→約240px)。ボス戦中の射程は
+ * この詰める前の式で推定した画角(store.gunRangeZoom)で決める(カメラの見え方は今の値のまま)。
+ */
+export interface BossFramingTuning {
+  farPx: number;        // 距離アンカーが床(profile.far)に届く隙間距離
+  edgeFrac: number;     // 横: プレイヤーを画面端からこの幅比より内側に置く(=横の寄せの上限)
+  marginXPx: number;    // 横: 収める範囲の端を画面端からこの画面px内側に
+  bandFrac: number;     // 縦: 見える帯の画面高比
+  farHalfFrac: number;  // 横: 絵の中心からプレイヤーと反対側へ、半幅×この割合まで収める
+  fullHalfPx: number;   // 横: ただし半幅がこれ以下なら全部収める(=max(半幅×割合, これ)・半幅は超えない)
+  useArtHalfW: boolean; // 横: 絵の表(BOSS_SPRITE_FIT)に無い型も描画の枠(enemyFootBox)の半幅で測る(false=当たり判定の半幅)
+}
+export const BOSS_FRAMING_TUNING: BossFramingTuning = {
+  farPx: BOSS_DISTANCE_ZOOM_FAR_PX,
+  edgeFrac: 0.20, // = BOSS_LEAD_X_PLAYER_EDGE_FRAC(下で定義・同値をテストで固定)
+  marginXPx: BOSS_FRAME_EDGE_MARGIN_X_PX,
+  bandFrac: BOSS_FRAME_BAND_H_FRAC,
+  farHalfFrac: BOSS_FRAME_FAR_HALF_FRAC,
+  fullHalfPx: BOSS_FRAME_FULL_HALF_PX,
+  // 2026-11-26: 城ボス等(絵の表に無い型)は当たり判定の半幅(30)で測っていたため、絵(描画の枠は判定の2.3倍)が
+  // 横の端で切れていた(スマホで真横300pxの城ボスが右端の装備欄の下に半分隠れていた)。
+  useArtHalfW: true,
+};
+// 詰める前(2026-11-26 以前)の画角の式。カメラの見え方には使わない=ゲームの判定(帰巣・銃の射程)だけが読む。
+export const BOSS_LEGACY_FRAMING_TUNING: BossFramingTuning = {
+  farPx: 1200, edgeFrac: 0.28, marginXPx: 40, bandFrac: 0.45, farHalfFrac: 1, fullHalfPx: 0, useArtHalfW: false,
+};
+
+/** 横で画面に収める「絵の中心からプレイヤーと反対側への幅」(world px)。引きの要求と横の先読みが同じ値を使う。 */
+export const bossFramedHalfW = (
+  framing: { halfW?: number; artHalfW?: number }, tuning: BossFramingTuning = BOSS_FRAMING_TUNING,
+): number => {
+  const base = Math.max(0, (tuning.useArtHalfW ? (framing.artHalfW ?? framing.halfW) : framing.halfW) ?? 0);
+  return Math.min(base, Math.max(tuning.farHalfFrac * base, tuning.fullHalfPx));
+};
+
 export const bossFramingZoom = (
   dxCenter: number, dyCenter: number, viewport: { width: number; height: number },
+  tuning: BossFramingTuning = BOSS_FRAMING_TUNING,
 ): number => {
   // 役割分担(社長スクショ3枚+実写から):
   // ・**縦=ズーム担当**: 帯の半径で全量を測る=上下に離れたら素直に引いてボスを小さく映す。
   // ・**横=寄せ+ズーム**(v0.25.3066・社長報告「横のズーム引きがボスを捉えきれてない。画面外にいる」):
   //   旧needX(中心差の半分+MID床)は退役済みの描画側パン(bossViewBiasX=寄せ50%負担)前提だった。
-  //   現行の横先読み(bossCameraLeadX)の寄せは画面幅の(0.5−PLAYER_EDGE)=0.22Wが上限なので、
+  //   現行の横先読み(bossCameraLeadX)の寄せは画面幅の(0.5−PLAYER_EDGE)(2026-11-26〜 0.30W)が上限なので、
   //   可視条件は |dx|·z ≤ (1−PLAYER_EDGE)·W − margin。これをそのまま要求にし、MID床は撤去
   //   (最終床は縦と同じく bossDistanceZoomTarget の profile.far=縦横で引ける深さを揃える)。
-  const bandHalfY = (viewport.height * BOSS_FRAME_BAND_H_FRAC) / 2;
+  const bandHalfY = (viewport.height * tuning.bandFrac) / 2;
   const needY = Math.max(0.01, bandHalfY - BOSS_FRAME_EDGE_MARGIN_PX) / Math.max(1, Math.abs(dyCenter));
-  return Math.min(bossVisibilityZoomX(dxCenter, viewport.width), needY);
+  return Math.min(bossVisibilityZoomX(dxCenter, viewport.width, tuning), needY);
 };
 
 // v0.25.3067(社長報告2回目「まだ捉えきれてない。城ボス程度だとまったく画面内に入ってない」):
@@ -147,8 +210,10 @@ export const bossFramingZoom = (
 // 段差が出ない=足元の等倍(社長裁定v2947)も、上限が1を超えている限り従来どおり保たれる。
 // 縦(needY)は「見える帯0.45H に収める」という**構図の好み**なので従来どおり w で薄めて混ぜる
 // (社長が何度も調整した縦の絵作りには触れない)。
-export const bossVisibilityZoomX = (dxCenter: number, viewW: number): number => Math.max(0.01,
-  (1 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * viewW - BOSS_FRAME_EDGE_MARGIN_PX,
+export const bossVisibilityZoomX = (
+  dxCenter: number, viewW: number, tuning: BossFramingTuning = BOSS_FRAMING_TUNING,
+): number => Math.max(0.01,
+  (1 - tuning.edgeFrac) * viewW - tuning.marginXPx,
 ) / Math.max(1, Math.abs(dxCenter));
 
 // ★横は「絵の端」まで画面に収める(社長指示2026-10-01「ボスとの戦いでズームが引の時、ボスが見切れてる。
@@ -156,13 +221,15 @@ export const bossVisibilityZoomX = (dxCenter: number, viewW: number): number => 
 // (真上・真下は100%)。旧式は「判定の帯の中心が端から40px内側」しか見ておらず、絵の幅(ミーミル≈405wpx)の
 // 半分以上が外へ出ていた。`halfW`=絵の半幅(world px)・`dxCenter`=**絵の中心**の横差で渡すと、
 // 横の可視条件と横の寄せが「絵の遠い方の端」で効く。省略(halfW=0)=従来どおり。縦は従来どおり(社長が調整した構図)。
-export interface BossFramingInput { dxCenter: number; dyCenter: number; viewport: { width: number; height: number }; halfW?: number }
+// artHalfW(2026-11-26)= 描画の枠の半幅。絵の表(BOSS_SPRITE_FIT)に在る型は halfW と同じ、無い型(城ボス等)は enemyFootBox の半幅。
+export interface BossFramingInput { dxCenter: number; dyCenter: number; viewport: { width: number; height: number }; halfW?: number; artHalfW?: number }
 
 // 入力の組み立て(絵の寸法を引く)は `bossFraming.ts` の `bossFramingFor`(renderSpec→cameraZoom の循環を避けて別ファイル)。
 
 export const bossDistanceZoomTarget = (
   type: EnemyType, bodyDistancePx: number, isStoryBoss = false,
   framing?: BossFramingInput,
+  tuning: BossFramingTuning = BOSS_FRAMING_TUNING, // 帰巣の判定・銃の射程は BOSS_LEGACY_FRAMING_TUNING(上の説明)
 ): number => {
   if (BOSS_ZOOM_OVERRIDE != null) return BOSS_ZOOM_OVERRIDE;
   const profile = BOSS_ZOOM_PROFILES[bossZoomClassFor(type, isStoryBoss)];
@@ -175,20 +242,20 @@ export const bossDistanceZoomTarget = (
     ? profile.near
     : profile.near + (profile.far - profile.near) * Math.min(1,
         (bodyDistancePx - BOSS_DISTANCE_ZOOM_NEAR_PX)
-        / (BOSS_DISTANCE_ZOOM_FAR_PX - BOSS_DISTANCE_ZOOM_NEAR_PX));
+        / (tuning.farPx - BOSS_DISTANCE_ZOOM_NEAR_PX));
   if (!framing) return anchor;
   // v0.25.3067: 横の可視条件は**薄めずに**掛ける硬い上限(bossVisibilityZoomX の説明を参照)。
   // |dx|の連続関数なので NEAR帯へそのまま掛けても段差は出ない(近ければ1を超えて効かない=
   // 足元の等倍はそのまま)。床(profile.far)は従来どおりこれより優先=引きすぎない。
-  // ★横は絵の**遠い方の端**で測る(|中心差|+半幅・2026-10-01)。
-  const farDx = Math.abs(framing.dxCenter) + Math.max(0, framing.halfW ?? 0);
-  const hardX = bossVisibilityZoomX(farDx, framing.viewport.width);
+  // ★横は絵の**遠い方の端**で測る(|中心差|+半幅・2026-10-01)。2026-11-26: 半幅は BOSS_FRAME_FAR_HALF_FRAC 倍まで(絵の約3/4)。
+  const farDx = Math.abs(framing.dxCenter) + bossFramedHalfW(framing, tuning);
+  const hardX = bossVisibilityZoomX(farDx, framing.viewport.width, tuning);
   // 足元(NEAR以内)は等倍のまま(社長裁定v0.25.2947「足元では等倍」不変)。それより外では
   // アンカー曲線とフレーミング要求の**引きが強い方**を採る(=見えなくなるより早めに引く)。床はfar。
   // v0.25.2964: 縦のフレーミング項はNEAR→MIDの間で滑らかに効かせる(旧: NEAR境界の外側で即フル適用=
   // 境界をまたぐたびに目標が段差で飛び、ぎこちなさの一因だった)。
   if (bodyDistancePx <= BOSS_DISTANCE_ZOOM_NEAR_PX) return Math.max(profile.far, Math.min(anchor, hardX));
-  const frame = bossFramingZoom(farDx, framing.dyCenter, framing.viewport);
+  const frame = bossFramingZoom(farDx, framing.dyCenter, framing.viewport, tuning);
   const w = smooth01((bodyDistancePx - BOSS_DISTANCE_ZOOM_NEAR_PX)
     / (BOSS_DISTANCE_ZOOM_MID_PX - BOSS_DISTANCE_ZOOM_NEAR_PX));
   const blended = anchor + (Math.min(anchor, frame) - anchor) * w; // frameが強い分だけwで効かせる
@@ -366,26 +433,28 @@ export const BOSS_LEAD_PLAYER_MAX_FRAC = 0.78;        // 北側: プレイヤー
 // 縦と同じくカメラ本体で寄せる。左右対称: ボスが居る側の画面幅比 BOSS_LEAD_X_TARGET_SCREEN_FRAC の
 // ラインへボスを引き込み、プレイヤーは反対側 BOSS_LEAD_X_PLAYER_EDGE_FRAC までしか寄せない。
 export const BOSS_LEAD_X_TARGET_SCREEN_FRAC = 0.76; // ボス側の目標ライン(縦の南0.76と同値)
-export const BOSS_LEAD_X_PLAYER_EDGE_FRAC = 0.28;   // プレイヤーを画面端からこの幅比より外に出さない
+// ★2026-11-26(社長指示「プレイヤーの周辺は少し捉えてる」): 0.28→0.20。プレイヤーの外側に画面幅の2割(スマホで約80画面px)を残し、
+// その分ボス側へ寄せて寄れるようにする(横の引きの要求 bossVisibilityZoomX もこの値を読む)。
+export const BOSS_LEAD_X_PLAYER_EDGE_FRAC = 0.20;   // プレイヤーを画面端からこの幅比より外に出さない
 export const bossCameraLeadX = (dxCenter: number, viewW: number, zoom: number, halfW = 0): number => {
   const z = Math.max(ZOOM_MIN_ABS, Math.min(1, zoom));
   const bossBasePx = 0.5 * viewW + dxCenter * z;      // 先読み無しのボス画面X(プレイヤー=中央)
   // ★絵の遠い方の端(2026-10-01): 中心を目標ラインへ寄せても、幅の広い絵は端が画面外に残る。
   // 端が「画面端からマージン内側」へ入るまでのシフトも求め、**大きい方**を採る(上限は従来どおり)。
-  const hw = Math.max(0, halfW) * z;
+  const hw = Math.max(0, halfW) * z; // halfW=収める幅(呼び出し側が bossFramedHalfW で出す=引きの要求と同じ値)
   // カメラを東(正)へSだけ寄せると、ボスの画面Xは bossBasePx − S·z へ動く(縦とは向きが逆なことに注意)。
   if (dxCenter >= 0) {
-    // ボスが右: ボスを右目標ライン(0.76W)まで引き込む東シフト(正)。プレイヤーは左端0.28Wまで。
+    // ボスが右: ボスを右目標ライン(0.76W)まで引き込む東シフト(正)。プレイヤーは左端 BOSS_LEAD_X_PLAYER_EDGE_FRAC(0.20W)まで。
     // 目標ラインより内側に居るボスには寄せない(want<0→0)。
     const wantCenterPx = bossBasePx - BOSS_LEAD_X_TARGET_SCREEN_FRAC * viewW;
-    const wantEdgePx = (bossBasePx + hw) - (viewW - BOSS_FRAME_EDGE_MARGIN_PX);
+    const wantEdgePx = (bossBasePx + hw) - (viewW - BOSS_FRAME_EDGE_MARGIN_X_PX);
     const wantShiftPx = Math.max(wantCenterPx, wantEdgePx);
     const maxShiftPx = (0.5 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * viewW;
     return Math.max(0, Math.min(maxShiftPx, wantShiftPx)) / z;
   }
   // ボスが左: 鏡映(左目標ライン=(1−0.76)W。西シフト=負)。
   const wantCenterPx = bossBasePx - (1 - BOSS_LEAD_X_TARGET_SCREEN_FRAC) * viewW;
-  const wantEdgePx = (bossBasePx - hw) - BOSS_FRAME_EDGE_MARGIN_PX;
+  const wantEdgePx = (bossBasePx - hw) - BOSS_FRAME_EDGE_MARGIN_X_PX;
   const wantShiftPx = Math.min(wantCenterPx, wantEdgePx);
   const minShiftPx = -(0.5 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * viewW;
   return Math.max(minShiftPx, Math.min(0, wantShiftPx)) / z;

@@ -1,6 +1,7 @@
 // ★ボスのフレーミング入力の組み立て(社長指示2026-10-01「ボスが見切れてる。画面にできるだけ収めたい」)。
 // `cameraZoom.ts` に置くと renderSpec(ZOOM_MIN_ABS を読む)と循環するので別ファイル。
-import { BOSS_SPRITE_FIT, bossArtCenter } from '../pixi/renderSpec';
+import { BOSS_SPRITE_FIT, bossArtCenter, enemyFootBox } from '../pixi/renderSpec';
+import type { Enemy } from '../types/game';
 import type { BossFramingInput } from './cameraZoom';
 /**
  * ボスのフレーミング入力(横=絵の中心と半幅・縦=判定の帯の中心=従来どおり)。描画(pixiScene)・
@@ -13,10 +14,13 @@ export const bossFramingFor = (
 ): BossFramingInput => {
   const fit = BOSS_SPRITE_FIT[e.type];
   const art = bossArtCenter(e);
+  const halfW = fit ? (e.width / fit.w) / 2 : e.width / 2;
   return {
     dxCenter: art.x - pcx,
     dyCenter: e.y + e.height / 2 - pcy,
     viewport,
-    halfW: fit ? (e.width / fit.w) / 2 : e.width / 2,
+    halfW,
+    // 2026-11-26: 表に無い型(城ボス等)の絵の半幅=描画の枠(enemyFootBox・判定の幅×倍率)の半分。halfW(判定の半幅)は離脱判定の式が読むので残す。
+    artHalfW: fit ? halfW : enemyFootBox(e as Enemy).boxW / 2,
   };
 };

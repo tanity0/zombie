@@ -607,7 +607,7 @@ import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom, runZoomTarget,
   ZOOM_MIN_ABS,
   springSmoothZoom, BOSS_DISTANCE_ZOOM_RETURN_TAU, zoomCameraDownFrac, bossCameraLeadY,
-  bossWideShotZoom,
+  bossWideShotZoom, BOSS_LEGACY_FRAMING_TUNING, bossFramedHalfW,
   bossCameraLeadX, // v0.25.3063: 横のボス先読み(社長裁定「2をまず揃える」)
   isPointInZoomedViewport, // research/LIBERTY_HORDE.md: 旗手が画面に入った最初のフレーム(カットイン)
 } from '../utils/cameraZoom';
@@ -2099,6 +2099,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // (bossDistanceZoomTarget/交戦半径)+同じバネ/時定数で追従した推定値。描画はstoreを読むだけ=逆流なし。
   // engaged はヒステリシス用(交戦中は離脱半径で判定=pixiの bossCameraEngaged と同じ作法)。
   const camBossZoomRef = useRef<{ z: number; v: number; engaged: boolean }>({ z: 1, v: 0, engaged: false });
+  // 2026-11-26: 銃の射程用に、**詰める前の画角の式**(BOSS_LEGACY_FRAMING_TUNING)で同じ推定を並走させる(カメラには使わない)。
+  const gunRangeZoomRef = useRef<{ z: number; v: number }>({ z: 1, v: 0 });
   // §6.37 v7: ボス方向への縦カメラ先読み(世界px・正=北)。イージング済みの現在値をフレーム間で保持。
   const camBossLeadYRef = useRef<number>(0);
   // v0.25.3063: 横のボス先読み(世界px・正=東)。縦と同じ目標ライン式・同じ時定数(社長裁定「2をまず揃える」)。
@@ -7440,6 +7442,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               boss.type, aabbGapDistance(player, boss), boss.isStoryBoss === true,
               // ★横は絵の端で測る(2026-10-01・描画と同じ1本=判定と絵の不一致を作らない)。
               bossFramingFor(boss, player.x + player.width / 2, player.y + player.height / 2, gb),
+              // 2026-11-26(ボス戦の画角を詰めた回): 帰巣の圏内判定は**詰める前の画角の式で固定**(cameraZoom.BOSS_LEGACY_FRAMING_TUNING)。
+              // 画角の調整で「逃げ切れる距離」を動かさない(詰めた画角のままだと PC の真横で帰巣の距離が半減する)。
+              BOSS_LEGACY_FRAMING_TUNING,
             );
             // v0.25.3018(社長裁定・案A): 帰巣の圏内判定は**プレイヤー中心の一律距離**(正方形・
             // 半径=画面長辺の半分+余白・引きズームで1/z拡大)。旧カメラ窓基準(v3005の正方形化を含む)は、
@@ -11103,6 +11108,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         {
           const est = camBossZoomRef.current;
           let bossTargetNow: number | null = null;
+          let bossLegacyTargetNow: number | null = null; // 2026-11-26: 詰める前の画角の式の目標(銃の射程だけが読む)
           let bossNearD2 = Infinity, bossNearDy = 0; // §6.37 v7: 最近接ボスの縦中心差(縦カメラ先読み用)
           let bossNearDx = 0; // v0.25.3063: 横中心差(横カメラ先読み用・社長裁定「2をまず揃える」)
           let bossNearHalfW = 0; // ★2026-10-01: 最近接ボスの絵の半幅(横の先読みが絵の端まで収める)
@@ -11115,7 +11121,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (d2 > limit * limit) continue;
               // ★横は**絵の中心と半幅**(2026-10-01「ボスが見切れてる」)。縦は従来どおり判定の帯の中心。
               const fr = bossFramingFor(e, pcCamX, pcCamY, gameBounds);
-              if (d2 < bossNearD2) { bossNearD2 = d2; bossNearDy = dy; bossNearDx = fr.dxCenter; bossNearHalfW = fr.halfW ?? 0; }
+              if (d2 < bossNearD2) { bossNearD2 = d2; bossNearDy = dy; bossNearDx = fr.dxCenter; bossNearHalfW = bossFramedHalfW(fr); } // 2026-11-26: 収める幅=引きの要求と同じ1本
               // v0.25.3021(社長スクショ「ボスが上に居るのにプレイヤー中心・下の余白が無駄」の真因):
               // 描画(pixiScene)と同じく**フレーミング項込み**で目標ズームを出す。ボスが画面端の外に
               // 遠い時は距離カーブでなくフレーミング項が実ズームを決めるため、ここに無いと推定だけ
@@ -11125,6 +11131,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const tWide = bossWideShotZoom(e.type, e.bossState);
               const t = tWide != null ? Math.min(tDist, tWide) : tDist;
               bossTargetNow = bossTargetNow == null ? t : Math.min(bossTargetNow, t);
+              const tDistLegacy = bossDistanceZoomTarget(e.type, aabbGapDistance(player, e), e.isStoryBoss === true, fr, BOSS_LEGACY_FRAMING_TUNING);
+              const tLegacy = tWide != null ? Math.min(tDistLegacy, tWide) : tDistLegacy;
+              bossLegacyTargetNow = bossLegacyTargetNow == null ? tLegacy : Math.min(bossLegacyTargetNow, tLegacy);
             }
           }
           est.engaged = bossTargetNow != null;
@@ -11151,6 +11160,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ためのゲート。CLAUDE.md「React re-render discipline」)。
           if (Math.abs(useGameStore.getState().viewZoom - est.z) >= 0.005) {
             useGameStore.setState({ viewZoom: est.z });
+          }
+          // ★2026-11-26(社長「はい」=カメラは詰めたまま、銃の射程だけ詰める前の画角で決める): 詰める前の式の目標を
+          // 同じバネで追う。交戦外はカメラの推定へ揃えて(=次の交戦の始まりが同じ値から出る)、store には null
+          // (=射程は viewZoom そのまま)。書き込みは viewZoom と同じ 0.005 のゲート。
+          const gr = gunRangeZoomRef.current;
+          if (est.engaged) {
+            const legacyTarget = contextZoomTarget(0, false, baitZoom != null ? Math.min(bossLegacyTargetNow ?? 1, baitZoom) : bossLegacyTargetNow);
+            const sp = springSmoothZoom(gr.z, gr.v, legacyTarget, baseDeltaTime);
+            gr.z = sp.z; gr.v = sp.v;
+            const cur = useGameStore.getState().gunRangeZoom;
+            if (cur == null || Math.abs(cur - gr.z) >= 0.005) useGameStore.setState({ gunRangeZoom: gr.z });
+          } else {
+            gr.z = est.z; gr.v = 0;
+            if (useGameStore.getState().gunRangeZoom != null) useGameStore.setState({ gunRangeZoom: null });
           }
           // §6.37 v7(社長指示「左右みたいに上下もカメラを寄せて」): 縦のボス先読み。横(描画側の
           // bossViewBiasX=中心差の半分)と同じ狙いを、縦は**カメラ本体**で寄せる(描画側のパンだと

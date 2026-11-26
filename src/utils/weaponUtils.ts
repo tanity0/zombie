@@ -1027,9 +1027,15 @@ export const GLAUNCHER_ROLL_DETONATE_PX: Record<string, number> = {
  *
  * 射程だけを伸ばすので、引いている間は相対的に銃が強くなる(ハンドガン176→最大440)。
  * 数字が過剰なら `zoomCompensatedWorldDistance` ではなく上限付きに変えるのが調整点。
+ *
+ * ★2026-11-26(ボス戦の画角を詰めた回・社長「はい」=カメラは詰めたまま、射程だけ詰める前の画角で決める):
+ * ボス交戦中は `gunRangeZoom`(詰める前の画角の式 BOSS_LEGACY_FRAMING_TUNING で推定した画角)を使う。
+ * 交戦外は null=従来どおり viewZoom。
  */
+export const gunRangeZoomOf = (st: { viewZoom: number; gunRangeZoom?: number | null }): number =>
+  st.gunRangeZoom ?? st.viewZoom;
 export const zoomedGunRange = (basePx: number): number =>
-  zoomCompensatedWorldDistance(basePx, useGameStore.getState().viewZoom);
+  zoomCompensatedWorldDistance(basePx, gunRangeZoomOf(useGameStore.getState()));
 
 /**
  * ★UNIQUE_WEAPONS.md §13-1(監査C-7)/§16-5(受け入れ条件3): `rangeOverride` を持つ武器
