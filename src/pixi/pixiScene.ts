@@ -5513,6 +5513,8 @@ export class PixiScene {
   private surielRingSprites = new Map<string, {
     ring1: Sprite; ring2: Sprite;
     spinAng: number; spinVel: number; lastSpinAt: number; vanishAt: number | null;
+    // ?proj=1: 最後に見えた持ち主の足元 F・旧い倍率 d と、環1本目が薙ぎ(地面の点)だったか(本体が消えた後の減速フェードの写しに使う)
+    pFx?: number; pFy?: number; pD?: number; pGround?: boolean;
   }>();
   // FX-V2a(発注仕様v0.25.2974・社長方針2026-08-07更新): 薙ぎ(sweep)実行中だけ環の軌跡に添える
   // 斬撃ストリーク1枚(既存fx/slash-streak-*流用)。単純な1枚Sprite=thorSlashFx等のContainer3枚
@@ -5587,7 +5589,8 @@ export class PixiScene {
   private phillLastPhase = new Map<string, number>();
   private phillFlapPhaseAt = new Map<string, number>(); // 常時の羽ばたき撒き散らし間引き(周期の頭でだけ発火)
   private phillLastPos = new Map<string, { x: number; y: number }>(); // 死亡時の最終位置(cleanupで演出を出すため)
-  private phillFeatherPool: { sp: Sprite; active: boolean; bornAt: number; life: number; vx: number; vy: number; vr: number; skewBase: number; flipX: number }[] = [];
+  // ox/oy=出た点(world)・gy=その時のフィルの地面の Y(?proj=1 の撒き羽根の写し=projGroundLatePass が読む)
+  private phillFeatherPool: { sp: Sprite; active: boolean; bornAt: number; life: number; vx: number; vy: number; vr: number; skewBase: number; flipX: number; ox?: number; oy?: number; gy?: number }[] = [];
   // ★v0.25.3730→3733: 前面コンテナ(羽攻撃の武器絵のみ・phillLayer末尾=本体より前)。
   private phillFront: Container | null = null;
   // ★v0.25.3733(社長指示「羽6本→羽一本ずつのエフェクト→フィル本体の順に。本体が常に一番上」):
@@ -11508,6 +11511,14 @@ export class PixiScene {
   private projOwnerAttach(obj: Container | null | undefined, key: ProjActorPartKey = 'attachedArt') {
     if (this.projFrame && this.projDrawOwner && obj) this.projAttach(this.projDrawOwner, obj, key);
   }
+  /**
+   * projOwnerAttach と同じ。ただし obj の親が既に体として写る入れ物(フィルの羽攻撃の前面の入れ物 phillFront)なら登録しない
+   * (登録すると入れ物と obj の両方に体の相似が掛かり二重に写る=P + k·(P − k·F + k·X − F) になっていた)。
+   */
+  private projOwnerAttachUnlessHosted(obj: Container | null | undefined) {
+    if (obj?.parent && obj.parent === this.phillFront) return;
+    this.projOwnerAttach(obj);
+  }
 
   /**
    * ?proj=1(段階3・§3-7b の D「体の部位に出る物」): Graphics の命令 n0 から今までを、持ち主 view の体の飾りとして記録する
@@ -12525,6 +12536,121 @@ export class PixiScene {
     if (aa !== 1) c.alpha *= aa;
   }
   private surielStreakEnds = new Map<string, { fx: number; fy: number; tx: number; ty: number }>();
+
+  // ---- 地面の点で写す「体から離れて地面を走る/飛ぶ絵」(突きの風圧・刀の斬撃の筋/弧/炸裂・光輪投げの輪・撒き羽根) ----
+  // 体の相似 P + k·(X − F) は「体に付く絵」には正しいが、体から離れて地面の上を伸びる・飛ぶ絵に使うと、縦の詰め(dl/dy ≠ s)の分だけ
+  // 投影済みの赤い帯・判定から外れる(北へ150px で 20〜45px)。描く関数は今のまま world の座標で描き、ここへ記録だけ残す。
+  // 後掛け(projPostView)の後に、入れ物(祖先)へ実際に掛かった変換(体の相似・高さの割り戻しを含む)を読み、地面の点で写した表示の
+  // 位置・大きさ・回転を、その変換の逆で入れ直す(祖先が層なら直置き)。根元が体に付く絵(刀の弧の中心=柄)は祖先の写しのまま。
+  // ?proj=0 では記録しない(1ビットも使わない)。記録は作り置き(毎フレームの確保を増やさない)。
+  private projGL: { c: Container | null; kind: 'seg' | 'mid' | 'pt' | 'arc'; ax: number; ay: number; bx: number; by: number; lift: number; k: 's' | 'fx'; d: number; frame: number }[] = [];
+  private projGLN = 0;
+  private projGLLayers: Set<Container> | null = null;
+  private projGLPa = makeProjLiftPoint();
+  private projGLPb = makeProjLiftPoint();
+  /**
+   * 記録する(?proj=1 の時だけ)。kind:
+   * - 'seg': ローカルの x 軸を A→B に張った絵(アンカー=A)。両端を地面の点で投影(lift>0 なら両端を地面の点 (x, y+lift) と高さ lift に分ける)。
+   * - 'mid': 中心にアンカーを置いた帯の絵(A→B の中点)。両端を投影。
+   * - 'pt': 点 A(lift>0 なら持ち上げた点)。大きさは k/d(d=持ち主の旧い遠近の倍率で割り戻す=体の大きさとつなぐ)。
+   * - 'arc': 刀の弧(中心 A=柄=祖先の写しのまま・半径と向きは中心から地面の点 B の投影へ)。
+   */
+  private projGroundLate(c: Container | null | undefined, kind: 'seg' | 'mid' | 'pt' | 'arc', ax: number, ay: number, bx: number, by: number, k: 's' | 'fx', lift = 0, d = 1) {
+    if (!this.projFrame || !c) return;
+    let r = this.projGL[this.projGLN];
+    if (!r) { r = { c: null, kind, ax, ay, bx, by, lift, k, d, frame: 0 }; this.projGL[this.projGLN] = r; }
+    r.c = c; r.kind = kind; r.ax = ax; r.ay = ay; r.bx = bx; r.by = by; r.lift = lift; r.k = k; r.d = d; r.frame = this.projFrameNo;
+    this.projGLN++;
+  }
+  /** 層(world の座標の入れ物)か。祖先の変換はここで止める。 */
+  private projGLIsLayer(o: Container): boolean {
+    if (!this.projGLLayers) {
+      const L = this.L;
+      this.projGLLayers = new Set<Container>([L.backgroundLayer, L.groundLayer, L.actorLayer, L.frontObjectLayer, L.effectLayer, L.lightingLayer, L.danceUiLayer, L.phillLayer, L.skyFxLayer]);
+    }
+    return this.projGLLayers.has(o);
+  }
+  private projGLXf = { tx: 0, ty: 0, sx: 1, sy: 1 };
+  /** c の祖先(層の手前まで)に掛かっている変換(層の座標 = T + S·ローカル)。回転のある祖先・層に届かない物は null。 */
+  private projGLParentXf(c: Container): { tx: number; ty: number; sx: number; sy: number } | null {
+    const o = this.projGLXf;
+    o.tx = 0; o.ty = 0; o.sx = 1; o.sy = 1;
+    for (let p = c.parent; p; p = p.parent) {
+      if (this.projGLIsLayer(p)) return o;
+      if (p.rotation !== 0 || p.skew.x !== 0 || p.skew.y !== 0 || p.pivot.x !== 0 || p.pivot.y !== 0) return null;
+      o.tx = p.position.x + p.scale.x * o.tx; o.ty = p.position.y + p.scale.y * o.ty;
+      o.sx *= p.scale.x; o.sy *= p.scale.y;
+    }
+    return null;
+  }
+  /** 地面の点 (x, y+lift) を投影して高さ lift×σ 上へ(lift=0 なら投影そのもの)。 */
+  private projGLPoint(x: number, y: number, lift: number, out: ReturnType<typeof makeProjLiftPoint>) {
+    return projLiftPointInto(this.projFrame!, x, y + lift, lift, out); // proj-lift: Z33(武器の高さ=地面の点+高さ)
+  }
+  /**
+   * 層の座標で決めた表示の置き方(位置 Q・大きさの倍率 mx/my・回転 rot・濃さの倍率 a)を、祖先の変換の逆で c に入れる
+   * (保存してから=次のフレームの頭で戻る)。
+   */
+  private projGLSet(c: Container, xf: { tx: number; ty: number; sx: number; sy: number }, qx: number, qy: number, mx: number, my: number, rot: number, a: number) {
+    if (!this.projFxSave(c, true)) return;
+    const sx = Math.abs(xf.sx) > 1e-9 ? xf.sx : 1e-9, sy = Math.abs(xf.sy) > 1e-9 ? xf.sy : 1e-9;
+    c.position.set((qx - xf.tx) / sx, (qy - xf.ty) / sy);
+    c.scale.set(c.scale.x * mx / sx, c.scale.y * my / sy);
+    c.rotation = rot;
+    if (a !== 1) c.alpha *= a;
+  }
+  /** 後掛けの後に1回(projActorPostPass から)。記録した絵と、撒き羽根を地面の点で写す。 */
+  private projGroundLatePass() {
+    const f = this.projFrame;
+    if (!f) { this.projGLN = 0; return; }
+    const pa = this.projGLPa, pb = this.projGLPb;
+    for (let i = 0; i < this.projGLN; i++) {
+      const r = this.projGL[i];
+      const c = r.c;
+      r.c = null; // 参照を持ち越さない
+      if (!c || c.destroyed || !c.visible || r.frame !== this.projFrameNo) continue;
+      const xf = this.projGLParentXf(c);
+      if (!xf) continue;
+      const rot0 = c.rotation;
+      if (r.kind === 'pt') {
+        this.projGLPoint(r.ax, r.ay, r.lift, pa);
+        const k = this.projFxKOf(r.k, pa.s) / (r.d > 1e-6 ? r.d : 1);
+        this.projGLSet(c, xf, pa.x, pa.y, k, k, rot0, pa.alpha);
+      } else if (r.kind === 'arc') {
+        // 中心(柄)は祖先の写しのまま(祖先が層=体の無い時は地面の点)・半径と向きは中心から B の投影へ
+        const cx0 = c.position.x, cy0 = c.position.y;
+        let qx: number, qy: number;
+        if (xf.tx === 0 && xf.ty === 0 && xf.sx === 1 && xf.sy === 1) { this.projGLPoint(cx0, cy0, 0, pa); qx = pa.x; qy = pa.y; } else { qx = xf.tx + xf.sx * cx0; qy = xf.ty + xf.sy * cy0; }
+        this.projGLPoint(r.bx, r.by, 0, pb);
+        const r0 = Math.max(30, Math.hypot(r.bx - cx0, r.by - cy0));
+        const r1 = Math.max(30 * pb.s, Math.hypot(pb.x - qx, pb.y - qy));
+        const m = r1 / r0;
+        this.projGLSet(c, xf, qx, qy, m, m, Math.atan2(pb.y - qy, pb.x - qx) + Math.PI, pb.alpha);
+      } else {
+        this.projGLPoint(r.ax, r.ay, r.lift, pa);
+        this.projGLPoint(r.bx, r.by, r.lift, pb);
+        const wl = Math.hypot(r.bx - r.ax, r.by - r.ay), pl = Math.hypot(pb.x - pa.x, pb.y - pa.y);
+        const k = this.projFxKOf(r.k, pa.s);
+        const rot = wl > 1e-6 ? rot0 + (Math.atan2(pb.y - pa.y, pb.x - pa.x) - Math.atan2(r.by - r.ay, r.bx - r.ax)) : rot0;
+        const mx = wl > 1e-6 ? pl / wl : k;
+        if (r.kind === 'mid') this.projGLSet(c, xf, (pa.x + pb.x) / 2, (pa.y + pb.y) / 2, mx, k, rot, pa.alpha);
+        else this.projGLSet(c, xf, pa.x, pa.y, mx, k, rot, pa.alpha);
+      }
+    }
+    this.projGLN = 0;
+    // 撒き羽根(フィル): 出た点 O(体の高さ)を、真下の地面の点 G=(O.x, 地面) と高さ (G.y − O.y) に分けて持ち上げた点に置き、
+    // 漂った分は O を支点に s 倍(3-7c の点o+高さ)。入れ物(羽の入れ物=フィルの体の相似)の写しは打ち消す。
+    for (const p of this.phillFeatherPool) {
+      const sp = p.sp;
+      if (!p.active || sp.destroyed || !sp.visible || p.ox === undefined || p.oy === undefined || p.gy === undefined) continue;
+      const xf = this.projGLParentXf(sp);
+      if (!xf) continue;
+      const gy = Math.max(p.gy, p.oy);
+      const q = projLiftPointInto(f, p.ox, gy, gy - p.oy, pa); // proj-lift: Z34(出た点=地面の点+高さ)
+      const k = this.projFxKOf('fx', q.s);
+      this.projGLSet(sp, xf, q.x + q.s * (sp.position.x - p.ox), q.y + q.s * (sp.position.y - p.oy), k, k, sp.rotation, q.alpha);
+    }
+  }
   /** 段階3の後掛けを戻す(restoreProjActors から・位置/大きさ/濃さは projSaved が戻す)。 */
   private restoreProjFxRot() {
     for (let i = 0; i < this.projFxRotN; i++) {
@@ -12789,6 +12915,7 @@ export class PixiScene {
     this.projPostLoose();
     if (this.projSkyH0.size > 0) this.projSkyH0Sweep(); // 段階5: 空とつながる物の起点の高さの作り置きを、今フレームに使った物だけに
     this.projFxLateSprites(); // 段階3(C7〜C9): 作り置きの演出の Sprite(敵の描く関数が world の点に置いた物)を付け根の相似で
+    this.projGroundLatePass(); // 体から離れて地面を走る/飛ぶ絵(突きの風圧・斬撃の筋/弧/炸裂・光輪投げ・撒き羽根)を地面の点で(入れ物の写しの逆で入れ直す)
     // 主人公の頭上マーク6つ(§3-5d の①・方針②): 大きさは変えず、置く点を P + s·(H − F) へ。絵は物自身の位置を H、
     // world の点に直接描いている Graphics(フレア・マークスマン)は主人公の頭上の基準点 H を使う。
     const hv = this.playerView;
@@ -23548,7 +23675,7 @@ export class PixiScene {
         // PACING_PUZZLE.md §10-11(フィル死亡=大量に撒く)。片付ける前に最後の位置で撒いてから破棄する。
         const phLastPos = this.phillLastPos.get(id);
         if (phLastPos) {
-          this.spawnPhillFeathers(phLastPos.x, phLastPos.y, PHILL_FEATHER_DEATH_COUNT, now);
+          this.spawnPhillFeathers(phLastPos.x, phLastPos.y, PHILL_FEATHER_DEATH_COUNT, now, false, phLastPos.y); // 最後の位置=地面の点
           this.phillLastPos.delete(id);
         }
         // ★v0.25.3732: backはview.containerの子になった(z順の構造固定)ため、上のview.container.destroy
@@ -24020,6 +24147,16 @@ export class PixiScene {
         } else {
           views.ring2.visible = false;
         }
+        if (this.projFrame) {
+          const ov = this.enemies.get(e.id);
+          const sweep = e.bossState === 'sweep';
+          // ?proj=1: 薙ぎの間の環1本目は判定の帯(aiFrom→aiTarget・投影済み)の上を地面に沿って振り抜く=今の地面の点で写す
+          // (体の相似のままだと帯の先ほど帯から浮く)。大きさは持ち主の旧い倍率 d で割り戻す=頭上に浮く時の体の相似の大きさとつながる。
+          // 後掛け(体の登録)はこのフレーム済みの印で飛ばされる。
+          if (sweep && ov) this.projFxAt(views.ring1, views.ring1.position.x, views.ring1.position.y, 's', 0, ov.projD ?? 1);
+          if (ov && ov.projFx !== undefined && ov.projFy !== undefined) { views.pFx = ov.projFx; views.pFy = ov.projFy; views.pD = ov.projD ?? 1; }
+          views.pGround = sweep;
+        }
       }
     }
     for (const [id, views] of this.surielRingSprites) {
@@ -24039,6 +24176,19 @@ export class PixiScene {
       const fade = 1 - vt;
       views.ring1.rotation = views.spinAng; views.ring1.alpha = fade;
       views.ring2.rotation = -views.spinAng; views.ring2.alpha = fade;
+      // ?proj=1: 本体が消えると後掛け(体の相似)が呼ばれず world の点のまま残って跳んでいた=最後に見えた足元 F の体の相似で写し続ける
+      // (薙ぎの途中で消えた環1本目は地面の点)。
+      const pf = this.projFrame;
+      if (pf && views.pFx !== undefined && views.pFy !== undefined) {
+        const d = views.pD ?? 1;
+        if (views.pGround) this.projFxAt(views.ring1, views.ring1.position.x, views.ring1.position.y, 's', 0, d);
+        const p = projectInto(pf, views.pFx, views.pFy, this.projFxP);
+        const k = projActorK(p.s, d);
+        const px = this.snapToScreenPixel(p.x, this.L.world.position.x), py = this.snapToScreenPixel(p.y, this.L.world.position.y);
+        for (const r of views.pGround ? [views.ring2] : [views.ring1, views.ring2]) {
+          if (this.projFxSave(r)) this.projFxXf(r, views.pFx, views.pFy, px, py, k, k, p.alpha);
+        }
+      }
     }
   }
 
@@ -32427,7 +32577,8 @@ export class PixiScene {
         const windTipX = cx + Math.cos(ang) * BR_TRIPLE_REACH;
         const windTipY = (cy - e.height * 0.15) + Math.sin(ang) * BR_TRIPLE_REACH;
         const windTt = stepElapsed / (BR_TRIPLE_THRUST_MS + BR_TRIPLE_RETURN_MS);
-        this.drawThrustWind(windSp, windTipX, windTipY, ang, BR_TRIPLE_REACH, windTt);
+        // 先端は帯の先端(地面の点)の e.height×0.15 上(標識を構える高さ)=?proj=1 では地面の点と高さに分けて写す
+        this.drawThrustWind(windSp, windTipX, windTipY, ang, BR_TRIPLE_REACH, windTt, 1, e.height * 0.15);
         if (stepElapsed >= BR_TRIPLE_THRUST_MS) {
           // 命中閃(既存のscissor閃/br-pushの斬撃弧と同じ作法=分類②「派手さ」。段ごとに1回だけ発火)。
           this.triggerBountySlashArcOnce(
@@ -37380,6 +37531,10 @@ export class PixiScene {
     sp.rotation = now * PHILL_RINGTOSS_SPIN_RATE; // 投げ輪のスピン(装飾・移動側にease=慣性は担保済み)
     sp.alpha = alpha * (0.85 + 0.15 * Math.sin(now / 90)); // 金の輝きのきらめき
     sp.visible = sp.alpha > 0.01;
+    // ?proj=1: 輪は帯(投影済みの赤いカプセル)に沿って地面の上を飛ぶ=体の相似ではなく今の地面の点で写す(フィルの d=1 なので
+    // k=s=手元で体の相似と同じ大きさ・跳ばない)。溜めの「下からズレ上がる」分は高さ(地面の点 (x, fy) の上)。入れ物(phillFront)の
+    // 体の相似は後掛けの後に打ち消す(projGroundLatePass)。
+    if (this.projFrame) this.projGroundLate(sp, 'pt', x, y, 0, 0, 's', bs === 'phill-ringtoss-windup' ? fy - y : 0);
   }
 
   private drawPhillBlessingSpotlights(e: Enemy, gameTime: number): void {
@@ -37694,10 +37849,15 @@ export class PixiScene {
    * skew・落下の揺らぎを個体ごとにランダム(=同じ絵の連打に見せない)。biasUpward=§10-19登場時の
    * 「全方向+上方向優勢・初速大」。
    */
-  private spawnPhillFeathers(x: number, y: number, count: number, now: number, biasUpward = false): void {
+  // groundY=出た点の真下の地面の Y(?proj=1 の写しだけが読む)。省略=今描いているフィルの足元(無ければ y=出た点が地面)。
+  private spawnPhillFeathers(x: number, y: number, count: number, now: number, biasUpward = false, groundY?: number): void {
     const tex = getTexture('fx/phill-feather');
     if (!tex) return;
     this.ensurePhillFeatherPool();
+    let gy = groundY;
+    if (gy === undefined && this.projFrame) {
+      for (const v of this.enemies.values()) if (v.projPhill && v.projFy !== undefined && !v.container.destroyed) { gy = v.projFy; break; }
+    }
     let spawned = 0;
     for (const p of this.phillFeatherPool) {
       if (spawned >= count) break;
@@ -37721,6 +37881,7 @@ export class PixiScene {
       p.vx = Math.cos(ang) * spd;
       p.vy = Math.sin(ang) * spd - (biasUpward ? 60 : 20);
       p.vr = (Math.random() - 0.5) * 5;
+      p.ox = x; p.oy = y; p.gy = gy ?? y; // ?proj=1: 出た点と真下の地面(projGroundLatePass が点o+高さで写す)
       spawned++;
     }
   }
@@ -38227,19 +38388,25 @@ export class PixiScene {
     //   一閃windupへの遷移点)。閉じの残光(latch側)は既に「無」が終わった後の演出付随(既存の縮み+
     //   フェードで表現済み)なので、帯マスクは対象外(sweepProg=null=従来どおり全形)。
     const prog = totalMs > 0 ? Math.max(0, Math.min(1, elapsedMs / totalMs)) : 1;
+    // ?proj=1(段階4): 予告(view.tele=後掛けで動かない)へ直に描く円は、円の形の型(projCircle=頂点ごとに厳密に投影)で描く。
+    // 外周(drawSweepCircleFill・drawTelegraphRing)は投影済み。時刻・半径・濃さの式は ?proj=0 と同じ(位置の写しだけ)。
+    const pf = this.projFrame;
     const draw = (dx: number, dy: number, r: number, a: number, sweepProg: number | null): void => {
       if (r <= 1 || a <= 0.02) return;
       const pulse = 0.5 + 0.5 * Math.sin(now / 130);
       const fillA = (0.13 + 0.07 * pulse) * a * TELEGRAPH_FILL_MULT;
       // 塗り: 面が無いと「線が1本ある」だけに見える(小さくて見えない=存在しないのと同じ)。
-      const mask = CIRCLE_SWEEP_ON && sweepProg !== null
-        ? this.drawSweepCircleFill(o, dx, dy, r, sweepProg, 0x9333ea, fillA, PixiScene.THOR_TG_STYLE)
-        : (o.circle(dx, dy, r).fill({ color: 0x9333ea, alpha: fillA }), 1);
+      let mask = 1;
+      if (CIRCLE_SWEEP_ON && sweepProg !== null) mask = this.drawSweepCircleFill(o, dx, dy, r, sweepProg, 0x9333ea, fillA, PixiScene.THOR_TG_STYLE);
+      else if (pf) projCircle(o, pf, dx, dy, r, { color: 0x9333ea, alpha: fillA });
+      else o.circle(dx, dy, r).fill({ color: 0x9333ea, alpha: fillA });
       // 縁: **既存の帯予告と同じ濃さ以上**で描く(薄い紫は「出ていない」のと同じ・§1-1)。
       if (FX_RING_ENABLED) this.drawTelegraphRing(view, dx, dy, r, 0xc084fc, (0.55 + 0.25 * pulse) * a * mask, 1);
+      else if (pf) projCircle(o, pf, dx, dy, r, undefined, { width: 3, color: 0xc084fc, alpha: (0.6 + 0.3 * pulse) * a * mask });
       else o.circle(dx, dy, r).stroke({ width: 3, color: 0xc084fc, alpha: (0.6 + 0.3 * pulse) * a * mask });
       // 内側の細い輪=「間合いの内側」を目で追えるようにする第2の線(判定は外周のまま)。
-      o.circle(dx, dy, r * 0.72).stroke({ width: 2, color: 0xc084fc, alpha: 0.35 * a * mask });
+      if (pf) projCircle(o, pf, dx, dy, r * 0.72, undefined, { width: 2, color: 0xc084fc, alpha: 0.35 * a * mask });
+      else o.circle(dx, dy, r * 0.72).stroke({ width: 2, color: 0xc084fc, alpha: 0.35 * a * mask });
     };
     if (active) {
       const openT = Math.max(0, Math.min(1, elapsedMs / PixiScene.THOR_NIHIL_EASE_MS));
@@ -46735,8 +46902,9 @@ export class PixiScene {
   // (慣性=CLAUDE.md「加減速のない動き禁止」への対応・瞬間出現させない)。フェードインなし(tt<10%は
   // 完全非透明=0)。元はdrawKatanaSlash内のみに書かれていたが、同じ見え方を別の技(三段突き)へ
   // 出すため共通関数へ切り出した(社長指示v0.25.3488「トールの突きと同じ絵を同型で入れて」)。
+  // lift=先端の高さ(world・先端 (tx, ty) が地面の点 (tx, ty + lift) の真上にある時。?proj=1 で地面の点と高さに分けて写す)。
   private drawThrustWind(
-    sp: Sprite, tx: number, ty: number, angle: number, judgeLen: number, tt: number, alphaMul = 1,
+    sp: Sprite, tx: number, ty: number, angle: number, judgeLen: number, tt: number, alphaMul = 1, lift = 0,
   ): void {
     const tex = getTexture('fx/dash-wind');
     if (!tex) { sp.visible = false; return; }
@@ -46752,7 +46920,12 @@ export class PixiScene {
     // (伸びの慣性は上の長さeaseが担う)。
     sp.alpha = (ttc < 0.10 ? 0 : 0.95 * (1 - Math.max(0, (ttc - 0.45) / 0.55))) * alphaMul;
     sp.visible = sp.alpha > 0.01;
-    this.projOwnerAttach(sp); // ?proj=1(段階3・C14): 突きの風圧=今描いている敵の体の相似(根元が体に付く)
+    // ?proj=1(段階3・C14): 突きの風圧は先端=判定の帯の先端から手元側へ地面の上を伸びる=体の相似ではなく両端を地面の点で投影する
+    // (先端が投影済みの赤い帯の先端に重なる)。入れ物(刀の振りの入れ物)が体の相似で写っていれば、後掛けの後にその逆で入れ直す。
+    if (this.projFrame) {
+      const wa = angle + Math.PI;
+      this.projGroundLate(sp, 'seg', tx, ty, tx + Math.cos(wa) * wlen, ty + Math.sin(wa) * wlen, 'fx', lift);
+    }
   }
 
   private drawKatanaSlash(
@@ -46774,7 +46947,10 @@ export class PixiScene {
       (targetLayer ?? this.L.effectLayer).addChild(c);
       fxMap.set(id, c);
     }
-    this.projOwnerAttach(c); // ?proj=1(段階3・C13): 今描いている敵の体の相似で動かす(体に付く演出・?proj=0 では何もしない)
+    // ?proj=1(段階3・C13): 入れ物=今描いている敵の体の相似(手に持つ刀=体に付く絵)。斬撃の筋・弧・炸裂・突きの風圧は地面の上を体から離れて
+    // 伸びる絵=下で地面の点の記録を残し、後掛けの後に入れ物の写しの逆で入れ直す(projGroundLatePass)。入れ物が既に体の入れ物の中
+    // (フィルの羽攻撃=phillFront)なら登録しない(二重に写さない)。
+    this.projOwnerAttachUnlessHosted(c);
     const streak = c.children[0] as Sprite;
     const burstSp = c.children[1] as Sprite;
     const katana = c.children[2] as Sprite;
@@ -46802,6 +46978,7 @@ export class PixiScene {
     streak.rotation = angle;
     streak.scale.set(sc, vsc);
     streak.alpha = tt < 0.5 ? (0.35 + 0.5 * (tt / 0.5)) : (1 - Math.max(0, (tt - 0.85) / 0.15));
+    this.projGroundLate(streak, 'mid', fx, fy, tx, ty, 's'); // ?proj=1: 筋=判定の帯(両端を地面の点で投影・分類1=k=s)
     // 白い弧(v0.25.3449): 突き(thrust)には出さない(弧=薙ぎの軌跡の記号・社長指示v0.25.3447)。
     // ★向きの是正(社長指摘v0.25.3455「剣の振りと斬撃の向きが合ってない。上から下に振るなら弧は
     //   右か左に広がるのに下を向いている」): 旧実装は**判定ラインに沿って弧を長く引き伸ばして**いたため、
@@ -46836,6 +47013,7 @@ export class PixiScene {
       //   振り始め(12%)までは完全に消しておく。
       arcSp.alpha = tt < 0.12 ? 0 : 0.95 * (1 - Math.max(0, (tt - 0.35) / 0.65));
       arcSp.visible = arcSp.alpha > 0.01;
+      this.projGroundLate(arcSp, 'arc', acx, acy, tx, ty, 's'); // ?proj=1: 中心(柄)は入れ物の写し・切っ先の側は判定の先端の投影へ
     } else if (arcSp) {
       arcSp.visible = false;
     }
@@ -46862,6 +47040,7 @@ export class PixiScene {
         burstSp.position.set(tx, ty);
         burstSp.alpha = 1 - Math.max(0, (tt - 0.5) / 0.5);
         burstSp.visible = burstSp.alpha > 0.01;
+        this.projGroundLate(burstSp, 'pt', tx, ty, 0, 0, 'fx'); // ?proj=1: 命中点の炸裂=地面の点(派手さ=s_fx)
       } else burstSp.visible = false;
     } else {
       burstSp.visible = false;
@@ -47048,7 +47227,7 @@ export class PixiScene {
       (targetLayer ?? this.L.effectLayer).addChild(c);
       fxMap.set(id, c);
     }
-    this.projOwnerAttach(c); // ?proj=1(段階3・C13): 今描いている敵の体の相似で動かす(体に付く演出・?proj=0 では何もしない)
+    this.projOwnerAttachUnlessHosted(c); // ?proj=1(段階3・C13): 今描いている敵の体の相似で動かす(体の入れ物の中=フィルの羽攻撃は入れ物が写す)
     const streak = c.children[0] as Sprite;
     const burstSp = c.children[1] as Sprite;
     const katana = c.children[2] as Sprite;

@@ -146,6 +146,8 @@ const CONVERTED: string[] = [
   '  private syncSkadiHazards(',
   // クリエイティブ監査8(予告の中の投影していない部分)
   '  private syncPhantomFlamer(',
+  // 地面に張り付いていない物の一掃(組2): トール「無の境地」の紫の円(内側の輪・閉じる時の塗り・縁の控え)
+  '  private thorNihilCircleTick(',
 ];
 
 describe('投影の段階4: 形を持つもの(番人)', () => {

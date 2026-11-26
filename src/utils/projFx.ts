@@ -177,8 +177,17 @@ export const PROJ_FX_ROWS = {
   'C11.shadow': { type: 'body', k: 'body', what: 'satsujin(shadow)' },
   'C11.curtain': { type: 'exempt', k: 'none', what: 'satsujin(curtain)' },
   'C12': { type: 'done', k: 'none', what: 'stage2 attachedArt' },
-  'C13': { type: 'body', k: 'body', what: 'katanaSlash/Ready' },
-  'C14': { type: 'dir', k: 'fx', what: 'thrustWind' },
+  // 刀(手に持つ)=体の相似。斬撃の筋・炸裂・弧の切っ先の側は判定の帯の上=地面の点(両端/中心を投影・後掛けの後に入れ物の写しの逆で入れ直す)。
+  // 体の相似のままだと体から離れるほど縦の詰め(dl/dy ≠ s)の分だけ投影済みの赤い帯から外れた(北150px で 20〜45px)。
+  'C13': { type: 'body', k: 'body', what: 'katanaSlash/Ready (katana in hand)' },
+  'C13.ground': { type: 'seg', k: 's', what: 'katanaSlash(streak/burst/arc tip on the judge band)' },
+  // 突きの風圧=先端が判定の帯の先端・手元へ地面の上を伸びる=両端を地面の点で投影(旧: 持ち主の体の相似)
+  'C14': { type: 'seg', k: 'fx', what: 'thrustWind (tip on the band tip, both ends on the ground)' },
+  // フィルの光輪投げの輪=帯に沿って飛ぶ=今の地面の点(フィルの d=1・k=s)・撒き羽根=出た点を地面の点+高さで置く点o
+  'C19': { type: 'point', k: 's', what: 'phill ringtoss ring (on the band)' },
+  'C20': { type: 'origin', k: 'fx', what: 'phill feathers (origin=spawn point lifted over its ground)' },
+  // スリィエルの環: 浮く間=体の相似(attachedArt)・薙ぎの間=帯の上の地面の点・本体が消えた後=最後に見えた足元の体の相似
+  'C21': { type: 'point', k: 's', what: 'suriel ring (sweep on the band / vanish after the body)' },
   'C15': { type: 'origin', k: 'fx', what: 'alchemyRockShatter' },
   'C16': { type: 'body', k: 'body', what: 'muzzleFlash(player)' },
   'C17': { type: 'body', k: 'body', what: 'escortMelee' },

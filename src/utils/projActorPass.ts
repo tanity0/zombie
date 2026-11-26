@@ -32,6 +32,7 @@ export const PROJ_ACTOR_ROLES = {
   sprite: 'body', hitFlash: 'body', reticle: 'body', atkArt: 'body', glenParts: 'body', alchemyRocks: 'body',
   // グレンの「無」の円の絵(判定と同寸・中心=狙い点)の格子メッシュ=描く時に頂点ごとに投影(後掛けで動かさない=summonTornado と同じ扱い)。
   atkArtGround: 'telegraph',
+  // featherC=フィルの撒き羽根の入れ物(体の相似)。羽根は体から離れて漂う=後掛けの後に出た点(地面の点+高さ)を支点に写し直す(projFx の C20)。
   phillBack: 'body', featherC: 'body', rim: 'body', avatarPart: 'body',
   // 物に地面の明るさを写す加算の写し(objShade の twin・label 'objShadeLight')。後掛けの後に本体から写される=後掛けでは動かさない
   // (projPostView が飛ばす)。寄りの遠近では体として扱う。
@@ -40,11 +41,16 @@ export const PROJ_ACTOR_ROLES = {
   // 主人公の入れ物の子(9つ)
   playerKatanaBack: 'body', playerSkateboard: 'body', playerKintoun: 'body', playerBloodRim: 'body',
   playerKnife: 'body', playerKnifeSlash: 'body', playerKnifeTrail: 'body', playerMeleeWpn: 'body', playerFirstAidBag: 'body',
-  // 入れ物の外に置く体の絵(projAttach で持ち主に登録する)
+  // 入れ物の外に置く体の絵(projAttach で持ち主に登録する)。
+  // phillFront=フィルの羽攻撃の武器絵の入れ物(体の相似)。中の絵のうち体から離れて地面の上を飛ぶ・伸びる物(光輪投げの輪・羽攻撃の斬撃の筋/弧/炸裂/
+  // 突きの風圧)は、後掛けの後に入れ物の写しの逆で地面の点へ入れ直す(pixiScene.projGroundLatePass)。中の入れ物は持ち主へ登録しない(二重に写さない)。
   light: 'body', phillFront: 'body', rescueBody: 'body', rescueSwing: 'body',
   // 体に付く別スプライトの絵=体。敵: 銃口の閃光・ジブリルのランタン・賞金首の武器・鞭のロープ・鋏・剣先の光・旗の先の光・天使の目・ホロ・
   // 英雄の旗と剣・英雄の昇天の白い体・スリィエルの環・幻影の目/ナイフの振り/銃口の閃光・刀の切れ目。味方: 守護霊のナイフ・武器・装飾パーツ、
   // レア召喚の頭上の棺。入れ物の外の物は projAttach で持ち主へ登録し、入れ物の子は projTag で名札を付ける。
+  // ★体の相似は「体に付く絵」だけ。体から離れて地面の上を伸びる・飛ぶ絵は、登録したままでも描く所で地面の点で写す(同じフレームの印で後掛けが飛ばす):
+  // 刀の振り(drawKatanaSlash)の入れ物=体(手の刀)だが筋・炸裂・弧の切っ先は地面の点・突きの風圧(drawThrustWind)は登録をやめて両端を地面の点・
+  // スリィエルの環は浮く間だけ体で、薙ぎの間は帯の上の地面の点・本体が消えた後は最後に見えた足元の体の相似(以上 projFx の C13.ground/C14/C21)。
   attachedArt: 'body',
   // レア召喚の竜巻(吸い込む距離に合わせた範囲の絵)=段階4で予告と同じ「描く時に投影」側へ(足元に寝かせた四角の格子メッシュ・後掛けで動かさない)。
   summonTornado: 'telegraph',
