@@ -199,6 +199,82 @@ describe('当てる→掴む→回す→投げる→爆発', () => {
 });
 
 // ★慣性(社長「鞭は動きがギクシャクしない様に慣性に従って自然に動く様に注意してね」): 1フレームごとの位置が跳ばない・止まらない。
+describe('大車輪の上がり(社長指示2026-11-26「敵にぶつかるたびに1.5倍ずつ」・上限8倍)', () => {
+  /** 振り回している敵の回る先に新しい敵を置き、当たるまで回して、その敵が受けたダメージを返す(当たった敵は外す)。 */
+  const hitFresh = (id: string): number => {
+    const c = center();
+    const sw = st().whipSwing!;
+    const p = ecOf(sw.enemyId);
+    const ahead = Math.atan2(p.y - c.y, p.x - c.x) + sw.dir * 0.9;
+    useGameStore.setState(s => ({ enemies: [...s.enemies, place('zombie', Math.cos(ahead) * sw.radius, Math.sin(ahead) * sw.radius, id)] }));
+    const hp0 = en(id).health;
+    for (let i = 0; i < 80 && en(id).health === hp0; i++) step(10);
+    const dmg = hp0 - en(id).health;
+    useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.id !== id) }));
+    return dmg;
+  };
+  const grab = () => {
+    useGameStore.setState(s => ({ enemies: [...s.enemies.filter(e => e.id !== 'z'), place('zombie', 100, 0, 'z', STUN)] }));
+    swing();
+    expect(st().whipSwing?.enemyId).toBe('z');
+    useGameStore.setState(s => ({ whipSwing: { ...s.whipSwing!, maxMs: 60_000 } })); // 何体も当てるまで投げない
+    run(WHIP_SWING_ACCEL_MS + 50);
+  };
+
+  it('ぶつかるたびに次の当たりが1.5倍(1→1.5→2.25→…)・8倍で止まる・同じ敵は数え直さない・掴み直すと1倍から', () => {
+    grab();
+    const d = Array.from({ length: 8 }, (_, i) => hitFresh(`r${i}`));
+    expect(d[0]).toBeGreaterThan(0);
+    const ratio = d.map(v => v / d[0]);
+    const want = [1, 1.5, 2.25, 3.375, 5.0625, 7.59375, 8, 8];
+    for (let i = 0; i < want.length; i++) expect(ratio[i]).toBeCloseTo(want[i], 2);
+    expect(st().whipSwing?.rampHits).toBe(8);
+    // 掴み直す=1倍から(最長を縮めて自動で投げさせ、着弾まで待つ)
+    useGameStore.setState(s => ({ whipSwing: { ...s.whipSwing!, maxMs: 0 } }));
+    for (let i = 0; i < 600 && st().whipSwing; i++) step(10);
+    expect(st().whipSwing).toBeNull();
+    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 1, y: 0 } } }));
+    grab();
+    expect(st().whipSwing?.rampHits ?? 0).toBe(0);
+    expect(hitFresh('again') / d[0]).toBeCloseTo(1, 2);
+  });
+
+  it('同じ敵に別の周で当たっても数は1回(次の当たりの倍率は進まない)', () => {
+    grab();
+    const d1 = hitFresh('a');
+    expect(st().whipSwing?.rampHits).toBe(1);
+    // 同じ id の敵をもう一度回る先へ(1周ぶん待ってから)=1.5倍で当たるが数は増えない
+    run(WHIP_SWING_PERIOD_MS);
+    const d2 = hitFresh('a');
+    expect(d2 / d1).toBeCloseTo(1.5, 2);
+    expect(st().whipSwing?.rampHits).toBe(1);
+    // 次の新しい敵も1.5倍(数が進んでいない)
+    expect(hitFresh('b') / d1).toBeCloseTo(1.5, 2);
+    expect(st().whipSwing?.rampHits).toBe(2);
+  });
+
+  it('着弾の爆発には掛からない(上がった振り回しでも、投げた先の敵へのダメージは同じ)', () => {
+    const landDamage = (ramp: number): number => {
+      useGameStore.setState({ enemies: [place('zombie', 100, 0, 'z', STUN)] });
+      useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 1, y: 0 }, whipCharged: false, whipHitCount: 0 } }));
+      swing();
+      useGameStore.setState(s => ({ whipSwing: { ...s.whipSwing!, rampHits: ramp, rampIds: {} } }));
+      for (let i = 0; i < 400 && st().whipSwing?.phase === 'swing'; i++) step(10);
+      const sw1 = st().whipSwing!;
+      expect(sw1.phase).toBe('thrown');
+      const tx = (sw1.fromX ?? 0) + (sw1.ux ?? 1) * 160 - center().x, ty = (sw1.fromY ?? 0) + (sw1.uy ?? 0) * 160 - center().y;
+      useGameStore.setState(s => ({ enemies: [...s.enemies, place('zombie', tx, ty, 't')] }));
+      const hp = en('t').health;
+      for (let i = 0; i < 100 && st().whipSwing; i++) step(10);
+      expect(st().whipSwing).toBeNull();
+      return hp - en('t').health;
+    };
+    const base = landDamage(0);
+    expect(base).toBeGreaterThan(0);
+    expect(landDamage(6)).toBeCloseTo(base, 3);
+  });
+});
+
 describe('振り回し→投げ→放すの継ぎ目(1フレームごとの位置)', () => {
   const F = 1000 / 60;
   const track = (frames: number, act: (f: number) => void = () => {}) => {

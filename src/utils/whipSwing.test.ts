@@ -7,6 +7,7 @@ import {
   whipBlastFalloff, whipThrowBlastPlan, easeStartStop, criticalSpringStep, whipDropDist, WHIP_DROP_MS,
   WHIP_SWING_ACCEL_MS, WHIP_SWING_PERIOD_MS, WHIP_SWING_MAX_MS, WHIP_SWING_SLASHER_MS_PER_LV, WHIP_THROW_MIN_SPEED, WHIP_THROW_END_SPEED_FRAC, WHIP_SWING_TELEPORT_PX,
   WHIP_THROW_DIST_MULT,
+  whipSwingRampMult, whipSwingRampFx, WHIP_SWING_RAMP_STEP, WHIP_SWING_RAMP_MAX, WHIP_SWING_RAMP_MAX_HITS,
 } from './whipSwing';
 
 describe('掴む相手の選び方(§8-1・§8-7)', () => {
@@ -247,5 +248,36 @@ describe('振り回している敵を盾に敵の弾をかき消す', () => {
     expect(whipShieldBlocksShot(shot(120, 120, { noCounter: true }), body)).toBe(false);
     expect(whipShieldBlocksShot(shot(120, 120, { hostile: false }), body)).toBe(false);
     expect(whipShieldBlocksShot(shot(120, 120, { weaponType: 'grenade' }), body)).toBe(false);
+  });
+});
+
+describe('大車輪の上がり(ぶつかるたびに1.5倍・上限8倍)', () => {
+  it('当たった数ごとに 1→1.5→2.25→3.375→5.06→7.59→8 で止まる', () => {
+    const seq = [0, 1, 2, 3, 4, 5, 6, 7, 20].map(whipSwingRampMult);
+    expect(seq[0]).toBe(1);
+    expect(seq[1]).toBeCloseTo(1.5, 6);
+    expect(seq[2]).toBeCloseTo(2.25, 6);
+    expect(seq[3]).toBeCloseTo(3.375, 6);
+    expect(seq[4]).toBeCloseTo(5.0625, 6);
+    expect(seq[5]).toBeCloseTo(7.59375, 6);
+    expect(seq[6]).toBe(WHIP_SWING_RAMP_MAX);
+    expect(seq[7]).toBe(8);
+    expect(seq[8]).toBe(8);
+    expect(WHIP_SWING_RAMP_STEP).toBe(1.5);
+    expect(WHIP_SWING_RAMP_MAX_HITS).toBe(6);
+    expect(whipSwingRampMult(-3)).toBe(1);
+  });
+  it('手応え: 倍率1は何も変えない・上がるほど数字と輪が大きく音が高い・上限だけ一段強い色(縁取り)', () => {
+    expect(whipSwingRampFx(1)).toBeNull();
+    const fx = [1, 2, 3, 4, 5, 6].map(n => whipSwingRampFx(whipSwingRampMult(n))!);
+    for (let i = 1; i < fx.length; i++) {
+      expect(fx[i].scale).toBeGreaterThan(fx[i - 1].scale);
+      expect(fx[i].ringR).toBeGreaterThan(fx[i - 1].ringR);
+      expect(fx[i].sfxRate).toBeGreaterThan(fx[i - 1].sfxRate);
+    }
+    expect(fx.slice(0, 5).every(f => !f.max && f.outline === undefined)).toBe(true);
+    expect(fx[5].max).toBe(true);
+    expect(fx[5].outline).toBeDefined();
+    expect(fx[5].sfxRate).toBeLessThanOrEqual(1.5);
   });
 });

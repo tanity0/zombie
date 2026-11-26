@@ -114,6 +114,9 @@ export interface WhipSwingState {
   ohWhoosh?: boolean;
   /** 掴んだ瞬間に決めた、着弾の爆発で掴んだ本人だけが受ける倍率(気絶中の近接の一撃の倍率=meleeExecute.whipGrabStunnedMult)。未設定=1。 */
   selfMult?: number;
+  /** ★大車輪の上がり(社長指示2026-11-26「敵にぶつかるたびに1.5倍ずつ」): この振り回しで周りの敵に当たった数(同じ敵は1回)と、数えた敵。掴むたびに空から。 */
+  rampHits?: number;
+  rampIds?: Record<string, true>;
 }
 
 /** 掴む相手の候補(当たった敵1体ぶん)。 */
@@ -241,6 +244,42 @@ export const whipSwingLapRate = (lap: number): number => Math.min(1.45, 0.92 + 0
 
 /** 掴んでから t ms の角度(rad)。 */
 export const whipSwingAngle = (s: WhipSwingSpin, tMs: number): number => whipSwingSpinAt(tMs, s).th;
+
+/**
+ * ★大車輪の上がり(社長指示2026-11-26「大車輪は、敵にぶつかるたびに、大車輪ダメージ1.5倍ずつアップで」・上限8倍)。
+ * hits=この振り回しで周りの敵に当たった数(同じ敵は1回・同時に当たった時は敵ごとに1回)。次の当たりの倍率=1.5^hits(8で止まる)。
+ * 掛けるのは振り回しのぶつかりだけ(着弾の爆発・パニッシャー・盾の弾・叩きつけには掛けない)。
+ */
+export const WHIP_SWING_RAMP_STEP = 1.5;
+export const WHIP_SWING_RAMP_MAX = 8;
+export const whipSwingRampMult = (hits: number): number =>
+  Math.min(WHIP_SWING_RAMP_MAX, WHIP_SWING_RAMP_STEP ** Math.max(0, Math.floor(hits)));
+/** 上限に届く当たりの数(=1.5^n が初めて8以上になる n)。 */
+export const WHIP_SWING_RAMP_MAX_HITS = Math.ceil(Math.log(WHIP_SWING_RAMP_MAX) / Math.log(WHIP_SWING_RAMP_STEP));
+/**
+ * 上がりの手応え(派手さの絵=判定なし): 数字の色・大きさ・出だしの膨らみ、命中の輪の大きさ、命中音の高さ。倍率1は何も変えない(null)。
+ * 色は今の数字の色の中で 淡い黄→黄→金、上限(8倍)だけ橙の芯に淡い金の縁(印の数字と同じ縁取りの描き方)で一段強く。
+ */
+export interface WhipSwingRampFx { color: string; scale: number; outline?: number; popFrom: number; popMs: number; ringR: number; ringW: number; burst: number; sfxRate: number; max: boolean }
+export const whipSwingRampFx = (mult: number): WhipSwingRampFx | null => {
+  if (!(mult > 1)) return null;
+  const max = mult >= WHIP_SWING_RAMP_MAX;
+  // 0..1(1.5倍→0・8倍→1)。倍率の対数で段を均す。
+  const k = Math.min(1, Math.log(mult) / Math.log(WHIP_SWING_RAMP_MAX));
+  const color = max ? '#fb923c' : (mult < 3 ? '#fde68a' : '#fbbf24');
+  return {
+    color,
+    scale: max ? 2.0 : 1.1 + 0.6 * k,
+    ...(max ? { outline: 0xfde68a } : {}),
+    popFrom: max ? 1.7 : 1.2 + 0.4 * k,
+    popMs: max ? 140 : 90,
+    ringR: Math.round(40 + 90 * k) + (max ? 40 : 0),
+    ringW: max ? 6 : 3 + Math.round(2 * k),
+    burst: Math.round(4 + 10 * k) + (max ? 8 : 0),
+    sfxRate: Math.min(1.5, 1 + 0.08 * (Math.log(mult) / Math.log(WHIP_SWING_RAMP_STEP))),
+    max,
+  };
+};
 
 /** 回して当てる: 同じ敵へは1周ぶんの時間ごとに1回。 */
 export const whipSwingHitDue = (lastAt: number | undefined, now: number, periodMs = WHIP_SWING_PERIOD_MS): boolean =>

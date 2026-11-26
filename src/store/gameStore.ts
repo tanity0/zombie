@@ -325,6 +325,7 @@ import {
   WHIP_SWING_SHRINK_LOOKAHEAD_MS, WHIP_SWING_SHRINK_LOOKAHEAD_STEPS, WHIP_DROP_MIN_SPEED, WHIP_DROP_MS,
   WHIP_SWING_RADIUS_MULT, WHIP_SWING_MIN_RADIUS_FRAC, WHIP_THROW_DIST_MULT, WHIP_THROW_DAMAGE_MULT, WHIP_THROW_HITSTOP_MS, type WhipSwingState, whipShieldBlocksShot, type Box as WhipBox,
   whipShieldHitDamage, whipShieldHealthFloor, whipThrowExecutesSelf, whipLandTechKind, whipLandStunClearPatch,
+  whipSwingRampMult, whipSwingRampFx,
 } from '../utils/whipSwing';
 import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
 import { planHomingVolley, splitDueHomingShots, homingLiftAllowed, type HomingPendingShot } from '../utils/homingVolley';
@@ -3744,14 +3745,36 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
     // 盾: 振り回している敵の体に触れた敵の弾をかき消す。
     whipShieldEraseShots(get, set, { x: pos.x, y: pos.y, width: e.width, height: e.height }, e.id);
     let hits = 0, killed = 0;
+    // ★大車輪の上がり(社長指示2026-11-26): ぶつかるたびに次の当たりを1.5倍(上限8倍)。数えるのは当たった敵ごとに1回(同じ敵に別の周で当たっても増やさない)。
+    let rampHits = sw.rampHits ?? 0;
+    let rampIds = sw.rampIds;
+    let sfxRamp = 1;
     for (const o of due) {
       // 押しの向き: 回る円の外向き(performWhipStrike は振りの線に直交=敵がいる側へ押すので、プレイヤーから見た接線を振りの向きに渡す)。
       const oc = whipCenter(o);
       const rx = oc.x - pc.x, ry = oc.y - pc.y, rl = Math.hypot(rx, ry) || 1;
-      const res = get().performWhipStrike([o.id], { dir: { x: -ry / rl, y: rx / rl } });
+      const mult = whipSwingRampMult(rampHits);
+      const res = get().performWhipStrike([o.id], { dir: { x: -ry / rl, y: rx / rl }, ...(mult > 1 ? { swingRamp: mult } : {}) });
       hits += res.hits; killed += res.killed;
+      if (res.hits > 0) {
+        sfxRamp = Math.max(sfxRamp, mult);
+        // 命中の光(派手さの絵=判定なし): 倍率に合わせて輪と弾けを大きく。上限は二重の輪。
+        const fx = whipSwingRampFx(mult);
+        if (fx) {
+          get().spawnRing(oc.x, oc.y, 8, fx.ringR, fx.max ? 'rgba(251, 146, 60, 0.95)' : 'rgba(253, 224, 71, 0.9)', fx.ringW, fx.max ? 420 : 300, true);
+          if (fx.max) get().spawnRing(oc.x, oc.y, 4, Math.round(fx.ringR * 0.6), 'rgba(255, 255, 255, 0.95)', 3, 260, true);
+          get().spawnBurst(oc.x, oc.y, fx.max ? '#fb923c' : '#fde68a', fx.burst);
+        }
+        if (!rampIds?.[o.id]) { rampIds = { ...(rampIds ?? {}), [o.id]: true }; rampHits++; }
+      }
     }
-    if (hits > 0) { set(() => ({ whipHitFxAt: Date.now() })); addWhipCharge(get, set, hits); }
+    if (rampHits !== (sw.rampHits ?? 0)) set(state => (state.whipSwing && state.whipSwing.enemyId === sw.enemyId ? { whipSwing: { ...state.whipSwing, rampHits, rampIds } } : {}));
+    if (hits > 0) {
+      // 命中音: 倍率1は今のまま。上がった当たりは音程を少しずつ上げる(同じ音を高さだけ変えて鳴らす)。
+      const rfx = whipSwingRampFx(sfxRamp);
+      if (rfx) brawlerSfx('whip-hit', 1, rfx.sfxRate); else set(() => ({ whipHitFxAt: Date.now() }));
+      addWhipCharge(get, set, hits);
+    }
     // 最長で自動で投げる: このフレームの回す位置を決めてから放す(放した点=今の位置・次のフレームから直進=1フレーム止まらない)。
     if (autoThrow && get().whipSwing?.phase === 'swing') {
       const d = whipAutoThrowDir(get, get().whipSwing!);
@@ -11559,7 +11582,7 @@ interface GameState {
   /**
    * opts: ghostId=守護霊の鞭(主語)・dir=振りの向き(未指定=主語の lastDirection)・strikeMult=敵への打撃だけの上乗せ(未指定=本人の縮地の上乗せ/守護霊は1)。
    */
-  performWhipStrike: (targetIds: string[], opts?: { ghostId?: string; dir?: { x: number; y: number }; strikeMult?: number; tipReach?: number; critBonus?: number; light?: boolean }) => { hit: boolean; finish: boolean; killed: number; hits: number; hitIds?: string[]; crit?: boolean }; // critBonus/light=鞭の3連撃の段(会心の上乗せ・1/2段目の押しなし+弱い浮き)
+  performWhipStrike: (targetIds: string[], opts?: { ghostId?: string; dir?: { x: number; y: number }; strikeMult?: number; tipReach?: number; critBonus?: number; light?: boolean; swingRamp?: number }) => { hit: boolean; finish: boolean; killed: number; hits: number; hitIds?: string[]; crit?: boolean }; // critBonus/light=鞭の3連撃の段(会心の上乗せ・1/2段目の押しなし+弱い浮き)
   /**
    * ★鞭の振り回し・投げ(research/WHIP_FOLLOWUP.md §8): 毎フレーム(敵の更新の後)。回す位置・回して当てる・自動の投げ・飛ぶ・着弾・途中で放す。
    * 振り回しが無ければ何もしない(実質ゼロコスト)。戻り値=倒した数(倒した音は呼び手)。
@@ -12113,7 +12136,7 @@ interface GameState {
   spawnBlood: (x: number, y: number, angle: number, len: number, opts?: { flash?: boolean }) => void; // 銃弾ヒット時、背中側へ血飛沫。opts.flash=点滅(ゾンビの試し・2026-10-16)
   spawnMeleeBlood: (ex: number, ey: number, size?: number, opts?: { flash?: boolean }) => void; // 近接ヒット時、敵からプレイヤーへ向かって飛ぶ血飛沫。opts.flash=点滅(ゾンビの試し)
   spawnBloodDrip: (body: DripBody, bodyVx: number, bodyVy: number, moveFrac: number) => void; // B10 血の覚醒: 体から滴る血の粒(1〜2個・血粒子のキャップを共有。出どころ/初速は utils/bloodDrip・足の線で止まる)
-  spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean, opts?: { scanMarked?: boolean; enemyId?: string }) => void; // research/NEW_GUNS.md §4: opts.scanMarked=呼び手が印の倍率を掛け済み(true)/掛からない(false)と明示。opts.enemyId=直前の damageEnemy のその敵への印の倍率を数字に掛ける
+  spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean, opts?: { scanMarked?: boolean; enemyId?: string; swingRamp?: number }) => void; // swingRamp=大車輪の上がりの倍率(数字の色・大きさだけ・値は呼び手が掛け済み) // research/NEW_GUNS.md §4: opts.scanMarked=呼び手が印の倍率を掛け済み(true)/掛からない(false)と明示。opts.enemyId=直前の damageEnemy のその敵への印の倍率を数字に掛ける
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number; holdMs?: number; duration?: number }) => void;
   // カウンター成立のガラスの砕け(社長支給2026-10-01)。x/y=カウンターした地点(counterClashPoint)。
@@ -16743,7 +16766,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const meleeWeapon = player.weapons.find(w => w.isMelee);
     const meleeBase = meleeWeapon?.damage ?? 6;     // 近接の素ダメージ。鞭は通常0.25倍
     // 敵への打撃だけ縮地(§32)の連鎖の上乗せを掛ける(ワープ斬撃以外は ×1)。救難信号・死神の波及は meleeBase のまま。
-    const strikeBase = meleeBase * (opts?.strikeMult ?? (isGhost ? 1 : (player.shukuchiStrikeMult ?? 1)));
+    // ★大車輪の上がり(swingRamp・振り回しのぶつかりだけ・未指定=1)は敵への打撃だけに掛ける(救難信号・死神の波及は meleeBase のまま)。
+    const swingRamp = opts?.swingRamp ?? 1;
+    const strikeBase = meleeBase * (opts?.strikeMult ?? (isGhost ? 1 : (player.shukuchiStrikeMult ?? 1))) * swingRamp;
     // 熟練度(research/MASTERY.md v2.1 A-9): 鞭=whip(近接の素ダメを借りるが近接武器の熟練度は掛けない)。strikeBase には掛けない(式の側で1回)。
     const whipMm = masteryMultOf(player, 'whip');
     const whipMasteryHits: MasteryDirectHit[] = [];
@@ -16993,7 +17018,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 鞭の時は近接攻撃のクレスト(slashストリーク)表現は出さない。鞭自身のlashスプライトのみ。
     // 血飛沫は出す(社長指摘v0.25.2060: メイン近接3経路に未配線だった)。
     for (const s of slashAt) { get().spawnMeleeBlood(s.x, s.y); get().spawnMeleeHit(s.x, s.y); } // v0.25.4334: 鞭も同じ
-    for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit, { scanMarked: !!c.scan });
+    for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit, { scanMarked: !!c.scan, ...(swingRamp > 1 ? { swingRamp } : {}) });
     for (const c of critStunAt) { get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260); get().spawnCritImpact(c.x, c.y); } // 鞭クリも揺れ+光源(社長指示2026-09-13)
     // ★先端でボスを打った(派手さの絵=判定より大きく・判定なし・赤は使わない): 先端のパチンより強い白金の閃きと輪・弾け・短い止め・重い命中音。
     if (tipHitAt.length > 0) spawnWhipTipBossFx(get, tipHitAt, ld.x / lmag, ld.y / lmag);
@@ -30978,6 +31003,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     { const st0 = get(); if (st0.labCrawler && isCrawlerDamageNumber(x, y, st0.labCrawler, opts?.enemyId)) { const pl = st0.player; const q = crawlerDamageNumberAt(x, y, st0.labCrawler, pl.x + pl.width / 2, pl.y + pl.height / 2, Math.random(), crawlerDmgNumberViewX(st0.camera, st0.gameBounds, st0.viewZoom)); x = q.x; y = q.y; } }
     // research/NEW_GUNS.md §4: 印のある敵に当てた数字は倍率の後の値を、少し大きく色違いで出す。
     const scanMarked = opts?.scanMarked ?? false;
+    const rampFx = opts?.swingRamp !== undefined ? whipSwingRampFx(opts.swingRamp) : null;
     // LEVEL_GROWTH.md §11 代替b: 攻撃が変わるカードの後の**最初の1発**(非クリ)だけ白→金に光る。消費したら窓を閉じる。
     const flash = !crit && get().levelUpFlashArmed && get().gameTime < get().levelUpEmphasisUntil;
     if (flash) set({ levelUpFlashArmed: false });
@@ -30991,6 +31017,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 印: 白い芯(会心なら金のまま)+燐光の縁取り・1.5倍・出だし80msで1.8倍から縮む(research/NEW_GUNS.md §4)。
       color: crit ? '#fbbf24' : (flash ? '#fde68a' : (scanMarked ? '#ffffff' : '#fef9c3')),
       ...(flash ? { scale: 1.4, flash: true } : (scanMarked ? { scale: 1.5, outline: SCAN_MARK_NUMBER_OUTLINE, popFrom: 1.8 / 1.5, popMs: 80 } : {})),
+      // ★大車輪の上がり: 倍率に合わせて色と大きさを段々強く(上限は橙の芯+淡い金の縁)。印の数字はそのまま(印の読みを優先)。会心の金は上限まで残す。
+      ...(rampFx && !scanMarked ? {
+        color: crit && !rampFx.max ? '#fbbf24' : rampFx.color, scale: Math.max(rampFx.scale, flash ? 1.4 : 0),
+        ...(rampFx.outline !== undefined ? { outline: rampFx.outline, popFrom: rampFx.popFrom, popMs: rampFx.popMs } : {}),
+      } : {}),
       createdAt: now,
       duration: 720,
       crit
