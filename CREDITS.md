@@ -5,14 +5,14 @@
 
 | 出典 | 素材(リポジトリ内) | 元のファイル名 | 使い道 | 追加 |
 |---|---|---|---|---|
-| 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-26。表記が必須かは規約を未確認 | public/audio/sfx/thunder.mp3 | (日本語名・末尾「4」) | 雨の本降りの雷鳴 | v0.25.5840 |
+| 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-26。表記は不要(任意)=公式FAQ「報告不要、クレジット表記不要」(2026-11-26 検索で確認) | public/audio/sfx/thunder.mp3 | (日本語名・末尾「4」) | 雨の本降りの雷鳴 | v0.25.5840 |
 | ZapSplat(https://www.zapsplat.com/) | public/audio/sfx/wraith-swell.mp3 | zapsplat_horror_swell_mysterious_sinisher_whining_swell_ghostly_cold_eerie_002_104548.mp3 | 亡霊(変異体)と戦っている間(交互に重ねる1本目) | v0.25.5274 |
 | ZapSplat(https://www.zapsplat.com/) | public/audio/sfx/wraith-voice.mp3 | bottlerocket_GhostlyVoice_Musical_03.mp3 | 亡霊(変異体)と戦っている間(交互に重ねる2本目) | v0.25.5274 |
 | ZapSplat(https://www.zapsplat.com/) | public/audio/sfx/enemy-spotted.mp3 | zapsplat_horror_voice_ghostly_vocalisation_12163.mp3 | 索敵系の敵に見つかった時 | v0.25.5199 |
 | ZapSplat(https://www.zapsplat.com/) | public/audio/sfx/op-ghostly-voice.mp3 | bottlerocket_GhostlyVoice_Musical_02.mp3 | オープニングの射撃シーン・ステージ2の帰り道 | v0.25.5197 |
-| 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記が必須かは規約を未確認 | public/audio/sfx/brawler-punch.mp3 | (日本語名・末尾「2」) | 格闘の1・2段目の当たり | v0.25.5476 |
-| 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記が必須かは規約を未確認 | public/audio/sfx/brawler-heavy.mp3 | (日本語名・末尾「3」) | 格闘の3〜5段目(掌底など)の当たり | v0.25.5476 |
-| 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記が必須かは規約を未確認 | public/audio/sfx/brawler-kick.mp3 | (日本語名・末尾「1」) | 飛び蹴りの当たり | v0.25.5476 |
+| 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記は不要(任意)=公式FAQ「報告不要、クレジット表記不要」(2026-11-26 検索で確認) | public/audio/sfx/brawler-punch.mp3 | (日本語名・末尾「2」) | 格闘の1・2段目の当たり | v0.25.5476 |
+| 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記は不要(任意)=公式FAQ「報告不要、クレジット表記不要」(2026-11-26 検索で確認) | public/audio/sfx/brawler-heavy.mp3 | (日本語名・末尾「3」) | 格闘の3〜5段目(掌底など)の当たり | v0.25.5476 |
+| 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記は不要(任意)=公式FAQ「報告不要、クレジット表記不要」(2026-11-26 検索で確認) | public/audio/sfx/brawler-kick.mp3 | (日本語名・末尾「1」) | 飛び蹴りの当たり | v0.25.5476 |
 | ChatGPT(画像生成)※社長支給 2026-11-22 | public/sprites/fx/katana-slash-sheet.png | IMG_9479.PNG | プレイヤーの刀の斬撃(3コマ)・切り傷 | v0.25.5738 |
 | ChatGPT(画像生成)※社長支給 2026-11-21 | public/sprites/tree-forest-a.png / -b / -c | IMG_9458.PNG(3本を切り分け) | ステージ1・7の木 | v0.25.5725 |
 | ChatGPT(画像生成)※社長支給 2026-11-21 | public/sprites/tree-city-a.png / -b / -c | IMG_9462.PNG(3本を切り分け) | ステージ3の木 | v0.25.5725 |
@@ -33,4 +33,4 @@
 | ChatGPT(画像生成)※社長支給 2026-11-21 | public/sprites/frames/stage2-right.png | IMG_9429.png | 横長画面のステージ2の右端の枠 | v0.25.5713 |
 | ChatGPT(画像生成)※社長支給 2026-11-21 | public/sprites/frames/stage1-right.png | IMG_9423.PNG | 横長画面のステージ1の右端の枠 | v0.25.5706 |
 | ChatGPT(画像生成)※社長支給 2026-11-21 | public/sprites/frames/stage1-left.png | IMG_9422.PNG | 横長画面のステージ1の左端の枠 | v0.25.5705 |
-| 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記が必須かは規約を未確認 | public/audio/sfx/brawler-guard.mp3 | (日本語名・末尾「1」) | 格闘のレバーガードで受けた音 | v0.25.5476 |
+| 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-11。表記は不要(任意)=公式FAQ「報告不要、クレジット表記不要」(2026-11-26 検索で確認) | public/audio/sfx/brawler-guard.mp3 | (日本語名・末尾「1」) | 格闘のレバーガードで受けた音 | v0.25.5476 |
