@@ -4,7 +4,7 @@ import { buildLayers } from './layers';
 import { ensureTextures, loadSpriteGroups } from './pixiTextures';
 import { PixiScene, releaseAllBakedTextures } from './pixiScene';
 import { useGameStore } from '../store/gameStore';
-import { setAudioSuspended } from '../audio/audioManager';
+import { setAudioSuspended, playDistantSfx } from '../audio/audioManager';
 import { computeViewport } from '../utils/viewport';
 import { loadProgressBegin, loadProgressDone, loadProgressResetWindow, getLoadProgress, getLoadInFlight, trackLoad } from '../utils/loadProgress';
 import { preloadCorridorTextures, CORRIDOR_TEXTURE_NAMES } from './corridorLayer';
@@ -123,6 +123,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       const layers = buildLayers(app.stage, groundTexture, farTexture, horizonForestTexture, frontForestTexture);
       const scene = new PixiScene(layers);
       scene.setRenderer(app.renderer); // 可視可能ゾーンの暗幕(RenderTexture合成)に使用
+      scene.setThunderSfx(cue => playDistantSfx('thunder', cue)); // 雨の場面の雷鳴(社長支給の雷SE・遅れ/音量/音程/こもりは utils/weatherThunder.thunderSoundCue)
       // 固定設計ビュー: レンダラは端末px(width×height)のまま、シーンは論理寸法で描き、stage を scale 倍して端末へフィット。
       // これで全端末ほぼ同じ視野(FOV)になり、黒帯も出ない。詳細は utils/viewport.ts。
       // 開閉・回転が素材ロード中に起きても、初回propsではなく最新の表示寸法を使う。

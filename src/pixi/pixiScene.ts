@@ -583,6 +583,8 @@ import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/f
 import { WeatherWetLayer, type WetActor, type WetLandscape, type WetLight, type WetTree } from './weatherWet';
 import { StageFrameLayer } from './stageFrameLayer'; // 横長画面の左右の枠(research/STAGE_FRAMES.md)
 import { weatherWetActive, stepWetLightMix, wetLightMult, lerpRgb, easeInOutSine, wetSoilTint, shaftLightAt, type ShaftPoly, wetCloudShadowMult, RAIN_INTENSITY_LOW_MAX, wetNightGradeAlpha, wetNightEnvTint, stage1TreeTint, stage3TreeTint, stage4TreeTint, WET_MOON_SHAFT_MULT, WET_MOON_SHAFT_COLOR, stage1NightActive, s1nCloudShadowAlpha, S1N_MOON_SHAFT_MULT, S1N_MOON_SHAFT_COLOR, S1N_NIGHT_GRADE_ALPHA_MUL, S1N_MOON_POOL_ALPHA, S1N_MOON_POOL_COLOR, moonPoolPieces, TORCH_STREAK_EASE } from '../utils/weatherWet';
+import { WeatherThunderLayer } from './weatherThunder'; // 雨の場面の雷(社長指示2026-11-26「雷も入れて」・演出だけ)
+import type { ThunderSoundCue } from '../utils/weatherThunder';
 import { initStage7Weather, stepStage7Weather, stage7WeatherLook, hasGlenForm2, stepMixToward, STAGE7_WEATHER_STAGE, STAGE7_WEATHER_OFF, S7W_RAIN_START, type Stage7WeatherLook } from '../utils/stage7Weather';
 import { Stage1NightLayer } from './stage1Night';
 import { Stage5BattleLayer, type BurningWreckView, type FlamePainter } from './stage5Battlefield';
@@ -15052,6 +15054,7 @@ export class PixiScene {
     this.applyWraithDarkness(); // 亡霊と戦っている間の地面と遠景の暗さ(フレームの最後・§12)
     this.syncStage7Weather(s, now); // ステージ7の天気(雨→第二形態で晴れの夜・utils/stage7Weather.ts。他ステージ=数命令で終わる)
     if (s.stageWeather === 'wet' || this.s7Look.wetLayer || this.weatherWet) this.syncWeatherWet(s, now); // 天候「雨上がり」(この出撃の天候=store の stageWeather が雨・ステージ7の雨の時だけ。一度作った層は消す側のためにも回す)
+    this.syncThunder(s, now); // 雨の場面の雷(雨の層が出ている間だけ・演出だけ)
     this.syncStage1Night(s, now); // 通常のステージ1の森の夜(雨上がりの後=雨上がりの間は効かない)
     this.syncStage5Battle(s, now); // ステージ5(戦場)の光・色・コントラスト(他ステージ=1命令で終わる)
     this.syncStage3Daylight(s, now); // ステージ3(昼の廃都)の光と影(他ステージ=1命令で終わる)
@@ -17949,6 +17952,41 @@ export class PixiScene {
    * 松明の光だまり・木・拠点)を渡すだけ。光だまりは既存の映り込み(松明の reflection)の色と強さをそのまま読む。
    */
   private weatherWetOn = false;
+  /** 雨の場面の雷(雨の層が初めて出た時に作る・utils/weatherThunder.ts)。 */
+  private thunder: WeatherThunderLayer | null = null;
+  /** 雷鳴を鳴らす口(PixiStage が audio へ繋ぐ=描画の層は音を直接 import しない)。 */
+  private thunderSfx: ((cue: ThunderSoundCue) => void) | null = null;
+  setThunderSfx(fn: ((cue: ThunderSoundCue) => void) | null): void {
+    this.thunderSfx = fn;
+    if (this.thunder) this.thunder.onSound = fn;
+  }
+  /** 開発用(ヘッドレスの撮影): 今すぐ雷を落とす。 */
+  debugThunder(near = true): void { this.thunder?.debugStrike(Date.now(), near); }
+  /**
+   * 雨の場面の雷(社長指示2026-11-26「雷も入れて」)。雨の層が出ていて雨が強い間だけ、8〜20秒に1回・不規則に。
+   * ボスの出現・カットイン・アテンション(時間停止)・会話・一時停止の間は落とさない(鳴るはずの雷鳴も鳴らさない)。
+   * 空の稲光と稲妻は遠景の手前・世界の奥(森の稜線が光った空に抜ける)、照り返しは画面の層(加算・薄く)。
+   */
+  private syncThunder(s: ReturnType<typeof useGameStore.getState>, now: number): void {
+    const raining = this.weatherWetOn && !!this.weatherWet;
+    if (!this.thunder) {
+      if (!raining) return; // 雨の無いステージ=1命令で終わる
+      this.thunder = new WeatherThunderLayer();
+      this.thunder.onSound = this.thunderSfx;
+      const stageC = this.L.worldGroup.parent;
+      if (stageC) stageC.addChildAt(this.thunder.skyRoot, stageC.getChildIndex(this.L.worldGroup)); // proj-lift: exempt(画面固定の空)
+      this.L.uiLayer.addChildAt(this.thunder.frontRoot, Math.max(0, this.L.uiLayer.getChildIndex(this.flashGfx))); // proj-lift: exempt(画面固定の稲光・照り返し)
+    }
+    const hf = this.L.horizonForest;
+    const horizonY = hf.parent
+      ? this.L.stage.toLocal(hf.parent.toGlobal({ x: 0, y: hf.position.y + hf.height })).y // 地平線=遠景の森1の下端
+      : this.screenH * 0.3;
+    this.thunder.sync({
+      now, raining, rainLevel: this.weatherWet?.rainIntensity.rain ?? 0,
+      blocked: !!s.attention || s.isPaused || !!s.awakenCutin || s.introDialogueActive,
+      screenW: this.screenW, screenH: this.screenH, horizonY,
+    });
+  }
   /** 雨上がりで雲の影/月明りの筋を強める効き具合(0..1)。?weather=wet を付けない限り 0 のまま=倍率1。 */
   private wetLightMix = 0;
   /** 濡れた土の tint を地面の帯へ掛けている間 true(抜けた時に1回だけ戻すため)。 */
@@ -53267,6 +53305,7 @@ export class PixiScene {
     for (const e of this.ashEmbers) { e.core.destroy(); e.halo.destroy(); e.tail.destroy(); e.cinder.destroy(); }
     this.ashEmbers = [];
     this.weatherWet?.destroy(); this.weatherWet = null;
+    this.thunder?.destroy(); this.thunder = null;
     this.stage1Night?.destroy(); this.stage1Night = null;
     this.stage5Battle?.destroy(); this.stage5Battle = null;
     this.stage3Daylight?.destroy(); this.stage3Daylight = null;

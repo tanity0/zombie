@@ -124,22 +124,27 @@ export const glintPose = (t: number): { pos: number; alpha: number } | null => {
 
 // ---- ポツポツ雨(小雨・設計書「追加: ポツポツ雨」) ----
 /** 雨粒の密度(1秒・world 100万px² あたりの粒数)。標準ズームの可視域(約 0.9〜1.2M px²)で画面に数本が見える程度=小雨。叩き台。 */
-export const RAIN_DROPS_PER_MPX_S = 13;
+export const RAIN_DROPS_PER_MPX_S = 34; // 社長指示2026-11-26「雨、もっと目立つ様にして」で 13→34(本降りで画面に数十本)
 /** 雨粒(落ちている線)の同時上限。最大引き(0.4)で可視域が広がっても、ここで止まる。
  *  本降り(強さ RAIN_INTENSITY_MAX)が引きの画でも薄まらないよう 40→70(社長指示2026-11-21「雨量の上下もっとハッキリ」)。 */
-export const RAIN_MAX = 70;
+export const RAIN_MAX = 160; // 同上 70→160(密度を上げたぶん・引きの画で上限に張り付かない余裕)
 /** 今の強さで次の粒までが長すぎる時(止みかけ・強さ0)は、この間隔で強さを見直す
  *  (指数分布は記憶が無いので、見直して引き直しても降り方の統計は変わらない=止みかけから本降りへ移る時に待たされない)。 */
 export const RAIN_RECHECK_MS = 400;
 /** 1フレームで生む粒の上限(重いフレーム・タブ復帰で一度に降ってこない)。 */
-export const RAIN_SPAWN_PER_FRAME = 3;
+export const RAIN_SPAWN_PER_FRAME = 6; // 同上 3→6(本降りの粒数を1フレームの上限で削らない)
 /** 落下の尺(ms)の幅。 */
-export const RAIN_FALL_MS_MIN = 380;
-export const RAIN_FALL_MS_MAX = 560;
+export const RAIN_FALL_MS_MIN = 300; // 同上 380→300(速く叩きつける)
+export const RAIN_FALL_MS_MAX = 460; // 同上 560→460
 /** 落ち始めの速さの割合(0=止まった所から・1=等速)。雨粒は画面の外から既に落ちて来ているので0にはしない=少しだけ加速。 */
 export const RAIN_V0 = 0.55;
 /** 斜め(横へ流れる量/落ちる量)。 */
-export const RAIN_SLANT = 0.2;
+export const RAIN_SLANT = 0.3; // 同上 0.2→0.3(斜めの吹き付け。風の息で更に揺れる=rainGust)
+/** 手前の大粒(画面に近い層の太く速い筋)の割合・太さ・長さ・速さの倍率。 */
+export const RAIN_NEAR_P = 0.12;
+export const RAIN_NEAR_WIDTH_MUL = 2.6;
+export const RAIN_NEAR_LEN_MUL = 2.3;
+export const RAIN_NEAR_FALL_MUL = 0.62;
 
 export interface RainDropSpec {
   /** 落下の尺(ms)。 */
@@ -152,18 +157,37 @@ export interface RainDropSpec {
   alpha: number;
   /** 斜めの量(粒ごとに少し揺らす)。 */
   slant: number;
+  /** 線の太さの倍率(手前の大粒は太い)。 */
+  wMul: number;
+  /** 手前の大粒か。 */
+  near: boolean;
 }
 
 /** 粒ごとの個性(尺・長さ・濃さ・斜め)。rnd は 0..1 の乱数(テストで固定できるように渡す)。 */
-export const rainDropSpec = (rnd: () => number): RainDropSpec => {
+export const rainDropSpec = (rnd: () => number, gust = 1): RainDropSpec => {
   const fallMs = RAIN_FALL_MS_MIN + (RAIN_FALL_MS_MAX - RAIN_FALL_MS_MIN) * rnd();
   // 長い粒ほど少ない(二乗で短い側へ寄せる=全部同じ長さに見えない)。
   const lr = rnd();
-  const len = 13 + 20 * lr * lr;
+  const len = 22 + 30 * lr * lr; // 社長指示2026-11-26「雨、もっと目立つ様に」で 13+20 → 22+30
   // 濃い粒は少し(手前の粒がたまに光る)。
   const ar = rnd();
-  const alpha = 0.34 + 0.42 * ar * ar * ar;
-  return { fallMs, height: 260 + 140 * rnd(), len, alpha, slant: RAIN_SLANT * (0.8 + 0.4 * rnd()) };
+  const alpha = 0.55 + 0.3 * ar * ar * ar; // 同上 0.34+0.42 → 0.55+0.3(背景が暗いので底上げ)
+  const slant = RAIN_SLANT * (0.8 + 0.4 * rnd()) * gust;
+  const height = 260 + 140 * rnd();
+  if (rnd() < RAIN_NEAR_P) {
+    // 手前の大粒: 太く・長く・速い。ぼけた水の筋なので濃さは控えめ(太さで目立つ)。
+    return { fallMs: fallMs * RAIN_NEAR_FALL_MUL, height: height * 1.25, len: len * RAIN_NEAR_LEN_MUL, alpha: 0.4 + 0.2 * ar, slant: slant * 1.15, wMul: RAIN_NEAR_WIDTH_MUL, near: true };
+  }
+  return { fallMs, height, len, alpha, slant, wMul: 1, near: false };
+};
+
+/**
+ * 風の息(斜めの量に掛ける倍率・0.6..1.5 付近)。周期の違う正弦を重ねた滑らかな揺れ=吹き付けが強まって弱まる(急に向きが変わらない=慣性)。
+ * 粒は生まれた時の値を持ち続ける(落ちている途中で曲がらない)。
+ */
+export const rainGust = (nowMs: number): number => {
+  const t = nowMs / 1000;
+  return 1 + 0.28 * Math.sin(t * 0.37) + 0.14 * Math.sin(t * 1.13 + 1.7) + 0.06 * Math.sin(t * 2.9 + 0.4);
 };
 
 /** 次の粒までの間隔(ms)。可視域の広さ(world px²)に比例して増やし、間隔は指数分布でばらつかせる(機械的な等間隔にしない)。 */
@@ -257,7 +281,7 @@ export const rainNextEvent = (gapMs: number): { dt: number; spawn: boolean } =>
 
 // ---- 水たまりの雨の波紋(雨が強いほど水面が忙しく波立つ・止みかけでは0) ----
 /** 強さ1の時の、水面 1000 world px² あたり1秒の波紋の数。 */
-export const PUDDLE_RIPPLE_PER_KPX2_S = 0.6;
+export const PUDDLE_RIPPLE_PER_KPX2_S = 1.0; // 社長指示2026-11-26「雨、もっと目立つ様に」で 0.6→1.0(水たまりが雨で波立つのを読ませる)
 /** これ以下の強さでは雨の波紋を出さない(止みかけ=水面は静か)。 */
 export const PUDDLE_RIPPLE_LEVEL_FLOOR = 0.25;
 /** 強さ level・水面の広さ areaPx2(world px²)の水たまりに、1ms あたり何個の波紋が立つか。 */

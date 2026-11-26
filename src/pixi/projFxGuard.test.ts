@@ -113,7 +113,7 @@ describe('投影の段階3: 点で出る演出(番人)', () => {
     expect(bodyOf(src, '  private projBullet(')).toContain('g.scale.set(kb); // 設置物の depthD は外す');
     expect(ngf).toContain('const ds = pq ? 1 : depthEnemy(fb.footY);');
     expect(wet).toContain('DEBRIS_ART_SCALE * ks * r.s * pose.scale'); // 波紋: 旧い depthScale を外して s(天井つき・CR-7)
-    expect(wet).toContain('d.sp.width = RAIN_WIDTH * kf;');
+    expect(wet).toContain('d.sp.width = RAIN_WIDTH * d.spec.wMul * kf;'); // 手前の大粒の太さ(2026-11-26)も投影の大きさ kf に掛ける
     expect(pdf).toContain('projF: ProjFrame | null = null');
     // 別ファイルの sync へ投影の枠を渡している(null=今の描き方)
     expect(src).toContain('fy => this.depthScaleEnemy(fy), this.projFrame)');

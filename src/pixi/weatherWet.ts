@@ -35,7 +35,7 @@ import {
 import { propPlacementVersion } from '../world/propPlacement';
 import {
   ripplePose, glintPose, GLINT_MS,
-  rainDropSpec, rainPose, rainNextGapMs, rainNextEvent, RAIN_MAX, RAIN_SPAWN_PER_FRAME, type RainDropSpec,
+  rainDropSpec, rainGust, rainPose, rainNextGapMs, rainNextEvent, RAIN_MAX, RAIN_SPAWN_PER_FRAME, type RainDropSpec,
   puddleRippleRate,
   landscapeBand, puddleReflection, LANDSCAPE_SKY_SAMPLE,
   buildWetGradeMatrix, WET_FOG_ALPHA_MUL, WET_FOG_TINT_MUL, WET_FRONT_TINT_MUL,
@@ -93,14 +93,14 @@ const MAX_SLOTS = 5;
 const GLINT_EVERY_MS = 2200;
 const GLINT_MAX = 2;
 /** 波紋の上限(使い回し)。ポツポツ雨の着地ぶんを足して 24→40、本降りで水たまりが波立つぶんを足して 40→64。 */
-const RIPPLE_MAX = 96; // 本降りの時に波紋の使い回しが埋まらない余裕(64→96)
+const RIPPLE_MAX = 160; // 雨を目立たせた(2026-11-26)ぶん 96→160 // 本降りの時に波紋の使い回しが埋まらない余裕(64→96)
 /** 水たまりの雨の波紋を1フレームで生む上限(重いフレーム・タブ復帰で一度に立たない)。 */
-const PUDDLE_RIPPLE_PER_FRAME = 4;
+const PUDDLE_RIPPLE_PER_FRAME = 6; // 同上 4→6
 /** 水たまりの雨の波紋の濃さ(雫・着地の波紋に掛ける 1 に対して)。 */
 const PUDDLE_RIPPLE_ALPHA = 1;
 /** 雨粒の色(冷たい白)・太さ(world px・遠近前)。 */
-const RAIN_TINT = 0xd8e4f6;
-const RAIN_WIDTH = 1.1;
+const RAIN_TINT = 0xe6f0ff; // 社長指示2026-11-26「雨、もっと目立つ様に」: 暗い夜に立つ明るい冷たい白(旧 0xd8e4f6)
+const RAIN_WIDTH = 1.8; // 同上 1.1→1.8
 /** 踏んだ時の波紋: 同じキャラは最短この間隔・この距離を歩くごと。 */
 const STEP_RIPPLE_MS = 260;
 const STEP_RIPPLE_DIST = 14;
@@ -132,11 +132,11 @@ const getRainStreakTexture = (): Texture => {
   c.width = w; c.height = hgt;
   const ctx = c.getContext('2d')!;
   for (let x = 0; x < w; x++) {
-    const edge = x === 0 || x === w - 1 ? 0.35 : 1;
+    const edge = x === 0 || x === w - 1 ? 0.5 : 1;
     const g = ctx.createLinearGradient(0, 0, 0, hgt);
     g.addColorStop(0, 'rgba(255,255,255,0)');
-    g.addColorStop(0.35, `rgba(255,255,255,${0.45 * edge})`);
-    g.addColorStop(0.8, `rgba(255,255,255,${0.9 * edge})`);
+    g.addColorStop(0.3, `rgba(255,255,255,${0.6 * edge})`); // 尾も読める濃さ(旧 0.35 で 0.45)
+    g.addColorStop(0.75, `rgba(255,255,255,${edge})`);
     g.addColorStop(1, `rgba(255,255,255,${edge})`);
     ctx.fillStyle = g;
     ctx.fillRect(x, 0, 1, hgt);
@@ -1492,14 +1492,14 @@ export class WeatherWetLayer {
           px = v.left + Math.random() * w; py = v.top + Math.random() * (hh + 60);
         }
         if (projShapeOutside(pf, px, py, 0, 40) || fade(px, py) <= 0.02) continue;
-        d.at = now; d.x = px; d.y = py; d.spec = rainDropSpec(Math.random); d.on = true;
+        d.at = now; d.x = px; d.y = py; d.spec = rainDropSpec(Math.random, rainGust(now)); d.on = true;
         continue;
       }
       const x = v.left + Math.random() * w;
       let y = v.top + Math.random() * (hh + 60);
       for (let k = 0; k < 4 && h.horizonAlpha(y) <= 0.02; k++) y = v.top + Math.random() * (hh + 60);
       if (h.horizonAlpha(y) <= 0.02) continue;
-      d.at = now; d.x = x; d.y = y; d.spec = rainDropSpec(Math.random); d.on = true;
+      d.at = now; d.x = x; d.y = y; d.spec = rainDropSpec(Math.random, rainGust(now)); d.on = true;
     }
     for (const d of this.rain) {
       if (!d.on) { d.sp.visible = false; continue; }
@@ -1508,7 +1508,7 @@ export class WeatherWetLayer {
       if (!pose) {
         d.on = false; d.sp.visible = false;
         const pv = puddleAt(this.scaledPuddles, d.x, d.y);
-        this.spawnRipple(d.x, d.y, !!pv, pv ? 0.42 + Math.random() * 0.16 : 0.3 + Math.random() * 0.1, now, 1, null, true);
+        this.spawnRipple(d.x, d.y, !!pv, (pv ? 0.46 + Math.random() * 0.18 : 0.32 + Math.random() * 0.12) * (d.spec.near ? 1.3 : 1), now, 1, null, true); // 着地の跳ね/波紋(2026-11-26 水を少し大きく・手前の大粒は大きく。旧 水0.42〜0.58/地面0.3〜0.4)
         continue;
       }
       const sl = d.spec.slant;
@@ -1516,7 +1516,7 @@ export class WeatherWetLayer {
       // 斜めに落ちる: 高さ h の所では着地点より上流(左)へ h*slant ずれている。
       d.sp.position.set(d.x - pose.h * sl * ds, d.y - pose.h * ds);
       d.sp.rotation = -Math.atan(sl); // 尾が左上へ伸びる=右下へ流れる向き
-      d.sp.width = RAIN_WIDTH * ds;
+      d.sp.width = RAIN_WIDTH * d.spec.wMul * ds;
       d.sp.height = pose.len * ds;
       d.sp.alpha = d.spec.alpha * pose.alpha * h.horizonAlpha(d.y);
       const pf = this.projFrameNow;
@@ -1525,7 +1525,7 @@ export class WeatherWetLayer {
         const q = projectInto(pf, d.x, d.y, this.projPt);
         const kf = projFxScale(q.s);
         d.sp.position.set(q.x - pose.h * sl * q.s, q.y - pose.h * q.s);
-        d.sp.width = RAIN_WIDTH * kf;
+        d.sp.width = RAIN_WIDTH * d.spec.wMul * kf;
         d.sp.height = pose.len * kf;
         d.sp.alpha = d.spec.alpha * pose.alpha * (h.projFade ? h.projFade(d.x, d.y) : q.alpha);
       }

@@ -140,6 +140,7 @@ export type SfxKey =
   | 'phill-skylight'     // フィル「祝福」の天の光スポットライト予兆(社長提供SE 2026-08-21)
   | 'phill-skylight-low' // 同素材のピッチ下げ版=「裁きの光」(音量ではなく音程を低く・社長指示)
   | 'heli-land'      // ヘリ着地SE
+  | 'thunder'        // 雷鳴(社長支給2026-11-26・雨の場面の雷。鳴らし方は pixi/weatherThunder.ts の thunderSoundCue)
   | 'boss-death'     // 裏ボス討伐(消滅)SE。長いので fadeOutMs でフェード
   | 'base-capture'   // 拠点開放SE
   | 'hunter-alert'   // ハンター変異体の検知(視界に入った=見られている)警告SE
@@ -240,6 +241,12 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/boss-appear.mp3`,
     volume: 0.9,
     minIntervalMs: 400,
+  },
+  // 雷鳴(社長支給2026-11-26「雷SE」・約3秒)。playDistantSfx で遅れ・音量・音程・こもりを付けて鳴らす(雨の場面の雷・演出だけ)。
+  thunder: {
+    src: `${import.meta.env.BASE_URL}audio/sfx/thunder.mp3`,
+    volume: 1.0,
+    minIntervalMs: 1500,
   },
   // ヘリ着地SE(社長提供)。登場演出の着地タイミングで1回。
   'heli-land': {
