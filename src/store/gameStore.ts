@@ -558,7 +558,7 @@ import { worldDist } from '../config/worldScale'; // 世界の距離スケール
 import { cineAccepts, cineCameraAt, cineSideOf, type CineEvent, type CineKind } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜)
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { GAME_SPEED } from '../config/gameSpeed';
-import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS, isEliteFatalStun } from '../utils/meleeExecute';
+import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS, isEliteFatalStun, whipGrabStunnedMult } from '../utils/meleeExecute';
 // 案山子(変異体対策室の練習枠): 体力を減らす合流点はこの1本を通す=案山子だけ倒れない(utils/scarecrow.ts)。
 import { enemyHealthAfterHit, isScarecrow, survivesEnemySweeps } from '../utils/scarecrow';
 import { planPracticeFacilities } from '../utils/practiceFacilities'; // 練習ランの開幕の大型武器庫+武器商人の置き場所
@@ -3239,6 +3239,9 @@ const spawnWhipComboHitFx = (
  * reach=この振りの鞭の届く距離(ハンティングの伸び込み)=回す半径と投げの距離の元。ux,uy=振りの向き(回る向きを決める)。
  */
 const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux: number, uy: number, reach: number): void => {
+  // ★着弾で本人が受ける倍率は掴んだ瞬間(気絶中)の状態で決める(着弾の時は気絶が明けていることがある・着弾の後は解く)。
+  const grabE = get().enemies.find(en => en.id === enemyId);
+  const selfMult = grabE ? whipGrabStunnedMult(grabE, get().gameTime, BOSS_MELEE_STUN_MULT) : 1;
   brawlerGrabCancelTech(get, enemyId);
   // 掴むのは気絶中の敵だけ=気絶で止まっている溜めは「攻撃中」に数えられない。止まっていた溜めと赤い予告も取り消す(放した後に続きから出さない)。
   {
@@ -3261,6 +3264,7 @@ const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux:
     radius, reach, lastHits: {}, cx: ec.x, cy: ec.y, px: pc.x, py: pc.y, rNow: r0,
     at: st.gameTime, vx: 0, vy: 0, shrink: 0, shrinkV: 0,
     grabAt: nowMs, grabX: ec.x, grabY: ec.y, // 掴んだ瞬間の寄り(描画だけ)の起点と寄り先
+    selfMult,
   };
   // ★ボス区分(気絶中)は振り回さず、掴んだ瞬間から頭上を越える弧で反対側へ叩きつける(社長指示2026-11-26「ぐるぐる回ってると絵面がよくないので」)。
   //   着地点=掴んだ点をプレイヤーの中心について反対側へ(距離は同じ・体の大きさの下限)。帯の外・壁・今のズームの可視域の外なら手前へ寄せ、
@@ -3306,7 +3310,7 @@ const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux:
   void import('../audio/audioManager').then(m => m.playSfx('whip-hit', 0.8, undefined, 0.8));
 };
 
-/** 着弾の爆発の威力(距離0の満額)=鞭の1撃目の WHIP_THROW_DAMAGE_MULT 倍(1撃目と同じ掛け算・§6)。クリ・処刑・スキャンの印は掛けない(爆発の規約)。 */
+/** 着弾の爆発の威力(距離0の満額)=鞭の1撃目の WHIP_THROW_DAMAGE_MULT 倍(1撃目と同じ掛け算・§6)。クリ・処刑・スキャンの印は掛けない(爆発の規約)。投げた本人だけは呼び手が selfMult を掛ける。 */
 const whipThrowBlastBase = (st: GameState, cx: number, cy: number): number => {
   const p = st.player;
   const melee = p.weapons.find(w => w.isMelee);
@@ -3320,8 +3324,9 @@ const whipThrowBlastBase = (st: GameState, cx: number, cy: number): number => {
  * 着弾の爆発(§8-4・§6 の爆発の規約)。爆心=着弾点・投げた敵(selfId)も満額を受ける。扱いはプレイヤーの手榴弾と同じ:
  * 半径=手榴弾×エクスプローダー×ヘビーガンナー・威力×エクスプローダー・距離の減り・壁越し不可・敵だけ・ボス系には非致死(damageEnemy の blast)・卵も割る・
  * 周りを外へ押す(投げた本人は押さない)・爆発の浮き(投げた本人も)。熟練度は鞭。戻り値=当たった数・倒した数。
+ * selfMult=投げた本人(selfId)だけに掛ける倍率(掴んだ瞬間の気絶中の近接の一撃の倍率・社長指示2026-11-26)。周りの敵には掛けない。
  */
-const whipThrowExplode = (get: () => GameState, cx: number, cy: number, selfId: string | null): { hits: number; killed: number } => {
+const whipThrowExplode = (get: () => GameState, cx: number, cy: number, selfId: string | null, selfMult = 1): { hits: number; killed: number } => {
   const st = get();
   const p = st.player;
   const now = Date.now();
@@ -3345,7 +3350,8 @@ const whipThrowExplode = (get: () => GameState, cx: number, cy: number, selfId: 
     // ★掴んだ雑魚は着弾の爆発で必ず死ぬ(社長指示2026-11-26「気絶の敵を攻撃すると掴めて、爆撃と共にKILL」=処刑扱い)。
     // 強個体・ボスは爆発のダメージを受けるだけ(足りなければ生き残る・社長指示2026-11-26「強個体はクリティカルだけでは死なないでしょ？」)。
     const execSelf = e.id === selfId && whipThrowExecutesSelf(BRC.brawlerEnemyClass(e));
-    const dmg = Math.max(1, Math.round(base * exMult * h.scale), execSelf ? Math.ceil(e.health) : 0);
+    const selfBoost = e.id === selfId && selfMult > 1 ? selfMult : 1; // 投げた本人だけ=気絶中の一撃の倍率(ボス5倍・強個体3倍)
+    const dmg = Math.max(1, Math.round(base * exMult * h.scale * selfBoost), execSelf ? Math.ceil(e.health) : 0);
     let dead = withMastery('whip', () => get().damageEnemy(e.id, dmg, true, false, false, 'other'));
     if (execSelf && !dead) { // 軽減(耐性・空中の倍率など)で残ったら、残りの体力ぶんを確実に入れる
       const left = get().enemies.find(en => en.id === e.id);
@@ -3354,7 +3360,7 @@ const whipThrowExplode = (get: () => GameState, cx: number, cy: number, selfId: 
     if (execSelf && dead) recordFinisherKill(); // 処刑扱い(気絶中の敵の近接即死と同じ数え方)
     hits++;
     const a = blastAnchorOf(e, cx, cy);
-    get().spawnDamageNumber(a.x, e.y, dmg, false, { enemyId: e.id });
+    get().spawnDamageNumber(a.x, e.y, dmg, selfBoost > 1, { enemyId: e.id }); // 倍率が乗った本人の数字は会心の色(金)
     if (dead) {
       killed++;
       get().dropEnemyXp(e, a.x, a.y, `pickup-xp-whipthrow-${now}-${e.id}`);
@@ -3444,7 +3450,7 @@ const landWhipThrow = (
     g0.spawnBlood(x, y, fa + Math.PI, 150);
     g0.spawnMeleeBlood(x, y, Math.max(56, e0.width * 1.6));
   }
-  const r = whipThrowExplode(get, x, y, selfAlive && e0 ? id : null);
+  const r = whipThrowExplode(get, x, y, selfAlive && e0 ? id : null, sw.selfMult ?? 1);
   // ★着弾で気絶(クリティカル)を解く(社長指示2026-11-26「一度回したらクリティカル解除して」): 生き残った強個体・ボスを続けて掴ませない・気絶のまま殴らせない。
   // 爆発のダメージの後に書く(爆発の威力は気絶の有無で変えない)。爆発は気絶を新しく立てない(会心でない・体勢の削りなし)。
   if (flew && selfAlive) {

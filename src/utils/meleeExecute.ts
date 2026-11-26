@@ -144,5 +144,22 @@ export const resolveStunnedMeleeHit = (
   return { kind: 'execute' };
 };
 
+/**
+ * ★鞭で掴んだ敵が着弾の爆発で受けるダメージに掛ける倍率(社長指示2026-11-26「投げた敵自身が着弾で受けるダメージにだけ、
+ * 気絶中の一撃の倍率を掛ける」)。=掴んだ瞬間にその敵が受けるはずだった気絶中の近接の一撃の倍率(上の resolveStunnedMeleeHit と同じ区分の分け方)。
+ * ボス(usesBossStunnedMelee)=bossStunMult(黄・紫とも同じ・紫の致命の上乗せ=体勢の報酬は掛けない) / 強個体=ELITE_MELEE_STUN_MULT
+ * (紫中の強個体の「即死」は爆発に持ち込まない=同じ3倍) / 雑魚=1(処刑=着弾で必ず死ぬので倍率は要らない)。
+ * 呼び手は掴んだ瞬間(気絶中)に1回だけ呼んで覚えておく(着弾の時は気絶が明けていることがある)。
+ */
+export const whipGrabStunnedMult = (
+  enemy: StunnedMeleeEnemy & { bossFullStunUntil?: number },
+  gameTime: number,
+  bossStunMult: number, // = gameStore.BOSS_MELEE_STUN_MULT(値の二重管理を避けて注入)
+): number => {
+  if (usesBossStunnedMelee(enemy.type)) return bossStunMult;
+  if (isEliteFatalStun(enemy, gameTime) || stunnedMeleeOutcome(enemy, gameTime) === 'heavy') return ELITE_MELEE_STUN_MULT;
+  return 1;
+};
+
 /** フィニッシュ打(ボス5×/強個体3×)で敵が浮く時間(ms)。プレイヤーの既存値(420)。 */
 export const MELEE_STUN_LIFT_MS = 420;

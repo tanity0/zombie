@@ -6,6 +6,7 @@ import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { WHIP_TIP_BOSS_MULT, WHIP_TIP_FRAC, WHIP_OVERHEAD_MS, WHIP_OVERHEAD_RISE_FRAC, whipSwingBodyRadius } from '../utils/whipSwing';
 import { clampRectToPlayableArea } from '../world/playableArea';
+import { ELITE_MELEE_STUN_MULT } from '../utils/meleeExecute';
 
 let now = 15_000_000;
 const NO = { up: false, down: false, left: false, right: false } as never;
@@ -207,6 +208,54 @@ describe('②気絶しているボスは掴める=頭上を越えて反対側へ
     expect(st().whipSwing).toBeNull();
     expect(en('h').whipHeld).toBeFalsy();
     expect(en('h').health).toBe(99999);
+  });
+});
+
+describe('④掴んだ本人の着弾ダメージにだけ気絶中の一撃の倍率(社長指示2026-11-26)', () => {
+  /** 掴んで着弾まで回す。forceSelfMult を渡すと掴んだ直後に倍率を書き換える(比べる基準=1)。bystander=着地点の近くに置く気絶していない雑魚。 */
+  const landCase = (type: EnemyType, extra: Partial<Enemy>, forceSelfMult?: number, bystander = false) => {
+    useGameStore.setState({ enemies: [place(type, 100, 0, 'g', extra)], effects: [] });
+    swing();
+    const sw = st().whipSwing!;
+    expect(sw.enemyId).toBe('g');
+    const grabMult = sw.selfMult;
+    if (forceSelfMult !== undefined) useGameStore.setState(s => ({ whipSwing: s.whipSwing ? { ...s.whipSwing, selfMult: forceSelfMult } : s.whipSwing }));
+    if (bystander) {
+      const tx = (sw.toX ?? 0) - center().x, ty = (sw.toY ?? 0) - center().y;
+      useGameStore.setState(s => ({ enemies: [...s.enemies, place('zombie', tx + 30, ty, 'b')] }));
+    }
+    for (let i = 0; i < 600 && st().whipSwing; i++) step(10);
+    expect(st().whipSwing).toBeNull();
+    const nums = st().effects.filter(f => f.kind === 'damageNumber') as unknown as { crit?: boolean }[];
+    return { grabMult, self: 99999 - en('g').health, by: bystander ? 99999 - en('b').health : 0, anyCrit: nums.some(n => !!n.crit) };
+  };
+  it('ボス(黄・着弾の時は気絶が明けている): 本人=基本×5・周りは倍率なし・本人の数字は会心の色', () => {
+    const ex = () => ({ stunUntil: st().gameTime + 200 }); // 弧の途中で明ける=掴んだ時の状態で決まる
+    const base = landCase('hunter', ex(), 1, true);
+    const boosted = landCase('hunter', ex(), undefined, true);
+    expect(boosted.grabMult).toBe(5);
+    expect(base.self).toBeGreaterThan(0);
+    expect(boosted.self / base.self).toBeCloseTo(5, 1);
+    expect(boosted.by).toBeGreaterThan(0);
+    expect(boosted.by).toBe(base.by); // 巻き込みには掛けない
+    expect(boosted.anyCrit).toBe(true);
+    expect(base.anyCrit).toBe(false);
+  });
+  it('ボス(紫)も5倍', () => {
+    const ex = () => { const until = st().gameTime + 5000; return { bossFullStunUntil: until, stunUntil: until, bossPosture: 0 }; };
+    const base = landCase('hunter', ex(), 1);
+    const boosted = landCase('hunter', ex());
+    expect(boosted.grabMult).toBe(5);
+    expect(boosted.self / base.self).toBeCloseTo(5, 1);
+  });
+  it('強個体(黄・紫)=ELITE_MELEE_STUN_MULT', () => {
+    for (const ex of [{ stunUntil: 1e12, colorTier: 'red' }, { stunUntil: 1e12, bossFullStunUntil: 1e12, colorTier: 'red' }] as Partial<Enemy>[]) {
+      const base = landCase('zombie', ex, 1);
+      const boosted = landCase('zombie', ex);
+      expect(boosted.grabMult).toBe(ELITE_MELEE_STUN_MULT);
+      expect(base.self).toBeGreaterThan(0);
+      expect(boosted.self / base.self).toBeCloseTo(ELITE_MELEE_STUN_MULT, 1);
+    }
   });
 });
 

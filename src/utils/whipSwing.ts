@@ -112,6 +112,8 @@ export interface WhipSwingState {
   pivY?: number;
   /** 振り下ろしの風切りの音を鳴らした。 */
   ohWhoosh?: boolean;
+  /** 掴んだ瞬間に決めた、着弾の爆発で掴んだ本人だけが受ける倍率(気絶中の近接の一撃の倍率=meleeExecute.whipGrabStunnedMult)。未設定=1。 */
+  selfMult?: number;
 }
 
 /** 掴む相手の候補(当たった敵1体ぶん)。 */

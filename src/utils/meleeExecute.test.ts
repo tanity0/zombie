@@ -1,6 +1,6 @@
 // PACING_PUZZLE.md §6.22 M47仕様①→§6.38 B3(E-1確定=瀕死処刑の撤去)のユニットテスト。
 import { describe, it, expect } from 'vitest';
-import { stunnedMeleeOutcome, resolveStunnedMeleeHit, usesBossStunnedMelee, isEliteEnemy, ELITE_MELEE_STUN_MULT, isEliteFatalStun} from './meleeExecute';
+import { stunnedMeleeOutcome, resolveStunnedMeleeHit, usesBossStunnedMelee, isEliteEnemy, ELITE_MELEE_STUN_MULT, isEliteFatalStun, whipGrabStunnedMult } from './meleeExecute';
 import type { StunnedMeleeEnemy } from './meleeExecute';
 import type { EnemyType } from '../types/game';
 
@@ -266,5 +266,21 @@ describe('isEliteFatalStun — CD無視のフル演出を出してよい相手(v
   });
   it('赤い個体(=強個体扱い)も紫中なら true', () => {
     expect(isEliteFatalStun({ type: 'zombie', colorTier: 'red', bossFullStunUntil: T + 1 }, T)).toBe(true);
+  });
+});
+
+describe('鞭で掴んだ本人が着弾で受ける倍率=気絶中の近接の一撃の倍率(社長指示2026-11-26)', () => {
+  const T = 1000;
+  it('ボス=注入したボスの倍率(黄・紫とも)', () => {
+    expect(whipGrabStunnedMult({ type: 'hunter', health: 100, maxHealth: 100 }, T, 5)).toBe(5);
+    expect(whipGrabStunnedMult({ type: 'hunter', health: 100, maxHealth: 100, bossFullStunUntil: T + 500 }, T, 5)).toBe(5);
+  });
+  it('強個体=ELITE_MELEE_STUN_MULT(紫中も即死は持ち込まず同じ倍率)', () => {
+    expect(whipGrabStunnedMult({ type: 'pumpkin', health: 100, maxHealth: 100 }, T, 5)).toBe(ELITE_MELEE_STUN_MULT);
+    expect(whipGrabStunnedMult({ type: 'zombie', colorTier: 'red', health: 100, maxHealth: 100 }, T, 5)).toBe(ELITE_MELEE_STUN_MULT);
+    expect(whipGrabStunnedMult({ type: 'zombie', colorTier: 'red', health: 100, maxHealth: 100, bossFullStunUntil: T + 500 }, T, 5)).toBe(ELITE_MELEE_STUN_MULT);
+  });
+  it('雑魚=1(処刑=着弾で必ず死ぬ)', () => {
+    expect(whipGrabStunnedMult({ type: 'zombie', health: 100, maxHealth: 100 }, T, 5)).toBe(1);
   });
 });
