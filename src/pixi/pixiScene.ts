@@ -136,7 +136,7 @@ import { whipComboBodyRecover } from '../utils/whipCombo'; // 鞭の3段目の�
 import { counterReadyAt, counterRingFade } from '../utils/counterReadyAt'; // カウンターのクールダウンの輪(鞭・ナイフの3連撃は連撃の終わり+CDまで)
 import { knifeComboBodyT, knifeComboSwingDir, knifeComboWpnAlpha, knifeSwingDrawSince } from '../utils/knifeCombo'; // ナイフの3連撃の段の向き・3段目の後の隙の姿勢
 import {
-  whipRopeShape, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
+  whipSwingRopePoints, WHIP_LOOP_ROPE_POINTS, WHIP_FINISH_PLANE_TILT_RAD, WHIP_LOOP_START_AT, WHIP_LOOP_START_UP_EXTRA, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
   whipGrabZoomAt, WHIP_GRAB_ZOOM_MAG, WHIP_GRAB_ZOOM_AIM_FRAC, WHIP_GRAB_ZOOM_TOTAL_MS,
   whipTetherShape, whipTetherBow, whipTetherRetract, whipFlyLiftPx, whipFlyPeakPx, type WhipRopeShape,
   whipTetherEntry, whipTetherGlowK, whipThrowStreak, whipFlyVisualTimeAt, whipFlyViewOffset, whipFlyReleaseBlend, whipTetherRetractTip, whipTrailFade,
@@ -46273,11 +46273,14 @@ export class PixiScene {
   }
   /**
    * ★鞭の普通の振りの本体(社長「鞭っぽくしならせてから叩きつける」「まっすぐの絵にしてあるので」)。まっすぐの鞭の絵(whip)を
-   * MeshRope で曲げる。形は utils/whipSwingMotion の純関数(引く→溜め→打ち出し→前隙の終わりでまっすぐ伸び切る→たるんで消える)。
-   * 手元=プレイヤーの今の中心。点は振りの向きの座標で作って回す(上へ引く側は向きの左右で揃える=左を向いても頭の上を通る)。
-   * 負荷: 振り1回につき MeshRope 1本(点16)・per-frame Graphics なし=1/10。
+   * MeshRope で曲げる。形は utils/whipSwingMotion の純関数(引く→溜め→打ち出し=転がる輪→前隙の終わりでまっすぐ伸び切る→たるんで消える)。
+   * ★転がる輪(社長指示2026-11-26「ぐにゃっと150度ぐらい曲げて…円を描くように伸びるんじゃなくて、そのまま伸びていく感じ」): 縄全体は回さない
+   * (狙いの向き e.angle に固定)。1・2段目は地面の面で輪を払いの来る側に作り、3段目(pull>1)は縦の面=頭上で輪を転がす(高さを持ち上げる)。
+   * 手元=プレイヤーの今の中心。点は振りの向きの座標で作って回す(輪を作る「上」側は向きの左右で揃える=左を向いても上を通る)。
+   * 負荷: 振り1回につき MeshRope 1本(点 WHIP_LOOP_ROPE_POINTS+2)・per-frame Graphics なし=1/10。
    */
   private whipRopePts = new WeakMap<MeshRope, Point[]>();
+  private whipRopeLift = makeProjLiftPoint();
   private drawWhipRope(e: Extract<VisualEffect, { kind: 'whiprope' }>, now: number) {
     const tex = getTexture('whip');
     let view = this.effects.get(e.id);
@@ -46285,7 +46288,7 @@ export class PixiScene {
       if (view) view.destroy();
       if (!tex) return;
       const pts: Point[] = [];
-      for (let i = 0; i < WHIP_ROPE_POINTS + 2; i++) pts.push(new Point(i, 0));
+      for (let i = 0; i < WHIP_LOOP_ROPE_POINTS + 2; i++) pts.push(new Point(i, 0));
       const rope = new MeshRope({ texture: tex, points: pts });
       this.whipRopePts.set(rope, pts);
       this.L.effectLayer.addChild(rope);
@@ -46295,41 +46298,40 @@ export class PixiScene {
     const rope = view as MeshRope;
     const pts = this.whipRopePts.get(rope);
     if (!tex || !pts) { rope.visible = false; return; }
-    const side = Math.cos(e.angle) >= 0 ? 1 : -1; // 「上へ引く」側を画面の上に揃える(払いの途中で裏返さない=狙いの向きで決める)
-    // ★しなり(社長指示2026-11-26「もっと鞭を曲げてしならせてから伸ばして」): 払いの向きと逆へ先端が遅れる。形の座標(y は side で上下を揃える)での符号。
+    const side = Math.cos(e.angle) >= 0 ? 1 : -1; // 輪を作る「上」側を画面の上に揃える(狙いの向きで決める)
+    // 1・2段目: 輪は払いの来る側(払う向きと逆)。形の座標(y は side で上下を揃える)での符号。3段目・正面=0(上側)。
     const lag = e.sweep ? side * -Math.sign(e.sweep) : 0;
-    const shape = whipRopeShape(now - e.createdAt, e.windupMs, WHIP_ROPE_POINTS - 1, e.pull ?? 1, lag); // 3段目は頭上の後ろへ大きく振りかぶる
-    if (shape.alpha <= 0) { rope.visible = false; return; }
-    const local = whipRopePoints(shape, e.len, WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_TIP_X);
+    const rp = whipSwingRopePoints(now - e.createdAt, e.windupMs, e.len, WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_TIP_X, { lag, pull: e.pull ?? 1, tilt: WHIP_FINISH_PLANE_TILT_RAD * Math.abs(Math.sin(e.angle)), startAt: WHIP_LOOP_START_AT + WHIP_LOOP_START_UP_EXTRA * Math.max(0, -Math.sin(e.angle)) }); // 3段目: 上下の向きほど縦の面を横へ倒す(輪がつぶれない)・上向きは折れ目を外へ(頭に隠れない)
+    if (rp.alpha <= 0) { rope.visible = false; return; }
+    const local = rp.pts;
     // 表示のスケール: 絵の握り→先端(素材の画素)が射程ちょうど(drawWhipSprite と同じ規約)。点は素材の画素の単位で置き、rope を k 倍する。
     const span = Math.max(1, tex.width * (WHIP_SPRITE_TIP_X - WHIP_SPRITE_ANCHOR_X));
     const k = e.len / span;
-    // ★3連撃の払い(1段目=左→右・2段目=右→左・3段目=0): パチンの瞬間は e.angle(判定の帯)でまっすぐ。
-    const ang = e.angle + whipRopeSweepOffset(now - e.createdAt, e.windupMs, e.sweep ?? 0);
-    const ca = Math.cos(ang), sa = Math.sin(ang);
-    for (let i = 0; i < pts.length && i < local.length; i++) {
-      const lx = local[i].x, ly = local[i].y * side;
-      pts[i].set((lx * ca - ly * sa) / k, (lx * sa + ly * ca) / k);
-    }
+    const ca = Math.cos(e.angle), sa = Math.sin(e.angle);
     const pl = this.fxPlayer;
-    if (pl) rope.position.set(pl.x + pl.width / 2, pl.y + pl.height / 2);
-    rope.scale.set(k);
+    const ox = pl ? pl.x + pl.width / 2 : rope.position.x, oy = pl ? pl.y + pl.height / 2 : rope.position.y;
     const rpf = this.projFrame;
     if (rpf) {
-      // ?proj=1(段階3・A11=両の点列): 縄の点を1つずつ world の点にして投影する。縄の太さ(素材の高さ×倍率)は根元の s_fx 倍。
-      const ox = rope.position.x, oy = rope.position.y;
-      const p0 = projectInto(rpf, ox, oy, this.projScratch2);
+      // ?proj=1(段階3・A11=両の点列): 縄の点を1つずつ world の地面の点+高さにして投影する(projLiftPointInto)。縄の太さ(素材の高さ×倍率)は根元の s_fx 倍。
+      const p0 = projLiftPointInto(rpf, ox, oy, 0, this.whipRopeLift);
       const kk = k * projFxScale(p0.s);
       const p0x = p0.x, p0y = p0.y, a0 = p0.alpha;
       for (let i = 0; i < pts.length && i < local.length; i++) {
-        const q = projectInto(rpf, ox + pts[i].x * k, oy + pts[i].y * k, this.projScratch2);
+        const lx = local[i].x, ly = local[i].y * side;
+        const q = projLiftPointInto(rpf, ox + lx * ca - ly * sa, oy + lx * sa + ly * ca, local[i].h, this.whipRopeLift);
         pts[i].set((q.x - p0x) / kk, (q.y - p0y) / kk);
       }
       rope.position.set(p0x, p0y);
       rope.scale.set(kk);
-      rope.alpha = shape.alpha * a0;
+      rope.alpha = rp.alpha * a0;
     } else {
-      rope.alpha = shape.alpha;
+      for (let i = 0; i < pts.length && i < local.length; i++) {
+        const lx = local[i].x, ly = local[i].y * side;
+        pts[i].set((lx * ca - ly * sa) / k, (lx * sa + ly * ca - local[i].h) / k);
+      }
+      rope.position.set(ox, oy);
+      rope.scale.set(k);
+      rope.alpha = rp.alpha;
     }
     rope.visible = true;
   }
