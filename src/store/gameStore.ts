@@ -132,7 +132,8 @@ import { bloodAwakenMult, bloodGainFor, applyBloodGain, bloodSizeMul, isBloodAwa
 import { bloodBurstShoves, BLOOD_AWAKEN_BURST_RADIUS } from '../utils/bloodAwakenBurst'; // B10 血の覚醒に入った瞬間の押し返し
 import { playerSuperArmorActive } from '../utils/superArmor'; // B12 スーパーアーマー(THEONE_ROUND2 §4)
 import { playerLaunchPatch, playerAirLocked } from '../utils/playerLaunch'; // ★プレイヤーも浮く(research/BRAWLER.md §36-0)
-import { meleeRecoverSpeedMult, MELEE_RECOVER_MS } from '../utils/meleeRecover'; // 近接を振ったあとの硬直(v0.25.4380)
+import { MELEE_RECOVER_MS } from '../utils/meleeRecover'; // 近接を振ったあとの硬直(v0.25.4380)
+import { meleeAfterMoveMult } from '../utils/meleeAfterMove'; // 攻撃後の歩く速さ(ナイフ=重い区間を止める・社長指示2026-11-26)
 import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-3(使者のKB特例=免疫CD無視)
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
@@ -222,7 +223,7 @@ import {
 } from '../utils/slasherFollowup';
 import {
   knifeComboNextStage, knifeComboGapMs, knifeComboTapAction, knifeComboQueuedAction, knifeComboCounterPlan, knifeComboStepPx,
-  knifeComboFinishMoveMult, knifeComboSwingDir, knifeComboFeel, knifeComboHitStop,
+  knifeComboSwingDir, knifeComboFeel, knifeComboHitStop,
 } from '../utils/knifeCombo';
 import { multiHitFeel, multiHitStopExtendPatch, multiHitFxSpot, multiHitStagger, multiHitSfxLayers, multiHitReleaseDelay, multiHitBurstRings, multiHitLinePath, multiHitArcPath } from '../utils/multiHitFeel'; // まとめて当てた時の手応え(止め・揺れ・大きめの輪と光・重ねる命中音)
 import type { AstroThrowEntry, AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
@@ -343,7 +344,7 @@ import { whipRopeTotalMs, WHIP_ROPE_FINISH_PULL, WHIP_SNARE_FX_ENABLED } from '.
 import {
   whipComboNextStage, whipComboCritBonus, whipComboLight, whipComboSweepSign, whipComboTapAction, whipComboQueuedAction,
   whipComboFeel, whipComboPitch, whipComboGapMs, WHIP_COMBO_SWEEP_RAD, whipComboCounterPlan, whipComboCounterCut,
-  WHIP_COMBO_CRIT_STOP_MS, WHIP_COMBO_CRIT_SHAKE_MS, WHIP_COMBO_CRIT_SHAKE_MAG, whipComboFinishMoveMult,
+  WHIP_COMBO_CRIT_STOP_MS, WHIP_COMBO_CRIT_SHAKE_MS, WHIP_COMBO_CRIT_SHAKE_MAG,
 } from '../utils/whipCombo';
 import {
   tsubameAccepts, tsubamePath, isTsubameCrouching, katanaStrikeTravel, nextKatanaCuts, triggersSatsujin, satsujinAngles, type TsubameWindow,
@@ -13222,11 +13223,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 開くのは振りの絵が終わる瞬間(=その場で動けない時間が明ける)・明けるのは従来どおり(v0.25.4998・隙間を詰めた)。
         // ★鞭・ナイフの3段目の後の隙の前半(社長承認2026-11-26): 3段目を振ってから隙の半分(0.5秒)は歩く速さ 0(立ち止まる)→ 隙の終わり(1.0秒)までに慣性つきで 1 へ(utils/whipCombo comboFinishMoveMult)。
         //   同じ硬直の枝に乗せる=ダッシュ系・スライドには掛からない(回避の逃げ道は塞がない)。重なる所は遅い方(二重に掛けない)。
-        meleeRecoverMult: Math.min(
-          meleeRecoverSpeedMult(player.meleeSwingAt, nowMs, PLAYER_MELEE_SWING_MS, COUNTER_WINDOW + MELEE_RECOVER_MS),
-          whipComboFinishMoveMult(player.whipComboStage, player.whipComboAt, nowMs),
-          knifeComboFinishMoveMult(player.knifeComboStage, player.knifeComboAt, nowMs),
-        ),
+        // ★ナイフだけ: 重くなる区間を全部「完全に止まる」に(社長指示2026-11-26「いったんナイフだけ」・明ける時刻は今のまま+明けの後ろに短い立ち上がり)。
+        //   鞭・刀・格闘は今と同じ値(utils/meleeAfterMove)。
+        meleeRecoverMult: meleeAfterMoveMult({
+          weapon: isKatanaMode(player) ? 'katana' : isWhipMode(player) ? 'whip' : isBrawlerMode(player) ? 'brawler' : 'knife',
+          nowMs,
+          swingStartAt: player.meleeSwingAt,
+          swingCycleMs: PLAYER_MELEE_SWING_MS,
+          recoverEndMs: COUNTER_WINDOW + MELEE_RECOVER_MS,
+          whipComboStage: player.whipComboStage,
+          whipComboAt: player.whipComboAt,
+          knifeComboStage: player.knifeComboStage,
+          knifeComboAt: player.knifeComboAt,
+        }),
         // B10 血の覚醒(THEONE_ROUND2 §3-1): 移動速度 ×1.5。ランプの外・dash/スライド/スケーターには掛けない(関数側)。
         awakenSpeedMult: bloodAwakenMult(player, state.gameTime).boost,
       };

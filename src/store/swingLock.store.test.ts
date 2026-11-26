@@ -1,7 +1,9 @@
 // 社長指示2026-10-12「武器振ってる時は方向転換や移動はできなくして」。
 // プレイヤー: 振り全体(PLAYER_MELEE_SWING_MS)の間は移動入力を無視し、向き(lastDirection)も変えない。振りの踏み込み(lunge)は残る。
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useGameStore, PLAYER_MELEE_SWING_MS } from './gameStore';
+import { useGameStore, PLAYER_MELEE_SWING_MS, COUNTER_WINDOW } from './gameStore';
+import { MELEE_RECOVER_MS } from '../utils/meleeRecover';
+import { MELEE_AFTER_STOP_RAMP_MS } from '../utils/meleeAfterMove';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 
@@ -23,13 +25,23 @@ describe('武器を振っている間は動けない・向きが変わらない'
     expect(Math.abs(p.x - x0)).toBeLessThan(0.5);
     expect(p.lastDirection?.x).toBe(1);
   });
-  it('振り終わった後(PLAYER_MELEE_SWING_MS 経過)は動けて向きも変わる', () => {
-    useGameStore.setState(s => ({ player: { ...s.player, meleeSwingAt: Date.now() - PLAYER_MELEE_SWING_MS - 5 } }));
+  it('振り終わった後(PLAYER_MELEE_SWING_MS 経過)は動けて向きも変わる(ナイフ以外=鞭)', () => {
+    useGameStore.setState(s => ({ player: { ...s.player, subWeapons: ['whip'], meleeSwingAt: Date.now() - PLAYER_MELEE_SWING_MS - 5 } }));
     const x0 = useGameStore.getState().player.x;
     for (let i = 0; i < 10; i++) useGameStore.getState().movePlayer(LEFT, 0.016);
     const p = useGameStore.getState().player;
     expect(p.x).toBeLessThan(x0 - 2); // 振り終わった直後は振った後の硬直(足が重い)で遅いが、動ける(v0.25.4998〜 隙間なしで硬直へ)
     expect(p.lastDirection!.x).toBeLessThan(0);
+  });
+  it('ナイフ: 振り終わった後の硬直の間は完全に止まり、硬直が明けて立ち上がった後は動ける(社長指示2026-11-26)', () => {
+    useGameStore.setState(s => ({ player: { ...s.player, meleeSwingAt: Date.now() - PLAYER_MELEE_SWING_MS - 5 } }));
+    const x0 = useGameStore.getState().player.x;
+    for (let i = 0; i < 10; i++) useGameStore.getState().movePlayer(LEFT, 0.016);
+    expect(Math.abs(useGameStore.getState().player.x - x0)).toBeLessThan(0.5);
+    useGameStore.setState(s => ({ player: { ...s.player, meleeSwingAt: Date.now() - (COUNTER_WINDOW + MELEE_RECOVER_MS + MELEE_AFTER_STOP_RAMP_MS + 5) } }));
+    const x1 = useGameStore.getState().player.x;
+    for (let i = 0; i < 10; i++) useGameStore.getState().movePlayer(LEFT, 0.016);
+    expect(useGameStore.getState().player.x).toBeLessThan(x1 - 2);
   });
   it('振りの踏み込み(lunge)は止めない', () => {
     const now = Date.now();
