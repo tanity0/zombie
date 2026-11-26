@@ -14640,14 +14640,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         duration: meleeWindupMs(p) + WHIP_DRAW_MS,
       });
       // ★鞭の本体の動き(引く→溜め→打ち出し→パチン→たるみ・utils/whipSwingMotion)。パチン=前隙の終わり=判定の時刻。
-      // 3連撃の段で払う向き(1段目=左→右・2段目=右→左・3段目=正面へまっすぐ)。当たる瞬間は狙いの向きでまっすぐ(判定の帯と重なる)。
+      // 3連撃の段で振りが来る側(1段目=右から・2段目=左から・3段目=もう一度右から一番大きく)。当たる瞬間は狙いの向きでまっすぐ(判定の帯と重なる)。
       const aimA = Math.atan2(ld.y / lmag, ld.x / lmag);
+      const ropeStage = get().player.whipComboStage;
       get().spawnEffect({
         kind: 'whiprope',
         id: `fx-whiprope-${now}`,
         angle: aimA,
         sweep: whipComboSweepSign(get().player.whipComboStage ?? 3, aimA) * WHIP_COMBO_SWEEP_RAD,
-        ...((get().player.whipComboStage ?? 0) === 3 ? { pull: WHIP_ROPE_FINISH_PULL } : {}), // 3段目=頭上の後ろへ大きく振りかぶる(見え方の監査 A7)
+        ...((get().player.whipComboStage ?? 0) === 3 ? { pull: WHIP_ROPE_FINISH_PULL } : {}), // 3段目=一番大きく振りかぶる
+        stage: ropeStage === 2 || ropeStage === 3 ? ropeStage : 1, // 振りが来る側(1=右・2=左・3=右・utils/whipCombo.whipComboFromSide)
         len: whipSwingReach(p),
         createdAt: now,
         windupMs: meleeWindupMs(p),

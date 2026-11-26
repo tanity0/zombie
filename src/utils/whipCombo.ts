@@ -2,7 +2,7 @@
 // 1-2撃目は敵は吹き飛ばず、ストップ弱浮き」+「タップごとに1発」)。判定だけを置く純関数(store にも描画にも依存しない)。数値は叩き台。
 //  - タップ(近接の入力)ごとに 1→2→3→1… と1段ずつ進む。最後の振りから RESET_MS タップが無ければ1段目へ戻る。
 //  - 段と段の間は最短 INTERVAL_MS(それより早いタップは1つだけ先行入力として持ち、間隔が明けたら出す)。
-//  - 絵: 1段目=左から右へ払う / 2段目=右から左へ払う / 3段目=正面へまっすぐ打ち込む(判定は今の振りの帯=狙いの向きのまま)。
+//  - 絵: 1段目=右から / 2段目=左から / 3段目=もう一度右から一番大きく(判定は今の振りの帯=狙いの向きのまま・whipComboFromSide)。
 
 /** 段と段の間の最短(ms)。★社長指示2026-11-26「鞭の連撃、0.5秒間隔にして」(旧 300)。 */
 export const WHIP_COMBO_INTERVAL_MS = 500;
@@ -28,16 +28,26 @@ export const whipComboCritBonus = (stage: number): number =>
 /** 1段目・2段目=当たった敵は吹き飛ばない(押しなし・短い止めと弱い浮き)。3段目=今の押し。 */
 export const whipComboLight = (stage: number): boolean => stage === 1 || stage === 2;
 /**
- * 払いの向きの符号(+1=画面で時計回りに払う)。1段目は画面の左→右、2段目は右→左。3段目は 0(まっすぐ)。
- * 狙いが上下寄り(|sin|>0.35)の時は、先端が画面の左→右へ動く向き。ほぼ真横の時は、1段目=上から下(右向き=時計回り・左向き=反時計回り)。
+ * ★3連撃の振りが来る側(画面の向き・単位ベクトル・狙いの向きに直交)。社長指示2026-11-26「鞭が右左右では無い時がかなりある」:
+ * 1段目=右から・2段目=左から・3段目=もう一度右から(一番大きく)。縄はこの側へ振りかぶり、この側で折れてから狙いの向きへ伸び切る。
+ * 「右」の決め方(どの向きでも交互が読めるように画面で決める): 狙いに直交する2つの向きのうち、画面の右(x+)を優先し、次に手前(画面の下=y+)を優先した側。
+ *  - 上下の狙い=画面の右から/左から・左右の狙い=手前から/奥から・斜め=右寄りの側から/左寄りの側から。
  * aimAngle=狙いの向き(rad・画面の y は下が正)。
+ */
+export const whipComboFromSide = (stage: number, aimAngle: number): { x: number; y: number } => {
+  const nx = -Math.sin(aimAngle), ny = Math.cos(aimAngle);
+  const right = nx + 0.5 * ny >= 0 ? 1 : -1;
+  const k = stage === 2 ? -right : right;
+  return { x: nx * k, y: ny * k };
+};
+/**
+ * 払いの向きの符号(+1=画面で時計回りに払う=先端が (-sin, cos) の向きへ動く)。先端は振りが来る側(whipComboFromSide)から反対側へ動く:
+ * 1段目=右→左・2段目=左→右。3段目は 0(当たりの筋は狙いの向きのまま)。aimAngle=狙いの向き(rad・画面の y は下が正)。
  */
 export const whipComboSweepSign = (stage: number, aimAngle: number): 1 | -1 | 0 => {
   if (stage !== 1 && stage !== 2) return 0;
-  const sn = Math.sin(aimAngle), cs = Math.cos(aimAngle);
-  // 時計回り(角度が増える)の時の先端の横の速さ ∝ -sin(aim)。左→右(横の速さ>0)にしたい=sin<0 なら時計回り。
-  const first: 1 | -1 = sn > 0.35 ? -1 : sn < -0.35 ? 1 : cs >= 0 ? 1 : -1;
-  return stage === 1 ? first : (first === 1 ? -1 : 1);
+  const f = whipComboFromSide(stage, aimAngle);
+  return f.x * -Math.sin(aimAngle) + f.y * Math.cos(aimAngle) > 0 ? -1 : 1;
 };
 /**
  * ★3段目の後の隙(社長指示2026-11-26「3連撃の最後はきちんと隙つくって」)。3段目を振ってから次の振り(1段目)が出せるまで(ms)。

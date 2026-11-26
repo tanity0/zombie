@@ -6,10 +6,10 @@ import {
   WHIP_FLY_DROP_MS, WHIP_FLY_LIFT_MIN_PX, WHIP_FLY_LIFT_MAX_PX,
   whipTetherEntry, WHIP_TETHER_ENTRY_MS, whipTetherGlowK, whipFlyVisualTimeAt, whipThrowStreak, WHIP_THROW_STREAK_OUT_MS,
   whipFlyVisualSpeed, whipFlyReleaseBlend, whipFlyViewOffset, whipTetherRetractTip, whipTrailFade, WHIP_TRAIL_FADE_MS, WHIP_FLY_BLEND_TAU_MS,
-  WHIP_ROPE_FINISH_PULL, WHIP_ROPE_POINTS, WHIP_LOOP_ROPE_POINTS, WHIP_ROPE_PULL_END, WHIP_LOOP_FORM_START, WHIP_LOOP_ROLL_START, whipLoopAt, whipLoopPose, whipSwingRopePoints, WHIP_LOOP_FIN_ROLL_START, WHIP_LOOP_FIN_FORM_START, WHIP_LOOP_FIN_ACCEL_POW, WHIP_LOOP_ACCEL_POW, WHIP_LOOP_TURN_RAD, WHIP_LOOP_TURN_FIN_RAD, whipGrabZoomAt, WHIP_GRAB_ZOOM_MAG, WHIP_GRAB_ZOOM_IN_MS, WHIP_GRAB_ZOOM_HOLD_MS, WHIP_GRAB_ZOOM_TOTAL_MS, WHIP_SNARE_FX_ENABLED,
+  WHIP_ROPE_FINISH_PULL, WHIP_ROPE_POINTS, WHIP_LOOP_ROPE_POINTS, WHIP_ROPE_PULL_END, WHIP_LOOP_FORM_START, WHIP_LOOP_ROLL_START, whipLoopAt, whipRopePose, whipSwingRopePoints, WHIP_LOOP_FIN_ROLL_START, WHIP_LOOP_FIN_FORM_START, WHIP_LOOP_FIN_ACCEL_POW, WHIP_LOOP_ACCEL_POW, WHIP_LOOP_TURN_RAD, WHIP_LOOP_TURN_FIN_RAD, whipGrabZoomAt, WHIP_GRAB_ZOOM_MAG, WHIP_GRAB_ZOOM_IN_MS, WHIP_GRAB_ZOOM_HOLD_MS, WHIP_GRAB_ZOOM_TOTAL_MS, WHIP_SNARE_FX_ENABLED,
 } from './whipSwingMotion';
 import { whipThrowDurationMs, whipThrowDist, WHIP_THROW_DIST_MULT } from './whipSwing';
-import { whipComboSweepSign, WHIP_COMBO_SWEEP_RAD } from './whipCombo';
+import { whipComboFromSide } from './whipCombo';
 
 const W = 200;
 
@@ -63,7 +63,7 @@ describe('鞭の形', () => {
       expect(whipRopeShape(W, W, segs, pull, lag).angles.every(a => a === 0)).toBe(true);
     }
     expect(maxTurn).toBeGreaterThan((140 * Math.PI) / 180);
-    expect(maxTurn).toBeLessThan((180 * Math.PI) / 180);
+    expect(maxTurn).toBeLessThan((270 * Math.PI) / 180); // 折り返し+先の巻き(クルッ)
   });
   it('戻りは縮んで薄くなる', () => {
     const s = whipRopeShape(W + WHIP_ROPE_CRACK_HOLD_MS + WHIP_ROPE_RETRACT_MS * 0.8, W);
@@ -265,8 +265,7 @@ describe('転がる輪(150度折り返して、そのまま伸びる)', () => {
   // 実際に使う組(向き×段)。
   const AIMS = [0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4, Math.PI, -Math.PI / 4, -Math.PI / 2, (-3 * Math.PI) / 4];
   const cases = [1, 2, 3].flatMap(st => AIMS.map(aim => {
-    const pull = st === 3 ? WHIP_ROPE_FINISH_PULL : 1;
-    return { st, aim, pull, ...whipLoopPose(aim, whipComboSweepSign(st, aim) * WHIP_COMBO_SWEEP_RAD, pull) };
+    return { st, aim, ...whipRopePose(aim, st) };
   }));
   for (const c of cases) {
     const name = `段${c.st} 向き${Math.round((c.aim * 180) / Math.PI)}°`;
@@ -281,7 +280,7 @@ describe('転がる輪(150度折り返して、そのまま伸びる)', () => {
         const a1 = c.lean * (1 - p * p * (3 - 2 * p));
         sh.angles.forEach((a, i) => {
           const u = (i + 0.5) / S;
-          if (u < center - width / 2) expect(a).toBeCloseTo(a1, 9);
+          if ((i + 1) / S < center - width / 2) expect(a).toBeCloseTo(a1, 9);
           if (u > center + width / 2 + 0.05) expect(Math.abs(a - a1)).toBeGreaterThan((145 * Math.PI) / 180);
         });
         const v = center - prevC;
@@ -310,7 +309,7 @@ describe('転がる輪(150度折り返して、そのまま伸びる)', () => {
       for (let el = r0; el < W - (W - r0) * 0.25; el += 4) {
         const q = (el - r0) / (W - r0);
         const { center, width } = whipLoopAt(q, c.startAt, powOf(c.pull));
-        const rp = whipSwingRopePoints(el, W, L, 0.1, 0.99, { segs: S, lag: c.lag, lean: c.lean, pull: c.pull, tilt: c.tilt, startAt: c.startAt });
+        const rp = whipSwingRopePoints(el, W, L, 0.1, 0.99, { segs: S, lag: c.lag, lean: c.lean, pull: c.pull, startAt: c.startAt });
         // 点 i+1 が区間 i の終わり(点0=柄の端・点1=手元)。
         for (let i = 0; i < S; i++) {
           const u = (i + 1) / S;
@@ -324,17 +323,77 @@ describe('転がる輪(150度折り返して、そのまま伸びる)', () => {
       }
     });
   }
-  it('向きごとの輪の作り方: 左右・斜め=手前(+y)へ折る・上下=横へ寝かせて払いの来る側・3段目=頭上へ立てて前へ垂らす', () => {
-    expect(whipLoopPose(0, 0.5, 1)).toMatchObject({ lag: 1, lean: 0 });
-    expect(whipLoopPose(Math.PI, -0.5, 1)).toMatchObject({ lag: 1, lean: 0 });
-    const up1 = whipLoopPose(-Math.PI / 2, whipComboSweepSign(1, -Math.PI / 2), 1), up2 = whipLoopPose(-Math.PI / 2, whipComboSweepSign(2, -Math.PI / 2), 1);
-    expect(up1.lag).toBe(-up2.lag); // 1段目と2段目で横の側が逆
+  it('右→左→右: 1段目と3段目は同じ側・2段目は反対の側から振りかぶって折る(全8方向)', () => {
+    const flipOf = (aim: number) => (Math.cos(aim) >= 0 ? 1 : -1);
+    for (const aim of AIMS) {
+      const p1 = whipRopePose(aim, 1), p2 = whipRopePose(aim, 2), p3 = whipRopePose(aim, 3);
+      expect(p2.lag).toBe(-p1.lag);
+      expect(p3.lag).toBe(p1.lag);
+      expect(p3.pull).toBe(WHIP_ROPE_FINISH_PULL);
+      expect(p1.pull).toBe(1);
+      // 画面で: 溜め(振りかぶり)の先端と、折れができた時の折れ目が、来る側(whipComboFromSide)にある。
+      for (const st of [1, 2, 3]) {
+        const pose = whipRopePose(aim, st), from = whipComboFromSide(st, aim);
+        const toScreenSide = (p: { x: number; y: number }) => {
+          const ly = p.y * flipOf(aim);
+          const sx = p.x * Math.cos(aim) - ly * Math.sin(aim), sy = p.x * Math.sin(aim) + ly * Math.cos(aim);
+          return sx * from.x + sy * from.y;
+        };
+        const fin = st === 3;
+        const holdEl = W * (WHIP_ROPE_PULL_END + 0.02);
+        const formEnd = W * (fin ? WHIP_LOOP_FIN_ROLL_START : WHIP_LOOP_ROLL_START);
+        for (const el of [holdEl, formEnd]) {
+          const pts = whipSwingRopePoints(el, W, 150, 0.1, 0.99, { segs: S, lag: pose.lag, lean: pose.lean, pull: pose.pull, startAt: pose.startAt }).pts;
+          expect(toScreenSide(pts.at(-2)!), `段${st} 向き${Math.round((aim * 180) / Math.PI)} el=${el}`).toBeGreaterThan(10);
+        }
+      }
+    }
+    // 上下の向き: 画面の右→左→右。
+    for (const aim of [-Math.PI / 2, Math.PI / 2]) {
+      expect(whipComboFromSide(1, aim).x).toBeCloseTo(1, 9);
+      expect(whipComboFromSide(2, aim).x).toBeCloseTo(-1, 9);
+      expect(whipComboFromSide(3, aim).x).toBeCloseTo(1, 9);
+    }
+    // 上下の向きは手元側を輪の側へ寝かせる(U字が体の横に出る)。
+    const up1 = whipRopePose(-Math.PI / 2, 1);
     expect(Math.sign(up1.lean)).toBe(up1.lag);
     expect(Math.abs(up1.lean)).toBeGreaterThan(0.5);
-    const fin = whipLoopPose(-Math.PI / 2, 0, WHIP_ROPE_FINISH_PULL);
-    expect(fin.lag).toBe(1);
-    expect(fin.lean).toBeLessThan(-0.5);
-    expect(fin.tilt).toBeGreaterThan(1);
+  });
+  it('最初から曲がっている: 全区間の向きが0(まっすぐ)になるのは当たる時刻だけ・引きの最初のコマから S字(曲がりの向きが入れ替わる)', () => {
+    for (const aim of AIMS) for (const st of [1, 2, 3]) {
+      const c = whipRopePose(aim, st);
+      for (let el = 0; el < W; el += 1) {
+        const a = whipRopeShape(el, W, S, c.pull, c.lag, c.startAt, c.lean).angles;
+        expect(a.every(x => x === 0), `el=${el}`).toBe(false);
+        // 当たる直前(折れが先端から抜ける最後の1割)以外は棒にならない(向きの幅が大きい)。
+        if (el < W * 0.9) expect(Math.max(...a) - Math.min(...a), `段${st} el=${el}`).toBeGreaterThan(0.35);
+      }
+      expect(whipRopeShape(W, W, S, c.pull, c.lag, c.startAt, c.lean).angles.every(x => x === 0)).toBe(true);
+      const first = whipRopeShape(0, W, S, c.pull, c.lag, c.startAt, c.lean).angles;
+      const d = first.slice(1).map((x, i) => x - first[i]);
+      expect(d.some(x => x > 0.01) && d.some(x => x < -0.01)).toBe(true); // S字
+    }
+  });
+  it('クネ→クルッ→一気に伸ばす: 溜めで縄がうねり、折れができた時は先が折れの先でさらに巻き込み、当たる時刻に一直線で射程ちょうど', () => {
+    for (const st of [1, 3]) {
+      const c = whipRopePose(0, st), fin = st === 3;
+      // クネ: 溜めの真ん中で曲がりの向きが入れ替わる(うねり)。
+      const holdMid = W * (WHIP_ROPE_PULL_END + ((fin ? WHIP_LOOP_FIN_FORM_START : WHIP_LOOP_FORM_START) - WHIP_ROPE_PULL_END) / 2);
+      const h = whipRopeShape(holdMid, W, S, c.pull, c.lag, c.startAt, c.lean).angles;
+      const dh = h.slice(1).map((x, i) => (x - h[i]) * c.lag);
+      expect(dh.some(x => x > 0.02) && dh.some(x => x < -0.02)).toBe(true);
+      // クルッ: 折れができ上がった時、先端の向きは折り返し(150度前後)よりさらに回っている(巻き込み)。
+      const r0 = W * (fin ? WHIP_LOOP_FIN_ROLL_START : WHIP_LOOP_ROLL_START);
+      const formed = whipRopeShape(r0, W, S, c.pull, c.lag, c.startAt, c.lean).angles;
+      expect(formed[S - 1] * c.lag).toBeGreaterThan(((fin ? 162 : 150) + 60) * Math.PI / 180);
+      // 一気に伸ばす: 転がりの後半ほど先端が速く前へ出る。
+      const tipX = (el: number) => whipRopePoints(whipRopeShape(el, W, S, c.pull, c.lag, c.startAt, c.lean), 150, 0.1, 0.99).at(-2)!.x;
+      const q = (f: number) => r0 + (W - r0) * f;
+      expect(tipX(q(1)) - tipX(q(0.75))).toBeGreaterThan(tipX(q(0.5)) - tipX(q(0.25)));
+      const tip = whipRopePoints(whipRopeShape(W, W, S, c.pull, c.lag, c.startAt, c.lean), 150, 0.1, 0.99).at(-2)!;
+      expect(tip.x).toBeCloseTo(150, 6);
+      expect(tip.y).toBeCloseTo(0, 6);
+    }
   });
   it('引き: 手が先に動き、縄は根元から順に曲がる(先端が一番遅れる・棒のように回らない)', () => {
     const rest = whipRopeShape(0, W, S, 1, 1);
@@ -352,7 +411,7 @@ describe('転がる輪(150度折り返して、そのまま伸びる)', () => {
     expect(WHIP_LOOP_FIN_ROLL_START).toBeGreaterThan(WHIP_LOOP_ROLL_START + 0.1);
     expect(WHIP_LOOP_FIN_ACCEL_POW).toBeGreaterThan(WHIP_LOOP_ACCEL_POW);
     expect(WHIP_LOOP_TURN_FIN_RAD).toBeGreaterThan(WHIP_LOOP_TURN_RAD);
-    expect(whipRopeShape(W, W, S, WHIP_ROPE_FINISH_PULL, 1, 0.5, -0.7).angles.every(a => a === 0)).toBe(true);
+    expect(whipRopeShape(W, W, S, WHIP_ROPE_FINISH_PULL, 1, 0.5, 0).angles.every(a => a === 0)).toBe(true);
   });
   it('パチンの後: 先端が縄の長さの1〜2割以上戻り、鳴った直後からたるみ始める(止まって見えない・いきなり倒れない)', () => {
     for (const c of cases.filter(x => x.st !== 3)) {
@@ -372,21 +431,13 @@ describe('転がる輪(150度折り返して、そのまま伸びる)', () => {
       }
     }
   });
-  it('3段目の縦の面を横へ倒すと、形の y の一部が横へ出る(上下の向きで輪がつぶれない)', () => {
-    const t = whipSwingRopePoints(W * 0.8, W, 150, 0.1, 0.99, { pull: WHIP_ROPE_FINISH_PULL, tilt: 0.6, lag: 1, lean: -0.9 });
-    expect(Math.max(...t.pts.map(p => Math.abs(p.y)))).toBeGreaterThan(10);
-  });
-  it('3段目(頭上): 縦の面の点列=横のずれ0・溜めの先端は手元より上(高さ+)で後ろ', () => {
-    const hold = whipSwingRopePoints(W * 0.36, W, 150, 0.1, 0.99, { pull: WHIP_ROPE_FINISH_PULL, lag: 1 });
-    expect(hold.pts.every(p => p.y === 0)).toBe(true);
-    const tip = hold.pts[hold.pts.length - 2];
-    expect(tip.h).toBeGreaterThan(40);
-    expect(tip.x).toBeLessThan(-60);
-    const crack = whipSwingRopePoints(W, W, 150, 0.1, 0.99, { pull: WHIP_ROPE_FINISH_PULL, lag: 1, lean: -0.9 });
-    expect(crack.pts.every(p => Math.abs(p.h) < 1e-9)).toBe(true);
-    const ground = whipSwingRopePoints(W * 0.5, W, 150, 0.1, 0.99, { lag: 1 });
-    expect(ground.pts.every(p => p.h === 0)).toBe(true);
-    expect(ground.pts.length).toBe(WHIP_LOOP_ROPE_POINTS + 2);
+  it('3段目: 地面の面(高さ0)で、1段目より大きく振りかぶる(溜めの手元が遠い・先端が後ろ)', () => {
+    const hold = (pull: number) => whipSwingRopePoints(W * 0.37, W, 150, 0.1, 0.99, { pull, lag: 1 }).pts;
+    const h1 = hold(1), h3 = hold(WHIP_ROPE_FINISH_PULL);
+    expect(h3.every(p => p.h === 0)).toBe(true);
+    expect(Math.hypot(h3[1].x, h3[1].y)).toBeGreaterThan(Math.hypot(h1[1].x, h1[1].y) * 1.4);
+    expect(h3.at(-2)!.x).toBeLessThan(h1.at(-2)!.x);
+    expect(h3.length).toBe(WHIP_LOOP_ROPE_POINTS + 2);
   });
 });
 

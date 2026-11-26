@@ -144,13 +144,13 @@ describe('叩きつけの透け・プレイヤーの体と向き', () => {
 });
 
 describe('3段目の振りかぶり', () => {
-  it('手元を大きく後ろ上へ引き、パチンの瞬間はまっすぐのまま', () => {
+  it('手元を大きく後ろへ引き(溜めがより後ろへ回り込む)、パチンの瞬間はまっすぐのまま', () => {
     const W = 250;
-    const n = whipRopeShape(W * 0.5, W), f = whipRopeShape(W * 0.5, W, undefined, WHIP_ROPE_FINISH_PULL);
+    const n = whipRopeShape(W * 0.37, W, undefined, 1, 1), f = whipRopeShape(W * 0.37, W, undefined, WHIP_ROPE_FINISH_PULL, 1);
     expect(Math.hypot(f.handX, f.handY)).toBeGreaterThan(Math.hypot(n.handX, n.handY) * 1.3);
-    // 溜めの形が違う(S字でなく、真後ろへまっすぐ)
-    const spread = (a: number[]) => Math.max(...a) - Math.min(...a);
-    expect(spread(f.angles)).toBeLessThan(spread(n.angles));
+    // 溜めの向き(平均)が1段目より後ろ(振り幅が一番大きい)
+    const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
+    expect(mean(f.angles)).toBeGreaterThan(mean(n.angles) + 0.2);
     const crack = whipRopeShape(W, W, undefined, WHIP_ROPE_FINISH_PULL);
     expect(crack.angles.every(a => a === 0)).toBe(true);
     expect(crack.handX).toBe(0);
@@ -195,8 +195,8 @@ describe('3連撃', () => {
     expect(whipComboLight(1) && whipComboLight(2) && !whipComboLight(3)).toBe(true);
     expect(whipComboSweepSign(3, 0)).toBe(0);
     expect(whipComboSweepSign(1, 0)).toBe(-whipComboSweepSign(2, 0));
-    // 上向き(先端が左→右へ動く=時計回り)
-    expect(whipComboSweepSign(1, -Math.PI / 2)).toBe(1);
+    // 上向き: 1段目は画面の右から来る=先端が右→左へ動く(反時計回り)
+    expect(whipComboSweepSign(1, -Math.PI / 2)).toBe(-1);
     const f1 = whipComboFeel(1), f2 = whipComboFeel(2), f3 = whipComboFeel(3);
     expect(f1.stopMs < f2.stopMs && f2.stopMs < f3.stopMs).toBe(true);
     expect(f1.shakeMag < f2.shakeMag && f2.shakeMag < f3.shakeMag).toBe(true);

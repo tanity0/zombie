@@ -3605,8 +3605,10 @@ export type VisualEffect =
       duration: number;
       /** ★3連撃の払い(rad・符号つき・0/未定義=正面へまっすぐ)。横から入り、パチンの瞬間に angle でまっすぐ・その後は勢いで少し流れる(utils/whipSwingMotion.whipRopeSweepOffset)。 */
       sweep?: number;
-      /** ★3連撃の3段目の引きの量(1/未定義=普通・utils/whipSwingMotion.WHIP_ROPE_FINISH_PULL=頭上の後ろへ大きく振りかぶる)。パチンの時刻は変えない。 */
+      /** ★3連撃の3段目の引きの量(1/未定義=普通・utils/whipSwingMotion.WHIP_ROPE_FINISH_PULL=一番大きく振りかぶる)。パチンの時刻は変えない。 */
       pull?: number;
+      /** ★3連撃の段(1=右から・2=左から・3=もう一度右から一番大きく・utils/whipSwingMotion.whipRopePose)。未定義=pull から(>1 で3段目・それ以外は1段目)。 */
+      stage?: 1 | 2 | 3;
     }
   | {
       // 鞭: 全長を即表示してフェードする太い帯(=当たり範囲)+ 明るい芯。
