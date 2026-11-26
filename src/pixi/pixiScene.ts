@@ -15197,6 +15197,13 @@ export class PixiScene {
     const flip = Math.floor(now / WHIP_HURRICANE_FLIP_MS) % 2 === 0 ? 1 : -1;
     this.whipHurricane.scale.x = Math.abs(this.whipHurricane.scale.x) * pulse * flip;
     this.whipHurricane.alpha = Math.min(1, fadeIn * fadeOut);
+    // ?proj=1: 根元(地面の渦=アンカー)は地面の1点に立つ=根元の点を投影して置き、大きさに s を掛ける
+    // (world のまま置くとカメラが動くたびに地面と吸引の中心からずれる)。?proj=0 は上の world のまま。
+    if (this.projFrame) {
+      const q = this.projPlace(hurricane.rootX, hurricane.rootY, this.whipHurricane);
+      this.whipHurricane.position.set(q.x, q.y);
+      this.whipHurricane.scale.set(this.whipHurricane.scale.x * q.s, this.whipHurricane.scale.y * q.s);
+    }
   }
 
   // ---- 錬金術の魔法陣(足元の常設地面スプライト) --------------------------
