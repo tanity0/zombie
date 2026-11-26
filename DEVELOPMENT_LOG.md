@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5853 — ナイフ3段目の踏み込みを大きく【2026-11-27 01:49】
+- 社長「ナイフは3段目だけもう少し前に出て」。
+- `knifeCombo.ts`: `KNIFE_COMBO_FINISH_STEP_FRAC = 0.8`(叩き台)・`knifeComboStepPx(bodyWidth, runPx, stage)`=3段目だけ体の幅×0.8(走りの方が大きければ走り)。gameStore beginMeleeSwing で段を渡す。尺・クランプ・判定の測り方は不変。
+- 実測(その場・体の幅28): 1/2段目 8.40px(不変)・3段目 8.40→22.41px。
+- 確認: typecheck・eslint・循環・vitest knifeCombo + src/store 1730 通過(サブエージェント)・関連通過(手元)。
+- 自己点検: 憲法第4条・第5条=ナイフの踏み込みのみで抵触なし。
+
 ## v0.25.5852 — 格闘: 通常の1〜5段の後隙から構えへ取り消し(プレイヤーだけ)【2026-11-27 01:39】
 - 社長「格闘は通常技からは、構え をキャンセルで出せる」→ 推薦(後隙から・当たり/空振り問わず・溜めの間は不可)に「はい」。
 - `utils/brawler.ts`: `brawlerStageGuardCancelOk`(構え・1〜5段の判定後〜行動の終わり・秘奥義/ステップ/構え中/止めの最中は不可)。止めの最中は覚えて明けてから出す(`brawlerShouldBufferTechEarly`/`brawlerTechBufferDecision`/`brawlerLateCarry`)。gameStore `brawlerTech` の可否に1条件足すだけ。拳鬼の判定(`brawlerTechAllowed`/道の表)は不変=プレイヤーだけ。構えへ移ると段が終わる=その段で1回。ジャスト構えはそのまま成立。段→構えはつながりに数えない。

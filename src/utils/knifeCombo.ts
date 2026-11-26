@@ -20,6 +20,8 @@ export const KNIFE_COMBO_FINISH_HOLD_MS = 200;
 export const KNIFE_COMBO_FINISH_STOP_MS = KNIFE_COMBO_FINISH_RECOVERY_MS / 2;
 /** 段ごとの踏み込み(体の幅に対する割合)。立ち・歩きの振りでも少し前へ出る(走りの踏み込みの方が大きければそちら)。 */
 export const KNIFE_COMBO_STEP_FRAC = 0.3;
+/** ★3段目だけの踏み込み(体の幅に対する割合・社長指示2026-11-26「ナイフは3段目だけもう少し前に出て」・叩き台)。尺(MELEE_LUNGE_MS)は他の段と同じ。 */
+export const KNIFE_COMBO_FINISH_STEP_FRAC = 0.8;
 
 export type KnifeComboStage = 1 | 2 | 3;
 
@@ -56,8 +58,9 @@ export const knifeComboCounterPlan = (stage: number, swingAt: number, readyAt: n
 };
 /** 振りの向き: +1=振り上げ(1・3段目) / -1=振り下ろし(2段目)。 */
 export const knifeComboSwingDir = (stage: number): 1 | -1 => (stage === 2 ? -1 : 1);
-/** 段の踏み込みの距離(px)。runPx=走りの踏み込み(0=立ち・歩き)。 */
-export const knifeComboStepPx = (bodyWidth: number, runPx: number): number => Math.max(runPx, bodyWidth * KNIFE_COMBO_STEP_FRAC);
+/** 段の踏み込みの距離(px)。runPx=走りの踏み込み(0=立ち・歩き)。3段目だけ大きく前へ出る(走りの踏み込みの方が大きければそちら)。 */
+export const knifeComboStepPx = (bodyWidth: number, runPx: number, stage: number): number =>
+  Math.max(runPx, bodyWidth * (stage === 3 ? KNIFE_COMBO_FINISH_STEP_FRAC : KNIFE_COMBO_STEP_FRAC));
 
 /**
  * 体の動きの進み具合(描画だけ)。since=振り始めからの ms・windowMs=いつもの振りの表示の長さ。

@@ -14604,9 +14604,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // swipeDirection/swipeStrength は release() が状態を消す**前**にここへ来る(VirtualJoystickの順序)。
         const runningNow = isRunningForMeleeLunge(p, get().swipeDirection, get().swipeStrength);
         runningSwingAt = runningNow ? now : 0; // 移動近接の印(判定時にノックバックを伸ばす)
-        // ★ナイフの3連撃はどの段も少し踏み込む(社長指示2026-11-26「どれも少し踏み込み」・体の幅×KNIFE_COMBO_STEP_FRAC。走りの踏み込みの方が大きければそちら)。
+        // ★ナイフの3連撃はどの段も少し踏み込む(社長指示2026-11-26「どれも少し踏み込み」・体の幅×KNIFE_COMBO_STEP_FRAC。3段目だけ×KNIFE_COMBO_FINISH_STEP_FRAC=「3段目だけもう少し前に出て」。走りの踏み込みの方が大きければそちら)。
         // 体ごと動く=前隙の明けの判定(triggerCounter)は踏み込んだ位置から測る=判定が絵とずれない。
-        const lungePx = knifeNow ? knifeComboStepPx(p.width, meleeLungePx(p, runningNow)) : meleeLungePx(p, runningNow);
+        const lungePx = knifeNow ? knifeComboStepPx(p.width, meleeLungePx(p, runningNow), knifeStage) : meleeLungePx(p, runningNow);
         const spd = knockbackSpeedFor(lungePx, MELEE_LUNGE_MS); // 武器別(走り: 鞭=20px/ナイフ=30px、立ち/歩き=0=その場で振る・ナイフは段の踏み込み)
         set(state => ({ player: {
           ...state.player,

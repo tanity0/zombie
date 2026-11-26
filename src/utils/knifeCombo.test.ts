@@ -3,7 +3,7 @@ import {
   knifeComboWpnAlpha, knifeComboBodyEndMs,
   knifeComboNextStage, knifeComboGapMs, knifeComboTapAction, knifeComboQueuedAction, knifeComboCounterPlan, knifeComboSwingDir,
   knifeComboStepPx, knifeComboBodyT,
-  KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_RESET_MS, KNIFE_COMBO_FINISH_RECOVERY_MS, KNIFE_COMBO_QUEUE_MAX_MS, KNIFE_COMBO_STEP_FRAC,
+  KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_RESET_MS, KNIFE_COMBO_FINISH_RECOVERY_MS, KNIFE_COMBO_QUEUE_MAX_MS, KNIFE_COMBO_STEP_FRAC, KNIFE_COMBO_FINISH_STEP_FRAC,
   knifeComboFinishMoveMult, KNIFE_COMBO_FINISH_STOP_MS,
   KNIFE_COMBO_FEEL, knifeComboFeel, knifeComboHitStop, knifeComboSfxLayers, knifeSwingDrawSince,
 } from './knifeCombo';
@@ -67,9 +67,18 @@ describe('ナイフの3連撃(純関数)', () => {
   it('振りの向き: 1段目=振り上げ・2段目=振り下ろし・3段目=振り上げ', () => {
     expect([1, 2, 3].map(knifeComboSwingDir)).toEqual([1, -1, 1]);
   });
-  it('踏み込み: 体の幅×0.3(走りの踏み込みの方が大きければそちら)', () => {
-    expect(knifeComboStepPx(28, 0)).toBeCloseTo(28 * KNIFE_COMBO_STEP_FRAC);
-    expect(knifeComboStepPx(28, 30)).toBe(30);
+  it('踏み込み: 1・2段目=体の幅×0.3(走りの踏み込みの方が大きければそちら)', () => {
+    expect(knifeComboStepPx(28, 0, 1)).toBeCloseTo(28 * KNIFE_COMBO_STEP_FRAC);
+    expect(knifeComboStepPx(28, 0, 2)).toBeCloseTo(28 * KNIFE_COMBO_STEP_FRAC);
+    expect(knifeComboStepPx(28, 30, 1)).toBe(30);
+    expect(knifeComboStepPx(28, 30, 2)).toBe(30);
+  });
+  it('踏み込み: 3段目だけ大きく前へ(体の幅×0.8・走りの踏み込みの方が大きければそちら)', () => {
+    expect(KNIFE_COMBO_FINISH_STEP_FRAC).toBeGreaterThan(KNIFE_COMBO_STEP_FRAC);
+    expect(knifeComboStepPx(28, 0, 3)).toBeCloseTo(28 * KNIFE_COMBO_FINISH_STEP_FRAC);
+    expect(knifeComboStepPx(28, 0, 3)).toBeGreaterThan(knifeComboStepPx(28, 0, 2));
+    expect(knifeComboStepPx(28, 30, 3)).toBe(30); // 走り(30) > 22.4
+    expect(knifeComboStepPx(28, 10, 3)).toBeCloseTo(28 * KNIFE_COMBO_FINISH_STEP_FRAC); // 段の踏み込みの方が大きい
   });
   it('体の動き: 1・2段目はいつもどおり、3段目は頂点で粘ってから隙が明けるまでに減速して戻る', () => {
     expect(knifeComboBodyT(140, 280, 1)).toEqual({ t: 0.5, active: true });

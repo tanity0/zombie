@@ -150,13 +150,30 @@ describe('★近接の前隙(SAME_ARENA.md §7)', () => {
     useGameStore.getState().beginMeleeSwing();
     const p = useGameStore.getState().player;
     // ★ナイフの3連撃(社長指示2026-11-26「どれも少し踏み込み」): 立ちでも段の踏み込み(体の幅×KNIFE_COMBO_STEP_FRAC)だけ前へ。
-    expect(p.lungeVx).toBeCloseTo(knockbackSpeedFor(knifeComboStepPx(p.width, 0), MELEE_LUNGE_MS), 6);
+    expect(p.lungeVx).toBeCloseTo(knockbackSpeedFor(knifeComboStepPx(p.width, 0, 1), MELEE_LUNGE_MS), 6);
     expect(p.lungeVy).toBe(0);
-    expect(knifeComboStepPx(p.width, 0)).toBeLessThan(MELEE_LUNGE_PX); // 走りの踏み込みより小さい
+    expect(knifeComboStepPx(p.width, 0, 1)).toBeLessThan(MELEE_LUNGE_PX); // 走りの踏み込みより小さい
     // 鞭は今までどおり立ちでは踏み込まない
     useGameStore.setState(s => ({ player: { ...s.player, subWeapons: ['whip'], lungeVx: 0, lungeVy: 0, lungeUntil: 0, vx: 0, vy: 0, counterCooldownEnd: 0, pendingSwingAt: 0 } }));
     useGameStore.getState().beginMeleeSwing();
     expect(useGameStore.getState().player.lungeVx).toBe(0);
+  });
+
+  it('★ナイフの3連撃(社長指示2026-11-26「ナイフは3段目だけもう少し前に出て」): その場で3段振ると3段目だけ大きく踏み込む', () => {
+    setup();
+    const speeds: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 1, y: 0 }, vx: 0, vy: 0, counterCooldownEnd: 0, pendingSwingAt: 0, lungeVx: 0, lungeVy: 0, lungeUntil: 0 } }));
+      useGameStore.getState().beginMeleeSwing();
+      const p = useGameStore.getState().player;
+      expect(p.knifeComboStage).toBe(i + 1);
+      speeds.push(p.lungeVx);
+    }
+    const w = useGameStore.getState().player.width;
+    expect(speeds[0]).toBeCloseTo(knockbackSpeedFor(knifeComboStepPx(w, 0, 1), MELEE_LUNGE_MS), 6);
+    expect(speeds[1]).toBeCloseTo(speeds[0], 6); // 1・2段目は同じ
+    expect(speeds[2]).toBeCloseTo(knockbackSpeedFor(knifeComboStepPx(w, 0, 3), MELEE_LUNGE_MS), 6);
+    expect(speeds[2]).toBeGreaterThan(speeds[1]);
   });
 
   // ★社長指示2026-08-24「鞭は踏み込み20で」。武器ごとの値は meleeLungePx に集約する
