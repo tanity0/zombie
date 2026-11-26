@@ -244,5 +244,10 @@ export interface BrawlerState {
    */
   leverGuardCarryUntil?: number;
   leverGuardCarryFrom?: string;
+  /**
+   * ★カウンターされて技を断ち切られた時の落下(社長指示2026-11-26「格闘技はカウンターされるとノックバックで。」・絵だけ)。
+   * fromPx=断ち切られた瞬間の体の高さ(姿勢の jump)・at=その gameTime。空中で返されたら、その高さから加速して落ちる(慣性・瞬間に地面へ戻さない)。
+   */
+  counterFall?: { fromPx: number; at: number };
 }
 

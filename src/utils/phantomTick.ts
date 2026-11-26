@@ -111,7 +111,7 @@ import {
 } from './phantomBrawlerTick'; // research/BRAWLER_PHANTOM.md: 格闘の幻影(拳鬼)の格闘
 import { phantomBrawlerHolding } from './phantomBrawlerAi';
 import { kenkiRetreating, kenkiRetreatDirNow, kenkiRetreatStop, kenkiLeverOf } from './kenkiRetreat'; // 拳鬼の後ろへ下がる歩きとレバー(§16-10)
-import { isBrawlerBusy } from './brawler';
+import { isBrawlerBusy, brawlerCounterInterrupt } from './brawler';
 import { applyPhantomCounterMaster } from './actorCounterMaster'; // カウンターマスター(幻影自身の帳簿へ)
 
 /** 制御対象の型(判定の出どころを1箇所に)。 */
@@ -1037,11 +1037,16 @@ const consumePhantomParry = (
   // プレイヤーへの押し返しを距離ゲート無しで出すと、**遠距離のプレイヤーへ空振りの斬撃弧が飛ぶ+
   // 殴っていない本人が押される**という意味不明な絵になる。どちらも近接射程内の時だけ出す
   // (「見たまんまが当たり判定」文法。パリィ自体のスパーク・SEは幻影の位置の演出なので無条件)。
-  if (edgeDistTo(bcx, bcy, player) <= GP_T.melee.reach) {
+  // ★格闘の当たりを返した時(社長指示2026-11-26「格闘技はカウンターされるとノックバックで。」): 返された一撃はプレイヤー本人の格闘
+  //   (triggerCounter の関所が同じ時刻を打つ)=距離の門は通さない(格闘の届く距離・ハンティング・5段目の突き抜けは近接の間合いより遠い)。
+  const brawlerCountered = useGameStore.getState().player.brawlerCounteredAt === at;
+  if (brawlerCountered || edgeDistTo(bcx, bcy, player) <= GP_T.melee.reach) {
     // ★カウンターされた側の扱い(社長指示2026-08-24「カウンターされた側はノックバックも敵と同じく」)。
     // 弾かれたのだから **前隙中の振りは出ない(中断)** し、**敵がカウンターされた時と同じ量**の
     // ノックバックを受ける(`KNOCKBACK_SPEED`/`KNOCKBACK_DURATION`)。旧実装は幻影専用の
     // 小さい叩き台(46px/…)だったので、対称性のために共通定数へ揃えた。
+    // 格闘の技(連撃・技・飛び蹴りの連続・秘奥義・先行入力)も同じく断ち切る(空中なら落ちる=brawlerCounterInterrupt)。
+    // 格闘の踏み込み・突き抜けの器も空ける(押しの方が強いが、押しが明けた後に残りの詰めが走らないように)。
     const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
     const dl = Math.max(0.001, Math.hypot(pcx - bcx, pcy - bcy));
     const kbNow = Date.now();
@@ -1052,6 +1057,11 @@ const consumePhantomParry = (
       knockbackVy: ((pcy - bcy) / dl) * KNOCKBACK_SPEED,
       knockbackUntil: kbNow + KNOCKBACK_DURATION,
       knockbackMs: KNOCKBACK_DURATION,
+      ...(brawlerCountered && stt.player.brawler ? {
+        brawler: brawlerCounterInterrupt(stt.player.brawler, stt.gameTime),
+        brawlerCounteredAt: undefined,
+        lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeHoldUntil: 0,
+      } : {}),
     } }));
     // ★社長指示2026-08-27「近接カウンターはカウンターされた側の体勢値だけ削れる」: 旧「周期無視の
     // 即反撃(swingPhantomMelee)」を撤去——KBと同フレームの即反撃は実質「カウンターの確定ダメージ」

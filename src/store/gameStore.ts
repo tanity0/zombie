@@ -14905,7 +14905,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (!gp.effects) {
           // ★SAME_ARENA §9(対人体勢): 幻影のパリィ成立=プレイヤーが「カウンターを取られた」
           // =プレイヤーの体勢を counter(0.20)で削る(紫入り時の窓・前隙破棄は playerPvpChipPatch)。
-          if (gp.parried) set(st => ({ player: { ...st.player, ...playerPvpChipPatch(st.player, 'counter', st.gameTime) } }));
+          // ★格闘の当たりがカウンターされた(社長指示2026-11-26「格闘技はカウンターされるとノックバックで。」): 打刻を残す=幻影の制御が
+          //   近接カウンターと同じ扱い(技の中断+敵と同じ量のノックバック)を出す(phantomTick の consumePhantomParry・距離の門を通さない)。
+          if (gp.parried) set(st => ({ player: { ...st.player, ...playerPvpChipPatch(st.player, 'counter', st.gameTime), ...(bs ? { brawlerCounteredAt: gameTime } : {}) } }));
           survivors.push({ ...enemy, ...gp.patch });
           continue;
         }

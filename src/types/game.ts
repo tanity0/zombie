@@ -234,6 +234,12 @@ export interface Player extends DashLocomotionState {
   /** ★サブウェポン「格闘」の状態(research/BRAWLER.md §5)。格闘を持たない時は未設定のまま。 */
   brawler?: BrawlerState;
   /**
+   * ★格闘の当たりを幻影にカウンターされた時刻(gameTime・幻影の gpParriedAt と同じ値)。triggerCounter の幻影の関所が書き、
+   * 幻影の制御(phantomTick の consumePhantomParry)が読んで、カウンターされた側の扱い(技の中断+近接カウンターと同じノックバック)を出す
+   * (社長指示2026-11-26「格闘技はカウンターされるとノックバックで。」)。
+   */
+  brawlerCounteredAt?: number;
+  /**
    * ★被弾反撃(research/HIT_RETALIATION.md)で被弾の硬直(しゃがみ・移動停止・銃の停止)を打ち切った時刻(Date.now)。
    * `lastHurtAt` 以降の値だけが効く(`utils/playerHurt.isHurtCancelled`)。被弾の段の記録(lastHurtAt)は消さない。
    */

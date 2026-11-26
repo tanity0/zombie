@@ -671,6 +671,24 @@ export const brawlerCancel = (s: BrawlerState): BrawlerState => ({
   ...s, phase: 'idle', tech: null, buffered: false, techBuffer: undefined, stepBuffer: undefined, nextStage: 1, chainUntil: 0, secret: undefined,
   guardUntil: 0, kickChainUntil: 0, kickCount: 0,
 });
+/**
+ * ★格闘の技をカウンターされた側の扱い(社長指示2026-11-26「格闘技はカウンターされるとノックバックで。」)。
+ * 近接のカウンターの規則(振りの中断+敵と同じ量のノックバック)の「中断」の側。押し(ノックバック)は呼び手が今の近接カウンターの押しをそのまま使う。
+ * 連撃の途中・技の途中・飛び蹴りの連続・先行入力は全部ここで切れる。秘奥義なら秘奥義ごと打ち切り(技ポイント0=紫・気絶の取り消しと同じ)。
+ * 空中(飛び蹴り・踵落とし・蹴り上げ等の体の高さ)で返された時は、その高さから加速して落ちる(counterFall・絵だけ・慣性)。
+ */
+export const brawlerCounterInterrupt = (s: BrawlerState, t: number): BrawlerState => {
+  const h = Math.max(0, brawlerPoseAt(s, t)?.jump ?? 0);
+  const cut = s.secret ? brawlerSecretEnd(s) : brawlerCancel(s);
+  return { ...cut, airSuplexRiseAt: undefined, airSuplexHoldAt: undefined, counterFall: h > 0.5 ? { fromPx: h, at: t } : undefined };
+};
+/** カウンターで断ち切られた後の落下の残りの高さ(px)。加速して落ちる(1−k²)。落ち切ったら0。 */
+export const brawlerCounterFallPx = (f: BrawlerState['counterFall'], t: number): number => {
+  if (!f) return 0;
+  const k = (t - f.at) / BRAWLER_COUNTER_FALL_MS;
+  if (!(k >= 0) || k >= 1) return k < 0 ? f.fromPx : 0;
+  return f.fromPx * (1 - k * k);
+};
 /** 被弾した(段は1段目へ・先行入力は捨てる=§2-4)。行動そのものは続く(殴り返されて止まるのは敵の止めの側)。 */
 export const brawlerOnHurt = (s: BrawlerState): BrawlerState => ({
   ...s, buffered: false, techBuffer: undefined, stepBuffer: undefined, nextStage: 1, chainUntil: 0,
@@ -2181,6 +2199,8 @@ export const BRAWLER_AIR_SUPLEX_RISE_PX = 40;
 export const BRAWLER_AIR_SUPLEX_RISE_MS = 180;
 export const BRAWLER_AIR_SUPLEX_HANG_MS = 40;
 export const BRAWLER_AIR_SUPLEX_FALL_MS = 220;
+/** カウンターされて断ち切られた後、空中から地面まで落ちる時間(空中のスープレックスの後の落下と同じ長さ・同じ加速の形)。 */
+export const BRAWLER_COUNTER_FALL_MS = BRAWLER_AIR_SUPLEX_FALL_MS;
 export const brawlerAirSuplexRise = (el: number, fall = true): number => {
   if (!(el >= 0)) return 0;
   const up = BRAWLER_AIR_SUPLEX_RISE_MS - BRAWLER_AIR_SUPLEX_HANG_MS;
@@ -2192,7 +2212,12 @@ export const brawlerAirSuplexRise = (el: number, fall = true): number => {
   return k >= 1 ? 0 : BRAWLER_AIR_SUPLEX_RISE_PX * (1 - k * k);
 };
 export const brawlerPoseAt = (s: BrawlerState | undefined, t: number, nowMs?: number): BrawlerPose | null => {
-  const pose = brawlerPoseAtRaw(s, t, nowMs);
+  const raw = brawlerPoseAtRaw(s, t, nowMs);
+  // カウンターで断ち切られた空中からの落下(絵だけ)。待機に戻っていても、落ち切るまでは落ちる姿(しゃがみ=空中の落下の絵)で高さを残す。
+  const fall = s ? brawlerCounterFallPx(s.counterFall, t) : 0;
+  const pose = fall > 0
+    ? (raw ? { ...raw, jump: Math.max(raw.jump ?? 0, fall) } : { tex: 'ready' as const, lean: 0, push: 0, jump: fall, sqX: 1, sqY: 1, hand: 1 as const, flip: false })
+    : raw;
   if (!pose || !s || s.airSuplexRiseAt === undefined) return pose;
   const lift = brawlerAirSuplexRise(t - s.airSuplexRiseAt);
   return lift > 0 ? { ...pose, jump: (pose.jump ?? 0) + lift } : pose;
