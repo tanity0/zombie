@@ -5,6 +5,7 @@
 
 | 出典 | 素材(リポジトリ内) | 元のファイル名 | 使い道 | 追加 |
 |---|---|---|---|---|
+| 効果音ラボ(https://soundeffect-lab.info/)※社長支給 2026-11-26。表記が必須かは規約を未確認 | public/audio/sfx/thunder.mp3 | (日本語名・末尾「4」) | 雨の本降りの雷鳴 | v0.25.5840 |
 | ZapSplat(https://www.zapsplat.com/) | public/audio/sfx/wraith-swell.mp3 | zapsplat_horror_swell_mysterious_sinisher_whining_swell_ghostly_cold_eerie_002_104548.mp3 | 亡霊(変異体)と戦っている間(交互に重ねる1本目) | v0.25.5274 |
 | ZapSplat(https://www.zapsplat.com/) | public/audio/sfx/wraith-voice.mp3 | bottlerocket_GhostlyVoice_Musical_03.mp3 | 亡霊(変異体)と戦っている間(交互に重ねる2本目) | v0.25.5274 |
 | ZapSplat(https://www.zapsplat.com/) | public/audio/sfx/enemy-spotted.mp3 | zapsplat_horror_voice_ghostly_vocalisation_12163.mp3 | 索敵系の敵に見つかった時 | v0.25.5199 |
