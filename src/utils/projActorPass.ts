@@ -25,7 +25,13 @@ export type ProjActorRole = 'body' | 'shadow' | 'hud' | 'telegraph' | 'fx' | 'tr
 /** 部品の名札 → 役(後掛けはこの表だけを読む)。名札は ActorView のフィールド名か、作る所で付ける登録名。 */
 export const PROJ_ACTOR_ROLES = {
   // view.container の子(体)
+  // atkArt(物理の攻撃の絵)=体の相似が既定(体に付く物=銃・溜めの蔓の輪など)。ただし判定の帯に沿って体から離れて地面を伸びる/
+  // 地面の点に出る絵(触手・翼・爪・噛みつきの顎・偶像の拳・城ボスの薙ぎの蔓・翼・砲・氷塊と粒・滑空の枝)は、体の相似だと
+  // 縦の詰めの差だけ投影済みの赤い帯から外れる(体から北へ 150px で 20〜45px)=pixiScene が描く時に写す(根元=体の相似・
+  // 先や置く点=地面の点の投影・projAtkSeg/projAtkPt)。描く時に写した物は同じフレームの後掛けを通らない(projFxSave の印)。
   sprite: 'body', hitFlash: 'body', reticle: 'body', atkArt: 'body', glenParts: 'body', alchemyRocks: 'body',
+  // グレンの「無」の円の絵(判定と同寸・中心=狙い点)の格子メッシュ=描く時に頂点ごとに投影(後掛けで動かさない=summonTornado と同じ扱い)。
+  atkArtGround: 'telegraph',
   phillBack: 'body', featherC: 'body', rim: 'body', avatarPart: 'body',
   // 物に地面の明るさを写す加算の写し(objShade の twin・label 'objShadeLight')。後掛けの後に本体から写される=後掛けでは動かさない
   // (projPostView が飛ばす)。寄りの遠近では体として扱う。
@@ -71,7 +77,7 @@ export const projActorRole = (key: ProjActorPartKey): ProjActorRole => PROJ_ACTO
  * pixiScene の projLiftTag で物ごとに上書きする(例: 主人公の体力の線=hudNoH・敵の体力バー=ground)。
  */
 export const PROJ_ACTOR_LIFTED = {
-  sprite: 'body', hitFlash: 'body', reticle: 'ground', atkArt: 'body', glenParts: 'body', alchemyRocks: 'body',
+  sprite: 'body', hitFlash: 'body', reticle: 'ground', atkArt: 'body', atkArtGround: 'ground', glenParts: 'body', alchemyRocks: 'body',
   // avatarPart=ground: 生きたアバター部品は ?proj=0 で歩きの上下 bob(δ=d)だけで上がり、跳び・浮き・跳ねでは上がらない
   // (pixiScene の syncAvatarPartLayer の位置)=A では割り戻し0(段階5・Z9 を確かめた)。
   phillBack: 'body', featherC: 'body', rim: 'body', avatarPart: 'ground', objShadeTwin: 'body',
