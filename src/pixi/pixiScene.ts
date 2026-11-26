@@ -136,7 +136,7 @@ import { whipComboBodyRecover } from '../utils/whipCombo'; // 鞭の3段目の�
 import { counterReadyAt, counterRingFade } from '../utils/counterReadyAt'; // カウンターのクールダウンの輪(鞭・ナイフの3連撃は連撃の終わり+CDまで)
 import { knifeComboBodyT, knifeComboSwingDir, knifeComboWpnAlpha, knifeSwingDrawSince } from '../utils/knifeCombo'; // ナイフの3連撃の段の向き・3段目の後の隙の姿勢
 import {
-  whipSwingRopePoints, WHIP_LOOP_ROPE_POINTS, WHIP_FINISH_PLANE_TILT_RAD, WHIP_LOOP_START_AT, WHIP_LOOP_START_UP_EXTRA, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
+  whipSwingRopePoints, WHIP_LOOP_ROPE_POINTS, whipLoopPose, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
   whipGrabZoomAt, WHIP_GRAB_ZOOM_MAG, WHIP_GRAB_ZOOM_AIM_FRAC, WHIP_GRAB_ZOOM_TOTAL_MS,
   whipTetherShape, whipTetherBow, whipTetherRetract, whipFlyLiftPx, whipFlyPeakPx, type WhipRopeShape,
   whipTetherEntry, whipTetherGlowK, whipThrowStreak, whipFlyVisualTimeAt, whipFlyViewOffset, whipFlyReleaseBlend, whipTetherRetractTip, whipTrailFade,
@@ -46279,8 +46279,9 @@ export class PixiScene {
    * ★鞭の普通の振りの本体(社長「鞭っぽくしならせてから叩きつける」「まっすぐの絵にしてあるので」)。まっすぐの鞭の絵(whip)を
    * MeshRope で曲げる。形は utils/whipSwingMotion の純関数(引く→溜め→打ち出し=転がる輪→前隙の終わりでまっすぐ伸び切る→たるんで消える)。
    * ★転がる輪(社長指示2026-11-26「ぐにゃっと150度ぐらい曲げて…円を描くように伸びるんじゃなくて、そのまま伸びていく感じ」): 縄全体は回さない
-   * (狙いの向き e.angle に固定)。1・2段目は地面の面で輪を払いの来る側に作り、3段目(pull>1)は縦の面=頭上で輪を転がす(高さを持ち上げる)。
-   * 手元=プレイヤーの今の中心。点は振りの向きの座標で作って回す(輪を作る「上」側は向きの左右で揃える=左を向いても上を通る)。
+   * (狙いの向き e.angle に固定)。1・2段目は地面の面で輪を作り(左右・斜め=体の手前側・上下=体の横へ寝かせる)、3段目(pull>1)は縦の面=
+   * 頭上の前で折って振り下ろしながら伸ばす(高さを持ち上げる)。どの向きでも折れは体の絵の外(whipLoopPose・クリエイティブ監査2巡目)。
+   * 手元=プレイヤーの今の中心。点は振りの向きの座標で作って回す(形の y は向きの左右で揃える=左を向いても +y が画面の下)。
    * 負荷: 振り1回につき MeshRope 1本(点 WHIP_LOOP_ROPE_POINTS+2)・per-frame Graphics なし=1/10。
    */
   private whipRopePts = new WeakMap<MeshRope, Point[]>();
@@ -46302,10 +46303,10 @@ export class PixiScene {
     const rope = view as MeshRope;
     const pts = this.whipRopePts.get(rope);
     if (!tex || !pts) { rope.visible = false; return; }
-    const side = Math.cos(e.angle) >= 0 ? 1 : -1; // 輪を作る「上」側を画面の上に揃える(狙いの向きで決める)
-    // 1・2段目: 輪は払いの来る側(払う向きと逆)。形の座標(y は side で上下を揃える)での符号。3段目・正面=0(上側)。
-    const lag = e.sweep ? side * -Math.sign(e.sweep) : 0;
-    const rp = whipSwingRopePoints(now - e.createdAt, e.windupMs, e.len, WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_TIP_X, { lag, pull: e.pull ?? 1, tilt: WHIP_FINISH_PLANE_TILT_RAD * Math.abs(Math.sin(e.angle)), startAt: WHIP_LOOP_START_AT + WHIP_LOOP_START_UP_EXTRA * Math.max(0, -Math.sin(e.angle)) }); // 3段目: 上下の向きほど縦の面を横へ倒す(輪がつぶれない)・上向きは折れ目を外へ(頭に隠れない)
+    const side = Math.cos(e.angle) >= 0 ? 1 : -1; // 形の y を画面に揃える符号(左右の向きでは形の +y が画面の下=手前)
+    // 輪の側・手元側の寝かせ・折れの出だし・3段目の面の倒し(体の絵を避け、どの向きでもU字が見える=utils/whipSwingMotion.whipLoopPose)。
+    const pose = whipLoopPose(e.angle, e.sweep ?? 0, e.pull ?? 1);
+    const rp = whipSwingRopePoints(now - e.createdAt, e.windupMs, e.len, WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_TIP_X, { lag: pose.lag, lean: pose.lean, pull: e.pull ?? 1, tilt: pose.tilt, startAt: pose.startAt });
     if (rp.alpha <= 0) { rope.visible = false; return; }
     const local = rp.pts;
     // 表示のスケール: 絵の握り→先端(素材の画素)が射程ちょうど(drawWhipSprite と同じ規約)。点は素材の画素の単位で置き、rope を k 倍する。

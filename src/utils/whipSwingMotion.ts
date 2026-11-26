@@ -37,48 +37,83 @@ export const WHIP_ROPE_FINISH_PULL = 1.45;
  * ★転がる輪(rolling loop・社長指示2026-11-26「鞭のしなりをもっとぐにゃっと150度ぐらい曲げてほしい。そこから円を描くように伸びるんじゃなくて、
  * そのまま伸びていく感じ。鞭の動きをできるだけリアルに再現したい」)。
  * 打ち出しで手元が前へ出ると、縄は体の外で約150度折り返して細長いU字(ヘアピン)になる。折れ目は縄に沿って先端へ加速しながら転がり、
- *  - 折れ目より手元側=狙いの向き(0)へまっすぐ並ぶ
- *  - 折れ目より先端側=溜めの向き(折り返し WHIP_LOOP_TURN_RAD・輪の側)へまっすぐ(2本の縄は約30度開く)
+ *  - 折れ目より手元側=手元の向き(lean・パチンへ向けて 0=狙いの向きへ戻る)へまっすぐ並ぶ
+ *  - 折れ目より先端側=折り返し(WHIP_LOOP_TURN_RAD・輪の側)へまっすぐ
  * 折れ目は先へ行くほど締まって速くなり、先端から抜けた瞬間(=前隙の終わり=判定の時刻)に縄がまっすぐ伸び切る=パチン。
- * その後は先端が跳ね返り、波が先端へ抜けながらたるむ(止まって見せない)。縄全体を回して払う(円弧を描く)動きは使わない。
+ * その後は先端が大きく跳ね返り、波が先端へ抜けながらすぐにたるみ始める(止まって見せない・いきなり倒れない)。
+ * 縄全体を回して払う(円弧を描く)動きは使わない。
  */
 export const WHIP_LOOP_TURN_RAD = (150 * Math.PI) / 180;
+/**
+ * 転がる間の折り返しの角度(rad)。折れ目が先へ出るほど(先端側が短くなるほど)2本を寄せて細い輪(ヘアピン)のまま転がす
+ * (2本が開いたまま並ぶと二股=Y字に見える・クリエイティブ監査2巡目 #3)。
+ */
+export const WHIP_LOOP_TURN_ROLL_RAD = (168 * Math.PI) / 180;
+/** 3段目の折り返し(深く折る・#6)。 */
+export const WHIP_LOOP_TURN_FIN_RAD = (162 * Math.PI) / 180;
 /** 前隙の中の区切り(割合): 折れを作り始める(手元側が前へ返り始める)。 */
 export const WHIP_LOOP_FORM_START = 0.45;
 /** 前隙の中の区切り(割合): 折れができ上がって転がり始める(=前隙の約6割)。ここから当たる時刻まで、折れが見えている。 */
 export const WHIP_LOOP_ROLL_START = 0.6;
+/** 3段目: 折れを早めに作り始め、深く・ゆっくり作ってから(ROLL_START まで)一気に伸ばす(当たる時刻は同じ・#6)。 */
+export const WHIP_LOOP_FIN_FORM_START = 0.38;
+export const WHIP_LOOP_FIN_ROLL_START = 0.74;
 /** 折れができ上がった時の位置(縄の長さに対する割合)。体の外で折れる(体に隠れない)。 */
-export const WHIP_LOOP_START_AT = 0.3;
-/** 上向き(画面の奥)の振りで折れ目を足す量(縄の長さの割合・|上向きの量| を掛ける)。奥は短く写り頭に重なるので、さらに外で折る。 */
-export const WHIP_LOOP_START_UP_EXTRA = 0.2;
-/** 折れ目の曲がりの長さ(縄の長さに対する割合): 転がり始め → 抜ける時。短い区間に曲がりを集める(丸く巻かない)。 */
-export const WHIP_LOOP_WIDTH_START = 0.13;
-export const WHIP_LOOP_WIDTH_END = 0.05;
+export const WHIP_LOOP_START_AT = 0.36;
+/** 上下の向き(縦の向き)の振りで折れ目を足す量(縄の長さの割合・|sin(向き)| を掛ける)。奥行きは短く写り体に重なるので、さらに外で折る。 */
+export const WHIP_LOOP_START_UP_EXTRA = 0.1;
+/** 3段目の折れの出だしの位置(頭の上の前で折る)。 */
+export const WHIP_LOOP_FIN_START_AT = 0.5;
+/** 3段目の縦の面を横へ倒す角度(rad・上下の向きで掛かり切る・|sin(向き)| を掛ける)。上下の向きでも頭上の折れが体の横に見える(#5)。 */
+export const WHIP_LOOP_FIN_TILT_RAD = (68 * Math.PI) / 180;
+/**
+ * 上下の向きの振りで、折れを作る時に手元側を横へ寝かせる角度(rad・|sin(向き)| を掛ける)。U字が画面の横へ出る(頭の後ろに隠れない・
+ * 縦につぶれない・#5)。折れ目が先へ転がるほど 0 へ戻り、パチンで狙いの向きへまっすぐ。
+ */
+export const WHIP_LOOP_VERTICAL_LEAN_RAD = (42 * Math.PI) / 180;
+/** 3段目: 折れを作る時に手元側を頭上へ立てる角度(rad・縦の面で前から上へ)。折れは頭の上の前にでき、振り下ろしながら伸びる。 */
+export const WHIP_LOOP_FIN_LEAN_RAD = (40 * Math.PI) / 180;
+/** 折れ目の曲がりの長さ(縄の長さに対する割合): 転がり始め → 抜ける時。曲がりを短い区間に集めつつ、丸い頭が見える長さ。 */
+export const WHIP_LOOP_WIDTH_START = 0.2;
+export const WHIP_LOOP_WIDTH_END = 0.06;
 /** 折れ目の進み = 線形の割合×q + (1-割合)×q^冪。出だしは遅く、先端で一番速い(慣性・等速にしない)。 */
-export const WHIP_LOOP_ROLL_LINEAR = 0.2;
-export const WHIP_LOOP_ACCEL_POW = 1.8;
+export const WHIP_LOOP_ROLL_LINEAR = 0.25;
+export const WHIP_LOOP_ACCEL_POW = 1.7;
+/** 3段目: 出だしをもっと粘り、最後に一気に伸ばす冪。 */
+export const WHIP_LOOP_FIN_ACCEL_POW = 2.4;
 /** 先端側が溜めの形から張ったまっすぐの折り返しへ移るまで(前隙の割合・折れを作り始めてから)。 */
-export const WHIP_LOOP_TAUT_SPAN = 0.35;
+export const WHIP_LOOP_TAUT_SPAN = 0.3;
+/** 溜めの向き(rad・1・2段目=体の後ろ寄り・輪の側。真後ろでなく横へ逃がす=体に重ならない)。 */
+export const WHIP_ROPE_HOLD_RAD = (128 * Math.PI) / 180;
 /** 溜めの形の垂れ(rad・先端・手元から先へ垂れて、先端が一番遅れる)。 */
 export const WHIP_ROPE_HOLD_CURL = 0.45;
 /** 3段目(頭上)の溜めの垂れの掛け。 */
 export const WHIP_ROPE_FINISH_CURL_K = 0.5;
-/** 3段目(頭上)の溜めの向き(rad・縦の面で前から測る=約112度=頭上高く、少し後ろ)。打ち出しで折り返し(150度)へ倒れながら前へ落ちてくる。 */
+/** 3段目(頭上)の溜めの向き(rad・縦の面で前から測る=約112度=頭上高く、少し後ろ)。打ち出しで頭上の前へ折り返しながら前へ落ちてくる。 */
 export const WHIP_ROPE_FINISH_HOLD_RAD = 1.95;
 /** 3段目(頭上)の溜めで手元を持ち上げる高さ(px・引きの量を掛ける前)。 */
 export const WHIP_ROPE_FINISH_HAND_RAISE = 34;
-/** 引きの間の先端の遅れ(rad・先端・引く向きと逆へ)。引き終わりで 0。 */
-export const WHIP_ROPE_PULL_LAG = 1.2;
+/**
+ * 引きの遅れ(引きの割合・先端)。手が先に動き、縄は根元から順に引きずられて曲がる=先端ほど遅れて動き出す(棒のように回らない・#1)。
+ * 先端は引きの割合のこれだけ後から動き出し、引き終わりで溜めの形に追いつく。
+ */
+export const WHIP_ROPE_PULL_DELAY = 0.55;
 /** 振り抜けで先端が前(払う向き)へ流れる量(rad・先端)。 */
-export const WHIP_ROPE_FOLLOW_FLOW = 0.9;
-/** パチンの後、先端が手前へ跳ね返る量(rad・先端の区間)と長さ(ms)。 */
-export const WHIP_CRACK_RECOIL = 0.9;
-export const WHIP_CRACK_RECOIL_MS = 130;
+export const WHIP_ROPE_FOLLOW_FLOW = 0.7;
+/**
+ * パチンの後、先端が手前(輪の側)へ跳ね返る量(rad・先端の区間の折れ)と、折れる所(縄の長さの割合)・山までの長さ・収まるまでの長さ(ms)。
+ * 先端が縄の長さの1〜2割ぶん戻る(#4: この縮尺で読める大きさ)。
+ */
+export const WHIP_CRACK_RECOIL = 1.75;
+export const WHIP_CRACK_RECOIL_AT = 0.8;
+export const WHIP_CRACK_RECOIL_PEAK_MS = 34;
+export const WHIP_CRACK_RECOIL_MS = 150;
 /** パチンの後、手元から先端へ抜けていく波の強さ(rad)と、先端を抜けるまでの長さ(ms)。 */
-export const WHIP_CRACK_WAVE = 0.4;
+export const WHIP_CRACK_WAVE = 0.45;
 export const WHIP_CRACK_WAVE_MS = 150;
-/** パチンの後のたるみ(rad・先端)。張った縄が緩んで垂れ始める(戻りの垂れの前から)。 */
-export const WHIP_ROPE_SLACK = 0.3;
+/** パチンの後のたるみ(rad・先端)。鳴った直後から張った縄が緩んで垂れ始め、戻りの終わりまで重さで加速しながら垂れる(いきなり倒れない)。 */
+export const WHIP_ROPE_SLACK = 0.35;
+export const WHIP_ROPE_DROOP = 1.3;
 
 export interface WhipRopeShape {
   /** 手元(柄の握り)の位置のずれ(px・振りの向きの座標=x 前・y 下)。 */
@@ -94,59 +129,90 @@ export interface WhipRopeShape {
 }
 
 /**
- * 転がっている間の折れ目の真ん中の位置(縄に沿った割合)と曲がりの長さ。q=転がりの割合(0..1・WHIP_LOOP_ROLL_START→前隙の終わり)。
- * q=0 で体の外(WHIP_LOOP_START_AT)・q=1 で先端の外(全部まっすぐ)。
+ * 転がっている間の折れ目の真ん中の位置(縄に沿った割合)と曲がりの長さ。q=転がりの割合(0..1・転がり始め→前隙の終わり)。
+ * q=0 で体の外(startAt)・q=1 で先端の外(全部まっすぐ)。p=折れ目の進み(0..1・加速)。
  */
-export const whipLoopAt = (q: number, startAt = WHIP_LOOP_START_AT): { center: number; width: number } => {
+export const whipLoopAt = (q: number, startAt = WHIP_LOOP_START_AT, pow = WHIP_LOOP_ACCEL_POW): { center: number; width: number; p: number } => {
   const c = clamp01(q);
-  const p = WHIP_LOOP_ROLL_LINEAR * c + (1 - WHIP_LOOP_ROLL_LINEAR) * c ** WHIP_LOOP_ACCEL_POW;
+  const p = WHIP_LOOP_ROLL_LINEAR * c + (1 - WHIP_LOOP_ROLL_LINEAR) * c ** pow;
   const width = WHIP_LOOP_WIDTH_START + (WHIP_LOOP_WIDTH_END - WHIP_LOOP_WIDTH_START) * p;
   const c1 = 1 + WHIP_LOOP_WIDTH_END / 2;
-  return { center: startAt + (c1 - startAt) * p, width };
+  return { center: startAt + (c1 - startAt) * p, width, p };
 };
-/** 折れ目より手元側=0・先=old(短い区間 width で折れる=ヘアピン)。 */
-const loopAngle = (u: number, center: number, width: number, old: number): number =>
-  old * smooth(clamp01((u - center) / width + 0.5));
+/** 折れ目より手元側=a1・先=a2(短い区間 width で折れる=ヘアピン)。 */
+const loopAngle = (u: number, center: number, width: number, a1: number, a2: number): number =>
+  a1 + (a2 - a1) * smooth(clamp01((u - center) / width + 0.5));
+
+/**
+ * ★向きごとの輪の作り方(描く側が狙いの向き・払い・段から決める・クリエイティブ監査2巡目 #2/#5)。
+ * 体の絵(足元から体の高さぶんの縦長の箱)を避け、どの向きでもU字が画面に見えるように:
+ *  - 横寄りの向き(左右・斜め): 輪は画面の手前(下)側=体の箱の外(足元より前)へ折る(lag=+1。形の座標の +y が画面の下)。
+ *  - 上下の向き: 輪は画面の横へ(払いの来る側)。折れを作る時に手元側を横へ寝かせ(lean)、U字を体の横に出す。
+ *  - 3段目(頭上・縦の面): 手元側を頭上へ立てて(lean<0=上)頭の上の前で折り、先端側は前へ垂らす(lag=+1=下へ折り返す)。
+ * aim=狙いの向き(rad・画面の y は下が正)。sweep=払い(符号つき・0=正面)。pull>1=3段目。
+ */
+export const whipLoopPose = (aim: number, sweep: number, pull: number): { lag: 1 | -1; lean: number; startAt: number; tilt: number } => {
+  const v = Math.abs(Math.sin(aim));
+  if (pull > 1) {
+    return { lag: 1, lean: -WHIP_LOOP_FIN_LEAN_RAD, startAt: WHIP_LOOP_FIN_START_AT, tilt: WHIP_LOOP_FIN_TILT_RAD * v };
+  }
+  if (v < 0.8) return { lag: 1, lean: 0, startAt: WHIP_LOOP_START_AT + WHIP_LOOP_START_UP_EXTRA * v, tilt: 0 };
+  const side = Math.cos(aim) >= 0 ? 1 : -1; // 描く側が形の y に掛ける符号と同じ
+  const lag: 1 | -1 = sweep ? (side * -Math.sign(sweep) > 0 ? 1 : -1) : 1;
+  const k = (v - 0.8) / 0.2; // 縦に寄るほど大きく寝かせる
+  return { lag, lean: lag * WHIP_LOOP_VERTICAL_LEAN_RAD * smooth(clamp01(0.4 + 0.6 * k)), startAt: WHIP_LOOP_START_AT + WHIP_LOOP_START_UP_EXTRA * v, tilt: 0 };
+};
 
 /**
  * 経過 el(ms・指を離した瞬間から)の鞭の形。windupMs=前隙(=パチンの時刻=判定の時刻)。
  * 前隙の終わり(el=windupMs)で必ずまっすぐ(全区間の向き0・長さ1・手元のずれ0)=判定の帯と鞭の本体が重なる。
- * lag=輪を作る側(この形の座標での符号・+1/-1)。払う段は払いの来る側(払う向きと逆)・0=上側(-1 と同じ。3段目と正面の振り)。
- * pull>1=3段目(頭上へ大きく振りかぶる。描く側は縦の面=y を高さとして描く)。
- * ①引く: 前に垂れていた鞭を体の後ろへ(先端は引く向きと逆へ遅れてから追いつく・減速して止まる)
- * ②溜め: 後ろで垂れて止まる(先端が一番遅れて垂れ、先だけ揺れる)
- * ③打ち出し: 手元側が前へ返って体の外で約150度のヘアピンに折れ(WHIP_LOOP_FORM_START→ROLL_START)、折れ目が先端へ加速して転がる。手元も前へ戻る
- * ④パチン: まっすぐ伸び切る→先端が跳ね返り、波が先端へ抜け、たるむ ⑤戻り: 振り抜けて先が流れ、垂れて縮み消える。
+ * lag=輪を作る側(この形の座標での符号・+1/-1・0=-1 と同じ)。lean=折れを作る時の手元側の向き(rad・転がるほど 0 へ)。
+ * pull>1=3段目(頭上へ大きく振りかぶる。描く側は縦の面=y を高さとして描く。溜めは常に上=y の負)。
+ * ①引く: 手が先に後ろへ動き、縄は根元から順に引きずられて曲がる(先端が一番遅れる・減速して止まる)
+ * ②溜め: 後ろ(輪の側)で垂れて止まる(先だけ揺れる)
+ * ③打ち出し: 手元側が前へ返って体の外で約150度のヘアピンに折れ(FORM_START→ROLL_START)、折れ目が先端へ加速して転がる。
+ *    転がる間は2本を寄せて細い輪のまま進む。手元も前へ戻る
+ * ④パチン: まっすぐ伸び切る→先端が大きく跳ね返り、波が先端へ抜け、すぐにたるみ始める ⑤戻り: 重さで垂れながら縮み消える。
  */
-export const whipRopeShape = (el: number, windupMs: number, segs = WHIP_ROPE_POINTS - 1, pull = 1, lag = 0, startAt = WHIP_LOOP_START_AT): WhipRopeShape => {
+export const whipRopeShape = (
+  el: number, windupMs: number, segs = WHIP_ROPE_POINTS - 1, pull = 1, lag = 0, startAt = WHIP_LOOP_START_AT, lean = 0,
+): WhipRopeShape => {
   const W = Math.max(1, windupMs);
   const pk = Math.max(1, pull);
   const fin = pk > 1;
   const side = lag > 0 ? 1 : -1; // 輪を作る側
-  // 引いた手元(後ろ・輪の側)。3段目(頭上)は腕を頭の上へ振り上げる=手元を高く(縦の面の y の負=上)、後ろへは少しだけ。
-  const hX = (fin ? -6 : -10) * pk, hY = (fin ? WHIP_ROPE_FINISH_HAND_RAISE : 12) * pk * side;
+  const holdSide = fin ? -1 : side; // 溜めの側(3段目は頭上=上)
+  const restSide = fin ? 1 : side; // 振る前の垂れの側(3段目は下へ垂れている)
+  // 引いた手元(後ろ・溜めの側)。3段目(頭上)は腕を頭の上へ振り上げる=手元を高く(縦の面の y の負=上)、後ろへは少しだけ。
+  const hX = (fin ? -6 : -10) * pk, hY = (fin ? WHIP_ROPE_FINISH_HAND_RAISE : 12) * pk * holdSide;
   const curl = WHIP_ROPE_HOLD_CURL * (fin ? WHIP_ROPE_FINISH_CURL_K : 1);
-  const base = fin ? WHIP_ROPE_FINISH_HOLD_RAD : WHIP_LOOP_TURN_RAD;
-  // 溜めの形: 後ろ寄り(輪の側)へ、手元から先へ垂れて先端が一番遅れる。3段目は頭上高く。
-  const holdA = (u: number): number => side * (base + curl * u ** 1.5);
+  const base = fin ? WHIP_ROPE_FINISH_HOLD_RAD : WHIP_ROPE_HOLD_RAD;
+  const rest = (u: number): number => restSide * restAngle(u);
+  // 溜めの形: 後ろ寄り(溜めの側)へ、手元から先へ垂れて先端が一番遅れる。3段目は頭上高く。
+  const holdA = (u: number): number => holdSide * (base + curl * u ** 1.5);
   const us = Array.from({ length: segs }, (_, i) => (i + 0.5) / segs);
   if (el >= whipRopeTotalMs(W)) return { handX: 0, handY: 0, angles: us.map(() => 0), lenK: 0.65, alpha: 0, phase: 'done' };
-  if (el < W * WHIP_ROPE_PULL_END) {
-    // ①引く: 前に垂れていた鞭を体の後ろへ(減速して止まる)。手元も後ろ・輪の側へ。
-    const t = clamp01(el / (W * WHIP_ROPE_PULL_END));
-    const p = easeOutCubic(t);
-    const dir = Math.sign(holdA(0) - restAngle(0)) || side;
-    const env = Math.sin(Math.PI * Math.min(1, t * 1.15)) * (1 - 0.35 * t);
+  const pullEnd = W * WHIP_ROPE_PULL_END;
+  if (el < pullEnd) {
+    // ①引く: 手が先に動き(早めに着く)、縄は根元から順に遅れて引きずられる(先端ほど遅れて動き出し、減速して溜めに着く)。
+    const t = clamp01(el / pullEnd);
+    const ph = easeOutCubic(clamp01(t * 1.35));
     return {
-      handX: hX * p, handY: hY * p,
-      angles: us.map(u => restAngle(u) + (holdA(u) - restAngle(u)) * p - dir * env * u ** 1.4 * WHIP_ROPE_PULL_LAG),
+      handX: hX * ph, handY: hY * ph,
+      angles: us.map(u => {
+        const d = WHIP_ROPE_PULL_DELAY * u ** 0.85; // 動き出し(先端ほど遅い)
+        const e = 1 - (1 - WHIP_ROPE_PULL_DELAY) * (1 - u); // 着き(根元は早く着き、先端は引き終わりに追いつく)
+        const p = easeInOut(clamp01((t - d) / Math.max(1e-6, e - d)));
+        return rest(u) + (holdA(u) - rest(u)) * p;
+      }),
       lenK: 1, alpha: 1, phase: 'pull',
     };
   }
-  const formAt = W * WHIP_LOOP_FORM_START, rollAt = W * WHIP_LOOP_ROLL_START;
+  const formAt = W * (fin ? WHIP_LOOP_FIN_FORM_START : WHIP_LOOP_FORM_START);
+  const rollAt = W * (fin ? WHIP_LOOP_FIN_ROLL_START : WHIP_LOOP_ROLL_START);
   if (el < formAt) {
     // ②溜め: 後ろで先がまだ揺れている(根元から先へ波が流れる・溜めの終わりへ向けて収まる)。
-    const h = (el - W * WHIP_ROPE_PULL_END) / Math.max(1e-6, formAt - W * WHIP_ROPE_PULL_END);
+    const h = (el - pullEnd) / Math.max(1e-6, formAt - pullEnd);
     return {
       handX: hX, handY: hY,
       angles: us.map(u => holdA(u) + 0.3 * u * u * Math.sin(h * Math.PI) * Math.cos(Math.PI * (u - h))),
@@ -155,43 +221,58 @@ export const whipRopeShape = (el: number, windupMs: number, segs = WHIP_ROPE_POI
   }
   if (el < W) {
     // ③打ち出し。先端側は溜めの形から張ったまっすぐの折り返しへ(taut)。手元は前へ戻る(加減速)。
-    const hk = 1 - smooth(clamp01((el - formAt) / (W - formAt)));
+    // 3段目は振り上げた手を折れができる間に下ろし切る(手元が顔の前に残って縄が頭に重ならない)。
+    const hk = 1 - smooth(clamp01((el - formAt) / ((fin ? rollAt : W) - formAt)));
     const taut = smooth(clamp01((el - formAt) / (W * WHIP_LOOP_TAUT_SPAN)));
-    const old = (u: number): number => holdA(u) + (side * WHIP_LOOP_TURN_RAD - holdA(u)) * taut;
+    const turn0 = fin ? WHIP_LOOP_TURN_FIN_RAD : WHIP_LOOP_TURN_RAD;
+    const pow = fin ? WHIP_LOOP_FIN_ACCEL_POW : WHIP_LOOP_ACCEL_POW;
+    // 折れの形(手元側の向き a1・先端側の向き a2)。先端側は溜めの形から張った折り返しへ移る。
+    const shape = (center: number, width: number, a1: number, turn: number): number[] => {
+      const a2 = a1 + side * turn;
+      return us.map(u => loopAngle(u, center, width, a1, holdA(u) + (a2 - holdA(u)) * taut));
+    };
     let angles: number[];
     if (el < rollAt) {
-      // 折れを作る: 手元側が溜めの向きから前へ返り、体の外(WHIP_LOOP_START_AT)にヘアピンができる(止まった所から動き出して着く)。
+      // 折れを作る: 手元側が溜めの向きから前(lean)へ返り、体の外(startAt)にヘアピンができる(止まった所から動き出して着く)。
       const k = smooth((el - formAt) / (rollAt - formAt));
-      const { center, width } = whipLoopAt(0, startAt);
-      angles = us.map(u => holdA(u) * (1 - k) + loopAngle(u, center, width, old(u)) * k);
+      const { center, width } = whipLoopAt(0, startAt, pow);
+      const tgt = shape(center, width, lean, turn0);
+      angles = us.map((u, i) => holdA(u) * (1 - k) + tgt[i] * k);
     } else {
-      // 転がる: 折れ目が先端へ加速して進み、締まっていく。
-      const { center, width } = whipLoopAt((el - rollAt) / (W - rollAt), startAt);
-      angles = us.map(u => loopAngle(u, center, width, old(u)));
+      // 転がる: 折れ目が先端へ加速して進み、締まっていく。手元側は lean から狙いの向きへ戻り、2本は寄って細い輪のまま進む。
+      const { center, width, p } = whipLoopAt((el - rollAt) / (W - rollAt), startAt, pow);
+      const turn = turn0 + (Math.max(turn0, WHIP_LOOP_TURN_ROLL_RAD) - turn0) * smooth(clamp01(p / 0.35));
+      angles = shape(center, width, lean * (1 - smooth(p)), turn);
     }
     return { handX: hX * hk, handY: hY * hk, angles, lenK: 1, alpha: 1, phase: 'lash' };
   }
   // ④パチン〜⑤戻り(1本の式で続ける=継ぎ目で止まらない)。
   const post = el - W;
   if (post === 0) return { handX: 0, handY: 0, angles: us.map(() => 0), lenK: 1, alpha: 1, phase: 'crack' };
-  // 跳ね返り: 先端の区間が手前(輪の側)へ戻ってから伸びる。
-  const rec = side * WHIP_CRACK_RECOIL * Math.sin(Math.PI * Math.min(1, post / WHIP_CRACK_RECOIL_MS)) * (1 - 0.4 * clamp01(post / WHIP_CRACK_RECOIL_MS));
+  // 跳ね返り: 先端の区間が輪の側へ大きく折れ返ってから(山 WHIP_CRACK_RECOIL_PEAK_MS)、減速して伸び戻る。
+  const recEnv = post < WHIP_CRACK_RECOIL_PEAK_MS
+    ? Math.sin((Math.PI / 2) * (post / WHIP_CRACK_RECOIL_PEAK_MS))
+    : 1 - smooth(clamp01((post - WHIP_CRACK_RECOIL_PEAK_MS) / (WHIP_CRACK_RECOIL_MS - WHIP_CRACK_RECOIL_PEAK_MS)));
+  const rec = side * WHIP_CRACK_RECOIL * recEnv;
   // 波: 手元から先端へ抜けていく(抜けるほど弱く)。先端側は少し不規則に。
   const s = post / WHIP_CRACK_WAVE_MS;
   const wa = -side * WHIP_CRACK_WAVE * smooth(clamp01(post / 15)) * (1 - clamp01(s / 1.6));
-  // たるみ: 張った縄が緩んで垂れ始める。
-  const slack = WHIP_ROPE_SLACK * smooth(clamp01(post / 160));
+  // たるみ: 鳴った直後から張った縄が緩み、重さで加速しながら垂れていく(戻りの終わりまで1本の式・いきなり倒れない)。
+  const postAll = WHIP_ROPE_CRACK_HOLD_MS + WHIP_ROPE_RETRACT_MS;
+  const fall = clamp01(post / postAll);
+  const slack = WHIP_ROPE_SLACK * smooth(clamp01(post / 110)) + WHIP_ROPE_DROOP * fall ** 1.7;
   const rt = clamp01((post - WHIP_ROPE_CRACK_HOLD_MS) / WHIP_ROPE_RETRACT_MS);
   const r = easeInOut(rt);
-  // 振り抜け: 払った勢いで先端が前(輪と逆の側=払う向き)へ流れてから垂れる。
-  const flow = -lag * WHIP_ROPE_FOLLOW_FLOW * Math.sin(Math.PI * Math.min(1, rt * 1.4));
+  // 振り抜け: 跳ね返りの後、払った勢いで先端が輪と逆の側へ流れてから垂れる。
+  const flow = -side * WHIP_ROPE_FOLLOW_FLOW * (fin ? 0.5 : 1) * Math.sin(Math.PI * clamp01((post - 40) / 220)) * smooth(clamp01((post - 40) / 60));
+  const droopSide = fin ? 1 : restSide; // 垂れる側(3段目は下へ)
   return {
     handX: 0, handY: 0,
     angles: us.map(u => {
       const x = u - s;
       const wave = wa * Math.sin((2 * Math.PI * x) / 0.24 + 0.7 * Math.sin(9 * u)) * Math.exp(-((x / 0.13) ** 2));
-      const tip = smooth(clamp01((u - 0.72) / 0.28));
-      return rec * tip + wave + slack * u ** 1.5 + r * (0.35 + 1.2 * u ** 1.5) + flow * u ** 1.6;
+      const tip = smooth(clamp01((u - WHIP_CRACK_RECOIL_AT) / 0.1 + 0.5));
+      return rec * tip + wave + droopSide * slack * (0.15 + u ** 1.5) + flow * u ** 1.6;
     }),
     lenK: 1 - 0.35 * r, alpha: 1 - r ** 1.5, phase: post < WHIP_ROPE_CRACK_HOLD_MS ? 'crack' : 'retract',
   };
@@ -229,10 +310,10 @@ export const WHIP_LOOP_ROPE_POINTS = 40;
  * 描く側: 地面の点 = 手元 + x·前 + y·横、高さ h を持ち上げる(新方式 proj は projLiftPointInto・旧方式は画面の y から引く)。
  */
 export const whipSwingRopePoints = (
-  el: number, windupMs: number, len: number, gripFrac: number, tipFrac: number, opts: { lag?: number; pull?: number; segs?: number; tilt?: number; startAt?: number } = {},
+  el: number, windupMs: number, len: number, gripFrac: number, tipFrac: number, opts: { lag?: number; pull?: number; segs?: number; tilt?: number; startAt?: number; lean?: number } = {},
 ): { pts: { x: number; y: number; h: number }[]; alpha: number; phase: WhipRopeShape['phase'] } => {
   const pull = opts.pull ?? 1;
-  const shape = whipRopeShape(el, windupMs, opts.segs ?? WHIP_LOOP_ROPE_POINTS - 1, pull, opts.lag ?? 0, opts.startAt);
+  const shape = whipRopeShape(el, windupMs, opts.segs ?? WHIP_LOOP_ROPE_POINTS - 1, pull, opts.lag ?? 0, opts.startAt, opts.lean ?? 0);
   const overhead = pull > 1;
   // 縦の面を横へ倒す(tilt rad)。上下の向きの振りで輪が平たくつぶれないように(形の y の一部を横へ逃がす)。
   const ts = Math.sin(opts.tilt ?? 0), tc = Math.cos(opts.tilt ?? 0);
