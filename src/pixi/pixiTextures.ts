@@ -937,13 +937,13 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/blob-shot-gold', scaleMode: 'nearest' },
       // 格闘の「動きの影」7枚(社長支給2026-11-07・青く光る輪郭+紺の中身・右向き)。技を出す時に本人の上へ前のめりに重ねる。
       // 格闘はどのステージでも持てるので起動マニフェスト。ドット絵=nearest。
-      { name: 'fx/brawler-stand-punch', scaleMode: 'nearest' },
-      { name: 'fx/brawler-stand-heavy', scaleMode: 'nearest' },
-      { name: 'fx/brawler-stand-slam', scaleMode: 'nearest' },
-      { name: 'fx/brawler-stand-palm', scaleMode: 'nearest' },
-      { name: 'fx/brawler-stand-guard', scaleMode: 'nearest' },
-      { name: 'fx/brawler-stand-hadou', scaleMode: 'nearest' },
-      { name: 'fx/brawler-stand-kick', scaleMode: 'nearest' },
+      { name: 'fx/brawler-stand2-punch', scaleMode: 'nearest' },
+      { name: 'fx/brawler-stand2-heavy', scaleMode: 'nearest' },
+      { name: 'fx/brawler-stand2-slam', scaleMode: 'nearest' },
+      { name: 'fx/brawler-stand2-palm', scaleMode: 'nearest' },
+      { name: 'fx/brawler-stand2-guard', scaleMode: 'nearest' },
+      { name: 'fx/brawler-stand2-hadou', scaleMode: 'nearest' },
+      { name: 'fx/brawler-stand2-kick', scaleMode: 'nearest' },
       // 秘奥義の題字(社長支給2026-11-08・128×44・黒い筆文字に白い縁)。ドット絵=nearest で整数倍に拡大する。
       { name: 'fx/brawler-secret-title', scaleMode: 'nearest' },
       // カウンター成立のガラスの砕け(社長支給2026-10-01)。15コマの横並び(4080×149・1コマ272×149)・透過あり。

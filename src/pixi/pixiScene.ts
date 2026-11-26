@@ -51190,7 +51190,13 @@ export class PixiScene {
     // レバーガード(§12-1c)の腕で受ける影は、受けた相手の方を向く(段・技の向きではない)。
     const sdx = f.lever ? (s.leverGuardDirX ?? s.dirX) : s.dirX, sdy = f.lever ? (s.leverGuardDirY ?? s.dirY) : s.dirY;
     const dm = Math.hypot(sdx, sdy) || 1;
-    const ux = sdx / dm, uy = sdy / dm;
+    let ux = sdx / dm, uy = sdy / dm;
+    // 向き: 左なら左右反転。
+    const left = ux < -0.05 || (Math.abs(ux) <= 0.05 && (p.lastDirection?.x ?? 1) < 0);
+    // ★構えの影(カウンターの構え)はフリックの角度で回さない・前へもずらさない=左右の向き(反転)だけ(社長指示2026-11-26
+    // 「構えの絵が出る時斜めになってる。上フリックなのでおそらく毎回上を意識して斜めになっちゃってる。左右だけでよいかと」)。
+    // 絵だけ=判定・受けの向き(s.dirX/dirY)は変えない。レバーガードの腕(受けた相手の方を向く)は今のまま。
+    if (f.kind === 'guard' && !f.lever) { ux = left ? -1 : 1; uy = 0; }
     // 見た目の体の中心(跳びの高さも入る)。
     const bodyH = Math.abs(body.height);
     const bx = body.position.x, by = body.position.y - bodyH * 0.5;
@@ -51222,8 +51228,7 @@ export class PixiScene {
       const along = (f.ext <= 1 ? shift * f.ext : shift + (f.ext - 1) * 30) + (f.armPush ?? 0) * dsc;
       tx = bx + ux * along; ty = by + uy * along - (f.lift ?? 0) * dsc; // 踵落とし(§29): 上から下ろしてくる
     }
-    // 向き: 左なら左右反転。上下は弱い傾き(±0.45rad まで=逆さまにしない)+ごく弱い前のめり。
-    const left = ux < -0.05 || (Math.abs(ux) <= 0.05 && (p.lastDirection?.x ?? 1) < 0);
+    // 上下は弱い傾き(±0.45rad まで=逆さまにしない)+ごく弱い前のめり(構えは上で uy=0 にしてあるので傾かない)。
     const lean = f.kind === 'slam' || f.kind === 'guard' ? 0.03 : 0.06;
     const a = Math.max(-0.45, Math.min(0.45, Math.atan2(uy, Math.abs(ux) < 1e-3 ? 1e-3 : Math.abs(ux)) * 0.6)) + lean;
     if (f.lever) {

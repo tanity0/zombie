@@ -1648,7 +1648,8 @@ export const brawlerLiftHeight = (u: number): number => BRAWLER_LIFT_VIS_PX * br
 // ---------------------------------------------------------------------------------------------
 // 動きの影(スタンド)・社長指示2026-11-07「動きの影パーツを用意したので、これをスタンドの様に薄く光らせて重ねて表示するのはどう?」
 // +「むしろ当たり判定のヴィジュアルとしてキャラの上に前のめりに出していいと思う。武器の代わりって感じ。」
-// 絵は右向き。tipU/tipV = 打つ手足の先(絵の中の割合)。ここを当たりの所へ合わせて置く(pixi)。heightPx = 表示の高さ(world px)。
+// 絵は右向き(社長の小さいドット絵・高さ56〜66ドット=表示とほぼ1:1・2026-11-26 差し替え。tip/body は新しい絵の画素から測った)。
+// tipU/tipV = 打つ手足の先(絵の中の割合)。ここを当たりの所へ合わせて置く(pixi)。heightPx = 表示の高さ(world px)。
 // ---------------------------------------------------------------------------------------------
 export type BrawlerStandKind = 'punch' | 'heavy' | 'slam' | 'palm' | 'guard' | 'hadou' | 'kick';
 export interface BrawlerStandSpec {
@@ -1662,16 +1663,16 @@ export interface BrawlerStandSpec {
 }
 export const BRAWLER_STAND_SCALE = 0.65;
 export const BRAWLER_STAND: Readonly<Record<BrawlerStandKind, BrawlerStandSpec>> = {
-  punch: { tex: 'fx/brawler-stand-punch', tipU: 0.95, tipV: 0.33, bodyU: 0.42, bodyV: 0.5, heightPx: 80 * BRAWLER_STAND_SCALE },
-  heavy: { tex: 'fx/brawler-stand-heavy', tipU: 0.96, tipV: 0.3, bodyU: 0.36, bodyV: 0.5, heightPx: 92 * BRAWLER_STAND_SCALE },
-  slam: { tex: 'fx/brawler-stand-slam', tipU: 0.55, tipV: 0.9, bodyU: 0.5, bodyV: 0.5, heightPx: 92 * BRAWLER_STAND_SCALE },
-  palm: { tex: 'fx/brawler-stand-palm', tipU: 0.88, tipV: 0.22, bodyU: 0.42, bodyV: 0.5, heightPx: 92 * BRAWLER_STAND_SCALE },
-  guard: { tex: 'fx/brawler-stand-guard', tipU: 0.62, tipV: 0.34, bodyU: 0.5, bodyV: 0.5, heightPx: 84 * BRAWLER_STAND_SCALE },
-  hadou: { tex: 'fx/brawler-stand-hadou', tipU: 0.93, tipV: 0.3, bodyU: 0.42, bodyV: 0.5, heightPx: 88 * BRAWLER_STAND_SCALE },
-  kick: { tex: 'fx/brawler-stand-kick', tipU: 0.96, tipV: 0.3, bodyU: 0.36, bodyV: 0.45, heightPx: 92 * BRAWLER_STAND_SCALE },
+  punch: { tex: 'fx/brawler-stand2-punch', tipU: 0.95, tipV: 0.31, bodyU: 0.42, bodyV: 0.5, heightPx: 80 * BRAWLER_STAND_SCALE },
+  heavy: { tex: 'fx/brawler-stand2-heavy', tipU: 0.955, tipV: 0.31, bodyU: 0.36, bodyV: 0.5, heightPx: 92 * BRAWLER_STAND_SCALE },
+  slam: { tex: 'fx/brawler-stand2-slam', tipU: 0.55, tipV: 0.9, bodyU: 0.5, bodyV: 0.5, heightPx: 92 * BRAWLER_STAND_SCALE },
+  palm: { tex: 'fx/brawler-stand2-palm', tipU: 0.88, tipV: 0.23, bodyU: 0.42, bodyV: 0.5, heightPx: 92 * BRAWLER_STAND_SCALE },
+  guard: { tex: 'fx/brawler-stand2-guard', tipU: 0.62, tipV: 0.34, bodyU: 0.5, bodyV: 0.5, heightPx: 84 * BRAWLER_STAND_SCALE },
+  hadou: { tex: 'fx/brawler-stand2-hadou', tipU: 0.93, tipV: 0.3, bodyU: 0.42, bodyV: 0.5, heightPx: 88 * BRAWLER_STAND_SCALE },
+  kick: { tex: 'fx/brawler-stand2-kick', tipU: 0.96, tipV: 0.36, bodyU: 0.36, bodyV: 0.45, heightPx: 92 * BRAWLER_STAND_SCALE },
 };
 /**
- * 構えの影の絵(fx/brawler-stand-guard・右向き)の中の「腕」の範囲(絵の中の割合)。レバーガード(§12-1c)の腕で受ける影は、この範囲だけを
+ * 構えの影の絵(fx/brawler-stand2-guard・右向き)の中の「腕」の範囲(絵の中の割合)。レバーガード(§12-1c)の腕で受ける影は、この範囲だけを
  * 白金で出す(全身の構えの影=カウンターと読み違えない)。上げた両の拳と前腕が入る(腕だけの素材は無いので、構えの絵から切り出す)。
  */
 export const BRAWLER_STAND_GUARD_ARM = { u0: 0.5, v0: 0.07, u1: 1, v1: 0.56 } as const;

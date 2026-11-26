@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "1136 files / 復号後 約724MB",
+ "generatedFor": "1143 files / 復号後 約724MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -1591,6 +1591,48 @@
    "h": 246,
    "bytes": 65448,
    "sha": "97fd6847deff486d"
+  },
+  "sprites/fx/brawler-stand2-guard.png": {
+   "w": 53,
+   "h": 64,
+   "bytes": 2188,
+   "sha": "e60dbab22a920c32"
+  },
+  "sprites/fx/brawler-stand2-hadou.png": {
+   "w": 72,
+   "h": 62,
+   "bytes": 2348,
+   "sha": "3623bb191ed55717"
+  },
+  "sprites/fx/brawler-stand2-heavy.png": {
+   "w": 87,
+   "h": 62,
+   "bytes": 2271,
+   "sha": "6e62c26f49592766"
+  },
+  "sprites/fx/brawler-stand2-kick.png": {
+   "w": 79,
+   "h": 66,
+   "bytes": 2289,
+   "sha": "9057017db46f7c70"
+  },
+  "sprites/fx/brawler-stand2-palm.png": {
+   "w": 65,
+   "h": 59,
+   "bytes": 1998,
+   "sha": "f4f0b7b25ef1f276"
+  },
+  "sprites/fx/brawler-stand2-punch.png": {
+   "w": 70,
+   "h": 60,
+   "bytes": 2038,
+   "sha": "bbbfbd45626f6c7e"
+  },
+  "sprites/fx/brawler-stand2-slam.png": {
+   "w": 58,
+   "h": 56,
+   "bytes": 1963,
+   "sha": "f65bf4f15d5702c4"
   },
   "sprites/fx/breath-sparkle.png": {
    "w": 426,
