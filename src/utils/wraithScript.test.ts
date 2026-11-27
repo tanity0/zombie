@@ -183,9 +183,9 @@ describe('宇宙飛行群と亡霊の出現(1ランにどちらか1体だけ・2
 // research/BRAWLER_PHANTOM.md §6(社長指示2026-11-10「出現は徘徊の枠で、亡霊か宇宙飛行が出てる時は出ない。この3人の中で抽選」)
 describe('徘徊の枠の抽選(亡霊・宇宙飛行群・拳鬼の3人から1人)', () => {
   const seq = (...v: number[]) => { let i = 0; return () => v[i++ % v.length]; };
-  it('枠の確率は変えない(20%)。枠が閉じた時は誰も出ない', () => {
-    expect(RUN_MUTANT_BOSS_CHANCE).toBe(0.2);
-    expect(pickRunMutantBoss(seq(0.2, 0), { brawler: true })).toBe('none');
+  it('枠の確率(25%・社長指示2026-11-28)。枠が閉じた時は誰も出ない', () => {
+    expect(RUN_MUTANT_BOSS_CHANCE).toBe(0.25);
+    expect(pickRunMutantBoss(seq(RUN_MUTANT_BOSS_CHANCE, 0), { brawler: true })).toBe('none');
     expect(pickRunMutantBoss(seq(0.1999, 0), { brawler: true })).not.toBe('none');
   });
   it('拳鬼が入る時は3人から均等に1人(必ず1人だけ=戻り値は1つ)', () => {

@@ -23,7 +23,7 @@ const ALL = ['stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5'];
 beforeEach(() => { store.clear(); });
 
 describe('作戦室での抽選', () => {
-  it('20% を超えたら「なし」(乱数は1回だけ)', () => {
+  it('枠の確率を超えたら「なし」(乱数は1回だけ)', () => {
     expect(rollSortiePatrolPlan({ sortieableStageIds: ALL, stage1CastleCleared: true }, seq(RUN_MUTANT_BOSS_CHANCE))).toEqual({ boss: 'none' });
   });
   it('枠が開いたら顔ぶれから均等に1人 → その人の出られるステージから均等に1つ', () => {
@@ -45,7 +45,7 @@ describe('作戦室での抽選', () => {
   it('出られるステージが誰にも無ければ「なし」', () => {
     expect(rollSortiePatrolPlan({ sortieableStageIds: ['stage-2'], stage1CastleCleared: true }, seq(0, 0, 0))).toEqual({ boss: 'none' });
   });
-  it('確認用の forceOpen は 20% を飛ばす(乱数は誰・どこの2回だけ)', () => {
+  it('確認用の forceOpen は枠の確率を飛ばす(乱数は誰・どこの2回だけ)', () => {
     expect(rollSortiePatrolPlan({ sortieableStageIds: ALL, stage1CastleCleared: true, forceOpen: true }, seq(0, 0))).toEqual({ boss: 'astro', stageId: 'stage-1' });
   });
 });

@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5886', items: ['孫悟空・亡霊・宇宙飛行群が少し出やすくなった'] },
   { version: '0.25.5885', items: ['ナイフの一撃が軽くなり、三段目だけが重い。連撃を最後まで振り切った時の一撃が決め手になる'] },
   { version: '0.25.5884', items: ['タイトルの描き上げを新しい手描きに差し替えた。アタリの線から描き起こしていく'] },
   { version: '0.25.5883', items: ['ナイフで浮かせた敵は少し低く浮き、早く落ちてくる'] },

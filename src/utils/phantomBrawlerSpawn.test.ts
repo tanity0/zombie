@@ -1,3 +1,4 @@
+import { RUN_MUTANT_BOSS_CHANCE } from './wraithScript';
 // research/BRAWLER_PHANTOM.md §6: 拳鬼の本編の出現(純関数)。
 import { describe, expect, it } from 'vitest';
 import {
@@ -43,8 +44,8 @@ describe('拳鬼の出現: 徘徊の枠の抽選(亡霊・宇宙飛行群・拳�
       for (const r of PICK) expect(rollRunPatrolSlot({ stageId, stage1CastleCleared: true }, seq(0, r))).toBe('none');
     }
   });
-  it('枠が開かない時(20%の外)は誰も出ない', () => {
-    expect(rollRunPatrolSlot({ stageId: 'stage-3', stage1CastleCleared: true }, seq(0.2, 0.7))).toBe('none');
+  it('枠が開かない時(確率の外)は誰も出ない', () => {
+    expect(rollRunPatrolSlot({ stageId: 'stage-3', stage1CastleCleared: true }, seq(RUN_MUTANT_BOSS_CHANCE, 0.7))).toBe('none');
   });
 });
 
