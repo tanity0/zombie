@@ -5,6 +5,7 @@ import type { Rect } from '../world/obstacles';
 import { segmentBlocked } from '../world/obstacles';
 import { enemyRangeRect, isCorpse, isReaperFamily, isTerminalReaper, isUntouchable } from './enemyUtils';
 import { urlNum } from './urlNum';
+import { crispCurve } from './meleeHitstopTiming';
 import { meleeImpactPoint, bandBoxOverlap } from './meleeImpact';
 import { leverGuardStandAlpha, leverGuardArmOffset } from './brawlerLeverGuard';
 
@@ -2361,6 +2362,27 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number, nowMs?: nu
   if (!pose || !s || s.airSuplexRiseAt === undefined) return pose;
   const lift = brawlerAirSuplexRise(t - s.airSuplexRiseAt);
   return lift > 0 ? { ...pose, jump: (pose.jump ?? 0) + lift } : pose;
+};
+
+/**
+ * ★プレイヤーの体の絵に使う格闘の姿勢(社長指示2026-11-27「攻撃時、絵が揺れてるのやめたい。きっちり動きと止まりをハッキリさせて」)。描画だけ。
+ * brawlerPoseAt から、傾き(lean)・伸び縮み(sqX/sqY)・震え(shakeX/shakeY=大踏み潰しの溜めの震えも)を外す。回転は蹴りバク宙の spin だけ残す。
+ * 位置のずれ(push・sink)は「行って戻る」曲線をやめ、元の曲線の山・谷(当たりの瞬間を含む)の時刻と値へ素早く移ってそこで止まる形に作り直す
+ * (utils/meleeHitstopTiming crispCurve)。跳びの高さ(jump)・絵(tex/flip/hand)はそのまま。掴み・投げ・スープレックス・秘奥義・待機は技そのものの動き=位置もそのまま。
+ */
+export const brawlerCrispPoseAt = (s: BrawlerState | undefined, t: number, nowMs?: number): BrawlerPose | null => {
+  const pose = brawlerPoseAt(s, t, nowMs);
+  if (!pose || !s) return pose;
+  const flat: BrawlerPose = { ...pose, lean: 0, sqX: 1, sqY: 1, shakeX: 0, shakeY: 0 };
+  if (s.phase === 'idle' || s.secret || s.grab || s.contactGrab || s.throwAt !== undefined || s.suplexAt !== undefined || s.airSuplexRiseAt !== undefined) return flat;
+  if (brawlerKickHeldInStop(s, t)) return flat;
+  const el = Math.max(0, brawlerElapsed(s, t));
+  const total = Math.max(1, brawlerTotalMs(s));
+  // 技の時計だけを el に合わせた写し(止めを外す=経過 e の姿勢をそのまま引く)。
+  const at = (e: number): BrawlerState => ({ ...s, startAt: t - e, stopFrom: 0, stopUntil: 0, stopPrevMs: 0 });
+  const push = crispCurve(e => brawlerPoseAtRaw(at(e), t, nowMs)?.push ?? 0, el, 0, total, [s.windupMs]);
+  const sink = pose.sink !== undefined ? crispCurve(e => brawlerPoseAtRaw(at(e), t, nowMs)?.sink ?? 0, el, 0, total, [s.windupMs]) : undefined;
+  return { ...flat, push, ...(sink !== undefined ? { sink } : {}) };
 };
 
 // ★起動時のテンポ係数(`?brtempo=`・既定 1.3)。全部の時間の欄が宣言された後(ファイルの末尾)で1回だけ書き直す。

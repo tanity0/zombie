@@ -424,6 +424,9 @@ export interface Player extends DashLocomotionState {
   /** ★ナイフの3連撃の自分の振りの止め(描画だけ・utils/knifeCombo knifeSwingDrawSince): 当たった時刻(Date.now)と止める長さ(ms)。判定・移動・段の間隔は読まない。 */
   knifeHitstopAt?: number;
   knifeHitstopMs?: number;
+  /** ★鞭の3連撃の自分の振りの止め(描画だけ・utils/meleeHitstopTiming): 止める時刻(Date.now・振りの絵の中で先端が当たった敵の中心に一番近い時刻)と長さ(ms)。 */
+  whipHitstopAt?: number;
+  whipHitstopMs?: number;
   /** ★スラッシャーの追い打ちの絵(描画だけ・utils/slasherFollowup): 最後に出た追い打ちの時刻(Date.now)と何回目か(1始まり)。 */
   slasherEchoAt?: number;
   slasherEchoK?: number;
@@ -3609,6 +3612,9 @@ export type VisualEffect =
       pull?: number;
       /** ★3連撃の段(1=右から・2=左から・3=もう一度右から一番大きく・utils/whipSwingMotion.whipRopePose)。未定義=pull から(>1 で3段目・それ以外は1段目)。 */
       stage?: 1 | 2 | 3;
+      /** ★自分の振りの止め(ヒットストップ・描画だけ・utils/meleeHitstopTiming): 絵の時計(createdAt からの ms)を stopAt の所で stopMs だけ止める。寿命も stopMs だけ延びる。 */
+      stopAt?: number;
+      stopMs?: number;
     }
   | {
       // 鞭: 全長を即表示してフェードする太い帯(=当たり範囲)+ 明るい芯。
@@ -3706,6 +3712,9 @@ export type VisualEffect =
       // あれば刃筋をこの向き・この長さに合わせる(x,y=通り道の真ん中)。描画だけ。
       katanaPathDx?: number;
       katanaPathDy?: number;
+      /** ★自分の振りの止め(ヒットストップ・描画だけ・utils/meleeHitstopTiming): 絵の時計(createdAt からの ms)を stopAt の所で stopMs だけ止める。寿命も stopMs だけ延びる。 */
+      stopAt?: number;
+      stopMs?: number;
     }
   | {
       // PACING_PUZZLE.md §5.23 M22 Group C3: 1スイング/1発で複数の敵に当たった時の

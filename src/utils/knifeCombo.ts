@@ -5,6 +5,7 @@
 //  - カウンター窓は1段目だけ・カウンターのクールダウンは連撃の終わりから(鞭と同じ規則)。
 //  - 絵: 1段目=振り上げ(下から上へ斬り上げ) / 2段目=1段目で振り上げた所からの振り下ろし / 3段目=再び振り上げ。どの段も少し踏み込む。
 import { comboFinishMoveMult } from './whipCombo';
+import { stretchStopMs } from './meleeHitstopTiming';
 
 /** 段と段の間の最短(ms)。 */
 export const KNIFE_COMBO_INTERVAL_MS = 500;
@@ -124,11 +125,18 @@ export const KNIFE_COMBO_CRIT_SHAKE_MS = 70;
 export const KNIFE_COMBO_CRIT_SHAKE_MAG = 3;
 /** 段の手応え(段の外は1段目)。 */
 export const knifeComboFeel = (stage: number): KnifeComboFeel => KNIFE_COMBO_FEEL[(stage === 2 || stage === 3 ? stage : 1) as KnifeComboStage];
-/** 当たった敵の止め(ms)・自分の振りの止め(ms)・揺れ(ms/強さ)。会心の上乗せ込み。 */
+/**
+ * 当たった敵の止め(ms)・自分の振りの止め(ms)・揺れ(ms/強さ)。会心の上乗せ込み。
+ * ★止めの長さは段の値 ×MELEE_HITSTOP_STRETCH(社長指示2026-11-27「もう少し止めてもいい気がする」・叩き台・旧 ×1)。会心の上乗せは今のまま足す。
+ */
 export const knifeComboHitStop = (stage: number, crit: boolean): { enemyMs: number; selfMs: number; shakeMs: number; shakeMag: number } => {
   const f = knifeComboFeel(stage);
   const shakeMs = f.shakeMs + (crit ? KNIFE_COMBO_CRIT_SHAKE_MS : 0), shakeMag = f.shakeMag + (crit ? KNIFE_COMBO_CRIT_SHAKE_MAG : 0);
-  return { enemyMs: f.stopMs + (crit ? KNIFE_COMBO_CRIT_STOP_MS : 0), selfMs: f.selfStopMs + (crit ? KNIFE_COMBO_CRIT_SELF_STOP_MS : 0), shakeMs, shakeMag };
+  return {
+    enemyMs: stretchStopMs(f.stopMs) + (crit ? KNIFE_COMBO_CRIT_STOP_MS : 0),
+    selfMs: stretchStopMs(f.selfStopMs) + (crit ? KNIFE_COMBO_CRIT_SELF_STOP_MS : 0),
+    shakeMs, shakeMag,
+  };
 };
 /** 連打で同じ音が機械的に並ばないよう高さを揺らす幅(±割合)。 */
 export const KNIFE_COMBO_PITCH_JITTER = 0.04;

@@ -4,6 +4,8 @@
 //  - 段と段の間は最短 INTERVAL_MS(それより早いタップは1つだけ先行入力として持ち、間隔が明けたら出す)。
 //  - 絵: 1段目=右から / 2段目=左から / 3段目=もう一度右から一番大きく(判定は今の振りの帯=狙いの向きのまま・whipComboFromSide)。
 
+import { stretchStopMs } from './meleeHitstopTiming';
+
 /** 段と段の間の最短(ms)。★社長指示2026-11-26「鞭の連撃、0.5秒間隔にして」(旧 300)。 */
 export const WHIP_COMBO_INTERVAL_MS = 500;
 /** 最後の振りからこれだけタップが無ければ1段目へ戻る(ms)。 */
@@ -107,14 +109,15 @@ export const whipComboQueuedAction = (now: number, queuedAt: number, cdEnd: numb
  * (見え方の監査 A6「3段の差が既存の白い命中の光に埋もれる」: 白い光は残し、差を足す側で大きくする。)
  */
 export interface WhipComboFeel {
-  stopMs: number; shakeMs: number; shakeMag: number; burst: number; ringR: number; glow: 0 | 1 | 2;
+  /** ★selfStopMs=自分の振りの絵(体の姿勢・縄)を止める長さ(ms・描画だけ・社長指示2026-11-27「鞭にもナイフと同じ自分の止め」)。 */
+  stopMs: number; selfStopMs: number; shakeMs: number; shakeMag: number; burst: number; ringR: number; glow: 0 | 1 | 2;
   streak: 0 | 1 | 2; finish: boolean;
   hitRate: number; hitVol: number; heavyVol: number; heavyRate: number;
 }
 export const WHIP_COMBO_FEEL: Readonly<Record<WhipComboStage, WhipComboFeel>> = {
-  1: { stopMs: 55, shakeMs: 0, shakeMag: 0, burst: 7, ringR: 0, glow: 0, streak: 1, finish: false, hitRate: 1.22, hitVol: 0.7, heavyVol: 0, heavyRate: 1 },
-  2: { stopMs: 70, shakeMs: 110, shakeMag: 4, burst: 10, ringR: 46, glow: 1, streak: 2, finish: false, hitRate: 1.04, hitVol: 0.85, heavyVol: 0.35, heavyRate: 1.25 },
-  3: { stopMs: 150, shakeMs: 280, shakeMag: 12, burst: 24, ringR: 120, glow: 2, streak: 0, finish: true, hitRate: 0.82, hitVol: 1, heavyVol: 0.95, heavyRate: 0.84 },
+  1: { stopMs: 55, selfStopMs: 45, shakeMs: 0, shakeMag: 0, burst: 7, ringR: 0, glow: 0, streak: 1, finish: false, hitRate: 1.22, hitVol: 0.7, heavyVol: 0, heavyRate: 1 },
+  2: { stopMs: 70, selfStopMs: 60, shakeMs: 110, shakeMag: 4, burst: 10, ringR: 46, glow: 1, streak: 2, finish: false, hitRate: 1.04, hitVol: 0.85, heavyVol: 0.35, heavyRate: 1.25 },
+  3: { stopMs: 150, selfStopMs: 120, shakeMs: 280, shakeMag: 12, burst: 24, ringR: 120, glow: 2, streak: 0, finish: true, hitRate: 0.82, hitVol: 1, heavyVol: 0.95, heavyRate: 0.84 },
 };
 /** 会心の上乗せ: 止め +ms・揺れ +ms/+強さ・金の光と輪。 */
 export const WHIP_COMBO_CRIT_STOP_MS = 45;
@@ -125,6 +128,19 @@ export const WHIP_COMBO_PITCH_JITTER = 0.05;
 export const whipComboPitch = (base: number, r: number): number => base * (1 + WHIP_COMBO_PITCH_JITTER * (2 * r - 1));
 /** 段の手応え。 */
 export const whipComboFeel = (stage: number): WhipComboFeel => WHIP_COMBO_FEEL[(stage === 2 || stage === 3 ? stage : 1) as WhipComboStage];
+/** 会心の時の自分の振りの止めの上乗せ(ms・ナイフの KNIFE_COMBO_CRIT_SELF_STOP_MS と同じ)。 */
+export const WHIP_COMBO_CRIT_SELF_STOP_MS = 30;
+/**
+ * 当たった敵の止め(ms)・自分の振りの止め(ms)。会心の上乗せ込み。
+ * ★段の値 ×MELEE_HITSTOP_STRETCH(社長指示2026-11-27「もう少し止めてもいい気がする」・叩き台・旧 ×1)。会心の上乗せは今のまま足す。
+ */
+export const whipComboHitStop = (stage: number, crit: boolean): { enemyMs: number; selfMs: number } => {
+  const f = whipComboFeel(stage);
+  return {
+    enemyMs: stretchStopMs(f.stopMs) + (crit ? WHIP_COMBO_CRIT_STOP_MS : 0),
+    selfMs: stretchStopMs(f.selfStopMs) + (crit ? WHIP_COMBO_CRIT_SELF_STOP_MS : 0),
+  };
+};
 
 /**
  * ★カウンターは3連撃の1段目だけ・クールダウンは連撃の終わりから(社長指示2026-11-26「カウンターは一撃目のみで、クールダウンは連撃終わりからです」)。
