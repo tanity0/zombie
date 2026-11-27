@@ -54,7 +54,7 @@ export interface DashLocomotionState {
   // 一閃の状態機械の一部なので主語ごと(プレイヤー=Player 直付け・守護霊=Summon.ghostDash)に持つ。
   tsubameCrouchUntil?: number;
   // ★一閃の通り道の途中の止め(utils/katanaDashHold・社長指示2026-11-27「真ん中あたりで一瞬止めて」)。一閃を出した瞬間に器を作り、
-  // 走りの途中で最初に当たる敵の中心(空振り=通り道の真ん中)を通る瞬間に止めを始める。止めの間は走らず、走り終わりは止めた分だけ後ろへ延びる。
+  // 走りの途中で最初に当たる敵の中心を通る瞬間に止めを始める(空振りは止めない)。止めの間は走らず、走り終わりは止めた分だけ後ろへ延びる。
   katanaDashHold?: import('../utils/katanaDashHold').KatanaDashHold;
   // ワイヤーアンカー(移動系サブ)。装備中は前方に青サークルを常時表示。指離しで「即座に」アンカーを
   // 打ち込み(ワイヤーが表示される)、溜(wirePlantUntil まで)の後に追加タップでアンカー地点へ高速移動。
@@ -439,6 +439,12 @@ export interface Player extends DashLocomotionState {
   /** ★鞭の3連撃の自分の振りの止め(描画だけ・utils/meleeHitstopTiming): 止める時刻(Date.now・振りの絵の中で先端が当たった敵の中心に一番近い時刻)と長さ(ms)。 */
   whipHitstopAt?: number;
   whipHitstopMs?: number;
+  /**
+   * ★刀の自分の振りの止め(描画だけ): その振り自身(縮地・被弾反撃の斬り)が当たった時に、どの振りの当たりか(その振りの meleeSwingAt)と止めの長さ(ms)。
+   * 体の姿勢は決め(振り抜いて刀が一番伸びた所)で止める。空振り・オート斬り・守護霊・一閃の着地などの当たりでは書かない=出ている振りの体を止めない。
+   */
+  katanaHitstopSwingAt?: number;
+  katanaHitstopMs?: number;
   /** ★スラッシャーの追い打ちの絵(描画だけ・utils/slasherFollowup): 最後に出た追い打ちの時刻(Date.now)と何回目か(1始まり)。 */
   slasherEchoAt?: number;
   slasherEchoK?: number;

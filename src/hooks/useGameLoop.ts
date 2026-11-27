@@ -14120,7 +14120,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ghostMicroHabitSwingLg: decision.microHabitSwingLg, ghostMicroEscapeArmKey: decision.microEscapeArmKey, ghostMicroHabitEscaped: decision.microHabitEscaped,
                 } : s),
               }));
-              // ★一閃の通り道の途中の止め(utils/katanaDashHold・プレイヤーと同じ): 走ったこのフレームで最初に当たる敵の中心(空振り=真ん中)を通ったら止める。
+              // ★一閃の通り道の途中の止め(utils/katanaDashHold・プレイヤーと同じ): 走ったこのフレームで最初に当たる敵の中心を通ったら止める(空振りは止めない)。
               if (gDashMode === 'katana-dash' && gDashState.katanaDashHold && gDashState.katanaDashHold.at === undefined) {
                 stepKatanaDashPassStop(ghostNow.id, nowMs,
                   { x: ghostNow.x + ghostNow.width / 2, y: ghostNow.y + ghostNow.height / 2 },

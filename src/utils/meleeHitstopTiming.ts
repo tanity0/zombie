@@ -209,28 +209,28 @@ export const drawSinceWithStop = (rawSince: number, stopSince: number, selfMs: n
   return rawSince - Math.min(rawSince - stopSince, selfMs);
 };
 
-// ---- ★空振りの「決めの間」(社長指示2026-11-27「攻撃系、当たった時だけ揺れが動かなくなってる。当たらなくても止めて。」・描画だけ) ----
-
-/** 空振りでも振りの絵の決め(武器が一番伸びた所)で止める長さ(ms・叩き台)。当たった時は自分の止めと長い方を採る(二重にしない)。 */
-export const MELEE_WHIFF_HOLD_MS = 70;
+// ---- 当たった時の自分の止めの下限(描画だけ) ----
 
 /**
- * 空振りの決めの間の絵の時計。keyAt=決めの経過(当たる時刻=武器が一番伸びた所)・endAt=振りの絵が終わる経過・holdMs=止める長さ。
- * keyAt までそのまま → keyAt で holdMs 止まる → 残り(keyAt..endAt)を少し速めて endAt にちょうど着く(絵の終わる時刻は今と同じ=次の段の絵とぶつからない)。
- * 値は連続(明けで跳ばない)。判定・段の間隔・隙・移動は触らない(絵の時計だけ)。止める余地が無い(endAt−keyAt ≤ holdMs)ならそのまま。
+ * 当たった時の自分の止めの下限(ms)。当たった時は自分の止めとこれの長い方で止める(v0.25.5860 から変えない長さ)。
+ * ★空振りは止めない(社長指示2026-11-27「空振りは止めない。止めてと言ったのは、キャラの絵が攻撃時に揺れているところだけ」)。
+ *   旧名 MELEE_WHIFF_HOLD_MS(空振りの決めの間)は撤去した=空振りの絵の時計は生の時計のまま進む。
  */
-export const whiffHoldSince = (rawSince: number, keyAt: number, endAt: number, holdMs = MELEE_WHIFF_HOLD_MS): number => {
-  if (!(holdMs > 0) || !(rawSince > keyAt) || !(endAt - keyAt > holdMs) || !(rawSince < endAt)) return rawSince;
-  if (rawSince <= keyAt + holdMs) return keyAt;
-  return keyAt + (rawSince - keyAt - holdMs) * ((endAt - keyAt) / (endAt - keyAt - holdMs));
-};
+export const MELEE_HIT_HOLD_MIN_MS = 70;
+
+/**
+ * 刀の振りの体の止め(当たった時だけ)。swingAt=出ている振りの起点・hitSwingAt=store が書いた「当たった振り」の起点・hitMs=止めの長さ・keyAt=決めの経過
+ * (振り抜いて刀が一番伸びた所)。当たった振りが出ている振りと同じ時だけ決めで止める。別の振り・別の打ち(オート斬り等)の当たり・空振りは null=止めない。
+ */
+export const katanaPoseHit = (swingAt: number, hitSwingAt: number | undefined, hitMs: number | undefined, keyAt: number): { stopSince: number; selfMs: number } | null =>
+  swingAt > 0 && hitSwingAt === swingAt && (hitMs ?? 0) > 0 ? { stopSince: keyAt, selfMs: hitMs ?? 0 } : null;
 
 /**
  * 振りの体の姿勢の絵の時計(ナイフ・鞭・刀=プレイヤー本人)。hit=この振りの自分の止め(当たった時・stopSince=止めた経過・selfMs=止めの長さ)。
- * 当たった時=今の自分の止め(長さは MELEE_WHIFF_HOLD_MS と長い方)・空振り=決めの間(whiffHoldSince)。
+ * 当たった時=今の自分の止め(長さは MELEE_HIT_HOLD_MIN_MS と長い方)・空振り(hit=null)=止めない(生の時計のまま)。
  */
 export const meleePoseSince = (
-  rawSince: number, hit: { stopSince: number; selfMs: number } | null, keyAt: number, endAt: number, holdMs = MELEE_WHIFF_HOLD_MS,
+  rawSince: number, hit: { stopSince: number; selfMs: number } | null, minMs = MELEE_HIT_HOLD_MIN_MS,
 ): number => (hit && hit.stopSince >= 0
-  ? drawSinceWithStop(rawSince, hit.stopSince, Math.max(hit.selfMs, holdMs))
-  : whiffHoldSince(rawSince, keyAt, endAt, holdMs));
+  ? drawSinceWithStop(rawSince, hit.stopSince, Math.max(hit.selfMs, minMs))
+  : rawSince);

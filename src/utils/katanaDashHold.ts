@@ -1,10 +1,10 @@
 // ★刀の一閃の「通り道の途中の止め」(社長指示2026-11-27「一閃でストップしてないように見える。真ん中あたりで一瞬止めて欲しい」)。
 // 一閃(居合一閃も)で走っている途中、通り道で最初に当たる敵の体の中心を通る瞬間に、走りを一瞬止める(体・斬撃の筋が止まる)。
 // 走りの時計を止め、止めた分だけ走り終わり(着地・硬直・敵の体で止めない間)を後ろへ延ばす=走る距離は変えない。
-// 通り道に敵が居ない(空振り)時は、通り道の真ん中で空振りの決めの間(MELEE_WHIFF_HOLD_MS)だけ止める。
+// 通り道に敵が居ない(空振り)時は止めない(社長指示2026-11-27「空振りは止めない」)。
 // 当たりの処理(ダメージ・切り傷・殺陣・燕返しの受付)は今のまま着地の後にまとめて出す(止めは体と絵と当たった敵の止め・震えだけ)。
 // store/PixiJS 非依存の純関数(movePlayer・守護霊の移動・pixi の筋の絵が読む)。
-import { MELEE_WHIFF_HOLD_MS, KATANA_SELF_STOP_MS } from './meleeHitstopTiming';
+import { KATANA_SELF_STOP_MS } from './meleeHitstopTiming';
 import { applyHitstopK } from './hitShake';
 
 /** 一閃の通り道の止め(1回の一閃に1回だけ)。at が入ったら止めは決まっている(at..at+ms の間は走らない)。 */
@@ -19,15 +19,13 @@ export interface KatanaDashHold {
   total: number;
   /** 敵の中心を通った時の止めの長さ(ms)。 */
   hitMs: number;
-  /** 空振りの時の止めの長さ(ms)。 */
-  whiffMs: number;
   /** 一閃の筋の絵(trail)の id=止めの時刻を書き込む先。 */
   trailId?: string;
   /** 止めが始まった時刻(Date.now)。未設定=まだ止めていない。 */
   at?: number;
   /** 止めの長さ(ms)。at と一緒に入る。 */
   ms?: number;
-  /** 止めた敵(空振りの止めは未設定)。 */
+  /** 止めた敵。 */
   enemyId?: string;
   /**
    * ★燕返し(社長指示2026-11-27「燕返しもストップして」・research/KATANA_TSUBAME.md §1): 体は動かない=「元の位置へ逆向きに走った」と仮定した
@@ -42,21 +40,18 @@ export interface KatanaDashHold {
 export const KATANA_DASH_HIT_HOLD_MS = applyHitstopK(KATANA_SELF_STOP_MS, 'finisher');
 /**
  * ★居合一閃の、貫いた敵での止め(ms)= 一閃の止めの2倍(社長「なんか素っ気ない」=カウンターが決まった一撃は通常の一閃より一段強く見せる・叩き台)。
- * 空振りの止めは一閃と同じ(居合一閃は必ず主に当たる)。
  */
 export const KATANA_IAI_PASS_HOLD_MS = KATANA_DASH_HIT_HOLD_MS * 2;
 /** 居合一閃の、貫いた敵の震え(止めより長く・大きく)。lenMul=止めの長さに対する震えの長さ・ampMul=震えの幅(一閃=1・1)。 */
 export const KATANA_IAI_PASS_SHAKE = { lenMul: 1.5, ampMul: 1.8 } as const;
-/** 空振りの一閃の真ん中の止め(ms)= 空振りの決めの間と同じ。 */
-export const KATANA_DASH_WHIFF_HOLD_MS = MELEE_WHIFF_HOLD_MS;
 /** 殺陣の各発の筋の止め(ms・短め=刀の自分の止めの半分・叩き台)。殺陣は 90ms おきに次の発が出るので、それより短くする。 */
 export const SATSUJIN_STRIKE_HOLD_MS = Math.round(KATANA_SELF_STOP_MS * 0.5);
 
 /** 止めの器を作る(一閃を出した瞬間)。 */
 export const makeKatanaDashHold = (
   startAt: number, from: { x: number; y: number }, ux: number, uy: number, total: number, trailId?: string,
-  hitMs = KATANA_DASH_HIT_HOLD_MS, whiffMs = KATANA_DASH_WHIFF_HOLD_MS,
-): KatanaDashHold => ({ startAt, fromX: from.x, fromY: from.y, ux, uy, total, hitMs, whiffMs, ...(trailId !== undefined ? { trailId } : {}) });
+  hitMs = KATANA_DASH_HIT_HOLD_MS,
+): KatanaDashHold => ({ startAt, fromX: from.x, fromY: from.y, ux, uy, total, hitMs, ...(trailId !== undefined ? { trailId } : {}) });
 
 /** 燕返しの止めの器(体は動かない・仮定の通り道を runMs で走る)。 */
 export const makeTsubameDashHold = (
@@ -85,12 +80,12 @@ export interface KatanaDashHoldCand { id: string; along: number; halfW: number }
  * このフレームの走り(before → after・通り道に沿った位置)で止めを始めるか。
  *  - 敵の中心を通った(中心の位置が after+半フレーム以下・走り始めの位置より体の半分以上後ろではない)→ その中で一番手前の敵で 'hit'。
  *    半フレーム先まで見る=止める位置のずれは最大で半フレームの走り(次のフレームで行き過ぎるより、こちらで止めた方が中心に近い時はここで止める)。
- *  - 通らずに真ん中を越えた時、真ん中より先(予定の距離+体の半分まで)に敵が居なければ 'whiff'(居れば、その敵を通るまで待つ)。
+ *  - 敵を通らない(空振り)時は止めない(社長指示2026-11-27「空振りは止めない」)。
  *  - もう止めた・前へ進んでいない → null。
  */
 export const pickKatanaDashHold = (
   h: KatanaDashHold, before: number, after: number, cands: readonly KatanaDashHoldCand[],
-): { kind: 'hit'; enemyId: string; ms: number } | { kind: 'whiff'; ms: number } | null => {
+): { kind: 'hit'; enemyId: string; ms: number } | null => {
   if (h.at !== undefined || !(after > before)) return null;
   const reach = after + (after - before) / 2;
   let best: KatanaDashHoldCand | null = null;
@@ -99,8 +94,6 @@ export const pickKatanaDashHold = (
     if (!best || c.along < best.along) best = c;
   }
   if (best) return { kind: 'hit', enemyId: best.id, ms: h.hitMs };
-  const mid = h.total / 2;
-  if (before < mid && reach >= mid && !cands.some(c => c.along > reach && c.along <= h.total + c.halfW)) return { kind: 'whiff', ms: h.whiffMs };
   return null;
 };
 

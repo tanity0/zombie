@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, KATANA_DASH_MS, KATANA_DASH_DISTANCE, INVULN_MS } from './gameStore';
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
-import { KATANA_DASH_HIT_HOLD_MS, KATANA_DASH_WHIFF_HOLD_MS } from '../utils/katanaDashHold';
+import { KATANA_DASH_HIT_HOLD_MS } from '../utils/katanaDashHold';
 import { isFlickFollowupOpen } from '../utils/flickFollowup';
 
 let now = 18_000_000;
@@ -92,14 +92,12 @@ describe('一閃の通り道の途中の止め', () => {
     // 着地の当たりの瞬間に新しく書かれた止め(途中の止めの明けより後まで)。
     expect(r.stunAtHit ?? 0).toBeGreaterThan(r.hitAt);
   });
-  it('空振り: 通り道の真ん中で決めの間だけ止まる', () => {
-    const start = now;
+  it('空振り: 止めない(社長指示2026-11-27「空振りは止めない」)=走りの間は毎フレーム前へ進む', () => {
     const r = dashAndWatch(false);
-    expect(r.hold.at).toBeDefined();
-    expect(r.hold.enemyId).toBeUndefined();
-    expect(r.hold.ms).toBe(KATANA_DASH_WHIFF_HOLD_MS);
-    const holdX = r.xs[Math.round((r.hold.at! - start) / 10) - 1];
-    expect(Math.abs(holdX - r.hold.total / 2)).toBeLessThan(KATANA_DASH_DISTANCE / KATANA_DASH_MS * 10 + 1);
+    expect(r.hold.at).toBeUndefined();
+    expect(r.hold.ms).toBeUndefined();
+    const runFrames = Math.floor(KATANA_DASH_MS / 10) - 1;
+    for (let i = 1; i < runFrames; i++) expect(r.xs[i]).toBeGreaterThan(r.xs[i - 1]);
   });
   it('走りの間の無敵は止めた分も続く', () => {
     useGameStore.setState({ enemies: [place('zombie', 70, 30, 'z')] });

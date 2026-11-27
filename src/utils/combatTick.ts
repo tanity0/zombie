@@ -1589,6 +1589,7 @@ const resolveKamitsukiFx = (fx: CombatEffects): void => {
       // ナイフの3連撃の自分の振りの止め(描画だけ)は振りの起点とペアで動かす(止めの位置が振りの中でずれない)。
       ...(shiftIfStartedBefore(s2.player.knifeHitstopAt ?? 0) ? { knifeHitstopAt: (s2.player.knifeHitstopAt ?? 0) + shiftMs } : {}),
       ...(shiftIfStartedBefore(s2.player.whipHitstopAt ?? 0) ? { whipHitstopAt: (s2.player.whipHitstopAt ?? 0) + shiftMs } : {}),
+      ...(shiftIfStartedBefore(s2.player.katanaHitstopSwingAt ?? 0) ? { katanaHitstopSwingAt: (s2.player.katanaHitstopSwingAt ?? 0) + shiftMs } : {}), // 振りの起点と同じずらし=照合が崩れない
     },
     // ★確認検収(A-3r): 「シミュレーションは停止中は丸ごと凍っている」は偽だった——
     // プレイヤー入力(triggerCounter等)はReact/DOMハンドラ経由でrAFループの外を走るため、

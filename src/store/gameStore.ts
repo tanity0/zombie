@@ -564,7 +564,7 @@ import {
 } from '../utils/mimirLaserTrack';
 import { TELEGRAPH_TRACK_MS, stepTrackAim } from '../utils/telegraphTrack'; // §15追尾相パイロット(sweep限定)
 import { enemyFootBox, enemyHeadY, enemyHitStrip, playerFootBox } from '../pixi/renderSpec';
-import { MELEE_WHIFF_HOLD_MS, MELEE_HITSTOP_STRETCH, meleeStopPlan, knifeHitstopDrawSince, meleeArcRunEnd, MELEE_POSE_PREFIX, closestSince, katanaSlashCenterT, KATANA_SELF_STOP_MS } from '../utils/meleeHitstopTiming'; // 近接のヒットストップの時刻と長さ(描画だけの自分の止め)
+import { MELEE_HIT_HOLD_MIN_MS, MELEE_HITSTOP_STRETCH, meleeStopPlan, knifeHitstopDrawSince, meleeArcRunEnd, MELEE_POSE_PREFIX, closestSince, katanaSlashCenterT, KATANA_SELF_STOP_MS } from '../utils/meleeHitstopTiming'; // 近接のヒットストップの時刻と長さ(描画だけの自分の止め)
 import { newAlchemyRhythm, advanceAlchemyRhythm, tapAlchemyRhythm, alchemyRareChance } from '../utils/alchemyRhythm';
 // 雑魚の個体差+役割(社長指示v0.25.3176・案4+案3)。向きと速さだけを曲げる純関数。
 import { isChaffType, chaffTraits, chaffHeading, chaffSpeedMult } from '../utils/chaffMotion';
@@ -14261,7 +14261,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
-    // ★一閃の通り道の途中の止め(utils/katanaDashHold・社長指示2026-11-27): 走ったこのフレームで、最初に当たる敵の中心(空振り=真ん中)を通ったら止める。
+    // ★一閃の通り道の途中の止め(utils/katanaDashHold・社長指示2026-11-27): 走ったこのフレームで、最初に当たる敵の中心を通ったら止める(空振りは止めない)。
     if (holdBefore) {
       const p1 = get().player;
       if (dashModeAt(p1, Date.now()) === 'katana-dash') stepKatanaDashPassStop(undefined, Date.now(), holdBefore, { x: p1.x + p1.width / 2, y: p1.y + p1.height / 2 });
@@ -17602,6 +17602,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     const slashFx: KatanaSlashFx = { move, flip: move === 'tsubame' || ((move === 'swing' || move === 'satsujin') && (katanaSlashSeq++ % 2 === 1)) };
     // 斬撃の向き=斬った本人の向き(プレイヤー=プレイヤーの向き・守護霊=守護霊の向き)。
     const slashFace: 1 | -1 | undefined = isGhost ? (get().summons.find(su => su.id === ghostId)?.ghostFacing ?? 1) : undefined;
+    // ★その振り自身(縮地・被弾反撃の斬り=本人・射撃扱いでない・技の指定なし)が当たった時だけ、どの振りの当たりかと止めの長さを書く
+    //   (描画だけ・pixi は体の姿勢を決め=刀が一番伸びた所で止める)。空振り・オート斬り・守護霊・一閃の着地・殺陣は書かない=出ている振りの体を止めない。
+    if (!isGhost && !asShot && slashMove === undefined && slashAt.length > 0 && get().player.meleeSwingAt > 0) {
+      const ksMs = katanaSelfStop(move).ms;
+      set(state => ({ player: { ...state.player, katanaHitstopSwingAt: state.player.meleeSwingAt, katanaHitstopMs: ksMs } }));
+    }
     for (const s of slashAt) {
       // 燕返しの斬撃の絵は敵ごとに出さず、通り道の全長に1本だけ出す(triggerKatanaDash・社長指示2026-11-22「燕返しの斬撃、一閃の範囲に刀斬撃の絵に変更」)。血・当たりの光は敵ごとのまま。
       // ★本人の刀は、刃先が斬撃の中心(=当たった所)に来た瞬間に斬撃の絵の時計を止める(自分の振りの止め・描画だけ・社長指示2026-11-27)。
@@ -32284,7 +32290,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const live: VisualEffect[] = [];
       for (const e of state.effects) {
-        if (now - e.createdAt > e.duration + (e.kind === 'slash' || e.kind === 'trail' ? (e.stopMs ?? 0) : e.kind === 'whiprope' ? (e.stopAt !== undefined ? Math.max(e.stopMs ?? 0, MELEE_WHIFF_HOLD_MS) : 0) : 0)) continue; // 絵の時計を止めた分だけ寿命も延ばす(描画だけ)
+        if (now - e.createdAt > e.duration + (e.kind === 'slash' || e.kind === 'trail' ? (e.stopMs ?? 0) : e.kind === 'whiprope' ? (e.stopAt !== undefined ? Math.max(e.stopMs ?? 0, MELEE_HIT_HOLD_MIN_MS) : 0) : 0)) continue; // 絵の時計を止めた分だけ寿命も延ばす(描画だけ)
         if (e.kind === 'particle') {
           const drag = e.drag ?? 0;
           const decay = drag > 0 ? Math.exp(-drag * deltaTime) : 1;

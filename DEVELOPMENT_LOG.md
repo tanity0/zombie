@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5872 — 空振りの止めを撤去(v0.25.5860 の誤解の是正)【2026-11-27 18:05】
+- 社長指示「空振りは止めない。止めてと言ったのは、キャラの絵が攻撃時に揺れているところだけ」。v0.25.5860 の「空振りでも決めで70ms止める」は「当たらなくても(揺れを)止めて」の誤読だった。揺れを消す crispKeyframes / brawlerCrispPoseAt(v0.25.5858)は残す。
+- 撤去: `whiffHoldSince`・`meleePoseSince` の空振り分岐(生の時計)・格闘 `brawlerCrispPoseAt` の空振りの止め・pixi のナイフ/鞭/刀の体と鞭の縄の空振りの止めと後ろを速める補正・一閃/燕返し/居合一閃の通り道の真ん中の空振り止め(`pickKatanaDashHold` は 'hit' か null)。当たった時の止めの下限70msは値そのまま `MELEE_HIT_HOLD_MIN_MS` に改名。
+- 刀の振り: 体の姿勢は当たり情報を持たず毎回70ms止まっていた→その振り自身の当たり(縮地の斬り・被弾反撃の斬り)の時だけ、決めの姿勢(振り抜いて刀が伸びた所)で katanaSelfStop の ms 止める(`katanaHitstopSwingAt/Ms`・純関数 `katanaPoseHit`)。オート斬り(asShot)・守護霊・技の指定ありは書かない。
+- 居合一閃(v0.25.5871)の `KATANA_IAI_PASS_HOLD_MS` と katanaDashHold.ts の衝突を手で解消(空振り定数を除去)。
+- 画: scratchpad/nowhiff/(knife/whip/brawler-st1/st3/katana-issen の空振り=止まらず流れる・katana-posehit=決めで224〜288ms停止)。
+- 検証: typecheck / eslint エラー0 / 循環import新規なし / vitest src/utils src/store src/pixi 11405 passed。
+- 自己点検: 憲法第4条・第5条に抵触なし。
+
 ## v0.25.5871 — 居合一閃の反応を一閃に揃え、決まった瞬間を一段強く【2026-11-27 17:59】
 - 社長指示「カウンターの一閃、通常の一閃と同じ反応になって無い」(差=敵の飛び方・浮き方/止め・震え/絵と音)+「なんか素っ気ない」。
 - 浮き: 成立の瞬間に赤カウンターの浮き(866ms)が先に乗り走る間に浮き始めていた→走っている居合一閃の主には掛けない(`isIaiRunSubject`)。当たりの浮きは一閃と同じ761ms。

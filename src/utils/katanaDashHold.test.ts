@@ -1,18 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import {
   makeKatanaDashHold, makeTsubameDashHold, katanaDashVirtualAlong, katanaDashAlong, pickKatanaDashHold, katanaDashHeld, firedKatanaDashHold, katanaDashHoldExtend,
-  KATANA_DASH_HIT_HOLD_MS, KATANA_DASH_WHIFF_HOLD_MS, SATSUJIN_STRIKE_HOLD_MS,
+  KATANA_DASH_HIT_HOLD_MS, SATSUJIN_STRIKE_HOLD_MS,
 } from './katanaDashHold';
-import { KATANA_SELF_STOP_MS, MELEE_WHIFF_HOLD_MS } from './meleeHitstopTiming';
+import { KATANA_SELF_STOP_MS } from './meleeHitstopTiming';
 import { applyHitstopK } from './hitShake';
 import { SATSUJIN_STRIKE_MS } from './katanaTsubame';
 
 const H = () => makeKatanaDashHold(1000, { x: 0, y: 0 }, 1, 0, 154, 'fx');
 
 describe('一閃の通り道の途中の止め(utils/katanaDashHold)', () => {
-  it('長さ: 敵を通る=刀の自分の止め×一閃の係数・空振り=決めの間・殺陣=短め(次の発の間隔より短い)', () => {
+  it('長さ: 敵を通る=刀の自分の止め×一閃の係数・殺陣=短め(次の発の間隔より短い)', () => {
     expect(KATANA_DASH_HIT_HOLD_MS).toBe(applyHitstopK(KATANA_SELF_STOP_MS, 'finisher'));
-    expect(KATANA_DASH_WHIFF_HOLD_MS).toBe(MELEE_WHIFF_HOLD_MS);
     expect(SATSUJIN_STRIKE_HOLD_MS).toBeLessThan(KATANA_SELF_STOP_MS);
     expect(SATSUJIN_STRIKE_HOLD_MS).toBeLessThan(SATSUJIN_STRIKE_MS);
   });
@@ -34,10 +33,9 @@ describe('一閃の通り道の途中の止め(utils/katanaDashHold)', () => {
     expect(pickKatanaDashHold(h, 0, 14, [{ id: 'behind', along: -30, halfW: 10 }])).toBeNull();
     expect(pickKatanaDashHold(h, 150, 160, [{ id: 'beyond', along: 158, halfW: 2 }])).toBeNull();
   });
-  it('空振り: 通り道の真ん中を越えたフレームで、先に敵が居なければ決めの間で止める・居れば待つ', () => {
+  it('空振り(通り道に敵が居ない)は止めない(社長指示2026-11-27「空振りは止めない」)・先に敵が居ればその敵で止める', () => {
     const h = H();
-    expect(pickKatanaDashHold(h, 54, 66, [])).toBeNull(); // 半フレーム先=72 < 77
-    expect(pickKatanaDashHold(h, 66, 76, [])).toEqual({ kind: 'whiff', ms: KATANA_DASH_WHIFF_HOLD_MS });
+    for (let a = 0; a < 154; a += 12) expect(pickKatanaDashHold(h, a, a + 12, [])).toBeNull(); // 真ん中を越えても止めない
     expect(pickKatanaDashHold(h, 70, 84, [{ id: 'ahead', along: 130, halfW: 10 }])).toBeNull();
     expect(pickKatanaDashHold(h, 120, 134, [{ id: 'ahead', along: 130, halfW: 10 }])?.kind).toBe('hit');
   });
