@@ -8,22 +8,22 @@ const none = new Set<string>();
 const chron = (...lv: KenkiLevel[]) => new Set(lv.map(kenkiChronicleKillDetail));
 
 describe('資料室の孫悟空の欄(倒した時の名前と討伐の記録)', () => {
-  it('一度も倒していない: 記録なし・次の技なし', () => {
+  it('一度も倒していない: 記録なし・次は抉り打ち(v0.25.5889〜 Lv1の報酬)', () => {
     const v = buildKenkiArchive(1, none);
     expect(v.topLevel).toBeNull();
     expect(v.rows).toEqual([]);
-    expect(v.nextArt).toBeNull();
+    expect(v.nextArt).toBe('抉り打ち');
   });
-  it('Lv1を倒した(レベル2): 孫悟空を討伐・技なし・次は踵落とし', () => {
+  it('Lv1を倒した(レベル2): 孫悟空を討伐・抉り打ちを体得・次は踵落とし', () => {
     const v = buildKenkiArchive(2, chron(1));
     expect(v.topLevel).toBe(1);
-    expect(v.rows.map(r => [r.name, r.art, r.tint])).toEqual([['孫悟空', null, null]]);
+    expect(v.rows.map(r => [r.name, r.art, r.tint])).toEqual([['孫悟空', '抉り打ち', null]]);
     expect(v.nextArt).toBe('踵落とし');
   });
   it('Lv2を倒した(レベル3): 弼馬温(青)で踵落としを体得・次は蹴り上げ', () => {
     const v = buildKenkiArchive(3, none); // 年表が無くてもレベルから分かる
     expect(v.topLevel).toBe(2);
-    expect(v.rows.map(r => [r.name, r.art, r.tint])).toEqual([['孫悟空', null, null], ['弼馬温', '踵落とし', 'blue']]);
+    expect(v.rows.map(r => [r.name, r.art, r.tint])).toEqual([['孫悟空', '抉り打ち', null], ['弼馬温', '踵落とし', 'blue']]);
     expect(v.nextArt).toBe('蹴り上げ');
   });
   it('レベル5(済が出る)でも済をまだ倒していなければ一番上は Lv4・次の技は無い', () => {

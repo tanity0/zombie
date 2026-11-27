@@ -76,6 +76,41 @@ describe('§37 名前と資料室', () => {
   });
 });
 
+describe('§36-2 抉り打ちの体得の門(孫悟空 Lv1 を格闘で倒すまで出ない)', () => {
+  it('未体得(Lv1): 長押ししても溜めが始まらず、離すと今どおりの通常攻撃(1段目)', () => {
+    setKenkiLevelForTest(1);
+    setup(4);
+    useGameStore.setState({ enemies: [enemyAt(50, 0, 'z')] });
+    useGameStore.getState().brawlerGougePress();
+    expect(br().gougePressAt).toBeUndefined();
+    advance(BRAWLER_GOUGE_CHARGE_MS + 200);
+    expect(br().gougeReadyAt).toBeUndefined();
+    const r = useGameStore.getState().brawlerGougeRelease();
+    expect(r).toBe('normal');
+    useGameStore.getState().beginMeleeSwing();
+    expect(br().tech).not.toBe('gouge');
+    expect(br().phase).toBe('attack');
+    expect(br().stage).toBe(1);
+    expect(feed()).not.toContain('tech:gouge');
+  });
+  it('未体得: 段の最中(通常技から)の長押しも溜めにならない', () => {
+    setKenkiLevelForTest(1);
+    setup(4);
+    useGameStore.setState({ enemies: [enemyAt(50, 0, 'z')] });
+    useGameStore.getState().beginMeleeSwing();
+    expect(br().phase).toBe('attack');
+    useGameStore.getState().brawlerGougePress();
+    expect(br().gougePressAt).toBeUndefined();
+  });
+  it('体得済み(Lv2=Lv1 を倒した後): 長押しで抉り打ちが出る', () => {
+    setKenkiLevelForTest(2);
+    setup(4);
+    useGameStore.setState({ enemies: [enemyAt(70, 0, 'z')] });
+    expect(pressHold(BRAWLER_GOUGE_CHARGE_MS + 20)).toBe('gouge');
+    expect(br().tech).toBe('gouge');
+  });
+});
+
 describe('§37 待機から', () => {
   it('0.5秒押して離す=抉り打ち(技ポイントは減らない)。近くの敵へ跳んで詰め、当たった敵が浮く。技の名前の行が出る', () => {
     setup(4);

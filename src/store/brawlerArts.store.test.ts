@@ -61,8 +61,11 @@ describe('§36-1 孫悟空のレベル(純関数)', () => {
     for (const k of ['practice', 'bossTest', 'bench', 'smoke'] as const) expect(kenkiLevelAfterKill(2, { ...ctxOk, [k]: true })).toBeNull();
     expect(kenkiLevelAfterKill(2, { ...ctxOk, brawlerEquipped: false })).toBeNull();
   });
-  it('体得: Lv2 を倒すと踵落とし・Lv3 で蹴り上げ・Lv4 で土竜(いまのレベル=次に出るレベルで見る)', () => {
-    expect([1, 2, 3, 4, 5].map(l => brawlerArtLearnedOnKill(l as KenkiLevel))).toEqual([null, 'heel', 'kickup', 'mogura', null]);
+  it('体得: Lv1 を倒すと抉り打ち・Lv2 で踵落とし・Lv3 で蹴り上げ・Lv4 で土竜(いまのレベル=次に出るレベルで見る)', () => {
+    expect([1, 2, 3, 4, 5].map(l => brawlerArtLearnedOnKill(l as KenkiLevel))).toEqual(['gouge', 'heel', 'kickup', 'mogura', null]);
+    expect(brawlerArtLearnedAt(1, 'gouge')).toBe(false);
+    // すでに孫悟空を倒している端末(保存済みのレベルが2以上)は抉り打ちも体得済み=取り上げない
+    for (const l of [2, 3, 4, 5] as KenkiLevel[]) expect(brawlerArtLearnedAt(l, 'gouge')).toBe(true);
     expect(brawlerArtLearnedAt(2, 'heel')).toBe(false);
     expect(brawlerArtLearnedAt(3, 'heel')).toBe(true);
     expect(brawlerArtLearnedAt(3, 'kickup')).toBe(false);
@@ -214,9 +217,19 @@ describe('§36-1・§36-2 孫悟空を倒す(ストア)', () => {
     expect(labels.some(l => l.endsWith('弼馬温を討伐'))).toBe(true);
     expect(labels.some(l => l.endsWith('格闘技『踵落とし』を体得'))).toBe(true);
   });
-  it('Lv1 を倒すと Lv2(体得なし・帯なし)', () => {
+  it('Lv1 を格闘で倒す: Lv2 へ・金の帯「格闘技 体得 ― 抉り打ち」・リザルトの1行・年表(討伐と体得)', () => {
     kill(1);
     expect(loadKenkiLevel()).toBe(2);
+    expect(useGameStore.getState().wallBandText).toBe('格闘技 体得 ― 抉り打ち');
+    expect(useGameStore.getState().wallBandColor).toBe('gold');
+    expect(useGameStore.getState().brawlerArtsLearnedThisRun).toEqual(['抉り打ち']);
+    const labels = loadChronicle().map(e => e.label);
+    expect(labels.some(l => l.endsWith('孫悟空を討伐'))).toBe(true);
+    expect(labels.some(l => l.endsWith('格闘技『抉り打ち』を体得'))).toBe(true);
+  });
+  it('Lv1 を格闘なしで倒しても抉り打ちは体得しない', () => {
+    kill(1, false);
+    expect(loadKenkiLevel()).toBe(1);
     expect(useGameStore.getState().wallBandText).toBe('');
     expect(useGameStore.getState().brawlerArtsLearnedThisRun).toEqual([]);
   });
@@ -293,17 +306,23 @@ describe('§36-2 資料室の技一覧', () => {
   it('体得していない技の行は「？？？」(3種の操作とも)', () => {
     for (const lines of [entry.lines, entry.pcLines!, entry.padLines!]) {
       const none = maskBrawlerMovesLines(lines, () => false);
-      expect(none.filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(3);
-      expect(none.join('')).not.toMatch(/踵落とし|蹴り上げ|土竜/);
+      expect(none.filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(4);
+      expect(none.join('')).not.toMatch(/抉り打ち|踵落とし|蹴り上げ|土竜/);
       const heelOnly = maskBrawlerMovesLines(lines, a => a === 'heel');
       expect(heelOnly.join('')).toContain('踵落とし');
-      expect(heelOnly.filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(2);
+      expect(heelOnly.filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(3);
+      const gougeOnly = maskBrawlerMovesLines(lines, a => a === 'gouge');
+      expect(gougeOnly.join('')).toContain('抉り打ち');
+      expect(gougeOnly.filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(3);
       expect(maskBrawlerMovesLines(lines, () => true)).toEqual(lines);
     }
   });
   it('資料室の本文はいまのレベルで伏せる', () => {
     setKenkiLevelForTest(1);
+    expect(tutorialLinesFor(entry, 'touch').filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(4);
+    setKenkiLevelForTest(2); // Lv1 撃破=抉り打ちだけ見える
     expect(tutorialLinesFor(entry, 'touch').filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(3);
+    expect(tutorialLinesFor(entry, 'touch').join('')).toContain('抉り打ち');
     setKenkiLevelForTest(5);
     expect(tutorialLinesFor(entry, 'touch')).toEqual(entry.lines);
   });

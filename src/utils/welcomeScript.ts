@@ -60,7 +60,8 @@ export const WELCOME_SCRIPT: Partial<Record<string, WelcomeUnit[][]>> = {
   ],
   'stage-5': [
     [{ type: 'pumpkin', count: 1 }, { type: 'plant', count: 2, tier: 'red' }],
-    [{ type: 'zombie', count: 2, tier: 'red' }, { type: 'bat', count: 2, tier: 'red' }, { type: 'plant', count: 2 }],
+    // ★2段目のゾンビは1体(社長指示2026-11-28「ステージ5のウェルカムイベントのwave2のゾンビは一体にして」・旧2)。
+    [{ type: 'zombie', count: 1, tier: 'red' }, { type: 'bat', count: 2, tier: 'red' }, { type: 'plant', count: 2 }],
     [{ type: 'logger', count: 1 }, { type: 'plant', count: 2 }],
   ],
   'stage-6': [

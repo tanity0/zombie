@@ -1,6 +1,6 @@
 // ★孫悟空(固有の幻影・拳鬼)のレベルと、格闘技の体得(research/BRAWLER.md §36・社長指示2026-11-20)。
 // 依存ゼロの葉(store / PixiJS を読まない)。端末の進行に1つの値(孫悟空のレベル)だけを持つ。体得はレベルから決まる
-// (Lv2 を倒した=Lv3 になった時に踵落とし・Lv3 を倒した=Lv4 で蹴り上げ・Lv4 を倒した=済(5)で土竜)。
+// (Lv1 を倒した=Lv2 になった時に抉り打ち・Lv2 を倒した=Lv3 になった時に踵落とし・Lv3 を倒した=Lv4 で蹴り上げ・Lv4 を倒した=済(5)で土竜)。
 // ※対策室(練習)中の書き込みは practiceGuard が localStorage ごと封じる(ここでも練習では上げない=二重の安全網)。
 import { KENKI_LEVEL_NAMES } from '../data/kenkiNames';
 
@@ -21,11 +21,11 @@ export const kenkiLevelLook = (lv: KenkiLevel): KenkiLook => ({
 });
 
 /** 体得する格闘技。 */
-export type BrawlerArt = 'heel' | 'kickup' | 'mogura';
+export type BrawlerArt = 'gouge' | 'heel' | 'kickup' | 'mogura';
 /** その技を体得するために倒すレベル(このレベルの孫悟空を倒すと体得)。 */
-export const BRAWLER_ART_FROM_LEVEL: Readonly<Record<BrawlerArt, KenkiLevel>> = { heel: 2, kickup: 3, mogura: 4 };
+export const BRAWLER_ART_FROM_LEVEL: Readonly<Record<BrawlerArt, KenkiLevel>> = { gouge: 1, heel: 2, kickup: 3, mogura: 4 }; // 抉り打ち=Lv1 を倒した報酬(社長裁定2026-11-27)
 /** 技の名前(帯・リザルト・資料室)。 */
-export const BRAWLER_ART_NAME: Readonly<Record<BrawlerArt, string>> = { heel: '踵落とし', kickup: '蹴り上げ', mogura: '土竜' };
+export const BRAWLER_ART_NAME: Readonly<Record<BrawlerArt, string>> = { gouge: '抉り打ち', heel: '踵落とし', kickup: '蹴り上げ', mogura: '土竜' };
 /** いまのレベル(=次に出る孫悟空のレベル)で、その技を体得しているか。 */
 export const brawlerArtLearnedAt = (lv: KenkiLevel, art: BrawlerArt): boolean => lv > BRAWLER_ART_FROM_LEVEL[art];
 /** そのレベルの孫悟空を倒した時に体得する技(無ければ null)。 */

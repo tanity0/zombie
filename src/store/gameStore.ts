@@ -14667,6 +14667,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const st = get();
     const p = st.player;
     if (!isBrawlerMode(p) || !p.brawler) return;
+    // 未体得(孫悟空 Lv1 を格闘で倒していない)なら溜めを始めない=長押しは今までどおりの押下(離しは 'normal' に落ちる)。
+    if (!isBrawlerArtLearned('gouge')) return;
     const s = p.brawler;
     const now = Date.now();
     let next = BRGO.brawlerGougePress(s, st.gameTime, now, brawlerGougeCtxOf(get));
