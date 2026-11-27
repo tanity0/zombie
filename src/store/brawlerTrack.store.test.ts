@@ -266,17 +266,17 @@ describe('§40-4 ⑧: 空中蹴り・蹴り上げの後の滞空と、空中で�
   it('滞空中に地割り(道の上): 真下へ落ちて着地で割る', () => {
     toHover();
     for (let k = 0; k < 20 && brawlerInHitstop(br(), gt()); k++) adv();
-    expect(selfH()).toBeGreaterThan(80);
+    expect(selfH()).toBeGreaterThan(BRAWLER_KICK2_AIR_PX - 10);
     expect(press('D')).toBe(true); // 2発目の続きの下=踵落とし(体得済み)
     expect(br().kickHeel).toBe(true);
-    // 踵落とし: 出した時の高さ(96)で振り下ろす(相手の高さに合わせない)
+    // 踵落とし: 出した時の高さ(空中蹴りの高さ)で振り下ろす(相手の高さに合わせない)
     for (let k = 0; k < 60 && !br().resolved; k++) adv();
     expect(selfH()).toBeCloseTo(BRAWLER_KICK2_AIR_PX, 0);
     for (let k = 0; k < 40 && brawlerInHitstop(br(), gt()); k++) adv(); // 踵落としの止めは決め技=×1.5(research/HITSTOP.md §7)
     expect(press('D')).toBe(true); // 踵落とし→地割り
     expect(br().tech).toBe('stomp');
     const h0 = selfH();
-    expect(h0).toBeGreaterThan(60);
+    expect(h0).toBeGreaterThan(BRAWLER_KICK2_AIR_PX * 0.6);
     let landedBeforeHit = false;
     for (let k = 0; k < 60 && !br().resolved; k++) { adv(); if (selfH() === 0) landedBeforeHit = true; }
     expect(landedBeforeHit, '着地してから割る').toBe(true);
@@ -331,7 +331,7 @@ describe('§40-4 ⑧: 空中蹴り・蹴り上げの後の滞空と、空中で�
     useGameStore.getState().damagePlayer(5);
     expect(br().phase).toBe('idle');
     const h0 = selfH();
-    expect(h0).toBeGreaterThan(80);
+    expect(h0).toBeGreaterThan(BRAWLER_KICK2_AIR_PX - 10);
     for (let k = 0; k < 40; k++) adv(); // 被弾の止めが明けてから落ちる
     expect(selfH()).toBeLessThan(h0 - 10);
   });

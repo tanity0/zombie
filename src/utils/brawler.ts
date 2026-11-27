@@ -463,7 +463,7 @@ export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, qu
     // 前隙なし(受けた直後)でも5段目は突き抜ける時間だけは要る(溜めだけ消える)。
     windupMs: quick ? (spec.stage === 5 ? BRAWLER_PALM_DASH_MS : 0) : spec.windupMs, recoveryMs: spec.recoveryMs,
     stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false,
-    palmFromX: undefined, palmFromY: undefined,
+    palmFromX: undefined, palmFromY: undefined, palmContactAt: undefined, palmPassRest: undefined,
     // 前隙なしは1回きり(受けた直後の最初の1発だけ)。
     quickUntil: quick ? 0 : s.quickUntil,
     // 通常攻撃を押したら蹴りの連続は切れる(§7-5)。秘奥義の順番も数え直し(通常攻撃が挟まった=§10-1)。
@@ -528,9 +528,34 @@ export const brawlerPressDecision = (s: BrawlerState, t: number): 'start' | 'buf
 export const brawlerPalmDashDue = (s: BrawlerState, t: number): boolean =>
   s.phase === 'attack' && s.stage === 5 && !s.resolved && s.palmFromX === undefined
   && brawlerElapsed(s, t) >= Math.max(0, s.windupMs - BRAWLER_PALM_DASH_MS);
+/** 5段目の掌底の影の拳の先が体の中心から前へ届く距離(px・描画の掌底の影の reach と同じ値)。 */
+export const BRAWLER_PALM_FIST_REACH_PX = 46;
+/**
+ * ★5段目の突き抜けで、拳の先が相手の体に届いたか(社長指示2026-11-27「通り過ぎてから止まってる。全て止めるポイントは、当たった!と分かりやすい瞬間にして」)。
+ * 通り道(踏み出した地点 x0,y0 から向き ux,uy へ len)の帯にいる相手のうち、拳の先(進んだ距離+拳の届き)が相手の手前の縁(中心から向きに沿った箱の半分の手前)に
+ * 届いた中で一番手前の相手の id。届いていなければ null。候補は呼び手が渡す(当たる高さの帯で絞った帯の敵)。
+ */
+export const brawlerPalmContact = (
+  enemies: readonly Enemy[], ids: readonly string[], x0: number, y0: number, ux: number, uy: number, traveled: number, reach = BRAWLER_PALM_FIST_REACH_PX,
+): string | null => {
+  const m = Math.hypot(ux, uy) || 1;
+  const dx = ux / m, dy = uy / m;
+  const tip = traveled + reach;
+  let best: string | null = null;
+  let bestEdge = Infinity;
+  for (const id of ids) {
+    const e = enemies.find(x => x.id === id);
+    if (!e) continue;
+    // 相手の体(本体の箱=絵の足元の箱)の手前の縁。当たり判定の箱(enemyRangeRect)は体より広いことがあるので使わない(絵の上の接触)。
+    const along = (e.x + e.width / 2 - x0) * dx + (e.y + e.height / 2 - y0) * dy;
+    const edge = along - (Math.abs(dx) * e.width + Math.abs(dy) * e.height) / 2;
+    if (tip >= edge && edge < bestEdge) { bestEdge = edge; best = id; }
+  }
+  return best;
+};
 /** 5段目で突き抜けている最中か(敵とオブジェクトをすり抜ける・無敵の間)。 */
 export const isBrawlerPalmDashing = (s: BrawlerState | undefined): boolean =>
-  !!s && s.phase === 'attack' && s.stage === 5 && !s.resolved && s.palmFromX !== undefined;
+  !!s && s.phase === 'attack' && s.stage === 5 && s.palmFromX !== undefined && (!s.resolved || s.palmPassRest === true); // 拳が届いて当てた後も、抜け切るまでは突き抜けの最中
 /**
  * 抜けた後ろの敵を吹き飛ばす向き(単位ベクトル)。軌跡(x0,y0 から ux,uy)の横へ外向き+進む向きへ少し。
  * 軌跡のちょうど上の敵は side(+1/-1)の側へ(呼び手が敵ごとに交互に決める=全員が同じ側へ飛ばない)。
@@ -1851,6 +1876,8 @@ export const brawlerStandAt = (s: BrawlerState | undefined, t: number): BrawlerS
   // ★密着の構え(§34-7): 掴み・スープレックスの間は蹴りの影を出さない。蹴りバク宙は当たる瞬間から、振り上げた蹴り(踵落としの逆向き)の影を出して消す。
   if (kind === 'kick' && s.contactGrab && (s.contactGrab.mode === 'suplex' || !hit0(s, el))) return null;
   const heelF = kind === 'kick' && s.kickHeel ? brawlerHeelStandAt(s, el) : kind === 'kick' && (s.kickUp || s.contactGrab) ? brawlerKickUpStandAt(s, el) : undefined; // 蹴り上げ(§34-1)=踵落としの上下逆
+  // ★5段目: 拳の先が相手に届いて止まった瞬間から(palmContactAt)は伸び切ったまま抜ける(当たった瞬間の形=社長指示2026-11-27)。
+  if (!hit && kind === 'palm' && s.palmContactAt !== undefined) return { ...base, ext: 1, alpha: 0.85 };
   if (!hit) {
     const pre = s.windupMs > 0 ? Math.min(1, el / s.windupMs) : 1;
     return { ...base, ext: 0.55 * easeIn(pre), alpha: 0.3 + 0.55 * easeOut(pre), ...(heelF ?? {}) };
@@ -2411,7 +2438,7 @@ export const BRAWLER_PLAYER_KICK_LUNGE_PX = { kick1: 120, kick2: 90, kick3: 60, 
 export const BRAWLER_AIR_STAGE_LUNGE_PX = 20;
 /** 技ごとの決まった高さ(px・絵だけ)。飛び蹴り1発目=低め・空中蹴り(2発目)・蹴り上げ(§40-2)。 */
 export const BRAWLER_KICK1_AIR_PX = 28;
-export const BRAWLER_KICK2_AIR_PX = 96;
+export const BRAWLER_KICK2_AIR_PX = 48; // 社長指示2026-11-27「空中蹴り、浮きすぎ。半分くらいの高さにして」(旧 96)
 export const BRAWLER_KICKUP_AIR_PX = 120;
 /** 滞空(§40-4 ⑧): 450ms(×BRAWLER_TEMPO)のうち、最初の 2/3 は高さ一定・残りでわずかに沈む(慣性)。 */
 export let BRAWLER_AIR_HOVER_MS = 450; // ×BRAWLER_TEMPO(係数1.0の値)
@@ -2551,6 +2578,13 @@ export const brawlerSelfFallFrom = (s: BrawlerState | undefined, t: number): { f
 export const brawlerAirAllowsTech = (kind: BrawlerTechKind, kickUp = false): boolean =>
   kind === 'kick' || kind === 'stomp' || kind === 'kiko' || (kind === 'guard' && kickUp);
 export const brawlerAirAllowsStage = (stage: number): boolean => stage === 1 || stage === 2;
+/**
+ * ★構えは地上のみ(§39・社長指示2026-11-27「コンボ中に空中で構えが出せちゃってる」)。プレイヤーが空中(自分の技の跳び・滞空・落下=brawlerSelfAirborne)に
+ * いる間は、どの経路(入力・技の先行入力・判定の後に覚えた技・蹴り上げに成れなかった上・構えの取り消し・秘奥義の取り消し)でも構え(と密着の構えの掴み)を出さない。
+ * 押しは捨てる(覚えない)。kickUp=上が蹴り上げとして出る時(蹴り上げは空中で出せる=門の外)。全経路がこの1本を通る。
+ */
+export const brawlerAirBlocksGuard = (s: BrawlerState | undefined, t: number, kind: BrawlerTechKind | null, kickUp = false): boolean =>
+  kind === 'guard' && !kickUp && brawlerSelfAirborne(s, t);
 /** 空中の気功の後は、着地までどの技・段にも取り消せない(§39)。 */
 export const brawlerAirKikoLocked = (s: BrawlerState | undefined, t: number): boolean =>
   !!s && s.airKiko === true && brawlerSelfAirborne(s, t);

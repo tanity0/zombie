@@ -482,6 +482,8 @@ describe('格闘: 5段目=一閃型の貫通突進(社長指示2026-11-07)', () 
     expect(useGameStore.getState().player.invulnerable).toBe(true);
     for (let k = 0; k < 40 && !br().resolved; k++) advance(10);
     expect(br().resolved).toBe(true);
+    // ★拳が届いた瞬間に当てて止まり(社長指示2026-11-27)、止めが明けたら残りを抜ける
+    for (let k = 0; k < 60 && br().palmPassRest; k++) { expect(useGameStore.getState().player.invulnerable, '抜ける間は無敵').toBe(true); advance(10); }
     expect(center().x).toBeGreaterThan(ecx + ez.width / 2); // 相手の向こう側
     expect(hpOf('z')).toBeLessThan(99999);
   });
@@ -613,6 +615,7 @@ describe('格闘: 5段目の飛距離は140(社長指示2026-11-07「飛距離�
     useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, nextStage: 5, chainUntil: st.gameTime + 1000 } } }));
     useGameStore.getState().brawlerPress();
     for (let k = 0; k < 60 && !br().resolved; k++) advance(10);
+    for (let k = 0; k < 60 && br().palmPassRest; k++) advance(10); // 拳が届いた瞬間に当てた後、残りを抜け切るまで(社長指示2026-11-27)
     const s = br();
     const travel = center().x - (s.palmFromX ?? 0);
     expect(travel).toBeGreaterThan(136);
@@ -1096,8 +1099,9 @@ describe('食らいの固まり・キャンセル(research/BRAWLER.md §11・社
     expect(hitsAt.length).toBe(5);
     // 2〜5段目が当たる直前まで、前の段の固まり(延ばした分を含む)が生きている(=5段のつながりの中では敵は動けない)
     for (let i = 1; i < 5; i++) expect(lockBefore[i], `${i + 1}段目の直前`).toBeGreaterThanOrEqual(hitsAt[i]);
-    // 5段目(締め)の後: 固まりは止め(220ms)の終わりより先には残っていない
-    expect(en('z').brLockUntil ?? 0).toBeLessThanOrEqual(hitsAt[4] + 220);
+    // 5段目(締め)の後: 固まりは止めの終わりより先には残っていない(止め=5段目の止め・決め技の延長込み。拳が届いた瞬間に当たる=社長指示2026-11-27)
+    const stop5 = Math.max(220, (en('z').hitStunUntil ?? 0) - en('z').lastHit);
+    expect(en('z').brLockUntil ?? 0).toBeLessThanOrEqual(hitsAt[4] + stop5);
     expect(en('z').brLockHits).toBe(4); // 固まりを書いた当たり=1〜4段目(締めの5段目は数えない)
     } finally { setBrawlerTempoAll(1.0); }
   });
@@ -1644,7 +1648,11 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     hitMove('z', 's4', { lift: true }); advance(150);
     hitMove('z', 's5', { big: true });
     const e = en('z');
-    expect(e.liftUntil).toBe(now + 200); // §13-2: 締めの叩き落とし=ダウン(着地まで動けない)
+    // §13-2: 締めの叩き落とし=ダウン(着地まで動けない)。★止めの間は落ちない(社長指示2026-11-27)=落ち始めは止めの明け(hitStunUntil)から。
+    const stop = (e.hitStunUntil ?? now) - now;
+    expect(stop).toBeGreaterThan(0);
+    expect(e.brawlerLiftAt).toBe(now + stop);
+    expect(e.liftUntil).toBe(now + stop + 200);
     expect(e.brLiftDown).toBe(true);
     expect(Math.abs(e.knockbackVx ?? 0)).toBeGreaterThan(0);
   });

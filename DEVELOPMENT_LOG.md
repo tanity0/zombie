@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5867 — 格闘: 空中蹴りの高さ半分・空中の構え封じ・止めの間の落下停止・五段目の止め位置【2026-11-27 15:24】
+- 社長指示「空中蹴り、浮きすぎ。半分」「コンボ中に空中で構えが出せちゃってる」「ストップ時、落下が止まってない」「5段目、通り過ぎてから止まってる。止めるポイントは当たった!と分かる瞬間に」。
+- `BRAWLER_KICK2_AIR_PX` 96→48。踵落とし→地割りの倍率は空中蹴り後で×1.8→×1.4(地上からは×1.25のまま)。
+- 空中の構え: 空中で押した上が lateHeld として覚えられ着地で構え/密着の構えになっていた。門 `brawlerAirBlocksGuard` を入力入口・覚えた技の発動・`startBrawlerTech`・秘奥義の構え取り消しの4経路に通す。旧テスト2本(空中の上を着地で構えとしていた)を新仕様に書き換え。新規 `brawlerAirGuardStop.store.test.ts`。
+- 止めの間の落下: 純関数 `brawlerStopLiftShift`(brawlerCombo)で当たった相手の浮きの時計を止めの長さだけずらす(格闘全部・ナイフ・鞭・まとめ当ての延長)。落下・叩き落とし・地面バウンドを止める。★この当たりで上へ浮かせる弧は止めていない(止めると当たる高さの帯と間合いがずれ定石が切れる)=社長判断待ち。
+- 五段目: 拳の先(46px)が通り道の最初の相手の縁に届いた瞬間に当てて止め、明けたら残りを抜ける。取り消しの受付が最大約90ms早く開く(全体長は不変)。他の技は前隙の終わり=当たる瞬間を確認。
+- 画で確認: kick-height-before-after.png / montage-after-palm.png / montage-after-palmair.png / montage-after-kick3.png(scratchpad)。
+- 検証: typecheck / eslint エラー0 / 循環import新規なし / vitest src/utils src/store 11223 passed。
+- 自己点検: 憲法第4条・第5条に抵触なし。
+
 ## v0.25.5866 — 燕返しにも通り道の途中の止め【2026-11-27 15:09】
 - 社長指示「燕返しもストップして」。体は動かないので、仮定の通り道(元の位置へ逆向き)を進む時計を止める。
 - `katanaDashHold.ts`: 器に `runMs`(仮定の走る時間)・`makeTsubameDashHold`・`katanaDashVirtualAlong`。`katanaDashHoldExtend` がしゃがみ中なら `tsubameCrouchUntil` も延ばす。止めの判定・長さは一閃と共用(敵の中心=117ms/無敵なし)。

@@ -78,14 +78,20 @@ describe('§34-1 蹴り上げ(ストア)', () => {
     expect(brawlerAirborne(en('z')!, now)).toBe(true);
     expect(feed()).toEqual(['tech:kick', 'tech:kick2', 'tech:kickup']);
   });
-  it('★§34-8: 当たった1発目の後の上は構え(蹴り上げにならない)', () => {
+  it('★§34-8: 当たった1発目の後の上は蹴り上げにならない。★§39(社長指示2026-11-27): 1発目の跳びの最中(空中)の上は構えにもならない=捨てる(覚えない)', () => {
     kick1(() => [enemyAt(120, 0, 'z')], 10, [], 1);
-    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
-    expect(br().kickUpBuffer).toBe(false);
-    expect(br().techBuffer).toBe('guard'); // 判定の後に押した構え=蹴りが終わったら構え(§25)
-    // 蹴りの後は相手に密着しているので、構えは密着の構え(§34-7)になる。どちらにしても蹴り上げではない。
-    for (let k = 0; k < 80 && br().tech === 'kick' && !br().contactGrab; k++) advance(10);
+    expect(brawlerSelfAirborne(br(), useGameStore.getState().gameTime), '1発目の当たりの瞬間は空中').toBe(true);
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(false);
+    expect(br().kickUpBuffer).toBeFalsy();
+    expect(br().techBuffer).toBeUndefined(); // 覚えない(旧: 判定の後に押した構え=蹴りが終わったら構え・§25)
+    for (let k = 0; k < 120 && (br().phase !== 'idle' || brawlerSelfAirborne(br(), useGameStore.getState().gameTime)); k++) {
+      advance(10);
+      expect(br().tech, '着地しても覚えた構えは出ない').not.toBe('guard');
+      expect(br().contactGrab, '密着の構えも出ない').toBeUndefined();
+    }
     expect(br().kickUp).toBeFalsy();
+    // 着地してから押した上は今どおり構え(相手に密着していれば密着の構え=§34-7)。
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
     expect(br().tech === 'guard' || br().contactGrab !== undefined).toBe(true);
   });
   it('外れた蹴りの後の上は構え(今までどおり・★§39: 空中では構えは出ない=滞空が明けて着地してから)', () => {
@@ -98,7 +104,8 @@ describe('§34-1 蹴り上げ(ストア)', () => {
   it('払えない時の上は構え(弱い構え)。★§39: 空中蹴りの滞空・落下の間は構えは出ない(捨てる)=着地してから押した上が構え', () => {
     kick1(() => [enemyAt(120, 0, 'z')], 3); // 2発で2使う=残り1<蹴り上げの2
     expect(br().points).toBeLessThan(brawlerKickUpCost());
-    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true); // 判定の後の上=覚える(行動が終わった瞬間に出す=§25)
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(false); // 空中の上=捨てる(覚えない・§39・社長指示2026-11-27)
+    expect(br().techBuffer).toBeUndefined();
     for (let k = 0; k < 120 && (br().phase !== 'idle' || brawlerSelfAirborne(br(), useGameStore.getState().gameTime)); k++) {
       advance(10);
       expect(br().tech, '空中では構えにならない').not.toBe('guard');

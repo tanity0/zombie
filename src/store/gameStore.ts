@@ -3054,6 +3054,17 @@ const comboStopAndShake = (e: Enemy, now: number, ms: number, pcx: number, pcy: 
   return sh ? { ...e2, ...sh } : e2;
 };
 /**
+ * ★止めの間は落下の時計も止める(社長指示2026-11-27「ストップ時、落下が止まってない。なので落ちてから吹っ飛んでる」・ナイフ・鞭の当たり)。
+ * この当たりで延びた止め(hitStunUntil)の分だけ、浮いている相手の浮きの時計を後ろへ(utils/brawlerCombo の brawlerStopLiftShift)。
+ * この当たりで上へ浮かせた弧(ナイフの浮き)は格闘と同じく今どおり止めの間に上がり始める(落ちる区間から始まる弧だけ止める)。
+ */
+const meleeStopFreezeLift = (prev: Enemy, next: Enemy, now: number): Enemy => {
+  // この瞬間に上へ浮かせた弧(この当たり・同じ振りの先のカウンターの浮き)はずらさない。
+  if (next.brawlerLiftAt === now && (next.brLiftPeak ?? 0) > 0 && !((next.brLiftDropMs ?? 0) > 0)) return next;
+  const sh = BRC.brawlerStopLiftShift(next, now, prev.hitStunUntil, next.hitStunUntil);
+  return sh ? { ...next, ...sh } : next;
+};
+/**
  * ★近接の止めの震え(research/HITSTOP.md §2-1・§6): shake を渡すと、当たった敵の絵だけを止めの間震わせる欄(格闘と同じ brawlerShakeUntil)も書く。
  * 長さ=この当たりの止め(雑魚・強個体=hitStunUntil)。ボス級は hitStunUntil を書かないので、雑魚と同じ式の長さ(HIT_STUN_MS_MOB 基準)で震えの欄だけ書く。
  * moveK=技の係数(utils/hitShake HITSTOP_MOVE_K・刀だけが渡す)。重さの倍率に掛ける(再発火の間隔は変えない)。
@@ -3495,7 +3506,11 @@ const applyMultiHitFeel = (
         if (!idSet.has(e.id) || !(e.health > 0) || isCorpse(e) || hitStunMsFor(e.type) <= 0) return e;
         const pt = multiHitStopExtendPatch(e, now, mh.extraStopMs);
         if (!pt) return e;
-        const e2 = { ...e, ...pt };
+        let e2 = { ...e, ...pt };
+        // ★止めを延ばした分、落下の時計も止める(社長指示2026-11-27・meleeStopFreezeLift と同じ規則=この当たりで上へ浮かせた弧はずらさない)。
+        const riseNow = e.brawlerLiftAt === now && (e.brLiftPeak ?? 0) > 0 && !((e.brLiftDropMs ?? 0) > 0);
+        const lsh = riseNow ? null : BRC.brawlerShiftLift(e2, now, (e2.hitStunUntil ?? now) - Math.max(now, e.hitStunUntil ?? now));
+        if (lsh) e2 = { ...e2, ...lsh };
         const sh = extendMeleeShake(e2, now, (e2.meleeShakeAmp ?? 1) > 1 ? WHIP_TIP_SHAKE.lenMul : 1); // 近接の震えも延びた止めの明けまで(research/HITSTOP.md §2-4・鞭の先端は ×1.5 のまま)
         return sh ? { ...e2, ...sh } : e2;
       }),
@@ -6184,6 +6199,26 @@ const startBrawlerPalmDash = (get: () => GameState, set: (fn: (s: GameState) => 
   brawlerSfx('whip-swing', 0.75, 0.62 * brJitter(), 200);
   brawlerSfx('homing-fire', 0.35, 1.5, 160);
 };
+/**
+ * ★5段目の止めの瞬間(社長指示2026-11-27「通常格闘の5段目、通り過ぎてから止まってる。全て止めるポイントは、当たった!と分かりやすい瞬間にして」)。
+ * 突き抜けの最中、拳の先(BR.BRAWLER_PALM_FIST_REACH_PX)が通り道の最初の相手の手前の縁に届いた瞬間に、5段目を当てる(当たりの処理=ダメージ・押し・浮き・
+ * 固まり・点・止め・絵と音を、抜け切った時からこの瞬間へ前倒し)。当てる帯はこれから抜ける道筋(踏み出した長さ)。自分も相手もこの瞬間に止まり、
+ * 突き抜けの器は止めの間だけ止まって明けたら残りを進む(距離は同じ)。抜け切ったら抜けた先の減速(tickBrawler)。後隙の終わり(行動の長さ)は今と同じ。
+ * 届かないまま抜け切った時(空振り・壁で止まった)は今どおり抜け切った時に判定する。
+ */
+const brawlerPalmContactStop = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState): void => {
+  const st = get();
+  const p = st.player;
+  const now = Date.now();
+  const c = brawlerCenter(p);
+  const x0 = s.palmFromX ?? c.x, y0 = s.palmFromY ?? c.y;
+  const traveled = Math.max(0, (c.x - x0) * s.dirX + (c.y - y0) * s.dirY);
+  const pw = meleeWallsAround(get, x0, y0, BR.BRAWLER_PALM_PASS_PX + 60);
+  const cand = brawlerBandIds(st, BR.brawlerBandTargets(st.enemies, x0, y0, s.dirX, s.dirY, pw, BR.BRAWLER_PALM_PASS_PX), brawlerBandOfAction(s), now);
+  if (!BR.brawlerPalmContact(st.enemies, cand, x0, y0, s.dirX, s.dirY, traveled)) return;
+  setBrawler(set, { ...s, palmContactAt: st.gameTime });
+  resolveBrawlerAction(get, set);
+};
 /** 5段目: 軌跡の上の壊せる物(松明など)を壊す(一閃と同じ扱い・§9-26)。 */
 /** ★爆発の浮きの待ち行列(§14・playerBlast/queueBlastLift が積み、tickBrawler が掛ける)。描画にも保存にも出さない一時の箱。 */
 const pendingBlastLifts: { x: number; y: number; r: number }[] = [];
@@ -6392,7 +6427,18 @@ const brawlerHitPatch = (
     }
   }
   // ★決め技の止めの延長(research/HITSTOP.md §7・案C): この当たりで浮かせた相手の浮きの時計を延長の分だけ後ろへ(押しは止めの明けから始まる=延長が無い時と同じ重なり)。
-  if ((bs.finishExtMs ?? 0) > 0 && out.brawlerLiftAt !== undefined && out.brawlerLiftAt >= now) {
+  // ★止めの間は落下の時計も止める(社長指示2026-11-27「ストップ時、落下が止まってない。なので落ちてから吹っ飛んでる」): 当たった相手の止め
+  //   (雑魚・強個体=hitStunUntil・ボス級=止めの固まり)の分だけ浮きの時計を後ろへ=止めの間は高さが変わらず、明けたら止めた所から続く。
+  //   対象: 前から浮いていた相手(この当たりで浮きを書き直さなかった)・この当たりの叩き落とし(ダウン=今の高さから落ちる)・地面バウンド(落ちてから跳ねる)。
+  //   この当たりで上へ浮かせた弧(打ち上げ・空中の浮き直し=落ちる区間から始まらない弧)は今どおり止めの間に上がり始める
+  //   (止めると当たる高さの帯と定石の間合いがずれて ①4段→地割り 等がつながらなくなる=社長判断)。決め技の延長(案C)も止めに含まれる。
+  const freezeMs = bossLike ? bossStopMs : stopMs;
+  const freshRise = out.brawlerLiftAt !== undefined && out.brawlerLiftAt >= now && (out.brLiftPeak ?? 0) > 0 && !((out.brLiftDropMs ?? 0) > 0);
+  if (freezeMs > 0 && !freshRise) {
+    const cur = { ...enemy, ...out } as Enemy;
+    const sh = BRC.brawlerStopLiftShift(cur, now, bossLike ? undefined : enemy.hitStunUntil, now + freezeMs, out.brNoHoldUntil !== undefined && out.brNoHoldUntil !== enemy.brNoHoldUntil);
+    if (sh) Object.assign(out, sh);
+  } else if ((bs.finishExtMs ?? 0) > 0 && out.brawlerLiftAt !== undefined && out.brawlerLiftAt >= now) {
     const sh = BRC.brawlerShiftLift(out as Parameters<typeof BRC.brawlerShiftLift>[0], now, bs.finishExtMs!);
     if (sh) Object.assign(out, sh);
   }
@@ -6856,6 +6902,8 @@ const fireBufferedBrawlerTech = (
   //   だめなら今までどおりの構え=判定の後に押した構えと同じく、行動が終わって待機へ戻った瞬間に出す(払えなければ弱い構え)。
   const kickUp = kind === 'kick' && s.kickUpBuffer === true;
   if (kickUp && !BR.brawlerKickUpReady(s1, get().gameTime, s1.points >= BR.brawlerKickUpCost(awakened, brawlerTechDiscount(p, 'kick')))) {
+    // 空中なら構えにも変えない=捨てる(§39・BR.brawlerAirBlocksGuard)。
+    if (BR.brawlerAirBlocksGuard(s1, get().gameTime, 'guard')) { setBrawler(set, s1); return; }
     setBrawler(set, { ...s1, techBuffer: 'guard', lateHeld: true, stepHeld: false });
     return;
   }
@@ -6908,7 +6956,8 @@ const startBrawlerTech = (
   // ★§39・§40: 空中で出せる技だけ(飛び蹴り・空中蹴り・蹴り上げ・踵落とし・地割り・土竜・気功)。それ以外(構え・秘奥義の締め)は空中では出ない=捨てる。
   //   空中の気功の後は着地まで何も出ない。代金なしの技(構えで受けた瞬間の潰し=地上)は対象外。
   const selfH = BR.brawlerSelfHeightPx(s0In, t);
-  if (!free && selfH > BR.BRAWLER_AIR_EPS_PX && (!BR.brawlerAirAllowsTech(kind) || BR.brawlerAirKikoLocked(s0In, t))) {
+  // ★構えは代金なし(秘奥義の取り消し)でも空中では出さない(BR.brawlerAirBlocksGuard=全経路の門)。
+  if ((!free && selfH > BR.BRAWLER_AIR_EPS_PX && (!BR.brawlerAirAllowsTech(kind) || BR.brawlerAirKikoLocked(s0In, t))) || BR.brawlerAirBlocksGuard(s0In, t, kind, kickUpReq)) {
     if (s0In.techBuffer) setBrawler(set, { ...s0In, techBuffer: undefined, heelBuffer: false, kickUpBuffer: false, guardCancelHeld: false });
     return false;
   }
@@ -7421,7 +7470,8 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const palm = spec.shape === 'band'
       ? (() => {
         const x0 = s.palmFromX ?? c.x, y0 = s.palmFromY ?? c.y;
-        const travel = Math.max(0, (c.x - x0) * s.dirX + (c.y - y0) * s.dirY);
+        // ★拳が届いた瞬間に当てる時(palmContactAt・社長指示2026-11-27)は、これから抜ける道筋(踏み出した長さ)の帯で当てる(壁の向こうは帯の判定が外す)。
+        const travel = s.palmContactAt !== undefined ? BR.BRAWLER_PALM_PASS_PX : Math.max(0, (c.x - x0) * s.dirX + (c.y - y0) * s.dirY);
         return { x0, y0, ux: s.dirX, uy: s.dirY, travel };
       })()
       : null;
@@ -7447,6 +7497,22 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const plan = brawlerPlanMultiHit(plan0, hits); // まとめて当てた時は自分の止めも延ばす(敵の止め・揺れ・絵は brawlerMultiHitFx)
     const next0 = BR.brawlerAfterResolve({ ...s, dirX: fdir.x, dirY: fdir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: plan.self, landed: r.landed ?? hits });
     const next = { ...next0, ...brawlerFreezeMark(next0, plan, hits), ...brawlerComboLockPatch(s, r, target?.id, c) };
+    if (palm && s.palmContactAt !== undefined) {
+      // ★拳が届いた瞬間に当てた(社長指示2026-11-27): 突き抜けの器はそのまま止めの間だけ止め、明けたら残りを進む(距離は同じ=止めた分だけ後ろへ)。
+      //   抜け切ったら抜けた先の減速(tickBrawler)。抜ける間の無敵は止めた分だけ延ばす。
+      const holdMs = hits > 0 ? (plan.freeze > 0 ? plan.freeze : plan.stun) : 0;
+      const restMs = Math.max(0, (p.lungeUntil ?? now) - now) + holdMs;
+      setBrawler(set, { ...next, palmPassRest: true }, {
+        lastDirection: { x: fdir.x, y: fdir.y }, lungeHoldUntil: now + holdMs,
+        invulnerable: true,
+        invulnerableTime: p.invulnerable ? Math.max(p.invulnerableTime, now - Math.max(0, INVULN_MS - restMs)) : now - Math.max(0, INVULN_MS - restMs),
+        ...abilityInvulnPatch(p, now, restMs),
+      });
+      brawlerNoteFlowHits(set, hits);
+      brawlerStageFx(get, s.stage, c, fdir, r, target, palm);
+      brawlerMultiHitFx(get, set, r, fdir);
+      return;
+    }
     setBrawler(set, next, {
       lastDirection: { x: fdir.x, y: fdir.y },
       // 5段目: 抜けた先で(当てたら一拍止まってから)減速して止まる。
@@ -14428,6 +14494,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (BR.isBrawlerSecretActive(p.brawler)) {
       const sec = p.brawler!;
       if (neutral || BR.classifyBrawlerFlick(dirX, dirY) !== 'guard' || !BR.brawlerSecretCancelable(sec)) return false;
+      if (BR.brawlerAirBlocksGuard(sec, st.gameTime, 'guard')) return false; // 空中では構えに取り消さない(§39・押しは捨てる)
       endBrawlerSecret(set, sec);
       const after = get().player.brawler;
       if (!after || !brawlerGateOk(get)) return true;
@@ -14457,6 +14524,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         return true;
       }
     }
+    // ★§39: 空中(滞空・落下を含む)の上は構えにならない=何も起きない(覚えもしない・着地しても出ない)。蹴り上げを体得していない時の「空中蹴りの後の上」もここ。
+    if (BR.brawlerAirBlocksGuard(s, t, kind, kickUp)) return false;
     // ★構えを技で取り消す(§34-2・§34-6 #8・Lv1から): 受けの成立の止め(画面全体の止め)の最中に入れた技は1つだけ覚え、止めが明けた瞬間に出す。
     if (kind && BR.brawlerGuardCancelOk(s, kind, t) && get().hitstopUntil > Date.now()) {
       setBrawler(set, { ...s, techBuffer: kind, heelBuffer: false, kickUpBuffer: false, guardCancelHeld: true, buffered: false, stepBuffer: undefined, stepHeld: false, lateHeld: false });
@@ -14662,6 +14731,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // 5段目: 溜めが終わったら突き抜けを踏み出す(判定は抜け切った時刻=前隙の終わり)。
     { const sp = get().player.brawler; if (sp && BR.brawlerPalmDashDue(sp, get().gameTime)) startBrawlerPalmDash(get, set, sp); }
+    // ★5段目: 拳の先が最初の相手に届いた瞬間に当てて、自分も相手もそこで止める(止めた分だけ突き抜けの残りを後ろへ・距離は同じ・社長指示2026-11-27)。
+    { const sp = get().player.brawler; if (sp && BR.isBrawlerPalmDashing(sp) && !sp.resolved && sp.palmContactAt === undefined) brawlerPalmContactStop(get, set, sp); }
+    // 拳が届いて当てた後、突き抜けの残りを抜け切った=抜けた先の減速(当てていなければ止めなし)。
+    {
+      const sp = get().player.brawler;
+      const pl = get().player;
+      if (sp && sp.palmPassRest) {
+        if (!(sp.phase === 'attack' && sp.stage === 5)) setBrawler(set, { ...sp, palmPassRest: undefined }); // 別の行動へ移った=その行動の踏み込みが勝つ
+        else if (Date.now() >= (pl.lungeUntil ?? 0)) setBrawler(set, { ...sp, palmPassRest: undefined }, brawlerPalmSettlePatch(sp.dirX, sp.dirY, 0, Date.now()));
+      }
+    }
     for (let i = 0; i < 3; i++) {
       const s = get().player.brawler;
       if (!s) return;
@@ -16042,7 +16122,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const falloff = 1 - dist / meleeRange;
         // v0.25.3260: 50px化(3257)を社長指示で撤回=従来値へ。2026-11-07: 移動近接は ×MOVING_MELEE_KB_MULT。
         const speed = meleeKnockbackSpeed(falloff, false, movingSwing);
-        survivors.push({
+        survivors.push(meleeStopFreezeLift(enemy, {
           ...enemy,
           health: newHealth,
           lastHit: now,
@@ -16057,7 +16137,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断(laser-broken遷移+中断CD+体幹'counter')
           ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(melee削り/2/3減速/致命後daze)
-        });
+        }, now)); // ★止めの間は落下も止める(社長指示2026-11-27)
       } else {
         // Knockback is on cooldown for this enemy (recently shoved): don't shove
         // again — instead freeze it in place for 0.1s. We reuse the knockback
@@ -17769,7 +17849,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 近接フィニッシュの跳ねと同じ弱い浮き(liftUntil・ボス区分は浮かせない=止め続けない)。3段目は今の押し。
       const light = !!opts?.light;
       const lightLift = light && BRC.brawlerEnemyClass(enemy) !== 'boss';
-      survivors.push({
+      survivors.push(meleeStopFreezeLift(enemy, {
         ...enemy,
         health: newHealth,
         lastHit: now,
@@ -17791,7 +17871,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...(bossBump?.patch ?? {}), // 紫カウント/発動を反映(最後に展開して優先=刀5490と同じ作法)
         ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
         ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(鞭のmelee削り/致命後daze)
-      });
+      }, now)); // ★止めの間は落下も止める(社長指示2026-11-27)
     }
 
     const finisherHit = killed.some(k => k.finisher);

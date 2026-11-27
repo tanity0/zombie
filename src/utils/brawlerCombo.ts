@@ -791,3 +791,21 @@ export const brawlerShiftLift = (
     ...(e.liftUntil !== undefined && e.liftUntil === e.brLiftUntil ? { liftUntil: e.liftUntil + ms } : {}),
   };
 };
+/**
+ * ★止めの間は浮き・落下の時計も止める(社長指示2026-11-27「ストップ時、落下が止まってない。なので落ちてから吹っ飛んでる」)。
+ * 当たりで書いた相手の止め(壁時計)の分だけ、浮きの時計(brawlerLiftAt・brLiftUntil・同じ値の liftUntil)を後ろへずらす=止めの間は高さが変わらず、
+ * 明けたら止めた所から続く。この当たりで書いた浮き(liftAt>=now)は止めの全部、前から続く浮きは前の止めの明けから延びた分だけ(二重にずらさない)。
+ * 着地の後の「固まらない時間」(brNoHoldUntil)もこの当たりで書いた時は同じだけずらす(着地からの長さは今のまま)。
+ * prevStopUntil=当たる前の止めの明け / stopUntil=当たった後の止めの明け。ずらす物が無ければ null。
+ */
+export const brawlerStopLiftShift = (
+  e: Pick<BrawlerJuggleFields, 'brawlerLiftAt' | 'brLiftUntil'> & { liftUntil?: number; brNoHoldUntil?: number },
+  now: number, prevStopUntil: number | undefined, stopUntil: number | undefined, noHoldWritten = false,
+): { brawlerLiftAt: number; brLiftUntil: number; liftUntil?: number; brNoHoldUntil?: number } | null => {
+  if (stopUntil === undefined || !(stopUntil > now) || e.brawlerLiftAt === undefined) return null;
+  const fresh = e.brawlerLiftAt >= now;
+  const ms = fresh ? stopUntil - now : stopUntil - Math.max(now, prevStopUntil ?? 0);
+  const sh = brawlerShiftLift(e, now, ms);
+  if (!sh) return null;
+  return noHoldWritten && e.brNoHoldUntil !== undefined ? { ...sh, brNoHoldUntil: e.brNoHoldUntil + ms } : sh;
+};

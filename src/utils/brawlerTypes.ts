@@ -169,6 +169,10 @@ export interface BrawlerState {
   gainAt?: number;
   /** 5段目の貫通突進(社長指示2026-11-07「5段目は一閃みたいに敵やオブジェクトを貫通する技」)を踏み出した地点。未設定=溜めの間。 */
   palmFromX?: number;
+  /** ★5段目の突き抜けで拳の先が最初の相手に届いて止まった時刻(gameTime・社長指示2026-11-27「止めは当たった!と分かる瞬間に」)。未設定=まだ届いていない。 */
+  palmContactAt?: number;
+  /** ★5段目: 拳が届いた瞬間に当てた後、突き抜けの残りを進んでいる最中(抜け切ったら抜けた先の減速へ・store の tickBrawler)。 */
+  palmPassRest?: boolean;
   /** 今の構えを始めた(または延長した)時刻(gameTime)。カウンターのスロー・停止は構え1回(延長ごと)に最初の1度だけ(§9-41)。 */
   guardSince?: number;
   /** スロー・停止を出した構え(guardSince の値)。 */
