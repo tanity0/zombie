@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   initialBrawlerState, brawlerStartAttack, brawlerStartTech, brawlerSecretStart, brawlerPoseAt, brawlerElapsed,
-  brawlerCounterInterrupt, brawlerCounterFallPx, BRAWLER_COUNTER_FALL_MS, BRAWLER_KICK_MAX,
+  brawlerCounterInterrupt, brawlerCounterFallPx, BRAWLER_COUNTER_FALL_MS, BRAWLER_KICK_MAX, brawlerSelfHeightPx,
 } from './brawler';
 
 describe('brawlerCounterInterrupt(カウンターされた側の中断)', () => {
@@ -35,7 +35,8 @@ describe('brawlerCounterInterrupt(カウンターされた側の中断)', () => 
     const heel = brawlerStartTech({ ...initialBrawlerState(), points: 20 }, 'kick', t0, BRAWLER_KICK_MAX, false, true);
     // 体が空中に居る時刻を探す。
     let t = t0; let h = 0;
-    for (let k = 1; k < 2000 && h < 10; k++) { t = t0 + k; h = brawlerPoseAt(heel, t)?.jump ?? 0; }
+    // ★§40-4 ④: 体の高さはプレイヤーの自分の高さ(brawlerSelfHeightPx=技ごとの決まった高さ)。
+    for (let k = 1; k < 2000 && h < 10; k++) { t = t0 + k; h = brawlerSelfHeightPx(heel, t); }
     expect(h).toBeGreaterThan(10);
     expect(brawlerElapsed(heel, t)).toBeGreaterThan(0);
     const s = brawlerCounterInterrupt(heel, t);

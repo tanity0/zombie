@@ -684,8 +684,9 @@ describe('§20-6-4 止め続けられない', () => {
     spawnFoe('hunter-move');
     const g0 = gt();
     // 固まらない時間の間に(格闘以外で)浮いている所へ、予算切れの当たり=ダウン
+    // (★§40-4 ①: 地上の1段目が届く高さ=頂点 0.7(当たる高さの割合 0.42)。旧の頂点1=0.6 は地上の技の届く高さの外)
     useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({
-      ...e, brLockNoHoldUntil: g0 + 1500, brawlerLiftAt: now, brLiftMs: 600, brLiftPeak: 1, brLiftFrom: 0, brLiftUntil: now + 600, liftUntil: now + 600, brLiftBudget: 0, brLiftDown: false,
+      ...e, brLockNoHoldUntil: g0 + 1500, brawlerLiftAt: now, brLiftMs: 600, brLiftPeak: 0.7, brLiftFrom: 0, brLiftUntil: now + 600, liftUntil: now + 600, brLiftBudget: 0, brLiftDown: false,
     })) }));
     useGameStore.getState().brawlerPress();
     for (let k = 0; k < 60 && !br().resolved; k++) adv();

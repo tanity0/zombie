@@ -223,9 +223,10 @@ describe('最後に空中の敵へ当てた記録', () => {
 });
 
 describe('空中の敵に当てた時に自分も浮いて追う武器', () => {
-  it('格闘・気功だけ浮く。ナイフ・鞭・刀は浮かない(社長「敵を追いかけてジャンプしてるのが変」「鞭もね」「刀もね」)', () => {
-    expect(meleeHitLiftsPlayer('brawler')).toBe(true);
-    expect(meleeHitLiftsPlayer('kiko')).toBe(true);
+  it('どの近接でも追いかけて浮かない(社長「敵を追いかけてジャンプしてるのが変」「鞭もね」「刀もね」+ 格闘・気功も §40)', () => {
+    // ★§39・§40-4 ④(社長指示2026-11-27): 格闘・気功も追いかけて浮かない(自分の高さは技ごとの決まった高さ)。
+    expect(meleeHitLiftsPlayer('brawler')).toBe(false);
+    expect(meleeHitLiftsPlayer('kiko')).toBe(false);
     expect(meleeHitLiftsPlayer('knife')).toBe(false);
     expect(meleeHitLiftsPlayer('whip')).toBe(false);
     expect(meleeHitLiftsPlayer('katana')).toBe(false);

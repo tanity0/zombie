@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setKenkiLevelForTest } from '../utils/kenkiLevel';
 import { useGameStore, isBrawlerGuarding } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
-import { BRAWLER_GRAB_MS, BRAWLER_CONTACT_GRAB_MS, brawlerKickUpCost, BRAWLER_TECHS, BRAWLER_WORLD_STOP, BRAWLER_SUPLEX_RISE_MS, BRAWLER_CONTACT_FREEZE_MS, BRAWLER_SUPLEX_BLAST_RADIUS, brawlerTechCost, brawlerDistTo, brawlerPoseAt, BRAWLER_AIR_SUPLEX_RISE_MS } from '../utils/brawler';
+import { BRAWLER_GRAB_MS, BRAWLER_CONTACT_GRAB_MS, brawlerKickUpCost, BRAWLER_TECHS, BRAWLER_WORLD_STOP, BRAWLER_SUPLEX_RISE_MS, BRAWLER_CONTACT_FREEZE_MS, BRAWLER_SUPLEX_BLAST_RADIUS, brawlerTechCost, brawlerDistTo, brawlerPoseAt, BRAWLER_AIR_SUPLEX_RISE_MS, brawlerSelfAirborne } from '../utils/brawler';
 import { brawlerTimeKeeperDiscount } from '../utils/brawlerSkills';
 import { setBrawlerTempoAll, brawlerAirborne } from '../utils/brawlerCombo';
 import { playerSuperArmorActive } from '../utils/superArmor';
@@ -87,19 +87,24 @@ describe('§34-1 蹴り上げ(ストア)', () => {
     expect(br().kickUp).toBeFalsy();
     expect(br().tech === 'guard' || br().contactGrab !== undefined).toBe(true);
   });
-  it('外れた蹴りの後の上は構え(今までどおり)', () => {
+  it('外れた蹴りの後の上は構え(今までどおり・★§39: 空中では構えは出ない=滞空が明けて着地してから)', () => {
     kick1(() => []);
-    for (let k = 0; k < 60 && br().phase !== 'idle'; k++) advance(10);
+    for (let k = 0; k < 120 && (br().phase !== 'idle' || brawlerSelfAirborne(br(), useGameStore.getState().gameTime)); k++) advance(10);
+    expect(brawlerSelfAirborne(br(), useGameStore.getState().gameTime)).toBe(false);
     expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
     expect(br().tech).toBe('guard');
   });
-  it('払えない時の上は構え(弱い構え)', () => {
+  it('払えない時の上は構え(弱い構え)。★§39: 空中蹴りの滞空・落下の間は構えは出ない(捨てる)=着地してから押した上が構え', () => {
     kick1(() => [enemyAt(120, 0, 'z')], 3); // 2発で2使う=残り1<蹴り上げの2
     expect(br().points).toBeLessThan(brawlerKickUpCost());
-    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
-    for (let k = 0; k < 80 && br().tech !== 'guard'; k++) advance(10);
-    expect(br().tech).toBe('guard');
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true); // 判定の後の上=覚える(行動が終わった瞬間に出す=§25)
+    for (let k = 0; k < 120 && (br().phase !== 'idle' || brawlerSelfAirborne(br(), useGameStore.getState().gameTime)); k++) {
+      advance(10);
+      expect(br().tech, '空中では構えにならない').not.toBe('guard');
+    }
     expect(br().kickUp).toBeFalsy();
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true); // 着地してからの上=構え(払えない=弱い構え)
+    expect(br().tech).toBe('guard');
   });
 });
 

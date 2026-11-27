@@ -15,6 +15,7 @@ import { WHIP_SWING_RADIUS_MULT, WHIP_THROW_DIST_MULT } from '../utils/whipSwing
 import { FLICK_FOLLOWUP_WINDOW_MS } from '../utils/flickFollowup';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll } from '../utils/brawlerCombo';
+import { BRAWLER_LUNGE_PX } from '../utils/brawler';
 import type { Enemy, Player, SubWeaponKey } from '../types/game';
 
 setBrawlerTempoAll(1.0);
@@ -219,7 +220,8 @@ describe('格闘: 連撃の間は伸びたまま、途切れたら消える(rese
   it('溜まっていなければ届かず、溜まっていれば届き、コンボが途切れたら消える', () => {
     const press = (charged: boolean) => {
       setup(['brawler', 'striker-hunting'], { brawler: 3, 'striker-hunting': 3 }, charged);
-      useGameStore.setState({ enemies: [zombieAt(MELEE_RADIUS + zombieWidth() / 2 + LV3 / 2, 'z')] });
+      // ★§40-4 ⑤: 1段目の狙える範囲=届く範囲+踏み込みの上限。その外・ハンティングで広がった範囲の内に置く。
+      useGameStore.setState({ enemies: [zombieAt(MELEE_RADIUS + BRAWLER_LUNGE_PX.s1 + zombieWidth() / 2 + LV3 / 2, 'z')] });
       st().brawlerPress();
       run(200, true);
     };

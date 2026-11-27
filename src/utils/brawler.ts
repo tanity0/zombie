@@ -382,6 +382,7 @@ export const brawlerTimesAt = (tempo: number) => ({
     BRAWLER_STEP_MS: brawlerTempoMs(180, tempo),
     BRAWLER_KICK3_CHARGE_MS: brawlerTempoMs(127, tempo), // 社長指示2026-11-11『飛び蹴りからの3段、ほんの少しだけゆっくりに』で ×1.1(旧115)
     BRAWLER_GOUGE_JUMP_MS: brawlerTempoMs(160, tempo), // 抉り打ちの小ジャンプ(§37-3)
+    BRAWLER_AIR_HOVER_MS: brawlerTempoMs(450, tempo), // 空中蹴り・蹴り上げの後の滞空(§40-4 ⑧)
 });
 /**
  * テンポ係数を差し替える(格闘の時間の欄を全部書き直す)。起動時に `?brtempo=`(既定 1.3)で1回呼ぶ。
@@ -413,6 +414,7 @@ export const setBrawlerTempo = (tempo: number): void => {
   BRAWLER_STEP_MS = v.BRAWLER_STEP_MS;
   BRAWLER_KICK3_CHARGE_MS = v.BRAWLER_KICK3_CHARGE_MS;
   BRAWLER_GOUGE_JUMP_MS = v.BRAWLER_GOUGE_JUMP_MS;
+  BRAWLER_AIR_HOVER_MS = v.BRAWLER_AIR_HOVER_MS;
   BRAWLER_FLOW_GRACE_MS = BRAWLER_CHAIN_RESET_MS;
 };
 
@@ -725,7 +727,7 @@ export const brawlerCancel = (s: BrawlerState): BrawlerState => ({
  * 空中(飛び蹴り・踵落とし・蹴り上げ等の体の高さ)で返された時は、その高さから加速して落ちる(counterFall・絵だけ・慣性)。
  */
 export const brawlerCounterInterrupt = (s: BrawlerState, t: number): BrawlerState => {
-  const h = Math.max(0, brawlerPoseAt(s, t)?.jump ?? 0);
+  const h = brawlerSelfHeightPx(s, t); // プレイヤーの自分の高さ(§40-4 ④=技ごとの決まった高さ・滞空・落下)
   const cut = s.secret ? brawlerSecretEnd(s) : brawlerCancel(s);
   return { ...cut, airSuplexRiseAt: undefined, airSuplexHoldAt: undefined, counterFall: h > 0.5 ? { fromPx: h, at: t } : undefined };
 };
@@ -2392,6 +2394,193 @@ export const brawlerCrispPoseAt = (s: BrawlerState | undefined, t: number, nowMs
   const push = crispCurve(e => brawlerPoseAtRaw(at(e), t, nowMs)?.push ?? 0, el, 0, total, [s.windupMs]);
   const sink = base.sink !== undefined ? crispCurve(e => brawlerPoseAtRaw(at(e), t, nowMs)?.sink ?? 0, el, 0, total, [s.windupMs]) : undefined;
   return { ...base, push, ...(sink !== undefined ? { sink } : {}) };
+};
+
+// ---------------------------------------------------------------------------------------------
+// ★追尾の原則(research/BRAWLER.md §40-4・社長指示2026-11-27「追尾するのは、敵までの移動方向のみで、移動距離は射程範囲を守る、高さは追わない。
+//   高さは規定の高さまで上がる固定の攻撃。格闘ゲームと同じ」)。**プレイヤーの格闘だけ**(幻影・孫悟空・拳鬼は今の作りのまま=ここは読まない)。
+//  - 距離: 技ごとの「動く距離の上限」(狙った相手の手前で止まる・壁で止まる)。狙える範囲=上限+届く距離。
+//  - 高さ: 技ごとの決まった高さ(敵の高さに合わせない)。絵だけ(判定・足元は地面の座標のまま)。
+//  - 空中蹴り・蹴り上げの後は決まった高さで滞空(後隙の延長)→ 明けたら重力で落ちる(待機)。
+// 時計は技の時計(gameTime・止めの間は止まる=brawlerElapsed)。
+// ---------------------------------------------------------------------------------------------
+/** 飛び蹴りの動く距離の上限(px・§40-2/§40-4 ⑤)。相手が居ない時も、この距離だけ向いている方へ飛ぶ。蹴り上げ・踵落とし=その場/真下(0)。 */
+export const BRAWLER_PLAYER_KICK_LUNGE_PX = { kick1: 120, kick2: 90, kick3: 60, kickup: 30, heel: 30 } as const;
+/** 空中で出した1・2段目の前への動き(px・§40-2「その時の高さのまま前へ少し」)。 */
+export const BRAWLER_AIR_STAGE_LUNGE_PX = 20;
+/** 技ごとの決まった高さ(px・絵だけ)。飛び蹴り1発目=低め・空中蹴り(2発目)・蹴り上げ(§40-2)。 */
+export const BRAWLER_KICK1_AIR_PX = 28;
+export const BRAWLER_KICK2_AIR_PX = 96;
+export const BRAWLER_KICKUP_AIR_PX = 120;
+/** 滞空(§40-4 ⑧): 450ms(×BRAWLER_TEMPO)のうち、最初の 2/3 は高さ一定・残りでわずかに沈む(慣性)。 */
+export let BRAWLER_AIR_HOVER_MS = 450; // ×BRAWLER_TEMPO(係数1.0の値)
+export const BRAWLER_AIR_HOVER_HOLD_FRAC = 300 / 450;
+export const BRAWLER_AIR_HOVER_SINK_PX = 6;
+/** 格闘の自分の落下の重さ(px/ms²・技の時計)。§18 の追いの浮き(PLAYER_AIR_GRAVITY)とは別の定数(使い回さない=§40-4 ⑧)。96px を約0.28秒で落ちる。 */
+export const BRAWLER_AIR_GRAVITY = 0.0024;
+/** これより高ければ「空中」(px)。 */
+export const BRAWLER_AIR_EPS_PX = 0.5;
+/** 空中投げで放した後の反動(上向きの初速・px/ms)。少し浮いてから落ちる(今の見せ方=約6px の跳ね)。 */
+export const BRAWLER_AIR_THROW_RECOIL_V = Math.sqrt(2 * BRAWLER_AIR_GRAVITY * 6);
+const smooth01 = (x: number): number => { const k = Math.max(0, Math.min(1, x)); return k * k * (3 - 2 * k); };
+const easeOut3 = (x: number): number => { const k = Math.max(0, Math.min(1, x)); return 1 - (1 - k) * (1 - k) * (1 - k); };
+/** 重力の落下(from=高さ・v0=下向きの初速 px/ms・負=上向き)。地面で0。 */
+export const brawlerAirFallPx = (fromPx: number, v0: number, dtMs: number): number => {
+  const d = Math.max(0, dtMs);
+  return Math.max(0, fromPx - v0 * d - 0.5 * BRAWLER_AIR_GRAVITY * d * d);
+};
+/** 滞空の高さ(top=決まった高さ・q=滞空に入ってからの ms)。 */
+export const brawlerAirHoverPx = (top: number, q: number, hoverMs: number = BRAWLER_AIR_HOVER_MS): number => {
+  const hold = hoverMs * BRAWLER_AIR_HOVER_HOLD_FRAC;
+  if (q <= hold) return top;
+  return top - BRAWLER_AIR_HOVER_SINK_PX * smooth01((q - hold) / Math.max(1, hoverMs - hold));
+};
+/** この蹴りが滞空を持つか(空中蹴り=2発目・蹴り上げ。掴んだ蹴り上げ=空中投げは滞空しない)。 */
+export const brawlerKickHovers = (s: Pick<BrawlerState, 'phase' | 'tech' | 'kickN' | 'kickHeel' | 'kickUp' | 'kickThrow' | 'contactGrab'>): boolean =>
+  s.phase === 'tech' && s.tech === 'kick' && !s.contactGrab && !s.kickHeel && !s.kickThrow && (s.kickUp === true || s.kickN === 2);
+/** 滞空を持つ蹴りの後隙(=滞空の長さ。元の後隙より短くはしない)。store が出した瞬間に書く(プレイヤーだけ)。 */
+export const brawlerHoverRecoveryMs = (baseRecoveryMs: number): number => Math.max(baseRecoveryMs, BRAWLER_AIR_HOVER_MS);
+/** プレイヤーの蹴りの高さ(px)。el=技の時計の経過。 */
+const playerKickHeightPx = (s: BrawlerState, t: number, el: number): number => {
+  const h0 = Math.max(0, s.airFromPx ?? 0);
+  const w = Math.max(1, s.windupMs);
+  const post = el - s.windupMs;
+  if (s.kickUp) {
+    const top = BRAWLER_KICKUP_AIR_PX;
+    // ★空中投げ(§34-3・§40-4 ⑦): 掴んでいる間は蹴り上げの高さで止まる(ループごと止まる)。放したら滞空せず、反動で少し浮いて落ちる。
+    //   スープレックスは掴みが明けて少し上がり(brawlerAirSuplexRise)、叩きつけた所から落ちる。
+    if (s.kickThrow || s.grab) {
+      if (s.airSuplexRiseAt !== undefined && t >= s.airSuplexRiseAt) {
+        const e2 = t - s.airSuplexRiseAt;
+        const slam = BRAWLER_AIR_SUPLEX_RISE_MS + BRAWLER_SUPLEX_RISE_MS;
+        if (e2 < slam) return top + brawlerAirSuplexRise(e2, false);
+        return brawlerAirFallPx(top + BRAWLER_AIR_SUPLEX_RISE_PX, 0, e2 - slam);
+      }
+      if (s.throwAt !== undefined && t >= s.throwAt) return brawlerAirFallPx(top, -BRAWLER_AIR_THROW_RECOIL_V, t - s.throwAt);
+      if (post >= 0) return top;
+    }
+    const charge = Math.max(0, Math.min(s.windupMs, s.kickChargeMs ?? 0));
+    if (el < charge) return h0; // 溜め=いまの高さで構える(上へは振り上げで上がる)
+    if (post < 0) return h0 + (top - h0) * easeOut3((el - charge) / Math.max(1, s.windupMs - charge));
+    return brawlerAirHoverPx(top, post, s.recoveryMs);
+  }
+  if (s.kickHeel) {
+    // ★踵落とし(§40-3/§40-4): 出した時の自分の高さで振り下ろし、後隙の後半で降りる(下限 BRAWLER_HEEL_AIR_PX=地面から出しても少し跳ぶ)。
+    const top = Math.max(BRAWLER_HEEL_AIR_PX, h0);
+    if (post < 0) {
+      const charge = Math.max(0, Math.min(s.windupMs, s.kickChargeMs ?? 0));
+      const span = charge + (s.windupMs - charge) * BRAWLER_HEEL_AIR_RISE_F;
+      return h0 + (top - h0) * smooth01(el / Math.max(1, span));
+    }
+    return brawlerHeelHoverPx(post / Math.max(1, s.recoveryMs), top);
+  }
+  if (s.kickN >= BRAWLER_KICK_MAX) {
+    // 蹴り飛ばし(3発目): いまの高さのまま前へ蹴り、蹴った後は落ちる。
+    if (post < 0) return h0;
+    return brawlerAirFallPx(h0, 0, post);
+  }
+  if (s.kickN === 2) {
+    // 空中蹴り(2発目): 決まった高さまで跳んで蹴り、そのまま滞空(後隙)。
+    const top = BRAWLER_KICK2_AIR_PX;
+    if (post < 0) return h0 + (top - h0) * easeOut3(el / w);
+    return brawlerAirHoverPx(top, post, s.recoveryMs);
+  }
+  // 飛び蹴り(1発目): 低く跳んで蹴り、後隙で着地する。空中から出した時はその高さから決まった高さへ。
+  const top = BRAWLER_KICK1_AIR_PX;
+  if (post < 0) return h0 + (top - h0) * easeOut3(el / w);
+  const q = Math.min(1, post / Math.max(1, s.recoveryMs));
+  return top * (1 - q * q);
+};
+/**
+ * ★プレイヤーのいまの高さ(px・地面=0・絵だけ=判定と足元は地面の座標のまま)。research/BRAWLER.md §40-4 ④。描画も、空中で出せる技の判断も、
+ * 地割りの威力の倍率もこれを読む(1本)。幻影に打ち上げられた浮き(p.brAir・playerAirLocked)とは別物(呼び手が max で合わせる)。
+ * 蹴り=技ごとの決まった高さ / 空中の気功=撃つ間はその高さで止まり、撃った後は落ちる / 空中の1・2段=出した高さのまま /
+ * 待機=落下(airFall) / それ以外(4段目の跳び・抉り打ち・地割りの落下・カウンターで返された落下・掴み・秘奥義)は姿勢の跳び(brawlerPoseAt の jump)。
+ */
+/**
+ * いまの高さが §40 の決まった動き(蹴り・空中の気功・空中の1・2段・空中から出した地割り)が持つ高さか(true)、姿勢の跳び(4段目・抉り打ち・掴み・秘奥義・
+ * カウンターで返された落下=今までの絵の跳び)か(false)。待機は落下(airFall)が §40 の持ち分・姿勢の跳び(返された落下)も重なりうる。描画が出し分けに使う。
+ */
+export const brawlerSelfAirOwns = (s: BrawlerState | undefined): boolean => {
+  if (!s || s.secret) return false;
+  const air = (s.airFromPx ?? 0) > BRAWLER_AIR_EPS_PX;
+  return (s.phase === 'tech' && s.tech === 'kick' && !s.contactGrab)
+    || (air && s.phase === 'tech' && (s.tech === 'kiko' || s.tech === 'stomp'))
+    || (air && s.phase === 'attack' && (s.stage === 1 || s.stage === 2));
+};
+/** §40 の決まった動きの高さだけ(姿勢の跳びは含めない)。待機は落下。 */
+export const brawlerSelfAirPx = (s: BrawlerState | undefined, t: number): number => {
+  if (!s || s.secret) return 0;
+  if (s.phase === 'idle') return s.airFall ? brawlerAirFallPx(s.airFall.fromPx, s.airFall.v0, t - s.airFall.at) : 0;
+  if (!brawlerSelfAirOwns(s)) return 0;
+  const el = Math.max(0, brawlerElapsed(s, t));
+  const h0 = Math.max(0, s.airFromPx ?? 0);
+  if (s.tech === 'kick') return playerKickHeightPx(s, t, el);
+  if (s.tech === 'kiko') return el < s.windupMs ? h0 : brawlerAirFallPx(h0, 0, el - s.windupMs);
+  // 空中から出した地割り・土竜(§39): 真下へ加速して落ち、溜めの前半で着地して割る(踵落としから取り消した時と同じ落ち方)。
+  if (s.tech === 'stomp') {
+    const k = Math.min(1, el / Math.max(1, s.windupMs * BRAWLER_STOMP_FROM_AIR_FALL));
+    return h0 * (1 - k * k);
+  }
+  return h0; // 空中の1・2段=出した高さのまま
+};
+export const brawlerSelfHeightPx = (s: BrawlerState | undefined, t: number): number => {
+  if (!s) return 0;
+  const poseJump = (): number => Math.max(0, brawlerPoseAt(s, t)?.jump ?? 0);
+  if (s.phase === 'idle' && !s.secret) return Math.max(brawlerSelfAirPx(s, t), poseJump());
+  return brawlerSelfAirOwns(s) ? brawlerSelfAirPx(s, t) : poseJump();
+};
+/** プレイヤーが自分の技で空中にいるか(跳び・滞空・落下)。 */
+export const brawlerSelfAirborne = (s: BrawlerState | undefined, t: number): boolean => brawlerSelfHeightPx(s, t) > BRAWLER_AIR_EPS_PX;
+/** 空中蹴り・蹴り上げの後の滞空の最中か(後隙の延長=道の表の技だけ出せる)。 */
+export const brawlerSelfHovering = (s: BrawlerState | undefined, t: number): boolean =>
+  !!s && brawlerKickHovers(s) && s.resolved && brawlerElapsed(s, t) >= s.windupMs;
+/** いまの高さと下向きの速さ(数値微分・px/ms)。行動が空中で終わった時の落下の始まりに使う(高さ・速さが跳ばない=慣性)。 */
+export const brawlerSelfFallFrom = (s: BrawlerState | undefined, t: number): { fromPx: number; v0: number; at: number } | undefined => {
+  const h = brawlerSelfHeightPx(s, t);
+  if (!(h > BRAWLER_AIR_EPS_PX)) return undefined;
+  const dt = 4;
+  const v0 = Math.max(0, (brawlerSelfHeightPx(s, t - dt) - h) / dt);
+  return { fromPx: h, v0, at: t };
+};
+/**
+ * §39 の a=空中で出せる技(社長指示2026-11-27)。空中では、空中蹴り(2発目)・蹴り上げ・踵落とし・地割り・土竜・気功・通常1・2段・飛び蹴り(1発目)・
+ * 蹴り飛ばし(3発目)だけ。それ以外(通常3〜5段・抉り打ち・構え・ステップ・秘奥義の締め)は空中では出ない(押しは捨てる)。
+ */
+export const brawlerAirAllowsTech = (kind: BrawlerTechKind, kickUp = false): boolean =>
+  kind === 'kick' || kind === 'stomp' || kind === 'kiko' || (kind === 'guard' && kickUp);
+export const brawlerAirAllowsStage = (stage: number): boolean => stage === 1 || stage === 2;
+/** 空中の気功の後は、着地までどの技・段にも取り消せない(§39)。 */
+export const brawlerAirKikoLocked = (s: BrawlerState | undefined, t: number): boolean =>
+  !!s && s.airKiko === true && brawlerSelfAirborne(s, t);
+/**
+ * 行動の切り替わりで、自分の高さを持ち越す(store の setBrawler が書く1か所・プレイヤーだけ)。
+ *  - 新しい行動を始めた: その瞬間の高さを airFromPx に(前の行動の高さから続ける)。待機の落下は消す。地上で始めた行動では空中の気功の印を消す。
+ *  - 行動が終わって待機へ(取り消し・終わり): その瞬間の高さと速さから落ちる(airFall)。
+ *  - 空中で気功を撃った: 印(airKiko)。
+ */
+export const brawlerCarryAir = (prev: BrawlerState | undefined, next: BrawlerState, t: number): BrawlerState => {
+  if (!prev || next === prev) return next;
+  const started = next.phase !== 'idle' && (prev.phase === 'idle' || next.startAt !== prev.startAt || next.phase !== prev.phase || next.tech !== prev.tech || next.stage !== prev.stage);
+  if (started) {
+    const h = brawlerSelfHeightPx(prev, t);
+    const air = h > BRAWLER_AIR_EPS_PX;
+    return {
+      ...next, airFromPx: air ? h : undefined, airFall: undefined,
+      airKiko: air ? (prev.airKiko === true || next.tech === 'kiko') : undefined,
+    };
+  }
+  if (next.phase === 'idle' && prev.phase !== 'idle') {
+    const f = brawlerSelfFallFrom(prev, t);
+    return { ...next, airFall: f, airFromPx: undefined, airKiko: f ? prev.airKiko : undefined };
+  }
+  return next;
+};
+/** 空中で被弾した(§40-3): 滞空は切れて落ちる。滞空の最中なら行動を終えて、いまの高さから落とす(怯み・反撃の落下は今の被弾の扱い)。 */
+export const brawlerHurtCutHover = (s: BrawlerState, t: number): BrawlerState => {
+  if (!brawlerSelfHovering(s, t)) return s;
+  const f = brawlerSelfFallFrom(s, t);
+  return { ...s, phase: 'idle', tech: null, buffered: false, techBuffer: undefined, airFall: f, airFromPx: undefined };
 };
 
 // ★起動時のテンポ係数(`?brtempo=`・既定 1.3)。全部の時間の欄が宣言された後(ファイルの末尾)で1回だけ書き直す。

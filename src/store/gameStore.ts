@@ -153,10 +153,10 @@ import * as BRS from '../utils/brawlerSkills'; // 格闘×スキルの純関数(
 import * as BLG from '../utils/brawlerLeverGuard'; // 格闘のレバーガード(成立・半減・小さい押し・research/BRAWLER.md §12-1c)
 import { noteLeverGuardFull, clearLeverGuardFull, leverGuardHurtMuted, isPlayerHurtFlashColor, isPlayerHurtBurstColor, LEVER_GUARD_BURST_NEAR_PX } from '../utils/leverGuardStamp'; // 受け切った直後は被弾の演出を出さない
 import * as BRCM from '../utils/brawlerCounterMaster'; // 格闘のときのカウンターマスター(受けた直後の自動の反撃・前倒し/吹き飛ばしを付けない)
+import * as BRH from '../utils/brawlerHitHeight'; // ★格闘の当たる高さ(research/BRAWLER.md §40-4)
 import * as BRGO from '../utils/brawlerGouge'; // ★格闘の抉り打ち(溜めて離す・research/BRAWLER.md §37)
 import * as BRG from '../utils/brawlerGuard'; // 格闘の構えの成立の効果(雑魚=潰し/雑魚より上=自分がノックバック/光線の中断・research/BRAWLER.md §12-3d)
-import { noteAirMeleeHit, resetAirMeleeHit, playerAirTargetPx, meleeHitLiftsPlayer, type AirFollowWeapon } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18)
-import { airChaseHeightPx } from '../utils/airChaseHeight'; // 高さに追いつく技の高さ(社長指示2026-11-16)
+import { noteAirMeleeHit, resetAirMeleeHit, meleeHitLiftsPlayer, type AirFollowWeapon } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18)
 import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodDrip';
 import { nextHitStunUntil, GUN_HIT_STOP_MULT, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 // ★被弾リアクションの強さ(ノックバック・停止時間が読む・2026-09-17)
@@ -6037,7 +6037,8 @@ const leverGuardFree = (p: Player, gameTime: number, wallNow: number): boolean =
 /** レバーガードで受けた回数(呼び手が damagePlayer の前後で比べて「この一撃はガードだったか」を見分ける)。 */
 export const leverGuardCount = (p: Pick<Player, 'brawler'>): number => p.brawler?.leverGuardN ?? 0;
 const setBrawler = (set: (fn: (s: GameState) => Partial<GameState>) => void, b: BR.BrawlerState, extra: Partial<Player> = {}): void => {
-  set(state => ({ player: { ...state.player, brawler: b, ...extra } }));
+  // ★自分の技の高さの持ち越し(research/BRAWLER.md §40-4 ④): 行動の切り替わりで、始めた瞬間の高さ・終わった瞬間の落下を書く(1か所)。
+  set(state => ({ player: { ...state.player, brawler: BR.brawlerCarryAir(state.player.brawler, b, state.gameTime), ...extra } }));
 };
 const brawlerCenter = (p: Player): { x: number; y: number } => ({ x: p.x + p.width / 2, y: p.y + p.height / 2 });
 /** 踏み込みの器へ載せる詰め(加速して最大速度のまま当たる=§8-2)。距離0なら器を空ける。 */
@@ -6516,27 +6517,58 @@ const openArmoryShopIfInside = (
 };
 
 /** 通常攻撃の段を始める(相手を選び・向きを相手へ・詰めを器へ載せる・振りの音)。 */
-const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s0: BR.BrawlerState): void => {
+/**
+ * ★追尾の原則の相手の選び方(research/BRAWLER.md §40-4 ⑥・プレイヤーだけ): その技が当たる高さの帯に入っている敵の中で一番近い敵(コンボの狙いを優先)。
+ * 帯に入る敵がいなければ、帯の外も含めた一番近い敵の方を向くだけ(face・詰めない)。
+ */
+const brawlerPickInBand = (
+  st: GameState, cx: number, cy: number, range: number, walls: Rect[], lockId: string | undefined, band: BRH.BrawlerHitBand, now: number,
+): { target: Enemy | null; face: Enemy | null } => {
+  const pool = projLabAimable(st.enemies); // ?proj=1 研究所: 描かれていない敵は狙わない
+  const target = BR.pickBrawlerComboTarget(band === 'any' ? pool : pool.filter(e => BRH.brawlerInHitBand(e, now, band)), cx, cy, range, walls, lockId);
+  if (target || band === 'any') return { target, face: target };
+  return { target: null, face: BR.pickBrawlerComboTarget(pool, cx, cy, range, walls, lockId) };
+};
+/** 当たりの瞬間に、その技の当たる高さの帯の外にいる敵を外す(§40-4 ①)。 */
+const brawlerBandIds = (st: GameState, ids: string[], band: BRH.BrawlerHitBand, now: number): string[] =>
+  band === 'any' ? ids : ids.filter(id => { const e = st.enemies.find(x => x.id === id); return !e || BRH.brawlerInHitBand(e, now, band); });
+/** いまの行動の当たる高さの帯(空中で出した1・2段は高さで分けない)。 */
+const brawlerBandOfAction = (s: BR.BrawlerState): BRH.BrawlerHitBand =>
+  BRH.brawlerHitBandOf(BR.brawlerRouteNodeOf(s), (s.airFromPx ?? 0) > BR.BRAWLER_AIR_EPS_PX);
+const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s0: BR.BrawlerState): boolean => {
   const st = get();
   const p = st.player;
   const t = st.gameTime;
   const now = Date.now();
   const stage = BR.brawlerStageForPress(s0, t);
+  // ★§39・§40: 空中で出せる通常攻撃は1・2段目だけ(3段目以降は空中では出ない=押しは捨てる)。空中の気功の後は着地まで何も出ない。
+  const selfAir = BR.brawlerSelfAirborne(s0, t);
+  if (selfAir && (!BR.brawlerAirAllowsStage(stage) || BR.brawlerAirKikoLocked(s0, t))) {
+    if (s0.buffered || s0.stepHeld) setBrawler(set, { ...s0, buffered: false, stepHeld: false });
+    return false;
+  }
   const spec = BR.brawlerStageSpec(stage);
   const c = brawlerCenter(p);
   const radius = huntingMeleeRadius(p);
-  const walls = meleeWallsAround(get, c.x, c.y, radius);
-  // ★コンボ中は最初に当てた敵を狙い続ける(社長指示2026-11-12・届く範囲は今のまま・utils/brawler の pickBrawlerComboTarget)。
-  const target = BR.pickBrawlerComboTarget(projLabAimable(st.enemies), c.x, c.y, radius, walls, BR.brawlerComboLockId(s0)); // ?proj=1 研究所: 描かれていない敵は狙わない
-  const dir = BR.brawlerAimDir(c.x, c.y, target, p.lastDirection);
+  // ★§40-4 ⑤: 動く距離は上限(空中の1・2段は前へ少し)。1〜3段の狙える範囲=上限+届く範囲。4・5段目は今どおり。
+  const lungeMax = selfAir ? BR.BRAWLER_AIR_STAGE_LUNGE_PX : spec.lungePx;
+  const pickR = stage <= 3 ? radius + lungeMax : radius;
+  const walls = meleeWallsAround(get, c.x, c.y, pickR);
+  // ★コンボ中は最初に当てた敵を狙い続ける(社長指示2026-11-12・utils/brawler の pickBrawlerComboTarget)。当たる高さの帯の中から選ぶ(§40-4 ⑥)。
+  const band = BRH.brawlerHitBandOf(BR.brawlerStageNode(stage), selfAir);
+  const pick = brawlerPickInBand(st, c.x, c.y, pickR, walls, BR.brawlerComboLockId(s0), band, now);
+  const target = pick.target;
+  const dir = BR.brawlerAimDir(c.x, c.y, pick.face, p.lastDirection);
   const quick = s0.quickUntil > t;
   const s = { ...BR.brawlerStartAttack(s0, stage, t, quick), targetId: target?.id, dirX: dir.x, dirY: dir.y, pressAt: now, ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
-  const ap = quick ? { dx: 0, dy: 0, dist: 0 } : BR.brawlerStageApproach(stage, c.x, c.y, target, spec.lungePx, dir); // ★§31: 出した瞬間の相手へ、決まった距離まで(途中で取り直さない)・4段目は相手が居なくても向きへ跳ぶ
+  // ★§31・§40: 出した瞬間の相手へ、決まった距離まで(途中で取り直さない)・4段目は相手が居なくても向きへ跳ぶ。帯の外の敵しか居ない時は向くだけ(詰めない)。
+  const ap = quick || (!target && pick.face) ? { dx: 0, dy: 0, dist: 0 } : BR.brawlerStageApproach(stage, c.x, c.y, target, lungeMax, dir);
   // 画面全体の止めの最中に出した段の詰め(壁時計)は、止めが明けた時刻から始める(上の蹴りと同じ・出だしの gameTime と揃える)。
   setBrawler(set, s, { lastDirection: { x: dir.x, y: dir.y }, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, spec.windupMs, Math.max(now, get().hitstopUntil)) });
   // 振りの音(空振りの連打も無音にしない・段ごとに個別の音程=等間隔に下げない)。
   brawlerSfx('whip-swing', stage >= 4 ? 0.55 : 0.4, BR.BRAWLER_SWING_PITCH[spec.stage] * brJitter(), 140);
   // 詰めの出発点に砂埃(pixi が brawler の状態から描く)。
+  return true;
 };
 
 /** ★抉り打ち(research/BRAWLER.md §37)の溜めの判断に渡す、状態の外の事情(関所・浮き・移動の入力)。 */
@@ -6545,7 +6577,7 @@ const brawlerGougeCtxOf = (get: () => GameState): BRGO.BrawlerGougeCtx => {
   const i = st.inputState;
   return {
     gateOk: brawlerGateOk(get),
-    airLocked: playerAirLocked(st.player, Date.now()),
+    airLocked: playerAirLocked(st.player, Date.now()) || BR.brawlerSelfAirborne(st.player.brawler, st.gameTime), // 自分の技の空中でも溜めない(抉り打ちは地上のみ=§39)
     // 移動の入力=タッチの指が遊びの外(swipeDirection)・パッドのスティック(同じ欄)・PC の移動キー(inputState)。速度では測らない(§37-7)。
     moveInput: st.swipeDirection !== null || i.up || i.down || i.left || i.right,
   };
@@ -6672,6 +6704,7 @@ const settleBufferedBrawlerStep = (
   const d = BR.brawlerStepBufferDecision(s, get().gameTime);
   if (d === 'expire') { setBrawler(set, { ...s, stepBuffer: undefined }); return d; }
   if (d !== 'fire' || !s.stepBuffer) return d;
+  if (BR.brawlerSelfAirborne(s, get().gameTime)) { setBrawler(set, { ...s, stepBuffer: undefined }); return 'expire'; } // 空中では出ない(§39)
   if (!brawlerGateOk(get) || isAttackLocked()) return 'wait';
   startBrawlerStep(get, set, s, s.stepBuffer.x, s.stepBuffer.y);
   return 'fire';
@@ -6733,12 +6766,19 @@ const startBrawlerTech = (
   weakGuardReq = false,
   /** 蹴り上げ(§34-1): 次の蹴りを蹴り上げで出す(呼び手が「1・2発目の続き・当たった・払える」を確かめている)。 */
   kickUpReq = false,
-): void => {
+): boolean => {
   const st = get();
   const p = st.player;
   const t = st.gameTime;
   const now = Date.now();
   const c = brawlerCenter(p);
+  // ★§39・§40: 空中で出せる技だけ(飛び蹴り・空中蹴り・蹴り上げ・踵落とし・地割り・土竜・気功)。それ以外(構え・秘奥義の締め)は空中では出ない=捨てる。
+  //   空中の気功の後は着地まで何も出ない。代金なしの技(構えで受けた瞬間の潰し=地上)は対象外。
+  const selfH = BR.brawlerSelfHeightPx(s0In, t);
+  if (!free && selfH > BR.BRAWLER_AIR_EPS_PX && (!BR.brawlerAirAllowsTech(kind) || BR.brawlerAirKikoLocked(s0In, t))) {
+    if (s0In.techBuffer) setBrawler(set, { ...s0In, techBuffer: undefined, heelBuffer: false, kickUpBuffer: false, guardCancelHeld: false });
+    return false;
+  }
   // ★構えの取り消し(§34-2): 構えの最中に出した構え以外の技は、構えをその場で終える(効果は全部切れる・まだ撃っていない反撃の気功は出さない)。
   const guardCancel = kind !== 'guard' && BR.brawlerGuardCancelOk(s0In, kind, t);
   const s0 = guardCancel ? BR.brawlerEndGuardForCancel(s0In, t, now) : s0In;
@@ -6756,6 +6796,8 @@ const startBrawlerTech = (
   const techRefund = !free && !weakGuard && BRS.brawlerOverclockRefunds(techCost, skillLevel(p, 'overclock'));
   // 技ポイントが返った行は、技の行の後に足す(上から「出した技 → 返ってきた」の順に読める・下の notifyTechProc の後)。
   let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel, heel, kickUp), ...(kind === 'guard' ? { guardWeak: weakGuard } : {}), pressAt: now, points: s0.points - (techRefund ? 0 : techCost), ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
+  // ★踵落としから取り消した地割りの威力の倍率は「取り消した瞬間の自分の高さ」(§29・§40-3 今どおり)。空中から出した地割りの落下は自分の高さ(airFromPx)が描く。
+  if (kind === 'stomp') s = { ...s, stompFromPx: cancel && BR.brawlerRouteNodeOf(s0) === 'heel' && selfH > BR.BRAWLER_AIR_EPS_PX ? selfH : undefined };
   // ★秘奥義の順番(research/BRAWLER.md §10-1): 実際に出た技で数える。↑構えで揃ったら、構えを秘奥義に置き換える(ポイントは払った後・窓は張らない)。
   // キャンセルで繋いだ時は前の技の終わり=いま(0ms 扱い・§11-4)。代金なしの技(free)は数えない=順番の進みはそのまま。
   if (!free && !weakGuard) {
@@ -6764,7 +6806,7 @@ const startBrawlerTech = (
     if (secretStep.fire) {
       startBrawlerSecret(get, set, s);
       if (techRefund) notifySkillProc('overclock');
-      return;
+      return true;
     }
   }
   // ★密着の構え(research/BRAWLER.md §34-7): 構えを出した瞬間に体に密着している敵が居れば、構えの代わりに掴む(値段は構えと同じ=払い済み)。
@@ -6776,7 +6818,7 @@ const startBrawlerTech = (
     if (contact) {
       startBrawlerContactGrab(get, set, s, contact);
       if (techRefund) notifySkillProc('overclock');
-      return;
+      return true;
     }
   }
   // ★レバーガードの小さい押しの最中に構え(カウンター)を出した時は、押しの器を残す(research/BRAWLER.md §12-1c「ガードの小さい押しの間も
@@ -6791,18 +6833,25 @@ const startBrawlerTech = (
     brawlerSfx('brawler-guard', 0.35, 1.38, 120);
   }
   if (kind === 'kick' || kind === 'kiko') {
-    const range = (kind === 'kick' ? BR.BRAWLER_KICK_RANGE : BR.BRAWLER_KIKO_RANGE) + brawlerReachExtra(p); // ハンティングが溜まっていれば広がる(§16)
+    // ★追尾の原則(research/BRAWLER.md §40-4 ⑤⑥): 蹴りは技ごとの動く距離の上限(1発目120・2発目90・3発目60・蹴り上げ/踵落とし=その場)、
+    //   狙える範囲=上限+届く範囲。当たる高さの帯の中で一番近い敵へ向く(帯の外の敵しか居なければ向くだけで詰めない)。高さは追わない。
+    const kickNode = kind === 'kick' ? (heel ? 'heel' : kickUp ? 'kickup' : BR.brawlerTechNode('kick', kickN)) : 'kiko';
+    const kickLunge = kind === 'kick' ? BR.BRAWLER_PLAYER_KICK_LUNGE_PX[kickNode as keyof typeof BR.BRAWLER_PLAYER_KICK_LUNGE_PX] : 0;
+    const range = (kind === 'kick' ? kickLunge + huntingMeleeRadius(p) : BR.BRAWLER_KIKO_RANGE + brawlerReachExtra(p)); // ハンティングが溜まっていれば広がる(§16・届く範囲に含む)
     const walls = kind === 'kick' ? meleeWallsAround(get, c.x, c.y, range) : [];
-    const target = BR.pickBrawlerComboTarget(projLabAimable(st.enemies), c.x, c.y, range, walls, BR.brawlerComboLockId(s0)); // ★コンボの狙いを優先(社長指示2026-11-12)・?proj=1 研究所の門
-    const dir = BR.brawlerAimDir(c.x, c.y, target, p.lastDirection);
+    const band = BRH.brawlerHitBandOf(kickNode, false);
+    const pick = brawlerPickInBand(st, c.x, c.y, range, walls, BR.brawlerComboLockId(s0), band, now); // ★コンボの狙いを優先(社長指示2026-11-12)・?proj=1 研究所の門
+    const target = pick.target;
+    const dir = BR.brawlerAimDir(c.x, c.y, pick.face, p.lastDirection);
     s = { ...s, targetId: target?.id, dirX: dir.x, dirY: dir.y };
     extra = { ...extra, lastDirection: { x: dir.x, y: dir.y } };
     if (kind === 'kick') {
       const ap = target
-        ? BR.brawlerApproach(c.x, c.y, target, BR.BRAWLER_KICK_RANGE)
-        : { dx: dir.x * BR.BRAWLER_KICK_NO_TARGET_PX, dy: dir.y * BR.BRAWLER_KICK_NO_TARGET_PX, dist: BR.BRAWLER_KICK_NO_TARGET_PX };
-      // 飛ぶ時間は距離に合わせる(遠い相手ほど少し長く・最高速はほぼ据え置き=§9-33)。判定の時刻(前隙の終わり)も同じ長さ。
-      const flightMs = BR.brawlerKickFlightMs(ap.dist);
+        ? BR.brawlerApproach(c.x, c.y, target, kickLunge)
+        : pick.face ? { dx: 0, dy: 0, dist: 0 } // 帯の外の敵の方を向くだけ(§40-4 ⑥)
+          : { dx: dir.x * kickLunge, dy: dir.y * kickLunge, dist: kickLunge };
+      // ★飛ぶ時間は技ごとに固定(距離から出さない=当たる時刻を一定に・§40-3)。動く距離の上限(120)は旧の「前隙どおりの距離」(160)の内=今の前隙のまま。
+      const flightMs = BR.BRAWLER_TECHS.kick.windupMs;
       // ★踵落としは蹴りに入る前に溜める(社長承認2026-11-08「飛び蹴りの3発目も少し溜めてから蹴る」)。前隙=溜め+飛ぶ時間。
       //   詰めの器は溜めの間止めておく(lungeHoldUntil=止めと同じ仕組み・明けたら飛ぶ時間ぶん飛ぶ)。
       //   ★蹴り飛ばし(踵落としでない3発目)は溜め無し(research/BRAWLER.md §33-2「ポン・ポン・ドン」・社長裁定2026-11-12)。
@@ -6810,18 +6859,15 @@ const startBrawlerTech = (
       // ★当たった蹴りの画面全体の止めの最中に出した次の蹴りは、止めが明けるまで体と影を当たった蹴りの絵のまま描く(§33-2・絵だけ)。
       //   判定の時刻・固まりは今どおり(gameTime は止めの間進まない=始めた時刻 t のまま)。印=始めた gameTime。
       const heldInStop = s0.phase === 'tech' && s0.tech === 'kick' && s0.resolved && s0.connected && get().hitstopUntil > now;
-      s = { ...s, windupMs: chargeMs + flightMs, kickChargeMs: chargeMs, kickHoldAt: heldInStop ? t : undefined, kickGroundPx: ap.dist };
+      // ★空中蹴り(2発目)・蹴り上げの後は決まった高さで滞空する=後隙の延長(§40-4 ⑧・待機に戻さない)。
+      const hoverRec = BR.brawlerKickHovers({ ...s, kickN, kickHeel: heel, kickUp }) ? BR.brawlerHoverRecoveryMs(s.recoveryMs) : s.recoveryMs;
+      s = { ...s, windupMs: chargeMs + flightMs, recoveryMs: hoverRec, kickChargeMs: chargeMs, kickHoldAt: heldInStop ? t : undefined, kickGroundPx: ap.dist };
       // ★画面全体の止め(格闘の当たり・BR.BRAWLER_WORLD_STOP)の最中に出した蹴り(蹴りの連続は止めの最中でもその場で出る)は、踏み込み(壁時計)を
       //   止めが明けた時刻から始める=飛ぶ距離と判定の時刻(gameTime=止めの間は進まない)が今どおり揃う。止めの外では now のまま。
       const lungeAt = Math.max(now, get().hitstopUntil);
-      // ★踵落としの空中の高さ(社長指示2026-11-16「高さに追いつく技も相手の高さに合わせに行って。(ただし強制ではなく決まった距離の中で進行方向としての高さ。)」):
-      //   当たる時刻の相手の浮いた絵の高さ(空中追従と同じ目標=playerAirTargetPx)へ、蹴りの動ける距離(BRAWLER_KICK_RANGE)の中で向かう高さ。下限は今の 30px。
-      //   相手が居ない・地上なら 30px のまま(今どおり)。絵だけ(姿勢の jump)。大踏み潰しへ取り消した時の高さと威力の倍率もここから出る。
-      if (heel && target) {
-        const liftAt = brawlerVisLiftPxAt(target, lungeAt + chargeMs + flightMs);
-        const goal = liftAt > 0 ? playerAirTargetPx(1, liftAt, playerFootBox(p).boxH) : 0;
-        s = { ...s, heelAirPx: airChaseHeightPx(ap.dist, goal, BR.BRAWLER_KICK_RANGE, BR.BRAWLER_HEEL_AIR_PX) };
-      }
+      // ★踵落としの空中の高さ(§40-3・§40-4): 出した時の自分の高さ(下限 BRAWLER_HEEL_AIR_PX)。相手の高さへは合わせない
+      //   (旧 2026-11-16「相手の高さに合わせに行って」は §40 で置き換え)。大踏み潰しへ取り消した時の高さと威力の倍率もここから出る。
+      if (heel) s = { ...s, heelAirPx: Math.max(BR.BRAWLER_HEEL_AIR_PX, BR.brawlerSelfHeightPx(s0, t)) };
       extra = { ...extra, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, flightMs, lungeAt), ...(chargeMs > 0 ? { lungeHoldUntil: lungeAt + chargeMs } : {}) };
       brawlerSfx('whip-swing', 0.55, (kickN >= 3 ? 0.78 : 0.92) * brJitter(), 160);
       // ★蹴りの筋(社長指示2026-11-07「キャラクターの移動に横長の斬撃の絵を被せれば蹴ってるように見える」)。
@@ -6871,6 +6917,7 @@ const startBrawlerTech = (
     setBrawler(set, { ...get().player.brawler!, flashAt: now });
   }
   // 構えの残り時間は体の光だけで見せる(pixi が等速で絞る・輪は出さない=クリエイティブ監査 #9)。
+  return true;
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -7214,15 +7261,20 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   const cap = BR.brawlerPointCap(brawlerLevel(p));
   let target = s.targetId ? st.enemies.find(e => e.id === s.targetId) ?? null : null;
   if (target && !BR.isBrawlerTargetable(target)) target = null;
+  // ★当たる高さの帯(research/BRAWLER.md §40-4 ①): この技が当たる高さの外にいる敵には当たらない(当たりの瞬間の高さで見る)。
+  const band = brawlerBandOfAction(s);
+  if (target && !BRH.brawlerInHitBand(target, now, band)) target = null;
   const dir = target ? BR.brawlerAimDir(c.x, c.y, target, p.lastDirection) : { x: s.dirX, y: s.dirY };
-  const strike = (ids: string[], o: Omit<BrawlerStrikeOpts, 'targetIds' | 'brawler' | 'pressedAt'>): CounterTriggerResult =>
-    get().triggerCounter(undefined, { ...o, targetIds: ids, brawler: true, pressedAt: s.pressAt ?? now });
+  const strike = (ids0: string[], o: Omit<BrawlerStrikeOpts, 'targetIds' | 'brawler' | 'pressedAt'>): CounterTriggerResult => {
+    const ids = brawlerBandIds(get(), ids0, band, now);
+    return get().triggerCounter(undefined, { ...o, targetIds: ids, brawler: true, pressedAt: s.pressAt ?? now });
+  };
   const g = get();
 
   if (s.phase === 'attack') {
     const spec = BR.brawlerStageSpec(s.stage);
-    // 相手が倒れていたら、いま一番近い敵へ(§7-9)。
-    if (!target && (spec.shape === 'single' || spec.shape === 'fist')) target = BR.pickBrawlerComboTarget(projLabAimable(st.enemies), c.x, c.y, radius, walls, BR.brawlerComboLockId(s)); // ?proj=1 研究所の門
+    // 相手が倒れていたら、いま一番近い敵へ(§7-9)。当たる高さの帯の中から(§40-4 ⑥)。
+    if (!target && (spec.shape === 'single' || spec.shape === 'fist')) target = brawlerPickInBand(st, c.x, c.y, radius, walls, BR.brawlerComboLockId(s), band, now).target; // ?proj=1 研究所の門
     let ids: string[] = [];
     if (spec.shape === 'single') {
       ids = target && BR.brawlerDistTo(c.x, c.y, target) <= radius ? [target.id] : [];
@@ -7283,7 +7335,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     // ★抉り打ち(research/BRAWLER.md §37-4): 拳の前の円(半径 BRAWLER_GOUGE_FIST_RADIUS)+狙った1体。近接の基準×1.4・押さずに高く打ち上げる
     //   (蹴り上げと同じ打ち上げ=combo の 'gouge'・空中の敵は浮き直す・攻撃中の雑魚・強個体は浮きの側で技を取り消す)。止めは3段目と同じ強い当たり。
     //   技ポイントは使わない・当てた時の増え方は通常攻撃の段と同じ(countPoint)。
-    if (!target) target = BR.pickBrawlerComboTarget(projLabAimable(st.enemies), c.x, c.y, radius, walls, BR.brawlerComboLockId(s));
+    if (!target) target = brawlerPickInBand(st, c.x, c.y, radius, walls, BR.brawlerComboLockId(s), band, now).target;
     const gdir = target ? BR.brawlerAimDir(c.x, c.y, target, p.lastDirection) : dir;
     const ids = BR.brawlerFistTargets(st.enemies, c.x, c.y, gdir.x, gdir.y, target, radius, walls, BR.BRAWLER_GOUGE_FIST_RADIUS);
     const plan0 = brawlerStopPlan(get, BR.BRAWLER_HITSTOP.strong);
@@ -7726,7 +7778,6 @@ const explodeBrawlerAirThrow = (get: () => GameState, x: number, y: number): voi
     if (!e) continue;
     const d = BR.brawlerDistTo(x, y, e);
     const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * BRC.brawlerProrationFor(e, Date.now()) * sniperGunMult(p, e)));
-    noteAirMeleeHit(e, Date.now());
     const stunBefore = e.hitStunUntil;
     const killed = withMastery('brawler', () => get().damageEnemy(id, dmg, true, false, false, 'other'));
     { const na = meleeNumberPoint(x, y, e); get().spawnDamageNumber(na.x, na.y, dmg, false, { enemyId: id }); }
@@ -7984,7 +8035,6 @@ const explodeBrawlerSuplex = (get: () => GameState, set: (fn: (s: GameState) => 
     const isSlam = id === slammed.id;
     const d = isSlam ? 0 : BR.brawlerDistTo(x, y, e);
     const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * BRC.brawlerProrationFor(e, now) * sniperGunMult(p, e)));
-    noteAirMeleeHit(e, now);
     const stunBefore = e.hitStunUntil;
     const killed = withMastery('brawler', () => get().damageEnemy(id, dmg, true, false, false, 'other'));
     { const na = meleeNumberPoint(isSlam ? e.x + e.width / 2 : x, isSlam ? e.y + e.height / 2 : y, e); get().spawnDamageNumber(na.x, na.y, dmg, false, { enemyId: id }); }
@@ -8436,7 +8486,6 @@ const explodeBrawlerKiko = (
     // ★ダメージ補正(§13-2)。秘奥義の中の気功は補正しない。
     const pr = o.move === 'secret' ? 1 : BRC.brawlerProrationFor(e, Date.now());
     const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * pr * sniperGunMult(p, e))); // スナイパー(停止敵・距離)も銃と同じく乗る(§16-E)
-    noteAirMeleeHit(e, Date.now()); // 気功の爆発が空中の敵に入る=プレイヤーも浮く描画の記録(§18)
     const stunBefore = e.hitStunUntil;
     const linkN = BRC.brawlerLinkOnHit(e, get().gameTime, Date.now()); // つながっているコンボの数(§23): 爆発のダメージが止めを書く前の敵で見る
     const killed = withMastery('brawler', () => get().damageEnemy(id, dmg, true, false, false, 'other')); // 浮き: 気功の爆発(地上は brawlerKikoComboHit が爆発の浮きで打ち上げ・空中は格闘の拾い)
@@ -13444,6 +13493,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         || isHurtMoveLocked(player, holdNow)
         || ((player.meleeSwingAt || 0) > 0 && holdSwingSince >= 0 && holdSwingSince < PLAYER_MELEE_SWING_MS)
         || BR.isBrawlerBusy(player.brawler) // 格闘の段・技(動けない)
+        || (isBrawlerMode(player) && BR.brawlerSelfAirborne(player.brawler, state.gameTime)) // 格闘の空中(滞空・落下=§40-3)
         || playerAirLocked(player, holdNow); // 浮いている(§36-0)
       const nextSpeedRamp = cruiseHold
         ? { sustainMs: player.speedRampSustainMs, lastDirX: rampMoving ? rampInX : player.speedRampDirX, lastDirY: rampMoving ? rampInY : player.speedRampDirY }
@@ -13604,7 +13654,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const swingFrozen = !kbActive && !lungeActive && !dashOv && !sliding
         && (((player.meleeSwingAt || 0) > 0 && swingSince >= 0 && swingSince < PLAYER_MELEE_SWING_MS)
           // ★格闘の段・技の間は動けない(戻りの間も・格闘ゲームの硬直=research/BRAWLER.md §2-4・§8-2)。詰め・跳び・蹴りは上の器。
-          || BR.isBrawlerBusy(player.brawler));
+          || BR.isBrawlerBusy(player.brawler)
+          // ★格闘の空中(滞空・落下)では移動の入力で地面の座標は動かない(research/BRAWLER.md §40-3・§40-4 ⑧)。
+          || (isBrawlerMode(player) && BR.brawlerSelfAirborne(player.brawler, state.gameTime)));
       let vx: number, vy: number;
       if (kbActive) {
         // 持続時間は**その吹き飛び自身の値**で割る(技ごとに変わるため。未指定=従来の共通値)。
@@ -14122,8 +14174,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const d = BR.brawlerPressDecision(s, st.gameTime);
     if (d === 'drop') return false;
     if (d === 'buffer') { setBrawler(set, { ...s, buffered: true, stepBuffer: undefined, stepHeld: BR.brawlerStepping(s, st.gameTime) }); return true; } // 先行入力は1つだけ(最後の入力を優先・§12-3b)。ステップの最中に押した物は、ステップの終わりに出す(§20-8)
-    startBrawlerAttack(get, set, s);
-    return true;
+    return startBrawlerAttack(get, set, s);
   },
   // フリック(PC=方向+技ボタン)=技。フリックの上下左右は技を選ぶだけ(狙いは常に近くの敵=§7-9)。
   launchPlayer: (move, dmg) => {
@@ -14149,6 +14200,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     ux /= m; uy /= m;
     // ★受け付けない時間(攻撃の出だし・当たりの止め等)に成立したステップは捨てずに1つだけ覚え、受け付けられるようになった瞬間に
     // tickBrawler が出す(成立から BRAWLER_STEP_BUFFER_MS 以内・research/BRAWLER.md §12-3b)。覚えた=入力は受けた(true)。
+    // ★§39・§40-3: ステップは空中では出ない(押しは捨てる=滞空中は守る手が無い)。
+    if (BR.brawlerSelfAirborne(s, t)) return false;
     if (!BR.brawlerStepAllowed(s, t)) { setBrawler(set, BR.brawlerBufferStep(s, ux, uy, t)); return true; }
     startBrawlerStep(get, set, s, ux, uy);
     return true;
@@ -14298,8 +14351,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // 技の最中から別の技=技→技の取り消し(§19-1・brawlerTechAllowed が「道の上・当たった・受付の内」だけ通す)。飛び蹴りの連続は今どおり(取り消しではない)。
     // 通常の段から技への取り消しも同じ規則で通るが、繋がった合図(閃き)と秘奥義の 0ms 扱いは今どおり技→技だけ(見た目・音は足さない)。
-    startBrawlerTech(get, set, s, kind, awakened, s.phase === 'tech' && !(kind === 'kick' && s.tech === 'kick'), false, heel, guardMode === 'weak', kickUp);
-    return true;
+    return startBrawlerTech(get, set, s, kind, awakened, s.phase === 'tech' && !(kind === 'kick' && s.tech === 'kick'), false, heel, guardMode === 'weak', kickUp);
   },
   tickBrawler: () => {
     // ★爆発の浮き(§14): 前のフレームまでの爆発を、ここでまとめて掛ける(爆発のダメージ・押しの書き込みと混ざらない)。
@@ -14432,9 +14484,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★秘奥義の順番どおりの次の技を、受付の外で覚えていたか(§19-2 の持ち越し=待機へ戻った瞬間に出す)。終える前の状態で見る。
       // ★判定の後に押した技(§25・社長裁定2026-11-11「2:A」)も同じ=1つだけ覚えて、待機へ戻った瞬間に出す。
       const secretCarry = !!s.techBuffer && (s.lateHeld === true || BR.brawlerSecretCarry(s, s.techBuffer));
-      const { state: fin, fire } = BR.brawlerFinish(s, get().gameTime);
+      const { state: fin0, fire } = BR.brawlerFinish(s, get().gameTime);
       const close = s.tech === 'guard' ? { counterWindowEnd: Math.min(get().player.counterWindowEnd, Date.now()) } : {};
-      setBrawler(set, fin, close);
+      setBrawler(set, fin0, close);
+      // 書いた後の状態(空中で終わった時の落下=airFall が載っている・§40-4 ④)から続ける。
+      const fin = get().player.brawler ?? fin0;
       // 行動が終わった瞬間に覚えたステップを出す(§12-3b・先行入力は1つだけなので技・通常攻撃の先行入力とは並ばない)。
       if (fin.stepBuffer && settleBufferedBrawlerStep(get, set, fin) === 'fire') return;
       // ★覚えている技が残ったまま行動が終わった=受付が開かなかった(当たらなかった)。捨てる(§19-2・旧: 前の技の終わりに出していた)。
@@ -19076,7 +19130,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             brawler: {
               // ★抉り打ちの溜め(§37-7): 怯む被弾(しゃがみの絵になる被弾=下の lastHurtAt と同じ条件)で溜めは消え、その押下の離しは何も出さない。
               //   レバーガードで受け切った被弾・スーパーアーマー中の被弾では消えない。
-              ...BRGO.brawlerGougeAfterHurt(BR.brawlerAfterHurtPoints(BR.brawlerOnHurt(state.player.brawler ?? BR.initialBrawlerState()), BR.brawlerPointCap(brawlerLevel(state.player)),
+              // ★空中蹴り・蹴り上げの滞空中に食らった=滞空は切れて落ちる(research/BRAWLER.md §40-3・怯み・反撃の落下は今の被弾の扱い)。
+              ...BRGO.brawlerGougeAfterHurt(BR.brawlerAfterHurtPoints(BR.brawlerOnHurt(BR.brawlerHurtCutHover(state.player.brawler ?? BR.initialBrawlerState(), state.gameTime)), BR.brawlerPointCap(brawlerLevel(state.player)),
                 hasBrawler(state.player) && newHealth < state.player.health, Date.now()), !armored && !lgFull),
               ...(lgAny && leverGuard ? {
                 leverGuardAt: state.gameTime, leverGuardN: (state.player.brawler?.leverGuardN ?? 0) + 1,

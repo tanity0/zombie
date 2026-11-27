@@ -164,14 +164,14 @@ describe('C. ハンティングの溜まりを格闘の範囲へ', () => {
   const subs: SubWeaponKey[] = ['brawler', 'striker-hunting'];
   const subLv = { brawler: 3, 'striker-hunting': 3 };
   it('溜まっていると届く距離が広がり、一連のコンボの間は溜まりが残り、途切れたら消費される', () => {
-    // 相手を 通常の届く距離(74)の少し外・ハンティングLv3(+34)の内側に置く
+    // 相手を 通常の狙える範囲(届く距離74+1段目の踏み込み22=§40-4 ⑤)の少し外・ハンティングLv3(+34)の内側に置く(旧 125=届く距離74の少し外)
     setup({ subs, subLv });
-    useGameStore.setState(st => ({ enemies: [zombieAt(125, 0, 'z')], player: { ...st.player, huntingCharged: false } }));
+    useGameStore.setState(st => ({ enemies: [zombieAt(140, 0, 'z')], player: { ...st.player, huntingCharged: false } }));
     useGameStore.getState().brawlerPress(); advance(400);
     expect(hpOf('z')).toBe(99999); // 溜まっていない=届かない
 
     setup({ subs, subLv });
-    useGameStore.setState(st => ({ enemies: [zombieAt(125, 0, 'z')], player: { ...st.player, huntingCharged: true, huntingChargeStartedAt: 1 } }));
+    useGameStore.setState(st => ({ enemies: [zombieAt(140, 0, 'z')], player: { ...st.player, huntingCharged: true, huntingChargeStartedAt: 1 } }));
     useGameStore.getState().brawlerPress(); advance(120);
     expect(hpOf('z')).toBeLessThan(99999); // 溜まっている=届く
     expect(useGameStore.getState().player.huntingCharged).toBe(true); // コンボの間は残る

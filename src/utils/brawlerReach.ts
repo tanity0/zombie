@@ -3,7 +3,8 @@
 // 当て、相手が A の押しで下がった所から B を出した時に、B の踏み込み+届く範囲で当たるかを返す純関数。
 // 押しの距離は雑魚(一番よく下がる区分)の実測(store/brawlerReach.store.test.ts が実際の押しと突き合わせる)。描画・store は読まない。
 import {
-  BRAWLER_LUNGE_PX, BRAWLER_STANDOFF_PX, BRAWLER_KICK_RANGE, BRAWLER_LANDING_RADIUS, BRAWLER_PALM_PASS_PX, BRAWLER_STOMP_RADIUS, BRAWLER_KIKO_RANGE, BRAWLER_GOUGE_JUMP_PX,
+  BRAWLER_LUNGE_PX, BRAWLER_STANDOFF_PX, BRAWLER_LANDING_RADIUS, BRAWLER_PALM_PASS_PX, BRAWLER_STOMP_RADIUS, BRAWLER_KIKO_RANGE, BRAWLER_GOUGE_JUMP_PX,
+  BRAWLER_PLAYER_KICK_LUNGE_PX,
 } from './brawler';
 import type { BrawlerRouteNode } from './brawlerTypes';
 
@@ -27,15 +28,19 @@ const isStageNode = (n: BrawlerRouteNode): boolean => n === 's1' || n === 's2' |
 
 /**
  * B の届き方(meleeRadius=近接の届く範囲 huntingMeleeRadius・既定の MELEE_RADIUS=74)。
- * 1〜3段目=狙いと当たりが届く範囲 / 4段目=着地の円(足元から・中心から測るより短めに見積もる) / 5段目=突き抜けの帯 /
- * 飛び蹴り=狙いと飛ぶ距離は BRAWLER_KICK_RANGE・当たりは届く範囲 / 大踏み潰し=円 / 気功=届く距離。
+ * ★追尾の原則(research/BRAWLER.md §40-4 ⑤): 動く距離は技ごとの上限・狙える範囲=上限+届く範囲。
+ * 1〜3段目=踏み込みの上限+届く範囲で狙い、届く範囲で当たる / 4段目=着地の円(足元から・中心から測るより短めに見積もる) / 5段目=突き抜けの帯 /
+ * 飛び蹴り=技ごとの動く距離の上限(1発目120・2発目90・3発目60・踵落とし/蹴り上げ30)+届く範囲で狙い、届く範囲で当たる / 大踏み潰し=円 / 気功=届く距離。
  */
 export const brawlerReachOf = (b: BrawlerRouteNode, meleeRadius: number): BrawlerReachSpec => {
   switch (b) {
-    case 's1': case 's2': case 's3': return { lungePx: BRAWLER_LUNGE_PX[b], targetPx: meleeRadius, hitPx: meleeRadius };
+    case 's1': case 's2': case 's3': return { lungePx: BRAWLER_LUNGE_PX[b], targetPx: BRAWLER_LUNGE_PX[b] + meleeRadius, hitPx: meleeRadius };
     case 's4': return { lungePx: BRAWLER_LUNGE_PX.s4, targetPx: meleeRadius, hitPx: BRAWLER_LANDING_RADIUS };
     case 's5': return { lungePx: 0, targetPx: Infinity, hitPx: BRAWLER_PALM_PASS_PX };
-    case 'kick1': case 'kick2': case 'kick3': case 'heel': case 'kickup': return { lungePx: BRAWLER_KICK_RANGE, targetPx: BRAWLER_KICK_RANGE, hitPx: meleeRadius };
+    case 'kick1': case 'kick2': case 'kick3': case 'heel': case 'kickup': {
+      const lunge = BRAWLER_PLAYER_KICK_LUNGE_PX[b];
+      return { lungePx: lunge, targetPx: lunge + meleeRadius, hitPx: meleeRadius };
+    }
     case 'stomp': return { lungePx: 0, targetPx: Infinity, hitPx: BRAWLER_STOMP_RADIUS };
     case 'kiko': return { lungePx: 0, targetPx: BRAWLER_KIKO_RANGE, hitPx: BRAWLER_KIKO_RANGE };
     case 'gouge': return { lungePx: BRAWLER_GOUGE_JUMP_PX, targetPx: meleeRadius, hitPx: meleeRadius }; // 抉り打ち(§37-3): 小ジャンプで詰める(最大 BRAWLER_GOUGE_JUMP_PX)

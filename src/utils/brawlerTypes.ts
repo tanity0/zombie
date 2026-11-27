@@ -255,6 +255,15 @@ export interface BrawlerState {
    */
   counterFall?: { fromPx: number; at: number };
   /**
+   * ★自分の技の高さ(research/BRAWLER.md §40-4 ④・プレイヤーだけ・store が書く)。いまの行動を始めた瞬間の自分の高さ(px・地面=0)。
+   * 空中で出した技はこの高さから決まった高さへ動く(空中の1・2段・気功はこの高さのまま・蹴り飛ばし/踵落としはこの高さで蹴る)。
+   */
+  airFromPx?: number;
+  /** 待機の落下(§40-4 ④⑧): 行動が空中で終わった・滞空が明けた瞬間の高さ(px)・下向きの速さ(px/ms)・時刻(gameTime)。着地(高さ0)で意味を失う。 */
+  airFall?: { fromPx: number; v0: number; at: number };
+  /** 空中で気功を撃った(§39): 着地までどの技・段にも取り消せない(地上に着いた後の新しい行動で消す)。 */
+  airKiko?: boolean;
+  /**
    * ★抉り打ちの溜め(research/BRAWLER.md §37-2・§37-7)。時刻は全部 Date.now(実時間・テンポ係数は掛けない)。プレイヤーだけが書く。
    * gougePressAt=この押下を押した時刻(押下の記録。無し=溜めていない押下/溜めが消えた=離せば今どおり)。
    * gougeChargeAt=溜めを数え始めた時刻(技・構え・ステップの最中に押した時は、それが終わった時刻)。

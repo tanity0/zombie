@@ -260,11 +260,13 @@ export const noteAirMeleeHit = (e: Parameters<typeof brawlerJuggleHeightRel>[0] 
 export const getLastAirMeleeHit = (): AirMeleeHit | null => lastAirMeleeHit;
 /**
  * ★この当たりでプレイヤーの絵も空中の敵の高さへ追いかけて浮くか(社長「敵を追いかけてジャンプしてるのが変」+「鞭もね」)。
- * ナイフ(近接の3連撃・スラッシャーの追い打ちも)・鞭(振り・連撃・追い打ち・振り回しの当たり)・刀(一閃・燕返し・振り・自動の斬り)では浮かない(社長「刀もね」)。格闘・気功だけ今まで通り浮く。
+ * ナイフ(近接の3連撃・スラッシャーの追い打ちも)・鞭(振り・連撃・追い打ち・振り回しの当たり)・刀(一閃・燕返し・振り・自動の斬り)では浮かない(社長「刀もね」)。
+ * ★格闘・気功も浮かない(research/BRAWLER.md §39・§40-4 ④「高さは追わない」・社長指示2026-11-27「いまは通常攻撃も勝手に飛んでいくけど、これをやめて」):
+ *   格闘の自分の高さは技ごとの決まった高さ(utils/brawler の brawlerSelfHeightPx)だけ=空中の敵に当てても追いかけて浮かない。
  * 浮きの記録(noteAirMeleeHit)を呼ぶかだけを決める=敵が浮くこと・空中の敵への倍率・判定は変えない。
  */
 export type AirFollowWeapon = 'knife' | 'whip' | 'katana' | 'brawler' | 'kiko';
-export const meleeHitLiftsPlayer = (weapon: AirFollowWeapon): boolean => weapon === 'brawler' || weapon === 'kiko';
+export const meleeHitLiftsPlayer = (_weapon: AirFollowWeapon): boolean => false;
 export const resetAirMeleeHit = (): void => { lastAirMeleeHit = null; };
 
 // ---------------------------------------------------------------------------------------------
