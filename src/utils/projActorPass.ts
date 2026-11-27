@@ -68,6 +68,8 @@ export const PROJ_ACTOR_ROLES = {
   slash: 'fx', breathRope: 'fx', airStreaks: 'fx', playerAirStreaks: 'fx',
   // 残像(記録した自分の world の点に置く絵): 英雄の残像・格闘の残像
   heroTrail: 'trail', brawlerGhost: 'trail',
+  // ブラーの詰めた残像(research/BLUR.md・主人公と強く飛んだ敵)=格闘の残像と同じ「記録した world の点」で投影
+  blurGhost: 'trail',
   // 格闘の構えの光(体に重ねる)
   brawlerAura: 'body',
 } as const satisfies Record<string, ProjActorRole>;
@@ -96,7 +98,7 @@ export const PROJ_ACTOR_LIFTED = {
   tele: 'ground', overlayTop: 'ground', rings: 'ground', bands: 'ground', bandSlices: 'ground',
   clawMarks: 'ground', shockwaves: 'ground', spikeThrust: 'ground', burstFrag: 'ground', dashWind: 'ground', coilBody: 'ground',
   slash: 'body', breathRope: 'body', airStreaks: 'streak', playerAirStreaks: 'streak',
-  heroTrail: 'ground', brawlerGhost: 'ground', brawlerAura: 'body',
+  heroTrail: 'ground', brawlerGhost: 'ground', blurGhost: 'ground', brawlerAura: 'body',
 } as const satisfies Record<ProjActorPartKey, ProjLiftKind>;
 
 export const projActorLift = (key: ProjActorPartKey): ProjLiftKind => PROJ_ACTOR_LIFTED[key];

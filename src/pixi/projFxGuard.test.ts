@@ -63,6 +63,7 @@ const LAYER_ADD_LEDGER: Record<string, number> = {
   triggerBountyScissorFlashOnce: 1, triggerBountySlashArcOnce: 1, ensurePetalPool: 1, triggerMaikoBallDrop: 1, spawnMaikoTrailPuff: 1, drawAngelEyeReady: 1,
   drawDogFetchSprite: 1, drawDamageNumber: 1, drawCalloutWithBg: 1, drawDamageNumberBitmap: 1, drawDamageNumberOutlined: 1, drawMultiHitBanner: 1,
   drawSkillBurstSprite: 1, drawMeleeHitSprite: 1, drawBloodBurstSprite: 2, drawBrawlerKiko: 2, syncAreaBoundaryTape: 1, syncPlayerFx: 1,
+  syncPlayerBlur: 1, drawWhipTipStreaks: 1, // ブラー(research/BLUR.md): 一閃の通った道の筋・鞭の先端の筋(両端を projLiftPointInto で投影済み)
 };
 
 describe('投影の段階3: 点で出る演出(番人)', () => {

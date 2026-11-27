@@ -101,7 +101,7 @@ describe('projActorPass: 役の表(作る物2)', () => {
     }
     // 段階3(§3-7j の1): 演出は体の相似で動かす
     for (const k of ['slash', 'breathRope', 'airStreaks', 'playerAirStreaks'] as const) expect(projRoleMove(PROJ_ACTOR_ROLES[k])).toBe('similar');
-    for (const k of ['heroTrail', 'brawlerGhost'] as const) expect(projRoleMove(PROJ_ACTOR_ROLES[k])).toBe('own'); // 残像=自分の world の点で投影
+    for (const k of ['heroTrail', 'brawlerGhost', 'blurGhost'] as const) expect(projRoleMove(PROJ_ACTOR_ROLES[k])).toBe('own'); // 残像=自分の world の点で投影
     expect(projRoleMove(PROJ_ACTOR_ROLES.overlay)).toBe('translate');
     for (const k of ['sprite', 'hitFlash', 'reticle', 'atkArt', 'glenParts', 'alchemyRocks', 'phillBack', 'featherC', 'phillFront', 'rim', 'light',
       'playerKatanaBack', 'playerSkateboard', 'playerKintoun', 'playerBloodRim', 'playerKnife', 'playerKnifeSlash', 'playerKnifeTrail',

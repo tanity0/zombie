@@ -119,6 +119,7 @@ import {
   EVENT_QUEST_DWELL_MS, // 二人組クエストv2(§2-8・B4): 納品3秒メーターの分母(RETURN_CIRCLE_HOLD_MSと同値=既存アークを流用)
   SCREAMER_BUFF_MS,
   PLAYER_KNOCKBACK_MS,
+  KATANA_DASH_SPEED, // ブラー: 居合一閃・殺陣の瞬間移動を一閃の速さで走ったように詰める(描画だけ)
   retaliationReadyTarget, // ★被弾反撃の「いま出せるか」(入力と同じ1本・HIT_RETALIATION.md §7)
   isBrawlerGuarding, brawlerGuardBodyRect, isBrawlerMode, isWhipMode, isKnifeComboMode, katanaReach, whipReach, // ★サブウェポン「格闘」(research/BRAWLER.md)
   type SkadiBlade, type SkadiBladeVisual, // 氷刃の列を共用する飛ぶ物(亡霊の呪いの墓石=visual:'grave'・WRAITH_MUTANT.md §11)
@@ -133,6 +134,12 @@ import { satsujinCoverAlpha, SATSUJIN_HITS, isTsubameCrouching } from '../utils/
 import { isKatanaTapSwing, katanaIaiCrouching, katanaIaiDropLift, katanaIaiEquipped, katanaIaiSettle, katanaIaiStanceK } from '../utils/katanaIaiStance'; // 刀のタップ=居合の構え(描画だけ)
 import { iaiAfterimageAlpha } from '../utils/katanaIaiCounter'; // 居合一閃の残像(描画だけ)
 import { katanaDashHeld } from '../utils/katanaDashHold'; // 一閃の通り道の途中の止めの間は無敵の点滅を止める(描画だけ)
+import {
+  createBlurTrail, stepBlurTrail, blurGhostsInto, blurBodyAlpha, blurStreak, blurTrailVisible, enemyBlurActive, whipTipStreakAlpha, radialFlowK,
+  BLUR_KATANA_GHOSTS, BLUR_KATANA_SPACING_MS, BLUR_BRAWLER_GHOSTS, BLUR_BRAWLER_SPACING_MS, BLUR_ENEMY_GHOSTS, BLUR_ENEMY_SPACING_MS,
+  BLUR_STILL_PX, RADIAL_FLOW_MS, RADIAL_FLOW_MAX, type BlurTrail, type BlurGhost,
+} from '../utils/motionBlur'; // ブラー表現「詰めた残像」(research/BLUR.md・描画だけ)
+import { BOSS_KILL_CAMERA_HOLD_MS } from '../utils/bossKillStop';
 import {
   KATANA_SLASH_CELL_H, KATANA_SLASH_CELL_W, KATANA_SLASH_CELLS, KATANA_SLASH_SHEET_TEX,
   katanaCutDeathAlpha, katanaCutLayout, katanaCutLength, katanaCutOpen, katanaCutRgb,
@@ -2286,6 +2293,30 @@ void main(void)
     vec2 sUv = p.xy / p.z;
     if (sUv.x < 0.0 || sUv.x > 1.0 || sUv.y < 0.0 || sUv.y > 1.0) { finalColor = vec4(0.0); return; }
     finalColor = texture(uTexture, sUv * vUvScale);
+}
+`;
+// ★ブラー §2-5(research/BLUR.md): 画面全体の放射状の流れ。ボス撃破の一撃(止めが明けた瞬間)と居合一閃のワープの瞬間だけ 0.2 秒、
+// 当たった点へ吸い込まれるように流れて戻る。worldGroup のフィルタ(ズーム時の遠近と同じ経路・頂点は ZWARP_VERT)。出力の点ごとに、
+// 点から外へ向かって 10 回読んで平均する(点に向かって絵が流れ込む)。強さ 0 の間は付けない=平常時のパスはゼロ。負荷 6/10(0.2秒・1つだけ)。
+const RADIAL_FLOW_FRAG = `
+in vec2 vLocal;
+in vec2 vUvScale;
+out vec4 finalColor;
+
+uniform sampler2D uTexture;
+uniform vec2 uCenter;
+uniform float uStrength;
+
+void main(void)
+{
+    vec2 d = vLocal - uCenter;
+    vec4 acc = vec4(0.0);
+    for (int i = 0; i < 10; i++) {
+        float t = float(i) / 9.0;
+        vec2 p = clamp(vLocal + d * (uStrength * t), 0.0, 1.0);
+        acc += texture(uTexture, p * vUvScale);
+    }
+    finalColor = acc / 10.0;
 }
 `;
 /** 単位正方形(0,0)(1,0)(1,1)(0,1)→四角形 q(TL,TR,BR,BL) の射影行列(Heckbert)。行優先 [[a,b,c],[d,e,f],[g,h,1]]。 */
@@ -6331,6 +6362,7 @@ export class PixiScene {
     if (!wetGrade && !s1nGrade && this.s3dGradeOn && this.stage3Daylight) filters.push(this.stage3Daylight.gradeFilter); // ステージ3(昼の廃都)の日なた/日陰(昼のコントラストの後)
     if (this.punchInList && this.punchGrade) filters.push(this.punchGrade);
     if (this.zwarpInList && this.zwarpFilter) filters.push(this.zwarpFilter); // ズーム時だけの遠近(最後=階調の後に形を歪める)
+    if (this.radialInList && this.radialFilter) filters.push(this.radialFilter); // ★ブラー §2-5: 放射状の流れ(0.2秒だけ)
     this.L.worldGroup.filters = filters;
   }
 
@@ -7539,6 +7571,68 @@ export class PixiScene {
       rect2.x = rectX; rect2.y = rectY - rectH * pT; rect2.width = rectW; rect2.height = rectH * (1 + pT + pB);
       if (!fa2) this.L.worldGroup.filterArea = rect2;
     }
+  }
+
+  // ---- ★ブラー §2-5: 画面全体の放射状の流れ(research/BLUR.md) ----
+  private radialFilter: Filter | null = null;
+  private radialInList = false;
+  private radialDisabled = false;
+  private radialStart = 0;
+  private radialWX = 0;
+  private radialWY = 0;
+  private radialLastAttn = 0;
+  private radialLastIai = 0;
+  private radialCenter = new Float32Array([0.5, 0.5]);
+  /**
+   * 合図: ボス撃破のアテンション(撃破の一撃から BOSS_KILL_CAMERA_HOLD_MS 遅れて動き出す=その時刻が止めの明け)と、主人公の居合一閃のワープ。
+   * 時計は実時間(アテンションの時間停止の中でも流れる)。サブウェポンの演出からは呼ばない。
+   */
+  private syncRadialFlow(s: ReturnType<typeof useGameStore.getState>, realNow: number) {
+    if (this.radialDisabled) return;
+    const at = s.attention, bc = s.bossCorpse;
+    if (at && bc && at.startReal !== this.radialLastAttn && realNow >= at.startReal
+      && Math.abs(at.startReal - BOSS_KILL_CAMERA_HOLD_MS - bc.diedAt) < 120) {
+      this.radialLastAttn = at.startReal;
+      if (realNow - at.startReal < RADIAL_FLOW_MS) { this.radialStart = at.startReal; this.radialWX = at.x; this.radialWY = at.y; }
+    }
+    const p = s.player;
+    if (p.iaiWarpAt !== undefined && p.iaiWarpAt !== this.radialLastIai) {
+      this.radialLastIai = p.iaiWarpAt;
+      if (realNow - p.iaiWarpAt < RADIAL_FLOW_MS) { this.radialStart = p.iaiWarpAt; this.radialWX = p.x + p.width / 2; this.radialWY = p.y + p.height / 2; }
+    }
+    const k = this.radialStart > 0 ? radialFlowK(realNow - this.radialStart) : 0;
+    if (k <= 0.002) { this.setRadialAttached(false); return; }
+    if (!this.radialFilter) {
+      try {
+        this.radialFilter = new Filter({
+          glProgram: GlProgram.from({ vertex: ZWARP_VERT, fragment: RADIAL_FLOW_FRAG, name: 'radial-flow' }),
+          resources: { radialUniforms: new UniformGroup({ uCenter: { value: this.radialCenter, type: 'vec2<f32>' }, uStrength: { value: 0, type: 'f32' } }) },
+          padding: 0,
+          antialias: 'off',
+        });
+      } catch (err) {
+        this.radialDisabled = true; // シェーダが通らない環境=何もしない
+        reportSuppressedError('radialflow:filter', err);
+        return;
+      }
+    }
+    // 点の画面の位置 → フィルタの枠の 0..1(ズーム時の遠近が付いている間は枠が縦に広い=同じ比で写す)。
+    const u = this.projWorldToUi(this.radialWX, this.radialWY);
+    const W = this.screenW || 1, H = this.screenH || 1;
+    const pT = this.zwarpInList ? this.zwarpPadTop : 0, pB = this.zwarpInList ? this.zwarpPadBot : 0;
+    this.radialCenter[0] = u.x / W;
+    this.radialCenter[1] = (u.y / H + pT) / (1 + pT + pB);
+    const ug = this.radialFilter.resources.radialUniforms as UniformGroup;
+    ug.uniforms.uCenter = this.radialCenter;
+    ug.uniforms.uStrength = k * RADIAL_FLOW_MAX;
+    ug.update();
+    this.setRadialAttached(true);
+  }
+  private setRadialAttached(on: boolean) {
+    if (this.radialInList === on) return;
+    this.radialInList = on;
+    this.syncWorldGroupFilters();
+    if (on) this.syncWorldFilterArea();
   }
 
   // ズーム時の遠近フィルタの付け外し(1箇所・worldGroup の filters 配列で管理)。
@@ -14866,7 +14960,9 @@ export class PixiScene {
     this.syncSummons(s.summons, now);
     this.syncEventBloom(s.effects, fxNow);
     this.fxPlayer = s.player; // 鞭の縄の絵の根元がプレイヤーを追う(読むだけ)
+    this.whipTipStreakDrawn = false;
     this.syncEffects(s.effects, s.camera, fxNow); // v0.25.3038: 光系は停止中も進む
+    if (!this.whipTipStreakDrawn) for (const sp of this.whipTipStreaks) sp.visible = false; // ★ブラー: 鞭の先端の筋は描いたフレームだけ
     this.syncWhipTether(s.whipSwing, s.player, s.enemies, s.gameTime); // ★鞭の絡め取り: 手から掴んだ敵へ線を張る(振り回しの間だけ)
     this.syncWhipThrowStreak(s.enemies, s.gameTime); // ★鞭で投げた敵の後ろの風の筋(飛ぶ敵の絵に付く・着弾で先から消える)
     if (!this.projFrame) this.syncSatsujin(s.satsujin, Date.now()); // ★刀の殺陣の赤い画面(殺陣の間だけ)。?proj=1 は後掛けの後(段階3・C11)
@@ -15105,6 +15201,7 @@ export class PixiScene {
     this.syncTorchBack(s, now); // 松明の裏の光(ステージ3/4/7・utils/torchBackLight.ts。他ステージ=1命令で終わる)
     if (this.objShade) this.applyObjShade(s.enemies); // 既定で有効(?objshade=0 なら null=呼ばない)
     if (this.objShadeOverlay) this.syncObjShadeOverlay(); // 比較用 ?objshade=2 の雲の影の2枚目
+    this.syncRadialFlow(s, realNow); // ★ブラー §2-5: 放射状の流れ(0.2秒だけ・実時間)
     this.syncZoomWarp(s.player.vx ?? 0, s.player.vy ?? 0, realNow); // ★必ず最後(このフレームの世界が全部揃ってから1枚に描く)
   }
 
@@ -23622,6 +23719,7 @@ export class PixiScene {
       this.projDrawOwner = null;
       if (PROJ_AUDIT && this.projFrame) this.projS6EnemyDrawn(view, e, gameTime);
     }
+    this.syncEnemyBlurs(enemies, gameTime, now); // ★ブラー: 強く吹き飛ばされた敵の詰めた残像(research/BLUR.md §2-4)
     if (this.projFrame) this.projGhostDraw(gameTime);
     else this.projGhostHide();
     for (const [id, view] of this.enemies) {
@@ -29314,6 +29412,8 @@ export class PixiScene {
     // ★一閃の通り道の途中の止め(utils/katanaDashHold)の間も点滅させない=止まった体をはっきり見せる(明けたら今どおり点滅)。
     const counterInvuln = p.invulnerable && (p.lastCounterSuccessTime === p.invulnerableTime || katanaDashHeld(p.katanaDashHold, Date.now())); // 止めの時刻は壁時計(store の Date.now)
     view.sprite.alpha = (seekerActive ? 0.4 : (p.invulnerable && !counterInvuln ? 0.5 + 0.5 * Math.sin(now / 50) : 1)) * deathFade * introFade * this.corridorRunInFade();
+    // ★ブラーの詰めた残像(research/BLUR.md・走っている間は本体を半分の濃さに)。残像の濃さに被弾無敵の点滅は掛けない(一閃の無敵で残像まで明滅しない)。
+    this.syncPlayerBlur(view, p, gameTime, now, (seekerActive ? 0.4 : 1) * deathFade * introFade * this.corridorRunInFade());
     // ★FB5(v0.25.3611「演出中はかならず敵の上のレイヤーに置き」): KILL処刑演出中はYソートを
     // 無視して必ず全アクターの前面(首元に乗った時に敵の後ろへ回らない)。描画のみ・判定不変。
     // ★密着の掴み(§34-10「少し敵に食い込むように」): 掴んでいる間(スープレックスは反りの前・サマーソルトは蹴る前)は、体を相手の手前に描く=組み付いて見える。
@@ -46288,6 +46388,7 @@ export class PixiScene {
   private satsujinSil: Sprite[] = [];
   private satsujinStreaks: Sprite[] = [];
   private satsujinTmpM = new Matrix();
+  private satsujinGhostSil: Sprite[] = [];
   private syncSatsujin(sat: SatsujinState | null, now: number): void {
     const a = sat ? satsujinCoverAlpha(sat.startAt, sat.lastStrikeEndAt, now) : 0;
     if (!sat || a <= 0.001) { if (this.satsujinLayer) this.satsujinLayer.visible = false; return; }
@@ -46317,6 +46418,19 @@ export class PixiScene {
       sil.alpha = 1;
       sil.visible = true;
     });
+    // ★ブラー(research/BLUR.md §2-1「殺陣の各発」): 主人公の詰めた残像も同じ黒い影で写す(体の残像は赤い幕の下に隠れるため)。
+    for (let i = 0; i < BLUR_KATANA_GHOSTS; i++) {
+      const g = sat.ownerId === undefined ? this.playerBlurGhosts[i] : undefined;
+      let sil = this.satsujinGhostSil[i];
+      if (!g || g.destroyed || !g.visible || !g.texture || !g.parent) { if (sil) sil.visible = false; continue; }
+      if (!sil) { sil = new Sprite(); this.satsujinGhostSil[i] = sil; layer.addChildAt(sil, 1); } // 赤い幕のすぐ上=本体の影の下
+      if (sil.texture !== g.texture) sil.texture = g.texture;
+      sil.anchor.set(g.anchor.x, g.anchor.y);
+      sil.setFromMatrix(g.getGlobalTransform(this.satsujinTmpM, false));
+      sil.tint = 0x000000;
+      sil.alpha = this.playerBlurOut[i]?.alpha ?? g.alpha; // 本体の影と同じく点滅の濃さは掛けない
+      sil.visible = true;
+    }
     // 白い筋: 5発ぶんの白い板(Texture.WHITE の写し)を筋の向きに回して置く(影の上)。出た瞬間が一番太く、減速しながら細く消える(慣性)。
     // ★2026-11-22: 刀の斬撃は全部 刀用の斬撃シートへ(社長指示)。筋の絵=シートを白へ寄せた写し(暗いにじみほど透明・linear で焼いた=
     // 画面をまたぐ長さでもドットの塊にしない)を、旧い筋と同じ「薄く広い1枚+芯の1枚」で重ねる。広い1枚は出→振り切り→余韻の3コマ、
@@ -46451,6 +46565,55 @@ export class PixiScene {
       rope.alpha = rp.alpha;
     }
     rope.visible = true;
+    // ★ブラー(research/BLUR.md §2-3): 先端が伸び切る瞬間、縄の先の進む向きへ細い流れの筋を2本(縄そのものはぼかさない・残像も無し)。
+    // 時計は縄と同じ ropeEl(止めの間は縄と一緒にじわっとしか進まない)。向き=伸び切る直前の先端の動き(伸び切った後は固定)。
+    const tsA = whipTipStreakAlpha(ropeEl, e.windupMs) * rp.alpha;
+    if (tsA > 0.01 && local.length >= 3) {
+      const elRef = Math.min(ropeEl, e.windupMs);
+      const prev = whipSwingRopePoints(Math.max(0, elRef - 16), e.windupMs, e.len, WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_TIP_X, { lag: pose.lag, lean: pose.lean, pull: pose.pull, startAt: pose.startAt }).pts;
+      const ref = elRef === ropeEl ? local : whipSwingRopePoints(elRef, e.windupMs, e.len, WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_TIP_X, { lag: pose.lag, lean: pose.lean, pull: pose.pull, startAt: pose.startAt }).pts;
+      const ti = local.length - 2;
+      const toW = (q: { x: number; y: number }) => { const lx = q.x, ly = q.y * side; return { x: ox + lx * ca - ly * sa, y: oy + lx * sa + ly * ca }; };
+      const tip = toW(local[ti]), a1 = toW(ref[Math.min(ti, ref.length - 2)]), a0 = toW(prev[Math.min(ti, prev.length - 2)]);
+      let dx = a1.x - a0.x, dy = a1.y - a0.y;
+      const dl = Math.hypot(dx, dy);
+      if (dl > 0.5) { dx /= dl; dy /= dl; this.drawWhipTipStreaks(tip.x, tip.y, dx, dy, e.len, tsA); }
+    }
+  }
+  /** 鞭の先端の流れの筋2本(使い回しの2枚・効果の層)。先端から進む向きの後ろへ伸び、根元が透明・先端の側が濃い。 */
+  private whipTipStreaks: Sprite[] = [];
+  private whipTipStreakDrawn = false;
+  private drawWhipTipStreaks(tx: number, ty: number, dx: number, dy: number, len: number, alpha: number): void {
+    const nx = -dy, ny = dx;
+    const f = this.projFrame;
+    const ws = Math.max(0.2, this.L.world.scale.x || 1);
+    for (let i = 0; i < 2; i++) {
+      let sp = this.whipTipStreaks[i];
+      if (!sp || sp.destroyed) {
+        sp = new Sprite(getAshEmberTailTex());
+        sp.anchor.set(1, 0.5);
+        this.L.effectLayer.addChild(sp);
+        this.whipTipStreaks[i] = sp;
+      }
+      const off = (i === 0 ? 1 : -1) * 3.5; // 先端の両脇へ平行に
+      const L = len * (i === 0 ? 0.26 : 0.17);
+      const hx = tx + nx * off + dx * (i === 0 ? 2 : -3), hy = ty + ny * off + dy * (i === 0 ? 2 : -3);
+      let x1 = hx, y1 = hy, x0 = hx - dx * L, y0 = hy - dy * L, a = alpha * (i === 0 ? 0.95 : 0.7);
+      if (f) {
+        const q1 = projLiftPointInto(f, x1, y1, 0, this.whipRopeLift);
+        x1 = q1.x; y1 = q1.y; a *= q1.alpha; // 作り置きの点を使い回す=読んでから次を投影する
+        const q0 = projLiftPointInto(f, x0, y0, 0, this.whipRopeLift);
+        x0 = q0.x; y0 = q0.y;
+      }
+      const l = Math.hypot(x1 - x0, y1 - y0);
+      sp.position.set(x1, y1);
+      sp.rotation = Math.atan2(y1 - y0, x1 - x0);
+      sp.scale.set(l / sp.texture.width, Math.max(1.6, 1.2 / ws) / sp.texture.height);
+      sp.tint = 0xf2f6ff;
+      sp.alpha = a;
+      sp.visible = a > 0.01 && l > 1;
+    }
+    this.whipTipStreakDrawn = true;
   }
   /** 鞭の縄の絵が読むプレイヤー(syncEffects の直前に毎フレーム入れる・読むだけ)。 */
   private fxPlayer: Player | null = null;
@@ -52050,6 +52213,178 @@ export class PixiScene {
     g.tint = 0xcfe6ff;
     g.alpha = 0.75 * a;
     g.visible = true;
+  }
+
+  // ---- ★ブラー表現「詰めた残像」(research/BLUR.md・社長決定2026-11-27「これでいこう!」) ----
+  // 速い技の間だけ、本体の過去の位置の写し(本体と同じ絵・ドットはそのまま・伸縮/回転の代用はしない)を詰めて並べる。描画だけ:
+  // store は読むだけで、位置の記録は描画の側(BlurTrail)が持つ。時計はゲーム時間(画面全体の止めで止まる)+技の止め/1pxも動かないフレームでも止める
+  // (=止めの間は残像もその場で止まる・utils/motionBlur)。絵は使い回し(主人公3枚+筋1本・敵は4体×2枚まで)。負荷 1/10。
+  private playerBlur: BlurTrail = createBlurTrail();
+  private playerBlurKind: 'katana' | 'brawler' = 'katana';
+  private playerBlurGhosts: Sprite[] = [];
+  private playerBlurOut: BlurGhost[] = [];
+  private playerBlurStreak: Sprite | null = null;
+  private playerBlurIaiAt = 0;
+  private playerBlurSatAt = 0;
+  private playerBlurSatN = 0;
+  /** 1枚の残像の写し(本体の絵・置き方を写し、位置と回りは記録した点)。?proj=1 は記録した地面の点+高さで投影(役 blurGhost=trail)。 */
+  private placeBlurGhost(sp: Sprite, parent: Container, body: Sprite, gh: BlurGhost, alpha: number): void {
+    if (sp.parent !== parent) parent.addChildAt(sp, 0); // 体の後ろ
+    this.projTag(sp, 'blurGhost');
+    if (sp.texture !== body.texture) sp.texture = body.texture;
+    sp.anchor.set(body.anchor.x, body.anchor.y);
+    sp.scale.set(body.scale.x, body.scale.y);
+    sp.skew.set(body.skew.x, body.skew.y);
+    sp.rotation = gh.r;
+    sp.position.set(gh.x, gh.y); // proj-lift: Z58(?proj=1 は地面の点・高さは projTrailH)
+    if (this.projFrame) { this.projTrailH.set(sp, gh.h); this.projLiftMark('Z58'); }
+    sp.tint = body.tint;
+    sp.blendMode = 'normal';
+    sp.alpha = alpha;
+    sp.visible = alpha > 0.002;
+  }
+  /** 記録する点: 絵の位置(?proj=1 は高さを抜いた地面の点と world の高さ)。 */
+  private blurPointOf(view: ActorView, body: Sprite): { x: number; y: number; h: number } {
+    if (this.projFrame) return { x: body.position.x, y: body.position.y + this.projViewLiftDrawn(view), h: this.projViewLiftWorld(view) }; // proj-lift: Z58
+    return { x: body.position.x, y: body.position.y, h: 0 };
+  }
+  /**
+   * 主人公: 刀の一閃(居合一閃の走り・殺陣の各発の瞬間移動を含む)=残像3枚・10msおき+通った道の細い白い筋/格闘の飛び蹴り・5段目の突進・抉り打ちの踏み込み=2枚・12msおき。
+   * 走っている間は本体を半分の濃さに(止まった瞬間に戻す)。燕返しは体が動かない=出さない。drawPlayer の本体の濃さが決まった直後に呼ぶ。
+   */
+  private syncPlayerBlur(view: ActorView, p: Player, gameTime: number, now: number, ghostBaseA: number): void {
+    const body = view.sprite;
+    const tr = this.playerBlur;
+    const st = useGameStore.getState();
+    let kind: 'katana' | 'brawler' | null = null;
+    let stop = false;
+    let warpFrom: { x: number; y: number; h: number } | undefined;
+    const pt = this.blurPointOf(view, body);
+    const alive = p.health > 0 && body.visible && !!body.texture;
+    // 殺陣: 各発の瞬間移動を一閃の速さで走ったように詰める(発の間は止まって薄れる)。
+    const sat = st.satsujin;
+    if (sat && sat.ownerId === undefined) {
+      if (sat.startAt !== this.playerBlurSatAt) { this.playerBlurSatAt = sat.startAt; this.playerBlurSatN = 0; }
+      if (sat.strikes.length > this.playerBlurSatN) {
+        this.playerBlurSatN = sat.strikes.length;
+        if (alive && tr.hasLast) { kind = 'katana'; warpFrom = { x: tr.lastX, y: tr.lastY, h: pt.h }; }
+      }
+    }
+    if (!kind && alive && now < p.katanaDashUntil && !isTsubameCrouching(p, now)) {
+      kind = 'katana';
+      // 居合一閃: ワープの瞬間は元の位置から一閃の速さで走ったように詰める(元の位置の残像 syncIaiAfterimage はそのまま)。
+      if (p.iaiWarpAt !== undefined && p.iaiWarpAt !== this.playerBlurIaiAt && p.iaiWarpFromX !== undefined && p.iaiWarpFromY !== undefined) {
+        this.playerBlurIaiAt = p.iaiWarpAt;
+        if (now - p.iaiWarpAt < 120) {
+          const dx = p.iaiWarpFromX - (p.x + p.width / 2), dy = p.iaiWarpFromY - (p.y + p.height / 2);
+          warpFrom = { x: pt.x + dx, y: pt.y + dy, h: pt.h };
+        }
+      }
+    }
+    const bs = p.brawler;
+    if (!kind && alive && bs && isBrawlerMode(p)) {
+      const el = BRW.brawlerElapsed(bs, gameTime);
+      const kick = bs.phase === 'tech' && bs.tech === 'kick' && !bs.contactGrab && !bs.resolved;
+      const gouge = bs.phase === 'tech' && bs.tech === 'gouge' && !bs.resolved && el < BRW.brawlerGougeJumpMs(bs);
+      if (kick || gouge || BRW.isBrawlerPalmDashing(bs)) { kind = 'brawler'; stop = BRW.brawlerInHitstop(bs, gameTime); }
+    }
+    if (kind) this.playerBlurKind = kind;
+    stepBlurTrail(tr, { gt: gameTime, active: kind !== null, x: pt.x, y: pt.y, r: body.rotation, h: pt.h, stop, warpFrom, warpSpeed: KATANA_DASH_SPEED / 1000 });
+    const baseA = body.alpha;
+    body.alpha = baseA * blurBodyAlpha(tr);
+    const brawler = this.playerBlurKind === 'brawler';
+    const n = brawler ? BLUR_BRAWLER_GHOSTS : BLUR_KATANA_GHOSTS;
+    const vis = alive && blurTrailVisible(tr);
+    const out = blurGhostsInto(tr, n, brawler ? BLUR_BRAWLER_SPACING_MS : BLUR_KATANA_SPACING_MS, this.playerBlurOut);
+    for (let i = 0; i < BLUR_KATANA_GHOSTS; i++) {
+      let g = this.playerBlurGhosts[i];
+      if (!vis || i >= n || out[i].alpha <= 0.002) { if (g) g.visible = false; continue; }
+      if (!g || g.destroyed) { g = new Sprite(); this.playerBlurGhosts[i] = g; }
+      this.placeBlurGhost(g, view.container, body, out[i], out[i].alpha * ghostBaseA);
+    }
+    // 通った道の細い白い筋(刀だけ・殺陣は赤い画面の白い筋が既にある)。胸の高さ・根元が透明で先が濃い。
+    const sk = vis && !brawler && !(sat && sat.ownerId === undefined) ? blurStreak(tr) : null;
+    if (!sk || sk.alpha <= 0.002) { if (this.playerBlurStreak) this.playerBlurStreak.visible = false; return; }
+    let sp = this.playerBlurStreak;
+    if (!sp || sp.destroyed) {
+      sp = new Sprite(getAshEmberTailTex());
+      sp.anchor.set(1, 0.5);
+      this.L.effectLayer.addChild(sp);
+      this.playerBlurStreak = sp;
+    }
+    const texH = body.texture.height * Math.abs(body.scale.y);
+    const chest = texH * 0.45;
+    let x0 = sk.x0, y0 = sk.y0 - chest, x1 = sk.x1, y1 = sk.y1 - chest, a = sk.alpha * ghostBaseA;
+    const f = this.projFrame;
+    if (f) {
+      const q0 = projLiftPointInto(f, sk.x0, sk.y0, sk.h0 + chest, this.whipRopeLift); // proj-lift: Z58
+      x0 = q0.x; y0 = q0.y;
+      const q1 = projLiftPointInto(f, sk.x1, sk.y1, sk.h1 + chest, this.whipRopeLift); // proj-lift: Z58
+      x1 = q1.x; y1 = q1.y; a *= q1.alpha;
+    }
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    if (len < 2) { sp.visible = false; return; }
+    sp.position.set(x1, y1);
+    sp.rotation = Math.atan2(y1 - y0, x1 - x0);
+    sp.scale.set(len / sp.texture.width, Math.max(2, 3 * Math.abs(body.scale.y)) / sp.texture.height);
+    sp.tint = 0xebf5ff;
+    sp.alpha = a;
+    sp.visible = true;
+  }
+
+  /** 強く吹き飛ばされた敵の残像(決め技・投げで大きく飛んだ敵だけ・同時に BLUR_ENEMY_MAX 体まで・本体は100%のまま)。敵を描き終えた後に呼ぶ。 */
+  private enemyBlurs = new Map<string, { tr: BlurTrail; sprites: Sprite[]; out: BlurGhost[] }>();
+  private enemyBlurPool: Sprite[] = [];
+  private syncEnemyBlurs(enemies: Enemy[], gameTime: number, now: number): void {
+    const st = useGameStore.getState();
+    const ws = st.whipSwing;
+    let activeN = 0;
+    for (const r of this.enemyBlurs.values()) if (r.tr.active) activeN++;
+    const seen = this.enemyBlurSeen;
+    seen.clear();
+    for (const e of enemies) {
+      const candidate = !!e.brThrow || (ws?.enemyId === e.id && ws.phase === 'thrown')
+        || (e.brawlerBlownAt !== undefined && now - e.brawlerBlownAt < 900) || (e.knockbackUntil ?? 0) > now;
+      let rec = this.enemyBlurs.get(e.id);
+      if (!rec && !candidate) continue;
+      const view = this.enemies.get(e.id);
+      if (!view || view.container.destroyed) continue;
+      const body = view.sprite;
+      if (!rec) { rec = { tr: createBlurTrail(), sprites: [], out: [] }; this.enemyBlurs.set(e.id, rec); }
+      seen.add(e.id);
+      const tr = rec.tr;
+      const pt = this.blurPointOf(view, body);
+      const dt = Number.isNaN(tr.lastGt) ? 0 : gameTime - tr.lastGt;
+      const moved = tr.hasLast ? Math.hypot(pt.x - tr.lastX, pt.y - tr.lastY) : 0;
+      const was = tr.active;
+      const active = dt > 0
+        ? enemyBlurActive(was, candidate && body.visible, moved / dt, moved < BLUR_STILL_PX, activeN - (was ? 1 : 0))
+        : was && candidate;
+      if (active !== was) activeN += active ? 1 : -1;
+      stepBlurTrail(tr, { gt: gameTime, active, x: pt.x, y: pt.y, r: body.rotation, h: pt.h });
+      const vis = body.visible && blurTrailVisible(tr);
+      const out = blurGhostsInto(tr, BLUR_ENEMY_GHOSTS, BLUR_ENEMY_SPACING_MS, rec.out);
+      for (let i = 0; i < BLUR_ENEMY_GHOSTS; i++) {
+        let g = rec.sprites[i];
+        if (!vis || out[i].alpha <= 0.002) { if (g) g.visible = false; continue; }
+        if (!g || g.destroyed) { g = this.enemyBlurPool.pop() ?? new Sprite(); rec.sprites[i] = g; }
+        this.placeBlurGhost(g, view.container, body, out[i], out[i].alpha * body.alpha);
+      }
+      if (!tr.active && !vis && !candidate) this.releaseEnemyBlur(e.id);
+    }
+    for (const id of this.enemyBlurs.keys()) if (!seen.has(id)) this.releaseEnemyBlur(id);
+  }
+  private enemyBlurSeen = new Set<string>();
+  private releaseEnemyBlur(id: string): void {
+    const rec = this.enemyBlurs.get(id);
+    if (!rec) return;
+    for (const g of rec.sprites) {
+      if (!g || g.destroyed) continue;
+      g.visible = false;
+      g.parent?.removeChild(g);
+      this.enemyBlurPool.push(g);
+    }
+    this.enemyBlurs.delete(id);
   }
 
   private syncPlayerFx(player: Player, now: number) {
