@@ -20,6 +20,7 @@ import {
   sniperGunMult, skillComboMasterMult, bossCritStopPatch, takeAirNumberMult,
 } from '../store/gameStore';
 import { isPvpIncapacitated } from './pvpPosture';
+import { playerAutoFireAllowed } from './autoFireToggle';
 import { isHurtGunLocked } from './playerHurt';
 import { isPlayerGrabbed } from './chaffMoves';
 import { dashModeAt } from './dashLocomotion';
@@ -210,10 +211,12 @@ export const tickNewGuns = (input: NewGunsTickInput): void => {
   // 何も持たず、場にも何も残っていない=何もしない(store へ1度も書かない)。
   const owns = p0.weapons.some(w => w.key === BLOB_WEAPON_KEY || w.key === SATELLITE_WEAPON_KEY || w.key === SCAN_WEAPON_KEY);
   if (!owns && blobs.length === 0 && orbit === null && orbitFade === null && scanFan === null) return;
-  const locked = gunLocked(p0, gameTime, st0.gameWon);
+  // 銃の装備を外している間(装備中の銃の枠タップ・utils/autoFireToggle)は、刀・格闘と同じく撃てない扱い。
+  const unequipped = !playerAutoFireAllowed(st0);
+  const locked = unequipped || gunLocked(p0, gameTime, st0.gameWon);
   tickBlob(gameTime, dtSec, active?.key === BLOB_WEAPON_KEY && !locked);
   tickSatellite(gameTime, dtSec, active?.key === SATELLITE_WEAPON_KEY, locked, input.moveInput);
-  tickScan(gameTime, active?.key === SCAN_WEAPON_KEY, gunLocked(p0, gameTime, st0.gameWon, true));
+  tickScan(gameTime, active?.key === SCAN_WEAPON_KEY, unequipped || gunLocked(p0, gameTime, st0.gameWon, true));
   refreshView();
 };
 

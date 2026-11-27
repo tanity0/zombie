@@ -8,6 +8,7 @@ import {
   WHIP_SWING_ACCEL_MS, WHIP_SWING_PERIOD_MS, WHIP_SWING_MAX_MS, WHIP_SWING_SLASHER_MS_PER_LV, WHIP_THROW_MIN_SPEED, WHIP_THROW_END_SPEED_FRAC, WHIP_SWING_TELEPORT_PX,
   WHIP_THROW_DIST_MULT,
   whipSwingRampMult, whipSwingRampFx, WHIP_SWING_RAMP_STEP, WHIP_SWING_RAMP_MAX, WHIP_SWING_RAMP_MAX_HITS,
+  whipBodyPropHits, whipBlastPropHits,
 } from './whipSwing';
 
 describe('掴む相手の選び方(§8-1・§8-7)', () => {
@@ -279,5 +280,30 @@ describe('大車輪の上がり(ぶつかるたびに1.5倍・上限8倍)', () =
     expect(fx[5].max).toBe(true);
     expect(fx[5].outline).toBeDefined();
     expect(fx[5].sfxRate).toBeLessThanOrEqual(1.5);
+  });
+});
+
+describe('大車輪で置き物を壊す(社長指示2026-11-27)', () => {
+  const prop = (id: string, type: string, cx: number, cy: number, w = 20, h = 16) => ({ id, type, x: cx - w / 2, y: cy - h / 2, width: w, height: h });
+  it('体の箱が通った道(始点→終点)に重なる松明・緑卵の id を返す・UVの棒は返さない', () => {
+    const props = [prop('t', 'torch', 50, 0), prop('m', 'mine', 100, 0), prop('uv', 'uv-bar', 75, 0), prop('far', 'torch', 50, 100)];
+    expect(whipBodyPropHits(props, 0, 0, 120, 0, 30, 30).sort()).toEqual(['m', 't']);
+  });
+  it('1フレームで大きく動いても(体の幅の何倍も)間の置き物を飛び越さない', () => {
+    const props = [prop('t', 'torch', 300, 0, 10, 10)];
+    expect(whipBodyPropHits(props, 0, 0, 600, 0, 20, 20)).toEqual(['t']);
+  });
+  it('通った道を包む箱の外は見ない・道の脇は当たらない・置き物が無い時は空', () => {
+    expect(whipBodyPropHits([prop('t', 'torch', 300, 40, 10, 10)], 0, 0, 600, 0, 20, 20)).toEqual([]);
+    expect(whipBodyPropHits([], 0, 0, 600, 0, 20, 20)).toEqual([]);
+    // 斜めの道: 包む箱の中だが道からは外れている
+    expect(whipBodyPropHits([prop('t', 'torch', 300, 0, 10, 10)], 0, 0, 600, 600, 20, 20)).toEqual([]);
+  });
+  it('爆発: 足元が半径の中の松明だけ(緑卵は爆発の既存の経路が割る)', () => {
+    const props = [
+      { id: 'in', type: 'torch', footX: 30, footY: 40 }, { id: 'edge', type: 'torch', footX: 66, footY: 0 },
+      { id: 'out', type: 'torch', footX: 67, footY: 0 }, { id: 'egg', type: 'mine', footX: 0, footY: 0 },
+    ];
+    expect(whipBlastPropHits(props, 0, 0, 66)).toEqual(['in', 'edge']);
   });
 });

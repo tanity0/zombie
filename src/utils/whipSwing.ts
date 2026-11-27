@@ -291,6 +291,41 @@ export const boxesOverlap = (a: Box, b: Box): boolean =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
 /**
+ * ★大車輪で置き物を壊す(社長指示2026-11-27「大車輪、緑卵とか松明とか壊せる様にして欲しい」)。
+ * 振り回し・投げで飛んでいる敵の体(箱 w×h・中心が (x0,y0)→(x1,y1) へこのフレームで動いた)が触れた置き物の id。
+ * 速く動くので通った道を体の短い辺の半分ごとに刻んで箱の重なりを見る(1フレームで置き物を飛び越さない)。
+ * 対象=松明・緑卵(types)。UVの棒は壊さない。範囲(通った道を包む箱)で先に絞る=置き物が無い/遠い時はほぼ0コスト。
+ */
+export interface WhipPropTarget extends Box { id: string; type: string }
+export const WHIP_BODY_PROP_TYPES: readonly string[] = ['torch', 'mine'];
+export const whipBodyPropHits = (
+  props: readonly WhipPropTarget[], x0: number, y0: number, x1: number, y1: number, w: number, h: number,
+  types: readonly string[] = WHIP_BODY_PROP_TYPES,
+): string[] => {
+  if (props.length === 0 || !(w > 0) || !(h > 0)) return [];
+  const sweep: Box = { x: Math.min(x0, x1) - w / 2, y: Math.min(y0, y1) - h / 2, width: Math.abs(x1 - x0) + w, height: Math.abs(y1 - y0) + h };
+  const dist = Math.hypot(x1 - x0, y1 - y0);
+  const n = Math.max(1, Math.ceil(dist / (Math.min(w, h) / 2)));
+  const out: string[] = [];
+  for (const p of props) {
+    if (!types.includes(p.type) || !boxesOverlap(sweep, p)) continue;
+    for (let i = 0; i <= n; i++) {
+      const k = i / n;
+      const cx = x0 + (x1 - x0) * k, cy = y0 + (y1 - y0) * k;
+      if (boxesOverlap({ x: cx - w / 2, y: cy - h / 2, width: w, height: h }, p)) { out.push(p.id); break; }
+    }
+  }
+  return out;
+};
+/**
+ * 着弾の爆発で壊す松明の id(足元が爆心から radius 以内=卵を割る爆発の当たり eggInCapsule の円と同じ形)。
+ * 緑卵は爆発の既存の経路(playerBlast→breakEggsInBlast)が割るので、ここは松明だけ。
+ */
+export const whipBlastPropHits = (
+  props: readonly { id: string; type: string; footX: number; footY: number }[], cx: number, cy: number, radius: number,
+): string[] => props.filter(p => p.type === 'torch' && Math.hypot(p.footX - cx, p.footY - cy) <= radius).map(p => p.id);
+
+/**
  * ★振り回している敵を盾にして敵の弾をかき消す(社長指示2026-11-26「振り回してる敵で弾をかき消せる様にして(簡単なら、その弾でダメージ与えれるといい)」)。
  * 弾の中心の点が、振り回している敵の体の箱に入っていれば消す。対象=プレイヤーへ向かう敵の弾(hostile)。
  * 紫=カウンターできない弾(noCounter)は消さない(色と形の文法)。敵の手榴弾は信管で爆発する物=消さない(プレイヤーへの接触と同じ扱い)。

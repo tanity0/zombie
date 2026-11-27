@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { playerAutoFireAllowed } from '../utils/autoFireToggle'; // 銃の装備を外している間は撃たない(装備中の銃の枠タップ)
 import { projSeen, projSeenPlayer, projBoxFullyOffPlayer, projScreenYFracOr, projViewPlayer, projGameEdgePoint } from '../utils/projGameView'; // ★#38=A: ?proj=1 の「見えているか」はゲームの画面(§3-9d)
 import { brawlerHeldNow, brawlerLiftHoldNow } from '../utils/brawlerCombo'; // 格闘の食らいの固まり(ボス級も・§11-1)
 import { isUntouchable } from '../utils/enemyUtils';
@@ -11378,6 +11379,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const katanaActive = isKatanaMode(postReloadPlayer);
         // ★近接専用モード(刀・村雨・格闘)は銃の自動射撃を止める(research/BRAWLER.md §1)。刀のオート斬撃は katanaActive のまま。
         const meleeOnlyActive = isMeleeOnlyMode(postReloadPlayer);
+        // 装備中の銃の枠タップで銃の装備を外している間は撃たない(utils/autoFireToggle・社長指示2026-11-27)。
+        const gunUnequipped = !playerAutoFireAllowed(useGameStore.getState());
         const activeGun = getActiveGun(postReloadPlayer);
         // MOVEMENT_REWORK.md 仕様2: スケーター乗車中は銃の自動発砲も封印(?skaterlock=0で復帰)。
         const skaterLocked = SKATER_LOCK_ENABLED && postReloadPlayer.skaterRiding;
@@ -11401,7 +11404,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // UNIQUE_WEAPONS.md §16-3b(手動専用銃の掟): シグナルランチャーはPHILLと同じ「自動で撃たない銃」
         // (category='glauncher'なのでcategory!=='phill'だけでは除外できない=isManualOnlyGunKeyで除外)。
         const isManualOnlyGun = isManualOnlyGunKey(activeGun?.key);
-        if (activeGun && !meleeOnlyActive && !skaterLocked && !attackLocked && !seekerLocked && !pvpLocked && !grabbedLocked && !hurtGunLocked && activeGun.category !== 'phill' && !isNonProjectileGun && !isManualOnlyGun) {
+        if (activeGun && !meleeOnlyActive && !gunUnequipped && !skaterLocked && !attackLocked && !seekerLocked && !pvpLocked && !grabbedLocked && !hurtGunLocked && activeGun.category !== 'phill' && !isNonProjectileGun && !isManualOnlyGun) {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
           if (newProjectiles.length > 0) {
             // 銃種別の発射音。★写像は weaponUtils の gunFireSfxKey が唯一の出どころ
@@ -16114,6 +16117,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 刀/死亡演出/シーカー半透明/対人拘束/スケーター乗車中は通常オート射撃と同じく進行を止める
               // (タイマーは単に進まないだけ=次に解けたgameTimeから続きが動く)。
               const elLocked = isMeleeOnlyMode(elPlayer) || isAttackLocked() // 刀・格闘(research/BRAWLER.md §1)
+                || !playerAutoFireAllowed(useGameStore.getState()) // 銃の装備を外している間(utils/autoFireToggle)
                 || (isSeekerActive(elPlayer, gameTime) && skillLevel(elPlayer, 'seeker') < 3)
                 || isPvpIncapacitated(elPlayer.pvpPosture, gameTime)
                 || isHurtGunLocked(elPlayer, Date.now()) // ★被弾の復帰ディレイ(v0.25.4377・オート射撃と同じ扱い)
@@ -16307,6 +16311,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const flActiveNow = flPlayer.activeWeaponId === flGun.id;
             const flLocked = !flActiveNow || flPlayer.health <= 0 || flState.gameWon
               || isMeleeOnlyMode(flPlayer) || isAttackLocked() // 刀・格闘(research/BRAWLER.md §1)
+              || !playerAutoFireAllowed(flState) // 銃の装備を外している間(utils/autoFireToggle)
               || (isSeekerActive(flPlayer, gameTime) && skillLevel(flPlayer, 'seeker') < 3)
               || isPvpIncapacitated(flPlayer.pvpPosture, gameTime)
               || isHurtGunLocked(flPlayer, Date.now()) // ★被弾の復帰ディレイ(v0.25.4377・オート射撃と同じ扱い)

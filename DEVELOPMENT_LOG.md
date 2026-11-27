@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5875 — 大車輪で緑卵・松明を壊す/装備中の銃タップで装備を外す【2026-11-27 20:07】
+- 社長指示「大車輪、緑卵とか松明とか壊せる様にして欲しい」: 振り回し・投げの体の道(`whipBodyPropHits`・体の短辺の半分刻み+包む箱で絞る)と着弾の爆発(`whipBlastPropHits`=松明。卵は既存の playerBlast)で壊す。ボスの叩きつけは着地の爆発のみ。壊した絵・落とし物は `propStruckFx`(breakPropsAlong から抽出)で近接と共通。★振り回し・投げの間だけ松明を壁扱いしない(`brawlerRectFree` の passTorches)=壊して突き抜ける(社長へ報告済み・戻せる)。負荷1/10。新規 whipProps.store.test.ts(6)・whipSwing.test.ts(+4)。画 scratchpad/whipprop/。
+- 社長指示「装備中の銃アイコンタップでオート射撃off」→訂正「装備を外してる状態になればいい・新しい見た目はいれない」: store 1欄 `autoFireOff`+HUD の表示上 active を外す(activeGun=null にしない=getActiveGun の先頭落ちを避ける)。純関数 `playerAutoFireAllowed`・`gunSlotTap`(新規 autoFireToggle.ts)。止めた経路: 通常オート射撃・アイレーザー・火炎放射器・新銃3種・autoSwitchIfDry・手動の銃(PHILL/レールガン/シグナルランチャー=外した見た目と揃える判断・社長へ報告)。持ち替えで装備に戻る。PCの数字キーで装備中の枠を押すと外す/装備し直す。守護霊・タレット・サブは止めない。画 scratchpad/autofire/(装備中12発/外す0発/再装備13発)。phone-guard: title の背景層の1pxゆらぎのみ(変更と無関係)。
+- 検証: typecheck / eslint エラー0 / 循環import新規なし / vitest src/utils src/store 11344 passed。
+- 自己点検: 憲法第4条・第5条に抵触なし。
+
 ## v0.25.5874 — 格闘: 1回の空中で同じ技は1回まで【2026-11-27 19:45】
 - 社長指示「格闘の空中では、一度の空中で同じ技は1回までにして(一度着地した後ならok)」(格闘ゲームの1ジャンプ1回の決まり)。
 - 数える単位=道の表の節(s1/s2/kick1/kick2/kick3/heel/kickup/stomp/kiko)。空中投げ・スープレックス・土竜・秘奥義の途中は数えない(入力で始まらない)。

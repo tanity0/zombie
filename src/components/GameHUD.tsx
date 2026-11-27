@@ -149,7 +149,9 @@ const GameHUD: React.FC = () => {
   const equippedSkills = player.subWeapons.filter(
     k => !(k === 'katana' && player.subWeapons.includes('murasame'))
   );
-  const setActiveWeapon = useGameStore(state => state.setActiveWeapon);
+  const tapGunSlot = useGameStore(state => state.tapGunSlot);
+  // 装備中の銃の枠タップで銃の装備を外している間は、どの銃の枠も「装備中でない」既存の見た目で出す(boolean 購読=毎フレーム再描画しない)。
+  const gunUnequipped = useGameStore(state => state.autoFireOff);
   const lastWeaponGet = useGameStore(state => state.lastWeaponGet);
   const endingStage = useGameStore(state => state.farBackdrop === 'ending'); // UI系非表示(社長指示2026-08-28)
   // 時計/ボス警告は1秒粒度で十分。秒で購読し、毎フレーム再描画を避ける。
@@ -513,10 +515,11 @@ const GameHUD: React.FC = () => {
                     key={gun.id}
                     // タッチでの反応を良くする: onClick(touchend待ち＋クリック遅延＋微ドラッグで無効化)ではなく
                     // onPointerDown で押した瞬間に切替。touchAction:manipulation でタップ遅延も除去(社長指示)。
-                    onPointerDown={(e) => { e.preventDefault(); setActiveWeapon(gun.id); }}
+                    // 装備中の銃をタップ=装備を外す/外している間はタップした銃を装備(utils/autoFireToggle)。
+                    onPointerDown={(e) => { e.preventDefault(); tapGunSlot(gun.id); }}
                     style={{ touchAction: 'manipulation' }}
                     className={`pointer-events-auto relative w-11 h-11 rounded-none flex items-center justify-center overflow-hidden transition-colors ${
-                      weaponSlotClass(gun.tier, active, dry)
+                      weaponSlotClass(gun.tier, active && !gunUnequipped, dry)
                     }`}
                     title={gun.name}
                     aria-label={gun.name}

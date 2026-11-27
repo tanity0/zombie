@@ -1,3 +1,4 @@
+import { gunSlotTap } from '../utils/autoFireToggle'; // 装備中の銃の枠タップ=装備を外す
 import { MAGNET_PULL_RADIUS_BY_LEVEL } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ半径(社長裁定2026-09-13)
 import { canAdvanceNpcLine, advanceNpcDialogueState } from '../utils/npcDialogueAdvance'; // 会話の窓のタップで一言ずつ送る
 import { projSeen, projSeenPlayer, projViewCam, projViewPlayer, projGameRowHalfW, projGameBandPick, projGameViewContains, projGameScreenCenter, getProjGameView, projGameRecycleRect, projPropRegionRect, projEndingReentryHalfW, projBulletCullRadius, projLabViewCam } from '../utils/projGameView';
@@ -340,7 +341,7 @@ import {
   WHIP_SWING_SHRINK_LOOKAHEAD_MS, WHIP_SWING_SHRINK_LOOKAHEAD_STEPS, WHIP_DROP_MIN_SPEED, WHIP_DROP_MS,
   WHIP_SWING_RADIUS_MULT, WHIP_SWING_MIN_RADIUS_FRAC, WHIP_THROW_DIST_MULT, WHIP_THROW_DAMAGE_MULT, WHIP_THROW_HITSTOP_MS, type WhipSwingState, whipShieldBlocksShot, type Box as WhipBox,
   whipShieldHitDamage, whipShieldHealthFloor, whipThrowExecutesSelf, whipLandTechKind, whipLandStunClearPatch,
-  whipSwingRampMult, whipSwingRampFx,
+  whipSwingRampMult, whipSwingRampFx, whipBodyPropHits, whipBlastPropHits,
 } from '../utils/whipSwing';
 import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
 import { planHomingVolley, splitDueHomingShots, homingLiftAllowed, type HomingPendingShot } from '../utils/homingVolley';
@@ -3834,6 +3835,8 @@ const whipThrowExplode = (get: () => GameState, cx: number, cy: number, selfId: 
   g.spawnBurst(cx, cy, '#7f1d1d', 8);
   g.spawnGlow(cx, cy, GLOW_R_S, 'rgba(251,146,60,', 440);
   g.spawnExplosionFx(cx, cy, radius);
+  // ★爆発の範囲の松明も壊す(社長指示2026-11-27「大車輪、緑卵とか松明とか壊せる様にして欲しい」)。緑卵は下の playerBlast が割る。
+  whipBreakProps(get, whipBlastPropHits(get().breakableProps, cx, cy, radius));
   g.playerBlast(cx, cy, radius, plan.map(h => h.targetId)); // 卵も割る・当たった敵を爆発の浮きで浮かせる(投げた本人も)
   if (hits > 0) g.registerMultiHit(hits);
   if (killed > 0) brawlerSfx(BRAWLER_SFX_DEATH);
@@ -4155,7 +4158,7 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
     const freeAt = (tt: number): { want: number; free: number; ca: number; sa: number } => {
       const a = whipSwingAngle(sw, tt), ca = Math.cos(a), sa = Math.sin(a);
       const want = whipSwingRadiusAt(tt, sw.r0, sw.radius);
-      const ok = (rr: number) => brawlerRectFree(get, pc.x + ca * rr - e.width / 2, pc.y + sa * rr - e.height / 2, e.width, e.height);
+      const ok = (rr: number) => brawlerRectFree(get, pc.x + ca * rr - e.width / 2, pc.y + sa * rr - e.height / 2, e.width, e.height, true); // 松明は壊して通る
       return { want, free: ok(want) ? want : whipSwingClampRadius(want, ok, minR), ca, sa };
     };
     const cur = freeAt(t);
@@ -4175,7 +4178,7 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
     if (shrink < 0) { shrink = 0; shrinkV = Math.max(0, shrinkV); }
     const r = Math.max(Math.min(want, minR), want - shrink);
     let pos = rectAt(r);
-    if (!brawlerRectFree(get, pos.x, pos.y, e.width, e.height)) {
+    if (!brawlerRectFree(get, pos.x, pos.y, e.width, e.height, true)) {
       // 下限まで縮めても居られない=行ける帯へ寄せる(帯の外へ出さない)。
       pos = clampRectToPlayableArea(pos.x, pos.y, e.width, e.height, {
         farBackdrop: st.farBackdrop, labTheme: st.stageTheme === 'lab', corridorMode: st.corridorMode, m0AdvanceLimitX: st.m0AdvanceLimitX,
@@ -4201,6 +4204,8 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
     }));
     // 盾: 振り回している敵の体に触れた敵の弾をかき消す。
     whipShieldEraseShots(get, set, { x: pos.x, y: pos.y, width: e.width, height: e.height }, e.id);
+    // 回っている体が通った道の松明・緑卵を壊す(社長指示2026-11-27)。
+    whipBodyBreakProps(get, sw.cx, sw.cy, ncx, ncy, e.width, e.height);
     let hits = 0, killed = 0;
     // ★大車輪の上がり(社長指示2026-11-26): ぶつかるたびに次の当たりを1.5倍(上限8倍)。数えるのは当たった敵ごとに1回(同じ敵に別の周で当たっても増やさない)。
     let rampHits = sw.rampHits ?? 0;
@@ -4263,7 +4268,9 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
   const others = st.enemies.filter(o => o.id !== e.id && o.health > 0 && !isCorpse(o) && !isUntouchable(o) && !(isReaperFamily(o.type) && !isTerminalReaper(o)));
   const step = whipThrowStep(fromX, fromY, ux, uy, d0, d1, maxDist,
     (x, y) => { const b = { x: x - e.width / 2, y: y - e.height / 2, width: e.width, height: e.height }; return others.some(o => boxesOverlap(b, o)); },
-    (x, y) => !brawlerRectFree(get, x - e.width / 2, y - e.height / 2, e.width, e.height));
+    (x, y) => !brawlerRectFree(get, x - e.width / 2, y - e.height / 2, e.width, e.height, true)); // 松明は壊して通り抜ける
+  // 飛んでいる体が通った道の松明・緑卵を壊す(社長指示2026-11-27)。着弾のフレームも着いた点まで。
+  whipBodyBreakProps(get, sw.cx, sw.cy, step.x, step.y, e.width, e.height);
   if (step.kind) {
     // ★パニッシャー(社長指示2026-11-25「パニッシャーも効かせて」): 投げた敵が当たった敵(着弾点で体の箱が重なる敵)は、爆発の後に同じ勢いで飛び近接ダメージを受ける。
     const hitIds = step.kind === 'enemy'
@@ -6394,6 +6401,34 @@ const eggBreakFx = (get: () => GameState, broken: BreakableProp): void => {
   get().spawnRing(broken.footX, broken.footY - 8, 5, 50, 'rgba(132,204,22,0.82)', 4, 320);
   get().spawnGlow(broken.footX, broken.footY - 8, GLOW_R_S, 'rgba(132,204,22,', 320);
 };
+/** 近接で置き物を叩いた時の絵と、壊れた時の絵・松明の落とし物(breakPropsAlong と大車輪の共通の1本)。 */
+const propStruckFx = (get: () => GameState, prop: BreakableProp, broken: BreakableProp | null): void => {
+  get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(255,243,196,0.95)');
+  if (!broken) return;
+  if (broken.type === 'mine') {
+    eggBreakFx(get, broken);
+  } else {
+    get().spawnBurst(broken.footX, broken.footY - 18, '#f97316', 18);
+    get().spawnBurst(broken.footX, broken.footY - 18, '#fde68a', 8);
+    get().spawnRing(broken.footX, broken.footY - 18, 6, 34, 'rgba(251,146,60,0.8)', 3, 320);
+    get().spawnGlow(broken.footX, broken.footY - 18, GLOW_R_XS, 'rgba(251,146,60,', 360);
+    get().dropBreakablePropLoot(broken);
+  }
+};
+/** 大車輪で置き物を壊す(社長指示2026-11-27): 体・爆発が触れた置き物は1発で壊れる(残りの体力ぶん)。絵と落とし物は近接と同じ(propStruckFx)。 */
+const whipBreakProps = (get: () => GameState, ids: readonly string[]): void => {
+  for (const id of ids) {
+    const prop = get().breakableProps.find(p => p.id === id);
+    if (!prop) continue;
+    propStruckFx(get, prop, get().damageBreakableProp(id, Math.max(1, prop.health)));
+  }
+};
+/** 振り回し・投げで動いた体((x0,y0)→(x1,y1)・箱 w×h)が触れた松明・緑卵を壊す。置き物が無ければ何もしない。 */
+const whipBodyBreakProps = (get: () => GameState, x0: number, y0: number, x1: number, y1: number, w: number, h: number): void => {
+  const props = get().breakableProps;
+  if (props.length === 0) return;
+  whipBreakProps(get, whipBodyPropHits(props, x0, y0, x1, y1, w, h));
+};
 const brawlerPalmBreakProps = (get: () => GameState, palm: { x0: number; y0: number; ux: number; uy: number; travel: number }, p: Player): void => {
   const melee = p.weapons.find(w => w.isMelee);
   const dmg = meleeSwingBaseDamage(melee, p) * BR.brawlerStageSpec(5).mult * 2.5;
@@ -7971,7 +8006,8 @@ const brawlerAirGrabFx = (get: () => GameState, e: Enemy, c: { x: number; y: num
   brawlerSfx('brawler-hit', 0.55, 0.62 * brJitter(), 160, 20);
 };
 /** 左上 (x,y)・大きさ (w,h) の箱がそこに居られるか(行ける帯へ寄せても動かない・壁・木・建物に押し出されない)。投げの飛行が毎フレーム通す(§34-6 #6)。 */
-const brawlerRectFree = (get: () => GameState, x: number, y: number, w: number, h: number): boolean => {
+/** passTorches=松明を壁として見ない(大車輪の体は松明を壊して通り抜ける・社長指示2026-11-27)。 */
+const brawlerRectFree = (get: () => GameState, x: number, y: number, w: number, h: number, passTorches = false): boolean => {
   const st = get();
   const labTheme = st.stageTheme === 'lab';
   const clamped = clampRectToPlayableArea(x, y, w, h, {
@@ -7987,7 +8023,7 @@ const brawlerRectFree = (get: () => GameState, x: number, y: number, w: number, 
     r = resolveAabb(foot, [...labBlockingWalls(openIds), ...st.labProps.map(lp => lp.rect)]);
   } else {
     r = resolveOutOfSolids(foot, {
-      labTheme, farBackdrop: st.farBackdrop, solidProps: st.breakableProps.filter(bp => bp.type !== 'mine' && bp.type !== 'uv-bar'),
+      labTheme, farBackdrop: st.farBackdrop, solidProps: st.breakableProps.filter(bp => bp.type !== 'mine' && bp.type !== 'uv-bar' && !(passTorches && bp.type === 'torch')),
       castleEvent: st.castleEvent, hospital: st.hospital, hospitalTaken: st.hospitalTaken, armory: st.armory, armoryTaken: st.armoryTaken,
       police: st.police, policeTaken: st.policeTaken, shrines: st.shrines, secretPois: st.secretPois, facilitiesHidden: facilitySolidsOff(st),
     });
@@ -12032,6 +12068,8 @@ interface GameState {
   // 挿絵は収録済み素材で統一(旧・表示直前ライブキャプチャ(shot)はv0.25.1839で廃止)。
   tutorialPopup: TutorialPopupPayload | null;
   tutorialPopupShown: boolean; // このランで表示済みか(resetGameでリセット)
+  /** 装備中の銃の枠タップでプレイヤーの銃の装備を外している(撃たない・社長指示2026-11-27・utils/autoFireToggle)。resetGame/持ち替えで外さない状態に戻す。 */
+  autoFireOff: boolean;
   // 訓練(M0)の**封印**(社長指示v0.25.2293「チュートリアルで解禁されるまで近接等は封印。
   // クリティカル等も出ない」)。教わっていない要素が先に暴発すると、説明と体験の順序が崩れる。
   // M0以外のステージでは常に全解禁(resetGame が farBackdrop を見て決める)。
@@ -12632,6 +12670,8 @@ interface GameState {
   // Weapons (drops / crates)
   grantWeapon: (key: string) => void;
   setActiveWeapon: (id: string) => void;
+  /** 銃の枠のタップ(PC はその枠のキー): 装備中の銃なら装備を外す/外している間ならその銃を装備/ほかは持ち替え(utils/autoFireToggle.gunSlotTap)。 */
+  tapGunSlot: (id: string) => void;
   autoSwitchIfDry: () => void;
   /** 変異体対策室(練習ラン)だけ: 弾切れの種類の弾を画面内のランダムな位置へ1つ落とす(utils/practiceAmmoResupply)。練習ラン以外では何もしない。 */
   practiceAmmoResupplyTick: () => void;
@@ -13677,6 +13717,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   rendererReady: false,
   tutorialPopup: null,
   tutorialPopupShown: false,
+  autoFireOff: false,
   m0Unlocked: { melee: true, crit: true, ammo: true }, // 既定=全解禁。M0出撃時だけ resetGame が封印する
   m0MeleeHits: 0,
   m0CritDrill: false,
@@ -19952,6 +19993,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!weapon || weapon.key !== 'phill-revolver') return;
     if (isPvpIncapacitated(player.pvpPosture, get().gameTime)) return; // ★SAME_ARENA §9(検収監査 重大①): 紫/daze中は撃てない
     if (isMeleeOnlyMode(player)) return; // ★刀・格闘の間は手動の銃も撃てない(research/BRAWLER.md §1・社長決定 #4=刀の漏れも止める)
+    if (get().autoFireOff) return; // 銃の装備を外している間は手動の銃も撃たない(utils/autoFireToggle)
     if (isPlayerGrabbed(player, get().gameTime)) return; // ★PACING_PUZZLE.md §16-1: bat に掴まれている間は撃てない
     // 社長指示v0.25.3300 シーカー仕様変更: 半透明中は攻撃できない(覚醒Lv3は可)。
     if (isSeekerActive(player, get().gameTime) && skillLevel(player, 'seeker') < 3) return;
@@ -20049,6 +20091,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const weapon = getActiveGun(player);
     if (!weapon || weapon.key !== RAILGUN_WEAPON_KEY) return;
     if (isMeleeOnlyMode(player)) return; // ★刀・格闘の間は手動の銃も撃てない(research/BRAWLER.md §1・社長決定 #4=刀の漏れも止める)
+    if (get().autoFireOff) return; // 銃の装備を外している間は手動の銃も撃たない(utils/autoFireToggle)
     if (isPvpIncapacitated(player.pvpPosture, get().gameTime)) return; // ★SAME_ARENA §9: 紫/daze中は撃てない
     if (isPlayerGrabbed(player, get().gameTime)) return; // ★PACING_PUZZLE.md §16-1: bat に掴まれている間は撃てない
     if (isSeekerActive(player, get().gameTime) && skillLevel(player, 'seeker') < 3) return;
@@ -20135,6 +20178,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const weapon = getActiveGun(player);
     if (!weapon || weapon.key !== SIGNAL_WEAPON_KEY) return;
     if (isMeleeOnlyMode(player)) return; // ★刀・格闘の間は手動の銃も撃てない(research/BRAWLER.md §1・社長決定 #4=刀の漏れも止める)
+    if (get().autoFireOff) return; // 銃の装備を外している間は手動の銃も撃たない(utils/autoFireToggle)
     if (isPvpIncapacitated(player.pvpPosture, gameTime)) return; // ★SAME_ARENA §9: 紫/daze中は撃てない
     if (isSeekerActive(player, gameTime) && skillLevel(player, 'seeker') < 3) return;
     const now = Date.now();
@@ -27865,18 +27909,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const ny = y0 + uy * along;
       if (Math.hypot(prop.footX - nx, prop.footY - ny) > halfWidth) continue;
       hitAny = true;
-      const broken = get().damageBreakableProp(prop.id, damage);
-      get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(255,243,196,0.95)');
-      if (!broken) continue;
-      if (broken.type === 'mine') {
-        eggBreakFx(get, broken);
-      } else {
-        get().spawnBurst(broken.footX, broken.footY - 18, '#f97316', 18);
-        get().spawnBurst(broken.footX, broken.footY - 18, '#fde68a', 8);
-        get().spawnRing(broken.footX, broken.footY - 18, 6, 34, 'rgba(251,146,60,0.8)', 3, 320);
-        get().spawnGlow(broken.footX, broken.footY - 18, GLOW_R_XS, 'rgba(251,146,60,', 360);
-        get().dropBreakablePropLoot(broken);
-      }
+      propStruckFx(get, prop, get().damageBreakableProp(prop.id, damage));
     }
     return hitAny;
   },
@@ -28047,6 +28080,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const prevGun = state.player.weapons.find(w => w.id === state.player.activeWeaponId);
       const leavingAlchemy = changed && prevGun?.key === ALCHEMY_WEAPON_KEY && target.key !== ALCHEMY_WEAPON_KEY;
       return {
+        ...(changed ? { autoFireOff: false } : {}), // 別の銃へ持ち替えたら装備した状態に戻す(utils/autoFireToggle)
         player: {
           ...state.player,
           activeWeaponId: id,
@@ -28060,6 +28094,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           : {}),
       };
     });
+  },
+
+  tapGunSlot: (id) => {
+    const st = get();
+    const r = gunSlotTap(getActiveGun(st.player)?.id, id, st.autoFireOff);
+    if (r.autoFireOff !== st.autoFireOff) set({ autoFireOff: r.autoFireOff });
+    if (r.equip) st.setActiveWeapon(r.equip);
   },
 
   // Begin reloading a gun: pull rounds from its reserve into its magazine over
@@ -28217,6 +28258,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   autoSwitchIfDry: () => {
+    if (get().autoFireOff) return; // 銃の装備を外している間は、弾切れの自動リロード/持ち替えもしない(勝手に装備し直さない・utils/autoFireToggle)
     const player = get().player;
     const active = getActiveGun(player);
     if (!active?.ammoType) return;
@@ -31416,6 +31458,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             : null,
         tutorialPopup: null,
         tutorialPopupShown: false,
+        autoFireOff: false, // 出撃ごとに銃は装備した状態から
         // 訓練(M0)は**教わるまで封印**(社長指示v0.25.2293)。近接もクリティカルも、その教習で解禁するまで出ない。
         // 他ステージは常に全解禁。
         m0Unlocked: farBackdrop === 'tutorial'

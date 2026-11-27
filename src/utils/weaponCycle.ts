@@ -28,12 +28,12 @@ export const pcCycleGun = (step: 1 | -1): boolean => {
   return true;
 };
 
-/** 枠の番号(0始まり)の銃へ。無い枠・今の銃なら何もしない。 */
+/** 枠の番号(0始まり)の銃へ。無い枠なら何もしない。今の銃の枠なら、HUD のタップと同じく装備を外す/外している間は装備し直す(utils/autoFireToggle)。 */
 export const pcSelectGunSlot = (index: number): boolean => {
   if (!canSwitch()) return false;
-  const { ids, active } = gunIdsOf();
+  const { ids } = gunIdsOf();
   const id = ids[index];
-  if (!id || id === active) return false;
-  useGameStore.getState().setActiveWeapon(id);
+  if (!id) return false;
+  useGameStore.getState().tapGunSlot(id);
   return true;
 };
