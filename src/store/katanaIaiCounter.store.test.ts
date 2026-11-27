@@ -8,6 +8,7 @@ import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, applyPumpkinBlastDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import { KATANA_IAI_WARP_GAP_PX, KATANA_IAI_WARP_MAX_PX, KATANA_IAI_PASS_MARGIN_PX } from '../utils/katanaIaiCounter';
 import { KATANA_CUT_MAX } from '../utils/katanaTsubame';
+import { KATANA_DASH_HIT_HOLD_MS } from '../utils/katanaDashHold'; // 一閃の通り道の途中の止めの分だけ着地が後ろへ
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 
@@ -64,7 +65,7 @@ describe('入口(tryKatanaIaiCounter)', () => {
     expect(pl().katanaDashDirX).toBeCloseTo(1);
     expect(st().skillProcFeed.some(r => r.key === 'tech:iai')).toBe(true);
     // 走り切ると主の後ろへ抜けている。
-    run(katanaDashMsFor(KATANA_DASH_DISTANCE) + 20);
+    run(katanaDashMsFor(KATANA_DASH_DISTANCE) + KATANA_DASH_HIT_HOLD_MS + 20);
     const z = en('z');
     expect(center().x).toBeGreaterThan(z.x + z.width);
     expect(z.health).toBeLessThan(99999);
@@ -105,7 +106,7 @@ describe('入口(tryKatanaIaiCounter)', () => {
     stance();
     st().tryKatanaIaiCounter('z');
     const warp = center();
-    run(katanaDashMsFor(KATANA_DASH_DISTANCE) + 10);
+    run(katanaDashMsFor(KATANA_DASH_DISTANCE) + KATANA_DASH_HIT_HOLD_MS + 10);
     const w = st().tsubameWindow!;
     expect(w).not.toBeNull();
     expect(w.originX).toBeCloseTo(warp.x);
@@ -119,20 +120,20 @@ describe('入口(tryKatanaIaiCounter)', () => {
     st().tryKatanaIaiCounter('z');
     // 走っている間に主が通り道の外へ動いた(弾き返し・跳び退きの代わり)。
     useGameStore.setState(s => ({ enemies: s.enemies.map(e => (e.id === 'z' ? { ...e, y: e.y + 400 } : e)) }));
-    run(KATANA_DASH_MS + 20);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 20);
     expect(en('z').health).toBeLessThan(99999);
   });
 
   it('威力は一閃 ×1.5', () => {
     useGameStore.setState({ enemies: [place('zombie', 90, 30, 'n')] }); // 一閃は噛みつき側の足元の箱で止まる(今の挙動)=少し下に置く
     st().triggerKatanaDash(1, 0);
-    run(KATANA_DASH_MS + 20);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 20);
     const issenDmg = 99999 - en('n').health;
     expect(issenDmg).toBeGreaterThan(0);
     useGameStore.setState(s => ({ enemies: [place('zombie', 120, 0, 'z')], player: { ...s.player, katanaRecoveryUntil: 0, katanaDashCooldownEnd: 0 } }));
     stance();
     st().tryKatanaIaiCounter('z');
-    run(KATANA_DASH_MS + 40);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 40);
     expect(99999 - en('z').health).toBeCloseTo(issenDmg * 1.5, 0);
   });
 
@@ -143,7 +144,7 @@ describe('入口(tryKatanaIaiCounter)', () => {
     // 走る時間=その道の長さぶん(一閃と同じ速さ)。
     expect(pl().katanaDashUntil - now).toBe(katanaDashMsFor(220 + KATANA_IAI_PASS_MARGIN_PX));
     const start = center().x;
-    run(katanaDashMsFor(220 + KATANA_IAI_PASS_MARGIN_PX) + 60);
+    run(katanaDashMsFor(220 + KATANA_IAI_PASS_MARGIN_PX) + KATANA_DASH_HIT_HOLD_MS + 60);
     const b = en('big');
     expect(center().x - start).toBeGreaterThan(KATANA_DASH_DISTANCE + 50);
     expect(center().x).toBeGreaterThan(b.x + b.width / 2);
@@ -179,7 +180,7 @@ describe('入口(tryKatanaIaiCounter)', () => {
     useGameStore.setState({ enemies: [place('zombie', 120, 0, 'z', { katanaCuts: KATANA_CUT_MAX })] });
     stance();
     st().tryKatanaIaiCounter('z');
-    run(KATANA_DASH_MS + 20);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 20);
     expect(st().satsujin).not.toBeNull();
   });
 });
@@ -198,7 +199,7 @@ describe('成立の合流点の配線', () => {
     expect(pl().katanaDashUntil).toBeGreaterThan(now);
     expect(pl().invulnerable).toBe(true);
     expect(pl().lastCounterSuccessTime).toBe(now);
-    run(KATANA_DASH_MS + 30);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 30);
     expect(en('c').health).toBeLessThan(99999);
     // 抜けた後も守られる(カウンター成立の1秒)。
     expect(pl().invulnerable).toBe(true);
@@ -227,7 +228,7 @@ describe('成立の合流点の配線', () => {
     expect(en('p').x).toBe(before.x);
     expect(en('p').health).toBe(99999);
     expect(center().x).toBeGreaterThan(c0.x + 10); // 主の手前へ移った
-    run(KATANA_DASH_MS + 30);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 30);
     expect(en('p').health).toBeLessThan(99999);
   });
 

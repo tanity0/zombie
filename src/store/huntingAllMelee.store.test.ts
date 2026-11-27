@@ -3,6 +3,7 @@
 //  どの武器でも「溜まった状態で始めた一連の動きの途中は伸びたまま、終わったら溜まりが消える」。
 //  ナイフ=一連のつながりの仕組みが無い=振るたびに消える / 鞭=1撃目→スラッシャーの追加の振り→最後の叩きつけ(research/WHIP_FOLLOWUP.md §7) / 刀=オート斬撃→一閃→燕返し / 格闘=連撃(§16)。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { KATANA_DASH_HIT_HOLD_MS } from '../utils/katanaDashHold'; // 一閃の通り道の途中の止めの分だけ着地が後ろへ
 import {
   useGameStore, huntingReachBonus, huntingMeleeRadius, katanaRange, katanaReach, whipReach,
   WHIP_LENGTH_BY_LEVEL, MELEE_RADIUS, subWeaponBlockedByKatana, enemyMeleeDist,
@@ -173,7 +174,7 @@ describe('刀: オート斬撃→一閃→燕返しの間は伸びたまま、�
       const x0 = center().x;
       expect(st().triggerKatanaDash(1, 0)).toBe(true);
       const ms = pl().katanaDashUntil - now;
-      run(ms + 10);
+      run(ms + KATANA_DASH_HIT_HOLD_MS + 10);
       return { ms, dx: center().x - x0 };
     };
     const plain = issenRun(false);
@@ -191,7 +192,7 @@ describe('刀: オート斬撃→一閃→燕返しの間は伸びたまま、�
     setup(['katana', 'striker-hunting'], { katana: 1, 'striker-hunting': 3 }, true);
     useGameStore.setState({ enemies: [zombieAt(90, 'z', 30)] });
     st().triggerKatanaDash(1, 0);
-    run(pl().katanaDashUntil - now + 10);
+    run(pl().katanaDashUntil - now + KATANA_DASH_HIT_HOLD_MS + 10);
     const w = st().tsubameWindow!;
     // 元の位置から「伸びていない一閃の最大距離」より遠い所に立たせる(伸びた距離の内側)
     run(100);
@@ -209,7 +210,7 @@ describe('刀: オート斬撃→一閃→燕返しの間は伸びたまま、�
   it('空振りの一閃は着地の硬直が明けたら消える', () => {
     setup(['katana', 'striker-hunting'], { katana: 1, 'striker-hunting': 3 }, true);
     st().triggerKatanaDash(1, 0);
-    run(pl().katanaDashUntil - now + 10);
+    run(pl().katanaDashUntil - now + KATANA_DASH_HIT_HOLD_MS + 10);
     expect(pl().huntingCharged).toBe(true);
     run(KATANA_DASH_RECOVERY_MS + 20);
     expect(pl().huntingCharged).toBe(false);

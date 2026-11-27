@@ -132,10 +132,11 @@ import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirbor
 import { satsujinCoverAlpha, SATSUJIN_HITS, isTsubameCrouching } from '../utils/katanaTsubame';
 import { isKatanaTapSwing, katanaIaiCrouching, katanaIaiDropLift, katanaIaiEquipped, katanaIaiSettle, katanaIaiStanceK } from '../utils/katanaIaiStance'; // 刀のタップ=居合の構え(描画だけ)
 import { iaiAfterimageAlpha } from '../utils/katanaIaiCounter'; // 居合一閃の残像(描画だけ)
+import { katanaDashHeld } from '../utils/katanaDashHold'; // 一閃の通り道の途中の止めの間は無敵の点滅を止める(描画だけ)
 import {
   KATANA_SLASH_CELL_H, KATANA_SLASH_CELL_W, KATANA_SLASH_CELLS, KATANA_SLASH_SHEET_TEX,
   katanaCutDeathAlpha, katanaCutLayout, katanaCutLength, katanaCutOpen, katanaCutRgb,
-  katanaSlashIntScale, katanaSlashJitter, katanaSlashPose, katanaSlashVisibleMid, katanaWhiteRgba,
+  katanaSlashIntScale, katanaSlashJitter, katanaSlashPose, katanaSlashVisibleMid, katanaWhiteRgba, KATANA_SLASH_TIMING,
 } from '../utils/katanaSlashSheet'; // プレイヤーの刀の斬撃シート(社長支給2026-11-22)
 import { whipComboBodyRecover } from '../utils/whipCombo'; // 鞭の3段目の後の隙の姿勢
 import { counterReadyAt, counterRingFade } from '../utils/counterReadyAt'; // カウンターのクールダウンの輪(鞭・ナイフの3連撃は連撃の終わり+CDまで)
@@ -143,7 +144,7 @@ import { knifeComboBodyEndMs, knifeComboBodyT, knifeComboSwingDir, knifeComboWpn
 import {
   KNIFE_SWING_SWITCH as KNIFE_SWING_SWITCH_U, KNIFE_SWING_START_BACK_RAD as KNIFE_SWING_START_BACK_RAD_U, knifeSwingCircle as knifeSwingCircleU,
   knifeCircleAngle, meleeSwingEase as meleeSwingEaseU, MELEE_POSE_PREFIX as MELEE_POSE_PREFIX_U, PLAYER_MELEE_FISTS as PLAYER_MELEE_FISTS_U,
-  crispKeyframes, CRISP_MOVE_MS, meleePoseSince, whiffHoldSince, MELEE_WHIFF_HOLD_MS,
+  crispKeyframes, CRISP_MOVE_MS, meleePoseSince, whiffHoldSince, MELEE_WHIFF_HOLD_MS, drawSinceWithStop, katanaSlashCenterT,
 } from '../utils/meleeHitstopTiming'; // 近接の動き→止まり・ヒットストップの時刻(描画だけ)
 import {
   whipSwingRopePoints, WHIP_LOOP_ROPE_POINTS, whipRopePose, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
@@ -29310,7 +29311,8 @@ export class PixiScene {
     // カウンター成立の無敵は点滅させない(被弾と紛らわしいため・社長指示)。カウンターは invulnerableTime と
     // lastCounterSuccessTime を同時刻に立てるので、両者一致=カウンター由来の無敵と判定して点滅を抑止。
     // 被弾i-frame は invulnerableTime のみ更新されるので一致せず、従来どおり点滅する。
-    const counterInvuln = p.invulnerable && p.lastCounterSuccessTime === p.invulnerableTime;
+    // ★一閃の通り道の途中の止め(utils/katanaDashHold)の間も点滅させない=止まった体をはっきり見せる(明けたら今どおり点滅)。
+    const counterInvuln = p.invulnerable && (p.lastCounterSuccessTime === p.invulnerableTime || katanaDashHeld(p.katanaDashHold, Date.now())); // 止めの時刻は壁時計(store の Date.now)
     view.sprite.alpha = (seekerActive ? 0.4 : (p.invulnerable && !counterInvuln ? 0.5 + 0.5 * Math.sin(now / 50) : 1)) * deathFade * introFade * this.corridorRunInFade();
     // ★FB5(v0.25.3611「演出中はかならず敵の上のレイヤーに置き」): KILL処刑演出中はYソートを
     // 無視して必ず全アクターの前面(首元に乗った時に敵の後ろへ回らない)。描画のみ・判定不変。
@@ -45823,7 +45825,8 @@ export class PixiScene {
 
   // trail: 白テクスチャ1枚を線分として伸縮(旧: 毎フレーム直線stroke)。groundLayer は旧経路と同じ。
   private drawTrailSprite(e: Extract<VisualEffect, { kind: 'trail' }>, now: number) {
-    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    // ★一閃・殺陣の筋の止め(描画だけ): store が書いた stopAt(経過)で stopMs だけ時計を止める(伸びも薄れも止まる)。
+    const t = Math.min(1, drawSinceWithStop(now - e.createdAt, e.stopAt ?? -1, e.stopMs ?? 0) / e.duration);
     let sprite = this.effects.get(e.id);
     if (!(sprite instanceof Sprite) || !(sprite as { __trailFx?: boolean }).__trailFx) {
       if (sprite) sprite.destroy();
@@ -46332,9 +46335,10 @@ export class PixiScene {
     }
     let used = 0;
     let si = -1;
+    const satStopAge = katanaSlashCenterT(KATANA_SLASH_TIMING.satsujin.out) * 420; // 筋の刃先が相手の中心を通る経過(ms)
     for (const st of sat.strikes) {
       si++;
-      const age = now - st.at;
+      const age = drawSinceWithStop(now - st.at, satStopAge, st.stopMs ?? 0); // ★そこで短く止める(描画だけ・社長指示2026-11-27)
       const k = Math.max(0, Math.min(1, 1 - age / 420));
       if (k <= 0) continue;
       // 画面の座標へは影と同じ変換(世界の層の worldTransform)で写す。

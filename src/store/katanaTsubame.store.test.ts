@@ -6,6 +6,7 @@ import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { brawlerAirborne } from '../utils/brawlerCombo';
 import { SATSUJIN_HITS, SATSUJIN_STRIKE_MS, KATANA_CUT_MAX, isTsubameCrouching, tsubameDashMs } from '../utils/katanaTsubame';
+import { KATANA_DASH_HIT_HOLD_MS } from '../utils/katanaDashHold'; // 一閃の通り道の途中の止めの分だけ着地が後ろへ
 
 let now = 17_000_000;
 const NO = { up: false, down: false, left: false, right: false } as never;
@@ -47,7 +48,7 @@ describe('一閃(今の挙動+浮き)', () => {
     const origin = center();
     expect(st().triggerKatanaDash(1, 0)).toBe(true);
     expect(st().skillProcFeed.some(r => r.key === 'tech:issen')).toBe(true);
-    run(KATANA_DASH_MS + 10);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 10);
     const z = en('z');
     expect(z.health).toBeLessThan(99999);
     expect(brawlerAirborne(z, now)).toBe(true);
@@ -60,14 +61,14 @@ describe('一閃(今の挙動+浮き)', () => {
   it('ボス級は重さどおり(浮くが雑魚より低い)', () => {
     useGameStore.setState({ enemies: [place('zombie', 90, 30, 'z'), place('hunter', 110, -50, 'h')] });
     st().triggerKatanaDash(1, 0);
-    run(KATANA_DASH_MS + 10);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 10);
     expect(en('h').health).toBeLessThan(99999);
     const hPeak = brawlerAirborne(en('h'), now) ? en('h').brLiftPeak ?? 0 : 0;
     expect(hPeak).toBeLessThan(en('z').brLiftPeak ?? 0);
   });
   it('当たっていない一閃では受付は開かない', () => {
     st().triggerKatanaDash(1, 0);
-    run(KATANA_DASH_MS + 10);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 10);
     expect(st().tsubameWindow).toBeNull();
     expect(st().tryTsubame(-1, 0)).toBe(false);
   });
@@ -78,7 +79,7 @@ describe('燕返し', () => {
     useGameStore.setState({ enemies: [place('zombie', 90, 30, 'z')] });
     const origin = center();
     st().triggerKatanaDash(1, 0);
-    run(KATANA_DASH_MS + 10);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 10);
     const landed = center();
     expect(landed.x - origin.x).toBeGreaterThan(KATANA_DASH_DISTANCE * 0.6);
     // 帰り道に別の敵(地上)を置く。
@@ -117,7 +118,7 @@ describe('燕返し', () => {
   it('燕返しの間はしゃがんで止まり(走っていた時間と同じだけ)、無敵ではない=ふつうに被弾する', () => {
     useGameStore.setState({ enemies: [place('zombie', 90, 30, 'z')] });
     st().triggerKatanaDash(1, 0);
-    run(KATANA_DASH_MS + 10);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 10);
     // 一閃の無敵はループ側が INVULN_MS で外す(このテストはループを回さないので、明けた状態を手で作る)。
     useGameStore.setState(s => ({ player: { ...s.player, invulnerable: false, abilityInvulnUntil: 0 } }));
     run(50);
@@ -140,7 +141,7 @@ describe('燕返し', () => {
   it('燕返しの演出: 通り道の全長を覆う刀の斬撃1本(上下反転のV字)・残光の筋・スピードラインの時計・当たりの光と数字は仮定の終点側の縁', () => {
     useGameStore.setState({ enemies: [place('zombie', 90, 30, 'z')] });
     st().triggerKatanaDash(1, 0);
-    run(KATANA_DASH_MS + 10);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 10);
     expect(st().effects.some(e => e.kind === 'slash' && e.katanaMove === 'issen')).toBe(true);
     // 帰り道の敵を1体だけにする(一閃で浮いた z は外す)=当たった所(箱の縁)が体の位置で変わる大きさの敵。
     useGameStore.setState({ enemies: [place('hunter', -70, 30, 'r', { width: 80 })] });
@@ -178,7 +179,7 @@ describe('燕返し', () => {
   it('300msを過ぎた・反対でない向きでは出ない', () => {
     useGameStore.setState({ enemies: [place('zombie', 90, 30, 'z')] });
     st().triggerKatanaDash(1, 0);
-    run(KATANA_DASH_MS + 10);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 10);
     expect(st().tryTsubame(1, 0)).toBe(false);  // 進行方向
     expect(st().tryTsubame(0, 1)).toBe(false);  // 横
     run(320);
@@ -195,7 +196,7 @@ describe('切り傷と殺陣', () => {
       const c = center();
       useGameStore.setState(s => ({ enemies: s.enemies.map(e => (e.id === 'z' ? { ...e, x: c.x + 90 - e.width / 2, y: c.y + 30 - e.height / 2, brLiftUntil: undefined, brawlerLiftAt: undefined, liftUntil: undefined, knockbackVx: 0, knockbackVy: 0, brBlastNoLiftUntil: undefined } : e)) }));
       expect(st().triggerKatanaDash(1, 0)).toBe(true);
-      run(KATANA_DASH_MS + 10);
+      run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 10);
       expect(en('z').katanaCuts).toBe(i + 1);
       expect(st().satsujin).toBeNull();
       run(600);
@@ -207,7 +208,7 @@ describe('切り傷と殺陣', () => {
     useGameStore.setState(s => ({ enemies: s.enemies.map(e => (e.id === 'z' ? { ...e, x: c.x + 90 - e.width / 2, y: c.y + 30 - e.height / 2, brLiftUntil: undefined, liftUntil: undefined, knockbackVx: 0, knockbackVy: 0 } : e)) }));
     const hp0 = en('z').health;
     st().triggerKatanaDash(1, 0);
-    run(KATANA_DASH_MS); // 着地
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS); // 着地
     run(10);
     const sat = st().satsujin!;
     expect(sat).not.toBeNull();
@@ -231,7 +232,7 @@ describe('切り傷と殺陣', () => {
   it('4本未満では殺陣にならない', () => {
     useGameStore.setState({ enemies: [place('zombie', 90, 30, 'z', { katanaCuts: 3 })] });
     st().triggerKatanaDash(1, 0);
-    run(KATANA_DASH_MS + 20);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 20);
     expect(st().satsujin).toBeNull();
     expect(en('z').katanaCuts).toBe(4);
   });

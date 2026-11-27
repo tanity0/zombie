@@ -2,6 +2,7 @@
 // 判定の純関数は utils/slasherFollowup.test.ts・utils/knifeCombo.test.ts。ここは配線(種を積む・予約する・時刻が来たら当てる・入力は増えない)。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, KATANA_DASH_MS, COUNTER_WINDOW, COUNTER_COOLDOWN } from './gameStore';
+import { KATANA_DASH_HIT_HOLD_MS } from '../utils/katanaDashHold'; // 一閃の通り道の途中の止めの分だけ着地が後ろへ
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { SLASHER_FOLLOWUP_INTERVAL_MS, slasherFollowupMult } from '../utils/slasherFollowup';
@@ -144,7 +145,7 @@ describe('スラッシャーの追い打ち: 格闘・鞭・刀', () => {
     useGameStore.setState(s => ({ enemies: [place('zombie', 90, 30, 'z')], player: { ...s.player, subWeapons: ['katana'], subWeaponLevels: { katana: 1 } } }));
     withSlasher(3);
     expect(st().triggerKatanaDash(1, 0)).toBe(true);
-    const end = now + KATANA_DASH_MS + 10;
+    const end = now + KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 10;
     while (now < end && st().slasherFollowups.length === 0) {
       now += 10;
       useGameStore.setState(s => ({ gameTime: s.gameTime + 10 }));

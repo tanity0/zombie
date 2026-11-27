@@ -53,6 +53,9 @@ export interface DashLocomotionState {
   // この時刻(Date.now)まで、一閃の走り(katanaDashUntil)の間でも位置を動かさない。無敵は付かない。絵は `-ready`(しゃがみ)。0/未設定=無し。
   // 一閃の状態機械の一部なので主語ごと(プレイヤー=Player 直付け・守護霊=Summon.ghostDash)に持つ。
   tsubameCrouchUntil?: number;
+  // ★一閃の通り道の途中の止め(utils/katanaDashHold・社長指示2026-11-27「真ん中あたりで一瞬止めて」)。一閃を出した瞬間に器を作り、
+  // 走りの途中で最初に当たる敵の中心(空振り=通り道の真ん中)を通る瞬間に止めを始める。止めの間は走らず、走り終わりは止めた分だけ後ろへ延びる。
+  katanaDashHold?: import('../utils/katanaDashHold').KatanaDashHold;
   // ワイヤーアンカー(移動系サブ)。装備中は前方に青サークルを常時表示。指離しで「即座に」アンカーを
   // 打ち込み(ワイヤーが表示される)、溜(wirePlantUntil まで)の後に追加タップでアンカー地点へ高速移動。
   // アンカーは一度打ち込むと、プレイヤーが一定距離(WIRE_CLEAR_DIST)離れるか、移動に使うまでそこに留まる。
@@ -3368,7 +3371,7 @@ export interface SatsujinState {
   startAt: number;
   lastStrikeEndAt: number;
   endAt: number;
-  strikes: { fromX: number; fromY: number; toX: number; toY: number; at: number }[];
+  strikes: { fromX: number; fromY: number; toX: number; toY: number; at: number; stopMs?: number }[]; // stopMs=筋が相手の中心を通る所で絵の時計を止める長さ(描画だけ)
 }
 
 export type VisualEffect =
@@ -3578,6 +3581,8 @@ export type VisualEffect =
       color: string;
       createdAt: number;
       duration: number;
+      // ★一閃の通り道の止め(描画だけ): 経過 stopAt(ms)で絵の時計を stopMs だけ止める(寿命も同じだけ延びる)。
+      stopAt?: number; stopMs?: number;
     }
   | {
       // SKILL_BUILD_REDESIGN.md §28(B7) 吸血: キル地点から**生きているプレイヤー位置へ**吸い込まれて

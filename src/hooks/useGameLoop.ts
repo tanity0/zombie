@@ -216,6 +216,7 @@ import { ghostArrivalPoint, ghostDeparturePoint } from '../utils/ghostLifecycle'
 import { pickKatanaSlashTarget, katanaSlashIntervalMs } from '../utils/katanaAuto';
 import { huntingChargeStep } from '../utils/huntingSequence'; // ハンティングの溜めの1歩(プレイヤー・守護霊で同じ)
 import { isTsubameCrouching } from '../utils/katanaTsubame'; // 守護霊の燕返しのしゃがみ(プレイヤーと同じ判定)
+import { katanaDashHeld } from '../utils/katanaDashHold'; // 守護霊の一閃の通り道の途中の止め(プレイヤーと同じ判定)
 import { pickSafeKatanaDashDirection } from '../utils/katanaLanding';
 import { dashModeAt, dashOverride, dashStateOf, dashStep } from '../utils/dashLocomotion';
 import { npcSfxDistGain } from '../utils/npcSfx'; // v0.25.2480: ローカル定義から移設(式は無変更)
@@ -318,7 +319,7 @@ import {
 } from '../utils/supportSniper';
 import { activeFlareTargets, pruneFlares } from '../utils/flareGun';
 import { buildBomberMinis, bomberMiniCount } from '../utils/bomberScatter';
-import { rollBomberScatterAndNotify, notifySkillProc, spawnSkillProcFx, warlordAutoSlashMult, triggerBloodAwakenBurst } from '../store/gameStore'; // スキル発動の表示(通信欄の下)
+import { rollBomberScatterAndNotify, notifySkillProc, spawnSkillProcFx, warlordAutoSlashMult, triggerBloodAwakenBurst, stepKatanaDashPassStop } from '../store/gameStore'; // スキル発動の表示(通信欄の下)
 import { installScarecrowSway } from '../store/scarecrowSway';
 // 案山子(変異体対策室の練習の的)の揺れの向き・始まりを被弾の瞬間に store へ書く購読(1回だけ・練習ラン以外は1行目で抜ける)。
 installScarecrowSway();
@@ -13948,7 +13949,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // (旧: decision.moveX/Yへの直接積分=瞬間加減速)。オーバーシュートは目標が変わっても
               // 残速度で流れることから自然に出る(専用の乱数・定数は足さない)。
               let ghostVxNext: number, ghostVyNext: number;
-              if (gDashMode === 'katana-dash' && isTsubameCrouching(gDashState, nowMs)) {
+              if (gDashMode === 'katana-dash' && katanaDashHeld(gDashState.katanaDashHold, nowMs)) {
+                // ★一閃の通り道の途中の止め(utils/katanaDashHold・プレイヤーと同じ): 走りの時計ごと止める=位置も速さもそのまま。
+                nx = ghostNow.x; ny = ghostNow.y;
+                ghostVxNext = ghostNow.vx ?? 0; ghostVyNext = ghostNow.vy ?? 0;
+              } else if (gDashMode === 'katana-dash' && isTsubameCrouching(gDashState, nowMs)) {
                 // ★燕返しのしゃがみ(プレイヤーと同じ): 一閃の走りの間でも体は動かない(着地硬直と同じ停止)。
                 nx = ghostNow.x; ny = ghostNow.y;
                 ghostVxNext = 0; ghostVyNext = 0;
@@ -14115,6 +14120,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ghostMicroHabitSwingLg: decision.microHabitSwingLg, ghostMicroEscapeArmKey: decision.microEscapeArmKey, ghostMicroHabitEscaped: decision.microHabitEscaped,
                 } : s),
               }));
+              // ★一閃の通り道の途中の止め(utils/katanaDashHold・プレイヤーと同じ): 走ったこのフレームで最初に当たる敵の中心(空振り=真ん中)を通ったら止める。
+              if (gDashMode === 'katana-dash' && gDashState.katanaDashHold && gDashState.katanaDashHold.at === undefined) {
+                stepKatanaDashPassStop(ghostNow.id, nowMs,
+                  { x: ghostNow.x + ghostNow.width / 2, y: ghostNow.y + ghostNow.height / 2 },
+                  { x: resolved.x + ghostNow.width / 2, y: resolved.y + ghostNow.height / 2 });
+              }
 
               // GHOST-SUBS-FINAL: 自分が投げたクイックマガジンの回収(**自分の設置物だけ**。世界の
               // ドロップには触れない=§2.11追補3)。拾得判定はプレイヤーと同じ純関数

@@ -145,6 +145,7 @@ import {
 } from '../utils/hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
 import { isEnemyAttacking, meleeHitSfxLayers, hitStunMsFor, impactHitStunUntil, HIT_STUN_MS_MOB } from '../utils/combatFeel';
 import { meleeShakePatch, extendMeleeShake, applyHitstopK, katanaMoveKind, HITSTOP_MOVE_K, WHIP_TIP_SHAKE } from '../utils/hitShake'; // 近接のヒットストップの震え・技の係数(research/HITSTOP.md)
+import { makeKatanaDashHold, katanaDashAlong, pickKatanaDashHold, katanaDashHeld, firedKatanaDashHold, katanaDashHoldExtend, SATSUJIN_STRIKE_HOLD_MS, type KatanaDashHold, type KatanaDashHoldCand } from '../utils/katanaDashHold'; // 一閃の通り道の途中の止め(社長指示2026-11-27) // 近接のヒットストップの震え・技の係数(research/HITSTOP.md)
 import { BOSS_KILL_CAMERA_HOLD_MS, BOSS_KILL_FLASH_ALPHA, BOSS_KILL_SLOW, bossKillSlowAfterStop, longerHitstopUntil, playerHurtStopUntil } from '../utils/bossKillStop'; // ボスストップ・致命の止め(research/HITSTOP.md §6)
 import * as BR from '../utils/brawler'; // サブウェポン「格闘」の純関数(research/BRAWLER.md)
 import { isBrawlerGuardingAt } from '../utils/brawler';
@@ -364,6 +365,11 @@ type KatanaSlashFx = { move: KatanaSlashMove; flip?: boolean; path?: { dx: numbe
 let katanaSlashSeq = 0;
 /** 斬撃の絵(spawnSlash)の長さ(ms)。 */
 const SLASH_FX_DURATION_MS = 260;
+/**
+ * 刀の自動の斬り(オート斬撃=performKatanaStrike の allowFinisher なし)の斬撃の絵の大きさ(描画だけ・判定は変えない)。
+ * 旧=2(確定仕様だった)→ 社長指示2026-11-27「刀のオート切りのエフェクト大きすぎる」で ×0.6(叩き台)。一閃・燕返し・居合一閃・殺陣の絵は今のまま。
+ */
+export const KATANA_AUTO_SLASH_FX_SCALE = 2 * 0.6;
 /** ★本人の刀の自分の振りの止め(描画だけ): 斬撃の絵で刃先が中心(=当たった所)に来る経過で KATANA_SELF_STOP_MS だけ止める(utils/meleeHitstopTiming)。 */
 const katanaSelfStop = (move: KatanaSlashMove): { at: number; ms: number } =>
   ({ at: Math.round(katanaSlashCenterT(KATANA_SLASH_TIMING[move].out) * SLASH_FX_DURATION_MS), ms: applyHitstopK(KATANA_SELF_STOP_MS, katanaMoveKind(move)) }); // ★技の係数(一閃・燕返し=1.3・research/HITSTOP.md §2-5)
@@ -4287,6 +4293,87 @@ const applyIssenHitPatch = (
     }),
   }));
 };
+// ---- ★一閃の通り道の途中の止め(utils/katanaDashHold・社長指示2026-11-27「一閃でストップしてないように見える。真ん中あたりで一瞬止めて欲しい」) ----
+/** 止めで敵に書いた hitStunUntil(着地の当たりの前に元へ戻す=着地の当たりの止めが再発火ガードで消されない)。id → 書いた値・書く前の値。 */
+const katanaPassStunRestore = new Map<string, { wrote: number; prev: number | undefined }>();
+/** 通り道の帯(着地の当たりと同じ幅)の中の、斬れる敵の候補。 */
+const katanaDashPassCandidates = (enemies: readonly Enemy[], h: KatanaDashHold): KatanaDashHoldCand[] => {
+  const out: KatanaDashHoldCand[] = [];
+  for (const e of enemies) {
+    if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
+    if (isCorpse(e) || e.health <= 0 || isUntouchable(e) || e.aiPhase === 'jump') continue;
+    const ex = e.x + e.width / 2 - h.fromX, ey = e.y + e.height / 2 - h.fromY;
+    if (Math.abs(ex * h.uy - ey * h.ux) > KATANA_DASH_HIT_HALF_WIDTH + e.width / 2) continue;
+    out.push({ id: e.id, along: ex * h.ux + ey * h.uy, halfW: e.width / 2 });
+  }
+  return out;
+};
+/**
+ * 一閃で走ったこのフレーム(before→after=体の中心)で止めを始めるか見て、始めるなら書く(走りの延長・無敵の延長・当たった敵の止めと震え・筋の絵の止め)。
+ * ghostId=守護霊の一閃(主語の欄だけ違う)。movePlayer(プレイヤー)と useGameLoop(守護霊)が、位置を書いた直後に呼ぶ。
+ */
+export const stepKatanaDashPassStop = (ghostId: string | undefined, nowMs: number, before: { x: number; y: number }, after: { x: number; y: number }): void => {
+  const st = useGameStore.getState();
+  const g = ghostId === undefined ? undefined : st.summons.find(x => x.id === ghostId);
+  const dash = ghostId === undefined ? st.player : g ? dashStateOf(g.ghostDash) : undefined;
+  const h = dash?.katanaDashHold;
+  if (!dash || !h || h.at !== undefined || nowMs >= dash.katanaDashUntil) return;
+  const pick = pickKatanaDashHold(h, katanaDashAlong(h, before.x, before.y), katanaDashAlong(h, after.x, after.y), katanaDashPassCandidates(st.enemies, h));
+  if (!pick) return;
+  const ms = pick.ms;
+  const enemyId = pick.kind === 'hit' ? pick.enemyId : undefined;
+  const fired = firedKatanaDashHold(h, nowMs, ms, enemyId);
+  useGameStore.setState(s => {
+    const patch: Partial<GameState> = {};
+    if (ghostId === undefined) {
+      const p = s.player;
+      const ext = katanaDashHoldExtend(p, nowMs, ms);
+      const remain = Math.max(0, ext.katanaDashUntil - nowMs);
+      // 走りの間の無敵も止めた分だけ延ばす(走っている間はずっと無敵=今の意味のまま・長い無敵が残っていれば縮めない)。
+      const inv = p.invulnerable ? {
+        invulnerableTime: Math.max(p.invulnerableTime, nowMs - Math.max(0, INVULN_MS - remain)),
+        ...abilityInvulnPatch(p, nowMs, remain),
+      } : {};
+      patch.player = { ...p, ...ext, ...inv, katanaDashHold: fired };
+    } else {
+      patch.summons = s.summons.map(x => {
+        if (x.id !== ghostId) return x;
+        const d = dashStateOf(x.ghostDash);
+        return {
+          ...x,
+          ghostDash: { ...d, ...katanaDashHoldExtend(d, nowMs, ms), katanaDashHold: fired },
+          ...((x.ghostInvulnUntil ?? 0) > nowMs ? { ghostInvulnUntil: (x.ghostInvulnUntil ?? 0) + ms } : {}),
+        };
+      });
+    }
+    // 当たった敵も止める+震える(v0.25.5860 の止め・震え=雑魚・強個体は hitStunUntil・ボス級は止めず震えだけ)。ダメージは着地の当たりのまま。
+    if (enemyId !== undefined) {
+      patch.enemies = s.enemies.map(e => {
+        if (e.id !== enemyId) return e;
+        const u = impactHitStunUntil(e.type, e.hitStunUntil, nowMs, ms);
+        if (u !== undefined && u !== e.hitStunUntil) katanaPassStunRestore.set(e.id, { wrote: u, prev: e.hitStunUntil });
+        const sh = meleeShakePatch(e.brawlerShakeUntil, u !== undefined && hitStunMsFor(e.type) > 0 ? u : nowMs + ms, nowMs,
+          e.x + e.width / 2, e.y + e.height / 2, after.x, after.y);
+        return { ...e, ...(u !== undefined ? { hitStunUntil: u } : {}), ...(sh ?? {}) };
+      });
+    }
+    // 一閃の筋の絵(trail)の時計も同じ所で止める(描画だけ)。
+    if (h.trailId) {
+      patch.effects = s.effects.map(fx => (fx.id === h.trailId && fx.kind === 'trail' ? { ...fx, stopAt: Math.max(0, nowMs - fx.createdAt), stopMs: ms } : fx));
+    }
+    return patch;
+  });
+};
+/** 着地の当たりの前に、止めで書いた敵の hitStunUntil を元へ戻す(その後に他が書き換えていたら触らない)。 */
+const restoreKatanaPassStun = (enemyId: string | undefined): void => {
+  if (enemyId === undefined) return;
+  const r = katanaPassStunRestore.get(enemyId);
+  if (!r) return;
+  katanaPassStunRestore.delete(enemyId);
+  useGameStore.setState(s => ({
+    enemies: s.enemies.map(e => (e.id === enemyId && e.hitStunUntil === r.wrote ? { ...e, hitStunUntil: r.prev } : e)),
+  }));
+};
 /**
  * 殺陣を始める(§4): 傷を0へ・相手を止める・出した本人を無敵に・5発を90msおきに。燕返しの受付は閉じる。スローは使わない。
  * ownerId=守護霊が出した殺陣(社長裁定2026-11-22「殺陣の発動も同じ」)。体が飛ぶ・無敵・斬る主語がその守護霊になる(赤い画面は同じ)。
@@ -4358,7 +4445,7 @@ const satsujinStrike = (get: () => GameState, set: WhipSet, startAt: number, tar
     ...(ownerId === undefined
       ? { player: { ...s.player, x: spot.x, y: spot.y, vx: 0, vy: 0, lastDirection: { x: cx, y: cy } } }
       : { summons: s.summons.map(x => (x.id === ownerId ? { ...x, x: spot.x, y: spot.y, vx: 0, vy: 0, ghostFacing: cx >= 0 ? 1 : -1 } : x)) }),
-    satsujin: s.satsujin ? { ...s.satsujin, strikes: [...s.satsujin.strikes, { fromX, fromY, toX, toY, at: now }] } : s.satsujin,
+    satsujin: s.satsujin ? { ...s.satsujin, strikes: [...s.satsujin.strikes, { fromX, fromY, toX, toY, at: now, stopMs: SATSUJIN_STRIKE_HOLD_MS }] } : s.satsujin, // 筋が相手の中心を通る所で短く止める(描画だけ・社長指示2026-11-27)
   }));
   // 通り道の敵にも一閃と同じ当たり(相手は必ず)。殺陣の各発は切り傷を数えない。
   const len = Math.hypot(toX - fromX, toY - fromY) || 1;
@@ -4381,7 +4468,7 @@ const satsujinStrike = (get: () => GameState, set: WhipSet, startAt: number, tar
   }));
   // 絵: 抜けた筋(白)・相手の上の斬撃・ワープの残光。音: 一閃の系統を少しずつ高く。
   const g = get();
-  g.spawnEffect({ kind: 'trail', id: `fx-satsujin-${startAt}-${now}`, fromX, fromY, toX, toY, color: 'rgba(255,255,255,1)', createdAt: now, duration: 320 });
+  g.spawnEffect({ kind: 'trail', id: `fx-satsujin-${startAt}-${now}`, fromX, fromY, toX, toY, color: 'rgba(255,255,255,1)', createdAt: now, duration: 320, stopAt: 160, stopMs: SATSUJIN_STRIKE_HOLD_MS }); // 筋が相手の中心(長さの半分=経過の半分)に来た所で短く止める
   g.spawnSlash(ecx, ecy, 'rgba(255,255,255,0.98)', 1.2, cx >= 0 ? 1 : -1, { move: 'satsujin', flip: sat.strikes.length % 2 === 1 }); // 殺陣=プレイヤーの刀
   g.spawnGlow(toX, toY - 6, GLOW_R_S, 'rgba(255,248,230,', 200, true);
   const k = sat.strikes.length;
@@ -13475,6 +13562,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   movePlayer: (input, deltaTime) => {
+    const holdP0 = get().player; // ★一閃の通り道の途中の止め: このフレームで走る前の体の中心(下の stepKatanaDashPassStop)
+    const holdBefore = holdP0.katanaDashHold && holdP0.katanaDashHold.at === undefined
+      ? { x: holdP0.x + holdP0.width / 2, y: holdP0.y + holdP0.height / 2 } : null;
     set(state => {
       const { player, gameBounds, swipeDirection, swipeStrength, breakableProps, castleEvent } = state;
       // UV バーは光源/装飾(松明の代わり)で当たり判定なし=移動は通す。地雷は踏むまで通す。
@@ -13734,6 +13824,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         vx = player.vx + (tx * moveSpeed * speedScale - player.vx) * alpha;
         vy = player.vy + (ty * moveSpeed * speedScale - player.vy) * alpha;
       }
+      // ★一閃の通り道の途中の止め(utils/katanaDashHold・社長指示2026-11-27): 止めの間は走りの時計ごと止める=位置も速さもそのまま持つ
+      // (明けたら同じ速さの続きから走る=走る距離は変わらない)。ヒットストップ=時間の止めなので減速は挟まない。
+      const katanaHoldNow = dashing && !kbActive && katanaDashHeld(player.katanaDashHold, nowMs);
+      if (katanaHoldNow) { vx = player.vx; vy = player.vy; }
 
       // 壁解決。屋内は labMap の壁(+閉ドア)のみ。屋外は従来の木/トーチ/城。
       let newX: number;
@@ -13743,7 +13837,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const warpTo = player.shukuchiWarpTo;
       const candidate = warpTo
         ? { x: warpTo.x, y: warpTo.y, width: player.width, height: player.height }
-        : { x: player.x + vx * deltaTime, y: player.y + vy * deltaTime, width: player.width, height: player.height };
+        : katanaHoldNow ? { x: player.x, y: player.y, width: player.width, height: player.height }
+          : { x: player.x + vx * deltaTime, y: player.y + vy * deltaTime, width: player.width, height: player.height };
       // ★格闘の速い踏み込み(5段目の突き抜け・詰め・飛び蹴り='accel' の器)は1フレームで最大20px超動くため、
       // 幹(高さ約12px)を中心ごと越えて向こう側へ押し出される(検収 A-1)。1回あたり6px以下に刻んで壁・木の解決を通し、
       // 止められた刻みで移動を打ち切る(残りの速度も0)。刀の一閃は別件(触らない)。
@@ -14038,6 +14133,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
+    // ★一閃の通り道の途中の止め(utils/katanaDashHold・社長指示2026-11-27): 走ったこのフレームで、最初に当たる敵の中心(空振り=真ん中)を通ったら止める。
+    if (holdBefore) {
+      const p1 = get().player;
+      if (dashModeAt(p1, Date.now()) === 'katana-dash') stepKatanaDashPassStop(undefined, Date.now(), holdBefore, { x: p1.x + p1.width / 2, y: p1.y + p1.height / 2 });
+    }
   },
   resolveShukuchiStrike: () => {
     const p0 = get().player;
@@ -17352,8 +17452,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
 
     // 軽量な短命斬撃のみ(常時glowなし)。刀はやや青白い斬閃で識別。
-    // 通常斬撃(オート)はエフェクトを2倍サイズで描く(確定仕様)。
-    const slashScale = allowFinisher ? 1 : 2;
+    // 通常斬撃(オート)はエフェクトを大きめに描く(KATANA_AUTO_SLASH_FX_SCALE・旧=2倍→社長指示2026-11-27で ×0.6)。
+    const slashScale = allowFinisher ? 1 : KATANA_AUTO_SLASH_FX_SCALE;
     // 刀の斬撃シートの絵の種類(描画だけ)。連撃と殺陣は1振りごとに切り上げ/切り下ろしを交互、燕返しは切り下ろし(一閃とV字)。
     const move: KatanaSlashMove = slashMove ?? (allowFinisher ? 'issen' : 'swing');
     // 守護霊の刀も同じ斬撃の絵(社長指示2026-11-22「守護霊や幻影も揃えないと矛盾する」。旧: 守護霊だけ従来の絵)。
@@ -18452,6 +18552,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       katanaDashDirX: ux,
       katanaDashDirY: uy,
       katanaDashCooldownEnd: cooldownEnd,
+      // ★通り道の途中の止め(utils/katanaDashHold・社長指示2026-11-27): 一閃・居合一閃だけ(燕返しは体が動かない=止めない)。
+      katanaDashHold: tb ? undefined : makeKatanaDashHold(now, { x: pcx, y: pcy }, ux, uy, issenDist, `fx-katana-dash-${now}`),
     };
     if (ghostId === undefined) {
       set(state => ({
@@ -18535,6 +18637,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 主語を着地時点で再解決する(run reset / 刀を外した / **守護霊が解散した** をここで弾く)。
         const striker = combatActorPlayer(ghostId);
         if (!striker || !isKatanaMode(striker)) return;
+        // ★通り道の途中の止め(utils/katanaDashHold): 止めた分だけ走り終わりが後ろへ延びた=着地は延びた走りの終わりまで待つ(この一閃の止めの時だけ)。
+        {
+          const hd = striker.katanaDashHold;
+          if (hd && hd.startAt === now && hd.at !== undefined) {
+            const left = striker.katanaDashUntil - Date.now();
+            if (left > 0) { setTimeout(landStrike, left); return; }
+            restoreKatanaPassStun(hd.enemyId); // 止めで書いた敵の止めを戻す=着地の当たりの止めは今どおり掛かる
+          }
+        }
         // ★実際に通った経路(始点=発動位置 / 終点=着地した実位置)。壁で止まればここが短くなる。
         // ★燕返し(research/KATANA_TSUBAME.md §1・社長指示2026-11-22)は体が動かない=「元の位置へ戻るように走った」と仮定した通り道
         // (発動位置→元の位置・一閃の最大距離まで)で取る。一閃の行きを戻る道なので、壁・行ける帯に止められていない道。
@@ -32024,7 +32135,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const live: VisualEffect[] = [];
       for (const e of state.effects) {
-        if (now - e.createdAt > e.duration + (e.kind === 'slash' ? (e.stopMs ?? 0) : e.kind === 'whiprope' ? (e.stopAt !== undefined ? Math.max(e.stopMs ?? 0, MELEE_WHIFF_HOLD_MS) : 0) : 0)) continue; // 絵の時計を止めた分だけ寿命も延ばす(描画だけ)
+        if (now - e.createdAt > e.duration + (e.kind === 'slash' || e.kind === 'trail' ? (e.stopMs ?? 0) : e.kind === 'whiprope' ? (e.stopAt !== undefined ? Math.max(e.stopMs ?? 0, MELEE_WHIFF_HOLD_MS) : 0) : 0)) continue; // 絵の時計を止めた分だけ寿命も延ばす(描画だけ)
         if (e.kind === 'particle') {
           const drag = e.drag ?? 0;
           const decay = drag > 0 ? Math.exp(-drag * deltaTime) : 1;

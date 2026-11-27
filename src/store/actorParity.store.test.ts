@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   useGameStore, combatActorPlayer, applyCounterMasterRefund, counterMasterOnCounterSuccess, huntingReachBonus,
-  huntingMeleeRadius, katanaReach, skillOutgoingDamageMult, COUNTER_MASTER_AWAKEN_BUFF_MS,
+  huntingMeleeRadius, katanaReach, skillOutgoingDamageMult, COUNTER_MASTER_AWAKEN_BUFF_MS, KATANA_AUTO_SLASH_FX_SCALE,
 } from './gameStore';
 import { applyGhostCounterMaster, applyPhantomCounterMaster, refundStartAnchor } from '../utils/actorCounterMaster';
 import { applyGhostCounterEffect } from '../utils/ghostCounter';
@@ -298,8 +298,8 @@ describe('刀の斬撃の絵: 守護霊の刀もプレイヤーと同じ刀の�
       const gs = lastSlash();
       expect(gs.katana).toBe(true);
       expect(gs.katanaMove).toBe(move);
-      // 長さは乱数(72〜88)×倍率=同じ倍率の範囲に入る(オート斬撃=2倍・一閃=1倍)
-      const scale = allowFinisher ? 1 : 2;
+      // 長さは乱数(72〜88)×倍率=同じ倍率の範囲に入る(オート斬撃=KATANA_AUTO_SLASH_FX_SCALE・一閃=1倍)
+      const scale = allowFinisher ? 1 : KATANA_AUTO_SLASH_FX_SCALE;
       expect(gs.length).toBeGreaterThanOrEqual(72 * scale);
       expect(gs.length).toBeLessThanOrEqual(88 * scale);
       expect(gs.face).toBe(-1); // 向きは守護霊の向き(プレイヤーの向きではない)
