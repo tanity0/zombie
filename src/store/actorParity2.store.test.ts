@@ -8,8 +8,9 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
   useGameStore, combatActorPlayer, counterMasterBlowVector, counterMasterBlowOpponents, KNOCKBACK_SPEED, MELEE_RADIUS,
   meleeReachOf, katanaReach, whipReach, huntingMeleeRadius, huntingReachBonus, swingGhostWhip, tickGhostHunting,
-  KATANA_DASH_DISTANCE,
+  KATANA_DASH_DISTANCE, stepKatanaDashPassStop,
 } from './gameStore';
+import { KATANA_DASH_HIT_HOLD_MS } from '../utils/katanaDashHold';
 import { applyPhantomCounterMaster } from '../utils/actorCounterMaster';
 import { clearGhostBuildCache } from '../utils/ghostBuild';
 import { spawnEnemyAt } from '../utils/enemyUtils';
@@ -199,6 +200,37 @@ describe('③守護霊の燕返し・一閃の浮かせ・切り傷・殺陣(プ
     expect(tsubameSlashes.length).toBe(1);
     // 燕返しの後は受付が開かない(1回まで・連鎖しない)
     expect(ghost().ghostTsubameWindow ?? null).toBeNull();
+  });
+  it('守護霊の燕返しも仮定の通り道の途中で止まる(プレイヤーと同じ): 敵で止め・しゃがみ/走りが止めた分だけ延びる・無敵は付けない・体は動かない', () => {
+    setupGhostKatana();
+    issen(GID, 1, 0);
+    const g = ghost();
+    const dir = ghostTsubameDir(g.ghostTsubameWindow, g.x + 16, g.y + 16, Date.now());
+    expect(useGameStore.getState().tryTsubame(dir!.x, dir!.y, GID)).toBe(true);
+    const gx = ghost().x, gy = ghost().y;
+    const d0 = dashStateOf(ghost().ghostDash);
+    const crouch0 = d0.tsubameCrouchUntil!, dash0 = d0.katanaDashUntil;
+    let fired = false;
+    for (let t = 0; t < 400; t += 10) {
+      vi.advanceTimersByTime(10);
+      const c = { x: ghost().x + 16, y: ghost().y + 16 };
+      if (dashStateOf(ghost().ghostDash).katanaDashUntil > Date.now()) stepKatanaDashPassStop(GID, Date.now(), c, c); // ループの代わり(体は動かさない)
+      const h = dashStateOf(ghost().ghostDash).katanaDashHold;
+      if (!fired && h?.at !== undefined) {
+        fired = true;
+        expect(h.enemyId).toBe('z-k');
+        expect(h.ms).toBe(KATANA_DASH_HIT_HOLD_MS);
+        const d = dashStateOf(ghost().ghostDash);
+        expect(d.tsubameCrouchUntil).toBe(crouch0 + KATANA_DASH_HIT_HOLD_MS);
+        expect(d.katanaDashUntil).toBe(dash0 + KATANA_DASH_HIT_HOLD_MS);
+        expect(ghost().ghostInvulnUntil ?? 0).toBeLessThan(Date.now() + 1); // 燕返しは無敵を付けない
+        expect(enemy('z-k').katanaCuts).toBe(1); // 当たりは着地の後
+      }
+    }
+    expect(fired).toBe(true);
+    expect(ghost().x).toBe(gx);
+    expect(ghost().y).toBe(gy);
+    expect(enemy('z-k').katanaCuts).toBe(2);
   });
   it('守護霊が刻んだ傷もプレイヤーと同じ敵の傷=4本の敵へ守護霊の一閃で殺陣(主語=守護霊・体が飛ぶのは守護霊)', () => {
     setupGhostKatana();

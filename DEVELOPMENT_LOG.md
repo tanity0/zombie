@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5866 — 燕返しにも通り道の途中の止め【2026-11-27 15:09】
+- 社長指示「燕返しもストップして」。体は動かないので、仮定の通り道(元の位置へ逆向き)を進む時計を止める。
+- `katanaDashHold.ts`: 器に `runMs`(仮定の走る時間)・`makeTsubameDashHold`・`katanaDashVirtualAlong`。`katanaDashHoldExtend` がしゃがみ中なら `tsubameCrouchUntil` も延ばす。止めの判定・長さは一閃と共用(敵の中心=117ms/無敵なし)。
+- `gameStore`: `triggerKatanaDash` で燕返しにも器を作る。`stepKatanaDashPassStop` は runMs があれば時計から位置を出す。守護霊も同じ。燕返しは無敵を延ばさない。
+- 当たり(ダメージ等)は一閃と同じく延びた着地の後=止めの分だけ遅れる(一閃と揃える判断)。
+- 画で確認: scratchpad/ktsubame/tsubame-montage.png(止めの間に筋の伸びが止まり敵が震える・体はしゃがんだまま位置不変)。
+- 検証: typecheck / eslint エラー0 / 循環import新規なし / vitest src/utils src/store 11209 passed。
+- 自己点検: 憲法第4条・第5条に抵触なし。
+
 ## v0.25.5865 — ブラー表現(詰めた残像・research/BLUR.md 1〜5)【2026-11-27 14:58】
 - 社長が見本で選んだ「詰めた残像3枚(10msおき・0.18/0.32/0.46)+走っている間は本体50%」を実装。描画のみ。
 - 新規 `src/utils/motionBlur.ts`(+test 19件): 濃さ・140msの消え・位置の記録(ゲーム時間・止めの間は止まる・ワープは一閃の速さで詰める)・敵の判定・鞭の筋・放射状の流れ。

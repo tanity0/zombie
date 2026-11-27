@@ -29,6 +29,11 @@ export interface KatanaDashHold {
   ms?: number;
   /** 止めた敵(空振りの止めは未設定)。 */
   enemyId?: string;
+  /**
+   * ★燕返し(社長指示2026-11-27「燕返しもストップして」・research/KATANA_TSUBAME.md §1): 体は動かない=「元の位置へ逆向きに走った」と仮定した
+   * 通り道の時計で止める。入っていたら仮定の走る時間(ms)=通り道の位置は体ではなく時計から出す(katanaDashVirtualAlong)。一閃・居合一閃は未設定。
+   */
+  runMs?: number;
 }
 
 /** 一閃の通り道の止めの長さ(ms)= v0.25.5860 の刀の自分の止め×一閃の係数(1.3)。 */
@@ -43,6 +48,22 @@ export const makeKatanaDashHold = (
   startAt: number, from: { x: number; y: number }, ux: number, uy: number, total: number, trailId?: string,
   hitMs = KATANA_DASH_HIT_HOLD_MS, whiffMs = KATANA_DASH_WHIFF_HOLD_MS,
 ): KatanaDashHold => ({ startAt, fromX: from.x, fromY: from.y, ux, uy, total, hitMs, whiffMs, ...(trailId !== undefined ? { trailId } : {}) });
+
+/** 燕返しの止めの器(体は動かない・仮定の通り道を runMs で走る)。 */
+export const makeTsubameDashHold = (
+  startAt: number, from: { x: number; y: number }, ux: number, uy: number, total: number, runMs: number, trailId?: string,
+): KatanaDashHold => ({ ...makeKatanaDashHold(startAt, from, ux, uy, total, trailId), runMs: Math.max(1, runMs) });
+
+/**
+ * 燕返しの仮定の通り道で、nowMs までに進んだ距離(px)。走りの時計=出してからの経過から止めの間を引いた分(止めの間は進まない)。
+ * 同じ速さで total を runMs で走る(0..total に収める)。runMs が無い(一閃)時は 0。
+ */
+export const katanaDashVirtualAlong = (h: KatanaDashHold, nowMs: number): number => {
+  if (h.runMs === undefined) return 0;
+  let run = nowMs - h.startAt;
+  if (h.at !== undefined) run -= Math.max(0, Math.min(nowMs, h.at + (h.ms ?? 0)) - Math.max(h.startAt, h.at));
+  return h.total * Math.max(0, Math.min(1, run / h.runMs));
+};
 
 /** 走り始めから、通り道に沿って進んだ距離(px)。 */
 export const katanaDashAlong = (h: Pick<KatanaDashHold, 'fromX' | 'fromY' | 'ux' | 'uy'>, cx: number, cy: number): number =>
@@ -84,12 +105,14 @@ export const firedKatanaDashHold = (h: KatanaDashHold, nowMs: number, ms: number
 
 /**
  * 止めた分だけ走り終わりを後ろへ延ばす(走りの時計を止める=走る時間の合計は変わらない=距離は変わらない)。
- * 走り(katanaDashUntil)・着地の硬直(katanaRecoveryUntil)・居合一閃の「敵の体で止めない間」(iaiRunUntil・走っている時だけ)を同じだけ。
+ * 走り(katanaDashUntil)・着地の硬直(katanaRecoveryUntil)・居合一閃の「敵の体で止めない間」(iaiRunUntil・走っている時だけ)・
+ * 燕返しのしゃがみ(tsubameCrouchUntil・しゃがんでいる時だけ)を同じだけ。
  */
-export const katanaDashHoldExtend = <T extends { katanaDashUntil: number; katanaRecoveryUntil: number; iaiRunUntil?: number }>(
+export const katanaDashHoldExtend = <T extends { katanaDashUntil: number; katanaRecoveryUntil: number; iaiRunUntil?: number; tsubameCrouchUntil?: number }>(
   st: T, nowMs: number, ms: number,
-): Pick<T, 'katanaDashUntil' | 'katanaRecoveryUntil'> & { iaiRunUntil?: number } => ({
+): Pick<T, 'katanaDashUntil' | 'katanaRecoveryUntil'> & { iaiRunUntil?: number; tsubameCrouchUntil?: number } => ({
   katanaDashUntil: st.katanaDashUntil + ms,
   katanaRecoveryUntil: st.katanaRecoveryUntil + ms,
   ...(st.iaiRunUntil !== undefined && nowMs < st.iaiRunUntil ? { iaiRunUntil: st.iaiRunUntil + ms } : {}),
+  ...(st.tsubameCrouchUntil !== undefined && nowMs < st.tsubameCrouchUntil ? { tsubameCrouchUntil: st.tsubameCrouchUntil + ms } : {}),
 });

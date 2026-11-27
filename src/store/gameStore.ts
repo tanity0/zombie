@@ -145,7 +145,7 @@ import {
 } from '../utils/hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
 import { isEnemyAttacking, meleeHitSfxLayers, hitStunMsFor, impactHitStunUntil, HIT_STUN_MS_MOB } from '../utils/combatFeel';
 import { meleeShakePatch, extendMeleeShake, applyHitstopK, katanaMoveKind, HITSTOP_MOVE_K, WHIP_TIP_SHAKE } from '../utils/hitShake'; // 近接のヒットストップの震え・技の係数(research/HITSTOP.md)
-import { makeKatanaDashHold, katanaDashAlong, pickKatanaDashHold, katanaDashHeld, firedKatanaDashHold, katanaDashHoldExtend, SATSUJIN_STRIKE_HOLD_MS, type KatanaDashHold, type KatanaDashHoldCand } from '../utils/katanaDashHold'; // 一閃の通り道の途中の止め(社長指示2026-11-27) // 近接のヒットストップの震え・技の係数(research/HITSTOP.md)
+import { makeKatanaDashHold, makeTsubameDashHold, katanaDashVirtualAlong, katanaDashAlong, pickKatanaDashHold, katanaDashHeld, firedKatanaDashHold, katanaDashHoldExtend, SATSUJIN_STRIKE_HOLD_MS, type KatanaDashHold, type KatanaDashHoldCand } from '../utils/katanaDashHold'; // 一閃の通り道の途中の止め(社長指示2026-11-27) // 近接のヒットストップの震え・技の係数(research/HITSTOP.md)
 import { BOSS_KILL_CAMERA_HOLD_MS, BOSS_KILL_FLASH_ALPHA, BOSS_KILL_SLOW, bossKillSlowAfterStop, longerHitstopUntil, playerHurtStopUntil } from '../utils/bossKillStop'; // ボスストップ・致命の止め(research/HITSTOP.md §6)
 import * as BR from '../utils/brawler'; // サブウェポン「格闘」の純関数(research/BRAWLER.md)
 import { isBrawlerGuardingAt } from '../utils/brawler';
@@ -4296,6 +4296,8 @@ const applyIssenHitPatch = (
 // ---- ★一閃の通り道の途中の止め(utils/katanaDashHold・社長指示2026-11-27「一閃でストップしてないように見える。真ん中あたりで一瞬止めて欲しい」) ----
 /** 止めで敵に書いた hitStunUntil(着地の当たりの前に元へ戻す=着地の当たりの止めが再発火ガードで消されない)。id → 書いた値・書く前の値。 */
 const katanaPassStunRestore = new Map<string, { wrote: number; prev: number | undefined }>();
+/** 燕返しの仮定の通り道で、前のフレームに見た位置(主語ごと: ''=プレイヤー・守護霊の id)。startAt=どの燕返しか。 */
+const katanaTsubamePassLastAlong = new Map<string, { startAt: number; along: number }>();
 /** 通り道の帯(着地の当たりと同じ幅)の中の、斬れる敵の候補。 */
 const katanaDashPassCandidates = (enemies: readonly Enemy[], h: KatanaDashHold): KatanaDashHoldCand[] => {
   const out: KatanaDashHoldCand[] = [];
@@ -4318,8 +4320,18 @@ export const stepKatanaDashPassStop = (ghostId: string | undefined, nowMs: numbe
   const dash = ghostId === undefined ? st.player : g ? dashStateOf(g.ghostDash) : undefined;
   const h = dash?.katanaDashHold;
   if (!dash || !h || h.at !== undefined || nowMs >= dash.katanaDashUntil) return;
-  const pick = pickKatanaDashHold(h, katanaDashAlong(h, before.x, before.y), katanaDashAlong(h, after.x, after.y), katanaDashPassCandidates(st.enemies, h));
+  // ★燕返し(社長指示2026-11-27「燕返しもストップして」): 体は動かない=仮定の通り道(元の位置へ逆向きに走った)の時計で見る。
+  // 前のフレームの位置はこの燕返しで最後に見た所(初回=走り始め)。当たった敵の震えの向きは仮定の通り道の上の位置から。
+  const virtual = h.runMs !== undefined;
+  const vKey = ghostId ?? '';
+  const vPrev = virtual ? katanaTsubamePassLastAlong.get(vKey) : undefined;
+  const beforeAlong = virtual ? (vPrev && vPrev.startAt === h.startAt ? vPrev.along : 0) : katanaDashAlong(h, before.x, before.y);
+  const afterAlong = virtual ? katanaDashVirtualAlong(h, nowMs) : katanaDashAlong(h, after.x, after.y);
+  if (virtual) katanaTsubamePassLastAlong.set(vKey, { startAt: h.startAt, along: afterAlong });
+  const striker = virtual ? { x: h.fromX + h.ux * afterAlong, y: h.fromY + h.uy * afterAlong } : after;
+  const pick = pickKatanaDashHold(h, beforeAlong, afterAlong, katanaDashPassCandidates(st.enemies, h));
   if (!pick) return;
+  if (virtual) katanaTsubamePassLastAlong.delete(vKey);
   const ms = pick.ms;
   const enemyId = pick.kind === 'hit' ? pick.enemyId : undefined;
   const fired = firedKatanaDashHold(h, nowMs, ms, enemyId);
@@ -4330,7 +4342,8 @@ export const stepKatanaDashPassStop = (ghostId: string | undefined, nowMs: numbe
       const ext = katanaDashHoldExtend(p, nowMs, ms);
       const remain = Math.max(0, ext.katanaDashUntil - nowMs);
       // 走りの間の無敵も止めた分だけ延ばす(走っている間はずっと無敵=今の意味のまま・長い無敵が残っていれば縮めない)。
-      const inv = p.invulnerable ? {
+      // 燕返しは無敵ではない(§1)=延ばさない(しゃがみ・走り・硬直だけ延びる)。
+      const inv = p.invulnerable && !virtual ? {
         invulnerableTime: Math.max(p.invulnerableTime, nowMs - Math.max(0, INVULN_MS - remain)),
         ...abilityInvulnPatch(p, nowMs, remain),
       } : {};
@@ -4342,7 +4355,7 @@ export const stepKatanaDashPassStop = (ghostId: string | undefined, nowMs: numbe
         return {
           ...x,
           ghostDash: { ...d, ...katanaDashHoldExtend(d, nowMs, ms), katanaDashHold: fired },
-          ...((x.ghostInvulnUntil ?? 0) > nowMs ? { ghostInvulnUntil: (x.ghostInvulnUntil ?? 0) + ms } : {}),
+          ...(!virtual && (x.ghostInvulnUntil ?? 0) > nowMs ? { ghostInvulnUntil: (x.ghostInvulnUntil ?? 0) + ms } : {}), // 燕返しは無敵ではない=延ばさない
         };
       });
     }
@@ -4353,7 +4366,7 @@ export const stepKatanaDashPassStop = (ghostId: string | undefined, nowMs: numbe
         const u = impactHitStunUntil(e.type, e.hitStunUntil, nowMs, ms);
         if (u !== undefined && u !== e.hitStunUntil) katanaPassStunRestore.set(e.id, { wrote: u, prev: e.hitStunUntil });
         const sh = meleeShakePatch(e.brawlerShakeUntil, u !== undefined && hitStunMsFor(e.type) > 0 ? u : nowMs + ms, nowMs,
-          e.x + e.width / 2, e.y + e.height / 2, after.x, after.y);
+          e.x + e.width / 2, e.y + e.height / 2, striker.x, striker.y);
         return { ...e, ...(u !== undefined ? { hitStunUntil: u } : {}), ...(sh ?? {}) };
       });
     }
@@ -18552,8 +18565,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       katanaDashDirX: ux,
       katanaDashDirY: uy,
       katanaDashCooldownEnd: cooldownEnd,
-      // ★通り道の途中の止め(utils/katanaDashHold・社長指示2026-11-27): 一閃・居合一閃だけ(燕返しは体が動かない=止めない)。
-      katanaDashHold: tb ? undefined : makeKatanaDashHold(now, { x: pcx, y: pcy }, ux, uy, issenDist, `fx-katana-dash-${now}`),
+      // ★通り道の途中の止め(utils/katanaDashHold・社長指示2026-11-27): 一閃・居合一閃は体の走りで止める。
+      // 燕返し(社長指示2026-11-27「燕返しもストップして」)は体が動かない=仮定の通り道(今の位置→元の位置)を走る時計で止める。
+      katanaDashHold: tb
+        ? makeTsubameDashHold(now, { x: pcx, y: pcy }, ux, uy, tb.distance, dashMs, `fx-katana-dash-${now}`)
+        : makeKatanaDashHold(now, { x: pcx, y: pcy }, ux, uy, issenDist, `fx-katana-dash-${now}`),
     };
     if (ghostId === undefined) {
       set(state => ({

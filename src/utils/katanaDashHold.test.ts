@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  makeKatanaDashHold, katanaDashAlong, pickKatanaDashHold, katanaDashHeld, firedKatanaDashHold, katanaDashHoldExtend,
+  makeKatanaDashHold, makeTsubameDashHold, katanaDashVirtualAlong, katanaDashAlong, pickKatanaDashHold, katanaDashHeld, firedKatanaDashHold, katanaDashHoldExtend,
   KATANA_DASH_HIT_HOLD_MS, KATANA_DASH_WHIFF_HOLD_MS, SATSUJIN_STRIKE_HOLD_MS,
 } from './katanaDashHold';
 import { KATANA_SELF_STOP_MS, MELEE_WHIFF_HOLD_MS } from './meleeHitstopTiming';
@@ -60,5 +60,25 @@ describe('一閃の通り道の途中の止め(utils/katanaDashHold)', () => {
       .toEqual({ katanaDashUntil: 1297, katanaRecoveryUntil: 1497 });
     expect(katanaDashHoldExtend({ katanaDashUntil: 1180, katanaRecoveryUntil: 1380, iaiRunUntil: 1180 }, 1100, 117).iaiRunUntil).toBe(1297);
     expect(katanaDashHoldExtend({ katanaDashUntil: 1180, katanaRecoveryUntil: 1380, iaiRunUntil: 900 }, 1100, 117).iaiRunUntil).toBeUndefined();
+  });
+  it('燕返し(体は動かない): 仮定の通り道の位置は時計から出す=止めの間は進まない・明けたら続きから・全長で止まる・一閃は 0', () => {
+    const h = makeTsubameDashHold(1000, { x: 0, y: 0 }, -1, 0, 140, 160, 'fx');
+    expect(h.runMs).toBe(160);
+    expect(makeKatanaDashHold(1000, { x: 0, y: 0 }, 1, 0, 154).runMs).toBeUndefined();
+    expect(katanaDashVirtualAlong(h, 1000)).toBe(0);
+    expect(katanaDashVirtualAlong(h, 1080)).toBeCloseTo(70, 6);
+    const f = firedKatanaDashHold(h, 1080, 117, 'z');
+    expect(katanaDashVirtualAlong(f, 1150)).toBeCloseTo(70, 6); // 止めの間
+    expect(katanaDashVirtualAlong(f, 1197)).toBeCloseTo(70, 6); // 明けた瞬間
+    expect(katanaDashVirtualAlong(f, 1237)).toBeCloseTo(105, 6); // 続きから同じ速さ
+    expect(katanaDashVirtualAlong(f, 1080 + 117 + 80 + 50)).toBe(140); // 走る時間の合計=160ms で全長(距離は同じ)
+    expect(katanaDashVirtualAlong(H(), 1100)).toBe(0);
+    // 止めの判定は一閃と同じ純関数(仮定の位置を渡す)。
+    expect(pickKatanaDashHold(h, katanaDashVirtualAlong(h, 1070), katanaDashVirtualAlong(h, 1080), [{ id: 'z', along: 70, halfW: 10 }]))
+      .toEqual({ kind: 'hit', enemyId: 'z', ms: KATANA_DASH_HIT_HOLD_MS });
+  });
+  it('燕返しのしゃがみも止めた分だけ延ばす(しゃがんでいる時だけ)', () => {
+    expect(katanaDashHoldExtend({ katanaDashUntil: 1160, katanaRecoveryUntil: 1360, tsubameCrouchUntil: 1160 }, 1080, 117).tsubameCrouchUntil).toBe(1277);
+    expect(katanaDashHoldExtend({ katanaDashUntil: 1160, katanaRecoveryUntil: 1360, tsubameCrouchUntil: 900 }, 1080, 117).tsubameCrouchUntil).toBeUndefined();
   });
 });

@@ -91,7 +91,7 @@ describe('燕返し', () => {
     const rx0 = en('r').x;
     const atTsubame = center();
     let hitAtMs = -1;
-    for (let t = 0; t < KATANA_DASH_MS + 40; t += 10) {
+    for (let t = 0; t < KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 40; t += 10) { // 燕返しも通り道の途中で止める=当たりは止めた分だけ後ろ
       step(10);
       if (hitAtMs < 0 && en('r').health < 99999) hitAtMs = now;
       // ★燕返しの間、体は一閃で着いた位置から動かない(社長指示2026-11-22)。
@@ -134,8 +134,8 @@ describe('燕返し', () => {
     const hp = st().player.health;
     st().damagePlayer(10, 'test');
     expect(st().player.health).toBeLessThan(hp);
-    // しゃがみが明ければ解ける。
-    run(KATANA_DASH_MS + 20);
+    // しゃがみが明ければ解ける(通り道の途中の止めの分だけ延びる)。
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 20);
     expect(isTsubameCrouching(st().player, now)).toBe(false);
   });
   it('燕返しの演出: 通り道の全長を覆う刀の斬撃1本(上下反転のV字)・残光の筋・スピードラインの時計・当たりの光と数字は仮定の終点側の縁', () => {
@@ -157,7 +157,7 @@ describe('燕返し', () => {
     expect(st().player.katanaDashUntil).toBeGreaterThan(now); // スピードラインはこの時計を読む
     const slashes = () => st().effects.filter(e => e.kind === 'slash' && e.createdAt > t0 && e.katanaMove === 'tsubame');
     const hits = () => st().effects.filter(e => e.kind === 'meleeHit' && e.createdAt > t0);
-    for (let t = 0; t < KATANA_DASH_MS + 40 && slashes().length === 0; t += 10) step(10);
+    for (let t = 0; t < KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 40 && slashes().length === 0; t += 10) step(10);
     const all = slashes();
     expect(all.length).toBe(1); // 敵ごとではなく通り道に1本
     const slash = all[0];
@@ -175,6 +175,57 @@ describe('燕返し', () => {
     const h = hits()[0];
     expect(h).toBeTruthy();
     if (h && 'x' in h) expect(h.x).toBeLessThan(r.x + r.width / 2 - 5);
+  });
+  it('燕返しも仮定の通り道の途中で止まる: 帰り道の敵の中心を通る瞬間に止め・敵は止まって震える・しゃがみ/走り/硬直が止めた分だけ延びる・体は動かない・無敵なし・距離は同じ', () => {
+    useGameStore.setState({ enemies: [place('zombie', 90, 30, 'z')] });
+    st().triggerKatanaDash(1, 0);
+    run(KATANA_DASH_MS + KATANA_DASH_HIT_HOLD_MS + 10);
+    useGameStore.setState(s => ({ enemies: [place('zombie', -70, 30, 'r')], player: { ...s.player, invulnerable: false, abilityInvulnUntil: 0 } }));
+    run(50);
+    const at = center();
+    const w = st().tsubameWindow!;
+    const dist = Math.min(KATANA_DASH_DISTANCE, Math.hypot(at.x - w.originX, at.y - w.originY));
+    const t0 = now;
+    expect(st().tryTsubame(-1, 0)).toBe(true);
+    const p0 = st().player;
+    const runMs = p0.katanaDashUntil - t0;
+    const crouch0 = p0.tsubameCrouchUntil!, rec0 = p0.katanaRecoveryUntil;
+    const trail0 = st().effects.find(e => e.kind === 'trail' && e.createdAt >= t0)!;
+    let firedAt = -1;
+    for (let t = 0; t < runMs + KATANA_DASH_HIT_HOLD_MS + 40; t += 10) {
+      step(10);
+      expect(center().x).toBeCloseTo(at.x, 6); // 体は動かない
+      const h = st().player.katanaDashHold!;
+      if (firedAt < 0 && h.at !== undefined) {
+        firedAt = now;
+        expect(h.enemyId).toBe('r');
+        expect(h.ms).toBe(KATANA_DASH_HIT_HOLD_MS);
+        expect(h.total).toBeCloseTo(dist, 6); // 仮定の走る距離は変わらない
+        // 止めた所=仮定の通り道の上で敵の中心(1フレームの走りぶん以内)。
+        const along = (now - t0) / runMs * dist;
+        const rc = en('r').x + en('r').width / 2; // 敵は歩いて寄ってくる=止めた時の中心で測る
+        expect(Math.abs(along - (at.x - rc))).toBeLessThan(dist / runMs * 10 + 1);
+        const p = st().player;
+        expect(p.tsubameCrouchUntil).toBe(crouch0 + KATANA_DASH_HIT_HOLD_MS);
+        expect(p.katanaDashUntil).toBe(t0 + runMs + KATANA_DASH_HIT_HOLD_MS);
+        expect(p.katanaRecoveryUntil).toBe(rec0 + KATANA_DASH_HIT_HOLD_MS);
+        expect(p.invulnerable).toBe(false); // 燕返しは無敵ではない
+        expect(en('r').hitStunUntil ?? 0).toBeGreaterThan(now); // 当たった敵も止まる
+        expect(en('r').brawlerShakeUntil ?? 0).toBeGreaterThan(now); // 震える
+        expect(en('r').health).toBe(99999); // ダメージは着地の後
+        const tr = st().effects.find(e => e.id === trail0.id);
+        expect(tr && tr.kind === 'trail' ? tr.stopMs : 0).toBe(KATANA_DASH_HIT_HOLD_MS); // 残光の筋も止まる
+      }
+      if (firedAt > 0 && now < firedAt + KATANA_DASH_HIT_HOLD_MS - 10) {
+        expect(isTsubameCrouching(st().player, now)).toBe(true);
+        expect(en('r').health).toBe(99999);
+      }
+    }
+    expect(firedAt).toBeGreaterThan(0);
+    expect(en('r').health).toBeLessThan(99999);
+    // 燕返しの斬撃の長さ=仮定の通り道の全長のまま。
+    const sl = st().effects.find(e => e.kind === 'slash' && e.createdAt > t0 && e.katanaMove === 'tsubame');
+    expect(sl && sl.kind === 'slash' ? sl.length : 0).toBeCloseTo(dist, 3);
   });
   it('300msを過ぎた・反対でない向きでは出ない', () => {
     useGameStore.setState({ enemies: [place('zombie', 90, 30, 'z')] });
