@@ -8,7 +8,7 @@ import type { SortieTarget } from './dsHome';
 /**
  * 選んだステージの扱い。
  * next=次の任務(目標) / last=全部クリアした後の前回の任務 / revisit=クリア済み /
- * open=解放済みだがまだクリアしていない(NEXT 以外。通常の進行では出ない) / locked=未解放(NEXT の1つ先だけ地図に出る)。
+ * open=解放済みだがまだクリアしていない(NEXT 以外。通常の進行では任意のチュートリアル=洞窟だけ) / locked=未解放(NEXT の1つ先だけ地図に出る)。
  */
 export type MapPickKind = 'next' | 'last' | 'revisit' | 'open' | 'locked';
 export interface MapPick {
@@ -38,6 +38,15 @@ export const lockedPreviewStage = (stages: readonly Stage[], target: SortieTarge
   const nextId = target.stage.id;
   return stages.find(s => s.kind === 'main' && !s.hidden && s.unlockBy === nextId && OPS_MAP_PLACES[s.id] !== undefined) ?? null;
 };
+
+/**
+ * 地図に「まだ行っていないが出撃できる」場所として印を出すステージ(押せば選べる=札は「未踏」)。
+ * 出撃できて(sortieableIds)・まだクリアしておらず・地図に場所があり・開いた時の出撃先(目標/前回)でも未解放の予告でもないもの。
+ * 通常の進行では、目標の候補にしない任意のチュートリアル(洞窟)だけがここに入る(新しい端末=目標はステージ1)。
+ */
+export const openMapStages = (c: MapPickContext): Stage[] =>
+  c.stages.filter(s => !s.hidden && c.sortieableIds.has(s.id) && !c.cleared.has(s.id) && OPS_MAP_PLACES[s.id] !== undefined
+    && s.id !== c.target?.stage.id && s.id !== c.locked?.id);
 
 export interface MapPickContext {
   stages: readonly Stage[];

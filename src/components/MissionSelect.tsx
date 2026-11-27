@@ -117,7 +117,7 @@ import DsStoryMap from './DsStoryMap';
 import { SwapText } from './SwapText'; // 作戦室の地図=架空列島+ストーリーの軌跡(THEONE_ROUND2 §2-5)
 import NoBounceScroller from './NoBounceScroller';
 import { nextOperationStage, sortieTarget } from '../utils/dsHome';
-import { currentMapPick, lockedPreviewStage, lockedSortieHint, LOCKED_PLACE_NAME } from '../utils/opsMapSelect';
+import { currentMapPick, lockedPreviewStage, lockedSortieHint, LOCKED_PLACE_NAME, openMapStages } from '../utils/opsMapSelect';
 import { OPENING_HERO, OPENING_WALK_BG_BLUR } from '../data/openingWalkAssets';
 import { reportTestScreen, type TestScreenId } from '../utils/testBridge';
 import { STAGE1_FIRST_LOOP_ENABLED, stage1GuardianLockShown, stage1RunCompanion, STAGE1_GUARDIAN_LOCK_NOTE } from '../utils/stage1FirstLoop'; // STAGE1_FIRST_LOOP.md §7.8(守護霊のマスト化)
@@ -918,7 +918,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // 地図で選んだ作戦地域(utils/opsMapSelect)。選べるのは地図の印かボスの顔があるステージ+NEXT の1つ先の未解放だけ。
     // 出撃の帯・地図の下端の札と場所名・SECTOR の札は選択中を言う(開いた時は NEXT / 前回=target)。
     const mapLocked = lockedPreviewStage(STAGES, target);
-    const mapPick = currentMapPick(mapPickId, { stages: STAGES, cleared, target, sortieableIds, locked: mapLocked });
+    const mapCtx = { stages: STAGES, cleared, target, sortieableIds, locked: mapLocked };
+    const mapPick = currentMapPick(mapPickId, mapCtx);
+    // まだ行っていないが出撃できる場所(通常は任意のチュートリアル=目標にはしない・押せば選べる)。
+    const mapOpen = openMapStages(mapCtx);
     const pickLocked = mapPick?.kind === 'locked';
     const sortieDest = mapPick && !pickLocked ? mapPick.stage : null;
     // DAY は開いた時の出撃先のまま(選び直しで変えない)。
@@ -986,7 +989,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 <span className="type-num">DAY {nextStage.day}</span>
               </div>}
               <div className="menu-item-in" style={{ animationDelay: '50ms' }}>
-                <DsStoryMap stages={STAGES} cleared={cleared} target={target} pick={mapPick} locked={mapLocked} sectorLabel={sectorName} bossFaces={mapFaces}
+                <DsStoryMap stages={STAGES} cleared={cleared} target={target} pick={mapPick} locked={mapLocked} open={mapOpen} sectorLabel={sectorName} bossFaces={mapFaces}
                   onPick={onMapPick} onOthers={goStageSelect} />
               </div>
               {/* 出撃=アンバーの主役行。次の任務があれば帯に任務名を載せ、押すと任務詳細へ直行(P1)。無ければ作戦地域の一覧(従来どおり)。

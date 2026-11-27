@@ -57,6 +57,7 @@ const cornerBrackets = (x: number, y: number, h: number, a: number): string => [
   `M${x + h},${y + h - a} V${y + h} H${x + h - a}`, `M${x - h + a},${y + h} H${x - h} V${y + h - a}`,
 ].join(' ');
 const NO_FACES: readonly MapBossFace[] = [];
+const NO_STAGES: readonly Stage[] = [];
 // 外の弧: 右下を約70°欠く(共通部品 BossHeadFace の弧)。
 const rimArc = (x: number, y: number): string => bossFaceRimArc(x, y, RIM_R);
 // 出方の間(等間隔にしない): 地点ごとの間・地点の中の顔ごとの間。徘徊は全員の後に少し遅らせる。
@@ -79,7 +80,9 @@ const LAST_LABEL = MAP_PICK_LABEL.last;
 const DsStoryMap: React.FC<{
   stages: readonly Stage[]; cleared: ReadonlySet<string>; target: SortieTarget | null; pick: MapPick | null; locked?: Stage | null;
   sectorLabel: string; bossFaces?: readonly MapBossFace[]; onPick?: (stageId: string) => void; onOthers?: () => void;
-}> = ({ stages, cleared, target, pick, locked = null, sectorLabel, bossFaces = NO_FACES, onPick, onOthers }) => {
+  /** まだ行っていないが出撃できる場所(utils/opsMapSelect.openMapStages。通常は任意のチュートリアルだけ)。 */
+  open?: readonly Stage[];
+}> = ({ stages, cleared, target, pick, locked = null, sectorLabel, bossFaces = NO_FACES, onPick, onOthers, open = NO_STAGES }) => {
   const clipBase = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const dest = target ? target.stage : null;
   const isLast = target?.kind === 'last';
@@ -87,6 +90,7 @@ const DsStoryMap: React.FC<{
   const trail = useMemo(() => storyTrail(stages, cleared, nextId), [stages, cleared, nextId]);
   const names = useMemo(() => Object.fromEntries(stages.map(s => [s.id, s.locationTitle])), [stages]);
   const lockedAt = locked ? OPS_MAP_PLACES[locked.id] : undefined;
+  const openAt = useMemo(() => open.flatMap(s => { const at = OPS_MAP_PLACES[s.id]; return at ? [{ id: s.id, at }] : []; }), [open]);
   // ボスの顔の列: 点の下に最大4つ横一列(徘徊が先頭)+「+N」。近い地点の列・行った場所の四角・今いる所・NEXT の菱形・未解放の四角とは重ねない(上下へ逃がす)。
   const faceSpots = useMemo(() => {
     const PX = (at: readonly [number, number]) => [at[0] * OPS_MAP_W, at[1] * OPS_MAP_H] as const;
@@ -95,11 +99,12 @@ const DsStoryMap: React.FC<{
       ...(trail.current ? [{ x: PX(trail.current.at)[0], y: PX(trail.current.at)[1], half: 3.6 * U }] : []),
       ...(trail.next ? [{ x: PX(trail.next.at)[0], y: PX(trail.next.at)[1], half: 4.2 * U }] : []),
       ...(lockedAt ? [{ x: PX(lockedAt)[0], y: PX(lockedAt)[1], half: 2.6 * U }] : []),
+      ...openAt.map(o => ({ x: PX(o.at)[0], y: PX(o.at)[1], half: 2.6 * U })),
       ...bossFaces.flatMap(f => { const at = OPS_MAP_PLACES[f.stageId]; return at ? [{ x: PX(at)[0], y: PX(at)[1], half: 2.6 * U }] : []; }),
     ];
     return layoutMapFaces(bossFaces, id => { const at = OPS_MAP_PLACES[id]; return at ? PX(at) : undefined; },
       { diameter: FACE_D, gap: FACE_GAP, offset: 6 * U, mapW: OPS_MAP_W, mapH: OPS_MAP_H, moreW: 11 * U, markHalf: 3.4 * U, avoid });
-  }, [bossFaces, trail, lockedAt]);
+  }, [bossFaces, trail, lockedAt, openAt]);
   const svgRef = useRef<SVGSVGElement>(null);
   const faceHits = useMemo(() => faceSpots.flatMap(s => s.faces.filter(f => BOSS_HEAD_CROPS[f.face.sprite])
     .map(f => ({ key: f.face.key, stageId: f.face.stageId, x: f.x, y: f.y }))), [faceSpots]);
@@ -111,8 +116,9 @@ const DsStoryMap: React.FC<{
     if (dest && tAt) marks.push({ stageId: dest.id, x: PX(tAt)[0], y: PX(tAt)[1] });
     if (locked && lockedAt) marks.push({ stageId: locked.id, x: PX(lockedAt)[0], y: PX(lockedAt)[1] });
     for (const v of trail.visited) marks.push({ stageId: v.id, x: PX(v.at)[0], y: PX(v.at)[1] });
+    for (const o of openAt) marks.push({ stageId: o.id, x: PX(o.at)[0], y: PX(o.at)[1] });
     return [...faceHits.map(h => ({ stageId: h.stageId, x: h.x, y: h.y })), ...marks];
-  }, [faceHits, dest, locked, lockedAt, trail]);
+  }, [faceHits, dest, locked, lockedAt, trail, openAt]);
   // 印や顔に当たらなかった時の区画の選択。押した瞬間の光は、選ばれたステージの区画(顔と印の区画を合わせた形)。
   const regionPick = useCallback((x: number, y: number) => pickNearestSpot(stageHits, x, y, REGION_MAX), [stageHits]);
   const [flash, setFlash] = useState<{ n: number; d: string; cx: number; cy: number } | null>(null);
@@ -238,6 +244,15 @@ const DsStoryMap: React.FC<{
               vectorEffect="non-scaling-stroke" strokeLinecap="square" />
           </g>
         )}
+        {/* まだ行っていないが出撃できる場所(任意のチュートリアル)=生成りの細い線の中抜きの四角。行った場所(琥珀)とも
+            未解放(四隅だけ)とも違う形。目標の印は付けない(目標ではない)。 */}
+        {openAt.map(o => {
+          const [ox, oy] = P(o.at);
+          return (
+            <rect key={`open-${o.id}`} pointerEvents="none" x={ox - 2 * U} y={oy - 2 * U} width={4 * U} height={4 * U}
+              fill="rgba(7,6,13,0.6)" stroke={LOCKED_INK} strokeOpacity={0.85} strokeWidth={1.2} vectorEffect="non-scaling-stroke" />
+          );
+        })}
         {/* 軌跡=クリアした場所を話の順に結ぶ琥珀の線。古い区間ほど薄い(時間の流れ・検収クリエイティブ監査 #2)。 */}
         {visited.slice(1).map((p, i) => (
           <path key={i} d={arc(visited[i], p, i)} fill="none" stroke={AMBER} strokeOpacity={segs > 1 ? 0.35 + 0.5 * (i / (segs - 1)) : 0.85}

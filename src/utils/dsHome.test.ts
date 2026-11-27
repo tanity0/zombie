@@ -5,15 +5,59 @@ import { emptyStoryFlags } from '../data/progress';
 import {
   CONTOUR_BAND_EPS, CONTOUR_BAND_MIN_SAMPLES, CONTOUR_H, CONTOUR_HILL_INNER, CONTOUR_STEP,
   CONTOUR_THRESHOLDS, CONTOUR_W,
-  contourField, contourHills, directSortieStage, nextOperationStage, sortieTarget,
+  contourField, contourHills, directSortieStage, isTargetCandidate, nextOperationStage, OPTIONAL_STAGE_IDS, sortieTarget,
 } from './dsHome';
 
 const MAIN_IDS = STAGES.filter(s => s.kind === 'main' && !s.hidden).map(s => s.id);
 
+describe('任意のチュートリアルは目標にならない(社長 2026-11-27「洞窟が目標になることは無い。任意のチュートリアルなので」)', () => {
+  it('任意のステージ=stage-tutorial(実在する本編・誰にも解放済み)', () => {
+    expect([...OPTIONAL_STAGE_IDS]).toEqual(['stage-tutorial']);
+    const t = STAGES.find(s => s.id === 'stage-tutorial');
+    expect(t?.kind).toBe('main');
+    expect(t?.unlockBy).toBeNull();
+    expect(isTargetCandidate(t!)).toBe(false);
+    expect(isTargetCandidate(STAGES.find(s => s.id === 'stage-1')!)).toBe(true);
+  });
+
+  it('ステージ1はチュートリアルを経ずに解放済み(新しい端末の目標が解放されている)', () => {
+    expect(STAGES.find(s => s.id === 'stage-1')?.unlockBy).toBeNull();
+  });
+
+  it('クリア状態の全組合せ・薬の有無・前回の記録の有無で、目標(kind next)が stage-tutorial にならない', () => {
+    const ids = [...MAIN_IDS, 'stage-ex1'];
+    for (const flags of [emptyStoryFlags(), { ...emptyStoryFlags(), medicineUsed: true }]) {
+      for (let mask = 0; mask < 1 << ids.length; mask++) {
+        const cleared = new Set(ids.filter((_, i) => mask & (1 << i)));
+        const next = nextOperationStage(STAGES, cleared, flags);
+        expect(next?.id).not.toBe('stage-tutorial');
+        for (const last of [null, 'stage-tutorial', 'stage-1']) {
+          const t = sortieTarget(STAGES, next, cleared, flags, last);
+          if (t?.kind === 'next') expect(t.stage.id).not.toBe('stage-tutorial');
+        }
+      }
+    }
+  });
+
+  it('チュートリアルだけクリア=ステージ1、ステージ1までクリア=ステージ2、チュートリアル未クリアでステージ1クリア=ステージ2', () => {
+    const f = emptyStoryFlags();
+    expect(nextOperationStage(STAGES, new Set(['stage-tutorial']), f)?.id).toBe('stage-1');
+    expect(nextOperationStage(STAGES, new Set(['stage-tutorial', 'stage-1']), f)?.id).toBe('stage-2');
+    expect(nextOperationStage(STAGES, new Set(['stage-1']), f)?.id).toBe('stage-2');
+  });
+
+  it('チュートリアル以外の本編を全部クリア=最終ノード(チュートリアルが未クリアでも目標に戻らない)', () => {
+    const cleared = new Set(MAIN_IDS.filter(id => id !== 'stage-tutorial'));
+    const next = nextOperationStage(STAGES, cleared, emptyStoryFlags());
+    expect(next?.id).toBe('stage-7');
+    expect(directSortieStage(next, cleared)).toBeNull();
+  });
+});
+
 describe('nextOperationStage(§3-1-2b)', () => {
-  it('新規プレイヤー(クリアなし)はM0=stage-tutorialを指す', () => {
+  it('新規プレイヤー(クリアなし)はステージ1=stage-1を指す(任意のチュートリアルは目標にしない)', () => {
     const next = nextOperationStage(STAGES, new Set(), emptyStoryFlags());
-    expect(next?.id).toBe('stage-tutorial');
+    expect(next?.id).toBe('stage-1');
   });
 
   it('途中まで進めたら未クリアの先頭(M0+M1クリア→stage-2)', () => {
@@ -60,9 +104,9 @@ describe('nextOperationStage(§3-1-2b)', () => {
 });
 
 describe('directSortieStage(UIUX_PROPOSAL P1 地図から直接出撃)', () => {
-  it('新規プレイヤーは地図の NEXT と同じ stage-tutorial へ直行', () => {
+  it('新規プレイヤーは地図の目標と同じ stage-1 へ直行', () => {
     const cleared = new Set<string>();
-    expect(directSortieStage(nextOperationStage(STAGES, cleared, emptyStoryFlags()), cleared)?.id).toBe('stage-tutorial');
+    expect(directSortieStage(nextOperationStage(STAGES, cleared, emptyStoryFlags()), cleared)?.id).toBe('stage-1');
   });
 
   it('途中の進行では「次の作戦地域」と常に同じ(新しい決め方を作らない)', () => {
@@ -94,7 +138,7 @@ describe('sortieTarget(全部クリアした後は最後に出撃した任務)',
   it('次の任務がある時は次(記録より NEXT が優先)', () => {
     const cleared = new Set(['stage-tutorial', 'stage-1']);
     expect(at(cleared, 'stage-1')).toEqual({ stage: STAGES.find(s => s.id === 'stage-2'), kind: 'next' });
-    expect(at(new Set(), null)?.stage.id).toBe('stage-tutorial');
+    expect(at(new Set(), null)?.stage.id).toBe('stage-1');
   });
 
   it('全部クリア+記録あり=最後に出撃した任務', () => {

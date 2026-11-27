@@ -8,21 +8,27 @@ import { canShowEx } from './storyProgress';
 
 // 「次の作戦地域」(UI_OVERHAUL.md §3-1-2b)。規則:
 //   ④ EXは canShowEx(薬使用済み) && 解放済み && 未クリア の時だけ最優先(renderStageSelectと同じ門)。
-//   ① 候補 = kind==='main' && !hidden && isStageUnlocked のノード列(STAGESの並び順)。
-//   ② 未クリアの先頭(=次にやるべきノード。新規プレイヤーはM0=stage-tutorialを指す)。
+//   ① 候補 = kind==='main' && isTargetCandidate && isStageUnlocked のノード列(STAGESの並び順)。
+//   ⑤ 任意のステージ(OPTIONAL_STAGE_IDS=洞窟のチュートリアル)は目標の候補にしない(社長 2026-11-27
+//     「洞窟が目標になることは無い。任意のチュートリアルなので」)。地図で押せば選べる・出撃できる(目標ではないだけ)。
+//   ② 未クリアの先頭(=次にやるべきノード。新規プレイヤーはステージ1=stage-1を指す)。
 //   ③ 全クリア時は最終ノード。
 // stage-ending / stage-ex2 等 hidden はどの状態でも返さない(テストで固定)。
+/** 目標(次の出撃先)の候補にしない任意のステージ。 */
+export const OPTIONAL_STAGE_IDS: ReadonlySet<string> = new Set(['stage-tutorial']);
+/** 目標(次の出撃先)の候補になるか(hidden と任意のチュートリアルは候補にしない)。 */
+export const isTargetCandidate = (s: Pick<Stage, 'id' | 'hidden'>): boolean => !s.hidden && !OPTIONAL_STAGE_IDS.has(s.id);
 export const nextOperationStage = (
   stages: readonly Stage[],
   cleared: Set<string>,
   storyFlags: StoryFlags
 ): Stage | null => {
   const ex = stages.find(
-    s => s.kind === 'ex' && !s.hidden && canShowEx(storyFlags)
+    s => s.kind === 'ex' && isTargetCandidate(s) && canShowEx(storyFlags)
       && isStageUnlocked(s, cleared) && !cleared.has(s.id)
   );
   if (ex) return ex;
-  const mains = stages.filter(s => s.kind === 'main' && !s.hidden && isStageUnlocked(s, cleared));
+  const mains = stages.filter(s => s.kind === 'main' && isTargetCandidate(s) && isStageUnlocked(s, cleared));
   const next = mains.find(s => !cleared.has(s.id));
   if (next) return next;
   return mains[mains.length - 1] ?? null;

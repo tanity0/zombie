@@ -3,9 +3,10 @@ import { STAGES } from '../data/campaign';
 import { OPS_MAP_PLACES } from '../data/opsMapPlaces';
 import { stageFixedMapBossCandidates } from './sortieMapBosses';
 import {
-  currentMapPick, lockedPreviewStage, lockedSortieHint, mapPickFor, MAP_PICK_LABEL, pickMapStageHit, type MapPickContext,
+  currentMapPick, lockedPreviewStage, lockedSortieHint, mapPickFor, MAP_PICK_LABEL, openMapStages, pickMapStageHit, type MapPickContext,
 } from './opsMapSelect';
-import type { SortieTarget } from './dsHome';
+import { nextOperationStage, sortieTarget, type SortieTarget } from './dsHome';
+import { emptyStoryFlags } from '../data/progress';
 
 const MAINS = ['stage-tutorial', 'stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5', 'stage-6', 'stage-7'];
 const st = (id: string) => STAGES.find(s => s.id === id)!;
@@ -75,6 +76,46 @@ describe('mapPickFor / currentMapPick', () => {
     for (const f of stageFixedMapBossCandidates()) {
       if (!OPS_MAP_PLACES[f.stageId] || !ctx.sortieableIds.has(f.stageId)) continue;
       expect(mapPickFor(f.stageId, ctx)?.stage.id).toBe(f.stageId);
+    }
+  });
+});
+
+describe('任意のチュートリアル(目標ではないが地図で選べる)', () => {
+  const ctxFor = (cleared: Set<string>): MapPickContext => {
+    const f = emptyStoryFlags();
+    const target = sortieTarget(STAGES, nextOperationStage(STAGES, cleared, f), cleared, f, null);
+    return { stages: STAGES, cleared, target, sortieableIds: unlocked(cleared), locked: lockedPreviewStage(STAGES, target) };
+  };
+  it('新しい端末: 目標=ステージ1・洞窟は「未踏」の印(押せば選べる)・未解放の予告=ステージ2', () => {
+    const c = ctxFor(new Set());
+    expect(currentMapPick(null, c)).toMatchObject({ kind: 'next', stage: { id: 'stage-1' } });
+    expect(openMapStages(c).map(s => s.id)).toEqual(['stage-tutorial']);
+    expect(mapPickFor('stage-tutorial', c)).toMatchObject({ kind: 'open', stage: { id: 'stage-tutorial' } });
+    expect(MAP_PICK_LABEL.open).toBe('未踏');
+    expect(c.locked?.id).toBe('stage-2');
+  });
+  it('チュートリアルだけクリア: 目標=ステージ1・洞窟は再訪(未踏の印は無い)', () => {
+    const c = ctxFor(new Set(['stage-tutorial']));
+    expect(currentMapPick(null, c)).toMatchObject({ kind: 'next', stage: { id: 'stage-1' } });
+    expect(openMapStages(c)).toEqual([]);
+    expect(mapPickFor('stage-tutorial', c)?.kind).toBe('revisit');
+  });
+  it('ステージ1だけクリア(洞窟は未クリア): 目標=ステージ2・洞窟は未踏の印のまま', () => {
+    const c = ctxFor(new Set(['stage-1']));
+    expect(currentMapPick(null, c)).toMatchObject({ kind: 'next', stage: { id: 'stage-2' } });
+    expect(openMapStages(c).map(s => s.id)).toEqual(['stage-tutorial']);
+  });
+  it('未踏の印は目標・未解放の予告と重ねない(通常の進行=チュートリアル以外は出ない)', () => {
+    for (let n = 0; n <= MAINS.length; n++) {
+      for (const skipTut of [false, true]) {
+        const cleared = new Set(MAINS.slice(0, n).filter(id => !(skipTut && id === 'stage-tutorial')));
+        const c = ctxFor(cleared);
+        for (const s of openMapStages(c)) {
+          expect(s.id).toBe('stage-tutorial');
+          expect(s.id).not.toBe(c.target?.stage.id);
+          expect(s.id).not.toBe(c.locked?.id);
+        }
+      }
     }
   });
 });
