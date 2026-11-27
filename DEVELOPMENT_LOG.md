@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5879 — ナイフ: 止まり0.5秒・3段目の隙0.7秒・止まり中の向きを次の段へ【2026-11-27 21:59】
+- 社長裁定: 1・2段目の後の止まりを振り始めから0.5秒で明ける(`MELEE_AFTER_STOP_END_MS={knife:500}`・旧640)/3段目の後の隙 1000→700(`KNIFE_COMBO_FINISH_RECOVERY_MS`・鞭とは独立に・`KNIFE_COMBO_FINISH_STOP_MS`=隙/2=350)/止まり中に入れた向きを次の振り始めで使う(`Player.heldFacingDir`・facingLock.ts の holdFacingInput/swingStartFacing/aimForSwingFacing・照準も揃える)。
+- 副作用(社長へ報告): 雑魚が動ける時間がほぼ無くなる(12振りで1か所270ms)→knifeHoldLift の不変条件を「切れ目のどこかで残る」に緩めた/隙0.7 < カウンターCD0.82で隙明け直後の1段目は窓が開かない→社長裁定「カウンター窓が開くまで振れないように」=次の版。
+- 画: scratchpad/knifeturn/sequence.png(右の1段目→止まり中に左→2段目が左へ)。
+- 検証: typecheck / eslint エラー0 / 循環import新規なし / vitest src/utils src/store 11366 passed。
+- 自己点検: 憲法第4条・第5条に抵触なし。
+
 ## v0.25.5878 — 攻撃後の止まり中は振り返らない【2026-11-27 21:25】
 - 社長「攻撃後に止まってる時に振り返れちゃうのは変だ」。原因=入力側の入口 `setLastDirection` が止まり中も向きを書いていた(movePlayer は速さ0で元々不変)。
 - 純関数 `facingLockedAfterAttack`(新規 src/utils/facingLock.ts)を `setLastDirection` と `movePlayer` に通す。止めるのは: 刀の着地の硬直(居合一閃の溜め・殺陣含む)・燕返しのしゃがみ・攻撃後の歩く速さの倍率がちょうど0の間(ナイフ1・2段目の後/ナイフ3段目の後/鞭3段目の後の前半)。倍率0.45の「重いが動ける」間・一閃の走り・ワイヤー/ホップ/四神舞の滑りは止めない。攻撃が自分で向きを決める処理(被弾反撃・縮地・格闘の狙い)は不変。

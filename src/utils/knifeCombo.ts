@@ -14,11 +14,11 @@ export const KNIFE_COMBO_INTERVAL_MS = 400;
 export const KNIFE_COMBO_RESET_MS = 900;
 /** 先行入力を持っておく長さの上限(ms)。 */
 export const KNIFE_COMBO_QUEUE_MAX_MS = 600;
-/** 3段目を振ってから次の振り(1段目)が出せるまで(ms)。★1.0秒=普通の段の間の倍(社長承認2026-11-26・旧 600・鞭と共通)。 */
-export const KNIFE_COMBO_FINISH_RECOVERY_MS = 1000;
-/** 3段目の後の隙の体の姿勢: 振り抜いた所で粘る長さ(ms・隙 1.0秒に合わせて 120→200)。 */
+/** 3段目を振ってから次の振り(1段目)が出せるまで(ms)。★0.7秒(社長裁定2026-11-27・旧 1000=鞭と同じ値・その前 600)。鞭(WHIP_COMBO_FINISH_RECOVERY_MS)とは独立。 */
+export const KNIFE_COMBO_FINISH_RECOVERY_MS = 700;
+/** 3段目の後の隙の体の姿勢: 振り抜いた所で粘る長さ(ms・隙 1.0秒の時に 120→200。隙 0.7秒でも粘りの後の戻りが残る=そのまま)。 */
 export const KNIFE_COMBO_FINISH_HOLD_MS = 200;
-/** ★3段目の後の隙の前半(社長指示2026-11-26「隙の半分は立ち止まっててほしい」): 3段目を振った時刻からこの間、歩く速さ 0(ms=隙の半分・鞭と共通)。そこから隙の終わりまでに慣性つきで戻る。 */
+/** ★3段目の後の隙の前半(社長指示2026-11-26「隙の半分は立ち止まっててほしい」): 3段目を振った時刻からこの間、歩く速さ 0(ms=隙の半分・鞭と同じ比率)。そこから隙の終わりまでに慣性つきで戻る。 */
 export const KNIFE_COMBO_FINISH_STOP_MS = KNIFE_COMBO_FINISH_RECOVERY_MS / 2;
 /** 段ごとの踏み込み(体の幅に対する割合)。立ち・歩きの振りでも少し前へ出る(走りの踏み込みの方が大きければそちら)。 */
 export const KNIFE_COMBO_STEP_FRAC = 0.3;

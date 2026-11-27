@@ -140,17 +140,19 @@ describe('ナイフの当たり: 固まりと浮き', () => {
       lifted.push(en('z').brawlerLiftAt !== before && brawlerAirborne(en('z'), now));
       freeBefore.push(free);
     }
-    // 連撃ごと(1段目の前=3段目の後の隙の間)は毎回動ける時間が残る=止めっぱなしにはならない。段の間(2・3段目の前)は固まり・浮きでつながる。
-    for (const i of [3, 6, 9]) expect(freeBefore[i], `${i / 3}回目の連撃の後`).toBeGreaterThan(0);
-    expect(freeBefore).toEqual([0, 0, 0, 280, 0, 0, 490, 0, 0, 280, 0, 0]); // 実測(段の間隔0.4秒・旧0.5秒の時は 380/190/490)
+    // 連撃の切れ目(1段目の前=3段目の後の隙の間)のどこかで動ける時間が残る=止めっぱなしにはならない。段の間(2・3段目の前)は固まり・浮きでつながる。
+    // ★3段目の後の隙 0.7秒(社長裁定2026-11-27・旧1.0秒)では、1回目→2回目・3回目→4回目の切れ目は動ける時間が残らない(固まり・浮きのまま次の連撃へつながる)。
+    //   2回目→3回目の切れ目だけ残る(実測)。旧(隙1.0秒)は切れ目ごとに毎回 280/490/280ms 残っていた。
+    expect([3, 6, 9].some(i => freeBefore[i] > 0)).toBe(true);
+    expect(freeBefore).toEqual([0, 0, 0, 0, 0, 0, 270, 0, 0, 0, 0, 0]); // 実測(段の間隔0.4秒・隙0.7秒。隙1.0秒の時は [..280..490..280..])
     // 浮き: 地上から打ち上げ→空中で拾い直して3段つながる。着地の後の「地上から浮かない窓」(浮いていた時間と同じ長さ)の中の連撃は浮かない。
-    expect(lifted).toEqual([true, true, true, false, false, false, true, true, true, false, false, false]); // 実測(段の間隔0.4秒=浮く連撃と浮かない連撃が交互)
+    expect(lifted).toEqual([true, true, true, true, false, false, true, true, true, true, false, false]); // 実測(隙0.7秒=2回目の連撃の1段目も空中で拾える。隙1.0秒の時は [T,T,T,F,F,F,T,T,T,F,F,F])
   });
-  // 固まりの並び(12振り=4回の連撃・実測・段の間隔0.4秒): 雑魚=毎回 / 強個体=1回目の連撃は3段とも、2回目からは3段目だけ / ボス級=1回目の1段目・2回目の2段目・3回目の3段目(4回目は無し)。
+  // 固まりの並び(12振り=4回の連撃・実測・段の間隔0.4秒・3段目の後の隙0.7秒): 雑魚=毎回 / 強個体=1・3回目の連撃は3段とも、2・4回目は3段目だけ(隙1.0秒の時は2回目から3段目だけ) / ボス級=1回目の1段目・2回目の2段目・3回目の3段目(4回目は無し)。
   //   (旧 段の間隔0.5秒の時: 強個体=各連撃の1・2段目 / ボス級=各連撃の1段目。コンボの後の固まらない時間(強個体800/ボス級1500ms)と段の間隔の噛み合わせで並びが変わる。)
   const KNIFE_REAL_HELD: Record<string, boolean[]> = {
     zombie: [true, true, true, true, true, true, true, true, true, true, true, true],
-    driller: [true, true, true, false, false, true, false, false, true, false, false, true],
+    driller: [true, true, true, false, false, true, true, true, true, false, false, true], // 隙0.7秒(社長裁定2026-11-27)。隙1.0秒の時は [T,T,T,F,F,T,F,F,T,F,F,T]
     hunter: [true, false, false, false, true, false, false, false, true, false, false, false],
   };
   for (const type of ['zombie', 'driller', 'hunter'] as EnemyType[]) {

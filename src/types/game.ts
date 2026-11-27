@@ -160,6 +160,8 @@ export interface Player extends DashLocomotionState {
   abilityInvulnAt?: number;
   abilityInvulnUntil?: number;
   lastDirection: { x: number; y: number } | null;
+  /** ★振りの最中・攻撃の後の止まり中に入れた向き(絵は振り返らない)。次の振りの振り始めでこの向きへ振る(utils/facingLock・社長裁定2026-11-27)。未設定=覚えていない。 */
+  heldFacingDir?: { x: number; y: number };
   // 照準サークルの慣性付きベクトル(向き×傾き強度, 長さ0..1)。PHILL弾/ワイヤーアンカー/
   // サークル描画はすべてこれに揃える(進行方向ではなくサークル方向へ)。movePlayer が毎フレーム更新。
   aimX: number;

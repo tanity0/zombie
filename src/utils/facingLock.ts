@@ -29,3 +29,43 @@ export const facingLockedAfterAttack = (i: FacingLockAfterAttackInput): boolean 
   if (i.nowMs < (i.shijinSlideUntil ?? 0)) return false; // 四神舞の滑り(硬直の倍率が掛からない)
   return meleeAfterMoveMult(i) <= 0;
 };
+
+// ★止まり中に入れた向きを覚えて、次の振りの振り始めでその向きへ振る(社長裁定2026-11-27「止まり中に入れた向きを覚えて、次の段の振り始めでその向きへ振る」)。
+//  - 「覚える間」= 振りの最中(PLAYER_MELEE_SWING_MS)か、攻撃の後で止まっている間(facingLockedAfterAttack)。この間の向きの入力は絵を振り返らせず(今のまま)、覚えておく。
+//  - その間に次の振りが出たら(ナイフの段の先行入力・刀の着地の硬直中の振り等)、振り始めの向き(lastDirection)を覚えた向きにする=踏み込み・弧・判定もその向き。
+//  - 覚える間が明けたら覚えた向きは捨てる(明けた後は今どおり=入力の向きへ歩き出して向く)。指を離した(向き無し)の入力は覚えた向きを消さない。
+/** 覚えておく向き(未設定=覚えていない)。 */
+export type HeldFacing = { x: number; y: number } | undefined;
+
+/** 向きの入力を覚える間か。swingAt=直近の振りの起点・swingMs=振りの最中の長さ・lockedAfterAttack=facingLockedAfterAttack の結果。 */
+export const facingHoldActive = (swingAt: number | undefined, nowMs: number, swingMs: number, lockedAfterAttack: boolean): boolean => {
+  const at = swingAt ?? 0;
+  const since = nowMs - at;
+  return (at > 0 && since >= 0 && since < swingMs) || lockedAfterAttack;
+};
+
+/** 覚える間に入った向きの入力を覚える(長さのある向きだけ・向き無し=前の覚えを残す)。 */
+export const holdFacingInput = (prev: HeldFacing, dir: { x: number; y: number } | null | undefined): HeldFacing => {
+  if (!dir) return prev;
+  const m = Math.hypot(dir.x, dir.y);
+  if (!(m > 1e-3)) return prev;
+  return { x: dir.x, y: dir.y };
+};
+
+/** 振り始めの向き: 覚える間に覚えた向きがあればそれ・無ければ今の向き。 */
+export const swingStartFacing = <T extends { x: number; y: number } | null>(last: T, held: HeldFacing, holdActive: boolean): T | { x: number; y: number } =>
+  holdActive && held ? { x: held.x, y: held.y } : last;
+
+/** 毎フレーム: 覚える間が明けたら覚えた向きを捨てる。 */
+export const heldFacingAfterTick = (held: HeldFacing, holdActive: boolean): HeldFacing => (holdActive ? held : undefined);
+
+/**
+ * 振り始めに覚えた向きへ向き直した時の照準(aimX/aimY)。照準の長さ(スティックの傾き)はそのまま、向きだけ合わせる。
+ * 振りの間は照準が止まる(movePlayer)ので、手元の弧・手のナイフ(照準の向きで描く)が古い向きに残らないよう振り始めで揃える。
+ */
+export const aimForSwingFacing = (aimX: number, aimY: number, face: { x: number; y: number }): { aimX: number; aimY: number } => {
+  const fm = Math.hypot(face.x, face.y);
+  const am = Math.hypot(aimX, aimY);
+  if (!(fm > 1e-3) || !(am > 1e-3)) return { aimX, aimY };
+  return { aimX: (face.x / fm) * am, aimY: (face.y / fm) * am };
+};

@@ -3,7 +3,7 @@
 //  - 今の作り: 振りの絵が終わってから硬直(×MELEE_RECOVER_SPEED_MULT=重いが動ける)・3段目の後の隙(前半0→後半で1へ戻る)。
 //    これらを重なる所は遅い方で合わせたものが「攻撃後の歩く速さ」(gameStore の meleeRecoverMult)。
 //  - 「止める」武器(MELEE_AFTER_STOP_WEAPONS)では、0と1の間になる区間(=重くなる区間)を全部 0(完全に止まる)にする。
-//    明ける時刻は今の各区間の終わりのまま(延ばさない・縮めない)。明けた後ろに短い立ち上がり(MELEE_AFTER_STOP_RAMP_MS・加減速つき)を付ける=
+//    明ける時刻は今の各区間の終わりのまま(延ばさない・縮めない)。★ただし振りの後の硬直の明けは武器ごとに MELEE_AFTER_STOP_END_MS で前へ寄せられる(ナイフ=0.5秒・社長裁定2026-11-27)。明けた後ろに短い立ち上がり(MELEE_AFTER_STOP_RAMP_MS・加減速つき)を付ける=
 //    0→1 へ跳ばない(慣性MUST)。
 //  - それ以外の武器は今と同じ値(1bitも変えない)。全武器へ広げる時は MELEE_AFTER_STOP_WEAPONS に足すだけ。
 //  - ダッシュ系・スライドには掛からない(utils/playerMoveSpeed の meleeRecoverMult と同じ枝に乗る=今どおり)。
@@ -19,6 +19,13 @@ export const MELEE_AFTER_STOP_WEAPONS: readonly MeleeAfterWeapon[] = ['knife'];
 
 /** 止まる区間が明けてからの立ち上がり(ms・加減速つき=smoothstep)。明ける時刻の後ろへ付ける。 */
 export const MELEE_AFTER_STOP_RAMP_MS = 100;
+
+/**
+ * ★止める武器の振りの後の止まりが明ける時刻(振り始めからの ms)。載っていない武器は硬直が明ける時刻(recoverEndMs)のまま。
+ * ナイフ=0.5秒(社長裁定2026-11-27「1・2段目の後の止まりを振り始めから0.5秒で明ける」・旧=COUNTER_WINDOW+MELEE_RECOVER_MS=640)。
+ * 明けた後ろの立ち上がり(MELEE_AFTER_STOP_RAMP_MS)は今の形のまま、この時刻から付く。
+ */
+export const MELEE_AFTER_STOP_END_MS: Readonly<Partial<Record<MeleeAfterWeapon, number>>> = { knife: 500 };
 
 export interface MeleeAfterMoveInput {
   weapon: MeleeAfterWeapon;
@@ -55,9 +62,10 @@ export const meleeAfterMoveMultLegacy = (i: MeleeAfterMoveInput): number => Math
 export const meleeAfterMoveMult = (i: MeleeAfterMoveInput): number => {
   if (!MELEE_AFTER_STOP_WEAPONS.includes(i.weapon)) return meleeAfterMoveMultLegacy(i);
   const ramp = MELEE_AFTER_STOP_RAMP_MS;
-  // 振りの後の硬直: 振りの絵が終わる時刻 → 硬直が明ける時刻。
+  // 振りの後の硬直: 振りの絵が終わる時刻 → 止まりが明ける時刻(MELEE_AFTER_STOP_END_MS・無ければ硬直が明ける時刻)。
   const swingAt = i.swingStartAt ?? 0;
-  const a = swingAt > 0 ? stopRegionMult(i.nowMs - swingAt, i.swingCycleMs, i.recoverEndMs, ramp) : 1;
+  const stopEnd = MELEE_AFTER_STOP_END_MS[i.weapon] ?? i.recoverEndMs;
+  const a = swingAt > 0 ? stopRegionMult(i.nowMs - swingAt, i.swingCycleMs, stopEnd, ramp) : 1;
   // 3段目の後の隙: 3段目を振った時刻 → 隙の終わり(前半の0も後半の戻りも全部 0)。
   const wAt = i.whipComboAt ?? 0;
   const w = i.whipComboStage === 3 && wAt > 0 ? stopRegionMult(i.nowMs - wAt, 0, WHIP_COMBO_FINISH_RECOVERY_MS, ramp) : 1;

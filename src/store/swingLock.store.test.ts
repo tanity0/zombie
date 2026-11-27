@@ -114,3 +114,30 @@ describe('攻撃の後で止まっている間は振り返らない', () => {
     expect(useGameStore.getState().player.lastDirection).toEqual({ x: -1, y: 0 });
   });
 });
+
+// 社長裁定2026-11-27「止まり中に入れた向きを覚えて、次の段の振り始めでその向きへ振る」(utils/facingLock)。
+describe('止まり中に入れた向きへ次の段を振る', () => {
+  it('ナイフ1段目を右へ振った止まり中に左を入れる→止まり中は右のまま→2段目は左へ振る', () => {
+    const now = Date.now();
+    useGameStore.setState(s => ({ player: { ...s.player, meleeSwingAt: now - 400, knifeComboStage: 1, knifeComboAt: now - 400, counterCooldownEnd: now - 1, pendingSwingAt: 0, heldFacingDir: undefined, aimX: 0.8, aimY: 0 } }));
+    useGameStore.getState().setLastDirection({ x: -1, y: 0 });
+    useGameStore.getState().movePlayer(LEFT, 0.016);
+    expect(useGameStore.getState().player.lastDirection).toEqual({ x: 1, y: 0 });
+    expect(useGameStore.getState().beginMeleeSwing()).toBe(true);
+    const p = useGameStore.getState().player;
+    expect(p.knifeComboStage).toBe(2);
+    expect(p.lastDirection).toEqual({ x: -1, y: 0 });
+    expect(p.heldFacingDir).toBeUndefined();
+    expect(p.lungeVx).toBeLessThan(0); // 踏み込みも左へ
+    expect(p.aimX).toBeLessThan(-0.5); // 照準(手元の弧の向き)も左へ
+  });
+  it('止まりが明けたら覚えた向きは捨てる(明けた後の振りは今の向き)', () => {
+    const now = Date.now();
+    useGameStore.setState(s => ({ player: { ...s.player, meleeSwingAt: now - 400, knifeComboStage: 1, knifeComboAt: now - 400 } }));
+    useGameStore.getState().setLastDirection({ x: -1, y: 0 });
+    expect(useGameStore.getState().player.heldFacingDir).toEqual({ x: -1, y: 0 });
+    useGameStore.setState(s => ({ player: { ...s.player, meleeSwingAt: now - 2000, knifeComboAt: now - 2000, counterCooldownEnd: 0, pendingSwingAt: 0 } }));
+    useGameStore.getState().movePlayer(RIGHT, 0.016);
+    expect(useGameStore.getState().player.heldFacingDir).toBeUndefined();
+  });
+});

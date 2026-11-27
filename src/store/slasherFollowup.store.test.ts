@@ -178,10 +178,21 @@ describe('ナイフの3連撃(配線)', () => {
     }
     expect(stages).toEqual([1, 2, 3, 1]);
     expect(gaps).toEqual([KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_FINISH_RECOVERY_MS, KNIFE_COMBO_INTERVAL_MS]);
-    // 4回目の1段目: カウンターのクールダウンは連撃の終わり(3段目)から。3段目の後の隙(1.0秒)がナイフのクールダウン(COUNTER_WINDOW+COUNTER_COOLDOWN)より長いので、隙明けの1段目は開く。
-    expect(KNIFE_COMBO_FINISH_RECOVERY_MS).toBeGreaterThanOrEqual(COUNTER_WINDOW + COUNTER_COOLDOWN);
-    expect(windows).toEqual([true, false, false, true]);
+    // 4回目の1段目: カウンターのクールダウンは連撃の終わり(3段目)から。★3段目の後の隙が0.7秒(社長裁定2026-11-27・旧1.0秒)になり、
+    // ナイフのクールダウン(COUNTER_WINDOW+COUNTER_COOLDOWN)より短くなった=隙が明けた瞬間の1段目ではまだ開かない(実測)。旧(隙1.0秒)は開いていた。
+    expect(KNIFE_COMBO_FINISH_RECOVERY_MS).toBeLessThan(COUNTER_WINDOW + COUNTER_COOLDOWN);
+    expect(windows).toEqual([true, false, false, false]);
     expect(st().player.knifeCounterReadyAt).toBeGreaterThan(0);
+  });
+  it('3段目の後、ナイフのクールダウン(連撃の終わりから)が明けてからの1段目はカウンター窓が開く', () => {
+    useGameStore.setState({ enemies: [place('zombie', 40, 0, 'z')] });
+    for (let i = 0; i < 3; i++) { now = Math.max(now, st().player.counterCooldownEnd); st().triggerCounter(); }
+    expect(st().player.knifeComboStage).toBe(3);
+    const at3 = now;
+    now = Math.max(st().player.counterCooldownEnd, at3 + COUNTER_WINDOW + COUNTER_COOLDOWN);
+    st().triggerCounter();
+    expect(st().player.knifeComboStage).toBe(1);
+    expect(st().player.counterWindowStart).toBe(now);
   });
   it('最後の振りから0.9秒タップが無ければ1段目へ戻る・カウンターのクールダウンは連撃の終わりから', () => {
     st().triggerCounter();

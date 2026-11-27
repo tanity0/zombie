@@ -7,7 +7,7 @@ import {
   knifeComboFinishMoveMult, KNIFE_COMBO_FINISH_STOP_MS,
   KNIFE_COMBO_FEEL, knifeComboFeel, knifeComboHitStop, knifeComboSfxLayers, knifeSwingDrawSince,
 } from './knifeCombo';
-import { WHIP_COMBO_FEEL } from './whipCombo';
+import { WHIP_COMBO_FEEL, WHIP_COMBO_FINISH_RECOVERY_MS } from './whipCombo';
 
 describe('ナイフの3連撃(純関数)', () => {
   it('段は 1→2→3→1・最後の振りから0.9秒で1段目へ', () => {
@@ -18,24 +18,27 @@ describe('ナイフの3連撃(純関数)', () => {
     expect(knifeComboNextStage(1, 0, KNIFE_COMBO_RESET_MS + 1)).toBe(1);
     expect(KNIFE_COMBO_RESET_MS).toBe(900);
   });
-  it('間隔は0.4秒・3段目の後の隙は1.0秒(段の間の倍)・隙が明けた時には1段目に戻っている', () => {
+  it('間隔は0.4秒・3段目の後の隙は0.7秒(社長裁定2026-11-27・鞭とは独立)・隙が明けた時には1段目に戻っている', () => {
     expect(KNIFE_COMBO_INTERVAL_MS).toBe(400);
     expect([1, 2, 3].map(knifeComboGapMs)).toEqual([KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_FINISH_RECOVERY_MS]);
-    expect(KNIFE_COMBO_FINISH_RECOVERY_MS).toBe(1000);
-    expect(KNIFE_COMBO_FINISH_RECOVERY_MS).toBeGreaterThan(KNIFE_COMBO_RESET_MS);
+    expect(KNIFE_COMBO_FINISH_RECOVERY_MS).toBe(700);
+    expect(WHIP_COMBO_FINISH_RECOVERY_MS).toBe(1000); // 鞭は変えない
+    // 隙(0.7秒)は段が戻る時間(RESET_MS)より短いが、3段目の次は段の巡りで必ず1段目。
     expect(knifeComboNextStage(3, 0, KNIFE_COMBO_FINISH_RECOVERY_MS)).toBe(1);
+    expect(knifeComboNextStage(3, 0, KNIFE_COMBO_RESET_MS + 1)).toBe(1);
   });
   it('3段目の後の歩く速さ(社長指示2026-11-26「隙の半分は立ち止まっててほしい」): 隙の半分は 0・隙の終わりまでに慣性つきで 1(パッと動き出さない)。3段目以外は 1', () => {
     expect(KNIFE_COMBO_FINISH_STOP_MS).toBe(KNIFE_COMBO_FINISH_RECOVERY_MS / 2);
     const m = (since: number) => knifeComboFinishMoveMult(3, 10_000, 10_000 + since);
+    const R = KNIFE_COMBO_FINISH_RECOVERY_MS, S = KNIFE_COMBO_FINISH_STOP_MS;
     expect(m(0)).toBe(0);
-    expect(m(500)).toBe(0);
-    expect(m(1000)).toBe(1);
-    expect(m(1500)).toBe(1);
+    expect(m(S)).toBe(0);
+    expect(m(R)).toBe(1);
+    expect(m(R + 500)).toBe(1);
     let prev = 0;
-    for (let t = 510; t < 1000; t += 10) { const v = m(t); expect(v).toBeGreaterThanOrEqual(prev); expect(v).toBeLessThan(1); prev = v; }
-    expect(m(990)).toBeGreaterThan(0.99);
-    expect(m(510)).toBeLessThan(0.01);
+    for (let t = S + 10; t < R; t += 10) { const v = m(t); expect(v).toBeGreaterThanOrEqual(prev); expect(v).toBeLessThan(1); prev = v; }
+    expect(m(R - 10)).toBeGreaterThan(0.98);
+    expect(m(S + 10)).toBeLessThan(0.02);
     expect(knifeComboFinishMoveMult(1, 10_000, 10_100)).toBe(1);
     expect(knifeComboFinishMoveMult(2, 10_000, 10_100)).toBe(1);
     expect(knifeComboFinishMoveMult(3, 0, 100)).toBe(1); // まだ振っていない

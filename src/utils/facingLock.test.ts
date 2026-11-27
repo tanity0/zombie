@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { facingLockedAfterAttack, type FacingLockAfterAttackInput } from './facingLock';
+import { facingLockedAfterAttack, facingHoldActive, holdFacingInput, swingStartFacing, heldFacingAfterTick, aimForSwingFacing, type FacingLockAfterAttackInput } from './facingLock';
 import { emptyDashState } from './dashLocomotion';
 import { MELEE_RECOVER_MS } from './meleeRecover';
 import { MELEE_AFTER_STOP_RAMP_MS, type MeleeAfterWeapon } from './meleeAfterMove';
@@ -9,6 +9,7 @@ import { WHIP_COMBO_FINISH_STOP_MS, WHIP_COMBO_FINISH_RECOVERY_MS } from './whip
 const SWING = 368; // PLAYER_MELEE_SWING_MS
 const END = 400 + MELEE_RECOVER_MS; // COUNTER_WINDOW + MELEE_RECOVER_MS
 const T0 = 100000;
+const KEND = 500; // ★ナイフの1・2段目の後の止まりが明ける時刻(社長裁定2026-11-27)
 
 const input = (weapon: MeleeAfterWeapon, since: number, stage = 1, over: Partial<FacingLockAfterAttackInput> = {}): FacingLockAfterAttackInput => ({
   weapon, nowMs: T0 + since, swingStartAt: T0, swingCycleMs: SWING, recoverEndMs: END,
@@ -22,9 +23,9 @@ describe('facingLockedAfterAttack(攻撃の後で止まっている間は向き�
   it('ナイフ1・2段目: 振りの後の硬直(止まり)の間だけ止める・明けて動き出したら向ける', () => {
     for (const stage of [1, 2]) {
       expect(facingLockedAfterAttack(input('knife', SWING, stage))).toBe(true);
-      expect(facingLockedAfterAttack(input('knife', END - 1, stage))).toBe(true);
-      expect(facingLockedAfterAttack(input('knife', END + MELEE_AFTER_STOP_RAMP_MS / 2, stage))).toBe(false);
-      expect(facingLockedAfterAttack(input('knife', END + MELEE_AFTER_STOP_RAMP_MS + 1, stage))).toBe(false);
+      expect(facingLockedAfterAttack(input('knife', KEND - 1, stage))).toBe(true);
+      expect(facingLockedAfterAttack(input('knife', KEND + MELEE_AFTER_STOP_RAMP_MS / 2, stage))).toBe(false);
+      expect(facingLockedAfterAttack(input('knife', KEND + MELEE_AFTER_STOP_RAMP_MS + 1, stage))).toBe(false);
     }
   });
   it('ナイフ3段目: 後の隙の間ずっと止める', () => {
@@ -59,5 +60,49 @@ describe('facingLockedAfterAttack(攻撃の後で止まっている間は向き�
   });
   it('何も振っていなければ止めない', () => {
     expect(facingLockedAfterAttack(input('knife', 5000, 0, { swingStartAt: 0, knifeComboAt: 0 }))).toBe(false);
+  });
+});
+
+describe('止まり中に入れた向きを覚えて次の振りの振り始めでその向きへ振る(社長裁定2026-11-27)', () => {
+  it('覚える間=振りの最中か攻撃の後の止まり中', () => {
+    expect(facingHoldActive(T0, T0 + 10, SWING, false)).toBe(true);
+    expect(facingHoldActive(T0, T0 + SWING - 1, SWING, false)).toBe(true);
+    expect(facingHoldActive(T0, T0 + SWING, SWING, false)).toBe(false);
+    expect(facingHoldActive(T0, T0 + SWING + 50, SWING, true)).toBe(true);
+    expect(facingHoldActive(0, T0, SWING, false)).toBe(false);
+    expect(facingHoldActive(undefined, T0, SWING, false)).toBe(false);
+  });
+  it('入れた向きを覚える・指を離した(向き無し)は前の覚えを残す', () => {
+    const left = { x: -1, y: 0 };
+    expect(holdFacingInput(undefined, left)).toEqual(left);
+    expect(holdFacingInput(left, null)).toEqual(left);
+    expect(holdFacingInput(left, { x: 0, y: 0 })).toEqual(left);
+    expect(holdFacingInput(left, { x: 0, y: 1 })).toEqual({ x: 0, y: 1 });
+  });
+  it('振り始め: 覚える間に覚えた向きがあればその向き・無ければ今の向き', () => {
+    const right = { x: 1, y: 0 }, left = { x: -1, y: 0 };
+    expect(swingStartFacing(right, left, true)).toEqual(left);
+    expect(swingStartFacing(right, undefined, true)).toBe(right);
+    expect(swingStartFacing(right, left, false)).toBe(right); // 明けた後は今どおり
+  });
+  it('向き直した時の照準: 長さはそのまま・向きだけ合わせる(照準が無ければそのまま)', () => {
+    const a = aimForSwingFacing(0.6, 0, { x: -1, y: 0 });
+    expect(a.aimX).toBeCloseTo(-0.6); expect(a.aimY).toBeCloseTo(0);
+    expect(aimForSwingFacing(0, 0, { x: -1, y: 0 })).toEqual({ aimX: 0, aimY: 0 });
+  });
+  it('覚える間が明けたら捨てる', () => {
+    const left = { x: -1, y: 0 };
+    expect(heldFacingAfterTick(left, true)).toBe(left);
+    expect(heldFacingAfterTick(left, false)).toBeUndefined();
+  });
+  it('ナイフ1段目を右へ振った止まり中(368〜500ms)に左を入れる→2段目(400ms)は左へ振る', () => {
+    let held = holdFacingInput(undefined, { x: -1, y: 0 }); // 止まり中に左
+    const at = 380;
+    const active = facingHoldActive(T0, T0 + at, SWING, facingLockedAfterAttack(input('knife', at, 1)));
+    expect(active).toBe(true);
+    held = heldFacingAfterTick(held, active);
+    const swing2 = 400;
+    const active2 = facingHoldActive(T0, T0 + swing2, SWING, facingLockedAfterAttack(input('knife', swing2, 1)));
+    expect(swingStartFacing({ x: 1, y: 0 }, held, active2)).toEqual({ x: -1, y: 0 });
   });
 });

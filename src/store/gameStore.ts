@@ -135,7 +135,7 @@ import { playerSuperArmorActive } from '../utils/superArmor'; // B12 スーパ�
 import { playerLaunchPatch, playerAirLocked } from '../utils/playerLaunch'; // ★プレイヤーも浮く(research/BRAWLER.md §36-0)
 import { MELEE_RECOVER_MS } from '../utils/meleeRecover'; // 近接を振ったあとの硬直(v0.25.4380)
 import { meleeAfterMoveMult, type MeleeAfterMoveInput } from '../utils/meleeAfterMove'; // 攻撃後の歩く速さ(ナイフ=重い区間を止める・社長指示2026-11-26)
-import { facingLockedAfterAttack } from '../utils/facingLock'; // 攻撃の後で止まっている間は向きを変えない(社長指示2026-11-27)
+import { facingLockedAfterAttack, facingHoldActive, holdFacingInput, swingStartFacing, heldFacingAfterTick, aimForSwingFacing } from '../utils/facingLock'; // 攻撃の後で止まっている間は向きを変えない(社長指示2026-11-27)
 import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-3(使者のKB特例=免疫CD無視)
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
@@ -2585,6 +2585,9 @@ const playerFacingLockedAfterAttack = (player: Player, nowMs: number): boolean =
   tsubameCrouchUntil: player.tsubameCrouchUntil,
   shijinSlideUntil: player.shijinSlideUntil,
 });
+/** ★向きの入力を覚える間(振りの最中・攻撃の後の止まり中)か(utils/facingLock facingHoldActive・社長裁定2026-11-27)。 */
+const playerFacingHoldActive = (player: Player, nowMs: number): boolean =>
+  facingHoldActive(player.meleeSwingAt, nowMs, PLAYER_MELEE_SWING_MS, playerFacingLockedAfterAttack(player, nowMs));
 /** ★ナイフのカウンターのクールダウン(ms・近接CDの短縮を掛ける前)。旧(3連撃の前)のナイフの1振りの周期(窓+CD)と同じ長さ。起点は連撃の終わり。 */
 export const KNIFE_COUNTER_COOLDOWN_MS = COUNTER_WINDOW + COUNTER_COOLDOWN;
 export const whipLevel = (player: Player): number =>
@@ -13963,9 +13966,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★近接を振った**あと**の硬直(社長指示2026-09-16「振った直後にディレイが入るのはいい」)。
         // 振り**中**は掛からない=踏み込み斬りの「回避としての使い方」を殺さない、が社長の前提。
         // 開くのは振りの絵が終わる瞬間(=その場で動けない時間が明ける)・明けるのは従来どおり(v0.25.4998・隙間を詰めた)。
-        // ★鞭・ナイフの3段目の後の隙の前半(社長承認2026-11-26): 3段目を振ってから隙の半分(0.5秒)は歩く速さ 0(立ち止まる)→ 隙の終わり(1.0秒)までに慣性つきで 1 へ(utils/whipCombo comboFinishMoveMult)。
+        // ★鞭・ナイフの3段目の後の隙の前半(社長承認2026-11-26): 3段目を振ってから隙の半分は歩く速さ 0(立ち止まる)→ 隙の終わり(鞭 1.0秒・ナイフ 0.7秒)までに慣性つきで 1 へ(utils/whipCombo comboFinishMoveMult)。
         //   同じ硬直の枝に乗せる=ダッシュ系・スライドには掛からない(回避の逃げ道は塞がない)。重なる所は遅い方(二重に掛けない)。
-        // ★ナイフだけ: 重くなる区間を全部「完全に止まる」に(社長指示2026-11-26「いったんナイフだけ」・明ける時刻は今のまま+明けの後ろに短い立ち上がり)。
+        // ★ナイフだけ: 重くなる区間を全部「完全に止まる」に(社長指示2026-11-26「いったんナイフだけ」・1・2段目の後の止まりは振り始めから0.5秒で明ける=社長裁定2026-11-27・明けの後ろに短い立ち上がり)。
         //   鞭・刀・格闘は今と同じ値(utils/meleeAfterMove)。
         meleeRecoverMult: meleeAfterMoveMult(playerMeleeAfterMoveInput(player, nowMs)),
         // B10 血の覚醒(THEONE_ROUND2 §3-1): 移動速度 ×1.5。ランプの外・dash/スライド/スケーターには掛けない(関数側)。
@@ -14392,6 +14395,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           phillReticleDY,
           phillSnapEnemyId,
           lastDirection: warpTo || BR.isBrawlerBusy(player.brawler) ? player.lastDirection : lastDirection, // ワープの回は相手の方を向いたまま / 格闘の段・技の間も相手の方を向いたまま
+          heldFacingDir: heldFacingAfterTick(player.heldFacingDir, playerFacingHoldActive(player, nowMs)), // ★止まりが明けたら覚えた向きを捨てる(utils/facingLock)
           aimX,
           aimY,
           shukuchiWarpTo: undefined,
@@ -15393,12 +15397,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★武器を振っている間は向きを変えない(社長指摘2026-10-12「まだナイフ振ってる時でも振り向けちゃう」)。
     // v0.25.4992 は movePlayer の中(速度→向き)だけを止めていた。向きは入力側(スティック/十字/キー/マウス)もここで直接書くので、ここでも止める。
     const sp = get().player;
-    const swingSince = Date.now() - (sp.meleeSwingAt || 0);
-    if ((sp.meleeSwingAt || 0) > 0 && swingSince >= 0 && swingSince < PLAYER_MELEE_SWING_MS) return;
     // 格闘の段・技の間も向きを変えない(向きは相手へ向けてある=§7-4)。
     if (BR.isBrawlerBusy(sp.brawler)) return;
-    // ★攻撃の後で体が止まっている間(ナイフの硬直・3段目の後の隙の止まり・刀の着地の硬直等)も向きを変えない(社長指示2026-11-27・utils/facingLock)。
-    if (playerFacingLockedAfterAttack(sp, Date.now())) return;
+    // ★振りの最中と、攻撃の後で体が止まっている間(ナイフの硬直・3段目の後の隙の止まり・刀の着地の硬直等)は向きを変えない(社長指示2026-11-27・utils/facingLock)。
+    // ★その間に入れた向きは覚えておき、次の振りの振り始めでその向きへ振る(社長裁定2026-11-27・beginMeleeSwing が読む)。
+    if (playerFacingHoldActive(sp, Date.now())) {
+      const held = holdFacingInput(sp.heldFacingDir, direction);
+      if (held !== sp.heldFacingDir) set(state => ({ player: { ...state.player, heldFacingDir: held } }));
+      return;
+    }
     set(state => ({
       player: {
         ...state.player,
@@ -15460,9 +15467,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ナイフの段: タップごとに 1→2→3→1…(最後の振りから戻る時間を過ぎたら1段目)。カウンターは1段目だけ・クールダウンは連撃の終わりから(鞭と同じ規則)。
     const knifeStage = knifeNow ? knifeComboNextStage(p.knifeComboStage ?? 0, p.knifeComboAt ?? -Infinity, now) : 0;
     const knifePlan = knifeNow ? knifeComboCounterPlan(knifeStage, now, p.knifeCounterReadyAt ?? 0, !!p.knifeComboCounter, knifeCounterCooldownMs(p)) : null;
+    // ★止まり中に入れた向きへ振る(社長裁定2026-11-27・utils/facingLock): 振りの最中・攻撃の後の止まり中に覚えた向きがあれば、振り始めの向きをそれにする。
+    // 踏み込み・鞭のしなり・判定(triggerCounter)は全部 lastDirection を読むので、ここで先に書き換える。
+    const swingFace = swingStartFacing(p.lastDirection, p.heldFacingDir, playerFacingHoldActive(p, now));
+    // 照準(手元の弧・手のナイフの向き)も振り始めの向きへ揃える(振りの間は照準が止まるため・向き直した時だけ)。
+    const swingAim = swingFace && swingFace !== p.lastDirection ? aimForSwingFacing(p.aimX, p.aimY, swingFace) : null;
     set(state => ({
       player: {
         ...state.player,
+        lastDirection: swingFace,
+        heldFacingDir: undefined,
+        ...(swingAim ?? {}),
         pendingSwingAt: now,
         meleeSwingAt: now,
         ...((!whipPlan || whipPlan.open) && (!knifePlan || knifePlan.open) ? {
@@ -15479,7 +15494,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 丸ごと共有できる(踏み込みは今日いちばん帯の穴を踏みやすい機能なので、自前で座標を書かず
     // 既存の共通経路へ載せる。v0.25.3875 の事故と同型を作らないため)。
     {
-      const ld = p.lastDirection ?? { x: 1, y: 0 };
+      const ld = swingFace ?? { x: 1, y: 0 };
       const lm = Math.hypot(ld.x, ld.y);
       if (lm > 0.001) {
         // ★二段階の踏み込み(v0.25.3957): 指を離した瞬間の走り/歩きで距離を分ける。
@@ -15505,7 +15520,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 「巻く→S字→伸び切る」なので、前隙の間にしなり、判定の瞬間に伸び切って打つ、が絵で成立する
     // (馬乗りには入っていたのにプレイヤーには入っていなかった)。判定は持たない=分類②の絵。
     if (p.subWeapons.includes('whip')) {
-      const ld = p.lastDirection ?? { x: 1, y: 0 }; // 未設定=右向き(他の鞭経路と同じ既定)
+      const ld = swingFace ?? { x: 1, y: 0 }; // 未設定=右向き(他の鞭経路と同じ既定)・止まり中に覚えた向きを反映した振り始めの向き
       const lmag = Math.max(0.001, Math.hypot(ld.x, ld.y));
       const aim0 = Math.atan2(ld.y / lmag, ld.x / lmag);
       // ★赤いしなりは一旦出さない(社長指示2026-11-26「赤い斬撃は一旦削除 合ってない」・戻す=WHIP_SNARE_FX_ENABLED を true)。
