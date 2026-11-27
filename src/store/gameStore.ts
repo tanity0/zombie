@@ -134,7 +134,8 @@ import { bloodBurstShoves, BLOOD_AWAKEN_BURST_RADIUS } from '../utils/bloodAwake
 import { playerSuperArmorActive } from '../utils/superArmor'; // B12 スーパーアーマー(THEONE_ROUND2 §4)
 import { playerLaunchPatch, playerAirLocked } from '../utils/playerLaunch'; // ★プレイヤーも浮く(research/BRAWLER.md §36-0)
 import { MELEE_RECOVER_MS } from '../utils/meleeRecover'; // 近接を振ったあとの硬直(v0.25.4380)
-import { meleeAfterMoveMult } from '../utils/meleeAfterMove'; // 攻撃後の歩く速さ(ナイフ=重い区間を止める・社長指示2026-11-26)
+import { meleeAfterMoveMult, type MeleeAfterMoveInput } from '../utils/meleeAfterMove'; // 攻撃後の歩く速さ(ナイフ=重い区間を止める・社長指示2026-11-26)
+import { facingLockedAfterAttack } from '../utils/facingLock'; // 攻撃の後で止まっている間は向きを変えない(社長指示2026-11-27)
 import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-3(使者のKB特例=免疫CD無視)
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
@@ -2565,6 +2566,25 @@ export const hasWhip = (player: Player): boolean => player.subWeapons.includes('
 export const isWhipMode = (player: Player): boolean => hasWhip(player) && !isMeleeOnlyMode(player); // 格闘中も鞭は動かない(research/BRAWLER.md §7-2)
 /** ★ナイフ(近接)の3連撃を使う振りか(utils/knifeCombo)。刀・鞭・格闘はそれぞれの振り=対象外。 */
 export const isKnifeComboMode = (player: Player): boolean => !isKatanaMode(player) && !isWhipMode(player) && !isBrawlerMode(player);
+/** 攻撃後の歩く速さ(utils/meleeAfterMove)の入力をプレイヤーから組む。movePlayer の速さと向きの止め(utils/facingLock)が同じ値を読む。 */
+const playerMeleeAfterMoveInput = (player: Player, nowMs: number): MeleeAfterMoveInput => ({
+  weapon: isKatanaMode(player) ? 'katana' : isWhipMode(player) ? 'whip' : isBrawlerMode(player) ? 'brawler' : 'knife',
+  nowMs,
+  swingStartAt: player.meleeSwingAt,
+  swingCycleMs: PLAYER_MELEE_SWING_MS,
+  recoverEndMs: COUNTER_WINDOW + MELEE_RECOVER_MS,
+  whipComboStage: player.whipComboStage,
+  whipComboAt: player.whipComboAt,
+  knifeComboStage: player.knifeComboStage,
+  knifeComboAt: player.knifeComboAt,
+});
+/** ★攻撃の後で体が止まっている間は移動の入力で向きを変えない(社長指示2026-11-27「攻撃後に止まってる時に振り返れちゃうのは変だ」・utils/facingLock)。 */
+const playerFacingLockedAfterAttack = (player: Player, nowMs: number): boolean => facingLockedAfterAttack({
+  ...playerMeleeAfterMoveInput(player, nowMs),
+  dash: player,
+  tsubameCrouchUntil: player.tsubameCrouchUntil,
+  shijinSlideUntil: player.shijinSlideUntil,
+});
 /** ★ナイフのカウンターのクールダウン(ms・近接CDの短縮を掛ける前)。旧(3連撃の前)のナイフの1振りの周期(窓+CD)と同じ長さ。起点は連撃の終わり。 */
 export const KNIFE_COUNTER_COOLDOWN_MS = COUNTER_WINDOW + COUNTER_COOLDOWN;
 export const whipLevel = (player: Player): number =>
@@ -13947,17 +13967,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         //   同じ硬直の枝に乗せる=ダッシュ系・スライドには掛からない(回避の逃げ道は塞がない)。重なる所は遅い方(二重に掛けない)。
         // ★ナイフだけ: 重くなる区間を全部「完全に止まる」に(社長指示2026-11-26「いったんナイフだけ」・明ける時刻は今のまま+明けの後ろに短い立ち上がり)。
         //   鞭・刀・格闘は今と同じ値(utils/meleeAfterMove)。
-        meleeRecoverMult: meleeAfterMoveMult({
-          weapon: isKatanaMode(player) ? 'katana' : isWhipMode(player) ? 'whip' : isBrawlerMode(player) ? 'brawler' : 'knife',
-          nowMs,
-          swingStartAt: player.meleeSwingAt,
-          swingCycleMs: PLAYER_MELEE_SWING_MS,
-          recoverEndMs: COUNTER_WINDOW + MELEE_RECOVER_MS,
-          whipComboStage: player.whipComboStage,
-          whipComboAt: player.whipComboAt,
-          knifeComboStage: player.knifeComboStage,
-          knifeComboAt: player.knifeComboAt,
-        }),
+        meleeRecoverMult: meleeAfterMoveMult(playerMeleeAfterMoveInput(player, nowMs)),
         // B10 血の覚醒(THEONE_ROUND2 §3-1): 移動速度 ×1.5。ランプの外・dash/スライド/スケーターには掛けない(関数側)。
         awakenSpeedMult: bloodAwakenMult(player, state.gameTime).boost,
       };
@@ -14254,7 +14264,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const speedNow = Math.hypot(vx, vy);
       let direction: Direction = 'idle';
       let lastDirection = player.lastDirection;
-      if (speedNow > 1 && !swingFrozen && !lungePushed) { // 振っている間は向きを変えない(残りの速度で向きが揺れないように)。構えで押されている間も相手を向いたまま(§12-3d)
+      // ★攻撃の後で体が止まっている間も向きを変えない(utils/facingLock・社長指示2026-11-27)。被弾の吹き飛び・振りの踏み込みは今どおり速度の向きへ。
+      const afterAttackFacingLocked = !kbActive && !lungeActive && playerFacingLockedAfterAttack(player, nowMs);
+      if (speedNow > 1 && !swingFrozen && !lungePushed && !afterAttackFacingLocked) { // 振っている間は向きを変えない(残りの速度で向きが揺れないように)。構えで押されている間も相手を向いたまま(§12-3d)
         lastDirection = { x: vx / speedNow, y: vy / speedNow };
         direction = Math.abs(vx) > Math.abs(vy)
           ? (vx > 0 ? 'right' : 'left')
@@ -15385,6 +15397,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if ((sp.meleeSwingAt || 0) > 0 && swingSince >= 0 && swingSince < PLAYER_MELEE_SWING_MS) return;
     // 格闘の段・技の間も向きを変えない(向きは相手へ向けてある=§7-4)。
     if (BR.isBrawlerBusy(sp.brawler)) return;
+    // ★攻撃の後で体が止まっている間(ナイフの硬直・3段目の後の隙の止まり・刀の着地の硬直等)も向きを変えない(社長指示2026-11-27・utils/facingLock)。
+    if (playerFacingLockedAfterAttack(sp, Date.now())) return;
     set(state => ({
       player: {
         ...state.player,

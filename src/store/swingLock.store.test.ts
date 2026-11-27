@@ -72,7 +72,44 @@ describe('振っている間は入力から向きを書き換えられない', (
     useGameStore.setState(s => ({ player: { ...s.player, meleeSwingAt: Date.now(), lastDirection: { x: 1, y: 0 } } }));
     useGameStore.getState().setLastDirection({ x: -1, y: 0 });
     expect(useGameStore.getState().player.lastDirection).toEqual({ x: 1, y: 0 });
+    // ナイフは振りの後の硬直(止まり)の間も向きを変えない(社長指示2026-11-27)=止まりが明けた後で確かめる。
+    useGameStore.setState(s => ({ player: { ...s.player, meleeSwingAt: Date.now() - (COUNTER_WINDOW + MELEE_RECOVER_MS + MELEE_AFTER_STOP_RAMP_MS + 5) } }));
+    useGameStore.getState().setLastDirection({ x: -1, y: 0 });
+    expect(useGameStore.getState().player.lastDirection).toEqual({ x: -1, y: 0 });
+  });
+});
+
+// 社長指示2026-11-27「攻撃後に止まってる時に振り返れちゃうのは変だ」: 振りの後で体が止まっている間は、入力で向きが変わらない(utils/facingLock)。
+describe('攻撃の後で止まっている間は振り返らない', () => {
+  it('ナイフ: 振りの後の硬直(止まり)の間は左へ入れても向きは右のまま・明けて動き出したら左を向く', () => {
     useGameStore.setState(s => ({ player: { ...s.player, meleeSwingAt: Date.now() - PLAYER_MELEE_SWING_MS - 5 } }));
+    useGameStore.getState().setLastDirection({ x: -1, y: 0 }); // スティック/キーの向き書き
+    for (let i = 0; i < 5; i++) useGameStore.getState().movePlayer(LEFT, 0.016);
+    expect(useGameStore.getState().player.lastDirection).toEqual({ x: 1, y: 0 });
+    useGameStore.setState(s => ({ player: { ...s.player, meleeSwingAt: Date.now() - (COUNTER_WINDOW + MELEE_RECOVER_MS + MELEE_AFTER_STOP_RAMP_MS + 5) } }));
+    useGameStore.getState().setLastDirection({ x: -1, y: 0 });
+    expect(useGameStore.getState().player.lastDirection).toEqual({ x: -1, y: 0 });
+    useGameStore.setState(s => ({ player: { ...s.player, lastDirection: { x: 1, y: 0 } } }));
+    for (let i = 0; i < 5; i++) useGameStore.getState().movePlayer(LEFT, 0.016);
+    expect(useGameStore.getState().player.lastDirection!.x).toBeLessThan(0);
+  });
+  it('ナイフ3段目: 後の隙の間は振り返らない', () => {
+    useGameStore.setState(s => ({ player: { ...s.player, meleeSwingAt: 0, knifeComboStage: 3, knifeComboAt: Date.now() - PLAYER_MELEE_SWING_MS - 100 } }));
+    useGameStore.getState().setLastDirection({ x: -1, y: 0 });
+    for (let i = 0; i < 5; i++) useGameStore.getState().movePlayer(LEFT, 0.016);
+    expect(useGameStore.getState().player.lastDirection).toEqual({ x: 1, y: 0 });
+  });
+  it('刀の着地の硬直の間は振り返らない・明けたら向く', () => {
+    useGameStore.setState(s => ({ player: { ...s.player, subWeapons: ['katana'], meleeSwingAt: 0, katanaDashUntil: 0, katanaRecoveryUntil: Date.now() + 500 } }));
+    useGameStore.getState().setLastDirection({ x: -1, y: 0 });
+    for (let i = 0; i < 5; i++) useGameStore.getState().movePlayer(LEFT, 0.016);
+    expect(useGameStore.getState().player.lastDirection).toEqual({ x: 1, y: 0 });
+    useGameStore.setState(s => ({ player: { ...s.player, katanaRecoveryUntil: 0 } }));
+    useGameStore.getState().setLastDirection({ x: -1, y: 0 });
+    expect(useGameStore.getState().player.lastDirection).toEqual({ x: -1, y: 0 });
+  });
+  it('鞭の1段目の後(重いが動ける)は今どおり振り返れる', () => {
+    useGameStore.setState(s => ({ player: { ...s.player, subWeapons: ['whip'], meleeSwingAt: Date.now() - PLAYER_MELEE_SWING_MS - 5, whipComboStage: 1, whipComboAt: Date.now() - PLAYER_MELEE_SWING_MS - 5 } }));
     useGameStore.getState().setLastDirection({ x: -1, y: 0 });
     expect(useGameStore.getState().player.lastDirection).toEqual({ x: -1, y: 0 });
   });
