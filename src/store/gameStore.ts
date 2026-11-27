@@ -146,7 +146,7 @@ import {
 import { isEnemyAttacking, meleeHitSfxLayers, hitStunMsFor, impactHitStunUntil, HIT_STUN_MS_MOB } from '../utils/combatFeel';
 import { meleeShakePatch, extendMeleeShake, applyHitstopK, katanaMoveKind, HITSTOP_MOVE_K, WHIP_TIP_SHAKE } from '../utils/hitShake'; // 近接のヒットストップの震え・技の係数(research/HITSTOP.md)
 import { makeKatanaDashHold, makeTsubameDashHold, katanaDashVirtualAlong, katanaDashAlong, pickKatanaDashHold, katanaDashHeld, firedKatanaDashHold, katanaDashHoldExtend, SATSUJIN_STRIKE_HOLD_MS, type KatanaDashHold, type KatanaDashHoldCand } from '../utils/katanaDashHold'; // 一閃の通り道の途中の止め(社長指示2026-11-27) // 近接のヒットストップの震え・技の係数(research/HITSTOP.md)
-import { BOSS_KILL_CAMERA_HOLD_MS, BOSS_KILL_FLASH_ALPHA, BOSS_KILL_SLOW, bossKillSlowAfterStop, longerHitstopUntil, playerHurtStopUntil } from '../utils/bossKillStop'; // ボスストップ・致命の止め(research/HITSTOP.md §6)
+import { BOSS_KILL_CAMERA_HOLD_MS, BOSS_KILL_FLASH_ALPHA, BOSS_KILL_SLOW, bossKillBySubWeapon, bossKillSlowAfterStop, longerHitstopUntil, playerHurtStopUntil } from '../utils/bossKillStop'; // ボスストップ・致命の止め(research/HITSTOP.md §6)
 import * as BR from '../utils/brawler'; // サブウェポン「格闘」の純関数(research/BRAWLER.md)
 import { isBrawlerGuardingAt } from '../utils/brawler';
 import * as BRC from '../utils/brawlerCombo'; // 格闘の敵側の流れ(食らいの固まり・減衰・反撃=research/BRAWLER.md §11)
@@ -9100,7 +9100,8 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   useGameStore.setState({
     // glenBoss2(v0.25.3029): 形態2の死体は変身後の絵で崩す(syncBossCorpseが読む)。
     bossCorpse: { type: enemy.type, x, y, w: enemy.width, h: enemy.height, diedAt: Date.now(), holdMs: corpseHoldMs, glenBoss2: enemy.type === 'giantbat' && enemy.glenForm === 2,
-      phantomUnique: enemy.phantomUnique }, // 拳鬼は自分の絵で崩す(research/BRAWLER_PHANTOM.md)
+      phantomUnique: enemy.phantomUnique, // 拳鬼は自分の絵で崩す(research/BRAWLER_PHANTOM.md)
+      bySubWeapon: bossKillBySubWeapon(currentMasterySource()) }, // 倒した一撃がサブウェポンか(描画の放射状の流れを出さない印・research/BLUR.md §2-5)
     ...(bossDefeat ? {
       eventBannerText: `${enemyDeathLabel(enemy.type)}を討伐`,
       eventBannerUntil: get().gameTime + DRAMATIC_DEATH_FADE_MS,
@@ -12732,7 +12733,7 @@ interface GameState {
   // 入れない)。裏ボス:全域ok。ゲートボス:そもそもゲート内」): 城ボス(giantbat・非ストーリー)との
   // 交戦フラグ。プレイヤー移動の半径クランプ(clampCastleFightCrossing)と制限ラインの描画が読む。
   castleFightNow: boolean;
-  bossCorpse: { type: EnemyType; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number; glenBoss2?: boolean; phantomUnique?: PhantomUniqueKind } | null; // 討伐後のフェードアウト演出(描画のみが参照)。holdMs=無傷で保持する尺(死亡アテンション付きボスのみ>0)。glenBoss2=変身後の絵で崩す(v0.25.3029)
+  bossCorpse: { type: EnemyType; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number; glenBoss2?: boolean; phantomUnique?: PhantomUniqueKind; bySubWeapon?: boolean } | null; // 討伐後のフェードアウト演出(描画のみが参照)。holdMs=無傷で保持する尺(死亡アテンション付きボスのみ>0)。glenBoss2=変身後の絵で崩す(v0.25.3029)
   // v0.25.3029(社長裁定「二体」): グレン形態1討伐後の形態2スポーン予約(at=実時刻・x/y=世界座標の中心)。
   glenForm2SpawnAt: { at: number; x: number; y: number } | null;
   hiddenBossDefeated: boolean;                          // 裏ボスを討伐済みか(方角矢印の表示打ち切り等に使用)
@@ -18921,7 +18922,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         lungeUntil: 0, lungeVx: 0, lungeVy: 0, lungeHoldUntil: 0,
         shukuchiWarpTo: undefined,
         lastDirection: { x: ux, y: uy },
-        iaiWarpAt: now, iaiWarpFromX: pcx, iaiWarpFromY: pcy,
+        iaiWarpAt: now, iaiWarpFromX: pcx, iaiWarpFromY: pcy, iaiWarpTargetId: e.id,
       },
     }));
     // 瞬間移動の筋(元の位置→ワープ先・判定なし=派手さの絵)。元の位置の残像は描画が iaiWarpAt を読んで一瞬だけ出す。

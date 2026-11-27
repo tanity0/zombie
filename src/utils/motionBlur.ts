@@ -11,6 +11,20 @@ export const BLUR_BRAWLER_SPACING_MS = 12;
 /** 強く吹き飛ばされた敵: 2枚(本体は透けさせない)。 */
 export const BLUR_ENEMY_GHOSTS = 2;
 export const BLUR_ENEMY_SPACING_MS = 10;
+/** 敵の残像の間隔の上限(ms)。間隔は画素で決める(blurEnemySpacingMs)=遅い間は時間を延ばし、速い間は 10ms まで詰める。 */
+export const BLUR_ENEMY_SPACING_MAX_MS = 28;
+/** 敵の残像どうしを離す距離=体の幅のこの割合(体の幅の 15〜20%)。 */
+export const BLUR_ENEMY_GAP_BODY_FRAC = 0.17;
+/** 体の幅が分からない時の離す距離(px)。 */
+export const BLUR_ENEMY_GAP_PX = 14;
+/**
+ * 敵の残像の間隔(ms): 画素で決める=gapPx / 速さ を [BLUR_ENEMY_SPACING_MS, BLUR_ENEMY_SPACING_MAX_MS] に収める
+ * (10ms 固定だと遅くなった所で写しが本体に重なって二重写りに見える)。速さが 0 以下なら上限。
+ */
+export const blurEnemySpacingMs = (gapPx: number, speedPxPerMs: number): number => {
+  if (!(speedPxPerMs > 0) || !(gapPx > 0)) return BLUR_ENEMY_SPACING_MAX_MS;
+  return Math.min(BLUR_ENEMY_SPACING_MAX_MS, Math.max(BLUR_ENEMY_SPACING_MS, gapPx / speedPxPerMs));
+};
 /** 同時に残像を出す敵の数の上限。 */
 export const BLUR_ENEMY_MAX = 4;
 /** 敵の残像を始める速さ(world px / ゲーム時間 ms)・続ける速さの下限。 */
@@ -35,13 +49,16 @@ export const blurGhostAlpha = (i: number, n: number): number => {
   return 0.18 + 0.42 * (n - i) / n;
 };
 
-/** 止まってからの残像の濃さの掛け(1→0・加減速つき=始めはゆっくり、真ん中で速く、終わりはゆっくり)。 */
+/** 止まってからの残像の濃さの掛け(1→0・ease-out=止まった瞬間に速く薄れ始め、終わりはゆっくり消える)。列の縮み(写しが本体へ追いつく)にも同じ掛けを使う。 */
 export const blurFadeK = (sinceEndMs: number, fadeMs = BLUR_FADE_MS): number => {
   if (!(sinceEndMs > 0)) return 1;
   if (sinceEndMs >= fadeMs) return 0;
-  const u = sinceEndMs / fadeMs;
-  return 1 - u * u * (3 - 2 * u);
+  const v = 1 - sinceEndMs / fadeMs;
+  return v * v;
 };
+
+/** 瞬間移動した瞬間、写しを道のりに広げておき、通常の間隔の並びへ縮めるまで(ms・ease-out)。 */
+export const BLUR_WARP_SPREAD_MS = 70;
 
 export interface BlurSample { t: number; x: number; y: number; r: number; h: number }
 
@@ -57,11 +74,16 @@ export interface BlurTrail {
   lastX: number; lastY: number; hasLast: boolean;
   /** 前のフレームのゲーム時間(dt を出す)。 */
   lastGt: number;
+  /** 最後の瞬間移動からの経過(ms・止めの間は進まない)。瞬間移動が無ければ +∞。 */
+  warpEl: number;
+  /** 最後の瞬間移動の元(f)と先(t)の点。 */
+  wfx: number; wfy: number; wfh: number; wtx: number; wty: number; wth: number;
 }
 
 export const createBlurTrail = (): BlurTrail => ({
   clock: 0, samples: [], active: false, sinceEnd: Number.POSITIVE_INFINITY,
   ox: 0, oy: 0, oh: 0, lastX: 0, lastY: 0, hasLast: false, lastGt: Number.NaN,
+  warpEl: Number.POSITIVE_INFINITY, wfx: 0, wfy: 0, wfh: 0, wtx: 0, wty: 0, wth: 0,
 });
 
 export interface BlurStepIn {
@@ -92,12 +114,13 @@ export const stepBlurTrail = (tr: BlurTrail, i: BlurStepIn): void => {
   const dt = Number.isNaN(tr.lastGt) ? 0 : i.gt - tr.lastGt;
   tr.lastGt = i.gt;
   if (dt < 0 || dt > 10 * BLUR_MAX_DT_MS) { // 時計が戻った(新しいゲーム)・大きく跳んだ=やり直し
-    tr.active = false; tr.samples.length = 0; tr.sinceEnd = Number.POSITIVE_INFINITY;
+    tr.active = false; tr.samples.length = 0; tr.sinceEnd = Number.POSITIVE_INFINITY; tr.warpEl = Number.POSITIVE_INFINITY;
     tr.lastX = i.x; tr.lastY = i.y; tr.hasLast = true;
     return;
   }
   const d = Math.min(BLUR_MAX_DT_MS, dt);
   const moved = tr.hasLast ? Math.hypot(i.x - tr.lastX, i.y - tr.lastY) : 0;
+  if (!i.stop && d > 0) tr.warpEl += d; // 瞬間移動の広がりの時計(止めの間は進まない)
   if (i.active) {
     const starting = !tr.active;
     if (starting) {
@@ -122,6 +145,8 @@ export const stepBlurTrail = (tr: BlurTrail, i: BlurStepIn): void => {
       const cut = tr.clock - KEEP_MS;
       while (tr.samples.length > 2 && tr.samples[1].t <= cut) tr.samples.shift();
       tr.ox = fx; tr.oy = fy; tr.oh = fh;
+      // 写しはこのフレーム道のりに広げて置き、BLUR_WARP_SPREAD_MS で通常の並びへ縮める(着いた所に団子にしない)。
+      tr.warpEl = 0; tr.wfx = fx; tr.wfy = fy; tr.wfh = fh; tr.wtx = i.x; tr.wty = i.y; tr.wth = h;
     } else if (moved > BLUR_TELEPORT_PX) {
       // 予告の無い瞬間移動=列を切って今の位置から
       tr.samples.length = 0;
@@ -185,14 +210,24 @@ export const blurSampleAt = (samples: readonly BlurSample[], t: number): BlurSam
 /**
  * 残像 n 枚を out へ(i=1 が本体のすぐ後ろ)。出さない残像(列が足りない・薄れ切った)は alpha 0。
  * 位置は残像の時計の spacing ms おきの過去(止めの間は時計が止まる=残像もその場で止まる)。
+ * 止まった後は間隔も薄れと同じ掛けで縮む=写しが本体へ追いつきながら消える(ease-out)。
+ * 瞬間移動した瞬間は写しを道のりの i/(n+1) の所(3枚なら 75%/50%/25%)に置き、BLUR_WARP_SPREAD_MS で通常の並びへ縮める(ease-out)。
  */
 export const blurGhostsInto = (tr: BlurTrail, n: number, spacingMs: number, out: BlurGhost[]): BlurGhost[] => {
   const fade = blurTrailFade(tr);
+  const sp = spacingMs * fade; // 止まった後は列が本体へ縮む(動いている間は fade=1)
+  const warpW = tr.warpEl < BLUR_WARP_SPREAD_MS ? tr.warpEl / BLUR_WARP_SPREAD_MS : 1;
+  const warpE = 1 - (1 - warpW) * (1 - warpW); // ease-out
   for (let i = 1; i <= n; i++) {
     const g = out[i - 1] ?? (out[i - 1] = { x: 0, y: 0, r: 0, h: 0, alpha: 0 });
-    const s = fade > 0.001 && tr.samples.length > 1 ? blurSampleAt(tr.samples, tr.clock - i * spacingMs) : null;
+    const s = fade > 0.001 && tr.samples.length > 1 ? blurSampleAt(tr.samples, tr.clock - i * sp) : null;
     if (!s) { g.alpha = 0; continue; }
     g.x = s.x; g.y = s.y; g.r = s.r; g.h = s.h;
+    if (warpE < 1) {
+      const k = 1 - i / (n + 1);
+      const wx = tr.wfx + (tr.wtx - tr.wfx) * k, wy = tr.wfy + (tr.wty - tr.wfy) * k, wh = tr.wfh + (tr.wth - tr.wfh) * k;
+      g.x = wx + (s.x - wx) * warpE; g.y = wy + (s.y - wy) * warpE; g.h = wh + (s.h - wh) * warpE;
+    }
     g.alpha = blurGhostAlpha(i, n) * fade;
   }
   out.length = n;
@@ -220,13 +255,18 @@ export const enemyBlurActive = (wasActive: boolean, candidate: boolean, speedPxP
 
 /** 先端が伸び切る前のどこから筋が出始めるか(ms)・伸び切った後どれだけで消えるか(ms)。 */
 export const WHIP_TIP_STREAK_LEAD_MS = 40;
-export const WHIP_TIP_STREAK_TAIL_MS = 110;
-/** 縄の時計(前隙=伸び切るまで)から、先端の筋の濃さ(0..1)。伸び切る瞬間に一番濃く、すぐ出て、加減速つきに消える。 */
+export const WHIP_TIP_STREAK_TAIL_MS = 75;
+/** 2本の筋の長さ(縄の長さに対する割合)・太さ(画面の px)・縄の向きからの開き(度)・縄から離す距離(画面の px)。 */
+export const WHIP_TIP_STREAK_LEN = [0.30, 0.18] as const;
+export const WHIP_TIP_STREAK_THICK_PX = [2.5, 1.5] as const;
+export const WHIP_TIP_STREAK_SPREAD_DEG = 12;
+export const WHIP_TIP_STREAK_OFFSET_PX = 8;
+/** 縄の時計(前隙=伸び切るまで)から、先端の筋の濃さ(0..1)。伸び切る瞬間に一番濃く、すぐ出て、ease-out で消える。 */
 export const whipTipStreakAlpha = (ropeElMs: number, windupMs: number): number => {
   const t = ropeElMs - windupMs;
   if (t < -WHIP_TIP_STREAK_LEAD_MS || t >= WHIP_TIP_STREAK_TAIL_MS) return 0;
   if (t < 0) { const u = 1 + t / WHIP_TIP_STREAK_LEAD_MS; return 1 - (1 - u) * (1 - u); } // 速く出て減速
-  return blurFadeK(t, WHIP_TIP_STREAK_TAIL_MS);
+  return blurFadeK(t, WHIP_TIP_STREAK_TAIL_MS); // ease-out
 };
 
 // ---- 画面全体の放射状の流れ(research/BLUR.md §2-5) ----
@@ -234,11 +274,17 @@ export const whipTipStreakAlpha = (ropeElMs: number, windupMs: number): number =
 export const RADIAL_FLOW_MS = 200;
 /** 流れの強さの最大(画面の中で、点までの距離に対する吸い込みの割合)。 */
 export const RADIAL_FLOW_MAX = 0.07;
-/** 流れの強さ(0..1): 速く立ち上がり(全体の 30%)、加減速つきに戻る。範囲の外は 0。 */
+/** 流れの強さ(0..1): 速く立ち上がり(全体の 25%・ease-out)、少しだけ緩みながら保ち、最後の 30% で ease-in に急に戻る。範囲の外は 0。 */
 export const radialFlowK = (elapsedMs: number, totalMs = RADIAL_FLOW_MS): number => {
   if (!(elapsedMs >= 0) || elapsedMs >= totalMs) return 0;
   const u = elapsedMs / totalMs;
-  if (u < 0.3) { const a = u / 0.3; return 1 - (1 - a) * (1 - a) * (1 - a); }
-  const b = (u - 0.3) / 0.7;
-  return 1 - b * b * (3 - 2 * b);
+  if (u < 0.25) { const a = u / 0.25; return 1 - (1 - a) * (1 - a) * (1 - a); }
+  if (u < 0.7) return 1 - 0.1 * (u - 0.25) / 0.45;
+  const b = (u - 0.7) / 0.3;
+  return 0.9 * (1 - b * b);
 };
+/** 流れの中心のまわりで強さ 0 の半径・全強さになる半径(画面の短い辺に対する割合)。中心は溶かさず、外へ smoothstep で強める。 */
+export const RADIAL_FLOW_CALM_R = 0.12;
+export const RADIAL_FLOW_FULL_R = 0.45;
+/** 写しの位置(点から外へ向かう割合)と重み。近い写しほど重い=点の側へ尾を引く(吸い込まれる向きが読める)。 */
+export const RADIAL_FLOW_TAPS = [[0.33, 0.55], [0.66, 0.28], [1.0, 0.17]] as const;

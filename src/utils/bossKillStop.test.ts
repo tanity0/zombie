@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  BOSS_KILL_SLOW, bossKillSlowAfterStop, longerHitstopUntil,
+  BOSS_KILL_SLOW, bossKillBySubWeapon, bossKillSlowAfterStop, longerHitstopUntil,
   PLAYER_FATAL_STOP_MS, playerHurtStopUntil, playerDeathTimeline,
 } from './bossKillStop';
 import { computeTimeSlowScale } from './timeSlowCurve';
@@ -67,5 +67,20 @@ describe('死亡演出の期限は止めの後から数える(削られない)',
     expect(r.slowHoldMs - s).toBe(base.slowHoldMs);
     expect(r.slowMs - s).toBe(base.slowMs);
     expect(r.resultMs - r.slowMs).toBe(base.resultMs - base.slowMs);
+  });
+});
+
+describe('ボスを倒した一撃がサブウェポンか(放射状の流れを出さない印・research/BLUR.md §2-5)', () => {
+  it('自律して当たるサブウェポン(投げ物・召喚・設置物・矢の雨)は true', () => {
+    for (const k of ['heavy-grenade', 'dog', 'turret', 'fire-knife', 'drone-boomerang', 'wire-anchor', 'arrow-rain', 'alchemy', 'molotov', 'sensor-mine', 'support-sniper']) {
+      expect(bossKillBySubWeapon(k)).toBe(true);
+    }
+  });
+  it('自分で振る刀・鞭・格闘、銃・近接武器、出どころ無しは false', () => {
+    for (const k of ['katana', 'whip', 'brawler', 'handgun-t1', 'rifle-t3', 'knife-t1', 'loadout', 'none', 'max']) {
+      expect(bossKillBySubWeapon(k)).toBe(false);
+    }
+    expect(bossKillBySubWeapon(null)).toBe(false);
+    expect(bossKillBySubWeapon(undefined)).toBe(false);
   });
 });

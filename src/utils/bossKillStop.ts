@@ -1,8 +1,17 @@
 // ★ボスストップとプレイヤーの死の止め(research/HITSTOP.md §2-8・§3・§6・社長「プレイヤーやボス倒した時にも参考のヒットストップスローはいい感じに入れて」)。
 // 桜井政博『大事なところはストップ!』の「止め→スローで等速へ戻す」を、既にある演出(アテンション・討伐のスロー・死亡の寄りとスロー)の
 // 並びの直しで出す。新しい止めは足さない(ボス)。判定・ダメージには触れない純関数だけ(store と useGameLoop が読む)。
+import { MASTERY_SUB_KEYS } from '../data/mastery';
 
 // ---- ボスを倒した一撃 ----
+
+/**
+ * ボスを倒した一撃がサブウェポン(自律して当たる物: 投げ物・召喚・設置物・矢の雨など)か。いまの出どころ(utils/masteryRun の currentMasterySource)から決める。
+ * 刀・鞭・格闘はプレイヤーが自分で振る近接(サブの枠に入っていてもスローが許される近接3経路と同じ扱い)=false。出どころ無し・銃・近接武器も false。
+ * 描画の放射状の流れ(research/BLUR.md §2-5「サブウェポンでは出さない」)が bossCorpse の印として読む。
+ */
+const SUB_KILL_KEYS: ReadonlySet<string> = new Set<string>(MASTERY_SUB_KEYS.filter(k => k !== 'katana' && k !== 'whip' && k !== 'brawler'));
+export const bossKillBySubWeapon = (source: string | null | undefined): boolean => typeof source === 'string' && SUB_KILL_KEYS.has(source);
 
 /** 撃破の一撃の瞬間、アテンションのカメラ(パン・寄り)が動き出すのを遅らせる長さ(ms・叩き台)。その間は画面もカメラも止まったまま。 */
 export const BOSS_KILL_CAMERA_HOLD_MS = 250;

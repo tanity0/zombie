@@ -22,8 +22,9 @@ describe('投影の段階2: 後掛けの役の表(番人)', () => {
       || /\bc\.addChildAt\(this\.player/.test(l));
     // 内訳: 主人公の入れ物の子 8(+c.addChildAt(this.playerBloodRim) 1)=9 / フィルの羽・撒き羽根 2 / 冷気ブレス 1 /
     // 予告の焼き素材(spikeThrust・burstFrag・bandSlices・rings・bands・shockwaves×2・dashWind・coilBody・clawMarks)10 /
-    // 斬撃の弧 1 / 物理の絵 1 / グレンのパーツ 1 / 英雄の霧 4 / 錬金の岩 1 / 刀の切れ目 1 = 31
-    expect(hits.length).toBe(31);
+    // 斬撃の弧 1 / 物理の絵 1 / グレンのパーツ 1 / 英雄の霧 4 / 錬金の岩 1 / 刀の切れ目 1 /
+    // ブラーの一閃の写しの刀(役 blurGhost=trail・research/BLUR.md)1 = 32
+    expect(hits.length).toBe(32);
   });
 
   it('別名(const vc = view.container の後の vc.addChild 等)や体の親(body.parent / view.sprite.parent)へ足す所も数える', () => {

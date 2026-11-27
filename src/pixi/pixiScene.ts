@@ -136,8 +136,10 @@ import { iaiAfterimageAlpha } from '../utils/katanaIaiCounter'; // 居合一閃�
 import { katanaDashHeld } from '../utils/katanaDashHold'; // 一閃の通り道の途中の止めの間は無敵の点滅を止める(描画だけ)
 import {
   createBlurTrail, stepBlurTrail, blurGhostsInto, blurBodyAlpha, blurStreak, blurTrailVisible, enemyBlurActive, whipTipStreakAlpha, radialFlowK,
-  BLUR_KATANA_GHOSTS, BLUR_KATANA_SPACING_MS, BLUR_BRAWLER_GHOSTS, BLUR_BRAWLER_SPACING_MS, BLUR_ENEMY_GHOSTS, BLUR_ENEMY_SPACING_MS,
-  BLUR_STILL_PX, RADIAL_FLOW_MS, RADIAL_FLOW_MAX, type BlurTrail, type BlurGhost,
+  BLUR_KATANA_GHOSTS, BLUR_KATANA_SPACING_MS, BLUR_BRAWLER_GHOSTS, BLUR_BRAWLER_SPACING_MS, BLUR_ENEMY_GHOSTS,
+  BLUR_STILL_PX, RADIAL_FLOW_MS, RADIAL_FLOW_MAX, RADIAL_FLOW_CALM_R, RADIAL_FLOW_FULL_R, RADIAL_FLOW_TAPS,
+  blurEnemySpacingMs, BLUR_ENEMY_GAP_BODY_FRAC, BLUR_ENEMY_GAP_PX, BLUR_ENEMY_SPACING_MAX_MS,
+  WHIP_TIP_STREAK_LEN, WHIP_TIP_STREAK_THICK_PX, WHIP_TIP_STREAK_SPREAD_DEG, WHIP_TIP_STREAK_OFFSET_PX, type BlurTrail, type BlurGhost,
 } from '../utils/motionBlur'; // ブラー表現「詰めた残像」(research/BLUR.md・描画だけ)
 import { BOSS_KILL_CAMERA_HOLD_MS } from '../utils/bossKillStop';
 import {
@@ -2297,26 +2299,36 @@ void main(void)
 `;
 // ★ブラー §2-5(research/BLUR.md): 画面全体の放射状の流れ。ボス撃破の一撃(止めが明けた瞬間)と居合一閃のワープの瞬間だけ 0.2 秒、
 // 当たった点へ吸い込まれるように流れて戻る。worldGroup のフィルタ(ズーム時の遠近と同じ経路・頂点は ZWARP_VERT)。出力の点ごとに、
-// 点から外へ向かって 10 回読んで平均する(点に向かって絵が流れ込む)。強さ 0 の間は付けない=平常時のパスはゼロ。負荷 6/10(0.2秒・1つだけ)。
+// 点から外へ向かって3回だけ写す(utils/motionBlur RADIAL_FLOW_TAPS: 0.33/0.66/1.0・重み 0.55/0.28/0.17=近い写しほど重い=点の側へ尾を引く=吸い込まれる向きが読める)。
+// 点のまわり(画面の短い辺の RADIAL_FLOW_CALM_R)は強さ 0、外へ smoothstep で強める(当たった所は溶かさない)。読む座標は入力の画素の中心へ揃える
+// (補間で混ぜない=ドットの粒を保つ)。強さ 0 の間は付けない=平常時のパスはゼロ。負荷 6/10(0.2秒・1つだけ・読み3回)。
 const RADIAL_FLOW_FRAG = `
 in vec2 vLocal;
 in vec2 vUvScale;
 out vec4 finalColor;
 
 uniform sampler2D uTexture;
+uniform highp vec4 uInputSize; // 頂点の側と同じ精度で宣言する(精度が食い違うとリンクで落ちる)
+uniform highp vec4 uOutputFrame;
 uniform vec2 uCenter;
 uniform float uStrength;
+
+vec4 tap(vec2 p)
+{
+    vec2 uv = clamp(p, 0.0, 1.0) * vUvScale;
+    vec2 px = floor(uv * uInputSize.xy) + 0.5;
+    return texture(uTexture, px * uInputSize.zw);
+}
 
 void main(void)
 {
     vec2 d = vLocal - uCenter;
-    vec4 acc = vec4(0.0);
-    for (int i = 0; i < 10; i++) {
-        float t = float(i) / 9.0;
-        vec2 p = clamp(vLocal + d * (uStrength * t), 0.0, 1.0);
-        acc += texture(uTexture, p * vUvScale);
-    }
-    finalColor = acc / 10.0;
+    vec2 dpx = d * uOutputFrame.zw;
+    float rn = length(dpx) / max(1.0, min(uOutputFrame.z, uOutputFrame.w));
+    float s = uStrength * smoothstep(${RADIAL_FLOW_CALM_R.toFixed(3)}, ${RADIAL_FLOW_FULL_R.toFixed(3)}, rn);
+    finalColor = tap(vLocal + d * (s * ${RADIAL_FLOW_TAPS[0][0].toFixed(3)})) * ${RADIAL_FLOW_TAPS[0][1].toFixed(3)}
+               + tap(vLocal + d * (s * ${RADIAL_FLOW_TAPS[1][0].toFixed(3)})) * ${RADIAL_FLOW_TAPS[1][1].toFixed(3)}
+               + tap(vLocal + d * (s * ${RADIAL_FLOW_TAPS[2][0].toFixed(3)})) * ${RADIAL_FLOW_TAPS[2][1].toFixed(3)};
 }
 `;
 /** 単位正方形(0,0)(1,0)(1,1)(0,1)→四角形 q(TL,TR,BR,BL) の射影行列(Heckbert)。行優先 [[a,b,c],[d,e,f],[g,h,1]]。 */
@@ -4955,6 +4967,29 @@ const getAshEmberTailTex = (): Texture => {
   ashEmberTailTex.source.scaleMode = 'linear';
   return ashEmberTailTex;
 };
+/**
+ * ★ブラーの刀の通った道の筋(research/BLUR.md §2-1): 右端=本体の側が一番太く(高さいっぱい)、根元(左端)へ高さの 1/4.5 まで細る楔。
+ * 根元から3割は濃さ 0、そこから本体の側へ濃くなる。高さを画面の 4.5px にすると本体側 4.5px → 根元 1px。
+ */
+let blurKatanaStreakTex: Texture | null = null;
+const BLUR_KATANA_STREAK_TEX_H = 18;
+const getBlurKatanaStreakTex = (): Texture => {
+  if (blurKatanaStreakTex) return blurKatanaStreakTex;
+  const w = 96, h = BLUR_KATANA_STREAK_TEX_H;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  const tip = h / 4.5 / 2;
+  ctx.beginPath();
+  ctx.moveTo(0, h / 2 - tip); ctx.lineTo(w, 0); ctx.lineTo(w, h); ctx.lineTo(0, h / 2 + tip); ctx.closePath();
+  const gx = ctx.createLinearGradient(0, 0, w, 0);
+  gx.addColorStop(0, 'rgba(255,255,255,0)'); gx.addColorStop(0.3, 'rgba(255,255,255,0)');
+  gx.addColorStop(0.62, 'rgba(255,255,255,0.45)'); gx.addColorStop(1, 'rgba(255,255,255,1)');
+  ctx.fillStyle = gx; ctx.fill();
+  blurKatanaStreakTex = Texture.from(canvas);
+  blurKatanaStreakTex.source.scaleMode = 'linear';
+  return blurKatanaStreakTex;
+};
 /** ★鞭の絡め取りの線の光の縁と芯(横は一様・縦は真ん中が濃く上下へぼける白い帯。色は tint で付ける)。 */
 let whipTetherStripTex: Texture | null = null;
 const getWhipTetherStripTex = (): Texture => {
@@ -7591,14 +7626,20 @@ export class PixiScene {
     if (this.radialDisabled) return;
     const at = s.attention, bc = s.bossCorpse;
     if (at && bc && at.startReal !== this.radialLastAttn && realNow >= at.startReal
-      && Math.abs(at.startReal - BOSS_KILL_CAMERA_HOLD_MS - bc.diedAt) < 120) {
+      && Math.abs(at.startReal - BOSS_KILL_CAMERA_HOLD_MS - bc.diedAt) < 120 && !bc.bySubWeapon) { // サブウェポンで倒した時は出さない(BLUR.md §2-5)
       this.radialLastAttn = at.startReal;
       if (realNow - at.startReal < RADIAL_FLOW_MS) { this.radialStart = at.startReal; this.radialWX = at.x; this.radialWY = at.y; }
     }
     const p = s.player;
     if (p.iaiWarpAt !== undefined && p.iaiWarpAt !== this.radialLastIai) {
       this.radialLastIai = p.iaiWarpAt;
-      if (realNow - p.iaiWarpAt < RADIAL_FLOW_MS) { this.radialStart = p.iaiWarpAt; this.radialWX = p.x + p.width / 2; this.radialWY = p.y + p.height / 2; }
+      if (realNow - p.iaiWarpAt < RADIAL_FLOW_MS) {
+        // 中心=当たった点(貫く主の中心・BLUR.md §2-5)。主が見つからない時だけ主人公の位置。
+        const te = p.iaiWarpTargetId !== undefined ? s.enemies.find(en => en.id === p.iaiWarpTargetId) : undefined;
+        this.radialStart = p.iaiWarpAt;
+        this.radialWX = te ? te.x + te.width / 2 : p.x + p.width / 2;
+        this.radialWY = te ? te.y + te.height / 2 : p.y + p.height / 2;
+      }
     }
     const k = this.radialStart > 0 ? radialFlowK(realNow - this.radialStart) : 0;
     if (k <= 0.002) { this.setRadialAttached(false); return; }
@@ -29517,6 +29558,7 @@ export class PixiScene {
     } else {
       kb.visible = false;
     }
+    this.syncPlayerBlurKatana(view); // ★ブラー: 刀の一閃の写しに刀の絵も写す(背負い刀の位置が決まった後)
     // スケボー乗車中: 足元に板を敷いて「乗っている」見た目にする(描画のみ・判定不変)。板は投擲弾と同じ絵
     // (社長支給のドット絵 'skateboard-dot')。向きで左右反転。体幅の約1.7倍(社長指示で一回り小さく)へ拡大し、
     // アンカー(0.5, デッキ上面)を足元(footY)へ合わせる=足がデッキの上に乗り、車輪がその下に見える。
@@ -46575,18 +46617,22 @@ export class PixiScene {
       const ti = local.length - 2;
       const toW = (q: { x: number; y: number }) => { const lx = q.x, ly = q.y * side; return { x: ox + lx * ca - ly * sa, y: oy + lx * sa + ly * ca }; };
       const tip = toW(local[ti]), a1 = toW(ref[Math.min(ti, ref.length - 2)]), a0 = toW(prev[Math.min(ti, prev.length - 2)]);
+      const rb = toW(local[Math.max(0, ti - 2)]); // 縄の先の手前の点(縄が先端から伸びている向き)
       let dx = a1.x - a0.x, dy = a1.y - a0.y;
       const dl = Math.hypot(dx, dy);
-      if (dl > 0.5) { dx /= dl; dy /= dl; this.drawWhipTipStreaks(tip.x, tip.y, dx, dy, e.len, tsA); }
+      // 回る向き: 先端の動きに対して縄がどちら側から来ているか(縄の反対側へ開く=筋を縄に重ねない)。
+      const turn = (rb.x - tip.x) * dy - (rb.y - tip.y) * dx >= 0 ? 1 : -1;
+      if (dl > 0.5) { dx /= dl; dy /= dl; this.drawWhipTipStreaks(tip.x, tip.y, local[ti].h, dx, dy, turn, e.len, tsA); }
     }
   }
   /** 鞭の先端の流れの筋2本(使い回しの2枚・効果の層)。先端から進む向きの後ろへ伸び、根元が透明・先端の側が濃い。 */
   private whipTipStreaks: Sprite[] = [];
   private whipTipStreakDrawn = false;
-  private drawWhipTipStreaks(tx: number, ty: number, dx: number, dy: number, len: number, alpha: number): void {
-    const nx = -dy, ny = dx;
+  private drawWhipTipStreaks(tx: number, ty: number, th: number, dx: number, dy: number, turn: number, len: number, alpha: number): void {
     const f = this.projFrame;
     const ws = Math.max(0.2, this.L.world.scale.x || 1);
+    const off = WHIP_TIP_STREAK_OFFSET_PX / ws; // 縄から離す(画面の px)
+    const spread = WHIP_TIP_STREAK_SPREAD_DEG * Math.PI / 180;
     for (let i = 0; i < 2; i++) {
       let sp = this.whipTipStreaks[i];
       if (!sp || sp.destroyed) {
@@ -46595,20 +46641,24 @@ export class PixiScene {
         this.L.effectLayer.addChild(sp);
         this.whipTipStreaks[i] = sp;
       }
-      const off = (i === 0 ? 1 : -1) * 3.5; // 先端の両脇へ平行に
-      const L = len * (i === 0 ? 0.26 : 0.17);
-      const hx = tx + nx * off + dx * (i === 0 ? 2 : -3), hy = ty + ny * off + dy * (i === 0 ? 2 : -3);
-      let x1 = hx, y1 = hy, x0 = hx - dx * L, y0 = hy - dy * L, a = alpha * (i === 0 ? 0.95 : 0.7);
+      // 1本目(長い)=回る向きの側・2本目(短い)=反対側。それぞれ進む向きの後ろから ±spread 開き、縄から off 離す。
+      const sg = (i === 0 ? 1 : -1) * turn;
+      const ang = sg * spread;
+      const bx = -dx * Math.cos(ang) + dy * Math.sin(ang), by = -dy * Math.cos(ang) - dx * Math.sin(ang); // 後ろ向き(-d)を ang 回した向き
+      const nx = -dy * sg, ny = dx * sg; // 開く側の横
+      const L = len * WHIP_TIP_STREAK_LEN[i];
+      const hx = tx + nx * off, hy = ty + ny * off;
+      let x1 = hx, y1 = hy - th, x0 = hx + bx * L, y0 = hy + by * L - th, a = alpha * (i === 0 ? 0.95 : 0.7);
       if (f) {
-        const q1 = projLiftPointInto(f, x1, y1, 0, this.whipRopeLift);
+        const q1 = projLiftPointInto(f, hx, hy, th, this.whipRopeLift);
         x1 = q1.x; y1 = q1.y; a *= q1.alpha; // 作り置きの点を使い回す=読んでから次を投影する
-        const q0 = projLiftPointInto(f, x0, y0, 0, this.whipRopeLift);
+        const q0 = projLiftPointInto(f, hx + bx * L, hy + by * L, th, this.whipRopeLift);
         x0 = q0.x; y0 = q0.y;
       }
       const l = Math.hypot(x1 - x0, y1 - y0);
       sp.position.set(x1, y1);
       sp.rotation = Math.atan2(y1 - y0, x1 - x0);
-      sp.scale.set(l / sp.texture.width, Math.max(1.6, 1.2 / ws) / sp.texture.height);
+      sp.scale.set(l / sp.texture.width, WHIP_TIP_STREAK_THICK_PX[i] / ws / sp.texture.height); // 太さ=画面の 2.5px / 1.5px
       sp.tint = 0xf2f6ff;
       sp.alpha = a;
       sp.visible = a > 0.01 && l > 1;
@@ -52307,7 +52357,7 @@ export class PixiScene {
     if (!sk || sk.alpha <= 0.002) { if (this.playerBlurStreak) this.playerBlurStreak.visible = false; return; }
     let sp = this.playerBlurStreak;
     if (!sp || sp.destroyed) {
-      sp = new Sprite(getAshEmberTailTex());
+      sp = new Sprite(getBlurKatanaStreakTex()); // 本体側 4.5px → 根元 1px の楔・根元から3割は濃さ 0
       sp.anchor.set(1, 0.5);
       this.L.effectLayer.addChild(sp);
       this.playerBlurStreak = sp;
@@ -52326,14 +52376,44 @@ export class PixiScene {
     if (len < 2) { sp.visible = false; return; }
     sp.position.set(x1, y1);
     sp.rotation = Math.atan2(y1 - y0, x1 - x0);
-    sp.scale.set(len / sp.texture.width, Math.max(2, 3 * Math.abs(body.scale.y)) / sp.texture.height);
+    sp.scale.set(len / sp.texture.width, 4.5 / Math.max(0.2, this.L.world.scale.x || 1) / sp.texture.height); // 本体側の太さ=画面の 4.5px
     sp.tint = 0xebf5ff;
     sp.alpha = a;
     sp.visible = true;
   }
 
+  /**
+   * 刀の一閃の写しに刀の絵(背負い刀 playerKatanaBack)も写す: 体の写しと同じ位置ずれ・同じ濃さ(既存の絵の写しだけ・伸縮/回転の代用はしない)。
+   * 体の写しが出ていない・刀が見えていない時は隠す。drawPlayer で背負い刀の位置が決まった後に呼ぶ。
+   */
+  private playerBlurKatanaGhosts: Sprite[] = [];
+  private syncPlayerBlurKatana(view: ActorView): void {
+    const kb = this.playerKatanaBack;
+    const body = view.sprite;
+    const on = this.playerBlurKind === 'katana' && kb.visible && !!kb.texture && kb.parent === view.container;
+    for (let i = 0; i < BLUR_KATANA_GHOSTS; i++) {
+      const g = this.playerBlurGhosts[i];
+      let kg = this.playerBlurKatanaGhosts[i];
+      if (!on || !g || g.destroyed || !g.visible || g.parent !== view.container) { if (kg) kg.visible = false; continue; }
+      if (!kg || kg.destroyed) { kg = new Sprite(); this.playerBlurKatanaGhosts[i] = kg; }
+      if (kg.parent !== view.container) view.container.addChildAt(kg, 0); // 写しの体と同じく一番後ろ
+      this.projTag(kg, 'blurGhost');
+      if (kg.texture !== kb.texture) kg.texture = kb.texture;
+      kg.anchor.set(kb.anchor.x, kb.anchor.y);
+      kg.scale.set(kb.scale.x, kb.scale.y);
+      kg.skew.set(kb.skew.x, kb.skew.y);
+      kg.rotation = kb.rotation + (g.rotation - body.rotation);
+      kg.position.set(g.position.x + (kb.position.x - body.position.x), g.position.y + (kb.position.y - body.position.y)); // proj-lift: Z58(高さは体の写しと同じ)
+      if (this.projFrame) { const gh = this.projTrailH.get(g); if (gh !== undefined) this.projTrailH.set(kg, gh); this.projLiftMark('Z58'); }
+      kg.tint = kb.tint;
+      kg.blendMode = 'normal';
+      kg.alpha = g.alpha;
+      kg.visible = g.alpha > 0.002;
+    }
+  }
+
   /** 強く吹き飛ばされた敵の残像(決め技・投げで大きく飛んだ敵だけ・同時に BLUR_ENEMY_MAX 体まで・本体は100%のまま)。敵を描き終えた後に呼ぶ。 */
-  private enemyBlurs = new Map<string, { tr: BlurTrail; sprites: Sprite[]; out: BlurGhost[] }>();
+  private enemyBlurs = new Map<string, { tr: BlurTrail; sprites: Sprite[]; out: BlurGhost[]; spacing: number; speed: number }>();
   private enemyBlurPool: Sprite[] = [];
   private syncEnemyBlurs(enemies: Enemy[], gameTime: number, now: number): void {
     const st = useGameStore.getState();
@@ -52343,14 +52423,15 @@ export class PixiScene {
     const seen = this.enemyBlurSeen;
     seen.clear();
     for (const e of enemies) {
+      // 候補=投げ(格闘の投げ・鞭の投げ)と格闘の大きな吹き飛びだけ(普通のノックバックには付けない)。
       const candidate = !!e.brThrow || (ws?.enemyId === e.id && ws.phase === 'thrown')
-        || (e.brawlerBlownAt !== undefined && now - e.brawlerBlownAt < 900) || (e.knockbackUntil ?? 0) > now;
+        || (e.brawlerBlownAt !== undefined && now - e.brawlerBlownAt < 900);
       let rec = this.enemyBlurs.get(e.id);
       if (!rec && !candidate) continue;
       const view = this.enemies.get(e.id);
       if (!view || view.container.destroyed) continue;
       const body = view.sprite;
-      if (!rec) { rec = { tr: createBlurTrail(), sprites: [], out: [] }; this.enemyBlurs.set(e.id, rec); }
+      if (!rec) { rec = { tr: createBlurTrail(), sprites: [], out: [], spacing: BLUR_ENEMY_SPACING_MAX_MS, speed: 0 }; this.enemyBlurs.set(e.id, rec); }
       seen.add(e.id);
       const tr = rec.tr;
       const pt = this.blurPointOf(view, body);
@@ -52362,8 +52443,15 @@ export class PixiScene {
         : was && candidate;
       if (active !== was) activeN += active ? 1 : -1;
       stepBlurTrail(tr, { gt: gameTime, active, x: pt.x, y: pt.y, r: body.rotation, h: pt.h });
+      // 間隔は画素で決める(体の幅の 17% 離す・速さは均して読む)。止まっている(止め)・止まった後は最後の間隔のまま(列は fade で縮む)。
+      if (active && dt > 0 && moved >= BLUR_STILL_PX) {
+        const v = moved / dt;
+        rec.speed = rec.speed > 0 ? rec.speed + (v - rec.speed) * 0.5 : v;
+        const bw = body.texture ? body.texture.width * Math.abs(body.scale.x) : 0;
+        rec.spacing = blurEnemySpacingMs(bw > 1 ? bw * BLUR_ENEMY_GAP_BODY_FRAC : BLUR_ENEMY_GAP_PX, rec.speed);
+      }
       const vis = body.visible && blurTrailVisible(tr);
-      const out = blurGhostsInto(tr, BLUR_ENEMY_GHOSTS, BLUR_ENEMY_SPACING_MS, rec.out);
+      const out = blurGhostsInto(tr, BLUR_ENEMY_GHOSTS, rec.spacing, rec.out);
       for (let i = 0; i < BLUR_ENEMY_GHOSTS; i++) {
         let g = rec.sprites[i];
         if (!vis || out[i].alpha <= 0.002) { if (g) g.visible = false; continue; }

@@ -418,6 +418,8 @@ export interface Player extends DashLocomotionState {
   iaiWarpAt?: number;
   iaiWarpFromX?: number;
   iaiWarpFromY?: number;
+  /** 居合一閃で貫く主(描画の放射状の流れの中心=当たった点・research/BLUR.md §2-5)。判定には使わない。 */
+  iaiWarpTargetId?: string;
   // 居合一閃の走りが終わる時刻(Date.now)。この間は敵の体の箱でプレイヤーを止めない(主を貫いて後ろへ抜ける)。壁・行ける帯は止める。
   iaiRunUntil?: number;
   shukuchiStrikeAt?: number;      // 押した時刻(Date.now・0/未設定=待ちなし)
