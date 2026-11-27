@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5881 — ナイフ: 3段目の後はカウンター窓が開くまで次の振りを出さない【2026-11-27 22:21】
+- 社長指示「ナイフ、動ける様にはなるけど、カウンター窓開くまで振れるようにはしないで」。純関数 `knifeNextSwingAt`(3段目=max(隙明け, カウンターの readyAt))を beginMeleeSwing・triggerCounter のナイフの counterCooldownEnd に通す。gapMs も readyAt も meleeCooldownMult 追従。待ち中のタップは既存の 'drop'。歩けるのは今どおり0.7秒。
+- 結果: 3段目の後の1段目は必ず窓が開く(slasherFollowup の窓 [T,F,F,T] に復帰・間隔 700→820)。knifeHoldLift: 雑魚が連撃の切れ目で動ける時間 [..100..310..100..] が戻り、不変条件「切れ目ごとに毎回残る」を元に戻した。浮き [T,T,T,F,F,F,…]。
+- 検証: typecheck / eslint エラー0 / vitest src/utils src/store 11367 passed。
+- タイトルの描き上げ動画: 社長が新しい .mov を支給→頭頂が再び切れていたため社長が出し直し中(差し替え作業は停止・未着手扱い)。
+- 自己点検: 憲法第4条・第5条に抵触なし。
+
 ## v0.25.5880 — 抉り打ちの白い残像を動かさずに表現【2026-11-27 22:10】
 - 社長「抉り打ちの白い残像エフェクトが上に動くの変なので、動かさずに表現して」。`brawlerStageFx` に `gougeStill` を足し抉り打ちの時だけ: 拳の残像(fx/idol-fist・斜め上12px→0)・突き上げの弧(fx/slash-arc・上へ46px→道の中点に固定・0.35倍から縦に開く)・上へ抜ける閃き(vfx/flare_01・上へ40px→固定・縦に伸びて消える)を、移動なしの growFrom(慣性つきの広がり)に。他の技の3段目・浮く敵・灰色の砂埃は不変。消したエフェクトなし。
 - 画: scratchpad/gougefx/compare_detail.png(直す前=弧が頭上へ滑る/後=同じ場所で開いて薄れる)。

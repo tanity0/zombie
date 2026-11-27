@@ -58,6 +58,14 @@ export const knifeComboCounterPlan = (stage: number, swingAt: number, readyAt: n
   const inCombo = stage === 1 ? open : comboCounter;
   return { open, comboCounter: inCombo, readyAt: inCombo ? knifeComboEndAt(stage, swingAt) + cdMs : readyAt };
 };
+/**
+ * ★次の振りが出せる時刻(社長指示2026-11-27「ナイフ、動ける様にはなるけど、カウンター窓開くまで振れるようにはしないで。」)。
+ * gapMs=この段の間隔(knifeComboGapMs × 近接CDの短縮を掛けた後)・readyAt=この振りの後のカウンターが開ける時刻(knifeComboCounterPlan の readyAt)。
+ * 3段目の後は、体が動けるようになる(隙=gapMs)だけでなくカウンター窓が開ける時刻まで次の1段目を出さない=3段目の後の1段目は必ず窓が開く。
+ * 1/2段目は段の間隔のまま(次の段にはもともと窓が無い)。
+ */
+export const knifeNextSwingAt = (stage: number, swingAt: number, gapMs: number, readyAt: number): number =>
+  stage === 3 ? Math.max(swingAt + gapMs, readyAt) : swingAt + gapMs;
 /** 振りの向き: +1=振り上げ(1・3段目) / -1=振り下ろし(2段目)。 */
 export const knifeComboSwingDir = (stage: number): 1 | -1 => (stage === 2 ? -1 : 1);
 /** 段の踏み込みの距離(px)。runPx=走りの踏み込み(0=立ち・歩き)。3段目だけ大きく前へ出る(走りの踏み込みの方が大きければそちら)。 */

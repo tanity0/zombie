@@ -230,7 +230,7 @@ import {
   SLASHER_FORCE_KB_PX, SLASHER_FINAL_KB_MULT, SLASHER_FOLLOWUP_STALE_MS, type SlasherFollowup, type SlasherFollowupHit, type SlasherWeapon,
 } from '../utils/slasherFollowup';
 import {
-  knifeComboNextStage, knifeComboGapMs, knifeComboTapAction, knifeComboQueuedAction, knifeComboCounterPlan, knifeComboStepPx,
+  knifeComboNextStage, knifeComboGapMs, knifeNextSwingAt, knifeComboTapAction, knifeComboQueuedAction, knifeComboCounterPlan, knifeComboStepPx,
   knifeComboSwingDir, knifeComboFeel, knifeComboHitStop,
 } from '../utils/knifeCombo';
 import { multiHitFeel, multiHitStopExtendPatch, multiHitFxSpot, multiHitStagger, multiHitSfxLayers, multiHitReleaseDelay, multiHitBurstRings, multiHitLinePath, multiHitArcPath } from '../utils/multiHitFeel'; // まとめて当てた時の手応え(止め・揺れ・大きめの輪と光・重ねる命中音)
@@ -15497,7 +15497,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           counterWindowStart: now, // 隻狼型(v0.25.3943): 受付は押した瞬間から
           counterWindowEnd: now + counterAcceptMsOf(state.player), // 強化で延びる(社長指示2026-10-28)
         } : {}),
-        counterCooldownEnd: now + (whipNow ? whipComboGapMs(whipStage) : knifeNow ? knifeComboGapMs(knifeStage) : COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player), // 鞭・ナイフ: 段の間隔(3段目の後は隙)
+        // 鞭・ナイフ: 段の間隔(3段目の後は隙)。★ナイフの3段目の後は、さらにカウンター窓が開ける時刻まで次の振りを出さない(utils/knifeCombo の knifeNextSwingAt)。
+        counterCooldownEnd: knifePlan
+          ? knifeNextSwingAt(knifeStage, now, knifeComboGapMs(knifeStage) * meleeCooldownMult(state.player), knifePlan.readyAt)
+          : now + (whipNow ? whipComboGapMs(whipStage) : COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
         ...(whipPlan ? { whipComboStage: whipStage, whipComboAt: now, whipQueuedAt: 0, whipComboCounter: whipPlan.comboCounter, whipCounterReadyAt: whipPlan.readyAt } : {}),
         ...(knifePlan ? { knifeComboStage: knifeStage, knifeComboAt: now, knifeQueuedAt: 0, knifeComboCounter: knifePlan.comboCounter, knifeCounterReadyAt: knifePlan.readyAt } : {}),
       },
@@ -16475,7 +16478,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         counterWindowStart: ret || !knifeWindowOpen ? state.player.counterWindowStart : isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt, // 隻狼型(v0.25.3943)
         counterWindowEnd: ret || !knifeWindowOpen ? state.player.counterWindowEnd : isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt + counterAcceptMsOf(state.player),
         // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。ナイフ=段の間隔(3段目の後は隙)。
-        counterCooldownEnd: ret ? state.player.counterCooldownEnd : swingAt + (knifeNow ? knifeComboGapMs(knifeStage) : counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
+        // ★ナイフの3段目の後は、隙に加えてカウンター窓が開ける時刻まで次の振りを出さない(utils/knifeCombo の knifeNextSwingAt)。
+        counterCooldownEnd: ret ? state.player.counterCooldownEnd : knifePlan
+          ? knifeNextSwingAt(knifeStage, swingAt, knifeComboGapMs(knifeStage) * meleeCooldownMult(state.player), knifePlan.readyAt)
+          : swingAt + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
         ...(knifePlan ? { knifeComboStage: knifeStage, knifeComboAt: swingAt, knifeQueuedAt: 0, knifeComboCounter: knifePlan.comboCounter, knifeCounterReadyAt: knifePlan.readyAt } : {}),
         // 格闘の段・技の当たりでは溜まりを消費しない(コンボが途切れた時に tickBrawler が消費する・§16)。ナイフは今までどおり振るたび消費。
         huntingCharged: bs ? state.player.huntingCharged : false,

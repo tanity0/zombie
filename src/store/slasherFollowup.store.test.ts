@@ -177,11 +177,12 @@ describe('ナイフの3連撃(配線)', () => {
       windows.push(p.counterWindowStart === now);
     }
     expect(stages).toEqual([1, 2, 3, 1]);
-    expect(gaps).toEqual([KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_FINISH_RECOVERY_MS, KNIFE_COMBO_INTERVAL_MS]);
-    // 4回目の1段目: カウンターのクールダウンは連撃の終わり(3段目)から。★3段目の後の隙が0.7秒(社長裁定2026-11-27・旧1.0秒)になり、
-    // ナイフのクールダウン(COUNTER_WINDOW+COUNTER_COOLDOWN)より短くなった=隙が明けた瞬間の1段目ではまだ開かない(実測)。旧(隙1.0秒)は開いていた。
+    // ★3段目の後: 体は隙(0.7秒)で動けるが、次の振りはカウンター窓が開ける時刻(連撃の終わり+ナイフのクールダウン)まで出ない
+    // (社長指示2026-11-27「カウンター窓開くまで振れるようにはしないで」・utils/knifeCombo の knifeNextSwingAt)。
     expect(KNIFE_COMBO_FINISH_RECOVERY_MS).toBeLessThan(COUNTER_WINDOW + COUNTER_COOLDOWN);
-    expect(windows).toEqual([true, false, false, false]);
+    expect(gaps).toEqual([KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_INTERVAL_MS, COUNTER_WINDOW + COUNTER_COOLDOWN, KNIFE_COMBO_INTERVAL_MS]);
+    // 4回目の1段目: 明けた瞬間に振ってもカウンター窓が必ず開く。
+    expect(windows).toEqual([true, false, false, true]);
     expect(st().player.knifeCounterReadyAt).toBeGreaterThan(0);
   });
   it('3段目の後、ナイフのクールダウン(連撃の終わりから)が明けてからの1段目はカウンター窓が開く', () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   knifeComboWpnAlpha, knifeComboBodyEndMs,
-  knifeComboNextStage, knifeComboGapMs, knifeComboTapAction, knifeComboQueuedAction, knifeComboCounterPlan, knifeComboSwingDir,
+  knifeComboNextStage, knifeComboGapMs, knifeComboTapAction, knifeComboQueuedAction, knifeComboCounterPlan, knifeNextSwingAt, knifeComboSwingDir,
   knifeComboStepPx, knifeComboBodyT,
   KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_RESET_MS, KNIFE_COMBO_FINISH_RECOVERY_MS, KNIFE_COMBO_QUEUE_MAX_MS, KNIFE_COMBO_STEP_FRAC, KNIFE_COMBO_FINISH_STEP_FRAC,
   knifeComboFinishMoveMult, KNIFE_COMBO_FINISH_STOP_MS,
@@ -66,6 +66,24 @@ describe('ナイフの3連撃(純関数)', () => {
     // クールダウン中に始めた1段目は窓を開かず、readyAt を動かさない
     const s1b = knifeComboCounterPlan(1, 2600, s3.readyAt, s3.comboCounter, cd);
     expect(s1b).toEqual({ open: false, comboCounter: false, readyAt: s3.readyAt });
+  });
+  it('次の振りの時刻: 3段目の後はカウンター窓が開ける時刻まで出さない(体が動ける隙より長ければそちら)・1/2段目は段の間隔のまま', () => {
+    for (const mult of [1, 0.9, 0.5]) {
+      const cd = 820 * mult;
+      const s1 = knifeComboCounterPlan(1, 1000, 0, false, cd);
+      const s2 = knifeComboCounterPlan(2, 1400, s1.readyAt, s1.comboCounter, cd);
+      const s3 = knifeComboCounterPlan(3, 1800, s2.readyAt, s2.comboCounter, cd);
+      const gap3 = KNIFE_COMBO_FINISH_RECOVERY_MS * mult;
+      const next = knifeNextSwingAt(3, 1800, gap3, s3.readyAt);
+      expect(next).toBe(Math.max(1800 + gap3, 1800 + cd));
+      expect(next).toBeGreaterThanOrEqual(1800 + gap3); // 体の隙より前には振れない
+      // その時刻に振った1段目は必ずカウンター窓が開く
+      expect(knifeComboCounterPlan(1, next, s3.readyAt, s3.comboCounter, cd).open).toBe(true);
+      expect(knifeNextSwingAt(1, 1000, 400 * mult, s1.readyAt)).toBe(1000 + 400 * mult);
+      expect(knifeNextSwingAt(2, 1400, 400 * mult, s2.readyAt)).toBe(1400 + 400 * mult);
+    }
+    // 隙の方が長ければ隙のまま
+    expect(knifeNextSwingAt(3, 0, 1000, 820)).toBe(1000);
   });
   it('振りの向き: 1段目=振り上げ・2段目=振り下ろし・3段目=振り上げ', () => {
     expect([1, 2, 3].map(knifeComboSwingDir)).toEqual([1, -1, 1]);
