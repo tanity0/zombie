@@ -79,7 +79,7 @@ describe('★近接の前隙(SAME_ARENA.md §7)', () => {
     // 隻狼型(v0.25.3943): 受付窓は [押した瞬間, +COUNTER_ACCEPT_MS]。CDのサイクル(COUNTER_WINDOW基準)は不変。
     expect(p.counterWindowStart).toBe(pendAt);
     expect(p.counterWindowEnd).toBe(pendAt + COUNTER_ACCEPT_MS);
-    // ★ナイフの3連撃(2026-11-26・utils/knifeCombo): 次の振りまで=段の間隔(1段目=0.5秒)。旧=窓+CD(COUNTER_WINDOW+COUNTER_COOLDOWN)。
+    // ★ナイフの3連撃(2026-11-26・utils/knifeCombo): 次の振りまで=段の間隔(1段目=0.4秒)。旧=窓+CD(COUNTER_WINDOW+COUNTER_COOLDOWN)。
     expect(p.counterCooldownEnd).toBe(pendAt + knifeComboGapMs(1));
     // 絵の起点も前隙の起点に揃っている(200ms後に振り直さない)。
     expect(p.meleeSwingAt).toBe(pendAt);

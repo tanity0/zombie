@@ -12,15 +12,15 @@ import { WHIP_COMBO_FEEL } from './whipCombo';
 describe('ナイフの3連撃(純関数)', () => {
   it('段は 1→2→3→1・最後の振りから0.9秒で1段目へ', () => {
     expect(knifeComboNextStage(0, 0, 100)).toBe(1);
-    expect(knifeComboNextStage(1, 0, 500)).toBe(2);
-    expect(knifeComboNextStage(2, 0, 500)).toBe(3);
+    expect(knifeComboNextStage(1, 0, KNIFE_COMBO_INTERVAL_MS)).toBe(2);
+    expect(knifeComboNextStage(2, 0, KNIFE_COMBO_INTERVAL_MS)).toBe(3);
     expect(knifeComboNextStage(3, 0, 600)).toBe(1);
     expect(knifeComboNextStage(1, 0, KNIFE_COMBO_RESET_MS + 1)).toBe(1);
     expect(KNIFE_COMBO_RESET_MS).toBe(900);
   });
-  it('間隔は0.5秒・3段目の後の隙は1.0秒(段の間の倍)・隙が明けた時には1段目に戻っている', () => {
-    expect(KNIFE_COMBO_INTERVAL_MS).toBe(500);
-    expect([1, 2, 3].map(knifeComboGapMs)).toEqual([500, 500, KNIFE_COMBO_FINISH_RECOVERY_MS]);
+  it('間隔は0.4秒・3段目の後の隙は1.0秒(段の間の倍)・隙が明けた時には1段目に戻っている', () => {
+    expect(KNIFE_COMBO_INTERVAL_MS).toBe(400);
+    expect([1, 2, 3].map(knifeComboGapMs)).toEqual([KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_FINISH_RECOVERY_MS]);
     expect(KNIFE_COMBO_FINISH_RECOVERY_MS).toBe(1000);
     expect(KNIFE_COMBO_FINISH_RECOVERY_MS).toBeGreaterThan(KNIFE_COMBO_RESET_MS);
     expect(knifeComboNextStage(3, 0, KNIFE_COMBO_FINISH_RECOVERY_MS)).toBe(1);
@@ -54,12 +54,12 @@ describe('ナイフの3連撃(純関数)', () => {
     const cd = 820;
     const s1 = knifeComboCounterPlan(1, 1000, 0, false, cd);
     expect(s1).toEqual({ open: true, comboCounter: true, readyAt: 1000 + KNIFE_COMBO_RESET_MS + cd });
-    const s2 = knifeComboCounterPlan(2, 1500, s1.readyAt, s1.comboCounter, cd);
+    const s2 = knifeComboCounterPlan(2, 1000 + KNIFE_COMBO_INTERVAL_MS, s1.readyAt, s1.comboCounter, cd);
     expect(s2.open).toBe(false);
-    expect(s2.readyAt).toBe(1500 + KNIFE_COMBO_RESET_MS + cd);
-    const s3 = knifeComboCounterPlan(3, 2000, s2.readyAt, s2.comboCounter, cd);
+    expect(s2.readyAt).toBe(1000 + KNIFE_COMBO_INTERVAL_MS + KNIFE_COMBO_RESET_MS + cd);
+    const s3 = knifeComboCounterPlan(3, 1000 + 2 * KNIFE_COMBO_INTERVAL_MS, s2.readyAt, s2.comboCounter, cd);
     expect(s3.open).toBe(false);
-    expect(s3.readyAt).toBe(2000 + cd);
+    expect(s3.readyAt).toBe(1000 + 2 * KNIFE_COMBO_INTERVAL_MS + cd);
     // クールダウン中に始めた1段目は窓を開かず、readyAt を動かさない
     const s1b = knifeComboCounterPlan(1, 2600, s3.readyAt, s3.comboCounter, cd);
     expect(s1b).toEqual({ open: false, comboCounter: false, readyAt: s3.readyAt });

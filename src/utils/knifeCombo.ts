@@ -8,8 +8,8 @@ import { comboFinishMoveMult } from './whipCombo';
 import { stretchStopMs } from './meleeHitstopTiming';
 import { applyHitstopK, comboStageMoveKind } from './hitShake';
 
-/** 段と段の間の最短(ms)。 */
-export const KNIFE_COMBO_INTERVAL_MS = 500;
+/** 段と段の間の最短(ms)。★0.4秒(社長裁定2026-11-27・旧 500)。 */
+export const KNIFE_COMBO_INTERVAL_MS = 400;
 /** 最後の振りからこれだけタップが無ければ1段目へ戻る(ms)。 */
 export const KNIFE_COMBO_RESET_MS = 900;
 /** 先行入力を持っておく長さの上限(ms)。 */

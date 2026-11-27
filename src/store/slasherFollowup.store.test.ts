@@ -161,7 +161,7 @@ describe('スラッシャーの追い打ち: 格闘・鞭・刀', () => {
 });
 
 describe('ナイフの3連撃(配線)', () => {
-  it('タップごとに段が 1→2→3→1・間隔は 0.5秒・3段目の後は隙・カウンター窓は1段目だけ', () => {
+  it('タップごとに段が 1→2→3→1・間隔は 0.4秒・3段目の後は隙・カウンター窓は1段目だけ', () => {
     useGameStore.setState({ enemies: [place('zombie', 40, 0, 'z')] });
     const stages: number[] = [];
     const gaps: number[] = [];
@@ -200,12 +200,12 @@ describe('ナイフの3連撃(配線)', () => {
     expect(st().player.knifeQueuedAt).toBe(now);
     // 前隙の解決
     useGameStore.setState(s => ({ player: { ...s.player, pendingSwingAt: 0 } }));
-    now += 400; // 1段目から 0.5秒
+    now += KNIFE_COMBO_INTERVAL_MS - 100; // 1段目から段の間隔
     st().pumpKnifeQueuedTap();
     expect(st().player.knifeComboStage).toBe(2);
     expect(st().player.knifeQueuedAt).toBe(0);
     useGameStore.setState(s => ({ player: { ...s.player, pendingSwingAt: 0 } }));
-    now += 500;
+    now += KNIFE_COMBO_INTERVAL_MS;
     expect(st().beginMeleeSwing()).toBe(true);
     expect(st().player.knifeComboStage).toBe(3);
     useGameStore.setState(s => ({ player: { ...s.player, pendingSwingAt: 0 } }));
