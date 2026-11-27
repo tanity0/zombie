@@ -123,6 +123,7 @@ export const airShotStopTick = (e: AirShotStopFields, now: number): Partial<AirS
   const sh = (t: number | undefined): number | undefined => (t === undefined ? undefined : t + d);
   const out: Partial<AirShotStopFields> = { airShotStopShifted: target };
   if (e.brawlerLiftAt !== undefined) out.brawlerLiftAt = sh(e.brawlerLiftAt);
+  if (e.brLiftRiseStopAt !== undefined && e.brLiftRiseStopAt === e.brawlerLiftAt) out.brLiftRiseStopAt = sh(e.brLiftRiseStopAt); // 止めで遅らせた打ち上げの名札も同じだけ
   if (e.brLiftUntil !== undefined) out.brLiftUntil = sh(e.brLiftUntil);
   if (e.liftUntil !== undefined && e.liftUntil > e.airShotStopAt) out.liftUntil = sh(e.liftUntil);
   if (e.brBlastNoLiftUntil !== undefined && e.brBlastNoLiftUntil > e.airShotStopAt) out.brBlastNoLiftUntil = sh(e.brBlastNoLiftUntil);

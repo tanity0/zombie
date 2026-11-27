@@ -3050,19 +3050,39 @@ const impactHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil'>, now: nu
  * 震えの長さ=止めの明けまで(雑魚・強個体=hitStunUntil・ボス級=当たり+ms)。自分(pcx,pcy)から当たった敵へ向く。
  */
 const comboStopAndShake = (e: Enemy, now: number, ms: number, pcx: number, pcy: number, shakeMul?: { lenMul: number; ampMul: number }): Enemy => {
-  const e2 = { ...e, ...impactHitStunPatch(e, now, ms) };
+  const e2 = stopExtendFreezeLift(e, { ...e, ...impactHitStunPatch(e, now, ms) }, now); // 延びた止めの間も浮き・落下は止める(社長指示2026-11-27「上がる方も止めて」)
   const sh = meleeShakePatch(e2.brawlerShakeUntil, hitStunMsFor(e.type) > 0 ? e2.hitStunUntil : now + ms, now, e.x + e.width / 2, e.y + e.height / 2, pcx, pcy, shakeMul);
   return sh ? { ...e2, ...sh } : e2;
 };
 /**
- * ★止めの間は落下の時計も止める(社長指示2026-11-27「ストップ時、落下が止まってない。なので落ちてから吹っ飛んでる」・ナイフ・鞭の当たり)。
+ * ★止めの間は浮き・落下の時計も止める(社長指示2026-11-27「ストップ時、落下が止まってない。なので落ちてから吹っ飛んでる」+「上がる方も止めて」・ナイフ・鞭の当たり)。
  * この当たりで延びた止め(hitStunUntil)の分だけ、浮いている相手の浮きの時計を後ろへ(utils/brawlerCombo の brawlerStopLiftShift)。
- * この当たりで上へ浮かせた弧(ナイフの浮き)は格闘と同じく今どおり止めの間に上がり始める(落ちる区間から始まる弧だけ止める)。
+ * この当たりで上へ浮かせた弧(ナイフの浮き・同じ振りの先のカウンターの浮き)も、止めの間は上がり始めない(明けてから同じ弧で上がる)。
  */
 const meleeStopFreezeLift = (prev: Enemy, next: Enemy, now: number): Enemy => {
-  // この瞬間に上へ浮かせた弧(この当たり・同じ振りの先のカウンターの浮き)はずらさない。
-  if (next.brawlerLiftAt === now && (next.brLiftPeak ?? 0) > 0 && !((next.brLiftDropMs ?? 0) > 0)) return next;
   const sh = BRC.brawlerStopLiftShift(next, now, prev.hitStunUntil, next.hitStunUntil);
+  return sh ? { ...next, ...sh } : next;
+};
+/**
+ * ★この瞬間に書いた浮きの弧(brawlerLiftAt===now)を、当たった敵の止め(hitStunUntil)の明けまで上がり始めさせない(社長指示2026-11-27「上がる方も止めて」)。
+ * 止めと浮きを別々の所で書く打ち上げ(一閃・殺陣の最後・ホーミング弾・赤カウンター・被弾反撃・気功の爆発・爆発の浮き・スープレックス)が、浮きを書いた後に通す。
+ * 止めが無い(ボス級・持続ダメージ・既に明けた)・この瞬間の弧でない(止めの明けから浮く弧=パニッシャー・既にずらした弧)は何もしない。
+ */
+const freezeLiftInStop = <T extends Enemy>(e: T, now: number): T => {
+  if (e.brawlerLiftAt !== now || !((e.hitStunUntil ?? 0) > now)) return e;
+  const sh = BRC.brawlerStopLiftShift(e, now, undefined, e.hitStunUntil);
+  return sh ? { ...e, ...sh } : e;
+};
+/**
+ * ★当たりの後から止めを延ばした時(ナイフ・鞭の段の止め=comboStopAndShake・まとめ当ての延長=applyMultiHitFeel)、延びた分だけ浮きの時計も後ろへ
+ * (社長指示2026-11-27「上がる方も止めて」)。まだずらしていないこの瞬間の弧(brawlerLiftAt===now)は止めの全部(brawlerStopLiftShift)、
+ * それ以外は延びた分だけ。まだ上がり始めていない打ち上げ(止めで遅らせた弧)は、遅らせた長さにも足す(当たる高さの帯の時計=utils/brawlerHitHeight)。
+ */
+const stopExtendFreezeLift = (prev: Enemy, next: Enemy, now: number): Enemy => {
+  if (next.brawlerLiftAt === undefined || !((next.hitStunUntil ?? 0) > Math.max(now, prev.hitStunUntil ?? 0))) return next;
+  const sh = next.brawlerLiftAt === now
+    ? BRC.brawlerStopLiftShift(next, now, prev.hitStunUntil, next.hitStunUntil)
+    : BRC.brawlerShiftLift(next, now, next.hitStunUntil! - Math.max(now, prev.hitStunUntil ?? 0), next.brawlerLiftAt > now);
   return sh ? { ...next, ...sh } : next;
 };
 /**
@@ -3100,7 +3120,7 @@ const knifeHoldLiftPatch = (enemy: Enemy, now: number, gameTime: number, dmg: nu
   let down = false;
   if (knifeLiftApplies(enemy, now, gameTime, swingAt, slasher)) {
     // ★ナイフ(近接)の浮きには落ちる速さの緩急を当てない(k=1=浮きの長さ=移動を止める時間を変えない・社長指示2026-11-13「移動距離は変えないで」)。
-    const jp = brawlerJugglePatch(enemy, BRC.brawlerEnemyClass(enemy), knifeLiftMove(BRC.brawlerAirborne(enemy, now)), now, false);
+    const jp = brawlerJugglePatch(enemy, BRC.brawlerEnemyClass(enemy), knifeLiftMove(BRC.brawlerJudgedAirborne(enemy, now)), now, false);
     if (jp) {
       Object.assign(out, jp);
       if (jp.brLiftUntil !== undefined && jp.brLiftUntil > now) out.brBlastNoLiftUntil = knifeNoLiftUntil(enemy, jp.brLiftUntil, now);
@@ -3507,11 +3527,8 @@ const applyMultiHitFeel = (
         if (!idSet.has(e.id) || !(e.health > 0) || isCorpse(e) || hitStunMsFor(e.type) <= 0) return e;
         const pt = multiHitStopExtendPatch(e, now, mh.extraStopMs);
         if (!pt) return e;
-        let e2 = { ...e, ...pt };
-        // ★止めを延ばした分、落下の時計も止める(社長指示2026-11-27・meleeStopFreezeLift と同じ規則=この当たりで上へ浮かせた弧はずらさない)。
-        const riseNow = e.brawlerLiftAt === now && (e.brLiftPeak ?? 0) > 0 && !((e.brLiftDropMs ?? 0) > 0);
-        const lsh = riseNow ? null : BRC.brawlerShiftLift(e2, now, (e2.hitStunUntil ?? now) - Math.max(now, e.hitStunUntil ?? now));
-        if (lsh) e2 = { ...e2, ...lsh };
+        // ★止めを延ばした分、浮き・落下の時計も止める(社長指示2026-11-27「上がる方も止めて」・stopExtendFreezeLift)。
+        const e2 = stopExtendFreezeLift(e, { ...e, ...pt }, now);
         const sh = extendMeleeShake(e2, now, (e2.meleeShakeAmp ?? 1) > 1 ? WHIP_TIP_SHAKE.lenMul : 1); // 近接の震えも延びた止めの明けまで(research/HITSTOP.md §2-4・鞭の先端は ×1.5 のまま)
         return sh ? { ...e2, ...sh } : e2;
       }),
@@ -4295,7 +4312,7 @@ const applyIssenHitPatch = (
       const cut: Partial<Enemy> = { katanaCuts: nextKatanaCuts(e.katanaCuts) };
       if (!tsubameDir) {
         const lp = issenLiftPatch(e, pre.get(e.id) ?? e, now, gt);
-        return { ...e, ...(lp ?? {}), ...cut };
+        return freezeLiftInStop({ ...e, ...(lp ?? {}), ...cut }, now); // 止めの間は上がり始めない(社長指示2026-11-27)
       }
       // 燕返し(社長「ノックバックは斬のストップの後、血を吹きながら」): 押しの始まり=当たりの止めの明け。止めの間の押しの出だし(knockbackStopFor)は付けない=止めの間は動かない。
       const startAt = Math.max(now, e.hitStunUntil ?? now);
@@ -4492,7 +4509,7 @@ const satsujinStrike = (get: () => GameState, set: WhipSet, startAt: number, tar
       if (!last || e.health <= 0) return held;
       const released: Enemy = { ...held, brHoldUntil: undefined };
       const lp = issenLiftPatch(released, pre ?? e, now, gt);
-      return lp ? { ...released, ...lp } : released;
+      return lp ? freezeLiftInStop({ ...released, ...lp }, now) : released; // 止めの間は上がり始めない(社長指示2026-11-27)
     }),
   }));
   // 絵: 抜けた筋(白)・相手の上の斬撃・ワープの残光。音: 一閃の系統を少しずつ高く。
@@ -6257,7 +6274,7 @@ const applyPendingBlastLifts = (get: () => GameState, set: (fn: (s: GameState) =
     const link = brawlerLinkRestoreOnLift(e, jp, linkNoted.get(e.id), now); // 格闘の爆発で浮いた敵は、当たった時の数を持ったまま宙にいる(§23)
     if (jp) patches.set(e.id, { ...(jp as Partial<Enemy>), ...(link ?? {}) });
   }
-  if (patches.size > 0) set(state => ({ enemies: state.enemies.map(e => { const p = patches.get(e.id); return p ? { ...e, ...p } : e; }) }));
+  if (patches.size > 0) set(state => ({ enemies: state.enemies.map(e => { const p = patches.get(e.id); return p ? freezeLiftInStop({ ...e, ...p }, now) : e; }) })); // 爆発の止めの間は上がり始めない(社長指示2026-11-27)
 };
 /** 卵が割れた時のはじけ(近接で割った時の絵=breakPropsAlong と breakEggsWhere の共通)。 */
 const eggBreakFx = (get: () => GameState, broken: BreakableProp): void => {
@@ -6438,12 +6455,12 @@ const brawlerHitPatch = (
   // ★決め技の止めの延長(research/HITSTOP.md §7・案C): この当たりで浮かせた相手の浮きの時計を延長の分だけ後ろへ(押しは止めの明けから始まる=延長が無い時と同じ重なり)。
   // ★止めの間は落下の時計も止める(社長指示2026-11-27「ストップ時、落下が止まってない。なので落ちてから吹っ飛んでる」): 当たった相手の止め
   //   (雑魚・強個体=hitStunUntil・ボス級=止めの固まり)の分だけ浮きの時計を後ろへ=止めの間は高さが変わらず、明けたら止めた所から続く。
-  //   対象: 前から浮いていた相手(この当たりで浮きを書き直さなかった)・この当たりの叩き落とし(ダウン=今の高さから落ちる)・地面バウンド(落ちてから跳ねる)。
-  //   この当たりで上へ浮かせた弧(打ち上げ・空中の浮き直し=落ちる区間から始まらない弧)は今どおり止めの間に上がり始める
-  //   (止めると当たる高さの帯と定石の間合いがずれて ①4段→地割り 等がつながらなくなる=社長判断)。決め技の延長(案C)も止めに含まれる。
+  //   対象: 前から浮いていた相手(この当たりで浮きを書き直さなかった)・この当たりの叩き落とし(ダウン=今の高さから落ちる)・地面バウンド(落ちてから跳ねる)・
+  //   ★この当たりで上へ浮かせた弧(打ち上げ・空中の浮き直し・社長指示2026-11-27「上がる方も止めて」)=止めの間は宙で止まり、明けてから同じ弧で上がる。
+  //   遅らせた打ち上げは、当たる高さの帯と空中か地上かの判定を遅らせる前の弧の時計で見る(brLiftRiseStopMs・utils/brawlerHitHeight・brawlerJudgedAirborne)
+  //   =自分も同じだけ止まるので、止めの分だけ定石の間合いがずれない(①4段→地割り 等)。決め技の延長(案C)も止めに含まれる。
   const freezeMs = bossLike ? bossStopMs : stopMs;
-  const freshRise = out.brawlerLiftAt !== undefined && out.brawlerLiftAt >= now && (out.brLiftPeak ?? 0) > 0 && !((out.brLiftDropMs ?? 0) > 0);
-  if (freezeMs > 0 && !freshRise) {
+  if (freezeMs > 0) {
     const cur = { ...enemy, ...out } as Enemy;
     const sh = BRC.brawlerStopLiftShift(cur, now, bossLike ? undefined : enemy.hitStunUntil, now + freezeMs, out.brNoHoldUntil !== undefined && out.brNoHoldUntil !== enemy.brNoHoldUntil);
     if (sh) Object.assign(out, sh);
@@ -8265,7 +8282,7 @@ const explodeBrawlerSuplex = (get: () => GameState, set: (fn: (s: GameState) => 
       // 爆発のダメージは爆発の浮きの待ち行列に載る(damageEnemy の blast)=叩きつけた相手だけ外して、スープレックスの跳ね返りを残す。
       blastHitIds.delete(id);
       const jp = brawlerJugglePatch(e, BRC.brawlerEnemyClass(e), 'suplex', now); // 当たる前の相手から数える(近接の当たりと同じ)
-      set(state => ({ enemies: state.enemies.map(en => (en.id === id ? { ...en, ...(jp ?? {}), ...link } : en)) }));
+      set(state => ({ enemies: state.enemies.map(en => (en.id === id ? (jp ? freezeLiftInStop({ ...en, ...jp, ...link }, now) : { ...en, ...link }) : en)) })); // 叩きつけの止めの間は上がり始めない(社長指示2026-11-27)・N HIT の数を書く
       continue;
     }
     blastIds.push(id);
@@ -8622,7 +8639,7 @@ const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.Brawler
       const kind = BRC.brawlerPhaseKind(e, gt);
       // 流れの数え(反撃の数・ダメージ補正の数)。ボス級も同じ(反撃の数は届かない)。
       const c = BRC.brawlerComboOnHit(e, move, now);
-      const airborne = BRC.brawlerAirborne(e, now);
+      const airborne = BRC.brawlerJudgedAirborne(e, now); // 止めで遅らせた打ち上げは遅らせる前の弧の時計で見る(brawlerJugglePush と同じ)
       // ★コンボの後の固まらない時間の間は地上から浮かせない(§19-3 ⑤)。空中の拾い直しは今どおり。
       const groundLiftOk = !BRC.brawlerComboEndNoHoldNow(e, gt);
       // 浮かせ追撃(§12-1・§13-2): 浮いている敵に気功の爆発が当たっても浮き直す(押し上げ小・予算1)。ボス級も浮く。
@@ -8631,7 +8648,7 @@ const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.Brawler
       if (!jp && !busy && closeness !== undefined && !airborne && groundLiftOk) {
         jp = blastLiftPatch({ ...e, ...c.patch }, BRC.brawlerLiftClass(e), closeness, now, gt) as Partial<Enemy> | null;
       }
-      const e1: Enemy = { ...e, ...(jp ?? {}), brComboHits: linkN ?? BRC.brawlerLinkOnHit(e, gt, now) }; // つながっているコンボの数(表示だけ・§23。linkN=爆発のダメージの前に見た数)
+      const e1: Enemy = freezeLiftInStop({ ...e, ...(jp ?? {}), brComboHits: linkN ?? BRC.brawlerLinkOnHit(e, gt, now) }, now); // 爆発の止めの間は上がり始めない(社長指示2026-11-27) // つながっているコンボの数(表示だけ・§23。linkN=爆発のダメージの前に見た数)
       const down = (jp as { brLiftDown?: boolean } | null)?.brLiftDown === true;
       const canHold = kind !== 'active' && !down;
       if (move === 'secret' || move === 'secret-land') {
@@ -14399,7 +14416,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         enemies: state.enemies.map(e => {
           if (e.id !== target.id) return e;
           const lp = retaliateLiftPatch(target, e, gtL, nowL, knife);
-          return lp ? { ...e, ...lp } : e;
+          return lp ? freezeLiftInStop({ ...e, ...lp }, nowL) : e; // 止めの間は上がり始めない(社長指示2026-11-27)
         }),
       }));
     }
@@ -17118,7 +17135,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const hit = get().enemies.find(e => e.id === a.targetEnemyId);
         if (hit && counterLiftApplies(hit, hit.health, get().gameTime)) {
           const liftPatch = brawlerJugglePatch(hit, BRC.brawlerEnemyClass(hit), COUNTER_LIFT_MOVE, Date.now());
-          if (liftPatch) set(s => ({ enemies: s.enemies.map(e => e.id === hit.id ? { ...e, ...liftPatch } : e) }));
+          if (liftPatch) set(s => ({ enemies: s.enemies.map(e => e.id === hit.id ? freezeLiftInStop({ ...e, ...liftPatch }, liftPatch.brawlerLiftAt ?? Date.now()) : e) }));
         }
       }
       get().spawnDamageNumber(tcx, target.y, aDmg, false, { enemyId: target.id });
@@ -20588,7 +20605,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const lp = issenLiftPatch(e, e, now, gt); // 一閃と同じ打ち上げ(格闘の4段目・区分の重さ・拾える予算)
         if (!lp) return e;
         changed = true;
-        return { ...e, ...lp };
+        return freezeLiftInStop({ ...e, ...lp }, now); // 弾の当たりの止めの間は上がり始めない(社長指示2026-11-27)
       });
       return changed ? { enemies } : {};
     });
@@ -21315,7 +21332,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★攻撃を受けたら気付く(社長指示2026-10-24・utils/labStealth.noticeOnHitPatch): 視界で見つける型は被弾で起きて、しばらく見失わない。
       const noticePatch = eff > 0 ? (noticeOnHitPatch(enemy, isBountyType(enemy.type) || enemy.type === 'idol', state.gameTime) ?? {}) : {};
       const updatedEnemies = enemies.map(e =>
-        e.id === id ? { ...e, health: newHealth, lastHit: hitAt, ...noticePatch, ...dotPatch, ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...dogHatePatch, ...gpGate.patch, ...pvpPatch, ...counteredPatch, ...hitStunPatch } : e
+        e.id === id ? freezeLiftInStop({ ...e, health: newHealth, lastHit: hitAt, ...noticePatch, ...dotPatch, ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...dogHatePatch, ...gpGate.patch, ...pvpPatch, ...counteredPatch, ...hitStunPatch }, counterLiftPatch.brawlerLiftAt ?? -1) : e
       );
       
       // Check if enemy was killed

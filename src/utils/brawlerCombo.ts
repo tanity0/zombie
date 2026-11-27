@@ -553,6 +553,14 @@ export const brawlerJuggleLanded = (e: BrawlerJuggleFields, now: number): boolea
 export const brawlerAirborne = (e: Pick<BrawlerJuggleFields, 'brLiftUntil'>, now: number): boolean =>
   e.brLiftUntil !== undefined && now < e.brLiftUntil;
 
+/**
+ * ★当たりの判定に使う「空中か」(社長指示2026-11-27「上がる方も止めて」)。止めで遅らせた打ち上げ(brLiftRiseStopMs)は、遅らせる前の弧の時計で見る
+ * (当たる高さの帯 utils/brawlerHitHeight と同じ時計)=絵は止めの分だけ遅れて着地するが、当たりの決め(浮き直すか・地上から浮かせるか)は止めの前の弧のまま。
+ * 動けない間(liftUntil)・絵・着地の砂埃は今どおり brawlerAirborne(絵の時計)。
+ */
+export const brawlerJudgedAirborne = (e: Pick<BrawlerJuggleFields, 'brLiftUntil' | 'brawlerLiftAt' | 'brLiftRiseStopMs' | 'brLiftRiseStopAt'>, now: number): boolean =>
+  brawlerAirborne(e, now) && !(e.brLiftUntil !== undefined && now + brawlerRiseStopMs(e) >= e.brLiftUntil);
+
 // ---- 空中の敵へのダメージ倍率(社長指示2026-11-09「倍率はもっと上げたいのと、格闘以外にも乗せたい」・research/BRAWLER.md §16) ----
 /** 空中の敵に当たるたび上がる: 1発目 ×1.25 / 1発ごとに +0.25 / 上限 ×2.0。着地で数え直し(敵ごと)。 */
 export const AIR_HIT_FIRST_MULT = 1.25;
@@ -682,7 +690,9 @@ export const brawlerJugglePush = (
   force = false,
 ): Partial<BrawlerJuggleFields> & { liftUntil?: number; brNoHoldUntil?: number } | null => {
   const fallK = (n: number) => (fallScale ? brawlerFallK(n) : 1);
-  const airborne = brawlerAirborne(e, now);
+  // ★止めで遅らせた打ち上げ(brLiftRiseStopMs)は、空中か地上かを遅らせる前の弧の時計で見る(当たる高さの帯と同じ・utils/brawlerHitHeight)。
+  //   高さ(落ち始め・浮き直しの始まり)は今の絵の高さのまま。
+  const airborne = brawlerJudgedAirborne(e, now);
   const push = BRAWLER_JUGGLE_PUSH[move];
   // ボス級: 気絶中に浮かせたコンボ(brLiftLight)は軽い重さのまま着地まで。地上から浮かせる時は、いま気絶中かで決める。
   const light = cls === 'boss' && (airborne ? e.brLiftLight === true : stunned);
@@ -783,29 +793,48 @@ applyBrawlerComboTempo(BRAWLER_TEMPO);
  * 掴んでいる間の絵は、描画が止まり始めた時刻の高さで止めて描く(pixi)。
  */
 export const brawlerShiftLift = (
-  e: Pick<BrawlerJuggleFields, 'brawlerLiftAt' | 'brLiftUntil'> & { liftUntil?: number }, at: number, ms: number,
-): { brawlerLiftAt: number; brLiftUntil: number; liftUntil?: number } | null => {
+  e: Pick<BrawlerJuggleFields, 'brawlerLiftAt' | 'brLiftUntil' | 'brLiftRiseStopMs' | 'brLiftRiseStopAt' | 'brBlastNoLiftUntil'> & { liftUntil?: number }, at: number, ms: number, riseToo = false,
+): { brawlerLiftAt: number; brLiftUntil: number; liftUntil?: number; brLiftRiseStopMs?: number; brLiftRiseStopAt?: number; brBlastNoLiftUntil?: number } | null => {
   if (!(ms > 0) || e.brawlerLiftAt === undefined || e.brLiftUntil === undefined || !(e.brLiftUntil > at)) return null;
+  const rise = brawlerRiseStopMs(e) > 0;
+  const grow = rise && riseToo;
   return {
     brawlerLiftAt: e.brawlerLiftAt + ms, brLiftUntil: e.brLiftUntil + ms,
     ...(e.liftUntil !== undefined && e.liftUntil === e.brLiftUntil ? { liftUntil: e.liftUntil + ms } : {}),
+    // 止めで遅らせた打ち上げの名札も同じだけずらす(riseToo=この当たりの止めを延ばした=遅らせた長さにも足す・ナイフ/鞭の段の止め・まとめ当ての延長)。
+    ...(rise ? { brLiftRiseStopAt: e.brawlerLiftAt + ms, ...(grow ? { brLiftRiseStopMs: e.brLiftRiseStopMs! + ms } : {}) } : {}),
+    // 遅らせた長さが延びた分、着地の後の「地上から浮かない窓」も延ばす(brawlerStopLiftShift と同じ=浮いていた時間も延びる=2倍)。
+    ...(grow && e.brBlastNoLiftUntil !== undefined && e.brBlastNoLiftUntil > e.brLiftUntil ? { brBlastNoLiftUntil: e.brBlastNoLiftUntil + 2 * ms } : {}),
   };
 };
+/** ★止めで遅らせた打ち上げの長さ(ms・brLiftRiseStopMs)。この弧の名札(brLiftRiseStopAt=brawlerLiftAt)が合っている時だけ。無い=0。 */
+export const brawlerRiseStopMs = (e: Pick<BrawlerJuggleFields, 'brawlerLiftAt' | 'brLiftRiseStopMs' | 'brLiftRiseStopAt'>): number =>
+  e.brawlerLiftAt !== undefined && e.brLiftRiseStopAt === e.brawlerLiftAt && (e.brLiftRiseStopMs ?? 0) > 0 ? e.brLiftRiseStopMs! : 0;
 /**
- * ★止めの間は浮き・落下の時計も止める(社長指示2026-11-27「ストップ時、落下が止まってない。なので落ちてから吹っ飛んでる」)。
+ * ★止めの間は浮き・落下の時計も止める(社長指示2026-11-27「ストップ時、落下が止まってない。なので落ちてから吹っ飛んでる」+「上がる方も止めて」)。
  * 当たりで書いた相手の止め(壁時計)の分だけ、浮きの時計(brawlerLiftAt・brLiftUntil・同じ値の liftUntil)を後ろへずらす=止めの間は高さが変わらず、
- * 明けたら止めた所から続く。この当たりで書いた浮き(liftAt>=now)は止めの全部、前から続く浮きは前の止めの明けから延びた分だけ(二重にずらさない)。
+ * 明けたら止めた所から続く。この当たりで書いた浮き(liftAt>=now=打ち上げ・空中の浮き直し・叩き落とし・地面バウンド)は止めの全部、
+ * 前から続く浮きは前の止めの明けから延びた分だけ(二重にずらさない)。前の止めでまだ上がり始めていない打ち上げ(名札あり・liftAt>now)も前から続く浮きとして数える。
+ * この当たりで上へ浮かせた弧(頂点>0・地面バウンドでない)は、遅らせた長さを brLiftRiseStopMs に残す(当たる高さの帯は遅らせる前の時計で見る=utils/brawlerHitHeight)。
  * 着地の後の「固まらない時間」(brNoHoldUntil)もこの当たりで書いた時は同じだけずらす(着地からの長さは今のまま)。
  * prevStopUntil=当たる前の止めの明け / stopUntil=当たった後の止めの明け。ずらす物が無ければ null。
  */
 export const brawlerStopLiftShift = (
-  e: Pick<BrawlerJuggleFields, 'brawlerLiftAt' | 'brLiftUntil'> & { liftUntil?: number; brNoHoldUntil?: number },
+  e: Pick<BrawlerJuggleFields, 'brawlerLiftAt' | 'brLiftUntil' | 'brLiftPeak' | 'brLiftDropMs' | 'brLiftRiseStopMs' | 'brLiftRiseStopAt' | 'brBlastNoLiftUntil'> & { liftUntil?: number; brNoHoldUntil?: number },
   now: number, prevStopUntil: number | undefined, stopUntil: number | undefined, noHoldWritten = false,
-): { brawlerLiftAt: number; brLiftUntil: number; liftUntil?: number; brNoHoldUntil?: number } | null => {
+): { brawlerLiftAt: number; brLiftUntil: number; liftUntil?: number; brNoHoldUntil?: number; brLiftRiseStopMs?: number; brLiftRiseStopAt?: number; brBlastNoLiftUntil?: number } | null => {
   if (stopUntil === undefined || !(stopUntil > now) || e.brawlerLiftAt === undefined) return null;
-  const fresh = e.brawlerLiftAt >= now;
+  const delayed = brawlerRiseStopMs(e) > 0 && e.brawlerLiftAt > now; // 前の止めで遅らせた打ち上げ(まだ上がり始めていない)
+  const fresh = e.brawlerLiftAt >= now && !delayed;
   const ms = fresh ? stopUntil - now : stopUntil - Math.max(now, prevStopUntil ?? 0);
-  const sh = brawlerShiftLift(e, now, ms);
+  // 遅らせた打ち上げ: この当たりで上へ浮かせた弧は新しく残す・まだ上がり始めていない弧は延びた分を足す。
+  const riseUp = fresh && (e.brLiftPeak ?? 0) > 0 && !((e.brLiftDropMs ?? 0) > 0);
+  const sh = brawlerShiftLift(fresh ? { ...e, brLiftRiseStopMs: undefined, brLiftRiseStopAt: undefined } : e, now, ms, delayed);
   if (!sh) return null;
-  return noHoldWritten && e.brNoHoldUntil !== undefined ? { ...sh, brNoHoldUntil: e.brNoHoldUntil + ms } : sh;
+  // この当たりで書いた弧が上へ浮かせない弧(叩き落とし・地面バウンド)なら、前の弧の名札は消す。
+  // 着地の後の「地上から浮かない窓」(爆発・ナイフ=浮きの終わり+浮いていた時間・utils/airLift)がこの弧の着地の後なら、浮いていた時間も止めの分だけ延びる=終わりは2倍ずらす。
+  const noLift = riseUp && e.brBlastNoLiftUntil !== undefined && e.brLiftUntil !== undefined && e.brBlastNoLiftUntil > e.brLiftUntil ? { brBlastNoLiftUntil: e.brBlastNoLiftUntil + 2 * ms } : {};
+  const out = riseUp ? { ...sh, ...noLift, brLiftRiseStopMs: ms, brLiftRiseStopAt: sh.brawlerLiftAt }
+    : fresh && e.brLiftRiseStopMs !== undefined ? { ...sh, brLiftRiseStopMs: undefined, brLiftRiseStopAt: undefined } : sh;
+  return noHoldWritten && e.brNoHoldUntil !== undefined ? { ...out, brNoHoldUntil: e.brNoHoldUntil + ms } : out;
 };

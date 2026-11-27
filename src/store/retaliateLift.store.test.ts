@@ -51,7 +51,9 @@ describe.each([['ナイフ', false], ['格闘', true]] as const)('被弾反撃�
     expect(z.aiPhase).toBeUndefined();
     expect(z.biteRecoverUntil).toBeUndefined();
     expect(z.lastCounteredAt).toBe(now);
-    expect(z.brawlerLiftAt).toBe(now);
+    const stop = (z.hitStunUntil ?? now) - now; // ★止めの間は上がり始めない(社長指示2026-11-27「上がる方も止めて」)=浮きは止めの明けから
+    expect(stop).toBeGreaterThan(0);
+    expect(z.brawlerLiftAt).toBe(now + stop);
     expect(z.brLiftPeak).toBeCloseTo(groundS4Peak('mob'));
     expect(brawlerAirborne(z, now + 1)).toBe(true);
   });
@@ -78,7 +80,7 @@ describe.each([['ナイフ', false], ['格闘', true]] as const)('被弾反撃�
     useGameStore.setState({ enemies: [place('zombie', 'z')] });
     expect(strike('z')?.hit).toBe(true);
     const z = en('z')!;
-    expect(z.brawlerLiftAt).toBe(now);
+    expect(z.brawlerLiftAt).toBe(now + ((z.hitStunUntil ?? now) - now)); // ★止めの間は上がり始めない(社長指示2026-11-27)
     expect(z.brLiftPeak).toBeCloseTo(groundS4Peak('mob'));
     expect(z.lastCounteredAt).toBeUndefined(); // 取り消していない=技の絵の破棄の打刻は書かない
   });
@@ -92,7 +94,7 @@ describe.each([['ナイフ', false], ['格闘', true]] as const)('被弾反撃�
     for (const id of ['a', 'd']) {
       const e = en(id)!;
       expect(e.brLiftDown, id).toBe(false);
-      expect(e.brawlerLiftAt, id).toBe(now);
+      expect(e.brawlerLiftAt, id).toBe(now + ((e.hitStunUntil ?? now) - now)); // ★止めの間は上がり始めない(社長指示2026-11-27)
       expect((e.brLiftPeak ?? 0) > 0, id).toBe(true);
       expect(e.brLiftBudget, id).toBe(0);
     }
@@ -139,7 +141,7 @@ describe('被弾反撃でない攻撃は今どおり', () => {
     useGameStore.setState({ enemies: [place('zombie', 'z')] });
     useGameStore.getState().triggerCounter();
     const z = en('z')!;
-    expect(z.brawlerLiftAt).toBe(now);
+    expect(z.brawlerLiftAt).toBe(now + ((z.hitStunUntil ?? now) - now)); // ★止めの間は上がり始めない(社長指示2026-11-27「上がる方も止めて」)
     expect(z.brLiftPeak).toBeCloseTo(brawlerJugglePush({}, 'mob', knifeLiftMove(false), now, false, false)!.brLiftPeak!);
   });
   it('赤い予告へのカウンター(damageEnemy の counter): 技の最中のまま残っている敵は浮かない(今どおり)', () => {

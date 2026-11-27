@@ -5,14 +5,18 @@
 //  - 格闘の浮きだけ(鞭で浮いた敵・締めの跳ねは 0=格闘の判定に関わらない)。終端の死神・浮かない敵は 0。
 //  - 時計は浮きの欄と同じ壁時計(Date.now)。止めの間は浮きの欄のずらし(airShotStop)に乗る。
 //  - research/HITSTOP.md §6 の「空中」(震えの向き用・描画で持ち上げている高さの合計>2px=utils/hitShake)とは別の関数(見た目の判定と当たりの判定)。
-import { brawlerJuggleHeightRel } from './brawlerCombo';
+import { brawlerJuggleHeightRel, brawlerRiseStopMs } from './brawlerCombo';
 import type { BrawlerJuggleFields } from './brawlerJuggleTypes';
 import { BRAWLER_LIFT_VIS_BODY_K } from './brawler';
 import type { BrawlerRouteNode } from './brawlerTypes';
 
-/** 判定用の敵の高さ(体の高さに対する割合)。 */
+/**
+ * 判定用の敵の高さ(体の高さに対する割合)。
+ * ★止めで遅らせた打ち上げ(社長指示2026-11-27「上がる方も止めて」・brLiftRiseStopMs)は、遅らせる前の弧の時計で見る(=止めの分だけ先の時刻の高さ)。
+ * 止めの間は絵も自分(プレイヤー)の行動も止まるので、止めで遅れた弧の時計のまま読むと、次の技が当たる瞬間の高さが止めの分だけずれて定石が切れる。
+ */
 export const brawlerEnemyHitRel = (e: BrawlerJuggleFields, now: number): number =>
-  e.brLiftShape === 'whip' ? 0 : Math.max(0, brawlerJuggleHeightRel(e, now)) * BRAWLER_LIFT_VIS_BODY_K;
+  e.brLiftShape === 'whip' ? 0 : Math.max(0, brawlerJuggleHeightRel(e, now + brawlerRiseStopMs(e))) * BRAWLER_LIFT_VIS_BODY_K;
 
 /**
  * 当たる高さの帯(§40-4 ①の表)。

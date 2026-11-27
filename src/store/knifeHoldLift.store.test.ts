@@ -35,6 +35,10 @@ const step = (ms: number, onStep?: () => void) => {
     onStep?.();
   }
 };
+/** ★実際の振り方: 近接のクールダウン(counterCooldownEnd=段の間隔・3段目の後の隙)が明けるまで時計を進める(onStep=1刻みごと)。 */
+const realSwingWait = (onStep?: () => void) => {
+  for (let k = 0; k < 400 && now < useGameStore.getState().player.counterCooldownEnd; k++) step(DT, onStep);
+};
 /** その当たりでナイフが掛けた止めの長さ(meleeHitStunPatch と同じ式)+1段目の固まり。 */
 const lockLen = (e: Enemy) => Math.round(hitStunMsFor(e.type) * meleeHitStopMul(e.lastHitDmg ?? 0, e.maxHealth)) + BRAWLER_HOLD_MS.s1;
 
@@ -118,38 +122,51 @@ describe('ナイフの当たり: 固まりと浮き', () => {
     expect(brawlerHeldNow(h, gt(), now)).toBe(false);
     expect(h.brawlerLiftAt).toBeUndefined();
   });
-  it('約820ms の間隔で振り続けても、雑魚には毎回動ける時間が残る・浮かせられるのは1振りおき', () => {
+  // ★実際の振り方で回す(社長指摘2026-11-27「ナイフってスキルなしで0.8秒おきに振れないんじゃない?」): 近接のクールダウン(counterCooldownEnd)を消さず、
+  //   明けた瞬間に振る=1→2→3段目は段の間隔(KNIFE_COMBO_INTERVAL_MS)・3段目の後は隙(KNIFE_COMBO_FINISH_RECOVERY_MS)を挟んで次の1段目。
+  //   止めの間は打ち上げも上がり始めない(社長指示2026-11-27「上がる方も止めて」・社長裁定=新しい挙動を正)=浮いている時間は止めの分だけ長い。
+  it('実際の間隔(段の間隔・3段目の後の隙)で振り続けても、雑魚には連撃ごとに動ける時間が残る(3段目の後の隙の間)', () => {
     useGameStore.setState({ enemies: [place('zombie', 40, 0, 'z')] });
     const lifted: boolean[] = [];
-    let freeEachCycle = true;
-    for (let i = 0; i < 6; i++) {
+    const freeBefore: number[] = []; // その振りの前(前の振りから)に、雑魚が固まりも浮きも無く動けた長さ(ms)
+    for (let i = 0; i < 12; i++) {
       // 寄ってきて技に入ると浮かない(裁定どおり)ので、毎回、素の状態・同じ場所へ戻してから当てる(浮きと固まりの欄は持ち越す)
-      useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({ ...place('zombie', 40, 0, 'z'), brLiftUntil: e.brLiftUntil, liftUntil: e.liftUntil, brawlerLiftAt: e.brawlerLiftAt, brLiftMs: e.brLiftMs, brLiftPeak: e.brLiftPeak, brLiftBudget: e.brLiftBudget, brBlastNoLiftUntil: e.brBlastNoLiftUntil, brBlastAirSince: e.brBlastAirSince, brLockUntil: e.brLockUntil, brLockHits: e.brLockHits })) }));
+      useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({ ...place('zombie', 40, 0, 'z'), brLiftUntil: e.brLiftUntil, liftUntil: e.liftUntil, brawlerLiftAt: e.brawlerLiftAt, brLiftMs: e.brLiftMs, brLiftPeak: e.brLiftPeak, brLiftBudget: e.brLiftBudget, brBlastNoLiftUntil: e.brBlastNoLiftUntil, brBlastAirSince: e.brBlastAirSince, brLockUntil: e.brLockUntil, brLockHits: e.brLockHits, brLiftRiseStopMs: e.brLiftRiseStopMs, brLiftRiseStopAt: e.brLiftRiseStopAt })) }));
+      let free = 0;
+      realSwingWait(() => { const e = en('z'); if (!brawlerHeldNow(e, gt(), now) && !brawlerAirborne(e, now)) free += DT; });
       const before = en('z').brawlerLiftAt;
-      swing();
+      expect(useGameStore.getState().triggerCounter().hit).toBe(true);
+      expect(useGameStore.getState().player.knifeComboStage).toBe((i % 3) + 1);
       lifted.push(en('z').brawlerLiftAt !== before && brawlerAirborne(en('z'), now));
-      let free = false;
-      step(820, () => { const e = en('z'); if (!brawlerHeldNow(e, gt(), now) && !brawlerAirborne(e, now)) free = true; });
-      freeEachCycle = freeEachCycle && free;
+      freeBefore.push(free);
     }
-    expect(freeEachCycle).toBe(true);
-    expect(lifted).toEqual([true, false, true, false, true, false]);
+    // 連撃ごと(1段目の前=3段目の後の隙の間)は毎回動ける時間が残る=止めっぱなしにはならない。段の間(2・3段目の前)は固まり・浮きでつながる。
+    for (const i of [3, 6, 9]) expect(freeBefore[i], `${i / 3}回目の連撃の後`).toBeGreaterThan(0);
+    expect(freeBefore).toEqual([0, 0, 0, 380, 0, 0, 190, 0, 0, 490, 0, 0]);
+    // 浮き: 地上から打ち上げ→空中で拾い直して3段つながる。着地の後の「地上から浮かない窓」(浮いていた時間と同じ長さ)の中の連撃は浮かない。
+    expect(lifted).toEqual([true, true, true, false, true, true, false, false, false, true, true, true]);
   });
-  for (const [type, want] of [['zombie', [true, true, true, true, true, true]], ['driller', [true, false, true, false, true, false]], ['hunter', [true, false, false, true, false, false]]] as [EnemyType, boolean[]][]) {
-    it(`${type}: 約820ms の間隔で振り続けた時の固まり=格闘の仕組み(コンボの後の固まらない時間 強個体800/ボス級1500ms)がそのまま効く`, () => {
+  // 固まりの並び(12振り=4回の連撃・実測): 雑魚=毎回 / 強個体=各連撃の1・2段目(3段目は固まらない) / ボス級=各連撃の1段目だけ。
+  const KNIFE_REAL_HELD: Record<string, boolean[]> = {
+    zombie: [true, true, true, true, true, true, true, true, true, true, true, true],
+    driller: [true, true, false, true, true, false, true, true, false, true, true, false],
+    hunter: [true, false, false, true, false, false, true, false, false, true, false, false],
+  };
+  for (const type of ['zombie', 'driller', 'hunter'] as EnemyType[]) {
+    it(`${type}: 実際の間隔(段の間隔・3段目の後の隙)で振り続けた時の固まり=格闘の仕組み(コンボの後の固まらない時間 強個体800/ボス級1500ms)がそのまま効く`, () => {
       useGameStore.setState({ enemies: [place(type, 50, 0, 'x')] });
       const held: boolean[] = [];
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 12; i++) {
+        realSwingWait();
         // 寄ってきて技に入ったり離れたりするので、毎回同じ場所・素の相へ戻してから当てる(固まり・浮き・固まらない時間の欄は持ち越す)
         const home = place(type, 50, 0, 'x');
         useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({ ...e, x: home.x, y: home.y, aiPhase: undefined, aiPhaseUntil: undefined, biteAt: undefined, chaffMove: undefined, bossState: undefined, knockbackImmuneUntil: 0 })) }));
         const lock0 = en('x').brLockUntil;
-        swing();
+        expect(useGameStore.getState().triggerCounter().hit).toBe(true);
         const e = en('x');
         held.push(e.brLockUntil !== undefined && e.brLockUntil !== lock0 && e.brLockUntil > gt());
-        step(820);
       }
-      expect(held).toEqual(want);
+      expect(held).toEqual(KNIFE_REAL_HELD[type]);
     });
   }
   it('終端の死神(深奥チェイサー)は浮かない', () => {
@@ -212,6 +229,8 @@ describe('ナイフの当たり: 固まりと浮き', () => {
     expect(en('z').health).toBeLessThan(999999);
     expect(en('z').brLockUntil).toBeDefined(); // 固まりは入る
     expect(en('z').brLiftBudget).toBe(BRAWLER_JUGGLE_BUDGET.mob);
-    expect(en('z').brawlerLiftAt).toBe(now);
+    // ★止めの間は上がり始めない(社長指示2026-11-27「上がる方も止めて」)=カウンターの浮きの始まりはこの振りの止めの明けへ(浮かせ直してはいない)。
+    expect(en('z').brawlerLiftAt).toBe(now + ((en('z').hitStunUntil ?? now) - now));
+    expect(en('z').brLiftUntil).toBe(en('z').brawlerLiftAt! + 600);
   });
 });

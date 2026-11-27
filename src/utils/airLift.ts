@@ -2,7 +2,7 @@
 // 浮きの中身(浮いている間は動けない・重さの区分・拾える回数の予算・空中の合図の絵)は格闘(§12〜§13・utils/brawlerCombo)と同じものを使う。
 // ここは格闘以外の入口(爆発・スラッシャー)が「どれだけ浮かせるか」を決める純関数だけを置く(store にも描画にも依存しない)。
 import {
-  brawlerAirborne, brawlerJuggleHeightRel, isBrawlerTechBusy, brawlerComboEndNoHoldNow, brawlerFallK, brawlerFallStretchMs,
+  brawlerAirborne, brawlerJudgedAirborne, brawlerJuggleHeightRel, isBrawlerTechBusy, brawlerComboEndNoHoldNow, brawlerFallK, brawlerFallStretchMs,
   BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_PUSH, BRAWLER_JUGGLE_MIN_F, BRAWLER_JUGGLE_MIN_MS,
   type BrawlerJuggleFields, type BrawlerMoveKey,
 } from './brawlerCombo';
@@ -52,7 +52,7 @@ export const blastLiftPatch = (
   if (isBrawlerTechBusy(e, gameTime)) return null;
   const f = blastLiftPeak(cls, closeness);
   if (f < BRAWLER_JUGGLE_MIN_F) return null;
-  const airborne = brawlerAirborne(e, now);
+  const airborne = brawlerJudgedAirborne(e, now); // 止めで遅らせた打ち上げは遅らせる前の弧の時計で見る(brawlerJugglePush と同じ)
   if (airborne && e.brLiftDown) return null;
   if (!airborne && now < (e.brBlastNoLiftUntil ?? 0)) return null;
   const budget = (airborne ? (e.brLiftBudget ?? BRAWLER_JUGGLE_BUDGET[cls]) : BRAWLER_JUGGLE_BUDGET[cls]) - BLAST_LIFT_COST;
@@ -154,7 +154,7 @@ export const knifeLiftApplies = (
 ): boolean => {
   if (isBrawlerTechBusy(e, gameTime)) return false;
   if (e.lastCounteredAt !== undefined && e.lastCounteredAt >= swingAt) return false;
-  if (brawlerAirborne(e, now)) return true;
+  if (brawlerJudgedAirborne(e, now)) return true; // 止めで遅らせた打ち上げは遅らせる前の弧の時計で見る(brawlerJugglePush と同じ)
   if (brawlerComboEndNoHoldNow(e, gameTime)) return false;
   if (slasher) return true;
   return now >= (e.brBlastNoLiftUntil ?? 0);

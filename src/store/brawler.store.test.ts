@@ -1581,7 +1581,11 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     const until0 = en('z').aiPhaseUntil ?? 0;
     hitMove('z', 's4', { lift: true });
     const e = en('z');
-    expect(e.liftUntil).toBe(now + fallMs(585, 0)); // §12-1: 1回の浮きの基本 585ms(社長承認2026-11-08・旧450)
+    // §12-1: 1回の浮きの基本 585ms(社長承認2026-11-08・旧450)。★止めの間は上がり始めない(社長指示2026-11-27「上がる方も止めて」)=浮きは止めの明けから。
+    const stop0 = (e.hitStunUntil ?? now) - now;
+    expect(stop0).toBeGreaterThan(0);
+    expect(e.brawlerLiftAt).toBe(now + stop0);
+    expect(e.liftUntil).toBe(now + stop0 + fallMs(585, 0));
     const x0 = e.x, y0 = e.y;
     live(430);
     expect(en('z').x).toBeCloseTo(x0, 5);
@@ -1598,7 +1602,8 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     hitMove('z', 's1');
     const e1 = en('z');
     expect(e1.brLiftN).toBe(1);
-    expect(e1.brLiftUntil).toBe(now + fallMs(Math.max(140, Math.round(585 * 0.5)), 1));
+    const stop1 = (e1.hitStunUntil ?? now) - now; // ★止めの間は浮き直しも上がり始めない(社長指示2026-11-27「上がる方も止めて」)
+    expect(e1.brLiftUntil).toBe(now + stop1 + fallMs(Math.max(140, Math.round(585 * 0.5)), 1));
     expect(e1.brLiftBudget).toBe(5); // 雑魚6 − 1段目1
     advance(100);
     hitMove('z', 's3');

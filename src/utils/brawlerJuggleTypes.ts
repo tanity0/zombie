@@ -34,4 +34,12 @@ export interface BrawlerJuggleFields {
   brComboStart?: number;
   /** ダウンの着地の後の固まらない時間(Date.now)。ダウンで書き直す時は遅い方を残す(§19-3 ⑤)。 */
   brNoHoldUntil?: number;
+  /**
+   * ★止めで遅らせた打ち上げ(社長指示2026-11-27「上がる方も止めて」・utils/brawlerCombo brawlerStopLiftShift)。この当たりで上へ浮かせた弧を、その当たりの止めの間は
+   * 上がり始めさせない(弧の始まりを止めの明けへずらす)。その遅らせた長さ(ms)と、遅らせた後の弧の始まり(brawlerLiftAt と同じ値=この弧の名札)。
+   * 格闘の当たる高さの帯(utils/brawlerHitHeight)だけが読む=帯は止めで遅らせる前の弧の時計で見る(止めの分だけ定石の間合いがずれない)。
+   * brawlerLiftAt が別の値になった(新しい弧を書いた)ら無効。弧の時計をずらす所(brawlerShiftLift・airShotStop)は名札も同じだけずらす。
+   */
+  brLiftRiseStopMs?: number;
+  brLiftRiseStopAt?: number;
 }

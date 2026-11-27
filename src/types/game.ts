@@ -1021,6 +1021,12 @@ export interface Enemy {
   /** ★爆発の浮き(§14): 今の空中が始まった時刻・爆発では浮かない窓の終わり(着地から、浮いていた時間と同じ長さ)。Date.now。 */
   brBlastAirSince?: number;
   brBlastNoLiftUntil?: number;
+  /**
+   * ★止めで遅らせた打ち上げ(社長指示2026-11-27「上がる方も止めて」・utils/brawlerJuggleTypes と同じ欄)。遅らせた長さ(ms)と、遅らせた後の弧の始まり(=brawlerLiftAt の名札)。
+   * 格闘の当たる高さの帯・空中か地上かの判定だけが、遅らせる前の弧の時計で読む(utils/brawlerHitHeight・brawlerJudgedAirborne)。
+   */
+  brLiftRiseStopMs?: number;
+  brLiftRiseStopAt?: number;
   // Spawn bookkeeping for the enemy-cap culler. Scripted-wave enemies get
   // a short grace period before they become eligible for culling so big
   // set-piece hordes aren't deleted the instant they appear.
