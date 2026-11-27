@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.5876 — ブラー: 格闘の輪郭も本体と一緒に50%・写しを全部3枚に【2026-11-27 20:52】
+- 社長「半分にして」(格闘の技で動いている間、水色の輪郭も本体と同じく半分)・「写は3枚でfixしたはず」。
+- pixi `syncPlayerBlur`: 格闘の技で動いている間 `bodyK=blurBodyAlpha` を brawlerStand(水色の輪郭)・brawlerAura・抉り打ちの溜めの光に掛ける(drawBrawlerFx が毎フレーム決め直す=積み重ならない)。刀・既存の格闘の残像・被弾の白などは不変。
+- motionBlur: 格闘 2枚12ms→3枚10ms、吹き飛ぶ敵 2→3枚(間隔は画素基準のまま)。KEEP_MS 80→104(間隔28ms時に3枚目が出るよう)。research/BLUR.md の叩き台(2枚)は設計の誤り=3枚に訂正。
+- 画: scratchpad/blurbrawler/kick_before_after.png・blow_before_after.png。
+- 検証: typecheck / eslint エラー0 / vitest src/utils src/pixi 9671 passed。
+- 自己点検: 憲法第4条・第5条に抵触なし(描画のみ)。
+
 ## v0.25.5875 — 大車輪で緑卵・松明を壊す/装備中の銃タップで装備を外す【2026-11-27 20:07】
 - 社長指示「大車輪、緑卵とか松明とか壊せる様にして欲しい」: 振り回し・投げの体の道(`whipBodyPropHits`・体の短辺の半分刻み+包む箱で絞る)と着弾の爆発(`whipBlastPropHits`=松明。卵は既存の playerBlast)で壊す。ボスの叩きつけは着地の爆発のみ。壊した絵・落とし物は `propStruckFx`(breakPropsAlong から抽出)で近接と共通。★振り回し・投げの間だけ松明を壁扱いしない(`brawlerRectFree` の passTorches)=壊して突き抜ける(社長へ報告済み・戻せる)。負荷1/10。新規 whipProps.store.test.ts(6)・whipSwing.test.ts(+4)。画 scratchpad/whipprop/。
 - 社長指示「装備中の銃アイコンタップでオート射撃off」→訂正「装備を外してる状態になればいい・新しい見た目はいれない」: store 1欄 `autoFireOff`+HUD の表示上 active を外す(activeGun=null にしない=getActiveGun の先頭落ちを避ける)。純関数 `playerAutoFireAllowed`・`gunSlotTap`(新規 autoFireToggle.ts)。止めた経路: 通常オート射撃・アイレーザー・火炎放射器・新銃3種・autoSwitchIfDry・手動の銃(PHILL/レールガン/シグナルランチャー=外した見た目と揃える判断・社長へ報告)。持ち替えで装備に戻る。PCの数字キーで装備中の枠を押すと外す/装備し直す。守護霊・タレット・サブは止めない。画 scratchpad/autofire/(装備中12発/外す0発/再装備13発)。phone-guard: title の背景層の1pxゆらぎのみ(変更と無関係)。

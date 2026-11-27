@@ -52339,8 +52339,18 @@ export class PixiScene {
     if (kind) this.playerBlurKind = kind;
     stepBlurTrail(tr, { gt: gameTime, active: kind !== null, x: pt.x, y: pt.y, r: body.rotation, h: pt.h, stop, warpFrom, warpSpeed: KATANA_DASH_SPEED / 1000 });
     const baseA = body.alpha;
-    body.alpha = baseA * blurBodyAlpha(tr);
+    const bodyK = blurBodyAlpha(tr);
+    body.alpha = baseA * bodyK;
     const brawler = this.playerBlurKind === 'brawler';
+    // 格闘の技: 体に重なる絵(水色の輪郭の技の影・体の光・抉り打ちの溜めの光)も本体と同じ係数で一緒に透かす(本体+輪郭をひとまとまりに)。
+    // どれも drawBrawlerFx がこのフレームで濃さを決め直した直後=掛けても積み重ならない。止まった瞬間(bodyK=1)に一緒に戻る。
+    if (bodyK < 1 && kind === 'brawler') {
+      if (this.brawlerStand?.visible) this.brawlerStand.alpha *= bodyK;
+      if (this.brawlerAura?.visible) this.brawlerAura.alpha *= bodyK;
+      if (this.brawlerGougeCore?.visible) this.brawlerGougeCore.alpha *= bodyK;
+      if (this.brawlerGougeHalo?.visible) this.brawlerGougeHalo.alpha *= bodyK;
+      for (const m of this.brawlerGougeMotes) if (m.visible) m.alpha *= bodyK;
+    }
     const n = brawler ? BLUR_BRAWLER_GHOSTS : BLUR_KATANA_GHOSTS;
     const vis = alive && blurTrailVisible(tr);
     const out = blurGhostsInto(tr, n, brawler ? BLUR_BRAWLER_SPACING_MS : BLUR_KATANA_SPACING_MS, this.playerBlurOut);

@@ -3,7 +3,7 @@ import {
   blurGhostAlpha, blurFadeK, createBlurTrail, stepBlurTrail, blurGhostsInto, blurBodyAlpha, blurTrailFade, blurTrailVisible, blurStreak,
   enemyBlurActive, whipTipStreakAlpha, radialFlowK, blurSampleAt, blurEnemySpacingMs,
   BLUR_ENEMY_SPACING_MS, BLUR_ENEMY_SPACING_MAX_MS, BLUR_WARP_SPREAD_MS, RADIAL_FLOW_TAPS,
-  BLUR_FADE_MS, BLUR_BODY_ALPHA, BLUR_KATANA_GHOSTS, BLUR_KATANA_SPACING_MS, BLUR_BRAWLER_GHOSTS, BLUR_ENEMY_MAX, BLUR_ENEMY_START_SPEED,
+  BLUR_FADE_MS, BLUR_BODY_ALPHA, BLUR_KATANA_GHOSTS, BLUR_KATANA_SPACING_MS, BLUR_BRAWLER_GHOSTS, BLUR_BRAWLER_SPACING_MS, BLUR_ENEMY_GHOSTS, BLUR_ENEMY_MAX, BLUR_ENEMY_START_SPEED,
   BLUR_ENEMY_KEEP_SPEED, BLUR_STREAK_ALPHA, WHIP_TIP_STREAK_LEAD_MS, WHIP_TIP_STREAK_TAIL_MS, RADIAL_FLOW_MS,
   type BlurGhost,
 } from './motionBlur';
@@ -35,10 +35,12 @@ describe('motionBlur: 残像の濃さ・枚数', () => {
     expect(blurGhostAlpha(0, 2)).toBe(0);
     expect(blurGhostAlpha(3, 2)).toBe(0);
   });
-  it('刀は3枚・10msおき、格闘は2枚', () => {
+  it('刀・格闘は3枚・10msおき、吹き飛ぶ敵も3枚', () => {
     expect(BLUR_KATANA_GHOSTS).toBe(3);
     expect(BLUR_KATANA_SPACING_MS).toBe(10);
-    expect(BLUR_BRAWLER_GHOSTS).toBe(2);
+    expect(BLUR_BRAWLER_GHOSTS).toBe(3);
+    expect(BLUR_BRAWLER_SPACING_MS).toBe(10);
+    expect(BLUR_ENEMY_GHOSTS).toBe(3);
   });
 });
 

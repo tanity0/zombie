@@ -5,11 +5,11 @@
 /** 刀の一閃・居合一閃・殺陣: 残像3枚・10msおき。 */
 export const BLUR_KATANA_GHOSTS = 3;
 export const BLUR_KATANA_SPACING_MS = 10;
-/** 格闘の飛び蹴り・5段目の突進・抉り打ちの踏み込み: 刀より短く(2枚・12msおき)。 */
-export const BLUR_BRAWLER_GHOSTS = 2;
-export const BLUR_BRAWLER_SPACING_MS = 12;
-/** 強く吹き飛ばされた敵: 2枚(本体は透けさせない)。 */
-export const BLUR_ENEMY_GHOSTS = 2;
+/** 格闘の飛び蹴り・5段目の突進・抉り打ちの踏み込み: 刀と同じ(見本の3枚・10msおき・濃さ 0.46/0.32/0.18)。 */
+export const BLUR_BRAWLER_GHOSTS = 3;
+export const BLUR_BRAWLER_SPACING_MS = 10;
+/** 強く吹き飛ばされた敵: 見本の3枚(濃さ 0.46/0.32/0.18・間隔は画素で決める blurEnemySpacingMs・本体は透けさせない)。 */
+export const BLUR_ENEMY_GHOSTS = 3;
 export const BLUR_ENEMY_SPACING_MS = 10;
 /** 敵の残像の間隔の上限(ms)。間隔は画素で決める(blurEnemySpacingMs)=遅い間は時間を延ばし、速い間は 10ms まで詰める。 */
 export const BLUR_ENEMY_SPACING_MAX_MS = 28;
@@ -100,7 +100,8 @@ export interface BlurStepIn {
   warpSpeed?: number;
 }
 
-const KEEP_MS = 80;
+// 列を残す長さ: 一番古い写し(敵の3枚目=間隔の上限×3)まで点が残るように(足りないと3枚目が出ない時がある)。
+const KEEP_MS = Math.max(80, BLUR_ENEMY_SPACING_MAX_MS * BLUR_ENEMY_GHOSTS + 20);
 
 const pushSample = (tr: BlurTrail, s: BlurSample): void => {
   tr.samples.push(s);
