@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5882 — タイトルの描き上げ動画を差し替え(頭頂の欠けを解消)【2026-11-27 22:54】
+- 社長「頭のてっぺんが切れてる」→旧素材(2026-10-27支給 1280×720)の頭頂の輪郭線が約7px欠けていた(配置では切れていない=13画面で確認)。社長が出し直した the_ONE_drawing_3sec.mov(1536×864・30fps・3秒)を `public/opening/title-lineart-v2.mp4`(-c copy・音声なし・faststart)として追加。旧ファイルは原盤として残す。
+- TitleScreen: 寸法を定数 INTRO_LINE_W/H・場所を INTRO_LINE_SRC に。重ね合わせを総当たりで測り直し SCALE 0.842 / DX -52.5/864 / DY 72.5/864(平均誤差 0.6〜1.0px。銃の外縁とブーツの底に線画由来の数pxのずれ)。緩急: introRate の区切り 0.6/2.6→0.55/2.3・色の入り 2.55→2.2(描き終わりの約0.5秒前=意図は同じ)・新規 INTRO_DRAW_END_S=2.67(動画は2.67秒で描き終わり残り0.33秒が静止=そこで灯して次へ)・INTRO_ZOOM_BACK_MS 520→500。描き終わりまで実時間 約2.14秒(旧 約2.39秒)。
+- 画: scratchpad/newintro/sheet-phone.png・sheet-pc.png・*-head-top-x4.png(頭頂がつながる)。
+- 検証: typecheck / eslint エラー0 / assets:check OK。phone-guard は基点でも同じ NG(基準が古い・title の揺れ)=今回の変更に依らない。
+- 自己点検: 憲法第4条・第5条に触れない(タイトル演出のみ)。
+
 ## v0.25.5881 — ナイフ: 3段目の後はカウンター窓が開くまで次の振りを出さない【2026-11-27 22:21】
 - 社長指示「ナイフ、動ける様にはなるけど、カウンター窓開くまで振れるようにはしないで」。純関数 `knifeNextSwingAt`(3段目=max(隙明け, カウンターの readyAt))を beginMeleeSwing・triggerCounter のナイフの counterCooldownEnd に通す。gapMs も readyAt も meleeCooldownMult 追従。待ち中のタップは既存の 'drop'。歩けるのは今どおり0.7秒。
 - 結果: 3段目の後の1段目は必ず窓が開く(slasherFollowup の窓 [T,F,F,T] に復帰・間隔 700→820)。knifeHoldLift: 雑魚が連撃の切れ目で動ける時間 [..100..310..100..] が戻り、不変条件「切れ目ごとに毎回残る」を元に戻した。浮き [T,T,T,F,F,F,…]。
