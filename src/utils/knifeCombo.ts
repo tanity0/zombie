@@ -66,6 +66,15 @@ export const knifeComboCounterPlan = (stage: number, swingAt: number, readyAt: n
  */
 export const knifeNextSwingAt = (stage: number, swingAt: number, gapMs: number, readyAt: number): number =>
   stage === 3 ? Math.max(swingAt + gapMs, readyAt) : swingAt + gapMs;
+/**
+ * ★段ごとのダメージの倍率(社長裁定2026-11-27): 3連撃(v0.25.5842・1発の威力は旧1振りのまま)の時間あたりのダメージを旧の1振り(820msおき)へ揃える。
+ * 旧 1発/0.82秒・今 3発/1.62秒(0.4+0.4+0.82)→揃える倍率 0.66。配り方は 1段目・2段目=0.55・3段目=0.88(合計 1.98≒0.66×3・締めを重く)。
+ * 掛けるのはナイフの3連撃の通常の当たりだけ(会心・押し・止めは変えない)。段の外(0/未定義)は 1。
+ */
+export const KNIFE_COMBO_STAGE_DAMAGE_MULT: Readonly<Record<KnifeComboStage, number>> = { 1: 0.55, 2: 0.55, 3: 0.88 };
+/** 段のダメージの倍率(段の外=1)。 */
+export const knifeStageDamageMult = (stage: number | undefined): number =>
+  stage === 1 || stage === 2 || stage === 3 ? KNIFE_COMBO_STAGE_DAMAGE_MULT[stage] : 1;
 /** 振りの向き: +1=振り上げ(1・3段目) / -1=振り下ろし(2段目)。 */
 export const knifeComboSwingDir = (stage: number): 1 | -1 => (stage === 2 ? -1 : 1);
 /** 段の踏み込みの距離(px)。runPx=走りの踏み込み(0=立ち・歩き)。3段目だけ大きく前へ出る(走りの踏み込みの方が大きければそちら)。 */

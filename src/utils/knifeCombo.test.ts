@@ -6,6 +6,7 @@ import {
   KNIFE_COMBO_INTERVAL_MS, KNIFE_COMBO_RESET_MS, KNIFE_COMBO_FINISH_RECOVERY_MS, KNIFE_COMBO_QUEUE_MAX_MS, KNIFE_COMBO_STEP_FRAC, KNIFE_COMBO_FINISH_STEP_FRAC,
   knifeComboFinishMoveMult, KNIFE_COMBO_FINISH_STOP_MS,
   KNIFE_COMBO_FEEL, knifeComboFeel, knifeComboHitStop, knifeComboSfxLayers, knifeSwingDrawSince,
+  KNIFE_COMBO_STAGE_DAMAGE_MULT, knifeStageDamageMult,
 } from './knifeCombo';
 import { WHIP_COMBO_FEEL, WHIP_COMBO_FINISH_RECOVERY_MS } from './whipCombo';
 
@@ -197,5 +198,30 @@ describe('自分の振りの止め(描画だけ・knifeSwingDrawSince)', () => {
   it('この振りの命中でない(負)・止め0 はそのまま', () => {
     expect(knifeSwingDrawSince(300, -50, 110, 200)).toBe(300);
     expect(knifeSwingDrawSince(300, 200, 0, 200)).toBe(300);
+  });
+});
+
+describe('段ごとのダメージの倍率(knifeStageDamageMult・社長裁定2026-11-27)', () => {
+  it('1段目・2段目=0.55・3段目=0.88(締めが一番重い)', () => {
+    expect(knifeStageDamageMult(1)).toBe(0.55);
+    expect(knifeStageDamageMult(2)).toBe(0.55);
+    expect(knifeStageDamageMult(3)).toBe(0.88);
+    expect(knifeStageDamageMult(3)).toBeGreaterThan(knifeStageDamageMult(2));
+  });
+  it('合計 1.98(≒揃える倍率 0.66×3)', () => {
+    const sum = KNIFE_COMBO_STAGE_DAMAGE_MULT[1] + KNIFE_COMBO_STAGE_DAMAGE_MULT[2] + KNIFE_COMBO_STAGE_DAMAGE_MULT[3];
+    expect(sum).toBeCloseTo(1.98, 9);
+    expect(sum / 3).toBeCloseTo(0.66, 9);
+  });
+  it('時間あたりのダメージが旧の1振り(820msおき)とほぼ揃う(1周=間隔×2+3段目の後の隙)', () => {
+    const cycleMs = KNIFE_COMBO_INTERVAL_MS * 2 + Math.max(KNIFE_COMBO_FINISH_RECOVERY_MS, 820);
+    const sum = KNIFE_COMBO_STAGE_DAMAGE_MULT[1] + KNIFE_COMBO_STAGE_DAMAGE_MULT[2] + KNIFE_COMBO_STAGE_DAMAGE_MULT[3];
+    expect(cycleMs).toBe(1620);
+    expect(sum / cycleMs).toBeCloseTo(1 / 820, 4);
+  });
+  it('段の外(0・未定義・範囲外)は 1', () => {
+    expect(knifeStageDamageMult(0)).toBe(1);
+    expect(knifeStageDamageMult(undefined)).toBe(1);
+    expect(knifeStageDamageMult(4)).toBe(1);
   });
 });

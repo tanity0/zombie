@@ -143,7 +143,8 @@ describe('B. 空中の敵へのダメージ倍率(格闘以外にも)', () => {
   it('ナイフ(triggerCounter)にも乗る', () => {
     setup({ subs: [] });
     useGameStore.setState({ enemies: [zombieAt(40, 0, 'z', 99999)] });
-    const hit = (): number => { const h0 = hpOf('z'); useGameStore.setState({ player: { ...useGameStore.getState().player, counterCooldownEnd: 0 } }); useGameStore.getState().triggerCounter(); return h0 - hpOf('z'); };
+    // 毎回1段目から振る(ナイフの3連撃の段ごとのダメージの倍率=utils/knifeCombo knifeStageDamageMult を比べに混ぜない)。
+    const hit = (): number => { const h0 = hpOf('z'); useGameStore.setState({ player: { ...useGameStore.getState().player, counterCooldownEnd: 0, knifeComboStage: 0 } }); useGameStore.getState().triggerCounter(); return h0 - hpOf('z'); };
     const ground = hit();
     expect(ground).toBeGreaterThan(0);
     useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({ ...e, brLiftUntil: now + 5000, knockbackUntil: 0, hitStunUntil: 0 })) }));

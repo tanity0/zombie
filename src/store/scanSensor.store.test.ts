@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, strikerMeleeMult } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { createWeapon, MELEE_KEYS } from '../utils/weaponUtils';
+import { knifeStageDamageMult } from '../utils/knifeCombo';
 import { SCAN_WEAPON_KEY, SCAN_STACK_MELEE_MOB_MULT, SCAN_STACK_BOSS_RATIO, SCAN_STACK_KATANA_RATIO, drainScanDetonations } from '../utils/scanSensor';
 import type { Enemy, EnemyType } from '../types/game';
 
@@ -278,7 +279,7 @@ describe('品質監査#14+社長決定2026-10-18: 気絶中の即死は枠を使
     const plainBash = before - hpOf('b');
     now += 5000;
     const plainSwing = swingDamage([enemyAt('zombie', 45, 0, 'b', false)], 'b');
-    expect(plainBash / plainSwing).toBeCloseTo(3, 5); // 本当にバッシュの枝を通った(近接×3)
+    expect(plainBash / (plainSwing / knifeStageDamageMult(1))).toBeCloseTo(3, 5); // 本当にバッシュの枝を通った(近接×3・バッシュにはナイフの段の倍率は掛からない)
     now += 5000;
     withShield([enemyAt('zombie', 45, 0, 'b', true)]);
     before = hpOf('b');

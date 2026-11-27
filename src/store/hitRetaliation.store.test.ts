@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { RETALIATE_WINDOW_MS, RETALIATE_LUNGE_MS } from '../utils/hitRetaliation';
+import { knifeStageDamageMult } from '../utils/knifeCombo';
 import { applyPumpkinBlastDamage, applyContactDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 
 const NO_INPUT = { up: false, down: false, left: false, right: false } as never;
@@ -260,7 +261,8 @@ describe('被弾反撃: 着地の命中(resolveRetaliateStrike)', () => {
     const r = retaliateAndLand();
     expect(r?.swung).toBe(true);
     expect(r?.hit).toBe(true);
-    expect(99999 - hpOf('z')).toBeCloseTo(base * 2, 5);
+    // 被弾反撃はナイフの3連撃の段に入らない(段のダメージの倍率は掛からない)=段の倍率を外した普通の近接の2倍。
+    expect(99999 - hpOf('z')).toBeCloseTo(base / knifeStageDamageMult(1) * 2, 5);
   });
   it('命中の既存処理は通る: ノックバックが付き、近接のコンボ(ヒット数)が進む', () => {
     setup();

@@ -231,7 +231,7 @@ import {
 } from '../utils/slasherFollowup';
 import {
   knifeComboNextStage, knifeComboGapMs, knifeNextSwingAt, knifeComboTapAction, knifeComboQueuedAction, knifeComboCounterPlan, knifeComboStepPx,
-  knifeComboSwingDir, knifeComboFeel, knifeComboHitStop,
+  knifeComboSwingDir, knifeComboFeel, knifeComboHitStop, knifeStageDamageMult,
 } from '../utils/knifeCombo';
 import { multiHitFeel, multiHitStopExtendPatch, multiHitFxSpot, multiHitStagger, multiHitSfxLayers, multiHitReleaseDelay, multiHitBurstRings, multiHitLinePath, multiHitArcPath } from '../utils/multiHitFeel'; // まとめて当てた時の手応え(止め・揺れ・大きめの輪と光・重ねる命中音)
 import type { AstroThrowEntry, AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
@@ -15659,6 +15659,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     // これをしないと窓が200ms後ろへずれ、CDも1周期あたり200ms伸びてしまう(実質の弱体化)。
     // 演出の時刻(エフェクトのcreatedAt等)は従来どおり `now` のまま=絵は今この瞬間に出る。
     const swingAt = swingStartAt ?? now;
+    // ★ナイフの3連撃(utils/knifeCombo): 前隙つき(タッチ)は指を離した時に beginMeleeSwing が進めた段。直呼び(PC/ボット)はここで決める。
+    // 被弾反撃・格闘・刀・鞭は対象外(段 0)。段は当たりのダメージの倍率(knifeStageDamageMult)にも使うので、当たりの計算より前に決める。
+    const knifeNow = !ret && isKnifeComboMode(player);
+    const knifeViaPress = knifeNow && swingStartAt !== undefined && (player.knifeComboStage ?? 0) >= 1;
+    const knifeStage = !knifeNow ? 0 : knifeViaPress
+      ? (player.knifeComboStage as number)
+      : knifeComboNextStage(player.knifeComboStage ?? 0, player.knifeComboAt ?? -Infinity, now);
+    // ★段ごとのダメージの倍率(社長裁定2026-11-27・1/2段目 0.55・3段目 0.88=時間あたりを旧の1振りへ揃える)。通常の当たりだけ(処刑・気絶中の3倍/5倍・バッシュ・振りから出る他のものは素のまま)。
+    const knifeDmgMult = knifeStageDamageMult(knifeStage);
     // ★空中の敵に当てた時に自分の絵も浮いて追うか(utils/playerAirFollow meleeHitLiftsPlayer): 格闘の指定打撃=浮く・それ以外のこの振り(ナイフ)=浮かない。
     const airFollowWeapon: AirFollowWeapon = bs ? 'brawler' : isWhipMode(player) ? 'whip' : isKatanaMode(player) ? 'katana' : 'knife';
     // ★移動近接=走りで踏み込んだ振りの解決(被弾反撃などの別経路は対象外)。ノックバックを MOVING_MELEE_KB_MULT 倍。
@@ -16270,16 +16279,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★格闘のダメージ補正(research/BRAWLER.md §13-2): 同じ流れの10ヒット目以降 −5%/発(下限50%)。秘奥義は補正しない。
       const brProration = bs?.combo && bs.combo.move !== 'secret' && bs.combo.move !== 'secret-land' ? BRC.brawlerProrationFor(enemy, now) : 1;
       const airMk = meleeAirMult(enemy, now, airFollowWeapon); // 空中の敵への倍率(§16・格闘の長いコンボの補正と同じ並び)
-      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult * scanMult * brProration * airMk
+      let dmg = meleeDamage * knifeDmgMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult * scanMult * brProration * airMk
         * swingMmVs; // 熟練度: 通常の振り(格闘=brawler・それ以外=melee)。幻影には乗せない
       // スラッシャーの種: 空中(追い打ちの当たりで掛け直す)・印(自動の斬りには乗らない)・対人の縮み(関所が掛け直す)を外し、幻影へ外した熟練度を戻す。
       const slasherSeed = dmg / Math.max(1e-6, airMk * gpDmgScale * scanMult) * (swingMm / Math.max(1e-6, swingMmVs));
       // ★SAME_ARENA §9(対人体勢): 紫中の幻影への近接=致命の一撃(×5+最大HP25%・裁定②)。
       // 紫でなければ melee(0.04)の削り+クリなら2/3減速。
+      // ★止め・のけぞり(当たりの重さ=ダメージ/最大HP で決まる)は段の倍率を掛ける前の重さで決める(段の倍率で止めを短くしない・社長裁定「会心・押し・止めは変えない」)。
+      let reactDmg = dmg / knifeDmgMult;
       let pvpMeleePatch: Partial<Enemy> = {};
       if (isGuardianPhantom(enemy.type)) {
         if (isPvpFatalTarget(enemy.pvpPosture, gameTime)) {
           dmg = pvpFatalDamage(dmg, enemy.maxHealth);
+          reactDmg = dmg;
           pvpMeleePatch = { pvpPosture: pvpAfterFatal(enemy.pvpPosture, gameTime) };
           bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height }); // 既存のKill!演出プールを流用(§9 UI最小)
           bossFinishHit = true; // ★社長指示2026-08-27「幻影戦の致命もKILL演出(ズーム)」: 旧実装はこの旗が立たずズームのゲート(finisherHit||bossFinishHit)を通らなかった
@@ -16333,7 +16345,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         //   ★「当たっていない」扱い(§19-1): 取り消し(通常→技・技→技)・ステップの取り消し・秘奥義の1手目に数えない。
         if (bs) brGuardedHits++;
         survivors.push({
-          ...enemy, health: newHealth, lastHit: now, stunUntil, lastHitDmg: dmg,
+          ...enemy, health: newHealth, lastHit: now, stunUntil, lastHitDmg: reactDmg,
           ...(bossSlow ?? {}),
           ...(bossBump?.patch ?? {}),
           ...(laserBreak?.patch ?? {}),
@@ -16356,7 +16368,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         //   被弾反撃(retaliateOne)も同じく毎回押す(社長「はい」2026-11-13)。ボス級は従来どおり免疫を見る。
         // ★ナイフの固まりと浮き(knifeHoldLiftPatch・社長指示2026-11-12)。スラッシャー所持中も振りの1撃目から浮かせる
         // (社長指示同日「スラッシャーは1撃目から浮かせてほしい。空中コンボできるように」=追撃は空中の敵を拾う・slasherLiftMove)。
-        const knifeHL = knifeHoldLiftPatch(enemy, now, gameTime, dmg, swingAt, skillLevel(player, 'slasher') > 0);
+        const knifeHL = knifeHoldLiftPatch(enemy, now, gameTime, reactDmg, swingAt, skillLevel(player, 'slasher') > 0);
         // ★v0.25.3959(社長報告「近接当てると飛んでっちゃう」・?kblog=1実測「KB開始 bat 予定281567px」):
         // 方向の正規化は**中心差分の長さ**で割る。dist(enemyMeleeDist)はv0.25.3170から判定矩形の
         // 最近点距離=密着(中心が帯内)で0になり、dx/0.001×speedで数百万px/sのKBが出ていた。
@@ -16375,7 +16387,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackUntil: now + KNOCKBACK_DURATION,
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: bossSlowUntil(半減)が計算のみで未適用だった漏れ
-          ...meleeHitStunPatch(enemy, now, dmg, false, 1, { ecx, ecy, pcx, pcy }), // 戦闘の手触り①(v0.25.4269): 近接も局所ストップ(knockbackUntil を上書き=止めの残りぶん後ろ)
+          ...meleeHitStunPatch(enemy, now, reactDmg, false, 1, { ecx, ecy, pcx, pcy }), // 戦闘の手触り①(v0.25.4269): 近接も局所ストップ(knockbackUntil を上書き=止めの残りぶん後ろ)
           ...knifeHL, // 固まり・浮き(押しはこの枝の押しのまま=押されながら浮く)
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断(laser-broken遷移+中断CD+体幹'counter')
@@ -16394,8 +16406,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: 0,
           knockbackVy: 0,
           knockbackUntil: now + 100,
-          lastHitDmg: dmg, // 2026-11-06: のけぞりの強さをこのヒットの重さで(meleeHitStunPatch と同じ)
-          ...knifeHoldLiftPatch(enemy, now, gameTime, dmg, swingAt, skillLevel(player, 'slasher') > 0), // ★ナイフの固まりと浮き(上の枝と同じ)
+          lastHitDmg: reactDmg, // 2026-11-06: のけぞりの強さをこのヒットの重さで(meleeHitStunPatch と同じ)
+          ...knifeHoldLiftPatch(enemy, now, gameTime, reactDmg, swingAt, skillLevel(player, 'slasher') > 0), // ★ナイフの固まりと浮き(上の枝と同じ)
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: 同上
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
@@ -16418,13 +16430,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     recordDamageDealt('melee', meleeSwingDamage);
     for (const h of swingMasteryHits) noteMasteryDirectHits(player, h.key, [h]); // 熟練度(v2.1 A-9): 当たりごとのキーで貯める
     recordMeleeSwing(slashAt.length);
-    // ★ナイフの3連撃(utils/knifeCombo): 前隙つき(タッチ)は指を離した時に beginMeleeSwing が進めた段・決めたカウンターの可否。直呼び(PC/ボット)はここで決める。
+    // ★ナイフの3連撃のカウンターの可否(段は振りの頭で決めてある=knifeStage)。
     // カウンター窓は1段目だけ・カウンターのクールダウンは連撃の終わりから・次の振りまでは段の間隔(3段目の後は隙)。被弾反撃・格闘は対象外(今のまま)。
-    const knifeNow = !ret && isKnifeComboMode(player);
-    const knifeViaPress = knifeNow && swingStartAt !== undefined && (player.knifeComboStage ?? 0) >= 1;
-    const knifeStage = !knifeNow ? 0 : knifeViaPress
-      ? (player.knifeComboStage as number)
-      : knifeComboNextStage(player.knifeComboStage ?? 0, player.knifeComboAt ?? -Infinity, now);
     const knifePlan = !knifeNow ? null : knifeViaPress
       ? { open: player.counterWindowStart === swingAt, comboCounter: !!player.knifeComboCounter, readyAt: player.knifeCounterReadyAt ?? 0 }
       : knifeComboCounterPlan(knifeStage, swingAt, player.knifeCounterReadyAt ?? 0, !!player.knifeComboCounter, knifeCounterCooldownMs(player));

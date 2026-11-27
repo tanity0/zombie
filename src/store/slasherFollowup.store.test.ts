@@ -66,7 +66,7 @@ describe('スラッシャーの追い打ち: ナイフ', () => {
     swing();
     const first = lastNumber().value;
     const seed = st().slasherFollowups[0].hits[0].seed;
-    expect(seed).toBeCloseTo(first, 6); // 地上の1撃目=空中の倍率なし=種と同じ値
+    expect(Math.ceil(seed - 1e-9)).toBe(first); // 地上の1撃目=空中の倍率なし=種と同じ値(数字は切り上げ・ナイフの1段目の倍率が掛かった後の値)
     for (let k = 1; k <= 3; k++) {
       const hp = en('z').health;
       // 前の当たりの押しを消しておく(最後の吹き飛ばしだけを見る)
