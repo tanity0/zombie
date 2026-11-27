@@ -105,6 +105,7 @@ import { counterLeapOrigin, counterLeapTarget } from './thorDashPushback';
 // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王(barrage-king)=反射弾のダメ・体勢削り倍率+貫通1。
 import { barrageKingMult, BARRAGE_KING_PIERCE } from './skillEffectsB7';
 import { PLANT_CLOSE_MS, PLANT_CLOSE_GRACE_MS, usesShotWindup } from './plantShot'; // 社長支給2026-09-21: 花が閉じ切った瞬間に撃つ
+import { pickIaiSubject } from './katanaIaiCounter'; // 居合一閃(research/KATANA_TSUBAME.md §5-5)の相手=一番近い主
 import { groundBlastCircleHits } from './groundJump'; // 円の爆風の当たり(ジャンプ着地と拳鬼の跳びかかりで共通)
 
 // v0.25.2946(社長裁定「体勢値は削ってあげたら?」): 裏ボス系の**追跡中の体当たり**への受け流し。
@@ -604,6 +605,14 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     for (const id of new Set(parriedEnemyIds.map(h => h.id))) notifyCounterHit(id);
     if (localParries.length > 0) notifyCounterHit();
     const pnow = Date.now();
+    // ★居合一閃(research/KATANA_TSUBAME.md §5-5): 刀の居合の構えの窓なら、成立の主(刃のパリィ=noDamage は除く)のうち一番近い1体へ居合一閃。
+    // その1体だけは弾き返さず(位置の弾き・ノックバック・トールの跳び退きを出さない)、反撃のダメージも出さない(体勢は量0で削る)。中断は出す。残りは今のまま。
+    const iaiBlastId = (() => {
+      const cands = parriedEnemyIds.filter(h => !h.noDamage)
+        .map(h => useGameStore.getState().enemies.find(en => en.id === h.id)).filter((en): en is Enemy => !!en);
+      const pick = pickIaiSubject(cands, { x: bpcx, y: bpcy });
+      return pick && useGameStore.getState().tryKatanaIaiCounter(pick.id) ? pick.id : null;
+    })();
     // 通常カウンター(弾反射)と同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
     fx.addMeleeFinishCombo(1);
     // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
@@ -671,7 +680,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           //    → ここで“即時に”位置を弾き飛ばす(COUNTER_KNOCKBACK_LAUNCH)。
           // ② 凍結系(stun/lift/root)と ノックバック無敵窓を全解除して、続く速度スライドを
           //    何にも邪魔させない。
-          ...(isPhill ? {} : {
+          ...(isPhill || e.id === iaiBlastId ? {} : {
             x: e.x + ux * COUNTER_KNOCKBACK_LAUNCH,
             y: e.y + uy * COUNTER_KNOCKBACK_LAUNCH,
           }),
@@ -687,7 +696,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
             ? e.stunUntil : undefined,
           liftUntil: undefined, rootUntil: undefined,
           knockbackImmuneUntil: 0,
-          ...(isPhill ? {} : {
+          ...(isPhill || e.id === iaiBlastId ? {} : {
             knockbackVx: ux * COUNTER_KNOCKBACK_SPEED,
             knockbackVy: uy * COUNTER_KNOCKBACK_SPEED,
             knockbackUntil: pnow + KNOCKBACK_DURATION,
@@ -705,7 +714,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       const boss = isBossType(e.type);
       // ★v0.25.3591(社長指示): 刃を弾いたパリィは**HP 0・体勢は通常どおり**。damageEnemy は体勢
       // (applyBossPostureDamage)を**ダメージ量とは無関係に**適用するので、量だけ0にすればよい。
-      const dmg = hit.noDamage ? 0 : counterReplyDamage(cBase, bp, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT) * masteryMultOf(bp, cMk);
+      const dmg = hit.noDamage || hit.id === iaiBlastId ? 0 : counterReplyDamage(cBase, bp, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT) * masteryMultOf(bp, cMk);
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
       // CRIT-UNIFY §9.3(社長裁定F): パリィ反撃は確定クリ。ボスは①の効果(半減+CD2倍+紫蓄積)が
       // damageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。
@@ -727,6 +736,10 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     for (const hit of parriedEnemyIds) {
       const te = useGameStore.getState().enemies.find(en => en.id === hit.id);
       if (!te || te.type !== 'thor') continue;
+      if (te.id === iaiBlastId) { // 居合一閃: 跳び退かない(主を通り道から外さない・§5-5 の 2)。技は上の aiPhase 解除で中断済み=追跡へ戻す。
+        useGameStore.setState(st => ({ enemies: st.enemies.map(en => en.id === te.id ? { ...en, bossState: 'chase', bossNextActionAt: useGameStore.getState().gameTime + tunables.thorCounterLeapMs, bossScriptResume: scriptResumeFlag(en.bossScriptQueue) } : en) })); // 間=跳び退きと同じ長さ
+        continue;
+      }
       const tcx = te.x + te.width / 2, tcy = te.y + te.height / 2;
       // ★v0.25.3810(9巡目 重大3): ここは counter-leap の**複製実装**だった——起点と到達点を
       // useGameLoop の共通層と**同じ既定式で直書き**していて、台帳(useGameLoop.ts しか走査しない)の
@@ -2160,6 +2173,14 @@ export const applyContactDamage = (
   // v0.25.2946: 受け流しの反映=体幹削り+プレイヤーi-frame+軽い成立FX(重い演出は使わない=負荷方針)。
   if (bossContactParries.length > 0) {
     const parryNow = Date.now();
+    // ★居合一閃(research/KATANA_TSUBAME.md §5-5 の 3「裏ボス/賞金首の体当たりの受け流し」): 刀の居合の構えの窓なら一番近い主へ居合一閃。
+    // その1体は押し返さない(体勢の削り・拘束は残す)。
+    const iaiContactId = (() => {
+      const cands = bossContactParries.map(c => useGameStore.getState().enemies.find(en => en.id === c.id)).filter((en): en is Enemy => !!en);
+      const pc = useGameStore.getState().player;
+      const pick = pickIaiSubject(cands, { x: pc.x + pc.width / 2, y: pc.y + pc.height / 2 });
+      return pick && useGameStore.getState().tryKatanaIaiCounter(pick.id) ? pick.id : null;
+    })();
     useGameStore.setState(st => ({
       enemies: st.enemies.map(e => {
         const parry = bossContactParries.find(c => c.id === e.id);
@@ -2173,9 +2194,11 @@ export const applyContactDamage = (
         return {
           ...e, ...(bump?.patch ?? {}),
           rootUntil: gameTime + BOSS_CONTACT_PARRY_ROOT_MS, vx: 0, vy: 0,
-          knockbackVx: parry.ux * KNOCKBACK_SPEED, knockbackVy: parry.uy * KNOCKBACK_SPEED,
-          knockbackUntil: parryNow + KNOCKBACK_DURATION,
-          knockbackShoveUntil: parryNow + KNOCKBACK_DURATION,
+          ...(e.id === iaiContactId ? {} : {
+            knockbackVx: parry.ux * KNOCKBACK_SPEED, knockbackVy: parry.uy * KNOCKBACK_SPEED,
+            knockbackUntil: parryNow + KNOCKBACK_DURATION,
+            knockbackShoveUntil: parryNow + KNOCKBACK_DURATION,
+          }),
         };
       }),
       player: { ...st.player, invulnerable: true, invulnerableTime: parryNow, ...abilityInvulnPatch(st.player, parryNow, INVULN_MS) }, // 技の無敵(被弾の無敵と同じ INVULN_MS)=sourceId 付きの攻撃も受けない
@@ -2207,6 +2230,13 @@ export const applyContactDamage = (
 
     const pnow = Date.now();
     const ppx = collPlayer.x + collPlayer.width / 2, ppy = collPlayer.y + collPlayer.height / 2;
+    // ★居合一閃(research/KATANA_TSUBAME.md §5-5): 刀の居合の構えの窓なら、弾いた主(突進の体当たり・赤い噛み)のうち一番近い1体へ居合一閃。
+    // その1体は弾き返さず(技の中断だけ)、反撃のダメージも出さない(体勢・会心の数えは量0で残す)。残りは今のまま。
+    const iaiDashId = (() => {
+      const cands = [...new Set(dashParried)].map(id => useGameStore.getState().enemies.find(en => en.id === id)).filter((en): en is Enemy => !!en);
+      const pick = pickIaiSubject(cands, { x: ppx, y: ppy });
+      return pick && useGameStore.getState().tryKatanaIaiCounter(pick.id) ? pick.id : null;
+    })();
     // 通常カウンターと同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
     fx.addMeleeFinishCombo(1);
     // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
@@ -2234,7 +2264,9 @@ export const applyContactDamage = (
         ...counterMasterAwakenBuffPatch(st.player, st.gameTime),
       },
       // v0.25.2480: 中断+ノックバック変換を dashParriedEnemyPatch へ切り出し(守護霊経路と共有・挙動同一)。
-      enemies: st.enemies.map(e => dashParried.includes(e.id) ? dashParriedEnemyPatch(e, ppx, ppy, pnow, st.gameTime, biteChaffMoveById.get(e.id)) : e),
+      enemies: st.enemies.map(e => !dashParried.includes(e.id) ? e
+        : e.id === iaiDashId ? { ...e, ...counterInterruptPatch(e, st.gameTime, biteChaffMoveById.get(e.id)), vx: 0, vy: 0 } // 居合一閃: 中断だけ(弾き返さない)
+          : dashParriedEnemyPatch(e, ppx, ppy, pnow, st.gameTime, biteChaffMoveById.get(e.id))),
     }));
     applyCounterMasterRefund(pnow); // カウンターマスター: 近接・サブウェポン・リロードの残りを前倒し(未所持は何もしない)
     // クリティカル反撃(ヘッドショット): aiPhase を解除済みなのでダメージが通る(ジャンプ中無敵を回避)。
@@ -2246,7 +2278,7 @@ export const applyContactDamage = (
       const e = useGameStore.getState().enemies.find(en => en.id === eid);
       if (!e) continue;
       const boss = isBossType(e.type);
-      const dmg = counterReplyDamage(counterBase, collPlayer, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT) * masteryMultOf(collPlayer, counterMk);
+      const dmg = eid === iaiDashId ? 0 : counterReplyDamage(counterBase, collPlayer, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT) * masteryMultOf(collPlayer, counterMk);
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
       // CRIT-UNIFY §9.3(社長裁定F): 突進/気絶パリィの反撃も確定クリ。ボスは①の効果(半減+CD2倍+
       // 紫蓄積)がdamageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。
@@ -2258,7 +2290,7 @@ export const applyContactDamage = (
         const stunMs = STUN_DURATION_MS * (collPlayer.stunDurationMult ?? 1) * brawlerJustStunMult(Date.now()); // ジャスト構えなら2倍(§12-2)
         useGameStore.getState().stunEnemy(eid, useGameStore.getState().gameTime + stunMs);
       }
-      fx.spawnDamageNumber(ex, e.y, dmg, true, { enemyId: eid }); // 金色クリ表示。名指し=空中の倍率も数字へ(案A)
+      if (dmg > 0) fx.spawnDamageNumber(ex, e.y, dmg, true, { enemyId: eid }); // 金色クリ表示。名指し=空中の倍率も数字へ(案A)。居合一閃の主は数字を出さない(当たりは居合一閃の側)
       fx.spawnRing(ex, ey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
       fx.spawnBurst(ex, ey, '#fde047', 10);
       fx.spawnGlow(ex, ey, 34, 'rgba(253,224,71,', 240);

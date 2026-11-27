@@ -73,6 +73,10 @@ const WRITE_SITES: readonly WriteSite[] = [
   { field: 'counterWindowEnd', where: 'プレイヤー初期状態(0)', stamped: false, why: '初期化=振っていない' },
   { field: 'meleeSwingAt', where: 'プレイヤー初期状態(0)', stamped: false, why: '初期化=振っていない' },
   {
+    field: 'katanaDashUntil', where: '居合一閃の走りの期限をスローの分だけ後ろへずらす(movePlayer・research/KATANA_TSUBAME.md §5-2)', stamped: false,
+    why: '走っている一閃の期限の延長だけ(振っていない)。打刻は一閃を始めた triggerKatanaDash で1回',
+  },
+  {
     field: 'meleeSwingAt', where: '迎撃の飛び込みが空振り(resolveRetaliateStrike)', stamped: false,
     why: '斬る絵だけ出す空振り=判定なし。命中した時は triggerCounter 側で1回打刻する',
   },
@@ -119,6 +123,10 @@ const WRITE_SITES: readonly WriteSite[] = [
   },
   { field: 'counterWindowEnd', where: 'ナイフ(通常近接スイープ)', stamped: true },
   { field: 'katanaDashUntil', where: '刀/村雨のスワイプ一閃(triggerKatanaDash)', stamped: true },
+  {
+    field: 'counterWindowEnd', where: '居合一閃で居合の構えの窓を閉じる(tryKatanaIaiCounter・research/KATANA_TSUBAME.md §5-5)', stamped: false,
+    why: '閉じる側=振っていない(続けて呼ぶ triggerKatanaDash が一閃として打刻する)',
+  },
   {
     field: 'counterWindowEnd', where: '被弾でカウンター窓を閉じる(damagePlayer)', stamped: false,
     why: '閉じる側=振っていない',
@@ -198,7 +206,7 @@ describe('近接スイング確定の打刻(commitMeleeSwing)を「振り方を�
 
   it('★刀のスワイプ一閃(triggerKatanaDash)が打刻している(v0.25.3784の穴そのもの)', () => {
     // 型宣言(interface)ではなく**実装**を切り出す。
-    const impl = text.indexOf('triggerKatanaDash: (dirX, dirY, ghostId, tsubame) => {'); // tsubame=燕返し(research/KATANA_TSUBAME.md)
+    const impl = text.indexOf('triggerKatanaDash: (dirX, dirY, ghostId, tsubame, iai) => {'); // tsubame=燕返し・iai=居合一閃(research/KATANA_TSUBAME.md)
     expect(impl, 'triggerKatanaDash の実装が見つからない(走査が壊れている)').toBeGreaterThan(0);
     const dash = text.slice(impl);
     const body = dash.slice(0, dash.indexOf('\n  },'));

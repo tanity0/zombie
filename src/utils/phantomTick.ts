@@ -800,8 +800,10 @@ const counteredByPlayer = (
   const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   const dl = Math.max(0.001, Math.hypot(bcx - pcx, bcy - pcy));
   const now = Date.now();
+  // ★居合一閃(research/KATANA_TSUBAME.md §5-5 の 3「幻影」): 刀の居合の構えの窓なら幻影の手前へ移って抜ける一閃で返す。その時は押し返さない。
+  const iai = g.tryKatanaIaiCounter(phantomId);
   // 敵がカウンターされた時と同じノックバック(量・時間とも同じ定数)。
-  useGameStore.setState(st => ({ enemies: st.enemies.map(e => e.id === phantomId ? {
+  if (!iai) useGameStore.setState(st => ({ enemies: st.enemies.map(e => e.id === phantomId ? {
     ...e,
     knockbackVx: ((bcx - pcx) / dl) * KNOCKBACK_SPEED,
     knockbackVy: ((bcy - pcy) / dl) * KNOCKBACK_SPEED,

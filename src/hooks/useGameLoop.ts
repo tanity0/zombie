@@ -7845,6 +7845,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (st === 'thor-dash-windup' || st === 'thor-dash-move' || st === 'thor-dash-recover') {
                   patch.thorDashReadyAt = newGameTime + HB_TH.dash.cdMs;
                 }
+                // ★居合一閃(research/KATANA_TSUBAME.md §5-5): 刀の居合の構えの窓なら、主の手前へ移って抜ける一閃で返す。
+                // その時は反撃のダメージ(体勢・会心の数えは damageEnemy の量0で残す)と跳び退き(counter-leap)を出さない。
+                const iai = !ghost && useGameStore.getState().tryKatanaIaiCounter(boss.id);
                 if (ghost) {
                   // v0.25.2480(★未決1解消): 守護霊カウンター成立。プレイヤー専用の副作用(G1/G4a計測
                   // notify・コンボ・counter SE等倍・強glow95・triggerHitImpact(停止+ズーム)・
@@ -7879,11 +7882,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 applyCounterMasterRefund(pnow); // カウンターマスター: 近接・サブウェポン・リロードの残りを前倒し(未所持は何もしない)
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
                 const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=装備している近接武器)
-                const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
+                const dmg = iai ? 0 : counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
                 // 社長指示: トールのカウンターは必ずクリティカル扱いにする(裏ボス完全気絶=bumpBossCritの
                 // カウントに乗せる。他の裏ボス共通のパリィ演出は非crit踏襲のままここだけ変更)。
                 withMastery(counterMk, () => damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter'));
-                spawnDamageNumber(bcx, boss.y, dmg, true, { enemyId: boss.id });
+                if (dmg > 0) spawnDamageNumber(bcx, boss.y, dmg, true, { enemyId: boss.id });
                 playSfx('headshot');
                 // 社長指示: 「これは普通のクリティカルです」= 通常のクリ演出(金の衝撃波+火花+発光。
                 // 銃/近接クリの hitCrit juice と同じ見た目)もここに乗せる。青いCounter演出とは別レイヤーで
@@ -7891,6 +7894,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
                 spawnBurst(hitX, hitY, '#fde047', 10);
                 useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
+                }
+                if (iai) {
+                  // 居合一閃: 技は中断するが跳び退かない(主を通り道から外さない・§5-5 の 2)。間は通常の次の手の間合い。
+                  patch.bossState = 'chase';
+                  patch.bossNextActionAt = thorNextActionDelay();
+                  patch.bossBurstLeft = 0;
+                  return;
                 }
                 patch.bossState = 'counter-leap';
                 patch.bossStateUntil = newGameTime + HB_TH.counterLeapMs;
@@ -7953,6 +7963,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const hiddenBossCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire) => {
                 // ★台本は捨てない(社長指示2026-10-01)=間が明けたら残りから出す。
                 patch.bossScriptResume = scriptResumeFlag(boss.bossScriptQueue);
+                // ★居合一閃(research/KATANA_TSUBAME.md §5-5): 刀の居合の構えの窓なら居合一閃で返す(反撃のダメージは出さない・体勢と会心の数えは量0で残す)。
+                const iai = !ghost && useGameStore.getState().tryKatanaIaiCounter(boss.id);
                 if (ghost) {
                   // v0.25.2480(★未決1解消): 守護霊カウンター成立(thorCounterHitのghost分岐と同じ扱い)。
                   applyGhostCounterEffect(boss, hitX, hitY, ghost, (k, g) => playSfx(k, g));
@@ -7983,9 +7995,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 applyCounterMasterRefund(pnow); // カウンターマスター: 近接・サブウェポン・リロードの残りを前倒し(未所持は何もしない)
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
                 const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=装備している近接武器)
-                const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
+                const dmg = iai ? 0 : counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
                 withMastery(counterMk, () => damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter'));
-                spawnDamageNumber(bcx, boss.y, dmg, true, { enemyId: boss.id });
+                if (dmg > 0) spawnDamageNumber(bcx, boss.y, dmg, true, { enemyId: boss.id });
                 playSfx('headshot');
                 spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
                 spawnBurst(hitX, hitY, '#fde047', 10);

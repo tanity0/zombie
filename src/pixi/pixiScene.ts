@@ -130,6 +130,7 @@ import { BRAWLER_WEAK_GUARD_ALPHA } from '../utils/brawlerGuard'; // 弱い構�
 import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne, brawlerLiftVisBasePx } from '../utils/brawlerCombo';
 import { satsujinCoverAlpha, SATSUJIN_HITS, isTsubameCrouching } from '../utils/katanaTsubame';
 import { isKatanaTapSwing, katanaIaiCrouching, katanaIaiDropLift, katanaIaiEquipped, katanaIaiSettle, katanaIaiStanceK } from '../utils/katanaIaiStance'; // 刀のタップ=居合の構え(描画だけ)
+import { iaiAfterimageAlpha } from '../utils/katanaIaiCounter'; // 居合一閃の残像(描画だけ)
 import {
   KATANA_SLASH_CELL_H, KATANA_SLASH_CELL_W, KATANA_SLASH_CELLS, KATANA_SLASH_SHEET_TEX,
   katanaCutDeathAlpha, katanaCutLayout, katanaCutLength, katanaCutOpen, katanaCutRgb,
@@ -28750,7 +28751,8 @@ export class PixiScene {
       if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}-ready`; }
     }
     // ★刀のタップ=居合の構え(utils/katanaIaiStance): カウンターの窓が開いている間はしゃがみ絵(-ready)で止まる(変形しない)。描画のみ。
-    const katanaIaiOn = katanaIaiEquipped(p.subWeapons) && !warlordFull && !killFxActiveForPose && p.health > 0;
+    // 居合一閃(research/KATANA_TSUBAME.md §5-5 の 11)で走っている間は構えの絵を描かない(窓は閉じている=戻りの絵も出さない)。
+    const katanaIaiOn = katanaIaiEquipped(p.subWeapons) && !warlordFull && !killFxActiveForPose && p.health > 0 && now >= p.katanaDashUntil;
     if (meleePosePrefix && katanaIaiOn && katanaIaiCrouching(now, p.counterWindowStart, p.counterWindowEnd)) {
       const poseTex = getTexture(`${meleePosePrefix}-ready`);
       if (poseTex) {
@@ -29289,6 +29291,7 @@ export class PixiScene {
       view.projLiftAltH = playerAirPx; view.projLiftAltD = playerAirD; view.projLiftAltFrame = this.projFrameNo;
       this.projLiftTag(view.overlay, 'hudNoH'); // proj-lift: Z57(H=p.y=高さを含まない・m=1)
     }
+    this.syncIaiAfterimage(view.container, view.sprite, p, now);
     this.drawBrawlerFx(p, fb.footX, fb.footY, dsc, view.sprite, now); // proj-lift: Z8(確かめた: 体に重ねる光 brawlerAura と技の影 brawlerStand は体の位置から置く=体の割り戻しに乗る/砂埃は地面の演出・ゲートは高さを読むだけ)
     // シーカー発動中は半透明(通常敵から狙われない演出)。被弾無敵の点滅より優先。
     const seekerActive = p.seekerUntil > gameTime;
@@ -52015,6 +52018,32 @@ export class PixiScene {
     g.alpha = alpha;
     g.rotation = Math.atan2(sdy, sdx);
     g.position.set(cxs + sdx * (edge + out), cys + sdy * (edge + out));
+  }
+
+  /**
+   * ★居合一閃の残像(research/KATANA_TSUBAME.md §5-2「元の位置に残像を一瞬残す」・瞬間移動の技の例外=縮地と同じ扱い)。
+   * 元の位置に、今の体の絵の写しを淡い青白で一瞬だけ置き、減速しながら消す(utils/katanaIaiCounter の iaiAfterimageAlpha)。
+   * 時刻と元の位置は store(player.iaiWarpAt/From)が持つ=描画は読むだけ。写し1枚=負荷1/10(残像の外は visible=false だけ)。
+   */
+  private iaiGhost: Sprite | null = null;
+  private syncIaiAfterimage(parent: Container, src: Sprite, p: Player, now: number): void {
+    const a = iaiAfterimageAlpha(p.iaiWarpAt, now);
+    if (a <= 0.001 || p.iaiWarpFromX === undefined || p.iaiWarpFromY === undefined || !src.texture) {
+      if (this.iaiGhost) this.iaiGhost.visible = false;
+      return;
+    }
+    if (!this.iaiGhost || this.iaiGhost.destroyed) { this.iaiGhost = new Sprite(); }
+    const g = this.iaiGhost;
+    if (g.parent !== parent) parent.addChildAt(g, 0); // 体の後ろ
+    if (g.texture !== src.texture) g.texture = src.texture;
+    g.anchor.set(src.anchor.x, src.anchor.y);
+    g.scale.set(src.scale.x, src.scale.y);
+    g.rotation = src.rotation;
+    const dx = p.iaiWarpFromX - (p.x + p.width / 2), dy = p.iaiWarpFromY - (p.y + p.height / 2);
+    g.position.set(src.position.x + dx, src.position.y + dy);
+    g.tint = 0xcfe6ff;
+    g.alpha = 0.75 * a;
+    g.visible = true;
   }
 
   private syncPlayerFx(player: Player, now: number) {

@@ -293,14 +293,17 @@ export const createAngelBossState = (): AngelBossState => ({
  * ⇒ 今は成立と同時に `bossState='chase'` で**技を中断**する(溜め/硬直のカウンターと同じ扱い)。
  * **判定が出続ける技をこの先足す時も、成立したら必ず状態を進めること。**
  */
-const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, sfx: AngelSfx, ghost?: GhostCounterFire): void => {
+// 戻り値: true=居合一閃で返した(research/KATANA_TSUBAME.md §5-5)。呼び手は主を弾き返す/跳び退かせる動きを出さない(技の中断は出す)。
+const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, sfx: AngelSfx, ghost?: GhostCounterFire): boolean => {
   // ★カウンターで終わるのは出していた1手だけ(社長指示2026-10-01「その台本の中の1つを終了して
   // 間を設ける」)。台本の残りは捨てない=間が明けたら chooseScriptMove が残りから出す。
   // (旧: 残り手を破棄して新しい始動から組み直していた。)
   if (ghost) {
     applyGhostCounterEffect(boss, hitX, hitY, ghost, (key, gain) => (key === 'counter' ? sfx.counter(gain) : sfx.reward(gain)));
-    return;
+    return false;
   }
+  // ★居合一閃: 刀の居合の構えの窓なら主の手前へ移って抜ける一閃で返す(反撃のダメージは出さない・体勢と会心の数えは量0で残す)。
+  const iai = useGameStore.getState().tryKatanaIaiCounter(boss.id);
   // BOT_AND_GHOST.md G1(計測専用・挙動不変): miguel/jibril/rafi/uri/suriel/acrasielの6体が
   // 共通で通るこの1箇所で、カウンター成立をplayerTraitsへ通知する。v0.25.5043: 相手IDを渡す(窓の概算の外でも落とさない)。
   notifyCounterHit(boss.id);
@@ -329,14 +332,15 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
   applyCounterMasterRefund(pnow); // カウンターマスター: 近接・サブウェポン・リロードの残りを前倒し(未所持は何もしない)
   const counterBase = getActiveGun(cp)?.damage ?? 12;
   const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=装備している近接武器)
-  const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
+  const dmg = iai ? 0 : counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
   withMastery(counterMk, () => useGameStore.getState().damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter'));
   recordCritHit('guaranteed', true); // §7-11c(4): カウンター反撃(確定クリ・天使6体は常にボス)
-  useGameStore.getState().spawnDamageNumber(bcx, boss.y, dmg, true, { enemyId: boss.id });
+  if (dmg > 0) useGameStore.getState().spawnDamageNumber(bcx, boss.y, dmg, true, { enemyId: boss.id });
   sfx.reward();
   useGameStore.getState().spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
   useGameStore.getState().spawnBurst(hitX, hitY, '#fde047', 10);
   useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
+  return iai;
 };
 
 // ★カウンター憲法(社長裁定2026-08-26「攻撃判定と窓が重なった時だけがカウンター成立」・v0.25.3947):
@@ -685,8 +689,12 @@ export const runMiguelTick = (
     patch.y = mHomeY + Math.sin(newAngle) * correctedDist - miguel.height / 2;
   };
 
-  const miguelCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire): void => {
-    angelCounterHit(miguel, mcx, hitX, hitY, sfx, ghost);
+  const miguelCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire): boolean => {
+    if (angelCounterHit(miguel, mcx, hitX, hitY, sfx, ghost)) {
+      // 居合一閃(§5-5 の 2): 技は中断するが跳び退かない(主を通り道から外さない)。
+      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
+      return true;
+    }
     const lx = mcx - pcx, ly = mcy - pcy;
     const ll = Math.hypot(lx, ly) || 1;
     patch.bossState = 'counter-leap';
@@ -694,6 +702,7 @@ export const runMiguelTick = (
     patch.aiFromX = mcx; patch.aiFromY = mcy;
     patch.aiTargetX = pcx + (lx / ll) * orbitRadius;
     patch.aiTargetY = pcy + (ly / ll) * orbitRadius;
+    return false;
   };
 
   // BOT_AND_GHOST.md §2.8 G2.5: windup開始点でだけ呼ぶ(毎フレーム評価しない)。
@@ -925,7 +934,7 @@ export const runMiguelTick = (
     // ①技を中断 ②**来た方向へ弾き返す**(プレイヤー中心から突進方向の逆へ MIGUEL_DASH_COUNTER_PUSHBACK_PX)
     // =体を素通りして背後から斬る、を物理的に不可能にする。位置はアリーナ内へクランプ。
     const dashCountered = (hx: number, hy: number): void => {
-      miguelCounterHit(hx, hy);
+      if (miguelCounterHit(hx, hy)) { patch.mDashReadyAt = newGameTime + MG_T.dash.cdMs * freshCritCdMult(miguel.id, newGameTime); return; } // 居合一閃: 弾き返さない(§5-5 の 2)
       let bdx = tx0 - fx0, bdy = ty0 - fy0;
       const bl = Math.hypot(bdx, bdy) || 1; bdx /= bl; bdy /= bl;
       let px2 = pcx - bdx * AN_C.dashCounterPushbackPx;
@@ -1055,8 +1064,12 @@ export const runMiguelTickLegacy = (
     patch.y = mHomeY + Math.sin(newAngle) * correctedDist - miguel.height / 2;
   };
 
-  const miguelCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire): void => {
-    angelCounterHit(miguel, mcx, hitX, hitY, sfx, ghost);
+  const miguelCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire): boolean => {
+    if (angelCounterHit(miguel, mcx, hitX, hitY, sfx, ghost)) {
+      // 居合一閃(§5-5 の 2): 技は中断するが跳び退かない(主を通り道から外さない)。
+      patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
+      return true;
+    }
     const lx = mcx - pcx, ly = mcy - pcy;
     const ll = Math.hypot(lx, ly) || 1;
     patch.bossState = 'counter-leap';
@@ -1064,6 +1077,7 @@ export const runMiguelTickLegacy = (
     patch.aiFromX = mcx; patch.aiFromY = mcy;
     patch.aiTargetX = pcx + (lx / ll) * orbitRadius;
     patch.aiTargetY = pcy + (ly / ll) * orbitRadius;
+    return false;
   };
 
   const miguelFullStun = miguel.bossFullStunUntil !== undefined && newGameTime < miguel.bossFullStunUntil;
@@ -1222,7 +1236,7 @@ export const runJibrilTick = (
     patch.x = nx - jibril.width / 2;
     patch.y = ny - jibril.height / 2;
   };
-  const jibrilCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(jibril, jcx, hx, hy, sfx, ghost);
+  const jibrilCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): boolean => angelCounterHit(jibril, jcx, hx, hy, sfx, ghost);
 
   // --- 技の開始(begin*)。実戦の抽選(下のchase分岐/縁ハメ潰しの転移)と ボスメーカーの▸個別再生が
   //     **同じ1本**を通る(遷移を複製しない・BOSS_MAKER.md §6-1)。 -----------------------------
@@ -1740,7 +1754,7 @@ export const runRafiTick = (
     const c = clampArena(rcx + (dx / dl) * spd * bossMoveDt, rcy + (dy / dl) * spd * bossMoveDt);
     patch.x = c.x - rafi.width / 2; patch.y = c.y - rafi.height / 2;
   };
-  const rafiCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(rafi, rcx, hx, hy, sfx, ghost);
+  const rafiCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): boolean => angelCounterHit(rafi, rcx, hx, hy, sfx, ghost);
 
   // --- 技の開始(begin*)。実戦の抽選(下のchase分岐)と ボスメーカーの▸個別再生が**同じ1本**を通る ---
   const beginRafiSweep = (): void => {
@@ -2055,7 +2069,7 @@ export const runRafiTickLegacy = (
     patch.x = c.x - rafi.width / 2; patch.y = c.y - rafi.height / 2;
   };
 
-  const rafiCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(rafi, rcx, hx, hy, sfx, ghost);
+  const rafiCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): boolean => angelCounterHit(rafi, rcx, hx, hy, sfx, ghost);
 
   const rafiFull = rafi.bossFullStunUntil !== undefined && newGameTime < rafi.bossFullStunUntil;
   let rGhostFire: GhostCounterFire | null = null;
@@ -2202,7 +2216,7 @@ export const runUriTick = (
     const c = clampArena(ucx + (dx / dl) * spd * bossMoveDt, ucy + (dy / dl) * spd * bossMoveDt);
     patch.x = c.x - uri.width / 2; patch.y = c.y - uri.height / 2;
   };
-  const uriCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(uri, ucx, hx, hy, sfx, ghost);
+  const uriCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): boolean => angelCounterHit(uri, ucx, hx, hy, sfx, ghost);
   // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): sweep-windup/downslash-windupの州満了
   // エッジで共通に呼ぶ(自然満了・カウンター中断[検収是正・§1-0例外]の両方から同じヘルパを使う)。
   const settleUriHabit = (state: string, liveShape: CounterReachShape, gameTimeForT: number): void => {
@@ -2425,7 +2439,7 @@ export const runUriTick = (
     // ミゲル dashCountered と同型。①中断 ②来た方向へ弾き返す(プレイヤー中心から突進方向の逆へ150px)
     // ③アリーナ内クランプ。
     const thrustCountered = (hx: number, hy: number): void => {
-      uriCounterHit(hx, hy);
+      if (uriCounterHit(hx, hy)) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri); return; } // 居合一閃: 弾き返さない(§5-5 の 2)
       let bdx = tx0 - fx0, bdy = ty0 - fy0;
       const bl = Math.hypot(bdx, bdy) || 1; bdx /= bl; bdy /= bl;
       const pushed = clampArena(pcx - bdx * AN_C.dashCounterPushbackPx, pcy - bdy * AN_C.dashCounterPushbackPx);
@@ -2562,7 +2576,7 @@ export const runSurielTick = (
     const c = clampArena(scx + (dx / dl) * spd * bossMoveDt, scy + (dy / dl) * spd * bossMoveDt);
     patch.x = c.x - suriel.width / 2; patch.y = c.y - suriel.height / 2;
   };
-  const surielCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(suriel, scx, hx, hy, sfx, ghost);
+  const surielCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): boolean => angelCounterHit(suriel, scx, hx, hy, sfx, ghost);
   // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): 3つの溜め州(ring-beam-windup/
   // ring-spin-windup/sweep-windup)の州満了エッジで共通に呼ぶ。自然満了・カウンター中断(検収是正・
   // §1-0例外)の両方から同じヘルパを使うことで図形式のズレを起こさない。axisは呼び出し側が明示する
@@ -3315,7 +3329,7 @@ export const runPhillTick = (
     patch.x = phill.x + (dx / dl) * spd * bossMoveDt;
     patch.y = phill.y + (dy / dl) * spd * bossMoveDt;
   };
-  const phillCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): void => angelCounterHit(phill, phcx, hx, hy, sfx, ghost);
+  const phillCounterHit = (hx: number, hy: number, ghost?: GhostCounterFire): boolean => angelCounterHit(phill, phcx, hx, hy, sfx, ghost);
   const phillHateAim = (): ResolvedHateAim => resolveBossHateAim(phill, { x: pcx, y: pcy }, store.summons, newGameTime);
 
   // ---- エルデの流星(技10): 誘導弾の旋回(毎フレーム・idolの誘導弾と同型。上限4発=負荷1/10) ----

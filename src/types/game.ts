@@ -410,6 +410,13 @@ export interface Player extends DashLocomotionState {
   // 縮地のワープ斬撃の受け渡し(1回きり): 押した時に書き、移動処理(movePlayer)が `shukuchiWarpTo` へ移す→
   // 直後にループが `resolveShukuchiStrike` で斬る。`shukuchiStriking` は斬撃の解決中だけ true(撃破が連鎖を伸ばす印)。
   shukuchiWarpTo?: { x: number; y: number };
+  // ★居合一閃(research/KATANA_TSUBAME.md §5): 刀の居合の構えの窓でカウンターが成立した瞬間、主の手前へ瞬時に移った記録。
+  // 元の位置(中心)とその時刻(Date.now)。描画は元の位置に残像を一瞬出すだけ(判定には使わない)。0/未設定=無し。
+  iaiWarpAt?: number;
+  iaiWarpFromX?: number;
+  iaiWarpFromY?: number;
+  // 居合一閃の走りが終わる時刻(Date.now)。この間は敵の体の箱でプレイヤーを止めない(主を貫いて後ろへ抜ける)。壁・行ける帯は止める。
+  iaiRunUntil?: number;
   shukuchiStrikeAt?: number;      // 押した時刻(Date.now・0/未設定=待ちなし)
   shukuchiTargetId?: string;
   shukuchiStrikeMult?: number;    // この一撃のダメージ倍率(連鎖の上乗せ)

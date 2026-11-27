@@ -353,6 +353,9 @@ import {
   tsubameAccepts, tsubamePath, isTsubameCrouching, katanaStrikeTravel, nextKatanaCuts, triggersSatsujin, satsujinAngles, type TsubameWindow,
   SATSUJIN_HITS, SATSUJIN_STRIKE_MS, SATSUJIN_FADE_OUT_MS, SATSUJIN_HALF_LEN_PX, SATSUJIN_FINAL_HITSTOP_MS,
 } from '../utils/katanaTsubame';
+import {
+  iaiWarpPlan, iaiStrikeLength, iaiWalkBack, iaiCounterRoute, iaiClosedWindowEnd, iaiSlowLostMs, KATANA_IAI_COUNTER_MULT,
+} from '../utils/katanaIaiCounter';
 import type { KatanaSlashMove } from '../utils/katanaSlashSheet';
 import { KATANA_SLASH_TIMING } from '../utils/katanaSlashSheet';
 // 刀の斬撃シートの絵の指定(描画だけ・判定なし)。katanaSlashSeq=プレイヤーの刀の振りの通し番号(切り上げ/切り下ろしの交互に使う)。
@@ -9735,7 +9738,7 @@ export const notifySkillProc = (key: SkillKey): void => {
  * 呼ぶのはプレイヤー本人の技が**実際に出た**所だけ(入力しただけ・技ポイント不足・道の外は呼ばない)。拳鬼・幻影の技は別の経路=出ない。
  * 音は足さない(技そのものの音がある)。
  */
-export const notifyTechProc = (kind: BR.BrawlerTechKind | 'secret' | 'heel' | 'kickup' | 'airthrow' | 'suplex' | 'suplexchain' | 'flipkick' | 'mogura' | 'issen' | 'tsubame' | 'satsujin' | 'whipslam' | 'whipoverhead', kickN = 0): void => { // issen/tsubame/satsujin=刀の技の行(research/KATANA_TSUBAME.md §2・§4)
+export const notifyTechProc = (kind: BR.BrawlerTechKind | 'secret' | 'heel' | 'kickup' | 'airthrow' | 'suplex' | 'suplexchain' | 'flipkick' | 'mogura' | 'issen' | 'tsubame' | 'satsujin' | 'iai' | 'whipslam' | 'whipoverhead', kickN = 0): void => { // issen/tsubame/satsujin=刀の技の行(research/KATANA_TSUBAME.md §2・§4)
   // 飛び蹴りは何発目かで名前が違う(飛び蹴り→空中蹴り→蹴り飛ばし・社長指示2026-11-11)。
   const key = (kind === 'kick' && kickN >= 2 ? `tech:kick${Math.min(3, kickN)}` : `tech:${kind}`) as TechProcKey;
   useGameStore.setState(s => ({ skillProcFeed: pushSkillProc(s.skillProcFeed, key, Date.now(), ++skillProcSeq) }));
@@ -12101,7 +12104,13 @@ interface GameState {
   //   射撃のキルのドロップ(dropGunKillLoot)は呼び手(useGameLoop)が killedEnemies で出す(store→utils/gunKillDrops は循環importになるため)。
   performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean, ghostId?: string, strikeMult?: number, slashMove?: KatanaSlashMove, fxFrom?: { x: number; y: number }, asShot?: boolean) => { hit: boolean; finish: boolean; killed: number; hitIds?: string[]; killedEnemies?: Enemy[] };
   // tsubame=燕返し(research/KATANA_TSUBAME.md §1): 硬直・CDの門を通さず、指定の距離だけ一閃を出し直す(消費・CDは足さない)。
-  triggerKatanaDash: (dirX: number, dirY: number, ghostId?: string, tsubame?: { distance: number }) => boolean;
+  // iai=居合一閃(research/KATANA_TSUBAME.md §5-5): 硬直・CDの門を通さず・CDも足さない。走る距離=max(一閃の距離, minDistance)。
+  //   targetId=成立の主(着地の当たりに必ず入れる)。mult=敵への打撃の上乗せ(KATANA_IAI_COUNTER_MULT)。プレイヤー本人だけ(守護霊は渡さない)。
+  triggerKatanaDash: (dirX: number, dirY: number, ghostId?: string, tsubame?: { distance: number }, iai?: { minDistance: number; mult: number; targetId: string }) => boolean;
+  // ★居合一閃の入口(research/KATANA_TSUBAME.md §5・5-5 が正)。刀の居合の構えの窓でカウンターが成立した瞬間に、成立の各所が呼ぶ。
+  //   居合一閃を出したら true(主の手前へ瞬時に移り・窓を閉じ・一閃を始めた)。false=今のカウンターのまま。
+  //   true の時、呼び手は今のカウンターの「反撃のダメージ(counterReplyDamage)」と「主を弾き返す/跳び退かせる動き」だけを出さない(他の副作用は残す)。
+  tryKatanaIaiCounter: (enemyId: string | undefined) => boolean;
   // ★燕返し(research/KATANA_TSUBAME.md §1): 受付の間の反対フリックで出す。出たら true。
   tryTsubame: (dirX: number, dirY: number, ghostId?: string) => boolean;
   // ★当てた直後のフリックの追加攻撃の入口(刀の燕返し。鞭のフリックの技は廃止=research/WHIP_FOLLOWUP.md §7)。入力側はこれだけを呼ぶ。出たら true。
@@ -13753,7 +13762,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // (`biteWallRect`)。当たり判定そのもので塞ぐと、プレイヤーが攻撃の四角の中に
         // 立っていられず「ぶつかりに行かないと当たらない」状態になる(§12・enemyBite.ts に理由)。
         {
-          const blockers: Rect[] = palmPass ? [] : playerEnemyBodyBlockers(state.enemies, state.gameTime, newX, newY);
+          // ★居合一閃(research/KATANA_TSUBAME.md §5-2「敵を貫いて後ろへ」)の走りの間は敵の体で止めない(壁・行ける帯・囲いの円は一閃と同じく止まる)。
+          const iaiPass = kbNow < (player.iaiRunUntil ?? 0);
+          const blockers: Rect[] = palmPass || iaiPass ? [] : playerEnemyBodyBlockers(state.enemies, state.gameTime, newX, newY);
           // ステージ2の這う塊も壁と同じく塞ぐ(すり抜けられない)。昇天中は判定なし=通れる。
           const lc = state.labCrawler;
           if (lc && crawlerSolid(lc)) {
@@ -13983,6 +13994,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 格闘の速い踏み込みが壁・木に止められた: 踏み込みを打ち切り、残りの速度も0(A-1)。
           ...(brawlerSweepStopped ? { lungeUntil: 0, lungeVx: 0, lungeVy: 0, vx: 0, vy: 0 } : {}),
           ...(katanaSweepPushed ? { vx: 0, vy: 0 } : {}),
+          // ★居合一閃(research/KATANA_TSUBAME.md §5-2「後ろへ一閃の距離を突進斬り」): カウンターの演出のスローの間も道の長さを走り切る。
+          //   走りの器の期限は実時間なので、スローで進まなかった実時間の分だけ期限(走り・硬直・敵の体で止めない間)を後ろへずらす(構えで押される器と同じ考え)。
+          ...(kbNow < (player.iaiRunUntil ?? 0) ? (() => {
+            const ext = iaiSlowLostMs(deltaTime / GAME_SPEED, computeTimeSlowScale(kbNow, state.timeSlowStart, state.timeSlowUntil, state.timeSlowScale, state.timeSlowHoldMs));
+            return ext > 0 ? {
+              katanaDashUntil: player.katanaDashUntil + ext, katanaRecoveryUntil: player.katanaRecoveryUntil + ext, iaiRunUntil: (player.iaiRunUntil ?? 0) + ext,
+            } : {};
+          })() : {}),
         }
       };
     });
@@ -18317,7 +18336,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  triggerKatanaDash: (dirX, dirY, ghostId, tsubame) => {
+  triggerKatanaDash: (dirX, dirY, ghostId, tsubame, iai) => {
     const now = Date.now();
     // 敵・破壊オブジェクトはここでは読まない(★着地時に実経路で取り直す=SAME_ARENA.md §7-2)。
     const { isPaused } = get();
@@ -18331,16 +18350,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★燕返し(research/KATANA_TSUBAME.md §1)は一閃の着地の硬直の中から出る=硬直・CDの門を通さない(追加の消費なし=CDも足さない)。
     // 守護霊も同じ(社長裁定2026-11-22「守護霊にも燕返し」)。
     const tb = tsubame;
-    if (!tb && now < player.katanaRecoveryUntil) return false;
+    // ★居合一閃(research/KATANA_TSUBAME.md §5-5 の 5): カウンターのご褒美=一閃のクールダウンも止めの門(硬直)も通さず、CDも足さない。プレイヤー本人だけ。
+    const ia = ghostId === undefined && !tb ? iai : undefined;
+    if (!tb && !ia && now < player.katanaRecoveryUntil) return false;
     // 村雨はクールダウン無し(硬直のみ)。刀はさらにクールダウン中は発動しない。
     const mura = hasMurasame(player);
-    if (!tb && !mura && now < player.katanaDashCooldownEnd) return false;
+    if (!tb && !ia && !mura && now < player.katanaDashCooldownEnd) return false;
     // ★ハンティング(utils/huntingSequence): 溜まっていれば一閃の走る距離が伸びる(同じ速さで長く走る)。守護霊も自分の溜まりで同じ(社長裁定2026-11-22)。
     // この一連でもう一閃を出していたら、これは新しい一閃=前の一連で使い切る(伸ばさない)。
     if (!tb && player.huntingSequence === 'katana' && player.huntingSeqIssen) setActorHunting(ghostId, HUNTING_CONSUME_PATCH);
     const huntActor = combatActorPlayer(ghostId) ?? player;
     const huntIssen = huntActor.huntingCharged;
-    const issenDist = KATANA_DASH_DISTANCE + (huntIssen && !tb ? huntingReachBonus(huntActor) : 0);
+    // 居合一閃は抜ける道=max(一閃の距離, 主の体の幅+48)(§5-5 の 8・大きいボスでも後ろへ抜ける)。一閃と同じ速さで、その距離のぶんだけ走る。
+    const issenDist = Math.max(KATANA_DASH_DISTANCE + (huntIssen && !tb ? huntingReachBonus(huntActor) : 0), ia ? ia.minDistance : 0);
     // 燕返しは距離が「今の位置→元の位置」(一閃の最大距離まで)=同じ速さで、その距離のぶんだけ走る。一閃も同じ速さで issenDist だけ走る。
     // (katanaDashMsFor は伸びていない距離では従来の tsubameDashMs / KATANA_DASH_MS と同じ値。)
     const dashMs = katanaDashMsFor(tb ? tb.distance : issenDist);
@@ -18359,7 +18381,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     //  ⇒ 新しい数字を足さずに **KATANA_DASH_MS(180ms)がそのまま前隙**になる。
     // ※ダメージ適用が着地後なのは従来どおり(下の setTimeout。ヒットストップが移動窓を食う対策)。
     // 村雨はクールダウン無し: ダッシュ終了時刻をそのままCD終了にして実質0に。
-    const cooldownEnd = tb ? player.katanaDashCooldownEnd : mura ? now + KATANA_DASH_MS : now + KATANA_DASH_MS + KATANA_DASH_COOLDOWN_MS;
+    const cooldownEnd = tb || ia ? player.katanaDashCooldownEnd : mura ? now + KATANA_DASH_MS : now + KATANA_DASH_MS + KATANA_DASH_COOLDOWN_MS; // 居合一閃は CD を使わない(§5-5 の 5)
     // 状態機械そのもの(距離/所要時間/硬直/CD)は主語によらず同じ1組を書く。
     const dashPatch: Partial<DashLocomotionState> = {
       katanaDashUntil: now + dashMs,
@@ -18376,7 +18398,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...dashPatch,
           // 刀はカウンターも一閃クールダウンに依存する。村雨はカウンターも無CD
           // なので延長しない(連発可)。
-          counterCooldownEnd: mura
+          counterCooldownEnd: mura || ia
             ? state.player.counterCooldownEnd
             : Math.max(state.player.counterCooldownEnd, cooldownEnd),
           // ★燕返し(research/KATANA_TSUBAME.md §1・社長指示2026-11-22「燕返しは、一閃から移動しない…しゃがみ体勢で止まってる。(無敵ではない)」):
@@ -18405,7 +18427,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // §8裁定済み#16: 一閃は前隙が無い経路=打刻の呼び出し時刻(now)がそのまま「押した瞬間」。
       get().noteMeleeSwingPressedAt(now);
       // ★技の行(research/KATANA_TSUBAME.md §2): 本人の一閃・燕返しが実際に出た瞬間(格闘の技の行と同じ出し方)。
-      notifyTechProc(tb ? 'tsubame' : 'issen');
+      notifyTechProc(tb ? 'tsubame' : ia ? 'iai' : 'issen'); // 居合一閃=「居合一閃」(§5-3)
       if (!tb) set({ tsubameWindow: null }); // 新しい一閃は前の受付を閉じる
     } else {
       // 守護霊: 防御規格を同一にする。プレイヤーの「invulnerableTime を過去へずらす」逆算打刻は
@@ -18445,7 +18467,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ダッシュの移動ウィンドウ(KATANA_DASH_MS)が凍結に食われてプレイヤーが
     // 動かないため。まず移動だけ走らせ、到達後に斬る。
     // 「斬」を出す位置 = ダッシュ軌道(始点→終点)の真ん中(発動時に確定)。
-    setTimeout(() => {
+    const landStrike = (): void => {
+        // ★居合一閃はカウンターのスローの間も道を走り切る(movePlayer が走りの期限を後ろへずらす)=着地はずれた期限まで待つ。
+        if (ia) { const left = get().player.katanaDashUntil - Date.now(); if (left > 0) { setTimeout(landStrike, left); return; } }
         // 主語を着地時点で再解決する(run reset / 刀を外した / **守護霊が解散した** をここで弾く)。
         const striker = combatActorPlayer(ghostId);
         if (!striker || !isKatanaMode(striker)) return;
@@ -18480,6 +18504,11 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (perp <= KATANA_DASH_HIT_HALF_WIDTH + prop.width / 2) propTargetIds.push(prop.id);
           }
         }
+        // ★居合一閃(§5-5 の 1): 成立の主には必ず当たる(ワープの瞬間に確定=通り道で取り直さない・弾き返し/跳び退きで外れない)。
+        if (ia) {
+          const fe = get().enemies.find(e => e.id === ia.targetId);
+          if (fe && !isCorpse(fe) && fe.health > 0 && !targetIds.includes(fe.id)) targetIds.unshift(fe.id);
+        }
         if (targetIds.length === 0 && propTargetIds.length === 0) { if (tb) setActorTsubameWindow(ghostId, null); return; } // 空振り(=かわされた)
         // ★殺陣(research/KATANA_TSUBAME.md §4): 一閃・燕返しが、切り傷4本の敵に当たった瞬間=その敵だけ通常の当たりの代わりに殺陣へ(1体だけ・通り道の順で最初)。
         // 守護霊が刻んだ傷も同じ敵の傷=守護霊の一閃でも殺陣になる(社長裁定2026-11-22)。殺陣は場に1つだけ(出ている間は通常の当たり)。
@@ -18493,7 +18522,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const zanY = pcy + uy * travel / 2;
         // ★スラッシャーの追い打ち(utils/slasherFollowup): プレイヤーの一閃・燕返しの当たりの種を集め、0.1秒おきの追い打ちとして予約する(守護霊は積まない)。
         const katanaCollected = collectSlasherSeeds(() => (strikeIds.length > 0
-          ? get().performKatanaStrike(strikeIds, KATANA_DASH_DAMAGE_MULT, true, ghostId, ghostId ? 1 : warlordIssenMult(striker), tb ? 'tsubame' : 'issen',
+          ? get().performKatanaStrike(strikeIds, KATANA_DASH_DAMAGE_MULT, true, ghostId, ghostId ? 1 : warlordIssenMult(striker) * (ia ? ia.mult : 1), tb ? 'tsubame' : 'issen',
             tb ? { x: pcx + ux * travel, y: pcy + uy * travel } : undefined) // 燕返し: 斬撃の絵は仮定の通り道の終点(一閃で体が着く所に当たる)から
           : { finish: false }));
         const result: { finish: boolean; hitIds?: string[] } = katanaCollected.result;
@@ -18548,7 +18577,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           get().spawnBlood(zanX, zanY, -Math.PI / 2 - 0.16, 260);
           get().spawnBlood(zanX, zanY, -Math.PI / 2 + 0.16, 260);
         }
-    }, dashMs);
+    };
+    setTimeout(landStrike, dashMs);
     return true;
   },
 
@@ -18568,6 +18598,76 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!get().triggerKatanaDash(path.ux, path.uy, ghostId, { distance: path.dist })) return false;
     // 音: 一閃と同じ系統で高め(守護霊は鳴らし手=useGameLoop が距離減衰つきで鳴らす)。
     if (ghostId === undefined) void import('../audio/audioManager').then(m => m.playSfx('katana-dash', 1, undefined, 1.35));
+    return true;
+  },
+
+  tryKatanaIaiCounter: (enemyId) => {
+    // ★居合一閃(research/KATANA_TSUBAME.md §5・5-5 が正)。成立の判定・窓の長さは呼び手のまま(ここは振り分けと実行だけ)。
+    const now = Date.now();
+    const st = get();
+    const p = st.player;
+    const e = enemyId !== undefined ? st.enemies.find(en => en.id === enemyId) : undefined;
+    const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+    const plan = e ? iaiWarpPlan({ x: pcx, y: pcy }, { x: e.x, y: e.y, width: e.width, height: e.height }, p.lastDirection ?? undefined) : null;
+    const route = iaiCounterRoute({
+      katanaPlayer: isKatanaMode(p) && !p.pseudoActor,
+      windowOpen: isCounterActive(p, now),
+      hasSubject: !!e,
+      // 触れない主(死体・倒れた・isUntouchable・空中)は今のカウンターのまま(§5-5 の 7)。
+      subjectTouchable: !!e && !isCorpse(e) && e.health > 0 && !isUntouchable(e)
+        && e.aiPhase !== 'jump' && e.aiPhase !== 'g-jump-air' && e.aiPhase !== 'g-trijump-air',
+      withinWarpRange: !!plan,
+      // 殺陣の最中(無敵なので成立しない=保険)・行動不能・止まっている間は出さない。
+      blocked: st.isPaused || !!st.satsujin || isPvpIncapacitated(p.pvpPosture, st.gameTime),
+    });
+    if (route !== 'iai' || !e || !plan) return false;
+    // ワープ先が行けない所(壁・木・建物・行ける帯の外・囲いの円の外・城ボス戦の制限の外)なら、線の上を自分の側へ戻って一番近い行ける所(§5-5 の 7)。
+    const ae = st.activeEvent;
+    const confine = ae && ae.kind !== 'rescue' && ae.confinesPlayer !== false ? ae : null;
+    const standable = (cx: number, cy: number): boolean => {
+      if (!brawlerSecretSpot(get, cx, cy)) return false;
+      if (confine && Math.hypot(cx - confine.x, cy - confine.y) > confine.radius - Math.max(p.width, p.height) / 2) return false;
+      if (st.castleFightNow) {
+        const c = clampCastleFightCrossing(pcx, pcy, cx, cy);
+        if (Math.abs(c.x - cx) > 0.5 || Math.abs(c.y - cy) > 0.5) return false;
+      }
+      return true;
+    };
+    const land = plan.dist > 0.5 ? iaiWalkBack({ x: pcx, y: pcy }, { x: plan.x, y: plan.y }, standable) : { x: pcx, y: pcy };
+    // 抜ける向き=ワープ先→主の中心(ワープ先が主の中心と重なれば自分→主の向き)。
+    const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+    let ux = ecx - land.x, uy = ecy - land.y;
+    const ul = Math.hypot(ux, uy);
+    if (ul > 1e-6) { ux /= ul; uy /= ul; } else { ux = plan.ux; uy = plan.uy; }
+    // 順番(§5-5 の 9): 成立した tick で store の位置を書き換えてから一閃を始める(一閃の始点=ワープ先=燕返しの「元の位置」)。
+    // 窓は出た瞬間に閉じる(1回の構えで1回・§5-5 の 6)。吹き飛び・踏み込みの器は打ち切る(一閃の走りを上書きさせない)。
+    set(state => ({
+      player: {
+        ...state.player,
+        x: land.x - state.player.width / 2,
+        y: land.y - state.player.height / 2,
+        vx: 0, vy: 0,
+        counterWindowEnd: iaiClosedWindowEnd(state.player.counterWindowEnd, now),
+        knockbackUntil: (state.player.knockbackUntil ?? 0) > now ? now : state.player.knockbackUntil,
+        lungeUntil: 0, lungeVx: 0, lungeVy: 0, lungeHoldUntil: 0,
+        shukuchiWarpTo: undefined,
+        lastDirection: { x: ux, y: uy },
+        iaiWarpAt: now, iaiWarpFromX: pcx, iaiWarpFromY: pcy,
+      },
+    }));
+    // 瞬間移動の筋(元の位置→ワープ先・判定なし=派手さの絵)。元の位置の残像は描画が iaiWarpAt を読んで一瞬だけ出す。
+    if (Math.hypot(land.x - pcx, land.y - pcy) > 2) {
+      get().spawnEffect({ kind: 'trail', id: `fx-iai-warp-${now}`, fromX: pcx, fromY: pcy, toX: land.x, toY: land.y, color: 'rgba(226,240,255,0.95)', createdAt: now, duration: 200 });
+      get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(226,240,255,', 180, true);
+    }
+    const started = get().triggerKatanaDash(ux, uy, undefined, undefined, {
+      minDistance: iaiStrikeLength(0, e.width), mult: KATANA_IAI_COUNTER_MULT, targetId: e.id,
+    });
+    // 一閃が出せなかった(刀を外した等の保険)時も、窓は閉じ位置は移っている=当たりは今のカウンターへ戻す。
+    if (!started) return false;
+    set(state => ({ player: { ...state.player, iaiRunUntil: state.player.katanaDashUntil } })); // 走りの間は敵の体で止めない(movePlayer)
+    // 瞬間移動の音(一閃の発動音と同じ系統で少し高め=縮地の例外と同じ扱い・新しい素材は作らない)。
+    void import('../audio/audioManager').then(m => m.playSfx('katana-dash', 1, undefined, 1.15));
     return true;
   },
 

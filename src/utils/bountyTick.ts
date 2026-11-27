@@ -584,6 +584,8 @@ export const BOUNTY_RECOVER_STATES: readonly string[] = [
 
 /** カウンター成立の演出(idolTick.ts/angelBossTick.tsのcounterHit/angelCounterHitと同型)。 */
 const bountyCounterHit = (bounty: Enemy, hx: number, hy: number, sfx: BountySfx): void => {
+  // ★居合一閃(research/KATANA_TSUBAME.md §5-5): 刀の居合の構えの窓なら主の手前へ移って抜ける一閃で返す(反撃のダメージは出さない・体勢と会心の数えは量0で残す)。
+  const iai = useGameStore.getState().tryKatanaIaiCounter(bounty.id);
   notifyCounterHit(bounty.id);
   notifyMoveCounter();
   const g = useGameStore.getState();
@@ -608,12 +610,12 @@ const bountyCounterHit = (bounty: Enemy, hx: number, hy: number, sfx: BountySfx)
   } }));
   applyCounterMasterRefund(pnow); // カウンターマスター: 近接・サブウェポン・リロードの残りを前倒し(未所持は何もしない)
   const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=装備している近接武器)
-  const dmg = counterReplyDamage(getActiveGun(cp)?.damage ?? 12, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
+  const dmg = iai ? 0 : counterReplyDamage(getActiveGun(cp)?.damage ?? 12, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
   const g2 = useGameStore.getState();
   withMastery(counterMk, () => g2.damageEnemy(bounty.id, dmg, false, true, false, 'other', 'player', 'counter'));
   // §7-11c(4): カウンター反撃(確定クリ)。賞金首は isBossType 非登録(§6.38裁定)=対雑魚扱いで計上。
   recordCritHit('guaranteed', false);
-  g2.spawnDamageNumber(bounty.x + bounty.width / 2, bounty.y, dmg, true, { enemyId: bounty.id });
+  if (dmg > 0) g2.spawnDamageNumber(bounty.x + bounty.width / 2, bounty.y, dmg, true, { enemyId: bounty.id });
   sfx.reward();
   g2.spawnRing(hx, hy, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
   g2.spawnBurst(hx, hy, '#fde047', 10);
