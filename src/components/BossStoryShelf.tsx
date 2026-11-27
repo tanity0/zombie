@@ -6,7 +6,8 @@
 import React, { useId } from 'react';
 import { BossFaceDefs, BossHeadFace, bossFaceRimArc, BOSS_FACE_RIM, BOSS_FACE_RIM_PATROL } from './BossHeadFace';
 import { spritePath } from '../utils/spriteLoader';
-import { splitBossStoryName, type BossStoryCell, type BossStoryGroupView } from '../utils/bossStoryArchive';
+import { bossStoryShownName, splitBossStoryName, type BossStoryCell, type BossStoryGroupView } from '../utils/bossStoryArchive';
+import { KENKI_TINT_RGB, type KenkiArchiveRow, type KenkiArchiveView } from '../utils/kenkiArchive';
 
 // 明朝の役割(index.css --type-world・research/UIUX_PROPOSAL.md P17)。SVG の文字は class が効かない所があるので変数を直に引く。
 const SERIF = 'var(--type-world)';
@@ -88,10 +89,36 @@ const StoryFace: React.FC<{ cell: BossStoryCell; px: number }> = ({ cell, px }) 
   );
 };
 
-/** 棚の名前: 末尾の括弧書き(「(変異体)」等)だけ薄く。文字列そのものは台帳のまま。 */
-const ShelfName: React.FC<{ name: string }> = ({ name }) => {
+/** 孫悟空のレベルの色を文字へ(控えめ=少し透かす)。色なし(Lv1・他の枠)は undefined=元の文字色のまま。 */
+const kenkiTextColor = (tint: KenkiArchiveRow['tint'], a: number): string | undefined =>
+  tint ? `rgba(${KENKI_TINT_RGB[tint]}, ${a})` : undefined;
+
+/** 棚の名前: 末尾の括弧書き(「(変異体)」等)だけ薄く。文字列そのものは台帳のまま(孫悟空は倒した時の名前)。 */
+const ShelfName: React.FC<{ cell: BossStoryCell }> = ({ cell }) => {
+  const { name, tint } = bossStoryShownName(cell);
   const { main, suffix } = splitBossStoryName(name);
-  return <>{main}{suffix && <span className="text-white/40">{suffix}</span>}</>;
+  return <span style={{ color: kenkiTextColor(tint, 0.75) }}>{main}{suffix && <span className="text-white/40">{suffix}</span>}</span>;
+};
+
+/** 孫悟空の討伐の記録: 倒した相手を1行ずつ(体得した技はその下)・最後に次の技。本文とは罫線で分ける。 */
+const KenkiRecord: React.FC<{ kenki: KenkiArchiveView }> = ({ kenki }) => {
+  if (kenki.rows.length === 0 && !kenki.nextArt) return null;
+  return (
+    <>
+      <div className="my-3 h-px bg-amber-200/15" aria-hidden="true" />
+      <div className="mb-1.5 text-[10px] tracking-[0.1em] text-amber-200/60">討伐の記録</div>
+      <ul className="space-y-1 text-[12px] leading-snug">
+        {kenki.rows.map(r => (
+          <li key={r.lv}>
+            <span className="type-world font-semibold text-white/85" style={{ color: kenkiTextColor(r.tint, 0.8) }}>{r.name}</span>
+            <span className="text-white/45"> ― 討伐</span>
+            {r.art && <div className="pl-3 text-amber-100/75">『{r.art}』を体得</div>}
+          </li>
+        ))}
+      </ul>
+      {kenki.nextArt && <p className="mt-2 text-[11px] text-white/45">次の相手を倒すと『{kenki.nextArt}』を体得</p>}
+    </>
+  );
 };
 
 /**
@@ -126,7 +153,7 @@ export const BossStoryShelf: React.FC<{ groups: BossStoryGroupView[]; onOpen: (k
                   className="group flex w-1/4 min-w-0 flex-col items-center rounded-none px-0.5 py-1 [-webkit-tap-highlight-color:transparent] sm:w-1/6"
                 >
                   {faceBox}
-                  <span className="mt-0.5 w-full truncate text-center text-[10px] font-semibold text-white/80"><ShelfName name={cell.entry.name} /></span>
+                  <span className="mt-0.5 w-full truncate text-center text-[10px] font-semibold text-white/80"><ShelfName cell={cell} /></span>
                 </button>
               ) : (
                 <div key={cell.entry.key} className="flex w-1/4 min-w-0 flex-col items-center px-0.5 py-1 sm:w-1/6">
@@ -149,7 +176,9 @@ export const BossStoryBody: React.FC<{ cell: BossStoryCell; onClose: () => void 
       <div className="shrink-0"><StoryFace cell={cell} px={72} /></div>
       <div className="min-w-0">
         <div className="mb-1 text-[10px] tracking-[0.1em] text-amber-200/70">特殊変異体・{cell.entry.group}</div>
-        <h3 className="type-world text-lg font-semibold text-amber-100">{cell.entry.name}</h3>
+        <h3 className="type-world text-lg font-semibold text-amber-100" style={{ color: kenkiTextColor(bossStoryShownName(cell).tint, 0.8) }}>
+          {bossStoryShownName(cell).name}
+        </h3>
       </div>
     </div>
     <div className="my-3 h-px bg-amber-200/15" aria-hidden="true" />
@@ -160,6 +189,7 @@ export const BossStoryBody: React.FC<{ cell: BossStoryCell; onClose: () => void 
     ) : (
       <p className="text-[13px] text-white/40">記録はまだない。</p>
     )}
+    {cell.kenki && <KenkiRecord kenki={cell.kenki} />}
     <button
       type="button"
       onClick={onClose}

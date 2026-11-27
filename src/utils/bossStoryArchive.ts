@@ -6,6 +6,7 @@ import { BOSS_HEAD_CROPS, type BossHeadCrop } from '../data/bossHeadCrops';
 import { PRACTICE_SLOTS } from './bossPractice';
 import { bossIconName } from './bossIcon';
 import { PATROL_MAP_BOSS } from './sortieMapBosses';
+import type { KenkiArchiveView } from './kenkiArchive';
 
 /** 小見出しの並び(対策室の棚の順 PRACTICE_CATEGORY_ORDER に沿う: 賞金首→徘徊→城ボス→関所→裏ボス)。 */
 export const BOSS_STORY_GROUP_ORDER: readonly BossStoryGroup[] = ['賞金首', '徘徊', '大型変異体', '関所', '深層変異体'];
@@ -21,6 +22,8 @@ export interface BossStoryCell {
   /** 倒したが、まだ本文を開いていない(棚に未読の点を出す)。 */
   unread: boolean;
   face: BossStoryFace | null;
+  /** 孫悟空の欄だけ: 討伐の記録(倒した相手・技)。それ以外の枠は null。 */
+  kenki: KenkiArchiveView | null;
 }
 
 export interface BossStoryGroupView { group: BossStoryGroup; cells: BossStoryCell[] }
@@ -41,22 +44,35 @@ export const bossStoryFace = (key: string): BossStoryFace | null => {
 
 /**
  * 棚の中身。`defeated`=倒した記録のキー集合、`allUnlocked`=開発用に全部開く(`?archiveall=1`)、
- * `read`=本文を開いたことのあるキー集合。空の小見出しは出さない。
+ * `read`=本文を開いたことのあるキー集合、`kenki`=孫悟空の討伐の記録(utils/kenkiArchive・孫悟空の枠にだけ付く)。空の小見出しは出さない。
  */
 export const buildBossStoryGroups = (
   defeated: ReadonlySet<string>,
   allUnlocked = false,
   read: ReadonlySet<string> = new Set(),
+  kenki: KenkiArchiveView | null = null,
 ): BossStoryGroupView[] =>
   BOSS_STORY_GROUP_ORDER
     .map(group => ({
       group,
       cells: BOSS_STORIES.filter(e => e.group === group).map(entry => {
         const unlocked = allUnlocked || defeated.has(entry.key);
-        return { entry, unlocked, unread: unlocked && !read.has(entry.key), face: bossStoryFace(entry.key) };
+        return {
+          entry, unlocked, unread: unlocked && !read.has(entry.key), face: bossStoryFace(entry.key),
+          kenki: entry.key === PATROL_MAP_BOSS.brawler.key ? kenki : null,
+        };
       }),
     }))
     .filter(g => g.cells.length > 0);
+
+/**
+ * 欄に出す名前。孫悟空は倒した中で一番上のレベルの名前とその色(社長指示2026-11-27「孫悟空は倒した時の名前」)。
+ * 一度も倒していない(記録が無い)時と、それ以外の枠は台帳の名前・色なし。
+ */
+export const bossStoryShownName = (cell: Pick<BossStoryCell, 'entry' | 'kenki'>): { name: string; tint: KenkiArchiveView['rows'][number]['tint'] } => {
+  const top = cell.kenki?.rows[cell.kenki.rows.length - 1];
+  return top ? { name: top.name, tint: top.tint } : { name: cell.entry.name, tint: null };
+};
 
 /** 名前を「本体」と末尾の括弧書き(例: 「(変異体)」)に分ける。括弧が無ければ suffix は空。棚の表示だけで使う。 */
 export const splitBossStoryName = (name: string): { main: string; suffix: string } => {

@@ -1126,6 +1126,16 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   60% { opacity: 1; }
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
+/* 作戦地図の見えない区画を押した瞬間(DsStoryMap・社長 2026-11-27): 区画が速く立ち上がって、減速しながら薄れて消える。光は地点が一番濃く、
+   区画の縁へ向かって薄れる(DsStoryMap の放射グラデーション)。尺は DsStoryMap の REGION_FLASH_MS(620ms)と揃える。 */
+.ds-map-region-flash {
+  animation: ds-map-region-flash 620ms both;
+}
+@keyframes ds-map-region-flash {
+  0% { opacity: 0; animation-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1); }
+  18% { opacity: 1; animation-timing-function: cubic-bezier(0.3, 0, 0.2, 1); }
+  100% { opacity: 0; }
+}
 /* 引き線・「+N」は動かさず、遅れてフェードだけ。 */
 .ds-map-face-fade {
   animation: ds-map-face-fade 420ms cubic-bezier(0.4, 0, 0.2, 1) both;

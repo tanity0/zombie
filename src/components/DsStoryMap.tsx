@@ -19,6 +19,7 @@ import { BOSS_HEAD_CROPS } from '../data/bossHeadCrops';
 import { BOSS_FACE_RIM, BOSS_FACE_RIM_PATROL, BossFaceDefs, BossHeadFace, bossFaceRimArc } from './BossHeadFace';
 import { layoutMapFaces, type MapBossFace } from '../utils/sortieMapBosses';
 import { MAP_PICK_LABEL, LOCKED_PLACE_NAME, pickMapStageHit, type MapPick, type MapStageHit } from '../utils/opsMapSelect';
+import { pickNearestSpot, polygonPath, spotRegionPolygon } from '../utils/mapRegionPick';
 import type { Stage } from '../data/campaign';
 import type { SortieTarget } from '../utils/dsHome';
 import { PixelIcon } from './PixelIcon';
@@ -37,6 +38,10 @@ const FACE_RIM = BOSS_FACE_RIM, FACE_RIM_PATROL = BOSS_FACE_RIM_PATROL;
 const RIM_R = FACE_R + 1.1 * U, TICK_L = 1.6 * U;
 // 押せる範囲: ボスの顔・場所の印は 44px 四方(画面の画素。押した時に地図の拡大率で原画の単位へ直す)。重なる所は押した点に近い方。
 const HIT_HALF_PX = 22;
+// 見えない区画(社長 2026-11-27「地域を選択するの、小さすぎる」): 印や顔に当たらなかった所は、一番近い押せる物(顔・印)のステージを選ぶ。
+// ただし一番近い物まで REGION_MAX(原画の単位)より遠い所=余白・海は選ばない。値=場所どうしの最寄りの距離の中央値(約175)。
+// スマホでは約35px=印の当たり(22px)の外側を一回り広げる。線や枠は描かない。押した瞬間だけ区画が薄く光って消える(.ds-map-region-flash)。
+const REGION_MAX = 175, REGION_FLASH_MS = 620;
 // 選んだステージの顔の縁(白寄り)。選んだ顔を浮かせる・ほかの顔を沈める見た目は index.css の .ds-map-face-pop.is-sel / .is-sink。
 const FACE_RIM_SEL = '#efe6d2';
 // 未解放(NEXT の1つ先)を選んだ時の輪の色(生成りの灰)。
@@ -108,6 +113,22 @@ const DsStoryMap: React.FC<{
     for (const v of trail.visited) marks.push({ stageId: v.id, x: PX(v.at)[0], y: PX(v.at)[1] });
     return [...faceHits.map(h => ({ stageId: h.stageId, x: h.x, y: h.y })), ...marks];
   }, [faceHits, dest, locked, lockedAt, trail]);
+  // 印や顔に当たらなかった時の区画の選択。押した瞬間の光は、選ばれたステージの区画(顔と印の区画を合わせた形)。
+  const regionPick = useCallback((x: number, y: number) => pickNearestSpot(stageHits, x, y, REGION_MAX), [stageHits]);
+  const [flash, setFlash] = useState<{ n: number; d: string; cx: number; cy: number } | null>(null);
+  const flashSeq = useRef(0);
+  useEffect(() => {
+    if (!flash) return;
+    const id = window.setTimeout(() => setFlash(null), REGION_FLASH_MS);
+    return () => window.clearTimeout(id);
+  }, [flash]);
+  const flashRegion = useCallback((stageId: string, x: number, y: number) => {
+    const d = stageHits.map((h, i) => (h.stageId === stageId ? polygonPath(spotRegionPolygon(stageHits, i, OPS_MAP_W, OPS_MAP_H, REGION_MAX)) : ''))
+      .filter(Boolean).join(' ');
+    // 光の中心=押した所に一番近い、そのステージの顔か印。縁(REGION_MAX)で 0 になる=区画の外周に硬い線が出ない。
+    const c = stageHits.filter(h => h.stageId === stageId).reduce((a, h) => ((h.x - x) ** 2 + (h.y - y) ** 2 < (a.x - x) ** 2 + (a.y - y) ** 2 ? h : a));
+    if (d) setFlash({ n: ++flashSeq.current, d, cx: c.x, cy: c.y });
+  }, [stageHits]);
   // PC(横長・マウス)だけ: カーソルを乗せた顔の弧を少し濃く。スマホ(タッチ)は変えない。押せる物の上ではマウスの指の形。
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   const [hoverHit, setHoverHit] = useState(false);
@@ -142,23 +163,27 @@ const DsStoryMap: React.FC<{
     const m = svgRef.current?.getScreenCTM();
     if (!m || !onPick || going) return;
     const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
-    const id = pickMapStageHit(stageHits, pt.x, pt.y, mapHitHalf(m));
-    if (!id) return;
+    let id = pickMapStageHit(stageHits, pt.x, pt.y, mapHitHalf(m));
+    if (!id) {
+      id = regionPick(pt.x, pt.y);
+      if (!id) return;
+      flashRegion(id, pt.x, pt.y);
+    }
     if (id === pickId && !pickLocked) setGoing(true);
     else onPick(id);
-  }, [stageHits, onPick, going, pickId, pickLocked]);
+  }, [stageHits, onPick, going, pickId, pickLocked, regionPick, flashRegion]);
   const onMapHover = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     if (e.pointerType !== 'mouse') return;
     const m = svgRef.current?.getScreenCTM();
     if (!m) return;
     const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
     const half = mapHitHalf(m);
-    const on = pickMapStageHit(stageHits, pt.x, pt.y, half) !== null;
+    const on = pickMapStageHit(stageHits, pt.x, pt.y, half) !== null || regionPick(pt.x, pt.y) !== null;
     setHoverHit(prev => (prev === on ? prev : on));
     const k = window.innerWidth > window.innerHeight
       ? pickMapStageHit(faceHits.map(h => ({ stageId: h.key, x: h.x, y: h.y })), pt.x, pt.y, half) : null;
     setHoverKey(prev => (prev === k ? prev : k));
-  }, [faceHits, stageHits]);
+  }, [faceHits, stageHits, regionPick]);
   if (DS_MAP_DISABLED) return null;
   const P = (at: readonly [number, number]) => [at[0] * OPS_MAP_W, at[1] * OPS_MAP_H] as const;
   const visited = trail.visited.map(v => P(v.at));
@@ -192,6 +217,19 @@ const DsStoryMap: React.FC<{
         ref={svgRef} onClick={onPick ? onMapClick : undefined}
         onPointerMove={onMapHover} onPointerLeave={hoverKey || hoverHit ? () => { setHoverKey(null); setHoverHit(false); } : undefined}>
         <image href={assetUrl(OPS_MAP_IMAGE)} x={0} y={0} width={OPS_MAP_W} height={OPS_MAP_H} />
+        {/* 区画を押した瞬間だけ: 選ばれた区画が地点を中心に薄く光って消える(線は無し・縁へ向かって薄れる)。普段は何も描かない。 */}
+        {flash && (
+          <g key={flash.n} className="ds-map-region-flash" pointerEvents="none">
+            <defs>
+              <radialGradient id={`${clipBase}-rf`} gradientUnits="userSpaceOnUse" cx={flash.cx} cy={flash.cy} r={REGION_MAX}>
+                <stop offset="0" stopColor={AMBER_HI} stopOpacity={0.3} />
+                <stop offset="0.5" stopColor={AMBER} stopOpacity={0.13} />
+                <stop offset="1" stopColor={AMBER} stopOpacity={0} />
+              </radialGradient>
+            </defs>
+            <path d={flash.d} fill={`url(#${clipBase}-rf)`} />
+          </g>
+        )}
         {/* 未解放(NEXT の1つ先だけ)=四隅だけの欠けた四角(地図の手描きの線と同じ細さ・点線の歯車に見せない)。線の下に敷く。 */}
         {lk && (
           <g pointerEvents="none">

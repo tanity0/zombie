@@ -179,6 +179,7 @@ import {
   getStoryFlags, updateStoryFlags, setSelectedMission, getEventQuestMeta, getWallMeta, type SelectedMission,
   hasSubBlueprint, // UNIQUE_WEAPONS.md §19-6: ボス撃破解放のサブウェポン(現状=金環)の陳列ゲート
   getCastleBossCleared,
+  loadChronicle,
 } from '../data/progress';
 // research/SORTIE_MAP_BOSS_ICONS.md: 作戦室の地図にボスの顔(出会った・倒していない)+徘徊の枠の抽選を作戦室で引く。
 import { loadEncounteredBosses } from '../utils/bossEncounter';
@@ -186,6 +187,7 @@ import { loadDefeatedBosses } from '../utils/bossDefeated';
 import { archiveRecordGroups } from '../utils/archiveRecordGroups'; // 資料室: 入手時期ごとの小見出し(社長指示2026-11-18)
 import { buildBossStoryGroups, BOSS_STORY_ARCHIVE_ALL, loadReadBossStories, markBossStoryRead } from '../utils/bossStoryArchive'; // 資料室「特殊変異体」(社長指示2026-11-16「ボス全種にバックストーリー」)
 import { BossStoryShelf, BossStoryBody } from './BossStoryShelf';
+import { loadKenkiArchive } from '../utils/kenkiArchive'; // 資料室の孫悟空の欄=倒した時の名前と討伐の記録(社長指示2026-11-27)
 import { ensureSortiePatrolPlan, type SortiePatrolPlan } from '../utils/sortiePatrolPlan';
 import { mapBossFaces, PATROL_MAP_BOSS, stageFixedMapBossCandidates } from '../utils/sortieMapBosses';
 import { OPS_MAP_PLACES } from '../data/opsMapPlaces';
@@ -705,9 +707,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 既読(本文を開いたか)は開いた時に書き、この状態だけ差し替える(倒した記録は読み直さない)。
   const [bossStoryRead, setBossStoryRead] = useState<Set<string>>(() => loadReadBossStories());
   const bossStoryDefeated = useMemo(() => (archiveShown ? loadDefeatedBosses() : new Set<string>()), [archiveShown]);
+  const kenkiArchive = useMemo(() => (archiveShown ? loadKenkiArchive(loadChronicle()) : null), [archiveShown]);
   const bossStoryGroups = useMemo(
-    () => (archiveShown ? buildBossStoryGroups(bossStoryDefeated, BOSS_STORY_ARCHIVE_ALL, bossStoryRead) : []),
-    [archiveShown, bossStoryDefeated, bossStoryRead],
+    () => (archiveShown ? buildBossStoryGroups(bossStoryDefeated, BOSS_STORY_ARCHIVE_ALL, bossStoryRead, kenkiArchive) : []),
+    [archiveShown, bossStoryDefeated, bossStoryRead, kenkiArchive],
   );
   const [openBossStoryKey, setOpenBossStoryKey] = useState<string | null>(null);
   const openBossStory = bossStoryGroups.flatMap(g => g.cells).find(c => c.entry.key === openBossStoryKey && c.unlocked) ?? null;
