@@ -132,7 +132,7 @@ import { BRAWLER_WEAK_GUARD_ALPHA } from '../utils/brawlerGuard'; // 弱い構�
 import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne, brawlerLiftVisBasePx } from '../utils/brawlerCombo';
 import { satsujinCoverAlpha, SATSUJIN_HITS, isTsubameCrouching } from '../utils/katanaTsubame';
 import { isKatanaTapSwing, katanaIaiCrouching, katanaIaiDropLift, katanaIaiEquipped, katanaIaiSettle, katanaIaiStanceK } from '../utils/katanaIaiStance'; // 刀のタップ=居合の構え(描画だけ)
-import { iaiAfterimageAlpha } from '../utils/katanaIaiCounter'; // 居合一閃の残像(描画だけ)
+import { iaiAfterimageAlpha, iaiStanceWindowEnd, isIaiHolding } from '../utils/katanaIaiCounter'; // 居合一閃の残像・溜めの間も構えを続ける(描画だけ)
 import { katanaDashHeld } from '../utils/katanaDashHold'; // 一閃の通り道の途中の止めの間は無敵の点滅を止める(描画だけ)
 import {
   createBlurTrail, stepBlurTrail, blurGhostsInto, blurBodyAlpha, blurStreak, blurTrailVisible, enemyBlurActive, whipTipStreakAlpha, radialFlowK,
@@ -28890,12 +28890,14 @@ export class PixiScene {
     // ★刀のタップ=居合の構え(utils/katanaIaiStance): カウンターの窓が開いている間はしゃがみ絵(-ready)で止まる(変形しない)。描画のみ。
     // 居合一閃(research/KATANA_TSUBAME.md §5-5 の 11)で走っている間は構えの絵を描かない(窓は閉じている=戻りの絵も出さない)。
     const katanaIaiOn = katanaIaiEquipped(p.subWeapons) && !warlordFull && !killFxActiveForPose && p.health > 0 && now >= p.katanaDashUntil;
-    if (meleePosePrefix && katanaIaiOn && katanaIaiCrouching(now, p.counterWindowStart, p.counterWindowEnd)) {
+    // 居合一閃の溜め(utils/katanaIaiCounter.iaiStanceWindowEnd): 成立で窓は閉じるが、放つまでは構えたまま止める(戻りの絵は放つ/解ける時から)。
+    const iaiStanceEnd = iaiStanceWindowEnd(p.counterWindowStart, p.counterWindowEnd, p.iaiHoldUntil);
+    if (meleePosePrefix && katanaIaiOn && katanaIaiCrouching(now, p.counterWindowStart, iaiStanceEnd)) {
       const poseTex = getTexture(`${meleePosePrefix}-ready`);
       if (poseTex) {
         view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}-ready`;
         // しゃがみに入る時は上から加速して落ち、刀が収まる時刻(入りの終わり)に着地する(位置だけ・伸縮しない)。戻りきるまでしゃがみのまま。
-        if (PLAYER_MOTION_FX) actOffY -= katanaIaiDropLift(now, p.counterWindowStart, p.counterWindowEnd) * fb.boxH * dsc * KATANA_IAI_DROP;
+        if (PLAYER_MOTION_FX) actOffY -= katanaIaiDropLift(now, p.counterWindowStart, iaiStanceEnd) * fb.boxH * dsc * KATANA_IAI_DROP;
       }
     }
     // ★格闘(research/BRAWLER.md §4・§7-6): しゃがみ(-ready)=弱・掌底の突き / 振り上げ(-swing)=強(アッパー)・跳び・大踏み潰しの振りかぶり。
@@ -29447,7 +29449,7 @@ export class PixiScene {
     // lastCounterSuccessTime を同時刻に立てるので、両者一致=カウンター由来の無敵と判定して点滅を抑止。
     // 被弾i-frame は invulnerableTime のみ更新されるので一致せず、従来どおり点滅する。
     // ★一閃の通り道の途中の止め(utils/katanaDashHold)の間も点滅させない=止まった体をはっきり見せる(明けたら今どおり点滅)。
-    const counterInvuln = p.invulnerable && (p.lastCounterSuccessTime === p.invulnerableTime || katanaDashHeld(p.katanaDashHold, Date.now())); // 止めの時刻は壁時計(store の Date.now)
+    const counterInvuln = p.invulnerable && (p.lastCounterSuccessTime === p.invulnerableTime || katanaDashHeld(p.katanaDashHold, Date.now()) || isIaiHolding(p, Date.now()) || (p.iaiWarpAt !== undefined && p.invulnerableTime === p.iaiWarpAt)); // 止めの時刻は壁時計(store の Date.now)。居合一閃の溜めの間と、溜めの分ずらしたカウンターの無敵も点滅させない
     view.sprite.alpha = (seekerActive ? 0.4 : (p.invulnerable && !counterInvuln ? 0.5 + 0.5 * Math.sin(now / 50) : 1)) * deathFade * introFade * this.corridorRunInFade();
     // ★ブラーの詰めた残像(research/BLUR.md・走っている間は本体を半分の濃さに)。残像の濃さに被弾無敵の点滅は掛けない(一閃の無敵で残像まで明滅しない)。
     this.syncPlayerBlur(view, p, gameTime, now, (seekerActive ? 0.4 : 1) * deathFade * introFade * this.corridorRunInFade());
@@ -29518,7 +29520,7 @@ export class PixiScene {
       // ★居合の構え(刀のタップ=カウンターの窓・utils/katanaIaiStance): 背中の斜めから、腰に差した向き(柄を向いている方へ・柄が少し上)へ
       // 素早く移り、鍔が前に出した手(しゃがみ絵の拳)に来る所で収まる(ごく小さく行き過ぎて戻る)。その後、窓が閉じるまで 1px も動かさない。
       // 窓が閉じたら少し重く背中へ戻る。構えの間は体の絵の前へ出す(鞘に手を掛けた刀が体に被さる)。描画だけ(判定・窓の長さは store のまま)。
-      const iaiK = katanaIaiOn ? katanaIaiStanceK(now, p.counterWindowStart, p.counterWindowEnd) : 0;
+      const iaiK = katanaIaiOn ? katanaIaiStanceK(now, p.counterWindowStart, iaiStanceEnd) : 0;
       const fwd = flip ? -1 : 1;
       const baseX = this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX;
       const baseY = this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY;
@@ -29533,7 +29535,7 @@ export class PixiScene {
         const stX = handX - hdx * KATANA_IAI_TSUBA_PX * sc, stY = handY - hdy * KATANA_IAI_TSUBA_PX * sc; // 鍔が手に来る中心
         const mvX = stX - backX, mvY = stY - backY;
         const mvL = Math.hypot(mvX, mvY) || 1;
-        const over = KATANA_IAI_SETTLE_PX * katanaIaiSettle(now, p.counterWindowStart, p.counterWindowEnd); // 収まる所の行き過ぎ(移ってきた向きへ)
+        const over = KATANA_IAI_SETTLE_PX * katanaIaiSettle(now, p.counterWindowStart, iaiStanceEnd); // 収まる所の行き過ぎ(移ってきた向きへ)
         kb.rotation = backRot + iaiK * (fwd * (KATANA_IAI_ROT - KATANA_IAI_TILT) - backRot);
         kb.position.set(backX + iaiK * mvX + over * mvX / mvL, backY + iaiK * mvY + over * mvY / mvL);
       } else {

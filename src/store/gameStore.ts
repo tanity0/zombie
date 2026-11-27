@@ -358,6 +358,7 @@ import {
 } from '../utils/katanaTsubame';
 import {
   iaiWarpPlan, iaiStrikeLength, iaiWalkBack, isIaiRunSubject, iaiCounterRoute, iaiClosedWindowEnd, iaiSlowLostMs, KATANA_IAI_COUNTER_MULT,
+  iaiReleaseAt, isIaiHolding, type IaiWarpPlan,
 } from '../utils/katanaIaiCounter';
 import type { KatanaSlashMove } from '../utils/katanaSlashSheet';
 import { KATANA_SLASH_TIMING } from '../utils/katanaSlashSheet';
@@ -1163,7 +1164,7 @@ const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s:
   const now = st.gameTime;
   const p = st.player;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
-  const locked = isInputLocked() || st.attention !== null || !(p.health > 0);
+  const locked = isInputLockedBy(st) || st.attention !== null || !(p.health > 0); // 居合一閃の溜め(入力だけの止め)では蹴りを止めない
   const k = st.escortKick;
   if (k) {
     const esc = st.escorts.find(e => e.id === k.escortId);
@@ -4425,6 +4426,96 @@ const katanaIaiPassFx = (enemyId: string, h: KatanaDashHold, striker: { x: numbe
   g.triggerShake(150, 7, h.ux, h.uy);
   void import('../audio/audioManager').then(m => m.playSfx('heavy-impact', 0.85, undefined, 0.9));
 };
+/**
+ * 居合一閃の溜めの終わり(tryKatanaIaiCounter が予約する)。止まっている間(一時停止・会話の時間停止・全体の停止)は明けるまで待つ。
+ * 主を取り直し、今の入口と同じ条件(主が居ない・触れない・遠すぎる・殺陣・行動不能)なら出さない=入口の「主が居ない時」と同じ扱い
+ * (居合一閃は出ず、構えが解ける)。出せるなら、ここでワープして居合一閃を放つ(成立の瞬間にしていたことを、そのまま溜めの後ろへずらした)。
+ */
+const IAI_HOLD_RETRY_MS = 16;
+const releaseIaiHold = (get: () => GameState, set: WhipSet, heldAt: number): void => {
+  const st = get();
+  const p = st.player;
+  if (p.iaiHoldAt !== heldAt) return; // やり直し・別の溜め
+  const now = Date.now();
+  if (st.isPaused || isGameTimeStopped() || now < st.hitstopUntil) {
+    set(state => ({ player: { ...state.player, iaiHoldUntil: now + IAI_HOLD_RETRY_MS, katanaRecoveryUntil: Math.max(state.player.katanaRecoveryUntil, now + IAI_HOLD_RETRY_MS) } }));
+    setTimeout(() => releaseIaiHold(get, set, heldAt), IAI_HOLD_RETRY_MS);
+    return;
+  }
+  const e = p.iaiHoldTargetId !== undefined ? st.enemies.find(en => en.id === p.iaiHoldTargetId) : undefined;
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  const plan = e ? iaiWarpPlan({ x: pcx, y: pcy }, { x: e.x, y: e.y, width: e.width, height: e.height }, p.lastDirection ?? undefined) : null;
+  const route = iaiCounterRoute({
+    katanaPlayer: isKatanaMode(p) && !p.pseudoActor,
+    windowOpen: true, // 窓は成立の瞬間に見た(溜めの間は閉じている)
+    hasSubject: !!e,
+    subjectTouchable: !!e && !isCorpse(e) && e.health > 0 && !isUntouchable(e)
+      && e.aiPhase !== 'jump' && e.aiPhase !== 'g-jump-air' && e.aiPhase !== 'g-trijump-air',
+    withinWarpRange: !!plan,
+    blocked: !!st.satsujin || isPvpIncapacitated(p.pvpPosture, st.gameTime) || !(p.health > 0),
+  });
+  // 溜めはここで終わる(構えの絵は今から戻る/居合一閃の走りへ移る)。
+  set(state => ({ player: { ...state.player, iaiHoldAt: undefined, iaiHoldUntil: now, iaiHoldTargetId: undefined } }));
+  if (route !== 'iai' || !e || !plan) return;
+  iaiWarpAndStrike(get, set, e, plan, now);
+};
+
+/** 居合一閃のワープ→一閃(溜めの終わりに releaseIaiHold が呼ぶ)。e=主・plan=今の位置からのワープの計画。 */
+const iaiWarpAndStrike = (get: () => GameState, set: WhipSet, e: Enemy, plan: IaiWarpPlan, now: number): void => {
+  const st = get();
+  const p = st.player;
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+    // ワープ先が行けない所(壁・木・建物・行ける帯の外・囲いの円の外・城ボス戦の制限の外)なら、線の上を自分の側へ戻って一番近い行ける所(§5-5 の 7)。
+    const ae = st.activeEvent;
+    const confine = ae && ae.kind !== 'rescue' && ae.confinesPlayer !== false ? ae : null;
+    const standable = (cx: number, cy: number): boolean => {
+      if (!brawlerSecretSpot(get, cx, cy)) return false;
+      if (confine && Math.hypot(cx - confine.x, cy - confine.y) > confine.radius - Math.max(p.width, p.height) / 2) return false;
+      if (st.castleFightNow) {
+        const c = clampCastleFightCrossing(pcx, pcy, cx, cy);
+        if (Math.abs(c.x - cx) > 0.5 || Math.abs(c.y - cy) > 0.5) return false;
+      }
+      return true;
+    };
+    const land = plan.dist > 0.5 ? iaiWalkBack({ x: pcx, y: pcy }, { x: plan.x, y: plan.y }, standable) : { x: pcx, y: pcy };
+    // 抜ける向き=ワープ先→主の中心(ワープ先が主の中心と重なれば自分→主の向き)。
+    const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+    let ux = ecx - land.x, uy = ecy - land.y;
+    const ul = Math.hypot(ux, uy);
+    if (ul > 1e-6) { ux /= ul; uy /= ul; } else { ux = plan.ux; uy = plan.uy; }
+    // 順番(§5-5 の 9): 溜めが明けた tick で store の位置を書き換えてから一閃を始める(一閃の始点=ワープ先=燕返しの「元の位置」)。
+    // 窓は成立の瞬間に閉じている(1回の構えで1回・§5-5 の 6)。吹き飛び・踏み込みの器は打ち切る(一閃の走りを上書きさせない)。
+    set(state => ({
+      player: {
+        ...state.player,
+        x: land.x - state.player.width / 2,
+        y: land.y - state.player.height / 2,
+        vx: 0, vy: 0,
+        knockbackUntil: (state.player.knockbackUntil ?? 0) > now ? now : state.player.knockbackUntil,
+        lungeUntil: 0, lungeVx: 0, lungeVy: 0, lungeHoldUntil: 0,
+        shukuchiWarpTo: undefined,
+        lastDirection: { x: ux, y: uy },
+        iaiWarpAt: now, iaiWarpFromX: pcx, iaiWarpFromY: pcy, iaiWarpTargetId: e.id,
+        // カウンター成立の無敵(INVULN_MS)を溜めの分だけ後ろへずらす=抜けた後の守りは溜めが無かった時と同じ長さ残る。
+        invulnerable: true,
+        invulnerableTime: state.player.invulnerable ? Math.max(state.player.invulnerableTime, now) : now,
+        ...abilityInvulnPatch(state.player, now, INVULN_MS),
+      },
+    }));
+    // 瞬間移動の筋(元の位置→ワープ先・判定なし=派手さの絵)。元の位置の残像は描画が iaiWarpAt を読んで一瞬だけ出す。
+    if (Math.hypot(land.x - pcx, land.y - pcy) > 2) {
+      get().spawnEffect({ kind: 'trail', id: `fx-iai-warp-${now}`, fromX: pcx, fromY: pcy, toX: land.x, toY: land.y, color: 'rgba(226,240,255,0.95)', createdAt: now, duration: 200 });
+      get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(226,240,255,', 180, true);
+    }
+    const started = get().triggerKatanaDash(ux, uy, undefined, undefined, {
+      minDistance: iaiStrikeLength(0, e.width), mult: KATANA_IAI_COUNTER_MULT, targetId: e.id,
+    });
+    // 一閃が出せなかった(刀を外した等の保険)時は、位置だけ移って終わる(カウンターの成立は溜めの前に済んでいる)。
+    if (!started) return;
+    set(state => ({ player: { ...state.player, iaiRunUntil: state.player.katanaDashUntil } })); // 走りの間は敵の体で止めない(movePlayer)
+    // 瞬間移動の音(一閃の発動音と同じ系統で少し高め=縮地の例外と同じ扱い・新しい素材は作らない)。
+    void import('../audio/audioManager').then(m => m.playSfx('katana-dash', 1, undefined, 1.15));
+};
 /** 着地の当たりの前に、止めで書いた敵の hitStunUntil を元へ戻す(その後に他が書き換えていたら触らない)。 */
 const restoreKatanaPassStun = (enemyId: string | undefined): void => {
   if (enemyId === undefined) return;
@@ -5804,8 +5895,13 @@ export const isInputLocked = (): boolean => {
   // (自己解除する洋館の走り込み)とは別に、farBackdrop==='ending'の間は常時ロックする。
   // deliveryLocked(二人組クエストv2 §2-8・納品ロック): isPausedは使わない(会話が時間駆動で
   // isPaused中は進まず永久フリーズするため)。ここに足せば isAttackLocked も自動で伝播する。
-  return s.isPaused || s.player.health <= 0 || s.corridorRunInActive || s.farBackdrop === 'ending' || isGameTimeStopped() || s.deliveryLocked;
+  return isInputLockedBy(s)
+    // ★居合一閃の溜め(utils/katanaIaiCounter・社長指示2026-11-27): 構えたまま止まっている間は移動・他の入力を受けない(覚えない)。
+    || isIaiHolding(s.player, Date.now());
 };
+/** isInputLocked の、居合一閃の溜めを含まない部分(護衛の蹴りの中止など、プレイヤーの入力ではない判定が読む)。 */
+const isInputLockedBy = (s: GameState): boolean =>
+  s.isPaused || s.player.health <= 0 || s.corridorRunInActive || s.farBackdrop === 'ending' || isGameTimeStopped() || s.deliveryLocked;
 
 // 松明ドロップ率/内訳のしきい値は pityDirector.ts の BASE_DROP_TUNING(0.42/0.5/0.75/0.9)へ移動
 // (ピンチ救済が無い時はその既定値=従来と完全一致)。
@@ -18947,53 +19043,31 @@ export const useGameStore = create<GameState>((set, get) => ({
       blocked: st.isPaused || !!st.satsujin || isPvpIncapacitated(p.pvpPosture, st.gameTime),
     });
     if (route !== 'iai' || !e || !plan) return false;
-    // ワープ先が行けない所(壁・木・建物・行ける帯の外・囲いの円の外・城ボス戦の制限の外)なら、線の上を自分の側へ戻って一番近い行ける所(§5-5 の 7)。
-    const ae = st.activeEvent;
-    const confine = ae && ae.kind !== 'rescue' && ae.confinesPlayer !== false ? ae : null;
-    const standable = (cx: number, cy: number): boolean => {
-      if (!brawlerSecretSpot(get, cx, cy)) return false;
-      if (confine && Math.hypot(cx - confine.x, cy - confine.y) > confine.radius - Math.max(p.width, p.height) / 2) return false;
-      if (st.castleFightNow) {
-        const c = clampCastleFightCrossing(pcx, pcy, cx, cy);
-        if (Math.abs(c.x - cx) > 0.5 || Math.abs(c.y - cy) > 0.5) return false;
-      }
-      return true;
-    };
-    const land = plan.dist > 0.5 ? iaiWalkBack({ x: pcx, y: pcy }, { x: plan.x, y: plan.y }, standable) : { x: pcx, y: pcy };
-    // 抜ける向き=ワープ先→主の中心(ワープ先が主の中心と重なれば自分→主の向き)。
-    const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-    let ux = ecx - land.x, uy = ecy - land.y;
-    const ul = Math.hypot(ux, uy);
-    if (ul > 1e-6) { ux /= ul; uy /= ul; } else { ux = plan.ux; uy = plan.uy; }
-    // 順番(§5-5 の 9): 成立した tick で store の位置を書き換えてから一閃を始める(一閃の始点=ワープ先=燕返しの「元の位置」)。
-    // 窓は出た瞬間に閉じる(1回の構えで1回・§5-5 の 6)。吹き飛び・踏み込みの器は打ち切る(一閃の走りを上書きさせない)。
+    // ★溜め(社長指示2026-11-27「Counter! の演出が終わるまで構えたまま一拍溜めてから放つ」): ここでは走らない。
+    // 居合の構え(しゃがみで刀に手を掛けた姿)のまま、Counter! の吹き出し(spawnCallout の duration=MELEE_FINISH_SLOW_MS)と
+    // 寄り(triggerHitImpact の triggerZoom=COUNTER_ZOOM_MS)の長い方が消え切る時刻まで止まり、その時刻にワープして居合一閃を放つ。
+    // 溜めの間: スローは呼び手の triggerHitImpact のまま続く/無敵/移動しない(一閃の着地の硬直と同じ止め=殺陣と同じ欄)/入力は受けない(isInputLocked)。
+    // 窓は成立の瞬間に閉じる(1回の構えで1回・§5-5 の 6)。吹き飛び・踏み込みの器は打ち切る(構えをピタッと止める)。
+    const releaseAt = iaiReleaseAt(now, MELEE_FINISH_SLOW_MS, COUNTER_ZOOM_MS);
+    const holdMs = releaseAt - now;
     set(state => ({
       player: {
         ...state.player,
-        x: land.x - state.player.width / 2,
-        y: land.y - state.player.height / 2,
         vx: 0, vy: 0,
         counterWindowEnd: iaiClosedWindowEnd(state.player.counterWindowEnd, now),
         knockbackUntil: (state.player.knockbackUntil ?? 0) > now ? now : state.player.knockbackUntil,
         lungeUntil: 0, lungeVx: 0, lungeVy: 0, lungeHoldUntil: 0,
         shukuchiWarpTo: undefined,
-        lastDirection: { x: ux, y: uy },
-        iaiWarpAt: now, iaiWarpFromX: pcx, iaiWarpFromY: pcy, iaiWarpTargetId: e.id,
+        katanaRecoveryUntil: Math.max(state.player.katanaRecoveryUntil, releaseAt),
+        invulnerable: true,
+        invulnerableTime: state.player.invulnerable
+          ? Math.max(state.player.invulnerableTime, now - Math.max(0, INVULN_MS - holdMs))
+          : now - Math.max(0, INVULN_MS - holdMs),
+        ...abilityInvulnPatch(state.player, now, holdMs),
+        iaiHoldAt: now, iaiHoldUntil: releaseAt, iaiHoldTargetId: e.id,
       },
     }));
-    // 瞬間移動の筋(元の位置→ワープ先・判定なし=派手さの絵)。元の位置の残像は描画が iaiWarpAt を読んで一瞬だけ出す。
-    if (Math.hypot(land.x - pcx, land.y - pcy) > 2) {
-      get().spawnEffect({ kind: 'trail', id: `fx-iai-warp-${now}`, fromX: pcx, fromY: pcy, toX: land.x, toY: land.y, color: 'rgba(226,240,255,0.95)', createdAt: now, duration: 200 });
-      get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(226,240,255,', 180, true);
-    }
-    const started = get().triggerKatanaDash(ux, uy, undefined, undefined, {
-      minDistance: iaiStrikeLength(0, e.width), mult: KATANA_IAI_COUNTER_MULT, targetId: e.id,
-    });
-    // 一閃が出せなかった(刀を外した等の保険)時も、窓は閉じ位置は移っている=当たりは今のカウンターへ戻す。
-    if (!started) return false;
-    set(state => ({ player: { ...state.player, iaiRunUntil: state.player.katanaDashUntil } })); // 走りの間は敵の体で止めない(movePlayer)
-    // 瞬間移動の音(一閃の発動音と同じ系統で少し高め=縮地の例外と同じ扱い・新しい素材は作らない)。
-    void import('../audio/audioManager').then(m => m.playSfx('katana-dash', 1, undefined, 1.15));
+    setTimeout(() => releaseIaiHold(get, set, now), holdMs);
     return true;
   },
 

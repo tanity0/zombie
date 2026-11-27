@@ -138,8 +138,32 @@ export const pickIaiSubject = <T extends { id: string; x: number; y: number; wid
  * この敵が、走っている居合一閃の主か(成立した tick のカウンターの副作用=damageEnemy の 'counter' を、居合一閃の当たりと揃えるために見る)。
  * iaiRunUntil=居合一閃の「敵の体で止めない間」(走り終わりまで)・iaiWarpTargetId=主。
  */
-export const isIaiRunSubject = (p: { iaiRunUntil?: number; iaiWarpTargetId?: string }, enemyId: string, now: number): boolean =>
-  p.iaiWarpTargetId === enemyId && now < (p.iaiRunUntil ?? 0);
+export const isIaiRunSubject = (
+  p: { iaiRunUntil?: number; iaiWarpTargetId?: string; iaiHoldUntil?: number; iaiHoldTargetId?: string }, enemyId: string, now: number,
+): boolean =>
+  (p.iaiWarpTargetId === enemyId && now < (p.iaiRunUntil ?? 0))
+  || (p.iaiHoldTargetId === enemyId && isIaiHolding(p, now)); // 溜めの間も同じ主(成立した tick のカウンターの副作用は溜めの間に出る)
+
+// ★居合一閃の溜め(社長指示2026-11-27「カウンターが終わった後、居合一閃は?」→「Counter! の演出が終わるまで構えたまま一拍溜めてから放つ」に「はい」)。
+// 成立した瞬間には走らず、居合の構えのまま止まって、Counter! の吹き出しと寄りが消え切った時刻に放つ(貫く瞬間を演出に隠させない)。
+// 溜めの間: カウンターのスローはそのまま・無敵・移動と他の入力は受けない(覚えない)。
+
+/**
+ * 居合一閃を放つ時刻=Counter! の吹き出しの長さと、カウンターの寄りの長さの、長い方が終わる時刻。
+ * 長さは呼び手(store)が実在の定数を渡す(吹き出し=spawnCallout の duration・寄り=triggerHitImpact の triggerZoom の長さ)。
+ */
+export const iaiReleaseAt = (counterAt: number, calloutMs: number, zoomMs: number): number =>
+  counterAt + Math.max(0, calloutMs, zoomMs);
+
+/** 居合一閃の溜めの最中か(iaiHoldUntil=放つ時刻・Date.now)。 */
+export const isIaiHolding = (p: { iaiHoldUntil?: number }, now: number): boolean => now < (p.iaiHoldUntil ?? 0);
+
+/**
+ * 居合の構えの絵が続く終わりの時刻(描画が読む)。カウンターの窓は成立の瞬間に閉じる(1回の構えで1回)が、
+ * 溜めの間は構えたまま止めておく=窓の終わりと溜めの終わりの遅い方。溜めがこの窓の後に始まったものでなければ窓のまま。
+ */
+export const iaiStanceWindowEnd = (windowStart: number, windowEnd: number, holdUntil: number | undefined): number =>
+  holdUntil !== undefined && holdUntil > windowStart ? Math.max(windowEnd, holdUntil) : windowEnd;
 
 /** 居合一閃を出した後のカウンターの窓(1回の構えで1回=出た瞬間に閉じる・5-5 の 6)。開始は残し、終わりを now の手前へ。 */
 export const iaiClosedWindowEnd = (windowEnd: number, now: number): number => Math.min(windowEnd, now - 1);

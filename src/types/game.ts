@@ -422,6 +422,10 @@ export interface Player extends DashLocomotionState {
   iaiWarpTargetId?: string;
   // 居合一閃の走りが終わる時刻(Date.now)。この間は敵の体の箱でプレイヤーを止めない(主を貫いて後ろへ抜ける)。壁・行ける帯は止める。
   iaiRunUntil?: number;
+  // ★居合一閃の溜め(utils/katanaIaiCounter.iaiReleaseAt): 成立した時刻(Date.now)・放つ時刻・貫く主。溜めの間は構えたまま止まる(無敵・入力を受けない)。
+  iaiHoldAt?: number;
+  iaiHoldUntil?: number;
+  iaiHoldTargetId?: string;
   shukuchiStrikeAt?: number;      // 押した時刻(Date.now・0/未設定=待ちなし)
   shukuchiTargetId?: string;
   shukuchiStrikeMult?: number;    // この一撃のダメージ倍率(連鎖の上乗せ)

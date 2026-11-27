@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   rayRectEntryDist, iaiWarpPlan, iaiStrikeLength, iaiWalkBack, iaiCounterRoute, pickIaiSubject, iaiClosedWindowEnd,
-  iaiAfterimageAlpha, iaiSlowLostMs, KATANA_IAI_WARP_GAP_PX, KATANA_IAI_WARP_MAX_PX, KATANA_IAI_PASS_MARGIN_PX, KATANA_IAI_AFTERIMAGE_MS,
+  iaiAfterimageAlpha, iaiSlowLostMs, iaiReleaseAt, isIaiHolding, iaiStanceWindowEnd, isIaiRunSubject, KATANA_IAI_WARP_GAP_PX, KATANA_IAI_WARP_MAX_PX, KATANA_IAI_PASS_MARGIN_PX, KATANA_IAI_AFTERIMAGE_MS,
   type IaiRouteInput,
 } from './katanaIaiCounter';
 
@@ -126,5 +126,29 @@ describe('iaiSlowLostMs(スローで進まなかった実時間)', () => {
     expect(iaiSlowLostMs(0.016, 1)).toBe(0);
     expect(iaiSlowLostMs(0.002, 0.2)).toBeCloseTo(8);
     expect(iaiSlowLostMs(0.01, 0)).toBe(0);
+  });
+});
+
+describe('居合一閃の溜め(Counter! の演出が終わるまで構えたまま)', () => {
+  it('放つ時刻=成立の時刻+吹き出しと寄りの長い方', () => {
+    expect(iaiReleaseAt(1000, 700, 320)).toBe(1700);
+    expect(iaiReleaseAt(1000, 200, 320)).toBe(1320);
+    expect(iaiReleaseAt(1000, -5, -5)).toBe(1000); // 負の長さは0
+  });
+  it('溜めの最中=放つ時刻の手前まで', () => {
+    expect(isIaiHolding({ iaiHoldUntil: 1700 }, 1699)).toBe(true);
+    expect(isIaiHolding({ iaiHoldUntil: 1700 }, 1700)).toBe(false);
+    expect(isIaiHolding({}, 0)).toBe(false);
+  });
+  it('構えの絵の終わり=窓と溜めの遅い方。この窓より前の溜めは見ない', () => {
+    expect(iaiStanceWindowEnd(1000, 1099, 1700)).toBe(1700); // 成立で窓は閉じても、放つまで構える
+    expect(iaiStanceWindowEnd(1000, 1300, undefined)).toBe(1300);
+    expect(iaiStanceWindowEnd(5000, 5300, 1700)).toBe(5300); // 前の溜め(新しい窓より前)は効かない
+  });
+  it('溜めの間も、貫く主は「走っている居合一閃の主」と同じに扱う', () => {
+    expect(isIaiRunSubject({ iaiHoldTargetId: 'z', iaiHoldUntil: 1700 }, 'z', 1500)).toBe(true);
+    expect(isIaiRunSubject({ iaiHoldTargetId: 'z', iaiHoldUntil: 1700 }, 'y', 1500)).toBe(false);
+    expect(isIaiRunSubject({ iaiHoldTargetId: 'z', iaiHoldUntil: 1700 }, 'z', 1700)).toBe(false);
+    expect(isIaiRunSubject({ iaiWarpTargetId: 'z', iaiRunUntil: 2000 }, 'z', 1900)).toBe(true);
   });
 });

@@ -2,13 +2,14 @@
 // (社長「カウンターの一閃、通常の一閃と同じ反応になって無い」→ 敵の浮き方・止め・震え)。
 // あわせて、カウンターが決まった一撃として一段強くした止め・震え(社長「なんか素っ気ない」)と、カウンターのスローの間の走る距離。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useGameStore } from './gameStore';
+import { useGameStore, MELEE_FINISH_SLOW_MS, COUNTER_ZOOM_MS } from './gameStore';
 import { GAME_SPEED } from '../config/gameSpeed';
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import { KATANA_DASH_HIT_HOLD_MS, KATANA_IAI_PASS_HOLD_MS, KATANA_IAI_PASS_SHAKE } from '../utils/katanaDashHold';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
+import { iaiReleaseAt } from '../utils/katanaIaiCounter';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 
@@ -33,6 +34,8 @@ const step = (ms = 10, slow = false) => {
   st().updateEnemies(ms / 1000);
 };
 const stance = () => useGameStore.setState(s => ({ player: { ...s.player, counterWindowStart: now, counterWindowEnd: now + 300 } }));
+/** 居合一閃の溜め=Counter! の吹き出しと寄りが消え切るまで構えたまま(成立から放つまでの長さ)。 */
+const IAI_HOLD_MS = iaiReleaseAt(0, MELEE_FINISH_SLOW_MS, COUNTER_ZOOM_MS);
 /** 当たり(切り傷が刻まれる)まで回し、その瞬間の敵を返す。 */
 const runToHit = (id: string, slow = false): { at: number; e: Enemy } => {
   for (let t = 0; t < 3000; t += 10) {
@@ -75,6 +78,8 @@ describe('居合一閃の当たった敵の反応=通常の一閃と同じ', () 
     useGameStore.setState({ enemies: [place('zombie', 10, 0, 'c', { aiPhase: 'charge', aiPhaseUntil: st().gameTime + 1000, aiFromX: center().x + 300, aiFromY: center().y })] });
     stance();
     applyContactDamage(st().gameTime, false, 0, NOOP_COMBAT_EFFECTS);
+    expect(st().player.iaiHoldTargetId).toBe('c'); // 溜め(構えたまま)の主
+    for (let t = 0; t < IAI_HOLD_MS; t += 10) { step(10); expect((en('c').brLiftUntil ?? 0) > now).toBe(false); } // 溜めの間も浮かない
     expect(st().player.iaiWarpTargetId).toBe('c');
     // 成立の瞬間は浮いていない(旧: 赤カウンターの浮きが先に乗り、走って行く間に浮き始めていた)。
     expect((en('c').brLiftUntil ?? 0) > now).toBe(false);
@@ -89,6 +94,7 @@ describe('居合一閃の当たった敵の反応=通常の一閃と同じ', () 
     useGameStore.setState({ enemies: [place('zombie', 120, 0, 'z')] });
     stance();
     expect(st().tryKatanaIaiCounter('z')).toBe(true);
+    for (let t = 0; t < IAI_HOLD_MS; t += 10) step(10); // 溜め
     let firedAt = -1;
     for (let t = 0; t < 400 && firedAt < 0; t += 10) { step(10); if (st().player.katanaDashHold?.at !== undefined) firedAt = now; }
     const h = st().player.katanaDashHold!;
@@ -112,8 +118,12 @@ describe('居合一閃の当たった敵の反応=通常の一閃と同じ', () 
       useGameStore.setState({ enemies: [place('zombie', 120, 0, 'z')] });
       stance();
       expect(st().tryKatanaIaiCounter('z')).toBe(true);
-      const x0 = center().x;
       if (slow) st().triggerTimeSlow(0.2, 700, 560); // カウンターの演出のスロー(triggerHitImpact と同じ値)
+      // 溜め(構えたまま)を待つ。主は動かさない(放つ時の主との間合いを溜めの無かった時と同じにする)。走る距離は放った所から測る。
+      for (let t = 0; t < IAI_HOLD_MS; t += 10) { now += 10; vi.advanceTimersByTime(10); if (t + 10 < IAI_HOLD_MS) st().movePlayer(NO, 0.01); } // 最後の刻み=放った瞬間で止める
+      const x0 = center().x;
+      // スローは溜めの間に明ける=走りはスローに掛からない(溜めの後に別のスローが重なった時の走りの距離は、放った時から掛け直して見る)。
+      if (slow) st().triggerTimeSlow(0.2, 700, 560);
       for (let t = 0; t < 2500; t += 10) step(10, slow);
       expect(st().player.katanaDashHold?.at).toBeDefined(); // 止めがスローの間に掛かった
       return center().x - x0;

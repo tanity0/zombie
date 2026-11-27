@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5873 — 居合一閃をカウンター演出の後に放つ(溜め)【2026-11-27 18:37】
+- 社長「カウンターが終わった後、居合一線は？」→提案「Counter! が終わるまで構えて一拍溜めてから放つ・溜めの間スロー維持・無敵」に「はい」。
+- 放つ時刻=成立+max(吹き出し MELEE_FINISH_SLOW_MS=700, 寄り COUNTER_ZOOM_MS=320)=700ms(`iaiReleaseAt`)。カウンターのスロー(0.2倍・700ms)と一致し放つ瞬間に明ける。※設計が事前に「約0.3秒」と伝えたのは寄りの長さの取り違え=社長へ訂正済み。
+- `tryKatanaIaiCounter` は成立で窓を閉じ、構えで停止(位置不変)・無敵・`iaiHoldAt/Until/TargetId` を書きタイマー。`releaseIaiHold` が一時停止を待って主を取り直し、今の入口条件で `iaiWarpAndStrike`。`isInputLocked` に溜めを追加(護衛の蹴りの中止判定は `isInputLockedBy` へ分離)。カウンター成立の無敵1秒は放った時刻から。溜めの間に主が死亡/消滅/届かない時は出さずに構えを解く。守護霊は居合一閃なし=対象外。
+- pixi: 構えの絵は `iaiStanceWindowEnd` を読み溜めの間ピタッと停止・無敵の点滅なし。
+- 画: scratchpad/iaidelay/(704ms まで構えで停止・720ms に Counter! が消えると同時にワープ・992ms 貫く斬撃と輪が文字に隠れない)。
+- 検証: typecheck / eslint エラー0 / 循環import新規なし / vitest src/utils src/store src/pixi 11413 passed。
+- クリエイティブ監査: 未実施(v0.25.5871 と合わせて積み。社長が実機で連続確認中)。
+- 自己点検: 憲法第4条・第5条に抵触なし。
+
 ## v0.25.5872 — 空振りの止めを撤去(v0.25.5860 の誤解の是正)【2026-11-27 18:05】
 - 社長指示「空振りは止めない。止めてと言ったのは、キャラの絵が攻撃時に揺れているところだけ」。v0.25.5860 の「空振りでも決めで70ms止める」は「当たらなくても(揺れを)止めて」の誤読だった。揺れを消す crispKeyframes / brawlerCrispPoseAt(v0.25.5858)は残す。
 - 撤去: `whiffHoldSince`・`meleePoseSince` の空振り分岐(生の時計)・格闘 `brawlerCrispPoseAt` の空振りの止め・pixi のナイフ/鞭/刀の体と鞭の縄の空振りの止めと後ろを速める補正・一閃/燕返し/居合一閃の通り道の真ん中の空振り止め(`pickKatanaDashHold` は 'hit' か null)。当たった時の止めの下限70msは値そのまま `MELEE_HIT_HOLD_MIN_MS` に改名。
