@@ -7754,14 +7754,16 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       ...(hits > 0 ? brawlerRecoilAt(gdir.x, gdir.y, plan, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
     });
     brawlerNoteFlowHits(set, hits);
-    // 絵と音: 3段目(強パンチ)の当たり(拳の残像・突き上げの弧・火花・重い当たりの音)+打ち上げ(上へ抜ける閃き・浮いていく敵の足元の砂埃)。
-    brawlerStageFx(get, 3, c, gdir, r, target);
+    // 絵と音: 3段目(強パンチ)の当たり(拳の残像・突き上げの弧・火花・重い当たりの音)+打ち上げ(突き上げる閃き・浮いていく敵の足元の砂埃)。
+    // ★白い絵(拳の残像・弧・閃き)は上へ動かさず、その場で開いて消える(社長指示2026-11-27)。砂埃(灰色)は浮いていく敵に付いて上へ散るまま。
+    brawlerStageFx(get, 3, c, gdir, r, target, null, true);
     let i = 0;
     for (const h of r.hitAt ?? []) {
       const e = get().enemies.find(en => en.id === h.id);
       const hx = e ? e.x + e.width / 2 : h.x, hy = e ? Math.max(h.y, e.y + e.height * 0.62) : h.y + 12;
-      // 上へ抜ける閃き: 影の3コマ目(下から突き上げ)を当たりの瞬間に隠さないよう、小さい所から伸びて(growFrom)上へ抜ける。
-      brawlerFx(get, hx, hy - 8, 'vfx/flare_01', { scale: 0.55, scaleY: 1.15, duration: 240, fadeFrom: 0.2, moveY: -40, alpha: 0.8, growFrom: 0.25, growPow: 2 });
+      // 突き上げる閃き: 影の3コマ目(下から突き上げ)を当たりの瞬間に隠さないよう、小さい所から伸びて(growFrom)消える。
+      // 位置は当たった所に据えたまま(旧の通り道 hy-8 → 上へ40 の真ん中)。上へは動かさず、縦に長く開いて突き上げた勢いを出す。
+      brawlerFx(get, hx, hy - 28, 'vfx/flare_01', { scale: 0.55, scaleY: 1.6, duration: 260, fadeFrom: 0.2, alpha: 0.8, growFrom: 0.25, growPow: 3 });
       if (!e || !BRC.brawlerAirborne(e, now)) continue;
       // 打ち上げの足元: 薄く大きく、上へ散って消える煙(かたまりにしない)。
       const fx = e.x + e.width / 2, fy = e.y + e.height - 4, k = 1 - 0.12 * (i++ % 3);
@@ -8578,6 +8580,8 @@ const brawlerStageFx = (
   get: () => GameState, stage: number, c: { x: number; y: number }, dir: { x: number; y: number },
   r: CounterTriggerResult, target: Enemy | null,
   palm: { x0: number; y0: number; ux: number; uy: number; travel: number } | null = null,
+  /** ★抉り打ちの当たり(社長指示2026-11-27「抉り打ちの白い残像エフェクトが上に動くの変なので、動かさずに表現して」): 3段目の拳の残像・突き上げの弧を上へ動かさず、その場で広がって消える形にする。3段目そのものは不変。 */
+  gougeStill = false,
 ): void => {
   const g = get();
   const now = Date.now();
@@ -8587,12 +8591,12 @@ const brawlerStageFx = (
   // ★パンチの絵(社長指示2026-11-07「通常攻撃時は、パンチの絵を小さく出して。進行方向(ターゲティング時はそっち向き)に」)。
   // アイドルの拳の絵を**拳と読める形のまま小さく**(体の半分前後)、毎段出す。向き=狙っている敵の方(居なければ向いている方=dir)。
   // 手の先(体から向きの方へ少し離した所)から、慣性つき(加速→減速)で前へ伸びて消える。side=+1 前の手 / -1 逆の手(2段目)。
-  const fistAfterimage = (scale: number, len: number, side: number, ux = dir.x, uy = dir.y) => {
+  const fistAfterimage = (scale: number, len: number, side: number, ux = dir.x, uy = dir.y, extra?: BrawlerFxOpts) => {
     const um = Math.hypot(ux, uy) || 1; ux /= um; uy /= um;
     const hx = c.x + ux * 18 - uy * side * 6, hy = c.y - 8 + uy * 14 + ux * side * 3;
     g.spawnImageMark(hx, hy, 'fx/idol-fist', {
       scale, duration: 210, additive: false, tint: 0xfffaf0, rot: Math.atan2(uy, ux) - Math.PI / 2, noPop: true, fadeFrom: 0.45,
-      moveX: ux * len, moveY: uy * len, alpha: 0.95,
+      moveX: ux * len, moveY: uy * len, alpha: 0.95, ...extra,
     });
   };
   const hitSfx = (extraGain = 1) => {
@@ -8621,12 +8625,21 @@ const brawlerStageFx = (
     }
     case 3: {
       // アッパー: 向きの決まり(敵の方)のまま、突き上げる分だけ少し上へ起こす(§9-23)。
-      fistAfterimage(0.24, 24, 1, dir.x, dir.y - 0.55);
-      // 突き上げの弧(slash-arc を縦の三日月に・膨らみを前へ)。下から上へ抜ける。
-      // 火花(強=118px)より大きく・長く出して、火花の上へ抜けて見えるようにする。
-      brawlerFx(get, c.x + dir.x * 22, c.y + 4 + dir.y * 10, 'fx/slash-arc', {
-        scale: 0.78, scaleX: 0.5, rot: ang + Math.PI, duration: 320, fadeFrom: 0.35, moveY: -46, alpha: 1,
-      });
+      if (gougeStill) {
+        // 抉り打ち: 拳の残像は手の先に置いたまま(突き上げの向きは絵の傾きだけ)、小さい所から一気に開いて止まり、薄れる(減速して止まる=慣性)。
+        fistAfterimage(0.24, 0, 1, dir.x, dir.y - 0.55, { growFrom: 0.6, growPow: 3, duration: 240 });
+        // 突き上げの弧: 旧の通り道(c.y+4 → 上へ46)の真ん中に据え、縦に長い三日月が潰れた所から開いて消える。上へは動かさない。
+        brawlerFx(get, c.x + dir.x * 22, c.y - 19 + dir.y * 10, 'fx/slash-arc', {
+          scale: 0.95, scaleX: 0.42, rot: ang + Math.PI, duration: 320, fadeFrom: 0.35, alpha: 1, growFrom: 0.35, growPow: 3,
+        });
+      } else {
+        fistAfterimage(0.24, 24, 1, dir.x, dir.y - 0.55);
+        // 突き上げの弧(slash-arc を縦の三日月に・膨らみを前へ)。下から上へ抜ける。
+        // 火花(強=118px)より大きく・長く出して、火花の上へ抜けて見えるようにする。
+        brawlerFx(get, c.x + dir.x * 22, c.y + 4 + dir.y * 10, 'fx/slash-arc', {
+          scale: 0.78, scaleX: 0.5, rot: ang + Math.PI, duration: 320, fadeFrom: 0.35, moveY: -46, alpha: 1,
+        });
+      }
       for (const h of hitAt) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.strong);
       if (hits > 0) {
         hitSfx();

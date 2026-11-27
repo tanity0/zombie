@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5880 — 抉り打ちの白い残像を動かさずに表現【2026-11-27 22:10】
+- 社長「抉り打ちの白い残像エフェクトが上に動くの変なので、動かさずに表現して」。`brawlerStageFx` に `gougeStill` を足し抉り打ちの時だけ: 拳の残像(fx/idol-fist・斜め上12px→0)・突き上げの弧(fx/slash-arc・上へ46px→道の中点に固定・0.35倍から縦に開く)・上へ抜ける閃き(vfx/flare_01・上へ40px→固定・縦に伸びて消える)を、移動なしの growFrom(慣性つきの広がり)に。他の技の3段目・浮く敵・灰色の砂埃は不変。消したエフェクトなし。
+- 画: scratchpad/gougefx/compare_detail.png(直す前=弧が頭上へ滑る/後=同じ場所で開いて薄れる)。
+- 検証: typecheck / eslint エラー0 / vitest src/utils src/store 全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(描画のみ)。
+
 ## v0.25.5879 — ナイフ: 止まり0.5秒・3段目の隙0.7秒・止まり中の向きを次の段へ【2026-11-27 21:59】
 - 社長裁定: 1・2段目の後の止まりを振り始めから0.5秒で明ける(`MELEE_AFTER_STOP_END_MS={knife:500}`・旧640)/3段目の後の隙 1000→700(`KNIFE_COMBO_FINISH_RECOVERY_MS`・鞭とは独立に・`KNIFE_COMBO_FINISH_STOP_MS`=隙/2=350)/止まり中に入れた向きを次の振り始めで使う(`Player.heldFacingDir`・facingLock.ts の holdFacingInput/swingStartFacing/aimForSwingFacing・照準も揃える)。
 - 副作用(社長へ報告): 雑魚が動ける時間がほぼ無くなる(12振りで1か所270ms)→knifeHoldLift の不変条件を「切れ目のどこかで残る」に緩めた/隙0.7 < カウンターCD0.82で隙明け直後の1段目は窓が開かない→社長裁定「カウンター窓が開くまで振れないように」=次の版。
