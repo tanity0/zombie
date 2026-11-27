@@ -5,6 +5,7 @@
 //  - 絵: 1段目=右から / 2段目=左から / 3段目=もう一度右から一番大きく(判定は今の振りの帯=狙いの向きのまま・whipComboFromSide)。
 
 import { stretchStopMs } from './meleeHitstopTiming';
+import { applyHitstopK, comboStageMoveKind } from './hitShake';
 
 /** 段と段の間の最短(ms)。★社長指示2026-11-26「鞭の連撃、0.5秒間隔にして」(旧 300)。 */
 export const WHIP_COMBO_INTERVAL_MS = 500;
@@ -134,11 +135,14 @@ export const WHIP_COMBO_CRIT_SELF_STOP_MS = 30;
  * 当たった敵の止め(ms)・自分の振りの止め(ms)。会心の上乗せ込み。
  * ★段の値 ×MELEE_HITSTOP_STRETCH(社長指示2026-11-27「もう少し止めてもいい気がする」・叩き台・旧 ×1)。会心の上乗せは今のまま足す。
  */
-export const whipComboHitStop = (stage: number, crit: boolean): { enemyMs: number; selfMs: number } => {
+export const whipComboHitStop = (stage: number, crit: boolean, tipHit = false): { enemyMs: number; selfMs: number } => {
   const f = whipComboFeel(stage);
+  // ★技の係数(research/HITSTOP.md §2-5・§6): ×MELEE_HITSTOP_STRETCH の後に段の係数(1段目 0.8 / 2段目 1.0 / 3段目 1.3)。
+  //   先端でボスを打った当たり(tipHit=既存の先端の判定 isWhipTipHit)は段に依らず 1.6。会心の上乗せはその後。
+  const kind = tipHit ? 'whipTip' : comboStageMoveKind(stage);
   return {
-    enemyMs: stretchStopMs(f.stopMs) + (crit ? WHIP_COMBO_CRIT_STOP_MS : 0),
-    selfMs: stretchStopMs(f.selfStopMs) + (crit ? WHIP_COMBO_CRIT_SELF_STOP_MS : 0),
+    enemyMs: applyHitstopK(stretchStopMs(f.stopMs), kind, crit ? WHIP_COMBO_CRIT_STOP_MS : 0),
+    selfMs: applyHitstopK(stretchStopMs(f.selfStopMs), kind, crit ? WHIP_COMBO_CRIT_SELF_STOP_MS : 0),
   };
 };
 

@@ -348,6 +348,20 @@ export const WHIP_TIP_BOSS_MULT = 5;
 /** 先端で当たったか。dist=根元(プレイヤーの中心)から敵の当たりの箱の一番近い点までの距離・reach=この振りの届く距離。 */
 export const isWhipTipHit = (dist: number, reach: number): boolean => reach > 0 && dist >= reach * WHIP_TIP_FRAC;
 /**
+ * ★先端で当てたダメージの倍率のうち、雑魚・強個体の分(社長指示2026-11-27「鞭は雑魚でも先端当てでダメージ増える&ストップ揺れ長めにして」・倍率は社長承認 4)。
+ * 鞭の基準(WHIP_DAMAGE_MULT 0.25)×4=1.0=ナイフ並み。本人の振りの先端の判定(whipTipHitApplies)を通る当たりだけ(投げ・大車輪には掛けない)。
+ */
+export const WHIP_TIP_MOB_MULT = 4;
+/**
+ * プレイヤー本人の鞭の振りの先端の当たりか(区分を問わない=雑魚・強個体・ボス)。tipReach=この振りの届く距離(本人の振りだけ渡す・守護霊は undefined)。
+ * 幻影(対人の規則がある)は外す。判定は isWhipTipHit(根元からの距離が届く距離の外側25%)のまま。
+ */
+export const whipTipHitApplies = (dist: number, tipReach: number | undefined, guardianPhantom: boolean): boolean =>
+  tipReach !== undefined && !guardianPhantom && isWhipTipHit(dist, tipReach);
+/** 先端の当たりのダメージの倍率。ボス区分=WHIP_TIP_BOSS_MULT(今のまま)・それ以外=WHIP_TIP_MOB_MULT。先端でなければ 1。 */
+export const whipTipDamageMult = (tipHit: boolean, bossClass: boolean): number =>
+  !tipHit ? 1 : bossClass ? WHIP_TIP_BOSS_MULT : WHIP_TIP_MOB_MULT;
+/**
  * ボスの気絶の終わり(gameTime)。気絶=stunUntil(クリ・致命の後の止め)と bossFullStunUntil(紫=体勢の崩れ)。どちらも止まっていない(半減の遅さ等は含めない)。
  * 今より後の遅い方。extra=打つ前に記録した気絶の終わり(打撃の5倍で気絶が解けても、打った時に気絶していれば掴める)。止まっていなければ null。
  */

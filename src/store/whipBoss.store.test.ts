@@ -82,14 +82,14 @@ describe('①先端でボスを打つと大ダメージ', () => {
     const inner = dmgAt('hunter', reach * (WHIP_TIP_FRAC - 0.05));
     expect(inner / near).toBeCloseTo(1, 2);
   });
-  it('雑魚は先端でも等倍(ボス区分だけ)', () => {
+  it('雑魚は先端で ×WHIP_TIP_MOB_MULT(4)・根元は等倍(社長承認2026-11-27「鞭は雑魚でも先端当てでダメージ増える」)', () => {
     const reach = whipSwingReach(st().player);
     const near = dmgAt('zombie', reach * 0.3);
     useGameStore.setState({ whipSwing: null });
     st().resetGame('warrior');
     useGameStore.setState(s => ({ m0Unlocked: { ...s.m0Unlocked, melee: true, crit: false }, breakableProps: [], player: { ...s.player, subWeapons: ['whip'], skills: [], skillLevels: {}, lastDirection: { x: 1, y: 0 }, health: 9999 } }));
     const tip = dmgAt('zombie', reach * 0.85);
-    expect(tip / near).toBeCloseTo(1, 2);
+    expect(tip / near).toBeCloseTo(4, 2);
   });
 });
 

@@ -143,7 +143,9 @@ import {
   type HitRetaliationWindow, makeRetaliationWindow, isRetaliationWindowOpen, retaliationAngleOk, isRetaliateTargetEligible,
   isRetaliationBlocked, retaliationReady, RETALIATE_DAMAGE_MULT, RETALIATE_LUNGE_MS,
 } from '../utils/hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
-import { isEnemyAttacking, meleeHitSfxLayers, hitStunMsFor, impactHitStunUntil } from '../utils/combatFeel';
+import { isEnemyAttacking, meleeHitSfxLayers, hitStunMsFor, impactHitStunUntil, HIT_STUN_MS_MOB } from '../utils/combatFeel';
+import { meleeShakePatch, extendMeleeShake, applyHitstopK, katanaMoveKind, HITSTOP_MOVE_K, WHIP_TIP_SHAKE } from '../utils/hitShake'; // 近接のヒットストップの震え・技の係数(research/HITSTOP.md)
+import { BOSS_KILL_CAMERA_HOLD_MS, BOSS_KILL_FLASH_ALPHA, BOSS_KILL_SLOW, bossKillSlowAfterStop, longerHitstopUntil, playerHurtStopUntil } from '../utils/bossKillStop'; // ボスストップ・致命の止め(research/HITSTOP.md §6)
 import * as BR from '../utils/brawler'; // サブウェポン「格闘」の純関数(research/BRAWLER.md)
 import { isBrawlerGuardingAt } from '../utils/brawler';
 import * as BRC from '../utils/brawlerCombo'; // 格闘の敵側の流れ(食らいの固まり・減衰・反撃=research/BRAWLER.md §11)
@@ -329,7 +331,7 @@ import {
   pickWhipGrabTarget, whipSwingSpinDir, whipSwingSpinAt, whipSwingAngle, whipSwingRadiusAt, whipSwingHitDue, boxesOverlap, whipSwingClampRadius,
   whipSwingMaxMs, whipSwingAutoThrowDue, whipSwingTangent, pickWhipAutoThrowDir, whipThrowDurationMs, whipThrowDist, whipThrowStartSpeed, whipThrowStep,
   whipSwingReleaseReason, whipThrowBlastPlan, whipSwingLaps, whipSwingLapRate, criticalSpringStep, whipDropDist,
-  isWhipTipHit, whipBossStunEnd, whipSwingBodyRadius, whipThrowSpeed, WHIP_TIP_BOSS_MULT,
+  whipTipHitApplies, whipTipDamageMult, whipBossStunEnd, whipSwingBodyRadius, whipThrowSpeed,
   whipOverheadProgress, whipOverheadGround, whipOverheadLanding, WHIP_OVERHEAD_LAND_TURNS, WHIP_OVERHEAD_MS, WHIP_OVERHEAD_RISE_FRAC, WHIP_THROW_MIN_SPEED,
   WHIP_OVERHEAD_HITSTOP_MS, WHIP_OVERHEAD_SHAKE_MS, WHIP_OVERHEAD_SHAKE_MAG,
   WHIP_SWING_SHRINK_LOOKAHEAD_MS, WHIP_SWING_SHRINK_LOOKAHEAD_STEPS, WHIP_DROP_MIN_SPEED, WHIP_DROP_MS,
@@ -360,7 +362,7 @@ let katanaSlashSeq = 0;
 const SLASH_FX_DURATION_MS = 260;
 /** ★本人の刀の自分の振りの止め(描画だけ): 斬撃の絵で刃先が中心(=当たった所)に来る経過で KATANA_SELF_STOP_MS だけ止める(utils/meleeHitstopTiming)。 */
 const katanaSelfStop = (move: KatanaSlashMove): { at: number; ms: number } =>
-  ({ at: Math.round(katanaSlashCenterT(KATANA_SLASH_TIMING[move].out) * SLASH_FX_DURATION_MS), ms: KATANA_SELF_STOP_MS });
+  ({ at: Math.round(katanaSlashCenterT(KATANA_SLASH_TIMING[move].out) * SLASH_FX_DURATION_MS), ms: applyHitstopK(KATANA_SELF_STOP_MS, katanaMoveKind(move)) }); // ★技の係数(一閃・燕返し=1.3・research/HITSTOP.md §2-5)
 import { screamerStartGate } from '../utils/screamerGate';
 import { blastLiftPatch, blastLiftCloseness, COUNTER_LIFT_MOVE, counterLiftApplies, retaliateLiftPlan, KNIFE_HOLD_MOVE, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil } from '../utils/airLift';
 import { hunterWanderStep } from '../utils/hunterWander';
@@ -551,7 +553,7 @@ import {
 } from '../utils/mimirLaserTrack';
 import { TELEGRAPH_TRACK_MS, stepTrackAim } from '../utils/telegraphTrack'; // §15追尾相パイロット(sweep限定)
 import { enemyFootBox, enemyHeadY, enemyHitStrip, playerFootBox } from '../pixi/renderSpec';
-import { MELEE_HITSTOP_STRETCH, meleeStopPlan, knifeHitstopDrawSince, meleeArcRunEnd, MELEE_POSE_PREFIX, closestSince, katanaSlashCenterT, KATANA_SELF_STOP_MS } from '../utils/meleeHitstopTiming'; // 近接のヒットストップの時刻と長さ(描画だけの自分の止め)
+import { MELEE_WHIFF_HOLD_MS, MELEE_HITSTOP_STRETCH, meleeStopPlan, knifeHitstopDrawSince, meleeArcRunEnd, MELEE_POSE_PREFIX, closestSince, katanaSlashCenterT, KATANA_SELF_STOP_MS } from '../utils/meleeHitstopTiming'; // 近接のヒットストップの時刻と長さ(描画だけの自分の止め)
 import { newAlchemyRhythm, advanceAlchemyRhythm, tapAlchemyRhythm, alchemyRareChance } from '../utils/alchemyRhythm';
 // 雑魚の個体差+役割(社長指示v0.25.3176・案4+案3)。向きと速さだけを曲げる純関数。
 import { isChaffType, chaffTraits, chaffHeading, chaffSpeedMult } from '../utils/chaffMotion';
@@ -3028,15 +3030,36 @@ const impactHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil'>, now: nu
   const u = impactHitStunUntil(enemy.type, enemy.hitStunUntil, now, ms);
   return u === undefined ? {} : { hitStunUntil: u };
 };
-const meleeHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil' | 'maxHealth'>, now: number, dmg: number, shoveToo = false, stopMult = 1): Partial<Enemy> => {
-  const u = nextHitStunUntil(enemy.type, enemy.hitStunUntil, now, meleeHitStopMul(dmg, enemy.maxHealth), stopMult);
-  if (u === undefined) return { lastHitDmg: dmg };
+/**
+ * ★ナイフ・鞭の段の止め(impactHitStunPatch)と、その止めの間の震え(research/HITSTOP.md §2-1・§6)を一緒に書く。
+ * 震えの長さ=止めの明けまで(雑魚・強個体=hitStunUntil・ボス級=当たり+ms)。自分(pcx,pcy)から当たった敵へ向く。
+ */
+const comboStopAndShake = (e: Enemy, now: number, ms: number, pcx: number, pcy: number, shakeMul?: { lenMul: number; ampMul: number }): Enemy => {
+  const e2 = { ...e, ...impactHitStunPatch(e, now, ms) };
+  const sh = meleeShakePatch(e2.brawlerShakeUntil, hitStunMsFor(e.type) > 0 ? e2.hitStunUntil : now + ms, now, e.x + e.width / 2, e.y + e.height / 2, pcx, pcy, shakeMul);
+  return sh ? { ...e2, ...sh } : e2;
+};
+/**
+ * ★近接の止めの震え(research/HITSTOP.md §2-1・§6): shake を渡すと、当たった敵の絵だけを止めの間震わせる欄(格闘と同じ brawlerShakeUntil)も書く。
+ * 長さ=この当たりの止め(雑魚・強個体=hitStunUntil)。ボス級は hitStunUntil を書かないので、雑魚と同じ式の長さ(HIT_STUN_MS_MOB 基準)で震えの欄だけ書く。
+ * moveK=技の係数(utils/hitShake HITSTOP_MOVE_K・刀だけが渡す)。重さの倍率に掛ける(再発火の間隔は変えない)。
+ */
+const meleeHitStunPatch = (
+  enemy: Pick<Enemy, 'type' | 'hitStunUntil' | 'maxHealth' | 'brawlerShakeUntil'>, now: number, dmg: number, shoveToo = false, stopMult = 1,
+  shake?: { ecx: number; ecy: number; pcx: number; pcy: number }, moveK = 1,
+): Partial<Enemy> => {
+  const reaction = meleeHitStopMul(dmg, enemy.maxHealth) * moveK;
+  const u = nextHitStunUntil(enemy.type, enemy.hitStunUntil, now, reaction, stopMult);
+  const sh = shake
+    ? meleeShakePatch(enemy.brawlerShakeUntil, hitStunMsFor(enemy.type) > 0 ? u : now + Math.round(HIT_STUN_MS_MOB * stopMult * reaction), now, shake.ecx, shake.ecy, shake.pcx, shake.pcy)
+    : null;
+  if (u === undefined) return sh ? { lastHitDmg: dmg, ...sh } : { lastHitDmg: dmg };
   const kbUntil = now + KNOCKBACK_DURATION + (u - now);
   // 止めの長さを押しに覚えさせる(止めの後の速さの補正=updateEnemies・社長承認2026-11-07)。
   const stopMark = { knockbackStopMs: u - now, knockbackStopFor: kbUntil };
   return shoveToo
-    ? { lastHitDmg: dmg, hitStunUntil: u, knockbackUntil: kbUntil, knockbackShoveUntil: kbUntil, ...stopMark }
-    : { lastHitDmg: dmg, hitStunUntil: u, knockbackUntil: kbUntil, ...stopMark };
+    ? { lastHitDmg: dmg, hitStunUntil: u, knockbackUntil: kbUntil, knockbackShoveUntil: kbUntil, ...stopMark, ...(sh ?? {}) }
+    : { lastHitDmg: dmg, hitStunUntil: u, knockbackUntil: kbUntil, ...stopMark, ...(sh ?? {}) };
 };
 /**
  * ★ナイフの当たりの固まりと浮き(社長指示2026-11-12「あと近接でも敵の攻撃が止まる&浮くようにして」・裁定「近接は止めるだけ」)。
@@ -3243,21 +3266,32 @@ const whipHitstopPlan = (
  */
 const spawnWhipComboHitFx = (
   get: () => GameState, set: WhipSet, stage: number, ids: readonly string[], pts: readonly { x: number; y: number; fy: number }[], crit: boolean, ux: number, uy: number, sweep: number,
+  tipIds: readonly string[] = [], // 先端で当てた敵(区分を問わない・止めの係数 1.6・揺れ 長さ×1.5/幅×1.3・research/HITSTOP.md)
 ): void => {
   if (pts.length === 0) return;
   const f = whipComboFeel(stage);
   // 鞭の進む向き: 払いは角度が sweep の符号へ回る=先端は (-uy, ux)×符号へ動く。まっすぐ(3段目)は狙いの向き。
   const tx = sweep ? -uy * sweep : ux, ty = sweep ? ux * sweep : uy;
   const now = Date.now();
-  const hs = whipComboHitStop(stage, crit);
+  const tipSet = new Set(tipIds);
+  const hs = whipComboHitStop(stage, crit, false);
+  const hsTip = whipComboHitStop(stage, crit, true);
   const idSet = new Set(ids);
   // ★自分の振りの止め(社長指示2026-11-27「鞭にもナイフと同じ自分の止め」「止めるタイミングにもこだわって」・描画だけ): 縄の先端が当たった敵の中心に
   //   一番近づく時刻で、縄の絵と体の姿勢の時計を止める(当たりより前の絵へは戻さない=多くはパチンの瞬間)。敵の止めは絵の止めが明けるまでより短くしない。
-  const selfMs = hs.selfMs + multiHitFeel(pts.length).extraStopMs;
+  // 先端で当てた敵が居れば自分の振りの止めは先端の長さ(係数 1.6)。敵の止めは敵ごと(先端=先端の長さ・根元=今のまま)。
+  const anyTip = ids.some(id => tipSet.has(id));
+  const selfMs = (anyTip ? hsTip : hs).selfMs + multiHitFeel(pts.length).extraStopMs;
   const wplan = whipHitstopPlan(get, ids, now, selfMs, hs.enemyMs);
-  const stopMs = wplan ? wplan.enemyMs : hs.enemyMs;
+  // 絵の止めが明けるまでより短くしない(meleeStopPlan と同じ下限)。
+  const drawEnd = wplan ? Math.max(0, wplan.enemyMs) : 0;
+  const plW = get().player, wpcx = plW.x + plW.width / 2, wpcy = plW.y + plW.height / 2;
   set(state => ({
-    enemies: state.enemies.map(e => (idSet.has(e.id) && e.health > 0 && !isCorpse(e) ? { ...e, ...impactHitStunPatch(e, now, stopMs) } : e)),
+    enemies: state.enemies.map(e => {
+      if (!(idSet.has(e.id) && e.health > 0 && !isCorpse(e))) return e;
+      const tip = tipSet.has(e.id);
+      return comboStopAndShake(e, now, Math.max(tip ? hsTip.enemyMs : hs.enemyMs, drawEnd), wpcx, wpcy, tip ? WHIP_TIP_SHAKE : undefined);
+    }),
     ...(wplan ? {
       effects: state.effects.map(e => (e.id === wplan.ropeId && e.kind === 'whiprope' ? { ...e, stopAt: wplan.stopSince, stopMs: selfMs } : e)),
       player: { ...state.player, whipHitstopAt: wplan.createdAt + wplan.stopSince, whipHitstopMs: selfMs },
@@ -3365,7 +3399,7 @@ const spawnKnifeComboHitFx = (
   const selfMs = hs.selfMs + mh.extraStopMs;
   const plan = knifeHitstopPlan(get().player, stage, get().enemies.filter(e => idSet.has(e.id)), pts, now, selfMs, hs.enemyMs);
   set(state => ({
-    enemies: state.enemies.map(e => (idSet.has(e.id) && e.health > 0 && !isCorpse(e) ? { ...e, ...impactHitStunPatch(e, now, plan.enemyMs) } : e)),
+    enemies: state.enemies.map(e => (idSet.has(e.id) && e.health > 0 && !isCorpse(e) ? comboStopAndShake(e, now, plan.enemyMs, pcx, pcy) : e)),
     player: { ...state.player, knifeHitstopAt: plan.stopAt, knifeHitstopMs: selfMs },
   }));
   const g = get();
@@ -3446,7 +3480,10 @@ const applyMultiHitFeel = (
       enemies: state.enemies.map(e => {
         if (!idSet.has(e.id) || !(e.health > 0) || isCorpse(e) || hitStunMsFor(e.type) <= 0) return e;
         const pt = multiHitStopExtendPatch(e, now, mh.extraStopMs);
-        return pt ? { ...e, ...pt } : e;
+        if (!pt) return e;
+        const e2 = { ...e, ...pt };
+        const sh = extendMeleeShake(e2, now, (e2.meleeShakeAmp ?? 1) > 1 ? WHIP_TIP_SHAKE.lenMul : 1); // 近接の震えも延びた止めの明けまで(research/HITSTOP.md §2-4・鞭の先端は ×1.5 のまま)
+        return sh ? { ...e2, ...sh } : e2;
       }),
     }));
   }
@@ -8805,7 +8842,10 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   // **戻った後のカメラから死体が画面外**=崩壊が見えなかった。崩壊は「パン到着+通常ホールド後」に
   // 開始し、アテンションのホールドを崩壊終了まで延長=**カメラが崩壊を見届けてから戻る**。
   // 総尺(時間停止)は従来と同じ IN+HOLD+CRUMBLE+OUT=約5.2秒。
-  const corpseHoldMs = getsDeathAttention(enemy.type) ? ATTENTION_IN_MS + ATTENTION_HOLD_MS : 0;
+  // ★ボスストップ(research/HITSTOP.md §6): アテンションのカメラは撃破の一撃から BOSS_KILL_CAMERA_HOLD_MS 遅れて動き出す=崩れ始めも同じだけ後ろ。
+  const deathAttention = getsDeathAttention(enemy.type);
+  const camHoldMs = deathAttention ? BOSS_KILL_CAMERA_HOLD_MS : 0;
+  const corpseHoldMs = deathAttention ? camHoldMs + ATTENTION_IN_MS + ATTENTION_HOLD_MS : 0;
   useGameStore.setState({
     // glenBoss2(v0.25.3029): 形態2の死体は変身後の絵で崩す(syncBossCorpseが読む)。
     bossCorpse: { type: enemy.type, x, y, w: enemy.width, h: enemy.height, diedAt: Date.now(), holdMs: corpseHoldMs, glenBoss2: enemy.type === 'giantbat' && enemy.glenForm === 2,
@@ -8816,18 +8856,24 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
     } : {}),
   });
   const tint = hexToRgba(getEnemyColor(enemy.type), 0.8);
-  get().spawnFlash('rgba(255,255,255,0.32)', 260);         // 白い閃光(瞬間)
+  get().spawnFlash(`rgba(255,255,255,${deathAttention ? BOSS_KILL_FLASH_ALPHA : 0.32})`, 260); // 白い閃光(瞬間)。ボス級(アテンションが付く撃破)は強める(research/HITSTOP.md §6)
   get().spawnRing(x, y, 10, 200, 'rgba(255,255,255,0.9)', 4, 420);  // 衝撃波リング①(白・速い)
   get().spawnRing(x, y, 6, 260, tint, 3, 560);                       // 衝撃波リング②(敵色・遅れて大きく)
   get().spawnBurst(x, y, getEnemyColor(enemy.type), 26);             // 崩れ散る残骸
   get().triggerShake(DRAMATIC_DEATH_FADE_MS, 6);            // 長く低いシェイク(旧・裏ボス限定=5 よりわずかに強め)
-  get().triggerTimeSlow(0.35, 520, 90);                     // 決着の一瞬をスロー
   // ★アテンション(時間停止+カメラ寄り)は `getsDeathAttention` が唯一の出どころ。
   // pumpkin は除外(v0.25.2879)——ウェーブで何度も倒す相手なので、毎回止まるとテンポが切れる。
-  if (getsDeathAttention(enemy.type)) {
+  if (deathAttention) {
     // v0.25.3026: ホールドを崩壊時間ぶん延長して渡す=hitstopもtriggerAttention側で同尺になる
     // (旧v2955の「別途hitstopだけ延長」は廃止。カメラと時間停止の尺が1本化される)。
-    get().triggerAttention(x, y, undefined, BOSS_CORPSE_CRUMBLE_MS, enemy); // enemy=小さめなら寄る(utils/attentionZoom)
+    // ★ボスストップ(research/HITSTOP.md §6-1): カメラは BOSS_KILL_CAMERA_HOLD_MS 止まったまま(画面も止まる)→ それから寄る。
+    get().triggerAttention(x, y, undefined, BOSS_CORPSE_CRUMBLE_MS, enemy, { delayMs: camHoldMs }); // enemy=小さめなら寄る(utils/attentionZoom)
+    // ★討伐のスローはアテンションの止めの中で使い切られて見えていなかった(§6-2)。止めが明けた時に始まるよう張り直す
+    //   (startKillFxCinematic と同じ型=スローの長さ=止め+戻り・保持=止めの長さ。止めの後の形は今のまま)。
+    const sl = bossKillSlowAfterStop(get().hitstopUntil - Date.now());
+    get().triggerTimeSlow(sl.scale, sl.durationMs, sl.holdMs);
+  } else {
+    get().triggerTimeSlow(BOSS_KILL_SLOW.scale, BOSS_KILL_SLOW.ms, BOSS_KILL_SLOW.holdMs); // 決着の一瞬をスロー
   }
   // v0.25.3029(社長裁定「二体」): 形態1の討伐では、討伐アテンション(パン→ホールド→崩壊→戻り)が
   // 終わった時刻に**形態2を同位置へ湧かせる予約**を張る(消費はuseGameLoop)。
@@ -8837,7 +8883,7 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   if (glenForm1Kill && !enemy.fromEvent && get().glenForm2SpawnAt == null) {
     useGameStore.setState({
       glenForm2SpawnAt: {
-        at: Date.now() + ATTENTION_IN_MS + ATTENTION_HOLD_MS + BOSS_CORPSE_CRUMBLE_MS + ATTENTION_OUT_MS,
+        at: Date.now() + camHoldMs + ATTENTION_IN_MS + ATTENTION_HOLD_MS + BOSS_CORPSE_CRUMBLE_MS + ATTENTION_OUT_MS,
         x: enemy.x + enemy.width / 2,
         y: enemy.y + enemy.height / 2,
       },
@@ -9925,7 +9971,8 @@ const startKillFxCinematic = (
       victims,
       ...(katana ? { katana: true } : {}),
     },
-    hitstopUntil: Date.now() + KILLFX_TOTAL_MS,
+    // ★走っている止め(ボス討伐のアテンションの時間停止など)を縮めない=長い方を採る(research/HITSTOP.md §6-3)。
+    hitstopUntil: longerHitstopUntil(get().hitstopUntil, Date.now() + KILLFX_TOTAL_MS),
   });
   get().triggerTimeSlow(0.2, KILLFX_TOTAL_MS + KILLFX_RELEASE_SLOW_MS, KILLFX_TOTAL_MS);
   // 首元への高速ダッシュ音(社長提供・v0.25.3665)。跳びつき開始=killFxセットと同時に1回。
@@ -12037,7 +12084,7 @@ interface GameState {
   /**
    * opts: ghostId=守護霊の鞭(主語)・dir=振りの向き(未指定=主語の lastDirection)・strikeMult=敵への打撃だけの上乗せ(未指定=本人の縮地の上乗せ/守護霊は1)。
    */
-  performWhipStrike: (targetIds: string[], opts?: { ghostId?: string; dir?: { x: number; y: number }; strikeMult?: number; tipReach?: number; critBonus?: number; light?: boolean; swingRamp?: number }) => { hit: boolean; finish: boolean; killed: number; hits: number; hitIds?: string[]; crit?: boolean }; // critBonus/light=鞭の3連撃の段(会心の上乗せ・1/2段目の押しなし+弱い浮き)
+  performWhipStrike: (targetIds: string[], opts?: { ghostId?: string; dir?: { x: number; y: number }; strikeMult?: number; tipReach?: number; critBonus?: number; light?: boolean; swingRamp?: number }) => { hit: boolean; finish: boolean; killed: number; hits: number; hitIds?: string[]; crit?: boolean; tipHit?: boolean; tipIds?: string[] }; // tipHit/tipIds=先端で当てた(区分を問わない・止めの係数と揺れ) // critBonus/light=鞭の3連撃の段(会心の上乗せ・1/2段目の押しなし+弱い浮き)
   /**
    * ★鞭の振り回し・投げ(research/WHIP_FOLLOWUP.md §8): 毎フレーム(敵の更新の後)。回す位置・回して当てる・自動の投げ・飛ぶ・着弾・途中で放す。
    * 振り回しが無ければ何もしない(実質ゼロコスト)。戻り値=倒した数(倒した音は呼び手)。
@@ -12535,7 +12582,7 @@ interface GameState {
   updateGameStats: (stats: Partial<GameStats>) => void;
   resetGame: (characterClass: string) => void;
   setCameraPosition: (x: number, y: number) => void;
-  triggerAttention: (x: number, y: number, cutin?: AttentionCutin, extraHoldMs?: number, subject?: AttentionSubject | null, opts?: { zoomToUnity?: boolean; target?: AttentionTarget; zoomIn?: number }) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)。cutin指定=§6.36ボス出現カットイン付き。extraHoldMs=ホールド延長(討伐の崩壊見届け用)
+  triggerAttention: (x: number, y: number, cutin?: AttentionCutin, extraHoldMs?: number, subject?: AttentionSubject | null, opts?: { zoomToUnity?: boolean; target?: AttentionTarget; zoomIn?: number; delayMs?: number }) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)。cutin指定=§6.36ボス出現カットイン付き。extraHoldMs=ホールド延長(討伐の崩壊見届け用)
   clearAttention: () => void;
   /**
    * ステージ4のジュンの変身(research/JUN_ESCORT.md §1): 出ている素のアテンション(ジュンへの寄り)を、その場でボスの紹介(カットイン)
@@ -15284,14 +15331,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★スラッシャーの追い打ち(utils/slasherFollowup): 各段の当たりの種を集め、0.1秒おきの追い打ちとして予約する(追い打ちは打撃だけ=掴まない)。
       const whipCollected = collectSlasherSeeds(() => (strikeIds.length > 0
         ? get().performWhipStrike(strikeIds, { dir: { x: ux, y: uy }, tipReach: reach, critBonus: whipComboCritBonus(comboStage), light: whipComboLight(comboStage) })
-        : { hit: false, finish: false, killed: 0, hits: 0, hitIds: [] as string[] }));
+        : { hit: false, finish: false, killed: 0, hits: 0, hitIds: [] as string[], tipHit: false, tipIds: [] as string[] }));
       const res = whipCollected.result;
       scheduleSlasherFollowups(get, 'whip', ux, uy, whipCollected.seeds);
       // 命中の音と手応えは段ごと(spawnWhipComboHitFx が鳴らす=共通の命中音 whipHitFxAt は使わない)。掴んだだけの時は掴みの音(startWhipSwing)。
       if (res.hits > 0) {
         const hitIds = res.hitIds ?? [];
         const pts = get().enemies.filter(e => hitIds.includes(e.id)).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2, fy: e.y + e.height }));
-        spawnWhipComboHitFx(get, set, comboStage, hitIds, pts, !!res.crit, ux, uy, whipComboSweepSign(comboStage, Math.atan2(uy, ux)));
+        spawnWhipComboHitFx(get, set, comboStage, hitIds, pts, !!res.crit, ux, uy, whipComboSweepSign(comboStage, Math.atan2(uy, ux)), res.tipIds ?? []);
         // ★まとめて当てた時の手応え(utils/multiHitFeel)。鞭は自分の振りの止めが無い=敵の止め・揺れ・絵・音だけ。
         applyMultiHitFeel(get, set, hitIds, pts, { x: ux, y: uy }, MULTI_HIT_OPTS.whip);
       }
@@ -15757,7 +15804,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackUntil: now + KNOCKBACK_DURATION,
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: bossSlowUntil(半減)が計算のみで未適用だった漏れ
-          ...meleeHitStunPatch(enemy, now, dmg), // 戦闘の手触り①(v0.25.4269): 近接も局所ストップ(knockbackUntil を上書き=止めの残りぶん後ろ)
+          ...meleeHitStunPatch(enemy, now, dmg, false, 1, { ecx, ecy, pcx, pcy }), // 戦闘の手触り①(v0.25.4269): 近接も局所ストップ(knockbackUntil を上書き=止めの残りぶん後ろ)
           ...knifeHL, // 固まり・浮き(押しはこの枝の押しのまま=押されながら浮く)
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断(laser-broken遷移+中断CD+体幹'counter')
@@ -16864,6 +16911,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   performKatanaStrike: (targetIds, damageMult, allowFinisher, ghostId, strikeMult = 1, slashMove, fxFrom, asShot = false) => {
     const now = Date.now();
+    // ★技の係数(research/HITSTOP.md §2-5): 一閃・燕返し=締め(1.3)・それ以外=通常(1.0)。技の名は下の斬撃の絵の move と同じ式。
+    const katanaStopK = HITSTOP_MOVE_K[katanaMoveKind(slashMove ?? (allowFinisher ? 'issen' : 'swing'))];
     const { gameTime, enemies } = get();
     // v0.25.2518(裁定2): 主語(オーナー)。ghostId 未指定=プレイヤー本体(従来と完全同一)。
     // 指定時は守護霊の疑似Player=計測時ビルド(スキル/装備/クリ率/刀Lv)+ゴースト実体の座標/HP。
@@ -17082,7 +17131,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackUntil: now + KNOCKBACK_DURATION,
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: bossSlowUntil(半減)が計算のみで未適用だった漏れ
-          ...(isGhost ? { lastHitDmg: dmg } : meleeHitStunPatch(enemy, now, dmg, false, MELEE_HITSTOP_STRETCH)), // 戦闘の手触り①(v0.25.4269): 本人の刀だけ局所ストップ。★長さ ×MELEE_HITSTOP_STRETCH(社長指示2026-11-27)
+          ...(isGhost ? { lastHitDmg: dmg } : meleeHitStunPatch(enemy, now, dmg, false, MELEE_HITSTOP_STRETCH, { ecx, ecy, pcx, pcy }, katanaStopK)), // 戦闘の手触り①(v0.25.4269): 本人の刀だけ局所ストップ。★長さ ×MELEE_HITSTOP_STRETCH(社長指示2026-11-27)
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
           ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(刀のmelee削り/致命後daze)
@@ -17320,6 +17369,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 先端=根元(プレイヤーの中心)から敵の当たりの箱の一番近い点までが届く距離の外側25%。絵を出す位置=先端を箱の中へ寄せた点。
     const tipReach = !isGhost ? opts?.tipReach : undefined;
     const tipHitAt: { x: number; y: number }[] = [];
+    const whipTipIds: string[] = []; // 先端で当てた敵(区分を問わない・止めと揺れを長くする=research/HITSTOP.md)
     // research/GHOST_BOSS.md v6: 幻影に**有効打**が入った時の打刻(同時1体なので1枠でよい)。
     let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
     let hits = 0;
@@ -17413,12 +17463,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       const whipScanMult = enemy.id === whipScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'whip') : 1;
       if (whipScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
       // 先端でボス区分を打った=×2.5(幻影は対人の規則があるので外す)。気絶中の5倍・致命は上の枝(ここへ来ない)=重ねない。
-      const tipHit = tipReach !== undefined && BRC.brawlerEnemyClass(enemy) === 'boss' && !isGuardianPhantom(enemy.type)
-        && isWhipTipHit(enemyMeleeDist(pcx, pcy, enemy), tipReach);
+      // ★先端の判定は区分を問わない(社長指示2026-11-27「鞭は雑魚でも先端当てで…ストップ揺れ長めにして」・utils/whipSwing whipTipHitApplies)。
+      //   止めと揺れは先端なら区分を問わず長く(spawnWhipComboHitFx)。ダメージはボス区分=×WHIP_TIP_BOSS_MULT(今のまま)・雑魚と強個体=×WHIP_TIP_MOB_MULT(今は1)。
+      //   tipHit(ボス区分の先端)は今どおり先端の絵・数字の色に使う。
+      const tipBossClass = BRC.brawlerEnemyClass(enemy) === 'boss';
+      const tipAny = whipTipHitApplies(enemyMeleeDist(pcx, pcy, enemy), tipReach, isGuardianPhantom(enemy.type));
+      const tipHit = tipAny && tipBossClass;
+      if (tipAny) whipTipIds.push(enemy.id);
       const whipAirMk = isGhost ? 1 : meleeAirMult(enemy, now, 'whip'); // 空中の敵への倍率(§16・守護霊は対象外=刀と同じ)
       let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * whipScanMult * whipAirMk
         * whipMmVs // 熟練度: 鞭=whip(幻影には乗せない)
-        * (tipHit ? WHIP_TIP_BOSS_MULT : 1);
+        * whipTipDamageMult(tipAny, tipBossClass);
       // スラッシャーの種(プレイヤーの鞭の振りの時だけ受け皿が立つ): 段の会心・先端・大車輪・巻き込みはそのまま引き継ぐ。空中・印・対人の縮みは外す。紫の幻影への致命は積まない。
       const whipSlasherSeed = isGuardianPhantom(enemy.type) && isPvpFatalTarget(enemy.pvpPosture, gameTime) ? 0
         : dmg / Math.max(1e-6, whipAirMk * gpDmgScale * whipScanMult) * (whipMm / Math.max(1e-6, whipMmVs));
@@ -17484,7 +17539,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
             knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           }),
-        ...(isGhost ? { lastHitDmg: dmg } : meleeHitStunPatch(enemy, now, dmg, true)), // 戦闘の手触り①(v0.25.4269): 鞭も局所ストップ(shove の期限も同じだけ後ろ)・守護霊は刀と同じく止めない
+        ...(isGhost ? { lastHitDmg: dmg } : meleeHitStunPatch(enemy, now, dmg, true, 1, { ecx, ecy, pcx, pcy })), // 戦闘の手触り①(v0.25.4269): 鞭も局所ストップ(shove の期限も同じだけ後ろ)・守護霊は刀と同じく止めない
         ...(bossBump?.patch ?? {}), // 紫カウント/発動を反映(最後に展開して優先=刀5490と同じ作法)
         ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
         ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(鞭のmelee削り/致命後daze)
@@ -17604,7 +17659,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
     }
 
-    return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hits, hitIds: whipHitEnemyIds, crit: damageNumbers.some(n => n.crit) };
+    return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hits, hitIds: whipHitEnemyIds, crit: damageNumbers.some(n => n.crit), tipHit: whipTipIds.length > 0, tipIds: whipTipIds };
   },
 
   tickWhipSwing: () => tickWhipSwingImpl(get, set),
@@ -18939,9 +18994,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       // HP0でも damagePlayer は i-frame を張り直すので amount>0 が立ち続ける=ガードが無いと
       // 死亡演出のあいだ1000msごとに停止が入る。**とどめの一撃には入る**(被弾前のHPで見るため)。
       // ★レバーガード(§12-1c)で受け切った被弾は全体の停止を出さない(カウンターではない・受け止めた=軽い)。
-      const stopUntilNext = (amount > 0 && state.player.health > 0 && !dot && !lgFull)
-        ? Math.max(state.hitstopUntil, Date.now() + playerHurtReactionOf(hurtTier).stopMs)
-        : state.hitstopUntil;
+      // ★とどめの一撃は全体の止めを PLAYER_FATAL_STOP_MS(240)以上にする(継続ダメージで倒れた時も張る・research/HITSTOP.md §3・§6)=
+      //   当てた弾・攻撃がめり込んだ絵が止まって見えてから、死亡のスローと寄りへ続く(utils/bossKillStop playerHurtStopUntil)。
+      const stopUntilNext = playerHurtStopUntil(state.hitstopUntil, Date.now(), {
+        amount, prevHealth: state.player.health, newHealth, dot: !!dot, leverGuardFull: !!lgFull, tierStopMs: playerHurtReactionOf(hurtTier).stopMs,
+      });
       return {
         // 被弾総量(survivalScore用)。実ダメージ(amount>0)のみ加算。
         // ★v0.25.3555: あわせて**被弾回数**と**HP最低値**も記録する(AI実機テストの計器)。
@@ -30925,9 +30982,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     const subject = subjectIn ?? (cutinIn ? (targetEnemy ?? findAttentionSubject(get().enemies, x, y)) : null);
     // opts.zoomIn=呼び手が寄り倍率を直に指定(ステージ7のグレンの変身の場面・utils/glenIntro.GLEN_TF_ZOOM_IN)。無ければ従来どおり相手の型で決める。
     const zoomIn = opts?.zoomIn ?? attentionZoomFor(subject);
+    // opts.delayMs=カメラが動き出すまで止まったままの長さ(ボスストップ・research/HITSTOP.md §6-1)。始まりを後ろへずらし、時間停止もその分長い
+    // (経過が負の間はカメラ・寄りとも 0=止まったまま)。
+    const startReal = Date.now() + Math.max(0, opts?.delayMs ?? 0);
     set({
-      attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y, holdMs, ...(cutin ? { cutin, cutinMs } : {}), ...(zoomIn ? { zoomIn } : {}), ...(opts?.zoomToUnity ? { zoomToUnity: true } : {}), ...(opts?.target ? { target: opts.target } : {}) },
-      hitstopUntil: Date.now() + ATTENTION_IN_MS + holdMs + ATTENTION_OUT_MS + cutinMs,
+      attention: { x, y, startReal, fromCamX: cam.x, fromCamY: cam.y, holdMs, ...(cutin ? { cutin, cutinMs } : {}), ...(zoomIn ? { zoomIn } : {}), ...(opts?.zoomToUnity ? { zoomToUnity: true } : {}), ...(opts?.target ? { target: opts.target } : {}) },
+      hitstopUntil: startReal + ATTENTION_IN_MS + holdMs + ATTENTION_OUT_MS + cutinMs,
     });
   },
   clearAttention: () => set({ attention: null }),
@@ -31742,7 +31802,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const live: VisualEffect[] = [];
       for (const e of state.effects) {
-        if (now - e.createdAt > e.duration + ((e.kind === 'slash' || e.kind === 'whiprope') ? (e.stopMs ?? 0) : 0)) continue; // 絵の時計を止めた分だけ寿命も延ばす(描画だけ)
+        if (now - e.createdAt > e.duration + (e.kind === 'slash' ? (e.stopMs ?? 0) : e.kind === 'whiprope' ? (e.stopAt !== undefined ? Math.max(e.stopMs ?? 0, MELEE_WHIFF_HOLD_MS) : 0) : 0)) continue; // 絵の時計を止めた分だけ寿命も延ばす(描画だけ)
         if (e.kind === 'particle') {
           const drag = e.drag ?? 0;
           const decay = drag > 0 ? Math.exp(-drag * deltaTime) : 1;

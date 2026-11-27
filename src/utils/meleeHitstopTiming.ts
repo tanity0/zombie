@@ -208,3 +208,29 @@ export const drawSinceWithStop = (rawSince: number, stopSince: number, selfMs: n
   if (rawSince <= stopSince) return rawSince;
   return rawSince - Math.min(rawSince - stopSince, selfMs);
 };
+
+// ---- ★空振りの「決めの間」(社長指示2026-11-27「攻撃系、当たった時だけ揺れが動かなくなってる。当たらなくても止めて。」・描画だけ) ----
+
+/** 空振りでも振りの絵の決め(武器が一番伸びた所)で止める長さ(ms・叩き台)。当たった時は自分の止めと長い方を採る(二重にしない)。 */
+export const MELEE_WHIFF_HOLD_MS = 70;
+
+/**
+ * 空振りの決めの間の絵の時計。keyAt=決めの経過(当たる時刻=武器が一番伸びた所)・endAt=振りの絵が終わる経過・holdMs=止める長さ。
+ * keyAt までそのまま → keyAt で holdMs 止まる → 残り(keyAt..endAt)を少し速めて endAt にちょうど着く(絵の終わる時刻は今と同じ=次の段の絵とぶつからない)。
+ * 値は連続(明けで跳ばない)。判定・段の間隔・隙・移動は触らない(絵の時計だけ)。止める余地が無い(endAt−keyAt ≤ holdMs)ならそのまま。
+ */
+export const whiffHoldSince = (rawSince: number, keyAt: number, endAt: number, holdMs = MELEE_WHIFF_HOLD_MS): number => {
+  if (!(holdMs > 0) || !(rawSince > keyAt) || !(endAt - keyAt > holdMs) || !(rawSince < endAt)) return rawSince;
+  if (rawSince <= keyAt + holdMs) return keyAt;
+  return keyAt + (rawSince - keyAt - holdMs) * ((endAt - keyAt) / (endAt - keyAt - holdMs));
+};
+
+/**
+ * 振りの体の姿勢の絵の時計(ナイフ・鞭・刀=プレイヤー本人)。hit=この振りの自分の止め(当たった時・stopSince=止めた経過・selfMs=止めの長さ)。
+ * 当たった時=今の自分の止め(長さは MELEE_WHIFF_HOLD_MS と長い方)・空振り=決めの間(whiffHoldSince)。
+ */
+export const meleePoseSince = (
+  rawSince: number, hit: { stopSince: number; selfMs: number } | null, keyAt: number, endAt: number, holdMs = MELEE_WHIFF_HOLD_MS,
+): number => (hit && hit.stopSince >= 0
+  ? drawSinceWithStop(rawSince, hit.stopSince, Math.max(hit.selfMs, holdMs))
+  : whiffHoldSince(rawSince, keyAt, endAt, holdMs));

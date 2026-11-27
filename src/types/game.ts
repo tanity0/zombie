@@ -917,6 +917,13 @@ export interface Enemy {
   /** 震える向き(単位・当てた方向)。 */
   brawlerShakeDx?: number;
   brawlerShakeDy?: number;
+  /**
+   * ★ナイフ・鞭・刀の当たりが書いた震えの印(research/HITSTOP.md・Date.now)。brawlerShakeUntil と同じ値の時だけ近接の決まり
+   * (地上の敵は横だけ・引いたズームで大きく=utils/hitShake)で描く。格闘・空中の弾の震えは書かない=今のまま。
+   */
+  meleeShakeUntil?: number;
+  /** 近接の震えの幅の倍率(鞭の先端の当たり=×1.3・utils/hitShake WHIP_TIP_SHAKE)。未設定=1。 */
+  meleeShakeAmp?: number;
   /** ★格闘の締めで大きく吹き飛ばされた時刻(Date.now・足元に地面を擦る砂埃の尾を描く・§2-4)。 */
   brawlerBlownAt?: number;
   /**

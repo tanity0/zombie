@@ -58,6 +58,7 @@ import { isPvpIncapacitated } from '../utils/pvpPosture';
 // ★被弾リアクションの強さ(しなり/跳ね/フラッシュ/光/ノックバック/停止時間が読む唯一の窓口・2026-09-17)
 import { enemyHitReaction, hopMul, flashMul } from '../utils/hitFlinch';
 import { brawlerShakeWave, flinchContinueFromMs, airSwellPivotShiftPx, walkMotionGateStep } from '../utils/enemyAirPose';
+import { enemyDrawLiftPx, isDrawnAirborne, isMeleeShake, hitShakeOffset, hitShakeZoomMul, creepDrawSince } from '../utils/hitShake'; // 近接のヒットストップ(research/HITSTOP.md)
 import { hasShotRecoil, newRecoilBody, kickRecoil, pushRecoilForce, advanceRecoil, recoilOffset, recoilParts, SHOT_RECOIL_IDOL, SHOT_RECOIL_CRAWLER, SHOT_TREMBLE_IDOL_GUN, type RecoilBody } from '../utils/shotRecoil'; // 撃たれた時の押し戻し(アイドル・変異塊)
 import { fallenSoldiersInRange } from '../utils/endingScene';
 import {
@@ -136,11 +137,11 @@ import {
 } from '../utils/katanaSlashSheet'; // プレイヤーの刀の斬撃シート(社長支給2026-11-22)
 import { whipComboBodyRecover } from '../utils/whipCombo'; // 鞭の3段目の後の隙の姿勢
 import { counterReadyAt, counterRingFade } from '../utils/counterReadyAt'; // カウンターのクールダウンの輪(鞭・ナイフの3連撃は連撃の終わり+CDまで)
-import { knifeComboBodyEndMs, knifeComboBodyT, knifeComboSwingDir, knifeComboWpnAlpha, knifeSwingDrawSince } from '../utils/knifeCombo'; // ナイフの3連撃の段の向き・3段目の後の隙の姿勢
+import { knifeComboBodyEndMs, knifeComboBodyT, knifeComboSwingDir, knifeComboWpnAlpha } from '../utils/knifeCombo'; // ナイフの3連撃の段の向き・3段目の後の隙の姿勢
 import {
   KNIFE_SWING_SWITCH as KNIFE_SWING_SWITCH_U, KNIFE_SWING_START_BACK_RAD as KNIFE_SWING_START_BACK_RAD_U, knifeSwingCircle as knifeSwingCircleU,
   knifeCircleAngle, meleeSwingEase as meleeSwingEaseU, MELEE_POSE_PREFIX as MELEE_POSE_PREFIX_U, PLAYER_MELEE_FISTS as PLAYER_MELEE_FISTS_U,
-  crispKeyframes, CRISP_MOVE_MS, drawSinceWithStop,
+  crispKeyframes, CRISP_MOVE_MS, meleePoseSince, whiffHoldSince, MELEE_WHIFF_HOLD_MS,
 } from '../utils/meleeHitstopTiming'; // 近接の動き→止まり・ヒットストップの時刻(描画だけ)
 import {
   whipSwingRopePoints, WHIP_LOOP_ROPE_POINTS, whipRopePose, whipRopePoints, whipBodyPose, WHIP_ROPE_POINTS,
@@ -149,6 +150,7 @@ import {
   whipTetherEntry, whipTetherGlowK, whipThrowStreak, whipFlyVisualTimeAt, whipFlyViewOffset, whipFlyReleaseBlend, whipTetherRetractTip, whipTrailFade,
   whipRopeSweepOffset, whipFinishSweepOffset, whipOverheadPeakPx, whipOverheadLiftPx, whipOverheadLiftVel, whipOverheadRot, whipOverheadRotVel, whipOverheadSide, whipOverheadAfterSlam, whipOverheadAfterDrop,
   whipOverheadRotMax, whipOverheadHopPx, WHIP_OVERHEAD_PEAK_MIN_PX, whipOverheadAlpha, whipOverheadAfterSlamMs, whipOverheadBodyPose, whipOverheadFace, WHIP_OVERHEAD_BODY_RECOVER_MS,
+  WHIP_ROPE_CRACK_HOLD_MS, WHIP_ROPE_RETRACT_MS,
 } from '../utils/whipSwingMotion'; // ★鞭の振りの本体と体の動き・絡め取りの線・投げた敵の飛び方・ボスの叩きつけ
 import { whipSwingSpinAt, whipSwingMaxAngVel, whipThrowDurationMs, whipOverheadProgress, whipOverheadProgressVel, WHIP_OVERHEAD_MS, type WhipSwingState } from '../utils/whipSwing'; // ★鞭の絡め取り→振り回し→投げ(読むだけ) // ★刀の殺陣の赤い画面の濃さ
 import { screamerMarkVisible } from '../utils/screamerGate';
@@ -28657,11 +28659,24 @@ export class PixiScene {
     // ★止める所は store が「刃先が当たった敵の体の中心に一番近づく時刻」で決めて渡す(utils/meleeHitstopTiming)=ここでは下限を足さない。
     // 鞭も同じ形(whipHitstopAt/Ms=体の姿勢と縄の絵を同じ時刻で止める)。
     const whipHsAt = p.whipHitstopAt ?? 0;
-    const sinceSwing = isKnifeComboMode(p) && knifeHsAt > 0 && p.meleeSwingAt > 0 && knifeHsAt >= p.meleeSwingAt
-      ? knifeSwingDrawSince(sinceSwingRaw, knifeHsAt - p.meleeSwingAt, p.knifeHitstopMs ?? 0, 0)
-      : isWhipMode(p) && whipHsAt > 0 && p.meleeSwingAt > 0 && whipHsAt >= p.meleeSwingAt
-        ? drawSinceWithStop(sinceSwingRaw, whipHsAt - p.meleeSwingAt, p.whipHitstopMs ?? 0)
-        : sinceSwingRaw;
+    // ★空振りでも決め(武器が一番伸びた所)で MELEE_WHIFF_HOLD_MS 止める(社長指示2026-11-27「当たらなくても止めて」・utils/meleeHitstopTiming meleePoseSince)。
+    //   当たった時は今の自分の止め(長さは決めの間と長い方)。空振りは止めた分だけ後ろを少し速めて、振りの絵が終わる時刻を今と同じにする。描画だけ。
+    //   決め: 鞭=パチン(前隙の終わり)・ナイフと刀=刃が体の前へ振り抜ける所(前隙の終わり=判定の時刻・振りの窓に比例)。
+    const whipNowP = isWhipMode(p);
+    const whipRecoverP = whipNowP ? whipComboBodyRecover(p.whipComboStage ?? 0, MELEE_WINDUP_MS) : null;
+    const knifeStageP = isKnifeComboMode(p) ? Math.max(1, Math.min(3, p.knifeComboStage ?? 1)) : 0;
+    const poseKeyAt = whipNowP ? MELEE_WINDUP_MS : MELEE_WINDUP_MS * (swingWindowMs / PLAYER_MELEE_SWING_MS);
+    const poseEndAt = whipNowP
+      ? MELEE_WINDUP_MS + (whipRecoverP ? whipRecoverP.holdMs + whipRecoverP.recoverMs : WHIP_ROPE_CRACK_HOLD_MS + WHIP_ROPE_RETRACT_MS)
+      : knifeStageP > 0 ? knifeComboBodyEndMs(swingWindowMs, knifeStageP) : swingWindowMs;
+    const poseHit = knifeStageP > 0 && knifeHsAt > 0 && p.meleeSwingAt > 0 && knifeHsAt >= p.meleeSwingAt
+      ? { stopSince: knifeHsAt - p.meleeSwingAt, selfMs: p.knifeHitstopMs ?? 0 }
+      : whipNowP && whipHsAt > 0 && p.meleeSwingAt > 0 && whipHsAt >= p.meleeSwingAt
+        ? { stopSince: whipHsAt - p.meleeSwingAt, selfMs: p.whipHitstopMs ?? 0 }
+        : null;
+    const sinceSwing = p.meleeSwingAt > 0 && Number.isFinite(sinceSwingRaw)
+      ? meleePoseSince(sinceSwingRaw, poseHit, poseKeyAt, poseEndAt)
+      : sinceSwingRaw;
     // ★実機FB3(社長指示v0.25.3609「近接攻撃モーションをキャンセルしてKILL演出だけにしてほしい」):
     // KILL処刑演出中は通常の近接モーション(専用ポーズ差し替え・踏み込み振り抜き)を出さない。
     // 判定・攻撃レートは不変(描画のみ)。斬撃エフェクト(kind='slash')は流し切る(v0.25.3608)。
@@ -29503,6 +29518,11 @@ export class PixiScene {
           ? meleeSwingEase(sinceSwing / swingWindowMs) // ゆっくり→速く→ゆっくり(§5.22-追補でスロー中は伸長)
           : echoOn ? KNIFE_SWING_SWITCH + (1 - KNIFE_SWING_SWITCH) * meleeSwingEase(echoSince / SLASHER_ECHO_MS)
           : 1; // 3段目の後の隙: 振り抜いた所(弧は出し切った後=残光も消えている)
+        // ★手元の弧だけは止めの間もじわっと進む(等速の6%・明けで跳ばない=utils/hitShake creepDrawSince・research/HITSTOP.md §2-6・§6)。
+        //   手のナイフ・体の姿勢は kt(止まった時計)のまま=拳から離さない。止めが無い時・追い打ち・隙は kt と同じ。
+        const knifeArcKt = mainSwingOn && isKnifeComboMode(p) && knifeHsAt > 0 && knifeHsAt >= p.meleeSwingAt
+          ? meleeSwingEase(Math.min(1, creepDrawSince(sinceSwingRaw, knifeHsAt - p.meleeSwingAt, Math.max(p.knifeHitstopMs ?? 0, MELEE_WHIFF_HOLD_MS)) / swingWindowMs))
+          : kt;
         // 段の向き: 2段目=振り下ろし。追い打ちは1回ごとに向きを返す(振り上げ⇄振り下ろしの往復=2段目の後は振り上げから)。
         // 振り下ろしは、弧・残光・刃の絵を「弧の両端を入れ替える鏡」(meleeArcDownMirror)に映す=頭上から前を通って低い前へ。
         // 拳に沿って回るナイフの実絵は鏡に映さず、円を逆向き(振り上げた拳→構えの拳)に進める=体の絵(振り上げ→しゃがみ)と同じ順。
@@ -29589,7 +29609,7 @@ export class PixiScene {
           const t2 = (kt - KNIFE_SWING_SWITCH) / (KNIFE_SWING_SWITCH2 - KNIFE_SWING_SWITCH); // 0..1
           const a2 = Math.min(1, t2 / 0.25);
           place(knife, KNIFE_F1, false, 0);
-          placeMeleeArc(slash, kt, a2);
+          placeMeleeArc(slash, knifeArcKt, a2);
           if (!placeKnifeCircle(meleeArcT(kt), 1)) placeMeleeArcWpn(kt, a2);
           place(trail, KNIFE_F3, false, 0);
         } else {
@@ -29601,7 +29621,7 @@ export class PixiScene {
           // 到着(振り上げた拳)で止まる。ナイフの3連撃=体の姿勢が立ち姿へ戻るまで残す(knifeWpnA)。追い打ち・ナイフ以外=弧の残光と一緒に引く(今まで通り)。
           const wa = knifeStageNow > 0 && !echoOn ? knifeWpnA : meleeArcWpnAlpha(kt);
           if (!placeKnifeCircle(meleeArcT(kt), wa)) placeMeleeArcWpn(kt, 0, knifeStageNow > 0 && !echoOn ? knifeWpnA : undefined);
-          placeMeleeArc(trail, kt, a3);
+          placeMeleeArc(trail, knifeArcKt, a3);
         }
       } else {
         knife.visible = false;
@@ -30891,10 +30911,20 @@ export class PixiScene {
     // ★社長承認2026-11-14(浮く動作のぎこちなさ⑤): 旧の矩形波(16ms ごとに +1/−0.6・フレームとずれて不規則に最大8px跳ぶ)を、
     //   当たりからの実時間の sin へ(振れ幅は旧の山から山と同じ・始まりは0から・終わりも0へ寄せる=utils/enemyAirPose)。
     const brShakeAmp = brawlerShakeWave(brShakeLeft, Date.now() - e.lastHit);
-    const brShakeX = brShakeAmp * (e.brawlerShakeDx ?? 1), brShakeY = brShakeAmp * (e.brawlerShakeDy ?? 0);
+    // 絵を持ち上げている高さの合計(utils/hitShake の1本=下の位置決めと空中の判定が同じ値を読む)。
+    const drawLiftPx = enemyDrawLiftPx({ finishLiftPx: Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX, brLiftPx, whipFlyLiftPx: whipFlyLift });
+    // ★ナイフ・鞭・刀の当たりの震え(research/HITSTOP.md §2-3・§2-7・§6): 地上の敵は当てた向きの横成分だけ・浮いている敵(持ち上げ>2px)は当てた向きのまま。
+    //   画面が引いている時は幅を ×1/倍率(上限 ×2.5)。倍率=worldGroup の実際の倍率÷端末の基準(1)。格闘・空中の弾の震えは今のまま。
+    let brShakeX: number, brShakeY: number;
+    if (isMeleeShake(e)) {
+      const so = hitShakeOffset(brShakeAmp, e.brawlerShakeDx ?? 1, e.brawlerShakeDy ?? 0, isDrawnAirborne(drawLiftPx), hitShakeZoomMul(this.L.worldGroup.scale.x || 1), e.meleeShakeAmp ?? 1); // 鞭の先端の当たりは幅 ×1.3
+      brShakeX = so.x; brShakeY = so.y;
+    } else {
+      brShakeX = brShakeAmp * (e.brawlerShakeDx ?? 1); brShakeY = brShakeAmp * (e.brawlerShakeDy ?? 0);
+    }
     // 踵落としを受けた地上の敵は、叩きつけられて沈んでから戻る(位置だけ・判定は動かない・§29)。
     const heelSink = e.brHeelAt !== undefined ? BRW.brawlerHeelHitSink(Date.now() - e.brHeelAt) : 0;
-    const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX + brLiftPx - brShakeY - heelSink + whipFlyLift; // whipFlyLift=鞭で投げられて飛ぶ高さ(絵だけ・影は地面に残る)
+    const liftHop = drawLiftPx - brShakeY - heelSink; // whipFlyLift=鞭で投げられて飛ぶ高さ(絵だけ・影は地面に残る)
     // ★★産卵の震え(社長指示2026-09-22「この人は攻撃が無いので、卵を産むときに震える感じにします」)。
     // 抱卵型(卵体)は攻撃を持たない代わりに、**卵が出る瞬間へ向けて体が痙攣する**。
     // 形と尺は `utils/eggTremble.ts` の1本(縦が主・横が従 / 独立した痙攣 / 放出の一発 / 連射の起伏)。
@@ -46355,7 +46385,11 @@ export class PixiScene {
     // 段ごとの輪の側(右→左→右)・手元側の寝かせ・折れの出だし・重さ(体の絵を避け、どの向きでもU字が見える=utils/whipSwingMotion.whipRopePose)。
     const pose = whipRopePose(e.angle, e.stage ?? ((e.pull ?? 1) > 1 ? 3 : 1));
     // ★自分の振りの止め(ヒットストップ・描画だけ): 当たった所(先端が敵の中心に一番近い時刻)で縄の時計を止める(store が stopAt/stopMs を書く)。
-    const ropeEl = drawSinceWithStop(now - e.createdAt, e.stopAt ?? -1, e.stopMs ?? 0);
+    // ★止めの間も縄の先だけがじわっと進む(等速の6%・明けで跳ばない=utils/hitShake creepDrawSince・research/HITSTOP.md §2-6)。体の姿勢は止まったまま。
+    //   空振り(止めが書かれていない)はパチン(前隙の終わり)で決めの間だけ止め、後ろを少し速めて縄の終わる時刻は今のまま(whiffHoldSince・社長指示2026-11-27「当たらなくても止めて」)。
+    const ropeEl = e.stopAt !== undefined && e.stopAt >= 0
+      ? creepDrawSince(now - e.createdAt, e.stopAt, Math.max(e.stopMs ?? 0, MELEE_WHIFF_HOLD_MS))
+      : whiffHoldSince(now - e.createdAt, e.windupMs, e.duration);
     const rp = whipSwingRopePoints(ropeEl, e.windupMs, e.len, WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_TIP_X, { lag: pose.lag, lean: pose.lean, pull: pose.pull, startAt: pose.startAt });
     if (rp.alpha <= 0) { rope.visible = false; return; }
     const local = rp.pts;
@@ -47000,7 +47034,8 @@ export class PixiScene {
   // ★プレイヤーの刀(e.katana)だけは刀用の斬撃シートで描き、streak の真下に暗い写し(shadow)を1枚敷く=3枚。
   private drawSlashSprite(e: Extract<VisualEffect, { kind: 'slash' }>, now: number) {
     // ★刀の自分の振りの止め(ヒットストップ・描画だけ): 刃先が当たった敵の中心に来た所で斬撃の時計を止める(store が stopAt/stopMs を書く)。
-    const t = Math.min(1, drawSinceWithStop(now - e.createdAt, e.stopAt ?? -1, e.stopMs ?? 0) / e.duration);
+    // ★止めの間も斬撃の弧だけがじわっと進む(等速の6%・明けで跳ばない=utils/hitShake creepDrawSince・research/HITSTOP.md §2-6)。
+    const t = Math.min(1, creepDrawSince(now - e.createdAt, e.stopAt ?? -1, e.stopMs ?? 0) / e.duration);
     const katana = !!e.katana && !!this.katanaSlashSheet('base');
     const need = katana ? 3 : 2;
     let view = this.effects.get(e.id);

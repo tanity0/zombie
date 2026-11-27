@@ -485,6 +485,7 @@ import {
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
 import { shouldFireDeathFallback, shouldSendDeathResult } from '../utils/playerDeathWatch';
+import { playerDeathTimeline } from '../utils/bossKillStop'; // 致命の止めの後から死亡演出を数える(research/HITSTOP.md §6)
 import { noteTimeAlive, timeAliveWriteDue, flushTimeAlive, freezeTimeAliveAtDeath } from '../utils/timeAliveSync';
 import { isExStageRun, phillBossSpawnReady, surielGateSpawnReady, surielGateClearReady } from '../utils/exStage';
 import {
@@ -2523,15 +2524,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // 死亡スローは従来からあったが**寄りズームが無かった**ので追加。守護霊の死(gameStore.damageSummon)と
     // 同じ定数・同じ長さ=どちらの死も同じ絵になる。holdを付けてスローと同じhold-then-rampで戻る。
     // v0.25.2587: 尺を延長(DEATH_ZOOM_MS=1700/hold=1150)し、立ち絵の保持・リザルト遷移もそれに揃えた。
-    useGameStore.getState().triggerZoom(DEATH_ZOOM_MAG, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS, x, y, 'death');
-    useGameStore.getState().triggerTimeSlow(DEATH_SLOW_SCALE, PLAYER_DEATH_SLOW_MS, DEATH_ZOOM_HOLD_MS);
+    // ★致命の当たりの全体の止め(damagePlayer・最短240ms・research/HITSTOP.md §3・§6)が明けてから、今の寄り・スロー・結果画面の期限を数える
+    //   (止めの分だけ最も寄った・最も遅い所の保持を延ばす=止めの後の形は今のまま・削られない。utils/bossKillStop playerDeathTimeline)。
+    const dt = playerDeathTimeline(useGameStore.getState().hitstopUntil - Date.now(), {
+      zoomMs: DEATH_ZOOM_MS, zoomHoldMs: DEATH_ZOOM_HOLD_MS, slowMs: PLAYER_DEATH_SLOW_MS, slowHoldMs: DEATH_ZOOM_HOLD_MS, resultMs: PLAYER_DEATH_TO_RESULT_MS,
+    });
+    useGameStore.getState().triggerZoom(DEATH_ZOOM_MAG, dt.zoomMs, dt.zoomHoldMs, x, y, 'death');
+    useGameStore.getState().triggerTimeSlow(DEATH_SLOW_SCALE, dt.slowMs, dt.slowHoldMs);
     spawnBurst(x, y, '#ef4444', 36);
     spawnBurst(x, y, '#7f1d1d', 22);
     // 死亡演出(寄り+スロー+血)を見せ切ってからゲームオーバー画面へ(v0.25.2587: 1100→PLAYER_DEATH_TO_RESULT_MS)。
     // ★正は rAF 側(ループ冒頭の shouldSendDeathResult)。タイマーは裏タブ等で rAF が止まった時の保険(同じ期限)。
     deathResultSentRef.current = false;
-    deathResultDueAtRef.current = Date.now() + PLAYER_DEATH_TO_RESULT_MS;
-    deathToResultTimerRef.current = window.setTimeout(sendDeathResult, PLAYER_DEATH_TO_RESULT_MS);
+    deathResultDueAtRef.current = Date.now() + dt.resultMs;
+    deathToResultTimerRef.current = window.setTimeout(sendDeathResult, dt.resultMs);
   }, [sendDeathResult, spawnBurst, spawnFlash, spawnRing, emitBotReport]);
 
   const spawnEggFluidSplash = useCallback((x: number, y: number, intensity = 1) => {

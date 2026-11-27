@@ -6,6 +6,7 @@
 //  - 絵: 1段目=振り上げ(下から上へ斬り上げ) / 2段目=1段目で振り上げた所からの振り下ろし / 3段目=再び振り上げ。どの段も少し踏み込む。
 import { comboFinishMoveMult } from './whipCombo';
 import { stretchStopMs } from './meleeHitstopTiming';
+import { applyHitstopK, comboStageMoveKind } from './hitShake';
 
 /** 段と段の間の最短(ms)。 */
 export const KNIFE_COMBO_INTERVAL_MS = 500;
@@ -133,8 +134,9 @@ export const knifeComboHitStop = (stage: number, crit: boolean): { enemyMs: numb
   const f = knifeComboFeel(stage);
   const shakeMs = f.shakeMs + (crit ? KNIFE_COMBO_CRIT_SHAKE_MS : 0), shakeMag = f.shakeMag + (crit ? KNIFE_COMBO_CRIT_SHAKE_MAG : 0);
   return {
-    enemyMs: stretchStopMs(f.stopMs) + (crit ? KNIFE_COMBO_CRIT_STOP_MS : 0),
-    selfMs: stretchStopMs(f.selfStopMs) + (crit ? KNIFE_COMBO_CRIT_SELF_STOP_MS : 0),
+    // ★技の係数(research/HITSTOP.md §2-5・§6): ×MELEE_HITSTOP_STRETCH の後に段の係数(1段目 0.8 / 2段目 1.0 / 3段目 1.3)。会心の上乗せはその後。
+    enemyMs: applyHitstopK(stretchStopMs(f.stopMs), comboStageMoveKind(stage), crit ? KNIFE_COMBO_CRIT_STOP_MS : 0),
+    selfMs: applyHitstopK(stretchStopMs(f.selfStopMs), comboStageMoveKind(stage), crit ? KNIFE_COMBO_CRIT_SELF_STOP_MS : 0),
     shakeMs, shakeMag,
   };
 };

@@ -134,7 +134,7 @@ describe('ナイフの3連撃の命中の手応え(段ごと)', () => {
     expect(k.enemyMs - n.enemyMs).toBe(40);
     expect(k.selfMs - n.selfMs).toBe(30);
     expect(k.shakeMs).toBeGreaterThan(0); expect(k.shakeMag).toBeGreaterThan(0);
-    expect(knifeComboHitStop(3, true).selfMs).toBe(195); // 110×1.5(MELEE_HITSTOP_STRETCH・社長指示2026-11-27)+会心30
+    expect(knifeComboHitStop(3, true).selfMs).toBe(245); // 110×1.5(MELEE_HITSTOP_STRETCH・社長指示2026-11-27)×1.3(3段目=締めの係数・research/HITSTOP.md)+会心30
   });
   it('段の外は1段目', () => {
     expect(knifeComboFeel(0)).toBe(KNIFE_COMBO_FEEL[1]);
