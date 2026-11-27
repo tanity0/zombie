@@ -145,7 +145,7 @@ import {
 } from '../utils/hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
 import { isEnemyAttacking, meleeHitSfxLayers, hitStunMsFor, impactHitStunUntil, HIT_STUN_MS_MOB } from '../utils/combatFeel';
 import { meleeShakePatch, extendMeleeShake, applyHitstopK, katanaMoveKind, HITSTOP_MOVE_K, WHIP_TIP_SHAKE } from '../utils/hitShake'; // 近接のヒットストップの震え・技の係数(research/HITSTOP.md)
-import { makeKatanaDashHold, makeTsubameDashHold, katanaDashVirtualAlong, katanaDashAlong, pickKatanaDashHold, katanaDashHeld, firedKatanaDashHold, katanaDashHoldExtend, SATSUJIN_STRIKE_HOLD_MS, type KatanaDashHold, type KatanaDashHoldCand } from '../utils/katanaDashHold'; // 一閃の通り道の途中の止め(社長指示2026-11-27) // 近接のヒットストップの震え・技の係数(research/HITSTOP.md)
+import { KATANA_IAI_PASS_HOLD_MS, KATANA_IAI_PASS_SHAKE, makeKatanaDashHold, makeTsubameDashHold, katanaDashVirtualAlong, katanaDashAlong, pickKatanaDashHold, katanaDashHeld, firedKatanaDashHold, katanaDashHoldExtend, SATSUJIN_STRIKE_HOLD_MS, type KatanaDashHold, type KatanaDashHoldCand } from '../utils/katanaDashHold'; // 一閃の通り道の途中の止め(社長指示2026-11-27) // 近接のヒットストップの震え・技の係数(research/HITSTOP.md)
 import { BOSS_KILL_CAMERA_HOLD_MS, BOSS_KILL_FLASH_ALPHA, BOSS_KILL_SLOW, bossKillBySubWeapon, bossKillSlowAfterStop, longerHitstopUntil, playerHurtStopUntil } from '../utils/bossKillStop'; // ボスストップ・致命の止め(research/HITSTOP.md §6)
 import * as BR from '../utils/brawler'; // サブウェポン「格闘」の純関数(research/BRAWLER.md)
 import { isBrawlerGuardingAt } from '../utils/brawler';
@@ -357,7 +357,7 @@ import {
   SATSUJIN_HITS, SATSUJIN_STRIKE_MS, SATSUJIN_FADE_OUT_MS, SATSUJIN_HALF_LEN_PX, SATSUJIN_FINAL_HITSTOP_MS,
 } from '../utils/katanaTsubame';
 import {
-  iaiWarpPlan, iaiStrikeLength, iaiWalkBack, iaiCounterRoute, iaiClosedWindowEnd, iaiSlowLostMs, KATANA_IAI_COUNTER_MULT,
+  iaiWarpPlan, iaiStrikeLength, iaiWalkBack, isIaiRunSubject, iaiCounterRoute, iaiClosedWindowEnd, iaiSlowLostMs, KATANA_IAI_COUNTER_MULT,
 } from '../utils/katanaIaiCounter';
 import type { KatanaSlashMove } from '../utils/katanaSlashSheet';
 import { KATANA_SLASH_TIMING } from '../utils/katanaSlashSheet';
@@ -4399,7 +4399,7 @@ export const stepKatanaDashPassStop = (ghostId: string | undefined, nowMs: numbe
         const u = impactHitStunUntil(e.type, e.hitStunUntil, nowMs, ms);
         if (u !== undefined && u !== e.hitStunUntil) katanaPassStunRestore.set(e.id, { wrote: u, prev: e.hitStunUntil });
         const sh = meleeShakePatch(e.brawlerShakeUntil, u !== undefined && hitStunMsFor(e.type) > 0 ? u : nowMs + ms, nowMs,
-          e.x + e.width / 2, e.y + e.height / 2, striker.x, striker.y);
+          e.x + e.width / 2, e.y + e.height / 2, striker.x, striker.y, h.iai ? KATANA_IAI_PASS_SHAKE : undefined); // 居合一閃は長く・大きく震える
         return { ...e, ...(u !== undefined ? { hitStunUntil: u } : {}), ...(sh ?? {}) };
       });
     }
@@ -4409,6 +4409,21 @@ export const stepKatanaDashPassStop = (ghostId: string | undefined, nowMs: numbe
     }
     return patch;
   });
+  if (h.iai && enemyId !== undefined) katanaIaiPassFx(enemyId, h, striker);
+};
+/**
+ * ★居合一閃が主を貫いた瞬間の決め(社長「なんか素っ気ない」=カウンターが決まった一撃として通常の一閃より一段強く見せる)。
+ * 全部派手さの絵(判定なし)・既存の部品だけ: 白い閃光(大)+白い輪+大きい刀の斬撃+画面の揺れ一拍+重い音を一層。通常の一閃の絵・音はそのまま出る(足すだけ)。
+ */
+const katanaIaiPassFx = (enemyId: string, h: KatanaDashHold, striker: { x: number; y: number }): void => {
+  const g = useGameStore.getState();
+  const e = g.enemies.find(x => x.id === enemyId);
+  const cx = e ? e.x + e.width / 2 : striker.x, cy = e ? e.y + e.height / 2 : striker.y;
+  g.spawnGlow(cx, cy, GLOW_R_L, 'rgba(255,255,255,', 300, true);
+  g.spawnRing(cx, cy, 10, 120, 'rgba(240,248,255,0.95)', 4, 320, true);
+  g.spawnSlash(cx, cy, 'rgba(240,248,255,0.98)', 1.6, h.ux < 0 ? -1 : 1, { move: 'issen' });
+  g.triggerShake(150, 7, h.ux, h.uy);
+  void import('../audio/audioManager').then(m => m.playSfx('heavy-impact', 0.85, undefined, 0.9));
 };
 /** 着地の当たりの前に、止めで書いた敵の hitStunUntil を元へ戻す(その後に他が書き換えていたら触らない)。 */
 const restoreKatanaPassStun = (enemyId: string | undefined): void => {
@@ -14236,7 +14251,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...(katanaSweepPushed ? { vx: 0, vy: 0 } : {}),
           // ★居合一閃(research/KATANA_TSUBAME.md §5-2「後ろへ一閃の距離を突進斬り」): カウンターの演出のスローの間も道の長さを走り切る。
           //   走りの器の期限は実時間なので、スローで進まなかった実時間の分だけ期限(走り・硬直・敵の体で止めない間)を後ろへずらす(構えで押される器と同じ考え)。
-          ...(kbNow < (player.iaiRunUntil ?? 0) ? (() => {
+          //   ★通り道の途中の止め(utils/katanaDashHold)の間はずらさない=止めは止めた分だけ期限を延ばし済み(ここでも足すと二重に延び、通常の一閃より長く走っていた)。
+          ...(kbNow < (player.iaiRunUntil ?? 0) && !katanaDashHeld(player.katanaDashHold, kbNow) ? (() => {
             const ext = iaiSlowLostMs(deltaTime / GAME_SPEED, computeTimeSlowScale(kbNow, state.timeSlowStart, state.timeSlowUntil, state.timeSlowScale, state.timeSlowHoldMs));
             return ext > 0 ? {
               katanaDashUntil: player.katanaDashUntil + ext, katanaRecoveryUntil: player.katanaRecoveryUntil + ext, iaiRunUntil: (player.iaiRunUntil ?? 0) + ext,
@@ -18682,7 +18698,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 燕返し(社長指示2026-11-27「燕返しもストップして」)は体が動かない=仮定の通り道(今の位置→元の位置)を走る時計で止める。
       katanaDashHold: tb
         ? makeTsubameDashHold(now, { x: pcx, y: pcy }, ux, uy, tb.distance, dashMs, `fx-katana-dash-${now}`)
-        : makeKatanaDashHold(now, { x: pcx, y: pcy }, ux, uy, issenDist, `fx-katana-dash-${now}`),
+        : ia
+          ? { ...makeKatanaDashHold(now, { x: pcx, y: pcy }, ux, uy, issenDist, `fx-katana-dash-${now}`, KATANA_IAI_PASS_HOLD_MS), iai: true } // 居合一閃=貫いた敵での止めを一段長く
+          : makeKatanaDashHold(now, { x: pcx, y: pcy }, ux, uy, issenDist, `fx-katana-dash-${now}`),
     };
     if (ghostId === undefined) {
       set(state => ({
@@ -21300,7 +21318,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // postureImpact='counter' で通る。pixiSceneのlatch系が「着弾前に中断された技の絵」の破棄に使う。
       // ★赤カウンターの浮き(社長指示2026-11-11「赤カウンター、敵を浮かせる」・utils/airLift): 成立した敵を格闘の4段目と同じ打ち上げで浮かせる。
       //   呼び手(突進・跳びのパリィ等)は技の中断と弾き飛ばしを先に書いてからここへ来る=浮きはその上に乗る(押されながら浮く)。
-      const counterLiftPatch = postureImpact === 'counter' && counterLiftApplies(enemy, newHealth, state.gameTime)
+      // ★居合一閃の主(utils/katanaIaiCounter.isIaiRunSubject)は浮かせない=浮きは居合一閃の当たり(通常の一閃と同じ浮き)だけ。
+      //   ここで浮かせると、走って行く間に先に浮き始め、当たりで浮き直す=通常の一閃と浮き方が違っていた(社長「通常の一閃と同じ反応になって無い」)。
+      const counterLiftPatch = postureImpact === 'counter' && !isIaiRunSubject(state.player, enemy.id, Date.now()) && counterLiftApplies(enemy, newHealth, state.gameTime)
         ? (brawlerJugglePatch(enemy, BRC.brawlerEnemyClass(enemy), COUNTER_LIFT_MOVE, Date.now()) ?? {}) : {};
       const counteredPatch = postureImpact === 'counter' ? { lastCounteredAt: Date.now(), ...counterLiftPatch } : {};
       // 戦闘の手触り①(社長指示2026-09-13): プレイヤーの攻撃が実ダメージで入った敵だけ数フレーム止める

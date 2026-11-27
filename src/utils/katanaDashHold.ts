@@ -34,10 +34,19 @@ export interface KatanaDashHold {
    * 通り道の時計で止める。入っていたら仮定の走る時間(ms)=通り道の位置は体ではなく時計から出す(katanaDashVirtualAlong)。一閃・居合一閃は未設定。
    */
   runMs?: number;
+  /** ★居合一閃(カウンターの一閃)の止めか。決まった一撃として、貫いた敵での止め・震え・閃光を通常の一閃より一段強くする(store が読む)。 */
+  iai?: boolean;
 }
 
 /** 一閃の通り道の止めの長さ(ms)= v0.25.5860 の刀の自分の止め×一閃の係数(1.3)。 */
 export const KATANA_DASH_HIT_HOLD_MS = applyHitstopK(KATANA_SELF_STOP_MS, 'finisher');
+/**
+ * ★居合一閃の、貫いた敵での止め(ms)= 一閃の止めの2倍(社長「なんか素っ気ない」=カウンターが決まった一撃は通常の一閃より一段強く見せる・叩き台)。
+ * 空振りの止めは一閃と同じ(居合一閃は必ず主に当たる)。
+ */
+export const KATANA_IAI_PASS_HOLD_MS = KATANA_DASH_HIT_HOLD_MS * 2;
+/** 居合一閃の、貫いた敵の震え(止めより長く・大きく)。lenMul=止めの長さに対する震えの長さ・ampMul=震えの幅(一閃=1・1)。 */
+export const KATANA_IAI_PASS_SHAKE = { lenMul: 1.5, ampMul: 1.8 } as const;
 /** 空振りの一閃の真ん中の止め(ms)= 空振りの決めの間と同じ。 */
 export const KATANA_DASH_WHIFF_HOLD_MS = MELEE_WHIFF_HOLD_MS;
 /** 殺陣の各発の筋の止め(ms・短め=刀の自分の止めの半分・叩き台)。殺陣は 90ms おきに次の発が出るので、それより短くする。 */

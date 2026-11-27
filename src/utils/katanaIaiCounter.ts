@@ -134,6 +134,13 @@ export const pickIaiSubject = <T extends { id: string; x: number; y: number; wid
   return best;
 };
 
+/**
+ * この敵が、走っている居合一閃の主か(成立した tick のカウンターの副作用=damageEnemy の 'counter' を、居合一閃の当たりと揃えるために見る)。
+ * iaiRunUntil=居合一閃の「敵の体で止めない間」(走り終わりまで)・iaiWarpTargetId=主。
+ */
+export const isIaiRunSubject = (p: { iaiRunUntil?: number; iaiWarpTargetId?: string }, enemyId: string, now: number): boolean =>
+  p.iaiWarpTargetId === enemyId && now < (p.iaiRunUntil ?? 0);
+
 /** 居合一閃を出した後のカウンターの窓(1回の構えで1回=出た瞬間に閉じる・5-5 の 6)。開始は残し、終わりを now の手前へ。 */
 export const iaiClosedWindowEnd = (windowEnd: number, now: number): number => Math.min(windowEnd, now - 1);
 
