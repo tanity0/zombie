@@ -19,6 +19,7 @@ import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 import type { Enemy, EnemyType } from '../types/game';
 import { multiHitFeel } from '../utils/multiHitFeel';
+import { brawlerFinishStopMs } from '../utils/brawlerFinishStop'; // ★決め技の止めの係数(research/HITSTOP.md §7)
 
 setBrawlerTempoAll(1.0);
 let now = 7_000_000;
@@ -79,7 +80,8 @@ describe('格闘: 当たりの止めの表(旧の画面全体の止めの長さ=
 
 describe('格闘の当たりは自分と相手だけを旧の画面全体の止めと同じ長さだけ止める(社長指示2026-11-14)', () => {
   it('1〜5段: 当たった瞬間に相手は段の強さの長さだけ止まる・自分の止めは同じ長さ+1ms', () => {
-    const want = [0, BRAWLER_WORLD_STOP.weak, BRAWLER_WORLD_STOP.weak, BRAWLER_WORLD_STOP.strong, BRAWLER_WORLD_STOP.strong, BRAWLER_WORLD_STOP.closer];
+    // ★5段目は決め技=止め ×1.6(research/HITSTOP.md §7)。1〜4段目は今のまま。
+    const want = [0, BRAWLER_WORLD_STOP.weak, BRAWLER_WORLD_STOP.weak, BRAWLER_WORLD_STOP.strong, BRAWLER_WORLD_STOP.strong, brawlerFinishStopMs(BRAWLER_WORLD_STOP.closer, 'palm')];
     for (let stage = 1; stage <= 5; stage++) {
       setup();
       useGameStore.setState(st => ({ enemies: [zombieAt(45, 0, 'z')], player: { ...st.player, brawler: { ...st.player.brawler!, nextStage: stage, chainUntil: 9e15 } } }));
@@ -106,7 +108,7 @@ describe('格闘の当たりは自分と相手だけを旧の画面全体の止�
       expect(r.selfStop).toBe(r.until - r.at + BRAWLER_WORLD_STOP_SELF_MS);
       advance(10);
     }
-    expect(got).toEqual([BRAWLER_WORLD_STOP.strong, BRAWLER_WORLD_STOP.strong, BRAWLER_WORLD_STOP_KICK3]);
+    expect(got).toEqual([BRAWLER_WORLD_STOP.strong, BRAWLER_WORLD_STOP.strong, brawlerFinishStopMs(BRAWLER_WORLD_STOP_KICK3, 'kick3')]); // 蹴り飛ばしは決め技=×1.6(HITSTOP.md §7)
     expect(BRAWLER_WORLD_STOP_KICK3).toBe(340);
     // 踵落とし(2発目の後の下)
     setup();
@@ -117,7 +119,7 @@ describe('格闘の当たりは自分と相手だけを旧の画面全体の止�
     expect(br().kickHeel).toBe(true);
     const h = untilResolved();
     expect(br().connected).toBe(true);
-    expect(h.until - h.at).toBe(BRAWLER_WORLD_STOP.closer);
+    expect(h.until - h.at).toBe(brawlerFinishStopMs(BRAWLER_WORLD_STOP.closer, 'heel')); // 踵落としは決め技=×1.5(HITSTOP.md §7)
   });
   // ★まとめて当てた時(utils/multiHitFeel)は、締めの長さに「当たった数の上乗せ」を足す(相手の止め・自分の止めとも同じだけ)。
   it('大踏み潰し: 何体に当たっても画面全体は止めず、当たった相手それぞれが締めの長さ(+まとめて当てた上乗せ)だけ止まる', () => {
@@ -131,9 +133,9 @@ describe('格闘の当たりは自分と相手だけを旧の画面全体の止�
     expect(br().connected).toBe(true);
     const extra3 = multiHitFeel(3).extraStopMs;
     expect(extra3).toBeGreaterThan(0);
-    expect(r.until - r.at).toBe(BRAWLER_WORLD_STOP.closer + extra3);
+    expect(r.until - r.at).toBe(brawlerFinishStopMs(BRAWLER_WORLD_STOP.closer, 'stomp') + extra3); // 地割りは決め技=×1.5(HITSTOP.md §7)
     expect(calls).toEqual([]); // 画面全体は止めない
-    expect(r.selfStop).toBe(BRAWLER_WORLD_STOP.closer + BRAWLER_WORLD_STOP_SELF_MS + extra3);
+    expect(r.selfStop).toBe(brawlerFinishStopMs(BRAWLER_WORLD_STOP.closer, 'stomp') + BRAWLER_WORLD_STOP_SELF_MS + extra3);
     for (const e of useGameStore.getState().enemies) expect(e.hitStunUntil, e.id).toBe(r.until);
   });
   it('秘奥義の締め(着地): 画面全体は止めず、当たった相手が締めの長さ(+まとめて当てた上乗せ)だけ止まる', () => {
@@ -149,7 +151,7 @@ describe('格闘の当たりは自分と相手だけを旧の画面全体の止�
     }
     expect(landAt).toBeGreaterThan(0);
     expect(hs()).toBeLessThanOrEqual(landAt);
-    expect(landUntil - landAt).toBe(BRAWLER_WORLD_STOP.closer + multiHitFeel(2).extraStopMs); // 2体に当たる
+    expect(landUntil - landAt).toBe(brawlerFinishStopMs(BRAWLER_WORLD_STOP.closer, 'secretLand') + multiHitFeel(2).extraStopMs); // 2体に当たる・秘奥義の最後の当たりは決め技=×2.0(HITSTOP.md §7)
   });
   it('外れた時は止まらない(段・飛び蹴り・大踏み潰し)', () => {
     setup();

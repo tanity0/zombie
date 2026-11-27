@@ -125,6 +125,7 @@ import {
 } from '../store/gameStore';
 import { kenkiLevelLook } from '../utils/kenkiLevel'; // 孫悟空のレベルの色(research/BRAWLER.md §36-1)
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
+import { brawlerShakeAmpMul } from '../utils/brawlerFinishStop'; // 格闘の決め技の震えの幅(research/HITSTOP.md §7)
 import * as BRGO from '../utils/brawlerGouge'; // 抉り打ちの溜めの光(状態から描くだけ・research/BRAWLER.md §37)
 import { BRAWLER_WEAK_GUARD_ALPHA } from '../utils/brawlerGuard'; // 弱い構え(払えずに出た構え)の光の薄さ
 import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne, brawlerLiftVisBasePx } from '../utils/brawlerCombo';
@@ -30942,7 +30943,8 @@ export class PixiScene {
       const so = hitShakeOffset(brShakeAmp, e.brawlerShakeDx ?? 1, e.brawlerShakeDy ?? 0, isDrawnAirborne(drawLiftPx), hitShakeZoomMul(this.L.worldGroup.scale.x || 1), e.meleeShakeAmp ?? 1); // 鞭の先端の当たりは幅 ×1.3
       brShakeX = so.x; brShakeY = so.y;
     } else {
-      brShakeX = brShakeAmp * (e.brawlerShakeDx ?? 1); brShakeY = brShakeAmp * (e.brawlerShakeDy ?? 0);
+      const brAmpK = brawlerShakeAmpMul(e); // 格闘の決め技の幅(抉り打ち ×1.6・research/HITSTOP.md §7)
+      brShakeX = brShakeAmp * brAmpK * (e.brawlerShakeDx ?? 1); brShakeY = brShakeAmp * brAmpK * (e.brawlerShakeDy ?? 0);
     }
     // 踵落としを受けた地上の敵は、叩きつけられて沈んでから戻る(位置だけ・判定は動かない・§29)。
     const heelSink = e.brHeelAt !== undefined ? BRW.brawlerHeelHitSink(Date.now() - e.brHeelAt) : 0;

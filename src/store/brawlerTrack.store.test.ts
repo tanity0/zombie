@@ -272,7 +272,7 @@ describe('§40-4 ⑧: 空中蹴り・蹴り上げの後の滞空と、空中で�
     // 踵落とし: 出した時の高さ(96)で振り下ろす(相手の高さに合わせない)
     for (let k = 0; k < 60 && !br().resolved; k++) adv();
     expect(selfH()).toBeCloseTo(BRAWLER_KICK2_AIR_PX, 0);
-    for (let k = 0; k < 20 && brawlerInHitstop(br(), gt()); k++) adv();
+    for (let k = 0; k < 40 && brawlerInHitstop(br(), gt()); k++) adv(); // 踵落としの止めは決め技=×1.5(research/HITSTOP.md §7)
     expect(press('D')).toBe(true); // 踵落とし→地割り
     expect(br().tech).toBe('stomp');
     const h0 = selfH();

@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setKenkiLevelForTest } from '../utils/kenkiLevel';
 import { useGameStore, isBrawlerGuarding } from './gameStore';
+import { brawlerFinishStopMs } from '../utils/brawlerFinishStop'; // ★決め技の止めの係数(research/HITSTOP.md §7)
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { BRAWLER_GRAB_MS, BRAWLER_CONTACT_GRAB_MS, brawlerKickUpCost, BRAWLER_TECHS, BRAWLER_WORLD_STOP, BRAWLER_SUPLEX_RISE_MS, BRAWLER_CONTACT_FREEZE_MS, BRAWLER_SUPLEX_BLAST_RADIUS, brawlerTechCost, brawlerDistTo, brawlerPoseAt, BRAWLER_AIR_SUPLEX_RISE_MS, brawlerSelfAirborne } from '../utils/brawler';
 import { brawlerTimeKeeperDiscount } from '../utils/brawlerSkills';
@@ -129,7 +130,7 @@ describe('§34-3 空中投げ(格闘+パニッシャー)', () => {
     for (let k = 0; k < 60 && en('z')?.brThrow; k++) advance(10);
     expect(en('z')!.brThrow).toBeUndefined();
     expect(useGameStore.getState().hitstopUntil).toBeGreaterThan(now); // ぶつかった瞬間は締めの止め(画面全体)
-    advance(BRAWLER_WORLD_STOP.closer + 20); // 爆撃は止めが明けてから広がる
+    advance(brawlerFinishStopMs(BRAWLER_WORLD_STOP.closer, 'airThrow') + 20); // 爆撃は止めが明けてから広がる(空中投げは決め技=×1.6・research/HITSTOP.md §7)
     expect(en('y')!.health).toBeLessThan(yhp);
     expect((en('y')!.knockbackUntil ?? 0)).toBeGreaterThan(now);
   });

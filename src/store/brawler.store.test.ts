@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setKenkiLevelForTest } from '../utils/kenkiLevel';
 import { useGameStore, isMeleeOnlyMode, isBrawlerGuarding, subWeaponBlockedByKatana, isWhipMode, drainBrawlerSfx, BRAWLER_SFX_DEATH, INVULN_MS, kbStopBoost, KNOCKBACK_DURATION, KNOCKBACK_SPEED } from './gameStore';
+import { brawlerFinishStopMs } from '../utils/brawlerFinishStop'; // ★決め技の止めの係数(research/HITSTOP.md §7)
 import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import { brawlerLiftBreaksTech, brawlerLockHitMs, brawlerLockAlive } from '../utils/brawlerCombo';
 import type { Projectile } from '../types/game';
@@ -1121,7 +1122,7 @@ describe('食らいの固まり・キャンセル(research/BRAWLER.md §11・社
     expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);
     for (let k = 0; k < 40 && !br().resolved; k++) advance(10);
     expect(br().connected).toBe(true);
-    advance(BRAWLER_WORLD_STOP.closer + 10); // 止めが明けた(締めの画面全体の止め(社長指示2026-11-12・BRAWLER_WORLD_STOP))
+    advance(brawlerFinishStopMs(BRAWLER_WORLD_STOP.closer, 'stomp') + 10); // 止めが明けた(締めの止め・地割りは決め技=×1.5=research/HITSTOP.md §7)
     expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
     expect(br().tech).toBe('kiko');
     expect(br().techChain).toEqual(['stomp', 'kiko']);
@@ -1147,7 +1148,7 @@ describe('食らいの固まり・キャンセル(research/BRAWLER.md §11・社
     useGameStore.setState(st => ({ enemies: [zombieAt(60, 0, 'z')], player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 20 } } }));
     useGameStore.getState().brawlerTech(0, 1);
     for (let k = 0; k < 40 && !br().resolved; k++) advance(10);
-    advance(BRAWLER_WORLD_STOP.closer + 160); // 締めの画面全体の止め(社長指示2026-11-12・BRAWLER_WORLD_STOP)+受付150の後
+    advance(brawlerFinishStopMs(BRAWLER_WORLD_STOP.closer, 'stomp') + 160); // 締めの止め(地割りは決め技=×1.5・research/HITSTOP.md §7)+受付150の後
     expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
     expect(br().tech).toBe('stomp');                                         // その場では出ない
     expect(br().techBuffer).toBe('kiko');

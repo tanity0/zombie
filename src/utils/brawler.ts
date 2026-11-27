@@ -679,7 +679,7 @@ export const brawlerSecretCancelable = (s: BrawlerState | undefined): boolean =>
   !!s?.secret && (s.secret.phase === 'ignite' || s.secret.phase === 'strike');
 /** 秘奥義を終えた(フィニッシュ後・中断)状態。技ポイントは強制で0、段は1段目へ(§10-2-4・§10-3)。 */
 export const brawlerSecretEnd = (s: BrawlerState): BrawlerState => ({
-  ...s, phase: 'idle', tech: null, stage: 0, buffered: false, techBuffer: undefined, stepBuffer: undefined, points: 0, nextStage: 1, chainUntil: 0,
+  ...s, phase: 'idle', tech: null, stage: 0, buffered: false, techBuffer: undefined, techBufferReplay: false, deferPress: undefined, stepBuffer: undefined, points: 0, nextStage: 1, chainUntil: 0,
   guardUntil: 0, quickUntil: 0, kickChainUntil: 0, kickCount: 0, secret: undefined, secretProgress: 0, secretLastEndAt: 0,
   stopFrom: 0, stopUntil: 0, stopPrevMs: 0,
 });
@@ -717,7 +717,7 @@ export const isBrawlerSecretActive = (s: BrawlerState | undefined): boolean => !
 
 /** 出かかった行動を取り消す(掴まれ・紫・シーカー=§8-4)。先行入力(通常・技)も捨てる。 */
 export const brawlerCancel = (s: BrawlerState): BrawlerState => ({
-  ...s, phase: 'idle', tech: null, buffered: false, techBuffer: undefined, stepBuffer: undefined, nextStage: 1, chainUntil: 0, secret: undefined,
+  ...s, phase: 'idle', tech: null, buffered: false, techBuffer: undefined, techBufferReplay: false, deferPress: undefined, stepBuffer: undefined, nextStage: 1, chainUntil: 0, secret: undefined,
   guardUntil: 0, kickChainUntil: 0, kickCount: 0,
 });
 /**
@@ -740,7 +740,7 @@ export const brawlerCounterFallPx = (f: BrawlerState['counterFall'], t: number):
 };
 /** 被弾した(段は1段目へ・先行入力は捨てる=§2-4)。行動そのものは続く(殴り返されて止まるのは敵の止めの側)。 */
 export const brawlerOnHurt = (s: BrawlerState): BrawlerState => ({
-  ...s, buffered: false, techBuffer: undefined, stepBuffer: undefined, nextStage: 1, chainUntil: 0,
+  ...s, buffered: false, techBuffer: undefined, techBufferReplay: false, deferPress: undefined, stepBuffer: undefined, nextStage: 1, chainUntil: 0,
 });
 // ---------------------------------------------------------------------------------------------
 // ★つながる道(research/BRAWLER.md §19・社長承認2026-11-10「KOFの案は はい」)。
@@ -900,6 +900,7 @@ const brawlerShouldBufferTechEarly = (s: BrawlerState, kind: BrawlerTechKind, t:
 export const brawlerTechBufferDecision = (s: BrawlerState, t: number): 'fire' | 'wait' | 'drop' | null => {
   const k = s.techBuffer;
   if (!k) return null;
+  if (s.techBufferReplay) return 'wait'; // 後ろへ送った入力の見せ札(入れ直しで消える・research/HITSTOP.md §7)
   // ★構えの取り消し(§34-6 #8): 受けの成立の止めの最中に入れた技は、止めが明けた(=この時計が回った)瞬間に出す。構えが終わっていたら捨てる。
   if (s.guardCancelHeld) return brawlerGuardCancelOk(s, k, t) ? 'fire' : 'drop';
   // 待機: ステップの最中に覚えた技(stepHeld)は、ステップが終わった瞬間に出す(§20-8)。それ以外は捨てる。

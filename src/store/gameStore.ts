@@ -155,6 +155,7 @@ import { noteLeverGuardFull, clearLeverGuardFull, leverGuardHurtMuted, isPlayerH
 import * as BRCM from '../utils/brawlerCounterMaster'; // 格闘のときのカウンターマスター(受けた直後の自動の反撃・前倒し/吹き飛ばしを付けない)
 import * as BRH from '../utils/brawlerHitHeight'; // ★格闘の当たる高さ(research/BRAWLER.md §40-4)
 import * as BRGO from '../utils/brawlerGouge'; // ★格闘の抉り打ち(溜めて離す・research/BRAWLER.md §37)
+import * as BRF from '../utils/brawlerFinishStop'; // ★格闘の決め技の止めと震えの係数(research/HITSTOP.md §7)
 import * as BRG from '../utils/brawlerGuard'; // 格闘の構えの成立の効果(雑魚=潰し/雑魚より上=自分がノックバック/光線の中断・research/BRAWLER.md §12-3d)
 import { noteAirMeleeHit, resetAirMeleeHit, meleeHitLiftsPlayer, type AirFollowWeapon } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18)
 import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodDrip';
@@ -846,6 +847,8 @@ export interface BrawlerStrikeOpts {
    * 技の時計(gameTime)も止まるので、固まりに止めの分を足さない(足すと、自分だけ先に動けて、つながりが止めの長さぶん甘くなる)。
    */
   lockStopMs?: number;
+  /** ★決め技の止めで伸ばした分(ms・research/HITSTOP.md §7)。この当たりで浮かせた相手の浮きの時計を、この分だけ後ろへずらす(延長が無い時と同じ浮きと押しの重なり)。 */
+  finishExtMs?: number;
   kb: {
     kind: 'none' | 'small' | 'normal' | 'big';
     /** 押す向き(掌底=帯の向き)。無ければ fromX/fromY(円の中心)から外向き、それも無ければプレイヤーから外向き。 */
@@ -870,6 +873,8 @@ export interface BrawlerStrikeOpts {
    * 食らいの固まり・減衰・反撃の名札(research/BRAWLER.md §11)。無ければ流れに数えない(固めない)。
    */
   combo?: { move: BRC.BrawlerMoveKey; linkCarry?: number };
+  /** ★決め技(research/HITSTOP.md §7)。stunMs は既に止めの係数を掛けた長さ。相手の震えの長さ・幅に震えの係数を掛ける。無し=今のまま。 */
+  finish?: BRF.BrawlerFinishMove;
 }
 /** 当たり1回の「N HIT」の数(その敵の続き+1。段のつなぎとして出た抉り打ちは、持ち越した数の続きより小さくしない=§37-7)。 */
 const brawlerLinkOnHitBs = (enemy: Enemy, bs: Pick<BrawlerStrikeOpts, 'combo'>, gameTime: number, now: number): number =>
@@ -6190,23 +6195,20 @@ const brawlerHitPatch = (
   // ★流れの数え(反撃の数・ダメージ補正の数・バウンドの区切り=§11-3・§13-2)。固まりは下の確定の固まり(§19-3)が決める。ボス級も同じ(反撃の数は届かない)。
   const combo = bs.combo ? BRC.brawlerComboOnHit(enemy, bs.combo.move, now) : null;
   if (combo) Object.assign(out, combo.patch);
-  if (endNoHold && rawStopMs > 0) {
-    // 固まらない時間の間: 止めは掛けないが、震えの絵だけは出す(§19-3 ⑤)。
-    out.brawlerShakeUntil = now + rawStopMs;
-    const sdx = ecx - pcx, sdy = ecy - pcy, sdl = Math.hypot(sdx, sdy) || 1;
-    out.brawlerShakeDx = sdx / sdl; out.brawlerShakeDy = sdy / sdl;
-  }
-  if (bossStopMs > 0) {
-    // ボス級の止めの震え(絵だけ・雑魚と同じ)。止まり自体は下の brHoldUntil。
-    out.brawlerShakeUntil = now + bossStopMs;
-    const sdx = ecx - pcx, sdy = ecy - pcy, sdl = Math.hypot(sdx, sdy) || 1;
-    out.brawlerShakeDx = sdx / sdl; out.brawlerShakeDy = sdy / sdl;
-  }
-  if (stopMs > 0) {
-    out.hitStunUntil = now + stopMs;
-    out.brawlerShakeUntil = now + stopMs;
+  // ★震えの長さ・幅(research/HITSTOP.md §7): 決め技は 今の止め × 震えの係数・幅 × 係数(抉り打ち)。決め技でなければ止めと同じ長さ(今のまま)。
+  const writeShake = (stoppedMs: number): void => {
+    out.brawlerShakeUntil = now + BRF.brawlerFinishShakeMs(stoppedMs, bs.finish);
+    if (bs.finish) { out.brawlerShakeAmp = BRF.brawlerFinishShakeAmp(bs.finish); out.brawlerShakeAmpUntil = out.brawlerShakeUntil; }
     const sdx = ecx - pcx, sdy = ecy - pcy, sdl = Math.hypot(sdx, sdy) || 1;
     out.brawlerShakeDx = sdx / sdl; out.brawlerShakeDy = sdy / sdl; // 当てた方向に沿って震える(絵だけ)
+  };
+  // 固まらない時間の間: 止めは掛けないが、震えの絵だけは出す(§19-3 ⑤)。
+  if (endNoHold && rawStopMs > 0) writeShake(rawStopMs);
+  // ボス級の止めの震え(絵だけ・雑魚と同じ)。止まり自体は下の brHoldUntil。
+  if (bossStopMs > 0) writeShake(bossStopMs);
+  if (stopMs > 0) {
+    out.hitStunUntil = now + stopMs;
+    writeShake(stopMs);
   }
   // 向き: 帯の向き > 円の中心から外向き > プレイヤーから外向き。
   let ux: number, uy: number;
@@ -6249,7 +6251,12 @@ const brawlerHitPatch = (
       knockbackVx: ux * spd, knockbackVy: uy * spd, knockbackUntil: kbUntil,
       ...(kind === 'big' ? { knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS, brawlerBlownAt: now } : {}),
       // 止めの後の速さの補正(updateEnemies)。下の大踏み潰し(強制)は実測で約90px が今の距離なので補正しない(§9-39)。
-      ...(stopMs > 0 && !forced ? { knockbackStopMs: stopMs, knockbackStopFor: kbUntil } : {}),
+      // ★決め技の止めの延長(research/HITSTOP.md §7・案C)は押しの補正に数えない(押しの距離は今のまま=延長の間はその場で止まり、明けから今と同じ押し)。
+      ...(stopMs > 0 && !forced ? { knockbackStopMs: Math.max(1, stopMs - (bs.finishExtMs ?? 0)), knockbackStopFor: kbUntil } : {}),
+      // ★止めの補正の無い押し(強制の押し)は、延長が無い時に動いた距離を上限にする(案C・utils/brawlerFinishStop)。
+      ...(stopMs > 0 && forced && (bs.finishExtMs ?? 0) > 0
+        ? { knockbackCapPx: BRF.brawlerFinishKbCapPx(spd, stopMs - bs.finishExtMs!, BRC.getBrawlerLockFrameMs(), KNOCKBACK_DURATION), knockbackCapFor: kbUntil, knockbackTravelPx: 0 }
+        : {}),
     });
     // 下の大踏み潰しの強制ノックバック: 攻撃中の雑魚・強個体はその技を取り消してから押す(カウンター成立と同じ取り消し=予告も消える)。
     // 取り消しの欄はカウンター成立と同じ1本(utils/enemyBite.ts counterInterruptPatch)。凍結系も解く(押しを邪魔させない)。
@@ -6283,6 +6290,11 @@ const brawlerHitPatch = (
       downNow = (jp as { brLiftDown?: boolean }).brLiftDown === true;
       pk = 'free';
     }
+  }
+  // ★決め技の止めの延長(research/HITSTOP.md §7・案C): この当たりで浮かせた相手の浮きの時計を延長の分だけ後ろへ(押しは止めの明けから始まる=延長が無い時と同じ重なり)。
+  if ((bs.finishExtMs ?? 0) > 0 && out.brawlerLiftAt !== undefined && out.brawlerLiftAt >= now) {
+    const sh = BRC.brawlerShiftLift(out as Parameters<typeof BRC.brawlerShiftLift>[0], now, bs.finishExtMs!);
+    if (sh) Object.assign(out, sh);
   }
   // 強個体は普段 canShoveEnemy が押し(と押しの欄での足止め)を止める=格闘の当たりでは押し道具と同じ旗を立てて雑魚と同じに動かす。
   if (strong && out.knockbackUntil !== undefined) out.knockbackShoveUntil = out.knockbackUntil;
@@ -6395,18 +6407,30 @@ const brawlerFinishLockPatch = (enemy: Enemy, bs: BrawlerStrikeOpts, gameTime: n
  */
 /** 当たりの止めの組(自分の止め・敵に書く止め・固まりの式の止め・全体の止め・旧の全体の止めを写した長さ)。 */
 /** worldMs=旧の全体の止めの長さを技ごとに指定する時(未指定=hitstopMs の強さから BR.brawlerWorldStopMs)。蹴り飛ばしだけが使う(§33-2)。 */
-const brawlerStopPlan = (get: () => GameState, hitstopMs: number, worldMs?: number): { self: number; stun: number; lock: { lockStopMs?: number }; world: number; freeze: number } => {
-  if (get().rhythm.active || hitstopMs <= 0) return { self: hitstopMs, stun: hitstopMs, lock: {}, world: 0, freeze: 0 };
-  const freeze = worldMs ?? BR.brawlerWorldStopMs(hitstopMs);
+/**
+ * finish=決め技(research/HITSTOP.md §7・utils/brawlerFinishStop): 旧の全体の止めを写した長さ(freeze)に止めの係数を掛ける=自分の止め・敵の止め・固まりの式の止めが
+ * 同じだけ伸びる(後隙・取り消しの受付は行動の時計=止めが明けてから数える)。返す finish を当てる側(BrawlerStrikeOpts.finish)へ渡すと相手の震えにも係数が掛かる。
+ * 四神舞の最中(rhythm)は今のまま(係数を掛けない=拍の時計を崩さない)。
+ */
+const brawlerStopPlan = (get: () => GameState, hitstopMs: number, worldMs?: number, finish?: BRF.BrawlerFinishMove | null): { self: number; stun: number; lock: { lockStopMs?: number; finishExtMs?: number }; world: number; freeze: number; finish?: BRF.BrawlerFinishMove; ext: number } => {
+  if (get().rhythm.active || hitstopMs <= 0) return { self: hitstopMs, stun: hitstopMs, lock: {}, world: 0, freeze: 0, ext: 0 };
+  const base = worldMs ?? BR.brawlerWorldStopMs(hitstopMs);
+  const freeze = BRF.brawlerFinishStopMs(base, finish);
+  const ext = Math.max(0, freeze - base); // 決め技で伸ばした分(受付・相手の固まりの時計から外す=案C)
   // 固まりの式の止め: 旧は全体の止めの間 gameTime が「止まっていたフレームの数×フレームの幅」だけ進まなかった(明けたフレームで1フレーム分進む)。
   // その分を足す=固まりが明ける壁時計が旧と同じ(フレームの幅が分からない最初のフレームは止めの長さそのまま)。
   const fr = BRC.getBrawlerLockFrameMs();
-  const lostGt = fr > 0 ? Math.max(0, Math.ceil(freeze / fr) - 1) * fr : freeze;
-  return { self: freeze + BR.BRAWLER_WORLD_STOP_SELF_MS, stun: freeze, lock: { lockStopMs: lostGt + BR.BRAWLER_WORLD_STOP_LOCK_MS }, world: 0, freeze };
+  // ★決め技(§7・案C): 固まりの式の止めは「今の止めの式+延長の分(フレームの幅に切り上げ)」=延長が無い時のつながりを、止めの明けの時刻にきっちり合わせて保つ。
+  const lostGt = fr > 0 ? Math.max(0, Math.ceil(base / fr) - 1) * fr : base;
+  const lockExt = BRF.brawlerFinishLockExtMs(ext, fr);
+  return {
+    self: freeze + BR.BRAWLER_WORLD_STOP_SELF_MS, stun: freeze, lock: { lockStopMs: lostGt + BR.BRAWLER_WORLD_STOP_LOCK_MS + lockExt, ...(ext > 0 ? { finishExtMs: ext } : {}) },
+    world: 0, freeze, ...(finish ? { finish } : {}), ext,
+  };
 };
 /** 旧の全体の止めを写した止めの印(自分の止めの明け=stopUntil と同じ値)。当たった時だけ。 */
-const brawlerFreezeMark = (next: BR.BrawlerState, plan: { freeze: number }, hits: number): Partial<BR.BrawlerState> =>
-  plan.freeze > 0 && hits > 0 ? { stopFreezeUntil: next.stopUntil } : {};
+const brawlerFreezeMark = (next: BR.BrawlerState, plan: { freeze: number; ext?: number }, hits: number): Partial<BR.BrawlerState> =>
+  plan.freeze > 0 && hits > 0 ? { stopFreezeUntil: next.stopUntil, ...((plan.ext ?? 0) > 0 ? { stopExt: { ms: plan.ext!, until: next.stopUntil } } : {}) } : {};
 /**
  * 当たった後の反動。四神舞の最中(自分と相手だけの止め)は今どおり(止めの間は器を止める=movePlayer が器の時計を延ばす)。
  * 旧の全体の止めを写した止めの時は、旧と同じく反動を止めが明けた時刻から始める(止めの間は動かず・器の時計も延ばさない=lungeHoldFixedUntil)。
@@ -6748,9 +6772,15 @@ const fireBufferedBrawlerTech = (
     setBrawler(set, { ...s1, denyAt: Date.now() });
     return;
   }
+  // ★決め技の止めの延長で、この技が延長の無い時より遅れて出る分(research/HITSTOP.md §7・案C)。次の行動に持たせ、その間の入力を同じだけ後ろへ送る。
+  const debt = BRF.brawlerFireDebtMs(s, get().gameTime);
   // 飛び蹴りの連続の続き(蹴り→蹴り)はキャンセルではない(今どおり)。
-  startBrawlerTech(get, set, s1, kind, awakened, cancel && !(kind === 'kick' && s.tech === 'kick'), false, heel, weakGuard, kickUp);
+  const started = startBrawlerTech(get, set, s1, kind, awakened, cancel && !(kind === 'kick' && s.tech === 'kick'), false, heel, weakGuard, kickUp);
+  const sN = get().player.brawler;
+  if (started && debt > 0 && sN && sN.phase !== 'idle' && !sN.secret) setBrawler(set, { ...sN, extDebt: { ms: debt, startAt: sN.startAt } });
 };
+/** 後ろへ送った入力を入れ直している最中(もう一度は送らない)。 */
+let brawlerReplaying = false;
 const startBrawlerTech = (
   get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s0In: BR.BrawlerState, kind: BR.BrawlerTechKind, awakened = false,
   /** 技の後隙を取り消して出した(技→技のキャンセル・research/BRAWLER.md §11-4)。 */
@@ -7194,9 +7224,9 @@ const brawlerSecretLand = (get: () => GameState, set: (fn: (s: GameState) => Par
   setBrawler(set, { ...s, secret: { ...s.secret!, phase: 'land', phaseAt: st.gameTime, nextAt: st.gameTime + BR.BRAWLER_SECRET_LAND_MS }, flashAt: now });
   const walls = meleeWallsAround(get, foot.x, foot.y, BR.BRAWLER_SECRET_LAND_RADIUS);
   const ids = BR.brawlerCircleTargets(get().enemies, foot.x, foot.y, BR.BRAWLER_SECRET_LAND_RADIUS, walls);
-  const plan = brawlerStopPlan(get, BR.BRAWLER_SECRET_LAND_HITSTOP_MS); // ★秘奥義の締めの当たりの止め(自分と相手だけ・社長指示2026-11-14)
+  const plan = brawlerStopPlan(get, BR.BRAWLER_SECRET_LAND_HITSTOP_MS, undefined, 'secretLand'); // ★秘奥義の締めの当たりの止め(自分と相手だけ・社長指示2026-11-14)。決め技=止め×2.0(HITSTOP.md §7)
   const res = get().triggerCounter(undefined, {
-    targetIds: ids, brawler: true, pressedAt: now,
+    targetIds: ids, brawler: true, pressedAt: now, finish: plan.finish,
     mult: BR.BRAWLER_SECRET_LAND_MULT, stunMs: plan.stun, ...plan.lock, postureMult: BR.BRAWLER_SECRET_LAND_MULT,
     kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
     combo: { move: 'secret-land' },
@@ -7299,9 +7329,9 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       const pw = meleeWallsAround(get, palm.x0, palm.y0, palm.travel + 60);
       ids = BR.brawlerBandTargets(st.enemies, palm.x0, palm.y0, palm.ux, palm.uy, pw, palm.travel);
     }
-    const plan0 = brawlerStopPlan(get, spec.hitstopMs); // ★当たりの止め=自分と相手だけ(社長指示2026-11-14・画面全体は止めない)
+    const plan0 = brawlerStopPlan(get, spec.hitstopMs, undefined, BRF.brawlerStageFinishMove(s.stage)); // ★当たりの止め=自分と相手だけ(社長指示2026-11-14・画面全体は止めない)。5段目は決め技(HITSTOP.md §7)
     const r = strike(ids, {
-      mult: spec.mult, stunMs: plan0.stun, ...plan0.lock, postureMult: spec.mult,
+      mult: spec.mult, stunMs: plan0.stun, ...plan0.lock, postureMult: spec.mult, finish: plan0.finish,
       kb: spec.kb === 'big'
         ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true, ...(spec.kbMult !== undefined ? { power: spec.kbMult } : {}), ...(palm ? { passLine: { x0: palm.x0, y0: palm.y0, ux: palm.ux, uy: palm.uy } } : {}) }
         : { kind: spec.kb },
@@ -7341,9 +7371,9 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     if (!target) target = brawlerPickInBand(st, c.x, c.y, radius, walls, BR.brawlerComboLockId(s), band, now).target;
     const gdir = target ? BR.brawlerAimDir(c.x, c.y, target, p.lastDirection) : dir;
     const ids = BR.brawlerFistTargets(st.enemies, c.x, c.y, gdir.x, gdir.y, target, radius, walls, BR.BRAWLER_GOUGE_FIST_RADIUS);
-    const plan0 = brawlerStopPlan(get, BR.BRAWLER_HITSTOP.strong);
+    const plan0 = brawlerStopPlan(get, BR.BRAWLER_HITSTOP.strong, undefined, 'gouge'); // 決め技=止め×1.8・震えの幅×1.6(HITSTOP.md §7)
     const r = strike(ids, {
-      mult: BR.BRAWLER_GOUGE_MULT, stunMs: plan0.stun, ...plan0.lock, postureMult: BR.BRAWLER_GOUGE_MULT,
+      mult: BR.BRAWLER_GOUGE_MULT, stunMs: plan0.stun, ...plan0.lock, postureMult: BR.BRAWLER_GOUGE_MULT, finish: plan0.finish,
       kb: { kind: 'none' },
       combo: { move: 'gouge', linkCarry: s.gougeCarryHits }, // 段のつなぎとして出た時は HIT の続き(§37-7)
     });
@@ -7383,8 +7413,9 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   if (s.tech === 'stomp') {
     const foot = { x: c.x, y: c.y + p.height / 2 - 6 };
     const ids = BR.brawlerCircleTargets(st.enemies, foot.x, foot.y, stompR, walls);
-    const plan0 = brawlerStopPlan(get, BR.BRAWLER_STOMP_HITSTOP_MS); // ★当たりの止め=自分と相手だけ(社長指示2026-11-14)
+    const plan0 = brawlerStopPlan(get, BR.BRAWLER_STOMP_HITSTOP_MS, undefined, 'stomp'); // ★当たりの止め=自分と相手だけ(社長指示2026-11-14)。地割り・土竜は決め技(HITSTOP.md §7)
     const r = strike(ids, {
+      finish: plan0.finish,
       // ★出した高さで威力が上がる(社長指示2026-11-16・stompFromPx=踵落としから取り消した出だしの高さ=絵と同じ純関数の値)。地上は ×1。
       mult: BR.BRAWLER_STOMP_MULT * BR.brawlerStompAirMult(s.stompFromPx), stunMs: plan0.stun, ...plan0.lock, postureMult: BR.BRAWLER_STOMP_MULT,
       // ★土竜(§35): 押さずに宙へ浮かせる(地上=蹴り上げと同じ打ち上げ・空中=浮き直し・予算2)。攻撃中の雑魚・強個体は浮きの側で技を取り消す。
@@ -7449,9 +7480,11 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     // 踵落とし: 当たる前に浮いていた敵(叩き落とす)と地上の敵(その場で沈む)で、絵を出し分ける。
     const heelAir = heel ? new Set(st.enemies.filter(e => ids.includes(e.id) && BRC.brawlerAirborne(e, now)).map(e => e.id)) : null;
     // ★当たりの止め=自分と相手だけ(社長指示2026-11-14・画面全体は止めない)。蹴り飛ばし(踵落としでない3発目)は専用の長さ(BR.BRAWLER_WORLD_STOP_KICK3・§33-2「締めの重さは止めで出す」)を相手と自分の止めに使う。
-    const plan = brawlerStopPlan(get, hs, big && !heel && !up ? BR.BRAWLER_WORLD_STOP_KICK3 : undefined);
+    // 踵落とし・蹴り飛ばしは決め技(HITSTOP.md §7・止め×1.5/×1.6)。1・2発目・蹴り上げ(掴む蹴り上げを含む)は今のまま。
+    const plan = brawlerStopPlan(get, hs, big && !heel && !up ? BR.BRAWLER_WORLD_STOP_KICK3 : undefined, BRF.brawlerKickFinishMove(big, heel, up));
     const kmult = heel ? BR.BRAWLER_HEEL_MULT : up ? BR.BRAWLER_KICKUP_MULT : BR.brawlerKickMult(s.kickN);
     const r = strike(ids, {
+      finish: plan.finish,
       mult: kmult, stunMs: plan.stun, ...plan.lock, postureMult: kmult, // 何発目かで 0.7/0.8/1.2・踵落とし/蹴り上げは 1.2
       // 押し: 1・3発目は普通のノックバック(2発目は下の小さい押し)。3発目は旧「吹き飛ばし(big)」→ 少しのノックバックへ(社長指示2026-11-11「3段目はノックバック少しさせちゃって良い」)。
       // 2発目は地上の敵を少し打ち上げる(同・utils/brawlerCombo の BRAWLER_GROUND_LAUNCH)。空中の敵への3発目は今どおり締めの叩き落とし。
@@ -7745,7 +7778,7 @@ const stepBrawlerThrows = (get: () => GameState, set: (fn: (s: GameState) => Par
       const g = get();
       g.spawnEffect({ kind: 'meleeHit', id: `mhit-throwhit-${now}-${e.id}`, x: bx, y: by, size: BR.BRAWLER_SPARK.closer.size, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: BR.BRAWLER_SPARK.closer.ms, rot: Math.random() * Math.PI * 2 });
       brawlerSfx('heavy-impact', 1.0, 0.75);
-      g.triggerHitstop(BR.BRAWLER_WORLD_STOP.closer);
+      g.triggerHitstop(BRF.brawlerFinishStopMs(BR.BRAWLER_WORLD_STOP.closer, 'airThrow')); // 決め技=止め×1.6(HITSTOP.md §7)
       pendingThrowBlasts.push({ x: bx, y: by, id: e.id });
     }
   }
@@ -7916,7 +7949,7 @@ const resolveBrawlerContactGrab = (get: () => GameState, set: (fn: (s: GameState
 /** chain=蹴り上げからの自動の続き(空中投げで投げ先が無かった)=技の行は向きの印を出さない(監査 #12)。密着の構えからは false=上の印。 */
 const brawlerSuplex = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, e: Enemy, chain: boolean): void => {
   const t = get().gameTime;
-  const plan = brawlerStopPlan(get, BR.BRAWLER_HITSTOP.closer);
+  const plan = brawlerStopPlan(get, BR.BRAWLER_HITSTOP.closer, undefined, 'suplex'); // 決め技=止め×1.6(HITSTOP.md §7)
   // ★§34-9: 叩きつけ=背中側の着地点(地割れの所)を中心に小爆発。スープレックスのダメージはこの爆発のダメージに置き換える(叩きつけた相手は必ず当たる・もう一度浮く)。
   const swg0 = get().player.brawler?.suplexSwing;
   const off0 = e.brSuplexSwing ?? (swg0 && swg0.enemyId === e.id ? swg0 : { mx: 0, my: 0 });
@@ -14320,7 +14353,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 取り消しの受付が開いた瞬間に出す。道に無い技は覚えない(下で出せない扱い)。当たらなかった時は捨てる(後隙の終わりに勝手に出さない)。
     // 値段は出す瞬間に払う。覚えている間の通常攻撃の先行入力は捨てる(技を優先)。
     if (kind && BR.brawlerShouldBufferTech(s, kind, t)) {
-      setBrawler(set, { ...s, techBuffer: kind, heelBuffer: heel, kickUpBuffer: kickUp, guardCancelHeld: false, buffered: false, stepBuffer: undefined, stepHeld: BR.brawlerStepping(s, t), lateHeld: BR.brawlerLateCarry(s, kind, t) }); // 先行入力は1つだけ(最後の入力を優先・§12-3b)
+      // ★決め技の止めの延長の最中・延長で遅れた行動の最中に、覚えている技を上書きする入力は、遅れた分だけ後ろへ送って入れ直す(research/HITSTOP.md §7・案C)。
+      const debt = brawlerReplaying ? 0 : BRF.brawlerInputDebtMs(s, t);
+      if (debt > 0 && s.techBuffer && !s.techBufferReplay) {
+        setBrawler(set, { ...s, deferPress: { dx: dirX, dy: dirY, neutral, at: t + debt } });
+        return true;
+      }
+      setBrawler(set, { ...s, techBuffer: kind, heelBuffer: heel, kickUpBuffer: kickUp, guardCancelHeld: false, buffered: false, stepBuffer: undefined, stepHeld: BR.brawlerStepping(s, t), lateHeld: BR.brawlerLateCarry(s, kind, t), techBufferAt: t, techBufferReplay: false, deferPress: undefined }); // 先行入力は1つだけ(最後の入力を優先・§12-3b)
       return true;
     }
     if (!kind) {
@@ -14332,7 +14371,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     //   拒否の音と数字が沈む表示は出さない(あれは「技ポイントが足りない/方向が決まらない」の合図=道の外の入力に鳴らすと意味が混ざる・
     //   見た目と音は足さない)。旧はここへ来る入力がほぼ無かった(通常攻撃からはいつでも出せ、技の最中は覚えていた)。
     // ★通常の段(1〜5段目)の後隙は、当たっても空振りでも構えで取り消せる(社長指示2026-11-26・BR.brawlerStageGuardCancelOk=プレイヤーだけ)。
-    if (!BR.brawlerTechAllowed(s, kind, t) && !BR.brawlerGuardCancelOk(s, kind, t) && !BR.brawlerStageGuardCancelOk(s, kind, t)) return false;
+    if (!BR.brawlerTechAllowed(s, kind, t) && !BR.brawlerGuardCancelOk(s, kind, t) && !BR.brawlerStageGuardCancelOk(s, kind, t)) {
+      // ★決め技の止めの延長で遅れている間に、今は出ない入力は、遅れた分だけ後ろへ送って入れ直す(延長が無ければ届いていた状態で判断する・research/HITSTOP.md §7・案C)。
+      const debt = brawlerReplaying ? 0 : BRF.brawlerInputDebtMs(s, t);
+      if (debt > 0) {
+        setBrawler(set, { ...s, deferPress: { dx: dirX, dy: dirY, neutral, at: t + debt }, ...(s.techBuffer ? {} : { techBuffer: kind, techBufferReplay: true, techBufferAt: t }) });
+        return true;
+      }
+      return false;
+    }
     // 血の覚醒中は技ポイントを無視して使い放題(社長指示2026-11-08・値段0=減らさない)。
     const awakened = isBloodAwakening(p, t);
     // ★構えは払えなくても出る(社長指示2026-11-12「カウンターはポイントが無くても発動。ただし、3未満の時はダメージ防いで弾き飛ばされるのみ」)=
@@ -14440,6 +14487,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       }
     }
+    // ★後ろへ送った入力(決め技の止めの延長・research/HITSTOP.md §7・案C)を、時刻が来たら入れ直す。覚えている技がこのフレームで出るなら、それを先に出す(次のフレームで入れ直す)。
+    {
+      const sd = get().player.brawler;
+      const dp = sd?.deferPress;
+      if (sd && dp && !sd.secret && get().gameTime >= dp.at) {
+        const pendingFire = !!sd.techBuffer && !sd.techBufferReplay && BR.brawlerTechBufferDecision(sd, get().gameTime) === 'fire';
+        if (!pendingFire) {
+          setBrawler(set, { ...sd, deferPress: undefined, ...(sd.techBufferReplay ? { techBuffer: undefined, techBufferReplay: false } : {}) });
+          if (isBrawlerMode(get().player)) {
+            brawlerReplaying = true;
+            try { get().brawlerTech(dp.dx, dp.dy, dp.neutral); } finally { brawlerReplaying = false; }
+          }
+        }
+      }
+    }
     const p = get().player;
     const s0 = p.brawler;
     if (!s0?.secret) releaseSecretFreeze(); // 秘奥義が無いのに止めが残っていたら解く(別の経路の中断の保険・§17)
@@ -14502,7 +14564,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 終わり
       // ★秘奥義の順番どおりの次の技を、受付の外で覚えていたか(§19-2 の持ち越し=待機へ戻った瞬間に出す)。終える前の状態で見る。
       // ★判定の後に押した技(§25・社長裁定2026-11-11「2:A」)も同じ=1つだけ覚えて、待機へ戻った瞬間に出す。
-      const secretCarry = !!s.techBuffer && (s.lateHeld === true || BR.brawlerSecretCarry(s, s.techBuffer));
+      const secretCarry = !!s.techBuffer && !s.techBufferReplay && (s.lateHeld === true || BR.brawlerSecretCarry(s, s.techBuffer));
       const { state: fin0, fire } = BR.brawlerFinish(s, get().gameTime);
       const close = s.tech === 'guard' ? { counterWindowEnd: Math.min(get().player.counterWindowEnd, Date.now()) } : {};
       setBrawler(set, fin0, close);
@@ -21817,7 +21879,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         const attacking = isEnemyAttacking(enemy, gameTime);
         // 押しの1フレームぶんの移動(画面外リサイクル境界と「行ける帯」の内側へ)。decay=速さの掛け。
         // ★止めの間の押しの出だし(utils/knockbackStopCreep)と、下の押しの所の両方がこれを通る(クランプの式を2つに分けない)。
-        const slideKnockback = (decay: number): Enemy => {
+        const slideKnockback = (decay0: number): Enemy => {
+          // ★押しの距離の上限(決め技の止めの延長・research/HITSTOP.md §7・案C): 印のある押しだけ、動いた距離が上限を超えないよう切る。
+          const capOn = enemy.knockbackCapPx !== undefined && enemy.knockbackCapFor === enemy.knockbackUntil;
+          const stepPx = Math.hypot(enemy.knockbackVx ?? 0, enemy.knockbackVy ?? 0) * decay0 * deltaTime;
+          const travel0 = enemy.knockbackTravelPx ?? 0;
+          const decay = capOn && stepPx > 0 ? decay0 * Math.max(0, Math.min(1, (enemy.knockbackCapPx! - travel0) / stepPx)) : decay0;
           const kb = resolveMove(
             enemy.x + (enemy.knockbackVx ?? 0) * decay * deltaTime,
             enemy.y + (enemy.knockbackVy ?? 0) * decay * deltaTime,
@@ -21859,7 +21926,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ★PACING_PUZZLE.md §16-H H-4(f)(社長裁定2026-09-19): **ノックバックは凍結に含めない**
           // (銃撃で毎回止まる=「銃撃では攻撃は何も止まらない」に反する)。旧 `deferFrozenClocksBy`
           // の呼び出しはここで撤去した=ノックバック中も時計は普通に進む。
-          return { ...enemy, x: kbPlaced.x, y: kbPlaced.y };
+          return { ...enemy, x: kbPlaced.x, y: kbPlaced.y, ...(capOn ? { knockbackTravelPx: travel0 + (decay0 > 0 ? stepPx * (decay / decay0) : 0) } : {}) };
         };
         // ★止めの長さを覚えている押し(knockbackStopFor===knockbackUntil)は、止めの間もゆっくり押し始める(下の押しの所の④)。四神舞の最中は今どおり(止めの間は動かない)。
         const kbStopMarked = enemy.knockbackStopFor !== undefined && enemy.knockbackStopFor === enemy.knockbackUntil && (enemy.knockbackStopMs ?? 0) > 0;

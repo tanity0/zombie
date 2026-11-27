@@ -6,6 +6,7 @@
 //  - 秘奥義 →↓←↑(取り消しで・先行入力で)
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { useGameStore } from './gameStore';
+import { brawlerFinishStopMs, brawlerFinishLockExtMs } from '../utils/brawlerFinishStop'; // ★決め技の止めの係数(research/HITSTOP.md §7)
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import {
@@ -475,8 +476,10 @@ describe('§20-6-4 入らない道・つながらない物', () => {
       lens.push(en().brLockUntil! - gt());
     }
     // gameTime(★2026-11-14: 止めの間も進む=旧で進まなかった分を足す・上の §20-4 の検査と同じ式)
+    // ★地割りは決め技=止め ×1.5(research/HITSTOP.md §7)=固まりの式の止めに延長の分(フレームの幅に切り上げ)を足す(固まりそのもの 299 は今のまま)。
     const lostGt = (Math.ceil(BRAWLER_WORLD_STOP.closer / FRAME) - 1) * FRAME;
-    expect(lens).toEqual([0, 1, 2].map(() => lostGt + BRAWLER_WORLD_STOP_LOCK_MS + 299));
+    const ext = brawlerFinishStopMs(BRAWLER_WORLD_STOP.closer, 'stomp') - BRAWLER_WORLD_STOP.closer;
+    expect(lens).toEqual([0, 1, 2].map(() => lostGt + BRAWLER_WORLD_STOP_LOCK_MS + brawlerFinishLockExtMs(ext, FRAME) + 299));
   });
   it('段と飛び蹴りを回し続けても、強個体・ボス級は8発目までに固まりが切れる(コンボの減衰: 飛び蹴り→1段目→飛び蹴り…)', () => {
     for (const foe of ['driller-windup', 'hunter-windup'] as const) {

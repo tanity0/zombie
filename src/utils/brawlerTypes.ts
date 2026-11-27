@@ -210,6 +210,17 @@ export interface BrawlerState {
    * 新しい入力で上書き。出せるようになった瞬間(当たった技のキャンセル・前の技の終わり)に出す。被弾・掴み・紫・シーカー・死亡で捨てる。
    */
   techBuffer?: BrawlerTechKind;
+  /**
+   * ★決め技の止めが伸びた分を、入力の受付の時計から外す(research/HITSTOP.md §7・utils/brawlerFinishStop)。
+   * techBufferAt=techBuffer を覚えた時刻(gameTime)/ stopExt=いまの止めのうち決め技で伸ばした分(until がいまの stopUntil と同じ時だけ有効)/
+   * extDebt=この行動が決め技の止めの延長で遅れて始まった分(startAt がいまの startAt と同じ時だけ有効)/
+   * deferPress=延長の分だけ後ろへ送った入力(at=gameTime で入れ直す)/ techBufferReplay=techBuffer は送った入力の見せ札(出さない・入れ直しで消える)。
+   */
+  techBufferAt?: number;
+  stopExt?: { ms: number; until: number };
+  extDebt?: { ms: number; startAt: number };
+  deferPress?: { dx: number; dy: number; neutral: boolean; at: number };
+  techBufferReplay?: boolean;
   /** ハンティングが溜まった状態で始めた連撃の最中(research/BRAWLER.md §16)。途切れたら溜まりを消費して false に戻す。 */
   huntingCombo?: boolean;
   /** ジャスト構えで受けた時刻(Date.now・research/BRAWLER.md §12-2)。 */

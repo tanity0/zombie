@@ -8,6 +8,7 @@ import { useGameStore } from './gameStore';
 import type { Enemy } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll } from '../utils/brawlerCombo';
+import { brawlerFinishStopMs } from '../utils/brawlerFinishStop'; // ★決め技の止めの係数(research/HITSTOP.md §7)
 import {
   BRAWLER_TEMPO_DEFAULT, BRAWLER_STANDOFF_PX, BRAWLER_WORLD_STOP, BRAWLER_WORLD_STOP_KICK3, initialBrawlerState, brawlerDistTo, brawlerPoseAt, brawlerStandAt, brawlerInFreezeStop,
   type BrawlerState,
@@ -125,7 +126,7 @@ describe('§33 飛び蹴り3段のリズム(係数1.3・雑魚・相手の手前
       // 次の蹴りは止めが明けてから動き出す(止めの最中は当たった蹴りの絵のまま)
       for (const i of [1, 2]) expect(rows[i].flyWall, `${mode}: ${i + 1} 発目は前の止めの明けの後に飛ぶ`).toBeGreaterThan(rows[i - 1].hitWall + rows[i - 1].stopMs - 1);
       // ③ 止めの長さ: 1・2発目=強 / 3発目=蹴り飛ばし専用(テンポ係数は掛けない=壁時計)
-      expect(rows.map(r => r.stopMs)).toEqual([BRAWLER_WORLD_STOP.strong, BRAWLER_WORLD_STOP.strong, BRAWLER_WORLD_STOP_KICK3]);
+      expect(rows.map(r => r.stopMs)).toEqual([BRAWLER_WORLD_STOP.strong, BRAWLER_WORLD_STOP.strong, brawlerFinishStopMs(BRAWLER_WORLD_STOP_KICK3, 'kick3')]); // 蹴り飛ばしは決め技=×1.6(HITSTOP.md §7)
       expect(BRAWLER_WORLD_STOP_KICK3).toBe(340);
     });
   }

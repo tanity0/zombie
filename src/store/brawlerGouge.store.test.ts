@@ -86,6 +86,7 @@ describe('§37 待機から', () => {
     expect(br().points).toBe(4);
     expect(feed()).toContain('tech:gouge');
     waitHit();
+    advance(10); // ★止めが明けた後の1フレーム(決め技の止め ×1.8=research/HITSTOP.md §7 で止めの明けがフレームの境目からずれた分)
     expect(center().x).toBeGreaterThan(x0 + 20); // 跳んで詰めた
     expect(en('z').health).toBeLessThan(99999);
     expect(brawlerAirborne(en('z'), now)).toBe(true);

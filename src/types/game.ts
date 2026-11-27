@@ -924,6 +924,16 @@ export interface Enemy {
   /** 震える向き(単位・当てた方向)。 */
   brawlerShakeDx?: number;
   brawlerShakeDy?: number;
+  /** ★格闘の決め技の震えの幅の倍率(research/HITSTOP.md §7・抉り打ち=×1.6)。brawlerShakeAmpUntil が brawlerShakeUntil と同じ値の時だけ効く(utils/brawlerFinishStop)。 */
+  brawlerShakeAmp?: number;
+  brawlerShakeAmpUntil?: number;
+  /**
+   * ★押しの距離の上限(research/HITSTOP.md §7・案C=決め技の止めの延長で押しが端数の分だけ遠くへ飛ばないように)。knockbackCapFor が knockbackUntil と
+   * 同じ時だけ効く(後から別の押しが書かれたら外れる)。knockbackTravelPx=その押しで動いた距離。
+   */
+  knockbackCapPx?: number;
+  knockbackCapFor?: number;
+  knockbackTravelPx?: number;
   /**
    * ★ナイフ・鞭・刀の当たりが書いた震えの印(research/HITSTOP.md・Date.now)。brawlerShakeUntil と同じ値の時だけ近接の決まり
    * (地上の敵は横だけ・引いたズームで大きく=utils/hitShake)で描く。格闘・空中の弾の震えは書かない=今のまま。
