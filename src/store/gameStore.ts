@@ -155,6 +155,7 @@ import * as BLG from '../utils/brawlerLeverGuard'; // 格闘のレバーガー�
 import { noteLeverGuardFull, clearLeverGuardFull, leverGuardHurtMuted, isPlayerHurtFlashColor, isPlayerHurtBurstColor, LEVER_GUARD_BURST_NEAR_PX } from '../utils/leverGuardStamp'; // 受け切った直後は被弾の演出を出さない
 import * as BRCM from '../utils/brawlerCounterMaster'; // 格闘のときのカウンターマスター(受けた直後の自動の反撃・前倒し/吹き飛ばしを付けない)
 import * as BRH from '../utils/brawlerHitHeight'; // ★格闘の当たる高さ(research/BRAWLER.md §40-4)
+import { brawlerLinkHitPatch, brawlerLinkRestoreOnLift } from '../utils/brawlerLinkLift'; // ★宙の敵で「N HIT」が切れる穴(格闘の当たりで浮かせたのに数を書かない経路)を塞ぐ(§23)
 import * as BRGO from '../utils/brawlerGouge'; // ★格闘の抉り打ち(溜めて離す・research/BRAWLER.md §37)
 import * as BRF from '../utils/brawlerFinishStop'; // ★格闘の決め技の止めと震えの係数(research/HITSTOP.md §7)
 import * as BRG from '../utils/brawlerGuard'; // 格闘の構えの成立の効果(雑魚=潰し/雑魚より上=自分がノックバック/光線の中断・research/BRAWLER.md §12-3d)
@@ -6225,14 +6226,21 @@ const pendingBlastLifts: { x: number; y: number; r: number }[] = [];
 /** 爆発のダメージが当たった敵(damageEnemy の blast=true・hitIds)。次の tickBrawler で待ち行列と突き合わせて捨てる。 */
 const blastHitIds = new Set<string>();
 /**
+ * ★格闘の爆発(スープレックスの小爆発・空中投げの爆撃)が当たった敵に、当たった時に書いた「N HIT」の数(§23)。爆発の浮きは次の tickBrawler で掛かるので、
+ * その間に敵の更新が数を消しても、浮かせた時に戻す(宙にいる間は数が残る=切れない・utils/brawlerLinkLift)。浮きを掛ける時に毎回捨てる。
+ */
+const blastLinkHits = new Map<string, number>();
+/**
  * 待ち行列の爆発を掛ける(§14)。浮くのは爆発のダメージが当たった敵だけ。同じフレームに爆発が重なったら、敵ごとに一番近い(強い)1回だけ
  * (弧と予算を重ねて上書き・消費しない)。近さ=爆発のダメージと同じ物差し(爆心から blastAnchorOf まで ÷ 半径)。
  */
 const applyPendingBlastLifts = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
-  if (pendingBlastLifts.length === 0) { blastHitIds.clear(); return; }
+  if (pendingBlastLifts.length === 0) { blastHitIds.clear(); blastLinkHits.clear(); return; }
   const q = pendingBlastLifts.splice(0, pendingBlastLifts.length);
   const hit = new Set(blastHitIds);
   blastHitIds.clear();
+  const linkNoted = new Map(blastLinkHits);
+  blastLinkHits.clear();
   if (hit.size === 0) return;
   const st = get();
   const now = Date.now();
@@ -6246,7 +6254,8 @@ const applyPendingBlastLifts = (get: () => GameState, set: (fn: (s: GameState) =
     }
     if (best <= 0) continue;
     const jp = blastLiftPatch(e, BRC.brawlerLiftClass(e), best, now, st.gameTime);
-    if (jp) patches.set(e.id, jp as Partial<Enemy>);
+    const link = brawlerLinkRestoreOnLift(e, jp, linkNoted.get(e.id), now); // 格闘の爆発で浮いた敵は、当たった時の数を持ったまま宙にいる(§23)
+    if (jp) patches.set(e.id, { ...(jp as Partial<Enemy>), ...(link ?? {}) });
   }
   if (patches.size > 0) set(state => ({ enemies: state.enemies.map(e => { const p = patches.get(e.id); return p ? { ...e, ...p } : e; }) }));
 };
@@ -7981,6 +7990,7 @@ const explodeBrawlerAirThrow = (get: () => GameState, x: number, y: number): voi
     const d = BR.brawlerDistTo(x, y, e);
     const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * BRC.brawlerProrationFor(e, Date.now()) * sniperGunMult(p, e)));
     const stunBefore = e.hitStunUntil;
+    const link = brawlerLinkHitPatch(e, st.gameTime, Date.now()); // ★「N HIT」の数(§23・当たる直前の敵から)。書かないと、爆撃で浮いて宙にいるのに数が切れていた
     const killed = withMastery('brawler', () => get().damageEnemy(id, dmg, true, false, false, 'other'));
     { const na = meleeNumberPoint(x, y, e); get().spawnDamageNumber(na.x, na.y, dmg, false, { enemyId: id }); }
     dealt += dmg;
@@ -7990,6 +8000,8 @@ const explodeBrawlerAirThrow = (get: () => GameState, x: number, y: number): voi
       continue;
     }
     hitIds.push(id);
+    useGameStore.setState(state => ({ enemies: state.enemies.map(en => (en.id === id ? { ...en, ...link } : en)) }));
+    blastLinkHits.set(id, link.brComboHits); // 爆発の浮きは次のフレームで掛かる=その時に数を戻す
     const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
     const ddx = ecx - x, ddy = ecy - y, dl0 = Math.hypot(ddx, ddy);
     // 爆心ちょうど(投げた敵がぶつけられた敵に重なった所)は向きが決まらない=外向きを id で振り分ける。
@@ -8238,6 +8250,7 @@ const explodeBrawlerSuplex = (get: () => GameState, set: (fn: (s: GameState) => 
     const d = isSlam ? 0 : BR.brawlerDistTo(x, y, e);
     const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * BRC.brawlerProrationFor(e, now) * sniperGunMult(p, e)));
     const stunBefore = e.hitStunUntil;
+    const link = brawlerLinkHitPatch(e, st.gameTime, now); // ★「N HIT」の数(§23・当たる直前の敵から数える=格闘の当たりと同じ)。書かないと、宙にいるのに数が切れていた
     const killed = withMastery('brawler', () => get().damageEnemy(id, dmg, true, false, false, 'other'));
     { const na = meleeNumberPoint(isSlam ? e.x + e.width / 2 : x, isSlam ? e.y + e.height / 2 : y, e); get().spawnDamageNumber(na.x, na.y, dmg, false, { enemyId: id }); }
     dealt += dmg;
@@ -8252,10 +8265,12 @@ const explodeBrawlerSuplex = (get: () => GameState, set: (fn: (s: GameState) => 
       // 爆発のダメージは爆発の浮きの待ち行列に載る(damageEnemy の blast)=叩きつけた相手だけ外して、スープレックスの跳ね返りを残す。
       blastHitIds.delete(id);
       const jp = brawlerJugglePatch(e, BRC.brawlerEnemyClass(e), 'suplex', now); // 当たる前の相手から数える(近接の当たりと同じ)
-      if (jp) set(state => ({ enemies: state.enemies.map(en => (en.id === id ? { ...en, ...jp } : en)) }));
+      set(state => ({ enemies: state.enemies.map(en => (en.id === id ? { ...en, ...(jp ?? {}), ...link } : en)) }));
       continue;
     }
     blastIds.push(id);
+    set(state => ({ enemies: state.enemies.map(en => (en.id === id ? { ...en, ...link } : en)) }));
+    blastLinkHits.set(id, link.brComboHits); // 爆発の浮きは次のフレームで掛かる=その時に数を戻す
     const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
     const ddx = ecx - x, ddy = ecy - y, dl0 = Math.hypot(ddx, ddy);
     const ang0 = dl0 > 1 ? Math.atan2(ddy, ddx) : (id.charCodeAt(id.length - 1) % 8) * (Math.PI / 4);
@@ -30293,7 +30308,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   
   resetGame: (characterClass) => {
-    pendingBlastLifts.length = 0; blastHitIds.clear(); // ★爆発の浮きの待ち行列を前ランへ持ち越さない(§14)
+    pendingBlastLifts.length = 0; blastHitIds.clear(); blastLinkHits.clear(); // ★爆発の浮きの待ち行列を前ランへ持ち越さない(§14)
     resetAirMeleeHit(); BRC.resetAirHits(); // 空中の敵への倍率の数え(§16)も前ランへ持ち越さない
     shieldChargedKeys.clear(); // research/SHIELD_BLOCK.md §8: 継続技の「削った」記録を捨てる
     resetShieldBlockMastery(); // 熟練度: 盾の「同じ攻撃の続き」の記録を捨てる(utils/shieldMastery)
