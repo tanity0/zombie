@@ -7,7 +7,7 @@ import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { brawlerAirborne, brawlerJugglePush } from '../utils/brawlerCombo';
 import { initialBrawlerState } from '../utils/brawler';
-import { COUNTER_LIFT_MOVE, knifeLiftMove } from '../utils/airLift';
+import { COUNTER_LIFT_MOVE, KNIFE_LIFT_HEIGHT_MULT, knifeLiftMove } from '../utils/airLift';
 
 let now = 9_000_000;
 const setup = (brawler = false) => {
@@ -142,7 +142,7 @@ describe('被弾反撃でない攻撃は今どおり', () => {
     useGameStore.getState().triggerCounter();
     const z = en('z')!;
     expect(z.brawlerLiftAt).toBe(now + ((z.hitStunUntil ?? now) - now)); // ★止めの間は上がり始めない(社長指示2026-11-27「上がる方も止めて」)
-    expect(z.brLiftPeak).toBeCloseTo(brawlerJugglePush({}, 'mob', knifeLiftMove(false), now, false, false)!.brLiftPeak!);
+    expect(z.brLiftPeak).toBeCloseTo(brawlerJugglePush({}, 'mob', knifeLiftMove(false), now, false, false, false, KNIFE_LIFT_HEIGHT_MULT)!.brLiftPeak!);
   });
   it('赤い予告へのカウンター(damageEnemy の counter): 技の最中のまま残っている敵は浮かない(今どおり)', () => {
     setup(false);

@@ -378,7 +378,7 @@ export const KATANA_AUTO_SLASH_FX_SCALE = 2 * 0.6;
 const katanaSelfStop = (move: KatanaSlashMove): { at: number; ms: number } =>
   ({ at: Math.round(katanaSlashCenterT(KATANA_SLASH_TIMING[move].out) * SLASH_FX_DURATION_MS), ms: applyHitstopK(KATANA_SELF_STOP_MS, katanaMoveKind(move)) }); // ★技の係数(一閃・燕返し=1.3・research/HITSTOP.md §2-5)
 import { screamerStartGate } from '../utils/screamerGate';
-import { blastLiftPatch, blastLiftCloseness, COUNTER_LIFT_MOVE, counterLiftApplies, retaliateLiftPlan, KNIFE_HOLD_MOVE, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil } from '../utils/airLift';
+import { blastLiftPatch, blastLiftCloseness, COUNTER_LIFT_MOVE, counterLiftApplies, retaliateLiftPlan, KNIFE_HOLD_MOVE, KNIFE_LIFT_HEIGHT_MULT, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil } from '../utils/airLift';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
   getSelectedStageId, getWallMeta, recordChronicle, recordChronicleGlobalFirst,
@@ -3145,7 +3145,8 @@ const knifeHoldLiftPatch = (enemy: Enemy, now: number, gameTime: number, dmg: nu
   let down = false;
   if (knifeLiftApplies(enemy, now, gameTime, swingAt, slasher)) {
     // ★ナイフ(近接)の浮きには落ちる速さの緩急を当てない(k=1=浮きの長さ=移動を止める時間を変えない・社長指示2026-11-13「移動距離は変えないで」)。
-    const jp = brawlerJugglePatch(enemy, BRC.brawlerEnemyClass(enemy), knifeLiftMove(BRC.brawlerJudgedAirborne(enemy, now)), now, false);
+    // ★高さは KNIFE_LIFT_HEIGHT_MULT 倍(浮いている時間も同じ倍=弧の長さは高さに比例・社長裁定2026-11-27)。
+    const jp = brawlerJugglePatch(enemy, BRC.brawlerEnemyClass(enemy), knifeLiftMove(BRC.brawlerJudgedAirborne(enemy, now)), now, false, false, KNIFE_LIFT_HEIGHT_MULT);
     if (jp) {
       Object.assign(out, jp);
       if (jp.brLiftUntil !== undefined && jp.brLiftUntil > now) out.brBlastNoLiftUntil = knifeNoLiftUntil(enemy, jp.brLiftUntil, now);
@@ -6682,12 +6683,12 @@ const brawlerHitPatch = (
  */
 // force=被弾反撃の浮きの強制(社長指示2026-11-16「赤文字のカウンター」=被弾反撃「強制的に浮かない状況でも浮かせる」・utils/airLift retaliateLiftPlan)。
 //   空中の予算切れ・ダウン中も浮かせ直し(brawlerJugglePush の force)、ボス級の止めの減衰で無効でも浮かせる(減衰の記録だけ残す・長さは減らさない)。
-const brawlerJugglePatch = (enemy: Enemy, cls: 'mob' | 'strong' | 'boss', move: BRC.BrawlerMoveKey, now: number, fallScale = true, force = false): Partial<Enemy> | null => {
+const brawlerJugglePatch = (enemy: Enemy, cls: 'mob' | 'strong' | 'boss', move: BRC.BrawlerMoveKey, now: number, fallScale = true, force = false, heightMult = 1): Partial<Enemy> | null => {
   if (BRC.brawlerLiftClass(enemy) === null) return null; // ★終端の死神は浮かない(格闘・爆発・スラッシャー共通・§14)
   // ボス級: 気絶・紫の間に浮かせたコンボは軽い(§25)。
   const gtJ = useGameStore.getState().gameTime;
   const stunnedJ = (enemy.stunUntil !== undefined && gtJ < enemy.stunUntil) || (enemy.bossFullStunUntil !== undefined && gtJ < enemy.bossFullStunUntil);
-  const jp = BRC.brawlerJugglePush(enemy, cls, move, now, stunnedJ, fallScale, force);
+  const jp = BRC.brawlerJugglePush(enemy, cls, move, now, stunnedJ, fallScale, force, heightMult);
   if (!jp) return null;
   if (cls !== 'boss' || BRC.brawlerAirborne(enemy, now) || (jp.brLiftUntil ?? 0) <= now) return jp;
   const dr = evaluateBossStopDr(enemy, now);

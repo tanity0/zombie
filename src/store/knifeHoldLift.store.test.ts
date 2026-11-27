@@ -10,6 +10,7 @@ import { BRAWLER_HOLD_MS, BRAWLER_TEMPO_DEFAULT } from '../utils/brawler';
 import { hitStunMsFor } from '../utils/combatFeel';
 import { meleeHitStopMul } from '../utils/hitFlinch';
 import { preBiteTelegraphLine } from '../utils/biteTelegraph';
+import { KNIFE_LIFT_HEIGHT_MULT } from '../utils/airLift';
 
 let now = 9_000_000;
 const DT = 10;
@@ -64,7 +65,7 @@ describe('ナイフの当たり: 固まりと浮き', () => {
     const z = en('z');
     expect(z.brLockUntil! - gt()).toBe(lockLen(z));
     expect(brawlerAirborne(z, now)).toBe(true);
-    expect(z.brLiftPeak).toBeCloseTo(BRAWLER_GROUND_LAUNCH.s3!, 6);
+    expect(z.brLiftPeak).toBeCloseTo(BRAWLER_GROUND_LAUNCH.s3! * KNIFE_LIFT_HEIGHT_MULT, 6); // ナイフの浮きは格闘の3段目の0.8倍の高さ(社長裁定2026-11-27)
     expect(z.brLiftBudget).toBe(BRAWLER_JUGGLE_BUDGET.mob);
     expect(z.brBlastNoLiftUntil).toBe(z.brLiftUntil! + (z.brLiftUntil! - now)); // 着地の後、浮いていた時間と同じ長さは地上から浮かない
     expect(Math.hypot(z.knockbackVx ?? 0, z.knockbackVy ?? 0)).toBeGreaterThan(0); // ナイフの押し(押されながら浮く)
@@ -79,6 +80,7 @@ describe('ナイフの当たり: 固まりと浮き', () => {
     expect(brawlerAirborne(en('z'), now)).toBe(true);
     expect(en('z').brLiftBudget).toBe(b0 - 1);
     expect(BRAWLER_JUGGLE_PUSH.s2).toBeGreaterThan(0);
+    expect(en('z').brLiftPeak).toBeCloseTo(BRAWLER_JUGGLE_PUSH.s2 * KNIFE_LIFT_HEIGHT_MULT, 6); // 空中の拾いも0.8倍の押し上げ
   });
   it('溜め(z-red-pause)の雑魚は止まって続きから(取り消さない・浮かせない)・流星の位相も止まり、消え切る時刻は止めた分だけ後ろへ', () => {
     const g0 = gt();
@@ -144,7 +146,7 @@ describe('ナイフの当たり: 固まりと浮き', () => {
     // ★3段目の後の次の振りは、体の隙(0.7秒)ではなくカウンター窓が開ける時刻(連撃の終わり+ナイフのクールダウン)まで待つ
     //   (社長指示2026-11-27「カウンター窓開くまで振れるようにはしないで」・utils/knifeCombo の knifeNextSwingAt)。
     for (const i of [3, 6, 9]) expect(freeBefore[i], `${i / 3}回目の連撃の後`).toBeGreaterThan(0);
-    expect(freeBefore).toEqual([0, 0, 0, 100, 0, 0, 310, 0, 0, 100, 0, 0]); // 実測(段の間隔0.4秒・3段目の後はカウンター窓が開くまで。隙0.7秒で振れた時は [..0..270..0..]・隙1.0秒の時は [..280..490..280..])
+    expect(freeBefore).toEqual([0, 0, 0, 180, 0, 0, 310, 0, 0, 180, 0, 0]); // 実測(段の間隔0.4秒・3段目の後はカウンター窓が開くまで・ナイフの浮きの高さ0.8倍(時間も0.8倍)。高さ1倍の時は [..100..310..100..]。隙0.7秒で振れた時は [..0..270..0..]・隙1.0秒の時は [..280..490..280..])
     // 浮き: 地上から打ち上げ→空中で拾い直して3段つながる。着地の後の「地上から浮かない窓」(浮いていた時間と同じ長さ)の中の連撃は浮かない。
     expect(lifted).toEqual([true, true, true, false, false, false, true, true, true, false, false, false]); // 実測(3段目の後はカウンター窓が開くまで=浮く連撃と浮かない連撃が交互・隙1.0秒の時と同じ。隙0.7秒で振れた時は [T,T,T,T,F,F,T,T,T,T,F,F])
   });
@@ -152,7 +154,7 @@ describe('ナイフの当たり: 固まりと浮き', () => {
   //   (旧 段の間隔0.5秒の時: 強個体=各連撃の1・2段目 / ボス級=各連撃の1段目。コンボの後の固まらない時間(強個体800/ボス級1500ms)と段の間隔の噛み合わせで並びが変わる。)
   const KNIFE_REAL_HELD: Record<string, boolean[]> = {
     zombie: [true, true, true, true, true, true, true, true, true, true, true, true],
-    driller: [true, true, true, false, false, true, true, true, true, false, false, true], // 隙0.7秒(社長裁定2026-11-27)。隙1.0秒の時は [T,T,T,F,F,T,F,F,T,F,F,T]
+    driller: [true, true, true, false, false, true, false, false, true, false, false, true], // ナイフの浮きの高さ0.8倍(社長裁定2026-11-27)。高さ1倍の時は [T,T,T,F,F,T,T,T,T,F,F,T]・隙1.0秒の時も今と同じ並び
     hunter: [true, false, false, false, true, false, false, false, true, false, false, false],
   };
   for (const type of ['zombie', 'driller', 'hunter'] as EnemyType[]) {
@@ -188,7 +190,7 @@ describe('ナイフの当たり: 固まりと浮き', () => {
     expect(z.health).toBeLessThan(999999);
     expect(z.brLockUntil).toBeDefined();
     expect(brawlerAirborne(z, now)).toBe(true);
-    expect(z.brLiftPeak).toBeCloseTo(BRAWLER_GROUND_LAUNCH.s3!, 6);
+    expect(z.brLiftPeak).toBeCloseTo(BRAWLER_GROUND_LAUNCH.s3! * KNIFE_LIFT_HEIGHT_MULT, 6); // ナイフの浮きは格闘の3段目の0.8倍の高さ(社長裁定2026-11-27)
     expect(z.brLiftBudget).toBe(BRAWLER_JUGGLE_BUDGET.mob);
   });
   it('スラッシャーを持っている時は、止めっぱなしにしない窓(brBlastNoLiftUntil)の中でも1撃目は浮く(持たない時は浮かない)', () => {

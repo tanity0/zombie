@@ -8,6 +8,7 @@ import {
   brawlerAirborne, brawlerFallStretchMs, BRAWLER_GROUND_LAUNCH, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_MIN_MS,
 } from '../utils/brawlerCombo';
 import { BRAWLER_LIFT_MS } from '../utils/brawler';
+import { KNIFE_LIFT_HEIGHT_MULT } from '../utils/airLift';
 
 let now = 13_000_000;
 afterEach(() => { vi.restoreAllMocks(); });
@@ -43,7 +44,7 @@ describe('ナイフの1撃目の浮き(落ちる速さの緩急の対象外)', (
       const z = en();
       expect(brawlerAirborne(z, now)).toBe(true);
       // 地上の打ち上げ=3段目(s3)・雑魚の重さ。落ちる部分を伸ばさない元の弧の長さ。
-      const f = BRAWLER_GROUND_LAUNCH.s3! * BRAWLER_JUGGLE_WEIGHT.mob;
+      const f = BRAWLER_GROUND_LAUNCH.s3! * BRAWLER_JUGGLE_WEIGHT.mob * KNIFE_LIFT_HEIGHT_MULT; // ナイフの浮きは0.8倍の高さ(時間も同じ倍=弧の長さは高さに比例)
       const plain = Math.max(BRAWLER_JUGGLE_MIN_MS, Math.round(BRAWLER_LIFT_MS * f));
       expect(z.brLiftFallK ?? 1).toBe(1);
       expect(z.brLiftMs).toBe(plain);

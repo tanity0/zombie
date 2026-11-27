@@ -688,6 +688,12 @@ export const brawlerJugglePush = (
    * 区分の重さ・押し上げ量・地上の打ち上げ・地面バウンド(大踏み潰し)・押し上げ0の技の叩き落としは今どおり。
    */
   force = false,
+  /**
+   * ★押し上げの高さの倍率(地上の打ち上げ・空中の押し上げだけに掛ける。叩き落とし・地面バウンド・スープレックスは掛けない)。
+   * 弧の長さは高さに比例する作り(arc=BRAWLER_LIFT_MS×高さ)なので、浮いている時間も同じ倍率で短くなる(弧の配分は変わらない)。
+   * ナイフの浮き(airLift KNIFE_LIFT_HEIGHT_MULT)が使う。1=今どおり。
+   */
+  heightMult = 1,
 ): Partial<BrawlerJuggleFields> & { liftUntil?: number; brNoHoldUntil?: number } | null => {
   const fallK = (n: number) => (fallScale ? brawlerFallK(n) : 1);
   // ★止めで遅らせた打ち上げ(brLiftRiseStopMs)は、空中か地上かを遅らせる前の弧の時計で見る(当たる高さの帯と同じ・utils/brawlerHitHeight)。
@@ -710,7 +716,7 @@ export const brawlerJugglePush = (
   if (!airborne) {
     const launch = BRAWLER_GROUND_LAUNCH[move];
     if (launch === undefined) return null;
-    const f = launch * w;
+    const f = launch * w * heightMult;
     if (f < BRAWLER_JUGGLE_MIN_F) return null;
     const fk = fallK(0);
     const ms = brawlerFallStretchMs(arc(f), fk);
@@ -751,7 +757,7 @@ export const brawlerJugglePush = (
       brLiftBudget: budget, brLiftDown: false, brLiftDropMs: dropMs, brBounceCombo: combo };
   }
   if (push <= 0 || (budget < 0 && !force)) return down();
-  const f = push * w;
+  const f = push * w * heightMult;
   if (f < BRAWLER_JUGGLE_MIN_F) return down();
   const fk = fallK(n);
   const ms = brawlerFallStretchMs(arc(f), fk);

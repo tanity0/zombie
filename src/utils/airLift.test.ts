@@ -3,7 +3,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import {
   blastLiftPatch, blastLiftCloseness, slasherLiftMove, blastLiftMs, slasherLaunchMinMs,
   BLAST_LIFT_HEIGHT_OF_S3, BLAST_LIFT_MS_MULT, BLAST_LIFT_COST,
-  KNIFE_HOLD_MOVE, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil,
+  KNIFE_HOLD_MOVE, KNIFE_LIFT_HEIGHT_MULT, knifeLiftMove, knifeLiftApplies, knifeNoLiftUntil,
   COUNTER_LIFT_MOVE, counterLiftApplies, retaliateLiftPlan,
 } from './airLift';
 import {
@@ -195,6 +195,49 @@ describe('ナイフの浮き(knifeLiftMove / knifeLiftApplies / knifeNoLiftUntil
     expect(knifeNoLiftUntil({}, NOW + 570, NOW)).toBe(NOW + 1140);
     expect(knifeNoLiftUntil({ brLiftUntil: NOW + 50, brBlastAirSince: NOW - 300 }, NOW + 400, NOW)).toBe(NOW + 400 + 700);
     expect(knifeNoLiftUntil({ brBlastNoLiftUntil: NOW + 5000 }, NOW + 570, NOW)).toBe(NOW + 5000);
+  });
+});
+
+// ★ナイフで浮かせた時の高さ0.8倍(社長裁定2026-11-27: 段の間を0.5→0.4秒に速めた分=0.4/0.5・時間も高さに合わせて短く)。
+describe('ナイフの浮きの高さの倍率(KNIFE_LIFT_HEIGHT_MULT / brawlerJugglePush の heightMult)', () => {
+  const K = KNIFE_LIFT_HEIGHT_MULT;
+  it('倍率=段の間の速め方(0.4/0.5)', () => {
+    expect(K).toBeCloseTo(0.4 / 0.5, 9);
+  });
+  for (const cls of ['mob', 'strong', 'boss'] as const) {
+    it(`${cls}: 地上の打ち上げ(3段目)は頂点が0.8倍・浮いている時間も0.8倍(弧の長さは高さに比例)・頂点の時刻の割合も同じ`, () => {
+      const base = brawlerJugglePush({}, cls, knifeLiftMove(false), NOW, false, false)!;
+      const k = brawlerJugglePush({}, cls, knifeLiftMove(false), NOW, false, false, false, K)!;
+      expect(k.brLiftPeak!).toBeCloseTo(base.brLiftPeak! * K, 9);
+      expect(k.brLiftMs!).toBe(Math.max(BRAWLER_JUGGLE_MIN_MS, Math.round(BRAWLER_LIFT_MS * base.brLiftPeak! * K)));
+      expect(Math.abs(k.brLiftMs! - base.brLiftMs! * K)).toBeLessThanOrEqual(1);
+      // 弧の形は同じ=どの割合の時刻でも高さが0.8倍
+      for (const u of [0.1, 0.3, 0.5, 0.8]) {
+        expect(brawlerJuggleHeightRel(k as BrawlerJuggleFields, NOW + k.brLiftMs! * u)).toBeCloseTo(brawlerJuggleHeightRel(base as BrawlerJuggleFields, NOW + base.brLiftMs! * u) * K, 2);
+      }
+      expect(k.brLiftBudget).toBe(base.brLiftBudget); // 予算は今どおり
+    });
+  }
+  it('空中の拾い(2段目)の押し上げも0.8倍・浮き直しの長さも0.8倍', () => {
+    const air = brawlerJugglePush({}, 'mob', 's3', NOW - 100, false, false)! as BrawlerJuggleFields;
+    const base = brawlerJugglePush(air, 'mob', knifeLiftMove(true), NOW, false, false)!;
+    const k = brawlerJugglePush(air, 'mob', knifeLiftMove(true), NOW, false, false, false, K)!;
+    expect(k.brLiftPeak!).toBeCloseTo(BRAWLER_JUGGLE_PUSH.s2 * K, 9);
+    expect(base.brLiftPeak!).toBeCloseTo(BRAWLER_JUGGLE_PUSH.s2, 9);
+    expect(k.brLiftFrom).toBe(base.brLiftFrom); // 始まりの高さ=今の高さのまま
+    expect(Math.abs(k.brLiftMs! - base.brLiftMs! * K)).toBeLessThanOrEqual(1);
+    expect(k.brLiftBudget).toBe(base.brLiftBudget);
+  });
+  it('倍率を掛けても下限(MIN_F)を割らない=どの区分でもナイフで浮く(浮かなくなる区分を作らない)', () => {
+    for (const cls of ['mob', 'strong', 'boss'] as const) {
+      expect(BRAWLER_JUGGLE_PUSH.s2 * BRAWLER_JUGGLE_WEIGHT[cls] * K).toBeGreaterThan(BRAWLER_JUGGLE_MIN_F);
+      expect(brawlerJugglePush({}, cls, 's3', NOW, false, false, false, K)).not.toBeNull();
+    }
+  });
+  it('叩き落とし(押し上げ0)は倍率に関係なく今どおり・既定(倍率1)は今どおり', () => {
+    const air = brawlerJugglePush({}, 'mob', 's3', NOW - 100, false, false)! as BrawlerJuggleFields;
+    expect(brawlerJugglePush(air, 'mob', 's5', NOW, true, true, false, K)).toEqual(brawlerJugglePush(air, 'mob', 's5', NOW, true, true));
+    expect(brawlerJugglePush({}, 'mob', 's4', NOW)).toEqual(brawlerJugglePush({}, 'mob', 's4', NOW, false, true, false, 1));
   });
 });
 

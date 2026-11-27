@@ -137,6 +137,12 @@ export const retaliateLiftPlan = (
  *  - 社長裁定(同日「近接は止めるだけ」): 技の最中(溜めを含む)の敵は浮かせない・技は取り消さない。
  */
 export const KNIFE_HOLD_MOVE: BrawlerMoveKey = 's1';
+/**
+ * ★ナイフで浮かせた時の高さの倍率(社長裁定2026-11-27: 段の間を0.5→0.4秒に速めた分=0.4/0.5)。地上の打ち上げ・空中の拾いの両方に掛ける。
+ * 浮いている時間も同じ倍率で短くなる(格闘の弧の長さは高さに比例する作り=brawlerJugglePush の heightMult)。弧の配分(上り・漂い・落ち)は変えない。
+ * ナイフの振りの浮きだけ(格闘・鞭・刀の別の技・赤カウンター・被弾反撃・スラッシャーの追撃は対象外)。
+ */
+export const KNIFE_LIFT_HEIGHT_MULT = 0.8;
 export const knifeLiftMove = (airborne: boolean): BrawlerMoveKey => (airborne ? 's2' : 's3');
 /**
  * ナイフの当たりで浮かせてよいか。呼び手は区分(終端の死神は brawlerJugglePatch が null)とレバーガードを別に見る。
