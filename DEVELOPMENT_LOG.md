@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.5874 — 格闘: 1回の空中で同じ技は1回まで【2026-11-27 19:45】
+- 社長指示「格闘の空中では、一度の空中で同じ技は1回までにして(一度着地した後ならok)」(格闘ゲームの1ジャンプ1回の決まり)。
+- 数える単位=道の表の節(s1/s2/kick1/kick2/kick3/heel/kickup/stomp/kiko)。空中投げ・スープレックス・土竜・秘奥義の途中は数えない(入力で始まらない)。
+- 門=純関数 `brawlerAirRepeatBlocked`(+`brawlerTechStartNode`/`brawlerAirPressNode`/`brawlerAirUsedOnStart`)。記録 `BrawlerState.airUsed` は `brawlerCarryAir` の1か所で書く。通した経路: 入力の入口 `brawlerTech`・`startBrawlerTech`(覚えた技の発動・秘奥義の取り消し含む)・`startBrawlerAttack`・`brawlerPress`。段の最中の通常攻撃の押しは覚えて出す瞬間に捨てる(既存の3段目と同じ形)。
+- 切れる流れ: 滞空中の1段目→飛び蹴り1発目でもう一周(着地すれば可)。既存テストの書き換えなし。新規 brawlerAirRepeat.test.ts / .store.test.ts。
+- 検証: typecheck / eslint エラー0 / 循環import新規なし / vitest src/utils src/store 11321 passed・1 failed(labCrawlerTick=格闘と無関係・単独で再実行して通過=並列負荷のゆらぎ)。
+- 自己点検: 憲法第4条・第5条に抵触なし。
+
 ## v0.25.5873 — 居合一閃をカウンター演出の後に放つ(溜め)【2026-11-27 18:37】
 - 社長「カウンターが終わった後、居合一線は？」→提案「Counter! が終わるまで構えて一拍溜めてから放つ・溜めの間スロー維持・無敵」に「はい」。
 - 放つ時刻=成立+max(吹き出し MELEE_FINISH_SLOW_MS=700, 寄り COUNTER_ZOOM_MS=320)=700ms(`iaiReleaseAt`)。カウンターのスロー(0.2倍・700ms)と一致し放つ瞬間に明ける。※設計が事前に「約0.3秒」と伝えたのは寄りの長さの取り違え=社長へ訂正済み。

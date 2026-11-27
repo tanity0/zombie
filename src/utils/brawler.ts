@@ -2577,6 +2577,33 @@ export const brawlerAirAllowsStage = (stage: number): boolean => stage === 1 || 
  */
 export const brawlerAirBlocksGuard = (s: BrawlerState | undefined, t: number, kind: BrawlerTechKind | null, kickUp = false): boolean =>
   kind === 'guard' && !kickUp && brawlerSelfAirborne(s, t);
+/**
+ * ★1回の空中で同じ技は1回まで(社長指示2026-11-27「格闘の空中では、一度の空中で同じ技は1回までにして(一度着地した後ならok)」)。
+ * 技の数え方=道の表の節(通常の1・2段=s1/s2、飛び蹴りの1・2・3発目=kick1/kick2/kick3、踵落とし=heel、蹴り上げ=kickup、地割り=stomp、気功=kiko)。
+ * プレイヤーが空中(brawlerSelfAirborne)にいて、その節をこの空中で既に出していたら出さない(押しは捨てる=覚えない)。着地した後は数え直す。
+ * 全経路(入力の入口・覚えた技の発動・startBrawlerTech・startBrawlerAttack)がこの1本を通る。
+ */
+export const brawlerAirRepeatBlocked = (s: BrawlerState | undefined, t: number, node: BrawlerRouteNode): boolean =>
+  !!s && node !== 'idle' && (s.airUsed?.includes(node) ?? false) && brawlerSelfAirborne(s, t);
+/** 技を始めた時の節(brawlerStartTech の踵落とし・蹴り上げの決まりと同じ: 3発目の位置だけ)。 */
+export const brawlerTechStartNode = (kind: BrawlerTechKind, kickN = 1, heel = false, up = false): BrawlerRouteNode =>
+  kind !== 'kick' ? kind
+    : kickN >= BRAWLER_KICK_MAX && heel ? 'heel'
+      : kickN >= BRAWLER_KICK_MAX && up ? 'kickup'
+        : brawlerTechNode('kick', Math.max(1, kickN));
+/**
+ * 入力の瞬間に「この押しで出る技の節」を見積もる(覚えるかどうかの門の前・出す瞬間は startBrawlerTech が実際の節で見直す)。
+ * 蹴りの最中の蹴り=次の何発目(3発目・空中投げの後は1発目)、それ以外=いまの連続の受付から(brawlerNextKickN)。
+ */
+export const brawlerAirPressNode = (s: BrawlerState, t: number, kind: BrawlerTechKind, heel = false, up = false): BrawlerRouteNode => {
+  if (kind !== 'kick') return kind;
+  const inKick = s.phase === 'tech' && s.tech === 'kick' && s.kickN < BRAWLER_KICK_MAX && !s.kickThrow;
+  return brawlerTechStartNode('kick', inKick ? s.kickN + 1 : brawlerNextKickN(s, t), heel, up);
+};
+/** 空中で使った技の節の数え直し(行動を始めた瞬間・brawlerCarryAir)。air=始めた瞬間に空中だった。 */
+export const brawlerAirUsedOnStart = (prevUsed: readonly BrawlerRouteNode[] | undefined, air: boolean, node: BrawlerRouteNode): BrawlerRouteNode[] | undefined =>
+  node === 'idle' ? (air ? prevUsed?.slice() : undefined)
+    : air ? [...(prevUsed ?? []).filter(n => n !== node), node] : [node];
 /** 空中の気功の後は、着地までどの技・段にも取り消せない(§39)。 */
 export const brawlerAirKikoLocked = (s: BrawlerState | undefined, t: number): boolean =>
   !!s && s.airKiko === true && brawlerSelfAirborne(s, t);
@@ -2585,6 +2612,7 @@ export const brawlerAirKikoLocked = (s: BrawlerState | undefined, t: number): bo
  *  - 新しい行動を始めた: その瞬間の高さを airFromPx に(前の行動の高さから続ける)。待機の落下は消す。地上で始めた行動では空中の気功の印を消す。
  *  - 行動が終わって待機へ(取り消し・終わり): その瞬間の高さと速さから落ちる(airFall)。
  *  - 空中で気功を撃った: 印(airKiko)。
+ *  - 1回の空中で出した技の節(airUsed): 地上で始めた行動=その節から数え直す / 空中で始めた行動=足す / 落ちずに待機へ戻った=消す。
  */
 export const brawlerCarryAir = (prev: BrawlerState | undefined, next: BrawlerState, t: number): BrawlerState => {
   if (!prev || next === prev) return next;
@@ -2595,11 +2623,12 @@ export const brawlerCarryAir = (prev: BrawlerState | undefined, next: BrawlerSta
     return {
       ...next, airFromPx: air ? h : undefined, airFall: undefined,
       airKiko: air ? (prev.airKiko === true || next.tech === 'kiko') : undefined,
+      airUsed: brawlerAirUsedOnStart(prev.airUsed, air, next.secret ? 'idle' : brawlerRouteNodeOf(next)), // 秘奥義の中の当たり=入力ではない(数えない)
     };
   }
   if (next.phase === 'idle' && prev.phase !== 'idle') {
     const f = brawlerSelfFallFrom(prev, t);
-    return { ...next, airFall: f, airFromPx: undefined, airKiko: f ? prev.airKiko : undefined };
+    return { ...next, airFall: f, airFromPx: undefined, airKiko: f ? prev.airKiko : undefined, airUsed: f ? prev.airUsed : undefined };
   }
   return next;
 };

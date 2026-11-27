@@ -6853,7 +6853,8 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
   const stage = BR.brawlerStageForPress(s0, t);
   // ★§39・§40: 空中で出せる通常攻撃は1・2段目だけ(3段目以降は空中では出ない=押しは捨てる)。空中の気功の後は着地まで何も出ない。
   const selfAir = BR.brawlerSelfAirborne(s0, t);
-  if (selfAir && (!BR.brawlerAirAllowsStage(stage) || BR.brawlerAirKikoLocked(s0, t))) {
+  // ★1回の空中で同じ技は1回まで(社長指示2026-11-27・BR.brawlerAirRepeatBlocked=全経路の門)。
+  if ((selfAir && (!BR.brawlerAirAllowsStage(stage) || BR.brawlerAirKikoLocked(s0, t))) || BR.brawlerAirRepeatBlocked(s0, t, BR.brawlerStageNode(stage))) {
     if (s0.buffered || s0.stepHeld) setBrawler(set, { ...s0, buffered: false, stepHeld: false });
     return false;
   }
@@ -7104,6 +7105,11 @@ const startBrawlerTech = (
   const kickN = kind === 'kick' ? BR.brawlerNextKickN(s0, t) : 0;
   const heel = heelReq && kind === 'kick' && kickN >= BR.BRAWLER_KICK_MAX;
   const kickUp = kickUpReq && !heel && kind === 'kick' && kickN >= 2;
+  // ★1回の空中で同じ技は1回まで(社長指示2026-11-27・BR.brawlerAirRepeatBlocked=全経路の門)。押しは捨てる(覚えた技も捨てる)。
+  if (BR.brawlerAirRepeatBlocked(s0In, t, BR.brawlerTechStartNode(kind, kickN, heel, kickUp))) {
+    if (s0In.techBuffer) setBrawler(set, { ...s0In, techBuffer: undefined, heelBuffer: false, kickUpBuffer: false, guardCancelHeld: false });
+    return false;
+  }
   const weakGuard = weakGuardReq && kind === 'guard';
   // ★§19-3 ②: この技が道の上の続きか(取り消しで出した技=通常→技・技→技、飛び蹴りの連続の続き)。待機から出した技は続きではない
   //   (連続の受付の内に待機から出した次の蹴りだけは続き)。代金なしの潰し(構えで受けた瞬間)は入力ではない=続きではない。
@@ -14549,6 +14555,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (s.techBuffer) return false;
     const d = BR.brawlerPressDecision(s, st.gameTime);
     if (d === 'drop') return false;
+    // ★1回の空中で同じ技は1回まで(社長指示2026-11-27): 出る段が決まっている押し(待機=いまの段のつなぎ・技の最中=1段目)は、この空中で既に出した段なら覚えもしない。
+    //   段の最中の押し(次の段は当たり方で決まる)は出す瞬間に startBrawlerAttack の門が見る。
+    if (s.phase !== 'attack' && BR.brawlerAirRepeatBlocked(s, st.gameTime, BR.brawlerStageNode(s.phase === 'tech' ? 1 : BR.brawlerStageForPress(s, st.gameTime)))) return false;
     if (d === 'buffer') { setBrawler(set, { ...s, buffered: true, stepBuffer: undefined, stepHeld: BR.brawlerStepping(s, st.gameTime) }); return true; } // 先行入力は1つだけ(最後の入力を優先・§12-3b)。ステップの最中に押した物は、ステップの終わりに出す(§20-8)
     return startBrawlerAttack(get, set, s);
   },
@@ -14671,6 +14680,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // ★§39: 空中(滞空・落下を含む)の上は構えにならない=何も起きない(覚えもしない・着地しても出ない)。蹴り上げを体得していない時の「空中蹴りの後の上」もここ。
     if (BR.brawlerAirBlocksGuard(s, t, kind, kickUp)) return false;
+    // ★1回の空中で同じ技は1回まで(社長指示2026-11-27): この空中で既に出した技は出さない・覚えもしない(BR.brawlerAirRepeatBlocked=全経路の門)。
+    if (kind && BR.brawlerAirRepeatBlocked(s, t, BR.brawlerAirPressNode(s, t, kind, heel, kickUp))) return false;
     // ★構えを技で取り消す(§34-2・§34-6 #8・Lv1から): 受けの成立の止め(画面全体の止め)の最中に入れた技は1つだけ覚え、止めが明けた瞬間に出す。
     if (kind && BR.brawlerGuardCancelOk(s, kind, t) && get().hitstopUntil > Date.now()) {
       setBrawler(set, { ...s, techBuffer: kind, heelBuffer: false, kickUpBuffer: false, guardCancelHeld: true, buffered: false, stepBuffer: undefined, stepHeld: false, lateHeld: false });
