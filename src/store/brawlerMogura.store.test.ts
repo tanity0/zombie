@@ -70,9 +70,9 @@ describe('§35 名前', () => {
     expect(BRAWLER_TECH_NAMES['tech:mogura']).toEqual({ name: '土竜', dir: 'up' });
     const t = TUTORIALS.find(x => x.id === 'brawler-moves')!;
     for (const lines of [t.lines, t.pcLines!, t.padLines!]) {
-      const i = lines.findIndex(l => l.includes(': 地割り。'));
+      const i = lines.findIndex(l => l.startsWith('地割り\t'));
       expect(i).toBeGreaterThanOrEqual(0);
-      expect(lines[i + 1]).toBe('地割りの溜めの間に上: 土竜。');
+      expect(lines[i + 1]).toMatch(/^土竜\t地割りの溜め中に ↑/);
       expect(lines.join('')).not.toContain('大踏み潰し');
     }
   });

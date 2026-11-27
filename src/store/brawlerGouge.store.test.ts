@@ -65,14 +65,18 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('§37 名前と資料室', () => {
-  it('技の行=抉り打ち(つなぎの印)・資料室の格闘の一覧の末尾に1行', () => {
+  it('技の行=抉り打ち(つなぎの印)・資料室の格闘の技表の特殊技に1行', () => {
     expect(BRAWLER_TECH_NAMES['tech:gouge']).toEqual({ name: '抉り打ち', dir: 'chain' });
     const t = TUTORIALS.find(x => x.id === 'brawler-moves')!;
-    // 機器ごとに書き分ける(タッチ=指を置いたまま・PC=クリック・パッド={press}ボタン)。数値は書かない。
-    expect(t.lines[t.lines.length - 1]).toBe('指を置いたまま止めて、離す: 抉り打ち。敵を打ち上げる。');
-    expect(t.pcLines![t.pcLines!.length - 1]).toBe('クリックを押したまま溜めて、離す: 抉り打ち。敵を打ち上げる。');
-    expect(t.padLines![t.padLines!.length - 1]).toBe('{press}ボタンを押したまま溜めて、離す: 抉り打ち。敵を打ち上げる。');
-    for (const lines of [t.lines, t.pcLines!, t.padLines!]) expect(lines[lines.length - 1]).not.toMatch(/[0-9]/);
+    // 機器ごとに書き分ける(タッチ=長押し・PC=クリック長押し・パッド={press}長押し)。数値は書かない。
+    const row = (lines: string[]) => lines.find(l => l.startsWith('抉り打ち\t'))!;
+    expect(row(t.lines)).toBe('抉り打ち\t長押しして離す\t打ち上げ');
+    expect(row(t.pcLines!)).toBe('抉り打ち\tクリック長押しして離す\t打ち上げ');
+    expect(row(t.padLines!)).toBe('抉り打ち\t{press} 長押しして離す\t打ち上げ');
+    for (const lines of [t.lines, t.pcLines!, t.padLines!]) {
+      expect(lines[lines.indexOf(row(lines)) - 1]).toBe('# 特殊技');
+      expect(row(lines)).not.toMatch(/[0-9]/);
+    }
   });
 });
 

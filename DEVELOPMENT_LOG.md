@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5891 — 資料室の格闘を格闘ゲームの技表に【2026-11-28 03:45】
+- 社長「格闘スキル説明が格闘ゲームっぽくないので直して」(対象=資料室の操作記録 brawler-moves)+「空中投げって空中で上 だったよね？」: 区分(通常技/特殊技/必殺技/投げ/奥義)・1行=技名\tコマンド(\t一言)・方向矢印。3種(スマホ/PC/パッド)同構成。空中投げ=空中蹴り中に ↑(パニッシャー所持)。
+- 伏せ: `maskBrawlerMovesLines` を技名の欄で照合に変更・`BRAWLER_ART_EXTRA_ROWS={kickup:['空中投げ']}`(蹴り上げ未体得なら空中投げも伏せる)。v0.25.5889 の抉り打ち(gouge)も自動で対象=何も体得していない時 5行伏せ。
+- 描画: MissionSelect の資料室本文を `TutorialArchiveBody` に切り出し、技表の書き方を含む本文だけ2列の表(見出し=紫の細線・技名太字)。他の操作記録は従来の段落。
+- 新規 tutorialsBrawlerMoves.test.ts。brawlerArts/Gouge/Mogura の store テストを新しい文に。v0.25.5889 との衝突(伏せ行の数)を手で解消。
+- 画: scratchpad/brawlermoves/phone-lv5.png・phone-lv3.png。社長へ確認済み(画を見せた上で空中投げ追加の指示)。
+- 検証: typecheck / eslint エラー0 / vitest src/data src/utils+関係 store 9833 passed。
+- 自己点検: 憲法第4条・第5条に触れない。
+
 ## v0.25.5890 — 徘徊の枠の顔(亡霊・宇宙飛行群)を孫悟空と同じ扱いに【2026-11-28 03:29】
 - 社長「はい」(宇宙飛行群と亡霊も倒した後も選ばれたら地図に顔を出す): `mapBossFaces` の徘徊の枠は場所があるかだけを見る(出会い・撃破を見ない)。ステージ固定のボスは今まで通り。sortieMapBosses.test を新挙動に。
 - 検証: typecheck / eslint エラー0 / vitest sortieMapBosses・pauseMapFaces・bossStoryArchive 102 passed。

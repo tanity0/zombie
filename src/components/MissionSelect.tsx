@@ -141,7 +141,7 @@ import { Ff7rButton } from './ff7r';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import { portraitSrcFor, menuWalkFrameSrc } from '../data/portraits';
 import { walkSequenceForIdleSrc } from '../pixi/playerWalkSheets';
-import { TUTORIALS, tutorialLinesFor, type TutorialId } from '../data/tutorials';
+import { TUTORIALS, tutorialLinesFor, isMoveTable, parseTutorialLine, type TutorialId } from '../data/tutorials';
 import { usePlayDevice } from '../utils/inputDevice';
 import TutorialMedia from './TutorialMedia';
 import { loadSeenTutorials } from '../utils/tutorialArchive';
@@ -2102,9 +2102,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                         <TutorialMedia src={openTutorial.img} />
                       </div>
                     )}
-                    <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
-                      {tutorialLinesFor(openTutorial, playDevice, padKind).map((line, i) => <p key={i}>{line}</p>)}
-                    </div>
+                    <TutorialArchiveBody lines={tutorialLinesFor(openTutorial, playDevice, padKind)} />
                   </>
                 )}
                 <button
@@ -3474,5 +3472,53 @@ const PlayerGrowth: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     </>
   );
 };
+
+/**
+ * 資料室の操作記録の本文。ふつうの項目は段落を並べる(今までどおり)。
+ * 技表の書き方(見出し `# 区分` と「技名\tコマンド」の行=格闘)だけ、格闘ゲームのコマンド表の形に組む:
+ * 区分の見出しの下に、技名の欄とコマンドの欄を左右に揃えて並べる。
+ */
+function TutorialArchiveBody({ lines }: { lines: string[] }) {
+  if (!isMoveTable(lines)) {
+    return (
+      <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
+        {lines.map((line, i) => <p key={i}>{line}</p>)}
+      </div>
+    );
+  }
+  return (
+    <div className="grid grid-cols-[auto_1fr] gap-x-4 text-[13px] leading-snug text-white/85">
+      {lines.map((line, i) => {
+        const part = parseTutorialLine(line);
+        if (part.kind === 'heading') {
+          return (
+            <h5
+              key={i}
+              className="col-span-2 mt-3 mb-1 border-b pb-0.5 text-[11px] font-semibold tracking-[0.2em] text-purple-200/70 first:mt-0"
+              style={{ borderColor: 'rgba(168,85,247,0.3)' }}
+            >
+              {part.text}
+            </h5>
+          );
+        }
+        if (part.kind === 'text') {
+          // 凡例の1行(先頭)と、伏せた技の「？？？」。伏せは技名の欄に置き、コマンドの欄は空ける。
+          return i === 0
+            ? <p key={i} className="col-span-2 mb-1 text-[11px] text-white/50">{part.text}</p>
+            : <div key={i} className="contents"><span className="py-[3px] text-white/40">{part.text}</span><span /></div>;
+        }
+        return (
+          <div key={i} className="contents">
+            <span className="whitespace-nowrap py-[3px] font-semibold text-white/90">{part.name}</span>
+            <span className="py-[3px] text-white/75">
+              {part.command}
+              {part.note && <span className="ml-2 text-[11px] text-white/45">{part.note}</span>}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default MissionSelect;

@@ -75,13 +75,47 @@ export const tutorialLinesFor = (
 /** 伏せた行の字(他の操作記録の未取得と同じ書き方)。 */
 export const BRAWLER_ART_HIDDEN_LINE = '？？？';
 /**
- * ★資料室の格闘の技一覧(research/BRAWLER.md §36-2): 体得していない技(踵落とし・蹴り上げ・土竜)の行を「？？？」に伏せる。
- * 行は技の名前で見分ける(3種の操作の本文のどれにも同じ名前が入っている)。data を2つ持たない=伏せるのはこの関数だけ。
+ * 技表の書き方(資料室の格闘=格闘ゲームのコマンド表)。本文の1行を次の3つのどれかとして読む:
+ * - 区分の見出し: 先頭が TUTORIAL_MOVE_HEADING(例 `# 必殺技`)
+ * - 技の行: タブ区切り `技名\tコマンド` または `技名\tコマンド\t一言`
+ * - それ以外: ふつうの文(凡例など)
+ * タブも見出しの印も持たない本文(他の操作記録)は今までどおり段落で描く(資料室の描き分けは isMoveTable で決める)。
+ */
+export const TUTORIAL_MOVE_HEADING = '# ';
+export type TutorialLinePart =
+  | { kind: 'heading'; text: string }
+  | { kind: 'move'; name: string; command: string; note?: string }
+  | { kind: 'text'; text: string };
+export const parseTutorialLine = (line: string): TutorialLinePart => {
+  if (line.startsWith(TUTORIAL_MOVE_HEADING)) return { kind: 'heading', text: line.slice(TUTORIAL_MOVE_HEADING.length) };
+  if (line.includes('\t')) {
+    const [name, command = '', note] = line.split('\t');
+    return note ? { kind: 'move', name, command, note } : { kind: 'move', name, command };
+  }
+  return { kind: 'text', text: line };
+};
+/** その本文が技表の書き方か(見出しか技の行を1つでも含む)。 */
+export const isMoveTable = (lines: readonly string[]): boolean => lines.some(l => parseTutorialLine(l).kind !== 'text');
+
+/**
+ * 体得するまで出ない技に付いて一緒に伏せる行(技表の技名)。research/BRAWLER.md §36-2「蹴り上げ(空中投げ §34-3 を含む)」:
+ * 空中投げは蹴り上げが当たった時に代わりに出る=蹴り上げを体得するまで出せない。
+ */
+export const BRAWLER_ART_EXTRA_ROWS: Readonly<Partial<Record<BrawlerArt, readonly string[]>>> = { kickup: ['空中投げ'] };
+/** その技を体得していない間に伏せる行の技名(技そのもの+付いて出る技)。 */
+export const brawlerArtRowNames = (art: BrawlerArt): string[] => [BRAWLER_ART_NAME[art], ...(BRAWLER_ART_EXTRA_ROWS[art] ?? [])];
+
+/**
+ * ★資料室の格闘の技一覧(research/BRAWLER.md §36-2): 体得していない技(BRAWLER_ART_NAME に載っている技)の行を「？？？」に伏せる。
+ * 行は技表の技名の欄(タブの前)が技の名前と一致するかで見分ける(3種の操作の本文のどれにも同じ技名が入っている)。
+ * コマンドの欄に別の技名が書いてあっても伏せない(例: 「空中蹴り中に ↓」の行の技名は踵落とし)。data を2つ持たない=伏せるのはこの関数だけ。
  */
 export const maskBrawlerMovesLines = (lines: readonly string[], learned: (art: BrawlerArt) => boolean): string[] =>
   lines.map(l => {
+    const part = parseTutorialLine(l);
+    if (part.kind !== 'move') return l;
     for (const art of Object.keys(BRAWLER_ART_NAME) as BrawlerArt[]) {
-      if (!learned(art) && l.includes(`: ${BRAWLER_ART_NAME[art]}。`)) return BRAWLER_ART_HIDDEN_LINE;
+      if (!learned(art) && brawlerArtRowNames(art).includes(part.name)) return BRAWLER_ART_HIDDEN_LINE;
     }
     return l;
   });
@@ -242,40 +276,73 @@ export const TUTORIALS: TutorialEntry[] = [
     id: 'brawler-moves',
     title: '格闘',
     lines: [
-      '通常攻撃: タップを続けると五段まで連なる。',
-      '右フリック: 飛び蹴り。続けて三発まで。',
-      '飛び蹴りの二発目の後に下: 踵落とし。',
-      '飛び蹴りの二発目の後に上: 蹴り上げ。',
-      '上フリック: 構え。敵の攻撃を受け止める。敵に密着していると掴み技。',
-      '下フリック: 地割り。',
-      '地割りの溜めの間に上: 土竜。',
-      '左フリック: 気功。',
-      '飛び蹴り・地割り・気功・構えの順につなぐと秘奥義。',
-      '指を置いたまま止めて、離す: 抉り打ち。敵を打ち上げる。',
+      '矢印はフリックの向き',
+      '# 通常技',
+      '通常攻撃\tタップ ×5',
+      '# 特殊技',
+      '抉り打ち\t長押しして離す\t打ち上げ',
+      '# 必殺技',
+      '飛び蹴り\t→',
+      '空中蹴り\t飛び蹴り中に →',
+      '蹴り飛ばし\t空中蹴り中に →',
+      '踵落とし\t空中蹴り中に ↓',
+      '蹴り上げ\t空中蹴り中に ↑',
+      '構え\t↑\t受け止め',
+      '地割り\t↓',
+      '土竜\t地割りの溜め中に ↑',
+      '気功\t←',
+      '# 投げ',
+      'スープレックス\t密着して ↑',
+      'サマーソルト\t強い敵に密着して ↑',
+      '空中投げ\t空中蹴り中に ↑\tパニッシャー所持',
+      '# 奥義',
+      '秘奥義\t→ ↓ ← ↑',
     ],
     pcLines: [
-      '通常攻撃: クリックを続けると五段まで連なる。',
-      '方向キー＋右クリック(K)で技。右: 飛び蹴り。続けて三発まで。',
-      '飛び蹴りの二発目の後に下: 踵落とし。',
-      '飛び蹴りの二発目の後に上: 蹴り上げ。',
-      '上: 構え。敵の攻撃を受け止める。敵に密着していると掴み技。',
-      '下: 地割り。',
-      '地割りの溜めの間に上: 土竜。',
-      '左: 気功。',
-      '飛び蹴り・地割り・気功・構えの順につなぐと秘奥義。',
-      'クリックを押したまま溜めて、離す: 抉り打ち。敵を打ち上げる。',
+      '矢印は方向キー。K は右クリックでも可',
+      '# 通常技',
+      '通常攻撃\tクリック ×5',
+      '# 特殊技',
+      '抉り打ち\tクリック長押しして離す\t打ち上げ',
+      '# 必殺技',
+      '飛び蹴り\t→＋K',
+      '空中蹴り\t飛び蹴り中に →＋K',
+      '蹴り飛ばし\t空中蹴り中に →＋K',
+      '踵落とし\t空中蹴り中に ↓＋K',
+      '蹴り上げ\t空中蹴り中に ↑＋K',
+      '構え\t↑＋K\t受け止め',
+      '地割り\t↓＋K',
+      '土竜\t地割りの溜め中に ↑＋K',
+      '気功\t←＋K',
+      '# 投げ',
+      'スープレックス\t密着して ↑＋K',
+      'サマーソルト\t強い敵に密着して ↑＋K',
+      '空中投げ\t空中蹴り中に ↑＋K\tパニッシャー所持',
+      '# 奥義',
+      '秘奥義\t→＋K ↓＋K ←＋K ↑＋K',
     ],
     padLines: [
-      '通常攻撃: {press}ボタンを続けると五段まで連なる。',
-      'スティック＋{flick}ボタンで技。右: 飛び蹴り。続けて三発まで。',
-      '飛び蹴りの二発目の後に下: 踵落とし。',
-      '飛び蹴りの二発目の後に上: 蹴り上げ。',
-      '上: 構え。敵の攻撃を受け止める。敵に密着していると掴み技。',
-      '下: 地割り。',
-      '地割りの溜めの間に上: 土竜。',
-      '左: 気功。',
-      '飛び蹴り・地割り・気功・構えの順につなぐと秘奥義。',
-      '{press}ボタンを押したまま溜めて、離す: 抉り打ち。敵を打ち上げる。',
+      '矢印はスティックの向き',
+      '# 通常技',
+      '通常攻撃\t{press} ×5',
+      '# 特殊技',
+      '抉り打ち\t{press} 長押しして離す\t打ち上げ',
+      '# 必殺技',
+      '飛び蹴り\t→＋{flick}',
+      '空中蹴り\t飛び蹴り中に →＋{flick}',
+      '蹴り飛ばし\t空中蹴り中に →＋{flick}',
+      '踵落とし\t空中蹴り中に ↓＋{flick}',
+      '蹴り上げ\t空中蹴り中に ↑＋{flick}',
+      '構え\t↑＋{flick}\t受け止め',
+      '地割り\t↓＋{flick}',
+      '土竜\t地割りの溜め中に ↑＋{flick}',
+      '気功\t←＋{flick}',
+      '# 投げ',
+      'スープレックス\t密着して ↑＋{flick}',
+      'サマーソルト\t強い敵に密着して ↑＋{flick}',
+      '空中投げ\t空中蹴り中に ↑＋{flick}\tパニッシャー所持',
+      '# 奥義',
+      '秘奥義\t→＋{flick} ↓＋{flick} ←＋{flick} ↑＋{flick}',
     ],
     where: '全域',
     archiveAlways: true,

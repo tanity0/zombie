@@ -306,22 +306,23 @@ describe('§36-2 資料室の技一覧', () => {
   it('体得していない技の行は「？？？」(3種の操作とも)', () => {
     for (const lines of [entry.lines, entry.pcLines!, entry.padLines!]) {
       const none = maskBrawlerMovesLines(lines, () => false);
-      expect(none.filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(4);
-      expect(none.join('')).not.toMatch(/抉り打ち|踵落とし|蹴り上げ|土竜/);
+      // 4つの技+蹴り上げに付いて出る空中投げ(§36-2「空中投げ §34-3 を含む」)。
+      expect(none.filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(5);
+      expect(none.join('')).not.toMatch(/抉り打ち|踵落とし|蹴り上げ|土竜|空中投げ/);
       const heelOnly = maskBrawlerMovesLines(lines, a => a === 'heel');
       expect(heelOnly.join('')).toContain('踵落とし');
-      expect(heelOnly.filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(3);
+      expect(heelOnly.filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(4);
       const gougeOnly = maskBrawlerMovesLines(lines, a => a === 'gouge');
       expect(gougeOnly.join('')).toContain('抉り打ち');
-      expect(gougeOnly.filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(3);
+      expect(gougeOnly.filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(4);
       expect(maskBrawlerMovesLines(lines, () => true)).toEqual(lines);
     }
   });
   it('資料室の本文はいまのレベルで伏せる', () => {
     setKenkiLevelForTest(1);
-    expect(tutorialLinesFor(entry, 'touch').filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(4);
+    expect(tutorialLinesFor(entry, 'touch').filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(5);
     setKenkiLevelForTest(2); // Lv1 撃破=抉り打ちだけ見える
-    expect(tutorialLinesFor(entry, 'touch').filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(3);
+    expect(tutorialLinesFor(entry, 'touch').filter(l => l === BRAWLER_ART_HIDDEN_LINE).length).toBe(4);
     expect(tutorialLinesFor(entry, 'touch').join('')).toContain('抉り打ち');
     setKenkiLevelForTest(5);
     expect(tutorialLinesFor(entry, 'touch')).toEqual(entry.lines);
