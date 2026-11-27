@@ -291,27 +291,27 @@ const ChronicleTimeline: React.FC = () => {
 
 // ★タイトルの描き上げ(社長支給2026-10-27「人物線画_描き上げ_3秒.mp4」・「オープニングを3-4秒のアニメーションさせたい」)。
 // 起動して最初にタイトルが出る時だけ、暗闇に線画が光って描き上がり、一拍止めて、逆光の中心からカラーの絵が広がる
-// (同じ起動で戻って来た時は流さない)。線画はタイトル絵をなぞった物(2026-11-27 社長支給の描き直し版 1536×864・30fps・3秒=
-// 旧版は頭頂の線が欠けていた)。タイトル絵に対して 0.842 倍・中心が(-52.5, +72.5)px/1536×864 ずれている(エッジの重なりを総当たりで実測)。白地に黒線の動画を反転して screen で重ねる(暗い地では線だけが光る)。タップで飛ばせる。
+// (同じ起動で戻って来た時は流さない)。線画はタイトル絵をなぞった物(2026-11-27 社長支給の描き直し版 v3 1536×864・60fps・3秒。描き順=アタリの棒人間(薄い線)→頭と胴→脚→髪→マント→銃。
+// 最後のコマは v2 と同じ絵=重ね合わせの値はそのまま・描き終わりのコマで v2 と突き合わせて誤差0px)。タイトル絵に対して 0.842 倍・中心が(-52.5, +72.5)px/1536×864 ずれている(エッジの重なりを総当たりで実測)。白地に黒線の動画を反転して screen で重ねる(暗い地では線だけが光る)。タップで飛ばせる。
 // 動きを減らす設定(prefers-reduced-motion)・`?nointro=1`・動画が出せない時は流さない(従来どおり最初から絵)。
-const INTRO_LINE_SRC = 'opening/title-lineart-v2.mp4';
+const INTRO_LINE_SRC = 'opening/title-lineart-v3.mp4';
 const INTRO_LINE_W = 1536; // 線画の動画の寸法(object-cover で実際に出ている絵の高さを出すのに使う)
 const INTRO_LINE_H = 864;
 const INTRO_LINE_SCALE = 0.842;
 const INTRO_LINE_DX = -52.5 / INTRO_LINE_H; // 絵の高さに対する割合
 const INTRO_LINE_DY = 72.5 / INTRO_LINE_H;
 // 色は描き終わる少し前から入り始める(社長指示2026-10-27「色入るフェードをほんの少しだけ前倒し・描き切る前から少し入っていく」)。
-// 動画の 2.2秒目(=最後の一画=銃身の先とブーツの手前・実時間で描き終わりの約0.5秒前)で色を入れ始め、線は描き切ってから一度灯って消える。
-const INTRO_COLOR_EARLY_S = 2.2;
-// この動画は 2.67秒目で描き終わり、残りは止まった絵(約0.33秒)。動画の終わりを待たず、描き切ったコマで灯して次へ進む。
-const INTRO_DRAW_END_S = 2.67;
+// 動画の 2.0秒目(=マントを描き始めるところ・実時間で描き終わりの約0.5秒前)で色を入れ始め、線は描き切ってから一度灯って消える。
+const INTRO_COLOR_EARLY_S = 2.3; // 最後の一画(銃)だけを残して色が入り始める=旧動画の「最後の一画の手前」と同じ意図(社長「描き切る前から少し入っていく」)
+// この動画は 2.60秒目のコマ(銃の最後の線)で描き終わり、残りは止まった絵(約0.38秒)。動画の終わりを待たず、描き切ったコマで灯して次へ進む。
+const INTRO_DRAW_END_S = 2.62;
 const INTRO_REVEAL_MS = 1000;   // 光の中心から色が広がり切るまで
 const INTRO_LINES_OUT_MS = 650; // 色が来たら線は先に消える
 const INTRO_ZOOM = 1.025;       // 描いている間にわずかに寄り、色が乗ると戻る(線と絵は同じ倍率で動く)
-const INTRO_ZOOM_BACK_MS = 500; // 寄りを戻す尺=色が入り始めてから描き終わるまで(動画 2.2→2.67秒・2.3秒から0.85倍速)。描き終わった後は動かない
+const INTRO_ZOOM_BACK_MS = 305; // 寄りを戻す尺=色が入り始めてから描き終わるまで(動画 2.3→2.43秒を1.6倍速+2.43→2.62秒を0.85倍速=約0.305秒)。描き終わった後は動かない
 const INTRO_ZOOM_EASE = 'cubic-bezier(0.3, 0.55, 0.35, 1)'; // 減速して止まる
-/** 描く速さの緩急(動画の秒→再生速度): 頭と胸元はゆっくり(〜0.55秒)、髪・マント・脚・銃の払いは速く、最後の一画(銃身の先とブーツ・2.3秒〜)は落とす。 */
-const introRate = (t: number): number => (t < 0.55 ? 0.9 : t < 2.3 ? 1.6 : 0.85);
+/** 描く速さの緩急(動画の秒→再生速度): アタリと頭はゆっくり(〜0.6秒)、胴・脚・髪・マントは速く、最後の一画(銃・2.43秒〜)は落とす。 */
+const introRate = (t: number): number => (t < 0.6 ? 0.9 : t < 2.43 ? 1.6 : 0.85);
 const INTRO_LINE_FILTER = (b: number) => `invert(1) sepia(0.6) saturate(2.4) hue-rotate(218deg) brightness(${b})`;
 const TITLE_BOX_CLASS = 'pointer-events-none absolute left-1/2 top-1/2 aspect-square max-w-none -translate-x-1/2 -translate-y-1/2 object-cover landscape:!h-full landscape:!w-full landscape:!aspect-auto';
 const TITLE_BOX_WIDTH = 'min(calc(150vw / var(--hud-s, 1)), calc(150svh / var(--hud-s, 1)))';
