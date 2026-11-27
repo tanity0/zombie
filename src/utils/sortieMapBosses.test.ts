@@ -34,13 +34,15 @@ describe('載せる条件', () => {
     for (const t of ['hunter', 'reaper', 'hangedman', 'lab-crawler', 'mutant-hero', 'mutant-liberty']) expect(keys).not.toContain(t);
     for (const s of stageFixedMapBossCandidates()) expect(MAP_BOSS_EXCLUDED_TYPES).not.toContain(PRACTICE_SLOTS.find(p => p.encounterSlotKey === s.key)?.bossType);
   });
-  it('徘徊の枠: 確定した時だけ・出会っていて倒していない時だけ、確定したステージに出る', () => {
+  it('徘徊の枠: 確定した時だけ、確定したステージに出る(出会い・撃破は見ない)', () => {
     const base = { defeated: new Set<string>(), sortieableStageIds: ALL_STAGES };
     expect(mapBossFaces({ ...base, encountered: new Set(['mutant-wraith']), patrol: { boss: 'wraith', stageId: 'stage-4' } }))
       .toEqual([{ key: 'mutant-wraith', stageId: 'stage-4', sprite: 'mutant-wraith', patrol: true }]);
     expect(mapBossFaces({ ...base, encountered: new Set(['mutant-wraith']), patrol: { boss: 'none' } })).toEqual([]);
-    expect(mapBossFaces({ ...base, encountered: new Set(), patrol: { boss: 'wraith', stageId: 'stage-4' } })).toEqual([]);
-    expect(mapBossFaces({ ...base, defeated: new Set(['mutant-astro']), encountered: new Set(['mutant-astro']), patrol: { boss: 'astro', stageId: 'stage-1' } })).toEqual([]);
+    expect(mapBossFaces({ ...base, encountered: new Set(), patrol: { boss: 'wraith', stageId: 'stage-4' } }))
+      .toEqual([{ key: 'mutant-wraith', stageId: 'stage-4', sprite: 'mutant-wraith', patrol: true }]);
+    expect(mapBossFaces({ ...base, defeated: new Set(['mutant-astro']), encountered: new Set(['mutant-astro']), patrol: { boss: 'astro', stageId: 'stage-1' } }))
+      .toEqual([{ key: 'mutant-astro', stageId: 'stage-1', sprite: 'mutant-astro', patrol: true }]);
   });
 });
 
@@ -62,15 +64,18 @@ describe('孫悟空(徘徊の拳鬼)は抽選で選ばれたら必ず出る(社�
     expect(mapBossFaces({ ...base, encountered: new Set(), defeated: new Set() })[0].label).toBe('孫悟空'); // 省略=Lv1
   });
   it('抽選で選ばれていない・出撃できないステージ・地図に場所が無い時は出ない', () => {
-    expect(mapBossFaces({ ...base, encountered: new Set(), defeated: new Set(), patrol: { boss: 'wraith', stageId: 'stage-5' } })).toEqual([]);
+    expect(mapBossFaces({ ...base, encountered: new Set(), defeated: new Set(), patrol: { boss: 'wraith', stageId: 'stage-5' } }).map(f => f.key)).not.toContain('phantom-brawler');
     expect(mapBossFaces({ ...base, encountered: new Set(), defeated: new Set(), patrol: null })).toEqual([]);
     expect(mapBossFaces({ ...base, encountered: new Set(), defeated: new Set(), sortieableStageIds: new Set(['stage-1']) })).toEqual([]);
   });
-  it('他の徘徊(宇宙飛行群・亡霊)は今までどおり(出会った・倒していない時だけ・札/色なし)', () => {
+  it('他の徘徊(宇宙飛行群・亡霊)も孫悟空と同じく出会い・撃破を見ずに出る(札/色なし)', () => {
     const w = { sortieableStageIds: ALL_STAGES, patrol: { boss: 'wraith' as const, stageId: 'stage-4' } };
-    expect(mapBossFaces({ ...w, encountered: new Set(), defeated: new Set() })).toEqual([]);
-    expect(mapBossFaces({ ...w, encountered: new Set(['mutant-wraith']), defeated: new Set(['mutant-wraith']) })).toEqual([]);
-    expect(mapBossFaces({ ...w, encountered: new Set(['mutant-wraith']), defeated: new Set() })).toEqual([{ key: 'mutant-wraith', stageId: 'stage-4', sprite: 'mutant-wraith', patrol: true }]);
+    const face = [{ key: 'mutant-wraith', stageId: 'stage-4', sprite: 'mutant-wraith', patrol: true }];
+    expect(mapBossFaces({ ...w, encountered: new Set(), defeated: new Set() })).toEqual(face);
+    expect(mapBossFaces({ ...w, encountered: new Set(), defeated: new Set(['mutant-wraith']) })).toEqual(face);
+    expect(mapBossFaces({ ...w, encountered: new Set(['mutant-wraith']), defeated: new Set(['mutant-wraith']) })).toEqual(face);
+    expect(mapBossFaces({ ...w, encountered: new Set(['mutant-wraith']), defeated: new Set() })).toEqual(face);
+    expect(mapBossFaces({ ...w, encountered: new Set(), defeated: new Set(), sortieableStageIds: new Set(['stage-1']) })).toEqual([]);
   });
 });
 

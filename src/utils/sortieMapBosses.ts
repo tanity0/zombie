@@ -1,10 +1,11 @@
 // 作戦室の地図に出すボスの顔(research/SORTIE_MAP_BOSS_ICONS.md §2・§5)。判定と並べ方だけの純関数(React/PixiJS 非依存)。
 //
-// 載せる条件: 「出会った記録あり・倒した記録なし」で、
-//   A. ステージ固定のボス(PRACTICE_SLOTS の reachable:true の枠)→ その枠のステージの場所
-//   B. 徘徊の枠(宇宙飛行群・亡霊・拳鬼)→ 作戦室の抽選で確定した時だけ、確定したステージの場所
-//      ★孫悟空(拳鬼)だけは出会った/倒したを見ない(社長指示2026-11-20: 倒すとレベルが上がって強くなって戻ってくる=抽選で選ばれたら必ず出す)。
-//        その時のレベルの色(弧の色)と名前(札)で出す(顔の絵は kenki-idle のまま・色と名前は utils/kenkiLevel の1か所)。
+// 載せる条件:
+//   A. ステージ固定のボス(PRACTICE_SLOTS の reachable:true の枠)→ 「出会った記録あり・倒した記録なし」の時、その枠のステージの場所
+//   B. 徘徊の枠(宇宙飛行群・亡霊・拳鬼)→ 作戦室の抽選で確定した時だけ、確定したステージの場所(出撃できて地図に場所がある限り)。
+//      ★出会った/倒したは見ない(孫悟空=社長指示2026-11-20「倒すと強くなって戻ってくる=選ばれたら必ず出す」、
+//        宇宙飛行群・亡霊も同じ扱い=社長裁定2026-11-27)。
+//      孫悟空はその時のレベルの色(弧の色)と名前(札)で出す(顔の絵は kenki-idle のまま・色と名前は utils/kenkiLevel の1か所)。
 // 照らすキーは encounterSlotKey(城ボス=giantbat@stage-N 等)。PRACTICE_SLOTS の slotKey(…@practice)では照らさない。
 // ハンター・死神(使者を含む)・変異塊・英雄・解放軍群は、どんな状態でも載せない(型の除外一覧で明示)。
 import type { EnemyType } from '../types/game';
@@ -71,16 +72,14 @@ export const allMapBossSprites = (): string[] => [...new Set([
 
 /** 地図に出す顔の一覧(ステージ固定→徘徊の順)。 */
 export const mapBossFaces = (input: MapBossInput): MapBossFace[] => {
-  const shown = (key: string, stageId: string): boolean =>
-    input.encountered.has(key) && !input.defeated.has(key)
-    && input.sortieableStageIds.has(stageId) && OPS_MAP_PLACES[stageId] !== undefined;
-  const out = stageFixedMapBossCandidates().filter(f => shown(f.key, f.stageId));
+  const placed = (stageId: string): boolean => input.sortieableStageIds.has(stageId) && OPS_MAP_PLACES[stageId] !== undefined;
+  const out = stageFixedMapBossCandidates().filter(f => input.encountered.has(f.key) && !input.defeated.has(f.key) && placed(f.stageId));
   const p = input.patrol;
   if (p && p.boss !== 'none' && p.stageId) {
     const pb = PATROL_MAP_BOSS[p.boss];
     const isKenki = p.boss === 'brawler';
-    const place = input.sortieableStageIds.has(p.stageId) && OPS_MAP_PLACES[p.stageId] !== undefined;
-    if (!MAP_BOSS_EXCLUDED_TYPES.includes(pb.type) && (isKenki ? place : shown(pb.key, p.stageId))) {
+    // 徘徊は出会い・撃破を見ない(選ばれたら、場所がある限り出す)。
+    if (!MAP_BOSS_EXCLUDED_TYPES.includes(pb.type) && placed(p.stageId)) {
       if (isKenki) {
         const look = kenkiLevelLook(input.kenkiLevel ?? 1);
         out.push({ key: pb.key, stageId: p.stageId, sprite: pb.sprite, patrol: true, label: look.name, ...(look.tint ? { rim: KENKI_MAP_RIM[look.tint] } : {}) });
