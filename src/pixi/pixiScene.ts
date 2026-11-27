@@ -128,6 +128,7 @@ import * as BRGO from '../utils/brawlerGouge'; // 抉り打ちの溜めの光(�
 import { BRAWLER_WEAK_GUARD_ALPHA } from '../utils/brawlerGuard'; // 弱い構え(払えずに出た構え)の光の薄さ
 import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne, brawlerLiftVisBasePx } from '../utils/brawlerCombo';
 import { satsujinCoverAlpha, SATSUJIN_HITS, isTsubameCrouching } from '../utils/katanaTsubame';
+import { isKatanaTapSwing, katanaIaiCrouching, katanaIaiDropLift, katanaIaiEquipped, katanaIaiSettle, katanaIaiStanceK } from '../utils/katanaIaiStance'; // 刀のタップ=居合の構え(描画だけ)
 import {
   KATANA_SLASH_CELL_H, KATANA_SLASH_CELL_W, KATANA_SLASH_CELLS, KATANA_SLASH_SHEET_TEX,
   katanaCutDeathAlpha, katanaCutLayout, katanaCutLength, katanaCutOpen, katanaCutRgb,
@@ -2044,6 +2045,17 @@ const MELEE_WPN_F2 = { rot: 252.6 * Math.PI / 180, len: 0.608, fx: 0.173, fy: 0.
 const meleeSwingEase = meleeSwingEaseU;
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
 const KATANA_BACK_IMG_ROT = 0;
+// ★刀のタップ=居合の構え(utils/katanaIaiStance・社長指示2026-11-27)。叩き台。
+//   ROT: 背負い刀の絵(柄=右上の斜め)を 45° 回すと水平。そこから柄を TILT だけ上げる(鞘の尻が下がる=腰に差して見える)。左向きは符号を返す。
+//   TSUBA_PX: 絵の中心から鍔までの刀の軸に沿った距離(絵の px・katana-item 220×211 の実測)。鍔を前に出した手(しゃがみ絵の拳)に置く。
+//   HAND_*: しゃがみ絵の拳の実測が無い装いの時の手の位置(体高×割合)。DROP: しゃがみに入る時の上からの落ち(体高×割合)。SETTLE_PX: 収まる所の行き過ぎ。
+const KATANA_IAI_ROT = Math.PI / 4;
+const KATANA_IAI_TILT = 12 * Math.PI / 180;
+const KATANA_IAI_TSUBA_PX = 60;
+const KATANA_IAI_HAND_DX = 0.1;
+const KATANA_IAI_HAND_UP = 0.36;
+const KATANA_IAI_DROP = 0.08;
+const KATANA_IAI_SETTLE_PX = 2;
 // ドローンブーメラン投擲物の表示サイズ(叩き台): 旧procedural描画の視覚半径は p.width*0.5
 // (=直径 p.width)だったので、初期値はそれに合わせて 1.0(スプライト表示幅 ≒ p.width)。
 // 実機で大きすぎ/小さすぎればここだけ調整する。
@@ -28681,7 +28693,10 @@ export class PixiScene {
     // 3段目の後の隙は踏み込みの頂点で粘ってから減速してゆっくり戻る。体の動き(踏み込み・傾き)は bodyT で進める。描画だけ。
     const knifeStageNow = isKnifeComboMode(p) ? Math.max(1, Math.min(3, p.knifeComboStage ?? 1)) : 0;
     const knifeBody = knifeStageNow > 0 && p.meleeSwingAt > 0 ? knifeComboBodyT(sinceSwing, swingWindowMs, knifeStageNow) : null;
-    const bodySwingOn = p.meleeSwingAt > 0 && sinceSwing >= 0 && (knifeBody ? knifeBody.active : sinceSwing < swingWindowMs);
+    // ★刀のタップは攻撃しない(カウンターの窓だけ)ので、ナイフの振りの絵(しゃがみ→振り上げ・踏み込み・手のナイフ・弧)は出さない。
+    // 代わりに居合の構え(しゃがみ+背負い刀を腰の横へ)を出す(utils/katanaIaiStance・社長指示2026-11-27)。描画だけ。
+    const katanaTapSwing = isKatanaTapSwing(p.subWeapons, p.meleeSwingAt, p.counterWindowStart);
+    const bodySwingOn = !katanaTapSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && (knifeBody ? knifeBody.active : sinceSwing < swingWindowMs);
     const bodySwingT = knifeBody ? knifeBody.t : sinceSwing / swingWindowMs;
     if (meleePosePrefix && !warlordFull && !killFxSwallowsSwing && whipSwingPose?.pose) {
       const poseTex = getTexture(`${meleePosePrefix}-${whipSwingPose.pose}`);
@@ -28718,6 +28733,16 @@ export class PixiScene {
     if (meleePosePrefix && !warlordFull && !killFxActiveForPose && isTsubameCrouching(p, now)) {
       const poseTex = getTexture(`${meleePosePrefix}-ready`);
       if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}-ready`; }
+    }
+    // ★刀のタップ=居合の構え(utils/katanaIaiStance): カウンターの窓が開いている間はしゃがみ絵(-ready)で止まる(変形しない)。描画のみ。
+    const katanaIaiOn = katanaIaiEquipped(p.subWeapons) && !warlordFull && !killFxActiveForPose && p.health > 0;
+    if (meleePosePrefix && katanaIaiOn && katanaIaiCrouching(now, p.counterWindowStart, p.counterWindowEnd)) {
+      const poseTex = getTexture(`${meleePosePrefix}-ready`);
+      if (poseTex) {
+        view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}-ready`;
+        // しゃがみに入る時は上から加速して落ち、刀が収まる時刻(入りの終わり)に着地する(位置だけ・伸縮しない)。戻りきるまでしゃがみのまま。
+        if (PLAYER_MOTION_FX) actOffY -= katanaIaiDropLift(now, p.counterWindowStart, p.counterWindowEnd) * fb.boxH * dsc * KATANA_IAI_DROP;
+      }
     }
     // ★格闘(research/BRAWLER.md §4・§7-6): しゃがみ(-ready)=弱・掌底の突き / 振り上げ(-swing)=強(アッパー)・跳び・大踏み潰しの振りかぶり。
     // 連続中は立ち絵へ戻さない(コンボが切れた時だけ立ちへ)。武将フル装備はポーズ無し(歩き絵のまま)。描画のみ(store には書かない)。
@@ -29313,12 +29338,42 @@ export class PixiScene {
       kb.texture = katanaTex;
       kb.visible = true;
       kb.scale.set((flip ? -1 : 1) * sc, sc);
-      kb.rotation = KATANA_BACK_IMG_ROT + actLean; // 行動の二次モーションに本体と同じく追従
-      kb.position.set(
-        this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
-        this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY - h * 0.55,
-      );
+      // ★居合の構え(刀のタップ=カウンターの窓・utils/katanaIaiStance): 背中の斜めから、腰に差した向き(柄を向いている方へ・柄が少し上)へ
+      // 素早く移り、鍔が前に出した手(しゃがみ絵の拳)に来る所で収まる(ごく小さく行き過ぎて戻る)。その後、窓が閉じるまで 1px も動かさない。
+      // 窓が閉じたら少し重く背中へ戻る。構えの間は体の絵の前へ出す(鞘に手を掛けた刀が体に被さる)。描画だけ(判定・窓の長さは store のまま)。
+      const iaiK = katanaIaiOn ? katanaIaiStanceK(now, p.counterWindowStart, p.counterWindowEnd) : 0;
+      const fwd = flip ? -1 : 1;
+      const baseX = this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX;
+      const baseY = this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY;
+      const backX = baseX, backY = baseY - h * 0.55;
+      const backRot = KATANA_BACK_IMG_ROT + actLean;
+      if (iaiK > 0) {
+        const fist = meleePosePrefix ? PLAYER_MELEE_FISTS[meleePosePrefix]?.low : undefined;
+        const sy = Math.abs(view.sprite.scale.y);
+        const handX = fist ? baseX + fwd * fist.dx * sy : baseX + fwd * h * KATANA_IAI_HAND_DX;
+        const handY = fist ? baseY - fist.up * sy : baseY - h * KATANA_IAI_HAND_UP;
+        const hdx = fwd * Math.cos(KATANA_IAI_TILT), hdy = -Math.sin(KATANA_IAI_TILT); // 柄の向き(前・少し上)
+        const stX = handX - hdx * KATANA_IAI_TSUBA_PX * sc, stY = handY - hdy * KATANA_IAI_TSUBA_PX * sc; // 鍔が手に来る中心
+        const mvX = stX - backX, mvY = stY - backY;
+        const mvL = Math.hypot(mvX, mvY) || 1;
+        const over = KATANA_IAI_SETTLE_PX * katanaIaiSettle(now, p.counterWindowStart, p.counterWindowEnd); // 収まる所の行き過ぎ(移ってきた向きへ)
+        kb.rotation = backRot + iaiK * (fwd * (KATANA_IAI_ROT - KATANA_IAI_TILT) - backRot);
+        kb.position.set(backX + iaiK * mvX + over * mvX / mvL, backY + iaiK * mvY + over * mvY / mvL);
+      } else {
+        kb.rotation = backRot;
+        kb.position.set(backX, backY);
+      }
       kb.alpha = view.sprite.alpha;
+      {
+        const ct = view.container;
+        const ki = ct.getChildIndex(kb);
+        const front = iaiK >= 0.5;
+        const anchorIdx = ct.getChildIndex(view.sprite);
+        const topIdx = Math.max(anchorIdx, ct.getChildIndex(view.hitFlash),
+          this.playerBloodRim.parent === ct ? ct.getChildIndex(this.playerBloodRim) : -1);
+        if (front && ki < topIdx) ct.setChildIndex(kb, topIdx);          // 体と被弾の白の上へ
+        else if (!front && ki > anchorIdx) ct.setChildIndex(kb, anchorIdx); // 体の後ろ(背負い)へ戻す
+      }
     } else {
       kb.visible = false;
     }
@@ -29436,7 +29491,7 @@ export class PixiScene {
       // 武器絵)が通常近接演出の最後の取りこぼしだった。KILL処刑演出中は出さない(下のelseで消える)。
       // ★スラッシャーの追い打ち(ナイフ): 振りの表示の外で、追い打ちのたびにナイフの振りの後半(弧+刃)を短い尺で振り直す(描画だけ・既存の絵)。
       const echoSince = now - (p.slasherEchoAt ?? 0);
-      const mainSwingOn = p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs;
+      const mainSwingOn = !katanaTapSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs;
       const echoOn = !mainSwingOn && knifeStageNow > 0 && (p.slasherEchoAt ?? 0) > 0 && echoSince >= 0 && echoSince < SLASHER_ECHO_MS;
       // ★手のナイフは体の振りの姿勢が続く間ずっと出す(社長指示2026-11-26「ナイフは最後まで表示しといて欲しい」・utils/knifeCombo knifeComboWpnAlpha)。
       //   旧: 弧の残光と一緒に振りの表示の終わり(368ms)より前に引いていた=3段目の後の隙(体は振り上げた姿勢のまま1.0秒)では手が空になっていた。
