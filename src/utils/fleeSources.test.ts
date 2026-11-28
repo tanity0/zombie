@@ -46,6 +46,10 @@ describe('isKenkiFleeSource: 孫悟空が「居る」か', () => {
     expect(kenkiFleeActive([kenki({ health: 0, corpseUntil: 1 })])).toBe(false);
     expect(kenkiFleeActive([])).toBe(false);
   });
+  it('2分で跳んで帰り始めたら下りる(居なくなっても下りたまま)', () => {
+    expect(isKenkiFleeSource(kenki({ kenkiLeaveAt: 5000 }))).toBe(false);
+    expect(kenkiFleeActive([kenki({ kenkiLeaveAt: 5000 })])).toBe(false);
+  });
   it('孫悟空以外の幻影・他の敵では立たない', () => {
     expect(isKenkiFleeSource(kenki({ phantomUnique: undefined }))).toBe(false);
     expect(isKenkiFleeSource(kenki({ type: 'zombie' }))).toBe(false);

@@ -522,7 +522,8 @@ export const isCorpse = (e: Pick<Enemy, 'corpseUntil'>): boolean => e.corpseUnti
 // 亡霊のワープ中(消えて現れるまでの500ms・research/WRAITH_MUTANT.md §8 A3)も同じ。
 // ★空中投げで投げられて飛んでいる敵(research/BRAWLER.md §34-6 #5)も、着いて爆撃するまでは何も当たらない(brThrown)。
 // ★鞭で絡め取られて振り回されている・投げられて飛んでいる敵(research/WHIP_FOLLOWUP.md §8-7)も同じ: 弾は素通り・狙いから外す・ほかの当たりを受けない(whipHeld)。
-export const isUntouchable = (e: Pick<Enemy, 'bossState' | 'labBait' | 'wraithPhased'> & Pick<Partial<Enemy>, 'brThrown' | 'whipHeld'>): boolean => e.bossState === 'hero-ascend' || !!e.labBait?.active || !!e.wraithPhased || !!e.brThrown || !!e.whipHeld;
+// ★本編の孫悟空が2分で跳んで帰る最中(kenkiLeaveAt・utils/kenkiLeave)も同じ: 去り始めたら何も当たらない。
+export const isUntouchable = (e: Pick<Enemy, 'bossState' | 'labBait' | 'wraithPhased'> & Pick<Partial<Enemy>, 'brThrown' | 'whipHeld' | 'kenkiLeaveAt'>): boolean => e.bossState === 'hero-ascend' || !!e.labBait?.active || !!e.wraithPhased || !!e.brThrown || !!e.whipHeld || e.kenkiLeaveAt !== undefined;
 
 // UNIQUE_WEAPONS.md §19-3(監査A2・A9の是正): 銃の自動照準(weaponUtils.ts の module-local
 // `pickTarget`)と**同じ選び方**を、Player型に縛られない座標引数の形へ切り出したもの。

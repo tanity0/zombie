@@ -21335,6 +21335,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (isMutantHero(enemy.type) && enemy.bossState === 'hero-ascend') return { enemies };
       // research/WRAITH_MUTANT.md §8 A3: 亡霊のワープ中(消えて現れるまで)は何も通らない(銃・継続ダメージ・爆風の入口。近接と鞭は triggerCounter・performWhipStrike で別に素通り)。
       if (enemy.wraithPhased) return { enemies };
+      // 本編の孫悟空が2分で跳んで帰る最中(utils/kenkiLeave)も何も通らない(撃破扱いにしない)。
+      if (enemy.kenkiLeaveAt !== undefined) return { enemies };
       // ★空中投げで投げられて飛んでいる最中(research/BRAWLER.md §34-6 #5)は何も通らない(着いた所の爆撃で受ける)。
       if (enemy.brThrown) return { enemies };
       // ★鞭で振り回されている・投げられて飛んでいる最中(research/WHIP_FOLLOWUP.md §8-7)は、銃・爆発・仲間の当たりを素通り(着弾の爆発で受ける)。

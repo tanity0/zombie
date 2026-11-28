@@ -198,6 +198,7 @@ import { stepBiteFxClock, zombieBiteFxInterrupted, type BiteFxClock } from '../u
 import { enemyAttackFrameFor, attackFrameAfterLive, zombieStanceFrame, ZOMBIE_STANCE_HOLD_FRAME, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets, warmEnemyArt, prewarmEnemySheetsGpu, loadSpriteGroups, KENKI_SPRITES } from './pixiTextures';
 import { KENKI_SHUKUCHI_FADE_IN_MS, KENKI_SHUKUCHI_FADE_OUT_MS } from '../utils/kenkiShukuchi';
+import { kenkiLeavePose } from '../utils/kenkiLeave'; // 本編の孫悟空の「2分で跳んで帰る」の絵の形
 import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
 /** 城ボスの絵を出現の最短時刻のこれだけ前から先読み+GPU転送する(メモリを使い始める時刻と、間に合う余裕の釣り合い)。 */
 const CASTLE_BOSS_GPU_PREWARM_MS = 45_000;
@@ -30856,6 +30857,13 @@ export class PixiScene {
         this.enemyBlockFall.delete(e.id);
       }
     }
+    // 本編の孫悟空の「2分で跳んで帰る」(utils/kenkiLeave): 沈み込み(震え)→踏み切って上へ。高さは aiHop に入れる(影・名前の帯も同じ経路で追う)。
+    // 拡大と透けは drawGuardianPhantom の側(本体の大きさが決まった後に掛ける)。位置の移動だけ=歪みではない。
+    if (e.kenkiLeaveAt !== undefined) {
+      const lp = kenkiLeavePose(gameTime - e.kenkiLeaveAt);
+      aiHop = lp.liftPx;
+      aiShake = lp.shakePx > 0 ? (Math.sin(now / 21) * 0.6 + Math.sin(now / 11 + 0.7) * 0.4) * lp.shakePx : 0;
+    }
     // M51: ジャイアント新スクリプト(T7縦縮み+着地アーク)。上のブロックは 'crouch'/'jump'/'recover' の
     // 旧文字列しか見ないため giantbat の新フェーズ('g-'接頭辞)には反応しない=このブロックで別途
     // 補う(他タイプは一切対象外・?giantscript=0時は上のブロックがそのまま効く=無改変)。
@@ -49613,6 +49621,8 @@ export class PixiScene {
     // 技の予備動作(research/BRAWLER_PHANTOM.md §16-5・拳鬼だけ): 気功・大叩き潰し=腕上げ/初段の飛び蹴り=しゃがみ。
     // 手で描いたコマの差し替えだけ(伸び縮み・回転はしない=手描きのコマなので歪みは外れる)。
     if (e.gpBrawlerPrep) name = `kenki-melee-${e.gpBrawlerPrep.tex}`;
+    // 2分で跳んで帰る(utils/kenkiLeave): 沈み込み=しゃがみ(構え)/跳び上がり=振り上げた拳(跳びかかりと同じコマ)。
+    if (e.kenkiLeaveAt !== undefined) name = kenkiLeavePose(useGameStore.getState().gameTime - e.kenkiLeaveAt).phase === 'crouch' ? 'kenki-melee-ready' : 'kenki-melee-swing';
     const tex = getTexture(name) ?? getTexture('kenki-idle');
     if (tex) this.kenkiTexSet.add(tex);
     return tex;
@@ -49707,6 +49717,17 @@ export class PixiScene {
     } else {
       const lb = this.namedFoeLabels.get(e.id);
       if (lb) lb.alpha = 1;
+    }
+
+    // ---- 本編の孫悟空の「2分で跳んで帰る」(utils/kenkiLeave): 拡大しながら透けて空へ消える(城ボスの飛び去りと同じ読み=大きくなる=空へ上がった) ----
+    // 高さ(aiHop)は汎用の経路で済んでいる。ここは本体の大きさ・濃さへ掛けるだけ(足元基点で拡大)。
+    if (e.kenkiLeaveAt !== undefined) {
+      const lp = kenkiLeavePose(gameTime - e.kenkiLeaveAt);
+      view.sprite.scale.x *= lp.zoom; view.sprite.scale.y *= lp.zoom;
+      view.sprite.alpha *= lp.alpha;
+      view.hitFlash.visible = false;
+      const lb = this.namedFoeLabels.get(e.id);
+      if (lb) lb.alpha = Math.min(lb.alpha, lp.alpha);
     }
 
     // ---- 拳鬼の縮地(research/BRAWLER_PHANTOM.md §14): 元の所の残像が消える+行き先で現れる(慣性=ease) ----

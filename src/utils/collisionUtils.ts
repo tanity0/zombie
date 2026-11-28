@@ -132,6 +132,8 @@ export const checkProjectileEnemyCollisions = (
       if (enemy.aiPhase === 'jump') return;
       // 亡霊のワープ中(research/WRAITH_MUTANT.md §8 A3)も同じ=撃っても素通り。
       if (enemy.wraithPhased) return;
+      // 本編の孫悟空が2分で跳んで帰る最中(utils/kenkiLeave)も素通り。
+      if (enemy.kenkiLeaveAt !== undefined) return;
       // 鞭で振り回されている・投げられて飛んでいる敵(research/WHIP_FOLLOWUP.md §8-7)も素通り。
       if (enemy.whipHeld) return;
 

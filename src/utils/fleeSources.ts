@@ -35,9 +35,11 @@ export const fleeSourcesExceptKenki = (s: FleeSources): boolean => s.hiddenBoss 
  * (立てると出撃3秒から場の敵が全員逃げ・通常湧きが止まり、会うまでステージが空になる)。
  * 確認用の強制出現(?brawlerphantomnow=1・対策室)は phantomUnmet を持たない=出た瞬間から立つ。
  */
-export const isKenkiFleeSource = (e: Pick<Enemy, 'type' | 'phantomUnique' | 'health' | 'corpseUntil' | 'phantomUnmet'>): boolean =>
+export const isKenkiFleeSource = (e: Pick<Enemy, 'type' | 'phantomUnique' | 'health' | 'corpseUntil' | 'phantomUnmet' | 'kenkiLeaveAt'>): boolean =>
   e.type === 'guardian-phantom' && e.phantomUnique === 'brawler'
-  && e.health > 0 && e.corpseUntil === undefined && e.phantomUnmet !== true;
+  && e.health > 0 && e.corpseUntil === undefined && e.phantomUnmet !== true
+  // 2分で跳んで帰り始めたら下ろす(もう戦わない=場の敵が戻ってくる。跳び去りの約1秒を待たない・utils/kenkiLeave)。
+  && e.kenkiLeaveAt === undefined;
 
-export const kenkiFleeActive = (enemies: readonly Pick<Enemy, 'type' | 'phantomUnique' | 'health' | 'corpseUntil' | 'phantomUnmet'>[]): boolean =>
+export const kenkiFleeActive = (enemies: readonly Pick<Enemy, 'type' | 'phantomUnique' | 'health' | 'corpseUntil' | 'phantomUnmet' | 'kenkiLeaveAt'>[]): boolean =>
   enemies.some(isKenkiFleeSource);

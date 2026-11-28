@@ -1200,6 +1200,18 @@ const cancelPhantomBrawler = (phantom: Enemy, patch: Partial<Enemy>, gameTime: n
   patch.bossState = phantomBrawlerBossState(next, gameTime);
 };
 
+/**
+ * 孫悟空(拳鬼)が技の最中か(utils/kenkiLeave の「2分で帰る」は、これが true の間は跳び始めない=殴っている途中で消さない)。
+ * 段・技・踏み込み・跳びかかり(溜め・跳び・着地後)・技の予備動作・構えで受けて下がる間・固まり(気絶・拘束・浮き・食らい・紫)。
+ * 届く距離の外の「様子見」と後ろへ下がる歩きは技ではない=含めない。
+ */
+export const phantomBrawlerMidAction = (phantom: Enemy, s: PhantomTickState, gameTime: number, nowMs: number): boolean =>
+  isBrawlerBusy(phantom.phantomBrawler) || s.brawler?.move != null || s.brawler?.prep != null
+  || (s.brawler != null && gameTime < s.brawler.guardKbUntil)
+  || phantom.aiPhase === 'crouch' || phantom.aiPhase === 'jump' || phantom.aiPhase === 'recover'
+  || isFrozen(phantom, gameTime, nowMs) || brawlerHeldNow(phantom, gameTime, nowMs)
+  || isPvpIncapacitated(phantom.pvpPosture, gameTime);
+
 export const runPhantomTick = (
   phantom: Enemy,
   s: PhantomTickState,
@@ -1223,6 +1235,23 @@ export const runPhantomTick = (
 
   const bcx = phantom.x + phantom.width / 2, bcy = phantom.y + phantom.height / 2;
   const patch: Partial<Enemy> = {};
+
+  // ★本編の孫悟空の「2分で跳んで帰る」(utils/kenkiLeave)の最中は頭脳も攻撃も止める(去り始めたら何もしない)。
+  //   歩いていた勢いは慣性で落とす(瞬間停止にしない=CLAUDE.md 慣性MUST)。跳ぶ絵は描画側(kenkiLeavePose)。
+  if (phantom.kenkiLeaveAt !== undefined) {
+    const d = Math.exp(-deltaTime / 0.08);
+    const nvx = (phantom.vx ?? 0) * d, nvy = (phantom.vy ?? 0) * d;
+    if (Math.abs(nvx) > 1 || Math.abs(nvy) > 1) {
+      const c = resolveMove(phantom.x + nvx * deltaTime, phantom.y + nvy * deltaTime, phantom);
+      patch.x = c.x; patch.y = c.y;
+    }
+    patch.vx = Math.abs(nvx) > 1 ? nvx : 0; patch.vy = Math.abs(nvy) > 1 ? nvy : 0;
+    abortPhantomFlamer(phantom, patch);
+    clearKenkiLever(phantom, patch);
+    patch.gpSubClaim = undefined;
+    applyPatch(phantom.id, patch);
+    return;
+  }
 
   // ---- ★SAME_ARENA §9(対人体勢): 経過(紫明け=満タンへ/回復8秒後3%毎秒)+紫・daze中は完全停止 ----
   // 紫は専用フィールド(pvpPosture.breakUntil)。isFrozen(stun/root/lift)と混ぜない=トラップ拘束で

@@ -258,7 +258,7 @@ import {
 } from '../utils/bountyTick';
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): 頭脳(decideGhostの対プレイヤーアダプタ)+技の状態機械。
 import {
-  runPhantomTick, createPhantomTickState, pickActivePhantom, type PhantomSfx,
+  runPhantomTick, createPhantomTickState, pickActivePhantom, phantomBrawlerMidAction, type PhantomSfx,
   phantomSupportsSub, // ★幻影が主語になれるサブの白リスト(未実装の種は自爆するのでプレイヤーへ落とす)
   tickPlayerFlamerBurn,
 } from '../utils/phantomTick';
@@ -277,6 +277,7 @@ import { uniquePhantomSpec } from '../data/uniquePhantoms'; // research/BRAWLER_
 import {
   rollRunPatrolSlot, kenkiPatrolStep, phantomBrawlerSceneBlocked, phantomBrawlerSpawnOffset, PHANTOM_BRAWLER_ENCOUNTER_KEY, PHANTOM_BRAWLER_KIND,
 } from '../utils/phantomBrawlerSpawn'; // research/BRAWLER_PHANTOM.md §6: 拳鬼の本編の出現(徘徊の枠)
+import { kenkiLeaveStep, kenkiLeaveAfterMs, KENKI_LEAVE_CROUCH_MS } from '../utils/kenkiLeave'; // 本編の孫悟空の「2分で跳んで帰る」
 import { createFleeSources, fleeSourcesActive, fleeSourcesExceptKenki, kenkiFleeActive, type FleeSources } from '../utils/fleeSources'; // 「他の敵が逃げる」旗の合成(裏ボス/アイドル/孫悟空)
 import { patrolSpawnHeldByWelcome } from '../utils/patrolWelcomeHold'; // 徘徊の枠はウェルカム中は出ない(社長指示2026-11-12)
 import { resolveSortieRunPatrol } from '../utils/sortiePatrolPlan'; // 徘徊の枠は作戦室で引いた結果を使う(research/SORTIE_MAP_BOSS_ICONS.md §3)
@@ -1517,6 +1518,8 @@ const FORCE_BOUNTY = evParam('bountynow') === '1';
 const FORCE_PHANTOM = evParam('phantomnow') === '1';
 // research/BRAWLER_PHANTOM.md §6-3: 固有の幻影「拳鬼」のデバッグ出現 `?brawlerphantomnow=1`(対策室の枠は practiceForces('brawlerphantomnow'))。
 const FORCE_PHANTOM_BRAWLER = evParam('brawlerphantomnow') === '1';
+// 本編の徘徊の孫悟空が名乗ってから跳んで帰るまで(既定120秒・utils/kenkiLeave)。確認用に `?kenkileave=<秒>` で短縮。
+const KENKI_LEAVE_MS = kenkiLeaveAfterMs((() => { const v = evParam('kenkileave'); return v === null || v.trim() === '' ? null : Number(v); })());
 // research/MUTANT_HERO.md(英雄(変異)): デバッグ出現 `?heronow=1`。練習出撃(変異体対策室の枠)は practiceForces('heronow') で相乗り。
 const FORCE_HERO = evParam('heronow') === '1';
 /**
@@ -2156,6 +2159,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const phantomBrawlerForceRef = useRef(false);
   const phantomBrawlerPatrolRef = useRef(false);
   const kenkiCutinIdRef = useRef<string | null>(null);
+  const kenkiLeaveKickRef = useRef<string | null>(null); // 2分で帰る跳び去りの踏み切りの砂埃を1回だけ出した個体(utils/kenkiLeave)
   // §21-5: 次の1体を出す時刻(0=まだ予約していない/相手が生きている)。
   const vsNextSpawnRef = useRef(0);
   // 幻影のラン内状態(頭脳の持ち越し/休み/踏み込みの焼き付け)。同時1体なので単一refでよい。
@@ -3892,7 +3896,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           phantomForceRef.current = false; // ?phantomnow=1 の force-spawn も新ランで再アーム(research/GHOST_BOSS.md)
           scarecrowForceRef.current = false; // 案山子も新ランで再アーム(「もう一度」で立て直す)
           fleeSourcesRef.current = createFleeSources(); idolFleeRef.current = false; // 「逃げる」旗の内訳も新ランで戻す(store の bossChasing は resetGame が false に戻す)
-          phantomBrawlerForceRef.current = false; phantomBrawlerPatrolRef.current = false; kenkiCutinIdRef.current = null; // 拳鬼(research/BRAWLER_PHANTOM.md)も新ランで再アーム(抽選は徘徊の枠=runMutantBossRef と一緒に引き直す)
+          phantomBrawlerForceRef.current = false; phantomBrawlerPatrolRef.current = false; kenkiCutinIdRef.current = null; kenkiLeaveKickRef.current = null; // 拳鬼(research/BRAWLER_PHANTOM.md)も新ランで再アーム(抽選は徘徊の枠=runMutantBossRef と一緒に引き直す)
           heroForceRef.current = false; heroStateRef.current = createHeroTickState(); heroCutinIdRef.current = null; setHeroGallop(0); // 英雄(research/MUTANT_HERO.md)
           libertyForceRef.current = false; libertyStateRef.current = createLibertyTickState(); resetOrphanLibertyArrows(); libertyCutinIdRef.current = null; // 解放軍群(research/LIBERTY_HORDE.md)
           astroForceRef.current = false; astroStateRef.current = createAstroTickState(); astroCutinIdRef.current = null; // 宇宙飛行群(research/ASTRONAUT_HORDE.md)
@@ -10318,7 +10322,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (phantomBrawlerPatrolRef.current) {
               const ks = useGameStore.getState();
               const kenkiE = ks.enemies.find(e => e.type === 'guardian-phantom' && e.phantomUnique === PHANTOM_BRAWLER_KIND && e.health > 0 && e.corpseUntil === undefined);
-              if (kenkiE) {
+              // ★2分で跳んで帰る(社長指示2026-11-28「孫悟空も2分で帰るようにして」「戦闘開始から2分後もジャンプして帰る」・utils/kenkiLeave)。
+              //   名乗り(下の 'intro')で kenkiMetAt を打ち、gameTime で数える。技の最中なら終わってから跳ぶ。跳び去りの絵は描画側(kenkiLeavePose)。
+              //   撃破扱いにしない(報酬・体得なし)。phantomBrawlerPatrolRef は立ったまま=その出撃では二度と出ない(新しい出撃で ref が戻る=「もう一度」ではまた出られる)。
+              const kLeave = kenkiE ? kenkiLeaveStep({
+                metAt: kenkiE.kenkiMetAt, leaveAt: kenkiE.kenkiLeaveAt, now: ks.gameTime, afterMs: KENKI_LEAVE_MS,
+                busy: kenkiE.kenkiLeaveAt === undefined && kenkiE.kenkiMetAt !== undefined && ks.gameTime - kenkiE.kenkiMetAt >= KENKI_LEAVE_MS
+                  && phantomBrawlerMidAction(kenkiE, phantomStateRef.current, ks.gameTime, Date.now()),
+              }) : 'none';
+              if (kenkiE && kLeave === 'start') {
+                useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => (e.id === kenkiE.id ? { ...e, kenkiLeaveAt: ks.gameTime, gpBrawlerPrep: undefined } : e)) }));
+              } else if (kenkiE && kLeave === 'leaving' && kenkiE.kenkiLeaveAt !== undefined
+                && ks.gameTime - kenkiE.kenkiLeaveAt >= KENKI_LEAVE_CROUCH_MS && kenkiLeaveKickRef.current !== kenkiE.id) {
+                // 踏み切りの一瞬: 足元から砂埃と外へ広がる輪(派手さの絵=判定なし)。
+                kenkiLeaveKickRef.current = kenkiE.id;
+                const kfx = kenkiE.x + kenkiE.width / 2, kfy = kenkiE.y + kenkiE.height;
+                spawnBurst(kfx, kfy, '#a8a29e', 20);
+                spawnRing(kfx, kfy, 18, 140, 'rgba(214,211,209,0.75)', 6, 560, true);
+              } else if (kenkiE && kLeave === 'gone') {
+                useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.id !== kenkiE.id) }));
+              }
+              if (kenkiE && kLeave === 'none') {
                 const kx = kenkiE.x + kenkiE.width / 2, ky = kenkiE.y + kenkiE.height / 2;
                 const kpcx = player.x + player.width / 2, kpcy = player.y + player.height / 2;
                 const kStep = kenkiPatrolStep({
@@ -10334,7 +10358,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 });
                 if (kStep === 'intro') {
                   kenkiCutinIdRef.current = kenkiE.id;
-                  useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => (e.id === kenkiE.id ? { ...e, phantomUnmet: false } : e)) })); // 出会った=ここからボス戦のカメラ
+                  useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => (e.id === kenkiE.id ? { ...e, phantomUnmet: false, kenkiMetAt: newGameTime } : e)) })); // 出会った=ここからボス戦のカメラ・2分の数え始め(kenkiLeave)
                   useGameStore.getState().triggerAttention(kx, ky, undefined, 0, kenkiE); // 孫悟空の紹介(カットイン無し)も小さめなので少し寄る(utils/attentionZoom)
                   useGameStore.setState({ eventBannerText: phantomDisplayLabel(), eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
                   markKenkiSeen();

@@ -1303,6 +1303,10 @@ export interface Enemy {
    * 姿が画面に入った時に外す。
    */
   phantomUnmet?: boolean;
+  /** 本編の徘徊の孫悟空が名乗った時刻(gameTime)。ここから2分で跳んで帰る(utils/kenkiLeave)。強制出現・対策室は持たない=帰らない。 */
+  kenkiMetAt?: number;
+  /** 孫悟空が跳んで帰り始めた時刻(gameTime)。この間は頭脳を止め、何も当たらない(isUntouchable)。終わったら enemies から外す。 */
+  kenkiLeaveAt?: number;
   /** research/BRAWLER_PHANTOM.md: 格闘の幻影の格闘の状態(プレイヤーの player.brawler と同じ型・同じ純関数で進める)。 */
   phantomBrawler?: BrawlerState;
   /** 格闘の幻影の構えの終わり(gameTime)。この間は窓パリィの窓が開いている(phantomGate の窓モデルのまま)。 */
