@@ -13,8 +13,8 @@
 import type { Enemy, Player, Projectile } from '../types/game';
 import type { BrawlerState, BrawlerTechKind, BrawlerMoveKey } from './brawlerTypes';
 import * as BR from './brawler';
-import { brawlerProration, brawlerStageMoveKey, brawlerKickMoveKey } from './brawlerCombo';
-import { brawlerSpeedDamageMult, brawlerTimeKeeperDiscount, brawlerOverclockRefunds } from './brawlerSkills';
+import { brawlerProration, brawlerStageMoveKey, brawlerKickMoveKey, brawlerComboDamageMultOnHit } from './brawlerCombo';
+import { brawlerSpeedDamageMult, brawlerTimeKeeperDiscount, brawlerOverclockRefunds, brawlerComboEnded } from './brawlerSkills';
 import {
   createPhantomBrawlerMind, decidePhantomBrawler, notePlayerStrike, phantomBrawlerBreath, pbInterruptScript, pbSecretAfterLeap, pbOnLeapJumped, pbOnLeapDone, PB_LEAP_FOLLOW_P, pbOnShukuchi, pbUndoStamps,
   pbScriptFinisherKiko, type PhantomBrawlerMind, type PbUndo,
@@ -224,11 +224,31 @@ const stepMove = (c: PhantomBrawlerCtx): void => {
 const pointCapOf = (e: Enemy): number => BR.brawlerPointCap(brawlerLevelOf(e));
 const discountOf = (actor: Player) => (kind: BrawlerTechKind): number => brawlerTimeKeeperDiscount(kind, skillLevel(actor, 'time-keeper'));
 
-/** 段・技の当たりの量(素ダメージ×ストライカー×足の速さ×補正)。会心と対人の×0.2は land の側。 */
+/**
+ * ★孫悟空のコンボの数(プレイヤーの「N HIT」に当たる数=自分の流れの当たり数 BrawlerState.flowHits)。この当たりで何発目になるか(1から)。
+ * 流れが切れていれば(flowBrokenAt が立っている)1発目から。切る所は phantomBrawlerFlowBreak。
+ */
+export const phantomBrawlerComboLink = (s: Pick<BrawlerState, 'flowHits' | 'flowBrokenAt'>): number =>
+  ((s.flowBrokenAt ?? 0) > 0 ? 0 : Math.max(0, s.flowHits ?? 0)) + 1;
+/**
+ * ★孫悟空の格闘のコンボ倍率(社長指示2026-11-28「幻影・孫悟空にもコンボ倍率」)。プレイヤーと同じ関数(brawlerComboDamageMultOnHit=min(2,1.1^n)・
+ * n=この当たりの前までにつながっている数)。ダメージだけに掛ける(体勢値・押し・浮きの判定の量には掛けない=プレイヤーと同じ)。
+ */
+export const phantomBrawlerComboDamageMult = (s: Pick<BrawlerState, 'flowHits' | 'flowBrokenAt'>): number =>
+  brawlerComboDamageMultOnHit(phantomBrawlerComboLink(s));
+/**
+ * ★孫悟空の流れを切る(連撃が途切れた=brawlerComboEnded・プレイヤーのハンティングの「連撃の途切れ」と同じ判定)。
+ * 旧: 拳鬼の flowHits は一度も切れず、出てからの通算で数えていた(10ヒット補正が撤去されるまでは通算で補正が掛かっていた)。
+ * 切れた後の次の当たりは brawlerFlowOnHit が 1 から数え直す。
+ */
+export const phantomBrawlerFlowBreak = (s: BrawlerState, t: number): BrawlerState =>
+  (s.flowHits ?? 0) > 0 && !((s.flowBrokenAt ?? 0) > 0) && brawlerComboEnded(s, t) ? { ...s, flowBrokenAt: Math.max(1, t) } : s;
+
+/** 段・技の当たりの量(素ダメージ×ストライカー×足の速さ×補正)。会心と対人の×0.2は land の側。コンボ倍率は strikePlayer の側(ダメージだけ)。 */
 const strikeMultOf = (c: PhantomBrawlerCtx, s: BrawlerState, moveMult: number, secret = false): number =>
   moveMult * phantomBrawlerStrikerMult(c.actor.characterClass)
   * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t))
-  * (secret ? 1 : brawlerProration((s.flowHits ?? 0) + 1));
+  * (secret ? 1 : brawlerProration(phantomBrawlerComboLink(s)));
 
 /**
  * 押しの差し替え(research/BRAWLER_PHANTOM.md §4-8 の表)。small=押さなかった段(1・2・4段目)の小さな押し
@@ -283,7 +303,7 @@ const strikePlayer = (
   moveMult: number, moveKey: string, kb: 'none' | { speed: number; dirX: number; dirY: number; ms?: number } | undefined,
   originX: number, originY: number, secret = false, area = false,
 ): { touched: boolean; countered: boolean; landed?: boolean; guarded?: boolean } => {
-  const mult = strikeMultOf(c, s, moveMult, secret);
+  const mult = strikeMultOf(c, s, moveMult, secret) * phantomBrawlerComboDamageMult(s); // コンボ倍率(秘奥義の中も掛ける=プレイヤーと同じ)
   hitThirdParties(shapeForThird, c.baseDamage * mult * PVP_DAMAGE_SCALE, c.phantom.id, 'guardian-phantom');
   if (!hit) return { touched: false, countered: false };
   let countered = false;
@@ -653,11 +673,11 @@ const stepCounterKikoFollow = (c: PhantomBrawlerCtx, s: BrawlerState): void => {
   placePhantomKiko(c, { id: `gpkiko-cm-${c.nowMs}`, x: cx + dir.x * 18, y: cy - 4 + dir.y * 18, dirX: dir.x, dirY: dir.y, traveled: 0, createdAt: c.nowMs, counter: true }, 'gpKiko2');
   c.rt.counterKikoFollow = brawlerCounterKikoAfterShot(f) ?? null;
 };
-const stepKiko = (c: PhantomBrawlerCtx): void => {
-  stepKikoSlot(c, 'gpKiko');
-  stepKikoSlot(c, 'gpKiko2');
+const stepKiko = (c: PhantomBrawlerCtx, s: BrawlerState): void => {
+  stepKikoSlot(c, 'gpKiko', s);
+  stepKikoSlot(c, 'gpKiko2', s);
 };
-const stepKikoSlot = (c: PhantomBrawlerCtx, slot: PhantomKikoSlot): void => {
+const stepKikoSlot = (c: PhantomBrawlerCtx, slot: PhantomKikoSlot, s: BrawlerState): void => {
   const k = phantomKikoIn(c, slot);
   if (!k) return;
   const stepPx = BR.BRAWLER_KIKO_SPEED * c.deltaTime;
@@ -679,14 +699,16 @@ const stepKikoSlot = (c: PhantomBrawlerCtx, slot: PhantomKikoSlot): void => {
   g.spawnExplosionFx(nx, ny, BR.BRAWLER_KIKO_RADIUS);
   // 構えの反撃の気功は威力×BRAWLER_GUARD_COUNTER_KIKO_MULT(プレイヤーの反撃の気功と同じ・見た目・速さ・届く距離・爆発の半径は通常の気功のまま)。
   const counterMult = k.counter === true ? BRAWLER_GUARD_COUNTER_KIKO_MULT : 1;
+  // コンボ倍率(プレイヤーの気功の爆発と同じく、爆発した時点のつながっている数で)。
+  const comboMult = phantomBrawlerComboDamageMult(s);
   const dmg = c.baseDamage * BR.BRAWLER_KIKO_MULT * counterMult * phantomBrawlerStrikerMult(c.actor.characterClass)
-    * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t)) * PVP_DAMAGE_SCALE;
+    * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t)) * comboMult * PVP_DAMAGE_SCALE;
   hitThirdParties({ kind: 'circle', cx: nx, cy: ny, r: BR.BRAWLER_KIKO_RADIUS }, dmg, c.phantom.id, 'guardian-phantom');
   if (inBlast) {
     if (k.melee) {
       // 台本の締めの気功(§16-8): 近接の打撃と同じ1本(landPhantomMeleeOnPlayer)で当てる=プレイヤーの被弾無敵に吸われない。
       // 量は単発の気功と同じ式(×0.2 は land の側)。押しは組み込み(単発の気功の damagePlayer と同じ)。
-      c.land(nx, ny, BR.BRAWLER_KIKO_MULT * counterMult * phantomBrawlerStrikerMult(c.actor.characterClass) * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t)),
+      c.land(nx, ny, BR.BRAWLER_KIKO_MULT * counterMult * phantomBrawlerStrikerMult(c.actor.characterClass) * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t)) * comboMult,
         { moveKey: 'brawler-kiko', sourceLabel: `${c.label}の気功`, onCountered: () => {} });
     } else {
       // 遠隔の行(research/BRAWLER_PHANTOM.md §4-8 の3行目): 型名を渡さない=通常の被弾無敵を守る。死因は末尾の記録で残す。
@@ -742,7 +764,7 @@ const secretStrike = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     g.spawnExplosionFx(pcx, pcy, BR.BRAWLER_KIKO_RADIUS);
     // 足の速さの能力値も通常の気功と同じく掛ける(2026-11-10 の総点検で抜けを直した)。
     const dmg = c.baseDamage * BR.BRAWLER_KIKO_MULT * phantomBrawlerStrikerMult(c.actor.characterClass)
-      * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t)) * PVP_DAMAGE_SCALE;
+      * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t)) * phantomBrawlerComboDamageMult(s) * PVP_DAMAGE_SCALE; // コンボ倍率(秘奥義の中の気功も=プレイヤーと同じ)
     hitThirdParties({ kind: 'circle', cx: pcx, cy: pcy, r: BR.BRAWLER_KIKO_RADIUS }, dmg, phantom.id, 'guardian-phantom');
     g.damagePlayer(dmg, `${c.label}の気功`, pcx, pcy, undefined, undefined, 'brawler-secret', undefined, undefined, { type: 'guardian-phantom', id: phantom.id });
   } else if (move === 'stomp') {
@@ -936,7 +958,8 @@ const stepKenkiLeap = (c: PhantomBrawlerCtx, s: BrawlerState): boolean => {
 export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
   const { phantom, player, t } = c;
   const before = phantom.phantomBrawler;
-  let s: BrawlerState = before ?? BR.initialBrawlerState();
+  // 連撃が途切れていたら流れ(コンボの数)を切る=次の当たりは1発目から(コンボ倍率の数え方)。
+  let s: BrawlerState = phantomBrawlerFlowBreak(before ?? BR.initialBrawlerState(), t);
   let cx = phantom.x + phantom.width / 2, cy = phantom.y + phantom.height / 2;
   const m = c.rt.mind;
 
@@ -1110,7 +1133,7 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
 
   stepMove(c);
   stepCounterKikoFollow(c, s);
-  stepKiko(c);
+  stepKiko(c, s);
   if (s !== before) c.patch.phantomBrawler = s;
   const leapStarted = c.patch.aiPhase === 'crouch';
   const prepping = c.rt.prep !== null;

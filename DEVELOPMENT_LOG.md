@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5929 — 孫悟空にもコンボ倍率(守護霊は格闘を使わない)【2026-11-29 01:50】
+- 社長指示「幻影・孫悟空にもコンボ倍率」「守護霊にも今日の格闘の変更」。phantomBrawlerTick: 孫悟空の当たり(strikePlayer の全経路・気功の爆発・秘奥義の中の気功)に brawlerComboDamageMultOnHit(孫悟空自身の flowHits)を掛ける。体勢値・押し・SA判定の量には掛けない。
+- 見つかった不具合: 孫悟空の flowHits を切る処理が無く出てからの通算で増えていた(=旧10ヒット補正も通算で掛かっていた)→ phantomBrawlerFlowBreak が既存 brawlerComboEnded で毎 tick 流れを切る。
+- 守護霊: 格闘を使わない(playerBuild.withoutBrawler・BRAWLER.md §0-1/§8-2「守護霊は格闘のビルドでも従来のナイフ」)=今日の格闘の変更は経路なし。孫悟空から受けるダメージには自動で倍率。汎用の幻影も格闘の経路なし。
+- 検証: typecheck・eslint・phantomBrawlerTick テスト(担当は格闘/拳鬼/幻影/守護霊 1986件)緑。
+
 ## v0.25.5928 — 寄り(アテンション)の間も粒を実時間で動かす【2026-11-29 01:43】
 - 社長承認(「寄りの間も粒は飛び続ける」に はい)。useGameLoop のアテンションの早期 return で pruneEffects→updateEffects(dt)(dt=時間停止の枝と同じ式・hitstopFxLastRef 共有・0〜0.05秒)。動くのは particle/damageNumber の見た目だけ=判定を持つ床は別配列(gameTime)で不変。gameTime・敵・プレイヤー・弾は止まったまま。時計は createdAt/寿命とも Date.now で揃い。
 - 新規 attentionEffects.store.test(位置が進む・重力・寿命切れで消える・gameTime 等は不変)。gameStore.pruneEffects は呼び手なし(定義は残置)。

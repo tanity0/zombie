@@ -1,8 +1,8 @@
 // research/BRAWLER_PHANTOM.md §4: 格闘の幻影(拳鬼)の格闘を幻影の上で回す(結合テスト)。
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { runPhantomTick, createPhantomTickState, NOOP_PHANTOM_SFX } from './phantomTick';
-import { phantomBrawlerBossState, phantomBrawlerHoldClock, phantomBrawlerStrikerMult } from './phantomBrawlerTick';
-import { initialBrawlerState, brawlerStartAttack, brawlerAfterResolve, brawlerElapsed, brawlerTotalMs, brawlerStartTech } from './brawler';
+import { phantomBrawlerBossState, phantomBrawlerHoldClock, phantomBrawlerStrikerMult, phantomBrawlerComboDamageMult, phantomBrawlerComboLink, phantomBrawlerFlowBreak } from './phantomBrawlerTick';
+import { initialBrawlerState, brawlerStartAttack, brawlerAfterResolve, brawlerElapsed, brawlerTotalMs, brawlerStartTech, brawlerFlowOnHit } from './brawler';
 import { BRAWLER_GUARD_COUNTER_KIKO_MULT } from './brawlerGuard';
 import { setPhantomIdentity } from './phantomIdentity';
 import { uniquePhantomSpec } from '../data/uniquePhantoms';
@@ -738,6 +738,73 @@ describe('拳鬼が格闘で戦う(結合)', () => {
       const two = blasts(true);
       expect(one.n).toBe(1);
       expect(two.n).toBe(2);
+    });
+  });
+});
+
+// ★孫悟空のコンボ倍率(社長指示2026-11-28「幻影・孫悟空にもコンボ倍率」)。プレイヤーと同じ brawlerComboDamageMultOnHit(min(2,1.1^n))。
+// 数=孫悟空自身の流れの当たり数(BrawlerState.flowHits)。連撃が途切れたら(brawlerComboEnded)切れて1発目から。
+describe('孫悟空のコンボ倍率', () => {
+  it('つながっている数0は等倍・7は1.1^7・10は天井の2倍・切れていれば等倍', () => {
+    expect(phantomBrawlerComboDamageMult({ flowHits: 0 })).toBe(1);
+    expect(phantomBrawlerComboDamageMult({})).toBe(1);
+    expect(phantomBrawlerComboDamageMult({ flowHits: 7 })).toBeCloseTo(Math.pow(1.1, 7), 12);
+    expect(phantomBrawlerComboDamageMult({ flowHits: 10 })).toBe(2);
+    expect(phantomBrawlerComboDamageMult({ flowHits: 10, flowBrokenAt: 123 })).toBe(1);
+    expect(phantomBrawlerComboLink({ flowHits: 3 })).toBe(4);
+  });
+  it('連撃が途切れたら(待機・つながりの受付が過ぎた)流れを切る/受付の内は切らない', () => {
+    const s = { ...initialBrawlerState(), flowHits: 6, chainUntil: 1000 };
+    expect(phantomBrawlerFlowBreak(s, 900)).toBe(s);
+    const b = phantomBrawlerFlowBreak(s, 1001);
+    expect(b.flowBrokenAt).toBe(1001);
+    expect(phantomBrawlerComboDamageMult(b)).toBe(1);
+    // 切れた後の次の当たりは1から数え直す(brawlerFlowOnHit)
+    expect(brawlerFlowOnHit(b, 1).flowHits).toBe(1);
+    // 技の最中は切らない
+    const tech = { ...brawlerStartTech(initialBrawlerState(), 'stomp', 500, 0, false), flowHits: 4 };
+    expect(phantomBrawlerFlowBreak(tech, 5000)).toBe(tech);
+  });
+
+  describe('結合: 同じ1段目のダメージが、つながり0と10でちょうど2倍', () => {
+    beforeEach(() => {
+      useGameStore.getState().resetGame('rogue');
+      setTreesDisabled(true); setTorchesDisabled(true);
+      const k = uniquePhantomSpec('brawler');
+      setPhantomIdentity({ name: k.name, profile: k.profile, source: 'unique' });
+      vi.spyOn(Math, 'random').mockReturnValue(0.999); // 会心を出さない
+    });
+    afterEach(() => { vi.restoreAllMocks(); });
+    const firstHit = (flowHits: number): number => {
+      const k = uniquePhantomSpec('brawler');
+      const e = spawnEnemyAt('guardian-phantom', ORIGIN, ORIGIN, START_GT);
+      // chainUntil を先へ=流れが続いている扱い(nextStage=1 なので出るのは1段目)。
+      Object.assign(e, { phantomUnique: 'brawler', phantomBuild: k.profile.snapshot, health: 130, maxHealth: 130, dormant: false, bossState: 'chase',
+        phantomBrawler: { ...initialBrawlerState(), flowHits, chainUntil: START_GT + 1e9 } });
+      useGameStore.setState(s => ({
+        enemies: [e], projectiles: [], gameTime: START_GT,
+        player: { ...s.player, x: e.x + e.width / 2 + 40, y: e.y + e.height / 2 - s.player.height / 2, health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0 },
+      }));
+      let gt = START_GT;
+      const st = createPhantomTickState();
+      for (let i = 0; i < 200; i++) {
+        gt += 16;
+        useGameStore.setState({ gameTime: gt });
+        const cur = useGameStore.getState().enemies.find(x => x.id === e.id)!;
+        runPhantomTick(cur, st, gt, 0.016, 1, gt, NOOP_PHANTOM_SFX, () => 0.999);
+        const hp = useGameStore.getState().player.health;
+        if (hp < 9999) {
+          expect(useGameStore.getState().enemies.find(x => x.id === e.id)?.phantomBrawler?.flowHits).toBe(flowHits + 1);
+          return 9999 - hp;
+        }
+      }
+      throw new Error('当たらなかった');
+    };
+    it('0 と 10', () => {
+      const d0 = firstHit(0);
+      const d10 = firstHit(10);
+      expect(d0).toBeGreaterThan(0);
+      expect(d10 / d0).toBeCloseTo(2, 6);
     });
   });
 });
