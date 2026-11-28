@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5927 — 格闘の10ヒット補正(§13-2)を撤去【2026-11-29 00:55】
+- 社長承認「10ヒット補正、はい」(コンボ倍率 min(2,1.1^n) と打ち消し合うため)。brawlerCombo.brawlerProration を BRAWLER_PRORATION_ENABLED=false で常に1(定数は記録として残す・呼び手はそのまま)。孫悟空側も同じ関数を読むなら同様に外れる。
+- 検証: typecheck・eslint・brawlerAirCombo/brawlerCombo/brawler/brawlerComboDamage テスト 137件緑(補正のテストは撤去後の期待値へ)。
+
 ## v0.25.5926 — 強化の上限変更の追従(他人の守護霊の正規化の不具合+テスト)【2026-11-29 00:10】
 - v0.25.5921〜5923 の強化変更で CI のテスト7件が落ちていた(設計チャットが src/utils の該当テストしか回さなかった見落とし)。うち3件は本体の不具合: shared/ghostSanitize.mjs が他人の守護霊の攻撃上限1.2・受付上限100ms を直書きしており、新しい値(×1.5・+150ms)が切られていた。
 - 直し: 新規 shared/playerUpgradeLedger.mjs(段数上限・攻撃/受付の1段の値の正本=サーバがビルド無しで読む .mjs)。data/playerUpgrades.ts と ghostSanitize.mjs が同じ正本から導く。src/store/playerUpgrades.test.ts の4件は期待値を台帳から導く形へ。

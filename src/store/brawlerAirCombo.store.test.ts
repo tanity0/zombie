@@ -89,9 +89,9 @@ describe('§13-1 技の溜めも固める(純関数)', () => {
     // 別の技も、当たりの瞬間から新しく固める
     expect(brawlerLockOnHit({ ...r1.patch }, 's2', 1200, 9e9, o).patch.brLockUntil).toBe(1200 + 390);
   });
-  it('ダメージ補正: 10ヒット目から −5%/発・下限50%', () => {
-    expect([1, 9, 10, 11, 12, 19, 20, 40].map(brawlerProration)).toEqual([1, 1, 0.95, 0.9, 0.85, 0.5, 0.5, 0.5].map(v => v));
-    expect(brawlerProrationFor({ brComboAt: 1000, brFlowHits: 9 }, 1100)).toBeCloseTo(0.95);
+  it('ダメージ補正は撤去(社長承認2026-11-28)=何ヒット目でも1', () => {
+    expect([1, 9, 10, 11, 12, 19, 20, 40].map(brawlerProration)).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
+    expect(brawlerProrationFor({ brComboAt: 1000, brFlowHits: 9 }, 1100)).toBe(1);
     expect(brawlerProrationFor({ brComboAt: 1000, brFlowHits: 30 }, 1000 + 5000)).toBe(1); // 流れが切れていれば1発目から
   });
 });
@@ -191,7 +191,7 @@ describe('§13-2 空中コンボ(ストア)', () => {
     step(60); hit('h', 's1');
     expect(en('h').brLiftDown).toBe(true);
   });
-  it('ダメージ補正: 同じ流れの10ヒット目から減る・秘奥義は減らない', () => {
+  it('ダメージ補正の撤去(社長承認2026-11-28): 同じ流れの10ヒット目以降も減らない・秘奥義も減らない', () => {
     setup();
     // ボス級(ハンター)で数える(旧: 雑魚は7発で振り払って流れが切れた=振り払いは 2026-11-11 に撤去)。
     useGameStore.setState({ enemies: [place('hunter', 60, 0, 'z'), place('hunter', -60, 0, 's')] });
@@ -203,8 +203,8 @@ describe('§13-2 空中コンボ(ストア)', () => {
     const d: number[] = [];
     for (let i = 0; i < 12; i++) { d.push(dmgOf('z', 's1')); step(100); }
     expect(d[8]).toBeCloseTo(d[0], 6);            // 9発目まで満額
-    expect(d[9] / d[0]).toBeCloseTo(0.95, 2);      // 10発目 −5%
-    expect(d[11] / d[0]).toBeCloseTo(0.85, 2);
+    expect(d[9] / d[0]).toBeCloseTo(1, 2);         // 10発目も満額(旧 −5%)
+    expect(d[11] / d[0]).toBeCloseTo(1, 2);
     const ds: number[] = [];
     for (let i = 0; i < 12; i++) { ds.push(dmgOf('s', 'secret')); step(100); }
     expect(ds[11]).toBeCloseTo(ds[0], 6);         // 秘奥義は補正なし

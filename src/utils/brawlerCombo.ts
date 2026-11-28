@@ -155,8 +155,11 @@ export const brawlerLiftBreaksTech = (_e: { aiPhase?: string }, cls: 'mob' | 'st
 export const BRAWLER_PRORATION_FROM = 10;
 export const BRAWLER_PRORATION_STEP = 0.05;
 export const BRAWLER_PRORATION_MIN = 0.5;
+/** ★撤去(社長承認2026-11-28「10ヒット補正、はい」=コンボ数の倍率 min(2,1.1^n) と打ち消し合うため外す)。常に1。
+ *  旧: n < FROM ? 1 : max(MIN, 1 − STEP×(n − FROM + 1))。定数は記録として残す。呼び手(gameStore 2か所)はそのまま=1を掛けるだけ。 */
+export const BRAWLER_PRORATION_ENABLED = false;
 export const brawlerProration = (n: number): number =>
-  n < BRAWLER_PRORATION_FROM ? 1 : Math.max(BRAWLER_PRORATION_MIN, 1 - BRAWLER_PRORATION_STEP * (n - BRAWLER_PRORATION_FROM + 1));
+  !BRAWLER_PRORATION_ENABLED || n < BRAWLER_PRORATION_FROM ? 1 : Math.max(BRAWLER_PRORATION_MIN, 1 - BRAWLER_PRORATION_STEP * (n - BRAWLER_PRORATION_FROM + 1));
 /**
  * ★コンボ数のダメージ倍率(社長指示2026-11-28「格闘コンボ数に応じて1.1倍ずつ上げたい」「コンボダメージは2倍を天井にしよう」)。
  * n=その当たりの**前までに**つながっているコンボの数(「N HIT」の数え方=brComboHits。1発目は n=0)。min(2.0, 1.1^n)。
