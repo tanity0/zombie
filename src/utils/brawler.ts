@@ -197,13 +197,15 @@ export const BRAWLER_LIFT_VIS_BODY_K = 0.6; // 社長指示2026-11-15「敵も�
 /** 巨大な敵の上限: 見えている画面の縦×これ(world px)。 */
 export const BRAWLER_LIFT_VIS_MAX_VIEW_FRAC = 0.25; // 2026-11-15 BODY_K 0.45→0.6 に合わせて 0.2→0.25(上限に当たる大きい敵=ミーミル等も同じくらい高くなるように)
 export const BRAWLER_STOMP_RADIUS = 150;     // 下の大踏み潰し(§3-3)
-export const BRAWLER_STOMP_MULT = 2.3; // 社長指示2026-11-12『叩き潰しが強すぎる。0.5 落として』(旧 2.8。その前は 2.5)。それ以前: 社長指示2026-11-11「ごめん、大叩き潰しは2.8倍で。」(同日 3.5→2.5→2.8)。それ以前: // 社長裁定2026-11-11「3;上げる」で 2.4→3.5(技ポイントが一番高い技の見返り)。旧: 2026-11-09 に 2.0→2.4
+export const BRAWLER_STOMP_MULT = 2.5; // 社長承認2026-11-28 KOF比で技を引き上げ 2.3→2.5(土竜は BRAWLER_MOGURA_MULT へ分けた)。 社長指示2026-11-12『叩き潰しが強すぎる。0.5 落として』(旧 2.8。その前は 2.5)。それ以前: 社長指示2026-11-11「ごめん、大叩き潰しは2.8倍で。」(同日 3.5→2.5→2.8)。それ以前: // 社長裁定2026-11-11「3;上げる」で 2.4→3.5(技ポイントが一番高い技の見返り)。旧: 2026-11-09 に 2.0→2.4
 /**
  * ★大踏み潰しは出した高さで威力が上がる(社長指示2026-11-16「大叩き潰しは、発動した高さでダメージ倍率が上がる。」)。
  * 倍率 = 1 + K × (高さ ÷ REF)、上限 MAX。BRAWLER_STOMP_MULT の上に掛ける(ダメージだけ・体勢値の倍率は今どおり)。
  * 高さ=出だしの空中の高さ(stompFromPx=踵落としから取り消した時の姿勢の jump。絵と同じ純関数 brawlerPoseAt から出る)。地上(0)は ×1=今と同じ。
  * 叩き台(2026-11-16): K=0.5・REF=60px・MAX=2.0(=高さ120pxで頭打ち)。
  */
+/** ★土竜(§35)の威力の倍率(地割りから分けた・社長承認2026-11-28 KOF比で技を引き上げ 2.3(地割りと共有)→2.8)。出した高さの倍率(brawlerStompAirMult)は地割りと同じく上に掛かる。 */
+export const BRAWLER_MOGURA_MULT = 2.8;
 export const BRAWLER_STOMP_AIR_K = 0.5;
 export const BRAWLER_STOMP_AIR_REF_PX = 60;
 export const BRAWLER_STOMP_AIR_MULT_MAX = 2.0;
@@ -231,7 +233,7 @@ export let BRAWLER_KICK_FLIGHT_MAX_MS = 165; // ×BRAWLER_TEMPO(係数1.0の値)
 export const brawlerKickFlightMs = (dist: number): number =>
   Math.max(BRAWLER_TECHS.kick.windupMs, Math.min(BRAWLER_KICK_FLIGHT_MAX_MS, BRAWLER_TECHS.kick.windupMs * Math.max(0, dist) / 160));
 /** 飛び蹴りの倍率(何発目か=1..3)。社長承認2026-11-09 で 0.7/0.7/0.7 → 0.7/0.8/1.0。秘奥義の9連撃の蹴りは3発目扱い(締めの止め・big の押しと同じ)。 */
-export const BRAWLER_KICK_MULTS = [0, 0.7, 0.8, 1.2] as const; // 3発目 1.0→1.2(社長指示2026-11-11「威力も少し上げて」)
+export const BRAWLER_KICK_MULTS = [0, 1.0, 1.0, 1.8] as const; // 社長承認2026-11-28 KOF比で技を引き上げ 0.7/0.8/1.2→1.0/1.0/1.8。それ以前: 3発目 1.0→1.2(社長指示2026-11-11「威力も少し上げて」)
 /** ★飛び蹴りの3発目の押しの強さ(普通のノックバックの何倍か)。社長指示2026-11-11「3段目の飛び蹴りはもう少し敵を吹き飛ばして」で 1→1.8。吹き飛ばし(big=4)ではない=ボス級の扱い・固まりの決まりは普通の押しのまま。 */
 export const BRAWLER_KICK3_KB_POWER = 1.8;
 /** 飛び蹴りの後隙のうち、体がしゃがみの絵に替わる所(0..1)。蹴りの影もここまでに消し切る(体の絵と影が同じ値を読む)。 */
@@ -257,7 +259,7 @@ export let BRAWLER_GOUGE_JUMP_MS = 160; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_GOUGE_JUMP_PX = 50;
 export const BRAWLER_GOUGE_NO_TARGET_PX = 30;
 export const BRAWLER_GOUGE_JUMP_VIS_PX = 24;
-export const BRAWLER_GOUGE_MULT = 1.4;
+export const BRAWLER_GOUGE_MULT = 2.0; // 社長承認2026-11-28 KOF比で技を引き上げ 1.4→2.0
 export const BRAWLER_GOUGE_FIST_RADIUS = 34;
 /** ★抉り打ちの溜めの光と構えの絵を出し始めるまでの長さ(ms・実時間)。これより短い押下(タップ・連打)では光も構えも一切出ない(§37-2)。 */
 export const BRAWLER_GOUGE_GLOW_DELAY_MS = 150;
@@ -1120,7 +1122,7 @@ export const BRAWLER_HEEL_EXTRA_COST = 1;
 export const brawlerHeelCost = (awakened = false, discount = 0): number =>
   brawlerTechCost('kick', awakened, discount) + (awakened ? 0 : BRAWLER_HEEL_EXTRA_COST);
 /** 踵落としの威力(蹴り飛ばしと同じ・叩き台)。 */
-export const BRAWLER_HEEL_MULT = 1.2;
+export const BRAWLER_HEEL_MULT = 1.5; // 社長承認2026-11-28 KOF比で技を引き上げ 1.2→1.5(蹴り上げ BRAWLER_KICKUP_MULT も同じ値)
 /** 次の蹴りが何発目か(連続の受付の中なら続き・外なら1発目)。 */
 export const brawlerNextKickN = (s: BrawlerState, t: number): number =>
   (s.kickCount > 0 && s.kickCount < BRAWLER_KICK_MAX && t <= s.kickChainUntil) ? s.kickCount + 1 : 1;
@@ -1217,8 +1219,8 @@ export const BRAWLER_THROW_ACCEL_FRAC = 0.18;
 export const BRAWLER_THROW_BLAST_RADIUS = 160;
 export const BRAWLER_THROW_BLAST_MULT = 2;
 export const BRAWLER_THROW_KB_MULT = 2;
-/** スープレックスの威力(踵落とし×これ・近接扱い)。 */
-export const BRAWLER_SUPLEX_MULT = BRAWLER_HEEL_MULT * 1.5;
+/** スープレックスの威力(近接扱い)。 */
+export const BRAWLER_SUPLEX_MULT = 2.0; // 社長承認2026-11-28 KOF比で技を引き上げ 1.8(踵落とし×1.5)→2.0(固定値へ。踵落としとは切り離した)
 /** ★スープレックスの叩きつけの小爆発(§34-9・社長指示2026-11-20)の半径(px・叩き台。空中投げの爆撃 160 より小さい)。爆発の規約で skillExplosionMult が掛かる。 */
 export const BRAWLER_SUPLEX_BLAST_RADIUS = 90;
 /**

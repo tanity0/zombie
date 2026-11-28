@@ -7823,7 +7823,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const r = strike(ids, {
       finish: plan0.finish,
       // ★出した高さで威力が上がる(社長指示2026-11-16・stompFromPx=踵落としから取り消した出だしの高さ=絵と同じ純関数の値)。地上は ×1。
-      mult: BR.BRAWLER_STOMP_MULT * BR.brawlerStompAirMult(s.stompFromPx), stunMs: plan0.stun, ...plan0.lock, postureMult: BR.BRAWLER_STOMP_MULT,
+      mult: (s.mogura ? BR.BRAWLER_MOGURA_MULT : BR.BRAWLER_STOMP_MULT) * BR.brawlerStompAirMult(s.stompFromPx), stunMs: plan0.stun, ...plan0.lock, postureMult: s.mogura ? BR.BRAWLER_MOGURA_MULT : BR.BRAWLER_STOMP_MULT, // 土竜は BRAWLER_MOGURA_MULT(社長承認2026-11-28)
       // ★土竜(§35): 押さずに宙へ浮かせる(地上=蹴り上げと同じ打ち上げ・空中=浮き直し・予算2)。攻撃中の雑魚・強個体は浮きの側で技を取り消す。
       kb: s.mogura ? { kind: 'none' } : { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
       combo: { move: s.mogura ? 'mogura' : 'stomp' },

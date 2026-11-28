@@ -563,13 +563,13 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
   if (s.tech === 'guard') return { ...s, resolved: true };
   if (s.tech === 'stomp') {
     const r = strikePlayer(c, s, edgeDist(foot.x, foot.y, player) <= BR.BRAWLER_STOMP_RADIUS,
-      { kind: 'circle', cx: foot.x, cy: foot.y, r: BR.BRAWLER_STOMP_RADIUS }, BR.BRAWLER_STOMP_MULT, 'brawler-stomp',
+      { kind: 'circle', cx: foot.x, cy: foot.y, r: BR.BRAWLER_STOMP_RADIUS }, s.mogura ? BR.BRAWLER_MOGURA_MULT : BR.BRAWLER_STOMP_MULT, 'brawler-stomp', // 土竜は BRAWLER_MOGURA_MULT(社長承認2026-11-28)
       // 土竜(§36-1): 押さずに浮かせる(浮きは launchPlayerOnHit が 'mogura' で掛ける)。
       kbMob(brawlerMobHitStomp(!!s.mogura), unit(pcx - foot.x, pcy - foot.y)), foot.x, foot.y);
     const cancelled = cancelOnCounter(r);
     if (cancelled) return cancelled;
     if (r.landed) c.rt.mind.landedStartAt = s.startAt; // 台本の「当たった」(§16-7)
-    launchPlayerOnHit(c, s, r, s.mogura ? 'mogura' : 'stomp', BR.BRAWLER_STOMP_MULT, brawlerMobHitStomp(!!s.mogura).stopMs); // 地割りは地上の相手も浮かせる(雑魚と同じ・§36-0)・土竜は押さずに高く
+    launchPlayerOnHit(c, s, r, s.mogura ? 'mogura' : 'stomp', s.mogura ? BR.BRAWLER_MOGURA_MULT : BR.BRAWLER_STOMP_MULT, brawlerMobHitStomp(!!s.mogura).stopMs); // 地割りは地上の相手も浮かせる(雑魚と同じ・§36-0)・土竜は押さずに高く
     if (r.touched) kenkiHitSfx('stomp');
     const g = useGameStore.getState();
     g.spawnRing(foot.x, foot.y, 20, BR.BRAWLER_STOMP_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);

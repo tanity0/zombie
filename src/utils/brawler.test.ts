@@ -13,6 +13,7 @@ import {
   brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_KICK3_RECOVERY_MULT, BRAWLER_KICK_CROUCH_AT, BRAWLER_HIT_PITCH, brawlerStageHitSfx, brawlerKickHitSfx, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
   brawlerTechCancelOk, brawlerStageGuardCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech, brawlerLateCarry, brawlerTechBufferDecision, BRAWLER_CANCEL_WINDOW_MS,
   BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT, brawlerKickMult,
+  BRAWLER_MOGURA_MULT, BRAWLER_GOUGE_MULT, BRAWLER_HEEL_MULT, BRAWLER_KICKUP_MULT, BRAWLER_SUPLEX_MULT,
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerAfterJustGuardPoints, BRAWLER_JUST_GUARD_POINTS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS,
 } from './brawler';
 import { brawlerLiftArcRel, BLAST_LIFT_SHAPE, BRAWLER_LIFT_RISE_FRAC, BRAWLER_LIFT_HOVER_FRAC, BRAWLER_LIFT_HOVER_SAG, type LiftArcShape } from './brawler';
@@ -39,15 +40,16 @@ describe('格闘: 表', () => {
     expect(BRAWLER_STAGES.map(s => s.kb)).toEqual(['small', 'small', 'normal', 'small', 'big']); // 社長指示2026-11-10「どの攻撃も押さない攻撃でも多少押そう」(旧 1・2・4段目は none)
     expect(BRAWLER_STAGES.map(s => s.hitstopMs)).toEqual([90, 90, 150, 150, 220]); // 止めは係数を掛けない表(社長承認2026-11-08: 旧 45/45/80/90/140)
   });
-  it('技の倍率(大踏み潰し2.3・気功1.8・飛び蹴り0.7/0.8/1.2=3発目は社長指示2026-11-11・秘奥義の締め3.6)', () => {
-    expect([BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT]).toEqual([2.3, 1.8, 3.6]); // 大踏み潰し 3.5→2.5→2.8(社長指示2026-11-11)→2.3(社長指示2026-11-12『叩き潰しが強すぎる。0.5 落として』)
-    expect([1, 2, 3].map(brawlerKickMult)).toEqual([0.7, 0.8, 1.2]);
+  it('技の倍率(地割り2.5・土竜2.8・気功1.8・飛び蹴り1.0/1.0/1.8・抉り打ち2.0・踵落とし1.5・スープレックス2.0=社長承認2026-11-28・秘奥義の締め3.6)', () => {
+    expect([BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT]).toEqual([2.5, 1.8, 3.6]); // 社長承認2026-11-28 KOF比で 2.3→2.5。それ以前: 大踏み潰し 3.5→2.5→2.8(社長指示2026-11-11)→2.3(社長指示2026-11-12『叩き潰しが強すぎる。0.5 落として』)
+    expect([1, 2, 3].map(brawlerKickMult)).toEqual([1.0, 1.0, 1.8]);
+    expect([BRAWLER_MOGURA_MULT, BRAWLER_GOUGE_MULT, BRAWLER_HEEL_MULT, BRAWLER_KICKUP_MULT, BRAWLER_SUPLEX_MULT]).toEqual([2.8, 2.0, 1.5, 1.5, 2.0]);
     // 3発目だけ後隙が長い(社長指示2026-11-11「技後の隙も少し伸ばして」)。1・2発目は今どおり。
     const k1 = brawlerStartTech(initialBrawlerState(), 'kick', 0, 1), k3 = brawlerStartTech(initialBrawlerState(), 'kick', 0, 3);
     expect(k3.recoveryMs).toBe(Math.round(k1.recoveryMs * BRAWLER_KICK3_RECOVERY_MULT));
     expect(k3.recoveryMs).toBeGreaterThan(k1.recoveryMs);
-    expect(brawlerKickMult(0)).toBe(0.7); // 範囲外は端へ寄せる
-    expect(brawlerKickMult(9)).toBe(1.2);
+    expect(brawlerKickMult(0)).toBe(1.0); // 範囲外は端へ寄せる
+    expect(brawlerKickMult(9)).toBe(1.8);
   });
   it('飛び蹴り: 体がしゃがみの絵に替わったら、蹴りの影は出ていない(社長指示2026-11-11)', () => {
     const k = brawlerStartTech(initialBrawlerState(), 'kick', 0, 1);

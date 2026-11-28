@@ -81,7 +81,7 @@ describe('§34-1・§34-8 蹴り上げの入力(2発目=空中蹴りの続きの
     expect(brawlerKickUpCost()).toBe(BRAWLER_TECHS.kick.cost + 1);
     expect(brawlerKickUpCost(true)).toBe(0);
     expect(BRAWLER_KICKUP_MULT).toBe(BRAWLER_HEEL_MULT);
-    expect(BRAWLER_SUPLEX_MULT).toBeCloseTo(BRAWLER_HEEL_MULT * 1.5, 10);
+    expect(BRAWLER_SUPLEX_MULT).toBe(2.0); // 社長承認2026-11-28: 踵落とし×1.5 から 2.0 の固定値へ
   });
   it('出した蹴り上げ: 常に3発目の位置(踵落としと同じ)・踵落としと同じ溜め', () => {
     const u3 = brawlerStartTech(kickHit(2, true).s, 'kick', 2000, 3, false, false, true);
