@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5894', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5893', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5892', items: ['作戦室の目標に洞窟地帯が選ばれなくなった。洞窟地帯は地図で選べば今まで通り出撃できる'] },
   { version: '0.25.5891', items: ['資料室の格闘の操作を、格闘ゲームの技表の形に書き直した。区分ごとに技名とコマンドを並べ、空中投げも載せた'] },

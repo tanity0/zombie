@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useGameStore, isInputLocked, isGameTimeStopped, ENEMY_REMOVE_CAUSE } from '../store/gameStore';
 import { isHiddenBoss } from '../utils/enemyUtils';
+import { computeTimeSlowScale } from '../utils/timeSlowCurve'; // スローの暴発の切り分け(社長指示2026-11-28)
 import { enemyIdleReason } from '../utils/enemyIdleReason';
 import { deriveChaffMoveGrants } from '../utils/chaffMoves';
 import { getSelectedStageId, getBaseGrowthForStage, getBaseGrowth, setBaseGrowth } from '../data/progress';
@@ -154,6 +155,9 @@ const DebugOverlay: React.FC = () => {
   const now = Date.now();
   const boss = s.enemies.find(e => isHiddenBoss(e.type));
   const hs = Math.max(0, Math.round(s.hitstopUntil - now));
+  // ★スロー(時間を遅くする演出)の残りと今の倍率(社長指示2026-11-28「ヒットストップとかスローみたいな効果が暴発してない？」)。
+  const slowLeft = Math.max(0, Math.round(s.timeSlowUntil - now));
+  const slowScale = computeTimeSlowScale(now, s.timeSlowStart, s.timeSlowUntil, s.timeSlowScale, s.timeSlowHoldMs);
   const introActive = s.introUntil === -1 || (s.introUntil > 0 && now < s.introUntil);
   const Y = (b: boolean) => (b ? 'Y' : '·');
   const p = s.player;
@@ -170,7 +174,7 @@ const DebugOverlay: React.FC = () => {
   const lines = [
     `t ${(s.gameTime / 1000).toFixed(1)}s sw${s.swipeDirection ? 'Y' : '·'}`,
     `p ${Math.round(p.x)},${Math.round(p.y)} hp ${Math.round(p.health)}`,
-    `att${Y(!!s.attention)} hs${hs} pause${Y(s.isPaused)}`,
+    `att${Y(!!s.attention)} hs${hs} slow${slowLeft}(x${slowScale.toFixed(2)}) pause${Y(s.isPaused)}`,
     `dlg${Y(s.introDialogueActive)} intro${Y(introActive)}`,
     `gts${Y(isGameTimeStopped())} lock${Y(isInputLocked())}`,
     `blk ${blk}`,
