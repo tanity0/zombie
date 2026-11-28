@@ -2037,7 +2037,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 </h3>
                 {openRecordStage && (
                   <p className="mb-3 text-[11px] text-purple-200/55 tracking-wide">
-                    DAY {openRecordStage.day} / {openRecordStage.time}・{openRecordStage.locationTitle}
+                    {/* timeLabel があるステージは日時を意図的にぼかす(showDay と同じ掟)=DAY/時刻を出さず timeLabel を出す。 */}
+                    {openRecordStage.timeLabel
+                      ? <>{openRecordStage.timeLabel}・{openRecordStage.locationTitle}</>
+                      : <>DAY {openRecordStage.day} / {openRecordStage.time}・{openRecordStage.locationTitle}</>}
                   </p>
                 )}
                 <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
