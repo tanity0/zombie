@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5917 — 開発用: 熟練度を最大/リセット【2026-11-28 22:04】
+- 社長指示「熟練度の最大にする設定とリセットも欲しい」。utils/mastery に masteryXpToReach(masteryNeedFor の足し上げ)・maxedMasteryState・setAllMasteryMax・resetAllMastery(保存と masteryPending・メモリの pending も消す)+テスト3件。オプションのテスト開発用に2ボタン(ガチャリセットの下・既存の2つ並べの部品)。保存そのものを書き換える(すべて解放と違い戻らない)。
+- 検証: typecheck・eslint・mastery.test 49件。オプションのボタンと、押した後の装備画面(MAX / Lv 1)を撮って目視(scratchpad/shots/options-mastery-buttons.png・loadout-max.png・loadout-reset.png)。
+
 ## v0.25.5916 — 「前回最後」とデバッグ行に txo/mt を追加(落ちの切り分け用)【2026-11-28 21:58】
 - 社長承認(次の一手=実機で出撃ごとの伸びを読む)。新規 pixi/textureCensus(+テスト): txo=生きている Texture オブジェクト数(コンストラクタの最初の source 代入で数え、FinalizationRegistry で回収分を引く)・mt=renderer.texture.managedTextures.length(PixiStage が描画器を登録/解除・未登録は-1)。main.tsx で起動時に差し込み。Game.tsx の「前回最後」記録(2秒毎)と左下の行(1秒毎)に `txo… mt…` を bake の直後に。負荷1/10。
 - ヘッドレス(stage-1・もう一度で重ねる・gc後): txo は出撃ごとに +72〜+159 増え続ける(掴み手のある増加を再現)・mt は 224〜303 で横ばい。実機で落ちた時の txo を「描画器N代目」と並べて読む。

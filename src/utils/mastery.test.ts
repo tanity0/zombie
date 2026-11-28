@@ -23,6 +23,7 @@ import {
   masteryMultTable, masteryLoadoutMult, masteryMultOf, masteryIgnoredRun, commitMasteryRun, getLastMasteryCommit,
   recoverMasteryPending, masteryXpWeight, masteryXpAmount, burnRefreshMastery, type MasteryRunFlags,
   normalizeMasteryRecord, objectMasteryMult, guardianMasteryMult, migrateLegacyMeleeXp, meleeMasteryKeyOf, loadStashedMasteryPending,
+  masteryXpToReach, maxedMasteryState, setAllMasteryMax, resetAllMastery,
 } from './mastery';
 import {
   withMastery, currentMasterySource, currentMasteryExecute, beginMasteryRun, noteMasteryDamage, getPendingMastery, getMasteryReport,
@@ -515,5 +516,44 @@ describe('近接はナイフ毎(キー・移行・古い記録)', () => {
     expect(normalizeMasteryRecord({ melee: 1.6 }, 1).masteryMult).toEqual({ 'knife-t1': 1.6 });
     expect(normalizeMasteryRecord({ melee: 1.6, 'machete-t3': 1.3 }, 1, 'machete-t3').masteryMult).toEqual({ 'machete-t3': 1.3 });
     expect(normalizeMasteryRecord({ melee: 99 }, 1, 'hatchet-t2').masteryMult).toEqual({ 'hatchet-t2': 1.9 });
+  });
+});
+
+describe('開発用: 熟練度を最大/リセット', () => {
+  beforeEach(() => { localStorage.clear(); beginMasteryRun({ ignored: false }); });
+
+  it('masteryXpToReach は段階の計算と一致する(Lv1=0・Lv10 にちょうど届き、1つ手前は Lv9)', () => {
+    for (const k of GROWING_MASTERY_KEYS) {
+      expect(masteryXpToReach(k, 1)).toBe(0);
+      for (let l = 2; l <= 10; l++) {
+        expect(masteryXpToReach(k, l)).toBe(xpOfLevel(k, l));
+        expect(masteryLevelFor(k, masteryXpToReach(k, l))).toBe(l);
+        expect(masteryLevelFor(k, masteryXpToReach(k, l) - 1)).toBe(l - 1);
+      }
+      expect(masteryXpToReach(k, 99)).toBe(masteryXpToReach(k, 10));
+      expect(masteryXpToReach(k, Number.NaN)).toBe(0);
+    }
+  });
+
+  it('maxedMasteryState は育つ全ての鍵を Lv10 にする', () => {
+    const s = maxedMasteryState();
+    expect(Object.keys(s.xp).sort()).toEqual([...GROWING_MASTERY_KEYS].sort());
+    for (const k of GROWING_MASTERY_KEYS) expect(masteryProgress(k, s.xp[k]).level).toBe(10);
+  });
+
+  it('setAllMasteryMax は保存を最大にし、resetAllMastery は保存・退避・メモリの pending を空にする', () => {
+    setAllMasteryMax();
+    const loaded = loadMastery();
+    for (const k of GROWING_MASTERY_KEYS) expect(masteryLevelFor(k, loaded.xp[k])).toBe(10);
+    noteMasteryDamage(GROWING_MASTERY_KEYS[0], 50);
+    stashMasteryPending();
+    expect(localStorage.getItem(MASTERY_PENDING_KEY)).not.toBeNull();
+    resetAllMastery();
+    expect(loadMastery().xp).toEqual({});
+    expect(localStorage.getItem(MASTERY_PENDING_KEY)).toBeNull();
+    expect(getPendingMastery()).toEqual({});
+    recoverMasteryPending();
+    expect(loadMastery().xp).toEqual({});
+    expect(JSON.parse(localStorage.getItem(MASTERY_KEY) ?? '{}')).toEqual({ xp: {} });
   });
 });

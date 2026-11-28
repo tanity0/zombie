@@ -369,6 +369,33 @@ export const recoverMasteryPending = (equippedMeleeKey?: string | null): void =>
   clearMasteryReport();
 };
 
+// ── 開発用(オプションの「テスト開発用」の欄) ─────────────────────────────
+
+/** Lv1 から段階 `level` に届くのに要る xp の合計(masteryNeedFor を足すだけ・範囲の外は 1〜上限へ丸める)。 */
+export const masteryXpToReach = (key: GrowingMasteryKey, level: number): number => {
+  const target = Number.isFinite(level) ? Math.max(1, Math.min(MASTERY_MAX_LEVEL, Math.floor(level))) : 1;
+  let xp = 0;
+  for (let l = 1; l < target; l++) xp += masteryNeedFor(key, l);
+  return xp;
+};
+
+/** 育つ全ての鍵を上限(Lv10)ちょうどにした保存(純関数)。 */
+export const maxedMasteryState = (): MasteryState => {
+  const xp: Partial<Record<GrowingMasteryKey, number>> = {};
+  for (const k of GROWING_MASTERY_KEYS) xp[k] = masteryXpToReach(k, MASTERY_MAX_LEVEL);
+  return normalizeMastery({ xp });
+};
+
+/** 開発用: 全ての熟練度を最大(Lv10)にして保存する。 */
+export const setAllMasteryMax = (): void => { saveMastery(maxedMasteryState()); };
+
+/** 開発用: 全ての熟練度を0へ戻す。確定前の分(退避 masteryPending・メモリの pending)も消す。 */
+export const resetAllMastery = (): void => {
+  saveMastery(emptyMastery());
+  removeStash();
+  clearPendingMastery();
+};
+
 // ── リザルトでの確定 ──────────────────────────────────────────────────────
 
 export type { MasteryCommitEntry, MasteryCommitResult } from './masteryRun';

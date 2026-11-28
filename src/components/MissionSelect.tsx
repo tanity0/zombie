@@ -197,7 +197,7 @@ import { SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES, bossUnlockSubKeys, subShe
 import { getSlotLoadout, setSlotCandidate, unlockedWeaponKeys, shelfWeaponKeys, isTestWeaponUnlockAll, setTestWeaponUnlockAll } from '../utils/weaponSlot';
 import { weaponDisplayName, weaponDescription, weaponIconName, gunMasteryKeyOfWeaponKey } from '../utils/weaponUtils';
 // 熟練度の段階の札(research/MASTERY.md §6-3): 値は装備画面を描く時に保存から1回読む。
-import { loadMastery } from '../utils/mastery';
+import { loadMastery, resetAllMastery, setAllMasteryMax } from '../utils/mastery';
 import { masteryBadgeOf, masteryKeyOfSub } from '../utils/masteryView';
 import { MasteryTag, MasteryMeter } from './MasteryBadge';
 const GUN_CATEGORY_LABEL: Record<SlotCategory, string> = {
@@ -2674,6 +2674,11 @@ const DevTools: React.FC<{
           「初戦の稼ぎで2回引ける」等の初回体験を実機で試すため(社長指示v0.25.2347)。 */}
       <div className="mt-2 flex gap-2">
         <button type="button" onClick={() => { useGameStore.getState().resetGachaProgress(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-fuchsia-400/10 text-fuchsia-50/85 active:bg-fuchsia-400/20">ガチャリセット(所持スキル・サブ装備・G・階段・強化)</button>
+      </div>
+      {/* 熟練度(社長指示2026-11-28「熟練度の最大にする設定とリセットも欲しい」)。装備画面の札は描く時に保存を読むので、画面を移れば反映される。 */}
+      <div className="mt-2 flex gap-2">
+        <button type="button" onClick={() => { setAllMasteryMax(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-purple-400/5 text-white/80 active:bg-purple-400/10">熟練度を最大(全武器Lv10)</button>
+        <button type="button" onClick={() => { resetAllMastery(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-purple-400/5 text-white/80 active:bg-purple-400/10">熟練度リセット(確定前の分も消す)</button>
       </div>
     </div>
   );
