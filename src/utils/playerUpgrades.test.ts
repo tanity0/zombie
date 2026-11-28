@@ -66,18 +66,18 @@ describe('段数 → 効果値(発注文の表そのもの)', () => {
     expect(growthGoldMult(PLAYER_UPGRADE_MAX_LEVEL)).toBeCloseTo(1.5, 10);
   });
 
-  it('弾数 +5%/段: 5段で handgun 72→90 / shotgun 24→30 / rifle 36→45 / phill 48→60', () => {
-    expect(effectiveAmmoMax(72, 5)).toBe(90);
-    expect(effectiveAmmoMax(24, 5)).toBe(30);
-    expect(effectiveAmmoMax(36, 5)).toBe(45);
-    expect(effectiveAmmoMax(48, 5)).toBe(60);
+  it('弾数 +6%/段(社長指示2026-11-28・5段で+30%): handgun 72→94 / shotgun 24→31 / rifle 36→47 / phill 48→62', () => {
+    expect(effectiveAmmoMax(72, 5)).toBe(94);
+    expect(effectiveAmmoMax(24, 5)).toBe(31);
+    expect(effectiveAmmoMax(36, 5)).toBe(47);
+    expect(effectiveAmmoMax(48, 5)).toBe(62);
   });
 
   it('弾数はテーブル丸ごとでも同じ(glauncher=rifleと同値のまま追従する)', () => {
     const base = { handgun: 72, shotgun: 24, rifle: 36, phill: 48, glauncher: 36 };
     expect(effectiveAmmoMaxMap(base, 0)).toEqual(base);
     const maxed = effectiveAmmoMaxMap(base, 5);
-    expect(maxed).toEqual({ handgun: 90, shotgun: 30, rifle: 45, phill: 60, glauncher: 45 });
+    expect(maxed).toEqual({ handgun: 94, shotgun: 31, rifle: 47, phill: 62, glauncher: 47 });
     expect(maxed.glauncher).toBe(maxed.rifle); // 同ティア武器拾得の弾変換がここを引く
   });
 

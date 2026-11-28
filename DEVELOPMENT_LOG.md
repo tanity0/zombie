@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5923 — 強化の弾数を最大+30%に【2026-11-28 23:46】
+- 社長指示「弾数は30%を最大に」。data/playerUpgrades の ammo を perLevel 0.05→0.06(5段で+30%・旧+25%)。所持上限(母数)のみ=マガジン・リロード・ドロップは不変。5段で handgun 72→94 / shotgun 24→31 / rifle 36→47 / phill 48→62。playerUpgrades.test を追従。
+- 検証: typecheck・eslint・playerUpgrades.test・src/data 緑。
+
 ## v0.25.5922 — 強化のカウンター受付を最大+0.15秒に【2026-11-28 23:44】
 - 社長指示「カウンター受付は最大で0.15秒に」。data/playerUpgrades の counter を perLevel 0.02→0.03(5段で+150ms・旧+100ms)。playerUpgrades.test を追従。
 - 検証: typecheck・eslint・playerUpgrades.test・src/data 緑。
