@@ -312,7 +312,7 @@ export const STAGES: Stage[] = [
       code: 'M4',
       // 共有パッケージ2026-07-23: M4クリアで変異体資料(生存状態からの変異)を解放。
       unlockedRecordIds: ['investigation_07_living_mutation'],
-      title: '封鎖地域',
+      title: '医師団捜索',
       summary: '封鎖地域へ強行突入し、戻らない医師団と接触する。',
       synopsis: [
         '北部の封鎖区域から通信が途絶えた。',
@@ -390,7 +390,7 @@ export const STAGES: Stage[] = [
       code: 'M6',
       // 共有パッケージ2026-07-23: M6クリアで任務記録(洋館設備調査)を解放。
       unlockedRecordIds: ['investigation_09_mansion_facility'],
-      title: '古い洋館',
+      title: '洋館調査',
       summary: '変異体の発生源と疑われる古い洋館へ向かい、内部を確認する。',
       synopsis: [
         '軍本部を襲った変異体の移動経路を追うと、旧市街地の一角に行き着いた。',
@@ -436,7 +436,7 @@ export const STAGES: Stage[] = [
       code: 'M7',
       // 未登録試作製剤は「ノラから回収」=ED前に読むとミラ=ノラが分かるため、通常ED後(ENDING_RECORD_IDS)へ移した(社長指示2026-11-18)。
       // ※「グレンの薬」はここに載せない(条件付き解放=App の endingFollowup 'medicine' 経路)。
-      title: '逆探知地点',
+      title: '発信源接触',
       summary: '特定した発信地点へ向かい、通信の主と接触する。',
       synopsis: [
         'ミラの通信を逆探知し、発信地点を特定した。',
