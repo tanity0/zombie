@@ -85,18 +85,18 @@ describe('拳鬼の出現: 場面・距離', () => {
   });
 });
 
-describe('孫悟空(本編の徘徊)の出現時刻(社長指示2026-11-28「出撃後3分以降」)', () => {
-  it('解禁は3分', () => {
-    expect(KENKI_PATROL_SPAWN_AT_MS).toBe(180_000);
+describe('孫悟空(本編の徘徊)の出現時刻(社長指示2026-11-28「出撃後3分以降」→「賞金首の時間はずらさないで。孫悟空をずらして」=4分)', () => {
+  it('解禁は4分', () => {
+    expect(KENKI_PATROL_SPAWN_AT_MS).toBe(240_000);
   });
-  it('3分の1ms前は出ない・3分ちょうどから出る', () => {
+  it('4分の1ms前は出ない・4分ちょうどから出る', () => {
     expect(kenkiPatrolSpawnTimeReached(0)).toBe(false);
     expect(kenkiPatrolSpawnTimeReached(3000)).toBe(false); // 旧=出撃3秒では出ない
     expect(kenkiPatrolSpawnTimeReached(KENKI_PATROL_SPAWN_AT_MS - 1)).toBe(false);
     expect(kenkiPatrolSpawnTimeReached(KENKI_PATROL_SPAWN_AT_MS)).toBe(true);
     expect(kenkiPatrolSpawnTimeReached(600_000)).toBe(true);
   });
-  it('賞金首の自然湧き(4分)より先に解禁される', () => {
-    expect(KENKI_PATROL_SPAWN_AT_MS).toBeLessThan(BOUNTY_NATURAL_SPAWN_AT_MS[0]);
+  it('賞金首の自然湧き(3分)より後に解禁される(重ねない)', () => {
+    expect(KENKI_PATROL_SPAWN_AT_MS).toBeGreaterThan(BOUNTY_NATURAL_SPAWN_AT_MS[0]);
   });
 });

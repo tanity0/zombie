@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5919 — 賞金首は3分に戻し、孫悟空を4分へ【2026-11-28 23:13】
+- 社長訂正「賞金首の時間はずらさないで。孫悟空をずらして」。BOUNTY_NATURAL_SPAWN_AT_MS と bountyTick.test を v0.25.5917 の状態([180000])へ戻し、KENKI_PATROL_SPAWN_AT_MS を 240_000 に(時計は directorTime のまま)。テストは「賞金首より後に解禁(重ねない)」へ。useGameLoop のコメントも整合。
+- 検証: typecheck・eslint・bountyTick/phantomBrawlerSpawn テスト緑。
+
 ## v0.25.5918 — 孫悟空は3分以降・賞金首は4分【2026-11-28 22:42】
 - 社長指示「孫悟空は出撃後3分以降に出現にして(賞金首が3分だったら4分にして)」。phantomBrawlerSpawn に KENKI_PATROL_SPAWN_AT_MS=180000・kenkiPatrolSpawnTimeReached(directorTime)。時計は賞金首と同じ directorTime(ウェルカムがあるランはウェルカム終了から数える)。BOUNTY_NATURAL_SPAWN_AT_MS を [240000] に。強制出現・亡霊/宇宙飛行群(3秒)・ウェルカム中の待ちは不変。
 - 3分に結びついた他(変えていない): ハンター HUNTER_START_MS=3分(孫悟空と同時に解禁)・木箱の3つ目180000・古い説明コメント。

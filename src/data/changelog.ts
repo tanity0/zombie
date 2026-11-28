@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5919', items: ['賞金首は今まで通り三分で現れる。孫悟空は四分たってから現れる']},
   { version: '0.25.5918', items: ['孫悟空は戦いが始まって三分たってから現れる', '賞金首が現れるのは四分たってからになった']},
   { version: '0.25.5917', items: ['オプションのテスト開発用の欄に、熟練度を全部最大にするボタンとリセットするボタンを追加']},
   { version: '0.25.5916', items: ['ゲーム内容の変更はありません']},

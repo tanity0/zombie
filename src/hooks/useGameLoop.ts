@@ -907,7 +907,7 @@ const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。�
 // ボス・裏ボス中は延期)は従来どおり=満たすまで毎フレーム再判定で自然に遅延する。
 // ★社長指示2026-08-23「紅き月を7にずらそう」: 7:00へ戻す。
 // 経緯: 元は7:00固定(v0.25.3317)→ 賞金首の2体目が7:00に来るため6:00へ避難(v8.3・2026-08-15)
-// → **その賞金首2体目を廃止した(BOUNTY_NATURAL_SPAWN_AT_MS=[3:00]・v0.25.3840。いまは[4:00]・社長指示2026-11-28)ので避ける理由が消えた**。
+// → **その賞金首2体目を廃止した(BOUNTY_NATURAL_SPAWN_AT_MS=[3:00]・v0.25.3840)ので避ける理由が消えた**。
 // PACING_PUZZLE.md §17-11: ランの時計+60秒(素の値=7:00→8:00)。
 // 延長計画(社長指示2026-10-12「推薦どおりで進めて」): 城ボスが 5:00→7:00 になったので、ボス後の洗礼も同じだけ後ろへ(7:00→9:00)。
 const RED_NIGHT_FIRE_AT_MS = 540000; // ウェルカム終了から9:00
@@ -6106,7 +6106,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // **180秒はどの通常コマにも入らない**ため賞金首①が構造的に3:00へ出られなかった
           // (詳細は bountyTick.ts の BountyNaturalSpawnInput.calmOk のコメント)。
           // v8.3(社長裁定2026-08-15「3分と7分にして」): CD方式を廃止し固定スケジュール
-          // (BOUNTY_NATURAL_SPAWN_AT_MS=[4:00]・社長指示2026-08-23で7:00を廃止=1ランに1体・社長指示2026-11-28で3:00→4:00)。
+          // (BOUNTY_NATURAL_SPAWN_AT_MS=[3:00]・社長指示2026-08-23で7:00を廃止=1ランに1体)。
           const bReady = bountyNaturalSpawnReady({
             // 延長計画(2026-10-12): ほかのイベントと同じく「ウェルカムを倒し切ってから」数える(旧=出撃から=ウェルカム中に出ることがあった)。
             gameTime: directorTime,
@@ -10335,7 +10335,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           // research/BRAWLER_PHANTOM.md §6: 固有の幻影「拳鬼」。①強制出現(?brawlerphantomnow=1・対策室の枠=プレイヤーのそば)
           // ②本編=徘徊の枠(社長指示2026-11-10「出現は徘徊の枠で、亡霊か宇宙飛行が出てる時は出ない。この3人の中で抽選」)。
-          // 場所は枠のまま(プレイヤーから遠い POI=宇宙飛行群と同じ選び方)。時刻は出撃から3分以降(KENKI_PATROL_SPAWN_AT_MS・社長指示2026-11-28・
+          // 場所は枠のまま(プレイヤーから遠い POI=宇宙飛行群と同じ選び方)。時刻は出撃から4分以降(KENKI_PATROL_SPAWN_AT_MS・社長指示2026-11-28=賞金首の3分と重ねない・
           // 時計は賞金首と同じ directorTime=ウェルカム後から数える)。亡霊・宇宙飛行群は出撃3秒のまま。名前の帯とアテンションは姿が画面に入った時。
           {
             const kenki = uniquePhantomSpec(PHANTOM_BRAWLER_KIND);
