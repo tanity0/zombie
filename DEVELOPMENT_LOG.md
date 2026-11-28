@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5912 — 格闘の受け手(プレイヤー・幻影・孫悟空)を雑魚と同じ扱いに【2026-11-28 18:12】
+- 社長裁定「プレイヤーも幻影も格闘には雑魚と同じ扱いにしよう」。brawlerKbWeightClass を guardian-phantom 全体へ。幻影の浮きの時計を雑魚と同じ止め分遅らせる(大踏み潰し 768→1024ms)。空中投げの掴み判定も同区分(孫悟空/幻影が掴める)。
+- プレイヤー側: 新規 utils/brawlerMobEquiv(プレイヤーの格闘が雑魚に当たった時の押し・止め)。孫悟空の段・大踏み潰し・飛び蹴りの押しと浮きをそれに揃えた(damagePlayer の knockback.ms・launchPlayer の stopMs・playerLaunch で止め分だけ浮きを止める)。直す前: 大踏み潰し183px/浮き640ms・蹴り3発目209px → 66px/1024ms・155px(雑魚 72/1024・174。差は押しが止め明けの次フレームから動く1フレーム分)。ダメージ倍率は不変。
+- 不変: 止め・体勢値・HPバー・SA・レバーガード・格闘以外の押し(汎用幻影はv6裁定1のまま)・孫悟空の秘奥義/跳びかかり/構え反撃の押し。未揃え: 大踏み潰しで技中の幻影の振りを取り消す処理。
+- 検証: kenkiKnockbackWeight.store.test 13件(実刻み)・関連テスト緑・typecheck・eslint・循環import。幻影が蹴り飛ばしで飛ぶ途中/孫悟空の蹴りでプレイヤーが飛ぶ途中を撮影し目視(scratchpad/shots/phantom-kick3-flying.png・kenki-kick3-player-flying.png)。
+
 ## v0.25.5911 — 孫悟空は雑魚と同じ重さ(格闘の押し)【2026-11-28 17:39】
 - 社長指摘「孫悟空を蹴り飛ばしても飛ばない」→裁定「孫悟空は雑魚と同じ重さで」。原因: brawlerHitPatch で孫悟空が isBossType=ボス級の押し(133×0.35×0.5)に置き換わり、3発目で3.1pxしか動かなかった(雑魚は173.9px)。
 - 直し: brawlerCombo.brawlerKbWeightClass(孫悟空だけ押しの区分を雑魚に)。押しの量・時計を雑魚と同じに(止めは brHoldUntil のため押しの時計を hitStopMs で数える・knockbackShoveUntil・大踏み潰しは hitStunUntil も)。止め・固まり・浮き・体勢値・HPバーはボス級のまま。汎用の幻影・ハンターは不変。孫悟空のレバーガードの小さい押しは不変。

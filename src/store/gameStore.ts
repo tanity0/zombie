@@ -6641,7 +6641,10 @@ const brawlerHitPatch = (
   //   ★この当たりで上へ浮かせた弧(打ち上げ・空中の浮き直し・社長指示2026-11-27「上がる方も止めて」)=止めの間は宙で止まり、明けてから同じ弧で上がる。
   //   遅らせた打ち上げは、当たる高さの帯と空中か地上かの判定を遅らせる前の弧の時計で見る(brLiftRiseStopMs・utils/brawlerHitHeight・brawlerJudgedAirborne)
   //   =自分も同じだけ止まるので、止めの分だけ定石の間合いがずれない(①4段→地割り 等)。決め技の延長(案C)も止めに含まれる。
-  const freezeMs = bossLike ? bossStopMs : stopMs;
+  // ★幻影(kbAsMob=押しを雑魚の式で受けるボス級の区分)の浮きの時計は雑魚と同じ止めの長さで止める(社長裁定2026-11-28「プレイヤーも幻影も格闘には雑魚と同じ扱いに」)。
+  //   ボス級の吹き飛ばし(big)は止めを挟まない(bossStopMs=0)ため、大踏み潰しの浮きが雑魚より止めの分だけ短かった(雑魚 1024ms / 幻影 768ms)。
+  //   止めそのもの(固まり=brHoldUntil・位置の留め)は今どおり=ここで動くのは浮きの時計だけ。
+  const freezeMs = kbAsMob ? hitStopMs : bossLike ? bossStopMs : stopMs;
   if (freezeMs > 0) {
     const cur = { ...enemy, ...out } as Enemy;
     const sh = BRC.brawlerStopLiftShift(cur, now, bossLike ? undefined : enemy.hitStunUntil, now + freezeMs, out.brNoHoldUntil !== undefined && out.brNoHoldUntil !== enemy.brNoHoldUntil);
@@ -7857,7 +7860,8 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const ids = target && BR.brawlerDistTo(c.x, c.y, target) <= radius ? [target.id] : [];
     // ★空中投げ(§34-3): パニッシャーを持っていて、蹴り上げが当たる相手が雑魚・強個体なら、当たった瞬間に掴む(倒れた・ダウンは下で外す)。
     //   掴む当たりは締めとして扱う(止めは締めの長さ・§34-6 #5)。
-    const grabAim = up && ids.length > 0 && target ? BRS.brawlerAirThrowGrabs({ hasPunisher: hasSkill(p, 'punisher'), cls: BRC.brawlerEnemyClass(target), killed: false, down: false }) : false;
+    //   ★幻影(汎用の幻影・孫悟空)も雑魚と同じく掴む(社長裁定2026-11-28「プレイヤーも幻影も格闘には雑魚と同じ扱いに」・BRC.brawlerKbWeightClass)。
+    const grabAim = up && ids.length > 0 && target ? BRS.brawlerAirThrowGrabs({ hasPunisher: hasSkill(p, 'punisher'), cls: BRC.brawlerKbWeightClass(target, BRC.brawlerEnemyClass(target)), killed: false, down: false }) : false;
     const hs = grabAim ? BR.BRAWLER_KICK_HITSTOP_MS[3] : BR.BRAWLER_KICK_HITSTOP_MS[Math.max(1, Math.min(3, s.kickN))];
     // 踵落とし: 当たる前に浮いていた敵(叩き落とす)と地上の敵(その場で沈む)で、絵を出し分ける。
     const heelAir = heel ? new Set(st.enemies.filter(e => ids.includes(e.id) && BRC.brawlerAirborne(e, now)).map(e => e.id)) : null;
@@ -7886,7 +7890,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     // ★掴む(§34-3・§34-6 #5): 当たりのダメージは入った後。倒れた・拾える回数の予算が尽きてダウンした相手は掴まない(普通の蹴り上げ)。
     const grabbed = grabAim && target && (r.landed ?? hits) > 0 ? get().enemies.find(e => e.id === target.id) : undefined;
     const grab = !!grabbed && BRS.brawlerAirThrowGrabs({
-      hasPunisher: true, cls: BRC.brawlerEnemyClass(grabbed), killed: !(grabbed.health > 0) || isCorpse(grabbed), down: grabbed.brLiftDown === true,
+      hasPunisher: true, cls: BRC.brawlerKbWeightClass(grabbed, BRC.brawlerEnemyClass(grabbed)), killed: !(grabbed.health > 0) || isCorpse(grabbed), down: grabbed.brLiftDown === true,
     });
     const end = big || grab; // 掴んだ蹴り上げも締め=蹴りの連続はここで終わる(取り消しは無し=道の表は kick3 と同じ)
     setBrawler(set, {
@@ -8150,7 +8154,7 @@ const stepBrawlerThrows = (get: () => GameState, set: (fn: (s: GameState) => Par
     const blocked = !brawlerRectFree(get, nx, ny, e.width, e.height);
     const done = blocked || u >= 1;
     const ex = blocked ? e.x : nx, ey = blocked ? e.y : ny;
-    const cls = BRC.brawlerEnemyClass(e);
+    const cls = BRC.brawlerLiftWeightClass(e, BRC.brawlerEnemyClass(e)); // 拾える回数=浮きの重さの区分(幻影は雑魚の値・§36-0)
     set(state => ({ enemies: state.enemies.map(en => (en.id !== e.id ? en : done ? {
       // 着いた: 飛行の印を外す(当たるようになる)。浮きは地面へ(途中で止まった時は今の高さのまま=爆撃の浮きがそこから続く)。拾える回数は数え直し(爆撃の浮きが乗る)。
       ...en, x: ex, y: ey, brThrow: undefined, brThrown: false, brLiftDown: false, ...(en.brThrowSpin ? { brThrowSpin: { ...en.brThrowSpin, hitAt: now } } : {}), brLiftBudget: BRC.BRAWLER_JUGGLE_BUDGET[cls], brHoldUntil: undefined,
@@ -12479,7 +12483,7 @@ interface GameState {
   mouseSnap: ProjAimSnapInput | null;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
-  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string, killerHint?: { type?: EnemyType; id?: string }, opts?: { dot?: boolean; knockback?: 'none' | { speed: number; dirX: number; dirY: number }; guardDir?: { x: number; y: number }; guardFrom?: { x: number; y: number }; leverGuard?: 'damageOnly' | 'none'; projectile?: boolean }) => boolean; // opts.projectile: 敵の弾の被弾(格闘の弱い構えで受けた時の押しを短くする・社長指示2026-11-13「ボスの弾の弾かれは少しだけ」) // opts.guardDir/guardFrom/leverGuard: ★格闘のレバーガード(research/BRAWLER.md §12-1c)の「攻撃の向き」の材料。guardDir=弾が飛んできた向き(弾の速度)/ guardFrom=爆発・範囲技の中心(爆心)/ leverGuard:'damageOnly'=掴み・演出つきの技(半減だけ掛け、押し・怯みは今どおり)・'none'=床と置かれた火(踏んでいる間ダメージを受け続ける物=「攻撃してきた相手」ではない=ガードにしない)。どれも未指定=被弾の点(fromX/Y)と攻撃してきた個体の位置から引く // opts.knockback: ★組み込みの被弾の押しの差し替え(research/BRAWLER_PHANTOM.md §4-8・格闘の幻影の段ごとの押し)。'none'=押さない(揺れの向きは残す)/ 速さと向き=その押し。未指定=今どおり / opts.dot: ★持続ダメージ(炎・延焼。UNIQUE_WEAPONS.md §17-6b)=HPと記録だけ減らし、怯み・ストップ・揺れ・全体の被弾無敵・反撃の窓・被弾で動くスキルを起こさない(敵ごとの被弾無敵は通常どおり) // killerHint: ★倒した相手の記録専用(リザルトの絵・宿敵昇格)。被弾無敵・被弾反撃には効かない(弾の発射元など、id を渡すと挙動が変わる経路用) // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
+  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string, killerHint?: { type?: EnemyType; id?: string }, opts?: { dot?: boolean; knockback?: 'none' | { speed: number; dirX: number; dirY: number; ms?: number }; guardDir?: { x: number; y: number }; guardFrom?: { x: number; y: number }; leverGuard?: 'damageOnly' | 'none'; projectile?: boolean }) => boolean; // opts.projectile: 敵の弾の被弾(格闘の弱い構えで受けた時の押しを短くする・社長指示2026-11-13「ボスの弾の弾かれは少しだけ」) // opts.guardDir/guardFrom/leverGuard: ★格闘のレバーガード(research/BRAWLER.md §12-1c)の「攻撃の向き」の材料。guardDir=弾が飛んできた向き(弾の速度)/ guardFrom=爆発・範囲技の中心(爆心)/ leverGuard:'damageOnly'=掴み・演出つきの技(半減だけ掛け、押し・怯みは今どおり)・'none'=床と置かれた火(踏んでいる間ダメージを受け続ける物=「攻撃してきた相手」ではない=ガードにしない)。どれも未指定=被弾の点(fromX/Y)と攻撃してきた個体の位置から引く // opts.knockback: ★組み込みの被弾の押しの差し替え(research/BRAWLER_PHANTOM.md §4-8・格闘の幻影の段ごとの押し)。'none'=押さない(揺れの向きは残す)/ 速さと向き=その押し。ms=押しの長さ(未指定=被弾の段の長さ・幻影の格闘は雑魚と同じ長さを渡す)。未指定=今どおり / opts.dot: ★持続ダメージ(炎・延焼。UNIQUE_WEAPONS.md §17-6b)=HPと記録だけ減らし、怯み・ストップ・揺れ・全体の被弾無敵・反撃の窓・被弾で動くスキルを起こさない(敵ごとの被弾無敵は通常どおり) // killerHint: ★倒した相手の記録専用(リザルトの絵・宿敵昇格)。被弾無敵・被弾反撃には効かない(弾の発射元など、id を渡すと挙動が変わる経路用) // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
   lastDamageSource: string; // 直近に被弾した原因ラベル(死因表示用)。被弾のたびに更新。
   gainExperience: (amount: number) => void;
   levelUp: () => void;
@@ -12514,7 +12518,7 @@ interface GameState {
   /** ★抉り打ち: 撃たずに離した(blur・pointercancel・別の入力に食われた離し)。溜めを消すだけ(何も出さない)。 */
   brawlerGougeClear: () => void;
   /** ★浮かせる攻撃でプレイヤーが浮く(research/BRAWLER.md §36-0)。move=当たった技・dmg=その当たりの量(スーパーアーマーの判定)。浮いたら true。 */
-  launchPlayer: (move: BR.BrawlerMoveKey, dmg: number) => boolean;
+  launchPlayer: (move: BR.BrawlerMoveKey, dmg: number, stopMs?: number) => boolean; // stopMs=浮きの時計を止める長さ(雑魚が同じ当たりで受ける止め=雑魚と同じ時計・未指定=0)
   // 毎フレーム(useGameLoop)。格闘を持たない時は即 return。
   tickBrawler: () => void;
   // 構えで受けた(damagePlayer の入口・弾の弾き返し・カウンター成立)。x/y=受けた所。
@@ -14647,12 +14651,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     return startBrawlerAttack(get, set, s);
   },
   // フリック(PC=方向+技ボタン)=技。フリックの上下左右は技を選ぶだけ(狙いは常に近くの敵=§7-9)。
-  launchPlayer: (move, dmg) => {
+  launchPlayer: (move, dmg, stopMs = 0) => {
     const st = get();
     const p = st.player;
     const now = Date.now();
     const armored = playerSuperArmorActive(p, dmg, now, st.gameTime, PLAYER_MELEE_SWING_MS);
-    const air = playerLaunchPatch(p.brAir, move, now, armored);
+    const air = playerLaunchPatch(p.brAir, move, now, armored, stopMs);
     if (!air) return false;
     set(s => ({ player: { ...s.player, brAir: air } }));
     return true;
@@ -19639,6 +19643,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // §5.23 M22 C1: 同じ方向(dirX/dirY)を画面シェイクにも流用(被弾源から弾かれる向き=揺れの向き)。
     const kbNow = Date.now();
     let kbVx = 0, kbVy = 0, kbApply = false;
+    let kbMsOverride: number | undefined; // 押しの長さの差し替え(opts.knockback.ms・幻影の格闘=雑魚と同じ長さ)
     let dirX = 0, dirY = 0;
     if (amount > 0 && fromX !== undefined && fromY !== undefined) {
       const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
@@ -19654,7 +19659,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // research/BRAWLER_PHANTOM.md §4-8: 押しの差し替え(格闘の幻影の段ごとの押し)。未指定なら上の組み込みのまま。
       const kbo = opts?.knockback;
       if (kbo === 'none') kbApply = false;
-      else if (kbo) { kbVx = kbo.dirX * kbo.speed; kbVy = kbo.dirY * kbo.speed; }
+      else if (kbo) { kbVx = kbo.dirX * kbo.speed; kbVy = kbo.dirY * kbo.speed; if (kbo.ms !== undefined && kbo.ms > 0) kbMsOverride = kbo.ms; }
     }
     // ★レバーガード(§12-1c): 元の押し(段ごとの吹き飛び・技ごとの押し)は出さない。揺れの向きは攻撃の進む向き(=押される向き)。
     if (lgFull && leverGuard) { kbApply = false; dirX = leverGuard.dirX; dirY = leverGuard.dirY; }
@@ -19798,10 +19803,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: kbApply ? kbVx : state.player.knockbackVx,
           knockbackVy: kbApply ? kbVy : state.player.knockbackVy,
           // 押し出しはストップが明けてから始める(ストップ中に押し出しの時計だけ減って出だしが消えていた=社長指摘2026-10-08)。
-          knockbackUntil: kbApply ? knockbackUntilAfterStop(kbNow, stopUntilNext, playerHurtReactionOf(hurtTier).kbMs) : state.player.knockbackUntil,
+          knockbackUntil: kbApply ? knockbackUntilAfterStop(kbNow, stopUntilNext, kbMsOverride ?? playerHurtReactionOf(hurtTier).kbMs) : state.player.knockbackUntil,
           // ★持続時間も**必ず一緒に書く**(v0.25.2653)。技ごとの長い押し出しの直後に通常の被弾が
           // 来た時、ここを書かないと**前の技の持続時間で減衰が計算され**、初速が合わなくなる。
-          knockbackMs: kbApply ? playerHurtReactionOf(hurtTier).kbMs : state.player.knockbackMs,
+          knockbackMs: kbApply ? kbMsOverride ?? playerHurtReactionOf(hurtTier).kbMs : state.player.knockbackMs,
         }
       };
     });

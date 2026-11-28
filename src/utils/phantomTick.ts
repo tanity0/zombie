@@ -859,7 +859,7 @@ export interface PhantomMeleeLandOpts {
   /** 技キー(死因の記録)。 */
   moveKey?: string;
   /** プレイヤーの押しの差し替え(damagePlayer の opts.knockback)。未指定=組み込みの押し。 */
-  knockback?: 'none' | { speed: number; dirX: number; dirY: number };
+  knockback?: 'none' | { speed: number; dirX: number; dirY: number; ms?: number };
   /** カウンター成立の時に呼ぶ(格闘の幻影は行動を取り消す)。 */
   onCountered?: () => void;
   /**

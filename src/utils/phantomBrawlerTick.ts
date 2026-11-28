@@ -36,7 +36,7 @@ import { hitThirdParties } from './heroBlast';
 import { HUMAN_REACTION_MS } from './bossSkeleton';
 import { PVP_DAMAGE_SCALE } from './phantomScript';
 import {
-  useGameStore, huntingMeleeRadius, playerMoveStatMult, skillLevel, PLAYER_KNOCKBACK_SPEED, isCounterActive, enqueueBrawlerSfx,
+  useGameStore, huntingMeleeRadius, playerMoveStatMult, skillLevel, PLAYER_KNOCKBACK_SPEED, isCounterActive, enqueueBrawlerSfx, KNOCKBACK_SPEED, KNOCKBACK_DURATION,
   ENEMY_ATTACK_SPEED_MULT, PUMPKIN_CROUCH_MS, PUMPKIN_EXPLOSION_RADIUS, pumpkinRecoverMs, groundJumpAirMsRaw, leverGuardCount, leverGuardFx,
 } from '../store/gameStore';
 import { groundJumpStep, groundJumpStartCrouch, groundBlastCircleHits } from './groundJump';
@@ -46,6 +46,7 @@ import {
   kenkiNewCounter, kenkiShukuchiShouldFire, kenkiShukuchiReadyAt, kenkiShukuchiCandidates, kenkiShukuchiPick,
 } from './kenkiShukuchi';
 import { GLOW_R_M, GLOW_R_S } from './glowTiers';
+import { brawlerMobHitStage, brawlerMobHitStomp, brawlerMobHitKick, brawlerMobKbForPlayer, type BrawlerMobHit } from './brawlerMobEquiv';
 
 /** 格闘のレベル(技ポイントの上限の段)。記録のサブのレベル(無ければ1)。 */
 const brawlerLevelOf = (e: Enemy): number => Math.max(1, Math.min(3, e.phantomBuild?.subWeaponLevels?.brawler ?? 1));
@@ -147,7 +148,7 @@ export interface PhantomBrawlerCtx {
   baseDamage: number;
   /** 当たった後の解決(phantomTick.landPhantomMeleeOnPlayer を束ねた物)。 */
   land: (bcx: number, bcy: number, mult: number, o: {
-    moveKey: string; sourceLabel: string; knockback?: 'none' | { speed: number; dirX: number; dirY: number }; onCountered: () => void;
+    moveKey: string; sourceLabel: string; knockback?: 'none' | { speed: number; dirX: number; dirY: number; ms?: number }; onCountered: () => void;
     /** 範囲技(予告ありの着地の爆風)=プレイヤーの被弾無敵を守る。 */
     area?: boolean;
   }) => 'shield' | 'countered' | 'hit' | 'nodamage';
@@ -238,6 +239,13 @@ const strikeMultOf = (c: PhantomBrawlerCtx, s: BrawlerState, moveMult: number, s
 const kbOf = (kind: 'none' | 'small' | 'builtin' | 'big', mult: number, dir: { x: number; y: number }): 'none' | { speed: number; dirX: number; dirY: number } | undefined =>
   kind === 'none' ? 'none' : kind === 'builtin' ? undefined
     : { speed: PLAYER_KNOCKBACK_SPEED * (kind === 'small' ? BR.BRAWLER_SMALL_KB_MULT : mult), dirX: dir.x, dirY: dir.y };
+/**
+ * ★段・大踏み潰し・飛び蹴りの押し=プレイヤーの格闘が雑魚に当たった時と同じ距離・同じ長さ(社長裁定2026-11-28「プレイヤーも幻影も格闘には雑魚と同じ扱いにしよう」・
+ * utils/brawlerMobEquiv)。旧: プレイヤーの被弾の押し(460px/s・被弾の段の長さ)×段ごとの倍率で、大踏み潰しは雑魚の約2.5倍(183px/72px)飛んでいた。
+ * 秘奥義・跳びかかり・構えの反撃は今どおり kbOf。
+ */
+const kbMob = (h: BrawlerMobHit, dir: { x: number; y: number }): 'none' | { speed: number; dirX: number; dirY: number; ms: number } =>
+  brawlerMobKbForPlayer(h, dir, KNOCKBACK_SPEED, KNOCKBACK_DURATION);
 // ---- 音(社長指摘2026-11-10「音の問題なのかな?拳鬼の攻撃間隔がやたら速い気がする」の是正) ----
 // 旧: 振りが刃物の音('melee'=slash.mp3)で、被弾の音('player-damage')と中身が同じファイル=1発ごとに斬撃音が2回鳴っていた。
 // 拳鬼の振り・当たりはプレイヤーの格闘と同じ音・同じ音量の考え方(gameStore の格闘の brawlerSfx の呼び方を写す)。プレイヤーの被弾音は変えない。
@@ -272,7 +280,7 @@ const stageKb = (kb: BR.BrawlerKb): 'small' | 'builtin' => (kb === 'normal' ? 'b
  */
 const strikePlayer = (
   c: PhantomBrawlerCtx, s: BrawlerState, hit: boolean, shapeForThird: Parameters<typeof hitThirdParties>[0],
-  moveMult: number, moveKey: string, kb: 'none' | { speed: number; dirX: number; dirY: number } | undefined,
+  moveMult: number, moveKey: string, kb: 'none' | { speed: number; dirX: number; dirY: number; ms?: number } | undefined,
   originX: number, originY: number, secret = false, area = false,
 ): { touched: boolean; countered: boolean; landed?: boolean; guarded?: boolean } => {
   const mult = strikeMultOf(c, s, moveMult, secret);
@@ -293,11 +301,12 @@ const strikePlayer = (
  * ★浮かせる当たりでプレイヤーを浮かせる(research/BRAWLER.md §36-0・雑魚と同じ規則=brawlerJugglePush・store の launchPlayer)。
  * 体力を削った当たり(landed)だけ・レバーガードで受けたら浮かない(§12-1c)。スーパーアーマーの判定に渡す量=その当たりの量(対人の縮め込み)。
  */
+// stopMs=★雑魚が同じ当たりで受ける止め(浮きの時計をその分止める=雑魚と同じ時計・社長裁定2026-11-28)。
 const launchPlayerOnHit = (
-  c: PhantomBrawlerCtx, s: BrawlerState, r: { landed?: boolean; guarded?: boolean }, move: BrawlerMoveKey, moveMult: number,
+  c: PhantomBrawlerCtx, s: BrawlerState, r: { landed?: boolean; guarded?: boolean }, move: BrawlerMoveKey, moveMult: number, stopMs = 0,
 ): void => {
   if (!r.landed || r.guarded) return;
-  useGameStore.getState().launchPlayer(move, c.baseDamage * strikeMultOf(c, s, moveMult) * PVP_DAMAGE_SCALE);
+  useGameStore.getState().launchPlayer(move, c.baseDamage * strikeMultOf(c, s, moveMult) * PVP_DAMAGE_SCALE, stopMs);
 };
 /** 弾への対処(弾ごとに1回だけ決める・人格の割合)。この tick で実行するもの。 */
 type BulletAct = { kind: 'counter' } | { kind: 'dodge'; dirX: number; dirY: number } | { kind: 'retreat'; dirX: number; dirY: number; etaMs: number } | null;
@@ -515,11 +524,12 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
 
   if (s.phase === 'attack') {
     const spec = BR.brawlerStageSpec(s.stage);
+    const mob = brawlerMobHitStage(spec.stage); // 雑魚が受ける押し・止め(押し・浮きの時計を揃える)
     let r: { touched: boolean; countered: boolean; landed?: boolean; guarded?: boolean };
     if (spec.shape === 'landing') {
       r = strikePlayer(c, s, edgeDist(foot.x, foot.y, player) <= BR.BRAWLER_LANDING_RADIUS,
         { kind: 'circle', cx: foot.x, cy: foot.y, r: BR.BRAWLER_LANDING_RADIUS }, spec.mult, 'brawler-s4',
-        kbOf('small', 1, unit(pcx - foot.x, pcy - foot.y)), foot.x, foot.y);
+        kbMob(mob, unit(pcx - foot.x, pcy - foot.y)), foot.x, foot.y);
     } else if (spec.shape === 'band') {
       const x0 = s.palmFromX ?? cx, y0 = s.palmFromY ?? cy;
       const travel = Math.max(BR.BRAWLER_PALM_MIN_REACH_PX, (cx - x0) * s.dirX + (cy - y0) * s.dirY);
@@ -527,11 +537,11 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
       const side = (pcx - x0) * -s.dirY + (pcy - y0) * s.dirX >= 0 ? 1 : -1;
       r = strikePlayer(c, s, distToBandRect({ x: pcx, y: pcy }, { x: x0, y: y0 }, { x: x1, y: y1 }, BR.BRAWLER_BAND_HALF_W) <= pr,
         { kind: 'capsule', fx: x0, fy: y0, tx: x1, ty: y1, hw: BR.BRAWLER_BAND_HALF_W }, spec.mult, 'brawler-s5',
-        kbOf('big', spec.kbMult ?? BR.BRAWLER_BIG_KB_MULT, { x: -s.dirY * side, y: s.dirX * side }), cx, cy);
+        kbMob(mob, { x: -s.dirY * side, y: s.dirX * side }), cx, cy);
     } else {
       r = strikePlayer(c, s, edgeDist(cx, cy, player) <= reach, { kind: 'circle', cx, cy, r: reach }, spec.mult,
         spec.stage === 3 ? 'brawler-s3' : spec.stage === 2 ? 'brawler-s2' : 'brawler-s1',
-        kbOf(stageKb(spec.kb), 1, dir), cx, cy);
+        kbMob(mob, dir), cx, cy);
     }
     const cancelled = cancelOnCounter(r);
     if (cancelled) { c.rt.move = null; return cancelled; }
@@ -540,7 +550,7 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     if (hits > 0) kenkiHitSfx({ stage: spec.stage });
     // ★§36-0: 浮かせる当たりを食らったプレイヤーは雑魚と同じ規則で浮く(動けない・攻撃できない・スーパーアーマー中は浮かない)。
     //   地上で打ち上げるのは3・4段目(雑魚と同じ)・空中なら他の段でも拾い直される。レバーガードで受けたら浮かない(§12-1c)。
-    launchPlayerOnHit(c, s, r, brawlerStageMoveKey(spec.stage), spec.mult);
+    launchPlayerOnHit(c, s, r, brawlerStageMoveKey(spec.stage), spec.mult, mob.stopMs);
     // ★「当たった」(§19-1・拳鬼も同じ道の表): 取り消し(通常→技・技→技)は体力を削った当たり(landed)の時だけ。
     //   構えで受けられた・レバーガードで防がれた・0ダメージの当たりは、段のつながり(touched)は今どおりでも、技へは取り消せない。
     let next = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: true, hitstopMs: spec.hitstopMs, landed: r.landed ? hits : 0 });
@@ -555,11 +565,11 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     const r = strikePlayer(c, s, edgeDist(foot.x, foot.y, player) <= BR.BRAWLER_STOMP_RADIUS,
       { kind: 'circle', cx: foot.x, cy: foot.y, r: BR.BRAWLER_STOMP_RADIUS }, BR.BRAWLER_STOMP_MULT, 'brawler-stomp',
       // 土竜(§36-1): 押さずに浮かせる(浮きは launchPlayerOnHit が 'mogura' で掛ける)。
-      s.mogura ? 'none' : kbOf('big', BR.BRAWLER_BIG_KB_MULT, unit(pcx - foot.x, pcy - foot.y)), foot.x, foot.y);
+      kbMob(brawlerMobHitStomp(!!s.mogura), unit(pcx - foot.x, pcy - foot.y)), foot.x, foot.y);
     const cancelled = cancelOnCounter(r);
     if (cancelled) return cancelled;
     if (r.landed) c.rt.mind.landedStartAt = s.startAt; // 台本の「当たった」(§16-7)
-    launchPlayerOnHit(c, s, r, s.mogura ? 'mogura' : 'stomp', BR.BRAWLER_STOMP_MULT); // 地割りは地上の相手も浮かせる(雑魚と同じ・§36-0)・土竜は押さずに高く
+    launchPlayerOnHit(c, s, r, s.mogura ? 'mogura' : 'stomp', BR.BRAWLER_STOMP_MULT, brawlerMobHitStomp(!!s.mogura).stopMs); // 地割りは地上の相手も浮かせる(雑魚と同じ・§36-0)・土竜は押さずに高く
     if (r.touched) kenkiHitSfx('stomp');
     const g = useGameStore.getState();
     g.spawnRing(foot.x, foot.y, 20, BR.BRAWLER_STOMP_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
@@ -587,14 +597,14 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
   const big = s.kickN >= BR.BRAWLER_KICK_MAX;
   const hs = BR.BRAWLER_KICK_HITSTOP_MS[Math.max(1, Math.min(3, s.kickN))];
   // 踵落とし・蹴り上げ(§36-1): 押さない(踵落とし=叩きつける・蹴り上げ=打ち上げる=浮きは launchPlayerOnHit)。威力は踵落とし・蹴り上げの値。
-  const vary = big && (s.kickHeel || s.kickUp);
   const kmult = s.kickHeel && big ? BR.BRAWLER_HEEL_MULT : s.kickUp && big ? BR.BRAWLER_KICKUP_MULT : BR.brawlerKickMult(s.kickN);
+  const kickMob = brawlerMobHitKick(s.kickN, !!s.kickHeel, !!s.kickUp); // 雑魚が受ける押し・止め(踵落とし・蹴り上げは押さない=今どおり)
   const r = strikePlayer(c, s, edgeDist(cx, cy, player) <= reach, { kind: 'circle', cx, cy, r: reach }, kmult, 'brawler-kick',
-    vary ? 'none' : kbOf(big ? 'big' : 'builtin', BR.BRAWLER_BIG_KB_MULT, dir), cx, cy);
+    kbMob(kickMob, dir), cx, cy);
   const cancelled = cancelOnCounter(r);
   if (cancelled) { c.rt.move = null; return cancelled; }
   if (r.landed) c.rt.mind.landedStartAt = s.startAt; // 台本の「当たった」(§16-7)
-  launchPlayerOnHit(c, s, r, brawlerKickMoveKey(s.kickN, !!s.kickHeel, !!s.kickUp), kmult); // 空中蹴りは地上の相手も少し浮かせる(§36-0)
+  launchPlayerOnHit(c, s, r, brawlerKickMoveKey(s.kickN, !!s.kickHeel, !!s.kickUp), kmult, kickMob.stopMs); // 空中蹴りは地上の相手も少し浮かせる(§36-0)
   const hits = r.touched ? 1 : 0;
   if (hits > 0) kenkiHitSfx({ kick: s.kickN });
   const after = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: hs, landed: r.landed ? hits : 0 });
