@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.5932 — 守護霊オンライン: 本番Workerが古い版のままと判明・見張りテスト追加【2026-11-29 02:55】
+- 症状: 端末のアルバムには格闘Lv3入りの記録があるのに、本番の /ghost/pick には格闘が無い。
+- 原因: PUT は届いて upsert されている(giantbat-stage-1 は 11-29 02:16 の記録)が、本番 Worker が古い版で、新しい許可リスト外(格闘・英雄・吸血・スーパーアーマー・デュアルレンジ・GLIII・avatar/mastery/growth)を黙って削っていた。証拠: pick の枠上限が16(17枠で400・実測)・best に perf が無い。server-deploy.yml は CLOUDFLARE_API_TOKEN 未設定でテストのみ回して緑で終わっていた。
+- 影響: 今のクライアントは他人の守護霊を17枠で引くため毎回400→固定守護霊へ落ちている。
+- 変更: server/test/ghost-online.node.js に「今のクライアント形の記録が PUT で残り、anon+slot で上書きされる」試験を1本(server node テスト 18本 pass)。本体コードの変更なし。
+- 残り: 社長側でデプロイ(Secrets 設定→server-deploy 手動実行、または wrangler deploy)。別件: startingSubWeapons がサーバ許可リストに無い。
+- 自己点検: 憲法第4条・第5条に抵触なし(ゲーム内容の変更なし)。
+
 ## v0.25.5931 — 踵落としの影の振り上げを真上まで・振り下ろしを加速【2026-11-29 02:31】
 - 社長指示「踵落としの絵の動き、もっと上に向けてる姿勢から勢いよく回して」。対象=技のシルエット fx/brawler-stand2-kick(drawBrawlerStand → brawlerHeelStandAt)。頂点 −0.62→−1.55rad(ほぼ真上)・溜め −0.5→−1.45・回す量 0.4→1.35rad・振り下ろしを brawlerHeelSwing(0.2q+0.8q³=加速して着弾)・振り抜き 0.08→0.12/戻り 0.04→0.06。回転中心は腰のまま(脚の付け根から回る形)。歪みなし・判定と時間は不変。孫悟空も同じ経路。
 - 検証: typecheck・eslint・brawlerRoute/brawler テスト(影のテストを新指示に書き換え)。直す前/後の4コマを撮って目視(scratchpad/shots/heelanim_compare.png)。

@@ -342,3 +342,90 @@ test('inbox returns own publish state and global fixed guardian counts', async (
   assert.deepEqual(body.fixed[0], { guardianId: 'hatsune', slot: 'miguel', used: 5, likes: 4 });
   assert.equal(body.cursor, 4);
 });
+
+// 2026-11-28 の調査: 端末の記録(格闘・英雄・吸血・スーパーアーマー・デュアルレンジ・グレネードガンIII・熟練度・育成)が
+// 本番の枠では「マグナム+ポンプ式/救難信号・コンボマスター・パニッシャー/トラップだけ」に削られていた。
+// 原因はリポジトリのコードではなく、本番の Worker が古い許可リストのまま(自動デプロイの鍵が未設定)だったこと。
+// 今のクライアントが送る PUT の形を、そのまま今の putGhost に通し、保存される profile_json で持ち物が落ちない事を縛る
+// (ここが緑で本番が削るなら、本番が古い=デプロイが要る、と切り分けられる)。
+const putEnv = () => {
+  const writes = [];
+  return {
+    writes,
+    env: {
+      GHOST_DB: {
+        prepare(sql) {
+          const statement = {
+            bind(...params) { writes.push({ sql, params }); return statement; },
+            async run() { return { success: true }; },
+          };
+          return statement;
+        },
+      },
+    },
+  };
+};
+
+const currentClientPut = (slot) => {
+  const anonId = '22222222-2222-4222-8222-222222222222';
+  const snapshot = {
+    maxHealth: 230, speed: 87, level: 13,
+    gunKeys: ['rifle-t1', 'handgun-t2-dualrange', 'glauncher-t3', 'shotgun-t2'], activeGunKey: 'handgun-t2-dualrange',
+    meleeKey: 'anti-mutant-knife-t5',
+    skills: ['rescue-signal', 'hero', 'vampire', 'combo-master', 'super-armor', 'punisher'],
+    skillLevels: { 'rescue-signal': 3, hero: 1, vampire: 2, 'combo-master': 1, 'super-armor': 3, punisher: 2 },
+    equipment: { body: 'body-mobility-2', arms: null, accessory: 'accessory-ammo-1' },
+    equipBonus: {
+      moveSpeedMult: 1.2, killGraceMult: 1, damageMult: 1, fireRateMult: 1, reloadMult: 1,
+      critBonus: 0, ammoDropBonus: 0.1, scrapBonus: 0.1,
+    },
+    critChance: 0,
+    subWeapons: ['marksman-trap', 'brawler'], startingSubWeapons: ['marksman-trap', 'brawler'],
+    subWeaponLevels: { 'marksman-trap': 1, brawler: 3 },
+    characterClass: 'mage', avatarId: 'cat-set',
+    growthAtkMult: 1.1, growthCounterAcceptMs: 0,
+    masteryMult: { 'rifle-t1': 1.2, brawler: 1.3 }, masteryLoadoutMult: 1.2,
+  };
+  const p = {
+    v: 1, runs: 42, ...GHOST_PROFILE_DEFAULTS, srcName: '異能', srcClass: 'mage',
+    moveReactions: {}, subStyles: {}, snapshot,
+    bossStyles: {
+      [slot]: {
+        ...GHOST_PROFILE_DEFAULTS, srcName: '異能', srcClass: 'mage', subStyles: {}, snapshot,
+        perfScore: 80, knobsV: 1, at: Date.now(),
+      },
+    },
+  };
+  return new Request('https://example.test/ghost', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-Ghost-Anon': anonId },
+    body: JSON.stringify({
+      anonId, slot, epoch: GHOST_SHARE_EPOCH, knobsV: 1, buildVersion: '0.25.5931', perfScore: 80, profile: p,
+    }),
+  });
+};
+
+test('PUT keeps the current client build (brawler, new skills/guns, mastery, growth) and upserts by anon+slot', async () => {
+  for (const slot of ['giantbat-stage-1', 'bounty-ranged', 'bounty-melee']) {
+    const { writes, env } = putEnv();
+    const response = await handleGhostRequest(currentClientPut(slot), env);
+    assert.equal(response.status, 200, slot);
+    const insert = writes.find(w => w.sql.includes('INSERT INTO ghost_records'));
+    assert.ok(insert, slot);
+    // 同じ匿名ID×枠×版の記録は新しい記録で置き換える(runs や評点で比べて残さない)。
+    assert.match(insert.sql, /ON CONFLICT\(anon_id, slot, epoch\) DO UPDATE SET/);
+    assert.match(insert.sql, /profile_json=excluded\.profile_json/);
+    const stored = JSON.parse(insert.params[5]);
+    const snap = stored.bossStyles[slot].snapshot;
+    assert.deepEqual(snap.gunKeys, ['rifle-t1', 'handgun-t2-dualrange', 'glauncher-t3', 'shotgun-t2']);
+    assert.equal(snap.activeGunKey, 'handgun-t2-dualrange');
+    assert.deepEqual(snap.skills, ['rescue-signal', 'hero', 'vampire', 'combo-master', 'super-armor', 'punisher']);
+    assert.deepEqual(snap.subWeapons, ['marksman-trap', 'brawler']);
+    assert.equal(snap.subWeaponLevels.brawler, 3);
+    assert.equal(snap.avatarId, 'cat-set');
+    assert.equal(snap.growthAtkMult, 1.1);
+    assert.deepEqual(snap.masteryMult, { 'rifle-t1': 1.2, brawler: 1.3 });
+    assert.equal(snap.masteryLoadoutMult, 1.2);
+    assert.equal(insert.params[6], 80); // perf
+  }
+});
