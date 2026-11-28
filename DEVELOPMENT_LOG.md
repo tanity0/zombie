@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5906 — 跳び去り中に体力バーが地面に残る件【2026-11-28 15:32】
+- 正体=drawHealthBar(view.overlay)。跳び去りの沈み込み(KENKI_LEAVE_CROUCH_MS)の間に cos の ease で0まで消し切る(体力バー・照準)。接地影は本体と同じ濃さ(kenkiLeavePose.alpha)。描画のみ(pixiScene)。
+- 検証: typecheck・eslint。跳び去りの各時刻を止めて撮影し目視(scratchpad/shots/lb2-*.png・560msで地面に何も残らない)。
+
 ## v0.25.5905 — 開発用「すべて解放」スイッチ【2026-11-28 15:28】
 - 社長承認(オン・オフの開発用スイッチ・記録は書き換えない)。新規 utils/unlockAll.ts(isUnlockAllOn・`dev.unlockAll.v1`)+テスト15件。各判定を「本来 || isUnlockAllOn()」に。記録の書き込み側は本来の値だけを読む(isStageUnlockedRecorded / canShowExRecorded / isKogarasuUnlockedRecorded)。
 - 対象: ステージ・EX・洋館の再訪・地図の未解放予告・資料室の記録(ED後8件/グレンの薬含む)・操作記録(資料室のみ)・格闘の技・アバター・対策室の枠・特殊変異体の棚・一時停止のボス一覧・銃・小烏丸・サブウェポン(Lv3扱い)・スキル(最大Lv扱い)。対象外: 孫悟空のレベル・地図の顔・1周目構成・強化/ゴールド/ガチャ・年表と実績。

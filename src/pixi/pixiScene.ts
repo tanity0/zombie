@@ -198,7 +198,7 @@ import { stepBiteFxClock, zombieBiteFxInterrupted, type BiteFxClock } from '../u
 import { enemyAttackFrameFor, attackFrameAfterLive, zombieStanceFrame, ZOMBIE_STANCE_HOLD_FRAME, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets, warmEnemyArt, prewarmEnemySheetsGpu, loadSpriteGroups, KENKI_SPRITES } from './pixiTextures';
 import { KENKI_SHUKUCHI_FADE_IN_MS, KENKI_SHUKUCHI_FADE_OUT_MS } from '../utils/kenkiShukuchi';
-import { kenkiLeavePose, phantomLeaveTex } from '../utils/kenkiLeave'; // 本編の孫悟空の「2分で跳んで帰る」の絵の形
+import { kenkiLeavePose, phantomLeaveTex, KENKI_LEAVE_CROUCH_MS } from '../utils/kenkiLeave'; // 本編の孫悟空の「2分で跳んで帰る」の絵の形
 import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
 /** 城ボスの絵を出現の最短時刻のこれだけ前から先読み+GPU転送する(メモリを使い始める時刻と、間に合う余裕の釣り合い)。 */
 const CASTLE_BOSS_GPU_PREWARM_MS = 45_000;
@@ -49766,6 +49766,15 @@ export class PixiScene {
       view.hitFlash.visible = false;
       const lb = this.namedFoeLabels.get(e.id);
       if (lb) lb.alpha = Math.min(lb.alpha, lp.alpha);
+      // 頭上の体力バー(overlay)と照準(reticle)は、跳び去りの沈み込み(crouch)の間に消し切る
+      // (もう戦わない=体力表示は要らない。体だけ上へ跳ぶので、残すと地面の高さにバーだけ浮いて見える)。
+      // 慣性: 余弦でゆっくり薄れ始め→中ほどで速く→消え際で緩む。接地影は本体と同じ濃さ(lp.alpha)で追う。
+      // 3つとも毎フレーム artFade/shadowFade で引き直される値=掛けても溜まらない。描画のみ・判定は触らない。
+      const barK = Math.max(0, Math.min(1, (gameTime - e.kenkiLeaveAt) / KENKI_LEAVE_CROUCH_MS));
+      const barA = 0.5 + 0.5 * Math.cos(Math.PI * barK);
+      view.overlay.alpha *= barA;
+      view.reticle.alpha *= barA;
+      view.shadowFade = (view.shadowFade ?? 1) * lp.alpha;
     }
 
     // ---- 拳鬼の縮地(research/BRAWLER_PHANTOM.md §14): 元の所の残像が消える+行き先で現れる(慣性=ease) ----
