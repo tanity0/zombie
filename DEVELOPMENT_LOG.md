@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5922 — 強化のカウンター受付を最大+0.15秒に【2026-11-28 23:44】
+- 社長指示「カウンター受付は最大で0.15秒に」。data/playerUpgrades の counter を perLevel 0.02→0.03(5段で+150ms・旧+100ms)。playerUpgrades.test を追従。
+- 検証: typecheck・eslint・playerUpgrades.test・src/data 緑。
+
 ## v0.25.5921 — 強化の攻撃力を最大+50%に【2026-11-28 23:42】
 - 社長指示「強化の方、攻撃力を最大で50%に」。data/playerUpgrades の attack を perLevel 0.04→0.10(+10%/段・5段で+50%・旧+20%)。playerUpgrades.test を追従。
 - 検証: typecheck・eslint・playerUpgrades.test・src/data 緑。

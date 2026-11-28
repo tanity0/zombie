@@ -183,12 +183,12 @@ describe('価格表', () => {
 });
 
 describe('強化「カウンター受付」(社長指示2026-10-28「強化にいれる。0.02で」)', () => {
-  it('0段は延長なし、1段+20ms、5段で+100ms(受付300→400ms)', async () => {
+  it('0段は延長なし、1段+30ms、5段で+150ms(社長指示2026-11-28・旧+100ms)', async () => {
     const { counterAcceptMsOf, COUNTER_ACCEPT_MS } = await import('../store/gameStore');
     expect(growthCounterAcceptMs(0)).toBe(0);
-    expect(growthCounterAcceptMs(1)).toBe(20);
-    expect(growthCounterAcceptMs(5)).toBe(100);
-    expect(counterAcceptMsOf({ growthCounterAcceptMs: growthCounterAcceptMs(5) })).toBe(COUNTER_ACCEPT_MS + 100);
+    expect(growthCounterAcceptMs(1)).toBe(30);
+    expect(growthCounterAcceptMs(5)).toBe(150);
+    expect(counterAcceptMsOf({ growthCounterAcceptMs: growthCounterAcceptMs(5) })).toBe(COUNTER_ACCEPT_MS + 150);
     expect(counterAcceptMsOf({})).toBe(COUNTER_ACCEPT_MS); // 欠損(旧データの記録)=延長なし
     expect(counterAcceptMsOf(null)).toBe(COUNTER_ACCEPT_MS);
   });

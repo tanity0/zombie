@@ -48,7 +48,7 @@ export const PLAYER_UPGRADES: readonly PlayerUpgradeDef[] = [
   // 拾ったスクラップの量に掛かる(パッシブ「スクラップ獲得数アップ」の scrapMult と同じ倍率へ足す)。
   { id: 'scrap',  label: 'スクラップ効率', perLevel: 0.20, perLevelLabel: '+20%', desc: '拾うスクラップが増える。' },
   // カウンター受付(社長指示2026-10-28「強化にいれる。0.02で」)=1段+0.02秒(受付300ms→5段で400ms)。単位は秒。
-  { id: 'counter', label: 'カウンター受付', perLevel: 0.02, perLevelLabel: '+0.02秒', desc: '少し早く振っても弾ける。' },
+  { id: 'counter', label: 'カウンター受付', perLevel: 0.03, perLevelLabel: '+0.03秒', desc: '少し早く振っても弾ける。' }, // 社長指示2026-11-28「カウンター受付は最大で0.15秒に」=5段×0.03(旧 0.02×5=0.10)
   { id: 'gold',   label: 'ゴールド獲得', perLevel: 0.10, perLevelLabel: '+10%', desc: '同じ戦果で持ち帰るGが増える。' },
 ];
 
