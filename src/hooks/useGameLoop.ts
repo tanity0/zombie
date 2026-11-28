@@ -277,6 +277,7 @@ import { uniquePhantomSpec } from '../data/uniquePhantoms'; // research/BRAWLER_
 import {
   rollRunPatrolSlot, kenkiPatrolStep, phantomBrawlerSceneBlocked, phantomBrawlerSpawnOffset, PHANTOM_BRAWLER_ENCOUNTER_KEY, PHANTOM_BRAWLER_KIND,
 } from '../utils/phantomBrawlerSpawn'; // research/BRAWLER_PHANTOM.md §6: 拳鬼の本編の出現(徘徊の枠)
+import { phantomSlotFree } from '../utils/phantomExclusive'; // 汎用の幻影と孫悟空を同時に出さない(相手が居る間は待つ)
 import { kenkiLeaveStep, kenkiLeaveAfterMs, KENKI_LEAVE_CROUCH_MS } from '../utils/kenkiLeave'; // 本編の孫悟空の「2分で跳んで帰る」
 import { createFleeSources, fleeSourcesActive, fleeSourcesExceptKenki, kenkiFleeActive, type FleeSources } from '../utils/fleeSources'; // 「他の敵が逃げる」旗の合成(裏ボス/アイドル/孫悟空)
 import { patrolSpawnHeldByWelcome } from '../utils/patrolWelcomeHold'; // 徘徊の枠はウェルカム中は出ない(社長指示2026-11-12)
@@ -10284,7 +10285,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             scE.vx = 0; scE.vy = 0;
             addEnemy(scE);
           }
-          if ((FORCE_PHANTOM || practiceForces('phantomnow')) && !phantomForceRef.current) {
+          // 汎用の幻影と孫悟空は同時に場に出さない(社長指示2026-11-28「孫悟空は幻影枠なので、お互いが出る事が無いようにして」・
+          // utils/phantomExclusive)。相手が居る間は出すのを待つ(ref は実際に出した時だけ立てる=居なくなったら出る)。
+          if ((FORCE_PHANTOM || practiceForces('phantomnow')) && !phantomForceRef.current
+            && phantomSlotFree(useGameStore.getState().enemies, 'generic')) {
             phantomForceRef.current = true;
             spawnGuardianPhantom(pickPhantomIdentity(getSelectedStageId()));
           }
@@ -10299,7 +10303,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               markBossesEncountered(new Set([PHANTOM_BRAWLER_ENCOUNTER_KEY])); // 練習ラン・ボス戦テストでは記録しない(関数側)
               markBossAppeared(PHANTOM_BRAWLER_ENCOUNTER_KEY);
             };
-            if ((FORCE_PHANTOM_BRAWLER || practiceForces('brawlerphantomnow')) && !phantomBrawlerForceRef.current) {
+            if ((FORCE_PHANTOM_BRAWLER || practiceForces('brawlerphantomnow')) && !phantomBrawlerForceRef.current
+              && phantomSlotFree(useGameStore.getState().enemies, 'brawler')) {
               phantomBrawlerForceRef.current = true;
               spawnGuardianPhantom(kenkiIdentity, PHANTOM_BRAWLER_KIND);
               markKenkiSeen();
@@ -10307,7 +10312,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const patrolKenkiStage = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
               && (HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '') && !firstLoop);
             if (patrolKenkiStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
-            if (patrolKenkiStage && runMutantBossRef.current === 'brawler' && !patrolHeldByWelcome && !phantomBrawlerPatrolRef.current && newGameTime >= 3000) {
+            if (patrolKenkiStage && runMutantBossRef.current === 'brawler' && !patrolHeldByWelcome && !phantomBrawlerPatrolRef.current && newGameTime >= 3000
+              && phantomSlotFree(useGameStore.getState().enemies, 'brawler')) { // 汎用の幻影が居る間は待つ(取り消さない)
               phantomBrawlerPatrolRef.current = true;
               const kpcx = player.x + player.width / 2, kpcy = player.y + player.height / 2;
               const at = astroSpawnPick(astroRunPois(), { x: kpcx, y: kpcy }, worldDist(3000), Math.random);
