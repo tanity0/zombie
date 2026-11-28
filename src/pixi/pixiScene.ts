@@ -14779,6 +14779,7 @@ export class PixiScene {
       prewarmEnemySheetsGpu(this.enemyTexKey('giantbat', ''), tex => { try { r.texture.initSource(tex.source); } catch { /* 転送に失敗しても初めて描く時に従来どおり転送される */ } });
     }
     this.updateWhipFly(s.whipSwing, s.enemies, s.gameTime); // ★鞭で投げた敵の飛び方の絵(drawEnemy が読む)
+    this.eachGhostWhipRig(s.whipSwingGhosts, s.summons, (sw) => this.updateWhipFly(sw, s.enemies, s.gameTime)); // 守護霊が投げた敵も同じ絵
     this.updateWhipOverhead(s.whipSwing, s.player, s.enemies, s.gameTime); // ★ボスの叩きつけの高さと回り(drawEnemy が読む)
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     // §6.38 B2b: 舞妓の花びらpool更新(全体で1回・enemyループの外)。
@@ -15020,6 +15021,11 @@ export class PixiScene {
     if (!this.whipTipStreakDrawn) for (const sp of this.whipTipStreaks) sp.visible = false; // ★ブラー: 鞭の先端の筋は描いたフレームだけ
     this.syncWhipTether(s.whipSwing, s.player, s.enemies, s.gameTime); // ★鞭の絡め取り: 手から掴んだ敵へ線を張る(振り回しの間だけ)
     this.syncWhipThrowStreak(s.enemies, s.gameTime); // ★鞭で投げた敵の後ろの風の筋(飛ぶ敵の絵に付く・着弾で先から消える)
+    // 守護霊の振り回し(§8-5): 同じ線・軌跡・筋を守護霊の手元から(守護霊ごとの組)。終わって消え切った組は片付ける。
+    this.eachGhostWhipRig(s.whipSwingGhosts, s.summons, (sw, anchor) => {
+      this.syncWhipTether(sw, anchor, s.enemies, s.gameTime);
+      this.syncWhipThrowStreak(s.enemies, s.gameTime);
+    }, true);
     if (!this.projFrame) this.syncSatsujin(s.satsujin, Date.now()); // ★刀の殺陣の赤い画面(殺陣の間だけ)。?proj=1 は後掛けの後(段階3・C11)
     this.syncGravityWells(s.gravityWells, s.gameTime); // §28(B7) グラビティショットの渦(v0.25.3276)
     this.syncGroundReflections(s.pickups, s.projectiles, s.effects, s.camera, now);
@@ -30747,7 +30753,7 @@ export class PixiScene {
     const pf = this.projFrame; // ?proj=1 の段階4: 投影する図形だけ部品で描く(else は今の行のまま)
     const fb = enemyFootBox(e);
     // ★鞭で投げた敵(research/WHIP_FOLLOWUP.md §8-3): 絵だけ判定より少し後ろを減速して進み、最大距離で滑って止まる(足元ごと=影も一緒)。高さは下の liftHop。
-    const whipFlyV = this.whipFly?.enemyId === e.id ? this.whipFlyView(e.id, gameTime, fb.boxH) : null;
+    const whipFlyV = this.whipFlyView(e.id, gameTime, fb.boxH); // プレイヤー・守護霊のどちらが投げた敵も
     if (whipFlyV) { fb.footX += whipFlyV.dx; fb.footY += whipFlyV.dy; }
     // ★ボスの叩きつけ(社長指示2026-11-26): 頭上を越える弧の高さ(絵だけ・判定の位置は地面のまま=影も地面)と体の回り。
     const ohV = this.whipOh?.enemyId === e.id ? this.whipOverheadView(gameTime) : null;
@@ -46829,7 +46835,48 @@ export class PixiScene {
     }
     return this.whipTetherRopes;
   }
-  private syncWhipTether(sw: WhipSwingState | null, player: Player, enemies: readonly Enemy[], gameTime: number) {
+  /**
+   * ★守護霊の振り回しの絵の組(research/WHIP_FOLLOWUP.md §8-5)。プレイヤーの組(whipTetherRopes〜whipFly)と同じ形を守護霊ごとに持ち、
+   * 描く間だけ入れ替えて同じ関数(syncWhipTether / syncWhipThrowStreak / updateWhipFly)を通す=絵の作り方は1本。anchor=最後に見た守護霊の体。
+   * 負荷: 守護霊が掴んでいる間だけ、プレイヤーと同じ MeshRope 5本ぶん(点の書き換えだけ)=1/10。
+   */
+  private whipGhostRigs = new Map<string, {
+    ropes: PixiScene['whipTetherRopes']; last: PixiScene['whipTetherLast']; release: PixiScene['whipTetherRelease'];
+    trailLast: PixiScene['whipTrailLast']; trailRelease: PixiScene['whipTrailRelease']; fly: PixiScene['whipFly'];
+    anchor: { x: number; y: number; width: number; height: number };
+  }>();
+  private swapWhipRig(rig: NonNullable<ReturnType<PixiScene['whipGhostRigs']['get']>>): void {
+    const ropes = this.whipTetherRopes; this.whipTetherRopes = rig.ropes; rig.ropes = ropes;
+    const last = this.whipTetherLast; this.whipTetherLast = rig.last; rig.last = last;
+    const rel = this.whipTetherRelease; this.whipTetherRelease = rig.release; rig.release = rel;
+    const tl = this.whipTrailLast; this.whipTrailLast = rig.trailLast; rig.trailLast = tl;
+    const tr = this.whipTrailRelease; this.whipTrailRelease = rig.trailRelease; rig.trailRelease = tr;
+    const fly = this.whipFly; this.whipFly = rig.fly; rig.fly = fly;
+  }
+  /** 守護霊ごとの組を入れ替えて fn を通す。cleanup=描き終えた後、掴んでも飛ばしてもいない・消え切った組を片付ける。 */
+  private eachGhostWhipRig(
+    swings: Readonly<Record<string, WhipSwingState>>, summons: readonly { id: string; kind: string; x: number; y: number; width: number; height: number }[],
+    fn: (sw: WhipSwingState | null, anchor: { x: number; y: number; width: number; height: number }) => void, cleanup = false,
+  ): void {
+    if (this.whipGhostRigs.size === 0 && Object.keys(swings).length === 0) return; // 守護霊が掴んでいない(ほぼ常に)=何もしない
+    for (const id in swings) {
+      if (this.whipGhostRigs.has(id)) continue;
+      this.whipGhostRigs.set(id, { ropes: null, last: null, release: null, trailLast: null, trailRelease: null, fly: null, anchor: { x: 0, y: 0, width: 0, height: 0 } });
+    }
+    for (const [id, rig] of this.whipGhostRigs) {
+      const g = summons.find(sm => sm.id === id && sm.kind === 'ghost-ally');
+      if (g) rig.anchor = { x: g.x, y: g.y, width: g.width, height: g.height };
+      const sw = swings[id] ?? null;
+      this.swapWhipRig(rig);
+      try { fn(sw, rig.anchor); } finally { this.swapWhipRig(rig); }
+      if (cleanup && !sw && !rig.fly && !rig.last && !rig.release && !rig.trailLast && !rig.trailRelease) {
+        const rp = rig.ropes;
+        if (rp) { rp.glow.destroy(); rp.whip.destroy(); rp.core.destroy(); rp.trail?.destroy(); rp.streak?.destroy(); }
+        this.whipGhostRigs.delete(id);
+      }
+    }
+  }
+  private syncWhipTether(sw: WhipSwingState | null, player: Pick<Player, 'x' | 'y' | 'width' | 'height'>, enemies: readonly Enemy[], gameTime: number) {
     const tex = getTexture('whip');
     const e = sw && (sw.phase === 'swing' || sw.phase === 'overhead') ? enemies.find(en => en.id === sw.enemyId) : undefined;
     if (!tex) { this.hideWhipTether(); this.whipTetherLast = null; this.whipTetherRelease = null; return; }
@@ -47124,8 +47171,12 @@ export class PixiScene {
   }
   /** drawEnemy が読む: 投げた敵の絵のずれ(world px・足元ごと)と高さ(px)。対象外なら null。 */
   private whipFlyView(id: string, gameTime: number, bodyH: number): { dx: number; dy: number; lift: number } | null {
-    const f = this.whipFly;
-    if (!f || f.enemyId !== id) return null;
+    let f = this.whipFly;
+    if (!f || f.enemyId !== id) {
+      f = null;
+      for (const rig of this.whipGhostRigs.values()) if (rig.fly?.enemyId === id) { f = rig.fly; break; }
+    }
+    if (!f) return null;
     return whipFlyViewOffset({ ...f, tMs: gameTime - f.throwAt }, bodyH);
   }
   private drawWhipSprite(e: Extract<VisualEffect, { kind: 'whip' }>, now: number) {
@@ -52505,6 +52556,7 @@ export class PixiScene {
     for (const e of enemies) {
       // 候補=投げ(格闘の投げ・鞭の投げ)と格闘の大きな吹き飛びだけ(普通のノックバックには付けない)。
       const candidate = !!e.brThrow || (ws?.enemyId === e.id && ws.phase === 'thrown')
+        || (e.whipHeld === true && ws?.enemyId !== e.id && Object.values(st.whipSwingGhosts).some(g => g.enemyId === e.id && g.phase === 'thrown')) // 守護霊が投げた敵
         || (e.brawlerBlownAt !== undefined && now - e.brawlerBlownAt < 900);
       let rec = this.enemyBlurs.get(e.id);
       if (!rec && !candidate) continue;

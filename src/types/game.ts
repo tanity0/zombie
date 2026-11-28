@@ -991,7 +991,7 @@ export interface Enemy {
   brThrown?: boolean;
   /**
    * ★鞭で絡め取られている(振り回し中・投げられて飛んでいる最中・research/WHIP_FOLLOWUP.md §8)。立っている間は位置を振り回しの式だけで決め(敵の更新は動かさない)、
-   * 攻撃・接触はせず、ほかの当たり・狙いを受けない(isUntouchable)。着弾・放した時に消す。状態の本体は store の GameState.whipSwing。
+   * 攻撃・接触はせず、ほかの当たり・狙いを受けない(isUntouchable)。着弾・放した時に消す。状態の本体は store の GameState.whipSwing(プレイヤー)/ whipSwingGhosts(守護霊ごと)。
    */
   whipHeld?: boolean;
   /** ★投げられて飛ぶ間の回り(絵だけ・監査 B15・utils/brawler の brawlerThrowSpin)。at=投げた時刻・ms=飛ぶ長さ・dir=回る向き(±1)・hitAt=ぶつかった時刻・endAt=爆撃の時刻(どれも Date.now)。 */

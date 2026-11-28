@@ -9,6 +9,7 @@ import {
   WHIP_THROW_DIST_MULT,
   whipSwingRampMult, whipSwingRampFx, WHIP_SWING_RAMP_STEP, WHIP_SWING_RAMP_MAX, WHIP_SWING_RAMP_MAX_HITS,
   whipBodyPropHits, whipBlastPropHits,
+  whipGrabberCanGrab, whipGrabberClassOk, putWhipOwnerSwing, whipHeldEnemyIds, type WhipSwingState,
 } from './whipSwing';
 
 describe('掴む相手の選び方(§8-1・§8-7)', () => {
@@ -305,5 +306,55 @@ describe('大車輪で置き物を壊す(社長指示2026-11-27)', () => {
       { id: 'out', type: 'torch', footX: 67, footY: 0 }, { id: 'egg', type: 'mine', footX: 0, footY: 0 },
     ];
     expect(whipBlastPropHits(props, 0, 0, 66)).toEqual(['in', 'edge']);
+  });
+});
+
+describe('掴む人(§8-5・§8-7): 守護霊はプレイヤーと同じ規則・幻影は掴まない・1人1体・同じ敵を二重に掴まない', () => {
+  it('幻影(敵側のミラー)は掴まない(通常の鞭の振りのまま)。プレイヤー・守護霊は手が空いていれば掴む', () => {
+    expect(whipGrabberCanGrab('phantom', false)).toBe(false);
+    expect(whipGrabberCanGrab('player', false)).toBe(true);
+    expect(whipGrabberCanGrab('guardian', false)).toBe(true);
+  });
+  it('掴む人ごとに1体まで(持っている間は次を掴まない)', () => {
+    expect(whipGrabberCanGrab('player', true)).toBe(false);
+    expect(whipGrabberCanGrab('guardian', true)).toBe(false);
+  });
+  it('守護霊は雑魚・強個体だけ掴む(ボスの叩きつけは持たない)。プレイヤーは区分で外さない(気絶したボスは叩きつけ)。幻影は何も掴まない', () => {
+    expect(whipGrabberClassOk('guardian', 'mob')).toBe(true);
+    expect(whipGrabberClassOk('guardian', 'strong')).toBe(true);
+    expect(whipGrabberClassOk('guardian', 'boss')).toBe(false);
+    expect(whipGrabberClassOk('player', 'boss')).toBe(true);
+    expect(whipGrabberClassOk('phantom', 'mob')).toBe(false);
+  });
+  it('だれかが掴んでいる敵は、一番近くても飛ばす(同じ敵を二人で掴まない)', () => {
+    const cands = [
+      { id: 'held', dist: 10, grabbable: true, alive: true },
+      { id: 'free', dist: 50, grabbable: true, alive: true },
+    ];
+    expect(pickWhipGrabTarget(cands, new Set(['held']))).toBe('free');
+    expect(pickWhipGrabTarget(cands, new Set(['held', 'free']))).toBeNull();
+    expect(pickWhipGrabTarget(cands)).toBe('held');
+  });
+  it('掴まれている敵の集合=プレイヤーの1体+守護霊ごとの1体', () => {
+    const ids = whipHeldEnemyIds({ enemyId: 'p' }, { g1: { enemyId: 'a' }, g2: { enemyId: 'b' } });
+    expect([...ids].sort()).toEqual(['a', 'b', 'p']);
+    expect([...whipHeldEnemyIds(null, {})]).toEqual([]);
+  });
+  it('守護霊ごとの台帳の書き換え(足す・消す・変わらなければ同じ参照)', () => {
+    const sw = { enemyId: 'z' } as WhipSwingState;
+    const empty: Record<string, WhipSwingState> = {};
+    const m1 = putWhipOwnerSwing(empty, 'g', sw);
+    expect(m1).toEqual({ g: sw });
+    expect(empty).toEqual({}); // 元は書き換えない
+    expect(putWhipOwnerSwing(m1, 'g', sw)).toBe(m1);
+    expect(putWhipOwnerSwing(m1, 'g', null)).toEqual({});
+    expect(putWhipOwnerSwing(empty, 'g', null)).toBe(empty);
+  });
+  it('自動で投げる向きは掴んでいる人(守護霊)に一番近い敵の方(プレイヤーと同じ関数・中心だけ守護霊)', () => {
+    // 守護霊 (0,0)・掴んだ敵 (50,0)。守護霊に近いのは a(0,100)、遠いのは b(300,0)。
+    const d = pickWhipAutoThrowDir(50, 0, 0, 0, [{ id: 'a', x: 0, y: 100 }, { id: 'b', x: 300, y: 0 }, { id: 'held', x: 50, y: 0 }], 'held', () => true, null, { x: 0, y: 1 });
+    expect(d.x).toBeCloseTo(-50 / Math.hypot(50, 100), 6);
+    expect(d.y).toBeCloseTo(100 / Math.hypot(50, 100), 6);
+    expect(whipSwingAutoThrowDue({ startAt: 0, maxMs: WHIP_SWING_MAX_MS, phase: 'swing' }, WHIP_SWING_MAX_MS)).toBe(true);
   });
 });

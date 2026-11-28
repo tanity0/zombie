@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5930', items: ['鞭を持つ守護霊も、気絶した敵を絡め取って振り回し、近くの敵へ投げつけて爆発させる']},
   { version: '0.25.5929', items: ['孫悟空もコンボがつながるほど一撃が重くなる。間が空けば数え直す']},
   { version: '0.25.5928', items: ['ボスを倒した瞬間の寄りの間も、飛び散った破片や火花が外へ飛び、落ちながら消えていく']},
   { version: '0.25.5927', items: ['格闘で長くつなげても威力が落ちなくなった。つなぐほど最後まで重い']},

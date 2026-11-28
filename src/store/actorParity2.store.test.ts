@@ -2,7 +2,7 @@
 //  ①幻影のカウンターマスターの吹き飛ばし(プレイヤー・守護霊・英雄を、プレイヤーの吹き飛ばしと同じ強さ・同じ関数で・同じフレームで1回)
 //  ②(拳鬼の気功の二連発は utils/phantomBrawlerTick.test.ts)
 //  ③守護霊の燕返し・一閃の浮かせ・切り傷・殺陣
-//  ④守護霊の鞭(普通の振りだけ=絡め取り→振り回し→投げはプレイヤーだけ・research/WHIP_FOLLOWUP.md §8)とハンティング
+//  ④守護霊の鞭(気絶していない敵には普通の振り。絡め取り→振り回し→投げは whipGuardian.store.test.ts)とハンティング
 //  ⑤幻影がプレイヤーの届く距離を読む式(meleeReachOf)
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
@@ -259,7 +259,7 @@ describe('③守護霊の燕返し・一閃の浮かせ・切り傷・殺陣(プ
 });
 
 // ---------------------------------------------------------------------------------------------
-describe('④守護霊の鞭: 普通の振りだけ(絡め取り→振り回し→投げはプレイヤーだけ=research/WHIP_FOLLOWUP.md §8・社長指示2026-11-25)', () => {
+describe('④守護霊の鞭: 気絶していない敵には普通の振り(絡め取り→振り回し→投げは気絶の雑魚・強個体だけ=whipGuardian.store.test.ts)', () => {
   const setupWhip = (subs: SubWeaponKey[] = ['whip'], subLv: Partial<Record<SubWeaponKey, number>> = {}, skills: SkillKey[] = [], skillLevels: Partial<Record<SkillKey, number>> = {}) => {
     useGameStore.setState({ summons: [ghostAt(1000, 1000, snap(subs, skills, skillLevels, subLv))] });
     const z = zombieAt('z-w', 1000 + 16 + 90 - 16, 1000);

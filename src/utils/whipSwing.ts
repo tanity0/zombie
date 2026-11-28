@@ -46,7 +46,7 @@ export const WHIP_DROP_MS = 140;
 /** これより遅ければ滑らせずにその場で放す(px/s)。 */
 export const WHIP_DROP_MIN_SPEED = 60;
 
-/** 振り回しの状態(プレイヤーに1つ・store の GameState.whipSwing)。時計は gameTime。 */
+/** 振り回しの状態(掴む人に1つ・プレイヤー=store の GameState.whipSwing・守護霊=GameState.whipSwingGhosts[守護霊の id])。時計は gameTime。 */
 export interface WhipSwingState {
   enemyId: string;
   /**
@@ -122,14 +122,53 @@ export interface WhipSwingState {
 /** 掴む相手の候補(当たった敵1体ぶん)。 */
 export interface WhipGrabCandidate { id: string; dist: number; grabbable: boolean; alive: boolean }
 
-/** 当たった中でプレイヤーに一番近い、生き残った掴める1体(居なければ null=掴まない)。 */
-export const pickWhipGrabTarget = (cands: readonly WhipGrabCandidate[]): string | null => {
+/**
+ * 当たった中で掴む人(プレイヤー・守護霊)に一番近い、生き残った掴める1体(居なければ null=掴まない)。
+ * held=今だれかが掴んでいる敵(プレイヤーと守護霊の全員ぶん)。同じ敵を二人で掴まない。
+ */
+export const pickWhipGrabTarget = (cands: readonly WhipGrabCandidate[], held?: ReadonlySet<string>): string | null => {
   let best: WhipGrabCandidate | null = null;
   for (const c of cands) {
-    if (!c.alive || !c.grabbable) continue;
+    if (!c.alive || !c.grabbable || held?.has(c.id)) continue;
     if (!best || c.dist < best.dist) best = c;
   }
   return best ? best.id : null;
+};
+
+// ---- 掴む人(research/WHIP_FOLLOWUP.md §8-5・§8-7: 守護霊はプレイヤーと同じ規則・幻影は掴まない) ----
+/** 鞭を振る人の種類。player=プレイヤー本人・guardian=守護霊(味方)・phantom=幻影(敵側のミラー)。 */
+export type WhipGrabber = 'player' | 'guardian' | 'phantom';
+/**
+ * この振りで新しく掴めるか。幻影は掴まない(通常の鞭の振りのまま)。掴む人ごとに1体まで=今持っている(busy)間は掴まない。
+ */
+export const whipGrabberCanGrab = (who: WhipGrabber, busy: boolean): boolean => who !== 'phantom' && !busy;
+/**
+ * 掴める区分。プレイヤー=雑魚・強個体・気絶したボス(ボスは振り回さず頭上を越えて叩きつけ)。
+ * 守護霊=雑魚・強個体だけ(振り回して自動で投げる。ボスの叩きつけは持たない)。幻影=なし。
+ */
+export const whipGrabberClassOk = (who: WhipGrabber, cls: 'mob' | 'strong' | 'boss'): boolean =>
+  who === 'player' ? true : who === 'guardian' ? cls !== 'boss' : false;
+/** 守護霊ごとの振り回しの台帳(id → 状態)を書き換えた写し(sw=null で消す)。変わらなければ同じ参照を返す。 */
+export const putWhipOwnerSwing = (
+  map: Readonly<Record<string, WhipSwingState>>, id: string, sw: WhipSwingState | null,
+): Record<string, WhipSwingState> => {
+  if (sw === null) {
+    if (!(id in map)) return map as Record<string, WhipSwingState>;
+    const next = { ...map };
+    delete next[id];
+    return next;
+  }
+  if (map[id] === sw) return map as Record<string, WhipSwingState>;
+  return { ...map, [id]: sw };
+};
+/** 今だれかが掴んでいる敵の id(プレイヤーの1体+守護霊ごとの1体)。 */
+export const whipHeldEnemyIds = (
+  player: Pick<WhipSwingState, 'enemyId'> | null, ghosts: Readonly<Record<string, Pick<WhipSwingState, 'enemyId'>>>,
+): Set<string> => {
+  const s = new Set<string>();
+  if (player) s.add(player.enemyId);
+  for (const k in ghosts) s.add(ghosts[k].enemyId);
+  return s;
 };
 
 /**

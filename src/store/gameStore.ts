@@ -344,6 +344,7 @@ import {
   WHIP_SWING_RADIUS_MULT, WHIP_SWING_MIN_RADIUS_FRAC, WHIP_THROW_DIST_MULT, WHIP_THROW_DAMAGE_MULT, WHIP_THROW_HITSTOP_MS, type WhipSwingState, whipShieldBlocksShot, type Box as WhipBox,
   whipShieldHitDamage, whipShieldHealthFloor, whipThrowExecutesSelf, whipLandTechKind, whipLandStunClearPatch,
   whipSwingRampMult, whipSwingRampFx, whipBodyPropHits, whipBlastPropHits,
+  putWhipOwnerSwing, whipHeldEnemyIds, whipGrabberCanGrab, whipGrabberClassOk,
 } from '../utils/whipSwing';
 import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
 import { planHomingVolley, splitDueHomingShots, homingLiftAllowed, type HomingPendingShot } from '../utils/homingVolley';
@@ -3226,8 +3227,10 @@ const spawnWhipSwingFx = (
 };
 
 // ---- ★鞭: 絡め取り → 振り回し → 投げつけ(research/WHIP_FOLLOWUP.md §8・社長裁定2026-11-25)。判定は utils/whipSwing の純関数。ここは敵への書き込みと演出だけ。 ----
-// プレイヤーだけ(社長指示2026-11-25「一旦プレイヤーでつくってokなら幻影などに広げる」)。守護霊・幻影の鞭は普通の振り(1撃目のダメージと押し)だけ。
-// 状態は GameState.whipSwing(1体まで)。掴んだ敵は whipHeld(位置は振り回しの式だけ・攻撃しない・ほかの当たりと狙いを受けない)。時計は gameTime。
+// 掴む人=プレイヤーと守護霊(社長指示「後回しにしてたムチとか、幻影や守護霊に反映」・§8-5)。守護霊は同じ関数に owner=守護霊の id を渡して通す
+// (フリックは無い=最長で自動で投げる・ボスの叩きつけは持たない)。幻影(敵側のミラー)は掴まない(§8-7・utils/whipSwing の whipGrabberCanGrab)。
+// 状態はプレイヤー=GameState.whipSwing・守護霊=GameState.whipSwingGhosts[id](掴む人ごとに1体まで)。掴んだ敵は whipHeld(位置は振り回しの式だけ・攻撃しない・
+// ほかの当たりと狙いを受けない=二人で同じ敵を掴まない)。時計は gameTime。
 type WhipSet = (fn: (s: GameState) => Partial<GameState>) => void;
 /**
  * 鞭で動かしてよい敵か(格闘の打ち上げと同じ除外)。ボス級は動かない(区分)・強個体は雑魚と同じ。
@@ -3274,6 +3277,21 @@ const WHIP_RELEASE_LIFT_R = 40;
 /** 着弾の爆発の押し(=手榴弾の HEAVY_GRENADE_KNOCKBACK_MULT・useGameLoop と同じ値)。 */
 const WHIP_BLAST_KB_MULT = 3.6;
 const whipCenter = (e: { x: number; y: number; width: number; height: number }): { x: number; y: number } => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 });
+/** 掴んでいる人(null=プレイヤー本人・文字列=守護霊の id)。 */
+type WhipOwner = string | null;
+const whipSwingOf = (st: GameState, owner: WhipOwner): WhipSwingState | null =>
+  (owner === null ? st.whipSwing : (st.whipSwingGhosts[owner] ?? null));
+const whipSwingPut = (st: GameState, owner: WhipOwner, sw: WhipSwingState | null): Partial<GameState> =>
+  (owner === null ? { whipSwing: sw } : { whipSwingGhosts: putWhipOwnerSwing(st.whipSwingGhosts, owner, sw) });
+/** 掴んでいる人の体(守護霊は疑似プレイヤー=combatActorPlayer)。守護霊が消えた・倒れた時は null(=その場で放す)。 */
+const whipOwnerActor = (get: () => GameState, owner: WhipOwner): Player | null => {
+  if (owner === null) return get().player;
+  const g = get().summons.find(sm => sm.id === owner && sm.kind === 'ghost-ally');
+  if (!g || !(g.health > 0)) return null;
+  return combatActorPlayer(owner);
+};
+/** 今だれかが掴んでいる敵(プレイヤーと守護霊の全員ぶん・同じ敵を二人で掴まない)。 */
+const whipHeldNow = (st: GameState): Set<string> => whipHeldEnemyIds(st.whipSwing, st.whipSwingGhosts);
 
 /** 竜巻の溜まりへの加算(プレイヤーの振り・振り回しの当たり・着弾の爆発が同じ1本)。閾値に届いた瞬間にピカッと知らせる。 */
 const addWhipCharge = (get: () => GameState, set: WhipSet, hits: number): void => {
@@ -3741,8 +3759,12 @@ const DASH_WIND_TEX_H = 64;
 /**
  * 絡め取る(§8-1)。掴んだ瞬間に溜めていた技と赤い予告を取り消し(格闘の掴みと同じ brawlerGrabCancelTech)、押し・浮きを止めて振り回しを始める。
  * reach=この振りの鞭の届く距離(ハンティングの伸び込み)=回す半径と投げの距離の元。ux,uy=振りの向き(回る向きを決める)。
+ * owner=掴む人(null=プレイヤー・守護霊の id=守護霊を中心に回す)。守護霊はボスの叩きつけを持たない(掴む区分は whipGrabberClassOk)。
+ * 止め・揺れ・連撃の区切りはプレイヤー本人だけ(揺れの整理の境界「本人の直接命中だけ」・守護霊の鞭の振りと同じ線)。
  */
-const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux: number, uy: number, reach: number): void => {
+const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux: number, uy: number, reach: number, owner: WhipOwner = null): void => {
+  const actor = whipOwnerActor(get, owner);
+  if (!actor) return;
   // ★着弾で本人が受ける倍率は掴んだ瞬間(気絶中)の状態で決める(着弾の時は気絶が明けていることがある・着弾の後は解く)。
   const grabE = get().enemies.find(en => en.id === enemyId);
   const selfMult = grabE ? whipGrabStunnedMult(grabE, get().gameTime, BOSS_MELEE_STUN_MULT) : 1;
@@ -3758,12 +3780,12 @@ const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux:
   const st = get();
   const e = st.enemies.find(en => en.id === enemyId);
   if (!e) return;
-  const pc = whipCenter(st.player), ec = whipCenter(e);
+  const pc = whipCenter(actor), ec = whipCenter(e);
   const radius = reach * WHIP_SWING_RADIUS_MULT;
   const rx = ec.x - pc.x, ry = ec.y - pc.y, r0 = Math.hypot(rx, ry);
   const nowMs = Date.now();
   const base: WhipSwingState = {
-    enemyId, phase: 'swing', startAt: st.gameTime, maxMs: whipSwingMaxMs(skillLevel(st.player, 'slasher')),
+    enemyId, phase: 'swing', startAt: st.gameTime, maxMs: whipSwingMaxMs(skillLevel(actor, 'slasher')),
     a0: r0 > 1 ? Math.atan2(ry, rx) : Math.atan2(uy, ux), r0, dir: whipSwingSpinDir(ux, uy, rx, ry),
     radius, reach, lastHits: {}, cx: ec.x, cy: ec.y, px: pc.x, py: pc.y, rNow: r0,
     at: st.gameTime, vx: 0, vy: 0, shrink: 0, shrinkV: 0,
@@ -3773,7 +3795,7 @@ const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux:
   // ★ボス区分(気絶中)は振り回さず、掴んだ瞬間から頭上を越える弧で反対側へ叩きつける(社長指示2026-11-26「ぐるぐる回ってると絵面がよくないので」)。
   //   着地点=掴んだ点をプレイヤーの中心について反対側へ(距離は同じ・体の大きさの下限)。帯の外・壁・今のズームの可視域の外なら手前へ寄せ、
   //   置けなければ掴んだ点(その場で叩きつけ)。可視域=gameBounds×ズーム(見え方の監査 A4「着地点が画面の外へ出て見せ場が切れる」)。
-  const sw: WhipSwingState = BRC.brawlerEnemyClass(e) !== 'boss' ? base : (() => {
+  const sw: WhipSwingState = owner !== null || BRC.brawlerEnemyClass(e) !== 'boss' ? base : (() => {
     const vb = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom, -WHIP_OVERHEAD_VIEW_INSET_PX);
     const land = whipOverheadLanding({
       px: pc.x, py: pc.y, ex: ec.x, ey: ec.y,
@@ -3792,7 +3814,7 @@ const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux:
     };
   })();
   set(state => ({
-    whipSwing: sw,
+    ...whipSwingPut(state, owner, sw),
     enemies: state.enemies.map(en => (en.id !== enemyId ? en : {
       ...en, whipHeld: true, biteAt: 0, vx: 0, vy: 0, knockbackVx: 0, knockbackVy: 0, knockbackUntil: undefined, knockbackShoveUntil: undefined,
       brHoldUntil: Math.max(en.brHoldUntil ?? 0, nowMs + WHIP_HOLD_REFRESH_MS),
@@ -3804,25 +3826,27 @@ const startWhipSwing = (get: () => GameState, set: WhipSet, enemyId: string, ux:
   // ★掴んだ瞬間の手応え(見え方の監査 B2): 短い止めと揺れ・パチンの光(既存の光と輪を一段大きく)。
   // 段の数は掴み・投げをまたがない(次の振りは1段目から・見え方の監査 B8)。
   // 連撃もここで終わる=1段目でカウンター窓を開いた連撃なら、掴んだ振りの時点からカウンターのクールダウン。
-  set(state => ({ player: { ...state.player, whipComboStage: 0, whipComboAt: 0,
-    ...whipComboCounterCut(state.player.whipComboAt || nowMs, state.player.whipCounterReadyAt ?? 0, !!state.player.whipComboCounter, whipCounterCooldownMs(state.player)) } }));
+  if (owner === null) {
+    set(state => ({ player: { ...state.player, whipComboStage: 0, whipComboAt: 0,
+      ...whipComboCounterCut(state.player.whipComboAt || nowMs, state.player.whipCounterReadyAt ?? 0, !!state.player.whipComboCounter, whipCounterCooldownMs(state.player)) } }));
+  }
   get().spawnBurst(ec.x, ec.y, '#e0f2fe', 12);
   get().spawnRing(ec.x, ec.y, 4, 34, 'rgba(186,230,253,0.95)', 2, 200, true);
   get().spawnRing(ec.x, ec.y, 8, 62, 'rgba(240,249,255,0.9)', 3, 240, true);
   get().spawnGlow(ec.x, ec.y, GLOW_R_M, 'rgba(240,249,255,', 170, true);
-  get().triggerHitImpact(WHIP_GRAB_HITSTOP_MS, WHIP_GRAB_SHAKE_MS, WHIP_GRAB_SHAKE_MAG, 0, ec.x, ec.y);
+  if (owner === null) get().triggerHitImpact(WHIP_GRAB_HITSTOP_MS, WHIP_GRAB_SHAKE_MS, WHIP_GRAB_SHAKE_MAG, 0, ec.x, ec.y);
   void import('../audio/audioManager').then(m => m.playSfx('whip-hit', 0.8, undefined, 0.8));
 };
 
 /** 着弾の爆発の威力(距離0の満額)=鞭の1撃目の WHIP_THROW_DAMAGE_MULT 倍(1撃目と同じ掛け算・§6)。クリ・処刑・スキャンの印は掛けない(爆発の規約)。投げた本人だけは呼び手が selfMult を掛ける。 */
-const whipThrowBlastBase = (st: GameState, cx: number, cy: number): number => {
-  const p = st.player;
+const whipThrowBlastBase = (st: GameState, cx: number, cy: number, p: Player = st.player, isGhost = false): number => {
   const melee = p.weapons.find(w => w.isMelee);
   const h = st.hurricane;
   const inHurricane = !!h && Date.now() < h.endsAt && (cx - h.rootX) ** 2 + (cy - h.rootY) ** 2 <= h.radius * h.radius;
-  return (melee?.damage ?? 6) * (p.shukuchiStrikeMult ?? 1) * WHIP_THROW_DAMAGE_MULT * (inHurricane ? 1 : WHIP_DAMAGE_MULT)
+  // 守護霊=鞭の打撃(performWhipStrike の isGhost)と同じ線: 縮地の上乗せ・近接コンボの計数は持たない。
+  return (melee?.damage ?? 6) * (isGhost ? 1 : (p.shukuchiStrikeMult ?? 1)) * WHIP_THROW_DAMAGE_MULT * (inHurricane ? 1 : WHIP_DAMAGE_MULT)
     * skillOutgoingDamageMult(p) * skillBloodAwakenDamageMult(p)
-    * skillMeleeComboMult(p, st.gameTime, st.meleeFinishComboCount, st.meleeFinishComboUntil) * masteryMultOf(p, 'whip');
+    * skillMeleeComboMult(p, st.gameTime, isGhost ? 0 : st.meleeFinishComboCount, isGhost ? 0 : st.meleeFinishComboUntil) * masteryMultOf(p, 'whip');
 };
 /**
  * 着弾の爆発(§8-4・§6 の爆発の規約)。爆心=着弾点・投げた敵(selfId)も満額を受ける。扱いはプレイヤーの手榴弾と同じ:
@@ -3830,13 +3854,18 @@ const whipThrowBlastBase = (st: GameState, cx: number, cy: number): number => {
  * 周りを外へ押す(投げた本人は押さない)・爆発の浮き(投げた本人も)。熟練度は鞭。戻り値=当たった数・倒した数。
  * selfMult=投げた本人(selfId)だけに掛ける倍率(掴んだ瞬間の気絶中の近接の一撃の倍率・社長指示2026-11-26)。周りの敵には掛けない。
  */
-const whipThrowExplode = (get: () => GameState, cx: number, cy: number, selfId: string | null, selfMult = 1): { hits: number; killed: number } => {
+const whipThrowExplode = (get: () => GameState, cx: number, cy: number, selfId: string | null, selfMult = 1, owner: WhipOwner = null): { hits: number; killed: number } => {
   const st = get();
-  const p = st.player;
+  const isGhost = owner !== null;
+  const p = (isGhost ? combatActorPlayer(owner) : null) ?? st.player;
   const now = Date.now();
   const exMult = skillExplosionMult(p);
   const radius = HEAVY_GRENADE_RADIUS * exMult * heavyGunnerExplosionMult(p, st.gameTime);
-  const base = whipThrowBlastBase(st, cx, cy);
+  const base = whipThrowBlastBase(st, cx, cy, p, isGhost);
+  // 熟練度・処刑の数え・多段のバフはプレイヤー本人だけ(守護霊の鞭の打撃と同じ線)。
+  const hurt = (id: string, dmg: number): boolean => (isGhost
+    ? get().damageEnemy(id, dmg, true, false, false, 'other')
+    : withMastery('whip', () => get().damageEnemy(id, dmg, true, false, false, 'other')));
   const walls = meleeWallsAround(get, cx, cy, radius);
   const targets = st.enemies
     .filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e) && !isUntouchable(e) && e.health > 0)
@@ -3856,12 +3885,12 @@ const whipThrowExplode = (get: () => GameState, cx: number, cy: number, selfId: 
     const execSelf = e.id === selfId && whipThrowExecutesSelf(BRC.brawlerEnemyClass(e));
     const selfBoost = e.id === selfId && selfMult > 1 ? selfMult : 1; // 投げた本人だけ=気絶中の一撃の倍率(ボス5倍・強個体3倍)
     const dmg = Math.max(1, Math.round(base * exMult * h.scale * selfBoost), execSelf ? Math.ceil(e.health) : 0);
-    let dead = withMastery('whip', () => get().damageEnemy(e.id, dmg, true, false, false, 'other'));
+    let dead = hurt(e.id, dmg);
     if (execSelf && !dead) { // 軽減(耐性・空中の倍率など)で残ったら、残りの体力ぶんを確実に入れる
       const left = get().enemies.find(en => en.id === e.id);
-      if (left && left.health > 0) dead = withMastery('whip', () => get().damageEnemy(e.id, Math.ceil(left.health) * 4 + 1, true, false, false, 'other'));
+      if (left && left.health > 0) dead = hurt(e.id, Math.ceil(left.health) * 4 + 1);
     }
-    if (execSelf && dead) recordFinisherKill(); // 処刑扱い(気絶中の敵の近接即死と同じ数え方)
+    if (execSelf && dead && !isGhost) recordFinisherKill(); // 処刑扱い(気絶中の敵の近接即死と同じ数え方)
     hits++;
     const a = blastAnchorOf(e, cx, cy);
     get().spawnDamageNumber(a.x, e.y, dmg, selfBoost > 1, { enemyId: e.id }); // 倍率が乗った本人の数字は会心の色(金)
@@ -3884,7 +3913,7 @@ const whipThrowExplode = (get: () => GameState, cx: number, cy: number, selfId: 
   // ★爆発の範囲の松明も壊す(社長指示2026-11-27「大車輪、緑卵とか松明とか壊せる様にして欲しい」)。緑卵は下の playerBlast が割る。
   whipBreakProps(get, whipBlastPropHits(get().breakableProps, cx, cy, radius));
   g.playerBlast(cx, cy, radius, plan.map(h => h.targetId)); // 卵も割る・当たった敵を爆発の浮きで浮かせる(投げた本人も)
-  if (hits > 0) g.registerMultiHit(hits);
+  if (hits > 0 && !isGhost) g.registerMultiHit(hits);
   if (killed > 0) brawlerSfx(BRAWLER_SFX_DEATH);
   brawlerSfx('bomb');
   return { hits, killed };
@@ -3896,7 +3925,7 @@ const WHIP_LAND_FX_MAX_K = 3.2;
  * 着弾の絵と音(今の叩きつけの組): 足元の地割れ・砂埃・輪・ヒットストップ・揺れ・重い音(派手さの絵=判定より大きく)。
  * bodyW=投げた/叩きつけた体の幅(px)。基準より広い体ほど砂埃・輪・破片の大きさと数を増やす(爆発の判定の範囲は変えない)。
  */
-const whipLandFx = (get: () => GameState, fx: number, fy: number, heavy = false, bodyW = WHIP_LAND_FX_REF_W): void => {
+const whipLandFx = (get: () => GameState, fx: number, fy: number, heavy = false, bodyW = WHIP_LAND_FX_REF_W, shake = true): void => {
   const g = get();
   const k = Math.max(1, Math.min(WHIP_LAND_FX_MAX_K, bodyW / WHIP_LAND_FX_REF_W));
   g.spawnImageMark(fx, fy, 'fx/ground-crack', { scale: 1.2 * k ** 0.8, scaleY: 0.5, duration: 1600, fadeFrom: 0.55, noPop: true, alpha: 0.95, ground: true });
@@ -3918,8 +3947,9 @@ const whipLandFx = (get: () => GameState, fx: number, fy: number, heavy = false,
   const rubbleN = Math.round(7 * (k - 1));
   if (rubbleN > 0) g.spawnRubble(fx, fy - 4, rubbleN, 60 * k, ['#8a7a68', '#6f604f', '#4a4038']);
   // ボスの叩きつけは止めと揺れを一段重く(派手さの絵)。
-  if (heavy) g.triggerHitImpact(WHIP_OVERHEAD_HITSTOP_MS, WHIP_OVERHEAD_SHAKE_MS, WHIP_OVERHEAD_SHAKE_MAG, 0, fx, fy);
-  else g.triggerHitImpact(WHIP_THROW_HITSTOP_MS, 320, 11, 0, fx, fy);
+  // 守護霊の着弾は止め・揺れを掛けない(揺れの整理の境界「本人の直接命中だけ」)。
+  if (shake && heavy) g.triggerHitImpact(WHIP_OVERHEAD_HITSTOP_MS, WHIP_OVERHEAD_SHAKE_MS, WHIP_OVERHEAD_SHAKE_MAG, 0, fx, fy);
+  else if (shake) g.triggerHitImpact(WHIP_THROW_HITSTOP_MS, 320, 11, 0, fx, fy);
   void import('../audio/audioManager').then(m => {
     m.playSfx('whip-hit', 1, undefined, 0.7);
     m.playSfx('heavy-impact', 0.7);
@@ -3932,16 +3962,16 @@ const whipLandFx = (get: () => GameState, fx: number, fy: number, heavy = false,
  */
 const landWhipThrow = (
   get: () => GameState, set: WhipSet, x: number, y: number, selfAlive: boolean,
-  struck?: { ids: readonly string[]; vx: number; vy: number },
+  struck?: { ids: readonly string[]; vx: number; vy: number }, owner: WhipOwner = null,
 ): number => {
-  const sw = get().whipSwing;
+  const sw = whipSwingOf(get(), owner);
   if (!sw) return 0;
   const id = sw.enemyId;
   const nowMs = Date.now();
   const e0 = get().enemies.find(en => en.id === id);
   const flew = sw.phase === 'thrown' || sw.phase === 'overhead'; // 向き(ux,uy)を持って着いた
   set(state => ({
-    whipSwing: null,
+    ...whipSwingPut(state, owner, null),
     enemies: state.enemies.map(en => (en.id !== id ? en : {
       ...en, whipHeld: undefined, brHoldUntil: undefined, vx: 0, vy: 0,
       ...(selfAlive ? { x: x - en.width / 2, y: y - en.height / 2 } : {}),
@@ -3956,7 +3986,7 @@ const landWhipThrow = (
     g0.spawnBlood(x, y, fa + Math.PI, 150);
     g0.spawnMeleeBlood(x, y, Math.max(56, e0.width * 1.6));
   }
-  const r = whipThrowExplode(get, x, y, selfAlive && e0 ? id : null, sw.selfMult ?? 1);
+  const r = whipThrowExplode(get, x, y, selfAlive && e0 ? id : null, sw.selfMult ?? 1, owner);
   // ★着弾で気絶(クリティカル)を解く(社長指示2026-11-26「一度回したらクリティカル解除して」): 生き残った強個体・ボスを続けて掴ませない・気絶のまま殴らせない。
   // 爆発のダメージの後に書く(爆発の威力は気絶の有無で変えない)。爆発は気絶を新しく立てない(会心でない・体勢の削りなし)。
   if (flew && selfAlive) {
@@ -3969,13 +3999,13 @@ const landWhipThrow = (
       }),
     }));
   }
-  if (struck) whipThrowPunisher(get, set, struck.ids, struck.vx, struck.vy);
-  whipLandFx(get, x, y + (e0 ? e0.height / 2 - 2 : 0), sw.phase === 'overhead', e0 ? e0.width : undefined);
+  if (struck) whipThrowPunisher(get, set, struck.ids, struck.vx, struck.vy, owner);
+  whipLandFx(get, x, y + (e0 ? e0.height / 2 - 2 : 0), sw.phase === 'overhead', e0 ? e0.width : undefined, owner === null);
   // 技の行は、プレイヤーの鞭で掴んだ敵を投げた/叩きつけた敵が生きたまま着いた時(自動の投げも含む・社長指示2026-11-26)。
   // 途中で死んでその場に落ちた時(selfAlive=false)・鞭を外して放した時(drop=着弾しない)は出さない。
   // ★ボスの叩きつけ=「叩きつけ」・雑魚/強個体の投げ=「大車輪」(社長指示2026-11-26「ボスは叩きつけ で」)。
-  if (flew && selfAlive) notifyTechProc(whipLandTechKind(sw.phase)); // 通信の下に技の行
-  addWhipCharge(get, set, r.hits);
+  if (flew && selfAlive && owner === null) notifyTechProc(whipLandTechKind(sw.phase)); // 通信の下に技の行(プレイヤー本人の技だけ)
+  if (owner === null) addWhipCharge(get, set, r.hits); // 竜巻の溜まりはプレイヤー本人のもの
   return r.killed;
 };
 /**
@@ -3984,9 +4014,10 @@ const landWhipThrow = (
  * 投げた敵は深度0の元=当たった敵は深度1(覚醒は深度1がもう一度元になれる=2連鎖・既存の movers のまま)。爆発の押しより後に書く(同じ勢いで飛ぶ方が勝つ)。
  * 巻き込まない敵=パニッシャーと同じ(不倒の通常リーパー・死体・空中投げ中)+掴まれている敵。
  */
-const whipThrowPunisher = (get: () => GameState, set: WhipSet, ids: readonly string[], vx: number, vy: number): void => {
+const whipThrowPunisher = (get: () => GameState, set: WhipSet, ids: readonly string[], vx: number, vy: number, owner: WhipOwner = null): void => {
   const st = get();
-  if (!hasSkill(st.player, 'punisher') || ids.length === 0) return;
+  const actor = owner === null ? st.player : combatActorPlayer(owner); // 守護霊=記録のビルドのパニッシャー
+  if (!actor || !hasSkill(actor, 'punisher') || ids.length === 0) return;
   const now = Date.now();
   const gameTime = st.gameTime;
   const idSet = new Set(ids);
@@ -4007,15 +4038,15 @@ const whipThrowPunisher = (get: () => GameState, set: WhipSet, ids: readonly str
   for (const c of contacts) get().spawnBurst(c.x, c.y, '#fca5a5', 6); // 一拍目(接触)の小FX=パニッシャーと同じ
 };
 /** 途中で放す(§8-7・着弾なし): 印を外し、その場に落ちて爆発の浮きと同じ倒れ方(ダメージなし)。 */
-const releaseWhipSwingImpl = (get: () => GameState, set: WhipSet): void => {
-  const sw = get().whipSwing;
+const releaseWhipSwingImpl = (get: () => GameState, set: WhipSet, owner: WhipOwner = null): void => {
+  const sw = whipSwingOf(get(), owner);
   if (!sw) return;
-  releaseWhipHeld(get, set, sw);
+  releaseWhipHeld(get, set, sw, owner);
 };
-const releaseWhipHeld = (get: () => GameState, set: WhipSet, sw: WhipSwingState): void => {
+const releaseWhipHeld = (get: () => GameState, set: WhipSet, sw: WhipSwingState, owner: WhipOwner = null): void => {
   const id = sw.enemyId;
   set(state => ({
-    whipSwing: null,
+    ...whipSwingPut(state, owner, null),
     enemies: state.enemies.map(en => (en.id !== id ? en : { ...en, whipHeld: undefined, brHoldUntil: undefined, vx: 0, vy: 0 })),
   }));
   const e = get().enemies.find(en => en.id === id);
@@ -4025,23 +4056,22 @@ const releaseWhipHeld = (get: () => GameState, set: WhipSet, sw: WhipSwingState)
  * 途中で放す(鞭を外した・瞬間移動で手が離れた)時は、回っていた勢いのまま短く滑って止まり、止まった所で倒れる(慣性・瞬間停止しない)。
  * 滑る間は掴んだ印のまま(攻撃しない・当たりを受けない)。速さが小さい時はその場で放す。
  */
-const startWhipDrop = (get: () => GameState, set: WhipSet): void => {
-  const sw = get().whipSwing;
+const startWhipDrop = (get: () => GameState, set: WhipSet, owner: WhipOwner = null): void => {
+  const sw = whipSwingOf(get(), owner);
   if (!sw || sw.phase !== 'swing') return;
   const vx = sw.vx ?? 0, vy = sw.vy ?? 0, v = Math.hypot(vx, vy);
-  if (!(v >= WHIP_DROP_MIN_SPEED)) { releaseWhipSwingImpl(get, set); return; }
+  if (!(v >= WHIP_DROP_MIN_SPEED)) { releaseWhipSwingImpl(get, set, owner); return; }
   const gt = get().gameTime;
-  set(() => ({
-    whipSwing: { ...sw, phase: 'drop', throwAt: sw.at ?? gt, fromX: sw.cx, fromY: sw.cy, ux: vx / v, uy: vy / v, v0: v, maxDist: whipDropDist(WHIP_DROP_MS, v), dNow: 0 },
-  }));
+  set(state => whipSwingPut(state, owner,
+    { ...sw, phase: 'drop', throwAt: sw.at ?? gt, fromX: sw.cx, fromY: sw.cy, ux: vx / v, uy: vy / v, v0: v, maxDist: whipDropDist(WHIP_DROP_MS, v), dNow: 0 }));
 };
 /**
  * 投げる(§8-3): 振り回しの途中なら向き (dx,dy) へ。出だしの速さ=放した時の接線の速さ・最大距離=届く距離×WHIP_THROW_DIST_MULT。飛ぶ向きへ縦に転がる(絵=格闘の投げの回りの流用)。
  * 投げたら true。
  */
-const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: number): boolean => {
+const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: number, owner: WhipOwner = null): boolean => {
   const st = get();
-  const sw = st.whipSwing;
+  const sw = whipSwingOf(st, owner);
   if (!sw || sw.phase !== 'swing') return false;
   const dl = Math.hypot(dx, dy);
   if (!(dl > 1e-6)) return false;
@@ -4055,7 +4085,7 @@ const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: numb
   // 回っていた勢い(vx,vy)と直進の速さの差は描画が出だしの曲がりに使う(判定は直進のまま)。
   const rvx = (sw.vx ?? 0) - v0 * ux, rvy = (sw.vy ?? 0) - v0 * uy;
   set(state => ({
-    whipSwing: { ...sw, phase: 'thrown', throwAt: sw.at ?? state.gameTime, fromX: sw.cx, fromY: sw.cy, ux, uy, v0, maxDist, dNow: 0, rvx, rvy },
+    ...whipSwingPut(state, owner, { ...sw, phase: 'thrown', throwAt: sw.at ?? state.gameTime, fromX: sw.cx, fromY: sw.cy, ux, uy, v0, maxDist, dNow: 0, rvx, rvy }),
     // 回りの向きは振り回しの向きを引き継ぐ(回していた勢いのまま転がる)。
     enemies: state.enemies.map(en => (en.id !== sw.enemyId ? en : { ...en, brThrowSpin: { at: nowMs, ms: Math.max(1, Math.round(flyMs)), dir: sw.dir } })),
   }));
@@ -4063,7 +4093,7 @@ const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: numb
   // 風の筋は描画が飛ぶ敵の絵に毎フレーム付けて後ろへ伸ばし、着弾で先から消す(pixiScene.syncWhipThrowStreak・見え方の監査2巡目)。
   const g = get();
   g.spawnGlow(sw.cx, sw.cy, GLOW_R_M, 'rgba(255,248,230,', 200, true);
-  g.triggerShake(140, 7, ux, uy);
+  if (owner === null) g.triggerShake(140, 7, ux, uy); // 揺れはプレイヤー本人の投げだけ
   brawlerSfx('whip-swing', 0.9, 0.7, 200);
   return true;
 };
@@ -4071,9 +4101,10 @@ const startWhipThrow = (get: () => GameState, set: WhipSet, dx: number, dy: numb
  * 自動で投げる向き(§8-3・§8-7・社長指示2026-11-26「投げる方向は一番近くの敵、居なければ進行方向」): プレイヤーに一番近い敵の方へ
  * (掴んでいる本人・死体・触れられない敵・画面外の敵は外す。見通し=掴んだ敵の位置からその敵への線が壁に遮られないか)。居なければプレイヤーの最後の向き。
  */
-const whipAutoThrowDir = (get: () => GameState, sw: WhipSwingState): { x: number; y: number } => {
+const whipAutoThrowDir = (get: () => GameState, sw: WhipSwingState, owner: WhipOwner = null): { x: number; y: number } => {
   const st = get();
-  const pc = whipCenter(st.player);
+  const actor = whipOwnerActor(get, owner) ?? st.player;
+  const pc = whipCenter(actor); // 掴んでいる人(守護霊なら守護霊)に一番近い敵の方へ
   const targets = st.enemies
     .filter(e => e.id !== sw.enemyId && e.health > 0 && !isCorpse(e) && !isUntouchable(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e)))
     .map(e => ({ e, c: whipCenter(e) }))
@@ -4083,7 +4114,7 @@ const whipAutoThrowDir = (get: () => GameState, sw: WhipSwingState): { x: number
   const walls = targets.length > 0 ? meleeWallsAround(get, sw.cx, sw.cy, far) : [];
   const ang = whipSwingAngle(sw, st.gameTime - sw.startAt);
   return pickWhipAutoThrowDir(sw.cx, sw.cy, pc.x, pc.y, targets, sw.enemyId,
-    (x, y) => walls.length === 0 || !segmentBlocked(sw.cx, sw.cy, x, y, walls), st.player.lastDirection, whipSwingTangent(ang, sw.dir));
+    (x, y) => walls.length === 0 || !segmentBlocked(sw.cx, sw.cy, x, y, walls), actor.lastDirection, whipSwingTangent(ang, sw.dir));
 };
 /**
  * ★鞭のカウンターのクールダウン(ms・近接CDの短縮を掛ける前)。旧(3連撃の前)の鞭の1振りの周期=窓+CD+描画の増分(約1.04秒)と同じ長さ。
@@ -4102,7 +4133,7 @@ const knifeCounterCooldownMs = (p: Player): number => KNIFE_COUNTER_COOLDOWN_MS 
  */
 /** 盾のダメージを入れている最中の印(damageEnemy の whipHeld の門をこの1本だけ通す・floor=残す体力の下限)。null=通常。 */
 let whipShieldHit: { id: string; floor: number } | null = null;
-const whipShieldEraseShots = (get: () => GameState, set: WhipSet, body: WhipBox, shieldId?: string): void => {
+const whipShieldEraseShots = (get: () => GameState, set: WhipSet, body: WhipBox, shieldId?: string, owner: WhipOwner = null): void => {
   const gone = get().projectiles.filter(pr => whipShieldBlocksShot(pr, body));
   if (gone.length === 0) return;
   const ids = new Set(gone.map(pr => pr.id));
@@ -4118,7 +4149,9 @@ const whipShieldEraseShots = (get: () => GameState, set: WhipSet, body: WhipBox,
     whipShieldHit = { id: e.id, floor: whipShieldHealthFloor(BRC.brawlerEnemyClass(e), e.health) };
     let dead = false;
     try {
-      dead = withMastery('whip', () => get().damageEnemy(e.id, dmg, false, false, false, 'other'));
+      dead = owner === null
+        ? withMastery('whip', () => get().damageEnemy(e.id, dmg, false, false, false, 'other'))
+        : get().damageEnemy(e.id, dmg, false, false, false, 'other'); // 守護霊の盾は熟練度を貯めない
     } finally { whipShieldHit = prevHit; }
     get().spawnDamageNumber(bx, by, dmg, false, { enemyId: e.id });
     if (dead) get().dropEnemyXp(e, e.x + e.width / 2, e.y + e.height / 2, `pickup-xp-whipshield-${Date.now()}-${e.id}`);
@@ -4179,15 +4212,18 @@ const tickWhipOverhead = (get: () => GameState, set: WhipSet, sw: WhipSwingState
  * 毎フレーム(敵の更新の後)。振り回し=回す位置を式で決め(壁・帯の縁では半径を縮める)、触れた敵へ1周1回の当たり・最長で自動の投げ・途中で放す条件。
  * 投げ=飛ぶ距離を進めて敵・壁・最大距離で着弾。戻り値=倒した数(倒した音は呼び手)。振り回しが無ければ何もしない(実質ゼロコスト)。
  */
-const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number } => {
+const tickWhipSwingImpl = (get: () => GameState, set: WhipSet, owner: WhipOwner = null): { killed: number } => {
   const st = get();
-  const sw = st.whipSwing;
+  const sw = whipSwingOf(st, owner);
   if (!sw) return { killed: 0 };
   const e = st.enemies.find(en => en.id === sw.enemyId);
-  if (!e) { set(() => ({ whipSwing: null })); return { killed: 0 }; } // 消えた(一掃・リセット等)=何も起こさない
+  if (!e) { set(state => whipSwingPut(state, owner, null)); return { killed: 0 }; } // 消えた(一掃・リセット等)=何も起こさない
   // 途中で死んだ(毒・燃焼など)=その場で着弾(§8-7)。
-  if (isCorpse(e) || !(e.health > 0)) return { killed: landWhipThrow(get, set, sw.cx, sw.cy, false) };
-  const p = st.player;
+  if (isCorpse(e) || !(e.health > 0)) return { killed: landWhipThrow(get, set, sw.cx, sw.cy, false, undefined, owner) };
+  // 掴んでいる人の体(守護霊が消えた・倒れた=その場で放す。投げて飛んでいる間は手を離れているので最後まで飛ぶ)。
+  const actor = whipOwnerActor(get, owner);
+  if (!actor && sw.phase !== 'thrown') { releaseWhipSwingImpl(get, set, owner); return { killed: 0 }; }
+  const p = actor ?? st.player;
   const pc = whipCenter(p);
   const nowMs = Date.now();
   const gt = st.gameTime;
@@ -4196,8 +4232,8 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
     const locked = isGameTimeStopped() || st.attention !== null || st.deliveryLocked || st.corridorRunInActive || st.farBackdrop === 'ending' || st.gameWon;
     const reason = whipSwingReleaseReason({ playerAlive: p.health > 0, locked, whipEquipped: isWhipMode(p), movedPx: Math.hypot(pc.x - sw.px, pc.y - sw.py) });
     // 鞭を外した・瞬間移動=回っていた勢いのまま滑って止まる。死んだ・操作が止まった=その場で放す(場面が切り替わる)。
-    if (reason === 'weapon' || reason === 'teleport') { startWhipDrop(get, set); return get().whipSwing ? tickWhipSwingImpl(get, set) : { killed: 0 }; } // 滑りの1歩目もこのフレームで(止まりを出さない)
-    if (reason) { releaseWhipSwingImpl(get, set); return { killed: 0 }; }
+    if (reason === 'weapon' || reason === 'teleport') { startWhipDrop(get, set, owner); return whipSwingOf(get(), owner) ? tickWhipSwingImpl(get, set, owner) : { killed: 0 }; } // 滑りの1歩目もこのフレームで(止まりを出さない)
+    if (reason) { releaseWhipSwingImpl(get, set, owner); return { killed: 0 }; }
     const autoThrow = whipSwingAutoThrowDue(sw, gt);
     const t = gt - sw.startAt;
     const minR = sw.radius * WHIP_SWING_MIN_RADIUS_FRAC;
@@ -4243,13 +4279,13 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
     const ncx = pos.x + e.width / 2, ncy = pos.y + e.height / 2;
     const vx = dtMs > 0 ? ((ncx - sw.cx) / dtMs) * 1000 : (sw.vx ?? 0), vy = dtMs > 0 ? ((ncy - sw.cy) / dtMs) * 1000 : (sw.vy ?? 0);
     set(state => ({
-      whipSwing: { ...sw, cx: ncx, cy: ncy, px: pc.x, py: pc.y, rNow: r, lastHits, lap: Math.max(lap, sw.lap ?? 0), at: gt, vx, vy, shrink, shrinkV },
+      ...whipSwingPut(state, owner, { ...sw, cx: ncx, cy: ncy, px: pc.x, py: pc.y, rNow: r, lastHits, lap: Math.max(lap, sw.lap ?? 0), at: gt, vx, vy, shrink, shrinkV }),
       enemies: state.enemies.map(en => (en.id !== e.id ? en : {
         ...en, x: pos.x, y: pos.y, vx: 0, vy: 0, knockbackVx: 0, knockbackVy: 0, brHoldUntil: Math.max(en.brHoldUntil ?? 0, nowMs + WHIP_HOLD_REFRESH_MS),
       })),
     }));
     // 盾: 振り回している敵の体に触れた敵の弾をかき消す。
-    whipShieldEraseShots(get, set, { x: pos.x, y: pos.y, width: e.width, height: e.height }, e.id);
+    whipShieldEraseShots(get, set, { x: pos.x, y: pos.y, width: e.width, height: e.height }, e.id, owner);
     // 回っている体が通った道の松明・緑卵を壊す(社長指示2026-11-27)。
     whipBodyBreakProps(get, sw.cx, sw.cy, ncx, ncy, e.width, e.height);
     let hits = 0, killed = 0;
@@ -4262,7 +4298,7 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
       const oc = whipCenter(o);
       const rx = oc.x - pc.x, ry = oc.y - pc.y, rl = Math.hypot(rx, ry) || 1;
       const mult = whipSwingRampMult(rampHits);
-      const res = get().performWhipStrike([o.id], { dir: { x: -ry / rl, y: rx / rl }, ...(mult > 1 ? { swingRamp: mult } : {}) });
+      const res = get().performWhipStrike([o.id], { dir: { x: -ry / rl, y: rx / rl }, ...(owner !== null ? { ghostId: owner } : {}), ...(mult > 1 ? { swingRamp: mult } : {}) });
       hits += res.hits; killed += res.killed;
       if (res.hits > 0) {
         sfxRamp = Math.max(sfxRamp, mult);
@@ -4276,17 +4312,26 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
         if (!rampIds?.[o.id]) { rampIds = { ...(rampIds ?? {}), [o.id]: true }; rampHits++; }
       }
     }
-    if (rampHits !== (sw.rampHits ?? 0)) set(state => (state.whipSwing && state.whipSwing.enemyId === sw.enemyId ? { whipSwing: { ...state.whipSwing, rampHits, rampIds } } : {}));
+    if (rampHits !== (sw.rampHits ?? 0)) {
+      set(state => {
+        const cur = whipSwingOf(state, owner);
+        return cur && cur.enemyId === sw.enemyId ? whipSwingPut(state, owner, { ...cur, rampHits, rampIds }) : {};
+      });
+    }
     if (hits > 0) {
-      // 命中音: 倍率1は今のまま。上がった当たりは音程を少しずつ上げる(同じ音を高さだけ変えて鳴らす)。
+      // 命中音: 倍率1は今のまま。上がった当たりは音程を少しずつ上げる(同じ音を高さだけ変えて鳴らす)。守護霊は命中音のトリガ(whipHitFxAt=プレイヤーの音)を使わず直接鳴らす。
       const rfx = whipSwingRampFx(sfxRamp);
-      if (rfx) brawlerSfx('whip-hit', 1, rfx.sfxRate); else set(() => ({ whipHitFxAt: Date.now() }));
-      addWhipCharge(get, set, hits);
+      if (rfx) brawlerSfx('whip-hit', 1, rfx.sfxRate);
+      else if (owner === null) set(() => ({ whipHitFxAt: Date.now() }));
+      else brawlerSfx('whip-hit', 0.8);
+      if (owner === null) addWhipCharge(get, set, hits); // 竜巻の溜まりはプレイヤー本人のもの
     }
     // 最長で自動で投げる: このフレームの回す位置を決めてから放す(放した点=今の位置・次のフレームから直進=1フレーム止まらない)。
-    if (autoThrow && get().whipSwing?.phase === 'swing') {
-      const d = whipAutoThrowDir(get, get().whipSwing!);
-      startWhipThrow(get, set, d.x, d.y);
+    // 守護霊はフリックを持たないので、投げるのは常にここ(最長で自動)。
+    const swNow = whipSwingOf(get(), owner);
+    if (autoThrow && swNow?.phase === 'swing') {
+      const d = whipAutoThrowDir(get, swNow, owner);
+      startWhipThrow(get, set, d.x, d.y, owner);
     }
     return { killed };
   }
@@ -4298,12 +4343,12 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
     const stp = whipThrowStep(fx, fy, dux, duy, d0, d1, Infinity, () => false,
       (x, y) => !brawlerRectFree(get, x - e.width / 2, y - e.height / 2, e.width, e.height));
     set(state => ({
-      whipSwing: { ...sw, cx: stp.x, cy: stp.y, dNow: d1 },
+      ...whipSwingPut(state, owner, { ...sw, cx: stp.x, cy: stp.y, dNow: d1 }),
       enemies: state.enemies.map(en => (en.id !== e.id ? en : {
         ...en, x: stp.x - e.width / 2, y: stp.y - e.height / 2, vx: 0, vy: 0, knockbackVx: 0, knockbackVy: 0, brHoldUntil: Math.max(en.brHoldUntil ?? 0, nowMs + WHIP_HOLD_REFRESH_MS),
       })),
     }));
-    if (stp.kind === 'wall' || el >= WHIP_DROP_MS) releaseWhipSwingImpl(get, set);
+    if (stp.kind === 'wall' || el >= WHIP_DROP_MS) releaseWhipSwingImpl(get, set, owner);
     return { killed: 0 };
   }
   // 投げて飛んでいる(§8-3・§8-4)。投げて飛んでいる間は放す条件を見ない(手を離れている)。
@@ -4323,15 +4368,31 @@ const tickWhipSwingImpl = (get: () => GameState, set: WhipSet): { killed: number
       ? others.filter(o => boxesOverlap({ x: step.x - e.width / 2, y: step.y - e.height / 2, width: e.width, height: e.height }, o)).map(o => o.id)
       : [];
     const spd = whipThrowSpeed(gt - (sw.throwAt ?? gt), v0, maxDist);
-    return { killed: landWhipThrow(get, set, step.x, step.y, true, hitIds.length > 0 ? { ids: hitIds, vx: ux * spd, vy: uy * spd } : undefined) };
+    return { killed: landWhipThrow(get, set, step.x, step.y, true, hitIds.length > 0 ? { ids: hitIds, vx: ux * spd, vy: uy * spd } : undefined, owner) };
   }
   set(state => ({
-    whipSwing: { ...sw, cx: step.x, cy: step.y, dNow: d1 },
+    ...whipSwingPut(state, owner, { ...sw, cx: step.x, cy: step.y, dNow: d1 }),
     enemies: state.enemies.map(en => (en.id !== e.id ? en : {
       ...en, x: step.x - e.width / 2, y: step.y - e.height / 2, vx: 0, vy: 0, knockbackVx: 0, knockbackVy: 0, brHoldUntil: Math.max(en.brHoldUntil ?? 0, nowMs + WHIP_HOLD_REFRESH_MS),
     })),
   }));
   return { killed: 0 };
+};
+/** 守護霊ぶんの振り回し・投げを1フレーム進める(プレイヤーの tickWhipSwingImpl と同じ1本に owner=守護霊を渡す)。台帳が空なら即return。 */
+const tickGhostWhipSwingsImpl = (get: () => GameState, set: WhipSet): { killed: number } => {
+  const ids = Object.keys(get().whipSwingGhosts);
+  let killed = 0;
+  for (const id of ids) killed += tickWhipSwingImpl(get, set, id).killed;
+  return { killed };
+};
+/** 守護霊ぶんを途中で放す(カットイン・会話で操作が止まった時・プレイヤーの releaseWhipSwing と同じ場面)。投げて飛んでいる分は最後まで飛ぶ。 */
+const releaseGhostWhipSwingsImpl = (get: () => GameState, set: WhipSet): void => {
+  for (const [id, sw] of Object.entries(get().whipSwingGhosts)) if (sw.phase !== 'thrown') releaseWhipSwingImpl(get, set, id);
+};
+/** 守護霊の手が塞がっている(振り回している)=鞭の通常の振りを出さない(プレイヤーの triggerCounter の振り回し中と同じ)。 */
+export const ghostWhipHandsBusy = (ghostId: string): boolean => {
+  const sw = useGameStore.getState().whipSwingGhosts[ghostId];
+  return sw?.phase === 'swing' || sw?.phase === 'overhead';
 };
 // ---- ★刀の一閃の浮き・燕返しの吹き飛び・切り傷・殺陣(research/KATANA_TSUBAME.md)。判定は utils/katanaTsubame の純関数。 ----
 /** 一閃の浮きの段=格闘の4段目の打ち上げ(赤カウンターの浮きと同じ・叩き台)。 */
@@ -10631,14 +10692,18 @@ export const counterMasterBlowAround = (cx: number, cy: number, actor: Player): 
 /**
  * ★守護霊の鞭の振り(社長裁定2026-11-22「守護霊にも鞭とハンティング」)。プレイヤーの振り(triggerCounter の鞭の枝)と同じ部品:
  * 線の長さ=whipSwingReach(ハンティング)・軌跡の絵(spawnWhipSwingFx)・当たる敵(whipSweepTargets)・打撃(performWhipStrike の守護霊)。
- * ★絡め取り→振り回し→投げ(research/WHIP_FOLLOWUP.md §8)はプレイヤーだけ(社長指示2026-11-25「一旦プレイヤーでつくってokなら幻影などに広げる」)=
- * 守護霊は普通の振り(1撃目のダメージと押し)だけ。ハンティングは振るたびに使い切る。
- * 向き ux,uy は単位ベクトル。戻り値=打撃の結果(音は呼び手が距離減衰つきで鳴らす)。
+ * ★絡め取り→振り回し→投げ(research/WHIP_FOLLOWUP.md §8-5・社長指示「後回しにしてたムチとか、幻影や守護霊に反映」): プレイヤーと同じ規則
+ * (線に掛かった中で気絶している雑魚・強個体のうち守護霊に一番近い1体を、打つ前に掴む=打撃は通さない)。回すのはプレイヤーと同じ1本(tickWhipSwingImpl)に
+ * owner=守護霊を渡す=守護霊を中心に回り、フリックが無いので最長で一番近い敵の方へ自動で投げ、着弾で爆発。ボス級は掴まない(叩きつけは持たない)。
+ * 掴んでいる(振り回している)間はこの振りを出さない。投げて飛んでいる間は普通の振りは出るが、次を掴まない(1体ずつ)。
+ * 竜巻は守護霊に無い(溜まりはプレイヤー本人のもの)。ハンティングは振るたびに使い切る。
+ * 向き ux,uy は単位ベクトル。戻り値=打撃の結果(音は呼び手が距離減衰つきで鳴らす)。grabbed=この振りで掴んだ。
  */
-export const swingGhostWhip = (ghostId: string, ux: number, uy: number): { hit: boolean; finish: boolean; killed: number; hits: number } => {
+export const swingGhostWhip = (ghostId: string, ux: number, uy: number): { hit: boolean; finish: boolean; killed: number; hits: number; grabbed: boolean } => {
   const get = useGameStore.getState;
+  const set = useGameStore.setState as WhipSet;
   const actor = combatActorPlayer(ghostId);
-  if (!actor || !isWhipMode(actor)) return { hit: false, finish: false, killed: 0, hits: 0 };
+  if (!actor || !isWhipMode(actor) || ghostWhipHandsBusy(ghostId)) return { hit: false, finish: false, killed: 0, hits: 0, grabbed: false };
   const now = Date.now();
   const pcx = actor.x + actor.width / 2, pcy = actor.y + actor.height / 2;
   const reach = whipSwingReach(actor);
@@ -10646,9 +10711,18 @@ export const swingGhostWhip = (ghostId: string, ux: number, uy: number): { hit: 
   const tipX = pcx + ux * reach, tipY = pcy + uy * reach;
   spawnWhipSwingFx(get, pcx, pcy, tipX, tipY, ux, uy, now, false, `${ghostId}-`);
   const targetIds = whipSweepTargets(get().enemies, pcx, pcy, ux, uy, reach);
-  const res = targetIds.length > 0 ? get().performWhipStrike(targetIds, { ghostId, dir: { x: ux, y: uy } }) : { hit: false, finish: false, killed: 0, hits: 0 };
+  const st = get();
+  const gid = whipGrabberCanGrab('guardian', !!st.whipSwingGhosts[ghostId])
+    ? pickWhipGrabTarget(st.enemies.filter(e => targetIds.includes(e.id)).map(e => ({
+      id: e.id, dist: enemyMeleeDist(pcx, pcy, e), alive: e.health > 0 && !isCorpse(e),
+      grabbable: whipGrabbable(e, st.gameTime) && whipGrabberClassOk('guardian', BRC.brawlerEnemyClass(e)),
+    })), whipHeldNow(st))
+    : null;
+  const strikeIds = gid ? targetIds.filter(id => id !== gid) : targetIds;
+  const res = strikeIds.length > 0 ? get().performWhipStrike(strikeIds, { ghostId, dir: { x: ux, y: uy } }) : { hit: false, finish: false, killed: 0, hits: 0 };
+  if (gid) startWhipSwing(get, set, gid, ux, uy, reach, ghostId);
   if (huntUse) setActorHunting(ghostId, HUNTING_CONSUME_PATCH);
-  return { hit: res.hit, finish: res.finish, killed: res.killed, hits: res.hits };
+  return { hit: res.hit || !!gid, finish: res.finish, killed: res.killed, hits: res.hits, grabbed: !!gid };
 };
 
 /**
@@ -11943,6 +12017,8 @@ interface GameState {
   whipSwingFxAt: number;      // 鞭を振った時刻(Date.now)。振る音SEのトリガ
   // ★鞭の絡め取り→振り回し→投げ(research/WHIP_FOLLOWUP.md §8)。プレイヤーの鞭の振りが掴める敵に当たった瞬間に始まり、着弾・放した時に消える。null=無し(1体まで)。
   whipSwing: WhipSwingState | null;
+  /** 守護霊ごとの鞭の振り回し(守護霊の id → 状態・掴む人ごとに1体まで・research/WHIP_FOLLOWUP.md §8-5)。 */
+  whipSwingGhosts: Record<string, WhipSwingState>;
   // ★燕返しの受付(research/KATANA_TSUBAME.md §1)。プレイヤーの一閃が1体以上に当たった瞬間に開く(実時間300ms・1回の一閃に1回だけ)。
   tsubameWindow: TsubameWindow | null;
   /** ★スラッシャーの追い打ちの予約(utils/slasherFollowup・時刻=realGameTime)。pumpSlasherFollowups が時刻の来た分を出す。 */
@@ -12641,6 +12717,10 @@ interface GameState {
    * 振り回しが無ければ何もしない(実質ゼロコスト)。戻り値=倒した数(倒した音は呼び手)。
    */
   tickWhipSwing: () => { killed: number };
+  /** 守護霊ぶんの振り回し・投げを1フレーム進める(敵の更新の後・台帳が空なら即return)。 */
+  tickGhostWhipSwings: () => { killed: number };
+  /** 守護霊ぶんを途中で放す(カットイン・会話)。 */
+  releaseGhostWhipSwings: () => void;
   /** 振り回しを途中で放す(着弾なし・その場に落ちる)。カットイン・納品の会話など、ループが世界を止める所から呼ぶ。 */
   releaseWhipSwing: () => void;
   performHurricane: (rootX: number, rootY: number) => void;
@@ -13591,6 +13671,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   whipHitFxAt: 0,
   whipSwingFxAt: 0,
   whipSwing: null,
+  whipSwingGhosts: {},
   tsubameWindow: null,
   slasherFollowups: [],
   satsujin: null,
@@ -15990,8 +16071,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★絡め取り(社長指示2026-11-26「気絶の敵を攻撃すると掴めて、爆撃と共にKILL。(ボスはさっきの叩きつけ)」): 当たる中で**気絶している**
       // 掴める敵(雑魚・強個体・ボス)のうちプレイヤーに一番近い1体を、打つ前に掴む。掴んだ敵には打撃(気絶中の処刑・ボスの5倍+気絶解除の枝)を通さない
       // =掴みに置き換える。既に1体掴んでいる(振り回し中・投げて飛んでいる・叩きつけ中)間は新しく掴まない。どの段で当たっても掴む。
-      const gid = get().whipSwing ? null : pickWhipGrabTarget(enemies.filter(e => targetIds.includes(e.id))
-        .map(e => ({ id: e.id, dist: enemyMeleeDist(pcx, pcy, e), grabbable: whipGrabbable(e, gameTime), alive: e.health > 0 && !isCorpse(e) })));
+      const gid = !whipGrabberCanGrab('player', !!get().whipSwing) ? null : pickWhipGrabTarget(enemies.filter(e => targetIds.includes(e.id))
+        .map(e => ({ id: e.id, dist: enemyMeleeDist(pcx, pcy, e), grabbable: whipGrabbable(e, gameTime) && whipGrabberClassOk('player', BRC.brawlerEnemyClass(e)), alive: e.health > 0 && !isCorpse(e) })), whipHeldNow(get()));
       const strikeIds = gid ? targetIds.filter(id => id !== gid) : targetIds;
       // tipReach=先端でボスを打った時の大ダメージ(プレイヤー本人の振りだけ・社長指示2026-11-25)。段(3連撃)の会心の上乗せと押しの有無。
       // ★スラッシャーの追い打ち(utils/slasherFollowup): 各段の当たりの種を集め、0.1秒おきの追い打ちとして予約する(追い打ちは打撃だけ=掴まない)。
@@ -18339,6 +18420,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   tickWhipSwing: () => tickWhipSwingImpl(get, set),
+  tickGhostWhipSwings: () => (Object.keys(get().whipSwingGhosts).length === 0 ? { killed: 0 } : tickGhostWhipSwingsImpl(get, set)),
+  releaseGhostWhipSwings: () => releaseGhostWhipSwingsImpl(get, set),
   releaseWhipSwing: () => releaseWhipSwingImpl(get, set),
 
   performHurricane: (rootX, rootY) => {
@@ -31252,6 +31335,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         whipHitFxAt: 0,
         whipSwingFxAt: 0,
         whipSwing: null,
+        whipSwingGhosts: {},
         tsubameWindow: null,
         slasherFollowups: [],
         satsujin: null,

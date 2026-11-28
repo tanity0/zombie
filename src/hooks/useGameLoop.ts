@@ -49,7 +49,7 @@ import {
   BOSS_CRIT_DAMAGE_MULT,
   isKatanaMode,
   isWhipMode,
-  swingGhostWhip, tickGhostHunting, ghostHuntingPatch, HUNTING_CONSUME_PATCH, huntingReachBonus, // ★守護霊の鞭・ハンティング(プレイヤーと同じ部品)
+  swingGhostWhip, ghostWhipHandsBusy, tickGhostHunting, ghostHuntingPatch, HUNTING_CONSUME_PATCH, huntingReachBonus, // ★守護霊の鞭・ハンティング(プレイヤーと同じ部品)
   isMeleeOnlyMode,
   drainBrawlerSfx,
   BRAWLER_SFX_DEATH,
@@ -3097,6 +3097,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const att = useGameStore.getState().attention;
         // ★鞭の振り回しは、カットイン(アテンション)で操作が止まったら途中で放す(research/WHIP_FOLLOWUP.md §8-7・この間はシミュが止まる)。
         if (att && (useGameStore.getState().whipSwing?.phase ?? 'thrown') !== 'thrown') useGameStore.getState().releaseWhipSwing(); // 放した後に滑っている間(drop)も
+        if (att) useGameStore.getState().releaseGhostWhipSwings(); // 守護霊ぶんも同じ場面で放す(台帳が空なら何もしない)
         // v0.25.2953(社長指示「ボスモードもボス消えるまでは終わらないで」): 練習ランの勝利は
         // **死亡アテンション(ストップ+崩壊)を見せ終えてから**確定する。attention が無い場合でも
         // 最低1.2秒は崩壊の絵を見せる(打刻は撃破の瞬間=gameStoreのdamage経路)。
@@ -3195,6 +3196,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       if (useGameStore.getState().deliveryLocked) {
         // ★鞭の振り回しは、会話で操作が止まったら途中で放す(research/WHIP_FOLLOWUP.md §8-7)。
         if ((useGameStore.getState().whipSwing?.phase ?? 'thrown') !== 'thrown') useGameStore.getState().releaseWhipSwing(); // 放した後に滑っている間(drop)も
+        useGameStore.getState().releaseGhostWhipSwings(); // 守護霊ぶんも
         const dlSt = useGameStore.getState();
         // ステージ1の1周目の到着の会話(社長報告2026-11-20): 同じロックで世界を止めるが、ゲーム時刻は進めない
         // (会話の後もゲームが続く=タイマーを飛ばさない)。通信の時計だけを別に進める(行の尺はいつもどおり)。
@@ -13426,6 +13428,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const ws = useGameStore.getState().tickWhipSwing();
           if (ws.killed > 0) playEnemyDeath();
         }
+        // 守護霊ぶん(同じ1本に owner=守護霊を渡す・§8-5)。台帳が空なら即return。
+        {
+          const wg = useGameStore.getState().tickGhostWhipSwings();
+          if (wg.killed > 0) playEnemyDeath();
+        }
         // ★SAME_ARENA §9(対人体勢): プレイヤー側の経過(紫明け=満タンへ/回復8秒後3%毎秒)。
         // 幻影と戦って初めて pvpPosture が生まれる=通常プレイでは undefined のまま毎フレーム no-op。
         {
@@ -14531,9 +14538,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (GHOST_DMG_LOG_ENABLED && !dashed && wasCounterMelee) {
                   ghostLogPush(`${Math.round(gameTime / 100) / 10}s 一閃不発 ${boundBoss.bossState ?? boundBoss.aiPhase ?? '?'}`);
                 }
+              } else if (ghostMeleeResolvesNow && boundBoss && isWhipMode(ghostOwner) && ghostWhipHandsBusy(ghostNow.id)) {
+                // ★鞭で振り回している間は手が塞がっている=通常の振りを出さない(プレイヤーと同じ・research/WHIP_FOLLOWUP.md §8-2)。
               } else if (ghostMeleeResolvesNow && boundBoss && isWhipMode(ghostOwner)) {
                 // ★鞭(社長裁定2026-11-22「守護霊にも鞭」): 鞭を持つ守護霊の近接はプレイヤーと同じ鞭の1撃目(線の長さ・当たる敵・打撃・追加攻撃の受付・
                 // ハンティングの一連=gameStore.swingGhostWhip)。当たるかは線が決める(届かない振りは線が誰にも掛からない=空振り)。向き=紐付きボスへ。
+                // 線に掛かった気絶の雑魚・強個体は掴んで振り回す(§8-5・掴んだ音は store が鳴らす)。
                 const gmcx = resolved.x + ghostNow.width / 2, gmcy = resolved.y + ghostNow.height / 2;
                 const wdx = boundBoss.x + boundBoss.width / 2 - gmcx, wdy = boundBoss.y + boundBoss.height / 2 - gmcy;
                 const wdl = Math.hypot(wdx, wdy) || 1;
