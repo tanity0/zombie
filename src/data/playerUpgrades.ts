@@ -9,8 +9,16 @@
 /** 育成の系統id。 */
 export type PlayerUpgradeId = 'health' | 'attack' | 'ammo' | 'xp' | 'scrap' | 'counter' | 'gold';
 
+// 段数上限・攻撃力とカウンター受付の1段の値は、サーバ(他人の守護霊の正規化=shared/ghostSanitize.mjs)と
+// 共有するため shared/playerUpgradeLedger.mjs が正本(ここはそれを読んで台帳に並べる)。
+import {
+  PLAYER_UPGRADE_MAX_LEVEL as SHARED_MAX_LEVEL,
+  PLAYER_UPGRADE_ATTACK_PER_LEVEL,
+  PLAYER_UPGRADE_COUNTER_PER_LEVEL_SEC,
+} from '../../shared/playerUpgradeLedger.mjs';
+
 /** 各系統の上限段数。 */
-export const PLAYER_UPGRADE_MAX_LEVEL = 5;
+export const PLAYER_UPGRADE_MAX_LEVEL = SHARED_MAX_LEVEL;
 
 /**
  * 段ごとの購入価格(全系統共通)。index = **これから買う段の1つ前**(0段目→1段目が index 0)。
@@ -40,15 +48,15 @@ export interface PlayerUpgradeDef {
 
 export const PLAYER_UPGRADES: readonly PlayerUpgradeDef[] = [
   { id: 'health', label: '体力',       perLevel: 20,   perLevelLabel: '+20',  desc: '一撃を余分にもらっても立っていられる。' },
-  { id: 'attack', label: '攻撃力',     perLevel: 0.10, perLevelLabel: '+10%', desc: '同じ弾数で、相手が早く倒れる。' }, // 社長指示2026-11-28「強化の攻撃力を最大で50%に」=5段×10%(旧 +4%×5=20%)
+  { id: 'attack', label: '攻撃力',     perLevel: PLAYER_UPGRADE_ATTACK_PER_LEVEL, perLevelLabel: '+10%', desc: '同じ弾数で、相手が早く倒れる。' }, // 社長指示2026-11-28「強化の攻撃力を最大で50%に」=5段×10%(旧 +4%×5=20%)
   { id: 'ammo',   label: '弾数',       perLevel: 0.06, perLevelLabel: '+6%',  desc: '弾切れが遠くなる。' }, // 社長指示2026-11-28「弾数は30%を最大に」=5段×6%(旧 +5%×5=25%)
   // 経験値効率(社長指示v0.25.3679「強化項目に経験値効率も追加。10%ずつ」)。
   { id: 'xp',     label: '経験値効率',   perLevel: 0.10, perLevelLabel: '+10%', desc: '出撃中のレベルが速く上がる。' },
   // スクラップ効率(社長指示2026-10-13「強化にスクラップ効率を追加。20%から100%まで」)=1段+20%・5段で+100%。
   // 拾ったスクラップの量に掛かる(パッシブ「スクラップ獲得数アップ」の scrapMult と同じ倍率へ足す)。
   { id: 'scrap',  label: 'スクラップ効率', perLevel: 0.20, perLevelLabel: '+20%', desc: '拾うスクラップが増える。' },
-  // カウンター受付(社長指示2026-10-28「強化にいれる。0.02で」)=1段+0.02秒(受付300ms→5段で400ms)。単位は秒。
-  { id: 'counter', label: 'カウンター受付', perLevel: 0.03, perLevelLabel: '+0.03秒', desc: '少し早く振っても弾ける。' }, // 社長指示2026-11-28「カウンター受付は最大で0.15秒に」=5段×0.03(旧 0.02×5=0.10)
+  // カウンター受付(社長指示2026-10-28「強化にいれる。0.02で」)=当初は1段+0.02秒(受付300ms→5段で400ms)。現行の値は行末。単位は秒。
+  { id: 'counter', label: 'カウンター受付', perLevel: PLAYER_UPGRADE_COUNTER_PER_LEVEL_SEC, perLevelLabel: '+0.03秒', desc: '少し早く振っても弾ける。' }, // 社長指示2026-11-28「カウンター受付は最大で0.15秒に」=5段×0.03(旧 0.02×5=0.10)
   { id: 'gold',   label: 'ゴールド獲得', perLevel: 0.10, perLevelLabel: '+10%', desc: '同じ戦果で持ち帰るGが増える。' },
 ];
 

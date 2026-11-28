@@ -22,7 +22,10 @@ const mem = new Map<string, string>();
 const { useGameStore, AMMO_MAX, skillOutgoingDamageMult } = await import('./gameStore');
 const { PLAYER_PROFILES } = await import('../data/playerProfiles');
 const { PLAYER_UPGRADE_IDS, PLAYER_UPGRADE_MAX_LEVEL } = await import('../data/playerUpgrades');
-const { PLAYER_UPGRADES_KEY, emptyPlayerUpgrades, growthMaxHpBonus, savePlayerUpgrades } = await import('../utils/playerUpgrades');
+const {
+  PLAYER_UPGRADES_KEY, emptyPlayerUpgrades, growthMaxHpBonus, savePlayerUpgrades,
+  growthAttackMult, growthGoldMult, effectiveAmmoMaxMap,
+} = await import('../utils/playerUpgrades');
 const { guardianPhantomHealth } = await import('../config/bossHealth');
 const { snapshotPlayerBuild, buildPseudoPlayer } = await import('../utils/playerBuild');
 const { spawnEnemyAt } = await import('../utils/enemyUtils');
@@ -65,19 +68,30 @@ describe('★最重要: 全メーター0 = 育成機能が無かった時(初期
   });
 });
 
+// 期待値は台帳(data/playerUpgrades の1段の値 × 上限段数)から導く=1段の値を変えてもテストが嘘にならない。
+const MAX_ATK = growthAttackMult(PLAYER_UPGRADE_MAX_LEVEL);
+const MAX_GOLD = growthGoldMult(PLAYER_UPGRADE_MAX_LEVEL);
+const MAX_HP = PLAYER_PROFILES.warrior.maxHp + growthMaxHpBonus(PLAYER_UPGRADE_MAX_LEVEL);
+const MAX_AMMO = effectiveAmmoMaxMap(AMMO_MAX, PLAYER_UPGRADE_MAX_LEVEL);
+
 describe('育成MAX(全系統5段)の焼き込み', () => {
-  it('HP+100 / 攻撃×1.2 / 弾上限+25% / ゴールド×1.5 / ddaBaseHp も育成込み', () => {
+  it('HP / 攻撃 / 弾上限 / ゴールドが最大段の値で焼かれる・ddaBaseHp も育成込み', () => {
+    // 前提: 最大段は「効果あり」(全部素値と同じなら下の照合が素通りになるため)。
+    expect(MAX_ATK).toBeGreaterThan(1);
+    expect(MAX_GOLD).toBeGreaterThan(1);
+    expect(MAX_HP).toBeGreaterThan(PLAYER_PROFILES.warrior.maxHp);
+    expect(MAX_AMMO.handgun).toBeGreaterThan(AMMO_MAX.handgun);
     sortieWithMaxGrowth();
     const p = useGameStore.getState().player;
-    expect(p.maxHealth).toBe(230);
-    expect(p.ddaBaseHp).toBe(230);
-    expect(p.growthAtkMult).toBeCloseTo(1.2, 10);
-    expect(p.growthGoldMult).toBeCloseTo(1.5, 10);
-    // glauncher はライフル弾共用=同値で追従する(同ティア武器拾得の弾変換がこのキーを引く)。
-    expect(p.growthAmmoMax).toEqual({ handgun: 90, shotgun: 30, rifle: 45, phill: 60, glauncher: 45 });
-    expect(skillOutgoingDamageMult(p)).toBeCloseTo(1.2, 10);
+    expect(p.maxHealth).toBe(MAX_HP);
+    expect(p.ddaBaseHp).toBe(MAX_HP);
+    expect(p.growthAtkMult).toBeCloseTo(MAX_ATK, 10);
+    expect(p.growthGoldMult).toBeCloseTo(MAX_GOLD, 10);
+    // glauncher も弾種ごとに同じ倍率で追従する(同ティア武器拾得の弾変換がこのキーを引く)。
+    expect(p.growthAmmoMax).toEqual(MAX_AMMO);
+    expect(skillOutgoingDamageMult(p)).toBeCloseTo(MAX_ATK, 10);
     useGameStore.getState().addAmmo('handgun', 9999);
-    expect(useGameStore.getState().player.ammoHandgun).toBe(90);
+    expect(useGameStore.getState().player.ammoHandgun).toBe(MAX_AMMO.handgun);
   });
 });
 
@@ -98,7 +112,7 @@ describe('★メーター変更はラン中に効かない(焼き込みの原則
     expect(after.growthAtkMult).toBe(before.growthAtkMult);
     expect(after.growthGoldMult).toBe(before.growthGoldMult);
     expect(after.growthAmmoMax).toEqual(bakedAmmoMax);
-    expect(skillOutgoingDamageMult(after)).toBeCloseTo(1.2, 10);
+    expect(skillOutgoingDamageMult(after)).toBeCloseTo(MAX_ATK, 10);
     useGameStore.getState().addAmmo('handgun', 9999);
     expect(useGameStore.getState().player.ammoHandgun).toBe(bakedAmmoMax.handgun);
 
@@ -115,7 +129,7 @@ describe('処刑の前掛け(致命の一撃は baseDamage 側にだけ育成が
   // 中央経路(damageEnemy の viaMeleeFinish + postureImpact='heavy')で測る。
   // ★規約(検収監査の指摘1): この経路の実在の呼び出し元はワイヤー大技の1箇所だけで、
   //   amount は呼び出し側で skillOutgoingDamageMult(=育成込み)を通ってから来る。
-  //   よって**ゲート側では再度掛けない**(掛けると二重適用=5段MAXで×1.44になる実バグ)。
+  //   よって**ゲート側では再度掛けない**(掛けると二重適用=5段MAXで育成倍率の2乗が乗る実バグ)。
   // 報酬予算の残量を0にしてあるので、与ダメ = 渡した amount × 5 になる。
   const fatalDamageOnBrokenBoss = (amount: number): number => {
     const gameTime = useGameStore.getState().gameTime;
@@ -135,9 +149,10 @@ describe('処刑の前掛け(致命の一撃は baseDamage 側にだけ育成が
   it('育成MAXでも中央ゲートは再乗算しない(呼び出し側の育成込みamountがそのまま×5=二重適用なし)', () => {
     sortieWithMaxGrowth();
     const mult = useGameStore.getState().player.growthAtkMult ?? 1;
-    expect(mult).toBeCloseTo(1.2, 10);
-    // 呼び出し側(ワイヤー)の契約どおり、育成込みの amount を渡す → ちょうど×5(×1.44にならない)。
-    expect(fatalDamageOnBrokenBoss(10 * mult)).toBeCloseTo(60, 10);
+    expect(mult).toBeCloseTo(MAX_ATK, 10);
+    expect(mult).toBeGreaterThan(1); // 二重適用を見分けるには育成が効いている必要がある
+    // 呼び出し側(ワイヤー)の契約どおり、育成込みの amount を渡す → ちょうど×5(育成倍率の2乗にならない)。
+    expect(fatalDamageOnBrokenBoss(10 * mult)).toBeCloseTo(50 * MAX_ATK, 10);
   });
 });
 
@@ -153,8 +168,8 @@ describe('写し先(幻影・守護霊)', () => {
     sortieWithMaxGrowth();
     const live = useGameStore.getState().player;
     const snap = snapshotPlayerBuild(live);
-    expect(snap.growthAtkMult).toBeCloseTo(1.2, 10);
-    expect(buildPseudoPlayer(snap, live).growthAtkMult).toBeCloseTo(1.2, 10);
+    expect(snap.growthAtkMult).toBeCloseTo(MAX_ATK, 10);
+    expect(buildPseudoPlayer(snap, live).growthAtkMult).toBeCloseTo(MAX_ATK, 10);
     // 旧プロファイル(フィールドが無い)は0段扱い=本人の育成が漏れて乗らない。
     const legacy = { ...snap };
     delete legacy.growthAtkMult;

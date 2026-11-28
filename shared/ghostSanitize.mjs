@@ -1,4 +1,7 @@
 import { displayNameFrom } from './playerName.mjs';
+import {
+  PLAYER_UPGRADE_MAX_LEVEL, PLAYER_UPGRADE_ATTACK_PER_LEVEL, PLAYER_UPGRADE_COUNTER_PER_LEVEL_SEC,
+} from './playerUpgradeLedger.mjs';
 
 export const GHOST_SHARE_EPOCH = 1;
 export const GHOST_KNOB_SET_V = 1;
@@ -137,16 +140,16 @@ const MASTERY_KEY_SET = new Set(GHOST_MASTERY_KEYS);
 export const GHOST_MASTERY_MAX_MULT = 1.9;
 /**
  * 育成(永続強化)の攻撃力の上限(= src/utils/playerUpgrades.ts の growthAttackMult(PLAYER_UPGRADE_MAX_LEVEL))。
- * research/GROWTH.md §5-5。サーバはビルド無しでこの .mjs を読むので台帳を import できない=値を持ち、
- * 台帳との一致は src/utils/ghostOnline.test.ts が止める(段数上限や1段の伸びを変えたらここも直す)。
+ * research/GROWTH.md §5-5。サーバはビルド無しでこの .mjs を読むので TS の台帳は import できない=
+ * 共有の正本 shared/playerUpgradeLedger.mjs(src/data/playerUpgrades.ts も同じ物を読む)から同じ式で導く。
+ * 式の一致は src/utils/ghostOnline.test.ts が止める。
  */
-export const GHOST_GROWTH_ATK_MAX_MULT = 1.2;
+export const GHOST_GROWTH_ATK_MAX_MULT = 1 + PLAYER_UPGRADE_ATTACK_PER_LEVEL * PLAYER_UPGRADE_MAX_LEVEL;
 /**
  * 育成(永続強化)「カウンター受付」の延長(ms)の上限(= src/utils/playerUpgrades.ts の
- * growthCounterAcceptMs(PLAYER_UPGRADE_MAX_LEVEL))。値を持つ理由と一致の縛りは上の攻撃力と同じ
- * (src/utils/ghostOnline.test.ts が止める=段数上限や1段の伸びを変えたらここも直す)。
+ * growthCounterAcceptMs(PLAYER_UPGRADE_MAX_LEVEL))。導き方と一致の縛りは上の攻撃力と同じ。
  */
-export const GHOST_GROWTH_COUNTER_ACCEPT_MAX_MS = 100;
+export const GHOST_GROWTH_COUNTER_ACCEPT_MAX_MS = Math.round(PLAYER_UPGRADE_COUNTER_PER_LEVEL_SEC * 1000 * PLAYER_UPGRADE_MAX_LEVEL);
 
 const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 const finite = (v) => typeof v === 'number' && Number.isFinite(v);

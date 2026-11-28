@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5926 — 強化の上限変更の追従(他人の守護霊の正規化の不具合+テスト)【2026-11-29 00:10】
+- v0.25.5921〜5923 の強化変更で CI のテスト7件が落ちていた(設計チャットが src/utils の該当テストしか回さなかった見落とし)。うち3件は本体の不具合: shared/ghostSanitize.mjs が他人の守護霊の攻撃上限1.2・受付上限100ms を直書きしており、新しい値(×1.5・+150ms)が切られていた。
+- 直し: 新規 shared/playerUpgradeLedger.mjs(段数上限・攻撃/受付の1段の値の正本=サーバがビルド無しで読む .mjs)。data/playerUpgrades.ts と ghostSanitize.mjs が同じ正本から導く。src/store/playerUpgrades.test.ts の4件は期待値を台帳から導く形へ。
+- 検証: typecheck・eslint・循環import・関連テスト緑・server の node --test。担当は src/store+src/utils 全体 11553件緑を確認。サーバ(wrangler)への反映は再デプロイが必要。
+
 ## v0.25.5925 — 格闘のコンボ倍率(×1.1ずつ・天井2倍)【2026-11-28 23:59】
 - 社長指示「格闘コンボ数に応じて1.1倍ずつ」「コンボダメージは2倍を天井に」。brawlerCombo.brawlerComboDamageMult(n)=min(2,1.1^n)・n=その当たりの前までにつながっている数(表示の N HIT−1=1発目は等倍)。窓口 gameStore.brawlerComboDmgMultFor を5経路(triggerCounter の通常の当たり/会心のフィニッシュ/気功の爆発/投げの爆撃/スープレックスの小爆発)に1回ずつ。プレイヤーの格闘だけ(刀・銃・幻影/孫悟空の当たりは等倍)。体勢値・押し・のけぞりは不変(爆発系のみ damageEnemy 内の止め・のけぞりが少し強く出る)。
 - **重なり(社長判断待ち)**: 既存 §13-2 の補正(同じ流れの10ヒット目から−5%/発・下限50%)と掛け算=10発目≈1.9倍・15発目≈1.5倍・19発目以降は等倍まで下がる。コンボマスターは別の数(meleeFinishComboCount)で二重ではない。
