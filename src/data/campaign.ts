@@ -11,6 +11,7 @@
 
 import type { CharacterClass, SubWeaponKey, SkillKey, IntroLine, EnemyType } from '../types/game';
 import { assetUrl } from '../config/assetUrl';
+import { isUnlockAllOn, withUnlockAll } from '../utils/unlockAll'; // 開発用「すべて解放」(見え方だけ)
 
 // --- ステージ / ミッションの型 -------------------------------------------
 export interface StageVoiceLine {
@@ -1147,6 +1148,33 @@ export const gachaPityRemaining = (pity: number): number => Math.max(0, GACHA_PI
 // Lv2は据え置き効果=昇格の道中としてのみ存在)。
 export const SKILL_MAX_LEVEL: Partial<Record<SkillKey, number>> = { reaper: 1, 'warm-up': 1, 'guardian-spirit': 1, 'ghost-helper': 1, 'ghost-slayer': 1 }; // warm-up=全Lv同値(固定)のためLv1止まり(§6.8 M31)
 export const skillMaxLevel = (key: SkillKey): number => SKILL_MAX_LEVEL[key] ?? 3;
+
+// ── 開発用「すべて解放」(utils/unlockAll)の見え方。**保存(ownedSkills / ownedSkillLevels / purchasedSubLevels)は書き換えない。**
+// オンの間だけ「持っている物」の判定が全部持っている形になる。書き込み側(ガチャ・購入・年表の実績)は保存の値をそのまま読むこと。
+/** 「すべて解放」で持っている扱いにするスキル=手に入り得る全種(警察署の3種は出撃ごとの景品で所持に載らないので除く)。 */
+export const UNLOCK_ALL_SKILL_KEYS: readonly SkillKey[] = OBTAINABLE_SKILL_KEYS.filter(k => !POLICE_REWARD_SKILLS.includes(k));
+let shownSkillsMemo: { src: readonly SkillKey[]; out: SkillKey[] } | null = null;
+/** 判定・表示に使う所持スキル。オフなら渡した配列そのもの(参照も同じ)。 */
+export const shownOwnedSkills = (owned: readonly SkillKey[]): readonly SkillKey[] => {
+  if (!isUnlockAllOn()) return owned;
+  if (shownSkillsMemo && shownSkillsMemo.src === owned) return shownSkillsMemo.out;
+  const out = [...withUnlockAll(owned, UNLOCK_ALL_SKILL_KEYS)];
+  shownSkillsMemo = { src: owned, out };
+  return out;
+};
+let shownLevelsMemo: { src: Partial<Record<SkillKey, number>>; out: Partial<Record<SkillKey, number>> } | null = null;
+/** 判定・表示に使う所持Lv(=ラン中の上限)。オンの間は全種が最大Lv。オフなら渡したもの(参照も同じ)。毎フレームの購読から引かれても作り直さない。 */
+export const shownOwnedSkillLevels = (levels: Partial<Record<SkillKey, number>>): Partial<Record<SkillKey, number>> => {
+  if (!isUnlockAllOn()) return levels;
+  if (shownLevelsMemo && shownLevelsMemo.src === levels) return shownLevelsMemo.out;
+  const out: Partial<Record<SkillKey, number>> = { ...levels };
+  for (const k of UNLOCK_ALL_SKILL_KEYS) out[k] = skillMaxLevel(k);
+  shownLevelsMemo = { src: levels, out };
+  return out;
+};
+/** サブウェポンの陳列Lv(開発施設で買ったLv=装備の条件・商人の上限)。オンの間は全部 Lv3(MAX)。 */
+export const shownSubShelfLevel = (key: SubWeaponKey, purchased: Partial<Record<SubWeaponKey, number>>): number =>
+  isUnlockAllOn() ? 3 : (purchased[key] ?? 0);
 // Lv抽選: スキルごとの「被り回数(dupeCount)」とレア度で [Lv1,Lv2,Lv3] の重みを決める。
 // 0回=初取得。被るほど高Lvが出やすくなる(社長確定表)。
 export const levelWeightsFor = (rarity: SkillRarity, dupeCount: number): number[] => {

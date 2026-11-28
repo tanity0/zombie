@@ -31,6 +31,7 @@ import { GLEN_FORM1_HP_MULT } from './glenChain';
 // 「プレイヤーが見る実戦の値」で、計測路の中立化(utils/stageDiffMults)は一覧を出さない場面の話なので
 // ここでは通さない。config/stageDifficulty.ts は依存ゼロの葉=循環importにならない。
 import { BOUNTY_HOME_STAGE } from '../config/stageDifficulty';
+import { isUnlockAllOn } from './unlockAll'; // 開発用「すべて解放」(対策室の枠を全部えらべる。遭遇記録は書き換えない)
 
 // ---------------------------------------------------------------------------------------------
 // 出撃の種類(ランのフラグ)
@@ -153,9 +154,9 @@ export interface PracticeSlot {
   alwaysUnlocked?: true;
 }
 
-/** その枠が今えらべるか(遭遇記録 or 常時解放)。**画面と台帳テストが同じ1本を見る**。 */
+/** その枠が今えらべるか(遭遇記録 or 常時解放 or 開発用「すべて解放」)。**画面と台帳テストが同じ1本を見る**。 */
 export const practiceSlotUnlocked = (slot: PracticeSlot, encountered: ReadonlySet<string>): boolean =>
-  slot.alwaysUnlocked === true || encountered.has(slot.encounterSlotKey);
+  slot.alwaysUnlocked === true || encountered.has(slot.encounterSlotKey) || isUnlockAllOn();
 
 // 城ボスの湧きゲート(useGameLoop)は `!labTheme && !storyBoss` を要求する。
 // よって `castlenow` が効くのは**その両方に当たらないステージだけ**。

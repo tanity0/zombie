@@ -4,6 +4,7 @@
 import type { Stage } from '../data/campaign';
 import { OPS_MAP_PLACES } from '../data/opsMapPlaces';
 import type { SortieTarget } from './dsHome';
+import { isUnlockAllOn } from './unlockAll'; // 開発用「すべて解放」
 
 /**
  * 選んだステージの扱い。
@@ -34,6 +35,7 @@ export const lockedSortieHint = (after: Pick<Stage, 'locationTitle'> | undefined
  * 全部クリアした後(「前回」)・次が無い時・EX が次の時は出さない。
  */
 export const lockedPreviewStage = (stages: readonly Stage[], target: SortieTarget | null): Stage | null => {
+  if (isUnlockAllOn()) return null; // 開発用「すべて解放」: 未解放のステージが無いので予告も出さない
   if (!target || target.kind !== 'next' || target.stage.kind !== 'main') return null;
   const nextId = target.stage.id;
   return stages.find(s => s.kind === 'main' && !s.hidden && s.unlockBy === nextId && OPS_MAP_PLACES[s.id] !== undefined) ?? null;

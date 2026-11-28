@@ -167,6 +167,7 @@ import {
 import { prefetchStageTextures } from '../pixi/stageTextures';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, RETIRED_SUB_WEAPONS, SKILLS, OBTAINABLE_SKILL_KEYS, COMPANION_SKILL_KEYS, BESTIARY,
+  shownOwnedSkills, shownOwnedSkillLevels, shownSubShelfLevel,
   gachaPullCostFor, RARITY_LABEL, skillMaxLevel, skillDescForLevel, stageDateLabel, REVISIT_MISSION,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, gachaRateTable, skillIcon, type SkillRarity, type Stage
 } from '../data/campaign';
@@ -208,8 +209,10 @@ import { clampRank } from '../utils/rankAssessor';
 import { subsAllCompletedFromMeta, revisitCardState, canShowEx } from '../utils/storyProgress';
 import {
   ARCHIVE_RECORDS, getArchiveRecord, loadStoryArchive, markRecordRead, consumeLatestUnlocked,
+  isRecordUnlocked, shownUnlockedRecordIds,
   type ArchiveRecord, type StoryArchiveState,
 } from '../data/storyArchive';
+import { isUnlockAllOn, setUnlockAllOn, withUnlockAll } from '../utils/unlockAll'; // 開発用「すべて解放」(オンの間だけ全部解放済みに見える・記録は書き換えない)
 import {
   getBgmVolume, getSfxVolume, setAudioMuted, setBgmVolume, setSfxVolume, setBgmScene, playSfx
 } from '../audio/audioManager';
@@ -571,6 +574,9 @@ const testScreenIdFor = (name: Screen['name']): TestScreenId => {
   }
 };
 
+// 資料室の「操作記録」に出すチュートリアル(既読 ∪ 開発用「すべて解放」中は全部)。**ゲーム中に出す/出さないの判定(loadSeenForGate)には混ぜない。**
+const loadSeenTutorialsShown = (): Set<TutorialId> => withUnlockAll(loadSeenTutorials(), TUTORIALS.map(t => t.id));
+
 // 今の進行で出撃できるステージ(作戦地域の一覧と同じ条件=本編は解放済み、EXは条件成立(か ?exshow=1)で解放済み)。
 const sortieableStages = (cleared: Set<string>): { mains: typeof STAGES; exs: typeof STAGES } => {
   const mains = STAGES.filter(s => s.kind === 'main' && isStageUnlocked(s, cleared));
@@ -618,11 +624,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 装備(サブ/スキル)はトップの独立「装備メニュー」で選び、store に永続。出撃時に resetGame が反映。
   const equippedSubs = useGameStore(state => state.pendingLoadout);
   const companionSkill = useGameStore(state => state.companionSkill);
-  const ownedSkillLevels = useGameStore(state => state.ownedSkillLevels);
+  const ownedSkillLevels = shownOwnedSkillLevels(useGameStore(state => state.ownedSkillLevels)); // 開発用「すべて解放」中は全種最大Lv(保存は不変)
   // 装備メニュー最下部の「取得済みスキル」一覧(社長指示2026-08-25)。
   // ★React再描画規律: これは**メニュー画面でしか読まない永続値**(ガチャで増える)で、
   // ラン中に毎フレーム書き換わる類ではないので、配列購読でも毎フレーム再描画は起きない。
-  const ownedSkills = useGameStore(state => state.ownedSkills);
+  const ownedSkills = shownOwnedSkills(useGameStore(state => state.ownedSkills));
   const setPendingLoadout = useGameStore(state => state.setPendingLoadout);
   const setCompanionSkill = useGameStore(state => state.setCompanionSkill);
   // アバターシステム(試験・第1弾)。装備メニュー内の独立枠。プリミティブ(string|null)購読のみ=React再描画規律に沿う。
@@ -674,8 +680,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 読み直す(毎フレーム購読ではなく、ユーザー操作起点の局所的な再計算)。
   const [archiveState, setArchiveState] = useState<StoryArchiveState>(() => loadStoryArchive());
   const refreshArchiveState = () => setArchiveState(loadStoryArchive());
-  const unreadArchiveCount = archiveState.unlockedRecordIds.filter(id => !archiveState.readRecordIds.includes(id)).length;
-  const goArchive = () => { playSfx('ui-select'); refreshArchiveState(); setSeenTutorials(loadSeenTutorials()); setScreen({ name: 'archive' }); };
+  const unreadArchiveCount = shownUnlockedRecordIds(archiveState).filter(id => !archiveState.readRecordIds.includes(id)).length;
+  const goArchive = () => { playSfx('ui-select'); refreshArchiveState(); setSeenTutorials(loadSeenTutorialsShown()); setScreen({ name: 'archive' }); };
   const goHomeFromArchive = () => { refreshArchiveState(); setScreen({ name: 'home' }); };
   const [openArchiveRecordId, setOpenArchiveRecordId] = useState<string | null>(null);
   const handleOpenArchiveRecord = (id: string) => {
@@ -687,7 +693,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const closeArchiveRecord = () => { playSfx('ui-back'); setOpenArchiveRecordId(null); };
   // 操作記録(社長指示v0.25.2252「一度見たやつ資料室にまとめよう」): 一度見たチュートリアルを読み返す。
   // archiveState と同じ方針で、資料室に入った時だけ読み直す(store購読なし=毎フレーム再描画しない)。
-  const [seenTutorials, setSeenTutorials] = useState<Set<TutorialId>>(() => loadSeenTutorials());
+  const [seenTutorials, setSeenTutorials] = useState<Set<TutorialId>>(() => loadSeenTutorialsShown());
   // ユニーク武器システム(UNIQUE_WEAPONS.md §3-3/§6): 銃スロットの装備設定(恒久・localStorage 1キー)。
   const [slotLoadout, setSlotLoadoutState] = useState(() => getSlotLoadout());
   const [weaponCategory, setWeaponCategory] = useState<SlotCategory>('handgun');
@@ -1585,7 +1591,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // v0.25.3187(社長報告「買ってないのに全種装備できちゃう」): 開発施設で陳列Lv1を購入したサブだけ
     // 装備できる(未購入はロック表示)。出撃時にも resetGame が同じ条件で落とす=二重の守り。
     const purchasedSubLevels = useGameStore.getState().purchasedSubLevels;
-    const subOwned = (k: SubWeaponKey) => (purchasedSubLevels[k] ?? 0) >= 1;
+    const subOwned = (k: SubWeaponKey) => shownSubShelfLevel(k, purchasedSubLevels) >= 1; // 開発用「すべて解放」中は全部買った扱い
     // v0.25.4084(社長指示2026-08-30「買ったやつだけ表示にしといて」): 未購入はロック行(v0.25.3187)
     // ではなく**載せない**。解放の入口は開発施設に一本化(この画面は「持ち物から選ぶ」だけ)。
     const visibleSubs = SUB_WEAPON_KEYS.filter(
@@ -1895,7 +1901,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const renderArchiveRecordList = (records: ArchiveRecord[]) => (
     <div className="flex flex-col gap-1.5">
       {records.map(r => {
-        const unlocked = archiveState.unlockedRecordIds.includes(r.id);
+        const unlocked = isRecordUnlocked(r.id, archiveState);
         const unread = unlocked && !archiveState.readRecordIds.includes(r.id);
         return unlocked ? (
           <button
@@ -2544,6 +2550,9 @@ const DevTools: React.FC<{
   // 武器解放(テスト用・社長指示2026-09-05): ユニーク武器の候補を全部解放済み扱いにする。
   // 端末に残る(localStorage)ので `?unlockall=1` を毎回付けなくてよい。BOSS_UNLOCK が空の間の確認手段。
   const [weaponUnlockAll, setWeaponUnlockAllState] = useState(() => isTestWeaponUnlockAll());
+  // すべて解放(開発用・社長指示2026-11-28): 資料・技・武器・ステージ等を、オンの間だけ全部解放済みに見せる(utils/unlockAll)。
+  // 進行の記録は書き換えない=オフにすれば元の進み具合に戻る。
+  const [unlockAll, setUnlockAllState] = useState(() => isUnlockAllOn());
   // 1000スクラップ開始(テスト用): 公開版の世界観を保つため開発施設からここへ移した(社長指示2026-11-25)。
   const startWithTestStraps = useGameStore(s => s.startWithTestStraps);
   const setStartWithTestStraps = useGameStore(s => s.setStartWithTestStraps);
@@ -2592,6 +2601,23 @@ const DevTools: React.FC<{
       >
         <span><span className="block text-[13px] font-semibold">武器解放</span><span className="block text-[11px] text-white/50">{weaponUnlockAll ? 'ユニーク武器を全解放(開発施設の棚にも全部並び、装備設定でも選べる)' : '設計図/購入したものだけ'}</span></span>
         <span className="text-[11px] font-semibold shrink-0">{weaponUnlockAll ? 'ON' : 'OFF'}</span>
+      </button>
+
+      {/* すべて解放(開発用): 見え方だけを切り替える。オフに戻した時、手に入れていないアバターを付けていたら外す(進行リセットと同じ扱い)。 */}
+      <button
+        type="button"
+        onClick={() => {
+          const next = !unlockAll;
+          setUnlockAllOn(next);
+          setUnlockAllState(next);
+          onRefreshCleared();
+          if (!next) { const g = useGameStore.getState(); if (g.avatarId && !isAvatarUnlocked(g.avatarId)) g.setAvatarId(null); }
+        }}
+        className={`w-full flex items-center justify-between gap-3 rounded-none border px-3 py-2.5 text-left ${unlockAll ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-purple-400/10 bg-purple-400/5 text-white/80 active:bg-purple-400/10'}`}
+        aria-pressed={unlockAll}
+      >
+        <span><span className="block text-[13px] font-semibold">すべて解放（開発用）</span><span className="block text-[11px] text-white/50">{unlockAll ? '資料・技・武器・ステージを全部解放済みに見せる(記録はそのまま)' : '今の進み具合のまま'}</span></span>
+        <span className="text-[11px] font-semibold shrink-0">{unlockAll ? 'ON' : 'OFF'}</span>
       </button>
 
       {/* 1000スクラップ開始: 次の出撃を1000スクラップ所持で始める(store の startWithTestStraps)。 */}
@@ -2712,8 +2738,8 @@ const GachaRateList: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const skillSheet = useSkillIconSheet();
   // 引いた時だけ変わる値(毎フレームは変わらない)。
   const pity = useGameStore(s => s.gachaPitySinceSuper);
-  const owned = useGameStore(s => s.ownedSkills);
-  const levels = useGameStore(s => s.ownedSkillLevels);
+  const owned = shownOwnedSkills(useGameStore(s => s.ownedSkills)); // 開発用「すべて解放」中は全部見せる
+  const levels = shownOwnedSkillLevels(useGameStore(s => s.ownedSkillLevels));
   const rows = gachaRateTable(pity);
   const [phase, setPhase] = useState<'enter' | 'open' | 'closing'>('enter');
   const [hasMore, setHasMore] = useState(false);
@@ -3327,9 +3353,9 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             設計図が無ければ棚に並べない。対象外のキーは従来どおり無条件で並ぶ(互換)。 */}
         {SUB_WEAPON_KEYS.filter(k =>
           !CHARACTER_SUBWEAPON_KEYS.includes(k) && !RETIRED_SUB_WEAPONS.includes(k)
-          && subShelfVisible(k, SUB_BOSS_UNLOCK_KEYS, hasSubBlueprint(k), purchasedSubLevels[k] ?? 0) // 既に買った人は並べ続ける(BRAWLER_PHANTOM §7)
+          && subShelfVisible(k, SUB_BOSS_UNLOCK_KEYS, hasSubBlueprint(k), shownSubShelfLevel(k, purchasedSubLevels)) // 既に買った人は並べ続ける(BRAWLER_PHANTOM §7)。「すべて解放」中は全部
         ).map(skillKey => {
-          const level = purchasedSubLevels[skillKey] ?? 0;
+          const level = shownSubShelfLevel(skillKey, purchasedSubLevels); // 「すべて解放」中は全部 MAX(買えない)
           const maxed = level >= 3;
           // v0.25.3185(社長指示): 解放は有料(20G/50G/100G)。支払いはガチャと同じ永続ゴールド。
           // v0.25.3187: Lv1解放が**装備の条件**になった(未購入のサブは装備メニューでロック)。

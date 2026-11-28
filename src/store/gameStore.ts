@@ -474,7 +474,7 @@ import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, set
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { resolveGachaPull, nextGachaMissStreak, nextGachaPity } from '../utils/gachaGuarantee';
-import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, SKILLS, gachaPullCost, gachaRefundFor, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS, retiredSkillsRefundTotal } from '../data/campaign';
+import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, SKILLS, gachaPullCost, gachaRefundFor, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS, retiredSkillsRefundTotal, shownOwnedSkills, shownOwnedSkillLevels, shownSubShelfLevel } from '../data/campaign';
 import { MELEE_HIT_MS } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
 import { SKILL_BURST_MS, skillBurstSize, skillBurstTint } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
 import { urlNum } from '../utils/urlNum'; // URLの数値ツマミ(既定値へ確実に落とす・v0.25.4341)
@@ -19970,8 +19970,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // SKILL_BUILD_REDESIGN.md §12-1: レベルアップ=スキル専業3択(新規∪Lv+1)+常設スクラップ+50。
       // 装備カードは出さない(装備は商人=B2)。
       const draftInput: RunSkillDraftInput = {
-        owned: state.ownedSkills,
-        ownedLevels: state.ownedSkillLevels,
+        owned: shownOwnedSkills(state.ownedSkills), // 開発用「すべて解放」中は全種・最大Lv(保存は不変)
+        ownedLevels: shownOwnedSkillLevels(state.ownedSkillLevels),
         runSkills: state.runBuild,
         runSkillLevels: player.skillLevels,
         playerLevel: newLevel,
@@ -20620,8 +20620,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const price = rerollPrice(state.rerollsUsedThisRun);
     if (state.player.straps < price) return;
     const draftInput: RunSkillDraftInput = {
-      owned: state.ownedSkills,
-      ownedLevels: state.ownedSkillLevels,
+      owned: shownOwnedSkills(state.ownedSkills), // 開発用「すべて解放」中は全種・最大Lv(保存は不変)
+      ownedLevels: shownOwnedSkillLevels(state.ownedSkillLevels),
       runSkills: state.runBuild,
       runSkillLevels: state.player.skillLevels,
       playerLevel: state.player.level,
@@ -20657,8 +20657,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       .filter(o => o.type === 'consumable')
       .map(o => o.consumableKey as ConsumableKey);
     const draftInput: RunSkillDraftInput = {
-      owned: state.ownedSkills,
-      ownedLevels: state.ownedSkillLevels,
+      owned: shownOwnedSkills(state.ownedSkills), // 開発用「すべて解放」中は全種・最大Lv(保存は不変)
+      ownedLevels: shownOwnedSkillLevels(state.ownedSkillLevels),
       runSkills: state.runBuild,
       runSkillLevels: state.player.skillLevels,
       playerLevel: state.player.level,
@@ -30752,7 +30752,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 装備サブは1つだけ採用(重複除去のうえ先頭1件)。クラス固有サブは別途常時所持。
       // v0.25.3187(社長報告「買ってないのに全種装備できちゃう」): 未購入(陳列Lv0)のサブは出撃時にも
       // 落とす(装備メニュー側のロックと二重の守り。古い保存が残っていても素通りさせない)。
-      const loPurchased = state.pendingLoadout.filter(k => (state.purchasedSubLevels[k] ?? 0) >= 1);
+      const loPurchased = state.pendingLoadout.filter(k => shownSubShelfLevel(k, state.purchasedSubLevels) >= 1); // 開発用「すべて解放」中は全部買った扱い
       const loDedup = loPurchased.filter((k, i) => loPurchased.indexOf(k) === i).slice(0, 1);
       const runSubs: SubWeaponKey[] = state.danceTestMode
         ? ['shijin']
@@ -30807,7 +30807,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? {}
         : Object.fromEntries(
             runSubs
-              .map(k => [k, k === innateSub ? 3 : Math.min(3, state.purchasedSubLevels[k] ?? 0)] as const)
+              .map(k => [k, k === innateSub ? 3 : Math.min(3, shownSubShelfLevel(k, state.purchasedSubLevels))] as const)
               .filter(([, lv]) => lv >= 1)
           ) as Partial<Record<SubWeaponKey, number>>;
       // 屋内(研究施設)ステージ初期化。選択ステージが indoor なら labMap から構築。

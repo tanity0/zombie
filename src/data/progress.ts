@@ -22,6 +22,7 @@ import { clearReadBossStories } from '../utils/bossStoryArchive';
 // (bossPractice側はprogressを読まない)。逆向き(bossPractice→progress)にすると
 // bossPractice→progress→bossEncounter→bossPractice の循環になるので注意。
 import { practiceActiveSlot } from '../utils/bossPractice';
+import { isUnlockAllOn } from '../utils/unlockAll'; // 開発用「すべて解放」(判定だけ。記録は書き換えない)
 
 const CLEARED_KEY = 'zombie.progress.cleared';
 const SELECTED_KEY = 'zombie.progress.selectedStage';
@@ -124,8 +125,12 @@ export const markMissionCleared = (missionId: string): void => {
 };
 
 // 前提ステージ(unlockBy)がクリア済みなら解放。最初のステージ(unlockBy=null)は常に解放。
-export const isStageUnlocked = (stage: Stage, cleared: Set<string> = readSet()): boolean =>
+// 開発用「すべて解放」がオンの間は全部解放(utils/unlockAll)。
+/** 本来の解放(記録だけで決まる)。「次の作戦」の指し先など、物語の進み具合そのものを読む所はこちら。 */
+export const isStageUnlockedRecorded = (stage: Stage, cleared: ReadonlySet<string> = readSet()): boolean =>
   stage.unlockBy === null || cleared.has(stage.unlockBy);
+export const isStageUnlocked = (stage: Stage, cleared: Set<string> = readSet()): boolean =>
+  isStageUnlockedRecorded(stage, cleared) || isUnlockAllOn();
 
 export const getSelectedStageId = (): string => {
   const slot = practiceActiveSlot();
@@ -483,16 +488,19 @@ export const syncQuestStageClear = (stageId: string): void => {
 // (gameStore.maybeUnlockMurasame)。
 const KOGARASU_KEY = 'zombie.progress.kogarasuUnlocked';
 
-export const isKogarasuUnlocked = (): boolean => {
+/** 本来の記録(トールを本当に倒したか)。書き込み側・年表の実績はこちらを見る(開発用「すべて解放」を混ぜない)。 */
+export const isKogarasuUnlockedRecorded = (): boolean => {
   if (typeof localStorage === 'undefined') return false;
   try { return localStorage.getItem(KOGARASU_KEY) === '1'; } catch { return false; }
 };
+/** 小烏丸が解禁されているか(商人に並ぶか)。開発用「すべて解放」がオンの間は解禁扱い。 */
+export const isKogarasuUnlocked = (): boolean => isKogarasuUnlockedRecorded() || isUnlockAllOn();
 
 // 立てた瞬間だけ true を返す(既に立っていれば false)。リザルトの解禁ポップアップを
 // 初回討伐のランに限定するための戻り値。
 export const markKogarasuUnlocked = (): boolean => {
   if (typeof localStorage === 'undefined') return false;
-  if (isKogarasuUnlocked()) return false;
+  if (isKogarasuUnlockedRecorded()) return false;
   try { localStorage.setItem(KOGARASU_KEY, '1'); } catch { /* ignore */ }
   return true;
 };

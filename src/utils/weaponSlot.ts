@@ -4,6 +4,7 @@
 // 呼ぶことで、地面の絵(pickup.weaponKey)と拾った時の実体を一致させる(§4-1)。
 import { SlotCategory, SlotTier, SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES, STORE_SOLD_KEYS } from '../data/weaponSlots';
 import { getWeaponUnlocks, getWeaponBlueprints } from '../data/progress';
+import { isUnlockAllOn } from './unlockAll'; // 開発用「すべて解放」(装備で全部えらべる・購入の記録は書き換えない)
 
 // 装備設定(恒久・localStorage 1キー・UNIQUE_WEAPONS.md §3-3)。キャラ別にしない(社長指定)。
 export type SlotLoadout = Partial<Record<SlotCategory, Partial<Record<SlotTier, string>>>>;
@@ -96,7 +97,7 @@ export const allSlotCandidateKeys = (): Set<string> => {
 /** 「今、実際に使ってよい」候補キーの集合(既定 ∪ 購入済み ∪ ?unlockall=1 ∪ テスト用トグル)。
  *  装備設定/生成点(resolveSlotKeyNow)はこれを読む(UNIQUE_WEAPONS.md §11-6-1)。 */
 export const unlockedWeaponKeys = (): Set<string> => {
-  if (UNLOCK_ALL || isTestWeaponUnlockAll()) return allSlotCandidateKeys();
+  if (UNLOCK_ALL || isTestWeaponUnlockAll() || isUnlockAllOn()) return allSlotCandidateKeys();
   const set = defaultSlotKeys();
   for (const k of getWeaponUnlocks()) set.add(k);
   return set;
@@ -109,6 +110,8 @@ export const unlockedWeaponKeys = (): Set<string> => {
  * 既定候補(先頭)はそもそも「常に使える」ので棚には並べない。
  */
 export const shelfWeaponKeys = (): Set<string> => {
+  // 開発用「すべて解放」: 全部開発済みに見せる=棚に並ぶ物は無い(購入の記録は書き換えない)。
+  if (isUnlockAllOn()) return new Set();
   const purchased = getWeaponUnlocks();
   const set = new Set<string>();
   if (UNLOCK_ALL || isTestWeaponUnlockAll()) {

@@ -3,6 +3,7 @@
 // 永続の読み書きは data/progress.ts(StoryFlags)と data/storyArchive.ts が担い、ここは判定のみ。
 
 import { getEventQuestMeta, type StoryFlags } from '../data/progress';
+import { isUnlockAllOn } from './unlockAll'; // 開発用「すべて解放」(判定だけ。フラグは書き換えない)
 
 // 任意サブ3本のステージ割当(統合正本「任意サブ1〜3」= ステージ1/3/4。ステージ5は遭遇のみで対象外)。
 export const SUB_QUEST_STAGE_IDS = ['stage-1', 'stage-3', 'stage-4'] as const;
@@ -25,12 +26,15 @@ export type RevisitCardState = 'hidden' | 'available' | 'cleared';
 export const revisitCardState = (flags: StoryFlags, subsDone: boolean): RevisitCardState => {
   if (flags.revisitCleared || flags.medicineUsed) return 'cleared';
   if (flags.endingSeen && subsDone && flags.medicineOwned) return 'available';
-  return 'hidden';
+  // 開発用「すべて解放」: 条件が揃っていなくても受注できる形で出す(クリア済みはクリア済みのまま)。
+  return isUnlockAllOn() ? 'available' : 'hidden';
 };
 
 // EXノード(異常変異体調査)の出現条件(統合正本10.1・指示書8.1): 再訪で薬を使用後。
 // 待ち時間なしで解放してよい(表示上の時間経過は「数日後／未明」で示す)。
-export const canShowEx = (flags: StoryFlags): boolean => flags.medicineUsed;
+/** 本来の条件(記録だけで決まる)。「次の作戦」の指し先はこちら(開発用「すべて解放」で目標がEXへ飛ばないように)。 */
+export const canShowExRecorded = (flags: StoryFlags): boolean => flags.medicineUsed;
+export const canShowEx = (flags: StoryFlags): boolean => canShowExRecorded(flags) || isUnlockAllOn(); // 開発用「すべて解放」中は出す
 
 // エンディング(聴取記録)終了後の後続(統合正本8章・指示書6章):
 //   medicine = サブ3本完了 → グレンの薬を付与+資料「グレンの薬」解放(→資料追加ポップアップ)

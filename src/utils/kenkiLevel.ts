@@ -3,6 +3,7 @@
 // (Lv1 を倒した=Lv2 になった時に抉り打ち・Lv2 を倒した=Lv3 になった時に踵落とし・Lv3 を倒した=Lv4 で蹴り上げ・Lv4 を倒した=済(5)で土竜)。
 // ※対策室(練習)中の書き込みは practiceGuard が localStorage ごと封じる(ここでも練習では上げない=二重の安全網)。
 import { KENKI_LEVEL_NAMES, KENKI_LEVEL_LINES } from '../data/kenkiNames';
+import { isUnlockAllOn } from './unlockAll'; // 開発用「すべて解放」(体得だけ全部。孫悟空のレベルは書き換えない)
 
 /** 孫悟空のレベル(1〜4)と済(5=斉天大聖)。 */
 export type KenkiLevel = 1 | 2 | 3 | 4 | 5;
@@ -71,8 +72,8 @@ export const clearKenkiLevel = (): void => {
   cache = 1;
   try { if (typeof localStorage !== 'undefined') localStorage.removeItem(KEY); } catch { /* ignore */ }
 };
-/** いまその技を体得しているか(格闘の入力が引く)。 */
-export const isBrawlerArtLearned = (art: BrawlerArt): boolean => brawlerArtLearnedAt(loadKenkiLevel(), art);
+/** いまその技を体得しているか(格闘の入力が引く)。開発用「すべて解放」がオンの間は全部体得扱い。 */
+export const isBrawlerArtLearned = (art: BrawlerArt): boolean => brawlerArtLearnedAt(loadKenkiLevel(), art) || isUnlockAllOn();
 /** テスト用: 保存せずにレベルを決める(null=次の読み込みで localStorage から読み直す)。 */
 export const setKenkiLevelForTest = (lv: KenkiLevel | null): void => { cache = lv; };
 

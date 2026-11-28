@@ -7,6 +7,7 @@ import { PRACTICE_SLOTS } from './bossPractice';
 import { bossIconName } from './bossIcon';
 import { PATROL_MAP_BOSS } from './sortieMapBosses';
 import type { KenkiArchiveView } from './kenkiArchive';
+import { isUnlockAllOn } from './unlockAll'; // 開発用「すべて解放」(表示だけ=倒した記録は書かない)
 
 /** 小見出しの並び(対策室の棚の順 PRACTICE_CATEGORY_ORDER に沿う: 賞金首→徘徊→城ボス→関所→裏ボス)。 */
 export const BOSS_STORY_GROUP_ORDER: readonly BossStoryGroup[] = ['賞金首', '徘徊', '大型変異体', '関所', '深層変異体'];
@@ -56,7 +57,7 @@ export const buildBossStoryGroups = (
     .map(group => ({
       group,
       cells: BOSS_STORIES.filter(e => e.group === group).map(entry => {
-        const unlocked = allUnlocked || defeated.has(entry.key);
+        const unlocked = allUnlocked || defeated.has(entry.key) || isUnlockAllOn();
         return {
           entry, unlocked, unread: unlocked && !read.has(entry.key), face: bossStoryFace(entry.key),
           kenki: entry.key === PATROL_MAP_BOSS.brawler.key ? kenki : null,

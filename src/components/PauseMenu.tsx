@@ -20,6 +20,7 @@ import { isGauntletRun } from '../utils/gauntletMode';
 import { sortieBossRoster, type SortieBoss } from '../utils/sortieBossRoster';
 import { appearedOnly } from '../utils/bossAppearances';
 import { hasEncounteredBoss } from '../utils/bossEncounter';
+import { isUnlockAllOn } from '../utils/unlockAll'; // 開発用「すべて解放」中は「?」にしない(遭遇記録は書き換えない)
 import { loadHeroAscended } from '../utils/heroAscended';
 import { currentPlayDevice, currentPadKind } from '../utils/inputDevice';
 import { pauseResumeHint, pauseResumePadStyle, hudGlyph, usePadKindActive, useWindowLandscape } from '../utils/hudHints';
@@ -65,7 +66,7 @@ const readPauseMap = (): PauseMapData | null => {
 const readPauseBosses = (): SortieBoss[] => {
   const s = useGameStore.getState();
   if (s.corridorMode || s.bossMaker.active || isPracticeRun() || isGauntletRun()) return [];
-  return appearedOnly(sortieBossRoster(getSelectedStageId(), hasEncounteredBoss, { heroAscended: loadHeroAscended() }));
+  return appearedOnly(sortieBossRoster(getSelectedStageId(), k => hasEncounteredBoss(k) || isUnlockAllOn(), { heroAscended: loadHeroAscended() }));
 };
 
 // 一時停止の左の列の「音」の行。押すたびに あり/なし が入れ替わる(押した音は鳴らさない=黙らせる行が鳴るのは逆・MuteButton と同じ)。

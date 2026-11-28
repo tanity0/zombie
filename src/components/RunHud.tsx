@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { shallow } from 'zustand/shallow';
 import { useGameStore } from '../store/gameStore';
 import { CONSUMABLES } from '../data/consumables';
-import { SKILLS, skillIcon } from '../data/campaign';
+import { SKILLS, skillIcon, shownOwnedSkillLevels } from '../data/campaign';
 // v0.25.3499: 社長支給の1枚シートが入っていればドット絵アイコン、無ければ従来の絵文字。
 import { useSkillIconSheet } from '../utils/useSkillIconSheet';
 import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
@@ -65,7 +65,7 @@ const RunHud: React.FC = () => {
   // Lvの派生プリミティブ(取得/Lvアップ時にだけ変わる文字列)。
   const levelsKey = useGameStore(s => s.runBuild.map(k => s.player.skillLevels?.[k] ?? 1).join(','));
   // この出撃で届く上限(所持Lvが天井=runLevelCap)。出撃中は変わらない派生プリミティブ。
-  const capsKey = useGameStore(s => s.runBuild.map(k => runSkillDisplayCap(k, s.player.skillLevels?.[k] ?? 1, s.ownedSkillLevels)).join(','));
+  const capsKey = useGameStore(s => s.runBuild.map(k => runSkillDisplayCap(k, s.player.skillLevels?.[k] ?? 1, shownOwnedSkillLevels(s.ownedSkillLevels))).join(','));
   const untils = useGameStore(s => ({
     consumableScrapUntil: s.player.consumableScrapUntil,
     consumableAttackUntil: s.player.consumableAttackUntil,

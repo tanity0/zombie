@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5905 — 開発用「すべて解放」スイッチ【2026-11-28 15:28】
+- 社長承認(オン・オフの開発用スイッチ・記録は書き換えない)。新規 utils/unlockAll.ts(isUnlockAllOn・`dev.unlockAll.v1`)+テスト15件。各判定を「本来 || isUnlockAllOn()」に。記録の書き込み側は本来の値だけを読む(isStageUnlockedRecorded / canShowExRecorded / isKogarasuUnlockedRecorded)。
+- 対象: ステージ・EX・洋館の再訪・地図の未解放予告・資料室の記録(ED後8件/グレンの薬含む)・操作記録(資料室のみ)・格闘の技・アバター・対策室の枠・特殊変異体の棚・一時停止のボス一覧・銃・小烏丸・サブウェポン(Lv3扱い)・スキル(最大Lv扱い)。対象外: 孫悟空のレベル・地図の顔・1周目構成・強化/ゴールド/ガチャ・年表と実績。
+- 注意: オン中に洋館の再訪で薬を使うと本物の記録が書かれる(遊んだ結果=許容)。オン中は開発施設で買えない(全部済み扱い)。
+- 検証: typecheck・eslint・循環import・src/utils+store+data 全緑(11704件)。オフ/オンを撮って目視(scratchpad/shots/unlockall-compare.png)。phone-guard は撮り直した基準と比べて主要画面は差なし(タイトル1px・左下の小文字行の揺れは本件と無関係)。
+
 ## v0.25.5904 — 汎用の幻影も出会ってから2分で跳んで帰る【2026-11-28 15:21】
 - 社長承認(「幻影も制限時間ある方がいい」→推薦「孫悟空と同じ2分・練習では帰らない」に はい)。kenkiLeave に汎用名の別名(phantomLeaveStep/Pose・PHANTOM_LEAVE_AFTER_MS)と genericPhantomMeetNow(名乗りのアテンションで数え始め・無ければ画面に入った時・練習ランは数えない)・phantomLeaveTex。phantomTick.phantomGenericMidAction(前隙・火炎放射・踏み込み)。
 - 絵: 職業の格闘ポーズ(${pre}-ready=沈み込み / -swing=上昇)・未ロードなら立ち絵のまま。

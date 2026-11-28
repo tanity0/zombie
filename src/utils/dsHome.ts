@@ -3,8 +3,8 @@
 // - contour*: 旧・等高線マップ(DsContourMap.tsx・v0.25.5096 で DsStoryMap に置き換えて撤去)の擬似地形。今は使っていない(テストだけ残る)。描画コンポーネントから数式だけを
 //   切り出してユニットテスト対象にする(実装精度の規律4: 配線ロジックの純関数化)。
 import type { Stage } from '../data/campaign';
-import { isStageUnlocked, type StoryFlags } from '../data/progress';
-import { canShowEx } from './storyProgress';
+import { isStageUnlocked, isStageUnlockedRecorded, type StoryFlags } from '../data/progress';
+import { canShowEx, canShowExRecorded } from './storyProgress';
 
 // 「次の作戦地域」(UI_OVERHAUL.md §3-1-2b)。規則:
 //   ④ EXは canShowEx(薬使用済み) && 解放済み && 未クリア の時だけ最優先(renderStageSelectと同じ門)。
@@ -13,6 +13,8 @@ import { canShowEx } from './storyProgress';
 //     「洞窟が目標になることは無い。任意のチュートリアルなので」)。地図で押せば選べる・出撃できる(目標ではないだけ)。
 //   ② 未クリアの先頭(=次にやるべきノード。新規プレイヤーはステージ1=stage-1を指す)。
 //   ③ 全クリア時は最終ノード。
+//   ⑥ 開発用「すべて解放」(utils/unlockAll)は混ぜない=本来の進み具合で次を指す(新しい端末でオンにしても目標はステージ1のまま。
+//     他のステージは地図に「未踏」で出て押せば選べる)。
 // stage-ending / stage-ex2 等 hidden はどの状態でも返さない(テストで固定)。
 /** 目標(次の出撃先)の候補にしない任意のステージ。 */
 export const OPTIONAL_STAGE_IDS: ReadonlySet<string> = new Set(['stage-tutorial']);
@@ -24,11 +26,11 @@ export const nextOperationStage = (
   storyFlags: StoryFlags
 ): Stage | null => {
   const ex = stages.find(
-    s => s.kind === 'ex' && isTargetCandidate(s) && canShowEx(storyFlags)
-      && isStageUnlocked(s, cleared) && !cleared.has(s.id)
+    s => s.kind === 'ex' && isTargetCandidate(s) && canShowExRecorded(storyFlags)
+      && isStageUnlockedRecorded(s, cleared) && !cleared.has(s.id)
   );
   if (ex) return ex;
-  const mains = stages.filter(s => s.kind === 'main' && isTargetCandidate(s) && isStageUnlocked(s, cleared));
+  const mains = stages.filter(s => s.kind === 'main' && isTargetCandidate(s) && isStageUnlockedRecorded(s, cleared));
   const next = mains.find(s => !cleared.has(s.id));
   if (next) return next;
   return mains[mains.length - 1] ?? null;

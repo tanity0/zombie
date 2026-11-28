@@ -2,6 +2,7 @@
 // 依存は台帳の型だけ(store / PixiJS を読まない)。台帳 LOCKED_AVATARS に載っているアバターだけが「まだ持っていない」になり得る
 // (載っていない既存のセットは今までどおり最初から選べる)。手に入れた物は端末の進行に1つのキーで持ち、resetProgress() で消える。
 import type { AvatarId } from '../data/avatars';
+import { isUnlockAllOn } from './unlockAll'; // 開発用「すべて解放」(選べるだけ。手に入れた記録は書き換えない)
 
 /** 手に入れるまで選べないアバター。 */
 export const LOCKED_AVATARS: readonly AvatarId[] = ['tosen-set'];
@@ -16,7 +17,7 @@ const readSet = (): Set<AvatarId> => {
 };
 
 /** そのアバターを選べるか(台帳に無い物は常に選べる)。 */
-export const isAvatarUnlocked = (id: AvatarId): boolean => !LOCKED_AVATARS.includes(id) || readSet().has(id);
+export const isAvatarUnlocked = (id: AvatarId): boolean => !LOCKED_AVATARS.includes(id) || readSet().has(id) || isUnlockAllOn();
 
 /** 手に入れる。初めて手に入れた時だけ true(帯・リザルトを出すのはこの時だけ)。 */
 export const unlockAvatar = (id: AvatarId): boolean => {

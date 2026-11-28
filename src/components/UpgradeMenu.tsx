@@ -8,7 +8,7 @@ import { spritePath } from '../utils/spriteLoader';
 // v0.25.3499: スキルの1枚シート(入っていればドット絵アイコン、無ければ従来の絵文字)。
 import { useSkillIconSheet, type SkillIconSheet } from '../utils/useSkillIconSheet';
 import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
-import { SKILLS, RARITY_LABEL, skillIcon } from '../data/campaign';
+import { SKILLS, RARITY_LABEL, skillIcon, shownOwnedSkillLevels } from '../data/campaign';
 import { runBuildCapacity, rerollPrice, MAX_BANISH_PER_RUN } from '../utils/runSkillDraft';
 import { runSkillDisplayCap, skillLevelTone } from '../utils/runSkillLevelLabel';
 import { levelUpLayout, levelUpTier } from '../utils/levelUpOrder';
@@ -102,7 +102,7 @@ const UpgradeMenu: React.FC = () => {
   // 社長指示2026-11-12: 上部の「取得済み」段。runBuild(取得順)に並ぶ各スキルの今のLvと、
   // この出撃で届く上限(所持Lvが天井=runLevelCap)。数値だけの小配列を shallow で購読する。
   const ownedRunLevels = useGameStore(s => s.runBuild.map(k => s.player.skillLevels?.[k] ?? 1), shallow);
-  const ownedRunCaps = useGameStore(s => s.runBuild.map(k => runSkillDisplayCap(k, s.player.skillLevels?.[k] ?? 1, s.ownedSkillLevels)), shallow);
+  const ownedRunCaps = useGameStore(s => s.runBuild.map(k => runSkillDisplayCap(k, s.player.skillLevels?.[k] ?? 1, shownOwnedSkillLevels(s.ownedSkillLevels))), shallow);
   const straps = useGameStore(state => state.player.straps);
   const playerLevel = useGameStore(state => state.player.level);
   const rerollsUsedThisRun = useGameStore(state => state.rerollsUsedThisRun);

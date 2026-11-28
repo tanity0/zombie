@@ -5,6 +5,8 @@
 //   2. StoryArchiveState の localStorage 永続(load/save/unlockRecordsForStage/markRecordRead)
 // を提供する純関数群。gameStore を経由しない(heartbeat/chronicleと同じ「必要時に1回読む」方針)。
 
+import { isUnlockAllOn, withUnlockAll } from '../utils/unlockAll'; // 開発用「すべて解放」(見え方だけ。保存は書き換えない)
+
 // 'world'=調査記録(共有パッケージ2026-07-23「the ONE 資料室全件実装」で追加)。
 export type ArchiveCategory = 'world' | 'mutant' | 'weapon' | 'item' | 'term' | 'mission';
 
@@ -456,8 +458,13 @@ export const markRecordRead = (id: string): void => {
   saveStoryArchive(state);
 };
 
+// 開発用「すべて解放」がオンの間は全部解放済みに見える(保存の unlockedRecordIds は書き換えない)。
 export const isRecordUnlocked = (id: string, state: StoryArchiveState = loadStoryArchive()): boolean =>
-  state.unlockedRecordIds.includes(id);
+  state.unlockedRecordIds.includes(id) || (isUnlockAllOn() && ARCHIVE_RECORDS.some(r => r.id === id));
+
+/** 資料室に「解放済み」として見せる資料ID(本来の解放 ∪ 開発用「すべて解放」中は台帳の全部)。未読の数もこれから数える。 */
+export const shownUnlockedRecordIds = (state: StoryArchiveState): string[] =>
+  [...withUnlockAll(state.unlockedRecordIds, ARCHIVE_RECORDS.map(r => r.id))];
 
 export const isRecordRead = (id: string, state: StoryArchiveState = loadStoryArchive()): boolean =>
   state.readRecordIds.includes(id);
