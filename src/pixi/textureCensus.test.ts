@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Texture, RenderTexture } from 'pixi.js';
-import { installTextureCensus, liveTextureObjects, managedTextureCount, textureCensusText } from './textureCensus';
+import { installTextureCensus, liveTextureObjects, managedTextureCount, textureCensusText, countLiveSlots, texturePoolMB } from './textureCensus';
 
 describe('textureCensus', () => {
   it('Texture/RenderTexture の生成を1回につき1つ数え、source の差し替えは数えない', () => {
@@ -19,6 +19,14 @@ describe('textureCensus', () => {
   });
   it('描画器が未登録なら mt は -1', () => {
     expect(managedTextureCount()).toBe(-1);
-    expect(textureCensusText()).toMatch(/^txo\d+ mt-1$/);
+    expect(textureCensusText()).toMatch(/^txo\d+ mt-1 pool-?\d+$/);
+  });
+  it('mt は管理表の空き枠(捨てた後に残る null)を数えない(社長実機 v0.25.5917 の mt6608 はほぼ空き枠)', () => {
+    expect(countLiveSlots({ a: {}, b: null, c: null, d: {} })).toBe(2);
+    expect(countLiveSlots([null, {}, undefined])).toBe(1);
+    expect(countLiveSlots({})).toBe(0);
+  });
+  it('TexturePool の量を MB で返す(数えられない時は -1)', () => {
+    expect(texturePoolMB()).toBeGreaterThanOrEqual(-1);
   });
 });

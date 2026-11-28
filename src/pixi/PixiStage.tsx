@@ -16,6 +16,7 @@ import { renderErrorFlags } from './renderErrorFlags';
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { noteRendererMount, noteContextLost } from '../utils/crashWatch';
 import { setCensusRenderer, clearCensusRenderer } from './textureCensus';
+import { installMaskFilterClip } from './maskFilterClip';
 
 // 描画解像度の上限(電池対策)。スマホ(タッチ端末)は塗り面積=GPU負荷を抑えるため低め、PCは高画質のまま。
 // 塗るピクセル数は倍率の2乗で効くので、スマホ 2.0→1.5 で約44%削減。?rescap= でURL上書き(検証/微調整)。
@@ -107,6 +108,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       setAppliedResolution(app.renderer.resolution); // 診断表示用(実際に効いている値)
       if (cancelled) return;
       setCensusRenderer(app.renderer); // 「前回最後」の mt(描画器が管理しているテクスチャの数)
+      installMaskFilterClip(app.renderer); // マスクの作業用テクスチャを見える範囲までに切る(画面の外の分で TexturePool が百MB台に膨らんでいた)
       await ensureTextures();
       loadProgressDone(); // マニフェスト一式=1ユニット
       const BASE = import.meta.env.BASE_URL;

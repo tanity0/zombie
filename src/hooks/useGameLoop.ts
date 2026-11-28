@@ -3156,6 +3156,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               cy = focusY + (att.fromCamY - focusY) * t;
             }
             setCameraPosition(cx, cy);
+            // ★寿命の切れたエフェクトだけは捨てる(2026-11-28・社長実機 v0.25.5917「城ボスを倒して直ぐ落ちた」の前回最後が
+            // `fx 368/368 古368`)。この早期 return は下の updateEffects を通らないので、撃破の寄り(約5秒)の間は
+            // 掃除が1度も回らず、出た物が全部残っていた。動かす・出すは今のまま(捨てるだけ=見た目は変わらない)。
+            useGameStore.getState().pruneEffects();
             frameRef.current = requestAnimationFrame(gameLoop);
             return;
           }

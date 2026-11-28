@@ -568,7 +568,8 @@ import {
 } from '../utils/mimirLaserTrack';
 import { TELEGRAPH_TRACK_MS, stepTrackAim } from '../utils/telegraphTrack'; // §15追尾相パイロット(sweep限定)
 import { enemyFootBox, enemyHeadY, enemyHitStrip, playerFootBox } from '../pixi/renderSpec';
-import { MELEE_HIT_HOLD_MIN_MS, MELEE_HITSTOP_STRETCH, meleeStopPlan, knifeHitstopDrawSince, meleeArcRunEnd, MELEE_POSE_PREFIX, closestSince, katanaSlashCenterT, KATANA_SELF_STOP_MS } from '../utils/meleeHitstopTiming'; // 近接のヒットストップの時刻と長さ(描画だけの自分の止め)
+import { isEffectExpired, pruneExpiredEffects } from '../utils/effectExpiry'; // エフェクトの寿命切れ(updateEffects とアテンション中の掃除で同じ式)
+import { MELEE_HITSTOP_STRETCH, meleeStopPlan, knifeHitstopDrawSince, meleeArcRunEnd, MELEE_POSE_PREFIX, closestSince, katanaSlashCenterT, KATANA_SELF_STOP_MS } from '../utils/meleeHitstopTiming'; // 近接のヒットストップの時刻と長さ(描画だけの自分の止め)
 import { newAlchemyRhythm, advanceAlchemyRhythm, tapAlchemyRhythm, alchemyRareChance } from '../utils/alchemyRhythm';
 // 雑魚の個体差+役割(社長指示v0.25.3176・案4+案3)。向きと速さだけを曲げる純関数。
 import { isChaffType, chaffTraits, chaffHeading, chaffSpeedMult } from '../utils/chaffMotion';
@@ -13200,6 +13201,8 @@ interface GameState {
   spawnMultiHitFx: (x: number, y: number, count: number, opts?: { label?: string; milestoneTier?: number; duration?: number }) => void;
   registerMeleeHits: (count: number) => void; // 左上 COMBO(表示専用・近接ヒットの連続数)へ加算
   updateEffects: (deltaTime: number) => void;
+  /** 寿命の切れたエフェクトだけを捨てる(動かさない)。シミュを止めて早期 return する経路(アテンション)の掃除用。 */
+  pruneEffects: () => void;
   // PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁の演出トリガー。
   triggerWallBand: (text: string, color: 'white' | 'gold', durationMs: number) => void;
   enqueueWallEvent: (kind: WallEventKind, title: string, sub: string, color: string, gold?: number) => void;
@@ -32549,12 +32552,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
+  pruneEffects: () => {
+    const cur = get().effects;
+    const next = pruneExpiredEffects(cur, Date.now());
+    if (next !== cur) set({ effects: next as VisualEffect[] });
+  },
+
   updateEffects: (deltaTime) => {
     const now = Date.now();
     set(state => {
       const live: VisualEffect[] = [];
       for (const e of state.effects) {
-        if (now - e.createdAt > e.duration + (e.kind === 'slash' || e.kind === 'trail' ? (e.stopMs ?? 0) : e.kind === 'whiprope' ? (e.stopAt !== undefined ? Math.max(e.stopMs ?? 0, MELEE_HIT_HOLD_MIN_MS) : 0) : 0)) continue; // 絵の時計を止めた分だけ寿命も延ばす(描画だけ)
+        if (isEffectExpired(e, now)) continue; // 絵の時計を止めた分だけ寿命も延ばす(描画だけ・utils/effectExpiry)
         if (e.kind === 'particle') {
           const drag = e.drag ?? 0;
           const decay = drag > 0 ? Math.exp(-drag * deltaTime) : 1;

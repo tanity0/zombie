@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5924 — 落ちの主因: alpha マスクの作業用テクスチャが画面外まで抱え込み(+寄り中のエフェクト掃除・mt 計器の修正)【2026-11-28 23:54】
+- 社長実機3回目(v0.25.5917 stage-4 t521s・城ボス撃破直後)。原因: Pixi 8.19 の MaskFilter は clipToViewport:false で、マスクの中身全体(画面の2〜4倍)の作業用テクスチャを2の累乗で取り、TexturePool に出撃中ずっと残す=「前回最後」に出ない百数十MB。スマホ格ヘッドレスで出撃直後 pool 117MB・城ボス撃破の寄りで +48MB→166MB。tex160+bake44 に乗って iOS の落とす帯へ。
+- 直し: 新規 pixi/maskFilterClip(MaskFilter の範囲だけ、囲むフィルタ/描き先画面との重なりで切る・描画器ごとに1回差し込み)→ pool 40MB・撃破後42MB(増えない)・4096幅の作業用テクスチャが出ない。見た目は撮り比べで雪の縁の数画素の丸めのみ(区別不能)。負荷1/10。
+- 付随: ①mt 計器が管理表の null 枠まで数えていた(6608=作って捨てた累計)→生きている枠だけ+行末に `pool<MB>`。②城ボス撃破の寄り(アテンション)の早期 return で updateEffects が回らず古いエフェクトが溜まる→新規 utils/effectExpiry+gameStore.pruneEffects で寿命切れだけ捨てる(動き・出し方は不変)。③描画器41代目=ロスト0なので同じタブで41回出撃(作り直しの経路は出撃/もう一度/ロストのみ)。
+- 未実施(社長確認待ち): 寄りの間、粒は位置が止まったまま実時間で薄れる(v0.25.3038 のコメント「アテンション中も視覚エフェクトは実時間で進める」と食い違う可能性)。
+- ENGINEERING_NOTES §0 に行を追加。検証: typecheck・eslint・循環import・maskFilterClip/effectExpiry/textureCensus テスト緑。**実機で落ちなくなったかは未確認**。
+
 ## v0.25.5923 — 強化の弾数を最大+30%に【2026-11-28 23:46】
 - 社長指示「弾数は30%を最大に」。data/playerUpgrades の ammo を perLevel 0.05→0.06(5段で+30%・旧+25%)。所持上限(母数)のみ=マガジン・リロード・ドロップは不変。5段で handgun 72→94 / shotgun 24→31 / rifle 36→47 / phill 48→62。playerUpgrades.test を追従。
 - 検証: typecheck・eslint・playerUpgrades.test・src/data 緑。
