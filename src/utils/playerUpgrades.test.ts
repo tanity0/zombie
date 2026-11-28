@@ -56,9 +56,9 @@ describe('段数 → 効果値(発注文の表そのもの)', () => {
     expect([0, 1, 2, 3, 4, 5].map(growthMaxHpBonus)).toEqual([0, 20, 40, 60, 80, 100]);
   });
 
-  it('攻撃力 +4%/段(5段で+20%)', () => {
-    expect(growthAttackMult(1)).toBeCloseTo(1.04, 10);
-    expect(growthAttackMult(PLAYER_UPGRADE_MAX_LEVEL)).toBeCloseTo(1.2, 10);
+  it('攻撃力 +10%/段(5段で+50%・社長指示2026-11-28)', () => {
+    expect(growthAttackMult(1)).toBeCloseTo(1.1, 10);
+    expect(growthAttackMult(PLAYER_UPGRADE_MAX_LEVEL)).toBeCloseTo(1.5, 10);
   });
 
   it('ゴールド獲得 +10%/段(5段で+50%)', () => {

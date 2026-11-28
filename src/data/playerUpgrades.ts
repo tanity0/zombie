@@ -28,7 +28,7 @@ export interface PlayerUpgradeDef {
   /** 強化画面の行名。 */
   label: string;
   /**
-   * 1段あたりの効果量。体力=**加算HP**、それ以外=**倍率へ足す割合**(攻撃0.04=+4%)。
+   * 1段あたりの効果量。体力=**加算HP**、それ以外=**倍率へ足す割合**(攻撃0.10=+10%)。
    * 効果値へ変換するのは utils/playerUpgrades.ts の純関数(ここでは掛け方を決めない)。
    */
   perLevel: number;
@@ -40,7 +40,7 @@ export interface PlayerUpgradeDef {
 
 export const PLAYER_UPGRADES: readonly PlayerUpgradeDef[] = [
   { id: 'health', label: '体力',       perLevel: 20,   perLevelLabel: '+20',  desc: '一撃を余分にもらっても立っていられる。' },
-  { id: 'attack', label: '攻撃力',     perLevel: 0.04, perLevelLabel: '+4%',  desc: '同じ弾数で、相手が早く倒れる。' },
+  { id: 'attack', label: '攻撃力',     perLevel: 0.10, perLevelLabel: '+10%', desc: '同じ弾数で、相手が早く倒れる。' }, // 社長指示2026-11-28「強化の攻撃力を最大で50%に」=5段×10%(旧 +4%×5=20%)
   { id: 'ammo',   label: '弾数',       perLevel: 0.05, perLevelLabel: '+5%',  desc: '弾切れが遠くなる。' },
   // 経験値効率(社長指示v0.25.3679「強化項目に経験値効率も追加。10%ずつ」)。
   { id: 'xp',     label: '経験値効率',   perLevel: 0.10, perLevelLabel: '+10%', desc: '出撃中のレベルが速く上がる。' },
