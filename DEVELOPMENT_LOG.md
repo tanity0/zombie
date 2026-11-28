@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5910 — 格闘中のスケーター乗車(2回目を押したまま動かす)【2026-11-28 17:14】
+- 社長指示「2回目を押しながら移動したら、じゃない?そんな動作ないし格闘に」。新規 utils/brawlerSkaterMount(skaterPressResult/shouldMountBrawlerSkaterTouch/Pc)+テスト14件。タッチ=VirtualJoystick(2回目で構え・指の移動と30msタイマーで判定・乗ったら抉り打ちの溜めを消す)、PC/パッド=pcPress(移動キー/スティック)。格闘以外の乗り方は不変。
+- しきい値: 押し続け220ms以上(タップ上限と同値)+ずれ24px以上(タップ最大ずれ)+直近120msで20px未満(フリックの窓・最短距離)=フリック・長押し・タップ連打では乗らない。残る境目: ゆっくり切り返して離すステップは理屈上乗りうる(乗車中の関所がステップを止める)。
+- スケーターの説明文に「格闘中は2回目を押したまま動かすと乗る。」を追記。research/BRAWLER.md §7-2 を実態に更新。
+- 検証: typecheck・eslint・関連テスト緑。ヘッドレスで本物のタッチイベントを合成し、乗る/フリックで乗らない/長押しで乗らない/格闘以外は今どおりを skaterRiding で確認・乗った画を目視(scratchpad/shots/brawler_skater_ride.png)。phone-guard は変更前の版でも同じ9画面がNG(基準ファイルが古い=撮り直し要・本件と無関係)。
+
 ## v0.25.5909 — ガチャの習得数と、コンプリート時の確率欄【2026-11-28 16:23】
 - 社長承認。SkillGacha の「習得 X/Y」を gachaObtainableSkills 基準に(常時・分子は shownOwnedSkills=すべて解放と整合・数値1つの購読)。コンプリート中は確率の枠を出さず、排出一覧のリンクだけ右寄せで残す。所持一覧の OBTAINABLE_SKILL_KEYS 側は不変。
 - 検証: typecheck・eslint。コンプリート前(17/39)/コンプリート時(39/39)を撮って目視(scratchpad/shots/gacha-normal.png・gacha-complete.png)。

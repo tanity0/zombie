@@ -7,8 +7,9 @@ import { playSfx } from '../audio/audioManager';
 import { useGameStore, isAttackLocked, isInputLocked, isWorldFrozen, isBrawlerMode } from '../store/gameStore';
 import { mouseSetsAim } from './weaponUtils';
 import { isRetaliationWindowOpen } from './hitRetaliation';
+import { skaterPressResult, shouldMountBrawlerSkaterPc, SKATER_MOUNT_DOUBLETAP_MS } from './brawlerSkaterMount';
 
-export const PC_SKATER_DOUBLETAP_MS = 300; // 1回目の離し→2回目の押下 までの許容間隔(タッチと同値)
+export const PC_SKATER_DOUBLETAP_MS = SKATER_MOUNT_DOUBLETAP_MS; // 1回目の離し→2回目の押下 までの許容間隔(300ms・タッチと同値)
 export const PC_SKATER_TAP_MAX_MS = 220;   // 「タップ」とみなす最大の押下時間(タッチと同値)
 
 // 仮想の指は1本(タッチと同じ)。押した入口(マウス/キー/パッド)だけが離せる=3つを同時に押しても二重に撃たない(品質監査 A-2/A-5)。
@@ -18,6 +19,24 @@ let owner: PressSource | null = null;
 let downAt = 0;
 let lastWasTap = false;
 let lastUpAt = 0;
+// ★格闘中のスケボー(社長指示2026-11-28): 2度押しの2回目は押した瞬間には乗らず、押したまま移動の入力をしたら乗る。
+// 構えている間だけ store の変化(毎フレームの進行)を見て判定する(離す・乗るで外す)。
+let brawlerSkaterUnsub: (() => void) | null = null;
+const disarmBrawlerSkater = (): void => { if (brawlerSkaterUnsub) { brawlerSkaterUnsub(); brawlerSkaterUnsub = null; } };
+const tryMountBrawlerSkater = (): void => {
+  if (!brawlerSkaterUnsub || !pressing) return;
+  if (isInputLocked()) return;
+  const gs = useGameStore.getState();
+  if (isRetaliationWindowOpen(gs.hitRetaliation, Date.now())) return; // 反撃の窓の間は乗らない(押下の時と同じ)
+  const i = gs.inputState;
+  const moveInput = gs.swipeDirection !== null || !!(i && (i.up || i.down || i.left || i.right)); // 抉り打ちの「移動の入力」と同じ式
+  if (!shouldMountBrawlerSkaterPc(downAt, performance.now(), moveInput)) return;
+  disarmBrawlerSkater();
+  gs.mountSkater();
+  gs.brawlerGougeClear(); // 乗った押下は抉り打ちの溜めにしない
+};
+/** テスト用: 格闘中の2度押しの後の判定を今すぐ1回走らせる(本番は store の変化ごとに走る)。 */
+export const pollBrawlerSkaterForTest = (): void => tryMountBrawlerSkater();
 let flickedThisPress = false; // 四神舞: 押している間にフリックを出したら、離した時のタップは出さない(タッチの flickFired と同じ・検収 B-1)
 
 /** 四神舞でフリックを出した(右クリック/移動キー/パッド B)。押している間なら、その押下の離しはタップにしない。 */
@@ -40,10 +59,15 @@ export const pcPressDown = (src: PressSource): void => {
   const now = performance.now();
   // スケボー: 直前が短いタップで、離しから規定時間内の再押下=2度押し=乗車(2回目はそのまま押している=乗っている)。
   // ★被弾反撃の窓の中の押し直しは乗車に数えない(タッチの VirtualJoystick と同じ・検収監査 A-1 の PC 版)。
-  if (lastWasTap && now - lastUpAt <= PC_SKATER_DOUBLETAP_MS
-    && !isRetaliationWindowOpen(gs.hitRetaliation, Date.now())
-    && !isBrawlerMode(gs.player)) gs.mountSkater(); // 格闘中は2度押しで乗らない(research/BRAWLER.md §7-2)
+  // ★格闘中は押した瞬間には乗らない(research/BRAWLER.md §7-2)。2回目を押したまま移動の入力をしたら乗る(社長指示2026-11-28)。
+  const skaterPress = skaterPressResult({
+    lastWasTap, sinceLastUpMs: now - lastUpAt,
+    retaliationOpen: isRetaliationWindowOpen(gs.hitRetaliation, Date.now()),
+    brawler: isBrawlerMode(gs.player),
+  });
+  if (skaterPress === 'mount') gs.mountSkater();
   downAt = now;
+  if (skaterPress === 'arm') { disarmBrawlerSkater(); brawlerSkaterUnsub = useGameStore.subscribe(tryMountBrawlerSkater); }
   // ★抉り打ち(research/BRAWLER.md §37): 押した瞬間に溜めを始める(格闘で、移動の入力が無い溜められる体の時だけ・store が判断)。
   if (isBrawlerMode(gs.player)) gs.brawlerGougePress();
 };
@@ -58,6 +82,7 @@ export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
   if (src !== 'any' && src !== owner) return; // 押していない入口の離しは無視
   pressing = false;
   owner = null;
+  disarmBrawlerSkater();
   const gs = useGameStore.getState();
   const returnPromptOpened = fire ? gs.requestStoryReturnPrompt() : false;
   // 洋館の再訪: 保存槽の［投与する］が出ている間は、主ボタンの離し=そのボタンを押す(攻撃は出さない)。
@@ -119,7 +144,7 @@ export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
 };
 
 /** テスト用: 状態を初期化する。 */
-export const resetPcPressForTest = (): void => { pressing = false; owner = null; downAt = 0; lastWasTap = false; lastUpAt = 0; flickedThisPress = false; };
+export const resetPcPressForTest = (): void => { disarmBrawlerSkater(); pressing = false; owner = null; downAt = 0; lastWasTap = false; lastUpAt = 0; flickedThisPress = false; };
 
 // 窓が裏へ行った・タブが隠れた=押しっぱなしの離しは来ない → 撃たずに離す(監査 A-4)。1回だけ付ける。
 if (typeof window !== 'undefined') {

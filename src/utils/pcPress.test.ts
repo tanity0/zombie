@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../audio/audioManager', () => ({ playSfx: vi.fn() }));
 import { useGameStore } from '../store/gameStore';
-import { pcPressDown, pcPressUp, resetPcPressForTest, isPcPressing, markPcFlick } from './pcPress';
+import { pcPressDown, pcPressUp, resetPcPressForTest, isPcPressing, markPcFlick, pollBrawlerSkaterForTest } from './pcPress';
 
 // research/PC_SUPPORT.md §11-1: PC の「指」(マウス左・Space/J・パッドA)。タッチの指置き/指離しと同じ行為を呼ぶ。
 describe('PC の指(pcPress)', () => {
@@ -176,5 +176,63 @@ describe('PC の指: 錬金術の溜め中', () => {
     pcPressUp('mouse', true);
     pcPressDown('mouse');
     expect(mount).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ★格闘中のスケボー(社長指示2026-11-28「2回目を押しながら移動したら、じゃない?」): 2回目を押した瞬間には乗らず、押したまま移動の入力で乗る。
+describe('PC の指: 格闘中のスケボー', () => {
+  let mount: ReturnType<typeof vi.fn>, clock = 0;
+  const noMove = { up: false, down: false, left: false, right: false };
+  beforeEach(() => {
+    resetPcPressForTest();
+    clock = 10_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => clock);
+    mount = vi.fn();
+    useGameStore.setState(s => ({
+      isPaused: false, touchActive: false, mouseAim: null, hitRetaliation: null, swipeDirection: null,
+      inputState: { ...s.inputState, ...noMove },
+      beginMeleeSwing: vi.fn(() => true), fireHoming: vi.fn(), mountSkater: mount, dismountSkater: vi.fn(),
+      brawlerGougePress: vi.fn(), brawlerGougeRelease: vi.fn(() => 'normal'), brawlerGougeClear: vi.fn(),
+      requestStoryReturnPrompt: () => false,
+      fireSignalLauncher: vi.fn(), fireRailgunShot: vi.fn(), detonateAlchemyStones: vi.fn(), firePhillShot: vi.fn(),
+      player: { ...s.player, subWeapons: ['brawler'], alchemyChannelStartedAt: undefined, alchemyRhythm: undefined },
+    }) as never);
+  });
+  afterEach(() => { resetPcPressForTest(); vi.restoreAllMocks(); });
+  const doubleTap = () => { pcPressDown('mouse'); clock += 80; pcPressUp('mouse', true); clock += 100; pcPressDown('mouse'); };
+  it('2回目を押した瞬間には乗らない', () => {
+    doubleTap();
+    expect(mount).not.toHaveBeenCalled();
+    pcPressUp('mouse', true);
+  });
+  it('2回目を押したまま移動キーを押して、押下が短いタップを越えたら乗る', () => {
+    doubleTap();
+    useGameStore.setState(s => ({ inputState: { ...s.inputState, right: true } }) as never);
+    clock += 100; pollBrawlerSkaterForTest();
+    expect(mount).not.toHaveBeenCalled(); // まだ短い押下(連打の押下では乗らない)
+    clock += 150; useGameStore.setState({ gameTime: 1 } as never); // store が動けば自動で判定する
+    expect(mount).toHaveBeenCalledTimes(1);
+    pcPressUp('mouse', true);
+  });
+  it('パッドのスティック(swipeDirection)でも乗る', () => {
+    pcPressDown('pad'); clock += 80; pcPressUp('pad', true); clock += 100; pcPressDown('pad');
+    clock += 300;
+    useGameStore.setState({ swipeDirection: { x: 1, y: 0 } } as never);
+    expect(mount).toHaveBeenCalledTimes(1);
+    pcPressUp('pad', true);
+  });
+  it('押したまま動かさない(抉り打ちの長押し)では乗らない', () => {
+    doubleTap();
+    clock += 1000; pollBrawlerSkaterForTest();
+    expect(mount).not.toHaveBeenCalled();
+    pcPressUp('mouse', true);
+  });
+  it('離した後に移動キーを押しても乗らない(構えは離しで外れる)', () => {
+    doubleTap();
+    pcPressUp('mouse', true);
+    clock += 300;
+    useGameStore.setState(s => ({ inputState: { ...s.inputState, right: true } }) as never);
+    pollBrawlerSkaterForTest();
+    expect(mount).not.toHaveBeenCalled();
   });
 });

@@ -18,6 +18,7 @@ import {
 import { isRetaliationWindowOpen } from '../utils/hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
 import { detectFlickFromSamples } from '../utils/brawler'; // フリック判定(格闘と共有)
 import { detectStickReversalFromSamples, STEP_REVERSAL_LEG_MAX_MS } from '../utils/brawlerStepInput'; // ★格闘のステップ(research/BRAWLER.md §12-3b)
+import { skaterPressResult, shouldMountBrawlerSkaterTouch } from '../utils/brawlerSkaterMount'; // ★格闘中のスケボー=2回目を押したまま動かすと乗る
 
 // Floating thumb-stick. The user can place a finger anywhere inside the
 // activation zone (the left half of the screen, below the HUD), and the
@@ -27,7 +28,7 @@ const STICK_RADIUS = 56; // px — visible base radius
 const NUB_RADIUS = 28;
 const DEAD_ZONE = 0.18; // ignore tiny movements
 // スケボー(新仕様)ダブルタップ判定: 直前が「短く小移動のタップ」で、離しからこの時間内に再タップ=ダブルタップ=乗車。
-const SKATER_DOUBLETAP_MS = 300;   // 1タップ目の離し→2タップ目の押下 までの許容間隔
+// 1タップ目の離し→2タップ目の押下 までの許容間隔(300ms)は utils/brawlerSkaterMount の SKATER_MOUNT_DOUBLETAP_MS(skaterPressResult が使う)。
 const SKATER_TAP_MAX_MS = 220;     // 「タップ」とみなす最大接触時間
 const SKATER_TAP_MAX_DRAG = 24;    // 「タップ」とみなす最大ドラッグ量(px)
 // 指の軌跡を残す長さ。フリックは直近 KATANA_FLICK_WINDOW_MS しか見ない(古い点を残しても結果は同じ)。格闘のステップ(切り返し)は
@@ -76,6 +77,26 @@ const VirtualJoystick: React.FC = () => {
   const lastUpAtRef = useRef(0);
   const lastWasTapRef = useRef(false);
   const maxDragRef = useRef(0);
+  // ★格闘中のスケボー(社長指示2026-11-28): 2度押しの2回目を押した瞬間には乗らず「構え」だけ立てる。押したまま動かしたら乗る
+  // (utils/brawlerSkaterMount)。指が止まっていても判定できるよう、構えている間だけ短い間隔で見に行く(離す・乗るで止める)。
+  const brawlerSkaterArmedRef = useRef(false);
+  const brawlerSkaterTimerRef = useRef<number | null>(null);
+  const disarmBrawlerSkater = useCallback(() => {
+    brawlerSkaterArmedRef.current = false;
+    if (brawlerSkaterTimerRef.current !== null) { window.clearInterval(brawlerSkaterTimerRef.current); brawlerSkaterTimerRef.current = null; }
+  }, []);
+  const tryMountBrawlerSkater = useCallback(() => {
+    if (!brawlerSkaterArmedRef.current) return;
+    const o = originRef.current;
+    if (!o || pointerIdRef.current === null) { disarmBrawlerSkater(); return; }
+    if (isInputLocked()) return;
+    const gs = useGameStore.getState();
+    if (isRetaliationWindowOpen(gs.hitRetaliation, Date.now())) return; // 反撃の窓の間は乗らない(押下の時と同じ・検収監査 A-1)
+    if (!shouldMountBrawlerSkaterTouch(flickSamplesRef.current, o, pointerDownTimeRef.current, performance.now())) return;
+    disarmBrawlerSkater();
+    mountSkater();
+    gs.brawlerGougeClear(); // 乗った押下は抉り打ちの溜めにしない
+  }, [disarmBrawlerSkater, mountSkater]);
 
   // 指離し直前の短い窓だけを見るフリック判定。通常のジョイスティック
   // ドラッグは低速・小移動なのでしきい値に届かず、一閃は暴発しない。
@@ -147,6 +168,7 @@ const VirtualJoystick: React.FC = () => {
     // The core gameplay hook: lifting the finger fires the counter window.
     // The store enforces the cooldown so spam-tapping doesn't help.
     const pointerId = pointerIdRef.current;
+    disarmBrawlerSkater();
     // 会話/登場演出(ゲーム内時間停止)＋一時停止(レベルアップ/ショップ/クエスト等のメニュー)中は
     // 指離しの攻撃入力を一切受け付けない(メニューを閉じた瞬間にカウンター/PHILL/一閃が暴発しないように)。
     // v0.25.2589(社長報告「死にモーション中に攻撃できちゃう/アテンション中も/ゴール内から一方的に攻撃」):
@@ -246,7 +268,7 @@ const VirtualJoystick: React.FC = () => {
     deltaRef.current = { x: 0, y: 0 };
     setTouchActive(false);
     setSwipeDirection(null);
-  }, [setSwipeDirection, setTouchActive, beginMeleeSwing, rhythmInput, tryFireKatanaDash, tryFireWireAnchor, tryFireRetaliation, tryFireFlickFollowup, dismountSkater, detectFlick]);
+  }, [setSwipeDirection, setTouchActive, beginMeleeSwing, rhythmInput, tryFireKatanaDash, tryFireWireAnchor, tryFireRetaliation, tryFireFlickFollowup, dismountSkater, detectFlick, disarmBrawlerSkater]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // 操作不可(ヘリ登場/セリフ/一時停止/死亡)中は移動・向き・攻撃を一切受け付けない(社長指示)。
@@ -258,13 +280,17 @@ const VirtualJoystick: React.FC = () => {
     if (!useGameStore.getState().rhythm.active) useGameStore.getState().alchemyRhythmTap();
     setTouchActive(true);
     const nowT = performance.now();
-    // スケボー: 直前が短い小移動タップで、離しから SKATER_DOUBLETAP_MS 以内の再タップ=ダブルタップ=乗車。
+    // スケボー: 直前が短い小移動タップで、離しから SKATER_MOUNT_DOUBLETAP_MS 以内の再タップ=ダブルタップ=乗車。
     // (2発目はそのままホールド=移動。skater 未装備なら store 側で無害。) release で降車(+条件で投擲)。
     // ★被弾反撃の窓の中の触れ直しは乗車に数えない(カウンターを外す短いタップ→被弾→はじくために触れ直す、で乗車して
     // 反撃が不発になる穴・検収監査 A-1)。
-    if (lastWasTapRef.current && nowT - lastUpAtRef.current <= SKATER_DOUBLETAP_MS
-      && !isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now())
-      && !isBrawlerMode(useGameStore.getState().player)) mountSkater(); // 格闘中は連打が乗車に食われるので乗らない(research/BRAWLER.md §7-2)
+    // ★格闘中は押した瞬間には乗らない(連打が乗車に食われる・research/BRAWLER.md §7-2)。2回目を押したまま動かしたら乗る(社長指示2026-11-28)。
+    const skaterPress = skaterPressResult({
+      lastWasTap: lastWasTapRef.current, sinceLastUpMs: nowT - lastUpAtRef.current,
+      retaliationOpen: isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now()),
+      brawler: isBrawlerMode(useGameStore.getState().player),
+    });
+    if (skaterPress === 'mount') mountSkater();
     pointerDownTimeRef.current = nowT;
     maxDragRef.current = 0;
     flickFiredRef.current = false;
@@ -276,7 +302,11 @@ const VirtualJoystick: React.FC = () => {
     setOrigin(o);
     applyDelta({ x: 0, y: 0 });
     zoneRef.current?.setPointerCapture(e.pointerId);
-  }, [release, setTouchActive, mountSkater, applyDelta]);
+    if (skaterPress === 'arm') {
+      brawlerSkaterArmedRef.current = true;
+      brawlerSkaterTimerRef.current = window.setInterval(tryMountBrawlerSkater, 30);
+    }
+  }, [release, setTouchActive, mountSkater, applyDelta, tryMountBrawlerSkater]);
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -297,6 +327,7 @@ const VirtualJoystick: React.FC = () => {
       // リズム中(四神技)はスワイプ即発火(スマホ音ゲー方式)のまま。
       // 刀の一閃ダッシュは「指を離した瞬間」にフリックか判定する(= release 側で実行。即発火しない)。
       if (useGameStore.getState().rhythm.active) tryFireRhythmFlick();
+      tryMountBrawlerSkater(); // ★格闘中の2度押しの後: 押したまま動かしたら乗る(構えていなければ何もしない)
 
       const rawX = e.clientX - o.x;
       const rawY = e.clientY - o.y;
@@ -324,7 +355,7 @@ const VirtualJoystick: React.FC = () => {
       // 世界が止まっている間(ボス撃破のアテンション等)は向きを書き換えない(社長報告2026-09-13・gameStore.isWorldFrozen)。
       if (!isWorldFrozen()) setLastDirection(dir);
     },
-    [setSwipeDirection, setLastDirection, tryFireRhythmFlick, applyDelta]
+    [setSwipeDirection, setLastDirection, tryFireRhythmFlick, applyDelta, tryMountBrawlerSkater]
   );
 
   const handlePointerEnd = useCallback(
@@ -356,10 +387,11 @@ const VirtualJoystick: React.FC = () => {
   // Safety: clear movement state if the component unmounts mid-touch
   useEffect(() => {
     return () => {
+      disarmBrawlerSkater();
       setTouchActive(false);
       setSwipeDirection(null);
     };
-  }, [setSwipeDirection, setTouchActive]);
+  }, [setSwipeDirection, setTouchActive, disarmBrawlerSkater]);
 
   return (
     <div
