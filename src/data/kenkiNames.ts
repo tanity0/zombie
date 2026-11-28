@@ -7,3 +7,13 @@ export const KENKI_LEVEL_NAMES: Readonly<Record<1 | 2 | 3 | 4 | 5, string>> = {
   4: '孫行者',
   5: '斗戦勝仏', // 済(金)
 };
+
+// ★孫悟空のレベルごとのセリフ(社長指示2026-11-28)。文言の正はこの1か所。出し方はゲーム中の通信(npcDialogueQueue)・話者名=その段の名前(KENKI_LEVEL_NAMES)。
+// intro=名乗り(姿が画面に入った時・対策室の強制出現は出た瞬間)/ defeat=倒された時(倒された個体の段・2分で帰る時と退散の時は出さない)。
+export const KENKI_LEVEL_LINES: Readonly<Record<1 | 2 | 3 | 4 | 5, { intro: string; defeat: string }>> = {
+  1: { intro: '……天、へ……', defeat: '……まだ、足りぬ……' },
+  2: { intro: '……まだ、下か……', defeat: '……この座は、狭い……' },
+  3: { intro: '……仰げ……ここが、天……', defeat: '……天が、揺れる……' },
+  4: { intro: '……輪が、鳴る……先、へ……', defeat: '……まだ、途上……' },
+  5: { intro: '……戦の果て……我、仏なり……', defeat: '……空へ……還る……' },
+};

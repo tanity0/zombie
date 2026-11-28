@@ -2,7 +2,7 @@
 // 依存ゼロの葉(store / PixiJS を読まない)。端末の進行に1つの値(孫悟空のレベル)だけを持つ。体得はレベルから決まる
 // (Lv1 を倒した=Lv2 になった時に抉り打ち・Lv2 を倒した=Lv3 になった時に踵落とし・Lv3 を倒した=Lv4 で蹴り上げ・Lv4 を倒した=済(5)で土竜)。
 // ※対策室(練習)中の書き込みは practiceGuard が localStorage ごと封じる(ここでも練習では上げない=二重の安全網)。
-import { KENKI_LEVEL_NAMES } from '../data/kenkiNames';
+import { KENKI_LEVEL_NAMES, KENKI_LEVEL_LINES } from '../data/kenkiNames';
 
 /** 孫悟空のレベル(1〜4)と済(5=斉天大聖)。 */
 export type KenkiLevel = 1 | 2 | 3 | 4 | 5;
@@ -18,6 +18,11 @@ export type KenkiLook = { tint: 'blue' | 'purple' | 'red' | 'gold' | null; name:
 export const kenkiLevelLook = (lv: KenkiLevel): KenkiLook => ({
   tint: lv === 2 ? 'blue' : lv === 3 ? 'purple' : lv === 4 ? 'red' : lv === 5 ? 'gold' : null,
   name: KENKI_LEVEL_NAMES[lv],
+});
+/** その段の孫悟空のセリフ1行(通信に積む形 {name, text})。話者名=その段の名前(頭上の名札と同じ)。文言は data/kenkiNames の1か所。 */
+export const kenkiLevelLine = (lv: KenkiLevel, when: 'intro' | 'defeat'): { name: string; text: string } => ({
+  name: KENKI_LEVEL_NAMES[lv],
+  text: KENKI_LEVEL_LINES[lv][when],
 });
 
 /** 体得する格闘技。 */

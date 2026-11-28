@@ -599,7 +599,7 @@ import { planPracticeFacilities } from '../utils/practiceFacilities'; // 練習�
 import { punisherLiftPatch, punisherFlyerStopPatch } from '../utils/punisherImpact'; // パニッシャーの衝突の止め+小さな浮き
 import { killSlashNeckPosition } from '../utils/killSlashFx'; // KILL時の首元斬撃(fx/kill-slash・社長指示2026-09-16)
 import { heroBodyWallRect } from '../utils/heroScript'; // research/MUTANT_HERO.md: 英雄の体の壁(葉モジュール=循環しない)
-import { isBrawlerArtLearned, loadKenkiLevel, saveKenkiLevel, kenkiLevelAfterKill, kenkiKillCounts, brawlerArtLearnedOnKill, BRAWLER_ART_NAME, kenkiChronicleKillDetail, kenkiChronicleKillPhrase, brawlerArtChronicleDetail, brawlerArtChroniclePhrase, type KenkiLevel, type BrawlerArt } from '../utils/kenkiLevel'; // ★孫悟空のレベルと格闘技の体得(research/BRAWLER.md §36)
+import { isBrawlerArtLearned, kenkiLevelLine, loadKenkiLevel, saveKenkiLevel, kenkiLevelAfterKill, kenkiKillCounts, brawlerArtLearnedOnKill, BRAWLER_ART_NAME, kenkiChronicleKillDetail, kenkiChronicleKillPhrase, brawlerArtChronicleDetail, brawlerArtChroniclePhrase, type KenkiLevel, type BrawlerArt } from '../utils/kenkiLevel'; // ★孫悟空のレベルと格闘技の体得(research/BRAWLER.md §36)
 import type { ThirdPartyShape } from '../utils/thirdPartyShape'; // 依存ゼロの葉(heroBlast は gameStore を読むので、そこから型を引くと循環する)
 
 // research/MUTANT_HERO.md §4-2: 「今プレイヤーにしか当たっていない技」を守護霊と英雄にも当てる入口。
@@ -8373,6 +8373,8 @@ const brawlerGrabCancelTech = (get: () => GameState, enemyId: string): void => {
 const noteKenkiDefeated = (get: () => GameState, enemy: Enemy): void => {
   const st = get();
   const killed = (enemy.kenkiLv ?? 1) as KenkiLevel;
+  // 倒された時のセリフ(社長指示2026-11-28)。倒された個体の段の文言(倒した後に段が上がっても変わらない)。練習でも出す(言葉はレベルの進行と無関係)。
+  get().enqueueNpcDialogue([kenkiLevelLine(killed, 'defeat')]);
   const ctx = {
     brawlerEquipped: st.player.subWeapons.includes('brawler'), practice: isPracticeRun(), bossTest: BOSS_TEST_RUN, bench: st.benchmarkRun,
     smoke: typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('smoke') !== null,

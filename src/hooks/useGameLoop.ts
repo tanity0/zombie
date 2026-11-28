@@ -158,7 +158,7 @@ import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceWantsGlenForm2, practiceBossType } from '../utils/bossPractice';
 import { shouldBeginFinaleReturnPhase } from '../utils/finaleReturnPhase';
 import { practiceBossAttnDelayMs, practiceSpawnWaitMs, practiceEdgeInsideDistance } from '../utils/practiceAttention'; // 変異体対策室だけ出現のアテンションを開始直後に(社長指示2026-11-23)
-import { loadKenkiLevel, kenkiSpawnLevel, kenkiLevelHealth, kenkiLevelLook } from '../utils/kenkiLevel'; // 孫悟空のレベル(research/BRAWLER.md §36)
+import { loadKenkiLevel, kenkiSpawnLevel, kenkiLevelHealth, kenkiLevelLook, kenkiLevelLine, type KenkiLevel } from '../utils/kenkiLevel'; // 孫悟空のレベル(research/BRAWLER.md §36)
 import { vsEntryOfRun, isNoAmmoRun, idForVariant, vsBodyInit, VS_RESPAWN_MS, VS_SPAWN_DIST_MIN, VS_SPAWN_DIST_MAX } from '../utils/vsTest';
 import { idForLabSex } from '../utils/labZombieSex';
 import { pickPhantomIdentity, setPhantomIdentity, getPhantomIdentity, phantomDisplayLabel, clearPhantomIdentity } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の人格(癖・ビルド・HP・名前を1人から)
@@ -10308,6 +10308,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               phantomBrawlerForceRef.current = true;
               spawnGuardianPhantom(kenkiIdentity, PHANTOM_BRAWLER_KIND);
               markKenkiSeen();
+              { // 名乗り(社長指示2026-11-28): 強制出現は姿が画面に入る経路を通らない=出た瞬間に1回。段は出した個体の段。
+                const fk = useGameStore.getState().enemies.find(e => e.type === 'guardian-phantom' && e.phantomUnique === PHANTOM_BRAWLER_KIND);
+                if (fk) useGameStore.getState().enqueueNpcDialogue([kenkiLevelLine((fk.kenkiLv ?? 1) as KenkiLevel, 'intro')]);
+              }
             }
             const patrolKenkiStage = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
               && (HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '') && !firstLoop);
@@ -10368,6 +10372,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.getState().triggerAttention(kx, ky, undefined, 0, kenkiE); // 孫悟空の紹介(カットイン無し)も小さめなので少し寄る(utils/attentionZoom)
                   useGameStore.setState({ eventBannerText: phantomDisplayLabel(), eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
                   markKenkiSeen();
+                  useGameStore.getState().enqueueNpcDialogue([kenkiLevelLine((kenkiE.kenkiLv ?? 1) as KenkiLevel, 'intro')]); // 名乗り(社長指示2026-11-28)
                 } else if (kStep === 'retreat') {
                   // 出現の演出を逆に(外から内へ縮む輪+破片)。
                   spawnRing(kx, ky, 150, 16, 'rgba(239,68,68,0.85)', 6, 720);
