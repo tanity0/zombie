@@ -650,7 +650,7 @@ import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circl
 import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt, bandSweepSliceAlpha, sweepTelegraphProg, twoPhaseTelegraphProg } from '../utils/bandSweep';
 import { giantSweepWindowProg, giantNovaWindupProg } from '../utils/giantRedTelegraph';
 import { memoryTier, rimBakeBudgetMb, whiteBakeBudgetMb, canBakeWithin, shadowSilBudgetMb } from '../utils/memoryTier';
-import { allowBake, newBakeGovernor, BAKE_SATURATED_INTERVAL_MS } from '../utils/bakeGovernor'; // 天井に張り付いた時の焼き直しの間引き(ステージ4で急に重い)
+import { allowBake, newBakeGovernor, newBakeFrameGate, isRecentBake, bakeOpsBudget, BAKE_SATURATED_INTERVAL_MS, BAKE_OPS_PER_FRAME } from '../utils/bakeGovernor'; // 天井に張り付いた時の焼き直しの間引き(ステージ4で急に重い)
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // 対人トラップの3秒の見え方(drawTrapBind) // 焼きの天井をスマホ/PCで分ける(v0.25.4867)
 import { groundFeelAtFoot, groundRowTileScaleX, groundRowTileScaleY, GroundScrollAccumulator, GROUND_SCROLL_LEGACY_FEEL_X, GROUND_SCROLL_LEGACY_FEEL_Y, type GroundPerspectiveParams } from '../utils/groundScroll'; // 地面の流れる速さ(足元の行=等倍)
 import { groundMatchedDepthScale } from '../utils/groundDepthScale'; // ?objdepth= 物の遠近を地面の倒れ具合に合わせる試作
@@ -3721,7 +3721,7 @@ const RIM_BAKE_STEPS_PER_OCT = 2;
 /** 焼いた縁がこれより小さくなるなら帯が成立しない=縁を出さない(px)。 */
 const RIM_BAKE_MIN_PX = 4;
 /** 焼いた縁1枚ぶんの記録(天井の管理に使う)。`f`=元素材に対する焼き倍率(描く時に割り戻す)。 */
-interface RimBake { src: Texture; key: number; tex: RenderTexture; bytes: number; usedAt: number; f: number }
+interface RimBake { src: Texture; key: number; tex: RenderTexture; bytes: number; usedAt: number; usedFrame?: number; f: number }
 const RIM_DIR_TAU_MS = tsNum('rimdirtau', 90);         // 向きの追従(支配光が入れ替わっても飛ばない)
 const RIM_DEFAULT_COLOR = tsNum('rimwarm', 0xffc07a);  // 光が色を持たない時の既定(琥珀)
 const RIM_GLOW_COLOR = tsNum('rimglowcol', 0xffe2b0);  // 強glow(爆発など)の色
@@ -4041,6 +4041,7 @@ const SHADOW_FOOTX_SMOOTH_MS = 900;
 const SHADOW_SIL_CACHE_BUDGET_BYTES = Math.max(1, tsNum('silbudget', shadowSilBudgetMb(memoryTier()))) * 1024 * 1024; // スマホ16 / PC32(v0.25.5053)
 const SHADOW_BAKE_BUDGET_PER_FRAME = 4;
 const BAKE_GAP_MS = tsNum('bakegap', BAKE_SATURATED_INTERVAL_MS); // 天井に張り付いた時の焼き直しの間隔(utils/bakeGovernor)。?bakegap=
+const BAKE_OPS_MAX = Math.max(1, tsNum('bakeops', BAKE_OPS_PER_FRAME)); // 1フレームに焼く数の上限(影・縁・白の合計・utils/bakeGovernor)。?bakeops=
 
 // ---- 静止物(木/壁/プロップ/city props/建物)の距離クロスフェード(旧 OBJECT_SHADOW_MAX の代替) ------
 // ★未決E(閾値は実測後に決める・§3-9-B確定文言どおり初期値で着手): 可視域からの距離(px、
@@ -5096,6 +5097,8 @@ interface SilhouetteBake {
   texture: Texture;
   bytes: number;   // 常駐バイト数の見積り(width×height×4)
   contentFrac: number; // ★D-2: 焼いた時に使った「絵の実体が縦に占める割合」(空白の無い素材は1)
+  usedAt?: number; // 最後に引かれた時刻(Date.now)。直近に使った物は退避しない(縁の RIM_BAKE_KEEP_MS と同じ考え方・2026-11-28)
+  usedFrame?: number; // 最後に引かれたフレーム(bakeFrameNo)。重い時に時計の窓が縮むのを補う(utils/bakeGovernor.isRecentBake)
 }
 
 // ---- ★v12 §3-9-C ★A: 内側フェザー合成シェーダ(GPU 1パス) ------------------------------------
@@ -5350,11 +5353,19 @@ export class PixiScene {
   private grayTexCache = new Map<string, Texture>();
   // 被弾フラッシュ用「真っ白シルエット」テクスチャのキャッシュ(元Texture→白ベイク)。加算で重ねると、
   // 暗い敵でも全面が白く光る(加算は元の色しか足せないので、白ベイクしないと暗部が光らない)。実行時はフィルタ不要=安い。
-  private whiteTexCache = new Map<Texture, { rt: RenderTexture; usedAt: number; bytes: number }>();
+  private whiteTexCache = new Map<Texture, { rt: RenderTexture; usedAt: number; usedFrame?: number; bytes: number }>();
   /** 天井に張り付いた時の焼き直しの間引き(utils/bakeGovernor)。影・縁・白で別々に持つ。 */
   private bakeGovShadow = newBakeGovernor();
   private bakeGovRim = newBakeGovernor();
   private bakeGovWhite = newBakeGovernor();
+  /** 張り付いている間は影・縁・白を合わせて1フレームに1回まで(utils/bakeGovernor・2026-11-28 fps2 bk8)。番号は sync() の頭で進める。 */
+  private bakeFrameGate = newBakeFrameGate();
+  private bakeFrameNo = 0;
+  /** このフレームに焼いた数(影・縁・白の合計)。sync() の頭で0へ。上限は BAKE_OPS_MAX(utils/bakeGovernor.BAKE_OPS_PER_FRAME)。 */
+  private bakeOpsThisFrame = 0;
+  /** このフレームの上限(重いフレームの後は1・utils/bakeGovernor.bakeOpsBudget)と、前回の sync の時刻。 */
+  private bakeOpsMax = BAKE_OPS_MAX;
+  private bakeLastSyncAt = 0;
   private whiteBakeBytes = 0;
   // 向きの縁(§6)。焼いた縁テクスチャ: 元テクスチャ → 8方向ぶん。
   /**
@@ -13501,6 +13512,9 @@ export class PixiScene {
   }
 
   sync() {
+    this.bakeFrameNo++; // 焼きの「1フレームに1回まで」の札の番号(utils/bakeGovernor)
+    this.bakeOpsThisFrame = 0;
+    { const t = performance.now(); this.bakeOpsMax = bakeOpsBudget(this.bakeLastSyncAt > 0 ? t - this.bakeLastSyncAt : 0, BAKE_OPS_MAX); this.bakeLastSyncAt = t; }
     this.weatherWet?.restoreAtmosphere(); // 雨上がりの霧/空の色(前フレームに最後に掛けた分)を最初に戻す
     this.stage1Night?.restoreAtmosphere(); // 通常のステージ1の夜の霧/月(同上)
     this.stage5Battle?.restoreAtmosphere(); // ステージ5(戦場)の煙/近景の色(同上)
@@ -22456,6 +22470,7 @@ export class PixiScene {
     if (!tex) return null;
     const hit = this.silhouetteCache.get(tex);
     if (hit) {
+      hit.usedAt = Date.now(); hit.usedFrame = this.bakeFrameNo; // 直近に使った=退避しない(silhouetteEvictToBudget)
       // Map は挿入順=LRU順。触ったら末尾へ移動(delete+set)。
       this.silhouetteCache.delete(tex);
       this.silhouetteCache.set(tex, hit);
@@ -22478,8 +22493,11 @@ export class PixiScene {
     if (!canBakeSilhouette(this.silhouetteCacheBytes, SHADOW_SIL_CACHE_BUDGET_BYTES)) return;
     // 天井に張り付いている(退避した直後も天井の85%以上)間は、焼き直しを間引く(間に合わない物は直前のコマの影で待つ)。
     const silFull = this.silhouetteCacheBytes >= SHADOW_SIL_CACHE_BUDGET_BYTES * 0.85;
-    if (silFull && this.silhouetteQueue.length > 0 && !allowBake(this.bakeGovShadow, true, Date.now(), BAKE_GAP_MS)) return;
-    let budget = silFull ? 1 : SHADOW_BAKE_BUDGET_PER_FRAME;
+    if (this.bakeOpsThisFrame >= this.bakeOpsMax) return; // このフレームはもう焼いた(縁・白と合わせた上限・utils/bakeGovernor)
+    // 重い時(1フレーム1つ)は影と縁・白で1フレームおきに譲り合う(影の消化は縁より先に走るので、譲らないと縁が影の列が尽きるまで焼けない)。
+    if (this.bakeOpsMax <= 1 && (this.bakeFrameNo & 1) === 1) return;
+    if (silFull && this.silhouetteQueue.length > 0 && !allowBake(this.bakeGovShadow, true, Date.now(), BAKE_GAP_MS, this.bakeFrameGate, this.bakeFrameNo)) return;
+    let budget = Math.min(silFull ? 1 : SHADOW_BAKE_BUDGET_PER_FRAME, this.bakeOpsMax - this.bakeOpsThisFrame); // 1フレームの合計の上限(縁・白と共有)
     // ★D-2: 絵の実体行の実測(`extract.pixels`=GPU読み戻し)は**同期待ちでフレームを止める**ので、
     // 1フレーム SHADOW_CONTENT_MEASURE_PER_FRAME 枚まで。未実測のものはキューの末尾へ回して
     // 次フレームに持ち越す(枠を使い切っても他の"実測済み"のベイクは進む=キューが詰まらない)。
@@ -22494,6 +22512,7 @@ export class PixiScene {
       }
       this.silhouetteQueued.delete(tex);
       budget--;
+      this.bakeOpsThisFrame++;
       const baked = this.bakeSilhouette(tex);
       if (baked) {
         this.silhouetteCacheAdd(tex, baked);
@@ -22747,13 +22766,20 @@ export class PixiScene {
   private silhouetteEvictToBudget(keep?: Texture) {
     if (this.silhouetteCacheBytes <= SHADOW_SIL_CACHE_BUDGET_BYTES) return;
     const inUse = this.collectSilhouetteInUse(this.silhouetteInUseScratch);
+    // ★直近に使った物も「使用中」として守る(2026-11-28・社長実機 v0.25.5893 ステージ4「fps2 bk8」)。
+    //   守っていたのは**このフレームに見えているコマ**だけだったので、歩きのコマ(1枚ずつ順に見える)は
+    //   見えていない間に古い順で捨てられ、次に回ってきた時に焼き直す=LRU の最悪の形(順に回る使い方)で空回りしていた
+    //   (ヘッドレス・天井4MB: 同じコマの影を200秒で10回焼き直した)。守り切れずに入らない時は新しく焼かない
+    //   (canBakeSilhouette)=直前のコマの影/接地の影で待つ(既存の逃げ道)。
+    const now = Date.now();
     // Map は挿入順=LRU順。鍵は Texture なので、純関数へ渡す間だけ添字を鍵にする。
     const keys: Texture[] = [];
     const cands = [] as { key: string; bytes: number; inUse: boolean }[];
     let i = 0;
     for (const [k, v] of this.silhouetteCache) {
       keys.push(k);
-      cands.push({ key: String(i++), bytes: v.bytes, inUse: inUse.has(v.texture) });
+      const recent = isRecentBake(v.usedAt, v.usedFrame, now, this.bakeFrameNo, RIM_BAKE_KEEP_MS);
+      cands.push({ key: String(i++), bytes: v.bytes, inUse: inUse.has(v.texture) || recent });
     }
     const keepIdx = keep === undefined ? -1 : keys.indexOf(keep);
     const victims = planSilhouetteEviction(
@@ -22772,6 +22798,7 @@ export class PixiScene {
   }
 
   private silhouetteCacheAdd(tex: Texture, baked: SilhouetteBake) {
+    baked.usedAt = Date.now(); baked.usedFrame = this.bakeFrameNo;
     this.silhouetteCache.set(tex, baked);
     this.silhouetteCacheBytes += baked.bytes;
     // LRU(裁定G): 予算超過分は最古(Map先頭)から rt.destroy(true) で実解放しつつ追い出す。
@@ -29949,13 +29976,15 @@ export class PixiScene {
     if (!src || src.width <= 1 || !this.renderer) return null;
     const now = Date.now();
     const cached = this.whiteTexCache.get(src);
-    if (cached) { cached.usedAt = now; return cached.rt; }
+    if (cached) { cached.usedAt = now; cached.usedFrame = this.bakeFrameNo; return cached.rt; }
     // 天井に張り付いている間は焼き直しを間引く(間に合わない物はこのフレームは光らせない)。
     {
       const limit = Math.max(1, WHITE_BAKE_BUDGET_MB) * 1024 * 1024;
       const add = Math.max(1, src.width) * Math.max(1, src.height) * 4;
-      if (!allowBake(this.bakeGovWhite, this.whiteBakeBytes + add > limit, now, BAKE_GAP_MS)) return null;
+      if (!allowBake(this.bakeGovWhite, this.whiteBakeBytes + add > limit, now, BAKE_GAP_MS, this.bakeFrameGate, this.bakeFrameNo)) return null;
     }
+    if (this.bakeOpsThisFrame >= this.bakeOpsMax) return null; // 1フレームの焼きの上限(このフレームは光らせない=次のフレームで焼く)
+    this.bakeOpsThisFrame++;
     const tmp = new Sprite(src);
     const wrap = new Container();
     wrap.addChild(tmp);
@@ -29967,7 +29996,7 @@ export class PixiScene {
     this.renderBake(wrap, rt, true);
     wrap.destroy({ children: true });
     const bytes = (rt.source.pixelWidth || 0) * (rt.source.pixelHeight || 0) * 4;
-    this.whiteTexCache.set(src, { rt, usedAt: now, bytes });
+    this.whiteTexCache.set(src, { rt, usedAt: now, usedFrame: this.bakeFrameNo, bytes });
     this.whiteBakeBytes += bytes;
     this.enforceWhiteBudget(now);
     return rt;
@@ -29979,7 +30008,7 @@ export class PixiScene {
     if (this.whiteBakeBytes <= limit) return;
     for (const [src, e] of this.whiteTexCache) { // Map は入れた順=古い順
       if (this.whiteBakeBytes <= limit) break;
-      if (now - e.usedAt < RIM_BAKE_KEEP_MS) continue;
+      if (isRecentBake(e.usedAt, e.usedFrame, now, this.bakeFrameNo, RIM_BAKE_KEEP_MS)) continue; // 重い時はフレームの窓でも守る
       this.whiteTexCache.delete(src);
       releaseBakedTexture('silhouette', e.rt);
       this.whiteBakeBytes -= e.bytes;
@@ -30011,9 +30040,10 @@ export class PixiScene {
     if (!m) { m = new Map<number, RimBake | null>(); this.rimTexCache.set(src, m); }
     if (m.has(key)) {
       const hit = m.get(key) ?? null;
-      if (hit) { hit.usedAt = Date.now(); return hit; } // 使った時刻を更新=捨てる順番の材料
+      if (hit) { hit.usedAt = Date.now(); hit.usedFrame = this.bakeFrameNo; return hit; } // 使った時刻を更新=捨てる順番の材料
       return null;
     }
+    if (this.bakeOpsThisFrame >= this.bakeOpsMax) return null; // 1フレームの焼きの上限(このフレームは縁を出さない=null をキャッシュしない)
     // ★天井を本当の上限にする(社長実機 v0.25.4959「変異体対策室で落ちた」=縁が天井32MBを超えて71MB)。
     // 先に古い物を捨て、それでも入らなければ**今回は焼かない**(null をキャッシュしない=空いたら次のフレームで焼ける)。
     {
@@ -30021,11 +30051,12 @@ export class PixiScene {
       const add = bw * bh * 4;
       if (!canBakeWithin(this.rimBakeBytes, add, limit)) {
         // 天井に張り付いている間は「捨てて焼き直す」を間引く(間に合わない物はこのフレームは縁を出さない)。
-        if (!allowBake(this.bakeGovRim, true, Date.now(), BAKE_GAP_MS)) return null;
+        if (!allowBake(this.bakeGovRim, true, Date.now(), BAKE_GAP_MS, this.bakeFrameGate, this.bakeFrameNo)) return null;
         this.enforceRimBudget(add);
         if (!canBakeWithin(this.rimBakeBytes, add, limit)) return null;
       }
     }
+    this.bakeOpsThisFrame++;
     try {
       const wrap = new Container();
       const white = new ColorMatrixFilter();
@@ -30056,7 +30087,7 @@ export class PixiScene {
       this.renderBake(wrap, rt, true);
       wrap.destroy({ children: true });
       const entry: RimBake = {
-        src, key, tex: rt, usedAt: Date.now(), f,
+        src, key, tex: rt, usedAt: Date.now(), usedFrame: this.bakeFrameNo, f,
         bytes: (rt.source.pixelWidth || 0) * (rt.source.pixelHeight || 0) * 4,
       };
       m.set(key, entry);
@@ -30087,7 +30118,7 @@ export class PixiScene {
     let write = 0;
     for (let i = 0; i < this.rimBakes.length; i++) {
       const e = this.rimBakes[i];
-      if (this.rimBakeBytes > limit && now - e.usedAt >= RIM_BAKE_KEEP_MS) {
+      if (this.rimBakeBytes > limit && !isRecentBake(e.usedAt, e.usedFrame, now, this.bakeFrameNo, RIM_BAKE_KEEP_MS)) { // 重い時はフレームの窓でも守る(utils/bakeGovernor)
         this.rimTexCache.get(e.src)?.delete(e.key);
         releaseBakedTexture('rim', e.tex);
         this.rimBakeBytes -= e.bytes;
