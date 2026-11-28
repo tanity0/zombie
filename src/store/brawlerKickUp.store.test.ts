@@ -7,6 +7,7 @@ import { spawnEnemyAt } from '../utils/enemyUtils';
 import { BRAWLER_GRAB_MS, BRAWLER_CONTACT_GRAB_MS, brawlerKickUpCost, BRAWLER_TECHS, BRAWLER_WORLD_STOP, BRAWLER_SUPLEX_RISE_MS, BRAWLER_CONTACT_FREEZE_MS, BRAWLER_SUPLEX_BLAST_RADIUS, brawlerTechCost, brawlerDistTo, brawlerPoseAt, BRAWLER_AIR_SUPLEX_RISE_MS, brawlerSelfAirborne } from '../utils/brawler';
 import { brawlerTimeKeeperDiscount } from '../utils/brawlerSkills';
 import { setBrawlerTempoAll, brawlerAirborne } from '../utils/brawlerCombo';
+import { BRAWLER_JUST_MS } from '../utils/brawler';
 import { playerSuperArmorActive } from '../utils/superArmor';
 import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import type { Projectile } from '../types/game';
@@ -364,6 +365,10 @@ describe('§34-7 密着の構え', () => {
     Object.assign(e, { aiPhase: 'z-red-pause', aiPhaseUntil: useGameStore.getState().gameTime + 300, aiStartedAt: useGameStore.getState().gameTime });
     useGameStore.setState(st => ({ enemies: [e], player: { ...st.player, brawler: { ...st.player.brawler!, points: 9 } } }));
     expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    // ★ジャスト投げ(社長指示2026-11-28): 攻撃中の相手に密着して出した構えは、ジャストの窓の間だけ構えで待ってから掴む(受ければジャスト投げ)。
+    expect(br().contactWait?.enemyId).toBe('c');
+    expect(br().contactGrab).toBeUndefined();
+    advance(BRAWLER_JUST_MS + 20);
     expect(br().contactGrab?.mode).toBe('suplex');
     expect(en('c')!.aiPhase).toBeUndefined(); // 技(予告の相)は取り消し
     const hp0 = useGameStore.getState().player.health;

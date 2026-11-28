@@ -4,6 +4,7 @@
 //  ・弾を打ち返しても反撃の気功は出ない(社長指示2026-11-13)
 //  ・雑魚を受けた時は今どおり潰しで、気功は出ない
 //  ・押しの距離は 90 前後
+import { BRAWLER_JUST_MS } from '../utils/brawler';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, isBrawlerGuarding } from './gameStore';
 import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
@@ -73,7 +74,8 @@ const guardNow = (points = 5): number => {
   useGameStore.getState().brawlerPress(); advance(400);
   useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points, gainAt: 0 } } }));
   expect(guardTechNoContact()).toBe(true);
-  advance(20);
+  // ジャストの窓の外で受ける(ジャストの近接の受けは相手を掴んで投げる=ジャスト投げ・社長指示2026-11-28。この試験はジャストでない受けの続きを見る)。
+  advance(20 + BRAWLER_JUST_MS);
   expect(guarding()).toBe(true);
   return br().points;
 };

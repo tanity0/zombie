@@ -229,6 +229,16 @@ export interface BrawlerState {
   huntingCombo?: boolean;
   /** ジャスト構えで受けた時刻(Date.now・research/BRAWLER.md §12-2)。 */
   justAt?: number;
+  /**
+   * ★ジャスト投げ(社長指示2026-11-28「ジャストタイミングで上おしたとき、スープレックスになりつつジャストカウンターにも」・utils/brawlerJustGrab):
+   * ジャストで受けた相手へ吸い付いている最中。at=吸い付きが終わって掴む時刻(Date.now)。構えの間だけ意味を持つ(技を始めれば消える)。
+   */
+  justGrab?: { enemyId: string; at: number };
+  /**
+   * ★密着の構えで、密着した相手が攻撃中だった時の待ち(utils/brawlerJustGrab)。ジャストの窓の間は構えで待ち、受ければジャスト投げ・
+   * 受けなければ at(gameTime=窓の終わり)で今までどおり掴む。構えの間だけ意味を持つ。
+   */
+  contactWait?: { enemyId: string; at: number };
   /** ジャスト構えで技ポイントを足した構え(guardSince の値)。構え1回(延長ごと)につき1度だけ足す(社長指示2026-11-12)。 */
   justPointsFor?: number;
   /** ステップ(§12-3)の終わり(gameTime)。この間は次のステップを出さない。 */

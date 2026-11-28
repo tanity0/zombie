@@ -61,7 +61,7 @@ import {
   notifySkillProc,
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   isBrawlerGuarding, // ★格闘の構え(research/BRAWLER.md §3-2)
-  isBrawlerWeakGuarding, // ★弱い構え(払えずに出た構え=打ち返さない)
+  brawlerGuardReflectsProjectileNow, // ★格闘の構えが弾を打ち返すか(払った構え=全部・弱い構え=ジャストの窓の内だけ)
   useGameStore, isSeekerActive, skillLevel, counterReplyDamage, enemyDeathLabel, combatActorPlayer,
   ENEMY_ATTACK_SPEED_MULT, SCREAMER_BUFF_MULT,
   COUNTER_EXTEND_PER_HIT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
@@ -1040,7 +1040,7 @@ export const applyEnemyProjectileHits = (
     // ★格闘の構え(上・research/BRAWLER.md §3-2): 構えの1秒は弾を全て弾き返す(紫=noCounter も含む・社長指示2026-11-07)。
     // ★弱い構え(払えずに出た構え・社長指示2026-11-12)は打ち返さない(打ち返し=カウンターの成立)。下の被弾の入口(damagePlayer)で構えが防ぎ、押されるだけ。
     const brawlerGuardAny = isBrawlerGuarding(currentPlayer, gameTime);
-    const brawlerGuard = brawlerGuardAny && !isBrawlerWeakGuarding(currentPlayer, gameTime);
+    const brawlerGuard = brawlerGuardReflectsProjectileNow(currentPlayer, gameTime); // ★弱い構えでもジャストの窓の内は打ち返す(社長指示2026-11-28「ジャストカウンターしたとき、弾を弾き返してない」)
     if (brawlerGuard || (isCounterActive(currentPlayer, now) && !proj.noCounter
       && !isPvpIncapacitated(currentPlayer.pvpPosture, gameTime))) {
       // 反射1回分は共有関数(主語=プレイヤー。ghostId未指定=従来と1bit同値)。

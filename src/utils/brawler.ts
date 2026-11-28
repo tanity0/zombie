@@ -492,6 +492,7 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
     ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t, techChain: chain, techBuffer: undefined, stepBuffer: undefined,
     kickHeel, heelBuffer: false, kickUp, kickUpBuffer: false, mogura: false, kickThrow: false, airSuplexRiseAt: undefined, airSuplexHoldAt: undefined, grab: undefined, suplexAt: undefined, guardCancelHeld: false, contactGrab: undefined,
     throwAt: undefined, suplexPendingId: undefined, suplexSwing: undefined,
+    justGrab: undefined, contactWait: undefined, // ジャスト投げの待ちは技を始めれば消える(構えから出し直す時は store が付け直す)
     heelAirPx: undefined, kickGroundPx: undefined, // 蹴りの高さの決めは store が出した瞬間に書く(前の技の値を持ち越さない)
     stompFromPx: stompFromPx > 0.5 ? stompFromPx : undefined,
     // 踵落としは溜め(BRAWLER_KICK3_CHARGE_MS)を前隙の頭に足す(store は飛ぶ時間を距離で引き直して同じく足す)。蹴り飛ばしは溜め無し(§33-2)。
