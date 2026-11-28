@@ -51853,7 +51853,8 @@ export class PixiScene {
           let hseed = 0; for (let ci = 0; ci < e.id.length; ci++) hseed = (hseed * 31 + e.id.charCodeAt(ci)) | 0;
           const at = k === 0 ? 0 : k * 60 + Math.floor(rnd(hseed + k) * 70) * (k === 1 ? 1 : 1.3);
           const on = age >= at && age < at + 60;
-          const L = this.latchFx(`brawler:blow:${e.id}:${k}`, on, DUST_MS * 0.8, now, () => [e.x + e.width / 2, e.y + e.height]);
+          // 鍵は敵の id で始める(敵が消えた時に clearFxLatches(`${id}:`) で一緒に片付く・旧 `brawler:blow:${id}:k` は片付かず出撃中ずっと積もった・fxLatchKeys.test)。
+          const L = this.latchFx(`${e.id}:brawlerblow${k}`, on, DUST_MS * 0.8, now, () => [e.x + e.width / 2, e.y + e.height]);
           if (L) this.drawDust(L.d[0], L.d[1], Math.max(e.width, e.height) * 0.45 * dsc, L.t, tint, this.dustAlpha(L.t) * 0.8, L.t0);
         }
       }
