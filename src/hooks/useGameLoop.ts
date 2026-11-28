@@ -277,6 +277,7 @@ import { uniquePhantomSpec } from '../data/uniquePhantoms'; // research/BRAWLER_
 import {
   rollRunPatrolSlot, kenkiPatrolStep, phantomBrawlerSceneBlocked, phantomBrawlerSpawnOffset, PHANTOM_BRAWLER_ENCOUNTER_KEY, PHANTOM_BRAWLER_KIND,
 } from '../utils/phantomBrawlerSpawn'; // research/BRAWLER_PHANTOM.md §6: 拳鬼の本編の出現(徘徊の枠)
+import { createFleeSources, fleeSourcesActive, fleeSourcesExceptKenki, kenkiFleeActive, type FleeSources } from '../utils/fleeSources'; // 「他の敵が逃げる」旗の合成(裏ボス/アイドル/孫悟空)
 import { patrolSpawnHeldByWelcome } from '../utils/patrolWelcomeHold'; // 徘徊の枠はウェルカム中は出ない(社長指示2026-11-12)
 import { resolveRunPatrol, takeSortiePatrolPlan } from '../utils/sortiePatrolPlan'; // 徘徊の枠は作戦室で引いた結果を使う(research/SORTIE_MAP_BOSS_ICONS.md §3)
 import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius, HERO_MAX_HP, HERO_START_HP } from '../utils/heroScript';
@@ -2190,6 +2191,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const bossMakerReadyRef = useRef(false); // ボスメーカーの相手を1回だけ出す
   const idolStateRef = useRef(createIdolTickState()); // idol(stage-2隠しボス)のラン内状態(バッチ3でidolTick.tsへ抽出)
   const idolFleeRef = useRef(false); // idol が起きている間は他の敵が逃げる(bossChasing を立てているのが idol か・2026-10-10)
+  // 「他の敵が逃げる」旗(store の bossChasing)を立てる側の内訳(裏ボス/アイドル/孫悟空)。各々が自分の分だけ書き、
+  // store へは OR を書く(utils/fleeSources)=1人が毎フレーム false を書いて他の旗を消す上書き合戦をしない(2026-11-28)。
+  const fleeSourcesRef = useRef<FleeSources>(createFleeSources());
+  const syncBossChasing = (): void => {
+    const want = fleeSourcesActive(fleeSourcesRef.current);
+    if (useGameStore.getState().bossChasing !== want) useGameStore.setState({ bossChasing: want });
+  };
   const angelStateRef = useRef(createAngelBossState()); // 天使(ゲート2ボス)3体のラン内状態(M26 Step3でangelBossTick.tsへ抽出)
   // ゲート戦闘中フラグ(activeGateRef)のstore反映用・直前値(変化時だけsetして毎フレームchurnを避ける)。
   const gateActivePrevRef = useRef(false);
@@ -3883,6 +3891,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
           phantomForceRef.current = false; // ?phantomnow=1 の force-spawn も新ランで再アーム(research/GHOST_BOSS.md)
           scarecrowForceRef.current = false; // 案山子も新ランで再アーム(「もう一度」で立て直す)
+          fleeSourcesRef.current = createFleeSources(); idolFleeRef.current = false; // 「逃げる」旗の内訳も新ランで戻す(store の bossChasing は resetGame が false に戻す)
           phantomBrawlerForceRef.current = false; phantomBrawlerPatrolRef.current = false; kenkiCutinIdRef.current = null; // 拳鬼(research/BRAWLER_PHANTOM.md)も新ランで再アーム(抽選は徘徊の枠=runMutantBossRef と一緒に引き直す)
           heroForceRef.current = false; heroStateRef.current = createHeroTickState(); heroCutinIdRef.current = null; setHeroGallop(0); // 英雄(research/MUTANT_HERO.md)
           libertyForceRef.current = false; libertyStateRef.current = createLibertyTickState(); resetOrphanLibertyArrows(); libertyCutinIdRef.current = null; // 解放軍群(research/LIBERTY_HORDE.md)
@@ -7372,8 +7381,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // (triggerDramaticDeath・grantMeleeKillRewards/damageEnemy)から統一して出すようになったので、
           // ここでは討伐フラグとバナーだけを立てる(二重発火防止)。
           if (bs.bossId && !boss && !bs.retreating) {
+            fleeSourcesRef.current.hiddenBoss = false;
             useGameStore.setState({
-              bossChasing: false,
+              bossChasing: fleeSourcesActive(fleeSourcesRef.current),
               hiddenBossDefeated: true,
               eventBannerText: `${enemyDeathLabel(hiddenBoss)}を討伐`,
               eventBannerUntil: newGameTime + 3600,
@@ -7382,7 +7392,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
 
           if (!bs.bossId) {
-            if (useGameStore.getState().bossChasing) useGameStore.setState({ bossChasing: false });
+            if (fleeSourcesRef.current.hiddenBoss) { fleeSourcesRef.current.hiddenBoss = false; syncBossChasing(); }
 
             // 未出現で、固定の巣(指定エリア)へ近づいたら出現(この出撃で1回だけ)。アテンション中は重ねない。
             // 巣を持たないタイプ(将来用)は従来どおり深層域の深度到達でフォールバック出現。
@@ -9760,13 +9770,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               ENEMY_REMOVE_CAUSE.set(boss.id, 'bossGone'); // 消失ログ用: 裏ボス退場(帰巣完了/深層離脱)
               // B節(devbridge発注文): bossDefeated(退去・討伐扱いにしない=result='retreated')。
               if (TEST_BRIDGE_ACTIVE) recordTestEvent('bossDefeated', { type: boss.type, result: 'retreated' });
-              useGameStore.setState({ enemies: useGameStore.getState().enemies.filter(e => e.id !== boss.id), bossChasing: false });
+              fleeSourcesRef.current.hiddenBoss = false;
+              useGameStore.setState({ enemies: useGameStore.getState().enemies.filter(e => e.id !== boss.id), bossChasing: fleeSourcesActive(fleeSourcesRef.current) });
               bs.bossId = null; bs.spawned = false; bs.retreating = false;
             } else {
               if (Object.keys(patch).length) {
                 useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === boss.id ? { ...e, ...patch } : e) }));
               }
-              if (useGameStore.getState().bossChasing !== chasing) useGameStore.setState({ bossChasing: chasing });
+              fleeSourcesRef.current.hiddenBoss = chasing;
+              syncBossChasing();
             }
           }
          } catch (err) {
@@ -10315,7 +10327,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   attention: !!ks.attention,
                   blocked: phantomBrawlerSceneBlocked({
                     otherBossEngaged: bossEngagedNow(ks.enemies.filter(e => e.type !== 'guardian-phantom'), kpcx, kpcy, ks.bossFightNow),
-                    bossChasing: ks.bossChasing, redNightActive: ks.redNight?.phase === 'active', activeEvent: !!ks.activeEvent,
+                    // 孫悟空が自分で立てた「逃げる」旗では退散しない(裏ボス・アイドルの分だけを見る=utils/fleeSources)。
+                    bossChasing: fleeSourcesExceptKenki(fleeSourcesRef.current), redNightActive: ks.redNight?.phase === 'active', activeEvent: !!ks.activeEvent,
                     indoor: ks.indoorMode, returnCircle: ks.returnCircle !== null,
                   }),
                 });
@@ -10489,7 +10502,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const fleeNow = labTheme && !!idol && !idol.dormant && !isCorpse(idol) && idol.health > 0;
             if (fleeNow !== idolFleeRef.current) {
               idolFleeRef.current = fleeNow;
-              useGameStore.setState({ bossChasing: fleeNow });
+              fleeSourcesRef.current.idol = fleeNow;
+              syncBossChasing();
+            }
+          }
+          // ★孫悟空(徘徊の拳鬼)が居る間も、他の敵は逃げる=裏ボスと同じ `bossChasing`(社長指示2026-11-28「孫悟空がいる時、
+          //   裏ボスと同じく敵は逃げる様にして」)。孫悟空自身は updateEnemies の追跡AIから外れている(isGuardianPhantom)ので逃げない。
+          //   「居る」=出現済み・死体でない・HP>0・もう出会っている(遠くでまだ会っていない間=phantomUnmet は立てない)。
+          {
+            const kenkiFlee = kenkiFleeActive(useGameStore.getState().enemies);
+            if (kenkiFlee !== fleeSourcesRef.current.kenki) {
+              fleeSourcesRef.current.kenki = kenkiFlee;
+              syncBossChasing();
             }
           }
           if (idol) {
