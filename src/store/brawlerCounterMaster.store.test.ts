@@ -2,7 +2,6 @@
 //  ・格闘+所持: 構えで雑魚を受ける → 土竜(代金なし・技ポイントは減らない)/ ボス級を受ける → 反撃の気功が2発(間を置いて)
 //  ・格闘では待ち時間の前倒しと周りの吹き飛ばしが起きない / 格闘以外は今まで通り前倒し
 //  ・覚醒(Lv3)の成立後3秒+30% は格闘でも付く
-import { BRAWLER_JUST_MS } from '../utils/brawler';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, isBrawlerGuarding, applyCounterMasterRefund, counterMasterOnCounterSuccess, skillOutgoingDamageMult, COUNTER_MASTER_AWAKEN_DMG_MULT } from './gameStore';
 import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
@@ -73,8 +72,7 @@ const guardNow = (points = 5): number => {
   useGameStore.getState().brawlerPress(); advance(400);
   useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points, gainAt: 0 } } }));
   expect(guardTechNoContact()).toBe(true);
-  // ジャストの窓の外で受ける(ジャストの近接の受けは相手を掴んで投げる=ジャスト投げ・社長指示2026-11-28。この試験はジャストでない受けの続きを見る)。
-  advance(20 + BRAWLER_JUST_MS);
+  advance(20);
   expect(guarding()).toBe(true);
   return br().points;
 };

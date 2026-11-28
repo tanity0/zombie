@@ -2521,10 +2521,11 @@ const brawlerJustWindowOf = (player: Player): number => BRS.brawlerJustWindowMs(
 export const isBrawlerJustGuardNow = (player: Player, gameTime: number): boolean =>
   isBrawlerGuarding(player, gameTime) && !brawlerContactGrabbing(player.brawler) && BR.brawlerIsJustGuard(player.brawler!, gameTime, brawlerJustWindowOf(player));
 /** ★構えに当たった弾を打ち返すか(払った構え=全部 / 弱い構え=ジャストの窓の内だけ・社長指示2026-11-28「ジャストカウンターしたとき、弾を弾き返してない」)。 */
+//   ★ジャストで受けて出た代金なしの地割り(構えは閉じる)の間も弾は打ち返す(旧: 地割りで構えが閉じ、直後の弾が当たっていた)。
 export const brawlerGuardReflectsProjectileNow = (player: Player, gameTime: number): boolean =>
   BRJG.brawlerGuardReflectsProjectile({
     guarding: isBrawlerGuarding(player, gameTime), weak: player.brawler?.guardWeak === true, just: isBrawlerJustGuardNow(player, gameTime),
-  });
+  }) || (isBrawlerMode(player) && BRJG.brawlerJustStompReflects(player.brawler));
 export const subWeaponBlockedByKatana = (player: Player, key: SubWeaponKey): boolean => {
   if (isKatanaMode(player)) {
     if (key === 'katana' || key === 'murasame' || KATANA_ALLOWED_SUBWEAPONS.includes(key)) return false;
@@ -7228,8 +7229,10 @@ const startBrawlerTech = (
   //   (v0.25.5667 の「払えない弱い構えでも掴む」は撤回。)
   if (kind === 'guard' && !free && !weakGuard) {
     const contact = BR.brawlerContactTarget(st.enemies, c.x, c.y, p.width / 2, e => BRC.brawlerAirborne(e, now));
-    // ★ジャスト投げ(社長指示2026-11-28): 密着した相手が攻撃中なら、ジャストの窓の間だけ構えで待つ(受ければジャストカウンター+投げ=受けの経路・
-    //   受けなければ窓の終わりに今までどおり掴む=settleBrawlerPendingGrab)。攻撃中でなければ今までどおりその場で掴む。
+    // ★密着のスープレックスのジャスト(社長指示2026-11-28「スープレックスのカウンターに、ジャストの概念が入ってなかった」): 密着した相手が攻撃中なら、
+    //   構えのジャストの窓(brawlerJustWindowOf=構えのジャストと同じ1本)の間だけ構えで待つ。窓の内にその相手の攻撃が当たれば構えのジャストの受け
+    //   (JUST・+5・Counter!・止め・スロー・成立の記録=brawlerGuardReceive のまま)が出て、続けて今までどおり掴む(受けの経路)。
+    //   当たらなければ窓の終わりに今までどおり掴む(settleBrawlerContactWait)。攻撃中でなければ今までどおりその場で掴む。
     if (contact && BRJG.brawlerContactShouldWait(isEnemyAttacking(contact, t))) {
       s = { ...s, contactWait: { enemyId: contact.id, at: t + brawlerJustWindowOf(p) } };
     } else if (contact) {
@@ -8299,54 +8302,25 @@ const startBrawlerContactGrab = (get: () => GameState, set: (fn: (s: GameState) 
   // ★§34-10: 掴んだ一瞬は時間停止(ループごと止まる=空中投げの掴みと同じ器)。明けてからスープレックス=持ち上げ→反り→叩きつけ(小爆発)/サマーソルト=蹴って宙返り。
   get().triggerHitstop(freezeMs);
 };
-/**
- * ★ジャスト投げ(社長指示2026-11-28「ジャストタイミングで上おしたとき、スープレックスになりつつジャストカウンターにも」・utils/brawlerJustGrab):
- * ジャストで受けた相手を掴む。密着していればその場で(密着の構えと同じ掴み)、離れていれば投げられる距離まで吸い付いてから掴む
- * (踏み込みの器の 'accel'=加速して寄る・壁と行ける帯で止まる。受けの止めが明けてから寄る)。寄る間は構えの守りが続き、相手はその場で止める。
- * 掴んだ後は密着の構えと同じ(雑魚=スープレックス/強個体・ボス級=サマーソルト・構えの守りは投げの間だけ続く=弾も打ち返す)。
- */
-const startBrawlerJustGrab = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, e: Enemy): void => {
+/** 密着の構えの待ちの相手を、いま掴めるか(生きている・格闘の相手にできる・空中でない=空中投げの領分・まだ密着している)。 */
+const brawlerContactWaitGrabbable = (get: () => GameState, e: Enemy | undefined): e is Enemy => {
+  if (!e) return false;
   const p = get().player;
-  const s = p.brawler;
-  if (!s || !brawlerGateOk(get)) return;
   const c = brawlerCenter(p);
-  const dash = BRJG.brawlerJustGrabDashPx(BR.brawlerDistTo(c.x, c.y, e) - p.width / 2, BR.BRAWLER_CONTACT_PX);
-  if (dash <= 0) { startBrawlerContactGrab(get, set, { ...s, justGrab: undefined, contactWait: undefined }, e); return; }
-  const now = Date.now();
-  const dir = BR.brawlerAimDir(c.x, c.y, e, p.lastDirection);
-  const at = Math.max(now, get().hitstopUntil); // 受けの止めの間は動けない=明けてから寄る(蹴りの踏み込みと同じ)
-  const ms = BRJG.BRAWLER_JUST_GRAB_DASH_MS;
-  // ★押されている途中でも寄る(受けの押しはこの受けでは出さない=ジャスト投げが勝つ)。
-  //   器は構えの押しと同じ 'push'(加速→減速の1山・成立のスローの間はゲーム内の時間で進む=決めた距離を寄り切る)。向きは相手へ向けたまま。
-  const v = BR.brawlerStepSpeed(dash, ms);
-  setBrawler(set, { ...s, justGrab: { enemyId: e.id, at: at + ms }, contactWait: undefined, targetId: e.id, dirX: dir.x, dirY: dir.y }, {
-    lungeVx: dir.x * v, lungeVy: dir.y * v, lungeUntil: at + ms, lungeMs: ms, lungeShape: 'push', lungeHoldUntil: 0, lastDirection: { x: dir.x, y: dir.y },
-  });
-  // 寄る間、相手はその場で止める(掴みの止めと同じ器・壁時計)。
-  const holdUntil = at + ms + BR.BRAWLER_CONTACT_FREEZE_MS;
-  set(state => ({ enemies: state.enemies.map(en => (en.id === e.id ? { ...en, brHoldUntil: Math.max(en.brHoldUntil ?? 0, holdUntil) } : en)) }));
-  // 絵と音(派手さの絵・判定なし): 踏み切りの足元に砂埃(相手と逆へ流す)・踏み込みの風切り。
-  const footY = c.y + p.height / 2 - 10;
-  get().spawnImageMark(c.x, footY, 'fx/dust-puff', { scale: 0.3, scaleY: 0.55, duration: 520, tint: 0x9a8b7a, alpha: 0.7, moveX: -dir.x * 40, moveY: -dir.y * 18 - 4, fadeFrom: 0.3 });
-  brawlerSfx('whip-swing', 0.5, 1.12 * brJitter(), 120);
+  return e.health > 0 && !isCorpse(e) && BR.isBrawlerTargetable(e) && !BRC.brawlerAirborne(e, Date.now()) && brawlerGateOk(get)
+    && BR.brawlerDistTo(c.x, c.y, e) - p.width / 2 <= BR.BRAWLER_CONTACT_PX;
 };
-/** ジャスト投げの吸い付き・密着の構えの待ち(utils/brawlerJustGrab)を進める。時刻が来たら掴む。相手が居なくなっていたら待ちを捨てて構えのまま。 */
-const settleBrawlerPendingGrab = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
+/** 密着の構えの待ち(utils/brawlerJustGrab)を進める。窓が終わったら今までどおり掴む。相手が居ない・離れていたら待ちを捨てて構えのまま。 */
+const settleBrawlerContactWait = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
   const st = get();
   const p = st.player;
   const s = p.brawler;
-  if (!s || (!s.justGrab && !s.contactWait)) return;
-  const now = Date.now();
-  // 吸い付きの器はスローの間は期限が後ろへ延びる=寄り切った時刻(器の期限)まで待って掴む。
-  const step = BRJG.brawlerPendingGrabStep(s, isBrawlerGuarding(p, st.gameTime), now, st.gameTime, p.lungeShape === 'push' ? (p.lungeUntil ?? 0) : 0);
+  if (!s?.contactWait) return;
+  const step = BRJG.brawlerContactWaitStep(s, isBrawlerGuarding(p, st.gameTime), st.gameTime);
   if (step.kind === 'keep') return;
-  const cleared: BR.BrawlerState = { ...s, justGrab: undefined, contactWait: undefined };
+  const cleared: BR.BrawlerState = { ...s, contactWait: undefined };
   const e = step.kind === 'grab' ? st.enemies.find(en => en.id === step.enemyId) : undefined;
-  const c = brawlerCenter(p);
-  // 掴める: 生きている・格闘の相手にできる・空中でない(空中投げの領分)。密着の待ちはまだ密着している時だけ(離れていたら構えのまま)。
-  const ok = !!e && e.health > 0 && !isCorpse(e) && BR.isBrawlerTargetable(e) && !BRC.brawlerAirborne(e, now) && brawlerGateOk(get)
-    && (s.justGrab !== undefined || BR.brawlerDistTo(c.x, c.y, e) - p.width / 2 <= BR.BRAWLER_CONTACT_PX);
-  if (!ok || !e) { setBrawler(set, cleared); return; }
+  if (!brawlerContactWaitGrabbable(get, e)) { setBrawler(set, cleared); return; }
   startBrawlerContactGrab(get, set, cleared, e);
 };
 /** 密着の構えの判定(掴みの終わり): 雑魚=スープレックス(§34-3 と同じ)/ 強個体・ボス級=蹴りバク宙。相手が居なくなっていたら空振り(後隙だけ)。 */
@@ -14956,7 +14930,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       settleThrowBlasts(get, set);
       stepBrawlerThrows(get, set);
       settlePendingSuplex(get, set);
-      settleBrawlerPendingGrab(get, set); // ★ジャスト投げの吸い付き・密着の構えの待ち(社長指示2026-11-28)
+      settleBrawlerContactWait(get, set); // ★密着の構えの待ち(相手が攻撃中=ジャストの窓の間・社長指示2026-11-28)
     }
     // ★抉り打ち(research/BRAWLER.md §37): 溜め(押している間)の時計と、小ジャンプの着地の砂埃。下で状態を読む前に済ませる(下は読んだ状態から書き戻すため)。
     {
@@ -15137,17 +15111,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       brawlerMode: isBrawlerMode(p), counterMasterLv: skillLevel(p, 'counter-master'), counter: fxOn.counter, throttled, dot: opts?.dot, projectile: opts?.projectile,
       classes: sources.map(src => BRG.brawlerGuardSourceClass(src, st.enemies)),
     });
-    // ★ジャスト投げ(社長指示2026-11-28「ジャストタイミングで上おしたとき、スープレックスになりつつジャストカウンターにも」・utils/brawlerJustGrab):
-    //   払った構えのジャストで近接の攻撃を受けたら、ジャストの効果(下の演出・+5・気絶2倍)はそのまま出し、続けて攻撃してきた相手を掴んで投げる
-    //   (区分は密着の構えと同じ=雑魚はスープレックス/強個体・ボス級はサマーソルト)。その時は代金なしの地割り・反撃の気功・押される動き・カウンターマスターの自動の反撃は出さない(投げが勝つ)。
-    const jgId = sourceId ?? sources.find(src => src.id !== undefined)?.id;
-    const jgEnemy = jgId !== undefined ? st.enemies.find(en => en.id === jgId) : undefined;
-    const jgMode = jgEnemy ? BRJG.brawlerJustGrabMode({
-      just, counter: fxOn.counter, grabbing: brawlerContactGrabbing(s) || s.justGrab !== undefined, throttled,
-      projectile: opts?.projectile, beam: opts?.beam, dot: opts?.dot,
-      cls: BRJG.brawlerGrabClass(jgEnemy, BRC.brawlerEnemyClass(jgEnemy)), airborne: BRC.brawlerAirborne(jgEnemy, now), targetable: BR.isBrawlerTargetable(jgEnemy),
-      inReach: enemyMeleeDist(c.x, c.y, jgEnemy) <= huntingMeleeRadius(p) + 24, // 受けで気絶させる「近接の届く距離」と同じ
-    }) : null;
+    // ★密着のスープレックスのジャスト(社長指示2026-11-28): 密着の構えの待ち(相手が攻撃中だった↑)の内に、その相手の近接の攻撃をジャストで受けた。
+    //   ジャストの効果は下で構えのジャストと同じに出し、成立の効果の所で今までどおりの密着の掴み(startBrawlerContactGrab)へ進む。
+    const cwId = s.contactWait?.enemyId;
+    const cwEnemy = just && cwId !== undefined && !opts?.projectile && !opts?.beam && !opts?.dot && sources.some(src => src.id === cwId)
+      ? st.enemies.find(en => en.id === cwId) : undefined;
     // ★成立の記録(lastCounterSuccessTime)も通常のカウンターと同じく書く(社長承認2026-11-07・§9-42)。ループのエッジ検出が
     // 金の輪・ボムカウンター(とボマーの子爆弾)を出し、決めポーズの膨らみ・速度線・守護霊の記録(カウンター直後の窓)も同じ記録を読む。
     // ★技ポイント: 普通の受けでは増やさない(2026-11-08 の「カウンター成立で全回復」は社長指示2026-11-10 で撤去。HUD の跳ね=gainAt も打たない)。
@@ -15210,15 +15178,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       brawlerSfx('heavy-impact', 0.9, 0.55, undefined, 20);
     }
     // ★成立の効果を出す(§12-3d)。成立の演出・相手の気絶は上で今どおり出し終えている。
-    if (jgMode && jgEnemy) {
-      // ★ジャスト投げ: 攻撃してきた相手を掴む(離れていれば吸い付いてから)。構えの守りは投げの間も続く(弾も打ち返す)。
-      startBrawlerJustGrab(get, set, jgEnemy);
+    const cwNow = get().player.brawler;
+    if (cwEnemy && cwNow?.contactWait && brawlerContactWaitGrabbable(get, get().enemies.find(en => en.id === cwEnemy.id))) {
+      // 今までどおりの密着の掴み(雑魚=スープレックス/強個体・ボス級=サマーソルト)。掴みの間は地割り・反撃の気功・押される動きは出ない(下の分岐と同じ決まり)。
+      startBrawlerContactGrab(get, set, { ...cwNow, contactWait: undefined }, get().enemies.find(en => en.id === cwEnemy.id)!);
     } else if (cmReply === 'mogura' || (cmReply === null && outcome === 'stomp')) {
       // 雑魚を受けた: その瞬間に大踏み潰しを代金なしで出す。(カウンターマスター所持=土竜で出す)構えはここで終わる(受けの窓もカウンター窓も閉じる)。
       // 潰しの当たり・絵・音・強制ノックバックは普通の技と同じ経路(startBrawlerTech → 判定)。関所(掴み・紫など)に掛かっていれば出さない。
       const cur = get().player.brawler;
       // ★カウンター投げ(スープレックス/サマーソルト)の最中に受けた: 代金なしの地割りは出さない(掴み・投げは続く)。受けの成立・被害の無効は上で済んでいる。
-      if (cur && brawlerGateOk(get) && !brawlerContactGrabbing(cur) && !cur.justGrab) { // ジャスト投げで吸い付いている最中も出さない(掴みが続く)
+      if (cur && brawlerGateOk(get) && !brawlerContactGrabbing(cur)) {
         const gt = get().gameTime;
         // ★検収監査 #1: ボス級を受けて押されている途中(同じ構えの中)に雑魚を受けた時、潰しの開始が踏み込みの器を0にして
         //   押しが1フレームで止まっていた(慣性MUST 違反)。押しの器は残したまま潰しを出す=押され切りながら叩く。
@@ -15227,6 +15196,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         const keep = pushing ? { lungeVx: pre.lungeVx, lungeVy: pre.lungeVy, lungeUntil: pre.lungeUntil, lungeMs: pre.lungeMs, lungeShape: pre.lungeShape, lungeHoldUntil: pre.lungeHoldUntil } : null;
         startBrawlerTech(get, set, BR.brawlerEndGuardForStomp(cur, gt), 'stomp', isBloodAwakening(get().player, gt), false, true);
         set(state => ({ player: { ...state.player, ...(keep ?? {}), counterWindowEnd: Math.min(state.player.counterWindowEnd, now) } }));
+        // ★ジャストで受けて出た地割り: 構えは閉じるが、地割りの間は弾を打ち返す(brawlerGuardReflectsProjectileNow・社長指示2026-11-28「ジャストカウンターしたとき、弾を弾き返してない」)。
+        const jb = get().player.brawler;
+        if (just && jb && jb.phase === 'tech' && jb.tech === 'stomp') setBrawler(set, { ...jb, justStomp: true });
         // ★カウンターマスター: 出した地割りを土竜にする(手で出す土竜と同じ印=判定で押さずに浮かせる・取り消しの道も土竜)。代金なし。
         const mb = get().player.brawler;
         if (cmReply === 'mogura' && mb && mb.phase === 'tech' && mb.tech === 'stomp') {
@@ -15236,7 +15208,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           brawlerSfx('whip-swing', 0.42, 1.35 * brJitter(), 160);
         }
       }
-    } else if (outcome === 'knockback' && !brawlerContactGrabbing(get().player.brawler) && !get().player.brawler?.justGrab) { // ジャスト投げで吸い付いている最中も押されない
+    } else if (outcome === 'knockback' && !brawlerContactGrabbing(get().player.brawler)) {
       // ★カウンター投げの最中は押されない・反撃の気功(§32)も予約しない(掴み・投げを続ける)。
       // 雑魚より上を受けた: 相手から離れる向きへ大きく押される(間合いが切れる=受け続けてのハメを作らない)。構えは時間いっぱい続く。
       // 踏み込みの器へ載せる('push'=加速→減速の1山・壁と木は6px 刻みで解いて止まる・向きは相手を向いたまま)。

@@ -2,7 +2,6 @@
 //  ・弾=カウンターは成立する(打ち返す・成立の記録)が、構えは残り時間のまま続き、潰し・反撃の気功は出ない
 //  ・近接=今どおり(雑魚=潰しで構えが終わる / 雑魚より上=反撃の気功)
 //  ・ジャストの +5 は弾でも今どおり入る
-import { BRAWLER_JUST_MS } from '../utils/brawler';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, isBrawlerGuarding } from './gameStore';
 import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
@@ -206,7 +205,6 @@ describe('構えで弾を受けた時(社長指示2026-11-13)', () => {
     setup();
     useGameStore.setState({ enemies: [enemyAt('zombie', 60, 0, 'z')] });
     guardNow(3);
-    advance(BRAWLER_JUST_MS); // ジャストの窓の外で受ける(ジャストの近接の受けはジャスト投げ=brawlerJustGrab.store.test.ts)
     hitBy('z', 'zombie');
     expect(br().tech).toBe('stomp');
     expect(br().guardUntil).toBe(0);
@@ -214,7 +212,6 @@ describe('構えで弾を受けた時(社長指示2026-11-13)', () => {
     setup();
     useGameStore.setState({ enemies: [enemyAt('hunter', 120, 0, 'h')] });
     guardNow(5);
-    advance(BRAWLER_JUST_MS);
     hitBy('h', 'hunter', 'hunter-slash');
     expect(br().guardKiko).toBeDefined();
     advanceSim(1200);

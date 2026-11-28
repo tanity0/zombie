@@ -1,15 +1,16 @@
-// ★ジャスト投げ(社長指示2026-11-28「格闘で、ジャストタイミングで上おしたとき、スープレックスになりつつジャストカウンターにも して。」)と、
-//   ジャストカウンターの弾の打ち返し(同日「あとジャストカウンターしたとき、弾を弾き返してない」)。
-//  ・ジャストの近接の受け → JUST(+5・成立)を出しつつ、攻撃してきた相手を掴んで投げる(雑魚=スープレックス/ボス級=サマーソルト)。離れていれば吸い付く。
-//  ・密着の構えで相手が攻撃中 → ジャストの窓の間は構えで待つ(受ければ JUST+投げ・受けなければ窓の終わりに掴む)。
-//  ・投げの間も構えの守りが続き、弾を打ち返す(旧: 雑魚のジャストは地割りで構えが終わり、その後の弾は当たっていた)。
+// ★密着のスープレックスのジャスト(社長指示2026-11-28「格闘で、ジャストタイミングで上おしたとき、スープレックスになりつつジャストカウンターにも して。」
+//   補足「そのスープレックスのカウンターに、ジャストの概念が入ってなかった」)と、ジャストカウンターの弾の打ち返し(同日「ジャストカウンターしたとき、弾を弾き返してない」)。
+//  ・密着の構え(↑)で相手が攻撃中 → 構えのジャストの窓の間は構えで待つ。窓の内にその相手の攻撃が当たれば、構えのジャストの効果(JUST・+5・Counter!・
+//    止め・スロー・成立の記録)が出て、今までどおりスープレックス(雑魚)/サマーソルト(ボス級)。当たらなければ窓の終わりに今までどおり掴む。
+//  ・ただの構え(密着でない)のジャストは今までどおり(雑魚=代金なしの地割り / ボス級=押し+反撃の気功)。
+//  ・ジャストで受けて出た地割りの最中に飛んできた弾は打ち返す(旧: 地割りで構えが閉じ、弾が当たっていた)。
 //  ・弱い構えでもジャストの窓の内に当たった弾は打ち返す(旧: JUST は出るのに弾は防ぐだけ)。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore } from './gameStore';
 import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll } from '../utils/brawlerCombo';
-import { BRAWLER_JUST_MS, BRAWLER_CONTACT_PX, brawlerDistTo } from '../utils/brawler';
+import { BRAWLER_JUST_MS } from '../utils/brawler';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
@@ -87,87 +88,43 @@ const untilGrab = (maxMs = 800) => { for (let i = 0; i < maxMs / 10 && !br().con
 beforeEach(() => { now = 7_000_000; vi.spyOn(Date, 'now').mockImplementation(() => now); vi.spyOn(Math, 'random').mockReturnValue(0.99); });
 afterEach(() => { vi.restoreAllMocks(); setTreesDisabled(false); setTorchesDisabled(false); });
 
-describe('ジャストの近接の受け → ジャストカウンター+投げ', () => {
-  it('雑魚(近い): JUST が出て、その場でスープレックスに掴む(地割りにはならない)', () => {
+const callouts = (text: string) => useGameStore.getState().effects.filter(e => (e as { text?: string }).text === text).length;
+
+describe('密着の構え(↑)で相手が攻撃中: ジャストの瞬間ならスープレックス+ジャストカウンター', () => {
+  it('雑魚: 窓の内にその相手の攻撃が当たる → JUST・Counter!・成立の記録・+5 と、今までどおりのスープレックスが同時に出る', () => {
     setup();
-    useGameStore.setState({ enemies: [enemyAt('zombie', 70, 0, 'z')] });
-    guardNow(5);
-    hitBy('z', 'zombie');
-    expect(br().justAt).toBe(now); // ジャストカウンター
-    expect(pl().lastCounterSuccessTime).toBe(now); // 成立の記録
-    expect(br().tech).not.toBe('stomp');
-    expect(br().contactGrab).toEqual(expect.objectContaining({ enemyId: 'z', mode: 'suplex' }));
-  });
-  it('雑魚(少し離れている): 投げられる距離まで吸い付いてから掴む', () => {
-    setup();
-    useGameStore.setState({ enemies: [enemyAt('zombie', 110, 0, 'z')] });
-    guardNow(5);
-    const gap0 = brawlerDistTo(center().x, center().y, en('z')) - pl().width / 2;
-    expect(gap0).toBeGreaterThan(BRAWLER_CONTACT_PX);
-    const x0 = pl().x;
-    hitBy('z', 'zombie');
-    expect(br().justAt).toBe(now);
-    expect(br().justGrab?.enemyId).toBe('z');
+    const z = enemyAt('zombie', 30, 0, 'z'); z.biteAt = 1;
+    guardContact(z, 5);
+    expect(br().tech).toBe('guard');
+    expect(br().contactWait?.enemyId).toBe('z');
     expect(br().contactGrab).toBeUndefined();
-    untilGrab();
-    expect(br().contactGrab).toEqual(expect.objectContaining({ enemyId: 'z', mode: 'suplex' }));
-    expect(pl().x).toBeGreaterThan(x0 + 10); // 相手(右)へ寄った
-    const gap1 = brawlerDistTo(center().x, center().y, en('z')) - pl().width / 2;
-    expect(gap1).toBeLessThanOrEqual(BRAWLER_CONTACT_PX);
+    advance(50);
+    const pts0 = br().points;
+    hitBy('z', 'zombie');
+    expect(br().justAt).toBe(now); // ジャストカウンター(構えのジャストと同じ判定・同じ効果)
+    expect(pl().lastCounterSuccessTime).toBe(now); // 成立の記録
+    expect(callouts('JUST')).toBe(1);
+    expect(callouts('Counter!')).toBe(1);
+    expect(br().points).toBeGreaterThan(pts0); // ジャストの +5
+    expect(br().contactGrab).toEqual(expect.objectContaining({ enemyId: 'z', mode: 'suplex' })); // 今までどおりのスープレックス
+    expect(br().contactWait).toBeUndefined();
+    expect(br().tech).not.toBe('stomp'); // 代金なしの地割りにはならない
+    expect(pl().health).toBe(100);
   });
-  it('ボス級: サマーソルト(反撃の気功は出さない)', () => {
+  it('ボス級: JUST と今までどおりのサマーソルト(押されない・反撃の気功は出さない)', () => {
     setup();
-    useGameStore.setState({ enemies: [enemyAt('hunter', 90, 0, 'h')] });
-    guardNow(5);
+    const h = enemyAt('hunter', 40, 0, 'h');
+    Object.assign(h, { aiPhase: 'hunter-slash', aiPhaseUntil: useGameStore.getState().gameTime + 300 });
+    guardContact(h, 5);
+    expect(br().contactWait?.enemyId).toBe('h');
+    advance(40);
     hitBy('h', 'hunter', 'hunter-slash');
     expect(br().justAt).toBe(now);
-    untilGrab();
+    expect(pl().lastCounterSuccessTime).toBe(now);
     expect(br().contactGrab).toEqual(expect.objectContaining({ enemyId: 'h', mode: 'flipkick' }));
     expect(br().guardKiko).toBeUndefined();
   });
-  it('対照: ジャストの窓の外の受けは今どおり(雑魚=地割り)', () => {
-    setup();
-    useGameStore.setState({ enemies: [enemyAt('zombie', 70, 0, 'z')] });
-    guardNow(5);
-    advance(BRAWLER_JUST_MS + 20);
-    hitBy('z', 'zombie');
-    expect(br().justAt).not.toBe(now);
-    expect(br().tech).toBe('stomp');
-  });
-  it('対照: 届かない相手のジャストは今どおり(投げない)', () => {
-    setup();
-    useGameStore.setState({ enemies: [enemyAt('zombie', 160, 0, 'z')] });
-    guardNow(5);
-    hitBy('z', 'zombie');
-    expect(br().justAt).toBe(now);
-    expect(br().justGrab).toBeUndefined();
-    expect(br().contactGrab).toBeUndefined();
-  });
-  it('対照: 弱い構えのジャストは投げない(掴みは技ポイント3が必須)', () => {
-    setup();
-    useGameStore.setState({ enemies: [enemyAt('zombie', 70, 0, 'z')] });
-    guardNow(0);
-    expect(br().guardWeak).toBe(true);
-    hitBy('z', 'zombie');
-    expect(br().justAt).toBe(now);
-    expect(br().contactGrab).toBeUndefined();
-    expect(br().justGrab).toBeUndefined();
-  });
-});
-
-describe('密着の構えで相手が攻撃中 → ジャストの窓の間は待つ', () => {
-  it('窓の内に受けた: JUST が出て掴む', () => {
-    setup();
-    const z = enemyAt('zombie', 30, 0, 'z'); z.biteAt = 1;
-    guardContact(z);
-    expect(br().tech).toBe('guard');
-    expect(br().contactWait?.enemyId).toBe('z');
-    advance(50);
-    hitBy('z', 'zombie');
-    expect(br().justAt).toBe(now);
-    expect(br().contactGrab).toEqual(expect.objectContaining({ enemyId: 'z', mode: 'suplex' }));
-  });
-  it('窓の内に受けなかった: 窓の終わりに今までどおり掴む', () => {
+  it('窓の内に当たらなかった: 窓の終わりに今までどおり掴む(JUST は出ない)', () => {
     setup();
     const z = enemyAt('zombie', 30, 0, 'z'); z.biteAt = 1;
     guardContact(z);
@@ -175,12 +132,36 @@ describe('密着の構えで相手が攻撃中 → ジャストの窓の間は�
     expect(br().contactGrab).toBeUndefined();
     advance(60);
     expect(br().contactGrab).toEqual(expect.objectContaining({ enemyId: 'z', mode: 'suplex' }));
+    expect(br().justAt).toBeUndefined();
+    expect(callouts('JUST')).toBe(0);
   });
   it('対照: 攻撃中でない相手はその場で掴む(今どおり)', () => {
     setup();
     guardContact(enemyAt('zombie', 30, 0, 'z'));
     expect(br().contactWait).toBeUndefined();
     expect(br().contactGrab).toEqual(expect.objectContaining({ enemyId: 'z', mode: 'suplex' }));
+  });
+});
+
+describe('ただの構え(密着でない)のジャストは今までどおり', () => {
+  it('雑魚: JUST と代金なしの地割り(掴まない)', () => {
+    setup();
+    useGameStore.setState({ enemies: [enemyAt('zombie', 70, 0, 'z')] });
+    guardNow(5);
+    hitBy('z', 'zombie');
+    expect(br().justAt).toBe(now);
+    expect(br().tech).toBe('stomp');
+    expect(br().contactGrab).toBeUndefined();
+  });
+  it('ボス級: JUST と押し+反撃の気功', () => {
+    setup();
+    useGameStore.setState({ enemies: [enemyAt('hunter', 120, 0, 'h')] });
+    guardNow(5);
+    hitBy('h', 'hunter', 'hunter-slash');
+    expect(br().justAt).toBe(now);
+    expect(br().guardKiko).toBeDefined();
+    expect(pl().lungeShape).toBe('push');
+    expect(br().contactGrab).toBeUndefined();
   });
 });
 
@@ -202,15 +183,6 @@ describe('幻影(汎用・孫悟空)も雑魚と同じく投げる(社長指示2
       expect(en('gp').health).toBeLessThan(99999); // 叩きつけ(小爆発)が当たった
       expect(en('gp').x).not.toBe(x0); // 背中側へ叩きつけて移った(§34-12)
     });
-    it(`ジャストの↑ → スープレックス(${unique ?? '汎用'})`, () => {
-      setup();
-      useGameStore.setState({ enemies: [phantomAt(90, 'gp', unique)] });
-      guardNow(5);
-      hitBy('gp', 'guardian-phantom');
-      expect(br().justAt).toBe(now);
-      untilGrab();
-      expect(br().contactGrab).toEqual(expect.objectContaining({ enemyId: 'gp', mode: 'suplex' }));
-    });
   }
   it('対照: ボス級(ハンター)は今どおりサマーソルト', () => {
     setup();
@@ -221,15 +193,30 @@ describe('幻影(汎用・孫悟空)も雑魚と同じく投げる(社長指示2
 });
 
 describe('ジャストカウンターで弾を弾き返す', () => {
-  it('ジャスト投げの最中に飛んできた弾を打ち返す(旧: 地割りで構えが終わり当たっていた)', () => {
+  it('ジャストで受けて出た地割りの最中に飛んできた弾を打ち返す(旧: 地割りで構えが閉じ当たっていた)', () => {
     setup();
     useGameStore.setState({ enemies: [enemyAt('zombie', 70, 0, 'z'), enemyAt('zombie', -400, 0, 'z2')] });
     guardNow(5);
     hitBy('z', 'zombie');
+    expect(br().tech).toBe('stomp');
+    expect(br().justStomp).toBe(true);
     advance(30);
     shoot('z2', 'zombie');
     expect(reflected()).toBe(1);
     expect(hostileLeft()).toBe(0);
+    expect(pl().health).toBe(100);
+  });
+  it('密着のスープレックスのジャストの後も、投げの間は弾を打ち返す', () => {
+    setup();
+    const z = enemyAt('zombie', 30, 0, 'z'); z.biteAt = 1;
+    guardContact(z, 5);
+    useGameStore.setState(st => ({ enemies: [...st.enemies, enemyAt('zombie', -400, 0, 'z2')] }));
+    advance(30);
+    hitBy('z', 'zombie');
+    expect(br().contactGrab?.mode).toBe('suplex');
+    advance(30);
+    shoot('z2', 'zombie');
+    expect(reflected()).toBe(1);
     expect(pl().health).toBe(100);
   });
   it('弱い構えでもジャストの窓の内の弾は打ち返す / 窓の外は今どおり防ぐだけ', () => {
