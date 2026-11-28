@@ -14,13 +14,14 @@ const store = new Map<string, string>();
 const {
   rollSortiePatrolPlan, patrolBossStages, patrolBossForRun, resolveRunPatrol, parseSortiePatrolPlan,
   ensureSortiePatrolPlan, takeSortiePatrolPlan, loadSortiePatrolPlan, SORTIE_PATROL_KEY,
+  resolveSortieRunPatrol, clearSortiePatrolPlan,
 } = await import('./sortiePatrolPlan');
 const { RUN_MUTANT_BOSS_CHANCE } = await import('./wraithScript');
 
 const seq = (...vals: number[]) => { let i = 0; return () => vals[i++] ?? 0; };
 const ALL = ['stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5'];
 
-beforeEach(() => { store.clear(); });
+beforeEach(() => { clearSortiePatrolPlan(); store.clear(); });
 
 describe('作戦室での抽選', () => {
   it('枠の確率を超えたら「なし」(乱数は1回だけ)', () => {
@@ -92,5 +93,50 @@ describe('保存と消費', () => {
     expect(parseSortiePatrolPlan(JSON.stringify({ boss: 'thor' }))).toBeNull();
     expect(parseSortiePatrolPlan(JSON.stringify({ boss: 'astro' }))).toBeNull();
     expect(parseSortiePatrolPlan(JSON.stringify({ boss: 'astro', stageId: 'stage-4' }))).toEqual({ boss: 'astro', stageId: 'stage-4' });
+  });
+});
+
+describe('出撃のたびの使い方(作戦室→出撃/もう一度プレイ)', () => {
+  const input = { sortieableStageIds: ALL, stage1CastleCleared: true };
+  const noRoll = () => { throw new Error('引き直してはいけない'); };
+  it('対象外のステージへ出撃しても保存は消え、次に作戦室を開けば引き直す', () => {
+    ensureSortiePatrolPlan(input, seq(0.9)); // 「なし」
+    expect(resolveSortieRunPatrol('stage-2', noRoll)).toBe('none');
+    expect(loadSortiePatrolPlan()).toBeNull();
+    expect(ensureSortiePatrolPlan(input, seq(0, 0, 0))).toEqual({ boss: 'astro', stageId: 'stage-1' });
+  });
+  it('もう一度プレイ(作戦室を通らない)は直前の出撃と同じボスが同じステージで出る', () => {
+    ensureSortiePatrolPlan(input, seq(0, 0.5, 0.9)); // 亡霊・ステージ5
+    expect(resolveSortieRunPatrol('stage-5', noRoll)).toBe('wraith');
+    expect(resolveSortieRunPatrol('stage-5', noRoll)).toBe('wraith');
+    expect(resolveSortieRunPatrol('stage-5', noRoll)).toBe('wraith');
+  });
+  // 社長指示2026-11-28「もう一度 の時は出てね」: 前のランで倒した/退散した/時間で帰った、のどれでも、もう一度では同じボスを出す。
+  // 結果の決め方はランの成り行きを一切受け取らない(ラン内の出た・倒した・退散の印は useGameLoop が新ランで全部戻す)=ここで固定する。
+  it.each(['倒した', '退散した', '時間で帰った'])('前のランで%s場合も、もう一度プレイで同じボスが出る', () => {
+    ensureSortiePatrolPlan(input, seq(0, 0.9, 0)); // 孫悟空・ステージ1
+    expect(resolveSortieRunPatrol('stage-1', noRoll)).toBe('brawler');
+    // (前のランの成り行き: どれであっても保存・メモリには何も書かない)
+    expect(resolveSortieRunPatrol('stage-1', noRoll)).toBe('brawler');
+    expect(resolveSortieRunPatrol('stage-1', noRoll)).toBe('brawler');
+  });
+  it('直前が「なし」なら、もう一度プレイも「なし」(引き直さない)', () => {
+    ensureSortiePatrolPlan(input, seq(0.9));
+    expect(resolveSortieRunPatrol('stage-3', noRoll)).toBe('none');
+    expect(resolveSortieRunPatrol('stage-3', noRoll)).toBe('none');
+  });
+  it('作戦室を経た出撃は、新しく引いた結果に置き換わる', () => {
+    ensureSortiePatrolPlan(input, seq(0, 0.5, 0.9));
+    expect(resolveSortieRunPatrol('stage-5', noRoll)).toBe('wraith');
+    ensureSortiePatrolPlan(input, seq(0.9)); // 作戦室を開き直した=新しく引く(なし)
+    expect(resolveSortieRunPatrol('stage-5', noRoll)).toBe('none');
+    expect(resolveSortieRunPatrol('stage-5', noRoll)).toBe('none');
+  });
+  it('起動直後に作戦室を通らない出撃だけ、ステージに入った時に引き、その結果をもう一度プレイでも使う', () => {
+    let rolled = 0;
+    const fb = () => { rolled++; return 'brawler' as const; };
+    expect(resolveSortieRunPatrol('stage-4', fb)).toBe('brawler');
+    expect(resolveSortieRunPatrol('stage-4', fb)).toBe('brawler');
+    expect(rolled).toBe(1);
   });
 });

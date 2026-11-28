@@ -279,7 +279,7 @@ import {
 } from '../utils/phantomBrawlerSpawn'; // research/BRAWLER_PHANTOM.md §6: 拳鬼の本編の出現(徘徊の枠)
 import { createFleeSources, fleeSourcesActive, fleeSourcesExceptKenki, kenkiFleeActive, type FleeSources } from '../utils/fleeSources'; // 「他の敵が逃げる」旗の合成(裏ボス/アイドル/孫悟空)
 import { patrolSpawnHeldByWelcome } from '../utils/patrolWelcomeHold'; // 徘徊の枠はウェルカム中は出ない(社長指示2026-11-12)
-import { resolveRunPatrol, takeSortiePatrolPlan } from '../utils/sortiePatrolPlan'; // 徘徊の枠は作戦室で引いた結果を使う(research/SORTIE_MAP_BOSS_ICONS.md §3)
+import { resolveSortieRunPatrol } from '../utils/sortiePatrolPlan'; // 徘徊の枠は作戦室で引いた結果を使う(research/SORTIE_MAP_BOSS_ICONS.md §3)
 import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius, HERO_MAX_HP, HERO_START_HP } from '../utils/heroScript';
 import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties, heroAsTarget } from '../utils/heroBlast';
 import { hateEscortSource } from '../utils/escortView';
@@ -10051,11 +10051,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 徘徊の枠の抽選(1ランに1回・20%・ステージ1・3・4・5)。research/BRAWLER_PHANTOM.md §6(社長指示2026-11-10「出現は徘徊の枠で、
           // 亡霊か宇宙飛行が出てる時は出ない。この3人の中で抽選」): 宇宙飛行群・亡霊・拳鬼から均等に1人。拳鬼はステージ1なら城のボスの後から。
           // research/SORTIE_MAP_BOSS_ICONS.md §3: 作戦室で引いて保存した結果があればそれを使って消す(出撃先が保存のステージと同じ時だけ出る)。
-          // 保存が無い出撃(=作戦室を通らない「もう一度プレイ」)だけ、今どおりステージに入った時に引く。
+          // 保存が無い出撃(=作戦室を通らない「もう一度プレイ」)は直前の出撃と同じ結果を使う(社長指示2026-11-28)。直前も無い時だけステージに入った時に引く。
           // 呼ばれるのは本編の出撃だけ(練習ラン・ボスメーカー・強制出現のラン=HERO_PATROL_BLOCKED は保存を使わず消さない)。
           const rollPatrolSlot = (): RunMutantBoss => {
             const stageId = getSelectedStageId() ?? '';
-            return resolveRunPatrol(takeSortiePatrolPlan(), stageId,
+            return resolveSortieRunPatrol(stageId,
               () => rollRunPatrolSlot({ stageId, stage1CastleCleared: getCastleBossCleared('stage-1') }, Math.random));
           };
           // 社長指示2026-11-12「徘徊はウェルカムイベント中は出現しない」: 本編の徘徊の枠(下の3体)はウェルカムが終わるまで待つ

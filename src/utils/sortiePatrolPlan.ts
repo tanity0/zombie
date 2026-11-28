@@ -4,7 +4,8 @@
 // - 作戦室(screen.name==='home')が表示された時、保存が無ければ1回だけ引いて保存する(「なし」も保存する)。
 //   開き直し・再起動では引き直さない(出撃するまで同じ結果)。
 // - 出撃した時(ゲームループの最初)に保存を取り出して消す。出撃先が保存のステージと同じ時だけそのボスが出る。
-// - 保存が無い出撃(=作戦室を通らない「もう一度プレイ」)だけ、今どおりステージに入った時に抽選する(rollRunPatrolSlot)。
+// - 保存が無い出撃(=作戦室を通らない「もう一度プレイ」)は、直前の出撃と同じ結果を使う(resolveSortieRunPatrol)。
+//   直前の出撃も無い時(起動直後に作戦室を通らない出撃)だけ、ステージに入った時に抽選する(rollRunPatrolSlot)。
 // - 練習ラン・ボス戦テスト・ボスメーカーは保存を使わず消さない(呼び出し側=useGameLoop のゲートで分ける)。
 import { HERO_PATROL_STAGES } from './heroScript';
 import { phantomBrawlerStageEligible } from './phantomBrawlerSpawn';
@@ -101,7 +102,25 @@ export const takeSortiePatrolPlan = (): SortiePatrolPlan | null => {
   return plan;
 };
 
+// ---- 「もう一度プレイ」は直前の出撃と同じ結果を使う(社長指示2026-11-28「ゲームオーバーでもう一度を押したら、同じく出てくる様にして」) ----
+// 直前の出撃で使った結果(誰が・どのステージ)をメモリに持つ。作戦室を通った出撃は保存を取り出して上書きする=作戦室を開けば今どおり新しく引く。
+let lastRunPlan: SortiePatrolPlan | null = null;
+
+/**
+ * 出撃した時の徘徊の枠(ゲームループの最初に1回)。①作戦室の保存があれば取り出して消し、それを使う
+ * ②無ければ(=作戦室を通らない「もう一度プレイ」)直前の出撃の結果をそのまま使う
+ * ③それも無ければ(起動直後に作戦室を通らない出撃)ステージに入った時に引く(fallbackRoll)。
+ * 使った結果は次の「もう一度プレイ」のために覚えておく。ステージが結果と違えば出ない(patrolBossForRun)。
+ */
+export const resolveSortieRunPatrol = (stageId: string, fallbackRoll: () => RunMutantBoss): RunMutantBoss => {
+  const plan = takeSortiePatrolPlan() ?? lastRunPlan;
+  const boss = resolveRunPatrol(plan, stageId, fallbackRoll);
+  lastRunPlan = plan ?? (boss === 'none' ? { boss } : { boss, stageId });
+  return boss;
+};
+
 /** 進行リセット(開発用)から呼ぶ。 */
 export const clearSortiePatrolPlan = (): void => {
+  lastRunPlan = null;
   try { localStorage.removeItem(SORTIE_PATROL_KEY); } catch { /* ignore */ }
 };
