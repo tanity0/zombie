@@ -48,6 +48,8 @@ const FACE_RIM_SEL = '#efe6d2';
 const LOCKED_INK = '#ddd2b8';
 // 選択の輪の半径。前の輪が消える時間(index.css .ds-map-next-ring.is-out と揃える)・もう一度押した時に縮んで弾ける時間(.is-go)。
 const RING_R = 7.5 * U, RING_OUT_MS = 300, RING_GO_MS = 300;
+// 次の目標の後光の半径(スマホで約10px=菱形の倍ほど・選択の輪より少し外まで淡く滲む)。
+const TARGET_GLOW_R = 10 * U;
 // 選んだ顔が浮く量(原画の単位)。場所の印から離れる向き(列が印の下なら下へ・上なら上へ)=印や「前回」の字に食い込まない。
 const FACE_LIFT = 12;
 type RingItem = { id: string; locked: boolean; n: number; leaving: boolean; fresh: boolean };
@@ -190,6 +192,9 @@ const DsStoryMap: React.FC<{
       ? pickMapStageHit(faceHits.map(h => ({ stageId: h.key, x: h.x, y: h.y })), pt.x, pt.y, half) : null;
     setHoverKey(prev => (prev === k ? prev : k));
   }, [faceHits, stageHits, regionPick]);
+  // 動きを減らす設定=次の目標の後光は点滅させず固定(開いた時に1回読む)。
+  const reduceMotion = useMemo(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches, []);
   if (DS_MAP_DISABLED) return null;
   const P = (at: readonly [number, number]) => [at[0] * OPS_MAP_W, at[1] * OPS_MAP_H] as const;
   const visited = trail.visited.map(v => P(v.at));
@@ -303,6 +308,24 @@ const DsStoryMap: React.FC<{
         {/* 次の目標=琥珀明の中抜きの菱形(ゆっくり加減速して明滅)+小さな「NEXT」/全部クリアした後の「前回」。選択を移しても元の場所に残す。 */}
         {showMark && nxt && (
           <g pointerEvents="none" className="ds-map-target-mark" style={{ opacity: onTarget || !pickId ? 1 : 0.5 }}>
+            {/* 菱形の後ろの淡い後光(社長 2026-11-28「マップの次の目標地点は薄くゆっくり点滅して光らせたい」)。
+                ぼかしは filter ではなく放射グラデの円1枚(常時の動きでも安い)。菱形の線・選択の輪と同じ周期・同じ加減速で、
+                線が明るい時に光も明るい。「前回」だけの時・選択が他へ移って印が一段落ちている時は出さない。
+                prefers-reduced-motion では点滅させず、薄い光を固定で出す。 */}
+            {!sameSpot && (onTarget || !pickId) && (
+              <>
+                <defs>
+                  <radialGradient id={`${clipBase}-tg`}>
+                    <stop offset="0" stopColor={AMBER_HI} stopOpacity={1} />
+                    <stop offset="0.45" stopColor={AMBER_HI} stopOpacity={0.45} />
+                    <stop offset="1" stopColor={AMBER} stopOpacity={0} />
+                  </radialGradient>
+                </defs>
+                <circle cx={nxt[0]} cy={nxt[1]} r={TARGET_GLOW_R} fill={`url(#${clipBase}-tg)`} opacity={reduceMotion ? 0.16 : 0.3}>
+                  {!reduceMotion && <animate attributeName="opacity" values="0.3;0.02;0.3" dur="2.6s" repeatCount="indefinite" {...ease} />}
+                </circle>
+              </>
+            )}
             {!sameSpot && <rect x={nxt[0] - 2.8 * U} y={nxt[1] - 2.8 * U} width={5.6 * U} height={5.6 * U} fill="rgba(7,6,13,0.7)" stroke={AMBER_HI}
               strokeWidth={1.5} vectorEffect="non-scaling-stroke" transform={`rotate(45 ${nxt[0]} ${nxt[1]})`}>
               {(onTarget || !pickId) && <animate attributeName="stroke-opacity" values="1;0.35;1" dur="2.6s" repeatCount="indefinite" {...ease} />}
