@@ -15,6 +15,7 @@ import { memoryTier, resolutionCapFor } from '../utils/memoryTier';
 import { renderErrorFlags } from './renderErrorFlags';
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { noteRendererMount, noteContextLost } from '../utils/crashWatch';
+import { setCensusRenderer, clearCensusRenderer } from './textureCensus';
 
 // 描画解像度の上限(電池対策)。スマホ(タッチ端末)は塗り面積=GPU負荷を抑えるため低め、PCは高画質のまま。
 // 塗るピクセル数は倍率の2乗で効くので、スマホ 2.0→1.5 で約44%削減。?rescap= でURL上書き(検証/微調整)。
@@ -105,6 +106,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       });
       setAppliedResolution(app.renderer.resolution); // 診断表示用(実際に効いている値)
       if (cancelled) return;
+      setCensusRenderer(app.renderer); // 「前回最後」の mt(描画器が管理しているテクスチャの数)
       await ensureTextures();
       loadProgressDone(); // マニフェスト一式=1ユニット
       const BASE = import.meta.env.BASE_URL;
@@ -373,6 +375,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       // 焼きの計器を作り直しの前に0へ戻す(古いレンダラの焼きは GPU ごと消える=数字だけが残っていた・2026-10-11)。
       // scene.destroy() が途中で投げても必ず通るよう、別の try にしてある。
       try { releaseAllBakedTextures(); } catch { /* ignore */ }
+      try { if (a) clearCensusRenderer(a.renderer); } catch { /* ignore */ } // 畳んだ描画器を数えに行かない
       // ★古い描画器のキャンバスは**その場で 0×0 に縮めて**から手放す(2026-10-17・社長実機「何度もリプレイしてたら落ちた。蓄積されてる」)。
       // iOS Safari はキャンバスの裏の画素と WebGL の描き先を、要素が GC されるまで抱えたままにする(コンテキストを失わせても同じ)。
       // 端末解像度ぶん(スマホで十数MB+描き先)が出撃のたびに積み上がりうる=縮めれば即座に返る。Chrome では GC が先に回るので差が出ない。

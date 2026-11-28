@@ -17,6 +17,7 @@ import { deathResultSafetyMs } from '../utils/playerDeathWatch';
 import { lastSuppressedError } from '../utils/errorBeacon';
 import { lastPoiMissLine } from '../utils/poiMissBeacon';
 import { renderStatsText, bakedTextureText, sceneDiagText, takeBakeCalls } from '../utils/renderStats';
+import { textureCensusText } from '../pixi/textureCensus';
 import { prevBeatText, startCrashWatch, rendererMountCount, contextLostCount, brawlerSecretCount } from '../utils/crashWatch';
 import { textureMemoryMB, textureTopGroups } from '../pixi/pixiTextures';
 import GameHUD from './GameHUD';
@@ -425,7 +426,7 @@ const ErrBeacon: React.FC = () => {
       // v0.25.5054(社長質問「長時間プレイするほど落ちる確率が上がる?」): 時間で増える物を名指しできるよう、
       // 表示物の総数・敵IDで持つ表の件数(描画側)と store の配列の長さを足す。
       // v0.25.5065: どのステージで落ちたかを行に残す(社長実機 v0.25.5062 t133s・合計212MBで落ちた件の切り分け用)。
-      return `v${__APP_VERSION__} ${getSelectedStageId()} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB(${textureTopGroups()}) ${bakedTextureText()} en${st.enemies.length}`
+      return `v${__APP_VERSION__} ${getSelectedStageId()} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB(${textureTopGroups()}) ${bakedTextureText()} ${textureCensusText()} en${st.enemies.length}`
         + ` ${sceneDiagText()} st[fx${st.effects.length} pk${st.pickups.length} pj${st.projectiles.length} sm${st.summons.length}] 描画器${rendererMountCount()}代目(ロスト${contextLostCount()}・秘奥義${brawlerSecretCount()})`;
     });
     // ★重さの手がかり(2026-10-23・社長実機「またステージ4でめちゃくちゃ重くなった」「一時停止もショップも出ない・死んでも終わらない」):
@@ -448,7 +449,7 @@ const ErrBeacon: React.FC = () => {
       const why = st.isPaused
         ? ` 停止[${[st.tutorialPopup !== null && '説明', st.showUpgradeMenu && 'Lvup', st.showShopMenu && '店', st.showEventQuestMenu && '依頼', st.storyReturnPromptVisible && '帰還'].filter(Boolean).join(',') || 'メニュー'}]`
         : '';
-      const line = `fps${fps} bk${bk} tm${tm}${why} ${renderStatsText()} tex${textureMemoryMB()}MB ${bakedTextureText()} ${sceneDiagText()}`
+      const line = `fps${fps} bk${bk} tm${tm}${why} ${renderStatsText()} tex${textureMemoryMB()}MB ${bakedTextureText()} ${textureCensusText()} ${sceneDiagText()}`
         + (pv ? ` · 前回最後 ${pv}` : '')
         + (poi ? ` · ${poi}` : '') // 診断: アテンションの hold 中に注目点の近くの POI が描かれなかった理由(utils/poiMissBeacon)
         + (msg ? ` · ERR ${msg}` : '');

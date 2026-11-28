@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5916 — 「前回最後」とデバッグ行に txo/mt を追加(落ちの切り分け用)【2026-11-28 21:58】
+- 社長承認(次の一手=実機で出撃ごとの伸びを読む)。新規 pixi/textureCensus(+テスト): txo=生きている Texture オブジェクト数(コンストラクタの最初の source 代入で数え、FinalizationRegistry で回収分を引く)・mt=renderer.texture.managedTextures.length(PixiStage が描画器を登録/解除・未登録は-1)。main.tsx で起動時に差し込み。Game.tsx の「前回最後」記録(2秒毎)と左下の行(1秒毎)に `txo… mt…` を bake の直後に。負荷1/10。
+- ヘッドレス(stage-1・もう一度で重ねる・gc後): txo は出撃ごとに +72〜+159 増え続ける(掴み手のある増加を再現)・mt は 224〜303 で横ばい。実機で落ちた時の txo を「描画器N代目」と並べて読む。
+- 検証: typecheck・eslint・循環import・textureCensus.test。タイトルの「前回最後」とゲーム中の行に出ることを撮って目視(scratchpad/shots/title-prevbeat.png・ingame-sortie2.png)。
+
 ## v0.25.5915 — 落ちの診断(ステージ3・4)と fxLatches の残りの片付け【2026-11-28 19:19】
 - 社長実機の落ち2件(v0.25.5908 stage-3 t82s 描画器4代目 / v0.25.5909 stage-4 t649s 描画器7代目・fxLatches252)の診断。Chrome ヘッドレスでステージ3・格闘(秘奥義累計11回)×4出撃、ステージ4×8出撃: 描画器・WebGLコンテキスト・束ね役・キャンバス実メモリ・GPUテクスチャは一定=111行の型(古い描画器の残り)の再発ではない。obj/effectLayer の値は敵30体条件のヘッドレスと同じ帯(漏れではない)。Texture オブジェクトだけ +約230/出撃(元画像とGPUは増えず・JS数百KB/回・掴み手は未調査)。
 - 直した: 格闘の締めの吹き飛び砂埃の latchFx 鍵が敵 id 始まりでなく、敵の片付けで消えず積もっていた(fxLatches252 の出どころ)→鍵を `${id}:brawlerblow` に。見張り fxLatchKeys.test。**落ちの原因ではない**(1件数十バイト)。
