@@ -3156,10 +3156,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               cy = focusY + (att.fromCamY - focusY) * t;
             }
             setCameraPosition(cx, cy);
-            // ★寿命の切れたエフェクトだけは捨てる(2026-11-28・社長実機 v0.25.5917「城ボスを倒して直ぐ落ちた」の前回最後が
-            // `fx 368/368 古368`)。この早期 return は下の updateEffects を通らないので、撃破の寄り(約5秒)の間は
-            // 掃除が1度も回らず、出た物が全部残っていた。動かす・出すは今のまま(捨てるだけ=見た目は変わらない)。
-            useGameStore.getState().pruneEffects();
+            // ★寄りの間も視覚エフェクトは実時間で進める(2026-11-28・社長承認「寄りの間も粒は飛び続ける」)。
+            // 旧(v0.25.5924): この早期 return は updateEffects を通らず、粒は位置が止まったまま実時間で薄れて消えていた
+            // (掃除だけ pruneEffects で回していた=社長実機 v0.25.5917「城ボスを倒して直ぐ落ちた」`fx 368/368 古368` の対策)。
+            // 今: 下の時間停止(hitstop)の枝と同じ時計・同じ上限で updateEffects を回す=粒は外へ飛び、重力で落ち、寿命で消える
+            // (寿命切れの掃除も同じ関数の中で行われる)。updateEffects が触るのは描画専用の effects だけ(判定を持つ床・弾・敵・
+            // プレイヤー・gameTime は進めない=シミュレーションは凍結のまま)。時計は effects の createdAt と同じ Date.now 系。
+            const lastFx = hitstopFxLastRef.current || nowMs;
+            hitstopFxLastRef.current = nowMs;
+            updateEffects(Math.max(0, Math.min(0.05, (nowMs - lastFx) / 1000)));
             frameRef.current = requestAnimationFrame(gameLoop);
             return;
           }

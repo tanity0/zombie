@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5928 — 寄り(アテンション)の間も粒を実時間で動かす【2026-11-29 01:43】
+- 社長承認(「寄りの間も粒は飛び続ける」に はい)。useGameLoop のアテンションの早期 return で pruneEffects→updateEffects(dt)(dt=時間停止の枝と同じ式・hitstopFxLastRef 共有・0〜0.05秒)。動くのは particle/damageNumber の見た目だけ=判定を持つ床は別配列(gameTime)で不変。gameTime・敵・プレイヤー・弾は止まったまま。時計は createdAt/寿命とも Date.now で揃い。
+- 新規 attentionEffects.store.test(位置が進む・重力・寿命切れで消える・gameTime 等は不変)。gameStore.pruneEffects は呼び手なし(定義は残置)。
+- 検証: typecheck・eslint・テスト緑。城ボス撃破の寄りで2コマ撮って粒が広がるのを目視(scratchpad/shots/attn-side.png)。負荷1/10。
+
 ## v0.25.5927 — 格闘の10ヒット補正(§13-2)を撤去【2026-11-29 00:55】
 - 社長承認「10ヒット補正、はい」(コンボ倍率 min(2,1.1^n) と打ち消し合うため)。brawlerCombo.brawlerProration を BRAWLER_PRORATION_ENABLED=false で常に1(定数は記録として残す・呼び手はそのまま)。孫悟空側も同じ関数を読むなら同様に外れる。
 - 検証: typecheck・eslint・brawlerAirCombo/brawlerCombo/brawler/brawlerComboDamage テスト 137件緑(補正のテストは撤去後の期待値へ)。
