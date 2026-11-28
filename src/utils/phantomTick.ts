@@ -1212,6 +1212,17 @@ export const phantomBrawlerMidAction = (phantom: Enemy, s: PhantomTickState, gam
   || isFrozen(phantom, gameTime, nowMs) || brawlerHeldNow(phantom, gameTime, nowMs)
   || isPvpIncapacitated(phantom.pvpPosture, gameTime);
 
+/**
+ * 汎用の幻影(phantomUnique なし)が技の最中か(utils/kenkiLeave の「2分で帰る」は、これが true の間は跳び始めない)。
+ * 孫悟空と共通の分(固まり・紫・格闘の段)に加えて、近接の前隙(振り始め〜判定)・踏み込みの滑り・火炎放射の溜め〜噴射。
+ * 銃の1発は一瞬なので含めない(リロードも技ではない)。
+ */
+export const phantomGenericMidAction = (phantom: Enemy, s: PhantomTickState, gameTime: number, nowMs: number): boolean =>
+  phantomBrawlerMidAction(phantom, s, gameTime, nowMs)
+  || phantom.gpPendingSwingAt !== undefined
+  || phantom.gpFlamerWindupAt !== undefined
+  || (phantom.knockbackShoveUntil ?? -Infinity) > nowMs;
+
 export const runPhantomTick = (
   phantom: Enemy,
   s: PhantomTickState,

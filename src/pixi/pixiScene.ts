@@ -198,7 +198,7 @@ import { stepBiteFxClock, zombieBiteFxInterrupted, type BiteFxClock } from '../u
 import { enemyAttackFrameFor, attackFrameAfterLive, zombieStanceFrame, ZOMBIE_STANCE_HOLD_FRAME, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets, warmEnemyArt, prewarmEnemySheetsGpu, loadSpriteGroups, KENKI_SPRITES } from './pixiTextures';
 import { KENKI_SHUKUCHI_FADE_IN_MS, KENKI_SHUKUCHI_FADE_OUT_MS } from '../utils/kenkiShukuchi';
-import { kenkiLeavePose } from '../utils/kenkiLeave'; // 本編の孫悟空の「2分で跳んで帰る」の絵の形
+import { kenkiLeavePose, phantomLeaveTex } from '../utils/kenkiLeave'; // 本編の孫悟空の「2分で跳んで帰る」の絵の形
 import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
 /** 城ボスの絵を出現の最短時刻のこれだけ前から先読み+GPU転送する(メモリを使い始める時刻と、間に合う余裕の釣り合い)。 */
 const CASTLE_BOSS_GPU_PREWARM_MS = 45_000;
@@ -49685,6 +49685,13 @@ export class PixiScene {
       const brPose = BRW.brawlerPoseAt(e.phantomBrawler, useGameStore.getState().gameTime);
       const pre = MELEE_POSE_PREFIX[fake.characterClass];
       if (brPose?.tex && pre && getTexture(`${pre}-${brPose.tex}`)) bodyName = `${pre}-${brPose.tex}`;
+    }
+    // 2分で跳んで帰る(utils/kenkiLeave・汎用の幻影も): 沈み込み=格闘の構え(-ready)/跳び上がり=振り上げ(-swing)。既存の格闘の2コマの差し替えだけ
+    // (伸び縮み・回転はしない)。コマがまだ届いていなければ今の絵のまま(位置・拡大・透けだけで跳ぶ)。
+    if (e.kenkiLeaveAt !== undefined) {
+      const pre = MELEE_POSE_PREFIX[fake.characterClass];
+      const lt = `${pre}-${phantomLeaveTex(useGameStore.getState().gameTime - e.kenkiLeaveAt)}`;
+      if (pre && getTexture(lt)) bodyName = lt;
     }
     const body = getTexture(bodyName);
     // 社長指示2026-10-27「アバターは…幻影にも反映(その当時の記録として)」: 記録した時に着けていたアバター

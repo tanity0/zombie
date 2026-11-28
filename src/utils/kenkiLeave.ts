@@ -78,3 +78,27 @@ export const kenkiLeavePose = (elapsedMs: number): KenkiLeavePose => {
     alpha: 1 - fade * fade * (3 - 2 * fade),
   };
 };
+
+// ---- 汎用の幻影(guardian-phantom・phantomUnique なし)も同じ「2分で跳んで帰る」(社長指示2026-11-28「幻影も制限時間ある方がいいかも」) ----
+// 仕組みは孫悟空と共有する(Enemy の kenkiMetAt / kenkiLeaveAt・判定 kenkiLeaveStep・絵 kenkiLeavePose)。名前が孫悟空専用に読めるので汎用名の別名を置く。
+/** 幻影(孫悟空・汎用の幻影)の跳び去りの判定(= kenkiLeaveStep)。 */
+export const phantomLeaveStep = kenkiLeaveStep;
+/** 幻影(孫悟空・汎用の幻影)の跳び去りの絵の形(= kenkiLeavePose)。 */
+export const phantomLeavePose = kenkiLeavePose;
+/** 幻影が出会ってから帰るまで(= KENKI_LEAVE_AFTER_MS)。 */
+export const PHANTOM_LEAVE_AFTER_MS = KENKI_LEAVE_AFTER_MS;
+
+/**
+ * 汎用の幻影の「出会った瞬間」(2分の数え始め)か。
+ * - 名乗りのアテンション(出現の約1秒後にカメラが寄る)が控えている間は数え始めない=アテンションが出てから数える。
+ * - アテンションが控えていない(出た・無かった)なら、姿が画面に入っている最初のフレームで数え始める。
+ * - 練習ラン(変異体対策室)は帰らない=数え始めない。もう数えている/跳び去り中も false。
+ */
+export const genericPhantomMeetNow = (i: {
+  practice: boolean; metAt: number | undefined; leaveAt: number | undefined; attentionPending: boolean; onScreen: boolean;
+}): boolean =>
+  !i.practice && i.metAt === undefined && i.leaveAt === undefined && !i.attentionPending && i.onScreen;
+
+/** 跳び去りの間の体のコマ(既存の格闘の2コマ): 沈み込み=しゃがみ(-ready)/跳び上がり=振り上げ(-swing)。 */
+export const phantomLeaveTex = (elapsedMs: number): 'ready' | 'swing' =>
+  kenkiLeavePose(elapsedMs).phase === 'crouch' ? 'ready' : 'swing';

@@ -14,7 +14,7 @@ import {
 } from './phantomTick';
 import { phantomHitGate, playerIframeApplies } from './phantomGate';
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from './phantomScript';
-import { phantomMeleeDamage, reachSwingReady } from './phantomTick';
+import { phantomMeleeDamage, reachSwingReady, phantomGenericMidAction } from './phantomTick';
 import { COUNTER_REACH_DECL } from './counterReach';
 import { usesPostureSystem, applyBossPostureDamage } from './bossPosture';
 import { strongestGuardian } from '../data/fixedGuardians';
@@ -809,5 +809,19 @@ describe('★幻影の銃: 台帳の全銃(CATALOG_GUN_KEYS)を1挺ずつ持た�
     expect(fireOnce('shotgun-t2-satellite').heldKey).toBe('shotgun-t2');
     expect(fireOnce('glauncher-t2-blob').heldKey).toBe('glauncher-t2');
     expect(fireOnce(SIGNAL_WEAPON_KEY).heldKey).toBe(SIGNAL_WEAPON_KEY);
+  });
+});
+
+describe('汎用の幻影の技の最中(utils/kenkiLeave の「2分で帰る」は終わってから跳ぶ)', () => {
+  const mk = (over: Partial<Enemy> = {}): Enemy => Object.assign(spawnEnemyAt(GUARDIAN_PHANTOM_TYPE, ORIGIN, ORIGIN, START_GT), over);
+  it('何もしていなければ技の最中ではない', () => {
+    expect(phantomGenericMidAction(mk(), createPhantomTickState(), START_GT, 1_000_000)).toBe(false);
+  });
+  it('近接の前隙・火炎放射の溜め〜噴射・踏み込みの滑りは技の最中', () => {
+    const s = createPhantomTickState();
+    expect(phantomGenericMidAction(mk({ gpPendingSwingAt: START_GT }), s, START_GT, 1_000_000)).toBe(true);
+    expect(phantomGenericMidAction(mk({ gpFlamerWindupAt: START_GT }), s, START_GT, 1_000_000)).toBe(true);
+    expect(phantomGenericMidAction(mk({ knockbackShoveUntil: 1_000_100 }), s, START_GT, 1_000_000)).toBe(true);
+    expect(phantomGenericMidAction(mk({ knockbackShoveUntil: 999_000 }), s, START_GT, 1_000_000)).toBe(false);
   });
 });

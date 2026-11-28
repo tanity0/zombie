@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   KENKI_LEAVE_AFTER_MS, KENKI_LEAVE_CROUCH_MS, KENKI_LEAVE_TOTAL_MS, kenkiLeaveAfterMs, kenkiLeavePose, kenkiLeaveStep,
+  genericPhantomMeetNow, phantomLeaveStep, phantomLeavePose, phantomLeaveTex, PHANTOM_LEAVE_AFTER_MS,
 } from './kenkiLeave';
 
 const base = { metAt: 1000, leaveAt: undefined as number | undefined, afterMs: KENKI_LEAVE_AFTER_MS, busy: false };
@@ -56,5 +57,36 @@ describe('kenkiLeavePose(跳び去りの絵の形)', () => {
   it('踏み切りの瞬間に高さが跳ばない(沈み込みの終わりと上昇の始まりが繋がる)', () => {
     const a = kenkiLeavePose(KENKI_LEAVE_CROUCH_MS - 0.001).liftPx, b = kenkiLeavePose(KENKI_LEAVE_CROUCH_MS).liftPx;
     expect(Math.abs(a - b)).toBeLessThan(0.1);
+  });
+});
+
+describe('汎用の幻影の2分で帰る(社長指示2026-11-28「幻影も制限時間ある方がいいかも」)', () => {
+  const m = { practice: false, metAt: undefined as number | undefined, leaveAt: undefined as number | undefined, attentionPending: false, onScreen: true };
+  it('孫悟空と同じ仕組み(別名は同じ関数・同じ2分)', () => {
+    expect(phantomLeaveStep).toBe(kenkiLeaveStep);
+    expect(phantomLeavePose).toBe(kenkiLeavePose);
+    expect(PHANTOM_LEAVE_AFTER_MS).toBe(120_000);
+  });
+  it('名乗りのアテンションが控えている間は数え始めない=アテンションが出てから', () => {
+    expect(genericPhantomMeetNow({ ...m, attentionPending: true })).toBe(false);
+    expect(genericPhantomMeetNow(m)).toBe(true);
+  });
+  it('アテンションが無い時は、姿が画面に入ってから', () => {
+    expect(genericPhantomMeetNow({ ...m, onScreen: false })).toBe(false);
+    expect(genericPhantomMeetNow({ ...m, onScreen: true })).toBe(true);
+  });
+  it('練習ラン(対策室)は数え始めない=帰らない', () => {
+    expect(genericPhantomMeetNow({ ...m, practice: true })).toBe(false);
+    expect(phantomLeaveStep({ metAt: undefined, leaveAt: undefined, now: 1e9, afterMs: KENKI_LEAVE_AFTER_MS, busy: false })).toBe('none');
+  });
+  it('もう数えている/跳び去り中は打ち直さない(数え始めは1回だけ)', () => {
+    expect(genericPhantomMeetNow({ ...m, metAt: 500 })).toBe(false);
+    expect(genericPhantomMeetNow({ ...m, leaveAt: 500 })).toBe(false);
+  });
+  it('跳び去りのコマ: 沈み込み=構え(-ready)/跳び上がり=振り上げ(-swing)', () => {
+    expect(phantomLeaveTex(0)).toBe('ready');
+    expect(phantomLeaveTex(KENKI_LEAVE_CROUCH_MS - 1)).toBe('ready');
+    expect(phantomLeaveTex(KENKI_LEAVE_CROUCH_MS)).toBe('swing');
+    expect(phantomLeaveTex(KENKI_LEAVE_TOTAL_MS)).toBe('swing');
   });
 });

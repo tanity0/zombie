@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5904 — 汎用の幻影も出会ってから2分で跳んで帰る【2026-11-28 15:21】
+- 社長承認(「幻影も制限時間ある方がいい」→推薦「孫悟空と同じ2分・練習では帰らない」に はい)。kenkiLeave に汎用名の別名(phantomLeaveStep/Pose・PHANTOM_LEAVE_AFTER_MS)と genericPhantomMeetNow(名乗りのアテンションで数え始め・無ければ画面に入った時・練習ランは数えない)・phantomLeaveTex。phantomTick.phantomGenericMidAction(前隙・火炎放射・踏み込み)。
+- 絵: 職業の格闘ポーズ(${pre}-ready=沈み込み / -swing=上昇)・未ロードなら立ち絵のまま。
+- 検証: typecheck・eslint・循環import・関連テスト緑。ヘッドレスで跳び去りを撮って目視(scratchpad/shots/generic-phantom-leave-strip.png)。
+- 既知: 跳び去りの間、足元の水色のバーが残る(孫悟空も同じ経路)=次版で対処。
+
 ## v0.25.5903 — 孫悟空のセリフ(段階ごとの名乗り/倒された時)【2026-11-28 15:19】
 - 社長支給の文言(5段×2)をそのまま。台帳=data/kenkiNames.ts の KENKI_LEVEL_LINES(1か所)・kenkiLevel.kenkiLevelLine。通信の帯(enqueueNpcDialogue)で話者名=段階の名前(顔絵なし=既存の顔無し表示)。
 - 名乗り: 本編の徘徊は kStep 'intro'・強制出現は出現の瞬間に1回。倒された時: noteKenkiDefeated の頭で、倒された個体の段階の文言(練習で倒しても出る)。2分で帰る/退散は無言(社長確認済み)。

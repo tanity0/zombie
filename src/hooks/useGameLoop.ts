@@ -258,7 +258,7 @@ import {
 } from '../utils/bountyTick';
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): 頭脳(decideGhostの対プレイヤーアダプタ)+技の状態機械。
 import {
-  runPhantomTick, createPhantomTickState, pickActivePhantom, phantomBrawlerMidAction, type PhantomSfx,
+  runPhantomTick, createPhantomTickState, pickActivePhantom, phantomBrawlerMidAction, phantomGenericMidAction, type PhantomSfx,
   phantomSupportsSub, // ★幻影が主語になれるサブの白リスト(未実装の種は自爆するのでプレイヤーへ落とす)
   tickPlayerFlamerBurn,
 } from '../utils/phantomTick';
@@ -278,7 +278,7 @@ import {
   rollRunPatrolSlot, kenkiPatrolStep, phantomBrawlerSceneBlocked, phantomBrawlerSpawnOffset, PHANTOM_BRAWLER_ENCOUNTER_KEY, PHANTOM_BRAWLER_KIND,
 } from '../utils/phantomBrawlerSpawn'; // research/BRAWLER_PHANTOM.md §6: 拳鬼の本編の出現(徘徊の枠)
 import { phantomSlotFree } from '../utils/phantomExclusive'; // 汎用の幻影と孫悟空を同時に出さない(相手が居る間は待つ)
-import { kenkiLeaveStep, kenkiLeaveAfterMs, KENKI_LEAVE_CROUCH_MS } from '../utils/kenkiLeave'; // 本編の孫悟空の「2分で跳んで帰る」
+import { kenkiLeaveStep, kenkiLeaveAfterMs, KENKI_LEAVE_CROUCH_MS, phantomLeaveStep, genericPhantomMeetNow } from '../utils/kenkiLeave'; // 本編の孫悟空の「2分で跳んで帰る」
 import { createFleeSources, fleeSourcesActive, fleeSourcesExceptKenki, kenkiFleeActive, type FleeSources } from '../utils/fleeSources'; // 「他の敵が逃げる」旗の合成(裏ボス/アイドル/孫悟空)
 import { patrolSpawnHeldByWelcome } from '../utils/patrolWelcomeHold'; // 徘徊の枠はウェルカム中は出ない(社長指示2026-11-12)
 import { resolveSortieRunPatrol } from '../utils/sortiePatrolPlan'; // 徘徊の枠は作戦室で引いた結果を使う(research/SORTIE_MAP_BOSS_ICONS.md §3)
@@ -6043,6 +6043,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (bf) { // 相手がもういない(倒された・消えた)なら寄らない
             useGameStore.getState().triggerAttention(bf.x, bf.y, cutin, undefined, undefined, { target: bt });
             playSfx('boss-appear');
+            // 汎用の幻影の名乗りのアテンション=出会った瞬間=2分の数え始め(utils/kenkiLeave・genericPhantomMeetNow)。練習ランは数えない(帰らない)。
+            if (!isPracticeRun()) {
+              const atGt = useGameStore.getState().gameTime;
+              useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => (e.id === bt.id && e.type === 'guardian-phantom' && e.phantomUnique === undefined
+                && e.kenkiMetAt === undefined ? { ...e, kenkiMetAt: atGt } : e)) }));
+            }
           }
         }
         // 賞金首のチュートリアル: 初めて現れた賞金首の出現アテンションが終わり切った後、会話も流れ切ったら1度だけ(端末既読・1周目も同じ)。
@@ -10291,6 +10297,41 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             && phantomSlotFree(useGameStore.getState().enemies, 'generic')) {
             phantomForceRef.current = true;
             spawnGuardianPhantom(pickPhantomIdentity(getSelectedStageId()));
+          }
+          // ★汎用の幻影も2分で跳んで帰る(社長指示2026-11-28「幻影も制限時間ある方がいいかも」・utils/kenkiLeave=孫悟空と同じ仕組み)。
+          //   数え始め=名乗りのアテンション(出現の約1秒後)が出てから、姿が画面に入っている最初のフレーム(genericPhantomMeetNow)。
+          //   練習ラン(対策室)は帰らない。技の最中なら終わってから跳ぶ。撃破扱いにしない。phantomForceRef は立ったまま=その出撃では二度と出ない。
+          if (phantomForceRef.current) {
+            const gs = useGameStore.getState();
+            const gpG = gs.enemies.find(e => e.type === 'guardian-phantom' && e.phantomUnique === undefined && e.health > 0 && e.corpseUntil === undefined);
+            if (gpG && gpG.kenkiMetAt === undefined && gpG.kenkiLeaveAt === undefined) {
+              const gx = gpG.x + gpG.width / 2, gy = gpG.y + gpG.height / 2;
+              if (genericPhantomMeetNow({
+                practice: isPracticeRun(), metAt: gpG.kenkiMetAt, leaveAt: gpG.kenkiLeaveAt,
+                attentionPending: bountyAttnRef.current?.target.id === gpG.id,
+                onScreen: !projFadeHidden(gpG, gs.gameTime) && projSeen(gx, gy, 0, isPointInZoomedViewport(gx, gy, gs.camera, gs.gameBounds, gs.viewZoom)),
+              })) {
+                useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => (e.id === gpG.id ? { ...e, kenkiMetAt: gs.gameTime } : e)) }));
+              }
+            } else if (gpG) {
+              const gLeave = phantomLeaveStep({
+                metAt: gpG.kenkiMetAt, leaveAt: gpG.kenkiLeaveAt, now: gs.gameTime, afterMs: KENKI_LEAVE_MS,
+                busy: gpG.kenkiLeaveAt === undefined && gpG.kenkiMetAt !== undefined && gs.gameTime - gpG.kenkiMetAt >= KENKI_LEAVE_MS
+                  && phantomGenericMidAction(gpG, phantomStateRef.current, gs.gameTime, Date.now()),
+              });
+              if (gLeave === 'start') {
+                useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => (e.id === gpG.id ? { ...e, kenkiLeaveAt: gs.gameTime } : e)) }));
+              } else if (gLeave === 'leaving' && gpG.kenkiLeaveAt !== undefined
+                && gs.gameTime - gpG.kenkiLeaveAt >= KENKI_LEAVE_CROUCH_MS && kenkiLeaveKickRef.current !== gpG.id) {
+                // 踏み切りの一瞬: 足元から砂埃と外へ広がる輪(派手さの絵=判定なし・孫悟空と同じ)。
+                kenkiLeaveKickRef.current = gpG.id;
+                const gfx = gpG.x + gpG.width / 2, gfy = gpG.y + gpG.height;
+                spawnBurst(gfx, gfy, '#a8a29e', 20);
+                spawnRing(gfx, gfy, 18, 140, 'rgba(214,211,209,0.75)', 6, 560, true);
+              } else if (gLeave === 'gone') {
+                useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.id !== gpG.id) }));
+              }
+            }
           }
           // research/BRAWLER_PHANTOM.md §6: 固有の幻影「拳鬼」。①強制出現(?brawlerphantomnow=1・対策室の枠=プレイヤーのそば)
           // ②本編=徘徊の枠(社長指示2026-11-10「出現は徘徊の枠で、亡霊か宇宙飛行が出てる時は出ない。この3人の中で抽選」)。
