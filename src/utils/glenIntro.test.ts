@@ -3,7 +3,7 @@ import {
   GLEN_ROAR_LINE, isGlenBossSpawnReady, shouldPlayGlenTransform, glenTransformBossBox, glenTransformExtraHoldMs,
   glenTransformPose, glenTransformStageAt, GLEN_TRANSFORM_EVENTS, glenTransformDueEvents, glenCloseRoar, GLEN_HUMAN_ART,
   GLEN_TF_APPEAR_MS, GLEN_TF_SUFFER_AT_MS, GLEN_TF_BURST_AT_MS, GLEN_TF_VANISH_MS, GLEN_TF_AFTER_BURST_MS, GLEN_HUMAN_TARGET_REF_H,
-  GLEN_TF_HUSH_AT_MS, GLEN_TF_SILENT_BEFORE_BURST_MS,
+  GLEN_TF_HUSH_AT_MS, GLEN_TF_SILENT_BEFORE_BURST_MS, glenTfChainPanAt,
 } from './glenIntro';
 
 describe('ステージ7の戦闘前会話', () => {
@@ -219,5 +219,33 @@ describe('ステージ7 グレンの変身の場面(research/GLEN_TRANSFORM.md �
       expect(a.footX).toBeLessThan(a.w);
       expect(a.footY).toBeLessThanOrEqual(a.h);
     }
+  });
+});
+
+describe('ステージ7 変身の場面→紹介へ継ぐ寄り先の移り(glenTfChainPanAt)', () => {
+  const pan = { fromX: 100, fromY: 200, toX: 140, toY: 80, startEl: 3400, endEl: 4350 };
+  it('弾けた瞬間は場面の注目点のまま・紹介の絵が出る時刻に第一形態の絵の中心へ着く', () => {
+    expect(glenTfChainPanAt(pan, 3000)).toEqual({ x: 100, y: 200, k: 0, done: false });
+    expect(glenTfChainPanAt(pan, 3400)).toEqual({ x: 100, y: 200, k: 0, done: false });
+    expect(glenTfChainPanAt(pan, 4350)).toEqual({ x: 140, y: 80, k: 1, done: true });
+    expect(glenTfChainPanAt(pan, 9000)).toEqual({ x: 140, y: 80, k: 1, done: true });
+  });
+  it('慣性つき: 動き始めと動き終わりは遅く(加速→減速)、途中で跳ばない', () => {
+    const step = 10;
+    const ys: number[] = [];
+    for (let el = pan.startEl; el <= pan.endEl; el += step) ys.push(glenTfChainPanAt(pan, el).y);
+    const d = ys.slice(1).map((y, i) => Math.abs(y - ys[i]));
+    const maxD = Math.max(...d);
+    expect(d[0]).toBeLessThan(maxD * 0.1);
+    expect(d[d.length - 1]).toBeLessThan(maxD * 0.1);
+    // 1フレーム(10ms)の動きは全行程の 2% 未満=パッと跳ばない
+    expect(maxD).toBeLessThan(Math.abs(pan.toY - pan.fromY) * 0.02);
+    // 単調(行き過ぎて戻らない)。画の移りの割合 k も単調(寄り直さない)
+    for (let i = 1; i < ys.length; i++) expect(ys[i]).toBeLessThanOrEqual(ys[i - 1]);
+    let pk = -Infinity;
+    for (let el = pan.startEl; el <= pan.endEl; el += step) { const k = glenTfChainPanAt(pan, el).k; expect(k).toBeGreaterThanOrEqual(pk); pk = k; }
+  });
+  it('長さ0なら即座に着く(割り算で壊れない)', () => {
+    expect(glenTfChainPanAt({ ...pan, endEl: pan.startEl }, pan.startEl)).toEqual({ x: 140, y: 80, k: 1, done: true });
   });
 });

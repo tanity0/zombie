@@ -18,7 +18,7 @@ import type { RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { VIEW_CORE_W } from '../utils/viewport';
 import { setViewTransform, setViewProjection, getLastCursorScreen, projAimStats } from '../utils/viewTransform';
 import { getHudAvoidRects, slideOutOfRects } from '../utils/hudAvoidRects';
-import { projFrameBase, projGroundPersp, projAimAllowed, projCamDownFracFor, projAttentionAnchor, LAB_FAR_BOUNDARY_YR, type ProjScene, getProjGameView, projGameViewContains, projPropRegionRect, projFadeInBrightness, type ProjFrameBaseParams } from '../utils/projGameView';
+import { projFrameBase, projGroundPersp, projAimAllowed, projCamDownFracFor, projAttentionAnchorReleased, LAB_FAR_BOUNDARY_YR, type ProjScene, getProjGameView, projGameViewContains, projPropRegionRect, projFadeInBrightness, type ProjFrameBaseParams } from '../utils/projGameView';
 import { projEnemyFadeAlpha, projGhostAlpha, projBulletGhostAlpha, projGhostOverflow, projGhostDrift, projRecycledNear, PROJ_GHOST_DRIFT_TAU_MS, PROJ_BULLET_GHOST_DRIFT_TAU_MS, type ProjRecycleGhost, type ProjBulletGhost } from '../utils/projSpawnFade'; // ?proj=1 段階6(★#36・★#37) // 投影の組み立て(§3-9d=ゲーム側と1本)
 import { HORIZON_FOREST_UP_BY_STAGE, HORIZON_ACTOR_HIDE_OFFSET_PX, horizonForestHeightFor, horizonForestYFor, type HorizonForestInput } from '../utils/horizonForestLine'; // 森1の配置(§3-9d=ゲーム側と1本)
 import {
@@ -383,7 +383,7 @@ import {
 } from '../utils/swordSwingMotion';
 import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
-import { attentionUnityZoom, attentionZoomEnvelope, findAttentionSubject } from '../utils/attentionZoom';
+import { attentionUnityZoom, attentionUnityKeep, attentionZoomEnvelope, findAttentionSubject } from '../utils/attentionZoom';
 import {
   aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom, runZoomTarget, RUN_ZOOM_MIN, RUN_ZOOM_OUT_S, RUN_ZOOM_IN_S, RUN_ZOOM_HOLD_S,
   BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, ZOOM_MIN_ABS,
@@ -10490,7 +10490,7 @@ export class PixiScene {
     if (s.attention?.zoomToUnity) {
       const a = s.attention;
       const outStart = ATTENTION_IN_MS + (a.holdMs ?? ATTENTION_HOLD_MS) + (a.cutinMs ?? 0);
-      att = { y: a.y, env: attentionZoomEnvelope(realNow - a.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS) };
+      att = { y: a.y, env: attentionZoomEnvelope(realNow - a.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS) * attentionUnityKeep(a) };
     }
     return {
       camX: s.camera.x, camY: s.camera.y, screenW: this.screenW, screenH: this.screenH, viewH: s.gameBounds.height,
@@ -10519,7 +10519,8 @@ export class PixiScene {
       const a = s.attention;
       const outStart = ATTENTION_IN_MS + (a.holdMs ?? ATTENTION_HOLD_MS) + (a.cutinMs ?? 0);
       const env = attentionZoomEnvelope(realNow - a.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS);
-      const an = projAttentionAnchor(this.projSceneOf(s), !!a.zoomToUnity, a.y, env, this.projAttSubjectFootY(s), s.player.y + s.player.height);
+      // unityRelease(ステージ7のグレンの変身の場面→紹介の継ぎ目だけ)=等倍の基準から素のアテンションの基準へ移す。無ければ projAttentionAnchor と同じ。
+      const an = projAttentionAnchorReleased(this.projSceneOf(s), !!a.zoomToUnity, a.y, env, this.projAttSubjectFootY(s), s.player.y + s.player.height, a.unityRelease ?? 0);
       att = an.ref; farRefY = an.farRefY;
     }
     return {
@@ -13589,7 +13590,8 @@ export class PixiScene {
     if (s.attention?.zoomToUnity) {
       const a = s.attention;
       const outStart = ATTENTION_IN_MS + (a.holdMs ?? ATTENTION_HOLD_MS) + (a.cutinMs ?? 0);
-      this.depthRefY += (a.y - this.depthRefY) * attentionZoomEnvelope(realNow - a.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS);
+      // attentionUnityKeep=1(unityRelease 無し=今までの全場面)。ステージ7のグレンの変身の場面→紹介の継ぎ目だけ 1→0 へ抜ける。
+      this.depthRefY += (a.y - this.depthRefY) * attentionZoomEnvelope(realNow - a.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS) * attentionUnityKeep(a);
     }
     // 「裏に回ったら透ける」判定用のプレイヤー足元矩形(world)。障害物の可視矩形とAABBで重なり判定する。
     this.seeThroughPlayer = { cx: pfb.footX, footY: pfb.footY, halfW: pfb.boxW / 2, top: pfb.footY - pfb.boxH };
@@ -13902,9 +13904,11 @@ export class PixiScene {
     let attZoom = 1;
     // 等倍に見せるアテンション(社長指示2026-11-19 ステージ1ループ1の廃病院/二人組): 今の引きを打ち消す倍率を毎フレーム出す
     // (文脈ズームがアテンション中に動いても hold 中は画面上の倍率=1.0 のまま)。引いていなければ 1=寄らない。
-    const attZoomIn = s.attention?.zoomToUnity
+    let attZoomIn = s.attention?.zoomToUnity
       ? Math.max(s.attention.zoomIn ?? 1, attentionUnityZoom(this.idleZoom * this.contextZoom * this.runZoom * this.junPull * this.junFocus))
       : (s.attention?.zoomIn ?? 1);
+    // ステージ7のグレンの変身の場面→紹介の継ぎ目(attention.unityRelease)だけ、場面の寄りから素の紹介の画(寄りなし)へ抜く。無ければ今のまま。
+    if (s.attention?.zoomToUnity && s.attention.unityRelease !== undefined) attZoomIn = 1 + (attZoomIn - 1) * attentionUnityKeep(s.attention);
     if (s.attention && attZoomIn > 1) {
       const a = s.attention;
       const outStart = ATTENTION_IN_MS + (a.holdMs ?? ATTENTION_HOLD_MS) + (a.cutinMs ?? 0);

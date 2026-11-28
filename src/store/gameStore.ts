@@ -12387,6 +12387,9 @@ interface GameState {
     /** 等倍に見せる(utils/attentionZoom.attentionUnityZoom・社長指示2026-11-19 ステージ1ループ1の廃病院/二人組)。
      * pixiScene が今の引き(idle×文脈×走り)を打ち消して画面上の倍率を1.0にする寄りを、zoomIn と同じ包絡線で掛ける。 */
     zoomToUnity?: boolean;
+    /** zoomToUnity の効きを抜く割合(0..1・未指定=0=全部効く)。ステージ7のグレンの変身の場面の寄りを、プレイヤーへ戻さずそのまま
+     * 出現の紹介へ継ぐ時だけ、useGameLoop が寄り先の移りと同じ曲線で 0→1 へ動かす(1=素のアテンションの紹介と同じ画)。 */
+    unityRelease?: number;
     /** 写す相手(敵の id と寄り先の取り方・utils/attentionTarget)。有り=hold の間、寄り先が相手の今の位置へ慣性つきで付いて行く
      * (useGameLoop)。左下の診断ビーコンも、この相手が映っていない理由を出す。無し=注目点は固定(従来どおり)。 */
     target?: AttentionTarget;

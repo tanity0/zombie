@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ATTENTION_SMALL_ZOOM_IN, ATTENTION_SMALL_TYPES,
-  attentionZoomFor, attentionZoomEnvelope, attentionUnityZoom, findAttentionSubject,
+  attentionZoomFor, attentionZoomEnvelope, attentionUnityZoom, attentionUnityKeep, findAttentionSubject,
 } from './attentionZoom';
 import { ENEMY_STATS, isBossType } from './enemyUtils';
 import { isLargeForZoom } from './cameraZoom';
@@ -84,5 +84,19 @@ describe('attentionUnityZoom(等倍に見せるアテンションの寄り倍率
     expect(attentionUnityZoom(0)).toBe(1);
     expect(attentionUnityZoom(NaN)).toBe(1);
     expect(attentionUnityZoom(-1)).toBe(1);
+  });
+});
+
+describe('attentionUnityKeep(等倍の寄りの効きの残り・ステージ7のグレンの変身→紹介の継ぎ目だけ)', () => {
+  it('印(unityRelease)が無ければ 1=今までの全場面と同じ', () => {
+    expect(attentionUnityKeep({})).toBe(1);
+    expect(attentionUnityKeep({ unityRelease: Number.NaN })).toBe(1);
+  });
+  it('0..1 で 1→0 へ抜ける(範囲外は丸める)', () => {
+    expect(attentionUnityKeep({ unityRelease: 0 })).toBe(1);
+    expect(attentionUnityKeep({ unityRelease: 0.25 })).toBe(0.75);
+    expect(attentionUnityKeep({ unityRelease: 1 })).toBe(0);
+    expect(attentionUnityKeep({ unityRelease: 2 })).toBe(0);
+    expect(attentionUnityKeep({ unityRelease: -1 })).toBe(1);
   });
 });

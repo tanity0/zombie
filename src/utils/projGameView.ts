@@ -80,6 +80,24 @@ export const projAttentionAnchor = (
 };
 
 /**
+ * 等倍に見せるアテンション(zoomToUnity)から、素のアテンション(zoomToUnity なし)の基準へ release(0..1)の割合で移した基準。
+ * ステージ7のグレンの変身の場面の寄り(等倍)を、そのまま出現の紹介(素のアテンション)へ継ぐ時だけ使う(attention.unityRelease)。
+ * release<=0 は projAttentionAnchor(scene, zoomToUnity, …) そのもの(=今までの全場面と1bitも同じ)。release=1 は素のアテンションと同じ。
+ */
+export const projAttentionAnchorReleased = (
+  scene: ProjScene | null, zoomToUnity: boolean, attY: number, env: number, subjectFootY: number | null, playerFootY: number, release: number,
+): { ref: { y: number; env: number } | null; farRefY: number } => {
+  const a = projAttentionAnchor(scene, zoomToUnity, attY, env, subjectFootY, playerFootY);
+  const r = Math.max(0, Math.min(1, Number.isFinite(release) ? release : 0));
+  if (!zoomToUnity || r <= 0) return a;
+  const b = projAttentionAnchor(scene, false, attY, env, subjectFootY, playerFootY);
+  const farRefY = a.farRefY + (b.farRefY - a.farRefY) * r;
+  if (!a.ref) return { ref: b.ref, farRefY }; // 等倍側は必ず運ぶ(projAttentionCarries=true)=ここへは来ない
+  if (!b.ref) return { ref: { y: a.ref.y, env: a.ref.env * (1 - r) }, farRefY }; // 素の側が運ばない=運ぶ量を 0 へ
+  return { ref: { y: a.ref.y + (b.ref.y - a.ref.y) * r, env: a.ref.env }, farRefY };
+};
+
+/**
  * 照準の門(段階8 U40・§3-10e): 投影の枠を照準(逆投影・吸い付き)へ渡してよい場面。
  * ★#46=A(社長 2026-11-24「はい」=研究所・洋館も照準だけ揃える): 屋外・研究所・洋館で開ける。屋内は枠を作らない。
  * 見えている・湧き・回収(★#36〜#38): 洋館は今の独自の作りのまま(ゲームの画面=getProjGameView は null)。研究所は研究所のゲームの画面を

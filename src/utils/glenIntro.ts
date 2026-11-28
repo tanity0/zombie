@@ -123,6 +123,22 @@ export const glenTransformBossBox = (
 export const glenTransformExtraHoldMs = (attnInMs: number, attnHoldMs: number): number =>
   Math.max(0, GLEN_TF_BURST_AT_MS + GLEN_TF_AFTER_BURST_MS - attnInMs - attnHoldMs);
 
+/**
+ * 変身の場面の寄りから、そのまま出現の紹介(カットイン)へ継ぐ時の寄り先の移り(社長指示2026-11-28「一度カメラがプレイヤーに
+ * 戻ってからまたボスに寄るけど、無駄なので、そのままカメラを動かさずにアテンションイベントに移行させて」)。
+ * 弾けた時刻(startEl)から紹介の絵が出る時刻(endEl)までの間に、場面の注目点(人間のグレンの足元寄り)から第一形態の絵の中心へ
+ * smoothstep(加速→減速=慣性つき)で移る。k=同じ曲線の進み(0→1)=場面の寄り(倍率・遠近の基準)を抜いて今までの紹介と同じ画へ
+ * 移す割合(attention.unityRelease)=巨体の全身が見えるところまで引いてから名前が出る。
+ * el=寄り(アテンション)の開始からの実時間ms。done=移り終えた。
+ */
+export interface GlenTfChainPan { fromX: number; fromY: number; toX: number; toY: number; startEl: number; endEl: number }
+export const glenTfChainPanAt = (pan: GlenTfChainPan, el: number): { x: number; y: number; k: number; done: boolean } => {
+  const span = pan.endEl - pan.startEl;
+  const u = span > 0 ? Math.max(0, Math.min(1, (el - pan.startEl) / span)) : 1;
+  const e = u * u * (3 - 2 * u);
+  return { x: pan.fromX + (pan.toX - pan.fromX) * e, y: pan.fromY + (pan.toY - pan.fromY) * e, k: e, done: u >= 1 };
+};
+
 /** 苦しみの段(0=まだ苦しんでいない・1..4=段・5=弾ける直前の最大)。 */
 export const glenTransformStageAt = (t: number): number => {
   if (t < GLEN_TF_SUFFER_AT_MS) return 0;

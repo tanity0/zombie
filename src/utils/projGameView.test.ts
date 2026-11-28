@@ -7,7 +7,7 @@ import {
 } from './perspectiveProjection';
 import {
   projFrameBase, projGameFrame, projGameViewContains, projGameViewBands, projGameViewRect, projGameEdgePoint, projGameBoxOnScreen,
-  projAttentionCarries, projAttentionAnchor, projGameZoomPlacement, projGameVisibleRows, projGameRowSpan, projGameSpawnRect, projGameRecycleRect, projFadeInAlpha, projFadeInBrightness, PROJ_FADE_IN_DARK, PROJ_FADE_MS,
+  projAttentionCarries, projAttentionAnchor, projAttentionAnchorReleased, projGameZoomPlacement, projGameVisibleRows, projGameRowSpan, projGameSpawnRect, projGameRecycleRect, projFadeInAlpha, projFadeInBrightness, PROJ_FADE_IN_DARK, PROJ_FADE_MS,
   PROJ_GAME_OVERSCAN, PROJ_REF_PHONE_H, PROJ_REF_PHONE_W, PROJ_SPAWN_LONG_EXTRA_PX, type ProjFrameBaseParams,
 } from './projGameView';
 import { horizonForestFootLocalY, horizonFadeAlphaAt, horizonForestHeightFor, horizonForestYFor, type HorizonForestInput } from './horizonForestLine';
@@ -404,5 +404,24 @@ describe('ボスへのアテンションの基準(projAttentionAnchor・描画�
     expect(projectInto(frameFor(attY, 0, null), 0, foot, makeProjPoint()).s).toBeGreaterThan(1.3);
     const an = projAttentionAnchor('outdoor', false, attY, 1, foot, 0);
     expect(projectInto(frameFor(attY, 0, an), 0, foot, makeProjPoint()).s).toBeCloseTo(1, 3);
+  });
+});
+
+describe('等倍の寄りを素の紹介へ継ぐ基準(projAttentionAnchorReleased・ステージ7のグレンの変身の場面だけ)', () => {
+  const cases: Array<[Parameters<typeof projAttentionAnchor>[0], boolean, number, number, number | null, number]> = [
+    ['outdoor', true, 100, 0.5, 300, 900], ['outdoor', false, 100, 1, 300, 900], ['lab', true, -50, 1, null, 0],
+    ['corridor', true, 10, 0.3, 40, 90], ['outdoor', false, -1500, 1, null, 0], [null, true, 5, 1, 7, 9],
+  ];
+  it('release=0(=印の無い全場面)は projAttentionAnchor と完全に同じ', () => {
+    for (const c of cases) expect(projAttentionAnchorReleased(...c, 0)).toEqual(projAttentionAnchor(...c));
+  });
+  it('zoomToUnity でないアテンションは release を渡しても変わらない', () => {
+    for (const c of cases.filter(c => !c[1])) expect(projAttentionAnchorReleased(...c, 1)).toEqual(projAttentionAnchor(...c));
+  });
+  it('release=1 は素のアテンション(zoomToUnity なし)と同じ・途中は間を取る', () => {
+    expect(projAttentionAnchorReleased('outdoor', true, 100, 1, 300, 900, 1)).toEqual(projAttentionAnchor('outdoor', false, 100, 1, 300, 900));
+    expect(projAttentionAnchorReleased('outdoor', true, 100, 1, 300, 900, 0.5)).toEqual({ ref: { y: 200, env: 1 }, farRefY: 200 });
+    // 素の側が運ばない(相手が居ない)場面は、運ぶ量を 0 へ抜く
+    expect(projAttentionAnchorReleased('outdoor', true, 100, 1, null, 900, 1)).toEqual({ ref: { y: 100, env: 0 }, farRefY: 100 });
   });
 });

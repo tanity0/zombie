@@ -71,6 +71,16 @@ export const attentionZoomEnvelope = (el: number, inMs: number, outStart: number
  * カメラワーク、ちゃんと等倍にみえるようにカメラをズームして」)。base=今のカメラ倍率(寄りパンチ・アテンションの寄りを除いた積)。
  * 引いている(base<1)時だけ 1/base を返す=掛けると画面上の倍率がちょうど1.0。既に等倍以上なら 1(引きはしない)。
  */
+/**
+ * 等倍に見せる寄り(zoomToUnity)の効きの残り(1=全部効く・0=素のアテンションと同じ)。attention.unityRelease(0..1)が無ければ 1。
+ * ステージ7のグレンの変身の場面の寄りを、そのまま出現の紹介へ継ぐ時だけ unityRelease を 0→1 へ動かす(useGameLoop)。
+ */
+export const attentionUnityKeep = (a: { unityRelease?: number }): number => {
+  const r = a.unityRelease;
+  if (r === undefined || !Number.isFinite(r)) return 1;
+  return 1 - Math.max(0, Math.min(1, r));
+};
+
 export const attentionUnityZoom = (base: number): number => {
   if (!(base > 0) || base >= 1) return 1;
   return 1 / Math.max(0.05, base);

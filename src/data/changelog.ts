@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5933', items: ['グレンが変身した後、カメラがプレイヤーへ戻らず、そのままボスの姿を映して名乗りへつながる']},
   { version: '0.25.5932', items: ['ゲーム内容の変更はありません']},
   { version: '0.25.5931', items: ['踵落としは脚を真上まで振り上げてから、勢いよく振り下ろす']},
   { version: '0.25.5930', items: ['鞭を持つ守護霊も、気絶した敵を絡め取って振り回し、近くの敵へ投げつけて爆発させる']},

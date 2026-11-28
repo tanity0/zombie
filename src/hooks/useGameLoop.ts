@@ -11,7 +11,7 @@ import type { SpawnBoundsProj } from '../utils/enemyUtils';
 import { rebuildProjGameViews, setProjGameView, projGameSceneFor, projAttentionCarries, labFarBackdropHeightFor, projLabViewCam } from '../utils/projGameView';
 import { horizonForestFootLocalY, HORIZON_FOREST_UP_BY_STAGE } from '../utils/horizonForestLine';
 import { farBackdropHeightFor } from '../utils/spawnRefill';
-import { attentionZoomEnvelope } from '../utils/attentionZoom';
+import { attentionZoomEnvelope, attentionUnityKeep } from '../utils/attentionZoom';
 import { horizonActorFadePx } from '../pixi/renderSpec';
 import { arrowRainLevel, pickArrowRainCenter, planArrowRain, reaimArrow, arrowRainHits, ARROW_RAIN_ZONE_PX, ARROW_RAIN_COUNT_BY_LEVEL, ARROW_RAIN_CD_MS_BY_LEVEL, ARROW_RAIN_DAMAGE, ARROW_RAIN_STUCK_MS, ARROW_RAIN_HIT_PX, type RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { latticeBands, latticeStageCount, latticeAxisForStage, latticeHitSource, latticeCenter } from '../utils/skadiLattice';
@@ -32,7 +32,7 @@ import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLi
 import {
   GLEN_FINAL_LINE, GLEN_ROAR_LINE, isGlenBossSpawnReady, shouldPlayGlenTransform, glenTransformBossBox, glenTransformExtraHoldMs,
   glenTransformDueEvents, glenCloseRoar, GLEN_TRANSFORM_EVENTS, GLEN_TF_BURST_AT_MS, GLEN_TF_ZOOM_IN, GLEN_TF_CHEST_K, GLEN_TF_CHEST_DX,
-  GLEN_TF_AIM_K, GLEN_HUMAN_BODY_H, glenTransformPose, GLEN_ROAR_DIALOGUE,
+  GLEN_TF_AIM_K, GLEN_HUMAN_BODY_H, glenTransformPose, GLEN_ROAR_DIALOGUE, glenTfChainPanAt, type GlenTfChainPan,
 } from '../utils/glenIntro';
 import { dialogueBacklogMs, startStoryBossOutro, stepStoryBossOutro, type StoryBossOutro } from '../utils/storyBossOutro';
 import { loadSeenForGate, markTutorialSeen } from '../utils/tutorialArchive';
@@ -2286,6 +2286,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const glenRoarQueuedRef = useRef(false); // M7: 咆哮を会話キューへ積んだか
   const glenRoarShownRef = useRef(false);  // M7: 咆哮が実際に表示されたか(表示終了後の出現ゲート)
   const glenRoarHeldRef = useRef(false);   // M7: 変身の場面が咆哮の行を預かっている(苦しむ絵の瞬間に出すまで窓に出さない)
+  const glenTfPanRef = useRef<GlenTfChainPan | null>(null); // M7: 変身の場面→紹介へ継ぐ寄り先の移り(utils/glenIntro.glenTfChainPanAt)
   const glenTfEventIdxRef = useRef(0);     // M7: 変身の場面(research/GLEN_TRANSFORM.md)の次に撃つ出来事の番号(utils/glenIntro.GLEN_TRANSFORM_EVENTS)
   // 洋館再訪: 開始時に洋館(保存槽)へ一度だけカメラアテンションを出したか。
   const revisitAttnShownRef = useRef(false);
@@ -2813,7 +2814,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // opts.fx=輪・光・破片の中心(既定=(scx, scy))。fx.lift=光を体の高さで出す量(新方式の描画が持ち上げる)。
     const spawnGlenStoryBoss = (
       gt: number, scx: number, scy: number,
-      opts?: { box?: { x: number; y: number; width: number; height: number }; fx?: { x: number; y: number; lift?: number } },
+      opts?: { box?: { x: number; y: number; width: number; height: number }; fx?: { x: number; y: number; lift?: number }; chainScene?: boolean },
     ): Enemy => {
       const boss = spawnEnemyAt('giantbat', scx, scy, gt);
       // M60(PACING_PUZZLE.md §6.28-11): この個体だけがPhase3/3連携/500ms硬直床の対象になる
@@ -2888,7 +2889,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const glenCutin = bossCutinPayload('giantbat', storyStageId);
         const gAc = bossArtCenter(boss); // v0.25.3727: 寄り先=絵の中心
         const gT: AttentionTarget = { id: boss.id, focus: 'art' };
-        if (glenCutin && useGameStore.getState().attention) pendingCutinAttnRef.current = { target: gT, cutin: glenCutin };
+        const curAtt = useGameStore.getState().attention;
+        if (glenCutin && opts?.chainScene && curAtt && !curAtt.cutin) {
+          // 変身の場面の弾け(社長指示2026-11-28「一度カメラがプレイヤーに戻ってからまたボスに寄るけど、無駄なので、そのままカメラを
+          // 動かさずにアテンションイベントに移行させて」): 出ている場面の寄りへ紹介(カットイン)を継ぎ足す(ジュンの変身と同じ
+          // chainAttentionCutin)。カメラは場面の位置・寄りのまま=プレイヤーへ戻らない。寄り先は紹介の絵が出るまでに第一形態の
+          // 絵の中心へ、画(寄りの倍率・遠近の基準)は場面の寄りから今までの紹介と同じ画へ(attention.unityRelease 0→1)、慣性つきで移る
+          // (glenTfPanRef・utils/glenIntro.glenTfChainPanAt)。
+          // 紹介が明けたら今までどおりプレイヤーへ戻る。
+          useGameStore.getState().chainAttentionCutin(gAc.x, gAc.y, glenCutin);
+          const ca = useGameStore.getState().attention;
+          glenTfPanRef.current = ca
+            ? { fromX: ca.x, fromY: ca.y, toX: gAc.x, toY: gAc.y, startEl: Date.now() - ca.startReal, endEl: ATTENTION_IN_MS + (ca.holdMs ?? ATTENTION_HOLD_MS) }
+            : null;
+        } else if (glenCutin && curAtt) pendingCutinAttnRef.current = { target: gT, cutin: glenCutin };
         else useGameStore.getState().triggerAttention(gAc.x, gAc.y, glenCutin, undefined, undefined, { target: gT });
       }
       playSfx('boss-appear');
@@ -3023,6 +3037,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // ステージ7: グレンの変身の場面(research/GLEN_TRANSFORM.md §2)。アテンション(時間停止)の中で進むので実時間で測り、
       // 停止の早期returnより前のここで毎フレーム見る。出来事(呻き・胸の光・弾け)の時刻は utils/glenIntro の表が正本。
       {
+        // 変身の場面→紹介(カットイン)へ継いだ寄り先の移り(弾けた瞬間〜紹介の絵が出るまで・smoothstep=慣性つき)。attention.x/y/unityRelease を書き換えるだけ
+        // (カメラの動き方・尺は下のアテンションの枝のまま)。寄りが終わった/別の寄りに替わったら畳む。
+        {
+          const pan = glenTfPanRef.current;
+          const pAtt = useGameStore.getState().attention;
+          if (pan && pAtt?.cutin) {
+            const pp = glenTfChainPanAt(pan, nowMs - pAtt.startReal);
+            if (Math.abs(pAtt.x - pp.x) > 0.25 || Math.abs(pAtt.y - pp.y) > 0.25 || Math.abs((pAtt.unityRelease ?? 0) - pp.k) > 0.0005) {
+              useGameStore.setState({ attention: { ...pAtt, x: pp.x, y: pp.y, unityRelease: pp.k } });
+            }
+            if (pp.done) glenTfPanRef.current = null;
+          } else if (pan) glenTfPanRef.current = null;
+        }
         const gtf = useGameStore.getState().glenTransform;
         if (gtf) {
           const el = nowMs - gtf.startedAt;
@@ -3069,7 +3096,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const b = gtf.bossBox;
                 const c = chestAt(ev.at);
                 // 生成の点は今の出現の式の点(箱の左上+素の寸法の半分=帯で寄せていなければ今の scx/scy と同じ)。
-                spawnGlenStoryBoss(useGameStore.getState().gameTime, b.x + b.width / 4, b.y + b.height / 4, { box: b, fx: c });
+                spawnGlenStoryBoss(useGameStore.getState().gameTime, b.x + b.width / 4, b.y + b.height / 4, { box: b, fx: c, chainScene: true });
                 // 既存の暗い赤のフラッシュの上に、明るい赤白の閃光を一瞬だけ重ねる(後に積んだ方が上に塗られる)。
                 // 人間のグレンが消えて怪物が出る入れ替えをこの光で隠す。光源ではない(投影影なし)。
                 spawnFlash('rgba(255,220,205,0.68)', 160);
@@ -3944,7 +3971,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           botPausedSinceRef.current = 0;
           castleAttnRef.current = { at: 0, target: null };
           bountyAttnRef.current = null; pendingCutinAttnRef.current = null; // 前のランの相手へ寄らない(相手の id は見つからないので出ないが、念のため捨てる)
-          junHoldSinceRef.current = null; junDueSinceRef.current = null; junBannerPendingRef.current = false; junPanRef.current = null;
+          junHoldSinceRef.current = null; junDueSinceRef.current = null; junBannerPendingRef.current = false; junPanRef.current = null; glenTfPanRef.current = null;
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
           zoneSfxPlayedRef.current = new Set(); // 到達SEの「今回のラン」判定も新ランでリセット
@@ -11444,7 +11471,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             let attv: { y: number; env: number } | null = null;
             if (at && projAttentionCarries(gScene, !!at.zoomToUnity)) {
               const outStart = ATTENTION_IN_MS + (at.holdMs ?? ATTENTION_HOLD_MS) + (at.cutinMs ?? 0);
-              attv = { y: at.y, env: attentionZoomEnvelope(Date.now() - at.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS) };
+              // 等倍の寄りを素の紹介へ継ぐ時(ステージ7のグレン・unityRelease)は、素の側が運ばない場面なら運ぶ量を同じ割合で抜く(無ければ今のまま)。
+              const relK = at.zoomToUnity && !projAttentionCarries(gScene, false) ? attentionUnityKeep(at) : 1;
+              attv = { y: at.y, env: attentionZoomEnvelope(Date.now() - at.startReal, ATTENTION_IN_MS, outStart, ATTENTION_OUT_MS) * relK };
             }
             const fk = gsv.farBackdrop ?? '';
             rebuildProjGameViews({
