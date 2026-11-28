@@ -1,0 +1,155 @@
+// PC の「指」(research/PC_SUPPORT.md §11-1)。マウスの左ボタン・Space/J・ゲームパッドの A が同じ関数を呼ぶ。
+// タッチ(VirtualJoystick)の「指を置く/離す」と**同じ順で同じ store の行為**を呼ぶ=PC でもホーミング(押してロック→離して発射)・
+// スケボー(2度押しの2回目を押したまま乗る)・近接の前隙(離してから当たる)が成立する。
+// ★タッチのコードは触らない(社長指示「絶対スマホ用の現状が壊れないように分けて作業してね」)。ここは PC の入口だけが呼ぶ。
+// 数値はタッチと同じ(VirtualJoystick の SKATER_* と同値。タッチ側の定数を動かしたらここも揃える)。
+import { playSfx } from '../audio/audioManager';
+import { useGameStore, isAttackLocked, isInputLocked, isWorldFrozen, isBrawlerMode } from '../store/gameStore';
+import { mouseSetsAim } from './weaponUtils';
+import { isRetaliationWindowOpen } from './hitRetaliation';
+import { skaterPressResult, shouldMountBrawlerSkaterPc, SKATER_MOUNT_DOUBLETAP_MS } from './brawlerSkaterMount';
+
+export const PC_SKATER_DOUBLETAP_MS = SKATER_MOUNT_DOUBLETAP_MS; // 1回目の離し→2回目の押下 までの許容間隔(300ms・タッチと同値)
+export const PC_SKATER_TAP_MAX_MS = 220;   // 「タップ」とみなす最大の押下時間(タッチと同値)
+
+// 仮想の指は1本(タッチと同じ)。押した入口(マウス/キー/パッド)だけが離せる=3つを同時に押しても二重に撃たない(品質監査 A-2/A-5)。
+export type PressSource = 'mouse' | 'key' | 'pad';
+let pressing = false;
+let owner: PressSource | null = null;
+let downAt = 0;
+let lastWasTap = false;
+let lastUpAt = 0;
+// ★格闘中のスケボー(社長指示2026-11-28): 2度押しの2回目は押した瞬間には乗らず、押したまま移動の入力をしたら乗る。
+// 構えている間だけ store の変化(毎フレームの進行)を見て判定する(離す・乗るで外す)。
+let brawlerSkaterUnsub: (() => void) | null = null;
+const disarmBrawlerSkater = (): void => { if (brawlerSkaterUnsub) { brawlerSkaterUnsub(); brawlerSkaterUnsub = null; } };
+const tryMountBrawlerSkater = (): void => {
+  if (!brawlerSkaterUnsub || !pressing) return;
+  if (isInputLocked()) return;
+  const gs = useGameStore.getState();
+  if (isRetaliationWindowOpen(gs.hitRetaliation, Date.now())) return; // 反撃の窓の間は乗らない(押下の時と同じ)
+  const i = gs.inputState;
+  const moveInput = gs.swipeDirection !== null || !!(i && (i.up || i.down || i.left || i.right)); // 抉り打ちの「移動の入力」と同じ式
+  if (!shouldMountBrawlerSkaterPc(downAt, performance.now(), moveInput)) return;
+  disarmBrawlerSkater();
+  gs.mountSkater();
+  gs.brawlerGougeClear(); // 乗った押下は抉り打ちの溜めにしない
+};
+/** テスト用: 格闘中の2度押しの後の判定を今すぐ1回走らせる(本番は store の変化ごとに走る)。 */
+export const pollBrawlerSkaterForTest = (): void => tryMountBrawlerSkater();
+let flickedThisPress = false; // 四神舞: 押している間にフリックを出したら、離した時のタップは出さない(タッチの flickFired と同じ・検収 B-1)
+
+/** 四神舞でフリックを出した(右クリック/移動キー/パッド B)。押している間なら、その押下の離しはタップにしない。 */
+export const markPcFlick = (): void => { if (pressing) flickedThisPress = true; };
+
+export const isPcPressing = (): boolean => pressing;
+
+/** 指を置く(主ボタンを押した)。押しっぱなしの間ホーミングがロックを溜める(useGameLoop が touchActive を読む)。 */
+export const pcPressDown = (src: PressSource): void => {
+  if (pressing) return; // 既に別の入口で押している=無視(指は1本)
+  if (isInputLocked()) return; // 操作不可(会話/一時停止/死亡等)中は置かない=受理しない=離しも効かない(タッチと同じ・監査 A-1)
+  pressing = true;
+  owner = src;
+  flickedThisPress = false;
+  const gs = useGameStore.getState();
+  // 錬金術の溜めの間は、押した瞬間をリズムの判定にも使う(タイミングは押した時刻で見る・research/ALCHEMY_RHYTHM.md)。
+  // 社長指示2026-11-20「錬金術、ちゃんと近接も発動できるようにして」: 判定するだけで押下は食べない=離しの攻撃・乗車は今までどおり。
+  if (!gs.rhythm.active) gs.alchemyRhythmTap();
+  gs.setTouchActive(true);
+  const now = performance.now();
+  // スケボー: 直前が短いタップで、離しから規定時間内の再押下=2度押し=乗車(2回目はそのまま押している=乗っている)。
+  // ★被弾反撃の窓の中の押し直しは乗車に数えない(タッチの VirtualJoystick と同じ・検収監査 A-1 の PC 版)。
+  // ★格闘中は押した瞬間には乗らない(research/BRAWLER.md §7-2)。2回目を押したまま移動の入力をしたら乗る(社長指示2026-11-28)。
+  const skaterPress = skaterPressResult({
+    lastWasTap, sinceLastUpMs: now - lastUpAt,
+    retaliationOpen: isRetaliationWindowOpen(gs.hitRetaliation, Date.now()),
+    brawler: isBrawlerMode(gs.player),
+  });
+  if (skaterPress === 'mount') gs.mountSkater();
+  downAt = now;
+  if (skaterPress === 'arm') { disarmBrawlerSkater(); brawlerSkaterUnsub = useGameStore.subscribe(tryMountBrawlerSkater); }
+  // ★抉り打ち(research/BRAWLER.md §37): 押した瞬間に溜めを始める(格闘で、移動の入力が無い溜められる体の時だけ・store が判断)。
+  if (isBrawlerMode(gs.player)) gs.brawlerGougePress();
+};
+
+/**
+ * 指を離す(主ボタンを離した)。fire=false は「撃たずに離す」(窓が裏へ行った・ページを離れた等)。
+ * 順番はタッチの指離し(VirtualJoystick release)と同じ: 帰還確認 → (リズム中はタップ) → PHILL → シグナル → レールガン →
+ * 錬金砲の起爆 → ホーミング一斉発射 → 近接(前隙つき)→ スケボー降車。フリック(一閃/ワイヤー)は PC では専用ボタン=ここでは出さない。
+ */
+export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
+  if (!pressing) return;
+  if (src !== 'any' && src !== owner) return; // 押していない入口の離しは無視
+  pressing = false;
+  owner = null;
+  disarmBrawlerSkater();
+  const gs = useGameStore.getState();
+  const returnPromptOpened = fire ? gs.requestStoryReturnPrompt() : false;
+  // 洋館の再訪: 保存槽の［投与する］が出ている間は、主ボタンの離し=そのボタンを押す(攻撃は出さない)。
+  // ゲーム中はメニュー操作が効かないので、これが無いとキーだけ・パッドだけでは押せなかった。スマホはボタンのタップ(Game.tsx)のまま。
+  const medicineTaken = fire && !returnPromptOpened && gs.medicinePromptVisible;
+  if (medicineTaken) {
+    playSfx('ui-select');
+    gs.useGlenMedicine();
+  }
+  if (fire && !returnPromptOpened && !medicineTaken && !isAttackLocked()) {
+    // マウスがある時は離した瞬間の向き=カーソルの方向(鞭・ナイフの振りと踏み込みがカーソルへ・§11-2)。キーで振っても同じ
+    // (照準サークルはカーソルを向いているので、振りだけ歩いた向き、を作らない=監査 B-5)。世界が止まっている間は書き換えない。
+    // ★v0.25.4868(社長指示「マウスのある方向に近接振るのは難しいのでやめたい。マウス方向はフィルガンなどのターゲットある武器のみ」):
+    // 照準を持つ銃を構えている時だけ。近接の振りは歩いた向き(キーボード・タッチと同じ)。
+    if (gs.mouseAim && mouseSetsAim(gs.player) && !isWorldFrozen() && !gs.rhythm.active) { // 四神舞中は向きを回さない(タッチと同じ・検収 B-2)
+      const p = gs.player;
+      const dx = gs.camera.x + gs.mouseAim.x - (p.x + p.width / 2);
+      const dy = gs.camera.y + gs.mouseAim.y - (p.y + p.height / 2);
+      const m = Math.hypot(dx, dy);
+      if (m > 1) gs.setLastDirection({ x: dx / m, y: dy / m });
+    }
+    if (gs.rhythm.active) {
+      if (!flickedThisPress) gs.rhythmInput('tap');
+    } else if (isBrawlerMode(gs.player)) {
+      // ★格闘(research/BRAWLER.md §2-1): 今の近接ボタン=通常攻撃(銃・他のサブは使えない)。技は方向+技ボタン(performFlickAction)。
+      // ★抉り打ち(§37): 0.5秒溜めて離した=抉り打ち(溜めの途中で被弾した押下は何も出さない)。それ以外は今までどおり通常攻撃。
+      if (gs.brawlerGougeRelease() === 'normal') gs.beginMeleeSwing();
+    } else {
+      const gun = gs.player.weapons.find(w => w.id === gs.player.activeWeaponId);
+      if (gun?.key === 'phill-revolver') {
+        const before = gun.magazine ?? 0;
+        gs.firePhillShot();
+        const after = useGameStore.getState().player.weapons.find(w => w.id === gs.player.activeWeaponId)?.magazine ?? 0;
+        if (after < before) playSfx('handgun-fire');
+      }
+      gs.fireSignalLauncher();
+      gs.fireRailgunShot();
+      gs.detonateAlchemyStones();
+      const hadHomingLocks = useGameStore.getState().homingLocks.length > 0;
+      gs.fireHoming();
+      if (hadHomingLocks) playSfx('homing-fire');
+      gs.beginMeleeSwing();
+    }
+  }
+  if (!returnPromptOpened) {
+    if (fire) {
+      const now = performance.now();
+      // 被弾反撃の窓の間の短い押しは「押し直してはじく」ための操作=スケボーの2度押しに数えない(タッチと同じ)。
+      // ［投与する］を押した離しも数えない(ボタンを押しただけ)。
+      lastWasTap = !medicineTaken
+        && !isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now())
+        && now - downAt < PC_SKATER_TAP_MAX_MS;
+      lastUpAt = now;
+    }
+    gs.dismountSkater();
+  }
+  useGameStore.getState().brawlerGougeClear(); // 撃たずに離した・別の入力に食われた離しも溜めを消す(出した時は上で消えている)
+  useGameStore.getState().setTouchActive(false);
+};
+
+/** テスト用: 状態を初期化する。 */
+export const resetPcPressForTest = (): void => { disarmBrawlerSkater(); pressing = false; owner = null; downAt = 0; lastWasTap = false; lastUpAt = 0; flickedThisPress = false; };
+
+// 窓が裏へ行った・タブが隠れた=押しっぱなしの離しは来ない → 撃たずに離す(監査 A-4)。1回だけ付ける。
+if (typeof window !== 'undefined') {
+  const forceRelease = () => pcPressUp('any', false);
+  window.addEventListener('blur', forceRelease);
+  window.addEventListener('pagehide', forceRelease);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) forceRelease(); });
+}

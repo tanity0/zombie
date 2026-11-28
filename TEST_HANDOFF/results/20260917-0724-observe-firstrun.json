@@ -1,0 +1,179 @@
+{
+  "schema": "run-manifest/1",
+  "run": {
+    "mode": "firstrun",
+    "url": "http://localhost:5173/zombie/?bot=standard&botskill=casual",
+    "stamp": "20260917-0724",
+    "startedAt": "2026-09-17T07:24:59.624Z",
+    "endedAt": "2026-09-17T07:29:01.230Z",
+    "realSec": 242,
+    "endedReason": "timeLimit",
+    "stateSource": "gameStore"
+  },
+  "build": {
+    "version": "0.25.4430",
+    "commit": "83c8d9fb"
+  },
+  "env": {
+    "os": "win32 x64",
+    "node": "v24.16.0",
+    "browser": "153.0.8010.48",
+    "headed": true,
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "deviceScaleFactor": 1,
+    "isMobile": false,
+    "hasTouch": false,
+    "server": "http://localhost:5173/zombie/"
+  },
+  "query": {
+    "bot": "standard",
+    "botskill": "casual"
+  },
+  "seed": {
+    "requested": null,
+    "effective": null,
+    "note": "src/側に seed の口が無いため未固定(REQUEST-devbridge.md P0-3)"
+  },
+  "observed": {
+    "gateClicks": 0,
+    "shopFixes": 0,
+    "maxEnemies": 0,
+    "consoleErrorCount": 0,
+    "firstRunSearchMs": {
+      "updateModal": 159,
+      "title": 83,
+      "intro": 22,
+      "opsRoom": 1575,
+      "stagePick": 77,
+      "briefing": 11,
+      "charSelect": 14
+    },
+    "finalState": {
+      "via": "gameStore",
+      "gameTime": 153578,
+      "isPaused": false,
+      "backgrounded": false,
+      "showShopMenu": false,
+      "showUpgradeMenu": false,
+      "showEventQuestMenu": false,
+      "tutorialPopup": true,
+      "health": 130,
+      "level": 1,
+      "x": 0,
+      "y": 0,
+      "enemyCount": 0,
+      "bossTypes": [],
+      "gameWon": false,
+      "botReport": null,
+      "screen": "gameplay",
+      "buttons": [
+        {
+          "text": "3/18",
+          "aria": "ショットガン"
+        },
+        {
+          "text": "",
+          "aria": "Audio off"
+        },
+        {
+          "text": "OK",
+          "aria": "チュートリアルを閉じる"
+        }
+      ]
+    },
+    "botReport": null
+  },
+  "screenshots": [
+    {
+      "trigger": "timeout",
+      "atRealSec": 242,
+      "atGameSec": 153,
+      "kept": "20260917-0724-firstrun-timeout.png",
+      "tempPath": null
+    },
+    {
+      "trigger": "sortieStarted",
+      "atRealSec": 25,
+      "atGameSec": 1,
+      "kept": "20260917-0724-firstrun-sortieStarted.png",
+      "tempPath": null
+    },
+    {
+      "trigger": "gameplayStarted",
+      "atRealSec": 25,
+      "atGameSec": 1,
+      "kept": "20260917-0724-firstrun-gameplayStarted.png",
+      "tempPath": null
+    }
+  ],
+  "tempDir": "C:\\Users\\tanity\\AppData\\Local\\Temp\\zombie-observe-1789629897532",
+  "events": [
+    {
+      "realSec": 0,
+      "gameSec": null,
+      "eventType": "boot",
+      "note": "http://localhost:5173/zombie/?bot=standard&botskill=casual"
+    },
+    {
+      "realSec": 5,
+      "gameSec": null,
+      "eventType": "updateModalClicked",
+      "note": "「OK」滞在0s"
+    },
+    {
+      "realSec": 7,
+      "gameSec": null,
+      "eventType": "titleClicked",
+      "note": "「タップして開始」滞在0s"
+    },
+    {
+      "realSec": 10,
+      "gameSec": null,
+      "eventType": "introClicked",
+      "note": "「スキップ」滞在0s"
+    },
+    {
+      "realSec": 14,
+      "gameSec": null,
+      "eventType": "opsRoomClicked",
+      "note": "「出 撃」滞在2s"
+    },
+    {
+      "realSec": 16,
+      "gameSec": null,
+      "eventType": "stagePickClicked",
+      "note": "「捜索記録洞窟地帯MAIN座標捜索」滞在0s"
+    },
+    {
+      "realSec": 19,
+      "gameSec": null,
+      "eventType": "briefingClicked",
+      "note": "「ジョブ選択」滞在0s"
+    },
+    {
+      "realSec": 21,
+      "gameSec": null,
+      "eventType": "charSelectClicked",
+      "note": "「スタート」滞在0s"
+    },
+    {
+      "realSec": 24,
+      "gameSec": null,
+      "eventType": "sortieStarted"
+    },
+    {
+      "realSec": 25,
+      "gameSec": 1,
+      "eventType": "gameplayStarted"
+    },
+    {
+      "realSec": 241,
+      "gameSec": 152,
+      "eventType": "timeout"
+    }
+  ],
+  "consoleErrors": []
+}

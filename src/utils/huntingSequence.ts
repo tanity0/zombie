@@ -1,0 +1,45 @@
+// ★ハンティングの溜まりを「一連の動き」の間ずっと使う(社長裁定2026-11-22「全ての武器で一連の動き中は伸ばす」)。
+// 溜まった状態で始めた一連の動きの間は届く距離が伸びたまま。一連の動きが終わった時に使い切る。
+//  - 格闘: 連撃の間(既存の brawler.huntingCombo・research/BRAWLER.md §16。ここは通らない)。
+//  - 鞭: 振るたびに使い切る(絡め取った時は、その時点で使い切って回す半径と投げの距離に乗る=research/WHIP_FOLLOWUP.md §8-7)。ここは通らない。
+//  - 刀: オート斬撃 → 一閃 → 燕返し(一閃の走り・着地の硬直・燕返しの受付が続いている間)。
+//        一閃をしなかった時は、次のオート斬撃の時刻(オート斬撃の間隔の終わり)で終わる。
+//  - ナイフ: 一連のつながりの仕組みが無いので、今までどおり振るたびに使い切る(ここは通らない)。
+
+export type HuntingSequenceKind = 'whip' | 'katana';
+
+export interface HuntingSequenceView {
+  /** gameTime(刀のオート斬撃だけで始まった一連の締め切りの時計)。 */
+  gameTime: number;
+  /** Date.now(一閃・燕返しの時計)。 */
+  now: number;
+  /** 刀: オート斬撃で始めた一連の締め切り(gameTime)。この時刻までに一閃が出なければ終わる。 */
+  seqUntil?: number;
+  /** 刀: 一閃(燕返しを含む)の走り〜着地の硬直の終わり(Date.now)。 */
+  katanaRecoveryUntil: number;
+  /** 刀: 燕返しの受付が開いているか。 */
+  tsubameOpen: boolean;
+}
+
+/** 一連の動きがまだ続いているか。false になったら溜まりを使い切る。 */
+export const huntingSequenceAlive = (kind: HuntingSequenceKind, v: HuntingSequenceView): boolean => {
+  if (kind === 'whip') return false; // 鞭の一連は1振り(§8-7)=残っていたら使い切る
+  return v.gameTime < (v.seqUntil ?? 0) || v.now < v.katanaRecoveryUntil || v.tsubameOpen;
+};
+
+/**
+ * ハンティングの溜めの1歩(プレイヤー=入力がある間・守護霊=動いている間に溜まる・社長裁定2026-11-22「守護霊の動きで溜まる」)。
+ *  - 使える(enabled)かつ溜めている(active): 溜め始めの時刻を持ち、chargeMs 経てば溜まる(溜まったら止めても残る)。
+ *  - そうでない・まだ溜まっていない: 溜め始めを捨てる(0)。溜まっていれば残す。
+ * 変わらない時は同じ値を返す(呼び手が書き込みを省ける)。
+ */
+export const huntingChargeStep = (o: {
+  enabled: boolean; active: boolean; startedAt: number; charged: boolean; now: number; chargeMs: number;
+}): { startedAt: number; charged: boolean } => {
+  if (o.enabled && o.active) {
+    const startedAt = o.startedAt > 0 ? o.startedAt : o.now;
+    return { startedAt, charged: o.charged || o.now - startedAt >= o.chargeMs };
+  }
+  if (!o.charged && o.startedAt !== 0) return { startedAt: 0, charged: false };
+  return { startedAt: o.startedAt, charged: o.charged };
+};

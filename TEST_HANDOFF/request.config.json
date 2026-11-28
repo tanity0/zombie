@@ -1,0 +1,11 @@
+{
+  "baseUrl": "local",
+  "headless": false,
+  "viewport": { "width": 1280, "height": 800 },
+  "minVersion": "0.25.3991",
+  "note": "2026-08-27 通しE2E(REQUEST.md参照)。この config はパートC(回帰ボットラン)用。パートA+B(ボス直行スイープ)は node TEST_HANDOFF/run-e2e-sweep.mjs を使う。",
+  "configs": [
+    { "name": "e2e-regression-stage1", "persona": "standard", "stage": "stage-1", "extraQuery": "autotut=1" },
+    { "name": "e2e-regression-stage5", "persona": "standard", "stage": "stage-5", "extraQuery": "autotut=1" }
+  ]
+}

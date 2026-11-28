@@ -1,0 +1,1467 @@
+[
+ {
+  "t": 0,
+  "clicked": "OK"
+ },
+ {
+  "t": 2,
+  "clicked": "スキップ ▶"
+ },
+ {
+  "t": 4,
+  "label": "bounty-ranged@practice",
+  "gameTime": 0,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 120
+ },
+ {
+  "t": 6,
+  "label": "bounty-ranged@practice",
+  "gameTime": 0,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 120
+ },
+ {
+  "t": 10,
+  "label": "bounty-ranged@practice",
+  "gameTime": 0,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 12,
+  "label": "bounty-ranged@practice",
+  "gameTime": 0,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 14,
+  "label": "bounty-ranged@practice",
+  "gameTime": 50,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 16,
+  "label": "bounty-ranged@practice",
+  "gameTime": 1000,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 18,
+  "label": "bounty-ranged@practice",
+  "gameTime": 1000,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 20,
+  "label": "bounty-ranged@practice",
+  "gameTime": 2399,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 22,
+  "label": "bounty-ranged@practice",
+  "gameTime": 4264,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 24,
+  "label": "bounty-ranged@practice",
+  "gameTime": 6112,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 26,
+  "label": "bounty-ranged@practice",
+  "gameTime": 7712,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 28,
+  "label": "bounty-ranged@practice",
+  "gameTime": 9510,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 30,
+  "label": "bounty-ranged@practice",
+  "gameTime": 11308,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 32,
+  "label": "bounty-ranged@practice",
+  "gameTime": 13140,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 34,
+  "label": "bounty-ranged@practice",
+  "gameTime": 15073,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 36,
+  "label": "bounty-ranged@practice",
+  "gameTime": 16939,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 38,
+  "label": "bounty-ranged@practice",
+  "gameTime": 18739,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 40,
+  "label": "bounty-ranged@practice",
+  "gameTime": 20723,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 42,
+  "label": "bounty-ranged@practice",
+  "gameTime": 22522,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 44,
+  "label": "bounty-ranged@practice",
+  "gameTime": 24255,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 46,
+  "label": "bounty-ranged@practice",
+  "gameTime": 26256,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 48,
+  "label": "bounty-ranged@practice",
+  "gameTime": 28241,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 51,
+  "label": "bounty-ranged@practice",
+  "gameTime": 30242,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 53,
+  "label": "bounty-ranged@practice",
+  "gameTime": 32260,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 55,
+  "label": "bounty-ranged@practice",
+  "gameTime": 34261,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 57,
+  "label": "bounty-ranged@practice",
+  "gameTime": 36295,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 59,
+  "label": "bounty-ranged@practice",
+  "gameTime": 38262,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 61,
+  "label": "bounty-ranged@practice",
+  "gameTime": 40228,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 63,
+  "label": "bounty-ranged@practice",
+  "gameTime": 42229,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 65,
+  "label": "bounty-ranged@practice",
+  "gameTime": 44162,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 67,
+  "label": "bounty-ranged@practice",
+  "gameTime": 46163,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 69,
+  "label": "bounty-ranged@practice",
+  "gameTime": 48181,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 936
+  },
+  "hp": 110
+ },
+ {
+  "t": 71,
+  "label": "bounty-ranged@practice",
+  "gameTime": 50116,
+  "px": 11,
+  "py": 17,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 935
+  },
+  "hp": 110
+ },
+ {
+  "t": 73,
+  "label": "bounty-ranged@practice",
+  "gameTime": 51833,
+  "px": -123,
+  "py": 125,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 937
+  },
+  "hp": 110
+ },
+ {
+  "t": 75,
+  "label": "bounty-ranged@practice",
+  "gameTime": 53700,
+  "px": -142,
+  "py": 172,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 919
+  },
+  "hp": 110
+ },
+ {
+  "t": 77,
+  "label": "bounty-ranged@practice",
+  "gameTime": 55500,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 912
+  },
+  "hp": 110
+ },
+ {
+  "t": 79,
+  "label": "bounty-ranged@practice",
+  "gameTime": 57415,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 912
+  },
+  "hp": 110
+ },
+ {
+  "t": 81,
+  "label": "bounty-ranged@practice",
+  "gameTime": 59131,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 912
+  },
+  "hp": 110
+ },
+ {
+  "t": 83,
+  "label": "bounty-ranged@practice",
+  "gameTime": 60895,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 1,
+  "types": {
+   "bounty-ranged": 1
+  },
+  "nearestByType": {
+   "bounty-ranged": 912
+  },
+  "hp": 110
+ },
+ {
+  "t": 85,
+  "label": "bounty-ranged@practice",
+  "gameTime": 62879,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 87,
+  "label": "bounty-ranged@practice",
+  "gameTime": 64522,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 89,
+  "label": "bounty-ranged@practice",
+  "gameTime": 66421,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 91,
+  "label": "bounty-ranged@practice",
+  "gameTime": 68270,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 93,
+  "label": "bounty-ranged@practice",
+  "gameTime": 70132,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 95,
+  "label": "bounty-ranged@practice",
+  "gameTime": 71972,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 97,
+  "label": "bounty-ranged@practice",
+  "gameTime": 73737,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 99,
+  "label": "bounty-ranged@practice",
+  "gameTime": 75437,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 101,
+  "label": "bounty-ranged@practice",
+  "gameTime": 77286,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 103,
+  "label": "bounty-ranged@practice",
+  "gameTime": 79320,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 105,
+  "label": "bounty-ranged@practice",
+  "gameTime": 81322,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 107,
+  "label": "bounty-ranged@practice",
+  "gameTime": 83356,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 109,
+  "label": "bounty-ranged@practice",
+  "gameTime": 85341,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 111,
+  "label": "bounty-ranged@practice",
+  "gameTime": 87375,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 113,
+  "label": "bounty-ranged@practice",
+  "gameTime": 89377,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 115,
+  "label": "bounty-ranged@practice",
+  "gameTime": 91411,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 117,
+  "label": "bounty-ranged@practice",
+  "gameTime": 93327,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 119,
+  "label": "bounty-ranged@practice",
+  "gameTime": 95277,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 121,
+  "label": "bounty-ranged@practice",
+  "gameTime": 97261,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 123,
+  "label": "bounty-ranged@practice",
+  "gameTime": 99212,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 125,
+  "label": "bounty-ranged@practice",
+  "gameTime": 101129,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 127,
+  "label": "bounty-ranged@practice",
+  "gameTime": 103097,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 129,
+  "label": "bounty-ranged@practice",
+  "gameTime": 105081,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 131,
+  "label": "bounty-ranged@practice",
+  "gameTime": 107015,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 133,
+  "label": "bounty-ranged@practice",
+  "gameTime": 108732,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 135,
+  "label": "bounty-ranged@practice",
+  "gameTime": 110733,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 137,
+  "label": "bounty-ranged@practice",
+  "gameTime": 112566,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 139,
+  "label": "bounty-ranged@practice",
+  "gameTime": 114299,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 141,
+  "label": "bounty-ranged@practice",
+  "gameTime": 116048,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 143,
+  "label": "bounty-ranged@practice",
+  "gameTime": 117832,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 145,
+  "label": "bounty-ranged@practice",
+  "gameTime": 119648,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 148,
+  "label": "bounty-ranged@practice",
+  "gameTime": 121432,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 150,
+  "label": "bounty-ranged@practice",
+  "gameTime": 123362,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 152,
+  "label": "bounty-ranged@practice",
+  "gameTime": 125346,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 154,
+  "label": "bounty-ranged@practice",
+  "gameTime": 127112,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 156,
+  "label": "bounty-ranged@practice",
+  "gameTime": 128945,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 158,
+  "label": "bounty-ranged@practice",
+  "gameTime": 130695,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 160,
+  "label": "bounty-ranged@practice",
+  "gameTime": 132697,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 162,
+  "label": "bounty-ranged@practice",
+  "gameTime": 134715,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 164,
+  "label": "bounty-ranged@practice",
+  "gameTime": 136717,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 166,
+  "label": "bounty-ranged@practice",
+  "gameTime": 138650,
+  "px": -134,
+  "py": 173,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 168,
+  "label": "bounty-ranged@practice",
+  "gameTime": 140667,
+  "px": -146,
+  "py": 221,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 170,
+  "label": "bounty-ranged@practice",
+  "gameTime": 142568,
+  "px": -162,
+  "py": 346,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 172,
+  "label": "bounty-ranged@practice",
+  "gameTime": 144569,
+  "px": -139,
+  "py": 422,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 174,
+  "label": "bounty-ranged@practice",
+  "gameTime": 146486,
+  "px": -90,
+  "py": 589,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 176,
+  "label": "bounty-ranged@practice",
+  "gameTime": 148436,
+  "px": -75,
+  "py": 594,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 178,
+  "label": "bounty-melee@practice",
+  "gameTime": 0,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 180,
+  "label": "bounty-melee@practice",
+  "gameTime": 0,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 0,
+  "types": {},
+  "nearestByType": {},
+  "hp": 110
+ },
+ {
+  "t": 182,
+  "label": "bounty-melee@practice",
+  "gameTime": 1001,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 184,
+  "label": "bounty-melee@practice",
+  "gameTime": 1001,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 186,
+  "label": "bounty-melee@practice",
+  "gameTime": 1634,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 188,
+  "label": "bounty-melee@practice",
+  "gameTime": 3669,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 190,
+  "label": "bounty-melee@practice",
+  "gameTime": 5687,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 192,
+  "label": "bounty-melee@practice",
+  "gameTime": 7555,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 194,
+  "label": "bounty-melee@practice",
+  "gameTime": 9522,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 196,
+  "label": "bounty-melee@practice",
+  "gameTime": 11306,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 198,
+  "label": "bounty-melee@practice",
+  "gameTime": 13171,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 200,
+  "label": "bounty-melee@practice",
+  "gameTime": 15071,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 202,
+  "label": "bounty-melee@practice",
+  "gameTime": 17039,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 204,
+  "label": "bounty-melee@practice",
+  "gameTime": 19057,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 206,
+  "label": "bounty-melee@practice",
+  "gameTime": 21059,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 208,
+  "label": "bounty-melee@practice",
+  "gameTime": 23044,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 210,
+  "label": "bounty-melee@practice",
+  "gameTime": 24995,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 212,
+  "label": "bounty-melee@practice",
+  "gameTime": 26996,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 214,
+  "label": "bounty-melee@practice",
+  "gameTime": 28980,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 216,
+  "label": "bounty-melee@practice",
+  "gameTime": 30747,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 218,
+  "label": "bounty-melee@practice",
+  "gameTime": 32563,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 220,
+  "label": "bounty-melee@practice",
+  "gameTime": 34414,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 222,
+  "label": "bounty-melee@practice",
+  "gameTime": 36281,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 224,
+  "label": "bounty-melee@practice",
+  "gameTime": 38115,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 226,
+  "label": "bounty-melee@practice",
+  "gameTime": 40081,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ },
+ {
+  "t": 228,
+  "label": "bounty-melee@practice",
+  "gameTime": 42116,
+  "px": 14,
+  "py": 14,
+  "enemyCount": 1,
+  "types": {
+   "bounty-melee": 1
+  },
+  "nearestByType": {
+   "bounty-melee": 924
+  },
+  "hp": 110
+ }
+]

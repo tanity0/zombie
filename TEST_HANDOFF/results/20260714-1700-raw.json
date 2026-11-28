@@ -1,0 +1,270 @@
+{
+  "generatedAt": "2026-07-14T17:23:38.724Z",
+  "runner": "scratchpad/botrun-win.mjs (Windows path fix + gate click + local baseUrl)",
+  "baseUrl": "http://localhost:5173/zombie/",
+  "config": {
+    "baseUrl": "local",
+    "runMs": 900000,
+    "headless": true,
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "configs": [
+      {
+        "name": "baseline",
+        "persona": "standard",
+        "subs": null,
+        "skills": null
+      },
+      {
+        "name": "sensor-mine_overclock-timekeeper",
+        "persona": "standard",
+        "subs": [
+          "sensor-mine"
+        ],
+        "skills": [
+          "overclock",
+          "time-keeper"
+        ]
+      },
+      {
+        "name": "junk-weapon_scrapbuilder-magnet",
+        "persona": "standard",
+        "subs": [
+          "junk-weapon"
+        ],
+        "skills": [
+          "scrap-builder",
+          "magnet"
+        ]
+      },
+      {
+        "name": "grenade_berserker-exploder",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "berserker",
+          "exploder"
+        ]
+      },
+      {
+        "name": "support-sniper_overclock-lastmag",
+        "persona": "standard",
+        "subs": [
+          "support-sniper"
+        ],
+        "skills": [
+          "overclock",
+          "last-magazine"
+        ]
+      },
+      {
+        "name": "flare-gun_goldrush-warmup",
+        "persona": "standard",
+        "subs": [
+          "flare-gun"
+        ],
+        "skills": [
+          "gold-rush",
+          "warm-up"
+        ]
+      }
+    ]
+  },
+  "results": [
+    {
+      "config": "baseline",
+      "subs": null,
+      "skills": null,
+      "startedSec": 30,
+      "realSec": 186,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 132014,
+        "deathCause": "変異体(肥大型)",
+        "kills": 68,
+        "playerLevel": 3,
+        "maxDepthPx": 1396,
+        "maxAreaReached": 0,
+        "subUses": {
+          "heavy-grenade": 27
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 9,
+        "scrapSpent": 0,
+        "damageTaken": 160,
+        "goldEarned": 10
+      },
+      "errors": [],
+      "finalHud": "ゲームオーバー |  | 軍備配置区域の怠惰 に到達 |  | 自己最深 | 1396m⚑更新 |  | 死因：変異体(肥大型) |  | RESULT | 生存時間 | 02:12 | 撃破 | 68 | Lv | 3 | 最大コンボ | 4 | SCORE | HIGH SCORE | 19600 | KILLスコア 11200 | 詳細 | ▾ | AIディレクター | 開く▾ | 失った装備 | 獲得 +9g / 換金 +2g / 所持 11g | 防弾ベスト | R1 | 最大体力 +50 | +1g | 強化バレル | R1 | ダメージ +20% | +1g | もう一度プレイ | メニューに戻る"
+    },
+    {
+      "config": "sensor-mine_overclock-timekeeper",
+      "subs": [
+        "sensor-mine"
+      ],
+      "skills": [
+        "overclock",
+        "time-keeper"
+      ],
+      "startedSec": 15,
+      "realSec": 182,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 148280,
+        "deathCause": "変異体(痩躯型)",
+        "kills": 90,
+        "playerLevel": 4,
+        "maxDepthPx": 1347,
+        "maxAreaReached": 0,
+        "subUses": {
+          "heavy-grenade": 55,
+          "sensor-mine": 65
+        },
+        "overclockProcs": 32,
+        "scrapEarned": 0,
+        "scrapSpent": 0,
+        "damageTaken": 110,
+        "goldEarned": 18
+      },
+      "errors": [],
+      "finalHud": "02:28 | 🔩 0 | 0 | Lv 4 | 手榴弾 | Lv1 | センサー地雷 | Lv1 | 0/18 | pixi · v0.25.1721 · floor:SGC · res:1/1"
+    },
+    {
+      "config": "junk-weapon_scrapbuilder-magnet",
+      "subs": [
+        "junk-weapon"
+      ],
+      "skills": [
+        "scrap-builder",
+        "magnet"
+      ],
+      "startedSec": 15,
+      "realSec": 165,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 136958,
+        "deathCause": "変異体(肥大型)の落下攻撃",
+        "kills": 62,
+        "playerLevel": 3,
+        "maxDepthPx": 2964,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 28,
+          "junk-weapon": 31
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 5,
+        "scrapSpent": 155,
+        "damageTaken": 165,
+        "goldEarned": 16
+      },
+      "errors": [],
+      "finalHud": "ゲームオーバー |  | 研究対象区域の怠惰 に到達 |  | 自己最深 | 2964m⚑更新 | 昇格度 80 —— 阻んだのは 被ダメ(80) |  | 死因：変異体(肥大型)の落下攻撃 |  | RESULT | 生存時間 | 02:17 | 撃破 | 63 | Lv | 4 | 最大コンボ | 12 | SCORE | HIGH SCORE | 32928 | KILLスコア 21600 | 詳細 | ▾ | AIディレクター | 開く▾ | 失った装備 | 獲得 +16g / 換金 +2g / 所持 18g | 防弾ベスト | R1 | 最大体力 +50 | +1g | 強化バレル | R1 | ダメージ +20% | +1g | もう一度プレイ | メニューに戻る"
+    },
+    {
+      "config": "grenade_berserker-exploder",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "berserker",
+        "exploder"
+      ],
+      "startedSec": 15,
+      "realSec": 162,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 134367,
+        "deathCause": "変異体(痩躯型)",
+        "kills": 88,
+        "playerLevel": 4,
+        "maxDepthPx": 1400,
+        "maxAreaReached": 0,
+        "subUses": {
+          "heavy-grenade": 27
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 108,
+        "scrapSpent": 0,
+        "damageTaken": 115,
+        "goldEarned": 18
+      },
+      "errors": [],
+      "finalHud": "02:14 | 🔩 108 | 0 | Lv 4 | 手榴弾 | Lv1 | 0/18 | 12/72 | pixi · v0.25.1721 · floor:SGC · res:1/1"
+    },
+    {
+      "config": "support-sniper_overclock-lastmag",
+      "subs": [
+        "support-sniper"
+      ],
+      "skills": [
+        "overclock",
+        "last-magazine"
+      ],
+      "startedSec": 14,
+      "realSec": 491,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 434473,
+        "deathCause": "変異体(徘徊型)",
+        "kills": 280,
+        "playerLevel": 9,
+        "maxDepthPx": 2477,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 127,
+          "support-sniper": 112
+        },
+        "overclockProcs": 72,
+        "scrapEarned": 162,
+        "scrapSpent": 0,
+        "damageTaken": 457,
+        "goldEarned": 28
+      },
+      "errors": [],
+      "finalHud": "ゲームオーバー |  | 研究対象区域の怠惰 に到達 |  | 自己最深 | 2477m⚑更新 | 昇格度 0 —— 阻んだのは 被ダメ(0) |  | 死因：変異体(徘徊型) |  | RESULT | 生存時間 | 07:15 | 撃破 | 281 | Lv | 9 | 最大コンボ | 12 | SCORE | HIGH SCORE | 78319 | KILLスコア 47200 | 詳細 | ▾ | AIディレクター | 開く▾ | 失った装備 | 獲得 +28g / 換金 +4g / 所持 32g | 防弾ベスト | R1 | 最大体力 +50 | +1g | 強化バレル | R1 | ダメージ +20% | +1g | 予備弾薬袋 | R2 | 弾薬ドロップ +15% | +2g | もう一度プレイ | メニューに戻る"
+    },
+    {
+      "config": "flare-gun_goldrush-warmup",
+      "subs": [
+        "flare-gun"
+      ],
+      "skills": [
+        "gold-rush",
+        "warm-up"
+      ],
+      "startedSec": 25,
+      "realSec": 216,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 183485,
+        "deathCause": "敵の飛び道具",
+        "kills": 97,
+        "playerLevel": 5,
+        "maxDepthPx": 1530,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 37,
+          "flare-gun": 28
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 111,
+        "scrapSpent": 0,
+        "damageTaken": 164,
+        "goldEarned": 35
+      },
+      "errors": [],
+      "finalHud": "COMBO | 11 | 03:03 | 🔩 161 | 0 | Lv 5 | 手榴弾 | Lv1 | フレアガン | Lv1 | 0/24 | 12/72 | pixi · v0.25.1721 · floor:SGC · res:1/1"
+    }
+  ]
+}

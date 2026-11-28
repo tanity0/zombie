@@ -1,0 +1,70 @@
+/* HUD の数字は動いた時だけ出る(research/UIUX_PROPOSAL.md P15)。
+   React は数字(プリミティブ)が変わった時にだけ札を差し替え(key)、薄くなる/灯るは全部ここの CSS アニメ1回で済ませる
+   =毎フレームの再描画は増えない。色は琥珀(赤=カウンターの色・紫=カウンターできない攻撃の色は使わない)。
+   光の段: いちばん強いのはレベルアップの超レアの着地(levelUp.css)。ここは「数字が灯る」「絵が少し明るむ」まで=枠も板も出さない。 */
+
+/* ---- 討伐数(SubquestHud): 板なしの文字だけ ---- */
+.sq-tag { position: relative; }
+/* 出た直後は元の濃さ。数秒かけて薄く沈む(消えはしない) */
+.sq-tag--settle { animation: sq-settle 4200ms cubic-bezier(0.45, 0, 0.3, 1) forwards; }
+/* 増えた瞬間: 元の濃さへ戻り、ゆっくり薄れる */
+.sq-tag--hot { animation: sq-hot 3600ms cubic-bezier(0.3, 0, 0.25, 1) forwards; }
+.sq-num { display: inline-block; transform-origin: 50% 85%; }
+/* 数字だけが灯って跳ねる: 上へ弾かれ(大きく)、重さで落ちて一度沈み、戻る。色はしばらく琥珀のまま残ってから元へ */
+.sq-tag--hot .sq-num { animation: sq-num-jump 620ms linear, sq-num-tint 2400ms cubic-bezier(0.3, 0, 0.3, 1) forwards; }
+
+@keyframes sq-settle { 0%, 45% { opacity: 1; } 100% { opacity: 0.3; } }
+@keyframes sq-hot { 0% { opacity: 1; } 40% { opacity: 1; } 100% { opacity: 0.3; } }
+@keyframes sq-num-jump {
+  0%   { transform: translateY(0) scale(1); animation-timing-function: cubic-bezier(0.15, 0.7, 0.35, 1); }
+  30%  { transform: translateY(-11px) scale(1.42); animation-timing-function: cubic-bezier(0.55, 0, 0.85, 0.4); }
+  62%  { transform: translateY(2px) scale(0.94, 1.04); animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1); }
+  80%  { transform: translateY(-1px) scale(1.03); animation-timing-function: ease-in-out; }
+  100% { transform: translateY(0) scale(1); }
+}
+@keyframes sq-num-tint {
+  0%   { color: #fff1cf; text-shadow: 0 0 10px rgba(255, 196, 100, 0.95), 0 1px 0 #020617; }
+  25%  { color: #ffd389; text-shadow: 0 0 6px rgba(255, 186, 84, 0.55), 0 1px 0 #020617; }
+  100% { }
+}
+
+/* ---- 副武装の枠(GameHUD の SubWeaponSlot): 武器の箱の一番上に絵だけ ---- */
+.sw-slots { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding-bottom: 5px; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+.sw-slot { position: relative; width: 44px; height: 28px; }
+.sw-slot-icon { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; opacity: 0.62; }
+.sw-slot-icon img { max-width: 26px; max-height: 22px; object-fit: contain; image-rendering: pixelated; }
+.sw-slot-glyph { font-size: 11px; color: rgba(235, 232, 225, 0.7); }
+/* 名前の札: 普段は箱の陰に隠れている。箱の左の縁にくっついたまま(右=箱の側には縁を付けない)滑り出る */
+.sw-tag {
+  position: absolute; right: calc(100% + 7px); top: -1px; bottom: -1px;
+  display: flex; align-items: center; gap: 5px; padding: 0 8px 0 9px; white-space: nowrap;
+  font-size: 10px; font-weight: 600; line-height: 1;
+  background: rgba(10, 10, 16, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.10); border-right: none;
+  opacity: 0; clip-path: inset(0 0 0 100%); pointer-events: none;
+}
+.sw-tag-name { color: #efe9dc; }
+.sw-tag-lv { color: rgba(235, 232, 225, 0.55); }
+.sw-slot--pop .sw-tag { animation: sw-tag-out 2800ms linear forwards; }
+.sw-slot--pop .sw-tag-lv { animation: sw-tag-lv 2800ms cubic-bezier(0.3, 0, 0.3, 1) forwards; }
+.sw-slot--pop .sw-slot-icon { animation: sw-icon-lit 2200ms cubic-bezier(0.25, 0.6, 0.3, 1) forwards; }
+/* 箱の陰から左へ繰り出す(速く出て減速)→そのまま留まる→箱の側へ畳まれる(ゆっくり入って加速) */
+@keyframes sw-tag-out {
+  0%   { opacity: 1; clip-path: inset(0 0 0 100%); transform: translateX(10px); animation-timing-function: cubic-bezier(0.16, 0.8, 0.3, 1); }
+  13%  { opacity: 1; clip-path: inset(0 0 0 0); transform: translateX(-2px); animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
+  20%  { opacity: 1; clip-path: inset(0 0 0 0); transform: translateX(0); }
+  78%  { opacity: 1; clip-path: inset(0 0 0 0); transform: translateX(0); animation-timing-function: cubic-bezier(0.5, 0, 0.85, 0.5); }
+  100% { opacity: 0.6; clip-path: inset(0 0 0 100%); transform: translateX(8px); }
+}
+/* 上がったレベルの数字だけが琥珀で灯り、ゆっくり元の色へ */
+@keyframes sw-tag-lv {
+  0%, 10% { color: rgba(235, 232, 225, 0.55); }
+  18%  { color: #ffc66a; text-shadow: 0 0 8px rgba(255, 180, 70, 0.85); }
+  100% { color: #ffd389; text-shadow: none; }
+}
+/* 枠の絵が一度明るんで(琥珀の滲み)戻る。枠そのものは光らせない */
+@keyframes sw-icon-lit {
+  0%   { opacity: 0.62; filter: none; }
+  12%  { opacity: 1; filter: brightness(1.55) drop-shadow(0 0 5px rgba(255, 186, 84, 0.9)); }
+  100% { opacity: 0.62; filter: brightness(1) drop-shadow(0 0 0 rgba(255, 186, 84, 0)); }
+}

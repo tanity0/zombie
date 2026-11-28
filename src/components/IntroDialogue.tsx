@@ -2,10 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   useGameStore,
   INTRO_DIALOGUE_CHAR_MS,
-  INTRO_DIALOGUE_LINE_HOLD_MS,
+  introLineMs,
   CHARACTER_CLASS_NAMES,
 } from '../store/gameStore';
 import { playRadioStatic } from '../audio/audioManager';
+import { CommsLine } from './commsMotion';
 
 // 登場時のセリフ(時間停止中に自動で文字が流れる)。VN風の下部ボックス。
 // 入力不要(オートタイプ→流れ終わると useGameLoop 側がゲームを再開)。
@@ -19,6 +20,13 @@ const IntroDialogue: React.FC = () => {
   const [, setTick] = useState(0);
   const rafRef = useRef<number | undefined>(undefined);
   const radioFiredAtRef = useRef<number>(-1); // この登場(startedAt)で無線SEを鳴らしたか
+  // 会話が終わった後も、箱が消えの動きを見せ切るまでは描く(社長指示2026-11-17「そもそも全部」)。押下は受けない。
+  const [prevActive, setPrevActive] = useState(active);
+  const [exiting, setExiting] = useState(false);
+  if (prevActive !== active) {
+    setPrevActive(active);
+    setExiting(!active);
+  }
 
   useEffect(() => {
     if (!active) return;
@@ -35,7 +43,7 @@ const IntroDialogue: React.FC = () => {
     };
   }, [active]);
 
-  if (!active || lines.length === 0) return null;
+  if ((!active && !exiting) || lines.length === 0) return null;
 
   // 1行ずつ切り替えて表示: 現在の行だけを出す(打ち終えたら次の行へ差し替わる)。
   const elapsed = Date.now() - startedAt;
@@ -44,7 +52,7 @@ const IntroDialogue: React.FC = () => {
   let shown = 0;
   for (let i = 0; i < lines.length; i++) {
     const len = lines[i].text.length;
-    const lineTotal = lines[i].holdMs ?? (len * INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_LINE_HOLD_MS);
+    const lineTotal = introLineMs(lines[i]);
     if (remaining < lineTotal) {
       curIdx = i;
       shown = Math.max(0, Math.min(len, Math.floor(remaining / INTRO_DIALOGUE_CHAR_MS)));
@@ -59,36 +67,69 @@ const IntroDialogue: React.FC = () => {
   }
   const line = lines[curIdx];
 
+  // タップ: タイプ中なら一気に全文表示、表示済みなら次のセリフへ(最後なら会話終了)。自動送りは維持。
+  // 時間ベース表示なので、introDialogueStartedAt をずらして「仮想時刻」を早送りする(終了判定とも整合)。
+  const onAdvance = () => {
+    const el = Date.now() - startedAt;
+    let acc = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const total = introLineMs(lines[i]);
+      if (el < acc + total) {
+        const isText = lines[i].holdMs === undefined;
+        const typeDur = isText ? lines[i].text.length * INTRO_DIALOGUE_CHAR_MS : 0;
+        if (isText && el - acc < typeDur) {
+          useGameStore.setState({ introDialogueStartedAt: Date.now() - (acc + typeDur) }); // 一気に全文
+        } else if (i >= lines.length - 1) {
+          endIntroDialogue(); // 最終行を表示済み→終了
+        } else {
+          useGameStore.setState({ introDialogueStartedAt: Date.now() - (acc + total) }); // 次のセリフへ
+        }
+        return;
+      }
+      acc += total;
+    }
+    endIntroDialogue();
+  };
+
   // 会話シーン中だけ右下に出すスキップ(ミッション最初の会話=この登場セリフのみ)。
   // タップで会話を即終了→ゲーム再開。タップが下層の攻撃入力に伝播しないよう stopPropagation。
   const skipButton = (
     <button
+      data-skip // Esc・パッドのスタートでも押せる(utils/menuNav.pressVisibleSkip)
       onClick={(e) => { e.stopPropagation(); endIntroDialogue(); }}
-      className="pointer-events-auto absolute z-50 rounded-full border border-white/25 bg-black/55 px-4 py-2 text-[11px] font-bold tracking-[0.22em] text-white/80 shadow-lg backdrop-blur-sm active:bg-black/75"
+      className="pointer-events-auto absolute z-50 rounded-full border border-white/25 bg-black/55 px-4 py-2 text-[12px] text-white/80 shadow-lg backdrop-blur-sm active:bg-black/75"
       style={{ right: 'max(env(safe-area-inset-right), 16px)', bottom: 'max(calc(env(safe-area-inset-bottom) + 16px), 20px)' }}
     >
-      SKIP ▶▶
+      スキップ
     </button>
   );
 
   // 無線SEの「間」: テキストは出さず、実際の無線ノイズ音を1回だけ鳴らす(ボックスは隠すがスキップは出す)。
-  if (line.speaker === '__radio__') {
-    if (radioFiredAtRef.current !== startedAt) {
-      radioFiredAtRef.current = startedAt;
-      playRadioStatic();
-    }
-    return (
-      <div className="pointer-events-none absolute inset-0 z-40">
-        {skipButton}
-      </div>
-    );
+  const isRadio = line.speaker === '__radio__';
+  if (active && isRadio && radioFiredAtRef.current !== startedAt) {
+    radioFiredAtRef.current = startedAt;
+    playRadioStatic();
   }
 
   const rendered = [{ speaker: line.speaker, text: line.text.slice(0, shown), typing: shown < line.text.length }];
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center px-4">
-      {skipButton}
+    // 会話が終わった直後(!active)は押下を素通しにして、箱が消え切るまでだけ残す(中身は CommsLine が最後の行を持っている)。
+    <div
+      className={`${active ? 'pointer-events-auto' : 'pointer-events-none'} absolute inset-0 z-40 flex items-center justify-center px-4`}
+      onClick={active ? onAdvance : undefined}
+    >
+      {active && skipButton}
+      {/* 入りと消え(社長指示2026-11-17「中段くらいから箱ごと、フェードインさせる」→「そもそも全部」): HUD の会話と同じ部品。
+          箱の定位置が画面の中段=中段から飛ばせないので、少し下からせり上がる。話者が替われば大きく、同じ話者が続けば静かなフェード。
+          音は既存の無線SEのまま(入りの音は重ねない)。無線の「間」は箱を消す(消えの動きのあと、次の行で入り直す)。 */}
+      <CommsLine
+        lineKey={!active || isRadio ? null : curIdx}
+        speaker={line.speaker ?? '通信'}
+        mode="rise"
+        className="w-full max-w-xl"
+        onGone={() => { if (!active) setExiting(false); }}
+      >
       <div
         className="flex min-h-[5rem] w-full max-w-xl items-center rounded-2xl border-2 border-cyan-300/40 bg-slate-950/90 px-6 py-6 shadow-2xl ring-1 ring-black/40 backdrop-blur-md"
         style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}
@@ -109,8 +150,8 @@ const IntroDialogue: React.FC = () => {
             const speaker = l.speaker === '__class__'
               ? (CHARACTER_CLASS_NAMES[characterClass] ?? 'プレイヤー')
               : l.speaker;
-            // 偵察兵=切迫した別声(かすれた赤)。それ以外(通信兵など)=琥珀。
-            const isField = speaker === '偵察兵';
+            // エドガー(偵察兵)=切迫した別声(かすれた赤)。それ以外(通信兵など)=琥珀。
+            const isField = speaker === 'エドガー';
             const bodyCls = isField ? 'text-lg leading-relaxed text-rose-100' : 'text-lg leading-relaxed text-amber-100';
             const nameCls = isField ? 'mr-1.5 font-bold text-rose-300' : 'mr-1.5 font-bold text-amber-300';
             return (
@@ -122,12 +163,13 @@ const IntroDialogue: React.FC = () => {
           }
           return (
             <p key={i} className="text-lg leading-relaxed text-cyan-100">
-              <span className="mr-2 align-middle text-xs font-bold tracking-widest text-cyan-400">▶ 通信</span>
+              <span className="mr-2 align-middle text-xs font-bold tracking-widest text-cyan-400">通信</span>
               {l.text}{cursor && <span className="opacity-70">▌</span>}
             </p>
           );
         })}
       </div>
+      </CommsLine>
     </div>
   );
 };
