@@ -124,8 +124,8 @@ describe('bountyNaturalSpawnReady — 自然湧きの固定スケジュール(§
   it('全条件クリアなら発火してよい', () => {
     expect(bountyNaturalSpawnReady(ok())).toBe(true);
   });
-  it('初回は3:00未満なら不可(v8.3)', () => {
-    expect(BOUNTY_NATURAL_SPAWN_AT_MS[0]).toBe(180000);
+  it('初回は4:00未満なら不可(社長指示2026-11-28・旧3:00)', () => {
+    expect(BOUNTY_NATURAL_SPAWN_AT_MS[0]).toBe(240000);
     expect(bountyNaturalSpawnReady({ ...ok(), gameTime: BOUNTY_NATURAL_FIRST_MS - 1 })).toBe(false);
   });
   it('★1ランに1体だけ=spawnCountが上限に達したら不可(社長指示2026-08-23)', () => {
@@ -133,7 +133,7 @@ describe('bountyNaturalSpawnReady — 自然湧きの固定スケジュール(§
     expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: BOUNTY_NATURAL_MAX_COUNT, gameTime: 10000000 })).toBe(false);
   });
   it('★7:00の2体目は廃止=1体消化後は何時になっても出ない(社長指示2026-08-23。旧v8.3は[3:00,7:00])', () => {
-    expect(BOUNTY_NATURAL_SPAWN_AT_MS).toEqual([180000]);
+    expect(BOUNTY_NATURAL_SPAWN_AT_MS).toEqual([240000]);
     expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: 1, gameTime: 420000 })).toBe(false);
     expect(bountyNaturalSpawnReady({ ...ok(), spawnCount: 1, gameTime: 10000000 })).toBe(false);
   });
@@ -153,7 +153,7 @@ describe('bountyNaturalSpawnReady — 自然湧きの固定スケジュール(§
     expect(bountyNaturalSpawnReady({ ...ok(), calmOk: undefined })).toBe(true);
   });
 
-  it('★【不変条件】3:00ちょうどで解禁される(位相ズレで出られない状態に戻さない)', () => {
+  it('★【不変条件】設定時刻(4:00)ちょうどで解禁される(位相ズレで出られない状態に戻さない)', () => {
     // 社長報告「3分に出てこない」の回帰。時刻・回数・同時数・抑止ゲートだけで判定すること。
     expect(bountyNaturalSpawnReady({
       gameTime: BOUNTY_NATURAL_SPAWN_AT_MS[0], spawnCount: 0,

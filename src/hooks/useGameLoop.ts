@@ -275,7 +275,7 @@ import { loadHeroAscended } from '../utils/heroAscended';
 import { markBossesEncountered } from '../utils/bossEncounter'; // 出撃前のボス一覧: 変異体の「出会った」(社長指示2026-11-02)
 import { uniquePhantomSpec } from '../data/uniquePhantoms'; // research/BRAWLER_PHANTOM.md: 固有の幻影「拳鬼」
 import {
-  rollRunPatrolSlot, kenkiPatrolStep, phantomBrawlerSceneBlocked, phantomBrawlerSpawnOffset, PHANTOM_BRAWLER_ENCOUNTER_KEY, PHANTOM_BRAWLER_KIND,
+  rollRunPatrolSlot, kenkiPatrolStep, kenkiPatrolSpawnTimeReached, phantomBrawlerSceneBlocked, phantomBrawlerSpawnOffset, PHANTOM_BRAWLER_ENCOUNTER_KEY, PHANTOM_BRAWLER_KIND,
 } from '../utils/phantomBrawlerSpawn'; // research/BRAWLER_PHANTOM.md §6: 拳鬼の本編の出現(徘徊の枠)
 import { phantomSlotFree } from '../utils/phantomExclusive'; // 汎用の幻影と孫悟空を同時に出さない(相手が居る間は待つ)
 import { kenkiLeaveStep, kenkiLeaveAfterMs, KENKI_LEAVE_CROUCH_MS, phantomLeaveStep, genericPhantomMeetNow } from '../utils/kenkiLeave'; // 本編の孫悟空の「2分で跳んで帰る」
@@ -907,7 +907,7 @@ const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。�
 // ボス・裏ボス中は延期)は従来どおり=満たすまで毎フレーム再判定で自然に遅延する。
 // ★社長指示2026-08-23「紅き月を7にずらそう」: 7:00へ戻す。
 // 経緯: 元は7:00固定(v0.25.3317)→ 賞金首の2体目が7:00に来るため6:00へ避難(v8.3・2026-08-15)
-// → **その賞金首2体目を廃止した(BOUNTY_NATURAL_SPAWN_AT_MS=[3:00]・v0.25.3840)ので避ける理由が消えた**。
+// → **その賞金首2体目を廃止した(BOUNTY_NATURAL_SPAWN_AT_MS=[3:00]・v0.25.3840。いまは[4:00]・社長指示2026-11-28)ので避ける理由が消えた**。
 // PACING_PUZZLE.md §17-11: ランの時計+60秒(素の値=7:00→8:00)。
 // 延長計画(社長指示2026-10-12「推薦どおりで進めて」): 城ボスが 5:00→7:00 になったので、ボス後の洗礼も同じだけ後ろへ(7:00→9:00)。
 const RED_NIGHT_FIRE_AT_MS = 540000; // ウェルカム終了から9:00
@@ -6106,7 +6106,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // **180秒はどの通常コマにも入らない**ため賞金首①が構造的に3:00へ出られなかった
           // (詳細は bountyTick.ts の BountyNaturalSpawnInput.calmOk のコメント)。
           // v8.3(社長裁定2026-08-15「3分と7分にして」): CD方式を廃止し固定スケジュール
-          // (BOUNTY_NATURAL_SPAWN_AT_MS=[3:00]・社長指示2026-08-23で7:00を廃止=1ランに1体)。
+          // (BOUNTY_NATURAL_SPAWN_AT_MS=[4:00]・社長指示2026-08-23で7:00を廃止=1ランに1体・社長指示2026-11-28で3:00→4:00)。
           const bReady = bountyNaturalSpawnReady({
             // 延長計画(2026-10-12): ほかのイベントと同じく「ウェルカムを倒し切ってから」数える(旧=出撃から=ウェルカム中に出ることがあった)。
             gameTime: directorTime,
@@ -10335,7 +10335,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           // research/BRAWLER_PHANTOM.md §6: 固有の幻影「拳鬼」。①強制出現(?brawlerphantomnow=1・対策室の枠=プレイヤーのそば)
           // ②本編=徘徊の枠(社長指示2026-11-10「出現は徘徊の枠で、亡霊か宇宙飛行が出てる時は出ない。この3人の中で抽選」)。
-          // 枠の時刻・場所のまま(出撃3秒・プレイヤーから遠い POI=宇宙飛行群と同じ選び方)。名前の帯とアテンションは姿が画面に入った時。
+          // 場所は枠のまま(プレイヤーから遠い POI=宇宙飛行群と同じ選び方)。時刻は出撃から3分以降(KENKI_PATROL_SPAWN_AT_MS・社長指示2026-11-28・
+          // 時計は賞金首と同じ directorTime=ウェルカム後から数える)。亡霊・宇宙飛行群は出撃3秒のまま。名前の帯とアテンションは姿が画面に入った時。
           {
             const kenki = uniquePhantomSpec(PHANTOM_BRAWLER_KIND);
             // ★名前はレベルごと(research/BRAWLER.md §36・data/kenkiNames の1か所)。対策室(練習)は Lv1=「孫悟空」。
@@ -10357,7 +10358,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const patrolKenkiStage = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
               && (HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '') && !firstLoop);
             if (patrolKenkiStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
-            if (patrolKenkiStage && runMutantBossRef.current === 'brawler' && !patrolHeldByWelcome && !phantomBrawlerPatrolRef.current && newGameTime >= 3000
+            if (patrolKenkiStage && runMutantBossRef.current === 'brawler' && !patrolHeldByWelcome && !phantomBrawlerPatrolRef.current && kenkiPatrolSpawnTimeReached(directorTime)
               && phantomSlotFree(useGameStore.getState().enemies, 'brawler')) { // 汎用の幻影が居る間は待つ(取り消さない)
               phantomBrawlerPatrolRef.current = true;
               const kpcx = player.x + player.width / 2, kpcy = player.y + player.height / 2;
@@ -10369,7 +10370,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             // 本編で遠くに出した拳鬼: 姿が画面に入った最初のフレームで名前の帯+アテンション+「出会った」(亡霊・宇宙飛行群と同じ・1体につき1回)。
             // 退散: ステージのボス戦などの場面に入ったら消える(報酬なし・その出撃は二度と出ない)。ただし遠くでまだ会っていない間は消さない
-            // (出撃の頭の「ようこそ」の出来事が出撃3秒の出現と重なるため=kenkiPatrolStep)。
+            // (出撃の頭の「ようこそ」の出来事と重なるため=kenkiPatrolStep。旧=出撃3秒に出ていた頃の理由)。
             if (phantomBrawlerPatrolRef.current) {
               const ks = useGameStore.getState();
               const kenkiE = ks.enemies.find(e => e.type === 'guardian-phantom' && e.phantomUnique === PHANTOM_BRAWLER_KIND && e.health > 0 && e.corpseUntil === undefined);

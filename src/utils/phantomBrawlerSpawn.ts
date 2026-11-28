@@ -2,7 +2,7 @@
 //
 // 出方(社長指示2026-11-10「出現は徘徊の枠で、亡霊か宇宙飛行が出てる時は出ない。この3人の中で抽選」):
 // 宇宙飛行群・亡霊と同じ「徘徊の枠」(1ランに1回・20%・ステージ1・3・4・5)に入り、枠が開いたら3人から均等に1人。
-// 時刻・場所は枠のもの(出撃3秒・プレイヤーから遠い POI)。ステージ1は城のボスを一度倒した後から(それまでは抽選から抜く)。
+// 場所は枠のもの(プレイヤーから遠い POI)。時刻は出撃から3分以降(KENKI_PATROL_SPAWN_AT_MS・社長指示2026-11-28。旧=枠の出撃3秒)。ステージ1は城のボスを一度倒した後から(それまでは抽選から抜く)。
 // ステージのボス戦などの場面に入ったら退散する(その出撃では二度と出ない)。
 import type { PhantomUniqueKind } from '../types/game';
 import { HERO_PATROL_STAGES } from './heroScript';
@@ -17,6 +17,14 @@ export const PHANTOM_BRAWLER_DIST_MAX_PX = 500;
 export const PHANTOM_BRAWLER_ENCOUNTER_KEY = 'phantom-brawler';
 /** 本編で出る固有の幻影の種類。 */
 export const PHANTOM_BRAWLER_KIND: PhantomUniqueKind = 'brawler';
+
+/** 本編の徘徊で出る孫悟空の解禁時刻(社長指示2026-11-28「孫悟空は出撃後3分以降に出現にして(賞金首が3分だったら4分にして)」)。
+ * 時計は賞金首の自然湧き(bountyNaturalSpawnReady)と同じ directorTime(ウェルカムが関係するランはウェルカムが終わってから数える・
+ * 関係しないランは gameTime そのまま)。旧=出撃3秒(newGameTime >= 3000)。確認用の強制出現(?brawlerphantomnow=1・対策室)は待たない(この関数を通さない)。 */
+export const KENKI_PATROL_SPAWN_AT_MS = 180_000;
+/** 本編の徘徊の孫悟空を出してよい時刻に達したか(ウェルカム中の待ち・枠の空き等は呼び出し側の別条件のまま)。 */
+export const kenkiPatrolSpawnTimeReached = (directorTimeMs: number): boolean =>
+  directorTimeMs >= KENKI_PATROL_SPAWN_AT_MS;
 
 const clamp01 = (r: number): number => (Number.isFinite(r) ? Math.max(0, Math.min(0.999999999, r)) : 0);
 

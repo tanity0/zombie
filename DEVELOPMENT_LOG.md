@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5918 — 孫悟空は3分以降・賞金首は4分【2026-11-28 22:42】
+- 社長指示「孫悟空は出撃後3分以降に出現にして(賞金首が3分だったら4分にして)」。phantomBrawlerSpawn に KENKI_PATROL_SPAWN_AT_MS=180000・kenkiPatrolSpawnTimeReached(directorTime)。時計は賞金首と同じ directorTime(ウェルカムがあるランはウェルカム終了から数える)。BOUNTY_NATURAL_SPAWN_AT_MS を [240000] に。強制出現・亡霊/宇宙飛行群(3秒)・ウェルカム中の待ちは不変。
+- 3分に結びついた他(変えていない): ハンター HUNTER_START_MS=3分(孫悟空と同時に解禁)・木箱の3つ目180000・古い説明コメント。
+- 検証: typecheck・eslint・bountyTick/phantomBrawlerSpawn/constitution 等のテスト緑。見た目の変化なし。
+
 ## v0.25.5917 — 開発用: 熟練度を最大/リセット【2026-11-28 22:04】
 - 社長指示「熟練度の最大にする設定とリセットも欲しい」。utils/mastery に masteryXpToReach(masteryNeedFor の足し上げ)・maxedMasteryState・setAllMasteryMax・resetAllMastery(保存と masteryPending・メモリの pending も消す)+テスト3件。オプションのテスト開発用に2ボタン(ガチャリセットの下・既存の2つ並べの部品)。保存そのものを書き換える(すべて解放と違い戻らない)。
 - 検証: typecheck・eslint・mastery.test 49件。オプションのボタンと、押した後の装備画面(MAX / Lv 1)を撮って目視(scratchpad/shots/options-mastery-buttons.png・loadout-max.png・loadout-reset.png)。

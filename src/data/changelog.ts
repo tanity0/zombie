@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5918', items: ['孫悟空は戦いが始まって三分たってから現れる', '賞金首が現れるのは四分たってからになった']},
   { version: '0.25.5917', items: ['オプションのテスト開発用の欄に、熟練度を全部最大にするボタンとリセットするボタンを追加']},
   { version: '0.25.5916', items: ['ゲーム内容の変更はありません']},
   { version: '0.25.5915', items: ['格闘で吹き飛ばした敵の砂埃の記録が、敵が消えた後も残り続けていたのを片付けるようにした']},

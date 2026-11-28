@@ -2632,14 +2632,15 @@ export const bountySpawnBlocked = (input: BountySpawnBlockInput): boolean =>
 // 加えて確認する専用の回数/CD条件。producer側(useGameLoop.ts)がgameTime/回数/CD/同時数/抑止ゲート/
 // 緩コマ判定を集めてこの純関数へ渡すだけにし、判定ロジック自体はここへ1本化する。
 // ---------------------------------------------------------------------------------------------
-/** 固定スケジュール=**3:00の1体だけ**(社長指示2026-08-23「ステージに賞金首は3分の1体だけにして」)。
+/** 固定スケジュール=**4:00の1体だけ**(社長指示2026-11-28「孫悟空は出撃後3分以降に出現にして(賞金首が3分だったら4分にして)」)。
+ * 旧: 3:00の1体(社長指示2026-08-23「ステージに賞金首は3分の1体だけにして」)。
  * 旧: [3:00, 7:00] の2体(v8.3・社長裁定2026-08-15「3分と7分にして」)。さらに旧々: 初回5:00+CD90秒(v8.2)。
  * 表の長さがそのまま1ランの上限(BOUNTY_NATURAL_MAX_COUNT)なので、7:00の要素を落とすだけで
  * 「1ランに1体」になる(判定側の式は不変)。抑止ゲートで遅れた場合は解禁済みのまま=ゲートが
  * 開き次第出る(時刻を過ぎたら失効はしない)。
  * ※紅き夜は7:00へ戻した(useGameLoop.RED_NIGHT_FIRE_AT_MS・社長指示2026-08-23)。6:00へ避難していたのは
  *   7:00の賞金首2体目と重ねないためで、その2体目を廃止したので理由が消えた。 */
-export const BOUNTY_NATURAL_SPAWN_AT_MS: readonly number[] = [180000];
+export const BOUNTY_NATURAL_SPAWN_AT_MS: readonly number[] = [240000];
 export const BOUNTY_NATURAL_MAX_COUNT = BOUNTY_NATURAL_SPAWN_AT_MS.length;
 /** 互換: 初回の解禁時刻(テスト・既存参照用)。 */
 export const BOUNTY_NATURAL_FIRST_MS = BOUNTY_NATURAL_SPAWN_AT_MS[0];

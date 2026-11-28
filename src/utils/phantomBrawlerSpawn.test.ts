@@ -3,10 +3,12 @@ import { RUN_MUTANT_BOSS_CHANCE } from './wraithScript';
 import { describe, expect, it } from 'vitest';
 import {
   PHANTOM_BRAWLER_STAGES, PHANTOM_BRAWLER_DIST_MIN_PX, PHANTOM_BRAWLER_DIST_MAX_PX,
+  KENKI_PATROL_SPAWN_AT_MS, kenkiPatrolSpawnTimeReached,
   kenkiPatrolStep, phantomBrawlerSceneBlocked, phantomBrawlerSpawnOffset, phantomBrawlerStageEligible, rollRunPatrolSlot,
   type PhantomBrawlerScene,
 } from './phantomBrawlerSpawn';
 import { HERO_PATROL_STAGES } from './heroScript';
+import { BOUNTY_NATURAL_SPAWN_AT_MS } from './bountyTick';
 
 const seq = (...v: number[]) => { let i = 0; return () => v[Math.min(i++, v.length - 1)]; };
 const CLEAR: PhantomBrawlerScene = { otherBossEngaged: false, bossChasing: false, redNightActive: false, activeEvent: false, indoor: false, returnCircle: false };
@@ -80,5 +82,21 @@ describe('拳鬼の出現: 場面・距離', () => {
       expect(d).toBeGreaterThanOrEqual(PHANTOM_BRAWLER_DIST_MIN_PX - 1e-6);
       expect(d).toBeLessThanOrEqual(PHANTOM_BRAWLER_DIST_MAX_PX + 1e-6);
     }
+  });
+});
+
+describe('孫悟空(本編の徘徊)の出現時刻(社長指示2026-11-28「出撃後3分以降」)', () => {
+  it('解禁は3分', () => {
+    expect(KENKI_PATROL_SPAWN_AT_MS).toBe(180_000);
+  });
+  it('3分の1ms前は出ない・3分ちょうどから出る', () => {
+    expect(kenkiPatrolSpawnTimeReached(0)).toBe(false);
+    expect(kenkiPatrolSpawnTimeReached(3000)).toBe(false); // 旧=出撃3秒では出ない
+    expect(kenkiPatrolSpawnTimeReached(KENKI_PATROL_SPAWN_AT_MS - 1)).toBe(false);
+    expect(kenkiPatrolSpawnTimeReached(KENKI_PATROL_SPAWN_AT_MS)).toBe(true);
+    expect(kenkiPatrolSpawnTimeReached(600_000)).toBe(true);
+  });
+  it('賞金首の自然湧き(4分)より先に解禁される', () => {
+    expect(KENKI_PATROL_SPAWN_AT_MS).toBeLessThan(BOUNTY_NATURAL_SPAWN_AT_MS[0]);
   });
 });
