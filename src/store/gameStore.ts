@@ -6505,6 +6505,10 @@ const brawlerHitPatch = (
   const cls = BRC.brawlerEnemyClass(enemy);
   const bossLike = cls === 'boss';
   const strong = cls === 'strong';
+  // ★押し・吹き飛びの重さ(社長裁定2026-11-28「孫悟空は雑魚と同じ重さで」・utils/brawlerCombo brawlerKbWeightClass): 孫悟空は押しだけ雑魚の式で受ける。
+  //   止め・固まり(bossLike の側)は今どおり。kbBoss=押しをボス級の式で受けるか / kbAsMob=ボス級の区分だが押しは雑魚の式(孫悟空)。
+  const kbBoss = BRC.brawlerKbWeightClass(enemy, cls) === 'boss';
+  const kbAsMob = bossLike && !kbBoss;
   const attacking = isEnemyAttacking(enemy, gameTime);
   // 固まり・浮かせの除外は「本当に技を出している最中」だけ(移動・待ち・後退の相は固める=brawlerCombo の表)。押しの取り消し(強制)は今どおり isEnemyAttacking。
   const busy = BRC.isBrawlerTechBusy(enemy, gameTime);
@@ -6553,11 +6557,11 @@ const brawlerHitPatch = (
   const un = Math.hypot(ux, uy);
   if (un > 1e-6) { ux /= un; uy /= un; } else { ux = 0; uy = 1; }
   const kind = bs.kb.kind;
-  const forced = kind === 'big' && bs.kb.ignoreImmune === true && !bossLike;
+  const forced = kind === 'big' && bs.kb.ignoreImmune === true && !kbBoss;
   if (kind === 'none' || (!forced && !knockbackCdReady(enemy, now))) {
     // 押さない(止めの間だけその場で止める)。
     if (stopMs > 0) { out.knockbackVx = 0; out.knockbackVy = 0; out.knockbackUntil = now + stopMs; }
-  } else if (bossLike) {
+  } else if (kbBoss) {
     if (kind === 'big') {
       const dr = evaluateBossStopDr(enemy, now);
       if (dr.allowed) {
@@ -6577,21 +6581,29 @@ const brawlerHitPatch = (
     }
   } else {
     const spd = KNOCKBACK_SPEED * (kind === 'big' ? (bs.kb.power ?? BR.BRAWLER_BIG_KB_MULT) : kind === 'small' ? BR.BRAWLER_SMALL_KB_MULT : (bs.kb.power ?? 1)); // normal も power で強さを変えられる(飛び蹴りの3発目)
-    const kbUntil = now + stopMs + KNOCKBACK_DURATION;
+    // 孫悟空(kbAsMob)は止めを brHoldUntil の側で受ける(stopMs=0)ので、押しの時計は雑魚と同じ止めの長さ(hitStopMs)で数える=雑魚と同じ距離・同じ出だし。
+    const kbStopMs = kbAsMob ? hitStopMs : stopMs;
+    const kbUntil = now + kbStopMs + KNOCKBACK_DURATION;
     Object.assign(out, {
       knockbackVx: ux * spd, knockbackVy: uy * spd, knockbackUntil: kbUntil,
       ...(kind === 'big' ? { knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS, brawlerBlownAt: now } : {}),
       // 止めの後の速さの補正(updateEnemies)。下の大踏み潰し(強制)は実測で約90px が今の距離なので補正しない(§9-39)。
       // ★決め技の止めの延長(research/HITSTOP.md §7・案C)は押しの補正に数えない(押しの距離は今のまま=延長の間はその場で止まり、明けから今と同じ押し)。
-      ...(stopMs > 0 && !forced ? { knockbackStopMs: Math.max(1, stopMs - (bs.finishExtMs ?? 0)), knockbackStopFor: kbUntil } : {}),
+      ...(kbStopMs > 0 && !forced ? { knockbackStopMs: Math.max(1, kbStopMs - (bs.finishExtMs ?? 0)), knockbackStopFor: kbUntil } : {}),
       // ★止めの補正の無い押し(強制の押し)は、延長が無い時に動いた距離を上限にする(案C・utils/brawlerFinishStop)。
-      ...(stopMs > 0 && forced && (bs.finishExtMs ?? 0) > 0
-        ? { knockbackCapPx: BRF.brawlerFinishKbCapPx(spd, stopMs - bs.finishExtMs!, BRC.getBrawlerLockFrameMs(), KNOCKBACK_DURATION), knockbackCapFor: kbUntil, knockbackTravelPx: 0 }
+      ...(kbStopMs > 0 && forced && (bs.finishExtMs ?? 0) > 0
+        ? { knockbackCapPx: BRF.brawlerFinishKbCapPx(spd, kbStopMs - bs.finishExtMs!, BRC.getBrawlerLockFrameMs(), KNOCKBACK_DURATION), knockbackCapFor: kbUntil, knockbackTravelPx: 0 }
         : {}),
+      // 孫悟空はボス級の型(canShoveEnemy が通常の押しを止める・幻影の頭脳が歩きで上書きする)=押し道具と同じ旗で押しの間を開ける(強個体と同じ作法)。
+      ...(kbAsMob ? { knockbackShoveUntil: kbUntil } : {}),
+      // 強制の押し(大踏み潰し)は止めの補正を持たない=雑魚は止め(hitStunUntil)の間その場に留まってから飛ぶ。孫悟空にも同じ止めの位置の留めを書く
+      // (書かないと止めの間も満額で滑り、雑魚より遠くへ飛ぶ)。幻影の頭脳は hitStunUntil を読まない=位置の留めだけに効く。
+      ...(kbAsMob && forced && kbStopMs > 0 ? { hitStunUntil: now + kbStopMs } : {}),
     });
     // 下の大踏み潰しの強制ノックバック: 攻撃中の雑魚・強個体はその技を取り消してから押す(カウンター成立と同じ取り消し=予告も消える)。
     // 取り消しの欄はカウンター成立と同じ1本(utils/enemyBite.ts counterInterruptPatch)。凍結系も解く(押しを邪魔させない)。
-    if (forced && attacking) {
+    // 孫悟空(kbAsMob)の技の取り消しは自分の頭脳(phantomBrawlerTick)の側=雑魚の取り消しの欄(aiPhase 等)は書かない(押しだけ雑魚と同じ)。
+    if (forced && attacking && !kbAsMob) {
       // ★取り消しの欄はカウンターと同じだが、カウンターの「その場で2秒の硬直」(biteRecoverUntil)は書かない。
       // 硬直の間は1pxも動かない(updateEnemies の硬直ブロック)ので、書くと押しが丸ごと飲まれて0pxになっていた(実測・検収 kb-1)。
       Object.assign(out, counterInterruptPatch(enemy, gameTime), { biteRecoverUntil: undefined, liftUntil: undefined, rootUntil: undefined, lastCounteredAt: now });

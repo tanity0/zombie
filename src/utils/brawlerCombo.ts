@@ -68,6 +68,15 @@ export const brawlerLiftClass = (e: { type: EnemyType; colorTier?: string; isNam
  */
 export const brawlerLiftWeightClass = (e: { type: EnemyType }, cls: 'mob' | 'strong' | 'boss'): 'mob' | 'strong' | 'boss' =>
   e.type === 'guardian-phantom' ? 'mob' : cls;
+/**
+ * ★押し・吹き飛びの重さの区分(社長裁定2026-11-28「孫悟空は雑魚と同じ重さで」)。
+ * 孫悟空(guardian-phantom・phantomUnique 'brawler')は格闘の当たりの押し(普通の押し・小さい押し・吹き飛ばし・蹴り飛ばし)を雑魚の値で受ける
+ * (旧: ボス級の扱い=蹴り飛ばし(普通の押し×1.8)がボス級の小さい押し(×0.35×0.5)に置き換わり、約3pxしか動かなかった)。
+ * 汎用の幻影(phantomUnique なし)は今どおりボス級。区分そのもの(止め・固まり・体勢値・HPバー)は変えない=押しの計算にだけ使う。
+ * 孫悟空のレバーガードの小さい押しは phantomBrawlerTick の側(元の押しを消して置き換える)=今どおり。
+ */
+export const brawlerKbWeightClass = (e: { type: EnemyType; phantomUnique?: string }, cls: 'mob' | 'strong' | 'boss'): 'mob' | 'strong' | 'boss' =>
+  e.type === 'guardian-phantom' && e.phantomUnique === 'brawler' ? 'mob' : cls;
 
 /**
  * ★格闘の固まり・止めが「技を出している最中」として除外する相(社長実機報告2026-11-08「まだ攻撃で敵が止まるのは一切入ってないね?」)。
