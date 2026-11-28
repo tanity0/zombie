@@ -576,7 +576,7 @@ describe('踵落とし(飛び蹴りの2発目の続きで下・社長指示2026-
     expect(brawlerHeelCost()).toBe(brawlerTechCost('kick') + BRAWLER_HEEL_EXTRA_COST);
     expect(brawlerHeelCost(true)).toBe(0);
   });
-  it('影: 0 から斜め上へ振り上げ→少し沈んで溜め→飛ぶ間に時計回りに少し回し、当たる瞬間に伸び切る(水平の少し手前)', () => {
+  it('影: 0 からほぼ真上へ振り上げ→少し戻して溜め→飛ぶ間に加速しながら大きく回し、当たる瞬間に伸び切る(水平の少し手前)', () => {
     const s = brawlerStartTech(kick(2, true), 'kick', 2000, 3, false, true);
     const c = s.kickChargeMs ?? 0;
     expect(brawlerHeelStandAt(s, 0).rot).toBeCloseTo(0);
@@ -585,12 +585,18 @@ describe('踵落とし(飛び蹴りの2発目の続きで下・社長指示2026-
     const hit = brawlerHeelStandAt(s, s.windupMs);
     expect(hit.rot).toBeCloseTo(BRAWLER_HEEL_ROT_DOWN);
     expect(hit.ext).toBeCloseTo(1);
-    // ★斜め上の蹴りを時計回りに少し回す(社長指示2026-11-12): 当たる瞬間は水平の少し手前・回しは少し
+    // 当たる瞬間は水平の少し手前(社長指示2026-11-12)
     expect(hit.rot).toBeLessThan(0);
     expect(hit.rot).toBeGreaterThanOrEqual(-0.2);
+    // ★溜めの頂点はほぼ真上(社長指示2026-11-28「もっと上に向けてる姿勢から勢いよく回して」)=回しは 1.2rad 以上
+    expect(brawlerHeelStandAt(s, c).rot).toBeLessThanOrEqual(-1.3);
     const turn = hit.rot - brawlerHeelStandAt(s, c).rot;
-    expect(turn).toBeGreaterThanOrEqual(0.3);
-    expect(turn).toBeLessThanOrEqual(0.6);
+    expect(turn).toBeGreaterThanOrEqual(1.2);
+    // 振り下ろしは加速して叩きつける: 出だしから動き出し(止まったまま待たない)、後半の方が速い
+    const fl = s.windupMs - c;
+    const r = (f: number) => brawlerHeelStandAt(s, c + fl * f).rot;
+    expect(r(0.1) - r(0)).toBeGreaterThan(0.01);
+    expect(r(1) - r(0.8)).toBeGreaterThan(r(0.2) - r(0));
     // 当たった後も水平を大きく越えて下向きにしない
     for (let el = s.windupMs; el <= s.windupMs + s.recoveryMs; el += 1) expect(brawlerHeelStandAt(s, el).rot).toBeLessThanOrEqual(0.15);
     // 1msごとに角度が跳ばない(溜め→飛ぶ→当たった後のつなぎ目も)

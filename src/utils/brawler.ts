@@ -1900,27 +1900,36 @@ export const brawlerStandAt = (s: BrawlerState | undefined, t: number): BrawlerS
 
 const hit0 = (s: Pick<BrawlerState, 'windupMs'>, el: number): boolean => el >= s.windupMs;
 /**
- * 踵落としの影の動き(クリエイティブ監査2026-11-11)。体ごと大きく回すと側転に見えるので、回しは控えめにして、
- * 「上から下ろしてくる」は縦の移動(lift)で見せる。回しの中心は腰(描画が anchor を下げる)。
- *  - 溜めの前半: 2発目の終わりの向き(0)から振り上げる(減速)。後半: 振り上げた頂点から少し沈んで溜める。
- *  - 飛ぶ間: 終わり際に一気に振り下ろす(3乗)。当たった後: 振り抜いてから少し戻る(踵が跳ね返る)。
+ * 踵落としの影の動き(クリエイティブ監査2026-11-11・2026-11-28 に回しを大きく)。回しの中心は腰(描画が anchor を下げる=脚の付け根)。
+ * 回すのは影(蹴りのシルエット)だけ=本人の体の絵は回さない(攻撃中の体は揺らさない・brawlerCrispPoseAt)。
+ *  - 溜めの前半: 2発目の終わりの向き(0)からほぼ真上まで振り上げる(減速)。後半: 頂点から少しだけ戻して溜める。
+ *  - 飛ぶ間: 出だしから動き出し、加速しながら振り下ろす(brawlerHeelSwing・当たる瞬間が一番速い)。当たった後: 振り抜いてから少し戻る(踵が跳ね返る)。
  * rot=rad(右向きの絵で負=振り上げ・正=振り下ろし)/ lift=影を持ち上げる量(px・上が正)/ ext=前への伸び(当たる瞬間に1)。
  */
 // ★社長指示2026-11-12「踵落としは、斜め上に傾いてる蹴りのシルエットを時計回りに少し回すイメージ」: 斜め上に傾いた蹴り(UP)から、
 //   振り下ろしで時計回りに少しだけ(0.4rad)回し、当たる瞬間は水平の少し手前(DOWN)。当たった後は少しだけ振り抜いて少し戻る(水平を越えて下向きにしない)。
 //   体は空中に残るので、影の下がり(LIFT+SINK)も小さく(8px)、当たった後は体の高さに居る(影の縦は描画で体の絵の位置=姿勢の jump に付く)。
 //   (旧: DOWN=+0.4 / FOLLOW=0.25 / BACK=0.12 / LIFT=20 / SINK=6 =水平を越えて下へ大きく回り、26px 落ちていた。)
-export const BRAWLER_HEEL_ROT_PEAK = -0.62;
-export const BRAWLER_HEEL_ROT_UP = -0.5;
+// ★社長指示2026-11-28「踵落としの絵の動き、もっと上に向けてる姿勢から勢いよく回して」: 溜めで脚をほぼ真上(PEAK≈−89°)まで回し込み、
+//   少しだけ戻して溜め(UP≈−83°)、飛ぶ間に出だしから動き出して加速しながら叩きつける(brawlerHeelSwing)。当たる瞬間の向き(DOWN)は今までどおり水平の少し手前。
+//   (旧 2026-11-12: PEAK −0.62 / UP −0.5 / FOLLOW 0.08 / BACK 0.04 =斜め上から 0.4rad だけ回していた。)
+export const BRAWLER_HEEL_ROT_PEAK = -1.55;
+export const BRAWLER_HEEL_ROT_UP = -1.45;
 export const BRAWLER_HEEL_ROT_DOWN = -0.1;
-export const BRAWLER_HEEL_ROT_FOLLOW = 0.08;
-export const BRAWLER_HEEL_ROT_BACK = 0.04;
+export const BRAWLER_HEEL_ROT_FOLLOW = 0.12; // 勢いが大きくなった分、当たった後の振り抜きも少し大きく(水平を大きくは越えない)
+export const BRAWLER_HEEL_ROT_BACK = 0.06;
+/** 踵落としの振り下ろしの進み(0..1)。出だしから少し動き(線形の項)、終わり際ほど速い(3乗の項)=加速して叩きつけ、当たる瞬間が一番速い。 */
+export const BRAWLER_HEEL_SWING_LIN = 0.2;
+export const brawlerHeelSwing = (q: number): number => {
+  const k = Math.max(0, Math.min(1, q));
+  return BRAWLER_HEEL_SWING_LIN * k + (1 - BRAWLER_HEEL_SWING_LIN) * k * k * k;
+};
 /**
  * ★踵落としの体の傾き=蹴りの影の回し(brawlerHeelStandAt の rot)×この係数(社長裁定2026-11-12「まわして」)。同じ時刻・同じ向きで、量は影より小さく:
- * 溜めで後ろへ反り(lean 負・最大 0.62×0.55≈0.34rad)、振り下ろしで時計回りに戻り、当たる瞬間は少し反りが残る(≈−0.055)。当たった後は後隙の進みで0へ戻して着地へつなぐ。
- * 体ごと大きく回すと側転に見える(以前の指摘)ので最大0.4rad 未満。0.55=テンポ係数1.0(溜め127ms)でも1フレーム(16ms)の跳びが0.15未満に収まる上限側。
+ * 溜めで後ろへ反り(lean 負・最大 1.55×0.22≈0.34rad)、振り下ろしで時計回りに戻り、当たる瞬間は少し反りが残る(≈−0.02)。当たった後は後隙の進みで0へ戻して着地へつなぐ。
+ * 体ごと大きく回すと側転に見える(以前の指摘)ので最大0.4rad 未満。(いまプレイヤーの体は brawlerCrispPoseAt が傾きを0にする=この値は絵に出ていない。)
  */
-export const BRAWLER_HEEL_BODY_ROT_K = 0.55;
+export const BRAWLER_HEEL_BODY_ROT_K = 0.22; // 2026-11-28 に影の回しを大きくした分だけ下げた(体の最大の反り ≈0.34rad は今までどおり。旧 0.55)
 export const BRAWLER_HEEL_LIFT_PX = 8;
 export const BRAWLER_HEEL_SINK_PX = 0;
 /**
@@ -1960,13 +1969,13 @@ export const brawlerHeelStandAt = (
   const charge = Math.min(s.windupMs, s.kickChargeMs ?? 0);
   if (el < charge) {
     const c = charge > 0 ? Math.max(0, el / charge) : 1;
-    if (c < 0.6) { const k = easeOut(c / 0.6); return { rot: BRAWLER_HEEL_ROT_PEAK * k, lift: BRAWLER_HEEL_LIFT_PX * k, ext: 0.25 }; }
+    if (c < 0.6) { const k = easeOut(c / 0.6); return { rot: BRAWLER_HEEL_ROT_PEAK * k, lift: BRAWLER_HEEL_LIFT_PX * k, ext: 0.25 }; } // 振り上げ(減速して頂点へ)
     const k = (c - 0.6) / 0.4;
     return { rot: BRAWLER_HEEL_ROT_PEAK + (BRAWLER_HEEL_ROT_UP - BRAWLER_HEEL_ROT_PEAK) * k * k * (3 - 2 * k), lift: BRAWLER_HEEL_LIFT_PX, ext: 0.25 };
   }
   if (el < s.windupMs) {
     const q = s.windupMs > charge ? Math.max(0, Math.min(1, (el - charge) / (s.windupMs - charge))) : 1;
-    const q3 = q * q * q;
+    const q3 = brawlerHeelSwing(q);
     return {
       rot: BRAWLER_HEEL_ROT_UP + (BRAWLER_HEEL_ROT_DOWN - BRAWLER_HEEL_ROT_UP) * q3,
       lift: BRAWLER_HEEL_LIFT_PX - (BRAWLER_HEEL_LIFT_PX + BRAWLER_HEEL_SINK_PX) * q3,
