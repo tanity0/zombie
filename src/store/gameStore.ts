@@ -473,7 +473,7 @@ import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled }
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled, isEggExpired, eggsToArmForCap, eggInCapsule, eggInBeam } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { resolveGachaPull, nextGachaMissStreak, nextGachaPity } from '../utils/gachaGuarantee';
+import { resolveGachaPull, nextGachaMissStreak, nextGachaPity, isGachaComplete } from '../utils/gachaGuarantee';
 import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, SKILLS, gachaPullCost, gachaRefundFor, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS, retiredSkillsRefundTotal, shownOwnedSkills, shownOwnedSkillLevels, shownSubShelfLevel } from '../data/campaign';
 import { MELEE_HIT_MS } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
 import { SKILL_BURST_MS, skillBurstSize, skillBurstTint } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
@@ -28527,6 +28527,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   pullGacha: () => {
     // 階段式価格(v0.25.2344): 単価は**累計pull数**で決まる。コスト0(無料)なら課金スキップ、
     // 有料なら残高を消費(不足で null=引かない)。
+    // コンプリート(出うる全スキルが上限Lv)なら引かない=お金も取らない(社長指示2026-11-28)。
+    // 書き込み側なので保存の所持で判定する(開発用「すべて解放」の見え方は画面側=ボタンが塞ぐ)。
+    if (isGachaComplete(get().ownedSkills, get().ownedSkillLevels)) return null;
     const pullsTotal = get().gachaPullsTotal;
     const price = gachaPullCost(pullsTotal);
     if (price > 0 && !get().spendGold(price)) return null;

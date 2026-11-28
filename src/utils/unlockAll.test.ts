@@ -25,6 +25,7 @@ const { buildBossStoryGroups } = await import('./bossStoryArchive');
 const { lockedPreviewStage } = await import('./opsMapSelect');
 const { nextOperationStage } = await import('./dsHome');
 const { unlockedWeaponKeys, shelfWeaponKeys, allSlotCandidateKeys, defaultSlotKeys } = await import('./weaponSlot');
+const { isGachaComplete } = await import('./gachaGuarantee');
 
 type SkillKey = import('../types/game').SkillKey;
 const stage = (id: string) => {
@@ -178,6 +179,15 @@ describe('各判定は「本来 || すべて解放」', () => {
     expect(shownOwnedSkillLevels(levels)).toBe(lv);
     expect(levels).toEqual({ sharpshooter: 1 });
     expect(shownSubShelfLevel('dog', {})).toBe(3);
+  });
+
+  it('ガチャのコンプリート: 見えている所持で判定する(オンならコンプリート・保存の所持では未達のまま)', () => {
+    const owned: SkillKey[] = ['sharpshooter'];
+    const levels: Partial<Record<SkillKey, number>> = { sharpshooter: 1 };
+    expect(isGachaComplete(shownOwnedSkills(owned), shownOwnedSkillLevels(levels))).toBe(false);
+    setUnlockAllOn(true);
+    expect(isGachaComplete(shownOwnedSkills(owned), shownOwnedSkillLevels(levels))).toBe(true);
+    expect(isGachaComplete(owned, levels)).toBe(false);
   });
 });
 

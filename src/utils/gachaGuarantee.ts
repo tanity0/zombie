@@ -35,6 +35,18 @@ export const canGachaPromote = (
   key: SkillKey, owned: readonly SkillKey[], levels: Partial<Record<SkillKey, number>>,
 ): boolean => !owned.includes(key) || (levels[key] ?? 1) < skillMaxLevel(key);
 
+/** ガチャから出うる全スキル(各レア度の排出の枠 gachaPoolOf の和。rollGachaSkill の行き先はこの中に収まる)。 */
+export const gachaObtainableSkills = (): SkillKey[] =>
+  (['normal', 'rare', 'super'] as SkillRarity[]).flatMap(r => gachaPoolOf(r));
+
+/**
+ * ガチャのコンプリート(社長指示2026-11-28「コンプリートしたらもう押せないようにして」)。
+ * 出うる全スキルを持っていて、すべてが上限Lv=どれを引いても新規にもLv上昇にもならない。
+ */
+export const isGachaComplete = (
+  owned: readonly SkillKey[], levels: Partial<Record<SkillKey, number>>,
+): boolean => gachaObtainableSkills().every(k => !canGachaPromote(k, owned, levels));
+
 export type GachaForce = 'none' | 'bump' | 'same-rarity' | 'other-rarity';
 
 export interface GachaResolveInput {

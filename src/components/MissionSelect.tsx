@@ -171,7 +171,7 @@ import {
   gachaPullCostFor, RARITY_LABEL, skillMaxLevel, skillDescForLevel, stageDateLabel, REVISIT_MISSION,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, gachaRateTable, skillIcon, type SkillRarity, type Stage
 } from '../data/campaign';
-import { gachaGuaranteeRemaining } from '../utils/gachaGuarantee';
+import { gachaGuaranteeRemaining, isGachaComplete } from '../utils/gachaGuarantee';
 import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
 import { useSkillIconSheet } from '../utils/useSkillIconSheet';
 import {
@@ -2870,6 +2870,9 @@ const SkillGacha: React.FC = () => {
   const pity = useGameStore(s => s.gachaPitySinceSuper);
   const pullsTotal = useGameStore(s => s.gachaPullsTotal); // 階段式価格の段(プリミティブ購読)
   const missStreak = useGameStore(s => s.gachaMissStreak); // 10回に1回の保証(プリミティブ購読)
+  // コンプリート(出うる全スキルが上限Lv)=引くボタンを塞ぐ。boolean で購読(配列は丸ごと購読しない)。
+  // 開発用「すべて解放」中は見えている所持(全種・最大Lv)で判定する=画面の「習得」表示と食い違わせない。
+  const complete = useGameStore(s => isGachaComplete(shownOwnedSkills(s.ownedSkills), shownOwnedSkillLevels(s.ownedSkillLevels)));
   const [showRates, setShowRates] = useState(false);        // 排出一覧を開いているか
   const pullGacha = useGameStore(s => s.pullGacha);
   const [pendingCount, setPendingCount] = useState<1 | 10 | null>(null); // 選択した訓練回数(=射撃練習場へ遷移中)
@@ -2893,7 +2896,8 @@ const SkillGacha: React.FC = () => {
     const got: GachaPullResult[] = [];
     for (let i = 0; i < n; i++) {
       const r = pullGacha();
-      if (!r) { if (got.length === 0) { setNoGold(true); setResults(null); return; } break; } // ゴールド切れで打ち切り
+      // ゴールド切れ/途中でコンプリートしたら打ち切り(1回も引けなければ「足りない」はゴールドの時だけ出す)
+      if (!r) { if (got.length === 0) { setNoGold(!isGachaComplete(useGameStore.getState().ownedSkills, useGameStore.getState().ownedSkillLevels)); setResults(null); return; } break; }
       got.push(r);
     }
     const best = bestRarity(got);
@@ -3163,8 +3167,8 @@ const SkillGacha: React.FC = () => {
   // 階段式(v0.25.2344): 10連は段をまたぐので「単価×10」では嘘になる。必ず合計額を出す。
   const cost1 = gachaPullCostFor(pullsTotal, 1);
   const cost10 = gachaPullCostFor(pullsTotal, 10);
-  const cant1 = goldBalance < cost1;
-  const cant10 = goldBalance < cost10;
+  const cant1 = complete || goldBalance < cost1;
+  const cant10 = complete || goldBalance < cost10;
   const costLabel = (c: number) => (c > 0 ? `${c.toLocaleString()}G` : '無料');
 
   // --- 射撃練習場(別画面) ----------------------------------------------
@@ -3172,7 +3176,7 @@ const SkillGacha: React.FC = () => {
   // その的の下に「撃つ」を画像内テキストとして置く(ボタン見た目にしない)。値段は前画面で確認済みのため非表示。
   // 画面のどこを押しても発射(戻る除く)→破裂→暗転リザルト(上の分岐)へ。
   if (pendingCount !== null) {
-    const cantPull = goldBalance < gachaPullCostFor(pullsTotal, pendingCount);
+    const cantPull = complete || goldBalance < gachaPullCostFor(pullsTotal, pendingCount);
     // 撃つ画面も body 直下へポータル(施設の scroll/transform から独立した専用フルスクリーン)。
     return createPortal(
       <div
@@ -3240,6 +3244,7 @@ const SkillGacha: React.FC = () => {
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
+          disabled={complete}
           onClick={() => { if (cant1) { playSfx('ui-deny'); return; } playSfx('ui-select'); setPendingCount(1); setNoGold(false); }}
           className={`rounded-none px-3 py-3 text-[15px] font-bold ${
             cant1
@@ -3251,6 +3256,7 @@ const SkillGacha: React.FC = () => {
         </button>
         <button
           type="button"
+          disabled={complete}
           onClick={() => { if (cant10) { playSfx('ui-deny'); return; } playSfx('ui-select'); setPendingCount(10); setNoGold(false); }}
           className={`rounded-none px-3 py-3 text-[15px] font-bold ${
             cant10
@@ -3262,10 +3268,14 @@ const SkillGacha: React.FC = () => {
         </button>
       </div>
       {/* ボタンの下に金額表示 */}
-      <div className="mt-1.5 grid grid-cols-2 gap-2 text-center text-[12px] font-semibold">
-        <span className={cant1 ? 'text-rose-300' : 'text-amber-200'}>{costLabel(cost1)}</span>
-        <span className={cant10 ? 'text-rose-300' : 'text-amber-200'}>{costLabel(cost10)}</span>
-      </div>
+      {complete ? (
+        <p className="mt-1.5 text-center text-[12px] font-semibold text-white/55">コンプリート</p>
+      ) : (
+        <div className="mt-1.5 grid grid-cols-2 gap-2 text-center text-[12px] font-semibold">
+          <span className={cant1 ? 'text-rose-300' : 'text-amber-200'}>{costLabel(cost1)}</span>
+          <span className={cant10 ? 'text-rose-300' : 'text-amber-200'}>{costLabel(cost10)}</span>
+        </div>
+      )}
       {/* 超レアの確率と、10回に1回の保証を1つの枠に。右に排出一覧。 */}
       <div className="mt-2 flex items-stretch gap-2 rounded-none bg-black/20 py-1 pl-2 pr-1 text-[10px]">
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">

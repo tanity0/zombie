@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   GACHA_GUARANTEE_EVERY, isGachaGuaranteedPull, gachaGuaranteeRemaining, nextGachaMissStreak,
-  resolveGachaPull, canGachaPromote, nextGachaPity,
+  resolveGachaPull, canGachaPromote, nextGachaPity, gachaObtainableSkills, isGachaComplete,
 } from './gachaGuarantee';
 import { SKILLS, skillMaxLevel, gachaPoolOf, gachaRateTable, rarityWeightsForPity, GACHA_EXCLUDED_SKILLS } from '../data/campaign';
 import type { SkillKey } from '../types/game';
@@ -131,5 +131,33 @@ describe('nextGachaPity', () => {
     expect(nextGachaPity(6, SKILLS[normalKey].rarity, r.rarity)).toBe(0);
     // 選び直しが super 以外なら今どおり+1
     expect(nextGachaPity(6, 'normal', 'rare')).toBe(7);
+  });
+});
+
+describe('isGachaComplete(ガチャのコンプリート)', () => {
+  const all = gachaObtainableSkills();
+  it('出うる全スキル=各レア度の排出の枠の和(除外は入らない)', () => {
+    const fromPools = (['normal', 'rare', 'super'] as const).flatMap(r => gachaPoolOf(r));
+    expect(all).toEqual(fromPools);
+    expect(all.length).toBeGreaterThan(0);
+    for (const k of GACHA_EXCLUDED_SKILLS) expect(all).not.toContain(k);
+  });
+  it('全部を上限Lvで持っていればコンプリート', () => {
+    expect(isGachaComplete(all, maxAll(all))).toBe(true);
+  });
+  it('除外スキルを持っていなくてもコンプリート(枠の外は見ない)', () => {
+    expect(isGachaComplete(all.filter(k => !GACHA_EXCLUDED_SKILLS.includes(k)), maxAll(all))).toBe(true);
+  });
+  it('1つでも未所持ならコンプリートではない', () => {
+    expect(isGachaComplete(all.slice(1), maxAll(all))).toBe(false);
+  });
+  it('1つでも上限未満ならコンプリートではない(Lv未記録=Lv1扱い)', () => {
+    const upTo3 = all.find(k => skillMaxLevel(k) > 1)!;
+    expect(isGachaComplete(all, { ...maxAll(all), [upTo3]: skillMaxLevel(upTo3) - 1 })).toBe(false);
+    const lv = maxAll(all); delete lv[upTo3];
+    expect(isGachaComplete(all, lv)).toBe(false);
+  });
+  it('空の所持ではコンプリートではない', () => {
+    expect(isGachaComplete([], {})).toBe(false);
   });
 });
