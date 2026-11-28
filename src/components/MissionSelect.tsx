@@ -171,7 +171,7 @@ import {
   gachaPullCostFor, RARITY_LABEL, skillMaxLevel, skillDescForLevel, stageDateLabel, REVISIT_MISSION,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, gachaRateTable, skillIcon, type SkillRarity, type Stage
 } from '../data/campaign';
-import { gachaGuaranteeRemaining, isGachaComplete } from '../utils/gachaGuarantee';
+import { gachaGuaranteeRemaining, isGachaComplete, gachaObtainableSkills } from '../utils/gachaGuarantee';
 import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
 import { useSkillIconSheet } from '../utils/useSkillIconSheet';
 import {
@@ -2862,11 +2862,15 @@ const GachaRateList: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   );
 };
 
+// 「習得 X/Y」の分母=ガチャから出うるスキル(コンプリートで X=Y に揃う)。排出の枠は固定なので1度だけ作る。
+const GACHA_POOL_KEYS: readonly SkillKey[] = gachaObtainableSkills();
+
 const SkillGacha: React.FC = () => {
   const portalRoot = useHudPortalRoot(); // 演出のポータル先(PC の拡大の包みの中・段3-2 品質監査 A-2)
   // 毎フレーム購読しない: プリミティブ/派生のみ購読(CLAUDE.md React再レンダー規律)。
   const goldBalance = useGameStore(s => s.goldBalance);
-  const ownedCount = useGameStore(s => s.ownedSkills.length);
+  // ガチャから出うるスキルのうち持っている数(数値で購読)。「すべて解放」中は見えている所持で数える=コンプリート判定と揃える。
+  const ownedCount = useGameStore(s => { const own = shownOwnedSkills(s.ownedSkills); return GACHA_POOL_KEYS.filter(k => own.includes(k)).length; });
   const pity = useGameStore(s => s.gachaPitySinceSuper);
   const pullsTotal = useGameStore(s => s.gachaPullsTotal); // 階段式価格の段(プリミティブ購読)
   const missStreak = useGameStore(s => s.gachaMissStreak); // 10回に1回の保証(プリミティブ購読)
@@ -3276,7 +3280,19 @@ const SkillGacha: React.FC = () => {
           <span className={cant10 ? 'text-rose-300' : 'text-amber-200'}>{costLabel(cost10)}</span>
         </div>
       )}
-      {/* 超レアの確率と、10回に1回の保証を1つの枠に。右に排出一覧。 */}
+      {/* 超レアの確率と、10回に1回の保証を1つの枠に。右に排出一覧。
+          コンプリート中は確率と保証の行を出さない(もう引けない)。排出一覧への入口だけ右に残す。 */}
+      {complete ? (
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => { playSfx('ui-select'); setShowRates(true); }}
+            className="flex min-h-[32px] items-center px-3 text-[11px] font-semibold text-fuchsia-200 underline decoration-fuchsia-200/40 underline-offset-4 active:text-white"
+          >
+            排出一覧
+          </button>
+        </div>
+      ) : (
       <div className="mt-2 flex items-stretch gap-2 rounded-none bg-black/20 py-1 pl-2 pr-1 text-[10px]">
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
           <div className="flex items-center justify-between gap-2">
@@ -3297,9 +3313,10 @@ const SkillGacha: React.FC = () => {
           排出一覧
         </button>
       </div>
+      )}
       {showRates && <GachaRateList onClose={() => setShowRates(false)} />}
       <p className="mt-2 text-[10px] leading-snug text-white/50">
-        外すほど{RARITY_LABEL.super}が出やすくなり、被るほど高いLvに寄る。被ってLvが上がらなければ返金。習得 {ownedCount}/{OBTAINABLE_SKILL_KEYS.length}
+        外すほど{RARITY_LABEL.super}が出やすくなり、被るほど高いLvに寄る。被ってLvが上がらなければ返金。習得 {ownedCount}/{GACHA_POOL_KEYS.length}
       </p>
     </div>
   );

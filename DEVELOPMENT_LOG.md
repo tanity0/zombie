@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5909 — ガチャの習得数と、コンプリート時の確率欄【2026-11-28 16:23】
+- 社長承認。SkillGacha の「習得 X/Y」を gachaObtainableSkills 基準に(常時・分子は shownOwnedSkills=すべて解放と整合・数値1つの購読)。コンプリート中は確率の枠を出さず、排出一覧のリンクだけ右寄せで残す。所持一覧の OBTAINABLE_SKILL_KEYS 側は不変。
+- 検証: typecheck・eslint。コンプリート前(17/39)/コンプリート時(39/39)を撮って目視(scratchpad/shots/gacha-normal.png・gacha-complete.png)。
+
 ## v0.25.5908 — ガチャのコンプリートで引けなくする【2026-11-28 16:03】
 - 社長指示「開発室のガチャはコンプリートしたらもう押せないようにして」。utils/gachaGuarantee に gachaObtainableSkills(gachaPoolOf の和)・isGachaComplete(全部 canGachaPromote が偽)+テスト。SkillGacha は boolean 購読で2ボタン disabled+値段行を「コンプリート」に。pullGacha も冒頭で止める(お金・累計を動かさない)。10回の途中でコンプリートしたら打ち切り。
 - すべて解放オン中: 画面は見えている所持で判定(=コンプリート表示)・pullGacha は保存の所持で判定(書き込み側の掟)。resetGachaProgress で再び押せる。
