@@ -9,6 +9,7 @@ import {
   type BrawlerComboFields, type BrawlerMoveKey, isBrawlerTechBusy, BRAWLER_HOLDABLE_PHASES,
   brawlerJugglePush, brawlerAirborne, brawlerJuggleHeightRel, brawlerJuggleLanded, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_WEIGHT_STUN_BOSS, BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_COST, BRAWLER_JUGGLE_DROP_MS, BRAWLER_DOWN_NO_HOLD_MS, type BrawlerJuggleFields,
   brawlerFallK, brawlerFallStretchMs, BRAWLER_FALL_FIRST_SLOW, BRAWLER_FALL_SPEEDUP_PER_PICK, BRAWLER_FALL_MAX_SPEEDUP, BRAWLER_JUGGLE_MIN_MS,
+  brawlerComboDamageMult, brawlerComboDamageMultOnHit,
 } from './brawlerCombo';
 /** ★落ちる部分の重さの増え方(社長裁定2026-11-13): 元の弧の長さ ms を、拾った回数 n の落ちる時間の倍率で伸び縮みさせた長さ。 */
 const fallMs = (ms: number, n: number) => brawlerFallStretchMs(ms, brawlerFallK(n));
@@ -390,5 +391,26 @@ describe('★格闘の区分: 宿敵=強個体(社長指示2026-11-14「宿敵�
     expect(brawlerEnemyClass({ type: 'bat', colorTier: 'red' })).toBe('strong');
     expect(brawlerEnemyClass({ type: 'pumpkin', isNamed: true })).toBe('strong');
     expect(brawlerEnemyClass({ type: 'mimir', isNamed: true })).toBe('boss');
+  });
+});
+
+describe('★コンボ数のダメージ倍率(社長指示2026-11-28「1.1倍ずつ」「2倍を天井」)', () => {
+  it('0→1.0・1→1.1・7→1.9487・8以上→2.0', () => {
+    expect(brawlerComboDamageMult(0)).toBe(1);
+    expect(brawlerComboDamageMult(1)).toBeCloseTo(1.1, 12);
+    expect(brawlerComboDamageMult(7)).toBeCloseTo(1.9487171, 6);
+    expect(brawlerComboDamageMult(8)).toBe(2);
+    expect(brawlerComboDamageMult(12)).toBe(2);
+    expect(brawlerComboDamageMult(1000)).toBe(2);
+  });
+  it('負数・NaN は 1.0', () => {
+    expect(brawlerComboDamageMult(-1)).toBe(1);
+    expect(brawlerComboDamageMult(-100)).toBe(1);
+    expect(brawlerComboDamageMult(Number.NaN)).toBe(1);
+  });
+  it('当たりの数(何発目か)からは、その前までの数で掛ける=1発目は等倍', () => {
+    expect(brawlerComboDamageMultOnHit(1)).toBe(1);
+    expect(brawlerComboDamageMultOnHit(2)).toBeCloseTo(1.1, 12);
+    expect(brawlerComboDamageMultOnHit(9)).toBe(2);
   });
 });

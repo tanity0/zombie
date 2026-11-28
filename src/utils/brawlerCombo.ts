@@ -157,6 +157,17 @@ export const BRAWLER_PRORATION_STEP = 0.05;
 export const BRAWLER_PRORATION_MIN = 0.5;
 export const brawlerProration = (n: number): number =>
   n < BRAWLER_PRORATION_FROM ? 1 : Math.max(BRAWLER_PRORATION_MIN, 1 - BRAWLER_PRORATION_STEP * (n - BRAWLER_PRORATION_FROM + 1));
+/**
+ * ★コンボ数のダメージ倍率(社長指示2026-11-28「格闘コンボ数に応じて1.1倍ずつ上げたい」「コンボダメージは2倍を天井にしよう」)。
+ * n=その当たりの**前までに**つながっているコンボの数(「N HIT」の数え方=brComboHits。1発目は n=0)。min(2.0, 1.1^n)。
+ * 0・負数・NaN は 1。8 以上で天井(1.1^7≈1.95・1.1^8≈2.14)。ダメージだけに掛ける(体勢値・押しには掛けない)。
+ */
+export const BRAWLER_COMBO_DMG_STEP = 1.1;
+export const BRAWLER_COMBO_DMG_CAP = 2.0;
+export const brawlerComboDamageMult = (n: number): number =>
+  (n > 0 ? Math.min(BRAWLER_COMBO_DMG_CAP, Math.pow(BRAWLER_COMBO_DMG_STEP, n)) : 1);
+/** この当たりのコンボ数の倍率(e=当たる直前の敵・linkOnHit=この当たりで何発目になるか=brawlerLinkOnHit の値)。 */
+export const brawlerComboDamageMultOnHit = (linkOnHit: number): number => brawlerComboDamageMult(linkOnHit - 1);
 /** この敵へのいまの当たりの補正(流れが切れていれば1発目から)。 */
 export const brawlerProrationFor = (e: { brComboAt?: number; brFlowHits?: number }, now: number): number =>
   brawlerProration((brawlerComboAlive(e, now) ? (e.brFlowHits ?? 0) : 0) + 1);

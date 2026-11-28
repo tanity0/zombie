@@ -10,7 +10,7 @@ import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import {
   setBrawlerTempoAll, brawlerPhaseKind, brawlerLockOnHit, brawlerLockHitMs, brawlerHeldNow, brawlerProration, brawlerProrationFor,
-  brawlerAirborne, brawlerJuggleHeightRel,
+  brawlerAirborne, brawlerJuggleHeightRel, brawlerComboDamageMult, brawlerLinkNow,
 } from '../utils/brawlerCombo';
 import { preBiteTelegraphLine } from '../utils/biteTelegraph';
 
@@ -195,14 +195,18 @@ describe('§13-2 空中コンボ(ストア)', () => {
     setup();
     // ボス級(ハンター)で数える(旧: 雑魚は7発で振り払って流れが切れた=振り払いは 2026-11-11 に撤去)。
     useGameStore.setState({ enemies: [place('hunter', 60, 0, 'z'), place('hunter', -60, 0, 's')] });
-    const dmgOf = (id: string, mv: Mv) => { const h0 = en(id).health; hit(id, mv, { mult: 20 }); return h0 - en(id).health; };
+    // ★コンボ数の倍率(社長指示2026-11-28・min(2, 1.1^n))は別の掛け算=ここでは割り戻して、補正だけを見る。
+    const dmgOf = (id: string, mv: Mv) => {
+      const cm = brawlerComboDamageMult(brawlerLinkNow(en(id), useGameStore.getState().gameTime, Date.now()));
+      const h0 = en(id).health; hit(id, mv, { mult: 20 }); return (h0 - en(id).health) / cm;
+    };
     const d: number[] = [];
     for (let i = 0; i < 12; i++) { d.push(dmgOf('z', 's1')); step(100); }
-    expect(d[8]).toBe(d[0]);                      // 9発目まで満額
+    expect(d[8]).toBeCloseTo(d[0], 6);            // 9発目まで満額
     expect(d[9] / d[0]).toBeCloseTo(0.95, 2);      // 10発目 −5%
     expect(d[11] / d[0]).toBeCloseTo(0.85, 2);
     const ds: number[] = [];
     for (let i = 0; i < 12; i++) { ds.push(dmgOf('s', 'secret')); step(100); }
-    expect(ds[11]).toBe(ds[0]);                   // 秘奥義は補正なし
+    expect(ds[11]).toBeCloseTo(ds[0], 6);         // 秘奥義は補正なし
   });
 });

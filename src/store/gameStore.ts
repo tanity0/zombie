@@ -891,6 +891,12 @@ export interface BrawlerStrikeOpts {
 /** 当たり1回の「N HIT」の数(その敵の続き+1。段のつなぎとして出た抉り打ちは、持ち越した数の続きより小さくしない=§37-7)。 */
 const brawlerLinkOnHitBs = (enemy: Enemy, bs: Pick<BrawlerStrikeOpts, 'combo'>, gameTime: number, now: number): number =>
   BRGO.brawlerLinkWithCarry(BRC.brawlerLinkOnHit(enemy, gameTime, now), bs.combo?.linkCarry);
+/**
+ * ★格闘のコンボ数のダメージ倍率(utils/brawlerCombo の brawlerComboDamageMult・社長指示2026-11-28)。数は「N HIT」と同じ(当たる直前の敵から・抉り打ちの持ち越し込み)。
+ * プレイヤーの格闘の当たりのダメージを決める所(段・技・秘奥義・会心のフィニッシュ・気功/投げ/スープレックスの爆発)は全部これを通す。ダメージだけ(体勢値・押しには掛けない)。
+ */
+const brawlerComboDmgMultFor = (enemy: Enemy, gameTime: number, now: number, linkCarry?: number): number =>
+  BRC.brawlerComboDamageMultOnHit(BRGO.brawlerLinkWithCarry(BRC.brawlerLinkOnHit(enemy, gameTime, now), linkCarry));
 /** 格闘の気功の弾(store が進める・pixi は描くだけ)。 */
 export interface BrawlerKiko {
   id: string;
@@ -8221,7 +8227,8 @@ const explodeBrawlerAirThrow = (get: () => GameState, x: number, y: number): voi
     const e = get().enemies.find(en => en.id === id);
     if (!e) continue;
     const d = BR.brawlerDistTo(x, y, e);
-    const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * BRC.brawlerProrationFor(e, Date.now()) * sniperGunMult(p, e)));
+    const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * BRC.brawlerProrationFor(e, Date.now()) * sniperGunMult(p, e)
+      * brawlerComboDmgMultFor(e, st.gameTime, Date.now()))); // コンボ数の倍率(当たる直前の敵から)
     const stunBefore = e.hitStunUntil;
     const link = brawlerLinkHitPatch(e, st.gameTime, Date.now()); // ★「N HIT」の数(§23・当たる直前の敵から)。書かないと、爆撃で浮いて宙にいるのに数が切れていた
     const killed = withMastery('brawler', () => get().damageEnemy(id, dmg, true, false, false, 'other'));
@@ -8504,7 +8511,8 @@ const explodeBrawlerSuplex = (get: () => GameState, set: (fn: (s: GameState) => 
     if (!e || !(e.health > 0) || isCorpse(e)) continue;
     const isSlam = id === slammed.id;
     const d = isSlam ? 0 : BR.brawlerDistTo(x, y, e);
-    const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * BRC.brawlerProrationFor(e, now) * sniperGunMult(p, e)));
+    const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * BRC.brawlerProrationFor(e, now) * sniperGunMult(p, e)
+      * brawlerComboDmgMultFor(e, st.gameTime, now))); // コンボ数の倍率(当たる直前の敵から)
     const stunBefore = e.hitStunUntil;
     const link = brawlerLinkHitPatch(e, st.gameTime, now); // ★「N HIT」の数(§23・当たる直前の敵から数える=格闘の当たりと同じ)。書かないと、宙にいるのに数が切れていた
     const killed = withMastery('brawler', () => get().damageEnemy(id, dmg, true, false, false, 'other'));
@@ -8969,9 +8977,10 @@ const explodeBrawlerKiko = (
     const d = BR.brawlerDistTo(x, y, e);
     // ★ダメージ補正(§13-2)。秘奥義の中の気功は補正しない。
     const pr = o.move === 'secret' ? 1 : BRC.brawlerProrationFor(e, Date.now());
-    const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * pr * sniperGunMult(p, e))); // スナイパー(停止敵・距離)も銃と同じく乗る(§16-E)
-    const stunBefore = e.hitStunUntil;
     const linkN = BRC.brawlerLinkOnHit(e, get().gameTime, Date.now()); // つながっているコンボの数(§23): 爆発のダメージが止めを書く前の敵で見る
+    const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * pr * sniperGunMult(p, e) // スナイパー(停止敵・距離)も銃と同じく乗る(§16-E)
+      * BRC.brawlerComboDamageMultOnHit(linkN))); // コンボ数の倍率(秘奥義の中の気功も掛ける・数は上の linkN=brawlerComboDmgMultFor と同じ)
+    const stunBefore = e.hitStunUntil;
     const killed = withMastery('brawler', () => get().damageEnemy(id, dmg, true, false, false, 'other')); // 浮き: 気功の爆発(地上は brawlerKikoComboHit が爆発の浮きで打ち上げ・空中は格闘の拾い)
     { const na = meleeNumberPoint(x, y, e); get().spawnDamageNumber(na.x, na.y, dmg, false, { enemyId: id }); } // ★爆心から見た当たった所(§9-75・小さな敵は今までどおり)
     dealt += dmg;
@@ -16275,6 +16284,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 気絶敵へのフィニッシュ裁定は resolveStunnedMeleeHit が唯一の出どころ
       // (v0.25.2525で抽出=**守護霊の近接スイングと共有**・値/条件は不変。ボス5×は
       // 完全気絶(紫)中のみ気絶維持 / 強個体はHP50%以上で3×+気絶解除 / それ以外は即時処刑)。
+      // ★格闘のコンボ数のダメージ倍率(社長指示2026-11-28・当たる直前の敵から数える)。格闘以外は1。下の会心のフィニッシュと通常の当たりの両方に掛ける。
+      const brComboDmg = bs ? brawlerComboDmgMultFor(enemy, gameTime, now, bs.combo?.linkCarry) : 1;
       const stunnedHit = resolveStunnedMeleeHit(enemy, meleeExecBaseVs * gpDmgScale, gameTime, BOSS_MELEE_STUN_MULT);
       if (stunnedHit) {
         if (stunnedHit.kind === 'execute') {
@@ -16298,7 +16309,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ? BRS.stunnedFinishDamage(
             (fatal ? meleeExecBaseVs * gpDmgScale * 5 : stunnedHit.dmg) * stunAirMult, // 5倍(3倍)の部分だけ空中の倍率。足の速さは meleeExecBase に入っている(§16)
             fatal ? Math.max(0, enemy.bossBreakRewardRemaining ?? 0) : 0,
-            retMult, 1, heavyScanMult,
+            retMult * brComboDmg, 1, heavyScanMult, // コンボ数の倍率は段の倍率と同じく5倍(3倍)の部分だけ(紫の報酬は満額のまま)
           )
           : (fatal?.damage ?? stunnedHit.dmg) * retMult * heavyScanMult; // 被弾反撃は最終ダメージの×2(処刑の分岐も含む)
         // ★v0.25.4153(社長裁定2026-09-05「強個体はボスと同じく致命の一撃でキル演出は入る。でも
@@ -16357,6 +16368,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const brProration = bs?.combo && bs.combo.move !== 'secret' && bs.combo.move !== 'secret-land' ? BRC.brawlerProrationFor(enemy, now) : 1;
       const airMk = meleeAirMult(enemy, now, airFollowWeapon); // 空中の敵への倍率(§16・格闘の長いコンボの補正と同じ並び)
       let dmg = meleeDamage * knifeDmgMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult * scanMult * brProration * airMk
+        * brComboDmg // 格闘のコンボ数の倍率(段・技・秘奥義。格闘以外は1)
         * swingMmVs; // 熟練度: 通常の振り(格闘=brawler・それ以外=melee)。幻影には乗せない
       // スラッシャーの種: 空中(追い打ちの当たりで掛け直す)・印(自動の斬りには乗らない)・対人の縮み(関所が掛け直す)を外し、幻影へ外した熟練度を戻す。
       const slasherSeed = dmg / Math.max(1e-6, airMk * gpDmgScale * scanMult) * (swingMm / Math.max(1e-6, swingMmVs));
@@ -16433,7 +16445,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 止め=段の表の ms をそのまま hitStunUntil へ(格闘では再発火ガードを外す)。ボス級は止めない(区分の仕様)。
         survivors.push({
           ...enemy, health: newHealth, lastHit: now, stunUntil,
-          ...brawlerHitPatch(enemy, bs, now, gameTime, dmg, ecx, ecy, pcx, pcy),
+          ...brawlerHitPatch(enemy, bs, now, gameTime, dmg / brComboDmg, ecx, ecy, pcx, pcy), // のけぞりの重さ(lastHitDmg)はコンボ数の倍率を掛ける前(ダメージだけに掛ける)
           ...(bossSlow ?? {}),
           ...(bossBump?.patch ?? {}),
           ...(laserBreak?.patch ?? {}),
