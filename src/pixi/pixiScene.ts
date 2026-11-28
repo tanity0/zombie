@@ -138,7 +138,7 @@ import {
   createBlurTrail, stepBlurTrail, blurGhostsInto, blurBodyAlpha, blurStreak, blurTrailVisible, enemyBlurActive, whipTipStreakAlpha, radialFlowK,
   BLUR_KATANA_GHOSTS, BLUR_KATANA_SPACING_MS, BLUR_BRAWLER_GHOSTS, BLUR_BRAWLER_SPACING_MS, BLUR_ENEMY_GHOSTS,
   BLUR_STILL_PX, RADIAL_FLOW_MS, RADIAL_FLOW_MAX, RADIAL_FLOW_CALM_R, RADIAL_FLOW_FULL_R, RADIAL_FLOW_TAPS,
-  blurEnemySpacingMs, BLUR_ENEMY_GAP_BODY_FRAC, BLUR_ENEMY_GAP_PX, BLUR_ENEMY_SPACING_MAX_MS,
+  blurEnemySpacingMs, blurPlayerSpacingMs, BLUR_ENEMY_GAP_BODY_FRAC, BLUR_ENEMY_GAP_PX, BLUR_ENEMY_SPACING_MAX_MS,
   WHIP_TIP_STREAK_LEN, WHIP_TIP_STREAK_THICK_PX, WHIP_TIP_STREAK_SPREAD_DEG, WHIP_TIP_STREAK_OFFSET_PX, type BlurTrail, type BlurGhost,
 } from '../utils/motionBlur'; // ブラー表現「詰めた残像」(research/BLUR.md・描画だけ)
 import { BOSS_KILL_CAMERA_HOLD_MS } from '../utils/bossKillStop';
@@ -52365,7 +52365,7 @@ export class PixiScene {
     return { x: body.position.x, y: body.position.y, h: 0 };
   }
   /**
-   * 主人公: 刀の一閃(居合一閃の走り・殺陣の各発の瞬間移動を含む)=残像3枚・10msおき+通った道の細い白い筋/格闘の飛び蹴り・5段目の突進・抉り打ちの踏み込み=2枚・12msおき。
+   * 主人公: 刀の一閃(居合一閃の走り・殺陣の各発の瞬間移動を含む)=残像3枚+通った道の細い白い筋/格闘の飛び蹴り・5段目の突進・抉り打ちの踏み込み=残像3枚。間隔は体の幅で決める(blurPlayerSpacingMs)。
    * 走っている間は本体を半分の濃さに(止まった瞬間に戻す)。燕返しは体が動かない=出さない。drawPlayer の本体の濃さが決まった直後に呼ぶ。
    */
   private syncPlayerBlur(view: ActorView, p: Player, gameTime: number, now: number, ghostBaseA: number): void {
@@ -52421,7 +52421,10 @@ export class PixiScene {
     }
     const n = brawler ? BLUR_BRAWLER_GHOSTS : BLUR_KATANA_GHOSTS;
     const vis = alive && blurTrailVisible(tr);
-    const out = blurGhostsInto(tr, n, brawler ? BLUR_BRAWLER_SPACING_MS : BLUR_KATANA_SPACING_MS, this.playerBlurOut);
+    // 間隔は体の幅で決める(見本の「写しが体から離れて見える」・research/BLUR.md): 一番速い所で体の幅の半分離し、遅い所は速さに比例して詰まる。
+    const bodyW = body.texture ? body.texture.width * Math.abs(body.scale.x) : 0;
+    const spacing = blurPlayerSpacingMs(bodyW, tr.vPeak, brawler ? BLUR_BRAWLER_SPACING_MS : BLUR_KATANA_SPACING_MS);
+    const out = blurGhostsInto(tr, n, spacing, this.playerBlurOut, spacing); // 走り出しの写しは1間隔ぶんまで元の位置に残す(見本どおり)
     for (let i = 0; i < BLUR_KATANA_GHOSTS; i++) {
       let g = this.playerBlurGhosts[i];
       if (!vis || i >= n || out[i].alpha <= 0.002) { if (g) g.visible = false; continue; }

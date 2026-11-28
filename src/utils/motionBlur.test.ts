@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   blurGhostAlpha, blurFadeK, createBlurTrail, stepBlurTrail, blurGhostsInto, blurBodyAlpha, blurTrailFade, blurTrailVisible, blurStreak,
-  enemyBlurActive, whipTipStreakAlpha, radialFlowK, blurSampleAt, blurEnemySpacingMs,
+  enemyBlurActive, whipTipStreakAlpha, radialFlowK, blurSampleAt, blurEnemySpacingMs, blurPlayerSpacingMs, BLUR_PLAYER_GAP_BODY_FRAC, BLUR_PLAYER_SPACING_MAX_MS,
   BLUR_ENEMY_SPACING_MS, BLUR_ENEMY_SPACING_MAX_MS, BLUR_WARP_SPREAD_MS, RADIAL_FLOW_TAPS,
   BLUR_FADE_MS, BLUR_BODY_ALPHA, BLUR_KATANA_GHOSTS, BLUR_KATANA_SPACING_MS, BLUR_BRAWLER_GHOSTS, BLUR_BRAWLER_SPACING_MS, BLUR_ENEMY_GHOSTS, BLUR_ENEMY_MAX, BLUR_ENEMY_START_SPEED,
   BLUR_ENEMY_KEEP_SPEED, BLUR_STREAK_ALPHA, WHIP_TIP_STREAK_LEAD_MS, WHIP_TIP_STREAK_TAIL_MS, RADIAL_FLOW_MS,
@@ -201,6 +201,77 @@ describe('motionBlur: 列と残像の位置', () => {
     stepBlurTrail(tr, { gt: 0, active: true, x: 5, y: 0 });
     expect(tr.active).toBe(false);
     expect(tr.samples).toHaveLength(0);
+  });
+});
+
+describe('motionBlur: 主人公の残像の間隔(体の幅で決める)', () => {
+  it('一番速い所で写しどうしが体の幅の半分離れる時間・[下限, 40ms] に収める・分からない時は下限', () => {
+    expect(BLUR_PLAYER_GAP_BODY_FRAC).toBe(0.5);
+    expect(BLUR_PLAYER_SPACING_MAX_MS).toBe(40);
+    expect(blurPlayerSpacingMs(70, 1)).toBeCloseTo(35, 9);
+    expect(blurPlayerSpacingMs(70, 1) * 1).toBeCloseTo(70 * BLUR_PLAYER_GAP_BODY_FRAC, 9); // 間隔×速さ=体の幅の半分
+    expect(blurPlayerSpacingMs(70, 0.3)).toBe(40); // 遅い間は上限
+    expect(blurPlayerSpacingMs(70, 20)).toBe(BLUR_KATANA_SPACING_MS); // とても速い間は下限
+    expect(blurPlayerSpacingMs(0, 1)).toBe(BLUR_KATANA_SPACING_MS);
+    expect(blurPlayerSpacingMs(70, 0)).toBe(BLUR_KATANA_SPACING_MS);
+    expect(blurPlayerSpacingMs(70, 0, 12)).toBe(12);
+  });
+  it('列は今の技で一番速かった速さを持つ(動き出しで戻す・止めの間と技の後の滑りでは変えない)', () => {
+    const tr = createBlurTrail();
+    let x = 0, gt = 1000;
+    stepBlurTrail(tr, { gt, active: false, x, y: 0 });
+    const vs = [0.3, 0.6, 0.9, 1.0, 1.0];
+    for (const v of vs) { gt += 16; x += v * 16; stepBlurTrail(tr, { gt, active: true, x, y: 0 }); }
+    expect(tr.vPeak).toBeCloseTo(1.0, 6);
+    gt += 16; stepBlurTrail(tr, { gt, active: true, x, y: 0, stop: true }); // 止め
+    expect(tr.vPeak).toBeCloseTo(1.0, 6);
+    gt += 16; x += 0.4 * 16; stepBlurTrail(tr, { gt, active: false, x, y: 0 }); // 技の後の滑り
+    expect(tr.vPeak).toBeCloseTo(1.0, 6);
+    for (let k = 0; k < 20; k++) { gt += 16; stepBlurTrail(tr, { gt, active: false, x, y: 0 }); }
+    gt += 16; x += 0.2 * 16; stepBlurTrail(tr, { gt, active: true, x, y: 0 }); // 次の技の動き出し
+    expect(tr.vPeak).toBeCloseTo(0.2, 6);
+  });
+  it('瞬間移動は走ったことにした速さを一番速かった速さに入れる', () => {
+    const tr = createBlurTrail();
+    stepBlurTrail(tr, { gt: 1000, active: false, x: 0, y: 0 });
+    stepBlurTrail(tr, { gt: 1016, active: true, x: 120, y: 0, warpFrom: { x: 0, y: 0 }, warpSpeed: 0.85 });
+    expect(tr.vPeak).toBeCloseTo(0.85, 9);
+  });
+  it('一定の速さで走っている間、写しどうしは体の幅の半分ずつ離れる(体 70px・1px/ms)', () => {
+    const v = 1, bodyW = 70;
+    const { tr, x } = run(14, v);
+    const out: BlurGhost[] = [];
+    blurGhostsInto(tr, 3, blurPlayerSpacingMs(bodyW, tr.vPeak), out);
+    for (let i = 0; i < 3; i++) expect(x - out[i].x).toBeCloseTo(bodyW * 0.5 * (i + 1), 6);
+  });
+  it('減速すると写しが詰まる(速さに比例)', () => {
+    const tr = createBlurTrail();
+    let x = 0, gt = 1000;
+    stepBlurTrail(tr, { gt, active: false, x, y: 0 });
+    for (let f = 0; f < 10; f++) { gt += 16; x += 16; stepBlurTrail(tr, { gt, active: true, x, y: 0 }); }
+    const sp = blurPlayerSpacingMs(70, tr.vPeak);
+    expect(sp).toBeCloseTo(35, 6);
+    const fast: BlurGhost[] = []; blurGhostsInto(tr, 3, sp, fast);
+    const fastGap = x - fast[0].x;
+    expect(fastGap).toBeCloseTo(35, 6);
+    for (let f = 0; f < 10; f++) { gt += 16; x += 0.4 * 16; stepBlurTrail(tr, { gt, active: true, x, y: 0 }); }
+    const slow: BlurGhost[] = []; blurGhostsInto(tr, 3, blurPlayerSpacingMs(70, tr.vPeak), slow);
+    expect(x - slow[0].x).toBeCloseTo(fastGap * 0.4, 6); // 速さ 0.4 倍=間も 0.4 倍
+  });
+});
+
+describe('motionBlur: 走り出しの写し(startHoldMs)', () => {
+  it('列の始まりより前でも startHoldMs までの写しは動き出した点に置く(見本の「出だしの写しは元の位置に残る」)・それより前は出さない', () => {
+    const tr = createBlurTrail();
+    stepBlurTrail(tr, { gt: 0, active: false, x: 0, y: 0 });
+    stepBlurTrail(tr, { gt: 16, active: true, x: 10, y: 0 });
+    const out: BlurGhost[] = [];
+    blurGhostsInto(tr, 3, 35, out, 35); // 35ms 前=列の始まりの 19ms 前 → 動き出した点
+    expect(out[0].alpha).toBeGreaterThan(0);
+    expect(out[0].x).toBe(0);
+    expect(out[1].alpha).toBe(0); // 70ms 前=始まりの 54ms 前 → 出さない
+    blurGhostsInto(tr, 3, 35, out); // 既定(0)は今どおり出さない
+    expect(out[0].alpha).toBe(0);
   });
 });
 

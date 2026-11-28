@@ -2,12 +2,29 @@
 // 型: 速く動いている間だけ、本体のすぐ後ろに本体の過去の位置の写しを詰めて並べ(古いほど薄い)、本体を半分の濃さにする。
 // 止まったら本体はすぐ元の濃さへ戻り、残像は加減速つきに薄れて消える。止め(ヒットストップ)の間は残像の時計も止める。
 
-/** 刀の一閃・居合一閃・殺陣: 残像3枚・10msおき。 */
+/** 刀の一閃・居合一閃・殺陣: 残像3枚。間隔は体の幅で決める(blurPlayerSpacingMs)・これはその下限(ms)。 */
 export const BLUR_KATANA_GHOSTS = 3;
 export const BLUR_KATANA_SPACING_MS = 10;
-/** 格闘の飛び蹴り・5段目の突進・抉り打ちの踏み込み: 刀と同じ(見本の3枚・10msおき・濃さ 0.46/0.32/0.18)。 */
+/** 格闘の飛び蹴り・5段目の突進・抉り打ちの踏み込み: 刀と同じ(見本の3枚・濃さ 0.46/0.32/0.18・間隔は体の幅で決める)。これは間隔の下限(ms)。 */
 export const BLUR_BRAWLER_GHOSTS = 3;
 export const BLUR_BRAWLER_SPACING_MS = 10;
+/**
+ * 主人公の残像どうしを離す距離=一番速い所で体の幅のこの割合。
+ * 見本(一閃 1080px/160ms・easeOutCubic・10msおき・体の幅 234px)で、写しの間は出だし 0.81・中ほど 0.45〜0.6・
+ * 道のりで均すと 0.52(時間で均すと 0.29)。道のりで均した値に合わせる=体が通る所で目に入る離れ方を見本と揃える。
+ */
+export const BLUR_PLAYER_GAP_BODY_FRAC = 0.5;
+/** 主人公の残像の間隔の上限(ms)。走り出し(まだ遅い)で間隔が延び過ぎないように。 */
+export const BLUR_PLAYER_SPACING_MAX_MS = 40;
+/**
+ * 主人公の残像の間隔(ms): その技で一番速かった時の速さ(vPeakPxPerMs)で、写しどうしが体の幅 × frac 離れる時間。
+ * 時間で並べるので、速さが落ちた所(加速の出だし・技の後の滑り)では写しが速さに比例して詰まる(見本の「減速すると詰まる」)。
+ * [minMs, BLUR_PLAYER_SPACING_MAX_MS] に収める。体の幅・速さが分からない時は minMs。
+ */
+export const blurPlayerSpacingMs = (bodyWPx: number, vPeakPxPerMs: number, minMs = BLUR_KATANA_SPACING_MS, frac = BLUR_PLAYER_GAP_BODY_FRAC): number => {
+  if (!(bodyWPx > 0) || !(vPeakPxPerMs > 0)) return minMs;
+  return Math.min(BLUR_PLAYER_SPACING_MAX_MS, Math.max(minMs, bodyWPx * frac / vPeakPxPerMs));
+};
 /** 強く吹き飛ばされた敵: 見本の3枚(濃さ 0.46/0.32/0.18・間隔は画素で決める blurEnemySpacingMs・本体は透けさせない)。 */
 export const BLUR_ENEMY_GHOSTS = 3;
 export const BLUR_ENEMY_SPACING_MS = 10;
@@ -78,12 +95,14 @@ export interface BlurTrail {
   warpEl: number;
   /** 最後の瞬間移動の元(f)と先(t)の点。 */
   wfx: number; wfy: number; wfh: number; wtx: number; wty: number; wth: number;
+  /** 今の技で一番速かった速さ(px / 残像の時計 ms)。動き出しで 0 に戻す。止めの間・技の後の滑りでは更新しない。 */
+  vPeak: number;
 }
 
 export const createBlurTrail = (): BlurTrail => ({
   clock: 0, samples: [], active: false, sinceEnd: Number.POSITIVE_INFINITY,
   ox: 0, oy: 0, oh: 0, lastX: 0, lastY: 0, hasLast: false, lastGt: Number.NaN,
-  warpEl: Number.POSITIVE_INFINITY, wfx: 0, wfy: 0, wfh: 0, wtx: 0, wty: 0, wth: 0,
+  warpEl: Number.POSITIVE_INFINITY, wfx: 0, wfy: 0, wfh: 0, wtx: 0, wty: 0, wth: 0, vPeak: 0,
 });
 
 export interface BlurStepIn {
@@ -100,8 +119,8 @@ export interface BlurStepIn {
   warpSpeed?: number;
 }
 
-// 列を残す長さ: 一番古い写し(敵の3枚目=間隔の上限×3)まで点が残るように(足りないと3枚目が出ない時がある)。
-const KEEP_MS = Math.max(80, BLUR_ENEMY_SPACING_MAX_MS * BLUR_ENEMY_GHOSTS + 20);
+// 列を残す長さ: 一番古い写し(敵・主人公の3枚目=間隔の上限×3)まで点が残るように(足りないと3枚目が出ない時がある)。
+const KEEP_MS = Math.max(80, BLUR_ENEMY_SPACING_MAX_MS * BLUR_ENEMY_GHOSTS + 20, BLUR_PLAYER_SPACING_MAX_MS * BLUR_KATANA_GHOSTS + 20);
 
 const pushSample = (tr: BlurTrail, s: BlurSample): void => {
   tr.samples.push(s);
@@ -125,7 +144,7 @@ export const stepBlurTrail = (tr: BlurTrail, i: BlurStepIn): void => {
   if (i.active) {
     const starting = !tr.active;
     if (starting) {
-      tr.active = true; tr.samples.length = 0; tr.sinceEnd = 0;
+      tr.active = true; tr.samples.length = 0; tr.sinceEnd = 0; tr.vPeak = 0;
       tr.ox = i.x; tr.oy = i.y; tr.oh = h;
     }
     if (i.warpFrom && d > 0) {
@@ -134,6 +153,7 @@ export const stepBlurTrail = (tr: BlurTrail, i: BlurStepIn): void => {
       const fx = i.warpFrom.x, fy = i.warpFrom.y, fh = i.warpFrom.h ?? h;
       const dist = Math.hypot(i.x - fx, i.y - fy);
       const dur = dist / sp;
+      tr.vPeak = Math.max(tr.vPeak, sp);
       tr.samples.length = 0;
       const t0 = tr.clock;
       const step = 4;
@@ -162,6 +182,7 @@ export const stepBlurTrail = (tr: BlurTrail, i: BlurStepIn): void => {
       const frozen = !!i.stop || d <= 0 || (tr.samples.length > 0 && moved < BLUR_STILL_PX);
       if (!frozen) {
         tr.clock += d;
+        tr.vPeak = Math.max(tr.vPeak, moved / d);
         pushSample(tr, { t: tr.clock, x: i.x, y: i.y, r, h });
       } else if (tr.samples.length === 0) {
         tr.samples.push({ t: tr.clock, x: i.x, y: i.y, r, h });
@@ -213,15 +234,20 @@ export const blurSampleAt = (samples: readonly BlurSample[], t: number): BlurSam
  * 位置は残像の時計の spacing ms おきの過去(止めの間は時計が止まる=残像もその場で止まる)。
  * 止まった後は間隔も薄れと同じ掛けで縮む=写しが本体へ追いつきながら消える(ease-out)。
  * 瞬間移動した瞬間は写しを道のりの i/(n+1) の所(3枚なら 75%/50%/25%)に置き、BLUR_WARP_SPREAD_MS で通常の並びへ縮める(ease-out)。
+ * startHoldMs: 列の始まり(動き出した点)より前の写しでも、この時間までなら消さずに動き出した点へ置く
+ * (見本の「出だしの写しは元の位置に残る」=走り出しの数フレームでも写しが本体から離れて見える)。既定 0=出さない。
  */
-export const blurGhostsInto = (tr: BlurTrail, n: number, spacingMs: number, out: BlurGhost[]): BlurGhost[] => {
+export const blurGhostsInto = (tr: BlurTrail, n: number, spacingMs: number, out: BlurGhost[], startHoldMs = 0): BlurGhost[] => {
   const fade = blurTrailFade(tr);
   const sp = spacingMs * fade; // 止まった後は列が本体へ縮む(動いている間は fade=1)
   const warpW = tr.warpEl < BLUR_WARP_SPREAD_MS ? tr.warpEl / BLUR_WARP_SPREAD_MS : 1;
   const warpE = 1 - (1 - warpW) * (1 - warpW); // ease-out
   for (let i = 1; i <= n; i++) {
     const g = out[i - 1] ?? (out[i - 1] = { x: 0, y: 0, r: 0, h: 0, alpha: 0 });
-    const s = fade > 0.001 && tr.samples.length > 1 ? blurSampleAt(tr.samples, tr.clock - i * sp) : null;
+    const tt = tr.clock - i * sp;
+    const s = fade > 0.001 && tr.samples.length > 1
+      ? blurSampleAt(tr.samples, tt) ?? (startHoldMs > 0 && tt >= tr.samples[0].t - startHoldMs ? tr.samples[0] : null)
+      : null;
     if (!s) { g.alpha = 0; continue; }
     g.x = s.x; g.y = s.y; g.r = s.r; g.h = s.h;
     if (warpE < 1) {
